@@ -10,10 +10,12 @@ mutates rank/selection/store. All async work is dispatched by the controller
 from __future__ import annotations
 
 from PySide6.QtCore import QEvent, Qt, Signal
-from PySide6.QtWidgets import QWidget
+from PySide6.QtWidgets import QHBoxLayout, QWidget
 
 from sli_ui_toolkit.managers import scaled_px
-from sli_ui_toolkit.widgets import BaseFlyout, CustomLineEdit, Label
+from sli_ui_toolkit.widgets import BaseFlyout, Button, CustomLineEdit, Label
+
+from tabs.image_gallery.icons import Icon as GalleryIcon
 
 #: Minimum flyout width (the ask surface must not collapse).
 MIN_WIDTH_PX = 300
@@ -108,18 +110,40 @@ class AskAiFlyout(BaseFlyout):
             pass
         self._edit.returnPressed.connect(self._emit_submit)
         self._edit.installEventFilter(self)
+        # Include-images toggle (plan: Ask AI carries AI output for now). Off by
+        # default = metrics only (a crossed-out image); on = send the images.
+        self._include_images = False
+        self._images_toggle = Button(
+            icon=(GalleryIcon.ASK_IMAGES_OFF, GalleryIcon.ASK_IMAGES),
+            variant="ghost",
+            toggle=True,
+            size=(scaled_px(28), scaled_px(28)),
+            parent=self,
+        )
+        self._images_toggle.setObjectName("gallery_ask_ai_images_toggle")
+        try:
+            self._images_toggle.setChecked(False)
+            self._images_toggle.clicked.connect(self._on_images_toggled)
+        except Exception:
+            pass
         self._result = Label("", pixel_size=12, word_wrap=True, parent=self)
         self._result.setMinimumWidth(scaled_px(MIN_WIDTH_PX - 40))
         self._status = Label("", pixel_size=11, parent=self)
 
-        for widget in (
-            self._title,
-            self._scope,
-            self._edit,
-            self._result,
-            self._status,
-        ):
-            self.content_layout.addWidget(widget)
+        # Title, scope, then the question row (edit + images toggle).
+        self.content_layout.addWidget(self._title)
+        self.content_layout.addWidget(self._scope)
+        try:
+            edit_row = QHBoxLayout()
+            edit_row.setContentsMargins(0, 0, 0, 0)
+            edit_row.setSpacing(scaled_px(6))
+            edit_row.addWidget(self._edit, 1)
+            edit_row.addWidget(self._images_toggle, 0)
+            self.content_layout.addLayout(edit_row)
+        except Exception:
+            self.content_layout.addWidget(self._edit)
+        self.content_layout.addWidget(self._result)
+        self.content_layout.addWidget(self._status)
 
         # Empty result/status rows reserve no height (see _sync_row_visibility).
         self._sync_row_visibility()
@@ -172,6 +196,19 @@ class AskAiFlyout(BaseFlyout):
         except Exception:
             pass
         self.submitted.emit(question)
+
+    def _on_images_toggled(self) -> None:
+        try:
+            self._include_images = bool(self._images_toggle.isChecked())
+        except Exception:
+            self._include_images = False
+
+    def include_images(self) -> bool:
+        """Whether the question should carry the images (VLM) or metrics only."""
+        try:
+            return bool(self._images_toggle.isChecked())
+        except Exception:
+            return bool(getattr(self, "_include_images", False))
 
     def keyPressEvent(self, event) -> None:  # noqa: N802 (Qt name)
         # The flyout's own key handler is the reliable Enter path: the toolkit
@@ -240,6 +277,12 @@ class AskAiFlyout(BaseFlyout):
         self._edit.setReadOnly(False)
         self._result.setText("")
         self._status.setText("")
+        # Images off by default on every open (metrics-only).
+        try:
+            self._images_toggle.setChecked(False)
+            self._include_images = False
+        except Exception:
+            pass
         self._sync_row_visibility()
         if initial_result is not None:
             self.show_result(

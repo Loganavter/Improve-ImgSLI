@@ -1796,7 +1796,7 @@ class GalleryController:
         blob = json.dumps(ident, sort_keys=True, ensure_ascii=False)
         return hashlib.sha1(blob.encode("utf-8")).hexdigest()
 
-    def ask_ai_question(self, scope, question: str) -> None:
+    def ask_ai_question(self, scope, question: str, *, include_images: bool = False) -> None:
         """Build context, route, and run the backend on a GenericWorker.
 
         Advisory only: never mutates rank/selection/store. Late answers are
@@ -1807,7 +1807,7 @@ class GalleryController:
             build_ask_context,
             deanonymize_answer,
         )
-        from tabs.image_gallery.services.ask_router import answer, route_backend
+        from tabs.image_gallery.services.ask_router import answer, resolve_backend
 
         logger.debug(
             "[ask-ai] submit scope=%s q=%.80s",
@@ -1816,7 +1816,7 @@ class GalleryController:
         )
         try:
             context = build_ask_context(scope, controller=self)
-            backend = route_backend(question, context)
+            backend = resolve_backend(question, context, include_images=include_images)
         except Exception:
             logger.debug("ask-ai context build failed", exc_info=True)
             self._show_ask_ai_error("Could not assemble the ask context.")

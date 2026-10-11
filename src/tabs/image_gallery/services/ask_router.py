@@ -154,6 +154,22 @@ def route_backend(question: str, context: dict) -> str:
     return BACKEND_TEXT
 
 
+def resolve_backend(question: str, context: dict, *, include_images: bool | None = None) -> str:
+    """Backend with the ask surface's include-images toggle applied.
+
+    ``include_images=None`` keeps the auto routing (question kind). ``True``
+    forces the vision backend (images in the payload); ``False`` forces the
+    text backend even for a visual question (metrics only). A routing (Jev)
+    question is never overridden.
+    """
+    backend = route_backend(question, context)
+    if include_images is None or backend == BACKEND_JEV:
+        return backend
+    if include_images:
+        return BACKEND_VLM
+    return BACKEND_TEXT if backend == BACKEND_VLM else backend
+
+
 def _coerce_text(value) -> str:
     """Best-effort text out of a chat message field (str or parts list)."""
     if isinstance(value, str):
@@ -386,6 +402,7 @@ __all__ = [
     "build_text_payload",
     "build_vision_payload",
     "estimate_ask_max_tokens",
+    "resolve_backend",
     "resolve_reasoning_effort",
     "route_backend",
 ]

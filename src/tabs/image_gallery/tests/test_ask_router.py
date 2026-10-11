@@ -18,6 +18,7 @@ from tabs.image_gallery.services.ask_router import (
     answer,
     build_text_payload,
     build_vision_payload,
+    resolve_backend,
     route_backend,
 )
 
@@ -193,6 +194,23 @@ def test_answer_jev_stub_degrades_visibly_without_fabricating():
     assert result.text == ""
     assert result.error
     assert "routing" in result.error.lower()
+
+
+def test_resolve_backend_honors_include_images_toggle():
+    q = "describe the color"
+    assert resolve_backend(q, _CTX, include_images=None) == BACKEND_VLM  # auto
+    assert resolve_backend(q, _CTX, include_images=True) == BACKEND_VLM
+    assert resolve_backend(q, _CTX, include_images=False) == BACKEND_TEXT  # metrics only
+
+
+def test_resolve_backend_include_images_forces_vlm_for_text_question():
+    assert resolve_backend("Summary", _CTX, include_images=True) == BACKEND_VLM
+    assert resolve_backend("Summary", _CTX, include_images=False) == BACKEND_TEXT
+
+
+def test_resolve_backend_never_overrides_routing():
+    assert resolve_backend("prioritize this series", _CTX, include_images=True) == BACKEND_JEV
+    assert resolve_backend("prioritize this series", _CTX, include_images=False) == BACKEND_JEV
 
 
 def test_extract_text_accepts_parts_list():
