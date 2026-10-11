@@ -133,6 +133,20 @@ def test_vision_payload_embeds_downscaled_image(monkeypatch):
     )
 
 
+def test_vision_payload_sends_an_image_for_every_scope_item(monkeypatch):
+    from tabs.image_gallery.services import ask_payload
+
+    monkeypatch.setattr(ask_payload, "_encode_image", lambda p: ("png", "QUJD"))
+    items = [
+        {"alias": f"img_{i}", "name": f"{i}.png", "path": f"/g/{i}.png", "metrics": {}}
+        for i in range(1, 9)
+    ]
+    ctx = {**_CTX, "count": len(items), "items": items}
+    payload = build_vision_payload("what is wrong?", ctx, model="m")
+    parts = [p for p in payload["messages"][-1]["content"] if p["type"] == "image_url"]
+    assert len(parts) == 8
+
+
 def test_answer_text_uses_transport_and_returns_text():
     captured = {}
 

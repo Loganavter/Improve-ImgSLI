@@ -322,6 +322,8 @@ def test_i18n_ask_ai_keys_present_in_all_locales():
             "read_badge",
             "error",
             "routing_unavailable",
+            "images_toggle_hint",
+            "images_toggle_downsample",
         ):
             assert block.get(key), f"{path}: missing ask_ai.{key}"
 
@@ -367,6 +369,35 @@ def test_ask_ai_images_toggle_defaults_off(qtbot):
     assert flyout.findChild(QWidget, "gallery_ask_ai_images_toggle") is not None
     assert flyout.include_images() is False
     flyout.hide()
+
+
+def test_images_toggle_tooltip_has_two_lines(qtbot):
+    anchor = QWidget()
+    qtbot.addWidget(anchor)
+    anchor.resize(200, 100)
+    anchor.show()
+    qtbot.waitExposed(anchor)
+    flyout = AskAiFlyout(anchor)
+    flyout.set_texts(
+        images_hint="Send images with the question",
+        images_downsample="Downscale: ≤ 768 px",
+    )
+    assert flyout._images_toggle.toolTip().split("\n") == [
+        "Send images with the question",
+        "Downscale: ≤ 768 px",
+    ]
+    flyout.deleteLater()
+
+
+def test_images_downsample_line_reflects_current_setting():
+    from types import SimpleNamespace
+
+    from tabs.image_gallery.controller import GalleryController
+
+    fake = SimpleNamespace(_tr=lambda _key, default: default)
+    fmt = GalleryController._images_downsample_text
+    assert fmt(fake, 768) == "Downscale: ≤ 768 px"
+    assert fmt(fake, 0) == "Original"
 
 
 def test_ask_ai_images_toggle_enable_and_reset_on_reopen(qtbot):

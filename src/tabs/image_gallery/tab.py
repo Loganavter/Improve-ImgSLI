@@ -286,8 +286,10 @@ class ImageGalleryTab(TabContract):
             pass
 
     def on_session_created(self, session_id: str, context: TabContext) -> None:
-        # Slot is auto-allocated by SessionBlueprint.state_slots; nothing to do.
-        return
+        # Slot is auto-allocated by SessionBlueprint.state_slots; seed the
+        # toolbar chrome from last-used prefs (QSettings) so a NEW session does
+        # not reset the switches (multi_compare idiom).
+        _persistence.on_session_created(self, session_id, context)
 
     def on_session_closed(self, session_id: str, context: TabContext) -> None:
         if self._active_session_id == session_id:

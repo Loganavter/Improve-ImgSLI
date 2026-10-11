@@ -66,6 +66,21 @@ def test_load_sanitizes_invalid_ask_settings(monkeypatch):
     settings.remove("image_gallery_ai_test_ask_bad")
 
 
+def test_save_and_load_vlm_max_edge(monkeypatch):
+    monkeypatch.setattr(store_module, "_QS_GROUP", "image_gallery_ai_test_vlm_edge")
+    settings = QSettings(store_module._QS_ORG, store_module._QS_APP)
+    settings.remove("image_gallery_ai_test_vlm_edge")
+
+    store = AiSettingsStore()
+    store.save_field("vlm_max_edge_px", 768)
+    assert store.load().vlm_max_edge_px == 768
+    store.save_field("vlm_max_edge_px", 999)
+    assert store.load().vlm_max_edge_px == 1024
+    store.save_field("vlm_max_edge_px", 0)
+    assert store.load().vlm_max_edge_px == 0
+    settings.remove("image_gallery_ai_test_vlm_edge")
+
+
 def test_save_field_rejects_unknown_name():
     store = AiSettingsStore()
     try:

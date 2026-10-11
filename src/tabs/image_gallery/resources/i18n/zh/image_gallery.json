@@ -33,6 +33,8 @@
       "effort_medium": "中",
       "effort_high": "高",
       "effort_none": "无",
+      "vlm_max_edge": "图片缩小（最长边）",
+      "downscale_original": "原图",
       "api_key_warning": "以明文形式存储在本设备上。"
     },
     "errors": {
@@ -66,7 +68,9 @@
       "busy": "思考中…",
       "read_badge": "AI 解读，未经核实",
       "error": "AI 无法回答。",
-      "routing_unavailable": "路由功能尚未启用。"
+      "routing_unavailable": "路由功能尚未启用。",
+      "images_toggle_hint": "随问题一起发送图片",
+      "images_toggle_downsample": "缩小：≤ {px} px"
     }
   }
 }
