@@ -782,30 +782,18 @@ class ImageGalleryWidget(QWidget):
         except Exception:
             pass
 
-    def _persist_view_prefs(self) -> None:
-        """Persist both toolbar switch positions (session slot + last-used)."""
-        view_list = bool(getattr(self, "_view_mode", False))
-        dom = str(getattr(self, "_judgment_domain", "algorithms"))
-        try:
-            from tabs.image_gallery.use_cases import persistence as _persistence
+    def attach_session_state(self, state) -> None:
+        """Attach the tab's ``SessionState`` facade (toolbar chrome writes)."""
+        self._session_state = state
 
-            # Last-used chrome (QSettings) — carries across sessions/restarts,
-            # mirrors multi_compare's idiom.
-            _persistence.save_view_prefs(view_list, dom)
-        except Exception:
-            pass
-        try:
-            ctrl = getattr(self, "_controller", None) or getattr(
-                self, "_attached_controller", None
-            )
-        except Exception:
-            ctrl = None
-        fn = getattr(ctrl, "set_view_prefs", None)
-        if not callable(fn):
+    def _persist_view_prefs(self) -> None:
+        """Write both toolbar switch positions through the session-state facade."""
+        state = getattr(self, "_session_state", None)
+        if state is None:
             return
         try:
-            # Per-session slot (live truth while this session is active).
-            fn(view_list=view_list, judgment_domain=dom)
+            state.set("view_list", bool(getattr(self, "_view_mode", False)))
+            state.set("judgment_domain", str(getattr(self, "_judgment_domain", "algorithms")))
         except Exception:
             pass
 

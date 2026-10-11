@@ -39,10 +39,6 @@ class GallerySlotState:
     triage_state: str = "idle"
     mode: str | None = None
     source_path: str | None = None
-    # Toolbar switch positions (persist across sessions): grid/list view and
-    # the Algorithms|AI judgment domain.
-    view_list: bool = False
-    judgment_domain: str = "algorithms"
 
     def clone(self):
         new_obj = copy.copy(self)

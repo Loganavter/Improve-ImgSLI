@@ -22,7 +22,6 @@ from core.state_management.gallery_actions import (
     GallerySelectionSet,
     GalleryThumbnailsReady,
     GalleryTriageFinished,
-    GalleryViewPrefsSet,
 )
 from tabs.image_gallery.state.models import (
     GalleryItemMeta,
@@ -136,16 +135,5 @@ class GallerySlotReducer:
                 triage_state=action.triage_state,
                 mode=action.mode,
                 source_path=action.source_path,
-            )
-        if isinstance(action, GalleryViewPrefsSet):
-            if (
-                state.view_list == action.view_list
-                and state.judgment_domain == action.judgment_domain
-            ):
-                return state
-            return replace(
-                state,
-                view_list=action.view_list,
-                judgment_domain=action.judgment_domain,
             )
         return state

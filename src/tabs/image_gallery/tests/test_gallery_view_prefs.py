@@ -1,116 +1,188 @@
-"""Toolbar switch persistence (view grid/list + Algorithms|AI domain)."""
+"""Gallery toolbar chrome survives via the SessionState facade (3 cases).
+
+Drives the real ``ImageGalleryTab`` delegates over a fake store whose
+dispatcher reduces through the registered slot reducers, and a fake widget
+that records what the facade applies.
+"""
 
 from __future__ import annotations
 
 from types import SimpleNamespace
 
-from core.state_management.gallery_actions import GalleryViewPrefsSet
+import pytest
+
+from core.state_management.slot_reducers import iter_state_slot_reducers
+from tabs.image_gallery.bootstrap_reducers import GALLERY_SLOT_NAME
 from tabs.image_gallery.state.models import fresh_gallery_slot_state
-from tabs.image_gallery.state.reducer import GallerySlotReducer
+from tabs.image_gallery.tab import ImageGalleryTab
 from tabs.image_gallery.widget import ImageGalleryWidget
 
 
-def test_reducer_applies_view_prefs_and_dedupes_noop():
-    st = fresh_gallery_slot_state()
-    assert st.view_list is False and st.judgment_domain == "algorithms"
+@pytest.fixture(autouse=True)
+def _memory_qsettings(monkeypatch):
+    """In-memory QSettings: never touch the real user config."""
+    mem: dict = {}
 
-    st2 = GallerySlotReducer.reduce(
-        st, GalleryViewPrefsSet(view_list=True, judgment_domain="ai")
-    )
-    assert st2.view_list is True
-    assert st2.judgment_domain == "ai"
+    class _FakeQSettings:
+        def __init__(self, *_args):
+            pass
 
-    st3 = GallerySlotReducer.reduce(
-        st2, GalleryViewPrefsSet(view_list=True, judgment_domain="ai")
-    )
-    assert st3 is st2  # identical state → dispatcher no-op
+        def value(self, key, default=None):
+            return mem.get(key, default)
 
+        def setValue(self, key, value):
+            mem[key] = value
 
-def test_apply_view_prefs_sets_domain_quietly_no_ai_run():
-    calls: list = []
-    state = SimpleNamespace(judgment_domain="algorithms")
-    fake = SimpleNamespace(
-        _judgment_domain="algorithms",
-        _view_mode=False,
-        toolbar=SimpleNamespace(
-            set_view_list=lambda v: calls.append(("view", v)),
-            blockSignals=lambda b: calls.append(("block", b)),
-            set_judgment_domain=lambda d: calls.append(("domain", d)),
-        ),
-        _controller=SimpleNamespace(
-            state=state,
-            activate_judgment_domain=lambda d: calls.append(("activate", d)),
-        ),
-    )
-    ImageGalleryWidget.apply_view_prefs(fake, view_list=True, judgment_domain="ai")
+        def sync(self):
+            pass
 
-    assert ("view", True) in calls
-    assert ("domain", "ai") in calls  # switch position applied
-    assert not any(c[0] == "activate" for c in calls)  # quiet: no lazy AI run
-    assert fake._judgment_domain == "ai"
-    assert state.judgment_domain == "ai"
+    from tabs.use_cases import session_state as _mod
+
+    monkeypatch.setattr(_mod, "QSettings", _FakeQSettings)
+    yield mem
 
 
-class _WidgetFake:
-    """Namespace double that binds the unbound widget methods under test."""
-
-    _persist_view_prefs = ImageGalleryWidget._persist_view_prefs
-
-    def __init__(self, **kw):
-        self.__dict__.update(kw)
+class _Session(SimpleNamespace):
+    pass
 
 
-def test_view_toggle_persists_prefs():
-    recorded: dict = {}
-    fake = _WidgetFake(
-        _view_mode=False,
-        _judgment_domain="ai",
-        _grid_view=SimpleNamespace(set_view_mode=lambda m: None),
-        _controller=SimpleNamespace(set_view_prefs=lambda **kw: recorded.update(kw)),
-    )
-    ImageGalleryWidget._on_view_toggled(fake, True)
-    assert recorded == {"view_list": True, "judgment_domain": "ai"}
+class _Store:
+    def __init__(self):
+        self.sessions: dict[str, _Session] = {}
+        self.active: str | None = None
+
+    def add(self, sid: str):
+        self.sessions[sid] = _Session(
+            id=sid,
+            session_type="image_gallery",
+            state_slots={GALLERY_SLOT_NAME: fresh_gallery_slot_state()},
+        )
+        return sid
+
+    def get_workspace_session(self, sid):
+        return self.sessions.get(sid)
+
+    def get_active_workspace_session(self):
+        return self.sessions.get(self.active) if self.active else None
+
+    def get_session_state_slot(self, name, session_id=None, default=None):
+        sess = self.sessions.get(session_id or self.active)
+        return default if sess is None else sess.state_slots.get(name, default)
+
+    def set_session_state_slot(self, name, value, session_id=None, emit_scope=None):
+        self.sessions[session_id or self.active].state_slots[name] = value
+
+    def get_dispatcher(self):
+        return _Dispatcher(self)
 
 
-def test_domain_change_persists_prefs():
-    recorded: dict = {}
-    fake = _WidgetFake(
-        _judgment_domain="algorithms",
-        _controller=SimpleNamespace(
-            activate_judgment_domain=lambda d: None,
-            set_view_prefs=lambda **kw: recorded.update(kw),
-        ),
-    )
-    ImageGalleryWidget._on_domain_changed(fake, "ai")
-    assert recorded == {"view_list": False, "judgment_domain": "ai"}
+class _Dispatcher:
+    def __init__(self, store: _Store):
+        self._store = store
+
+    def dispatch(self, action, scope="viewport", session_id=None):
+        target = session_id or self._store.active
+        for name, reducer in iter_state_slot_reducers():
+            if name != action.namespace:
+                continue
+            cur = self._store.get_session_state_slot(name, session_id=target)
+            new = reducer(cur, action)
+            if new is not cur:
+                self._store.set_session_state_slot(name, new, session_id=target)
 
 
-def test_save_and_load_view_prefs_roundtrip():
-    from tabs.image_gallery.use_cases import persistence as _p
+class _Widget:
+    """Records facade applies and reuses the real toggle persistence."""
 
-    _p.save_view_prefs(True, "ai")
-    assert _p.load_view_prefs() == (True, "ai")
-    _p.save_view_prefs(False, "algorithms")
-    assert _p.load_view_prefs() == (False, "algorithms")
+    def __init__(self):
+        self.view_list = False
+        self.domain = "algorithms"
+        self._view_mode = False
+        self._judgment_domain = "algorithms"
+        self._session_state = None
+
+    def attach_session_state(self, state):
+        self._session_state = state
+
+    def apply_view_prefs(self, *, view_list, judgment_domain):
+        self._view_mode = self.view_list = bool(view_list)
+        self._judgment_domain = self.domain = str(judgment_domain)
+
+    def toggle(self, view_list, domain):
+        self._view_mode = self.view_list = view_list
+        self._judgment_domain = self.domain = domain
+        ImageGalleryWidget._persist_view_prefs(self)
 
 
-def test_on_session_created_seeds_slot_from_last_used():
-    from tabs.image_gallery.use_cases import persistence as _p
-    from tabs.image_gallery.state.models import fresh_gallery_slot_state
+def _tab(store: _Store, widget: _Widget) -> ImageGalleryTab:
+    tab = ImageGalleryTab()
+    tab._widget = widget
+    tab._controller = SimpleNamespace(clear_to_empty=lambda: None)
+    widget.attach_session_state(tab._session_state)
+    return tab
 
-    _p.save_view_prefs(True, "ai")
-    slot = fresh_gallery_slot_state()
-    stored: dict = {}
-    store = SimpleNamespace(
-        get_session_state_slot=lambda name, session_id=None: slot,
-        set_session_state_slot=lambda name, st, session_id=None, emit_scope=None: stored.update(
-            {"slot": st}
-        ),
-    )
-    ctx = SimpleNamespace(store=store)
-    tab = SimpleNamespace(_widget=None, _active_session_id=None)
 
-    _p.on_session_created(tab, "s1", ctx)
+def _ctx(store):
+    return SimpleNamespace(store=store)
 
-    assert stored["slot"].view_list is True
-    assert stored["slot"].judgment_domain == "ai"
+
+def _activate(store, tab, sid):
+    store.active = sid
+    tab.on_active_session_changed(sid, _ctx(store))
+
+
+def test_switch_away_and_back_keeps_switches():
+    store = _Store()
+    a = store.add("A")
+    b = store.add("B")
+    widget = _Widget()
+    tab = _tab(store, widget)
+    tab.on_session_created(a, _ctx(store))
+    _activate(store, tab, a)
+    widget.toggle(True, "ai")
+
+    tab.on_session_created(b, _ctx(store))
+    _activate(store, tab, b)
+    assert (widget.view_list, widget.domain) == (True, "ai")  # inherited
+    widget.toggle(False, "algorithms")
+
+    _activate(store, tab, a)
+    assert (widget.view_list, widget.domain) == (True, "ai")
+    _activate(store, tab, b)
+    assert (widget.view_list, widget.domain) == (False, "algorithms")
+
+
+def test_new_session_inherits_last_used():
+    store = _Store()
+    a = store.add("A")
+    widget = _Widget()
+    tab = _tab(store, widget)
+    tab.on_session_created(a, _ctx(store))
+    _activate(store, tab, a)
+    widget.toggle(True, "ai")
+
+    fresh = store.add("NEW")
+    tab.on_session_created(fresh, _ctx(store))
+    _activate(store, tab, fresh)
+    assert (widget.view_list, widget.domain) == (True, "ai")
+
+
+def test_serialize_deserialize_roundtrip_restores_switches():
+    store = _Store()
+    a = store.add("A")
+    widget = _Widget()
+    tab = _tab(store, widget)
+    tab.on_session_created(a, _ctx(store))
+    _activate(store, tab, a)
+    widget.toggle(True, "ai")
+
+    snapshot = tab.serialize_session(a, _ctx(store))
+    assert snapshot["view_list"] is True
+    assert snapshot["judgment_domain"] == "ai"
+
+    restored = store.add("R")
+    tab2 = _tab(store, _Widget())
+    tab2.on_session_created(restored, _ctx(store))
+    tab2.deserialize_session(restored, snapshot, _ctx(store))
+    _activate(store, tab2, restored)
+    assert (tab2._widget.view_list, tab2._widget.domain) == (True, "ai")

@@ -179,26 +179,6 @@ class GalleryTriageFinished(Action):
         }
 
 
-@dataclass
-class GalleryViewPrefsSet(Action):
-    """Toolbar switch positions (view list/grid, Algorithms|AI domain).
-
-    Session-scoped view preferences — persisted with the slot so both switches
-    come back as the user left them. Not undoable (view).
-    """
-
-    view_list: bool = False
-    judgment_domain: str = "algorithms"
-    type: str = field(default=ActionType.GALLERY_VIEW_PREFS_SET.value, kw_only=True)
-
-    def __post_init__(self):
-        self.view_list = bool(self.view_list)
-        self.judgment_domain = str(self.judgment_domain or "algorithms")
-
-    def get_payload(self):
-        return {"view_list": self.view_list, "judgment_domain": self.judgment_domain}
-
-
 __all__ = [
     "GalleryPoolOpened",
     "GalleryPathsAppended",
@@ -208,5 +188,4 @@ __all__ = [
     "GalleryFilterSet",
     "GalleryThumbnailsReady",
     "GalleryTriageFinished",
-    "GalleryViewPrefsSet",
 ]

@@ -190,11 +190,15 @@ def test_settings_gallery_ai_page_is_body(qapp: QApplication):
         ):
             assert isinstance(field, CustomLineEdit)
             assert _px(field) == SETTINGS_BODY_PX, field.placeholderText()
-        # password echo + placeholder survive the typography pass
+        # password echo + placeholder survive the typography pass.
+        # ``CustomLineEdit.echoMode()`` returns the toolkit's int-valued
+        # ``EchoMode`` (not ``QLineEdit.EchoMode``), so compare against the
+        # widget's own enum value.
         assert dialog.gallery_ai_api_key.placeholderText()
-        from PySide6.QtWidgets import QLineEdit
-
-        assert dialog.gallery_ai_api_key.echoMode() == QLineEdit.EchoMode.Password
+        assert (
+            int(dialog.gallery_ai_api_key.echoMode())
+            == dialog.gallery_ai_api_key.EchoMode.Password
+        )
     finally:
         dialog.close()
 
