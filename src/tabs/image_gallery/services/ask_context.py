@@ -18,12 +18,19 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from tabs.image_gallery.models import MetricKind
 from tabs.image_gallery.services.metric_scores import SPECS, measured_scores
 from tabs.image_gallery.use_cases import quality as _quality
 
 #: Scope kinds the builder recognizes.
 ASK_SERIES = "series"
 ASK_SELECTION = "selection"
+
+#: Axis id → human label / axis kind (static registry, see ``metric_scores``).
+_AXIS_LABELS: dict[str, str] = {spec.id: spec.label for spec in SPECS}
+_AXIS_KINDS: dict[str, str] = {spec.id: spec.kind.value for spec in SPECS}
+#: The only kinds the AI may contribute; ``measured`` numbers never come from AI.
+_AI_FLAG_KINDS = (MetricKind.CANDIDATE.value, MetricKind.JUDGMENT.value)
 
 
 @dataclass(frozen=True)
@@ -114,12 +121,34 @@ def _resolve_items(scope: AskScope, controller) -> tuple[list, str]:
     return items, label
 
 
+def _item_flags(item) -> list[dict]:
+    """The item's AI candidate/judgment flags (``measured`` entries are dropped)."""
+    analysis = getattr(item, "analysis", None)
+    out: list[dict] = []
+    for flag in list(getattr(analysis, "axis_flags", None) or []):
+        kind = str(getattr(flag, "kind", "") or "")
+        if kind not in _AI_FLAG_KINDS:
+            continue
+        axis_id = str(getattr(flag, "id", "") or "")
+        out.append(
+            {
+                "id": axis_id,
+                "label": _AXIS_LABELS.get(axis_id)
+                or str(getattr(flag, "label", "") or axis_id),
+                "kind": kind,
+                "note": str(getattr(flag, "note", "") or ""),
+            }
+        )
+    return out
+
+
 def _item_context(item, alias: str) -> dict:
     """One item's structured context (measured scores + severities + badge).
 
     ``name`` is the real filename (kept for the app); ``alias`` is the opaque
     label the model is asked to use, so a descriptive filename ("...soft...")
-    cannot bias it into a conclusion the metrics contradict.
+    cannot bias it into a conclusion the metrics contradict. ``kinds`` maps
+    every axis to its kind; ``flags`` carries the AI candidate/judgment flags.
     """
     raw_metrics = getattr(item, "metrics", None)
     if not isinstance(raw_metrics, dict):
@@ -140,6 +169,8 @@ def _item_context(item, alias: str) -> dict:
         "metrics": scores,
         "severities": severities,
         "badge": str(getattr(item, "badge", "") or ""),
+        "kinds": dict(_AXIS_KINDS),
+        "flags": _item_flags(item),
     }
 
 
@@ -175,7 +206,9 @@ def build_ask_context(scope: AskScope, *, controller) -> dict:
         { 'kind': 'series'|'selection', 'label': str, 'count': int,
           'mode': str, 'source': str|None,
           'items': [{'name','path','metrics':{id:score},
-                     'severities':{name:severity},'badge':str}, ...] }
+                     'severities':{name:severity},'badge':str,
+                     'kinds':{id:'measured'|'candidate'|'judgment'},
+                     'flags':[{'id','label','kind','note'}, ...]}, ...] }
     """
     if not isinstance(scope, AskScope):
         scope = AskScope()
@@ -212,7 +245,7 @@ def build_ask_context(scope: AskScope, *, controller) -> dict:
         "names": names,
         # metric id → human label (same wording the report shows), so the
         # model never has to guess what e.g. "typicality" means.
-        "metric_labels": {spec.id: spec.label for spec in SPECS},
+        "metric_labels": dict(_AXIS_LABELS),
     }
 
 
