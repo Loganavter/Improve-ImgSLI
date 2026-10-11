@@ -320,29 +320,39 @@ class GalleryToolbar(QWidget):
         self._domain_switch_container = GalleryToolbarDomainSwitchContainer(self)
         self._domain_switch_container.setObjectName("gallery_toolbar_domain_switch_container")
         try:
-            self._domain_switch_container.setFixedSize(scaled_px(150), scaled_px(32))
+            self._domain_switch_container.setFixedSize(scaled_px(106), scaled_px(32))
         except Exception:
             pass
         # Container paints its own background in paintEvent (explicit fill).
         ds_lay = QHBoxLayout(self._domain_switch_container)
         ds_lay.setContentsMargins(scaled_px(2), scaled_px(2), scaled_px(2), scaled_px(2))
         ds_lay.setSpacing(scaled_px(2))
+        # Icon-only segments (view-switch pattern): a chip = algorithms, a
+        # sparkle = AI. Text labels would clip in the 34px toolbar row.
         self._domain_switch = Button(
-            text=_tr("image_gallery.domain.algorithms", "Algorithms"),
+            icon=(GalleryIcon.ALGORITHMS_INACTIVE, GalleryIcon.ALGORITHMS),
             variant="ghost",
             toggle=True,
-            size=(scaled_px(72), scaled_px(28)),
+            size=(scaled_px(48), scaled_px(28)),
             parent=self._domain_switch_container,
         )
         self._domain_switch.setObjectName("gallery_toolbar_domain_switch")
+        try:
+            self._domain_switch.setToolTip(_tr("image_gallery.domain.algorithms", "Algorithms"))
+        except Exception:
+            pass
         self._domain_switch_ai = Button(
-            text=_tr("image_gallery.domain.ai", "AI"),
+            icon=(GalleryIcon.AI_INACTIVE, GalleryIcon.AI),
             variant="ghost",
             toggle=True,
-            size=(scaled_px(72), scaled_px(28)),
+            size=(scaled_px(48), scaled_px(28)),
             parent=self._domain_switch_container,
         )
         self._domain_switch_ai.setObjectName("gallery_toolbar_domain_switch_ai")
+        try:
+            self._domain_switch_ai.setToolTip(_tr("image_gallery.domain.ai", "AI"))
+        except Exception:
+            pass
 
         def _apply_domain(domain: str) -> None:
             dom = str(domain or "").strip().lower()
