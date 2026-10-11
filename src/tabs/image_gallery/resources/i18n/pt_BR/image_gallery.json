@@ -7,6 +7,10 @@
     "empty_view": "Nenhuma imagem para exibir.",
     "analyze": "Analisar",
     "analyzing": "Analisando…",
+    "domain": {
+      "algorithms": "Algoritmos",
+      "ai": "IA"
+    },
     "settings": {
       "ai_title": "Galeria — IA",
       "enable_ai": "Ativar análise de imagem por IA",

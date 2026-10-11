@@ -7,6 +7,10 @@
     "empty_view": "暂无可显示的图片。",
     "analyze": "分析",
     "analyzing": "分析中…",
+    "domain": {
+      "algorithms": "算法",
+      "ai": "AI"
+    },
     "settings": {
       "ai_title": "图库 — AI",
       "enable_ai": "启用 AI 图像分析",

@@ -232,6 +232,10 @@ class GalleryState:
     folder: Path | None = None
     items: list[GalleryItem] = field(default_factory=list)
     filter_text: str = ""
+    # Which judgment domain the toolbar serves: one of ``JUDGMENT_DOMAINS``
+    # ("algorithms" | "ai"). Transient view state (plan-gallery-two-domain-axes
+    # W2) — session-slot persistence is a follow-up.
+    judgment_domain: str = "algorithms"
     selected_paths: set[Path] = field(default_factory=set)
     selected_order: list[Path] = field(default_factory=list)
     series: list[Series] = field(default_factory=list)

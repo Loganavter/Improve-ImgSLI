@@ -7,6 +7,10 @@
     "empty_view": "No images in view.",
     "analyze": "Analyze",
     "analyzing": "Analyzing…",
+    "domain": {
+      "algorithms": "Algorithms",
+      "ai": "AI"
+    },
     "settings": {
       "ai_title": "Image Gallery — AI",
       "enable_ai": "Enable AI image analysis",
