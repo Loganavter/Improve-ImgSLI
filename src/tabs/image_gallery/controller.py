@@ -1820,11 +1820,27 @@ class GalleryController:
                 "error": self._tr(
                     "image_gallery.ask_ai.error", "AI could not answer."
                 ),
+                "images_hint": self._tr(
+                    "image_gallery.ask_ai.images_toggle_hint",
+                    "Send images with the question",
+                ),
+                "images_downsample": self._images_downsample_text(
+                    self._ai_settings_store.load().vlm_max_edge_px
+                ),
             }
         except Exception:
             default = "What matters here?"
             texts = None
         opener(anchor, scope, default_prompt=default, texts=texts)
+
+    def _images_downsample_text(self, px: int) -> str:
+        """Tooltip line 2 for the Ask AI images toggle: the current downscale."""
+        if int(px or 0) <= 0:
+            return self._tr("image_gallery.settings.downscale_original", "Original")
+        template = self._tr(
+            "image_gallery.ask_ai.images_toggle_downsample", "Downscale: ≤ {px} px"
+        )
+        return template.replace("{px}", str(int(px)))
 
     def _ask_cache_key(self, scope, context, question: str, backend: str, model: str) -> str:
         import hashlib
@@ -1879,6 +1895,9 @@ class GalleryController:
         )
 
         settings = self._ai_settings_store.load()
+        from tabs.image_gallery.services.vlm import set_vlm_max_edge
+
+        set_vlm_max_edge(settings.vlm_max_edge_px)
         if not settings.enabled or not settings.api_key or not settings.model:
             logger.debug("[ask-ai] not configured (enabled=%s key=%s model=%s)",
                          settings.enabled, bool(settings.api_key), bool(settings.model))
@@ -3073,6 +3092,9 @@ class GalleryController:
 
         # Use existing analyze_image_sync only via VLM targeted path — tie-break needs 2 images.
         settings = self._ai_settings_store.load()
+        from tabs.image_gallery.services.vlm import set_vlm_max_edge
+
+        set_vlm_max_edge(settings.vlm_max_edge_px)
         # Degrade silent-but-visible if AI not configured: keep local ranking, no badge
         if not settings.enabled or not settings.api_key or not settings.model:
             logger.debug("tie-break skipped: AI not configured (silent degrade)")

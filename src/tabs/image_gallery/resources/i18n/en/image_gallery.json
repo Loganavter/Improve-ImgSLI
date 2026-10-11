@@ -33,6 +33,8 @@
       "effort_medium": "Medium",
       "effort_high": "High",
       "effort_none": "None",
+      "vlm_max_edge": "Image downscale (max edge)",
+      "downscale_original": "Original",
       "api_key_warning": "Stored unencrypted on this device."
     },
     "errors": {
@@ -66,7 +68,9 @@
       "busy": "Thinking…",
       "read_badge": "AI read, unverified",
       "error": "AI could not answer.",
-      "routing_unavailable": "Routing is not enabled yet."
+      "routing_unavailable": "Routing is not enabled yet.",
+      "images_toggle_hint": "Send images with the question",
+      "images_toggle_downsample": "Downscale: ≤ {px} px"
     },
     "sort_by": "Sort by",
     "view": "View",

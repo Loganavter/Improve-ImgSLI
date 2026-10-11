@@ -33,6 +33,8 @@
       "effort_medium": "Средняя",
       "effort_high": "Высокая",
       "effort_none": "Без",
+      "vlm_max_edge": "Уменьшение изображений (макс. сторона)",
+      "downscale_original": "Оригинал",
       "api_key_warning": "Хранится на этом устройстве в незашифрованном виде."
     },
     "errors": {
@@ -66,7 +68,9 @@
       "busy": "Думаю…",
       "read_badge": "Ответ ИИ, не проверено",
       "error": "ИИ не смог ответить.",
-      "routing_unavailable": "Маршрутизация пока недоступна."
+      "routing_unavailable": "Маршрутизация пока недоступна.",
+      "images_toggle_hint": "Отправлять изображения вместе с вопросом",
+      "images_toggle_downsample": "Даунсэмплинг: до {px} px"
     },
     "sort_by": "Сортировка",
     "view": "Вид",

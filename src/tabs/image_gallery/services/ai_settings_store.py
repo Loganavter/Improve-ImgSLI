@@ -30,6 +30,10 @@ DEFAULT_BASE_URL = "https://openrouter.ai/api/v1"
 #: answer budget). ``none`` is reserved for non-reasoning models.
 REASONING_EFFORTS = ("auto", "low", "medium", "high", "none")
 
+#: Image downscale max-edge choices for AI calls; 0 = send original bytes.
+VLM_MAX_EDGES = (0, 512, 768, 1024, 1536, 2048)
+_DEFAULT_VLM_MAX_EDGE = 1024
+
 
 def _parse_int(value, default: int = 0) -> int:
     try:
@@ -48,6 +52,8 @@ class AiSettings:
     ask_max_tokens: int = 0
     #: OpenRouter reasoning effort for Ask AI ("auto" | low | medium | high | none).
     reasoning_effort: str = "auto"
+    #: Image downscale max edge (px) for AI image uploads; 0 = original.
+    vlm_max_edge_px: int = _DEFAULT_VLM_MAX_EDGE
 
 
 class AiSettingsStore:
@@ -64,6 +70,9 @@ class AiSettingsStore:
             effort = str(settings.value("reasoning_effort", "auto") or "auto").lower()
             if effort not in REASONING_EFFORTS:
                 effort = "auto"
+            vlm_edge = _parse_int(settings.value("vlm_max_edge_px", _DEFAULT_VLM_MAX_EDGE), -1)
+            if vlm_edge not in VLM_MAX_EDGES:
+                vlm_edge = _DEFAULT_VLM_MAX_EDGE
             return AiSettings(
                 enabled=str(settings.value("enabled", False)).lower() in ("true", "1"),
                 base_url=str(settings.value("base_url", DEFAULT_BASE_URL) or DEFAULT_BASE_URL),
@@ -71,6 +80,7 @@ class AiSettingsStore:
                 model=str(settings.value("model", "") or ""),
                 ask_max_tokens=max(0, _parse_int(settings.value("ask_max_tokens", 0), 0)),
                 reasoning_effort=effort,
+                vlm_max_edge_px=vlm_edge,
             )
         finally:
             settings.endGroup()
@@ -83,6 +93,7 @@ class AiSettingsStore:
             "model",
             "ask_max_tokens",
             "reasoning_effort",
+            "vlm_max_edge_px",
         ):
             raise ValueError(f"Unknown AI setting field: {name}")
         settings = self._settings()

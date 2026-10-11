@@ -69,6 +69,8 @@ class AskAiFlyout(BaseFlyout):
             parent=self,
         )
         self._images_toggle.setObjectName("gallery_ask_ai_images_toggle")
+        self._images_hint = ""
+        self._images_downsample = ""
         try:
             self._images_toggle.setChecked(False)
             self._images_toggle.clicked.connect(self._on_images_toggled)
@@ -179,6 +181,8 @@ class AskAiFlyout(BaseFlyout):
         busy: str | None = None,
         read_badge: str | None = None,
         error: str | None = None,
+        images_hint: str | None = None,
+        images_downsample: str | None = None,
     ) -> None:
         """Inject localized chrome strings (from the tab i18n)."""
         if title:
@@ -193,6 +197,18 @@ class AskAiFlyout(BaseFlyout):
             self._read_badge = str(read_badge)
         if error:
             self._error_text = str(error)
+        if images_hint is not None or images_downsample is not None:
+            if images_hint is not None:
+                self._images_hint = str(images_hint)
+            if images_downsample is not None:
+                self._images_downsample = str(images_downsample)
+            self.set_images_tooltip(
+                "\n".join(s for s in (self._images_hint, self._images_downsample) if s)
+            )
+
+    def set_images_tooltip(self, text: str) -> None:
+        """Tooltip of the include-images toggle (two lines: meaning + downscale)."""
+        self._images_toggle.setToolTip(str(text or ""))
 
     def open_for(
         self,

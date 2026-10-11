@@ -18,9 +18,6 @@ from tabs.image_gallery.services.ask_prompt import (
 from tabs.image_gallery.services.metric_scores import fallback_note
 from tabs.image_gallery.services.vlm import _encode_image
 
-#: Vision payload budget: never upload the whole folder.
-VLM_MAX_IMAGES = 6
-
 #: Fallback answer-token budget when the caller passes none.
 DEFAULT_ASK_MAX_TOKENS = 4096
 
@@ -156,11 +153,11 @@ def build_vision_payload(
     max_tokens: int = DEFAULT_ASK_MAX_TOKENS,
     correction: str = "",
 ) -> dict:
-    """Vision chat payload: text + up to ``VLM_MAX_IMAGES`` downscaled images."""
+    """Vision chat payload: text + one downscaled image per scope item."""
     content: list[dict] = [
         {"type": "text", "text": _user_text(question, context, correction=correction)},
     ]
-    for it in list((context or {}).get("items", []) or [])[:VLM_MAX_IMAGES]:
+    for it in list((context or {}).get("items", []) or []):
         try:
             path = Path(str(it.get("path")))
             mime, data = _encode_image(path)
@@ -178,7 +175,6 @@ def build_vision_payload(
 
 __all__ = [
     "DEFAULT_ASK_MAX_TOKENS",
-    "VLM_MAX_IMAGES",
     "build_text_payload",
     "build_vision_payload",
 ]

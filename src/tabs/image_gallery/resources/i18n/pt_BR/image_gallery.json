@@ -33,6 +33,8 @@
       "effort_medium": "Médio",
       "effort_high": "Alto",
       "effort_none": "Nenhum",
+      "vlm_max_edge": "Redução da imagem (lado maior)",
+      "downscale_original": "Original",
       "api_key_warning": "Armazenada sem criptografia neste dispositivo."
     },
     "errors": {
@@ -66,7 +68,9 @@
       "busy": "Pensando…",
       "read_badge": "Leitura de IA, não verificada",
       "error": "A IA não conseguiu responder.",
-      "routing_unavailable": "O roteamento ainda não está habilitado."
+      "routing_unavailable": "O roteamento ainda não está habilitado.",
+      "images_toggle_hint": "Enviar imagens com a pergunta",
+      "images_toggle_downsample": "Redução: ≤ {px} px"
     }
   }
 }
