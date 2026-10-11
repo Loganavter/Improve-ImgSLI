@@ -165,7 +165,9 @@ class _SessionStore:
 def _restore(data) -> MultiCompareState:
     store = _SessionStore()
     context = SimpleNamespace(store=store)
-    mc_persistence.deserialize_session(SimpleNamespace(), "s1", data, context)
+    from tabs.multi_compare.tab import MultiCompareTab
+
+    mc_persistence.deserialize_session(MultiCompareTab(), "s1", data, context)
     return store.saved["s1"]
 
 

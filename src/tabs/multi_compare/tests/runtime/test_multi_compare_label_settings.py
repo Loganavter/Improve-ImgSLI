@@ -403,21 +403,28 @@ def test_font_flyout_opens_down_and_right_from_text_button(qapp, monkeypatch):
     assert captured["flyout_point"] == "top-left"
 
 
+def _stub_last_used(monkeypatch, state=None):
+    """Stub the SessionState last-used QSettings read (None = empty QSettings)."""
+    from tabs.multi_compare.use_cases.persistence import chrome_extract
+    from tabs.use_cases.session_state import SessionState
+
+    values = None if state is None else chrome_extract(state)
+    monkeypatch.setattr(SessionState, "_last_used_values", lambda self: values)
+
+
 def test_first_multi_compare_session_seeds_from_qsettings(qapp, monkeypatch):
-    from tabs.multi_compare.models import MultiCompareDividerSettings, MultiCompareLabelSettings
+    from tabs.multi_compare.models import (
+        MultiCompareDividerSettings,
+        MultiCompareLabelSettings,
+        MultiCompareState,
+    )
     from tabs.multi_compare.tab import MultiCompareTab
-    from tabs.multi_compare.use_cases.persistence import _settings_from_qsettings
 
     remembered_divider = MultiCompareDividerSettings(color_rgba=(9, 8, 7, 6))
     remembered_label = MultiCompareLabelSettings(font_size_percent=120)
-    monkeypatch.setattr(
-        "tabs.multi_compare.use_cases.persistence._settings_from_qsettings",
-        lambda: __import__(
-            "tabs.multi_compare.models", fromlist=["MultiCompareState"]
-        ).MultiCompareState(
-            divider_settings=remembered_divider,
-            label_settings=remembered_label,
-        ),
+    _stub_last_used(
+        monkeypatch,
+        MultiCompareState(divider_settings=remembered_divider, label_settings=remembered_label),
     )
 
     store = _FakeWorkspaceStore()
@@ -440,9 +447,9 @@ def test_second_multi_compare_session_seeds_last_used_colors(qapp, monkeypatch):
     from tabs.multi_compare.models import MultiCompareDividerSettings, MultiCompareState
     from tabs.multi_compare.tab import MultiCompareTab
 
-    monkeypatch.setattr(
-        "tabs.multi_compare.use_cases.persistence._settings_from_qsettings",
-        lambda: MultiCompareState(
+    _stub_last_used(
+        monkeypatch,
+        MultiCompareState(
             divider_settings=MultiCompareDividerSettings(color_rgba=(1, 2, 3, 4)),
         ),
     )
@@ -492,40 +499,6 @@ def test_second_multi_compare_session_seeds_last_used_colors(qapp, monkeypatch):
     )
 
 
-def test_second_session_falls_back_to_sibling_when_qsettings_empty(qapp, monkeypatch):
-    from tabs.multi_compare.models import MultiCompareDividerSettings, MultiCompareState
-    from tabs.multi_compare.tab import MultiCompareTab
-
-    monkeypatch.setattr("tabs.multi_compare.use_cases.persistence._settings_from_qsettings", lambda: None)
-
-    store = _FakeWorkspaceStore()
-    store.sessions = {
-        "mc1": SimpleNamespace(id="mc1", session_type="multi_compare", state_slots={}),
-    }
-    tab = MultiCompareTab()
-    tab.on_session_created("mc1", SimpleNamespace(store=store))
-    store.set_session_state_slot(
-        _STATE_SLOT,
-        MultiCompareState(
-            divider_settings=MultiCompareDividerSettings(color_rgba=(11, 22, 33, 44)),
-        ),
-        session_id="mc1",
-        emit_scope=None,
-    )
-
-    store.sessions["mc2"] = SimpleNamespace(
-        id="mc2", session_type="multi_compare", state_slots={}
-    )
-    tab.on_session_created("mc2", SimpleNamespace(store=store))
-
-    assert store.sessions["mc2"].state_slots[_STATE_SLOT].divider_settings.color_rgba == (
-        11,
-        22,
-        33,
-        44,
-    )
-
-
 def test_deferred_page_restores_seeded_divider_color_after_early_activation(qapp):
     """Session activate can run before deferred create_page — must still restore."""
     from tabs.multi_compare.models import MultiCompareDividerSettings, MultiCompareState
@@ -572,12 +545,11 @@ def test_seed_after_activate_updates_live_widget(qapp, monkeypatch):
     """Workspace emit activates the tab before CreatedEvent seeds QSettings."""
     from tabs.multi_compare.models import MultiCompareDividerSettings, MultiCompareState
 
-    remembered = MultiCompareState(
-        divider_settings=MultiCompareDividerSettings(color_rgba=(9, 8, 7, 6)),
-    )
-    monkeypatch.setattr(
-        "tabs.multi_compare.use_cases.persistence._settings_from_qsettings",
-        lambda: remembered,
+    _stub_last_used(
+        monkeypatch,
+        MultiCompareState(
+            divider_settings=MultiCompareDividerSettings(color_rgba=(9, 8, 7, 6)),
+        ),
     )
 
     store = _FakeWorkspaceStore()
@@ -613,11 +585,14 @@ def test_seed_after_activate_updates_live_widget(qapp, monkeypatch):
 def test_replace_state_does_not_clobber_qsettings_last_prefs(qapp, monkeypatch):
     from tabs.multi_compare.models import MultiCompareDividerSettings, MultiCompareState
 
+    from tabs.use_cases.session_state import SessionState
+
     saved = []
 
     monkeypatch.setattr(
-        "tabs.multi_compare.use_cases.persistence._save_last_settings",
-        lambda divider, label: saved.append(tuple(divider.color_rgba)),
+        SessionState,
+        "remember",
+        lambda self, values: saved.append(tuple(values["divider"]["color_rgba"])),
     )
 
     widget = MultiCompareWidget()

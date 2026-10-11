@@ -11,7 +11,8 @@ from PySide6.QtWidgets import QVBoxLayout, QWidget
 from shared.image_extensions import is_accepted_image_path
 from tabs.contract import TabContext, TabContract, TabTransitionHint
 from tabs.multi_compare.use_cases import persistence
-from tabs.multi_compare.use_cases.persistence import _STATE_SLOT
+from tabs.multi_compare.use_cases.persistence import _LAST_USED_KEY, _STATE_SLOT
+from tabs.use_cases.session_state import SessionState
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -34,6 +35,21 @@ class MultiCompareTab(TabContract):
         self._widget = None
         self._active_session_id: str | None = None
         self._nav_section = None
+        self._session_state = SessionState.bind(
+            self,
+            namespace="multi_compare",
+            fields=persistence.CHROME_FIELDS,
+            apply=self._apply_session,
+            slot=_STATE_SLOT,
+            merge=persistence.chrome_merge,
+            extract=persistence.chrome_extract,
+            last_used_key=_LAST_USED_KEY,
+        )
+
+    def _apply_session(self, values: dict) -> None:
+        # Divider/label live in the MC slot; the widget re-reads the bound session.
+        if self._widget is not None:
+            self._widget.refresh_from_session()
 
     @property
     def session_type(self) -> str:
@@ -116,7 +132,7 @@ class MultiCompareTab(TabContract):
         session_id = self._active_session_id or self._resolve_active_session_id(context)
         if session_id is not None:
             self._active_session_id = session_id
-            self._widget.refresh_from_session()
+            self._session_state.apply_from_slot(context, session_id)
             # Deferred page after early activation (P6/B1): same
             # refresh-then-fill ordering as on_active_session_changed.
             try:
@@ -206,9 +222,9 @@ class MultiCompareTab(TabContract):
         # P6/B1 ordering: refresh first, then demand-fill imageless slots —
         # a restored (path-only) session must start its async fills on
         # activation, not depend on the load-time conditional rehydrate.
+        self._active_session_id = session_id
+        self._session_state.apply_from_slot(context, session_id)
         if self._widget is not None:
-            self._active_session_id = session_id
-            self._widget.refresh_from_session()
             try:
                 if self._controller is not None:
                     self._controller.ensure_visible_slots_loading()
@@ -216,8 +232,6 @@ class MultiCompareTab(TabContract):
                 logger.exception(
                     "mc: demand fill kick failed on activation for %s", session_id
                 )
-        else:
-            self._active_session_id = session_id
 
     def on_deactivated(self, context: TabContext) -> None:
         if self._widget is not None:
