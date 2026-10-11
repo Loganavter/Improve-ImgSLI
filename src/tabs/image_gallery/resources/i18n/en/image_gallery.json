@@ -7,6 +7,15 @@
     "empty_view": "No images in view.",
     "analyze": "Analyze",
     "analyzing": "Analyzing…",
+    "activity": {
+      "queued": "Queued",
+      "claimed": "Starting",
+      "analyzing": "Analyzing",
+      "waiting": "Waiting",
+      "done": "Done",
+      "error": "Error",
+      "unreadable": "Unreadable"
+    },
     "domain": {
       "algorithms": "Algorithms",
       "ai": "AI"

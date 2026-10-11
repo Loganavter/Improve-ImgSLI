@@ -7,6 +7,15 @@
     "empty_view": "暂无可显示的图片。",
     "analyze": "分析",
     "analyzing": "分析中…",
+    "activity": {
+      "queued": "排队中",
+      "claimed": "启动中",
+      "analyzing": "分析中",
+      "waiting": "等待中",
+      "done": "完成",
+      "error": "错误",
+      "unreadable": "无法读取"
+    },
     "domain": {
       "algorithms": "算法",
       "ai": "AI"

@@ -740,7 +740,7 @@
     },
     {
       "path": "src/tabs/image_gallery/controller.py",
-      "lines": 3815,
+      "lines": 3871,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine size=exempt reason=\"one controller lifecycle — folder scan/thumbnail/triage/VLM sharing GenericWorker state\"",
@@ -752,7 +752,7 @@
     },
     {
       "path": "src/tabs/image_gallery/services/ai_client.py",
-      "lines": 606,
+      "lines": 624,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=wire-client size=551 reason=\"one OpenAI-compatible vision client: request build + call_sync (retry/429) + response parse + debug belong together — splitting scatters the wire contract\"",
@@ -800,7 +800,7 @@
     },
     {
       "path": "src/tabs/image_gallery/ui/card/painters.py",
-      "lines": 467,
+      "lines": 485,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner-target size=exempt reason=\"one painters concern: badge/dots overlay recipes share one stroke-alignment contract (half-pixel inset mirrors across painters so borders stay pixel-crisp)\"",
@@ -836,7 +836,7 @@
     },
     {
       "path": "src/tabs/image_gallery/ui/grid_view.py",
-      "lines": 2984,
+      "lines": 3005,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine size=exempt reason=\"single virtualized grid view — grid_columns/series headers/pool/marquee share one layout lifecycle\"",

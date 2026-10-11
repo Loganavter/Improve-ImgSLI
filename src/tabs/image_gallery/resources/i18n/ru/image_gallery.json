@@ -7,6 +7,15 @@
     "empty_view": "Нет изображений для показа.",
     "analyze": "Анализировать",
     "analyzing": "Анализ…",
+    "activity": {
+      "queued": "В очереди",
+      "claimed": "Запуск",
+      "analyzing": "Анализ",
+      "waiting": "Ожидание",
+      "done": "Готово",
+      "error": "Ошибка",
+      "unreadable": "Не читается"
+    },
     "domain": {
       "algorithms": "Алгоритмы",
       "ai": "ИИ"

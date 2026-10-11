@@ -34,6 +34,7 @@ from tabs.image_gallery.ui.card import (
     gallery_selection_accent,
     update_gallery_card,
 )
+from tabs.image_gallery.ui.card.activity_pulse import ActivityPulse
 from tabs.image_gallery.ui.list.card import (
     LIST_CARD_H,
     _bind_list_row,
@@ -745,6 +746,7 @@ class GalleryGridView(QWidget):
         self._band_separator: QWidget | None = None
         # Debounced column adaptation on resizes (dragging a window edge
         # must not replan per pixel — one reflow after it settles).
+        self._activity = ActivityPulse(self, translate=self._activity_translate)
         self._adapt_timer = QTimer(self)
         self._adapt_timer.setSingleShot(True)
         try:
@@ -2503,6 +2505,7 @@ class GalleryGridView(QWidget):
                 update_gallery_card(card, item, mode=self._resolve_mode())  # type: ignore[arg-type]
         except Exception:
             pass
+        self._sync_activity(card)
         # Re-apply selection tint in case accent changed.
         self.apply_selection(self._selection)
 
@@ -2540,6 +2543,7 @@ class GalleryGridView(QWidget):
                     update_gallery_card(card, item, mode=mode)  # type: ignore[arg-type]
             except Exception:
                 pass
+            self._sync_activity(card)
         try:
             self.apply_selection(self._selection)
         except Exception:
@@ -2636,6 +2640,7 @@ class GalleryGridView(QWidget):
             except Exception:
                 pass
             self._ensure_card_drag(card)
+            self._sync_activity(card)
             return card
         if want_list:
             card = build_gallery_list_card(
@@ -2658,7 +2663,23 @@ class GalleryGridView(QWidget):
         except Exception:
             pass
         self._ensure_card_drag(card)
+        self._sync_activity(card)
         return card
+
+    def _sync_activity(self, card) -> None:
+        try:
+            self._activity.sync(card)
+        except RuntimeError:
+            pass
+
+    def _activity_translate(self, key: str, default: str) -> str:
+        """Tab translator via the owner (controller ``_tr``; widget fallback)."""
+        try:
+            owner = self._gallery_widget._owner_for_triage()
+            tr = getattr(owner, "_tr", None)
+            return str(tr(key, default)) if callable(tr) else default
+        except Exception:
+            return default
 
     def _recycle_card(self, str_path: str) -> None:
         card = self._cards_by_path.pop(str_path, None)  # type: ignore[arg-type]

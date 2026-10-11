@@ -354,6 +354,20 @@ def _gallery_hover_wash(painter, ctx, tm) -> None:  # type: ignore[no-untyped-de
         pass
 
 
+def _gallery_activity_overlay(painter, ctx) -> None:  # type: ignore[no-untyped-def]
+    """Activity pill over the cover's top-right (cover = card minus 8px inset)."""
+    from PySide6.QtCore import QRectF
+
+    from tabs.image_gallery.ui.card.activity_pill import paint_item_activity
+
+    widget = getattr(ctx, "widget", None)
+    rect = getattr(ctx, "rect", None)
+    if widget is None or rect is None:
+        return
+    box = QRectF(rect.x() + 8, rect.y() + 8, rect.width() - 16, 110)
+    paint_item_activity(painter, widget, box, corner="top_right")
+
+
 def _gallery_card_overlay_painter(painter, ctx, tm) -> None:  # type: ignore[no-untyped-def]
     """Combined card overlay: shelf-style hover wash first, then dots/badge."""
     try:
@@ -362,6 +376,10 @@ def _gallery_card_overlay_painter(painter, ctx, tm) -> None:  # type: ignore[no-
         pass
     try:
         _dots_overlay_painter(painter, ctx, tm)
+    except Exception:
+        pass
+    try:
+        _gallery_activity_overlay(painter, ctx)
     except Exception:
         pass
     try:

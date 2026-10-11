@@ -13,7 +13,7 @@ import os
 import threading
 from pathlib import Path
 
-from PySide6.QtCore import QCoreApplication, QEvent, QObject, QThreadPool, QTimer
+from PySide6.QtCore import QCoreApplication, QEvent, QObject, QThreadPool, QTimer, Signal
 from PySide6.QtGui import QPixmap
 from sli_ui_toolkit.workers import GenericWorker
 
@@ -30,6 +30,7 @@ from tabs.image_gallery.bootstrap_reducers import GALLERY_SLOT_NAME
 from tabs.image_gallery.state import selectors as _gallery_selectors
 
 from tabs.image_gallery.models import (
+    ActivityPhase,
     AnalysisStatus,
     GalleryItem,
     GalleryState,
@@ -38,6 +39,7 @@ from tabs.image_gallery.models import (
     ThumbnailStatus,
     TriageState,
 )
+from tabs.image_gallery.services.activity import clear_activity, set_activity
 from tabs.image_gallery.services.ai_cache import load_cached_analysis, save_analysis
 from tabs.image_gallery.services.ai_client import (
     AiAuthError,
@@ -67,6 +69,24 @@ from tabs.image_gallery.services.folder_scanner import scan_folder
 from tabs.image_gallery.services.thumbnail_cache import render_and_cache_thumbnail
 
 logger = logging.getLogger("ImproveImgSLI")
+
+
+class _ActivityPhaseBridge(QObject):
+    """Worker-thread phase emits → UI-thread callback (queued connection).
+
+    Created on the UI thread, so the ``_relay`` slot runs there even though
+    ``phase`` is emitted from the analysis worker.
+    """
+
+    phase = Signal(str)
+
+    def __init__(self, on_phase) -> None:
+        super().__init__()
+        self._on_phase = on_phase
+        self.phase.connect(self._relay)
+
+    def _relay(self, value: str) -> None:
+        self._on_phase(value)
 
 
 # Stage 3: epsilon for local metric tie — when top-2 within this delta, VLM tie-break applies.
@@ -1623,6 +1643,7 @@ class GalleryController:
 
         item.analysis_status = AnalysisStatus.PENDING
         item.analysis_error = None
+        set_activity(item, ActivityPhase.QUEUED, "ai")
         self.widget.refresh_card(item)
 
         try:
@@ -1642,6 +1663,7 @@ class GalleryController:
             _metrics = dict(getattr(item, "metrics", None) or {})
         except Exception:
             _metrics = {}
+        bridge = _ActivityPhaseBridge(lambda phase, it=item: self._apply_ai_phase(it, phase))
         worker = GenericWorker(
             self._tracked(analyze_image_sync),
             item.path,
@@ -1649,17 +1671,28 @@ class GalleryController:
             api_key=settings.api_key,
             model=settings.model,
             metrics=_metrics,
+            on_phase=bridge.phase.emit,
         )
         gen = self._folder_gen
+        # ``bridge=bridge`` keeps the phase relay alive until the worker reports.
         worker.signals.result.connect(
-            lambda result, path=item.path, mtime_ns=item.mtime_ns, g=gen: self._on_analysis_ready(
+            lambda result, path=item.path, mtime_ns=item.mtime_ns, g=gen, bridge=bridge: self._on_analysis_ready(
                 path, mtime_ns, result, g
             )
         )
         worker.signals.error.connect(
-            lambda err, path=item.path, g=gen: self._on_analysis_error(path, err, g)
+            lambda err, path=item.path, g=gen, bridge=bridge: self._on_analysis_error(path, err, g)
         )
+        set_activity(item, ActivityPhase.CLAIMED, "ai")
+        self.widget.refresh_card(item)
         self._pool_start(worker, None)
+
+    def _apply_ai_phase(self, item: GalleryItem, phase: str) -> None:
+        """UI-thread sink for worker phase emits; drops phases of stale items."""
+        if self._find_item(item.path) is not item:
+            return
+        set_activity(item, phase, "ai")
+        self.widget.refresh_card(item)
 
     def _merge_measured_metrics(self, result, item):
         """Overwrite the model's sharpness/noise/exposure with MEASURED
@@ -1707,6 +1740,7 @@ class GalleryController:
         item.analysis = result
         item.analysis_status = AnalysisStatus.DONE
         item.analysis_error = None
+        set_activity(item, ActivityPhase.DONE, "ai")
         self.widget.refresh_card(item)
         # Axis notes ride the metric/artifact row headers — rebuild the open
         # overlay's rows in place so the notes appear without a walk/reopen.
@@ -1737,6 +1771,7 @@ class GalleryController:
             message = str(value)
         item.analysis_status = AnalysisStatus.ERROR
         item.analysis_error = message or str(value)
+        set_activity(item, ActivityPhase.ERROR, "ai")
         self.widget.refresh_card(item)
 
     # -- Ask AI (A3 entry points + A4 async/cache/generation guard) ------------
@@ -2380,13 +2415,34 @@ class GalleryController:
                     self.widget.set_scanning(0, len(items))
                 except Exception:
                     logger.debug("widget.set_scanning failed", exc_info=True)
+        self._mark_local_pass(items, ActivityPhase.ANALYZING)
         worker = GenericWorker(self._tracked(self._run_triage_sync), list(items), dict(self._series_overrides))
         gen = self._folder_gen
         sgen = self._series_gen
         worker.signals.result.connect(lambda res, g=gen, s=sgen: self._on_triage_ready(res, g, s))
+        worker.signals.result.connect(lambda _res, its=list(items): self._mark_local_pass(its, ActivityPhase.DONE))
         worker.signals.error.connect(lambda err, g=gen: self._on_triage_error(err, g))
+        worker.signals.error.connect(lambda _err, its=list(items): self._mark_local_pass(its, None))
         # Triage outranks background thumbnails so the grid labels settle first.
         self._pool_start(worker, TRIAGE_PRIORITY)
+
+    def _mark_local_pass(self, items, phase) -> None:
+        """Pass-level local activity: ``phase=None`` clears the local phase."""
+        for item in items:
+            try:
+                if phase is None:
+                    if getattr(item, "activity_source", None) == "local":
+                        clear_activity(item)
+                else:
+                    set_activity(item, phase, "local")
+            except Exception:
+                continue
+        try:
+            refresh = getattr(self.widget, "refresh_cards", None)
+            if callable(refresh):
+                refresh(items)
+        except Exception:
+            logger.debug("local-pass activity refresh failed", exc_info=True)
 
     def _run_artifacts_sync(self, items: list[GalleryItem], source_path: Path | None) -> dict[str, dict]:
         """Pure worker for GenericWorker: analyze 7 artifacts per item."""

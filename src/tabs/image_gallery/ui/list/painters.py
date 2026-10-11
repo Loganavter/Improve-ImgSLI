@@ -45,8 +45,30 @@ def _list_substrate_color(tm=None):  # type: ignore[no-untyped-def]
 _REJECTED_DIM_ALPHA = 0.62
 
 
+def _list_activity_overlay(painter, ctx) -> None:  # type: ignore[no-untyped-def]
+    """Activity pill over the thumb (left column, vertically centered)."""
+    from PySide6.QtCore import QRectF
+
+    from tabs.image_gallery.ui.card.activity_pill import paint_item_activity
+    from tabs.image_gallery.ui.list.card import LIST_THUMB_W, _list_metrics
+
+    widget = getattr(ctx, "widget", None)
+    rect = getattr(ctx, "rect", None)
+    if widget is None or rect is None:
+        return
+    state = getattr(widget, "_gallery_row_state", None)
+    design_w = float(state.get("w", LIST_THUMB_W)) if isinstance(state, dict) else float(LIST_THUMB_W)
+    thumb_w, _meta_w = _list_metrics(rect, design_w)
+    box = QRectF(rect.x(), rect.y(), thumb_w, rect.height())
+    paint_item_activity(painter, widget, box, corner="middle_left")
+
+
 def _list_row_overlay_painter(painter, ctx, tm) -> None:  # type: ignore[no-untyped-def]
-    """Rejected dim wash (no shared hover wash — palette parity)."""
+    """Activity pill (thumb) + rejected dim wash (no shared hover wash — palette parity)."""
+    try:
+        _list_activity_overlay(painter, ctx)
+    except Exception:
+        pass
     try:
         widget = getattr(ctx, "widget", None)
         item = getattr(widget, "_gallery_item", None) if widget is not None else None
