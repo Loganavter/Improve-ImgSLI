@@ -732,6 +732,10 @@ class ImageGalleryWidget(QWidget):
             _dbg("view toggled %s", bool(checked))
         except Exception:
             pass
+        try:
+            self._persist_view_prefs()
+        except Exception:
+            pass
 
     def _on_domain_changed(self, domain: str) -> None:
         """Toolbar domain switch changed — normalize, store, mirror.
@@ -771,6 +775,63 @@ class ImageGalleryWidget(QWidget):
             pass
         try:
             _dbg("judgment domain %s", dom)
+        except Exception:
+            pass
+        try:
+            self._persist_view_prefs()
+        except Exception:
+            pass
+
+    def _persist_view_prefs(self) -> None:
+        """Persist both toolbar switch positions into the session slot."""
+        try:
+            ctrl = getattr(self, "_controller", None) or getattr(
+                self, "_attached_controller", None
+            )
+        except Exception:
+            ctrl = None
+        fn = getattr(ctrl, "set_view_prefs", None)
+        if not callable(fn):
+            return
+        try:
+            fn(
+                view_list=bool(getattr(self, "_view_mode", False)),
+                judgment_domain=str(getattr(self, "_judgment_domain", "algorithms")),
+            )
+        except Exception:
+            pass
+
+    def apply_view_prefs(self, *, view_list: bool, judgment_domain: str) -> None:
+        """Restore both switches from the session slot (quiet domain).
+
+        The view is applied normally (grid rebuilds); the domain is set with
+        signals blocked so a restored ``ai`` domain does NOT fire a network run
+        on open — the user triggers AI explicitly.
+        """
+        try:
+            self.toolbar.set_view_list(bool(view_list))
+        except Exception:
+            pass
+        dom = str(judgment_domain or "algorithms").strip().lower()
+        if dom not in ("algorithms", "ai"):
+            dom = "algorithms"
+        self._judgment_domain = dom
+        try:
+            tb = self.toolbar
+            tb.blockSignals(True)
+            try:
+                tb.set_judgment_domain(dom)
+            finally:
+                tb.blockSignals(False)
+        except Exception:
+            pass
+        try:
+            ctrl = getattr(self, "_controller", None) or getattr(
+                self, "_attached_controller", None
+            )
+            state = getattr(ctrl, "state", None)
+            if state is not None:
+                state.judgment_domain = dom
         except Exception:
             pass
 

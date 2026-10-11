@@ -16,65 +16,13 @@ from sli_ui_toolkit.managers import scaled_px
 from sli_ui_toolkit.widgets import BaseFlyout, Button, CustomLineEdit, Label
 
 from tabs.image_gallery.icons import Icon as GalleryIcon
+from tabs.image_gallery.ui.ask_ai_grip import AskAiResizeGrip
 
 #: Minimum flyout width (the ask surface must not collapse).
 MIN_WIDTH_PX = 300
 #: Fallback minimum height (scaled) used only if the layout cannot report its
 #: own floor; the real minimum tracks the content layout (see _min_height).
 MIN_HEIGHT_PX = 160
-
-
-class _ResizeGrip(QWidget):
-    """Bottom-right drag handle — resizes the flyout (an in-window child).
-
-    A real ``QSizeGrip`` only resizes top-level windows, and the toolkit has no
-    resizable flyout, so the grip drives the flyout/container geometry itself.
-    """
-
-    def __init__(self, flyout: "AskAiFlyout") -> None:
-        super().__init__(flyout)
-        self._flyout = flyout
-        self._start = None
-        self.setCursor(Qt.CursorShape.SizeFDiagCursor)
-        self.setFixedSize(scaled_px(16), scaled_px(16))
-        try:
-            self.setObjectName("gallery_ask_ai_resize_grip")
-        except Exception:
-            pass
-
-    def paintEvent(self, event) -> None:  # noqa: N802 (Qt name)
-        try:
-            from PySide6.QtGui import QColor, QPainter, QPen
-
-            p = QPainter(self)
-            p.setRenderHint(QPainter.RenderHint.Antialiasing)
-            p.setPen(QPen(QColor(150, 150, 150, 170), 1.4))
-            w, h = self.width(), self.height()
-            for off in (3, 7, 11):
-                p.drawLine(w - off, h - 2, w - 2, h - off)
-            p.end()
-        except Exception:
-            pass
-
-    def mousePressEvent(self, event) -> None:  # noqa: N802
-        if event.button() == Qt.MouseButton.LeftButton:
-            self._start = (event.globalPosition().toPoint(), self._flyout.size())
-            event.accept()
-
-    def mouseMoveEvent(self, event) -> None:  # noqa: N802
-        if self._start is None:
-            return
-        start, size0 = self._start
-        pos = event.globalPosition().toPoint()
-        self._flyout.apply_user_size(
-            size0.width() + (pos.x() - start.x()),
-            size0.height() + (pos.y() - start.y()),
-        )
-        event.accept()
-
-    def mouseReleaseEvent(self, event) -> None:  # noqa: N802
-        self._start = None
-        event.accept()
 
 
 class AskAiFlyout(BaseFlyout):
@@ -126,7 +74,7 @@ class AskAiFlyout(BaseFlyout):
             self._images_toggle.clicked.connect(self._on_images_toggled)
         except Exception:
             pass
-        self._result = Label("", pixel_size=12, word_wrap=True, parent=self)
+        self._result = Label("", pixel_size=14, word_wrap=True, parent=self)
         self._result.setMinimumWidth(scaled_px(MIN_WIDTH_PX - 40))
         self._status = Label("", pixel_size=11, parent=self)
 
@@ -154,7 +102,7 @@ class AskAiFlyout(BaseFlyout):
             self.setMinimumSize(scaled_px(MIN_WIDTH_PX), self._min_height())
         except Exception:
             pass
-        self._grip = _ResizeGrip(self)
+        self._grip = AskAiResizeGrip(self)
 
     # -- interaction --------------------------------------------------------
 
