@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+
 from core.state_management.actions import (
     InvalidateRenderCacheAction,
     SetDrawTextBackgroundAction,
@@ -245,7 +247,7 @@ class SettingsMutationService:
                 setting_key="text_alpha_percent",
             )
 
-            if changed:
+            if changed and not os.environ.get("IMGSLI_FONT_SKIP_INVALIDATE"):
                 self.notifier.invalidate_render_cache()
 
         return changed
