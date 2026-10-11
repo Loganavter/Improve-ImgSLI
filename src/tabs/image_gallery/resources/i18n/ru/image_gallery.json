@@ -13,6 +13,13 @@
       "base_url": "Базовый URL API",
       "api_key": "API-ключ",
       "model_name": "Название модели",
+      "ask_max_tokens": "Лимит токенов ответа",
+      "reasoning_effort": "Глубина рассуждений",
+      "effort_auto": "Авто",
+      "effort_low": "Низкая",
+      "effort_medium": "Средняя",
+      "effort_high": "Высокая",
+      "effort_none": "Без",
       "api_key_warning": "Хранится на этом устройстве в незашифрованном виде."
     },
     "errors": {
@@ -38,6 +45,15 @@
       "make_best": "★ Сделать лучшим",
       "reject": "✕ Отклонить",
       "compare": "⇄ Сравнить"
+    },
+    "ask_ai": {
+      "action": "ИИ…",
+      "title": "Спросить у ИИ",
+      "default_prompt": "Сводка",
+      "busy": "Думаю…",
+      "read_badge": "Ответ ИИ, не проверено",
+      "error": "ИИ не смог ответить.",
+      "routing_unavailable": "Маршрутизация пока недоступна."
     },
     "sort_by": "Сортировка",
     "view": "Вид",
