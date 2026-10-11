@@ -19,6 +19,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable
 
+from tabs.image_gallery.models import MetricKind
+
 # Rounding helper: expose the 0–100 int the UI and prompt both use.
 ScoreFn = Callable[[float], float]
 
@@ -51,6 +53,12 @@ class MetricSpec:
     qual: ScoreFn  # raw float -> quality in [0, 1]
     unit: str = "%"
     measured: bool = True
+    #: What the axis *is* (see ``MetricKind``). All registry axes today are
+    #: MEASURED; candidate/judgment axes arrive via ``plan-gallery-two-domain-axes``.
+    kind: MetricKind = MetricKind.MEASURED
+    #: Free-form tags for the open-vocabulary relevance matcher (no closed
+    #: operation/content enum). Empty = always relevant.
+    tags: tuple[str, ...] = ()
 
 
 def _sharpness(v: float) -> float:
@@ -162,9 +170,15 @@ def score_for(spec: MetricSpec, raw: float) -> int:
 
 
 def measured_scores(metrics: dict) -> list[tuple[str, str, float, int]]:
-    """All measured metrics as ``(id, label, raw, score)`` in report order."""
+    """All MEASURED metrics as ``(id, label, raw, score)`` in report order.
+
+    Candidate/judgment axes are not numbers and are never emitted here (see
+    ``plan-gallery-two-domain-axes``).
+    """
     out: list[tuple[str, str, float, int]] = []
     for spec in SPECS:
+        if spec.kind is not MetricKind.MEASURED:
+            continue
         got = raw_for(spec, metrics)
         if got is None:
             continue

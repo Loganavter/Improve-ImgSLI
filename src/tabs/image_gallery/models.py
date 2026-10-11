@@ -52,6 +52,29 @@ class Artifact(str, Enum):
     NOISE_AMPLIFICATION = "noise_amplification"
 
 
+class MetricKind(str, Enum):
+    """What an axis *is* — the slot that lets non-measured axes exist.
+
+    ``MEASURED`` — a local detector produces a number (0-100 quality). The
+    algorithms domain owns these; AI never overwrites them.
+    ``CANDIDATE`` — a flag "possible X" (no number): a learned detector OR an
+    AI/human observation, always marked unverified.
+    ``JUDGMENT`` — plausibility/behaviour (e.g. a hallucination): AI/human only,
+    never a number. Some artifacts have no cheap metric; this is the honest slot
+    instead of fabricating a score.
+
+    See ``plan-gallery-two-domain-axes``.
+    """
+
+    MEASURED = "measured"
+    CANDIDATE = "candidate"
+    JUDGMENT = "judgment"
+
+
+#: The two judgment domains the gallery can display (toolbar switch).
+JUDGMENT_DOMAINS: tuple[str, ...] = ("algorithms", "ai")
+
+
 class TriageState(str, Enum):
     IDLE = "idle"
     RUNNING = "running"
