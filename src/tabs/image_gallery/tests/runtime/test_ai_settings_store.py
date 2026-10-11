@@ -36,6 +36,36 @@ def test_save_and_load_round_trip(monkeypatch):
     settings.remove("image_gallery_ai_test_roundtrip")
 
 
+def test_save_and_load_ask_budget_and_effort(monkeypatch):
+    monkeypatch.setattr(store_module, "_QS_GROUP", "image_gallery_ai_test_ask")
+    settings = QSettings(store_module._QS_ORG, store_module._QS_APP)
+    settings.remove("image_gallery_ai_test_ask")
+
+    store = AiSettingsStore()
+    store.save_field("ask_max_tokens", 2048)
+    store.save_field("reasoning_effort", "high")
+
+    loaded = store.load()
+    assert loaded.ask_max_tokens == 2048
+    assert loaded.reasoning_effort == "high"
+    settings.remove("image_gallery_ai_test_ask")
+
+
+def test_load_sanitizes_invalid_ask_settings(monkeypatch):
+    monkeypatch.setattr(store_module, "_QS_GROUP", "image_gallery_ai_test_ask_bad")
+    settings = QSettings(store_module._QS_ORG, store_module._QS_APP)
+    settings.remove("image_gallery_ai_test_ask_bad")
+
+    store = AiSettingsStore()
+    store.save_field("ask_max_tokens", -5)
+    store.save_field("reasoning_effort", "bogus")
+
+    loaded = store.load()
+    assert loaded.ask_max_tokens == 0
+    assert loaded.reasoning_effort == "auto"
+    settings.remove("image_gallery_ai_test_ask_bad")
+
+
 def test_save_field_rejects_unknown_name():
     store = AiSettingsStore()
     try:

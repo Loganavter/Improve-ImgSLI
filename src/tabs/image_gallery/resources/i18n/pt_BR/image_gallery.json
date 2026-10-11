@@ -13,6 +13,13 @@
       "base_url": "URL base da API",
       "api_key": "Chave de API",
       "model_name": "Nome do modelo",
+      "ask_max_tokens": "Orçamento de tokens da resposta",
+      "reasoning_effort": "Esforço de raciocínio",
+      "effort_auto": "Automático",
+      "effort_low": "Baixo",
+      "effort_medium": "Médio",
+      "effort_high": "Alto",
+      "effort_none": "Nenhum",
       "api_key_warning": "Armazenada sem criptografia neste dispositivo."
     },
     "errors": {
@@ -38,6 +45,15 @@
       "make_best": "★ Tornar melhor",
       "reject": "✕ Rejeitar",
       "compare": "⇄ Comparar"
+    },
+    "ask_ai": {
+      "action": "IA…",
+      "title": "Perguntar à IA",
+      "default_prompt": "Resumo",
+      "busy": "Pensando…",
+      "read_badge": "Leitura de IA, não verificada",
+      "error": "A IA não conseguiu responder.",
+      "routing_unavailable": "O roteamento ainda não está habilitado."
     }
   }
 }

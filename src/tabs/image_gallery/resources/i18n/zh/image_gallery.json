@@ -13,6 +13,13 @@
       "base_url": "API 基础地址",
       "api_key": "API 密钥",
       "model_name": "模型名称",
+      "ask_max_tokens": "回答 token 预算",
+      "reasoning_effort": "推理强度",
+      "effort_auto": "自动",
+      "effort_low": "低",
+      "effort_medium": "中",
+      "effort_high": "高",
+      "effort_none": "无",
       "api_key_warning": "以明文形式存储在本设备上。"
     },
     "errors": {
@@ -38,6 +45,15 @@
       "make_best": "★ 设为最佳",
       "reject": "✕ 拒绝",
       "compare": "⇄ 对比"
+    },
+    "ask_ai": {
+      "action": "AI…",
+      "title": "询问 AI",
+      "default_prompt": "摘要",
+      "busy": "思考中…",
+      "read_badge": "AI 解读，未经核实",
+      "error": "AI 无法回答。",
+      "routing_unavailable": "路由功能尚未启用。"
     }
   }
 }

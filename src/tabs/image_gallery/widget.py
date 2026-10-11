@@ -254,6 +254,7 @@ class ImageGalleryWidget(QWidget):
             on_toggle=self._on_card_toggle,
             on_context_menu=self._on_card_context,
             on_empty_context_menu=self._on_empty_host_context,
+            on_series_context_menu=self._on_series_context_menu,
         )
         # Content stack — avoids QVBoxLayout stretch bug where hidden 1054h EmptyState pushes toolbar
         from PySide6.QtWidgets import QStackedWidget
@@ -842,6 +843,15 @@ class ImageGalleryWidget(QWidget):
                 except Exception:
                     pass
 
+            def _ctx_ask(scope_kind: str):
+                try:
+                    tri = _ctx_owner()
+                    fn = getattr(tri, "open_ask_ai", None)
+                    if callable(fn):
+                        fn(scope_kind, card, Path(path))
+                except Exception:
+                    pass
+
             try:
                 sel_set = getattr(getattr(owner, "state", None), "selected_paths", None) or set()
                 sel_n = len(sel_set)
@@ -861,6 +871,7 @@ class ImageGalleryWidget(QWidget):
                 on_carry=_ctx_carry,
                 on_analyze=_ctx_analyze,
                 on_find_similar=_ctx_find,
+                on_ask_ai=_ctx_ask,
                 translate=_tr,
             )
             if _dbg_on:
@@ -874,6 +885,153 @@ class ImageGalleryWidget(QWidget):
         from tabs.image_gallery.ui import drag_drop as _drag_drop
 
         _drag_drop.on_empty_file_dropped(self, path_str, self._owner_for_triage())
+
+    # -- Ask AI (A3 surface; async lives in the controller) ----------------------
+
+    def _ensure_ask_ai_flyout(self):
+        flyout = getattr(self, "_ask_ai_flyout", None)
+        if flyout is None:
+            from tabs.image_gallery.ui.ask_ai import AskAiFlyout
+
+            flyout = AskAiFlyout(self)
+            try:
+                flyout.setObjectName("gallery_ask_ai_flyout")
+            except Exception:
+                pass
+            self._ask_ai_flyout = flyout
+        return flyout
+
+    def open_ask_ai(
+        self, anchor, scope, *, default_prompt: str = "Summary", texts=None
+    ) -> None:
+        """Show the Ask AI flyout; submit routes to ``controller.ask_ai_question``."""
+        flyout = self._ensure_ask_ai_flyout()
+        if texts:
+            try:
+                flyout.set_texts(**texts)
+            except Exception:
+                pass
+        # Re-invoking on the SAME scope toggles closed instead of re-running
+        # the show animation (a second right-click looked like "reopening").
+        scope_key = self._ask_scope_key(scope)
+        try:
+            if flyout.isVisible() and getattr(self, "_ask_ai_scope_key", None) == scope_key:
+                flyout.hide()
+                return
+        except Exception:
+            pass
+        # One live scope per open: drop the previous submit binding (disconnect
+        # the exact slot; a bare disconnect() warns when nothing is bound).
+        bound = getattr(self, "_ask_ai_submit_slot", None)
+        if bound is not None:
+            try:
+                flyout.submitted.disconnect(bound)
+            except Exception:
+                pass
+        slot = lambda question, _s=scope: self._submit_ask_ai(_s, question)  # noqa: E731
+        self._ask_ai_submit_slot = slot
+        flyout.submitted.connect(slot)
+        try:
+            label = getattr(scope, "label", "") or ""
+        except Exception:
+            label = ""
+        self._ask_ai_anchor = anchor or self
+        self._ask_ai_scope = scope
+        self._ask_ai_scope_key = scope_key
+        # Preserve the last answer across hide/reopen, seeding it BEFORE the
+        # show animation (seeding after the show calls reposition() mid-fade,
+        # which flashes the panel white).
+        initial_result = None
+        initial_error = ""
+        if getattr(self, "_ask_ai_last_key", None) == getattr(
+            self, "_ask_ai_scope_key", None
+        ):
+            if getattr(self, "_ask_ai_last_result", None) is not None:
+                initial_result = self._ask_ai_last_result
+            elif getattr(self, "_ask_ai_last_error", None):
+                initial_error = self._ask_ai_last_error
+        flyout.open_for(
+            self._ask_ai_anchor,
+            scope_label=label,
+            default_prompt=default_prompt,
+            initial_result=initial_result,
+            initial_error=initial_error,
+        )
+
+    @staticmethod
+    def _ask_scope_key(scope):
+        """Stable identity for one ask scope (used to restore the last answer)."""
+        try:
+            paths = tuple(sorted(str(p) for p in (getattr(scope, "paths", ()) or ())))
+            return (
+                str(getattr(scope, "kind", "")),
+                paths,
+                str(getattr(scope, "series_id", "") or ""),
+                str(getattr(scope, "label", "") or ""),
+            )
+        except Exception:
+            return None
+
+    def _submit_ask_ai(self, scope, question: str) -> None:
+        owner = self._owner_for_triage()
+        fn = getattr(owner, "ask_ai_question", None)
+        if callable(fn):
+            fn(scope, question)
+            return
+        self.show_ask_ai_error("AI is unavailable.")
+
+    def show_ask_ai_busy(self) -> None:
+        try:
+            self._ensure_ask_ai_flyout().set_busy(True)
+        except Exception:
+            pass
+
+    def show_ask_ai_result(self, result) -> None:
+        try:
+            flyout = self._ensure_ask_ai_flyout()
+            flyout.set_busy(False)
+            flyout.show_result(
+                getattr(result, "text", "") or "",
+                backend=getattr(result, "backend", "") or "",
+                cached=bool(getattr(result, "cached", False)),
+            )
+            self._ask_ai_last_key = getattr(self, "_ask_ai_scope_key", None)
+            self._ask_ai_last_result = result
+            self._ask_ai_last_error = None
+            self._resume_ask_ai_if_hidden(flyout)
+        except Exception:
+            pass
+
+    def show_ask_ai_error(self, message: str) -> None:
+        try:
+            flyout = self._ensure_ask_ai_flyout()
+            flyout.set_busy(False)
+            flyout.show_error(message)
+            self._ask_ai_last_key = getattr(self, "_ask_ai_scope_key", None)
+            self._ask_ai_last_result = None
+            self._ask_ai_last_error = message
+            self._resume_ask_ai_if_hidden(flyout)
+        except Exception:
+            pass
+
+    def _resume_ask_ai_if_hidden(self, flyout) -> None:
+        """A late answer must not vanish: re-show the flyout if it was dismissed."""
+        try:
+            if flyout.isVisible():
+                return
+            anchor = getattr(self, "_ask_ai_anchor", None)
+            if anchor is not None:
+                flyout.reshow(anchor)
+        except Exception:
+            pass
+
+    # -- series header context menu ---------------------------------------------
+
+    def _on_series_context_menu(self, index, anchor, member_paths, label) -> None:
+        owner = self._owner_for_triage()
+        fn = getattr(owner, "open_ask_ai_for_series", None)
+        if callable(fn):
+            fn(index, anchor, tuple(member_paths or ()), str(label or ""))
 
     # -- S4 quick look ----------------------------------------------------------
 

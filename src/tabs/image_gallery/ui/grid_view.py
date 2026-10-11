@@ -665,6 +665,8 @@ class GalleryGridView(QWidget):
         self._on_toggle = None
         self._on_context_menu = None
         self._on_empty_context_menu = None
+        self._on_series_context_menu = None
+        self._series_header_labels: dict[int, str] = {}
 
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
@@ -837,10 +839,19 @@ class GalleryGridView(QWidget):
 
     # -- configuration -----------------------------------------------------
 
-    def configure(self, *, on_toggle=None, on_context_menu=None, on_empty_context_menu=None) -> None:
+    def configure(
+        self,
+        *,
+        on_toggle=None,
+        on_context_menu=None,
+        on_empty_context_menu=None,
+        on_series_context_menu=None,
+    ) -> None:
         self._on_toggle = on_toggle
         self._on_context_menu = on_context_menu
         self._on_empty_context_menu = on_empty_context_menu
+        if on_series_context_menu is not None:
+            self._on_series_context_menu = on_series_context_menu
 
     # -- view mode (recent items_view parity) --------------------------------
 
@@ -1737,9 +1748,26 @@ class GalleryGridView(QWidget):
             btn.clicked.disconnect()
         except Exception:
             pass
+        try:
+            btn.customContextMenuRequested.disconnect()
+        except Exception:
+            pass
         if is_collapsible:
             try:
                 btn.clicked.connect(lambda _checked=False, idx=index: self._toggle_collapse(idx))  # type: ignore[misc]
+            except Exception:
+                pass
+            try:
+                self._series_header_labels[index] = display
+            except Exception:
+                pass
+            # A reused header slot may have been built for the UNGROUPED tail
+            # (no menu wiring); (re)attach the series context menu here too.
+            try:
+                btn.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+                btn.customContextMenuRequested.connect(
+                    lambda _pos, i=index, b=btn: self._handle_series_context(b, i)
+                )
             except Exception:
                 pass
 
@@ -2293,6 +2321,19 @@ class GalleryGridView(QWidget):
             except Exception:
                 pass
             try:
+                self._series_header_labels[index] = display
+            except Exception:
+                pass
+            # Right-click on the series header opens a menu (Ask AI over the
+            # whole series); left-click still collapses/expands.
+            try:
+                btn.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+                btn.customContextMenuRequested.connect(
+                    lambda _pos, i=index, b=btn: self._handle_series_context(b, i)
+                )
+            except Exception:
+                pass
+            try:
                 btn.setFixedHeight(scaled_px(24))
             except Exception:
                 pass
@@ -2823,6 +2864,35 @@ class GalleryGridView(QWidget):
                 self._on_context_menu(path)
             except Exception:
                 pass
+
+    def _handle_series_context(self, anchor, index) -> None:
+        """Series-header right-click → host callback (index, anchor, paths, label)."""
+        if not callable(self._on_series_context_menu):
+            return
+        try:
+            members = list((self._series or [])[int(index)])
+        except Exception:
+            members = []
+        paths = []
+        for it in members:
+            try:
+                paths.append(it.path)
+            except Exception:
+                continue
+        # Pass the series NAME only (the hub), not the full header chrome
+        # ("SERIES 1 · … · N VARIANTS") — that repeated the grid header in
+        # the flyout.
+        label = ""
+        try:
+            idx = int(index)
+            hub = self._hub_names[idx] if idx < len(self._hub_names) else None
+            label = str(hub or self._series_header_labels.get(idx, "") or "")
+        except Exception:
+            label = ""
+        try:
+            self._on_series_context_menu(int(index), anchor, tuple(paths), label)
+        except Exception:
+            pass
 
     def _update_host_height(self, item_count: int) -> None:
         # Let host grow with content; scroll area will show scrollbar as needed.

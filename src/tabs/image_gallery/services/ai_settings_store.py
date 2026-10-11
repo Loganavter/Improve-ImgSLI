@@ -25,12 +25,29 @@ _QS_GROUP = "image_gallery_ai"
 DEFAULT_BASE_URL = "https://openrouter.ai/api/v1"
 
 
+#: Reasoning effort values the "Ask AI" surface accepts. ``auto`` lets the
+#: router pick (low, to keep a mandatory-reasoning model from eating the whole
+#: answer budget). ``none`` is reserved for non-reasoning models.
+REASONING_EFFORTS = ("auto", "low", "medium", "high", "none")
+
+
+def _parse_int(value, default: int = 0) -> int:
+    try:
+        return int(str(value).strip())
+    except Exception:
+        return default
+
+
 @dataclass(frozen=True)
 class AiSettings:
     enabled: bool = False
     base_url: str = DEFAULT_BASE_URL
     api_key: str = ""
     model: str = ""
+    #: Answer-token budget for Ask AI; 0 = compute from the scope size.
+    ask_max_tokens: int = 0
+    #: OpenRouter reasoning effort for Ask AI ("auto" | low | medium | high | none).
+    reasoning_effort: str = "auto"
 
 
 class AiSettingsStore:
@@ -44,17 +61,29 @@ class AiSettingsStore:
     def load(self) -> AiSettings:
         settings = self._settings()
         try:
+            effort = str(settings.value("reasoning_effort", "auto") or "auto").lower()
+            if effort not in REASONING_EFFORTS:
+                effort = "auto"
             return AiSettings(
                 enabled=str(settings.value("enabled", False)).lower() in ("true", "1"),
                 base_url=str(settings.value("base_url", DEFAULT_BASE_URL) or DEFAULT_BASE_URL),
                 api_key=str(settings.value("api_key", "") or ""),
                 model=str(settings.value("model", "") or ""),
+                ask_max_tokens=max(0, _parse_int(settings.value("ask_max_tokens", 0), 0)),
+                reasoning_effort=effort,
             )
         finally:
             settings.endGroup()
 
     def save_field(self, name: str, value) -> None:
-        if name not in ("enabled", "base_url", "api_key", "model"):
+        if name not in (
+            "enabled",
+            "base_url",
+            "api_key",
+            "model",
+            "ask_max_tokens",
+            "reasoning_effort",
+        ):
             raise ValueError(f"Unknown AI setting field: {name}")
         settings = self._settings()
         try:
