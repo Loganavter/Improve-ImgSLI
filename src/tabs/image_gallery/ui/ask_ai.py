@@ -74,7 +74,7 @@ class AskAiFlyout(BaseFlyout):
             self._images_toggle.clicked.connect(self._on_images_toggled)
         except Exception:
             pass
-        self._result = Label("", pixel_size=12, word_wrap=True, parent=self)
+        self._result = Label("", pixel_size=14, word_wrap=True, parent=self)
         self._result.setMinimumWidth(scaled_px(MIN_WIDTH_PX - 40))
         self._status = Label("", pixel_size=11, parent=self)
 
