@@ -48,7 +48,7 @@ class AskAiFlyout(BaseFlyout):
         self.content_layout.setSpacing(scaled_px(8))
 
         self._title = Label(self._title_text, pixel_size=13, bold=True, parent=self)
-        self._scope = Label("", pixel_size=11, parent=self)
+        self._scope = Label("", pixel_size=16, parent=self)
         self._edit = CustomLineEdit(parent=self)
         self._edit.setPlaceholderText(self._default_prompt)
         self._edit.setMinimumWidth(scaled_px(300))
@@ -78,7 +78,7 @@ class AskAiFlyout(BaseFlyout):
             pass
         self._result = Label("", pixel_size=14, word_wrap=True, parent=self)
         self._result.setMinimumWidth(scaled_px(MIN_WIDTH_PX - 40))
-        self._status = Label("", pixel_size=11, parent=self)
+        self._status = Label("", pixel_size=16, parent=self)
 
         # Title, scope, then the question row (edit + images toggle).
         self.content_layout.addWidget(self._title)
