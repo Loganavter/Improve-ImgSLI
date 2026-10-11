@@ -298,23 +298,7 @@ class FilenameOverlayPass(CanvasRenderPass):
         # cheaper coverage supersample while the render is interactive; the
         # settled frame rebuilds once at full quality.
         atlas_ss = _INTERACTIVE_SUPERSAMPLE if is_interactive_live else _SUPERSAMPLE
-        import os as _perf_os
-        import time as _perf_time
-
-        _perf_on = bool(_perf_os.environ.get("IMGSLI_UI_PERF_DEBUG"))
-        _perf_t0 = _perf_time.perf_counter() if _perf_on else 0.0
         if self._gpu.ensure_atlas(font, font_px, dpr, int(font_weight), atlas_ss):
-            if _perf_on:
-                import logging
-
-                logging.getLogger("ImproveImgSLI").info(
-                    "[perf] filename.atlas rebuilt %.1f ms ss=%s interactive=%s weight=%s px=%s",
-                    (_perf_time.perf_counter() - _perf_t0) * 1000.0,
-                    atlas_ss,
-                    is_interactive_live,
-                    int(font_weight),
-                    font_px,
-                )
             if self._gpu.atlas_image is not None:
                 resource_updates.uploadTexture(
                     self._gpu.atlas_texture, self._gpu.atlas_image

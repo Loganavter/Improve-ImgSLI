@@ -101,10 +101,6 @@ class UIUpdateBatcher:
             QTimer.singleShot(0, self._flush_updates)
 
     def _flush_updates(self):
-        import os
-        import time
-
-        _perf_t0 = time.perf_counter()
         updates = self._pending_updates.copy()
         self._pending_updates.clear()
         self._flush_scheduled = False
@@ -146,12 +142,6 @@ class UIUpdateBatcher:
         if requeued and not self._flush_scheduled:
             self._flush_scheduled = True
             QTimer.singleShot(0, self._flush_updates)
-        if os.environ.get("IMGSLI_UI_PERF_DEBUG"):
-            logger.info(
-                "[perf] UIUpdateBatcher flush %s %.1f ms",
-                sorted(updates),
-                (time.perf_counter() - _perf_t0) * 1000.0,
-            )
 
     def _run_branch(self, update_type: str, runner) -> None:
         """Run one branch; on failure requeue it (bounded) instead of dropping.

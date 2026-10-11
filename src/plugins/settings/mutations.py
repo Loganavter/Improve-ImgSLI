@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import os
-
 from core.state_management.actions import (
     InvalidateRenderCacheAction,
     SetDrawTextBackgroundAction,
@@ -266,7 +264,7 @@ class SettingsMutationService:
                 dispatch_scope=_scope,
             )
 
-            if changed and not os.environ.get("IMGSLI_FONT_SKIP_INVALIDATE"):
+            if changed:
                 self.notifier.invalidate_render_cache()
 
         return changed

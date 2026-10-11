@@ -218,18 +218,6 @@ class FontSettingsFlyout(BaseFlyout):
         return "edges"
 
     def _emit_settings_changed(self, *_) -> None:
-        try:
-            import os as _perf_os
-
-            if _perf_os.environ.get("IMGSLI_UI_PERF_DEBUG"):
-                import logging
-
-                logging.getLogger("ImproveImgSLI").info(
-                    "[perf] flyout.emit_settings_changed sender=%s",
-                    type(self.sender()).__name__ if self.sender() is not None else None,
-                )
-        except Exception:
-            pass
         self.settings_changed.emit(
             self.size_slider.value(),
             self.weight_slider.value(),

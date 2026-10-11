@@ -710,17 +710,6 @@ def _connect_font_flyout(presenter):
         flyout._ic_settings_changed_conn = conn
     except Exception:
         pass
-    try:
-        import os as _perf_os
-
-        if _perf_os.environ.get("IMGSLI_UI_PERF_DEBUG"):
-            import logging
-
-            logging.getLogger("ImproveImgSLI").info(
-                "[perf] _connect_font_flyout wired (had_prev=%s)", prev is not None
-            )
-    except Exception:
-        pass
 
 def _on_font_flyout_closed(presenter):
     presenter.ui_manager.transient.mark_font_popup_closed()

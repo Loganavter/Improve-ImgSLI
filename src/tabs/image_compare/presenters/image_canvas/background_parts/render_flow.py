@@ -101,23 +101,8 @@ def update_comparison_if_needed(presenter):
     template and ``use_cases/render_gate.py`` for the ``_update_comparison_geometry
     → have1/have2 wait → bg_is_dirty → pick → apply_store_to_canvas`` sequencing.
     """
-    import os
-    import time
-
-    _perf = bool(os.environ.get("IMGSLI_UI_PERF_DEBUG"))
-    _perf_t0 = time.perf_counter() if _perf else 0.0
     from .use_cases.render_gate import update_comparison_if_needed as _gate
-
-    result = _gate(presenter)
-    if _perf:
-        import logging
-
-        logging.getLogger("ImproveImgSLI").info(
-            "[perf] ic.render %.1f ms -> %s",
-            (time.perf_counter() - _perf_t0) * 1000.0,
-            result,
-        )
-    return result
+    return _gate(presenter)
 
 def should_use_dirty_rects_optimization(presenter, render_params_dict, label_dims=None):
     if not presenter.store.viewport.interaction_state.is_interactive_mode:
