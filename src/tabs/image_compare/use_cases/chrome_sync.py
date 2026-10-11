@@ -8,6 +8,7 @@ Audit-Meta: pattern=thin-owner-target size=exempt reason="use_cases target for M
 
 from PySide6.QtCore import QObject, QSignalBlocker, QTimer
 
+from core.state_management.viewport_scopes import LIGHTWEIGHT_VIEWPORT_SUBDOMAINS
 from sli_ui_toolkit.i18n import tr
 
 
@@ -384,7 +385,17 @@ class ImageCompareChromeSync(QObject):
         viewport_subdomain = (
             domain.split(".", 1)[1] if is_viewport_domain and "." in domain else None
         )
-        if viewport_subdomain in {"interaction", "geometry"}:
+        if viewport_subdomain in LIGHTWEIGHT_VIEWPORT_SUBDOMAINS:
+            # Lightweight, purely-visual subdomain: skip the generic chrome
+            # batch. The "overlay" one (font/label settings) still needs a
+            # canvas repaint — kick it directly, same as the pan path.
+            if viewport_subdomain == "overlay":
+                window_presenter = self._window_presenter()
+                if window_presenter is not None:
+                    try:
+                        window_presenter.schedule_canvas_update()
+                    except Exception:
+                        pass
             return
         window_presenter = self._window_presenter()
         if window_presenter is None:

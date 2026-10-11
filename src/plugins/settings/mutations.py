@@ -75,13 +75,14 @@ class SettingsMutationService:
         invalidate_render_cache: bool = False,
         emit_scope: str | None = None,
         request_core_update: bool = False,
+        dispatch_scope: str = "viewport",
     ) -> bool:
         current_value = VIEWPORT_GETTERS[attr](self.store)
         if current_value == value:
             return False
 
         dispatcher = self.store.get_dispatcher()
-        dispatcher.dispatch(VIEWPORT_ACTIONS[attr](value), scope="viewport")
+        dispatcher.dispatch(VIEWPORT_ACTIONS[attr](value), scope=dispatch_scope)
         if invalidate_render_cache:
             dispatcher.dispatch(InvalidateRenderCacheAction(), scope="viewport")
         if setting_key is not None:
@@ -130,6 +131,7 @@ class SettingsMutationService:
         invalidate_render_cache: bool = False,
         emit_scope: str | None = None,
         request_core_update: bool = False,
+        dispatch_scope: str = "viewport",
     ) -> bool:
         return self.set_viewport_value(
             attr,
@@ -139,6 +141,7 @@ class SettingsMutationService:
             invalidate_render_cache=invalidate_render_cache,
             emit_scope=emit_scope,
             request_core_update=request_core_update,
+            dispatch_scope=dispatch_scope,
         )
 
     def set_canvas_feature_setting(
@@ -200,41 +203,55 @@ class SettingsMutationService:
         text_alpha_percent: int,
     ) -> bool:
         changed = False
-        # Coalesce the per-setter emit_state_change calls into ONE flush: each
-        # setter emitted its own state change, so the (non-trivial) chrome-sync
-        # handler ran 2x per slider tick. ``batch_changes`` defers every emit to
-        # a single flush at block exit (invalidate first, so subscribers see the
-        # invalidated cache).
+        # Font/label settings are a purely visual canvas-overlay change. Use a
+        # dedicated "viewport.overlay" domain so the change reaches only the
+        # canvas re-render, not the heavy generic chrome batch (combobox /
+        # ratings / InfoHUD glass grab+blur) that a bare "viewport" scope fires
+        # on every tick — the same discipline the split-drag uses with its
+        # "viewport.interaction" scope (divider/commands/registry.py).
+        _scope = "viewport.overlay"
         with self.store.batch_changes():
             changed |= self.set_viewport_value(
                 "font_size_percent",
                 size,
                 setting_key="font_size_percent",
+                emit_scope=_scope,
+                dispatch_scope=_scope,
             )
             changed |= self.set_viewport_value(
                 "font_weight",
                 font_weight,
                 setting_key="font_weight",
+                emit_scope=_scope,
+                dispatch_scope=_scope,
             )
             changed |= self.set_viewport_color(
                 "file_name_color",
                 color,
                 setting_key="filename_color",
+                emit_scope=_scope,
+                dispatch_scope=_scope,
             )
             changed |= self.set_viewport_color(
                 "file_name_bg_color",
                 bg_color,
                 setting_key="filename_bg_color",
+                emit_scope=_scope,
+                dispatch_scope=_scope,
             )
             changed |= self.set_viewport_value(
                 "draw_text_background",
                 draw_background,
                 setting_key="draw_text_background",
+                emit_scope=_scope,
+                dispatch_scope=_scope,
             )
             changed |= self.set_viewport_value(
                 "text_placement_mode",
                 placement_mode,
                 setting_key="text_placement_mode",
+                emit_scope=_scope,
+                dispatch_scope=_scope,
             )
 
             # Canonical UI range is 5..100 (font flyout opacity slider); keep the
@@ -245,6 +262,8 @@ class SettingsMutationService:
                 "text_alpha_percent",
                 normalized_alpha,
                 setting_key="text_alpha_percent",
+                emit_scope=_scope,
+                dispatch_scope=_scope,
             )
 
             if changed and not os.environ.get("IMGSLI_FONT_SKIP_INVALIDATE"):
