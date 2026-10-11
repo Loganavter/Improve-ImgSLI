@@ -405,6 +405,67 @@ def test_guard_still_violating_rewrite_keeps_original():
     assert result.text == "img_1 is 88%."
 
 
+_FLAG_CTX = {
+    **_CTX,
+    "items": [
+        {
+            **_CTX["items"][0],
+            "flags": [
+                {"id": "halo_delta", "label": "Halo vs source", "kind": "candidate", "note": ""},
+                {"id": "flag-for-review", "label": "odd", "kind": "judgment", "note": ""},
+            ],
+        }
+    ],
+}
+
+
+def test_system_prompt_separates_measured_numbers_from_ai_flags():
+    text = _system_text(build_text_payload("Summary", _CTX, model="m")).lower()
+    assert "authoritative" in text
+    assert "unverified ai flags" in text
+    assert "never as a number" in text
+
+
+def test_context_block_appends_ai_flags_as_text_with_legend():
+    user = _user_text(build_text_payload("Summary", _FLAG_CTX, model="m"))
+    assert "Axis kinds: measured = authoritative number" in user
+    assert "AI flags: possible Halo vs source; AI judgment: odd" in user
+    assert "Sharpness 50%" in user  # measured score is still rendered as before
+    assert "possible Halo vs source%" not in user
+
+
+def test_context_block_has_no_legend_without_flags():
+    user = _user_text(build_text_payload("Summary", _CTX, model="m"))
+    assert "Axis kinds" not in user
+    assert "AI flags" not in user
+
+
+def test_flagged_context_still_routes_text_question_to_text_payload():
+    assert route_backend("Summary", _FLAG_CTX) == BACKEND_TEXT
+    assert resolve_backend("Summary", _FLAG_CTX, include_images=None) == BACKEND_TEXT
+    payload = build_text_payload("Summary", _FLAG_CTX, model="m")
+    assert "image_url" not in repr(payload)
+
+
+def test_guard_rewrites_candidate_flag_stated_as_percent():
+    calls: list[dict] = []
+
+    def fake(base_url, api_key, payload):
+        calls.append(payload)
+        if len(calls) == 1:
+            return {"choices": [{"message": {"content": '{"answer": "img_1 has a possible halo at 60%.", "confidence": "high"}'}}]}
+        return {"choices": [{"message": {"content": '{"answer": "Prefer img_1, but watch for a possible halo.", "confidence": "medium"}'}}]}
+
+    result = answer(
+        "Summary", _FLAG_CTX, backend=BACKEND_TEXT,
+        base_url="http://x", api_key="k", model="m", transport=fake,
+    )
+    assert len(calls) == 2
+    assert result.revised is True
+    assert "60%" not in result.text
+    assert "possible halo" in result.text
+
+
 def test_guard_rewrite_error_is_fail_open():
     calls: list[dict] = []
 

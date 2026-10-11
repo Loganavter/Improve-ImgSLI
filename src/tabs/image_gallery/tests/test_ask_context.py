@@ -10,7 +10,13 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
-from tabs.image_gallery.models import GalleryItem, Mode, Series
+from tabs.image_gallery.models import (
+    AiAnalysisResult,
+    AiAxisFlag,
+    GalleryItem,
+    Mode,
+    Series,
+)
 from tabs.image_gallery.services.ask_context import (
     ASK_SELECTION,
     ASK_SERIES,
@@ -18,7 +24,7 @@ from tabs.image_gallery.services.ask_context import (
     build_ask_context,
     deanonymize_answer,
 )
-from tabs.image_gallery.services.metric_scores import measured_scores
+from tabs.image_gallery.services.metric_scores import SPECS, measured_scores
 
 
 def _fake_controller(items, *, selected=(), mode=Mode.FIDELITY, source=None, series=None):
@@ -147,3 +153,57 @@ def test_deanonymize_maps_aliases_back_and_handles_longest_first():
 
 def test_deanonymize_noop_without_map():
     assert deanonymize_answer("img_1 is fine", None) == "img_1 is fine"
+
+
+def _analysis(*flags):
+    return AiAnalysisResult(
+        description="",
+        tags=(),
+        model="m",
+        analyzed_at_iso="",
+        axis_flags=tuple(flags),
+    )
+
+
+def test_item_carries_axis_kind_for_every_spec_even_without_scores():
+    a = GalleryItem(path=Path("/g/a.png"), mtime_ns=1)
+    ctrl = _fake_controller([a], selected=[a.path])
+
+    ctx = build_ask_context(AskScope(kind=ASK_SELECTION), controller=ctrl)
+
+    item = ctx["items"][0]
+    assert item["metrics"] == {}
+    assert item["kinds"] == {s.id: s.kind.value for s in SPECS}
+    assert set(item["kinds"]) == {s.id for s in SPECS}
+    assert set(item["kinds"].values()) <= {"measured", "candidate", "judgment"}
+
+
+def test_flags_keep_candidate_and_judgment_and_drop_measured():
+    a = GalleryItem(
+        path=Path("/g/a.png"),
+        mtime_ns=1,
+        analysis=_analysis(
+            AiAxisFlag(id="halo_delta", label="halo", kind="candidate", note="rim"),
+            AiAxisFlag(id="flag-for-review", label="odd", kind="judgment"),
+            AiAxisFlag(id="sharpness", label="soft", kind="measured", note="nope"),
+        ),
+    )
+    ctrl = _fake_controller([a], selected=[a.path])
+
+    ctx = build_ask_context(AskScope(kind=ASK_SELECTION), controller=ctrl)
+
+    assert ctx["items"][0]["flags"] == [
+        {"id": "halo_delta", "label": "Halo vs source", "kind": "candidate", "note": "rim"},
+        {"id": "flag-for-review", "label": "odd", "kind": "judgment", "note": ""},
+    ]
+
+
+def test_flags_empty_without_analysis_and_no_duplicate_label_map():
+    a = GalleryItem(path=Path("/g/a.png"), mtime_ns=1)
+    ctrl = _fake_controller([a], selected=[a.path])
+
+    ctx = build_ask_context(AskScope(kind=ASK_SELECTION), controller=ctrl)
+
+    assert ctx["items"][0]["flags"] == []
+    assert ctx["metric_labels"]["halo_delta"] == "Halo vs source"
+    assert "axis_labels" not in ctx

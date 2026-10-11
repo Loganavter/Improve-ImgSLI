@@ -48,11 +48,27 @@ def _severity_text(name: str, severity) -> str:
     return f"{text} ({note})" if note else text
 
 
+#: Legend shown only when at least one item carries an AI flag.
+_KIND_LEGEND = (
+    "Axis kinds: measured = authoritative number; 'possible …' and "
+    "'AI judgment: …' = unverified AI flag (text only, no number)."
+)
+
+
+def _flag_text(flag: dict) -> str:
+    """One AI flag as ``possible <label>`` or ``AI judgment: <label>`` (no number)."""
+    label = str(flag.get("label") or flag.get("id") or "")
+    if str(flag.get("kind") or "") == "judgment":
+        return f"AI judgment: {label}"
+    return f"possible {label}"
+
+
 def _context_block(context: dict) -> str:
     """Compact measured-context block handed to the model."""
     try:
         ctx = context or {}
         labels = ctx.get("metric_labels") or {}
+        items = list(ctx.get("items", []) or [])
         lines = [
             f"Scope: {ctx.get('label', '')} ({ctx.get('kind', '')}), "
             f"{int(ctx.get('count', 0) or 0)} item(s), mode={ctx.get('mode', '')}"
@@ -60,13 +76,16 @@ def _context_block(context: dict) -> str:
         src = ctx.get("source")
         if src:
             lines.append(f"Source: {src}")
-        for it in list(ctx.get("items", []) or []):
+        if any(it.get("flags") for it in items):
+            lines.append(_KIND_LEGEND)
+        for it in items:
             metrics = it.get("metrics") or {}
             sev = it.get("severities") or {}
             met_txt = "; ".join(
                 _metric_text(k, v, labels) for k, v in metrics.items()
             )
             sev_txt = ", ".join(_severity_text(k, v) for k, v in sev.items())
+            flag_txt = "; ".join(_flag_text(f) for f in it.get("flags") or [])
             line = f"- {it.get('alias') or it.get('name', '')}"
             badge = it.get("badge")
             if badge:
@@ -75,6 +94,8 @@ def _context_block(context: dict) -> str:
                 line += f" {met_txt}"
             if sev_txt:
                 line += f" | {sev_txt}"
+            if flag_txt:
+                line += f" | AI flags: {flag_txt}"
             lines.append(line)
         return "\n".join(lines)
     except Exception:

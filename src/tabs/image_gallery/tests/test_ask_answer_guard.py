@@ -71,6 +71,19 @@ def test_empty_answer_is_flagged():
     assert answer_violation("   ", numeric=False)
 
 
+def test_candidate_flag_stated_as_percent_on_non_numeric_question_is_flagged():
+    reason = answer_violation(
+        "img_1 shows a possible halo at 60%.", numeric=False, labels=("Halo vs source",)
+    )
+    assert reason and "percent" in reason.lower()
+
+
+def test_candidate_flag_as_plain_phrase_is_not_flagged():
+    assert answer_violation(
+        "img_1 shows a possible halo; prefer img_2.", numeric=False
+    ) is None
+
+
 def test_is_numeric_question_detection():
     assert is_numeric_question("Summary") is False
     assert is_numeric_question("What stands out?") is False
