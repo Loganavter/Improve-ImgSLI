@@ -8,6 +8,7 @@ Audit-Meta: pattern=thin-owner-target size=exempt reason="use_cases target for M
 
 from PySide6.QtCore import QObject, QSignalBlocker, QTimer
 
+from core.state_management.viewport_scopes import LIGHTWEIGHT_VIEWPORT_SUBDOMAINS
 from sli_ui_toolkit.i18n import tr
 
 
@@ -384,7 +385,17 @@ class ImageCompareChromeSync(QObject):
         viewport_subdomain = (
             domain.split(".", 1)[1] if is_viewport_domain and "." in domain else None
         )
-        if viewport_subdomain in {"interaction", "geometry"}:
+        if viewport_subdomain in LIGHTWEIGHT_VIEWPORT_SUBDOMAINS:
+            # Lightweight, purely-visual subdomain: skip the generic chrome
+            # batch. The "overlay" one (font/label settings) still needs a
+            # canvas repaint — kick it directly, same as the pan path.
+            if viewport_subdomain == "overlay":
+                window_presenter = self._window_presenter()
+                if window_presenter is not None:
+                    try:
+                        window_presenter.schedule_canvas_update()
+                    except Exception:
+                        pass
             return
         window_presenter = self._window_presenter()
         if window_presenter is None:
@@ -432,6 +443,21 @@ class ImageCompareChromeSync(QObject):
         if self._has_full_res():
             batch.extend(["resolution", "zoom_indicator"])
         window_presenter.ui_batcher.schedule_batch_update(batch)
+        # A render-config change (font size/weight/color, diff mode, ...) is a
+        # purely visual canvas change. Kicking the canvas directly (same as the
+        # pan path: interaction.set_pan -> widget.update()) lands the frame on
+        # the next event-loop turn; the batched `file_names` branch also calls
+        # schedule_canvas_update, but its QTimer.singleShot(0) hop added ~30ms
+        # before the frame. schedule_update coalesces, so the later batched
+        # call is a no-op.
+        try:
+            window_presenter.schedule_canvas_update()
+        except Exception:
+            import logging
+
+            logging.getLogger("ImproveImgSLI").debug(
+                "handle_store_domain: direct canvas update missed", exc_info=True
+            )
 
     def on_workspace_changed(self, window_presenter):
         self._refresh_active_session_canvas(window_presenter)

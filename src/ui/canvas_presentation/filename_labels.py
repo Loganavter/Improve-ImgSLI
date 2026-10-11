@@ -136,9 +136,7 @@ def label_rects(
 def limit_name(text: str, max_name_length: int) -> str:
     if max_name_length <= 0 or len(text) <= max_name_length:
         return text
-    # Truncated: keep the ellipsis visible at the cut (the label also elides to
-    # the box width; this is the character-cap cut the setting enforces).
-    return text[: max(1, max_name_length - 1)] + "…"
+    return text[:max_name_length]
 
 
 def draw_round_rect(
@@ -233,6 +231,7 @@ def draw_text_bold_supersampled(
     stroke_px_qt = float(pixel_size) * font_weight / 500.0 * scale
     path = QPainterPath()
     path.addText(QPointF(float(text_inset_px) * scale, baseline_y), big_font, text)
+    path.setFillRule(Qt.FillRule.WindingFill)
     pen = QPen(color, stroke_px_qt)
     pen.setCapStyle(Qt.PenCapStyle.RoundCap)
     pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
@@ -272,6 +271,7 @@ def draw_text_bold(
     stroke_px = float(pixel_size) * font_weight / 500.0
     path = QPainterPath()
     path.addText(QPointF(float(text_inset_px), baseline_y), font, text)
+    path.setFillRule(Qt.FillRule.WindingFill)
     pen = QPen(color, stroke_px)
     pen.setCapStyle(Qt.PenCapStyle.RoundCap)
     pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)

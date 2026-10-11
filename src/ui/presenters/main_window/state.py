@@ -1,3 +1,6 @@
+from core.state_management.viewport_scopes import LIGHTWEIGHT_VIEWPORT_SUBDOMAINS
+
+
 def _chrome_sync(presenter):
     toolbar = getattr(getattr(presenter, "features", None), "toolbar", None)
     if toolbar is None:
@@ -40,7 +43,7 @@ def on_store_state_changed(presenter, domain: str):
     viewport_subdomain = (
         domain.split(".", 1)[1] if is_viewport_domain and "." in domain else None
     )
-    if viewport_subdomain in {"interaction", "geometry"}:
+    if viewport_subdomain in LIGHTWEIGHT_VIEWPORT_SUBDOMAINS:
         return
 
     chrome = _chrome_sync(presenter)

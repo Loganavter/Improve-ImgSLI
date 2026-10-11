@@ -261,7 +261,7 @@
     },
     {
       "path": "src/tabs/image_compare/canvas/features/filename_overlay/passes.py",
-      "lines": 459,
+      "lines": 441,
       "limit": 400,
       "marker": "File-Size-Exempt:",
       "raw": "single QRhi filename-overlay pass (F5 boundary verdict) —",
@@ -625,7 +625,7 @@
     },
     {
       "path": "src/tabs/image_compare/presenters/toolbar/connections.py",
-      "lines": 735,
+      "lines": 759,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine reason=\"single toolbar connections wiring — action->presenter bindings\"",
@@ -683,7 +683,7 @@
     },
     {
       "path": "src/tabs/image_compare/use_cases/chrome_sync.py",
-      "lines": 790,
+      "lines": 816,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner-target size=exempt reason=\"use_cases target for MainWindowPresenter — display-sync chrome for document/viewport\"",

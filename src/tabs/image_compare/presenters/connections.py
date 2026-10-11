@@ -26,27 +26,11 @@ def connect_signals(presenter):
     presenter.font_settings_flyout.interaction_finished.connect(
         lambda slider_name: _on_font_flyout_interaction_finished(presenter, slider_name)
     )
-    from domain.qt_adapters import qcolor_to_color
-    from plugins.settings.events import SettingsApplyFontSettingsEvent
-
-    if presenter.event_bus:
-        presenter.font_settings_flyout.settings_changed.connect(
-            lambda size, weight, color, bg_color, draw_bg, placement, alpha: presenter.event_bus.emit(
-                SettingsApplyFontSettingsEvent(
-                    size,
-                    weight,
-                    qcolor_to_color(color),
-                    qcolor_to_color(bg_color),
-                    draw_bg,
-                    placement,
-                    alpha,
-                )
-            )
-        )
-    else:
-        presenter.font_settings_flyout.settings_changed.connect(
-            presenter.main_controller.apply_font_settings
-        )
+    # NOTE: font_settings_flyout.settings_changed is wired in
+    # presenters/toolbar/connections.py::_connect_font_flyout (tracked via
+    # _track so disconnect_signals can drop it). It used to ALSO be connected
+    # here, so every slider tick applied the font settings twice (~2x the
+    # apply cost per tick). Keep a single owner.
 
     presenter.main_controller.start_interactive_movement.connect(
         image_canvas.start_interactive_movement
@@ -198,16 +182,18 @@ def _connect_magnifier_color_controls(presenter):
 
 
 def _on_font_flyout_interaction_started(presenter, slider_name: str) -> None:
-    viewport_ctrl = getattr(
-        getattr(presenter, "main_controller", None), "viewport_plugin", None
-    )
-    if viewport_ctrl is not None and hasattr(viewport_ctrl, "on_slider_pressed"):
-        viewport_ctrl.on_slider_pressed(slider_name)
+    # `viewport_plugin.on_slider_pressed` never existed on this host (dead
+    # path), so a font-slider drag never left full-quality rendering. Reuse
+    # the canvas's own interactive-movement channel (the same one the split
+    # drag uses): main_controller -> image_canvas.
+    controller = getattr(presenter, "main_controller", None)
+    signal = getattr(controller, "start_interactive_movement", None)
+    if signal is not None:
+        signal.emit()
 
 
 def _on_font_flyout_interaction_finished(presenter, slider_name: str) -> None:
-    viewport_ctrl = getattr(
-        getattr(presenter, "main_controller", None), "viewport_plugin", None
-    )
-    if viewport_ctrl is not None and hasattr(viewport_ctrl, "on_slider_released"):
-        viewport_ctrl.on_slider_released(slider_name)
+    controller = getattr(presenter, "main_controller", None)
+    signal = getattr(controller, "stop_interactive_movement", None)
+    if signal is not None:
+        signal.emit()

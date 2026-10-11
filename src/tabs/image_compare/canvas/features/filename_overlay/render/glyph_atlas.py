@@ -21,8 +21,10 @@ quads (built CPU-side here, uploaded by ``gpu_resources``) has no image in
 re-open the verdict if the shell gains a shared glyph atlas + per-glyph quad
 stream.
 
-C1 limitation: one face only -- ASCII 32..126. Missing code points (CJK,
-emoji, combining marks) return ``None`` from ``glyph_for`` and are skipped.
+C1 limitation: one face only -- printable ASCII 32..126 plus the horizontal
+ellipsis U+2026 (what ``QFontMetrics.elidedText`` inserts on truncation).
+Other missing code points (CJK, emoji, combining marks) return ``None`` from
+``glyph_for`` and are skipped.
 """
 
 from __future__ import annotations
@@ -38,8 +40,17 @@ from PySide6.QtGui import QColor, QFont, QFontMetrics, QImage, QPainter, QPainte
 # antialiased edge gradient -- see module docstring.
 _SUPERSAMPLE = 4
 
-# Printable ASCII -- the C1 charset (see module docstring).
-_CHARSET = "".join(chr(c) for c in range(32, 127))
+# Cheaper supersample used while a settings slider is being dragged
+# (interactive render mode): a weight/size drag changes the atlas key every
+# tick, and a full 4x rebuild is ~30-120 ms per tick. 1x (plain QPainter AA,
+# no supersample) brings it to ~5-8 ms; the settled frame rebuilds at the full
+# ``_SUPERSAMPLE``.
+_INTERACTIVE_SUPERSAMPLE = 1
+
+# Printable ASCII plus the horizontal ellipsis U+2026 -- the elision glyph
+# ``QFontMetrics.elidedText`` appends when a filename is truncated to the label
+# box. Without it the elided string's tail glyph is dropped (hard cut, no "...").
+_CHARSET = "".join(chr(c) for c in range(32, 127)) + "\u2026"
 _ATLAS_WIDTH = 512
 _PAD_FRACTION = 0.25
 _MIN_PAD = 3.0
@@ -61,11 +72,15 @@ class _Tile:
     ch: str
     w: int
     h: int
-    coverage: np.ndarray
+    coverage: np.ndarray | None
     advance_px: float
     bearing_px: tuple[float, float]
     x: int = 0
     y: int = 0
+    # Device-px glyph outline + its bounding rect, kept so the whole atlas can
+    # be rasterized in ONE supersampled QPainter pass (see ``_pack``).
+    path: object | None = None
+    br: object | None = None
 
 
 class GlyphAtlas:
@@ -88,18 +103,27 @@ class GlyphAtlas:
         self.sdf_range_px = 0.0
         self._slots: dict[str, GlyphSlot] = {}
 
-    def ensure(self, font: QFont, pixel_size: int, dpr: float, weight: int = 0) -> bool:
+    def ensure(
+        self,
+        font: QFont,
+        pixel_size: int,
+        dpr: float,
+        weight: int = 0,
+        supersample: int = _SUPERSAMPLE,
+    ) -> bool:
         """Build/refresh the atlas; no-op (``False``) when the key is unchanged."""
+        ss = max(1, int(supersample))
         key = (
             font.key(),
             int(pixel_size),
             round(max(1.0, float(dpr)), 3),
             int(weight),
+            ss,
         )
         if key == self._key:
             return False
         self._key = key
-        self._build(font, int(pixel_size), max(1.0, float(dpr)), int(weight))
+        self._build(font, int(pixel_size), max(1.0, float(dpr)), int(weight), ss)
         return True
 
     def glyph_for(self, ch: str) -> GlyphSlot | None:
@@ -112,7 +136,9 @@ class GlyphAtlas:
         self.height = 0
         self._slots = {}
 
-    def _build(self, font: QFont, pixel_size: int, dpr: float, weight: int) -> None:
+    def _build(
+        self, font: QFont, pixel_size: int, dpr: float, weight: int, supersample: int
+    ) -> None:
         pixel_size = max(1, pixel_size)
         dev_font = QFont(font)
         dev_font.setPixelSize(max(1, int(round(pixel_size * dpr))))
@@ -129,33 +155,61 @@ class GlyphAtlas:
         for ch in _CHARSET:
             path = QPainterPath()
             path.addText(0.0, 0.0, dev_font, ch)
+            # Glyph outlines are non-zero-winding; QPainterPath defaults to
+            # OddEvenFill, which punches holes where contours overlap (the "f"
+            # crossbar/stem, "e" bar, "a" bowl junction). Force WindingFill.
+            path.setFillRule(Qt.FillRule.WindingFill)
             br = path.boundingRect()
             advance = float(metrics.horizontalAdvance(ch)) / dpr
             if br.width() <= 0.0 or br.height() <= 0.0:
+                # Advance-only glyph (space and friends): no ink tile, but the
+                # pen must still move -- otherwise words collapse into one run
+                # ("Original Tom" -> "OriginalTom").
+                if advance > 0.0:
+                    tiles.append(
+                        _Tile(
+                            ch=ch,
+                            w=0,
+                            h=0,
+                            coverage=None,
+                            advance_px=advance,
+                            bearing_px=(0.0, 0.0),
+                        )
+                    )
                 continue
             w = int(np.ceil(br.width())) + 2 * pad_dev
             h = int(np.ceil(br.height())) + 2 * pad_dev
-            coverage = _render_coverage(path, br, w, h, pad_dev, stroke_dev)
             bearing = (br.x() / dpr - pad_logical, br.y() / dpr - pad_logical)
             tiles.append(
                 _Tile(
                     ch=ch,
                     w=w,
                     h=h,
-                    coverage=coverage,
+                    coverage=None,
                     advance_px=advance,
                     bearing_px=(float(bearing[0]), float(bearing[1])),
+                    path=path,
+                    br=br,
                 )
             )
 
-        self._pack(tiles, dpr)
+        self._pack(tiles, dpr, pad_dev, stroke_dev, supersample)
 
-    def _pack(self, tiles: list[_Tile], dpr: float) -> None:
-        tiles.sort(key=lambda t: (-t.h, t.ch))
+    def _pack(
+        self,
+        tiles: list[_Tile],
+        dpr: float,
+        pad_dev: int,
+        stroke_dev: float,
+        supersample: int,
+    ) -> None:
+        ss = max(1, int(supersample))
+        ink = [t for t in tiles if t.w > 0 and t.h > 0]
+        ink.sort(key=lambda t: (-t.h, t.ch))
         x = _GUTTER
         y = _GUTTER
         row_h = 0
-        for tile in tiles:
+        for tile in ink:
             if x + tile.w + _GUTTER > _ATLAS_WIDTH:
                 x = _GUTTER
                 y += row_h + _GUTTER
@@ -166,23 +220,71 @@ class GlyphAtlas:
             row_h = max(row_h, tile.h)
         atlas_h = max(1, y + row_h + _GUTTER)
 
+        # ONE supersampled pass for every glyph, then ONE downscale -- instead
+        # of 95 separate QImage alloc + QPainter + Lanczos resizes, which cost
+        # ~30-120 ms per rebuild (a weight/size drag changes the atlas key
+        # every tick, so that rebuild lands in every frame).
+        big = QImage(
+            _ATLAS_WIDTH * ss, atlas_h * ss, QImage.Format.Format_RGBA8888
+        )
+        big.fill(0)
+        painter = QPainter(big)
+        try:
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            painter.setRenderHint(QPainter.RenderHint.TextAntialiasing)
+            painter.scale(float(ss), float(ss))
+            color = QColor(255, 255, 255, 255)
+            if stroke_dev > 0.0:
+                pen = QPen(color, stroke_dev)
+                pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+                pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+                painter.setPen(pen)
+                painter.setBrush(color)
+            else:
+                painter.setPen(Qt.PenStyle.NoPen)
+                painter.setBrush(color)
+            for tile in ink:
+                painter.save()
+                painter.translate(
+                    float(tile.x + pad_dev) - tile.br.x(),
+                    float(tile.y + pad_dev) - tile.br.y(),
+                )
+                painter.drawPath(tile.path)
+                painter.restore()
+        finally:
+            painter.end()
+
+        small = _downscale_lanczos(big, _ATLAS_WIDTH, atlas_h)
+        raw = np.frombuffer(small.constBits(), dtype=np.uint8).reshape(
+            atlas_h, _ATLAS_WIDTH, 4
+        )
+        cov = raw[..., 3]
         atlas = np.zeros((atlas_h, _ATLAS_WIDTH, 4), dtype=np.uint8)
+        atlas[..., 0] = cov
+        atlas[..., 3] = cov
+
         self._slots = {}
-        for tile in tiles:
-            cov_u8 = np.round(tile.coverage * 255.0).astype(np.uint8)
-            x0, y0 = tile.x, tile.y
-            atlas[y0 : y0 + tile.h, x0 : x0 + tile.w, 0] = cov_u8
-            atlas[y0 : y0 + tile.h, x0 : x0 + tile.w, 3] = cov_u8
-            u0 = x0 / _ATLAS_WIDTH
-            v0 = y0 / atlas_h
-            u1 = (x0 + tile.w) / _ATLAS_WIDTH
-            v1 = (y0 + tile.h) / atlas_h
+        for tile in ink:
+            u0 = tile.x / _ATLAS_WIDTH
+            v0 = tile.y / atlas_h
+            u1 = (tile.x + tile.w) / _ATLAS_WIDTH
+            v1 = (tile.y + tile.h) / atlas_h
             self._slots[tile.ch] = GlyphSlot(
                 uv=(u0, v0, u1, v1),
                 advance_px=tile.advance_px,
                 bearing_px=tile.bearing_px,
                 size_px=(tile.w / dpr, tile.h / dpr),
             )
+        # Advance-only glyphs (space etc.): a slot with no uv/tile so pack_run
+        # still moves the pen without emitting a quad.
+        for tile in tiles:
+            if tile.w <= 0 or tile.h <= 0:
+                self._slots[tile.ch] = GlyphSlot(
+                    uv=(0.0, 0.0, 0.0, 0.0),
+                    advance_px=tile.advance_px,
+                    bearing_px=(0.0, 0.0),
+                    size_px=(0.0, 0.0),
+                )
 
         self.width = _ATLAS_WIDTH
         self.height = atlas_h
@@ -223,15 +325,21 @@ def _downscale_lanczos(img: QImage, w: int, h: int) -> QImage:
 
 
 def _render_coverage(
-    path: QPainterPath, br, w: int, h: int, pad_dev: int, stroke_dev: float
+    path: QPainterPath,
+    br,
+    w: int,
+    h: int,
+    pad_dev: int,
+    stroke_dev: float,
+    supersample: int = _SUPERSAMPLE,
 ) -> np.ndarray:
     """Rasterize one glyph to antialiased coverage (device px), supersampled.
 
-    Renders at ``_SUPERSAMPLE`` x then downscales to ``w x h`` (LANCZOS), so
+    Renders at ``supersample`` x then downscales to ``w x h`` (LANCZOS), so
     each output pixel is a genuine area average -- the glass-HUD text-mask fix
     for weak/near-binary 1x coverage.
     """
-    ss = _SUPERSAMPLE
+    ss = max(1, int(supersample))
     big_w, big_h = max(1, w * ss), max(1, h * ss)
     img = QImage(big_w, big_h, QImage.Format.Format_RGBA8888)
     img.fill(0)

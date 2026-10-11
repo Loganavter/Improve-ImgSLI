@@ -27,7 +27,7 @@ from sli_ui_toolkit.ui.inspector.spec import InspectSpec, SpecField  # noqa: E40
 
 
 
-from PySide6.QtCore import QSignalBlocker, Qt, Signal
+from PySide6.QtCore import QEvent, QSignalBlocker, Qt, Signal
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QWidget
 
@@ -88,6 +88,28 @@ class FontSettingsFlyout(BaseFlyout):
         self.draw_bg_switch.checkedChanged.connect(self._emit_settings_changed)
         for radio in self._pos_radios.values():
             radio.toggled.connect(lambda *_: self._emit_settings_changed())
+
+        # Slider drag start/end -> host enters/stops its fast interactive
+        # render mode (see presenters/connections.py). These signals were
+        # declared and wired by the host but never emitted, so every drag tick
+        # paid a full-quality canvas re-render + glyph-atlas rebuild.
+        self._interaction_sliders = {
+            self.size_slider: "size",
+            self.weight_slider: "weight",
+            self.opacity_slider: "opacity",
+        }
+        for slider in self._interaction_sliders:
+            slider.installEventFilter(self)
+
+    def eventFilter(self, obj, event) -> bool:
+        name = getattr(self, "_interaction_sliders", {}).get(obj)
+        if name is not None:
+            etype = event.type()
+            if etype == QEvent.Type.MouseButtonPress:
+                self.interaction_started.emit(name)
+            elif etype == QEvent.Type.MouseButtonRelease:
+                self.interaction_finished.emit(name)
+        return super().eventFilter(obj, event)
 
     def _tag_find_action_chrome(self) -> None:
         from ui.widgets.font_settings_search import tag_font_settings_flyout

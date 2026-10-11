@@ -65,9 +65,13 @@ def test_atlas_advances_match_font_metrics(qapp):
         assert abs(slot.advance_px - expected) <= 1.5, (
             f"{ch!r} advance {slot.advance_px} vs metrics {expected}"
         )
-    assert atlas.glyph_for(" ") is None, (
-        "whitespace should carry no ink tile (space is advance-only)"
+    space = atlas.glyph_for(" ")
+    assert space is not None, (
+        "space must be present as an advance-only slot -- dropping it collapses "
+        "words together (the pen never advances)"
     )
+    assert space.size_px == (0.0, 0.0), "space must carry no ink tile"
+    assert space.advance_px > 0.0, "space must advance the pen"
 
 
 def test_atlas_coverage_is_a_spread_sdf(qapp):
