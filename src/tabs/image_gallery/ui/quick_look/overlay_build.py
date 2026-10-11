@@ -752,56 +752,6 @@ def build_overlay_ui(overlay) -> None:
     except Exception:
         pass
     right_lay.addWidget(overlay._brief_label)
-    # AI analysis block: model output lives in the sidebar, not in the
-    # card tooltip — divider + header row (title + inline Analyze trigger)
-    # + word-wrapped full description + ALL tags (the card keeps its
-    # first-3 summary row). Populated by populate_analysis on every
-    # populate; refreshed live when the worker lands (refresh_analysis).
-    overlay._div_analysis = _RuleWidget(right_host)
-    overlay._div_analysis.setObjectName("quicklook_div_analysis")
-    right_lay.addWidget(overlay._div_analysis)
-    analysis_head = QWidget(right_host)
-    analysis_head.setObjectName("quicklook_analysis_head")
-    overlay._analysis_head = analysis_head
-    analysis_head_lay = QHBoxLayout(analysis_head)
-    analysis_head_lay.setContentsMargins(0, 0, 0, 0)
-    analysis_head_lay.setSpacing(scaled_px(8))
-    analysis_head_lay.setAlignment(Qt.AlignmentFlag.AlignVCenter)
-    overlay._analysis_title = _make_label("AI analysis", parent=analysis_head, pixel_size=13, pt=13)
-    overlay._analysis_title.setObjectName("quicklook_analysis_title")
-    analysis_head_lay.addWidget(overlay._analysis_title)
-    # Verdict badge: KEEP/REJECT next to the title, colored (set in
-    # populate_analysis). No numbers here — those live in the metric rows.
-    overlay._analysis_verdict = _make_label("", parent=analysis_head, pixel_size=11, pt=11.5)
-    overlay._analysis_verdict.setObjectName("quicklook_analysis_verdict")
-    analysis_head_lay.addWidget(overlay._analysis_verdict)
-    analysis_head_lay.addStretch(1)
-    overlay._analysis_btn = Button(text="Analyze", variant="surface", parent=analysis_head, defer_click="ripple")
-    overlay._analysis_btn.setObjectName("quicklook_analysis_btn")
-    overlay._analysis_btn.clicked.connect(overlay._on_analyze)
-    analysis_head_lay.addWidget(overlay._analysis_btn)
-    right_lay.addWidget(analysis_head)
-    # selectable: the verdict/defect text is meant to be copied out (toolkit
-    # Label, TextSelectableByMouse|Keyboard) — stock QLabel drag-select would
-    # fight the scroll area otherwise.
-    overlay._analysis_desc = _make_label("", parent=right_host, pixel_size=11, pt=11.5, selectable=True)
-    overlay._analysis_desc.setObjectName("quicklook_analysis_desc")
-    overlay._analysis_desc.setWordWrap(True)
-    try:
-        overlay._analysis_desc.setSizePolicy(QSizePolicy.Policy.Ignored, overlay._analysis_desc.sizePolicy().verticalPolicy())
-        overlay._analysis_desc.setMinimumWidth(scaled_px(296))
-    except Exception:
-        pass
-    right_lay.addWidget(overlay._analysis_desc)
-    overlay._analysis_tags = _make_label("", parent=right_host, pixel_size=11, pt=11.5, selectable=True)
-    overlay._analysis_tags.setObjectName("quicklook_analysis_tags")
-    overlay._analysis_tags.setWordWrap(True)
-    try:
-        overlay._analysis_tags.setSizePolicy(QSizePolicy.Policy.Ignored, overlay._analysis_tags.sizePolicy().verticalPolicy())
-        overlay._analysis_tags.setMinimumWidth(scaled_px(296))
-    except Exception:
-        pass
-    right_lay.addWidget(overlay._analysis_tags)
     right_scroll.setWidget(right_host)
     # W13: the right column takes resize space too (stretch 1) — the
     # preview keeps priority with its own stretch 1 plus the larger

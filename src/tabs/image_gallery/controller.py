@@ -1690,14 +1690,10 @@ class GalleryController:
         item.analysis_status = AnalysisStatus.DONE
         item.analysis_error = None
         self.widget.refresh_card(item)
-        # Quick look sidebar owns the model output: refresh the open
-        # overlay's analysis block in place (path-guarded, no reopen).
+        # Axis notes ride the metric/artifact row headers — rebuild the open
+        # overlay's rows in place so the notes appear without a walk/reopen.
         try:
             ql = getattr(self.widget, "_quick_look_overlay", None)
-            if ql is not None and hasattr(ql, "refresh_analysis"):
-                ql.refresh_analysis(item)
-            # Axis notes ride the metric/artifact row headers — rebuild them
-            # too so the notes appear without a walk/reopen.
             if ql is not None and hasattr(ql, "refresh_metrics"):
                 ql.refresh_metrics(item)
             if ql is not None and hasattr(ql, "refresh_artifacts"):
@@ -1724,12 +1720,6 @@ class GalleryController:
         item.analysis_status = AnalysisStatus.ERROR
         item.analysis_error = message or str(value)
         self.widget.refresh_card(item)
-        try:
-            ql = getattr(self.widget, "_quick_look_overlay", None)
-            if ql is not None and hasattr(ql, "refresh_analysis"):
-                ql.refresh_analysis(item)
-        except Exception:
-            pass
 
     # -- Ask AI (A3 entry points + A4 async/cache/generation guard) ------------
 
