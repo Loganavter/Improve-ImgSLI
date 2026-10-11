@@ -1612,24 +1612,6 @@ class GalleryController:
             except Exception:
                 continue
 
-    def set_view_prefs(self, *, view_list: bool, judgment_domain: str) -> None:
-        """Persist toolbar switch positions into the gallery session slot.
-
-        View-scoped (not undoable): both switches come back as left on the next
-        restore. Dispatched through the slot reducer like every other mutation.
-        """
-        try:
-            from core.state_management.gallery_actions import GalleryViewPrefsSet
-
-            self._emit_gallery(
-                GalleryViewPrefsSet(
-                    view_list=bool(view_list),
-                    judgment_domain=str(judgment_domain or "algorithms"),
-                )
-            )
-        except Exception:
-            logger.debug("set_view_prefs emit failed", exc_info=True)
-
     def _begin_analysis(self, item: GalleryItem) -> None:
         settings = self._ai_settings_store.load()
         if not settings.enabled or not settings.api_key or not settings.model:

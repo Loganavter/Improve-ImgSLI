@@ -24,12 +24,8 @@ anywhere else (all live mutations go through
 
 from __future__ import annotations
 
-import json
 import logging
-from dataclasses import replace
 from pathlib import Path
-
-from PySide6.QtCore import QSettings
 
 from tabs.contract import TabContext
 from tabs.image_gallery.bootstrap_reducers import GALLERY_SLOT_NAME
@@ -46,111 +42,44 @@ logger = logging.getLogger("ImproveImgSLI")
 # the single source of truth.
 _LEGACY_STATE_SLOT = "image_gallery.state"
 
-#: "Last used" toolbar chrome (grid/list + Algorithms|AI). Persisted in
-#: QSettings (the repo idiom for last-used chrome — see multi_compare) so it
-#: survives session switches AND app restarts; the per-session slot stays the
-#: authoritative value while a session is live.
-_QS_ORG = "improve-imgsli"
-_QS_APP = "improve-imgsli"
-_QS_VIEW_PREFS_KEY = "image_gallery/view_prefs"
-
 _SERIALIZE_VERSION = 2
 
 
-def save_view_prefs(view_list: bool, judgment_domain: str) -> None:
-    """Persist the last-used toolbar switch positions to QSettings."""
+def _chrome_serialize(tab, session_id: str, context: TabContext) -> dict:
+    state = getattr(tab, "_session_state", None)
+    if state is None:
+        return {}
     try:
-        data = {
-            "view_list": bool(view_list),
-            "judgment_domain": str(judgment_domain or "algorithms"),
-        }
-        settings = QSettings(_QS_ORG, _QS_APP)
-        settings.setValue(_QS_VIEW_PREFS_KEY, json.dumps(data))
-        settings.sync()
+        return state.serialize(context, session_id)
     except Exception:
-        logger.debug("gallery view-prefs save failed", exc_info=True)
+        logger.debug("ImageGalleryTab chrome serialize failed", exc_info=True)
+        return {}
 
 
-def load_view_prefs() -> tuple[bool, str] | None:
-    """Last-used ``(view_list, judgment_domain)`` from QSettings, or None."""
+def _chrome_deserialize(tab, session_id: str, data: dict, context: TabContext) -> None:
+    state = getattr(tab, "_session_state", None)
+    if state is None:
+        return
     try:
-        settings = QSettings(_QS_ORG, _QS_APP)
-        raw = settings.value(_QS_VIEW_PREFS_KEY)
-        if not raw:
-            return None
-        if isinstance(raw, (bytes, bytearray)):
-            raw = bytes(raw).decode("utf-8")
-        data = json.loads(str(raw))
-        dom = str(data.get("judgment_domain") or "algorithms")
-        return (bool(data.get("view_list", False)), dom)
+        state.deserialize(data, context, session_id)
     except Exception:
-        logger.debug("gallery view-prefs load failed", exc_info=True)
-        return None
+        logger.debug("ImageGalleryTab chrome deserialize failed", exc_info=True)
 
 
+def _apply_session_state(tab, context: TabContext, session_id: str) -> None:
+    """Apply the session's toolbar chrome (unconditional; never pool-gated).
 
-def _apply_view_prefs(tab, slot) -> None:
-    """Restore toolbar switch positions from the slot (quietly).
-
-    Runs AFTER the pool mirror is rebuilt, on EVERY activation path (not only
-    the non-empty-pool branch). The judgment domain is applied without emitting,
-    so a restored ``ai`` domain never fires a network run on open (the user
-    triggers AI explicitly). For a non-gallery (legacy/absent) slot it falls back
-    to the last-used QSettings value.
+    ``SessionState.apply_from_slot`` reads the LIVE slot (QSettings fallback)
+    and binds the facade to ``session_id``. The judgment domain is applied
+    quietly by the widget, so a restored ``ai`` domain never fires a run.
     """
-    widget = getattr(tab, "_widget", None)
-    if widget is None:
+    state = getattr(tab, "_session_state", None)
+    if state is None:
         return
-    apply = getattr(widget, "apply_view_prefs", None)
-    if not callable(apply):
-        return
-    if isinstance(slot, GallerySlotState):
-        view_list = bool(getattr(slot, "view_list", False))
-        dom = str(getattr(slot, "judgment_domain", "algorithms") or "algorithms")
-    else:
-        loaded = load_view_prefs()
-        view_list, dom = loaded if loaded is not None else (False, "algorithms")
     try:
-        apply(view_list=view_list, judgment_domain=dom)
+        state.apply_from_slot(context, session_id)
     except Exception:
         logger.debug("ImageGalleryTab view-prefs restore failed", exc_info=True)
-
-
-def on_session_created(tab, session_id: str, context: TabContext) -> None:
-    """Seed a new session's slot from the last-used QSettings view prefs.
-
-    Mirrors multi_compare's ``on_session_created``: session slots stay isolated
-    (per-session truth), but a fresh gallery session inherits the last-used
-    toolbar chrome so a *new* session does not reset the switches.
-    """
-    store = getattr(context, "store", None)
-    if store is None:
-        return
-    loaded = load_view_prefs()
-    if loaded is None:
-        return
-    view_list, dom = loaded
-    try:
-        slot = store.get_session_state_slot(GALLERY_SLOT_NAME, session_id=session_id)
-    except Exception:
-        slot = None
-    if not isinstance(slot, GallerySlotState):
-        return
-    try:
-        slot = replace(slot, view_list=view_list, judgment_domain=dom)
-        store.set_session_state_slot(
-            GALLERY_SLOT_NAME, slot, session_id=session_id, emit_scope=None
-        )
-    except Exception:
-        logger.debug("gallery view-prefs seed failed", exc_info=True)
-        return
-    # If this session is already bound to the live widget, apply now.
-    try:
-        active = getattr(tab, "_active_session_id", None)
-        if active == session_id:
-            _apply_view_prefs(tab, slot)
-    except Exception:
-        pass
 
 
 def restore_from(tab, context: TabContext, session_id: str | None) -> None:
@@ -179,7 +108,7 @@ def restore_from(tab, context: TabContext, session_id: str | None) -> None:
             tab._controller._sync_from_slot()
         except Exception:
             logger.debug("ImageGalleryTab slot restore failed", exc_info=True)
-        _apply_view_prefs(tab, slot)
+        _apply_session_state(tab, context, session_id)
         return
     # Empty / absent / foreign slot — legacy rescan path. Folder comes
     # from the (possibly empty) slot, else the legacy folder-only slot.
@@ -201,7 +130,7 @@ def restore_from(tab, context: TabContext, session_id: str | None) -> None:
             tab._controller.clear_to_empty()
         except Exception:
             logger.debug("ImageGalleryTab empty restore failed", exc_info=True)
-        _apply_view_prefs(tab, slot)
+        _apply_session_state(tab, context, session_id)
         return
     folder = Path(folder_raw)
     if folder.is_dir():
@@ -209,7 +138,7 @@ def restore_from(tab, context: TabContext, session_id: str | None) -> None:
             tab._controller.open_folder(folder)
         except Exception:
             logger.debug("ImageGalleryTab restore failed for %s", folder, exc_info=True)
-    _apply_view_prefs(tab, slot)
+    _apply_session_state(tab, context, session_id)
 
 
 def serialize_session(tab, session_id: str, context: TabContext) -> dict | None:
@@ -228,7 +157,7 @@ def serialize_session(tab, session_id: str, context: TabContext) -> dict | None:
     except Exception:
         slot = None
     if isinstance(slot, GallerySlotState):
-        return {
+        snapshot = {
             "version": _SERIALIZE_VERSION,
             "folder": slot.folder,
             "filter_text": slot.filter_text,
@@ -236,8 +165,6 @@ def serialize_session(tab, session_id: str, context: TabContext) -> dict | None:
             "triage_state": slot.triage_state,
             "mode": slot.mode,
             "source_path": slot.source_path,
-            "view_list": bool(getattr(slot, "view_list", False)),
-            "judgment_domain": str(getattr(slot, "judgment_domain", "algorithms") or "algorithms"),
             "items": [
                 {
                     "path": it.path,
@@ -248,6 +175,9 @@ def serialize_session(tab, session_id: str, context: TabContext) -> dict | None:
                 for it in slot.items
             ],
         }
+        # Toolbar chrome is read from THIS session's slot (not the bound copy).
+        snapshot.update(_chrome_serialize(tab, session_id, context))
+        return snapshot
     # Foreign/legacy slot value — persist whatever folder we can find.
     # Slot-only: when slot/legacy carry no folder, fail open with
     # folder None — never reach into controller-local truth.
@@ -290,8 +220,6 @@ def deserialize_session(tab, session_id: str, data: dict, context: TabContext) -
             triage_state=str(data.get("triage_state") or "idle"),
             mode=data.get("mode"),
             source_path=data.get("source_path"),
-            view_list=bool(data.get("view_list", False)),
-            judgment_domain=str(data.get("judgment_domain") or "algorithms"),
         )
     else:
         # Legacy v1 (folder only): empty pool forces a rescan on restore.
@@ -301,6 +229,7 @@ def deserialize_session(tab, session_id: str, data: dict, context: TabContext) -
         store.set_session_state_slot(GALLERY_SLOT_NAME, state, session_id=session_id, emit_scope=None)
     except Exception:
         pass
+    _chrome_deserialize(tab, session_id, data, context)
     # If this session is currently visible, rebuild from the slot now.
     active = None
     try:

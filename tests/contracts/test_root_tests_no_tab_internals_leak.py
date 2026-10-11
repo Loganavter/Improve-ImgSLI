@@ -63,6 +63,10 @@ ALLOWED_DEEP_TAB_IMPORTS: dict[str, str] = {
         "shared event-layer/hit-test registry contract, image_compare is the "
         "registered example package"
     ),
+    "tests/test_session_state.py": (
+        "generic tabs/use_cases SessionState facade (shared host helper, not a "
+        "tab's behavior); fake store only, no tab import"
+    ),
     "tests/runtime/test_session_duplicate.py": (
         "generic WorkspaceSessionActions.duplicate_workspace_session mechanism, "
         "image_compare is example fixture data"
