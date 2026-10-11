@@ -17,6 +17,8 @@ from sli_ui_toolkit.widgets import BaseFlyout, CustomLineEdit, Label
 
 #: Minimum flyout width (the ask surface must not collapse).
 MIN_WIDTH_PX = 300
+#: Fallback minimum height (scaled) used only if the layout cannot report its
+#: own floor; the real minimum tracks the content layout (see _min_height).
 MIN_HEIGHT_PX = 160
 
 
@@ -119,10 +121,13 @@ class AskAiFlyout(BaseFlyout):
         ):
             self.content_layout.addWidget(widget)
 
+        # Empty result/status rows reserve no height (see _sync_row_visibility).
+        self._sync_row_visibility()
+
         # User resize support (toolkit flyouts auto-size only).
         self._user_size: tuple[int, int] | None = None
         try:
-            self.setMinimumSize(scaled_px(MIN_WIDTH_PX), scaled_px(MIN_HEIGHT_PX))
+            self.setMinimumSize(scaled_px(MIN_WIDTH_PX), self._min_height())
         except Exception:
             pass
         self._grip = _ResizeGrip(self)
@@ -235,6 +240,7 @@ class AskAiFlyout(BaseFlyout):
         self._edit.setReadOnly(False)
         self._result.setText("")
         self._status.setText("")
+        self._sync_row_visibility()
         if initial_result is not None:
             self.show_result(
                 getattr(initial_result, "text", "") or "",
@@ -322,11 +328,45 @@ class AskAiFlyout(BaseFlyout):
 
     # -- manual resize -------------------------------------------------------
 
+    def _min_height(self) -> int:
+        """Minimum shell height the content layout actually needs (+ shadow).
+
+        Tracks the layout floor instead of the fixed ``MIN_HEIGHT_PX``
+        constant so the ask surface can never be shrunk below what its rows
+        require — under it the wrapped result/status rows clip or overlap.
+        Falls back to the constant when the layout cannot report a floor.
+        """
+        m = self.SHADOW_RADIUS
+        try:
+            layout = self.container.layout()
+            if layout is not None:
+                layout.activate()
+                need = int(layout.minimumSize().height()) + 2 * m
+                if need > 2 * m:
+                    return need
+        except Exception:
+            pass
+        return scaled_px(MIN_HEIGHT_PX)
+
+    def _sync_row_visibility(self) -> None:
+        """Collapse the result/status rows when they carry no text.
+
+        An empty row must not reserve height: the flyout floor tracks the
+        layout (see ``_min_height``), so a blank pane would otherwise keep the
+        surface tall with dead space under the question field. The scope line
+        is handled the same way in :meth:`open_for`.
+        """
+        for label in (self._result, self._status):
+            try:
+                label.setVisible(bool(label.text()))
+            except Exception:
+                pass
+
     def apply_user_size(self, width: int, height: int) -> None:
         """Set the flyout to a user-chosen size (grip drag), keeping content."""
         m = self.SHADOW_RADIUS
         w = max(scaled_px(MIN_WIDTH_PX), int(width))
-        h = max(scaled_px(MIN_HEIGHT_PX), int(height))
+        h = max(self._min_height(), int(height))
         try:
             self.resize(w, h)
             self.container.setGeometry(m, m, w - 2 * m, h - 2 * m)
@@ -367,6 +407,7 @@ class AskAiFlyout(BaseFlyout):
         except Exception:
             pass
         self._status.setText(self._busy_text if busy else "")
+        self._sync_row_visibility()
         self._relayout()
 
     def reshow(self, anchor: QWidget) -> None:
@@ -400,11 +441,13 @@ class AskAiFlyout(BaseFlyout):
             badge += " · cached"
         self._result.setText(str(text or ""))
         self._status.setText(badge)
+        self._sync_row_visibility()
         self._relayout()
 
     def show_error(self, message: str) -> None:
         self._result.setText("")
         self._status.setText(str(message or self._error_text))
+        self._sync_row_visibility()
         self._relayout()
 
     def restore_focus_on_hide(self) -> bool:
