@@ -946,7 +946,18 @@ class GalleryGridView(QWidget):
             cols = int(self.grid_columns)
         except Exception:
             return
-        max_cols = max(int(GRID_COLUMNS), int(cols or 1))
+        # Reset EVERY column the layout currently carries, not just the ones
+        # the current mode uses: the responsive/banded grid can pin more than
+        # GRID_COLUMNS (wide viewports grow, bands add a separator column), and
+        # a grid→list switch keeps the same QGridLayout. Leftover card-width
+        # minimums on those higher columns (e.g. 4,5 after a 6-col banded grid)
+        # steal width from the stretched list column and leave a dead strip on
+        # the right.
+        try:
+            _layout_cols = int(self.items_layout.columnCount())
+        except Exception:
+            _layout_cols = 0
+        max_cols = max(int(GRID_COLUMNS), int(cols or 1), int(_layout_cols))
         is_list = self._view_mode == VIEW_LIST
         try:
             # List: fill horizontally (one stretched column). Grid: natural
