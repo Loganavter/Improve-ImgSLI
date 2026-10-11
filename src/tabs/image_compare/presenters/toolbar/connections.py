@@ -130,6 +130,13 @@ def _resolve_interpolation_handler(controller):
     return None
 
 def connect_signals(presenter):
+    # Idempotent re-wire: drop any previously tracked connections FIRST.
+    # connect_signals can run twice (feature on_resolved + the explicit
+    # presenters/connections.py call); without this the reset below orphaned
+    # the first call's connections (still firing), so e.g. the font flyout's
+    # settings_changed was connected twice and every slider tick applied the
+    # font settings twice.
+    disconnect_signals(presenter)
     # Fresh ownership ledger: a re-wire after disconnect_signals starts
     # clean instead of accumulating dead connections.
     try:
@@ -685,7 +692,35 @@ def _connect_font_flyout(presenter):
         elif presenter.main_controller is not None:
             presenter.main_controller.apply_font_settings(*args)
 
-    _track(presenter, flyout.settings_changed, _emit_font_settings)
+    # The font-settings flyout is a single main-window-level instance shared by
+    # every presenter that wires it. A per-presenter connection ledger can't
+    # drop another presenter's connection, so ``settings_changed`` ended up
+    # connected once per presenter -> every slider tick applied the font
+    # settings 2x. Keep exactly one connection on the flyout itself.
+    prev = getattr(flyout, "_ic_settings_changed_conn", None)
+    if prev is not None:
+        try:
+            from PySide6.QtCore import QObject
+
+            QObject.disconnect(prev)
+        except Exception:
+            pass
+    conn = _track(presenter, flyout.settings_changed, _emit_font_settings)
+    try:
+        flyout._ic_settings_changed_conn = conn
+    except Exception:
+        pass
+    try:
+        import os as _perf_os
+
+        if _perf_os.environ.get("IMGSLI_UI_PERF_DEBUG"):
+            import logging
+
+            logging.getLogger("ImproveImgSLI").info(
+                "[perf] _connect_font_flyout wired (had_prev=%s)", prev is not None
+            )
+    except Exception:
+        pass
 
 def _on_font_flyout_closed(presenter):
     presenter.ui_manager.transient.mark_font_popup_closed()

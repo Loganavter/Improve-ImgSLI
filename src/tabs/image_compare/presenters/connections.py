@@ -26,41 +26,11 @@ def connect_signals(presenter):
     presenter.font_settings_flyout.interaction_finished.connect(
         lambda slider_name: _on_font_flyout_interaction_finished(presenter, slider_name)
     )
-    from domain.qt_adapters import qcolor_to_color
-    from plugins.settings.events import SettingsApplyFontSettingsEvent
-
-    if presenter.event_bus:
-
-        def _emit_font_settings(size, weight, color, bg_color, draw_bg, placement, alpha):
-            import os
-            import time
-
-            _perf = bool(os.environ.get("IMGSLI_UI_PERF_DEBUG"))
-            t0 = time.perf_counter() if _perf else 0.0
-            presenter.event_bus.emit(
-                SettingsApplyFontSettingsEvent(
-                    size,
-                    weight,
-                    qcolor_to_color(color),
-                    qcolor_to_color(bg_color),
-                    draw_bg,
-                    placement,
-                    alpha,
-                )
-            )
-            if _perf:
-                import logging
-
-                logging.getLogger("ImproveImgSLI").info(
-                    "[perf] font_settings.apply %.1f ms",
-                    (time.perf_counter() - t0) * 1000.0,
-                )
-
-        presenter.font_settings_flyout.settings_changed.connect(_emit_font_settings)
-    else:
-        presenter.font_settings_flyout.settings_changed.connect(
-            presenter.main_controller.apply_font_settings
-        )
+    # NOTE: font_settings_flyout.settings_changed is wired in
+    # presenters/toolbar/connections.py::_connect_font_flyout (tracked via
+    # _track so disconnect_signals can drop it). It used to ALSO be connected
+    # here, so every slider tick applied the font settings twice (~2x the
+    # apply cost per tick). Keep a single owner.
 
     presenter.main_controller.start_interactive_movement.connect(
         image_canvas.start_interactive_movement

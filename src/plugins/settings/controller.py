@@ -89,9 +89,11 @@ class SettingsController(QObject):
             placement_mode=str(placement_mode),
             text_alpha_percent=max(0, min(100, int(text_alpha_percent))),
         )
+        _perf_t1 = _perf_time.perf_counter() if _perf else 0.0
         if not changed:
             return
         self.notifier.request_core_update()
+        _perf_t2 = _perf_time.perf_counter() if _perf else 0.0
         recorder = getattr(self.store, "recorder", None)
         if recorder is not None and getattr(recorder, "is_recording", False) and not getattr(recorder, "is_paused", False):
             recorder.capture_frame()
@@ -99,8 +101,10 @@ class SettingsController(QObject):
             import logging
 
             logging.getLogger("ImproveImgSLI").info(
-                "[perf] settings.apply_font %.1f ms",
+                "[perf] settings.apply_font total=%.1f mutations=%.1f request_core=%.1f ms",
                 (_perf_time.perf_counter() - _perf_t0) * 1000.0,
+                (_perf_t1 - _perf_t0) * 1000.0,
+                (_perf_t2 - _perf_t1) * 1000.0,
             )
 
     def execute_canvas_feature_command(

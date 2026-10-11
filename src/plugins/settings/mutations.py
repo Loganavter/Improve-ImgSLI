@@ -198,48 +198,54 @@ class SettingsMutationService:
         text_alpha_percent: int,
     ) -> bool:
         changed = False
-        changed |= self.set_viewport_value(
-            "font_size_percent",
-            size,
-            setting_key="font_size_percent",
-        )
-        changed |= self.set_viewport_value(
-            "font_weight",
-            font_weight,
-            setting_key="font_weight",
-        )
-        changed |= self.set_viewport_color(
-            "file_name_color",
-            color,
-            setting_key="filename_color",
-        )
-        changed |= self.set_viewport_color(
-            "file_name_bg_color",
-            bg_color,
-            setting_key="filename_bg_color",
-        )
-        changed |= self.set_viewport_value(
-            "draw_text_background",
-            draw_background,
-            setting_key="draw_text_background",
-        )
-        changed |= self.set_viewport_value(
-            "text_placement_mode",
-            placement_mode,
-            setting_key="text_placement_mode",
-        )
+        # Coalesce the per-setter emit_state_change calls into ONE flush: each
+        # setter emitted its own state change, so the (non-trivial) chrome-sync
+        # handler ran 2x per slider tick. ``batch_changes`` defers every emit to
+        # a single flush at block exit (invalidate first, so subscribers see the
+        # invalidated cache).
+        with self.store.batch_changes():
+            changed |= self.set_viewport_value(
+                "font_size_percent",
+                size,
+                setting_key="font_size_percent",
+            )
+            changed |= self.set_viewport_value(
+                "font_weight",
+                font_weight,
+                setting_key="font_weight",
+            )
+            changed |= self.set_viewport_color(
+                "file_name_color",
+                color,
+                setting_key="filename_color",
+            )
+            changed |= self.set_viewport_color(
+                "file_name_bg_color",
+                bg_color,
+                setting_key="filename_bg_color",
+            )
+            changed |= self.set_viewport_value(
+                "draw_text_background",
+                draw_background,
+                setting_key="draw_text_background",
+            )
+            changed |= self.set_viewport_value(
+                "text_placement_mode",
+                placement_mode,
+                setting_key="text_placement_mode",
+            )
 
-        # Canonical UI range is 5..100 (font flyout opacity slider); keep the
-        # stored value inside it so save -> load is a fixpoint (the feature
-        # property path clamps to the same range).
-        normalized_alpha = max(5, min(100, int(text_alpha_percent)))
-        changed |= self.set_viewport_value(
-            "text_alpha_percent",
-            normalized_alpha,
-            setting_key="text_alpha_percent",
-        )
+            # Canonical UI range is 5..100 (font flyout opacity slider); keep the
+            # stored value inside it so save -> load is a fixpoint (the feature
+            # property path clamps to the same range).
+            normalized_alpha = max(5, min(100, int(text_alpha_percent)))
+            changed |= self.set_viewport_value(
+                "text_alpha_percent",
+                normalized_alpha,
+                setting_key="text_alpha_percent",
+            )
 
-        if changed:
-            self.notifier.invalidate_render_cache()
-            self.notifier.emit_state_change()
+            if changed:
+                self.notifier.invalidate_render_cache()
+
         return changed
