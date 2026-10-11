@@ -1,31 +1,32 @@
-"""Session (de)serialization, layout-tree (de)serialization, and QSettings
-"last used" divider/label persistence for the Multi Compare tab -- split out
-of ``tab.py`` to keep that file down to the ``TabContract`` surface itself,
-mirroring the ``use_cases`` split applied to image_compare's own
-``use_cases/persistence.py``. ``serialize_session``/``deserialize_session``/
+"""Session (de)serialization, layout-tree (de)serialization, and the divider/label
+chrome codec for the Multi Compare tab -- split out of ``tab.py`` to keep that
+file down to the ``TabContract`` surface itself, mirroring the ``use_cases``
+split applied to image_compare's own ``use_cases/persistence.py``.
+``serialize_session``/``deserialize_session``/
 ``collect_pixel_cache_sources``/``on_session_created`` are required
 ``TabContract`` method names (or called directly from one), so ``tab.py``
 keeps thin delegators of those exact names; everything else here is private
-and only ever called from those delegators.
+and only ever called from those delegators. Divider/label chrome (last-used
+QSettings, new-session seed, project I/O) goes through the ``SessionState``
+facade, bound to ``_STATE_SLOT`` with ``chrome_extract``/``chrome_merge``.
 Audit-Meta: pattern=thin-owner-target reason="TabContract session/restore surface: serialize/deserialize/rehydrate plus entry validation share one module beside the models they validate"
 """
 
 from __future__ import annotations
 
-import json
 import logging
 from pathlib import Path
 
-from PySide6.QtCore import QSettings
-
 from tabs.contract import TabContext
+from tabs.multi_compare.models import (
+    MultiCompareDividerSettings,
+    MultiCompareLabelSettings,
+)
 
 logger = logging.getLogger("ImproveImgSLI")
 
 _STATE_SLOT = "multi_compare.state"
-_QS_ORG = "improve-imgsli"
-_QS_APP = "improve-imgsli"
-_QS_KEY = "multi_compare/last_session_settings"
+_LAST_USED_KEY = "multi_compare/last_session_settings"
 
 
 def _divider_to_dict(divider) -> dict:
@@ -136,82 +137,36 @@ def _deserialize_layout_node(data: dict | None):
         return None
 
 
-def _save_last_settings(divider, label) -> None:
-    try:
-        data = {"divider": _divider_to_dict(divider), "label": _label_to_dict(label)}
-        settings = QSettings(_QS_ORG, _QS_APP)
-        settings.setValue(_QS_KEY, json.dumps(data))
-        settings.sync()
-        logger.debug(
-            "[mc-divider-persist] save QSettings color=%s thickness=%s file=%s",
-            list(divider.color_rgba),
-            divider.thickness,
-            settings.fileName(),
-        )
-    except Exception:
-        logger.exception("mc: failed to save last session settings")
+def _chrome_as_dict(value) -> dict:
+    return value if isinstance(value, dict) else {}
 
 
-def _load_last_settings():
-    try:
-        settings = QSettings(_QS_ORG, _QS_APP)
-        raw = settings.value(_QS_KEY)
-        if not raw:
-            logger.debug(
-                "[mc-divider-persist] load QSettings empty key=%s file=%s",
-                _QS_KEY,
-                settings.fileName(),
-            )
-            return None
-        if isinstance(raw, (bytes, bytearray)):
-            raw = bytes(raw).decode("utf-8")
-        elif not isinstance(raw, str):
-            raw = str(raw)
-        data = json.loads(raw)
-        divider = _divider_from_dict(data.get("divider", {}))
-        label = _label_from_dict(data.get("label", {}))
-        logger.debug(
-            "[mc-divider-persist] load QSettings color=%s thickness=%s",
-            list(divider.color_rgba),
-            divider.thickness,
-        )
-        return (divider, label)
-    except Exception:
-        logger.exception("mc: failed to load last session settings")
-        return None
+def chrome_extract(state) -> dict:
+    """Typed slot -> SessionState values (``divider``/``label`` dicts)."""
+    return {
+        "divider": _divider_to_dict(state.divider_settings),
+        "label": _label_to_dict(state.label_settings),
+    }
 
 
-def _settings_from_qsettings():
-    """Last-used divider/label from QSettings — seed for every new MC session."""
-    loaded = _load_last_settings()
-    if loaded is None:
-        return None
-    from tabs.multi_compare.models import MultiCompareState
-
-    divider, label = loaded
-    return MultiCompareState(divider_settings=divider, label_settings=label)
-
-
-def _settings_from_sibling_session(store, *, exclude: str):
-    """Copy divider/label chrome from another live MC session (QSettings fallback)."""
+def chrome_merge(state, values: dict):
+    """SessionState values -> typed slot; pure, partial ``values`` allowed."""
     from dataclasses import replace
 
-    from tabs.multi_compare.models import MultiCompareState
+    changes = {}
+    if "divider" in values:
+        changes["divider_settings"] = _divider_from_dict(_chrome_as_dict(values["divider"]))
+    if "label" in values:
+        changes["label_settings"] = _label_from_dict(_chrome_as_dict(values["label"]))
+    return replace(state, **changes) if changes else state
 
-    for session in store.list_workspace_sessions():
-        if getattr(session, "session_type", None) != "multi_compare":
-            continue
-        if session.id == exclude:
-            continue
-        slot = session.state_slots.get(_STATE_SLOT)
-        if slot is None:
-            continue
-        return replace(
-            MultiCompareState(),
-            divider_settings=slot.divider_settings,
-            label_settings=slot.label_settings,
-        )
-    return None
+
+# Defaults mirror a fresh ``MultiCompareState`` so the facade's "never shares
+# the default instance" copy starts from the same chrome as the blueprint.
+CHROME_FIELDS = {
+    "divider": (dict, _divider_to_dict(MultiCompareDividerSettings())),
+    "label": (dict, _label_to_dict(MultiCompareLabelSettings())),
+}
 
 
 def _fresh_default_state():
@@ -220,79 +175,36 @@ def _fresh_default_state():
     return MultiCompareState()
 
 
-def _multi_compare_session_count(store) -> int:
-    return sum(
-        1
-        for session in store.list_workspace_sessions()
-        if getattr(session, "session_type", None) == "multi_compare"
-    )
-
-
 def on_widget_state_changed(tab, action, state) -> None:
     # Persist "last used" prefs on intentional divider/label edits only.
     # ``replace_state``/session switches must not overwrite QSettings with a
     # transient default. The session slot is written by the core Dispatcher
-    # on every MC dispatch — nothing to mirror here.
+    # on every MC dispatch — the facade only remembers the last-used copy.
     action_type = getattr(action, "type", "")
     if action_type in {
         "multi_compare/set_divider_settings",
         "multi_compare/set_label_settings",
     }:
-        _save_last_settings(state.divider_settings, state.label_settings)
+        tab._session_state.remember(chrome_extract(state))
 
 
 def on_session_created(tab, session_id: str, context: TabContext) -> None:
     store = getattr(context, "store", None)
     if store is None:
         return
-    state = store.ensure_session_state_slot(
+    store.ensure_session_state_slot(
         _STATE_SLOT,
         session_id=session_id,
         factory=_fresh_default_state,
     )
-    count = _multi_compare_session_count(store)
-    seeded = False
-    # Every new MC tab inherits last-used divider/label chrome (QSettings).
-    # Session slots stay isolated — only the seed is shared, not live state.
-    remembered = _settings_from_qsettings()
-    if remembered is None and count > 1:
-        remembered = _settings_from_sibling_session(store, exclude=session_id)
-    if remembered is not None:
-        from dataclasses import replace
-
-        state = replace(
-            state,
-            divider_settings=remembered.divider_settings,
-            label_settings=remembered.label_settings,
-        )
-        store.set_session_state_slot(
-            _STATE_SLOT,
-            state,
-            session_id=session_id,
-            emit_scope=None,
-        )
-        seeded = True
-    logger.debug(
-        "[mc-divider-persist] on_session_created id=%s count=%s seeded=%s color=%s",
-        session_id,
-        count,
-        seeded,
-        list(state.divider_settings.color_rgba),
-    )
+    # Every new MC tab inherits last-used divider/label chrome. Session slots
+    # stay isolated — only the seed is shared, not live state.
+    tab._session_state.seed_slot(context, session_id)
     # ``create_workspace_session`` emits workspace state *before*
     # WorkspaceSessionCreatedEvent, so the presenter may have activated the
-    # tab and re-read defaults already. Push the seeded slot into the live
-    # widget if it is already bound.
-    if (
-        seeded
-        and tab._widget is not None
-        and (
-            tab._active_session_id == session_id
-            or tab._resolve_active_session_id(context) == session_id
-        )
-    ):
+    # tab already; ``seed_slot`` re-applies the seeded slot to the live widget.
+    if tab._widget is not None and tab._resolve_active_session_id(context) == session_id:
         tab._active_session_id = session_id
-        tab._widget.refresh_from_session()
 
 
 def serialize_session(tab, session_id: str, context: TabContext) -> dict | None:
@@ -305,6 +217,7 @@ def serialize_session(tab, session_id: str, context: TabContext) -> dict | None:
     state = session.state_slots.get(_STATE_SLOT)
     if state is None:
         return None
+    chrome = tab._session_state.serialize(context, session_id)
     return {
         "version": _SESSION_VERSION,
         # `image=None` is not persisted — pixel arrays are reloaded from
@@ -323,8 +236,9 @@ def serialize_session(tab, session_id: str, context: TabContext) -> dict | None:
         "pan_x": state.pan_x,
         "pan_y": state.pan_y,
         "max_slots": state.max_slots,
-        "label_settings": _label_to_dict(state.label_settings),
-        "divider_settings": _divider_to_dict(state.divider_settings),
+        # Project keys stay as-is (older builds read them).
+        "label_settings": chrome["label"],
+        "divider_settings": chrome["divider"],
     }
 
 
@@ -497,9 +411,15 @@ def deserialize_session(tab, session_id: str, data: dict, context: TabContext) -
         pan_x=_coerce_number(data.get("pan_x", 0.0), 0.0),
         pan_y=_coerce_number(data.get("pan_y", 0.0), 0.0),
         max_slots=max_slots,
-        label_settings=_label_from_dict(data.get("label_settings") or {}),
-        divider_settings=_divider_from_dict(data.get("divider_settings") or {}),
     )
     store.set_session_state_slot(
         _STATE_SLOT, state, session_id=session_id, emit_scope=None,
+    )
+    tab._session_state.deserialize(
+        {
+            "divider": data.get("divider_settings"),
+            "label": data.get("label_settings"),
+        },
+        context,
+        session_id,
     )
