@@ -334,6 +334,31 @@ def _defect_chips(defects) -> str:
     return " · ".join(out)
 
 
+def _axis_flag_chips(flags) -> str:
+    """AI-sourced axis flags as text only (never a number, never a row).
+
+    ``candidate`` → ``possible <label>``; ``judgment`` → ``AI judgment: <label>``.
+    Both are marked unverified. Any other kind (``measured`` is reserved for the
+    local detectors) is dropped rather than shown as if it were measured.
+    """
+    from tabs.image_gallery.models import MetricKind
+
+    out = []
+    try:
+        for f in flags or ():
+            kind = str(getattr(f, "kind", "") or "").strip()
+            label = str(getattr(f, "label", "") or getattr(f, "id", "") or "").replace("_", " ").strip()
+            if not label:
+                continue
+            if kind == MetricKind.CANDIDATE.value:
+                out.append(f"possible {label} (AI, unverified)")
+            elif kind == MetricKind.JUDGMENT.value:
+                out.append(f"AI judgment: {label} (unverified)")
+    except Exception:
+        return ""
+    return " · ".join(out)
+
+
 def populate_analysis(overlay, item) -> None:
     """Fill the sidebar AI-analysis block (quality verdict + defects).
 
@@ -407,6 +432,12 @@ def populate_analysis(overlay, item) -> None:
             else:
                 # Legacy caption-only cache entry: show the description.
                 desc_text = legacy_desc
+            try:
+                flags_text = _axis_flag_chips(getattr(analysis, "axis_flags", ()) or ())
+            except Exception:
+                flags_text = ""
+            if flags_text:
+                tags_text = " · ".join(x for x in (tags_text, flags_text) if x)
         elif status_val == "pending":
             desc_text = "Analyzing…"
         elif status_val == "error":
