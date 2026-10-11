@@ -225,7 +225,8 @@ class FontSettingsFlyout(BaseFlyout):
                 import logging
 
                 logging.getLogger("ImproveImgSLI").info(
-                    "[perf] flyout.emit_settings_changed"
+                    "[perf] flyout.emit_settings_changed sender=%s",
+                    type(self.sender()).__name__ if self.sender() is not None else None,
                 )
         except Exception:
             pass
