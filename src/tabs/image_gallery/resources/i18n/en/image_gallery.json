@@ -49,7 +49,7 @@
     "ask_ai": {
       "action": "AI…",
       "title": "Ask AI",
-      "default_prompt": "Summary",
+      "default_prompt": "What matters here?",
       "busy": "Thinking…",
       "read_badge": "AI read, unverified",
       "error": "AI could not answer.",

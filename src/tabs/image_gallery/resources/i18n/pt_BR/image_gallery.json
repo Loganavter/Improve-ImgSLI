@@ -49,7 +49,7 @@
     "ask_ai": {
       "action": "IA…",
       "title": "Perguntar à IA",
-      "default_prompt": "Resumo",
+      "default_prompt": "O que importa aqui?",
       "busy": "Pensando…",
       "read_badge": "Leitura de IA, não verificada",
       "error": "A IA não conseguiu responder.",

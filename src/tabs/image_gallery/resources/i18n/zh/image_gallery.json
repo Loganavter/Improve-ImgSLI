@@ -49,7 +49,7 @@
     "ask_ai": {
       "action": "AI…",
       "title": "询问 AI",
-      "default_prompt": "摘要",
+      "default_prompt": "这里有什么重点？",
       "busy": "思考中…",
       "read_badge": "AI 解读，未经核实",
       "error": "AI 无法回答。",

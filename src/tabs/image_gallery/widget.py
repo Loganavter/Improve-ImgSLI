@@ -902,7 +902,7 @@ class ImageGalleryWidget(QWidget):
         return flyout
 
     def open_ask_ai(
-        self, anchor, scope, *, default_prompt: str = "Summary", texts=None
+        self, anchor, scope, *, default_prompt: str = "What matters here?", texts=None
     ) -> None:
         """Show the Ask AI flyout; submit routes to ``controller.ask_ai_question``."""
         flyout = self._ensure_ask_ai_flyout()

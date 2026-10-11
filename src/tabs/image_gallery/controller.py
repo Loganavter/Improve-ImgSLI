@@ -1702,7 +1702,7 @@ class GalleryController:
         if not callable(opener):
             return
         try:
-            default = self._tr("image_gallery.ask_ai.default_prompt", "Summary")
+            default = self._tr("image_gallery.ask_ai.default_prompt", "What matters here?")
             texts = {
                 "title": self._tr("image_gallery.ask_ai.title", "Ask AI"),
                 "busy": self._tr("image_gallery.ask_ai.busy", "Thinking…"),
@@ -1714,7 +1714,7 @@ class GalleryController:
                 ),
             }
         except Exception:
-            default = "Summary"
+            default = "What matters here?"
             texts = None
         opener(anchor, scope, default_prompt=default, texts=texts)
 

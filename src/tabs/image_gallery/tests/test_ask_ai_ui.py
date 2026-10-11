@@ -197,6 +197,72 @@ def test_flyout_has_resize_grip_and_min_width(qtbot):
     flyout.hide()
 
 
+def test_flyout_minimum_height_tracks_content_layout(qtbot):
+    """Min height follows the layout floor, not a fixed constant.
+
+    Pre-fix the floor was a hardcoded 160 scaled px regardless of content, so
+    it did not track the layout at all (and the always-present empty rows kept
+    the surface tall). The floor must equal what the live layout needs plus the
+    shadow margins.
+    """
+    from sli_ui_toolkit.managers import scaled_px
+
+    anchor = QWidget()
+    qtbot.addWidget(anchor)
+    anchor.resize(200, 100)
+    anchor.show()
+    qtbot.waitExposed(anchor)
+
+    flyout = AskAiFlyout(anchor)
+    qtbot.addWidget(flyout)
+    flyout.open_for(anchor, scope_label="Series 1", default_prompt="Summary")
+    qtbot.waitUntil(lambda: flyout.isVisible(), timeout=5000)
+
+    layout = flyout.container.layout()
+    layout.activate()
+    needed = int(layout.minimumSize().height()) + 2 * flyout.SHADOW_RADIUS
+    # Empty rows are collapsed, so the live floor is below the old constant —
+    # proof it tracks the layout rather than a magic number.
+    assert needed < scaled_px(160)
+    assert flyout.minimumHeight() == needed
+    flyout.hide()
+
+
+def test_empty_result_and_status_rows_collapse(qtbot):
+    """The two bottom labels hide when empty and reappear with content."""
+    anchor = QWidget()
+    qtbot.addWidget(anchor)
+    anchor.resize(200, 100)
+    anchor.show()
+    qtbot.waitExposed(anchor)
+
+    flyout = AskAiFlyout(anchor)
+    qtbot.addWidget(flyout)
+    flyout.open_for(anchor, default_prompt="Summary")
+    qtbot.waitUntil(lambda: flyout.isVisible(), timeout=5000)
+    qtbot.wait(300)  # past the show fade, when children are restored
+
+    assert not flyout._result.isVisible()
+    assert not flyout._status.isVisible()
+
+    flyout.set_busy(True)
+    qtbot.wait(50)
+    assert flyout._status.isVisible()
+
+    flyout.show_result("an answer", backend="text")
+    qtbot.wait(50)
+    assert flyout._result.isVisible()
+    assert flyout._status.isVisible()
+
+    flyout.show_error("")
+    qtbot.wait(50)
+    # Error path clears the result pane; an empty status falls back to text,
+    # so the result row collapses while the status keeps the message.
+    assert not flyout._result.isVisible()
+    assert flyout._status.isVisible()
+    flyout.hide()
+
+
 def test_empty_scope_line_is_hidden(qtbot):
     anchor = QWidget()
     qtbot.addWidget(anchor)
