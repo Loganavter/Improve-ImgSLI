@@ -83,3 +83,34 @@ def test_domain_change_persists_prefs():
     )
     ImageGalleryWidget._on_domain_changed(fake, "ai")
     assert recorded == {"view_list": False, "judgment_domain": "ai"}
+
+
+def test_save_and_load_view_prefs_roundtrip():
+    from tabs.image_gallery.use_cases import persistence as _p
+
+    _p.save_view_prefs(True, "ai")
+    assert _p.load_view_prefs() == (True, "ai")
+    _p.save_view_prefs(False, "algorithms")
+    assert _p.load_view_prefs() == (False, "algorithms")
+
+
+def test_on_session_created_seeds_slot_from_last_used():
+    from tabs.image_gallery.use_cases import persistence as _p
+    from tabs.image_gallery.state.models import fresh_gallery_slot_state
+
+    _p.save_view_prefs(True, "ai")
+    slot = fresh_gallery_slot_state()
+    stored: dict = {}
+    store = SimpleNamespace(
+        get_session_state_slot=lambda name, session_id=None: slot,
+        set_session_state_slot=lambda name, st, session_id=None, emit_scope=None: stored.update(
+            {"slot": st}
+        ),
+    )
+    ctx = SimpleNamespace(store=store)
+    tab = SimpleNamespace(_widget=None, _active_session_id=None)
+
+    _p.on_session_created(tab, "s1", ctx)
+
+    assert stored["slot"].view_list is True
+    assert stored["slot"].judgment_domain == "ai"

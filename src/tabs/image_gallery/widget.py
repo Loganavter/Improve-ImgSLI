@@ -783,7 +783,17 @@ class ImageGalleryWidget(QWidget):
             pass
 
     def _persist_view_prefs(self) -> None:
-        """Persist both toolbar switch positions into the session slot."""
+        """Persist both toolbar switch positions (session slot + last-used)."""
+        view_list = bool(getattr(self, "_view_mode", False))
+        dom = str(getattr(self, "_judgment_domain", "algorithms"))
+        try:
+            from tabs.image_gallery.use_cases import persistence as _persistence
+
+            # Last-used chrome (QSettings) — carries across sessions/restarts,
+            # mirrors multi_compare's idiom.
+            _persistence.save_view_prefs(view_list, dom)
+        except Exception:
+            pass
         try:
             ctrl = getattr(self, "_controller", None) or getattr(
                 self, "_attached_controller", None
@@ -794,22 +804,24 @@ class ImageGalleryWidget(QWidget):
         if not callable(fn):
             return
         try:
-            fn(
-                view_list=bool(getattr(self, "_view_mode", False)),
-                judgment_domain=str(getattr(self, "_judgment_domain", "algorithms")),
-            )
+            # Per-session slot (live truth while this session is active).
+            fn(view_list=view_list, judgment_domain=dom)
         except Exception:
             pass
 
     def apply_view_prefs(self, *, view_list: bool, judgment_domain: str) -> None:
         """Restore both switches from the session slot (quiet domain).
 
-        The view is applied normally (grid rebuilds); the domain is set with
-        signals blocked so a restored ``ai`` domain does NOT fire a network run
-        on open — the user triggers AI explicitly.
+        The view is applied directly (widget ``_view_mode`` + grid) so it never
+        relies on the toolbar's exclusive helper emitting ``viewToggled`` (which
+        early-returns when the toolbar is already in the matching state). The
+        domain is set with signals blocked so a restored ``ai`` domain does NOT
+        fire a network run on open — the user triggers AI explicitly.
         """
+        is_list = bool(view_list)
+        self._view_mode = is_list
         try:
-            self.toolbar.set_view_list(bool(view_list))
+            self._grid_view.set_view_mode("list" if is_list else "grid")
         except Exception:
             pass
         dom = str(judgment_domain or "algorithms").strip().lower()
@@ -820,6 +832,7 @@ class ImageGalleryWidget(QWidget):
             tb = self.toolbar
             tb.blockSignals(True)
             try:
+                tb.set_view_list(is_list)
                 tb.set_judgment_domain(dom)
             finally:
                 tb.blockSignals(False)
