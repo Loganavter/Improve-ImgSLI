@@ -45,6 +45,30 @@ _LEGACY_STATE_SLOT = "image_gallery.state"
 _SERIALIZE_VERSION = 2
 
 
+def _apply_view_prefs(tab, slot) -> None:
+    """Restore toolbar switch positions from the slot (quietly).
+
+    Runs AFTER the pool mirror is rebuilt. The judgment domain is applied
+    without emitting, so a restored ``ai`` domain never fires a network run on
+    open (the user triggers AI explicitly).
+    """
+    if not isinstance(slot, GallerySlotState):
+        return
+    widget = getattr(tab, "_widget", None)
+    if widget is None:
+        return
+    apply = getattr(widget, "apply_view_prefs", None)
+    if not callable(apply):
+        return
+    try:
+        apply(
+            view_list=bool(getattr(slot, "view_list", False)),
+            judgment_domain=str(getattr(slot, "judgment_domain", "algorithms") or "algorithms"),
+        )
+    except Exception:
+        logger.debug("ImageGalleryTab view-prefs restore failed", exc_info=True)
+
+
 def restore_from(tab, context: TabContext, session_id: str | None) -> None:
     if session_id is None or tab._widget is None or tab._controller is None:
         return
@@ -71,6 +95,7 @@ def restore_from(tab, context: TabContext, session_id: str | None) -> None:
             tab._controller._sync_from_slot()
         except Exception:
             logger.debug("ImageGalleryTab slot restore failed", exc_info=True)
+        _apply_view_prefs(tab, slot)
         return
     # Empty / absent / foreign slot — legacy rescan path. Folder comes
     # from the (possibly empty) slot, else the legacy folder-only slot.
@@ -125,6 +150,8 @@ def serialize_session(tab, session_id: str, context: TabContext) -> dict | None:
             "triage_state": slot.triage_state,
             "mode": slot.mode,
             "source_path": slot.source_path,
+            "view_list": bool(getattr(slot, "view_list", False)),
+            "judgment_domain": str(getattr(slot, "judgment_domain", "algorithms") or "algorithms"),
             "items": [
                 {
                     "path": it.path,
@@ -177,6 +204,8 @@ def deserialize_session(tab, session_id: str, data: dict, context: TabContext) -
             triage_state=str(data.get("triage_state") or "idle"),
             mode=data.get("mode"),
             source_path=data.get("source_path"),
+            view_list=bool(data.get("view_list", False)),
+            judgment_domain=str(data.get("judgment_domain") or "algorithms"),
         )
     else:
         # Legacy v1 (folder only): empty pool forces a rescan on restore.
