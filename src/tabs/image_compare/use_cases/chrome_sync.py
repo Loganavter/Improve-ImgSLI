@@ -432,6 +432,21 @@ class ImageCompareChromeSync(QObject):
         if self._has_full_res():
             batch.extend(["resolution", "zoom_indicator"])
         window_presenter.ui_batcher.schedule_batch_update(batch)
+        # A render-config change (font size/weight/color, diff mode, ...) is a
+        # purely visual canvas change. Kicking the canvas directly (same as the
+        # pan path: interaction.set_pan -> widget.update()) lands the frame on
+        # the next event-loop turn; the batched `file_names` branch also calls
+        # schedule_canvas_update, but its QTimer.singleShot(0) hop added ~30ms
+        # before the frame. schedule_update coalesces, so the later batched
+        # call is a no-op.
+        try:
+            window_presenter.schedule_canvas_update()
+        except Exception:
+            import logging
+
+            logging.getLogger("ImproveImgSLI").debug(
+                "handle_store_domain: direct canvas update missed", exc_info=True
+            )
 
     def on_workspace_changed(self, window_presenter):
         self._refresh_active_session_canvas(window_presenter)
