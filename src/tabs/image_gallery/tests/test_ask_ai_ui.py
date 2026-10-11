@@ -351,3 +351,39 @@ def test_flyout_chrome_is_localizable(qtbot):
     flyout.show_result("готово", backend="text")
     assert "Ответ ИИ" in flyout._status.text()
     flyout.hide()
+
+
+def test_ask_ai_images_toggle_defaults_off(qtbot):
+    anchor = QWidget()
+    qtbot.addWidget(anchor)
+    anchor.resize(200, 100)
+    anchor.show()
+    qtbot.waitExposed(anchor)
+    flyout = AskAiFlyout(anchor)
+    qtbot.addWidget(flyout)
+    flyout.open_for(anchor, default_prompt="Summary")
+    qtbot.waitUntil(lambda: flyout.isVisible(), timeout=5000)
+
+    assert flyout.findChild(QWidget, "gallery_ask_ai_images_toggle") is not None
+    assert flyout.include_images() is False
+    flyout.hide()
+
+
+def test_ask_ai_images_toggle_enable_and_reset_on_reopen(qtbot):
+    anchor = QWidget()
+    qtbot.addWidget(anchor)
+    anchor.resize(200, 100)
+    anchor.show()
+    qtbot.waitExposed(anchor)
+    flyout = AskAiFlyout(anchor)
+    qtbot.addWidget(flyout)
+    flyout.open_for(anchor, default_prompt="Summary")
+    qtbot.waitUntil(lambda: flyout.isVisible(), timeout=5000)
+
+    flyout._images_toggle.setChecked(True)
+    flyout._on_images_toggled()
+    assert flyout.include_images() is True
+
+    flyout.open_for(anchor, default_prompt="Summary")
+    assert flyout.include_images() is False
+    flyout.hide()

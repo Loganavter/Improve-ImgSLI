@@ -10,69 +10,19 @@ mutates rank/selection/store. All async work is dispatched by the controller
 from __future__ import annotations
 
 from PySide6.QtCore import QEvent, Qt, Signal
-from PySide6.QtWidgets import QWidget
+from PySide6.QtWidgets import QHBoxLayout, QWidget
 
 from sli_ui_toolkit.managers import scaled_px
-from sli_ui_toolkit.widgets import BaseFlyout, CustomLineEdit, Label
+from sli_ui_toolkit.widgets import BaseFlyout, Button, CustomLineEdit, Label
+
+from tabs.image_gallery.icons import Icon as GalleryIcon
+from tabs.image_gallery.ui.ask_ai_grip import AskAiResizeGrip
 
 #: Minimum flyout width (the ask surface must not collapse).
 MIN_WIDTH_PX = 300
 #: Fallback minimum height (scaled) used only if the layout cannot report its
 #: own floor; the real minimum tracks the content layout (see _min_height).
 MIN_HEIGHT_PX = 160
-
-
-class _ResizeGrip(QWidget):
-    """Bottom-right drag handle — resizes the flyout (an in-window child).
-
-    A real ``QSizeGrip`` only resizes top-level windows, and the toolkit has no
-    resizable flyout, so the grip drives the flyout/container geometry itself.
-    """
-
-    def __init__(self, flyout: "AskAiFlyout") -> None:
-        super().__init__(flyout)
-        self._flyout = flyout
-        self._start = None
-        self.setCursor(Qt.CursorShape.SizeFDiagCursor)
-        self.setFixedSize(scaled_px(16), scaled_px(16))
-        try:
-            self.setObjectName("gallery_ask_ai_resize_grip")
-        except Exception:
-            pass
-
-    def paintEvent(self, event) -> None:  # noqa: N802 (Qt name)
-        try:
-            from PySide6.QtGui import QColor, QPainter, QPen
-
-            p = QPainter(self)
-            p.setRenderHint(QPainter.RenderHint.Antialiasing)
-            p.setPen(QPen(QColor(150, 150, 150, 170), 1.4))
-            w, h = self.width(), self.height()
-            for off in (3, 7, 11):
-                p.drawLine(w - off, h - 2, w - 2, h - off)
-            p.end()
-        except Exception:
-            pass
-
-    def mousePressEvent(self, event) -> None:  # noqa: N802
-        if event.button() == Qt.MouseButton.LeftButton:
-            self._start = (event.globalPosition().toPoint(), self._flyout.size())
-            event.accept()
-
-    def mouseMoveEvent(self, event) -> None:  # noqa: N802
-        if self._start is None:
-            return
-        start, size0 = self._start
-        pos = event.globalPosition().toPoint()
-        self._flyout.apply_user_size(
-            size0.width() + (pos.x() - start.x()),
-            size0.height() + (pos.y() - start.y()),
-        )
-        event.accept()
-
-    def mouseReleaseEvent(self, event) -> None:  # noqa: N802
-        self._start = None
-        event.accept()
 
 
 class AskAiFlyout(BaseFlyout):
@@ -108,18 +58,40 @@ class AskAiFlyout(BaseFlyout):
             pass
         self._edit.returnPressed.connect(self._emit_submit)
         self._edit.installEventFilter(self)
+        # Include-images toggle (plan: Ask AI carries AI output for now). Off by
+        # default = metrics only (a crossed-out image); on = send the images.
+        self._include_images = False
+        self._images_toggle = Button(
+            icon=(GalleryIcon.ASK_IMAGES_OFF, GalleryIcon.ASK_IMAGES),
+            variant="ghost",
+            toggle=True,
+            size=(scaled_px(28), scaled_px(28)),
+            parent=self,
+        )
+        self._images_toggle.setObjectName("gallery_ask_ai_images_toggle")
+        try:
+            self._images_toggle.setChecked(False)
+            self._images_toggle.clicked.connect(self._on_images_toggled)
+        except Exception:
+            pass
         self._result = Label("", pixel_size=12, word_wrap=True, parent=self)
         self._result.setMinimumWidth(scaled_px(MIN_WIDTH_PX - 40))
         self._status = Label("", pixel_size=11, parent=self)
 
-        for widget in (
-            self._title,
-            self._scope,
-            self._edit,
-            self._result,
-            self._status,
-        ):
-            self.content_layout.addWidget(widget)
+        # Title, scope, then the question row (edit + images toggle).
+        self.content_layout.addWidget(self._title)
+        self.content_layout.addWidget(self._scope)
+        try:
+            edit_row = QHBoxLayout()
+            edit_row.setContentsMargins(0, 0, 0, 0)
+            edit_row.setSpacing(scaled_px(6))
+            edit_row.addWidget(self._edit, 1)
+            edit_row.addWidget(self._images_toggle, 0)
+            self.content_layout.addLayout(edit_row)
+        except Exception:
+            self.content_layout.addWidget(self._edit)
+        self.content_layout.addWidget(self._result)
+        self.content_layout.addWidget(self._status)
 
         # Empty result/status rows reserve no height (see _sync_row_visibility).
         self._sync_row_visibility()
@@ -130,7 +102,7 @@ class AskAiFlyout(BaseFlyout):
             self.setMinimumSize(scaled_px(MIN_WIDTH_PX), self._min_height())
         except Exception:
             pass
-        self._grip = _ResizeGrip(self)
+        self._grip = AskAiResizeGrip(self)
 
     # -- interaction --------------------------------------------------------
 
@@ -172,6 +144,19 @@ class AskAiFlyout(BaseFlyout):
         except Exception:
             pass
         self.submitted.emit(question)
+
+    def _on_images_toggled(self) -> None:
+        try:
+            self._include_images = bool(self._images_toggle.isChecked())
+        except Exception:
+            self._include_images = False
+
+    def include_images(self) -> bool:
+        """Whether the question should carry the images (VLM) or metrics only."""
+        try:
+            return bool(self._images_toggle.isChecked())
+        except Exception:
+            return bool(getattr(self, "_include_images", False))
 
     def keyPressEvent(self, event) -> None:  # noqa: N802 (Qt name)
         # The flyout's own key handler is the reliable Enter path: the toolkit
@@ -240,6 +225,12 @@ class AskAiFlyout(BaseFlyout):
         self._edit.setReadOnly(False)
         self._result.setText("")
         self._status.setText("")
+        # Images off by default on every open (metrics-only).
+        try:
+            self._images_toggle.setChecked(False)
+            self._include_images = False
+        except Exception:
+            pass
         self._sync_row_visibility()
         if initial_result is not None:
             self.show_result(

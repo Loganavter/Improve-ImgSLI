@@ -1034,7 +1034,18 @@ class ImageGalleryWidget(QWidget):
         owner = self._owner_for_triage()
         fn = getattr(owner, "ask_ai_question", None)
         if callable(fn):
-            fn(scope, question)
+            include = False
+            try:
+                flyout = getattr(self, "_ask_ai_flyout", None)
+                inc = getattr(flyout, "include_images", None)
+                if callable(inc):
+                    include = bool(inc())
+            except Exception:
+                include = False
+            try:
+                fn(scope, question, include_images=include)
+            except TypeError:
+                fn(scope, question)
             return
         self.show_ask_ai_error("AI is unavailable.")
 

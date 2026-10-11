@@ -22,3 +22,5 @@ class Icon(Enum):
     ALGORITHMS_INACTIVE = "algorithms_inactive.svg"
     AI = "ai.svg"
     AI_INACTIVE = "ai_inactive.svg"
+    ASK_IMAGES = "ask_images.svg"
+    ASK_IMAGES_OFF = "ask_images_off.svg"
