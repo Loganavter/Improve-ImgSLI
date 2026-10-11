@@ -955,7 +955,7 @@
     },
     {
       "path": "src/tabs/image_gallery/ui/toolbar.py",
-      "lines": 618,
+      "lines": 841,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=compound-widget size=exempt reason=\"toolbar + view-switch sharing one paint/theme lifecycle — split tracked post light-theme epic\"",
@@ -991,7 +991,7 @@
     },
     {
       "path": "src/tabs/image_gallery/widget.py",
-      "lines": 2174,
+      "lines": 2223,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner size=exempt reason=\"thin owner delegating to use_cases/triage+carry+quick look; splitting would create helpers bag\"",

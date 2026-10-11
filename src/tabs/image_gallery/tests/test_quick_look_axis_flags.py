@@ -142,3 +142,27 @@ def test_unknown_kind_never_rendered(qtbot):
     _show(ov, item, [item])
     assert "blur" not in ov._analysis_tags.text()
     ov.hide()
+
+
+def test_candidate_flag_duplicating_a_defect_is_suppressed(qtbot):
+    """A candidate already shown as a defect chip must not repeat itself."""
+    from tabs.image_gallery.models import AiDefect
+
+    flag = AiAxisFlag(id="halo", label="halo", kind=MetricKind.CANDIDATE.value)
+    item = _analysed("dup.png", [flag])
+    item.analysis = AiAnalysisResult(
+        description="",
+        tags=(),
+        model="test",
+        analyzed_at_iso="2026-10-11T00:00:00",
+        verdict="keep",
+        verdict_reason="usable result",
+        defects=(AiDefect(kind="halo", severity="mild"),),
+        axis_flags=(flag,),
+    )
+    ov = _make_overlay(qtbot)
+    _show(ov, item, [item])
+    tags = ov._analysis_tags.text()
+    assert "halo (mild)" in tags
+    assert "possible halo" not in tags
+    ov.hide()
