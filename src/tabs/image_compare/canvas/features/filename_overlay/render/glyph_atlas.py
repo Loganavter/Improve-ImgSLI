@@ -42,9 +42,10 @@ _SUPERSAMPLE = 4
 
 # Cheaper supersample used while a settings slider is being dragged
 # (interactive render mode): a weight/size drag changes the atlas key every
-# tick, and a full 4x rebuild is ~40-120 ms per tick. 2x keeps the drag
-# responsive; the settled frame rebuilds at the full ``_SUPERSAMPLE``.
-_INTERACTIVE_SUPERSAMPLE = 2
+# tick, and a full 4x rebuild is ~30-120 ms per tick. 1x (plain QPainter AA,
+# no supersample) brings it to ~5-8 ms; the settled frame rebuilds at the full
+# ``_SUPERSAMPLE``.
+_INTERACTIVE_SUPERSAMPLE = 1
 
 # Printable ASCII plus the horizontal ellipsis U+2026 -- the elision glyph
 # ``QFontMetrics.elidedText`` appends when a filename is truncated to the label
@@ -76,6 +77,10 @@ class _Tile:
     bearing_px: tuple[float, float]
     x: int = 0
     y: int = 0
+    # Device-px glyph outline + its bounding rect, kept so the whole atlas can
+    # be rasterized in ONE supersampled QPainter pass (see ``_pack``).
+    path: object | None = None
+    br: object | None = None
 
 
 class GlyphAtlas:
@@ -174,24 +179,31 @@ class GlyphAtlas:
                 continue
             w = int(np.ceil(br.width())) + 2 * pad_dev
             h = int(np.ceil(br.height())) + 2 * pad_dev
-            coverage = _render_coverage(
-                path, br, w, h, pad_dev, stroke_dev, supersample
-            )
             bearing = (br.x() / dpr - pad_logical, br.y() / dpr - pad_logical)
             tiles.append(
                 _Tile(
                     ch=ch,
                     w=w,
                     h=h,
-                    coverage=coverage,
+                    coverage=None,
                     advance_px=advance,
                     bearing_px=(float(bearing[0]), float(bearing[1])),
+                    path=path,
+                    br=br,
                 )
             )
 
-        self._pack(tiles, dpr)
+        self._pack(tiles, dpr, pad_dev, stroke_dev, supersample)
 
-    def _pack(self, tiles: list[_Tile], dpr: float) -> None:
+    def _pack(
+        self,
+        tiles: list[_Tile],
+        dpr: float,
+        pad_dev: int,
+        stroke_dev: float,
+        supersample: int,
+    ) -> None:
+        ss = max(1, int(supersample))
         ink = [t for t in tiles if t.w > 0 and t.h > 0]
         ink.sort(key=lambda t: (-t.h, t.ch))
         x = _GUTTER
@@ -208,17 +220,55 @@ class GlyphAtlas:
             row_h = max(row_h, tile.h)
         atlas_h = max(1, y + row_h + _GUTTER)
 
+        # ONE supersampled pass for every glyph, then ONE downscale -- instead
+        # of 95 separate QImage alloc + QPainter + Lanczos resizes, which cost
+        # ~30-120 ms per rebuild (a weight/size drag changes the atlas key
+        # every tick, so that rebuild lands in every frame).
+        big = QImage(
+            _ATLAS_WIDTH * ss, atlas_h * ss, QImage.Format.Format_RGBA8888
+        )
+        big.fill(0)
+        painter = QPainter(big)
+        try:
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            painter.setRenderHint(QPainter.RenderHint.TextAntialiasing)
+            painter.scale(float(ss), float(ss))
+            color = QColor(255, 255, 255, 255)
+            if stroke_dev > 0.0:
+                pen = QPen(color, stroke_dev)
+                pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+                pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+                painter.setPen(pen)
+                painter.setBrush(color)
+            else:
+                painter.setPen(Qt.PenStyle.NoPen)
+                painter.setBrush(color)
+            for tile in ink:
+                painter.save()
+                painter.translate(
+                    float(tile.x + pad_dev) - tile.br.x(),
+                    float(tile.y + pad_dev) - tile.br.y(),
+                )
+                painter.drawPath(tile.path)
+                painter.restore()
+        finally:
+            painter.end()
+
+        small = _downscale_lanczos(big, _ATLAS_WIDTH, atlas_h)
+        raw = np.frombuffer(small.constBits(), dtype=np.uint8).reshape(
+            atlas_h, _ATLAS_WIDTH, 4
+        )
+        cov = raw[..., 3]
         atlas = np.zeros((atlas_h, _ATLAS_WIDTH, 4), dtype=np.uint8)
+        atlas[..., 0] = cov
+        atlas[..., 3] = cov
+
         self._slots = {}
         for tile in ink:
-            cov_u8 = np.round(tile.coverage * 255.0).astype(np.uint8)
-            x0, y0 = tile.x, tile.y
-            atlas[y0 : y0 + tile.h, x0 : x0 + tile.w, 0] = cov_u8
-            atlas[y0 : y0 + tile.h, x0 : x0 + tile.w, 3] = cov_u8
-            u0 = x0 / _ATLAS_WIDTH
-            v0 = y0 / atlas_h
-            u1 = (x0 + tile.w) / _ATLAS_WIDTH
-            v1 = (y0 + tile.h) / atlas_h
+            u0 = tile.x / _ATLAS_WIDTH
+            v0 = tile.y / atlas_h
+            u1 = (tile.x + tile.w) / _ATLAS_WIDTH
+            v1 = (tile.y + tile.h) / atlas_h
             self._slots[tile.ch] = GlyphSlot(
                 uv=(u0, v0, u1, v1),
                 advance_px=tile.advance_px,

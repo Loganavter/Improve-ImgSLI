@@ -75,6 +75,11 @@ class SettingsController(QObject):
         placement_mode: str,
         text_alpha_percent: int,
     ):
+        import os as _perf_os
+        import time as _perf_time
+
+        _perf = bool(_perf_os.environ.get("IMGSLI_UI_PERF_DEBUG"))
+        _perf_t0 = _perf_time.perf_counter() if _perf else 0.0
         changed = self.mutations.apply_font_settings(
             size=max(1, int(size)),
             font_weight=max(0, int(font_weight)),
@@ -90,6 +95,13 @@ class SettingsController(QObject):
         recorder = getattr(self.store, "recorder", None)
         if recorder is not None and getattr(recorder, "is_recording", False) and not getattr(recorder, "is_paused", False):
             recorder.capture_frame()
+        if _perf:
+            import logging
+
+            logging.getLogger("ImproveImgSLI").info(
+                "[perf] settings.apply_font %.1f ms",
+                (_perf_time.perf_counter() - _perf_t0) * 1000.0,
+            )
 
     def execute_canvas_feature_command(
         self,
