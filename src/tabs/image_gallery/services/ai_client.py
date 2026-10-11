@@ -17,6 +17,7 @@ import urllib.error
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Callable
 
 from shared.debug_flags import env_flag as _env_flag
 from tabs.image_gallery.models import AiAnalysisResult
@@ -580,6 +581,16 @@ def parse_response(raw: dict, *, model: str) -> AiAnalysisResult:
     )
 
 
+def _emit_phase(on_phase: Callable[[str], None] | None, phase: str) -> None:
+    """Best-effort activity hook: a UI-side failure must never fail analysis."""
+    if on_phase is None:
+        return
+    try:
+        on_phase(phase)
+    except Exception:
+        logger.debug("activity phase hook failed", exc_info=True)
+
+
 def analyze_image_sync(
     image_path: Path,
     *,
@@ -588,13 +599,19 @@ def analyze_image_sync(
     model: str,
     metrics: dict | None = None,
     fallback_models: tuple[str, ...] | None = None,
+    on_phase: Callable[[str], None] | None = None,
 ) -> AiAnalysisResult:
-    """Full request→parse pipeline. Call only from a worker thread."""
+    """Full request→parse pipeline. Call only from a worker thread.
+
+    ``on_phase`` (optional) receives ``"analyzing"`` before the request is
+    built and ``"waiting"`` right before the blocking HTTP call.
+    """
     openrouter = "openrouter" in str(base_url or "").lower()
     _ai_debug(
         "analyze start path=%s model=%s host=%s metrics=%d",
         image_path, model, base_url, len(metrics or {}),
     )
+    _emit_phase(on_phase, "analyzing")
     payload = build_request(
         image_path,
         model=model,
@@ -602,5 +619,6 @@ def analyze_image_sync(
         openrouter=openrouter,
         fallback_models=fallback_models,
     )
+    _emit_phase(on_phase, "waiting")
     raw = call_sync(base_url, api_key, payload)
     return parse_response(raw, model=model)

@@ -30,6 +30,23 @@ class AnalysisStatus(str, Enum):
     ERROR = "error"
 
 
+class ActivityPhase(str, Enum):
+    """Per-item transient activity shown as a card pill (never persisted)."""
+
+    IDLE = "idle"
+    QUEUED = "queued"
+    CLAIMED = "claimed"
+    ANALYZING = "analyzing"
+    WAITING = "waiting"
+    DONE = "done"
+    ERROR = "error"
+    UNREADABLE = "unreadable"
+
+
+#: Pipelines that can own an activity phase (local detectors / AI judgment).
+ACTIVITY_SOURCES: tuple[str, ...] = ("local", "ai")
+
+
 class Mode(str, Enum):
     FIDELITY = "fidelity"
     CAMERA = "camera"
@@ -213,6 +230,10 @@ class GalleryItem:
     vlm_brief: CompareBrief | None = None
     vlm_brief_status: str = "none"
     vlm_brief_error: str | None = None
+    # Transient activity (services/activity.py) — in-memory only, never persisted.
+    activity_phase: str | None = None
+    activity_source: str | None = None
+    activity_at: float = 0.0
 
     @property
     def name(self) -> str:

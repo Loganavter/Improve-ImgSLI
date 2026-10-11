@@ -7,6 +7,15 @@
     "empty_view": "Nenhuma imagem para exibir.",
     "analyze": "Analisar",
     "analyzing": "Analisando…",
+    "activity": {
+      "queued": "Na fila",
+      "claimed": "Iniciando",
+      "analyzing": "Analisando",
+      "waiting": "Aguardando",
+      "done": "Concluído",
+      "error": "Erro",
+      "unreadable": "Ilegível"
+    },
     "domain": {
       "algorithms": "Algoritmos",
       "ai": "IA"
