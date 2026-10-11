@@ -92,6 +92,22 @@ class AiDefect:
 
 
 @dataclass(frozen=True)
+class AiAxisFlag:
+    """An AI-sourced non-measured axis: a candidate flag or a judgment.
+
+    ``kind`` is a ``MetricKind`` value (``candidate`` | ``judgment``) — never
+    ``measured`` (numbers stay with the local detectors). ``id`` is an existing
+    axis id when the observation maps to one, else ``flag-for-review``.
+    See ``plan-gallery-two-domain-axes``.
+    """
+
+    id: str
+    label: str = ""
+    kind: str = "candidate"
+    note: str = ""
+
+
+@dataclass(frozen=True)
 class AiAnalysisResult:
     description: str
     tags: tuple[str, ...]
@@ -114,6 +130,9 @@ class AiAnalysisResult:
     # Short, vision-based note per axis (canonical metric id → phrase), shown
     # next to the metric label, e.g. {"noise": "coarse film grain"}.
     axis_notes: dict[str, str] = field(default_factory=dict)
+    #: AI-sourced non-measured axes (candidate flags / judgments). AI never
+    #: writes a measured number here (see plan-gallery-two-domain-axes).
+    axis_flags: tuple[AiAxisFlag, ...] = ()
 
 
 def ai_quality_score(result: AiAnalysisResult | None) -> float | None:
