@@ -300,6 +300,10 @@ class ImageGalleryWidget(QWidget):
         self._mode = None
         self._source_path: Path | None = None
         self._collapsed: dict[int, bool] = {}
+        # Session-only custom series names (series_id → display name). The
+        # derived header names, so a plain dict keyed by the stable id is
+        # enough; never persisted (series themselves are in-memory only).
+        self._series_names: dict[str, str] = {}
 
         # Keyboard: widget handles Space/B/Enter/Esc/arrows → triage (design.md:129).
         try:
@@ -1158,11 +1162,237 @@ class ImageGalleryWidget(QWidget):
 
     # -- series header context menu ---------------------------------------------
 
-    def _on_series_context_menu(self, index, anchor, member_paths, label) -> None:
+    def _tr_ui(self, key: str, default: str) -> str:
+        """Gallery i18n lookup for widget-level strings (fail-open to default)."""
+        ctx = getattr(self, "_context", None)
+        if ctx is None:
+            return default
+        try:
+            return ctx._tr(key, default)
+        except Exception:
+            return default
+
+    def _series_names_map(self) -> dict:
+        """Session custom-name map (series_id → name); lazily created."""
+        names = getattr(self, "_series_names", None)
+        if not isinstance(names, dict):
+            names = {}
+            self._series_names = names
+        return names
+
+    def _compute_series_hub_names(self, norm_series) -> list:
+        """Per-series header names (``SERIES i · <hub> · n VARIANTS``).
+
+        Hub = rank-1 member's file name uppercased, unless a session rename
+        override exists for the cluster's stable ``series_id`` (override wins
+        verbatim; the header upper-cases it for display).
+        """
+        names_map = self._series_names_map()
+        hub_names: list = []
+        try:
+            for cl in [c for c in (norm_series or []) if len(c) >= 2]:
+                hub_item = None
+                try:
+                    ranked = sorted(cl, key=lambda it: int(getattr(it, "rank", 999) or 999))
+                    hub_item = ranked[0] if ranked else cl[0]
+                except Exception:
+                    hub_item = cl[0] if cl else None
+                hub = None
+                if hub_item is not None:
+                    try:
+                        hub = Path(hub_item.path).name.upper()
+                    except Exception:
+                        hub = str(getattr(hub_item, "name", "")).upper() or None
+                sid = None
+                try:
+                    for m in cl:
+                        _s = getattr(m, "series_id", None)
+                        if _s:
+                            sid = str(_s)
+                            break
+                except Exception:
+                    sid = None
+                if sid and names_map.get(sid):
+                    hub = str(names_map[sid])
+                hub_names.append(hub)
+        except Exception:
+            hub_names = []
+        return hub_names
+
+    def _on_series_context_menu(
+        self, index, anchor, member_paths, label, series_id=None, global_pos=None
+    ) -> None:
+        """Series-header right-click → toolkit ``ContextMenu``.
+
+        Ask AI / Rename / Delete over the whole series, then the manual-series
+        tools (Reset / Re-cluster) as the tail. Popup surface via the app
+        manager — parented to the header Button (a content widget), never the
+        MainWindow (Wayland compositing trap; see the card menu).
+        """
+        paths = tuple(member_paths or ())
         owner = self._owner_for_triage()
-        fn = getattr(owner, "open_ask_ai_for_series", None)
-        if callable(fn):
-            fn(index, anchor, tuple(member_paths or ()), str(label or ""))
+
+        def _do_ask_ai() -> None:
+            try:
+                fn = getattr(owner, "open_ask_ai_for_series", None)
+                if callable(fn):
+                    fn(index, anchor, paths, str(label or ""))
+            except Exception:
+                pass
+
+        def _do_rename() -> None:
+            try:
+                self._rename_series(series_id, label)
+            except Exception:
+                pass
+
+        def _do_delete() -> None:
+            try:
+                from tabs.image_gallery.use_cases import triage as _triage
+
+                if len(paths) > 1:
+                    _triage.remove_paths_from_grid(owner, paths)
+                elif paths:
+                    _triage.remove_from_grid(owner, paths[0])
+            except Exception:
+                pass
+
+        def _do_reset() -> None:
+            try:
+                fn = getattr(owner, "reset_series_overrides", None)
+                if callable(fn):
+                    fn()
+            except Exception:
+                pass
+
+        def _do_recluster() -> None:
+            try:
+                fn = getattr(owner, "recluster_series", None)
+                if callable(fn):
+                    fn()
+            except Exception:
+                pass
+
+        try:
+            from sli_ui_toolkit.widgets import ContextMenuAction, ContextMenuSeparator
+        except Exception:
+            return
+
+        has_reset = callable(getattr(owner, "reset_series_overrides", None))
+        has_recluster = callable(getattr(owner, "recluster_series", None))
+        entries: list = [
+            ContextMenuAction(
+                "gallery.series.ask_ai",
+                self._tr_ui("image_gallery.series.ask_ai", "Ask AI"),
+            ),
+            ContextMenuAction(
+                "gallery.series.rename",
+                self._tr_ui("image_gallery.series.rename", "Rename"),
+                enabled=bool(series_id),
+            ),
+            ContextMenuAction(
+                "gallery.series.delete",
+                self._tr_ui("image_gallery.series.delete", "Delete"),
+                icon="delete",
+                danger=True,
+            ),
+        ]
+        tail: list = []
+        if has_reset:
+            tail.append(
+                ContextMenuAction(
+                    "gallery.series.reset",
+                    self._tr_ui("image_gallery.series.reset", "Reset manual series"),
+                )
+            )
+        if has_recluster:
+            tail.append(
+                ContextMenuAction(
+                    "gallery.series.recluster",
+                    self._tr_ui("image_gallery.series.recluster", "Re-cluster series"),
+                )
+            )
+        if tail:
+            entries.append(ContextMenuSeparator())
+            entries.extend(tail)
+
+        def _on_triggered(action_id: str, _data: object) -> None:
+            if action_id == "gallery.series.ask_ai":
+                _do_ask_ai()
+            elif action_id == "gallery.series.rename":
+                _do_rename()
+            elif action_id == "gallery.series.delete":
+                _do_delete()
+            elif action_id == "gallery.series.reset":
+                _do_reset()
+            elif action_id == "gallery.series.recluster":
+                _do_recluster()
+
+        source = anchor if anchor is not None else self
+        pos = global_pos
+        if pos is None:
+            try:
+                from PySide6.QtGui import QCursor
+
+                pos = QCursor.pos()
+            except Exception:
+                pos = None
+        try:
+            from ui.context_menu.manager import open_context_menu_entries
+
+            open_context_menu_entries(
+                source_widget=source,
+                global_pos=pos,
+                entries=tuple(entries),
+                key=("gallery-series", int(index), str(series_id or "")),
+                on_triggered=_on_triggered,
+            )
+        except Exception:
+            logger.debug("series header context menu failed", exc_info=True)
+
+    def _rename_series(self, series_id, label) -> None:
+        """Prompt for a session-only custom series name and repaint headers."""
+        sid = str(series_id) if series_id else ""
+        if not sid:
+            return
+        try:
+            from tabs.host_helpers import AppTextInputDialog
+        except Exception:
+            return
+        names = self._series_names_map()
+        current = names.get(sid) or str(label or "")
+        title = self._tr_ui("image_gallery.series.rename_title", "Rename series")
+        prompt = self._tr_ui("image_gallery.series.rename_prompt", "Series name")
+        try:
+            parent = self.window() or self
+        except Exception:
+            parent = self
+        value, ok = AppTextInputDialog.get_text(parent, title, prompt, current)
+        if not ok:
+            return
+        name = str(value or "").strip()
+        if name:
+            names[sid] = name
+        else:
+            names.pop(sid, None)  # empty → fall back to the derived hub name
+        self._refresh_series_names()
+
+    def _refresh_series_names(self) -> None:
+        """Repaint series headers with the current custom names (no teardown)."""
+        try:
+            norm_series = list(self._series or [])
+        except Exception:
+            return
+        try:
+            collapsed = dict(self._collapsed or {})
+        except Exception:
+            collapsed = {}
+        try:
+            self._rebuild_series_view(
+                norm_series, self._compute_series_hub_names(norm_series), collapsed
+            )
+        except Exception:
+            logger.debug("series rename repaint failed", exc_info=True)
 
     # -- S4 quick look ----------------------------------------------------------
 
@@ -1529,7 +1759,11 @@ class ImageGalleryWidget(QWidget):
             pass
         try:
             try:
-                self._grid_view.rebuild_grid(items, paint_selection=saved_series is None)
+                self._grid_view.rebuild_grid(
+                    items,
+                    paint_selection=saved_series is None,
+                    flat_ungrouped=saved_series is None,
+                )
             except TypeError:
                 # Legacy doubles predate the paint_selection kwarg.
                 self._grid_view.rebuild_grid(items)
@@ -1571,7 +1805,8 @@ class ImageGalleryWidget(QWidget):
         items remain from the same pool (pure removal, e.g. deleted a
         whole group), survivors get an explicit UNGROUPED view instead of
         hanging header-less. A wholly new pool (folder switch — every
-        alive path is new) stays flat, no stale headers.
+        alive path is new) also lands under one UNGROUPED section, so a
+        fresh folder never paints nameless while triage runs.
 
         Returns True when the view was (re)painted via set_series.
         """
@@ -1619,8 +1854,16 @@ class ImageGalleryWidget(QWidget):
             except Exception:
                 added = set()
             if added:
-                _dbg("view-cycle restore dissolved added=%d → flat (replacement pool)", len(added))
-                return False
+                _dbg("view-cycle restore dissolved added=%d → UNGROUPED (replacement pool)", len(added))
+                try:
+                    self._grid_view.set_series([], hub_names=[], collapsed={})
+                except Exception:
+                    return False
+                try:
+                    self._series = []
+                except Exception:
+                    pass
+                return True
             _dbg("view-cycle restore dissolved same-pool → UNGROUPED n=%d", len(alive_paths))
             try:
                 self._grid_view.set_series([], hub_names=[], collapsed={})
@@ -2254,26 +2497,7 @@ class ImageGalleryWidget(QWidget):
             pass
 
         # Hub names + collapsed for grid_view (A1 parity: SERIES i · hub · n VARIANTS ▼)
-        hub_names: list[str | None] = []
-        try:
-            for cl in [c for c in norm_series if len(c) >= 2]:
-                # Hub = rank 1 member name uppercased, else smallest area fallback
-                hub_item = None
-                try:
-                    # Prefer rank 1
-                    ranked = sorted(cl, key=lambda it: int(getattr(it, "rank", 999) or 999))
-                    hub_item = ranked[0] if ranked else cl[0]
-                except Exception:
-                    hub_item = cl[0] if cl else None
-                if hub_item is not None:
-                    try:
-                        hub_names.append(Path(hub_item.path).name.upper())
-                    except Exception:
-                        hub_names.append(str(getattr(hub_item, "name", "")) .upper() or None)
-                else:
-                    hub_names.append(None)
-        except Exception:
-            hub_names = []
+        hub_names = self._compute_series_hub_names(norm_series)
 
         # Ensure collapsed dict persists
         try:

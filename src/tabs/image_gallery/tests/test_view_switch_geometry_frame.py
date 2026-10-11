@@ -168,7 +168,7 @@ def test_flat_view_mode_switch_commits_geometry_before_paint(qtbot) -> None:
     w.rebuild_grid(items)
     gv = w._grid_view
     QApplication.processEvents()
-    assert gv._series is None
+    assert gv._series == []  # flat pool already promoted to UNGROUPED
 
     # Toolbar path, exactly as the user triggers it.
     w._on_view_toggled(True)

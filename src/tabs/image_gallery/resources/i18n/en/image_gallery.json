@@ -72,6 +72,15 @@
       "images_toggle_hint": "Send images with the question",
       "images_toggle_downsample": "Downscale: ≤ {px} px"
     },
+    "series": {
+      "ask_ai": "Ask AI",
+      "rename": "Rename",
+      "rename_title": "Rename series",
+      "rename_prompt": "Series name",
+      "delete": "Delete",
+      "reset": "Reset manual series",
+      "recluster": "Re-cluster series"
+    },
     "sort_by": "Sort by",
     "view": "View",
     "sort_rank": "Rank",

@@ -836,7 +836,7 @@
     },
     {
       "path": "src/tabs/image_gallery/ui/grid_view.py",
-      "lines": 3005,
+      "lines": 3077,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine size=exempt reason=\"single virtualized grid view — grid_columns/series headers/pool/marquee share one layout lifecycle\"",
@@ -991,7 +991,7 @@
     },
     {
       "path": "src/tabs/image_gallery/widget.py",
-      "lines": 2305,
+      "lines": 2529,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner size=exempt reason=\"thin owner delegating to use_cases/triage+carry+quick look; splitting would create helpers bag\"",

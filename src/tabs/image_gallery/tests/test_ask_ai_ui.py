@@ -293,8 +293,9 @@ def test_series_header_context_callback_passes_members_and_label(qtbot):
     grid = GalleryGridView()
     qtbot.addWidget(grid)
     calls = []
-    grid._on_series_context_menu = lambda idx, anchor, paths, label: calls.append(
-        (idx, tuple(paths), label)
+    grid._on_series_context_menu = (
+        lambda idx, anchor, paths, label, series_id=None, global_pos=None:
+        calls.append((idx, tuple(paths), label))
     )
     item = GalleryItem(path=Path("/g/1.png"), mtime_ns=1)
     grid._series = [[item]]

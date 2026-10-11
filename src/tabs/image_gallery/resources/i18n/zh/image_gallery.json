@@ -71,6 +71,15 @@
       "routing_unavailable": "路由功能尚未启用。",
       "images_toggle_hint": "随问题一起发送图片",
       "images_toggle_downsample": "缩小：≤ {px} px"
+    },
+    "series": {
+      "ask_ai": "询问 AI",
+      "rename": "重命名",
+      "rename_title": "重命名序列",
+      "rename_prompt": "序列名称",
+      "delete": "删除",
+      "reset": "重置手动序列",
+      "recluster": "重新聚类序列"
     }
   }
 }

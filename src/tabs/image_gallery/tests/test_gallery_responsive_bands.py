@@ -45,14 +45,15 @@ def test_wide_viewport_grows_columns(qtbot) -> None:
     qtbot.wait(400)  # let the 150ms adapt timer reflow after show+resize
     gv = w._grid_view
     assert gv.grid_columns > GRID_COLUMNS
-    # 3 items fit one wide row — nothing wraps to the "empty right half".
+    # 3 items fit one wide row (below the UNGROUPED header) — nothing wraps
+    # to the "empty right half".
     rows = set()
     for it in w._items:
         card = gv.card_for(it.path)
         assert card is not None
         r, _, _, _ = _pos(gv, card)
         rows.add(r)
-    assert rows == {0}
+    assert len(rows) == 1
 
 
 def test_narrow_two_sections_stack_full_width(qtbot) -> None:
