@@ -4,10 +4,30 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pytest
+
 from core.actions.types import ActionDescriptor, ActionTarget
 from tabs.image_compare.actions import register_image_compare_actions
 from ui.actions.platform import register_platform_actions
 from ui.actions.registry import ActionRegistry, reset_action_registry_for_tests
+
+
+@pytest.fixture(autouse=True)
+def _plugin_i18n_packs():
+    """Register plugin i18n packs skipped by contract sessions.
+
+    ``settings.*`` keys live in the settings plugin pack (moved from the
+    host pack in the help per-owner refactor); production auto-registers
+    plugin packs at plugin discovery, contract sessions register the
+    owner packs explicitly. Additive only — real keys, no behavior change.
+    """
+    from pathlib import Path
+
+    from resources.translations import add_i18n_root
+
+    for pack in ("settings", "image_properties", "export", "onboarding"):
+        add_i18n_root(Path(f"src/plugins/{pack}/resources/i18n"))
+    yield
 
 
 def _noop() -> None:

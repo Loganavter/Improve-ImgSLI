@@ -1,4 +1,7 @@
-"""Help topic tree: hubs, pages, legacy slug aliases, tab contributions."""
+"""Help topic tree: hubs, pages, legacy slug aliases, tab contributions.
+
+Audit-Meta: pattern=single-owner reason="one merged HelpTree: host shell + tab/plugin fragment merge, alias/body/asset resolution, and validation share one cache — splitting would fork the uniqueness scope"
+"""
 
 from __future__ import annotations
 

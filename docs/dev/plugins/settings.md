@@ -58,3 +58,12 @@ via `get_controller` / `handle_command`).
 `SettingsManager` is the write funnel for persisted values; the Store mirrors
 them for runtime. See [SETTINGS_PERSISTENCE.md](../SETTINGS_PERSISTENCE.md)
 for the file, load/save paths, apply flow, and the corrupt-backup heuristic.
+
+## Help ownership
+
+`help.py` `build_help_plugin_contribution()` (`owner_plugin="settings"`,
+attach `platform`): owns page `platform.settings` + alias `settings`
+(anchors `#general` / `#interface` / `#performance` preserved by the
+byte-identical move). Pack: `resources/help/` bodies ×4, no figures
+(budget-0); `settings.*` i18n keys live in
+`resources/i18n/<lang>/settings.json` (moved from the host pack).

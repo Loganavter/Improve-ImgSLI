@@ -352,3 +352,33 @@ src/resources/help` = 0; docs-link-graph test green.
   registered missing `STAR` icon enum (asset existed); two pixel tests
   hardened against hub cardinality (tall viewport + scroll-to-max —
   6th card filled the viewport exactly, sample hit `#313131`).
+- 2026-10-12: Phase 6 done (host slim-down + docs, this wave — docs only,
+  zero `src/` edits): `tree.json` already slim (shell + about/
+  file_project/hotkeys/ui.*, `workspace.children` empty, 4 host aliases);
+  moved host bodies already gone
+  (`rg "platform/(settings|image_properties|getting_started|workspace)\.md"
+  src/resources/help` → 0 hits); host `figures.json` keeps host slots only.
+  `HELP_SYSTEM.md` updated (§Ownership split: plugin/tab owners + host
+  keeps shell + about/file_project/hotkeys/ui.*; §Tree merge contract:
+  `HelpPluginContribution` + duck-typed collection from
+  `HelpPlugin.initialize` + alias-with-node rule at `tree.py:450` +
+  slot-id freeze rule; §File layout: plugin `resources/help/` packages +
+  i18n auto-registration vs explicit `body_root`; per-topic table:
+  `workspace.image_compare.export` → `workspace.export` (same
+  `workspace.image_compare.export.dialog` slot), `platform.workspace` →
+  `workspace.session_picker` (same `platform.workspace.session_picker`
+  slot), gallery pages budget-0, all other rows script-verified against
+  `tree.json` node ids + `figures.json` slot sets). Wiring sections added
+  to `docs/dev/plugins/{help,export,settings,image_properties,
+  onboarding}.md`. `python src/devtools/docs_link_graph.py --write-index`
+  re-ran (DOC_INDEX.md regenerated). **Plan Done** — all six hubs
+  per-owner, host slim, docs match as-built (accepted deviations in the
+  Phases 2-5 entries above: aliases move with nodes, session_picker
+  flatten, gallery EN-only).
+- 2026-10-12: post-merge contract fallout fixed by supervisor (8 failures
+  in full `tests/contracts`): `# ALLOWED` line markers on shared-key refs
+  in `export/onboarding/help.py` (marker must sit on the token line —
+  `tree.py:201` checks only the matched line), Audit-Meta for `tree.py`
+  (551>500) + registry resync (112 entries), autouse plugin-pack
+  registration in `test_action_registry.py` (settings.* ru keys).
+  Pre-existing `test_settings_gallery_ai_page_is_body` still untouched.

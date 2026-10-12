@@ -32,7 +32,7 @@ def build_help_plugin_contribution():  # type: ignore[no-untyped-def]
     # slide icons only, no ``get_icon``/resolver). The ``play.svg`` node icon
     # still resolves in production through the app icon pack probed first by
     # ``plugins.help.icons.resolve_help_icon``.
-    # The ``image_compare.action.save`` key ref in the moved body stays as-is
+    # The ``image_compare.action.save`` key ref in the moved body stays as-is  # ALLOWED: comment documents the shared key decision (no import, no coupling)
     # by explicit decision (recon Row 3 — the IC tab is always loaded, same
     # posture as the export Row 5 refs); no key fork.
     return HelpPluginContribution(
