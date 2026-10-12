@@ -1,6 +1,6 @@
 ## 导出
 
-将当前画面保存为静态图像。录制与视频编辑器另见专题：[视频编辑器](help://video)。
+将当前画布导出为静态图像。会话录制与视频编码另属专题：[视频编辑器](help://video)。
 
 ### 保存静态图像 {#saving-an-image}
 
@@ -17,22 +17,22 @@
 
 ### 分辨率与质量 {#resolution-and-quality}
 
-- **尺寸** — 已知源尺寸时可设置宽高；锁定可保持宽高比。
-- **质量** — 有损格式的 {{tr:label.quality}}。
+- **尺寸** — 宽高输入框，附带宽高比锁定。
+- **质量** — {{tr:label.quality}} 仅对有损格式显示。
 - **PNG** — 压缩级别与 {{tr:export.optimize_png}}。
-- **填充** — 仅当虚拟画布超出 `0..1`（放大镜溢出 / uncrop 边距）时，透明格式才可启用 {{tr:export.fill_background}}；单位画布下保持关闭。
+- **填充** — 仅当虚拟画布超出 `0..1` 时，{{tr:export.fill_background}} 才会绘制边距区域；单位画布下该选项保持关闭。
 
 ### 元数据与收藏 {#metadata-and-favorites}
 
-- **元数据** — {{tr:export.include_metadata}}；可选注释与 {{tr:export.remember_by_default}}。
-- **收藏** — 浏览过某个目录后，可使用 {{tr:misc.set_as_favorite}} / {{tr:tooltip.use_favorite}}。
-- **标签** — 启用 {{tr:image_compare.action.file_names}} 时，名称会被烧录到静态图像中。
+- **元数据** — {{tr:export.include_metadata}} 默认开启，关闭前一直有效；注释输入框随之隐藏。{{tr:export.remember_by_default}} 会为下次导出保留注释文本。
+- **收藏** — {{tr:misc.set_as_favorite}} 固定当前目录；{{tr:tooltip.use_favorite}} 召回该目录。
+- **标签** — 启用 {{tr:image_compare.action.file_names}} 时，名称作为会话状态（而非文件数据）烧录到静态图像中。
 
 ### 快速保存 {#quick-save}
 
-- **`Ctrl+S`** — 使用上次的导出设置进行 {{tr:image_compare.action.quick_save}}。
-- **系统托盘** — 可在[设置 → 常规](help://settings#general)中开启对最近保存文件的快捷访问。
+- **`Ctrl+S`** — {{tr:image_compare.action.quick_save}} 直接沿用上次的导出设置，不打开对话框。
+- **系统托盘** — 托盘图标菜单可重新打开最近保存的文件和文件夹。
 
 ### 录制与视频 {#video-editor}
 
-若需要录制会话并编码为视频或 GIF，见[视频编辑器](help://video)。静态图像与视频始终与实时画布保持视觉一致（包括差异模式）。
+录制控制与视频/GIF 编码属于[视频编辑器](help://video)。

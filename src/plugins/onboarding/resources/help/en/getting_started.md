@@ -1,18 +1,15 @@
 ## Getting Started
 
-Open a session, load images, compare, then save. When you forget a control name, use {{tr:menu.find_action}} (`Ctrl+Shift+P`) instead of hunting the toolbar. Tabs and the Session Picker are covered in [Workspace Tabs](help://session_picker).
+Orientation for a fresh install. First launch shows a UI-mode picker; the choice is written once and lives on as the Appearance setting. The palette ({{tr:menu.find_action}}, `Ctrl+Shift+P`) reaches every action without toolbar hunting.
 
 ### {{tr:workspace.session_types.image_compare}} workflow {#basic-workflow}
 
-1. Open {{tr:workspace.session_types.image_compare}} from the Session Picker (or {{tr:menu.find_action}} → {{tr:action.workspace.new_image_compare}}).
-2. Add images to the left and right lists.
-3. Drag the split line or enable the [Magnifier](help://magnifier).
-4. Save with {{tr:image_compare.action.save}} or `Ctrl+S`. For recording and encode, see [Video Editor](help://video).
+The session pairs two image lists. The [Comparison](help://comparison) view divides them at a split line, with the [Magnifier](help://magnifier) as the lens alternative. Sessions open from the [Session Picker](help://session_picker) or the palette ({{tr:action.workspace.new_image_compare}}). Results leave through [Export](help://export) (`Ctrl+S`) or the [Video Editor](help://video).
 
 ### {{tr:workspace.session_types.multi_compare}} path {#multi-compare}
 
-Open {{tr:workspace.session_types.multi_compare}} from the Session Picker, drop images into slots (or onto gaps to split cells), then save the grid. Details: [{{tr:workspace.session_types.multi_compare}}](help://multi_compare).
+A grid of slots for more than two images, opened from the [Session Picker](help://session_picker). Images fill slots and the grid saves through export. Details: [{{tr:workspace.session_types.multi_compare}}](help://multi_compare).
 
 ### Discover features {#discover}
 
-`Ctrl+Shift+P` searches and runs any action; {{tr:action.palette.learn_more}} opens the matching help topic. F1 on a focused control can jump to its page when the action is tagged. Inside the Help window, the search field above the topic list jumps straight to matching pages. Next stops: [Workspace Tabs](help://session_picker), [Files and Projects](help://file_management), [Comparison](help://comparison), [Export](help://export), [Settings](help://settings).
+`Ctrl+Shift+P` searches and runs any action; {{tr:action.palette.learn_more}} opens the matching help topic. `F1` opens the palette filtered to the focused chrome. Inside the Help window, the search field above the topic list jumps to matching pages. Next stops: [Workspace Tabs](help://session_picker), [Files and Projects](help://file_management), [Comparison](help://comparison), [Export](help://export), [Settings](help://settings).

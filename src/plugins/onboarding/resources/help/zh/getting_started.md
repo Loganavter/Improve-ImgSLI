@@ -1,18 +1,15 @@
 ## 入门
 
-打开一个会话，加载图像，进行对比，然后保存。忘记控件名称时，使用 {{tr:menu.find_action}}（`Ctrl+Shift+P`）来查找，而不必在工具栏中逐个寻找。标签页与会话选择器的说明见 [工作区标签](help://session_picker)。
+新安装的方向指引。首次启动会显示界面模式选择器；该选择仅写入一次，并作为外观设置继续生效。命令面板（{{tr:menu.find_action}}，`Ctrl+Shift+P`）无需在工具栏中寻找，即可直达任何操作。
 
 ### {{tr:workspace.session_types.image_compare}} 工作流程 {#basic-workflow}
 
-1. 从会话选择器打开 {{tr:workspace.session_types.image_compare}}（或通过 {{tr:menu.find_action}} → {{tr:action.workspace.new_image_compare}}）。
-2. 将图像添加到左右两个列表中。
-3. 拖动分割线，或启用[放大镜](help://magnifier)。
-4. 使用 {{tr:image_compare.action.save}} 或 `Ctrl+S` 保存。录制与编码方法见[视频编辑器](help://video)。
+会话将两个图像列表配对。[对比](help://comparison)视图以分割线划分两者，[放大镜](help://magnifier)是另一种镜头。会话从[会话选择器](help://session_picker)或命令面板（{{tr:action.workspace.new_image_compare}}）打开。结果经由[导出](help://export)（`Ctrl+S`）或[视频编辑器](help://video)输出。
 
 ### {{tr:workspace.session_types.multi_compare}} 流程 {#multi-compare}
 
-从会话选择器打开 {{tr:workspace.session_types.multi_compare}}，将图像拖放到网格槽位中（或拖到槽位间的缝隙以拆分单元格），然后保存整张网格。详情见 [{{tr:workspace.session_types.multi_compare}}](help://multi_compare)。
+容纳两张以上图像的槽位网格，从[会话选择器](help://session_picker)打开。图像填入槽位，网格通过导出保存。详见：[{{tr:workspace.session_types.multi_compare}}](help://multi_compare)。
 
 ### 发现更多功能 {#discover}
 
-`Ctrl+Shift+P` 可搜索并运行任意操作；{{tr:action.palette.learn_more}} 会打开对应的帮助主题。当聚焦的控件带有关联操作时，按 F1 可跳转到相应页面。接下来可以了解：[工作区标签](help://session_picker)、[文件与项目](help://file_management)、[对比](help://comparison)、[导出](help://export)、[设置](help://settings)。
+`Ctrl+Shift+P` 可搜索并运行任何操作；{{tr:action.palette.learn_more}} 打开对应的帮助主题。`F1` 打开按聚焦控件过滤后的面板。在帮助窗口中，主题列表上方的搜索框可跳转到匹配页面。下一站：[工作区标签页](help://session_picker)、[文件与项目](help://file_management)、[对比](help://comparison)、[导出](help://export)、[设置](help://settings)。

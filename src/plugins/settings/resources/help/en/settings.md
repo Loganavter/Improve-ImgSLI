@@ -1,50 +1,50 @@
 ## Settings
 
-Settings are grouped by job — general, appearance, performance, and keyboard — plus {{tr:workspace.session_types.image_compare}}, the only workspace tab contributing a settings section today. Tab sections are always visible, no matter which session is active, so tab options have a permanent home.
+Application behavior in one dialog: built-in pages plus sections contributed by workspace tabs (image-compare analysis, gallery AI credentials). Tab sections stay visible regardless of the active session.
 
 ### Open Settings {#open-settings}
 
-- **Menu / gear** — {{tr:menu.settings}} or the toolbar gear.
-- **Find Action** — `Ctrl+Shift+P` ({{tr:menu.find_action}}) and type a page name ({{tr:settings.general}}, {{tr:settings.appearance}}, {{tr:settings.keyboard}}, …).
-- **{{tr:action.palette.learn_more}}** — on a settings action jumps here with the matching anchor when tagged.
+- **Menu** — {{tr:menu.settings}} (`Ctrl+,`).
+- **Toolbar** — the gear button.
+- **Find Action** — `Ctrl+Shift+P` ({{tr:menu.find_action}}) and a page name ({{tr:settings.general}}, {{tr:settings.appearance}}, {{tr:settings.keyboard}}, …).
+- **{{tr:action.palette.learn_more}}** — on a settings action opens the matching anchor when tagged.
 
 ### Search inside Settings {#search}
 
-A search field sits above the sidebar: type anything and the matching sections are listed — one row per section, no matter how deep inside it the match is (a control name, a group title, any language). Activate a row to open that section: the matched options inside it light up (if several match at the same level, all of them). The query matches in every UI language, like {{tr:menu.find_action}}. `Esc` clears the search and restores the full sidebar. The sidebar itself is resizable — drag the divider between it and the settings content.
+A search field sits above the sidebar: matches list one row per section, no matter how deep inside it the match sits (a control name, a group title, any language). Activating a row opens that section with the matched options pulsed. `Esc` clears the search and restores the full sidebar. The sidebar is resizable.
 
 ### General {#general}
 
 - **{{tr:label.language}}** — en / ru / zh / pt_BR.
 - **{{tr:label.theme}}** — auto / light / dark.
-- **{{tr:settings.system_notifications}}** — desktop OS notifications after save (in-app toast is separate).
+- **{{tr:settings.system_notifications}}** — OS-level notification toggle.
 - **{{tr:settings.enable_debug_logging}}** — verbose logs for troubleshooting.
 
 ### Appearance {#interface}
 
-- **{{tr:settings.ui_mode}}** — {{tr:settings.ui_mode_beginner}} / {{tr:settings.ui_mode_advanced}} / {{tr:settings.ui_mode_expert}}.
-- **{{tr:settings.ui_font}}** — builtin, system, or custom family.
-- **{{tr:settings.ui_scale}}** — interface scale independent of the system display scale (0.5–2.5); applies live — controls, fonts, icons, and spacing resize immediately.
+- **{{tr:settings.ui_mode}}** — {{tr:settings.ui_mode_beginner}} / {{tr:settings.ui_mode_advanced}} / {{tr:settings.ui_mode_expert}} radios; beginner is the default and the first-run choice lands here.
+- **{{tr:settings.ui_font}}** — builtin, system default, or custom family.
+- **{{tr:settings.ui_scale}}** — interface scale slider (0.5–2.5).
 - **Limits** — related caps such as max displayed name length.
 
 ### Performance {#performance}
 
-- **{{tr:settings.render_backend_label}}** — platform-dependent; may need a restart.
+- **{{tr:settings.render_backend_label}}** — the offered backends depend on the platform; switching may need a restart.
 
 ### {{tr:workspace.session_types.image_compare}} {#image_compare}
 
-Image-compare specific options live on their own section, always available:
+Image-compare options, always available:
 
-- **{{tr:settings.display_cache_resolution}}** — caps the main preview size; magnifier and export still use originals.
 - **Interpolation** — zoom / magnifier / laser resampling quality.
-- **{{tr:settings.optimize_magnifier_movement}}** — smoother lens motion (and its interpolation method on the same page).
+- **{{tr:settings.optimize_magnifier_movement}}** — smoother lens motion, with its interpolation method on the same row.
 - **{{tr:settings.magnifier_intersection_highlight}}** — highlight where lenses overlap.
 - **{{tr:settings.magnifier_auto_color_new_instances}}** — distinct colors for new lenses.
-- **{{tr:settings.recording_fps}}** — capture rate for [Video Editor](help://video).
+- **{{tr:image_compare.settings.recording_fps}}** — capture rate for the [Video Editor](help://video).
 - **{{tr:settings.autocrop_black_borders_on_load}}** — trim black borders when loading.
-- **Auto {{tr:ui.psnr}} / {{tr:ui.ssim}}** — under the canvas (off by default).
+- **Auto {{tr:ui.psnr}} / {{tr:ui.ssim}}** — automatic metric readout, off by default.
 
 ### Keyboard {#keyboard}
 
-- **Remap** — search actions; chords per platform / {{tr:workspace.session_types.image_compare}} / {{tr:workspace.session_types.multi_compare}} groups.
+- **Remap** — shortcuts group by owner: platform / {{tr:workspace.session_types.image_compare}} / {{tr:workspace.session_types.multi_compare}}.
 - **Reset** — one shortcut or all.
 - **Fixed** — canvas `WASD` and `Space` stay fixed — see [Hotkeys](help://hotkeys).
