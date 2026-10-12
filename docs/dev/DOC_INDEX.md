@@ -41,7 +41,7 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
 - **[File Size Policy & Audit-Meta](FILE_SIZE_POLICY.md)** — `docs/dev/FILE_SIZE_POLICY.md`
   Referenced by: [docs/dev/CODE_PATTERNS.md](CODE_PATTERNS.md)
 - **[Help plugin (hierarchical illustrated manual)](HELP_SYSTEM.md)** — `docs/dev/HELP_SYSTEM.md`
-  Referenced by: [docs/dev/ACTIONS.md](ACTIONS.md), [docs/dev/PLUGINS.md](PLUGINS.md), [docs/dev/README.md](README.md), [docs/dev/RESOURCES_I18N.md](RESOURCES_I18N.md), [docs/dev/TODO.md](TODO.md), [docs/dev/plugins/help.md](plugins/help.md), [docs/dev/tabs/capability-mechanisms.md](tabs/capability-mechanisms.md)
+  Referenced by: [docs/dev/ACTIONS.md](ACTIONS.md), [docs/dev/PLUGINS.md](PLUGINS.md), [docs/dev/README.md](README.md), [docs/dev/RESOURCES_I18N.md](RESOURCES_I18N.md), [docs/dev/TODO.md](TODO.md), [docs/dev/plugins/help-per-owner-plan.md](plugins/help-per-owner-plan.md), [docs/dev/plugins/help.md](plugins/help.md), [docs/dev/tabs/capability-mechanisms.md](tabs/capability-mechanisms.md)
 - **[Logging](LOGGING.md)** — `docs/dev/LOGGING.md`
   Referenced by: [docs/dev/README.md](README.md), [docs/dev/SETTINGS_PERSISTENCE.md](SETTINGS_PERSISTENCE.md), [docs/dev/TRACING.md](TRACING.md), [docs/dev/toast_stuck_session_report.md](toast_stuck_session_report.md)
 - **[Plugin lifecycle](PLUGINS.md)** — `docs/dev/PLUGINS.md`
@@ -78,6 +78,8 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
 
 - **[Export plugin](plugins/export.md)** — `docs/dev/plugins/export.md`
   Referenced by: [docs/dev/PLUGINS.md](PLUGINS.md), [docs/dev/plugins/index.md](plugins/index.md)
+- **[Plan: help content per-owner (every plugin and tab owns its hub)](plugins/help-per-owner-plan.md)** — `docs/dev/plugins/help-per-owner-plan.md`
+- **[Help per-owner recon (Phase R, 2026-10-12, read-only)](plugins/help-recon.md)** — `docs/dev/plugins/help-recon.md`
 - **[Help plugin](plugins/help.md)** — `docs/dev/plugins/help.md`
   Referenced by: [docs/dev/PLUGINS.md](PLUGINS.md), [docs/dev/plugins/index.md](plugins/index.md)
 - **[Image Properties plugin](plugins/image_properties.md)** — `docs/dev/plugins/image_properties.md`
