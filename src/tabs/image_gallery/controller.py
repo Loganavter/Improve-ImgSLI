@@ -336,7 +336,7 @@ class GalleryController:
 
     # -- bounded scheduler (Phase 2b+3; frozen seam: schedule) --------------
 
-    def schedule(self, items, priority: int, *, op: str = "thumb", source=None, gen: int | None = None, wanted=None, include_camera: bool | None = None, full_res_artifacts: bool = False) -> int:
+    def schedule(self, items, priority: int, *, op: str = "thumb", source=None, gen: int | None = None, wanted=None, include_camera: bool | None = None, full_res_artifacts: bool = False, on_done=None) -> int:
         """Single scheduler entry for gallery concurrency (frozen seam).
 
         ``items`` is a list of GalleryItem; ``priority`` is a Qt pool
@@ -345,6 +345,9 @@ class GalleryController:
         (one worker per item) or ``"proxy"`` (chunked single-pass
         Stage-2 batches, ``source`` = triage source path, ``wanted`` =
         stage subset to apply, ``include_camera`` = run camera scalars).
+        ``on_done`` (proxy only) fires once on the GUI thread after the LAST
+        chunk of this batch has applied (result or error) — used by the
+        append path to retire its processing indicator.
         Returns workers started (background-paused items queue instead and
         return 0 until resumed). No Store/EventBus writes; every delivery
         keeps its generation check — queued entries from an old gen are
@@ -357,7 +360,7 @@ class GalleryController:
             except Exception:
                 gen = 0
         if op == "proxy":
-            return self._schedule_proxy(batch, int(priority), source, gen, wanted=wanted, include_camera=include_camera, full_res_artifacts=full_res_artifacts)
+            return self._schedule_proxy(batch, int(priority), source, gen, wanted=wanted, include_camera=include_camera, full_res_artifacts=full_res_artifacts, on_done=on_done)
         return self._schedule_thumbs(batch, int(priority), gen)
 
     def sched_stats(self) -> dict:
@@ -1350,6 +1353,9 @@ class GalleryController:
             self.state.series = prev_series  # type: ignore[assignment]
             self.state.mode = prev_mode  # type: ignore[assignment]
             self.state.source_path = prev_source  # type: ignore[assignment]
+            # Post-first-load drops get the SAME processing feedback as a
+            # first load: per-card activity pill + toolbar spinner/count.
+            self._begin_append_processing(uniq)
             try:
                 self._attach_append_items(uniq)
             except Exception:
@@ -1376,9 +1382,13 @@ class GalleryController:
             except Exception:
                 pass
             try:
-                self._start_proxy_analysis(list(uniq), prev_source, prev_mode)
+                self._start_proxy_analysis(
+                    list(uniq), prev_source, prev_mode,
+                    on_done=lambda its=list(uniq): self._finish_append_processing(its),
+                )
             except Exception:
                 logger.debug("append analysis start failed", exc_info=True)
+                self._finish_append_processing(uniq)
             self.state.triage_state = TriageState.DONE
             # Newer than any in-flight triage: its delivery drops (sgen).
             self._next_series_gen()
@@ -2456,6 +2466,49 @@ class GalleryController:
         except Exception:
             logger.debug("local-pass activity refresh failed", exc_info=True)
 
+    def _begin_append_processing(self, items: list[GalleryItem]) -> None:
+        """Append path: mirror the first-load processing UX for NEW items.
+
+        The attach branch deliberately skips retriage (live groups stay
+        untouched), but that must not silently drop the processing feedback a
+        first load gives: a per-card activity pill (``analyzing``) plus the
+        toolbar spinner + count. Without this the appended cards showed no
+        badge and the toolbar showed no progress, because ``_load_thumbnail``
+        sets ``thumbnail_status = LOADING`` without repainting the card and
+        no local activity phase was ever stamped.
+
+        Closed by :meth:`_finish_append_processing` when the batch settles.
+        """
+        batch = list(items or [])
+        if not batch:
+            return
+        try:
+            background = getattr(self.widget, "set_background_scanning", None)
+            if callable(background):
+                background(0, len(batch))
+        except Exception:
+            logger.debug("append background scanning failed", exc_info=True)
+        try:
+            self._mark_local_pass(batch, ActivityPhase.ANALYZING)
+        except Exception:
+            logger.debug("append local pass failed", exc_info=True)
+
+    def _finish_append_processing(self, items: list[GalleryItem]) -> None:
+        """Retire the append processing indicator: ``done`` fade + spinner off."""
+        batch = list(items or [])
+        if not batch:
+            return
+        try:
+            self._mark_local_pass(batch, ActivityPhase.DONE)
+        except Exception:
+            logger.debug("append local done failed", exc_info=True)
+        try:
+            done = getattr(self.widget, "set_triage_done", None)
+            if callable(done):
+                done()
+        except Exception:
+            logger.debug("append processing indicator hide failed", exc_info=True)
+
     def _run_artifacts_sync(self, items: list[GalleryItem], source_path: Path | None) -> dict[str, dict]:
         """Pure worker for GenericWorker: analyze 7 artifacts per item."""
         from tabs.image_gallery.services.artifacts import analyze_artifacts
@@ -2735,10 +2788,15 @@ class GalleryController:
             logger.debug("proxy chunk failed", exc_info=True)
             return {}
 
-    def _schedule_proxy(self, items: list, priority: int, source, gen: int, wanted=None, include_camera: bool | None = None, full_res_artifacts: bool = False) -> int:
+    def _schedule_proxy(self, items: list, priority: int, source, gen: int, wanted=None, include_camera: bool | None = None, full_res_artifacts: bool = False, on_done=None) -> int:
         """Chunked proxy batches: one worker per 50 items (never N)."""
         chunks = [items[i:i + _GALLERY_PROXY_CHUNK] for i in range(0, len(items), _GALLERY_PROXY_CHUNK)]
         if not chunks:
+            if on_done is not None:
+                try:
+                    on_done()
+                except Exception:
+                    logger.debug("proxy on_done hook failed", exc_info=True)
             return 0
         if include_camera is None:
             try:
@@ -2751,6 +2809,20 @@ class GalleryController:
             wanted_set = frozenset(("artifacts", "fidelity", "camera"))
         self._proxy_done = 0
         self._proxy_total = len(chunks)
+        # Per-batch settle counter (independent of the global _proxy_* progress):
+        # fires ``on_done`` once after every chunk of THIS batch has delivered.
+        remaining = [len(chunks)]
+
+        def _settle(_payload=None) -> None:
+            remaining[0] -= 1
+            if remaining[0] > 0:
+                return
+            if on_done is not None:
+                try:
+                    on_done()
+                except Exception:
+                    logger.debug("proxy on_done hook failed", exc_info=True)
+
         started = 0
         for chunk in chunks:
             worker = GenericWorker(
@@ -2763,6 +2835,12 @@ class GalleryController:
             worker.signals.error.connect(
                 lambda err: logger.debug("proxy batch worker error: %r", err, exc_info=True)
             )
+            if on_done is not None:
+                # Completion hook (append processing UX): counts each chunk
+                # exactly once — result OR error. Connected AFTER the apply
+                # handler so the last chunk is applied before on_done runs.
+                worker.signals.result.connect(_settle)
+                worker.signals.error.connect(_settle)
             self._pool_start(worker, priority)
             started += 1
         # Chunk fan-out for tests (50-item batching assertion).
@@ -2772,7 +2850,7 @@ class GalleryController:
             pass
         return started
 
-    def _start_proxy_analysis(self, items: list[GalleryItem], source_path: Path | None, mode) -> None:
+    def _start_proxy_analysis(self, items: list[GalleryItem], source_path: Path | None, mode, *, on_done=None) -> None:
         """Triage-tail Stage 2: ONE single-pass background step (proxy).
 
         Replaces the old three whole-pool batch workers (artifact +
@@ -2780,8 +2858,22 @@ class GalleryController:
         sharing one bounded decode per file. Fail-closed per item,
         path-keyed delivery into the existing apply tails; the
         ``_analysis_fingerprint`` skip above stays the gate.
+
+        ``on_done`` (optional) fires once after the whole batch settles —
+        including the no-work early returns — so the append path can retire
+        its processing indicator without dangling.
         """
+
+        def _finish() -> None:
+            if on_done is None:
+                return
+            try:
+                on_done()
+            except Exception:
+                logger.debug("proxy on_done hook failed", exc_info=True)
+
         if not items:
+            _finish()
             return
         want_artifacts = not _artifacts_disabled()
         want_fidelity = not _fidelity_disabled() and source_path is not None
@@ -2791,6 +2883,7 @@ class GalleryController:
             want_camera = False
         if not (want_artifacts or want_fidelity or want_camera):
             _dbg("proxy analysis skipped: all Stage-2 lanes kill-switched")
+            _finish()
             return
         wanted = frozenset(
             [s for s, w in (
@@ -2804,9 +2897,11 @@ class GalleryController:
                 list(items), PROXY_BATCH_PRIORITY, op="proxy",
                 source=source_path, gen=self._folder_gen, wanted=wanted,
                 include_camera=want_camera, full_res_artifacts=want_artifacts,
+                on_done=on_done,
             )
         except Exception:
             logger.debug("proxy analysis start failed", exc_info=True)
+            _finish()
 
     def _on_proxy_batch_ready(self, result: object, gen: int | None, wanted: object = None) -> None:
         """One chunk delivery: fan out by path into the legacy apply tails."""
