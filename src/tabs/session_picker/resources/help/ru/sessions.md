@@ -4,7 +4,7 @@
 
 ### Выбор сессии {#session-picker}
 
-- **Типы сессий** — {{tr:workspace.session_types.image_compare}}, {{tr:workspace.session_types.multi_compare}}, {{tr:image_gallery.tab_name}}.
+- **Типы сессий** — карточки всех подключенных вкладок, например {{tr:workspace.session_types.image_compare}}, {{tr:image_gallery.tab_name}}.
 - **Недавние** — проекты ``.imgsli``. Клик открывает; ПКМ: открыть, свойства, убрать, показать в папке.
 - **Пин** — перетащите файл проекта на панель, чтобы добавить его в список.
 - **Вид** — сетка или список, сортировка по дате или имени.

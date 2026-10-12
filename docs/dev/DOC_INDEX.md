@@ -40,6 +40,9 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
   Referenced by: [docs/dev/PLUGINS.md](PLUGINS.md), [docs/dev/README.md](README.md), [docs/dev/STORE.md](STORE.md), [docs/dev/TODO.md](TODO.md), [docs/dev/tabs/session-lifecycle.md](tabs/session-lifecycle.md)
 - **[File Size Policy & Audit-Meta](FILE_SIZE_POLICY.md)** — `docs/dev/FILE_SIZE_POLICY.md`
   Referenced by: [docs/dev/CODE_PATTERNS.md](CODE_PATTERNS.md)
+- **[Как писать страницы справки](HELP_AUTHORING.md)** — `docs/dev/HELP_AUTHORING.md`
+  Referenced by: [docs/dev/HELP_PROSE_PLAN.md](HELP_PROSE_PLAN.md)
+- **[Plan: привести страницы справки к гайдлайну](HELP_PROSE_PLAN.md)** — `docs/dev/HELP_PROSE_PLAN.md`
 - **[Help plugin (hierarchical illustrated manual)](HELP_SYSTEM.md)** — `docs/dev/HELP_SYSTEM.md`
   Referenced by: [docs/dev/ACTIONS.md](ACTIONS.md), [docs/dev/PLUGINS.md](PLUGINS.md), [docs/dev/README.md](README.md), [docs/dev/RESOURCES_I18N.md](RESOURCES_I18N.md), [docs/dev/TODO.md](TODO.md), [docs/dev/plugins/help-per-owner-plan.md](plugins/help-per-owner-plan.md), [docs/dev/plugins/help.md](plugins/help.md), [docs/dev/tabs/capability-mechanisms.md](tabs/capability-mechanisms.md)
 - **[Logging](LOGGING.md)** — `docs/dev/LOGGING.md`
