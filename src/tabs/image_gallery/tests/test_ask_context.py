@@ -207,20 +207,3 @@ def test_flags_empty_without_analysis_and_no_duplicate_label_map():
     assert ctx["items"][0]["flags"] == []
     assert ctx["metric_labels"]["halo_delta"] == "Halo vs source"
     assert "axis_labels" not in ctx
-
-
-def test_answer_image_links_maps_name_to_path():
-    from tabs.image_gallery.services.ask_context import answer_image_links
-
-    ctx = {
-        "items": [
-            {"name": "Archivist Soft.png", "path": "/g/soft.png"},
-            {"name": "Archivist Rough.png", "path": "/g/rough.png"},
-        ]
-    }
-    assert answer_image_links(ctx) == {
-        "Archivist Soft.png": "/g/soft.png",
-        "Archivist Rough.png": "/g/rough.png",
-    }
-    assert answer_image_links(None) == {}
-    assert answer_image_links({"items": [{"name": "x"}]}) == {}

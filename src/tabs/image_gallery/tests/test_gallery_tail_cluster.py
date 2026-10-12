@@ -189,7 +189,7 @@ def test_append_starts_stage2_analysis_for_new_items(tmp_path, monkeypatch) -> N
     monkeypatch.setattr(
         ctrl,
         "_start_proxy_analysis",
-        lambda items, src, mode, **kw: calls.append((list(items), src, mode)),
+        lambda items, src, mode: calls.append((list(items), src, mode)),
     )
     new = _vsplit(tmp_path / "new.png", (180, 30, 30), (10, 10, 10))
     ctrl.open_paths([new])

@@ -1022,20 +1022,8 @@ class ImageGalleryWidget(QWidget):
                 flyout.setObjectName("gallery_ask_ai_flyout")
             except Exception:
                 pass
-            # An answer's image link opens Quick Look for that image.
-            try:
-                flyout.imageActivated.connect(self._on_ask_ai_image_activated)
-            except Exception:
-                pass
             self._ask_ai_flyout = flyout
         return flyout
-
-    def _on_ask_ai_image_activated(self, path: str) -> None:
-        """Open Quick Look for an image named in the Ask AI answer."""
-        try:
-            self.show_quick_look(str(path))
-        except Exception:
-            logger.debug("ask-ai image activation failed", exc_info=True)
 
     def open_ask_ai(
         self, anchor, scope, *, default_prompt: str = "What matters here?", texts=None
@@ -1079,13 +1067,11 @@ class ImageGalleryWidget(QWidget):
         # which flashes the panel white).
         initial_result = None
         initial_error = ""
-        initial_links: dict = {}
         if getattr(self, "_ask_ai_last_key", None) == getattr(
             self, "_ask_ai_scope_key", None
         ):
             if getattr(self, "_ask_ai_last_result", None) is not None:
                 initial_result = self._ask_ai_last_result
-                initial_links = dict(getattr(self, "_ask_ai_last_links", None) or {})
             elif getattr(self, "_ask_ai_last_error", None):
                 initial_error = self._ask_ai_last_error
         flyout.open_for(
@@ -1094,7 +1080,6 @@ class ImageGalleryWidget(QWidget):
             default_prompt=default_prompt,
             initial_result=initial_result,
             initial_error=initial_error,
-            initial_links=initial_links,
         )
 
     @staticmethod
@@ -1136,7 +1121,7 @@ class ImageGalleryWidget(QWidget):
         except Exception:
             pass
 
-    def show_ask_ai_result(self, result, model: str = "", links: dict | None = None) -> None:
+    def show_ask_ai_result(self, result, model: str = "") -> None:
         try:
             flyout = self._ensure_ask_ai_flyout()
             flyout.set_busy(False)
@@ -1145,11 +1130,9 @@ class ImageGalleryWidget(QWidget):
                 model=model,
                 backend=getattr(result, "backend", "") or "",
                 cached=bool(getattr(result, "cached", False)),
-                links=links,
             )
             self._ask_ai_last_key = getattr(self, "_ask_ai_scope_key", None)
             self._ask_ai_last_result = result
-            self._ask_ai_last_links = dict(links or {})
             self._ask_ai_last_error = None
             self._resume_ask_ai_if_hidden(flyout)
         except Exception:
@@ -1162,7 +1145,6 @@ class ImageGalleryWidget(QWidget):
             flyout.show_error(message)
             self._ask_ai_last_key = getattr(self, "_ask_ai_scope_key", None)
             self._ask_ai_last_result = None
-            self._ask_ai_last_links = {}
             self._ask_ai_last_error = message
             self._resume_ask_ai_if_hidden(flyout)
         except Exception:

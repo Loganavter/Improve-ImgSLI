@@ -74,7 +74,7 @@ class _WidgetStub:
     def show_ask_ai_busy(self):
         self.busy += 1
 
-    def show_ask_ai_result(self, result, model="", links=None):
+    def show_ask_ai_result(self, result, model=""):
         self.results.append(result)
 
     def show_ask_ai_error(self, message):
