@@ -5,16 +5,16 @@ The {{tr:image_gallery.tab_name}} shows one folder as cards grouped into near-du
 ### Open a folder {#open-folder}
 
 - **{{tr:image_gallery.pick_folder}}** — folder picker; empty tabs show {{tr:image_gallery.empty_state}}.
-- **Drag and drop** — file drops load the same way; single files open alone, folders unscanned.
-- **New session** — {{tr:action.workspace.new_image_gallery}} from {{tr:menu.find_action}} (`Ctrl+Shift+P`).
+- **File drop** — drops join the pool the same way; a single file opens alone, the parent folder is not scanned.
+- **{{tr:action.workspace.new_image_gallery}}** — new gallery sessions from {{tr:menu.find_action}} (`Ctrl+Shift+P`).
 
 ### Series {#series}
 
 Loaded folders group near-duplicates into series.
 
 - **Series** — two-plus near-duplicates; singletons stay UNGROUPED.
-- **Regroup** — restored tabs regroup the pool.
-- **Manual overrides** — drags between series pin cards; reset regroups.
+- **Regroup** — a restored pool regroups in place; cached signatures skip re-decoding.
+- **Manual overrides** — a drag between series pins cards to the target; Reset clears the pins and regroups.
 
 ### Grid, sort, and filter {#grid-sort-filter}
 
@@ -27,7 +27,7 @@ Loaded folders group near-duplicates into series.
 The strip counts images, series, and redundants.
 
 - **Compare** — best per series plus ungrouped survivors, up to 12 files, to Image Compare.
-- **Click a card** — opens Quick Look with metrics and artifact rows.
+- **Card click** — opens Quick Look with metric and artifact rows.
 
 ### Next topics {#next-topics}
 
