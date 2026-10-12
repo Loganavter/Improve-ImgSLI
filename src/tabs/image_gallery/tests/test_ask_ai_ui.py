@@ -49,6 +49,77 @@ def test_flyout_tab_accepts_default_and_enter_submits(qtbot):
     flyout.hide()
 
 
+def test_tab_prefills_default_cursor_at_end_no_selection(qtbot):
+    """Tab accepts the prompt with the cursor at the end, NOT selecting it."""
+    anchor = QWidget()
+    qtbot.addWidget(anchor)
+    anchor.resize(200, 100)
+    anchor.show()
+    qtbot.waitExposed(anchor)
+
+    flyout = AskAiFlyout(anchor)
+    qtbot.addWidget(flyout)
+    flyout.open_for(anchor, scope_label="Selection", default_prompt="What matters here?")
+    qtbot.waitUntil(lambda: flyout.isVisible(), timeout=5000)
+
+    tab = QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_Tab, Qt.KeyboardModifier.NoModifier)
+    assert flyout.eventFilter(flyout._edit, tab) is True
+    assert flyout._edit.text() == "What matters here?"
+    assert flyout._edit.hasSelectedText() is False
+    assert flyout._edit.cursorPosition() == len("What matters here?")
+    flyout.hide()
+    qtbot.waitUntil(lambda: not flyout.isVisible(), timeout=5000)
+
+
+def test_status_badge_shows_selected_model_not_backend(qtbot):
+    """The status badge shows the selected LLM, never the raw 'vlm' backend."""
+    anchor = QWidget()
+    qtbot.addWidget(anchor)
+    anchor.resize(200, 100)
+    anchor.show()
+    qtbot.waitExposed(anchor)
+
+    flyout = AskAiFlyout(anchor)
+    qtbot.addWidget(flyout)
+    flyout.open_for(anchor, scope_label="Selection", default_prompt="Q")
+    qtbot.waitUntil(lambda: flyout.isVisible(), timeout=5000)
+    flyout.set_texts(model="openai/gpt-4o")
+
+    flyout.show_result("The series is mostly clean.", backend="vlm")
+
+    status = flyout._status.text()
+    assert "openai/gpt-4o" in status
+    assert "vlm" not in status
+    flyout.hide()
+    qtbot.waitUntil(lambda: not flyout.isVisible(), timeout=5000)
+
+
+def test_hide_persists_draft_and_images_toggle(qtbot):
+    """Draft text + include-images toggle survive a hide/reopen."""
+    anchor = QWidget()
+    qtbot.addWidget(anchor)
+    anchor.resize(200, 100)
+    anchor.show()
+    qtbot.waitExposed(anchor)
+
+    flyout = AskAiFlyout(anchor)
+    qtbot.addWidget(flyout)
+    flyout.open_for(anchor, scope_label="Selection", default_prompt="Q")
+    qtbot.waitUntil(lambda: flyout.isVisible(), timeout=5000)
+
+    flyout._edit.setText("my draft question")
+    flyout._images_toggle.setChecked(True)
+    flyout.hide()
+    qtbot.waitUntil(lambda: not flyout.isVisible(), timeout=5000)  # fade-out done
+
+    flyout.open_for(anchor, scope_label="Selection", default_prompt="Q")
+    qtbot.waitUntil(lambda: flyout.isVisible(), timeout=5000)
+    assert flyout._edit.text() == "my draft question"
+    assert flyout.include_images() is True
+    flyout.hide()
+    qtbot.waitUntil(lambda: not flyout.isVisible(), timeout=5000)
+
+
 def test_flyout_enter_keypress_event_submits(qtbot):
     """Enter is handled by the flyout itself (no Ask button)."""
     anchor = QWidget()
@@ -401,7 +472,7 @@ def test_images_downsample_line_reflects_current_setting():
     assert fmt(fake, 0) == "Original"
 
 
-def test_ask_ai_images_toggle_enable_and_reset_on_reopen(qtbot):
+def test_ask_ai_images_toggle_persists_across_hide(qtbot):
     anchor = QWidget()
     qtbot.addWidget(anchor)
     anchor.resize(200, 100)
@@ -416,6 +487,11 @@ def test_ask_ai_images_toggle_enable_and_reset_on_reopen(qtbot):
     flyout._on_images_toggled()
     assert flyout.include_images() is True
 
-    flyout.open_for(anchor, default_prompt="Summary")
-    assert flyout.include_images() is False
+    # Persisted across a hide/reopen (not reset) — see hideEvent.
     flyout.hide()
+    qtbot.waitUntil(lambda: not flyout.isVisible(), timeout=5000)
+    flyout.open_for(anchor, default_prompt="Summary")
+    qtbot.waitUntil(lambda: flyout.isVisible(), timeout=5000)
+    assert flyout.include_images() is True
+    flyout.hide()
+    qtbot.waitUntil(lambda: not flyout.isVisible(), timeout=5000)

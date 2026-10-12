@@ -1793,6 +1793,7 @@ class GalleryController:
             return
         try:
             default = self._tr("image_gallery.ask_ai.default_prompt", "What matters here?")
+            _settings = self._ai_settings_store.load()
             texts = {
                 "title": self._tr("image_gallery.ask_ai.title", "Ask AI"),
                 "busy": self._tr("image_gallery.ask_ai.busy", "Thinking…"),
@@ -1807,8 +1808,10 @@ class GalleryController:
                     "Send images with the question",
                 ),
                 "images_downsample": self._images_downsample_text(
-                    self._ai_settings_store.load().vlm_max_edge_px
+                    _settings.vlm_max_edge_px
                 ),
+                # Status badge shows the selected LLM, not the backend token.
+                "model": _settings.model,
             }
         except Exception:
             default = "What matters here?"
@@ -1995,7 +1998,11 @@ class GalleryController:
 
     def _show_ask_ai_result(self, result) -> None:
         try:
-            self.widget.show_ask_ai_result(result)
+            try:
+                model = self._ai_settings_store.load().model
+            except Exception:
+                model = ""
+            self.widget.show_ask_ai_result(result, model=model)
         except Exception:
             pass
 

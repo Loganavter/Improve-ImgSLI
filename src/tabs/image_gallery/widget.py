@@ -1121,12 +1121,13 @@ class ImageGalleryWidget(QWidget):
         except Exception:
             pass
 
-    def show_ask_ai_result(self, result) -> None:
+    def show_ask_ai_result(self, result, model: str = "") -> None:
         try:
             flyout = self._ensure_ask_ai_flyout()
             flyout.set_busy(False)
             flyout.show_result(
                 getattr(result, "text", "") or "",
+                model=model,
                 backend=getattr(result, "backend", "") or "",
                 cached=bool(getattr(result, "cached", False)),
             )
