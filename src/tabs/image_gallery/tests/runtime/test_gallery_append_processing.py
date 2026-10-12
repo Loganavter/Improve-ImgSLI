@@ -1,12 +1,16 @@
 """Append-into-live-gallery processing UX (badge + toolbar spinner/count).
 
-Falsification: BEFORE the fix the append-attach branch (``open_paths`` with a
-live series) never stamped a local activity phase and never called
-``set_background_scanning`` — so the appended card showed no top-right pill and
-the toolbar showed no spinner/count, while a first load did. This test fails on
-that build: ``on_done`` is not wired in and both observables stay empty.
+Falsification (two independent failures on the pre-fix build):
+1. The append-attach branch (``open_paths`` with a live series) never stamped a
+   local activity phase and never called ``set_background_scanning`` — the
+   appended card showed no top-right pill and the toolbar showed no
+   spinner/count, while a first load did.
+2. Even when shown, the indicator was clobbered in the SAME event-loop turn:
+   ``_apply_series_view`` ends in ``set_triage_done`` (widget ``set_triage`` +
+   explicit call), so the spinner was hidden before it ever painted. The
+   indicator must be raised AFTER ``_apply_series_view``.
 
-Sibling being mirrored: ``_start_triage`` -> ``_mark_local_pass(ANALYZING)`` +
+Sibling mirrored: ``_start_triage`` -> ``_mark_local_pass(ANALYZING)`` +
 ``set_scanning``/``set_background_scanning`` (the working first-load path).
 """
 
@@ -35,15 +39,14 @@ class _SignalStub:
 
 
 class _ProcessingWidgetStub:
-    """Minimal widget double capturing the processing-UX surface."""
+    """Minimal widget double capturing the processing-UX surface + call order."""
 
     def __init__(self) -> None:
         self.folder_pick_requested = _SignalStub()
         self.analyze_requested = _SignalStub()
         self.filter_text_changed = _SignalStub()
         self.items = []
-        self.background_scanning: list[tuple[int, int]] = []
-        self.refreshed: list[list[str]] = []
+        self.events: list[tuple] = []
         self.triage_done = 0
 
     def set_folder_label(self, folder) -> None:
@@ -56,22 +59,23 @@ class _ProcessingWidgetStub:
         pass
 
     def refresh_cards(self, items) -> None:
-        self.refreshed.append([str(i.path) for i in items])
+        self.events.append(("refresh", tuple(str(i.path) for i in items)))
 
     def set_card_visible(self, path, visible: bool) -> None:
         pass
 
     def set_triage(self, *a) -> None:
-        pass
+        self.events.append(("set_triage",))
 
     def set_scanning(self, *a) -> None:
         pass
 
     def set_background_scanning(self, n: int, total: int) -> None:
-        self.background_scanning.append((int(n), int(total)))
+        self.events.append(("scan", int(n), int(total)))
 
     def set_triage_done(self) -> None:
         self.triage_done += 1
+        self.events.append(("done",))
 
     def pick_folder_dialog(self, start_dir: str = ""):
         return None
@@ -95,7 +99,14 @@ def test_append_into_live_series_shows_processing_badge_and_count(tmp_path: Path
     ctrl._load_thumbnail = lambda item, **kw: None  # type: ignore[method-assign]
     ctrl._attach_append_items = lambda new: {}  # type: ignore[method-assign]
     ctrl._cluster_tail_into_series = lambda: []  # type: ignore[method-assign]
-    ctrl._apply_series_view = lambda series: None  # type: ignore[method-assign]
+
+    def _apply_series_view(series) -> None:
+        # Mimic the real tail: ``set_triage`` + an explicit ``set_triage_done``
+        # (the S1 spinner retirement that used to clobber the append indicator).
+        widget.set_triage(series, None, None)
+        widget.set_triage_done()
+
+    ctrl._apply_series_view = _apply_series_view  # type: ignore[method-assign]
 
     def _proxy(items, source, mode, *, on_done=None) -> None:  # type: ignore[no-untyped-def]
         started["items"] = [str(i.path) for i in items]
@@ -118,16 +129,23 @@ def test_append_into_live_series_shows_processing_badge_and_count(tmp_path: Path
     assert started["items"] == [str(b)]
     assert callable(started["on_done"])
 
-    # Toolbar spinner + total count mirrored from the first-load path.
-    assert widget.background_scanning[-1] == (0, 1)
+    # Toolbar spinner + total count raised AFTER ``_apply_series_view``'s
+    # ``set_triage_done`` — not clobbered in the same turn.
+    assert ("scan", 0, 1) in widget.events, widget.events
+    scan_idx = widget.events.index(("scan", 0, 1))
+    done_idx = max(i for i, e in enumerate(widget.events) if e == ("done",))
+    assert scan_idx > done_idx, widget.events
+    assert widget.triage_done == 1  # only the view-tail's retirement so far
+    assert widget.events[-1] == ("refresh", (str(b),))
 
     # Per-card activity pill stamped on the NEW item and its card refreshed.
     new_item = ctrl.state.items[-1]
     assert str(new_item.path) == str(b)
     assert activity_of(new_item)[0] == "analyzing"
-    assert widget.refreshed[-1] == [str(b)]
+    assert ("refresh", (str(b),)) in widget.events
 
     # Batch settles -> done fade + spinner retired.
     started["on_done"]()
     assert activity_of(new_item)[0] == "done"
-    assert widget.triage_done == 1
+    assert widget.triage_done == 2
+    assert widget.events[-1] == ("done",)

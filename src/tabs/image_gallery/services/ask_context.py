@@ -198,6 +198,31 @@ def deanonymize_answer(text: str, names: dict | None) -> str:
     return out
 
 
+def answer_image_links(context: dict | None) -> dict[str, str]:
+    """Map each scope item's display name → its path (answer link tagging).
+
+    The model only ever sees opaque ``img_N`` aliases; ``deanonymize_answer``
+    rewrites them to the real filenames before the answer is shown. This returns
+    the filename→path correspondence so a surface can turn those filenames (as
+    they appear in the answer) into clickable links that open the image.
+    First occurrence wins when two items share a basename.
+    """
+    out: dict[str, str] = {}
+    try:
+        items = list((context or {}).get("items") or [])
+    except Exception:
+        return out
+    for entry in items:
+        try:
+            name = str(entry.get("name") or "")
+            path = str(entry.get("path") or "")
+        except Exception:
+            continue
+        if name and path:
+            out.setdefault(name, path)
+    return out
+
+
 def build_ask_context(scope: AskScope, *, controller) -> dict:
     """Assemble the frozen context dict for *scope*.
 

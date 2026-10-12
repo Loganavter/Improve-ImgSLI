@@ -1353,9 +1353,6 @@ class GalleryController:
             self.state.series = prev_series  # type: ignore[assignment]
             self.state.mode = prev_mode  # type: ignore[assignment]
             self.state.source_path = prev_source  # type: ignore[assignment]
-            # Post-first-load drops get the SAME processing feedback as a
-            # first load: per-card activity pill + toolbar spinner/count.
-            self._begin_append_processing(uniq)
             try:
                 self._attach_append_items(uniq)
             except Exception:
@@ -1381,6 +1378,20 @@ class GalleryController:
                 )
             except Exception:
                 pass
+            self.state.triage_state = TriageState.DONE
+            # Newer than any in-flight triage: its delivery drops (sgen).
+            self._next_series_gen()
+            try:
+                self._apply_series_view(self.state.series)
+            except Exception:
+                logger.debug("append attach view failed", exc_info=True)
+            # Post-first-load drops get the SAME processing feedback as a
+            # first load: per-card activity pill + toolbar spinner/count.
+            # Shown AFTER ``_apply_series_view`` — its ``set_triage`` /
+            # ``set_triage_done`` retires the S1 spinner and would otherwise
+            # clobber this indicator in the same event-loop turn, so it never
+            # painted. The proxy ``on_done`` retires it when the batch settles.
+            self._begin_append_processing(uniq)
             try:
                 self._start_proxy_analysis(
                     list(uniq), prev_source, prev_mode,
@@ -1389,13 +1400,6 @@ class GalleryController:
             except Exception:
                 logger.debug("append analysis start failed", exc_info=True)
                 self._finish_append_processing(uniq)
-            self.state.triage_state = TriageState.DONE
-            # Newer than any in-flight triage: its delivery drops (sgen).
-            self._next_series_gen()
-            try:
-                self._apply_series_view(self.state.series)
-            except Exception:
-                logger.debug("append attach view failed", exc_info=True)
         else:
             self._start_triage(merged, cover_grid=False)
 
