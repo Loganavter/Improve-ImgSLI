@@ -540,3 +540,55 @@ def test_card_menu_parent_is_card_not_window(qapp, monkeypatch) -> None:
         assert captured.get("source_widget") is not card.window()
     finally:
         window.close()
+
+
+def test_ask_ai_action_waits_for_menu_close(monkeypatch) -> None:
+    """Ask AI opens only AFTER the (closing) menu is fully hidden.
+
+    Regression: the card menu hid on the action click, but Ask AI opened
+    immediately, so the menu's fade-out ran in parallel with the flyout's
+    show. The action now waits for the menu's ``aboutToHide``.
+    """
+    from PySide6.QtCore import QObject, Signal
+
+    import ui.context_menu.manager as _mgr
+
+    class _FakeMenu(QObject):
+        aboutToHide = Signal()
+
+        def __init__(self) -> None:
+            super().__init__()
+            self._visible = True
+            self.hidden_calls = 0
+
+        def isVisible(self) -> bool:  # noqa: N802
+            return self._visible
+
+        def hide(self) -> None:
+            self.hidden_calls += 1
+
+    menu = _FakeMenu()
+    captured: dict = {}
+
+    def _fake_open(*, source_widget, global_pos, entries, key, on_triggered=None):
+        captured["on_triggered"] = on_triggered
+        return menu
+
+    monkeypatch.setattr(_mgr, "open_context_menu_entries", _fake_open)
+
+    calls: list = []
+    owner = SimpleNamespace(
+        state=SimpleNamespace(selected_paths=set(), mode=None),
+        open_ask_ai=lambda kind, card, path: calls.append(kind),
+    )
+    popup_gallery_card_context_menu(
+        SimpleNamespace(), owner, Path("/a.png"), global_pos=None, selection_count=0
+    )
+
+    captured["on_triggered"]("gallery.ask_ai", None)
+    # Deferred: not opened while the menu is still visible/closing.
+    assert calls == []
+    assert menu.hidden_calls == 1
+
+    menu.aboutToHide.emit()  # menu now fully hidden
+    assert calls == ["card"]
