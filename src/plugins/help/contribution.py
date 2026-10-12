@@ -44,6 +44,30 @@ class HelpContribution:
     resolve_icon: IconResolver | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class HelpPluginContribution:
+    """Typed, immutable help fragment owned by one plugin.
+
+    Same shape as ``HelpContribution`` except ``owner_tab`` → ``owner_plugin``:
+    the plugin name (``export``/``settings``/…) matching the plugin's
+    ``_plugin_meta["name"]``. Empty ``owner_plugin`` is rejected — every
+    fragment must name its owner.
+    """
+
+    owner_plugin: str
+    attach_under: str
+    child_ids: tuple[str, ...]
+    nodes: dict[str, dict[str, Any]]
+    aliases: dict[str, str] = field(default_factory=dict)
+    body_root: Path | None = None
+    asset_root: Path | None = None
+    resolve_icon: IconResolver | None = None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.owner_plugin, str) or not self.owner_plugin.strip():
+            raise ValueError("HelpPluginContribution requires a non-empty owner_plugin")
+
+
 @dataclass(slots=True)
 class HelpSubtreeContribution:
     """One tab's help fragment to merge into the host tree.
