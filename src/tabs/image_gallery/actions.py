@@ -50,6 +50,14 @@ def register_gallery_action_stubs(registry) -> None:  # type: ignore[no-untyped-
         GALLERY_RUN_TRIAGE: "image_gallery.action.run_triage",
         GALLERY_SET_AS_SOURCE: "image_gallery.action.set_as_source",
     }
+    # Stable help slugs (tabs/image_gallery/help.py aliases): triage actions
+    # land on the triage page, the fidelity entry lands on quality.
+    help_map = {
+        GALLERY_KEEP_BEST: "gallery_triage",
+        GALLERY_CLEAN_REJECTED: "gallery_triage",
+        GALLERY_RUN_TRIAGE: "gallery_triage",
+        GALLERY_SET_AS_SOURCE: "gallery_quality",
+    }
     for action_id in ALL_GALLERY_ACTION_IDS:
         try:
             # Skip if already registered.
@@ -69,7 +77,7 @@ def register_gallery_action_stubs(registry) -> None:  # type: ignore[no-untyped-
                     owner_tab="image_gallery",
                     topic="triage",
                     shortcut=None,
-                    help_page=None,
+                    help_page=help_map.get(action_id),
                     run=lambda _aid=action_id: None,  # stub — no-op until active tab overwrites
                     target=None,
                 )

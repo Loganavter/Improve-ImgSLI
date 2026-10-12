@@ -61,10 +61,22 @@ def test_help_dialog_content_surface_paints_dialog_background(qapp, qtbot, dark_
     """
     dialog = HelpDialog(current_language="en", app_name="Improve-ImgSLI")
     qtbot.addWidget(dialog)
-    dialog.resize(880, 620)
+    # Tall viewport: the probe below must land on the trailing stretch pad,
+    # whose size shrinks with every hub card added to the workspace hub —
+    # at 620px six cards fill the viewport exactly and the sample hits a
+    # card. ~1100px keeps hundreds of px of pad for any foreseeable hub
+    # count (each card is ~90px).
+    dialog.resize(880, 1100)
     dialog.show()
     qapp.processEvents()
     dialog._open_node("workspace")
+    qapp.processEvents()
+    # Scroll to the bottom so the sampled point lands on the trailing
+    # stretch pad regardless of hub cardinality (each new hub card grows
+    # the content; without this the sample hits a card). No-op when the
+    # content is shorter than the viewport.
+    bar = dialog._scroll.verticalScrollBar()
+    bar.setValue(bar.maximum())
     qapp.processEvents()
 
     img = dialog._scroll.viewport().grab().toImage()
@@ -78,13 +90,20 @@ def test_help_dialog_content_surface_survives_polish(qapp, qtbot, dark_theme):
     """QStyle::polish at show() resets palettes — the token fill must persist."""
     dialog = HelpDialog(current_language="en", app_name="Improve-ImgSLI")
     qtbot.addWidget(dialog)
-    dialog.resize(880, 620)
+    # Tall viewport — same cardinality-proof sampling as the paints test:
+    # the probe must land on trailing stretch, not on a hub card.
+    dialog.resize(880, 1100)
     dialog.show()
     qapp.processEvents()
     dialog._open_node("workspace")
     qapp.processEvents()
     dialog._scroll.style().unpolish(dialog._scroll)
     dialog._scroll.style().polish(dialog._scroll)
+    qapp.processEvents()
+    # Same cardinality-proof sampling as above: bottom out the scroll so
+    # the probe lands on the trailing stretch, not on a hub card.
+    bar = dialog._scroll.verticalScrollBar()
+    bar.setValue(bar.maximum())
     qapp.processEvents()
 
     img = dialog._scroll.viewport().grab().toImage()

@@ -345,3 +345,10 @@ src/resources/help` = 0; docs-link-graph test green.
   of the same id flattened — hub+page cannot share the id, freeze asserts
   pin page kind; overview reparented under workspace unchanged). Bodies ×8
   + asset byte-identical, 91 passed, figures 0 missing.
+- 2026-10-12: Phase 5 done (gallery hub, new EN content): hub +
+  overview/triage/quality/ask_ai pages, aliases frozen + wired
+  (`help_page=None` eliminated), 10 new EN i18n keys (RU fallback badge),
+  zero figures (budget-0), all prose grounded file:line. Supervisor fixes:
+  registered missing `STAR` icon enum (asset existed); two pixel tests
+  hardened against hub cardinality (tall viewport + scroll-to-max —
+  6th card filled the viewport exactly, sample hit `#313131`).

@@ -342,6 +342,11 @@ def test_help_alias_slug_freeze_tab_contributions():
         # tabs/session_picker/help.py _ALIASES
         "session_picker_overview": "workspace.session_picker.overview",
         "sp_overview": "workspace.session_picker.overview",
+        # tabs/image_gallery/help.py _ALIASES (page targets)
+        "image_gallery_overview": "workspace.image_gallery.overview",
+        "gallery_triage": "workspace.image_gallery.triage",
+        "gallery_quality": "workspace.image_gallery.quality",
+        "gallery_ask_ai": "workspace.image_gallery.ask_ai",
     }
     for alias, node_id in expected.items():
         assert tree.resolve_alias(alias) == node_id, alias
@@ -351,6 +356,23 @@ def test_help_alias_slug_freeze_tab_contributions():
         md = read_help_page_markdown("en", node.body, body_root=node.body_root)
         assert md.strip(), alias
         assert not md.startswith("## Missing page"), alias
+
+
+def test_help_alias_gallery_hub_resolves():
+    """Slug freeze: the ``image_gallery`` hub alias resolves to the hub node."""
+    _ensure_help_contributions()
+    tree = get_help_tree()
+    assert tree.resolve_alias("image_gallery") == "workspace.image_gallery"
+    hub = tree.require("workspace.image_gallery")
+    assert hub.kind == "hub"
+    assert "workspace.image_gallery" in tree.require("workspace").children
+    for child_id in (
+        "workspace.image_gallery.overview",
+        "workspace.image_gallery.triage",
+        "workspace.image_gallery.quality",
+        "workspace.image_gallery.ask_ai",
+    ):
+        assert child_id in hub.children, child_id
 
 
 def test_help_alias_unknown_slug_raises():

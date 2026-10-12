@@ -62,6 +62,30 @@
     "sort_date": "Date",
     "sort_quality": "AI quality",
     "view_grid": "Grid",
-    "view_list": "List"
+    "view_list": "List",
+    "help": {
+      "hub": {
+        "title": "Image Gallery",
+        "desc": "Browse, triage, and review image folders"
+      },
+      "page": {
+        "overview": {
+          "title": "Gallery Overview",
+          "desc": "Folders, series, grid, and compare"
+        },
+        "triage": {
+          "title": "Triage and Review",
+          "desc": "Keep best, reject, and clean review"
+        },
+        "quality": {
+          "title": "Quality Metrics",
+          "desc": "Measured scores and the fidelity source"
+        },
+        "ask_ai": {
+          "title": "Ask AI",
+          "desc": "Questions about a selection or a series"
+        }
+      }
+    }
   }
 }
