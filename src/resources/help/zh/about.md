@@ -1,16 +1,14 @@
 ## 关于
 
-{{tr:app.name}} 是面向精确图像与媒体对比的桌面工作区。可构建清晰的并排或多样本视图，在像素级检查差异，导出静态结果，并在需要时录制对比视频时间线。
+{{tr:app.name}} 是面向精确图像与媒体对比的桌面工作区。并排与多样本视图、像素级差异检查、静态结果导出，以及对比视频录制。
 
 ### 适用场景 {#purpose}
 
-当你需要在不丢失上下文的前提下判断视觉变化时使用：修图、超分质检、摄影，以及任何更依赖分割线、放大镜和可导出结果（而不是一次性截图）的流程。
+在保留上下文的前提下判断视觉变化：修图、超分质检、摄影——这类会话更依赖分割线、放大镜和可导出结果，而非一次性截图。
 
 ### 工作区模式 {#modes}
 
-- **{{tr:workspace.session_types.image_compare}}** — 两个列表、可移动分割线、放大镜、差异模式、导出与视频编辑器。可从[入门](help://introduction)或[对比](help://comparison)开始。
-- **{{tr:workspace.session_types.multi_compare}}** — 多图网格槽位。详见 [{{tr:workspace.session_types.multi_compare}}](help://multi_compare)。
-- **会话选择器** — 打开、继续并管理会话。说明见[工作区标签](help://session_picker)。
+每个已连接标签各占一张卡片，卡片集合随已安装标签增长。{{tr:workspace.session_types.image_compare}} 以可移动分割线、放大镜和差异模式对比图像对——见[对比](help://comparison)。{{tr:workspace.session_types.multi_compare}} 将多张图像排入槽位网格——见[{{tr:workspace.session_types.multi_compare}}](help://multi_compare)。会话选择器卡片负责打开、继续和管理会话——见[工作区标签](help://session_picker)。首次了解可看[入门](help://introduction)。
 
 ### 许可与源码 {#license}
 
