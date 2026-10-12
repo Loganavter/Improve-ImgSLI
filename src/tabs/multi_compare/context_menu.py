@@ -63,7 +63,7 @@ class MultiCompareContextMenuProvider:
             ContextMenuAction(
                 "multi_compare.crop_slot",
                 self._tr("context.crop", "Crop"),
-                icon=getattr(Icon, "SCISSORS", None),
+                icon=Icon.SCISSORS,
                 checkable=True,
                 checked=self._crop_effective(slot),
                 data=slot.id,

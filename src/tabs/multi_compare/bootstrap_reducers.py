@@ -9,6 +9,10 @@ improve-imgsli-internal-docs repo).
 
 from __future__ import annotations
 
+from core.state_management.session_state_slots import (
+    SessionStateSet,
+    reduce_typed_session_slot,
+)
 from core.state_management.slot_reducers import register_state_slot_reducer
 from tabs.multi_compare.models import MultiCompareState
 from tabs.multi_compare.scene.store import (
@@ -25,7 +29,15 @@ def _reduce_multi_compare_state(state, action):
     ``RootReducer.reduce`` runs every registered slot reducer against every
     dispatched action; IC (and other) actions must pass through unchanged so
     the MC reducer's own "unhandled action" warning never fires for them.
+    ``SessionStateSet`` for this slot is the SessionState facade's chrome write
+    (divider/label), routed through the facade's pure merge.
     """
+    if isinstance(action, SessionStateSet):
+        if action.namespace != _SLOT_NAME:
+            return state
+        if state is None:
+            state = MultiCompareState()
+        return reduce_typed_session_slot(_SLOT_NAME, state, action)
     if not isinstance(action, MultiCompareAction):
         return state
     if state is None:

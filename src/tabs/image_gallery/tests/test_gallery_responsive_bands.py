@@ -45,14 +45,15 @@ def test_wide_viewport_grows_columns(qtbot) -> None:
     qtbot.wait(400)  # let the 150ms adapt timer reflow after show+resize
     gv = w._grid_view
     assert gv.grid_columns > GRID_COLUMNS
-    # 3 items fit one wide row — nothing wraps to the "empty right half".
+    # 3 items fit one wide row (below the UNGROUPED header) — nothing wraps
+    # to the "empty right half".
     rows = set()
     for it in w._items:
         card = gv.card_for(it.path)
         assert card is not None
         r, _, _, _ = _pos(gv, card)
         rows.add(r)
-    assert rows == {0}
+    assert len(rows) == 1
 
 
 def test_narrow_two_sections_stack_full_width(qtbot) -> None:
@@ -166,6 +167,38 @@ def test_list_mode_stays_single_column_when_wide(qtbot) -> None:
         assert card is not None
         _, c, _, cs = _pos(gv, card)
         assert (c, cs) == (0, 1)
+
+
+def test_banded_grid_to_list_resets_trailing_columns(qtbot) -> None:
+    """A wide banded grid (6 cols) must not leak column minimums into list.
+
+    Regression: ``_sync_series_column_widths`` reset only
+    ``max(GRID_COLUMNS, cols)`` columns, so columns 4/5 pinned to the card
+    width by the banded grid stayed pinned after a grid->list switch — the
+    stretched list column lost ~2 card widths and a dead strip stayed on the
+    right (the invisible center splitter's column was among the leaked ones).
+    """
+    w = ImageGalleryWidget()
+    qtbot.addWidget(w)
+    w.resize(1900, 900)
+    w.show()
+    items = _items(27)
+    w.rebuild_grid(items)
+    qtbot.wait(400)
+    gv = w._grid_view
+    gv.set_series([items[:25]], hub_names=["HUB-A"], collapsed={})
+    assert gv._band_state is not None
+    assert gv.grid_columns > GRID_COLUMNS
+
+    w._on_view_toggled(True)  # grid -> list
+    host_w = gv.items_host.width()
+    card = next(iter(gv._cards_by_path.values()))
+    assert card.width() >= host_w - 8, (
+        f"list row width {card.width()} < host {host_w} — leftover column "
+        "minimums from the banded grid"
+    )
+    for c in range(gv.items_layout.columnCount()):
+        assert gv.items_layout.columnMinimumWidth(c) == 0
 
 
 def test_narrow_resize_returns_to_stacked(qtbot) -> None:

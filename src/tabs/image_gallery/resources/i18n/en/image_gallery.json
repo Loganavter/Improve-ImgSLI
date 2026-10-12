@@ -7,6 +7,19 @@
     "empty_view": "No images in view.",
     "analyze": "Analyze",
     "analyzing": "Analyzing…",
+    "activity": {
+      "queued": "Queued",
+      "claimed": "Starting",
+      "analyzing": "Analyzing",
+      "waiting": "Waiting",
+      "done": "Done",
+      "error": "Error",
+      "unreadable": "Unreadable"
+    },
+    "domain": {
+      "algorithms": "Algorithms",
+      "ai": "AI"
+    },
     "settings": {
       "ai_title": "Image Gallery — AI",
       "enable_ai": "Enable AI image analysis",
@@ -20,6 +33,8 @@
       "effort_medium": "Medium",
       "effort_high": "High",
       "effort_none": "None",
+      "vlm_max_edge": "Image downscale (max edge)",
+      "downscale_original": "Original",
       "api_key_warning": "Stored unencrypted on this device."
     },
     "errors": {
@@ -49,11 +64,23 @@
     "ask_ai": {
       "action": "AI…",
       "title": "Ask AI",
-      "default_prompt": "Summary",
+      "default_prompt": "What matters here?",
       "busy": "Thinking…",
       "read_badge": "AI read, unverified",
       "error": "AI could not answer.",
-      "routing_unavailable": "Routing is not enabled yet."
+      "routing_unavailable": "Routing is not enabled yet.",
+      "images_toggle_hint": "Send images with the question",
+      "images_toggle_downsample": "Downscale: ≤ {px} px",
+      "region_prompt": "What is wrong in this region?"
+    },
+    "series": {
+      "ask_ai": "Ask AI",
+      "rename": "Rename",
+      "rename_title": "Rename series",
+      "rename_prompt": "Series name",
+      "delete": "Delete",
+      "reset": "Reset manual series",
+      "recluster": "Re-cluster series"
     },
     "sort_by": "Sort by",
     "view": "View",

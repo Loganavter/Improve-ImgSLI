@@ -161,17 +161,6 @@
       }
     },
     {
-      "path": "src/plugins/help/tree.py",
-      "lines": 554,
-      "limit": 500,
-      "marker": "Audit-Meta:",
-      "raw": "pattern=single-owner reason=\"one merged HelpTree: host shell + tab/plugin fragment merge, alias/body/asset resolution, and validation share one cache — splitting would fork the uniqueness scope\"",
-      "parsed": {
-        "pattern": "single-owner",
-        "reason": "one merged HelpTree: host shell + tab/plugin fragment merge, alias/body/asset resolution, and validation share one cache — splitting would fork the uniqueness scope"
-      }
-    },
-    {
       "path": "src/plugins/settings/dialog.py",
       "lines": 658,
       "limit": 500,
@@ -751,7 +740,7 @@
     },
     {
       "path": "src/tabs/image_gallery/controller.py",
-      "lines": 3742,
+      "lines": 4031,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine size=exempt reason=\"one controller lifecycle — folder scan/thumbnail/triage/VLM sharing GenericWorker state\"",
@@ -763,7 +752,7 @@
     },
     {
       "path": "src/tabs/image_gallery/services/ai_client.py",
-      "lines": 577,
+      "lines": 624,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=wire-client size=551 reason=\"one OpenAI-compatible vision client: request build + call_sync (retry/429) + response parse + debug belong together — splitting scatters the wire contract\"",
@@ -787,7 +776,7 @@
     },
     {
       "path": "src/tabs/image_gallery/tab.py",
-      "lines": 394,
+      "lines": 407,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner size=exempt reason=\"tab contract — lifecycle wiring delegates to controller/widget\"",
@@ -795,6 +784,18 @@
         "pattern": "thin-owner",
         "size": "exempt",
         "reason": "tab contract — lifecycle wiring delegates to controller/widget"
+      }
+    },
+    {
+      "path": "src/tabs/image_gallery/ui/ask_ai.py",
+      "lines": 700,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=single-surface size=exempt reason=\"one scope-aware ask flyout — its fade/persist/menu/status state is one cohesive surface; splitting would scatter the flyout lifecycle\"",
+      "parsed": {
+        "pattern": "single-surface",
+        "size": "exempt",
+        "reason": "one scope-aware ask flyout — its fade/persist/menu/status state is one cohesive surface; splitting would scatter the flyout lifecycle"
       }
     },
     {
@@ -811,7 +812,7 @@
     },
     {
       "path": "src/tabs/image_gallery/ui/card/painters.py",
-      "lines": 467,
+      "lines": 485,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner-target size=exempt reason=\"one painters concern: badge/dots overlay recipes share one stroke-alignment contract (half-pixel inset mirrors across painters so borders stay pixel-crisp)\"",
@@ -847,7 +848,7 @@
     },
     {
       "path": "src/tabs/image_gallery/ui/grid_view.py",
-      "lines": 2984,
+      "lines": 3088,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine size=exempt reason=\"single virtualized grid view — grid_columns/series headers/pool/marquee share one layout lifecycle\"",
@@ -859,7 +860,7 @@
     },
     {
       "path": "src/tabs/image_gallery/ui/quick_look.py",
-      "lines": 1556,
+      "lines": 1624,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner reason=\"thin owner delegating to ui/quick_look/* helpers,bars,histograms,metrics,artifacts,strip\"",
@@ -882,7 +883,7 @@
     },
     {
       "path": "src/tabs/image_gallery/ui/quick_look/overlay_build.py",
-      "lines": 932,
+      "lines": 882,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner-target size=exempt reason=\"one overlay-build concern: painted chrome widgets + build_overlay_ui share one card layout\"",
@@ -942,7 +943,7 @@
     },
     {
       "path": "src/tabs/image_gallery/ui/quick_look_hooks.py",
-      "lines": 546,
+      "lines": 572,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner-target size=exempt reason=\"one quick-look hooks concern: owner-first overlay wiring, triage toggles (reject/source set+unset) and strip hooks share one seam\"",
@@ -966,7 +967,7 @@
     },
     {
       "path": "src/tabs/image_gallery/ui/toolbar.py",
-      "lines": 618,
+      "lines": 851,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=compound-widget size=exempt reason=\"toolbar + view-switch sharing one paint/theme lifecycle — split tracked post light-theme epic\"",
@@ -1002,7 +1003,7 @@
     },
     {
       "path": "src/tabs/image_gallery/widget.py",
-      "lines": 2174,
+      "lines": 2565,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner size=exempt reason=\"thin owner delegating to use_cases/triage+carry+quick look; splitting would create helpers bag\"",
@@ -1014,7 +1015,7 @@
     },
     {
       "path": "src/tabs/multi_compare/canvas/interaction.py",
-      "lines": 755,
+      "lines": 686,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner reason=\"Wheel/pan/key/context share Qt event-name surface delegated by canvas widget; zoom-tick fit-cache + throttles live here by necessity, divider/slot gestures already split under canvas/features\"",
@@ -1115,7 +1116,7 @@
     },
     {
       "path": "src/tabs/multi_compare/use_cases/persistence.py",
-      "lines": 505,
+      "lines": 425,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner-target reason=\"TabContract session/restore surface: serialize/deserialize/rehydrate plus entry validation share one module beside the models they validate\"",
@@ -1205,7 +1206,7 @@
     },
     {
       "path": "src/ui/main_window/csd_menu_strip.py",
-      "lines": 505,
+      "lines": 553,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine reason=\"single CSD menu strip — custom chrome + layout\"",
@@ -1216,7 +1217,7 @@
     },
     {
       "path": "src/ui/main_window/menu_controller.py",
-      "lines": 528,
+      "lines": 537,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine reason=\"single menu controller — platform menu assembly\"",

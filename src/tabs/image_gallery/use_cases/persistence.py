@@ -45,6 +45,43 @@ _LEGACY_STATE_SLOT = "image_gallery.state"
 _SERIALIZE_VERSION = 2
 
 
+def _chrome_serialize(tab, session_id: str, context: TabContext) -> dict:
+    state = getattr(tab, "_session_state", None)
+    if state is None:
+        return {}
+    try:
+        return state.serialize(context, session_id)
+    except Exception:
+        logger.debug("ImageGalleryTab chrome serialize failed", exc_info=True)
+        return {}
+
+
+def _chrome_deserialize(tab, session_id: str, data: dict, context: TabContext) -> None:
+    state = getattr(tab, "_session_state", None)
+    if state is None:
+        return
+    try:
+        state.deserialize(data, context, session_id)
+    except Exception:
+        logger.debug("ImageGalleryTab chrome deserialize failed", exc_info=True)
+
+
+def _apply_session_state(tab, context: TabContext, session_id: str) -> None:
+    """Apply the session's toolbar chrome (unconditional; never pool-gated).
+
+    ``SessionState.apply_from_slot`` reads the LIVE slot (QSettings fallback)
+    and binds the facade to ``session_id``. The judgment domain is applied
+    quietly by the widget, so a restored ``ai`` domain never fires a run.
+    """
+    state = getattr(tab, "_session_state", None)
+    if state is None:
+        return
+    try:
+        state.apply_from_slot(context, session_id)
+    except Exception:
+        logger.debug("ImageGalleryTab view-prefs restore failed", exc_info=True)
+
+
 def restore_from(tab, context: TabContext, session_id: str | None) -> None:
     if session_id is None or tab._widget is None or tab._controller is None:
         return
@@ -71,6 +108,7 @@ def restore_from(tab, context: TabContext, session_id: str | None) -> None:
             tab._controller._sync_from_slot()
         except Exception:
             logger.debug("ImageGalleryTab slot restore failed", exc_info=True)
+        _apply_session_state(tab, context, session_id)
         return
     # Empty / absent / foreign slot — legacy rescan path. Folder comes
     # from the (possibly empty) slot, else the legacy folder-only slot.
@@ -92,6 +130,7 @@ def restore_from(tab, context: TabContext, session_id: str | None) -> None:
             tab._controller.clear_to_empty()
         except Exception:
             logger.debug("ImageGalleryTab empty restore failed", exc_info=True)
+        _apply_session_state(tab, context, session_id)
         return
     folder = Path(folder_raw)
     if folder.is_dir():
@@ -99,6 +138,7 @@ def restore_from(tab, context: TabContext, session_id: str | None) -> None:
             tab._controller.open_folder(folder)
         except Exception:
             logger.debug("ImageGalleryTab restore failed for %s", folder, exc_info=True)
+    _apply_session_state(tab, context, session_id)
 
 
 def serialize_session(tab, session_id: str, context: TabContext) -> dict | None:
@@ -117,7 +157,7 @@ def serialize_session(tab, session_id: str, context: TabContext) -> dict | None:
     except Exception:
         slot = None
     if isinstance(slot, GallerySlotState):
-        return {
+        snapshot = {
             "version": _SERIALIZE_VERSION,
             "folder": slot.folder,
             "filter_text": slot.filter_text,
@@ -135,6 +175,9 @@ def serialize_session(tab, session_id: str, context: TabContext) -> dict | None:
                 for it in slot.items
             ],
         }
+        # Toolbar chrome is read from THIS session's slot (not the bound copy).
+        snapshot.update(_chrome_serialize(tab, session_id, context))
+        return snapshot
     # Foreign/legacy slot value — persist whatever folder we can find.
     # Slot-only: when slot/legacy carry no folder, fail open with
     # folder None — never reach into controller-local truth.
@@ -186,6 +229,7 @@ def deserialize_session(tab, session_id: str, data: dict, context: TabContext) -
         store.set_session_state_slot(GALLERY_SLOT_NAME, state, session_id=session_id, emit_scope=None)
     except Exception:
         pass
+    _chrome_deserialize(tab, session_id, data, context)
     # If this session is currently visible, rebuild from the slot now.
     active = None
     try:

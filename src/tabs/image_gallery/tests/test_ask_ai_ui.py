@@ -49,6 +49,103 @@ def test_flyout_tab_accepts_default_and_enter_submits(qtbot):
     flyout.hide()
 
 
+def test_tab_prefills_default_cursor_at_end_no_selection(qtbot):
+    """Tab accepts the prompt with the cursor at the end, NOT selecting it."""
+    anchor = QWidget()
+    qtbot.addWidget(anchor)
+    anchor.resize(200, 100)
+    anchor.show()
+    qtbot.waitExposed(anchor)
+
+    flyout = AskAiFlyout(anchor)
+    qtbot.addWidget(flyout)
+    flyout.open_for(anchor, scope_label="Selection", default_prompt="What matters here?")
+    qtbot.waitUntil(lambda: flyout.isVisible(), timeout=5000)
+
+    tab = QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_Tab, Qt.KeyboardModifier.NoModifier)
+    assert flyout.eventFilter(flyout._edit, tab) is True
+    assert flyout._edit.text() == "What matters here?"
+    assert flyout._edit.hasSelectedText() is False
+    assert flyout._edit.cursorPosition() == len("What matters here?")
+    flyout.hide()
+    qtbot.waitUntil(lambda: not flyout.isVisible(), timeout=5000)
+
+
+def test_status_badge_shows_selected_model_not_backend(qtbot):
+    """The status badge shows the selected LLM, never the raw 'vlm' backend."""
+    anchor = QWidget()
+    qtbot.addWidget(anchor)
+    anchor.resize(200, 100)
+    anchor.show()
+    qtbot.waitExposed(anchor)
+
+    flyout = AskAiFlyout(anchor)
+    qtbot.addWidget(flyout)
+    flyout.open_for(anchor, scope_label="Selection", default_prompt="Q")
+    qtbot.waitUntil(lambda: flyout.isVisible(), timeout=5000)
+    flyout.set_texts(model="openai/gpt-4o")
+
+    flyout.show_result("The series is mostly clean.", backend="vlm")
+
+    status = flyout._status.text()
+    assert "openai/gpt-4o" in status
+    assert "vlm" not in status
+    flyout.hide()
+    qtbot.waitUntil(lambda: not flyout.isVisible(), timeout=5000)
+
+
+def test_hide_persists_draft_and_images_toggle(qtbot):
+    """Draft text + include-images toggle survive a hide/reopen."""
+    anchor = QWidget()
+    qtbot.addWidget(anchor)
+    anchor.resize(200, 100)
+    anchor.show()
+    qtbot.waitExposed(anchor)
+
+    flyout = AskAiFlyout(anchor)
+    qtbot.addWidget(flyout)
+    flyout.open_for(anchor, scope_label="Selection", default_prompt="Q")
+    qtbot.waitUntil(lambda: flyout.isVisible(), timeout=5000)
+
+    flyout._edit.setText("my draft question")
+    flyout._images_toggle.setChecked(True)
+    flyout.hide()
+    qtbot.waitUntil(lambda: not flyout.isVisible(), timeout=5000)  # fade-out done
+
+    flyout.open_for(anchor, scope_label="Selection", default_prompt="Q")
+    qtbot.waitUntil(lambda: flyout.isVisible(), timeout=5000)
+    assert flyout._edit.text() == "my draft question"
+    assert flyout.include_images() is True
+    flyout.hide()
+    qtbot.waitUntil(lambda: not flyout.isVisible(), timeout=5000)
+
+
+def test_reopen_uses_saved_user_size_on_first_frame(qtbot):
+    """A remembered manual size must apply on the FIRST frame, not after the fade."""
+    anchor = QWidget()
+    qtbot.addWidget(anchor)
+    anchor.resize(200, 100)
+    anchor.show()
+    qtbot.waitExposed(anchor)
+
+    flyout = AskAiFlyout(anchor)
+    qtbot.addWidget(flyout)
+    flyout.open_for(anchor, scope_label="Selection", default_prompt="Q")
+    qtbot.waitUntil(lambda: flyout.isVisible(), timeout=5000)
+    flyout.apply_user_size(500, 420)
+    assert (flyout.width(), flyout.height()) == (500, 420)
+
+    flyout.hide()
+    qtbot.waitUntil(lambda: not flyout.isVisible(), timeout=5000)
+
+    flyout.open_for(anchor, scope_label="Selection", default_prompt="Q")
+    # Immediately (first frame, before any animation settles): saved size.
+    assert (flyout.width(), flyout.height()) == (500, 420)
+    qtbot.waitUntil(lambda: flyout.isVisible(), timeout=5000)
+    flyout.hide()
+    qtbot.waitUntil(lambda: not flyout.isVisible(), timeout=5000)
+
+
 def test_flyout_enter_keypress_event_submits(qtbot):
     """Enter is handled by the flyout itself (no Ask button)."""
     anchor = QWidget()
@@ -197,6 +294,72 @@ def test_flyout_has_resize_grip_and_min_width(qtbot):
     flyout.hide()
 
 
+def test_flyout_minimum_height_tracks_content_layout(qtbot):
+    """Min height follows the layout floor, not a fixed constant.
+
+    Pre-fix the floor was a hardcoded 160 scaled px regardless of content, so
+    it did not track the layout at all (and the always-present empty rows kept
+    the surface tall). The floor must equal what the live layout needs plus the
+    shadow margins.
+    """
+    from sli_ui_toolkit.managers import scaled_px
+
+    anchor = QWidget()
+    qtbot.addWidget(anchor)
+    anchor.resize(200, 100)
+    anchor.show()
+    qtbot.waitExposed(anchor)
+
+    flyout = AskAiFlyout(anchor)
+    qtbot.addWidget(flyout)
+    flyout.open_for(anchor, scope_label="Series 1", default_prompt="Summary")
+    qtbot.waitUntil(lambda: flyout.isVisible(), timeout=5000)
+
+    layout = flyout.container.layout()
+    layout.activate()
+    needed = int(layout.minimumSize().height()) + 2 * flyout.SHADOW_RADIUS
+    # Empty rows are collapsed, so the live floor is below the old constant —
+    # proof it tracks the layout rather than a magic number.
+    assert needed < scaled_px(160)
+    assert flyout.minimumHeight() == needed
+    flyout.hide()
+
+
+def test_empty_result_and_status_rows_collapse(qtbot):
+    """The two bottom labels hide when empty and reappear with content."""
+    anchor = QWidget()
+    qtbot.addWidget(anchor)
+    anchor.resize(200, 100)
+    anchor.show()
+    qtbot.waitExposed(anchor)
+
+    flyout = AskAiFlyout(anchor)
+    qtbot.addWidget(flyout)
+    flyout.open_for(anchor, default_prompt="Summary")
+    qtbot.waitUntil(lambda: flyout.isVisible(), timeout=5000)
+    qtbot.wait(300)  # past the show fade, when children are restored
+
+    assert not flyout._result.isVisible()
+    assert not flyout._status.isVisible()
+
+    flyout.set_busy(True)
+    qtbot.wait(50)
+    assert flyout._status.isVisible()
+
+    flyout.show_result("an answer", backend="text")
+    qtbot.wait(50)
+    assert flyout._result.isVisible()
+    assert flyout._status.isVisible()
+
+    flyout.show_error("")
+    qtbot.wait(50)
+    # Error path clears the result pane; an empty status falls back to text,
+    # so the result row collapses while the status keeps the message.
+    assert not flyout._result.isVisible()
+    assert flyout._status.isVisible()
+    flyout.hide()
+
+
 def test_empty_scope_line_is_hidden(qtbot):
     anchor = QWidget()
     qtbot.addWidget(anchor)
@@ -227,8 +390,9 @@ def test_series_header_context_callback_passes_members_and_label(qtbot):
     grid = GalleryGridView()
     qtbot.addWidget(grid)
     calls = []
-    grid._on_series_context_menu = lambda idx, anchor, paths, label: calls.append(
-        (idx, tuple(paths), label)
+    grid._on_series_context_menu = (
+        lambda idx, anchor, paths, label, series_id=None, global_pos=None:
+        calls.append((idx, tuple(paths), label))
     )
     item = GalleryItem(path=Path("/g/1.png"), mtime_ns=1)
     grid._series = [[item]]
@@ -256,6 +420,8 @@ def test_i18n_ask_ai_keys_present_in_all_locales():
             "read_badge",
             "error",
             "routing_unavailable",
+            "images_toggle_hint",
+            "images_toggle_downsample",
         ):
             assert block.get(key), f"{path}: missing ask_ai.{key}"
 
@@ -285,3 +451,137 @@ def test_flyout_chrome_is_localizable(qtbot):
     flyout.show_result("готово", backend="text")
     assert "Ответ ИИ" in flyout._status.text()
     flyout.hide()
+
+
+def test_ask_ai_images_toggle_defaults_off(qtbot):
+    anchor = QWidget()
+    qtbot.addWidget(anchor)
+    anchor.resize(200, 100)
+    anchor.show()
+    qtbot.waitExposed(anchor)
+    flyout = AskAiFlyout(anchor)
+    qtbot.addWidget(flyout)
+    flyout.open_for(anchor, default_prompt="Summary")
+    qtbot.waitUntil(lambda: flyout.isVisible(), timeout=5000)
+
+    assert flyout.findChild(QWidget, "gallery_ask_ai_images_toggle") is not None
+    assert flyout.include_images() is False
+    flyout.hide()
+
+
+def test_images_toggle_tooltip_has_two_lines(qtbot):
+    anchor = QWidget()
+    qtbot.addWidget(anchor)
+    anchor.resize(200, 100)
+    anchor.show()
+    qtbot.waitExposed(anchor)
+    flyout = AskAiFlyout(anchor)
+    flyout.set_texts(
+        images_hint="Send images with the question",
+        images_downsample="Downscale: ≤ 768 px",
+    )
+    assert flyout._images_toggle.toolTip().split("\n") == [
+        "Send images with the question",
+        "Downscale: ≤ 768 px",
+    ]
+    flyout.deleteLater()
+
+
+def test_images_downsample_line_reflects_current_setting():
+    from types import SimpleNamespace
+
+    from tabs.image_gallery.controller import GalleryController
+
+    fake = SimpleNamespace(_tr=lambda _key, default: default)
+    fmt = GalleryController._images_downsample_text
+    assert fmt(fake, 768) == "Downscale: ≤ 768 px"
+    assert fmt(fake, 0) == "Original"
+
+
+def test_ask_ai_images_toggle_persists_across_hide(qtbot):
+    anchor = QWidget()
+    qtbot.addWidget(anchor)
+    anchor.resize(200, 100)
+    anchor.show()
+    qtbot.waitExposed(anchor)
+    flyout = AskAiFlyout(anchor)
+    qtbot.addWidget(flyout)
+    flyout.open_for(anchor, default_prompt="Summary")
+    qtbot.waitUntil(lambda: flyout.isVisible(), timeout=5000)
+
+    flyout._images_toggle.setChecked(True)
+    flyout._on_images_toggled()
+    assert flyout.include_images() is True
+
+    # Persisted across a hide/reopen (not reset) — see hideEvent.
+    flyout.hide()
+    qtbot.waitUntil(lambda: not flyout.isVisible(), timeout=5000)
+    flyout.open_for(anchor, default_prompt="Summary")
+    qtbot.waitUntil(lambda: flyout.isVisible(), timeout=5000)
+    assert flyout.include_images() is True
+    flyout.hide()
+    qtbot.waitUntil(lambda: not flyout.isVisible(), timeout=5000)
+
+
+def test_result_image_names_are_accent_links_and_open_quick_look(qtbot):
+    """Names in the answer become accent, underlined, selectable links.
+
+    Falsification: pre-change ``show_result`` took no ``links`` and the result
+    label was plain/not selectable — this test fails on that build.
+    """
+    anchor = QWidget()
+    qtbot.addWidget(anchor)
+    anchor.resize(200, 100)
+    anchor.show()
+    qtbot.waitExposed(anchor)
+
+    flyout = AskAiFlyout(anchor)
+    qtbot.addWidget(flyout)
+    flyout.open_for(anchor, default_prompt="Summary")
+    qtbot.waitUntil(lambda: flyout.isVisible(), timeout=5000)
+
+    opened: list[str] = []
+    flyout.imageActivated.connect(opened.append)
+
+    flyout.show_result(
+        "Prefer Archivist Soft.png; Archivist Rough.png is softer.",
+        backend="text",
+        links={
+            "Archivist Soft.png": "/g/Archivist Soft.png",
+            "Archivist Rough.png": "/g/Archivist Rough.png",
+        },
+    )
+
+    html = flyout._result.text()
+    assert '<a href="gallery-image:' in html
+    assert "Archivist Soft.png</a>" in html
+    assert "text-decoration:underline" in html
+    # Selectable text + clickable links coexist on the answer label.
+    flags = flyout._result.textInteractionFlags()
+    assert flags & Qt.TextInteractionFlag.TextSelectableByMouse
+    assert flags & Qt.TextInteractionFlag.LinksAccessibleByMouse
+
+    # Activating a link (as a click does) carries the image path out.
+    flyout._result.linkActivated.emit("gallery-image:%2Fg%2FArchivist%20Soft.png")
+    assert opened == ["/g/Archivist Soft.png"]
+    flyout.hide()
+    qtbot.waitUntil(lambda: not flyout.isVisible(), timeout=5000)
+
+
+def test_result_without_links_stays_plain_text(qtbot):
+    anchor = QWidget()
+    qtbot.addWidget(anchor)
+    anchor.resize(200, 100)
+    anchor.show()
+    qtbot.waitExposed(anchor)
+    flyout = AskAiFlyout(anchor)
+    qtbot.addWidget(flyout)
+    flyout.open_for(anchor, default_prompt="Summary")
+    qtbot.waitUntil(lambda: flyout.isVisible(), timeout=5000)
+
+    flyout.show_result("2 < 3 & rising", backend="text")
+    # PlainText format: the ampersand/angle brackets survive verbatim.
+    assert flyout._result.text() == "2 < 3 & rising"
+    assert "<a " not in flyout._result.text()
+    flyout.hide()
+    qtbot.waitUntil(lambda: not flyout.isVisible(), timeout=5000)

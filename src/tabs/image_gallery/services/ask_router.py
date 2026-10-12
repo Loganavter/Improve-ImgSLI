@@ -18,7 +18,6 @@ fabricated text.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Callable
 
 from tabs.image_gallery.services.ai_client import (
@@ -27,8 +26,17 @@ from tabs.image_gallery.services.ai_client import (
     _ai_debug,
     call_sync,
 )
-from tabs.image_gallery.services.metric_scores import fallback_note
-from tabs.image_gallery.services.vlm import _encode_image
+from tabs.image_gallery.services.ask_answer_guard import (
+    answer_violation,
+    build_correction_feedback,
+    is_numeric_question,
+)
+from tabs.image_gallery.services.ask_payload import (
+    DEFAULT_ASK_MAX_TOKENS,
+    _metric_labels,
+    build_text_payload,
+    build_vision_payload,
+)
 
 #: Backends the router can dispatch to.
 BACKEND_TEXT = "text"
@@ -72,13 +80,6 @@ _ROUTING_HINTS = (
     "triage order",
 )
 
-#: Vision payload budget: never upload the whole folder.
-VLM_MAX_IMAGES = 6
-
-#: Fallback answer-token budget when the caller passes none (see
-#: ``estimate_ask_max_tokens`` — 0 means "compute from the scope size").
-DEFAULT_ASK_MAX_TOKENS = 4096
-
 #: Headroom multiplier over the estimated visible-answer budget. Reasoning
 #: tokens count against ``max_tokens``, so the total must cover both.
 _EFFORT_HEADROOM = {"low": 1.25, "medium": 1.6, "high": 2.2}
@@ -121,43 +122,6 @@ def estimate_ask_max_tokens(context: dict, *, configured: int = 0, effort: str =
     headroom = _EFFORT_HEADROOM.get(resolve_reasoning_effort(effort), 1.25)
     return int(max(512, min(int(answer_budget * headroom), 16384)))
 
-_NAMING_RULE = (
-    " Images and metrics are referenced by the labels given in the context "
-    "(img_1, img_2, … for images; the metric labels as written). Use those "
-    "labels verbatim; never infer, translate or guess a filename or a metric."
-)
-
-_STYLE_RULE = (
-    " Write a short, plain-language answer (1-4 sentences) the user can act "
-    "on. Do NOT role-play, assume a persona or write a preamble — start "
-    "directly with the answer. Do NOT list metric names or percentages unless "
-    "the user explicitly asks for numbers — state the practical takeaway "
-    "instead. If the variants are effectively equivalent within measurement "
-    "noise, say so plainly rather than inventing a winner. Never invent "
-    "measurements."
-)
-
-_TEXT_PROMPT = (
-    "You answer questions about a gallery of image-processing variants "
-    "(upscalers, restorations) of the SAME picture. You are given the locally "
-    "measured metrics, already labeled (quality 0-100, higher is always "
-    "better) plus a short descriptor, and artifact severities (clean/mild/"
-    "flagged flags a named defect such as banding, halo or over-smoothing); "
-    "treat them as authoritative and do not contradict them."
-    + _STYLE_RULE
-    + _NAMING_RULE
-)
-
-_VISION_PROMPT = (
-    "You answer questions about images in a gallery of processing variants of "
-    "the SAME picture. You are given the locally measured metrics as "
-    "authoritative context and, for visual questions, the images themselves. "
-    "Judge only what you can actually SEE; if you cannot see it, say so. Label "
-    "any visual claim as an unverified AI read, never a verdict."
-    + _STYLE_RULE
-    + _NAMING_RULE
-)
-
 
 class AskNotConfigured(Exception):
     """Raised by the Jev routing stub — the backend is not wired yet."""
@@ -173,6 +137,9 @@ class AskResult:
     confidence: float | None = None
     cached: bool = False
     error: str | None = None
+    #: True when the guard rejected the first answer and the single rewrite
+    #: replaced it (see plan-gallery-ask-ai-answer-quality, P1).
+    revised: bool = False
 
 
 def route_backend(question: str, context: dict) -> str:
@@ -187,107 +154,20 @@ def route_backend(question: str, context: dict) -> str:
     return BACKEND_TEXT
 
 
-def _metric_text(metric_id: str, score, labels: dict) -> str:
-    """One metric as ``<Label> <score>% — <band note>`` (never a bare id)."""
-    label = str((labels or {}).get(metric_id, metric_id))
-    text = f"{label} {score}%"
-    try:
-        note = fallback_note(metric_id, int(score))
-    except Exception:
-        note = ""
-    return f"{text} — {note}" if note else text
+def resolve_backend(question: str, context: dict, *, include_images: bool | None = None) -> str:
+    """Backend with the ask surface's include-images toggle applied.
 
-
-#: Severity string → a representative quality score for ``fallback_note``.
-_SEVERITY_SCORE = {"clean": 100, "mild": 50, "flagged": 10}
-
-
-def _severity_text(name: str, severity) -> str:
-    """One artifact as ``name:severity (meaning)`` so the model sees the axis."""
-    sev = str(severity or "").lower()
-    text = f"{name}:{sev}"
-    try:
-        note = fallback_note(name, _SEVERITY_SCORE.get(sev, 50))
-    except Exception:
-        note = ""
-    return f"{text} ({note})" if note else text
-
-
-def _context_block(context: dict) -> str:
-    """Compact measured-context block handed to the model."""
-    try:
-        ctx = context or {}
-        labels = ctx.get("metric_labels") or {}
-        lines = [
-            f"Scope: {ctx.get('label', '')} ({ctx.get('kind', '')}), "
-            f"{int(ctx.get('count', 0) or 0)} item(s), mode={ctx.get('mode', '')}"
-        ]
-        src = ctx.get("source")
-        if src:
-            lines.append(f"Source: {src}")
-        for it in list(ctx.get("items", []) or []):
-            metrics = it.get("metrics") or {}
-            sev = it.get("severities") or {}
-            met_txt = "; ".join(
-                _metric_text(k, v, labels) for k, v in metrics.items()
-            )
-            sev_txt = ", ".join(_severity_text(k, v) for k, v in sev.items())
-            line = f"- {it.get('alias') or it.get('name', '')}"
-            badge = it.get("badge")
-            if badge:
-                line += f" [{badge}]"
-            if met_txt:
-                line += f" {met_txt}"
-            if sev_txt:
-                line += f" | {sev_txt}"
-            lines.append(line)
-        return "\n".join(lines)
-    except Exception:
-        return ""
-
-
-def build_text_payload(
-    question: str, context: dict, *, model: str, max_tokens: int = DEFAULT_ASK_MAX_TOKENS
-) -> dict:
-    """Text-only chat payload — NO image bytes (asserted by tests)."""
-    text = (
-        f"{_TEXT_PROMPT}\n\nQUESTION: {str(question or '').strip()}\n\n"
-        f"MEASURED CONTEXT (authoritative):\n{_context_block(context)}"
-    )
-    return {
-        "model": model,
-        "messages": [{"role": "user", "content": [{"type": "text", "text": text}]}],
-        "max_tokens": int(max_tokens),
-    }
-
-
-def build_vision_payload(
-    question: str, context: dict, *, model: str, max_tokens: int = DEFAULT_ASK_MAX_TOKENS
-) -> dict:
-    """Vision chat payload: text + up to ``VLM_MAX_IMAGES`` downscaled images."""
-    content: list[dict] = [
-        {
-            "type": "text",
-            "text": (
-                f"{_VISION_PROMPT}\n\nQUESTION: {str(question or '').strip()}\n\n"
-                f"MEASURED CONTEXT (authoritative):\n{_context_block(context)}"
-            ),
-        }
-    ]
-    for it in list((context or {}).get("items", []) or [])[:VLM_MAX_IMAGES]:
-        try:
-            path = Path(str(it.get("path")))
-            mime, data = _encode_image(path)
-            content.append(
-                {"type": "image_url", "image_url": {"url": f"data:image/{mime};base64,{data}"}}
-            )
-        except Exception:
-            continue
-    return {
-        "model": model,
-        "messages": [{"role": "user", "content": content}],
-        "max_tokens": int(max_tokens),
-    }
+    ``include_images=None`` keeps the auto routing (question kind). ``True``
+    forces the vision backend (images in the payload); ``False`` forces the
+    text backend even for a visual question (metrics only). A routing (Jev)
+    question is never overridden.
+    """
+    backend = route_backend(question, context)
+    if include_images is None or backend == BACKEND_JEV:
+        return backend
+    if include_images:
+        return BACKEND_VLM
+    return BACKEND_TEXT if backend == BACKEND_VLM else backend
 
 
 def _coerce_text(value) -> str:
@@ -333,6 +213,48 @@ def _extract_text(raw: dict) -> str:
         raw.get("usage") if isinstance(raw, dict) else None,
     )
     raise AiResponseError(f"empty ask response (finish_reason={finish})")
+
+
+def _coerce_confidence(value) -> float | None:
+    """Map the envelope's confidence token (or a 0-1 float) to a number."""
+    try:
+        if isinstance(value, bool):
+            return None
+        if isinstance(value, (int, float)):
+            v = float(value)
+            return v if 0.0 <= v <= 1.0 else None
+        token = str(value or "").strip().lower()
+        return {"high": 0.9, "medium": 0.6, "low": 0.3}.get(token)
+    except Exception:
+        return None
+
+
+def _parse_answer_envelope(text: str) -> tuple[str, float | None]:
+    """Tolerant decode of the answer envelope → ``(answer, confidence|None)``.
+
+    Falls back to the raw text when the model did not emit the JSON object
+    (provider/model behavior varies), so an answer is never lost to a
+    formatting miss.
+    """
+    raw = str(text or "").strip()
+    if not raw:
+        return "", None
+    obj = None
+    start, end = raw.find("{"), raw.rfind("}")
+    if 0 <= start < end:
+        try:
+            import json
+
+            candidate = json.loads(raw[start : end + 1])
+            if isinstance(candidate, dict):
+                obj = candidate
+        except Exception:
+            obj = None
+    if isinstance(obj, dict):
+        answer = obj.get("answer")
+        if isinstance(answer, str) and answer.strip():
+            return answer.strip(), _coerce_confidence(obj.get("confidence"))
+    return raw, None
 
 
 def _is_openrouter(base_url: str) -> bool:
@@ -382,6 +304,7 @@ def answer(
     model: str = "",
     max_tokens: int = 0,
     reasoning_effort: str = "auto",
+    system_prompt: str | None = None,
     transport: Callable[[str, str, dict], dict] | None = None,
 ) -> AskResult:
     """Answer *question* over *context* via *backend*. Worker thread only.
@@ -415,15 +338,54 @@ def answer(
         context, configured=max_tokens, effort=reasoning_effort
     )
     call = transport or call_sync
-    try:
-        if backend == BACKEND_VLM:
-            payload = build_vision_payload(question, context, model=model, max_tokens=budget)
+    use_vision = backend == BACKEND_VLM
+    if not use_vision:
+        backend = BACKEND_TEXT
+
+    def _one_call(correction: str) -> dict:
+        if use_vision:
+            payload = build_vision_payload(
+                question, context, model=model, max_tokens=budget, correction=correction,
+                system_prompt=system_prompt,
+            )
         else:
-            backend = BACKEND_TEXT
-            payload = build_text_payload(question, context, model=model, max_tokens=budget)
+            payload = build_text_payload(
+                question, context, model=model, max_tokens=budget, correction=correction,
+                system_prompt=system_prompt,
+            )
         payload = _apply_openrouter_extensions(payload, base_url, model, reasoning_effort)
-        raw = call(base_url, api_key, payload)
-        return AskResult(text=_extract_text(raw), backend=backend)
+        return call(base_url, api_key, payload)
+
+    try:
+        raw = _one_call("")
+        answer_text, confidence = _parse_answer_envelope(_extract_text(raw))
+        result = AskResult(text=answer_text, backend=backend, confidence=confidence)
+
+        # P1 — deterministic guard + at most ONE rewrite (fail-open: any failure
+        # or a still-violating rewrite keeps the first answer).
+        numeric = is_numeric_question(question)
+        labels = _metric_labels(context)
+        reason = answer_violation(answer_text, numeric=numeric, labels=labels)
+        if reason:
+            correction = (
+                f"Previous answer:\n{answer_text}\n\n"
+                + build_correction_feedback(reason)
+            )
+            try:
+                raw2 = _one_call(correction)
+                revised, revised_conf = _parse_answer_envelope(_extract_text(raw2))
+                if revised and not answer_violation(
+                    revised, numeric=numeric, labels=labels
+                ):
+                    return AskResult(
+                        text=revised,
+                        backend=backend,
+                        confidence=revised_conf if revised_conf is not None else confidence,
+                        revised=True,
+                    )
+            except Exception:
+                pass
+        return result
     except Exception as exc:
         return AskResult(
             text="",
@@ -443,6 +405,7 @@ __all__ = [
     "build_text_payload",
     "build_vision_payload",
     "estimate_ask_max_tokens",
+    "resolve_backend",
     "resolve_reasoning_effort",
     "route_backend",
 ]

@@ -23,6 +23,7 @@ _EXCLUSIVE_GROUPS = (
     "font_settings",
     "toggle",
     "actions",
+    "gallery_ask_ai",
     "default",
 )
 

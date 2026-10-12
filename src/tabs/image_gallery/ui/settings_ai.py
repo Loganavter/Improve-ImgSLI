@@ -27,8 +27,10 @@ from plugins.settings.typography import (
 
 from plugins.settings.registry import SettingsSection
 from plugins.settings.search import SearchIndex, group
+from tabs.image_gallery.services import vlm
 from tabs.image_gallery.services.ai_settings_store import (
     REASONING_EFFORTS,
+    VLM_MAX_EDGES,
     AiSettingsStore,
     DEFAULT_BASE_URL,
 )
@@ -57,6 +59,8 @@ AI_GROUP = group(
     "image_gallery.settings.effort_medium",
     "image_gallery.settings.effort_high",
     "image_gallery.settings.effort_none",
+    "image_gallery.settings.vlm_max_edge",
+    "image_gallery.settings.downscale_original",
     "image_gallery.settings.api_key_warning",
 )
 SEARCH = SearchIndex.of(AI_GROUP)
@@ -228,12 +232,41 @@ def build(dialog, p):  # type: ignore[no-untyped-def]
     effort_row.addWidget(effort_label)
     effort_row.addWidget(dialog.gallery_ai_effort, 1)
 
+    # Image downscale (max edge) for vision calls; 0 = original bytes.
+    edge_row = QHBoxLayout()
+    edge_row.setContentsMargins(0, scaled_px(4), 0, scaled_px(4))
+    edge_row.setSpacing(scaled_px(8))
+    edge_label = settings_body_label(
+        AI_GROUP.text(dialog, "image_gallery.settings.vlm_max_edge") if hasattr(AI_GROUP, "text") else "Image downscale (max edge)",
+        parent=dialog,
+    )
+    edge_label.setFixedWidth(scaled_px(150))
+    dialog.gallery_ai_edge_label = edge_label
+    dialog.gallery_ai_edge = ComboBox(dialog)
+    try:
+        _original = AI_GROUP.text(dialog, "image_gallery.settings.downscale_original")
+    except Exception:
+        _original = "Original"
+    dialog.gallery_ai_edge.addItems(
+        [_original if px <= 0 else f"{px} px" for px in VLM_MAX_EDGES]
+    )
+    _cur_edge = int(getattr(current, "vlm_max_edge_px", 0) or 0)
+    dialog.gallery_ai_edge.setCurrentIndex(
+        VLM_MAX_EDGES.index(_cur_edge) if _cur_edge in VLM_MAX_EDGES else 0
+    )
+    try:
+        AI_GROUP.tag_member(dialog.gallery_ai_edge, "image_gallery.settings.vlm_max_edge")
+    except Exception:
+        pass
+    edge_row.addWidget(edge_label)
+    edge_row.addWidget(dialog.gallery_ai_edge, 1)
+
     # One label column for the whole group, sized to the longest translated
     # label — a fixed 150px clipped longer Cyrillic/Portuguese strings.
     try:
         from PySide6.QtGui import QFontMetrics
 
-        _labels = [url_label, key_label, model_label, tokens_label, effort_label]
+        _labels = [url_label, key_label, model_label, tokens_label, effort_label, edge_label]
         _need = max(
             QFontMetrics(lbl.font()).horizontalAdvance(lbl.text()) for lbl in _labels
         )
@@ -252,11 +285,12 @@ def build(dialog, p):  # type: ignore[no-untyped-def]
         group_widget.add_widget(builder.row(model_row))
         group_widget.add_widget(builder.row(tokens_row))
         group_widget.add_widget(builder.row(effort_row))
+        group_widget.add_widget(builder.row(edge_row))
         group_widget.add_widget(builder.row(warning))
     else:
         group_widget.add_widget(dialog.gallery_ai_enabled)
         # fallback: add layouts via containers
-        for lay in (url_row, key_row, model_row, tokens_row, effort_row):
+        for lay in (url_row, key_row, model_row, tokens_row, effort_row, edge_row):
             from PySide6.QtWidgets import QWidget
 
             w = QWidget()
@@ -281,6 +315,11 @@ def build(dialog, p):  # type: ignore[no-untyped-def]
             value = 0
         _save_field("ask_max_tokens", max(0, value))
 
+    def _save_vlm_edge(index):
+        px = VLM_MAX_EDGES[int(index)] if 0 <= int(index) < len(VLM_MAX_EDGES) else 0
+        _save_field("vlm_max_edge_px", px)
+        vlm.set_vlm_max_edge(px)
+
     try:
         dialog.gallery_ai_enabled.toggled.connect(lambda v: _save_field("enabled", bool(v)))
         dialog.gallery_ai_base_url.textChanged.connect(lambda t: _save_field("base_url", str(t)))
@@ -293,6 +332,7 @@ def build(dialog, p):  # type: ignore[no-untyped-def]
                 _EFFORT_CHOICES[i] if 0 <= int(i) < len(_EFFORT_CHOICES) else "auto",
             )
         )
+        dialog.gallery_ai_edge.currentIndexChanged.connect(_save_vlm_edge)
     except Exception:
         pass
 
@@ -310,6 +350,8 @@ def build(dialog, p):  # type: ignore[no-untyped-def]
                 tokens = 0
             idx = int(_dialog.gallery_ai_effort.currentIndex())
             effort = _EFFORT_CHOICES[idx] if 0 <= idx < len(_EFFORT_CHOICES) else "auto"
+            edge_idx = int(_dialog.gallery_ai_edge.currentIndex())
+            edge = VLM_MAX_EDGES[edge_idx] if 0 <= edge_idx < len(VLM_MAX_EDGES) else 0
             return {
                 "enabled": bool(_dialog.gallery_ai_enabled.isChecked()),
                 "base_url": str(_dialog.gallery_ai_base_url.text()).strip(),
@@ -317,6 +359,7 @@ def build(dialog, p):  # type: ignore[no-untyped-def]
                 "model": str(_dialog.gallery_ai_model.text()).strip(),
                 "ask_max_tokens": tokens,
                 "reasoning_effort": effort,
+                "vlm_max_edge_px": edge,
             }
         except Exception:
             return {}
@@ -336,6 +379,7 @@ def build(dialog, p):  # type: ignore[no-untyped-def]
                     "model": cur.model,
                     "ask_max_tokens": cur.ask_max_tokens,
                     "reasoning_effort": cur.reasoning_effort,
+                    "vlm_max_edge_px": cur.vlm_max_edge_px,
                 }
             except Exception:
                 return {}

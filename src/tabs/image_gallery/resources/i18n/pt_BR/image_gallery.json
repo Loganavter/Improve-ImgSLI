@@ -7,6 +7,19 @@
     "empty_view": "Nenhuma imagem para exibir.",
     "analyze": "Analisar",
     "analyzing": "Analisando…",
+    "activity": {
+      "queued": "Na fila",
+      "claimed": "Iniciando",
+      "analyzing": "Analisando",
+      "waiting": "Aguardando",
+      "done": "Concluído",
+      "error": "Erro",
+      "unreadable": "Ilegível"
+    },
+    "domain": {
+      "algorithms": "Algoritmos",
+      "ai": "IA"
+    },
     "settings": {
       "ai_title": "Galeria — IA",
       "enable_ai": "Ativar análise de imagem por IA",
@@ -20,6 +33,8 @@
       "effort_medium": "Médio",
       "effort_high": "Alto",
       "effort_none": "Nenhum",
+      "vlm_max_edge": "Redução da imagem (lado maior)",
+      "downscale_original": "Original",
       "api_key_warning": "Armazenada sem criptografia neste dispositivo."
     },
     "errors": {
@@ -49,11 +64,23 @@
     "ask_ai": {
       "action": "IA…",
       "title": "Perguntar à IA",
-      "default_prompt": "Resumo",
+      "default_prompt": "O que importa aqui?",
       "busy": "Pensando…",
       "read_badge": "Leitura de IA, não verificada",
       "error": "A IA não conseguiu responder.",
-      "routing_unavailable": "O roteamento ainda não está habilitado."
+      "routing_unavailable": "O roteamento ainda não está habilitado.",
+      "images_toggle_hint": "Enviar imagens com a pergunta",
+      "images_toggle_downsample": "Redução: ≤ {px} px",
+      "region_prompt": "O que há de errado nesta região?"
+    },
+    "series": {
+      "ask_ai": "Perguntar à IA",
+      "rename": "Renomear",
+      "rename_title": "Renomear série",
+      "rename_prompt": "Nome da série",
+      "delete": "Excluir",
+      "reset": "Redefinir séries manuais",
+      "recluster": "Reagrupar séries"
     }
   }
 }

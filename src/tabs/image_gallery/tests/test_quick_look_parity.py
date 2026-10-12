@@ -2920,52 +2920,8 @@ def test_overlay_hide_plants_close_cover(qtbot, tmp_path):
     assert pix is not None and not pix.isNull(), "close cover has no frame"
 
 
-def test_quicklook_analysis_block_shows_verdict_defects_not_scene(qtbot):
-    """The sidebar reports quality: verdict + defects, never scene/tags.
-
-    Scene description and content tags are identical across variants of the
-    same picture, so the block must ignore them even when a legacy cache
-    entry carries them.
-    """
-    from tabs.image_gallery.models import AiAnalysisResult, AiDefect, AnalysisStatus
-
-    a = _item(
-        "a.png",
-        analysis=AiAnalysisResult(
-            description="A cat on a sofa",
-            tags=("cat", "sofa", "portrait"),
-            model="m",
-            analyzed_at_iso="t",
-            verdict="reject",
-            verdict_reason="Visible halo on edges.",
-            defects=(AiDefect("halo", "flagged", "strong edge glow"),),
-            confidence=0.8,
-        ),
-        analysis_status=AnalysisStatus.DONE,
-    )
-    b = _item("b.png")
-    ov = _make_overlay(qtbot)
-    _show(ov, a, [a, b])
-    assert ov._analysis_title.isVisibleTo(ov)
-    assert ov._analysis_desc.isVisibleTo(ov)
-    # Verdict is a badge, not a line of text in the body.
-    assert ov._analysis_verdict.text() == "REJECT"
-    text = ov._analysis_desc.text()
-    assert "Visible halo on edges." in text
-    assert "REJECT" not in text  # no summary line in the body
-    assert "confidence" not in text.lower()
-    # Scene content never appears.
-    assert "A cat on a sofa" not in text
-    assert "cat" not in text
-    # Defects are compact chips (kind · severity), not prose notes.
-    assert "halo (flagged)" in ov._analysis_tags.text().lower()
-    assert "strong edge glow" not in ov._analysis_tags.text()
-    assert ov._analysis_btn.isVisibleTo(ov)
-    ov.hide()
-
-
-def test_quicklook_analysis_block_no_summary_line(qtbot):
-    """Verdict is a badge; Composition is a row; no numbers in the body."""
+def test_composition_axis_renders_as_metric_row(qtbot):
+    """The AI-only Composition axis is a normal metric row (band note + value)."""
     from tabs.image_gallery.models import AiAnalysisResult, AnalysisStatus
 
     a = _item(
@@ -2988,40 +2944,18 @@ def test_quicklook_analysis_block_no_summary_line(qtbot):
     b = _item("b.png")
     ov = _make_overlay(qtbot)
     _show(ov, a, [a, b])
-    assert ov._analysis_verdict.text() == "KEEP"
-    text = ov._analysis_desc.text()
-    assert text == "Clean and sharp."  # just the conclusion, no summary line
-    assert "Composition" not in text and "confidence" not in text.lower()
-    # Composition lives as a metric row now (title carries a band note).
+    # Composition lives as a metric row (title carries a band note).
     titles = [lbl.text() for row in ov._metric_rows for lbl in row.findChildren(_QlLabel)]
     assert any(t.startswith("Composition") for t in titles)
     assert "Composition 80%" not in titles  # value is the separate right label
     assert any(lbl.text() == "80%" for row in ov._metric_rows for lbl in row.findChildren(_QlLabel))
-    assert ov._analysis_btn.isVisibleTo(ov)
-    ov.hide()
-
-
-def test_quicklook_analysis_block_falls_back_to_legacy_caption(qtbot):
-    """Unscored (legacy cache) analyses still show the description."""
-    from tabs.image_gallery.models import AiAnalysisResult, AnalysisStatus
-
-    a = _item(
-        "a.png",
-        analysis=AiAnalysisResult(description="Old caption.", tags=(), model="m", analyzed_at_iso="t"),
-        analysis_status=AnalysisStatus.DONE,
-    )
-    b = _item("b.png")
-    ov = _make_overlay(qtbot)
-    _show(ov, a, [a, b])
-    assert ov._analysis_desc.text() == "Old caption."
     ov.hide()
 
 
 def test_metric_row_header_uses_local_note_not_ai(qtbot):
     """AI per-axis notes are NOT shown on rows; the local band note is.
 
-    plan-gallery-ai-quality UX contract: one measured answer per row, the VLM
-    read lives in the AI block only.
+    plan-gallery-ai-quality UX contract: one measured answer per row.
     """
     from tabs.image_gallery.models import AiAnalysisResult, AnalysisStatus
 
@@ -3070,7 +3004,7 @@ def test_refresh_metrics_rebuilds_when_analysis_arrives(qtbot):
 
 
 def test_cached_analysis_hydrated_on_open(qtbot, tmp_path, monkeypatch):
-    """A disk-cached analysis shows in the AI block on open (no walk)."""
+    """A disk-cached analysis hydrates on open, so its Composition row shows."""
     from tabs.image_gallery.models import AiAnalysisResult
     from tabs.image_gallery.services import ai_cache
 
@@ -3080,7 +3014,7 @@ def test_cached_analysis_hydrated_on_open(qtbot, tmp_path, monkeypatch):
         7,
         AiAnalysisResult(
             description="", tags=(), model="m", analyzed_at_iso="t",
-            verdict="keep", verdict_reason="Usable result.",
+            composition=80,
         ),
     )
     item = GalleryItem(path=Path("/g/hnote.png"), mtime_ns=7, metrics={"noise": 0.9})
@@ -3098,9 +3032,9 @@ def test_cached_analysis_hydrated_on_open(qtbot, tmp_path, monkeypatch):
         parent.resize(1280, 800)
         parent.show()
     QApplication.processEvents()
-    assert ov._analysis_desc.text() == "Usable result."
+    assert item.analysis is not None  # hydrated from the disk cache
     titles = [lbl.text() for row in ov._metric_rows for lbl in row.findChildren(_QlLabel)]
-    assert not any("coarse film grain" in t for t in titles)
+    assert any(t.startswith("Composition") for t in titles)
     ov.hide()
 
 
@@ -3140,106 +3074,8 @@ def test_artifact_row_header_uses_local_note_not_ai(qtbot):
     ov.hide()
 
 
-def test_quicklook_analysis_text_is_selectable(qtbot):
-    """The verdict/defect text can be selected (copied out), toolkit Label."""
-    from PySide6.QtCore import Qt as _Qt
-
-    a = _item("a.png")
-    ov = _make_overlay(qtbot)
-    _show(ov, a, [a])
-    for lbl in (ov._analysis_desc, ov._analysis_tags):
-        flags = lbl.textInteractionFlags()
-        assert bool(flags & _Qt.TextInteractionFlag.TextSelectableByMouse)
-        assert bool(flags & _Qt.TextInteractionFlag.TextSelectableByKeyboard)
-    ov.hide()
-
-
-def _scored_analysis(**kw):
-    from tabs.image_gallery.models import AiAnalysisResult
-
-    base = dict(
-        description="A cat.",
-        tags=("cat",),
-        model="m",
-        analyzed_at_iso="t",
-        sharpness=85,
-        noise=90,
-        exposure=78,
-        composition=80,
-        verdict="keep",
-        verdict_reason="Clean.",
-    )
-    base.update(kw)
-    return AiAnalysisResult(**base)
-
-
-def test_quicklook_analysis_button_retitles(qtbot, monkeypatch):
-    """DONE offers Re-analyze, fresh items offer Analyze (painter text)."""
-    import tabs.image_gallery.ui.quick_look.labels_theme as _lt
-    from tabs.image_gallery.models import AnalysisStatus
-
-    texts = []
-    monkeypatch.setattr(
-        _lt, "_set_colored_text", lambda b, t, c=None: texts.append((b.objectName(), t))
-    )
-    a = _item("a.png", analysis=_scored_analysis(), analysis_status=AnalysisStatus.DONE)
-    b = _item("b.png")
-    ov = _make_overlay(qtbot)
-    _show(ov, a, [a, b])
-    mine = [t for name, t in texts if name == "quicklook_analysis_btn"]
-    assert mine == ["Re-analyze"]
-    assert getattr(ov, "_analysis_btn_mode", None) == "Re-analyze"
-    # The trigger must actually be VISIBLE on DONE (regression: the text
-    # switched but the button stayed hidden).
-    assert ov._analysis_btn.isVisibleTo(ov)
-    ov.hide()
-
-
-def test_quicklook_analysis_click_routes_reanalyze_vs_analyze(qtbot):
-    """Re-analyze on DONE items, plain Analyze on fresh ones."""
-    from PySide6.QtCore import Qt as _Qt
-
-    from tabs.image_gallery.models import AnalysisStatus
-
-    ana_calls, re_calls = [], []
-    a = _item("a.png", analysis=_scored_analysis(), analysis_status=AnalysisStatus.DONE)
-    b = _item("b.png")
-    ov = _make_overlay(qtbot)
-    _show(ov, a, [a, b])
-    ov._owner.analyze_item_by_path = lambda p: ana_calls.append(p)
-    ov._owner.reanalyze_item_by_path = lambda p: re_calls.append(p)
-    qtbot.mouseClick(ov._analysis_btn, _Qt.MouseButton.LeftButton)
-    qtbot.wait(450)
-    QApplication.processEvents()
-    assert len(re_calls) == 1 and Path(re_calls[0]) == a.path
-    assert ana_calls == []
-    ov.hide()
-
-
-def test_quicklook_analysis_hydrates_cache_on_open(qtbot, tmp_path, monkeypatch):
-    """A disk-cached analysis shows immediately, no Analyze click needed."""
-    from tabs.image_gallery.models import AnalysisStatus
-    from tabs.image_gallery.services import ai_cache
-    from tabs.image_gallery.ui.quick_look.meta import populate_analysis
-
-    monkeypatch.setattr(ai_cache, "ai_cache_dir", lambda: tmp_path)
-    ai_cache.save_analysis(Path("/g/h.png"), 7, _scored_analysis())
-    item = GalleryItem(path=Path("/g/h.png"), mtime_ns=7)
-    other = GalleryItem(path=Path("/g/z.png"), mtime_ns=1)
-    ov = _make_overlay(qtbot)
-    _show(ov, item, [item, other])
-    hydrated = []
-    ov._owner.hydrate_cached_analysis = lambda it: hydrated.append(it.path) or ai_cache.hydrate_item(it)
-    populate_analysis(ov, item)
-    QApplication.processEvents()
-    assert hydrated == [item.path]
-    assert item.analysis_status == AnalysisStatus.DONE
-    assert ov._analysis_verdict.text() == "KEEP"
-    ov.hide()
-
-
 def test_quicklook_brief_divider_follows_brief_block(qtbot):
-    """No dangling rule above the analysis block when the brief is empty."""
+    """No dangling series divider when the brief is empty."""
     from tabs.image_gallery.models import CompareBrief
 
     solo = _item("solo.png")
@@ -3248,7 +3084,6 @@ def test_quicklook_brief_divider_follows_brief_block(qtbot):
     QApplication.processEvents()
     assert not ov._brief_label.isVisibleTo(ov)
     assert not ov._div_series.isVisibleTo(ov)
-    assert ov._analysis_title.isVisibleTo(ov)
     a = _item(
         "a.png",
         vlm_brief=CompareBrief(
@@ -3260,82 +3095,4 @@ def test_quicklook_brief_divider_follows_brief_block(qtbot):
     QApplication.processEvents()
     assert ov._brief_label.isVisibleTo(ov)
     assert ov._div_series.isVisibleTo(ov)
-    ov.hide()
-
-
-def test_quicklook_analysis_block_states(qtbot):
-    """PENDING/ERROR/empty render the running line, the error, or the trigger."""
-    from tabs.image_gallery.models import AnalysisStatus
-    from tabs.image_gallery.ui.quick_look.meta import populate_analysis
-
-    a = _item("a.png")
-    b = _item("b.png")
-    ov = _make_overlay(qtbot)
-    _show(ov, a, [a, b])
-    # NOT_ANALYZED: header + trigger only.
-    assert ov._analysis_title.isVisibleTo(ov)
-    assert ov._analysis_btn.isVisibleTo(ov)
-    assert not ov._analysis_desc.isVisibleTo(ov)
-    assert not ov._analysis_tags.isVisibleTo(ov)
-    # PENDING: running line, no trigger.
-    a.analysis_status = AnalysisStatus.PENDING
-    populate_analysis(ov, a)
-    QApplication.processEvents()
-    assert ov._analysis_desc.isVisibleTo(ov)
-    assert ov._analysis_desc.text() == "Analyzing…"
-    assert not ov._analysis_btn.isVisibleTo(ov)
-    # ERROR: error text + trigger back for retry.
-    a.analysis_status = AnalysisStatus.ERROR
-    a.analysis_error = "boom"
-    populate_analysis(ov, a)
-    QApplication.processEvents()
-    assert ov._analysis_desc.text() == "boom"
-    assert ov._analysis_btn.isVisibleTo(ov)
-    ov.hide()
-
-
-def test_quicklook_analysis_button_triggers_owner(qtbot):
-    """The sidebar Analyze button delegates to the owner's analyze hook."""
-    from PySide6.QtCore import Qt as _Qt
-
-    calls = []
-    a = _item("a.png")
-    b = _item("b.png")
-    ov = _make_overlay(qtbot)
-    _show(ov, a, [a, b])
-    # Owners without the hook (bare doubles) are a silent no-op.
-    ov._on_analyze()
-    assert calls == []
-    ov._owner.analyze_item_by_path = lambda p: calls.append(p)
-    assert ov._analysis_btn.isVisibleTo(ov)
-    qtbot.mouseClick(ov._analysis_btn, _Qt.MouseButton.LeftButton)
-    qtbot.wait(450)
-    QApplication.processEvents()
-    assert len(calls) == 1
-    assert Path(calls[0]) == a.path
-    ov.hide()
-
-
-def test_quicklook_refresh_analysis_updates_open_overlay(qtbot):
-    """A landed worker refreshes the open block in place (no reopen)."""
-    from tabs.image_gallery.models import AiAnalysisResult, AnalysisStatus
-
-    a = _item("a.png")
-    b = _item("b.png")
-    ov = _make_overlay(qtbot)
-    _show(ov, a, [a, b])
-    assert not ov._analysis_desc.isVisibleTo(ov)
-    a.analysis = AiAnalysisResult(
-        description="late landing", tags=("x", "y"), model="m", analyzed_at_iso="t"
-    )
-    a.analysis_status = AnalysisStatus.DONE
-    ov.refresh_analysis(a)
-    QApplication.processEvents()
-    assert ov._analysis_desc.isVisibleTo(ov)
-    assert ov._analysis_desc.text() == "late landing"
-    # Another item: no-op, never copied across.
-    c = _item("c.png")
-    ov.refresh_analysis(c)
-    QApplication.processEvents()
-    assert ov._analysis_desc.text() == "late landing"
     ov.hide()

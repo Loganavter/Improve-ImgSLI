@@ -25,7 +25,7 @@ except Exception:
 
 from pathlib import Path
 
-from PySide6.QtCore import Qt, Signal, QSize
+from PySide6.QtCore import Qt, Signal, QSize, QPoint, QRect
 from PySide6.QtGui import QBrush, QPainter
 from PySide6.QtWidgets import QWidget
 
@@ -62,6 +62,8 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
     compareRequested = Signal(object)
     rejectToggled = Signal(object)
     setSource = Signal(object)
+    #: LMB region selection finished: (image path, normalized box (l,t,r,b)).
+    regionAskRequested = Signal(str, object)
 
     def __init__(self, parent: QWidget, owner=None) -> None:
         # Close policy: veil click, Esc, and the X button close;
@@ -103,6 +105,10 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
             self._preview_canvas = None
         if not hasattr(self, "_preview_store"):
             self._preview_store = None
+        # Region selection (LMB drag over the preview → Ask AI region scope).
+        self._region_active = False
+        self._region_start_host: QPoint | None = None
+        self._region_band = None
         # W8: the resizable card plate is a plain child widget — its own
         # resizes never reach the overlay's resizeEvent, so watch it and
         # re-run the pin hooks (nav circles, source inset, resize grip).
@@ -344,6 +350,117 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
             pass
         return super().eventFilter(watched, event)
 
+    # -- region selection (LMB drag over the preview → Ask AI region scope) ---
+
+    def _preview_rect_in_overlay(self):
+        host = getattr(self, "_preview_host", None)
+        if host is None:
+            return None
+        try:
+            top_left = host.mapTo(self, QPoint(0, 0))
+            return QRect(top_left, host.size())
+        except Exception:
+            return None
+
+    def _ensure_region_band(self):
+        band = getattr(self, "_region_band", None)
+        host = getattr(self, "_preview_host", None)
+        if band is None and host is not None:
+            try:
+                from tabs.image_gallery.ui.quick_look.region import RegionBand
+
+                band = RegionBand(host)
+                self._region_band = band
+            except Exception:
+                band = None
+        try:
+            if band is not None and host is not None:
+                band.setGeometry(host.rect())
+        except Exception:
+            pass
+        return band
+
+    def _maybe_start_region(self, event) -> bool:
+        try:
+            if event.button() != Qt.MouseButton.LeftButton:
+                return False
+        except Exception:
+            return False
+        rect = self._preview_rect_in_overlay()
+        if rect is None:
+            return False
+        try:
+            pos = event.position().toPoint()
+        except Exception:
+            return False
+        if not rect.contains(pos):
+            return False
+        host = getattr(self, "_preview_host", None)
+        try:
+            local = host.mapFrom(self, pos)
+        except Exception:
+            return False
+        self._region_active = True
+        self._region_start_host = QPoint(local)
+        band = self._ensure_region_band()
+        if band is not None:
+            try:
+                band.set_band(QRect(QPoint(local), QSize(0, 0)))
+                band.show()
+                band.raise_()
+            except Exception:
+                pass
+        return True
+
+    def _update_region(self, event) -> None:
+        if not getattr(self, "_region_active", False):
+            return
+        band = getattr(self, "_region_band", None)
+        host = getattr(self, "_preview_host", None)
+        if band is None or host is None:
+            return
+        try:
+            local = host.mapFrom(self, event.position().toPoint())
+        except Exception:
+            return
+        local = QPoint(
+            max(0, min(host.width(), local.x())),
+            max(0, min(host.height(), local.y())),
+        )
+        start = getattr(self, "_region_start_host", None) or QPoint(0, 0)
+        band.set_band(QRect(start, local).normalized())
+
+    def _finish_region(self, event) -> None:
+        if not getattr(self, "_region_active", False):
+            return
+        self._region_active = False
+        band = getattr(self, "_region_band", None)
+        rect = getattr(band, "_rect", None) if band is not None else None
+        if band is not None:
+            try:
+                band.hide()
+            except Exception:
+                pass
+        if rect is None or rect.width() < 4 or rect.height() < 4:
+            return
+        canvas = getattr(self, "_preview_canvas", None)
+        box = None
+        if canvas is not None:
+            try:
+                from tabs.image_gallery.ui.quick_look.region import norm_rect_for_band
+
+                box = norm_rect_for_band(canvas, rect)
+            except Exception:
+                box = None
+        item = getattr(self, "_current_item", None)
+        path = getattr(item, "path", None)
+        if path is None or not box:
+            return
+        try:
+            self.regionAskRequested.emit(str(path), box)
+        except Exception:
+            pass
+
     # W10: the 8px ring OUTSIDE the card (on the veil) is probed here at
     # overlay level. Card resize drags are enabled (QL_RESIZABLE=True):
     # W11 ring/plate presses inside either nav-arrow rect walk the series
@@ -379,6 +496,11 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
                     _press_pos.y(),
                     _receiver_name,
                 )
+        except Exception:
+            pass
+        try:
+            if self._maybe_start_region(event):
+                return
         except Exception:
             pass
         # Plain veil press (ring declined above, children eat their own
@@ -463,6 +585,12 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
         except Exception:
             pass
         try:
+            if getattr(self, "_region_active", False):
+                self._update_region(event)
+                return
+        except Exception:
+            pass
+        try:
             if getattr(self, "_border_drag", None) is not None:
                 from tabs.image_gallery.ui.quick_look.helpers import handle_border_move
                 if handle_border_move(self, event):
@@ -475,6 +603,12 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
         super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event) -> None:  # noqa: N802
+        try:
+            if getattr(self, "_region_active", False):
+                self._finish_region(event)
+                return
+        except Exception:
+            pass
         try:
             from tabs.image_gallery.ui.quick_look.helpers import handle_ring_release
             if handle_ring_release(self, event):
@@ -819,33 +953,6 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
         except Exception:
             pass
 
-    def refresh_analysis(self, item) -> None:
-        """Rebuild the sidebar AI-analysis block for the open overlay.
-
-        Mirrors ``refresh_artifacts``: no-op when hidden or for another
-        item (path-guarded, never copied between items). Called when the
-        analysis worker lands so the block needs no reopen. Never raises.
-        """
-        try:
-            cur = getattr(self, "_current_item", None)
-            if cur is None:
-                return
-            try:
-                if Path(getattr(cur, "path", "")) != Path(getattr(item, "path", "")):
-                    return
-            except Exception:
-                if cur is not item:
-                    return
-            if not self.isVisible():
-                return
-            try:
-                from tabs.image_gallery.ui.quick_look.helpers import populate_analysis as _pa_r
-                _pa_r(self, item)
-            except Exception:
-                pass
-        except Exception:
-            pass
-
     def refresh_metrics(self, item) -> None:
         """W1 seam — W2 calls this from ``_on_fidelity_ready`` / set-source paths.
 
@@ -1023,10 +1130,11 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
         item = self._current_item
         if item is None:
             return
-        # Hydrate the cached analysis BEFORE the report rebuild: the AI block
-        # (verdict/reason/defects) and the Composition row must be on the item
-        # by then (otherwise a cached analysis opens empty). Per-axis AI notes
-        # no longer render on rows (plan-gallery-ai-quality UX contract).
+        # Hydrate the cached analysis BEFORE the report rebuild: the
+        # Composition metric row reads ``item.analysis`` and must be on the
+        # item by then (otherwise a cached analysis opens without the row).
+        # Per-axis AI notes no longer render on rows (plan-gallery-ai-quality
+        # UX contract).
         try:
             if getattr(item, "analysis", None) is None:
                 _owner = getattr(self, "_owner", None)
@@ -1103,11 +1211,6 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
         try:
             from tabs.image_gallery.ui.quick_look.helpers import populate_brief as _pb
             _pb(self, item)
-        except Exception:
-            pass
-        try:
-            from tabs.image_gallery.ui.quick_look.helpers import populate_analysis as _pa
-            _pa(self, item)
         except Exception:
             pass
         if _dbg_on:
@@ -1313,41 +1416,6 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
         # Set as source stay open (triage continues); X still closes.
         try:
             self.hide()
-        except Exception:
-            pass
-
-    def _on_analyze(self) -> None:
-        """Trigger AI analysis for the currently viewed item (sidebar button).
-
-        A finished analysis re-runs forced (``reanalyze_item_by_path``,
-        cache bypassed); otherwise delegates to ``analyze_item_by_path``.
-        The block shows the PENDING line immediately and refresh_analysis
-        fills it in when the worker lands. Owners without the hook (bare
-        test doubles) are a silent no-op. Never raises.
-        """
-        try:
-            item = getattr(self, "_current_item", None)
-            if item is None:
-                return
-            owner = getattr(self, "_owner", None)
-            try:
-                _st = getattr(item, "analysis_status", None)
-                _st_val = str(getattr(_st, "value", _st) or "")
-            except Exception:
-                _st_val = ""
-            fn = None
-            if _st_val == "done" and getattr(item, "analysis", None) is not None:
-                fn = getattr(owner, "reanalyze_item_by_path", None)
-            if not callable(fn):
-                fn = getattr(owner, "analyze_item_by_path", None)
-            if not callable(fn):
-                return
-            fn(Path(getattr(item, "path", "")))
-        except Exception:
-            return
-        try:
-            from tabs.image_gallery.ui.quick_look.helpers import populate_analysis as _pa_a
-            _pa_a(self, item)
         except Exception:
             pass
 

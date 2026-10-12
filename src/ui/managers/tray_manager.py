@@ -86,6 +86,17 @@ class TrayManager(QObject):
         )
         self._actions["quit"] = QAction(tr("action.quit", self.current_language), tray_menu)
 
+        # Every tray menu entry carries an icon (product rule).
+        try:
+            from ui.icon_manager import get_app_icon as _get_app_icon
+
+            self._actions["toggle"].setIcon(_get_app_icon("window_restore.svg"))
+            self._actions["open_file"].setIcon(_get_app_icon("folder_open.svg"))
+            self._actions["open_folder"].setIcon(_get_app_icon("folder_open.svg"))
+            self._actions["quit"].setIcon(_get_app_icon("window_close.svg"))
+        except Exception:
+            pass
+
         self._actions["toggle"].triggered.connect(self.toggle_visibility_requested.emit)
         self._actions["open_file"].triggered.connect(self.open_last_file_requested.emit)
         self._actions["open_folder"].triggered.connect(
