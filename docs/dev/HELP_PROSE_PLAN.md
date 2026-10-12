@@ -47,3 +47,14 @@
 
 - 2026-10-12: план оформлен как полный рефакторинг; конкретные правки
   убраны в пользу гайдлайна.
+- 2026-10-12: волны 1–2 на `docs/help-prose-refactor` (база `0b7f5003`):
+  `ui/buttons` + `ui/canvas_navigation`, 4 языка.
+- 2026-10-12: fleet 4 lane, слиты в `docs/help-prose-refactor`
+  (`e4646f62` host 18 файлов, `d82200d5` compare 18, `f528a39b`
+  galsp 6, `2ccbeae3` plugins 16) + ревью `51a2f2cb` (zh magnifier
+  voice). Итого 66 файлов. Верификация: 66 passed
+  (help_tree/interpolate/browser/dialog_opens/plugin_contrib/topic_search +
+  docs_link_graph), figures 0 todo. Остаток: `pt_BR`/`zh`
+  `sessions.md` — старая форма (`#tab-strip`, `#rename`), якоря
+  расходятся между языками (galsp зафиксировал, не чинил — нужен
+  отдельный проход владельца); пробы §4.3 NOT-RUN (headless).
