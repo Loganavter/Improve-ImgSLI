@@ -1,0 +1,58 @@
+[
+  {
+    "id": "clean-takeaway",
+    "question": "Summary",
+    "answer": "Prefer img_1 — it is the cleanest; img_2 and img_3 are close but a touch softer.",
+    "labels": ["Sharpness"],
+    "expect_ok": true
+  },
+  {
+    "id": "screenshot-percent-recit",
+    "question": "Сводка",
+    "answer": "Все снимки в типичном диапазоне: шесть близки к норме (типичность 86–91%), а два чуть ниже (82%).",
+    "labels": ["Типичность"],
+    "expect_ok": false
+  },
+  {
+    "id": "metric-name-recit",
+    "question": "Summary",
+    "answer": "The Sharpness of img_1 is the highest in the set.",
+    "labels": ["Sharpness"],
+    "expect_ok": false
+  },
+  {
+    "id": "preamble",
+    "question": "What stands out?",
+    "answer": "Sure, here is what stands out: img_1 is the cleanest.",
+    "labels": [],
+    "expect_ok": false
+  },
+  {
+    "id": "persona",
+    "question": "Which should I keep?",
+    "answer": "As a photographer, I would keep img_1.",
+    "labels": [],
+    "expect_ok": false
+  },
+  {
+    "id": "over-length",
+    "question": "Summary",
+    "answer": "img_1 is clean. img_2 is soft. img_3 is close. img_4 is flagged. img_5 is fine. Keep img_1.",
+    "labels": [],
+    "expect_ok": false
+  },
+  {
+    "id": "numeric-question-allows-numbers",
+    "question": "give me the sharpness numbers",
+    "answer": "img_1 scores 88, img_2 71.",
+    "labels": ["Sharpness"],
+    "expect_ok": true
+  },
+  {
+    "id": "alias-digit-not-a-number",
+    "question": "Summary",
+    "answer": "Keep img_10; the rest are equivalent.",
+    "labels": [],
+    "expect_ok": true
+  }
+]

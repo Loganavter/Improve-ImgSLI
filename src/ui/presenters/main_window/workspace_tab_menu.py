@@ -12,6 +12,7 @@ from sli_ui_toolkit.widgets import (
     ContextMenuSeparator,
 )
 from ui.context_menu.manager import open_context_menu_entries
+from ui.icon_manager import get_app_icon
 from ui.presenters.main_window.workspace import (
     on_workspace_tab_close_requested,
 )
@@ -64,10 +65,12 @@ def build_workspace_tab_context_menu_entries(presenter, index: int) -> list[obje
         ContextMenuAction(
             "workspace.tab.close",
             _tr("workspace.tab_menu.close", "Close Tab", language),
+            icon=get_app_icon("close.svg"),
         ),
         ContextMenuAction(
             "workspace.tab.rename",
             _tr("workspace.tab_menu.rename", "Rename Tab", language),
+            icon=get_app_icon("text_filename.svg"),
         ),
     ]
 
@@ -76,6 +79,7 @@ def build_workspace_tab_context_menu_entries(presenter, index: int) -> list[obje
             ContextMenuAction(
                 "workspace.tab.duplicate",
                 _tr("workspace.tab_menu.duplicate", "Duplicate Tab", language),
+                icon=get_app_icon("copy.svg"),
             )
         )
 
@@ -89,6 +93,7 @@ def build_workspace_tab_context_menu_entries(presenter, index: int) -> list[obje
             ContextMenuAction(
                 "workspace.tab.close_others",
                 _tr("workspace.tab_menu.close_others", "Close Other Tabs", language),
+                icon=get_app_icon("close.svg"),
             )
         )
 
@@ -99,6 +104,7 @@ def build_workspace_tab_context_menu_entries(presenter, index: int) -> list[obje
             ContextMenuAction(
                 "workspace.tab.new",
                 _tr("workspace.tab_menu.new", "New Tab", language),
+                icon=get_app_icon("add.svg"),
                 children=tuple(new_entries),
             )
         )
@@ -286,6 +292,7 @@ def _new_session_menu_entries(presenter, language: str) -> list[ContextMenuActio
             ContextMenuAction(
                 f"workspace.tab.new.{session_type}",
                 label,
+                icon=get_app_icon("add.svg"),
                 data=session_type,
             )
         )

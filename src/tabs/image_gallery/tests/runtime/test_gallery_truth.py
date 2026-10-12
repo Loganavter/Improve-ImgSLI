@@ -68,9 +68,13 @@ def test_tie_break_decisive_parses_and_gate_passes():
     assert vlm.is_decisive_tie_break(res) is True
 
 
-def test_encode_image_downscales_big_input(tmp_path: Path):
+def test_encode_image_downscales_big_input(tmp_path: Path, monkeypatch):
     from PIL import Image
 
+    # Pin the process-global edge: the controller applies the machine's real
+    # AI settings (vlm_max_edge_px) to this global, so without pinning the test
+    # would depend on local QSettings (order + environment dependent).
+    monkeypatch.setattr(vlm, "_vlm_max_edge_px", vlm.DEFAULT_VLM_MAX_EDGE_PX)
     big = tmp_path / "big.png"
     Image.new("RGB", (3000, 2000), (10, 20, 30)).save(big)
     mime, data = vlm._encode_image(big)

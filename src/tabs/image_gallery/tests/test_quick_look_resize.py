@@ -386,8 +386,8 @@ def test_metric_row_gaps_grow_uniformly_on_vertical_stretch(qtbot, tmp_path):
 
 
 def test_metric_block_outer_gaps_match_inter_row_gaps(qtbot, tmp_path):
-    """The metric block breathes from the meta row above and the analysis
-    divider below exactly like rows do between themselves.
+    """The metric block breathes from the meta row above and the column
+    bottom below exactly like rows do between themselves.
 
     Falsification story: before the leading/trailing spacers, the top seam
     was a fixed ~6px ``meta_gap`` widget (+ layout spacing) and the bottom
@@ -417,7 +417,7 @@ def test_metric_block_outer_gaps_match_inter_row_gaps(qtbot, tmp_path):
     spans = [(r, _top(r), _top(r) + r.height()) for r in rows]
     first_top = spans[0][1]
     last_bottom = spans[-1][2]
-    div_top = _top(ov._div_analysis)
+    div_top = host.height()
     inter = [spans[i + 1][1] - spans[i][2] for i in range(len(spans) - 1)]
     gap_top = first_top - meta_bottom
     gap_bottom = div_top - last_bottom

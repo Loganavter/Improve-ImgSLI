@@ -83,6 +83,7 @@ class _LineEditContextMenuFilter(QObject):
             ContextMenuAction(
                 "line_edit.cut",
                 tr("action.context_cut", default="Cut"),
+                icon=get_app_icon("scissors.svg"),
                 shortcut="Ctrl+X",
                 enabled=has_selection and not read_only,
             ),
@@ -96,6 +97,7 @@ class _LineEditContextMenuFilter(QObject):
             ContextMenuAction(
                 "line_edit.paste",
                 tr("action.context_paste", default="Paste"),
+                icon=get_app_icon("copy.svg"),
                 shortcut="Ctrl+V",
                 enabled=clipboard_has_text and not read_only,
             ),

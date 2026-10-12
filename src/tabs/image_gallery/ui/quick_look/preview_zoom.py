@@ -112,6 +112,51 @@ def _axis(dest: int, fb: int, pan: float) -> tuple[int, int, int]:
         return 0, 0, max(0, fb)
 
 
+def widget_rect_to_normalized(
+    rect, src_w, src_h, fb_w, fb_h, zoom: float = 1.0, pan_x: float = 0.0, pan_y: float = 0.0
+):
+    """Inverse of :func:`zoomed_frame`: a framebuffer-space rect → image space.
+
+    Returns ``(left, top, right, bottom)`` as fractions of the source image
+    (0..1), clamped to the image, or ``None`` when the inputs are degenerate or
+    the rect collapses to zero area. Pure; never raises.
+    """
+    try:
+        sw, sh = float(src_w), float(src_h)
+        fw, fh = float(fb_w), float(fb_h)
+        if not (sw > 0 and sh > 0 and fw > 0 and fh > 0):
+            return None
+        try:
+            z = max(ZOOM_MIN, min(ZOOM_MAX, float(zoom)))
+        except Exception:
+            z = ZOOM_MIN
+        scale = min(fw / sw, fh / sh) * z
+        if not scale > 0:
+            return None
+        dest_w = max(1, int(round(sw * scale)))
+        dest_h = max(1, int(round(sh * scale)))
+        dx, sx, _cw = _axis(dest_w, int(fw), float(pan_x))
+        dy, sy, _ch = _axis(dest_h, int(fh), float(pan_y))
+        x0, y0, x1, y1 = (float(v) for v in rect)
+        if x1 < x0:
+            x0, x1 = x1, x0
+        if y1 < y0:
+            y0, y1 = y1, y0
+        nx0 = ((x0 - dx) + sx) / scale
+        nx1 = ((x1 - dx) + sx) / scale
+        ny0 = ((y0 - dy) + sy) / scale
+        ny1 = ((y1 - dy) + sy) / scale
+        nx0 = max(0.0, min(sw, nx0))
+        nx1 = max(0.0, min(sw, nx1))
+        ny0 = max(0.0, min(sh, ny0))
+        ny1 = max(0.0, min(sh, ny1))
+        if nx1 - nx0 <= 0 or ny1 - ny0 <= 0:
+            return None
+        return (nx0 / sw, ny0 / sh, nx1 / sw, ny1 / sh)
+    except Exception:
+        return None
+
+
 def zoomed_frame(full, fb_w: int, fb_h: int, zoom: float, pan_x: float = 0.0, pan_y: float = 0.0):  # type: ignore[no-untyped-def]
     """Contain-fit ``full`` onto ``fb_w`` x ``fb_h``, magnified + panned.
 

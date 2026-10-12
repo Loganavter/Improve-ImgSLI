@@ -754,9 +754,9 @@ def _open_header_reset_menu(owner, header, event, controller=None) -> bool:
     try:
         entries_list = []
         if has_reset:
-            entries_list.append(_CtxAction(_SERIES_RESET_ACTION_ID, "Reset manual series"))
+            entries_list.append(_CtxAction(_SERIES_RESET_ACTION_ID, "Reset manual series", icon="undo.svg"))
         if has_recluster:
-            entries_list.append(_CtxAction(_SERIES_RECLUSTER_ACTION_ID, "Re-cluster series"))
+            entries_list.append(_CtxAction(_SERIES_RECLUSTER_ACTION_ID, "Re-cluster series", icon="sync.svg"))
         entries = tuple(entries_list)
     except Exception:
         return False

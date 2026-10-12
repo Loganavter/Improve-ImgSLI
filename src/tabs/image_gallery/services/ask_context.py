@@ -18,12 +18,21 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from tabs.image_gallery.models import MetricKind
 from tabs.image_gallery.services.metric_scores import SPECS, measured_scores
 from tabs.image_gallery.use_cases import quality as _quality
 
 #: Scope kinds the builder recognizes.
 ASK_SERIES = "series"
 ASK_SELECTION = "selection"
+#: One rectangle of one image (Quick Look region inspection).
+ASK_REGION = "region"
+
+#: Axis id → human label / axis kind (static registry, see ``metric_scores``).
+_AXIS_LABELS: dict[str, str] = {spec.id: spec.label for spec in SPECS}
+_AXIS_KINDS: dict[str, str] = {spec.id: spec.kind.value for spec in SPECS}
+#: The only kinds the AI may contribute; ``measured`` numbers never come from AI.
+_AI_FLAG_KINDS = (MetricKind.CANDIDATE.value, MetricKind.JUDGMENT.value)
 
 
 @dataclass(frozen=True)
@@ -40,6 +49,9 @@ class AskScope:
     paths: tuple[Path, ...] = ()
     label: str = ""
     series_id: str | None = None
+    #: ``region`` scope only: the selected rectangle as fractions of the image
+    #: ``(left, top, right, bottom)`` in 0..1.
+    box: tuple[float, float, float, float] = ()
 
 
 def _state(controller) -> Any:
@@ -94,7 +106,7 @@ def _selection_paths(controller) -> list:
 
 def _resolve_items(scope: AskScope, controller) -> tuple[list, str]:
     """Resolve the items + a human label for *scope* (fail-open to empty)."""
-    kind = scope.kind if scope.kind in (ASK_SERIES, ASK_SELECTION) else ASK_SELECTION
+    kind = scope.kind if scope.kind in (ASK_SERIES, ASK_SELECTION, ASK_REGION) else ASK_SELECTION
     paths: list = [Path(p) for p in (scope.paths or ())]
     label = str(scope.label or "")
     if kind == ASK_SERIES:
@@ -110,8 +122,29 @@ def _resolve_items(scope: AskScope, controller) -> tuple[list, str]:
             paths = [Path(p) for p in _selection_paths(controller)]
         items = [it for it in (_find_item(controller, p) for p in paths) if it is not None]
         if not label:
-            label = "Selection"
+            label = "Selected region" if kind == ASK_REGION else "Selection"
     return items, label
+
+
+def _item_flags(item) -> list[dict]:
+    """The item's AI candidate/judgment flags (``measured`` entries are dropped)."""
+    analysis = getattr(item, "analysis", None)
+    out: list[dict] = []
+    for flag in list(getattr(analysis, "axis_flags", None) or []):
+        kind = str(getattr(flag, "kind", "") or "")
+        if kind not in _AI_FLAG_KINDS:
+            continue
+        axis_id = str(getattr(flag, "id", "") or "")
+        out.append(
+            {
+                "id": axis_id,
+                "label": _AXIS_LABELS.get(axis_id)
+                or str(getattr(flag, "label", "") or axis_id),
+                "kind": kind,
+                "note": str(getattr(flag, "note", "") or ""),
+            }
+        )
+    return out
 
 
 def _item_context(item, alias: str) -> dict:
@@ -119,7 +152,8 @@ def _item_context(item, alias: str) -> dict:
 
     ``name`` is the real filename (kept for the app); ``alias`` is the opaque
     label the model is asked to use, so a descriptive filename ("...soft...")
-    cannot bias it into a conclusion the metrics contradict.
+    cannot bias it into a conclusion the metrics contradict. ``kinds`` maps
+    every axis to its kind; ``flags`` carries the AI candidate/judgment flags.
     """
     raw_metrics = getattr(item, "metrics", None)
     if not isinstance(raw_metrics, dict):
@@ -140,6 +174,8 @@ def _item_context(item, alias: str) -> dict:
         "metrics": scores,
         "severities": severities,
         "badge": str(getattr(item, "badge", "") or ""),
+        "kinds": dict(_AXIS_KINDS),
+        "flags": _item_flags(item),
     }
 
 
@@ -167,6 +203,31 @@ def deanonymize_answer(text: str, names: dict | None) -> str:
     return out
 
 
+def answer_image_links(context: dict | None) -> dict[str, str]:
+    """Map each scope item's display name → its path (answer link tagging).
+
+    The model only ever sees opaque ``img_N`` aliases; ``deanonymize_answer``
+    rewrites them to the real filenames before the answer is shown. This returns
+    the filename→path correspondence so a surface can turn those filenames (as
+    they appear in the answer) into clickable links that open the image.
+    First occurrence wins when two items share a basename.
+    """
+    out: dict[str, str] = {}
+    try:
+        items = list((context or {}).get("items") or [])
+    except Exception:
+        return out
+    for entry in items:
+        try:
+            name = str(entry.get("name") or "")
+            path = str(entry.get("path") or "")
+        except Exception:
+            continue
+        if name and path:
+            out.setdefault(name, path)
+    return out
+
+
 def build_ask_context(scope: AskScope, *, controller) -> dict:
     """Assemble the frozen context dict for *scope*.
 
@@ -175,11 +236,13 @@ def build_ask_context(scope: AskScope, *, controller) -> dict:
         { 'kind': 'series'|'selection', 'label': str, 'count': int,
           'mode': str, 'source': str|None,
           'items': [{'name','path','metrics':{id:score},
-                     'severities':{name:severity},'badge':str}, ...] }
+                     'severities':{name:severity},'badge':str,
+                     'kinds':{id:'measured'|'candidate'|'judgment'},
+                     'flags':[{'id','label','kind','note'}, ...]}, ...] }
     """
     if not isinstance(scope, AskScope):
         scope = AskScope()
-    kind = scope.kind if scope.kind in (ASK_SERIES, ASK_SELECTION) else ASK_SELECTION
+    kind = scope.kind if scope.kind in (ASK_SERIES, ASK_SELECTION, ASK_REGION) else ASK_SELECTION
     items, label = _resolve_items(scope, controller)
     ctx_items = []
     names: dict[str, str] = {}
@@ -201,7 +264,7 @@ def build_ask_context(scope: AskScope, *, controller) -> dict:
     except Exception:
         source_str = None
 
-    return {
+    result = {
         "kind": kind,
         "label": label,
         "count": len(ctx_items),
@@ -212,14 +275,33 @@ def build_ask_context(scope: AskScope, *, controller) -> dict:
         "names": names,
         # metric id → human label (same wording the report shows), so the
         # model never has to guess what e.g. "typicality" means.
-        "metric_labels": {spec.id: spec.label for spec in SPECS},
+        "metric_labels": dict(_AXIS_LABELS),
     }
+    # Region scope: carry the selected rectangle (fractions) + its image path so
+    # the vision payload can crop it and the model knows where to look.
+    if kind == ASK_REGION and scope.box:
+        try:
+            box = tuple(float(v) for v in scope.box)
+            region_path = str(getattr(items[0], "path", "")) if items else ""
+            if not region_path and scope.paths:
+                region_path = str(Path(scope.paths[0]))
+            if region_path:
+                result["region"] = {
+                    "path": region_path,
+                    "box": box,
+                    "label": "SELECTED REGION (crop)",
+                }
+        except Exception:
+            pass
+    return result
 
 
 __all__ = [
+    "ASK_REGION",
     "ASK_SELECTION",
     "ASK_SERIES",
     "AskScope",
+    "answer_image_links",
     "build_ask_context",
     "deanonymize_answer",
 ]

@@ -7,6 +7,19 @@
     "empty_view": "Нет изображений для показа.",
     "analyze": "Анализировать",
     "analyzing": "Анализ…",
+    "activity": {
+      "queued": "В очереди",
+      "claimed": "Запуск",
+      "analyzing": "Анализ",
+      "waiting": "Ожидание",
+      "done": "Готово",
+      "error": "Ошибка",
+      "unreadable": "Не читается"
+    },
+    "domain": {
+      "algorithms": "Алгоритмы",
+      "ai": "ИИ"
+    },
     "settings": {
       "ai_title": "Галерея — ИИ",
       "enable_ai": "Включить ИИ-анализ изображений",
@@ -20,6 +33,8 @@
       "effort_medium": "Средняя",
       "effort_high": "Высокая",
       "effort_none": "Без",
+      "vlm_max_edge": "Уменьшение изображений (макс. сторона)",
+      "downscale_original": "Оригинал",
       "api_key_warning": "Хранится на этом устройстве в незашифрованном виде."
     },
     "errors": {
@@ -49,11 +64,23 @@
     "ask_ai": {
       "action": "ИИ…",
       "title": "Спросить у ИИ",
-      "default_prompt": "Сводка",
+      "default_prompt": "Что здесь важно?",
       "busy": "Думаю…",
       "read_badge": "Ответ ИИ, не проверено",
       "error": "ИИ не смог ответить.",
-      "routing_unavailable": "Маршрутизация пока недоступна."
+      "routing_unavailable": "Маршрутизация пока недоступна.",
+      "images_toggle_hint": "Отправлять изображения вместе с вопросом",
+      "images_toggle_downsample": "Даунсэмплинг: до {px} px",
+      "region_prompt": "Что не так в этой области?"
+    },
+    "series": {
+      "ask_ai": "Спросить у ИИ",
+      "rename": "Переименовать",
+      "rename_title": "Переименовать серию",
+      "rename_prompt": "Имя серии",
+      "delete": "Удалить",
+      "reset": "Сбросить ручные серии",
+      "recluster": "Перегруппировать серии"
     },
     "sort_by": "Сортировка",
     "view": "Вид",

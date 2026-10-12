@@ -149,6 +149,17 @@ def install_dialog_help_menu(
             owner = getattr(dialog, "_find_action_owner_tab", None)
             show_command_palette(parent=dialog, active_tab=owner)
 
+    try:
+        from ui.icon_manager import get_app_icon as _get_app_icon
+    except Exception:
+        _get_app_icon = None  # type: ignore[assignment]
+
+    def _icon(name: str):
+        try:
+            return _get_app_icon(name) if _get_app_icon is not None else None
+        except Exception:
+            return None
+
     strip = CsdMenuStrip(
         [
             CsdMenuSpec(
@@ -157,11 +168,13 @@ def install_dialog_help_menu(
                     ContextMenuAction(
                         "help.show",
                         _tr("menu.show_help", "Show Help"),
+                        icon=_icon("help.svg"),
                     ),
                     ContextMenuSeparator(),
                     ContextMenuAction(
                         "help.find_action",
                         _tr("menu.find_action", "Find Action"),
+                        icon=_icon("magnifier.svg"),
                         shortcut="Ctrl+Shift+P",
                     ),
                 ],

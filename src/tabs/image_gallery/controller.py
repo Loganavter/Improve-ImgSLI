@@ -13,7 +13,7 @@ import os
 import threading
 from pathlib import Path
 
-from PySide6.QtCore import QCoreApplication, QEvent, QObject, QThreadPool, QTimer
+from PySide6.QtCore import QCoreApplication, QEvent, QObject, QThreadPool, QTimer, Signal
 from PySide6.QtGui import QPixmap
 from sli_ui_toolkit.workers import GenericWorker
 
@@ -30,6 +30,7 @@ from tabs.image_gallery.bootstrap_reducers import GALLERY_SLOT_NAME
 from tabs.image_gallery.state import selectors as _gallery_selectors
 
 from tabs.image_gallery.models import (
+    ActivityPhase,
     AnalysisStatus,
     GalleryItem,
     GalleryState,
@@ -38,6 +39,7 @@ from tabs.image_gallery.models import (
     ThumbnailStatus,
     TriageState,
 )
+from tabs.image_gallery.services.activity import clear_activity, set_activity
 from tabs.image_gallery.services.ai_cache import load_cached_analysis, save_analysis
 from tabs.image_gallery.services.ai_client import (
     AiAuthError,
@@ -67,6 +69,24 @@ from tabs.image_gallery.services.folder_scanner import scan_folder
 from tabs.image_gallery.services.thumbnail_cache import render_and_cache_thumbnail
 
 logger = logging.getLogger("ImproveImgSLI")
+
+
+class _ActivityPhaseBridge(QObject):
+    """Worker-thread phase emits → UI-thread callback (queued connection).
+
+    Created on the UI thread, so the ``_relay`` slot runs there even though
+    ``phase`` is emitted from the analysis worker.
+    """
+
+    phase = Signal(str)
+
+    def __init__(self, on_phase) -> None:
+        super().__init__()
+        self._on_phase = on_phase
+        self.phase.connect(self._relay)
+
+    def _relay(self, value: str) -> None:
+        self._on_phase(value)
 
 
 # Stage 3: epsilon for local metric tie — when top-2 within this delta, VLM tie-break applies.
@@ -316,7 +336,7 @@ class GalleryController:
 
     # -- bounded scheduler (Phase 2b+3; frozen seam: schedule) --------------
 
-    def schedule(self, items, priority: int, *, op: str = "thumb", source=None, gen: int | None = None, wanted=None, include_camera: bool | None = None, full_res_artifacts: bool = False) -> int:
+    def schedule(self, items, priority: int, *, op: str = "thumb", source=None, gen: int | None = None, wanted=None, include_camera: bool | None = None, full_res_artifacts: bool = False, on_done=None) -> int:
         """Single scheduler entry for gallery concurrency (frozen seam).
 
         ``items`` is a list of GalleryItem; ``priority`` is a Qt pool
@@ -325,6 +345,9 @@ class GalleryController:
         (one worker per item) or ``"proxy"`` (chunked single-pass
         Stage-2 batches, ``source`` = triage source path, ``wanted`` =
         stage subset to apply, ``include_camera`` = run camera scalars).
+        ``on_done`` (proxy only) fires once on the GUI thread after the LAST
+        chunk of this batch has applied (result or error) — used by the
+        append path to retire its processing indicator.
         Returns workers started (background-paused items queue instead and
         return 0 until resumed). No Store/EventBus writes; every delivery
         keeps its generation check — queued entries from an old gen are
@@ -337,7 +360,7 @@ class GalleryController:
             except Exception:
                 gen = 0
         if op == "proxy":
-            return self._schedule_proxy(batch, int(priority), source, gen, wanted=wanted, include_camera=include_camera, full_res_artifacts=full_res_artifacts)
+            return self._schedule_proxy(batch, int(priority), source, gen, wanted=wanted, include_camera=include_camera, full_res_artifacts=full_res_artifacts, on_done=on_done)
         return self._schedule_thumbs(batch, int(priority), gen)
 
     def sched_stats(self) -> dict:
@@ -1355,10 +1378,6 @@ class GalleryController:
                 )
             except Exception:
                 pass
-            try:
-                self._start_proxy_analysis(list(uniq), prev_source, prev_mode)
-            except Exception:
-                logger.debug("append analysis start failed", exc_info=True)
             self.state.triage_state = TriageState.DONE
             # Newer than any in-flight triage: its delivery drops (sgen).
             self._next_series_gen()
@@ -1366,6 +1385,21 @@ class GalleryController:
                 self._apply_series_view(self.state.series)
             except Exception:
                 logger.debug("append attach view failed", exc_info=True)
+            # Post-first-load drops get the SAME processing feedback as a
+            # first load: per-card activity pill + toolbar spinner/count.
+            # Shown AFTER ``_apply_series_view`` — its ``set_triage`` /
+            # ``set_triage_done`` retires the S1 spinner and would otherwise
+            # clobber this indicator in the same event-loop turn, so it never
+            # painted. The proxy ``on_done`` retires it when the batch settles.
+            self._begin_append_processing(uniq)
+            try:
+                self._start_proxy_analysis(
+                    list(uniq), prev_source, prev_mode,
+                    on_done=lambda its=list(uniq): self._finish_append_processing(its),
+                )
+            except Exception:
+                logger.debug("append analysis start failed", exc_info=True)
+                self._finish_append_processing(uniq)
         else:
             self._start_triage(merged, cover_grid=False)
 
@@ -1527,6 +1561,71 @@ class GalleryController:
         except Exception:
             pass
 
+    #: Lazy-AI cap: the domain switch analyzes only the VISIBLE items, bounded
+    #: so flipping to AI never turns into a whole-folder API flood.
+    _AI_VISIBLE_CAP = 12
+
+    def activate_judgment_domain(self, domain: str) -> None:
+        """Apply the toolbar domain switch (plan-gallery-two-domain-axes).
+
+        Switching to ``ai`` is the switch's actual effect: it lazily analyzes
+        the **visible** items (cache-first, in-flight skipped, capped). Not
+        configured / no key degrades to the existing per-item error on the cards
+        — the control always does something visible, never a silent no-op.
+        Switching back to ``algorithms`` only flips the report domain; it never
+        cancels in-flight work.
+        """
+        try:
+            from tabs.image_gallery.models import JUDGMENT_DOMAINS
+
+            dom = str(domain or "").strip().lower()
+            if dom not in tuple(JUDGMENT_DOMAINS):
+                dom = "algorithms"
+        except Exception:
+            dom = "algorithms"
+        try:
+            self.state.judgment_domain = dom
+        except Exception:
+            pass
+        if dom != "ai":
+            return
+        self._run_ai_for_visible()
+
+    def _run_ai_for_visible(self) -> None:
+        """Analyze the currently-visible, not-yet-analyzed items (bounded)."""
+        try:
+            vis = getattr(self.widget, "visible_paths", None)
+            paths = vis() if callable(vis) else None
+        except Exception:
+            paths = None
+        try:
+            keys = {str(p) for p in (paths or [])}
+        except Exception:
+            keys = set()
+        picked: list = []
+        try:
+            items = list(getattr(self.state, "items", None) or [])
+        except Exception:
+            items = []
+        for it in items:
+            try:
+                if keys and str(it.path) not in keys:
+                    continue
+                status = getattr(it, "analysis_status", None)
+                if status in (AnalysisStatus.DONE, AnalysisStatus.PENDING):
+                    continue
+            except Exception:
+                continue
+            picked.append(it)
+        if not keys:
+            # Viewport not laid out yet — bound instead of flooding.
+            picked = picked[: self._AI_VISIBLE_CAP]
+        for it in picked[: self._AI_VISIBLE_CAP]:
+            try:
+                self.analyze_item(it)
+            except Exception:
+                continue
+
     def _begin_analysis(self, item: GalleryItem) -> None:
         settings = self._ai_settings_store.load()
         if not settings.enabled or not settings.api_key or not settings.model:
@@ -1540,6 +1639,7 @@ class GalleryController:
 
         item.analysis_status = AnalysisStatus.PENDING
         item.analysis_error = None
+        set_activity(item, ActivityPhase.QUEUED, "ai")
         self.widget.refresh_card(item)
 
         try:
@@ -1559,6 +1659,7 @@ class GalleryController:
             _metrics = dict(getattr(item, "metrics", None) or {})
         except Exception:
             _metrics = {}
+        bridge = _ActivityPhaseBridge(lambda phase, it=item: self._apply_ai_phase(it, phase))
         worker = GenericWorker(
             self._tracked(analyze_image_sync),
             item.path,
@@ -1566,17 +1667,28 @@ class GalleryController:
             api_key=settings.api_key,
             model=settings.model,
             metrics=_metrics,
+            on_phase=bridge.phase.emit,
         )
         gen = self._folder_gen
+        # ``bridge=bridge`` keeps the phase relay alive until the worker reports.
         worker.signals.result.connect(
-            lambda result, path=item.path, mtime_ns=item.mtime_ns, g=gen: self._on_analysis_ready(
+            lambda result, path=item.path, mtime_ns=item.mtime_ns, g=gen, bridge=bridge: self._on_analysis_ready(
                 path, mtime_ns, result, g
             )
         )
         worker.signals.error.connect(
-            lambda err, path=item.path, g=gen: self._on_analysis_error(path, err, g)
+            lambda err, path=item.path, g=gen, bridge=bridge: self._on_analysis_error(path, err, g)
         )
+        set_activity(item, ActivityPhase.CLAIMED, "ai")
+        self.widget.refresh_card(item)
         self._pool_start(worker, None)
+
+    def _apply_ai_phase(self, item: GalleryItem, phase: str) -> None:
+        """UI-thread sink for worker phase emits; drops phases of stale items."""
+        if self._find_item(item.path) is not item:
+            return
+        set_activity(item, phase, "ai")
+        self.widget.refresh_card(item)
 
     def _merge_measured_metrics(self, result, item):
         """Overwrite the model's sharpness/noise/exposure with MEASURED
@@ -1624,15 +1736,12 @@ class GalleryController:
         item.analysis = result
         item.analysis_status = AnalysisStatus.DONE
         item.analysis_error = None
+        set_activity(item, ActivityPhase.DONE, "ai")
         self.widget.refresh_card(item)
-        # Quick look sidebar owns the model output: refresh the open
-        # overlay's analysis block in place (path-guarded, no reopen).
+        # Axis notes ride the metric/artifact row headers — rebuild the open
+        # overlay's rows in place so the notes appear without a walk/reopen.
         try:
             ql = getattr(self.widget, "_quick_look_overlay", None)
-            if ql is not None and hasattr(ql, "refresh_analysis"):
-                ql.refresh_analysis(item)
-            # Axis notes ride the metric/artifact row headers — rebuild them
-            # too so the notes appear without a walk/reopen.
             if ql is not None and hasattr(ql, "refresh_metrics"):
                 ql.refresh_metrics(item)
             if ql is not None and hasattr(ql, "refresh_artifacts"):
@@ -1658,13 +1767,8 @@ class GalleryController:
             message = str(value)
         item.analysis_status = AnalysisStatus.ERROR
         item.analysis_error = message or str(value)
+        set_activity(item, ActivityPhase.ERROR, "ai")
         self.widget.refresh_card(item)
-        try:
-            ql = getattr(self.widget, "_quick_look_overlay", None)
-            if ql is not None and hasattr(ql, "refresh_analysis"):
-                ql.refresh_analysis(item)
-        except Exception:
-            pass
 
     # -- Ask AI (A3 entry points + A4 async/cache/generation guard) ------------
 
@@ -1682,7 +1786,11 @@ class GalleryController:
                 paths = ()
             if not paths:
                 paths = (path,)
-            scope = AskScope(kind="selection", paths=paths, label="Selection")
+            # No scope line in the flyout for a multi/selection ask (the
+            # generic "Selection" is noise; the ask context still labels it
+            # "Selection" via ask_context._resolve_items when the label is
+            # empty). Card asks keep the filename as their scope line.
+            scope = AskScope(kind="selection", paths=paths, label="")
         self._open_ask_ai(card, scope)
 
     def open_ask_ai_for_series(self, index, anchor, member_paths, label) -> None:
@@ -1697,12 +1805,13 @@ class GalleryController:
         )
         self._open_ask_ai(anchor, scope)
 
-    def _open_ask_ai(self, anchor, scope) -> None:
+    def _open_ask_ai(self, anchor, scope, *, grow_up: bool = False, default_prompt: str | None = None) -> None:
         opener = getattr(self.widget, "open_ask_ai", None)
         if not callable(opener):
             return
         try:
-            default = self._tr("image_gallery.ask_ai.default_prompt", "Summary")
+            default = default_prompt or self._tr("image_gallery.ask_ai.default_prompt", "What matters here?")
+            _settings = self._ai_settings_store.load()
             texts = {
                 "title": self._tr("image_gallery.ask_ai.title", "Ask AI"),
                 "busy": self._tr("image_gallery.ask_ai.busy", "Thinking…"),
@@ -1712,11 +1821,54 @@ class GalleryController:
                 "error": self._tr(
                     "image_gallery.ask_ai.error", "AI could not answer."
                 ),
+                "images_hint": self._tr(
+                    "image_gallery.ask_ai.images_toggle_hint",
+                    "Send images with the question",
+                ),
+                "images_downsample": self._images_downsample_text(
+                    _settings.vlm_max_edge_px
+                ),
+                # Status badge shows the selected LLM, not the backend token.
+                "model": _settings.model,
             }
         except Exception:
-            default = "Summary"
+            default = "What matters here?"
             texts = None
-        opener(anchor, scope, default_prompt=default, texts=texts)
+        try:
+            opener(anchor, scope, default_prompt=default, texts=texts, grow_up=grow_up)
+        except TypeError:
+            opener(anchor, scope, default_prompt=default, texts=texts)
+
+    def open_ask_ai_region(self, path, box, anchor=None, *, question: str = "") -> None:
+        """Open the Ask AI flyout ABOVE the anchor for a selected image region.
+
+        ``box`` is ``(left, top, right, bottom)`` as fractions of the image.
+        The flyout grows upward; the region + full image + metrics are sent to
+        the VLM with the region system prompt on submit.
+        """
+        from tabs.image_gallery.services.ask_context import ASK_REGION, AskScope
+
+        try:
+            box_t = tuple(float(v) for v in (box or ()))
+        except Exception:
+            box_t = ()
+        if len(box_t) != 4:
+            return
+        scope = AskScope(kind=ASK_REGION, paths=(Path(path),), label="", box=box_t)
+        target = anchor if anchor is not None else self.widget
+        prompt = question or self._tr(
+            "image_gallery.ask_ai.region_prompt", "What is wrong in this region?"
+        )
+        self._open_ask_ai(target, scope, grow_up=True, default_prompt=prompt)
+
+    def _images_downsample_text(self, px: int) -> str:
+        """Tooltip line 2 for the Ask AI images toggle: the current downscale."""
+        if int(px or 0) <= 0:
+            return self._tr("image_gallery.settings.downscale_original", "Original")
+        template = self._tr(
+            "image_gallery.ask_ai.images_toggle_downsample", "Downscale: ≤ {px} px"
+        )
+        return template.replace("{px}", str(int(px)))
 
     def _ask_cache_key(self, scope, context, question: str, backend: str, model: str) -> str:
         import hashlib
@@ -1737,11 +1889,15 @@ class GalleryController:
             "question": str(question or "").strip(),
             "backend": backend,
             "model": model,
+            # Region asks must not collide with whole-image asks.
+            "region": (context or {}).get("region", {}).get("box")
+            if isinstance((context or {}).get("region"), dict)
+            else None,
         }
         blob = json.dumps(ident, sort_keys=True, ensure_ascii=False)
         return hashlib.sha1(blob.encode("utf-8")).hexdigest()
 
-    def ask_ai_question(self, scope, question: str) -> None:
+    def ask_ai_question(self, scope, question: str, *, include_images: bool = False) -> None:
         """Build context, route, and run the backend on a GenericWorker.
 
         Advisory only: never mutates rank/selection/store. Late answers are
@@ -1749,10 +1905,11 @@ class GalleryController:
         shown visibly, never replaced by fabricated text.
         """
         from tabs.image_gallery.services.ask_context import (
+            answer_image_links,
             build_ask_context,
             deanonymize_answer,
         )
-        from tabs.image_gallery.services.ask_router import answer, route_backend
+        from tabs.image_gallery.services.ask_router import answer, resolve_backend
 
         logger.debug(
             "[ask-ai] submit scope=%s q=%.80s",
@@ -1761,16 +1918,34 @@ class GalleryController:
         )
         try:
             context = build_ask_context(scope, controller=self)
-            backend = route_backend(question, context)
+            backend = resolve_backend(question, context, include_images=include_images)
         except Exception:
             logger.debug("ask-ai context build failed", exc_info=True)
             self._show_ask_ai_error("Could not assemble the ask context.")
             return
+        is_region = str(getattr(scope, "kind", "") or "") == "region"
+        if is_region:
+            # Region inspection is always visual: the crop + full image go out.
+            backend = "vlm"
+        system_prompt = None
+        if is_region:
+            try:
+                from tabs.image_gallery.services.ask_prompt import ASK_REGION_SYSTEM_PROMPT
+
+                system_prompt = ASK_REGION_SYSTEM_PROMPT
+            except Exception:
+                system_prompt = None
         logger.debug(
             "[ask-ai] route backend=%s items=%d", backend, len(context.get("items") or [])
         )
+        # name → path, so a surface can turn the de-anonymized filenames in the
+        # answer into clickable links that open that image.
+        links = answer_image_links(context)
 
         settings = self._ai_settings_store.load()
+        from tabs.image_gallery.services.vlm import set_vlm_max_edge
+
+        set_vlm_max_edge(settings.vlm_max_edge_px)
         if not settings.enabled or not settings.api_key or not settings.model:
             logger.debug("[ask-ai] not configured (enabled=%s key=%s model=%s)",
                          settings.enabled, bool(settings.api_key), bool(settings.model))
@@ -1792,7 +1967,7 @@ class GalleryController:
                 cached = replace(cached, cached=True)  # type: ignore[arg-type]
             except Exception:
                 pass
-            self._show_ask_ai_result(cached)
+            self._show_ask_ai_result(cached, links)
             return
 
         logger.debug(
@@ -1813,6 +1988,7 @@ class GalleryController:
                 model=settings.model,
                 max_tokens=getattr(settings, "ask_max_tokens", 0),
                 reasoning_effort=getattr(settings, "reasoning_effort", "auto"),
+                system_prompt=system_prompt,
             )
             if not getattr(result, "error", None) and names:
                 try:
@@ -1828,14 +2004,14 @@ class GalleryController:
         worker = GenericWorker(self._tracked(_run))
         gen = self._folder_gen
         worker.signals.result.connect(
-            lambda result, k=key, g=gen: self._on_ask_ai_ready(result, k, g)
+            lambda result, k=key, g=gen, lnk=links: self._on_ask_ai_ready(result, k, g, lnk)
         )
         worker.signals.error.connect(
             lambda err, g=gen: self._on_ask_ai_error(err, g)
         )
         self._pool_start(worker, None)
 
-    def _on_ask_ai_ready(self, result, key: str, gen: int | None = None) -> None:
+    def _on_ask_ai_ready(self, result, key: str, gen: int | None = None, links: dict | None = None) -> None:
         if gen is not None and not self._is_current_folder_gen(gen):
             logger.debug("[ask-ai] result dropped (stale folder gen)")
             return  # folder switched — late ask answer dropped
@@ -1853,7 +2029,7 @@ class GalleryController:
             self._ask_cache[key] = result
         except Exception:
             pass
-        self._show_ask_ai_result(result)
+        self._show_ask_ai_result(result, links)
 
     def _on_ask_ai_error(self, error_info, gen: int | None = None) -> None:
         if gen is not None and not self._is_current_folder_gen(gen):
@@ -1884,9 +2060,13 @@ class GalleryController:
         except Exception:
             pass
 
-    def _show_ask_ai_result(self, result) -> None:
+    def _show_ask_ai_result(self, result, links: dict | None = None) -> None:
         try:
-            self.widget.show_ask_ai_result(result)
+            try:
+                model = self._ai_settings_store.load().model
+            except Exception:
+                model = ""
+            self.widget.show_ask_ai_result(result, model=model, links=links)
         except Exception:
             pass
 
@@ -2307,13 +2487,77 @@ class GalleryController:
                     self.widget.set_scanning(0, len(items))
                 except Exception:
                     logger.debug("widget.set_scanning failed", exc_info=True)
+        self._mark_local_pass(items, ActivityPhase.ANALYZING)
         worker = GenericWorker(self._tracked(self._run_triage_sync), list(items), dict(self._series_overrides))
         gen = self._folder_gen
         sgen = self._series_gen
         worker.signals.result.connect(lambda res, g=gen, s=sgen: self._on_triage_ready(res, g, s))
+        worker.signals.result.connect(lambda _res, its=list(items): self._mark_local_pass(its, ActivityPhase.DONE))
         worker.signals.error.connect(lambda err, g=gen: self._on_triage_error(err, g))
+        worker.signals.error.connect(lambda _err, its=list(items): self._mark_local_pass(its, None))
         # Triage outranks background thumbnails so the grid labels settle first.
         self._pool_start(worker, TRIAGE_PRIORITY)
+
+    def _mark_local_pass(self, items, phase) -> None:
+        """Pass-level local activity: ``phase=None`` clears the local phase."""
+        for item in items:
+            try:
+                if phase is None:
+                    if getattr(item, "activity_source", None) == "local":
+                        clear_activity(item)
+                else:
+                    set_activity(item, phase, "local")
+            except Exception:
+                continue
+        try:
+            refresh = getattr(self.widget, "refresh_cards", None)
+            if callable(refresh):
+                refresh(items)
+        except Exception:
+            logger.debug("local-pass activity refresh failed", exc_info=True)
+
+    def _begin_append_processing(self, items: list[GalleryItem]) -> None:
+        """Append path: mirror the first-load processing UX for NEW items.
+
+        The attach branch deliberately skips retriage (live groups stay
+        untouched), but that must not silently drop the processing feedback a
+        first load gives: a per-card activity pill (``analyzing``) plus the
+        toolbar spinner + count. Without this the appended cards showed no
+        badge and the toolbar showed no progress, because ``_load_thumbnail``
+        sets ``thumbnail_status = LOADING`` without repainting the card and
+        no local activity phase was ever stamped.
+
+        Closed by :meth:`_finish_append_processing` when the batch settles.
+        """
+        batch = list(items or [])
+        if not batch:
+            return
+        try:
+            background = getattr(self.widget, "set_background_scanning", None)
+            if callable(background):
+                background(0, len(batch))
+        except Exception:
+            logger.debug("append background scanning failed", exc_info=True)
+        try:
+            self._mark_local_pass(batch, ActivityPhase.ANALYZING)
+        except Exception:
+            logger.debug("append local pass failed", exc_info=True)
+
+    def _finish_append_processing(self, items: list[GalleryItem]) -> None:
+        """Retire the append processing indicator: ``done`` fade + spinner off."""
+        batch = list(items or [])
+        if not batch:
+            return
+        try:
+            self._mark_local_pass(batch, ActivityPhase.DONE)
+        except Exception:
+            logger.debug("append local done failed", exc_info=True)
+        try:
+            done = getattr(self.widget, "set_triage_done", None)
+            if callable(done):
+                done()
+        except Exception:
+            logger.debug("append processing indicator hide failed", exc_info=True)
 
     def _run_artifacts_sync(self, items: list[GalleryItem], source_path: Path | None) -> dict[str, dict]:
         """Pure worker for GenericWorker: analyze 7 artifacts per item."""
@@ -2594,10 +2838,15 @@ class GalleryController:
             logger.debug("proxy chunk failed", exc_info=True)
             return {}
 
-    def _schedule_proxy(self, items: list, priority: int, source, gen: int, wanted=None, include_camera: bool | None = None, full_res_artifacts: bool = False) -> int:
+    def _schedule_proxy(self, items: list, priority: int, source, gen: int, wanted=None, include_camera: bool | None = None, full_res_artifacts: bool = False, on_done=None) -> int:
         """Chunked proxy batches: one worker per 50 items (never N)."""
         chunks = [items[i:i + _GALLERY_PROXY_CHUNK] for i in range(0, len(items), _GALLERY_PROXY_CHUNK)]
         if not chunks:
+            if on_done is not None:
+                try:
+                    on_done()
+                except Exception:
+                    logger.debug("proxy on_done hook failed", exc_info=True)
             return 0
         if include_camera is None:
             try:
@@ -2610,6 +2859,20 @@ class GalleryController:
             wanted_set = frozenset(("artifacts", "fidelity", "camera"))
         self._proxy_done = 0
         self._proxy_total = len(chunks)
+        # Per-batch settle counter (independent of the global _proxy_* progress):
+        # fires ``on_done`` once after every chunk of THIS batch has delivered.
+        remaining = [len(chunks)]
+
+        def _settle(_payload=None) -> None:
+            remaining[0] -= 1
+            if remaining[0] > 0:
+                return
+            if on_done is not None:
+                try:
+                    on_done()
+                except Exception:
+                    logger.debug("proxy on_done hook failed", exc_info=True)
+
         started = 0
         for chunk in chunks:
             worker = GenericWorker(
@@ -2622,6 +2885,12 @@ class GalleryController:
             worker.signals.error.connect(
                 lambda err: logger.debug("proxy batch worker error: %r", err, exc_info=True)
             )
+            if on_done is not None:
+                # Completion hook (append processing UX): counts each chunk
+                # exactly once — result OR error. Connected AFTER the apply
+                # handler so the last chunk is applied before on_done runs.
+                worker.signals.result.connect(_settle)
+                worker.signals.error.connect(_settle)
             self._pool_start(worker, priority)
             started += 1
         # Chunk fan-out for tests (50-item batching assertion).
@@ -2631,7 +2900,7 @@ class GalleryController:
             pass
         return started
 
-    def _start_proxy_analysis(self, items: list[GalleryItem], source_path: Path | None, mode) -> None:
+    def _start_proxy_analysis(self, items: list[GalleryItem], source_path: Path | None, mode, *, on_done=None) -> None:
         """Triage-tail Stage 2: ONE single-pass background step (proxy).
 
         Replaces the old three whole-pool batch workers (artifact +
@@ -2639,8 +2908,22 @@ class GalleryController:
         sharing one bounded decode per file. Fail-closed per item,
         path-keyed delivery into the existing apply tails; the
         ``_analysis_fingerprint`` skip above stays the gate.
+
+        ``on_done`` (optional) fires once after the whole batch settles —
+        including the no-work early returns — so the append path can retire
+        its processing indicator without dangling.
         """
+
+        def _finish() -> None:
+            if on_done is None:
+                return
+            try:
+                on_done()
+            except Exception:
+                logger.debug("proxy on_done hook failed", exc_info=True)
+
         if not items:
+            _finish()
             return
         want_artifacts = not _artifacts_disabled()
         want_fidelity = not _fidelity_disabled() and source_path is not None
@@ -2650,6 +2933,7 @@ class GalleryController:
             want_camera = False
         if not (want_artifacts or want_fidelity or want_camera):
             _dbg("proxy analysis skipped: all Stage-2 lanes kill-switched")
+            _finish()
             return
         wanted = frozenset(
             [s for s, w in (
@@ -2663,9 +2947,11 @@ class GalleryController:
                 list(items), PROXY_BATCH_PRIORITY, op="proxy",
                 source=source_path, gen=self._folder_gen, wanted=wanted,
                 include_camera=want_camera, full_res_artifacts=want_artifacts,
+                on_done=on_done,
             )
         except Exception:
             logger.debug("proxy analysis start failed", exc_info=True)
+            _finish()
 
     def _on_proxy_batch_ready(self, result: object, gen: int | None, wanted: object = None) -> None:
         """One chunk delivery: fan out by path into the legacy apply tails."""
@@ -2944,6 +3230,9 @@ class GalleryController:
 
         # Use existing analyze_image_sync only via VLM targeted path — tie-break needs 2 images.
         settings = self._ai_settings_store.load()
+        from tabs.image_gallery.services.vlm import set_vlm_max_edge
+
+        set_vlm_max_edge(settings.vlm_max_edge_px)
         # Degrade silent-but-visible if AI not configured: keep local ranking, no badge
         if not settings.enabled or not settings.api_key or not settings.model:
             logger.debug("tie-break skipped: AI not configured (silent degrade)")

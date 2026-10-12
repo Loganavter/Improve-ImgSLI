@@ -17,6 +17,7 @@ from PySide6.QtCore import QObject
 from tabs.image_gallery.use_cases import drag_drop as _drag_drop
 from tabs.image_gallery.use_cases import persistence as _persistence
 from tabs.image_gallery.use_cases import registration as _registration
+from tabs.use_cases.session_state import SessionState
 
 
 class _ModalLifetimeHideFilter(QObject):
@@ -64,6 +65,24 @@ class ImageGalleryTab(TabContract):
         self._controller = None
         self._active_session_id: str | None = None
         self._nav_section = None
+        self._session_state = SessionState.bind(
+            self,
+            namespace="image_gallery",
+            fields={
+                "view_list": (bool, False),
+                "judgment_domain": (str, "algorithms"),
+            },
+            apply=self._apply_chrome,
+        )
+
+    def _apply_chrome(self, values: dict) -> None:
+        widget = self._widget
+        if widget is None:
+            return
+        widget.apply_view_prefs(
+            view_list=bool(values.get("view_list", False)),
+            judgment_domain=str(values.get("judgment_domain") or "algorithms"),
+        )
 
     @property
     def session_type(self) -> str:
@@ -129,6 +148,8 @@ class ImageGalleryTab(TabContract):
         session_id = self._active_session_id or self._resolve_active_session_id(context)
         if session_id is not None:
             self._active_session_id = session_id
+        self._session_state.attach(context)
+        self._widget.attach_session_state(self._session_state)
         self._bind_gallery_copies(session_id)
         _persistence.restore_from(self, context, session_id)
         # Series live only in controller memory: a pool restored from the
@@ -286,8 +307,10 @@ class ImageGalleryTab(TabContract):
             pass
 
     def on_session_created(self, session_id: str, context: TabContext) -> None:
-        # Slot is auto-allocated by SessionBlueprint.state_slots; nothing to do.
-        return
+        # Slot is auto-allocated by SessionBlueprint.state_slots; a NEW session
+        # inherits the last-used toolbar chrome (QSettings) so it does not
+        # reset the switches.
+        self._session_state.seed_slot(context, session_id)
 
     def on_session_closed(self, session_id: str, context: TabContext) -> None:
         if self._active_session_id == session_id:

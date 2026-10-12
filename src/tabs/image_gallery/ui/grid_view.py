@@ -34,6 +34,7 @@ from tabs.image_gallery.ui.card import (
     gallery_selection_accent,
     update_gallery_card,
 )
+from tabs.image_gallery.ui.card.activity_pulse import ActivityPulse
 from tabs.image_gallery.ui.list.card import (
     LIST_CARD_H,
     _bind_list_row,
@@ -745,6 +746,7 @@ class GalleryGridView(QWidget):
         self._band_separator: QWidget | None = None
         # Debounced column adaptation on resizes (dragging a window edge
         # must not replan per pixel — one reflow after it settles).
+        self._activity = ActivityPulse(self, translate=self._activity_translate)
         self._adapt_timer = QTimer(self)
         self._adapt_timer.setSingleShot(True)
         try:
@@ -944,7 +946,18 @@ class GalleryGridView(QWidget):
             cols = int(self.grid_columns)
         except Exception:
             return
-        max_cols = max(int(GRID_COLUMNS), int(cols or 1))
+        # Reset EVERY column the layout currently carries, not just the ones
+        # the current mode uses: the responsive/banded grid can pin more than
+        # GRID_COLUMNS (wide viewports grow, bands add a separator column), and
+        # a grid→list switch keeps the same QGridLayout. Leftover card-width
+        # minimums on those higher columns (e.g. 4,5 after a 6-col banded grid)
+        # steal width from the stretched list column and leave a dead strip on
+        # the right.
+        try:
+            _layout_cols = int(self.items_layout.columnCount())
+        except Exception:
+            _layout_cols = 0
+        max_cols = max(int(GRID_COLUMNS), int(cols or 1), int(_layout_cols))
         is_list = self._view_mode == VIEW_LIST
         try:
             # List: fill horizontally (one stretched column). Grid: natural
@@ -1356,13 +1369,18 @@ class GalleryGridView(QWidget):
             pass
         return None
 
-    def rebuild_grid(self, items: list[GalleryItem], mode: object = None, *, paint_selection: bool = True) -> None:
+    def rebuild_grid(self, items: list[GalleryItem], mode: object = None, *, paint_selection: bool = True, flat_ungrouped: bool = False) -> None:
         """Clear and rebuild the 4-column grid from *items* (pool-reusing Buttons).
 
         ``mode`` controls per-dot artifact palette; proxied to ``build_gallery_card``.
         ``paint_selection=False`` skips the closing selection sweep — the
         widget passes it when a series restore follows in the same tick and
         sweeps once itself (else every rebuild pays two full sweeps).
+        ``flat_ungrouped=True`` wraps a header-less flat pool in a single
+        ``UNGROUPED`` section on the SAME pass, so a fresh pool never paints
+        nameless while the triage worker is pending. Opt-in: the widget asks
+        for it on a first load (no series to restore); callers that restore a
+        live series in the same tick keep the flat primitive.
         """
         if mode is not None:
             self._mode = mode
@@ -1415,6 +1433,7 @@ class GalleryGridView(QWidget):
         if len(items) > self._REBUILD_CHUNK * 2:
             self._rebuild_pending = list(items)
             self._rebuild_index = 0
+            self._rebuild_flat_ungrouped = bool(flat_ungrouped)
             self._update_host_height(len(items))  # reserve height early so scrollbar correct
             from PySide6.QtCore import QTimer
 
@@ -1442,6 +1461,30 @@ class GalleryGridView(QWidget):
         except Exception:
             logger.debug("rebuild_grid: layout activate failed", exc_info=True)
         self._schedule_visible_range_emit()
+        if flat_ungrouped:
+            self._promote_flat_ungrouped()
+
+    def _promote_flat_ungrouped(self) -> None:
+        """Wrap a header-less flat pool in a single ``UNGROUPED`` section.
+
+        A flat rebuild must not paint nameless cards while the triage worker
+        is pending: every item belongs under ``UNGROUPED`` from the first
+        frame. No-op when a series view is already live (``_series`` is not
+        ``None``) or the pool is empty. Reuses the already-built cards —
+        ``set_series`` routes through ``_rebuild_series``, which recycles and
+        reflows them in place.
+        """
+        if getattr(self, "_series", None) is not None:
+            return
+        try:
+            if not list(getattr(self, "_items", None) or []):
+                return
+        except Exception:
+            return
+        try:
+            self.set_series([], hub_names=[], collapsed={})
+        except Exception:
+            logger.debug("rebuild_grid: flat→UNGROUPED promotion failed", exc_info=True)
 
     def _rebuild_next_chunk(self) -> None:
         pending = getattr(self, "_rebuild_pending", None)
@@ -1466,6 +1509,11 @@ class GalleryGridView(QWidget):
             self._rebuild_pending = None
             self._rebuild_index = 0
             self.apply_selection(self._selection)
+            # Chunked fill finished — now wrap the flat pool in UNGROUPED
+            # (deferred so the chunks stay responsive; the header lands the
+            # moment the pool is complete).
+            if getattr(self, "_rebuild_flat_ungrouped", False):
+                self._promote_flat_ungrouped()
             # Same synchronous commit as the non-chunked path: the last
             # chunk must not leave the tail rows unlaid-out for a frame.
             try:
@@ -1706,6 +1754,14 @@ class GalleryGridView(QWidget):
             btn = None
         if btn is None:
             return
+        # Keep the click affordance in sync with the slot's new role: a
+        # header reused from an UNGROUPED slot (created disabled) must become
+        # clickable when it now fronts a real, collapsible series — and vice
+        # versa. Without this the collapse toggle is dead on a retitled slot.
+        try:
+            btn.setEnabled(bool(is_collapsible))
+        except Exception:
+            pass
         try:
             btn.setObjectName(
                 f"GallerySeriesHeaderBtn_{index}" if is_collapsible else "GallerySeriesHeader_ungrouped_btn"
@@ -1766,7 +1822,7 @@ class GalleryGridView(QWidget):
             try:
                 btn.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
                 btn.customContextMenuRequested.connect(
-                    lambda _pos, i=index, b=btn: self._handle_series_context(b, i)
+                    lambda _pos, i=index, b=btn: self._handle_series_context(b, i, _pos)
                 )
             except Exception:
                 pass
@@ -2329,7 +2385,7 @@ class GalleryGridView(QWidget):
             try:
                 btn.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
                 btn.customContextMenuRequested.connect(
-                    lambda _pos, i=index, b=btn: self._handle_series_context(b, i)
+                    lambda _pos, i=index, b=btn: self._handle_series_context(b, i, _pos)
                 )
             except Exception:
                 pass
@@ -2503,6 +2559,7 @@ class GalleryGridView(QWidget):
                 update_gallery_card(card, item, mode=self._resolve_mode())  # type: ignore[arg-type]
         except Exception:
             pass
+        self._sync_activity(card)
         # Re-apply selection tint in case accent changed.
         self.apply_selection(self._selection)
 
@@ -2540,6 +2597,7 @@ class GalleryGridView(QWidget):
                     update_gallery_card(card, item, mode=mode)  # type: ignore[arg-type]
             except Exception:
                 pass
+            self._sync_activity(card)
         try:
             self.apply_selection(self._selection)
         except Exception:
@@ -2636,6 +2694,7 @@ class GalleryGridView(QWidget):
             except Exception:
                 pass
             self._ensure_card_drag(card)
+            self._sync_activity(card)
             return card
         if want_list:
             card = build_gallery_list_card(
@@ -2658,7 +2717,23 @@ class GalleryGridView(QWidget):
         except Exception:
             pass
         self._ensure_card_drag(card)
+        self._sync_activity(card)
         return card
+
+    def _sync_activity(self, card) -> None:
+        try:
+            self._activity.sync(card)
+        except RuntimeError:
+            pass
+
+    def _activity_translate(self, key: str, default: str) -> str:
+        """Tab translator via the owner (controller ``_tr``; widget fallback)."""
+        try:
+            owner = self._gallery_widget._owner_for_triage()
+            tr = getattr(owner, "_tr", None)
+            return str(tr(key, default)) if callable(tr) else default
+        except Exception:
+            return default
 
     def _recycle_card(self, str_path: str) -> None:
         card = self._cards_by_path.pop(str_path, None)  # type: ignore[arg-type]
@@ -2865,8 +2940,14 @@ class GalleryGridView(QWidget):
             except Exception:
                 pass
 
-    def _handle_series_context(self, anchor, index) -> None:
-        """Series-header right-click → host callback (index, anchor, paths, label)."""
+    def _handle_series_context(self, anchor, index, local_pos=None) -> None:
+        """Series-header right-click → host callback.
+
+        Host gets ``(index, anchor, paths, label, series_id, global_pos)``:
+        ``series_id`` is the session-stable ``series_<n>`` of the cluster's
+        members (``None`` when unknown), ``global_pos`` the popup anchor in
+        screen coordinates.
+        """
         if not callable(self._on_series_context_menu):
             return
         try:
@@ -2874,11 +2955,19 @@ class GalleryGridView(QWidget):
         except Exception:
             members = []
         paths = []
+        series_id = None
         for it in members:
             try:
                 paths.append(it.path)
             except Exception:
                 continue
+            if series_id is None:
+                try:
+                    sid = getattr(it, "series_id", None)
+                except Exception:
+                    sid = None
+                if sid:
+                    series_id = str(sid)
         # Pass the series NAME only (the hub), not the full header chrome
         # ("SERIES 1 · … · N VARIANTS") — that repeated the grid header in
         # the flyout.
@@ -2889,8 +2978,23 @@ class GalleryGridView(QWidget):
             label = str(hub or self._series_header_labels.get(idx, "") or "")
         except Exception:
             label = ""
+        global_pos = None
         try:
-            self._on_series_context_menu(int(index), anchor, tuple(paths), label)
+            if local_pos is not None:
+                global_pos = anchor.mapToGlobal(local_pos)
+        except Exception:
+            global_pos = None
+        if global_pos is None:
+            try:
+                from PySide6.QtGui import QCursor
+
+                global_pos = QCursor.pos()
+            except Exception:
+                global_pos = None
+        try:
+            self._on_series_context_menu(
+                int(index), anchor, tuple(paths), label, series_id, global_pos
+            )
         except Exception:
             pass
 

@@ -85,13 +85,16 @@ def test_help_select_all_includes_headings_and_paragraphs(qtbot):
     assert selected == dialog._document.plain_text()
 
 
-def test_rmb_surface_is_always_popup(
+def test_rmb_surface_is_in_window(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # The historical platform fallbacks were removed by request — every
-    # context menu in the app is a popup, regardless of platform/toolkit.
+    # RMB menus are in-window overlay children by design (see
+    # ``ui.context_menu.manager.rmb_context_menu_surface``): a native Qt.Popup
+    # tears down its xdg_popup surface on close, and a widget shown right after
+    # (e.g. the Ask AI flyout) then flashes the global busy cursor. The value is
+    # platform/version independent.
     monkeypatch.delenv("XDG_SESSION_TYPE", raising=False)
     monkeypatch.delenv("WAYLAND_DISPLAY", raising=False)
     monkeypatch.setattr(sys, "platform", "win32")
     monkeypatch.setattr("sli_ui_toolkit.__version__", "3.1.3")
-    assert rmb_context_menu_surface() == "popup"
+    assert rmb_context_menu_surface() == "in_window"

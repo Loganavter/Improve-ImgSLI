@@ -56,11 +56,31 @@ _EXT_TO_MIME = {
 }
 
 
-# API payload budget: full-resolution images are never uploaded. The VLM judges
-# sharpness/artifacts fine at preview size; downscaling keeps requests small
-# and latency predictable. Fail-open: if Pillow is missing or the file is not
-# decodable, the original bytes go out rather than failing the request.
-VLM_MAX_EDGE_PX = 1024
+# API payload budget: full-resolution images are never uploaded by default. The
+# VLM judges sharpness/artifacts fine at preview size; downscaling keeps requests
+# small and latency predictable. The max edge is user-configurable (gallery AI
+# settings); 0 sends the original bytes. Fail-open: if Pillow is missing or the
+# file is not decodable, the original bytes go out rather than failing the request.
+DEFAULT_VLM_MAX_EDGE_PX = 1024
+#: Kept for existing importers; the live value is :func:`get_vlm_max_edge`.
+VLM_MAX_EDGE_PX = DEFAULT_VLM_MAX_EDGE_PX
+
+_vlm_max_edge_px = DEFAULT_VLM_MAX_EDGE_PX
+
+
+def get_vlm_max_edge() -> int:
+    """Current downscale max edge in px (0 = original bytes, no downscale)."""
+    return _vlm_max_edge_px
+
+
+def set_vlm_max_edge(px: int) -> None:
+    """Set the downscale max edge; ``px <= 0`` disables downscaling."""
+    global _vlm_max_edge_px
+    try:
+        value = int(px)
+    except (TypeError, ValueError):
+        value = DEFAULT_VLM_MAX_EDGE_PX
+    _vlm_max_edge_px = max(0, value)
 
 
 def _encode_image(path: Path) -> tuple[str, str]:
@@ -70,29 +90,83 @@ def _encode_image(path: Path) -> tuple[str, str]:
         raw = p.read_bytes()
     except OSError:
         raise
+    max_edge = get_vlm_max_edge()
     try:
-        from PIL import Image
+        if max_edge > 0:
+            from PIL import Image
 
-        import io
+            import io
 
-        with Image.open(p) as im:
-            w, h = im.size
-            edge = max(w, h)
-            if edge > VLM_MAX_EDGE_PX and edge > 0:
-                scale = VLM_MAX_EDGE_PX / float(edge)
-                im = im.convert("RGB")
-                im.thumbnail((VLM_MAX_EDGE_PX, VLM_MAX_EDGE_PX), Image.LANCZOS)
-                _ = scale
-                buf = io.BytesIO()
-                fmt = "JPEG" if mime == "jpeg" else "PNG"
-                im.save(buf, format=fmt)
-                raw = buf.getvalue()
-                mime = "jpeg" if fmt == "JPEG" else "png"
+            with Image.open(p) as im:
+                w, h = im.size
+                edge = max(w, h)
+                if edge > max_edge and edge > 0:
+                    im = im.convert("RGB")
+                    im.thumbnail((max_edge, max_edge), Image.LANCZOS)
+                    buf = io.BytesIO()
+                    fmt = "JPEG" if mime == "jpeg" else "PNG"
+                    im.save(buf, format=fmt)
+                    raw = buf.getvalue()
+                    mime = "jpeg" if fmt == "JPEG" else "png"
     except Exception:
         # Fail-open: send original bytes (any PIL/import/decode problem).
         pass
     data = base64.b64encode(raw).decode("ascii")
     return mime, data
+
+
+def encode_region(path, box) -> tuple[str, str] | None:
+    """Crop a pixel box from an image → ``(mime, base64)``, downscaled to the
+    VLM edge. Worker thread only; never raises (``None`` when unavailable).
+
+    ``box`` is ``(left, top, right, bottom)`` in source pixels. Uses the tiled
+    store (memmap-backed, no full-frame decode buffer); the base store is closed
+    here — only derived state.
+    """
+    try:
+        from engine.store.tiled_pixel_store import TiledPixelStore
+    except Exception:
+        return None
+    store = None
+    try:
+        store = TiledPixelStore.from_path(Path(path))
+        left, top, right, bottom = (int(v) for v in box)
+        if right <= left or bottom <= top:
+            return None
+        im = store.crop((left, top, right, bottom))
+    except Exception:
+        return None
+    finally:
+        try:
+            if store is not None:
+                store.close()
+        except Exception:
+            pass
+    if im is None:
+        return None
+    try:
+        import io
+
+        from PIL import Image
+
+        out = im
+        if out.mode not in ("RGB", "L"):
+            out = out.convert("RGB")
+        max_edge = get_vlm_max_edge()
+        if max_edge > 0:
+            try:
+                edge = max(out.size)
+            except Exception:
+                edge = 0
+            if edge > max_edge and edge > 0:
+                out = out.convert("RGB")
+                out.thumbnail((max_edge, max_edge), Image.LANCZOS)
+        buf = io.BytesIO()
+        out.save(buf, format="PNG")
+        data = base64.b64encode(buf.getvalue()).decode("ascii")
+        return ("png", data)
+    except Exception:
+        return None
 
 
 def build_tie_break_request(

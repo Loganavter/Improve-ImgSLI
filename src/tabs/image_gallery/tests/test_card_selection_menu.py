@@ -540,3 +540,34 @@ def test_card_menu_parent_is_card_not_window(qapp, monkeypatch) -> None:
         assert captured.get("source_widget") is not card.window()
     finally:
         window.close()
+
+
+def test_ask_ai_action_opens_directly(monkeypatch) -> None:
+    """The Ask AI action opens the flyout directly.
+
+    Sequencing (the flyout waits for the in-window context menu to close) is
+    the ``FlyoutManager``'s job via ``AskAiFlyout.wait_for_close_before_show``
+    — the menu is now a registered in-window flyout — so the action opens
+    right away and the manager defers/replays the actual show.
+    """
+    import ui.context_menu.manager as _mgr
+
+    captured: dict = {}
+
+    def _fake_open(*, source_widget, global_pos, entries, key, on_triggered=None):
+        captured["on_triggered"] = on_triggered
+        return SimpleNamespace()
+
+    monkeypatch.setattr(_mgr, "open_context_menu_entries", _fake_open)
+
+    calls: list = []
+    owner = SimpleNamespace(
+        state=SimpleNamespace(selected_paths=set(), mode=None),
+        open_ask_ai=lambda kind, card, path: calls.append(kind),
+    )
+    popup_gallery_card_context_menu(
+        SimpleNamespace(), owner, Path("/a.png"), global_pos=None, selection_count=0
+    )
+
+    captured["on_triggered"]("gallery.ask_ai", None)
+    assert calls == ["card"]
