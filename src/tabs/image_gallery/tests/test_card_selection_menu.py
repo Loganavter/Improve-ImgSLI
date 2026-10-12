@@ -543,29 +543,27 @@ def test_card_menu_parent_is_card_not_window(qapp, monkeypatch) -> None:
 
 
 def test_ask_ai_action_waits_for_menu_close(monkeypatch) -> None:
-    """Ask AI opens only AFTER the (closing) menu is fully hidden.
+    """Ask AI opens only AFTER the menu is fully destroyed.
 
     Regression: the card menu hid on the action click, but Ask AI opened
     immediately, so the menu's fade-out ran in parallel with the flyout's
-    show. The action now waits for the menu's ``aboutToHide``.
+    show. Opening at the menu's fade-finish (``aboutToHide``) still flashed
+    the Wayland busy cursor (that fires inside the popup teardown); the action
+    now waits for the menu's ``destroyed`` (after its ``deleteLater``).
     """
     from PySide6.QtCore import QObject, Signal
 
     import ui.context_menu.manager as _mgr
 
     class _FakeMenu(QObject):
-        aboutToHide = Signal()
+        destroyed = Signal()
 
         def __init__(self) -> None:
             super().__init__()
             self._visible = True
-            self.hidden_calls = 0
 
         def isVisible(self) -> bool:  # noqa: N802
             return self._visible
-
-        def hide(self) -> None:
-            self.hidden_calls += 1
 
     menu = _FakeMenu()
     captured: dict = {}
@@ -586,9 +584,8 @@ def test_ask_ai_action_waits_for_menu_close(monkeypatch) -> None:
     )
 
     captured["on_triggered"]("gallery.ask_ai", None)
-    # Deferred: not opened while the menu is still visible/closing.
+    # Deferred: not opened while the menu is still alive.
     assert calls == []
-    assert menu.hidden_calls == 1
 
-    menu.aboutToHide.emit()  # menu now fully hidden
+    menu.destroyed.emit()  # menu fully gone (after deleteLater)
     assert calls == ["card"]

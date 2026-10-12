@@ -266,18 +266,19 @@ def popup_gallery_card_context_menu(  # type: ignore[no-untyped-def]
                 pass
 
         def _do_ask_ai(scope_kind: str) -> None:
-            # This runs from the menu's own action click, right after the menu
-            # started closing (popup fade). Wait for it to be fully hidden
-            # (aboutToHide) before opening Ask AI — otherwise the menu's
-            # fade-out and the flyout's show animate in parallel.
+            # Open Ask AI only AFTER the popup menu is fully destroyed — NOT at
+            # its fade-finish (``aboutToHide``), which fires inside the popup
+            # teardown (between ``QWidget.hide(menu)`` and ``menu.deleteLater()``);
+            # starting the flyout's show on that exact frame makes the Wayland
+            # compositor flash the busy cursor. ``destroyed`` fires after the
+            # deleteLater, once the popup surface is gone.
             try:
                 _menu = menu  # enclosing scope, bound by the time this runs
             except NameError:
                 _menu = None
             try:
                 if _menu is not None and _menu.isVisible():
-                    _menu.aboutToHide.connect(lambda: _open_ask_ai_now(scope_kind))
-                    _menu.hide()
+                    _menu.destroyed.connect(lambda *_: _open_ask_ai_now(scope_kind))
                     return
             except Exception:
                 pass

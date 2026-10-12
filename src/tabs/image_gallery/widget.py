@@ -1244,15 +1244,16 @@ class ImageGalleryWidget(QWidget):
                 pass
 
         def _do_ask_ai() -> None:
-            # Runs from the menu's action click, right after the menu started
-            # closing (popup fade). Wait for it to be fully hidden
-            # (aboutToHide) before opening Ask AI so the two don't animate in
-            # parallel.
+            # Open Ask AI only AFTER the popup menu is fully destroyed — NOT at
+            # its fade-finish (``aboutToHide``), which fires inside the popup
+            # teardown (between ``QWidget.hide(menu)`` and ``menu.deleteLater()``);
+            # starting the flyout's show on that exact frame makes the Wayland
+            # compositor flash the busy cursor. ``destroyed`` fires after the
+            # deleteLater, once the popup surface is gone.
             _menu = menu_holder.get("menu")
             try:
                 if _menu is not None and _menu.isVisible():
-                    _menu.aboutToHide.connect(_open_ask_ai_now)
-                    _menu.hide()
+                    _menu.destroyed.connect(lambda *_: _open_ask_ai_now())
                     return
             except Exception:
                 pass
