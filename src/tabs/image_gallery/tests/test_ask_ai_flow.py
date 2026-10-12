@@ -255,6 +255,14 @@ def test_open_ask_ai_resolves_selection_scope(monkeypatch, tmp_path, qapp):
     _anchor, scope, _default = widget.opened[-1]
     assert scope.kind == "selection"
     assert scope.paths == (it.path,)
+    # No generic "Selection" scope line in the flyout (ask_context still
+    # derives "Selection" for the model when the label is empty).
+    assert scope.label == ""
+
+    # A card ask keeps the filename as its scope line.
+    ctrl.open_ask_ai("card", None, it.path)
+    _anchor, scope_card, _default = widget.opened[-1]
+    assert scope_card.label == it.path.name
 
 
 def test_open_ask_ai_for_series_uses_series_scope(monkeypatch, tmp_path, qapp):

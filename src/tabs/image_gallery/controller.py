@@ -1772,7 +1772,11 @@ class GalleryController:
                 paths = ()
             if not paths:
                 paths = (path,)
-            scope = AskScope(kind="selection", paths=paths, label="Selection")
+            # No scope line in the flyout for a multi/selection ask (the
+            # generic "Selection" is noise; the ask context still labels it
+            # "Selection" via ask_context._resolve_items when the label is
+            # empty). Card asks keep the filename as their scope line.
+            scope = AskScope(kind="selection", paths=paths, label="")
         self._open_ask_ai(card, scope)
 
     def open_ask_ai_for_series(self, index, anchor, member_paths, label) -> None:
