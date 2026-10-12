@@ -17,9 +17,18 @@ from plugins.help.tree import (
 
 
 def _ensure_help_contributions() -> None:
+    from pathlib import Path
+
+    from resources.translations import add_i18n_root
     from tabs.registry import TabRegistry
 
     clear_help_contributions()
+    # Phase 3a: settings.* keys live in the settings plugin pack (moved
+    # from the host pack). Production registers plugin packs at discovery
+    # (registry auto-registers <pkg>/resources/i18n); test sessions that
+    # skip plugin discovery register the owner pack explicitly — same
+    # posture as the export-pack add_i18n_root in export dialog tests.
+    add_i18n_root(Path("src/plugins/settings/resources/i18n"))
     tabs = TabRegistry()
     tabs.discover()
     tabs.contribute_all_help()
@@ -31,8 +40,17 @@ def _ensure_help_contributions() -> None:
         install_help_plugin_contributions,
     )
 
+    # Phase 2+3: the export hub and the settings / image_properties pages
+    # are plugin-owned — install them the way HelpPlugin does in production
+    # (duck-typed probe of the plugin instances). NOTE: install REPLACES
+    # the plugin list, so all plugin instances are collected in one call.
+    from plugins.image_properties.plugin import ImagePropertiesPlugin
+    from plugins.settings.plugin import SettingsPlugin
+
     install_help_plugin_contributions(
-        collect_help_plugin_contributions([ExportPlugin()])
+        collect_help_plugin_contributions(
+            [ExportPlugin(), SettingsPlugin(), ImagePropertiesPlugin()]
+        )
     )
 
 
@@ -87,14 +105,16 @@ def test_help_tree_loads_and_aliases_resolve():
     assert (video.body_root / "en" / video.body).is_file()
     assert (video.body_root / "ru" / video.body).is_file()
     props = tree.require(tree.resolve_alias("image_properties"))
-    assert props.body == "platform/image_properties.md"
+    assert props.body == "image_properties.md"
+    assert props.body_root is not None
+    for lang in ("en", "ru", "zh", "pt_BR"):
+        assert (props.body_root / lang / props.body).is_file()
     ws = tree.require(tree.resolve_alias("session_picker"))
     assert ws.body == "platform/workspace.md"
     root = host_help_root()
     for lang in ("en", "ru", "zh", "pt_BR"):
         assert (root / lang / about.body).is_file()
     for lang in ("en", "ru"):
-        assert (root / lang / props.body).is_file()
         assert (root / lang / ws.body).is_file()
 
 

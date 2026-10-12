@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Report Help figure coverage across host + tab packages.
+"""Report Help figure coverage across host + tab + plugin packages.
 
 Each Help package owns ``figures.json`` + ``assets/``:
 
 - host: ``src/resources/help/``
 - tabs: ``src/tabs/<tab>/resources/help/``
+- plugins: ``src/plugins/<plugin>/resources/help/``
 
 A figure is a **stub** when its bytes match the host canonical
 ``assets/_stub.jpg`` (overwrite stubs with real screenshots in place).
@@ -101,7 +102,7 @@ def _package_label(help_root: Path, *, repo_root: Path) -> str:
 
 
 def discover_help_packages(repo_root: Path) -> list[Path]:
-    """Host help root first, then each tab ``resources/help`` package."""
+    """Host help root first, then each tab and plugin ``resources/help`` package."""
     packages: list[Path] = []
     host = repo_root / "src" / "resources" / "help"
     if host.is_dir():
@@ -109,6 +110,11 @@ def discover_help_packages(repo_root: Path) -> list[Path]:
     tabs = repo_root / "src" / "tabs"
     if tabs.is_dir():
         for path in sorted(tabs.glob("*/resources/help")):
+            if path.is_dir():
+                packages.append(path)
+    plugins = repo_root / "src" / "plugins"
+    if plugins.is_dir():
+        for path in sorted(plugins.glob("*/resources/help")):
             if path.is_dir():
                 packages.append(path)
     return packages
@@ -237,7 +243,7 @@ def analyze_help_figures(
 
 
 def _print_report(report: HelpFiguresReport) -> int:
-    print("Help figures (host + tab packages)")
+    print("Help figures (host + tab + plugin packages)")
     print(f"  ready:     {len(report.ready)}")
     print(f"  stub:      {len(report.stubs)}  ← need real screenshots")
     print(f"  missing:   {len(report.missing)}")

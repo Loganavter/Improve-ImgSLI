@@ -83,6 +83,14 @@ def test_visible_settings_dialog_geometry_refresh_does_not_resize():
 
 def test_settings_sidebar_separates_general_from_appearance():
     QApplication.instance() or QApplication([])
+    # settings.* keys live in the settings plugin pack (moved from the host
+    # pack in the help per-owner refactor); production registers plugin packs
+    # at discovery, test sessions register the owner pack explicitly.
+    from pathlib import Path
+
+    from resources.translations import add_i18n_root
+
+    add_i18n_root(Path("src/plugins/settings/resources/i18n"))
     dialog = SettingsDialog(
         current_language="en",
         current_theme="dark",

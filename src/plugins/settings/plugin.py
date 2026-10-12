@@ -103,3 +103,15 @@ class SettingsPlugin(Plugin, IServicePlugin):
         if callable(target):
             return target(*args, **kwargs)
         raise AttributeError(f"Settings controller has no command '{command}'")
+
+    def build_help_plugin_contribution(self):  # type: ignore[no-untyped-def]
+        """Return the settings plugin's help fragment (duck-typed probe).
+
+        Discovered by ``plugins.help.tree.collect_help_plugin_contributions``
+        from the plugin registry (see ``HelpPlugin._install_plugin_contributions``).
+        """
+        from plugins.settings.help import (
+            build_help_plugin_contribution as _build_contribution,
+        )
+
+        return _build_contribution()

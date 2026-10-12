@@ -326,3 +326,15 @@ src/resources/help` = 0; docs-link-graph test green.
   deviations: `interpolate.discover_help_figure_map_paths` plugin glob +
   `tree._plugin_help_asset_roots` fallback (filesystem-based, tree roots
   win); slot ids frozen.
+- 2026-10-12: Phase 3 done (settings + image_properties → plugin owners,
+  one commit per plugin): bodies ×4 + asset byte-identical; `settings.*`
+  keys moved host pack → new plugin pack (18 keys ×4, 0 missing, zero
+  registration code — auto-discovery); slot ids frozen, asset relpaths
+  identical. Accepted deviations: host `tree.json` aliases move WITH nodes
+  (alias-without-node raises at `tree.py:450` — keeping them was
+  impossible); `check_help_figures.py` learns plugin packages (gap flagged
+  in Phase 2). Blocker resolved by supervisor: 3 order-dependent failures
+  (pytest-randomly) fixed with fixture-level owner-pack registration
+  (`test_help_topic_search` dialog/dialog_ru, `test_settings_dialog_
+  geometry`); `test_settings_gallery_ai_page_is_body` proven pre-existing
+  on clean base `550a05c4`, left untouched.

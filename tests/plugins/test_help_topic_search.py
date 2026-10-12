@@ -20,9 +20,30 @@ def dialog(app):
     from tabs.registry import TabRegistry
 
     add_i18n_root(Path("src/plugins/help/resources/i18n"))
+    # Plugin-owned help (export hub, settings/image_properties pages):
+    # production registers plugin i18n packs at discovery and installs
+    # plugin contributions in HelpPlugin.initialize; test sessions that
+    # skip plugin discovery do both explicitly (same posture as
+    # _ensure_help_contributions in test_help_tree.py).
+    add_i18n_root(Path("src/plugins/settings/resources/i18n"))
+    add_i18n_root(Path("src/plugins/image_properties/resources/i18n"))
+    add_i18n_root(Path("src/plugins/export/resources/i18n"))
     registry = TabRegistry()
     registry.discover()
     registry.contribute_all_help()
+    from plugins.export.plugin import ExportPlugin
+    from plugins.help.tree import (
+        collect_help_plugin_contributions,
+        install_help_plugin_contributions,
+    )
+    from plugins.image_properties.plugin import ImagePropertiesPlugin
+    from plugins.settings.plugin import SettingsPlugin
+
+    install_help_plugin_contributions(
+        collect_help_plugin_contributions(
+            [ExportPlugin(), SettingsPlugin(), ImagePropertiesPlugin()]
+        )
+    )
 
     from plugins.help.dialog import HelpDialog
 
@@ -39,9 +60,30 @@ def dialog_ru(app):
     from tabs.registry import TabRegistry
 
     add_i18n_root(Path("src/plugins/help/resources/i18n"))
+    # Plugin-owned help (export hub, settings/image_properties pages):
+    # production registers plugin i18n packs at discovery and installs
+    # plugin contributions in HelpPlugin.initialize; test sessions that
+    # skip plugin discovery do both explicitly (same posture as
+    # _ensure_help_contributions in test_help_tree.py).
+    add_i18n_root(Path("src/plugins/settings/resources/i18n"))
+    add_i18n_root(Path("src/plugins/image_properties/resources/i18n"))
+    add_i18n_root(Path("src/plugins/export/resources/i18n"))
     registry = TabRegistry()
     registry.discover()
     registry.contribute_all_help()
+    from plugins.export.plugin import ExportPlugin
+    from plugins.help.tree import (
+        collect_help_plugin_contributions,
+        install_help_plugin_contributions,
+    )
+    from plugins.image_properties.plugin import ImagePropertiesPlugin
+    from plugins.settings.plugin import SettingsPlugin
+
+    install_help_plugin_contributions(
+        collect_help_plugin_contributions(
+            [ExportPlugin(), SettingsPlugin(), ImagePropertiesPlugin()]
+        )
+    )
 
     from plugins.help.dialog import HelpDialog
 
