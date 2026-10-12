@@ -8,7 +8,7 @@ Slots sit in a split grid with per-cell drops, gap splits, and draggable divider
 - **Empty slots** — stay open for new drops.
 - **Outside drops** — file-manager drops, clipboard paste, or **Move** from another tab auto-place with a loading toast.
 - **Auto-place** — new images split the largest cell along its longer axis.
-- **Gap drop** — gap drops split a new cell recursively.
+- **Gap drop** — a drop in a divider gap splits a new cell between the neighbours.
 - **Layout change** — keeps loaded images.
 
 ### Gap split zones {#gap-split-zones}

@@ -9,7 +9,7 @@ The grid saves as one image via quick save or the save dialog; sessions keep the
 - **Parity** — export matches the live grid, not a single {{tr:workspace.session_types.image_compare}} split.
 - **Crop** — per-slot crop clips before composition.
 - **Empty slots** — unloaded cells skip, never blank.
-- **Large exports** — far above tested size asks first.
+- **Large exports** — above the tested size, a warning asks first.
 
 ### Sessions {#sessions}
 
