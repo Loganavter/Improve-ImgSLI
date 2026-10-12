@@ -1,12 +1,18 @@
 ## Abas do Workspace e Seletor de Sessão
 
-Gerencie sessões na faixa de abas e abra novos tipos de comparação a partir da página inicial do Seletor de Sessão.
+Página inicial de novas abas e histórico de projetos.
 
 ### Seletor de Sessão {#session-picker}
 
-- **Abrir** — {{tr:action.workspace.open_session_picker}} (ou o controle de adicionar aba).
-- **Escolher** — cartão para {{tr:workspace.session_types.image_compare}} ou {{tr:workspace.session_types.multi_compare}}.
-- **Recentes** — projetos ``.imgsli`` recentes (grade ou lista; ordenar por último aberto ou nome). Clique para reabrir. Os cartões mostram a prévia do canvas a partir de ``preview.png`` no projeto (pacotes antigos com ``preview.jpg`` ainda funcionam; caso contrário usa-se o ícone do tipo de sessão). Solte um arquivo de projeto no painel para adicioná-lo à lista sem abri-lo. Botão direito para remover / mostrar na pasta.
+- **Tipos de sessão** — cartões de todas as abas conectadas, por exemplo {{tr:workspace.session_types.image_compare}}, {{tr:image_gallery.tab_name}}.
+- **Recentes** — projetos ``.imgsli``. Clique abre; botão direito: abrir, propriedades, remover, revelar na pasta.
+- **Soltar arquivo de projeto** — soltar um arquivo no painel fixa na lista sem abrir.
+- **Ordenar e ver** — grade ou lista, por data ou nome.
+- **Prévia** — miniatura do canvas a partir de ``preview.png`` no projeto, quando presente.
+
+### Teclado {#keyboard}
+
+Setas movem entre os cartões e `Enter` abre o projeto em foco — a lista completa está em [Atalhos](help://hotkeys#keyboard-navigation).
 
 :::figure{side=block width=420}
 ![Seletor de Sessão]({{img:platform.workspace.session_picker}})
@@ -20,17 +26,7 @@ Em {{tr:menu.find_action}} (`Ctrl+Shift+P`):
 - {{tr:action.workspace.new_image_compare}}
 - {{tr:action.workspace.new_multi_compare}}
 
-{{tr:action.workspace.open_session_picker}} leva você de volta à página inicial quando quiser escolher visualmente.
-
-### Faixa de abas {#tab-strip}
-
-- **Trocar** — clique em uma aba.
-- **Fechar** — remove aquela sessão; se era a última, o Seletor de Sessão abre em vez de encerrar o aplicativo.
-- **Menu de contexto** — renomear, fechar, ou fechar outras abas.
-
-### Renomear uma aba {#rename}
-
-Use a ação de renomear no menu de contexto da aba, digite um nome e confirme. Os títulos automáticos permanecem sensíveis ao idioma até você definir um nome personalizado.
+{{tr:action.workspace.open_session_picker}} retorna à página inicial para uma escolha visual.
 
 ### Próximos tópicos {#next-topics}
 
