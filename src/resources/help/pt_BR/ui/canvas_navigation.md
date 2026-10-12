@@ -4,9 +4,9 @@ Movimento dentro do canvas de comparação: zoom centrado no cursor, pan com o b
 
 ### Zoom e panorâmica {#zoom}
 
-- **Zoom** — `Ctrl` + roda do mouse sobre o canvas; centrado no cursor.
-- **Panorâmica** — botão do meio do mouse + arraste, mesmo em `100%` de zoom.
-- **Modo** — sem ferramenta de navegação separada; os gestos funcionam direto no canvas ativo.
+- **Zoom** — `Ctrl` + roda do mouse sobre o canvas.
+- **Panorâmica** — botão do meio do mouse + arraste.
+- **Ferramenta de navegação** — nenhuma; os gestos funcionam direto no canvas ativo.
 
 :::figure{side=block width=280}
 ![Zoom e panorâmica no canvas]({{img:ui.canvas_navigation.zoom}})
@@ -15,13 +15,15 @@ Movimento dentro do canvas de comparação: zoom centrado no cursor, pan com o b
 
 ### Pré-visualização rápida de lado {#quick-side-preview}
 
-- **Lado 1** — `Space` + `LMB`.
-- **Lado 2** — `Space` + `RMB`.
-- **Soltar** — retorno à divisão normal.
-- **Com lupa combinada** — `Space+Shift` força um lado dentro da lente.
+Gesto do canvas de comparação (ver [Comparação](help://comparison)):
+
+- **Lado esquerdo** — `Space` + `LMB`.
+- **Lado direito** — `Space` + `RMB`.
+- **Soltar** — volta à divisão normal.
+- **Com lupa combinada** — `Space+Shift` força um lado dentro da lente (ver [Lupa](help://magnifier)).
 
 ### Durante o zoom {#zoom-side-effects}
 
 - **Rótulos de nome de arquivo** — visíveis apenas em `100%` de zoom; reaparecem ao ajustar.
-- **Linha de divisão** — mantém uma posição estável na tela conforme o zoom muda.
-- **Qualidade** — o cache de pré-visualização e a interpolação estão em [Configurações → Desempenho](help://settings#performance).
+- **Linha de divisão** — posição fracionária (0–1); a fração se mantém ao mudar o zoom.
+- **Qualidade de renderização** — interpolação no painel do canvas; backend em [Configurações → Desempenho](help://settings#performance).
