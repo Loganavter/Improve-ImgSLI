@@ -10,12 +10,9 @@ from tabs.session_picker.icons import Icon, get_icon
 
 _HELP_ROOT = Path(__file__).resolve().parent / "resources" / "help"
 
-# Phase 4: the host ``platform.workspace`` page moves here byte-identical as
-# ``workspace.session_picker`` (a page, not a hub — the slug-freeze asserts
-# pin the ``session_picker``/``workspace_tabs`` aliases to a page node, and
-# topic search content-matches the moved body). The pre-existing hub wrapper
-# of the same id (overview only) is flattened so the tasked id stays verbatim;
-# the overview page reparents directly under ``workspace`` unchanged.
+# Single page: the tab's picker/overview prose lives in one place
+# (``sessions.md`` covers picker cards, recent, tab strip, rename). The
+# retired ``overview.md`` slugs stay alive as aliases so no link rots.
 _NODES = {
     "workspace.session_picker": {
         "kind": "page",
@@ -24,24 +21,15 @@ _NODES = {
         "title": "Workspace Tabs",
         "description": "Session picker and tab strip",
         "icon": "add.svg",
-        "body": "workspace.md",
-    },
-    "workspace.session_picker.overview": {
-        "kind": "page",
-        "title_key": "session_picker.help.page.overview.title",
-        "description_key": "session_picker.help.page.overview.desc",
-        "title": "Session Picker Overview",
-        "description": "Create sessions and reopen recent projects",
-        "icon": "add.svg",
-        "body": "overview.md",
+        "body": "sessions.md",
     },
 }
 
 _ALIASES = {
     "session_picker": "workspace.session_picker",
     "workspace_tabs": "workspace.session_picker",
-    "session_picker_overview": "workspace.session_picker.overview",
-    "sp_overview": "workspace.session_picker.overview",
+    "session_picker_overview": "workspace.session_picker",
+    "sp_overview": "workspace.session_picker",
 }
 
 
@@ -61,10 +49,7 @@ def build_help_contribution():  # type: ignore[no-untyped-def]
     return HelpContribution(
         owner_tab="session_picker",
         attach_under="workspace",
-        child_ids=(
-            "workspace.session_picker",
-            "workspace.session_picker.overview",
-        ),
+        child_ids=("workspace.session_picker",),
         nodes=dict(_NODES),
         aliases=dict(_ALIASES),
         body_root=_HELP_ROOT,

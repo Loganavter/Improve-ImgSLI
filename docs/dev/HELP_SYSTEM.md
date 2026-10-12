@@ -404,7 +404,6 @@ real encyclopedia-level pages.
 | `platform.hotkeys` | 0 | — |
 | `platform.file_project` | 1 | `platform.file_project.paste_overlay` |
 | `workspace.session_picker` | 1 | `platform.workspace.session_picker` |
-| `workspace.session_picker.overview` | 0 | — |
 | `workspace.image_compare.comparison` | 2 | `…comparison.split_line`, `…comparison.difference_modes` |
 | `workspace.image_compare.magnifier` | 2 | `…magnifier.enabling`, `…magnifier.combined_mode` |
 | `workspace.export` | 1 | `workspace.image_compare.export.dialog` |

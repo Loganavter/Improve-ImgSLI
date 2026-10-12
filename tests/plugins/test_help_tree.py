@@ -112,7 +112,7 @@ def test_help_tree_loads_and_aliases_resolve():
     for lang in ("en", "ru", "zh", "pt_BR"):
         assert (props.body_root / lang / props.body).is_file()
     ws = tree.require(tree.resolve_alias("session_picker"))
-    assert ws.body == "workspace.md"
+    assert ws.body == "sessions.md"
     assert ws.body_root is not None
     for lang in ("en", "ru", "zh", "pt_BR"):
         assert (ws.body_root / lang / ws.body).is_file()
@@ -340,8 +340,8 @@ def test_help_alias_slug_freeze_tab_contributions():
         "multi_compare_overview": "workspace.multi_compare.overview",
         "mc_overview": "workspace.multi_compare.overview",
         # tabs/session_picker/help.py _ALIASES
-        "session_picker_overview": "workspace.session_picker.overview",
-        "sp_overview": "workspace.session_picker.overview",
+        "session_picker_overview": "workspace.session_picker",
+        "sp_overview": "workspace.session_picker",
         # tabs/image_gallery/help.py _ALIASES (page targets)
         "image_gallery_overview": "workspace.image_gallery.overview",
         "gallery_triage": "workspace.image_gallery.triage",
