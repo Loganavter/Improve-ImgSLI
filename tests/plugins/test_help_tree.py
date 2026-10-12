@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from plugins.help.contribution import HelpContributionRegistry
 from plugins.help.navigator import HelpNavigator
 from plugins.help.tree import (
@@ -237,3 +239,73 @@ def test_help_page_bodies_are_scenario_cards():
                         "GFM pipe table not supported; use bullet lists",
                         stripped[:80],
                     )
+
+
+def test_help_alias_slug_freeze_host():
+    """Slug freeze: host aliases keep resolving so content moves can't break links.
+
+    Pins the ``tree.json`` ``aliases`` map (F1 / Learn-more / ``help://``).
+    Each alias must resolve to its node AND the target page body must be
+    readable — mapping alone is not enough.
+    """
+    from plugins.help.tree import read_help_page_markdown
+
+    _ensure_help_contributions()
+    tree = get_help_tree()
+    expected = {
+        "about": "about",
+        "introduction": "platform.getting_started",
+        "file_management": "platform.file_project",
+        "view_navigation": "ui.canvas_navigation",
+        "settings": "platform.settings",
+        "hotkeys": "platform.hotkeys",
+        "image_properties": "platform.image_properties",
+        "session_picker": "platform.workspace",
+        "workspace_tabs": "platform.workspace",
+    }
+    for alias, node_id in expected.items():
+        assert tree.resolve_alias(alias) == node_id, alias
+        node = tree.require(node_id)
+        assert node.kind == "page", alias
+        assert node.body, alias
+        md = read_help_page_markdown("en", node.body, body_root=node.body_root)
+        assert md.strip(), alias
+        assert not md.startswith("## Missing page"), alias
+
+
+def test_help_alias_slug_freeze_tab_contributions():
+    """Slug freeze: tab ``_ALIASES`` keep resolving to their contributed nodes."""
+    from plugins.help.tree import read_help_page_markdown
+
+    _ensure_help_contributions()
+    tree = get_help_tree()
+    expected = {
+        # tabs/image_compare/help.py _ALIASES
+        "comparison": "workspace.image_compare.comparison",
+        "magnifier": "workspace.image_compare.magnifier",
+        "export": "workspace.image_compare.export",
+        "video": "workspace.image_compare.video",
+        # tabs/multi_compare/help.py _ALIASES
+        "multi_compare": "workspace.multi_compare.overview",
+        "multi_compare_overview": "workspace.multi_compare.overview",
+        "mc_overview": "workspace.multi_compare.overview",
+        # tabs/session_picker/help.py _ALIASES
+        "session_picker_overview": "workspace.session_picker.overview",
+        "sp_overview": "workspace.session_picker.overview",
+    }
+    for alias, node_id in expected.items():
+        assert tree.resolve_alias(alias) == node_id, alias
+        node = tree.require(node_id)
+        assert node.kind == "page", alias
+        assert node.body, alias
+        md = read_help_page_markdown("en", node.body, body_root=node.body_root)
+        assert md.strip(), alias
+        assert not md.startswith("## Missing page"), alias
+
+
+def test_help_alias_unknown_slug_raises():
+    """Negative control: unknown slugs raise (proves the freeze tests bite)."""
+    _ensure_help_contributions()
+    tree = get_help_tree()
+    with pytest.raises(KeyError):
+        tree.resolve_alias("no_such_help_topic_xyz")
