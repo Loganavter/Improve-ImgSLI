@@ -71,6 +71,15 @@
       "routing_unavailable": "O roteamento ainda não está habilitado.",
       "images_toggle_hint": "Enviar imagens com a pergunta",
       "images_toggle_downsample": "Redução: ≤ {px} px"
+    },
+    "series": {
+      "ask_ai": "Perguntar à IA",
+      "rename": "Renomear",
+      "rename_title": "Renomear série",
+      "rename_prompt": "Nome da série",
+      "delete": "Excluir",
+      "reset": "Redefinir séries manuais",
+      "recluster": "Reagrupar séries"
     }
   }
 }

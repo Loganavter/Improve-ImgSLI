@@ -19,15 +19,18 @@ ContextMenuSurface = Literal["in_window", "popup"]
 def rmb_context_menu_surface() -> ContextMenuSurface:
     """Surface for right-click menus opened via ``ContextMenuManager``.
 
-    Always ``"popup"``: RMB menus are real ``Qt.Popup`` top-levels so they
-    stack above ``UnifiedFlyout`` and behave like native menus. Historical
-    platform fallbacks (in-window on Wayland for the xdg_popup grab race, and
-    on Windows with ``sli-ui-toolkit < 3.1.4`` for the frameless-CSD alpha
-    bug) were deliberately removed so every context menu in the app is a
-    popup. The multi-compare ``IMGSLI_MC_RMB_SURFACE`` env override still
-    allows forcing ``in_window`` for A/B debugging.
+    Always ``"in_window"``: RMB menus are in-window overlay children. A native
+    ``Qt.Popup`` top-level tears down its ``xdg_popup`` surface on close; a
+    widget shown right after that teardown (e.g. the Ask AI flyout opened from
+    a context-menu action) hits Mutter's stale/zero xdg-activation serial and
+    flashes the global busy cursor for several frames. In-window menus have no
+    native popup surface to tear down, so the sequenced close→open stays clean.
+    (The old in-window→popup change was made for stacking above UnifiedFlyout;
+    the in-window overlay keeps that via ``ensure_overlay_stacking``.) The
+    multi-compare ``IMGSLI_MC_RMB_SURFACE`` env override still allows forcing
+    ``popup`` for A/B debugging.
     """
-    return "popup"
+    return "in_window"
 
 
 class ContextMenuManager:
@@ -103,7 +106,7 @@ class ContextMenuManager:
         on_triggered,
         request: ContextMenuRequest | None,
     ) -> ContextMenu | None:
-        active = self._active_menu
+        active = self._live_active_menu()
         if active is not None and active.isVisible():
             if self._active_key == key:
                 logger.debug("[ctx-menu] reopen same key=%r -> toggle hide", key)
@@ -166,13 +169,37 @@ class ContextMenuManager:
         if self._active_menu is menu:
             self._clear_active_menu()
 
+    def _live_active_menu(self) -> ContextMenu | None:
+        """Return the tracked active menu, or ``None`` when it is already gone.
+
+        The popup is parented to its source widget (card / series header /
+        canvas). A rebuild that destroys that widget deletes the popup's C++
+        object while this singleton still holds the Python wrapper — every
+        later ``isVisible()`` / ``hide()`` / attribute access on the dead
+        wrapper raises ``RuntimeError: ... already deleted``. Detect it here
+        and drop the stale ref so callers only ever see a live menu.
+        """
+        active = self._active_menu
+        if active is None:
+            return None
+        try:
+            import shiboken6
+
+            if not shiboken6.isValid(active):
+                self._clear_active_menu()
+                return None
+        except Exception:
+            # isValid itself is best-effort; callers keep their own guards.
+            pass
+        return active
+
     def _clear_active_menu(self) -> None:
         self._active_menu = None
         self._active_request = None
         self._active_key = None
 
     def hide_active_menu(self) -> None:
-        active = self._active_menu
+        active = self._live_active_menu()
         logger.debug(
             "[ctx-menu] hide_active key=%r visible=%s",
             self._active_key,
@@ -184,7 +211,7 @@ class ContextMenuManager:
 
     def raise_active_menus(self) -> None:
         """Keep the open context menu (and submenu) above sibling flyouts."""
-        active = self._active_menu
+        active = self._live_active_menu()
         if active is None:
             return
         try:
@@ -210,9 +237,8 @@ class ContextMenuManager:
             self._ignore_outside_close = False
             return
         inside = self.active_menu_contains_global(global_pos)
-        submenu_open = bool(
-            getattr(self._active_menu, "_open_submenu", None) is not None
-        )
+        live = self._live_active_menu()
+        submenu_open = bool(getattr(live, "_open_submenu", None) is not None)
         logger.debug(
             "[ctx-menu] outside-close check pos=%s inside=%s submenu_open=%s",
             global_pos,
@@ -223,7 +249,7 @@ class ContextMenuManager:
             self.hide_active_menu()
 
     def active_menu_contains_global(self, global_pos) -> bool:
-        active = self._active_menu
+        active = self._live_active_menu()
         if active is None or not active.isVisible():
             return False
         try:
@@ -232,7 +258,7 @@ class ContextMenuManager:
             return False
 
     def active_menu_has_focus_inside(self, widget) -> bool:
-        active = self._active_menu
+        active = self._live_active_menu()
         if active is None or not active.isVisible() or widget is None:
             return False
         current = widget

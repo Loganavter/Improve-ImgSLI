@@ -72,6 +72,15 @@
       "images_toggle_hint": "Отправлять изображения вместе с вопросом",
       "images_toggle_downsample": "Даунсэмплинг: до {px} px"
     },
+    "series": {
+      "ask_ai": "Спросить у ИИ",
+      "rename": "Переименовать",
+      "rename_title": "Переименовать серию",
+      "rename_prompt": "Имя серии",
+      "delete": "Удалить",
+      "reset": "Сбросить ручные серии",
+      "recluster": "Перегруппировать серии"
+    },
     "sort_by": "Сортировка",
     "view": "Вид",
     "sort_rank": "Ранг",

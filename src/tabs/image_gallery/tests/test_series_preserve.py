@@ -25,7 +25,7 @@ def _grouped_widget(qtbot, items: list[GalleryItem]) -> ImageGalleryWidget:
     w.resize(1280, 800)
     w.show()
     w.rebuild_grid(items)
-    assert w._grid_view._series is None  # flat before triage
+    assert w._grid_view._series == []  # UNGROUPED before triage (never header-less)
     a, b, c, d = items
     w._grid_view.set_series([[a, b], [c, d]], hub_names=["HUB-A", "HUB-C"], collapsed={})
     assert len(w._grid_view._series) == 2
@@ -62,13 +62,16 @@ def test_rebuild_prunes_removed_member_to_ungrouped(qtbot) -> None:
     assert [str(m.path) for m in w._grid_view._ungrouped] == [str(items[2].path)]
 
 
-def test_folder_switch_stays_flat(qtbot) -> None:
-    """All-new items (folder switch) keep the flat behavior — no stale headers."""
+def test_folder_switch_goes_ungrouped(qtbot) -> None:
+    """All-new items (folder switch) show one UNGROUPED section — no stale
+    headers from the old pool, and never header-less while triage runs."""
     items = _items("a.png", "b.png", "c.png", "d.png")
     w = _grouped_widget(qtbot, items)
     fresh = _items("x.png", "y.png")
     w.rebuild_grid(fresh)
-    assert w._grid_view._series is None
+    assert w._grid_view._series == []
+    assert [str(m.path) for m in w._grid_view._ungrouped] == [str(it.path) for it in fresh]
+    assert len(w._grid_view._series_headers) == 1  # only the UNGROUPED tail
 
 
 def test_regroup_reuses_headers_and_cards(qtbot) -> None:

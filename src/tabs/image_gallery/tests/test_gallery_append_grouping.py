@@ -103,13 +103,13 @@ def test_first_append_groups_into_ungrouped(qtbot, caplog) -> None:
     w.show()
     w.rebuild_grid([a])
     gv = w._grid_view
-    assert gv._series is None  # flat until first append / triage
+    assert gv._series == []  # already UNGROUPED from the first load
 
     with _LayoutWrites(gv) as lw:
         w.rebuild_grid([a, b])
     QApplication.processEvents()
 
-    assert lw.take > 0 and lw.add > 0  # the append itself places the tail
+    assert lw.add > 0  # the append places the fresh tail card (no full reflow)
     assert gv._series == []
     assert [str(x.path) for x in gv._ungrouped] == [str(a.path), str(b.path)]
     headers = _tail_headers(gv)

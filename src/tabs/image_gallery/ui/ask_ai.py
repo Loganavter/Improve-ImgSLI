@@ -1,4 +1,5 @@
 """Ask AI flyout (A3) — one scope-aware ask surface.
+Audit-Meta: pattern=single-surface size=exempt reason="one scope-aware ask flyout — its fade/persist/menu/status state is one cohesive surface; splitting would scatter the flyout lifecycle"
 
 A toolkit ``BaseFlyout`` with a ``CustomLineEdit`` (pre-filled, overridable
 default prompt: ``Tab`` accepts it, ``Enter`` sends) and a result pane marked
@@ -29,6 +30,10 @@ class AskAiFlyout(BaseFlyout):
     """Free-form question + AI result, anchored to a card or series header."""
 
     flyout_group = "gallery_ask_ai"
+    # Sequenced cycle: if another flyout is still fading out, wait for it to
+    # finish before this one opens (FlyoutManager deferral) — no overlapping
+    # fades.
+    wait_for_close_before_show = True
 
     submitted = Signal(str)
     closed = Signal()
@@ -42,13 +47,16 @@ class AskAiFlyout(BaseFlyout):
         self._busy_text = "Thinking…"
         self._read_badge = "AI read, unverified"
         self._error_text = "AI could not answer."
+        # Currently-selected LLM from the tab's AI settings — shown in the
+        # status badge instead of the raw backend token ("vlm"/"text").
+        self._model = ""
         self.content_layout.setContentsMargins(
             scaled_px(12), scaled_px(12), scaled_px(12), scaled_px(12)
         )
         self.content_layout.setSpacing(scaled_px(8))
 
         self._title = Label(self._title_text, pixel_size=13, bold=True, parent=self)
-        self._scope = Label("", pixel_size=11, parent=self)
+        self._scope = Label("", pixel_size=16, parent=self)
         self._edit = CustomLineEdit(parent=self)
         self._edit.setPlaceholderText(self._default_prompt)
         self._edit.setMinimumWidth(scaled_px(300))
@@ -76,9 +84,9 @@ class AskAiFlyout(BaseFlyout):
             self._images_toggle.clicked.connect(self._on_images_toggled)
         except Exception:
             pass
-        self._result = Label("", pixel_size=14, word_wrap=True, parent=self)
+        self._result = Label("", pixel_size=16, word_wrap=True, parent=self)
         self._result.setMinimumWidth(scaled_px(MIN_WIDTH_PX - 40))
-        self._status = Label("", pixel_size=11, parent=self)
+        self._status = Label("", pixel_size=16, parent=self)
 
         # Title, scope, then the question row (edit + images toggle).
         self.content_layout.addWidget(self._title)
@@ -115,7 +123,17 @@ class AskAiFlyout(BaseFlyout):
             try:
                 if event.key() == Qt.Key.Key_Tab and not self._edit.text().strip():
                     self._edit.setText(self._default_prompt)
-                    self._edit.selectAll()
+                    # Cursor at the end, NO selection — the accepted prompt is
+                    # a starting point to keep typing from, not a highlight the
+                    # next keystroke would overwrite.
+                    try:
+                        self._edit.deselect()
+                    except Exception:
+                        pass
+                    try:
+                        self._edit.setCursorPosition(len(self._default_prompt))
+                    except Exception:
+                        pass
                     return True
             except Exception:
                 pass
@@ -183,6 +201,7 @@ class AskAiFlyout(BaseFlyout):
         error: str | None = None,
         images_hint: str | None = None,
         images_downsample: str | None = None,
+        model: str | None = None,
     ) -> None:
         """Inject localized chrome strings (from the tab i18n)."""
         if title:
@@ -197,6 +216,8 @@ class AskAiFlyout(BaseFlyout):
             self._read_badge = str(read_badge)
         if error:
             self._error_text = str(error)
+        if model is not None:
+            self._model = str(model or "")
         if images_hint is not None or images_downsample is not None:
             if images_hint is not None:
                 self._images_hint = str(images_hint)
@@ -236,17 +257,19 @@ class AskAiFlyout(BaseFlyout):
             self._scope.setVisible(bool(scope_text))
         except Exception:
             pass
-        self._edit.setText("")
+        self._edit.setText(str(getattr(self, "_saved_text", "") or ""))
         self._edit.setPlaceholderText(self._default_prompt)
         self._edit.setReadOnly(False)
         self._result.setText("")
         self._status.setText("")
-        # Images off by default on every open (metrics-only).
+        # Restore the include-images toggle the user left on last time (saved
+        # on hide) instead of forcing it back off on every open.
+        saved_images = bool(getattr(self, "_saved_include_images", False))
         try:
-            self._images_toggle.setChecked(False)
-            self._include_images = False
+            self._images_toggle.setChecked(saved_images)
         except Exception:
             pass
+        self._include_images = saved_images
         self._sync_row_visibility()
         if initial_result is not None:
             self.show_result(
@@ -260,6 +283,18 @@ class AskAiFlyout(BaseFlyout):
             self._edit.setFocus()
         except Exception:
             pass
+        # A remembered manual size must land on the FIRST frame: pin the
+        # flyout's minimum to it so show_aligned()'s adjustSize() cannot
+        # collapse it to the min-content size for the fade-in and then jump
+        # once _relayout applies the saved size after the animation. The
+        # post-animation _relayout still re-applies it (and may grow for
+        # content); this only removes the min-size first frame.
+        saved_size = getattr(self, "_user_size", None)
+        if saved_size is not None:
+            try:
+                self.setMinimumSize(int(saved_size[0]), int(saved_size[1]))
+            except Exception:
+                pass
         try:
             self.show_aligned(
                 anchor,
@@ -440,10 +475,14 @@ class AskAiFlyout(BaseFlyout):
             except Exception:
                 pass
 
-    def show_result(self, text: str, *, backend: str = "", cached: bool = False) -> None:
+    def show_result(self, text: str, *, model: str = "", backend: str = "", cached: bool = False) -> None:
         badge = self._read_badge
-        if backend:
-            badge += f" · {backend}"
+        # Show the currently-selected LLM (settings), never the raw backend
+        # token ("vlm"/"text"); fall back to the backend only when no model is
+        # configured.
+        label = str(model or "") or str(getattr(self, "_model", "") or "") or str(backend or "")
+        if label:
+            badge += f" · {label}"
         if cached:
             badge += " · cached"
         self._result.setText(str(text or ""))
@@ -462,6 +501,16 @@ class AskAiFlyout(BaseFlyout):
 
     def hideEvent(self, event) -> None:  # noqa: N802 (Qt name)
         super().hideEvent(event)
+        # Persist the user's draft + include-images toggle across hide/reopen
+        # (auto-dismiss on outside click must not lose what was typed).
+        try:
+            self._saved_text = self._edit.text()
+        except Exception:
+            pass
+        try:
+            self._saved_include_images = bool(self._images_toggle.isChecked())
+        except Exception:
+            pass
         try:
             self.closed.emit()
         except Exception:

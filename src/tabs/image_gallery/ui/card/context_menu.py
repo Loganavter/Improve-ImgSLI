@@ -254,7 +254,7 @@ def popup_gallery_card_context_menu(  # type: ignore[no-untyped-def]
             except Exception:
                 pass
 
-        def _do_ask_ai(scope_kind: str) -> None:
+        def _open_ask_ai_now(scope_kind: str) -> None:
             try:
                 if callable(on_ask_ai):
                     on_ask_ai(scope_kind)
@@ -264,6 +264,13 @@ def popup_gallery_card_context_menu(  # type: ignore[no-untyped-def]
                     fn(scope_kind, card, path)
             except Exception:
                 pass
+
+        def _do_ask_ai(scope_kind: str) -> None:
+            # The context menu is an in-window registered flyout, so the Ask AI
+            # flyout's manager sequenced-cycle opt-in
+            # (``AskAiFlyout.wait_for_close_before_show``) waits for the menu to
+            # close and replays this show — no app-side close/open chain needed.
+            _open_ask_ai_now(scope_kind)
 
         ask_ai_label = _t(translate, "image_gallery.ask_ai.action", "AI…")
         entries: list = []
