@@ -8,6 +8,7 @@ New-tab home page and project history.
 - **Recent** — ``.imgsli`` projects. Click opens; right-click: open, properties, remove, reveal in folder.
 - **Pin** — drop a project file onto the panel to add it to the list.
 - **View** — grid or list, sort by date or name.
+- **Preview** — card thumbnail from ``preview.png`` in the project when present.
 
 ### Keyboard {#keyboard}
 
