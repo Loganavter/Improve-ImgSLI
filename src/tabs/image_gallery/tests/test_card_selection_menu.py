@@ -542,35 +542,21 @@ def test_card_menu_parent_is_card_not_window(qapp, monkeypatch) -> None:
         window.close()
 
 
-def test_ask_ai_action_waits_for_menu_close(monkeypatch) -> None:
-    """Ask AI opens only AFTER the menu is fully destroyed.
+def test_ask_ai_action_opens_directly(monkeypatch) -> None:
+    """The Ask AI action opens the flyout directly.
 
-    Regression: the card menu hid on the action click, but Ask AI opened
-    immediately, so the menu's fade-out ran in parallel with the flyout's
-    show. Opening at the menu's fade-finish (``aboutToHide``) still flashed
-    the Wayland busy cursor (that fires inside the popup teardown); the action
-    now waits for the menu's ``destroyed`` (after its ``deleteLater``).
+    Sequencing (the flyout waits for the in-window context menu to close) is
+    the ``FlyoutManager``'s job via ``AskAiFlyout.wait_for_close_before_show``
+    — the menu is now a registered in-window flyout — so the action opens
+    right away and the manager defers/replays the actual show.
     """
-    from PySide6.QtCore import QObject, Signal
-
     import ui.context_menu.manager as _mgr
 
-    class _FakeMenu(QObject):
-        destroyed = Signal()
-
-        def __init__(self) -> None:
-            super().__init__()
-            self._visible = True
-
-        def isVisible(self) -> bool:  # noqa: N802
-            return self._visible
-
-    menu = _FakeMenu()
     captured: dict = {}
 
     def _fake_open(*, source_widget, global_pos, entries, key, on_triggered=None):
         captured["on_triggered"] = on_triggered
-        return menu
+        return SimpleNamespace()
 
     monkeypatch.setattr(_mgr, "open_context_menu_entries", _fake_open)
 
@@ -584,8 +570,4 @@ def test_ask_ai_action_waits_for_menu_close(monkeypatch) -> None:
     )
 
     captured["on_triggered"]("gallery.ask_ai", None)
-    # Deferred: not opened while the menu is still alive.
-    assert calls == []
-
-    menu.destroyed.emit()  # menu fully gone (after deleteLater)
     assert calls == ["card"]

@@ -1232,8 +1232,6 @@ class ImageGalleryWidget(QWidget):
         """
         paths = tuple(member_paths or ())
         owner = self._owner_for_triage()
-        # Holds the opened menu so the Ask AI action can wait for its close.
-        menu_holder: dict = {}
 
         def _open_ask_ai_now() -> None:
             try:
@@ -1244,19 +1242,9 @@ class ImageGalleryWidget(QWidget):
                 pass
 
         def _do_ask_ai() -> None:
-            # Open Ask AI only AFTER the popup menu is fully destroyed — NOT at
-            # its fade-finish (``aboutToHide``), which fires inside the popup
-            # teardown (between ``QWidget.hide(menu)`` and ``menu.deleteLater()``);
-            # starting the flyout's show on that exact frame makes the Wayland
-            # compositor flash the busy cursor. ``destroyed`` fires after the
-            # deleteLater, once the popup surface is gone.
-            _menu = menu_holder.get("menu")
-            try:
-                if _menu is not None and _menu.isVisible():
-                    _menu.destroyed.connect(lambda *_: _open_ask_ai_now())
-                    return
-            except Exception:
-                pass
+            # The context menu is an in-window registered flyout; the Ask AI
+            # flyout's manager sequenced-cycle opt-in waits for it to close,
+            # then replays the show — no app-side close/open chain needed.
             _open_ask_ai_now()
 
         def _do_rename() -> None:
@@ -1359,7 +1347,7 @@ class ImageGalleryWidget(QWidget):
         try:
             from ui.context_menu.manager import open_context_menu_entries
 
-            menu_holder["menu"] = open_context_menu_entries(
+            open_context_menu_entries(
                 source_widget=source,
                 global_pos=pos,
                 entries=tuple(entries),

@@ -266,22 +266,10 @@ def popup_gallery_card_context_menu(  # type: ignore[no-untyped-def]
                 pass
 
         def _do_ask_ai(scope_kind: str) -> None:
-            # Open Ask AI only AFTER the popup menu is fully destroyed — NOT at
-            # its fade-finish (``aboutToHide``), which fires inside the popup
-            # teardown (between ``QWidget.hide(menu)`` and ``menu.deleteLater()``);
-            # starting the flyout's show on that exact frame makes the Wayland
-            # compositor flash the busy cursor. ``destroyed`` fires after the
-            # deleteLater, once the popup surface is gone.
-            try:
-                _menu = menu  # enclosing scope, bound by the time this runs
-            except NameError:
-                _menu = None
-            try:
-                if _menu is not None and _menu.isVisible():
-                    _menu.destroyed.connect(lambda *_: _open_ask_ai_now(scope_kind))
-                    return
-            except Exception:
-                pass
+            # The context menu is an in-window registered flyout, so the Ask AI
+            # flyout's manager sequenced-cycle opt-in
+            # (``AskAiFlyout.wait_for_close_before_show``) waits for the menu to
+            # close and replays this show — no app-side close/open chain needed.
             _open_ask_ai_now(scope_kind)
 
         ask_ai_label = _t(translate, "image_gallery.ask_ai.action", "AI…")

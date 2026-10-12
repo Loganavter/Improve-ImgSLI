@@ -19,15 +19,18 @@ ContextMenuSurface = Literal["in_window", "popup"]
 def rmb_context_menu_surface() -> ContextMenuSurface:
     """Surface for right-click menus opened via ``ContextMenuManager``.
 
-    Always ``"popup"``: RMB menus are real ``Qt.Popup`` top-levels so they
-    stack above ``UnifiedFlyout`` and behave like native menus. Historical
-    platform fallbacks (in-window on Wayland for the xdg_popup grab race, and
-    on Windows with ``sli-ui-toolkit < 3.1.4`` for the frameless-CSD alpha
-    bug) were deliberately removed so every context menu in the app is a
-    popup. The multi-compare ``IMGSLI_MC_RMB_SURFACE`` env override still
-    allows forcing ``in_window`` for A/B debugging.
+    Always ``"in_window"``: RMB menus are in-window overlay children. A native
+    ``Qt.Popup`` top-level tears down its ``xdg_popup`` surface on close; a
+    widget shown right after that teardown (e.g. the Ask AI flyout opened from
+    a context-menu action) hits Mutter's stale/zero xdg-activation serial and
+    flashes the global busy cursor for several frames. In-window menus have no
+    native popup surface to tear down, so the sequenced close→open stays clean.
+    (The old in-window→popup change was made for stacking above UnifiedFlyout;
+    the in-window overlay keeps that via ``ensure_overlay_stacking``.) The
+    multi-compare ``IMGSLI_MC_RMB_SURFACE`` env override still allows forcing
+    ``popup`` for A/B debugging.
     """
-    return "popup"
+    return "in_window"
 
 
 class ContextMenuManager:
