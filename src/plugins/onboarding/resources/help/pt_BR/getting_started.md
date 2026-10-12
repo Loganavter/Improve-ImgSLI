@@ -1,18 +1,15 @@
-## Primeiros Passos
+## Primeiros passos
 
-Abra uma sessão, carregue imagens, compare e depois salve. Quando esquecer o nome de um controle, use {{tr:menu.find_action}} (`Ctrl+Shift+P`) em vez de procurar na barra de ferramentas. As abas e o Seletor de Sessão são explicados em [Abas do Workspace](help://session_picker).
+Orientação para uma instalação nova. A primeira abertura mostra um seletor de modo de interface; a escolha é gravada uma vez e segue como configuração de aparência. A paleta ({{tr:menu.find_action}}, `Ctrl+Shift+P`) alcança qualquer ação sem caçar na barra de ferramentas.
 
 ### Fluxo na sessão {{tr:workspace.session_types.image_compare}} {#basic-workflow}
 
-1. Abra {{tr:workspace.session_types.image_compare}} no Seletor de Sessão (ou {{tr:menu.find_action}} → {{tr:action.workspace.new_image_compare}}).
-2. Adicione imagens às listas da esquerda e da direita.
-3. Arraste a linha de divisão ou ative a [Lupa](help://magnifier).
-4. Salve com {{tr:image_compare.action.save}} ou `Ctrl+S`. Para gravação e codificação, veja o [Editor de Vídeo](help://video).
+A sessão combina duas listas de imagens. A visão [Comparação](help://comparison) as divide numa linha, com a [Lupa](help://magnifier) como lente alternativa. Sessões abrem do [Seletor de sessão](help://session_picker) ou da paleta ({{tr:action.workspace.new_image_compare}}). Resultados saem por [Exportação](help://export) (`Ctrl+S`) ou pelo [Editor de vídeo](help://video).
 
 ### Caminho da sessão {{tr:workspace.session_types.multi_compare}} {#multi-compare}
 
-Abra {{tr:workspace.session_types.multi_compare}} no Seletor de Sessão, solte imagens nos slots (ou nas lacunas para dividir células) e depois salve a grade. Detalhes: [{{tr:workspace.session_types.multi_compare}}](help://multi_compare).
+Uma grade de células para mais de duas imagens, aberta do [Seletor de sessão](help://session_picker). As imagens preenchem as células e a grade é salva pela exportação. Detalhes: [{{tr:workspace.session_types.multi_compare}}](help://multi_compare).
 
 ### Descubra os recursos {#discover}
 
-`Ctrl+Shift+P` busca e executa qualquer ação; {{tr:action.palette.learn_more}} abre o tópico de ajuda correspondente. F1 sobre um controle em foco pode levar direto à sua página quando a ação está marcada. Próximos passos: [Abas do Workspace](help://session_picker), [Arquivos e Projetos](help://file_management), [Comparação](help://comparison), [Exportação](help://export), [Configurações](help://settings).
+`Ctrl+Shift+P` pesquisa e executa qualquer ação; {{tr:action.palette.learn_more}} abre o tópico de ajuda. `F1` abre a paleta filtrada para o elemento focado. Na janela de ajuda, o campo de pesquisa acima da lista pula para as páginas correspondentes. Próximas paradas: [Abas do workspace](help://session_picker), [Arquivos e projetos](help://file_management), [Comparação](help://comparison), [Exportação](help://export), [Configurações](help://settings).
