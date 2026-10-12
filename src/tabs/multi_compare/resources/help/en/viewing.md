@@ -6,7 +6,7 @@ Viewing covers focus mode, shared zoom and pan, labels, and per-slot crop.
 
 - **Enter** — single-click focuses a slot; a press turning to a drag moves instead.
 - **Exit** — dimmed-area click or `Esc` exits.
-- **Navigate** — zoom and pan like {{tr:workspace.session_types.image_compare}}; see [Canvas Navigation](help://view_navigation).
+- **Navigate** — zoom and pan inside focus; see [Canvas Navigation](help://view_navigation).
 
 ### Zoom and pan {#zoom-and-pan}
 
