@@ -1,9 +1,13 @@
-"""Help topic tree: hubs, pages, legacy slug aliases, tab contributions."""
+"""Help topic tree: hubs, pages, legacy slug aliases, tab contributions.
+
+Audit-Meta: pattern=single-owner reason="one merged HelpTree: host shell + tab/plugin fragment merge, alias/body/asset resolution, and validation share one cache — splitting would fork the uniqueness scope"
+"""
 
 from __future__ import annotations
 
 import json
-from collections.abc import Callable
+import logging
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, replace
 from functools import lru_cache
 from pathlib import Path
@@ -12,15 +16,20 @@ from typing import Any, Literal
 from plugins.help.contribution import (
     HelpContribution,
     HelpContributionRegistry,
+    HelpPluginContribution,
     HelpSubtreeContribution,
 )
 from utils.resource_loader import resource_path
+
+logger = logging.getLogger("ImproveImgSLI")
 
 HelpNodeKind = Literal["hub", "page"]
 IconResolver = Callable[[str], Any]
 
 _installed_contributions: HelpContributionRegistry | None = None
 _installed_help_contributions: list[HelpContribution] | None = None
+_installed_help_plugin_contributions: list[HelpPluginContribution] | None = None
+_plugin_help_roots_cache: tuple[Path, ...] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -193,9 +202,9 @@ def _apply_help_contribution(
     nodes: dict[str, HelpNode],
     aliases: dict[str, str],
     asset_roots: list[Path],
-    fragment: HelpContribution,
+    fragment: HelpContribution | HelpPluginContribution,
 ) -> None:
-    """Immutable merge for typed ``HelpContribution`` (mirrors ``_apply_subtree``)."""
+    """Immutable merge for typed contributions (tab or plugin — same shape)."""
     parent = nodes.get(fragment.attach_under)
     if parent is None:
         raise KeyError(
@@ -291,6 +300,112 @@ def install_help_contributions(
     return get_help_tree()
 
 
+def install_help_plugin_contributions(
+    contributions: list[HelpPluginContribution],
+) -> HelpTree:
+    """Store plugin contributions and rebuild the cached merged tree.
+
+    Collection decision (see help-per-owner-plan Mechanism §3): the Plugin
+    base has no ``create_service`` (only TabContract does), so no tab-style
+    broadcast exists — plugins are probed duck-typed via the plugin registry
+    inside ``HelpPlugin.initialize`` (``collect_help_plugin_contributions``).
+    Same immutable merge + shared node-id/alias scope as the tab path below.
+    """
+    global _installed_help_plugin_contributions
+    _installed_help_plugin_contributions = list(contributions)
+    clear_help_tree_cache()
+    return get_help_tree()
+
+
+def merge_help_plugin_contributions(
+    base: HelpTree,
+    contributions: list[HelpPluginContribution],
+) -> HelpTree:
+    """Attach plugin subtrees under host parents (same guards as the tab path).
+
+    Immutable merge: copies ``nodes``/``aliases``, duplicate ``node_id``
+    raises, alias conflict raises. Tab and plugin fragments share one
+    uniqueness scope — merge plugin fragments onto the already tab-merged
+    tree so a cross-namespace node-id collision raises here.
+    """
+    nodes = dict(base.nodes)
+    aliases = dict(base.aliases)
+    asset_roots: list[Path] = list(base.asset_roots)
+    resolvers: list[IconResolver] = list(base.icon_resolvers)
+    for fragment in contributions:
+        _apply_help_contribution(nodes, aliases, asset_roots, fragment)
+        if fragment.resolve_icon is not None:
+            resolvers.append(fragment.resolve_icon)
+    tree = HelpTree(
+        root_id=base.root_id,
+        nodes=nodes,
+        aliases=aliases,
+        asset_roots=tuple(asset_roots),
+        icon_resolvers=tuple(resolvers),
+    )
+    _validate_tree(tree)
+    return tree
+
+
+def collect_help_plugin_contributions(
+    plugins: Iterable[Any],
+) -> list[HelpPluginContribution]:
+    """Probe plugins for typed help fragments without importing them.
+
+    Each plugin is duck-typed for ``build_help_plugin_contribution()``
+    (mirrors the tab ``build_help_contribution`` convention); accepts a
+    single ``HelpPluginContribution`` or a list/tuple of them. Per-plugin
+    exceptions are logged and skipped; non-contributing plugins are
+    ignored. ``owner_plugin`` mismatches against ``_plugin_meta["name"]``
+    warn (same posture as the tab collector) but still collect.
+    """
+    contributions: list[HelpPluginContribution] = []
+    for plugin in plugins:
+        builder = getattr(plugin, "build_help_plugin_contribution", None)
+        if builder is None:
+            continue
+        meta = getattr(plugin, "_plugin_meta", None) or {}
+        expected = meta.get("name", type(plugin).__name__) if isinstance(meta, dict) else type(plugin).__name__
+        try:
+            result = builder() if callable(builder) else builder
+        except Exception:
+            logger.exception(
+                "help plugin contribution failed for %s", expected
+            )
+            continue
+        if result is None:
+            continue
+        items = list(result) if isinstance(result, (list, tuple)) else [result]
+        for item in items:
+            if not isinstance(item, HelpPluginContribution):
+                logger.warning(
+                    "plugin %s returned non-HelpPluginContribution: %r",
+                    expected,
+                    type(item).__name__,
+                )
+                continue
+            if item.owner_plugin != expected:
+                logger.warning(
+                    "plugin %s contribute_help owner_plugin mismatch: %r vs expected %r",
+                    expected,
+                    item.owner_plugin,
+                    expected,
+                )
+            contributions.append(item)
+    return contributions
+
+
+def contribute_all_help_plugins(plugins: Iterable[Any]) -> None:
+    """Collect plugin help fragments and install them into the host tree.
+
+    Idempotent re-install (replaces the installed plugin list); safe to
+    re-run after deferred-tier discovery so later plugins are not missed.
+    """
+    contributions = collect_help_plugin_contributions(plugins)
+    if contributions:
+        install_help_plugin_contributions(contributions)
+
+
 def build_help_tree(
     tree_path: Path | None = None,
     *,
@@ -298,12 +413,31 @@ def build_help_tree(
 ) -> HelpTree:
     base = load_help_tree(tree_path)
     if contributions is not None:
-        return merge_help_contributions(base, contributions)
+        merged = merge_help_contributions(base, contributions)
+        if _installed_help_plugin_contributions:
+            merged = merge_help_plugin_contributions(
+                merged, _installed_help_plugin_contributions
+            )
+        return merged
     # Prefer typed contributions if present
     if _installed_help_contributions is not None:
-        return merge_help_contributions(base, _installed_help_contributions)
+        merged = merge_help_contributions(base, _installed_help_contributions)
+        if _installed_help_plugin_contributions:
+            merged = merge_help_plugin_contributions(
+                merged, _installed_help_plugin_contributions
+            )
+        return merged
     if _installed_contributions is not None:
-        return merge_help_contributions(base, _installed_contributions)
+        merged = merge_help_contributions(base, _installed_contributions)
+        if _installed_help_plugin_contributions:
+            merged = merge_help_plugin_contributions(
+                merged, _installed_help_plugin_contributions
+            )
+        return merged
+    if _installed_help_plugin_contributions:
+        return merge_help_plugin_contributions(
+            base, _installed_help_plugin_contributions
+        )
     return base
 
 
@@ -329,10 +463,11 @@ def clear_help_tree_cache() -> None:
 
 
 def clear_help_contributions() -> None:
-    """Drop installed tab contributions (tests / full rebuild)."""
-    global _installed_contributions, _installed_help_contributions
+    """Drop installed tab + plugin contributions (tests / full rebuild)."""
+    global _installed_contributions, _installed_help_contributions, _installed_help_plugin_contributions
     _installed_contributions = None
     _installed_help_contributions = None
+    _installed_help_plugin_contributions = None
     clear_help_tree_cache()
 
 
@@ -379,6 +514,27 @@ def read_help_page_markdown(
     return interpolate_help_markdown(raw, language)
 
 
+def _plugin_help_asset_roots() -> tuple[Path, ...]:
+    """Filesystem roots of plugin-owned help packages (not tab-registered).
+
+    Last-resort fallback for trees built without plugin contributions
+    (e.g. tabs-only test trees): plugin ``resources/help`` packages follow
+    the same ``assets/<rel>`` layout as tab contributions. Cached — the
+    package layout is static per checkout.
+    """
+    global _plugin_help_roots_cache
+    if _plugin_help_roots_cache is None:
+        src_root = Path(__file__).resolve().parents[2]
+        plugins = src_root / "plugins"
+        roots: list[Path] = []
+        if plugins.is_dir():
+            roots = sorted(
+                p for p in plugins.glob("*/resources/help") if p.is_dir()
+            )
+        _plugin_help_roots_cache = tuple(roots)
+    return _plugin_help_roots_cache
+
+
 def resolve_help_asset(rel_path: str, tree: HelpTree | None = None) -> Path | None:
     """Resolve a figure path against host + contributed asset roots."""
     rel = rel_path.lstrip("/")
@@ -387,6 +543,9 @@ def resolve_help_asset(rel_path: str, tree: HelpTree | None = None) -> Path | No
         roots.extend(tree.asset_roots)
     candidates: list[Path] = []
     for root in roots:
+        candidates.append(root / "assets" / rel)
+        candidates.append(root / rel)
+    for root in _plugin_help_asset_roots():
         candidates.append(root / "assets" / rel)
         candidates.append(root / rel)
     for path in candidates:

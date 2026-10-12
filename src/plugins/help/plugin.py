@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from plugins.settings.events import SettingsChangeLanguageEvent
 from core.plugin_system import Plugin, plugin
 from core.plugin_system.interfaces import IControllablePlugin
 from plugins.help.dialog import HelpDialog
+
+logger = logging.getLogger("ImproveImgSLI")
 
 @plugin(name="help", version="1.0", startup_tier="deferred")
 class HelpPlugin(Plugin, IControllablePlugin):
@@ -22,6 +25,33 @@ class HelpPlugin(Plugin, IControllablePlugin):
             self.event_bus.subscribe(
                 SettingsChangeLanguageEvent, self._on_language_changed
             )
+        self._install_plugin_contributions(context)
+
+    def _install_plugin_contributions(self, context: Any) -> None:
+        """Collect typed plugin help fragments from the plugin registry.
+
+        Duck-typed probe (no ``plugins/<name>`` imports): prefers
+        ``context.plugin_coordinator.lifecycle.all_plugins()`` (matches the
+        ``ExportPlugin`` ``context.plugin_coordinator`` convention), falls
+        back to ``context.plugin_registry.all_plugins()``. Missing registry
+        or collection failure is best-effort — help still serves the host
+        tree. Re-runnable after deferred-tier discovery.
+        """
+        from plugins.help.tree import contribute_all_help_plugins
+
+        try:
+            plugins: Any = ()
+            coordinator = getattr(context, "plugin_coordinator", None)
+            lifecycle = getattr(coordinator, "lifecycle", None)
+            if lifecycle is not None and hasattr(lifecycle, "all_plugins"):
+                plugins = lifecycle.all_plugins()
+            else:
+                registry = getattr(context, "plugin_registry", None)
+                if registry is not None and hasattr(registry, "all_plugins"):
+                    plugins = registry.all_plugins()
+            contribute_all_help_plugins(plugins)
+        except Exception:
+            logger.exception("HelpPlugin plugin-contribution collection failed")
 
     def get_controller(self) -> "HelpPlugin":
         return self

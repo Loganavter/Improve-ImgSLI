@@ -67,6 +67,10 @@
       "image_properties": {
         "title": "Image Properties",
         "desc": "File metadata and in-app context"
+      },
+      "tabs": {
+        "title": "Tabs",
+        "desc": "Tab strip and tab names"
       }
     }
   }

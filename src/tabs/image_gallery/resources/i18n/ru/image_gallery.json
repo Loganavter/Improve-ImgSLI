@@ -70,7 +70,8 @@
       "error": "ИИ не смог ответить.",
       "routing_unavailable": "Маршрутизация пока недоступна.",
       "images_toggle_hint": "Отправлять изображения вместе с вопросом",
-      "images_toggle_downsample": "Даунсэмплинг: до {px} px"
+      "images_toggle_downsample": "Даунсэмплинг: до {px} px",
+      "region_prompt": "Что не так в этой области?"
     },
     "series": {
       "ask_ai": "Спросить у ИИ",

@@ -35,12 +35,29 @@ VIEW_OPTIONS = (
 )
 
 
+def _submenu_icons():
+    """Per-entry icon for the Sort/View submenu (product rule: every entry has one)."""
+    from tabs.image_gallery.icons import Icon
+
+    return {
+        "gallery.sort_by": "text_filename.svg",
+        "gallery.sort.rank": "star.svg",
+        "gallery.sort.name": "text_filename.svg",
+        "gallery.sort.date": "sync.svg",
+        "gallery.sort.quality": Icon.ALGORITHMS,
+        "gallery.view": Icon.VIEW_GRID,
+        "gallery.view.grid": Icon.VIEW_GRID,
+        "gallery.view.list": Icon.VIEW_LIST,
+    }
+
+
 def sort_view_sections(  # type: ignore[no-untyped-def]
     translate, sort_index: int | None, view_is_list: bool | None
 ) -> list:
     """Build Sort by / View submenu entries (each preceded by a separator)."""
     from sli_ui_toolkit.widgets import ContextMenuAction, ContextMenuSeparator
 
+    icons = _submenu_icons()
     sections: list = []
     if sort_index is not None:
         try:
@@ -52,10 +69,12 @@ def sort_view_sections(  # type: ignore[no-untyped-def]
             ContextMenuAction(
                 "gallery.sort_by",
                 _t(translate, "image_gallery.sort_by", "Sort by"),
+                icon=icons.get("gallery.sort_by"),
                 children=tuple(
                     ContextMenuAction(
                         action_id,
                         _t(translate, key, default),
+                        icon=icons.get(action_id),
                         data=index,
                         checkable=True,
                         checked=cur == index,
@@ -74,10 +93,12 @@ def sort_view_sections(  # type: ignore[no-untyped-def]
             ContextMenuAction(
                 "gallery.view",
                 _t(translate, "image_gallery.view", "View"),
+                icon=icons.get("gallery.view"),
                 children=tuple(
                     ContextMenuAction(
                         action_id,
                         _t(translate, key, default),
+                        icon=icons.get(action_id),
                         data=is_list_value,
                         checkable=True,
                         checked=is_list == is_list_value,

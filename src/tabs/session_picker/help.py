@@ -10,30 +10,26 @@ from tabs.session_picker.icons import Icon, get_icon
 
 _HELP_ROOT = Path(__file__).resolve().parent / "resources" / "help"
 
+# Single page: the tab's picker/overview prose lives in one place
+# (``sessions.md`` covers picker cards, recent, tab strip, rename). The
+# retired ``overview.md`` slugs stay alive as aliases so no link rots.
 _NODES = {
     "workspace.session_picker": {
-        "kind": "hub",
-        "title_key": "workspace.session_types.session_picker",
-        "description_key": "session_picker.help.hub.desc",
-        "title": "Session Picker",
-        "description": "New-tab home page and recent projects",
-        "icon": "add.svg",
-        "children": ["workspace.session_picker.overview"],
-    },
-    "workspace.session_picker.overview": {
         "kind": "page",
-        "title_key": "session_picker.help.page.overview.title",
-        "description_key": "session_picker.help.page.overview.desc",
-        "title": "Session Picker Overview",
-        "description": "Create sessions and reopen recent projects",
+        "title_key": "help.page.workspace.title",
+        "description_key": "help.page.workspace.desc",
+        "title": "Workspace Tabs",
+        "description": "Session picker and tab strip",
         "icon": "add.svg",
-        "body": "overview.md",
+        "body": "sessions.md",
     },
 }
 
 _ALIASES = {
-    "session_picker_overview": "workspace.session_picker.overview",
-    "sp_overview": "workspace.session_picker.overview",
+    "session_picker": "workspace.session_picker",
+    "workspace_tabs": "workspace.session_picker",
+    "session_picker_overview": "workspace.session_picker",
+    "sp_overview": "workspace.session_picker",
 }
 
 

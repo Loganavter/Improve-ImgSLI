@@ -1,6 +1,6 @@
 ## 放大镜
 
-放大镜会采样对比图像中的某一区域，并在画布上以放大视图显示。当仅靠分割线无法看清局部细节时，可以使用它。
+放大镜采样对比图像对中的某一区域，在画布上显示放大视图——呈现分割线之外的局部细节。
 
 ### 启用 {#enabling}
 
@@ -15,14 +15,14 @@
 
 ### 大小与移动 {#size-and-movement}
 
-- **镜头大小** — {{tr:label.magnifier_size}}。
-- **捕获大小** — {{tr:label.capture_size}}（决定采样多大范围的源图像）。
+- **镜头大小** — {{tr:image_compare.label.magnifier_size}}。
+- **捕获大小** — {{tr:image_compare.label.capture_size}}（决定采样多大范围的源图像）。
 - **移动** — 镜头处于活动状态时使用 `WASD`；两半分离时用 `QE` 调整间距。
 - **速度** — 放大镜面板显示时可在其中调整。
 
 ### 冻结 {#freeze}
 
-{{tr:image_compare.action.freeze}}（`F`）会将镜头固定在屏幕上，你可以用键盘微调其位置，同时鼠标指针仍可自由移动。
+{{tr:image_compare.action.freeze}}（`F`）将镜头固定在屏幕上；键盘微调继续有效，鼠标指针仍可自由移动。
 
 ### 分割线、辅助线与颜色 {#guides-and-colors}
 
@@ -38,9 +38,9 @@
 
 ### 合并模式 {#combined-mode}
 
-- **合并** — 当两半靠得足够近，或某个差异模式处于激活状态时，它们会合并为一个镜头。
-- **内部分割** — 在镜头内按住鼠标右键拖动。
-- **单侧预览** — 镜头激活时，按住 `Space+Shift` 可强制显示单侧图像。
+- **合并** — 当两半均可见且间距收敛到合并阈值时，它们会合并为一个镜头。
+- **内部分割** — 在镜头内用鼠标右键拖动。
+- **单侧预览** — `Space+Shift` 在合并镜头内强制显示其中一侧。
 
 :::figure{side=block width=280}
 ![合并放大镜]({{img:workspace.image_compare.magnifier.combined_mode}})
@@ -51,10 +51,8 @@
 
 ### 影响放大镜的设置 {#related-settings}
 
-在 [设置 → 优化](help://settings#performance) 中：
+放大镜相关选项见[设置](help://settings#image_compare)：
 
 - 优化放大镜移动及其插值方式
 - 镜头重叠时的高亮显示
 - 新增实例的自动配色
-
-显示缓存的限制只作用于主预览——放大镜始终采样原始图像。

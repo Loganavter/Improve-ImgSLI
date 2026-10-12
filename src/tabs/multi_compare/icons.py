@@ -27,3 +27,4 @@ class Icon(Enum):
     ADD = "add.svg"
     DELETE = "delete.svg"
     SYNC = "sync.svg"
+    SCISSORS = "scissors.svg"

@@ -4,9 +4,9 @@ The toolbar sits above the canvas in a compare session. It holds the tools for t
 
 ### The toolbar {#toolbar}
 
-- **Where** — a strip of icon controls above the canvas.
-- **What** — toggles, value nudges, and buttons that open panels or dialogs for the active session type.
-- **How dense** — depends on {{tr:settings.ui_mode}} (first-run onboarding or [Settings → Appearance](help://settings#interface)).
+- **Toolbar** — strip of icon controls for the active session type.
+- **Contents** — toggles, value nudges, buttons opening panels or dialogs.
+- **Density** — follows {{tr:settings.ui_mode}} (first-run onboarding or [Settings → Appearance](help://settings#interface)).
 
 :::figure{side=block height=107}
 ![Session toolbar]({{img:ui.buttons.toolbar}})
@@ -15,11 +15,11 @@ Toolbar above the canvas.
 
 ### UI modes {#ui-modes}
 
-The same tools are laid out differently in each {{tr:settings.ui_mode}}. Pick a mode once at first run; change it later under Settings.
+The same tools are laid out differently in each {{tr:settings.ui_mode}}. First-run onboarding sets the mode once; [Settings → Appearance](help://settings#interface) changes it later.
 
 ### {{tr:settings.ui_mode_beginner}} {#mode-beginner}
 
-More separate buttons — one control ≈ one job. Friendly with the mouse; good for learning where each tool lives.
+More separate buttons — one control ≈ one job.
 
 :::figure{side=block height=65}
 ![Beginner toolbar layout]({{img:ui.buttons.mode_beginner}})
@@ -37,7 +37,7 @@ Fewer icons. Some controls already combine a short click with a scroll (for exam
 
 ### {{tr:settings.ui_mode_expert}} {#mode-expert}
 
-Densest strip: one control can carry click, scroll, and other mouse buttons so more of the window stays on the image.
+Densest strip: one control combines click, scroll, and other mouse buttons.
 
 :::figure{side=block height=65}
 ![Expert toolbar layout]({{img:ui.buttons.mode_expert}})
@@ -62,8 +62,8 @@ List button — short click vs long-press.
 
 ### Product examples {#examples}
 
-- **{{tr:workspace.session_types.image_compare}}** — in denser modes, scroll divider width or magnifier size on one control; long-press clear / swap on list buttons. Details: [Lists and Panels](help://ui.lists_flyouts).
-- **{{tr:workspace.session_types.multi_compare}}** — same thickness / visibility habits on grid lines (`D`).
+- **{{tr:workspace.session_types.image_compare}}** — in denser modes, scroll divider width or magnifier size on one control; long-press clear / swap on list buttons. Details: [Comparison](help://comparison); lists: [Lists and Panels](help://ui.lists_flyouts).
+- **{{tr:workspace.session_types.multi_compare}}** — grid-line thickness / visibility on `D`. Details: [Multi Compare](help://multi_compare).
 
 ### Find a control by name {#find-action}
 

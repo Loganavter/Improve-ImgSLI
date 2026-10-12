@@ -1,6 +1,6 @@
 ## Comparison
 
-Compare two images on the full canvas with a movable split, optional filename labels, channel views, and difference modes — without opening the magnifier.
+Two images on the full canvas: a movable split, optional filename labels, channel views, and difference modes — without opening the magnifier.
 
 ### Split line {#split-line}
 
@@ -33,13 +33,13 @@ With the magnifier off, drag the divider across the pair.
 
 ### Metrics {#metrics}
 
-- **{{tr:ui.psnr}} / {{tr:ui.ssim}}** — off by default; enable auto-calculate in [Settings → Analysis](help://settings).
+- **{{tr:image_compare.ui.psnr}} / {{tr:image_compare.ui.ssim}}** — off by default; enable auto-calculate in [Settings → Analysis](help://settings).
 - **Properties** — [Image Properties](help://image_properties) from a list-row context menu (file metadata and in-app side / rating).
-- **Move** — canvas or list context menu places a drag ghost of the image under the pointer (hanging bottom-left); move slightly, then click another workspace tab (or the canvas) to start the same insert flow as Duplicate / paste. `Esc` or right-click cancels.
+- **Move** — canvas or list context menu shows a drag ghost of the image under the pointer (hanging bottom-left); a click on another workspace tab (or the canvas) starts the same insert flow as Duplicate / paste. `Esc` or right-click cancels.
 
 ### Channel modes {#channel-modes}
 
-{{tr:image_compare.action.channel_mode}} (`C`) cycles RGB, R, G, B, and luminance so you can inspect one channel without leaving the canvas.
+{{tr:image_compare.action.channel_mode}} (`C`) cycles RGB, R, G, B, and luminance for single-channel inspection without leaving the canvas.
 
 ### Difference modes {#difference-modes}
 

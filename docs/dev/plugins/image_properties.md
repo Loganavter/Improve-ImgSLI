@@ -34,3 +34,12 @@ Tabs (e.g. image_compare, multi_compare) and the host call
 `plugin_coordinator.execute_command("image_properties", "open_dialog", ...)`
 to show properties for a selected image. App rows let the caller inject
 tab-specific metadata rows beyond the generic file/image rows.
+
+## Help ownership
+
+`help.py` `build_help_plugin_contribution()`
+(`owner_plugin="image_properties"`, attach `platform`): owns page
+`platform.image_properties` + alias `image_properties` (moved byte-identical
+from host). Pack: `resources/help/` bodies ×4 + `figures.json` slot
+`platform.image_properties.open` (slot id frozen) + asset; keys already in
+`resources/i18n/<lang>/image_properties.json`.

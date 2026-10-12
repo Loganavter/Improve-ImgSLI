@@ -304,6 +304,7 @@ def answer(
     model: str = "",
     max_tokens: int = 0,
     reasoning_effort: str = "auto",
+    system_prompt: str | None = None,
     transport: Callable[[str, str, dict], dict] | None = None,
 ) -> AskResult:
     """Answer *question* over *context* via *backend*. Worker thread only.
@@ -344,11 +345,13 @@ def answer(
     def _one_call(correction: str) -> dict:
         if use_vision:
             payload = build_vision_payload(
-                question, context, model=model, max_tokens=budget, correction=correction
+                question, context, model=model, max_tokens=budget, correction=correction,
+                system_prompt=system_prompt,
             )
         else:
             payload = build_text_payload(
-                question, context, model=model, max_tokens=budget, correction=correction
+                question, context, model=model, max_tokens=budget, correction=correction,
+                system_prompt=system_prompt,
             )
         payload = _apply_openrouter_extensions(payload, base_url, model, reasoning_effort)
         return call(base_url, api_key, payload)

@@ -70,7 +70,8 @@
       "error": "A IA não conseguiu responder.",
       "routing_unavailable": "O roteamento ainda não está habilitado.",
       "images_toggle_hint": "Enviar imagens com a pergunta",
-      "images_toggle_downsample": "Redução: ≤ {px} px"
+      "images_toggle_downsample": "Redução: ≤ {px} px",
+      "region_prompt": "O que há de errado nesta região?"
     },
     "series": {
       "ask_ai": "Perguntar à IA",

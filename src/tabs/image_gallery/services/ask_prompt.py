@@ -60,6 +60,30 @@ ASK_SYSTEM_PROMPT = (
     + ASK_OUTPUT_CONTRACT
 )
 
+#: Region-inspection variant: the user picked one rectangle in Quick Look and
+#: wants to ask about it. The payload carries the FULL downsampled image plus a
+#: crop of the region and the measured metrics, so the model can use the whole
+#: context while focusing on the selected area.
+ASK_REGION_SYSTEM_PROMPT = (
+    "You inspect ONE region of a single image in an image-quality gallery. "
+    "You are given the whole downscaled image, a crop of the region the user "
+    "selected (the text label before it names it), and the locally measured "
+    "quality metrics for the image.\n"
+    "Answer the user's question about the SELECTED REGION specifically: what is "
+    "wrong or notable there (blur, banding, halos, compression, artifacts, "
+    "texture, clipping), and what to do about it — in plain language, 1-3 "
+    "sentences. If the question is not about the region, answer it directly "
+    "anyway. Begin with the takeaway: no preamble, no restating the question.\n"
+    "How to answer:\n"
+    "- Ground every claim in what is visible in the images and in the metrics; "
+    "never invent detail you cannot see.\n"
+    "- 'possible …' and 'AI judgment: …' entries are unverified flags: describe "
+    "them in words, never as a number or score.\n"
+    "- If the region looks clean, say so instead of inventing a problem.\n"
+    + NAMING_RULE + "\n"
+    + ASK_OUTPUT_CONTRACT
+)
+
 #: One canonical few-shot exemplar (sent as real user/assistant turns). Its data
 #: is deliberately different from real scopes so the model cannot echo it.
 FEWSHOT_CONTEXT = (
@@ -78,6 +102,7 @@ FEWSHOT_ANSWER = (
 
 __all__ = [
     "ASK_OUTPUT_CONTRACT",
+    "ASK_REGION_SYSTEM_PROMPT",
     "ASK_SYSTEM_PROMPT",
     "FEWSHOT_ANSWER",
     "FEWSHOT_CONTEXT",

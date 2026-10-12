@@ -1,10 +1,10 @@
 ## Listas e Painéis
 
-Os menus suspensos abrem painéis dentro da janela, sobre a janela principal. Trabalhe dentro do painel e depois feche com um clique fora ou `Esc`. Layout da barra e gestos multi-ação: [Botões e Controles](help://ui.buttons). Estilo dos rótulos de nome de arquivo: [Comparação](help://comparison).
+Os menus suspensos abrem painéis dentro da janela, sobre a janela principal. Um clique fora ou `Esc` fecha o painel. Layout da barra e gestos multi-ação: [Botões e Controles](help://ui.buttons). Estilo dos rótulos de nome de arquivo: [Comparação](help://comparison).
 
 ### Gerenciador de lista {#list-manager}
 
-Em uma sessão {{tr:workspace.session_types.image_compare}}, cada lado tem um menu suspenso de lista. Um clique abre o painel de gerenciamento de lista daquele lado (linhas, avaliações, arraste). O painel permanece fechado se a lista estiver vazia. Clique no mesmo menu suspenso novamente, clique fora, ou escolha uma linha para fechá-lo. Enquanto renomear ou propriedades estiver aberto, o painel não se fecha ao perder o foco.
+Em uma sessão {{tr:workspace.session_types.image_compare}}, cada lado tem um menu suspenso de lista. Um clique abre o painel de gerenciamento de lista daquele lado (linhas, avaliações, arraste). O painel permanece fechado se a lista estiver vazia. O mesmo menu suspenso, um clique fora ou a escolha de uma linha fecha o painel. Enquanto renomear ou propriedades estiver aberto, o painel não se fecha ao perder o foco.
 
 :::figure{side=block width=320}
 ![Painel do gerenciador de lista]({{img:ui.lists_flyouts.list_manager}})
@@ -19,20 +19,20 @@ Menu suspenso de lista → painel do gerenciador de lista.
 
 ### Linhas {#rows}
 
-- **Selecionar** — clique em uma linha para torná-la a atual; o painel fecha e o canvas é atualizado.
-- **Seleção múltipla** — `Ctrl`/`Cmd`+clique alterna linhas; arraste no espaço vazio do painel para um laço. Arrastar qualquer linha selecionada move o conjunto (o fantasma mostra a contagem).
+- **Selecionar** — um clique em uma linha a torna a atual; o painel fecha e o canvas é atualizado.
+- **Seleção múltipla** — `Ctrl`/`Cmd`+clique alterna linhas; arrastar sobre o espaço vazio do painel desenha um laço. Arrastar qualquer linha selecionada move o conjunto.
 - **Reordenar** — arraste dentro de uma mesma lista.
-- **Mover entre listas** — arraste uma linha para fora do painel único para expandir o modo duplo, depois solte na outra lista.
-- **Dica de caminho** — passe o mouse sobre um nome truncado para ver o caminho completo.
+- **Mover entre listas** — arrastar para fora do painel único expande o modo duplo; soltar na outra lista move as linhas.
+- **Dica de caminho** — passar o mouse sobre um nome truncado mostra o caminho completo.
 
 ### Avaliação {#rating}
 
-Cada linha tem um chip de avaliação. Use menos / mais, ou role sobre o chip, sem sair do painel.
+Cada linha tem um chip de avaliação. Os botões de menos / mais ou a rolagem sobre o chip alteram a nota sem sair do painel.
 
 ### Menu de contexto {#context-menu}
 
-- **Linha da lista** — renomear, copiar caminho, propriedades, ou remover.
-- **Canvas (quadro atual)** — mesmo menu, mais duplicar; renomear é exclusivo da lista.
+- **Linha da lista** — renomear, copiar caminho, propriedades, mover, recorte ou remover.
+- **Canvas (quadro atual)** — copiar caminho, duplicar, propriedades, mover, recorte e remover; renomear é exclusivo da lista.
 
 Propriedades abre [Propriedades da Imagem](help://image_properties).
 
@@ -44,11 +44,11 @@ Propriedades abre [Propriedades da Imagem](help://image_properties).
 
 ### Carregamento {#loading}
 
-Arrastar e soltar na janela pergunta qual lista deve receber os arquivos. `Ctrl+V` cola uma imagem da área de transferência e pode mostrar uma sobreposição de lado — veja [Arquivos e Projetos](help://file_management).
+Soltar arquivos na janela os coloca na lista do lado sob o cursor. `Ctrl+V` cola uma imagem da área de transferência e pode mostrar uma sobreposição de lado — veja [Arquivos e Projetos](help://file_management).
 
 ### Painel de configurações de rótulo {#toolbar-flyouts}
 
-Abrir: {{tr:image_compare.action.text_settings}} ou clique com o botão direito em {{tr:image_compare.action.file_names}}. Fechar: `Esc` ou clique fora.
+O painel abre por {{tr:image_compare.action.text_settings}} ou com o botão direito em {{tr:image_compare.action.file_names}}; `Esc` ou um clique fora fecha o painel.
 
 No painel: tamanho da fonte, peso, opacidade, cores do texto e do fundo, desenhar fundo e posição do rótulo (bordas / linha de divisão).
 

@@ -49,6 +49,7 @@ class _WidgetStub:
         self.filter_text_changed = _Sig()
         self.visible_range_changed = _Sig()
         self.opened = []
+        self.grow_up = []
         self.results = []
         self.errors = []
         self.busy = 0
@@ -68,13 +69,14 @@ class _WidgetStub:
     def reset_session_view(self):
         pass
 
-    def open_ask_ai(self, anchor, scope, *, default_prompt="Summary", texts=None):
+    def open_ask_ai(self, anchor, scope, *, default_prompt="Summary", texts=None, grow_up=False):
         self.opened.append((anchor, scope, default_prompt))
+        self.grow_up.append(bool(grow_up))
 
     def show_ask_ai_busy(self):
         self.busy += 1
 
-    def show_ask_ai_result(self, result, model=""):
+    def show_ask_ai_result(self, result, model="", links=None):
         self.results.append(result)
 
     def show_ask_ai_error(self, message):
@@ -277,3 +279,55 @@ def test_open_ask_ai_for_series_uses_series_scope(monkeypatch, tmp_path, qapp):
     # No series name on the surface (the anchor header already labels it).
     assert scope.label == ""
     assert set(scope.paths) == {a.path, b.path}
+
+
+def test_open_ask_ai_region_opens_upward_with_region_scope(monkeypatch, tmp_path, qapp):
+    """A Quick Look region selection opens the flyout upward with a region scope."""
+    ctrl, widget = _make(monkeypatch)
+    it = _item(tmp_path)
+    ctrl.state.items = [it]
+
+    ctrl.open_ask_ai_region(it.path, (0.1, 0.1, 0.5, 0.5), anchor=object())
+
+    assert widget.opened, "region ask should open the flyout"
+    _anchor, scope, _prompt = widget.opened[-1]
+    assert scope.kind == "region"
+    assert tuple(scope.box) == (0.1, 0.1, 0.5, 0.5)
+    assert str(scope.paths[0]) == str(it.path)
+    assert widget.grow_up[-1] is True
+
+
+def test_region_ask_sends_crop_and_region_prompt(monkeypatch, tmp_path, qapp):
+    """Region asks force vision, use the region prompt and append the crop."""
+    ctrl, widget = _make(monkeypatch)
+    record = []
+    _install_transport(monkeypatch, '{"answer": "ok", "confidence": "high"}', record)
+    it = _item(tmp_path)
+    ctrl.state.items = [it]
+    ctrl.state.selected_paths = {it.path}
+
+    from tabs.image_gallery.services import vlm as _vlm
+
+    monkeypatch.setattr(_vlm, "encode_region", lambda path, box: ("png", "QUJD"))
+    scope = AskScope(kind="region", paths=(it.path,), box=(0.1, 0.1, 0.5, 0.5))
+
+    ctrl.ask_ai_question(scope, "What is wrong?")
+
+    assert len(record) == 1, "region ask must reach the transport"
+    messages = record[0]["messages"]
+    from tabs.image_gallery.services.ask_prompt import (
+        ASK_REGION_SYSTEM_PROMPT,
+        ASK_SYSTEM_PROMPT,
+    )
+
+    system_text = messages[0]["content"][0]["text"]
+    assert system_text == ASK_REGION_SYSTEM_PROMPT
+    assert system_text != ASK_SYSTEM_PROMPT
+
+    user_content = messages[-1]["content"]
+    assert any(
+        c.get("type") == "image_url" for c in user_content
+    )
+    assert any("SELECTED REGION" in str(c.get("text", "")) for c in user_content)
+    # Full downscaled image + the region crop.
+    assert sum(1 for c in user_content if c.get("type") == "image_url") >= 2

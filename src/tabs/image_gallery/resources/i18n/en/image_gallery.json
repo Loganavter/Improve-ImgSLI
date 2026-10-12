@@ -70,7 +70,8 @@
       "error": "AI could not answer.",
       "routing_unavailable": "Routing is not enabled yet.",
       "images_toggle_hint": "Send images with the question",
-      "images_toggle_downsample": "Downscale: ≤ {px} px"
+      "images_toggle_downsample": "Downscale: ≤ {px} px",
+      "region_prompt": "What is wrong in this region?"
     },
     "series": {
       "ask_ai": "Ask AI",
@@ -88,6 +89,30 @@
     "sort_date": "Date",
     "sort_quality": "AI quality",
     "view_grid": "Grid",
-    "view_list": "List"
+    "view_list": "List",
+    "help": {
+      "hub": {
+        "title": "Image Gallery",
+        "desc": "Browse, triage, and review image folders"
+      },
+      "page": {
+        "overview": {
+          "title": "Gallery Overview",
+          "desc": "Folders, series, grid, and compare"
+        },
+        "triage": {
+          "title": "Triage and Review",
+          "desc": "Keep best, reject, and clean review"
+        },
+        "quality": {
+          "title": "Quality Metrics",
+          "desc": "Measured scores and the fidelity source"
+        },
+        "ask_ai": {
+          "title": "Ask AI",
+          "desc": "Questions about a selection or a series"
+        }
+      }
+    }
   }
 }

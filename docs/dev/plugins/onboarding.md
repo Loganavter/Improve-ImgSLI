@@ -81,3 +81,11 @@ from its `create_service(service_id, ...)`. See
 `src/tabs/image_compare/service_factory.py` and
 `src/tabs/multi_compare/tab.py`.
 
+## Help ownership
+
+`help.py` `build_help_plugin_contribution()` (`owner_plugin="onboarding"`,
+attach `platform`): owns page `platform.getting_started` + alias
+`introduction` (moved byte-identical from host, RU quirk preserved). Pack:
+`resources/help/` bodies ×4, no figures (budget-0); the
+`image_compare.action.save` key ref stays by decision (IC tab always loaded).
+

@@ -70,7 +70,8 @@
       "error": "AI 无法回答。",
       "routing_unavailable": "路由功能尚未启用。",
       "images_toggle_hint": "随问题一起发送图片",
-      "images_toggle_downsample": "缩小：≤ {px} px"
+      "images_toggle_downsample": "缩小：≤ {px} px",
+      "region_prompt": "这个区域有什么问题？"
     },
     "series": {
       "ask_ai": "询问 AI",

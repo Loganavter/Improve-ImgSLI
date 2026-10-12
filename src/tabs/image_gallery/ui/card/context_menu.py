@@ -32,6 +32,7 @@ from __future__ import annotations
 import time
 from pathlib import Path
 
+from tabs.image_gallery.icons import Icon
 from tabs.image_gallery.ui.card.context_actions import (
     _action_targets,
     _ctx_group,
@@ -279,15 +280,18 @@ def popup_gallery_card_context_menu(  # type: ignore[no-untyped-def]
                 ContextMenuAction(
                     "gallery.selection.analyze",
                     _t(translate, "image_gallery.selection.analyze", "Analyze"),
+                    icon=Icon.ANALYZE,
                     enabled=has_analyze,
                 ),
                 ContextMenuAction(
                     "gallery.selection.find_similar",
                     _t(translate, "image_gallery.selection.find_similar", "Find similar"),
+                    icon="compare.svg",
                 ),
                 ContextMenuAction(
                     "gallery.selection.ask_ai",
                     ask_ai_label,
+                    icon=Icon.AI,
                 ),
             ]
             entries.append(ContextMenuSection(entries=tuple(sel_actions), title=_selection_label(translate, n)))
@@ -305,16 +309,18 @@ def popup_gallery_card_context_menu(  # type: ignore[no-untyped-def]
         # Ask AI on the clicked card alone — only when there is no selection,
         # so it never competes with the selection-scoped entry above.
         if not has_selection:
-            per_card.append(ContextMenuAction("gallery.ask_ai", ask_ai_label))
+            per_card.append(ContextMenuAction("gallery.ask_ai", ask_ai_label, icon=Icon.AI))
         per_card.extend(
             [
                 ContextMenuAction(
                     "gallery.make_best",
                     "★ Make best",
+                    icon="star.svg",
                 ),
                 ContextMenuAction(
                     "gallery.reject",
                     _reject_label,
+                    icon="close.svg",
                 ),
             ]
         )
@@ -334,6 +340,7 @@ def popup_gallery_card_context_menu(  # type: ignore[no-untyped-def]
                 ContextMenuAction(
                     "gallery.ungroup",
                     "Ungroup",
+                    icon="unlink.svg",
                 )
             )
         # Reverse path: pin the menu-rule targets into a brand-new manual
@@ -346,6 +353,7 @@ def popup_gallery_card_context_menu(  # type: ignore[no-untyped-def]
                 ContextMenuAction(
                     "gallery.group",
                     "Group",
+                    icon="link.svg",
                 )
             )
         entries.extend(per_card)
@@ -356,6 +364,7 @@ def popup_gallery_card_context_menu(  # type: ignore[no-untyped-def]
             ContextMenuAction(
                 "gallery.set_as_source",
                 "Make source",
+                icon="check.svg",
             )
         )
         def _on_triggered(action_id: str, _data: object) -> None:

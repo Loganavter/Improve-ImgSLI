@@ -69,6 +69,27 @@ _ROW_HEIGHT = 32
 _SHORTCUT_GAP = 12
 # Shortcut caption size (one step below the default UI font, still readable).
 _SHORTCUT_PIXEL_SIZE = 12
+# Leading icon in a dropdown row (product rule: every menu entry carries one).
+_ROW_ICON_SIZE = 16
+_ROW_ICON_GAP = 8
+_ROW_ICON_LEFT = 8
+
+
+def _row_icon_pixmap(icon_value, size: int):
+    """Resolve one row icon to a QPixmap (None when absent/unresolvable)."""
+    if icon_value is None:
+        return None
+    try:
+        from PySide6.QtCore import QSize
+
+        from sli_ui_toolkit.icons import resolve_icon
+
+        icon = resolve_icon(icon_value)
+        if icon is None or icon.isNull():
+            return None
+        return icon.pixmap(QSize(int(size), int(size)))
+    except Exception:
+        return None
 
 
 def _estimate_menu_button_width(
@@ -137,6 +158,12 @@ class CsdMenuRow(Button):
     def __init__(self, action: ContextMenuAction, parent: QWidget | None = None):
         self._label = action.text
         self._shortcut = _shortcut_display_text(action.shortcut)
+        self._icon_size = scaled_px(_ROW_ICON_SIZE)
+        self._icon_left = scaled_px(_ROW_ICON_LEFT)
+        self._icon_pixmap = _row_icon_pixmap(getattr(action, "icon", None), self._icon_size)
+        icon_lead = (
+            _ROW_ICON_SIZE + _ROW_ICON_GAP if self._icon_pixmap is not None else 0
+        )
         shortcut_fm = QFontMetrics(ui_font(pixel_size=_SHORTCUT_PIXEL_SIZE))
         trailing = (
             measure_text_width(shortcut_fm, self._shortcut) + scaled_px(_SHORTCUT_GAP)
@@ -200,7 +227,7 @@ class CsdMenuRow(Button):
             variant="ghost",
             corner_radius=5,
             size=(0, self.ROW_HEIGHT),
-            content_padding=(8, 0, 8, 0),
+            content_padding=(8 + icon_lead, 0, 8, 0),
             parent=parent,
         )
         self.action_id = action.action_id
@@ -212,14 +239,35 @@ class CsdMenuRow(Button):
         if action.danger:
             self.setForegroundColor(_DANGER_COLOR)
 
+    def paintEvent(self, event) -> None:  # noqa: N802 (Qt name)
+        super().paintEvent(event)
+        pixmap = getattr(self, "_icon_pixmap", None)
+        if pixmap is None:
+            return
+        try:
+            from PySide6.QtGui import QPainter
+
+            painter = QPainter(self)
+            y = (self.height() - self._icon_size) // 2
+            painter.drawPixmap(self._icon_left, y, pixmap)
+            painter.end()
+        except Exception:
+            pass
+
     def sizeHint(self) -> QSize:
         label_fm = QFontMetrics(ui_font())
         shortcut_fm = QFontMetrics(ui_font(pixel_size=_SHORTCUT_PIXEL_SIZE))
         label_w = measure_text_width(label_fm, self._label)
         sc_w = measure_text_width(shortcut_fm, self._shortcut)
         trailing = sc_w + scaled_px(_SHORTCUT_GAP) if sc_w else 0
+        lead = (
+            self._icon_size + scaled_px(_ROW_ICON_GAP)
+            if getattr(self, "_icon_pixmap", None) is not None
+            else 0
+        )
         return QSize(
-            max(1, scaled_px(16) + label_w + trailing), scaled_px(self.ROW_HEIGHT)
+            max(1, scaled_px(16) + lead + label_w + trailing),
+            scaled_px(self.ROW_HEIGHT),
         )
 
     def minimumSizeHint(self) -> QSize:

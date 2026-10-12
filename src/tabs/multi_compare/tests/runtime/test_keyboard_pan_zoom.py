@@ -57,21 +57,31 @@ def _mc_fake_widget(*, zoom=1.0, pan_x=0.0, pan_y=0.0, is_focused=False):
 
 
 def test_mc_arrow_right_dispatches_set_pan():
+    # At the zoom floor the frame is fully in view, so arrows keep pan at
+    # the origin (cover-range clamp) instead of drifting into void.
     widget = _mc_fake_widget()
+    mc_interaction.handle_key_press_event(widget, _KeyEvent(Qt.Key.Key_Right))
+    assert widget.dispatched == []
+    # Zoomed in, the same key pans within the cover range (fallback
+    # reference fit (1, 1): nudge 0.05 / zoom 2.0 = 0.025).
+    widget = _mc_fake_widget(zoom=2.0)
     mc_interaction.handle_key_press_event(widget, _KeyEvent(Qt.Key.Key_Right))
     assert widget.dispatched
     action = widget.dispatched[-1]
     assert action.type == "multi_compare/set_pan"
-    assert abs(action.pan_x - 0.05) < 1e-9
+    assert abs(action.pan_x - 0.025) < 1e-9
     assert action.pan_y == 0.0
 
 
 def test_mc_arrow_up_dispatches_set_pan_negative_y():
     widget = _mc_fake_widget()
     mc_interaction.handle_key_press_event(widget, _KeyEvent(Qt.Key.Key_Up))
+    assert widget.dispatched == []
+    widget = _mc_fake_widget(zoom=2.0)
+    mc_interaction.handle_key_press_event(widget, _KeyEvent(Qt.Key.Key_Up))
     action = widget.dispatched[-1]
     assert action.type == "multi_compare/set_pan"
-    assert abs(action.pan_y + 0.05) < 1e-9
+    assert abs(action.pan_y + 0.025) < 1e-9
 
 
 def test_mc_plus_dispatches_set_zoom_around_center_pan_unchanged():

@@ -135,13 +135,13 @@ ALLOWLIST: dict[tuple[str, int], str] = {
     ("src/tabs/image_gallery/ui/quick_look_hooks.py", 118): (
         "_merge_selection_setattr storeless setattr fallback"
     ),
-    ("src/tabs/image_gallery/ui/quick_look_hooks.py", 272): (
+    ("src/tabs/image_gallery/ui/quick_look_hooks.py", 278): (
         "_merge_selection_setattr storeless call site"
     ),
-    ("src/tabs/image_gallery/ui/quick_look_hooks.py", 274): (
+    ("src/tabs/image_gallery/ui/quick_look_hooks.py", 280): (
         "_merge_selection_setattr storeless call site"
     ),
-    ("src/tabs/image_gallery/ui/quick_look_hooks.py", 382): (
+    ("src/tabs/image_gallery/ui/quick_look_hooks.py", 408): (
         "set_source storeless setattr fallback (never a bare state write)"
     ),
 }
