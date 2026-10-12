@@ -39,8 +39,8 @@
 ### 合并模式 {#combined-mode}
 
 - **合并** — 当两半均可见且间距收敛到合并阈值时，它们会合并为一个镜头。
-- **内部分割** — 在镜头内按住鼠标右键拖动。
-- **单侧预览** — 在合并镜头内按住 `Space+Shift` 强制显示其中一侧。
+- **内部分割** — 在镜头内用鼠标右键拖动。
+- **单侧预览** — `Space+Shift` 在合并镜头内强制显示其中一侧。
 
 :::figure{side=block width=280}
 ![合并放大镜]({{img:workspace.image_compare.magnifier.combined_mode}})
