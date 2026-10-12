@@ -788,7 +788,7 @@
     },
     {
       "path": "src/tabs/image_gallery/ui/ask_ai.py",
-      "lines": 516,
+      "lines": 520,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=single-surface size=exempt reason=\"one scope-aware ask flyout — its fade/persist/menu/status state is one cohesive surface; splitting would scatter the flyout lifecycle\"",

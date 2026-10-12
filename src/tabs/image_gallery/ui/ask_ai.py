@@ -30,6 +30,10 @@ class AskAiFlyout(BaseFlyout):
     """Free-form question + AI result, anchored to a card or series header."""
 
     flyout_group = "gallery_ask_ai"
+    # Sequenced cycle: if another flyout is still fading out, wait for it to
+    # finish before this one opens (FlyoutManager deferral) — no overlapping
+    # fades.
+    wait_for_close_before_show = True
 
     submitted = Signal(str)
     closed = Signal()
