@@ -23,6 +23,17 @@ def _ensure_help_contributions() -> None:
     tabs = TabRegistry()
     tabs.discover()
     tabs.contribute_all_help()
+    # Phase 2: the export hub is plugin-owned — install it the way HelpPlugin
+    # does in production (duck-typed probe of the plugin instance).
+    from plugins.export.plugin import ExportPlugin
+    from plugins.help.tree import (
+        collect_help_plugin_contributions,
+        install_help_plugin_contributions,
+    )
+
+    install_help_plugin_contributions(
+        collect_help_plugin_contributions([ExportPlugin()])
+    )
 
 
 def test_help_tree_loads_and_aliases_resolve():
@@ -49,6 +60,20 @@ def test_help_tree_loads_and_aliases_resolve():
     assert "workspace.image_compare" in tree.require("workspace").children
     assert "workspace.multi_compare" in tree.require("workspace").children
     assert "workspace.image_compare.video" in tree.require("workspace.image_compare").children
+    # Phase 2: export hub moved IC tab → export plugin (node id changes,
+    # alias "export" preserved and retargeted to workspace.export).
+    assert "workspace.image_compare.export" not in tree.nodes
+    assert (
+        "workspace.image_compare.export"
+        not in tree.require("workspace.image_compare").children
+    )
+    assert "workspace.export" in tree.require("workspace").children
+    assert tree.resolve_alias("export") == "workspace.export"
+    export = tree.require(tree.resolve_alias("export"))
+    assert export.kind == "page"
+    assert export.body == "export.md"
+    assert export.body_root is not None
+    assert (export.body_root / "en" / export.body).is_file()
     platform_children = tree.require("platform").children
     assert "platform.workspace" in platform_children
     assert "platform.image_properties" in platform_children
@@ -283,7 +308,9 @@ def test_help_alias_slug_freeze_tab_contributions():
         # tabs/image_compare/help.py _ALIASES
         "comparison": "workspace.image_compare.comparison",
         "magnifier": "workspace.image_compare.magnifier",
-        "export": "workspace.image_compare.export",
+        # Phase 2: export hub moved to the export plugin (alias preserved,
+        # retargeted) — src/plugins/export/help.py _ALIASES
+        "export": "workspace.export",
         "video": "workspace.image_compare.video",
         # tabs/multi_compare/help.py _ALIASES
         "multi_compare": "workspace.multi_compare.overview",

@@ -309,3 +309,20 @@ src/resources/help` = 0; docs-link-graph test green.
 - 2026-10-12: plan written. Baseline green: help focused 33 passed,
   `check_help_figures.py` 0 missing. Awaiting execution (register in
   `docs/backlog/queue.yaml` when a wave starts).
+- 2026-10-12: Phase R done (`e2ff2b51`): recon rows for all six hubs in
+  `docs/dev/plugins/help-recon.md`, verified by 4 parallel research
+  workers, load-bearing claims spot-checked in code.
+- 2026-10-12: Phase 0 done (`1d3bafdd`): slug-freeze pins (host 9 +
+  tab 9 aliases + unknown-slug control), focused help set 36 passed.
+- 2026-10-12: Phase 1 done (`d8b2700d`): `HelpPluginContribution` +
+  immutable merge (shared scope) + duck-typed collection from
+  `HelpPlugin.initialize` (Plugin base has no `create_service`);
+  47 passed, tree output identical with zero contributions.
+- 2026-10-12: Phase 2 done (this wave): export hub IC tab → export
+  plugin (`workspace.export`, alias `export` preserved). Bodies ×4 +
+  asset byte-identical (diff empty). 88 passed
+  (plugin_contrib + tree + interpolate + browser + dialog_opens +
+  topic_search + find_action_palette), figures 0 missing. Accepted
+  deviations: `interpolate.discover_help_figure_map_paths` plugin glob +
+  `tree._plugin_help_asset_roots` fallback (filesystem-based, tree roots
+  win); slot ids frozen.

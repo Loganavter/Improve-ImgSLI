@@ -5,6 +5,9 @@
 
 Host map: ``resources/help/figures.json``.
 Tab maps: ``tabs/<tab>/resources/help/figures.json`` (merged by discovery).
+Plugin maps: ``plugins/<plugin>/resources/help/figures.json`` (merged by
+discovery — Phase 2 of the help per-owner refactor; owning package moves
+with the slot id frozen).
 
 See docs/dev/HELP_SYSTEM.md § Language keys and § Figure tokens.
 """
@@ -32,7 +35,7 @@ def host_help_figures_path() -> Path:
 
 
 def discover_help_figure_map_paths() -> tuple[Path, ...]:
-    """Host figures.json first, then each tab package's figures.json."""
+    """Host figures.json first, then each tab and plugin package's figures.json."""
     paths: list[Path] = []
     host = host_help_figures_path()
     if host.is_file():
@@ -40,6 +43,11 @@ def discover_help_figure_map_paths() -> tuple[Path, ...]:
     tabs = _src_root() / "tabs"
     if tabs.is_dir():
         for path in sorted(tabs.glob("*/resources/help/figures.json")):
+            if path.is_file():
+                paths.append(path)
+    plugins = _src_root() / "plugins"
+    if plugins.is_dir():
+        for path in sorted(plugins.glob("*/resources/help/figures.json")):
             if path.is_file():
                 paths.append(path)
     return tuple(paths)
