@@ -339,6 +339,9 @@ def test_help_alias_slug_freeze_tab_contributions():
         "multi_compare": "workspace.multi_compare.overview",
         "multi_compare_overview": "workspace.multi_compare.overview",
         "mc_overview": "workspace.multi_compare.overview",
+        "mc_layouts": "workspace.multi_compare.layouts",
+        "mc_viewing": "workspace.multi_compare.viewing",
+        "mc_export": "workspace.multi_compare.export",
         # tabs/session_picker/help.py _ALIASES
         "session_picker_overview": "workspace.session_picker",
         "sp_overview": "workspace.session_picker",

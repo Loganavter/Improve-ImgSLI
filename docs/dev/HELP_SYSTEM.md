@@ -409,6 +409,9 @@ real encyclopedia-level pages.
 | `workspace.export` | 1 | `workspace.image_compare.export.dialog` |
 | `workspace.image_compare.video` | 2 | `…video.timeline`, `…video.export_encode` |
 | `workspace.multi_compare.overview` | 1 | `workspace.multi_compare.overview.layouts` |
+| `workspace.multi_compare.layouts` | 0 | — |
+| `workspace.multi_compare.viewing` | 0 | — |
+| `workspace.multi_compare.export` | 0 | — |
 | `workspace.image_gallery.{overview,triage,quality,ask_ai}` | 0 | — |
 
 `platform.getting_started`, `platform.image_properties`, `platform.settings`,

@@ -41,6 +41,18 @@
         "overview": {
           "title": "Multi Compare Overview",
           "desc": "Layouts and drop zones"
+        },
+        "layouts": {
+          "title": "Multi Compare Layouts",
+          "desc": "Cells, gap splits, dividers, slot actions"
+        },
+        "viewing": {
+          "title": "Multi Compare Viewing",
+          "desc": "Focus mode, zoom and pan, labels, crop"
+        },
+        "export": {
+          "title": "Multi Compare Export",
+          "desc": "Quick save, save dialog, sessions"
         }
       }
     },
