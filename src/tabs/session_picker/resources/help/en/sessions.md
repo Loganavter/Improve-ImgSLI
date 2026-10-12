@@ -6,8 +6,8 @@ New-tab home page and project history.
 
 - **Session types** — session cards list every connected tab, for example {{tr:workspace.session_types.image_compare}}, {{tr:image_gallery.tab_name}}.
 - **Recent** — ``.imgsli`` projects. Click opens; right-click: open, properties, remove, reveal in folder.
-- **Pin** — drop a project file onto the panel to add it to the list.
-- **View** — grid or list, sort by date or name.
+- **Project file drop** — a project file dropped onto the panel pins to the list without opening.
+- **Sort and view** — grid or list, sort by date or name.
 - **Preview** — card thumbnail from ``preview.png`` in the project when present.
 
 ### Keyboard {#keyboard}
@@ -26,7 +26,7 @@ From {{tr:menu.find_action}} (`Ctrl+Shift+P`):
 - {{tr:action.workspace.new_image_compare}}
 - {{tr:action.workspace.new_multi_compare}}
 
-{{tr:action.workspace.open_session_picker}} returns you to the home page when you want to choose visually.
+{{tr:action.workspace.open_session_picker}} returns to the home page for a visual choice.
 
 ### Next topics {#next-topics}
 

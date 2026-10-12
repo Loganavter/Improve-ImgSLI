@@ -1,6 +1,6 @@
 ## Ask AI
 
-Questions cover one image, the selection, or a whole series; answers arrive on the card with an unverified-read badge.
+Questions cover one card, the selection, or a whole series; answers are advisory and carry an unverified-read badge.
 
 ### Ask about a selection {#ask-selection}
 
@@ -10,10 +10,11 @@ Questions cover one image, the selection, or a whole series; answers arrive on t
 
 ### Ask about a series {#ask-series}
 
-The series-header menu asks about every member at once. Scores from [Quality Metrics](help://gallery_quality) stay faster for sharpness or noise.
+The series-header menu asks about every member at once. Measured scores answer sharpness or noise without a model round-trip — see [Quality Metrics](help://gallery_quality).
 
 ### Setup and limits {#setup}
 
-- **Enable first** — {{tr:image_gallery.settings.ai_title}} in Settings; asking needs {{tr:image_gallery.settings.enable_ai}}, a key, and a model, otherwise {{tr:image_gallery.errors.not_configured}}.
-- **While thinking** — {{tr:image_gallery.ask_ai.busy}}; failures report {{tr:image_gallery.ask_ai.error}}.
+- **AI setup** — {{tr:image_gallery.settings.ai_title}} in Settings; asking needs {{tr:image_gallery.settings.enable_ai}}, a key, and a model, otherwise {{tr:image_gallery.errors.not_configured}}.
+- **Progress and errors** — {{tr:image_gallery.ask_ai.busy}}; failures report {{tr:image_gallery.ask_ai.error}}.
+- **Advisory only** — answers never change rank, selection, or stored state.
 - **Caching** — identical questions reuse the cached answer; new model or images ask again.

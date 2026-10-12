@@ -17,7 +17,7 @@ In report order:
 - **Typicality** — distance from series norm.
 - **Aesthetic** — learned taste score.
 
-Optional backends add LPIPS distance and BRISQUE naturalness; absent without the extra backend.
+Perceptual and naturalness rows — LPIPS and DISTS distances plus BRISQUE naturalness — appear only with the optional learned backend.
 
 ### Where scores appear {#where-scores}
 
@@ -27,7 +27,7 @@ Optional backends add LPIPS distance and BRISQUE naturalness; absent without the
 
 ### Modes {#modes}
 
-Each folder resolves to one mode: fidelity, camera, or batch-synthetic; the mode selects the artifact triple.
+Fidelity holds only while a source is set — picking the source is manual, never automatic. Without a source the folder resolves to camera or batch-synthetic. The mode selects the artifact triple.
 
 ### Reference source {#reference-source}
 

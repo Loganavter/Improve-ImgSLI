@@ -12,14 +12,13 @@ Series triage keeps one winner per series and moves rejects out of the folder.
 
 - **{{tr:image_gallery.card.make_best}}** — marks that image the winner of its series.
 - **{{tr:image_gallery.card.reject}}** — toggles the rejected flag on one image.
-- **Remove from grid** — rejected images leave the grid; files stay on disk.
-- **Click a card** — opens Quick Look.
+- **Grid removal** — `Space` / `Delete` take selected cards out of the grid; files stay on disk.
 
 ### Clean review {#clean-review}
 
 - **{{tr:image_gallery.action.clean_rejected}}** — {{tr:image_gallery.action.clean_rejected_desc}} (`_rejected/`); move-only, files stay.
-- **Review overlay** — previews the move before it runs.
-- **Undo** — restores cleaned files to the folder.
+- **Clean review** — previews the move before it runs.
+- **Undo** — restores moved files to the folder.
 
 ### Run triage again {#run-triage}
 
