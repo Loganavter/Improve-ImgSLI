@@ -338,3 +338,10 @@ src/resources/help` = 0; docs-link-graph test green.
   (`test_help_topic_search` dialog/dialog_ru, `test_settings_dialog_
   geometry`); `test_settings_gallery_ai_page_is_body` proven pre-existing
   on clean base `550a05c4`, left untouched.
+- 2026-10-12: Phase 4 done (onboarding + session_picker): getting_started
+  → onboarding plugin (id stays `platform.getting_started`, IC-pack key
+  ref kept by decision, ru quirk preserved); host workspace.md → session_picker
+  as `workspace.session_picker` PAGE (accepted deviation: pre-existing hub
+  of the same id flattened — hub+page cannot share the id, freeze asserts
+  pin page kind; overview reparented under workspace unchanged). Bodies ×8
+  + asset byte-identical, 91 passed, figures 0 missing.

@@ -3,12 +3,9 @@
   "root_id": "root",
   "aliases": {
     "about": "about",
-    "introduction": "platform.getting_started",
     "file_management": "platform.file_project",
     "view_navigation": "ui.canvas_navigation",
-    "hotkeys": "platform.hotkeys",
-    "session_picker": "platform.workspace",
-    "workspace_tabs": "platform.workspace"
+    "hotkeys": "platform.hotkeys"
   },
   "nodes": {
     "root": {
@@ -82,29 +79,9 @@
       "description": "Settings, files, shortcuts",
       "icon": "settings.svg",
       "children": [
-        "platform.getting_started",
-        "platform.workspace",
         "platform.hotkeys",
         "platform.file_project"
       ]
-    },
-    "platform.getting_started": {
-      "kind": "page",
-      "title_key": "help.page.getting_started.title",
-      "description_key": "help.page.getting_started.desc",
-      "title": "Getting Started",
-      "description": "Quick orientation",
-      "icon": "play.svg",
-      "body": "platform/getting_started.md"
-    },
-    "platform.workspace": {
-      "kind": "page",
-      "title_key": "help.page.workspace.title",
-      "description_key": "help.page.workspace.desc",
-      "title": "Workspace Tabs",
-      "description": "Session picker and tab strip",
-      "icon": "add.svg",
-      "body": "platform/workspace.md"
     },
     "platform.hotkeys": {
       "kind": "page",

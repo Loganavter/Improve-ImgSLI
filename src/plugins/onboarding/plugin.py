@@ -213,3 +213,15 @@ class OnboardingPlugin(Plugin):
                 event_bus.emit(SettingsUIModeChangedEvent(mode_key))
             except Exception:
                 logger.exception("Failed to emit UI mode after onboarding")
+
+    def build_help_plugin_contribution(self):  # type: ignore[no-untyped-def]
+        """Return the onboarding plugin's help fragment (duck-typed probe).
+
+        Discovered by ``plugins.help.tree.collect_help_plugin_contributions``
+        from the plugin registry (see ``HelpPlugin._install_plugin_contributions``).
+        """
+        from plugins.onboarding.help import (
+            build_help_plugin_contribution as _build_contribution,
+        )
+
+        return _build_contribution()

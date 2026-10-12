@@ -10,15 +10,21 @@ from tabs.session_picker.icons import Icon, get_icon
 
 _HELP_ROOT = Path(__file__).resolve().parent / "resources" / "help"
 
+# Phase 4: the host ``platform.workspace`` page moves here byte-identical as
+# ``workspace.session_picker`` (a page, not a hub — the slug-freeze asserts
+# pin the ``session_picker``/``workspace_tabs`` aliases to a page node, and
+# topic search content-matches the moved body). The pre-existing hub wrapper
+# of the same id (overview only) is flattened so the tasked id stays verbatim;
+# the overview page reparents directly under ``workspace`` unchanged.
 _NODES = {
     "workspace.session_picker": {
-        "kind": "hub",
-        "title_key": "workspace.session_types.session_picker",
-        "description_key": "session_picker.help.hub.desc",
-        "title": "Session Picker",
-        "description": "New-tab home page and recent projects",
+        "kind": "page",
+        "title_key": "help.page.workspace.title",
+        "description_key": "help.page.workspace.desc",
+        "title": "Workspace Tabs",
+        "description": "Session picker and tab strip",
         "icon": "add.svg",
-        "children": ["workspace.session_picker.overview"],
+        "body": "workspace.md",
     },
     "workspace.session_picker.overview": {
         "kind": "page",
@@ -32,6 +38,8 @@ _NODES = {
 }
 
 _ALIASES = {
+    "session_picker": "workspace.session_picker",
+    "workspace_tabs": "workspace.session_picker",
     "session_picker_overview": "workspace.session_picker.overview",
     "sp_overview": "workspace.session_picker.overview",
 }
@@ -53,7 +61,10 @@ def build_help_contribution():  # type: ignore[no-untyped-def]
     return HelpContribution(
         owner_tab="session_picker",
         attach_under="workspace",
-        child_ids=("workspace.session_picker",),
+        child_ids=(
+            "workspace.session_picker",
+            "workspace.session_picker.overview",
+        ),
         nodes=dict(_NODES),
         aliases=dict(_ALIASES),
         body_root=_HELP_ROOT,

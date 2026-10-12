@@ -40,16 +40,18 @@ def _ensure_help_contributions() -> None:
         install_help_plugin_contributions,
     )
 
-    # Phase 2+3: the export hub and the settings / image_properties pages
-    # are plugin-owned — install them the way HelpPlugin does in production
-    # (duck-typed probe of the plugin instances). NOTE: install REPLACES
-    # the plugin list, so all plugin instances are collected in one call.
+    # Phase 2+3+4: the export hub and the settings / image_properties /
+    # getting_started pages are plugin-owned — install them the way HelpPlugin
+    # does in production (duck-typed probe of the plugin instances). NOTE:
+    # install REPLACES the plugin list, so all plugin instances are collected
+    # in one call.
     from plugins.image_properties.plugin import ImagePropertiesPlugin
     from plugins.settings.plugin import SettingsPlugin
+    from plugins.onboarding.plugin import OnboardingPlugin
 
     install_help_plugin_contributions(
         collect_help_plugin_contributions(
-            [ExportPlugin(), SettingsPlugin(), ImagePropertiesPlugin()]
+            [ExportPlugin(), SettingsPlugin(), ImagePropertiesPlugin(), OnboardingPlugin()]
         )
     )
 
@@ -64,8 +66,8 @@ def test_help_tree_loads_and_aliases_resolve():
     assert tree.resolve_alias("video") == "workspace.image_compare.video"
     assert tree.resolve_alias("multi_compare") == "workspace.multi_compare.overview"
     assert tree.resolve_alias("image_properties") == "platform.image_properties"
-    assert tree.resolve_alias("session_picker") == "platform.workspace"
-    assert tree.resolve_alias("workspace_tabs") == "platform.workspace"
+    assert tree.resolve_alias("session_picker") == "workspace.session_picker"
+    assert tree.resolve_alias("workspace_tabs") == "workspace.session_picker"
     # Bare "workspace" is the Workspace hub, not the platform page.
     assert tree.resolve_alias("workspace") == "workspace"
     assert tree.require("root").children[0] == "about"
@@ -93,7 +95,7 @@ def test_help_tree_loads_and_aliases_resolve():
     assert export.body_root is not None
     assert (export.body_root / "en" / export.body).is_file()
     platform_children = tree.require("platform").children
-    assert "platform.workspace" in platform_children
+    assert "platform.getting_started" in platform_children
     assert "platform.image_properties" in platform_children
     node = tree.require(tree.resolve_alias("magnifier"))
     assert node.kind == "page"
@@ -110,12 +112,13 @@ def test_help_tree_loads_and_aliases_resolve():
     for lang in ("en", "ru", "zh", "pt_BR"):
         assert (props.body_root / lang / props.body).is_file()
     ws = tree.require(tree.resolve_alias("session_picker"))
-    assert ws.body == "platform/workspace.md"
+    assert ws.body == "workspace.md"
+    assert ws.body_root is not None
+    for lang in ("en", "ru", "zh", "pt_BR"):
+        assert (ws.body_root / lang / ws.body).is_file()
     root = host_help_root()
     for lang in ("en", "ru", "zh", "pt_BR"):
         assert (root / lang / about.body).is_file()
-    for lang in ("en", "ru"):
-        assert (root / lang / ws.body).is_file()
 
 
 def test_host_tree_excludes_tab_topics_until_merge():
@@ -305,8 +308,8 @@ def test_help_alias_slug_freeze_host():
         "settings": "platform.settings",
         "hotkeys": "platform.hotkeys",
         "image_properties": "platform.image_properties",
-        "session_picker": "platform.workspace",
-        "workspace_tabs": "platform.workspace",
+        "session_picker": "workspace.session_picker",
+        "workspace_tabs": "workspace.session_picker",
     }
     for alias, node_id in expected.items():
         assert tree.resolve_alias(alias) == node_id, alias
