@@ -5,7 +5,7 @@ The {{tr:image_gallery.tab_name}} shows one folder as cards grouped into near-du
 ### Open a folder {#open-folder}
 
 - **{{tr:image_gallery.pick_folder}}** — the toolbar button opens a folder picker. An empty tab shows {{tr:image_gallery.empty_state}}.
-- **Drag and drop** — dropping image files onto the tab loads them the same way; a single dropped file opens its parent folder.
+- **Drag and drop** — dropping image files onto the tab loads them the same way; a single dropped file opens just that image (the parent folder is never scanned).
 - **New session** — {{tr:action.workspace.new_image_gallery}} from {{tr:menu.find_action}} (`Ctrl+Shift+P`).
 
 ### Series {#series}

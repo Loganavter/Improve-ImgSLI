@@ -6,7 +6,11 @@ Manage sessions in the tab strip and open new compare types from the Session Pic
 
 - **Open** — {{tr:action.workspace.open_session_picker}} (or the add-tab control).
 - **Choose** — card for {{tr:workspace.session_types.image_compare}} or {{tr:workspace.session_types.multi_compare}}.
-- **Recent** — recent ``.imgsli`` projects (grid or list, sort by last opened or name). Click to reopen. Cards show a canvas preview from ``preview.png`` inside the project when available (older packages with ``preview.jpg`` still work; otherwise the session-type icon is used). Drop a project file onto the panel to pin it to the list without opening it. Right-click to remove / reveal in the folder.
+- **Recent** — recent ``.imgsli`` projects (grid or list, sort by last opened or name). Click to reopen. Cards whose file is gone stay listed but cannot be opened. Cards show a canvas preview from ``preview.png`` inside the project when available (older packages with ``preview.jpg`` still work; otherwise the session-type icon is used). Drop a project file onto the panel to pin it to the list without opening it. Right-click to open, remove / reveal in the folder, or check [Image Properties](help://image_properties).
+
+### Keyboard {#keyboard}
+
+Move between cards with the arrow keys and open the focused project with `Enter` — the full list lives under [Hotkeys](help://hotkeys#keyboard-navigation).
 
 :::figure{side=block width=420}
 ![Session Picker]({{img:platform.workspace.session_picker}})

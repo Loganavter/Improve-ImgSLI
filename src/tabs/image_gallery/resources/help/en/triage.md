@@ -27,4 +27,4 @@ Work through each series, keep one winner, reject the rest, then move the reject
 
 ### Set as source {#set-as-source}
 
-{{tr:image_gallery.action.set_as_source}} (also {{tr:image_gallery.card.set_as_source}} on cards and in Quick Look) picks the fidelity reference that later comparisons measure against. See [Quality Metrics](help://gallery_quality#reference-source).
+{{tr:image_gallery.action.set_as_source}} (also {{tr:image_gallery.card.set_as_source}} on cards and in Quick Look) picks the fidelity reference for later comparisons. See [Quality Metrics](help://gallery_quality#reference-source).

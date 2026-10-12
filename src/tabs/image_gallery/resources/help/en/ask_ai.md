@@ -14,6 +14,6 @@ The series-header menu asks about every member at once — useful for "which of 
 
 ### Setup and limits {#setup}
 
-- **Enable first** — {{tr:image_gallery.settings.ai_title}} in Settings holds the switch ({{tr:image_gallery.settings.enable_ai}}), base URL, key, and model. Without a key, asking shows {{tr:image_gallery.errors.not_configured}}.
+- **Enable first** — {{tr:image_gallery.settings.ai_title}} in Settings holds the switch ({{tr:image_gallery.settings.enable_ai}}), base URL, key, and model. Asking needs the switch on plus a key and a model, otherwise it shows {{tr:image_gallery.errors.not_configured}}.
 - **While thinking** — {{tr:image_gallery.ask_ai.busy}}; failures report {{tr:image_gallery.ask_ai.error}} instead of inventing an answer.
 - **Caching** — identical questions reuse the cached answer; switching the model or the images asks again.

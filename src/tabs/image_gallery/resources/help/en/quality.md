@@ -27,8 +27,8 @@ Optional backends add perceptual distance (LPIPS) and no-reference naturalness (
 
 ### Modes {#modes}
 
-Each folder resolves to one analysis mode, which decides which artifact triple the dots show: fidelity (an upscale or export batch with a source hub), camera (photographs), or batch-synthetic.
+Each folder resolves to one analysis mode, which decides which artifact triple the dots show: fidelity (after you pick a source — see below), camera (photographs), or batch-synthetic.
 
 ### Reference source {#reference-source}
 
-{{tr:image_gallery.action.set_as_source}} sets the fidelity reference; artifact and fidelity analysis re-run against it. Pick the cleanest original — typically the unprocessed export source — before judging the rest of the series. Scores and the [Triage and Review](help://gallery_triage#keep-best) winners update from the new reference.
+{{tr:image_gallery.action.set_as_source}} sets the fidelity reference; fidelity analysis re-runs against it. Pick the cleanest original — typically the unprocessed export source — before judging the rest of the series. Scores follow the new reference on the next analysis pass.
