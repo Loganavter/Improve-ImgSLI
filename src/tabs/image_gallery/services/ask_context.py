@@ -278,6 +278,7 @@ __all__ = [
     "ASK_SELECTION",
     "ASK_SERIES",
     "AskScope",
+    "answer_image_links",
     "build_ask_context",
     "deanonymize_answer",
 ]

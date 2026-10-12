@@ -1876,6 +1876,7 @@ class GalleryController:
         shown visibly, never replaced by fabricated text.
         """
         from tabs.image_gallery.services.ask_context import (
+            answer_image_links,
             build_ask_context,
             deanonymize_answer,
         )
@@ -1896,6 +1897,9 @@ class GalleryController:
         logger.debug(
             "[ask-ai] route backend=%s items=%d", backend, len(context.get("items") or [])
         )
+        # name → path, so a surface can turn the de-anonymized filenames in the
+        # answer into clickable links that open that image.
+        links = answer_image_links(context)
 
         settings = self._ai_settings_store.load()
         from tabs.image_gallery.services.vlm import set_vlm_max_edge
@@ -1922,7 +1926,7 @@ class GalleryController:
                 cached = replace(cached, cached=True)  # type: ignore[arg-type]
             except Exception:
                 pass
-            self._show_ask_ai_result(cached)
+            self._show_ask_ai_result(cached, links)
             return
 
         logger.debug(
@@ -1958,14 +1962,14 @@ class GalleryController:
         worker = GenericWorker(self._tracked(_run))
         gen = self._folder_gen
         worker.signals.result.connect(
-            lambda result, k=key, g=gen: self._on_ask_ai_ready(result, k, g)
+            lambda result, k=key, g=gen, lnk=links: self._on_ask_ai_ready(result, k, g, lnk)
         )
         worker.signals.error.connect(
             lambda err, g=gen: self._on_ask_ai_error(err, g)
         )
         self._pool_start(worker, None)
 
-    def _on_ask_ai_ready(self, result, key: str, gen: int | None = None) -> None:
+    def _on_ask_ai_ready(self, result, key: str, gen: int | None = None, links: dict | None = None) -> None:
         if gen is not None and not self._is_current_folder_gen(gen):
             logger.debug("[ask-ai] result dropped (stale folder gen)")
             return  # folder switched — late ask answer dropped
@@ -1983,7 +1987,7 @@ class GalleryController:
             self._ask_cache[key] = result
         except Exception:
             pass
-        self._show_ask_ai_result(result)
+        self._show_ask_ai_result(result, links)
 
     def _on_ask_ai_error(self, error_info, gen: int | None = None) -> None:
         if gen is not None and not self._is_current_folder_gen(gen):
@@ -2014,13 +2018,13 @@ class GalleryController:
         except Exception:
             pass
 
-    def _show_ask_ai_result(self, result) -> None:
+    def _show_ask_ai_result(self, result, links: dict | None = None) -> None:
         try:
             try:
                 model = self._ai_settings_store.load().model
             except Exception:
                 model = ""
-            self.widget.show_ask_ai_result(result, model=model)
+            self.widget.show_ask_ai_result(result, model=model, links=links)
         except Exception:
             pass
 

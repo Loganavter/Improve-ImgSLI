@@ -25,6 +25,34 @@ MIN_WIDTH_PX = 300
 #: own floor; the real minimum tracks the content layout (see _min_height).
 MIN_HEIGHT_PX = 160
 
+#: href scheme for an answer's image link. ``gallery-image:<percent-path>`` —
+#: the flyout emits ``imageActivated(path)`` when one is clicked.
+IMAGE_HREF_SCHEME = "gallery-image:"
+
+
+def _accent_hex() -> str:
+    """The app's blue accent as a hex string (theme token → light/dark fallback)."""
+    try:
+        from sli_ui_toolkit.managers import ThemeManager
+
+        from ui.theming import try_resolve_theme_color
+
+        color = try_resolve_theme_color(ThemeManager.get_instance(), "accent")
+        if color is not None:
+            from PySide6.QtGui import QColor
+
+            q = QColor(color) if not isinstance(color, QColor) else color
+            if q.isValid():
+                return q.name()
+    except Exception:
+        pass
+    try:
+        from tabs.image_gallery.ui.card.dots import _is_dark
+
+        return "#0096FF" if _is_dark() else "#0078D4"
+    except Exception:
+        return "#0096FF"
+
 
 class AskAiFlyout(BaseFlyout):
     """Free-form question + AI result, anchored to a card or series header."""
@@ -37,6 +65,9 @@ class AskAiFlyout(BaseFlyout):
 
     submitted = Signal(str)
     closed = Signal()
+    #: An answer image link was clicked — carries the item's path. The host
+    #: opens Quick Look for it.
+    imageActivated = Signal(str)
 
     def __init__(self, parent: QWidget) -> None:
         super().__init__(parent)
@@ -86,6 +117,29 @@ class AskAiFlyout(BaseFlyout):
             pass
         self._result = Label("", pixel_size=16, word_wrap=True, parent=self)
         self._result.setMinimumWidth(scaled_px(MIN_WIDTH_PX - 40))
+        # Selectable answer text + clickable image links: the answer names its
+        # variants, and each name opens that image (Quick Look). Links get the
+        # app accent + underline + a pointing-hand cursor from Qt's rich text.
+        self._last_text: str = ""
+        self._last_links: dict[str, str] = {}
+        try:
+            self._result.setTextInteractionFlags(
+                Qt.TextInteractionFlag.TextSelectableByMouse
+                | Qt.TextInteractionFlag.TextSelectableByKeyboard
+                | Qt.TextInteractionFlag.LinksAccessibleByMouse
+            )
+        except Exception:
+            pass
+        try:
+            self._result.linkActivated.connect(self._on_result_link)
+        except Exception:
+            pass
+        try:
+            from sli_ui_toolkit.managers import ThemeManager
+
+            ThemeManager.get_instance().theme_changed.connect(self._on_theme_changed_links)
+        except Exception:
+            pass
         self._status = Label("", pixel_size=16, parent=self)
 
         # Title, scope, then the question row (edit + images toggle).
@@ -240,6 +294,7 @@ class AskAiFlyout(BaseFlyout):
         title: str = "",
         initial_result=None,
         initial_error: str = "",
+        initial_links: dict | None = None,
     ) -> None:
         """Reset + show under *anchor*; focus lands in the question field.
 
@@ -260,6 +315,12 @@ class AskAiFlyout(BaseFlyout):
         self._edit.setText(str(getattr(self, "_saved_text", "") or ""))
         self._edit.setPlaceholderText(self._default_prompt)
         self._edit.setReadOnly(False)
+        self._last_text = ""
+        self._last_links = {}
+        try:
+            self._result.setTextFormat(Qt.TextFormat.PlainText)
+        except Exception:
+            pass
         self._result.setText("")
         self._status.setText("")
         # Restore the include-images toggle the user left on last time (saved
@@ -276,6 +337,7 @@ class AskAiFlyout(BaseFlyout):
                 getattr(initial_result, "text", "") or "",
                 backend=getattr(initial_result, "backend", "") or "",
                 cached=bool(getattr(initial_result, "cached", False)),
+                links=initial_links,
             )
         elif initial_error:
             self.show_error(initial_error)
@@ -475,7 +537,7 @@ class AskAiFlyout(BaseFlyout):
             except Exception:
                 pass
 
-    def show_result(self, text: str, *, model: str = "", backend: str = "", cached: bool = False) -> None:
+    def show_result(self, text: str, *, model: str = "", backend: str = "", cached: bool = False, links: dict | None = None) -> None:
         badge = self._read_badge
         # Show the currently-selected LLM (settings), never the raw backend
         # token ("vlm"/"text"); fall back to the backend only when no model is
@@ -485,12 +547,122 @@ class AskAiFlyout(BaseFlyout):
             badge += f" · {label}"
         if cached:
             badge += " · cached"
-        self._result.setText(str(text or ""))
+        self._last_text = str(text or "")
+        try:
+            self._last_links = {
+                str(k): str(v) for k, v in dict(links or {}).items() if k and v
+            }
+        except Exception:
+            self._last_links = {}
+        self._render_result()
         self._status.setText(badge)
         self._sync_row_visibility()
         self._relayout()
 
+    def _render_result(self) -> None:
+        """Paint the answer: rich text with image links, or plain text."""
+        text = str(getattr(self, "_last_text", "") or "")
+        links = dict(getattr(self, "_last_links", None) or {})
+        try:
+            if links:
+                self._result.setTextFormat(Qt.TextFormat.RichText)
+                self._result.setText(self._render_links(text, links))
+            else:
+                self._result.setTextFormat(Qt.TextFormat.PlainText)
+                self._result.setText(text)
+        except Exception:
+            try:
+                self._result.setText(text)
+            except Exception:
+                pass
+
+    def _render_links(self, text: str, links: dict) -> str:
+        """Escape the answer and wrap every item name in an accent link.
+
+        Names are matched longest-first, case-insensitively, over the HTML-escaped
+        text so an ``<a>`` is never nested inside another (one regex pass, not
+        sequential substitutions).
+        """
+        import html as _html
+        import re as _re
+        from urllib.parse import quote
+
+        raw = str(text or "")
+        escaped = _html.escape(raw)
+        names = [(str(k), str(v)) for k, v in dict(links or {}).items() if k and v]
+        if not raw or not names:
+            return escaped
+        lookup: dict[str, str] = {}
+        parts: list[str] = []
+        for name, path in names:
+            esc = _html.escape(name)
+            if not esc:
+                continue
+            lookup.setdefault(esc.lower(), path)
+            parts.append(_re.escape(esc))
+        if not parts:
+            return escaped
+        # Longest display name first so the alternation prefers the fuller match.
+        parts.sort(key=len, reverse=True)
+        try:
+            pattern = _re.compile("|".join(parts), _re.IGNORECASE)
+        except _re.error:
+            return escaped
+        accent = _accent_hex()
+
+        def _repl(match) -> str:
+            token = match.group(0)
+            path = lookup.get(token.lower())
+            if not path:
+                return token
+            href = f"{IMAGE_HREF_SCHEME}{quote(path)}"
+            return (
+                f'<a href="{href}" style="color:{accent}; '
+                f'text-decoration:underline;">{token}</a>'
+            )
+
+        return pattern.sub(_repl, escaped)
+
+    def _on_result_link(self, href: str) -> None:
+        """A link in the answer was activated → open that image (host side)."""
+        path = self._href_to_path(href)
+        if not path:
+            return
+        try:
+            self.imageActivated.emit(path)
+        except Exception:
+            pass
+
+    @staticmethod
+    def _href_to_path(href: str) -> str:
+        from urllib.parse import unquote
+
+        try:
+            s = str(href or "")
+        except Exception:
+            return ""
+        if not s.startswith(IMAGE_HREF_SCHEME):
+            return ""
+        try:
+            return unquote(s[len(IMAGE_HREF_SCHEME):])
+        except Exception:
+            return ""
+
+    def _on_theme_changed_links(self, *_args) -> None:
+        """Re-render links so the accent follows a live theme flip."""
+        try:
+            if getattr(self, "_last_links", None):
+                self._render_result()
+        except Exception:
+            pass
+
     def show_error(self, message: str) -> None:
+        self._last_text = ""
+        self._last_links = {}
+        try:
+            self._result.setTextFormat(Qt.TextFormat.PlainText)
+        except Exception:
+            pass
         self._result.setText("")
         self._status.setText(str(message or self._error_text))
         self._sync_row_visibility()
