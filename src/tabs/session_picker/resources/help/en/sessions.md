@@ -1,12 +1,13 @@
-## Workspace Tabs and Session Picker
+## Session Picker and Tabs
 
-Manage sessions in the tab strip and open new compare types from the Session Picker home page.
+New-tab home page and project history.
 
 ### Session Picker {#session-picker}
 
-- **Open** — {{tr:action.workspace.open_session_picker}} (or the add-tab control).
-- **Choose** — card for {{tr:workspace.session_types.image_compare}} or {{tr:workspace.session_types.multi_compare}}.
-- **Recent** — recent ``.imgsli`` projects (grid or list, sort by last opened or name). Click to reopen. Cards whose file is gone stay listed but cannot be opened. Cards show a canvas preview from ``preview.png`` inside the project when available (older packages with ``preview.jpg`` still work; otherwise the session-type icon is used). Drop a project file onto the panel to pin it to the list without opening it. Right-click to open, remove / reveal in the folder, or check [Image Properties](help://image_properties).
+- **Session types** — {{tr:workspace.session_types.image_compare}}, {{tr:workspace.session_types.multi_compare}}, {{tr:image_gallery.tab_name}}.
+- **Recent** — ``.imgsli`` projects. Click opens; right-click: open, properties, remove, reveal in folder.
+- **Pin** — drop a project file onto the panel to add it to the list.
+- **View** — grid or list, sort by date or name.
 
 ### Keyboard {#keyboard}
 
