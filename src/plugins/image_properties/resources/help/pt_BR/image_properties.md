@@ -1,31 +1,31 @@
-## Propriedades da Imagem
+## Propriedades da imagem
 
-Inspecione os metadados do arquivo e o contexto dentro do aplicativo para uma imagem carregada, sem sair da sessão.
+Metadados do arquivo e contexto no aplicativo para uma imagem carregada. O diálogo flutua sobre a sessão e nada muda nela.
 
 ### Abrir o diálogo {#open}
 
-Clique com o botão direito em uma linha de uma lista {{tr:workspace.session_types.image_compare}}, ou em um slot {{tr:workspace.session_types.multi_compare}}, e escolha {{tr:image_properties.title}}. O diálogo é somente leitura, exceto {{tr:image_properties.copy_all}}, que copia todas as linhas visíveis para a área de transferência.
+O item {{tr:image_compare.action.context_properties}} no menu de contexto de uma lista ou célula abre {{tr:image_properties.title}} para aquela imagem.
 
 :::figure{side=block width=280}
-![Diálogo de Propriedades da Imagem]({{img:platform.image_properties.open}})
+![Diálogo de propriedades da imagem]({{img:platform.image_properties.open}})
 {{tr:image_properties.title}}.
 :::
 
 ### Seções {#sections}
 
-As linhas são agrupadas em:
+As linhas vêm agrupadas em:
 
-- {{tr:image_properties.section_file}} — nome, caminho, tamanho no disco, formato, data de modificação
-- {{tr:image_properties.section_image}} — tamanho em pixels, proporção, orientação, canais, modo de cor / perfil quando disponível
-- {{tr:image_properties.section_app}} — como o aplicativo posiciona essa imagem na sessão atual (veja abaixo)
+- {{tr:image_properties.section_file}} — nome, caminho, tamanho em disco, formato, data de modificação
+- {{tr:image_properties.section_image}} — tamanho em pixels, proporção, orientação, canais, modo / perfil de cor quando houver
+- {{tr:image_properties.section_app}} — como o aplicativo posiciona a imagem na sessão atual (abaixo)
 - {{tr:image_properties.section_metadata}} — campos de câmera / EXIF quando o arquivo os fornece
 
-Valores ausentes ficam em branco; um erro de leitura do arquivo é exibido como {{tr:image_properties.read_error}}.
+Linhas sem valor são omitidas; um erro de leitura aparece como {{tr:image_properties.read_error}}.
 
 ### Contexto no aplicativo {#in-app}
 
-{{tr:image_properties.section_app}} depende do tipo de sessão. Uma sessão {{tr:workspace.session_types.image_compare}} pode mostrar {{tr:image_properties.side}} (esquerda / direita) e {{tr:image_properties.rating}}. Já {{tr:workspace.session_types.multi_compare}} pode mostrar {{tr:image_properties.position}} ou {{tr:image_properties.slot}} da célula. Essas linhas descrevem o estado da sessão, não o arquivo em disco.
+{{tr:image_properties.section_app}} depende do tipo de sessão. Um item {{tr:workspace.session_types.image_compare}} traz {{tr:image_properties.side}} (esquerda / direita) e {{tr:image_properties.rating}}. Uma célula {{tr:workspace.session_types.multi_compare}} traz {{tr:image_properties.position}}. Essas linhas descrevem o estado da sessão, não o arquivo em disco.
 
 ### Fechar {#close}
 
-{{tr:image_properties.close}} fecha o diálogo. Fechar não altera listas, avaliações ou o canvas.
+{{tr:image_properties.close}} dispensa o diálogo. {{tr:image_properties.copy_all}} copia todas as linhas visíveis para a área de transferência; linhas individuais têm a própria cópia.
