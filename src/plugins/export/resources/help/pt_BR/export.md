@@ -1,6 +1,6 @@
 ## Exportação
 
-Salve o que você vê como uma imagem estática. Gravação e o editor de vídeo têm o próprio tópico: [Editor de vídeo](help://video).
+Exportação do canvas atual como imagem estática. Captura de sessão e codificação de vídeo pertencem a outro tópico: [Editor de vídeo](help://video).
 
 ### Salvar uma imagem {#saving-an-image}
 
@@ -8,7 +8,7 @@ Salve o que você vê como uma imagem estática. Gravação e o editor de vídeo
 
 - **Caminho** — pasta de saída e nome do arquivo.
 - **Formato** — PNG, JPEG, WEBP, BMP, TIFF ou JXL.
-- **Pré-visualização** — o painel ao vivo mostra o resultado composto antes de gravar o arquivo.
+- **Pré-visualização** — o painel ao vivo mostra o resultado composto antes de gravar.
 
 :::figure{side=block width=630}
 ![Diálogo de exportação]({{img:workspace.image_compare.export.dialog}})
@@ -17,22 +17,22 @@ Salve o que você vê como uma imagem estática. Gravação e o editor de vídeo
 
 ### Resolução e qualidade {#resolution-and-quality}
 
-- **Tamanho** — largura e altura quando o tamanho da origem é conhecido; o bloqueio mantém a proporção.
-- **Qualidade** — {{tr:label.quality}} para formatos com perda.
+- **Tamanho** — campos de largura e altura com trava de proporção.
+- **Qualidade** — {{tr:label.quality}} aparece só para formatos com perda.
 - **PNG** — nível de compressão e {{tr:export.optimize_png}}.
-- **Preenchimento** — formatos transparentes só ativam {{tr:export.fill_background}} quando o canvas virtual ultrapassa `0..1` (overflow da lupa / uncrop). No canvas unitário a opção fica desligada.
+- **Preenchimento** — {{tr:export.fill_background}} pinta as margens quando o canvas virtual ultrapassa `0..1`. No canvas unitário a opção desliga.
 
 ### Metadados e favoritos {#metadata-and-favorites}
 
-- **Metadados** — {{tr:export.include_metadata}}; comentário opcional e {{tr:export.remember_by_default}}.
-- **Favoritos** — {{tr:misc.set_as_favorite}} / {{tr:tooltip.use_favorite}} após navegar por uma pasta.
-- **Rótulos** — quando {{tr:image_compare.action.file_names}} está ligado, os nomes podem ser gravados na imagem.
+- **Metadados** — {{tr:export.include_metadata}} fica ligado até ser desligado; o campo de comentário some junto. {{tr:export.remember_by_default}} guarda o texto do comentário para a próxima exportação.
+- **Favoritos** — {{tr:misc.set_as_favorite}} fixa a pasta atual; {{tr:tooltip.use_favorite}} a recupera.
+- **Rótulos** — quando {{tr:image_compare.action.file_names}} está ligado, os nomes saem na imagem como estado da sessão, não como dados do arquivo.
 
 ### Salvamento rápido {#quick-save}
 
-- **`Ctrl+S`** — {{tr:image_compare.action.quick_save}} com as últimas configurações de exportação.
-- **Bandeja** — acesso opcional ao último salvamento em [Configurações → Geral](help://settings#general).
+- **`Ctrl+S`** — {{tr:image_compare.action.quick_save}} repete as últimas configurações sem abrir o diálogo.
+- **Bandeja** — o menu do ícone na bandeja reabre o último arquivo e a última pasta salvos.
 
 ### Gravação e vídeo {#video-editor}
 
-Para capturar uma sessão e codificar vídeo ou GIF, veja [Editor de vídeo](help://video). Imagens estáticas e vídeo mantêm paridade visual com o canvas ao vivo (incluindo modos de diferença).
+Controles de gravação e codificação de vídeo/GIF ficam no [Editor de vídeo](help://video).
