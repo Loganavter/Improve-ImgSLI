@@ -1,6 +1,6 @@
 ## Lupa
 
-A lupa amostra uma região das imagens comparadas e mostra uma vista ampliada no canvas. Use-a quando a linha divisória sozinha não basta para um detalhe local.
+A lupa amostra uma região do par comparado e mostra uma vista ampliada no canvas — detalhe local além da linha divisória.
 
 ### Ativar {#enabling}
 
@@ -15,14 +15,14 @@ A lupa amostra uma região das imagens comparadas e mostra uma vista ampliada no
 
 ### Tamanho e movimento {#size-and-movement}
 
-- **Tamanho da lente** — {{tr:label.magnifier_size}}.
-- **Tamanho da captura** — {{tr:label.capture_size}} (quanto da área de origem é amostrada).
+- **Tamanho da lente** — {{tr:image_compare.label.magnifier_size}}.
+- **Tamanho da captura** — {{tr:image_compare.label.capture_size}} (quanto da área de origem é amostrada).
 - **Mover** — `WASD` com a lente ativa; `QE` ajusta o espaçamento quando as metades estão separadas.
 - **Velocidade** — no painel da lupa quando ele está visível.
 
 ### Congelar {#freeze}
 
-{{tr:image_compare.action.freeze}} (`F`) trava a lente na tela para você ajustá-la com o teclado enquanto o ponteiro fica livre.
+{{tr:image_compare.action.freeze}} (`F`) trava a lente na tela; o ajuste pelo teclado continua ativo enquanto o ponteiro fica livre.
 
 ### Divisor, guias e cores {#guides-and-colors}
 
@@ -38,9 +38,9 @@ A lupa amostra uma região das imagens comparadas e mostra uma vista ampliada no
 
 ### Modo combinado {#combined-mode}
 
-- **Mesclar** — quando as metades ficam próximas o bastante, ou um modo de diferença está ativo, tornam-se uma só lente.
+- **Mesclar** — quando ambas as metades seguem visíveis e o espaçamento fecha no limiar de combinação, tornam-se uma só lente.
 - **Divisão interna** — arraste com `RMB` dentro da lente.
-- **Pré-visualização de lado** — `Space+Shift` pode forçar a pré-visualização de um lado com a lente ativa.
+- **Pré-visualização de lado** — `Space+Shift` força um lado dentro da lente combinada.
 
 :::figure{side=block width=280}
 ![Lupa combinada]({{img:workspace.image_compare.magnifier.combined_mode}})
@@ -51,10 +51,8 @@ Para comparar o canvas inteiro sem a lente, veja [Comparação](help://compariso
 
 ### Configurações que afetam a lupa {#related-settings}
 
-Em [Configurações → Desempenho](help://settings#performance):
+Opções relacionadas à lupa em [Configurações](help://settings#image_compare):
 
 - Otimizar movimento da lupa e sua interpolação
 - Destaque de interseção entre lentes
 - Cor automática para novas instâncias
-
-Os limites do cache de exibição valem só para a pré-visualização principal — a lupa ainda amostra os originais.

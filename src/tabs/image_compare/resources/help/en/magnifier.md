@@ -1,6 +1,6 @@
 ## Magnifier
 
-The magnifier samples a region of the compared images and shows an enlarged view on the canvas. Use it when the split line alone is not enough for a local detail.
+The magnifier samples a region of the compared pair and shows an enlarged view on the canvas — local detail beyond the split line.
 
 ### Enabling {#enabling}
 
@@ -15,14 +15,14 @@ The magnifier samples a region of the compared images and shows an enlarged view
 
 ### Size and movement {#size-and-movement}
 
-- **Lens size** — {{tr:label.magnifier_size}}.
-- **Capture size** — {{tr:label.capture_size}} (how much source area is sampled).
+- **Lens size** — {{tr:image_compare.label.magnifier_size}}.
+- **Capture size** — {{tr:image_compare.label.capture_size}} (how much source area is sampled).
 - **Move** — `WASD` with the lens active; `QE` adjusts spacing when halves are separated.
 - **Speed** — {{tr:magnifier.move_speed}} on the magnifier panel when it is shown.
 
 ### Freeze {#freeze}
 
-{{tr:image_compare.action.freeze}} (`F`) locks the lens on screen so you can nudge it with the keyboard while the pointer stays free.
+{{tr:image_compare.action.freeze}} (`F`) locks the lens on screen; keyboard nudges keep working while the pointer stays free.
 
 ### Divider, guides, and colors {#guides-and-colors}
 
@@ -38,9 +38,9 @@ The magnifier samples a region of the compared images and shows an enlarged view
 
 ### Combined mode {#combined-mode}
 
-- **Merge** — when the halves sit close enough, or a difference mode is active, they become one lens.
+- **Merge** — when both halves stay visible and their spacing closes to the combine threshold, they become one lens.
 - **Internal split** — drag with `RMB` inside the lens.
-- **Side preview** — `Space+Shift` can force a side preview while the lens is active.
+- **Side preview** — `Space+Shift` forces one side inside the combined lens.
 
 :::figure{side=block width=280}
 ![Combined magnifier]({{img:workspace.image_compare.magnifier.combined_mode}})
@@ -51,10 +51,8 @@ For a full-canvas compare without the lens, see [Comparison](help://comparison).
 
 ### Settings that affect the magnifier {#related-settings}
 
-Under [Settings → Performance](help://settings#performance):
+Magnifier-related options live under [Settings](help://settings#image_compare):
 
 - Optimize magnifier movement and its interpolation
 - Intersection highlight between lenses
 - Auto-color for new instances
-
-Display-cache limits apply to the main preview only — the magnifier still samples originals.
