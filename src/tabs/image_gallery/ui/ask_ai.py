@@ -279,6 +279,18 @@ class AskAiFlyout(BaseFlyout):
             self._edit.setFocus()
         except Exception:
             pass
+        # A remembered manual size must land on the FIRST frame: pin the
+        # flyout's minimum to it so show_aligned()'s adjustSize() cannot
+        # collapse it to the min-content size for the fade-in and then jump
+        # once _relayout applies the saved size after the animation. The
+        # post-animation _relayout still re-applies it (and may grow for
+        # content); this only removes the min-size first frame.
+        saved_size = getattr(self, "_user_size", None)
+        if saved_size is not None:
+            try:
+                self.setMinimumSize(int(saved_size[0]), int(saved_size[1]))
+            except Exception:
+                pass
         try:
             self.show_aligned(
                 anchor,

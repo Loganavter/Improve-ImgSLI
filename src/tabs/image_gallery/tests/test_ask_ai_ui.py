@@ -120,6 +120,32 @@ def test_hide_persists_draft_and_images_toggle(qtbot):
     qtbot.waitUntil(lambda: not flyout.isVisible(), timeout=5000)
 
 
+def test_reopen_uses_saved_user_size_on_first_frame(qtbot):
+    """A remembered manual size must apply on the FIRST frame, not after the fade."""
+    anchor = QWidget()
+    qtbot.addWidget(anchor)
+    anchor.resize(200, 100)
+    anchor.show()
+    qtbot.waitExposed(anchor)
+
+    flyout = AskAiFlyout(anchor)
+    qtbot.addWidget(flyout)
+    flyout.open_for(anchor, scope_label="Selection", default_prompt="Q")
+    qtbot.waitUntil(lambda: flyout.isVisible(), timeout=5000)
+    flyout.apply_user_size(500, 420)
+    assert (flyout.width(), flyout.height()) == (500, 420)
+
+    flyout.hide()
+    qtbot.waitUntil(lambda: not flyout.isVisible(), timeout=5000)
+
+    flyout.open_for(anchor, scope_label="Selection", default_prompt="Q")
+    # Immediately (first frame, before any animation settles): saved size.
+    assert (flyout.width(), flyout.height()) == (500, 420)
+    qtbot.waitUntil(lambda: flyout.isVisible(), timeout=5000)
+    flyout.hide()
+    qtbot.waitUntil(lambda: not flyout.isVisible(), timeout=5000)
+
+
 def test_flyout_enter_keypress_event_submits(qtbot):
     """Enter is handled by the flyout itself (no Ask button)."""
     anchor = QWidget()
