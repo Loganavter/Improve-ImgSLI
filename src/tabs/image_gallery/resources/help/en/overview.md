@@ -1,33 +1,33 @@
 ## Gallery Overview
 
-The {{tr:image_gallery.tab_name}} shows one folder as cards grouped into near-duplicate series, so you can keep the best shots and send the finalists on to compare.
+The {{tr:image_gallery.tab_name}} shows one folder as cards grouped into near-duplicate series.
 
 ### Open a folder {#open-folder}
 
-- **{{tr:image_gallery.pick_folder}}** — the toolbar button opens a folder picker. An empty tab shows {{tr:image_gallery.empty_state}}.
-- **Drag and drop** — dropping image files onto the tab loads them the same way; a single dropped file opens just that image (the parent folder is never scanned).
+- **{{tr:image_gallery.pick_folder}}** — folder picker; empty tabs show {{tr:image_gallery.empty_state}}.
+- **Drag and drop** — file drops load the same way; single files open alone, folders unscanned.
 - **New session** — {{tr:action.workspace.new_image_gallery}} from {{tr:menu.find_action}} (`Ctrl+Shift+P`).
 
 ### Series {#series}
 
-After a folder loads, near-duplicates are grouped into series and the rest stays ungrouped.
+Loaded folders group near-duplicates into series.
 
-- **Series** — clusters of two or more near-duplicates; singletons stay under UNGROUPED.
-- **Regroup** — returning to a restored tab quietly regroups the pool, so sections come back instead of a flat pile.
-- **Manual overrides** — drag cards between series to pin them; resetting overrides regroups from scratch.
+- **Series** — two-plus near-duplicates; singletons stay UNGROUPED.
+- **Regroup** — restored tabs regroup the pool.
+- **Manual overrides** — drags between series pin cards; reset regroups.
 
 ### Grid, sort, and filter {#grid-sort-filter}
 
-- **{{tr:image_gallery.view}}** — {{tr:image_gallery.view_grid}} or {{tr:image_gallery.view_list}} from the toolbar view switch.
-- **{{tr:image_gallery.sort_by}}** — {{tr:image_gallery.sort_rank}}, {{tr:image_gallery.sort_name}}, {{tr:image_gallery.sort_date}}, or {{tr:image_gallery.sort_quality}} (unscored items sink to the end).
-- **Filter** — {{tr:image_gallery.filter_placeholder}} narrows the grid as you type; selection stays separate from filtering.
+- **{{tr:image_gallery.view}}** — {{tr:image_gallery.view_grid}} or {{tr:image_gallery.view_list}}.
+- **{{tr:image_gallery.sort_by}}** — {{tr:image_gallery.sort_rank}}, {{tr:image_gallery.sort_name}}, {{tr:image_gallery.sort_date}}, or {{tr:image_gallery.sort_quality}}; unscored items sink to the end.
+- **Filter** — {{tr:image_gallery.filter_placeholder}} narrows the grid; selection stays separate.
 
 ### Stats strip and compare {#stats-and-compare}
 
-The strip under the toolbar counts images, series, and redundants, with one-click triage actions (keep best, show all, clean, compare).
+The strip counts images, series, and redundants.
 
-- **Compare** — sends the best of each series plus ungrouped survivors (up to 12 files) to Image Compare.
-- **Click a card** — opens Quick Look, the large preview with metrics and artifact rows.
+- **Compare** — best per series plus ungrouped survivors, up to 12 files, to Image Compare.
+- **Click a card** — opens Quick Look with metrics and artifact rows.
 
 ### Next topics {#next-topics}
 

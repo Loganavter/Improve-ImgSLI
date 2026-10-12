@@ -1,18 +1,18 @@
 ## Multi Compare Export
 
-Save the grid as one image with quick save or the save dialog; sessions keep the layout for later.
+The grid saves as one image via quick save or the save dialog; sessions keep the layout.
 
 ### Save and export {#save-and-export}
 
-- **Quick save** (`Ctrl+S`) — {{tr:multi_compare.action.quick_save}}: saves immediately with the last export settings, no dialog.
-- **Save dialog** — {{tr:multi_compare.action.save}} (toolbar or {{tr:menu.find_action}}): opens the shared image export dialog; see [Export](help://export) for its options.
-- **Parity** — export matches the live grid (layout, labels, divider chrome), not a single {{tr:workspace.session_types.image_compare}} split.
-- **Crop** — per-slot crop is clipped before composition, so the saved image matches the cropped view.
-- **Empty slots** — cells with no loaded image are skipped, not rendered as blanks.
-- **Large exports** — saving far above the tested size asks for confirmation first.
+- **Quick save** (`Ctrl+S`) — {{tr:multi_compare.action.quick_save}} saves with last settings, no dialog.
+- **Save dialog** — {{tr:multi_compare.action.save}} via {{tr:menu.find_action}}; see [Export](help://export).
+- **Parity** — export matches the live grid, not a single {{tr:workspace.session_types.image_compare}} split.
+- **Crop** — per-slot crop clips before composition.
+- **Empty slots** — unloaded cells skip, never blank.
+- **Large exports** — far above tested size asks first.
 
 ### Sessions {#sessions}
 
-- **Payload (v1)** — a session stores slot paths and labels, the layout tree, focus, zoom and pan, plus the divider and label styling.
-- **Lazy reopen** — reopening restores paths first and decodes on demand; the visible session fills in, dormant ones fill on activation.
-- **Chrome seeding** — a new session starts with the last-used divider and label styling.
+- **Payload (v1)** — slot paths, labels, layout tree, focus, zoom, pan, styling.
+- **Lazy reopen** — paths first, decoding on demand; dormant fill on activation.
+- **Chrome seeding** — new sessions reuse last divider and label styling.

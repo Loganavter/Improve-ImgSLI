@@ -1,6 +1,6 @@
 ## Quality Metrics
 
-Every image is measured and scored 0–100, where a higher score is always better. Scores rank the gallery and feed the AI sort.
+Every image scores 0–100; higher is better.
 
 ### Measured metrics {#measured-metrics}
 
@@ -8,27 +8,27 @@ In report order:
 
 - **Sharpness** — detail resolving power.
 - **Exposure** — brightness balance.
-- **Highlight detail** — how much survives in the brights.
-- **Clean** — freedom from noise (lower noise measures score higher).
-- **White balance** — color-cast shift from neutral.
-- **Source match** — structural similarity to the source.
-- **Detail** — high-frequency detail gain versus the source.
-- **Color accuracy** — color shift from the source.
-- **Typicality** — distance from the series norm.
+- **Highlight detail** — survival in brights.
+- **Clean** — freedom from noise; lower noise scores higher.
+- **White balance** — cast shift from neutral.
+- **Source match** — structural similarity to source.
+- **Detail** — detail gain versus the source.
+- **Color accuracy** — color shift from source.
+- **Typicality** — distance from series norm.
 - **Aesthetic** — learned taste score.
 
-Optional backends add perceptual distance (LPIPS) and no-reference naturalness (BRISQUE); they need the extra quality backend installed and otherwise simply stay absent.
+Optional backends add LPIPS distance and BRISQUE naturalness; absent without the extra backend.
 
 ### Where scores appear {#where-scores}
 
-- **Quick Look** — per-image metric rows with the raw reading beside each score.
-- **Card dots** — one severity triple per mode: `clean`, `mild`, or `flagged` per artifact, so dots and the Quick Look report always agree.
-- **{{tr:image_gallery.sort_quality}}** — sorts AI quality first; images with no score yet sink to the end.
+- **Quick Look** — per-image metric rows with raw readings.
+- **Card dots** — one severity triple per mode: `clean`, `mild`, or `flagged` per artifact.
+- **{{tr:image_gallery.sort_quality}}** — AI quality first; unscored items sink to the end.
 
 ### Modes {#modes}
 
-Each folder resolves to one analysis mode, which decides which artifact triple the dots show: fidelity (after you pick a source — see below), camera (photographs), or batch-synthetic.
+Each folder resolves to one mode: fidelity, camera, or batch-synthetic; the mode selects the artifact triple.
 
 ### Reference source {#reference-source}
 
-{{tr:image_gallery.action.set_as_source}} sets the fidelity reference; fidelity analysis re-runs against it. Pick the cleanest original — typically the unprocessed export source — before judging the rest of the series. Scores follow the new reference on the next analysis pass.
+{{tr:image_gallery.action.set_as_source}} sets the fidelity reference; fidelity analysis re-runs against it. Scores follow the new reference on the next pass.
