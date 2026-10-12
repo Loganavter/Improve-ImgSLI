@@ -5,7 +5,8 @@
     "about": "about",
     "file_management": "platform.file_project",
     "view_navigation": "ui.canvas_navigation",
-    "hotkeys": "platform.hotkeys"
+    "hotkeys": "platform.hotkeys",
+    "tabs": "platform.tabs"
   },
   "nodes": {
     "root": {
@@ -80,7 +81,8 @@
       "icon": "settings.svg",
       "children": [
         "platform.hotkeys",
-        "platform.file_project"
+        "platform.file_project",
+        "platform.tabs"
       ]
     },
     "platform.hotkeys": {
@@ -100,6 +102,15 @@
       "description": "Load, paste, project files",
       "icon": "link.svg",
       "body": "platform/file_project.md"
+    },
+    "platform.tabs": {
+      "kind": "page",
+      "title_key": "help.page.tabs.title",
+      "description_key": "help.page.tabs.desc",
+      "title": "Tabs",
+      "description": "Tab strip and tab names",
+      "icon": "add.svg",
+      "body": "platform/tabs.md"
     }
   }
 }

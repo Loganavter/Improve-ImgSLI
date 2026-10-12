@@ -402,6 +402,7 @@ real encyclopedia-level pages.
 | `platform.image_properties` | 1 | `platform.image_properties.open` |
 | `platform.settings` | 0 | — |
 | `platform.hotkeys` | 0 | — |
+| `platform.tabs` | 0 | — |
 | `platform.file_project` | 1 | `platform.file_project.paste_overlay` |
 | `workspace.session_picker` | 1 | `platform.workspace.session_picker` |
 | `workspace.image_compare.comparison` | 2 | `…comparison.split_line`, `…comparison.difference_modes` |

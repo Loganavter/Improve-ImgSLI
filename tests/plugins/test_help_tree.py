@@ -97,6 +97,7 @@ def test_help_tree_loads_and_aliases_resolve():
     platform_children = tree.require("platform").children
     assert "platform.getting_started" in platform_children
     assert "platform.image_properties" in platform_children
+    assert "platform.tabs" in platform_children
     node = tree.require(tree.resolve_alias("magnifier"))
     assert node.kind == "page"
     assert node.body == "magnifier.md"
@@ -307,6 +308,7 @@ def test_help_alias_slug_freeze_host():
         "view_navigation": "ui.canvas_navigation",
         "settings": "platform.settings",
         "hotkeys": "platform.hotkeys",
+        "tabs": "platform.tabs",
         "image_properties": "platform.image_properties",
         "session_picker": "workspace.session_picker",
         "workspace_tabs": "workspace.session_picker",
