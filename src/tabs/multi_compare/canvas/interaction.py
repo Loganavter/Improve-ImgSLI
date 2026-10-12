@@ -39,12 +39,49 @@ _FIT_CACHE_MAX = 128
 
 
 def clamp_pan_values(
-    pan_x: float, pan_y: float, zoom: float
+    pan_x: float, pan_y: float, zoom: float,
+    fit_x: float = 1.0, fit_y: float = 1.0,
 ) -> tuple[float, float]:
-    """No-op: pan is unrestricted, matching image_compare's free pan/zoom
-    (``ui/canvas_infra/viewport/zoom.py``'s ``compute_zoom_pan_drag_transform``/
-    ``compute_zoom_wheel_transform``, neither of which clamps pan)."""
-    return pan_x, pan_y
+    """Cover-range clamp: the viewport never shows void past the image.
+
+    QuickLook parity (``tabs/image_gallery/ui/quick_look/preview_zoom.py``
+    ``clamp_pan``): at/below the cover point the fitted frame is fully in
+    view, so pan is forced to the origin (a leftover offset would fake a
+    shift). Zoomed in, each axis clamps to ``|pan| <= (cover-1)/(2*cover)``
+    with ``cover = fit*zoom`` -- the exact range where the shader's
+    ``uv = (slotUV-0.5)/fit/zoom+0.5-pan`` chain (``shaders/qrhi/
+    multi_compare.frag``, identical in the ``slot_array.frag`` tile-array
+    path) keeps the cell covered. Axes where the fitted frame is smaller
+    than the cell (``fit*zoom <= 1``, letterboxed) center instead (pan 0).
+
+    ``fit`` is the caller's reference-slot aspect-fit (picked leaf for
+    wheel/drag, focused slot for keys) -- the same ``fit`` the delta math
+    already uses. Fail-open: bad inputs return the inputs unchanged.
+    """
+    try:
+        px, py = float(pan_x), float(pan_y)
+        z = float(zoom)
+    except Exception:
+        return pan_x, pan_y
+    if not (z > 0):
+        return pan_x, pan_y
+    out = []
+    for p, fit in ((px, fit_x), (py, fit_y)):
+        try:
+            f = float(fit)
+        except Exception:
+            out.append(p)
+            continue
+        if not (f > 0):
+            out.append(p)
+            continue
+        cover = f * z
+        if cover <= 1.0:
+            out.append(0.0)
+        else:
+            r = (cover - 1.0) / (2.0 * cover)
+            out.append(max(-r, min(r, p)))
+    return out[0], out[1]
 
 
 def fit_scale_for(slot: CompareSlot, rect: QRect, source=None) -> tuple[float, float]:
@@ -301,13 +338,37 @@ def handle_wheel_event(widget, event: QWheelEvent) -> None:
             # visible even though zoom is back at its default.
             new_pan_x, new_pan_y = 0.0, 0.0
         else:
-            new_pan_x = widget.state.pan_x + (cell_u - 0.5) / max(fit_x, 1e-6) * (
-                1.0 / z2 - 1.0 / z1
+            # IC parity (``compute_zoom_wheel_transform`` clamps uv to
+            # [0,1]): the content point under the cursor stays put, but a
+            # cursor over letterbox (uv outside [0,1]) anchors to the image
+            # edge instead of void -- otherwise zooming in a corner pushes
+            # the image away and shows void. Unclamped this reduces to the
+            # old ``pan + (cell-0.5)/fit * (1/z2-1/z1)`` form.
+            uv_x = (
+                (cell_u - 0.5) / max(fit_x, 1e-6) / max(z1, 1e-6)
+                + 0.5
+                - widget.state.pan_x
             )
-            new_pan_y = widget.state.pan_y + (cell_v - 0.5) / max(fit_y, 1e-6) * (
-                1.0 / z2 - 1.0 / z1
+            uv_y = (
+                (cell_v - 0.5) / max(fit_y, 1e-6) / max(z1, 1e-6)
+                + 0.5
+                - widget.state.pan_y
             )
-            new_pan_x, new_pan_y = clamp_pan_values(new_pan_x, new_pan_y, z2)
+            uv_x = max(0.0, min(1.0, uv_x))
+            uv_y = max(0.0, min(1.0, uv_y))
+            new_pan_x = (
+                0.5
+                + (cell_u - 0.5) / max(fit_x, 1e-6) / max(z2, 1e-6)
+                - uv_x
+            )
+            new_pan_y = (
+                0.5
+                + (cell_v - 0.5) / max(fit_y, 1e-6) / max(z2, 1e-6)
+                - uv_y
+            )
+            new_pan_x, new_pan_y = clamp_pan_values(
+                new_pan_x, new_pan_y, z2, fit_x, fit_y
+            )
         # IC parity: the wheel path never kicks window activation (no per-tick
         # raise/activate round-trip). That storm is what Mutter answers with
         # busy-cursor feedback; the Wayland/Vulkan stale-canvas catch-up is
@@ -515,7 +576,8 @@ def handle_mouse_move_event(widget, event: QMouseEvent) -> None:
             max(fit_y, 1e-6) * z
         )
         new_pan_x, new_pan_y = clamp_pan_values(
-            new_pan_x, new_pan_y, widget.state.zoom
+            new_pan_x, new_pan_y, widget.state.zoom,
+            fit_x, fit_y,
         )
         widget._do_dispatch(actions.set_pan(new_pan_x, new_pan_y))
         event.accept()
@@ -614,6 +676,8 @@ def _apply_keyboard_pan(widget, key) -> None:
         widget.state.pan_x + dpan_x,
         widget.state.pan_y + dpan_y,
         z,
+        fit_x,
+        fit_y,
     )
     if new_x != widget.state.pan_x or new_y != widget.state.pan_y:
         widget._do_dispatch(actions.set_pan(new_x, new_y))
@@ -630,8 +694,13 @@ def _apply_keyboard_zoom(widget, key) -> None:
     else:
         # Anchor at the reference cell's center (cell_u == cell_v == 0.5), so
         # the center stays fixed and pan is unchanged — same result as wheel
-        # zoom over the middle of the cell.
-        new_pan_x, new_pan_y = widget.state.pan_x, widget.state.pan_y
+        # zoom over the middle of the cell. Zooming out can still leave the
+        # carried pan outside the new cover range, so clamp it (same
+        # reference fit as the keyboard-pan path).
+        _rect, (_fit_x, _fit_y) = _keyboard_pan_reference(widget)
+        new_pan_x, new_pan_y = clamp_pan_values(
+            widget.state.pan_x, widget.state.pan_y, z2, _fit_x, _fit_y
+        )
     widget._do_dispatch(actions.set_zoom(z2, new_pan_x, new_pan_y))
     # MC demand pyramid (keyboard zoom has no picked slot → fan out over
     # every slot holding a pixel store; same fail-open single call as wheel).
