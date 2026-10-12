@@ -1,50 +1,50 @@
 ## Configurações
 
-As configurações são agrupadas por tarefa — geral, aparência, desempenho e teclado — mais uma seção por aba de workspace que contribui com configurações ({{tr:workspace.session_types.image_compare}}, …). As seções das abas ficam sempre visíveis, independentemente da sessão ativa, então as opções da aba têm um lugar permanente.
+Comportamento do aplicativo em um diálogo: páginas nativas mais seções das abas do workspace (análise do comparador, credenciais de IA da galeria). Seções de abas ficam visíveis seja qual for a sessão ativa.
 
 ### Abrir Configurações {#open-settings}
 
-- **Menu / engrenagem** — {{tr:menu.settings}} ou a engrenagem na barra de ferramentas.
-- **Localizar Ação** — `Ctrl+Shift+P` ({{tr:menu.find_action}}) e digite o nome de uma página ({{tr:settings.general}}, {{tr:settings.appearance}}, {{tr:settings.keyboard}}, …).
-- **{{tr:action.palette.learn_more}}** — em uma ação de configurações leva direto aqui, com a âncora correspondente quando marcada.
+- **Menu** — {{tr:menu.settings}} (`Ctrl+,`).
+- **Barra de ferramentas** — o botão de engrenagem.
+- **Find Action** — `Ctrl+Shift+P` ({{tr:menu.find_action}}) e o nome da página ({{tr:settings.general}}, {{tr:settings.appearance}}, {{tr:settings.keyboard}}, …).
+- **{{tr:action.palette.learn_more}}** — numa ação de configuração abre a âncora correspondente quando marcada.
 
 ### Pesquisar nas Configurações {#search}
 
-Um campo de busca fica acima da barra lateral: digite qualquer coisa e as seções correspondentes são listadas — uma linha por seção, não importa quão profunda seja a correspondência (nome de controle, título de grupo, qualquer idioma). Ative uma linha para abrir essa seção: as opções correspondentes dentro dela se destacam (se várias coincidirem no mesmo nível, todas elas). A busca funciona em todos os idiomas da interface, como {{tr:menu.find_action}}. `Esc` limpa a busca e restaura a barra lateral completa. A barra lateral em si é redimensionável — arraste o divisor entre ela e o conteúdo das configurações.
+Um campo de pesquisa sobre a lista: resultados vêm uma linha por seção, não importa a profundidade do acerto (nome de controle, título de grupo, qualquer idioma). Ativar a linha abre a seção com as opções pulsando. `Esc` limpa a pesquisa e restaura a lista. A lista é redimensionável.
 
 ### Geral {#general}
 
 - **{{tr:label.language}}** — en / ru / zh / pt_BR.
-- **{{tr:label.theme}}** — automático / claro / escuro.
-- **{{tr:settings.system_notifications}}** — notificações do sistema operacional após salvar (o toast no app é separado).
+- **{{tr:label.theme}}** — auto / light / dark.
+- **{{tr:settings.system_notifications}}** — chave de notificações do SO.
 - **{{tr:settings.enable_debug_logging}}** — logs detalhados para depuração.
 
 ### Aparência {#interface}
 
-- **{{tr:settings.ui_mode}}** — {{tr:settings.ui_mode_beginner}} / {{tr:settings.ui_mode_advanced}} / {{tr:settings.ui_mode_expert}}.
-- **{{tr:settings.ui_font}}** — família embutida, do sistema, ou personalizada.
-- **{{tr:settings.ui_scale}}** — escala da interface independente da escala de exibição do sistema (0.5–2.5); aplica ao vivo — controles, fontes, ícones e espaçamento são redimensionados imediatamente.
-- **Limites** — limites relacionados, como o comprimento máximo do nome exibido.
+- **{{tr:settings.ui_mode}}** — botões {{tr:settings.ui_mode_beginner}} / {{tr:settings.ui_mode_advanced}} / {{tr:settings.ui_mode_expert}}; o padrão é iniciante, e a escolha da primeira abertura cai aqui.
+- **{{tr:settings.ui_font}}** — fonte nativa, padrão do sistema ou personalizada.
+- **{{tr:settings.ui_scale}}** — escala da interface (0,5–2,5).
+- **Limites** — tetos afins, como o comprimento máximo do nome exibido.
 
 ### Desempenho {#performance}
 
-- **{{tr:settings.render_backend_label}}** — depende da plataforma; pode exigir reinicialização.
+- **{{tr:settings.render_backend_label}}** — os backends oferecidos dependem da plataforma; trocar pode exigir reiniciar.
 
 ### {{tr:workspace.session_types.image_compare}} {#image_compare}
 
-As opções específicas de comparação de imagens ficam em sua própria seção, sempre disponível:
+Opções do comparador, sempre disponíveis:
 
-- **{{tr:settings.display_cache_resolution}}** — limita o tamanho da pré-visualização principal; a lupa e a exportação continuam usando os originais.
-- **Interpolação** — qualidade de reamostragem do zoom / lupa / laser.
-- **{{tr:settings.optimize_magnifier_movement}}** — movimento mais suave da lente (e seu método de interpolação, na mesma página).
-- **{{tr:settings.magnifier_intersection_highlight}}** — destaca onde as lentes se sobrepõem.
+- **Interpolação** — qualidade de reamostragem de zoom / lupa / laser.
+- **{{tr:settings.optimize_magnifier_movement}}** — movimento mais suave da lente, com o método de interpolação na mesma linha.
+- **{{tr:settings.magnifier_intersection_highlight}}** — destaque onde as lentes se cruzam.
 - **{{tr:settings.magnifier_auto_color_new_instances}}** — cores distintas para novas lentes.
-- **{{tr:settings.recording_fps}}** — taxa de captura para o [Editor de Vídeo](help://video).
+- **{{tr:image_compare.settings.recording_fps}}** — taxa de captura para o [Editor de vídeo](help://video).
 - **{{tr:settings.autocrop_black_borders_on_load}}** — corta bordas pretas ao carregar.
-- **{{tr:ui.psnr}} / {{tr:ui.ssim}} automáticos** — abaixo do canvas (desativado por padrão).
+- **Auto {{tr:ui.psnr}} / {{tr:ui.ssim}}** — leitura automática de métricas, desligada por padrão.
 
 ### Teclado {#keyboard}
 
-- **Remapear** — busque ações; combinações por grupo de plataforma / {{tr:workspace.session_types.image_compare}} / {{tr:workspace.session_types.multi_compare}}.
+- **Remapear** — atalhos por dono: platform / {{tr:workspace.session_types.image_compare}} / {{tr:workspace.session_types.multi_compare}}.
 - **Redefinir** — um atalho ou todos.
-- **Fixos** — `WASD` e `Space` do canvas permanecem fixos — veja [Atalhos de Teclado](help://hotkeys).
+- **Fixos** — `WASD` e `Space` no canvas ficam fixos — ver [Atalhos](help://hotkeys).
