@@ -32,14 +32,6 @@
         "title": "Buttons and Controls",
         "desc": "Toolbar and panel gestures"
       },
-      "lists": {
-        "title": "Lists and Panels",
-        "desc": "Image lists and menus"
-      },
-      "canvas_nav": {
-        "title": "Canvas Navigation",
-        "desc": "Zoom, pan, fit"
-      },
       "getting_started": {
         "title": "Getting Started",
         "desc": "Quick orientation"

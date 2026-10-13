@@ -32,14 +32,6 @@
         "title": "按钮与控件",
         "desc": "工具栏与弹出手势"
       },
-      "lists": {
-        "title": "列表与弹出",
-        "desc": "图像列表与菜单"
-      },
-      "canvas_nav": {
-        "title": "画布导航",
-        "desc": "缩放、平移、适配"
-      },
       "getting_started": {
         "title": "入门",
         "desc": "快速导览"

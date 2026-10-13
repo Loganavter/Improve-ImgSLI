@@ -22,7 +22,7 @@ Com a lupa desligada, arraste o divisor sobre o par.
 - **Rolagem no canvas** — avança a lista do lado sob o cursor (à esquerda de um divisor vertical / acima de um horizontal = lado 1; a outra metade = lado 2).
 - **`Shift` + rolagem** — avança as duas listas juntas.
 - **Pré-visualização de uma imagem** — a rolagem sempre avança o lado visível.
-- **Rolagem no menu suspenso** — avança aquele lado sem abrir o painel; veja [Listas e Painéis](help://ui.lists_flyouts#scroll-lists).
+- **Rolagem no menu suspenso** — avança aquele lado sem abrir o painel.
 - **Trocar** (`X`) — clique curto troca o par atual; pressionamento longo troca as duas listas.
 
 ### Rótulos {#labels-and-metrics}

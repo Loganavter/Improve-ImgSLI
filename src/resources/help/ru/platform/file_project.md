@@ -15,7 +15,7 @@
 
 ### Списки {#lists}
 
-- **{{tr:workspace.session_types.image_compare}}** — левый и правый списки независимы; менеджер списков — порядок, рейтинг, переименование, путь, свойства, удаление: [Списки и всплывающие панели](help://ui.lists_flyouts).
+- **{{tr:workspace.session_types.image_compare}}** — левый и правый списки независимы; менеджер списков — порядок, рейтинг, переименование, путь, свойства, удаление — см. [Сравнение](help://comparison).
 - **{{tr:workspace.session_types.multi_compare}}** — дроп по слотам вместо двух списков: [{{tr:workspace.session_types.multi_compare}}](help://multi_compare).
 
 ### Проекты {#projects}

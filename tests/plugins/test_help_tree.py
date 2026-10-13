@@ -305,7 +305,6 @@ def test_help_alias_slug_freeze_host():
         "about": "about",
         "introduction": "platform.getting_started",
         "file_management": "platform.file_project",
-        "view_navigation": "ui.canvas_navigation",
         "settings": "platform.settings",
         "hotkeys": "platform.hotkeys",
         "tabs": "platform.tabs",

@@ -15,7 +15,7 @@ Load images into session lists, paste from the clipboard, and open or save porta
 
 ### Lists {#lists}
 
-- **{{tr:workspace.session_types.image_compare}}** — left and right lists are independent; the list-manager panel covers reorder, rate, rename, path, properties, remove — [Lists and Panels](help://ui.lists_flyouts).
+- **{{tr:workspace.session_types.image_compare}}** — left and right lists are independent; the list-manager panel covers reorder, rate, rename, path, properties, remove — see [Comparison](help://comparison).
 - **{{tr:workspace.session_types.multi_compare}}** — per-slot drops instead of dual lists — [{{tr:workspace.session_types.multi_compare}}](help://multi_compare).
 
 Each session has its own tab; see [Tabs](help://tabs).

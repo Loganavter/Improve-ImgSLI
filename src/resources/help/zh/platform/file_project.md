@@ -15,7 +15,7 @@
 
 ### 列表 {#lists}
 
-- **{{tr:workspace.session_types.image_compare}}** — 左右列表互相独立；列表管理面板可用于重新排序、评分、重命名、查看路径、属性与删除——见[列表与面板](help://ui.lists_flyouts)。
+- **{{tr:workspace.session_types.image_compare}}** — 左右列表互相独立；列表管理面板可用于重新排序、评分、重命名、查看路径、属性与删除——见[对比](help://comparison)。
 - **{{tr:workspace.session_types.multi_compare}}** — 使用逐槽位拖放，而非双列表——见 [{{tr:workspace.session_types.multi_compare}}](help://multi_compare)。
 
 ### 项目 {#projects}

@@ -32,14 +32,6 @@
         "title": "Botões e controles",
         "desc": "Barra de ferramentas e gestos de painel"
       },
-      "lists": {
-        "title": "Listas e painéis",
-        "desc": "Listas de imagens e menus"
-      },
-      "canvas_nav": {
-        "title": "Navegação no canvas",
-        "desc": "Zoom, pan, ajustar"
-      },
       "getting_started": {
         "title": "Primeiros passos",
         "desc": "Orientação rápida"

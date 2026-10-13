@@ -4,7 +4,7 @@ Viewing covers focus mode, shared zoom and pan, labels, and per-slot crop.
 
 ### Focus mode {#focus-mode}
 
-A single click on a slot focuses it. A press that turns into a drag moves the slot instead. A click on the dimmed area or `Esc` leaves focus. Zoom and pan work inside focus; see [Canvas Navigation](help://view_navigation).
+A single click on a slot focuses it. A press that turns into a drag moves the slot instead. A click on the dimmed area or `Esc` leaves focus. Zoom and pan work inside focus.
 
 ### Zoom and pan {#zoom-and-pan}
 

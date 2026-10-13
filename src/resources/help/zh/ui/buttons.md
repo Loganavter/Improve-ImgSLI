@@ -62,7 +62,7 @@
 
 ### 产品示例 {#examples}
 
-- **{{tr:workspace.session_types.image_compare}}** — 在更紧凑的模式下，可在同一控件上滚动调整分割线宽度或放大镜大小；列表按钮支持长按清空 / 交换。详情见[对比](help://comparison)；列表见[列表与面板](help://ui.lists_flyouts)。
+- **{{tr:workspace.session_types.image_compare}}** — 在更紧凑的模式下，可在同一控件上滚动调整分割线宽度或放大镜大小；列表按钮支持长按清空 / 交换。详情见[对比](help://comparison)。
 - **{{tr:workspace.session_types.multi_compare}}** — 网格线粗细 / 可见性在 `D` 上。详情见[多图对比](help://multi_compare)。
 
 ### 按名称查找控件 {#find-action}

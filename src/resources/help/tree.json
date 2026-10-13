@@ -4,7 +4,6 @@
   "aliases": {
     "about": "about",
     "file_management": "platform.file_project",
-    "view_navigation": "ui.canvas_navigation",
     "hotkeys": "platform.hotkeys",
     "tabs": "platform.tabs"
   },
@@ -43,7 +42,7 @@
       "title": "UI",
       "description": "Controls, lists, canvas chrome",
       "icon": "text-manipulator.svg",
-      "children": ["ui.buttons", "ui.lists_flyouts", "ui.canvas_navigation"]
+      "children": ["ui.buttons"]
     },
     "ui.buttons": {
       "kind": "page",
@@ -53,24 +52,6 @@
       "description": "Toolbar and panel gestures",
       "icon": "check.svg",
       "body": "ui/buttons.md"
-    },
-    "ui.lists_flyouts": {
-      "kind": "page",
-      "title_key": "help.page.lists.title",
-      "description_key": "help.page.lists.desc",
-      "title": "Lists and Panels",
-      "description": "Image lists and menus",
-      "icon": "add.svg",
-      "body": "ui/lists_flyouts.md"
-    },
-    "ui.canvas_navigation": {
-      "kind": "page",
-      "title_key": "help.page.canvas_nav.title",
-      "description_key": "help.page.canvas_nav.desc",
-      "title": "Canvas Navigation",
-      "description": "Zoom, pan, fit",
-      "icon": "sync.svg",
-      "body": "ui/canvas_navigation.md"
     },
     "platform": {
       "kind": "hub",

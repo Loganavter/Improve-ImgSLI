@@ -22,7 +22,7 @@ With the magnifier off, drag the divider across the pair.
 - **Canvas wheel** — steps the list on the side under the cursor (left of a vertical split / above a horizontal split = side 1; the other half = side 2).
 - **`Shift` + wheel** — steps both lists together.
 - **Single-image preview** — wheel always steps the visible side.
-- **Dropdown wheel** — steps that side without opening the panel; see [Lists and Panels](help://ui.lists_flyouts#scroll-lists).
+- **Dropdown wheel** — steps that side without opening the panel.
 - **Swap** (`X`) — short click exchanges the current pair; long-press swaps both lists.
 
 ### Labels {#labels-and-metrics}

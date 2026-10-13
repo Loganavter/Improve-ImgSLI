@@ -334,7 +334,7 @@ already work:
 | Figure left / center / right | `side=left\|center\|right\|block` (v1+) |
 | Glossary dotted links | Normal `help://` / http(s) links |
 
-Style reference: `ui.lists_flyouts` (definition bullets + `center` / `block`
+Style reference: `comparison` (definition bullets + `block`
 figures).
 
 ---
@@ -351,8 +351,8 @@ Add `:::figure` only when a screenshot answers a question that prose cannot
 | Budget | When | Placement | Examples (current tree) |
 |---|---|---|---|
 | **0 — none** | Chord inventories, settings inventories, short orientation, anything fully named by UI strings | — | `platform.hotkeys`, `platform.settings` |
-| **1 — one** | One primary surface or spatial idea for the whole page | After the intro paragraph (or under the one `###` that needs it); prefer `side=block` | `getting_started` (session picker), `file_project` (paste overlay), `export` (dialog), `multi_compare.overview` (`#layouts`), `canvas_navigation` (`#zoom`) |
-| **2 — several** | Page teaches **distinct visual states** that look different | One figure **next to the `###` section** it illustrates — not a stack under the title | `comparison` (`#split-line` + `#difference-modes`), `magnifier` (`#enabling` + `#combined-mode`), `video` (`#timeline` + `#export-encode`), `lists_flyouts` (`#list-manager` + `#toolbar-flyouts`) |
+| **1 — one** | One primary surface or spatial idea for the whole page | After the intro paragraph (or under the one `###` that needs it); prefer `side=block` | `getting_started` (session picker), `file_project` (paste overlay), `export` (dialog), `multi_compare.overview` (`#layouts`) |
+| **2 — several** | Page teaches **distinct visual states** that look different | One figure **next to the `###` section** it illustrates — not a stack under the title | `comparison` (`#split-line` + `#difference-modes`), `magnifier` (`#enabling` + `#combined-mode`), `video` (`#timeline` + `#export-encode`) |
 | **3+ — exception** | Several modes / gestures that each *look* different and must not share one collage | One figure per mode or gesture section | `ui.buttons` (toolbar + three modes + long-press) |
 
 More than two figures on one page is uncommon; a third is allowed only for
@@ -396,8 +396,6 @@ real encyclopedia-level pages.
 |---|:-:|---|
 | `about` | 0 | — |
 | `ui.buttons` | 5 | `ui.buttons.toolbar`, `…mode_beginner`, `…mode_advanced`, `…mode_expert`, `…long_press` |
-| `ui.lists_flyouts` | 2 | `ui.lists_flyouts.list_manager`, `ui.lists_flyouts.toolbar_flyouts` |
-| `ui.canvas_navigation` | 1 | `ui.canvas_navigation.zoom` |
 | `platform.getting_started` | 0 | — |
 | `platform.image_properties` | 1 | `platform.image_properties.open` |
 | `platform.settings` | 0 | — |
