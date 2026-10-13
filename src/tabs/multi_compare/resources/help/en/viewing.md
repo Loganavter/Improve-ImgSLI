@@ -24,4 +24,4 @@ The divider settings live in [Multi Compare Layouts](help://workspace.multi_comp
 
 ### Slot crop {#slot-crop}
 
-Crop trims the black borders off a slot's image. Each slot is set to on, off, or to follow the global auto-crop setting: a slot that follows it changes with that setting, while a slot set to on or off keeps its choice. An empty slot has nothing to crop. The crop shows in the grid and in saved images.
+Crop trims the black borders off a slot's image. **Crop** in a slot's right-click menu turns it on or off for that one slot; until toggled, a slot follows **Auto-crop black borders on load** in [Settings](help://platform.settings#image_compare). An empty slot has nothing to crop. The crop shows in the grid and in saved images.
