@@ -20,6 +20,7 @@ from plugins.settings.typography import (
 
 from core.constants import AppConstants
 from plugins.settings.search import SearchIndex, group
+from shared.video_policy import FpsPolicy, clamp_fps
 
 INTERACTIVE = group(
     "settings.interactive_optimization",
@@ -213,11 +214,11 @@ def _build_video_group(dialog, layout, p):
     # Bare "FPS" — universal abbreviation, no translation needed (and the
     # spin keeps the Find Action member key for discoverability).
     dialog.lbl_fps = settings_body_label("FPS:")
-    dialog.spin_fps = SpinBox(default_value=60)
+    dialog.spin_fps = SpinBox(default_value=FpsPolicy.DEFAULT)
     apply_settings_body(dialog.spin_fps)
     VIDEO.tag_member(dialog.spin_fps, "image_compare.settings.recording_fps")
-    dialog.spin_fps.setRange(10, 144)
-    dialog.spin_fps.setValue(p.current_video_fps)
+    dialog.spin_fps.setRange(FpsPolicy.MIN, FpsPolicy.MAX)
+    dialog.spin_fps.setValue(clamp_fps(p.current_video_fps))
     dialog.spin_fps.setFixedWidth(scaled_px(100))
     dialog.spin_fps.setAlignment(Qt.AlignmentFlag.AlignCenter)
     video_layout.addWidget(dialog.lbl_fps)

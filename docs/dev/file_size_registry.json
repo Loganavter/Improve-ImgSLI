@@ -173,7 +173,7 @@
     },
     {
       "path": "src/plugins/settings/dialog.py",
-      "lines": 658,
+      "lines": 659,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=qdialog-wiring reason=\"one Settings QDialog — 6 pages + load/save\"",
@@ -184,7 +184,7 @@
     },
     {
       "path": "src/plugins/settings/manager.py",
-      "lines": 508,
+      "lines": 511,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine reason=\"single settings manager — load/save + change propagation\"",

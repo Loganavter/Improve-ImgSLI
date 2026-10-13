@@ -21,6 +21,7 @@ from plugins.settings.registry import (
     get_settings_registry,
 )
 from plugins.settings.models import SettingsDialogData
+from shared.video_policy import FpsPolicy, clamp_fps
 from resources.translations import tr as app_tr
 from sli_ui_toolkit.theme import ThemeManager
 from sli_ui_toolkit.widgets import CustomGroupWidget
@@ -66,7 +67,7 @@ class SettingsDialog(ThemedDialog):
         auto_calculate_psnr: bool = False,
         auto_calculate_ssim: bool = False,
         auto_crop_black_borders: bool = True,
-        current_video_fps: int = 60,
+        current_video_fps: int = FpsPolicy.DEFAULT,
         rhi_backend: str = "default",
         store=None,
         active_tab: str | None = None,
@@ -453,7 +454,7 @@ class SettingsDialog(ThemedDialog):
                 else self.context.auto_crop_black_borders
             ),
             ui_mode=ui_mode,
-            video_recording_fps=_val("spin_fps", ctx.current_video_fps),
+            video_recording_fps=clamp_fps(_val("spin_fps", ctx.current_video_fps)),
             rhi_backend=(_val("combo_rhi_backend", ctx.rhi_backend) or "default"),
             keyboard_overrides=dict(
                 getattr(self, "_keyboard_overrides", None)
