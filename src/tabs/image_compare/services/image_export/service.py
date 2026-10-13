@@ -9,7 +9,7 @@ from PIL import Image
 
 from core.store import Store
 from tabs.image_compare.plugins.video_editor.services.video_export_models import VideoRenderRequest
-from shared.image_processing.pil_save import write_pil_image_cancelable
+from shared.image_processing.pil_save import SAVE_CANCELED_MESSAGE, write_pil_image_cancelable
 from shared.image_processing.progressive_loader import JXL_SUPPORTED
 from shared.image_processing.resize import resize_images_processor
 from engine.cache import TargetSurfaceSpec, get_effective_export_interpolation_method
@@ -74,7 +74,7 @@ class ExportService:
         Экспортирует изображение сравнения в файл.
         """
         if cancel_event and cancel_event.is_set():
-            raise RuntimeError("Export canceled by user")
+            raise RuntimeError(SAVE_CANCELED_MESSAGE)
 
         if not original_image1 or not original_image2:
             raise ValueError("Full resolution images are not available for saving.")
@@ -202,7 +202,7 @@ class ExportService:
             raise ValueError("Failed to create the base image for saving.")
 
         if cancel_event and cancel_event.is_set():
-            raise RuntimeError("Export canceled by user")
+            raise RuntimeError(SAVE_CANCELED_MESSAGE)
 
         # Encode/write is usually the long stretch — reserve most of the bar for it.
         if progress_callback:
@@ -279,7 +279,7 @@ class ExportService:
             )
 
         if cancel_event and cancel_event.is_set():
-            raise RuntimeError("Export canceled by user")
+            raise RuntimeError(SAVE_CANCELED_MESSAGE)
 
         try:
             if pil_format == "JXL" and JXL_SUPPORTED:

@@ -28,7 +28,7 @@ import os
 import threading
 from typing import Any, Callable
 
-from shared.image_processing.pil_save import SAVE_CANCELED_MESSAGE
+from shared.image_processing.export_encoding import is_cancel_error
 
 from tabs.save_toast import SaveToastMixin
 
@@ -308,7 +308,7 @@ class SaveFlowCoordinator(SaveToastMixin):
                     out_path = sync_fn()
                 except RuntimeError as exc:
                     # mirrors _save_worker_task cancel swallow (SAVE_CANCELED_MESSAGE / legacy export message)
-                    if str(exc) in (SAVE_CANCELED_MESSAGE, "Export canceled by user"):
+                    if is_cancel_error(exc):
                         self._update_toast_safe(
                             save_task_id,
                             self._tr("msg.saving_canceled", "Canceled"),
