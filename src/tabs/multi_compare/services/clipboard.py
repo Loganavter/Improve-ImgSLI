@@ -1,19 +1,18 @@
-"""Clipboard paste for multi_compare — cursor DnD placement like file drop."""
+"""Clipboard paste for multi_compare — cursor DnD placement like file drop.
+
+Collect/split/download lives in ``shared.clipboard_paste``
+(``ClipboardPasteCoordinator``); this service only wires the coordinator
+→ ``controller.begin_paste_placement``.
+"""
 
 from __future__ import annotations
 
 import logging
-import os
 from pathlib import Path
 
 from sli_ui_toolkit.i18n import tr
-from sli_ui_toolkit.workers import GenericWorker
 
-from shared.clipboard_images import (
-    collect_clipboard_image_items,
-    download_images_from_urls,
-)
-from shared.clipboard_paste import split_clipboard_items
+from shared.clipboard_paste import ClipboardPasteCoordinator
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -34,8 +33,12 @@ class ClipboardService:
 
     def paste_image_from_clipboard(self) -> bool:
         try:
-            items = collect_clipboard_image_items()
-            if not items:
+            thread_pool = getattr(self.main_controller, "thread_pool", None)
+
+            def on_ready(paths: list[Path]) -> None:
+                self.controller.begin_paste_placement(paths)
+
+            def on_empty() -> None:
                 if self.main_controller:
                     self.main_controller.error_occurred.emit(
                         tr(
@@ -43,15 +46,8 @@ class ClipboardService:
                             self.store.settings.current_language,
                         )
                     )
-                return False
 
-            local_files, urls = split_clipboard_items(items)
-
-            if not local_files and not urls:
-                return False
-
-            if urls:
-                self._pending_local = [Path(p) for p in local_files]
+            def on_download_started(urls: list[str]) -> None:
                 if self.main_controller:
                     self.main_controller.error_occurred.emit(
                         tr(
@@ -59,25 +55,14 @@ class ClipboardService:
                             self.store.settings.current_language,
                         )
                     )
-                worker = GenericWorker(download_images_from_urls, urls, 15)
-                worker.signals.result.connect(self._on_urls_downloaded)
-                if self.main_controller and self.main_controller.thread_pool:
-                    self.main_controller.thread_pool.start(worker)
-                else:
-                    paths = download_images_from_urls(urls, 15)
-                    self._on_urls_downloaded(paths)
-                return True
 
-            self.controller.begin_paste_placement([Path(p) for p in local_files])
-            return True
+            coord = ClipboardPasteCoordinator(
+                thread_pool=thread_pool,
+                on_ready=on_ready,
+                on_empty=on_empty,
+                on_download_started=on_download_started,
+            )
+            return coord.run()
         except Exception as e:
             logger.error("Error in multi_compare paste: %s", e)
             return False
-
-    def _on_urls_downloaded(self, paths: list[str] | None) -> None:
-        pending = getattr(self, "_pending_local", []) or []
-        self._pending_local = []
-        downloaded = [Path(p) for p in (paths or []) if os.path.exists(p)]
-        combined = list(pending) + downloaded
-        if combined:
-            self.controller.begin_paste_placement(combined)
