@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
+from shared.video_policy import FpsPolicy
+
 
 @dataclass(slots=True)
 class SettingsDialogContext:
@@ -28,7 +30,7 @@ class SettingsDialogContext:
     auto_calculate_psnr: bool = False
     auto_calculate_ssim: bool = False
     auto_crop_black_borders: bool = True
-    current_video_fps: int = 60
+    current_video_fps: int = FpsPolicy.DEFAULT
     rhi_backend: str = "default"
     store: object | None = None
     keyboard_overrides: dict[str, str] = field(default_factory=dict)

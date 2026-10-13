@@ -9,6 +9,7 @@ from PySide6.QtGui import QColor
 from core.constants import AppConstants
 from core.store import Store
 from domain.qt_adapters import hex_to_color, color_to_hex
+from shared.video_policy import FpsPolicy, clamp_fps
 from ui.canvas_infra.scene.property_access import (
     deserialize_canvas_feature_setting,
     read_canvas_feature_property,
@@ -153,7 +154,9 @@ class SettingsManager:
         s.auto_crop_black_borders = self._get_setting(
             "auto_crop_black_borders", True, bool
         )
-        s.video_recording_fps = self._get_setting("video_recording_fps", 60, int)
+        s.video_recording_fps = clamp_fps(
+            self._get_setting("video_recording_fps", FpsPolicy.DEFAULT, int)
+        )
         s.video_editor_preview_render_scale = self._get_setting(
             "video_editor_preview_render_scale", 1.0, float
         )
@@ -316,7 +319,7 @@ class SettingsManager:
             "system_notifications_enabled", s.system_notifications_enabled
         )
         self._save_setting("auto_crop_black_borders", s.auto_crop_black_borders)
-        self._save_setting("video_recording_fps", s.video_recording_fps)
+        self._save_setting("video_recording_fps", clamp_fps(s.video_recording_fps))
         self._save_setting(
             "video_editor_preview_render_scale",
             s.video_editor_preview_render_scale,

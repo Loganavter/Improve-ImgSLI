@@ -7,6 +7,7 @@ from PySide6.QtGui import QPixmap
 
 from events.image_label_event_handler import ImageLabelEventHandler
 from events.window_event_handler import WindowEventHandler
+from shared.video_policy import FpsPolicy, clamp_fps
 from tabs.image_compare.canvas.helpers import get_canvas
 
 _last_debug_log_time = 0
@@ -52,8 +53,9 @@ def initialize_canvas_presenter(presenter) -> None:
 
     presenter._update_scheduler_timer = QTimer(presenter)
     presenter._update_scheduler_timer.setSingleShot(True)
-    target_fps = getattr(presenter.store.settings, "video_recording_fps", 60)
-    target_fps = max(10, min(144, target_fps))
+    target_fps = clamp_fps(
+        getattr(presenter.store.settings, "video_recording_fps", FpsPolicy.DEFAULT)
+    )
     presenter._update_scheduler_timer.setInterval(int(1000 / target_fps))
     presenter._update_scheduler_timer.timeout.connect(
         presenter.update_comparison_if_needed
