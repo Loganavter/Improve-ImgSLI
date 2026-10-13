@@ -42,6 +42,7 @@ from tabs._shared.loading_pipeline import (
     _same_fs_path,
     cache_key_for_path as _seam_cache_key_for_path,
 )
+from tabs._shared.overflow_summary import summarize_overflow
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -499,14 +500,13 @@ def _cap_full_queue(controller) -> None:
     dropped = queue[:overflow]
     del queue[:overflow]
     try:
-        names = ", ".join(Path(p).name for _, p, _ in dropped[:5])
+        names = summarize_overflow(dropped, limit=5, extra=True)
     except Exception:
         names = ""
-    extra = f" (+{len(dropped) - min(len(dropped), 5)} more)" if len(dropped) > 5 else ""
     logger.warning(
-        "mc full-res queue cap (%d): shed %d oldest %s — %s%s",
+        "mc full-res queue cap (%d): shed %d oldest %s — %s",
         _FULL_QUEUE_MAX, len(dropped),
-        "entry" if len(dropped) == 1 else "entries", names, extra,
+        "entry" if len(dropped) == 1 else "entries", names,
     )
     try:
         report = getattr(controller, "report_user_error", None)
@@ -514,7 +514,7 @@ def _cap_full_queue(controller) -> None:
             report(
                 f"Full-resolution backlog is full ({_FULL_QUEUE_MAX} pending max): "
                 f"{len(dropped)} slot{'s' if len(dropped) != 1 else ''} "
-                f"stay on preview for now — {names}{extra}"
+                f"stay on preview for now — {names}"
             )
     except Exception:
         pass

@@ -239,7 +239,7 @@
     },
     {
       "path": "src/tabs/_shared/loading_pipeline.py",
-      "lines": 572,
+      "lines": 576,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner reason=\"W0 shared loading seam: key + sync fills + preview-first single-flight + bounded full FIFO + pyramid hook\"",
@@ -1104,7 +1104,7 @@
     },
     {
       "path": "src/tabs/multi_compare/ui/drag_drop.py",
-      "lines": 853,
+      "lines": 849,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner-target size=927 reason=\"widget-owned DnD use_cases (functions-taking-owner; Qt event names delegated by widget); queue lifecycle in ui/drop_queue.py collaborator\"",

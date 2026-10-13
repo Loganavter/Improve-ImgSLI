@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import logging
 
+from tabs._shared.overflow_summary import summarize_overflow
 from tabs.multi_compare.debug import (
     mc_dnd_debug as _dnd_log,
 )
@@ -81,6 +82,12 @@ class DropQueue:
         self._overflow_reporter = overflow_reporter
 
     def _report_overflow(self, widget, dropped: list, *, reason: str) -> None:
+        try:
+            # Single builder owns overflow-list formatting for all "queue full"
+            # sites (the report below is the user-facing channel only).
+            summarize_overflow(dropped)
+        except Exception:
+            pass
         report = self._overflow_reporter
         if report is None:
             from tabs.multi_compare.ui.drag_drop import (

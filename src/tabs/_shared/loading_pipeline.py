@@ -31,6 +31,8 @@ from typing import TYPE_CHECKING, Any, Callable
 from engine.cache.display_image_picker import pick_display_image
 from tabs.image_compare.pipeline.abort import AbortSignal
 
+from tabs._shared.overflow_summary import summarize_overflow
+
 if TYPE_CHECKING:
     from PySide6.QtGui import QImage
 
@@ -245,7 +247,9 @@ def _cap_full_queue() -> None:
     dropped = _full_queue[:overflow]
     del _full_queue[:overflow]
     try:
-        names = ", ".join(Path(p).name for _, p, _, _ in dropped[:5])
+        # loading_pipeline's original log shows only the bare name
+        # list (no ``(+N more)`` tail): keep extra=False for byte parity.
+        names = summarize_overflow(dropped, limit=5, extra=False)
     except Exception:
         names = ""
     logger.warning(
