@@ -1,10 +1,10 @@
 ## Settings
 
-Settings collects every application option in one dialog: built-in pages such as **General** and **Appearance**, plus sections contributed by tabs, such as the **Image Compare** options and the **Image Gallery — AI** settings. Tab sections stay visible regardless of the active session.
+Settings is the dialog for the application's options: built-in pages such as **General** and **Appearance**, plus sections contributed by tabs. Tab sections stay visible regardless of the active session.
 
 ### Open Settings {#open-settings}
 
-- **Menu** — **File** → **Settings** (`Ctrl+,`).
+- **File** → **Settings** (`Ctrl+,`).
 - **Find Action** — `Ctrl+Shift+P`, then a page name (General, Appearance, Keyboard, …).
 - **Learn more** — opens the help topic for a setting when one is available.
 
@@ -14,7 +14,7 @@ A search field sits above the sidebar. Each matching section appears as a single
 
 ### General {#general}
 
-- **Language** — chooses the interface language: en / ru / zh / pt_BR.
+- **Language** — the interface language: en / ru / zh / pt_BR.
 - **Theme** — auto / light / dark.
 - **System notifications** — turns OS-level notifications on or off.
 - **Enable debug logging** — writes verbose logs for troubleshooting.
@@ -23,35 +23,35 @@ A search field sits above the sidebar. Each matching section appears as a single
 
 - **UI Mode** — **Beginner**, **Advanced**, or **Expert**; **Beginner** is the default and the first-run pick lands here.
 - **UI Font** — built-in, system default, or a custom family.
-- **Interface Scale** — slider that resizes the whole interface (0.5–2.5).
+- **Interface Scale** — resizes the whole interface (0.5–2.5).
 - **Maximum Name Length (UI)** — caps the length of a displayed name.
 
 ### Performance {#performance}
 
-- **Backend** — rendering backend. The choices depend on the platform, and switching may require a restart.
+- **Backend** — the rendering backend; the choices depend on the platform, and switching may require a restart.
 
 ### Image Compare {#image_compare}
 
 Image-compare options, always available:
 
-- **Zoom Interpolation** — sets the resampling quality for zoom.
-- **Magnifier movement** — makes lens motion smoother; its interpolation method sits on the same row.
-- **Red highlight for overlapping magnifiers** — while you drag a magnifier, the part of its capture ring hidden behind other magnifiers is highlighted. **Auto-color new magnifiers** gives each new lens a distinct color.
-- **Recording FPS** — capture rate for the [Video Editor](help://workspace.image_compare.video).
+- **Zoom Interpolation** — the resampling quality for zoom.
+- **Magnifier movement** — keeps the lens following the pointer smooth while you drag it; the **Laser smoothing** row below smooths the magnifier guides. Both rows carry a method of their own.
+- **Red highlight for overlapping magnifiers** — while you drag a magnifier, the part of its capture ring hidden behind other magnifiers is highlighted; **Auto-color new magnifiers** gives each new lens a distinct color.
+- **Recording FPS** — the capture rate for the [Video Editor](help://workspace.image_compare.video).
 - **Auto-crop black borders on load** — trims black borders when an image is loaded.
 - **Auto-calculate PSNR** / **Auto-calculate SSIM** — show the metric automatically; off by default.
 
 ### Image Gallery — AI {#image-gallery-ai}
 
-AI requests in [Image Gallery](help://workspace.image_gallery.triage) use the settings below. A request needs the AI switch on, an API key, and a model; setting only the key is not enough.
+AI features in [Image Gallery](help://workspace.image_gallery.triage) use the settings below. A request needs the switch on, an API key, and a model; the key alone is not enough. The key is stored unencrypted on this device.
 
 - **Enable AI image analysis** — turns the AI features on or off.
-- **API base URL** — address of the AI service.
-- **API key** — credential for that service.
+- **API base URL** — the address of the AI service.
+- **API key** — the credential for that service.
 - **Model name** — the model the AI uses for requests.
+- **Answer token budget** and **Reasoning effort** — limits on the answer: the token cap (empty = auto) and how much the model reasons before answering.
+- **Image downscale (max edge)** — the largest side sent to the model; **Original** keeps the file's own bytes.
 
 ### Keyboard {#keyboard}
 
-- **Remap** — groups shortcuts by owner: platform / Image Compare / Multi Compare.
-- **Reset** — resets one shortcut or all of them.
-- **Fixed** — canvas `WASD` and `Space` cannot be remapped — see [Hotkeys](help://platform.hotkeys).
+Shortcuts are grouped by owner — **Platform**, then a group per tab, for example **Image Compare**. **Reset** restores one shortcut or all of them. The fixed canvas keys `WASD` and `Space` cannot be remapped — see [Hotkeys](help://platform.hotkeys).
