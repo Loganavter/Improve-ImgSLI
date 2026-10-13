@@ -365,6 +365,36 @@ def _valid_slot_entry(e) -> dict | None:
     }
 
 
+def _coerce_focused_slot_id(value, slots, root) -> int | None:
+    """Validate persisted focus — stale id → ``None`` (focus dropped).
+
+    A corrupt slot entry is skipped without aborting restore, so a saved
+    focus id may no longer resolve; seeding it would focus a ghost leaf
+    (composition renders nothing while focused). The reducer stays the
+    correctness gate (``ApplyLayoutTree``/``RemoveSlot`` drop dead focus);
+    this is the fail-fast boundary check on the restore path only, applied
+    before seeding the slot.
+    """
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int):
+        logger.warning(
+            "mc: deserialize_session dropping non-int focused_slot_id %r", value
+        )
+        return None
+    valid = {s.id for s in slots}
+    if root is not None:
+        from tabs.multi_compare.models import slot_ids_in_tree
+
+        valid &= slot_ids_in_tree(root)
+    if value not in valid:
+        logger.warning(
+            "mc: deserialize_session dropping stale focused_slot_id %r", value
+        )
+        return None
+    return value
+
+
 def deserialize_session(tab, session_id: str, data: dict, context: TabContext) -> None:
     store = getattr(context, "store", None)
     if store is None or not data:
@@ -398,10 +428,13 @@ def deserialize_session(tab, session_id: str, data: dict, context: TabContext) -
         except Exception:
             logger.warning("mc: deserialize_session skipping unbuildable slot entry %r", e)
             continue
+    root = _deserialize_layout_node(data.get("root"))
     state = MultiCompareState(
         slots=slots,
-        root=_deserialize_layout_node(data.get("root")),
-        focused_slot_id=data.get("focused_slot_id"),
+        root=root,
+        focused_slot_id=_coerce_focused_slot_id(
+            data.get("focused_slot_id"), slots, root
+        ),
         zoom=_coerce_number(data.get("zoom", 1.0), 1.0),
         pan_x=_coerce_number(data.get("pan_x", 0.0), 0.0),
         pan_y=_coerce_number(data.get("pan_y", 0.0), 0.0),
