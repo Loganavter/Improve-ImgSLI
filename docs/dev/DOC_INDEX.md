@@ -46,7 +46,7 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
 - **[Гайдлайн по справке Improve-ImgSLI](HELP_STYLE_GUIDE.md)** — `docs/dev/HELP_STYLE_GUIDE.md`
   Referenced by: [docs/dev/HELP_AUTHORING.md](HELP_AUTHORING.md), [docs/dev/HELP_SYSTEM.md](HELP_SYSTEM.md), [docs/dev/RESOURCES_I18N.md](RESOURCES_I18N.md)
 - **[Help plugin (hierarchical illustrated manual)](HELP_SYSTEM.md)** — `docs/dev/HELP_SYSTEM.md`
-  Referenced by: [docs/dev/ACTIONS.md](ACTIONS.md), [docs/dev/HELP_STYLE_GUIDE.md](HELP_STYLE_GUIDE.md), [docs/dev/PLUGINS.md](PLUGINS.md), [docs/dev/README.md](README.md), [docs/dev/RESOURCES_I18N.md](RESOURCES_I18N.md), [docs/dev/TODO.md](TODO.md), [docs/dev/plugins/help-per-owner-plan.md](plugins/help-per-owner-plan.md), [docs/dev/plugins/help.md](plugins/help.md), [docs/dev/tabs/capability-mechanisms.md](tabs/capability-mechanisms.md)
+  Referenced by: [docs/dev/ACTIONS.md](ACTIONS.md), [docs/dev/HELP_STYLE_GUIDE.md](HELP_STYLE_GUIDE.md), [docs/dev/PLUGINS.md](PLUGINS.md), [docs/dev/README.md](README.md), [docs/dev/RESOURCES_I18N.md](RESOURCES_I18N.md), [docs/dev/SCREENSHOTS.md](SCREENSHOTS.md), [docs/dev/TODO.md](TODO.md), [docs/dev/plugins/help-per-owner-plan.md](plugins/help-per-owner-plan.md), [docs/dev/plugins/help.md](plugins/help.md), [docs/dev/tabs/capability-mechanisms.md](tabs/capability-mechanisms.md)
 - **[Help web-canon refactor — plan](HELP_WEBCANON_PLAN.md)** — `docs/dev/HELP_WEBCANON_PLAN.md`
 - **[Logging](LOGGING.md)** — `docs/dev/LOGGING.md`
   Referenced by: [docs/dev/README.md](README.md), [docs/dev/SETTINGS_PERSISTENCE.md](SETTINGS_PERSISTENCE.md), [docs/dev/TRACING.md](TRACING.md), [docs/dev/toast_stuck_session_report.md](toast_stuck_session_report.md)
@@ -57,6 +57,7 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
 - **[Development Documentation](README.md)** — `docs/dev/README.md`
 - **[Resources & i18n](RESOURCES_I18N.md)** — `docs/dev/RESOURCES_I18N.md`
   Referenced by: [docs/dev/DIALOGS.md](DIALOGS.md), [docs/dev/HELP_SYSTEM.md](HELP_SYSTEM.md), [docs/dev/README.md](README.md), [docs/dev/tabs/package-structure.md](tabs/package-structure.md)
+- **[Screenshots](SCREENSHOTS.md)** — `docs/dev/SCREENSHOTS.md`
 - **[Settings persistence](SETTINGS_PERSISTENCE.md)** — `docs/dev/SETTINGS_PERSISTENCE.md`
   Referenced by: [docs/dev/CONTRACTS.md](CONTRACTS.md), [docs/dev/README.md](README.md), [docs/dev/plugins/settings.md](plugins/settings.md)
 - **[image_compare State Slot Manifest](STATE_SLOT_MANIFEST.md)** — `docs/dev/STATE_SLOT_MANIFEST.md`
