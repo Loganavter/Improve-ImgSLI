@@ -1,26 +1,26 @@
 ## Propriedades da imagem
 
-O diálogo **Propriedades** mostra os dados do arquivo e como a imagem é usada na sessão atual. Ele apenas exibe informações e não altera nada na sessão.
+**Propriedades** mostra os dados do arquivo e como a imagem é usada na sessão atual. O diálogo apenas exibe informações; ele não altera nada na sessão.
 
 ### Abrir o diálogo {#open}
 
-Clique com o botão direito em uma imagem na lista ou no slot e escolha **Propriedades**.
+Clique com o botão direito em uma imagem na lista ou no slot e escolha **Propriedades** no menu de contexto.
 
 :::figure{side=block width=280}
 ![Diálogo de propriedades da imagem](../assets/platform/image_properties.png)
-O diálogo **Propriedades**: as linhas são agrupadas por origem, por exemplo **Arquivo** e **Metadados**.
+O diálogo **Propriedades**: as linhas são agrupadas por origem, por exemplo **Arquivo** e **Imagem**.
 :::
 
 ### O que é mostrado {#sections}
 
 As linhas são agrupadas em:
 
-- **Arquivo** — nome, caminho, tamanho em disco, formato e data de modificação.
+- **Arquivo** — nome, caminho, extensão, tamanho em disco, formato e data de modificação.
 - **Imagem** — tamanho em pixels, proporção, orientação e canais; modo e perfil de cor quando o arquivo os fornece.
-- **No aplicativo** — como o aplicativo usa a imagem na sessão atual (veja abaixo).
+- **No aplicativo** — como o aplicativo coloca esta imagem na sessão atual (veja abaixo).
 - **Metadados** — campos de câmera e EXIF quando o arquivo os fornece.
 
-Linhas sem valor são omitidas. Se o arquivo não puder ser lido, em vez dos dados aparece **Erro de leitura**.
+Linhas sem valor são omitidas. Quando o arquivo não pode ser lido, uma linha **Erro de leitura** aparece sob **Arquivo**.
 
 ### Contexto no aplicativo {#in-app}
 
