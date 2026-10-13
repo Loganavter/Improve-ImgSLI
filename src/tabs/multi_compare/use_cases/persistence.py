@@ -235,7 +235,6 @@ def serialize_session(tab, session_id: str, context: TabContext) -> dict | None:
         "zoom": state.zoom,
         "pan_x": state.pan_x,
         "pan_y": state.pan_y,
-        "max_slots": state.max_slots,
         # Project keys stay as-is (older builds read them).
         "label_settings": chrome["label"],
         "divider_settings": chrome["divider"],
@@ -399,10 +398,6 @@ def deserialize_session(tab, session_id: str, data: dict, context: TabContext) -
         except Exception:
             logger.warning("mc: deserialize_session skipping unbuildable slot entry %r", e)
             continue
-    try:
-        max_slots = int(data.get("max_slots", 12))
-    except Exception:
-        max_slots = 12
     state = MultiCompareState(
         slots=slots,
         root=_deserialize_layout_node(data.get("root")),
@@ -410,7 +405,6 @@ def deserialize_session(tab, session_id: str, data: dict, context: TabContext) -
         zoom=_coerce_number(data.get("zoom", 1.0), 1.0),
         pan_x=_coerce_number(data.get("pan_x", 0.0), 0.0),
         pan_y=_coerce_number(data.get("pan_y", 0.0), 0.0),
-        max_slots=max_slots,
     )
     store.set_session_state_slot(
         _STATE_SLOT, state, session_id=session_id, emit_scope=None,

@@ -348,8 +348,6 @@ def _replace(state: MultiCompareState, **changes) -> MultiCompareState:
 def reduce(state: MultiCompareState, action: MultiCompareAction) -> MultiCompareState:
     """Pure reducer: ``state + action → new_state`` (or same instance when no-op)."""
     if isinstance(action, AddSlot):
-        if len(state.slots) >= state.max_slots:
-            return state
         slot_id = _next_slot_id(state)
         slot = CompareSlot(
             id=slot_id,

@@ -30,7 +30,6 @@ from tabs.multi_compare.debug import (
     mc_dnd_debug as _dnd_log,
     mc_dnd_diag_light_move_enabled,
 )
-from tabs.multi_compare.models import slot_ids_in_tree
 from tabs.multi_compare.scene import actions
 from tabs.multi_compare.ui import chrome
 from tabs.multi_compare.ui.canvas_widget import INTERNAL_SLOT_MIME
@@ -50,39 +49,7 @@ __all__ = [  # noqa: F822 — re-exported names are used by external importers
 ]
 
 
-def _dnd_grid_full_message(widget, overflow) -> str:
-    """Grid-full summary wording (house shape, ``loading`` parity).
-
-    Reads capacity off the widget state drag_drop always has (never the
-    controller's widget — menu/dnd fakes may lack it); prefers the
-    widget's own translator for the ``msg.compare_grid_full`` key.
-    """
-    try:
-        max_slots = widget.state.max_slots
-    except Exception:
-        max_slots = None
-    default = (
-        f"Comparison grid is full ({max_slots} images max)"
-        if max_slots is not None
-        else "Comparison grid is full"
-    )
-    try:
-        translate = getattr(widget, "_translate", None)
-        reason = translate("msg.compare_grid_full", default) if callable(translate) else default
-    except Exception:
-        reason = default
-    count = len(overflow)
-    count_word = "1 file" if count == 1 else f"{count} files"
-    shown = [
-        Path(p).name if not isinstance(p, Path) else p.name
-        for p in list(overflow)[:5]
-    ]
-    extra = f" (+{count - len(shown)} more)" if count > len(shown) else ""
-    names = ", ".join(shown)
-    return f"{reason}: {count_word} not added — {names}{extra}"
-
-
-def _emit_dnd_overflow_summary(widget, overflow, *, reason: str = "grid_full") -> None:
+def _emit_dnd_overflow_summary(widget, overflow, *, reason: str = "queue_full") -> None:
     """One summary per gesture for capped/dropped DnD intake (no dialog flood).
 
     Single channel: the controller's ``report_user_error`` (bus dialog by
@@ -102,20 +69,17 @@ def _emit_dnd_overflow_summary(widget, overflow, *, reason: str = "grid_full") -
         )
         return
     try:
-        if reason == "grid_full":
-            message = _dnd_grid_full_message(widget, overflow)
-        else:
-            count = len(overflow)
-            shown = [
-                Path(p).name if not isinstance(p, Path) else p.name
-                for p in list(overflow)[:5]
-            ]
-            extra = f" (+{count - len(shown)} more)" if count > len(shown) else ""
-            names = ", ".join(shown)
-            message = (
-                f"Drop queue is full ({DropQueue.MAX_PENDING_PATHS} pending max): "
-                f"{count} file{'s' if count != 1 else ''} not queued — {names}{extra}"
-            )
+        count = len(overflow)
+        shown = [
+            Path(p).name if not isinstance(p, Path) else p.name
+            for p in list(overflow)[:5]
+        ]
+        extra = f" (+{count - len(shown)} more)" if count > len(shown) else ""
+        names = ", ".join(shown)
+        message = (
+            f"Drop queue is full ({DropQueue.MAX_PENDING_PATHS} pending max): "
+            f"{count} file{'s' if count != 1 else ''} not queued — {names}{extra}"
+        )
         report(message)
     except Exception:
         logger.exception(
@@ -210,8 +174,6 @@ def resolve_drop_target(widget, pos, *, internal: bool):
     local = grid_local_pos(widget, pos)
     if internal:
         return widget.canvas.compute_drop_target(local, include_center=True)
-    if len(slot_ids_in_tree(widget.state.root)) >= widget.state.max_slots:
-        return None, None, False, None
     return widget.canvas.compute_drop_target(local)
 
 
@@ -611,30 +573,16 @@ def _finish_external_drop(widget, local_files: list[str], pos, gen: int, t_drop:
         )
         _timing_emit(widget, "drop")
         if paths:
-            try:
-                _state = widget.state
-                _remaining = _state.max_slots - len(_state.slots)
-            except Exception:
-                _remaining = None
-            if _remaining is not None and _remaining <= 0:
-                # Grid already full: don't enqueue work the planner will
-                # reject file-by-file — one summary now instead of N
-                # downstream no-ops.
-                _dnd_log(
-                    "drop external ignored (grid full, %d files)", len(paths)
-                )
-                _emit_dnd_overflow_summary(widget, paths, reason="grid_full")
-            else:
-                # Pure-placement anchor for the DropQueue slot key: first leaf
-                # under the resolved target (0 for root/empty) — tree data in,
-                # no live-canvas read. A rapid double-drop of the same file
-                # dedups on (anchor, normpath) instead of double-loading.
-                anchor = _placement.anchor_slot_for_path(widget.state.root, tgt_path)
-                queued = get_drop_queue().enqueue(
-                    anchor, paths, widget, (tgt_path, root_tgt), side
-                )
-                if not queued:
-                    _dnd_log("drop external deduped (all files already queued/inflight)")
+            # Pure-placement anchor for the DropQueue slot key: first leaf
+            # under the resolved target (0 for root/empty) — tree data in,
+            # no live-canvas read. A rapid double-drop of the same file
+            # dedups on (anchor, normpath) instead of double-loading.
+            anchor = _placement.anchor_slot_for_path(widget.state.root, tgt_path)
+            queued = get_drop_queue().enqueue(
+                anchor, paths, widget, (tgt_path, root_tgt), side
+            )
+            if not queued:
+                _dnd_log("drop external deduped (all files already queued/inflight)")
         else:
             _dnd_log("drop external ignored (no supported image files)")
     except Exception:
@@ -701,9 +649,6 @@ def begin_pending_duplicate(widget, source_slot_id: int) -> None:
             return
     except Exception:
         pass
-    if len(widget.state.slots) >= widget.state.max_slots:
-        _dnd_log("pending duplicate: ignored (max_slots reached)")
-        return
     _dnd_log("pending duplicate: armed source=%s", source_slot_id)
     widget._pending_duplicate_source = source_slot_id
     arm_pending_placement_input(widget)
@@ -716,9 +661,6 @@ def begin_pending_paste(widget, paths: list[Path]) -> None:
     valid = [Path(p) for p in paths if Path(p).is_file()]
     if not valid:
         _dnd_log("pending paste: ignored (no valid files)")
-        return
-    if len(slot_ids_in_tree(widget.state.root)) >= widget.state.max_slots:
-        _dnd_log("pending paste: ignored (max_slots reached)")
         return
     _dnd_log("pending paste: armed files=%d", len(valid))
     widget._pending_paste_paths = valid
@@ -786,9 +728,6 @@ def update_pending_drag_preview(widget, pos, *, internal: bool) -> None:
                 )
             )
         chrome.dismiss_placeholder_for_dnd(widget)  # logs the decision itself
-        return
-    if len(slot_ids_in_tree(widget.state.root)) >= widget.state.max_slots:
-        widget.store.dispatch(actions.set_drag_state(active=False))
         return
     tgt_path, side, root_tgt, _ = widget.canvas.compute_drop_target(pos)
     if _drag_preview_changed(
@@ -896,9 +835,6 @@ def finalize_pending_duplicate(
             return
     except Exception:
         pass
-    if len(widget.state.slots) >= widget.state.max_slots:
-        _dnd_log("pending duplicate: ignored (max_slots reached)")
-        return
     _dnd_log(
         "pending duplicate: finalize source=%s path=%s side=%s root=%s",
         source_id, target_path, side, target_root,

@@ -7,7 +7,7 @@ Covers:
   carry-miss report through the controller error channel, never silent.
 * removal from the menu goes through the controller path (cancel-aware)
   with widget-direct fallback.
-* ``DropQueue`` intake cap + grid-full pre-check, each with one summary.
+* ``DropQueue`` intake cap with one summary.
 * full-res backlog (``_mc_full_queue``) cap with summary.
 * ``MultiCompareStore.transact`` loud fallback when the core store has
   neither ``transact`` nor a dispatcher.
@@ -145,8 +145,8 @@ def test_tree_ops_insert_beside_path_is_pure():
 # --------------------------------------------------------------------------
 
 
-def _mc_widget(*, slots, root, max_slots=12, controller=None, remove_slot=None):
-    state = MultiCompareState(slots=list(slots), root=root, max_slots=max_slots)
+def _mc_widget(*, slots, root, controller=None, remove_slot=None):
+    state = MultiCompareState(slots=list(slots), root=root)
     widget = SimpleNamespace(
         canvas=SimpleNamespace(pixel_cache=None),
         state=state,
@@ -174,23 +174,6 @@ def _provider(widget):
     from tabs.multi_compare.context_menu import MultiCompareContextMenuProvider
 
     return MultiCompareContextMenuProvider(widget)
-
-
-def test_duplicate_full_signals_not_silent(qapp):
-    reported: list = []
-    controller = SimpleNamespace(report_user_error=reported.append)
-    slots = [CompareSlot(id=i, path=Path(f"/x/{i}.png"), label=str(i)) for i in (1, 2)]
-    widget = _mc_widget(
-        slots=slots, root=SplitNode("h", [LeafNode(1), LeafNode(2)], [1.0, 1.0]),
-        max_slots=2, controller=controller,
-    )
-    provider = _provider(widget)
-    slot = next(s for s in widget.state.slots if s.id == 1)
-    # Pixels present so the full-check (not the no-pixels check) fires.
-    provider._has_pixels = lambda s: True
-    provider._duplicate_slot(slot)
-    assert len(reported) == 1
-    assert "full" in reported[0].lower()
 
 
 def test_duplicate_no_pixels_signals(qapp):
@@ -255,12 +238,12 @@ def test_remove_slot_falls_back_to_widget(qapp):
 
 
 # --------------------------------------------------------------------------
-# DropQueue cap + grid-full pre-check
+# DropQueue cap
 # --------------------------------------------------------------------------
 
 
-def _dnd_widget(*, slots, max_slots=12, controller=None):
-    state = MultiCompareState(slots=list(slots), root=None, max_slots=max_slots)
+def _dnd_widget(*, slots, controller=None):
+    state = MultiCompareState(slots=list(slots), root=None)
     emitted: list = []
     widget = SimpleNamespace(
         state=state,
@@ -298,36 +281,6 @@ def test_drop_queue_all_capped_out_returns_false(qapp):
     q = dnd.DropQueue()
     q.MAX_PENDING_PATHS = 0
     assert q.enqueue(0, [Path("/x/a.png")], widget, (None, True), "right") is False
-
-
-def test_finish_external_drop_grid_full_summarizes_without_enqueue(
-    qapp, monkeypatch, tmp_path
-):
-    from tabs.multi_compare.ui import drag_drop as dnd
-
-    reported: list = []
-    controller = SimpleNamespace(report_user_error=reported.append)
-    slots = [CompareSlot(id=1, path=Path("/x/1.png"), label="1")]
-    widget = _dnd_widget(slots=slots, max_slots=1, controller=controller)
-    widget.store = SimpleNamespace(dispatch=lambda a: None)
-    widget._dnd_gen = 1
-
-    enqueued: list = []
-    monkeypatch.setattr(
-        dnd.get_drop_queue(), "enqueue", lambda *a, **k: enqueued.append(a) or True
-    )
-    # The deferred half only takes files on disk — materialize them.
-    dropped = []
-    for name in ("2.png", "3.png"):
-        p = tmp_path / name
-        p.write_bytes(b"\x89PNG\r\n\x1a\n")
-        dropped.append(str(p))
-    # Bypass the lazy loading import with the real one; the grid-full path
-    # must summarize BEFORE any placement planning runs.
-    dnd._finish_external_drop(widget, dropped, None, 1, 0.0)
-    assert enqueued == []
-    assert len(reported) == 1
-    assert "full" in reported[0].lower()
 
 
 # --------------------------------------------------------------------------

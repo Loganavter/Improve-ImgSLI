@@ -8,7 +8,7 @@ Os slots ficam em uma grade dividida onde você pode soltar arquivos, dividir c�
 - **Adicionar imagens** (`Ctrl+O`) — carrega uma ou mais imagens na grade.
 - **Zonas de soltar** — uma soltura de arquivo tem como alvo a célula sob o cursor e a mais próxima de suas quatro bordas.
 - **Solturas externas** — arquivos soltos do gerenciador de arquivos, colados da área de transferência ou movidos com **Mover** de outra aba são posicionados automaticamente enquanto uma mensagem de progresso é exibida.
-- **Posicionamento automático** — uma nova imagem divide a maior célula ao longo de seu lado mais longo, e a grade comporta no máximo 12 imagens.
+- **Posicionamento automático** — uma nova imagem divide a maior célula ao longo de seu lado mais longo.
 - **Soltura na lacuna** — uma soltura em uma lacuna de divisor divide uma nova célula entre os dois slots vizinhos.
 - **Mudança de layout** — mudar o layout mantém as imagens carregadas e apenas as reorganiza.
 
@@ -31,9 +31,8 @@ Quando você solta uma imagem em uma lacuna entre dois slots, o ponto dentro da 
 Clique com o botão direito em um slot para ações por imagem:
 
 - **Renomear** — edita o nome exibido no rótulo do slot.
-- **Duplicar** — copia o slot; precisa de uma imagem carregada e de um slot livre.
+- **Duplicar** — copia o slot; precisa de uma imagem carregada.
 - **Propriedades** — abre [Propriedades da imagem](help://platform.image_properties) com os metadados do arquivo e a posição do slot na grade.
 - **Mover** — arrasta a imagem para outra aba, onde ela é carregada e posicionada automaticamente.
 - **Recortar** — ativa ou desativa o recorte deste slot; veja [Visualização e foco](help://workspace.multi_compare.viewing#slot-crop).
 - **Remover** — remove o slot e sua imagem da grade.
-- **Limite de slots** — você pode carregar no máximo 12 imagens em uma grade.

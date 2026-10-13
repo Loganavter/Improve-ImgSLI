@@ -102,7 +102,7 @@ def test_multi_compare_provider_exposes_slot_actions(qapp):
     ]
 
 
-def test_multi_compare_rename_uses_app_text_input_dialog(monkeypatch):
+def test_multi_compare_rename_uses_app_text_input_dialog(qapp, monkeypatch):
     from pathlib import Path
 
     from tabs.multi_compare.context_menu import MultiCompareContextMenuProvider
@@ -112,7 +112,7 @@ def test_multi_compare_rename_uses_app_text_input_dialog(monkeypatch):
     slot = CompareSlot(id=3, path=Path("a.png"), label="A")
     widget = SimpleNamespace(
         canvas=QWidget(),
-        state=SimpleNamespace(slots=[slot], max_slots=8),
+        state=SimpleNamespace(slots=[slot]),
         store=SimpleNamespace(dispatch=dispatched.append),
         _translate=lambda _key, default=None: default or _key,
     )
@@ -137,7 +137,7 @@ def test_multi_compare_rename_uses_app_text_input_dialog(monkeypatch):
     assert action.label == "New label"
 
 
-def test_multi_compare_rename_cancel_dispatches_nothing(monkeypatch):
+def test_multi_compare_rename_cancel_dispatches_nothing(qapp, monkeypatch):
     from pathlib import Path
 
     from tabs.multi_compare.context_menu import MultiCompareContextMenuProvider
@@ -147,7 +147,7 @@ def test_multi_compare_rename_cancel_dispatches_nothing(monkeypatch):
     slot = CompareSlot(id=3, path=Path("a.png"), label="A")
     widget = SimpleNamespace(
         canvas=QWidget(),
-        state=SimpleNamespace(slots=[slot], max_slots=8),
+        state=SimpleNamespace(slots=[slot]),
         store=SimpleNamespace(dispatch=dispatched.append),
         _translate=lambda _key, default=None: default or _key,
     )

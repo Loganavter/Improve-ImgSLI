@@ -8,7 +8,7 @@ Slots sit in a split grid where you can drop files, split cells at a gap, and dr
 - **Add Images** (`Ctrl+O`) — loads one or more images into the grid.
 - **Drop zones** — a file drop targets the cell under the cursor and the nearest of its four edges.
 - **Outside drops** — files dropped from the file manager, pasted from the clipboard, or moved with **Move** from another tab are placed automatically while a progress message shows.
-- **Auto-place** — a new image splits the largest cell along its longer side, and the grid holds at most 12 images.
+- **Auto-place** — a new image splits the largest cell along its longer side.
 - **Gap drop** — a drop in a divider gap splits a new cell between the two neighbouring slots.
 - **Layout change** — changing the layout keeps the loaded images and only rearranges them.
 
@@ -31,9 +31,8 @@ When you drop an image into a gap between two slots, the spot inside the gap dec
 Right-click a slot for per-image actions:
 
 - **Rename** — edits the name shown on the slot label.
-- **Duplicate** — copies the slot; it needs a loaded image and a free slot.
+- **Duplicate** — copies the slot; it needs a loaded image.
 - **Properties** — opens [Image Properties](help://platform.image_properties) with the file metadata and the slot's grid position.
 - **Move** — drags the image onto another tab, where it loads and is placed automatically.
 - **Crop** — turns crop on or off for this slot; see [Multi Compare Viewing](help://workspace.multi_compare.viewing#slot-crop).
 - **Remove** — removes the slot and its image from the grid.
-- **Slot limit** — you can load at most 12 images into one grid.

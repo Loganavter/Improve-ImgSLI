@@ -211,26 +211,3 @@ def test_button_multi_add_is_single_transact(tmp_path):
     controller.load_images(list(paths))
     assert mc_store.transacts == 1
 
-
-def test_button_multi_add_partial_overflow_still_places_fittable(tmp_path):
-    """Grid with 1 free slot + 2-file confirm: first file lands, second
-    surfaces a grid-full error-toast (never silent, never misplaced)."""
-    first = _png(tmp_path, "first.png")
-    full_state = MultiCompareState(max_slots=2)
-    mc_store = _FakeMcStore(full_state)
-    mc_store.dispatch(
-        mc_actions.add_slot(
-            path=first, label="first",
-            target_path=None, side=None, target_root=True,
-        )
-    )
-    widget = _ColdWidget(mc_store)
-    controller, _, _, event_bus = _make_controller(widget)
-
-    created = controller.load_images(
-        [_png(tmp_path, "ok.png"), _png(tmp_path, "over.png")]
-    )
-    assert created == 1
-    assert len(mc_store.state.slots) == 2
-    assert len(event_bus.emitted) == 1
-    assert "over.png" in str(getattr(event_bus.emitted[0], "error", event_bus.emitted[0]))

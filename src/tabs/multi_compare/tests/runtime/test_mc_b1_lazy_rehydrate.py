@@ -402,7 +402,7 @@ def test_slots_carry_no_pixels_and_cache_evict_closes():
         cache.put_pixel("a.png", first)
         cache.put_pixel("b.png", second)  # evicts a.png (LRU bound 1)
     finally:
-        _cache_mod.MultiComparePixelCache._close_store = real_close
+        _cache_mod.MultiComparePixelCache._close_store = staticmethod(real_close)
 
     assert closed == [first]
     assert cache.get_pixel("b.png") is second

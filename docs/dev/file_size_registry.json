@@ -1082,7 +1082,7 @@
     },
     {
       "path": "src/tabs/multi_compare/scene/store.py",
-      "lines": 836,
+      "lines": 834,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine reason=\"MultiCompareStore facade over Dispatcher + slot lifecycle\"",
@@ -1104,7 +1104,7 @@
     },
     {
       "path": "src/tabs/multi_compare/ui/drag_drop.py",
-      "lines": 927,
+      "lines": 863,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner-target size=927 reason=\"widget-owned DnD use_cases (functions-taking-owner; Qt event names delegated by widget); queue lifecycle in ui/drop_queue.py collaborator\"",
@@ -1116,7 +1116,7 @@
     },
     {
       "path": "src/tabs/multi_compare/use_cases/loading.py",
-      "lines": 955,
+      "lines": 895,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner reason=\"Controller delegate fan-out: toast/pyramid/full-res stages share one module; batch planning stays beside the primitives it stages\"",
@@ -1127,7 +1127,7 @@
     },
     {
       "path": "src/tabs/multi_compare/use_cases/persistence.py",
-      "lines": 425,
+      "lines": 419,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner-target reason=\"TabContract session/restore surface: serialize/deserialize/rehydrate plus entry validation share one module beside the models they validate\"",

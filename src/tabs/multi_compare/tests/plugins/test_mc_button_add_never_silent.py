@@ -3,7 +3,7 @@
 Dialog confirm with >=1 valid file → slot + preview/error-toast, never a
 silent 0 slots. Losing step was ``use_cases.dialog_add.load_single_auto``
 (formerly in ``loading.py``):
-``sid is None → return`` (grid full / reducer grew nothing) dropped
+``sid is None → return`` (the reducer grew nothing) dropped
 dialog-confirmed files with no slot, no toast, no bus event, while DnD of
 the same file worked. Companion drift fixed alongside: the button entry
 was the only one without extension/``is_file`` validation (DnD filters in
@@ -25,7 +25,6 @@ from PySide6.QtGui import QImage
 
 from tabs.multi_compare.controller import MultiCompareController
 from tabs.multi_compare.models import MultiCompareState
-from tabs.multi_compare.scene import actions as mc_actions
 from tabs.multi_compare.scene.store import reduce as mc_reduce
 from tabs.multi_compare.use_cases import placement as placement_use_cases
 from tabs.multi_compare.use_cases import preview_decode as preview_decode_use_cases
@@ -157,32 +156,6 @@ def test_dialog_add_valid_file_creates_slot_and_fills_preview(tmp_path):
 
     assert resolve_slot_source(controller.pixel_cache, widget.state.slots[0]) is not None
     assert event_bus.emitted == []
-
-
-def test_dialog_add_full_grid_reports_single_error(tmp_path):
-    """The P8 losing step: grid full must surface one error-toast via the
-    bus — never a silent 0 slots."""
-    pool = _CapturingPool()
-    full_state = MultiCompareState(max_slots=1)
-    controller, widget, _, toast_manager, event_bus = _make_controller(pool, full_state)
-    first = _png(tmp_path, "first.png")
-    widget.store.dispatch(
-        mc_actions.add_slot(
-            path=first, label="first",
-            target_path=None, side=None, target_root=True,
-        )
-    )
-    assert len(widget.state.slots) == 1
-    second = _png(tmp_path, "second.png")
-
-    created = controller.load_images([second, _png(tmp_path, "third.png")])
-
-    assert created == 0
-    assert len(widget.state.slots) == 1  # nothing added
-    assert pool.workers == []  # nothing queued
-    assert toast_manager.shown == []  # no slot → no loading toast
-    assert len(event_bus.emitted) == 1  # single grid-full report, not per-file
-    assert "second.png" in _err_text(event_bus.emitted[0])
 
 
 def test_dialog_add_corrupt_file_reports_error_toast(tmp_path):
