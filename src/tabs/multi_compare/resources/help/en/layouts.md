@@ -13,13 +13,13 @@ Slots sit in a split grid with per-cell drops, gap splits, and draggable divider
 
 ### Gap split zones {#gap-split-zones}
 
-- **Vertical divider gap** — top quarter inserts above the row, bottom quarter below, middle half between neighbours.
-- **Horizontal divider gap** — left quarter inserts left of the column, right quarter right, middle half between neighbours.
+- **Vertical divider gap** — dropping on the top quarter of the gap places the image above the row, the bottom quarter below it, and the middle half between the two neighbouring slots.
+- **Horizontal divider gap** — dropping on the left quarter of the gap places the image left of the column, the right quarter right of it, and the middle half between the two neighbouring slots.
 
 ### Dividers {#dividers}
 
-- **Drag** — grid dividers change relative sizes; splits store weights.
-- **Reset** — double-click resets the split to equal weights.
+- **Drag** — moves a divider and changes the relative size of the cells on either side.
+- **Reset** — double-click a divider to make the cells on either side equal.
 - **Visibility** (`D`) — {{tr:multi_compare.action.divider_visible}}.
 - **Color / width** — {{tr:multi_compare.action.divider_color}} and {{tr:multi_compare.action.divider_width}}.
 
@@ -30,7 +30,7 @@ Per-image actions:
 - **Rename** — edits the slot label.
 - **Duplicate** — copies the slot; needs a loaded image and a free slot.
 - **Properties** — [Image Properties](help://image_properties) with file metadata and grid position.
-- **Move** — drag ghost loads the image on another tab, auto-placed.
-- **Crop** — per-slot crop override; see [Viewing](help://mc_viewing).
+- **Move** — drags the image onto another tab, where it loads and is placed automatically.
+- **Crop** — turns crop on or off for this slot; see [Viewing](help://mc_viewing#slot-crop).
 - **Remove** — drops the slot from the grid.
 - **Cap** — the grid holds at most 12 images.
