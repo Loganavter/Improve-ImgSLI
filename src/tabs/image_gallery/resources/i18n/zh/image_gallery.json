@@ -31,7 +31,10 @@
       "effort_none": "无",
       "vlm_max_edge": "图片缩小（最长边）",
       "downscale_original": "原图",
-      "api_key_warning": "以明文形式存储在本设备上。"
+      "api_key_warning": "以明文形式存储在本设备上。",
+      "api_key_placeholder": "sk-…",
+      "model_placeholder": "openrouter/auto 或 vendor/model",
+      "tokens_placeholder": "自动"
     },
     "errors": {
       "not_configured": "请先在设置中配置 AI API 密钥。",
@@ -71,6 +74,55 @@
       "delete": "删除",
       "reset": "重置手动序列",
       "recluster": "重新聚类序列"
+    },
+    "sort_by": "排序",
+    "view": "视图",
+    "sort_rank": "排名",
+    "sort_name": "名称",
+    "sort_date": "日期",
+    "sort_quality": "AI 画质",
+    "view_grid": "网格",
+    "view_list": "列表",
+    "toolbar": {
+      "open_folder": "打开文件夹…",
+      "filter_placeholder": "按标签 / 描述筛选…",
+      "sort_prefix": "排序"
+    },
+    "grid": {
+      "resize_tooltip": "拖动以调整系列窗格大小"
+    },
+    "stats": {
+      "show_all": "显示全部",
+      "clean_rejected": "清理已拒绝（{n}）",
+      "compare_finalists": "对比入围作品",
+      "images": "{n} 张图像",
+      "series": "{n} 个系列",
+      "redundant": "{n} 张冗余"
+    },
+    "quick_look": {
+      "unset_source": "取消源",
+      "reject": "拒绝",
+      "restore": "恢复",
+      "delete": "删除",
+      "report_title": "批量报告",
+      "report_sub": "到质心的距离 · 伪影标记",
+      "artifact_grid_tooltip": "此伪影最强的位置 — 粗略 5×5 网格：\n绿色 = 无 · 黄色 = 轻微 · 红色 = 最强",
+      "mixed_sizes": "尺寸不一",
+      "upscales_note": "同一源的 {n} 个放大版本"
+    },
+    "clean_review": {
+      "title": "审阅已拒绝的文件",
+      "subtitle": "{n} 个文件将被移动到 {folder}/_rejected/ — 不会删除任何内容，10 秒内可撤销。",
+      "provenance_prefix": "来自：",
+      "series": "系列 {n}",
+      "ungrouped": "未分组",
+      "no_rejected": "没有被拒绝的文件。",
+      "move": "移动 {n}",
+      "size": "{n} 个文件 · {mb} MB",
+      "no_files": "没有可移动的文件",
+      "restore": "恢复",
+      "restore_all": "全部恢复",
+      "cancel": "取消"
     },
     "help": {
       "hub": {
