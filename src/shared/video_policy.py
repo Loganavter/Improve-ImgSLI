@@ -33,3 +33,26 @@ def is_valid_fps(v: int) -> bool:
     if isinstance(v, bool) or not isinstance(v, int):
         return False
     return FpsPolicy.MIN <= v <= FpsPolicy.MAX
+
+
+@dataclass(frozen=True)
+class CrfPolicy:
+    """Video-export CRF band: default 23, clamped to 0..63."""
+
+    DEFAULT: int = 23
+    MIN: int = 0
+    MAX: int = 63
+
+
+def clamp_crf(v: int) -> int:
+    """Clamp ``v`` into [CrfPolicy.MIN, CrfPolicy.MAX]; non-int -> DEFAULT."""
+    if isinstance(v, bool) or not isinstance(v, int):
+        return CrfPolicy.DEFAULT
+    return max(CrfPolicy.MIN, min(CrfPolicy.MAX, v))
+
+
+def is_valid_crf(v: int) -> bool:
+    """True when ``v`` is an int inside the CRF band."""
+    if isinstance(v, bool) or not isinstance(v, int):
+        return False
+    return CrfPolicy.MIN <= v <= CrfPolicy.MAX

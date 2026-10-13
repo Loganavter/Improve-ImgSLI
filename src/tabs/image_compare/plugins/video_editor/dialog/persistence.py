@@ -6,6 +6,7 @@ from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QFileDialog
 
 from domain.qt_adapters import color_to_hex, hex_to_color, qcolor_to_color
+from shared.video_policy import CrfPolicy, clamp_crf
 
 class VideoEditorDialogPersistence:
     def __init__(self, dialog):
@@ -38,7 +39,7 @@ class VideoEditorDialogPersistence:
             d._on_container_changed(d.combo_container.currentText())
             return
         d.edit_manual_args.setText(getattr(settings, "export_video_manual_args", d.edit_manual_args.text()))
-        d.edit_crf.setText(str(getattr(settings, "export_video_crf", 23)))
+        d.edit_crf.setText(str(clamp_crf(getattr(settings, "export_video_crf", CrfPolicy.DEFAULT))))
         d.edit_bitrate.setText(getattr(settings, "export_video_bitrate", d.edit_bitrate.text()))
 
         container = getattr(settings, "export_video_container", "mp4")
@@ -111,7 +112,7 @@ class VideoEditorDialogPersistence:
         settings.export_video_container = d.combo_container.currentData() or "mp4"
         settings.export_video_codec = d.combo_codec.currentData() or "h264 (AVC)"
         settings.export_video_quality_mode = d.combo_quality_mode.currentData() or "crf"
-        settings.export_video_crf = int(d.edit_crf.text()) if d.edit_crf.text().isdigit() else 23
+        settings.export_video_crf = clamp_crf(int(d.edit_crf.text()) if d.edit_crf.text().isdigit() else CrfPolicy.DEFAULT)
         settings.export_video_bitrate = d.edit_bitrate.text().strip() or "8000k"
         settings.export_video_preset = d.combo_preset.currentData() or ""
         settings.export_video_pix_fmt = d.combo_pix_fmt.currentData() or ""

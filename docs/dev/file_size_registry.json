@@ -184,7 +184,7 @@
     },
     {
       "path": "src/plugins/settings/manager.py",
-      "lines": 511,
+      "lines": 513,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine reason=\"single settings manager — load/save + change propagation\"",
@@ -536,7 +536,7 @@
     },
     {
       "path": "src/tabs/image_compare/plugins/video_editor/dialog/sections.py",
-      "lines": 703,
+      "lines": 704,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=qdialog-wiring reason=\"video export dialog sections — one dialog assembly\"",
@@ -603,7 +603,7 @@
     },
     {
       "path": "src/tabs/image_compare/plugins/video_editor/services/video_export/service.py",
-      "lines": 967,
+      "lines": 968,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine reason=\"single video export service lifecycle — job building, ffmpeg, cancel, GPU warm-up\"",

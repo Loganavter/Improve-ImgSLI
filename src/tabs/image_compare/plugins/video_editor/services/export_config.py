@@ -10,6 +10,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from shared.video_policy import CrfPolicy, clamp_crf
+
 logger = logging.getLogger("ImproveImgSLI")
 
 @dataclass(frozen=True)
@@ -528,7 +530,7 @@ class ExportConfigBuilder:
         container: str,
         codec: str,
         quality_mode: str = "crf",
-        crf: int = 23,
+        crf: int = CrfPolicy.DEFAULT,
         bitrate: str = "8000k",
         preset: str = "medium",
         pix_fmt: str = "yuv420p",
@@ -600,13 +602,11 @@ class ExportConfigBuilder:
             result["pix_fmt"] = ""
 
         try:
-            quality_value = int(result.get("crf", 23))
-            if quality_value < 0 or quality_value > 63:
-                quality_value = 23
+            quality_value = clamp_crf(int(result.get("crf", CrfPolicy.DEFAULT)))
             result["crf"] = quality_value
         except (ValueError, TypeError):
-            result["crf"] = 23
-            logger.warning("Invalid CRF/CQ value, using default: 23")
+            result["crf"] = CrfPolicy.DEFAULT
+            logger.warning(f"Invalid CRF/CQ value, using default: {CrfPolicy.DEFAULT}")
 
         bitrate = result.get("bitrate", "8000k")
         if not isinstance(bitrate, str) or not bitrate:

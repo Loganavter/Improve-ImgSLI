@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Tuple
 
+from shared.video_policy import CrfPolicy
+
 if TYPE_CHECKING:
     from core.main_controller import MainController
     from core.session_manager import SessionManager
@@ -27,7 +29,7 @@ class VideoProjectModel:
     container: str = "mp4"
     codec: str = "h264"
     quality_mode: str = "crf"
-    crf: int = 23
+    crf: int = CrfPolicy.DEFAULT
     bitrate: str = "8000k"
     preset: str = "medium"
     pix_fmt: str = "yuv420p"
