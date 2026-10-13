@@ -1,3 +1,7 @@
+---
+description: Work with three or more images at once in one grid.
+icon: grid.svg
+---
 ## Multi Compare Overview
 
 Multi Compare compares three or more images at once, each image in its own **slot** — a cell of the shared grid.

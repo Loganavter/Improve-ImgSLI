@@ -1,3 +1,7 @@
+---
+description: Escolher a melhor de cada série e descartar as demais.
+icon: star.svg
+---
 ## Triagem e revisão
 
 A triagem mantém um vencedor por série e pode mover as imagens rejeitadas para fora da pasta.

@@ -1,3 +1,7 @@
+---
+description: Escolher qual sessão abre em uma nova aba.
+icon: view_grid.svg
+---
 ## Seletor de Sessão
 
 A página inicial das novas abas: abra uma sessão aqui ou retome um projeto recente.

@@ -1,3 +1,7 @@
+---
+description: Zoom, panorâmica e foco na grade sem alterar arquivos.
+icon: move.svg
+---
 ## Visualização da Comparação múltipla
 
 A visualização controla como a grade é exibida e nunca altera os arquivos de origem.

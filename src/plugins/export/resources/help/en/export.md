@@ -1,3 +1,7 @@
+---
+description: Turn the current canvas into a saved still image.
+icon: save_icon.svg
+---
 ## Export
 
 Export saves the current canvas as a still image, in the format and size you choose.

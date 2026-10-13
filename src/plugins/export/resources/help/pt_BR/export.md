@@ -1,3 +1,7 @@
+---
+description: Salvar o canvas atual como uma imagem estática.
+icon: save_icon.svg
+---
 ## Exportação
 
 A exportação salva o canvas atual como uma imagem estática, no formato e no tamanho escolhidos.

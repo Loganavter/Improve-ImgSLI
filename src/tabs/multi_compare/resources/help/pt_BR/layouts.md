@@ -1,3 +1,7 @@
+---
+description: Reorganizar a grade para dar a cada slot o espaço necessário.
+icon: divider_visible.svg
+---
 ## Layouts da Comparação múltipla
 
 A grade dá a cada imagem seu próprio **slot**, e os **divisores** entre os slots definem quanto espaço cada um ocupa.

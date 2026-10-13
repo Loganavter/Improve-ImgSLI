@@ -1,3 +1,7 @@
+---
+description: Transformar uma comparação ao vivo em vídeo ou GIF editado.
+icon: video.svg
+---
 ## Editor de vídeo
 
 O Editor de vídeo grava uma sessão ao vivo do **Comparar imagens** como trilhas das ferramentas usadas, depois recorta a linha do tempo e codifica o resultado em vídeo ou GIF. Imagens estáticas ficam em [Exportação](help://workspace.export).

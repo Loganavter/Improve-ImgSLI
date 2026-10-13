@@ -1,3 +1,7 @@
+---
+description: Manage the sessions open in the workspace.
+icon: copy.svg
+---
 ## Tabs
 
 The tab strip above the workspace holds one tab per open session. The active tab decides what the canvas, toolbar, and lists show, so switching tabs changes the whole workspace view.

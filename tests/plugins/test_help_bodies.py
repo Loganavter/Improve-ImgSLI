@@ -74,15 +74,20 @@ def test_help_bodies_carry_no_i18n_placeholders():
     assert scanned >= 40
 
 
-def test_read_help_page_markdown_returns_body_verbatim():
+def test_read_help_page_markdown_returns_body_without_frontmatter():
+    """The reader returns the body verbatim, minus any leading card frontmatter."""
+    from plugins.help.meta import split_frontmatter
     from tabs.registry import TabRegistry
 
     TabRegistry().discover()
     TabRegistry().contribute_all_help()
     tree = get_help_tree()
     node = tree.require("workspace.image_compare.comparison")
+    raw = (node.body_root / "ru" / node.body).read_text(encoding="utf-8")
+    _meta, expected = split_frontmatter(raw)
     md = read_help_page_markdown("ru", node.body, body_root=node.body_root)
-    assert md == (node.body_root / "ru" / node.body).read_text(encoding="utf-8")
+    assert md == expected
+    assert not md.lstrip().startswith("---")
     assert "{#scroll-images}" in md
     assert "{{tr:" not in md
 

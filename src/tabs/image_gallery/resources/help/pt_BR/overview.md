@@ -1,3 +1,7 @@
+---
+description: Percorrer uma pasta de fotos parecidas por séries.
+icon: gallery.svg
+---
 ## Visão geral da Galeria
 
 **Galeria** agrupa em séries uma pasta de fotos parecidas, para manter as melhores e comparar as demais.

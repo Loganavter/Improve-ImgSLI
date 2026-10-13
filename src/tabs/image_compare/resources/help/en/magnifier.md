@@ -1,3 +1,7 @@
+---
+description: Study fine detail with a zoomed, movable inset.
+icon: magnifier.svg
+---
 ## Magnifier
 
 The magnifier enlarges a chosen region of the two compared images, so you can study detail that is too small on the canvas.

@@ -1,3 +1,7 @@
+---
+description: Encontrar e mudar opções do aplicativo, incluindo seções das abas.
+icon: settings.svg
+---
 ## Configurações
 
 Configurações é o diálogo das opções do aplicativo: páginas internas como **Geral** e **Aparência**, além de seções contribuídas pelas abas. As seções das abas ficam visíveis independentemente da sessão ativa.

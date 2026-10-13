@@ -1,3 +1,7 @@
+---
+description: View a file's size, format, and metadata from the context menu.
+icon: photo.svg
+---
 ## Image Properties
 
 **Properties** shows the file details and how the image is used in the current session. The dialog only displays data; it changes nothing in the session.
