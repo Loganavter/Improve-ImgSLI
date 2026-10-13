@@ -12,6 +12,11 @@ Ask AI answers questions about a single card, the current selection, or a whole 
 - **What matters here?** — the default question; it asks the model to summarize the images it is given.
 - **AI read, unverified** — the badge on text produced by the AI; it marks the answer as unverified.
 
+:::figure{side=block width=420}
+![Ask AI panel](../assets/ask_ai_panel.png)
+The **Ask AI** panel: the scope (**2 images**), the question field, the answer, and the **AI read, unverified** badge.
+:::
+
 ### Ask about a series {#ask-series}
 
 The series-header menu asks about every member of the series at once. Sharpness and noise readings come from [Quality Metrics](help://workspace.image_gallery.quality) and are shown without a request to the AI model.

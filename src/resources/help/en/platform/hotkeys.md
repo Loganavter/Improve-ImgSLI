@@ -6,6 +6,11 @@ icon: enter.svg
 
 Below are the default chords. Most action shortcuts can be remapped in **Settings** → **Keyboard**; the canvas keys `WASD` / `QE`, the arrow keys, `Space`, and `+` / `-` are fixed and cannot be remapped.
 
+:::figure{side=block width=100%}
+![Keyboard settings](../../assets/platform/settings_keyboard.png)
+**Settings → Keyboard**: every Platform action with its chord and a **Reset** button; one group per tab follows below.
+:::
+
 ### Discover first {#discover}
 
 `Ctrl+Shift+P` and part of a name are faster than scanning the list: **Find Action** runs the matching action or opens **Learn more** for the illustrated topic. `F1` opens the help topic for the focused control.

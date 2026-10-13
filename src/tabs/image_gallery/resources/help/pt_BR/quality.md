@@ -16,6 +16,11 @@ A pontuação combina nitidez, exposição, ruído e cor e, quando uma origem é
 - **Pontos do cartão** — três pontos em cada cartão, um por verificação de defeito; o ponto fica verde, âmbar ou vermelho conforme a verificação piora.
 - **AI quality** — um valor de **Sort by** que ordena as imagens primeiro pela pontuação de IA; aplica-se apenas enquanto o interruptor **IA** da barra de ferramentas está ligado, e imagens sem pontuação vão para o fim.
 
+:::figure{side=block width=100%}
+![Painel Visualização rápida](../assets/quality_quicklook.png)
+**Visualização rápida**: a imagem à esquerda e, à direita, os dados do arquivo mais uma linha por leitura com uma porcentagem ou **not measured**.
+:::
+
 ### Modos {#modes}
 
 A galeria escolhe um modo para a pasta, e o modo decide quais verificações de defeito os pontos do cartão mostram.

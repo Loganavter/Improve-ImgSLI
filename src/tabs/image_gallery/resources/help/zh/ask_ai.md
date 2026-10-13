@@ -12,6 +12,11 @@ icon: ai.svg
 - **这里有什么重点？** — 默认问题；它让模型概括收到的图像。
 - **AI 解读，未经核实** — AI 生成文本上的标记；它把回答标为未经核实。
 
+:::figure{side=block width=420}
+![询问 AI 面板](../assets/ask_ai_panel.png)
+**询问 AI** 面板：范围（**2 images**）、问题输入框、回答，以及 **AI 解读，未经核实** 标记。
+:::
+
 ### 就系列提问 {#ask-series}
 
 系列的标题菜单会一次对系列中的每个成员提问。锐度和噪点读数来自 [质量指标](help://workspace.image_gallery.quality)，显示时不向 AI 模型发起请求。

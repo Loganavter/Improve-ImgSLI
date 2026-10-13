@@ -26,6 +26,11 @@ After a folder loads, the gallery groups similar images into series — one sect
 - **Sort by** — orders images by **Rank**, **Name**, **Date**, or **AI quality**; unscored images sink to the end.
 - **Filter** — **Filter by tag / description…** narrows the grid to matching images; the selection is not affected.
 
+:::figure{side=block width=100%}
+![Gallery grid view](../assets/overview_grid.png)
+**Grid** view: the **Open Folder…** toolbar with **Filter** and **Sort by**, then the cards, each with a file name and three quality dots.
+:::
+
 ### Stats strip and compare {#stats-and-compare}
 
 The strip above the grid reports how many images, series, and redundant images the folder holds.

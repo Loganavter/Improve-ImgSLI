@@ -15,6 +15,11 @@ A grade é salva como uma única imagem, e a sessão mantém a grade, então ela
 - **Slots vazios** — slots sem imagem ficam de fora da imagem salva.
 - **Exportações grandes** — se o lado maior tiver mais de 16384 px, um aviso pergunta se deve continuar, porque tamanhos maiores não foram testados e a exportação pode falhar ou ficar sem memória. **Cancelar** interrompe a exportação; **Não mostrar novamente** desativa o aviso para exportações futuras.
 
+:::figure{side=block width=100%}
+![Diálogo Salvar grade](../assets/export_save_dialog.png)
+O diálogo de salvamento de **Salvar grade**: a prévia da grade combinada à esquerda e, à direita, a pasta de saída, o nome do arquivo, o formato e as opções de PNG.
+:::
+
 ### Sessões {#sessions}
 
 Uma sessão armazena os caminhos e rótulos das imagens dos slots, o layout, o slot em foco, o zoom e a panorâmica, e o estilo dos rótulos e divisores. Os próprios arquivos de imagem não são copiados — a sessão os reabre a partir de seus caminhos no disco.

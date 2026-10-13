@@ -346,8 +346,8 @@ Add `:::figure` only when a screenshot answers a question that prose cannot
 
 | Budget | When | Placement | Examples (current tree) |
 |---|---|---|---|
-| **0 — none** | Chord inventories, settings inventories, short orientation, anything fully named by UI strings | — | `platform.hotkeys`, `platform.settings` |
-| **1 — one** | One primary surface or spatial idea for the whole page | After the intro paragraph (or under the one `###` that needs it); prefer `side=block` | `getting_started` (session picker), `file_project` (paste overlay), `export` (dialog), `multi_compare.overview` (`#layouts`) |
+| **0 — none** | Chord inventories, short orientation, anything fully named by UI strings | — | `about`, `multi_compare.layouts`, `multi_compare.viewing` |
+| **1 — one** | One primary surface or spatial idea for the whole page | After the intro paragraph (or under the one `###` that needs it); prefer `side=block` | `getting_started` (onboarding mode picker), `file_project` (paste overlay), `export` (dialog), `workspace.settings` (dialog), `multi_compare.overview` (`#layouts`) |
 | **2 — several** | Page teaches **distinct visual states** that look different | One figure **next to the `###` section** it illustrates — not a stack under the title | `comparison` (`#split-line` + `#difference-modes`), `magnifier` (`#enabling` + `#combined-mode`), `video` (`#timeline` + `#export-encode`) |
 | **3+ — exception** | Several modes / gestures that each *look* different and must not share one collage | One figure per mode or gesture section | `ui.buttons` (toolbar + three modes + long-press) |
 
@@ -391,11 +391,11 @@ real encyclopedia-level pages.
 |---|:-:|
 | `about` | 0 |
 | `ui.buttons` | 5 |
-| `platform.getting_started` | 0 |
+| `platform.getting_started` | 1 |
 | `platform.image_properties` | 1 |
-| `platform.settings` | 0 |
-| `platform.hotkeys` | 0 |
-| `platform.tabs` | 0 |
+| `platform.settings` | 1 |
+| `platform.hotkeys` | 1 |
+| `platform.tabs` | 1 |
 | `platform.file_project` | 1 |
 | `workspace.session_picker` | 1 |
 | `workspace.image_compare.comparison` | 2 |
@@ -405,11 +405,19 @@ real encyclopedia-level pages.
 | `workspace.multi_compare.overview` | 1 |
 | `workspace.multi_compare.layouts` | 0 |
 | `workspace.multi_compare.viewing` | 0 |
-| `workspace.multi_compare.export` | 0 |
-| `workspace.image_gallery.{overview,triage,quality,ask_ai}` | 0 |
+| `workspace.multi_compare.export` | 1 |
+| `workspace.image_gallery.{overview,triage,quality,ask_ai}` | 1 |
 
 Going above the budget needs an explicit exception here (do not use figures
 to decorate every bullet).
+
+_2026-10-13: the budgets for `platform.{getting_started,settings,hotkeys,tabs}`,
+`workspace.multi_compare.export`, and the four `workspace.image_gallery.*`
+pages were raised to **1** so each page carries one real screenshot next to
+the surface it explains (previously all were 0). `about`,
+`multi_compare.layouts`, and `multi_compare.viewing` stay at 0 — no
+capturable surface matches them (orientation prose; a QRhi/GL canvas that
+cannot be grabbed headlessly)._
 
 Optional later gaps (still budget-0 unless raised):
 `workspace.session_picker` `#tab-strip`, `comparison` `#scroll-images`, settings shell.
