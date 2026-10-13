@@ -37,6 +37,7 @@ from tabs.multi_compare.debug import (
 from tabs.multi_compare.scene import actions
 from tabs.multi_compare.ui import chrome
 from tabs.multi_compare.ui.canvas_widget import INTERNAL_SLOT_MIME
+from tabs._shared.overflow_summary import summarize_overflow
 from tabs.multi_compare.ui.drop_queue import DropQueue, get_drop_queue
 from tabs.multi_compare.use_cases import placement as _placement
 
@@ -74,15 +75,10 @@ def _emit_dnd_overflow_summary(widget, overflow, *, reason: str = "queue_full") 
         return
     try:
         count = len(overflow)
-        shown = [
-            Path(p).name if not isinstance(p, Path) else p.name
-            for p in list(overflow)[:5]
-        ]
-        extra = f" (+{count - len(shown)} more)" if count > len(shown) else ""
-        names = ", ".join(shown)
+        names = summarize_overflow(overflow, limit=5, extra=True)
         message = (
             f"Drop queue is full ({DropQueue.MAX_PENDING_PATHS} pending max): "
-            f"{count} file{'s' if count != 1 else ''} not queued — {names}{extra}"
+            f"{count} file{'s' if count != 1 else ''} not queued — {names}"
         )
         report(message)
     except Exception:
