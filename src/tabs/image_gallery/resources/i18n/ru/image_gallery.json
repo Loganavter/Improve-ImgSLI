@@ -31,7 +31,10 @@
       "effort_none": "Без",
       "vlm_max_edge": "Уменьшение изображений (макс. сторона)",
       "downscale_original": "Оригинал",
-      "api_key_warning": "Хранится на этом устройстве в незашифрованном виде."
+      "api_key_warning": "Хранится на этом устройстве в незашифрованном виде.",
+      "api_key_placeholder": "sk-…",
+      "model_placeholder": "openrouter/auto или vendor/model",
+      "tokens_placeholder": "auto"
     },
     "errors": {
       "not_configured": "Сначала укажите API-ключ ИИ в настройках.",
@@ -80,6 +83,47 @@
     "sort_quality": "Качество ИИ",
     "view_grid": "Сетка",
     "view_list": "Список",
+    "toolbar": {
+      "open_folder": "Выбрать папку…",
+      "filter_placeholder": "Фильтр по тегу или описанию…",
+      "sort_prefix": "Сортировка"
+    },
+    "grid": {
+      "resize_tooltip": "Перетащите, чтобы изменить размер панелей серий"
+    },
+    "stats": {
+      "show_all": "Показать все",
+      "clean_rejected": "Удалить отклонённые ({n})",
+      "compare_finalists": "Сравнить финалистов",
+      "images": "{n} изображений",
+      "series": "{n} серий",
+      "redundant": "{n} лишних"
+    },
+    "quick_look": {
+      "unset_source": "Сбросить",
+      "reject": "Отклонить",
+      "restore": "Вернуть",
+      "delete": "Удалить",
+      "report_title": "Отчёт по пакету",
+      "report_sub": "расстояние до центроида · флаги артефактов",
+      "artifact_grid_tooltip": "Где артефакт выражен сильнее всего — грубая сетка 5×5:\nзелёный = нет · жёлтый = слабый · красный = самый сильный",
+      "mixed_sizes": "разные размеры",
+      "upscales_note": "{n} апскейлов одного источника"
+    },
+    "clean_review": {
+      "title": "Проверка отклонённых файлов",
+      "subtitle": "{n} файлов будет перемещено в {folder}/_rejected/ — ничего не удаляется, отмена доступна 10 с.",
+      "provenance_prefix": "из: ",
+      "series": "СЕРИЯ {n}",
+      "ungrouped": "БЕЗ ГРУППЫ",
+      "no_rejected": "Нет отклонённых файлов.",
+      "move": "Переместить {n}",
+      "size": "{n} файлов · {mb} МБ",
+      "no_files": "Нет файлов для перемещения",
+      "restore": "Вернуть",
+      "restore_all": "Вернуть все",
+      "cancel": "Отмена"
+    },
     "help": {
       "hub": {
         "title": "Галерея",

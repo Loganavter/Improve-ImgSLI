@@ -4,7 +4,8 @@
       "video_compare": "Сравнение видео",
       "multi_compare": "Мультисравнение",
       "session_picker": "Новая вкладка",
-      "image_compare": "Сравнение изображений"
+      "image_compare": "Сравнение изображений",
+      "image_gallery": "Галерея"
     },
     "tab_menu": {
       "close": "Закрыть вкладку",
