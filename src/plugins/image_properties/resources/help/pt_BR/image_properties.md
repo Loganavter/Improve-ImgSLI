@@ -1,3 +1,7 @@
+---
+description: Ver tamanho, formato e metadados do arquivo pelo menu de contexto.
+icon: photo.svg
+---
 ## Propriedades da imagem
 
 **Propriedades** mostra os dados do arquivo e como a imagem é usada na sessão atual. O diálogo apenas exibe informações; ele não altera nada na sessão.

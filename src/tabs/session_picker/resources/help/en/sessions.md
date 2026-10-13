@@ -1,3 +1,7 @@
+---
+description: Choose which session opens in a new tab.
+icon: view_grid.svg
+---
 ## Session Picker
 
 The starting page for new tabs: open a session from here or return to a recent project.

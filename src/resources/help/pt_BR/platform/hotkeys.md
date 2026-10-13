@@ -1,3 +1,7 @@
+---
+description: Consultar um atalho ou remapear os que você usa.
+icon: enter.svg
+---
 ## Atalhos de Teclado
 
 Abaixo estão as combinações padrão. A maioria dos atalhos de ação pode ser remapeada em **Configurações** → **Teclado**; as teclas do canvas `WASD` / `QE`, as setas, `Space` e `+` / `-` são fixas e não podem ser remapeadas.

@@ -1,3 +1,7 @@
+---
+description: Line up two images and study their differences.
+icon: vertical_split.svg
+---
 ## Comparison
 
 Comparison shows two images side by side, so you can line up the same detail on both.

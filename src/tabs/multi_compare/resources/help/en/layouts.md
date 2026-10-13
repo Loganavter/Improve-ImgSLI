@@ -1,3 +1,7 @@
+---
+description: Reshape the grid so each slot gets the space it needs.
+icon: divider_visible.svg
+---
 ## Multi Compare Layouts
 
 The grid gives each image its own **slot**, and the **dividers** between slots set how much room each one takes.

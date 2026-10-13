@@ -1,3 +1,7 @@
+---
+description: Look up a shortcut or remap the ones you use.
+icon: enter.svg
+---
 ## Hotkeys
 
 Below are the default chords. Most action shortcuts can be remapped in **Settings** → **Keyboard**; the canvas keys `WASD` / `QE`, the arrow keys, `Space`, and `+` / `-` are fixed and cannot be remapped.

@@ -1,3 +1,7 @@
+---
+description: Entender a barra de ferramentas e como os modos da UI agrupam controles.
+icon: text-manipulator.svg
+---
 ## Botões e Controles
 
 A **Barra de ferramentas** reúne as ferramentas da sessão ativa, e a configuração **Modo da UI** decide quantas ações compartilham um mesmo controle.

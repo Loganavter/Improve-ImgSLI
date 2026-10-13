@@ -1,3 +1,7 @@
+---
+description: Work through a folder of similar shots as series.
+icon: gallery.svg
+---
 ## Gallery Overview
 
 **Image Gallery** shows a folder of similar shots grouped into series, to keep the best and compare the rest.

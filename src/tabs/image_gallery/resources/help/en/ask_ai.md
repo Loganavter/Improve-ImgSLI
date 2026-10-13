@@ -1,3 +1,7 @@
+---
+description: Get AI commentary on a photo, a selection, or a series.
+icon: ai.svg
+---
 ## Ask AI
 
 Ask AI answers questions about a single card, the current selection, or a whole series. Answers are advisory and always carry a badge that marks them as AI-supplied.

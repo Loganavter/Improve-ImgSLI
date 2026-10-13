@@ -1,3 +1,7 @@
+---
+description: Comparar três ou mais imagens ao mesmo tempo em uma grade.
+icon: grid.svg
+---
 ## Visão geral da Comparação múltipla
 
 A Comparação múltipla compara três ou mais imagens ao mesmo tempo, cada imagem em seu próprio **slot** — uma célula da grade compartilhada.

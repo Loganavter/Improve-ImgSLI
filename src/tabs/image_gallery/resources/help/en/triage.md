@@ -1,3 +1,7 @@
+---
+description: Pick a winner per series and clear out rejects.
+icon: star.svg
+---
 ## Triage and Review
 
 Triage keeps one winner per series and can move the rejected images out of the folder.

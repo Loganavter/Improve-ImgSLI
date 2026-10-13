@@ -1,3 +1,7 @@
+---
+description: Guardar a grade como imagem e mantê-la na sessão.
+icon: save_icon.svg
+---
 ## Exportação da Comparação múltipla
 
 A grade é salva como uma única imagem, e a sessão mantém a grade, então ela volta quando a sessão é reaberta.

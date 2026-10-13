@@ -1,3 +1,7 @@
+---
+description: Store the grid as a picture and keep it in a session.
+icon: save_icon.svg
+---
 ## Multi Compare Export
 
 The grid saves as a single image, and the session keeps the grid so it returns when reopened.

@@ -1,3 +1,7 @@
+---
+description: Receber comentários da IA sobre uma foto, seleção ou série.
+icon: ai.svg
+---
 ## Perguntar à IA
 
 Perguntar à IA responde a perguntas sobre um único cartão, a seleção atual ou uma série inteira. As respostas são consultivas e sempre carregam um selo que as marca como fornecidas por IA.

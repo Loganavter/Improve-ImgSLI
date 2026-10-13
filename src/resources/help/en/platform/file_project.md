@@ -1,3 +1,7 @@
+---
+description: How images enter a session and how projects bundle them.
+icon: folder_open.svg
+---
 ## Files and Projects
 
 Load images into session lists, paste from the clipboard, and open or save a project file that bundles the session layout, the compare settings, and copies of the source images.

@@ -1,3 +1,7 @@
+---
+description: 对齐两张图像，查看它们的差异。
+icon: vertical_split.svg
+---
 ## 对比
 
 对比把两张图像并排显示，让同一处细节在两侧对齐。

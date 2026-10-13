@@ -1,3 +1,7 @@
+---
+description: De onde o aplicativo veio, o que ele faz e o que ler depois.
+icon: about.svg
+---
 ## Sobre
 
 Improve ImgSLI é um espaço de trabalho para desktop onde imagens são comparadas lado a lado ou em grade, as diferenças são inspecionadas no nível do pixel e o resultado é mantido como uma imagem exportada ou um vídeo da comparação.
