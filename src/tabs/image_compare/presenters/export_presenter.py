@@ -138,7 +138,7 @@ class ExportPresenter(QObject):
             self.ui_manager.messages.show_non_modal_message(
                 kind=MessageKind.WARNING,
                 title=self._tr("image_compare.common.warning"),
-                text="Video editor is unavailable.",
+                text=self._tr("common.error"),
             )
             return
 

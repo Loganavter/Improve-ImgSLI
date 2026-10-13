@@ -211,7 +211,7 @@ class RecordingFlow:
             return
 
         _video_debug("open_video_editor -> presenter unavailable presenter=%s, emit error", controller.presenter)
-        self._emit_error("Video editor is unavailable.")
+        self._emit_error(self.controller._tr("common.error"))
 
     def on_recording_finalized(self, _recording) -> None:
         _video_debug("on_recording_finalized pending=%s presenter=%s plugin=%s", self.controller._pending_open_editor, self.controller.presenter, self.controller.video_editor_plugin)
