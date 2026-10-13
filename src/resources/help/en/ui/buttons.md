@@ -4,9 +4,8 @@ The toolbar sits above the canvas in a compare session. It holds the tools for t
 
 ### The toolbar {#toolbar}
 
-- **Toolbar** — strip of icon controls for the active session type.
-- **Contents** — toggles, value nudges, buttons opening panels or dialogs.
-- **Density** — follows {{tr:settings.ui_mode}} (first-run onboarding or [Settings → Appearance](help://settings#interface)).
+- **Toolbar** — strip of icon controls for the active session type. Each control is a toggle, a value nudge, or a button that opens a panel or dialog.
+- **{{tr:settings.ui_mode}}** — sets how many controls the toolbar shows. First-run onboarding sets it; [Settings → Appearance](help://settings#interface) changes it later.
 
 :::figure{side=block height=107}
 ![Session toolbar]({{img:ui.buttons.toolbar}})
@@ -60,11 +59,6 @@ In {{tr:settings.ui_mode_advanced}} and especially {{tr:settings.ui_mode_expert}
 List button — short click vs long-press.
 :::
 
-### Product examples {#examples}
-
-- **{{tr:workspace.session_types.image_compare}}** — in denser modes, scroll divider width or magnifier size on one control; long-press clear / swap on list buttons. Details: [Comparison](help://comparison); lists: [Lists and Panels](help://ui.lists_flyouts).
-- **{{tr:workspace.session_types.multi_compare}}** — grid-line thickness / visibility on `D`. Details: [Multi Compare](help://multi_compare).
-
 ### Find a control by name {#find-action}
 
-Press `Ctrl+Shift+P` ({{tr:menu.find_action}}), type part of the label, then run the action or open {{tr:action.palette.learn_more}} / `Ctrl+Enter` when the row has a help topic.
+Open the palette with `Ctrl+Shift+P` ({{tr:menu.find_action}}), type part of the label, and run the action or press `Ctrl+Enter` to open {{tr:action.palette.learn_more}} when the row has a help topic.

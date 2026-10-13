@@ -1,6 +1,6 @@
 ## Getting Started
 
-Orientation for a fresh install. First launch shows a UI-mode picker; the choice is written once and lives on as the Appearance setting. The palette ({{tr:menu.find_action}}, `Ctrl+Shift+P`) reaches every action without toolbar hunting.
+Orientation for a fresh install. First launch shows a UI-mode picker; the choice is written once and lives on as the Appearance setting. The palette ({{tr:menu.find_action}}, `Ctrl+Shift+P`) runs any action.
 
 ### {{tr:workspace.session_types.image_compare}} workflow {#basic-workflow}
 
@@ -12,4 +12,4 @@ A grid of slots for more than two images, opened from the [Session Picker](help:
 
 ### Discover features {#discover}
 
-`Ctrl+Shift+P` searches and runs any action; {{tr:action.palette.learn_more}} opens the matching help topic. `F1` opens the palette filtered to the focused chrome. Inside the Help window, the search field above the topic list jumps to matching pages. Next stops: [Workspace Tabs](help://session_picker), [Files and Projects](help://file_management), [Comparison](help://comparison), [Export](help://export), [Settings](help://settings).
+`Ctrl+Shift+P` searches and runs any action; {{tr:action.palette.learn_more}} opens the matching help topic. `F1` opens the palette filtered to the focused chrome. Inside the Help window, the search field above the topic list jumps to matching pages. Next topics: [Workspace Tabs](help://session_picker), [Files and Projects](help://file_management), [Comparison](help://comparison), [Export](help://export), [Settings](help://settings).

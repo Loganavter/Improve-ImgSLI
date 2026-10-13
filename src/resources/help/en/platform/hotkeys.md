@@ -43,6 +43,12 @@ Details: [Comparison](help://comparison), [Magnifier](help://magnifier), [Video 
 
 See [{{tr:workspace.session_types.multi_compare}}](help://multi_compare).
 
+### {{tr:image_gallery.tab_name}} {#image-gallery}
+
+- `Space` / `Delete` — take the selected cards out of the grid; files stay on disk.
+
+See [Triage and Review](help://gallery_triage).
+
 ### Video editor window {#video-editor}
 
 While the editor is open: `Space` play/pause, `Ctrl+Z` / `Ctrl+Y` undo/redo, `Delete` / `Backspace` trim to selection. Full encode workflow: [Video Editor](help://video).
