@@ -6,6 +6,9 @@ from pathlib import Path
 
 _HELP_ROOT = Path(__file__).resolve().parent / "resources" / "help"
 
+#: Web-canon mount point of this package in the fs-scanned help tree.
+HELP_MOUNT = "platform.image_properties"
+
 _NODES = {
     "platform.image_properties": {
         "kind": "page",

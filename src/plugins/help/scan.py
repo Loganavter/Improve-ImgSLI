@@ -1,0 +1,208 @@
+"""Filesystem-derived help tree (web canon, phase 1: structure only).
+
+Derives node ids, kinds, children and body paths by scanning
+``<package>/resources/help/en/`` directories instead of reading
+``tree.json`` + contribution ``nodes`` dicts:
+
+- host package (``src/resources/help``) mounts at the tree root;
+- ``src/tabs/<name>`` mounts at ``workspace.<name>`` (convention);
+- ``src/plugins/<name>`` mounts at the ``HELP_MOUNT`` dotted id declared in
+  ``src/plugins/<name>/help.py`` (single line, no node registry).
+
+Layout convention per mount: exactly one ``*.md`` directly under ``en/``
+(and no subdirectories) means the mount id itself is a page (e.g.
+``platform.settings``); otherwise the mount is a hub and every ``*.md`` is a
+page ``<mount>.<relative-stem>`` (e.g. a tab's ``comparison`` page).
+
+Page titles/descriptions/icons are NOT derived here yet (phase 2) — nodes
+carry placeholder metadata. Structure (ids, kinds, bodies, children) must
+match the registry-built tree; see ``tests/plugins/test_help_fsscan.py``.
+"""
+
+from __future__ import annotations
+
+import ast
+from pathlib import Path
+
+from plugins.help.tree import HelpNode, HelpTree, _validate_tree, host_help_root
+
+#: Canonical language for structure discovery; per-file fallback to EN at
+#: read time stays in ``resolve_help_body_path``.
+_CANON_LANG = "en"
+
+#: App-shell root order (kept fixed; deeper levels are fs-sorted).
+ROOT_CHILDREN = ("about", "workspace", "ui", "platform")
+
+
+def _src_root() -> Path:
+    return host_help_root().parent.parent
+
+
+def _read_plugin_mount(plugin_dir: Path) -> str | None:
+    """Return the ``HELP_MOUNT`` dotted id from ``plugins/<name>/help.py``."""
+    help_py = plugin_dir / "help.py"
+    if not help_py.is_file():
+        return None
+    try:
+        module = ast.parse(help_py.read_text(encoding="utf-8"))
+    except (OSError, SyntaxError):
+        return None
+    for stmt in module.body:
+        if (
+            isinstance(stmt, ast.Assign)
+            and len(stmt.targets) == 1
+            and isinstance(stmt.targets[0], ast.Name)
+            and stmt.targets[0].id == "HELP_MOUNT"
+            and isinstance(stmt.value, ast.Constant)
+            and isinstance(stmt.value.value, str)
+        ):
+            return stmt.value.value
+    return None
+
+
+def _discover_packages() -> list[tuple[str | None, Path]]:
+    """Return ``(mount, help_dir)`` for host (mount ``None`` = root) + tabs + plugins."""
+    found: list[tuple[str | None, Path]] = []
+    host = host_help_root()
+    if (host / _CANON_LANG).is_dir():
+        found.append((None, host))
+    src = _src_root()
+    for tab_dir in sorted((src / "tabs").glob("*/resources/help")):
+        if (tab_dir / _CANON_LANG).is_dir():
+            found.append((f"workspace.{tab_dir.parent.parent.name}", tab_dir.resolve()))
+    for plugin_dir in sorted((src / "plugins").glob("*/resources/help")):
+        if (plugin_dir / _CANON_LANG).is_dir():
+            mount = _read_plugin_mount(plugin_dir.parent.parent)
+            if mount is not None:
+                found.append((mount, plugin_dir.resolve()))
+    return found
+
+
+def _page_node(node_id: str, body: str, body_root: Path | None) -> HelpNode:
+    return HelpNode(
+        node_id=node_id,
+        kind="page",
+        title=node_id,
+        description="",
+        children=(),
+        body=body,
+        title_key=None,
+        description_key=None,
+        icon="",
+        body_root=body_root,
+    )
+
+
+def _hub_node(node_id: str, children: tuple[str, ...], body_root: Path | None = None) -> HelpNode:
+    return HelpNode(
+        node_id=node_id,
+        kind="hub",
+        title=node_id,
+        description="",
+        children=children,
+        body=None,
+        title_key=None,
+        description_key=None,
+        icon="",
+        body_root=body_root,
+    )
+
+
+def scan_help_tree() -> HelpTree:
+    """Build a ``HelpTree`` purely from the filesystem (structure only)."""
+    nodes: dict[str, HelpNode] = {}
+    host_root = host_help_root().resolve()
+    hub_roots: dict[str, Path | None] = {}
+
+    def add_hub(node_id: str, body_root: Path | None = None) -> None:
+        if node_id not in nodes:
+            nodes[node_id] = _hub_node(node_id, (), body_root)
+            hub_roots[node_id] = body_root
+        elif body_root is not None and hub_roots.get(node_id) is None:
+            hub_roots[node_id] = body_root
+
+    pending_children: dict[str, set[str]] = {}
+
+    def attach(parent: str, child: str) -> None:
+        pending_children.setdefault(parent, set()).add(child)
+
+    for mount, help_dir in _discover_packages():
+        body_root: Path | None = None if help_dir.resolve() == host_root else help_dir.resolve()
+        lang_dir = help_dir / _CANON_LANG
+        md_files = sorted(
+            p for p in lang_dir.rglob("*.md") if ".git" not in p.parts and "assets" not in p.relative_to(lang_dir).parts
+        )
+        top_files = [p for p in md_files if p.parent == lang_dir]
+        has_subdirs = any(p.parent != lang_dir for p in md_files)
+
+        if mount is None:
+            # Host package: ids mirror the relative path (about, ui.buttons…).
+            for path in md_files:
+                rel = path.relative_to(lang_dir)
+                stem = rel.with_suffix("")
+                page_id = ".".join(stem.parts)
+                parent = ".".join(stem.parts[:-1]) if len(stem.parts) > 1 else "root"
+                nodes[page_id] = _page_node(page_id, rel.as_posix(), None)
+                if parent == "root":
+                    attach("root", page_id)
+                else:
+                    add_hub(parent)
+                    attach(parent, page_id)
+            for path in md_files:
+                rel = path.relative_to(lang_dir)
+                for i in range(1, len(rel.parts)):
+                    hub_id = ".".join(rel.parts[:i])
+                    if hub_id in nodes and nodes[hub_id].kind == "page":
+                        continue
+                    add_hub(hub_id)
+                    parent = ".".join(rel.parts[: i - 1]) if i > 1 else "root"
+                    attach(parent, hub_id)
+        elif len(top_files) == 1 and not has_subdirs:
+            # Single-page package: the mount id itself is the page.
+            rel = top_files[0].relative_to(lang_dir)
+            nodes[mount] = _page_node(mount, rel.as_posix(), body_root)
+            parent = mount.rpartition(".")[0]
+            attach(parent, mount)
+            add_hub(parent)
+        else:
+            # Multi-page package: the mount is a hub of pages.
+            add_hub(mount, body_root)
+            parent = mount.rpartition(".")[0]
+            attach(parent, mount)
+            add_hub(parent)
+            for path in md_files:
+                rel = path.relative_to(lang_dir)
+                stem = rel.with_suffix("")
+                page_id = mount + "." + ".".join(stem.parts)
+                nodes[page_id] = _page_node(page_id, rel.as_posix(), body_root)
+                if len(stem.parts) > 1:
+                    hub_id = mount + "." + ".".join(stem.parts[:-1])
+                    add_hub(hub_id, body_root)
+                    attach(hub_id, page_id)
+                    attach(mount, hub_id)
+                else:
+                    attach(mount, page_id)
+
+    # Synthesized mount containers + root.
+    for hub_id in ("workspace", "root"):
+        add_hub(hub_id)
+    if "workspace" in pending_children:
+        attach("root", "workspace")
+    for parent, children in pending_children.items():
+        add_hub(parent)
+        ordered = tuple(sorted(children))
+        if parent == "root":
+            ordered = tuple(c for c in ROOT_CHILDREN if c in children) + tuple(
+                sorted(c for c in children if c not in ROOT_CHILDREN)
+            )
+        nodes[parent] = _hub_node(parent, ordered, hub_roots.get(parent))
+
+    tree = HelpTree(
+        root_id="root",
+        nodes=nodes,
+        aliases={},
+        asset_roots=(),
+        icon_resolvers=(),
+    )
+    _validate_tree(tree)
+    return tree
