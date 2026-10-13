@@ -6,6 +6,11 @@ icon: enter.svg
 
 Abaixo estão as combinações padrão. A maioria dos atalhos de ação pode ser remapeada em **Configurações** → **Teclado**; as teclas do canvas `WASD` / `QE`, as setas, `Space` e `+` / `-` são fixas e não podem ser remapeadas.
 
+:::figure{side=block width=100%}
+![Configurações de teclado](../../assets/platform/settings_keyboard.png)
+**Configurações → Teclado**: cada ação da Plataforma com sua combinação e um botão **Redefinir**; abaixo vêm os grupos por aba.
+:::
+
 ### Descubra primeiro {#discover}
 
 `Ctrl+Shift+P` mais parte de um nome é mais rápido que percorrer a lista: **Localizar ação** executa a ação correspondente ou abre **Saiba mais** com o tópico ilustrado. `F1` abre o tópico de ajuda do controle em foco.

@@ -12,6 +12,11 @@ Perguntar à IA responde a perguntas sobre um único cartão, a seleção atual 
 - **O que importa aqui?** — a pergunta padrão; pede ao modelo que resuma as imagens que recebe.
 - **Leitura de IA, não verificada** — o selo no texto produzido pela IA; ele marca a resposta como não verificada.
 
+:::figure{side=block width=420}
+![Painel Perguntar à IA](../assets/ask_ai_panel.png)
+O painel **Perguntar à IA**: o escopo (**2 images**), o campo de pergunta, a resposta e o selo **Leitura de IA, não verificada**.
+:::
+
 ### Perguntar sobre uma série {#ask-series}
 
 O menu do cabeçalho da série pergunta de uma vez sobre cada membro da série. As leituras de nitidez e ruído vêm de [Métricas de qualidade](help://workspace.image_gallery.quality) e são mostradas sem uma requisição ao modelo de IA.

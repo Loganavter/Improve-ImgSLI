@@ -6,6 +6,11 @@ icon: settings.svg
 
 Configurações é o diálogo das opções do aplicativo: páginas internas como **Geral** e **Aparência**, além de seções contribuídas pelas abas. As seções das abas ficam visíveis independentemente da sessão ativa.
 
+:::figure{side=block width=100%}
+![Diálogo de Configurações](../assets/settings_general.png)
+A lista de seções à esquerda com **Geral** aberta — **Idioma**, **Tema**, **Notificações do sistema** e **Ativar registro de depuração**.
+:::
+
 ### Abrir Configurações {#open-settings}
 
 - **Arquivo** → **Configurações** (`Ctrl+,`).

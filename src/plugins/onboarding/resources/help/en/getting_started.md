@@ -8,6 +8,11 @@ Improve ImgSLI puts images side by side so you can compare them, zoom into the d
 
 ### Your first comparison {#basic-workflow}
 
+:::figure{side=block width=100%}
+![First-run mode picker](../assets/onboarding_ui_mode.png)
+First launch: the **Beginner**, **Advanced**, and **Expert** mode cards, each showing its own toolbar demo, with the confirmation button below.
+:::
+
 1. On first launch, choose a UI mode — **Beginner**, **Advanced**, or **Expert**. The choice is stored once and can be changed later under **Appearance**.
 2. Open a session with `Ctrl+N` (the **Session Picker**), or run **New Image Compare Session** from **Find Action** (`Ctrl+Shift+P`).
 3. Load one image into each list: use the add button on a list, or drag files onto it.

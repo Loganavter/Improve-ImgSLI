@@ -26,6 +26,11 @@ Depois que uma pasta carrega, a galeria agrupa imagens parecidas em séries — 
 - **Sort by** — ordena as imagens por **Rank**, **Name**, **Date** ou **AI quality**; imagens sem pontuação vão para o fim.
 - **Filtro** — **Filter by tag / description…** restringe a grade às imagens correspondentes; a seleção não é afetada.
 
+:::figure{side=block width=100%}
+![Grade da galeria](../assets/overview_grid.png)
+Visão **Grid**: a barra com **Open Folder…**, **Filter by tag / description…** e **Sort by**, depois os cartões, cada um com o nome do arquivo e três pontos de qualidade.
+:::
+
 ### Faixa de estatísticas e comparação {#stats-and-compare}
 
 A faixa acima da grade informa quantas imagens, séries e imagens redundantes a pasta contém.

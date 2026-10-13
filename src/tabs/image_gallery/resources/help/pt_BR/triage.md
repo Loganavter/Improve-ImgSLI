@@ -12,6 +12,11 @@ A triagem mantém um vencedor por série e pode mover as imagens rejeitadas para
 - A vencedora permanece no ranking 1 de sua série; os cartões rejeitados ficam esmaecidos e ganham um tachado.
 - **Show all** — limpa todas as marcações de rejeição e traz as imagens de volta.
 
+:::figure{side=block width=100%}
+![Triagem da galeria](../assets/triage_stats.png)
+A faixa de estatísticas (**imagens · séries · redundantes**) com **Manter o melhor**, **Limpar rejeitados** e **Compare finalists**, cabeçalhos de série e cartões rejeitados esmaecidos.
+:::
+
 ### Tornar melhor e rejeitar {#make-best-reject}
 
 - **Make best** — marca a imagem selecionada como vencedora de sua série.

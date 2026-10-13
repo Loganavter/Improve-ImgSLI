@@ -26,6 +26,11 @@ icon: gallery.svg
 - **Sort by** — 按 **Rank**、**Name**、**Date** 或 **AI quality** 排列图像；未评分的图像排到最后。
 - **筛选** — **Filter by tag / description…** 把网格缩小到匹配的图像；选中项不受影响。
 
+:::figure{side=block width=100%}
+![图库网格视图](../assets/overview_grid.png)
+**Grid** 视图：工具栏有 **Open Folder…**、**Filter by tag / description…** 和 **Sort by**，下面是卡片，每张带有文件名和三个质量圆点。
+:::
+
 ### 统计栏与对比 {#stats-and-compare}
 
 网格上方的统计栏显示文件夹中包含多少图像、系列和冗余图像。

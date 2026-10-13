@@ -12,6 +12,11 @@ icon: star.svg
 - 优胜者在系列内保持排名 1；被拒绝的卡片会变暗并加上删除线。
 - **Show all** — 清除所有被拒绝标记，把图像重新显示出来。
 
+:::figure{side=block width=100%}
+![图库分拣](../assets/triage_stats.png)
+统计栏（**图像 · 系列 · 冗余**）配有 **保留最佳**、**清理已拒绝** 和 **Compare finalists** 按钮，下面是系列标题和被拒绝的变暗卡片。
+:::
+
 ### 设为最佳与拒绝 {#make-best-reject}
 
 - **Make best** — 把选中的图像标记为其系列的优胜者。

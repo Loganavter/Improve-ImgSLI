@@ -8,6 +8,11 @@ O Improve ImgSLI coloca imagens lado a lado para você compará-las, ampliar as 
 
 ### Sua primeira comparação {#basic-workflow}
 
+:::figure{side=block width=100%}
+![Escolha de modo na primeira execução](../assets/onboarding_ui_mode.png)
+Primeira abertura: os cartões de modo **Iniciante**, **Avançado** e **Especialista**, cada um com sua demonstração da barra, e o botão de confirmação abaixo.
+:::
+
 1. Na primeira abertura, escolha um modo de interface — **Iniciante**, **Avançado** ou **Especialista**. A escolha é gravada uma vez e pode ser alterada depois em **Aparência**.
 2. Abra uma sessão com `Ctrl+N` (o **seletor de sessão**) ou execute **Nova sessão Image Compare** em **Localizar ação** (`Ctrl+Shift+P`).
 3. Carregue uma imagem em cada lista: use o botão de adicionar da lista ou arraste arquivos até ela.
