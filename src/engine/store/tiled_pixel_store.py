@@ -738,11 +738,14 @@ class TiledPixelStore:
         ``st_size >= w*h*4`` before memmap to avoid SIGBUS.
         """
         from core.constants import AppConstants
+        from shared.image_processing.progressive_loader import (
+            is_supported_image_dimension,
+            max_supported_image_dimension,
+        )
 
         width, height = int(width), int(height)
-        max_dim = int(AppConstants.MAX_SUPPORTED_IMAGE_DIMENSION)
-        if width <= 0 or height <= 0 or width > max_dim or height > max_dim:
-            raise ValueError(f"Embedded cache dims {width}x{height} out of bounds (max {max_dim})")
+        if not is_supported_image_dimension(width, height):
+            raise ValueError(f"Embedded cache dims {width}x{height} out of bounds (max {max_supported_image_dimension()})")
         try:
             st_size = Path(cache_path).stat().st_size
         except OSError as exc:
