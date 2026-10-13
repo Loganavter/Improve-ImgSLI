@@ -1,6 +1,6 @@
 ---
 name: help-authoring
-description: Authors and maintains the in-app Help manual (host + tab topics, fs scan, figure budgets, {{tr:}} tokens, i18n keys). Use when adding or updating help pages, contributing a tab's help hub, changing help figures or their assets, or fixing help i18n keys.
+description: Authors and maintains the in-app Help manual (host + tab topics, fs scan, figure budgets, literal on-screen labels). Use when adding or updating help pages, contributing a tab's help hub, changing help figures or their assets, or aligning labels in help text.
 ---
 
 # In-app Help authoring
@@ -35,7 +35,7 @@ filesystem — dirs are hubs, `*.md` files are pages, ids are dotted paths.
 
 - Page title `##`; concept sections `###` with stable `{#anchor}`; the TOC is generated from anchored `###` — keep titles short.
 - **No GFM pipe tables** in bodies: consecutive `| … |` rows render as one paragraph. Use `- **X** — …` lists.
-- i18n: labels via `{{tr:dotted.key}}`; never hardcode control names. Bodies ship in en + ru + zh + pt_BR; a missing language falls back to EN.
+- Labels are literal, on-screen names in `**bold**` (no `{{tr:}}` tokens): write the control exactly as the UI shows it. Bodies ship in en + ru + zh + pt_BR; a missing language falls back to EN. Prose canon: [docs/dev/HELP_STYLE_GUIDE.md](../../../docs/dev/HELP_STYLE_GUIDE.md).
 - Figures as body-relative paths into the owning package's `assets/`. Never add figures outside the per-topic budget table in HELP_SYSTEM.md.
 - Cross-link with `help://dotted.path#anchor`; no trailing `### Related` dumps — weave links into prose or use a short `### Next topics`.
 
@@ -61,7 +61,8 @@ a question prose cannot (layout, spatial gesture, dialog shape, a mode that
 | 3+ | Exception: several modes/gestures that each look different | one per mode/gesture section |
 
 Rules: need before asset; screenshots go to final filenames under the owning
-package's `assets/`; caption = UI path via `{{tr:…}}`; size
+package's `assets/`; caption explains the picture (what is shown), not a menu
+path; size
 with `width=`/`height=` (prefer `height=` for toolbar strips); lightbox is
 free.
 
@@ -72,7 +73,7 @@ env QT_QPA_PLATFORM=offscreen pytest -q tests/plugins/test_help_*.py
 ```
 
 Key tests: `test_help_tree.py` (paths, hub fragments, scenario-card page shape),
-`test_help_interpolate.py` (`{{tr:}}`, body-relative images),
+`test_help_bodies.py` (literal labels — no `{{tr:`, body-relative images),
 `test_help_browser_navigation.py` (incl. Missing-page),
 `test_help_dialog_opens.py`. Scenario shape (`##` + `###`) is enough for the
 tests — figures are never required.

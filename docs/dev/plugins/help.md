@@ -32,7 +32,7 @@ Source: `src/plugins/help/`. Authoring/content rules live in
 | `scan.py` | Filesystem discovery (dirs = hubs, `*.md` = pages) + hub-meta overlay |
 | `contribution.py` | `HelpHubContribution` (tab-owned hub presentation, frozen, `owner_tab` + `mount`) |
 | `navigator.py` | `HelpNavigator` — page navigation |
-| `hub_page.py`, `back_bar.py`, `labels.py`, `interpolate.py`, `layout_geometry.py`, `icons.py`, `text_context_menu.py` | hub rendering, chrome, label handling, icon lookup, text context menu |
+| `hub_page.py`, `back_bar.py`, `labels.py`, `layout_geometry.py`, `icons.py`, `text_context_menu.py` | hub rendering, chrome, label handling, icon lookup, text context menu |
 
 ## Tree scan contract
 

@@ -1,61 +1,69 @@
 ## Comparison
 
-Two images on the full canvas: a movable split, optional filename labels, channel views, and difference modes — without opening the magnifier.
+Compare two images across the whole canvas: drag a movable split line, show filename labels, inspect single color channels, and highlight where the images differ — without opening the magnifier.
 
 ### Split line {#split-line}
 
 With the magnifier off, drag the divider across the pair.
 
-- **Orientation** — {{tr:image_compare.action.divider_orientation}} flips horizontal / vertical.
-- **Width** — scroll over {{tr:image_compare.action.divider_width}}.
-- **Color** — {{tr:image_compare.action.divider_color}}.
-- **Visibility** (`D`) — {{tr:image_compare.action.divider_visible}} shows or hides the line.
-- **Combined** — {{tr:image_compare.action.divider_combined}} packs orientation, width, and color (scroll / right-click / middle-click); see the control tooltip.
+- **Orientation** — the **Split Orientation** control switches the split between horizontal and vertical.
+- **Width** — scroll over **Divider Width** to change how thick the split line is.
+- **Color** — **Divider Color** sets the line color.
+- **Visibility** (`D`) — the **Divider Visibility** toggle shows or hides the line.
+- **Combined** — the **Divider** control packs orientation, width, and color into one control (scroll / right-click / middle-click); hover it to see the gesture tooltip.
 
 :::figure{side=block width=280}
 ![Split line](../assets/split_line.png)
-{{tr:image_compare.action.breadcrumb.toolbar}} → {{tr:image_compare.action.breadcrumb.divider}}.
+The split line on the canvas: drag it to reveal the same position on both sides.
 :::
 
 ### Scroll through images {#scroll-images}
 
-- **Canvas wheel** — steps the list on the side under the cursor (left of a vertical split / above a horizontal split = side 1; the other half = side 2).
-- **`Shift` + wheel** — steps both lists together.
-- **Single-image preview** — wheel always steps the visible side.
-- **Dropdown wheel** — steps that side without opening the panel.
-- **Swap** (`X`) — short click exchanges the current pair; long-press swaps both lists.
+- **Canvas wheel** — scrolling steps the list on the side under the cursor (left of a vertical split, or above a horizontal split, is side 1; the other half is side 2).
+- **`Shift` + wheel** — scrolling steps both lists together.
+- **Single-image preview** — when only one image is shown, the wheel always steps the visible side.
+- **Dropdown wheel** — scrolling over the dropdown steps that side without opening its panel.
+- **Swap** (`X`) — a short click exchanges the current pair; a long press swaps both lists.
 
 ### Labels {#labels-and-metrics}
 
-- **Show names** (`N`) — {{tr:image_compare.action.file_names}}; can burn into exports when enabled.
-- **Zoom** — labels hide while zoom is not `100%` and return at fit zoom.
-- **Text settings** — {{tr:image_compare.action.text_settings}} opens a panel for size, weight, opacity, colors, background, and placement.
+- **Show names** (`N`) — when the **Filename Overlay** toggle is on, filename labels appear on the canvas and can be written into saved images.
+- **Zoom** — labels are hidden while the view is zoomed and come back at `100%` zoom.
+- **Text settings** — **Label Text Settings** opens a panel for font size, weight, opacity, colors, background, and placement.
 
 ### Metrics {#metrics}
 
-- **{{tr:image_compare.ui.psnr}} / {{tr:image_compare.ui.ssim}}** — off by default; turn on the automatic readout in [Settings](help://platform.settings#image_compare) under {{tr:workspace.session_types.image_compare}}.
+- **PSNR / SSIM** — the readout is off by default. Turn on the automatic PSNR and SSIM calculation under **Image Compare** in [Settings](help://platform.settings#image_compare).
+
+### Moving an image between tabs {#moving-between-tabs}
+
+The **Move** action sends an image to another workspace tab without copying it into the project first.
+
+1. In the image context menu on the canvas or in the list, choose **Move**.
+2. A translucent copy of the image appears next to the cursor.
+3. Click the workspace tab or the canvas where you want to place the image — the same placement as Duplicate or paste.
+4. Press `Esc` or right-click to cancel the move.
 
 ### Context menu actions {#context-menu-actions}
 
-- **Properties** — [Image Properties](help://platform.image_properties) from a list-row context menu (file metadata and in-app side / rating).
-- **Move** — from the canvas or list context menu, a preview of the image follows the pointer. Click another workspace tab or the canvas to place it, as with Duplicate or paste. `Esc` or right-click cancels.
+- **Properties** — [Image Properties](help://platform.image_properties) from a list-row context menu shows the file metadata and the in-app side and rating.
 
 ### Channel modes {#channel-modes}
 
-{{tr:image_compare.action.channel_mode}} (`C`) cycles RGB, R, G, B, and luminance for single-channel inspection without leaving the canvas.
+**Channel Mode** (`C`) cycles RGB, R, G, B, and luminance so you can inspect a single channel without leaving the canvas.
 
 ### Difference modes {#difference-modes}
 
-{{tr:image_compare.action.diff_mode}} (`H` cycles) emphasizes where the pair differs:
+**Difference Mode** (`H` cycles) emphasizes where the pair differs:
 
 :::figure{side=block width=280}
 ![Difference mode](../assets/difference_modes.png)
-{{tr:image_compare.action.diff_mode}}.
+The same pair in each difference mode: **Highlight**, grayscale, edges, and SSIM show the differences in different ways.
 :::
 
-- **{{tr:image_compare.action.diff_highlight}}** — change regions on the live pair
-- **{{tr:image_compare.action.diff_grayscale}}** — desaturates intensity differences
-- **{{tr:image_compare.action.diff_edges}}** — edge-oriented difference
-- **{{tr:image_compare.action.diff_ssim}}** — structural similarity map when metrics support it
+- **Highlight** — colors the regions where the two images differ.
+- **Grayscale** — desaturates the intensity differences.
+- **Edges** — shows the difference along edges.
+- **SSIM** — draws a structural similarity map when the metrics support it.
 
-Live canvas, export stills, and video recording keep the same look. Difference modes combine with channel views. For local inspection, use the [Magnifier](help://workspace.image_compare.magnifier).
+The live canvas, exported stills, and video recording keep the same look. Difference modes combine with channel views. For local inspection, use the [Magnifier](help://workspace.image_compare.magnifier).

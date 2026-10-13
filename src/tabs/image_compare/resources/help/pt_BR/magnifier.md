@@ -1,50 +1,50 @@
 ## Lupa
 
-A lupa amostra uma região do par comparado e mostra uma vista ampliada no canvas — detalhe local além da linha divisória.
+A **Lupa** amplia uma região escolhida do par comparado e mostra essa vista ampliada no canvas, para examinar detalhes que a linha divisória não revela.
 
 ### Ativar {#enabling}
 
-- **Alternar** — {{tr:image_compare.action.magnifier}} na barra de ferramentas, ou `M`.
-- **Posicionar** — clique ou arraste na imagem para definir a área de captura (círculo vermelho).
-- **Anel** — tamanho e cor do anel de captura seguem o estilo da lente.
+- **Alternar lupa** — liga e desliga a lente pela barra de ferramentas ou pela tecla `M`.
+- **Posicionar** — clique ou arraste sobre a imagem para escolher a área de captura, marcada por um círculo vermelho; é essa região que aparece ampliada.
+- **Anel** — o tamanho e a cor do anel de captura seguem o estilo da lente, para você identificar a área amostrada.
 
 :::figure{side=block width=280}
 ![Lente da lupa](../assets/magnifier.jpg)
-{{tr:image_compare.action.breadcrumb.toolbar}} → {{tr:image_compare.action.breadcrumb.magnifier}}.
+A lente da lupa no canvas e o anel de captura vermelho que marca a área amostrada.
 :::
 
 ### Tamanho e movimento {#size-and-movement}
 
-- **Tamanho da lente** — {{tr:image_compare.label.magnifier_size}}.
-- **Tamanho da captura** — {{tr:image_compare.label.capture_size}} (quanto da área de origem é amostrada).
-- **Mover** — `WASD` com a lente ativa; `QE` ajusta o espaçamento quando as metades estão separadas.
-- **Velocidade** — no painel da lupa quando ele está visível.
+- **Tam. Lupa (%)** — define o tamanho da vista ampliada sobre o canvas; quanto maior, mais a imagem é ampliada.
+- **Tam. Captura (%)** — define quanto da área de origem é amostrada; ampliar a captura abrange uma região maior e reduz o aumento efetivo.
+- **Mover** — com a lente ativa, `WASD` desloca a área de captura; `QE` ajusta o espaçamento entre as metades quando elas estão separadas.
+- **Velocidade de Movimento** — define a rapidez com que a lente se desloca ao usar `WASD`; o controle fica no painel da lupa, quando ele está visível.
 
 ### Congelar {#freeze}
 
-{{tr:image_compare.action.freeze}} (`F`) trava a lente na tela; o ajuste pelo teclado continua ativo enquanto o ponteiro fica livre.
+**Congelar lupa** (`F`) fixa a lente na posição atual do canvas: a área de captura continua se movendo, mas a vista ampliada fica parada. O ajuste da captura pelo teclado continua ativo enquanto a lente está congelada.
 
 ### Divisor, guias e cores {#guides-and-colors}
 
-- **Orientação** — {{tr:image_compare.action.magnifier_orientation}}.
-- **Divisor interno** — {{tr:image_compare.action.magnifier_divider_combined}} (rolagem / clique direito).
-- **Visibilidade** — {{tr:image_compare.action.magnifier_divider_visible}} e {{tr:image_compare.action.magnifier_guides}}, além das larguras.
-- **Cores** — {{tr:image_compare.action.magnifier_colors}} para cores de contorno por instância.
+- **Orientação da lupa** — define se a lente divide a vista na horizontal ou na vertical.
+- **Divisor da lupa** — o divisor interno da lente; ajuste-o com a rolagem e o clique direito.
+- **Visibilidade do divisor da lupa** e **Guias da lupa** — mostram ou ocultam o divisor interno e as guias de alinhamento e definem suas larguras.
+- **Cores da lupa** — define a cor do contorno de cada instância, para distinguir as lentes entre si.
 
 ### Várias instâncias {#instances}
 
-- **Adicionar / remover** — {{tr:image_compare.action.magnifier_instances}} para observar várias regiões.
-- **Cor automática** — novas instâncias podem receber cores distintas quando a opção estiver ligada em Configurações.
+- **Instâncias da lupa** — adicione ou remova lentes para observar várias regiões do par ao mesmo tempo.
+- **Cor automática** — com **Colorir novas lupas automaticamente** ligado nas Configurações, cada nova instância recebe uma cor distinta.
 
 ### Modo combinado {#combined-mode}
 
-- **Mesclar** — quando ambas as metades seguem visíveis e o espaçamento fecha no limiar de combinação, tornam-se uma só lente.
-- **Divisão interna** — arraste com `RMB` dentro da lente.
-- **Pré-visualização de lado** — `Space+Shift` força um lado dentro da lente combinada.
+- **Mesclar** — quando as duas metades seguem visíveis e o espaçamento entre elas cai abaixo do limiar de combinação, elas viram uma única lente.
+- **Divisão interna** — arraste com o botão direito do mouse dentro da lente para reposicionar a divisão.
+- **Pré-visualização de lado** — `Shift+Space` força a exibição de um dos lados dentro da lente combinada.
 
 :::figure{side=block width=280}
 ![Lupa combinada](../assets/magnifier_combined.jpg)
-{{tr:image_compare.action.magnifier}} modo combinado.
+Alternar lupa modo combinado.
 :::
 
 Para comparar o canvas inteiro sem a lente, veja [Comparação](help://workspace.image_compare.comparison).
@@ -53,6 +53,6 @@ Para comparar o canvas inteiro sem a lente, veja [Comparação](help://workspace
 
 Opções relacionadas à lupa em [Configurações](help://platform.settings#image_compare):
 
-- Otimizar movimento da lupa e sua interpolação
-- Destaque de interseção entre lentes
-- Cor automática para novas instâncias
+- **Movimento da lupa** — suaviza o deslocamento da lente e a interpolação entre os quadros, para o movimento parecer contínuo.
+- **Destaque vermelho para lupas sobrepostas** — marca em vermelho a área em que duas lentes se cruzam, para você notar a sobreposição.
+- **Colorir novas lupas automaticamente** — dá uma cor distinta a cada nova lente, para separar as instâncias.

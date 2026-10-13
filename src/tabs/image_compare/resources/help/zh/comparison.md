@@ -4,55 +4,61 @@
 
 ### 分割线 {#split-line}
 
-放大镜关闭时，可在两张图像上拖动分割线。
+放大镜关闭时，在两张图像上拖动分割线，即可逐点对照同一位置在两侧的差异。
 
-- **方向** — {{tr:image_compare.action.divider_orientation}} 可在水平 / 垂直之间切换。
-- **宽度** — 在 {{tr:image_compare.action.divider_width}} 上滚动。
-- **颜色** — {{tr:image_compare.action.divider_color}}。
-- **可见性**（`D`）— {{tr:image_compare.action.divider_visible}} 用于显示或隐藏分割线。
-- **组合控件** — {{tr:image_compare.action.divider_combined}} 集合了方向、宽度与颜色（滚轮 / 右键 / 中键）；详见控件提示。
+- **方向** — 在 **分割方向** 上切换水平或垂直，改变分割线的走向。
+- **宽度** — 在 **分割线宽度** 上滚动鼠标滚轮，调整分割线的粗细。
+- **颜色** — 在 **分割线颜色** 上选取分割线的颜色。
+- **可见性**（`D`）— 用 **分割线可见性** 显示或隐藏分割线，便于查看完整画面。
+- **组合控件** — **分割线** 把方向、宽度与颜色集中到一个控件：滚轮改宽度，右键换颜色，中键切换方向；手势说明见控件提示。
 
 :::figure{side=block width=280}
 ![分割线](../assets/split_line.png)
-{{tr:image_compare.action.breadcrumb.toolbar}} → {{tr:image_compare.action.breadcrumb.divider}}。
+画布上的分割线：拖动它即可让两侧显示同一位置的不同画面。
 :::
 
 ### 滚动切换图像 {#scroll-images}
 
-- **画布滚轮** — 切换光标所在一侧的列表（垂直分割时左侧、水平分割时上方为侧 1；另一半为侧 2）。
-- **`Shift` + 滚轮** — 同时切换两个列表。
+- **画布滚轮** — 把光标放在某一侧后滚动滚轮，即切换该侧的图像列表。垂直分割时左侧、水平分割时上方为侧 1，另一侧为侧 2。
+- **`Shift` + 滚轮** — 同时切换两侧的列表。
 - **单图预览** — 滚轮始终切换当前可见的一侧。
 - **下拉按钮滚轮** — 在不打开面板的情况下切换该侧图像。
-- **交换**（`X`）— 单击交换当前这一对图像；长按交换整个左右列表。
+- **交换**（`X`）— 单击交换当前这一对图像；长按则交换整个左右列表。
 
 ### 标签 {#labels-and-metrics}
 
-- **显示名称**（`N`）— {{tr:image_compare.action.file_names}}；启用后可随导出一起烧录到图像中。
-- **缩放** — 缩放不为 `100%` 时标签会隐藏，恢复适配缩放后自动重新出现。
-- **文字设置** — {{tr:image_compare.action.text_settings}} 打开一个面板，可设置大小、粗细、不透明度、颜色、背景与位置。
+- **显示名称**（`N`）— 用 **文件名叠加** 在图像上显示文件名；启用后，导出时文件名也会一并烧录进图像。
+- **缩放** — 缩放不为 `100%` 时标签会隐藏，恢复到适配缩放后自动重新出现，以免遮挡细节。
+- **文字设置** — **标签文字设置** 打开一个面板，可设置大小、粗细、不透明度、颜色、背景与位置。
 
 ### 指标 {#metrics}
 
-- **{{tr:image_compare.ui.psnr}} / {{tr:image_compare.ui.ssim}}** — 默认关闭，可在[设置 → 分析](help://platform.settings)中启用自动计算。
-- **属性** — 从列表行的右键菜单打开[图像属性](help://platform.image_properties)（文件元数据与应用内的侧 / 评分信息）。
-- **移动** — 画布或列表右键菜单会在指针左下方显示拖拽幽灵；点击其他工作区标签（或画布）即启动与复制/粘贴相同的插入流程。`Esc` 或右键取消。
+- **PSNR / SSIM** — 默认关闭；想用数值衡量两张图像的接近程度时，可在[设置](help://platform.settings)中启用自动计算。
+- **属性** — 从列表行的右键菜单打开[图像属性](help://platform.image_properties)，查看文件元数据与应用内的侧 / 评分信息。
+
+### 在标签页之间移动图片 {#moving-between-tabs}
+
+1. 在画布或列表的右键菜单中选择 **移动**。
+2. 指针左下方会出现该图像半透明的拖拽副本。
+3. 点击目标工作区标签或画布放下图像，插入方式与复制 / 粘贴相同。
+4. 按 `Esc` 或右键取消。
 
 ### 通道模式 {#channel-modes}
 
-{{tr:image_compare.action.channel_mode}}（`C`）在 RGB、R、G、B 与明度之间循环切换，方便在不离开画布的情况下检查单一通道。
+通道模式（`C`）在 RGB、R、G、B 与明度之间循环切换，以便在查看单一通道时不必离开画布。
 
 ### 差异模式 {#difference-modes}
 
-{{tr:image_compare.action.diff_mode}}（按 `H` 循环切换）用于突出两张图像的差异之处：
+差异模式（按 `H` 循环切换）用于突出两张图像的差异之处：
 
 :::figure{side=block width=280}
 ![差异模式](../assets/difference_modes.png)
-{{tr:image_compare.action.diff_mode}}。
+差异模式的几种呈现：**高亮** 在原图上标出变化，**灰度**、**边缘** 与 **SSIM** 则用不同方式显示差异强度。
 :::
 
-- **{{tr:image_compare.action.diff_highlight}}** — 在原图上高亮变化区域
-- **{{tr:image_compare.action.diff_grayscale}}** — 以灰度显示强度差异
-- **{{tr:image_compare.action.diff_edges}}** — 以边缘方式呈现差异
-- **{{tr:image_compare.action.diff_ssim}}** — 在指标支持时显示结构相似性地图
+- **高亮** — 在原图上高亮出发生变化的位置。
+- **灰度** — 以灰度显示两侧的强度差异。
+- **边缘** — 以边缘的方式呈现差异，便于观察轮廓变化。
+- **SSIM** — 在指标支持时显示结构相似性地图。
 
 实时画布、导出静帧与视频录制的显示效果始终一致。差异模式可与通道视图组合使用。若需局部细节检查，请使用[放大镜](help://workspace.image_compare.magnifier)。

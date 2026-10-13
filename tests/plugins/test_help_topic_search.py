@@ -2,8 +2,50 @@
 
 from __future__ import annotations
 
+import re
+
 import pytest
 from PySide6.QtWidgets import QApplication
+
+
+def _body_needle(language: str, node_id: str) -> str:
+    """A distinctive body word that appears in no node title.
+
+    Deriving the needle from the page keeps the content-match tests honest
+    (a content hit, never a title hit) without hardcoding prose that the
+    help rewrite may change.
+    """
+    from plugins.help.tree import get_help_tree, read_help_page_markdown
+
+    tree = get_help_tree()
+    node = tree.require(node_id)
+    body = read_help_page_markdown(language, node.body, body_root=node.body_root)
+    titles = " ".join(n.title.lower() for n in tree.nodes.values())
+    for word in re.findall(r"[A-Za-z\u0400-\u04ff]{6,}", body):
+        if word.lower() not in titles:
+            return word
+    raise AssertionError(f"no content-only needle on {node_id}")
+
+
+def _word_in_page_only(language: str, present_id: str, absent_id: str) -> str:
+    """A real word on one page that is absent from another page and all titles.
+
+    Keeps the "phantom match" regression test independent of exact prose:
+    the needle is derived from the current bodies instead of being hardcoded.
+    """
+    from plugins.help.tree import get_help_tree, read_help_page_markdown
+
+    tree = get_help_tree()
+    present = tree.require(present_id)
+    absent = tree.require(absent_id)
+    pbody = read_help_page_markdown(language, present.body, body_root=present.body_root)
+    abody = read_help_page_markdown(language, absent.body, body_root=absent.body_root).lower()
+    titles = " ".join(n.title.lower() for n in tree.nodes.values())
+    for word in re.findall(r"[A-Za-z\u0400-\u04ff]{4,}", pbody):
+        low = word.lower()
+        if low not in abody and low not in titles:
+            return word
+    raise AssertionError(f"no word in {present_id} absent from {absent_id}")
 
 
 @pytest.fixture(scope="module")
@@ -20,12 +62,6 @@ def dialog(app):
     from tabs.registry import TabRegistry
 
     add_i18n_root(Path("src/plugins/help/resources/i18n"))
-    # Plugin-owned bodies interpolate {{tr:}} keys from plugin i18n packs:
-    # production registers them at discovery; test sessions that skip
-    # plugin discovery register the owner packs explicitly.
-    add_i18n_root(Path("src/plugins/settings/resources/i18n"))
-    add_i18n_root(Path("src/plugins/image_properties/resources/i18n"))
-    add_i18n_root(Path("src/plugins/export/resources/i18n"))
     registry = TabRegistry()
     registry.discover()
     registry.contribute_all_help()
@@ -45,12 +81,6 @@ def dialog_ru(app):
     from tabs.registry import TabRegistry
 
     add_i18n_root(Path("src/plugins/help/resources/i18n"))
-    # Plugin-owned bodies interpolate {{tr:}} keys from plugin i18n packs:
-    # production registers them at discovery; test sessions that skip
-    # plugin discovery register the owner packs explicitly.
-    add_i18n_root(Path("src/plugins/settings/resources/i18n"))
-    add_i18n_root(Path("src/plugins/image_properties/resources/i18n"))
-    add_i18n_root(Path("src/plugins/export/resources/i18n"))
     registry = TabRegistry()
     registry.discover()
     registry.contribute_all_help()
@@ -92,8 +122,10 @@ def test_search_lists_matching_topics_with_icons(dialog):
 
 
 def test_search_matches_page_content_not_only_title(dialog):
-    # "preview.png" lives in the workspace page body, not in any title.
-    dialog._search_field.setText("preview.png")
+    # A word living only in the workspace page body (never in a title) must
+    # still surface its page as a content match.
+    needle = _body_needle("en", "workspace.session_picker")
+    dialog._search_field.setText(needle)
     dialog._apply_topic_search()
     rows = [
         dialog.nav_widget.item(i) for i in range(dialog.nav_widget.count())
@@ -113,10 +145,12 @@ def test_search_does_not_match_topic_descriptions(dialog):
 
 
 def test_content_match_requires_real_substring_not_fuzzy_scatter(dialog_ru):
-    # "язык" is NOT a substring of the getting-started page body; the fuzzy
-    # matcher's sequence fallback used to scatter the letters across the long
-    # page and produce a phantom match that could never be highlighted.
-    dialog_ru._search_field.setText("язык")
+    # A word that lives on the settings page but is NOT a substring of the
+    # getting-started page body: the fuzzy matcher's sequence fallback used to
+    # scatter the letters across the long page and produce a phantom match that
+    # could never be highlighted.
+    needle = _word_in_page_only("ru", "platform.settings", "platform.getting_started")
+    dialog_ru._search_field.setText(needle)
     dialog_ru._apply_topic_search()
     rows = [
         dialog_ru.nav_widget.item(i) for i in range(dialog_ru.nav_widget.count())
@@ -142,12 +176,13 @@ def test_ru_content_match_highlights_real_occurrence(dialog_ru):
     canvas = dialog_ru._document._canvas
     rng = canvas._selection.range()
     assert rng is not None
-    assert canvas.plain_text()[rng[0] : rng[1]] == "язык"
+    assert canvas.plain_text()[rng[0] : rng[1]].lower() == "язык"
     assert not canvas._search_marker.isHidden()
 
 
 def test_activating_content_match_scrolls_and_highlights(dialog):
-    dialog._search_field.setText("preview.png")
+    needle = _body_needle("en", "workspace.session_picker")
+    dialog._search_field.setText(needle)
     dialog._apply_topic_search()
     assert dialog._search_mode is True
     row_index = next(
@@ -162,7 +197,7 @@ def test_activating_content_match_scrolls_and_highlights(dialog):
     canvas = dialog._document._canvas
     rng = canvas._selection.range()
     assert rng is not None
-    assert canvas.plain_text()[rng[0] : rng[1]].lower() == "preview.png"
+    assert canvas.plain_text()[rng[0] : rng[1]] == needle
     assert canvas._search_marker is not None
     assert not canvas._search_marker.isHidden()
 

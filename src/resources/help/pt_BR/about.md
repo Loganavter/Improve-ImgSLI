@@ -1,14 +1,19 @@
 ## Sobre
 
-{{tr:app.name}} é um espaço de trabalho desktop para comparação precisa de imagens e mídia. Vistas lado a lado e com várias imagens, inspeção de diferenças em escala de pixel, exportação de imagens e gravação da comparação em vídeo.
+Improve ImgSLI é um espaço de trabalho para comparar imagens com precisão: coloque duas imagens lado a lado ou várias em uma grade, inspecione as diferenças no nível do pixel e mantenha o resultado como uma imagem exportada ou um vídeo da comparação.
 
 ### Para que serve {#purpose}
 
-Comparação de mudanças visuais sem perda de contexto: retoque, QA de upscaling, fotografia — sessões em que split, lupa e um resultado exportável importam mais do que um print isolado.
+Use o programa quando uma mudança visual precisa ser avaliada junto com o contexto ao redor: retoque, verificação de upscaling e fotografia. São sessões em que o **Divisor**, a **Lupa** e um resultado exportável importam mais do que uma captura de tela isolada.
 
 ### Modos do espaço de trabalho {#modes}
 
-Um cartão por aba conectada; o conjunto cresce com as abas instaladas. {{tr:workspace.session_types.image_compare}} compara pares de imagens com split móvel, lupas e modos de diferença — [Comparação](help://workspace.image_compare.comparison). {{tr:workspace.session_types.multi_compare}} distribui várias imagens em uma grade de slots — [{{tr:workspace.session_types.multi_compare}}](help://workspace.multi_compare.overview). O cartão do seletor de sessão abre, retoma e gerencia sessões — [Abas do Workspace](help://workspace.session_picker). Primeira orientação: [Primeiros passos](help://platform.getting_started).
+O **seletor de sessão** mostra um cartão para cada aba conectada, e o conjunto de cartões cresce com as abas instaladas:
+
+- Em uma sessão **Comparar imagens**, você compara um par de imagens com um **Divisor** móvel, a **Lupa** e os modos de diferença — veja [Comparação](help://workspace.image_compare.comparison).
+- Em uma sessão **Comparação múltipla**, várias imagens se distribuem em uma grade de slots — veja [Visão Geral do Multi Compare](help://workspace.multi_compare.overview).
+
+O **seletor de sessão** abre novas sessões, retoma as existentes e as gerencia — veja [Abas do Workspace e Seletor de Sessão](help://workspace.session_picker).
 
 ### Licença e código-fonte {#license}
 
@@ -16,4 +21,6 @@ Distribuído sob a GNU GPL versão 3 (ou posterior). Usa PySide6 / Qt sob LGPL. 
 
 ### Próximos tópicos {#next}
 
-[Primeiros passos](help://platform.getting_started), [Atalhos](help://platform.hotkeys), [Configurações](help://platform.settings), [Arquivos e projetos](help://platform.file_project).
+- [Primeiros passos](help://platform.getting_started) — primeira abertura, escolha do modo de interface e o começo do fluxo de trabalho.
+- [Arquivos e projetos](help://platform.file_project) — como carregar imagens e como salvar um projeto.
+- [Configurações](help://platform.settings) — idioma, tema, modo de interface e atalhos.

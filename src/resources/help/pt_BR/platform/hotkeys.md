@@ -1,56 +1,64 @@
 ## Atalhos de Teclado
 
-Combinações padrão abaixo. A maioria dos atalhos de ação aceita remapeamento em {{tr:menu.settings}} → {{tr:settings.keyboard}}. Os movimentos `WASD`, setas, `Space` e o zoom `+`/`-` do canvas permanecem fixos e não podem ser remapeados.
+A lista abaixo traz as combinações padrão. A maioria dos atalhos de ação pode ser remapeada em **Configurações** → **Teclado**. Os movimentos `WASD`, as setas, `Space` e o zoom `+`/`-` no canvas são fixos e não podem ser remapeados.
 
 ### Descubra primeiro {#discover}
 
-`Ctrl+Shift+P` mais um nome digitado vence a memorização de listas: a paleta executa a ação ou abre {{tr:action.palette.learn_more}} com o tópico ilustrado. F1 destaca a ação correspondente quando o foco está marcado.
+**Localizar ação** (`Ctrl+Shift+P`) mais parte do nome é mais rápido do que decorar a lista: ela executa a ação ou abre **Saiba mais** com o tópico ilustrado. Se o controle em foco estiver ligado a uma ação, `F1` destaca a correspondência em **Localizar ação**.
 
 ### Plataforma {#platform}
 
-- `Ctrl+,` — Configurações
-- `Ctrl+F1` — Ajuda
-- `Ctrl+N` — Seletor de sessão / nova sessão
-- `Ctrl+Tab` / `Ctrl+Shift+Tab` — Próxima / sessão anterior do workspace
-- `Ctrl+Shift+P` — {{tr:menu.find_action}}
-- `Ctrl+V` — Colar imagem
-- `Ctrl+Shift+O` / `Shift+S` / `Ctrl+Shift+S` — Abrir / salvar / salvar projeto como (`.imgsli`)
-- `Ctrl+Q` — Sair
+- `Ctrl+,` — **Configurações**
+- `Ctrl+F1` — **Ajuda**
+- `Ctrl+N` — **Abrir seletor de sessão** / nova sessão
+- `Ctrl+Tab` / `Ctrl+Shift+Tab` — próxima / sessão anterior do workspace
+- `Ctrl+Shift+P` — **Localizar ação**
+- `Ctrl+V` — **Colar imagem**
+- `Ctrl+Shift+O` / `Shift+S` / `Ctrl+Shift+S` — abrir, salvar e **Salvar como** o projeto (`.imgsli`)
+- `Ctrl+Q` — **Sair**
 
-Os rótulos exatos seguem o pacote de idioma; as substituições ficam em Configurações → Teclado → grupo de plataforma.
+Os rótulos exatos seguem o pacote de idioma; as substituições ficam em **Configurações** → **Teclado**, no grupo de plataforma.
 
-### {{tr:workspace.session_types.image_compare}} {#image-compare}
+`Shift+S` salva o projeto em um arquivo `.imgsli`, enquanto `Ctrl+S` salva o resultado da comparação atual.
 
-- `M` / `F` — Lupa / congelar
-- `N` / `D` — Rótulos de nome de arquivo / visibilidade do divisor
-- `H` / `C` — Modo de diferença / modo de canal
-- `X` — Trocar
-- `R` / `Ctrl+E` — Gravar / Editor de Vídeo
-- `Ctrl+S` — Salvamento rápido
-- `WASD` / `QE` — Mover lupa / espaçamento (fixos)
-- `Shift` + `Space` — Pré-visualização de lado no modo combinado (fixo)
-- `←↑↓→` / `+` / `-` — Panorâmica / zoom (fixos)
+### Comparar imagens {#image-compare}
 
-Detalhes: [Comparação](help://workspace.image_compare.comparison), [Lupa](help://workspace.image_compare.magnifier), [Editor de Vídeo](help://workspace.image_compare.video).
+- `M` / `F` — **Alternar lupa** / **Congelar lupa**
+- `N` / `D` — **Sobreposição de nomes** / **Visibilidade do divisor**
+- `H` / `C` — **Modo de diferença** / **Modo de canal**
+- `X` — **Trocar** as imagens
+- `R` / `Ctrl+E` — **Gravar vídeo** / **Editor de vídeo**
+- `Ctrl+S` — **Salvamento rápido**
+- `WASD` / `QE` — mover a **Lupa** / o espaçamento entre lupas (fixos)
+- `Shift+Space` — pré-visualizar um lado no modo combinado (fixo)
+- `←↑↓→` / `+` / `-` — panorâmica / zoom (fixos)
 
-### {{tr:workspace.session_types.multi_compare}} {#multi-compare}
+Detalhes: [Comparação](help://workspace.image_compare.comparison), [Lupa](help://workspace.image_compare.magnifier), [Editor de vídeo](help://workspace.image_compare.video).
 
-- `Ctrl+O` — Adicionar imagens
-- `D` — Visibilidade da grade
-- `Ctrl+S` — Salvamento rápido
-- `Esc` — Sair do foco do slot
-- `←↑↓→` / `+` / `-` — Panorâmica / zoom (fixos)
+### Comparação múltipla {#multi-compare}
 
-Veja [{{tr:workspace.session_types.multi_compare}}](help://workspace.multi_compare.overview).
+- `Ctrl+O` — **Adicionar imagens**
+- `D` — **Visibilidade da grade**
+- `Ctrl+S` — **Salvamento rápido**
+- `Esc` — sair do foco do slot
+- `←↑↓→` / `+` / `-` — panorâmica / zoom (fixos)
+
+Veja [Visão Geral do Multi Compare](help://workspace.multi_compare.overview).
 
 ### Janela do editor de vídeo {#video-editor}
 
-Enquanto o editor está aberto: `Space` reproduz/pausa, `Ctrl+Z` / `Ctrl+Y` desfazer/refazer, `Delete` / `Backspace` apara para a seleção. Fluxo completo de codificação: [Editor de Vídeo](help://workspace.image_compare.video).
+Enquanto a janela do editor estiver aberta:
+
+- `Space` — reproduzir ou pausar
+- `Ctrl+Z` / `Ctrl+Y` — desfazer / refazer
+- `Delete` / `Backspace` — cortar até a seleção
+
+Fluxo completo de codificação: [Editor de vídeo](help://workspace.image_compare.video).
 
 ### Navegação pelo teclado {#keyboard-navigation}
 
-- `F1` — ajuda contextual para o controle em foco. Quando o foco está vinculado a uma ação, o resultado correspondente pulsa em {{tr:menu.find_action}}; caso contrário, a paleta abre pré-filtrada por tópico.
-- Em {{tr:menu.find_action}} (`Ctrl+Shift+P`): `↑` / `↓` movem a seleção, `Enter` executa, `Ctrl+Enter` abre {{tr:action.palette.learn_more}}, `Esc` fecha a paleta.
-- Na visão geral de {{tr:workspace.session_types.multi_compare}}, o foco do slot segue o ponteiro: um clique alterna o foco em uma única imagem, `Esc` sai dele. As setas deslocam o canvas em vez de mover o foco entre slots.
-- No seletor de sessão, as setas movem o foco entre cartões e `Enter` abre o cartão em foco, como clicar nele.
-- Não há travessia `Tab` entre slots do canvas: o foco segue o ponteiro, e o teclado aciona ações pela paleta.
+- `F1` — ajuda contextual para o controle em foco. Quando o foco está ligado a uma ação, a correspondência é destacada em **Localizar ação**; caso contrário, **Localizar ação** abre pré-filtrada por tópico.
+- Em **Localizar ação** (`Ctrl+Shift+P`): `↑` / `↓` movem a seleção, `Enter` executa, `Ctrl+Enter` abre **Saiba mais**, `Esc` fecha a lista.
+- Na visão geral de **Comparação múltipla**, o foco do slot segue o ponteiro: um clique alterna o foco em uma única imagem, `Esc` sai dele. As setas deslocam o canvas em vez de mover o foco entre slots.
+- No **seletor de sessão**, as setas movem o foco entre cartões e `Enter` abre o cartão em foco, como clicar nele.
+- Não há travessia com `Tab` entre slots do canvas: o foco segue o ponteiro, e o teclado aciona as ações pela **Localizar ação**.

@@ -57,7 +57,6 @@ from each page's own `##` heading (see `labels.py`).
 | `contribution.py` | `HelpHubContribution` (frozen, `owner_tab`, `mount`, hub title/desc/icon, `resolve_icon`) |
 | `labels.py` | Titles from each page's `##` heading, subtitles from its first paragraph; `title_key` / `description_key` via `tr()` for hubs only |
 | `icons.py` | App icons + contributed tab resolvers |
-| `interpolate.py` | `{{tr:dotted.key}}` in markdown bodies (images are plain relative paths) |
 | `layout_geometry.py` | Dialog size / sidebar widths |
 
 Toolkit owns rendering only (`HelpDocumentView` / `parse_help_blocks`).
@@ -108,7 +107,7 @@ Rules:
   in `scan.py`.
 - Images are body-relative paths (`../../assets/ui/toolbar.jpg`) living in
   the owning package's `assets/`; they must not escape that package's
-  `resources/help/` dir (pinned by `tests/plugins/test_help_interpolate.py`).
+  `resources/help/` dir (pinned by `tests/plugins/test_help_bodies.py`).
   Host `resources/help/assets/` is for host shots only.
 - Stable entry points (`help_page` on actions, F1, Learn more) are **dotted
   paths** (`workspace.image_compare.comparison`), not slugs. A move breaks
@@ -204,13 +203,12 @@ Rules:
 
 1. **One term → one short sentence** (or two). Prefer a bullet list of
    term + em dash + prose over a single paragraph of comma-joined labels.
-2. **Name the concept in the reader’s language** first. Use `{{tr:…}}` when
-   the UI string is the searchable name (toolbar, menu, Find Action). Do not
-   chain three long `{{tr:}}` titles in one sentence — that reads as a tag
-   cloud.
-3. **Bold is for the defined term** at the start of a definition bullet, not
-   for every control mention. Elsewhere prefer plain `{{tr:…}}` or backticks
-   for chords (`Ctrl+S`).
+2. **Name the concept in the reader’s language** first. Write the literal
+   on-screen label in `**bold**`, exactly as the UI shows it. Do not chain
+   three long labels in one sentence — that reads as a tag cloud.
+3. **Bold is for a UI label or the defined term.** Wrap every control, menu
+   item, session type, and dialog name in `**bold**` and never use it as a
+   bare grammatical subject; elsewhere backticks for chords (`Ctrl+S`).
 4. **Nesting** is limited: our parser has flat lists only (no indented
    sub-lists). For a subtype, either a second `###` or a follow-up sentence
    under the parent bullet — do not fake hierarchy with spaces.
@@ -243,7 +241,7 @@ line is a `---` separator:
 - Alignment markers (`:---:` / `---:`) are accepted and ignored — all cells
   render left-aligned.
 - `\|` escapes a literal pipe inside a cell; cells support the usual
-  inline formatting (`` `code` ``, `**bold**`, `{{tr:…}}`).
+  inline formatting (`` `code` ``, `**bold**`).
 - Use tables for short key/value inventories (≤ 5–6 columns). Prefer
   definition bullets (above) when the left column is a term with a long
   explanation.
@@ -259,15 +257,19 @@ line is a `---` separator:
   status of a control), not a full-window dump — when real assets replace
   placeholders.
 
-### Language keys (`{{tr:…}}`)
+### Labels (literal, per language)
 
-See also [RESOURCES_I18N](./RESOURCES_I18N.md). In Help bodies:
+See also [RESOURCES_I18N](./RESOURCES_I18N.md). Help bodies no longer resolve
+`{{tr:…}}` keys at runtime — each language body carries literal, on-screen
+labels:
 
-- Prefer keys that match Find Action / toolbar labels.
-- Missing key → fix i18n (or add a help-specific key under the owner pack);
-  do not leave English tokens in RU prose.
-- Host pages use host packs; tab pages may use that tab’s `resources/i18n`
-  (loaded with the tab).
+- Write the label exactly as the UI shows it, in `**bold**` (toolbar, menu,
+  Find Action, session type, dialog). The UI string is the searchable name.
+- Do not invent near-synonyms; the label must match the screen
+  ([HELP_STYLE_GUIDE.md](HELP_STYLE_GUIDE.md) §3.1, §4.5).
+- Keep labels in sync per language; a label rename in the UI is a help edit in
+  `en|ru|zh|pt_BR` in the same change.
+- Do not leave raw tokens or English words in RU/ZH/PT prose.
 
 ### Figure paths
 
@@ -277,12 +279,12 @@ package's `assets/` — host for platform/UI, tab for workspace topics:
 ```markdown
 :::figure{side=block height=107}
 ![Session Picker](../../assets/platform/session_picker.jpg)
-{{tr:action.workspace.open_session_picker}}.
+**Session Picker**.
 :::
 ```
 
 - Paths are relative to the page file; they must not escape that package's
-  `resources/help/` dir (pinned by `tests/plugins/test_help_interpolate.py`).
+  `resources/help/` dir (pinned by `tests/plugins/test_help_bodies.py`).
 - Prefer final filenames so shipping a shot means overwriting the file — no
   md / locale edits.
 - Tab topics own their screenshots under `tabs/<tab>/resources/help/assets/`;
@@ -311,7 +313,8 @@ figures).
 ## Figure policy
 
 **Default is zero figures.** A page does not need a picture to be valid. Find
-Action + `{{tr:…}}` labels + `help://` links are the primary teaching tools.
+Action + literal **on-screen labels** + `help://` links are the primary
+teaching tools.
 Add `:::figure` only when a screenshot answers a question that prose cannot
 (layout, spatial gesture, dialog shape, mode that *looks* different).
 
@@ -334,8 +337,8 @@ the per-topic table (do not use it to decorate every bullet).
    reader would still ask “what does that look like?”
 2. **Screenshots.** Prefer real product shots under final filenames. Do not
    sprinkle extras.
-3. **Caption = UI path.** Prefer `{{tr:…}}` breadcrumbs in the caption; do not
-   invent English control names.
+3. **Caption explains the picture.** Say what is shown and what to look at —
+   not the menu path. Put the path in the body text next to the figure.
 4. **Side layout.** `:::figure{side=…}`:
    - `block` — full-width row, left-aligned (**default preference** for Help pages)
    - `center` — full-width row, image and caption centered
@@ -476,7 +479,7 @@ into a hub or page.
 ## Testing
 
 - `tests/plugins/test_help_tree.py` — paths, hub fragments, scenario page shape
-- `tests/plugins/test_help_interpolate.py` — `{{tr:}}`, body-relative images
+- `tests/plugins/test_help_bodies.py` — literal labels (no `{{tr:`), body-relative images
 - `tests/plugins/test_help_browser_navigation.py` — navigator / dialog UX (incl. Missing-page)
 - `tests/plugins/test_help_dialog_opens.py` — plugin open path
 - Toolkit: `HelpDocumentView` / block parse tests

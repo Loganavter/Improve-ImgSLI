@@ -1,58 +1,58 @@
 ## Video Editor
 
-A live {{tr:workspace.session_types.image_compare}} session as recorded control tracks, with timeline trim and encode to video or GIF. Stills stay on [Export](help://workspace.export).
+The Video Editor records a live Image Compare session as control tracks, then trims the timeline and encodes the result to video or GIF. Stills stay on [Export](help://workspace.export).
 
 ### Record a session {#recording}
 
-- **Start / pause / stop** — {{tr:image_compare.action.record}} (`R`), {{tr:image_compare.action.pause_recording}}, then stop from the same controls.
-- **What is stored** — canvas actions over time (zoom/pan, divider, magnifier, loaded images, related settings) as control tracks — not a raw screen grab.
-- **Capture rate** — [Settings](help://platform.settings#image_compare) ({{tr:settings.recording_fps}}).
+- **Start / pause / stop** — the **Record Video** control (`R`) starts a recording, **Pause Recording** pauses it, and the same controls stop it.
+- **What is stored** — canvas actions over time (zoom and pan, divider, magnifier, loaded images, related settings) are stored as control tracks with recording points, not as a raw screen grab.
+- **Capture rate** — the recording frame rate is set by **Recording FPS** under **Image Compare** in [Settings](help://platform.settings#image_compare).
 
 ### Open the editor {#open-editor}
 
-After the recording stops, {{tr:image_compare.action.video_editor}} (`Ctrl+E`) scrubs frames, edits the range, and exports. Editor controls in {{tr:menu.find_action}} open this topic.
+After the recording stops, **Video Editor** (`Ctrl+E`) opens a window where you scrub frames, edit the range, and export. Editor actions in **Find Action** open this topic.
 
 ### Timeline editing {#timeline}
 
-- **Scrub** — drag the time cursor.
-- **Range** — `Shift`+drag marks a span; edge handles and the middle of the selection move independently; {{tr:image_compare.button.trim_to_selection}} keeps only that selection.
+- **Scrub** — drag the time cursor to move through the recording.
+- **Range** — `Shift`+drag marks a span; the edge handles and the middle of the selection move independently; **Trim to Selection** keeps only the marked span.
 - **Delete** — `Delete` / `Backspace` remove the selected range.
-- **Play** — `Space`; undo / redo — `Ctrl+Z` / `Ctrl+Y`.
+- **Play** — `Space` starts and pauses playback; `Ctrl+Z` / `Ctrl+Y` undo and redo edits.
 
 :::figure{side=block width=100%}
 ![Video timeline](../assets/video_timeline.jpg)
-{{tr:image_compare.action.video_editor}} — timeline.
+Video Editor — timeline.
 :::
 
 ### Tracks and what was captured {#tracks}
 
-The editor shows each recorded tool as its own track (splitter, magnifier, viewport, and similar), so you can see when each control changed during the session. To change the result, trim or delete ranges on the [timeline](help://workspace.image_compare.video#timeline) and use undo or redo.
+The editor shows each recorded tool as its own track (the splitter, the magnifier, the viewport, and similar), so you can see when each control changed during the session. Between recording points the editor interpolates the values, so playback matches the live session. For the magnifier, the **Capture Position** track records where the capture ring sits on the image, and the **Offset** track records how far the lens is shifted from the capture. To change the result, trim or delete ranges on the [timeline](help://workspace.image_compare.video#timeline) and use undo or redo.
 
 ### Preview quality {#preview-quality}
 
-{{tr:video.preview_quality}} only lowers the in-editor preview for responsiveness. Final encode quality is unchanged.
+**Preview Quality** lowers only the in-editor preview, to keep the editor responsive; it does not change the quality of the final file.
 
-- **{{tr:video.preview_quality_full}}** — sharpest preview; heaviest on the machine; the default.
-- **{{tr:video.preview_quality_balanced}}** — lighter trade-off for most sessions.
-- **{{tr:video.preview_quality_performance}}** — lighter preview when scrubbing feels slow.
-- **{{tr:video.preview_quality_draft}}** — fastest preview; least detail.
+- **Full (1.0x)** — the sharpest preview, but the heaviest on the machine; the default.
+- **Balanced (0.75x)** — a lighter trade-off that suits most sessions.
+- **Performance (0.5x)** — use when scrubbing feels slow.
+- **Draft (0.25x)** — the fastest preview, with the least detail.
 
 ### Export video or GIF {#export-encode}
 
-- **Frame** — resolution (lock aspect as needed), FPS (not above recording FPS), fit vs crop; optional fill color for empty edges.
-- **Codec** — container and codec on the standard tab; hardware encoders appear only when the system exposes them.
-- **Quality** — CRF/CQ or bitrate and related presets.
-- **Path** — output file; favorite directory buttons reuse the last preferred folder.
-- **Progress** — can be stopped; the log reports encoder messages.
+- **Frame** — sets the output resolution (lock the aspect ratio if needed), the frame rate (which cannot exceed the recording FPS), and whether the image is fitted or cropped, with an optional fill color for empty edges.
+- **Codec** — chooses the container and codec on the standard tab; hardware encoders appear only when the system exposes them.
+- **Quality** — sets the CRF/CQ value or the bitrate, with related presets.
+- **Path** — sets the output file; the favorite-directory buttons reuse the last preferred folder.
+- **Progress** — shows encoding progress; you can stop it, and the log reports encoder messages.
 
 :::figure{side=block width=100%}
 ![Video export panel](../assets/video_export.jpg)
-{{tr:image_compare.action.video_editor}} — export.
+Video Editor — export.
 :::
 
-### {{tr:video.manual_cli}} {#manual-cli}
+### Manual CLI {#manual-cli}
 
-When the standard tab is not enough, {{tr:video.manual_cli}} passes raw FFmpeg output arguments.
+**Manual CLI** passes raw FFmpeg output arguments when the standard tab is not enough. It bypasses the editor's validation of the options, so an incorrect argument fails the encode instead of being caught in the interface.
 
 ### Next topics {#next-topics}
 

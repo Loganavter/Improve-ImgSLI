@@ -1,15 +1,19 @@
 ## Getting Started
 
-Orientation for a fresh install. First launch shows a UI-mode picker; the choice is written once and lives on as the Appearance setting. The palette ({{tr:menu.find_action}}, `Ctrl+Shift+P`) runs any action.
+Improve ImgSLI puts two or more images side by side so you can compare them, zoom into the differences, and save the result. These first steps take you from a fresh install to a saved comparison.
 
-### {{tr:workspace.session_types.image_compare}} workflow {#basic-workflow}
+### Your first comparison {#basic-workflow}
 
-The session pairs two image lists. The [Comparison](help://workspace.image_compare.comparison) view divides them at a split line, with the [Magnifier](help://workspace.image_compare.magnifier) as the lens alternative. Sessions open from the [Session Picker](help://workspace.session_picker) or the palette ({{tr:action.workspace.new_image_compare}}). Results leave through [Export](help://workspace.export) (`Ctrl+S`) or the [Video Editor](help://workspace.image_compare.video).
+1. On first launch, choose a UI mode — **Beginner**, **Advanced**, or **Expert**. The choice is stored once and can be changed later under **Appearance**.
+2. Open a session with `Ctrl+N` (the **Session Picker**), or run **New Image Compare Session** from **Find Action** (`Ctrl+Shift+P`).
+3. Load one image into each list: use the add button on a list, or drag files onto it.
+4. Drag the divider across the canvas to reveal one image over the other, then press `M` to switch on the [Magnifier](help://workspace.image_compare.magnifier) and click the image to zoom in.
+5. Save the result with `Ctrl+S`, or open the [Video Editor](help://workspace.image_compare.video) (`Ctrl+E`) to record your moves instead of a still.
 
-### {{tr:workspace.session_types.multi_compare}} path {#multi-compare}
+### Multi Compare {#multi-compare}
 
-A grid of slots for more than two images, opened from the [Session Picker](help://workspace.session_picker). Images fill slots and the grid saves through export. Details: [{{tr:workspace.session_types.multi_compare}}](help://workspace.multi_compare.overview).
+For three or more images, use **Multi Compare**: a grid of slots, each holding its own image. Open it from the **Session Picker** or run **New Multi Compare Session** from **Find Action**, then add images with `Ctrl+O` and fill the slots. See [Multi Compare](help://workspace.multi_compare.overview) for layouts, focus, and saving the grid.
 
 ### Discover features {#discover}
 
-`Ctrl+Shift+P` searches and runs any action; {{tr:action.palette.learn_more}} opens the matching help topic. `F1` opens the palette filtered to the focused chrome. Inside the Help window, the search field above the topic list jumps to matching pages. Next topics: [Workspace Tabs](help://workspace.session_picker), [Files and Projects](help://platform.file_project), [Comparison](help://workspace.image_compare.comparison), [Export](help://workspace.export), [Settings](help://platform.settings).
+`Ctrl+Shift+P` opens **Find Action** and runs any action by name; **Learn more** opens the matching help topic. Start with [Comparison](help://workspace.image_compare.comparison) for the split, labels, and difference modes, and [Files and Projects](help://platform.file_project) to keep your work in a portable `.imgsli` project.

@@ -1,38 +1,38 @@
 ## Export
 
-Still-image export of the current canvas.
+Export saves the current canvas as a still image, in the format and size you choose.
 
 ### Save a still {#saving-an-image}
 
-{{tr:image_compare.action.save}} (toolbar or {{tr:menu.find_action}}) opens the export dialog.
+**Save Result** on the toolbar or in **Find Action** opens the export dialog, where you pick the output file and its settings.
 
-- **Path** — output directory and file name.
-- **Format** — PNG, JPEG, WEBP, BMP, TIFF, or JXL.
-- **Preview** — a live pane shows the composed result before writing.
+- **Path** — choose the output directory and file name.
+- **Format** — selects the output format: PNG, JPEG, WEBP, BMP, TIFF, or JXL.
+- **Preview** — shows the composed result before the file is written.
 
 :::figure{side=block width=630}
 ![Export dialog](../assets/export_dialog.jpg)
-{{tr:image_compare.action.breadcrumb.toolbar}} → {{tr:image_compare.action.breadcrumb.export}}.
+The export dialog: **Preview** shows the composed result before the file is written.
 :::
 
 ### Resolution and quality {#resolution-and-quality}
 
-- **Size** — width and height fields with an aspect-ratio lock.
-- **Quality** — {{tr:label.quality}} appears for lossy formats only.
-- **PNG** — compression level and {{tr:export.optimize_png}}.
-- **Fill** — {{tr:export.fill_background}} paints the area around an image that is placed smaller than the frame. On an image that fills the frame, the option switches off.
+- **Size** — sets the output width and height; an aspect-ratio lock keeps the proportions.
+- **Quality** — sets the compression level. It appears only for formats that store the image with loss, so a PNG or BMP export does not offer it.
+- **PNG** — sets the PNG compression level and toggles **Optimize PNG**.
+- **Fill background** — paints the bars around an image when the images do not fill the frame. When an image fills the frame, this option is unavailable.
 
 ### Metadata and favorites {#metadata-and-favorites}
 
-- **Metadata** — {{tr:export.include_metadata}} stays on unless switched off; the comment field hides with it. {{tr:export.remember_by_default}} keeps the comment text for the next export.
-- **Favorites** — {{tr:misc.set_as_favorite}} pins the current directory; {{tr:tooltip.use_favorite}} recalls it.
-- **Labels** — when {{tr:image_compare.action.file_names}} is on, names render into the still.
+- **Metadata** — the file and comment metadata are written into the export by default. Clear **Include metadata** to write the image without them; the comment field then hides. **Remember by default** keeps the comment text for the next export.
+- **Favorites** — **Set as Favorite** pins the current directory, and **Use Favorite** recalls it.
+- **Labels** — with **Filename Overlay** on, file names are drawn into the exported image.
 
 ### Quick save {#quick-save}
 
-- **`Ctrl+S`** — {{tr:image_compare.action.quick_save}} reuses the last export settings without opening the dialog.
-- **Tray** — the tray icon menu reopens the last saved file and folder.
+- **`Ctrl+S`** — **Quick Save** writes the file with the last export settings without reopening the dialog.
+- **Tray** — the tray-icon menu reopens the last saved file and its folder.
 
 ### Recording and video {#video-editor}
 
-Recording controls and video or GIF encoding are in the [Video Editor](help://workspace.image_compare.video); this page covers still images only.
+To record the controls or encode video and GIF, use the [Video Editor](help://workspace.image_compare.video); this page covers still images only.

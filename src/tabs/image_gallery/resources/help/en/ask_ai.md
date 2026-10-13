@@ -1,20 +1,20 @@
 ## Ask AI
 
-Questions cover one card, the selection, or a whole series; answers are advisory and carry a badge that marks them as AI-supplied.
+You can ask questions about a single card, the current selection, or a whole series. Answers are advisory and always carry a badge that marks them as AI-supplied.
 
 ### Ask about a selection {#ask-selection}
 
-- **{{tr:image_gallery.ask_ai.action}}** — opens {{tr:image_gallery.ask_ai.title}} for that card or the current selection.
-- **Default prompt** — {{tr:image_gallery.ask_ai.default_prompt}} summarizes the images it is asked about.
-- **Badge** — {{tr:image_gallery.ask_ai.read_badge}} marks AI-supplied text.
+- **AI…** — opens **Ask AI** for that card or the current selection.
+- **Default prompt** — the question **What matters here?** asks the model to summarize the images it is given.
+- **Badge** — the **AI read, unverified** badge marks text produced by the AI and not checked by you.
 
 ### Ask about a series {#ask-series}
 
-The series-header menu asks about every member at once. Quality scores on sharpness or noise are shown without a request to the AI model — see [Quality Metrics](help://workspace.image_gallery.quality).
+The series-header menu asks about every member of the series at once. Scores for sharpness or noise come from [Quality Metrics](help://workspace.image_gallery.quality) and are shown without a request to the AI model.
 
 ### Setup and limits {#setup}
 
-- **AI setup** — {{tr:image_gallery.settings.ai_title}} in Settings; asking needs {{tr:image_gallery.settings.enable_ai}}, a key, and a model, otherwise {{tr:image_gallery.errors.not_configured}}.
-- **Progress and errors** — {{tr:image_gallery.ask_ai.busy}}; failures report {{tr:image_gallery.ask_ai.error}}.
-- **Advisory only** — answers never change rank, selection, or stored state.
-- **Caching** — identical questions reuse the cached answer; new model or images ask again.
+- **AI setup** — configure **Image Gallery — AI** in **Settings**; asking needs **Enable AI image analysis**, an API key, and a model. Without them, the app shows **Configure the AI API key in Settings first.**
+- **Progress and errors** — while the model works, the panel shows **Thinking…**; a failed request reports **AI could not answer.**
+- **Advisory only** — answers never change the rank, the selection, or any stored state.
+- **Caching** — an identical question reuses the cached answer; a new model or new images ask the model again.

@@ -162,7 +162,7 @@
     },
     {
       "path": "src/plugins/help/tree.py",
-      "lines": 220,
+      "lines": 219,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=single-owner reason=\"one merged HelpTree: fs scan + hub-fragment overlay, path/body/asset resolution, and validation share one cache — splitting would fork the scope\"",

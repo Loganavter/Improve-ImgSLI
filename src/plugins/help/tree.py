@@ -201,13 +201,12 @@ def read_help_page_markdown(
     *,
     body_root: Path | None = None,
 ) -> str:
-    from plugins.help.interpolate import interpolate_help_markdown
-
     path = resolve_help_body_path(language, body_rel, body_root=body_root)
     if not path.is_file():
         return f"## Missing page\n\nBody not found: `{body_rel}`\n"
-    raw = path.read_text(encoding="utf-8")
-    return interpolate_help_markdown(raw, language)
+    # Bodies carry literal, on-screen labels (no `{{tr:}}` interpolation):
+    # help content is written per language, so no runtime key lookup is needed.
+    return path.read_text(encoding="utf-8")
 
 
 def resolve_help_asset(
