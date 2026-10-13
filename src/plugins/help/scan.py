@@ -17,9 +17,11 @@ page ``<mount>.<relative-stem>`` (e.g. a tab's ``comparison`` page).
 Presentation (hub titles/descriptions/icons, ``help://`` aliases, asset roots
 and icon resolvers) still flows through the installed contribution fragments
 — the isolation-safe channel — until phase 3 removes aliases. Page titles
-and card subtitles come from each page's own ``##`` heading and first
-paragraph (see ``plugins.help.labels``); the app-shell hubs
-(``root``/``workspace``/``ui``/``platform``) keep their static meta below.
+and card subtitles come from each page's own ``##`` heading, an optional
+leading frontmatter block (``description``/``icon``), and the first paragraph
+fallback (see ``plugins.help.labels`` and ``plugins.help.meta``); the
+app-shell hubs (``root``/``workspace``/``ui``/``platform``) keep their static
+meta below.
 """
 
 from __future__ import annotations
@@ -28,6 +30,7 @@ import ast
 from pathlib import Path
 from typing import Any
 
+from plugins.help.meta import PageMeta, parse_page_meta
 from plugins.help.tree import HelpNode, HelpTree, _validate_tree, host_help_root
 
 #: Canonical language for structure discovery; per-file fallback to EN at
@@ -114,17 +117,32 @@ def _discover_packages() -> list[tuple[str | None, Path]]:
     return found
 
 
-def _page_node(node_id: str, body: str, body_root: Path | None) -> HelpNode:
+def _page_meta(path: Path) -> PageMeta:
+    """Parse a page's leading frontmatter; a read failure yields empty meta."""
+    try:
+        return parse_page_meta(path.read_text(encoding="utf-8"))
+    except OSError:
+        return PageMeta()
+
+
+def _page_node(
+    node_id: str,
+    body: str,
+    body_root: Path | None,
+    *,
+    description: str = "",
+    icon: str = "",
+) -> HelpNode:
     return HelpNode(
         node_id=node_id,
         kind="page",
         title=node_id,
-        description="",
+        description=description,
         children=(),
         body=body,
         title_key=None,
         description_key=None,
-        icon="",
+        icon=icon,
         body_root=body_root,
     )
 
@@ -204,7 +222,14 @@ def scan_help_tree(hub_fragments: Any = ()) -> HelpTree:
                 stem = rel.with_suffix("")
                 page_id = ".".join(stem.parts)
                 parent = ".".join(stem.parts[:-1]) if len(stem.parts) > 1 else "root"
-                nodes[page_id] = _page_node(page_id, rel.as_posix(), None)
+                meta = _page_meta(path)
+                nodes[page_id] = _page_node(
+                    page_id,
+                    rel.as_posix(),
+                    None,
+                    description=meta.description,
+                    icon=meta.icon,
+                )
                 if parent == "root":
                     attach("root", page_id)
                 else:
@@ -222,7 +247,14 @@ def scan_help_tree(hub_fragments: Any = ()) -> HelpTree:
         elif len(top_files) == 1 and not has_subdirs:
             # Single-page package: the mount id itself is the page.
             rel = top_files[0].relative_to(lang_dir)
-            nodes[mount] = _page_node(mount, rel.as_posix(), body_root)
+            meta = _page_meta(top_files[0])
+            nodes[mount] = _page_node(
+                mount,
+                rel.as_posix(),
+                body_root,
+                description=meta.description,
+                icon=meta.icon,
+            )
             parent = mount.rpartition(".")[0]
             attach(parent, mount)
             add_hub(parent)
@@ -236,7 +268,14 @@ def scan_help_tree(hub_fragments: Any = ()) -> HelpTree:
                 rel = path.relative_to(lang_dir)
                 stem = rel.with_suffix("")
                 page_id = mount + "." + ".".join(stem.parts)
-                nodes[page_id] = _page_node(page_id, rel.as_posix(), body_root)
+                meta = _page_meta(path)
+                nodes[page_id] = _page_node(
+                    page_id,
+                    rel.as_posix(),
+                    body_root,
+                    description=meta.description,
+                    icon=meta.icon,
+                )
                 if len(stem.parts) > 1:
                     hub_id = mount + "." + ".".join(stem.parts[:-1])
                     add_hub(hub_id, body_root)

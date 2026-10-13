@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from plugins.help.contribution import HelpHubContribution
+from plugins.help.meta import split_frontmatter
 from utils.resource_loader import resource_path
 
 logger = logging.getLogger("ImproveImgSLI")
@@ -206,7 +207,11 @@ def read_help_page_markdown(
         return f"## Missing page\n\nBody not found: `{body_rel}`\n"
     # Bodies carry literal, on-screen labels (no `{{tr:}}` interpolation):
     # help content is written per language, so no runtime key lookup is needed.
-    return path.read_text(encoding="utf-8")
+    raw = path.read_text(encoding="utf-8")
+    # Strip the optional card frontmatter so the rendered page never starts
+    # with a bare `---` block (the meta is parsed separately by the scan).
+    _meta, body = split_frontmatter(raw)
+    return body
 
 
 def resolve_help_asset(
