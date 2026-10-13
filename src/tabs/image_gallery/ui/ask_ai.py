@@ -290,6 +290,7 @@ class AskAiFlyout(BaseFlyout):
         initial_error: str = "",
         initial_links: dict | None = None,
         grow_up: bool = False,
+        show_images_toggle: bool = True,
     ) -> None:
         """Reset + show under *anchor*; focus lands in the question field.
 
@@ -297,6 +298,9 @@ class AskAiFlyout(BaseFlyout):
         animation starts (the persisted-answer prefill). Setting them after
         the show — via ``reposition()`` — would clear the fade snapshot while
         its animation is still running, flashing the panel white.
+
+        ``show_images_toggle=False`` hides the include-images toggle (region
+        scope: the images always go out, so there is nothing to toggle).
         """
         self._default_prompt = str(default_prompt or "What matters here?")
         self._title.setText(str(title or self._title_text))
@@ -327,6 +331,11 @@ class AskAiFlyout(BaseFlyout):
             pass
         self._include_images = saved_images
         self._sync_row_visibility()
+        # Region scope always sends the images: no toggle to show.
+        try:
+            self._images_toggle.setVisible(bool(show_images_toggle))
+        except Exception:
+            pass
         if initial_result is not None:
             self.show_result(
                 getattr(initial_result, "text", "") or "",

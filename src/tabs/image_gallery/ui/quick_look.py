@@ -410,6 +410,15 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
                 band.raise_()
             except Exception:
                 pass
+            # A new marquee supersedes whatever dismissal the previous
+            # selection armed: the close ending that flyout session must
+            # not wipe this one (one-gesture dismiss + reselect).
+            try:
+                begin = getattr(band, "begin_selection", None)
+                if callable(begin):
+                    begin()
+            except Exception:
+                pass
         return True
 
     def _update_region(self, event) -> None:

@@ -50,6 +50,7 @@ class _WidgetStub:
         self.visible_range_changed = _Sig()
         self.opened = []
         self.grow_up = []
+        self.toggles = []
         self.results = []
         self.errors = []
         self.busy = 0
@@ -69,9 +70,10 @@ class _WidgetStub:
     def reset_session_view(self):
         pass
 
-    def open_ask_ai(self, anchor, scope, *, default_prompt="Summary", texts=None, grow_up=False):
+    def open_ask_ai(self, anchor, scope, *, default_prompt="Summary", texts=None, grow_up=False, show_images_toggle=True):
         self.opened.append((anchor, scope, default_prompt))
         self.grow_up.append(bool(grow_up))
+        self.toggles.append(bool(show_images_toggle))
 
     def show_ask_ai_busy(self):
         self.busy += 1
@@ -325,6 +327,81 @@ def test_open_ask_ai_region_dismisses_band_on_flyout_hide(monkeypatch, tmp_path,
     assert dismissed == [True]
     flyout.hidden.emit()
     assert dismissed == [True], "dismiss slot is one-shot"
+
+
+def test_open_ask_ai_region_hides_images_toggle(monkeypatch, tmp_path, qapp):
+    """Region scope always sends the images: the toggle is not offered.
+
+    Falsification: pre-change the flag is never threaded (stub default).
+    """
+    from types import SimpleNamespace
+
+    from PySide6.QtCore import QObject, Signal
+
+    class _Flyout(QObject):
+        hidden = Signal()
+
+    ctrl, widget = _make(monkeypatch)
+    flyout = _Flyout()
+    widget._ensure_ask_ai_flyout = lambda: flyout
+    dismissed: list[bool] = []
+    band = SimpleNamespace(
+        dismiss_selection=lambda: dismissed.append(True), selection_id=7
+    )
+
+    it = _item(tmp_path)
+    ctrl.state.items = [it]
+    ctrl.open_ask_ai_region(it.path, (0.1, 0.1, 0.5, 0.5), anchor=band)
+
+    assert widget.opened, "region ask should open the flyout"
+    assert widget.toggles[-1] is False
+    flyout.hidden.emit()
+    assert dismissed == [True], "matching generation still dismisses"
+
+
+def test_region_dismiss_slot_skips_superseded_selection(monkeypatch, tmp_path, qapp):
+    """A newer marquee supersedes the armed dismissal (one-gesture reselect).
+
+    The close ending the old flyout session must not wipe the selection the
+    dismissing press-drag just started.
+
+    Falsification: pre-change the hidden slot dismisses unconditionally.
+    """
+    from PySide6.QtCore import QObject, QRect, Signal
+    from PySide6.QtWidgets import QWidget
+
+    from tabs.image_gallery.ui.quick_look.region import RegionBand
+
+    class _Flyout(QObject):
+        hidden = Signal()
+
+    ctrl, widget = _make(monkeypatch)
+    flyout = _Flyout()
+    widget._ensure_ask_ai_flyout = lambda: flyout
+
+    host = QWidget()
+    band = RegionBand(host)
+    band.setGeometry(0, 0, 200, 200)
+    band.set_band(QRect(10, 10, 50, 40))
+    band.show()
+    gen = band.begin_selection()
+
+    it = _item(tmp_path)
+    ctrl.state.items = [it]
+    ctrl.open_ask_ai_region(it.path, (0.1, 0.1, 0.5, 0.5), anchor=band)
+
+    # A newer marquee starts before the old flyout session closes.
+    band.set_band(QRect(60, 60, 40, 40))
+    band.show()
+    band.begin_selection()
+    assert band.selection_id == gen + 1
+    flyout.hidden.emit()
+    assert not band.isHidden(), "superseded dismissal must spare the new selection"
+
+    # A clean close of the current session still dismisses.
+    ctrl.open_ask_ai_region(it.path, (0.2, 0.2, 0.6, 0.6), anchor=band)
+    flyout.hidden.emit()
+    assert band.isHidden()
 
 
 def test_region_ask_sends_crop_and_region_prompt(monkeypatch, tmp_path, qapp):

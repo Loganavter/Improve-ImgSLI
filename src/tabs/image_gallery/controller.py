@@ -1805,7 +1805,7 @@ class GalleryController:
         )
         self._open_ask_ai(anchor, scope)
 
-    def _open_ask_ai(self, anchor, scope, *, grow_up: bool = False, default_prompt: str | None = None) -> None:
+    def _open_ask_ai(self, anchor, scope, *, grow_up: bool = False, default_prompt: str | None = None, show_images_toggle: bool = True) -> None:
         opener = getattr(self.widget, "open_ask_ai", None)
         if not callable(opener):
             return
@@ -1835,16 +1835,20 @@ class GalleryController:
             default = "What matters here?"
             texts = None
         try:
-            opener(anchor, scope, default_prompt=default, texts=texts, grow_up=grow_up)
+            opener(anchor, scope, default_prompt=default, texts=texts, grow_up=grow_up, show_images_toggle=show_images_toggle)
         except TypeError:
-            opener(anchor, scope, default_prompt=default, texts=texts)
+            try:
+                opener(anchor, scope, default_prompt=default, texts=texts, grow_up=grow_up)
+            except TypeError:
+                opener(anchor, scope, default_prompt=default, texts=texts)
 
     def open_ask_ai_region(self, path, box, anchor=None, *, question: str = "") -> None:
         """Open the Ask AI flyout ABOVE the anchor for a selected image region.
 
         ``box`` is ``(left, top, right, bottom)`` as fractions of the image.
         The flyout grows upward; the region + full image + metrics are sent to
-        the VLM with the region system prompt on submit.
+        the VLM with the region system prompt on submit. Region asks always
+        carry the images, so the include-images toggle is hidden.
         """
         from tabs.image_gallery.services.ask_context import ASK_REGION, AskScope
 
@@ -1859,31 +1863,49 @@ class GalleryController:
         prompt = question or self._tr(
             "image_gallery.ask_ai.region_prompt", "What is wrong in this region?"
         )
-        self._open_ask_ai(target, scope, grow_up=True, default_prompt=prompt)
+        self._open_ask_ai(target, scope, grow_up=True, default_prompt=prompt, show_images_toggle=False)
         # The selection band stays visible under the flyout; dismiss it only
-        # when the flyout closes (not when the drag ends).
+        # when the flyout closes (not when the drag ends). The slot is armed
+        # for THIS selection generation: a newer marquee started afterwards
+        # (one-gesture dismiss + reselect) supersedes it — the close ending
+        # the old flyout session must not wipe the new selection.
         try:
             dismiss = getattr(target, "dismiss_selection", None)
             if callable(dismiss):
                 flyout = self.widget._ensure_ask_ai_flyout()
+                try:
+                    armed_gen = getattr(target, "selection_id", None)
+                    armed_gen = None if armed_gen is None else int(armed_gen)
+                except Exception:
+                    armed_gen = None
                 prev = getattr(self, "_region_dismiss_slot", None)
                 if prev is not None:
                     try:
                         flyout.hidden.disconnect(prev)
                     except Exception:
                         pass
-                def _dismiss(_dismiss_fn=dismiss, _flyout=flyout):
+                def _dismiss(_dismiss_fn=dismiss, _flyout=flyout, _band=target, _gen=armed_gen):
+                    try:
+                        if _gen is not None:
+                            try:
+                                current = getattr(_band, "selection_id", None)
+                                current = None if current is None else int(current)
+                            except Exception:
+                                current = None
+                            if current is not None and current != _gen:
+                                return
+                    finally:
+                        try:
+                            _flyout.hidden.disconnect(_dismiss)
+                        except Exception:
+                            pass
+                        try:
+                            if getattr(self, "_region_dismiss_slot", None) is _dismiss:
+                                self._region_dismiss_slot = None
+                        except Exception:
+                            pass
                     try:
                         _dismiss_fn()
-                    except Exception:
-                        pass
-                    try:
-                        _flyout.hidden.disconnect(_dismiss)
-                    except Exception:
-                        pass
-                    try:
-                        if getattr(self, "_region_dismiss_slot", None) is _dismiss:
-                            self._region_dismiss_slot = None
                     except Exception:
                         pass
                 flyout.hidden.connect(_dismiss)

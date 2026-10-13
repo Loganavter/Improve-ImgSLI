@@ -49,6 +49,11 @@ class RegionBand(QWidget):
         except Exception:
             pass
         self._rect = QRect()
+        # Selection generation: bumped on every marquee start. The Ask AI
+        # flyout's close-dismissal is armed per selection; a newer marquee
+        # supersedes the armed one (the close that ends the old flyout
+        # session must not wipe the new selection).
+        self._selection_id = 0
         self.hide()
 
     def set_band(self, rect: QRect) -> None:
@@ -61,6 +66,22 @@ class RegionBand(QWidget):
     def clear(self) -> None:
         self._rect = QRect()
         self.update()
+
+    @property
+    def selection_id(self) -> int:
+        """Generation of the currently held selection (see begin_selection)."""
+        try:
+            return int(self._selection_id)
+        except Exception:
+            return 0
+
+    def begin_selection(self) -> int:
+        """Mark the start of a new marquee; supersedes any armed dismissal."""
+        try:
+            self._selection_id = int(getattr(self, "_selection_id", 0)) + 1
+            return int(self._selection_id)
+        except Exception:
+            return 0
 
     def flyoutAnchorRect(self):  # noqa: N802 (toolkit hook name)
         """Toolkit anchor hook: pin flyouts to the selection, not the host.

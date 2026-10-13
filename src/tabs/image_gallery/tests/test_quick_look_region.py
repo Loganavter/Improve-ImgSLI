@@ -153,3 +153,40 @@ def test_on_quick_ask_region_uses_selection_anchor() -> None:
     assert path == "/img/a.png"
     assert got_box == box
     assert anchor is sentinel
+
+
+def test_maybe_start_region_bumps_selection_id(qtbot) -> None:
+    """A new marquee supersedes the armed dismissal at start, not at close.
+
+    Falsification: pre-change there is no selection generation to bump.
+    """
+    from types import SimpleNamespace
+
+    from PySide6.QtCore import QPoint, QPointF, Qt
+    from PySide6.QtWidgets import QWidget
+
+    from tabs.image_gallery.ui.quick_look import QuickLookOverlay
+
+    parent = QWidget()
+    qtbot.addWidget(parent)
+    parent.resize(400, 400)
+    parent.show()
+    overlay = QuickLookOverlay(parent)
+    qtbot.addWidget(overlay)
+    host = QWidget(overlay)
+    host.setGeometry(50, 50, 200, 200)
+    host.show()
+    overlay._preview_host = host
+
+    pos = host.mapTo(overlay, QPoint(100, 100))
+    event = SimpleNamespace(
+        button=lambda: Qt.MouseButton.LeftButton,
+        position=lambda: QPointF(pos),
+    )
+    assert overlay._maybe_start_region(event) is True
+    band = overlay._region_band
+    assert band is not None
+    assert band.selection_id == 1
+    # A second marquee bumps again (slots armed to 1 must skip).
+    assert overlay._maybe_start_region(event) is True
+    assert band.selection_id == 2

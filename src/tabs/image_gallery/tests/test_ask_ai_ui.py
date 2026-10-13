@@ -660,3 +660,30 @@ def test_region_flyout_aligns_centered_above_selection(qtbot):
     assert kwargs2.get("flyout_point") == "top-left"
     flyout2.hide()
     qtbot.waitUntil(lambda: not flyout2.isVisible(), timeout=5000)
+
+
+def test_region_open_hides_images_toggle(qtbot):
+    """Region scope always sends the images: no toggle is offered.
+
+    Falsification: pre-change open_for takes no show_images_toggle kwarg.
+    """
+    anchor = QWidget()
+    qtbot.addWidget(anchor)
+    anchor.resize(200, 100)
+    anchor.show()
+    qtbot.waitExposed(anchor)
+
+    flyout = AskAiFlyout(anchor)
+    qtbot.addWidget(flyout)
+    flyout.open_for(anchor, default_prompt="Q", grow_up=True)
+    qtbot.waitUntil(lambda: flyout.isVisible(), timeout=5000)
+    # Explicit flag (not isVisible: the fade animation hides ancestors).
+    assert not flyout._images_toggle.isHidden()
+    flyout.hide()
+    qtbot.waitUntil(lambda: not flyout.isVisible(), timeout=5000)
+
+    flyout.open_for(anchor, default_prompt="Q", grow_up=True, show_images_toggle=False)
+    qtbot.waitUntil(lambda: flyout.isVisible(), timeout=5000)
+    assert flyout._images_toggle.isHidden()
+    flyout.hide()
+    qtbot.waitUntil(lambda: not flyout.isVisible(), timeout=5000)
