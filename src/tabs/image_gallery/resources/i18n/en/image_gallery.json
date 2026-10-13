@@ -1,12 +1,8 @@
 {
   "image_gallery": {
     "tab_name": "Image Gallery",
-    "pick_folder": "Pick folder…",
-    "filter_placeholder": "Filter by tag/description…",
     "empty_state": "Pick a folder to see images here.",
     "empty_view": "No images in view.",
-    "analyze": "Analyze",
-    "analyzing": "Analyzing…",
     "activity": {
       "queued": "Queued",
       "claimed": "Starting",
@@ -55,12 +51,6 @@
         "triage": "Triage"
       }
     },
-    "card": {
-      "set_as_source": "Set as source",
-      "make_best": "Make best",
-      "reject": "Reject",
-      "compare": "Compare"
-    },
     "ask_ai": {
       "action": "AI…",
       "title": "Ask AI",
@@ -94,24 +84,6 @@
       "hub": {
         "title": "Image Gallery",
         "desc": "Browse, triage, and review image folders"
-      },
-      "page": {
-        "overview": {
-          "title": "Gallery Overview",
-          "desc": "Folders, series, grid, and compare"
-        },
-        "triage": {
-          "title": "Triage and Review",
-          "desc": "Keep best, reject, and clean review"
-        },
-        "quality": {
-          "title": "Quality Metrics",
-          "desc": "Measured scores and the fidelity source"
-        },
-        "ask_ai": {
-          "title": "Ask AI",
-          "desc": "Questions about a selection or a series"
-        }
       }
     }
   }

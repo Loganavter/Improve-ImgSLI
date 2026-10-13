@@ -1,12 +1,8 @@
 {
   "image_gallery": {
     "tab_name": "Галерея",
-    "pick_folder": "Выбрать папку…",
-    "filter_placeholder": "Фильтр по тегам/описанию…",
     "empty_state": "Перенесите изображения или папку.",
     "empty_view": "Нет изображений для показа.",
-    "analyze": "Анализировать",
-    "analyzing": "Анализ…",
     "activity": {
       "queued": "В очереди",
       "claimed": "Запуск",
@@ -54,12 +50,6 @@
       "breadcrumb": {
         "triage": "Триаж"
       }
-    },
-    "card": {
-      "set_as_source": "Сделать источником",
-      "make_best": "Сделать лучшим",
-      "reject": "Отклонить",
-      "compare": "Сравнить"
     },
     "ask_ai": {
       "action": "ИИ…",

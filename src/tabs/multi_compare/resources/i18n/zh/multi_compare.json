@@ -3,12 +3,6 @@
     "help": {
       "hub": {
         "desc": "多图布局"
-      },
-      "page": {
-        "overview": {
-          "title": "多图对比概览",
-          "desc": "布局与拖放区域"
-        }
       }
     },
     "action": {
