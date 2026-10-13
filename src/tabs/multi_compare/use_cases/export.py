@@ -405,8 +405,8 @@ def has_exportable_pixels(controller) -> bool:
     """Pixels gate for export admission (B4: IC ``has_images`` parity).
 
     True when at least one in-tree slot resolves a cached pixel source
-    via the shared seam (:func:`pipeline.cache.resolve_slot_source` —
-    the same predicate backing the context menu, drag & drop, and demand
+    via the single boolean gate (:func:`pipeline.cache.slot_has_pixels` —
+    the same gate backing the context menu, drag & drop, and demand
     fill). A tree of imageless slots (no tier yet, evicted, or pathless)
     reads as non-exportable so quick/dialog save refuses instead of
     writing a blank image. Cache-only read: never decodes, never raises.
@@ -432,7 +432,7 @@ def has_exportable_pixels(controller) -> bool:
         except Exception:
             continue
     try:
-        from tabs.multi_compare.pipeline.cache import resolve_slot_source
+        from tabs.multi_compare.pipeline.cache import slot_has_pixels
     except Exception:
         return False
     cache = getattr(controller, "pixel_cache", None)
@@ -441,7 +441,7 @@ def has_exportable_pixels(controller) -> bool:
         if slot is None:
             continue
         try:
-            if resolve_slot_source(cache, slot) is not None:
+            if slot_has_pixels(cache, slot):
                 return True
         except Exception:
             continue
