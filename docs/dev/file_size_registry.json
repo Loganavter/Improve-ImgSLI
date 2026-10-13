@@ -151,7 +151,7 @@
     },
     {
       "path": "src/plugins/help/dialog.py",
-      "lines": 917,
+      "lines": 925,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=qdialog-wiring reason=\"one Help QDialog — HelpDocumentView + search wiring\"",
@@ -162,7 +162,7 @@
     },
     {
       "path": "src/plugins/help/tree.py",
-      "lines": 252,
+      "lines": 220,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=single-owner reason=\"one merged HelpTree: fs scan + hub-fragment overlay, path/body/asset resolution, and validation share one cache — splitting would fork the scope\"",

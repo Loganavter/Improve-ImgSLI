@@ -90,18 +90,18 @@ should get).  **Former** call sites `contribute_settings` /
 `contribute_help` have migrated to typed collectors
 (`tabs/use_cases/capability_routing.py:32`
 `collect_help_contributions()` /
-`collect_settings_contributions()` → `HelpContribution` /
+`collect_settings_contributions()` → `HelpHubContribution` /
 `SettingsContribution` with `owner_tab == i18n_namespace`, per-tab
 exception logged, not stopping others) and
-`install_help_contributions(list[HelpContribution])` /
-`install_settings_contributions(list[SettingsContribution])` immutable merge
+`install_help_contributions(list[HelpHubContribution])` /
+`install_settings_contributions(list[SettingsContribution])` hub overlay
 (see [HELP_SYSTEM.md](../HELP_SYSTEM.md) and `plugins/help/tree.py:42`).
 
 ```python
 registry.notify_all("install_translations", ui)
 # Typed collectors (replacing notify_all for catalogs):
 from tabs.use_cases.capability_routing import collect_help_contributions
-contributions = collect_help_contributions(registry)  # -> list[HelpContribution]
+contributions = collect_help_contributions(registry)  # -> list[HelpHubContribution]
 ```
 
 Iterates every registered tab, calls `tab.create_service(hook_id, *args,
@@ -270,9 +270,9 @@ only to it from now on" (the real contribution-point pattern):
 CATALOG REFRESH — "re-publish into a host-owned registry":
     # Settings / Help (broadcast — every tab may own sections/help, even inactive):
     from tabs.use_cases.capability_routing import collect_help_contributions, collect_settings_contributions
-    collect_help_contributions(registry) -> list[HelpContribution]  # frozen, owner_tab == i18n_namespace
+    collect_help_contributions(registry) -> list[HelpHubContribution]  # frozen, owner_tab == i18n_namespace
     collect_settings_contributions(registry) -> list[SettingsContribution]
-    # then install_*_contributions(list) immutable merge (uniq node_id / alias conflict raise)
+    # then install_*_contributions(list) hub overlay
     # Actions (active-tab chrome only):
     create_service("contribute_actions", action_registry) -> True | None
   Tabs (re)register into host SettingsRegistry / HelpTree / ActionRegistry

@@ -17,7 +17,7 @@ Pick a tool by symptom. Read the linked doc only when you need filtering or inte
 | Slow or unclear startup | `IMGSLI_STARTUP_TRACE=1 ./launcher.sh run` | `src/core/startup_trace.py` |
 | Where is the code mass? | `./launcher.sh context --cloc-only` → `cloc.txt` (`--toolkit-dir DIR` if the sibling toolkit is not auto-found) | [AGENTS.md](../../../AGENTS.md) |
 | Missing or empty i18n keys | `python src/devtools/check_translations.py --strict` | — |
-| Help screenshots still stubs / missing | `python src/devtools/check_help_figures.py` | [docs/dev/HELP_SYSTEM.md](../../../docs/dev/HELP_SYSTEM.md) § Figure tokens |
+| Help screenshots missing / broken | grep body-relative image paths in `src/*/resources/help/` | [docs/dev/HELP_SYSTEM.md](../../../docs/dev/HELP_SYSTEM.md) § Figure paths |
 | Stale `.qsb` shaders | `python src/devtools/compile_shaders.py --check` | `src/devtools/compile_shaders.py` |
 | Architecture dogma after structural change | `./launcher.sh test tests/contracts -q` | [docs/dev/CONTRACTS.md](../../../docs/dev/CONTRACTS.md) |
 | Focused subsystem test | `env QT_QPA_PLATFORM=offscreen pytest -q tests/<area>/…` | [docs/dev/TESTING.md](../../../docs/dev/TESTING.md) |
@@ -54,7 +54,6 @@ to script output and logs rather than the public repo.
 |---|---|
 | `context_cloc.py` | cloc tables for app + optional sibling toolkit |
 | `check_translations.py` | locale gap report (`--root`, `--reference en`, `--strict`) |
-| `check_help_figures.py` | Help figure ready/stub/missing report (`--json`, `--strict`) |
 | `compile_shaders.py` | GLSL → `.qsb` (`--check`, `--clean`) |
 | `ui_inspector/` | in-app widget / palette / QSS diagnostics (via `--ui-inspector`) |
 | `ui_layout_dump.py` | headless widget-tree JSON dump (via `--dump-ui-layout`) |

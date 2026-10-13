@@ -1,9 +1,8 @@
 # Help web-canon refactor — plan
 
-Status: **in_progress** — branch `feat/help-webcanon`, base `main`.
-P0 (deletions of `ui.lists_flyouts` + `ui.canvas_navigation`) + P1 (scanner +
-equivalence) + P2 (fs source, `##` titles, `tree.json` deleted) landed.
-P3 lands with this commit.
+Status: **done** — branch `feat/help-webcanon`, base `main`.
+P0 (deletions) + P1 (scanner) + P2 (fs source, `##` titles) + P3 (paths,
+hub fragments) + P4 (inline images) + P5 (docs) landed.
 
 ## Goal
 
