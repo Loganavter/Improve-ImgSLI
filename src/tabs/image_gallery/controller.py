@@ -135,13 +135,11 @@ _GALLERY_SCHED_MAX_THREADS = 8
 # toolbar/background-scanning hooks only when multi-chunk.
 _GALLERY_PROXY_CHUNK = 50
 
-# Proxy decode-cache bound enforced controller-side (services/proxy.py
-# keeps its own 256-entry limit, owned by wave A1): 256 x <= ~3 MB
-# (~1024^2 RGB) ≈ 768 MB worst case exceeds a background tab's budget,
-# so batch delivery trims oldest-inserted entries down to 96 (≈ <= 288 MB
-# while covering a typical folder's working set; insertion order is a
-# cheap LRU stand-in — warm hits are not reordered, folder churn evicts).
-_GALLERY_PROXY_CACHE_CAP = 96
+# Proxy decode-cache bound: owned by services/proxy.py (PROXY_CACHE_LIMIT);
+# batch delivery trims oldest-inserted entries down to that bound (96 x
+# <= ~3 MB ~= <= 288 MB while covering a typical folder's working set;
+# insertion order is a cheap LRU stand-in — warm hits are not reordered,
+# folder churn evicts). Never restate the literal here.
 
 
 def _scheduler_thread_count() -> int:
@@ -605,7 +603,7 @@ class GalleryController:
             from tabs.image_gallery.services import proxy as _proxy
 
             cache = _proxy._PROXY_CACHE
-            excess = len(cache) - _GALLERY_PROXY_CACHE_CAP
+            excess = len(cache) - _proxy.PROXY_CACHE_LIMIT
             if excess <= 0:
                 return 0
             for key in list(cache)[:excess]:
