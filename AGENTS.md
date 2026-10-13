@@ -47,6 +47,7 @@ Local-only dirs (gitignored, not in repo): `.cursor/` (except committed `.cursor
 | Toolkit widgets | [docs/dev/UI_TOOLKIT_LIBRARY.md](docs/dev/UI_TOOLKIT_LIBRARY.md) |
 | Find Action / palette | [docs/dev/ACTIONS.md](docs/dev/ACTIONS.md) |
 | Help authoring | [docs/dev/HELP_SYSTEM.md](docs/dev/HELP_SYSTEM.md) |
+| Screenshot a surface / Help figures | [docs/dev/SCREENSHOTS.md](docs/dev/SCREENSHOTS.md) |
 | “Weird after click/zoom” | [docs/dev/TRACING.md](docs/dev/TRACING.md) |
 | Known Qt quirks | [docs/dev/KNOWN_BUGS.md](docs/dev/KNOWN_BUGS.md) |
 | Open engineering debt | [docs/dev/TODO.md](docs/dev/TODO.md) |
