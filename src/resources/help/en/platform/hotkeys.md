@@ -8,24 +8,24 @@ Below are the default chords. Most action shortcuts can be remapped in **Setting
 
 ### Platform {#platform}
 
-- `Ctrl+,` — Settings
-- `Ctrl+F1` — Help
-- `Ctrl+N` — Session picker / new session
-- `Ctrl+Tab` / `Ctrl+Shift+Tab` — Next / previous workspace session
-- `Ctrl+Shift+P` — Find Action
-- `Ctrl+V` — Paste image
-- `Ctrl+Shift+O` / `Shift+S` / `Ctrl+Shift+S` — Open / save / save project as (`.imgsli`)
-- `Ctrl+Q` — Quit
+- `Ctrl+,` — **Settings**
+- `Ctrl+F1` — **Show Help**
+- `Ctrl+N` — **New Session** (opens the **Session Picker**)
+- `Ctrl+Tab` / `Ctrl+Shift+Tab` — next / previous session
+- `Ctrl+Shift+P` — **Find Action**
+- `Ctrl+V` — **Paste image from clipboard**
+- `Ctrl+Shift+O` / `Shift+S` / `Ctrl+Shift+S` — **Open Project** / **Save Project** / **Save Project As…** (`.imgsli`)
+- `Ctrl+Q` — **Quit**
 
 Menu labels follow the language you select. Custom shortcuts are set in **Settings** → **Keyboard**, in the platform group.
 
 ### Image Compare {#image-compare}
 
-- `M` / `F` — toggle the magnifier / freeze it
-- `N` / `D` — toggle the filename overlay / hide the divider
-- `H` / `C` — switch the difference mode / switch the channel mode
-- `X` — swap the two images
-- `R` / `Ctrl+E` — start recording / open the **Video Editor**
+- `M` / `F` — **Toggle Magnifier** / **Freeze Magnifier**
+- `N` / `D` — **Filename Overlay** / **Divider Visibility**
+- `H` / `C` — **Difference Mode** / **Channel Mode**
+- `X` — **Swap Images**
+- `R` / `Ctrl+E` — **Record Video** / **Video Editor**
 - `Ctrl+S` — **Quick Save**
 - `WASD` / `QE` — move the magnifier / change its spacing (fixed)
 - `Shift+Space` — preview one side in combined mode (fixed)
@@ -35,8 +35,8 @@ Details: [Comparison](help://workspace.image_compare.comparison), [Magnifier](he
 
 ### Multi Compare {#multi-compare}
 
-- `Ctrl+O` — add more images to the grid
-- `D` — toggle the grid visibility
+- `Ctrl+O` — **Add images**
+- `D` — **Grid Visibility**
 - `Ctrl+S` — **Quick Save**
 - `Esc` — leave slot focus
 - `←↑↓→` / `+` / `-` — pan / zoom (fixed)
