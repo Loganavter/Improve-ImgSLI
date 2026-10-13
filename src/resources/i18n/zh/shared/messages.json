@@ -1,6 +1,9 @@
 {
   "msg": {
+    "compare_nothing_to_carry": "无法搬运——此槽位为空。",
+    "compare_nothing_to_duplicate": "无法复制——此槽位没有加载的图像。",
     "error_saving": "保存错误",
+    "failed_to_load_image": "加载图像失败",
     "loading_full_image_done": "完整版本已加载",
     "loading_full_image_in_progress": "正在加载完整版本图像...",
     "loading_images_from_clipboard": "从剪贴板加载图像...",
@@ -13,5 +16,11 @@
     "dont_show_again": "不再显示",
     "cache_purge_notice_title": "已清理旧缓存",
     "cache_purge_notice_body": "此前版本中的一个错误可能导致临时图像缓存文件在多次会话间累积。我们发现并清理了 {size} 的残留缓存——无需进一步操作。"
+  },
+  "common": {
+    "file_type": {
+      "image_files": "图像文件",
+      "all_files": "所有文件"
+    }
   }
 }

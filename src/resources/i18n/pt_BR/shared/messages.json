@@ -1,6 +1,9 @@
 {
   "msg": {
+    "compare_nothing_to_carry": "Nada para mover — este slot está vazio.",
+    "compare_nothing_to_duplicate": "Nada para duplicar — este slot não tem imagem carregada.",
     "error_saving": "Erro ao salvar",
+    "failed_to_load_image": "Falha ao carregar imagem",
     "loading_full_image_done": "Versão completa carregada",
     "loading_full_image_in_progress": "Carregando versão completa da imagem...",
     "loading_images_from_clipboard": "Carregando imagens do clipboard...",
@@ -13,5 +16,11 @@
     "dont_show_again": "Não mostrar novamente",
     "cache_purge_notice_title": "Cache antigo limpo",
     "cache_purge_notice_body": "Um bug em uma versão anterior podia deixar arquivos de cache de imagem temporários acumulados entre sessões. Encontramos e removemos {size} de cache remanescente — nenhuma ação adicional é necessária."
+  },
+  "common": {
+    "file_type": {
+      "image_files": "Arquivos de imagem",
+      "all_files": "Todos os arquivos"
+    }
   }
 }
