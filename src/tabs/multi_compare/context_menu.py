@@ -120,11 +120,11 @@ class MultiCompareContextMenuProvider:
         return getattr(canvas, "pixel_cache", None)
 
     def _has_pixels(self, slot: CompareSlot) -> bool:
-        """B1: tier presence resolves from the session cache, not the slot."""
+        """B3: single shared gate — delegates to ``slot_has_pixels``."""
         try:
-            from tabs.multi_compare.pipeline.cache import resolve_slot_source
+            from tabs.multi_compare.pipeline.cache import slot_has_pixels
 
-            return resolve_slot_source(self._cache(self.widget), slot) is not None
+            return slot_has_pixels(self._cache(self.widget), slot)
         except Exception:
             return False
 

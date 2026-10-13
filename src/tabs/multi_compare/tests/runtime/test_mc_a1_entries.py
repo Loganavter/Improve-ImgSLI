@@ -46,7 +46,12 @@ def test_accepted_sets_equal_ic_mc_bug_a1_guard():
     assert _filter_image_paths([Path("a.jxl"), Path("b.txt")]) == [Path("a.jxl")]
 
     def _mime(names):
-        urls = [SimpleNamespace(toLocalFile=lambda n=n: n) for n in names]
+        # B3: fakes grow the QUrl interface the seam gates on — real
+        # file-manager drags are local files (isLocalFile True).
+        urls = [
+            SimpleNamespace(isLocalFile=lambda: True, toLocalFile=lambda n=n: n)
+            for n in names
+        ]
         return SimpleNamespace(hasUrls=lambda: True, urls=lambda: list(urls))
 
     assert mc_dnd.has_image_urls(_mime(["a.jxl"])) is True

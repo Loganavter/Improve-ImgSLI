@@ -325,6 +325,21 @@ def resolve_slot_source(cache: MultiComparePixelCache | None, slot: Any) -> Any 
     return cache.resolve(getattr(slot, "path", None))
 
 
+def slot_has_pixels(cache: MultiComparePixelCache | None, slot: Any) -> bool:
+    """One shared has-pixels predicate for MC menu + DnD guards (wave B3).
+
+    Every nothing-to-duplicate/carry guard calls this instead of
+    re-composing ``resolve_slot_source(...) is not None`` — the resolver
+    stays the single tier read, this is the single boolean gate. Fail-soft
+    False (headless fakes, missing cache) so a broken cache reads as
+    imageless, never raises into menu/DnD event handlers.
+    """
+    try:
+        return resolve_slot_source(cache, slot) is not None
+    except Exception:
+        return False
+
+
 def slot_source_size(
     cache: MultiComparePixelCache | None, slot: Any
 ) -> tuple[int, int] | None:
