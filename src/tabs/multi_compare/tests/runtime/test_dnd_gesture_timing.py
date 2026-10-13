@@ -30,7 +30,9 @@ def _mime(urls):
 
 
 def _url(path):
-    return SimpleNamespace(toLocalFile=lambda: str(path))
+    # B3: QUrl interface the seam gates on — these fakes stand in for
+    # local file-manager drags (isLocalFile True).
+    return SimpleNamespace(isLocalFile=lambda: True, toLocalFile=lambda: str(path))
 
 
 def _event(mime, *, pos=QPoint(10, 10)):

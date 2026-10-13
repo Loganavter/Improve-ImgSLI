@@ -25,7 +25,11 @@ from pathlib import Path
 from PySide6.QtCore import QEvent, Qt
 from PySide6.QtGui import QDragEnterEvent, QDragLeaveEvent, QDragMoveEvent, QDropEvent
 
-from shared.image_extensions import is_accepted_image_path
+from shared.image_extensions import (
+    has_image_urls,
+    is_accepted_image_path,
+    is_loadable_image_path,
+)
 from tabs.multi_compare.debug import (
     mc_dnd_debug as _dnd_log,
     mc_dnd_diag_light_move_enabled,
@@ -85,15 +89,6 @@ def _emit_dnd_overflow_summary(widget, overflow, *, reason: str = "queue_full") 
         logger.exception(
             "mc dnd %s overflow summary failed for %d file(s)", reason, len(overflow)
         )
-
-
-def has_image_urls(mime) -> bool:
-    if not mime.hasUrls():
-        return False
-    for url in mime.urls():
-        if is_accepted_image_path(url.toLocalFile()):
-            return True
-    return False
 
 
 def has_internal_slot(mime) -> bool:
@@ -555,17 +550,10 @@ def _finish_external_drop(widget, local_files: list[str], pos, gen: int, t_drop:
                 widget, pos, internal=False
             )
         widget.store.dispatch(actions.set_drag_state(active=False))
-        paths = []
-        for local in local_files:
-            path = Path(local)
-            if not is_accepted_image_path(path):
-                continue
-            try:
-                ok = path.is_file()
-            except Exception:
-                ok = False
-            if ok:
-                paths.append(path)
+        # B3: single seam predicate (accepted-extension ∧ is_file) — the
+        # accept-fast-path above stays suffix-only on purpose (no FS stat
+        # before accept); the deferred half may stat.
+        paths = [Path(local) for local in local_files if is_loadable_image_path(local)]
         _dnd_log(
             "drop external files=%d target_path=%s side=%s root=%s accept_ms=%.1f work_ms=%.1f",
             len(paths), tgt_path, side, root_tgt,
@@ -641,10 +629,10 @@ def begin_pending_duplicate(widget, source_slot_id: int) -> None:
         _dnd_log("pending duplicate: ignored (no image source=%s)", source_slot_id)
         return
     try:
-        from tabs.multi_compare.pipeline.cache import resolve_slot_source
+        from tabs.multi_compare.pipeline.cache import slot_has_pixels
 
         canvas = getattr(widget, "canvas", None)
-        if resolve_slot_source(getattr(canvas, "pixel_cache", None), source) is None:
+        if not slot_has_pixels(getattr(canvas, "pixel_cache", None), source):
             _dnd_log("pending duplicate: ignored (source not loaded=%s)", source_slot_id)
             return
     except Exception:
@@ -658,7 +646,9 @@ def begin_pending_duplicate(widget, source_slot_id: int) -> None:
 def begin_pending_paste(widget, paths: list[Path]) -> None:
     """Enter external DnD placement: highlight under cursor, click to drop."""
     cancel_pending_placements(widget)
-    valid = [Path(p) for p in paths if Path(p).is_file()]
+    # B3: seam predicate (accepted-extension ∧ is_file), parity with the
+    # deferred-drop finish — a non-image survivor must never arm placement.
+    valid = [Path(p) for p in paths if is_loadable_image_path(p)]
     if not valid:
         _dnd_log("pending paste: ignored (no valid files)")
         return
@@ -826,11 +816,11 @@ def finalize_pending_duplicate(
         _dnd_log("pending duplicate: ignored (source gone=%s)", source_id)
         return
     try:
-        from tabs.multi_compare.pipeline.cache import resolve_slot_source
+        from tabs.multi_compare.pipeline.cache import slot_has_pixels
 
         canvas = getattr(widget, "canvas", None)
         cache = getattr(canvas, "pixel_cache", None)
-        if resolve_slot_source(cache, source) is None:
+        if not slot_has_pixels(cache, source):
             _dnd_log("pending duplicate: ignored (source not loaded=%s)", source_id)
             return
     except Exception:

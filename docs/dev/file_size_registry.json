@@ -682,7 +682,7 @@
     },
     {
       "path": "src/tabs/image_compare/ui/context_menu.py",
-      "lines": 641,
+      "lines": 659,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner size=exempt reason=\"single menu-surface aggregator — slot/list menus share entry/execute shape; per-action sections stay co-located\"",
@@ -1104,7 +1104,7 @@
     },
     {
       "path": "src/tabs/multi_compare/ui/drag_drop.py",
-      "lines": 863,
+      "lines": 853,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner-target size=927 reason=\"widget-owned DnD use_cases (functions-taking-owner; Qt event names delegated by widget); queue lifecycle in ui/drop_queue.py collaborator\"",
