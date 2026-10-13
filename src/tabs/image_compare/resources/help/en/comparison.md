@@ -14,7 +14,7 @@ Comparison shows two images side by side, so you can line up the same detail on 
 
 :::figure{side=block width=280}
 ![Split line](../assets/split_line.png)
-The **Divider** control: the split line, its color, and its visibility sit on one row.
+The divider controls on the toolbar, in their compact and expanded forms.
 :::
 
 ### Scroll through images {#scroll-images}
@@ -50,20 +50,21 @@ The **Divider** control: the split line, its color, and its visibility sit on on
 
 ### Channel modes {#channel-modes}
 
-**Channel Mode** (`C`) cycles RGB, R, G, B, and luminance so you can inspect a single channel without leaving the canvas.
+**Channel Mode** (`C`) cycles RGB, Red, Green, Blue, and Luminance, so you can inspect a single channel without leaving the canvas.
 
 ### Difference modes {#difference-modes}
 
-**Difference Mode** (`H`) cycles through the ways the pair differs:
+**Difference Mode** (`H`) cycles through the difference views:
 
 :::figure{side=block width=280}
 ![Difference mode](../assets/difference_modes.png)
 The **Difference Mode** menu: the list you cycle through with `H`.
 :::
 
+- **Off** — no difference is highlighted.
 - **Highlight** — colors the regions where the two images differ.
 - **Grayscale** — turns the intensity difference into shades of gray.
-- **Edges** — shows the difference along image edges.
-- **SSIM** — draws a structural-similarity map of the pair.
+- **Edge Comparison** — shows the difference along image edges.
+- **SSIM Map** — shows the structural similarity of the pair.
 
 The live canvas, exported stills, and the video recording keep the same look. Difference modes combine with channel views. For local inspection, use the [Magnifier](help://workspace.image_compare.magnifier).

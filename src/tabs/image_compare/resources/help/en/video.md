@@ -1,6 +1,6 @@
 ## Video Editor
 
-The Video Editor records a live Image Compare session as tracks of the tools you used, then trims the timeline and encodes the result to video or GIF. Stills stay on [Export](help://workspace.export).
+The Video Editor records a live **Image Compare** session as tracks of the tools you used, then trims the timeline and encodes the result to video or GIF. Stills stay on [Export](help://workspace.export).
 
 ### Record a session {#recording}
 
@@ -26,7 +26,7 @@ The timeline: recorded tracks with their points, the film strip above, and the t
 
 ### Tracks and what was captured {#tracks}
 
-The editor shows each recorded tool as its own track — the divider, the magnifier, the viewport, and similar — so you can see when each element changed during the session. Between recording points the editor interpolates the values, so playback matches the live session. For the magnifier, the **Capture Position** track records where the capture ring sits on the image, and the **Offset** track records how far the lens is shifted from the capture. To change the result, trim or delete ranges on the [timeline](help://workspace.image_compare.video#timeline) and use undo or redo.
+The editor shows each recorded tool as its own track — the divider, the magnifier, the viewport, and similar — so you can see when each element changed during the session. Between recording points the editor interpolates the values, so playback matches the live session. For the magnifier, the **Capture Position** track records where the **Capture Ring** sits on the image, and the **Offset** track records how far the lens is shifted from the capture. To change the result, trim or delete ranges on the [timeline](help://workspace.image_compare.video#timeline) and use undo or redo.
 
 ### Preview quality {#preview-quality}
 

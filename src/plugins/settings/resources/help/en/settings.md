@@ -54,6 +54,4 @@ AI features in [Image Gallery](help://workspace.image_gallery.triage) use the se
 
 ### Keyboard {#keyboard}
 
-- **Remap** — groups shortcuts by owner: platform / Image Compare / Multi Compare.
-- **Reset** — resets one shortcut or all of them.
-- **Fixed** — canvas `WASD` and `Space` cannot be remapped — see [Hotkeys](help://platform.hotkeys).
+Shortcuts are grouped by owner — **Platform**, then a group per tab, for example **Image Compare**. **Reset** restores one shortcut or all of them. The fixed canvas keys `WASD` and `Space` cannot be remapped — see [Hotkeys](help://platform.hotkeys).

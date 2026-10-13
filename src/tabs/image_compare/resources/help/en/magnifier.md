@@ -9,7 +9,7 @@ The magnifier enlarges a chosen region of the two compared images, so you can st
 
 :::figure{side=block width=280}
 ![Magnifier lens](../assets/magnifier.jpg)
-The magnifier lens on the canvas and the red **Capture Ring** that marks the enlarged region.
+The two magnifier halves on the canvas, and the red **Capture Ring** on the image.
 :::
 
 ### Size and movement {#size-and-movement}
