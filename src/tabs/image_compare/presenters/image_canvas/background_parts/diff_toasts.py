@@ -17,8 +17,59 @@ def dismiss_active_diff_toast(presenter):
     presenter._active_diff_toast_key = None
 
 
-def get_diff_toast_message(presenter, diff_mode: str) -> str:
-    current_language = getattr(presenter.store.settings, "current_language", "en")
+def _current_language(owner) -> str:
+    # Accept either a presenter/widget (owner.store) or a Store directly so
+    # service callers (MetricsService) can reuse this builder without a
+    # GUI-layer presenter.
+    store = getattr(owner, "store", None)
+    if store is None:
+        store = owner
+    settings = getattr(store, "settings", None)
+    return getattr(settings, "current_language", "en")
+
+
+def get_diff_toast_message(presenter, diff_mode: str, state: str = "in_progress") -> str:
+    current_language = _current_language(presenter)
+    # All SSIM/diff toast text is built here (single owner); metrics.py and
+    # other sites call this instead of re-deriving wording. `state` selects
+    # the in-progress / done / failed phase so one builder covers every site.
+    if state == "done":
+        if diff_mode == "highlight":
+            message = tr("image_compare.msg.highlight_diff_done", current_language)
+            return (
+                "Highlight diff done"
+                if message == "image_compare.msg.highlight_diff_done"
+                else message
+            )
+        if diff_mode == "grayscale":
+            message = tr("image_compare.msg.grayscale_diff_done", current_language)
+            return (
+                "Grayscale diff done"
+                if message == "image_compare.msg.grayscale_diff_done"
+                else message
+            )
+        if diff_mode == "edges":
+            message = tr("image_compare.msg.edge_comparison_done", current_language)
+            return (
+                "Edge comparison done"
+                if message == "image_compare.msg.edge_comparison_done"
+                else message
+            )
+        message = tr("image_compare.msg.ssim_calculation_done", current_language)
+        return (
+            "SSIM done"
+            if message == "image_compare.msg.ssim_calculation_done"
+            else message
+        )
+    if state == "failed":
+        message = tr("image_compare.msg.ssim_calculation_failed", current_language)
+        return (
+            "SSIM failed"
+            if message == "image_compare.msg.ssim_calculation_failed"
+            else message
+        )
+
+    # in progress
     if diff_mode == "highlight":
         message = tr("image_compare.msg.highlight_diff_in_progress", current_language)
         return (
@@ -133,23 +184,7 @@ def complete_diff_toast(presenter, request_key):
         return
 
     diff_mode = getattr(presenter.store.viewport.view_state, "diff_mode", "off")
-    current_language = getattr(presenter.store.settings, "current_language", "en")
-    if diff_mode == "highlight":
-        done_message = tr("image_compare.msg.highlight_diff_done", current_language)
-        if done_message == "image_compare.msg.highlight_diff_done":
-            done_message = "Highlight diff done"
-    elif diff_mode == "grayscale":
-        done_message = tr("image_compare.msg.grayscale_diff_done", current_language)
-        if done_message == "image_compare.msg.grayscale_diff_done":
-            done_message = "Grayscale diff done"
-    elif diff_mode == "edges":
-        done_message = tr("image_compare.msg.edge_comparison_done", current_language)
-        if done_message == "image_compare.msg.edge_comparison_done":
-            done_message = "Edge comparison done"
-    else:
-        done_message = tr("image_compare.msg.ssim_calculation_done", current_language)
-        if done_message == "image_compare.msg.ssim_calculation_done":
-            done_message = "SSIM done"
+    done_message = get_diff_toast_message(presenter, diff_mode, state="done")
 
     try:
         toast_manager.update_toast(
