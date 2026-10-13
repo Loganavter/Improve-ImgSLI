@@ -162,7 +162,7 @@
     },
     {
       "path": "src/plugins/help/tree.py",
-      "lines": 554,
+      "lines": 534,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=single-owner reason=\"one merged HelpTree: host shell + tab/plugin fragment merge, alias/body/asset resolution, and validation share one cache — splitting would fork the uniqueness scope\"",

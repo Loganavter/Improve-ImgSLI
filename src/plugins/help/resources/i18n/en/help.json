@@ -26,44 +26,6 @@
         "title": "Platform",
         "desc": "Settings, files, shortcuts"
       }
-    },
-    "page": {
-      "buttons": {
-        "title": "Buttons and Controls",
-        "desc": "Toolbar and panel gestures"
-      },
-      "getting_started": {
-        "title": "Getting Started",
-        "desc": "Quick orientation"
-      },
-      "about": {
-        "title": "About",
-        "desc": "What Improve ImgSLI is"
-      },
-      "settings": {
-        "title": "Settings",
-        "desc": "Appearance and performance"
-      },
-      "hotkeys": {
-        "title": "Hotkeys",
-        "desc": "Defaults and overrides"
-      },
-      "file_project": {
-        "title": "Files and Projects",
-        "desc": "Load, paste, project files"
-      },
-      "workspace": {
-        "title": "Workspace Tabs",
-        "desc": "Session picker and tab strip"
-      },
-      "image_properties": {
-        "title": "Image Properties",
-        "desc": "File metadata and in-app context"
-      },
-      "tabs": {
-        "title": "Tabs",
-        "desc": "Tab strip and tab names"
-      }
     }
   }
 }

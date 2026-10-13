@@ -26,40 +26,6 @@
         "title": "平台",
         "desc": "设置、文件、快捷键"
       }
-    },
-    "page": {
-      "buttons": {
-        "title": "按钮与控件",
-        "desc": "工具栏与弹出手势"
-      },
-      "getting_started": {
-        "title": "入门",
-        "desc": "快速导览"
-      },
-      "about": {
-        "title": "关于",
-        "desc": "Improve ImgSLI 是什么"
-      },
-      "settings": {
-        "title": "设置",
-        "desc": "外观与性能"
-      },
-      "hotkeys": {
-        "title": "快捷键",
-        "desc": "默认与覆盖"
-      },
-      "file_project": {
-        "title": "文件与项目",
-        "desc": "加载、粘贴、项目文件"
-      },
-      "workspace": {
-        "title": "工作区标签",
-        "desc": "会话选择与标签栏"
-      },
-      "image_properties": {
-        "title": "图像属性",
-        "desc": "文件元数据与应用内上下文"
-      }
     }
   }
 }

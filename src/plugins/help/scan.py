@@ -1,4 +1,4 @@
-"""Filesystem-derived help tree (web canon, phase 1: structure only).
+"""Filesystem-derived help tree (web canon, phase 2: titles from ``##``).
 
 Derives node ids, kinds, children and body paths by scanning
 ``<package>/resources/help/en/`` directories instead of reading
@@ -14,15 +14,19 @@ Layout convention per mount: exactly one ``*.md`` directly under ``en/``
 ``platform.settings``); otherwise the mount is a hub and every ``*.md`` is a
 page ``<mount>.<relative-stem>`` (e.g. a tab's ``comparison`` page).
 
-Page titles/descriptions/icons are NOT derived here yet (phase 2) — nodes
-carry placeholder metadata. Structure (ids, kinds, bodies, children) must
-match the registry-built tree; see ``tests/plugins/test_help_fsscan.py``.
+Presentation (hub titles/descriptions/icons, ``help://`` aliases, asset roots
+and icon resolvers) still flows through the installed contribution fragments
+— the isolation-safe channel — until phase 3 removes aliases. Page titles
+and card subtitles come from each page's own ``##`` heading and first
+paragraph (see ``plugins.help.labels``); the app-shell hubs
+(``root``/``workspace``/``ui``/``platform``) keep their static meta below.
 """
 
 from __future__ import annotations
 
 import ast
 from pathlib import Path
+from typing import Any
 
 from plugins.help.tree import HelpNode, HelpTree, _validate_tree, host_help_root
 
@@ -32,6 +36,48 @@ _CANON_LANG = "en"
 
 #: App-shell root order (kept fixed; deeper levels are fs-sorted).
 ROOT_CHILDREN = ("about", "workspace", "ui", "platform")
+
+#: Static presentation for the four app-shell hubs (title/description keys
+#: resolve through the ``help`` i18n pack; everything else is scanned).
+HOST_HUB_META = {
+    "root": {
+        "title_key": "help.hub.root.title",
+        "description_key": "help.hub.root.desc",
+        "title": "Help",
+        "description": "Browse topics by area",
+        "icon": "help.svg",
+    },
+    "workspace": {
+        "title_key": "help.hub.workspace.title",
+        "description_key": "help.hub.workspace.desc",
+        "title": "Workspace",
+        "description": "Session types and compare tools",
+        "icon": "photo_icon.svg",
+    },
+    "ui": {
+        "title_key": "help.hub.ui.title",
+        "description_key": "help.hub.ui.desc",
+        "title": "UI",
+        "description": "Controls, lists, canvas chrome",
+        "icon": "text-manipulator.svg",
+    },
+    "platform": {
+        "title_key": "help.hub.platform.title",
+        "description_key": "help.hub.platform.desc",
+        "title": "Platform",
+        "description": "Settings, files, shortcuts",
+        "icon": "settings.svg",
+    },
+}
+
+#: Shell aliases that used to live in ``tree.json`` (kept until phase 3
+#: migrates ``help_page`` to dotted paths).
+HOST_ALIASES = {
+    "about": "about",
+    "file_management": "platform.file_project",
+    "hotkeys": "platform.hotkeys",
+    "tabs": "platform.tabs",
+}
 
 
 def _src_root() -> Path:
@@ -108,8 +154,60 @@ def _hub_node(node_id: str, children: tuple[str, ...], body_root: Path | None = 
     )
 
 
-def scan_help_tree() -> HelpTree:
-    """Build a ``HelpTree`` purely from the filesystem (structure only)."""
+def _normalize_fragments(
+    fragments: Any,
+) -> list[Any]:
+    """Accept a typed fragment list or a legacy registry (duck-typed)."""
+    if fragments is None:
+        return []
+    if hasattr(fragments, "subtrees"):
+        return list(fragments.subtrees)
+    return list(fragments)
+
+
+def scan_help_tree(
+    tab_fragments: Any = (),
+    plugin_fragments: Any = (),
+) -> HelpTree:
+    """Build a ``HelpTree`` purely from the filesystem.
+
+    Structure (ids, kinds, bodies, children) comes from the scan; hub
+    presentation, ``help://`` aliases, asset roots and icon resolvers come
+    from the installed contribution fragments (both typed lists and legacy
+    registries).
+    """
+    tab_frags = _normalize_fragments(tab_fragments)
+    plugin_frags = _normalize_fragments(plugin_fragments)
+    all_frags = [*tab_frags, *plugin_frags]
+
+    hub_meta: dict[str, dict[str, Any]] = dict(HOST_HUB_META)
+    for fragment in all_frags:
+        for child_id in fragment.child_ids:
+            node_def = fragment.nodes.get(child_id)
+            if isinstance(node_def, dict) and node_def.get("kind") == "hub":
+                hub_meta[child_id] = node_def
+
+    aliases: dict[str, str] = dict(HOST_ALIASES)
+    for fragment in all_frags:
+        for alias, target in fragment.aliases.items():
+            if alias in aliases and aliases[alias] != target:
+                raise KeyError(
+                    f"help alias conflict {alias!r}: "
+                    f"{aliases[alias]!r} vs {target!r}"
+                )
+            aliases[alias] = target
+
+    asset_roots: list[Path] = []
+    for fragment in all_frags:
+        root = fragment.asset_root
+        if root is not None and root not in asset_roots:
+            asset_roots.append(root)
+    resolvers: list[Any] = []
+    for fragment in all_frags:
+        resolver = fragment.resolve_icon
+        if resolver is not None:
+            resolvers.append(resolver)
+
     nodes: dict[str, HelpNode] = {}
     host_root = host_help_root().resolve()
     hub_roots: dict[str, Path | None] = {}
@@ -197,12 +295,28 @@ def scan_help_tree() -> HelpTree:
             )
         nodes[parent] = _hub_node(parent, ordered, hub_roots.get(parent))
 
+    for hub_id, meta in hub_meta.items():
+        current = nodes.get(hub_id)
+        if current is not None and current.kind == "hub":
+            nodes[hub_id] = HelpNode(
+                node_id=current.node_id,
+                kind=current.kind,
+                title=str(meta.get("title", current.node_id)),
+                description=str(meta.get("description", "")),
+                children=current.children,
+                body=None,
+                title_key=meta.get("title_key"),
+                description_key=meta.get("description_key"),
+                icon=str(meta.get("icon", "")),
+                body_root=current.body_root,
+            )
+
     tree = HelpTree(
         root_id="root",
         nodes=nodes,
-        aliases={},
-        asset_roots=(),
-        icon_resolvers=(),
+        aliases=aliases,
+        asset_roots=tuple(asset_roots),
+        icon_resolvers=tuple(resolvers),
     )
     _validate_tree(tree)
     return tree

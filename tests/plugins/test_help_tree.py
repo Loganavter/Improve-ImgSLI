@@ -11,7 +11,6 @@ from plugins.help.tree import (
     get_help_tree,
     host_help_root,
     install_help_contributions,
-    load_help_tree,
     merge_help_contributions,
 )
 
@@ -74,7 +73,9 @@ def test_help_tree_loads_and_aliases_resolve():
     about = tree.require("about")
     assert about.kind == "page"
     assert about.body == "about.md"
-    assert about.title_key == "help.page.about.title"
+    from plugins.help.labels import node_title
+
+    assert node_title(about, "en") == "About"
     assert tree.require("workspace").icon == "photo_icon.svg"
     assert tree.require("workspace").title_key == "help.hub.workspace.title"
     assert "workspace.image_compare" in tree.require("workspace").children
@@ -122,17 +123,11 @@ def test_help_tree_loads_and_aliases_resolve():
         assert (root / lang / about.body).is_file()
 
 
-def test_host_tree_excludes_tab_topics_until_merge():
-    clear_help_contributions()
-    host = load_help_tree()
-    assert host.require("workspace").children == ()
-    assert "workspace.image_compare" not in host.nodes
-    assert "magnifier" not in host.aliases
-
-
 def test_help_contribution_merge_attaches_under_workspace(tmp_path):
     clear_help_contributions()
-    host = load_help_tree()
+    from plugins.help.scan import scan_help_tree
+
+    host = scan_help_tree()
     registry = HelpContributionRegistry()
     body = tmp_path / "help"
     (body / "en").mkdir(parents=True)
@@ -166,7 +161,12 @@ def test_help_contribution_merge_attaches_under_workspace(tmp_path):
 
 def test_install_help_contributions_updates_cached_tree(tmp_path):
     clear_help_contributions()
-    assert "workspace.image_compare" not in get_help_tree().nodes
+    assert "workspace.x" not in get_help_tree().nodes
+    try:
+        get_help_tree().resolve_alias("xdemo")
+        assert False, "expected KeyError"
+    except KeyError:
+        pass
     registry = HelpContributionRegistry()
     body = tmp_path / "help"
     (body / "en").mkdir(parents=True)
@@ -184,11 +184,15 @@ def test_install_help_contributions_updates_cached_tree(tmp_path):
                 "body": "x.md",
             }
         },
+        aliases={"xdemo": "about"},
         body_root=body,
     )
     tree = install_help_contributions(registry)
-    assert "workspace.x" in tree.nodes
-    assert "workspace.x" in get_help_tree().nodes
+    # Web canon: unknown pages never materialize from node dicts, but the
+    # alias overlay still applies and the cache is rebuilt.
+    assert "workspace.x" not in tree.nodes
+    assert tree.resolve_alias("xdemo") == "about"
+    assert get_help_tree() is tree
 
 
 def test_help_tree_path_to_magnifier():
@@ -241,19 +245,6 @@ def test_navigator_replace_sibling():
     nav.replace_sibling("workspace.image_compare.comparison")
     assert nav.current_id == "workspace.image_compare.comparison"
     assert nav.stack[-2] == "workspace.image_compare"
-
-
-def test_load_help_tree_validates(tmp_path):
-    bad = tmp_path / "tree.json"
-    bad.write_text(
-        '{"version":1,"root_id":"root","aliases":{},"nodes":{"root":{"kind":"hub","title":"R","children":["missing"]}}}',
-        encoding="utf-8",
-    )
-    try:
-        load_help_tree(bad)
-        assert False, "expected KeyError"
-    except KeyError:
-        pass
 
 
 def test_help_page_bodies_are_scenario_cards():

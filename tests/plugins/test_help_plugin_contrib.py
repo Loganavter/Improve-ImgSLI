@@ -13,13 +13,13 @@ import dataclasses
 import pytest
 
 from plugins.help.contribution import HelpContribution, HelpPluginContribution
+from plugins.help.scan import scan_help_tree
 from plugins.help.tree import (
     build_help_tree,
     clear_help_contributions,
     collect_help_plugin_contributions,
     contribute_all_help_plugins,
     install_help_plugin_contributions,
-    load_help_tree,
     merge_help_contributions,
     merge_help_plugin_contributions,
 )
@@ -86,19 +86,23 @@ def test_plugin_contribution_owner_plugin_validation():
 
 
 def test_plugin_contribution_duplicate_node_id_raises():
-    base = load_help_tree()
+    base = scan_help_tree()
     # Against a host node …
     with pytest.raises(KeyError):
         merge_help_plugin_contributions(base, [_fragment(node_id="about")])
     # … and against another plugin fragment in the same batch.
     with pytest.raises(KeyError):
         merge_help_plugin_contributions(
-            base, [_fragment(), _fragment(alias="zz_plugin_demo_2")]
+            base,
+            [
+                _fragment(node_id="workspace.zzdemo"),
+                _fragment(node_id="workspace.zzdemo", alias="zz_plugin_demo_2"),
+            ],
         )
 
 
 def test_plugin_contribution_alias_conflict_raises():
-    base = load_help_tree()
+    base = scan_help_tree()
     conflicting = _fragment(alias="about")  # host "about" → "about", ours differs
     with pytest.raises(KeyError):
         merge_help_plugin_contributions(base, [conflicting])
@@ -115,8 +119,8 @@ def test_plugin_contribution_alias_conflict_raises():
 
 
 def test_plugin_contribution_merge_is_immutable():
-    base = load_help_tree()
-    frag = _fragment()
+    base = scan_help_tree()
+    frag = _fragment(node_id="workspace.zzdemo")
     nodes_snapshot = copy.deepcopy(frag.nodes)
     aliases_snapshot = dict(frag.aliases)
     child_ids_snapshot = tuple(frag.child_ids)
@@ -127,11 +131,11 @@ def test_plugin_contribution_merge_is_immutable():
     assert frag.child_ids == child_ids_snapshot
     # Host base untouched; merged tree carries the new child.
     assert tuple(base.require("workspace").children) == host_children_before
-    assert "workspace.export" in tree.require("workspace").children
+    assert "workspace.zzdemo" in tree.require("workspace").children
 
 
 def test_plugin_and_tab_namespaces_share_one_uniqueness_scope():
-    base = load_help_tree()
+    base = scan_help_tree()
     tab_frag = HelpContribution(
         owner_tab="image_compare",
         attach_under="workspace",

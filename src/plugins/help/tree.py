@@ -5,7 +5,6 @@ Audit-Meta: pattern=single-owner reason="one merged HelpTree: host shell + tab/p
 
 from __future__ import annotations
 
-import json
 import logging
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, replace
@@ -144,22 +143,6 @@ def _node_from_raw(
         icon=data.get("icon"),
         body_root=body_root,
     )
-
-
-def load_help_tree(tree_path: Path | None = None) -> HelpTree:
-    """Load host shell tree only (no tab contributions)."""
-    path = tree_path or (host_help_root() / "tree.json")
-    raw = json.loads(path.read_text(encoding="utf-8"))
-    nodes: dict[str, HelpNode] = {}
-    for node_id, data in raw["nodes"].items():
-        nodes[node_id] = _node_from_raw(node_id, data, body_root=None)
-    root_id = str(raw.get("root_id") or "root")
-    if root_id not in nodes:
-        raise KeyError(f"root_id {root_id!r} missing from nodes")
-    aliases = {str(k): str(v) for k, v in (raw.get("aliases") or {}).items()}
-    tree = HelpTree(root_id=root_id, nodes=nodes, aliases=aliases)
-    _validate_tree(tree)
-    return tree
 
 
 def merge_help_contributions(
@@ -411,34 +394,24 @@ def build_help_tree(
     *,
     contributions: HelpContributionRegistry | list[HelpContribution] | None = None,
 ) -> HelpTree:
-    base = load_help_tree(tree_path)
+    """Build the merged tree from the filesystem scan (web canon).
+
+    ``tree_path`` is ignored (the ``tree.json`` registry is deleted; kept for
+    signature compatibility). Structure comes from ``scan_help_tree``; hub
+    presentation, aliases and resolvers come from the installed contribution
+    fragments with the same precedence as the old merge path.
+    """
+    from plugins.help.scan import scan_help_tree
+
+    plugin_frags = _installed_help_plugin_contributions or []
     if contributions is not None:
-        merged = merge_help_contributions(base, contributions)
-        if _installed_help_plugin_contributions:
-            merged = merge_help_plugin_contributions(
-                merged, _installed_help_plugin_contributions
-            )
-        return merged
+        return scan_help_tree(contributions, plugin_frags)
     # Prefer typed contributions if present
     if _installed_help_contributions is not None:
-        merged = merge_help_contributions(base, _installed_help_contributions)
-        if _installed_help_plugin_contributions:
-            merged = merge_help_plugin_contributions(
-                merged, _installed_help_plugin_contributions
-            )
-        return merged
+        return scan_help_tree(_installed_help_contributions, plugin_frags)
     if _installed_contributions is not None:
-        merged = merge_help_contributions(base, _installed_contributions)
-        if _installed_help_plugin_contributions:
-            merged = merge_help_plugin_contributions(
-                merged, _installed_help_plugin_contributions
-            )
-        return merged
-    if _installed_help_plugin_contributions:
-        return merge_help_plugin_contributions(
-            base, _installed_help_plugin_contributions
-        )
-    return base
+        return scan_help_tree(_installed_contributions, plugin_frags)
+    return scan_help_tree((), plugin_frags)
 
 
 def _validate_tree(tree: HelpTree) -> None:
@@ -462,6 +435,12 @@ def clear_help_tree_cache() -> None:
     get_help_tree.cache_clear()
 
 
+def clear_help_label_cache() -> None:
+    from plugins.help import labels
+
+    labels.clear_help_label_cache()
+
+
 def clear_help_contributions() -> None:
     """Drop installed tab + plugin contributions (tests / full rebuild)."""
     global _installed_contributions, _installed_help_contributions, _installed_help_plugin_contributions
@@ -469,6 +448,7 @@ def clear_help_contributions() -> None:
     _installed_help_contributions = None
     _installed_help_plugin_contributions = None
     clear_help_tree_cache()
+    clear_help_label_cache()
 
 
 def normalize_help_language(language: str) -> str:
