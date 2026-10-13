@@ -1,10 +1,10 @@
 ## Hotkeys
 
-The list below gives the default chords. Most action shortcuts can be remapped in **Settings** → **Keyboard**. The canvas `WASD`, arrow, and `Space` keys and the `+` / `-` zoom stay fixed and cannot be remapped.
+Below are the default chords. Most action shortcuts can be remapped in **Settings** → **Keyboard**; the canvas keys `WASD` / `QE`, the arrow keys, `Space`, and `+` / `-` are fixed and cannot be remapped.
 
 ### Discover first {#discover}
 
-Press `Ctrl+Shift+P` and type part of a name instead of memorizing the list: **Find Action** runs the matching action or opens **Learn more** for the illustrated topic. `F1` opens the help topic for the focused control.
+`Ctrl+Shift+P` and part of a name are faster than scanning the list: **Find Action** runs the matching action or opens **Learn more** for the illustrated topic. `F1` opens the help topic for the focused control.
 
 ### Platform {#platform}
 

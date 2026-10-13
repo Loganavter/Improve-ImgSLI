@@ -1,12 +1,13 @@
 ## Files and Projects
 
-Load images into session lists, paste from the clipboard, and open or save portable project files that bundle the session layout, the compare settings, and copies of the source images.
+Load images into session lists, paste from the clipboard, and open or save a project file that bundles the session layout, the compare settings, and copies of the source images.
 
 ### Loading images {#loading-images}
 
-- **Add files** — click the add button beside a list, or use **Find Action**, to pick one or more images for that side.
+- **Add Img(s) 1** / **Add Img(s) 2** — the add buttons beside the left and right lists open a file picker; pick one or several images for that side.
+- **Add images** — in **Multi Compare** a single add button loads images into the grid.
 - **Drag and drop** — drop files into the window; they land in the list on the side under the cursor.
-- **Paste** (`Ctrl+V`) — paste an image from the clipboard. The direction overlay appears: click an arrow to choose the side, or press `Esc` to cancel.
+- **Paste** (`Ctrl+V`) — paste an image from the clipboard. A direction overlay appears: click an arrow to choose the side, or press `Esc` to cancel.
 
 :::figure{side=block width=280}
 ![Paste direction overlay](../../assets/platform/paste_overlay.jpg)
@@ -24,11 +25,11 @@ Each session has its own tab; see [Tabs](help://platform.tabs).
 
 A project file (`.imgsli`) keeps a whole workspace in one portable file: the open sessions, their compare settings, and copies of the source images.
 
-- **Open a project** — choose **Open Project** from the **File** menu, press `Ctrl+Shift+O`, or run it from **Find Action**. The active tab takes the file's name, and the project restores the workspace sessions, the compare settings (divider, diff, magnifier, and related features), and the embedded image copies.
-- **Save a project** — `Shift+S` writes the current file. When no file exists yet, **Save Project As…** opens instead. Saving also retargets the file basename when the tab was renamed.
-- **Save Project As…** — `Ctrl+Shift+S` suggests the renamed tab title when the active tab has a custom title, otherwise **Untitled**.
-- **What the file contains** — the project is a ZIP archive: the session JSON plus a `media/` folder with embedded copies of the images.
-- **If a source is missing** — when a listed path no longer exists, the project still saves; that image is omitted and a warning lists it.
+- **Open a project** — **Open Project** on the **File** menu, `Ctrl+Shift+O`, or **Find Action**. The active tab takes the file's name, and the project restores the sessions, the compare settings (divider, diff, magnifier, and related features), and the embedded image copies.
+- **Save a project** — `Shift+S` writes the current file. When no file exists yet, **Save Project As…** opens instead. Saving also retargets the file name when the tab was renamed.
+- **Save Project As…** — `Ctrl+Shift+S` suggests the renamed tab name, otherwise **Untitled**.
+- **What the file contains** — a ZIP archive: `project.json` with the sessions, and a `media/` folder holding an embedded copy of each image.
+- **If a source is missing** — when a listed path no longer exists, the project still saves; that image is left out and a warning names it.
 - **What is not saved** — the theme, language, and hotkeys stay in the application settings; they are not part of the project file.
 
 ### Double-click a project on Windows {#windows-file-association}
