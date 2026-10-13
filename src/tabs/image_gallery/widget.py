@@ -2238,9 +2238,11 @@ class ImageGalleryWidget(QWidget):
             # Check rejected count.
             n = 0
             try:
+                from tabs.image_gallery.use_cases.triage import is_rejected as _is_rejected
+
                 st = getattr(owner, "state", None) or getattr(self, "_state", None)
                 items = list(getattr(st, "items", []) or []) if st is not None else list(self._items or [])
-                n = sum(1 for it in items if bool(getattr(it, "rejected", False)))
+                n = sum(1 for it in items if _is_rejected(it))
             except Exception:
                 n = 0
             if n > 0:
@@ -2386,10 +2388,14 @@ class ImageGalleryWidget(QWidget):
                 return []
 
         def _alive(members) -> int:
+            try:
+                from tabs.image_gallery.use_cases.triage import is_rejected as _is_rejected
+            except Exception:
+                _is_rejected = None  # type: ignore[assignment]
             count = 0
             for m in members or []:
                 try:
-                    if not bool(getattr(m, "rejected", getattr(m, "triage_rejected", False))):
+                    if _is_rejected is None or not _is_rejected(m):
                         count += 1
                 except Exception:
                     count += 1
@@ -2511,7 +2517,9 @@ class ImageGalleryWidget(QWidget):
             # Live rejected count
             rejected_n = 0
             try:
-                rejected_n = sum(1 for it in (self._items or []) if bool(getattr(it, "rejected", False)))
+                from tabs.image_gallery.use_cases.triage import is_rejected as _is_rejected
+
+                rejected_n = sum(1 for it in (self._items or []) if _is_rejected(it))
             except Exception:
                 pass
             self.stats_strip.set_stats(total, series_cnt, redundant)

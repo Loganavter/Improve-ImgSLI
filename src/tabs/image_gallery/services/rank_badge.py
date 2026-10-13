@@ -14,7 +14,8 @@ Pure data, no Qt (safe off the GUI thread and in headless tests).
 
 Fields (``GalleryItem``, populated by triage):
 ``crown_rank`` (crown verdict) wins over ``rank``; ``is_best`` is the leader
-flag; ``rejected`` marks a rejected item.
+flag; ``rejected`` (or ``triage_rejected`` — see ``triage.is_rejected``)
+marks a rejected item.
 """
 
 from __future__ import annotations
@@ -78,8 +79,12 @@ def resolve_rank_badge(
     is_best = False
     rejected = False
     try:
+        # Owner: triage.is_rejected (OR of both flags). Mirrored inline —
+        # this module stays dependency-free (pure data, no triage import).
         is_best = bool(getattr(item, "is_best", False))
-        rejected = bool(getattr(item, "rejected", False))
+        rejected = bool(
+            getattr(item, "rejected", False) or getattr(item, "triage_rejected", False)
+        )
     except Exception:
         pass
 
