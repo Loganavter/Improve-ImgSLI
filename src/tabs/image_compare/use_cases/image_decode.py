@@ -27,6 +27,7 @@ from tabs._shared.loading_pipeline import (
 )
 from tabs._shared.loading_pipeline import get_or_load_pixel as _seam_get_or_load_pixel
 from tabs._shared.loading_pipeline import get_or_load_preview as _seam_get_or_load_preview
+from tabs._shared.user_errors import emit_user_error, load_image_error
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -195,16 +196,10 @@ def load_image_async(controller, path, image_number, index_in_list, target_size=
             _dismiss_ic_loading_toast(controller, image_number)
         except Exception:
             pass
-        if controller.event_bus:
-            controller.event_bus.emit(
-                CoreErrorOccurredEvent(
-                    f"{tr('msg.failed_to_load_image', controller.store.settings.current_language)}:\n{path}\n\n{e}"
-                )
-            )
-        else:
-            controller.error_occurred.emit(
-                f"{tr('msg.failed_to_load_image', controller.store.settings.current_language)}:\n{path}\n\n{e}"
-            )
+        message = load_image_error(
+            controller.store.settings.current_language, path, e
+        )
+        emit_user_error(controller, message)
         return None, path, image_number, index_in_list, False
 
 
@@ -678,14 +673,10 @@ def on_full_resolution_error(controller, path: str, err) -> None:
                     pass
     except Exception:
         pass
-    message = (
-        f"{tr('msg.failed_to_load_image', controller.store.settings.current_language)}:\n"
-        f"{path}\n\n{_format_worker_error(err)}"
+    message = load_image_error(
+        controller.store.settings.current_language, path, err
     )
-    if controller.event_bus:
-        controller.event_bus.emit(CoreErrorOccurredEvent(message))
-    else:
-        controller.error_occurred.emit(message)
+    emit_user_error(controller, message)
 
 
 def unify_images_worker_task(controller, img1, img2, path1, path2, task_or_signal, method_name):

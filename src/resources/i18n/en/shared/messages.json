@@ -1,6 +1,9 @@
 {
   "msg": {
+    "compare_nothing_to_carry": "Nothing to carry — this slot is empty.",
+    "compare_nothing_to_duplicate": "Nothing to duplicate — this slot has no loaded image.",
     "error_saving": "Error saving",
+    "failed_to_load_image": "Failed to load image",
     "loading_full_image_done": "Full version loaded",
     "loading_full_image_in_progress": "Loading full version of image...",
     "loading_images_from_clipboard": "Loading images from clipboard...",
@@ -13,5 +16,11 @@
     "dont_show_again": "Don't show again",
     "cache_purge_notice_title": "Old cache cleaned up",
     "cache_purge_notice_body": "A bug in a previous version could leave temporary image cache files behind between sessions. We found and removed {size} of leftover cache — no further action needed."
+  },
+  "common": {
+    "file_type": {
+      "image_files": "Image files",
+      "all_files": "All files"
+    }
   }
 }

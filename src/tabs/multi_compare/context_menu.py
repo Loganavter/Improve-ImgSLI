@@ -168,13 +168,13 @@ class MultiCompareContextMenuProvider:
             ctrl = getattr(self.widget, "_controller", None)
         except Exception:
             ctrl = None
-        report = getattr(ctrl, "report_user_error", None)
-        if callable(report):
-            try:
-                report(message)
-                return
-            except Exception:
-                pass
+        try:
+            from tabs._shared.user_errors import emit_user_error
+
+            emit_user_error(ctrl if ctrl is not None else self.widget, message)
+            return
+        except Exception:
+            pass
         import logging as _logging
 
         _logging.getLogger("ImproveImgSLI").warning("mc menu: %s", message)

@@ -706,7 +706,7 @@
     },
     {
       "path": "src/tabs/image_compare/use_cases/image_decode.py",
-      "lines": 751,
+      "lines": 742,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner reason=\"decode/unify pipeline via transact — thin wrapper over pipeline + PipelineCache slot\"",
@@ -1127,7 +1127,7 @@
     },
     {
       "path": "src/tabs/multi_compare/use_cases/loading.py",
-      "lines": 893,
+      "lines": 900,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner reason=\"Controller delegate fan-out: toast/pyramid/full-res stages share one module; batch planning stays beside the primitives it stages\"",

@@ -19,6 +19,7 @@ from tabs._shared.loading_pipeline import (
     get_or_load_preview,
     start_pyramid_build as _seam_start_pyramid_build,
 )
+from tabs._shared.user_errors import emit_user_error, load_image_error
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -59,15 +60,21 @@ def _emit_mc_load_error(controller, path: Path | str, err) -> None:
     toast; see plan §3.3).
     """
     try:
-        # controller.translate is TabContext._tr wrapper (already language-aware)
+        # Resolve language via controller/store or tab context; builder owns wording.
+        lang = None
         try:
-            prefix = controller.translate("msg.failed_to_load_image", "Failed to load image")
+            lang = controller.store.settings.current_language
         except Exception:
-            prefix = "Failed to load image"
-        message = f"{prefix}:\n{path}\n\n{_format_worker_error(err)}"
-        event_bus = _resolve_mc_event_bus(controller)
-        if event_bus is not None:
-            event_bus.emit(CoreErrorOccurredEvent(message))
+            lang = None
+        if lang is None:
+            try:
+                ctx = getattr(controller, "context", None)
+                store = getattr(ctx, "store", None) if ctx is not None else getattr(controller, "store", None)
+                lang = getattr(getattr(store, "settings", None), "current_language", None)
+            except Exception:
+                lang = None
+        message = load_image_error(language=lang, path=path, error=err)
+        emit_user_error(controller, message)
     except Exception:
         logger.exception("Failed to emit MC load error event for %s", path)
 
