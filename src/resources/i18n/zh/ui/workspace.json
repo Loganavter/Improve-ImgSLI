@@ -1,9 +1,11 @@
 {
   "workspace": {
     "session_types": {
+      "video_compare": "视频比较",
       "multi_compare": "多图比较",
       "session_picker": "新标签页",
-      "image_compare": "图像比较"
+      "image_compare": "图像比较",
+      "image_gallery": "图库"
     },
     "tab_menu": {
       "close": "关闭标签页",

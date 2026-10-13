@@ -31,7 +31,10 @@
       "effort_none": "Nenhum",
       "vlm_max_edge": "Redução da imagem (lado maior)",
       "downscale_original": "Original",
-      "api_key_warning": "Armazenada sem criptografia neste dispositivo."
+      "api_key_warning": "Armazenada sem criptografia neste dispositivo.",
+      "api_key_placeholder": "sk-…",
+      "model_placeholder": "openrouter/auto ou fornecedor/modelo",
+      "tokens_placeholder": "auto"
     },
     "errors": {
       "not_configured": "Configure a chave de API de IA nas Configurações primeiro.",
@@ -71,6 +74,55 @@
       "delete": "Excluir",
       "reset": "Redefinir séries manuais",
       "recluster": "Reagrupar séries"
+    },
+    "sort_by": "Ordenar por",
+    "view": "Visualizar",
+    "sort_rank": "Classificação",
+    "sort_name": "Nome",
+    "sort_date": "Data",
+    "sort_quality": "Qualidade da IA",
+    "view_grid": "Grade",
+    "view_list": "Lista",
+    "toolbar": {
+      "open_folder": "Abrir pasta…",
+      "filter_placeholder": "Filtrar por tag / descrição…",
+      "sort_prefix": "Ordenar"
+    },
+    "grid": {
+      "resize_tooltip": "Arraste para redimensionar os painéis de séries"
+    },
+    "stats": {
+      "show_all": "Mostrar tudo",
+      "clean_rejected": "Limpar rejeitados ({n})",
+      "compare_finalists": "Comparar finalistas",
+      "images": "{n} imagens",
+      "series": "{n} séries",
+      "redundant": "{n} redundantes"
+    },
+    "quick_look": {
+      "unset_source": "Remover origem",
+      "reject": "Rejeitar",
+      "restore": "Restaurar",
+      "delete": "Excluir",
+      "report_title": "Relatório do lote",
+      "report_sub": "distância até o centróide · sinalizadores de artefato",
+      "artifact_grid_tooltip": "Onde este artefato é mais forte — grade grosseira 5×5:\nverde = nenhum · amarelo = leve · vermelho = mais forte",
+      "mixed_sizes": "tamanhos mistos",
+      "upscales_note": "{n} ampliações de uma mesma origem"
+    },
+    "clean_review": {
+      "title": "Revisar arquivos rejeitados",
+      "subtitle": "{n} arquivos serão movidos para {folder}/_rejected/ — nada é excluído, Desfazer disponível por 10 s.",
+      "provenance_prefix": "de: ",
+      "series": "SÉRIE {n}",
+      "ungrouped": "SEM GRUPO",
+      "no_rejected": "Nenhum arquivo rejeitado.",
+      "move": "Mover {n}",
+      "size": "{n} arquivos · {mb} MB",
+      "no_files": "Nenhum arquivo para mover",
+      "restore": "Restaurar",
+      "restore_all": "Restaurar tudo",
+      "cancel": "Cancelar"
     },
     "help": {
       "hub": {
