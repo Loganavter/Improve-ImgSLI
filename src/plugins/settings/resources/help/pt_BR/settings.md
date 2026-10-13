@@ -1,49 +1,57 @@
 ## Configurações
 
-As Configurações reúnem as opções do aplicativo em um diálogo: páginas internas como **Geral** e **Aparência**, mais as seções contribuídas pelas abas. As seções das abas ficam visíveis seja qual for a sessão ativa.
+Configurações é o diálogo das opções do aplicativo: páginas internas como **Geral** e **Aparência**, além de seções contribuídas pelas abas. As seções das abas ficam visíveis independentemente da sessão ativa.
 
 ### Abrir Configurações {#open-settings}
 
-- **Menu** — **Arquivo** → **Configurações** (`Ctrl+,`).
-- **Localizar ação** — `Ctrl+Shift+P` e o nome da página (Geral, Aparência, Teclado, …).
-- **Saiba mais** — abre o tópico de ajuda da configuração, quando existe.
+- **Arquivo** → **Configurações** (`Ctrl+,`).
+- **Localizar ação** — `Ctrl+Shift+P`, depois o nome de uma página (Geral, Aparência, Teclado, …).
+- **Saiba mais** — abre o tópico de ajuda de uma configuração quando existe.
 
 ### Pesquisar nas Configurações {#search}
 
-Um campo de pesquisa fica acima da lista. Cada seção correspondente aparece como uma única linha, não importa a profundidade do acerto (nome de controle, título de grupo, em qualquer idioma). Ativar uma linha abre a seção com os acertos destacados. `Esc` limpa a pesquisa e restaura a lista completa.
+Um campo de pesquisa fica acima da lista lateral. Cada seção correspondente aparece como uma única linha, por mais profundo que seja o acerto (nome de controle, título de grupo, qualquer idioma). Ativar uma linha abre essa seção com os acertos destacados. `Esc` limpa a pesquisa e restaura a lista lateral completa.
 
 ### Geral {#general}
 
-- **Idioma** — escolhe o idioma da interface: en / ru / zh / pt_BR.
+- **Idioma** — o idioma da interface: en / ru / zh / pt_BR.
 - **Tema** — auto / light / dark.
 - **Notificações do sistema** — liga ou desliga as notificações do sistema operacional.
 - **Ativar registro de depuração** — grava logs detalhados para diagnóstico.
 
 ### Aparência {#interface}
 
-- **Modo da UI** — **Iniciante**, **Avançado** ou **Especialista**; o padrão é **Iniciante**, e a escolha da primeira abertura fica aqui.
-- **Fonte da UI** — fonte interna, padrão do sistema ou personalizada.
+- **Modo da UI** — **Iniciante**, **Avançado** ou **Especialista**; **Iniciante** é o padrão, e a escolha da primeira execução fica aqui.
+- **Fonte da UI** — interna, padrão do sistema ou uma família personalizada.
 - **Escala da interface** — redimensiona toda a interface (0,5–2,5).
-- **Comp. Máx. Nome (UI)** — limita o comprimento do nome exibido.
+- **Comp. Máx. Nome (UI)** — limita o comprimento de um nome exibido.
 
 ### Desempenho {#performance}
 
-- **Backend** — backend de renderização. As opções dependem da plataforma, e trocar pode exigir reiniciar.
+- **Backend** — o backend de renderização; as opções dependem da plataforma, e a troca pode exigir reinício.
 
 ### Comparar imagens {#image_compare}
 
-Opções do comparador, sempre disponíveis:
+Opções de comparação de imagens, sempre disponíveis:
 
-- **Interpolação do Zoom** — define a qualidade de reamostragem do zoom.
-- **Movimento da lupa** — deixa o movimento da lente mais suave; o método de interpolação fica na mesma linha.
-- **Destaque vermelho para lupas sobrepostas** — ao arrastar uma lupa, a parte do anel de captura escondida atrás de outras lupas é destacada.
-- **Colorir novas lupas automaticamente** — dá cores distintas às novas lentes.
-- **FPS de Gravação** — taxa de captura para o [Editor de vídeo](help://workspace.image_compare.video).
+- **Interpolação do Zoom** — a qualidade de reamostragem do zoom.
+- **Movimento da lupa** — mantém suave o seguimento da lente pelo cursor durante o arrasto; a linha **Suavização de laser** abaixo suaviza as guias da lupa. Cada linha tem um método próprio.
+- **Destaque vermelho para lupas sobrepostas** — enquanto uma lupa é arrastada, a parte do anel de captura escondida atrás de outras lupas é destacada; **Colorir novas lupas automaticamente** dá a cada nova lente uma cor distinta.
+- **FPS de Gravação** — a taxa de captura para o [Editor de vídeo](help://workspace.image_compare.video).
 - **Cortar automaticamente bordas pretas ao carregar** — corta as bordas pretas quando uma imagem é carregada.
 - **Calcular PSNR automaticamente** / **Calcular SSIM automaticamente** — mostram a métrica automaticamente; desligadas por padrão.
 
+### Galeria — IA {#image-gallery-ai}
+
+Os recursos de IA na [Galeria](help://workspace.image_gallery.triage) usam as configurações abaixo. Uma requisição precisa do interruptor ligado, de uma chave de API e de um modelo; a chave sozinha não basta. A chave é armazenada sem criptografia neste dispositivo.
+
+- **Ativar análise de imagem por IA** — liga ou desliga os recursos de IA.
+- **URL base da API** — o endereço do serviço de IA.
+- **Chave de API** — a credencial desse serviço.
+- **Nome do modelo** — o modelo que a IA usa nas requisições.
+- **Orçamento de tokens da resposta** e **Esforço de raciocínio** — limites da resposta: o teto de tokens (vazio = automático) e o quanto o modelo raciocina antes de responder.
+- **Redução da imagem (lado maior)** — o lado maior enviado ao modelo; **Original** mantém os bytes do próprio arquivo.
+
 ### Teclado {#keyboard}
 
-- **Remapear** — agrupa os atalhos por dono: Plataforma / Comparar imagens / Comparação múltipla.
-- **Redefinir** — redefine um atalho ou todos.
-- **Fixos** — `WASD` e `Space` no canvas não podem ser remapeados — veja [Atalhos](help://platform.hotkeys).
+Os atalhos são agrupados por dono — **Plataforma**, depois um grupo por aba, por exemplo **Image Compare**. **Redefinir** restaura um atalho ou todos. As teclas fixas do canvas `WASD` e `Space` não podem ser remapeadas — veja [Atalhos de Teclado](help://platform.hotkeys).

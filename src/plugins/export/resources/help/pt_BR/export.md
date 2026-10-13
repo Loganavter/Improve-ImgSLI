@@ -1,38 +1,38 @@
 ## Exportação
 
-A exportação salva o canvas atual como uma imagem estática, no formato e no tamanho que você escolher. A gravação da sessão e a codificação de vídeo ficam no [Editor de vídeo](help://workspace.image_compare.video).
+A exportação salva o canvas atual como uma imagem estática, no formato e no tamanho escolhidos.
 
 ### Salvar uma imagem {#saving-an-image}
 
-**Salvar Resultado**, na barra de ferramentas ou em **Localizar ação**, abre o diálogo de exportação, onde você escolhe o arquivo de saída e suas opções.
+**Salvar Resultado**, na barra de ferramentas ou em **Localizar ação**, abre o diálogo de exportação, onde se escolhe o arquivo de saída e as opções.
 
-- **Caminho** — escolhe a pasta de saída e o nome do arquivo.
-- **Formato** — seleciona o formato de saída: PNG, JPEG, WEBP, BMP, TIFF ou JXL.
-- **Pré-visualização** — mostra o resultado composto antes de gravar o arquivo.
+- **Caminho** — o diretório de saída e o nome do arquivo.
+- **Formato** — PNG, JPEG, WEBP, BMP, TIFF ou JXL.
+- **Pré-visualização** — mostra o resultado composto antes de o arquivo ser gravado.
 
 :::figure{side=block width=630}
 ![Diálogo de exportação](../assets/export_dialog.jpg)
-O diálogo de exportação: a **Pré-visualização** mostra o resultado composto antes de gravar o arquivo.
+O diálogo de exportação: a **Pré-visualização** mostra o resultado composto antes de o arquivo ser gravado.
 :::
 
 ### Resolução e qualidade {#resolution-and-quality}
 
-- **Tamanho** — define a largura e a altura de saída; uma trava de proporção mantém as proporções.
-- **Qualidade** — define o nível de compressão; aparece apenas em formatos com perdas (JPEG, WEBP e JXL), então uma exportação em PNG ou BMP não a oferece.
-- **PNG** — define o nível de compressão e liga ou desliga **Otimizar PNG**.
-- **Preencher fundo** — pinta as barras ao redor da imagem quando ela não preenche o quadro. Quando a imagem preenche o quadro, a opção fica indisponível.
+- **Tamanho** — a largura e a altura de saída; um bloqueio de proporção mantém as proporções.
+- **Qualidade** — o nível de compressão; aparece apenas em formatos que armazenam a imagem com perdas, então uma exportação em PNG ou BMP não a oferece.
+- **PNG** — o nível de compressão do PNG e a opção **Otimizar PNG**.
+- **Preencher fundo** — preenche as bordas vazias ao redor da imagem com a **Cor de Fundo**; oferecido apenas para formatos que mantêm transparência (PNG, TIFF, WEBP, JXL) e apenas enquanto o resultado composto tem bordas vazias.
 
 ### Metadados e favoritos {#metadata-and-favorites}
 
-- **Metadados** — o comentário é gravado no arquivo por padrão. Ao desmarcar **Incluir metadados**, a imagem é gravada sem ele e o campo de comentário fica oculto. **Lembrar por padrão** mantém o texto do comentário para a próxima exportação.
-- **Favoritos** — **Definir como Favorito** fixa a pasta atual, e **Usar Favorito** volta a essa pasta.
-- **Rótulos** — com **Sobreposição de nomes** ligado, os nomes dos arquivos são desenhados na imagem exportada.
+- **Metadados** — o comentário é gravado no arquivo por padrão. Desmarque **Incluir metadados** para salvar a imagem sem ele; o campo de comentário então se oculta. **Lembrar por padrão** mantém o texto do comentário para a próxima exportação.
+- **Favoritos** — **Definir como Favorito** fixa o diretório atual, e **Usar Favorito** o recupera.
+- **Rótulos** — com **Sobreposição de nomes** ligada, os nomes de arquivo são desenhados na imagem exportada.
 
 ### Salvamento rápido {#quick-save}
 
 - **`Ctrl+S`** — **Salvamento rápido** grava o arquivo com as últimas configurações de exportação sem reabrir o diálogo.
-- **Bandeja** — o menu do ícone na bandeja reabre o último arquivo e a última pasta salvos.
+- **Bandeja** — o menu do ícone na bandeja reabre o último arquivo salvo e a sua pasta.
 
 ### Gravação e vídeo {#video-editor}
 
-Para gravar os controles ou codificar vídeo e GIF, use o [Editor de vídeo](help://workspace.image_compare.video); esta página cobre apenas imagens estáticas.
+Para gravar uma sessão ou codificar vídeo e GIF, use o [Editor de vídeo](help://workspace.image_compare.video); esta página cobre apenas imagens estáticas.
