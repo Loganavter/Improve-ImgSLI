@@ -32,18 +32,19 @@ def test_flyout_tab_accepts_default_and_enter_submits(qtbot):
     flyout.open_for(anchor, scope_label="Series 1", default_prompt="Summary")
     qtbot.waitUntil(lambda: flyout.isVisible(), timeout=5000)
 
-    # Empty field: Tab accepts the grayed default prompt (our eventFilter).
+    # Empty field: Tab accepts the grayed default prompt (submit preset).
+    # (Direct handler call: like the old eventFilter-direct test below, a
+    # synthetic QTest Tab is not delivered into an in-flyout field.)
     assert flyout._edit.text() == ""
     tab = QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_Tab, Qt.KeyboardModifier.NoModifier)
-    assert flyout.eventFilter(flyout._edit, tab) is True
+    flyout._edit.keyPressEvent(tab)
+    assert tab.isAccepted()
     assert flyout._edit.text() == "Summary"
 
-    # returnPressed sends whatever is in the field (the toolkit edit emits
-    # this on Enter; the real key event is exercised live, not here — a
-    # synthetic QTest Tab/Return leaves a deferred toolkit action that leaks
-    # past teardown into a later theme test).
+    # Real Enter path through the preset: resolves and submits field text.
     flyout._edit.setText("custom question")
-    flyout._edit.returnPressed.emit()
+    enter = QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_Return, Qt.KeyboardModifier.NoModifier)
+    flyout._edit.keyPressEvent(enter)
     assert got == ["custom question"]
 
     flyout.hide()
@@ -63,7 +64,8 @@ def test_tab_prefills_default_cursor_at_end_no_selection(qtbot):
     qtbot.waitUntil(lambda: flyout.isVisible(), timeout=5000)
 
     tab = QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_Tab, Qt.KeyboardModifier.NoModifier)
-    assert flyout.eventFilter(flyout._edit, tab) is True
+    flyout._edit.keyPressEvent(tab)
+    assert tab.isAccepted()
     assert flyout._edit.text() == "What matters here?"
     assert flyout._edit.hasSelectedText() is False
     assert flyout._edit.cursorPosition() == len("What matters here?")

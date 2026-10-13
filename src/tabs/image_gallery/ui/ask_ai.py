@@ -1,8 +1,9 @@
 """Ask AI flyout (A3) — one scope-aware ask surface.
 Audit-Meta: pattern=single-surface size=exempt reason="one scope-aware ask flyout — its fade/persist/menu/status state is one cohesive surface; splitting would scatter the flyout lifecycle"
 
-A toolkit ``BaseFlyout`` with a ``CustomLineEdit`` (pre-filled, overridable
-default prompt: ``Tab`` accepts it, ``Enter`` sends) and a result pane marked
+A toolkit ``BaseFlyout`` with a ``CustomLineEdit`` on the toolkit submit
+preset (pre-filled, overridable default prompt: ``Tab`` accepts it,
+``Enter`` sends) and a result pane marked
 "AI read, unverified". Advisory only: the flyout renders text, it never
 mutates rank/selection/store. All async work is dispatched by the controller
 (``GalleryController.ask_ai_question``); this widget is pure surface.
@@ -10,7 +11,7 @@ mutates rank/selection/store. All async work is dispatched by the controller
 
 from __future__ import annotations
 
-from PySide6.QtCore import QEvent, Qt, Signal
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QHBoxLayout, QWidget
 
 from sli_ui_toolkit.managers import scaled_px
@@ -92,8 +93,16 @@ class AskAiFlyout(BaseFlyout):
             self._edit.setClearButtonEnabled(True)
         except Exception:
             pass
-        self._edit.returnPressed.connect(self._emit_submit)
-        self._edit.installEventFilter(self)
+        # Standard toolkit submit preset: Tab accepts the placeholder on an
+        # empty field, Enter resolves text-or-placeholder via `submitted`.
+        # (The flyout-level keyPressEvent Enter fallback below stays: the
+        # toolkit nav section does not always deliver Return to the focused
+        # field in the live window.)
+        try:
+            self._edit.setSubmitPreset(True)
+        except Exception:
+            pass
+        self._edit.submitted.connect(self._on_field_submitted)
         # Include-images toggle (plan: Ask AI carries AI output for now). Off by
         # default = metrics only (a crossed-out image); on = send the images.
         self._include_images = False
@@ -166,42 +175,31 @@ class AskAiFlyout(BaseFlyout):
 
     # -- interaction --------------------------------------------------------
 
-    def eventFilter(self, obj, event) -> bool:  # noqa: N802 (Qt name)
-        # Tab accepts the grayed default prompt (else it is just a placeholder
-        # and the user must retype it). Enter always sends.
-        if obj is self._edit and event.type() == QEvent.Type.KeyPress:
-            try:
-                if event.key() == Qt.Key.Key_Tab and not self._edit.text().strip():
-                    self._edit.setText(self._default_prompt)
-                    # Cursor at the end, NO selection — the accepted prompt is
-                    # a starting point to keep typing from, not a highlight the
-                    # next keystroke would overwrite.
-                    try:
-                        self._edit.deselect()
-                    except Exception:
-                        pass
-                    try:
-                        self._edit.setCursorPosition(len(self._default_prompt))
-                    except Exception:
-                        pass
-                    return True
-            except Exception:
-                pass
-        return super().eventFilter(obj, event)
+    def _on_field_submitted(self, question: str) -> None:
+        """Preset submit path: the field resolved text-or-placeholder."""
+        try:
+            resolved = str(question or "").strip() or self._default_prompt
+        except Exception:
+            resolved = self._default_prompt
+        self._submit_question(resolved)
 
     def _emit_submit(self) -> None:
-        # Guard against a double submit when both the field's returnPressed
-        # and this flyout's keyPressEvent see the same Return.
+        """Fallback submit path (flyout-level Enter): resolve the text here."""
+        try:
+            question = self._edit.text().strip() or self._default_prompt
+        except Exception:
+            question = self._default_prompt
+        self._submit_question(question)
+
+    def _submit_question(self, question: str) -> None:
+        # Guard against a double submit when both the field's submitted and
+        # this flyout's keyPressEvent see the same Return.
         import time
 
         now = time.monotonic()
         if now - getattr(self, "_last_submit_at", 0.0) < 0.4:
             return
         self._last_submit_at = now
-        try:
-            question = self._edit.text().strip() or self._default_prompt
-        except Exception:
-            question = self._default_prompt
         # Enter must send-and-release: drop any selection left by the Tab
         # prefill and take focus off the field (the field otherwise keeps a
         # highlighted selection on screen).
