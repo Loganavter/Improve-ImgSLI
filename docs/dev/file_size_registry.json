@@ -1115,6 +1115,17 @@
       }
     },
     {
+      "path": "src/tabs/multi_compare/use_cases/export.py",
+      "lines": 549,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=thin-owner reason=\"Save admission gate (has_exportable_pixels refusal, policy B4) shares the module with the quick/dialog save flows it gates; entry validation beside the flows it validates\"",
+      "parsed": {
+        "pattern": "thin-owner",
+        "reason": "Save admission gate (has_exportable_pixels refusal, policy B4) shares the module with the quick/dialog save flows it gates; entry validation beside the flows it validates"
+      }
+    },
+    {
       "path": "src/tabs/multi_compare/use_cases/loading.py",
       "lines": 893,
       "limit": 500,

@@ -5,6 +5,7 @@ Every function here takes the controller as its first argument; the actual
 background file write lives in ``services/save_flow.py`` +
 ``services/image_export.py``, this module only prepares the composed
 ``QImage``/options dict that gets handed to it.
+Audit-Meta: pattern=thin-owner reason="Save admission gate (has_exportable_pixels refusal, policy B4) shares the module with the quick/dialog save flows it gates; entry validation beside the flows it validates"
 """
 
 from __future__ import annotations
