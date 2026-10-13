@@ -4,7 +4,7 @@ import logging
 import os
 import threading
 
-from shared.image_processing.pil_save import SAVE_CANCELED_MESSAGE
+from shared.image_processing.export_encoding import is_cancel_error
 
 from tabs.host_helpers import MessageKind
 from sli_ui_toolkit.workers import GenericWorker
@@ -133,7 +133,7 @@ class ExportSaveFlowCoordinator:
                 progress_callback=lambda v: emit_progress(v),
             )
         except RuntimeError as e:
-            if str(e) in ("Export canceled by user", SAVE_CANCELED_MESSAGE):
+            if is_cancel_error(e):
                 return None
             raise
         except Exception as e:

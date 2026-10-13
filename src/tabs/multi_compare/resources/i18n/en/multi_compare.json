@@ -1,13 +1,7 @@
 {
   "tab_name": "Multi Compare",
-  "drop_hint": "Drop images here to compare\n(3–12 images)",
-  "slot_limit_reached": "Maximum number of images reached",
-  "reset_zoom": "Reset zoom",
-  "focus_mode": "Focus mode",
-  "grid_mode": "Grid mode",
   "add_images": "Add images",
   "save_result": "Save result",
-  "text_settings": "Text settings",
   "label": {
     "font_size": "Font size",
     "bold": "Bold",
@@ -25,9 +19,7 @@
     "properties": "Properties",
     "carry_image": "Move",
     "crop": "Crop",
-    "remove": "Remove",
-    "path": "Path",
-    "size": "Size"
+    "remove": "Remove"
   },
   "drop_image_here": "Drop image here",
   "drop_move_here": "Move here",
@@ -36,24 +28,6 @@
     "help": {
       "hub": {
         "desc": "Many-image layouts"
-      },
-      "page": {
-        "overview": {
-          "title": "Multi Compare Overview",
-          "desc": "Layouts and drop zones"
-        },
-        "layouts": {
-          "title": "Multi Compare Layouts",
-          "desc": "Cells, gap splits, dividers, slot actions"
-        },
-        "viewing": {
-          "title": "Multi Compare Viewing",
-          "desc": "Focus mode, zoom and pan, labels, crop"
-        },
-        "export": {
-          "title": "Multi Compare Export",
-          "desc": "Quick save, save dialog, sessions"
-        }
       }
     },
     "action": {

@@ -33,16 +33,13 @@ logger = logging.getLogger("ImproveImgSLI")
 if TYPE_CHECKING:
     from tabs.image_gallery.models import GalleryItem
 
-#: Triage-grade resolution caps (longest edge) for the scalar engine calls:
-#: same ``calculate_ssim`` engine as Image Compare, capped so a 40-file
-#: folder finishes in the background without blocking triage.
-_SSIM_MAX_EDGE = 1024
-_HF_MAX_EDGE = 512
-_DELTAE_THUMB = 64
-_CLIP_MAX_EDGE = 512
-#: Edge artifacts (halo / chroma fringing) are thin rims — measured near full
-#: resolution so a 1-2 px rim is not averaged away by downscaling.
-_ARTIFACT_MAX_EDGE = 2048
+from tabs.image_gallery.services.decode_policy import (
+    ARTIFACT_MAX_EDGE as _ARTIFACT_MAX_EDGE,
+    CLIP_MAX_EDGE as _CLIP_MAX_EDGE,
+    DELTAE_THUMB as _DELTAE_THUMB,
+    HF_MAX_EDGE as _HF_MAX_EDGE,
+    SSIM_MAX_EDGE as _SSIM_MAX_EDGE,
+)
 
 
 def _cap_edge(image, max_edge: int):

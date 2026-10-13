@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from PIL import Image
 
+from shared.image_processing import pil_save as _pil_save_module
 from shared.image_processing.pil_save import SAVE_CANCELED_MESSAGE
 
 # Re-export for single-import parity checks
@@ -92,4 +93,5 @@ def build_save_kwargs(
 
 def is_cancel_error(exc: BaseException) -> bool:
     """True when *exc* is the user-cancel sentinel."""
-    return isinstance(exc, RuntimeError) and str(exc) == SAVE_CANCELED_MESSAGE
+    sentinel = getattr(_pil_save_module, "SAVE_CANCELED_MESSAGE", SAVE_CANCELED_MESSAGE)
+    return isinstance(exc, RuntimeError) and str(exc) == sentinel

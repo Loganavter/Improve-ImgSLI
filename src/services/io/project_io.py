@@ -337,7 +337,10 @@ def _register_pixel_cache(
         logger.exception("Failed to extract embedded pixel cache from %s", project_path)
         return
 
-    from core.constants import AppConstants
+    from shared.image_processing.progressive_loader import (
+        is_supported_image_dimension,
+        max_supported_image_dimension,
+    )
 
     # DI: prefer injected cache (PipelineCache instance / registry), fallback to host module
     _injected_register = None
@@ -370,11 +373,10 @@ def _register_pixel_cache(
         except (TypeError, ValueError):
             logger.warning("Skipping pixel_cache %s: non-int dims %r x %r", asset_id, raw_w, raw_h)
             continue
-        max_dim = int(AppConstants.MAX_SUPPORTED_IMAGE_DIMENSION)
-        if width <= 0 or height <= 0 or width > max_dim or height > max_dim:
+        if not is_supported_image_dimension(width, height):
             logger.warning(
                 "Skipping pixel_cache %s: dims %dx%d out of bounds (max %d)",
-                asset_id, width, height, max_dim,
+                asset_id, width, height, max_supported_image_dimension(),
             )
             continue
         try:

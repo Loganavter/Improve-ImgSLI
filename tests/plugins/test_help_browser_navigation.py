@@ -115,11 +115,22 @@ def test_help_dialog_navigate_alias_magnifier(qtbot):
     dialog = HelpDialog(current_language="en", app_name="Improve-ImgSLI")
     qtbot.addWidget(dialog)
     dialog.show()
-    dialog.navigate_to("magnifier", "freeze")
+    dialog.navigate_to("workspace.image_compare.magnifier", "freeze")
     assert dialog._nav.current_id == "workspace.image_compare.magnifier"
     assert not dialog._document.isHidden()
     assert dialog._document.scroll_to_anchor("freeze") is not None
     assert dialog._document.scroll_to_anchor("enabling") is not None
+
+
+def test_help_dialog_navigate_unknown_page_renders_missing(qtbot):
+    dialog = HelpDialog(current_language="en", app_name="Improve-ImgSLI")
+    qtbot.addWidget(dialog)
+    dialog.show()
+    before = dialog._nav.current_id
+    dialog.navigate_to("no_such_help_topic_xyz")
+    assert dialog._nav.current_id == before
+    assert not dialog._document.isHidden()
+    assert "Missing page" in dialog._document.plain_text()
 
 
 def test_help_dialog_sidebar_splitter(qtbot):
@@ -205,7 +216,12 @@ def test_help_dialog_mouse_back_forward_buttons(qtbot):
 
 def test_help_plugin_show_dialog_page_alias(qtbot):
     plugin = HelpPlugin()
-    plugin.show_dialog(parent=None, language="ru", page="magnifier", anchor="enabling")
+    plugin.show_dialog(
+        parent=None,
+        language="ru",
+        page="workspace.image_compare.magnifier",
+        anchor="enabling",
+    )
     assert plugin._dialog is not None
     qtbot.addWidget(plugin._dialog)
     assert plugin._dialog._nav.current_id == "workspace.image_compare.magnifier"

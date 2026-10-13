@@ -1,12 +1,8 @@
 {
   "image_gallery": {
     "tab_name": "图库",
-    "pick_folder": "选择文件夹…",
-    "filter_placeholder": "按标签/描述筛选…",
     "empty_state": "选择一个文件夹以查看图片。",
     "empty_view": "暂无可显示的图片。",
-    "analyze": "分析",
-    "analyzing": "分析中…",
     "activity": {
       "queued": "排队中",
       "claimed": "启动中",
@@ -54,12 +50,6 @@
       "breadcrumb": {
         "triage": "分拣"
       }
-    },
-    "card": {
-      "set_as_source": "设为源",
-      "make_best": "设为最佳",
-      "reject": "拒绝",
-      "compare": "对比"
     },
     "ask_ai": {
       "action": "AI…",

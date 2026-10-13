@@ -16,6 +16,12 @@ This module owns only the clipboard → local-paths pipeline:
 Placement is tab-specific and injected as a callback:
 ``on_ready(list[Path])`` — caller decides where paths land.
 
+Two-phase use (direction-dialog caller): the dialog must appear
+*before* the download starts, so the tab collects first, shows the
+dialog, then calls ``run_with_items`` with the pre-collected items once
+the user picks a direction. Single-phase use (direct-placement callers):
+just call ``run()``.
+
 Tabs keep a thin ``ClipboardService`` that only wires
 ``collect`` → ``coordinator`` → ``placement`` (keeps ``create_service``
 contract stable).
@@ -63,19 +69,20 @@ class ClipboardPasteCoordinator:
         thread_pool=None,
         on_ready: Callable[[list[Path]], None],
         on_empty: Callable[[], None] | None = None,
+        on_download_started: Callable[[list[str]], None] | None = None,
     ) -> None:
         self._thread_pool = thread_pool
         self._on_ready = on_ready
         self._on_empty = on_empty
+        self._on_download_started = on_download_started
         self._pending_local: list[str] = []
 
     def run(self) -> bool:
+        """Collect from the clipboard, then resolve via ``run_with_items``."""
         try:
             items = collect_clipboard_image_items()
         except Exception as e:
             logger.error("clipboard paste collect failed: %s", e)
-            if self._on_empty:
-                self._on_empty()
             return False
 
         if not items:
@@ -83,15 +90,27 @@ class ClipboardPasteCoordinator:
                 self._on_empty()
             return False
 
+        return self.run_with_items(items)
+
+    def run_with_items(self, items: list[str]) -> bool:
+        """Resolve pre-collected clipboard items (split → download → ready).
+
+        Split-drops-everything returns ``False`` without firing
+        ``on_empty`` (matches the old tab services: only a truly empty
+        clipboard counts as "nothing to paste").
+        """
         local_files, urls = split_clipboard_items(items)
 
         if not local_files and not urls:
-            if self._on_empty:
-                self._on_empty()
             return False
 
         if urls:
             self._pending_local = list(local_files)
+            if self._on_download_started:
+                try:
+                    self._on_download_started(list(urls))
+                except Exception as e:
+                    logger.error("clipboard paste on_download_started failed: %s", e)
             try:
                 worker = GenericWorker(download_images_from_urls, urls, 15)
                 worker.signals.result.connect(self._on_urls_downloaded)

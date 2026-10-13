@@ -4,8 +4,8 @@ from typing import Optional, Tuple
 from PIL import Image
 
 from core.state_management.actions import SetPsnrValueAction, SetSsimValueAction
+from tabs.image_compare.presenters.image_canvas.background_parts import diff_toasts
 from tabs.image_compare.services.analysis.runtime import AnalysisRuntime
-from sli_ui_toolkit.i18n import tr
 from sli_ui_toolkit.workers import GenericWorker
 
 logger = logging.getLogger("ImproveImgSLI")
@@ -262,10 +262,7 @@ class MetricsService:
         if toast_manager is None:
             return
 
-        current_language = getattr(self.store.settings, "current_language", "en")
-        message = tr("image_compare.msg.ssim_calculation_in_progress", current_language)
-        if message == "image_compare.msg.ssim_calculation_in_progress":
-            message = "SSIM calculation..."
+        message = diff_toasts.get_diff_toast_message(self.store, "ssim", state="in_progress")
 
         if self._active_ssim_toast_id is not None:
             try:
@@ -302,15 +299,10 @@ class MetricsService:
             self._ssim_toast_request_id = None
             return
 
-        current_language = getattr(self.store.settings, "current_language", "en")
         if success:
-            message = tr("image_compare.msg.ssim_calculation_done", current_language)
-            if message == "image_compare.msg.ssim_calculation_done":
-                message = "SSIM done"
+            message = diff_toasts.get_diff_toast_message(self.store, "ssim", state="done")
         else:
-            message = tr("image_compare.msg.ssim_calculation_failed", current_language)
-            if message == "image_compare.msg.ssim_calculation_failed":
-                message = "SSIM failed"
+            message = diff_toasts.get_diff_toast_message(self.store, "ssim", state="failed")
 
         try:
             toast_manager.update_toast(

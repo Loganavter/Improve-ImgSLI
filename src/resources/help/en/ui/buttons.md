@@ -1,64 +1,63 @@
 ## Buttons and Controls
 
-The toolbar sits above the canvas in a compare session. It holds the tools for that session — split line, view modes, magnifier, recording — while lists, add/save, and the settings gear live in the surrounding chrome.
+The toolbar holds the tools of the active session, and the **UI Mode** setting decides how many actions share one control.
 
 ### The toolbar {#toolbar}
 
-- **Toolbar** — strip of icon controls for the active session type. Each control is a toggle, a value nudge, or a button that opens a panel or dialog.
-- **{{tr:settings.ui_mode}}** — sets how many controls the toolbar shows. First-run onboarding sets it; [Settings → Appearance](help://settings#interface) changes it later.
+The **Toolbar** is the strip of icon controls for the active session. Each control either toggles a feature on or off, steps a numeric value, or opens a panel or dialog. The tab contributes the set of controls, so the strip changes when you switch tabs.
 
 :::figure{side=block height=107}
-![Session toolbar]({{img:ui.buttons.toolbar}})
-Toolbar above the canvas.
+![Session toolbar](../../assets/ui/toolbar.jpg)
+The toolbar above the canvas; its icon set changes with the active session.
 :::
 
 ### UI modes {#ui-modes}
 
-The same tools are laid out differently in each {{tr:settings.ui_mode}}. First-run onboarding sets the mode once; [Settings → Appearance](help://settings#interface) changes it later.
+The same tools appear in every **UI Mode**; only their layout differs. Fewer controls per mode means fewer clicks but more combinations packed onto each control. Pick a mode during the first run, or change it later in [Settings](help://platform.settings#interface) → **Appearance**.
 
-### {{tr:settings.ui_mode_beginner}} {#mode-beginner}
+#### Beginner {#mode-beginner}
 
-More separate buttons — one control ≈ one job.
+The default mode: each control does one job, so the tools spread over more, single-purpose buttons.
 
 :::figure{side=block height=65}
-![Beginner toolbar layout]({{img:ui.buttons.mode_beginner}})
-{{tr:settings.ui_mode}} → {{tr:settings.ui_mode_beginner}}.
+![Beginner toolbar layout](../../assets/ui/mode_beginner.png)
+Beginner layout: the same tools spread over more, single-purpose buttons.
 :::
 
-### {{tr:settings.ui_mode_advanced}} {#mode-advanced}
+#### Advanced {#mode-advanced}
 
-Fewer icons. Some controls already combine a short click with a scroll (for example orientation + thickness).
+Fewer icons. Some controls combine a short click with a scroll — for example, orientation and thickness on one control.
 
 :::figure{side=block height=65}
-![Advanced toolbar layout]({{img:ui.buttons.mode_advanced}})
-{{tr:settings.ui_mode}} → {{tr:settings.ui_mode_advanced}}.
+![Advanced toolbar layout](../../assets/ui/mode_advanced.png)
+Advanced layout: related controls share one icon, combining a click with a scroll.
 :::
 
-### {{tr:settings.ui_mode_expert}} {#mode-expert}
+#### Expert {#mode-expert}
 
-Densest strip: one control combines click, scroll, and other mouse buttons.
+The densest strip: a single control combines a click, a scroll, and the other mouse buttons.
 
 :::figure{side=block height=65}
-![Expert toolbar layout]({{img:ui.buttons.mode_expert}})
-{{tr:settings.ui_mode}} → {{tr:settings.ui_mode_expert}}.
+![Expert toolbar layout](../../assets/ui/mode_expert.png)
+Expert layout: the fewest icons, each combining click, scroll, and the other mouse buttons.
 :::
 
 ### Multi-action controls {#multi-action}
 
-In {{tr:settings.ui_mode_advanced}} and especially {{tr:settings.ui_mode_expert}}, the same icon often does more than one thing:
+In **Advanced** and especially in **Expert**, the same icon often does more than one thing:
 
 - **Short click** — primary action or toggle.
-- **Scroll** — nudge a numeric value (divider thickness, magnifier size, …) without opening a dialog.
+- **Scroll** — nudge a numeric value without opening a dialog.
 - **Long-press** — stronger variant on some list buttons (clear a whole list; swap both lists).
-- **Other mouse buttons** (expert) — for example right-click for color or middle-click to reset on compact divider controls.
+- **Other mouse buttons** — in **Expert**, for example right-click for color or middle-click to hide or restore the divider on a compact divider control.
 
-{{tr:settings.ui_mode_beginner}} keeps those jobs on separate buttons instead of stacking them.
+**Beginner** splits the click-plus-scroll combinations across separate single-purpose controls; the list buttons' long-press works in every mode.
 
 :::figure{side=block height=44}
-![Long-press on a list button]({{img:ui.buttons.long_press}})
-List button — short click vs long-press.
+![Long-press on a list button](../../assets/ui/long_press.png)
+A list button: a short click runs the usual action, a long-press runs the stronger one.
 :::
 
 ### Find a control by name {#find-action}
 
-Open the palette with `Ctrl+Shift+P` ({{tr:menu.find_action}}), type part of the label, and run the action or press `Ctrl+Enter` to open {{tr:action.palette.learn_more}} when the row has a help topic.
+**Find Action** (`Ctrl+Shift+P`) finds every action by part of its label, including ones with no visible button. `Ctrl+Enter` on a row opens **Learn more** when the row has a help topic.

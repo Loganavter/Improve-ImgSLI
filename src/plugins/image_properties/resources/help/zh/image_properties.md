@@ -1,31 +1,36 @@
 ## 图像属性
 
-单个已加载图像的文件元数据与应用内上下文。对话框浮于会话之上，不改变会话中的任何内容。
+**属性** 显示文件信息，以及图像在当前会话中的使用方式。该对话框只显示数据，不改变会话中的任何内容。
 
 ### 打开对话框 {#open}
 
-列表或槽位的上下文菜单中的 {{tr:image_compare.action.context_properties}} 项可为该图像打开 {{tr:image_properties.title}}。
+在列表或槽位中右键点击一张图像，在上下文菜单中选择 **属性**。
 
 :::figure{side=block width=280}
-![图像属性对话框]({{img:platform.image_properties.open}})
-{{tr:image_properties.title}}.
+![图像属性对话框](../assets/platform/image_properties.png)
+**属性** 对话框：行按来源分组，例如 **文件** 和 **图像**。
 :::
 
-### 分组 {#sections}
+### 显示内容 {#sections}
 
-各行按以下分组排列：
+行按下列分组排列：
 
-- {{tr:image_properties.section_file}} — 名称、路径、磁盘大小、格式、修改时间
-- {{tr:image_properties.section_image}} — 像素尺寸、宽高比、方向、通道、颜色模式 / 配置文件（若有）
-- {{tr:image_properties.section_app}} — 该图像在当前会话中的放置方式（见下）
-- {{tr:image_properties.section_metadata}} — 相机 / EXIF 类字段（文件提供时）
+- **文件** — 名称、路径、扩展名、磁盘大小、格式和修改时间。
+- **图像** — 像素尺寸、宽高比、方向、通道；文件提供时还显示颜色模式和配置文件。
+- **应用内** — 应用在当前会话中如何放置这张图像（见下）。
+- **元数据** — 文件提供时显示相机和 EXIF 类字段。
 
-无值的行会被省略；文件读取错误显示为 {{tr:image_properties.read_error}}。
+没有值的行不会显示。文件无法读取时，**文件** 下会出现 **读取错误** 一行。
 
 ### 应用内上下文 {#in-app}
 
-{{tr:image_properties.section_app}} 取决于会话类型。{{tr:workspace.session_types.image_compare}} 条目携带 {{tr:image_properties.side}}（左 / 右）与 {{tr:image_properties.rating}}。{{tr:workspace.session_types.multi_compare}} 单元格携带 {{tr:image_properties.position}}。这些行描述的是会话状态，而非磁盘文件。
+**应用内** 分组的内容取决于会话类型：
+
+- 在 **图像比较** 会话中，显示 **侧**（左侧或右侧）和 **评分**。
+- 在 **多图比较** 会话中，显示单元格的 **位置**。
+
+这些行描述的是会话状态，而不是磁盘上的文件。
 
 ### 关闭 {#close}
 
-{{tr:image_properties.close}} 关闭对话框。{{tr:image_properties.copy_all}} 将所有可见行复制到剪贴板；各行也有各自的复制操作。
+**关闭** 关闭对话框。**复制全部** 把每一可见行复制到剪贴板；选中的文本可以从它的上下文菜单复制。

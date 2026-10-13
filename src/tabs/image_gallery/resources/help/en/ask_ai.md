@@ -1,20 +1,20 @@
 ## Ask AI
 
-Questions cover one card, the selection, or a whole series; answers are advisory and carry an unverified-read badge.
+Ask AI answers questions about a single card, the current selection, or a whole series. Answers are advisory and always carry a badge that marks them as AI-supplied.
 
 ### Ask about a selection {#ask-selection}
 
-- **{{tr:image_gallery.ask_ai.action}}** — opens {{tr:image_gallery.ask_ai.title}} for that card or the current selection.
-- **Default prompt** — {{tr:image_gallery.ask_ai.default_prompt}} summarizes the slice.
-- **Badge** — {{tr:image_gallery.ask_ai.read_badge}} marks AI-supplied text.
+- **AI…** — opens **Ask AI** for that card or the current selection.
+- **What matters here?** — the default question; it asks the model to summarize the images it is given.
+- **AI read, unverified** — the badge on text produced by the AI; it marks the answer as unverified.
 
 ### Ask about a series {#ask-series}
 
-The series-header menu asks about every member at once. Measured scores answer sharpness or noise without a model round-trip — see [Quality Metrics](help://gallery_quality).
+The series-header menu asks about every member of the series at once. Sharpness and noise readings come from [Quality Metrics](help://workspace.image_gallery.quality) and are shown without a request to the AI model.
 
 ### Setup and limits {#setup}
 
-- **AI setup** — {{tr:image_gallery.settings.ai_title}} in Settings; asking needs {{tr:image_gallery.settings.enable_ai}}, a key, and a model, otherwise {{tr:image_gallery.errors.not_configured}}.
-- **Progress and errors** — {{tr:image_gallery.ask_ai.busy}}; failures report {{tr:image_gallery.ask_ai.error}}.
-- **Advisory only** — answers never change rank, selection, or stored state.
-- **Caching** — identical questions reuse the cached answer; new model or images ask again.
+- **Image Gallery — AI** — the settings section behind Ask AI; asking needs **Enable AI image analysis**, an API key, and a model. Configure it in [Settings](help://platform.settings#image-gallery-ai). Without all three, the app shows **Configure the AI API key in Settings first.**
+- While the model works the panel shows **Thinking…**; a failed request reports **AI could not answer.**
+- Answers never change the rank, the selection, or any stored state.
+- The same question reuses the cached answer; a new model or new images ask the model again.

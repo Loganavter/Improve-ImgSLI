@@ -526,12 +526,30 @@ class ImageCompareContextMenuProvider:
             if ui_manager is not None and hasattr(ui_manager, "set_modal_dialog_active"):
                 ui_manager.set_modal_dialog_active(False)
 
+    def _slot_has_duplicatable(self, slot: int) -> bool:
+        """One has-content predicate for the slot duplicate gate (wave B3).
+
+        Pixels or path suffice (a pixels-only slot still duplicates via
+        ``set_current_image_data``); imageless + pathless duplicates
+        nothing. Carry gates stay path-only on purpose — ``begin_image_carry``
+        takes paths, so pixels without a path are not carryable.
+        """
+        try:
+            if self._peek_image(slot) is not None:
+                return True
+        except Exception:
+            pass
+        try:
+            return bool(self._path_for(slot))
+        except Exception:
+            return False
+
     def _begin_duplicate(self, source_slot: int) -> None:
+        if not self._slot_has_duplicatable(source_slot):
+            return
         image = self._peek_image(source_slot)
         path = self._path_for(source_slot)
         name = self._display_name_for(source_slot)
-        if image is None and not path:
-            return
         canvas = self.canvas
         if canvas is None:
             return

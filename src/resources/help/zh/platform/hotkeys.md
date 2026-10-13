@@ -1,56 +1,68 @@
 ## 快捷键
 
-以下为默认快捷键。大多数操作快捷键可在 {{tr:menu.settings}} → {{tr:settings.keyboard}} 中重新绑定。画布上的 `WASD`、方向键、`Space` 移动与 `+`/`-` 缩放操作固定不变，无法重新绑定。
+以下是默认组合键。大多数操作的快捷键可在 **设置** → **键盘** 中重新绑定；画布按键 `WASD` / `QE`、方向键、`Space` 以及 `+` / `-` 是固定的，无法重新绑定。
 
 ### 先搜索，再记忆 {#discover}
 
-按 `Ctrl+Shift+P` 并输入名称，比死记一长串快捷键更快：命令面板可直接运行该操作，需要图文说明时打开 {{tr:action.palette.learn_more}}。当焦点控件带有关联操作时，按 F1 可高亮对应的操作。
+`Ctrl+Shift+P` 加上名称的一部分，比逐个翻找列表更快：**查找操作** 会运行匹配的操作，或为图文主题打开 **了解更多**。`F1` 为焦点控件打开帮助主题。
 
 ### 平台 {#platform}
 
-- `Ctrl+,` — 设置
-- `Ctrl+F1` — 帮助
-- `Ctrl+N` — 会话选择器 / 新建会话
-- `Ctrl+Tab` / `Ctrl+Shift+Tab` — 下一个 / 上一个工作区会话
-- `Ctrl+Shift+P` — {{tr:menu.find_action}}
-- `Ctrl+V` — 粘贴图像
-- `Ctrl+Shift+O` / `Shift+S` / `Ctrl+Shift+S` — 打开 / 保存 / 项目另存为（`.imgsli`）
-- `Ctrl+Q` — 退出
+- `Ctrl+,` — **设置**
+- `Ctrl+F1` — **显示帮助**
+- `Ctrl+N` — **新建会话**（打开 **会话选择器**）
+- `Ctrl+Tab` / `Ctrl+Shift+Tab` — 下一个 / 上一个会话
+- `Ctrl+Shift+P` — **查找操作**
+- `Ctrl+V` — **从剪贴板粘贴图像**
+- `Ctrl+Shift+O` / `Shift+S` / `Ctrl+Shift+S` — **打开项目** / **保存项目** / **项目另存为…**（`.imgsli`）
+- `Ctrl+Q` — **退出**
 
-具体标签取决于所用语言包；重绑定位置在设置 → 键盘 → 平台分组。
+菜单标签跟随所选语言。自定义快捷键在 **设置** → **键盘** 的「平台」分组中设置。
 
-### {{tr:workspace.session_types.image_compare}} {#image-compare}
+### 图像比较 {#image-compare}
 
-- `M` / `F` — 放大镜 / 冻结
-- `N` / `D` — 文件名标签 / 分割线可见性
-- `H` / `C` — 差异模式 / 通道模式
-- `X` — 交换
-- `R` / `Ctrl+E` — 录制 / 视频编辑器
-- `Ctrl+S` — 快速保存
-- `WASD` / `QE` — 放大镜移动 / 间距（固定不变）
-- `Shift` + `Space` — 组合模式下的单侧预览（固定不变）
-- `←↑↓→` / `+` / `-` — 平移 / 缩放（固定不变）
+- `M` / `F` — **切换放大镜** / **冻结放大镜**
+- `N` / `D` — **文件名叠加** / **分割线可见性**
+- `H` / `C` — **差异模式** / **通道模式**
+- `X` — **交换图像**
+- `R` / `Ctrl+E` — **录制视频** / **视频编辑器**
+- `Ctrl+S` — **快速保存**
+- `WASD` / `QE` — 移动放大镜 / 调整间距（固定）
+- `Shift+Space` — 在组合模式下预览一侧（固定）
+- `←↑↓→` / `+` / `-` — 平移 / 缩放（固定）
 
-详情见[对比](help://comparison)、[放大镜](help://magnifier)、[视频编辑器](help://video)。
+详情：[对比](help://workspace.image_compare.comparison)、[放大镜](help://workspace.image_compare.magnifier)、[视频编辑器](help://workspace.image_compare.video)。
 
-### {{tr:workspace.session_types.multi_compare}} {#multi-compare}
+### 多图比较 {#multi-compare}
 
-- `Ctrl+O` — 添加图像
-- `D` — 网格可见性
-- `Ctrl+S` — 快速保存
+- `Ctrl+O` — **添加图像**
+- `D` — **网格可见性**
+- `Ctrl+S` — **快速保存**
 - `Esc` — 退出槽位焦点
-- `←↑↓→` / `+` / `-` — 平移 / 缩放（固定不变）
+- `←↑↓→` / `+` / `-` — 平移 / 缩放（固定）
 
-见 [{{tr:workspace.session_types.multi_compare}}](help://multi_compare)。
+见 [多图比较](help://workspace.multi_compare.overview)。
+
+### 图库 {#image-gallery}
+
+- `Space` / `Delete` — 从网格中移除所选图像；文件仍保留在磁盘上。
+
+见 [分拣与审阅](help://workspace.image_gallery.triage)。
 
 ### 视频编辑器窗口 {#video-editor}
 
-编辑器打开时：`Space` 播放/暂停，`Ctrl+Z` / `Ctrl+Y` 撤销/重做，`Delete` / `Backspace` 按所选裁剪。完整编码流程见[视频编辑器](help://video)。
+编辑器窗口打开时：
+
+- `Space` — 播放或暂停
+- `Ctrl+Z` / `Ctrl+Y` — 撤销 / 重做
+- `Delete` / `Backspace` — 删除选中的范围
+
+完整编码流程：[视频编辑器](help://workspace.image_compare.video)。
 
 ### 键盘导航 {#keyboard-navigation}
 
-- `F1` — 显示聚焦控件的上下文帮助。当焦点与某个操作关联时，{{tr:menu.find_action}} 中的匹配项会高亮；否则按主题预过滤打开命令面板。
-- 在 {{tr:menu.find_action}}（`Ctrl+Shift+P`）中：`↑` / `↓` 移动选择，`Enter` 运行，`Ctrl+Enter` 打开 {{tr:action.palette.learn_more}}，`Esc` 关闭面板。
-- 在 {{tr:workspace.session_types.multi_compare}} 概览中，槽位焦点跟随指针：单击切换单图聚焦，`Esc` 退出。方向键用于平移画布，不会在槽位之间移动焦点。
-- 在会话选择器中，方向键在卡片之间移动焦点，`Enter` 打开聚焦的卡片，等同于单击该卡片。
-- 画布槽位之间没有 `Tab` 遍历：焦点跟随指针，键盘通过命令面板驱动操作。
+- `F1` — 为焦点控件打开帮助主题；无法解析主题的控件会回退到 **查找操作**（有匹配项时会高亮该操作）。
+- 在 **查找操作**（`Ctrl+Shift+P`）中：`↑` / `↓` 移动选择，`Enter` 运行，`Ctrl+Enter` 打开 **了解更多**，`Esc` 关闭列表。
+- 在 **多图比较** 概览中，槽位焦点跟随指针：单击切换单图聚焦，`Esc` 退出。方向键用于平移画布，而不会在槽位之间移动焦点。
+- 在 **会话选择器** 中，方向键在卡片之间移动焦点，`Enter` 打开聚焦的卡片，效果与单击该卡片相同。
+- 画布槽位之间没有 `Tab` 遍历：焦点跟随指针，键盘通过 **查找操作** 驱动操作。

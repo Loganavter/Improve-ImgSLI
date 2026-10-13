@@ -17,12 +17,13 @@ logger = logging.getLogger("ImproveImgSLI")
 
 
 def collect_help_contributions(registry: "TabRegistry") -> list[Any]:
-    """Collectors: gather typed ``HelpContribution`` return values (broadcast).
+    """Collectors: gather typed ``HelpHubContribution`` return values (broadcast).
 
-    Replaces ``notify_all("contribute_help", registry)`` fire-and-forget.
-    Per-tab exception is logged and does not stop other tabs.
+    Per-tab exception is logged and does not stop other tabs. Tabs without a
+    multi-page help hub return ``None`` (single-page titles come from the
+    page bodies themselves).
     """
-    from plugins.help.contribution import HelpContribution
+    from plugins.help.contribution import HelpHubContribution
 
     contributions: list[Any] = []
     for tab in registry._tabs.values():
@@ -33,18 +34,15 @@ def collect_help_contributions(registry: "TabRegistry") -> list[Any]:
             continue
         if result is None:
             continue
-        # Legacy fire-and-forget returned ``True`` after mutating registry
-        if isinstance(result, bool):
-            continue
         items: list[Any]
         if isinstance(result, (list, tuple)):
             items = list(result)
         else:
             items = [result]
         for item in items:
-            if not isinstance(item, HelpContribution):
+            if not isinstance(item, HelpHubContribution):
                 logger.warning(
-                    "tab %s returned non-HelpContribution for contribute_help: %r",
+                    "tab %s returned non-HelpHubContribution for contribute_help: %r",
                     tab.session_type,
                     type(item).__name__,
                 )
@@ -120,10 +118,12 @@ def contribute_all_settings(registry: "TabRegistry") -> None:
 
 
 def contribute_all_help(registry: "TabRegistry") -> None:
-    """Collect tab Help subtrees and install them into the host tree.
+    """Collect tab help-hub fragments and install them into the host tree.
 
-    Collect typed ``HelpContribution`` objects and install them immutably.
+    Collect typed ``HelpHubContribution`` objects and install them immutably.
     Per-tab exception is logged; one tab failing does not stop others.
+    Structure itself is scanned from the filesystem — fragments only carry
+    hub presentation and icon resolvers.
     """
     from plugins.help.tree import install_help_contributions
 

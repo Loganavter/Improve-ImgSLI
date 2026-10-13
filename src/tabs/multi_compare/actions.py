@@ -17,10 +17,10 @@ _BC_EXPORT = "multi_compare.action.breadcrumb.export"
 _BC_SESSION = "multi_compare.action.breadcrumb.session"
 
 _TOPIC_HELP: dict[str, str] = {
-    "session": "file_management",
-    "labels": "mc_viewing",
-    "divider": "mc_layouts",
-    "export": "mc_export",
+    "session": "platform.file_project",
+    "labels": "workspace.multi_compare.viewing",
+    "divider": "workspace.multi_compare.layouts",
+    "export": "workspace.multi_compare.export",
 }
 
 

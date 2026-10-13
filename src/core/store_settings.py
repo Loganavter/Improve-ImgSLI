@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from domain.types import Color
+from shared.video_policy import CrfPolicy, FpsPolicy
 
 if TYPE_CHECKING:
     from core.store_viewport import ViewportState
@@ -20,7 +21,7 @@ class SettingsState:
     debug_mode_enabled: bool = False
     system_notifications_enabled: bool = True
     auto_crop_black_borders: bool = True
-    video_recording_fps: int = 60
+    video_recording_fps: int = FpsPolicy.DEFAULT
     video_editor_preview_render_scale: float = 1.0
     rhi_backend: str = "default"
     # Sparse map action_id → PortableText chord ("" = explicitly unbound).
@@ -33,7 +34,7 @@ class SettingsState:
     export_video_container: str = "mp4"
     export_video_codec: str = "h264 (AVC)"
     export_video_quality_mode: str = "crf"
-    export_video_crf: int = 23
+    export_video_crf: int = CrfPolicy.DEFAULT
     export_video_bitrate: str = "8000k"
     export_video_preset: str = "medium"
     export_video_pix_fmt: str = "yuv420p"

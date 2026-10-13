@@ -150,7 +150,6 @@ class MultiCompareState:
     zoom: float = 1.0
     pan_x: float = 0.0
     pan_y: float = 0.0
-    max_slots: int = 12
 
     drag_active: bool = False
     drag_target_path: tuple[int, ...] | None = None

@@ -1,59 +1,59 @@
 ## 视频编辑器
 
-实时 {{tr:workspace.session_types.image_compare}} 会话的控制轨道录制，支持时间轴裁剪并编码为视频或 GIF。静态图像请见[导出](help://export)。
+视频编辑器把实时 **图像比较** 会话记录为所用工具的轨道，然后修剪时间轴并把结果编码为视频或 GIF。静帧仍在[导出](help://workspace.export)。
 
 ### 录制会话 {#recording}
 
-- **开始 / 暂停 / 停止** — {{tr:image_compare.action.record}}（`R`）、{{tr:image_compare.action.pause_recording}}，之后可用同一组控件停止录制。
-- **记录内容** — 记录的是随时间变化的画布操作（缩放/平移、分割线、放大镜、加载的图像及相关设置）所构成的控制轨道与采样点，而非原始屏幕录像。
-- **采集帧率** — 见[设置](help://settings#image_compare)（{{tr:settings.recording_fps}}）。
+- **录制视频**（`R`）— 开始和停止录制；**暂停录制** 暂停和继续录制。
+- 录制按时间保存画布操作——缩放与平移、分割线、放大镜、已加载图像及相关设置——为带记录点的轨道，而不是原始屏幕录制。
+- **录制帧率** — 录制帧率，在[设置](help://platform.settings#image_compare)的 **图像比较** 分区中设置。
 
 ### 打开编辑器 {#open-editor}
 
-停止录制后，{{tr:image_compare.action.video_editor}}（`Ctrl+E`）可拖动查看帧、编辑范围并导出。在 {{tr:menu.find_action}} 中搜索编辑器相关控件也会打开本主题。
+**视频编辑器**（`Ctrl+E`）打开一个窗口，可在其中逐帧浏览、编辑范围并导出。编辑器操作也会出现在 **查找操作** 中。
 
 ### 时间轴编辑 {#timeline}
 
-- **拖动定位** — 拖动时间指示器。
-- **选取范围** — `Shift`+拖动标记一段范围；两端手柄和选区中部可单独移动；{{tr:image_compare.button.trim_to_selection}} 只保留该选区。
+- **拖动定位** — 拖动时间光标，在录制中移动。
+- **范围** — `Shift` + 拖动标记一段范围；两端手柄与选区中部可独立移动。**裁剪到选择** 删除标记的范围并接合其余部分。
 - **删除** — `Delete` / `Backspace` 删除选中的范围。
-- **播放** — `Space`；撤销 / 重做 — `Ctrl+Z` / `Ctrl+Y`。
+- **播放** — `Space` 开始和暂停播放；`Ctrl+Z` / `Ctrl+Y` 撤销和重做编辑。
 
-:::figure{side=block width=840}
-![视频时间轴]({{img:workspace.image_compare.video.timeline}})
-{{tr:image_compare.action.video_editor}} — 时间轴。
+:::figure{side=block width=100%}
+![视频时间轴](../assets/video_timeline.jpg)
+时间轴：带记录点的轨道、上方的影片条，以及下方的时间标尺。
 :::
 
 ### 轨道与记录内容 {#tracks}
 
-工具轨道（分割线、放大镜、视口等）显示了被记录控件随时间的变化情况。在采样点之间，编辑器会对数值进行插值，使播放效果与实时会话保持一致。放大镜将 **Capture Position**（图像上的捕获环位置）和 **Offset**（镜头相对捕获点的偏移）记录为两条独立轨道。
+编辑器把每个记录的工具显示为各自的轨道——分割线、放大镜、视口等——以便看清每个元素在会话中何时变化。在记录点之间，编辑器对数值插值，使回放与实时会话一致。对于放大镜，**Capture Position** 轨道记录 **捕获环** 在图像上的位置，**Offset** 轨道记录镜头相对捕获点的偏移量。要改变结果，在[时间轴](help://workspace.image_compare.video#timeline)上修剪或删除范围，并使用撤销或重做。
 
 ### 预览质量 {#preview-quality}
 
-{{tr:video.preview_quality}} 只会降低编辑器内预览的画质以提升响应速度，最终编码质量不受影响。
+**预览质量** 只降低编辑器内的预览，以保持编辑器响应；它不改变最终文件。
 
-- **{{tr:video.preview_quality_full}}** — 预览最清晰，对设备负载最大，为默认选项。
-- **{{tr:video.preview_quality_balanced}}** — 适合大多数会话的轻量折中方案。
-- **{{tr:video.preview_quality_performance}}** — 拖动时感觉卡顿时可选用的更轻量预览。
-- **{{tr:video.preview_quality_draft}}** — 预览速度最快，细节最少。
+- **完整 (1.0x)** — 最清晰的预览，但对机器负担最重；默认值。
+- **平衡 (0.75x)** — 更轻的折中，适合大多数会话。
+- **性能 (0.5x)** — 拖动感觉迟缓时使用。
+- **草稿 (0.25x)** — 最快的预览，细节最少。
 
 ### 导出视频或 GIF {#export-encode}
 
-- **画面** — 分辨率（可按需锁定宽高比）、帧率（不能高于录制帧率）、适配或裁剪；边缘留白时可选填充颜色。
-- **编码器** — 在标准标签页中选择容器格式与编码器；硬件编码器仅在系统支持时显示。
-- **质量** — CRF/CQ 或比特率及相关预设。
-- **路径** — 输出文件；收藏目录按钮可复用上次使用的文件夹。
-- **进度** — 可随时停止；日志会显示编码器的输出信息。
+- **画面** — 设置输出分辨率（可按需锁定宽高比）、帧率（不能超过录制帧率），以及图像是适配还是裁剪，并可为空边缘指定填充颜色。
+- **编解码器** — 在标准标签页中选择容器与编解码器；硬件编码器仅在系统提供时出现。
+- **质量** — 设置 CRF/CQ 值或比特率，并选择相关预设。
+- **路径** — 设置输出文件；收藏目录按钮复用上次偏好的文件夹。
+- **进度** — 显示编码进度；可以停止它，日志会报告编码器消息。
 
-:::figure{side=block width=630}
-![视频导出面板]({{img:workspace.image_compare.video.export_encode}})
-{{tr:image_compare.action.video_editor}} — 导出。
+:::figure{side=block width=100%}
+![视频导出面板](../assets/video_export.jpg)
+导出面板：左侧是帧预览，右侧是编码器设置。
 :::
 
-### {{tr:video.manual_cli}} {#manual-cli}
+### 手动命令行 {#manual-cli}
 
-当标准标签页无法满足需求时，{{tr:video.manual_cli}} 标签页允许直接传入原始 FFmpeg 输出参数。
+**手动命令行** 在标准标签页不够用时传入原始 FFmpeg 输出参数。它绕过编辑器对选项的校验，因此错误的参数会导致编码失败，而不会在界面中被拦截。
 
 ### 后续主题 {#next-topics}
 
-静态图像见[导出](help://export)。录制过程中差异模式与放大镜的表现与实时画布一致——见[对比](help://comparison)与[放大镜](help://magnifier)。
+静态图像见[导出](help://workspace.export)。录制过程中的差异模式与放大镜与实时画布一致——见[对比](help://workspace.image_compare.comparison)与[放大镜](help://workspace.image_compare.magnifier)。

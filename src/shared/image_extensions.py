@@ -37,3 +37,60 @@ def is_accepted_image_path(path) -> bool:
 
     p = path if isinstance(path, _Path) else _Path(str(path))
     return p.suffix.lower() in ACCEPTED_IMAGE_EXTENSIONS
+
+
+def is_loadable_image_path(path) -> bool:
+    """Return True if *path* is a loadable image file.
+
+    Single home for the ``accepted-extension ∧ is_file`` admission rule
+    (plan-cross-cutting-policy-2026-10-13, wave B1): every drop / dialog /
+    loading entry point calls this instead of re-composing the two checks.
+    The reducer stays the correctness gate; boundary call sites use this
+    only to fail fast.
+
+    Strictness (matches the strictest pre-B1 call site, the dialog-add
+    validator, which composed accepted-extension with is_file):
+
+    * directories → False (even when named ``*.png``);
+    * missing paths → False;
+    * broken symlinks → False;
+    * symlinks resolving to a real file → True (``Path.is_file`` follows
+      links);
+    * ``str`` and ``Path`` inputs both accepted; undecodable inputs and
+      filesystem errors → False.
+    """
+    from pathlib import Path as _Path
+
+    try:
+        p = path if isinstance(path, _Path) else _Path(str(path))
+    except Exception:
+        return False
+    if not is_accepted_image_path(p):
+        return False
+    try:
+        return bool(p.is_file())
+    except Exception:
+        return False
+
+
+def has_image_urls(mime) -> bool:
+    """Return True when *mime* carries at least one local image-file URL.
+
+    Single home for the DnD accept verdict (wave B1): non-local URLs
+    (``http://…``) are rejected even when the trailing path looks like an
+    image — the loaders only read local files (``QUrl.toLocalFile()`` is
+    ``""`` for remote URLs). Mirrors ``shared.image_drop``, which already
+    gates on ``QUrl.isLocalFile()``. Tab-level copies (e.g. MC
+    ``ui/drag_drop.has_image_urls``, B3-owned) should delegate here.
+    """
+    if mime is None or not mime.hasUrls():
+        return False
+    for url in mime.urls():
+        try:
+            if not url.isLocalFile():
+                continue
+        except Exception:
+            continue
+        if is_accepted_image_path(url.toLocalFile()):
+            return True
+    return False

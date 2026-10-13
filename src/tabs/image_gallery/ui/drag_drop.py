@@ -751,12 +751,47 @@ def _open_header_reset_menu(owner, header, event, controller=None) -> bool:
         from sli_ui_toolkit.widgets import ContextMenuAction as _CtxAction
     except Exception:
         return False
+    def _t(key: str, default: str) -> str:
+        for candidate in (ctrl, owner):
+            try:
+                fn = getattr(candidate, "_tr_ui", None)
+                if callable(fn):
+                    try:
+                        return str(fn(key, default))
+                    except Exception:
+                        pass
+                fn = getattr(candidate, "_tr", None)
+                if callable(fn):
+                    try:
+                        try:
+                            return str(fn(key, default))
+                        except TypeError:
+                            return str(fn(key))
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+        # Tab context fallback (widget/controller expose _context).
+        for candidate in (owner, ctrl):
+            try:
+                ctx = getattr(candidate, "_context", None)
+                if ctx is not None:
+                    fn = getattr(ctx, "_tr", None)
+                    if callable(fn):
+                        try:
+                            return str(fn(key, default))
+                        except TypeError:
+                            return str(fn(key))
+            except Exception:
+                pass
+        return default
+
     try:
         entries_list = []
         if has_reset:
-            entries_list.append(_CtxAction(_SERIES_RESET_ACTION_ID, "Reset manual series", icon="undo.svg"))
+            entries_list.append(_CtxAction(_SERIES_RESET_ACTION_ID, _t("image_gallery.series.reset", "Reset manual series"), icon="undo.svg"))
         if has_recluster:
-            entries_list.append(_CtxAction(_SERIES_RECLUSTER_ACTION_ID, "Re-cluster series", icon="sync.svg"))
+            entries_list.append(_CtxAction(_SERIES_RECLUSTER_ACTION_ID, _t("image_gallery.series.recluster", "Re-cluster series"), icon="sync.svg"))
         entries = tuple(entries_list)
     except Exception:
         return False

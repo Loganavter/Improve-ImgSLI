@@ -1,13 +1,21 @@
+"""Clipboard paste for image_compare — direction dialog + shared coordinator.
+
+Collect/split/download lives in ``shared.clipboard_paste``
+(``ClipboardPasteCoordinator``); this service only wires collect →
+direction dialog → coordinator → slot placement (keeps ``create_service``
+contract and the ``PasteDirectionOverlay`` open site stable).
+"""
+
 import logging
+from pathlib import Path
 
 from sli_ui_toolkit.i18n import tr
-from sli_ui_toolkit.workers import GenericWorker
 
-from shared.clipboard_images import (
+from shared.clipboard_images import download_images_from_urls
+from shared.clipboard_paste import (
+    ClipboardPasteCoordinator,
     collect_clipboard_image_items,
-    download_images_from_urls,
 )
-from shared.clipboard_paste import split_clipboard_items
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -60,15 +68,14 @@ class ClipboardService:
             def on_direction_selected(direction: str):
                 slot_number = 1 if direction in ("up", "left") else 2
 
-                local_files, urls = split_clipboard_items(items_to_process)
+                def on_ready(paths: list[Path]) -> None:
+                    if self.main_controller and self.main_controller.sessions:
+                        self.main_controller.sessions.load_images_from_paths(
+                            [str(p) for p in paths],
+                            slot_number,
+                        )
 
-                if local_files and self.main_controller and self.main_controller.sessions:
-                    self.main_controller.sessions.load_images_from_paths(
-                        local_files,
-                        slot_number,
-                    )
-
-                if urls:
+                def on_download_started(urls: list[str]) -> None:
                     if self.main_controller:
                         self.main_controller.error_occurred.emit(
                             tr(
@@ -76,21 +83,16 @@ class ClipboardService:
                                 self.store.settings.current_language,
                             )
                         )
-                    worker = GenericWorker(self.download_images_from_urls, urls, 15)
 
-                    if self.main_controller and self.main_controller.sessions:
-                        worker.signals.result.connect(
-                            lambda paths: (
-                                self.main_controller.sessions.load_images_from_paths(
-                                    paths,
-                                    slot_number,
-                                )
-                                if self.main_controller
-                                and self.main_controller.sessions
-                                else None
-                            )
-                        )
-                        self.main_controller.thread_pool.start(worker)
+                thread_pool = None
+                if self.main_controller:
+                    thread_pool = self.main_controller.thread_pool
+                coord = ClipboardPasteCoordinator(
+                    thread_pool=thread_pool,
+                    on_ready=on_ready,
+                    on_download_started=on_download_started,
+                )
+                coord.run_with_items(list(items_to_process))
 
             from services.system.paste_direction_overlay import (
                 show_paste_direction_overlay,

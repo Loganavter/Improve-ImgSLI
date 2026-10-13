@@ -1,50 +1,57 @@
 ## Configurações
 
-Comportamento do aplicativo em um diálogo: páginas nativas mais seções das abas do workspace (análise do comparador, credenciais de IA da galeria). Seções de abas ficam visíveis seja qual for a sessão ativa.
+Configurações é o diálogo das opções do aplicativo: páginas internas como **Geral** e **Aparência**, além de seções contribuídas pelas abas. As seções das abas ficam visíveis independentemente da sessão ativa.
 
 ### Abrir Configurações {#open-settings}
 
-- **Menu** — {{tr:menu.settings}} (`Ctrl+,`).
-- **Barra de ferramentas** — o botão de engrenagem.
-- **Find Action** — `Ctrl+Shift+P` ({{tr:menu.find_action}}) e o nome da página ({{tr:settings.general}}, {{tr:settings.appearance}}, {{tr:settings.keyboard}}, …).
-- **{{tr:action.palette.learn_more}}** — numa ação de configuração abre a âncora correspondente quando marcada.
+- **Arquivo** → **Configurações** (`Ctrl+,`).
+- **Localizar ação** — `Ctrl+Shift+P`, depois o nome de uma página (Geral, Aparência, Teclado, …).
+- **Saiba mais** — abre o tópico de ajuda de uma configuração quando existe.
 
 ### Pesquisar nas Configurações {#search}
 
-Um campo de pesquisa sobre a lista: resultados vêm uma linha por seção, não importa a profundidade do acerto (nome de controle, título de grupo, qualquer idioma). Ativar a linha abre a seção com as opções pulsando. `Esc` limpa a pesquisa e restaura a lista. A lista é redimensionável.
+Um campo de pesquisa fica acima da lista lateral. Cada seção correspondente aparece como uma única linha, por mais profundo que seja o acerto (nome de controle, título de grupo, qualquer idioma). Ativar uma linha abre essa seção com os acertos destacados. `Esc` limpa a pesquisa e restaura a lista lateral completa.
 
 ### Geral {#general}
 
-- **{{tr:label.language}}** — en / ru / zh / pt_BR.
-- **{{tr:label.theme}}** — auto / light / dark.
-- **{{tr:settings.system_notifications}}** — chave de notificações do SO.
-- **{{tr:settings.enable_debug_logging}}** — logs detalhados para depuração.
+- **Idioma** — o idioma da interface: en / ru / zh / pt_BR.
+- **Tema** — auto / light / dark.
+- **Notificações do sistema** — liga ou desliga as notificações do sistema operacional.
+- **Ativar registro de depuração** — grava logs detalhados para diagnóstico.
 
 ### Aparência {#interface}
 
-- **{{tr:settings.ui_mode}}** — botões {{tr:settings.ui_mode_beginner}} / {{tr:settings.ui_mode_advanced}} / {{tr:settings.ui_mode_expert}}; o padrão é iniciante, e a escolha da primeira abertura cai aqui.
-- **{{tr:settings.ui_font}}** — fonte nativa, padrão do sistema ou personalizada.
-- **{{tr:settings.ui_scale}}** — escala da interface (0,5–2,5).
-- **Limites** — tetos afins, como o comprimento máximo do nome exibido.
+- **Modo da UI** — **Iniciante**, **Avançado** ou **Especialista**; **Iniciante** é o padrão, e a escolha da primeira execução fica aqui.
+- **Fonte da UI** — interna, padrão do sistema ou uma família personalizada.
+- **Escala da interface** — redimensiona toda a interface (0,5–2,5).
+- **Comp. Máx. Nome (UI)** — limita o comprimento de um nome exibido.
 
 ### Desempenho {#performance}
 
-- **{{tr:settings.render_backend_label}}** — os backends oferecidos dependem da plataforma; trocar pode exigir reiniciar.
+- **Backend** — o backend de renderização; as opções dependem da plataforma, e a troca pode exigir reinício.
 
-### {{tr:workspace.session_types.image_compare}} {#image_compare}
+### Comparar imagens {#image_compare}
 
-Opções do comparador, sempre disponíveis:
+Opções de comparação de imagens, sempre disponíveis:
 
-- **Interpolação** — qualidade de reamostragem de zoom / lupa / laser.
-- **{{tr:settings.optimize_magnifier_movement}}** — movimento mais suave da lente, com o método de interpolação na mesma linha.
-- **{{tr:settings.magnifier_intersection_highlight}}** — destaque onde as lentes se cruzam.
-- **{{tr:settings.magnifier_auto_color_new_instances}}** — cores distintas para novas lentes.
-- **{{tr:image_compare.settings.recording_fps}}** — taxa de captura para o [Editor de vídeo](help://video).
-- **{{tr:settings.autocrop_black_borders_on_load}}** — corta bordas pretas ao carregar.
-- **Auto {{tr:ui.psnr}} / {{tr:ui.ssim}}** — leitura automática de métricas, desligada por padrão.
+- **Interpolação do Zoom** — a qualidade de reamostragem do zoom.
+- **Movimento da lupa** — mantém suave o seguimento da lente pelo cursor durante o arrasto; a linha **Suavização de laser** abaixo suaviza as guias da lupa. Cada linha tem um método próprio.
+- **Destaque vermelho para lupas sobrepostas** — enquanto uma lupa é arrastada, a parte do anel de captura escondida atrás de outras lupas é destacada; **Colorir novas lupas automaticamente** dá a cada nova lente uma cor distinta.
+- **FPS de Gravação** — a taxa de captura para o [Editor de vídeo](help://workspace.image_compare.video).
+- **Cortar automaticamente bordas pretas ao carregar** — corta as bordas pretas quando uma imagem é carregada.
+- **Calcular PSNR automaticamente** / **Calcular SSIM automaticamente** — mostram a métrica automaticamente; desligadas por padrão.
+
+### Galeria — IA {#image-gallery-ai}
+
+Os recursos de IA na [Galeria](help://workspace.image_gallery.triage) usam as configurações abaixo. Uma requisição precisa do interruptor ligado, de uma chave de API e de um modelo; a chave sozinha não basta. A chave é armazenada sem criptografia neste dispositivo.
+
+- **Ativar análise de imagem por IA** — liga ou desliga os recursos de IA.
+- **URL base da API** — o endereço do serviço de IA.
+- **Chave de API** — a credencial desse serviço.
+- **Nome do modelo** — o modelo que a IA usa nas requisições.
+- **Orçamento de tokens da resposta** e **Esforço de raciocínio** — limites da resposta: o teto de tokens (vazio = automático) e o quanto o modelo raciocina antes de responder.
+- **Redução da imagem (lado maior)** — o lado maior enviado ao modelo; **Original** mantém os bytes do próprio arquivo.
 
 ### Teclado {#keyboard}
 
-- **Remapear** — atalhos por dono: platform / {{tr:workspace.session_types.image_compare}} / {{tr:workspace.session_types.multi_compare}}.
-- **Redefinir** — um atalho ou todos.
-- **Fixos** — `WASD` e `Space` no canvas ficam fixos — ver [Atalhos](help://hotkeys).
+Os atalhos são agrupados por dono — **Plataforma**, depois um grupo por aba, por exemplo **Image Compare**. **Redefinir** restaura um atalho ou todos. As teclas fixas do canvas `WASD` e `Space` não podem ser remapeadas — veja [Atalhos de Teclado](help://platform.hotkeys).

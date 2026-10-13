@@ -1,18 +1,18 @@
 ## Multi Compare Overview
 
-One session compares many images in a layout grid with per-slot drops and focus mode.
+Multi Compare compares three or more images at once, each image in its own **slot** — a cell of the shared grid.
 
 ### Open a session {#open-session}
 
-{{tr:workspace.session_types.multi_compare}} in the Session Picker or {{tr:action.workspace.new_multi_compare}} via {{tr:menu.find_action}} (`Ctrl+Shift+P`). See [Workspace Tabs](help://session_picker).
+Open **Session Picker** and choose the **Multi Compare** card, or press `Ctrl+Shift+P` and run **New Multi Compare Session** in **Find Action**. Add images with `Ctrl+O` (**Add Images**), drop files from the file manager onto the grid, or paste from the clipboard; each new image splits the largest slot along its longer side. A **divider** is the line between two slots — drag one to change the room each side takes. See [Session Picker](help://workspace.session_picker) for the session types and recent projects.
 
 ### What you can do {#capability-map}
 
-- [Layouts and slots](help://mc_layouts) — cells, gap splits, dividers, actions.
-- [Viewing and focus](help://mc_viewing) — focus, zoom, pan, labels, crop.
-- [Save and export](help://mc_export) — quick save, save dialog, sessions.
+- [Multi Compare Layouts](help://workspace.multi_compare.layouts) — how slots fill the grid, how a drop in a gap splits a cell, and how **Grid Visibility**, **Grid Color**, and **Grid Lines** style the dividers.
+- [Multi Compare Viewing](help://workspace.multi_compare.viewing) — focus one slot, share zoom and pan, style the slot labels, and turn crop on per slot.
+- [Multi Compare Export](help://workspace.multi_compare.export) — **Quick Save** or the save dialog, and what a session remembers.
 
 :::figure{side=block width=320}
-![Multi Compare grid]({{img:workspace.multi_compare.overview.layouts}})
-{{tr:workspace.session_types.multi_compare}} — grid / gap-drop.
+![Multi Compare grid](../assets/layouts.jpg)
+Three slots side by side, divided by vertical lines, each slot carrying a file-name label.
 :::

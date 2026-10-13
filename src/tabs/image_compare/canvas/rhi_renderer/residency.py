@@ -37,6 +37,10 @@ from engine.frame.context import BudgetStats, make_ids
 from engine.cache import residency as _engine_residency
 from engine.cache import tile_upload_budget as _tile_upload_budget
 from engine.gpu.base_images_pass import BaseImagesPass, BaseImagesSpecHooks
+# Single owner of the GPU tile byte budget: engine/gpu/tiled_image_view.py
+# (same 2 GiB value as the removed literal fork — no behavior change).
+# Re-exported here under the same name for existing importers.
+from engine.gpu.tiled_image_view import _TILE_CACHE_BUDGET_BYTES  # noqa: F401
 
 from tabs.image_compare.canvas.loupe_trace import frame_context_from_widget
 
@@ -86,8 +90,8 @@ except Exception:  # pragma: no cover - import-time fallback
 # (see tile_constants.py's LIVE_TILE_EXTENT comment for why this used to
 # need 8 GB+ at the old 8192px tile size). The budget must exceed the
 # visible working set or eviction thrashes (evict + re-crop + re-upload
-# every frame).
-_TILE_CACHE_BUDGET_BYTES = 2 * 1024 * 1024 * 1024
+# every frame). Value owned by engine/gpu/tiled_image_view.py (imported
+# above); never restate the literal here.
 # docs/dev/rendering/tile-rendering-system.md Phase 2 -- byte budget over the
 # *full-resolution* host-side QImage residents in
 # ``widget.runtime_state._texture_upload_cache`` (stored_0/1, source_0/1,

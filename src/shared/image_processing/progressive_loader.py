@@ -49,7 +49,7 @@ from shared.image_processing.jxl_header import read_jxl_header_dimensions
 def _ensure_supported_dimensions(width: int, height: int, image_path: str, ignore_limit: bool = False) -> None:
     if ignore_limit:
         return
-    max_dim = int(getattr(AppConstants, "MAX_SUPPORTED_IMAGE_DIMENSION", 65536))
+    max_dim = max_supported_image_dimension()
     if max(int(width), int(height)) > max_dim:
         raise ImageSizeLimitError(
             f"Image is too large for the installed decoder: {width}x{height} "
@@ -95,6 +95,53 @@ def pyvips_can_stream(path: str | os.PathLike) -> bool:
         return False
     ext = os.path.splitext(os.fspath(path))[1].lower()
     return bool(ext) and ext in _vips_suffixes()
+
+
+def max_supported_image_dimension() -> int:
+    """Single read of the decode-backend dimension bound.
+
+    One home for the ``65536`` literal: every consumer goes through this
+    (or the predicates below) instead of re-stating
+    ``AppConstants.MAX_SUPPORTED_IMAGE_DIMENSION`` inline.
+    """
+    return int(getattr(AppConstants, "MAX_SUPPORTED_IMAGE_DIMENSION", 65536))
+
+
+def needs_bounded_decode(image_path: str | os.PathLike) -> bool:
+    """Whether ``image_path`` decodes via the PIL/imagecodecs full-frame path.
+
+    ``False`` means libvips can stream the file's own format with the
+    installed build (:func:`pyvips_can_stream`) — the streaming path spills
+    strips straight to the memmap with no full-frame decode buffer, so no
+    dimension bound applies. ``True`` means the bounded full-frame backend
+    will run (including the stream-failure fallback in
+    ``TiledPixelStore.from_path``, which must still enforce the bound).
+    """
+    return not pyvips_can_stream(image_path)
+
+
+def is_supported_image_dimension(
+    width: int, height: int, image_path: str | os.PathLike | None = None
+) -> bool:
+    """One home for the image-dimension rule (cross-cutting policy owner).
+
+    Returns ``True`` when a ``width`` x ``height`` image may be handled:
+    positive dims within :func:`max_supported_image_dimension` — unless
+    ``image_path`` is given and streams (:func:`needs_bounded_decode` is
+    ``False``), in which case the streaming exception applies and only
+    positivity is required. Raw-buffer sites (embedded pixel caches, which
+    memmap with no decode buffer) pass no path, so the bound applies.
+    """
+    try:
+        w, h = int(width), int(height)
+    except (TypeError, ValueError):
+        return False
+    if w <= 0 or h <= 0:
+        return False
+    if image_path is not None and not needs_bounded_decode(image_path):
+        return True
+    return max(w, h) <= max_supported_image_dimension()
+
 
 def should_use_progressive_load(
     file_path: str, file_size_bytes: int | None = None

@@ -1,58 +1,59 @@
 ## 放大镜
 
-放大镜采样对比图像对中的某一区域，在画布上显示放大视图——呈现分割线之外的局部细节。
+放大镜放大所比较的两张图像中选定的一块区域，以便查看画布上过小的细节。
 
 ### 启用 {#enabling}
 
-- **开关** — 工具栏上的 {{tr:image_compare.action.magnifier}}，或按 `M`。
-- **放置** — 在图像上点击或拖动以设置捕获区域（红色圆环）。
-- **圆环** — 捕获圆环的大小与颜色遵循镜头样式设置。
+- **切换放大镜**（`M`）— 显示或隐藏画布上的镜头。本页其他控件仅在镜头显示时生效。
+- **捕获环** — 镜头放大区域周围的红色圆环。在图像上单击或拖动即可移动该区域。
 
 :::figure{side=block width=280}
-![放大镜镜头]({{img:workspace.image_compare.magnifier.enabling}})
-{{tr:image_compare.action.breadcrumb.toolbar}} → {{tr:image_compare.action.breadcrumb.magnifier}}。
+![放大镜镜头](../assets/magnifier.jpg)
+画布上放大镜的两半，以及图像上的红色 **捕获环**。
 :::
 
 ### 大小与移动 {#size-and-movement}
 
-- **镜头大小** — {{tr:image_compare.label.magnifier_size}}。
-- **捕获大小** — {{tr:image_compare.label.capture_size}}（决定采样多大范围的源图像）。
-- **移动** — 镜头处于活动状态时使用 `WASD`；两半分离时用 `QE` 调整间距。
-- **速度** — 放大镜面板显示时可在其中调整。
+- **放大镜大小 (%)** — 镜头在画布上绘制的尺寸。
+- **捕捉大小 (%)** — 镜头取样的图像范围；数值越大，镜头里覆盖的图像越多，放大倍数越低。
+- 镜头显示时，`WASD` 让它在图像上移动，`QE` 在**两半**分开时改变它们之间的距离。两半是镜头的两个部分；各显示一张所比较的图像。
+- **移动速度** — 按住 `WASD` 时镜头移动的快慢；该滑块位于放大镜面板上，与镜头一同显示。
 
 ### 冻结 {#freeze}
 
-{{tr:image_compare.action.freeze}}（`F`）将镜头固定在屏幕上；键盘微调继续有效，鼠标指针仍可自由移动。
+**冻结放大镜**（`F`）把镜头固定在画布上的当前位置，使 **捕获环** 移动时镜头不再跟随。再次按 `F` 释放镜头。
 
 ### 分割线、辅助线与颜色 {#guides-and-colors}
 
-- **方向** — {{tr:image_compare.action.magnifier_orientation}}。
-- **内部分割线** — {{tr:image_compare.action.magnifier_divider_combined}}（滚轮 / 右键）。
-- **可见性** — {{tr:image_compare.action.magnifier_divider_visible}} 与 {{tr:image_compare.action.magnifier_guides}}，以及它们的宽度。
-- **颜色** — {{tr:image_compare.action.magnifier_colors}} 用于设置每个实例的轮廓颜色。
+- **放大镜方向** — 在并排与上下堆叠之间切换两半。
+- **放大镜分割线** — 设置镜头内部分割的方向、粗细与颜色（滚轮 / 右键）。
+- **放大镜分割线可见性** 与 **放大镜辅助线** — 显示或隐藏该分割线与辅助线；辅助线的粗细单独设置。
+- **放大镜颜色** — 设置镜头轮廓的颜色。
 
 ### 多个实例 {#instances}
 
-- **添加 / 移除** — {{tr:image_compare.action.magnifier_instances}} 可同时观察多个区域。
-- **自动配色** — 在设置中开启该选项后，新增的镜头实例会自动获得不同颜色。
+- **放大镜实例** — 增加或移除镜头，以同时观察多个区域。
+- **自动为新放大镜着色** — 在[设置](help://platform.settings#image_compare)中开启该选项后，每个新镜头都有各自的轮廓颜色。
 
 ### 合并模式 {#combined-mode}
 
-- **合并** — 当两半均可见且间距收敛到合并阈值时，它们会合并为一个镜头。
-- **内部分割** — 在镜头内用鼠标右键拖动。
-- **单侧预览** — `Space+Shift` 在合并镜头内强制显示其中一侧。
+当两半都保持可见、且它们的间距收拢到合并阈值时，它们合并成一个镜头。
+
+- **内部分割线** — 在合并后的镜头内用鼠标右键拖动，移动两半之间的分割线。
+- **单侧预览** — `Shift` + `Space` 临时让一侧填满合并后的镜头。
 
 :::figure{side=block width=280}
-![合并放大镜]({{img:workspace.image_compare.magnifier.combined_mode}})
-{{tr:image_compare.action.magnifier}} 合并模式。
+![合并放大镜](../assets/magnifier_combined.jpg)
+合并后的镜头：两半合为一个。
 :::
 
-若需要在不使用镜头的情况下进行整幅画布对比，见[对比](help://comparison)。
+若要在不使用镜头的情况下进行整幅画布对比，见[对比](help://workspace.image_compare.comparison)。
 
 ### 影响放大镜的设置 {#related-settings}
 
-放大镜相关选项见[设置](help://settings#image_compare)：
+放大镜相关选项见[设置](help://platform.settings#image_compare)：
 
-- 优化放大镜移动及其插值方式
-- 镜头重叠时的高亮显示
-- 新增实例的自动配色
+- **放大镜移动** — 拖动时让镜头跟随指针更平滑。
+- **激光平滑** — 平滑放大镜的辅助线。
+- **放大镜重叠红色高亮** — 标出镜头被其他镜头重叠的部分。
+- **自动为新放大镜着色** — 给每个新镜头各自的轮廓颜色。

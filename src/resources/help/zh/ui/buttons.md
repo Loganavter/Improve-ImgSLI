@@ -1,70 +1,63 @@
 ## 按钮与控件
 
-工具栏位于对比会话画布上方，承载该会话的工具：分割线、视图模式、放大镜、录制。列表、添加/保存以及设置齿轮则在周围的窗口边栏中。
+**工具栏** 承载当前会话的工具，而 **UI模式** 设置决定有多少操作共用一个控件。
 
 ### 工具栏 {#toolbar}
 
-- **工具栏** — 画布上方的一排图标控件。
-- **内容** — 切换、数值微调，以及为当前会话类型打开面板或对话框的按钮。
-- **疏密** — 取决于 {{tr:settings.ui_mode}}（首次启动引导或[设置 → 外观](help://settings#interface)）。
+**工具栏** 是当前会话的一排图标控件。每个控件要么开启或关闭某项功能，要么微调数值，要么打开面板或对话框。控件集合由标签页提供，因此切换标签页时这排控件会改变。
 
 :::figure{side=block height=107}
-![会话工具栏]({{img:ui.buttons.toolbar}})
-画布上方的工具栏。
+![会话工具栏](../../assets/ui/toolbar.jpg)
+画布上方的工具栏；图标组合随当前会话变化。
 :::
 
 ### 界面模式 {#ui-modes}
 
-同一套工具在不同 {{tr:settings.ui_mode}} 下布局不同。首次启动引导设置一次，之后在[设置 → 外观](help://settings#interface)中更改。
+同一套工具出现在每个 **UI模式** 中，区别只在布局。每种模式的控件越少，点击越少，但每个控件上堆叠的组合越多。可在首次运行时选择模式，之后在 [设置](help://platform.settings#interface) → **外观** 中更改。
 
-### {{tr:settings.ui_mode_beginner}} {#mode-beginner}
+#### 初学者 {#mode-beginner}
 
-更多独立按钮 — 一个控件 ≈ 一件事。
+默认模式：每个控件只做一件事，因此工具分散到更多单一用途的按钮上。
 
 :::figure{side=block height=65}
-![初级工具栏布局]({{img:ui.buttons.mode_beginner}})
-{{tr:settings.ui_mode}} → {{tr:settings.ui_mode_beginner}}。
+![初学者工具栏布局](../../assets/ui/mode_beginner.png)
+初学者布局：同一套工具分散在更多单一用途的按钮上。
 :::
 
-### {{tr:settings.ui_mode_advanced}} {#mode-advanced}
+#### 高级 {#mode-advanced}
 
-图标更少。部分控件已把单击与滚轮组合在一起（例如方向 + 粗细）。
+图标更少。部分控件把短按与滚轮组合起来——例如方向与粗细共用一个控件。
 
 :::figure{side=block height=65}
-![高级工具栏布局]({{img:ui.buttons.mode_advanced}})
-{{tr:settings.ui_mode}} → {{tr:settings.ui_mode_advanced}}。
+![高级工具栏布局](../../assets/ui/mode_advanced.png)
+高级布局：相关控件共用一个图标，把点击与滚轮组合在一起。
 :::
 
-### {{tr:settings.ui_mode_expert}} {#mode-expert}
+#### 专家 {#mode-expert}
 
-最紧凑：同一控件组合单击、滚轮及其他鼠标按键。
+最密集的一排：单个控件组合了点击、滚轮和其他鼠标按键。
 
 :::figure{side=block height=65}
-![专家工具栏布局]({{img:ui.buttons.mode_expert}})
-{{tr:settings.ui_mode}} → {{tr:settings.ui_mode_expert}}。
+![专家工具栏布局](../../assets/ui/mode_expert.png)
+专家布局：图标最少，每个都组合了点击、滚轮和其他鼠标按键。
 :::
 
 ### 同一控件上的多种操作 {#multi-action}
 
-在 {{tr:settings.ui_mode_advanced}}，尤其是 {{tr:settings.ui_mode_expert}} 中，同一图标经常对应多项操作：
+在 **高级**，尤其是 **专家** 模式下，同一个图标经常执行不止一项操作：
 
 - **单击** — 主要操作或切换。
-- **滚轮** — 微调数值（分割线粗细、放大镜大小等），无需打开对话框。
-- **长按** — 部分列表按钮的强化操作（清空整列表；交换两侧列表）。
-- **其他鼠标按键**（专家） — 例如在紧凑分割线控件上右键取色、中键重置。
+- **滚轮** — 无需打开对话框即可微调数值。
+- **长按** — 部分列表按钮上的强化操作（清空整个列表；交换两个列表）。
+- **其他鼠标按键** — 在 **专家** 模式下，例如右键取色，或在紧凑的分割线控件上中键隐藏或恢复分割线。
 
-{{tr:settings.ui_mode_beginner}} 会把这些任务拆成独立按钮，而不是叠在同一个控件上。
+**初学者** 模式把「点击 + 滚轮」的组合拆到各自独立的单一用途控件上；列表按钮的长按在所有模式下都可用。
 
 :::figure{side=block height=44}
-![列表按钮上的长按]({{img:ui.buttons.long_press}})
-列表按钮 — 单击与长按。
+![列表按钮上的长按](../../assets/ui/long_press.png)
+列表按钮：单击执行常规操作，长按执行强化操作。
 :::
-
-### 产品示例 {#examples}
-
-- **{{tr:workspace.session_types.image_compare}}** — 在更紧凑的模式下，可在同一控件上滚动调整分割线宽度或放大镜大小；列表按钮支持长按清空 / 交换。详情见[对比](help://comparison)；列表见[列表与面板](help://ui.lists_flyouts)。
-- **{{tr:workspace.session_types.multi_compare}}** — 网格线粗细 / 可见性在 `D` 上。详情见[多图对比](help://multi_compare)。
 
 ### 按名称查找控件 {#find-action}
 
-按 `Ctrl+Shift+P`（{{tr:menu.find_action}}），输入标签名称的一部分，然后运行该操作；若该行带有帮助主题，可打开 {{tr:action.palette.learn_more}} 或按 `Ctrl+Enter`。
+**查找操作**（`Ctrl+Shift+P`）能按标签的一部分找到每一项操作，包括没有可见按钮的操作。当某行带有帮助主题时，在该行按 `Ctrl+Enter` 会打开 **了解更多**。

@@ -1,12 +1,8 @@
 {
   "image_gallery": {
     "tab_name": "Galeria",
-    "pick_folder": "Escolher pasta…",
-    "filter_placeholder": "Filtrar por tag/descrição…",
     "empty_state": "Escolha uma pasta para ver as imagens aqui.",
     "empty_view": "Nenhuma imagem para exibir.",
-    "analyze": "Analisar",
-    "analyzing": "Analisando…",
     "activity": {
       "queued": "Na fila",
       "claimed": "Iniciando",
@@ -54,12 +50,6 @@
       "breadcrumb": {
         "triage": "Triagem"
       }
-    },
-    "card": {
-      "set_as_source": "Definir como origem",
-      "make_best": "Tornar melhor",
-      "reject": "Rejeitar",
-      "compare": "Comparar"
     },
     "ask_ai": {
       "action": "IA…",

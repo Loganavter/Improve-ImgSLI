@@ -76,16 +76,13 @@ _CLEAR_OPAQUE = QColor(0, 0, 0, 255)
 # a transparent widget shows the windows behind it as "garbage".
 _NO_FRAME_TIMEOUT_MS = 1500
 
-# Host decode cap: the letterbox only needs framebuffer resolution; a full
-# 40k decode here would repeat the QLabel-path OOM this canvas replaces.
-_DECODE_EDGE_CAP = 2048
-
-# Demand full-res cap: the background full store is disk-backed (memmap),
-# but still bounded — 4096^2x4B = 64 MiB spill + ~1/3 pyramid overhead,
-# and 4x linear headroom over the 1024 coarse so wheel zoom stays sharp
-# to ~4x. Huge/untracked sources fail open to coarse-only (no behavior
-# change for them) — same thinking as _PREVIEW_FULL_DECODE_EDGE.
-_QL_FULL_EDGE_CAP = 8192
+# Decode caps owned by services/decode_policy.py (single home); the
+# _DECODE_EDGE_CAP / _QL_FULL_EDGE_CAP aliases below keep historic names.
+from tabs.image_gallery.services.decode_policy import (
+    PREVIEW_FULL_DECODE_EDGE as _DECODE_EDGE_CAP,
+    QL_FULL_EDGE_CAP as _QL_FULL_EDGE_CAP,
+    exceeds_edge,
+)
 
 # Dwell pre-warm: an item continuously shown past this window builds the
 # needed levels even at zoom 1.0 (singleShot, generation-guarded — a walk
@@ -971,7 +968,7 @@ class QuickLookCanvasWidget(QRhiWidget):
             except Exception:
                 ok_dims = False
             try:
-                over = (not ok_dims) or max(int(dims[0]), int(dims[1])) > int(_QL_FULL_EDGE_CAP)
+                over = (not ok_dims) or exceeds_edge(dims[0], dims[1], _QL_FULL_EDGE_CAP)
             except Exception:
                 over = True
             if over:
@@ -1786,8 +1783,7 @@ class QuickLookCanvasWidget(QRhiWidget):
             return None
         try:
             # Never hold a 40k host image for a ~640px pane: downscale once.
-            edge = max(int(image.width()), int(image.height()))
-            if edge > _DECODE_EDGE_CAP and edge > 0:
+            if exceeds_edge(image.width(), image.height(), _DECODE_EDGE_CAP):
                 small = image.scaled(
                     _DECODE_EDGE_CAP,
                     _DECODE_EDGE_CAP,

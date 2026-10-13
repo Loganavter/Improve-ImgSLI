@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from shared.image_extensions import ACCEPTED_IMAGE_EXTENSIONS as _IMAGE_EXTENSIONS
+from shared.image_extensions import is_accepted_image_path, is_loadable_image_path
 from tabs.image_compare.debug import ic_dnd_debug as _dnd_log
 
 logger = logging.getLogger("ImproveImgSLI")
@@ -18,7 +18,9 @@ logger = logging.getLogger("ImproveImgSLI")
 def accepts_drop(paths: list[Path]) -> bool:
     _dnd_log("accepts_drop: %d paths %r", len(paths), paths[:3])
     for p in paths:
-        ok = p.suffix.lower() in _IMAGE_EXTENSIONS
+        # Suffix-only accept verdict (no is_file stat — dragEnter must stay
+        # cheap); the loadable predicate gates the actual intake below.
+        ok = is_accepted_image_path(p)
         if ok:
             _dnd_log("  accepts_drop: %s suffix=%s -> True", p, p.suffix.lower())
             return True
@@ -202,7 +204,7 @@ def handle_drop(tab, paths: list[Path], hint: dict | None = None) -> bool:
             getattr(main_window, "presenter", None),
         )
         return False
-    image_paths = [str(p) for p in paths if p.suffix.lower() in _IMAGE_EXTENSIONS]
+    image_paths = [str(p) for p in paths if is_loadable_image_path(p)]
     _dnd_log("handle_drop: filtered %d/%d image_paths %r", len(image_paths), len(paths), image_paths[:3])
     if not image_paths:
         _dnd_log("handle_drop: no supported image paths -> False")

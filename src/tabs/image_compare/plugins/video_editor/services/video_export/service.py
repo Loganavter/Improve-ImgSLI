@@ -43,6 +43,7 @@ from tabs.image_compare.plugins.video_editor.services.video_export.render_loop i
 from tabs.image_compare.plugins.video_editor.services.video_snapshot_rendering import (
     SnapshotFrameRenderer,
 )
+from shared.video_policy import CrfPolicy
 
 logger = logging.getLogger("ImproveImgSLI")
 _vrlog = logging.getLogger("ImproveImgSLI.video_render")
@@ -912,7 +913,7 @@ class VideoExporterService:
                 "container": "mp4",
                 "codec": "h264",
                 "quality_mode": "crf",
-                "crf": 20,
+                "crf": CrfPolicy.DEFAULT,
                 "preset": "medium",
             }
 

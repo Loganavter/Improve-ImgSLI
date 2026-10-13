@@ -6,7 +6,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-import tabs.multi_compare.services.clipboard as clipboard_mod
+import shared.clipboard_paste as paste_mod
 from shared.clipboard_images import _dedupe_clipboard_items
 from tabs.multi_compare.services.clipboard import ClipboardService
 
@@ -22,7 +22,7 @@ def test_paste_starts_pending_dnd_placement(monkeypatch, tmp_path):
     image_path.write_bytes(b"not-a-real-png")
 
     monkeypatch.setattr(
-        clipboard_mod,
+        paste_mod,
         "collect_clipboard_image_items",
         lambda: [str(image_path)],
     )
@@ -43,7 +43,7 @@ def test_paste_does_not_use_direction_overlay(monkeypatch, tmp_path):
     image_path.write_bytes(b"x")
 
     monkeypatch.setattr(
-        clipboard_mod,
+        paste_mod,
         "collect_clipboard_image_items",
         lambda: [str(image_path)],
     )
@@ -117,3 +117,50 @@ def test_pending_paste_without_side_or_root_is_ignored():
     widget._finalize_pending_paste(None, None, False)
 
     assert emitted == []
+
+
+def test_paste_empty_clipboard_emits_no_image(monkeypatch):
+    monkeypatch.setattr(paste_mod, "collect_clipboard_image_items", lambda: [])
+
+    controller = MagicMock()
+    store = SimpleNamespace(settings=SimpleNamespace(current_language="en"))
+    main = SimpleNamespace(error_occurred=MagicMock(), thread_pool=None)
+
+    service = ClipboardService(store, main, controller)
+    assert service.paste_image_from_clipboard() is False
+
+    controller.begin_paste_placement.assert_not_called()
+    assert main.error_occurred.emit.called
+
+
+def test_paste_url_download_goes_through_coordinator(monkeypatch, tmp_path):
+    """URL paste resolves via ClipboardPasteCoordinator (sync fallback).
+
+    Local file + URL → loading toast emitted, downloaded temp file combined
+    with the local, single ``begin_paste_placement`` call.
+    """
+    local = tmp_path / "a.png"
+    local.write_bytes(b"not-a-real-png")
+    downloaded = tmp_path / "url.png"
+    downloaded.write_bytes(b"downloaded")
+
+    monkeypatch.setattr(
+        paste_mod,
+        "collect_clipboard_image_items",
+        lambda: [str(local), "https://x/y.png"],
+    )
+    monkeypatch.setattr(
+        paste_mod, "download_images_from_urls", lambda urls, timeout: [str(downloaded)]
+    )
+
+    controller = MagicMock()
+    store = SimpleNamespace(settings=SimpleNamespace(current_language="en"))
+    main = SimpleNamespace(error_occurred=MagicMock(), thread_pool=None)
+
+    service = ClipboardService(store, main, controller)
+    assert service.paste_image_from_clipboard() is True
+
+    controller.begin_paste_placement.assert_called_once_with(
+        [Path(str(local)), Path(str(downloaded))]
+    )
+    assert main.error_occurred.emit.called

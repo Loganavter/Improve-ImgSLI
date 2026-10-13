@@ -106,7 +106,7 @@ def register_actions(tab, registry) -> None:
                 owner_tab=tab.session_type,
                 topic="triage",
                 shortcut=None,
-                help_page="gallery_triage",
+                help_page="workspace.image_gallery.triage",
                 run=lambda: getattr(ctrl, "keep_best_of_series", lambda: None)(),
                 target=ActionTarget(widget=wid) if wid is not None else None,
             )
@@ -121,7 +121,7 @@ def register_actions(tab, registry) -> None:
                 owner_tab=tab.session_type,
                 topic="triage",
                 shortcut=None,
-                help_page="gallery_triage",
+                help_page="workspace.image_gallery.triage",
                 run=lambda: getattr(ctrl, "show_clean_review", lambda: None)(),
                 target=ActionTarget(widget=wid) if wid is not None else None,
             )
@@ -143,7 +143,7 @@ def register_actions(tab, registry) -> None:
                 owner_tab=tab.session_type,
                 topic="triage",
                 shortcut=None,
-                help_page="gallery_triage",
+                help_page="workspace.image_gallery.triage",
                 run=_run_triage,
                 target=ActionTarget(widget=wid) if wid is not None else None,
             )
@@ -184,7 +184,7 @@ def register_actions(tab, registry) -> None:
                 owner_tab=tab.session_type,
                 topic="triage",
                 shortcut=None,
-                help_page="gallery_quality",
+                help_page="workspace.image_gallery.quality",
                 run=_set_as_source,
                 target=ActionTarget(widget=wid) if wid is not None else None,
             )

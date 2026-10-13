@@ -30,9 +30,7 @@ class MultiCompareContextMenuProvider:
         slot = self._slot(request)
         if slot is None:
             return ()
-        can_duplicate = self._has_pixels(slot) and (
-            len(self.widget.state.slots) < self.widget.state.max_slots
-        )
+        can_duplicate = self._has_pixels(slot)
         return (
             ContextMenuAction(
                 "multi_compare.rename_slot",
@@ -122,11 +120,11 @@ class MultiCompareContextMenuProvider:
         return getattr(canvas, "pixel_cache", None)
 
     def _has_pixels(self, slot: CompareSlot) -> bool:
-        """B1: tier presence resolves from the session cache, not the slot."""
+        """B3: single shared gate — delegates to ``slot_has_pixels``."""
         try:
-            from tabs.multi_compare.pipeline.cache import resolve_slot_source
+            from tabs.multi_compare.pipeline.cache import slot_has_pixels
 
-            return resolve_slot_source(self._cache(self.widget), slot) is not None
+            return slot_has_pixels(self._cache(self.widget), slot)
         except Exception:
             return False
 
@@ -170,28 +168,16 @@ class MultiCompareContextMenuProvider:
             ctrl = getattr(self.widget, "_controller", None)
         except Exception:
             ctrl = None
-        report = getattr(ctrl, "report_user_error", None)
-        if callable(report):
-            try:
-                report(message)
-                return
-            except Exception:
-                pass
+        try:
+            from tabs._shared.user_errors import emit_user_error
+
+            emit_user_error(ctrl if ctrl is not None else self.widget, message)
+            return
+        except Exception:
+            pass
         import logging as _logging
 
         _logging.getLogger("ImproveImgSLI").warning("mc menu: %s", message)
-
-    def _grid_full_message(self) -> str:
-        try:
-            max_slots = self.widget.state.max_slots
-        except Exception:
-            max_slots = None
-        default = (
-            f"Comparison grid is full ({max_slots} images max)"
-            if max_slots is not None
-            else "Comparison grid is full"
-        )
-        return self._tr("msg.compare_grid_full", default)
 
     def _rename_slot(self, slot: CompareSlot) -> None:
         text, ok = AppTextInputDialog.get_text(
@@ -211,16 +197,6 @@ class MultiCompareContextMenuProvider:
                     "Nothing to duplicate — this slot has no loaded image.",
                 )
             )
-            return
-        try:
-            full = len(self.widget.state.slots) >= self.widget.state.max_slots
-        except Exception:
-            full = False
-        if full:
-            # entries_for disables the action when full, but palette/keyboard
-            # invocation bypasses `enabled` — signal instead of arming a
-            # duplicate that begin_pending_duplicate would silently drop.
-            self._fail(self._grid_full_message())
             return
         self.widget.begin_pending_duplicate(slot.id)
 

@@ -26,6 +26,7 @@ from core.state_management.actions import (
     SetZoomInterpolationMethodAction,
 )
 from shared_toolkit.ui.managers.font_manager import FontManager
+from shared.video_policy import FpsPolicy, clamp_fps
 from ui.theming import reapply_application_theme, refresh_application_styles
 
 from .models import SettingsDialogData
@@ -330,11 +331,12 @@ class SettingsApplicationService(QObject):
             dispatcher.dispatch(SetUIModeAction(data.ui_mode))
             self._emit_ui_mode_changed(data.ui_mode)
 
+        fps = clamp_fps(data.video_recording_fps)
         if (
-            getattr(self.store.settings, "video_recording_fps", 60)
-            != data.video_recording_fps
+            getattr(self.store.settings, "video_recording_fps", FpsPolicy.DEFAULT)
+            != fps
         ):
-            dispatcher.dispatch(SetVideoRecordingFpsAction(data.video_recording_fps))
+            dispatcher.dispatch(SetVideoRecordingFpsAction(fps))
 
         prev_backend = getattr(self.store.settings, "rhi_backend", "default") or "default"
         new_backend = (data.rhi_backend or "default").strip().lower()

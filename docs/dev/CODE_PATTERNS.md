@@ -139,6 +139,46 @@ not the tab.
 
 ---
 
+## Pattern: one home for a cross-cutting policy (limits, admission, guard text)
+
+**Symptom**: the same rule — a numeric limit, an "is this allowed?" predicate,
+or the text shown when it is not — is re-stated at every entry point (reducer,
+drag & drop, paste, duplicate, dialog, context menu) instead of living once.
+Changing the rule means editing N modules and their tests, and the copies drift
+silently (one site drops an `is_file` check, another clamps on save but not on
+load). The tests then pin the *copy's* surface (`provider._has_pixels`,
+`tab.accepts_drop`) rather than the rule.
+
+**Rule**: a cross-cutting rule gets exactly one owner; every entry point calls
+it and never restates the literal or the predicate.
+
+- **Numeric policy** → a frozen `*Policy` dataclass (or a named-constants
+  module) in `shared/` or the owning engine/service, exposing `DEFAULT_*`,
+  `MIN_*`/`MAX_*` and a `clamp_*()` / `is_*()` predicate. Both the load and the
+  save path clamp to the same band — see [CONTRACTS.md](CONTRACTS.md) "Dogma 6 —
+  range discipline" (save→load must be a fixpoint). References:
+  `engine/cache/pyramid_demand.py` (`DemandPolicy`),
+  `engine/gpu/tiled_image_view.py` (`LodPolicy`),
+  `shared_toolkit/ui/layout_sizing.py` (`GeometryApplyPolicy`).
+- **Admission / validation** → one predicate in the shared seam, called by
+  every entry point. The reducer stays the correctness gate; boundary checks
+  exist only for fail-fast + user messaging and must call the same predicate.
+  Reference: `shared/untested_export_resolution.py` (+ `export_warning_state.py`)
+  — one rule, one shared dialog, shared suppression state, two call sites.
+- **Guard / error text** → one builder + one i18n key, owned next to the rule;
+  boundaries call it. Do not re-derive the wording or keep a second copy of the
+  key under another namespace.
+
+**Anti-patterns**
+
+- Copying the literal into user-facing help/docs (`16384` in four help pages)
+  instead of naming the constant.
+- Clamping at the consumer but not on save/load (`video_recording_fps`, `crf`).
+- Tests that assert each call site's copy instead of the policy — put one
+  table-of-cases test on the owner.
+
+---
+
 ## Related dogmas (already documented, cross-referenced here on purpose)
 
 - **No implied lookups** — don't substitute one hidden lookup

@@ -5,6 +5,7 @@ Every function here takes the controller as its first argument; the actual
 background file write lives in ``services/save_flow.py`` +
 ``services/image_export.py``, this module only prepares the composed
 ``QImage``/options dict that gets handed to it.
+Audit-Meta: pattern=thin-owner reason="Save admission gate (has_exportable_pixels refusal, policy B4) shares the module with the quick/dialog save flows it gates; entry validation beside the flows it validates"
 """
 
 from __future__ import annotations
@@ -401,9 +402,58 @@ def build_quick_export_options(controller) -> dict:
     }
 
 
+def has_exportable_pixels(controller) -> bool:
+    """Pixels gate for export admission (B4: IC ``has_images`` parity).
+
+    True when at least one in-tree slot resolves a cached pixel source
+    via the single boolean gate (:func:`pipeline.cache.slot_has_pixels` —
+    the same gate backing the context menu, drag & drop, and demand
+    fill). A tree of imageless slots (no tier yet, evicted, or pathless)
+    reads as non-exportable so quick/dialog save refuses instead of
+    writing a blank image. Cache-only read: never decodes, never raises.
+    """
+    try:
+        root = controller.widget.state.root
+    except Exception:
+        return False
+    try:
+        wanted = slot_ids_in_tree(root)
+    except Exception:
+        return False
+    if not wanted:
+        return False
+    try:
+        slots = list(controller.widget.state.slots)
+    except Exception:
+        return False
+    by_id = {}
+    for slot in slots:
+        try:
+            by_id[int(slot.id)] = slot
+        except Exception:
+            continue
+    try:
+        from tabs.multi_compare.pipeline.cache import slot_has_pixels
+    except Exception:
+        return False
+    cache = getattr(controller, "pixel_cache", None)
+    for sid in wanted:
+        slot = by_id.get(sid)
+        if slot is None:
+            continue
+        try:
+            if slot_has_pixels(cache, slot):
+                return True
+        except Exception:
+            continue
+    return False
+
+
 def on_quick_save_requested(controller) -> None:
     """Save immediately with last export settings -- no dialog."""
     if not slot_ids_in_tree(controller.widget.state.root):
+        return
+    if not has_exportable_pixels(controller):
         return
     try:
         options = build_quick_export_options(controller)
@@ -435,6 +485,8 @@ def on_quick_save_requested(controller) -> None:
 
 def on_save_requested(controller) -> None:
     if not slot_ids_in_tree(controller.widget.state.root):
+        return
+    if not has_exportable_pixels(controller):
         return
 
     native_size = controller._native_canvas_size() or live_view_size(controller)

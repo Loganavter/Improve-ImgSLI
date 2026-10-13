@@ -10,6 +10,8 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
+from shared.image_extensions import is_loadable_image_path
+
 logger = logging.getLogger("ImproveImgSLI")
 
 
@@ -159,8 +161,9 @@ def carry_selected(owner, *, pixmap=None) -> bool:  # type: ignore[no-untyped-de
         logger.debug("carry_selected: no selection")
         return False
 
-    # Verify files still exist (filtered out missing mover may still be selected).
-    existing = [p for p in paths if p.is_file()]
+    # B3: seam predicate (accepted-extension ∧ is_file) — an is_file-only
+    # filter would carry a surviving non-image file into workspace tabs.
+    existing = [p for p in paths if is_loadable_image_path(p)]
     if not existing:
         logger.warning("carry_selected: no existing files in selection")
         return False

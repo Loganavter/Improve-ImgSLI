@@ -81,6 +81,8 @@ class DropQueue:
         self._overflow_reporter = overflow_reporter
 
     def _report_overflow(self, widget, dropped: list, *, reason: str) -> None:
+        # Formatting lives in drag_drop._emit_dnd_overflow_summary (rewired to
+        # summarize_overflow); this hook only routes to the reporter channel.
         report = self._overflow_reporter
         if report is None:
             from tabs.multi_compare.ui.drag_drop import (

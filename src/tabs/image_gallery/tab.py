@@ -393,15 +393,9 @@ class ImageGalleryTab(TabContract):
                 return None
             return _registration.register_actions(self, registry)
         if service_id == "contribute_help":
-            legacy_registry = args[0] if args else kwargs.get("registry")
-            if legacy_registry is not None:
-                from tabs.image_gallery.help import contribute_help
+            from tabs.image_gallery.help import build_help_hub_contribution
 
-                contribute_help(legacy_registry)
-                return True
-            from tabs.image_gallery.help import build_help_contribution
-
-            return build_help_contribution()
+            return build_help_hub_contribution()
         return None
 
     def dispose(self) -> None:

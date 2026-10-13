@@ -1,62 +1,68 @@
 ## Hotkeys
 
-Default chords below. Most action shortcuts remap under {{tr:menu.settings}} → {{tr:settings.keyboard}}. Canvas `WASD`, arrow, `Space` movement and `+`/`-` zoom stay fixed and are not remappable.
+Below are the default chords. Most action shortcuts can be remapped in **Settings** → **Keyboard**; the canvas keys `WASD` / `QE`, the arrow keys, `Space`, and `+` / `-` are fixed and cannot be remapped.
 
 ### Discover first {#discover}
 
-`Ctrl+Shift+P` plus a typed name beats memorizing a list: the palette runs the action or opens {{tr:action.palette.learn_more}} for the illustrated topic. F1 pulses the matching action when focus is tagged.
+`Ctrl+Shift+P` and part of a name are faster than scanning the list: **Find Action** runs the matching action or opens **Learn more** for the illustrated topic. `F1` opens the help topic for the focused control.
 
 ### Platform {#platform}
 
-- `Ctrl+,` — Settings
-- `Ctrl+F1` — Help
-- `Ctrl+N` — Session picker / new session
-- `Ctrl+Tab` / `Ctrl+Shift+Tab` — Next / previous workspace session
-- `Ctrl+Shift+P` — {{tr:menu.find_action}}
-- `Ctrl+V` — Paste image
-- `Ctrl+Shift+O` / `Shift+S` / `Ctrl+Shift+S` — Open / save / save project as (`.imgsli`)
-- `Ctrl+Q` — Quit
+- `Ctrl+,` — **Settings**
+- `Ctrl+F1` — **Show Help**
+- `Ctrl+N` — **New Session** (opens the **Session Picker**)
+- `Ctrl+Tab` / `Ctrl+Shift+Tab` — next / previous session
+- `Ctrl+Shift+P` — **Find Action**
+- `Ctrl+V` — **Paste image from clipboard**
+- `Ctrl+Shift+O` / `Shift+S` / `Ctrl+Shift+S` — **Open Project** / **Save Project** / **Save Project As…** (`.imgsli`)
+- `Ctrl+Q` — **Quit**
 
-Exact labels follow the language pack; overrides live under Settings → Keyboard → platform group.
+Menu labels follow the language you select. Custom shortcuts are set in **Settings** → **Keyboard**, in the platform group.
 
-### {{tr:workspace.session_types.image_compare}} {#image-compare}
+### Image Compare {#image-compare}
 
-- `M` / `F` — Magnifier / freeze
-- `N` / `D` — Filename labels / divider visibility
-- `H` / `C` — Difference mode / channel mode
-- `X` — Swap
-- `R` / `Ctrl+E` — Record / Video Editor
-- `Ctrl+S` — Quick save
-- `WASD` / `QE` — Magnifier move / spacing (fixed)
-- `Shift` + `Space` — Side preview in combined mode (fixed)
-- `←↑↓→` / `+` / `-` — Pan / zoom (fixed)
+- `M` / `F` — **Toggle Magnifier** / **Freeze Magnifier**
+- `N` / `D` — **Filename Overlay** / **Divider Visibility**
+- `H` / `C` — **Difference Mode** / **Channel Mode**
+- `X` — **Swap Images**
+- `R` / `Ctrl+E` — **Record Video** / **Video Editor**
+- `Ctrl+S` — **Quick Save**
+- `WASD` / `QE` — move the magnifier / change its spacing (fixed)
+- `Shift+Space` — preview one side in combined mode (fixed)
+- `←↑↓→` / `+` / `-` — pan / zoom (fixed)
 
-Details: [Comparison](help://comparison), [Magnifier](help://magnifier), [Video Editor](help://video).
+Details: [Comparison](help://workspace.image_compare.comparison), [Magnifier](help://workspace.image_compare.magnifier), [Video Editor](help://workspace.image_compare.video).
 
-### {{tr:workspace.session_types.multi_compare}} {#multi-compare}
+### Multi Compare {#multi-compare}
 
-- `Ctrl+O` — Add images
-- `D` — Grid visibility
-- `Ctrl+S` — Quick save
-- `Esc` — Exit slot focus
-- `←↑↓→` / `+` / `-` — Pan / zoom (fixed)
+- `Ctrl+O` — **Add images**
+- `D` — **Grid Visibility**
+- `Ctrl+S` — **Quick Save**
+- `Esc` — leave slot focus
+- `←↑↓→` / `+` / `-` — pan / zoom (fixed)
 
-See [{{tr:workspace.session_types.multi_compare}}](help://multi_compare).
+See [Multi Compare](help://workspace.multi_compare.overview).
 
-### {{tr:image_gallery.tab_name}} {#image-gallery}
+### Image Gallery {#image-gallery}
 
-- `Space` / `Delete` — take the selected cards out of the grid; files stay on disk.
+- `Space` / `Delete` — remove the selected images from the grid; the files stay on disk.
 
-See [Triage and Review](help://gallery_triage).
+See [Triage and Review](help://workspace.image_gallery.triage).
 
 ### Video editor window {#video-editor}
 
-While the editor is open: `Space` play/pause, `Ctrl+Z` / `Ctrl+Y` undo/redo, `Delete` / `Backspace` trim to selection. Full encode workflow: [Video Editor](help://video).
+While the editor window is open:
+
+- `Space` — play or pause
+- `Ctrl+Z` / `Ctrl+Y` — undo / redo
+- `Delete` / `Backspace` — remove the selected range
+
+Full encode workflow: [Video Editor](help://workspace.image_compare.video).
 
 ### Keyboard navigation {#keyboard-navigation}
 
-- `F1` — contextual help for the focused control. When focus is tagged to an action, the {{tr:menu.find_action}} result pulses the match; otherwise the palette opens pre-filtered by topic.
-- In {{tr:menu.find_action}} (`Ctrl+Shift+P`): `↑` / `↓` move the selection, `Enter` runs it, `Ctrl+Enter` opens {{tr:action.palette.learn_more}}, `Esc` closes the palette.
-- In the {{tr:workspace.session_types.multi_compare}} overview, slot focus follows the pointer: a click toggles single-image focus, `Esc` exits it. Arrow keys pan the canvas instead of moving focus between slots.
+- `F1` — opens the help topic for the focused control; a control with no resolvable topic falls back to **Find Action** (with the matching action highlighted when there is one).
+- In **Find Action** (`Ctrl+Shift+P`): `↑` / `↓` move the selection, `Enter` runs it, `Ctrl+Enter` opens **Learn more**, `Esc` closes the list.
+- In the Multi Compare overview, slot focus follows the pointer: a click toggles single-image focus, `Esc` exits it. Arrow keys pan the canvas instead of moving focus between slots.
 - In the session picker, arrow keys move focus between cards and `Enter` opens the focused card, same as clicking it.
-- There is no `Tab` traversal between canvas slots: focus follows the pointer, and the keyboard drives actions through the palette.
+- There is no `Tab` traversal between canvas slots: focus follows the pointer, and the keyboard drives actions through **Find Action**.

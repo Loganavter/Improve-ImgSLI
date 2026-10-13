@@ -9,7 +9,7 @@ from ui.actions.dialog_contribute import (
 )
 from ui.actions.registry import ActionRegistry
 
-_HELP = "export"
+_HELP = "workspace.export"
 
 #: Stable Find Action id prefix for the Export dialog chrome. Deliberately
 #: NOT owner-tab-scoped: the dialog is one chrome surface, and an

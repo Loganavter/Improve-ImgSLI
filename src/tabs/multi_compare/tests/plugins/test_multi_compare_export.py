@@ -109,6 +109,12 @@ def test_multi_compare_quick_save_skips_export_dialog(monkeypatch, tmp_path):
         store=store,
         open_export_dialog=lambda **kwargs: dialog_calls.append(kwargs) or (0, {}),
     )
+    # B4: seed one cached tier so the tree is exportable (an imageless
+    # tree must refuse — see test_multi_compare_quick_save_refuses_imageless_tree).
+    widget.state.slots[0].path = Path("/fake/slot1.png")
+    _seed = QImage(32, 24, QImage.Format.Format_RGBA8888)
+    _seed.fill(QColor(9, 9, 9, 255))
+    controller.pixel_cache.put_preview(widget.state.slots[0].path, _seed)
     monkeypatch.setattr(
         controller,
         "_native_canvas_size",
@@ -143,6 +149,82 @@ def test_multi_compare_quick_save_skips_export_dialog(monkeypatch, tmp_path):
     assert options["format"] == "PNG"
     assert options["width"] == 32
     assert options["height"] == 24
+
+
+def test_multi_compare_quick_save_refuses_imageless_tree(monkeypatch, tmp_path):
+    """B4: quick-save on a tree of imageless slots refuses — no blank write.
+
+    Parity with IC ``ExportPresenter.quick_save`` (gated on
+    ``ExportContextBuilder.has_images``): MC gates on
+    ``has_exportable_pixels`` (same shared ``resolve_slot_source`` seam
+    the menu/DnD paths use), so neither the save worker nor any file
+    is produced.
+    """
+    from types import SimpleNamespace
+
+    from tabs.multi_compare.controller import MultiCompareController
+    from tabs.multi_compare.use_cases.export import has_exportable_pixels
+
+    widget = SimpleNamespace(
+        state=SimpleNamespace(
+            root=LeafNode(slot_id=1),
+            slots=[CompareSlot(id=1)],  # pathless → no cached tier possible
+        ),
+        canvas=SimpleNamespace(width=lambda: 32, height=lambda: 24),
+        images_dropped=SimpleNamespace(connect=lambda *_: None),
+        add_requested=SimpleNamespace(connect=lambda *_: None),
+        save_requested=SimpleNamespace(connect=lambda *_: None),
+        quick_save_requested=SimpleNamespace(connect=lambda *_: None),
+        settings_requested=SimpleNamespace(connect=lambda *_: None),
+        help_requested=SimpleNamespace(connect=lambda *_: None),
+        divider_color_picker_requested=SimpleNamespace(connect=lambda *_: None),
+    )
+    settings = SimpleNamespace(
+        export_default_dir=str(tmp_path),
+        export_use_default_dir=True,
+        export_favorite_dir=None,
+        export_last_format="PNG",
+        export_quality=90,
+        export_png_compress_level=6,
+        export_png_optimize=True,
+        export_fill_background=True,
+        export_background_color=SimpleNamespace(r=1, g=2, b=3, a=255),
+        export_comment_keep_default=False,
+        export_comment_text="",
+        export_resolution_scale=1.0,
+    )
+    controller = MultiCompareController(
+        widget,
+        store=SimpleNamespace(settings=settings),
+        open_export_dialog=lambda **kwargs: (_ for _ in ()).throw(
+            AssertionError("dialog must not open on refusal")
+        ),
+    )
+    assert has_exportable_pixels(controller) is False
+
+    saved: list = []
+    monkeypatch.setattr(
+        controller,
+        "_get_save_flow",
+        lambda: SimpleNamespace(
+            start_save_worker=lambda pil, opts: saved.append((pil, opts))
+        ),
+    )
+    compose_calls: list = []
+    monkeypatch.setattr(
+        controller,
+        "_compose_image",
+        lambda w, h, background_color=None, fill_background=True: compose_calls.append(
+            (w, h)
+        )
+        or QImage(w, h, QImage.Format.Format_RGBA8888),
+    )
+
+    controller._on_quick_save_requested()
+
+    assert saved == []
+    assert compose_calls == []
+    assert list(tmp_path.iterdir()) == []
 
 
 def test_multi_compare_export_uses_focused_slot_as_full_frame():

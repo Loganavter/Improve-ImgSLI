@@ -1,18 +1,18 @@
-## Visão Geral do Multi Compare
+## Visão geral da Comparação múltipla
 
-Uma sessão compara várias imagens em uma grade de layout, com soltura por slot e modo de foco.
+A Comparação múltipla compara três ou mais imagens ao mesmo tempo, cada imagem em seu próprio **slot** — uma célula da grade compartilhada.
 
 ### Abrir uma sessão {#open-session}
 
-{{tr:workspace.session_types.multi_compare}} no Seletor de Sessão ou {{tr:action.workspace.new_multi_compare}} em {{tr:menu.find_action}} (`Ctrl+Shift+P`). Veja também [Abas do Workspace](help://session_picker).
+Abra o **Seletor de Sessão** e escolha o cartão **Comparação múltipla**, ou pressione `Ctrl+Shift+P` e execute **Nova sessão Multi Compare** em **Localizar ação**. Adicione imagens com `Ctrl+O` (**Adicionar imagens**), solte arquivos do gerenciador de arquivos sobre a grade, ou cole da área de transferência; cada nova imagem divide o maior slot ao longo de seu lado mais longo. Um **divisor** é a linha entre dois slots — arraste-o para mudar o espaço que cada lado ocupa. Veja [Seletor de Sessão](help://workspace.session_picker) para os tipos de sessão e projetos recentes.
 
-### Recursos {#capability-map}
+### O que é possível fazer {#capability-map}
 
-- [Layouts e slots](help://mc_layouts) — células, divisões por lacuna, divisores, ações.
-- [Visualização e foco](help://mc_viewing) — foco, zoom, panorâmica, rótulos, recorte.
-- [Salvar e exportar](help://mc_export) — salvamento rápido, diálogo, sessões.
+- [Layouts da Comparação múltipla](help://workspace.multi_compare.layouts) — como os slots preenchem a grade, como uma soltura em uma lacuna divide uma célula, e como **Visibilidade da grade**, **Cor da grade** e **Linhas da grade** estilizam os divisores.
+- [Visualização da Comparação múltipla](help://workspace.multi_compare.viewing) — focalize um slot, compartilhe o zoom e a panorâmica, estilize os rótulos dos slots e ative o recorte por slot.
+- [Exportação da Comparação múltipla](help://workspace.multi_compare.export) — **Salvamento rápido** ou o diálogo de salvamento, e o que uma sessão memoriza.
 
 :::figure{side=block width=320}
-![Grade do Multi Compare]({{img:workspace.multi_compare.overview.layouts}})
-{{tr:workspace.session_types.multi_compare}} — grade / soltura na lacuna.
+![Grade da Comparação múltipla](../assets/layouts.jpg)
+Três slots lado a lado, divididos por linhas verticais, cada slot com um rótulo de nome de arquivo.
 :::

@@ -1,34 +1,25 @@
 ## Quality Metrics
 
-Every image scores 0–100; higher is better.
+Every image gets a score from 0 to 100, where higher is better. The score summarizes several readings of the image, so a high score means the image does well on all of them.
 
 ### Measured metrics {#measured-metrics}
 
-In report order:
-
-- **Sharpness** — detail resolving power.
-- **Exposure** — brightness balance.
-- **Highlight detail** — survival in brights.
-- **Clean** — freedom from noise; lower noise scores higher.
-- **White balance** — cast shift from neutral.
-- **Source match** — structural similarity to source.
-- **Detail** — detail gain versus the source.
-- **Color accuracy** — color shift from source.
-- **Typicality** — distance from series norm.
-- **Aesthetic** — learned taste score.
-
-Perceptual and naturalness rows — LPIPS and DISTS distances plus BRISQUE naturalness — appear only with the optional learned backend.
+The score combines sharpness, exposure, noise, and color, and — once a source is set — how closely the image matches it. **Quick Look** lists each reading as a percentage; a reading the app could not take is shown as **not measured**, never as a zero. When AI image analysis is on, a composition reading joins them.
 
 ### Where scores appear {#where-scores}
 
-- **Quick Look** — per-image metric rows with raw readings.
-- **Card dots** — one severity triple per mode: `clean`, `mild`, or `flagged` per artifact.
-- **{{tr:image_gallery.sort_quality}}** — AI quality first; unscored items sink to the end.
+- **Quick Look** — opens a panel with one row per reading and its percentage.
+- **Card dots** — three dots on each card, one per defect check; a dot turns green, amber, or red as that check gets worse.
+- **AI quality** — a **Sort by** value that orders images by the AI score first; it applies only while the toolbar's **AI** switch is on, and unscored images sink to the end.
 
 ### Modes {#modes}
 
-Fidelity holds only while a source is set — picking the source is manual, never automatic. Without a source the folder resolves to camera or batch-synthetic. The mode selects the artifact triple.
+The gallery chooses a mode for the folder, and the mode decides which defect checks the card dots show.
+
+When an image is set as the source, the score also measures how closely each image matches it; the source is always chosen by hand, never automatically. Without a source, the gallery treats the folder either as camera photos or as a synthetic batch.
 
 ### Reference source {#reference-source}
 
-{{tr:image_gallery.action.set_as_source}} sets the fidelity reference; fidelity analysis re-runs against it. Scores follow the new reference on the next pass.
+**Source** — the image chosen as the reference for the comparison.
+
+**Set as source** sets that reference; the analysis then re-runs against it, and the scores follow the new reference on the next pass.

@@ -10,7 +10,7 @@ from PySide6.QtWidgets import QApplication
 from tabs.image_compare.tab import ImageCompareTab
 
 
-def test_image_compare_drop_uses_presenter_main_controller_when_window_has_no_direct_controller():
+def test_image_compare_drop_uses_presenter_main_controller_when_window_has_no_direct_controller(tmp_path):
     QApplication.instance() or QApplication([])
     calls = []
     sessions = SimpleNamespace(
@@ -23,7 +23,10 @@ def test_image_compare_drop_uses_presenter_main_controller_when_window_has_no_di
     tab = ImageCompareTab()
     tab._widget = SimpleNamespace(_context=SimpleNamespace(main_window=main_window))
 
-    drop_path = Path("/tmp/right.png")
+    # B1: handle_drop admits only loadable files (accepted suffix and is_file),
+    # so the drop must be a real file, not a bare path.
+    drop_path = tmp_path / "right.png"
+    drop_path.write_bytes(b"\x89PNG\r\n\x1a\n")
     handled = tab.handle_drop([drop_path], hint={"slot": 2})
     QApplication.processEvents()
 

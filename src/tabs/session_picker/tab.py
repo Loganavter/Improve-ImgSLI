@@ -61,15 +61,9 @@ class SessionPickerTab(TabContract):
             # modals — fail-open empty list.
             return []
         if service_id == "contribute_help":
-            legacy_registry = args[0] if args else kwargs.get("registry")
-            if legacy_registry is not None:
-                from tabs.session_picker.help import contribute_help
+            from tabs.session_picker.help import build_help_hub_contribution
 
-                contribute_help(legacy_registry)
-                return True
-            from tabs.session_picker.help import build_help_contribution
-
-            return build_help_contribution()
+            return build_help_hub_contribution()
         if service_id == "session_picker.host_chrome":
             from tabs.registry import TabRegistry
             from tabs.session_picker.host_chrome import SessionPickerHostChromeAdapter

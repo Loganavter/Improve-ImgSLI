@@ -19,6 +19,7 @@ from tabs._shared.loading_pipeline import (
     get_or_load_preview,
     start_pyramid_build as _seam_start_pyramid_build,
 )
+from tabs._shared.user_errors import emit_user_error, load_image_error
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -59,65 +60,23 @@ def _emit_mc_load_error(controller, path: Path | str, err) -> None:
     toast; see plan §3.3).
     """
     try:
-        # controller.translate is TabContext._tr wrapper (already language-aware)
+        # Resolve language via controller/store or tab context; builder owns wording.
+        lang = None
         try:
-            prefix = controller.translate("msg.failed_to_load_image", "Failed to load image")
+            lang = controller.store.settings.current_language
         except Exception:
-            prefix = "Failed to load image"
-        message = f"{prefix}:\n{path}\n\n{_format_worker_error(err)}"
-        event_bus = _resolve_mc_event_bus(controller)
-        if event_bus is not None:
-            event_bus.emit(CoreErrorOccurredEvent(message))
+            lang = None
+        if lang is None:
+            try:
+                ctx = getattr(controller, "context", None)
+                store = getattr(ctx, "store", None) if ctx is not None else getattr(controller, "store", None)
+                lang = getattr(getattr(store, "settings", None), "current_language", None)
+            except Exception:
+                lang = None
+        message = load_image_error(language=lang, path=path, error=err)
+        emit_user_error(controller, message)
     except Exception:
         logger.exception("Failed to emit MC load error event for %s", path)
-
-
-def _emit_mc_overflow_summary(controller, overflow: list) -> None:
-    """One summary event per gesture for grid-full overflow (no dialog flood).
-
-    A 100-file drop onto a nearly-full grid used to emit one
-    ``CoreErrorOccurredEvent`` (→ ``AppMessageDialog.warning``) PER skipped
-    file. Now the whole gesture surfaces exactly one dialog with the count
-    plus the first few skipped names; per-file detail stays in the log.
-    A single overflow still names its file, so 1-file callers read the same
-    message they did before.
-    """
-    if not overflow:
-        return
-    try:
-        reason = _grid_full_reason(controller)
-        count = len(overflow)
-        count_word = "1 file" if count == 1 else f"{count} files"
-        shown = [Path(p).name if not isinstance(p, Path) else p.name for p in overflow[:5]]
-        extra = f" (+{count - len(shown)} more)" if count > len(shown) else ""
-        names = ", ".join(shown)
-        message = f"{reason}: {count_word} not added — {names}{extra}"
-        event_bus = _resolve_mc_event_bus(controller)
-        if event_bus is not None:
-            event_bus.emit(CoreErrorOccurredEvent(message))
-    except Exception:
-        logger.exception("Failed to emit MC overflow summary for %d file(s)", len(overflow))
-
-def _grid_full_reason(controller) -> str:
-    """Grid-full error detail, mirroring ``dialog_add._grid_full_reason``.
-
-    Local copy (not an import — ``dialog_add`` imports this module, so an
-    import back would be circular). Reuses the same ``msg.compare_grid_full``
-    key + default wording, so no new i18n keys.
-    """
-    try:
-        max_slots = controller.widget.state.max_slots
-    except Exception:
-        max_slots = None
-    default = (
-        f"Comparison grid is full ({max_slots} images max)"
-        if max_slots is not None
-        else "Comparison grid is full"
-    )
-    try:
-        return controller.translate("msg.compare_grid_full", default)
-    except Exception:
-        return default
 
 
 # Single source now in tabs._shared.loading_toast (B2 dedup).
@@ -811,15 +770,13 @@ def load_external_paths(controller, paths) -> int:
 
     Returns the number of slots created synchronously.
     """
-    from shared.image_extensions import ACCEPTED_IMAGE_EXTENSIONS as _EXTENSIONS
+    from shared.image_extensions import is_loadable_image_path
 
     valid: list[Path] = []
     for raw in paths or []:
         path = raw if isinstance(raw, Path) else Path(raw)
-        if path.suffix.lower() not in _EXTENSIONS:
-            continue
-        if not path.is_file():
-            logger.debug("load_external_paths: skipped missing file %s", path)
+        if not is_loadable_image_path(path):
+            logger.debug("load_external_paths: skipped non-image/missing file %s", path)
             continue
         valid.append(path)
     if not valid:
@@ -861,10 +818,10 @@ def on_images_dropped(controller, paths: list, target, side) -> None:
     A3: the N per-file ``add_image_at/auto`` dispatches are planned first
     against a scratch state through the pure ``scene.store.reduce`` (same
     chain rule — file 0 at the drop target, later files beside the
-    previously added slot, auto fallback when its path is gone, capacity
-    guard per file) and committed with one ``store.transact`` → 1
-    dispatch / 1 emit. Toast + preview workers stay per-slot (not store
-    dispatches) and run after the single commit.
+    previously added slot, auto fallback when its path is gone) and
+    committed with one ``store.transact`` → 1 dispatch / 1 emit. Toast +
+    preview workers stay per-slot (not store dispatches) and run after the
+    single commit.
     """
     from tabs.multi_compare.models import find_path
     from tabs.multi_compare.scene import actions as mc_actions
@@ -879,13 +836,9 @@ def on_images_dropped(controller, paths: list, target, side) -> None:
     scratch = widget.state
     built: list = []
     planned: list[tuple[int, Path]] = []
-    overflow: list[Path] = []
     last_added: int | None = None
     for i, raw_path in enumerate(paths):
         path = Path(raw_path) if not isinstance(raw_path, Path) else raw_path
-        if len(scratch.slots) >= scratch.max_slots:
-            overflow.append(path)
-            continue
         if i == 0:
             eff_path, eff_side, eff_root = target_path, side, target_root
             if (
@@ -926,16 +879,11 @@ def on_images_dropped(controller, paths: list, target, side) -> None:
                     side=next_side,
                     target_root=False,
                 )
-        before = len(scratch.slots)
         scratch = mc_reduce(scratch, action)
-        if len(scratch.slots) <= before:
-            overflow.append(path)
-            continue
         built.append(action)
         last_added = scratch.slots[-1].id
         planned.append((last_added, path))
     if not built:
-        _emit_mc_overflow_summary(controller, overflow)
         return
     store = widget.store
     transact = getattr(store, "transact", None)
@@ -950,6 +898,3 @@ def on_images_dropped(controller, paths: list, target, side) -> None:
             continue
         show_loading_toast(controller, sid)
         _preview.load_preview_async(controller, path, sid)
-    for path in overflow:
-        logger.warning("on_images_dropped: no slot created for %s (grid full?)", path)
-    _emit_mc_overflow_summary(controller, overflow)

@@ -1,58 +1,70 @@
 ## Comparação
 
-Duas imagens no canvas inteiro: divisor móvel, rótulos de nome opcionais, visualizações por canal e modos de diferença — sem abrir a lupa.
+A comparação mostra duas imagens lado a lado, para alinhar o mesmo detalhe nas duas.
 
 ### Linha divisória {#split-line}
 
-Com a lupa desligada, arraste o divisor sobre o par.
+**Divisor** — a fronteira móvel entre as duas imagens. Arraste-o sobre o par para trazer a mesma posição de cada imagem até a fronteira.
 
-- **Orientação** — {{tr:image_compare.action.divider_orientation}} alterna horizontal / vertical.
-- **Largura** — role sobre {{tr:image_compare.action.divider_width}}.
-- **Cor** — {{tr:image_compare.action.divider_color}}.
-- **Visibilidade** (`D`) — {{tr:image_compare.action.divider_visible}} mostra ou oculta a linha.
-- **Combinado** — {{tr:image_compare.action.divider_combined}} reúne orientação, largura e cor (rolagem / clique direito / clique do meio); veja a dica do controle.
+- **Orientação da divisão** — alterna a divisão entre horizontal e vertical.
+- **Largura do divisor** — gire a rolagem sobre ele para mudar a espessura da fronteira.
+- **Cor do divisor** — define a cor da fronteira.
+- **Visibilidade do divisor** (`D`) — mostra ou oculta a fronteira.
+- **Divisor** — reúne orientação, largura e cor em um único controle (rolagem / botão direito / botão do meio); passe o cursor para ver a dica de gestos.
 
 :::figure{side=block width=280}
-![Linha divisória]({{img:workspace.image_compare.comparison.split_line}})
-{{tr:image_compare.action.breadcrumb.toolbar}} → {{tr:image_compare.action.breadcrumb.divider}}.
+![Linha divisória](../assets/split_line.png)
+Os controles do divisor na barra de ferramentas, nas formas compacta e expandida.
 :::
 
 ### Percorrer imagens com a rolagem {#scroll-images}
 
-- **Rolagem no canvas** — avança a lista do lado sob o cursor (à esquerda de um divisor vertical / acima de um horizontal = lado 1; a outra metade = lado 2).
+- **Rolagem no canvas** — a rolagem avança a lista do lado sob o cursor: à esquerda de um divisor vertical ou acima de um horizontal fica o lado 1, a outra metade é o lado 2.
 - **`Shift` + rolagem** — avança as duas listas juntas.
-- **Pré-visualização de uma imagem** — a rolagem sempre avança o lado visível.
-- **Rolagem no menu suspenso** — avança aquele lado sem abrir o painel; veja [Listas e Painéis](help://ui.lists_flyouts#scroll-lists).
-- **Trocar** (`X`) — clique curto troca o par atual; pressionamento longo troca as duas listas.
+- **Pré-visualização de uma imagem** — com apenas uma imagem visível, a rolagem sempre avança o lado visível.
+- **Rolagem no menu suspenso** — rolar sobre um menu suspenso troca aquele lado sem abrir o painel.
+- **Trocar** (`X`) — um clique curto troca o par atual; um pressionamento longo troca as duas listas.
 
 ### Rótulos {#labels-and-metrics}
 
-- **Mostrar nomes** (`N`) — {{tr:image_compare.action.file_names}}; podem ser gravados nas exportações quando ativados.
-- **Zoom** — os rótulos ficam ocultos enquanto o zoom não é `100%` e voltam no zoom de ajuste.
-- **Configurações de texto** — {{tr:image_compare.action.text_settings}} abre um painel para tamanho, peso, opacidade, cores, fundo e posicionamento.
+- **Sobreposição de nomes** (`N`) — mostra ou oculta os rótulos de nome de arquivo no canvas; os rótulos podem ser gravados nas imagens salvas.
+- **Zoom** — os rótulos somem enquanto a vista está ampliada e voltam no zoom de `100%`.
+- **Configurações de texto do rótulo** — abre um painel para tamanho da fonte, peso, opacidade, cores, fundo e posicionamento.
 
 ### Métricas {#metrics}
 
-- **{{tr:image_compare.ui.psnr}} / {{tr:image_compare.ui.ssim}}** — desligados por padrão; ative o cálculo automático em [Configurações → Análise](help://settings).
-- **Propriedades** — [Propriedades da imagem](help://image_properties) pelo menu de contexto de uma linha da lista (metadados do arquivo e lado / avaliação na sessão).
-- **Mover** — o menu de contexto no canvas ou na lista coloca um fantasma de arraste sob o ponteiro (pendurado à esquerda e abaixo); um clique em outra aba da área de trabalho (ou no canvas) inicia o mesmo fluxo de inserção do Duplicar / colar. `Esc` ou clique direito cancela.
+- **PSNR** / **SSIM** — métricas de diferença, desligadas por padrão. Ligue o cálculo automático com **Calcular PSNR automaticamente** e **Calcular SSIM automaticamente** em **Comparar imagens** nas [Configurações](help://platform.settings#image_compare).
+
+### Mover uma imagem entre abas {#moving-between-tabs}
+
+**Mover** envia uma imagem para outra aba do espaço de trabalho sem copiá-la para o projeto primeiro.
+
+1. No menu de contexto da imagem, no canvas ou na lista, escolha **Mover**.
+2. Uma cópia semitransparente da imagem aparece ao lado do cursor.
+3. Clique na aba do espaço de trabalho ou no canvas onde a imagem deve ficar — o mesmo posicionamento de **Duplicar** ou colar.
+4. Pressione `Esc` ou clique com o botão direito para cancelar a movimentação.
+
+### Ações do menu de contexto {#context-menu-actions}
+
+- **Propriedades** — abre [Propriedades da imagem](help://platform.image_properties) a partir do menu de contexto de uma linha da lista, mostrando os metadados do arquivo e o lado e a avaliação na sessão atual.
 
 ### Modos de canal {#channel-modes}
 
-{{tr:image_compare.action.channel_mode}} (`C`) cicla RGB, R, G, B e luminância para inspecionar um canal sem sair do canvas.
+**Modo de canal** (`C`) alterna entre RGB, Vermelho, Verde, Azul e Luminância, para inspecionar um único canal sem sair do canvas.
 
 ### Modos de diferença {#difference-modes}
 
-{{tr:image_compare.action.diff_mode}} (`H` cicla) destaca onde o par difere:
+**Modo de diferença** (`H`) percorre as vistas de diferença:
 
 :::figure{side=block width=280}
-![Modo de diferença]({{img:workspace.image_compare.comparison.difference_modes}})
-{{tr:image_compare.action.diff_mode}}.
+![Modo de diferença](../assets/difference_modes.png)
+O menu **Modo de diferença**: a lista percorrida com `H`.
 :::
 
-- **{{tr:image_compare.action.diff_highlight}}** — regiões de mudança no par ao vivo
-- **{{tr:image_compare.action.diff_grayscale}}** — dessatura diferenças de intensidade
-- **{{tr:image_compare.action.diff_edges}}** — diferença orientada a bordas
-- **{{tr:image_compare.action.diff_ssim}}** — mapa de similaridade estrutural quando as métricas suportam
+- **Diferença desligada** — nenhuma diferença é destacada.
+- **Destaque** — colore as regiões em que as duas imagens diferem.
+- **Escala de cinza** — transforma a diferença de intensidade em tons de cinza.
+- **Bordas** — mostra a diferença ao longo das bordas da imagem.
+- **SSIM** — mostra a similaridade estrutural do par.
 
-Canvas ao vivo, imagens exportadas e gravação de vídeo mantêm a mesma aparência. Os modos de diferença combinam com as visualizações de canal. Para inspeção local, use a [Lupa](help://magnifier).
+O canvas ao vivo, as imagens exportadas e a gravação de vídeo mantêm a mesma aparência. Os modos de diferença combinam com as vistas de canal. Para inspeção local, use a [Lupa](help://workspace.image_compare.magnifier).

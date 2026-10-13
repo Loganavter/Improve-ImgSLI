@@ -26,18 +26,6 @@ class ImagePropertiesPlugin(Plugin, IControllablePlugin):
             return target(*args, **kwargs)
         raise AttributeError(f"Image properties plugin has no command '{command}'")
 
-    def build_help_plugin_contribution(self):  # type: ignore[no-untyped-def]
-        """Return the image_properties plugin's help fragment (duck-typed probe).
-
-        Discovered by ``plugins.help.tree.collect_help_plugin_contributions``
-        from the plugin registry (see ``HelpPlugin._install_plugin_contributions``).
-        """
-        from plugins.image_properties.help import (
-            build_help_plugin_contribution as _build_contribution,
-        )
-
-        return _build_contribution()
-
     def open_dialog(
         self,
         *,

@@ -18,7 +18,6 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from core.constants import AppConstants
 from plugins.export import layout_geometry as export_geo
 from plugins.export.search import ACTIONS, BACKGROUND, OUTPUT, RESOLUTION
 from sli_ui_toolkit.managers import scaled_px
@@ -116,6 +115,10 @@ def build_format_row(dialog) -> None:
 
 
 def build_resolution_row(dialog) -> None:
+    from shared.image_processing.progressive_loader import (
+        max_supported_image_dimension,
+    )
+
     dialog.resolution_row = QWidget()
     res_layout = QHBoxLayout(dialog.resolution_row)
     res_layout.setContentsMargins(0, 0, 0, 0)
@@ -126,7 +129,7 @@ def build_resolution_row(dialog) -> None:
     res_layout.addWidget(dialog.resolution_label)
     dialog.edit_width = CustomLineEdit()
     dialog.edit_width.setObjectName("export-width")
-    _max_dim = int(AppConstants.MAX_SUPPORTED_IMAGE_DIMENSION)
+    _max_dim = max_supported_image_dimension()
     dialog.edit_width.setValidator(QIntValidator(1, _max_dim))
     dialog.edit_width.setFixedWidth(scaled_px(72))
     dialog.edit_width.setAlignment(Qt.AlignmentFlag.AlignCenter)

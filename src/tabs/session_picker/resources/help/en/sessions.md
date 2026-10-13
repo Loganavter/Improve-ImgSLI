@@ -1,33 +1,36 @@
 ## Session Picker
 
-The home page of a new tab: it lists the session types you can start and your recent projects.
+The starting page for new tabs: open a session from here or return to a recent project.
 
 ### Session Picker {#session-picker}
 
-- **Session types** — session cards list every connected tab, for example {{tr:workspace.session_types.image_compare}}, {{tr:image_gallery.tab_name}}.
-- **Recent** — `.imgsli` projects. Click opens; right-click: open, properties, remove, reveal in folder.
-- **Project file drop** — a project file dropped onto the panel pins to the list without opening.
-- **Sort and view** — grid or list, sort by date or name.
-- **Preview** — card thumbnail from `preview.png` in the project when present.
+- **Session types** — one card per connected tab, for example **Image Compare**, **Multi Compare**, or **Image Gallery**. Click a card to open that session.
+- **Recent** — the shelf of saved `.imgsli` projects below the cards. Click a card to open the project; right-click for **Open**, **Properties**, **Remove from list**, and **Show in folder**.
+- **Project file drop** — a project file dragged onto the shelf is pinned to the list without opening.
+- **Sort and view** — **Sort by** (date modified, date created, name) and **View** (grid or list).
+- **Preview** — grid cards show the canvas thumbnail saved in the project, when the project has one.
 
 :::figure{side=block width=420}
-![Session Picker]({{img:platform.workspace.session_picker}})
-{{tr:action.workspace.open_session_picker}} — {{tr:workspace.session_types.image_compare}} / {{tr:workspace.session_types.multi_compare}}.
+![Session Picker](../assets/platform/session_picker.jpg)
+Session Picker: cards for Image Compare and Multi Compare above the Recent shelf.
 :::
 
 ### Keyboard {#keyboard}
 
-Arrow keys move focus between cards, and `Enter` opens the focused project. The full list is in [Hotkeys](help://hotkeys#keyboard-navigation).
+Arrow keys move focus between cards, and `Enter` opens the focused project. The full list is in [Hotkeys](help://platform.hotkeys#keyboard-navigation).
 
 ### Open a session without the picker {#new-session-actions}
 
-From {{tr:menu.find_action}} (`Ctrl+Shift+P`):
+From **Find Action** (`Ctrl+Shift+P`):
 
-- {{tr:action.workspace.new_image_compare}}
-- {{tr:action.workspace.new_multi_compare}}
+- **New Image Compare Session**
+- **New Multi Compare Session**
+- **New Image Gallery Session**
 
-{{tr:action.workspace.open_session_picker}} returns to the home page for a visual choice.
+**Open Session Picker** returns to the home page when a visual choice is easier.
 
 ### Next topics {#next-topics}
 
-Quick workflows: [Getting Started](help://introduction). Session tools: [Comparison](help://comparison) or [{{tr:workspace.session_types.multi_compare}}](help://multi_compare).
+- [Getting Started](help://platform.getting_started) — first steps for a new install.
+- [Comparison](help://workspace.image_compare.comparison) — compare two images with a split line and difference modes.
+- [Multi Compare Overview](help://workspace.multi_compare.overview) — compare three or more images in a grid.

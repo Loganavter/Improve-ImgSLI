@@ -436,7 +436,7 @@ def toggle_reject(owner, path: Path) -> bool:
     for it in items:
         try:
             if Path(it.path) == Path(path):
-                cur = bool(getattr(it, "rejected", getattr(it, "triage_rejected", False)))
+                cur = is_rejected(it)
                 new = not cur
                 try:
                     it.rejected = new
@@ -709,7 +709,7 @@ def clean_rejected(owner) -> list[dict]:
     st = getattr(owner, "state", None)
     if st is None:
         return []
-    rejected = [it for it in _items_of(owner) if bool(getattr(it, "rejected", getattr(it, "triage_rejected", False)))]
+    rejected = [it for it in _items_of(owner) if is_rejected(it)]
     if not rejected:
         return []
     folder = resolve_move_folder(owner, rejected)
@@ -812,7 +812,7 @@ def compare_finalists(owner) -> bool:
     Uses carry_selected if selection HUD exists; otherwise logs.
     """
     items = _items_of(owner)
-    finalists = [it for it in items if not bool(getattr(it, "rejected", getattr(it, "triage_rejected", False)))]
+    finalists = [it for it in items if not is_rejected(it)]
     if not finalists:
         logger.debug("triage.compare_finalists: no finalists")
         return False
@@ -879,7 +879,7 @@ def _refresh_owner_grid(owner) -> None:
                 strip = getattr(w, "stats_strip", None)
                 setter = getattr(strip, "set_rejected_count", None) if strip is not None else None
                 if callable(setter):
-                    n = sum(1 for it in items if bool(getattr(it, "rejected", getattr(it, "triage_rejected", False))))
+                    n = sum(1 for it in items if is_rejected(it))
                     setter(int(n))
             except Exception:
                 pass
@@ -1011,12 +1011,29 @@ def keep_best_of_series(owner):  # type: ignore[no-untyped-def]
     return {}
 
 
-def _is_rejected(it) -> bool:
-    """Single rejected predicate shared by keep/show-all helpers."""
+def is_rejected(it) -> bool:
+    """Single rejected predicate — THE owner (cross-cutting policy B5).
+
+    True when either ``rejected`` or ``triage_rejected`` is set. Both
+    flags exist because ``GalleryItem`` only declares ``rejected`` while
+    triage writers mirror into ``triage_rejected``; readers must never
+    check just one (``getattr(it, "rejected", getattr(it,
+    "triage_rejected", ...))`` silently drops a ``triage_rejected``-only
+    item since ``rejected`` always exists). Every rejected read outside
+    this module calls this function — never restates the predicate.
+    Never raises.
+    """
     try:
-        return bool(getattr(it, "rejected", getattr(it, "triage_rejected", False)))
+        return bool(
+            getattr(it, "rejected", False) or getattr(it, "triage_rejected", False)
+        )
     except Exception:
         return False
+
+
+def _is_rejected(it) -> bool:
+    """Legacy alias of :func:`is_rejected` (kept: callers reach in by name)."""
+    return bool(is_rejected(it))
 
 
 def should_show_all(items, groups) -> bool:

@@ -61,7 +61,12 @@ _EXT_TO_MIME = {
 # small and latency predictable. The max edge is user-configurable (gallery AI
 # settings); 0 sends the original bytes. Fail-open: if Pillow is missing or the
 # file is not decodable, the original bytes go out rather than failing the request.
-DEFAULT_VLM_MAX_EDGE_PX = 1024
+# Bound owned by services/decode_policy.py (single home); the aliases below
+# keep historic names.
+from tabs.image_gallery.services.decode_policy import (
+    VLM_DEFAULT_MAX_EDGE_PX as DEFAULT_VLM_MAX_EDGE_PX,
+)
+
 #: Kept for existing importers; the live value is :func:`get_vlm_max_edge`.
 VLM_MAX_EDGE_PX = DEFAULT_VLM_MAX_EDGE_PX
 

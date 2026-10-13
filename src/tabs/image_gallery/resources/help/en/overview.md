@@ -1,36 +1,36 @@
 ## Gallery Overview
 
-The {{tr:image_gallery.tab_name}} shows one folder as cards grouped into near-duplicate series.
+**Image Gallery** shows a folder of similar shots grouped into series, to keep the best and compare the rest.
 
 ### Open a folder {#open-folder}
 
-- **{{tr:image_gallery.pick_folder}}** — folder picker; empty tabs show {{tr:image_gallery.empty_state}}.
-- **File drop** — drops join the pool the same way; a single file opens alone, the parent folder is not scanned.
-- **{{tr:action.workspace.new_image_gallery}}** — new gallery sessions from {{tr:menu.find_action}} (`Ctrl+Shift+P`).
+- **Open Folder…** — opens the folder picker. While the tab is empty, dragging files over it shows a dashed drop zone with **Pick a folder to see images here.**
+- **Drag and drop** — dropped files join the images already in the tab; a single file opens on its own, without scanning its parent folder.
+- **New Image Gallery Session** — opens another gallery session from **Find Action** (`Ctrl+Shift+P`).
 
 ### Series {#series}
 
-Loaded folders group near-duplicates into series.
+After a folder loads, the gallery groups similar images into series — one section per group.
 
-- **Series** — two-plus near-duplicates; singletons stay UNGROUPED.
-- **Regroup** — a restored pool regroups in place; cached signatures skip re-decoding.
-- **Manual overrides** — a drag between series pins cards to the target; Reset clears the pins and regroups.
+- **Series** — two or more matching images form a series; images with no match appear together under the **UNGROUPED** header.
+- **Re-cluster series** — groups the images again; manual pins are kept.
+- **Manual overrides** — dragging a card onto a series header pins it to that series; **Reset manual series** clears the pins and groups from scratch.
 
 ### Grid, sort, and filter {#grid-sort-filter}
 
-- **{{tr:image_gallery.view}}** — {{tr:image_gallery.view_grid}} or {{tr:image_gallery.view_list}}.
-- **{{tr:image_gallery.sort_by}}** — {{tr:image_gallery.sort_rank}}, {{tr:image_gallery.sort_name}}, {{tr:image_gallery.sort_date}}, or {{tr:image_gallery.sort_quality}}; unscored items sink to the end.
-- **Filter** — {{tr:image_gallery.filter_placeholder}} narrows the grid; selection stays separate.
+- **View** — switches between **Grid** and **List**.
+- **Sort by** — orders images by **Rank**, **Name**, **Date**, or **AI quality**; unscored images sink to the end.
+- **Filter** — **Filter by tag / description…** narrows the grid to matching images; the selection is not affected.
 
 ### Stats strip and compare {#stats-and-compare}
 
-The strip counts images, series, and redundants.
+The strip above the grid reports how many images, series, and redundant images the folder holds.
 
-- **Compare** — best per series plus ungrouped survivors, up to 12 files, to Image Compare.
-- **Card click** — opens Quick Look with metric and artifact rows.
+- **Compare finalists** — sends the best image of each series, plus every image outside a series, to Image Compare (up to 12 files).
+- **A click on a card** — opens **Quick Look** with the image's quality readings; `Ctrl+click` selects several cards instead.
 
 ### Next topics {#next-topics}
 
-- [Triage and Review](help://gallery_triage) — keep the best, reject, and move rejects out.
-- [Quality Metrics](help://gallery_quality) — what the scores mean and where they show.
-- [Ask AI](help://gallery_ask_ai) — questions about a selection or a whole series.
+- [Triage and Review](help://workspace.image_gallery.triage) — keep the best, reject the rest, and move rejects out of the folder.
+- [Quality Metrics](help://workspace.image_gallery.quality) — what the scores mean and where they appear.
+- [Ask AI](help://workspace.image_gallery.ask_ai) — ask questions about a selection or a whole series.

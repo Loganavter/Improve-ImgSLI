@@ -25,8 +25,6 @@ def add_image_auto(
     B1: path-only — the slot is created imageless; callers kick the async
     preview fill (``preview_decode.load_preview_async``) after dispatch.
     """
-    if len(widget.state.slots) >= widget.state.max_slots:
-        return None
     if widget.state.root is None:
         target_path, side, target_root = None, None, True
     else:
@@ -55,9 +53,6 @@ def add_image_at(
     *,
     leaf_entries=None,
 ) -> int | None:
-    if len(widget.state.slots) >= widget.state.max_slots:
-        return None
-
     if (
         not target_root
         and (target_path is None or side is None)

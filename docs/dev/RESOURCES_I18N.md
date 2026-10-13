@@ -16,7 +16,7 @@ src/resources/
 ├── themes.json                 # color palettes (see THEMING.md)
 ├── icons/                      # SVG/PNG icon assets
 ├── assets/                     # other static binaries
-└── help/                       # host Help shell (tree.json + ui/platform bodies; tab topics under tabs/<tab>/resources/help — see HELP_SYSTEM.md)
+└── help/                       # host Help pages (ui/platform bodies; tab topics under tabs/<tab>/resources/help — see HELP_SYSTEM.md)
 ```
 
 Plus per-plugin, per-tab, and per-canvas-feature i18n roots:
@@ -245,10 +245,12 @@ analogous to tabs; add one only when a plugin needs icons no other owner uses.
 
 ## Help content
 
-Host shell: `src/resources/help/tree.json` + `en|ru/ui/…` + `en|ru/platform/…`
+Host pages: `src/resources/help/` + `en|ru/ui/…` + `en|ru/platform/…`
 + shared `assets/`. Tab topics: `src/tabs/<tab>/resources/help/<lang>/` via
-`notify_all("contribute_help", …)`. Chrome labels in bodies use `{{tr:…}}` —
-authoring rules in [HELP_SYSTEM.md § Language keys](HELP_SYSTEM.md#language-keys-tr).
+`create_service("contribute_help", …)`. Bodies carry literal on-screen labels
+(no `{{tr:…}}` lookup) — authoring rules in
+[HELP_SYSTEM.md § Labels](HELP_SYSTEM.md#labels-literal-per-language) and
+[HELP_STYLE_GUIDE.md](HELP_STYLE_GUIDE.md).
 
 ## See also
 
