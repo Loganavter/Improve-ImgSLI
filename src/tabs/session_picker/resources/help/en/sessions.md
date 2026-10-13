@@ -1,18 +1,18 @@
 ## Session Picker
 
-Use the Session Picker to start a new session and to reopen recent projects.
+The starting page for new tabs: open a session from here or return to a recent project.
 
 ### Session Picker {#session-picker}
 
-- **Session types** — one card per connected tab. **Image Compare** compares two images with a movable split, **Multi Compare** arranges three or more images in a grid, and **Image Gallery** groups a folder's images into near-duplicate series for triage.
-- **Recent** — `.imgsli` projects. Click a card to open it; right-click for open, properties, remove, and reveal in folder.
-- **Project file drop** — a project file dragged onto the panel is added to the list without opening.
-- **Sort and view** — switch between grid and list, and sort by date or name.
+- **Session types** — one card per connected tab, for example **Image Compare**, **Multi Compare**, or **Image Gallery**. Click a card to open that session.
+- **Recent** — the shelf of saved `.imgsli` projects below the cards. Click a card to open the project; right-click for **Open**, **Properties**, **Remove from list**, and **Show in folder**.
+- **Project file drop** — a project file dragged onto the shelf is pinned to the list without opening.
+- **Sort and view** — **Sort by** (date modified, date created, name) and **View** (grid or list).
 - **Preview** — grid cards show the canvas thumbnail saved in the project, when the project has one.
 
 :::figure{side=block width=420}
 ![Session Picker](../assets/platform/session_picker.jpg)
-Open Session Picker — Image Compare / Multi Compare.
+Session Picker: cards for Image Compare and Multi Compare above the Recent shelf.
 :::
 
 ### Keyboard {#keyboard}

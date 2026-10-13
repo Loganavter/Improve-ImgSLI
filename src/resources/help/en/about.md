@@ -4,17 +4,11 @@ Improve ImgSLI is a desktop workspace where you compare images side by side or a
 
 ### What it is for {#purpose}
 
-Use it wherever visual change has to be checked with its context kept: retouching, upscaling QA, and photography. These are sessions where a divider, a magnifier, and an exportable result matter more than a one-off screenshot.
+Use it wherever visual change has to be checked with its context kept: retouching, upscaling QA, and photography. These are tasks where a **Divider**, a **Magnifier**, and an exportable result matter more than a one-off screenshot.
 
 ### Workspace modes {#modes}
 
-The session picker shows one card per connected tab, and the set of cards grows with the tabs you install:
-
-- **Image Compare** compares image pairs with a movable divider, magnifiers, and difference modes — see [Comparison](help://workspace.image_compare.comparison).
-- **Multi Compare** lays many images into a grid of slots — see [Multi Compare](help://workspace.multi_compare.overview).
-- The **Session Picker** opens, resumes, and manages sessions — see [Tabs](help://workspace.session_picker).
-
-New here? Start with [Getting Started](help://platform.getting_started).
+A session is one open workspace with its own images and view settings, shown in its own tab — see [Tabs](help://platform.tabs). Its layout comes from the tab's session type: for example, [Comparison](help://workspace.image_compare.comparison) puts two images around a movable **Divider**, and [Multi Compare](help://workspace.multi_compare.overview) lays many images into slots. The [Session Picker](help://workspace.session_picker) lists one card per connected tab and opens that session when you click a card; the set of cards grows with the tabs you install.
 
 ### License and source {#license}
 

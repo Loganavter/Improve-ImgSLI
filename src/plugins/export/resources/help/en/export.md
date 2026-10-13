@@ -6,8 +6,8 @@ Export saves the current canvas as a still image, in the format and size you cho
 
 **Save Result** on the toolbar or in **Find Action** opens the export dialog, where you pick the output file and its settings.
 
-- **Path** — choose the output directory and file name.
-- **Format** — selects the output format: PNG, JPEG, WEBP, BMP, TIFF, or JXL.
+- **Path** — the output directory and file name.
+- **Format** — PNG, JPEG, WEBP, BMP, TIFF, or JXL.
 - **Preview** — shows the composed result before the file is written.
 
 :::figure{side=block width=630}
@@ -17,10 +17,10 @@ The export dialog: **Preview** shows the composed result before the file is writ
 
 ### Resolution and quality {#resolution-and-quality}
 
-- **Size** — sets the output width and height; an aspect-ratio lock keeps the proportions.
-- **Quality** — sets the compression level. It appears only for formats that store the image with loss, so a PNG or BMP export does not offer it.
-- **PNG** — sets the PNG compression level and toggles **Optimize PNG**.
-- **Fill background** — paints the bars around an image when the images do not fill the frame. When an image fills the frame, this option is unavailable.
+- **Size** — the output width and height; an aspect-ratio lock keeps the proportions.
+- **Quality** — the compression level; it appears only for formats that store the image with loss, so a PNG or BMP export does not offer it.
+- **PNG** — the PNG compression level and the **Optimize PNG** toggle.
+- **Fill background** — fills the empty edges around the image with the **Background Color**; offered only for formats that keep transparency (PNG, TIFF, WEBP, JXL) and only while the composed result has empty edges.
 
 ### Metadata and favorites {#metadata-and-favorites}
 
@@ -35,4 +35,4 @@ The export dialog: **Preview** shows the composed result before the file is writ
 
 ### Recording and video {#video-editor}
 
-To record the controls or encode video and GIF, use the [Video Editor](help://workspace.image_compare.video); this page covers still images only.
+To record a session or encode video and GIF, use the [Video Editor](help://workspace.image_compare.video); this page covers still images only.
