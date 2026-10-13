@@ -22,8 +22,15 @@ from pathlib import Path
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QPixmap
 
-# Full QPixmap decode above this edge is banned (RAM: edge^2 × 4B).
-_PREVIEW_FULL_DECODE_EDGE = 2048
+# Decode caps owned by services/decode_policy.py (single home); the
+# _PREVIEW_FULL_DECODE_EDGE alias below keeps the historic import path.
+from tabs.image_gallery.services.decode_policy import (
+    COARSE_LONG_EDGE,
+    PREVIEW_FULL_DECODE_EDGE as _PREVIEW_FULL_DECODE_EDGE,
+    THUMB_FALLBACK_EDGE,
+    exceeds_edge,
+    fit_scale_for_edge,
+)
 
 # Stash memo: per-overlay cache of the stashed bounded source, keyed
 # (normpath, mtime_ns, size) like the crop memo (bounded, fail-open).
@@ -147,11 +154,11 @@ def _thumb_pixmap(item, w: int = 66, h: int = 44) -> QPixmap | None:
             _p = str(getattr(item, "path", ""))
             _dims = _fast_image_size(_p)
             if _dims is not None and _dims[0] > 0 and _dims[1] > 0:
-                _s = min(512.0 / _dims[0], 512.0 / _dims[1], 1.0)
+                _s = fit_scale_for_edge(_dims[0], _dims[1], THUMB_FALLBACK_EDGE)
                 _rw = max(1, int(round(_dims[0] * _s)))
                 _rh = max(1, int(round(_dims[1] * _s)))
             else:
-                _rw, _rh = 512, 512
+                _rw, _rh = THUMB_FALLBACK_EDGE, THUMB_FALLBACK_EDGE
             pm = _load_scaled_pixmap(_p, _rw, _rh)
         except Exception:
             pm = None
@@ -236,7 +243,7 @@ def _load_scaled_pixmap(path: Path | str, target_w: int, target_h: int) -> QPixm
         dims = _fast_image_size(path)
         if dims is None or dims[0] <= 0 or dims[1] <= 0:
             return None
-        if max(dims[0], dims[1]) > _PREVIEW_FULL_DECODE_EDGE:
+        if exceeds_edge(dims[0], dims[1], _PREVIEW_FULL_DECODE_EDGE):
             return None
         from PySide6.QtGui import QImageReader, QPixmap as _PM2
 
@@ -318,7 +325,7 @@ def _sample_coarse_pixmap(coarse, *, center_third: bool = False) -> QPixmap | No
         return None
 
 
-def _pyramid_pixmap_for(path, *, center_third: bool = False, long_edge: int = 1024) -> QPixmap | None:
+def _pyramid_pixmap_for(path, *, center_third: bool = False, long_edge: int = COARSE_LONG_EDGE) -> QPixmap | None:
     """Coarse-direct pixmap via the frozen wave-A1 pyramid seam.
 
     Bounded decode (``coarse_from_source`` never materializes a full frame)
@@ -438,7 +445,7 @@ def _stash_preview_source(overlay, item, _coarse=None) -> None:
                     _open = False
                 full = _sample_coarse_pixmap(_coarse) if _open else None
             else:
-                full = _pyramid_pixmap_for(_path, long_edge=1024)
+                full = _pyramid_pixmap_for(_path, long_edge=COARSE_LONG_EDGE)
             try:
                 _full_ok = full is not None and not full.isNull()
             except Exception:
@@ -458,10 +465,8 @@ def _stash_preview_source(overlay, item, _coarse=None) -> None:
                 try:
                     _dims = _source_dimensions(item, _path)
                     if _dims is not None and _dims[0] > 0 and _dims[1] > 0:
-                        _sc = min(
-                            float(_PREVIEW_FULL_DECODE_EDGE) / _dims[0],
-                            float(_PREVIEW_FULL_DECODE_EDGE) / _dims[1],
-                            1.0,
+                        _sc = fit_scale_for_edge(
+                            _dims[0], _dims[1], _PREVIEW_FULL_DECODE_EDGE
                         )
                         _tw = max(1, int(round(_dims[0] * _sc)))
                         _th = max(1, int(round(_dims[1] * _sc)))

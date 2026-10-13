@@ -31,8 +31,11 @@ DEFAULT_BASE_URL = "https://openrouter.ai/api/v1"
 REASONING_EFFORTS = ("auto", "low", "medium", "high", "none")
 
 #: Image downscale max-edge choices for AI calls; 0 = send original bytes.
-VLM_MAX_EDGES = (0, 512, 768, 1024, 1536, 2048)
-_DEFAULT_VLM_MAX_EDGE = 1024
+#: Owned by services/decode_policy.py (single home); aliases keep historic names.
+from tabs.image_gallery.services.decode_policy import (
+    VLM_DEFAULT_MAX_EDGE_PX as _DEFAULT_VLM_MAX_EDGE,
+    VLM_MAX_EDGE_CHOICES as VLM_MAX_EDGES,
+)
 
 
 def _parse_int(value, default: int = 0) -> int:

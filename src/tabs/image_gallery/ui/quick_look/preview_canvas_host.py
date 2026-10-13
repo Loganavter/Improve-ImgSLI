@@ -10,6 +10,13 @@ import this module lazily and treat ``None`` / ``False`` as "no GPU today".
 
 from __future__ import annotations
 
+# Decode caps owned by services/decode_policy.py (single home).
+from tabs.image_gallery.services.decode_policy import (
+    COARSE_LONG_EDGE,
+    PREVIEW_FULL_DECODE_EDGE,
+    exceeds_edge,
+)
+
 
 def _qlc_enabled() -> bool:
     """[ql-cover] warmup trace gate (IMGSLI_QL_COVER_DEBUG=1), fail-open."""
@@ -495,7 +502,7 @@ def _ensure_preview_canvas(overlay):
         return None
 
 
-def _coarse_store_for(path, *, long_edge: int = 1024):
+def _coarse_store_for(path, *, long_edge: int = COARSE_LONG_EDGE):
     """Bounded coarse store via the frozen wave-A1 pyramid seam.
 
     ``PyramidPixelStore.coarse_from_source`` never materializes a full
@@ -983,9 +990,7 @@ def _store_from_pixmap(pm):
         if w <= 0 or h <= 0:
             return None
         try:
-            from tabs.image_gallery.ui.quick_look.preview import _PREVIEW_FULL_DECODE_EDGE
-
-            if max(w, h) > int(_PREVIEW_FULL_DECODE_EDGE):
+            if exceeds_edge(w, h, PREVIEW_FULL_DECODE_EDGE):
                 return None
         except Exception:
             pass
