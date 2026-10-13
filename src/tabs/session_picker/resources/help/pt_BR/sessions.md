@@ -1,33 +1,35 @@
 ## Abas do Workspace e Seletor de Sessão
 
-Página inicial de novas abas e histórico de projetos.
+Escolha o tipo de sessão a abrir e retome projetos recentes na página inicial de novas abas.
 
 ### Seletor de Sessão {#session-picker}
 
-- **Tipos de sessão** — cartões de todas as abas conectadas, por exemplo {{tr:workspace.session_types.image_compare}}, {{tr:image_gallery.tab_name}}.
-- **Recentes** — projetos ``.imgsli``. Clique abre; botão direito: abrir, propriedades, remover, revelar na pasta.
-- **Soltar arquivo de projeto** — soltar um arquivo no painel fixa na lista sem abrir.
-- **Ordenar e ver** — grade ou lista, por data ou nome.
-- **Prévia** — miniatura do canvas a partir de ``preview.png`` no projeto, quando presente.
+- **Tipos de sessão** — cartões com todas as abas disponíveis, por exemplo **Comparar imagens** e **Galeria**; clique em um cartão para abrir uma sessão nova desse tipo.
+- **Recentes** — os projetos `.imgsli` já abertos. Um clique abre o projeto; o botão direito oferece abrir, **Propriedades**, remover e revelar na pasta.
+- **Soltar arquivo de projeto** — arraste um arquivo `.imgsli` para o painel para fixá-lo na lista de recentes sem abrir.
+- **Ordenar e ver** — alterne entre grade e lista e ordene por data ou nome, para achar o projeto mais recente ou pelo nome.
+- **Prévia** — mostra a miniatura da tela salva no projeto, quando ela existe, para você reconhecer o projeto antes de abrir.
 
 ### Teclado {#keyboard}
 
-Setas movem entre os cartões e `Enter` abre o projeto em foco — a lista completa está em [Atalhos](help://hotkeys#keyboard-navigation).
+As setas movem entre os cartões e `Enter` abre o projeto em foco; a lista completa está em [Atalhos de Teclado](help://platform.hotkeys#keyboard-navigation).
 
 :::figure{side=block width=420}
-![Seletor de Sessão]({{img:platform.workspace.session_picker}})
-{{tr:action.workspace.open_session_picker}} — {{tr:workspace.session_types.image_compare}} / {{tr:workspace.session_types.multi_compare}}.
+![Seletor de Sessão](../assets/platform/session_picker.jpg)
+Abrir seletor de sessão — Comparar imagens / Comparação múltipla.
 :::
 
 ### Abrir uma sessão sem o seletor {#new-session-actions}
 
-Em {{tr:menu.find_action}} (`Ctrl+Shift+P`):
+Em **Localizar ação** (`Ctrl+Shift+P`), escolha:
 
-- {{tr:action.workspace.new_image_compare}}
-- {{tr:action.workspace.new_multi_compare}}
+- **Nova sessão Image Compare** — abre a sessão de comparação de duas imagens.
+- **Nova sessão Multi Compare** — abre a sessão de grade para três ou mais imagens.
+- **Nova sessão Image Gallery** — abre a sessão de galeria de imagens.
 
-{{tr:action.workspace.open_session_picker}} retorna à página inicial para uma escolha visual.
+**Abrir seletor de sessão** retorna ao **Seletor de Sessão** para uma escolha visual.
 
 ### Próximos tópicos {#next-topics}
 
-Fluxos rápidos: [Primeiros Passos](help://introduction). Ferramentas de sessão: [Comparação](help://comparison) ou [{{tr:workspace.session_types.multi_compare}}](help://multi_compare).
+- Fluxos rápidos: [Primeiros passos](help://platform.getting_started).
+- Ferramentas de sessão: [Comparação](help://workspace.image_compare.comparison) ou [Visão Geral do Multi Compare](help://workspace.multi_compare.overview).

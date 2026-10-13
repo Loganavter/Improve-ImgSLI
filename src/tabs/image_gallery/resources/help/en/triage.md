@@ -1,28 +1,28 @@
 ## Triage and Review
 
-Series triage keeps one winner per series and moves rejects out of the folder.
+Triage keeps one winner per series and lets you move the rejected images out of the folder, so only the keepers remain.
 
 ### Keep best of series {#keep-best}
 
-- **{{tr:image_gallery.action.keep_best}}** — marks the best of every series and rejects the rest.
-- **{{tr:image_gallery.action.keep_best_desc}}** — winners re-ranked and badged per series.
+- **Keep best** — marks the best image of every series as the winner and rejects the rest.
+- **Winners** — the chosen images are re-ranked and badged within their series.
 - **Show all** — clears every rejected flag.
 
 ### Make best and reject {#make-best-reject}
 
-- **{{tr:image_gallery.card.make_best}}** — marks that image the winner of its series.
-- **{{tr:image_gallery.card.reject}}** — toggles the rejected flag on one image.
-- **Grid removal** — `Space` / `Delete` take selected cards out of the grid; files stay on disk.
+- **Make best** — marks that image as the winner of its series.
+- **Reject** — toggles the rejected flag on a single image.
+- **Remove from view** — `Space` / `Delete` take the selected cards out of the grid; the files stay on disk.
 
 ### Clean review {#clean-review}
 
-- **{{tr:image_gallery.action.clean_rejected}}** — {{tr:image_gallery.action.clean_rejected_desc}} (`_rejected/`). The move is previewed before it runs; files stay on disk.
-- **Undo** — restores moved files to the folder.
+- **Clean rejected** — moves the rejected images into the `_rejected/` folder beside them. You see a preview of the move before it runs, and the files stay on disk.
+- **Undo** — restores the moved files to the folder.
 
 ### Run triage again {#run-triage}
 
-{{tr:image_gallery.action.run_triage}} reopens the current folder and re-runs clustering from scratch.
+**Run triage** reopens the current folder and clusters the images again from scratch.
 
 ### Set as source {#set-as-source}
 
-{{tr:image_gallery.action.set_as_source}} and {{tr:image_gallery.card.set_as_source}} pick the fidelity reference. See [Quality Metrics](help://gallery_quality#reference-source).
+**Set as source** — available on a card and as an action — chooses the image used as the fidelity reference. See [Quality Metrics](help://workspace.image_gallery.quality#reference-source).

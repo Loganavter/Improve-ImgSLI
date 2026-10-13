@@ -41,10 +41,13 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
 - **[File Size Policy & Audit-Meta](FILE_SIZE_POLICY.md)** — `docs/dev/FILE_SIZE_POLICY.md`
   Referenced by: [docs/dev/CODE_PATTERNS.md](CODE_PATTERNS.md)
 - **[Как писать страницы справки](HELP_AUTHORING.md)** — `docs/dev/HELP_AUTHORING.md`
-  Referenced by: [docs/dev/HELP_PROSE_PLAN.md](HELP_PROSE_PLAN.md)
+  Referenced by: [docs/dev/HELP_PROSE_PLAN.md](HELP_PROSE_PLAN.md), [docs/dev/HELP_STYLE_GUIDE.md](HELP_STYLE_GUIDE.md)
 - **[Plan: рефакторинг текста справки](HELP_PROSE_PLAN.md)** — `docs/dev/HELP_PROSE_PLAN.md`
+- **[Гайдлайн по справке Improve-ImgSLI (RU)](HELP_STYLE_GUIDE.md)** — `docs/dev/HELP_STYLE_GUIDE.md`
+  Referenced by: [docs/dev/HELP_AUTHORING.md](HELP_AUTHORING.md), [docs/dev/HELP_SYSTEM.md](HELP_SYSTEM.md), [docs/dev/RESOURCES_I18N.md](RESOURCES_I18N.md)
 - **[Help plugin (hierarchical illustrated manual)](HELP_SYSTEM.md)** — `docs/dev/HELP_SYSTEM.md`
-  Referenced by: [docs/dev/ACTIONS.md](ACTIONS.md), [docs/dev/PLUGINS.md](PLUGINS.md), [docs/dev/README.md](README.md), [docs/dev/RESOURCES_I18N.md](RESOURCES_I18N.md), [docs/dev/TODO.md](TODO.md), [docs/dev/plugins/help-per-owner-plan.md](plugins/help-per-owner-plan.md), [docs/dev/plugins/help.md](plugins/help.md), [docs/dev/tabs/capability-mechanisms.md](tabs/capability-mechanisms.md)
+  Referenced by: [docs/dev/ACTIONS.md](ACTIONS.md), [docs/dev/HELP_STYLE_GUIDE.md](HELP_STYLE_GUIDE.md), [docs/dev/PLUGINS.md](PLUGINS.md), [docs/dev/README.md](README.md), [docs/dev/RESOURCES_I18N.md](RESOURCES_I18N.md), [docs/dev/TODO.md](TODO.md), [docs/dev/plugins/help-per-owner-plan.md](plugins/help-per-owner-plan.md), [docs/dev/plugins/help.md](plugins/help.md), [docs/dev/tabs/capability-mechanisms.md](tabs/capability-mechanisms.md)
+- **[Help web-canon refactor — plan](HELP_WEBCANON_PLAN.md)** — `docs/dev/HELP_WEBCANON_PLAN.md`
 - **[Logging](LOGGING.md)** — `docs/dev/LOGGING.md`
   Referenced by: [docs/dev/README.md](README.md), [docs/dev/SETTINGS_PERSISTENCE.md](SETTINGS_PERSISTENCE.md), [docs/dev/TRACING.md](TRACING.md), [docs/dev/toast_stuck_session_report.md](toast_stuck_session_report.md)
 - **[Plugin lifecycle](PLUGINS.md)** — `docs/dev/PLUGINS.md`

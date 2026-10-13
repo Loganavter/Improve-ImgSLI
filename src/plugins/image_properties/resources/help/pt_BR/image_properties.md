@@ -1,31 +1,36 @@
 ## Propriedades da imagem
 
-Metadados do arquivo e contexto no aplicativo para uma imagem carregada. O diálogo flutua sobre a sessão e nada muda nela.
+O diálogo **Propriedades** mostra os dados do arquivo e como a imagem é usada na sessão atual. Ele apenas exibe informações e não altera nada na sessão.
 
 ### Abrir o diálogo {#open}
 
-O item {{tr:image_compare.action.context_properties}} no menu de contexto de uma lista ou célula abre {{tr:image_properties.title}} para aquela imagem.
+Clique com o botão direito em uma imagem na lista ou no slot e escolha **Propriedades**.
 
 :::figure{side=block width=280}
-![Diálogo de propriedades da imagem]({{img:platform.image_properties.open}})
-{{tr:image_properties.title}}.
+![Diálogo de propriedades da imagem](../assets/platform/image_properties.png)
+O diálogo **Propriedades**: as linhas são agrupadas por origem, por exemplo **Arquivo** e **Metadados**.
 :::
 
-### Seções {#sections}
+### O que é mostrado {#sections}
 
-As linhas vêm agrupadas em:
+As linhas são agrupadas em:
 
-- {{tr:image_properties.section_file}} — nome, caminho, tamanho em disco, formato, data de modificação
-- {{tr:image_properties.section_image}} — tamanho em pixels, proporção, orientação, canais, modo / perfil de cor quando houver
-- {{tr:image_properties.section_app}} — como o aplicativo posiciona a imagem na sessão atual (abaixo)
-- {{tr:image_properties.section_metadata}} — campos de câmera / EXIF quando o arquivo os fornece
+- **Arquivo** — nome, caminho, tamanho em disco, formato e data de modificação.
+- **Imagem** — tamanho em pixels, proporção, orientação e canais; modo e perfil de cor quando o arquivo os fornece.
+- **No aplicativo** — como o aplicativo usa a imagem na sessão atual (veja abaixo).
+- **Metadados** — campos de câmera e EXIF quando o arquivo os fornece.
 
-Linhas sem valor são omitidas; um erro de leitura aparece como {{tr:image_properties.read_error}}.
+Linhas sem valor são omitidas. Se o arquivo não puder ser lido, em vez dos dados aparece **Erro de leitura**.
 
 ### Contexto no aplicativo {#in-app}
 
-{{tr:image_properties.section_app}} depende do tipo de sessão. Um item {{tr:workspace.session_types.image_compare}} traz {{tr:image_properties.side}} (esquerda / direita) e {{tr:image_properties.rating}}. Uma célula {{tr:workspace.session_types.multi_compare}} traz {{tr:image_properties.position}}. Essas linhas descrevem o estado da sessão, não o arquivo em disco.
+O grupo **No aplicativo** depende do tipo de sessão:
+
+- Em uma sessão **Comparar imagens**, mostra **Lado** (esquerdo ou direito) e **Avaliação**.
+- Em uma sessão **Comparação múltipla**, mostra a **Posição** da célula.
+
+Essas linhas descrevem o estado da sessão, não o arquivo em disco.
 
 ### Fechar {#close}
 
-{{tr:image_properties.close}} dispensa o diálogo. {{tr:image_properties.copy_all}} copia todas as linhas visíveis para a área de transferência; linhas individuais têm a própria cópia.
+**Fechar** dispensa o diálogo. **Copiar tudo** copia todas as linhas visíveis para a área de transferência; o texto selecionado pode ser copiado pelo menu de contexto.

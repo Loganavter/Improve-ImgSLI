@@ -66,8 +66,7 @@ visual output, inspect all three paths together.
 
 ## Help ownership
 
-`help.py` `build_help_plugin_contribution()` (`owner_plugin="export"`,
-attach `workspace`): owns page `workspace.export` + alias `export` (moved
-byte-identical from the image_compare tab). Pack: `resources/help/` bodies
-×4 + `figures.json` slot `workspace.image_compare.export.dialog` (slot id
-frozen) + asset; no icon resolver (icon resolves via the tab chain).
+`help.py` carries `HELP_MOUNT = "workspace.export"`: owns page
+`workspace.export` (moved byte-identical from the image_compare tab). Pack:
+`resources/help/` bodies ×4 + asset; no icon resolver (icon resolves via
+the tab chain).

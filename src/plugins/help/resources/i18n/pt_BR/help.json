@@ -26,48 +26,6 @@
         "title": "Plataforma",
         "desc": "Configurações, arquivos, atalhos"
       }
-    },
-    "page": {
-      "buttons": {
-        "title": "Botões e controles",
-        "desc": "Barra de ferramentas e gestos de painel"
-      },
-      "lists": {
-        "title": "Listas e painéis",
-        "desc": "Listas de imagens e menus"
-      },
-      "canvas_nav": {
-        "title": "Navegação no canvas",
-        "desc": "Zoom, pan, ajustar"
-      },
-      "getting_started": {
-        "title": "Primeiros passos",
-        "desc": "Orientação rápida"
-      },
-      "about": {
-        "title": "Sobre",
-        "desc": "O que é o Improve ImgSLI"
-      },
-      "settings": {
-        "title": "Configurações",
-        "desc": "Aparência e desempenho"
-      },
-      "hotkeys": {
-        "title": "Atalhos",
-        "desc": "Padrões e substituições"
-      },
-      "file_project": {
-        "title": "Arquivos e projetos",
-        "desc": "Carregar, colar, arquivos de projeto"
-      },
-      "workspace": {
-        "title": "Abas do espaço de trabalho",
-        "desc": "Seletor de sessão e barra de abas"
-      },
-      "image_properties": {
-        "title": "Propriedades da imagem",
-        "desc": "Metadados do arquivo e contexto no app"
-      }
     }
   }
 }

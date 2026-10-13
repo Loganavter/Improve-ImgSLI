@@ -39,7 +39,7 @@ class HelpNavigator:
         self._forward.clear()
 
     def push(self, node_id: str) -> None:
-        target = self._tree.resolve_alias(node_id)
+        target = self._tree.resolve_path(node_id)
         if target == self.current_id:
             return
         # If target is already on the stack, trim to it.
@@ -77,7 +77,7 @@ class HelpNavigator:
         return self.current_id
 
     def pop_to(self, node_id: str) -> None:
-        target = self._tree.resolve_alias(node_id)
+        target = self._tree.resolve_path(node_id)
         if target in self._stack:
             trimmed = self._stack[self._stack.index(target) + 1 :]
             self._stack = self._stack[: self._stack.index(target) + 1]
@@ -88,7 +88,7 @@ class HelpNavigator:
 
     def replace_sibling(self, sibling_id: str) -> None:
         """Stay at the same depth; switch to another child of the same parent."""
-        sibling = self._tree.resolve_alias(sibling_id)
+        sibling = self._tree.resolve_path(sibling_id)
         self._forward.clear()
         if len(self._stack) <= 1:
             self.push(sibling)

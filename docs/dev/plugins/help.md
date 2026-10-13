@@ -1,7 +1,7 @@
 # Help plugin
 
-In-app hierarchical illustrated manual: a hub/tree dialog over `tree.json`
-help topics, with tab-contributed subtrees, anchors, generated in-page TOC,
+In-app hierarchical illustrated manual: a hub/tree dialog over scanned
+help topics, with tab-contributed hubs, anchors, generated in-page TOC,
 search, and language switching.
 
 Source: `src/plugins/help/`. Authoring/content rules live in
@@ -28,26 +28,23 @@ Source: `src/plugins/help/`. Authoring/content rules live in
 | Module | Role |
 |---|---|
 | `dialog.py` | `HelpDialog` — hub/page rendering, language sync, navigation |
-| `tree.py` | `HelpTree` / `HelpNode` — topic tree (hubs + pages), aliases, body/asset resolution, `load_help_tree`, `merge_help_contributions`, `build_help_tree` |
-| `contribution.py` | `HelpContribution` (tab-owned, frozen, `owner_tab`) + `HelpPluginContribution` (plugin-owned, frozen, `owner_plugin`) + deprecated `HelpContributionRegistry` shim |
+| `tree.py` | `HelpTree` / `HelpNode` — scanned topic tree (hubs + pages), path resolution, body/asset resolution, `install_help_contributions`, `build_help_tree` |
+| `scan.py` | Filesystem discovery (dirs = hubs, `*.md` = pages) + hub-meta overlay |
+| `contribution.py` | `HelpHubContribution` (tab-owned hub presentation, frozen, `owner_tab` + `mount`) |
 | `navigator.py` | `HelpNavigator` — page navigation |
-| `hub_page.py`, `back_bar.py`, `labels.py`, `interpolate.py`, `layout_geometry.py`, `icons.py`, `text_context_menu.py` | hub rendering, chrome, label handling, icon lookup, text context menu |
+| `hub_page.py`, `back_bar.py`, `labels.py`, `layout_geometry.py`, `icons.py`, `text_context_menu.py` | hub rendering, chrome, label handling, icon lookup, text context menu |
 
-## Tree merge contract
+## Tree scan contract
 
-Tabs publish topic subtrees via the `contribute_help` notify hook; plugins
-publish via `build_help_plugin_contribution()`, probed duck-typed from
-`HelpPlugin.initialize` (`_install_plugin_contributions` — no
-`plugins/<name>` imports). The host owns the shell tree (root / workspace /
-ui / platform); contributed aliases move with their nodes (`tree.py:450`).
-See [HELP_SYSTEM.md](../HELP_SYSTEM.md#tree-merge-contract) and
-`tree.merge_help_contributions` / `tree.merge_help_plugin_contributions`.
+Tabs publish hub presentation via `create_service("contribute_help") →
+HelpHubContribution`; structure itself is scanned from the filesystem.
+The host owns the four shell hubs (root / workspace / ui / platform).
+See [HELP_SYSTEM.md](../HELP_SYSTEM.md#tree-scan-contract-web-canon).
 
 ## Content
 
-Host topics: `src/resources/help/` (shell `tree.json` + `about`,
-`platform/file_project.md`, `platform/hotkeys.md`, `ui/*.md`, host
-`figures.json` slots only). Plugin topics:
+Host topics: `src/resources/help/` (`about`,
+`platform/file_project.md`, `platform/hotkeys.md`, `ui/*.md`). Plugin topics:
 `src/plugins/<plugin>/resources/help/` (`workspace.export`,
 `platform.settings`, `platform.image_properties`,
 `platform.getting_started`). Tab topics: `src/tabs/<tab>/resources/help/`.

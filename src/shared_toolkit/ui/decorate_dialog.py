@@ -141,7 +141,7 @@ def install_dialog_help_menu(
 
     def _on_triggered(action_id: str, _data: object) -> None:
         if action_id == "help.show":
-            open_help_page(page or "export", anchor)
+            open_help_page(page or "workspace.export", anchor)
             return
         if action_id == "help.find_action":
             from ui.actions.palette import show_command_palette

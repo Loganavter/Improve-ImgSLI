@@ -1,38 +1,38 @@
 ## Exportação
 
-Exportação do canvas atual como imagem estática. Captura de sessão e codificação de vídeo pertencem a outro tópico: [Editor de vídeo](help://video).
+A exportação salva o canvas atual como uma imagem estática, no formato e no tamanho que você escolher. A gravação da sessão e a codificação de vídeo ficam no [Editor de vídeo](help://workspace.image_compare.video).
 
 ### Salvar uma imagem {#saving-an-image}
 
-{{tr:image_compare.action.save}} (barra de ferramentas ou {{tr:menu.find_action}}) abre o diálogo de exportação.
+**Salvar Resultado**, na barra de ferramentas ou em **Localizar ação**, abre o diálogo de exportação, onde você escolhe o arquivo de saída e suas opções.
 
-- **Caminho** — pasta de saída e nome do arquivo.
-- **Formato** — PNG, JPEG, WEBP, BMP, TIFF ou JXL.
-- **Pré-visualização** — o painel ao vivo mostra o resultado composto antes de gravar.
+- **Caminho** — escolhe a pasta de saída e o nome do arquivo.
+- **Formato** — seleciona o formato de saída: PNG, JPEG, WEBP, BMP, TIFF ou JXL.
+- **Pré-visualização** — mostra o resultado composto antes de gravar o arquivo.
 
 :::figure{side=block width=630}
-![Diálogo de exportação]({{img:workspace.image_compare.export.dialog}})
-{{tr:image_compare.action.breadcrumb.toolbar}} → {{tr:image_compare.action.breadcrumb.export}}.
+![Diálogo de exportação](../assets/export_dialog.jpg)
+O diálogo de exportação: a **Pré-visualização** mostra o resultado composto antes de gravar o arquivo.
 :::
 
 ### Resolução e qualidade {#resolution-and-quality}
 
-- **Tamanho** — campos de largura e altura com trava de proporção.
-- **Qualidade** — {{tr:label.quality}} aparece só para formatos com perda.
-- **PNG** — nível de compressão e {{tr:export.optimize_png}}.
-- **Preenchimento** — {{tr:export.fill_background}} pinta as margens quando o canvas virtual ultrapassa `0..1`. No canvas unitário a opção desliga.
+- **Tamanho** — define a largura e a altura de saída; uma trava de proporção mantém as proporções.
+- **Qualidade** — define o nível de compressão; aparece apenas em formatos com perdas (JPEG, WEBP e JXL), então uma exportação em PNG ou BMP não a oferece.
+- **PNG** — define o nível de compressão e liga ou desliga **Otimizar PNG**.
+- **Preencher fundo** — pinta as barras ao redor da imagem quando ela não preenche o quadro. Quando a imagem preenche o quadro, a opção fica indisponível.
 
 ### Metadados e favoritos {#metadata-and-favorites}
 
-- **Metadados** — {{tr:export.include_metadata}} fica ligado até ser desligado; o campo de comentário some junto. {{tr:export.remember_by_default}} guarda o texto do comentário para a próxima exportação.
-- **Favoritos** — {{tr:misc.set_as_favorite}} fixa a pasta atual; {{tr:tooltip.use_favorite}} a recupera.
-- **Rótulos** — quando {{tr:image_compare.action.file_names}} está ligado, os nomes saem na imagem como estado da sessão, não como dados do arquivo.
+- **Metadados** — o comentário é gravado no arquivo por padrão. Ao desmarcar **Incluir metadados**, a imagem é gravada sem ele e o campo de comentário fica oculto. **Lembrar por padrão** mantém o texto do comentário para a próxima exportação.
+- **Favoritos** — **Definir como Favorito** fixa a pasta atual, e **Usar Favorito** volta a essa pasta.
+- **Rótulos** — com **Sobreposição de nomes** ligado, os nomes dos arquivos são desenhados na imagem exportada.
 
 ### Salvamento rápido {#quick-save}
 
-- **`Ctrl+S`** — {{tr:image_compare.action.quick_save}} repete as últimas configurações sem abrir o diálogo.
+- **`Ctrl+S`** — **Salvamento rápido** grava o arquivo com as últimas configurações de exportação sem reabrir o diálogo.
 - **Bandeja** — o menu do ícone na bandeja reabre o último arquivo e a última pasta salvos.
 
 ### Gravação e vídeo {#video-editor}
 
-Controles de gravação e codificação de vídeo/GIF ficam no [Editor de vídeo](help://video).
+Para gravar os controles ou codificar vídeo e GIF, use o [Editor de vídeo](help://workspace.image_compare.video); esta página cobre apenas imagens estáticas.

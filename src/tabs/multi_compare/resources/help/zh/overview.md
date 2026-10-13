@@ -1,18 +1,24 @@
 ## 多图对比概览
 
-一个会话在布局网格中对比多张图像，支持逐槽位拖放与聚焦模式。
+多图比较一次对比三张及以上的图像：把它们排进网格槽位，可聚焦单个槽位、对整张网格缩放和平移、逐格裁剪并一起保存。当两张图的分割对比不够用时选它——例如并排浏览整组图像，或对比同一张照片的多个版本。
 
-### 打开会话 {#open-session}
+### 如何开始 {#open-session}
 
-在会话选择器中选择 {{tr:workspace.session_types.multi_compare}}，或通过 {{tr:menu.find_action}}（`Ctrl+Shift+P`）运行 {{tr:action.workspace.new_multi_compare}}。另见[工作区标签](help://session_picker)。
+1. 打开 **会话选择器** 并选择 **多图比较** 卡片，或按 `Ctrl+Shift+P`，在 **查找操作** 中运行 **新建多图对比会话**。
+2. 用 `Ctrl+O`（**添加图像**）添加图像，也可以从文件管理器把文件拖到网格上，或从剪贴板粘贴。
+3. 拖动分割线调整槽位大小；每加入一张新图像，都会沿较长边拆分最大的单元格。
 
-### 功能 {#capability-map}
+会话类型的完整列表与最近项目见[工作区标签与会话选择器](help://workspace.session_picker)。
 
-- [布局与槽位](help://mc_layouts) — 单元格、缝隙拆分、分割线、槽位操作。
-- [查看与聚焦](help://mc_viewing) — 聚焦、缩放、平移、标签、裁剪。
-- [保存与导出](help://mc_export) — 快速保存、保存对话框、会话。
+### 你能做什么 {#capability-map}
+
+会话会随你的操作保留网格，因此可以一次载入整批图像、对比它们并保存结果，全程不必离开该标签页。
+
+- [布局与槽位](help://workspace.multi_compare.layouts) — 槽位如何填充、把图拖到缝隙上如何拆分单元格，以及如何用分割线调整大小。
+- [查看与聚焦](help://workspace.multi_compare.viewing) — 聚焦单个槽位、共享缩放与平移、设置标签样式，并逐格裁剪。
+- [保存与导出](help://workspace.multi_compare.export) — 快速保存或保存对话框，以及会话会记住哪些内容。
 
 :::figure{side=block width=320}
-![多图对比网格]({{img:workspace.multi_compare.overview.layouts}})
-{{tr:workspace.session_types.multi_compare}} — 网格 / 缝隙拖放。
+![多图对比网格](../assets/layouts.jpg)
+多图比较网格：图像各占一个槽位，单元格之间是分割线。
 :::

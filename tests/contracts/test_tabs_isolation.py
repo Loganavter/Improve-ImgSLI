@@ -83,24 +83,24 @@ def _flat_keys(data: dict, prefix: str = "") -> list[str]:
 
 
 def test_help_and_settings_contributions_are_typed_and_isolated():
-    """``HelpContribution``/``SettingsContribution`` are frozen, typed and owner-isolated.
+    """``HelpHubContribution``/``SettingsContribution`` are frozen, typed and owner-isolated.
 
     Per ``docs/dev/tabs/isolation.md:60`` owner_tab == i18n_namespace and host
     must not import tabs.* for merge — contributions carry their own namespace.
     """
-    from plugins.help.contribution import HelpContribution
+    from plugins.help.contribution import HelpHubContribution
     from plugins.settings.registry import SettingsContribution
 
     # Dataclasses are frozen
-    assert getattr(HelpContribution, "__dataclass_params__").frozen is True
+    assert getattr(HelpHubContribution, "__dataclass_params__").frozen is True
     assert getattr(SettingsContribution, "__dataclass_params__").frozen is True
 
-    # HelpContribution must have typed owner_tab + nodes/aliases/body_root/asset_root/resolve_icon
+    # HelpHubContribution must have typed owner_tab + mount + hub presentation
     import inspect
 
-    sig = inspect.signature(HelpContribution)
-    for field in ("owner_tab", "nodes", "aliases", "body_root", "asset_root", "resolve_icon"):
-        assert field in sig.parameters, f"HelpContribution missing typed field {field}"
+    sig = inspect.signature(HelpHubContribution)
+    for field in ("owner_tab", "mount", "title", "description", "icon", "resolve_icon"):
+        assert field in sig.parameters, f"HelpHubContribution missing typed field {field}"
 
     sig2 = inspect.signature(SettingsContribution)
     assert "owner_tab" in sig2.parameters

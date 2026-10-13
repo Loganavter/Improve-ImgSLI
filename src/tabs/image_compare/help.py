@@ -1,63 +1,10 @@
-"""Image Compare help subtree contributed into the host Help tree."""
+"""Image Compare help hub presentation (web canon: structure is scanned)."""
 
 from __future__ import annotations
-
-from pathlib import Path
 
 from PySide6.QtGui import QIcon
 
 from tabs.image_compare.icons import Icon, get_icon
-
-_HELP_ROOT = Path(__file__).resolve().parent / "resources" / "help"
-
-_NODES = {
-    "workspace.image_compare": {
-        "kind": "hub",
-        "title_key": "image_compare.workspace.session_types.image_compare",
-        "description_key": "image_compare.help.hub.desc",
-        "title": "Image Compare",
-        "description": "Two-image compare, magnifier, export",
-        "icon": "vertical_split.svg",
-        "children": [
-            "workspace.image_compare.comparison",
-            "workspace.image_compare.magnifier",
-            "workspace.image_compare.video",
-        ],
-    },
-    "workspace.image_compare.comparison": {
-        "kind": "page",
-        "title_key": "image_compare.help.page.comparison.title",
-        "description_key": "image_compare.help.page.comparison.desc",
-        "title": "Comparison",
-        "description": "Split line, labels, difference modes",
-        "icon": "divider_visible.svg",
-        "body": "comparison.md",
-    },
-    "workspace.image_compare.magnifier": {
-        "kind": "page",
-        "title_key": "image_compare.help.page.magnifier.title",
-        "description_key": "image_compare.help.page.magnifier.desc",
-        "title": "Magnifier",
-        "description": "Capture area, freeze, combined mode",
-        "icon": "magnifier.svg",
-        "body": "magnifier.md",
-    },
-    "workspace.image_compare.video": {
-        "kind": "page",
-        "title_key": "image_compare.help.page.video.title",
-        "description_key": "image_compare.help.page.video.desc",
-        "title": "Video Editor",
-        "description": "Record, trim, encode",
-        "icon": "play.svg",
-        "body": "video.md",
-    },
-}
-
-_ALIASES = {
-    "comparison": "workspace.image_compare.comparison",
-    "magnifier": "workspace.image_compare.magnifier",
-    "video": "workspace.image_compare.video",
-}
 
 
 def resolve_help_icon(name: str) -> QIcon | None:
@@ -69,31 +16,17 @@ def resolve_help_icon(name: str) -> QIcon | None:
     return None
 
 
-def build_help_contribution():  # type: ignore[no-untyped-def]
-    """Return typed ``HelpContribution`` for ``image_compare`` (isolated)."""
-    from plugins.help.contribution import HelpContribution
+def build_help_hub_contribution():  # type: ignore[no-untyped-def]
+    """Return the hub presentation fragment for ``image_compare``."""
+    from plugins.help.contribution import HelpHubContribution
 
-    return HelpContribution(
+    return HelpHubContribution(
         owner_tab="image_compare",
-        attach_under="workspace",
-        child_ids=("workspace.image_compare",),
-        nodes=dict(_NODES),
-        aliases=dict(_ALIASES),
-        body_root=_HELP_ROOT,
-        asset_root=_HELP_ROOT,
+        mount="workspace.image_compare",
+        title="Image Compare",
+        description="Two-image compare, magnifier, export",
+        icon="vertical_split.svg",
+        title_key="image_compare.workspace.session_types.image_compare",
+        description_key="image_compare.help.hub.desc",
         resolve_icon=resolve_help_icon,
-    )
-
-
-def contribute_help(registry) -> None:  # deprecated shim
-    """Deprecated: mutates ``registry`` — prefer ``build_help_contribution``."""
-    contrib = build_help_contribution()
-    registry.contribute(
-        attach_under=contrib.attach_under,
-        child_ids=contrib.child_ids,
-        nodes=dict(contrib.nodes),
-        aliases=dict(contrib.aliases),
-        body_root=contrib.body_root,
-        asset_root=contrib.asset_root,
-        resolve_icon=contrib.resolve_icon,
     )

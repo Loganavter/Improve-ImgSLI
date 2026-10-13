@@ -38,7 +38,7 @@
     },
     {
       "path": "src/devtools/context_cloc.py",
-      "lines": 810,
+      "lines": 808,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine reason=\"single devtools report generator — cloc + shader + tests aggregation\"",
@@ -151,7 +151,7 @@
     },
     {
       "path": "src/plugins/help/dialog.py",
-      "lines": 910,
+      "lines": 925,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=qdialog-wiring reason=\"one Help QDialog — HelpDocumentView + search wiring\"",
@@ -162,13 +162,13 @@
     },
     {
       "path": "src/plugins/help/tree.py",
-      "lines": 554,
+      "lines": 219,
       "limit": 500,
       "marker": "Audit-Meta:",
-      "raw": "pattern=single-owner reason=\"one merged HelpTree: host shell + tab/plugin fragment merge, alias/body/asset resolution, and validation share one cache — splitting would fork the uniqueness scope\"",
+      "raw": "pattern=single-owner reason=\"one merged HelpTree: fs scan + hub-fragment overlay, path/body/asset resolution, and validation share one cache — splitting would fork the scope\"",
       "parsed": {
         "pattern": "single-owner",
-        "reason": "one merged HelpTree: host shell + tab/plugin fragment merge, alias/body/asset resolution, and validation share one cache — splitting would fork the uniqueness scope"
+        "reason": "one merged HelpTree: fs scan + hub-fragment overlay, path/body/asset resolution, and validation share one cache — splitting would fork the scope"
       }
     },
     {
@@ -787,7 +787,7 @@
     },
     {
       "path": "src/tabs/image_gallery/tab.py",
-      "lines": 417,
+      "lines": 411,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner size=exempt reason=\"tab contract — lifecycle wiring delegates to controller/widget\"",

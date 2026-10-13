@@ -1,14 +1,14 @@
 ## 关于
 
-{{tr:app.name}} 是面向精确图像与媒体对比的桌面工作区。并排与多样本视图、像素级差异检查、静态结果导出，以及对比视频录制。
+Improve ImgSLI 是一款面向精确图像与媒体对比的桌面工作区：可以在并排视图和多图网格中逐像素检查差异，导出静态结果，并把对比过程录制成视频。
 
 ### 适用场景 {#purpose}
 
-在保留上下文的前提下判断视觉变化：修图、超分质检、摄影——这类会话更依赖分割线、放大镜和可导出结果，而非一次性截图。
+在保留上下文的前提下判断视觉变化——例如修图、超分质检和摄影。这类任务更依赖 **分割线**、**放大镜** 和可导出的结果，而不是一次性截图。
 
 ### 工作区模式 {#modes}
 
-每个已连接标签各占一张卡片，卡片集合随已安装标签增长。{{tr:workspace.session_types.image_compare}} 以可移动分割线、放大镜和差异模式对比图像对——见[对比](help://comparison)。{{tr:workspace.session_types.multi_compare}} 将多张图像排入槽位网格——见[{{tr:workspace.session_types.multi_compare}}](help://multi_compare)。会话选择器卡片负责打开、继续和管理会话——见[工作区标签](help://session_picker)。首次了解可看[入门](help://introduction)。
+每个已安装的标签页各占一张卡片，卡片会随标签页的增加而增多。会话 **图像比较** 用可移动的 **分割线**、**放大镜** 和 **差异模式** 对比一对图像，详见 [对比](help://workspace.image_compare.comparison)。会话 **多图比较** 把多张图像排入槽位网格，详见 [多图比较](help://workspace.multi_compare.overview)。**会话选择器** 负责打开、继续和管理会话，详见 [工作区标签](help://workspace.session_picker)。第一次使用可以从 [入门](help://platform.getting_started) 开始。
 
 ### 许可与源码 {#license}
 
@@ -16,4 +16,7 @@
 
 ### 接下来 {#next}
 
-[入门](help://introduction)、[快捷键](help://hotkeys)、[设置](help://settings)、[文件与项目](help://file_management)。
+- [入门](help://platform.getting_started) — 第一次使用的完整流程：打开图像、对比、导出。
+- [快捷键](help://platform.hotkeys) — 所有默认按键与固定按键。
+- [设置](help://platform.settings) — 外观、键盘等应用偏好。
+- [文件与项目](help://platform.file_project) — 加载图像，保存和打开可移植的项目文件。

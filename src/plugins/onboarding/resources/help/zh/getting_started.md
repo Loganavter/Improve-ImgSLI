@@ -1,15 +1,19 @@
 ## 入门
 
-新安装的方向指引。首次启动会显示界面模式选择器；该选择仅写入一次，并作为外观设置继续生效。命令面板（{{tr:menu.find_action}}，`Ctrl+Shift+P`）无需在工具栏中寻找，即可直达任何操作。
+Improve ImgSLI 把两张或更多图像并排放在一起，让你比较它们、放大查看差异，并把结果保存下来。下面的步骤带你从全新安装走到第一张保存好的对比图。
 
-### {{tr:workspace.session_types.image_compare}} 工作流程 {#basic-workflow}
+### 第一次比较 {#basic-workflow}
 
-会话将两个图像列表配对。[对比](help://comparison)视图以分割线划分两者，[放大镜](help://magnifier)是另一种镜头。会话从[会话选择器](help://session_picker)或命令面板（{{tr:action.workspace.new_image_compare}}）打开。结果经由[导出](help://export)（`Ctrl+S`）或[视频编辑器](help://video)输出。
+1. 首次启动时选择界面模式：**初学者**、**高级** 或 **专家**。该选择只保存一次，之后可以在 **外观** 设置页中修改。
+2. 按 `Ctrl+N` 打开 **会话选择器**，或从 **查找操作**（`Ctrl+Shift+P`）运行 **新建图像对比会话**，打开一个图像比较会话。
+3. 往两个列表中各放一张图像：使用列表上的添加按钮，或把文件拖到列表上。
+4. 在画布上拖动分割线，让一张图像盖住另一张；再按 `M` 开启[放大镜](help://workspace.image_compare.magnifier)，点击图像即可放大。
+5. 按 `Ctrl+S` 保存结果，或打开[视频编辑器](help://workspace.image_compare.video)（`Ctrl+E`）录制操作过程，代替静态图。
 
-### {{tr:workspace.session_types.multi_compare}} 流程 {#multi-compare}
+### 多图比较 {#multi-compare}
 
-容纳两张以上图像的槽位网格，从[会话选择器](help://session_picker)打开。图像填入槽位，网格通过导出保存。详见：[{{tr:workspace.session_types.multi_compare}}](help://multi_compare)。
+图像有三张或更多时，使用 **多图比较**：一个由槽位组成的网格，每个槽位放一张图像。从 **会话选择器** 打开，或从 **查找操作** 运行 **新建多图对比会话**，然后按 `Ctrl+O` 添加图像并填入槽位。布局、焦点和网格的保存方式见[多图比较](help://workspace.multi_compare.overview)。
 
 ### 发现更多功能 {#discover}
 
-`Ctrl+Shift+P` 可搜索并运行任何操作；{{tr:action.palette.learn_more}} 打开对应的帮助主题。`F1` 打开按聚焦控件过滤后的面板。在帮助窗口中，主题列表上方的搜索框可跳转到匹配页面。下一站：[工作区标签页](help://session_picker)、[文件与项目](help://file_management)、[对比](help://comparison)、[导出](help://export)、[设置](help://settings)。
+按 `Ctrl+Shift+P` 打开 **查找操作**，用名称运行任何操作；**了解更多** 会打开对应的帮助主题。`F1` 打开按聚焦控件过滤的帮助面板；在帮助窗口中，主题列表上方的搜索框可以跳转到匹配的页面。刚开始可以先读[图像比较](help://workspace.image_compare.comparison)，了解分割线、标签和差异模式；再读[文件与项目](help://platform.file_project)，学会把工作保存为可移植的 `.imgsli` 项目。
