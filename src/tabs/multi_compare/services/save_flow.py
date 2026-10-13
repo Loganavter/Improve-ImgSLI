@@ -8,7 +8,7 @@ import threading
 from PIL import Image
 from sli_ui_toolkit.workers import GenericWorker
 
-from shared.image_processing.pil_save import SAVE_CANCELED_MESSAGE
+from shared.image_processing.export_encoding import is_cancel_error
 
 from tabs.multi_compare.services.image_export import save_composite
 from tabs._shared.save_flow import SaveFlowCoordinator as SharedSaveFlowCoordinator
@@ -65,7 +65,7 @@ class MultiCompareSaveFlowCoordinator:
                 progress_callback=emit_progress,
             )
         except RuntimeError as e:
-            if str(e) in (SAVE_CANCELED_MESSAGE, "Export canceled by user"):
+            if is_cancel_error(e):
                 return None
             raise
         except Exception as e:
