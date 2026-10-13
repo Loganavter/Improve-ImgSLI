@@ -1031,7 +1031,17 @@ class ImageGalleryWidget(QWidget):
         return flyout
 
     def _on_ask_ai_image_activated(self, path: str) -> None:
-        """Open Quick Look for an image named in the Ask AI answer."""
+        """Open Quick Look for an image named in the Ask AI answer.
+
+        The flyout closes first: leaving it open over Quick Look strands
+        its (link-clicked) text caret on screen.
+        """
+        try:
+            flyout = getattr(self, "_ask_ai_flyout", None)
+            if flyout is not None and flyout.isVisible():
+                flyout.hide()
+        except Exception:
+            pass
         try:
             self.show_quick_look(str(path))
         except Exception:

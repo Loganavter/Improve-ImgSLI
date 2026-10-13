@@ -568,6 +568,45 @@ def test_result_image_names_are_accent_links_and_open_quick_look(qtbot):
     qtbot.waitUntil(lambda: not flyout.isVisible(), timeout=5000)
 
 
+def test_image_link_hides_flyout_before_quick_look(qtbot):
+    """Clicking an answer image link closes the flyout, then opens QL.
+
+    Falsification: pre-change the flyout stays open over Quick Look (and
+    its link-clicked text caret stays on screen).
+    """
+    from pathlib import Path
+
+    from tabs.image_gallery.services.ask_context import AskScope
+    from tabs.image_gallery.widget import ImageGalleryWidget
+
+    widget = ImageGalleryWidget()
+    qtbot.addWidget(widget)
+    widget.resize(600, 400)
+    widget.show()
+    qtbot.waitExposed(widget)
+    anchor = QWidget()
+    qtbot.addWidget(anchor)
+
+    scope = AskScope(kind="selection", paths=(Path("/g/a.png"),), label="Sel")
+    widget.open_ask_ai(anchor, scope)
+    flyout = widget._ensure_ask_ai_flyout()
+    qtbot.waitUntil(lambda: flyout.isVisible(), timeout=5000)
+
+    calls: list = []
+    orig_hide = flyout.hide
+    def rec_hide(*a, **k):
+        calls.append("hide")
+        return orig_hide(*a, **k)
+    flyout.hide = rec_hide
+    widget.show_quick_look = lambda p: calls.append(("show", p))
+
+    widget._on_ask_ai_image_activated("/g/a.png")
+    assert calls and calls[0] == "hide", "flyout must close first"
+    assert ("show", "/g/a.png") in calls
+    assert calls.index("hide") < calls.index(("show", "/g/a.png"))
+    flyout.hide = orig_hide
+
+
 def test_result_without_links_stays_plain_text(qtbot):
     anchor = QWidget()
     qtbot.addWidget(anchor)
