@@ -1,16 +1,16 @@
 ## Ask AI
 
-Questions cover one card, the selection, or a whole series; answers are advisory and carry an unverified-read badge.
+Questions cover one card, the selection, or a whole series; answers are advisory and carry a badge that marks them as AI-supplied.
 
 ### Ask about a selection {#ask-selection}
 
 - **{{tr:image_gallery.ask_ai.action}}** — opens {{tr:image_gallery.ask_ai.title}} for that card or the current selection.
-- **Default prompt** — {{tr:image_gallery.ask_ai.default_prompt}} summarizes the slice.
+- **Default prompt** — {{tr:image_gallery.ask_ai.default_prompt}} summarizes the images it is asked about.
 - **Badge** — {{tr:image_gallery.ask_ai.read_badge}} marks AI-supplied text.
 
 ### Ask about a series {#ask-series}
 
-The series-header menu asks about every member at once. Measured scores answer sharpness or noise without a model round-trip — see [Quality Metrics](help://gallery_quality).
+The series-header menu asks about every member at once. Quality scores on sharpness or noise are shown without a request to the AI model — see [Quality Metrics](help://gallery_quality).
 
 ### Setup and limits {#setup}
 

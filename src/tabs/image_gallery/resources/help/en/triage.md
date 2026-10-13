@@ -16,8 +16,7 @@ Series triage keeps one winner per series and moves rejects out of the folder.
 
 ### Clean review {#clean-review}
 
-- **{{tr:image_gallery.action.clean_rejected}}** — {{tr:image_gallery.action.clean_rejected_desc}} (`_rejected/`); move-only, files stay.
-- **Clean review** — previews the move before it runs.
+- **{{tr:image_gallery.action.clean_rejected}}** — {{tr:image_gallery.action.clean_rejected_desc}} (`_rejected/`). The move is previewed before it runs; files stay on disk.
 - **Undo** — restores moved files to the folder.
 
 ### Run triage again {#run-triage}

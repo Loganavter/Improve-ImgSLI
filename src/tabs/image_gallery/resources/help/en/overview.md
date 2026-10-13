@@ -12,9 +12,9 @@ The {{tr:image_gallery.tab_name}} shows one folder as cards grouped into near-du
 
 Loaded folders group near-duplicates into series.
 
-- **Series** — two-plus near-duplicates; singletons stay UNGROUPED.
-- **Regroup** — a restored pool regroups in place; cached signatures skip re-decoding.
-- **Manual overrides** — a drag between series pins cards to the target; Reset clears the pins and regroups.
+- **Series** — two or more near-duplicates form a series; an image with no near-duplicate stays outside any series (UNGROUPED).
+- **Regroup** — a restored pool regroups in place, without re-reading images that are already known.
+- **Manual overrides** — a drag between series pins a card to the target series; Reset clears the pins and regroups.
 
 ### Grid, sort, and filter {#grid-sort-filter}
 
@@ -24,10 +24,10 @@ Loaded folders group near-duplicates into series.
 
 ### Stats strip and compare {#stats-and-compare}
 
-The strip counts images, series, and redundants.
+The stats strip shows the number of images, series, and redundant images in the folder.
 
-- **Compare** — best per series plus ungrouped survivors, up to 12 files, to Image Compare.
-- **Card click** — opens Quick Look with metric and artifact rows.
+- **Compare** — sends the best image of each series plus the images outside any series, up to 12 files, to Image Compare.
+- **Card click** — opens Quick Look with the image's quality readings.
 
 ### Next topics {#next-topics}
 
