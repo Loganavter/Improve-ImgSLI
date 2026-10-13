@@ -6,11 +6,13 @@
   "subtitle": "Pick a session type to begin",
   "types": {
     "image_compare": "Image Compare",
-    "multi_compare": "Multi Compare"
+    "multi_compare": "Multi Compare",
+    "image_gallery": "Image Gallery"
   },
   "descriptions": {
     "image_compare": "Side-by-side image comparison with a divider, magnifier, and analysis tools.",
-    "multi_compare": "Grid layout for comparing several sources at once."
+    "multi_compare": "Grid layout for comparing several sources at once.",
+    "image_gallery": "Browse, triage, and review folders of similar shots."
   },
   "recent": {
     "title": "Recent",
