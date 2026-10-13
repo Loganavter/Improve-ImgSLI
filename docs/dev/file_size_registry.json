@@ -129,7 +129,7 @@
     },
     {
       "path": "src/engine/store/tiled_pixel_store.py",
-      "lines": 983,
+      "lines": 986,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine reason=\"one memmap lifecycle — splitting threads memmap/shape/tile_size\"",
