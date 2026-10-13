@@ -5,7 +5,7 @@ A live {{tr:workspace.session_types.image_compare}} session as recorded control 
 ### Record a session {#recording}
 
 - **Start / pause / stop** — {{tr:image_compare.action.record}} (`R`), {{tr:image_compare.action.pause_recording}}, then stop from the same controls.
-- **What is stored** — canvas actions over time (zoom/pan, divider, magnifier, loaded images, related settings) as control tracks with sample points — not a raw screen grab.
+- **What is stored** — canvas actions over time (zoom/pan, divider, magnifier, loaded images, related settings) as control tracks — not a raw screen grab.
 - **Capture rate** — [Settings](help://settings#image_compare) ({{tr:settings.recording_fps}}).
 
 ### Open the editor {#open-editor}
@@ -19,14 +19,14 @@ After the recording stops, {{tr:image_compare.action.video_editor}} (`Ctrl+E`) s
 - **Delete** — `Delete` / `Backspace` remove the selected range.
 - **Play** — `Space`; undo / redo — `Ctrl+Z` / `Ctrl+Y`.
 
-:::figure{side=block width=840}
+:::figure{side=block width=100%}
 ![Video timeline]({{img:workspace.image_compare.video.timeline}})
 {{tr:image_compare.action.video_editor}} — timeline.
 :::
 
 ### Tracks and what was captured {#tracks}
 
-Tool tracks (splitter, magnifier, viewport, and similar) show how recorded controls change over time. Between sample points the editor blends values so playback follows the live session. Magnifier records **Capture Position** (capture ring on the image) and **Offset** (lens offset from that capture) as separate tracks.
+The editor shows each recorded tool as its own track (splitter, magnifier, viewport, and similar), so you can see when each control changed during the session. To change the result, trim or delete ranges on the [timeline](help://video#timeline) and use undo or redo.
 
 ### Preview quality {#preview-quality}
 
@@ -45,14 +45,14 @@ Tool tracks (splitter, magnifier, viewport, and similar) show how recorded contr
 - **Path** — output file; favorite directory buttons reuse the last preferred folder.
 - **Progress** — can be stopped; the log reports encoder messages.
 
-:::figure{side=block width=630}
+:::figure{side=block width=100%}
 ![Video export panel]({{img:workspace.image_compare.video.export_encode}})
 {{tr:image_compare.action.video_editor}} — export.
 :::
 
 ### {{tr:video.manual_cli}} {#manual-cli}
 
-The {{tr:video.manual_cli}} tab passes raw FFmpeg output arguments when the standard tab is not enough.
+When the standard tab is not enough, {{tr:video.manual_cli}} passes raw FFmpeg output arguments.
 
 ### Next topics {#next-topics}
 

@@ -33,9 +33,12 @@ With the magnifier off, drag the divider across the pair.
 
 ### Metrics {#metrics}
 
-- **{{tr:image_compare.ui.psnr}} / {{tr:image_compare.ui.ssim}}** — off by default; enable auto-calculate in [Settings → Analysis](help://settings).
+- **{{tr:image_compare.ui.psnr}} / {{tr:image_compare.ui.ssim}}** — off by default; turn on the automatic readout in [Settings](help://settings#image_compare) under {{tr:workspace.session_types.image_compare}}.
+
+### Context menu actions {#context-menu-actions}
+
 - **Properties** — [Image Properties](help://image_properties) from a list-row context menu (file metadata and in-app side / rating).
-- **Move** — canvas or list context menu shows a drag ghost of the image under the pointer (hanging bottom-left); a click on another workspace tab (or the canvas) starts the same insert flow as Duplicate / paste. `Esc` or right-click cancels.
+- **Move** — from the canvas or list context menu, a preview of the image follows the pointer. Click another workspace tab or the canvas to place it, as with Duplicate or paste. `Esc` or right-click cancels.
 
 ### Channel modes {#channel-modes}
 
