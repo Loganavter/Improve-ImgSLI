@@ -408,11 +408,13 @@ def detect_invented_texture(pil_image: Image.Image, source_image: Image.Image | 
         return _SEV_CLEAN
 
 
-#: Largest native edge ``detect_blocking`` will analyse pixel-for-pixel. The
-#: 8-px DCT grid only exists at native resolution — once pixels are resampled
-#: the ``(x+1)%8==0`` phase is meaningless. Above this edge we abstain instead
-#: of silently downscaling (an honest CLEAN, never a mis-phased severity).
-_BLOCKING_MAX_NATIVE_EDGE = 2048
+# Largest native edge ``detect_blocking`` will analyse pixel-for-pixel —
+# owned by services/decode_policy.py (single home); the alias below keeps
+# the historic name. The 8-px DCT grid only exists at native resolution.
+from tabs.image_gallery.services.decode_policy import (
+    BLOCKING_MAX_NATIVE_EDGE as _BLOCKING_MAX_NATIVE_EDGE,
+    exceeds_edge,
+)
 
 
 def detect_blocking(pil_image: Image.Image, source_image: Image.Image | None = None) -> Severity:
@@ -429,7 +431,7 @@ def detect_blocking(pil_image: Image.Image, source_image: Image.Image | None = N
     """
     try:
         w, h = pil_image.size
-        if max(w, h) > _BLOCKING_MAX_NATIVE_EDGE:
+        if exceeds_edge(w, h, _BLOCKING_MAX_NATIVE_EDGE):
             return _SEV_CLEAN
         arr = _to_gray_array(pil_image, max_edge=_BLOCKING_MAX_NATIVE_EDGE)
         np = _np()

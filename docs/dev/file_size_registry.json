@@ -775,7 +775,7 @@
     },
     {
       "path": "src/tabs/image_gallery/services/artifacts.py",
-      "lines": 685,
+      "lines": 687,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=tiled-pipeline size=679 reason=\"7 pure detectors sharing PIL/numpy helpers + source-anchor delta — single catalog lifecycle\"",
@@ -906,7 +906,7 @@
     },
     {
       "path": "src/tabs/image_gallery/ui/quick_look/preview_canvas.py",
-      "lines": 2018,
+      "lines": 2014,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner-target size=exempt reason=\"one QRhiWidget lifecycle: plan/raster/zoom-pan/demand-pyramid share one frame entry + generation\"",
@@ -918,7 +918,7 @@
     },
     {
       "path": "src/tabs/image_gallery/ui/quick_look/preview_canvas_host.py",
-      "lines": 1625,
+      "lines": 1630,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner-target size=exempt reason=\"one canvas-slot lifecycle: canvas/cover share one GPU-path attribution\"",
