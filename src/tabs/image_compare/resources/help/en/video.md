@@ -1,36 +1,36 @@
 ## Video Editor
 
-The Video Editor records a live Image Compare session as control tracks, then trims the timeline and encodes the result to video or GIF. Stills stay on [Export](help://workspace.export).
+The Video Editor records a live Image Compare session as tracks of the tools you used, then trims the timeline and encodes the result to video or GIF. Stills stay on [Export](help://workspace.export).
 
 ### Record a session {#recording}
 
-- **Start / pause / stop** — **Record Video** (`R`) starts and stops the recording; **Pause Recording** pauses and resumes it.
-- **What is stored** — canvas actions over time (zoom and pan, divider, magnifier, loaded images, related settings) are stored as control tracks with recording points, not as a raw screen grab.
-- **Capture rate** — the recording frame rate is set by **Recording FPS** under **Image Compare** in [Settings](help://platform.settings#image_compare).
+- **Record Video** (`R`) — starts and stops the recording; **Pause Recording** pauses and resumes it.
+- The recording stores your canvas actions over time — zoom and pan, the divider, the magnifier, loaded images, and the related settings — as tracks with recording points, not as a raw screen grab.
+- **Recording FPS** — the recording frame rate, set under **Image Compare** in [Settings](help://platform.settings#image_compare).
 
 ### Open the editor {#open-editor}
 
-After the recording stops, **Video Editor** (`Ctrl+E`) opens a window where you scrub frames, edit the range, and export. Editor actions in **Find Action** open this topic.
+**Video Editor** (`Ctrl+E`) opens a window where you scrub frames, edit the range, and export. Editor actions also appear in **Find Action**.
 
 ### Timeline editing {#timeline}
 
 - **Scrub** — drag the time cursor to move through the recording.
-- **Range** — `Shift`+drag marks a span; the edge handles and the middle of the selection move independently; **Trim to Selection** removes the marked span and joins the rest.
+- **Range** — `Shift` + drag marks a span; the edge handles and the middle of the selection move independently. **Trim to Selection** removes the marked span and joins the rest.
 - **Delete** — `Delete` / `Backspace` remove the selected range.
 - **Play** — `Space` starts and pauses playback; `Ctrl+Z` / `Ctrl+Y` undo and redo edits.
 
 :::figure{side=block width=100%}
 ![Video timeline](../assets/video_timeline.jpg)
-Video Editor — timeline.
+The timeline: recorded tracks with their points, the film strip above, and the time ruler below.
 :::
 
 ### Tracks and what was captured {#tracks}
 
-The editor shows each recorded tool as its own track (the splitter, the magnifier, the viewport, and similar), so you can see when each control changed during the session. Between recording points the editor interpolates the values, so playback matches the live session. For the magnifier, the **Capture Position** track records where the capture ring sits on the image, and the **Offset** track records how far the lens is shifted from the capture. To change the result, trim or delete ranges on the [timeline](help://workspace.image_compare.video#timeline) and use undo or redo.
+The editor shows each recorded tool as its own track — the divider, the magnifier, the viewport, and similar — so you can see when each element changed during the session. Between recording points the editor interpolates the values, so playback matches the live session. For the magnifier, the **Capture Position** track records where the capture ring sits on the image, and the **Offset** track records how far the lens is shifted from the capture. To change the result, trim or delete ranges on the [timeline](help://workspace.image_compare.video#timeline) and use undo or redo.
 
 ### Preview quality {#preview-quality}
 
-**Preview Quality** lowers only the in-editor preview, to keep the editor responsive; it does not change the quality of the final file.
+**Preview Quality** lowers only the in-editor preview, to keep the editor responsive; it does not change the final file.
 
 - **Full (1.0x)** — the sharpest preview, but the heaviest on the machine; the default.
 - **Balanced (0.75x)** — a lighter trade-off that suits most sessions.
@@ -47,7 +47,7 @@ The editor shows each recorded tool as its own track (the splitter, the magnifie
 
 :::figure{side=block width=100%}
 ![Video export panel](../assets/video_export.jpg)
-Video Editor — export.
+The export panel: the frame preview on the left and the encoder settings on the right.
 :::
 
 ### Manual CLI {#manual-cli}
