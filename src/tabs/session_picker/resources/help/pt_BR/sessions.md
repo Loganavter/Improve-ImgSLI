@@ -12,7 +12,7 @@ Página inicial de novas abas e histórico de projetos.
 
 ### Teclado {#keyboard}
 
-Setas movem entre os cartões e `Enter` abre o projeto em foco — a lista completa está em [Atalhos](help://hotkeys#keyboard-navigation).
+Setas movem entre os cartões e `Enter` abre o projeto em foco — a lista completa está em [Atalhos](help://platform.hotkeys#keyboard-navigation).
 
 :::figure{side=block width=420}
 ![Seletor de Sessão]({{img:platform.workspace.session_picker}})
@@ -30,4 +30,4 @@ Em {{tr:menu.find_action}} (`Ctrl+Shift+P`):
 
 ### Próximos tópicos {#next-topics}
 
-Fluxos rápidos: [Primeiros Passos](help://introduction). Ferramentas de sessão: [Comparação](help://comparison) ou [{{tr:workspace.session_types.multi_compare}}](help://multi_compare).
+Fluxos rápidos: [Primeiros Passos](help://platform.getting_started). Ferramentas de sessão: [Comparação](help://workspace.image_compare.comparison) ou [{{tr:workspace.session_types.multi_compare}}](help://workspace.multi_compare.overview).

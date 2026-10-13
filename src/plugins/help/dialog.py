@@ -620,17 +620,24 @@ class HelpDialog(ThemedDialog):
         video_url: str | None = None,
         learn_more_url: str | None = None,
     ) -> None:
-        """Open a topic by legacy slug, node id, or ``help://``-style page key."""
+        """Open a topic by dotted help path (``help://``-style page key)."""
         try:
-            node_id = self._tree.resolve_alias(slug)
+            node_id = self._tree.resolve_path(slug)
         except KeyError:
             logger.warning("Help navigate_to: unknown page %r", slug)
+            self._render_missing_page(slug)
             return
         self._pending_anchor = anchor
         self._pending_video_url = video_url
         self._pending_learn_more_url = learn_more_url
         self._nav.push(node_id)
         self._render_current()
+
+    def _render_missing_page(self, slug: str) -> None:
+        """Web-canon 404: render a placeholder without touching the nav stack."""
+        self._document.set_markdown(f"## Missing page\n\nNo help topic `{slug}`.\n")
+        self._document.show()
+        self._hub_page.hide()
 
     def _open_node(self, node_id: str) -> None:
         self._pending_anchor = None

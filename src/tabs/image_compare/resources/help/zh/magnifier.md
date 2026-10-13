@@ -47,11 +47,11 @@
 {{tr:image_compare.action.magnifier}} 合并模式。
 :::
 
-若需要在不使用镜头的情况下进行整幅画布对比，见[对比](help://comparison)。
+若需要在不使用镜头的情况下进行整幅画布对比，见[对比](help://workspace.image_compare.comparison)。
 
 ### 影响放大镜的设置 {#related-settings}
 
-放大镜相关选项见[设置](help://settings#image_compare)：
+放大镜相关选项见[设置](help://platform.settings#image_compare)：
 
 - 优化放大镜移动及其插值方式
 - 镜头重叠时的高亮显示

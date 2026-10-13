@@ -47,11 +47,11 @@ A lupa amostra uma região do par comparado e mostra uma vista ampliada no canva
 {{tr:image_compare.action.magnifier}} modo combinado.
 :::
 
-Para comparar o canvas inteiro sem a lente, veja [Comparação](help://comparison).
+Para comparar o canvas inteiro sem a lente, veja [Comparação](help://workspace.image_compare.comparison).
 
 ### Configurações que afetam a lupa {#related-settings}
 
-Opções relacionadas à lupa em [Configurações](help://settings#image_compare):
+Opções relacionadas à lupa em [Configurações](help://platform.settings#image_compare):
 
 - Otimizar movimento da lupa e sua interpolação
 - Destaque de interseção entre lentes

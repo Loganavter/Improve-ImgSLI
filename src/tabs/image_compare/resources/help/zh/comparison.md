@@ -33,8 +33,8 @@
 
 ### 指标 {#metrics}
 
-- **{{tr:image_compare.ui.psnr}} / {{tr:image_compare.ui.ssim}}** — 默认关闭，可在[设置 → 分析](help://settings)中启用自动计算。
-- **属性** — 从列表行的右键菜单打开[图像属性](help://image_properties)（文件元数据与应用内的侧 / 评分信息）。
+- **{{tr:image_compare.ui.psnr}} / {{tr:image_compare.ui.ssim}}** — 默认关闭，可在[设置 → 分析](help://platform.settings)中启用自动计算。
+- **属性** — 从列表行的右键菜单打开[图像属性](help://platform.image_properties)（文件元数据与应用内的侧 / 评分信息）。
 - **移动** — 画布或列表右键菜单会在指针左下方显示拖拽幽灵；点击其他工作区标签（或画布）即启动与复制/粘贴相同的插入流程。`Esc` 或右键取消。
 
 ### 通道模式 {#channel-modes}
@@ -55,4 +55,4 @@
 - **{{tr:image_compare.action.diff_edges}}** — 以边缘方式呈现差异
 - **{{tr:image_compare.action.diff_ssim}}** — 在指标支持时显示结构相似性地图
 
-实时画布、导出静帧与视频录制的显示效果始终一致。差异模式可与通道视图组合使用。若需局部细节检查，请使用[放大镜](help://magnifier)。
+实时画布、导出静帧与视频录制的显示效果始终一致。差异模式可与通道视图组合使用。若需局部细节检查，请使用[放大镜](help://workspace.image_compare.magnifier)。

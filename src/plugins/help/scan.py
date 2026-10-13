@@ -70,16 +70,6 @@ HOST_HUB_META = {
     },
 }
 
-#: Shell aliases that used to live in ``tree.json`` (kept until phase 3
-#: migrates ``help_page`` to dotted paths).
-HOST_ALIASES = {
-    "about": "about",
-    "file_management": "platform.file_project",
-    "hotkeys": "platform.hotkeys",
-    "tabs": "platform.tabs",
-}
-
-
 def _src_root() -> Path:
     return host_help_root().parent.parent
 
@@ -154,59 +144,34 @@ def _hub_node(node_id: str, children: tuple[str, ...], body_root: Path | None = 
     )
 
 
-def _normalize_fragments(
-    fragments: Any,
-) -> list[Any]:
-    """Accept a typed fragment list or a legacy registry (duck-typed)."""
+def _normalize_fragments(fragments: Any) -> list[Any]:
+    """Accept the installed hub-fragment list (plain list, no registry)."""
     if fragments is None:
         return []
-    if hasattr(fragments, "subtrees"):
-        return list(fragments.subtrees)
     return list(fragments)
 
 
-def scan_help_tree(
-    tab_fragments: Any = (),
-    plugin_fragments: Any = (),
-) -> HelpTree:
+def scan_help_tree(hub_fragments: Any = ()) -> HelpTree:
     """Build a ``HelpTree`` purely from the filesystem.
 
-    Structure (ids, kinds, bodies, children) comes from the scan; hub
-    presentation, ``help://`` aliases, asset roots and icon resolvers come
-    from the installed contribution fragments (both typed lists and legacy
-    registries).
+    Structure (ids, kinds, bodies, children) and asset roots come from the
+    scan; hub presentation and icon resolvers come from the installed
+    ``HelpHubContribution`` fragments.
     """
-    tab_frags = _normalize_fragments(tab_fragments)
-    plugin_frags = _normalize_fragments(plugin_fragments)
-    all_frags = [*tab_frags, *plugin_frags]
+    frags = _normalize_fragments(hub_fragments)
 
     hub_meta: dict[str, dict[str, Any]] = dict(HOST_HUB_META)
-    for fragment in all_frags:
-        for child_id in fragment.child_ids:
-            node_def = fragment.nodes.get(child_id)
-            if isinstance(node_def, dict) and node_def.get("kind") == "hub":
-                hub_meta[child_id] = node_def
+    for fragment in frags:
+        hub_meta[fragment.mount] = fragment.hub_meta()
 
-    aliases: dict[str, str] = dict(HOST_ALIASES)
-    for fragment in all_frags:
-        for alias, target in fragment.aliases.items():
-            if alias in aliases and aliases[alias] != target:
-                raise KeyError(
-                    f"help alias conflict {alias!r}: "
-                    f"{aliases[alias]!r} vs {target!r}"
-                )
-            aliases[alias] = target
-
-    asset_roots: list[Path] = []
-    for fragment in all_frags:
-        root = fragment.asset_root
-        if root is not None and root not in asset_roots:
-            asset_roots.append(root)
     resolvers: list[Any] = []
-    for fragment in all_frags:
+    for fragment in frags:
         resolver = fragment.resolve_icon
         if resolver is not None:
             resolvers.append(resolver)
+
+    discovered: list[tuple[str | None, Path]] = _discover_packages()
+    asset_roots = [d for _mount, d in discovered if d.resolve() != host_help_root().resolve()]
 
     nodes: dict[str, HelpNode] = {}
     host_root = host_help_root().resolve()
@@ -224,7 +189,7 @@ def scan_help_tree(
     def attach(parent: str, child: str) -> None:
         pending_children.setdefault(parent, set()).add(child)
 
-    for mount, help_dir in _discover_packages():
+    for mount, help_dir in discovered:
         body_root: Path | None = None if help_dir.resolve() == host_root else help_dir.resolve()
         lang_dir = help_dir / _CANON_LANG
         md_files = sorted(
@@ -314,7 +279,6 @@ def scan_help_tree(
     tree = HelpTree(
         root_id="root",
         nodes=nodes,
-        aliases=aliases,
         asset_roots=tuple(asset_roots),
         icon_resolvers=tuple(resolvers),
     )

@@ -47,11 +47,11 @@
 {{tr:image_compare.action.magnifier}} — объединённый режим.
 :::
 
-Для сравнения на всём холсте без линзы см. [Сравнение](help://comparison).
+Для сравнения на всём холсте без линзы см. [Сравнение](help://workspace.image_compare.comparison).
 
 ### Настройки, влияющие на лупу {#related-settings}
 
-Связанные с лупой опции — в [Настройках](help://settings#image_compare):
+Связанные с лупой опции — в [Настройках](help://platform.settings#image_compare):
 
 - Оптимизация движения лупы и её интерполяция
 - Подсветка пересечений линз

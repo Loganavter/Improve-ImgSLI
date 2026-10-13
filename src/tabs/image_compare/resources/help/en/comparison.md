@@ -33,11 +33,11 @@ With the magnifier off, drag the divider across the pair.
 
 ### Metrics {#metrics}
 
-- **{{tr:image_compare.ui.psnr}} / {{tr:image_compare.ui.ssim}}** — off by default; turn on the automatic readout in [Settings](help://settings#image_compare) under {{tr:workspace.session_types.image_compare}}.
+- **{{tr:image_compare.ui.psnr}} / {{tr:image_compare.ui.ssim}}** — off by default; turn on the automatic readout in [Settings](help://platform.settings#image_compare) under {{tr:workspace.session_types.image_compare}}.
 
 ### Context menu actions {#context-menu-actions}
 
-- **Properties** — [Image Properties](help://image_properties) from a list-row context menu (file metadata and in-app side / rating).
+- **Properties** — [Image Properties](help://platform.image_properties) from a list-row context menu (file metadata and in-app side / rating).
 - **Move** — from the canvas or list context menu, a preview of the image follows the pointer. Click another workspace tab or the canvas to place it, as with Duplicate or paste. `Esc` or right-click cancels.
 
 ### Channel modes {#channel-modes}
@@ -58,4 +58,4 @@ With the magnifier off, drag the divider across the pair.
 - **{{tr:image_compare.action.diff_edges}}** — edge-oriented difference
 - **{{tr:image_compare.action.diff_ssim}}** — structural similarity map when metrics support it
 
-Live canvas, export stills, and video recording keep the same look. Difference modes combine with channel views. For local inspection, use the [Magnifier](help://magnifier).
+Live canvas, export stills, and video recording keep the same look. Difference modes combine with channel views. For local inspection, use the [Magnifier](help://workspace.image_compare.magnifier).

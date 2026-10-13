@@ -39,7 +39,7 @@ Opções do comparador, sempre disponíveis:
 - **{{tr:settings.optimize_magnifier_movement}}** — movimento mais suave da lente, com o método de interpolação na mesma linha.
 - **{{tr:settings.magnifier_intersection_highlight}}** — destaque onde as lentes se cruzam.
 - **{{tr:settings.magnifier_auto_color_new_instances}}** — cores distintas para novas lentes.
-- **{{tr:image_compare.settings.recording_fps}}** — taxa de captura para o [Editor de vídeo](help://video).
+- **{{tr:image_compare.settings.recording_fps}}** — taxa de captura para o [Editor de vídeo](help://workspace.image_compare.video).
 - **{{tr:settings.autocrop_black_borders_on_load}}** — corta bordas pretas ao carregar.
 - **Auto {{tr:ui.psnr}} / {{tr:ui.ssim}}** — leitura automática de métricas, desligada por padrão.
 
@@ -47,4 +47,4 @@ Opções do comparador, sempre disponíveis:
 
 - **Remapear** — atalhos por dono: platform / {{tr:workspace.session_types.image_compare}} / {{tr:workspace.session_types.multi_compare}}.
 - **Redefinir** — um atalho ou todos.
-- **Fixos** — `WASD` e `Space` no canvas ficam fixos — ver [Atalhos](help://hotkeys).
+- **Fixos** — `WASD` e `Space` no canvas ficam fixos — ver [Atalhos](help://platform.hotkeys).

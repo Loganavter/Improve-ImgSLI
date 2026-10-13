@@ -1,6 +1,6 @@
 ## 导出
 
-将当前画布导出为静态图像。会话录制与视频编码另属专题：[视频编辑器](help://video)。
+将当前画布导出为静态图像。会话录制与视频编码另属专题：[视频编辑器](help://workspace.image_compare.video)。
 
 ### 保存静态图像 {#saving-an-image}
 
@@ -35,4 +35,4 @@
 
 ### 录制与视频 {#video-editor}
 
-录制控制与视频/GIF 编码属于[视频编辑器](help://video)。
+录制控制与视频/GIF 编码属于[视频编辑器](help://workspace.image_compare.video)。

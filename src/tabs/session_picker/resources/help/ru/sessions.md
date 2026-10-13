@@ -12,7 +12,7 @@
 
 ### Клавиатура {#keyboard}
 
-Стрелки — перемещение между карточками, `Enter` — открыть выбранный проект. Полный список — в разделе [Горячие клавиши](help://hotkeys#keyboard-navigation).
+Стрелки — перемещение между карточками, `Enter` — открыть выбранный проект. Полный список — в разделе [Горячие клавиши](help://platform.hotkeys#keyboard-navigation).
 
 :::figure{side=block width=420}
 ![Выбор сессии]({{img:platform.workspace.session_picker}})
@@ -30,4 +30,4 @@
 
 ### Дальше по темам {#next-topics}
 
-Короткие сценарии: [С чего начать](help://introduction). Инструменты сессии: [Сравнение](help://comparison) или [{{tr:workspace.session_types.multi_compare}}](help://multi_compare).
+Короткие сценарии: [С чего начать](help://platform.getting_started). Инструменты сессии: [Сравнение](help://workspace.image_compare.comparison) или [{{tr:workspace.session_types.multi_compare}}](help://workspace.multi_compare.overview).

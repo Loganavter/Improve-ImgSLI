@@ -1,6 +1,6 @@
 ## Exportação
 
-Exportação do canvas atual como imagem estática. Captura de sessão e codificação de vídeo pertencem a outro tópico: [Editor de vídeo](help://video).
+Exportação do canvas atual como imagem estática. Captura de sessão e codificação de vídeo pertencem a outro tópico: [Editor de vídeo](help://workspace.image_compare.video).
 
 ### Salvar uma imagem {#saving-an-image}
 
@@ -35,4 +35,4 @@ Exportação do canvas atual como imagem estática. Captura de sessão e codific
 
 ### Gravação e vídeo {#video-editor}
 
-Controles de gravação e codificação de vídeo/GIF ficam no [Editor de vídeo](help://video).
+Controles de gravação e codificação de vídeo/GIF ficam no [Editor de vídeo](help://workspace.image_compare.video).

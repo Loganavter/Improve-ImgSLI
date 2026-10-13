@@ -31,7 +31,7 @@
 - `Shift` + `Space` — Превью стороны в комбинированном режиме (фиксировано)
 - `←↑↓→` / `+` / `-` — Панорамирование / зум (фиксировано)
 
-Подробнее: [Сравнение](help://comparison), [Лупа](help://magnifier), [Видеоредактор](help://video).
+Подробнее: [Сравнение](help://workspace.image_compare.comparison), [Лупа](help://workspace.image_compare.magnifier), [Видеоредактор](help://workspace.image_compare.video).
 
 ### {{tr:workspace.session_types.multi_compare}} {#multi-compare}
 
@@ -41,11 +41,11 @@
 - `Esc` — Выйти из фокуса слота
 - `←↑↓→` / `+` / `-` — Панорамирование / зум (фиксировано)
 
-См. [{{tr:workspace.session_types.multi_compare}}](help://multi_compare).
+См. [{{tr:workspace.session_types.multi_compare}}](help://workspace.multi_compare.overview).
 
 ### Окно видеоредактора {#video-editor}
 
-Пока редактор открыт: `Space` — воспроизведение / пауза, `Ctrl+Z` / `Ctrl+Y` — отмена / повтор, `Delete` / `Backspace` — обрезка по выделению. Полный сценарий: [Видеоредактор](help://video).
+Пока редактор открыт: `Space` — воспроизведение / пауза, `Ctrl+Z` / `Ctrl+Y` — отмена / повтор, `Delete` / `Backspace` — обрезка по выделению. Полный сценарий: [Видеоредактор](help://workspace.image_compare.video).
 
 ### Навигация с клавиатуры {#keyboard-navigation}
 

@@ -56,8 +56,8 @@ def show_contextual_palette(controller) -> None:
     """F1 → help topic page without opening the palette (if resolvable).
 
     Resolves the focused widget to a catalog action, then tries
-    ``help_page`` → ``topic`` (both as help-tree aliases).  When that
-    alias exists in ``get_help_tree()`` we open ``HelpDialog`` directly
+    ``help_page`` → ``topic`` (both as dotted help paths). When that
+    path exists in ``get_help_tree()`` we open ``HelpDialog`` directly
     (with the action's ``video_url``/``learn_more_url`` if present);
     otherwise we fall back to the filtered palette so F1 is never a dead
     key.
@@ -80,15 +80,15 @@ def show_contextual_palette(controller) -> None:
         active_tab=active_tab,
     )
 
-    # Try direct help page first: help_page or topic as help-tree alias.
+    # Try direct help page first: help_page or topic as a dotted help path.
     if match is not None:
         candidate_slugs: list[str] = []
         help_page = getattr(match, "help_page", None)
         if help_page:
             candidate_slugs.append(help_page)
         help_anchor = getattr(match, "help_anchor", None)
-        # Some actions tag only a topic that doubles as a help alias
-        # (e.g. "magnifier", "export").
+        # Some actions tag only a topic; a topic is not a help path, so it
+        # just falls through to the palette below.
         topic = getattr(match, "topic", None)
         if topic and topic not in candidate_slugs:
             candidate_slugs.append(topic)
@@ -97,7 +97,7 @@ def show_contextual_palette(controller) -> None:
                 from plugins.help.tree import get_help_tree
 
                 tree = get_help_tree()
-                tree.resolve_alias(slug)  # raises KeyError if unknown
+                tree.resolve_path(slug)  # raises KeyError if unknown
             except Exception:
                 continue
             try:

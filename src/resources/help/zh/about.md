@@ -8,7 +8,7 @@
 
 ### 工作区模式 {#modes}
 
-每个已连接标签各占一张卡片，卡片集合随已安装标签增长。{{tr:workspace.session_types.image_compare}} 以可移动分割线、放大镜和差异模式对比图像对——见[对比](help://comparison)。{{tr:workspace.session_types.multi_compare}} 将多张图像排入槽位网格——见[{{tr:workspace.session_types.multi_compare}}](help://multi_compare)。会话选择器卡片负责打开、继续和管理会话——见[工作区标签](help://session_picker)。首次了解可看[入门](help://introduction)。
+每个已连接标签各占一张卡片，卡片集合随已安装标签增长。{{tr:workspace.session_types.image_compare}} 以可移动分割线、放大镜和差异模式对比图像对——见[对比](help://workspace.image_compare.comparison)。{{tr:workspace.session_types.multi_compare}} 将多张图像排入槽位网格——见[{{tr:workspace.session_types.multi_compare}}](help://workspace.multi_compare.overview)。会话选择器卡片负责打开、继续和管理会话——见[工作区标签](help://workspace.session_picker)。首次了解可看[入门](help://platform.getting_started)。
 
 ### 许可与源码 {#license}
 
@@ -16,4 +16,4 @@
 
 ### 接下来 {#next}
 
-[入门](help://introduction)、[快捷键](help://hotkeys)、[设置](help://settings)、[文件与项目](help://file_management)。
+[入门](help://platform.getting_started)、[快捷键](help://platform.hotkeys)、[设置](help://platform.settings)、[文件与项目](help://platform.file_project)。

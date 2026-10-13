@@ -17,7 +17,7 @@ The home page of a new tab: it lists the session types you can start and your re
 
 ### Keyboard {#keyboard}
 
-Arrow keys move focus between cards, and `Enter` opens the focused project. The full list is in [Hotkeys](help://hotkeys#keyboard-navigation).
+Arrow keys move focus between cards, and `Enter` opens the focused project. The full list is in [Hotkeys](help://platform.hotkeys#keyboard-navigation).
 
 ### Open a session without the picker {#new-session-actions}
 
@@ -30,4 +30,4 @@ From {{tr:menu.find_action}} (`Ctrl+Shift+P`):
 
 ### Next topics {#next-topics}
 
-Quick workflows: [Getting Started](help://introduction). Session tools: [Comparison](help://comparison) or [{{tr:workspace.session_types.multi_compare}}](help://multi_compare).
+Quick workflows: [Getting Started](help://platform.getting_started). Session tools: [Comparison](help://workspace.image_compare.comparison) or [{{tr:workspace.session_types.multi_compare}}](help://workspace.multi_compare.overview).

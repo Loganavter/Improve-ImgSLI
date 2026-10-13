@@ -33,8 +33,8 @@ Com a lupa desligada, arraste o divisor sobre o par.
 
 ### Métricas {#metrics}
 
-- **{{tr:image_compare.ui.psnr}} / {{tr:image_compare.ui.ssim}}** — desligados por padrão; ative o cálculo automático em [Configurações → Análise](help://settings).
-- **Propriedades** — [Propriedades da imagem](help://image_properties) pelo menu de contexto de uma linha da lista (metadados do arquivo e lado / avaliação na sessão).
+- **{{tr:image_compare.ui.psnr}} / {{tr:image_compare.ui.ssim}}** — desligados por padrão; ative o cálculo automático em [Configurações → Análise](help://platform.settings).
+- **Propriedades** — [Propriedades da imagem](help://platform.image_properties) pelo menu de contexto de uma linha da lista (metadados do arquivo e lado / avaliação na sessão).
 - **Mover** — o menu de contexto no canvas ou na lista coloca um fantasma de arraste sob o ponteiro (pendurado à esquerda e abaixo); um clique em outra aba da área de trabalho (ou no canvas) inicia o mesmo fluxo de inserção do Duplicar / colar. `Esc` ou clique direito cancela.
 
 ### Modos de canal {#channel-modes}
@@ -55,4 +55,4 @@ Com a lupa desligada, arraste o divisor sobre o par.
 - **{{tr:image_compare.action.diff_edges}}** — diferença orientada a bordas
 - **{{tr:image_compare.action.diff_ssim}}** — mapa de similaridade estrutural quando as métricas suportam
 
-Canvas ao vivo, imagens exportadas e gravação de vídeo mantêm a mesma aparência. Os modos de diferença combinam com as visualizações de canal. Para inspeção local, use a [Lupa](help://magnifier).
+Canvas ao vivo, imagens exportadas e gravação de vídeo mantêm a mesma aparência. Os modos de diferença combinam com as visualizações de canal. Para inspeção local, use a [Lupa](help://workspace.image_compare.magnifier).

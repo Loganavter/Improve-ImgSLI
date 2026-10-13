@@ -16,11 +16,11 @@ A single click on a slot focuses it. A press that turns into a drag moves the sl
 
 ### Keyboard {#keyboard}
 
-The shortcuts for this tab are listed in [Hotkeys](help://hotkeys).
+The shortcuts for this tab are listed in [Hotkeys](help://platform.hotkeys).
 
 ### Grid and labels {#grid-and-labels}
 
-Divider settings are described under [Dividers](help://mc_layouts#dividers). Label text is styled through {{tr:multi_compare.action.text_settings}}.
+Divider settings are described under [Dividers](help://workspace.multi_compare.layouts#dividers). Label text is styled through {{tr:multi_compare.action.text_settings}}.
 
 ### Slot crop {#slot-crop}
 

@@ -15,8 +15,8 @@ Carregue imagens nas listas da sessão, cole a partir da área de transferência
 
 ### Listas {#lists}
 
-- **{{tr:workspace.session_types.image_compare}}** — as listas da esquerda e da direita são independentes; o painel de gerenciamento de lista cobre reordenar, avaliar, renomear, caminho, propriedades e remover — ver [Comparação](help://comparison).
-- **{{tr:workspace.session_types.multi_compare}}** — soltura por slot em vez de listas duplas — [{{tr:workspace.session_types.multi_compare}}](help://multi_compare).
+- **{{tr:workspace.session_types.image_compare}}** — as listas da esquerda e da direita são independentes; o painel de gerenciamento de lista cobre reordenar, avaliar, renomear, caminho, propriedades e remover — ver [Comparação](help://workspace.image_compare.comparison).
+- **{{tr:workspace.session_types.multi_compare}}** — soltura por slot em vez de listas duplas — [{{tr:workspace.session_types.multi_compare}}](help://workspace.multi_compare.overview).
 
 ### Projetos {#projects}
 

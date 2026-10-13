@@ -35,4 +35,4 @@ Still-image export of the current canvas.
 
 ### Recording and video {#video-editor}
 
-Recording controls and video or GIF encoding are in the [Video Editor](help://video); this page covers still images only.
+Recording controls and video or GIF encoding are in the [Video Editor](help://workspace.image_compare.video); this page covers still images only.

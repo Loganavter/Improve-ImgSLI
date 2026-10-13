@@ -31,6 +31,6 @@ The stats strip shows the number of images, series, and redundant images in the 
 
 ### Next topics {#next-topics}
 
-- [Triage and Review](help://gallery_triage) — keep the best, reject, and move rejects out.
-- [Quality Metrics](help://gallery_quality) — what the scores mean and where they show.
-- [Ask AI](help://gallery_ask_ai) — questions about a selection or a whole series.
+- [Triage and Review](help://workspace.image_gallery.triage) — keep the best, reject, and move rejects out.
+- [Quality Metrics](help://workspace.image_gallery.quality) — what the scores mean and where they show.
+- [Ask AI](help://workspace.image_gallery.ask_ai) — questions about a selection or a whole series.

@@ -2,7 +2,8 @@
 
 Status: **in_progress** — branch `feat/help-webcanon`, base `main`.
 P0 (deletions of `ui.lists_flyouts` + `ui.canvas_navigation`) + P1 (scanner +
-equivalence) landed. P2 lands with this commit.
+equivalence) + P2 (fs source, `##` titles, `tree.json` deleted) landed.
+P3 lands with this commit.
 
 ## Goal
 

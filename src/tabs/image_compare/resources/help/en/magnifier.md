@@ -47,11 +47,11 @@ The magnifier samples a region of the compared pair and shows an enlarged view o
 {{tr:image_compare.action.magnifier}} combined mode.
 :::
 
-For a full-canvas compare without the lens, see [Comparison](help://comparison).
+For a full-canvas compare without the lens, see [Comparison](help://workspace.image_compare.comparison).
 
 ### Settings that affect the magnifier {#related-settings}
 
-Magnifier-related options live under [Settings](help://settings#image_compare):
+Magnifier-related options live under [Settings](help://platform.settings#image_compare):
 
 - Optimize magnifier movement and its interpolation
 - Intersection highlight between lenses

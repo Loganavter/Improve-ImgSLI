@@ -8,7 +8,7 @@
 
 ## About
 
-*What Improve ImgSLI is*
+*Improve ImgSLI is a desktop workspace for precise image and media comparison. Side-by-side and multi-image views, pixel-scale difference inspection, still export, and comparison video recording.*
 
 
 #### About
@@ -21,7 +21,7 @@ Comparison of visual change with the context kept: retouching, upscaling QA, pho
 
 ##### Workspace modes
 
-One card per connected tab; the set grows with the installed tabs. Image Compare compares image pairs with a movable split, magnifiers, and difference modes — [Comparison](help://comparison). Multi Compare lays many images into a grid of slots — [Multi Compare](help://multi_compare). The session picker card opens, resumes, and manages sessions — [Workspace Tabs](help://session_picker). First orientation: [Getting Started](help://introduction).
+One card per connected tab; the set grows with the installed tabs. Image Compare compares image pairs with a movable split, magnifiers, and difference modes — [Comparison](help://workspace.image_compare.comparison). Multi Compare lays many images into a grid of slots — [Multi Compare](help://workspace.multi_compare.overview). The session picker card opens, resumes, and manages sessions — [Workspace Tabs](help://workspace.session_picker). First orientation: [Getting Started](help://platform.getting_started).
 
 ##### License and source
 
@@ -29,24 +29,30 @@ Released under the GNU GPL version 3 (or later). Uses PySide6 / Qt under LGPL. T
 
 ##### Next topics
 
-[Getting Started](help://introduction), [Hotkeys](help://hotkeys), [Settings](help://settings), [Files and Projects](help://file_management).
+[Getting Started](help://platform.getting_started), [Hotkeys](help://platform.hotkeys), [Settings](help://platform.settings), [Files and Projects](help://platform.file_project).
 
 
 
 
-## Workspace
+## Workspace [en]
 
-Session types and compare tools
+Session types and compare tools [en]
 
 
-## UI
+### workspace.image_compare
 
-Controls, lists, canvas chrome
+### workspace.image_gallery
+
+### workspace.multi_compare
+
+## UI [en]
+
+Controls, lists, canvas chrome [en]
 
 
 ### Buttons and Controls
 
-*Toolbar and panel gestures*
+*The toolbar sits above the canvas in a compare session. It holds the tools for that session — split line, view modes, magnifier, recording — while lists, add/save, and the settings gear live in the surrounding chrome.*
 
 
 ##### Buttons and Controls
@@ -56,13 +62,13 @@ The toolbar sits above the canvas in a compare session. It holds the tools for t
 ###### The toolbar
 
 - **Toolbar** — strip of icon controls for the active session type. Each control is a toggle, a value nudge, or a button that opens a panel or dialog.
-- **settings.ui_mode** — sets how many controls the toolbar shows. First-run onboarding sets it; [Settings → Appearance](help://settings#interface) changes it later.
+- **settings.ui_mode** — sets how many controls the toolbar shows. First-run onboarding sets it; [Settings → Appearance](help://platform.settings#interface) changes it later.
 
 
 
 ###### UI modes
 
-The same tools are laid out differently in each settings.ui_mode. First-run onboarding sets the mode once; [Settings → Appearance](help://settings#interface) changes it later.
+The same tools are laid out differently in each settings.ui_mode. First-run onboarding sets the mode once; [Settings → Appearance](help://platform.settings#interface) changes it later.
 
 ###### settings.ui_mode_beginner
 
@@ -102,14 +108,56 @@ Open the palette with `Ctrl+Shift+P` (Find Action), type part of the label, and 
 
 
 
-## Platform
+## Platform [en]
 
-Settings, files, shortcuts
+Settings, files, shortcuts [en]
+
+
+### Files and Projects
+
+*Load images into session lists, paste from the clipboard, and open or save portable project files that bundle session layout, compare settings, and copies of the source images.*
+
+
+##### Files and Projects
+
+Load images into session lists, paste from the clipboard, and open or save portable project files that bundle session layout, compare settings, and copies of the source images.
+
+###### Loading images
+
+- **Add files** — use the side add buttons (or Find Action) to pick one or more files.
+- **Drag-and-drop** — a drop into the window lands in the list on the side under the cursor.
+- **Paste** (`Ctrl+V`) — clipboard image; the direction overlay appears, a click on an arrow picks the side, `Esc` cancels.
+
+
+
+###### Lists
+
+- **Image Compare** — left and right lists are independent; the list-manager panel covers reorder, rate, rename, path, properties, remove — see [Comparison](help://workspace.image_compare.comparison).
+- **Multi Compare** — per-slot drops instead of dual lists — [Multi Compare](help://workspace.multi_compare.overview).
+
+Each session has its own tab; see [Tabs](help://platform.tabs).
+
+###### Projects
+
+- **Open** — `Ctrl+Shift+O`, or Find Action, opens a `.imgsli` file from the File menu. Opening a project names the active tab after the file. The project restores workspace sessions, compare settings (split, diff, magnifier, and related features), and embedded image copies.
+- **Save** — `Shift+S` writes the current file; when no file exists yet, **Save As** opens instead. Saving also retargets the file basename when the tab was renamed.
+- **Save As** — `Ctrl+Shift+S`. Suggests a renamed tab title when the active tab is custom, otherwise Untitled.
+- **Portable package** — the file is a ZIP: session JSON plus a `media/` folder with embedded copies of the images.
+- **Missing sources on save** — if a listed path no longer exists, the project still saves; that image is omitted and a warning lists it.
+- **App preferences** — theme, language, and hotkeys stay in application settings; they are not part of the project file.
+
+###### Windows file association
+
+On Windows, the installer associates `.imgsli` with Improve ImgSLI, so double-clicking a project opens it and the file shows the application's document icon. Frozen builds also register the association on startup.
+
+If Properties still shows "Choose application", pick Improve ImgSLI once, or run the app with `--register-file-types` to register the association again.
+
+
 
 
 ### Hotkeys
 
-*Defaults and overrides*
+*Default chords below. Most action shortcuts remap under Settings → settings.keyboard. Canvas `WASD`, arrow, `Space` movement and `+`/`-` zoom stay fixed and are not remappable.*
 
 
 ##### Hotkeys
@@ -145,7 +193,7 @@ Exact labels follow the language pack; overrides live under Settings → Keyboar
 - `Shift` + `Space` — Side preview in combined mode (fixed)
 - `←↑↓→` / `+` / `-` — Pan / zoom (fixed)
 
-Details: [Comparison](help://comparison), [Magnifier](help://magnifier), [Video Editor](help://video).
+Details: [Comparison](help://workspace.image_compare.comparison), [Magnifier](help://workspace.image_compare.magnifier), [Video Editor](help://workspace.image_compare.video).
 
 ###### Multi Compare
 
@@ -155,17 +203,17 @@ Details: [Comparison](help://comparison), [Magnifier](help://magnifier), [Video 
 - `Esc` — Exit slot focus
 - `←↑↓→` / `+` / `-` — Pan / zoom (fixed)
 
-See [Multi Compare](help://multi_compare).
+See [Multi Compare](help://workspace.multi_compare.overview).
 
-###### Image Gallery
+###### image_gallery.tab_name
 
 - `Space` / `Delete` — take the selected cards out of the grid; files stay on disk.
 
-See [Triage and Review](help://gallery_triage).
+See [Triage and Review](help://workspace.image_gallery.triage).
 
 ###### Video editor window
 
-While the editor is open: `Space` play/pause, `Ctrl+Z` / `Ctrl+Y` undo/redo, `Delete` / `Backspace` trim to selection. Full encode workflow: [Video Editor](help://video).
+While the editor is open: `Space` play/pause, `Ctrl+Z` / `Ctrl+Y` undo/redo, `Delete` / `Backspace` trim to selection. Full encode workflow: [Video Editor](help://workspace.image_compare.video).
 
 ###### Keyboard navigation
 
@@ -178,51 +226,9 @@ While the editor is open: `Space` play/pause, `Ctrl+Z` / `Ctrl+Y` undo/redo, `De
 
 
 
-### Files and Projects
-
-*Load, paste, project files*
-
-
-##### Files and Projects
-
-Load images into session lists, paste from the clipboard, and open or save portable project files that bundle session layout, compare settings, and copies of the source images.
-
-###### Loading images
-
-- **Add files** — use the side add buttons (or Find Action) to pick one or more files.
-- **Drag-and-drop** — a drop into the window lands in the list on the side under the cursor.
-- **Paste** (`Ctrl+V`) — clipboard image; the direction overlay appears, a click on an arrow picks the side, `Esc` cancels.
-
-
-
-###### Lists
-
-- **Image Compare** — left and right lists are independent; the list-manager panel covers reorder, rate, rename, path, properties, remove — see [Comparison](help://comparison).
-- **Multi Compare** — per-slot drops instead of dual lists — [Multi Compare](help://multi_compare).
-
-Each session has its own tab; see [Tabs](help://tabs).
-
-###### Projects
-
-- **Open** — `Ctrl+Shift+O`, or Find Action, opens a `.imgsli` file from the File menu. Opening a project names the active tab after the file. The project restores workspace sessions, compare settings (split, diff, magnifier, and related features), and embedded image copies.
-- **Save** — `Shift+S` writes the current file; when no file exists yet, **Save As** opens instead. Saving also retargets the file basename when the tab was renamed.
-- **Save As** — `Ctrl+Shift+S`. Suggests a renamed tab title when the active tab is custom, otherwise Untitled.
-- **Portable package** — the file is a ZIP: session JSON plus a `media/` folder with embedded copies of the images.
-- **Missing sources on save** — if a listed path no longer exists, the project still saves; that image is omitted and a warning lists it.
-- **App preferences** — theme, language, and hotkeys stay in application settings; they are not part of the project file.
-
-###### Windows file association
-
-On Windows, the installer associates `.imgsli` with Improve ImgSLI, so double-clicking a project opens it and the file shows the application's document icon. Frozen builds also register the association on startup.
-
-If Properties still shows "Choose application", pick Improve ImgSLI once, or run the app with `--register-file-types` to register the association again.
-
-
-
-
 ### Tabs
 
-*Tab strip and tab names*
+*The tab strip above the workspace holds one tab per open session. The active tab decides what the canvas, toolbar, and lists show.*
 
 
 ##### Tabs

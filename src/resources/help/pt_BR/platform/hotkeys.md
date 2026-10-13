@@ -31,7 +31,7 @@ Os rótulos exatos seguem o pacote de idioma; as substituições ficam em Config
 - `Shift` + `Space` — Pré-visualização de lado no modo combinado (fixo)
 - `←↑↓→` / `+` / `-` — Panorâmica / zoom (fixos)
 
-Detalhes: [Comparação](help://comparison), [Lupa](help://magnifier), [Editor de Vídeo](help://video).
+Detalhes: [Comparação](help://workspace.image_compare.comparison), [Lupa](help://workspace.image_compare.magnifier), [Editor de Vídeo](help://workspace.image_compare.video).
 
 ### {{tr:workspace.session_types.multi_compare}} {#multi-compare}
 
@@ -41,11 +41,11 @@ Detalhes: [Comparação](help://comparison), [Lupa](help://magnifier), [Editor d
 - `Esc` — Sair do foco do slot
 - `←↑↓→` / `+` / `-` — Panorâmica / zoom (fixos)
 
-Veja [{{tr:workspace.session_types.multi_compare}}](help://multi_compare).
+Veja [{{tr:workspace.session_types.multi_compare}}](help://workspace.multi_compare.overview).
 
 ### Janela do editor de vídeo {#video-editor}
 
-Enquanto o editor está aberto: `Space` reproduz/pausa, `Ctrl+Z` / `Ctrl+Y` desfazer/refazer, `Delete` / `Backspace` apara para a seleção. Fluxo completo de codificação: [Editor de Vídeo](help://video).
+Enquanto o editor está aberto: `Space` reproduz/pausa, `Ctrl+Z` / `Ctrl+Y` desfazer/refazer, `Delete` / `Backspace` apara para a seleção. Fluxo completo de codificação: [Editor de Vídeo](help://workspace.image_compare.video).
 
 ### Navegação pelo teclado {#keyboard-navigation}
 

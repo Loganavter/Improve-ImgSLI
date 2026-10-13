@@ -1,17 +1,15 @@
-"""Help tree aliases, contribution merge, and navigation stack."""
+"""Help tree paths, hub fragments, and navigation stack."""
 
 from __future__ import annotations
 
 import pytest
 
-from plugins.help.contribution import HelpContributionRegistry
 from plugins.help.navigator import HelpNavigator
 from plugins.help.tree import (
     clear_help_contributions,
     get_help_tree,
     host_help_root,
     install_help_contributions,
-    merge_help_contributions,
 )
 
 
@@ -31,44 +29,27 @@ def _ensure_help_contributions() -> None:
     tabs = TabRegistry()
     tabs.discover()
     tabs.contribute_all_help()
-    # Phase 2: the export hub is plugin-owned — install it the way HelpPlugin
-    # does in production (duck-typed probe of the plugin instance).
-    from plugins.export.plugin import ExportPlugin
-    from plugins.help.tree import (
-        collect_help_plugin_contributions,
-        install_help_plugin_contributions,
-    )
-
-    # Phase 2+3+4: the export hub and the settings / image_properties /
-    # getting_started pages are plugin-owned — install them the way HelpPlugin
-    # does in production (duck-typed probe of the plugin instances). NOTE:
-    # install REPLACES the plugin list, so all plugin instances are collected
-    # in one call.
-    from plugins.image_properties.plugin import ImagePropertiesPlugin
-    from plugins.settings.plugin import SettingsPlugin
-    from plugins.onboarding.plugin import OnboardingPlugin
-
-    install_help_plugin_contributions(
-        collect_help_plugin_contributions(
-            [ExportPlugin(), SettingsPlugin(), ImagePropertiesPlugin(), OnboardingPlugin()]
-        )
-    )
 
 
-def test_help_tree_loads_and_aliases_resolve():
+def test_help_tree_loads_and_paths_resolve():
     _ensure_help_contributions()
     tree = get_help_tree()
     assert tree.root_id == "root"
-    assert tree.resolve_alias("magnifier") == "workspace.image_compare.magnifier"
-    assert tree.resolve_alias("about") == "about"
-    assert tree.resolve_alias("hotkeys") == "platform.hotkeys"
-    assert tree.resolve_alias("video") == "workspace.image_compare.video"
-    assert tree.resolve_alias("multi_compare") == "workspace.multi_compare.overview"
-    assert tree.resolve_alias("image_properties") == "platform.image_properties"
-    assert tree.resolve_alias("session_picker") == "workspace.session_picker"
-    assert tree.resolve_alias("workspace_tabs") == "workspace.session_picker"
+    assert tree.resolve_path("workspace.image_compare.magnifier") == (
+        "workspace.image_compare.magnifier"
+    )
+    assert tree.resolve_path("about") == "about"
+    assert tree.resolve_path("platform.hotkeys") == "platform.hotkeys"
+    assert tree.resolve_path("workspace.image_compare.video") == (
+        "workspace.image_compare.video"
+    )
+    assert tree.resolve_path("workspace.multi_compare.overview") == (
+        "workspace.multi_compare.overview"
+    )
+    assert tree.resolve_path("platform.image_properties") == "platform.image_properties"
+    assert tree.resolve_path("workspace.session_picker") == "workspace.session_picker"
     # Bare "workspace" is the Workspace hub, not the platform page.
-    assert tree.resolve_alias("workspace") == "workspace"
+    assert tree.resolve_path("workspace") == "workspace"
     assert tree.require("root").children[0] == "about"
     about = tree.require("about")
     assert about.kind == "page"
@@ -81,16 +62,14 @@ def test_help_tree_loads_and_aliases_resolve():
     assert "workspace.image_compare" in tree.require("workspace").children
     assert "workspace.multi_compare" in tree.require("workspace").children
     assert "workspace.image_compare.video" in tree.require("workspace.image_compare").children
-    # Phase 2: export hub moved IC tab → export plugin (node id changes,
-    # alias "export" preserved and retargeted to workspace.export).
     assert "workspace.image_compare.export" not in tree.nodes
     assert (
         "workspace.image_compare.export"
         not in tree.require("workspace.image_compare").children
     )
     assert "workspace.export" in tree.require("workspace").children
-    assert tree.resolve_alias("export") == "workspace.export"
-    export = tree.require(tree.resolve_alias("export"))
+    assert tree.resolve_path("workspace.export") == "workspace.export"
+    export = tree.require("workspace.export")
     assert export.kind == "page"
     assert export.body == "export.md"
     assert export.body_root is not None
@@ -99,21 +78,21 @@ def test_help_tree_loads_and_aliases_resolve():
     assert "platform.getting_started" in platform_children
     assert "platform.image_properties" in platform_children
     assert "platform.tabs" in platform_children
-    node = tree.require(tree.resolve_alias("magnifier"))
+    node = tree.require("workspace.image_compare.magnifier")
     assert node.kind == "page"
     assert node.body == "magnifier.md"
     assert node.body_root is not None
     assert (node.body_root / "en" / node.body).is_file()
-    video = tree.require(tree.resolve_alias("video"))
+    video = tree.require("workspace.image_compare.video")
     assert video.body == "video.md"
     assert (video.body_root / "en" / video.body).is_file()
     assert (video.body_root / "ru" / video.body).is_file()
-    props = tree.require(tree.resolve_alias("image_properties"))
+    props = tree.require("platform.image_properties")
     assert props.body == "image_properties.md"
     assert props.body_root is not None
     for lang in ("en", "ru", "zh", "pt_BR"):
         assert (props.body_root / lang / props.body).is_file()
-    ws = tree.require(tree.resolve_alias("session_picker"))
+    ws = tree.require("workspace.session_picker")
     assert ws.body == "sessions.md"
     assert ws.body_root is not None
     for lang in ("en", "ru", "zh", "pt_BR"):
@@ -123,82 +102,47 @@ def test_help_tree_loads_and_aliases_resolve():
         assert (root / lang / about.body).is_file()
 
 
-def test_help_contribution_merge_attaches_under_workspace(tmp_path):
-    clear_help_contributions()
+def test_help_hub_fragment_overlays_hub_presentation():
+    from plugins.help.contribution import HelpHubContribution
     from plugins.help.scan import scan_help_tree
 
-    host = scan_help_tree()
-    registry = HelpContributionRegistry()
-    body = tmp_path / "help"
-    (body / "en").mkdir(parents=True)
-    (body / "en" / "demo.md").write_text(
-        "# Demo\n\n:::figure{side=right}\n![x](assets/ui/placeholder.png)\nCap\n:::\n\n### Step\nText.\n",
-        encoding="utf-8",
-    )
-    registry.contribute(
-        attach_under="workspace",
-        child_ids=("workspace.demo",),
-        nodes={
-            "workspace.demo": {
-                "kind": "hub",
-                "title": "Demo",
-                "children": ["workspace.demo.page"],
-            },
-            "workspace.demo.page": {
-                "kind": "page",
-                "title": "Demo page",
-                "body": "demo.md",
-            },
-        },
-        aliases={"demo": "workspace.demo.page"},
-        body_root=body,
-    )
-    tree = merge_help_contributions(host, registry)
-    assert "workspace.demo" in tree.require("workspace").children
-    assert tree.resolve_alias("demo") == "workspace.demo.page"
-    assert tree.require("workspace.demo.page").body_root == body
-
-
-def test_install_help_contributions_updates_cached_tree(tmp_path):
     clear_help_contributions()
-    assert "workspace.x" not in get_help_tree().nodes
-    try:
-        get_help_tree().resolve_alias("xdemo")
-        assert False, "expected KeyError"
-    except KeyError:
-        pass
-    registry = HelpContributionRegistry()
-    body = tmp_path / "help"
-    (body / "en").mkdir(parents=True)
-    (body / "en" / "x.md").write_text(
-        "Intro\n\n:::figure{side=left}\n![a](a.png)\nc\n:::\n\n### A\nB\n",
-        encoding="utf-8",
+    frag = HelpHubContribution(
+        owner_tab="image_compare",
+        mount="workspace.image_compare",
+        title="Compare!",
+        description="Demo hub",
+        icon="demo.svg",
     )
-    registry.contribute(
-        attach_under="workspace",
-        child_ids=("workspace.x",),
-        nodes={
-            "workspace.x": {
-                "kind": "page",
-                "title": "X",
-                "body": "x.md",
-            }
-        },
-        aliases={"xdemo": "about"},
-        body_root=body,
+    tree = scan_help_tree([frag])
+    hub = tree.require("workspace.image_compare")
+    assert hub.title == "Compare!"
+    assert hub.description == "Demo hub"
+    assert hub.icon == "demo.svg"
+    # Pages are untouched by the fragment.
+    assert tree.require("workspace.image_compare.comparison").body == "comparison.md"
+
+
+def test_install_help_contributions_updates_cached_tree():
+    from plugins.help.contribution import HelpHubContribution
+
+    clear_help_contributions()
+    before = get_help_tree()
+    assert before.require("workspace.image_compare").title == "workspace.image_compare"
+    frag = HelpHubContribution(
+        owner_tab="image_compare",
+        mount="workspace.image_compare",
+        title="Compare!",
     )
-    tree = install_help_contributions(registry)
-    # Web canon: unknown pages never materialize from node dicts, but the
-    # alias overlay still applies and the cache is rebuilt.
-    assert "workspace.x" not in tree.nodes
-    assert tree.resolve_alias("xdemo") == "about"
+    tree = install_help_contributions([frag])
+    assert tree.require("workspace.image_compare").title == "Compare!"
     assert get_help_tree() is tree
 
 
 def test_help_tree_path_to_magnifier():
     _ensure_help_contributions()
     tree = get_help_tree()
-    path = tree.path_to("magnifier")
+    path = tree.path_to("workspace.image_compare.magnifier")
     assert path[0] == "root"
     assert path[-1] == "workspace.image_compare.magnifier"
     assert "workspace" in path
@@ -281,83 +225,84 @@ def test_help_page_bodies_are_scenario_cards():
                     )
 
 
-def test_help_alias_slug_freeze_host():
-    """Slug freeze: host aliases keep resolving so content moves can't break links.
+def test_help_entry_point_paths_resolve():
+    """Entry points (F1 / Learn-more / ``help_page``) resolve to readable pages.
 
-    Pins the ``tree.json`` ``aliases`` map (F1 / Learn-more / ``help://``).
-    Each alias must resolve to its node AND the target page body must be
-    readable — mapping alone is not enough.
+    Replaces the alias freeze: actions carry dotted paths, so this pins the
+    path set they use instead of a slug map.
     """
     from plugins.help.tree import read_help_page_markdown
 
     _ensure_help_contributions()
     tree = get_help_tree()
-    expected = {
-        "about": "about",
-        "introduction": "platform.getting_started",
-        "file_management": "platform.file_project",
-        "settings": "platform.settings",
-        "hotkeys": "platform.hotkeys",
-        "tabs": "platform.tabs",
-        "image_properties": "platform.image_properties",
-        "session_picker": "workspace.session_picker",
-        "workspace_tabs": "workspace.session_picker",
-    }
-    for alias, node_id in expected.items():
-        assert tree.resolve_alias(alias) == node_id, alias
+    expected = [
+        "about",
+        "platform.getting_started",
+        "platform.file_project",
+        "platform.settings",
+        "platform.hotkeys",
+        "platform.tabs",
+        "platform.image_properties",
+        "workspace.session_picker",
+        "workspace.export",
+        "workspace.image_compare.comparison",
+        "workspace.image_compare.magnifier",
+        "workspace.image_compare.video",
+        "workspace.multi_compare.overview",
+        "workspace.multi_compare.layouts",
+        "workspace.multi_compare.viewing",
+        "workspace.multi_compare.export",
+        "workspace.image_gallery.overview",
+        "workspace.image_gallery.triage",
+        "workspace.image_gallery.quality",
+        "workspace.image_gallery.ask_ai",
+    ]
+    for node_id in expected:
+        assert tree.resolve_path(node_id) == node_id, node_id
         node = tree.require(node_id)
-        assert node.kind == "page", alias
-        assert node.body, alias
+        assert node.kind == "page", node_id
+        assert node.body, node_id
         md = read_help_page_markdown("en", node.body, body_root=node.body_root)
-        assert md.strip(), alias
-        assert not md.startswith("## Missing page"), alias
+        assert md.strip(), node_id
+        assert not md.startswith("## Missing page"), node_id
 
 
 def test_help_alias_slug_freeze_tab_contributions():
-    """Slug freeze: tab ``_ALIASES`` keep resolving to their contributed nodes."""
+    """Tab hub pages resolve to their contributed nodes (paths, not slugs)."""
     from plugins.help.tree import read_help_page_markdown
 
     _ensure_help_contributions()
     tree = get_help_tree()
-    expected = {
-        # tabs/image_compare/help.py _ALIASES
-        "comparison": "workspace.image_compare.comparison",
-        "magnifier": "workspace.image_compare.magnifier",
-        # Phase 2: export hub moved to the export plugin (alias preserved,
-        # retargeted) — src/plugins/export/help.py _ALIASES
-        "export": "workspace.export",
-        "video": "workspace.image_compare.video",
-        # tabs/multi_compare/help.py _ALIASES
-        "multi_compare": "workspace.multi_compare.overview",
-        "multi_compare_overview": "workspace.multi_compare.overview",
-        "mc_overview": "workspace.multi_compare.overview",
-        "mc_layouts": "workspace.multi_compare.layouts",
-        "mc_viewing": "workspace.multi_compare.viewing",
-        "mc_export": "workspace.multi_compare.export",
-        # tabs/session_picker/help.py _ALIASES
-        "session_picker_overview": "workspace.session_picker",
-        "sp_overview": "workspace.session_picker",
-        # tabs/image_gallery/help.py _ALIASES (page targets)
-        "image_gallery_overview": "workspace.image_gallery.overview",
-        "gallery_triage": "workspace.image_gallery.triage",
-        "gallery_quality": "workspace.image_gallery.quality",
-        "gallery_ask_ai": "workspace.image_gallery.ask_ai",
-    }
-    for alias, node_id in expected.items():
-        assert tree.resolve_alias(alias) == node_id, alias
+    expected = [
+        "workspace.image_compare.comparison",
+        "workspace.image_compare.magnifier",
+        "workspace.export",
+        "workspace.image_compare.video",
+        "workspace.multi_compare.overview",
+        "workspace.multi_compare.layouts",
+        "workspace.multi_compare.viewing",
+        "workspace.multi_compare.export",
+        "workspace.session_picker",
+        "workspace.image_gallery.overview",
+        "workspace.image_gallery.triage",
+        "workspace.image_gallery.quality",
+        "workspace.image_gallery.ask_ai",
+    ]
+    for node_id in expected:
+        assert tree.resolve_path(node_id) == node_id, node_id
         node = tree.require(node_id)
-        assert node.kind == "page", alias
-        assert node.body, alias
+        assert node.kind == "page", node_id
+        assert node.body, node_id
         md = read_help_page_markdown("en", node.body, body_root=node.body_root)
-        assert md.strip(), alias
-        assert not md.startswith("## Missing page"), alias
+        assert md.strip(), node_id
+        assert not md.startswith("## Missing page"), node_id
 
 
 def test_help_alias_gallery_hub_resolves():
-    """Slug freeze: the ``image_gallery`` hub alias resolves to the hub node."""
+    """The gallery hub path resolves to the hub node with its pages."""
     _ensure_help_contributions()
     tree = get_help_tree()
-    assert tree.resolve_alias("image_gallery") == "workspace.image_gallery"
+    assert tree.resolve_path("workspace.image_gallery") == "workspace.image_gallery"
     hub = tree.require("workspace.image_gallery")
     assert hub.kind == "hub"
     assert "workspace.image_gallery" in tree.require("workspace").children
@@ -371,8 +316,8 @@ def test_help_alias_gallery_hub_resolves():
 
 
 def test_help_alias_unknown_slug_raises():
-    """Negative control: unknown slugs raise (proves the freeze tests bite)."""
+    """Negative control: unknown paths raise (proves the pin tests bite)."""
     _ensure_help_contributions()
     tree = get_help_tree()
     with pytest.raises(KeyError):
-        tree.resolve_alias("no_such_help_topic_xyz")
+        tree.resolve_path("no_such_help_topic_xyz")

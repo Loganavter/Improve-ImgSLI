@@ -25,4 +25,4 @@ Series triage keeps one winner per series and moves rejects out of the folder.
 
 ### Set as source {#set-as-source}
 
-{{tr:image_gallery.action.set_as_source}} and {{tr:image_gallery.card.set_as_source}} pick the fidelity reference. See [Quality Metrics](help://gallery_quality#reference-source).
+{{tr:image_gallery.action.set_as_source}} and {{tr:image_gallery.card.set_as_source}} pick the fidelity reference. See [Quality Metrics](help://workspace.image_gallery.quality#reference-source).
