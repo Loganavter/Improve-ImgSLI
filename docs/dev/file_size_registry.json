@@ -161,6 +161,17 @@
       }
     },
     {
+      "path": "src/plugins/help/tree.py",
+      "lines": 554,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=single-owner reason=\"one merged HelpTree: host shell + tab/plugin fragment merge, alias/body/asset resolution, and validation share one cache — splitting would fork the uniqueness scope\"",
+      "parsed": {
+        "pattern": "single-owner",
+        "reason": "one merged HelpTree: host shell + tab/plugin fragment merge, alias/body/asset resolution, and validation share one cache — splitting would fork the uniqueness scope"
+      }
+    },
+    {
       "path": "src/plugins/settings/dialog.py",
       "lines": 658,
       "limit": 500,
@@ -740,7 +751,7 @@
     },
     {
       "path": "src/tabs/image_gallery/controller.py",
-      "lines": 3886,
+      "lines": 4082,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine size=exempt reason=\"one controller lifecycle — folder scan/thumbnail/triage/VLM sharing GenericWorker state\"",
@@ -776,7 +787,7 @@
     },
     {
       "path": "src/tabs/image_gallery/tab.py",
-      "lines": 407,
+      "lines": 417,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner size=exempt reason=\"tab contract — lifecycle wiring delegates to controller/widget\"",
@@ -788,7 +799,7 @@
     },
     {
       "path": "src/tabs/image_gallery/ui/ask_ai.py",
-      "lines": 520,
+      "lines": 704,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=single-surface size=exempt reason=\"one scope-aware ask flyout — its fade/persist/menu/status state is one cohesive surface; splitting would scatter the flyout lifecycle\"",
@@ -860,7 +871,7 @@
     },
     {
       "path": "src/tabs/image_gallery/ui/quick_look.py",
-      "lines": 1490,
+      "lines": 1686,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner reason=\"thin owner delegating to ui/quick_look/* helpers,bars,histograms,metrics,artifacts,strip\"",
@@ -943,7 +954,7 @@
     },
     {
       "path": "src/tabs/image_gallery/ui/quick_look_hooks.py",
-      "lines": 546,
+      "lines": 583,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner-target size=exempt reason=\"one quick-look hooks concern: owner-first overlay wiring, triage toggles (reject/source set+unset) and strip hooks share one seam\"",
@@ -1003,7 +1014,7 @@
     },
     {
       "path": "src/tabs/image_gallery/widget.py",
-      "lines": 2536,
+      "lines": 2575,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner size=exempt reason=\"thin owner delegating to use_cases/triage+carry+quick look; splitting would create helpers bag\"",
@@ -1015,7 +1026,7 @@
     },
     {
       "path": "src/tabs/multi_compare/canvas/interaction.py",
-      "lines": 686,
+      "lines": 755,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner reason=\"Wheel/pan/key/context share Qt event-name surface delegated by canvas widget; zoom-tick fit-cache + throttles live here by necessity, divider/slot gestures already split under canvas/features\"",
@@ -1206,7 +1217,7 @@
     },
     {
       "path": "src/ui/main_window/csd_menu_strip.py",
-      "lines": 505,
+      "lines": 553,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine reason=\"single CSD menu strip — custom chrome + layout\"",
@@ -1217,7 +1228,7 @@
     },
     {
       "path": "src/ui/main_window/menu_controller.py",
-      "lines": 528,
+      "lines": 537,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine reason=\"single menu controller — platform menu assembly\"",

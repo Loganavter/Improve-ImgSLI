@@ -200,6 +200,12 @@ def show_quick_look(owner, item_or_path) -> None:
                     overlay.setSource.connect(lambda p: on_quick_set_source(owner, p))
                 except Exception:
                     pass
+                try:
+                    overlay.regionAskRequested.connect(
+                        lambda p, b: on_quick_ask_region(owner, p, b)
+                    )
+                except Exception:
+                    pass
             except Exception:
                 if _dbg_on:
                     _dbg("quick look overlay-create raised", exc_info=True)
@@ -359,10 +365,41 @@ def _unset_quick_source(owner) -> None:
         pass
 
 
+def on_quick_ask_region(owner, path, box) -> None:
+    """A Quick Look region was selected → open the Ask AI region flyout (upward).
+
+    The flyout anchors to the held selection band (above the selected
+    region, not the preview corner); the band is dismissed when the
+    flyout closes (wired in the controller).
+    """
+    try:
+        triage_owner = owner_for_triage(owner)
+        fn = getattr(triage_owner, "open_ask_ai_region", None)
+        if not callable(fn):
+            return
+        anchor = None
+        try:
+            overlay = getattr(owner, "_quick_look_overlay", None)
+            if overlay is not None:
+                get_anchor = getattr(overlay, "region_selection_anchor", None)
+                if callable(get_anchor):
+                    anchor = get_anchor()
+                if anchor is None:
+                    anchor = getattr(overlay, "_preview_host", None) or overlay
+        except Exception:
+            anchor = None
+        if anchor is None:
+            anchor = owner
+        fn(path, box, anchor)
+    except Exception:
+        pass
+
+
 def on_quick_set_source(owner, path) -> None:
     if path is None:
         _unset_quick_source(owner)
         return
+
     try:
         triage_owner = owner_for_triage(owner)
         new_mode = None

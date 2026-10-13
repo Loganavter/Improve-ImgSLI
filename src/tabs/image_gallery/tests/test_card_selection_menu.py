@@ -274,7 +274,7 @@ def test_reject_label_tracks_state(monkeypatch) -> None:
     popup_gallery_card_context_menu(
         SimpleNamespace(), owner, Path("/a.png"), global_pos=None, selection_count=2,
     )
-    assert _action_text(captured["entries"], "gallery.reject") == "↩ Unreject"
+    assert _action_text(captured["entries"], "gallery.reject") == "Unreject"
 
     owner = _owner_with_items(
         {Path("/a.png"), Path("/b.png")},
@@ -283,19 +283,58 @@ def test_reject_label_tracks_state(monkeypatch) -> None:
     popup_gallery_card_context_menu(
         SimpleNamespace(), owner, Path("/a.png"), global_pos=None, selection_count=2,
     )
-    assert _action_text(captured["entries"], "gallery.reject") == "✕ Reject"
+    assert _action_text(captured["entries"], "gallery.reject") == "Reject"
 
     owner = _owner_with_items(set(), [_triage_item("/a.png", True)])
     popup_gallery_card_context_menu(
         SimpleNamespace(), owner, Path("/a.png"), global_pos=None, selection_count=0,
     )
-    assert _action_text(captured["entries"], "gallery.reject") == "↩ Unreject"
+    assert _action_text(captured["entries"], "gallery.reject") == "Unreject"
 
     owner = _owner_with_items(set(), [_triage_item("/a.png")])
     popup_gallery_card_context_menu(
         SimpleNamespace(), owner, Path("/a.png"), global_pos=None, selection_count=0,
     )
-    assert _action_text(captured["entries"], "gallery.reject") == "✕ Reject"
+    assert _action_text(captured["entries"], "gallery.reject") == "Reject"
+
+
+def test_icon_entries_have_no_glyph_prefix(monkeypatch) -> None:
+    """No icon-bearing entry may start its label with a glyph (double icons).
+
+    Falsification: pre-fix "★ Make best" / "✕ Reject" carried the glyph in
+    the text AND in icon= — the row painted it twice (user screenshot).
+    """
+    from sli_ui_toolkit.widgets import ContextMenuAction, ContextMenuSection
+
+    def _iter_actions(entries):
+        for e in entries:
+            items = e.entries if isinstance(e, ContextMenuSection) else (e,)
+            for a in items:
+                if isinstance(a, ContextMenuAction):
+                    yield a
+
+    captured = _capture_menu(monkeypatch)
+    # State A: nothing rejected → "Reject" variant.
+    owner = _owner_with_items(set(), [_triage_item("/a.png")])
+    popup_gallery_card_context_menu(
+        SimpleNamespace(), owner, Path("/a.png"), global_pos=None, selection_count=0,
+    )
+    actions_a = list(_iter_actions(captured["entries"]))
+    # State B: all rejected → "Unreject" variant.
+    owner = _owner_with_items(set(), [_triage_item("/a.png", True)])
+    popup_gallery_card_context_menu(
+        SimpleNamespace(), owner, Path("/a.png"), global_pos=None, selection_count=0,
+    )
+    actions_b = list(_iter_actions(captured["entries"]))
+
+    seen = set()
+    for a in actions_a + actions_b:
+        seen.add(a.action_id)
+        if a.icon:
+            assert a.text[:1] and (a.text[0].isalnum() or a.text[0] == "_"), (
+                f"{a.action_id}: glyph-prefixed label {a.text!r} duplicates icon="
+            )
+    assert {"gallery.make_best", "gallery.reject"} <= seen
 
 
 def test_remove_action_calls_remove_from_grid(monkeypatch) -> None:

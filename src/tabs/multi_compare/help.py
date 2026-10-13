@@ -18,7 +18,12 @@ _NODES = {
         "title": "Multi Compare",
         "description": "Many-image layouts",
         "icon": "grid.svg",
-        "children": ["workspace.multi_compare.overview"],
+        "children": [
+            "workspace.multi_compare.overview",
+            "workspace.multi_compare.layouts",
+            "workspace.multi_compare.viewing",
+            "workspace.multi_compare.export",
+        ],
     },
     "workspace.multi_compare.overview": {
         "kind": "page",
@@ -29,12 +34,42 @@ _NODES = {
         "icon": "grid.svg",
         "body": "overview.md",
     },
+    "workspace.multi_compare.layouts": {
+        "kind": "page",
+        "title_key": "multi_compare.help.page.layouts.title",
+        "description_key": "multi_compare.help.page.layouts.desc",
+        "title": "Multi Compare Layouts",
+        "description": "Cells, gap splits, dividers, slot actions",
+        "icon": "grid.svg",
+        "body": "layouts.md",
+    },
+    "workspace.multi_compare.viewing": {
+        "kind": "page",
+        "title_key": "multi_compare.help.page.viewing.title",
+        "description_key": "multi_compare.help.page.viewing.desc",
+        "title": "Multi Compare Viewing",
+        "description": "Focus mode, zoom and pan, labels, crop",
+        "icon": "grid.svg",
+        "body": "viewing.md",
+    },
+    "workspace.multi_compare.export": {
+        "kind": "page",
+        "title_key": "multi_compare.help.page.export.title",
+        "description_key": "multi_compare.help.page.export.desc",
+        "title": "Multi Compare Export",
+        "description": "Quick save, save dialog, sessions",
+        "icon": "grid.svg",
+        "body": "export.md",
+    },
 }
 
 _ALIASES = {
     "multi_compare": "workspace.multi_compare.overview",
     "multi_compare_overview": "workspace.multi_compare.overview",
     "mc_overview": "workspace.multi_compare.overview",
+    "mc_layouts": "workspace.multi_compare.layouts",
+    "mc_viewing": "workspace.multi_compare.viewing",
+    "mc_export": "workspace.multi_compare.export",
 }
 
 

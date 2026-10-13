@@ -17,7 +17,6 @@ from tabs.image_gallery.services.ask_prompt import (
 )
 from tabs.image_gallery.services.metric_scores import fallback_note
 from tabs.image_gallery.services.vlm import _encode_image
-
 #: Fallback answer-token budget when the caller passes none.
 DEFAULT_ASK_MAX_TOKENS = 4096
 
@@ -97,6 +96,16 @@ def _context_block(context: dict) -> str:
             if flag_txt:
                 line += f" | AI flags: {flag_txt}"
             lines.append(line)
+        region = ctx.get("region")
+        if isinstance(region, dict):
+            try:
+                l, t, r, b = (float(v) for v in (region.get("box") or ()))
+                lines.append(
+                    "Selected region (fractions of the image, left/top/right/"
+                    f"bottom): {l:.3f}, {t:.3f}, {r:.3f}, {b:.3f}"
+                )
+            except Exception:
+                pass
         return "\n".join(lines)
     except Exception:
         return ""
@@ -123,10 +132,11 @@ def _user_text(question: str, context: dict, *, correction: str = "") -> str:
     return text
 
 
-def _base_messages() -> list[dict]:
+def _base_messages(system_prompt: str | None = None) -> list[dict]:
     """System turn + one canonical few-shot exemplar as real chat turns."""
+    prompt = str(system_prompt or "").strip() or ASK_SYSTEM_PROMPT
     return [
-        {"role": "system", "content": [{"type": "text", "text": ASK_SYSTEM_PROMPT}]},
+        {"role": "system", "content": [{"type": "text", "text": prompt}]},
         {
             "role": "user",
             "content": [
@@ -149,9 +159,10 @@ def build_text_payload(
     model: str,
     max_tokens: int = DEFAULT_ASK_MAX_TOKENS,
     correction: str = "",
+    system_prompt: str | None = None,
 ) -> dict:
     """Text-only chat payload — NO image bytes (asserted by tests)."""
-    messages = _base_messages() + [
+    messages = _base_messages(system_prompt) + [
         {
             "role": "user",
             "content": [
@@ -173,8 +184,14 @@ def build_vision_payload(
     model: str,
     max_tokens: int = DEFAULT_ASK_MAX_TOKENS,
     correction: str = "",
+    system_prompt: str | None = None,
 ) -> dict:
-    """Vision chat payload: text + one downscaled image per scope item."""
+    """Vision chat payload: text + one downscaled image per scope item.
+
+    When ``context['region']`` is present, the crop of the selected region is
+    appended after the full images with a leading label, so the model sees both
+    the whole picture and the magnified area.
+    """
     content: list[dict] = [
         {"type": "text", "text": _user_text(question, context, correction=correction)},
     ]
@@ -187,9 +204,28 @@ def build_vision_payload(
             )
         except Exception:
             continue
+    region = (context or {}).get("region")
+    if isinstance(region, dict):
+        try:
+            from tabs.image_gallery.services.vlm import encode_region
+
+            enc = None
+            path = region.get("path")
+            box = region.get("box")
+            if path and box:
+                enc = encode_region(path, box)
+            if enc:
+                mime, data = enc
+                label = str(region.get("label") or "SELECTED REGION (crop)")
+                content.append({"type": "text", "text": f"{label}:"})
+                content.append(
+                    {"type": "image_url", "image_url": {"url": f"data:image/{mime};base64,{data}"}}
+                )
+        except Exception:
+            pass
     return {
         "model": model,
-        "messages": _base_messages() + [{"role": "user", "content": content}],
+        "messages": _base_messages(system_prompt) + [{"role": "user", "content": content}],
         "max_tokens": int(max_tokens),
     }
 

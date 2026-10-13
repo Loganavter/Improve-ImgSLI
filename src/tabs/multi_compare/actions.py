@@ -18,9 +18,9 @@ _BC_SESSION = "multi_compare.action.breadcrumb.session"
 
 _TOPIC_HELP: dict[str, str] = {
     "session": "file_management",
-    "labels": "multi_compare",
-    "divider": "multi_compare",
-    "export": "multi_compare",
+    "labels": "mc_viewing",
+    "divider": "mc_layouts",
+    "export": "mc_export",
 }
 
 

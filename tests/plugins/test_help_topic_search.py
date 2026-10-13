@@ -20,9 +20,31 @@ def dialog(app):
     from tabs.registry import TabRegistry
 
     add_i18n_root(Path("src/plugins/help/resources/i18n"))
+    # Plugin-owned help (export hub, settings/image_properties/getting_started
+    # pages): production registers plugin i18n packs at discovery and installs
+    # plugin contributions in HelpPlugin.initialize; test sessions that
+    # skip plugin discovery do both explicitly (same posture as
+    # _ensure_help_contributions in test_help_tree.py).
+    add_i18n_root(Path("src/plugins/settings/resources/i18n"))
+    add_i18n_root(Path("src/plugins/image_properties/resources/i18n"))
+    add_i18n_root(Path("src/plugins/export/resources/i18n"))
     registry = TabRegistry()
     registry.discover()
     registry.contribute_all_help()
+    from plugins.export.plugin import ExportPlugin
+    from plugins.help.tree import (
+        collect_help_plugin_contributions,
+        install_help_plugin_contributions,
+    )
+    from plugins.image_properties.plugin import ImagePropertiesPlugin
+    from plugins.settings.plugin import SettingsPlugin
+    from plugins.onboarding.plugin import OnboardingPlugin
+
+    install_help_plugin_contributions(
+        collect_help_plugin_contributions(
+            [ExportPlugin(), SettingsPlugin(), ImagePropertiesPlugin(), OnboardingPlugin()]
+        )
+    )
 
     from plugins.help.dialog import HelpDialog
 
@@ -39,9 +61,31 @@ def dialog_ru(app):
     from tabs.registry import TabRegistry
 
     add_i18n_root(Path("src/plugins/help/resources/i18n"))
+    # Plugin-owned help (export hub, settings/image_properties/getting_started
+    # pages): production registers plugin i18n packs at discovery and installs
+    # plugin contributions in HelpPlugin.initialize; test sessions that
+    # skip plugin discovery do both explicitly (same posture as
+    # _ensure_help_contributions in test_help_tree.py).
+    add_i18n_root(Path("src/plugins/settings/resources/i18n"))
+    add_i18n_root(Path("src/plugins/image_properties/resources/i18n"))
+    add_i18n_root(Path("src/plugins/export/resources/i18n"))
     registry = TabRegistry()
     registry.discover()
     registry.contribute_all_help()
+    from plugins.export.plugin import ExportPlugin
+    from plugins.help.tree import (
+        collect_help_plugin_contributions,
+        install_help_plugin_contributions,
+    )
+    from plugins.image_properties.plugin import ImagePropertiesPlugin
+    from plugins.settings.plugin import SettingsPlugin
+    from plugins.onboarding.plugin import OnboardingPlugin
+
+    install_help_plugin_contributions(
+        collect_help_plugin_contributions(
+            [ExportPlugin(), SettingsPlugin(), ImagePropertiesPlugin(), OnboardingPlugin()]
+        )
+    )
 
     from plugins.help.dialog import HelpDialog
 
@@ -86,7 +130,7 @@ def test_search_matches_page_content_not_only_title(dialog):
     rows = [
         dialog.nav_widget.item(i) for i in range(dialog.nav_widget.count())
     ]
-    assert any(item.data() == "platform.workspace" for item in rows)
+    assert any(item.data() == "workspace.session_picker" for item in rows)
 
 
 def test_search_does_not_match_topic_descriptions(dialog):
@@ -141,10 +185,10 @@ def test_activating_content_match_scrolls_and_highlights(dialog):
     row_index = next(
         i
         for i in range(dialog.nav_widget.count())
-        if dialog.nav_widget.item(i).data() == "platform.workspace"
+        if dialog.nav_widget.item(i).data() == "workspace.session_picker"
     )
     dialog._on_search_result_activated(row_index)
-    assert dialog._nav.current_id == "platform.workspace"
+    assert dialog._nav.current_id == "workspace.session_picker"
     # The first occurrence is highlighted via the document selection and the
     # canvas exposes a scroll target for the match.
     canvas = dialog._document._canvas

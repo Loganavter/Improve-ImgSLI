@@ -29,19 +29,27 @@ Source: `src/plugins/help/`. Authoring/content rules live in
 |---|---|
 | `dialog.py` | `HelpDialog` — hub/page rendering, language sync, navigation |
 | `tree.py` | `HelpTree` / `HelpNode` — topic tree (hubs + pages), aliases, body/asset resolution, `load_help_tree`, `merge_help_contributions`, `build_help_tree` |
-| `contribution.py` | `HelpContributionRegistry` / `HelpSubtreeContribution` — tab → host help fragments merged into the host tree |
+| `contribution.py` | `HelpContribution` (tab-owned, frozen, `owner_tab`) + `HelpPluginContribution` (plugin-owned, frozen, `owner_plugin`) + deprecated `HelpContributionRegistry` shim |
 | `navigator.py` | `HelpNavigator` — page navigation |
 | `hub_page.py`, `back_bar.py`, `labels.py`, `interpolate.py`, `layout_geometry.py`, `icons.py`, `text_context_menu.py` | hub rendering, chrome, label handling, icon lookup, text context menu |
 
 ## Tree merge contract
 
-Tabs publish topic subtrees via the `contribute_help` notify hook; the host
-owns the shell tree (root / workspace / ui / platform). See
-[HELP_SYSTEM.md](../HELP_SYSTEM.md#tree-merge-contract) and
-`tree.merge_help_contributions`.
+Tabs publish topic subtrees via the `contribute_help` notify hook; plugins
+publish via `build_help_plugin_contribution()`, probed duck-typed from
+`HelpPlugin.initialize` (`_install_plugin_contributions` — no
+`plugins/<name>` imports). The host owns the shell tree (root / workspace /
+ui / platform); contributed aliases move with their nodes (`tree.py:450`).
+See [HELP_SYSTEM.md](../HELP_SYSTEM.md#tree-merge-contract) and
+`tree.merge_help_contributions` / `tree.merge_help_plugin_contributions`.
 
 ## Content
 
-Host topics: `src/resources/help/` (`tree.json` + `en|ru/ui|platform/`).
-Tab topics: `src/tabs/<tab>/resources/help/`. Keep headings stable — anchors
-and generated in-page TOC depend on them (see [HELP_SYSTEM.md](../HELP_SYSTEM.md)).
+Host topics: `src/resources/help/` (shell `tree.json` + `about`,
+`platform/file_project.md`, `platform/hotkeys.md`, `ui/*.md`, host
+`figures.json` slots only). Plugin topics:
+`src/plugins/<plugin>/resources/help/` (`workspace.export`,
+`platform.settings`, `platform.image_properties`,
+`platform.getting_started`). Tab topics: `src/tabs/<tab>/resources/help/`.
+Keep headings stable — anchors and generated in-page TOC depend on them (see
+[HELP_SYSTEM.md](../HELP_SYSTEM.md)).

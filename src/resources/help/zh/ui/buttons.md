@@ -4,7 +4,7 @@
 
 ### 工具栏 {#toolbar}
 
-- **位置** — 画布上方的一排图标控件。
+- **工具栏** — 画布上方的一排图标控件。
 - **内容** — 切换、数值微调，以及为当前会话类型打开面板或对话框的按钮。
 - **疏密** — 取决于 {{tr:settings.ui_mode}}（首次启动引导或[设置 → 外观](help://settings#interface)）。
 
@@ -15,11 +15,11 @@
 
 ### 界面模式 {#ui-modes}
 
-同一套工具在不同 {{tr:settings.ui_mode}} 下布局不同。首次启动时选择一次，之后可在设置中更改。
+同一套工具在不同 {{tr:settings.ui_mode}} 下布局不同。首次启动引导设置一次，之后在[设置 → 外观](help://settings#interface)中更改。
 
 ### {{tr:settings.ui_mode_beginner}} {#mode-beginner}
 
-更多独立按钮 — 一个控件 ≈ 一件事。适合鼠标操作，也更容易找到每项功能。
+更多独立按钮 — 一个控件 ≈ 一件事。
 
 :::figure{side=block height=65}
 ![初级工具栏布局]({{img:ui.buttons.mode_beginner}})
@@ -37,7 +37,7 @@
 
 ### {{tr:settings.ui_mode_expert}} {#mode-expert}
 
-最紧凑：同一控件可承载单击、滚轮及其他鼠标按键，把更多空间留给图像。
+最紧凑：同一控件组合单击、滚轮及其他鼠标按键。
 
 :::figure{side=block height=65}
 ![专家工具栏布局]({{img:ui.buttons.mode_expert}})
@@ -62,8 +62,8 @@
 
 ### 产品示例 {#examples}
 
-- **{{tr:workspace.session_types.image_compare}}** — 在更紧凑的模式下，可在同一控件上滚动调整分割线宽度或放大镜大小；列表按钮支持长按清空 / 交换。详情见[列表与面板](help://ui.lists_flyouts)。
-- **{{tr:workspace.session_types.multi_compare}}** — 网格线（`D`）同样具备粗细 / 可见性相关手势。
+- **{{tr:workspace.session_types.image_compare}}** — 在更紧凑的模式下，可在同一控件上滚动调整分割线宽度或放大镜大小；列表按钮支持长按清空 / 交换。详情见[对比](help://comparison)；列表见[列表与面板](help://ui.lists_flyouts)。
+- **{{tr:workspace.session_types.multi_compare}}** — 网格线粗细 / 可见性在 `D` 上。详情见[多图对比](help://multi_compare)。
 
 ### 按名称查找控件 {#find-action}
 

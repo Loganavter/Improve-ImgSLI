@@ -32,18 +32,19 @@ def test_flyout_tab_accepts_default_and_enter_submits(qtbot):
     flyout.open_for(anchor, scope_label="Series 1", default_prompt="Summary")
     qtbot.waitUntil(lambda: flyout.isVisible(), timeout=5000)
 
-    # Empty field: Tab accepts the grayed default prompt (our eventFilter).
+    # Empty field: Tab accepts the grayed default prompt (submit preset).
+    # (Direct handler call: like the old eventFilter-direct test below, a
+    # synthetic QTest Tab is not delivered into an in-flyout field.)
     assert flyout._edit.text() == ""
     tab = QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_Tab, Qt.KeyboardModifier.NoModifier)
-    assert flyout.eventFilter(flyout._edit, tab) is True
+    flyout._edit.keyPressEvent(tab)
+    assert tab.isAccepted()
     assert flyout._edit.text() == "Summary"
 
-    # returnPressed sends whatever is in the field (the toolkit edit emits
-    # this on Enter; the real key event is exercised live, not here — a
-    # synthetic QTest Tab/Return leaves a deferred toolkit action that leaks
-    # past teardown into a later theme test).
+    # Real Enter path through the preset: resolves and submits field text.
     flyout._edit.setText("custom question")
-    flyout._edit.returnPressed.emit()
+    enter = QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_Return, Qt.KeyboardModifier.NoModifier)
+    flyout._edit.keyPressEvent(enter)
     assert got == ["custom question"]
 
     flyout.hide()
@@ -63,7 +64,8 @@ def test_tab_prefills_default_cursor_at_end_no_selection(qtbot):
     qtbot.waitUntil(lambda: flyout.isVisible(), timeout=5000)
 
     tab = QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_Tab, Qt.KeyboardModifier.NoModifier)
-    assert flyout.eventFilter(flyout._edit, tab) is True
+    flyout._edit.keyPressEvent(tab)
+    assert tab.isAccepted()
     assert flyout._edit.text() == "What matters here?"
     assert flyout._edit.hasSelectedText() is False
     assert flyout._edit.cursorPosition() == len("What matters here?")
@@ -519,5 +521,169 @@ def test_ask_ai_images_toggle_persists_across_hide(qtbot):
     flyout.open_for(anchor, default_prompt="Summary")
     qtbot.waitUntil(lambda: flyout.isVisible(), timeout=5000)
     assert flyout.include_images() is True
+    flyout.hide()
+    qtbot.waitUntil(lambda: not flyout.isVisible(), timeout=5000)
+def test_result_image_names_are_accent_links_and_open_quick_look(qtbot):
+    """Names in the answer become accent, underlined, selectable links.
+
+    Falsification: pre-change ``show_result`` took no ``links`` and the result
+    label was plain/not selectable — this test fails on that build.
+    """
+    anchor = QWidget()
+    qtbot.addWidget(anchor)
+    anchor.resize(200, 100)
+    anchor.show()
+    qtbot.waitExposed(anchor)
+
+    flyout = AskAiFlyout(anchor)
+    qtbot.addWidget(flyout)
+    flyout.open_for(anchor, default_prompt="Summary")
+    qtbot.waitUntil(lambda: flyout.isVisible(), timeout=5000)
+
+    opened: list[str] = []
+    flyout.imageActivated.connect(opened.append)
+
+    flyout.show_result(
+        "Prefer Archivist Soft.png; Archivist Rough.png is softer.",
+        backend="text",
+        links={
+            "Archivist Soft.png": "/g/Archivist Soft.png",
+            "Archivist Rough.png": "/g/Archivist Rough.png",
+        },
+    )
+
+    html = flyout._result.text()
+    assert '<a href="gallery-image:' in html
+    assert "Archivist Soft.png</a>" in html
+    assert "text-decoration:underline" in html
+    # Selectable text + clickable links coexist on the answer label.
+    flags = flyout._result.textInteractionFlags()
+    assert flags & Qt.TextInteractionFlag.TextSelectableByMouse
+    assert flags & Qt.TextInteractionFlag.LinksAccessibleByMouse
+
+    # Activating a link (as a click does) carries the image path out.
+    flyout._result.linkActivated.emit("gallery-image:%2Fg%2FArchivist%20Soft.png")
+    assert opened == ["/g/Archivist Soft.png"]
+    flyout.hide()
+    qtbot.waitUntil(lambda: not flyout.isVisible(), timeout=5000)
+
+
+def test_image_link_hides_flyout_before_quick_look(qtbot):
+    """Clicking an answer image link closes the flyout, then opens QL.
+
+    Falsification: pre-change the flyout stays open over Quick Look (and
+    its link-clicked text caret stays on screen).
+    """
+    from pathlib import Path
+
+    from tabs.image_gallery.services.ask_context import AskScope
+    from tabs.image_gallery.widget import ImageGalleryWidget
+
+    widget = ImageGalleryWidget()
+    qtbot.addWidget(widget)
+    widget.resize(600, 400)
+    widget.show()
+    qtbot.waitExposed(widget)
+    anchor = QWidget()
+    qtbot.addWidget(anchor)
+
+    scope = AskScope(kind="selection", paths=(Path("/g/a.png"),), label="Sel")
+    widget.open_ask_ai(anchor, scope)
+    flyout = widget._ensure_ask_ai_flyout()
+    qtbot.waitUntil(lambda: flyout.isVisible(), timeout=5000)
+
+    calls: list = []
+    orig_hide = flyout.hide
+    def rec_hide(*a, **k):
+        calls.append("hide")
+        return orig_hide(*a, **k)
+    flyout.hide = rec_hide
+    widget.show_quick_look = lambda p: calls.append(("show", p))
+
+    widget._on_ask_ai_image_activated("/g/a.png")
+    assert calls and calls[0] == "hide", "flyout must close first"
+    assert ("show", "/g/a.png") in calls
+    assert calls.index("hide") < calls.index(("show", "/g/a.png"))
+    flyout.hide = orig_hide
+
+
+def test_result_without_links_stays_plain_text(qtbot):
+    anchor = QWidget()
+    qtbot.addWidget(anchor)
+    anchor.resize(200, 100)
+    anchor.show()
+    qtbot.waitExposed(anchor)
+    flyout = AskAiFlyout(anchor)
+    qtbot.addWidget(flyout)
+    flyout.open_for(anchor, default_prompt="Summary")
+    qtbot.waitUntil(lambda: flyout.isVisible(), timeout=5000)
+
+    flyout.show_result("2 < 3 & rising", backend="text")
+    # PlainText format: the ampersand/angle brackets survive verbatim.
+    assert flyout._result.text() == "2 < 3 & rising"
+    assert "<a " not in flyout._result.text()
+    flyout.hide()
+    qtbot.waitUntil(lambda: not flyout.isVisible(), timeout=5000)
+
+
+def test_region_flyout_aligns_centered_above_selection(qtbot):
+    """grow_up flyouts pin bottom-center to the anchor's top-center.
+
+    Falsification: pre-change grow_up mapped top-left/bottom-left.
+    (Pixel placement from those points is toolkit geometry, covered by
+    the toolkit's own tests; here we pin the seam contract — the points
+    ``open_for`` passes to ``show_aligned``.)
+    """
+    anchor = QWidget()
+    qtbot.addWidget(anchor)
+    anchor.resize(200, 100)
+    anchor.show()
+    qtbot.waitExposed(anchor)
+
+    flyout = AskAiFlyout(anchor)
+    qtbot.addWidget(flyout)
+    flyout.open_for(anchor, default_prompt="Q", grow_up=True)
+    qtbot.waitUntil(lambda: flyout.isVisible(), timeout=5000)
+    kwargs = dict(flyout._last_align_kwargs or {})
+    assert kwargs.get("anchor_point") == "top-center"
+    assert kwargs.get("flyout_point") == "bottom-center"
+    flyout.hide()
+    qtbot.waitUntil(lambda: not flyout.isVisible(), timeout=5000)
+
+    # The grow-down default is untouched.
+    flyout2 = AskAiFlyout(anchor)
+    qtbot.addWidget(flyout2)
+    flyout2.open_for(anchor, default_prompt="Q")
+    qtbot.waitUntil(lambda: flyout2.isVisible(), timeout=5000)
+    kwargs2 = dict(flyout2._last_align_kwargs or {})
+    assert kwargs2.get("anchor_point") == "bottom-left"
+    assert kwargs2.get("flyout_point") == "top-left"
+    flyout2.hide()
+    qtbot.waitUntil(lambda: not flyout2.isVisible(), timeout=5000)
+
+
+def test_region_open_hides_images_toggle(qtbot):
+    """Region scope always sends the images: no toggle is offered.
+
+    Falsification: pre-change open_for takes no show_images_toggle kwarg.
+    """
+    anchor = QWidget()
+    qtbot.addWidget(anchor)
+    anchor.resize(200, 100)
+    anchor.show()
+    qtbot.waitExposed(anchor)
+
+    flyout = AskAiFlyout(anchor)
+    qtbot.addWidget(flyout)
+    flyout.open_for(anchor, default_prompt="Q", grow_up=True)
+    qtbot.waitUntil(lambda: flyout.isVisible(), timeout=5000)
+    # Explicit flag (not isVisible: the fade animation hides ancestors).
+    assert not flyout._images_toggle.isHidden()
+    flyout.hide()
+    qtbot.waitUntil(lambda: not flyout.isVisible(), timeout=5000)
+
+    flyout.open_for(anchor, default_prompt="Q", grow_up=True, show_images_toggle=False)
+    qtbot.waitUntil(lambda: flyout.isVisible(), timeout=5000)
+    assert flyout._images_toggle.isHidden()
     flyout.hide()
     qtbot.waitUntil(lambda: not flyout.isVisible(), timeout=5000)

@@ -30,6 +30,7 @@ from services.io.recent_projects import (
     set_recent_sort_order,
     set_recent_view_mode,
 )
+from tabs.session_picker.icons import Icon as SessionPickerIcon
 from tabs.session_picker.recent.cards import format_session_types
 from ui.widgets.shelf.relative_time import format_absolute_timestamp
 from ui.context_menu.manager import open_context_menu_entries
@@ -53,20 +54,22 @@ def sort_view_menu_entries(
         ContextMenuAction(
             action_id,
             translate(key, default),
+            icon=icon,
             data=mode,
             checkable=True,
             checked=sort_mode == mode,
         )
-        for action_id, key, default, mode in (
-            ("recent.sort.modified", "recent.sort_modified", "Date modified", SORT_MODIFIED),
-            ("recent.sort.created", "recent.sort_created", "Date created", SORT_CREATED),
-            ("recent.sort.name", "recent.sort_name", "Name", SORT_NAME),
+        for action_id, key, default, mode, icon in (
+            ("recent.sort.modified", "recent.sort_modified", "Date modified", SORT_MODIFIED, SessionPickerIcon.SORT_BY_MODIFIED),
+            ("recent.sort.created", "recent.sort_created", "Date created", SORT_CREATED, SessionPickerIcon.SORT_BY_CREATED),
+            ("recent.sort.name", "recent.sort_name", "Name", SORT_NAME, SessionPickerIcon.SORT_BY_NAME),
         )
     ) + (
         ContextMenuSeparator(),
         ContextMenuAction(
             "recent.sort.asc",
             translate("recent.sort_asc", "Ascending"),
+            icon=SessionPickerIcon.SORT_ASC,
             data=SORT_ASC,
             checkable=True,
             checked=sort_order == SORT_ASC,
@@ -74,6 +77,7 @@ def sort_view_menu_entries(
         ContextMenuAction(
             "recent.sort.desc",
             translate("recent.sort_desc", "Descending"),
+            icon=SessionPickerIcon.SORT_DESC,
             data=SORT_DESC,
             checkable=True,
             checked=sort_order == SORT_DESC,
@@ -83,6 +87,7 @@ def sort_view_menu_entries(
         ContextMenuAction(
             "recent.view.grid",
             translate("recent.view_grid", "Grid"),
+            icon=SessionPickerIcon.VIEW_GRID,
             data=VIEW_GRID,
             checkable=True,
             checked=view_mode == VIEW_GRID,
@@ -90,6 +95,7 @@ def sort_view_menu_entries(
         ContextMenuAction(
             "recent.view.list",
             translate("recent.view_list", "List"),
+            icon=SessionPickerIcon.VIEW_LIST,
             data=VIEW_LIST,
             checkable=True,
             checked=view_mode == VIEW_LIST,
@@ -100,11 +106,13 @@ def sort_view_menu_entries(
         ContextMenuAction(
             "recent.sort_by",
             translate("recent.sort_by", "Sort by"),
+            icon=SessionPickerIcon.SORT_BY_MODIFIED,
             children=sort_children,
         ),
         ContextMenuAction(
             "recent.view",
             translate("recent.view", "View"),
+            icon=SessionPickerIcon.VIEW_GRID,
             children=view_children,
         ),
     ]
@@ -148,11 +156,13 @@ def open_recent_project_menu(
         ContextMenuAction(
             "recent.open",
             translate("recent.action_open", "Open"),
+            icon="folder_open.svg",
             enabled=not missing and not multi,
         ),
         ContextMenuAction(
             "recent.properties",
             translate("recent.action_properties", "Properties"),
+            icon="photo.svg",
             enabled=not multi,
         ),
     ]
@@ -164,6 +174,7 @@ def open_recent_project_menu(
                     "recent.action_remove_selected",
                     "Remove selected ({n})",
                 ).format(n=len(selected_paths)),  # type: ignore[arg-type]  # selected_paths non-None when multi
+                icon="delete.svg",
             )
         )
     else:
@@ -171,6 +182,7 @@ def open_recent_project_menu(
             ContextMenuAction(
                 "recent.remove",
                 translate("recent.action_remove", "Remove from list"),
+                icon="delete.svg",
             )
         )
     entries.extend(
@@ -179,6 +191,7 @@ def open_recent_project_menu(
             ContextMenuAction(
                 "recent.reveal",
                 translate("recent.action_reveal", "Show in folder"),
+                icon="folder_open.svg",
                 enabled=Path(record.path).parent.is_dir() and not multi,
             ),
         ]

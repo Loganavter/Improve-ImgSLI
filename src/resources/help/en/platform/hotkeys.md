@@ -1,10 +1,10 @@
 ## Hotkeys
 
-Default chords below. Remap most action shortcuts under {{tr:menu.settings}} → {{tr:settings.keyboard}}. Canvas `WASD`, arrow, `Space` movement and `+`/`-` zoom stay fixed and are not remappable.
+Default chords below. Most action shortcuts remap under {{tr:menu.settings}} → {{tr:settings.keyboard}}. Canvas `WASD`, arrow, `Space` movement and `+`/`-` zoom stay fixed and are not remappable.
 
 ### Discover first {#discover}
 
-Press `Ctrl+Shift+P` and type a name before memorizing a list. Run the action from the palette, or open {{tr:action.palette.learn_more}} when you need the illustrated topic. F1 can pulse the matching action when focus is tagged.
+`Ctrl+Shift+P` plus a typed name beats memorizing a list: the palette runs the action or opens {{tr:action.palette.learn_more}} for the illustrated topic. F1 pulses the matching action when focus is tagged.
 
 ### Platform {#platform}
 
@@ -17,7 +17,7 @@ Press `Ctrl+Shift+P` and type a name before memorizing a list. Run the action fr
 - `Ctrl+Shift+O` / `Shift+S` / `Ctrl+Shift+S` — Open / save / save project as (`.imgsli`)
 - `Ctrl+Q` — Quit
 
-Exact labels follow your language pack; remap under Settings → Keyboard → platform group.
+Exact labels follow the language pack; overrides live under Settings → Keyboard → platform group.
 
 ### {{tr:workspace.session_types.image_compare}} {#image-compare}
 
@@ -27,14 +27,15 @@ Exact labels follow your language pack; remap under Settings → Keyboard → pl
 - `X` — Swap
 - `R` / `Ctrl+E` — Record / Video Editor
 - `Ctrl+S` — Quick save
-- `WASD` / `QE` / `Space` — Magnifier move / spacing / side preview (fixed)
+- `WASD` / `QE` — Magnifier move / spacing (fixed)
+- `Shift` + `Space` — Side preview in combined mode (fixed)
 - `←↑↓→` / `+` / `-` — Pan / zoom (fixed)
 
 Details: [Comparison](help://comparison), [Magnifier](help://magnifier), [Video Editor](help://video).
 
 ### {{tr:workspace.session_types.multi_compare}} {#multi-compare}
 
-- `Ctrl+O` — Add images (when bound)
+- `Ctrl+O` — Add images
 - `D` — Grid visibility
 - `Ctrl+S` — Quick save
 - `Esc` — Exit slot focus
@@ -42,9 +43,15 @@ Details: [Comparison](help://comparison), [Magnifier](help://magnifier), [Video 
 
 See [{{tr:workspace.session_types.multi_compare}}](help://multi_compare).
 
+### {{tr:image_gallery.tab_name}} {#image-gallery}
+
+- `Space` / `Delete` — take the selected cards out of the grid; files stay on disk.
+
+See [Triage and Review](help://gallery_triage).
+
 ### Video editor window {#video-editor}
 
-While the editor is open: `Space` play/pause, `Ctrl+Z` / `Ctrl+Y` undo/redo, `Delete` / `Backspace` remove selection. Full encode workflow: [Video Editor](help://video).
+While the editor is open: `Space` play/pause, `Ctrl+Z` / `Ctrl+Y` undo/redo, `Delete` / `Backspace` trim to selection. Full encode workflow: [Video Editor](help://video).
 
 ### Keyboard navigation {#keyboard-navigation}
 

@@ -21,7 +21,6 @@ _NODES = {
         "children": [
             "workspace.image_compare.comparison",
             "workspace.image_compare.magnifier",
-            "workspace.image_compare.export",
             "workspace.image_compare.video",
         ],
     },
@@ -43,15 +42,6 @@ _NODES = {
         "icon": "magnifier.svg",
         "body": "magnifier.md",
     },
-    "workspace.image_compare.export": {
-        "kind": "page",
-        "title_key": "image_compare.help.page.export.title",
-        "description_key": "image_compare.help.page.export.desc",
-        "title": "Export",
-        "description": "Stills and quick-save",
-        "icon": "save_icon.svg",
-        "body": "export.md",
-    },
     "workspace.image_compare.video": {
         "kind": "page",
         "title_key": "image_compare.help.page.video.title",
@@ -66,7 +56,6 @@ _NODES = {
 _ALIASES = {
     "comparison": "workspace.image_compare.comparison",
     "magnifier": "workspace.image_compare.magnifier",
-    "export": "workspace.image_compare.export",
     "video": "workspace.image_compare.video",
 }
 

@@ -115,6 +115,60 @@ def _encode_image(path: Path) -> tuple[str, str]:
     return mime, data
 
 
+def encode_region(path, box) -> tuple[str, str] | None:
+    """Crop a pixel box from an image → ``(mime, base64)``, downscaled to the
+    VLM edge. Worker thread only; never raises (``None`` when unavailable).
+
+    ``box`` is ``(left, top, right, bottom)`` in source pixels. Uses the tiled
+    store (memmap-backed, no full-frame decode buffer); the base store is closed
+    here — only derived state.
+    """
+    try:
+        from engine.store.tiled_pixel_store import TiledPixelStore
+    except Exception:
+        return None
+    store = None
+    try:
+        store = TiledPixelStore.from_path(Path(path))
+        left, top, right, bottom = (int(v) for v in box)
+        if right <= left or bottom <= top:
+            return None
+        im = store.crop((left, top, right, bottom))
+    except Exception:
+        return None
+    finally:
+        try:
+            if store is not None:
+                store.close()
+        except Exception:
+            pass
+    if im is None:
+        return None
+    try:
+        import io
+
+        from PIL import Image
+
+        out = im
+        if out.mode not in ("RGB", "L"):
+            out = out.convert("RGB")
+        max_edge = get_vlm_max_edge()
+        if max_edge > 0:
+            try:
+                edge = max(out.size)
+            except Exception:
+                edge = 0
+            if edge > max_edge and edge > 0:
+                out = out.convert("RGB")
+                out.thumbnail((max_edge, max_edge), Image.LANCZOS)
+        buf = io.BytesIO()
+        out.save(buf, format="PNG")
+        data = base64.b64encode(buf.getvalue()).decode("ascii")
+        return ("png", data)
+    except Exception:
+        return None
+
+
 def build_tie_break_request(
     path_a: Path,
     path_b: Path,

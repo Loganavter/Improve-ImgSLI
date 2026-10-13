@@ -63,3 +63,11 @@ Live canvas, export preview, and final export must stay visually consistent.
 The export path reuses the same canvas-px composition semantics as live
 rendering (see [rendering/index.md](../rendering/index.md)). When changing
 visual output, inspect all three paths together.
+
+## Help ownership
+
+`help.py` `build_help_plugin_contribution()` (`owner_plugin="export"`,
+attach `workspace`): owns page `workspace.export` + alias `export` (moved
+byte-identical from the image_compare tab). Pack: `resources/help/` bodies
+×4 + `figures.json` slot `workspace.image_compare.export.dialog` (slot id
+frozen) + asset; no icon resolver (icon resolves via the tab chain).

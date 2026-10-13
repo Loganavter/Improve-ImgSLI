@@ -1,16 +1,14 @@
 ## About
 
-{{tr:app.name}} is a desktop workspace for precise image and media comparison. Build clear side-by-side or multi-image views, inspect differences at pixel scale, export stills, and record comparison video when you need a timeline.
+{{tr:app.name}} is a desktop workspace for precise image and media comparison. Side-by-side and multi-image views, pixel-scale difference inspection, still export, and comparison video recording.
 
 ### What it is for {#purpose}
 
-Use it when you need to judge visual change without losing context: retouching, upscaling QA, photography, or any workflow where a split, magnifier, and exportable result matter more than a one-off screenshot.
+Comparison of visual change with the context kept: retouching, upscaling QA, photography — sessions where a split, a magnifier, and an exportable result matter more than a one-off screenshot.
 
 ### Workspace modes {#modes}
 
-- **{{tr:workspace.session_types.image_compare}}** — two lists, a movable split, magnifiers, difference modes, export, and a video editor. Start with [Getting Started](help://introduction) or [Comparison](help://comparison).
-- **{{tr:workspace.session_types.multi_compare}}** — a grid of slots for many images at once. See [{{tr:workspace.session_types.multi_compare}}](help://multi_compare).
-- **Session Picker** — open, resume, and manage sessions. Covered in [Workspace Tabs](help://session_picker).
+One card per connected tab; the set grows with the installed tabs. {{tr:workspace.session_types.image_compare}} compares image pairs with a movable split, magnifiers, and difference modes — [Comparison](help://comparison). {{tr:workspace.session_types.multi_compare}} lays many images into a grid of slots — [{{tr:workspace.session_types.multi_compare}}](help://multi_compare). The session picker card opens, resumes, and manages sessions — [Workspace Tabs](help://session_picker). First orientation: [Getting Started](help://introduction).
 
 ### License and source {#license}
 

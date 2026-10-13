@@ -1,16 +1,14 @@
 ## Sobre
 
-{{tr:app.name}} é um espaço de trabalho desktop para comparação precisa de imagens e mídia. Monte vistas lado a lado ou com várias imagens, inspecione diferenças em escala de pixel, exporte imagens e, quando precisar, grave a comparação em uma linha do tempo.
+{{tr:app.name}} é um espaço de trabalho desktop para comparação precisa de imagens e mídia. Vistas lado a lado e com várias imagens, inspeção de diferenças em escala de pixel, exportação de imagens e gravação da comparação em vídeo.
 
 ### Para que serve {#purpose}
 
-Use quando precisar julgar mudanças visuais sem perder o contexto: retoque, QA de upscaling, fotografia ou qualquer fluxo em que split, lupa e um resultado exportável importem mais do que um print isolado.
+Comparação de mudanças visuais sem perda de contexto: retoque, QA de upscaling, fotografia — sessões em que split, lupa e um resultado exportável importam mais do que um print isolado.
 
 ### Modos do espaço de trabalho {#modes}
 
-- **{{tr:workspace.session_types.image_compare}}** — duas listas, split móvel, lupas, modos de diferença, exportação e editor de vídeo. Comece por [Primeiros passos](help://introduction) ou [Comparação](help://comparison).
-- **{{tr:workspace.session_types.multi_compare}}** — grade de slots para várias imagens. Veja [{{tr:workspace.session_types.multi_compare}}](help://multi_compare).
-- **Seletor de sessão** — abrir, retomar e gerenciar sessões. Em [Abas do Workspace](help://session_picker).
+Um cartão por aba conectada; o conjunto cresce com as abas instaladas. {{tr:workspace.session_types.image_compare}} compara pares de imagens com split móvel, lupas e modos de diferença — [Comparação](help://comparison). {{tr:workspace.session_types.multi_compare}} distribui várias imagens em uma grade de slots — [{{tr:workspace.session_types.multi_compare}}](help://multi_compare). O cartão do seletor de sessão abre, retoma e gerencia sessões — [Abas do Workspace](help://session_picker). Primeira orientação: [Primeiros passos](help://introduction).
 
 ### Licença e código-fonte {#license}
 

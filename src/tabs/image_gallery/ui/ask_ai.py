@@ -1,8 +1,9 @@
 """Ask AI flyout (A3) — one scope-aware ask surface.
 Audit-Meta: pattern=single-surface size=exempt reason="one scope-aware ask flyout — its fade/persist/menu/status state is one cohesive surface; splitting would scatter the flyout lifecycle"
 
-A toolkit ``BaseFlyout`` with a ``CustomLineEdit`` (pre-filled, overridable
-default prompt: ``Tab`` accepts it, ``Enter`` sends) and a result pane marked
+A toolkit ``BaseFlyout`` with a ``CustomLineEdit`` on the toolkit submit
+preset (pre-filled, overridable default prompt: ``Tab`` accepts it,
+``Enter`` sends) and a result pane marked
 "AI read, unverified". Advisory only: the flyout renders text, it never
 mutates rank/selection/store. All async work is dispatched by the controller
 (``GalleryController.ask_ai_question``); this widget is pure surface.
@@ -10,7 +11,7 @@ mutates rank/selection/store. All async work is dispatched by the controller
 
 from __future__ import annotations
 
-from PySide6.QtCore import QEvent, Qt, Signal
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QHBoxLayout, QWidget
 
 from sli_ui_toolkit.managers import scaled_px
@@ -25,7 +26,32 @@ MIN_WIDTH_PX = 300
 #: own floor; the real minimum tracks the content layout (see _min_height).
 MIN_HEIGHT_PX = 160
 
+#: href scheme for an answer's image link. ``gallery-image:<percent-path>`` —
+#: the flyout emits ``imageActivated(path)`` when one is clicked.
+IMAGE_HREF_SCHEME = "gallery-image:"
 
+def _accent_hex() -> str:
+    """The app's blue accent as a hex string (theme token → light/dark fallback)."""
+    try:
+        from sli_ui_toolkit.managers import ThemeManager
+
+        from ui.theming import try_resolve_theme_color
+
+        color = try_resolve_theme_color(ThemeManager.get_instance(), "accent")
+        if color is not None:
+            from PySide6.QtGui import QColor
+
+            q = QColor(color) if not isinstance(color, QColor) else color
+            if q.isValid():
+                return q.name()
+    except Exception:
+        pass
+    try:
+        from tabs.image_gallery.ui.card.dots import _is_dark
+
+        return "#0096FF" if _is_dark() else "#0078D4"
+    except Exception:
+        return "#0096FF"
 class AskAiFlyout(BaseFlyout):
     """Free-form question + AI result, anchored to a card or series header."""
 
@@ -37,6 +63,9 @@ class AskAiFlyout(BaseFlyout):
 
     submitted = Signal(str)
     closed = Signal()
+    #: An answer image link was clicked — carries the item's path. The host
+    #: opens Quick Look for it.
+    imageActivated = Signal(str)
 
     def __init__(self, parent: QWidget) -> None:
         super().__init__(parent)
@@ -64,8 +93,16 @@ class AskAiFlyout(BaseFlyout):
             self._edit.setClearButtonEnabled(True)
         except Exception:
             pass
-        self._edit.returnPressed.connect(self._emit_submit)
-        self._edit.installEventFilter(self)
+        # Standard toolkit submit preset: Tab accepts the placeholder on an
+        # empty field, Enter resolves text-or-placeholder via `submitted`.
+        # (The flyout-level keyPressEvent Enter fallback below stays: the
+        # toolkit nav section does not always deliver Return to the focused
+        # field in the live window.)
+        try:
+            self._edit.setSubmitPreset(True)
+        except Exception:
+            pass
+        self._edit.submitted.connect(self._on_field_submitted)
         # Include-images toggle (plan: Ask AI carries AI output for now). Off by
         # default = metrics only (a crossed-out image); on = send the images.
         self._include_images = False
@@ -86,8 +123,30 @@ class AskAiFlyout(BaseFlyout):
             pass
         self._result = Label("", pixel_size=16, word_wrap=True, parent=self)
         self._result.setMinimumWidth(scaled_px(MIN_WIDTH_PX - 40))
-        self._status = Label("", pixel_size=16, parent=self)
+        # Selectable answer text + clickable image links: the answer names its
+        # variants, and each name opens that image (Quick Look). Links get the
+        # app accent + underline + a pointing-hand cursor from Qt's rich text.
+        self._last_text: str = ""
+        self._last_links: dict[str, str] = {}
+        try:
+            self._result.setTextInteractionFlags(
+                Qt.TextInteractionFlag.TextSelectableByMouse
+                | Qt.TextInteractionFlag.TextSelectableByKeyboard
+                | Qt.TextInteractionFlag.LinksAccessibleByMouse
+            )
+        except Exception:
+            pass
+        try:
+            self._result.linkActivated.connect(self._on_result_link)
+        except Exception:
+            pass
+        try:
+            from sli_ui_toolkit.managers import ThemeManager
 
+            ThemeManager.get_instance().theme_changed.connect(self._on_theme_changed_links)
+        except Exception:
+            pass
+        self._status = Label("", pixel_size=16, parent=self)
         # Title, scope, then the question row (edit + images toggle).
         self.content_layout.addWidget(self._title)
         self.content_layout.addWidget(self._scope)
@@ -116,42 +175,31 @@ class AskAiFlyout(BaseFlyout):
 
     # -- interaction --------------------------------------------------------
 
-    def eventFilter(self, obj, event) -> bool:  # noqa: N802 (Qt name)
-        # Tab accepts the grayed default prompt (else it is just a placeholder
-        # and the user must retype it). Enter always sends.
-        if obj is self._edit and event.type() == QEvent.Type.KeyPress:
-            try:
-                if event.key() == Qt.Key.Key_Tab and not self._edit.text().strip():
-                    self._edit.setText(self._default_prompt)
-                    # Cursor at the end, NO selection — the accepted prompt is
-                    # a starting point to keep typing from, not a highlight the
-                    # next keystroke would overwrite.
-                    try:
-                        self._edit.deselect()
-                    except Exception:
-                        pass
-                    try:
-                        self._edit.setCursorPosition(len(self._default_prompt))
-                    except Exception:
-                        pass
-                    return True
-            except Exception:
-                pass
-        return super().eventFilter(obj, event)
+    def _on_field_submitted(self, question: str) -> None:
+        """Preset submit path: the field resolved text-or-placeholder."""
+        try:
+            resolved = str(question or "").strip() or self._default_prompt
+        except Exception:
+            resolved = self._default_prompt
+        self._submit_question(resolved)
 
     def _emit_submit(self) -> None:
-        # Guard against a double submit when both the field's returnPressed
-        # and this flyout's keyPressEvent see the same Return.
+        """Fallback submit path (flyout-level Enter): resolve the text here."""
+        try:
+            question = self._edit.text().strip() or self._default_prompt
+        except Exception:
+            question = self._default_prompt
+        self._submit_question(question)
+
+    def _submit_question(self, question: str) -> None:
+        # Guard against a double submit when both the field's submitted and
+        # this flyout's keyPressEvent see the same Return.
         import time
 
         now = time.monotonic()
         if now - getattr(self, "_last_submit_at", 0.0) < 0.4:
             return
         self._last_submit_at = now
-        try:
-            question = self._edit.text().strip() or self._default_prompt
-        except Exception:
-            question = self._default_prompt
         # Enter must send-and-release: drop any selection left by the Tab
         # prefill and take focus off the field (the field otherwise keeps a
         # highlighted selection on screen).
@@ -240,6 +288,9 @@ class AskAiFlyout(BaseFlyout):
         title: str = "",
         initial_result=None,
         initial_error: str = "",
+        initial_links: dict | None = None,
+        grow_up: bool = False,
+        show_images_toggle: bool = True,
     ) -> None:
         """Reset + show under *anchor*; focus lands in the question field.
 
@@ -247,6 +298,9 @@ class AskAiFlyout(BaseFlyout):
         animation starts (the persisted-answer prefill). Setting them after
         the show — via ``reposition()`` — would clear the fade snapshot while
         its animation is still running, flashing the panel white.
+
+        ``show_images_toggle=False`` hides the include-images toggle (region
+        scope: the images always go out, so there is nothing to toggle).
         """
         self._default_prompt = str(default_prompt or "What matters here?")
         self._title.setText(str(title or self._title_text))
@@ -260,6 +314,12 @@ class AskAiFlyout(BaseFlyout):
         self._edit.setText(str(getattr(self, "_saved_text", "") or ""))
         self._edit.setPlaceholderText(self._default_prompt)
         self._edit.setReadOnly(False)
+        self._last_text = ""
+        self._last_links = {}
+        try:
+            self._result.setTextFormat(Qt.TextFormat.PlainText)
+        except Exception:
+            pass
         self._result.setText("")
         self._status.setText("")
         # Restore the include-images toggle the user left on last time (saved
@@ -271,11 +331,17 @@ class AskAiFlyout(BaseFlyout):
             pass
         self._include_images = saved_images
         self._sync_row_visibility()
+        # Region scope always sends the images: no toggle to show.
+        try:
+            self._images_toggle.setVisible(bool(show_images_toggle))
+        except Exception:
+            pass
         if initial_result is not None:
             self.show_result(
                 getattr(initial_result, "text", "") or "",
                 backend=getattr(initial_result, "backend", "") or "",
                 cached=bool(getattr(initial_result, "cached", False)),
+                links=initial_links,
             )
         elif initial_error:
             self.show_error(initial_error)
@@ -296,10 +362,17 @@ class AskAiFlyout(BaseFlyout):
             except Exception:
                 pass
         try:
+            # ``grow_up`` pins the flyout's BOTTOM-CENTER to the anchor's
+            # TOP-CENTER so a taller wrapped result expands upward (the
+            # region-inspection flyout above the held selection); the
+            # default grows downward from the anchor's bottom-left.
+            anchor_point = "top-center" if grow_up else "bottom-left"
+            flyout_point = "bottom-center" if grow_up else "top-left"
+            self._grow_up = bool(grow_up)
             self.show_aligned(
                 anchor,
-                anchor_point="bottom-left",
-                flyout_point="top-left",
+                anchor_point=anchor_point,
+                flyout_point=flyout_point,
                 offset=scaled_px(8),
                 animation="fade",
             )
@@ -461,10 +534,11 @@ class AskAiFlyout(BaseFlyout):
         if anchor is None:
             return
         try:
+            grow_up = bool(getattr(self, "_grow_up", False))
             self.show_aligned(
                 anchor,
-                anchor_point="bottom-left",
-                flyout_point="top-left",
+                anchor_point="top-center" if grow_up else "bottom-left",
+                flyout_point="bottom-center" if grow_up else "top-left",
                 offset=scaled_px(8),
                 animation="none",
                 grab_focus=False,
@@ -475,7 +549,7 @@ class AskAiFlyout(BaseFlyout):
             except Exception:
                 pass
 
-    def show_result(self, text: str, *, model: str = "", backend: str = "", cached: bool = False) -> None:
+    def show_result(self, text: str, *, model: str = "", backend: str = "", cached: bool = False, links: dict | None = None) -> None:
         badge = self._read_badge
         # Show the currently-selected LLM (settings), never the raw backend
         # token ("vlm"/"text"); fall back to the backend only when no model is
@@ -485,12 +559,122 @@ class AskAiFlyout(BaseFlyout):
             badge += f" · {label}"
         if cached:
             badge += " · cached"
-        self._result.setText(str(text or ""))
+        self._last_text = str(text or "")
+        try:
+            self._last_links = {
+                str(k): str(v) for k, v in dict(links or {}).items() if k and v
+            }
+        except Exception:
+            self._last_links = {}
+        self._render_result()
         self._status.setText(badge)
         self._sync_row_visibility()
         self._relayout()
 
+    def _render_result(self) -> None:
+        """Paint the answer: rich text with image links, or plain text."""
+        text = str(getattr(self, "_last_text", "") or "")
+        links = dict(getattr(self, "_last_links", None) or {})
+        try:
+            if links:
+                self._result.setTextFormat(Qt.TextFormat.RichText)
+                self._result.setText(self._render_links(text, links))
+            else:
+                self._result.setTextFormat(Qt.TextFormat.PlainText)
+                self._result.setText(text)
+        except Exception:
+            try:
+                self._result.setText(text)
+            except Exception:
+                pass
+
+    def _render_links(self, text: str, links: dict) -> str:
+        """Escape the answer and wrap every item name in an accent link.
+
+        Names are matched longest-first, case-insensitively, over the HTML-escaped
+        text so an ``<a>`` is never nested inside another (one regex pass, not
+        sequential substitutions).
+        """
+        import html as _html
+        import re as _re
+        from urllib.parse import quote
+
+        raw = str(text or "")
+        escaped = _html.escape(raw)
+        names = [(str(k), str(v)) for k, v in dict(links or {}).items() if k and v]
+        if not raw or not names:
+            return escaped
+        lookup: dict[str, str] = {}
+        parts: list[str] = []
+        for name, path in names:
+            esc = _html.escape(name)
+            if not esc:
+                continue
+            lookup.setdefault(esc.lower(), path)
+            parts.append(_re.escape(esc))
+        if not parts:
+            return escaped
+        # Longest display name first so the alternation prefers the fuller match.
+        parts.sort(key=len, reverse=True)
+        try:
+            pattern = _re.compile("|".join(parts), _re.IGNORECASE)
+        except _re.error:
+            return escaped
+        accent = _accent_hex()
+
+        def _repl(match) -> str:
+            token = match.group(0)
+            path = lookup.get(token.lower())
+            if not path:
+                return token
+            href = f"{IMAGE_HREF_SCHEME}{quote(path)}"
+            return (
+                f'<a href="{href}" style="color:{accent}; '
+                f'text-decoration:underline;">{token}</a>'
+            )
+
+        return pattern.sub(_repl, escaped)
+
+    def _on_result_link(self, href: str) -> None:
+        """A link in the answer was activated → open that image (host side)."""
+        path = self._href_to_path(href)
+        if not path:
+            return
+        try:
+            self.imageActivated.emit(path)
+        except Exception:
+            pass
+
+    @staticmethod
+    def _href_to_path(href: str) -> str:
+        from urllib.parse import unquote
+
+        try:
+            s = str(href or "")
+        except Exception:
+            return ""
+        if not s.startswith(IMAGE_HREF_SCHEME):
+            return ""
+        try:
+            return unquote(s[len(IMAGE_HREF_SCHEME):])
+        except Exception:
+            return ""
+
+    def _on_theme_changed_links(self, *_args) -> None:
+        """Re-render links so the accent follows a live theme flip."""
+        try:
+            if getattr(self, "_last_links", None):
+                self._render_result()
+        except Exception:
+            pass
+
     def show_error(self, message: str) -> None:
+        self._last_text = ""
+        self._last_links = {}
+        try:
+            self._result.setTextFormat(Qt.TextFormat.PlainText)
+        except Exception:
+            pass
         self._result.setText("")
         self._status.setText(str(message or self._error_text))
         self._sync_row_visibility()

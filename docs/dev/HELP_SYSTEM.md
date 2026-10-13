@@ -17,12 +17,15 @@ Related:
 
 | Owner | Owns |
 |-------|------|
-| Host plugin `plugins/help/` | Dialog shell, navigator, hub UI, merge, host topics (UI + Platform) |
-| Host `resources/help/` | `tree.json` shell + host page bodies + shared `assets/` |
+| Host plugin `plugins/help/` | Dialog shell, navigator, hub UI, tab+plugin merge, host topics (shell + `about` / `platform.file_project` / `platform.hotkeys` / `ui.*`) |
+| Host `resources/help/` | `tree.json` shell + host page bodies + host `figures.json` (host slots only) + host `assets/` |
+| Each plugin (`export`, `settings`, `image_properties`, `onboarding`) | Owned nodes + aliases + `resources/help/` package (bodies, `figures.json`, assets), owned i18n keys |
 | Each tab | Subtree under Workspace, page bodies, aliases, icon resolver, help i18n keys |
 
-Host **must not** import `tabs.*` for icons or hardcode tab topic trees.
-Tabs publish via the same broadcast pattern as settings/actions.
+Host **must not** import `tabs.*` or `plugins/<name>` for icons or hardcode
+contributed topic trees. Tabs publish via the same broadcast pattern as
+settings/actions; plugins are probed duck-typed from `HelpPlugin.initialize`
+(no `create_service` on the Plugin base — see §Tree merge contract).
 
 ```text
 TabRegistry.collect_help_contributions()  # capability_routing.py:32
@@ -41,6 +44,15 @@ Called from `TabRegistry.install_pages` via `contribute_all_help()`:
 collect typed contributions with `collect_help_contributions()`, then
 `install_help_contributions(contributions)` so the Help plugin never imports
 `tabs.*`.
+
+Plugins publish the same shape via `HelpPluginContribution` (`owner_plugin`
+instead of `owner_tab`, same frozen `attach_under` / `child_ids` / `nodes` /
+`aliases` / `body_root` / `asset_root` / `resolve_icon`). Collection is
+duck-typed inside `HelpPlugin.initialize` (`_install_plugin_contributions` →
+`collect_help_plugin_contributions(plugins)` probes each plugin for
+`build_help_plugin_contribution()`, per-plugin exceptions logged and skipped)
+and merged with `install_help_plugin_contributions()` — so `plugins/help/`
+never imports `plugins/<name>` either.
 
 ---
 
@@ -66,10 +78,13 @@ Toolkit owns rendering only (`HelpDocumentView` / `parse_help_blocks`).
 
 ## Tree merge contract
 
-Host `resources/help/tree.json` defines the root hub (About page +
-`workspace` / `ui` / `platform` children) and host pages.
-`workspace.children` starts **empty**; tabs append hubs under
-`attach_under="workspace"`.
+Host `resources/help/tree.json` defines only the shell (root hub with
+About page + `workspace` / `ui` / `platform` children) and genuinely
+host-owned pages (`about`, `platform.file_project`, `platform.hotkeys`,
+`ui.*`). `workspace.children` starts **empty**; tabs append hubs under
+`attach_under="workspace"`. `platform.children` is `hotkeys` +
+`file_project`; plugins attach owned pages under `platform` (`settings`,
+`image_properties`, `getting_started`) or `workspace` (`export`).
 
 Tab contribution (example: `tabs/image_compare/help.py`):
 
@@ -88,14 +103,41 @@ def contribute_help(registry: HelpContributionRegistry) -> None:
 
 Rules:
 
-- Contributed `node_id`s must be unique across the merged tree.
+- Contributed `node_id`s must be unique across the merged tree — tab and
+  plugin fragments share one uniqueness scope (cross-namespace collision
+  raises at plugin merge).
 - Alias conflicts (same slug → different targets) raise at merge.
-- Page `body` paths are relative to that tab's `body_root/<lang>/`.
-- Tab figures live under that tab’s `figures.json` + `assets/`; pass
+- **Aliases move with nodes**: `_validate_tree` (`tree.py:448-450`) raises
+  `KeyError` for an alias whose target is not in the merged tree, so an
+  alias-without-node can never ship — a move carries its aliases to the new
+  owner, it never leaves them on the host.
+- **Slot ids are frozen**: `{{img:…}}` slot strings never change on a move
+  (pinned by `tests/plugins/test_help_interpolate.py`); only the owning
+  `figures.json` / `asset_root` moves, with identical asset-relative paths.
+- Page `body` paths are relative to that contributor's `body_root/<lang>/`.
+- Tab/plugin figures live under that owner's `figures.json` + `assets/`; pass
   `asset_root` (usually the same as `body_root`) so screenshots resolve.
-  Host `resources/help/assets/` is for platform/UI shots only.
-- Stable `help_page` slugs live as **aliases** on the contributing tab (or
-  host for platform/UI), so Learn more / F1 do not break when nodes move.
+  Host `resources/help/assets/` is for host shots only.
+- Stable `help_page` slugs live as **aliases** on the contributing owner (or
+  host for `about` / `file_project` / `hotkeys` / `ui.*`), so Learn more /
+  F1 do not break when nodes move.
+
+Plugin contribution (example: `src/plugins/export/help.py` — same shape,
+`owner_plugin` instead of `owner_tab`, no `plugins/<name>` import by host):
+
+```python
+def build_help_plugin_contribution():  # probed duck-typed from HelpPlugin.initialize
+    from plugins.help.contribution import HelpPluginContribution
+    return HelpPluginContribution(
+        owner_plugin="export",
+        attach_under="workspace",
+        child_ids=("workspace.export",),
+        nodes={...},           # same JSON shape as tree.json nodes
+        aliases={"export": "workspace.export", ...},
+        body_root=_HELP_ROOT,  # src/plugins/export/resources/help
+        asset_root=_HELP_ROOT,
+    )
+```
 
 ---
 
@@ -103,21 +145,35 @@ Rules:
 
 ```text
 src/plugins/help/                 # dialog + merge
-src/resources/help/               # host package
-  tree.json
-  figures.json                    # host {{img:slot}} → assets/ path
-  en|ru|zh|pt_BR/ui|platform/…    # host topic bodies
+src/plugins/<plugin>/             # export, settings, image_properties, onboarding
+  help.py                         # build_help_plugin_contribution(...) — host never imports this
+  resources/help/                 # plugin package (bodies + figures + assets)
+    figures.json                  # only when the plugin owns slots (budget > 0)
+    <lang>/*.md
+    assets/…
+  resources/i18n/<lang>/….json    # owner pack keys (auto-registered, see below)
+src/resources/help/               # host package (shell + host pages only)
+  tree.json                       # shell + about / file_project / hotkeys / ui.*
+  figures.json                    # host {{img:slot}} → assets/ path (host slots only)
+  en|ru|zh|pt_BR/about.md, ui/…, platform/{file_project,hotkeys}.md
   assets/
     _stub.jpg                     # canonical stub (byte-match = still todo)
-    ui/… platform/…               # host screenshots only
+    ui/…                          # host screenshots only
 src/tabs/<tab>/
-  help.py                         # contribute_help(..., asset_root=…)
+  help.py                         # build_help_contribution(...) (contribute_help shim deprecated)
   resources/help/                 # tab package (bodies + figures + assets)
     figures.json
     <lang>/*.md
     assets/*.jpg
   resources/i18n/<lang>/….json    # <tab>.help.* keys
 ```
+
+Two registration paths, opposite defaults: `<pkg>/resources/i18n` packs
+**auto-register** on plugin/tab discovery (zero code — drop the files), so
+moved `settings.*` keys needed no registration change; help `body_root`s are
+**explicit** per contribution (`HelpContribution.body_root` /
+`HelpPluginContribution.body_root`, resolved in `tree.py`) — a new
+`resources/help/` dir alone changes nothing until its builder is collected.
 
 Bodies reference figures as `{{img:slot.id}}`. Paths live in the owning
 package’s `figures.json` — host for platform/UI, tab for workspace topics
@@ -343,20 +399,33 @@ real encyclopedia-level pages.
 | `ui.lists_flyouts` | 2 | `ui.lists_flyouts.list_manager`, `ui.lists_flyouts.toolbar_flyouts` |
 | `ui.canvas_navigation` | 1 | `ui.canvas_navigation.zoom` |
 | `platform.getting_started` | 0 | — |
-| `platform.workspace` | 1 | `platform.workspace.session_picker` |
 | `platform.image_properties` | 1 | `platform.image_properties.open` |
 | `platform.settings` | 0 | — |
 | `platform.hotkeys` | 0 | — |
+| `platform.tabs` | 0 | — |
 | `platform.file_project` | 1 | `platform.file_project.paste_overlay` |
+| `workspace.session_picker` | 1 | `platform.workspace.session_picker` |
 | `workspace.image_compare.comparison` | 2 | `…comparison.split_line`, `…comparison.difference_modes` |
 | `workspace.image_compare.magnifier` | 2 | `…magnifier.enabling`, `…magnifier.combined_mode` |
-| `workspace.image_compare.export` | 1 | `workspace.image_compare.export.dialog` |
+| `workspace.export` | 1 | `workspace.image_compare.export.dialog` |
 | `workspace.image_compare.video` | 2 | `…video.timeline`, `…video.export_encode` |
 | `workspace.multi_compare.overview` | 1 | `workspace.multi_compare.overview.layouts` |
+| `workspace.multi_compare.layouts` | 0 | — |
+| `workspace.multi_compare.viewing` | 0 | — |
+| `workspace.multi_compare.export` | 0 | — |
+| `workspace.image_gallery.{overview,triage,quality,ask_ai}` | 0 | — |
+
+`platform.getting_started`, `platform.image_properties`, `platform.settings`,
+`workspace.export`, `workspace.session_picker[.overview]`, and the gallery
+pages are contributed — their bodies and slots live in the owner plugin/tab
+`resources/help/` package, but frozen slot ids still resolve through the
+merged map. `workspace.export` keeps the
+`workspace.image_compare.export.dialog` slot and `workspace.session_picker`
+keeps `platform.workspace.session_picker` verbatim (slot-id freeze rule).
 
 Update asset paths in `figures.json` only; do not add figures outside this
 table. Optional later gaps (still budget-0 unless raised):
-`platform.workspace` `#tab-strip`, `comparison` `#scroll-images`, settings shell.
+`workspace.session_picker` `#tab-strip`, `comparison` `#scroll-images`, settings shell.
 
 ---
 

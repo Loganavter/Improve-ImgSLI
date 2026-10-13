@@ -49,6 +49,8 @@ class _WidgetStub:
         self.filter_text_changed = _Sig()
         self.visible_range_changed = _Sig()
         self.opened = []
+        self.grow_up = []
+        self.toggles = []
         self.results = []
         self.errors = []
         self.busy = 0
@@ -68,13 +70,15 @@ class _WidgetStub:
     def reset_session_view(self):
         pass
 
-    def open_ask_ai(self, anchor, scope, *, default_prompt="Summary", texts=None):
+    def open_ask_ai(self, anchor, scope, *, default_prompt="Summary", texts=None, grow_up=False, show_images_toggle=True):
         self.opened.append((anchor, scope, default_prompt))
+        self.grow_up.append(bool(grow_up))
+        self.toggles.append(bool(show_images_toggle))
 
     def show_ask_ai_busy(self):
         self.busy += 1
 
-    def show_ask_ai_result(self, result, model=""):
+    def show_ask_ai_result(self, result, model="", links=None):
         self.results.append(result)
 
     def show_ask_ai_error(self, message):
@@ -277,3 +281,160 @@ def test_open_ask_ai_for_series_uses_series_scope(monkeypatch, tmp_path, qapp):
     # No series name on the surface (the anchor header already labels it).
     assert scope.label == ""
     assert set(scope.paths) == {a.path, b.path}
+
+
+def test_open_ask_ai_region_opens_upward_with_region_scope(monkeypatch, tmp_path, qapp):
+    """A Quick Look region selection opens the flyout upward with a region scope."""
+    ctrl, widget = _make(monkeypatch)
+    it = _item(tmp_path)
+    ctrl.state.items = [it]
+
+    ctrl.open_ask_ai_region(it.path, (0.1, 0.1, 0.5, 0.5), anchor=object())
+
+    assert widget.opened, "region ask should open the flyout"
+    _anchor, scope, _prompt = widget.opened[-1]
+    assert scope.kind == "region"
+    assert tuple(scope.box) == (0.1, 0.1, 0.5, 0.5)
+    assert str(scope.paths[0]) == str(it.path)
+    assert widget.grow_up[-1] is True
+
+
+def test_open_ask_ai_region_dismisses_band_on_flyout_hide(monkeypatch, tmp_path, qapp):
+    """The held selection clears only when the region flyout closes.
+
+    Falsification: pre-change no slot is wired to ``flyout.hidden``.
+    """
+    from types import SimpleNamespace
+
+    from PySide6.QtCore import QObject, Signal
+
+    class _Flyout(QObject):
+        hidden = Signal()
+
+    ctrl, widget = _make(monkeypatch)
+    flyout = _Flyout()
+    widget._ensure_ask_ai_flyout = lambda: flyout
+    dismissed: list[bool] = []
+    band = SimpleNamespace(dismiss_selection=lambda: dismissed.append(True))
+
+    it = _item(tmp_path)
+    ctrl.state.items = [it]
+    ctrl.open_ask_ai_region(it.path, (0.1, 0.1, 0.5, 0.5), anchor=band)
+
+    assert widget.opened, "region ask should open the flyout"
+    assert dismissed == [], "band must stay visible while the flyout is open"
+    flyout.hidden.emit()
+    assert dismissed == [True]
+    flyout.hidden.emit()
+    assert dismissed == [True], "dismiss slot is one-shot"
+
+
+def test_open_ask_ai_region_hides_images_toggle(monkeypatch, tmp_path, qapp):
+    """Region scope always sends the images: the toggle is not offered.
+
+    Falsification: pre-change the flag is never threaded (stub default).
+    """
+    from types import SimpleNamespace
+
+    from PySide6.QtCore import QObject, Signal
+
+    class _Flyout(QObject):
+        hidden = Signal()
+
+    ctrl, widget = _make(monkeypatch)
+    flyout = _Flyout()
+    widget._ensure_ask_ai_flyout = lambda: flyout
+    dismissed: list[bool] = []
+    band = SimpleNamespace(
+        dismiss_selection=lambda: dismissed.append(True), selection_id=7
+    )
+
+    it = _item(tmp_path)
+    ctrl.state.items = [it]
+    ctrl.open_ask_ai_region(it.path, (0.1, 0.1, 0.5, 0.5), anchor=band)
+
+    assert widget.opened, "region ask should open the flyout"
+    assert widget.toggles[-1] is False
+    flyout.hidden.emit()
+    assert dismissed == [True], "matching generation still dismisses"
+
+
+def test_region_dismiss_slot_skips_superseded_selection(monkeypatch, tmp_path, qapp):
+    """A newer marquee supersedes the armed dismissal (one-gesture reselect).
+
+    The close ending the old flyout session must not wipe the selection the
+    dismissing press-drag just started.
+
+    Falsification: pre-change the hidden slot dismisses unconditionally.
+    """
+    from PySide6.QtCore import QObject, QRect, Signal
+    from PySide6.QtWidgets import QWidget
+
+    from tabs.image_gallery.ui.quick_look.region import RegionBand
+
+    class _Flyout(QObject):
+        hidden = Signal()
+
+    ctrl, widget = _make(monkeypatch)
+    flyout = _Flyout()
+    widget._ensure_ask_ai_flyout = lambda: flyout
+
+    host = QWidget()
+    band = RegionBand(host)
+    band.setGeometry(0, 0, 200, 200)
+    band.set_band(QRect(10, 10, 50, 40))
+    band.show()
+    gen = band.begin_selection()
+
+    it = _item(tmp_path)
+    ctrl.state.items = [it]
+    ctrl.open_ask_ai_region(it.path, (0.1, 0.1, 0.5, 0.5), anchor=band)
+
+    # A newer marquee starts before the old flyout session closes.
+    band.set_band(QRect(60, 60, 40, 40))
+    band.show()
+    band.begin_selection()
+    assert band.selection_id == gen + 1
+    flyout.hidden.emit()
+    assert not band.isHidden(), "superseded dismissal must spare the new selection"
+
+    # A clean close of the current session still dismisses.
+    ctrl.open_ask_ai_region(it.path, (0.2, 0.2, 0.6, 0.6), anchor=band)
+    flyout.hidden.emit()
+    assert band.isHidden()
+
+
+def test_region_ask_sends_crop_and_region_prompt(monkeypatch, tmp_path, qapp):
+    """Region asks force vision, use the region prompt and append the crop."""
+    ctrl, widget = _make(monkeypatch)
+    record = []
+    _install_transport(monkeypatch, '{"answer": "ok", "confidence": "high"}', record)
+    it = _item(tmp_path)
+    ctrl.state.items = [it]
+    ctrl.state.selected_paths = {it.path}
+
+    from tabs.image_gallery.services import vlm as _vlm
+
+    monkeypatch.setattr(_vlm, "encode_region", lambda path, box: ("png", "QUJD"))
+    scope = AskScope(kind="region", paths=(it.path,), box=(0.1, 0.1, 0.5, 0.5))
+
+    ctrl.ask_ai_question(scope, "What is wrong?")
+
+    assert len(record) == 1, "region ask must reach the transport"
+    messages = record[0]["messages"]
+    from tabs.image_gallery.services.ask_prompt import (
+        ASK_REGION_SYSTEM_PROMPT,
+        ASK_SYSTEM_PROMPT,
+    )
+
+    system_text = messages[0]["content"][0]["text"]
+    assert system_text == ASK_REGION_SYSTEM_PROMPT
+    assert system_text != ASK_SYSTEM_PROMPT
+
+    user_content = messages[-1]["content"]
+    assert any(
+        c.get("type") == "image_url" for c in user_content
+    )
+    assert any("SELECTED REGION" in str(c.get("text", "")) for c in user_content)
+    # Full downscaled image + the region crop.
+    assert sum(1 for c in user_content if c.get("type") == "image_url") >= 2
