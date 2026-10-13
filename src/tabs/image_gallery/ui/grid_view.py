@@ -497,11 +497,28 @@ class _BandSeparatorHandle(QWidget):
         try:
             self.setObjectName("GalleryBandSeparator")
             self.setCursor(Qt.CursorShape.SplitHCursor)
-            self.setToolTip("Drag to resize series panes")
+            tip = self._resize_tooltip()
+            if tip:
+                self.setToolTip(tip)
             self.setMouseTracking(True)
             self.setFixedWidth(scaled_px(GRID_SEPARATOR_COL_W))
         except Exception:
             pass
+
+    def _resize_tooltip(self) -> str | None:
+        """Localized handle tooltip via the owning grid's translator chain.
+
+        No local fallback literal: the grid's ``_activity_translate`` is
+        fail-open (returns the EN default itself), so an unavailable
+        translator just leaves the tooltip unset rather than duplicating text.
+        """
+        try:
+            tr = getattr(self._view, "_activity_translate", None)
+            if callable(tr):
+                return str(tr("image_gallery.grid.resize_tooltip", "Drag to resize series panes"))
+        except Exception:
+            pass
+        return None
 
     def mousePressEvent(self, event) -> None:  # noqa: N802
         try:

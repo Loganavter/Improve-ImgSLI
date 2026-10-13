@@ -81,6 +81,18 @@ def build(dialog, p):  # type: ignore[no-untyped-def]
     store = AiSettingsStore()
     current = store.load()
 
+    def _tr(key: str, default: str) -> str:
+        """Section-key lookup via the dialog translator (fail-open to *default*).
+
+        ``AI_GROUP.text`` returns the raw key when unresolved, so fall back on
+        a non-str / empty / key-echo result — placeholders always render.
+        """
+        try:
+            val = AI_GROUP.text(dialog, key) if hasattr(AI_GROUP, "text") else default
+        except Exception:
+            val = default
+        return val if isinstance(val, str) and val and val != key else default
+
     group_widget = settings_group(dialog, AI_GROUP)
     # Title note inside group
     warning = settings_caption_label(
@@ -140,7 +152,9 @@ def build(dialog, p):  # type: ignore[no-untyped-def]
     dialog.gallery_ai_api_key = CustomLineEdit(parent=dialog)
     apply_settings_body(dialog.gallery_ai_api_key)
     dialog.gallery_ai_api_key.setText(current.api_key)
-    dialog.gallery_ai_api_key.setPlaceholderText("sk-…")
+    dialog.gallery_ai_api_key.setPlaceholderText(
+        _tr("image_gallery.settings.api_key_placeholder", "sk-…")
+    )
     try:
         dialog.gallery_ai_api_key.setEchoMode(dialog.gallery_ai_api_key.EchoMode.Password)
     except Exception:
@@ -165,7 +179,9 @@ def build(dialog, p):  # type: ignore[no-untyped-def]
     dialog.gallery_ai_model = CustomLineEdit(parent=dialog)
     apply_settings_body(dialog.gallery_ai_model)
     dialog.gallery_ai_model.setText(current.model)
-    dialog.gallery_ai_model.setPlaceholderText("openrouter/auto or vendor/model")
+    dialog.gallery_ai_model.setPlaceholderText(
+        _tr("image_gallery.settings.model_placeholder", "openrouter/auto or vendor/model")
+    )
     try:
         AI_GROUP.tag_member(dialog.gallery_ai_model, "image_gallery.settings.model_name")
     except Exception:
@@ -187,7 +203,9 @@ def build(dialog, p):  # type: ignore[no-untyped-def]
     apply_settings_body(dialog.gallery_ai_ask_tokens)
     if int(getattr(current, "ask_max_tokens", 0) or 0) > 0:
         dialog.gallery_ai_ask_tokens.setText(str(current.ask_max_tokens))
-    dialog.gallery_ai_ask_tokens.setPlaceholderText("auto")
+    dialog.gallery_ai_ask_tokens.setPlaceholderText(
+        _tr("image_gallery.settings.tokens_placeholder", "auto")
+    )
     try:
         AI_GROUP.tag_member(dialog.gallery_ai_ask_tokens, "image_gallery.settings.ask_max_tokens")
     except Exception:

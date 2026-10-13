@@ -199,6 +199,7 @@ class StatsStrip(QWidget):
         self._tr = translate
         self._rejected = 0
         self._keep_mode = "keep"
+        self._stats = (0, 0, 0)
         # Cached surface color; repainted explicitly in paintEvent (never via
         # palette/auto-fill — see THEMING.md warm-up quirk).
         self._stats_bg = _stats_bg_color()
@@ -243,7 +244,12 @@ class StatsStrip(QWidget):
 
         layout.addStretch(1)
 
-        self._keep_btn = Button(text="Keep best", variant="ghost", size=(0, 24), parent=self)
+        self._keep_btn = Button(
+            text=self._t("image_gallery.action.keep_best", "Keep best"),
+            variant="ghost",
+            size=(0, 24),
+            parent=self,
+        )
         self._keep_btn.setObjectName("gallery_keep_best")
         try:
             _c = _stats_text_color()
@@ -269,7 +275,7 @@ class StatsStrip(QWidget):
                     id="_main",
                     rows=[
                         ButtonRow(
-                            text="Clean rejected (0)",
+                            text=self._t("image_gallery.stats.clean_rejected", "Clean rejected ({n})").format(n=0),
                             size=None,
                             ratio=1.0,
                             color=_header_text_color(),
@@ -288,7 +294,14 @@ class StatsStrip(QWidget):
         # Sync Button._rows for correct sizeHint (regions rows alone leave hint 36) then restore fixedHeight 24
         try:
             self._clean_btn.setRows(
-                [ButtonRow(text="Clean rejected (0)", size=None, ratio=1.0, color=_header_text_color())]
+                [
+                    ButtonRow(
+                        text=self._t("image_gallery.stats.clean_rejected", "Clean rejected ({n})").format(n=0),
+                        size=None,
+                        ratio=1.0,
+                        color=_header_text_color(),
+                    )
+                ]
             )
             self._clean_btn.setFixedHeight(scaled_px(24))
             self._clean_btn.setEnabled(False)
@@ -296,7 +309,12 @@ class StatsStrip(QWidget):
             pass
         layout.addWidget(self._clean_btn)
 
-        self._compare_btn = Button(text="Compare finalists", variant="ghost", size=(0, 24), parent=self)
+        self._compare_btn = Button(
+            text=self._t("image_gallery.stats.compare_finalists", "Compare finalists"),
+            variant="ghost",
+            size=(0, 24),
+            parent=self,
+        )
         self._compare_btn.setObjectName("gallery_compare_finalists")
         try:
             _c2 = _stats_text_color()
@@ -334,6 +352,16 @@ class StatsStrip(QWidget):
         except Exception:
             pass
 
+    def _t(self, key: str, default: str) -> str:
+        """Translate *key* via the injected translator (fail-open to *default*)."""
+        tr = getattr(self, "_tr", None)
+        if tr is None:
+            return default
+        try:
+            return tr(key, default)
+        except Exception:
+            return default
+
     def _on_keep_btn_clicked(self) -> None:
         """Route the keep-button click by mode (Keep best ↔ Show all)."""
         try:
@@ -343,11 +371,14 @@ class StatsStrip(QWidget):
             pass
 
     def set_keep_mode(self, mode: str) -> None:
-        """Flip the keep button between "Keep best" and "Show all"."""
+        """Flip the keep-mode button label (keep ↔ show)."""
         show = str(mode or "keep").strip().lower().startswith("show")
         self._keep_mode = "show" if show else "keep"
         try:
-            self._keep_btn.setText("Show all" if show else "Keep best")
+            if show:
+                self._keep_btn.setText(self._t("image_gallery.stats.show_all", "Show all"))
+            else:
+                self._keep_btn.setText(self._t("image_gallery.action.keep_best", "Keep best"))
         except Exception:
             pass
 
@@ -436,9 +467,14 @@ class StatsStrip(QWidget):
     def set_stats(self, total: int, series: int, redundant: int) -> None:
         # S2-6: split segments — default prefix + accent "N redundant".
         t = int(total)
-        img_word = "image" if t == 1 else "images"
-        prefix = f"{t} {img_word} · {int(series)} series · "
-        redundant_text = f"{int(redundant)} redundant"
+        self._stats = (t, int(series), int(redundant))
+        prefix = (
+            self._t("image_gallery.stats.images", "{n} images").format(n=t)
+            + " · "
+            + self._t("image_gallery.stats.series", "{n} series").format(n=int(series))
+            + " · "
+        )
+        redundant_text = self._t("image_gallery.stats.redundant", "{n} redundant").format(n=int(redundant))
         try:
             self._stats_prefix_label.setText(prefix)
         except Exception:
@@ -450,7 +486,7 @@ class StatsStrip(QWidget):
 
     def set_rejected_count(self, n: int) -> None:
         self._rejected = int(n)
-        txt = f"Clean rejected ({int(n)})"
+        txt = self._t("image_gallery.stats.clean_rejected", "Clean rejected ({n})").format(n=int(n))
         enabled = int(n) > 0
         if enabled:
             col = _accent_soft_color()
@@ -481,6 +517,34 @@ class StatsStrip(QWidget):
                 pass
         try:
             self._clean_btn.setEnabled(enabled)
+        except Exception:
+            pass
+
+    def retranslate(self, translate=None) -> None:
+        """Re-apply every translated label (language switch).
+
+        Re-reads the Keep-best/Show-all button text (via ``set_keep_mode``),
+        the rejected count and the stats segments so a live language switch
+        never leaves stale English behind.
+        """
+        if translate is not None:
+            self._tr = translate
+        try:
+            self._compare_btn.setText(
+                self._t("image_gallery.stats.compare_finalists", "Compare finalists")
+            )
+        except Exception:
+            pass
+        try:
+            self.set_keep_mode(self._keep_mode)
+        except Exception:
+            pass
+        try:
+            self.set_rejected_count(self._rejected)
+        except Exception:
+            pass
+        try:
+            self.set_stats(*self._stats)
         except Exception:
             pass
 

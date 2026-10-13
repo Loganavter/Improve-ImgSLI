@@ -161,10 +161,17 @@ def rebuild_artifacts(overlay, item) -> None:
 
                 _hm_lbl = _QLabel(row)
                 _hm_lbl.setPixmap(_heatmap_pixmap(_hm))
-                _hm_lbl.setToolTip(
+                _tip = (
                     "Where this artifact is strongest — coarse 5×5 grid:\n"
                     "green = none · yellow = mild · red = strongest"
                 )
+                _tr_overlay = getattr(overlay, "_tr", None)
+                if callable(_tr_overlay):
+                    try:
+                        _tip = _tr_overlay("image_gallery.quick_look.artifact_grid_tooltip", _tip)
+                    except Exception:
+                        pass
+                _hm_lbl.setToolTip(_tip)
                 header.addWidget(_hm_lbl)
             except Exception:
                 pass
