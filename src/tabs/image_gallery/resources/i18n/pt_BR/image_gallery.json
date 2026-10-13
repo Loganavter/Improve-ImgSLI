@@ -71,6 +71,12 @@
       "delete": "Excluir",
       "reset": "Redefinir séries manuais",
       "recluster": "Reagrupar séries"
+    },
+    "help": {
+      "hub": {
+        "title": "Galeria",
+        "desc": "Explorar, triar e revisar pastas de imagens"
+      }
     }
   }
 }
