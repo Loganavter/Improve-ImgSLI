@@ -6,6 +6,11 @@ icon: settings.svg
 
 Settings is the dialog for the application's options: built-in pages such as **General** and **Appearance**, plus sections contributed by tabs. Tab sections stay visible regardless of the active session.
 
+:::figure{side=block width=100%}
+![Settings dialog](../assets/settings_general.png)
+The section list on the left with **General** open — **Language**, **Theme**, **System notifications**, and **Enable debug logging**.
+:::
+
 ### Open Settings {#open-settings}
 
 - **File** → **Settings** (`Ctrl+,`).

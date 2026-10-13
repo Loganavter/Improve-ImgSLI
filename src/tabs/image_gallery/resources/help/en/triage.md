@@ -12,6 +12,11 @@ Triage keeps one winner per series and can move the rejected images out of the f
 - The keeper stays at rank 1 in its series; the rejected cards dim and get a strike-through.
 - **Show all** — clears every rejected flag and brings the images back.
 
+:::figure{side=block width=100%}
+![Gallery triage](../assets/triage_stats.png)
+The stats strip (**images · series · redundant**) with **Keep best**, **Clean rejected**, and **Compare finalists**, series headers, and dimmed rejected cards.
+:::
+
 ### Make best and reject {#make-best-reject}
 
 - **Make best** — marks the selected image as the winner of its series.

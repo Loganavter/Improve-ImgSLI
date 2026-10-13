@@ -16,6 +16,11 @@ The score combines sharpness, exposure, noise, and color, and — once a source 
 - **Card dots** — three dots on each card, one per defect check; a dot turns green, amber, or red as that check gets worse.
 - **AI quality** — a **Sort by** value that orders images by the AI score first; it applies only while the toolbar's **AI** switch is on, and unscored images sink to the end.
 
+:::figure{side=block width=100%}
+![Quick Look panel](../assets/quality_quicklook.png)
+**Quick Look**: the image on the left, and on the right the file facts plus one row per reading with a percentage or **not measured**.
+:::
+
 ### Modes {#modes}
 
 The gallery chooses a mode for the folder, and the mode decides which defect checks the card dots show.
