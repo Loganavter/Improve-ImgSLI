@@ -57,9 +57,9 @@
     },
     "card": {
       "set_as_source": "设为源",
-      "make_best": "★ 设为最佳",
-      "reject": "✕ 拒绝",
-      "compare": "⇄ 对比"
+      "make_best": "设为最佳",
+      "reject": "拒绝",
+      "compare": "对比"
     },
     "ask_ai": {
       "action": "AI…",

@@ -14,8 +14,8 @@ cursor (``popup_at(QCursor.pos())``). The menu merges two groups:
    Make best / Reject / Remove from view apply to the whole selection when
    the clicked card is selected (file-manager rule), else to the clicked
    card alone.
-   The Reject entry tracks state: all targets rejected → "↩ Unreject",
-   otherwise "✕ Reject".
+   The Reject entry tracks state: all targets rejected → "Unreject",
+   otherwise "Reject".
    "Remove from view" drops the card from the grid (file on disk
    stays); selection actions never touch the grid — hence the
    separator between the sections.
@@ -301,9 +301,9 @@ def popup_gallery_card_context_menu(  # type: ignore[no-untyped-def]
         # (mixed → Reject, matching the uniform apply direction).
         _menu_targets = _action_targets(owner, path)
         _reject_label = (
-            "↩ Unreject"
+            "Unreject"
             if _targets_all_rejected(owner, _menu_targets)
-            else "✕ Reject"
+            else "Reject"
         )
         per_card: list = []
         # Ask AI on the clicked card alone — only when there is no selection,
@@ -314,7 +314,7 @@ def popup_gallery_card_context_menu(  # type: ignore[no-untyped-def]
             [
                 ContextMenuAction(
                     "gallery.make_best",
-                    "★ Make best",
+                    "Make best",
                     icon="star.svg",
                 ),
                 ContextMenuAction(

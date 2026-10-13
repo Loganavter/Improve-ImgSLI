@@ -57,9 +57,9 @@
     },
     "card": {
       "set_as_source": "Set as source",
-      "make_best": "★ Make best",
-      "reject": "✕ Reject",
-      "compare": "⇄ Compare"
+      "make_best": "Make best",
+      "reject": "Reject",
+      "compare": "Compare"
     },
     "ask_ai": {
       "action": "AI…",

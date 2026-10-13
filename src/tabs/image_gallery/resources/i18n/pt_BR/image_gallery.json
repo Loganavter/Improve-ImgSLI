@@ -57,9 +57,9 @@
     },
     "card": {
       "set_as_source": "Definir como origem",
-      "make_best": "★ Tornar melhor",
-      "reject": "✕ Rejeitar",
-      "compare": "⇄ Comparar"
+      "make_best": "Tornar melhor",
+      "reject": "Rejeitar",
+      "compare": "Comparar"
     },
     "ask_ai": {
       "action": "IA…",
