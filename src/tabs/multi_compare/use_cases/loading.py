@@ -763,15 +763,13 @@ def load_external_paths(controller, paths) -> int:
 
     Returns the number of slots created synchronously.
     """
-    from shared.image_extensions import ACCEPTED_IMAGE_EXTENSIONS as _EXTENSIONS
+    from shared.image_extensions import is_loadable_image_path
 
     valid: list[Path] = []
     for raw in paths or []:
         path = raw if isinstance(raw, Path) else Path(raw)
-        if path.suffix.lower() not in _EXTENSIONS:
-            continue
-        if not path.is_file():
-            logger.debug("load_external_paths: skipped missing file %s", path)
+        if not is_loadable_image_path(path):
+            logger.debug("load_external_paths: skipped non-image/missing file %s", path)
             continue
         valid.append(path)
     if not valid:

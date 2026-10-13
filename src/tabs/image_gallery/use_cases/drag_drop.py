@@ -12,7 +12,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from shared.image_extensions import ACCEPTED_IMAGE_EXTENSIONS as _IMAGE_EXTENSIONS
+from shared.image_extensions import is_accepted_image_path, is_loadable_image_path
 from tabs.image_gallery.debug import gallery_debug as _dbg
 from tabs.image_gallery.debug import gallery_dnd_debug as _dnd_log
 
@@ -25,7 +25,7 @@ def accepts_drop(paths: list[Path]) -> bool:
     for p in paths:
         pp = Path(p)
         try:
-            ok = pp.suffix.lower() in _IMAGE_EXTENSIONS or pp.is_dir()
+            ok = is_accepted_image_path(pp) or pp.is_dir()
         except Exception:
             ok = False
         _dnd_log("  accepts_drop check %s suffix=%s is_dir=%s -> %s", p, pp.suffix.lower(), pp.is_dir() if p.exists() else "?", ok)
@@ -52,17 +52,17 @@ def handle_drop(tab, paths: list[Path], hint: dict | None = None) -> bool:
         except Exception:
             pass
     # Accept if at least one path is a supported image or a directory.
-    accepted = [Path(p) for p in paths if Path(p).suffix.lower() in _IMAGE_EXTENSIONS or Path(p).is_dir()]
+    accepted = [Path(p) for p in paths if is_accepted_image_path(Path(p)) or Path(p).is_dir()]
     if not accepted:
         if not accepts_drop([Path(p) for p in paths]):
             _dbg("handle_drop: no accepted paths")
             return False
-        accepted = [Path(p) for p in paths if Path(p).suffix.lower() in _IMAGE_EXTENSIONS]
+        accepted = [Path(p) for p in paths if is_accepted_image_path(Path(p))]
         if not accepted:
             return False
     # If all dropped are image files (single or multiple), open just them — don't scan parent
     try:
-        all_files = all(p.is_file() and p.suffix.lower() in _IMAGE_EXTENSIONS for p in accepted if p.exists()) and any(
+        all_files = all(is_loadable_image_path(p) for p in accepted if p.exists()) and any(
             p.is_file() for p in accepted
         )
         has_dir = any(p.is_dir() for p in accepted)

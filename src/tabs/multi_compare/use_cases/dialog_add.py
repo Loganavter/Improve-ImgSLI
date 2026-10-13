@@ -27,13 +27,15 @@ def _coerce_dialog_path(raw: Path | str) -> Path:
 def _is_loadable_image(path: Path) -> bool:
     """Dialog-entry validation shared with DnD/chrome/carry (P8 suspect 3).
 
-    Single source stays ``shared.image_extensions``; ``is_file`` mirrors
-    ``ui/drag_drop.drop_event`` and ``loading.load_external_paths`` so the
-    button cannot offer-then-drop files the other entries reject.
+    Thin delegate over the shared-seam owner
+    ``shared.image_extensions.is_loadable_image_path`` (wave B1); the
+    ``is_file`` check mirrors ``ui/drag_drop.drop_event`` and
+    ``loading.load_external_paths`` so the button cannot offer-then-drop
+    files the other entries reject.
     """
-    from shared.image_extensions import is_accepted_image_path
+    from shared.image_extensions import is_loadable_image_path
 
-    return is_accepted_image_path(path) and path.is_file()
+    return is_loadable_image_path(path)
 
 
 def load_images(controller, paths) -> int:

@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from tabs.image_compare.tab import ImageCompareTab
 
-from shared.image_extensions import ACCEPTED_IMAGE_EXTENSIONS as _IMAGE_EXTENSIONS
+from shared.image_extensions import is_loadable_image_path
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -31,7 +31,7 @@ def begin_pending_image_insert(tab: "ImageCompareTab", paths) -> bool:
     image_paths = [
         str(p)
         for p in (Path(x) for x in paths)
-        if p.is_file() and p.suffix.lower() in _IMAGE_EXTENSIONS
+        if is_loadable_image_path(p)
     ]
     if not image_paths:
         return False
