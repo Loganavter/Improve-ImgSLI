@@ -4,24 +4,6 @@
     "help": {
       "hub": {
         "desc": "Two-image compare, magnifier, export"
-      },
-      "page": {
-        "comparison": {
-          "title": "Comparison",
-          "desc": "Split line, labels, difference modes"
-        },
-        "magnifier": {
-          "title": "Magnifier",
-          "desc": "Capture area, freeze, combined mode"
-        },
-        "export": {
-          "title": "Export",
-          "desc": "Stills and quick-save"
-        },
-        "video": {
-          "title": "Video Editor",
-          "desc": "Record, trim, encode"
-        }
       }
     },
     "action": {
@@ -83,9 +65,6 @@
       },
       "context_carry_image": "Move",
       "context_copy_path": "Copy path",
-      "context_crop_auto": "Auto",
-      "context_crop_off": "Off",
-      "context_crop_on": "On",
       "context_crop_override": "Crop",
       "context_duplicate": "Duplicate",
       "context_name": "Name",
@@ -101,7 +80,6 @@
       "add_images_1": "Add Img(s) 1",
       "add_images_2": "Add Img(s) 2",
       "save_result": "Save Result",
-      "hold_clear_entire_list": "Hold: Clear entire list",
       "pause": "Pause",
       "play": "Play",
       "record": "Record",
@@ -116,14 +94,7 @@
         "bottom": "Bottom",
         "top": "Top"
       },
-      "file_type": {
-        "all_files": "All Files",
-        "image_files": "Image Files"
-      },
       "warning": "Warning"
-    },
-    "tooltip": {
-      "magnifier_colors": "Magnifier Colors"
     },
     "ui": {
       "drop_images_1_here": "Drop Image(s) 1 Here",
@@ -135,9 +106,7 @@
       "choose_magnifier_guides_color": "Choose Magnifier Guides Color",
       "edit_current_image_1_name": "Edit Current Image 1 Name",
       "edit_current_image_2_name": "Edit Current Image 2 Name",
-      "include_file_names_in_saved_image": "Include file names in saved image",
-      "psnr": "PSNR",
-      "ssim": "SSIM"
+      "include_file_names_in_saved_image": "Include file names in saved image"
     },
     "label": {
       "border": "Border",
@@ -160,17 +129,11 @@
     "msg": {
       "edge_comparison_done": "Edge comparison done",
       "edge_comparison_in_progress": "Edge comparison...",
-      "error_normalizing_path": "Error normalizing path",
-      "error_processing_path": "Error processing path",
-      "failed_to_load_image": "Failed to load image",
-      "failed_to_quick_save_image": "Failed to quick save image",
-      "failed_to_save_image": "Failed to save image",
       "grayscale_diff_done": "Grayscale diff done",
       "grayscale_diff_in_progress": "Grayscale diff...",
       "highlight_diff_done": "Highlight diff done",
       "highlight_diff_in_progress": "Highlight diff...",
       "invalid_data": "Invalid Data",
-      "invalid_item_type_or_empty_path": "Invalid item type or empty path",
       "select_both_images_first": "Please load and select images in both slots first.",
       "some_images_could_not_be_loaded": "Some images could not be loaded",
       "specify_output_directory_and_file_name": "Please specify output directory and file name.",

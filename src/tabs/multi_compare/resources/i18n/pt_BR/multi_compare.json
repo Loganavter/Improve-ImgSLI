@@ -3,12 +3,6 @@
     "help": {
       "hub": {
         "desc": "Layouts com várias imagens"
-      },
-      "page": {
-        "overview": {
-          "title": "Visão geral do Multi Compare",
-          "desc": "Layouts e zonas de soltar"
-        }
       }
     },
     "action": {
