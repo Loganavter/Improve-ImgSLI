@@ -1,3 +1,7 @@
+---
+description: Turn a live comparison into an edited video or GIF.
+icon: video.svg
+---
 ## Video Editor
 
 The Video Editor records a live **Image Compare** session as tracks of the tools you used, then trims the timeline and encodes the result to video or GIF. Stills stay on [Export](help://workspace.export).

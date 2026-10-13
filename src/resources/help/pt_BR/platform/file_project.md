@@ -1,3 +1,7 @@
+---
+description: Como as imagens entram na sessão e o que o projeto reúne.
+icon: folder_open.svg
+---
 ## Arquivos e Projetos
 
 Carregue imagens nas listas da sessão, cole a partir da área de transferência e abra ou salve um arquivo de projeto que reúne o leiaute da sessão, as configurações de comparação e cópias das imagens de origem.

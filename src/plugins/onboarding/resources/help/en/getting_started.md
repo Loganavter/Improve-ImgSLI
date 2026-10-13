@@ -1,3 +1,7 @@
+---
+description: First steps for a new install, from opening to saving.
+icon: play.svg
+---
 ## Getting Started
 
 Improve ImgSLI puts images side by side so you can compare them, zoom into the differences, and save the result.

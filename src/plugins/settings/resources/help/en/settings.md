@@ -1,3 +1,7 @@
+---
+description: Find and change application options, including tab sections.
+icon: settings.svg
+---
 ## Settings
 
 Settings is the dialog for the application's options: built-in pages such as **General** and **Appearance**, plus sections contributed by tabs. Tab sections stay visible regardless of the active session.

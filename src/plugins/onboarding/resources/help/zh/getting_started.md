@@ -1,3 +1,7 @@
+---
+description: 新安装后的第一步：从打开到保存。
+icon: play.svg
+---
 ## 入门
 
 Improve ImgSLI 把图像并排放在一起，让你对比它们、放大查看差异，并保存结果。

@@ -1,3 +1,7 @@
+---
+description: Understand the toolbar and how UI modes group controls.
+icon: text-manipulator.svg
+---
 ## Buttons and Controls
 
 The toolbar holds the tools of the active session, and the **UI Mode** setting decides how many actions share one control.
