@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Generate llms.txt from the in-app help tree, resolving {{tr:...}} tokens
-from the application i18n JSON files and stripping {{img:...}} figure blocks."""
+from the application i18n JSON files and stripping figure blocks."""
 import json
 import os
 import re
@@ -63,7 +63,7 @@ _ANCHOR_RE = re.compile(r"\s*\{#[^}]+\}")   # trailing {#anchor}
 
 def resolve_tokens(text: str, translations: dict[str, str]) -> str:
     """Replace {{tr:key}} with the translated string (or the key itself as
-    fallback), strip {{img:...}} figure blocks and bare image tokens."""
+    fallback), strip figure blocks (they contain images)."""
     # Remove whole :::figure{...} ... ::: blocks (they contain images)
     text = _IMG_FIGURE_RE.sub("", text)
     # Strip remaining {{img:...}} inline tokens

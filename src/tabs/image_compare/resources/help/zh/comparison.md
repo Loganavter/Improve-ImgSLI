@@ -13,7 +13,7 @@
 - **组合控件** — {{tr:image_compare.action.divider_combined}} 集合了方向、宽度与颜色（滚轮 / 右键 / 中键）；详见控件提示。
 
 :::figure{side=block width=280}
-![分割线]({{img:workspace.image_compare.comparison.split_line}})
+![分割线](../assets/split_line.png)
 {{tr:image_compare.action.breadcrumb.toolbar}} → {{tr:image_compare.action.breadcrumb.divider}}。
 :::
 
@@ -46,7 +46,7 @@
 {{tr:image_compare.action.diff_mode}}（按 `H` 循环切换）用于突出两张图像的差异之处：
 
 :::figure{side=block width=280}
-![差异模式]({{img:workspace.image_compare.comparison.difference_modes}})
+![差异模式](../assets/difference_modes.png)
 {{tr:image_compare.action.diff_mode}}。
 :::
 

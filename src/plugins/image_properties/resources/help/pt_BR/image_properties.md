@@ -7,7 +7,7 @@ Metadados do arquivo e contexto no aplicativo para uma imagem carregada. O diál
 O item {{tr:image_compare.action.context_properties}} no menu de contexto de uma lista ou célula abre {{tr:image_properties.title}} para aquela imagem.
 
 :::figure{side=block width=280}
-![Diálogo de propriedades da imagem]({{img:platform.image_properties.open}})
+![Diálogo de propriedades da imagem](../assets/platform/image_properties.png)
 {{tr:image_properties.title}}.
 :::
 

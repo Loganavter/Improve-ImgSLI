@@ -13,6 +13,6 @@ Uma sessão compara várias imagens em uma grade de layout, com soltura por slot
 - [Salvar e exportar](help://workspace.multi_compare.export) — salvamento rápido, diálogo, sessões.
 
 :::figure{side=block width=320}
-![Grade do Multi Compare]({{img:workspace.multi_compare.overview.layouts}})
+![Grade do Multi Compare](../assets/layouts.jpg)
 {{tr:workspace.session_types.multi_compare}} — grade / soltura na lacuna.
 :::

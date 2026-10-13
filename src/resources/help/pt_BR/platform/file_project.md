@@ -9,7 +9,7 @@ Carregue imagens nas listas da sessão, cole a partir da área de transferência
 - **Colar** (`Ctrl+V`) — imagem da área de transferência; a sobreposição de direção aparece, um clique em uma seta escolhe o lado, `Esc` cancela.
 
 :::figure{side=block width=280}
-![Sobreposição de direção ao colar]({{img:platform.file_project.paste_overlay}})
+![Sobreposição de direção ao colar](../../assets/platform/paste_overlay.jpg)
 `Ctrl+V` — sobreposição de direção ao colar.
 :::
 

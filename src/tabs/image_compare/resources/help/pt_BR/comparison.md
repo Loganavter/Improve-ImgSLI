@@ -13,7 +13,7 @@ Com a lupa desligada, arraste o divisor sobre o par.
 - **Combinado** — {{tr:image_compare.action.divider_combined}} reúne orientação, largura e cor (rolagem / clique direito / clique do meio); veja a dica do controle.
 
 :::figure{side=block width=280}
-![Linha divisória]({{img:workspace.image_compare.comparison.split_line}})
+![Linha divisória](../assets/split_line.png)
 {{tr:image_compare.action.breadcrumb.toolbar}} → {{tr:image_compare.action.breadcrumb.divider}}.
 :::
 
@@ -46,7 +46,7 @@ Com a lupa desligada, arraste o divisor sobre o par.
 {{tr:image_compare.action.diff_mode}} (`H` cicla) destaca onde o par difere:
 
 :::figure{side=block width=280}
-![Modo de diferença]({{img:workspace.image_compare.comparison.difference_modes}})
+![Modo de diferença](../assets/difference_modes.png)
 {{tr:image_compare.action.diff_mode}}.
 :::
 

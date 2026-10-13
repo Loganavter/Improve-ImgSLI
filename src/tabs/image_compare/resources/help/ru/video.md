@@ -20,7 +20,7 @@
 - **Воспроизведение** — `Space`; отмена / повтор — `Ctrl+Z` / `Ctrl+Y`.
 
 :::figure{side=block width=840}
-![Таймлайн видео]({{img:workspace.image_compare.video.timeline}})
+![Таймлайн видео](../assets/video_timeline.jpg)
 {{tr:image_compare.action.video_editor}} — таймлайн.
 :::
 
@@ -46,7 +46,7 @@
 - **Прогресс** — можно остановить; лог показывает сообщения энкодера.
 
 :::figure{side=block width=630}
-![Панель экспорта видео]({{img:workspace.image_compare.video.export_encode}})
+![Панель экспорта видео](../assets/video_export.jpg)
 {{tr:image_compare.action.video_editor}} — экспорт.
 :::
 

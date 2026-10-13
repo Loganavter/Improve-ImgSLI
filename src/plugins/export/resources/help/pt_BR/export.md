@@ -11,7 +11,7 @@ Exportação do canvas atual como imagem estática. Captura de sessão e codific
 - **Pré-visualização** — o painel ao vivo mostra o resultado composto antes de gravar.
 
 :::figure{side=block width=630}
-![Diálogo de exportação]({{img:workspace.image_compare.export.dialog}})
+![Diálogo de exportação](../assets/export_dialog.jpg)
 {{tr:image_compare.action.breadcrumb.toolbar}} → {{tr:image_compare.action.breadcrumb.export}}.
 :::
 

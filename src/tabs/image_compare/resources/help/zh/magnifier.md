@@ -9,7 +9,7 @@
 - **圆环** — 捕获圆环的大小与颜色遵循镜头样式设置。
 
 :::figure{side=block width=280}
-![放大镜镜头]({{img:workspace.image_compare.magnifier.enabling}})
+![放大镜镜头](../assets/magnifier.jpg)
 {{tr:image_compare.action.breadcrumb.toolbar}} → {{tr:image_compare.action.breadcrumb.magnifier}}。
 :::
 
@@ -43,7 +43,7 @@
 - **单侧预览** — `Space+Shift` 在合并镜头内强制显示其中一侧。
 
 :::figure{side=block width=280}
-![合并放大镜]({{img:workspace.image_compare.magnifier.combined_mode}})
+![合并放大镜](../assets/magnifier_combined.jpg)
 {{tr:image_compare.action.magnifier}} 合并模式。
 :::
 

@@ -9,7 +9,7 @@ The magnifier samples a region of the compared pair and shows an enlarged view o
 - **Ring** — capture-ring size and color follow the lens styling.
 
 :::figure{side=block width=280}
-![Magnifier lens]({{img:workspace.image_compare.magnifier.enabling}})
+![Magnifier lens](../assets/magnifier.jpg)
 {{tr:image_compare.action.breadcrumb.toolbar}} → {{tr:image_compare.action.breadcrumb.magnifier}}.
 :::
 
@@ -43,7 +43,7 @@ The magnifier samples a region of the compared pair and shows an enlarged view o
 - **Side preview** — `Space+Shift` forces one side inside the combined lens.
 
 :::figure{side=block width=280}
-![Combined magnifier]({{img:workspace.image_compare.magnifier.combined_mode}})
+![Combined magnifier](../assets/magnifier_combined.jpg)
 {{tr:image_compare.action.magnifier}} combined mode.
 :::
 

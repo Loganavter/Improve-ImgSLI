@@ -8,7 +8,7 @@ The toolbar sits above the canvas in a compare session. It holds the tools for t
 - **{{tr:settings.ui_mode}}** — sets how many controls the toolbar shows. First-run onboarding sets it; [Settings → Appearance](help://platform.settings#interface) changes it later.
 
 :::figure{side=block height=107}
-![Session toolbar]({{img:ui.buttons.toolbar}})
+![Session toolbar](../../assets/ui/toolbar.jpg)
 Toolbar above the canvas.
 :::
 
@@ -21,7 +21,7 @@ The same tools are laid out differently in each {{tr:settings.ui_mode}}. First-r
 More separate buttons — one control ≈ one job.
 
 :::figure{side=block height=65}
-![Beginner toolbar layout]({{img:ui.buttons.mode_beginner}})
+![Beginner toolbar layout](../../assets/ui/mode_beginner.png)
 {{tr:settings.ui_mode}} → {{tr:settings.ui_mode_beginner}}.
 :::
 
@@ -30,7 +30,7 @@ More separate buttons — one control ≈ one job.
 Fewer icons. Some controls already combine a short click with a scroll (for example orientation + thickness).
 
 :::figure{side=block height=65}
-![Advanced toolbar layout]({{img:ui.buttons.mode_advanced}})
+![Advanced toolbar layout](../../assets/ui/mode_advanced.png)
 {{tr:settings.ui_mode}} → {{tr:settings.ui_mode_advanced}}.
 :::
 
@@ -39,7 +39,7 @@ Fewer icons. Some controls already combine a short click with a scroll (for exam
 Densest strip: one control combines click, scroll, and other mouse buttons.
 
 :::figure{side=block height=65}
-![Expert toolbar layout]({{img:ui.buttons.mode_expert}})
+![Expert toolbar layout](../../assets/ui/mode_expert.png)
 {{tr:settings.ui_mode}} → {{tr:settings.ui_mode_expert}}.
 :::
 
@@ -55,7 +55,7 @@ In {{tr:settings.ui_mode_advanced}} and especially {{tr:settings.ui_mode_expert}
 {{tr:settings.ui_mode_beginner}} keeps those jobs on separate buttons instead of stacking them.
 
 :::figure{side=block height=44}
-![Long-press on a list button]({{img:ui.buttons.long_press}})
+![Long-press on a list button](../../assets/ui/long_press.png)
 List button — short click vs long-press.
 :::
 

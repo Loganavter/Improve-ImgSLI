@@ -20,7 +20,7 @@ Depois da parada, {{tr:image_compare.action.video_editor}} (`Ctrl+E`) percorre f
 - **Reproduzir** — `Space`; desfazer / refazer — `Ctrl+Z` / `Ctrl+Y`.
 
 :::figure{side=block width=840}
-![Linha do tempo de vídeo]({{img:workspace.image_compare.video.timeline}})
+![Linha do tempo de vídeo](../assets/video_timeline.jpg)
 {{tr:image_compare.action.video_editor}} — linha do tempo.
 :::
 
@@ -46,7 +46,7 @@ As trilhas de ferramentas (divisor, lupa, viewport e similares) mostram como os 
 - **Progresso** — pode ser interrompido; o log reporta mensagens do codificador.
 
 :::figure{side=block width=630}
-![Painel de exportação de vídeo]({{img:workspace.image_compare.video.export_encode}})
+![Painel de exportação de vídeo](../assets/video_export.jpg)
 {{tr:image_compare.action.video_editor}} — exportação.
 :::
 

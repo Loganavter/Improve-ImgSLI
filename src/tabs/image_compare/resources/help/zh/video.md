@@ -20,7 +20,7 @@
 - **播放** — `Space`；撤销 / 重做 — `Ctrl+Z` / `Ctrl+Y`。
 
 :::figure{side=block width=840}
-![视频时间轴]({{img:workspace.image_compare.video.timeline}})
+![视频时间轴](../assets/video_timeline.jpg)
 {{tr:image_compare.action.video_editor}} — 时间轴。
 :::
 
@@ -46,7 +46,7 @@
 - **进度** — 可随时停止；日志会显示编码器的输出信息。
 
 :::figure{side=block width=630}
-![视频导出面板]({{img:workspace.image_compare.video.export_encode}})
+![视频导出面板](../assets/video_export.jpg)
 {{tr:image_compare.action.video_editor}} — 导出。
 :::
 

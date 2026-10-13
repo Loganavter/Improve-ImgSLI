@@ -13,7 +13,7 @@
 - **Комбинированный** — {{tr:image_compare.action.divider_combined}} собирает ориентацию, ширину и цвет (скролл / ПКМ / СКМ); жесты в подсказке контрола.
 
 :::figure{side=block width=280}
-![Линия раздела]({{img:workspace.image_compare.comparison.split_line}})
+![Линия раздела](../assets/split_line.png)
 {{tr:image_compare.action.breadcrumb.toolbar}} → {{tr:image_compare.action.breadcrumb.divider}}.
 :::
 
@@ -46,7 +46,7 @@
 {{tr:image_compare.action.diff_mode}} (`H` циклически) подчёркивает отличия пары:
 
 :::figure{side=block width=280}
-![Режим разницы]({{img:workspace.image_compare.comparison.difference_modes}})
+![Режим разницы](../assets/difference_modes.png)
 {{tr:image_compare.action.diff_mode}}.
 :::
 

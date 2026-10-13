@@ -13,6 +13,6 @@
 - [Сохранение и экспорт](help://workspace.multi_compare.export) — быстрое сохранение, диалог, сессии.
 
 :::figure{side=block width=320}
-![Сетка мультисравнения]({{img:workspace.multi_compare.overview.layouts}})
+![Сетка мультисравнения](../assets/layouts.jpg)
 {{tr:workspace.session_types.multi_compare}} — сетка / разрез по зазору.
 :::

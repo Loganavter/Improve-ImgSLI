@@ -21,7 +21,6 @@ HelpNodeKind = Literal["hub", "page"]
 IconResolver = Callable[[str], Any]
 
 _installed_hub_contributions: list[HelpHubContribution] | None = None
-_plugin_help_roots_cache: tuple[Path, ...] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,7 +41,6 @@ class HelpNode:
 class HelpTree:
     root_id: str
     nodes: dict[str, HelpNode]
-    asset_roots: tuple[Path, ...] = ()
     icon_resolvers: tuple[IconResolver, ...] = ()
     def get(self, node_id: str) -> HelpNode | None:
         return self.nodes.get(node_id)
@@ -212,41 +210,11 @@ def read_help_page_markdown(
     return interpolate_help_markdown(raw, language)
 
 
-def _plugin_help_asset_roots() -> tuple[Path, ...]:
-    """Filesystem roots of plugin-owned help packages (not tab-registered).
-
-    Last-resort fallback for trees built without plugin contributions
-    (e.g. tabs-only test trees): plugin ``resources/help`` packages follow
-    the same ``assets/<rel>`` layout as tab contributions. Cached — the
-    package layout is static per checkout.
-    """
-    global _plugin_help_roots_cache
-    if _plugin_help_roots_cache is None:
-        src_root = Path(__file__).resolve().parents[2]
-        plugins = src_root / "plugins"
-        roots: list[Path] = []
-        if plugins.is_dir():
-            roots = sorted(
-                p for p in plugins.glob("*/resources/help") if p.is_dir()
-            )
-        _plugin_help_roots_cache = tuple(roots)
-    return _plugin_help_roots_cache
-
-
-def resolve_help_asset(rel_path: str, tree: HelpTree | None = None) -> Path | None:
-    """Resolve a figure path against host + contributed asset roots."""
-    rel = rel_path.lstrip("/")
-    roots: list[Path] = [host_help_root()]
-    if tree is not None:
-        roots.extend(tree.asset_roots)
-    candidates: list[Path] = []
-    for root in roots:
-        candidates.append(root / "assets" / rel)
-        candidates.append(root / rel)
-    for root in _plugin_help_asset_roots():
-        candidates.append(root / "assets" / rel)
-        candidates.append(root / rel)
-    for path in candidates:
-        if path.is_file():
-            return path
-    return None
+def resolve_help_asset(
+    rel_path: str, body_file: Path | str | None = None
+) -> Path | None:
+    """Resolve a body-relative image path against the rendered body file."""
+    if not body_file:
+        return None
+    candidate = Path(body_file).parent / rel_path.lstrip("/")
+    return candidate if candidate.is_file() else None

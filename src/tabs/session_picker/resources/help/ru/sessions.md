@@ -15,7 +15,7 @@
 Стрелки — перемещение между карточками, `Enter` — открыть выбранный проект. Полный список — в разделе [Горячие клавиши](help://platform.hotkeys#keyboard-navigation).
 
 :::figure{side=block width=420}
-![Выбор сессии]({{img:platform.workspace.session_picker}})
+![Выбор сессии](../assets/platform/session_picker.jpg)
 {{tr:action.workspace.open_session_picker}} — {{tr:workspace.session_types.image_compare}} / {{tr:workspace.session_types.multi_compare}}.
 :::
 

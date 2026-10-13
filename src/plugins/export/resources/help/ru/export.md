@@ -11,7 +11,7 @@
 - **Превью** — панель показывает собранный результат до записи.
 
 :::figure{side=block width=630}
-![Диалог экспорта]({{img:workspace.image_compare.export.dialog}})
+![Диалог экспорта](../assets/export_dialog.jpg)
 {{tr:image_compare.action.breadcrumb.toolbar}} → {{tr:image_compare.action.breadcrumb.export}}.
 :::
 

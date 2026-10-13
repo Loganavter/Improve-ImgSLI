@@ -11,7 +11,7 @@ Still-image export of the current canvas.
 - **Preview** — a live pane shows the composed result before writing.
 
 :::figure{side=block width=630}
-![Export dialog]({{img:workspace.image_compare.export.dialog}})
+![Export dialog](../assets/export_dialog.jpg)
 {{tr:image_compare.action.breadcrumb.toolbar}} → {{tr:image_compare.action.breadcrumb.export}}.
 :::
 

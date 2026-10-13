@@ -30,6 +30,7 @@ from plugins.help.tree import (
     get_help_tree,
     read_help_page_markdown,
     resolve_help_asset,
+    resolve_help_body_path,
 )
 from resources.translations import tr
 from shared_toolkit.ui.layout_sizing import (
@@ -106,6 +107,7 @@ class HelpDialog(ThemedDialog):
         self._pending_anchor: str | None = None
         self._pending_video_url: str | None = None
         self._pending_learn_more_url: str | None = None
+        self._current_body_file = None
         self._syncing_sidebar = False
         self._search_mode = False
         self.overlay_layer = OverlayLayer(self)
@@ -635,6 +637,7 @@ class HelpDialog(ThemedDialog):
 
     def _render_missing_page(self, slug: str) -> None:
         """Web-canon 404: render a placeholder without touching the nav stack."""
+        self._current_body_file = None
         self._document.set_markdown(f"## Missing page\n\nNo help topic `{slug}`.\n")
         self._document.show()
         self._hub_page.hide()
@@ -759,8 +762,13 @@ class HelpDialog(ThemedDialog):
             self._hub_page.show()
             self._document.hide()
             self._document.clear()
+            self._current_body_file = None
         else:
             body = node.body or ""
+            body_path = resolve_help_body_path(
+                lang, body, body_root=node.body_root
+            )
+            self._current_body_file = body_path if body_path.is_file() else None
             md = read_help_page_markdown(
                 lang, body, body_root=node.body_root
             )
@@ -890,7 +898,7 @@ class HelpDialog(ThemedDialog):
             self._syncing_sidebar = False
 
     def _resolve_asset(self, rel_path: str):
-        return resolve_help_asset(rel_path, self._tree)
+        return resolve_help_asset(rel_path, self._current_body_file)
 
     def _on_text_context_menu(self, global_pos) -> None:
         from plugins.help.text_context_menu import open_help_text_context_menu

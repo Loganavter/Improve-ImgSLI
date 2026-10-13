@@ -15,7 +15,7 @@
 方向键在卡片间移动，`Enter` 打开聚焦的项目——完整列表见[快捷键](help://platform.hotkeys#keyboard-navigation)。
 
 :::figure{side=block width=420}
-![会话选择器]({{img:platform.workspace.session_picker}})
+![会话选择器](../assets/platform/session_picker.jpg)
 {{tr:action.workspace.open_session_picker}} — {{tr:workspace.session_types.image_compare}} / {{tr:workspace.session_types.multi_compare}}。
 :::
 

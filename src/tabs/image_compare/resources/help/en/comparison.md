@@ -13,7 +13,7 @@ With the magnifier off, drag the divider across the pair.
 - **Combined** — {{tr:image_compare.action.divider_combined}} packs orientation, width, and color (scroll / right-click / middle-click); see the control tooltip.
 
 :::figure{side=block width=280}
-![Split line]({{img:workspace.image_compare.comparison.split_line}})
+![Split line](../assets/split_line.png)
 {{tr:image_compare.action.breadcrumb.toolbar}} → {{tr:image_compare.action.breadcrumb.divider}}.
 :::
 
@@ -49,7 +49,7 @@ With the magnifier off, drag the divider across the pair.
 {{tr:image_compare.action.diff_mode}} (`H` cycles) emphasizes where the pair differs:
 
 :::figure{side=block width=280}
-![Difference mode]({{img:workspace.image_compare.comparison.difference_modes}})
+![Difference mode](../assets/difference_modes.png)
 {{tr:image_compare.action.diff_mode}}.
 :::
 

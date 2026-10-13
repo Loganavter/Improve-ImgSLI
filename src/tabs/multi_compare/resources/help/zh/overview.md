@@ -13,6 +13,6 @@
 - [保存与导出](help://workspace.multi_compare.export) — 快速保存、保存对话框、会话。
 
 :::figure{side=block width=320}
-![多图对比网格]({{img:workspace.multi_compare.overview.layouts}})
+![多图对比网格](../assets/layouts.jpg)
 {{tr:workspace.session_types.multi_compare}} — 网格 / 缝隙拖放。
 :::

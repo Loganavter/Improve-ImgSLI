@@ -171,7 +171,6 @@ def scan_help_tree(hub_fragments: Any = ()) -> HelpTree:
             resolvers.append(resolver)
 
     discovered: list[tuple[str | None, Path]] = _discover_packages()
-    asset_roots = [d for _mount, d in discovered if d.resolve() != host_help_root().resolve()]
 
     nodes: dict[str, HelpNode] = {}
     host_root = host_help_root().resolve()
@@ -279,7 +278,6 @@ def scan_help_tree(hub_fragments: Any = ()) -> HelpTree:
     tree = HelpTree(
         root_id="root",
         nodes=nodes,
-        asset_roots=tuple(asset_roots),
         icon_resolvers=tuple(resolvers),
     )
     _validate_tree(tree)

@@ -15,7 +15,7 @@ Página inicial de novas abas e histórico de projetos.
 Setas movem entre os cartões e `Enter` abre o projeto em foco — a lista completa está em [Atalhos](help://platform.hotkeys#keyboard-navigation).
 
 :::figure{side=block width=420}
-![Seletor de Sessão]({{img:platform.workspace.session_picker}})
+![Seletor de Sessão](../assets/platform/session_picker.jpg)
 {{tr:action.workspace.open_session_picker}} — {{tr:workspace.session_types.image_compare}} / {{tr:workspace.session_types.multi_compare}}.
 :::
 

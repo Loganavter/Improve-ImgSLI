@@ -7,7 +7,7 @@ File metadata and in-app context for one loaded image. The dialog floats above t
 The {{tr:image_compare.action.context_properties}} entry in a list or slot context menu opens {{tr:image_properties.title}} for that image.
 
 :::figure{side=block width=280}
-![Image Properties dialog]({{img:platform.image_properties.open}})
+![Image Properties dialog](../assets/platform/image_properties.png)
 {{tr:image_properties.title}}.
 :::
 

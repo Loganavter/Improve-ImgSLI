@@ -11,7 +11,7 @@ The home page of a new tab: it lists the session types you can start and your re
 - **Preview** — card thumbnail from `preview.png` in the project when present.
 
 :::figure{side=block width=420}
-![Session Picker]({{img:platform.workspace.session_picker}})
+![Session Picker](../assets/platform/session_picker.jpg)
 {{tr:action.workspace.open_session_picker}} — {{tr:workspace.session_types.image_compare}} / {{tr:workspace.session_types.multi_compare}}.
 :::
 

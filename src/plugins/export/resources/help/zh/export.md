@@ -11,7 +11,7 @@
 - **预览** — 实时预览面板会在写入文件前显示合成结果。
 
 :::figure{side=block width=630}
-![导出对话框]({{img:workspace.image_compare.export.dialog}})
+![导出对话框](../assets/export_dialog.jpg)
 {{tr:image_compare.action.breadcrumb.toolbar}} → {{tr:image_compare.action.breadcrumb.export}}。
 :::
 

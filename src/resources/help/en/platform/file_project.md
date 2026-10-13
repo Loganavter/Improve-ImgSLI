@@ -9,7 +9,7 @@ Load images into session lists, paste from the clipboard, and open or save porta
 - **Paste** (`Ctrl+V`) — clipboard image; the direction overlay appears, a click on an arrow picks the side, `Esc` cancels.
 
 :::figure{side=block width=280}
-![Paste direction overlay]({{img:platform.file_project.paste_overlay}})
+![Paste direction overlay](../../assets/platform/paste_overlay.jpg)
 `Ctrl+V` — paste direction overlay.
 :::
 

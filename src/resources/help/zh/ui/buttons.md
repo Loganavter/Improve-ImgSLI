@@ -9,7 +9,7 @@
 - **疏密** — 取决于 {{tr:settings.ui_mode}}（首次启动引导或[设置 → 外观](help://platform.settings#interface)）。
 
 :::figure{side=block height=107}
-![会话工具栏]({{img:ui.buttons.toolbar}})
+![会话工具栏](../../assets/ui/toolbar.jpg)
 画布上方的工具栏。
 :::
 
@@ -22,7 +22,7 @@
 更多独立按钮 — 一个控件 ≈ 一件事。
 
 :::figure{side=block height=65}
-![初级工具栏布局]({{img:ui.buttons.mode_beginner}})
+![初级工具栏布局](../../assets/ui/mode_beginner.png)
 {{tr:settings.ui_mode}} → {{tr:settings.ui_mode_beginner}}。
 :::
 
@@ -31,7 +31,7 @@
 图标更少。部分控件已把单击与滚轮组合在一起（例如方向 + 粗细）。
 
 :::figure{side=block height=65}
-![高级工具栏布局]({{img:ui.buttons.mode_advanced}})
+![高级工具栏布局](../../assets/ui/mode_advanced.png)
 {{tr:settings.ui_mode}} → {{tr:settings.ui_mode_advanced}}。
 :::
 
@@ -40,7 +40,7 @@
 最紧凑：同一控件组合单击、滚轮及其他鼠标按键。
 
 :::figure{side=block height=65}
-![专家工具栏布局]({{img:ui.buttons.mode_expert}})
+![专家工具栏布局](../../assets/ui/mode_expert.png)
 {{tr:settings.ui_mode}} → {{tr:settings.ui_mode_expert}}。
 :::
 
@@ -56,7 +56,7 @@
 {{tr:settings.ui_mode_beginner}} 会把这些任务拆成独立按钮，而不是叠在同一个控件上。
 
 :::figure{side=block height=44}
-![列表按钮上的长按]({{img:ui.buttons.long_press}})
+![列表按钮上的长按](../../assets/ui/long_press.png)
 列表按钮 — 单击与长按。
 :::
 

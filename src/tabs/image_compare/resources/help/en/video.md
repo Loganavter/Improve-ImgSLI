@@ -20,7 +20,7 @@ After the recording stops, {{tr:image_compare.action.video_editor}} (`Ctrl+E`) s
 - **Play** — `Space`; undo / redo — `Ctrl+Z` / `Ctrl+Y`.
 
 :::figure{side=block width=100%}
-![Video timeline]({{img:workspace.image_compare.video.timeline}})
+![Video timeline](../assets/video_timeline.jpg)
 {{tr:image_compare.action.video_editor}} — timeline.
 :::
 
@@ -46,7 +46,7 @@ The editor shows each recorded tool as its own track (splitter, magnifier, viewp
 - **Progress** — can be stopped; the log reports encoder messages.
 
 :::figure{side=block width=100%}
-![Video export panel]({{img:workspace.image_compare.video.export_encode}})
+![Video export panel](../assets/video_export.jpg)
 {{tr:image_compare.action.video_editor}} — export.
 :::
 

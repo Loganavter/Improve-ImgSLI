@@ -13,6 +13,6 @@ One session compares many images in a layout grid with per-slot drops and focus 
 - [Save and export](help://workspace.multi_compare.export) — quick save, save dialog, sessions.
 
 :::figure{side=block width=320}
-![Multi Compare grid]({{img:workspace.multi_compare.overview.layouts}})
+![Multi Compare grid](../assets/layouts.jpg)
 {{tr:workspace.session_types.multi_compare}} — grid / gap-drop.
 :::

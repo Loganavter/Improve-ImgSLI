@@ -9,7 +9,7 @@
 - **粘贴**（`Ctrl+V`）— 粘贴剪贴板中的图像；此时出现方向浮层，单击箭头选择一侧，按 `Esc` 取消。
 
 :::figure{side=block width=280}
-![粘贴方向浮层]({{img:platform.file_project.paste_overlay}})
+![粘贴方向浮层](../../assets/platform/paste_overlay.jpg)
 `Ctrl+V` — 粘贴方向浮层。
 :::
 

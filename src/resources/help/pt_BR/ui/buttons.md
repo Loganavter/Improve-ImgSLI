@@ -9,7 +9,7 @@ A barra de ferramentas fica acima da tela em uma sessão de comparação. Ela co
 - **Densidade** — segue {{tr:settings.ui_mode}} (onboarding na primeira execução ou [Configurações → Aparência](help://platform.settings#interface)).
 
 :::figure{side=block height=107}
-![Barra de ferramentas da sessão]({{img:ui.buttons.toolbar}})
+![Barra de ferramentas da sessão](../../assets/ui/toolbar.jpg)
 Barra de ferramentas acima da tela.
 :::
 
@@ -22,7 +22,7 @@ As mesmas ferramentas se organizam de forma diferente em cada {{tr:settings.ui_m
 Mais botões separados — um controle ≈ uma tarefa.
 
 :::figure{side=block height=65}
-![Layout iniciante da barra]({{img:ui.buttons.mode_beginner}})
+![Layout iniciante da barra](../../assets/ui/mode_beginner.png)
 {{tr:settings.ui_mode}} → {{tr:settings.ui_mode_beginner}}.
 :::
 
@@ -31,7 +31,7 @@ Mais botões separados — um controle ≈ uma tarefa.
 Menos ícones. Alguns controles já combinam clique curto com rolagem (por exemplo orientação + espessura).
 
 :::figure{side=block height=65}
-![Layout avançado da barra]({{img:ui.buttons.mode_advanced}})
+![Layout avançado da barra](../../assets/ui/mode_advanced.png)
 {{tr:settings.ui_mode}} → {{tr:settings.ui_mode_advanced}}.
 :::
 
@@ -40,7 +40,7 @@ Menos ícones. Alguns controles já combinam clique curto com rolagem (por exemp
 Faixa mais densa: um controle combina clique, rolagem e outros botões do mouse.
 
 :::figure{side=block height=65}
-![Layout especialista da barra]({{img:ui.buttons.mode_expert}})
+![Layout especialista da barra](../../assets/ui/mode_expert.png)
 {{tr:settings.ui_mode}} → {{tr:settings.ui_mode_expert}}.
 :::
 
@@ -56,7 +56,7 @@ Em {{tr:settings.ui_mode_advanced}} e sobretudo em {{tr:settings.ui_mode_expert}
 {{tr:settings.ui_mode_beginner}} mantém essas tarefas em botões separados em vez de empilhá-las.
 
 :::figure{side=block height=44}
-![Clique longo em um botão de lista]({{img:ui.buttons.long_press}})
+![Clique longo em um botão de lista](../../assets/ui/long_press.png)
 Botão de lista — clique curto vs clique longo.
 :::
 
