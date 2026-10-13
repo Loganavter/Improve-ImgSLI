@@ -8,19 +8,19 @@ Right-click an image in a list or slot and choose **Properties** in the context 
 
 :::figure{side=block width=280}
 ![Image Properties dialog](../assets/platform/image_properties.png)
-The **Properties** dialog: rows are grouped by source, for example **File** and **Metadata**.
+The **Properties** dialog: rows are grouped by source, for example **File** and **Image**.
 :::
 
 ### What is shown {#sections}
 
 Rows are grouped into:
 
-- **File** — name, path, size on disk, format, and modified time.
+- **File** — name, path, extension, size on disk, format, and modified time.
 - **Image** — pixel size, aspect, orientation, channels; color mode and profile when the file provides them.
 - **In app** — how the app places this image in the current session (see below).
 - **Metadata** — camera and EXIF-style fields when the file provides them.
 
-Rows without values are omitted. If the file cannot be read, **Read error** appears instead of the data.
+Rows without values are omitted. When the file cannot be read, a **Read error** row appears under **File**.
 
 ### In-app context {#in-app}
 
