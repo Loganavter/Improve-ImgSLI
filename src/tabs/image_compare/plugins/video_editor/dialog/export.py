@@ -1,6 +1,7 @@
 from PySide6.QtGui import QColor
 
 from tabs.image_compare.plugins.video_editor.services.export_config import ExportConfigBuilder
+from shared.video_policy import CrfPolicy, clamp_crf
 
 
 class VideoEditorDialogExport:
@@ -51,7 +52,7 @@ class VideoEditorDialogExport:
             "container": d.combo_container.currentData() or "mp4",
             "codec": ExportConfigBuilder.get_codec_internal_name(d.combo_codec.currentData() or "h264 (AVC)"),
             "quality_mode": d.combo_quality_mode.currentData() or "crf",
-            "crf": int(d.edit_crf.text()) if d.edit_crf.text().isdigit() else 23,
+            "crf": clamp_crf(int(d.edit_crf.text()) if d.edit_crf.text().isdigit() else CrfPolicy.DEFAULT),
             "bitrate": d.edit_bitrate.text(),
             "preset": d.combo_preset.currentData() or "",
             "pix_fmt": d.combo_pix_fmt.currentData() or "",

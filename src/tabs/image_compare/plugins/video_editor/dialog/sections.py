@@ -41,6 +41,7 @@ from tabs.image_compare.plugins.video_editor.search import (
 )
 from ui.widgets.form_controls import OutputPathSection
 from ui.widgets.themed_surface import ThemedBackgroundContainer
+from shared.video_policy import CrfPolicy
 
 class _NoWheelEventFilter(QObject):
     def eventFilter(self, obj, event):
@@ -613,9 +614,9 @@ def create_quality_stack(dialog):
         variant="group-title",
     )
     dialog.edit_crf = CustomLineEdit()
-    dialog.edit_crf.setValidator(QIntValidator(0, 63))
-    dialog.edit_crf.setText("23")
-    dialog.edit_crf.setPlaceholderText("23")
+    dialog.edit_crf.setValidator(QIntValidator(CrfPolicy.MIN, CrfPolicy.MAX))
+    dialog.edit_crf.setText(str(CrfPolicy.DEFAULT))
+    dialog.edit_crf.setPlaceholderText(str(CrfPolicy.DEFAULT))
     dialog.edit_crf.setFixedWidth(scaled_px(80))
     dialog.edit_crf.setAlignment(Qt.AlignmentFlag.AlignCenter)
     l_crf.addWidget(dialog.lbl_quality_value)

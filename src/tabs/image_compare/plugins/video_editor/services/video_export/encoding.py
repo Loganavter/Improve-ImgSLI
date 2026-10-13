@@ -10,6 +10,7 @@ from tabs.image_compare.plugins.video_editor.services.export_config import (
     ExportConfigBuilder,
     resolve_ffmpeg_executable,
 )
+from shared.video_policy import CrfPolicy, clamp_crf
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -58,7 +59,7 @@ class FFmpegCommandBuilder:
 
         codec = options.get("codec", "h264")
         quality_mode = options.get("quality_mode", "crf")
-        crf = options.get("crf", 23)
+        crf = clamp_crf(options.get("crf", CrfPolicy.DEFAULT))
         bitrate = options.get("bitrate", "5000k")
         preset = options.get("preset", "medium")
         pix_fmt = options.get("pix_fmt", "yuv420p")
