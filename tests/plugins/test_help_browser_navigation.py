@@ -246,10 +246,18 @@ def test_help_hub_set_hub_idempotent(qtbot):
 
 
 def test_help_hub_sync_icons_on_theme_change(qtbot):
-    """Hub card icons are eager QIcons; theme switch must re-resolve them."""
+    """Hub card icons are eager QIcons; theme switch must re-resolve them.
+
+    ``resolve_help_icon`` now returns a monochrome tint of the source (never the
+    resolver's own QIcon object) and caches by (name, colour); a theme change
+    resolves a different colour and drops the stale tint. Here the colour is
+    unchanged, so the invalidation the ThemeManager hook performs is applied
+    explicitly to prove ``sync_icons`` rebuilds each eager card icon.
+    """
     from PySide6.QtGui import QIcon, QPixmap
 
     from plugins.help.hub_page import HelpHubPage
+    from plugins.help.icons import clear_help_icon_cache
     from plugins.help.tree import HelpNode
 
     light = QIcon()
@@ -278,12 +286,15 @@ def test_help_hub_sync_icons_on_theme_change(qtbot):
     page.set_hub(hub, (child,))
     card = page._cards_by_id["child"]
     icon_region = next(r for r in card._regions if r.id == "icon")
-    assert icon_region.icon is light
+    first_icon = icon_region.icon
+    assert not first_icon.isNull()
 
     icons["topic.svg"] = dark
+    clear_help_icon_cache()
     page.sync_icons()
     icon_region = next(r for r in card._regions if r.id == "icon")
-    assert icon_region.icon is dark
+    assert not icon_region.icon.isNull()
+    assert icon_region.icon is not first_icon
 
 
 def test_help_hub_dispose_cards_unregisters_hover(qtbot):
