@@ -207,8 +207,6 @@ def test_flags_empty_without_analysis_and_no_duplicate_label_map():
     assert ctx["items"][0]["flags"] == []
     assert ctx["metric_labels"]["halo_delta"] == "Halo vs source"
     assert "axis_labels" not in ctx
-
-
 def test_answer_image_links_maps_name_to_path():
     from tabs.image_gallery.services.ask_context import answer_image_links
 

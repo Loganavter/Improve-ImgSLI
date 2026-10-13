@@ -34,6 +34,12 @@ _AXIS_KINDS: dict[str, str] = {spec.id: spec.kind.value for spec in SPECS}
 #: The only kinds the AI may contribute; ``measured`` numbers never come from AI.
 _AI_FLAG_KINDS = (MetricKind.CANDIDATE.value, MetricKind.JUDGMENT.value)
 
+#: Axis id → human label / axis kind (static registry, see ``metric_scores``).
+_AXIS_LABELS: dict[str, str] = {spec.id: spec.label for spec in SPECS}
+_AXIS_KINDS: dict[str, str] = {spec.id: spec.kind.value for spec in SPECS}
+#: The only kinds the AI may contribute; ``measured`` numbers never come from AI.
+_AI_FLAG_KINDS = (MetricKind.CANDIDATE.value, MetricKind.JUDGMENT.value)
+
 
 @dataclass(frozen=True)
 class AskScope:

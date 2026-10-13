@@ -1309,7 +1309,6 @@ class ImageGalleryWidget(QWidget):
             from tabs.image_gallery.icons import Icon as _GalleryIcon
         except Exception:
             _GalleryIcon = None  # type: ignore[assignment]
-
         has_reset = callable(getattr(owner, "reset_series_overrides", None))
         has_recluster = callable(getattr(owner, "recluster_series", None))
         entries: list = [

@@ -521,8 +521,6 @@ def test_ask_ai_images_toggle_persists_across_hide(qtbot):
     assert flyout.include_images() is True
     flyout.hide()
     qtbot.waitUntil(lambda: not flyout.isVisible(), timeout=5000)
-
-
 def test_result_image_names_are_accent_links_and_open_quick_look(qtbot):
     """Names in the answer become accent, underlined, selectable links.
 

@@ -1870,6 +1870,15 @@ class GalleryController:
         )
         return template.replace("{px}", str(int(px)))
 
+    def _images_downsample_text(self, px: int) -> str:
+        """Tooltip line 2 for the Ask AI images toggle: the current downscale."""
+        if int(px or 0) <= 0:
+            return self._tr("image_gallery.settings.downscale_original", "Original")
+        template = self._tr(
+            "image_gallery.ask_ai.images_toggle_downsample", "Downscale: ≤ {px} px"
+        )
+        return template.replace("{px}", str(int(px)))
+
     def _ask_cache_key(self, scope, context, question: str, backend: str, model: str) -> str:
         import hashlib
         import json
@@ -2558,7 +2567,6 @@ class GalleryController:
                 done()
         except Exception:
             logger.debug("append processing indicator hide failed", exc_info=True)
-
     def _run_artifacts_sync(self, items: list[GalleryItem], source_path: Path | None) -> dict[str, dict]:
         """Pure worker for GenericWorker: analyze 7 artifacts per item."""
         from tabs.image_gallery.services.artifacts import analyze_artifacts

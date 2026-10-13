@@ -29,7 +29,6 @@ MIN_HEIGHT_PX = 160
 #: the flyout emits ``imageActivated(path)`` when one is clicked.
 IMAGE_HREF_SCHEME = "gallery-image:"
 
-
 def _accent_hex() -> str:
     """The app's blue accent as a hex string (theme token → light/dark fallback)."""
     try:
@@ -52,8 +51,6 @@ def _accent_hex() -> str:
         return "#0096FF" if _is_dark() else "#0078D4"
     except Exception:
         return "#0096FF"
-
-
 class AskAiFlyout(BaseFlyout):
     """Free-form question + AI result, anchored to a card or series header."""
 
@@ -141,7 +138,6 @@ class AskAiFlyout(BaseFlyout):
         except Exception:
             pass
         self._status = Label("", pixel_size=16, parent=self)
-
         # Title, scope, then the question row (edit + images toggle).
         self.content_layout.addWidget(self._title)
         self.content_layout.addWidget(self._scope)
