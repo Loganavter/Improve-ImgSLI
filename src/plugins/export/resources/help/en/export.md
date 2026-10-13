@@ -24,7 +24,7 @@ The export dialog: **Preview** shows the composed result before the file is writ
 
 ### Metadata and favorites {#metadata-and-favorites}
 
-- **Metadata** — the file and comment metadata are written into the export by default. Clear **Include metadata** to write the image without them; the comment field then hides. **Remember by default** keeps the comment text for the next export.
+- **Metadata** — the comment is written into the file by default. Clear **Include metadata** to save the image without it; the comment field then hides. **Remember by default** keeps the comment text for the next export.
 - **Favorites** — **Set as Favorite** pins the current directory, and **Use Favorite** recalls it.
 - **Labels** — with **Filename Overlay** on, file names are drawn into the exported image.
 

@@ -4,7 +4,7 @@ The Image Gallery helps you review a folder of similar shots: open a folder, let
 
 ### Open a folder {#open-folder}
 
-- **Pick folder…** — opens the folder picker. While the tab is empty it shows **Pick a folder to see images here.**
+- **Open Folder…** — opens the folder picker. While the tab is empty it shows **Pick a folder to see images here.**
 - **Drag and drop** — dropped files join the same set as a picked folder; a single dropped file opens on its own, without scanning its parent folder.
 - **New Image Gallery Session** — creates another gallery session from **Find Action** (`Ctrl+Shift+P`).
 
@@ -20,13 +20,13 @@ After a folder loads, the gallery groups similar images into series.
 
 - **View** — switches between **Grid** and **List**.
 - **Sort by** — orders images by **Rank**, **Name**, **Date**, or **AI quality**; unscored images sink to the end.
-- **Filter** — **Filter by tag/description…** narrows the grid; the selection is not affected.
+- **Filter** — **Filter by tag / description…** narrows the grid; the selection is not affected.
 
 ### Stats strip and compare {#stats-and-compare}
 
 The stats strip shows how many images, series, and redundant images the folder contains.
 
-- **Compare** — sends the best image of each series, plus every image outside a series, to Image Compare (up to 12 files).
+- **Compare finalists** — sends the best image of each series, plus every image outside a series, to Image Compare (up to 12 files).
 - **Card click** — opens Quick Look with the image's quality readings.
 
 ### Next topics {#next-topics}

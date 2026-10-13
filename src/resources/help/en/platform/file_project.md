@@ -24,9 +24,9 @@ Each session has its own tab; see [Tabs](help://platform.tabs).
 
 A project file (`.imgsli`) keeps a whole workspace in one portable file: the open sessions, their compare settings, and copies of the source images.
 
-- **Open a project** — choose **Open** from the **File** menu, press `Ctrl+Shift+O`, or run it from **Find Action**. The active tab takes the file's name, and the project restores the workspace sessions, the compare settings (divider, diff, magnifier, and related features), and the embedded image copies.
-- **Save a project** — `Shift+S` writes the current file. When no file exists yet, **Save As** opens instead. Saving also retargets the file basename when the tab was renamed.
-- **Save As** — `Ctrl+Shift+S` suggests the renamed tab title when the active tab has a custom title, otherwise **Untitled**.
+- **Open a project** — choose **Open Project** from the **File** menu, press `Ctrl+Shift+O`, or run it from **Find Action**. The active tab takes the file's name, and the project restores the workspace sessions, the compare settings (divider, diff, magnifier, and related features), and the embedded image copies.
+- **Save a project** — `Shift+S` writes the current file. When no file exists yet, **Save Project As…** opens instead. Saving also retargets the file basename when the tab was renamed.
+- **Save Project As…** — `Ctrl+Shift+S` suggests the renamed tab title when the active tab has a custom title, otherwise **Untitled**.
 - **What the file contains** — the project is a ZIP archive: the session JSON plus a `media/` folder with embedded copies of the images.
 - **If a source is missing** — when a listed path no longer exists, the project still saves; that image is omitted and a warning lists it.
 - **What is not saved** — the theme, language, and hotkeys stay in the application settings; they are not part of the project file.

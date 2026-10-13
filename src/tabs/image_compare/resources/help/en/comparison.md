@@ -64,6 +64,6 @@ The same pair in each difference mode: **Highlight**, grayscale, edges, and SSIM
 - **Highlight** — colors the regions where the two images differ.
 - **Grayscale** — desaturates the intensity differences.
 - **Edges** — shows the difference along edges.
-- **SSIM** — draws a structural similarity map when the metrics support it.
+- **SSIM** — draws a structural similarity map of the pair.
 
 The live canvas, exported stills, and video recording keep the same look. Difference modes combine with channel views. For local inspection, use the [Magnifier](help://workspace.image_compare.magnifier).

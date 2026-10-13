@@ -4,8 +4,7 @@ As Configurações reúnem as opções do aplicativo em um diálogo: páginas in
 
 ### Abrir Configurações {#open-settings}
 
-- **Menu** — **Configurações** (`Ctrl+,`).
-- **Barra de ferramentas** — o botão de engrenagem.
+- **Menu** — **Arquivo** → **Configurações** (`Ctrl+,`).
 - **Localizar ação** — `Ctrl+Shift+P` e o nome da página (Geral, Aparência, Teclado, …).
 - **Saiba mais** — abre o tópico de ajuda da configuração, quando existe.
 
@@ -25,7 +24,7 @@ Um campo de pesquisa fica acima da lista. Cada seção correspondente aparece co
 - **Modo da UI** — **Iniciante**, **Avançado** ou **Especialista**; o padrão é **Iniciante**, e a escolha da primeira abertura fica aqui.
 - **Fonte da UI** — fonte interna, padrão do sistema ou personalizada.
 - **Escala da interface** — redimensiona toda a interface (0,5–2,5).
-- **Limites** — tetos para valores relacionados, como o comprimento máximo do nome exibido.
+- **Comp. Máx. Nome (UI)** — limita o comprimento do nome exibido.
 
 ### Desempenho {#performance}
 
@@ -35,7 +34,7 @@ Um campo de pesquisa fica acima da lista. Cada seção correspondente aparece co
 
 Opções do comparador, sempre disponíveis:
 
-- **Interpolação** — define a qualidade de reamostragem do zoom e da lupa.
+- **Interpolação do Zoom** — define a qualidade de reamostragem do zoom.
 - **Movimento da lupa** — deixa o movimento da lente mais suave; o método de interpolação fica na mesma linha.
 - **Destaque vermelho para lupas sobrepostas** — ao arrastar uma lupa, a parte do anel de captura escondida atrás de outras lupas é destacada.
 - **Colorir novas lupas automaticamente** — dá cores distintas às novas lentes.

@@ -12,7 +12,7 @@ The session picker shows one card per connected tab, and the set of cards grows 
 
 - **Image Compare** compares image pairs with a movable divider, magnifiers, and difference modes — see [Comparison](help://workspace.image_compare.comparison).
 - **Multi Compare** lays many images into a grid of slots — see [Multi Compare](help://workspace.multi_compare.overview).
-- The **Session Picker** card opens, resumes, and manages sessions — see [Tabs](help://workspace.session_picker).
+- The **Session Picker** opens, resumes, and manages sessions — see [Tabs](help://workspace.session_picker).
 
 New here? Start with [Getting Started](help://platform.getting_started).
 

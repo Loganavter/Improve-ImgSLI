@@ -4,7 +4,7 @@ Every image gets a score from 0 to 100, and a higher score is better. The score 
 
 ### Measured metrics {#measured-metrics}
 
-The score combines technical measurements of the image, including how it compares with the source when one is set. **Quick Look** shows the raw readings behind each score. When AI image analysis is enabled, perceptual distances and a naturalness reading are added as well.
+The score combines technical measurements of the image, including how it compares with the source when one is set. **Quick Look** shows the raw readings behind each score. When AI image analysis is enabled, a composition reading is added as well.
 
 ### Where scores appear {#where-scores}
 

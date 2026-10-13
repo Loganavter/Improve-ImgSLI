@@ -4,7 +4,7 @@ A exportação salva o canvas atual como uma imagem estática, no formato e no t
 
 ### Salvar uma imagem {#saving-an-image}
 
-**Salvar resultado**, na barra de ferramentas ou em **Localizar ação**, abre o diálogo de exportação, onde você escolhe o arquivo de saída e suas opções.
+**Salvar Resultado**, na barra de ferramentas ou em **Localizar ação**, abre o diálogo de exportação, onde você escolhe o arquivo de saída e suas opções.
 
 - **Caminho** — escolhe a pasta de saída e o nome do arquivo.
 - **Formato** — seleciona o formato de saída: PNG, JPEG, WEBP, BMP, TIFF ou JXL.
@@ -18,13 +18,13 @@ O diálogo de exportação: a **Pré-visualização** mostra o resultado compost
 ### Resolução e qualidade {#resolution-and-quality}
 
 - **Tamanho** — define a largura e a altura de saída; uma trava de proporção mantém as proporções.
-- **Qualidade** — define o nível de compressão; aparece apenas em formatos com perdas (JPEG e WEBP), então uma exportação em PNG ou BMP não a oferece.
+- **Qualidade** — define o nível de compressão; aparece apenas em formatos com perdas (JPEG, WEBP e JXL), então uma exportação em PNG ou BMP não a oferece.
 - **PNG** — define o nível de compressão e liga ou desliga **Otimizar PNG**.
 - **Preencher fundo** — pinta as barras ao redor da imagem quando ela não preenche o quadro. Quando a imagem preenche o quadro, a opção fica indisponível.
 
 ### Metadados e favoritos {#metadata-and-favorites}
 
-- **Metadados** — os dados de arquivo e o comentário são gravados no arquivo por padrão. Ao desmarcar **Incluir metadados**, a imagem é gravada sem eles e o campo de comentário fica oculto. **Lembrar por padrão** mantém o texto do comentário para a próxima exportação.
+- **Metadados** — o comentário é gravado no arquivo por padrão. Ao desmarcar **Incluir metadados**, a imagem é gravada sem ele e o campo de comentário fica oculto. **Lembrar por padrão** mantém o texto do comentário para a próxima exportação.
 - **Favoritos** — **Definir como Favorito** fixa a pasta atual, e **Usar Favorito** volta a essa pasta.
 - **Rótulos** — com **Sobreposição de nomes** ligado, os nomes dos arquivos são desenhados na imagem exportada.
 

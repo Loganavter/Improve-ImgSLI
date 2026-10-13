@@ -17,18 +17,18 @@ A lente da lupa no canvas e o anel de captura vermelho que marca a área amostra
 
 - **Tam. Lupa (%)** — define o tamanho da vista ampliada sobre o canvas; quanto maior, mais a imagem é ampliada.
 - **Tam. Captura (%)** — define quanto da área de origem é amostrada; ampliar a captura abrange uma região maior e reduz o aumento efetivo.
-- **Mover** — com a lente ativa, `WASD` desloca a área de captura; `QE` ajusta o espaçamento entre as metades quando elas estão separadas.
+- **Mover** — com a lente ativa, `WASD` desloca a lente; `QE` ajusta o espaçamento entre as metades quando elas estão separadas.
 - **Velocidade de Movimento** — define a rapidez com que a lente se desloca ao usar `WASD`; o controle fica no painel da lupa, quando ele está visível.
 
 ### Congelar {#freeze}
 
-**Congelar lupa** (`F`) fixa a lente na posição atual do canvas: a área de captura continua se movendo, mas a vista ampliada fica parada. O ajuste da captura pelo teclado continua ativo enquanto a lente está congelada.
+**Congelar lupa** (`F`) fixa a lente na posição atual do canvas: a área de captura continua se movendo, mas a vista ampliada fica parada. O teclado ainda desloca a lente congelada.
 
 ### Divisor, guias e cores {#guides-and-colors}
 
 - **Orientação da lupa** — define se a lente divide a vista na horizontal ou na vertical.
 - **Divisor da lupa** — o divisor interno da lente; ajuste-o com a rolagem e o clique direito.
-- **Visibilidade do divisor da lupa** e **Guias da lupa** — mostram ou ocultam o divisor interno e as guias de alinhamento e definem suas larguras.
+- **Visibilidade do divisor da lupa** e **Guias da lupa** — mostram ou ocultam o divisor interno e as guias de alinhamento; as larguras são definidas à parte.
 - **Cores da lupa** — define a cor do contorno de cada instância, para distinguir as lentes entre si.
 
 ### Várias instâncias {#instances}

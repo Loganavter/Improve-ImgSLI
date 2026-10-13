@@ -1,6 +1,6 @@
 ## Buttons and Controls
 
-The toolbar sits above the canvas in a compare session. It holds the tools for that session — divider, view modes, magnifier, recording — while the lists, add/save controls, and the settings gear sit in the window around it.
+The toolbar sits above the canvas in a compare session. It holds the tools for that session — divider, view modes, magnifier, recording — while the lists and add/save controls sit in the window around it.
 
 ### The toolbar {#toolbar}
 
@@ -49,9 +49,9 @@ In **Advanced** and especially in **Expert**, the same icon often does more than
 - **Short click** — primary action or toggle.
 - **Scroll** — nudge a numeric value (divider thickness, magnifier size, and so on) without opening a dialog.
 - **Long-press** — stronger variant on some list buttons (clear a whole list; swap both lists).
-- **Other mouse buttons** — in **Expert**, for example right-click for color or middle-click to reset on compact divider controls.
+- **Other mouse buttons** — in **Expert**, for example right-click for color or middle-click to hide or restore the divider on a compact divider control.
 
-Beginner keeps those jobs on separate buttons instead of stacking them.
+**Beginner** splits the click-plus-scroll combinations across separate single-purpose controls; the list buttons' long-press works in every mode.
 
 :::figure{side=block height=44}
 ![Long-press on a list button](../../assets/ui/long_press.png)

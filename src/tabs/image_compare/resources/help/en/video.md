@@ -4,7 +4,7 @@ The Video Editor records a live Image Compare session as control tracks, then tr
 
 ### Record a session {#recording}
 
-- **Start / pause / stop** — the **Record Video** control (`R`) starts a recording, **Pause Recording** pauses it, and the same controls stop it.
+- **Start / pause / stop** — **Record Video** (`R`) starts and stops the recording; **Pause Recording** pauses and resumes it.
 - **What is stored** — canvas actions over time (zoom and pan, divider, magnifier, loaded images, related settings) are stored as control tracks with recording points, not as a raw screen grab.
 - **Capture rate** — the recording frame rate is set by **Recording FPS** under **Image Compare** in [Settings](help://platform.settings#image_compare).
 
@@ -15,7 +15,7 @@ After the recording stops, **Video Editor** (`Ctrl+E`) opens a window where you 
 ### Timeline editing {#timeline}
 
 - **Scrub** — drag the time cursor to move through the recording.
-- **Range** — `Shift`+drag marks a span; the edge handles and the middle of the selection move independently; **Trim to Selection** keeps only the marked span.
+- **Range** — `Shift`+drag marks a span; the edge handles and the middle of the selection move independently; **Trim to Selection** removes the marked span and joins the rest.
 - **Delete** — `Delete` / `Backspace` remove the selected range.
 - **Play** — `Space` starts and pauses playback; `Ctrl+Z` / `Ctrl+Y` undo and redo edits.
 

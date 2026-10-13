@@ -59,6 +59,6 @@ O mesmo par em cada modo: **Destaque**, escala de cinza, bordas e SSIM mostram a
 - **Destaque** — realça com cor as regiões em que as imagens diferem.
 - **Escala de cinza** — atenua as diferenças de intensidade, para revelar variações de brilho.
 - **Bordas** — concentra a diferença nas bordas, útil para perceber contornos deslocados.
-- **SSIM** — mostra um mapa de similaridade estrutural quando o cálculo de métricas está ativo.
+- **SSIM** — mostra um mapa de similaridade estrutural do par.
 
 O canvas ao vivo, as imagens exportadas e a gravação de vídeo mantêm a mesma aparência, e os modos de diferença combinam com os modos de canal. Para inspeção local, use a [Lupa](help://workspace.image_compare.magnifier).

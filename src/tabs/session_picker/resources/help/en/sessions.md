@@ -8,7 +8,7 @@ Use the Session Picker to start a new session and to reopen recent projects.
 - **Recent** — `.imgsli` projects. Click a card to open it; right-click for open, properties, remove, and reveal in folder.
 - **Project file drop** — a project file dragged onto the panel is added to the list without opening.
 - **Sort and view** — switch between grid and list, and sort by date or name.
-- **Preview** — cards show the canvas thumbnail saved in the project, when the project has one.
+- **Preview** — grid cards show the canvas thumbnail saved in the project, when the project has one.
 
 :::figure{side=block width=420}
 ![Session Picker](../assets/platform/session_picker.jpg)

@@ -23,8 +23,8 @@ Depois de `Ctrl+V`, a sobreposição de direção mostra o destino da imagem: ca
 Um projeto é um único arquivo portátil `.imgsli`: ele guarda as sessões abertas, as configurações de comparação e cópias das imagens de origem.
 
 - **Abrir um projeto** — use `Ctrl+Shift+O`, o menu **Arquivo** ou **Localizar ação**. Ao abrir, a aba ativa recebe o nome do arquivo, e o projeto restaura as sessões do workspace, as configurações de comparação (**Divisor**, modos de diferença, **Lupa** e recursos relacionados) e as cópias incorporadas das imagens.
-- **Salvar** — `Shift+S` grava o arquivo atual. Se o projeto ainda não foi salvo, abre **Salvar como**. Quando a aba foi renomeada, o salvamento também atualiza o nome do arquivo.
-- **Salvar como** — `Ctrl+Shift+S` sugere o título da aba renomeada; caso contrário, usa **Sem título**.
+- **Salvar projeto** — `Shift+S` grava o arquivo atual. Se o projeto ainda não foi salvo, abre **Salvar projeto como…**. Quando a aba foi renomeada, o salvamento também atualiza o nome do arquivo.
+- **Salvar projeto como…** — `Ctrl+Shift+S` sugere o título da aba renomeada; caso contrário, usa **Sem título**.
 - **O que o arquivo contém** — o projeto é um ZIP: o JSON das sessões e uma pasta `media/` com cópias dos originais, sem recodificar os pixels.
 - **Se um original sumiu** — quando um caminho da lista não existe mais, o projeto ainda é salvo; essa imagem é omitida e um aviso informa qual ficou de fora.
 - **O que não é salvo** — **Tema**, **Idioma** e atalhos ficam nas configurações do aplicativo e não fazem parte do arquivo de projeto.

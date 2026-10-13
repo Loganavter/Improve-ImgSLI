@@ -49,9 +49,9 @@ Em **Avançado** e, principalmente, em **Especialista**, o mesmo ícone costuma 
 - **Clique curto** — ação principal ou alternância.
 - **Rolagem** — ajusta um valor numérico (espessura do **Divisor**, tamanho da **Lupa**, entre outros) sem abrir um diálogo.
 - **Clique longo** — variante mais forte em alguns botões de lista (limpar a lista inteira; trocar as duas listas).
-- **Outros botões do mouse** (em **Especialista**) — por exemplo, clique direito para escolher a cor ou clique do meio para redefinir um controle compacto do **Divisor**.
+- **Outros botões do mouse** (em **Especialista**) — por exemplo, clique direito para escolher a cor ou clique do meio para ocultar ou restaurar o **Divisor** em um controle compacto.
 
-No **Iniciante**, essas tarefas ficam em botões separados em vez de empilhadas.
+No **Iniciante**, as combinações de clique com rolagem ficam em controles separados de função única; o clique longo dos botões de lista funciona em todos os modos.
 
 :::figure{side=block height=44}
 ![Clique longo em um botão de lista](../../assets/ui/long_press.png)

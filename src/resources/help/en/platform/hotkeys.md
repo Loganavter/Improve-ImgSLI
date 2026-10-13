@@ -1,10 +1,10 @@
 ## Hotkeys
 
-The list below gives the default chords. Most action shortcuts can be remapped in **Settings** → **Keyboard**. The canvas `WASD`, arrow, and `Space` movement keys and the `+` / `-` zoom stay fixed and cannot be remapped.
+The list below gives the default chords. Most action shortcuts can be remapped in **Settings** → **Keyboard**. The canvas `WASD`, arrow, and `Space` keys and the `+` / `-` zoom stay fixed and cannot be remapped.
 
 ### Discover first {#discover}
 
-Press `Ctrl+Shift+P` and type part of a name instead of memorizing the list: **Find Action** runs the matching action or opens **Learn more** for the illustrated topic. `F1` highlights the matching action when the focused control is tied to it.
+Press `Ctrl+Shift+P` and type part of a name instead of memorizing the list: **Find Action** runs the matching action or opens **Learn more** for the illustrated topic. `F1` opens the help topic for the focused control.
 
 ### Platform {#platform}
 
@@ -55,13 +55,13 @@ While the editor window is open:
 
 - `Space` — play or pause
 - `Ctrl+Z` / `Ctrl+Y` — undo / redo
-- `Delete` / `Backspace` — trim to the selection
+- `Delete` / `Backspace` — remove the selected range
 
 Full encode workflow: [Video Editor](help://workspace.image_compare.video).
 
 ### Keyboard navigation {#keyboard-navigation}
 
-- `F1` — contextual help for the focused control. When the focused control is tied to an action, the **Find Action** result highlights the match; otherwise **Find Action** opens pre-filtered by topic.
+- `F1` — opens the help topic for the focused control; a control with no resolvable topic falls back to **Find Action** (with the matching action highlighted when there is one).
 - In **Find Action** (`Ctrl+Shift+P`): `↑` / `↓` move the selection, `Enter` runs it, `Ctrl+Enter` opens **Learn more**, `Esc` closes the list.
 - In the Multi Compare overview, slot focus follows the pointer: a click toggles single-image focus, `Esc` exits it. Arrow keys pan the canvas instead of moving focus between slots.
 - In the session picker, arrow keys move focus between cards and `Enter` opens the focused card, same as clicking it.

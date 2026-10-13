@@ -4,9 +4,9 @@ Slots sit in a split grid where you can drop files, split cells at a gap, and dr
 
 ### Cells and drop zones {#layouts}
 
-- **File drops** — drop a file onto the grid; an empty slot takes it directly, and a filled slot is replaced.
+- **File drops** — drop a file onto the grid; the new slot opens beside the cell under the cursor and splits it, and the first drop on an empty grid becomes the first slot.
 - **Add Images** (`Ctrl+O`) — loads one or more images into the grid.
-- **Empty slots** — stay available, so you can add another image at any time.
+- **Drop zones** — a file drop targets the cell under the cursor and the nearest of its four edges.
 - **Outside drops** — files dropped from the file manager, pasted from the clipboard, or moved with **Move** from another tab are placed automatically while a progress message shows.
 - **Auto-place** — a new image splits the largest cell along its longer side, and the grid holds at most 12 images.
 - **Gap drop** — a drop in a divider gap splits a new cell between the two neighbouring slots.

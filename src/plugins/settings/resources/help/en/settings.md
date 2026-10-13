@@ -4,8 +4,7 @@ Settings collects every application option in one dialog: built-in pages such as
 
 ### Open Settings {#open-settings}
 
-- **Menu** — **Settings** (`Ctrl+,`).
-- **Toolbar** — the gear button.
+- **Menu** — **File** → **Settings** (`Ctrl+,`).
 - **Find Action** — `Ctrl+Shift+P`, then a page name (General, Appearance, Keyboard, …).
 - **Learn more** — opens the help topic for a setting when one is available.
 
@@ -25,7 +24,7 @@ A search field sits above the sidebar. Each matching section appears as a single
 - **UI Mode** — **Beginner**, **Advanced**, or **Expert**; **Beginner** is the default and the first-run pick lands here.
 - **UI Font** — built-in, system default, or a custom family.
 - **Interface Scale** — slider that resizes the whole interface (0.5–2.5).
-- **Limits** — caps for related values, such as the maximum displayed name length.
+- **Maximum Name Length (UI)** — caps the length of a displayed name.
 
 ### Performance {#performance}
 
@@ -35,7 +34,7 @@ A search field sits above the sidebar. Each matching section appears as a single
 
 Image-compare options, always available:
 
-- **Interpolation** — sets the resampling quality for zoom and the magnifier.
+- **Zoom Interpolation** — sets the resampling quality for zoom.
 - **Magnifier movement** — makes lens motion smoother; its interpolation method sits on the same row.
 - **Red highlight for overlapping magnifiers** — while you drag a magnifier, the part of its capture ring hidden behind other magnifiers is highlighted. **Auto-color new magnifiers** gives each new lens a distinct color.
 - **Recording FPS** — capture rate for the [Video Editor](help://workspace.image_compare.video).

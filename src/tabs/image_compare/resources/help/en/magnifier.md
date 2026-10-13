@@ -23,7 +23,7 @@ The magnifier lens on the canvas and the red capture ring that marks the sampled
 
 ### Freeze {#freeze}
 
-**Freeze Magnifier** (`F`) pins the lens to its current position on the canvas, so you can pan the capture area without the lens following. Keyboard movement keeps moving the capture area while the lens stays frozen.
+**Freeze Magnifier** (`F`) pins the lens to its current position on the canvas, so you can pan the capture area without the lens following. Keyboard movement still nudges the frozen lens.
 
 ### Divider, guides, and colors {#guides-and-colors}
 

@@ -12,7 +12,7 @@ Triage keeps one winner per series and lets you move the rejected images out of 
 
 - **Make best** — marks that image as the winner of its series.
 - **Reject** — toggles the rejected flag on a single image.
-- **Remove from grid** — `Space` / `Delete` take the selected cards out of the grid; the files stay on disk.
+- **Remove from view** — `Space` / `Delete` take the selected cards out of the grid; the files stay on disk.
 
 ### Clean review {#clean-review}
 

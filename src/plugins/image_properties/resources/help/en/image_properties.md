@@ -8,7 +8,7 @@ Right-click an image in a list or slot and choose **Properties** in the context 
 
 :::figure{side=block width=280}
 ![Image Properties dialog](../assets/platform/image_properties.png)
-The **Properties** dialog: rows are grouped by source, and each row has its own copy button.
+The **Properties** dialog: rows are grouped by source, for example **File** and **Metadata**.
 :::
 
 ### What is shown {#sections}
@@ -33,4 +33,4 @@ These rows describe session state, not the file on disk.
 
 ### Close {#close}
 
-**Close** dismisses the dialog. **Copy all** copies every visible row to the clipboard; each row also offers its own copy button.
+**Close** dismisses the dialog. **Copy all** copies every visible row to the clipboard; selected text can be copied from its context menu.

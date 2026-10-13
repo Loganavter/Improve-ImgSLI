@@ -8,7 +8,7 @@ Clique com o botão direito em uma imagem na lista ou no slot e escolha **Propri
 
 :::figure{side=block width=280}
 ![Diálogo de propriedades da imagem](../assets/platform/image_properties.png)
-O diálogo **Propriedades**: as linhas são agrupadas por origem e cada uma tem seu próprio botão de cópia.
+O diálogo **Propriedades**: as linhas são agrupadas por origem, por exemplo **Arquivo** e **Metadados**.
 :::
 
 ### O que é mostrado {#sections}
@@ -33,4 +33,4 @@ Essas linhas descrevem o estado da sessão, não o arquivo em disco.
 
 ### Fechar {#close}
 
-**Fechar** dispensa o diálogo. **Copiar tudo** copia todas as linhas visíveis para a área de transferência; cada linha também tem seu próprio botão de cópia.
+**Fechar** dispensa o diálogo. **Copiar tudo** copia todas as linhas visíveis para a área de transferência; o texto selecionado pode ser copiado pelo menu de contexto.

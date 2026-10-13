@@ -15,7 +15,7 @@ Depois de parar a gravação, abra o **Editor de vídeo** (`Ctrl+E`) para percor
 ### Edição da linha do tempo {#timeline}
 
 - **Percorrer** — arraste o cursor de tempo para navegar pelos quadros.
-- **Intervalo** — `Shift` + arrastar marca um trecho; as alças e o meio da seleção se movem separadamente; **Cortar para Seleção** mantém só o trecho marcado e descarta o resto.
+- **Intervalo** — `Shift` + arrastar marca um trecho; as alças e o meio da seleção se movem separadamente; **Cortar para Seleção** remove o trecho marcado e une o restante.
 - **Excluir** — `Delete` ou `Backspace` removem o intervalo selecionado.
 - **Reproduzir** — `Space` inicia e pausa a reprodução; desfaça com `Ctrl+Z` e refaça com `Ctrl+Y`.
 

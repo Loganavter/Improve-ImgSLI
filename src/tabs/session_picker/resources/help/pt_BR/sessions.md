@@ -25,6 +25,7 @@ Em **Localizar ação** (`Ctrl+Shift+P`), escolha:
 
 - **Nova sessão Image Compare** — abre a sessão de comparação de duas imagens.
 - **Nova sessão Multi Compare** — abre a sessão de grade para três ou mais imagens.
+- **Nova sessão Image Gallery** — abre a sessão de galeria de imagens.
 
 **Abrir seletor de sessão** retorna ao **Seletor de Sessão** para uma escolha visual.
 

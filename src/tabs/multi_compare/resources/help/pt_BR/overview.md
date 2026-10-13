@@ -13,7 +13,7 @@ Veja também [Abas do Workspace e Seletor de Sessão](help://workspace.session_p
 ### Recursos {#capability-map}
 
 - **Grade de células** — cada imagem ocupa uma célula; você move e solta as imagens entre as células para reorganizar a comparação.
-- **Foco e zoom** — aproxime uma célula para examinar detalhes sem perder as demais de vista.
+- **Foco e zoom** — foque uma célula para examiná-la de perto; o zoom e a panorâmica valem para a grade inteira.
 - **Rótulos e grade** — exiba os nomes e ajuste as linhas da grade com **Configurações de rótulo**, **Linhas da grade**, **Cor da grade** e **Visibilidade da grade**.
 - **Salvar e exportar** — grave com **Salvamento rápido** ou **Salvar grade** e exporte o resultado.
 

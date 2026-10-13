@@ -4,7 +4,7 @@ A lista abaixo traz as combinações padrão. A maioria dos atalhos de ação po
 
 ### Descubra primeiro {#discover}
 
-**Localizar ação** (`Ctrl+Shift+P`) mais parte do nome é mais rápido do que decorar a lista: ela executa a ação ou abre **Saiba mais** com o tópico ilustrado. Se o controle em foco estiver ligado a uma ação, `F1` destaca a correspondência em **Localizar ação**.
+**Localizar ação** (`Ctrl+Shift+P`) mais parte do nome é mais rápido do que decorar a lista: ela executa a ação ou abre **Saiba mais** com o tópico ilustrado. `F1` abre o tópico de ajuda do controle em foco.
 
 ### Plataforma {#platform}
 
@@ -51,13 +51,13 @@ Enquanto a janela do editor estiver aberta:
 
 - `Space` — reproduzir ou pausar
 - `Ctrl+Z` / `Ctrl+Y` — desfazer / refazer
-- `Delete` / `Backspace` — cortar até a seleção
+- `Delete` / `Backspace` — remover o intervalo selecionado
 
 Fluxo completo de codificação: [Editor de vídeo](help://workspace.image_compare.video).
 
 ### Navegação pelo teclado {#keyboard-navigation}
 
-- `F1` — ajuda contextual para o controle em foco. Quando o foco está ligado a uma ação, a correspondência é destacada em **Localizar ação**; caso contrário, **Localizar ação** abre pré-filtrada por tópico.
+- `F1` — abre o tópico de ajuda do controle em foco; um controle sem tópico resolvível recorre à **Localizar ação** (com a correspondência destacada quando houver uma).
 - Em **Localizar ação** (`Ctrl+Shift+P`): `↑` / `↓` movem a seleção, `Enter` executa, `Ctrl+Enter` abre **Saiba mais**, `Esc` fecha a lista.
 - Na visão geral de **Comparação múltipla**, o foco do slot segue o ponteiro: um clique alterna o foco em uma única imagem, `Esc` sai dele. As setas deslocam o canvas em vez de mover o foco entre slots.
 - No **seletor de sessão**, as setas movem o foco entre cartões e `Enter` abre o cartão em foco, como clicar nele.
