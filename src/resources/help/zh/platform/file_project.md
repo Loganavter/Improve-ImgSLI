@@ -9,14 +9,14 @@
 - **粘贴**（`Ctrl+V`）— 粘贴剪贴板中的图像；此时出现方向浮层，单击箭头选择一侧，按 `Esc` 取消。
 
 :::figure{side=block width=280}
-![粘贴方向浮层]({{img:platform.file_project.paste_overlay}})
+![粘贴方向浮层](../../assets/platform/paste_overlay.jpg)
 `Ctrl+V` — 粘贴方向浮层。
 :::
 
 ### 列表 {#lists}
 
-- **{{tr:workspace.session_types.image_compare}}** — 左右列表互相独立；列表管理面板可用于重新排序、评分、重命名、查看路径、属性与删除——见[列表与面板](help://ui.lists_flyouts)。
-- **{{tr:workspace.session_types.multi_compare}}** — 使用逐槽位拖放，而非双列表——见 [{{tr:workspace.session_types.multi_compare}}](help://multi_compare)。
+- **{{tr:workspace.session_types.image_compare}}** — 左右列表互相独立；列表管理面板可用于重新排序、评分、重命名、查看路径、属性与删除——见[对比](help://workspace.image_compare.comparison)。
+- **{{tr:workspace.session_types.multi_compare}}** — 使用逐槽位拖放，而非双列表——见 [{{tr:workspace.session_types.multi_compare}}](help://workspace.multi_compare.overview)。
 
 ### 项目 {#projects}
 

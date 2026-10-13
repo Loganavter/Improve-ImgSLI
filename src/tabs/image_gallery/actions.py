@@ -50,13 +50,13 @@ def register_gallery_action_stubs(registry) -> None:  # type: ignore[no-untyped-
         GALLERY_RUN_TRIAGE: "image_gallery.action.run_triage",
         GALLERY_SET_AS_SOURCE: "image_gallery.action.set_as_source",
     }
-    # Stable help slugs (tabs/image_gallery/help.py aliases): triage actions
-    # land on the triage page, the fidelity entry lands on quality.
+    # Stable help paths: triage actions land on the triage page,
+    # the fidelity entry lands on quality.
     help_map = {
-        GALLERY_KEEP_BEST: "gallery_triage",
-        GALLERY_CLEAN_REJECTED: "gallery_triage",
-        GALLERY_RUN_TRIAGE: "gallery_triage",
-        GALLERY_SET_AS_SOURCE: "gallery_quality",
+        GALLERY_KEEP_BEST: "workspace.image_gallery.triage",
+        GALLERY_CLEAN_REJECTED: "workspace.image_gallery.triage",
+        GALLERY_RUN_TRIAGE: "workspace.image_gallery.triage",
+        GALLERY_SET_AS_SOURCE: "workspace.image_gallery.quality",
     }
     for action_id in ALL_GALLERY_ACTION_IDS:
         try:

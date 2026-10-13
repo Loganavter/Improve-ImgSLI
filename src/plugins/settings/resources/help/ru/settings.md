@@ -39,7 +39,7 @@
 - **{{tr:settings.optimize_magnifier_movement}}** — плавное движение лупы, метод интерполяции — в той же строке.
 - **{{tr:settings.magnifier_intersection_highlight}}** — подсветка пересечения линз.
 - **{{tr:settings.magnifier_auto_color_new_instances}}** — разные цвета новых линз.
-- **{{tr:image_compare.settings.recording_fps}}** — частота захвата для [Видеоредактора](help://video).
+- **{{tr:image_compare.settings.recording_fps}}** — частота захвата для [Видеоредактора](help://workspace.image_compare.video).
 - **{{tr:settings.autocrop_black_borders_on_load}}** — обрезка чёрных полей при загрузке.
 - **Авто {{tr:ui.psnr}} / {{tr:ui.ssim}}** — автоматический подсчёт метрик, по умолчанию выключен.
 
@@ -47,4 +47,4 @@
 
 - **Переназначение** — ярлыки по владельцам: platform / {{tr:workspace.session_types.image_compare}} / {{tr:workspace.session_types.multi_compare}}.
 - **Сброс** — одного ярлыка или всех.
-- **Фиксированные** — `WASD` и `Space` на холсте не ремапятся — см. [Горячие клавиши](help://hotkeys).
+- **Фиксированные** — `WASD` и `Space` на холсте не ремапятся — см. [Горячие клавиши](help://platform.hotkeys).

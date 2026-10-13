@@ -9,7 +9,7 @@
 - **Кольцо** — размер и цвет кольца захвата совпадают с оформлением лупы.
 
 :::figure{side=block width=280}
-![Линза лупы]({{img:workspace.image_compare.magnifier.enabling}})
+![Линза лупы](../assets/magnifier.jpg)
 {{tr:image_compare.action.breadcrumb.toolbar}} → {{tr:image_compare.action.breadcrumb.magnifier}}.
 :::
 
@@ -43,15 +43,15 @@
 - **Превью стороны** — `Space+Shift` форсирует сторону внутри объединённой линзы.
 
 :::figure{side=block width=280}
-![Объединённая лупа]({{img:workspace.image_compare.magnifier.combined_mode}})
+![Объединённая лупа](../assets/magnifier_combined.jpg)
 {{tr:image_compare.action.magnifier}} — объединённый режим.
 :::
 
-Для сравнения на всём холсте без линзы см. [Сравнение](help://comparison).
+Для сравнения на всём холсте без линзы см. [Сравнение](help://workspace.image_compare.comparison).
 
 ### Настройки, влияющие на лупу {#related-settings}
 
-Связанные с лупой опции — в [Настройках](help://settings#image_compare):
+Связанные с лупой опции — в [Настройках](help://platform.settings#image_compare):
 
 - Оптимизация движения лупы и её интерполяция
 - Подсветка пересечений линз

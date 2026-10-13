@@ -7,7 +7,7 @@
 Пункт {{tr:image_compare.action.context_properties}} в контекстном меню списка или слота открывает {{tr:image_properties.title}} для этого изображения.
 
 :::figure{side=block width=280}
-![Диалог свойств изображения]({{img:platform.image_properties.open}})
+![Диалог свойств изображения](../assets/platform/image_properties.png)
 {{tr:image_properties.title}}.
 :::
 

@@ -38,13 +38,13 @@ Image-compare options, always available:
 - **Interpolation** — resampling quality for zoom and magnifier.
 - **{{tr:settings.optimize_magnifier_movement}}** — smoother lens motion, with its interpolation method on the same row.
 - **{{tr:settings.magnifier_intersection_highlight}}** — highlights where lenses overlap; **{{tr:settings.magnifier_auto_color_new_instances}}** gives new lenses distinct colors.
-- **{{tr:image_compare.settings.recording_fps}}** — capture rate for the [Video Editor](help://video).
+- **{{tr:image_compare.settings.recording_fps}}** — capture rate for the [Video Editor](help://workspace.image_compare.video).
 - **{{tr:settings.autocrop_black_borders_on_load}}** — trim black borders when loading.
 - **{{tr:settings.autocalculate_psnr}}** / **{{tr:settings.autocalculate_ssim}}** — automatic metric readout, off by default.
 
 ### {{tr:image_gallery.settings.ai_title}} {#image-gallery-ai}
 
-AI requests in [Image Gallery](help://gallery_triage) use the settings below. A request needs the AI switch on, an API key, and a model; setting only the key is not enough.
+AI requests in [Image Gallery](help://workspace.image_gallery.triage) use the settings below. A request needs the AI switch on, an API key, and a model; setting only the key is not enough.
 
 - **{{tr:image_gallery.settings.enable_ai}}** — turns the AI features on or off.
 - **{{tr:image_gallery.settings.base_url}}** — address of the AI service.
@@ -55,4 +55,4 @@ AI requests in [Image Gallery](help://gallery_triage) use the settings below. A 
 
 - **Remap** — shortcuts group by owner: platform / {{tr:workspace.session_types.image_compare}} / {{tr:workspace.session_types.multi_compare}}.
 - **Reset** — one shortcut or all.
-- **Fixed** — canvas `WASD` and `Space` stay fixed — see [Hotkeys](help://hotkeys).
+- **Fixed** — canvas `WASD` and `Space` stay fixed — see [Hotkeys](help://platform.hotkeys).

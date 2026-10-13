@@ -11,7 +11,7 @@ Still-image export of the current canvas.
 - **Preview** — a live pane shows the composed result before writing.
 
 :::figure{side=block width=630}
-![Export dialog]({{img:workspace.image_compare.export.dialog}})
+![Export dialog](../assets/export_dialog.jpg)
 {{tr:image_compare.action.breadcrumb.toolbar}} → {{tr:image_compare.action.breadcrumb.export}}.
 :::
 
@@ -35,4 +35,4 @@ Still-image export of the current canvas.
 
 ### Recording and video {#video-editor}
 
-Recording controls and video or GIF encoding are in the [Video Editor](help://video); this page covers still images only.
+Recording controls and video or GIF encoding are in the [Video Editor](help://workspace.image_compare.video); this page covers still images only.

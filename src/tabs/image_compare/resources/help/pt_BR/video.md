@@ -1,12 +1,12 @@
 ## Editor de vídeo
 
-Uma sessão {{tr:workspace.session_types.image_compare}} ao vivo em trilhas de controle gravadas, com ajuste da linha do tempo e codificação para vídeo ou GIF. Imagens estáticas ficam em [Exportação](help://export).
+Uma sessão {{tr:workspace.session_types.image_compare}} ao vivo em trilhas de controle gravadas, com ajuste da linha do tempo e codificação para vídeo ou GIF. Imagens estáticas ficam em [Exportação](help://workspace.export).
 
 ### Gravar uma sessão {#recording}
 
 - **Iniciar / pausar / parar** — {{tr:image_compare.action.record}} (`R`), {{tr:image_compare.action.pause_recording}}, depois pare pelos mesmos controles.
 - **O que é armazenado** — ações do canvas ao longo do tempo (zoom/pan, divisor, lupa, imagens carregadas, configurações relacionadas) como trilhas de controle com pontos de amostra — não uma captura bruta da tela.
-- **Taxa de captura** — [Configurações](help://settings#image_compare) ({{tr:settings.recording_fps}}).
+- **Taxa de captura** — [Configurações](help://platform.settings#image_compare) ({{tr:settings.recording_fps}}).
 
 ### Abrir o editor {#open-editor}
 
@@ -20,7 +20,7 @@ Depois da parada, {{tr:image_compare.action.video_editor}} (`Ctrl+E`) percorre f
 - **Reproduzir** — `Space`; desfazer / refazer — `Ctrl+Z` / `Ctrl+Y`.
 
 :::figure{side=block width=840}
-![Linha do tempo de vídeo]({{img:workspace.image_compare.video.timeline}})
+![Linha do tempo de vídeo](../assets/video_timeline.jpg)
 {{tr:image_compare.action.video_editor}} — linha do tempo.
 :::
 
@@ -46,7 +46,7 @@ As trilhas de ferramentas (divisor, lupa, viewport e similares) mostram como os 
 - **Progresso** — pode ser interrompido; o log reporta mensagens do codificador.
 
 :::figure{side=block width=630}
-![Painel de exportação de vídeo]({{img:workspace.image_compare.video.export_encode}})
+![Painel de exportação de vídeo](../assets/video_export.jpg)
 {{tr:image_compare.action.video_editor}} — exportação.
 :::
 
@@ -56,4 +56,4 @@ A aba {{tr:video.manual_cli}} passa argumentos brutos de saída do FFmpeg quando
 
 ### Próximos tópicos {#next-topics}
 
-Imagens estáticas: [Exportação](help://export). Diferença e lupa durante a gravação acompanham o canvas ao vivo — [Comparação](help://comparison) e [Lupa](help://magnifier).
+Imagens estáticas: [Exportação](help://workspace.export). Diferença e lupa durante a gravação acompanham o canvas ao vivo — [Comparação](help://workspace.image_compare.comparison) e [Lupa](help://workspace.image_compare.magnifier).

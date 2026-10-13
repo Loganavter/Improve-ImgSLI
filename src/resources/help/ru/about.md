@@ -8,7 +8,7 @@
 
 ### Режимы рабочей области {#modes}
 
-По карточке на каждую подключённую вкладку; набор растёт вместе с установленными вкладками. {{tr:workspace.session_types.image_compare}} сравнивает пары изображений подвижным разделителем, лупами и режимами разницы — [Сравнение](help://comparison). {{tr:workspace.session_types.multi_compare}} раскладывает множество изображений по сетке слотов — [{{tr:workspace.session_types.multi_compare}}](help://multi_compare). Карточка выборщика сессий открывает сессии, продолжает их и управляет ими — [Вкладки рабочей области](help://session_picker). Первая ориентация: [С чего начать](help://introduction).
+По карточке на каждую подключённую вкладку; набор растёт вместе с установленными вкладками. {{tr:workspace.session_types.image_compare}} сравнивает пары изображений подвижным разделителем, лупами и режимами разницы — [Сравнение](help://workspace.image_compare.comparison). {{tr:workspace.session_types.multi_compare}} раскладывает множество изображений по сетке слотов — [{{tr:workspace.session_types.multi_compare}}](help://workspace.multi_compare.overview). Карточка выборщика сессий открывает сессии, продолжает их и управляет ими — [Вкладки рабочей области](help://workspace.session_picker). Первая ориентация: [С чего начать](help://platform.getting_started).
 
 ### Лицензия и исходники {#license}
 
@@ -16,4 +16,4 @@
 
 ### Дальше по темам {#next}
 
-[С чего начать](help://introduction), [Горячие клавиши](help://hotkeys), [Настройки](help://settings), [Файлы и проекты](help://file_management).
+[С чего начать](help://platform.getting_started), [Горячие клавиши](help://platform.hotkeys), [Настройки](help://platform.settings), [Файлы и проекты](help://platform.file_project).

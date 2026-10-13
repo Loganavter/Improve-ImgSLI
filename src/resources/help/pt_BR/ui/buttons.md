@@ -6,23 +6,23 @@ A barra de ferramentas fica acima da tela em uma sessão de comparação. Ela co
 
 - **Barra** — faixa de ícones para o tipo de sessão ativo.
 - **Conteúdo** — alternâncias, ajustes de valor, botões que abrem painéis ou diálogos.
-- **Densidade** — segue {{tr:settings.ui_mode}} (onboarding na primeira execução ou [Configurações → Aparência](help://settings#interface)).
+- **Densidade** — segue {{tr:settings.ui_mode}} (onboarding na primeira execução ou [Configurações → Aparência](help://platform.settings#interface)).
 
 :::figure{side=block height=107}
-![Barra de ferramentas da sessão]({{img:ui.buttons.toolbar}})
+![Barra de ferramentas da sessão](../../assets/ui/toolbar.jpg)
 Barra de ferramentas acima da tela.
 :::
 
 ### Modos de interface {#ui-modes}
 
-As mesmas ferramentas se organizam de forma diferente em cada {{tr:settings.ui_mode}}. O onboarding da primeira execução define o modo uma vez; a troca fica em [Configurações → Aparência](help://settings#interface).
+As mesmas ferramentas se organizam de forma diferente em cada {{tr:settings.ui_mode}}. O onboarding da primeira execução define o modo uma vez; a troca fica em [Configurações → Aparência](help://platform.settings#interface).
 
 ### {{tr:settings.ui_mode_beginner}} {#mode-beginner}
 
 Mais botões separados — um controle ≈ uma tarefa.
 
 :::figure{side=block height=65}
-![Layout iniciante da barra]({{img:ui.buttons.mode_beginner}})
+![Layout iniciante da barra](../../assets/ui/mode_beginner.png)
 {{tr:settings.ui_mode}} → {{tr:settings.ui_mode_beginner}}.
 :::
 
@@ -31,7 +31,7 @@ Mais botões separados — um controle ≈ uma tarefa.
 Menos ícones. Alguns controles já combinam clique curto com rolagem (por exemplo orientação + espessura).
 
 :::figure{side=block height=65}
-![Layout avançado da barra]({{img:ui.buttons.mode_advanced}})
+![Layout avançado da barra](../../assets/ui/mode_advanced.png)
 {{tr:settings.ui_mode}} → {{tr:settings.ui_mode_advanced}}.
 :::
 
@@ -40,7 +40,7 @@ Menos ícones. Alguns controles já combinam clique curto com rolagem (por exemp
 Faixa mais densa: um controle combina clique, rolagem e outros botões do mouse.
 
 :::figure{side=block height=65}
-![Layout especialista da barra]({{img:ui.buttons.mode_expert}})
+![Layout especialista da barra](../../assets/ui/mode_expert.png)
 {{tr:settings.ui_mode}} → {{tr:settings.ui_mode_expert}}.
 :::
 
@@ -56,14 +56,14 @@ Em {{tr:settings.ui_mode_advanced}} e sobretudo em {{tr:settings.ui_mode_expert}
 {{tr:settings.ui_mode_beginner}} mantém essas tarefas em botões separados em vez de empilhá-las.
 
 :::figure{side=block height=44}
-![Clique longo em um botão de lista]({{img:ui.buttons.long_press}})
+![Clique longo em um botão de lista](../../assets/ui/long_press.png)
 Botão de lista — clique curto vs clique longo.
 :::
 
 ### Exemplos no produto {#examples}
 
-- **{{tr:workspace.session_types.image_compare}}** — nos modos mais densos, role a espessura do divisor ou o tamanho da lupa em um controle; clique longo limpa / troca nas listas. Detalhes: [Comparação](help://comparison); listas: [Listas e Painéis](help://ui.lists_flyouts).
-- **{{tr:workspace.session_types.multi_compare}}** — espessura / visibilidade das linhas da grade em `D`. Detalhes: [Multi Compare](help://multi_compare).
+- **{{tr:workspace.session_types.image_compare}}** — nos modos mais densos, role a espessura do divisor ou o tamanho da lupa em um controle; clique longo limpa / troca nas listas. Detalhes: [Comparação](help://workspace.image_compare.comparison).
+- **{{tr:workspace.session_types.multi_compare}}** — espessura / visibilidade das linhas da grade em `D`. Detalhes: [Multi Compare](help://workspace.multi_compare.overview).
 
 ### Encontrar um controle pelo nome {#find-action}
 

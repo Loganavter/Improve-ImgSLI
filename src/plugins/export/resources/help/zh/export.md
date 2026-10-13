@@ -1,6 +1,6 @@
 ## 导出
 
-将当前画布导出为静态图像。会话录制与视频编码另属专题：[视频编辑器](help://video)。
+将当前画布导出为静态图像。会话录制与视频编码另属专题：[视频编辑器](help://workspace.image_compare.video)。
 
 ### 保存静态图像 {#saving-an-image}
 
@@ -11,7 +11,7 @@
 - **预览** — 实时预览面板会在写入文件前显示合成结果。
 
 :::figure{side=block width=630}
-![导出对话框]({{img:workspace.image_compare.export.dialog}})
+![导出对话框](../assets/export_dialog.jpg)
 {{tr:image_compare.action.breadcrumb.toolbar}} → {{tr:image_compare.action.breadcrumb.export}}。
 :::
 
@@ -35,4 +35,4 @@
 
 ### 录制与视频 {#video-editor}
 
-录制控制与视频/GIF 编码属于[视频编辑器](help://video)。
+录制控制与视频/GIF 编码属于[视频编辑器](help://workspace.image_compare.video)。

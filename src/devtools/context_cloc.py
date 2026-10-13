@@ -277,10 +277,9 @@ def _english_help_files(repo_dir: Path) -> list[Path]:
             if not (
                 "/resources/help/en/" in posix
                 or "/help/en/" in posix
-                or posix.endswith("/resources/help/tree.json")
             ):
                 continue
-            if fname == "tree.json" or fname.endswith((".md", ".txt")):
+            if fname.endswith((".md", ".txt")):
                 matches.append(file)
     return sorted(matches, key=lambda p: _collate(p.as_posix()))
 
@@ -294,11 +293,10 @@ def collect_english_help(
     max_chars: int,
 ) -> None:
     for file in _english_help_files(repo_dir):
-        if file.name == "tree.json":
-            if is_context_output(file, output):
-                continue
-            if IGNORE_DIR_RE.search(file.as_posix()):
-                continue
+        if is_context_output(file, output):
+            continue
+        if IGNORE_DIR_RE.search(file.as_posix()):
+            continue
             repo_label = repo_dir.name
             rel = relpath(repo_dir, file)
             key = f"{repo_label}:{rel}"

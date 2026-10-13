@@ -9,16 +9,16 @@ Load images into session lists, paste from the clipboard, and open or save porta
 - **Paste** (`Ctrl+V`) — clipboard image; the direction overlay appears, a click on an arrow picks the side, `Esc` cancels.
 
 :::figure{side=block width=280}
-![Paste direction overlay]({{img:platform.file_project.paste_overlay}})
+![Paste direction overlay](../../assets/platform/paste_overlay.jpg)
 `Ctrl+V` — paste direction overlay.
 :::
 
 ### Lists {#lists}
 
-- **{{tr:workspace.session_types.image_compare}}** — left and right lists are independent; the list-manager panel covers reorder, rate, rename, path, properties, remove — [Lists and Panels](help://ui.lists_flyouts).
-- **{{tr:workspace.session_types.multi_compare}}** — per-slot drops instead of dual lists — [{{tr:workspace.session_types.multi_compare}}](help://multi_compare).
+- **{{tr:workspace.session_types.image_compare}}** — left and right lists are independent; the list-manager panel covers reorder, rate, rename, path, properties, remove — see [Comparison](help://workspace.image_compare.comparison).
+- **{{tr:workspace.session_types.multi_compare}}** — per-slot drops instead of dual lists — [{{tr:workspace.session_types.multi_compare}}](help://workspace.multi_compare.overview).
 
-Each session has its own tab; see [Tabs](help://tabs).
+Each session has its own tab; see [Tabs](help://platform.tabs).
 
 ### Projects {#projects}
 

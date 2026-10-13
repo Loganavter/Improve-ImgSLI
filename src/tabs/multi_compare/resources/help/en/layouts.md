@@ -29,8 +29,8 @@ Per-image actions:
 
 - **Rename** — edits the slot label.
 - **Duplicate** — copies the slot; needs a loaded image and a free slot.
-- **Properties** — [Image Properties](help://image_properties) with file metadata and grid position.
+- **Properties** — [Image Properties](help://platform.image_properties) with file metadata and grid position.
 - **Move** — drags the image onto another tab, where it loads and is placed automatically.
-- **Crop** — turns crop on or off for this slot; see [Viewing](help://mc_viewing#slot-crop).
+- **Crop** — turns crop on or off for this slot; see [Viewing](help://workspace.multi_compare.viewing#slot-crop).
 - **Remove** — drops the slot from the grid.
 - **Cap** — the grid holds at most 12 images.

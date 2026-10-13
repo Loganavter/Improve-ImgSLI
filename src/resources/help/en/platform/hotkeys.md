@@ -31,7 +31,7 @@ Exact labels follow the language pack; overrides live under Settings → Keyboar
 - `Shift` + `Space` — Side preview in combined mode (fixed)
 - `←↑↓→` / `+` / `-` — Pan / zoom (fixed)
 
-Details: [Comparison](help://comparison), [Magnifier](help://magnifier), [Video Editor](help://video).
+Details: [Comparison](help://workspace.image_compare.comparison), [Magnifier](help://workspace.image_compare.magnifier), [Video Editor](help://workspace.image_compare.video).
 
 ### {{tr:workspace.session_types.multi_compare}} {#multi-compare}
 
@@ -41,17 +41,17 @@ Details: [Comparison](help://comparison), [Magnifier](help://magnifier), [Video 
 - `Esc` — Exit slot focus
 - `←↑↓→` / `+` / `-` — Pan / zoom (fixed)
 
-See [{{tr:workspace.session_types.multi_compare}}](help://multi_compare).
+See [{{tr:workspace.session_types.multi_compare}}](help://workspace.multi_compare.overview).
 
 ### {{tr:image_gallery.tab_name}} {#image-gallery}
 
 - `Space` / `Delete` — take the selected cards out of the grid; files stay on disk.
 
-See [Triage and Review](help://gallery_triage).
+See [Triage and Review](help://workspace.image_gallery.triage).
 
 ### Video editor window {#video-editor}
 
-While the editor is open: `Space` play/pause, `Ctrl+Z` / `Ctrl+Y` undo/redo, `Delete` / `Backspace` trim to selection. Full encode workflow: [Video Editor](help://video).
+While the editor is open: `Space` play/pause, `Ctrl+Z` / `Ctrl+Y` undo/redo, `Delete` / `Backspace` trim to selection. Full encode workflow: [Video Editor](help://workspace.image_compare.video).
 
 ### Keyboard navigation {#keyboard-navigation}
 

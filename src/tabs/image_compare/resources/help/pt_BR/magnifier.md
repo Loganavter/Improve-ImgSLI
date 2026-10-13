@@ -9,7 +9,7 @@ A lupa amostra uma região do par comparado e mostra uma vista ampliada no canva
 - **Anel** — tamanho e cor do anel de captura seguem o estilo da lente.
 
 :::figure{side=block width=280}
-![Lente da lupa]({{img:workspace.image_compare.magnifier.enabling}})
+![Lente da lupa](../assets/magnifier.jpg)
 {{tr:image_compare.action.breadcrumb.toolbar}} → {{tr:image_compare.action.breadcrumb.magnifier}}.
 :::
 
@@ -43,15 +43,15 @@ A lupa amostra uma região do par comparado e mostra uma vista ampliada no canva
 - **Pré-visualização de lado** — `Space+Shift` força um lado dentro da lente combinada.
 
 :::figure{side=block width=280}
-![Lupa combinada]({{img:workspace.image_compare.magnifier.combined_mode}})
+![Lupa combinada](../assets/magnifier_combined.jpg)
 {{tr:image_compare.action.magnifier}} modo combinado.
 :::
 
-Para comparar o canvas inteiro sem a lente, veja [Comparação](help://comparison).
+Para comparar o canvas inteiro sem a lente, veja [Comparação](help://workspace.image_compare.comparison).
 
 ### Configurações que afetam a lupa {#related-settings}
 
-Opções relacionadas à lupa em [Configurações](help://settings#image_compare):
+Opções relacionadas à lupa em [Configurações](help://platform.settings#image_compare):
 
 - Otimizar movimento da lupa e sua interpolação
 - Destaque de interseção entre lentes

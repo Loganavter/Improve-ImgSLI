@@ -85,7 +85,7 @@ Read:
 
 Important:
 
-- Host topics: `src/resources/help/` (`tree.json` + `en|ru/ui|platform/`). Tab topics: `src/tabs/<tab>/resources/help/`.
+- Host topics: `src/resources/help/` (`en|ru/ui|platform/` + `assets/`). Tab topics: `src/tabs/<tab>/resources/help/`. No registry: dirs are hubs, `*.md` files are pages, ids are dotted paths (see `docs/dev/HELP_SYSTEM.md`).
 - Prefer `HelpDocumentView` + illustrated topic pages over `QTextBrowser` HTML.
 - Keep help pages scenario-based, anchor-friendly, and split into short `###` sections.
 - When features change, update help pages as part of the same task.

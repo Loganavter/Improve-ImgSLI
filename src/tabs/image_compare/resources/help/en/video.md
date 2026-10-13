@@ -1,12 +1,12 @@
 ## Video Editor
 
-A live {{tr:workspace.session_types.image_compare}} session as recorded control tracks, with timeline trim and encode to video or GIF. Stills stay on [Export](help://export).
+A live {{tr:workspace.session_types.image_compare}} session as recorded control tracks, with timeline trim and encode to video or GIF. Stills stay on [Export](help://workspace.export).
 
 ### Record a session {#recording}
 
 - **Start / pause / stop** — {{tr:image_compare.action.record}} (`R`), {{tr:image_compare.action.pause_recording}}, then stop from the same controls.
 - **What is stored** — canvas actions over time (zoom/pan, divider, magnifier, loaded images, related settings) as control tracks — not a raw screen grab.
-- **Capture rate** — [Settings](help://settings#image_compare) ({{tr:settings.recording_fps}}).
+- **Capture rate** — [Settings](help://platform.settings#image_compare) ({{tr:settings.recording_fps}}).
 
 ### Open the editor {#open-editor}
 
@@ -20,13 +20,13 @@ After the recording stops, {{tr:image_compare.action.video_editor}} (`Ctrl+E`) s
 - **Play** — `Space`; undo / redo — `Ctrl+Z` / `Ctrl+Y`.
 
 :::figure{side=block width=100%}
-![Video timeline]({{img:workspace.image_compare.video.timeline}})
+![Video timeline](../assets/video_timeline.jpg)
 {{tr:image_compare.action.video_editor}} — timeline.
 :::
 
 ### Tracks and what was captured {#tracks}
 
-The editor shows each recorded tool as its own track (splitter, magnifier, viewport, and similar), so you can see when each control changed during the session. To change the result, trim or delete ranges on the [timeline](help://video#timeline) and use undo or redo.
+The editor shows each recorded tool as its own track (splitter, magnifier, viewport, and similar), so you can see when each control changed during the session. To change the result, trim or delete ranges on the [timeline](help://workspace.image_compare.video#timeline) and use undo or redo.
 
 ### Preview quality {#preview-quality}
 
@@ -46,7 +46,7 @@ The editor shows each recorded tool as its own track (splitter, magnifier, viewp
 - **Progress** — can be stopped; the log reports encoder messages.
 
 :::figure{side=block width=100%}
-![Video export panel]({{img:workspace.image_compare.video.export_encode}})
+![Video export panel](../assets/video_export.jpg)
 {{tr:image_compare.action.video_editor}} — export.
 :::
 
@@ -56,4 +56,4 @@ When the standard tab is not enough, {{tr:video.manual_cli}} passes raw FFmpeg o
 
 ### Next topics {#next-topics}
 
-Still images: [Export](help://export). Diff and magnifier during recording match the live canvas — [Comparison](help://comparison) and [Magnifier](help://magnifier).
+Still images: [Export](help://workspace.export). Diff and magnifier during recording match the live canvas — [Comparison](help://workspace.image_compare.comparison) and [Magnifier](help://workspace.image_compare.magnifier).

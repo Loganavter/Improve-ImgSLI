@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Generate llms.txt from the in-app help tree, resolving {{tr:...}} tokens
-from the application i18n JSON files and stripping {{img:...}} figure blocks."""
+from the application i18n JSON files and stripping figure blocks."""
 import json
+import os
 import re
+import sys
 from pathlib import Path
 
 
@@ -61,7 +63,7 @@ _ANCHOR_RE = re.compile(r"\s*\{#[^}]+\}")   # trailing {#anchor}
 
 def resolve_tokens(text: str, translations: dict[str, str]) -> str:
     """Replace {{tr:key}} with the translated string (or the key itself as
-    fallback), strip {{img:...}} figure blocks and bare image tokens."""
+    fallback), strip figure blocks (they contain images)."""
     # Remove whole :::figure{...} ... ::: blocks (they contain images)
     text = _IMG_FIGURE_RE.sub("", text)
     # Strip remaining {{img:...}} inline tokens
@@ -82,12 +84,14 @@ def resolve_tokens(text: str, translations: dict[str, str]) -> str:
 # ---------------------------------------------------------------------------
 
 def build_llms_txt(repo_root: Path, lang: str = "en") -> str:
-    help_dir = repo_root / "src" / "resources" / "help"
-    tree_path = help_dir / "tree.json"
-    lang_dir = help_dir / lang
+    sys.path.insert(0, str(repo_root / "src"))
+    os.chdir(repo_root)
+    from plugins.help.labels import node_description, node_title
+    from plugins.help.scan import scan_help_tree
+    from plugins.help.tree import clear_help_contributions
 
-    tree = json.loads(tree_path.read_text(encoding="utf-8"))
-    nodes = tree.get("nodes", {})
+    clear_help_contributions()
+    tree = scan_help_tree()
     translations = load_translations(repo_root, lang)
 
     output: list[str] = []
@@ -103,32 +107,41 @@ def build_llms_txt(repo_root: Path, lang: str = "en") -> str:
     )
 
     def visit_node(node_id: str, depth: int = 1) -> None:
-        node = nodes.get(node_id)
+        node = tree.nodes.get(node_id)
         if not node:
             return
 
-        if node["kind"] == "hub":
+        if node.kind == "hub":
             if node_id != "root":
-                title = resolve_tokens(node["title"], translations)
+                title = resolve_tokens(node_title(node, lang), translations)
                 output.append(f"{'#' * depth} {title}\n")
-                if "description" in node:
-                    desc = resolve_tokens(node["description"], translations)
+                desc = node_description(node, lang)
+                if desc:
+                    desc = resolve_tokens(desc, translations)
                     output.append(f"{desc}\n\n")
-            for child_id in node.get("children", []):
+            for child_id in node.children:
                 visit_node(child_id, depth + 1 if node_id != "root" else depth)
 
-        elif node["kind"] == "page":
-            title = resolve_tokens(node["title"], translations)
+        elif node.kind == "page":
+            # Host pages only (body_root None); tab/plugin bodies live in
+            # their own packages and are covered by their own docs.
+            if node.body_root is not None:
+                return
+            title = resolve_tokens(node_title(node, lang), translations)
             output.append(f"{'#' * depth} {title}\n")
-            if "description" in node:
-                desc = resolve_tokens(node["description"], translations)
+            desc = node_description(node, lang)
+            if desc:
+                desc = resolve_tokens(desc, translations)
                 output.append(f"*{desc}*\n\n")
 
-            body_rel_path = node.get("body")
+            body_rel_path = node.body
             if body_rel_path:
-                body_path = lang_dir / body_rel_path
-                if body_path.exists():
-                    raw = body_path.read_text(encoding="utf-8")
+                from plugins.help.tree import read_help_page_markdown
+
+                raw = read_help_page_markdown(lang, body_rel_path, body_root=None)
+                if raw.startswith("## Missing page"):
+                    output.append(f"*(Content missing: {body_rel_path})*\n\n")
+                else:
                     content = resolve_tokens(raw, translations)
                     for line in content.split("\n"):
                         if line.startswith("#"):
@@ -136,8 +149,6 @@ def build_llms_txt(repo_root: Path, lang: str = "en") -> str:
                         else:
                             output.append(line)
                     output.append("\n\n")
-                else:
-                    output.append(f"*(Content missing: {body_rel_path})*\n\n")
 
     visit_node("root", 2)
 

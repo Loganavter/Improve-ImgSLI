@@ -10,7 +10,7 @@ Questions cover one card, the selection, or a whole series; answers are advisory
 
 ### Ask about a series {#ask-series}
 
-The series-header menu asks about every member at once. Quality scores on sharpness or noise are shown without a request to the AI model — see [Quality Metrics](help://gallery_quality).
+The series-header menu asks about every member at once. Quality scores on sharpness or noise are shown without a request to the AI model — see [Quality Metrics](help://workspace.image_gallery.quality).
 
 ### Setup and limits {#setup}
 

@@ -17,42 +17,29 @@ Related:
 
 | Owner | Owns |
 |-------|------|
-| Host plugin `plugins/help/` | Dialog shell, navigator, hub UI, tab+plugin merge, host topics (shell + `about` / `platform.file_project` / `platform.hotkeys` / `ui.*`) |
-| Host `resources/help/` | `tree.json` shell + host page bodies + host `figures.json` (host slots only) + host `assets/` |
-| Each plugin (`export`, `settings`, `image_properties`, `onboarding`) | Owned nodes + aliases + `resources/help/` package (bodies, `figures.json`, assets), owned i18n keys |
-| Each tab | Subtree under Workspace, page bodies, aliases, icon resolver, help i18n keys |
+| Host plugin `plugins/help/` | Dialog shell, navigator, hub UI, fs scan, host topics (`about` / `platform.*` / `ui.*`) |
+| Host `resources/help/` | Host page bodies + host `assets/` |
+| Each plugin (`export`, `settings`, `image_properties`, `onboarding`) | `resources/help/` package (bodies, assets) + `HELP_MOUNT` line, owned i18n keys |
+| Each tab | `resources/help/` package (bodies, assets), hub presentation fragment, icon resolver, help i18n keys |
 
 Host **must not** import `tabs.*` or `plugins/<name>` for icons or hardcode
-contributed topic trees. Tabs publish via the same broadcast pattern as
-settings/actions; plugins are probed duck-typed from `HelpPlugin.initialize`
-(no `create_service` on the Plugin base — see §Tree merge contract).
+topic trees. Tab hub presentation flows through the same broadcast pattern
+as settings/actions (`create_service("contribute_help")`); structure itself
+is scanned from the filesystem, so there is nothing to hardcode.
 
 ```text
-TabRegistry.collect_help_contributions()  # capability_routing.py:32
-  → each tab create_service("contribute_help") -> HelpContribution(owner_tab, nodes, aliases, body_root, asset_root, resolve_icon)
-  → collect return values (per-tab exception logged, others continue)
-  → install_help_contributions(contributions: list[HelpContribution])  # tree.py — immutable copy, uniq node_id, alias conflict raise
-  → merged host HelpTree
+scan_help_tree()  # scan.py — dirs are hubs, *.md files are pages
+  + TabRegistry.collect_help_contributions()  # capability_routing.py
+      → each tab create_service("contribute_help") -> HelpHubContribution | None
+  → install_help_contributions(fragments)  # tree.py — hub meta + resolvers overlay
+  → host HelpTree
 ```
 
-Legacy ``notify_all("contribute_help", HelpContributionRegistry)`` +
-``HelpContributionRegistry`` is deprecated shim (one release); host now
-collects typed ``HelpContribution`` (frozen, ``owner_tab == i18n_namespace``
-per ``isolation.md:60``) so ``tabs.*`` is never imported by the Help plugin.
-
-Called from `TabRegistry.install_pages` via `contribute_all_help()`:
-collect typed contributions with `collect_help_contributions()`, then
-`install_help_contributions(contributions)` so the Help plugin never imports
-`tabs.*`.
-
-Plugins publish the same shape via `HelpPluginContribution` (`owner_plugin`
-instead of `owner_tab`, same frozen `attach_under` / `child_ids` / `nodes` /
-`aliases` / `body_root` / `asset_root` / `resolve_icon`). Collection is
-duck-typed inside `HelpPlugin.initialize` (`_install_plugin_contributions` →
-`collect_help_plugin_contributions(plugins)` probes each plugin for
-`build_help_plugin_contribution()`, per-plugin exceptions logged and skipped)
-and merged with `install_help_plugin_contributions()` — so `plugins/help/`
-never imports `plugins/<name>` either.
+Called from `TabRegistry.install_pages` via `contribute_all_help()`.
+`HelpHubContribution` is frozen, `owner_tab == i18n_namespace` per
+`isolation.md:60`, so `tabs.*` is never imported by the Help plugin.
+Single-page tabs (and all plugins) contribute nothing — page titles come
+from each page's own `##` heading (see `labels.py`).
 
 ---
 
@@ -65,104 +52,90 @@ never imports `plugins/<name>` either.
 | `navigator.py` | Stack + back / forward |
 | `hub_page.py` | Session-picker-style topic cards |
 | `back_bar.py` | Full-width breadcrumb + back |
-| `tree.py` | Host load, contribution merge (`install_help_contributions(list[HelpContribution])` immutable), body/asset resolve |
-| `contribution.py` | `HelpContribution` (frozen, `owner_tab`, typed `nodes/aliases/body_root/asset_root/resolve_icon`) + deprecated `HelpContributionRegistry` shim |
-| `labels.py` | `title_key` / `description_key` via `tr()` |
+| `tree.py` | Scan assembly (`install_help_contributions(list[HelpHubContribution])`), `resolve_path`, body/asset resolve |
+| `scan.py` | Filesystem discovery (dirs = hubs, `*.md` = pages, dotted ids) + hub-meta overlay |
+| `contribution.py` | `HelpHubContribution` (frozen, `owner_tab`, `mount`, hub title/desc/icon, `resolve_icon`) |
+| `labels.py` | Titles from each page's `##` heading, subtitles from its first paragraph; `title_key` / `description_key` via `tr()` for hubs only |
 | `icons.py` | App icons + contributed tab resolvers |
-| `interpolate.py` | `{{tr:dotted.key}}` / `{{img:figure.slot}}` in markdown bodies |
+| `interpolate.py` | `{{tr:dotted.key}}` in markdown bodies (images are plain relative paths) |
 | `layout_geometry.py` | Dialog size / sidebar widths |
 
 Toolkit owns rendering only (`HelpDocumentView` / `parse_help_blocks`).
 
 ---
 
-## Tree merge contract
+## Tree scan contract (web canon)
 
-Host `resources/help/tree.json` defines only the shell (root hub with
-About page + `workspace` / `ui` / `platform` children) and genuinely
-host-owned pages (`about`, `platform.file_project`, `platform.hotkeys`,
-`ui.*`). `workspace.children` starts **empty**; tabs append hubs under
-`attach_under="workspace"`. `platform.children` is `hotkeys` +
-`file_project`; plugins attach owned pages under `platform` (`settings`,
-`image_properties`, `getting_started`) or `workspace` (`export`).
+The filesystem is the tree — no registry. `scan_help_tree()` (`scan.py`)
+discovers every `<package>/resources/help/` dir (host + `tabs/*` +
+`plugins/*`) and derives, from the `en/` bodies:
 
-Tab contribution (example: `tabs/image_compare/help.py`):
+- a directory is a **hub**, a `*.md` file is a **page**;
+- the node id is the dotted path (`ui/buttons.md` → `ui.buttons`);
+- host mounts at the root; `tabs/<name>` mounts at `workspace.<name>`;
+  plugins mount at the `HELP_MOUNT` dotted id declared in
+  `plugins/<name>/help.py` (single line).
+
+Layout convention per mount: exactly one `*.md` directly under `en/` (and
+no subdirectories) means the mount id itself is a page (e.g.
+`platform.settings` → `settings.md`); otherwise the mount is a hub of
+pages.
+
+Tab hub contribution (example: `tabs/image_compare/help.py`):
 
 ```python
-def contribute_help(registry: HelpContributionRegistry) -> None:
-    registry.contribute(
-        attach_under="workspace",
-        child_ids=("workspace.image_compare",),
-        nodes={...},           # hub + pages (same JSON shape as tree.json nodes)
-        aliases={"magnifier": "workspace.image_compare.magnifier", ...},
-        body_root=Path(__file__).parent / "resources" / "help",
-        asset_root=Path(__file__).parent / "resources" / "help",
+def build_help_hub_contribution():
+    from plugins.help.contribution import HelpHubContribution
+    return HelpHubContribution(
+        owner_tab="image_compare",
+        mount="workspace.image_compare",
+        title="Image Compare",
+        description="Two-image compare, magnifier, export",
+        icon="vertical_split.svg",
+        title_key="image_compare.workspace.session_types.image_compare",
+        description_key="image_compare.help.hub.desc",
         resolve_icon=resolve_help_icon,  # optional
     )
 ```
 
 Rules:
 
-- Contributed `node_id`s must be unique across the merged tree — tab and
-  plugin fragments share one uniqueness scope (cross-namespace collision
-  raises at plugin merge).
-- Alias conflicts (same slug → different targets) raise at merge.
-- **Aliases move with nodes**: `_validate_tree` (`tree.py:448-450`) raises
-  `KeyError` for an alias whose target is not in the merged tree, so an
-  alias-without-node can never ship — a move carries its aliases to the new
-  owner, it never leaves them on the host.
-- **Slot ids are frozen**: `{{img:…}}` slot strings never change on a move
-  (pinned by `tests/plugins/test_help_interpolate.py`); only the owning
-  `figures.json` / `asset_root` moves, with identical asset-relative paths.
-- Page `body` paths are relative to that contributor's `body_root/<lang>/`.
-- Tab/plugin figures live under that owner's `figures.json` + `assets/`; pass
-  `asset_root` (usually the same as `body_root`) so screenshots resolve.
+- Page titles come from each page's own `##` heading (current language,
+  fallback EN with an `[en]` badge); card subtitles come from its first
+  paragraph. No per-page i18n keys.
+- Tab-hub titles/descriptions/icons come from the fragment above; the four
+  app-shell hubs (`root` / `workspace` / `ui` / `platform`) keep static meta
+  in `scan.py`.
+- Images are body-relative paths (`../../assets/ui/toolbar.jpg`) living in
+  the owning package's `assets/`; they must not escape that package's
+  `resources/help/` dir (pinned by `tests/plugins/test_help_interpolate.py`).
   Host `resources/help/assets/` is for host shots only.
-- Stable `help_page` slugs live as **aliases** on the contributing owner (or
-  host for `about` / `file_project` / `hotkeys` / `ui.*`), so Learn more /
-  F1 do not break when nodes move.
-
-Plugin contribution (example: `src/plugins/export/help.py` — same shape,
-`owner_plugin` instead of `owner_tab`, no `plugins/<name>` import by host):
-
-```python
-def build_help_plugin_contribution():  # probed duck-typed from HelpPlugin.initialize
-    from plugins.help.contribution import HelpPluginContribution
-    return HelpPluginContribution(
-        owner_plugin="export",
-        attach_under="workspace",
-        child_ids=("workspace.export",),
-        nodes={...},           # same JSON shape as tree.json nodes
-        aliases={"export": "workspace.export", ...},
-        body_root=_HELP_ROOT,  # src/plugins/export/resources/help
-        asset_root=_HELP_ROOT,
-    )
-```
+- Stable entry points (`help_page` on actions, F1, Learn more) are **dotted
+  paths** (`workspace.image_compare.comparison`), not slugs. A move breaks
+  inbound prose links visibly — the dialog renders a `## Missing page`
+  placeholder ("ну увы") instead of failing.
+- Deleting a doc = deleting its files. Inbound `help://` links need no
+  same-day fix; they resolve to the placeholder until prose is cleaned.
 
 ---
 
 ## File layout
 
 ```text
-src/plugins/help/                 # dialog + merge
+src/plugins/help/                 # dialog + scan
 src/plugins/<plugin>/             # export, settings, image_properties, onboarding
-  help.py                         # build_help_plugin_contribution(...) — host never imports this
-  resources/help/                 # plugin package (bodies + figures + assets)
-    figures.json                  # only when the plugin owns slots (budget > 0)
+  help.py                         # HELP_MOUNT = "<mount>" — host reads it, never imports the plugin
+  resources/help/                 # plugin package (bodies + assets)
     <lang>/*.md
     assets/…
   resources/i18n/<lang>/….json    # owner pack keys (auto-registered, see below)
-src/resources/help/               # host package (shell + host pages only)
-  tree.json                       # shell + about / file_project / hotkeys / ui.*
-  figures.json                    # host {{img:slot}} → assets/ path (host slots only)
+src/resources/help/               # host package (host pages only)
   en|ru|zh|pt_BR/about.md, ui/…, platform/{file_project,hotkeys}.md
   assets/
-    _stub.jpg                     # canonical stub (byte-match = still todo)
     ui/…                          # host screenshots only
 src/tabs/<tab>/
-  help.py                         # build_help_contribution(...) (contribute_help shim deprecated)
-  resources/help/                 # tab package (bodies + figures + assets)
-    figures.json
+  help.py                         # build_help_hub_contribution(...) or nothing (single-page tabs)
+  resources/help/                 # tab package (bodies + assets)
     <lang>/*.md
     assets/*.jpg
   resources/i18n/<lang>/….json    # <tab>.help.* keys
@@ -170,14 +143,14 @@ src/tabs/<tab>/
 
 Two registration paths, opposite defaults: `<pkg>/resources/i18n` packs
 **auto-register** on plugin/tab discovery (zero code — drop the files), so
-moved `settings.*` keys needed no registration change; help `body_root`s are
-**explicit** per contribution (`HelpContribution.body_root` /
-`HelpPluginContribution.body_root`, resolved in `tree.py`) — a new
-`resources/help/` dir alone changes nothing until its builder is collected.
+moved `settings.*` keys needed no registration change; help packages are
+**discovered** the same way — a new `resources/help/` dir under `tabs/*`
+mounts at `workspace/<name>` with zero code (plugins add one `HELP_MOUNT`
+line).
 
-Bodies reference figures as `{{img:slot.id}}`. Paths live in the owning
-package’s `figures.json` — host for platform/UI, tab for workspace topics
-(see [Figure tokens](#figure-tokens-img)).
+Bodies reference figures as body-relative paths (`../../assets/ui/x.jpg`)
+inside the owning package's `assets/` — host for platform/UI, tab for
+workspace topics (see [Figure paths](#figure-paths)).
 
 ---
 
@@ -296,30 +269,26 @@ See also [RESOURCES_I18N](./RESOURCES_I18N.md). In Help bodies:
 - Host pages use host packs; tab pages may use that tab’s `resources/i18n`
   (loaded with the tab).
 
-### Figure tokens (`{{img:…}}`)
+### Figure paths
 
-Bodies never hardcode screenshot paths. Use a slot id that resolves through
-merged package `figures.json` maps at read time (host + each
-`tabs/<tab>/resources/help/figures.json`):
+Bodies reference screenshots as body-relative paths into the owning
+package's `assets/` — host for platform/UI, tab for workspace topics:
 
 ```markdown
 :::figure{side=block height=107}
-![Session Picker]({{img:platform.workspace.session_picker}})
+![Session Picker](../../assets/platform/session_picker.jpg)
 {{tr:action.workspace.open_session_picker}}.
 :::
 ```
 
-- Slot ids are stable (match the [per-topic figure slots](#per-topic-figure-slots)
-  table: `topic.section`).
-- Values are asset-relative paths under **that package’s** `assets/` (resolved
-  via host + contributed `asset_root`s in `resolve_help_asset`). Prefer final
-  filenames so shipping a shot means overwriting the file — no md / locale edits.
+- Paths are relative to the page file; they must not escape that package's
+  `resources/help/` dir (pinned by `tests/plugins/test_help_interpolate.py`).
+- Prefer final filenames so shipping a shot means overwriting the file — no
+  md / locale edits.
 - Tab topics own their screenshots under `tabs/<tab>/resources/help/assets/`;
   do not put compare figures in host `resources/help/assets/`.
-- Canonical stub bytes live at host `assets/_stub.jpg`. Any figure file that
-  still matches those bytes is reported as **needs screenshot** by
-  `python src/devtools/check_help_figures.py`.
-- Unknown slot → token left unchanged (broken image is intentional / visible).
+- Missing image → broken image, intentionally visible (same as an unknown
+  path anywhere on the web).
 
 ### What the renderer cannot do yet
 
@@ -334,7 +303,7 @@ already work:
 | Figure left / center / right | `side=left\|center\|right\|block` (v1+) |
 | Glossary dotted links | Normal `help://` / http(s) links |
 
-Style reference: `ui.lists_flyouts` (definition bullets + `center` / `block`
+Style reference: `comparison` (definition bullets + `block`
 figures).
 
 ---
@@ -351,8 +320,8 @@ Add `:::figure` only when a screenshot answers a question that prose cannot
 | Budget | When | Placement | Examples (current tree) |
 |---|---|---|---|
 | **0 — none** | Chord inventories, settings inventories, short orientation, anything fully named by UI strings | — | `platform.hotkeys`, `platform.settings` |
-| **1 — one** | One primary surface or spatial idea for the whole page | After the intro paragraph (or under the one `###` that needs it); prefer `side=block` | `getting_started` (session picker), `file_project` (paste overlay), `export` (dialog), `multi_compare.overview` (`#layouts`), `canvas_navigation` (`#zoom`) |
-| **2 — several** | Page teaches **distinct visual states** that look different | One figure **next to the `###` section** it illustrates — not a stack under the title | `comparison` (`#split-line` + `#difference-modes`), `magnifier` (`#enabling` + `#combined-mode`), `video` (`#timeline` + `#export-encode`), `lists_flyouts` (`#list-manager` + `#toolbar-flyouts`) |
+| **1 — one** | One primary surface or spatial idea for the whole page | After the intro paragraph (or under the one `###` that needs it); prefer `side=block` | `getting_started` (session picker), `file_project` (paste overlay), `export` (dialog), `multi_compare.overview` (`#layouts`) |
+| **2 — several** | Page teaches **distinct visual states** that look different | One figure **next to the `###` section** it illustrates — not a stack under the title | `comparison` (`#split-line` + `#difference-modes`), `magnifier` (`#enabling` + `#combined-mode`), `video` (`#timeline` + `#export-encode`) |
 | **3+ — exception** | Several modes / gestures that each *look* different and must not share one collage | One figure per mode or gesture section | `ui.buttons` (toolbar + three modes + long-press) |
 
 More than two figures on one page is uncommon; a third is allowed only for
@@ -363,9 +332,8 @@ the per-topic table (do not use it to decorate every bullet).
 
 1. **Need before asset.** Write the section first; add a figure only if a
    reader would still ask “what does that look like?”
-2. **Screenshots.** Prefer real product shots under the final paths already
-   listed in `figures.json`. Until then, those files may still be stub images
-   (detected by `check_help_figures.py`). Do not sprinkle extras.
+2. **Screenshots.** Prefer real product shots under final filenames. Do not
+   sprinkle extras.
 3. **Caption = UI path.** Prefer `{{tr:…}}` breadcrumbs in the caption; do not
    invent English control names.
 4. **Side layout.** `:::figure{side=…}`:
@@ -379,52 +347,44 @@ the per-topic table (do not use it to decorate every bullet).
 6. **Lightbox.** Click a figure to open a dimmed in-window viewer over the Help
    content (below the CSD title bar; full-resolution asset, wheel zoom,
    middle-mouse pan, click or Esc to close).
-7. **Assets.** Reference via `{{img:slot}}` (see [Figure tokens](#figure-tokens-img)).
+7. **Assets.** Reference via body-relative paths (see [Figure paths](#figure-paths)).
    Host shots under `resources/help/assets/`; tab shots under that tab’s
-   `resources/help/assets/` with `asset_root` on `contribute_help`. Prefer
+   `resources/help/assets/`. Prefer
    theme-neutral or ship light+dark when chrome color matters.
 8. **Tests do not require figures.** Scenario shape (`##` + `###`) is enough;
    see `test_help_page_bodies_are_scenario_cards`.
 
-### Per-topic figure slots
+### Per-topic figure budgets
 
 Bodies ship in **en + ru + zh + pt_BR** (missing lang falls back to EN). Topic
 depth is `adequate` across the tree; do not claim deeper coverage without
 real encyclopedia-level pages.
 
-| Topic | Budget | `{{img:…}}` slots (paths in `figures.json`) |
-|---|:-:|---|
-| `about` | 0 | — |
-| `ui.buttons` | 5 | `ui.buttons.toolbar`, `…mode_beginner`, `…mode_advanced`, `…mode_expert`, `…long_press` |
-| `ui.lists_flyouts` | 2 | `ui.lists_flyouts.list_manager`, `ui.lists_flyouts.toolbar_flyouts` |
-| `ui.canvas_navigation` | 1 | `ui.canvas_navigation.zoom` |
-| `platform.getting_started` | 0 | — |
-| `platform.image_properties` | 1 | `platform.image_properties.open` |
-| `platform.settings` | 0 | — |
-| `platform.hotkeys` | 0 | — |
-| `platform.tabs` | 0 | — |
-| `platform.file_project` | 1 | `platform.file_project.paste_overlay` |
-| `workspace.session_picker` | 1 | `platform.workspace.session_picker` |
-| `workspace.image_compare.comparison` | 2 | `…comparison.split_line`, `…comparison.difference_modes` |
-| `workspace.image_compare.magnifier` | 2 | `…magnifier.enabling`, `…magnifier.combined_mode` |
-| `workspace.export` | 1 | `workspace.image_compare.export.dialog` |
-| `workspace.image_compare.video` | 2 | `…video.timeline`, `…video.export_encode` |
-| `workspace.multi_compare.overview` | 1 | `workspace.multi_compare.overview.layouts` |
-| `workspace.multi_compare.layouts` | 0 | — |
-| `workspace.multi_compare.viewing` | 0 | — |
-| `workspace.multi_compare.export` | 0 | — |
-| `workspace.image_gallery.{overview,triage,quality,ask_ai}` | 0 | — |
+| Topic | Budget |
+|---|:-:|
+| `about` | 0 |
+| `ui.buttons` | 5 |
+| `platform.getting_started` | 0 |
+| `platform.image_properties` | 1 |
+| `platform.settings` | 0 |
+| `platform.hotkeys` | 0 |
+| `platform.tabs` | 0 |
+| `platform.file_project` | 1 |
+| `workspace.session_picker` | 1 |
+| `workspace.image_compare.comparison` | 2 |
+| `workspace.image_compare.magnifier` | 2 |
+| `workspace.export` | 1 |
+| `workspace.image_compare.video` | 2 |
+| `workspace.multi_compare.overview` | 1 |
+| `workspace.multi_compare.layouts` | 0 |
+| `workspace.multi_compare.viewing` | 0 |
+| `workspace.multi_compare.export` | 0 |
+| `workspace.image_gallery.{overview,triage,quality,ask_ai}` | 0 |
 
-`platform.getting_started`, `platform.image_properties`, `platform.settings`,
-`workspace.export`, `workspace.session_picker[.overview]`, and the gallery
-pages are contributed — their bodies and slots live in the owner plugin/tab
-`resources/help/` package, but frozen slot ids still resolve through the
-merged map. `workspace.export` keeps the
-`workspace.image_compare.export.dialog` slot and `workspace.session_picker`
-keeps `platform.workspace.session_picker` verbatim (slot-id freeze rule).
+Going above the budget needs an explicit exception here (do not use figures
+to decorate every bullet).
 
-Update asset paths in `figures.json` only; do not add figures outside this
-table. Optional later gaps (still budget-0 unless raised):
+Optional later gaps (still budget-0 unless raised):
 `workspace.session_picker` `#tab-strip`, `comparison` `#scroll-images`, settings shell.
 
 ---
@@ -470,7 +430,7 @@ Dialog navigation:
 | Content | hub cards or `HelpDocumentView` |
 | Sidebar | siblings of the current level only |
 | Back bar | full width; stack pop + breadcrumb |
-| Links | `help://slug#anchor`, `#anchor`, http(s) |
+| Links | `help://dotted.path#anchor`, `#anchor`, http(s) |
 
 ---
 
@@ -515,12 +475,9 @@ into a hub or page.
 
 ## Testing
 
-- `tests/plugins/test_help_tree.py` — aliases, merge, scenario page shape
-- `tests/plugins/test_help_interpolate.py` — `{{tr:}}` / `{{img:}}`
-- `tests/devtools/test_check_help_figures.py` — figure coverage report
-- `python src/devtools/check_help_figures.py` — ready / stub / missing inventory
-  (`--json`, `--strict`)
-- `tests/plugins/test_help_browser_navigation.py` — navigator / dialog UX
+- `tests/plugins/test_help_tree.py` — paths, hub fragments, scenario page shape
+- `tests/plugins/test_help_interpolate.py` — `{{tr:}}`, body-relative images
+- `tests/plugins/test_help_browser_navigation.py` — navigator / dialog UX (incl. Missing-page)
 - `tests/plugins/test_help_dialog_opens.py` — plugin open path
 - Toolkit: `HelpDocumentView` / block parse tests
 
@@ -528,7 +485,6 @@ Focused run:
 
 ```bash
 env QT_QPA_PLATFORM=offscreen pytest -q tests/plugins/test_help_*.py
-python src/devtools/check_help_figures.py
 ```
 
 ---

@@ -12,10 +12,10 @@
 
 ### 键盘 {#keyboard}
 
-方向键在卡片间移动，`Enter` 打开聚焦的项目——完整列表见[快捷键](help://hotkeys#keyboard-navigation)。
+方向键在卡片间移动，`Enter` 打开聚焦的项目——完整列表见[快捷键](help://platform.hotkeys#keyboard-navigation)。
 
 :::figure{side=block width=420}
-![会话选择器]({{img:platform.workspace.session_picker}})
+![会话选择器](../assets/platform/session_picker.jpg)
 {{tr:action.workspace.open_session_picker}} — {{tr:workspace.session_types.image_compare}} / {{tr:workspace.session_types.multi_compare}}。
 :::
 
@@ -30,4 +30,4 @@
 
 ### 后续主题 {#next-topics}
 
-快速上手：[入门](help://introduction)。会话工具：[对比](help://comparison) 或 [{{tr:workspace.session_types.multi_compare}}](help://multi_compare)。
+快速上手：[入门](help://platform.getting_started)。会话工具：[对比](help://workspace.image_compare.comparison) 或 [{{tr:workspace.session_types.multi_compare}}](help://workspace.multi_compare.overview)。

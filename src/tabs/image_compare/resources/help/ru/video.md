@@ -1,12 +1,12 @@
 ## Видеоредактор
 
-Живая сессия {{tr:workspace.session_types.image_compare}} в записи контрольных дорожек: обрезка таймлайна и кодирование в видео или GIF. Кадры по-прежнему в [Экспорте](help://export).
+Живая сессия {{tr:workspace.session_types.image_compare}} в записи контрольных дорожек: обрезка таймлайна и кодирование в видео или GIF. Кадры по-прежнему в [Экспорте](help://workspace.export).
 
 ### Запись сессии {#recording}
 
 - **Старт / пауза / стоп** — {{tr:image_compare.action.record}} (`R`), {{tr:image_compare.action.pause_recording}}, остановка теми же контролами.
 - **Что пишется** — действия на холсте во времени (зум/пан, разделитель, лупа, изображения, настройки) как дорожки контролов с точками записи — не сырой скринкаст.
-- **Частота** — [Настройки](help://settings#image_compare) ({{tr:settings.recording_fps}}).
+- **Частота** — [Настройки](help://platform.settings#image_compare) ({{tr:settings.recording_fps}}).
 
 ### Открыть редактор {#open-editor}
 
@@ -20,7 +20,7 @@
 - **Воспроизведение** — `Space`; отмена / повтор — `Ctrl+Z` / `Ctrl+Y`.
 
 :::figure{side=block width=840}
-![Таймлайн видео]({{img:workspace.image_compare.video.timeline}})
+![Таймлайн видео](../assets/video_timeline.jpg)
 {{tr:image_compare.action.video_editor}} — таймлайн.
 :::
 
@@ -46,7 +46,7 @@
 - **Прогресс** — можно остановить; лог показывает сообщения энкодера.
 
 :::figure{side=block width=630}
-![Панель экспорта видео]({{img:workspace.image_compare.video.export_encode}})
+![Панель экспорта видео](../assets/video_export.jpg)
 {{tr:image_compare.action.video_editor}} — экспорт.
 :::
 
@@ -56,4 +56,4 @@
 
 ### Дальше по темам {#next-topics}
 
-Кадры: [Экспорт](help://export). Diff и лупа при записи совпадают с холстом — [Сравнение](help://comparison) и [Лупа](help://magnifier).
+Кадры: [Экспорт](help://workspace.export). Diff и лупа при записи совпадают с холстом — [Сравнение](help://workspace.image_compare.comparison) и [Лупа](help://workspace.image_compare.magnifier).

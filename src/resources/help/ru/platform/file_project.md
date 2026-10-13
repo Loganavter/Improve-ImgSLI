@@ -9,14 +9,14 @@
 - **Вставка** (`Ctrl+V`) — из буфера; появляется оверлей направления: клик по стрелке выбирает сторону, `Esc` отменяет.
 
 :::figure{side=block width=280}
-![Оверлей направления вставки]({{img:platform.file_project.paste_overlay}})
+![Оверлей направления вставки](../../assets/platform/paste_overlay.jpg)
 `Ctrl+V` — оверлей направления вставки.
 :::
 
 ### Списки {#lists}
 
-- **{{tr:workspace.session_types.image_compare}}** — левый и правый списки независимы; менеджер списков — порядок, рейтинг, переименование, путь, свойства, удаление: [Списки и всплывающие панели](help://ui.lists_flyouts).
-- **{{tr:workspace.session_types.multi_compare}}** — дроп по слотам вместо двух списков: [{{tr:workspace.session_types.multi_compare}}](help://multi_compare).
+- **{{tr:workspace.session_types.image_compare}}** — левый и правый списки независимы; менеджер списков — порядок, рейтинг, переименование, путь, свойства, удаление — см. [Сравнение](help://workspace.image_compare.comparison).
+- **{{tr:workspace.session_types.multi_compare}}** — дроп по слотам вместо двух списков: [{{tr:workspace.session_types.multi_compare}}](help://workspace.multi_compare.overview).
 
 ### Проекты {#projects}
 

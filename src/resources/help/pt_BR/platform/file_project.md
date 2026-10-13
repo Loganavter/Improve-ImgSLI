@@ -9,14 +9,14 @@ Carregue imagens nas listas da sessão, cole a partir da área de transferência
 - **Colar** (`Ctrl+V`) — imagem da área de transferência; a sobreposição de direção aparece, um clique em uma seta escolhe o lado, `Esc` cancela.
 
 :::figure{side=block width=280}
-![Sobreposição de direção ao colar]({{img:platform.file_project.paste_overlay}})
+![Sobreposição de direção ao colar](../../assets/platform/paste_overlay.jpg)
 `Ctrl+V` — sobreposição de direção ao colar.
 :::
 
 ### Listas {#lists}
 
-- **{{tr:workspace.session_types.image_compare}}** — as listas da esquerda e da direita são independentes; o painel de gerenciamento de lista cobre reordenar, avaliar, renomear, caminho, propriedades e remover — [Listas e Painéis](help://ui.lists_flyouts).
-- **{{tr:workspace.session_types.multi_compare}}** — soltura por slot em vez de listas duplas — [{{tr:workspace.session_types.multi_compare}}](help://multi_compare).
+- **{{tr:workspace.session_types.image_compare}}** — as listas da esquerda e da direita são independentes; o painel de gerenciamento de lista cobre reordenar, avaliar, renomear, caminho, propriedades e remover — ver [Comparação](help://workspace.image_compare.comparison).
+- **{{tr:workspace.session_types.multi_compare}}** — soltura por slot em vez de listas duplas — [{{tr:workspace.session_types.multi_compare}}](help://workspace.multi_compare.overview).
 
 ### Projetos {#projects}
 

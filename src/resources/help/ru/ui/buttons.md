@@ -6,23 +6,23 @@
 
 - **Тулбар** — полоска иконок для текущего типа сессии.
 - **Состав** — переключатели, подстройка значений, кнопки панелей или диалогов.
-- **Плотность** — следует из {{tr:settings.ui_mode}} (онбординг при первом запуске или [Настройки → Оформление](help://settings#interface)).
+- **Плотность** — следует из {{tr:settings.ui_mode}} (онбординг при первом запуске или [Настройки → Оформление](help://platform.settings#interface)).
 
 :::figure{side=block height=107}
-![Тулбар сессии]({{img:ui.buttons.toolbar}})
+![Тулбар сессии](../../assets/ui/toolbar.jpg)
 Тулбар над холстом.
 :::
 
 ### Режимы интерфейса {#ui-modes}
 
-Одни и те же инструменты раскладываются по-разному в каждом {{tr:settings.ui_mode}}. Онбординг при первом запуске задаёт режим один раз; смена — в разделе [Настройки → Оформление](help://settings#interface).
+Одни и те же инструменты раскладываются по-разному в каждом {{tr:settings.ui_mode}}. Онбординг при первом запуске задаёт режим один раз; смена — в разделе [Настройки → Оформление](help://platform.settings#interface).
 
 ### {{tr:settings.ui_mode_beginner}} {#mode-beginner}
 
 Больше отдельных кнопок — один контрол ≈ одно действие.
 
 :::figure{side=block height=65}
-![Раскладка тулбара «начинающий»]({{img:ui.buttons.mode_beginner}})
+![Раскладка тулбара «начинающий»](../../assets/ui/mode_beginner.png)
 {{tr:settings.ui_mode}} → {{tr:settings.ui_mode_beginner}}.
 :::
 
@@ -31,7 +31,7 @@
 Меньше иконок. Часть контролов уже совмещает короткий клик и колесо (например ориентация + толщина).
 
 :::figure{side=block height=65}
-![Раскладка тулбара «продвинутый»]({{img:ui.buttons.mode_advanced}})
+![Раскладка тулбара «продвинутый»](../../assets/ui/mode_advanced.png)
 {{tr:settings.ui_mode}} → {{tr:settings.ui_mode_advanced}}.
 :::
 
@@ -40,7 +40,7 @@
 Самая плотная полоска: один контрол совмещает клик, колесо и другие кнопки мыши.
 
 :::figure{side=block height=65}
-![Раскладка тулбара «эксперт»]({{img:ui.buttons.mode_expert}})
+![Раскладка тулбара «эксперт»](../../assets/ui/mode_expert.png)
 {{tr:settings.ui_mode}} → {{tr:settings.ui_mode_expert}}.
 :::
 
@@ -56,14 +56,14 @@
 В {{tr:settings.ui_mode_beginner}} те же задачи вынесены на отдельные кнопки, а не складываются на одну.
 
 :::figure{side=block height=44}
-![Удержание на кнопке списка]({{img:ui.buttons.long_press}})
+![Удержание на кнопке списка](../../assets/ui/long_press.png)
 Кнопка списка — короткий клик и удержание.
 :::
 
 ### Примеры в продукте {#examples}
 
-- **{{tr:workspace.session_types.image_compare}}** — в более плотных режимах колесо по толщине разделителя или размеру лупы на одном контроле; удержание «очистить» / «поменять» на кнопках списка. Подробнее: [Сравнение](help://comparison); списки: [Списки и всплывающие панели](help://ui.lists_flyouts).
-- **{{tr:workspace.session_types.multi_compare}}** — толщина / видимость линий сетки на `D`. Подробнее: [Мультисравнение](help://multi_compare).
+- **{{tr:workspace.session_types.image_compare}}** — в более плотных режимах колесо по толщине разделителя или размеру лупы на одном контроле; удержание «очистить» / «поменять» на кнопках списка. Подробнее: [Сравнение](help://workspace.image_compare.comparison).
+- **{{tr:workspace.session_types.multi_compare}}** — толщина / видимость линий сетки на `D`. Подробнее: [Мультисравнение](help://workspace.multi_compare.overview).
 
 ### Найти контрол по имени {#find-action}
 

@@ -16,13 +16,13 @@ _BC_ANALYSIS = "image_compare.action.breadcrumb.analysis"
 _BC_VIDEO = "image_compare.action.breadcrumb.video"
 
 _TOPIC_HELP: dict[str, str] = {
-    "magnifier": "magnifier",
-    "session": "file_management",
-    "labels": "comparison",
-    "divider": "comparison",
-    "analysis": "comparison",
-    "export": "export",
-    "video": "video",
+    "magnifier": "workspace.image_compare.magnifier",
+    "session": "platform.file_project",
+    "labels": "workspace.image_compare.comparison",
+    "divider": "workspace.image_compare.comparison",
+    "analysis": "workspace.image_compare.comparison",
+    "export": "workspace.export",
+    "video": "workspace.image_compare.video",
 }
 
 

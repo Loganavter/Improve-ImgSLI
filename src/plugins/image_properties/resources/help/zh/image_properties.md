@@ -7,7 +7,7 @@
 列表或槽位的上下文菜单中的 {{tr:image_compare.action.context_properties}} 项可为该图像打开 {{tr:image_properties.title}}。
 
 :::figure{side=block width=280}
-![图像属性对话框]({{img:platform.image_properties.open}})
+![图像属性对话框](../assets/platform/image_properties.png)
 {{tr:image_properties.title}}.
 :::
 

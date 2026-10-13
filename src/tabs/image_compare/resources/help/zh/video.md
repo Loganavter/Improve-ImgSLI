@@ -1,12 +1,12 @@
 ## 视频编辑器
 
-实时 {{tr:workspace.session_types.image_compare}} 会话的控制轨道录制，支持时间轴裁剪并编码为视频或 GIF。静态图像请见[导出](help://export)。
+实时 {{tr:workspace.session_types.image_compare}} 会话的控制轨道录制，支持时间轴裁剪并编码为视频或 GIF。静态图像请见[导出](help://workspace.export)。
 
 ### 录制会话 {#recording}
 
 - **开始 / 暂停 / 停止** — {{tr:image_compare.action.record}}（`R`）、{{tr:image_compare.action.pause_recording}}，之后可用同一组控件停止录制。
 - **记录内容** — 记录的是随时间变化的画布操作（缩放/平移、分割线、放大镜、加载的图像及相关设置）所构成的控制轨道与采样点，而非原始屏幕录像。
-- **采集帧率** — 见[设置](help://settings#image_compare)（{{tr:settings.recording_fps}}）。
+- **采集帧率** — 见[设置](help://platform.settings#image_compare)（{{tr:settings.recording_fps}}）。
 
 ### 打开编辑器 {#open-editor}
 
@@ -20,7 +20,7 @@
 - **播放** — `Space`；撤销 / 重做 — `Ctrl+Z` / `Ctrl+Y`。
 
 :::figure{side=block width=840}
-![视频时间轴]({{img:workspace.image_compare.video.timeline}})
+![视频时间轴](../assets/video_timeline.jpg)
 {{tr:image_compare.action.video_editor}} — 时间轴。
 :::
 
@@ -46,7 +46,7 @@
 - **进度** — 可随时停止；日志会显示编码器的输出信息。
 
 :::figure{side=block width=630}
-![视频导出面板]({{img:workspace.image_compare.video.export_encode}})
+![视频导出面板](../assets/video_export.jpg)
 {{tr:image_compare.action.video_editor}} — 导出。
 :::
 
@@ -56,4 +56,4 @@
 
 ### 后续主题 {#next-topics}
 
-静态图像见[导出](help://export)。录制过程中差异模式与放大镜的表现与实时画布一致——见[对比](help://comparison)与[放大镜](help://magnifier)。
+静态图像见[导出](help://workspace.export)。录制过程中差异模式与放大镜的表现与实时画布一致——见[对比](help://workspace.image_compare.comparison)与[放大镜](help://workspace.image_compare.magnifier)。

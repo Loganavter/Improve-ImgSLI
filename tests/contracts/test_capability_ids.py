@@ -95,7 +95,7 @@ def test_every_contribute_service_literal_is_implemented():
 
 
 def test_no_string_mutate_for_contribute_ids():
-    """Every ``contribute_*`` must be typed via HelpContribution/SettingsContribution, not string-mutate.
+    """Every ``contribute_*`` must be typed via HelpHubContribution/SettingsContribution, not string-mutate.
 
     Ensures host collectors use typed dataclasses rather than passing a
     mutable registry into tabs.  The only allowed raw ``contribute_help``/
@@ -107,5 +107,5 @@ def test_no_string_mutate_for_contribute_ids():
     text = cr.read_text(encoding="utf-8")
     assert "def collect_help_contributions" in text
     assert "def collect_settings_contributions" in text
-    assert "HelpContribution" in text
+    assert "HelpHubContribution" in text
     assert "SettingsContribution" in text

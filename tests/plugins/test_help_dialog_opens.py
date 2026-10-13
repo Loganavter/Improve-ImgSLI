@@ -14,7 +14,7 @@ def test_app_icon_help_resolves():
 
 def test_help_plugin_show_dialog_opens(qtbot):
     plugin = HelpPlugin()
-    plugin.show_dialog(parent=None, language="en", page="hotkeys")
+    plugin.show_dialog(parent=None, language="en", page="platform.hotkeys")
     assert plugin._dialog is not None
     qtbot.addWidget(plugin._dialog)
     assert plugin._dialog.isVisible()

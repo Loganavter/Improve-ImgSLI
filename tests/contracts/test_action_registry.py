@@ -391,9 +391,9 @@ def test_platform_registers_settings_and_workspace_actions():
     analysis = registry.get("settings.page.image_compare.analysis")
     assert analysis is not None
     assert analysis.owner_tab is None
-    assert analysis.help_page == "settings"
+    assert analysis.help_page == "platform.settings"
     assert registry.get("platform.help") is not None
-    assert registry.get("platform.help").help_page == "introduction"
+    assert registry.get("platform.help").help_page == "platform.getting_started"
 
     general = registry.get("settings.page.builtin.general")
     assert general is not None and general.target is not None
@@ -819,10 +819,10 @@ def test_image_compare_create_service_contribute_actions():
     magnifier = registry.get("image_compare.magnifier.enabled")
     assert magnifier is not None
     assert magnifier.label_key.startswith("image_compare.action.")
-    assert magnifier.help_page == "magnifier"
+    assert magnifier.help_page == "workspace.image_compare.magnifier"
     export = registry.get("image_compare.save")
     assert export is not None
-    assert export.help_page == "export"
+    assert export.help_page == "workspace.export"
 
 
 def test_multi_compare_create_service_contribute_actions():

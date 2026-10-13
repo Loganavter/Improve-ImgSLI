@@ -31,7 +31,7 @@
 - `Shift` + `Space` — 组合模式下的单侧预览（固定不变）
 - `←↑↓→` / `+` / `-` — 平移 / 缩放（固定不变）
 
-详情见[对比](help://comparison)、[放大镜](help://magnifier)、[视频编辑器](help://video)。
+详情见[对比](help://workspace.image_compare.comparison)、[放大镜](help://workspace.image_compare.magnifier)、[视频编辑器](help://workspace.image_compare.video)。
 
 ### {{tr:workspace.session_types.multi_compare}} {#multi-compare}
 
@@ -41,11 +41,11 @@
 - `Esc` — 退出槽位焦点
 - `←↑↓→` / `+` / `-` — 平移 / 缩放（固定不变）
 
-见 [{{tr:workspace.session_types.multi_compare}}](help://multi_compare)。
+见 [{{tr:workspace.session_types.multi_compare}}](help://workspace.multi_compare.overview)。
 
 ### 视频编辑器窗口 {#video-editor}
 
-编辑器打开时：`Space` 播放/暂停，`Ctrl+Z` / `Ctrl+Y` 撤销/重做，`Delete` / `Backspace` 按所选裁剪。完整编码流程见[视频编辑器](help://video)。
+编辑器打开时：`Space` 播放/暂停，`Ctrl+Z` / `Ctrl+Y` 撤销/重做，`Delete` / `Backspace` 按所选裁剪。完整编码流程见[视频编辑器](help://workspace.image_compare.video)。
 
 ### 键盘导航 {#keyboard-navigation}
 

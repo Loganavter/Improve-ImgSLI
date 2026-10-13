@@ -13,7 +13,7 @@
 - **组合控件** — {{tr:image_compare.action.divider_combined}} 集合了方向、宽度与颜色（滚轮 / 右键 / 中键）；详见控件提示。
 
 :::figure{side=block width=280}
-![分割线]({{img:workspace.image_compare.comparison.split_line}})
+![分割线](../assets/split_line.png)
 {{tr:image_compare.action.breadcrumb.toolbar}} → {{tr:image_compare.action.breadcrumb.divider}}。
 :::
 
@@ -22,7 +22,7 @@
 - **画布滚轮** — 切换光标所在一侧的列表（垂直分割时左侧、水平分割时上方为侧 1；另一半为侧 2）。
 - **`Shift` + 滚轮** — 同时切换两个列表。
 - **单图预览** — 滚轮始终切换当前可见的一侧。
-- **下拉按钮滚轮** — 在不打开面板的情况下切换该侧图像；见[列表与面板](help://ui.lists_flyouts#scroll-lists)。
+- **下拉按钮滚轮** — 在不打开面板的情况下切换该侧图像。
 - **交换**（`X`）— 单击交换当前这一对图像；长按交换整个左右列表。
 
 ### 标签 {#labels-and-metrics}
@@ -33,8 +33,8 @@
 
 ### 指标 {#metrics}
 
-- **{{tr:image_compare.ui.psnr}} / {{tr:image_compare.ui.ssim}}** — 默认关闭，可在[设置 → 分析](help://settings)中启用自动计算。
-- **属性** — 从列表行的右键菜单打开[图像属性](help://image_properties)（文件元数据与应用内的侧 / 评分信息）。
+- **{{tr:image_compare.ui.psnr}} / {{tr:image_compare.ui.ssim}}** — 默认关闭，可在[设置 → 分析](help://platform.settings)中启用自动计算。
+- **属性** — 从列表行的右键菜单打开[图像属性](help://platform.image_properties)（文件元数据与应用内的侧 / 评分信息）。
 - **移动** — 画布或列表右键菜单会在指针左下方显示拖拽幽灵；点击其他工作区标签（或画布）即启动与复制/粘贴相同的插入流程。`Esc` 或右键取消。
 
 ### 通道模式 {#channel-modes}
@@ -46,7 +46,7 @@
 {{tr:image_compare.action.diff_mode}}（按 `H` 循环切换）用于突出两张图像的差异之处：
 
 :::figure{side=block width=280}
-![差异模式]({{img:workspace.image_compare.comparison.difference_modes}})
+![差异模式](../assets/difference_modes.png)
 {{tr:image_compare.action.diff_mode}}。
 :::
 
@@ -55,4 +55,4 @@
 - **{{tr:image_compare.action.diff_edges}}** — 以边缘方式呈现差异
 - **{{tr:image_compare.action.diff_ssim}}** — 在指标支持时显示结构相似性地图
 
-实时画布、导出静帧与视频录制的显示效果始终一致。差异模式可与通道视图组合使用。若需局部细节检查，请使用[放大镜](help://magnifier)。
+实时画布、导出静帧与视频录制的显示效果始终一致。差异模式可与通道视图组合使用。若需局部细节检查，请使用[放大镜](help://workspace.image_compare.magnifier)。

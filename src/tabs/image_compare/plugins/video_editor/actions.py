@@ -16,7 +16,7 @@ OWNER = "image_compare"
 PREFIX = "image_compare.video_editor."
 _BC_VIDEO = "image_compare.action.breadcrumb.video"
 _BC_EDITOR = "image_compare.action.video_editor"
-_HELP = "video"
+_HELP = "workspace.image_compare.video"
 
 
 def contribute_video_editor_actions(

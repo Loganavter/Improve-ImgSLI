@@ -6,23 +6,23 @@
 
 - **工具栏** — 画布上方的一排图标控件。
 - **内容** — 切换、数值微调，以及为当前会话类型打开面板或对话框的按钮。
-- **疏密** — 取决于 {{tr:settings.ui_mode}}（首次启动引导或[设置 → 外观](help://settings#interface)）。
+- **疏密** — 取决于 {{tr:settings.ui_mode}}（首次启动引导或[设置 → 外观](help://platform.settings#interface)）。
 
 :::figure{side=block height=107}
-![会话工具栏]({{img:ui.buttons.toolbar}})
+![会话工具栏](../../assets/ui/toolbar.jpg)
 画布上方的工具栏。
 :::
 
 ### 界面模式 {#ui-modes}
 
-同一套工具在不同 {{tr:settings.ui_mode}} 下布局不同。首次启动引导设置一次，之后在[设置 → 外观](help://settings#interface)中更改。
+同一套工具在不同 {{tr:settings.ui_mode}} 下布局不同。首次启动引导设置一次，之后在[设置 → 外观](help://platform.settings#interface)中更改。
 
 ### {{tr:settings.ui_mode_beginner}} {#mode-beginner}
 
 更多独立按钮 — 一个控件 ≈ 一件事。
 
 :::figure{side=block height=65}
-![初级工具栏布局]({{img:ui.buttons.mode_beginner}})
+![初级工具栏布局](../../assets/ui/mode_beginner.png)
 {{tr:settings.ui_mode}} → {{tr:settings.ui_mode_beginner}}。
 :::
 
@@ -31,7 +31,7 @@
 图标更少。部分控件已把单击与滚轮组合在一起（例如方向 + 粗细）。
 
 :::figure{side=block height=65}
-![高级工具栏布局]({{img:ui.buttons.mode_advanced}})
+![高级工具栏布局](../../assets/ui/mode_advanced.png)
 {{tr:settings.ui_mode}} → {{tr:settings.ui_mode_advanced}}。
 :::
 
@@ -40,7 +40,7 @@
 最紧凑：同一控件组合单击、滚轮及其他鼠标按键。
 
 :::figure{side=block height=65}
-![专家工具栏布局]({{img:ui.buttons.mode_expert}})
+![专家工具栏布局](../../assets/ui/mode_expert.png)
 {{tr:settings.ui_mode}} → {{tr:settings.ui_mode_expert}}。
 :::
 
@@ -56,14 +56,14 @@
 {{tr:settings.ui_mode_beginner}} 会把这些任务拆成独立按钮，而不是叠在同一个控件上。
 
 :::figure{side=block height=44}
-![列表按钮上的长按]({{img:ui.buttons.long_press}})
+![列表按钮上的长按](../../assets/ui/long_press.png)
 列表按钮 — 单击与长按。
 :::
 
 ### 产品示例 {#examples}
 
-- **{{tr:workspace.session_types.image_compare}}** — 在更紧凑的模式下，可在同一控件上滚动调整分割线宽度或放大镜大小；列表按钮支持长按清空 / 交换。详情见[对比](help://comparison)；列表见[列表与面板](help://ui.lists_flyouts)。
-- **{{tr:workspace.session_types.multi_compare}}** — 网格线粗细 / 可见性在 `D` 上。详情见[多图对比](help://multi_compare)。
+- **{{tr:workspace.session_types.image_compare}}** — 在更紧凑的模式下，可在同一控件上滚动调整分割线宽度或放大镜大小；列表按钮支持长按清空 / 交换。详情见[对比](help://workspace.image_compare.comparison)。
+- **{{tr:workspace.session_types.multi_compare}}** — 网格线粗细 / 可见性在 `D` 上。详情见[多图对比](help://workspace.multi_compare.overview)。
 
 ### 按名称查找控件 {#find-action}
 

@@ -298,9 +298,9 @@ Palette: ↑↓ / Enter or ↵ icon run / Esc / click plate or Shift+Enter revea
 Ctrl+Enter or the «Подробнее» / Learn more region on the row. F1 opens with topic/preselect and
 `auto_pulse` when focus matches a target.
 
-Learn more / `help_page` open the hierarchical Help dialog. Short topic ids
-(`magnifier`, `export`, `hotkeys`, …) resolve through `resources/help/tree.json`
-aliases — see [HELP_SYSTEM.md](./HELP_SYSTEM.md).
+Learn more / `help_page` open the hierarchical Help dialog. Dotted paths
+(`workspace.image_compare.magnifier`, `platform.settings`, …) resolve
+straight to scanned pages — see [HELP_SYSTEM.md](./HELP_SYSTEM.md).
 
 ## Later
 

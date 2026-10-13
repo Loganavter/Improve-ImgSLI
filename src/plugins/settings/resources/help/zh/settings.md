@@ -39,7 +39,7 @@
 - **{{tr:settings.optimize_magnifier_movement}}** — 更平滑的镜头移动，插值方法在同一行。
 - **{{tr:settings.magnifier_intersection_highlight}}** — 高亮镜头重叠处。
 - **{{tr:settings.magnifier_auto_color_new_instances}}** — 新镜头使用不同颜色。
-- **{{tr:image_compare.settings.recording_fps}}** — [视频编辑器](help://video)的采集帧率。
+- **{{tr:image_compare.settings.recording_fps}}** — [视频编辑器](help://workspace.image_compare.video)的采集帧率。
 - **{{tr:settings.autocrop_black_borders_on_load}}** — 加载时裁掉黑色边框。
 - **自动 {{tr:ui.psnr}} / {{tr:ui.ssim}}** — 指标自动读数，默认关闭。
 
@@ -47,4 +47,4 @@
 
 - **重映射** — 快捷键按所有者分组：platform / {{tr:workspace.session_types.image_compare}} / {{tr:workspace.session_types.multi_compare}}。
 - **重置** — 单个或全部快捷键。
-- **固定** — 画布 `WASD` 与 `Space` 保持固定 — 见[快捷键](help://hotkeys)。
+- **固定** — 画布 `WASD` 与 `Space` 保持固定 — 见[快捷键](help://platform.hotkeys)。
