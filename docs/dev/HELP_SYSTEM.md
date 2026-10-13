@@ -55,7 +55,8 @@ from each page's own `##` heading (see `labels.py`).
 | `tree.py` | Scan assembly (`install_help_contributions(list[HelpHubContribution])`), `resolve_path`, body/asset resolve |
 | `scan.py` | Filesystem discovery (dirs = hubs, `*.md` = pages, dotted ids) + hub-meta overlay |
 | `contribution.py` | `HelpHubContribution` (frozen, `owner_tab`, `mount`, hub title/desc/icon, `resolve_icon`) |
-| `labels.py` | Titles from each page's `##` heading, subtitles from its first paragraph; `title_key` / `description_key` via `tr()` for hubs only |
+| `meta.py` | Page frontmatter (`description`, `icon`) parse + strip |
+| `labels.py` | Titles from each page's `##` heading; subtitles from page frontmatter `description`, else the first paragraph; `title_key` / `description_key` via `tr()` for hubs only |
 | `icons.py` | App icons + contributed tab resolvers |
 | `layout_geometry.py` | Dialog size / sidebar widths |
 
@@ -100,8 +101,24 @@ def build_help_hub_contribution():
 Rules:
 
 - Page titles come from each page's own `##` heading (current language,
-  fallback EN with an `[en]` badge); card subtitles come from its first
+  fallback EN with an `[en]` badge). Card subtitles come from the page's
+  leading frontmatter `description` (plain text, no markup), else its first
   paragraph. No per-page i18n keys.
+- A page body may open with a minimal frontmatter block carrying the card
+  `description` and `icon` (both optional; unknown keys ignored; CRLF and an
+  unterminated block tolerated). The scan reads it into the node; the rendered
+  body has it stripped (`plugins/help/meta.py`):
+
+  ```markdown
+  ---
+  description: One short card line, no markup
+  icon: settings.svg
+  ---
+  ## Topic title
+  ```
+
+  The `icon` name must resolve via `get_app_icon` (host pack) or the tab's
+  `resolve_icon` — pinned by `tests/plugins/test_help_icons.py`.
 - Tab-hub titles/descriptions/icons come from the fragment above; the four
   app-shell hubs (`root` / `workspace` / `ui` / `platform`) keep static meta
   in `scan.py`.
@@ -165,6 +182,10 @@ Primary discovery stays Find Action; Help teaches *shape* and *habits*.
 ### Page skeleton
 
 ```markdown
+---
+description: One short card line, no markup
+icon: settings.svg
+---
 ## Topic title
 
 One or two sentences: what this is and when you need it. Cross-link related
@@ -180,6 +201,9 @@ the section is about a visible surface (panel, dialog, layout).
 ```
 
 - Page title = `##`. Scenario / concept sections = `###` with stable `{#anchor}`.
+- Frontmatter is optional but expected: the card `description` (plain text,
+  no `**markup**`) and a resolvable `icon` (see
+  [Tree scan contract](#tree-scan-contract-web-canon)).
 - TOC is generated from anchored `###` — keep titles short and scannable.
 - Ban trailing `### Related` / `### Связанное` dumps; weave `help://` links
   into the prose or end with `### Next topics` / `### Дальше по темам` when
@@ -479,6 +503,9 @@ into a hub or page.
 ## Testing
 
 - `tests/plugins/test_help_tree.py` — paths, hub fragments, scenario page shape
+- `tests/plugins/test_help_meta.py` — frontmatter parse/strip (`meta.py`)
+- `tests/plugins/test_help_icons.py` — every hub/page icon resolves
+- `tests/plugins/test_help_labels.py` — frontmatter subtitle + markup-stripped fallback
 - `tests/plugins/test_help_bodies.py` — literal labels (no `{{tr:`), body-relative images
 - `tests/plugins/test_help_browser_navigation.py` — navigator / dialog UX (incl. Missing-page)
 - `tests/plugins/test_help_dialog_opens.py` — plugin open path

@@ -1,3 +1,7 @@
+---
+description: Where the app came from, what it does, and what to read next.
+icon: about.svg
+---
 ## About
 
 Improve ImgSLI is a desktop workspace where you compare images side by side or as a grid, inspect differences at pixel scale, and keep the result as an exported still or a recorded comparison video.

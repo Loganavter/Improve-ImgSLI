@@ -142,6 +142,7 @@ class HelpHubPage(QWidget):
                     text=description,
                     size=12,
                     h_align=Qt.AlignmentFlag.AlignLeft,
+                    wrap=True,
                 )
             )
         elif node.kind == "page":

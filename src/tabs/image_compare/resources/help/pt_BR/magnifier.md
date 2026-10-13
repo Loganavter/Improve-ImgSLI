@@ -1,3 +1,7 @@
+---
+description: Estudar detalhes finos em uma janela ampliada.
+icon: magnifier.svg
+---
 ## Lupa
 
 A lupa amplia uma região escolhida das duas imagens comparadas, para estudar detalhes pequenos demais no canvas.

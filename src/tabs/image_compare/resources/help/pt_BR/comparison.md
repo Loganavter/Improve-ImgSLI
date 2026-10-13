@@ -1,3 +1,7 @@
+---
+description: Alinhar duas imagens e examinar as diferenças.
+icon: vertical_split.svg
+---
 ## Comparação
 
 A comparação mostra duas imagens lado a lado, para alinhar o mesmo detalhe nas duas.

@@ -1,3 +1,7 @@
+---
+description: Judge image sharpness and exposure with numeric scores.
+icon: analyze.svg
+---
 ## Quality Metrics
 
 Every image gets a score from 0 to 100, where higher is better. The score summarizes several readings of the image, so a high score means the image does well on all of them.

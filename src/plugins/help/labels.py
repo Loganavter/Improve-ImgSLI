@@ -15,6 +15,19 @@ FALLBACK_BADGE = " [en]"
 
 _IMG_TOKEN_RE = re.compile(r"\{\{img:[^}]+\}\}")
 _LIST_MARKER_RE = re.compile(r"^(?:[-*+]|\d+[.)])\s+")
+#: Inline markdown that must never leak into a plain card subtitle:
+#: links, bold/italic, and inline code.
+_MD_LINK_RE = re.compile(r"\[([^\]]*)\]\([^)]*\)")
+_BOLD_RE = re.compile(r"\*\*([^*]+)\*\*|__([^_]+)__")
+_CODE_RE = re.compile(r"`([^`]+)`")
+
+
+def _strip_inline_markup(text: str) -> str:
+    """Drop inline markdown markers so card subtitles stay plain text."""
+    text = _MD_LINK_RE.sub(r"\1", text)
+    text = _BOLD_RE.sub(lambda match: match.group(1) or match.group(2), text)
+    text = _CODE_RE.sub(r"\1", text)
+    return text
 
 
 def _is_translated(text: str | None, key: str | None) -> bool:
@@ -57,7 +70,7 @@ def _parse_title_desc(markdown: str) -> tuple[str | None, str | None]:
         if title is None:
             continue
         paragraph.append(_LIST_MARKER_RE.sub("", line))
-    desc = _IMG_TOKEN_RE.sub("", " ".join(paragraph)).strip() or None
+    desc = _strip_inline_markup(_IMG_TOKEN_RE.sub("", " ".join(paragraph))).strip() or None
     return title, desc
 
 
@@ -71,14 +84,17 @@ def clear_help_label_cache() -> None:
 def _page_title_desc(node: HelpNode, language: str) -> tuple[str | None, str | None, bool]:
     """Parse ``(title, description, native)`` from the page's own body.
 
-    ``native`` is False when the current language has no body file and the
-    English fallback was read (callers badge the text, same as untranslated
-    i18n keys).
+    ``description`` is the page's leading frontmatter ``description`` (plain
+    text) when the *requested language's* body carries one, else its first
+    paragraph; both are stripped of inline markup. ``native`` is False when
+    the current language has no body file and the English fallback was read
+    (callers badge the text, same as untranslated i18n keys).
     """
+    from plugins.help.meta import split_frontmatter
     from plugins.help.tree import (
         host_help_root,
         normalize_help_language,
-        read_help_page_markdown,
+        resolve_help_body_path,
     )
 
     body_root = node.body_root.as_posix() if node.body_root is not None else None
@@ -86,8 +102,11 @@ def _page_title_desc(node: HelpNode, language: str) -> tuple[str | None, str | N
     cached = _label_cache.get(key)
     if cached is not None:
         return cached
-    md = read_help_page_markdown(language, node.body or "", body_root=node.body_root)
-    title, desc = _parse_title_desc(md)
+    path = resolve_help_body_path(language, node.body or "", body_root=node.body_root)
+    raw = path.read_text(encoding="utf-8") if path.is_file() else ""
+    meta, body_md = split_frontmatter(raw)
+    title, paragraph = _parse_title_desc(body_md)
+    desc = meta.description or paragraph
     native = True
     if node.body and normalize_help_language(language) != "en":
         root = node.body_root if node.body_root is not None else host_help_root()
@@ -118,6 +137,8 @@ def node_description(node: HelpNode, language: str) -> str:
             return text
         if node.description:
             return f"{node.description}{FALLBACK_BADGE}"
+    # Pages: the requested language's frontmatter description (plain text)
+    # wins, else its first paragraph. Hubs: the scanned/contributed meta.
     if node.kind == "page" and node.body:
         _title, desc, native = _page_title_desc(node, language)
         if desc:

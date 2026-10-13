@@ -1,3 +1,7 @@
+---
+description: Zoom, pan, and focus the grid without touching files.
+icon: move.svg
+---
 ## Multi Compare Viewing
 
 Viewing controls how the grid is displayed and never touches the source files.

@@ -1,3 +1,7 @@
+---
+description: Gerenciar as sessões abertas no espaço de trabalho.
+icon: copy.svg
+---
 ## Abas
 
 A faixa de abas acima do espaço de trabalho tem uma aba por sessão aberta. A aba ativa decide o que o canvas, a barra de ferramentas e as listas mostram, então trocar de aba muda toda a visão do espaço de trabalho.

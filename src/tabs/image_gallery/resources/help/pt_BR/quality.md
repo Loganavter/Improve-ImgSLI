@@ -1,3 +1,7 @@
+---
+description: Avaliar nitidez e exposição por pontuações numéricas.
+icon: analyze.svg
+---
 ## Métricas de qualidade
 
 Cada imagem recebe uma pontuação de 0 a 100, e quanto maior, melhor. A pontuação resume várias medições da imagem, então uma pontuação alta significa que a imagem se sai bem em todas elas.
