@@ -35,7 +35,7 @@ filesystem — dirs are hubs, `*.md` files are pages, ids are dotted paths.
 
 - Page title `##`; concept sections `###` with stable `{#anchor}`; the TOC is generated from anchored `###` — keep titles short.
 - **No GFM pipe tables** in bodies: consecutive `| … |` rows render as one paragraph. Use `- **X** — …` lists.
-- Labels are literal, on-screen names in `**bold**` (no `{{tr:}}` tokens): write the control exactly as the UI shows it. Bodies ship in en + ru + zh + pt_BR; a missing language falls back to EN. Prose canon: [docs/dev/HELP_STYLE_GUIDE.md](../../../docs/dev/HELP_STYLE_GUIDE.md).
+- Labels are literal, on-screen names in `**bold**` (no `{{tr:}}` tokens): write the control exactly as the UI shows it. Bodies ship in en + ru + zh + pt_BR; a missing language falls back to EN. Prose canon: [docs/dev/HELP_STYLE_GUIDE.md](../../../docs/dev/HELP_STYLE_GUIDE.md). <!-- doc-truth:allow -->
 - Figures as body-relative paths into the owning package's `assets/`. Never add figures outside the per-topic budget table in HELP_SYSTEM.md.
 - Cross-link with `help://dotted.path#anchor`; no trailing `### Related` dumps — weave links into prose or use a short `### Next topics`.
 
@@ -73,7 +73,7 @@ env QT_QPA_PLATFORM=offscreen pytest -q tests/plugins/test_help_*.py
 ```
 
 Key tests: `test_help_tree.py` (paths, hub fragments, scenario-card page shape),
-`test_help_bodies.py` (literal labels — no `{{tr:`, body-relative images),
+`test_help_bodies.py` (literal labels — no `{{tr:`, body-relative images), <!-- doc-truth:allow -->
 `test_help_browser_navigation.py` (incl. Missing-page),
 `test_help_dialog_opens.py`. Scenario shape (`##` + `###`) is enough for the
 tests — figures are never required.

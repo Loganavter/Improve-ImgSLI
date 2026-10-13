@@ -284,7 +284,7 @@ line is a `---` separator:
 ### Labels (literal, per language)
 
 See also [RESOURCES_I18N](./RESOURCES_I18N.md). Help bodies no longer resolve
-`{{tr:…}}` keys at runtime — each language body carries literal, on-screen
+`{{tr:…}}` keys at runtime — each language body carries literal, on-screen <!-- doc-truth:allow -->
 labels:
 
 - Write the label exactly as the UI shows it, in `**bold**` (toolbar, menu,
@@ -514,7 +514,7 @@ into a hub or page.
 - `tests/plugins/test_help_meta.py` — frontmatter parse/strip (`meta.py`)
 - `tests/plugins/test_help_icons.py` — every hub/page icon resolves
 - `tests/plugins/test_help_labels.py` — frontmatter subtitle + markup-stripped fallback
-- `tests/plugins/test_help_bodies.py` — literal labels (no `{{tr:`), body-relative images
+- `tests/plugins/test_help_bodies.py` — literal labels (no `{{tr:`), body-relative images <!-- doc-truth:allow -->
 - `tests/plugins/test_help_browser_navigation.py` — navigator / dialog UX (incl. Missing-page)
 - `tests/plugins/test_help_dialog_opens.py` — plugin open path
 - Toolkit: `HelpDocumentView` / block parse tests
