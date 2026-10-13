@@ -355,11 +355,12 @@ class AskAiFlyout(BaseFlyout):
             except Exception:
                 pass
         try:
-            # ``grow_up`` pins the flyout's BOTTOM to the anchor's TOP so a
-            # taller wrapped result expands upward (region-inspection flyout);
-            # the default grows downward from the anchor's bottom.
-            anchor_point = "top-left" if grow_up else "bottom-left"
-            flyout_point = "bottom-left" if grow_up else "top-left"
+            # ``grow_up`` pins the flyout's BOTTOM-CENTER to the anchor's
+            # TOP-CENTER so a taller wrapped result expands upward (the
+            # region-inspection flyout above the held selection); the
+            # default grows downward from the anchor's bottom-left.
+            anchor_point = "top-center" if grow_up else "bottom-left"
+            flyout_point = "bottom-center" if grow_up else "top-left"
             self._grow_up = bool(grow_up)
             self.show_aligned(
                 anchor,
@@ -529,8 +530,8 @@ class AskAiFlyout(BaseFlyout):
             grow_up = bool(getattr(self, "_grow_up", False))
             self.show_aligned(
                 anchor,
-                anchor_point="top-left" if grow_up else "bottom-left",
-                flyout_point="bottom-left" if grow_up else "top-left",
+                anchor_point="top-center" if grow_up else "bottom-left",
+                flyout_point="bottom-center" if grow_up else "top-left",
                 offset=scaled_px(8),
                 animation="none",
                 grab_focus=False,

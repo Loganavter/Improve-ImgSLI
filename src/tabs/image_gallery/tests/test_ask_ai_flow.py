@@ -297,6 +297,36 @@ def test_open_ask_ai_region_opens_upward_with_region_scope(monkeypatch, tmp_path
     assert widget.grow_up[-1] is True
 
 
+def test_open_ask_ai_region_dismisses_band_on_flyout_hide(monkeypatch, tmp_path, qapp):
+    """The held selection clears only when the region flyout closes.
+
+    Falsification: pre-change no slot is wired to ``flyout.hidden``.
+    """
+    from types import SimpleNamespace
+
+    from PySide6.QtCore import QObject, Signal
+
+    class _Flyout(QObject):
+        hidden = Signal()
+
+    ctrl, widget = _make(monkeypatch)
+    flyout = _Flyout()
+    widget._ensure_ask_ai_flyout = lambda: flyout
+    dismissed: list[bool] = []
+    band = SimpleNamespace(dismiss_selection=lambda: dismissed.append(True))
+
+    it = _item(tmp_path)
+    ctrl.state.items = [it]
+    ctrl.open_ask_ai_region(it.path, (0.1, 0.1, 0.5, 0.5), anchor=band)
+
+    assert widget.opened, "region ask should open the flyout"
+    assert dismissed == [], "band must stay visible while the flyout is open"
+    flyout.hidden.emit()
+    assert dismissed == [True]
+    flyout.hidden.emit()
+    assert dismissed == [True], "dismiss slot is one-shot"
+
+
 def test_region_ask_sends_crop_and_region_prompt(monkeypatch, tmp_path, qapp):
     """Region asks force vision, use the region prompt and append the crop."""
     ctrl, widget = _make(monkeypatch)

@@ -5,6 +5,10 @@ the crop is sent to Ask AI. The band is a mouse-transparent dashed accent
 rectangle (the app's drop-zone border idiom) positioned over the preview slot,
 the same overlay slot the first-frame cover uses. The mapping back to image
 space is pure (``preview_zoom.widget_rect_to_normalized``).
+
+The band stays visible after a valid selection (it is NOT hidden on release):
+it anchors the Ask AI flyout above the selected region (see :meth:`RegionBand.flyoutAnchorRect`) and is dismissed only when the flyout
+closes (:meth:`RegionBand.dismiss_selection`).
 """
 
 from __future__ import annotations
@@ -57,6 +61,32 @@ class RegionBand(QWidget):
     def clear(self) -> None:
         self._rect = QRect()
         self.update()
+
+    def flyoutAnchorRect(self):  # noqa: N802 (toolkit hook name)
+        """Toolkit anchor hook: pin flyouts to the selection, not the host.
+
+        Consumed by the flyout manager (``surface_anchor_rect``): the Ask AI
+        region flyout opens above the selected region instead of the
+        preview-host corner. ``None`` while no selection is held.
+        """
+        rect = self._rect
+        if rect is None or rect.isNull() or rect.width() <= 0 or rect.height() <= 0:
+            return None
+        try:
+            return QRect(rect)
+        except Exception:
+            return None
+
+    def dismiss_selection(self) -> None:
+        """Drop a held selection — called when the Ask AI flyout closes."""
+        try:
+            self.clear()
+        except Exception:
+            pass
+        try:
+            self.hide()
+        except Exception:
+            pass
 
     def paintEvent(self, event) -> None:  # noqa: N802 (Qt name)
         rect = self._rect

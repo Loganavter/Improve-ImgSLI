@@ -1860,15 +1860,36 @@ class GalleryController:
             "image_gallery.ask_ai.region_prompt", "What is wrong in this region?"
         )
         self._open_ask_ai(target, scope, grow_up=True, default_prompt=prompt)
-
-    def _images_downsample_text(self, px: int) -> str:
-        """Tooltip line 2 for the Ask AI images toggle: the current downscale."""
-        if int(px or 0) <= 0:
-            return self._tr("image_gallery.settings.downscale_original", "Original")
-        template = self._tr(
-            "image_gallery.ask_ai.images_toggle_downsample", "Downscale: ≤ {px} px"
-        )
-        return template.replace("{px}", str(int(px)))
+        # The selection band stays visible under the flyout; dismiss it only
+        # when the flyout closes (not when the drag ends).
+        try:
+            dismiss = getattr(target, "dismiss_selection", None)
+            if callable(dismiss):
+                flyout = self.widget._ensure_ask_ai_flyout()
+                prev = getattr(self, "_region_dismiss_slot", None)
+                if prev is not None:
+                    try:
+                        flyout.hidden.disconnect(prev)
+                    except Exception:
+                        pass
+                def _dismiss(_dismiss_fn=dismiss, _flyout=flyout):
+                    try:
+                        _dismiss_fn()
+                    except Exception:
+                        pass
+                    try:
+                        _flyout.hidden.disconnect(_dismiss)
+                    except Exception:
+                        pass
+                    try:
+                        if getattr(self, "_region_dismiss_slot", None) is _dismiss:
+                            self._region_dismiss_slot = None
+                    except Exception:
+                        pass
+                flyout.hidden.connect(_dismiss)
+                self._region_dismiss_slot = _dismiss
+        except Exception:
+            pass
 
     def _images_downsample_text(self, px: int) -> str:
         """Tooltip line 2 for the Ask AI images toggle: the current downscale."""

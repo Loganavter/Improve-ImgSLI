@@ -583,3 +583,39 @@ def test_result_without_links_stays_plain_text(qtbot):
     assert "<a " not in flyout._result.text()
     flyout.hide()
     qtbot.waitUntil(lambda: not flyout.isVisible(), timeout=5000)
+
+
+def test_region_flyout_aligns_centered_above_selection(qtbot):
+    """grow_up flyouts pin bottom-center to the anchor's top-center.
+
+    Falsification: pre-change grow_up mapped top-left/bottom-left.
+    (Pixel placement from those points is toolkit geometry, covered by
+    the toolkit's own tests; here we pin the seam contract — the points
+    ``open_for`` passes to ``show_aligned``.)
+    """
+    anchor = QWidget()
+    qtbot.addWidget(anchor)
+    anchor.resize(200, 100)
+    anchor.show()
+    qtbot.waitExposed(anchor)
+
+    flyout = AskAiFlyout(anchor)
+    qtbot.addWidget(flyout)
+    flyout.open_for(anchor, default_prompt="Q", grow_up=True)
+    qtbot.waitUntil(lambda: flyout.isVisible(), timeout=5000)
+    kwargs = dict(flyout._last_align_kwargs or {})
+    assert kwargs.get("anchor_point") == "top-center"
+    assert kwargs.get("flyout_point") == "bottom-center"
+    flyout.hide()
+    qtbot.waitUntil(lambda: not flyout.isVisible(), timeout=5000)
+
+    # The grow-down default is untouched.
+    flyout2 = AskAiFlyout(anchor)
+    qtbot.addWidget(flyout2)
+    flyout2.open_for(anchor, default_prompt="Q")
+    qtbot.waitUntil(lambda: flyout2.isVisible(), timeout=5000)
+    kwargs2 = dict(flyout2._last_align_kwargs or {})
+    assert kwargs2.get("anchor_point") == "bottom-left"
+    assert kwargs2.get("flyout_point") == "top-left"
+    flyout2.hide()
+    qtbot.waitUntil(lambda: not flyout2.isVisible(), timeout=5000)

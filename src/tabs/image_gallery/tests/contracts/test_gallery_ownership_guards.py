@@ -141,7 +141,7 @@ ALLOWLIST: dict[tuple[str, int], str] = {
     ("src/tabs/image_gallery/ui/quick_look_hooks.py", 280): (
         "_merge_selection_setattr storeless call site"
     ),
-    ("src/tabs/image_gallery/ui/quick_look_hooks.py", 408): (
+    ("src/tabs/image_gallery/ui/quick_look_hooks.py", 419): (
         "set_source storeless setattr fallback (never a bare state write)"
     ),
 }

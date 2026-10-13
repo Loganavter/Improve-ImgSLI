@@ -436,13 +436,27 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
         self._region_active = False
         band = getattr(self, "_region_band", None)
         rect = getattr(band, "_rect", None) if band is not None else None
+        if rect is None or rect.width() < 4 or rect.height() < 4:
+            # Too small to ask about: drop the band as before.
+            if band is not None:
+                try:
+                    band.hide()
+                except Exception:
+                    pass
+                try:
+                    band.clear()
+                except Exception:
+                    pass
+            return
+        # Valid selection: KEEP the band visible. The Ask AI flyout anchors
+        # to it (RegionBand.flyoutAnchorRect — above the selected region,
+        # not the preview corner) and dismisses it when it closes.
         if band is not None:
             try:
-                band.hide()
+                band.show()
+                band.raise_()
             except Exception:
                 pass
-        if rect is None or rect.width() < 4 or rect.height() < 4:
-            return
         canvas = getattr(self, "_preview_canvas", None)
         box = None
         if canvas is not None:
@@ -458,6 +472,45 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
             return
         try:
             self.regionAskRequested.emit(str(path), box)
+        except Exception:
+            pass
+
+    def region_selection_anchor(self):
+        """Anchor for the region Ask AI flyout: the held selection band.
+
+        Returns the band while a valid selection is held (so the flyout
+        opens above the selected region via ``flyoutAnchorRect``), else
+        ``None`` (callers fall back to the preview host).
+        """
+        band = getattr(self, "_region_band", None)
+        try:
+            if band is not None and not band.isHidden():
+                rect = getattr(band, "_rect", None)
+                if (
+                    rect is not None
+                    and not rect.isNull()
+                    and rect.width() >= 4
+                    and rect.height() >= 4
+                ):
+                    return band
+        except Exception:
+            pass
+        return None
+
+    def hide_region_band(self) -> None:
+        """Drop a held region selection (the flyout-closed path)."""
+        band = getattr(self, "_region_band", None)
+        if band is None:
+            return
+        try:
+            dismiss = getattr(band, "dismiss_selection", None)
+            if callable(dismiss):
+                dismiss()
+                return
+        except Exception:
+            pass
+        try:
+            band.hide()
         except Exception:
             pass
 

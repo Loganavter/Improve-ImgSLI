@@ -366,18 +366,29 @@ def _unset_quick_source(owner) -> None:
 
 
 def on_quick_ask_region(owner, path, box) -> None:
-    """A Quick Look region was selected → open the Ask AI region flyout (upward)."""
+    """A Quick Look region was selected → open the Ask AI region flyout (upward).
+
+    The flyout anchors to the held selection band (above the selected
+    region, not the preview corner); the band is dismissed when the
+    flyout closes (wired in the controller).
+    """
     try:
         triage_owner = owner_for_triage(owner)
         fn = getattr(triage_owner, "open_ask_ai_region", None)
         if not callable(fn):
             return
-        anchor = owner
+        anchor = None
         try:
             overlay = getattr(owner, "_quick_look_overlay", None)
             if overlay is not None:
-                anchor = getattr(overlay, "_preview_host", None) or overlay
+                get_anchor = getattr(overlay, "region_selection_anchor", None)
+                if callable(get_anchor):
+                    anchor = get_anchor()
+                if anchor is None:
+                    anchor = getattr(overlay, "_preview_host", None) or overlay
         except Exception:
+            anchor = None
+        if anchor is None:
             anchor = owner
         fn(path, box, anchor)
     except Exception:

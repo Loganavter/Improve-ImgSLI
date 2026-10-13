@@ -70,3 +70,86 @@ def test_region_band_paints_and_clears(qtbot) -> None:
     band.grab()  # must not raise
     band.clear()
     band.grab()
+
+
+def test_region_band_flyout_anchor_rect(qtbot) -> None:
+    """The band narrows flyout anchoring to the selection (toolkit hook).
+
+    Falsification: pre-change ``RegionBand`` has no ``flyoutAnchorRect``.
+    """
+    host = QWidget()
+    qtbot.addWidget(host)
+    band = RegionBand(host)
+    qtbot.addWidget(band)
+    assert band.flyoutAnchorRect() is None
+    band.set_band(QRect(10, 20, 50, 40))
+    assert band.flyoutAnchorRect() == QRect(10, 20, 50, 40)
+    band.clear()
+    assert band.flyoutAnchorRect() is None
+
+
+def test_finish_region_keeps_band_visible(qtbot) -> None:
+    """A valid selection keeps the band: the flyout anchors to it.
+
+    Falsification: the pre-change ``_finish_region`` hid the band on every
+    release — ``isHidden()`` is True on that build.
+    """
+    from tabs.image_gallery.ui.quick_look import QuickLookOverlay
+
+    host = QWidget()
+    qtbot.addWidget(host)
+    band = RegionBand(host)
+    qtbot.addWidget(band)
+    band.setGeometry(host.rect())
+
+    overlay = QuickLookOverlay.__new__(QuickLookOverlay)
+    overlay._region_active = True
+    overlay._region_band = band
+    overlay._preview_canvas = None
+    overlay._current_item = None
+
+    band.set_band(QRect(10, 10, 50, 40))
+    band.show()
+    overlay._finish_region(None)
+    assert overlay._region_active is False
+    assert not band.isHidden(), "valid selection must keep the band for the flyout"
+
+    # Too small to ask about: still dropped.
+    overlay._region_active = True
+    band.set_band(QRect(10, 10, 2, 2))
+    band.show()
+    overlay._finish_region(None)
+    assert band.isHidden()
+
+
+def test_on_quick_ask_region_uses_selection_anchor() -> None:
+    """The region flyout anchors to the held band, not the preview corner.
+
+    Falsification: pre-change the anchor was ``_preview_host``/overlay.
+    """
+    from types import SimpleNamespace
+
+    from tabs.image_gallery.ui.quick_look_hooks import on_quick_ask_region
+
+    calls: list[tuple] = []
+    sentinel = object()
+
+    class _Ctrl:
+        def open_ask_ai_region(self, path, box, anchor=None):
+            calls.append((path, box, anchor))
+
+    overlay = SimpleNamespace(
+        region_selection_anchor=lambda: sentinel,
+        _preview_host=None,
+    )
+    owner = SimpleNamespace(
+        _owner_for_triage=lambda: _Ctrl(),
+        _quick_look_overlay=overlay,
+    )
+    box = (0.1, 0.2, 0.3, 0.4)
+    on_quick_ask_region(owner, "/img/a.png", box)
+    assert len(calls) == 1
+    path, got_box, anchor = calls[0]
+    assert path == "/img/a.png"
+    assert got_box == box
+    assert anchor is sentinel
