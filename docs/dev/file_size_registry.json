@@ -1002,7 +1002,7 @@
     },
     {
       "path": "src/tabs/image_gallery/use_cases/triage.py",
-      "lines": 1126,
+      "lines": 1143,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner size=exempt reason=\"thin owner helpers — keep_best/provenance/clean wiring shares one triage lifecycle\"",
@@ -1014,7 +1014,7 @@
     },
     {
       "path": "src/tabs/image_gallery/widget.py",
-      "lines": 2575,
+      "lines": 2583,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner size=exempt reason=\"thin owner delegating to use_cases/triage+carry+quick look; splitting would create helpers bag\"",
@@ -1127,7 +1127,7 @@
     },
     {
       "path": "src/tabs/multi_compare/use_cases/persistence.py",
-      "lines": 419,
+      "lines": 452,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner-target reason=\"TabContract session/restore surface: serialize/deserialize/rehydrate plus entry validation share one module beside the models they validate\"",
