@@ -6,10 +6,12 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any, Callable
+from functools import partial
 
 from PySide6.QtCore import QRectF, Qt
 from PySide6.QtGui import QBrush, QColor, QPainter, QPainterPath, QPixmap
 from PySide6.QtWidgets import QSizePolicy, QWidget
+from sli_ui_toolkit.icons import lazy_icon
 from sli_ui_toolkit.managers import scaled_px
 from sli_ui_toolkit.theme import ThemeManager
 from sli_ui_toolkit.ui.widgets.buttons import ButtonRow, VerticalSplit
@@ -285,7 +287,9 @@ def _cover_region(
     if missing:
         return ButtonRegion(
             id="cover",
-            icon=get_session_picker_icon(SessionPickerIcon.MISSING_WARNING),
+            icon=lazy_icon(
+                partial(get_session_picker_icon, SessionPickerIcon.MISSING_WARNING)
+            ),
             icon_size_px=max(36, icon_size_px),
             weight=weight,
             group="card",
@@ -306,7 +310,7 @@ def _cover_region(
         )
     return ButtonRegion(
         id="cover",
-        icon=icon_for_record(record, context),
+        icon=lazy_icon(partial(icon_for_record, record, context)),
         icon_size_px=icon_size_px,
         weight=weight,
         group="card",

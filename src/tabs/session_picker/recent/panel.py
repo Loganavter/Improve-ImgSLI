@@ -256,8 +256,10 @@ class RecentProjectsPanel(ShelfWidget):
             painter.drawPath(path)
             painter.end()
 
-    def _on_shelf_theme_changed(self) -> None:
-        # ShelfWidget calls this; children may not exist yet during __init__.
+    def on_theme_children(self) -> None:
+        # Runs AFTER ShelfWidget.on_theme_derived() refreshed the chrome, so
+        # every derived colour below is current (order owned by ThemedContainer).
+        # Children may not exist yet during __init__ — guard.
         if getattr(self, "_header", None) is not None:
             self._sync_header_controls()
         self._sync_opaque_fills()
@@ -265,7 +267,6 @@ class RecentProjectsPanel(ShelfWidget):
         items = getattr(self, "_items", None)
         if items is not None:
             items.refresh_selection_accent()
-        super()._on_shelf_theme_changed()
 
     def _header_button_bg(self):
         return self.header_button_bg()

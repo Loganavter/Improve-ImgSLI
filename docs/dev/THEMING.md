@@ -203,6 +203,18 @@ App surfaces on `ThemedWidget` / `ThemedBackgroundContainer` include
 `edit_layout_widget`, `save_buttons_widget` in
 `tabs/image_compare/ui/layout.py`).
 
+**Containers that derive colours for children use `ThemedContainer`**
+(`sli_ui_toolkit.ui.widgets.ThemedContainer`). It splits
+`on_theme_changed()` into an ordered, base-owned sequence —
+`on_theme_derived()` (recompute cached chrome) → `on_theme_children()`
+(re-drive children) → `update()` — so a subclass can never sync children
+before recomputing the chrome it derives their colours from (the shelf
+"children lag one theme" bug, 2026-10-14). Override the two hooks; never
+re-implement the ordering via `super()` in an `on_theme_changed` override.
+For a one-off subtree refresh use
+`sli_ui_toolkit.ui.managers.theme_manager.refresh_theme_subtree(root)`
+(pre-order, parents first).
+
 App dialogs inherit `ThemedDialog`
 (`shared_toolkit/ui/themed_dialog.py`): settings, image_properties, export,
 video_editor. Call `mark_theme_ui_ready()` after building the widget tree;
@@ -248,14 +260,26 @@ def on_theme_changed(self) -> None:
 Full details and confirmed call sites: `docs/dev/KNOWN_BUGS.md` in
 `improve-imgsli-internal-docs` (private).
 
-## Known gotcha: icons must resolve lazily, not eagerly
+## Icons must resolve lazily, not eagerly (enforced)
 
-Pass `AppIcon` enum values (or another lazy handle) into widgets rather
-than eagerly resolving to a `QIcon` at construction time — eager
-resolution freezes the icon at whatever theme was active when the widget
-was built, so it never updates on theme switch. (`session_picker` and
-Help hub cards had exactly this bug; both refresh via `sync_icons` on
-theme change when the icon must stay an eager `QIcon`.)
+Pass a **lazy handle** (`sli_ui_toolkit.icons.lazy_icon(provider)`, or an
+`AppIcon`/tab-icon enum resolved at paint time) into widgets rather than
+eagerly resolving to a `QIcon` at construction time — eager resolution
+freezes the icon at whatever theme was active when the widget was built, so
+it never updates on theme switch. The toolkit's `Button`/`ButtonRegion`
+`icon=` routes through `resolve_icon`, which resolves a lazy handle /
+zero-arg callable at paint time against the live theme; `provider` must
+return a **stable (cached)** `QIcon` (IconService already does) so the
+pixmap cache keys on `icon.cacheKey()` and still hits across paints.
+
+This is now a CI gate, not advice:
+`tests/contracts/test_theme_recolor_contracts.py` fails when a widget caches
+theme-derived state (an eagerly resolved icon, or a token colour) at build
+without re-deriving it in a theme hook. Runtime behaviour is covered by
+`tests/runtime/test_theme_recolor_parity.py`
+(`tests/helpers/theme_parity.py::assert_recolors_on_theme_flip`). Verified
+exemptions (transient menus rebuilt per open, OS tray, user-state colours,
+enum handles) are recorded in the contract test.
 
 ## See also
 

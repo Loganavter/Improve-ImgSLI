@@ -145,8 +145,9 @@ def test_session_picker_refresh_is_noop_when_already_populated(qapp):
 
 
 def test_session_picker_sync_icons_on_theme_change(qapp):
-    """Card icons are eager QIcons; theme switch must re-resolve them."""
+    """Card icons are lazy handles; resolve reflects the live (theme) icon."""
     from PySide6.QtGui import QIcon, QPixmap
+    from sli_ui_toolkit.icons import resolve_icon
 
     light = QIcon()
     light.addPixmap(QPixmap(16, 16))
@@ -173,14 +174,15 @@ def test_session_picker_sync_icons_on_theme_change(qapp):
     widget.refresh()
     card = widget._cards_by_type["image_compare"]
     icon_region = next(r for r in card._regions if r.id == "icon")
-    assert icon_region.icon is light
+    # The region holds a lazy handle, resolved at paint time.
+    assert resolve_icon(icon_region.icon) is light
 
     icons["image_compare"] = dark
+    assert resolve_icon(icon_region.icon) is dark
+    # A theme switch only needs a repaint now; sync_icons is a repaint pass.
     widget.on_theme_changed()
     qapp.processEvents()
-
-    icon_region = next(r for r in card._regions if r.id == "icon")
-    assert icon_region.icon is dark
+    assert resolve_icon(icon_region.icon) is dark
 
 
 def test_session_picker_retranslate_keeps_cards_alive(qapp):

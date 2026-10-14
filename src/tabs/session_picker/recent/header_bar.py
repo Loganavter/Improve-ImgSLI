@@ -13,6 +13,7 @@ from typing import Callable
 from PySide6.QtCore import QEvent, Qt, Signal
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QHBoxLayout, QWidget
+from sli_ui_toolkit.icons import lazy_icon
 from sli_ui_toolkit.widgets import (
     Button,
     ContextMenuAction,
@@ -57,7 +58,7 @@ class RecentHeaderBar(QWidget):
         layout.setSpacing(8)
 
         self.sort_button = Button(
-            icon=get_session_picker_icon(SessionPickerIcon.SORT_BY_MODIFIED),
+            icon=lazy_icon(lambda: get_session_picker_icon(self._sort_mode_icon())),
             text=self._sort_label(),
             variant="default",
             size=(168, 28),
@@ -68,7 +69,13 @@ class RecentHeaderBar(QWidget):
         layout.addWidget(self.sort_button)
 
         self.sort_order_button = Button(
-            icon=get_session_picker_icon(SessionPickerIcon.SORT_DESC),
+            icon=lazy_icon(
+                lambda: get_session_picker_icon(
+                    SessionPickerIcon.SORT_ASC
+                    if self._sort_order == SORT_ASC
+                    else SessionPickerIcon.SORT_DESC
+                )
+            ),
             variant="default",
             size=(28, 28),
             corner_radius=8,
@@ -78,7 +85,13 @@ class RecentHeaderBar(QWidget):
         layout.addWidget(self.sort_order_button)
 
         self.view_button = Button(
-            icon=get_session_picker_icon(SessionPickerIcon.VIEW_GRID),
+            icon=lazy_icon(
+                lambda: get_session_picker_icon(
+                    SessionPickerIcon.VIEW_LIST
+                    if self._view_mode == VIEW_LIST
+                    else SessionPickerIcon.VIEW_GRID
+                )
+            ),
             variant="default",
             size=(28, 28),
             corner_radius=8,
@@ -171,32 +184,24 @@ class RecentHeaderBar(QWidget):
         self._sort_mode = sort_mode
         self._sort_order = sort_order
         self._view_mode = view_mode
+        # Icons are lazy handles resolved at paint time from the live
+        # mode/order/view (and the current theme) — no eager re-set here.
         self.sort_button.setText(self._sort_label())
-        self.sort_button.setIcon(get_session_picker_icon(self._sort_mode_icon()))
         # Exact opaque fill — custom_bg is an 18% tint and cannot lighten
         # a shelf (only darken), so override_bg is required here.
         self.sort_button.set_override_bg_color(chip_bg)
         self.sort_button.setVisible(has_items)
+        self.sort_button.update()
 
-        order_icon = (
-            SessionPickerIcon.SORT_ASC
-            if self._sort_order == SORT_ASC
-            else SessionPickerIcon.SORT_DESC
-        )
-        self.sort_order_button.setIcon(get_session_picker_icon(order_icon))
         self.sort_order_button.setToolTip(self._sort_order_label())
         self.sort_order_button.set_override_bg_color(chip_bg)
         self.sort_order_button.setVisible(has_items)
+        self.sort_order_button.update()
 
-        view_icon = (
-            SessionPickerIcon.VIEW_LIST
-            if self._view_mode == VIEW_LIST
-            else SessionPickerIcon.VIEW_GRID
-        )
-        self.view_button.setIcon(get_session_picker_icon(view_icon))
         self.view_button.setToolTip(self._view_label())
         self.view_button.set_override_bg_color(chip_bg)
         self.view_button.setVisible(has_items)
+        self.view_button.update()
 
     def set_controls_visible(self, visible: bool) -> None:
         self.sort_button.setVisible(visible)
