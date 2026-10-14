@@ -1550,6 +1550,28 @@ class ImageGalleryWidget(QWidget):
     def keyPressEvent(self, event) -> None:  # noqa: N802
         from tabs.image_gallery.use_cases import triage_ui
 
+        # While the toolbar filter has focus, arrows/Home/End belong to the
+        # text field — keep the triage_ui typing guard intact (it also runs
+        # inside handle_key, but navigation would steal the keys first).
+        try:
+            from PySide6.QtWidgets import QApplication
+
+            fw = QApplication.focusWidget()
+            filter_edit = getattr(self, "_filter_edit", None)
+            if fw is not None and fw is filter_edit and event.key() != Qt.Key.Key_Escape:
+                return triage_ui.handle_key(self, event)
+        except Exception:
+            pass
+        # Card-grid navigation (arrows / Home / End / Menu) is owned by the
+        # grid view — mirrors session_picker/recent/items_view. When no card
+        # holds focus yet, an arrow bootstraps onto the first card. Everything
+        # else (Space/Delete remove, Enter compare, Esc, B) stays in triage_ui.
+        try:
+            if self._grid_view.handle_navigation_key(event):
+                event.accept()
+                return
+        except Exception:
+            pass
         return triage_ui.handle_key(self, event)
 
     # -- S3 clean review helpers -----------------------------------------------
