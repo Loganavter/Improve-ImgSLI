@@ -1,0 +1,17 @@
+{
+  "diagnostics": {
+    "title": "报告问题",
+    "summary": "Improve ImgSLI 在本地生成此报告。不会自动上传任何内容——请自行选择「复制」、「保存」或「打开 issue」。",
+    "no_screenshots": "报告中绝不包含屏幕截图、图像或文件内容。",
+    "preview_label": "报告内容（即将复制或附加的确切内容）：",
+    "copy": "复制",
+    "save": "保存…",
+    "open_issue": "打开 issue",
+    "close": "关闭",
+    "save_dialog_title": "保存诊断报告",
+    "action": {
+      "create_report": "创建诊断报告",
+      "create_report_desc": "生成本地诊断报告并选择「复制」/「保存」/「打开 issue」。"
+    }
+  }
+}

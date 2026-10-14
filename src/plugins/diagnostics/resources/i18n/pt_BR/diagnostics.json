@@ -1,0 +1,17 @@
+{
+  "diagnostics": {
+    "title": "Relatar um problema",
+    "summary": "O Improve ImgSLI gera este relatório localmente. Nada é enviado automaticamente — escolha Copiar, Salvar ou Abrir issue você mesmo.",
+    "no_screenshots": "O relatório nunca inclui capturas de tela, imagens ou conteúdo de arquivos.",
+    "preview_label": "Conteúdo do relatório (exatamente o que será copiado ou anexado):",
+    "copy": "Copiar",
+    "save": "Salvar…",
+    "open_issue": "Abrir issue",
+    "close": "Fechar",
+    "save_dialog_title": "Salvar relatório de diagnóstico",
+    "action": {
+      "create_report": "Criar relatório de diagnóstico",
+      "create_report_desc": "Gerar um relatório de diagnóstico local e escolher Copiar / Salvar / Abrir issue."
+    }
+  }
+}
