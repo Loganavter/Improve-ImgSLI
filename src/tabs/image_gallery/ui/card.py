@@ -4,6 +4,7 @@ Thin owner per CODE_PATTERNS.md: construction/wiring + state on Button
 itself (``_gallery_*`` attributes). Bodies live in ``ui/card/*`` helpers
 as plain functions taking the card/owner; no second class, no ad-hoc
 stylesheets — painter pipeline owns visuals. Lazy imports avoid cycles.
+Audit-Meta: pattern=thin-owner-target size=exempt reason="one card factory concern — build + pooled rebind share the region/row/badge layout contract; bodies live in ui/card/*"
 """
 
 from __future__ import annotations
@@ -296,6 +297,15 @@ def build_gallery_card(*args, **kwargs) -> Button:  # type: ignore[no-untyped-de
             card._gallery_owner = owner  # type: ignore[attr-defined]
         except Exception:
             pass
+    # Attach the tab translator to the card ONCE (build time) so the update
+    # path reuses it — the caller no longer has to remember to thread
+    # ``translate=`` into every ``update_gallery_card`` (the omission that left
+    # the SOURCE badge English on rebinds). ``update_gallery_card`` defaults to
+    # this when it is not passed explicitly.
+    try:
+        card._gallery_translate = actual_translate  # type: ignore[attr-defined]
+    except Exception:
+        pass
     try:
         _apply_rejected_visuals(card, actual_item, actual_translate)
     except Exception:
@@ -366,13 +376,25 @@ def _set_card_tooltip(card: Button, item: GalleryItem) -> None:
         pass
 
 
-def update_gallery_card(card: Button, item: GalleryItem, mode: object = None, owner: object = None) -> None:
+def update_gallery_card(
+    card: Button,
+    item: GalleryItem,
+    mode: object = None,
+    owner: object = None,
+    *,
+    translate=None,
+) -> None:
     """In-place update of a live gallery card for ``item``.
 
     *owner* is the explicit triage owner for the mode fallback (threaded
     by callers); the pooled ``_gallery_owner`` attribute is no longer
     consulted (G2 gallery contract). All live callers pass ``mode``
     explicitly, so ``owner=None`` simply skips the fallback (fail-open).
+
+    *translate* is the tab translator (``_tr``); the BUILD path
+    (``build_gallery_card``) already receives it, but the update path did
+    not — so the SOURCE badge and localized text rows stayed English on
+    every rebuild. Thread it through like ``update_gallery_list_card``.
     """
     from tabs.image_gallery.ui.card.dots import _dots_for_item
     from tabs.image_gallery.ui.card.regions import _item_unreadable, _text_rows
@@ -437,11 +459,20 @@ def update_gallery_card(card: Button, item: GalleryItem, mode: object = None, ow
             card.update_region("cover", text="!" if _item_unreadable(item) else "")
         except Exception:
             pass
-    rows = _text_rows(item, translate=None, mode=_mode)
+    _tr = translate
+    if not callable(_tr):
+        # Reuse the translator attached at build time (no per-update threading).
+        _tr = getattr(card, "_gallery_translate", None)
+    if not callable(_tr):
+        try:
+            _tr = getattr(owner, "_tr", None)
+        except Exception:
+            _tr = None
+    rows = _text_rows(item, _tr, mode=_mode)
     card.update_region("text", rows=rows)
     _set_card_tooltip(card, item)
     try:
-        _apply_rejected_visuals(card, item)
+        _apply_rejected_visuals(card, item, _tr)
     except Exception:
         pass
 
