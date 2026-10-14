@@ -50,6 +50,7 @@ Local-only dirs (gitignored, not in repo): `.cursor/` (except committed `.cursor
 | Screenshot a surface / Help figures | [docs/dev/SCREENSHOTS.md](docs/dev/SCREENSHOTS.md) |
 | “Weird after click/zoom” | [docs/dev/TRACING.md](docs/dev/TRACING.md) |
 | Known Qt quirks | [docs/dev/KNOWN_BUGS.md](docs/dev/KNOWN_BUGS.md) |
+| Drive/inspect the app from an LLM agent (MCP tools/resources/prompts) | [docs/dev/MCP.md](docs/dev/MCP.md) |
 | Open engineering debt | [docs/dev/TODO.md](docs/dev/TODO.md) |
 | Code mass / where the code is heavy, reduction plan | [docs/dev/CODE_MASS_REDUCTION.md](docs/dev/CODE_MASS_REDUCTION.md) |
 

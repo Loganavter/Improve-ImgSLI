@@ -1,0 +1,15 @@
+# Improve-ImgSLI app MCP server — dependencies
+#
+# The official Model Context Protocol Python SDK. It speaks protocol revision
+# 2026-07-28 (verified: mcp 2.3.0 ships LATEST_PROTOCOL_VERSION == "2026-07-28")
+# and is the preferred transport for a deployment that can install packages.
+#
+# It is OPTIONAL here: mcp-server/app/protocol.py implements the same stdio
+# JSON-RPC surface with the standard library only, and is what actually runs in
+# this repo's test/agent environment (system Python is PEP 668
+# externally-managed, site-packages is root-owned, so pip cannot install this
+# there — see DONE.md / mcp-server/app/README.md). Install into a writable venv:
+#
+#     python -m venv .mcp-venv && .mcp-venv/bin/pip install -r mcp-server/requirements.txt
+#
+mcp>=2.3
