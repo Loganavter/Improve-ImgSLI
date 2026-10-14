@@ -7,12 +7,12 @@
   "types": {
     "image_compare": "图像比较",
     "multi_compare": "多重比较",
-    "image_gallery": "图库"
+    "image_gallery": "AI 图库"
   },
   "descriptions": {
     "image_compare": "使用分隔线、放大镜和分析工具进行并排图像比较。",
     "multi_compare": "用于同时比较多个来源的网格布局。",
-    "image_gallery": "浏览、整理并审阅相似照片的文件夹。"
+    "image_gallery": "打开相似照片文件夹——AI 与质量指标帮你挑出最佳。"
   },
   "recent": {
     "title": "最近",

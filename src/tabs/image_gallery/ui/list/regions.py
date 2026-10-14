@@ -130,7 +130,7 @@ def _list_meta_rows(item: GalleryItem, translate=None) -> list[ButtonRow]:
     parts = [
         p for p in (_artifacts_text(item, translate), _vlm_text(item, translate)) if p
     ]
-    return [ButtonRow(text=" ".join(parts), size=16, h_align=Qt.AlignmentFlag.AlignRight)]
+    return [ButtonRow(text=" · ".join(parts), size=16, h_align=Qt.AlignmentFlag.AlignRight)]
 
 
 def _thumb_region(item: GalleryItem) -> ButtonRegion:

@@ -305,13 +305,13 @@
       "source": "ORIGEM"
     },
     "list": {
-      "artifacts": "Artefatos",
-      "minor": "Leve",
-      "ok": "OK",
-      "vlm_err": "erro",
-      "vlm_tie_pending": "empate…",
-      "vlm_tie_ok": "empate-ok",
-      "vlm_brief": "resumo"
+      "artifacts": "Tem artefatos",
+      "minor": "Artefatos leves",
+      "ok": "Sem artefatos",
+      "vlm_err": "Erro da IA",
+      "vlm_tie_pending": "IA comparando…",
+      "vlm_tie_ok": "IA comparou",
+      "vlm_brief": "IA descreveu"
     }
   }
 }

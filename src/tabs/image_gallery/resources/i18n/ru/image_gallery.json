@@ -62,8 +62,8 @@
       "read_badge": "Ответ ИИ, не проверено",
       "error": "ИИ не смог ответить.",
       "routing_unavailable": "Маршрутизация пока недоступна.",
-      "images_toggle_hint": "Отправлять изображения вместе с вопросом",
-      "images_toggle_downsample": "Даунсэмплинг: до {px} px",
+      "images_toggle_hint": "Отправляйте изображения вместе с вопросом",
+      "images_toggle_downsample": "Уменьшение: до {px} px",
       "region_prompt": "Что не так в этой области?"
     },
     "series": {
@@ -149,7 +149,7 @@
       "brisque": "Естественность",
       "clipping_delta": "Пересветы к источнику",
       "halo_delta": "Ореолы к источнику",
-      "chroma_fringe_delta": "Хрома к источнику",
+      "chroma_fringe_delta": "Цветность к источнику",
       "composition": "Композиция"
     },
     "artifact": {
@@ -158,7 +158,7 @@
       "over_smoothing": "Детализация",
       "invented_texture": "Текстура",
       "blocking": "Блоки",
-      "chroma_fringing": "Хрома",
+      "chroma_fringing": "Цветность",
       "noise_amplification": "Чистота"
     },
     "ql": {
@@ -256,8 +256,8 @@
       },
       "banding": {
         "good": "плавные градиенты",
-        "mid": "возможен бандинг",
-        "bad": "видимый бандинг"
+        "mid": "возможны полосы",
+        "bad": "видимые полосы"
       },
       "halo": {
         "good": "чистые края",
@@ -305,13 +305,13 @@
       "source": "ИСТОЧНИК"
     },
     "list": {
-      "artifacts": "Дефекты",
-      "minor": "Незначит.",
-      "ok": "ОК",
-      "vlm_err": "ошибка",
-      "vlm_tie_pending": "сравн…",
-      "vlm_tie_ok": "сравнено",
-      "vlm_brief": "кратко"
+      "artifacts": "Есть дефекты",
+      "minor": "Мелкие дефекты",
+      "ok": "Без дефектов",
+      "vlm_err": "ошибка ИИ",
+      "vlm_tie_pending": "ИИ сравнивает…",
+      "vlm_tie_ok": "ИИ сравнил",
+      "vlm_brief": "ИИ описал"
     }
   }
 }
