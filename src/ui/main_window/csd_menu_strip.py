@@ -164,6 +164,13 @@ class CsdMenuRow(Button):
         icon_lead = (
             _ROW_ICON_SIZE + _ROW_ICON_GAP if self._icon_pixmap is not None else 0
         )
+        # Horizontal content padding is widget-wide: the toolkit's row painter
+        # subtracts it from EVERY region rect (``content._rect``), not just the
+        # leading icon+label region. The right region therefore has to carry
+        # the left inset in its own split rect, otherwise the shortcut's
+        # painted width is clipped on the left (``Ctrl+Shift+O`` -> ``hift+O``).
+        content_left = 8 + icon_lead
+        content_right = 8
         shortcut_fm = QFontMetrics(ui_font(pixel_size=_SHORTCUT_PIXEL_SIZE))
         trailing = (
             measure_text_width(shortcut_fm, self._shortcut) + scaled_px(_SHORTCUT_GAP)
@@ -219,15 +226,23 @@ class CsdMenuRow(Button):
                     lambda r: QRectF(
                         r.left(), r.top(), max(0.0, r.width() - trailing), r.height()
                     ),
+                    # Extend the right region left by ``content_left`` so that
+                    # after the painter subtracts the widget-wide content
+                    # padding its usable width is still the full ``trailing``
+                    # slot (measure + gap). Without this the left padding ate
+                    # into the shortcut and the text was clipped on the left.
                     lambda r: QRectF(
-                        r.right() - trailing, r.top(), float(trailing), r.height()
+                        r.right() - trailing - content_left,
+                        r.top(),
+                        float(trailing + content_left),
+                        r.height(),
                     ),
                 ]
             ),
             variant="ghost",
             corner_radius=5,
             size=(0, self.ROW_HEIGHT),
-            content_padding=(8 + icon_lead, 0, 8, 0),
+            content_padding=(content_left, 0, content_right, 0),
             parent=parent,
         )
         self.action_id = action.action_id
