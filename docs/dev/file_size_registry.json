@@ -966,7 +966,7 @@
     },
     {
       "path": "src/tabs/image_gallery/ui/stats_strip.py",
-      "lines": 585,
+      "lines": 597,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=compound-widget size=exempt reason=\"one stats strip — stats/mode/action buttons share one paint/theme lifecycle\"",
@@ -1002,7 +1002,7 @@
     },
     {
       "path": "src/tabs/image_gallery/use_cases/triage.py",
-      "lines": 1143,
+      "lines": 1154,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner size=exempt reason=\"thin owner helpers — keep_best/provenance/clean wiring shares one triage lifecycle\"",

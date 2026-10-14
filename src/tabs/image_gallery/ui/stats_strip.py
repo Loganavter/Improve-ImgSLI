@@ -371,7 +371,14 @@ class StatsStrip(QWidget):
             pass
 
     def set_keep_mode(self, mode: str) -> None:
-        """Flip the keep-mode button label (keep ↔ show)."""
+        """Flip the keep-mode button label (keep ↔ show).
+
+        In "show" mode the button is always actionable (there are rejected
+        items to restore), so it is force-enabled here: the gate
+        (``set_action_states``) may have disabled it *before* the mode flipped
+        (``_refresh_owner_grid`` rebuilds the grid, then sets the mode), leaving
+        a disabled "Show all" button that cannot be clicked.
+        """
         show = str(mode or "keep").strip().lower().startswith("show")
         self._keep_mode = "show" if show else "keep"
         try:
@@ -381,6 +388,11 @@ class StatsStrip(QWidget):
                 self._keep_btn.setText(self._t("image_gallery.action.keep_best", "Keep best"))
         except Exception:
             pass
+        if show:
+            try:
+                self._keep_btn.setEnabled(True)
+            except Exception:
+                pass
 
     def set_action_states(self, *, keep_best: bool, compare_finalists: bool) -> None:
         """Enable/disable Keep best + Compare finalists (dead buttons stay off)."""

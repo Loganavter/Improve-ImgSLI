@@ -892,6 +892,17 @@ def _refresh_owner_grid(owner) -> None:
                     mode_setter("show" if is_keep_best_done(owner) else "keep")
             except Exception:
                 pass
+            # Re-run the action gate AFTER the mode flip. ``rebuild_grid``
+            # above already ran it with the STALE mode ("keep"), where a
+            # keep-best'd series has a single survivor -> the gate disabled the
+            # button; the mode flip then relabelled it "Show all" while leaving
+            # it disabled (the reported dead button).
+            try:
+                refresher = getattr(w, "_refresh_action_states", None)
+                if callable(refresher):
+                    refresher()
+            except Exception:
+                pass
     except Exception:
         pass
 
