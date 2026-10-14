@@ -2542,7 +2542,14 @@ class GalleryController:
         gen = self._folder_gen
         sgen = self._series_gen
         worker.signals.result.connect(lambda res, g=gen, s=sgen: self._on_triage_ready(res, g, s))
-        worker.signals.result.connect(lambda _res, its=list(items): self._mark_local_pass(its, ActivityPhase.DONE))
+        # NOTE: the local "done" badge is NOT stamped here. Triage only clusters
+        # series; the card's quality dots come from the Stage-2 proxy pass
+        # (artifacts/fidelity/camera) started in ``_apply_triage_result`` and
+        # settling 1-2 s later. Stamping done on the triage result made the
+        # badge read "done" while the dots were still stale — the exact
+        # inversion the append path avoids. ``_apply_triage_result`` now stamps
+        # done on the proxy settle (or immediately when there is nothing to
+        # compute). See ``_mark_local_pass`` callers.
         worker.signals.error.connect(lambda err, g=gen: self._on_triage_error(err, g))
         worker.signals.error.connect(lambda _err, its=list(items): self._mark_local_pass(its, None))
         # Triage outranks background thumbnails so the grid labels settle first.
@@ -3175,6 +3182,9 @@ class GalleryController:
             analyses_current = False
         if analyses_current:
             logger.debug("triage tail: analyses unchanged, skipping restarts")
+            # Nothing to compute — retire the local "analyzing" badge now, or it
+            # would stick forever (no proxy settle will fire to stamp done).
+            self._mark_local_pass(list(self.state.items), ActivityPhase.DONE)
         else:
             try:
                 self._last_analysis_fingerprint = fingerprint
@@ -3186,10 +3196,25 @@ class GalleryController:
             # existing apply tails (batched repaint + quick-look hooks);
             # the per-stage entry points above stay working but the tail no
             # longer fans out through them.
+            #
+            # The local "done" badge is gated on this pass settling: the card's
+            # quality dots (artifact severities) are produced here, so stamping
+            # done earlier (on the triage result) showed "done" 1-2 s before the
+            # dots recolored. Same contract as the append path
+            # (``_finish_append_processing`` via ``on_done``).
             try:
-                self._start_proxy_analysis(list(self.state.items), source, mode)
+                self._start_proxy_analysis(
+                    list(self.state.items),
+                    source,
+                    mode,
+                    on_done=lambda: self._mark_local_pass(
+                        list(self.state.items), ActivityPhase.DONE
+                    ),
+                )
             except Exception:
                 logger.debug("proxy analysis start failed", exc_info=True)
+                # Fail-open: never leave the badge stuck in "analyzing".
+                self._mark_local_pass(list(self.state.items), ActivityPhase.DONE)
         # Stage 3: targeted tie-break for top-2 when local metrics within epsilon (badge pending)
         try:
             for ser in series or []:
