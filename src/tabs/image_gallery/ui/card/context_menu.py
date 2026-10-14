@@ -1,4 +1,5 @@
 """Context menu for gallery card — per-card + selection actions (toolkit ContextMenu).
+Audit-Meta: pattern=qdialog-wiring size=exempt reason="one card-menu builder — entry list + per-card context gating (source/reject/group) + monochrome icon tinting share one menu contract; action bodies live in context_actions.py"
 
 Right-click on a card opens a standard toolkit ``ContextMenu`` under the
 cursor (``popup_at(QCursor.pos())``). The menu merges two groups:
@@ -177,6 +178,78 @@ def _selection_label(translate, n: int) -> str:
         return f"{n} selected"
 
 
+def _is_source(owner, path) -> bool:
+    """True when the clicked card is already the series source (fail-open False)."""
+    try:
+        p = str(Path(path))
+    except Exception:
+        return False
+    try:
+        st = getattr(owner, "state", None)
+        src = getattr(st, "source_path", None) if st is not None else None
+        if src is not None:
+            return str(Path(src)) == p
+    except Exception:
+        pass
+    try:
+        from tabs.image_gallery.services.rank_badge import KIND_SOURCE
+        from tabs.image_gallery.use_cases import triage as _triage
+
+        for it in _triage._items_of(owner):
+            if str(Path(getattr(it, "path", ""))) == p:
+                return str(getattr(it, "badge_kind", "")) == KIND_SOURCE
+    except Exception:
+        pass
+    return False
+
+
+def _menu_icon(name):  # type: ignore[no-untyped-def]
+    """Resolve a menu icon tinted to the row-text theme color (monochrome family).
+
+    The toolkit paints ``ContextMenuAction.icon`` verbatim, so icons from
+    mixed sources (brand-blue ``ai.svg``, black ``compare.svg``, white
+    ``delete``/``star``/``check``) rendered as a rainbow in one menu. Tinting
+    them all to ``dialog.text`` — the same color the row paints its label with
+    — makes the menu one monochrome family that tracks the theme. Fail-open:
+    returns *name* unchanged on any error (the toolkit then resolves it as
+    before).
+    """
+    try:
+        from PySide6.QtCore import QSize, Qt
+        from PySide6.QtGui import QColor, QIcon, QPainter, QPixmap
+        from sli_ui_toolkit.icons import resolve_icon
+        from sli_ui_toolkit.managers import ThemeManager
+
+        from ui.theming import try_resolve_theme_color
+
+        c = try_resolve_theme_color(ThemeManager.get_instance(), "dialog.text")
+        if c is None:
+            return name
+        col = c if isinstance(c, QColor) else QColor(c)
+        base = resolve_icon(name)
+        if base is None or base.isNull():
+            return name
+        pm = base.pixmap(QSize(64, 64))
+        if pm.isNull():
+            return name
+        out = QPixmap(pm.size())
+        try:
+            out.setDevicePixelRatio(pm.devicePixelRatio())
+        except Exception:
+            pass
+        out.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(out)
+        try:
+            painter.drawPixmap(0, 0, pm)
+            painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceIn)
+            painter.fillRect(out.rect(), col)
+        finally:
+            painter.end()
+        return QIcon(out)
+    except Exception:
+        return name
+
+
 def popup_gallery_card_context_menu(  # type: ignore[no-untyped-def]
     card,
     owner,
@@ -280,18 +353,18 @@ def popup_gallery_card_context_menu(  # type: ignore[no-untyped-def]
                 ContextMenuAction(
                     "gallery.selection.analyze",
                     _t(translate, "image_gallery.selection.analyze", "Analyze"),
-                    icon=Icon.ANALYZE,
+                    icon=_menu_icon(Icon.ANALYZE),
                     enabled=has_analyze,
                 ),
                 ContextMenuAction(
                     "gallery.selection.find_similar",
                     _t(translate, "image_gallery.selection.find_similar", "Find similar"),
-                    icon="compare.svg",
+                    icon=_menu_icon("compare.svg"),
                 ),
                 ContextMenuAction(
                     "gallery.selection.ask_ai",
                     ask_ai_label,
-                    icon=Icon.AI,
+                    icon=_menu_icon(Icon.AI),
                 ),
             ]
             entries.append(ContextMenuSection(entries=tuple(sel_actions), title=_selection_label(translate, n)))
@@ -315,12 +388,12 @@ def popup_gallery_card_context_menu(  # type: ignore[no-untyped-def]
                 ContextMenuAction(
                     "gallery.make_best",
                     _t(translate, "image_gallery.card.make_best", "Make best"),
-                    icon="star.svg",
+                    icon=_menu_icon("star.svg"),
                 ),
                 ContextMenuAction(
                     "gallery.reject",
                     _reject_label,
-                    icon="close.svg",
+                    icon=_menu_icon("close.svg"),
                 ),
             ]
         )
@@ -328,8 +401,10 @@ def popup_gallery_card_context_menu(  # type: ignore[no-untyped-def]
             ContextMenuAction(
                 "gallery.remove",
                 _t(translate, "image_gallery.card.remove", "Remove from view"),
-                icon="delete",
-                danger=True,
+                # Non-destructive: "remove from view" only drops the card from
+                # the grid (files stay on disk, list-mode parity) — no danger
+                # red on the label/icon.
+                icon=_menu_icon("delete"),
             )
         )
         # Explicit path to UNGROUPED when no tail section exists to drop
@@ -340,7 +415,7 @@ def popup_gallery_card_context_menu(  # type: ignore[no-untyped-def]
                 ContextMenuAction(
                     "gallery.ungroup",
                     _t(translate, "image_gallery.card.ungroup", "Ungroup"),
-                    icon="unlink.svg",
+                    icon=_menu_icon("unlink.svg"),
                 )
             )
         # Reverse path: pin the menu-rule targets into a brand-new manual
@@ -353,20 +428,23 @@ def popup_gallery_card_context_menu(  # type: ignore[no-untyped-def]
                 ContextMenuAction(
                     "gallery.group",
                     _t(translate, "image_gallery.card.group", "Group"),
-                    icon="link.svg",
+                    icon=_menu_icon("link.svg"),
                 )
             )
         entries.extend(per_card)
         # "Make source" is available in every mode: in camera/batch the click
         # switches to fidelity and re-runs the fidelity pass
         # (on_quick_set_source -> select_mode + _start_fidelity_analysis).
-        entries.append(
-            ContextMenuAction(
-                "gallery.set_as_source",
-                _t(translate, "image_gallery.card.make_source", "Make source"),
-                icon="check.svg",
+        # Context-dependent: hidden when the clicked card is ALREADY the
+        # source (setting it again is a no-op).
+        if not _is_source(owner, path):
+            entries.append(
+                ContextMenuAction(
+                    "gallery.set_as_source",
+                    _t(translate, "image_gallery.card.make_source", "Make source"),
+                    icon=_menu_icon("check.svg"),
+                )
             )
-        )
         def _on_triggered(action_id: str, _data: object) -> None:
             try:
                 if action_id == "gallery.selection.analyze":

@@ -3049,6 +3049,7 @@ class GalleryGridView(QWidget):
                     card, item, mode=self._resolve_mode(), translate=self._activity_translate
                 )
             else:
+                # translate rides the card (attached at build) — no per-update threading.
                 update_gallery_card(card, item, mode=self._resolve_mode())  # type: ignore[arg-type]
         except Exception:
             pass
@@ -3179,7 +3180,7 @@ class GalleryGridView(QWidget):
             except Exception:
                 pass
             try:
-                updater(card, item, mode=_mode)  # type: ignore[arg-type]
+                updater(card, item, mode=_mode, translate=self._activity_translate)  # type: ignore[arg-type]
             except Exception:
                 pass
             # Rebind click to current toggle handler (pool may carry old closure).
@@ -3208,6 +3209,7 @@ class GalleryGridView(QWidget):
                 on_activate=self._handle_toggle,
                 on_context_menu=self._handle_context_menu,
                 mode=_mode,
+                translate=self._activity_translate,
             )
         try:
             card._gallery_view_mode = self._view_mode  # type: ignore[attr-defined]
