@@ -109,8 +109,9 @@ def _apply_panel_background(widget) -> None:
     widget, so it fills with the raw Qt ``Window`` palette role. In dark that
     is ``#1e1e1e`` — a near-black hole inside the ``#383838`` card plate
     (Quick Look sidebar + filmstrip, clean-review filmstrip). Route it through
-    ``gallery.panel.background`` (light ``#f5f5f5`` pixel-unchanged / dark
-    ``#303030``) and re-apply on a live theme flip. Never raises.
+    ``gallery.panel.background`` (light ``#ffffff`` / dark ``#303030`` — the
+    flat overlay surface, same token the plate resolves) and re-apply on a
+    live theme flip. Never raises.
     """
     if widget is None:
         return
@@ -128,7 +129,7 @@ def _apply_panel_background(widget) -> None:
 
             col = _token_color(
                 "gallery.panel.background",
-                "#f5f5f5" if not _is_dark_theme() else "#303030",
+                "#ffffff" if not _is_dark_theme() else "#303030",
             )
             if col is None:
                 return
