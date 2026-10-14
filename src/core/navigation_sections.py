@@ -19,6 +19,8 @@ from PySide6.QtWidgets import QWidget
 
 from sli_ui_toolkit.managers import widget_label
 
+from core.nav_debug import nav_debug
+
 logger = logging.getLogger("ImproveImgSLI")
 
 
@@ -70,7 +72,7 @@ class SessionPickerSection:
         cards = self._page._card_entries()
         card_idx = next((i for i, (_, c) in enumerate(cards) if c is widget), None)
 
-        logger.debug(
+        nav_debug(
             "[nav-card] navigate key=%s widget=%s card_idx=%s cards=%d",
             key, widget_label(widget), card_idx, len(cards),
         )
@@ -78,14 +80,14 @@ class SessionPickerSection:
         if key == Qt.Key.Key_Down:
             if card_idx is None:
                 if cards:
-                    logger.debug(
+                    nav_debug(
                         "[nav-card] Down from non-card → first card (%s)",
                         widget_label(cards[0][1]),
                     )
                     cards[0][1].setFocus(_focus_reason())
                     return True
             elif card_idx < len(cards) - 1:
-                logger.debug(
+                nav_debug(
                     "[nav-card] Down card[%d] → card[%d]", card_idx, card_idx + 1
                 )
                 cards[card_idx + 1][1].setFocus(_focus_reason())
@@ -94,28 +96,28 @@ class SessionPickerSection:
             recent = getattr(self._page, "_recent_panel", None)
             if recent is not None and recent.isVisible():
                 if recent.focus_header_control(True):
-                    logger.debug("[nav-card] Down past last card → shelf header")
+                    nav_debug("[nav-card] Down past last card → shelf header")
                     return True
                 if recent.focus_recent_item(True):
-                    logger.debug("[nav-card] Down past last card → first recent item")
+                    nav_debug("[nav-card] Down past last card → first recent item")
                     return True
             # No recent panel — yield to next section.
-            logger.debug("[nav-card] Down past last card → yield (no shelf)")
+            nav_debug("[nav-card] Down past last card → yield (no shelf)")
             return False
 
         if key == Qt.Key.Key_Up:
             if card_idx is None:
-                logger.debug("[nav-card] Up from non-card → yield")
+                nav_debug("[nav-card] Up from non-card → yield")
                 return False
             if card_idx > 0:
-                logger.debug(
+                nav_debug(
                     "[nav-card] Up card[%d] → card[%d]", card_idx, card_idx - 1
                 )
                 cards[card_idx - 1][1].setFocus(_focus_reason())
                 return True
             # At first card — yield so NavigationManager can hand off to
             # the tab strip (the section above).
-            logger.debug("[nav-card] Up from first card → yield to tab strip")
+            nav_debug("[nav-card] Up from first card → yield to tab strip")
             return False
 
         # Left/Right: single-column list, nothing horizontal to navigate.
@@ -197,7 +199,7 @@ class TabStripSection:
         return False
 
     def navigate(self, key: int, widget: QWidget) -> bool:
-        logger.debug(
+        nav_debug(
             "[nav-tab] navigate key=%s widget=%s",
             key, widget_label(widget),
         )

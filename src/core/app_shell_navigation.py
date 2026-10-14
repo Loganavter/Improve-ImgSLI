@@ -25,6 +25,8 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
+from core.nav_debug import nav_debug
+
 if TYPE_CHECKING:
     from PySide6.QtWidgets import QWidget
 
@@ -51,7 +53,7 @@ def register_app_shell_navigation(window: "QWidget") -> None:
         from ui.main_window.title_bar_navigation import TitleBarNavigationSection
 
         nav_manager.register(title_bar, TitleBarNavigationSection(title_bar))
-        logger.debug("[nav-titlebar] registered title bar section")
+        nav_debug("[nav-titlebar] registered title bar section")
 
     # 2. Workspace tab strip — second in visual hierarchy.
     tab_strip = getattr(window.ui, "workspace_tabs", None) if hasattr(window, "ui") else None
@@ -59,7 +61,7 @@ def register_app_shell_navigation(window: "QWidget") -> None:
         from core.navigation_sections import TabStripSection
 
         nav_manager.register(tab_strip, TabStripSection(tab_strip))
-        logger.debug("[nav-tabstrip] registered tab strip section")
+        nav_debug("[nav-tabstrip] registered tab strip section")
 
     # 3. Session picker — register LAST (bottom of visual hierarchy).
     #    Must be after title_bar and tab_strip to preserve the top-to-bottom
@@ -72,4 +74,4 @@ def register_app_shell_navigation(window: "QWidget") -> None:
         from core.navigation_sections import SessionPickerSection
 
         nav_manager.register(_picker_page, SessionPickerSection(_picker_page))
-        logger.debug("[nav-picker] registered session picker section")
+        nav_debug("[nav-picker] registered session picker section")

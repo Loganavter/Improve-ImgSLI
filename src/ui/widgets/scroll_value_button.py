@@ -38,6 +38,7 @@ from sli_ui_toolkit.widgets import (
     VerticalSplit,
 )
 
+from ui.host_debug import scroll_value_debug
 from ui.icon_manager import get_app_icon
 
 logger = logging.getLogger("ImproveImgSLI")
@@ -395,15 +396,15 @@ class ScrollValueButton(Button):
     def set_value(self, value: int, emit: bool = True) -> None:
         clamped = max(self._min_value, min(self._max_value, int(value)))
         if clamped == self._value:
-            logger.debug("[scroll-value] set_value noop %s→%s emit=%s widget=%s", self._value, clamped, emit, type(self).__name__)
+            scroll_value_debug("set_value noop %s→%s emit=%s widget=%s", self._value, clamped, emit, type(self).__name__)
             return
         old = self._value
         self._value = clamped
-        logger.debug("[scroll-value] set_value %s→%s emit=%s widget=%s reason=%s", old, clamped, emit, id(self), "api")
+        scroll_value_debug("set_value %s→%s emit=%s widget=%s reason=%s", old, clamped, emit, id(self), "api")
         self.setUnderlineThickness(self._underline_thickness_for_value(clamped))
         self._sync_regions()
         if emit:
-            logger.debug("[scroll-value] valueChanged emit %s widget=%s", clamped, id(self))
+            scroll_value_debug("valueChanged emit %s widget=%s", clamped, id(self))
             if clamped == 0:
                 try:
                     import traceback
@@ -474,7 +475,7 @@ class ScrollValueButton(Button):
 
     def wheelEvent(self, event) -> None:  # noqa: N802
         delta = event.angleDelta().y()
-        logger.debug("[scroll-value] wheelEvent delta=%s value=%s widget=%s", delta, self._value, id(self))
+        scroll_value_debug("wheelEvent delta=%s value=%s widget=%s", delta, self._value, id(self))
         if not delta:
             super().wheelEvent(event)
             return
@@ -483,14 +484,14 @@ class ScrollValueButton(Button):
 
     def keyPressEvent(self, event) -> None:  # noqa: N802
         key = event.key()
-        logger.debug("[scroll-value] keyPressEvent key=%s edit_active=%s value=%s widget=%s", key, self._keyboard_edit_active, self._value, id(self))
+        scroll_value_debug("keyPressEvent key=%s edit_active=%s value=%s widget=%s", key, self._keyboard_edit_active, self._value, id(self))
         # Enter toggles keyboard edit mode — arrows only adjust value after
         # explicit activation, otherwise they navigate (Left/Right → next
         # button, Up/Down → next row). This prevents swallowing navigation
         # without user intent and keeps flyouts open.
         if key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
             self._keyboard_edit_active = not self._keyboard_edit_active
-            logger.debug("[scroll-value] Enter toggle edit_active→%s widget=%s", self._keyboard_edit_active, id(self))
+            scroll_value_debug("Enter toggle edit_active→%s widget=%s", self._keyboard_edit_active, id(self))
             # Show flyout when entering edit mode so value is visible
             if self._keyboard_edit_active:
                 self._show_flyout()
@@ -505,7 +506,7 @@ class ScrollValueButton(Button):
             self.update()
             return
         if key == Qt.Key.Key_Escape:
-            logger.debug("[scroll-value] Escape edit_active=%s widget=%s", self._keyboard_edit_active, id(self))
+            scroll_value_debug("Escape edit_active=%s widget=%s", self._keyboard_edit_active, id(self))
             if self._keyboard_edit_active:
                 self._keyboard_edit_active = False
                 self._hide_flyout()
@@ -517,13 +518,13 @@ class ScrollValueButton(Button):
             # Even when not in edit mode, Escape should hide the preview flyout
             # (e.g. after wheel) and not propagate to close unrelated flyouts
             if self._flyout is not None and self._flyout.isVisible():
-                logger.debug("[scroll-value] Escape hide preview widget=%s", id(self))
+                scroll_value_debug("Escape hide preview widget=%s", id(self))
                 self._hide_flyout()
                 event.accept()
                 return
         # Split forbidden pairs (Down+Right, Up+Left) — see test_no_arrow_key_redirection
         if key in (Qt.Key.Key_Left, Qt.Key.Key_Down):
-            logger.debug("[scroll-value] arrow key=%s edit_active=%s widget=%s", key, self._keyboard_edit_active, id(self))
+            scroll_value_debug("arrow key=%s edit_active=%s widget=%s", key, self._keyboard_edit_active, id(self))
             if not self._keyboard_edit_active:
                 super().keyPressEvent(event)
                 return
@@ -531,7 +532,7 @@ class ScrollValueButton(Button):
             event.accept()
             return
         elif key in (Qt.Key.Key_Right, Qt.Key.Key_Up):
-            logger.debug("[scroll-value] arrow key=%s edit_active=%s widget=%s", key, self._keyboard_edit_active, id(self))
+            scroll_value_debug("arrow key=%s edit_active=%s widget=%s", key, self._keyboard_edit_active, id(self))
             if not self._keyboard_edit_active:
                 super().keyPressEvent(event)
                 return
@@ -556,7 +557,7 @@ class ScrollValueButton(Button):
     def _step_value(self, step: int) -> None:
         old = self._value
         new_value = max(self._min_value, min(self._max_value, self._value + step))
-        logger.debug("[scroll-value] _step_value step=%s %s→%s edit_active=%s widget=%s", step, old, new_value, self._keyboard_edit_active, id(self))
+        scroll_value_debug("_step_value step=%s %s→%s edit_active=%s widget=%s", step, old, new_value, self._keyboard_edit_active, id(self))
         self.set_value(new_value)
         self._show_flyout()
 

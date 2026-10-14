@@ -88,7 +88,16 @@ Env-gated streams following the canonical unique-prefix recipe:
 - `IMGSLI_MULTI_COMPARE_DEBUG` / `IMGSLI_MC_DEBUG` → `[mc-dnd]` drag/drop routing + `[mc-zoom]` wheel-tick diagnostics (`src/tabs/multi_compare/debug.py:mc_dnd_debug`): each wheel tick also records an `invalidate.mc_zoom_tick` marker (tick id only, no timing) into the per-frame `FrameContext`; the existing `[mc-dnd]` tick log is untouched — the bus record is additive.
 - MC decision bus (no env gate — record-only, same as IC): `MultiCompareRhiRenderer.frame_context` (`src/tabs/multi_compare/scene/renderer.py`, shared `engine.frame.context`, reset per `render()` incl. early-skip paths) records `prepare_frame` (ran/skipped), `resourceUpdate`, `mips`, `lod_commit`/`realize_slots` (`scene/passes/residency.py`), `fallback`/`coverage`/`submit` (`scene/passes/base_images.py`), `overlay.*` (feature passes), `invalidate.mc_zoom_tick` (wheel) and `invalidate.cascade_deferred` (mips deferral). Every `ids[0]` is `frame=N` (`make_ids`); the frozen per-frame copy surfaces via `snapshot_last_frame` (test hook; pilot: `src/tabs/multi_compare/tests/render/test_frame_context_pilot.py`). Existing `mc_dnd_debug`/`mc_first_frame` (`IMGSLI_MC_FIRST_FRAME_DEBUG`) logs stay as-is.
 - `IMGSLI_AUTOCROP_DEBUG` → `[autocrop-debug]` auto-crop diagnostics (`src/shared/image_processing/autocrop/debug.py`; consumed at load/presentation sites).
-- `UI_NAV_DEBUG` → nav routing diagnostics (`src/events/router.py` + `src/events/app_event_handler.py`): standalone, needs neither `--debug` nor toolkit debug flags.
+- `UI_NAV_DEBUG` → nav routing diagnostics (`src/events/router.py` + `src/events/app_event_handler.py`): standalone, needs neither `--debug` nor toolkit debug flags. Since 2026-10-14 also gates the host shell section traces via `src/core/nav_debug.py` — `[nav-titlebar]`/`[nav-tabstrip]`/`[nav-picker]` (`core/app_shell_navigation.py`) and `[nav-card]`/`[nav-tab]` (`core/navigation_sections.py`). One flag for the whole nav firehose, never a fork.
+- `IMGSLI_TRANSIENT_DEBUG` → `[transient]` lazy tab-service resolution (`src/ui/managers/transient_ui_manager.py`) + `[transient-close]` flyout close sweeps (`src/ui/managers/transient_ui_parts/closing.py`), via `src/ui/host_debug.py`.
+- `IMGSLI_CTX_MENU_DEBUG` → `[ctx-menu]` open/hide/outside-close routing (`src/ui/context_menu/manager.py`, `src/ui/presenters/main_window/connections.py`), via `src/ui/host_debug.py`.
+- `IMGSLI_WORKSPACE_DEBUG` → `[workspace-transition]` tab-switch cover lifecycle (`src/ui/presenters/main_window/workspace.py`, `src/ui/main_window/workspace_transition_mask.py`, `src/ui/main_window/layouts.py`), via `src/ui/host_debug.py`.
+- `IMGSLI_LAYOUT_DEBUG` → `[layout-tree]` main-window widget-tree dump (`src/ui/main_window/lifecycle.py`, `_log_layout_summary`): the tree is not even built when the flag is unset.
+- `IMGSLI_STARTUP_DEBUG` → `[startup]` main-window startup pipeline steps + post-show drain passes (`src/ui/main_window/lifecycle.py`), via `src/ui/host_debug.py`.
+- `IMGSLI_RHI_PRIMER_DEBUG` → `[rhi-primer]` one-shot top-level RHI surface primer (`src/ui/canvas_infra/rhi/rhi_backend.py`), via `src/ui/host_debug.py`.
+- `IMGSLI_SCROLL_VALUE_DEBUG` → `[scroll-value]` scroll-value control set/wheel/key stepping (`src/ui/widgets/scroll_value_button.py`), via `src/ui/host_debug.py` (fires on every wheel tick, so never wire to global DEBUG).
+- `IMGSLI_CAPABILITY_DEBUG` → `[startup-service]` startup capability routing (`src/tabs/use_cases/capability_routing.py:create_startup_service`, local `_startup_service_debug`): one line per capability lookup.
+- `IMGSLI_FLYOUT_DEBUG` also gates the `[flyout-debug]` font-apply trace in `src/shared_toolkit/ui/managers/font_manager.py` (gated inline with `shared/debug_flags.env_flag`; that module stays free of `ui.*` imports).
 
 ### Full env-flag registry (audit 2026-09-20, reorg waves W1–W3)
 
@@ -106,7 +115,16 @@ log lines only; `visual` = changes pixels; `dump` = writes capture files;
 | `IMGSLI_RESIZE_DEBUG` | log | `env_flag` | `src/engine/cache/render_debug.py`, `src/ui/main_window/runtime.py` |
 | `IMGSLI_RESIZE_DEBUG_VISUAL` | visual | `env_flag` | `src/ui/main_window/runtime.py` |
 | `IMGSLI_RESIZE_SHIELD` | behavior | `env_flag` | `src/ui/main_window/runtime.py` |
-| `IMGSLI_FLYOUT_DEBUG` | log | `env_flag` | `src/ui/widgets/flyout_debug.py` |
+| `IMGSLI_FLYOUT_DEBUG` | log | `env_flag` | `src/ui/widgets/flyout_debug.py`; also gates `[flyout-debug]` in `src/shared_toolkit/ui/managers/font_manager.py` |
+| `UI_NAV_DEBUG` | log | `env_flag` (router sets sub-logger level) | `src/events/router.py`, `src/events/app_event_handler.py`, `src/core/nav_debug.py` (consumers `core/app_shell_navigation.py`, `core/navigation_sections.py`) |
+| `IMGSLI_TRANSIENT_DEBUG` | log | `env_flag` | `src/ui/host_debug.py` (`ui/managers/transient_ui_manager.py`, `ui/managers/transient_ui_parts/closing.py`) |
+| `IMGSLI_CTX_MENU_DEBUG` | log | `env_flag` | `src/ui/host_debug.py` (`ui/context_menu/manager.py`, `ui/presenters/main_window/connections.py`) |
+| `IMGSLI_WORKSPACE_DEBUG` | log | `env_flag` | `src/ui/host_debug.py` (`ui/presenters/main_window/workspace.py`, `ui/main_window/workspace_transition_mask.py`, `ui/main_window/layouts.py`) |
+| `IMGSLI_LAYOUT_DEBUG` | log | `env_flag` | `src/ui/host_debug.py` (`ui/main_window/lifecycle.py`) |
+| `IMGSLI_STARTUP_DEBUG` | log | `env_flag` | `src/ui/host_debug.py` (`ui/main_window/lifecycle.py`) |
+| `IMGSLI_RHI_PRIMER_DEBUG` | log | `env_flag` | `src/ui/host_debug.py` (`ui/canvas_infra/rhi/rhi_backend.py`) |
+| `IMGSLI_SCROLL_VALUE_DEBUG` | log | `env_flag` | `src/ui/host_debug.py` (`ui/widgets/scroll_value_button.py`) |
+| `IMGSLI_CAPABILITY_DEBUG` | log | `env_flag` | `src/tabs/use_cases/capability_routing.py` (`[startup-service]`) |
 | `IMGSLI_TILE_DUMP` | dump | cached at import (restart to toggle) | `src/engine/cache/tile_debug.py` |
 | `IMGSLI_GALLERY_DEBUG` | log | `env_flag` | `src/tabs/image_gallery/debug.py` |
 | `IMGSLI_IMAGE_COMPARE_DEBUG` / `IMGSLI_IC_DEBUG` | log | `env_flag` (aliases, same gate) | `src/tabs/image_compare/debug.py` |

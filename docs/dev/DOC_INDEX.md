@@ -49,7 +49,8 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
   Referenced by: [docs/dev/ACTIONS.md](ACTIONS.md), [docs/dev/HELP_STYLE_GUIDE.md](HELP_STYLE_GUIDE.md), [docs/dev/PLUGINS.md](PLUGINS.md), [docs/dev/README.md](README.md), [docs/dev/RESOURCES_I18N.md](RESOURCES_I18N.md), [docs/dev/SCREENSHOTS.md](SCREENSHOTS.md), [docs/dev/TODO.md](TODO.md), [docs/dev/plugins/help-per-owner-plan.md](plugins/help-per-owner-plan.md), [docs/dev/plugins/help.md](plugins/help.md), [docs/dev/tabs/capability-mechanisms.md](tabs/capability-mechanisms.md)
 - **[Help web-canon refactor — plan](HELP_WEBCANON_PLAN.md)** — `docs/dev/HELP_WEBCANON_PLAN.md`
 - **[Logging](LOGGING.md)** — `docs/dev/LOGGING.md`
-  Referenced by: [docs/dev/README.md](README.md), [docs/dev/SETTINGS_PERSISTENCE.md](SETTINGS_PERSISTENCE.md), [docs/dev/TRACING.md](TRACING.md), [docs/dev/toast_stuck_session_report.md](toast_stuck_session_report.md)
+  Referenced by: [docs/dev/MCP.md](MCP.md), [docs/dev/README.md](README.md), [docs/dev/SETTINGS_PERSISTENCE.md](SETTINGS_PERSISTENCE.md), [docs/dev/TRACING.md](TRACING.md), [docs/dev/toast_stuck_session_report.md](toast_stuck_session_report.md)
+- **[MCP server (app control)](MCP.md)** — `docs/dev/MCP.md`
 - **[Plugin lifecycle](PLUGINS.md)** — `docs/dev/PLUGINS.md`
   Referenced by: [docs/dev/ARCHITECTURE.md](ARCHITECTURE.md), [docs/dev/EVENT_BUS.md](EVENT_BUS.md), [docs/dev/README.md](README.md), [docs/dev/RESOURCES_I18N.md](RESOURCES_I18N.md), [docs/dev/STORE.md](STORE.md), [docs/dev/THEMING.md](THEMING.md), [docs/dev/plugins/export.md](plugins/export.md), [docs/dev/plugins/image_properties.md](plugins/image_properties.md), [docs/dev/plugins/index.md](plugins/index.md), [docs/dev/plugins/layout.md](plugins/layout.md), [docs/dev/plugins/onboarding.md](plugins/onboarding.md), [docs/dev/plugins/settings.md](plugins/settings.md)
 - **[Presenter layer](PRESENTERS.md)** — `docs/dev/PRESENTERS.md`
@@ -58,6 +59,7 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
 - **[Resources & i18n](RESOURCES_I18N.md)** — `docs/dev/RESOURCES_I18N.md`
   Referenced by: [docs/dev/DIALOGS.md](DIALOGS.md), [docs/dev/HELP_SYSTEM.md](HELP_SYSTEM.md), [docs/dev/README.md](README.md), [docs/dev/tabs/package-structure.md](tabs/package-structure.md)
 - **[Screenshots](SCREENSHOTS.md)** — `docs/dev/SCREENSHOTS.md`
+  Referenced by: [docs/dev/MCP.md](MCP.md)
 - **[Settings persistence](SETTINGS_PERSISTENCE.md)** — `docs/dev/SETTINGS_PERSISTENCE.md`
   Referenced by: [docs/dev/CONTRACTS.md](CONTRACTS.md), [docs/dev/README.md](README.md), [docs/dev/plugins/settings.md](plugins/settings.md)
 - **[image_compare State Slot Manifest](STATE_SLOT_MANIFEST.md)** — `docs/dev/STATE_SLOT_MANIFEST.md`
@@ -72,11 +74,11 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
 - **[Development TODO](TODO.md)** — `docs/dev/TODO.md`
   Referenced by: [docs/dev/ACTIONS.md](ACTIONS.md), [docs/dev/CODE_MASS_REDUCTION.md](CODE_MASS_REDUCTION.md), [docs/dev/README.md](README.md), [docs/dev/tabs/background-tab-policy.md](tabs/background-tab-policy.md)
 - **[Runtime Tracer](TRACING.md)** — `docs/dev/TRACING.md`
-  Referenced by: [docs/dev/LOGGING.md](LOGGING.md), [docs/dev/README.md](README.md), [docs/dev/STORE.md](STORE.md), [docs/dev/rendering/zoom-pan.md](rendering/zoom-pan.md)
+  Referenced by: [docs/dev/LOGGING.md](LOGGING.md), [docs/dev/MCP.md](MCP.md), [docs/dev/README.md](README.md), [docs/dev/STORE.md](STORE.md), [docs/dev/rendering/zoom-pan.md](rendering/zoom-pan.md)
 - **[UI Inspector](UI_INSPECTOR.md)** — `docs/dev/UI_INSPECTOR.md`
   Referenced by: [docs/dev/README.md](README.md), [docs/dev/THEMING.md](THEMING.md), [docs/dev/UI_LAYOUT_DUMP.md](UI_LAYOUT_DUMP.md)
 - **[UI layout dump](UI_LAYOUT_DUMP.md)** — `docs/dev/UI_LAYOUT_DUMP.md`
-  Referenced by: [docs/dev/ACTIONS.md](ACTIONS.md), [docs/dev/README.md](README.md)
+  Referenced by: [docs/dev/ACTIONS.md](ACTIONS.md), [docs/dev/MCP.md](MCP.md), [docs/dev/README.md](README.md)
 - **[UI Toolkit Library (app-side boundary)](UI_TOOLKIT_LIBRARY.md)** — `docs/dev/UI_TOOLKIT_LIBRARY.md`
   Referenced by: [docs/dev/DIALOGS.md](DIALOGS.md), [docs/dev/README.md](README.md)
 - **[Session report: stuck loading toast — from dead manager to leaked inflight alias](toast_stuck_session_report.md)** — `docs/dev/toast_stuck_session_report.md`

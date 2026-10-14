@@ -7,6 +7,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ui.host_debug import workspace_transition_debug
+
 logger = logging.getLogger("ImproveImgSLI")
 
 
@@ -169,9 +171,8 @@ class LayoutComposer:
         transition_mask = WorkspaceTransitionMask(real_window)
         real_window._workspace_transition_mask = transition_mask
         ui.main_window._workspace_transition_mask = transition_mask
-        logger.debug(
-            "[workspace-transition] compose attached mask id=%s "
-            "real_window=%r app_host=%r",
+        workspace_transition_debug(
+            "compose attached mask id=%s real_window=%r app_host=%r",
             id(transition_mask),
             type(real_window).__name__,
             type(ui.main_window).__name__,

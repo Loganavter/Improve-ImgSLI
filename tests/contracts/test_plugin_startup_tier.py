@@ -29,6 +29,7 @@ def test_bootstrap_and_deferred_plugin_sets_are_disjoint():
     deferred = {e.plugin_name for e in entries if e.startup_tier == "deferred"}
     assert bootstrap == {
         "comparison",
+        "diagnostics",
         "layout",
         "onboarding",
         "session_picker",

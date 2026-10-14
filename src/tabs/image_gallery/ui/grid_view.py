@@ -466,6 +466,54 @@ class _CardKeyFilter(QObject):
         return False
 
 
+class GalleryGridNavSection:
+    """``NavigationSection`` for the gallery card grid (NavigationManager).
+
+    Registered by ``ImageGalleryTab`` under the grid view so the app-wide
+    ``NavigationManager`` owns arrow consumption on cards and can trial-dispatch
+    an edge press to the neighbouring section (the toolbar above the grid → an
+    Up at the first row hands off; Down from the toolbar enters the grid).
+    Left/Right are opted into here (``extra_keys``) because the grid is a real
+    2D layout: the manager routes all four arrows to :meth:`navigate`, and a
+    row-edge press declines (``False``) instead of being remapped.
+
+    ``owns`` claims only live cards — never the toolbar, series headers or the
+    host — so the toolbar rows section and this one stay disjoint.
+    """
+
+    def __init__(self, view: "GalleryGridView") -> None:
+        self._view = view
+
+    @property
+    def extra_keys(self) -> frozenset:
+        # Grid layout legitimately maps all four arrows spatially.
+        return frozenset({Qt.Key.Key_Left, Qt.Key.Key_Right})
+
+    def owns(self, widget) -> bool:
+        try:
+            return widget in set(self._view._cards_by_path.values())
+        except Exception:
+            return False
+
+    def navigate(self, key: int, widget) -> bool:
+        try:
+            return bool(self._view.move_focus(key))
+        except Exception:
+            return False
+
+    def focus_first(self, ref_x=None, *, reason):
+        try:
+            return bool(self._view.focus_first_card(reason=reason))
+        except Exception:
+            return False
+
+    def focus_last(self, ref_x=None, *, reason):
+        try:
+            return bool(self._view.focus_last_card(reason=reason))
+        except Exception:
+            return False
+
+
 class _SeriesHeaderAccentLayer(Layer):
     """Section bar painted on the header button's own left edge.
 
@@ -872,6 +920,14 @@ class GalleryGridView(QWidget):
             self.set_fill_color(_grid_substrate_color())
         except Exception:
             pass
+        # NavigationManager section (registered by the tab on activate): the
+        # grid owns arrow keys on live cards + cross-section trial-dispatch.
+        self._nav_section = GalleryGridNavSection(self)
+
+    @property
+    def nav_section(self) -> "GalleryGridNavSection":
+        """The ``NavigationSection`` describing the card grid's arrows."""
+        return self._nav_section
 
     def _disconnect_theme_slots(self, _obj=None) -> None:
         """Drop all ``theme_changed`` slots owned by this view (teardown).
@@ -970,7 +1026,7 @@ class GalleryGridView(QWidget):
             return
         # Capture keyboard focus BEFORE the pool teardown (cards are destroyed
         # and rebuilt in the new builder) so it returns to the same path.
-        _focus_path = self._capture_focus_path()
+        _focus_snapshot = self._focus_snapshot()
         try:
             series = list(self._series) if self._series is not None else None
             hubs = list(self._hub_names)
@@ -1019,7 +1075,7 @@ class GalleryGridView(QWidget):
             self.items_layout.activate()
         except Exception:
             logger.debug("set_view_mode: layout activate failed", exc_info=True)
-        self._restore_focus_path(_focus_path)
+        self._restore_focus(_focus_snapshot)
 
     def _card_height_px(self) -> int:
         return scaled_px(LIST_CARD_H) if self._view_mode == VIEW_LIST else scaled_px(GALLERY_CARD_H)
@@ -1497,35 +1553,43 @@ class GalleryGridView(QWidget):
         except Exception:
             pass
 
-    def focus_card(self, card) -> bool:
-        """Grant keyboard focus to *card* and reveal it. False on failure."""
+    def focus_card(self, card, reason=None) -> bool:
+        """Grant keyboard focus to *card* and reveal it. False on failure.
+
+        *reason* (a ``NavigationSection.focus_first/focus_last`` grant) wins;
+        otherwise the ring modality comes from
+        ``NavigationManager.current_focus_reason()`` — never a literal
+        ``OtherFocusReason``.
+        """
         if card is None:
             return False
+        grant = reason if reason is not None else self._focus_reason()
         try:
-            card.setFocus(self._focus_reason())
+            card.setFocus(grant)
         except Exception:
             try:
-                card.setFocus(Qt.FocusReason.OtherFocusReason)
+                card.setFocus(self._focus_reason())
             except Exception:
                 return False
         self.ensure_card_visible(card)
         return True
 
-    def focus_first_card(self) -> bool:
+    def focus_first_card(self, reason=None) -> bool:
         cards = self._live_cards_in_order()
-        return self.focus_card(cards[0]) if cards else False
+        return self.focus_card(cards[0], reason=reason) if cards else False
 
-    def focus_last_card(self) -> bool:
+    def focus_last_card(self, reason=None) -> bool:
         cards = self._live_cards_in_order()
-        return self.focus_card(cards[-1]) if cards else False
+        return self.focus_card(cards[-1], reason=reason) if cards else False
 
     def move_focus(self, key) -> bool:
         """Move focus one step for *key*: 2D in grid, Up/Down in list.
 
         Left/Right step one card; Up/Down step one row (``nav_columns_for``
-        respects side-by-side bands; list mode is one column). Edge presses
-        keep focus put but stay consumed so the host scroll area never
-        steals the arrow. With no focused card, focuses the first one.
+        respects side-by-side bands; list mode is one column). At an edge the
+        key is **not consumed** — ``False`` lets NavigationManager's
+        trial-dispatch (or an ancestor handler) take over; arrows are never
+        "yours to keep". With no focused card, focuses the first one.
         """
         cards = self._live_cards_in_order()
         if not cards:
@@ -1552,7 +1616,7 @@ class GalleryGridView(QWidget):
         target = idx + step
         if target < 0 or target >= len(cards):
             self.ensure_card_visible(cur)
-            return True
+            return False
         return self.focus_card(cards[target])
 
     def _activate_card(self, card) -> bool:
@@ -1649,25 +1713,53 @@ class GalleryGridView(QWidget):
             pass
         super().keyPressEvent(event)
 
-    def _capture_focus_path(self) -> str | None:
-        """Path of the currently focused card (survives a rebuild)."""
+    def _focus_snapshot(self):
+        """(path, order index) of the focused card — restored after a rebind.
+
+        The path re-focuses the same card when it survives a rebuild; the
+        index is the fallback when the focused card itself was removed
+        (Space/Delete) — focus then lands on the nearest still-live card
+        instead of dropping to the hosting widget (``RecentItemsView``
+        parity, ``_restore_focus_after_recycle``).
+        """
         card = self.focused_card()
         if card is None:
-            return None
+            return (None, None)
         path = _card_drag_path(card)
-        return str(path) if path is not None else None
-
-    def _restore_focus_path(self, str_path: str | None) -> None:
-        """Re-focus *str_path*'s card after a rebuild (focus continuity)."""
-        if not str_path:
-            return
         try:
-            card = self._cards_by_path.get(str_path)
-            if card is not None and card.isVisible() and card.isEnabled():
-                card.setFocus(self._focus_reason())
-                self.ensure_card_visible(card)
+            index = self._live_cards_in_order().index(card)
         except Exception:
-            pass
+            index = None
+        return (str(path) if path is not None else None, index)
+
+    def _restore_focus(self, snapshot) -> bool:
+        """Re-focus a :meth:`_focus_snapshot` after a rebuild/recycle.
+
+        Never grants focus when the snapshot was empty (focus was not on a
+        card) — a rebuild driven by the toolbar filter must not steal focus.
+        """
+        try:
+            path, index = snapshot if snapshot else (None, None)
+        except Exception:
+            path, index = None, None
+        if path:
+            card = self._cards_by_path.get(str(path))
+            if card is not None:
+                try:
+                    if card.isVisible() and card.isEnabled():
+                        return bool(self.focus_card(card))
+                except Exception:
+                    pass
+        if index is None:
+            return False
+        cards = self._live_cards_in_order()
+        if not cards:
+            return False
+        try:
+            target = max(0, min(int(index), len(cards) - 1))
+        except Exception:
+            target = 0
+        return bool(self.focus_card(cards[target]))
 
     # -- public API expected by controller/widget --------------------------
 
@@ -1730,7 +1822,7 @@ class GalleryGridView(QWidget):
         # Keyboard focus continuity: cards are recycled and re-acquired, so
         # capture the focused path now and re-focus its card once the pool is
         # rebuilt (mirrors _rebuild_series' focus preserve).
-        _focus_path = self._capture_focus_path()
+        _focus_snapshot = self._focus_snapshot()
         if mode is not None:
             self._mode = mode
         else:
@@ -1793,7 +1885,7 @@ class GalleryGridView(QWidget):
             self._rebuild_pending = list(items)
             self._rebuild_index = 0
             self._rebuild_flat_ungrouped = bool(flat_ungrouped)
-            self._rebuild_focus_path = _focus_path
+            self._rebuild_focus_path = _focus_snapshot
             self._update_host_height(len(items))  # reserve height early so scrollbar correct
             from PySide6.QtCore import QTimer
 
@@ -1824,8 +1916,9 @@ class GalleryGridView(QWidget):
         if flat_ungrouped:
             self._promote_flat_ungrouped()
         # Re-focus the card that held focus before the rebuild (a rebuilt
-        # header/group move must not drop the keyboard ring).
-        self._restore_focus_path(_focus_path)
+        # header/group move must not drop the keyboard ring; a removed focused
+        # card falls through to the nearest still-live card).
+        self._restore_focus(_focus_snapshot)
 
     def _promote_flat_ungrouped(self) -> None:
         """Wrap a header-less flat pool in a single ``UNGROUPED`` section.
@@ -1884,7 +1977,7 @@ class GalleryGridView(QWidget):
             except Exception:
                 logger.debug("_rebuild_next_chunk: layout activate failed", exc_info=True)
             self._schedule_visible_range_emit()
-            self._restore_focus_path(getattr(self, "_rebuild_focus_path", None))
+            self._restore_focus(getattr(self, "_rebuild_focus_path", None))
             self._rebuild_focus_path = None
 
     # -- Phase 2a visible range ----------------------------------------
@@ -2204,26 +2297,7 @@ class GalleryGridView(QWidget):
         except Exception:
             _bar = None
             _saved_scroll = 0
-        _focus_path: str | None = None
-        try:
-            from PySide6.QtWidgets import QApplication as _QApp
-
-            _fw = _QApp.focusWidget()
-            _host = getattr(self, "items_host", None)
-            if _fw is not None and _host is not None and _host.isAncestorOf(_fw):
-                try:
-                    _prop = _fw.property("gallery_path")
-                    _focus_path = str(_prop) if _prop else None
-                except Exception:
-                    _focus_path = None
-                if not _focus_path:
-                    try:
-                        _ip = getattr(getattr(_fw, "_gallery_item", None), "path", None)
-                        _focus_path = str(_ip) if _ip else None
-                    except Exception:
-                        _focus_path = None
-        except Exception:
-            _focus_path = None
+        _focus_snapshot = self._focus_snapshot()
         # --- surgical reconcile (no teardown) ---
         # Reuses header widgets (text refreshed in place) and surviving
         # cards (content updated, never hidden/reparented). Previously every
@@ -2503,10 +2577,7 @@ class GalleryGridView(QWidget):
         except Exception:
             pass
         try:
-            if _focus_path:
-                _card = self._cards_by_path.get(_focus_path)
-                if _card is not None and _card.isVisible() and _card.isEnabled():
-                    _card.setFocus()
+            self._restore_focus(_focus_snapshot)
         except Exception:
             pass
 
@@ -3535,6 +3606,15 @@ class GalleryGridView(QWidget):
                         global_pos = None
                     self._on_empty_context_menu(global_pos)
                     return True
+        except Exception:
+            pass
+        # KeyPress on the host/viewport (no card holds focus yet): the scroll
+        # area would otherwise swallow arrows before the owner widget sees
+        # them. Delegate to the card-grid navigation (session_picker parity,
+        # ``recent/items_view.eventFilter`` → ``_handle_key_press``).
+        try:
+            if event.type() == QEvent.Type.KeyPress and self.handle_navigation_key(event):
+                return True
         except Exception:
             pass
         return super().eventFilter(watched, event)
