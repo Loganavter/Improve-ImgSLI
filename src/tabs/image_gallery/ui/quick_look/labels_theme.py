@@ -22,6 +22,12 @@ def _is_dark_theme() -> bool:
     return True
 
 
+# Modal veil: light mockup pins 0.45 black (``DIM_VEIL_ALPHA``). Over the dark
+# app a 0.45 black veil reads as a near-black "different world" beside the
+# ``#383838`` card; soften it so the surroundings stay one background family.
+_DIM_VEIL_ALPHA_DARK = round(0.28 * 255)  # 71
+
+
 def _theme_color(token: str, fallback: str) -> object:
     """Resolve ThemeManager token with fallback hex via ui.theming wrapper (contract-safe)."""
     try:
@@ -77,6 +83,69 @@ def _token_rgba_qcolor(token: str, fallback_rgba: tuple[int, int, int, int]) -> 
         return QColor(*fallback_rgba)
     except Exception:
         return None
+
+
+def _dim_veil_alpha() -> int:
+    """Opacity (0..255) of the modal dim veil behind the gallery overlays.
+
+    The light mockup pins plain black at 0.45 (``DIM_VEIL_ALPHA``). Painted
+    over the DARK app, 0.45 black turns the surroundings into a near-black
+    "different world" right next to the ``#383838`` card — the hard
+    black/grey seam reported for Quick Look / clean review. Soften the dark
+    veil so the background stays the same family as the card; text/icon
+    contrast is untouched. Never raises.
+    """
+    try:
+        return _DIM_VEIL_ALPHA_DARK if _is_dark_theme() else DIM_VEIL_ALPHA
+    except Exception:
+        return DIM_VEIL_ALPHA
+
+
+def _apply_panel_background(widget) -> None:
+    """Paint a scroll host / viewport with the gallery panel token.
+
+    ``QScrollArea.setWidget`` turns on ``autoFillBackground`` on the content
+    widget, so it fills with the raw Qt ``Window`` palette role. In dark that
+    is ``#1e1e1e`` — a near-black hole inside the ``#383838`` card plate
+    (Quick Look sidebar + filmstrip, clean-review filmstrip). Route it through
+    ``gallery.panel.background`` (light ``#f5f5f5`` pixel-unchanged / dark
+    ``#303030``) and re-apply on a live theme flip. Never raises.
+    """
+    if widget is None:
+        return
+
+    import weakref
+
+    ref = weakref.ref(widget)
+
+    def _apply() -> None:
+        w = ref()
+        if w is None:
+            return
+        try:
+            from PySide6.QtGui import QPalette
+
+            col = _token_color(
+                "gallery.panel.background",
+                "#f5f5f5" if not _is_dark_theme() else "#303030",
+            )
+            if col is None:
+                return
+            pal = w.palette()
+            pal.setColor(QPalette.ColorRole.Window, col)
+            w.setPalette(pal)
+            w.setAutoFillBackground(True)
+            w.update()
+        except Exception:
+            pass
+
+    _apply()
+    try:
+        from sli_ui_toolkit.managers import ThemeManager
+
+        ThemeManager.get_instance().theme_changed.connect(lambda *_a: _apply())
+    except Exception:
+        pass
 
 
 def _set_colored_text(btn, text: str, color: QColor | None) -> None:

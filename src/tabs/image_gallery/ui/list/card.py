@@ -189,7 +189,7 @@ def build_gallery_list_card(
     card = Button(
         regions=[
             _thumb_region(item),
-            ButtonRegion(id="text", rows=_list_text_rows(item), weight=1.0, group="card",
+            ButtonRegion(id="text", rows=_list_text_rows(item, translate), weight=1.0, group="card",
                          corner_radii=(0, 0, 0, 0)),
             ButtonRegion(id="meta", rows=_list_meta_rows(item, translate), weight=0.0, group="card",
                          corner_radii=(0, 8, 8, 0)),
@@ -262,7 +262,7 @@ def update_gallery_list_card(card: Button, item: GalleryItem, mode: object = Non
         except Exception:
             pass
     try:
-        card.update_region("text", rows=_list_text_rows(item))
+        card.update_region("text", rows=_list_text_rows(item, translate))
         card.update_region("meta", rows=_list_meta_rows(item, translate))
     except Exception:
         pass
