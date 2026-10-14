@@ -763,7 +763,7 @@
     },
     {
       "path": "src/tabs/image_gallery/services/ai_client.py",
-      "lines": 624,
+      "lines": 628,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=wire-client size=551 reason=\"one OpenAI-compatible vision client: request build + call_sync (retry/429) + response parse + debug belong together — splitting scatters the wire contract\"",

@@ -37,6 +37,7 @@ from tabs.image_gallery.services.ask_payload import (
     build_text_payload,
     build_vision_payload,
 )
+from tabs.image_gallery.services.ask_prompt import with_language
 
 #: Backends the router can dispatch to.
 BACKEND_TEXT = "text"
@@ -341,6 +342,11 @@ def answer(
     use_vision = backend == BACKEND_VLM
     if not use_vision:
         backend = BACKEND_TEXT
+
+    # Steer the prose (the user-facing ``answer``) into the current UI language.
+    # Appending the directive keeps the base prompt's rules + JSON envelope
+    # intact; the parser only reads the envelope, so nothing breaks.
+    system_prompt = with_language(system_prompt)
 
     def _one_call(correction: str) -> dict:
         if use_vision:

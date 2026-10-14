@@ -428,8 +428,10 @@ def test_region_ask_sends_crop_and_region_prompt(monkeypatch, tmp_path, qapp):
     )
 
     system_text = messages[0]["content"][0]["text"]
-    assert system_text == ASK_REGION_SYSTEM_PROMPT
+    # The region prompt is the base; the current-language directive is appended.
+    assert system_text.startswith(ASK_REGION_SYSTEM_PROMPT)
     assert system_text != ASK_SYSTEM_PROMPT
+    assert "Answer in" in system_text
 
     user_content = messages[-1]["content"]
     assert any(

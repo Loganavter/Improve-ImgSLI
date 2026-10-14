@@ -21,6 +21,7 @@ from typing import Callable
 
 from shared.debug_flags import env_flag as _env_flag
 from tabs.image_gallery.models import AiAnalysisResult
+from tabs.image_gallery.services.ask_prompt import language_directive
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -297,6 +298,9 @@ def build_request(
             block = ""
         if block:
             text = f"{prompt}\n\nMEASURED METRICS (authoritative):\n{block}"
+    # Steer the prose fields (verdict reason / defect notes) into the current
+    # UI language; the JSON envelope itself is unchanged.
+    text = f"{text}\n{language_directive()}"
     payload: dict = {
         "model": model,
         "messages": [
