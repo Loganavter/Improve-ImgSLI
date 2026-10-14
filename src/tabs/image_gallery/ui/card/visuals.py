@@ -41,6 +41,35 @@ def _token_rgba_qcolor(token: str, fallback_rgba: tuple[int, int, int, int]) -> 
     return QColor(*fallback_rgba)
 
 
+def _badge_text_color() -> QColor:
+    """Rank-badge ink: ``button.primary.text`` → ``WindowText`` → light/dark.
+
+    The badge pill fill is ``button.toggle.background.checked`` (light
+    ``#c0c0c0`` / dark ``#555555``), so the ink must flip with the theme.
+    A hardcoded ``#000000`` was legible on the light pill but invisible on the
+    dark one (black on ``#555555`` ≈ 2.79:1 — see design dark-contrast norm).
+    """
+    try:
+        from tabs.image_gallery.ui.card.dots import _is_dark
+
+        fallback = "#ffffff" if bool(_is_dark()) else "#000000"
+    except Exception:
+        fallback = "#000000"
+    try:
+        from sli_ui_toolkit.managers import ThemeManager
+
+        from ui.theming import try_resolve_theme_color
+
+        mgr = ThemeManager.get_instance()
+        for token in ("button.primary.text", "WindowText"):
+            c = try_resolve_theme_color(mgr, token)
+            if c is not None:
+                return c if isinstance(c, QColor) else QColor(c)
+    except Exception:
+        pass
+    return _token_qcolor("button.primary.text", fallback)
+
+
 def _card_border_color() -> QColor:
     """Default card edge: ``gallery.card.border`` → ``button.dialog.default.border``.
 
@@ -162,8 +191,10 @@ def _apply_rejected_visuals(card: Button, item: GalleryItem, translate=None) -> 
                         accent = _token_qcolor("gallery.status.warn", "#b77900")
                     else:
                         accent = _token_qcolor("button.toggle.background.checked", "#555555")
-                    # Badge text is always black (both themes).
-                    card._gallery_badge_style = (True, accent, accent, QColor("#000000"))  # type: ignore[attr-defined]
+                    # Badge ink follows the theme (``button.primary.text``):
+                    # #000000 light / #ffffff dark — never a fixed black on the
+                    # dark #555555 pill.
+                    card._gallery_badge_style = (True, accent, accent, _badge_text_color())  # type: ignore[attr-defined]
                     card.setBorderColor(_card_border_color())
                 except Exception:
                     pass

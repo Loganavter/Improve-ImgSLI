@@ -1,0 +1,142 @@
+"""Dark-theme contrast + token-coverage norm for the gallery.
+
+Companion to ``test_light_contrast.py``. Reads the LIVE
+``src/resources/themes.json`` (dark + light sections) and asserts, with pure
+color math (no Qt), that:
+
+- the severity trio (``gallery.status.ok`` / ``warn`` / ``danger``) is legible
+  on the gallery card + grid substrates. Red-before/green-after: the old dark
+  danger ``#D93025`` measured ≈2.46:1 on ``gallery.card.background``
+  (``#383838``) — below the WCAG non-text 3:1 floor and unreadable as the
+  "unreadable — excluded from triage" error text; it is now ``#ff7b72``.
+- the rank-badge ink (``button.primary.text``) clears 4.5:1 on the rank pill
+  fill (``button.toggle.background.checked``) in BOTH themes.
+- every gallery token the UI references now EXISTS in both palettes
+  (the ``gallery.nav.*`` / ``gallery.pill.background`` /
+  ``gallery.card.unreadable.plate`` / ``gallery.status.neutral`` set used to
+  be fallback-only hardcoded hexes).
+- the light palette is untouched by the dark fix (danger stays ``#c0392b``).
+"""
+
+from __future__ import annotations
+
+import json
+
+# Tokens the gallery UI resolves; every one must exist in BOTH palettes so a
+# theme flip never silently falls back to a hardcoded hex (THEMING.md: same
+# key set in light + dark).
+GALLERY_REFERENCED_TOKENS = (
+    "gallery.accent.bar",
+    "gallery.accent.text",
+    "gallery.card.background",
+    "gallery.card.border",
+    "gallery.card.hover",
+    "gallery.card.unreadable.plate",
+    "gallery.footer.text",
+    "gallery.grid.background",
+    "gallery.header.text",
+    "gallery.nav.border",
+    "gallery.nav.fill",
+    "gallery.nav.glyph",
+    "gallery.pill.background",
+    "gallery.stats.background",
+    "gallery.stats.text",
+    "gallery.status.danger",
+    "gallery.status.neutral",
+    "gallery.status.ok",
+    "gallery.status.warn",
+    "quick_look.bar.background",
+    "flyout.border",
+    "input.border.thin",
+    "button.toggle.background.checked",
+    "button.primary.text",
+    "surface.button",
+)
+
+
+def _themes() -> dict:
+    from utils.resource_loader import resource_path
+
+    with open(resource_path("resources/themes.json"), encoding="utf-8") as f:
+        return json.load(f)
+
+
+def _lin(c: float) -> float:
+    return c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4
+
+
+def _luminance(hex_color: str) -> float:
+    h = hex_color.lstrip("#")
+    if len(h) == 8:  # ARGB (e.g. #1EFFFFFF)
+        h = h[2:]
+    r, g, b = (int(h[i : i + 2], 16) / 255.0 for i in (0, 2, 4))
+    return 0.2126 * _lin(r) + 0.7152 * _lin(g) + 0.0722 * _lin(b)
+
+
+def _ratio(a: str, b: str) -> float:
+    la, lb = _luminance(a), _luminance(b)
+    hi, lo = (la, lb) if la >= lb else (lb, la)
+    return (hi + 0.05) / (lo + 0.05)
+
+
+def test_gallery_referenced_tokens_present_in_both_palettes() -> None:
+    """No gallery token is fallback-only — every referenced key exists twice."""
+    data = _themes()
+    light, dark = data["light"], data["dark"]
+    missing_light = [t for t in GALLERY_REFERENCED_TOKENS if t not in light]
+    missing_dark = [t for t in GALLERY_REFERENCED_TOKENS if t not in dark]
+    assert not missing_light, f"light palette missing {missing_light}"
+    assert not missing_dark, f"dark palette missing {missing_dark}"
+
+
+def test_dark_status_trio_legible_on_card_and_grid() -> None:
+    """Severity dots/marks on the dark card + grid clear the WCAG 3:1 floor.
+
+    Red-before: ``gallery.status.danger`` dark ``#D93025`` = 2.46 on the card
+    (2.97 on the grid). Green-after: the lighter red clears 4.5:1 on both.
+    """
+    dark = _themes()["dark"]
+    card = dark["gallery.card.background"]
+    grid = dark["gallery.grid.background"]
+    for token in ("gallery.status.ok", "gallery.status.warn", "gallery.status.danger"):
+        on_card = _ratio(dark[token], card)
+        on_grid = _ratio(dark[token], grid)
+        assert on_card >= 3.0, f"{token} {dark[token]} on card {card}: {on_card:.2f} < 3.0"
+        assert on_grid >= 3.0, f"{token} {dark[token]} on grid {grid}: {on_grid:.2f} < 3.0"
+
+
+def test_dark_danger_readable_as_error_text() -> None:
+    """The danger red is also the "unreadable" error row text → 4.5:1 body bar."""
+    dark = _themes()["dark"]
+    got = _ratio(dark["gallery.status.danger"], dark["gallery.card.background"])
+    assert got >= 4.5, f"dark danger {dark['gallery.status.danger']}: {got:.2f} < 4.5"
+    # Never regress to the old low-contrast red.
+    assert _ratio("#D93025", dark["gallery.card.background"]) < 3.0
+
+
+def test_dark_neutral_text_legible_on_card() -> None:
+    """Muted metric text (``gallery.status.neutral``) clears 4.5:1 on the card."""
+    dark = _themes()["dark"]
+    got = _ratio(dark["gallery.status.neutral"], dark["gallery.card.background"])
+    assert got >= 4.5, f"neutral {dark['gallery.status.neutral']}: {got:.2f} < 4.5"
+
+
+def test_rank_badge_ink_legible_on_pill_in_both_themes() -> None:
+    """Badge ink (``button.primary.text``) >= 4.5:1 on the rank pill fill."""
+    data = _themes()
+    for theme in ("light", "dark"):
+        ink = data[theme]["button.primary.text"]
+        pill = data[theme]["button.toggle.background.checked"]
+        got = _ratio(ink, pill)
+        assert got >= 4.5, f"{theme}: ink {ink} on pill {pill}: {got:.2f} < 4.5"
+    # The dark ink must not be the old hardcoded black.
+    assert data["dark"]["button.primary.text"].lower() == "#ffffff"
+
+
+def test_light_palette_unchanged_by_dark_fix() -> None:
+    """The dark fix must not move any light gallery value."""
+    light = _themes()["light"]
+    assert light["gallery.status.danger"].lower() == "#c0392b"
+    assert light["gallery.stats.background"].lower() == "#ffffff"
+    assert light["gallery.card.background"].lower() == "#ffffff"
+    assert light["gallery.grid.background"].lower() == "#ffffff"
