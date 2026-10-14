@@ -68,3 +68,87 @@ def _reset_translation_language():
     finally:
         _manager._current_lang = "en"
         _manager._translations = _manager.ensure_loaded("en")
+
+
+@pytest.fixture(autouse=True)
+def _reset_toolkit_config():
+    """``configure_toolkit`` state is process-wide; isolate every tab test.
+
+    Mirrors ``tests/conftest.py``: a tab test that imports ``ui.icon_manager``
+    (module scope) installs the app flyout defaults and leaks them into every
+    later test in the same process. Reset around each test.
+    """
+    from sli_ui_toolkit.config import reset_toolkit_config
+
+    reset_toolkit_config()
+    yield
+    reset_toolkit_config()
+
+
+@pytest.fixture(autouse=True)
+def _reset_theme_manager():
+    """``ThemeManager`` is a process-wide singleton; isolate every tab test.
+
+    Without this, a tab test that flips the theme and does not restore it
+    (e.g. image_compare video ``test_editor_toggle_buttons`` -> ``set_theme``)
+    leaks DARK into the next tab suite, whose light-theme pixel/ink assertions
+    then fail. Mirrors the same fixture in ``tests/conftest.py`` (tab suites
+    run under THIS conftest, not that one). Snapshots/restores the singleton's
+    mutable palette + QSS state and clears the app stylesheet.
+    """
+    from PySide6.QtWidgets import QApplication
+
+    from sli_ui_toolkit.managers import ThemeManager
+
+    tm = ThemeManager.get_instance()
+    saved = (
+        tm._current_theme,
+        tm._light_palette,
+        tm._dark_palette,
+        tm._qss_template,
+        list(tm._qss_paths),
+    )
+    try:
+        yield
+    finally:
+        (tm._current_theme, tm._light_palette, tm._dark_palette,
+         tm._qss_template, qss_paths) = saved
+        tm._qss_paths = qss_paths
+        app = QApplication.instance()
+        if app is not None and app.styleSheet():
+            app.setStyleSheet("")
+
+
+@pytest.fixture(autouse=True)
+def _destroy_lingering_toplevels():
+    """Destroy lingering top-levels at teardown (mirrors ``tests/conftest.py``).
+
+    Keeps stale receivers from surviving into the next test — the
+    ``pytestqt:_process_events`` segfault class under ``-n``.
+    """
+    from PySide6.QtCore import QEvent
+    from PySide6.QtWidgets import QApplication
+
+    app = QApplication.instance()
+    before = list(app.topLevelWidgets()) if app is not None else []
+    yield
+    app = QApplication.instance()
+    if app is None:
+        return
+    victims = [w for w in app.topLevelWidgets() if not any(w is b for b in before)]
+    del before
+    for w in victims:
+        try:
+            w.close()
+        except RuntimeError:
+            pass
+    for w in victims:
+        try:
+            w.deleteLater()
+        except RuntimeError:
+            pass
+    for w in victims:
+        try:
+            QApplication.sendPostedEvents(w, QEvent.Type.DeferredDelete)
+        except RuntimeError:
+            pass

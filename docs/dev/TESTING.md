@@ -57,6 +57,22 @@ shiboken guards) + tests without a `DeferredDelete` sweep
 `tests/runtime` sweep fixture). Rule: guard the callback (`isValid`), never
 `sleep()`-retry the test.
 
+## Test-run journal (baseline before "is it new?")
+
+When a suite fails, the first question is "new or pre-existing?" — do not answer
+it by re-running the parent commit by hand. `test-journal.sh` (packed in the
+internal-docs `machine/bin/`) records runs keyed to the commit:
+
+- `test-journal.sh run <repo> [--scope NAME] [-- <paths/args>]` after any
+  non-trivial run (or `import <repo> <commit> <log>` to backfill an existing log);
+- `test-journal.sh query <repo> --test <substr>` / `last <repo> --test <substr>`
+  for the per-commit history of one test.
+
+The journal is `<repo>/.git/test-journal.jsonl` (untracked). A failure present at
+the pre-change commit is pre-existing; an isolated-green vs a combined-run fail is
+a flake, not a regression — record both scopes. This also shortens the segfault
+attribution above: record the crashing scope once, then compare commits by lookup.
+
 ## Static type checking (mypy)
 
 `mypy` is wired in as a dev dependency (`requirements-dev.txt`) with
@@ -303,6 +319,8 @@ stronger sibling, delete the weaker one — do not keep it "for documentation".
 
 ## When tests break
 
+- Failure "new vs pre-existing" — answer with the **test-run journal**
+  (`test-journal.sh query|last`), not a hand re-run of the parent commit (see below).
 - Contract test fails after adding a feature/plugin — the feature violates the dogma (`docs/dev/QRHI_CANVAS_FEATURES.md` or `CONTRACTS.md`). Fix the feature, not the test.
 - Render contract fails — pass behavior changed. If intentional, update the test docstring and assertion in one change.
 - Import failure — check that new code does not import Qt/QRhi at module top level. Use lazy import inside functions.

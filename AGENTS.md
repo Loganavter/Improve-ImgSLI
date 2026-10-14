@@ -223,6 +223,8 @@ A local daemon snapshots the working tree every 15 min (`systemd --user *-autopu
 ## Tests
 
 See [docs/dev/TESTING.md](docs/dev/TESTING.md) for full layout and conventions.
+Record runs with `test-journal.sh run` and answer "was it failing before?" with
+`query`/`last` (never re-run the parent commit by hand) — see TESTING.md § Test-run journal.
 
 Tests are grouped by subsystem under `tests/`:
 

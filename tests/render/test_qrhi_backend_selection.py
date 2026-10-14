@@ -305,11 +305,12 @@ def test_unsupported_message_includes_legacy_cpu_release():
     path = (
         Path(__file__).resolve().parents[2]
         / "src"
+        / "plugins"
+        / "settings"
         / "resources"
         / "i18n"
         / "en"
-        / "settings"
-        / "general.json"
+        / "settings.json"
     )
     data = json.loads(path.read_text(encoding="utf-8"))
     template = data["settings"]["render_backend_unsupported_message"]
@@ -338,8 +339,17 @@ def test_platform_rhi_requirement_keys_are_os_filtered(monkeypatch):
 
 
 def test_format_platform_rhi_requirements_omits_foreign_apis(monkeypatch):
+    from pathlib import Path
+
+    from resources.translations import add_i18n_root
+
     from ui.canvas_infra.rhi import rhi_backend as mod
     from ui.canvas_infra.rhi.rhi_fallback_notice import format_platform_rhi_requirements
+
+    # The render-backend requirement labels live in the settings plugin pack,
+    # which is only registered when plugins load; register it explicitly so the
+    # test does not depend on ambient plugin state (order-dependent before).
+    add_i18n_root(Path("src/plugins/settings/resources/i18n"))
 
     monkeypatch.setattr(mod.sys, "platform", "linux")
     text = format_platform_rhi_requirements("en")
