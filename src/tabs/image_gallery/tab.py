@@ -209,11 +209,13 @@ class ImageGalleryTab(TabContract):
         w = self._widget
         if w is None:
             return []
-        # Gallery toolbar is inside the widget; expose it if present, else the
-        # widget itself as a single focus row.
+        # Only the chrome controls are rows. The card grid owns its own
+        # arrow navigation (``GalleryGridView`` — session-picker parity), so
+        # the widget itself must NOT be a row here: the toolkit rows section
+        # would otherwise claim every descendant (cards included) and
+        # intercept Up/Down on a focused card, handing focus to the toolbar.
         toolbar = getattr(w, "_pick_button", None)
-        # Return widget-level rows for host navigation manager.
-        return [getattr(w, "_filter_edit", None), toolbar, w]
+        return [getattr(w, "_filter_edit", None), toolbar]
 
     def _register_nav_section(self) -> None:
         if self._widget is None:
