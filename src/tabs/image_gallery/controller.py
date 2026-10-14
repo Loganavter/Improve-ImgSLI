@@ -858,6 +858,9 @@ class GalleryController:
                 self.widget.set_folder_label(self.state.folder)
         except Exception:
             pass
+        # Restore cached AI analyses (no network) so a reopened tab shows the
+        # previous results instead of "not analyzed".
+        self._hydrate_ai_cache(new_items)
         try:
             self.widget.rebuild_grid(new_items)
         except Exception:
@@ -1153,6 +1156,7 @@ class GalleryController:
                 self.state = GalleryState(folder=display_folder, items=items, triage_state=TriageState.RUNNING)
                 _dbg("open_folder single file -> parent %s items=%d", display_folder, len(items))
                 self.widget.set_folder_label(display_folder)
+                self._hydrate_ai_cache(items)
                 self.widget.rebuild_grid(items)
                 self._emit_gallery(
                     GalleryPoolOpened(
@@ -1171,6 +1175,7 @@ class GalleryController:
         self.state = GalleryState(folder=folder, items=items, triage_state=TriageState.RUNNING)
         _dnd_log("open_folder: set state + rebuild_grid START (%d items)", len(items))
         self.widget.set_folder_label(folder)
+        self._hydrate_ai_cache(items)
         self.widget.rebuild_grid(items)
         _dnd_log("open_folder: rebuild_grid DONE (%.1f ms total)", (time.perf_counter() - t0) * 1000)
         self._emit_gallery(
@@ -1317,6 +1322,7 @@ class GalleryController:
                     self.widget.set_folder_label(Path(""))
             except Exception:
                 pass
+        self._hydrate_ai_cache(merged)
         self.widget.rebuild_grid(merged)
         # Mirror pool membership into the slot AFTER the local mirror + grid
         # are current, so the resulting 'gallery' emit reconciles to a no-op.
@@ -1524,6 +1530,33 @@ class GalleryController:
         except Exception:
             pass
         return True
+
+    def _hydrate_ai_cache(self, items) -> int:
+        """Fill pool items from the AI disk cache on a pool (re)build.
+
+        Closed-tab / re-loaded-folder recovery: the live ``analyze_item``
+        path is cache-first, but a pool rebuild (session restore, folder
+        open, append) had no such pass — and the AI domain is restored
+        quietly (no network on open), while re-selecting the same domain is
+        a no-op by contract. So previously analyzed images came back "not
+        analyzed" even though the results sat in the disk cache. Cache-only:
+        no worker, no settings check, no API call. Never raises; returns how
+        many items were filled.
+        """
+        try:
+            from tabs.image_gallery.services.ai_cache import hydrate_item
+        except Exception:
+            return 0
+        filled = 0
+        for it in list(items or []):
+            try:
+                if getattr(it, "analysis", None) is not None:
+                    continue
+                if hydrate_item(it):
+                    filled += 1
+            except Exception:
+                continue
+        return filled
 
     def analyze_item(self, item: GalleryItem) -> None:
         cached = load_cached_analysis(item.path, item.mtime_ns)
