@@ -167,6 +167,142 @@
       "size_smaller": "menor que a origem",
       "size_same": "mesmo tamanho da origem",
       "size_upscale": "ampliado da origem"
+    },
+    "metric_note": {
+      "sharpness": {
+        "good": "nítido",
+        "mid": "levemente suave",
+        "bad": "muito suave"
+      },
+      "exposure": {
+        "good": "bem exposto",
+        "mid": "levemente desajustado",
+        "bad": "mal exposto"
+      },
+      "clipping": {
+        "good": "realces preservados",
+        "mid": "leve clipping",
+        "bad": "realces estourados"
+      },
+      "noise": {
+        "good": "limpo",
+        "mid": "granulado visível",
+        "bad": "ruído/grão intenso"
+      },
+      "white_balance": {
+        "good": "neutro",
+        "mid": "leve desvio de cor",
+        "bad": "forte desvio de cor"
+      },
+      "ssim": {
+        "good": "próximo da origem",
+        "mid": "algum desvio",
+        "bad": "distante da origem"
+      },
+      "detail_gain": {
+        "good": "detalhe preservado",
+        "mid": "leve alteração",
+        "bad": "detalhe perdido ou inventado"
+      },
+      "color_accuracy": {
+        "good": "cor precisa",
+        "mid": "leve desvio de cor",
+        "bad": "cor incorreta"
+      },
+      "typicality": {
+        "good": "típico",
+        "mid": "algo atípico",
+        "bad": "discrepante"
+      },
+      "aesthetic": {
+        "good": "agradável",
+        "mid": "comum",
+        "bad": "desagradável"
+      },
+      "lpips": {
+        "good": "perceptualmente próximo",
+        "mid": "leve desvio perceptual",
+        "bad": "perceptualmente distante"
+      },
+      "dists": {
+        "good": "perceptualmente próximo",
+        "mid": "leve desvio perceptual",
+        "bad": "perceptualmente distante"
+      },
+      "brisque": {
+        "good": "natural",
+        "mid": "levemente artificial",
+        "bad": "artificial"
+      },
+      "clipping_delta": {
+        "good": "sem clipping adicionado",
+        "mid": "leve clipping adicionado",
+        "bad": "clipping adicionado"
+      },
+      "halo_delta": {
+        "good": "sem halo adicionado",
+        "mid": "possível halo adicionado",
+        "bad": "halo adicionado"
+      },
+      "chroma_fringe_delta": {
+        "good": "sem franja adicionada",
+        "mid": "possível franja adicionada",
+        "bad": "franja adicionada"
+      },
+      "composition": {
+        "good": "bem composto",
+        "mid": "composição razoável",
+        "bad": "composição ruim"
+      },
+      "banding": {
+        "good": "gradientes suaves",
+        "mid": "possível banding",
+        "bad": "banding visível"
+      },
+      "halo": {
+        "good": "bordas limpas",
+        "mid": "possível halo",
+        "bad": "halo forte"
+      },
+      "blocking": {
+        "good": "sem blocos",
+        "mid": "possíveis blocos",
+        "bad": "blocos fortes"
+      },
+      "over_smoothing": {
+        "good": "detalhe mantido",
+        "mid": "possivelmente suavizado",
+        "bad": "super-suavizado"
+      },
+      "invented_texture": {
+        "good": "textura autêntica",
+        "mid": "possível textura inventada",
+        "bad": "textura inventada"
+      },
+      "chroma_fringing": {
+        "good": "sem franjas",
+        "mid": "possíveis franjas",
+        "bad": "franjas fortes"
+      }
+    },
+    "selection": {
+      "none": "Nenhuma seleção",
+      "one": "1 selecionado",
+      "many": "{n} selecionados",
+      "analyze": "Analisar",
+      "find_similar": "Encontrar semelhantes"
+    },
+    "card": {
+      "make_best": "Marcar como melhor",
+      "reject": "Rejeitar",
+      "unreject": "Reverter rejeição",
+      "remove": "Remover da visualização",
+      "ungroup": "Desagrupar",
+      "group": "Agrupar",
+      "make_source": "Definir como origem"
+    },
+    "badge": {
+      "source": "ORIGEM"
     }
   }
 }
