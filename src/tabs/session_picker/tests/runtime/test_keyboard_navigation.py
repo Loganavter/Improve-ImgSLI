@@ -245,7 +245,7 @@ def test_up_from_first_recent_item_returns_to_last_create_card(
     try:
         widget._recent_panel._items.navigate_focus(1)
         qtbot.waitUntil(
-            lambda: QApplication.focusWidget() is first_recent, timeout=1000
+            lambda: widget.focusWidget() is first_recent, timeout=1000
         )
 
         QTest.keyClick(first_recent, Qt.Key.Key_Up)
@@ -257,7 +257,7 @@ def test_up_from_first_recent_item_returns_to_last_create_card(
             if b.isVisible()
         )
         qtbot.waitUntil(
-            lambda: QApplication.focusWidget() is first_visible_btn, timeout=1000
+            lambda: widget.focusWidget() is first_visible_btn, timeout=1000
         )
     finally:
         manager.unregister(section)
@@ -299,10 +299,10 @@ def test_down_from_last_header_enters_recent_items(qapp, qtbot, tmp_path, monkey
 
     btns[-1].setFocus(Qt.FocusReason.OtherFocusReason)
     qtbot.waitUntil(
-        lambda: QApplication.focusWidget() is btns[-1], timeout=1000
+        lambda: widget.focusWidget() is btns[-1], timeout=1000
     )
     QTest.keyClick(btns[-1], Qt.Key.Key_Down)
     qtbot.waitUntil(
-        lambda: QApplication.focusWidget() is first_recent, timeout=1000
+        lambda: widget.focusWidget() is first_recent, timeout=1000
     )
     widget.deleteLater()

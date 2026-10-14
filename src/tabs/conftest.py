@@ -120,6 +120,23 @@ def _reset_theme_manager():
 
 
 @pytest.fixture(autouse=True)
+def _reset_navigation_manager():
+    """``NavigationManager`` (toolkit singleton) isolation for tab tests.
+
+    A leaked test instance keeps an active section that swallows arrow keys, so
+    a later tab test's ``Key_Down`` never reaches the widget handler. Mirrors the
+    same fixture in ``tests/conftest.py``.
+    """
+    from sli_ui_toolkit.managers import NavigationManager
+
+    NavigationManager._instance = None
+    try:
+        yield
+    finally:
+        NavigationManager._instance = None
+
+
+@pytest.fixture(autouse=True)
 def _destroy_lingering_toplevels():
     """Destroy lingering top-levels at teardown (mirrors ``tests/conftest.py``).
 
