@@ -86,7 +86,7 @@ class ImageGalleryWidget(QWidget):
             if context is not None:
                 from sli_ui_toolkit.i18n import install_translator
 
-                install_translator(self, context._tr)
+                install_translator(self, (lambda k, lang: context._tr_lang(k, lang)))
         except Exception:
             pass
         # Jank watchdog (diagnosis only): QTimer ticks on the GUI thread —

@@ -55,7 +55,12 @@ def resolve_settings_group(controller, section_id: str, group_key: str):
     if not callable(resolve):
         return None
     try:
-        return resolve(section_id, group_key)
+        # ``SettingsDialog.group_widget_for(group_key)`` — the group key is
+        # already section-scoped (``settings.group.<section_id>.<title_key>``),
+        # so the dialog searches the whole tree by that unique key and does NOT
+        # take a ``section_id``. Passing it (as this used to) raised TypeError on
+        # every Find-Action reveal, silently returning None.
+        return resolve(group_key)
     except Exception:
         logger.exception(
             "Failed to resolve Settings group %s on section %s",
@@ -78,7 +83,9 @@ def resolve_settings_member(
     if not callable(resolve):
         return None
     try:
-        return resolve(section_id, group_key, member_key)
+        # ``SettingsDialog.member_widget_for(group_key, member_key)`` — no
+        # ``section_id`` (the member key is section-scoped). See group_widget_for.
+        return resolve(group_key, member_key)
     except Exception:
         logger.exception(
             "Failed to resolve Settings member %s in group %s on section %s",
