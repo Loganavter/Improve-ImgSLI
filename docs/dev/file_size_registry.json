@@ -835,7 +835,7 @@
     },
     {
       "path": "src/tabs/image_gallery/ui/clean_review.py",
-      "lines": 1759,
+      "lines": 1787,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine size=exempt reason=\"one overlay lifecycle — provenance+filmstrip+toasts share TopLevelInWindowOverlay state\"",
@@ -871,7 +871,7 @@
     },
     {
       "path": "src/tabs/image_gallery/ui/quick_look.py",
-      "lines": 1782,
+      "lines": 1790,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner reason=\"thin owner delegating to ui/quick_look/* helpers,bars,histograms,metrics,artifacts,strip\"",
@@ -894,7 +894,7 @@
     },
     {
       "path": "src/tabs/image_gallery/ui/quick_look/overlay_build.py",
-      "lines": 895,
+      "lines": 915,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner-target size=exempt reason=\"one overlay-build concern: painted chrome widgets + build_overlay_ui share one card layout\"",
@@ -942,7 +942,7 @@
     },
     {
       "path": "src/tabs/image_gallery/ui/quick_look/strip.py",
-      "lines": 1626,
+      "lines": 1649,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner-target size=exempt reason=\"one strip concern: full rebuild + in-place selection refresh share one dynamic-state contract (refresh mirrors rebuild so the rebuild path stays byte-identical)\"",

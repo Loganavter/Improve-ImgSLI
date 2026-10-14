@@ -560,7 +560,7 @@ def build_overlay_ui(overlay) -> None:
     src_lay = QVBoxLayout(overlay._source_inset_host)
     src_lay.setContentsMargins(0, 0, 0, 0)
     src_lay.setSpacing(scaled_px(2))
-    overlay._source_inset_title = _make_label("SOURCE", parent=overlay._source_inset_host, pixel_size=11, pt=11.5, elide=True)
+    overlay._source_inset_title = _make_label(_t("image_gallery.badge.source", "SOURCE"), parent=overlay._source_inset_host, pixel_size=11, pt=11.5, elide=True)
     overlay._source_inset_title.setObjectName("quicklook_source_inset_title")
     try:
         glyph = _token_color("gallery.nav.glyph", "#23262b")
@@ -737,6 +737,16 @@ def build_overlay_ui(overlay) -> None:
     # owns row/spacer placement after every rebuild.
     overlay._report_host = right_host
     overlay._right_lay = right_lay
+    # Sidebar scroll pair auto-fills the raw Qt ``Window`` role (dark
+    # #1e1e1e) — a near-black panel inside the #383838 plate. Route through
+    # ``gallery.panel.background``.
+    try:
+        from tabs.image_gallery.ui.quick_look.labels_theme import _apply_panel_background
+
+        _apply_panel_background(right_scroll)
+        _apply_panel_background(right_host)
+    except Exception:
+        pass
     # S4 mockup divider before the brief block (svg:462) — a file-local 1px
     # painted rule (W4 item 3); the toolkit Divider is a button-region
     # dataclass, not a widget.
@@ -803,6 +813,16 @@ def build_overlay_ui(overlay) -> None:
     overlay._strip_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
     try:
         overlay._strip_scroll.setWidget(overlay._strip_host)
+    except Exception:
+        pass
+    # The scroll area + its content host auto-fill the raw Qt ``Window`` role
+    # (dark #1e1e1e) — a black band under the plate. Route both through
+    # ``gallery.panel.background``.
+    try:
+        from tabs.image_gallery.ui.quick_look.labels_theme import _apply_panel_background
+
+        _apply_panel_background(overlay._strip_scroll)
+        _apply_panel_background(overlay._strip_host)
     except Exception:
         pass
     strip_lay.addWidget(overlay._strip_scroll, 1)

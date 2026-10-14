@@ -1163,14 +1163,22 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
         """S4 modal dim veil (mockup fill-opacity 0.45), mirroring clean_review.
 
         ``TopLevelInWindowOverlay`` paints nothing (transparent background),
-        so the veil lives here in gallery scope.
+        so the veil lives here in gallery scope. The opacity is theme-aware
+        (``_dim_veil_alpha``): light keeps the mockup 0.45, dark softens so
+        the surroundings do not read as near-black beside the #383838 card.
         """
+        try:
+            from tabs.image_gallery.ui.quick_look.labels_theme import _dim_veil_alpha
+
+            veil_alpha = _dim_veil_alpha()
+        except Exception:
+            veil_alpha = DIM_VEIL_ALPHA
         try:
             painter = QPainter(self)
             # No hardcoded QColor (contracts/test_no_hardcoded_qcolor.py):
             # the veil is mockup-specified plain black at an opacity, not
             # a theme color — Qt global black + painter opacity.
-            painter.setOpacity(DIM_VEIL_ALPHA / 255.0)
+            painter.setOpacity(veil_alpha / 255.0)
             painter.fillRect(self.rect(), QBrush(Qt.GlobalColor.black))
             painter.end()
         except Exception:

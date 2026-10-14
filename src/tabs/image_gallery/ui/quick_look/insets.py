@@ -179,7 +179,16 @@ def populate_source_inset(overlay, item, is_fidelity: bool, owner=None) -> None:
         else:
             overlay._source_inset_pix.update_region("thumb", pixmap=None, text="—")
         src_name = Path(src).name if src is not None else "source"
-        caption = f"SOURCE · {src_name}"
+        # Localize the SOURCE pill through the overlay translator (same key
+        # the card badge uses) — fail-open to the raw string.
+        _src_label = "SOURCE"
+        try:
+            _ovtr = getattr(overlay, "_tr", None)
+            if callable(_ovtr):
+                _src_label = str(_ovtr("image_gallery.badge.source", "SOURCE"))
+        except Exception:
+            _src_label = "SOURCE"
+        caption = f"{_src_label} · {src_name}"
         dims = _source_dimensions(src_item, src)
         if dims is not None:
             caption += f" · {dims[0]}×{dims[1]}"

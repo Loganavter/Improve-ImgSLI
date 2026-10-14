@@ -932,6 +932,17 @@ class CleanReviewOverlay(TopLevelInWindowOverlay):
         self._list_layout.setSpacing(scaled_px(8))
         self._list_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         self._scroll.setWidget(self._list_host)
+        # QScrollArea auto-fills its content widget with the raw Qt ``Window``
+        # palette role — dark #1e1e1e, a near-black band inside the #383838
+        # plate. Route the list host + its strip through the gallery panel
+        # token (light pixel-unchanged).
+        try:
+            from tabs.image_gallery.ui.quick_look.labels_theme import _apply_panel_background
+
+            _apply_panel_background(self._scroll)
+            _apply_panel_background(self._list_host)
+        except Exception:
+            pass
         outer.addWidget(self._scroll, 1)
 
         # S3 provenance line — BELOW the filmstrip per mockup v3 (svg:100
@@ -1289,14 +1300,22 @@ class CleanReviewOverlay(TopLevelInWindowOverlay):
         """P0-10 modal dim veil (mockup v3 fill-opacity 0.45).
 
         ``TopLevelInWindowOverlay`` paints nothing (transparent
-        background), so the veil lives here in gallery scope.
+        background), so the veil lives here in gallery scope. The opacity is
+        theme-aware (``_dim_veil_alpha``): light keeps the mockup 0.45, dark
+        softens so the surroundings stay one background family with the card.
         """
+        try:
+            from tabs.image_gallery.ui.quick_look.labels_theme import _dim_veil_alpha
+
+            veil_alpha = _dim_veil_alpha()
+        except Exception:
+            veil_alpha = DIM_VEIL_ALPHA
         try:
             painter = QPainter(self)
             # No hardcoded QColor (contracts/test_no_hardcoded_qcolor.py):
             # the veil is mockup-specified plain black at an opacity, not
             # a theme color — Qt global black + painter opacity.
-            painter.setOpacity(DIM_VEIL_ALPHA / 255.0)
+            painter.setOpacity(veil_alpha / 255.0)
             painter.fillRect(self.rect(), QBrush(Qt.GlobalColor.black))
             painter.end()
         except Exception:
@@ -1467,6 +1486,15 @@ class CleanReviewOverlay(TopLevelInWindowOverlay):
 
         filmstrip = QWidget()
         filmstrip.setObjectName("clean_review_filmstrip_inner")
+        # Filmstrip host auto-fills raw ``Window`` (dark #1e1e1e) — the band
+        # behind the cells. Same panel token as the list host.
+        try:
+            from tabs.image_gallery.ui.quick_look.labels_theme import _apply_panel_background
+
+            _apply_panel_background(strip_scroll)
+            _apply_panel_background(filmstrip)
+        except Exception:
+            pass
         film_layout = QHBoxLayout(filmstrip)
         film_layout.setContentsMargins(0, 0, 0, 0)
         film_layout.setSpacing(scaled_px(8))
