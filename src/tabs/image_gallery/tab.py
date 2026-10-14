@@ -194,11 +194,10 @@ class ImageGalleryTab(TabContract):
             try:
                 from sli_ui_toolkit.ui.managers.navigation_manager import NavigationManager
 
-                reason = (
-                    Qt.FocusReason.OtherFocusReason
-                    if NavigationManager.get_instance().last_input_was_keyboard()
-                    else Qt.FocusReason.MouseFocusReason
-                )
+                # Ring modality from the manager (never a literal reason) so a
+                # keyboard-driven activation shows the ring and a mouse-driven
+                # one does not.
+                reason = NavigationManager.get_instance().current_focus_reason()
             except Exception:
                 reason = Qt.FocusReason.OtherFocusReason
             try:
