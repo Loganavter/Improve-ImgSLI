@@ -1441,6 +1441,16 @@ class GalleryGridView(QWidget):
         self._series_cards = {}
         self._cards_by_path.clear()
 
+        # Eager responsive columns for THIS build. Otherwise the first frame
+        # lays out at the stale count (GRID_COLUMNS=4) and only the debounced
+        # ``_adapt_timer`` (150 ms) grows it — the "first frames in 2 rows, then
+        # one row" jump (log: cols=4 at rebuild -> cols=9 +135 ms).
+        if self._view_mode == VIEW_GRID:
+            try:
+                self._applied_columns = int(self._compute_columns())
+            except Exception:
+                pass
+
         if not items:
             self._sync_series_column_widths(series_mode=False)
             self._update_host_height(0)
@@ -2031,6 +2041,13 @@ class GalleryGridView(QWidget):
         # right half fills instead of staying empty; narrow windows stack
         # every section full-width as before.
         _plan: list[tuple] = []
+        # Same eager responsive columns as rebuild_grid: a series view built
+        # before the adapt timer must not plan at the stale GRID_COLUMNS.
+        if self._view_mode == VIEW_GRID:
+            try:
+                self._applied_columns = int(self._compute_columns())
+            except Exception:
+                pass
         # Discriminator for the "splitter flashes on the first frames" report:
         # banding needs >= 2 sections, so log the section set + band inputs at
         # every series rebuild. Run with IMGSLI_GALLERY_DEBUG=1 to capture it.
