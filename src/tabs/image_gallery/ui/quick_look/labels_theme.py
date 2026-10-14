@@ -25,6 +25,7 @@ def _is_dark_theme() -> bool:
 # Modal veil: light mockup pins 0.45 black (``DIM_VEIL_ALPHA``). Over the dark
 # app a 0.45 black veil reads as a near-black "different world" beside the
 # ``#383838`` card; soften it so the surroundings stay one background family.
+DIM_VEIL_ALPHA = round(0.45 * 255)  # 115 — light mockup value
 _DIM_VEIL_ALPHA_DARK = round(0.28 * 255)  # 71
 
 

@@ -181,3 +181,18 @@ def test_pill_hover_ink_legible_in_both_themes() -> None:
         assert got >= 4.5, f"{theme}: ink on pill hover {hover}: {got:.2f} < 4.5"
     # Never regress to the surface hover wash that hid the digits.
     assert _ratio(ink, "#4a4a4a") < 3.0
+
+
+def test_dark_modal_veil_softer_than_light(monkeypatch) -> None:
+    """The modal veil is a dim amount, not a colour: light keeps the mockup
+    0.45, dark softens so the surroundings do not read as a near-black
+    "different world" next to the #383838 card (background *coherence*, not
+    extra contrast)."""
+    from tabs.image_gallery.ui.quick_look import labels_theme
+
+    assert labels_theme.DIM_VEIL_ALPHA == round(0.45 * 255) == 115
+    assert labels_theme._DIM_VEIL_ALPHA_DARK < labels_theme.DIM_VEIL_ALPHA
+    monkeypatch.setattr(labels_theme, "_is_dark_theme", lambda: True)
+    assert labels_theme._dim_veil_alpha() == labels_theme._DIM_VEIL_ALPHA_DARK
+    monkeypatch.setattr(labels_theme, "_is_dark_theme", lambda: False)
+    assert labels_theme._dim_veil_alpha() == labels_theme.DIM_VEIL_ALPHA

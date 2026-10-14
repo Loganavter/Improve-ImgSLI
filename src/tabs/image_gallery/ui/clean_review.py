@@ -1300,14 +1300,22 @@ class CleanReviewOverlay(TopLevelInWindowOverlay):
         """P0-10 modal dim veil (mockup v3 fill-opacity 0.45).
 
         ``TopLevelInWindowOverlay`` paints nothing (transparent
-        background), so the veil lives here in gallery scope.
+        background), so the veil lives here in gallery scope. The opacity is
+        theme-aware (``_dim_veil_alpha``): light keeps the mockup 0.45, dark
+        softens so the surroundings stay one background family with the card.
         """
+        try:
+            from tabs.image_gallery.ui.quick_look.labels_theme import _dim_veil_alpha
+
+            veil_alpha = _dim_veil_alpha()
+        except Exception:
+            veil_alpha = DIM_VEIL_ALPHA
         try:
             painter = QPainter(self)
             # No hardcoded QColor (contracts/test_no_hardcoded_qcolor.py):
             # the veil is mockup-specified plain black at an opacity, not
             # a theme color — Qt global black + painter opacity.
-            painter.setOpacity(DIM_VEIL_ALPHA / 255.0)
+            painter.setOpacity(veil_alpha / 255.0)
             painter.fillRect(self.rect(), QBrush(Qt.GlobalColor.black))
             painter.end()
         except Exception:
