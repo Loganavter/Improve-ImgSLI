@@ -22,6 +22,7 @@ from PySide6.QtCore import QTimer
 from PySide6.QtGui import QColor, QPalette
 from PySide6.QtWidgets import QWidget
 
+from ui.host_debug import workspace_transition_debug
 from ui.theming import resolve_theme_color
 
 logger = logging.getLogger("ImproveImgSLI")
@@ -54,8 +55,8 @@ class WorkspaceTransitionMask:
         self._active = False
         self._current_session_type: str | None = None
         self._current_max_ms: int = 0
-        logger.debug(
-            "[workspace-transition] mask created parent=%r id=%s",
+        workspace_transition_debug(
+            "mask created parent=%r id=%s",
             type(main_window).__name__,
             id(self),
         )
@@ -121,8 +122,8 @@ class WorkspaceTransitionMask:
         self._current_max_ms = max_ms
         self._min_timer.start(min_ms)
         self._max_timer.start(max_ms)
-        logger.debug(
-            "[workspace-transition] cover session=%r target=%r geom=%s "
+        workspace_transition_debug(
+            "cover session=%r target=%r geom=%s "
             "min_ms=%d max_ms=%d visible=%s parent=%r bg=%s",
             session_type,
             type(target).__name__,
@@ -147,16 +148,14 @@ class WorkspaceTransitionMask:
         ``cover_on_enter=True``. Honored only after ``min_duration_ms``
         has elapsed; before that, the request is queued."""
         if not self._active:
-            logger.debug(
-                "[workspace-transition] release ignored (not active) "
-                "session=%r",
+            workspace_transition_debug(
+                "release ignored (not active) session=%r",
                 self._current_session_type,
             )
             return
         self._release_requested = True
-        logger.debug(
-            "[workspace-transition] release requested session=%r "
-            "min_elapsed=%s",
+        workspace_transition_debug(
+            "release requested session=%r min_elapsed=%s",
             self._current_session_type,
             self._min_elapsed,
         )
@@ -165,9 +164,8 @@ class WorkspaceTransitionMask:
 
     def _on_min_elapsed(self) -> None:
         self._min_elapsed = True
-        logger.debug(
-            "[workspace-transition] min elapsed session=%r "
-            "release_requested=%s",
+        workspace_transition_debug(
+            "min elapsed session=%r release_requested=%s",
             self._current_session_type,
             self._release_requested,
         )
@@ -177,9 +175,8 @@ class WorkspaceTransitionMask:
     def _on_max_elapsed(self) -> None:
         if not self._active:
             return
-        logger.debug(
-            "[workspace-transition] max elapsed session=%r "
-            "release_requested=%s",
+        workspace_transition_debug(
+            "max elapsed session=%r release_requested=%s",
             self._current_session_type,
             self._release_requested,
         )
@@ -191,8 +188,8 @@ class WorkspaceTransitionMask:
         self._active = False
         if self._overlay is not None:
             self._overlay.hide()
-        logger.debug(
-            "[workspace-transition] finish session=%r violated=%s",
+        workspace_transition_debug(
+            "finish session=%r violated=%s",
             self._current_session_type,
             violated,
         )
@@ -222,8 +219,8 @@ class WorkspaceTransitionMask:
         overlay.setAutoFillBackground(True)
         overlay.hide()
         self._overlay = overlay
-        logger.debug(
-            "[workspace-transition] overlay created parent=%r",
+        workspace_transition_debug(
+            "overlay created parent=%r",
             type(self._main_window).__name__,
         )
         return overlay

@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 
 from core.store import INITIAL_WORKSPACE_SESSION_TYPE
+from ui.host_debug import workspace_transition_debug
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -106,7 +107,7 @@ def sync_session_mode(presenter):
 
 def on_workspace_tab_changed(presenter, index: int):
     if index < 0:
-        logger.debug("[workspace-transition] tab_changed ignored index=%s", index)
+        workspace_transition_debug("tab_changed ignored index=%s", index)
         return
     session_id = presenter.ui.workspace_tabs.tabData(index)
     if not (session_id and presenter.main_controller):
@@ -119,8 +120,8 @@ def on_workspace_tab_changed(presenter, index: int):
         )
         return
 
-    logger.debug(
-        "[workspace-transition] tab_changed index=%s session_id=%s",
+    workspace_transition_debug(
+        "tab_changed index=%s session_id=%s",
         index,
         session_id,
     )
@@ -299,13 +300,13 @@ def cover_active_session_transition(presenter) -> None:
         return
     last_id = getattr(presenter, "_last_covered_session_id", None)
     if last_id == active.id:
-        logger.debug(
-            "[workspace-transition] cover skipped: same session_id=%s",
+        workspace_transition_debug(
+            "cover skipped: same session_id=%s",
             active.id,
         )
         return
-    logger.debug(
-        "[workspace-transition] active session change %r -> %r type=%r",
+    workspace_transition_debug(
+        "active session change %r -> %r type=%r",
         last_id,
         active.id,
         getattr(active, "session_type", None),
@@ -352,9 +353,8 @@ def _cover_transition_for_session(presenter, session_id: str) -> None:
 
         hint = TabTransitionHint()
     if not hint.cover_on_enter:
-        logger.debug(
-            "[workspace-transition] cover skipped: cover_on_enter=False "
-            "(session_type=%r)",
+        workspace_transition_debug(
+            "cover skipped: cover_on_enter=False (session_type=%r)",
             session_type,
         )
         return
@@ -371,9 +371,8 @@ def _cover_transition_for_session(presenter, session_id: str) -> None:
             session_type,
         )
         return
-    logger.debug(
-        "[workspace-transition] requesting cover session_type=%r "
-        "hint=(min=%s max=%s) mask_id=%s host=%r stack=%r",
+    workspace_transition_debug(
+        "requesting cover session_type=%r hint=(min=%s max=%s) mask_id=%s host=%r stack=%r",
         session_type,
         hint.min_duration_ms,
         hint.max_duration_ms,
@@ -430,8 +429,8 @@ def _resolve_workspace_transition_mask(presenter):
             continue
         mask = getattr(window, "_workspace_transition_mask", None)
         if mask is not None:
-            logger.debug(
-                "[workspace-transition] mask resolved on %r id=%s",
+            workspace_transition_debug(
+                "mask resolved on %r id=%s",
                 type(window).__name__,
                 id(mask),
             )
@@ -442,15 +441,14 @@ def _resolve_workspace_transition_mask(presenter):
             if mask is not None:
                 # Migrate so later lookups hit the MainWindow directly.
                 window._workspace_transition_mask = mask
-                logger.debug(
-                    "[workspace-transition] mask migrated from _app_host "
-                    "to %r id=%s",
+                workspace_transition_debug(
+                    "mask migrated from _app_host to %r id=%s",
                     type(window).__name__,
                     id(mask),
                 )
                 return mask, window
-    logger.debug(
-        "[workspace-transition] mask resolve failed candidates=%s",
+    workspace_transition_debug(
+        "mask resolve failed candidates=%s",
         [type(c).__name__ for c in candidates if c is not None],
     )
     return None, None

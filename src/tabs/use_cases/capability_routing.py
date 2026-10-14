@@ -9,11 +9,25 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any
 
+from shared.debug_flags import env_flag as _env_flag
+
 if TYPE_CHECKING:
     from tabs.contract import TabContract
     from tabs.registry import TabRegistry
 
 logger = logging.getLogger("ImproveImgSLI")
+
+
+def _startup_service_debug(msg: str, *args) -> None:
+    """``IMGSLI_CAPABILITY_DEBUG``-gated ``[startup-service]`` trace.
+
+    Startup service routing logs once per capability lookup; wiring it to the
+    global ``debug_mode_enabled`` switch floods startup. Hybrid emit like
+    ``ui/host_debug.py``: WARNING when the explicit flag is set (visible
+    without ``--debug``), silent otherwise. See docs/dev/LOGGING.md.
+    """
+    if _env_flag("IMGSLI_CAPABILITY_DEBUG"):
+        logger.warning("[startup-service] " + msg, *args)
 
 
 def collect_help_contributions(registry: "TabRegistry") -> list[Any]:
@@ -278,11 +292,11 @@ def create_startup_service(
         registry, "create_service", service_id, *args, **kwargs
     )
     if answered is None:
-        logger.debug("[startup-service] '%s' → None (unclaimed)", service_id)
+        _startup_service_debug("'%s' → None (unclaimed)", service_id)
         return None
     tab, result = answered
-    logger.debug(
-        "[startup-service] '%s' → %s from %s",
+    _startup_service_debug(
+        "'%s' → %s from %s",
         service_id,
         type(result).__name__,
         tab.session_type,
