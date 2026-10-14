@@ -746,6 +746,10 @@ class GalleryGridView(QWidget):
         self._series_headers: list[QWidget] = []
         self._hub_names: list[str | None] = []
         self._collapsed: dict[int, bool] = {}
+        # UNGROUPED tail collapse (index-less section) — same affordance as a
+        # series header, so the provisional pool is a normal group from the
+        # first frame instead of a dead, glyph-less header.
+        self._tail_collapsed: bool = False
         self._series_cards: dict[int, list[object]] = {}
         # View mode: grid (4-col cards) or list (1-col rows). Pool is
         # flushed on switch so builders never mix (see set_view_mode).
@@ -1218,7 +1222,7 @@ class GalleryGridView(QWidget):
                 continue
             entries.append((header, row, int(col_off), 1, int(band_cols)))
             row += 1
-            if sec.get("kind") == "series" and sec.get("collapsed"):
+            if sec.get("collapsed"):
                 continue
             for pos, item in enumerate(sec.get("items") or []):
                 try:
@@ -1767,11 +1771,11 @@ class GalleryGridView(QWidget):
         painter layer (never text): flags + title reserve flip here so a
         series ↔ UNGROUPED slot reuse never clips the arrow.
         """
-        is_collapsible = index is not None
+        is_series = index is not None
         display = _strip_header_arrow(text)
         try:
             header.setObjectName(
-                f"GallerySeriesHeader_{index}" if is_collapsible else "GallerySeriesHeader_ungrouped"
+                f"GallerySeriesHeader_{index}" if is_series else "GallerySeriesHeader_ungrouped"
             )
         except Exception:
             pass
@@ -1786,12 +1790,14 @@ class GalleryGridView(QWidget):
         # clickable when it now fronts a real, collapsible series — and vice
         # versa. Without this the collapse toggle is dead on a retitled slot.
         try:
-            btn.setEnabled(bool(is_collapsible))
+            # Every header (series OR the UNGROUPED tail) is a normal,
+            # clickable collapsible group.
+            btn.setEnabled(True)
         except Exception:
             pass
         try:
             btn.setObjectName(
-                f"GallerySeriesHeaderBtn_{index}" if is_collapsible else "GallerySeriesHeader_ungrouped_btn"
+                f"GallerySeriesHeaderBtn_{index}" if is_series else "GallerySeriesHeader_ungrouped_btn"
             )
         except Exception:
             pass
@@ -1813,14 +1819,13 @@ class GalleryGridView(QWidget):
             _painter = getattr(btn, "_painter", None)
             for _layer in list(getattr(_painter, "layers", None) or []):
                 if isinstance(_layer, _SeriesHeaderAccentLayer):
-                    _layer._collapsible = bool(is_collapsible)
+                    _layer._collapsible = bool(is_series)
                 elif isinstance(_layer, _SeriesCollapseArrowLayer):
-                    _layer._collapsible = bool(is_collapsible)
+                    _layer._collapsible = True
                     _layer._collapsed = bool(collapsed)
             try:
                 btn.setContentPadding(
-                    (scaled_px(15), 0,
-                     scaled_px(SERIES_ARROW_RESERVE) if is_collapsible else 0, 0)
+                    (scaled_px(15), 0, scaled_px(SERIES_ARROW_RESERVE), 0)
                 )
             except Exception:
                 pass
@@ -1835,11 +1840,11 @@ class GalleryGridView(QWidget):
             btn.customContextMenuRequested.disconnect()
         except Exception:
             pass
-        if is_collapsible:
-            try:
-                btn.clicked.connect(lambda _checked=False, idx=index: self._toggle_collapse(idx))  # type: ignore[misc]
-            except Exception:
-                pass
+        try:
+            btn.clicked.connect(lambda _checked=False, idx=index: self._toggle_collapse(idx))  # type: ignore[misc]
+        except Exception:
+            pass
+        if is_series:
             try:
                 self._series_header_labels[index] = display
             except Exception:
@@ -1945,7 +1950,7 @@ class GalleryGridView(QWidget):
             _ung = list(getattr(self, "_ungrouped", []) or [])
             _sections.append({
                 "kind": "tail", "index": None, "hub": None,
-                "collapsed": False,
+                "collapsed": bool(getattr(self, "_tail_collapsed", False)),
                 "text": _hdr(
                     "image_gallery.series.ungrouped",
                     "UNGROUPED · {count}",
@@ -2254,8 +2259,9 @@ class GalleryGridView(QWidget):
             else:
                 row = int(self.items_layout.rowCount())
                 header = self._make_series_header(
-                    f"UNGROUPED · {total}", total,
-                    hub_name=None, collapsed=False, index=None,
+                    self._ungrouped_header_text(total), total,
+                    hub_name=None,
+                    collapsed=bool(getattr(self, "_tail_collapsed", False)), index=None,
                 )
                 self._series_headers.append(header)
                 self.items_layout.addWidget(header, row, 0, 1, self._tail_header_span())
@@ -2364,8 +2370,9 @@ class GalleryGridView(QWidget):
             except Exception:
                 pass
             header = self._make_series_header(
-                f"UNGROUPED · {int(total)}", int(total),
-                hub_name=None, collapsed=False, index=None,
+                self._ungrouped_header_text(int(total)), int(total),
+                hub_name=None,
+                collapsed=bool(getattr(self, "_tail_collapsed", False)), index=None,
             )
             headers[pos] = header
             self._series_headers = headers
@@ -2481,14 +2488,15 @@ class GalleryGridView(QWidget):
                 ],
                 variant="ghost",
                 size=(0, scaled_px(24)),
-                # 3px bar + 12px gap the sibling widget used to occupy.
-                # The arrow layer is always present (hidden when not
-                # collapsible) so series ↔ UNGROUPED slot reuse never
-                # rebuilds layers — _retitle_header flips flags only.
-                content_padding=(scaled_px(15), 0, 0, 0),
+                # 3px bar + 12px gap the sibling widget used to occupy; the
+                # right reserve keeps the elided title clear of the arrow
+                # layer. UNGROUPED is a NORMAL collapsible group (same
+                # affordance as a series), so the provisional pool is not a
+                # dead, glyph-less header while clustering runs.
+                content_padding=(scaled_px(15), 0, scaled_px(SERIES_ARROW_RESERVE), 0),
                 extra_layers=[_SeriesHeaderAccentLayer(collapsible=is_collapsible),
                                 _SeriesDropTargetLayer(),
-                                _SeriesCollapseArrowLayer(collapsible=False)],
+                                _SeriesCollapseArrowLayer(collapsible=True, collapsed=bool(collapsed))],
                 parent=container,
             )
             btn.setObjectName("GallerySeriesHeader_ungrouped_btn")
@@ -2496,11 +2504,11 @@ class GalleryGridView(QWidget):
             # Button.__init__ already subscribes; duplicates are
             # undisconnectable and crash the suite via stale slots.
             try:
-                btn.setEnabled(False)
+                btn.setFixedHeight(scaled_px(24))
             except Exception:
                 pass
             try:
-                btn.setFixedHeight(scaled_px(24))
+                btn.clicked.connect(lambda _checked=False: self._toggle_collapse(None))  # type: ignore[misc]
             except Exception:
                 pass
             lay.addWidget(btn, 1)
@@ -2538,8 +2546,16 @@ class GalleryGridView(QWidget):
             return container
 
     def _toggle_collapse(self, index: int | None) -> None:
-        """Toggle collapsed state for series *index* and rebuild."""
+        """Toggle collapsed state for series *index* (None = UNGROUPED tail)."""
         if index is None:
+            try:
+                self._tail_collapsed = not bool(getattr(self, "_tail_collapsed", False))
+            except Exception:
+                return
+            try:
+                self._rebuild_series()
+            except Exception:
+                pass
             return
         try:
             idx = int(index)
@@ -2804,6 +2820,15 @@ class GalleryGridView(QWidget):
             return str(tr(key, default)) if callable(tr) else default
         except Exception:
             return default
+
+    def _ungrouped_header_text(self, count: int) -> str:
+        """Localized UNGROUPED tail header (``image_gallery.series.ungrouped``)."""
+        try:
+            return str(self._activity_translate(
+                "image_gallery.series.ungrouped", "UNGROUPED · {count}"
+            )).format(count=count)
+        except Exception:
+            return f"UNGROUPED · {count}"
 
     def _recycle_card(self, str_path: str) -> None:
         card = self._cards_by_path.pop(str_path, None)  # type: ignore[arg-type]
