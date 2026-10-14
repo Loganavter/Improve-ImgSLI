@@ -688,7 +688,11 @@ def test_veil_dims_background(qtbot):
 
 
 def test_card_plate_fill_border_radius(qtbot, _w1_light_palettes):
-    """Card plate: ``gallery.card.background`` fill + border + rx 12, no QSS."""
+    """Card plate: ``gallery.panel.background`` fill + border + rx 12, no QSS.
+
+    The plate shares the flat overlay surface token with the scroll hosts
+    (light ``#ffffff``), so card and sidebar read the same tone.
+    """
     from PySide6.QtGui import QColor
 
     from tabs.image_gallery.ui.quick_look.helpers import (
@@ -724,6 +728,42 @@ def test_card_plate_paints_fill(qtbot, _w1_light_palettes):
     pixel = plate.grab().toImage().pixelColor(200, 100)
     assert (pixel.red(), pixel.green(), pixel.blue()) == (255, 255, 255)
     assert pixel.alpha() == 255
+
+
+def test_card_plate_is_flat_overlay_surface_in_dark(qtbot, qapp, _w1_light_palettes):
+    """Dark plate resolves the flat overlay surface (panel token), not the
+    grid-card ``#383838`` — no recess seam on the card face.
+
+    Red-before: the plate resolved ``gallery.card.background`` (dark
+    ``#383838``) while the sidebar/filmstrip hosts resolved
+    ``gallery.panel.background`` (dark ``#303030``).
+    """
+    import json
+
+    from PySide6.QtGui import QColor
+    from sli_ui_toolkit.managers import ThemeManager
+
+    from tabs.image_gallery.ui.quick_look.helpers import _CardPlate
+    from utils.resource_loader import resource_path
+
+    tm = _w1_light_palettes
+    tm.set_theme("dark", qapp, await_ripples=False)
+    try:
+        tm._flush_pending_theme()  # type: ignore[attr-defined]
+    except Exception:
+        pass
+    qapp.processEvents()
+    assert ThemeManager.get_instance().is_dark()
+
+    with open(resource_path("resources/themes.json"), encoding="utf-8") as f:
+        dark = json.load(f)["dark"]
+
+    plate = _CardPlate()
+    qtbot.addWidget(plate)
+    assert plate._bg.name().lower() == QColor(dark["gallery.panel.background"]).name().lower()
+    assert plate._bg.name().lower() == "#303030"
+    assert plate._bg.name().lower() != QColor(dark["gallery.card.background"]).name().lower()
+    plate.deleteLater()
 
 
 def test_card_geometry_min_1040x680_no_max(qtbot):

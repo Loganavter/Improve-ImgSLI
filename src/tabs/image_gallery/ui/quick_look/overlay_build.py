@@ -151,11 +151,13 @@ QUICK_LOOK_NAV_GLYPH_PT = 24
 
 
 class _CardPlate(QWidget):
-    """Quick look card plate — ``gallery.card.background`` fill + border, rx 12.
+    """Quick look card plate — ``gallery.panel.background`` fill + border, rx 12.
 
     Painter pipeline owns visuals (explicit paintEvent, theme-subscribed);
-    no QSS, no palette. Token chains mirror the grid-card seam
-    (``ui/card.py::_gallery_card_bg``, ``ui/card/visuals.py``).
+    no QSS, no palette. The plate shares the scroll-host panel token
+    (``labels_theme._apply_panel_background``) so the whole overlay is ONE
+    flat surface — dark mockup svg:31 pins the plate at ``#303030``, not the
+    grid-card ``#383838`` (that one is for grid cards).
     All QColor() calls take resolved variables — never literals
     (contracts/test_no_hardcoded_qcolor.py baseline).
     """
@@ -173,20 +175,24 @@ class _CardPlate(QWidget):
 
     @staticmethod
     def _resolve_bg():
+        # Overlay surface token first (dark mockup svg:31 / clean-review
+        # svg:42): plate and scroll-host panels resolve the SAME token, so no
+        # recess seam shows on the flat plate. ``gallery.card.background``
+        # (dark #383838) stays the fallback for grid cards only.
         try:
             from sli_ui_toolkit.managers import ThemeManager
 
             from ui.theming import try_resolve_theme_color
 
             mgr = ThemeManager.get_instance()
-            for token in ("gallery.card.background", "surface.list", "surface.background"):
+            for token in ("gallery.panel.background", "gallery.card.background", "surface.list", "surface.background"):
                 c = try_resolve_theme_color(mgr, token)
                 if c is not None:
                     return c if isinstance(c, QColor) else QColor(c)
         except Exception:
             pass
         return _token_color(
-            "gallery.card.background", "#ffffff" if not _is_dark_theme() else "#383838"
+            "gallery.panel.background", "#ffffff" if not _is_dark_theme() else "#303030"
         )
 
     @staticmethod
@@ -563,7 +569,11 @@ def build_overlay_ui(overlay) -> None:
     overlay._source_inset_title = _make_label(_t("image_gallery.badge.source", "SOURCE"), parent=overlay._source_inset_host, pixel_size=11, pt=11.5, elide=True)
     overlay._source_inset_title.setObjectName("quicklook_source_inset_title")
     try:
-        glyph = _token_color("gallery.nav.glyph", "#23262b")
+        # SOURCE badge sits on the opaque WHITE pill (fill="white") in both
+        # themes, so its ink is the fixed dark ``gallery.pill.text`` — NOT
+        # ``gallery.nav.glyph``, which flips to ``#dfdfdf`` in the dark theme
+        # (that token is the prev/next chevron on a dark disc).
+        glyph = _token_color("gallery.pill.text", "#23262b")
         if glyph is not None:
             overlay._source_inset_title.setTextColor(glyph)
     except Exception:

@@ -15,10 +15,15 @@ color math (no Qt), that:
   (the ``gallery.nav.*`` / ``gallery.pill.background`` /
   ``gallery.card.unreadable.plate`` / ``gallery.status.neutral`` set used to
   be fallback-only hardcoded hexes).
-- the scroll-host panel background (``gallery.panel.background``) is a subtle
-  recess, not the raw Qt ``Window`` role (dark ``#1e1e1e`` hole), and the
-  rank-pill hover fill (``gallery.pill.background.hover``) keeps the fixed
-  black ink >= 4.5:1 (the surface hover token ``#4a4a4a`` measured 2.44:1).
+- the overlay surface (``gallery.panel.background``) is the flat plate AND
+  scroll-host tone (light ``#ffffff`` / dark ``#303030``, mockup svg:31),
+  never the raw Qt ``Window`` role (dark ``#1e1e1e`` hole) nor the grid-card
+  ``#383838`` — the plate resolves the same token as the panels, so no recess
+  seam shows on the card; and the rank-pill hover fill
+  (``gallery.pill.background.hover``) keeps the fixed black ink >= 4.5:1
+  (the surface hover token ``#4a4a4a`` measured 2.44:1).
+- the prev/next nav circles (``gallery.nav.*``) are theme-aware: dark disc
+  ``#2b2b2b`` + light chevron ``#dfdfdf``, so they never stay white in dark.
 - the light palette is untouched by the dark fix (danger stays ``#c0392b``).
 """
 
@@ -45,6 +50,7 @@ GALLERY_REFERENCED_TOKENS = (
     "gallery.panel.background",
     "gallery.pill.background",
     "gallery.pill.background.hover",
+    "gallery.pill.text",
     "gallery.stats.background",
     "gallery.stats.text",
     "gallery.status.danger",
@@ -148,21 +154,48 @@ def test_light_palette_unchanged_by_dark_fix() -> None:
     assert light["gallery.grid.background"].lower() == "#ffffff"
 
 
-def test_panel_background_is_a_recess_not_a_raw_window_hole() -> None:
-    """Scroll hosts must not fall through to the raw Qt ``Window`` role.
+def test_overlay_surface_is_one_flat_tone_not_a_recess() -> None:
+    """The overlay plate + scroll hosts resolve ONE flat surface token.
 
-    Red-before: the Quick Look sidebar / filmstrip and clean-review strip
-    auto-filled the Qt ``Window`` palette role — dark ``#1e1e1e``, a near-black
-    band inside the ``#383838`` card plate (ratio 1.42 from the card). Light
-    ``#f5f5f5`` is the same value the ``Window`` role already carried, so the
-    new token is pixel-unchanged there; dark ``#303030`` is a *subtle* recess
-    (ratio 1.13 from the card), matching the mockup's ``#303030`` card tone.
+    Red-before: the Quick Look / clean-review plate resolved
+    ``gallery.card.background`` (dark ``#383838``) while the sidebar /
+    filmstrip hosts resolved ``gallery.panel.background`` (dark ``#303030``) —
+    two greys on the same card. Green-after: both read
+    ``gallery.panel.background`` = the mockup's flat overlay surface (light
+    ``#ffffff`` / dark ``#303030``, svg:31 / svg:42), so the seam is gone and
+    no scroll host falls through to the raw Qt ``Window`` hole (dark
+    ``#1e1e1e``).
     """
     light, dark = _themes()["light"], _themes()["dark"]
-    assert light["gallery.panel.background"].lower() == "#f5f5f5"
+    assert light["gallery.panel.background"].lower() == "#ffffff"
+    assert dark["gallery.panel.background"].lower() == "#303030"
+    # The overlay surface is deliberately distinct from the grid-card tone
+    # (dark #383838): the plate must not fall back to ``gallery.card.background``.
+    assert dark["gallery.panel.background"].lower() != dark["gallery.card.background"].lower()
+    # Never the raw Qt Window role (dark #1e1e1e near-black hole).
     assert dark["gallery.panel.background"].lower() != "#1e1e1e"
-    assert _ratio(dark["gallery.panel.background"], dark["gallery.card.background"]) < 1.2
-    assert _ratio("#1e1e1e", dark["gallery.card.background"]) > 1.35
+    assert _ratio("#1e1e1e", dark["gallery.panel.background"]) > 1.2
+
+
+def test_dark_nav_controls_follow_the_theme() -> None:
+    """Prev/next circles are theme-aware, not the light mockup frozen into dark.
+
+    Red-before: ``gallery.nav.*`` carried the LIGHT mockup values in BOTH
+    palettes (disc ``#f1f2f4``, chevron ``#23262b``), so dark rendered a
+    near-white disc with a dark chevron on the dark card. Green-after: dark
+    disc ``#2b2b2b`` + light chevron ``#dfdfdf`` + translucent white ring
+    (dark mockup prev/next); light keeps the light mockup pair.
+    """
+    dark = _themes()["dark"]
+    assert dark["gallery.nav.fill"].lower() == "#2b2b2b"
+    assert dark["gallery.nav.glyph"].lower() == "#dfdfdf"
+    assert dark["gallery.nav.border"].lower() == "#40ffffff"
+    # The chevron must read on the disc.
+    assert _ratio(dark["gallery.nav.glyph"], dark["gallery.nav.fill"]) >= 4.5
+    # The light mockup pair is unchanged.
+    light = _themes()["light"]
+    assert light["gallery.nav.fill"].lower() == "#f1f2f4"
+    assert light["gallery.nav.glyph"].lower() == "#23262b"
 
 
 def test_pill_hover_ink_legible_in_both_themes() -> None:

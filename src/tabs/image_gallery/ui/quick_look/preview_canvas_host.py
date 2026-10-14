@@ -1505,11 +1505,13 @@ def _cover_until_first_frame(overlay, canvas) -> None:
             pass
         try:
             # Opaque plate fill under the pixmap: letterbox margins (and a
-            # null pixmap) show card background, never the desktop through
-            # an unpresented canvas. Same tone as the card background.
-            from tabs.image_gallery.ui.quick_look.labels_theme import _token_color
+            # null pixmap) show the overlay surface, never the desktop through
+            # an unpresented canvas. Same tone as the plate/panel token.
+            from tabs.image_gallery.ui.quick_look.labels_theme import _is_dark_theme, _token_color
 
-            bg = _token_color("gallery.card.background", "#ffffff")
+            bg = _token_color(
+                "gallery.panel.background", "#ffffff" if not _is_dark_theme() else "#303030"
+            )
             if bg is not None:
                 try:
                     pal = cover.palette()
