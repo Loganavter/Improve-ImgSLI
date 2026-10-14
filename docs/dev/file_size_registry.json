@@ -1217,7 +1217,7 @@
     },
     {
       "path": "src/ui/canvas_infra/rhi/rhi_backend.py",
-      "lines": 739,
+      "lines": 741,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine reason=\"single RHI backend lifecycle — backend selection + QRhiWidget init\"",
@@ -1272,7 +1272,7 @@
     },
     {
       "path": "src/ui/widgets/scroll_value_button.py",
-      "lines": 800,
+      "lines": 801,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine reason=\"single custom-painted control — painter pipeline owns visuals\"",

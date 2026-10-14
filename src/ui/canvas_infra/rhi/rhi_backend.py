@@ -11,6 +11,8 @@ from dataclasses import dataclass
 from PySide6.QtGui import QRhi
 from PySide6.QtWidgets import QRhiWidget
 
+from ui.host_debug import rhi_primer_debug
+
 logger = logging.getLogger("ImproveImgSLI.rhi")
 
 FALLBACK_MAX_TEXTURE_SIZE = 4096
@@ -668,7 +670,7 @@ class _RhiSurfacePrimer(QRhiWidget):
 
     def initialize(self, command_buffer) -> None:  # noqa: N802
         try:
-            logger.debug("rhi primer: first RHI setup done, self-destructing")
+            rhi_primer_debug("first RHI setup done, self-destructing")
         except Exception:
             pass
         try:
@@ -720,7 +722,7 @@ def ensure_window_rhi(window) -> None:
         configure_rhi_widget(primer, watch_failures=False)
         primer.setGeometry(0, 0, 1, 1)
         primer.show()
-        logger.debug("rhi primer: installed shown 1x1 on %s", type(window).__name__)
+        rhi_primer_debug("installed shown 1x1 on %s", type(window).__name__)
     except Exception:
         logger.exception("ensure_window_rhi: failed to create RHI primer widget")
 

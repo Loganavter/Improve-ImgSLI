@@ -8,6 +8,11 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication
 
 from shared_toolkit.ui.managers.font_manager import FontManager
+from ui.host_debug import (
+    layout_tree_debug,
+    layout_tree_debug_enabled,
+    startup_debug,
+)
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -200,7 +205,7 @@ class MainWindowStartupPipeline:
 
     def run(self, window) -> None:
         for step in self.steps:
-            logger.debug("Main window startup step: %s", step.name)
+            startup_debug("main window startup step: %s", step.name)
             try:
                 step.run(window)
             except Exception as exc:
@@ -223,12 +228,12 @@ class MainWindowStartupController:
     def prepare(self, window) -> None:
         if getattr(window, "_application_initialized", False):
             return
-        logger.debug("Main window startup controller: prepare")
+        startup_debug("controller: prepare")
         self.pipeline.run(window)
         window._application_initialized = True
 
     def show(self, window) -> None:
-        logger.debug("Main window startup controller: show")
+        startup_debug("controller: show")
         self.prepare(window)
         # Final CSD menu widths + balance while still hidden, so the first
         # exposed frame does not remasure and ghost «Справка».
@@ -284,14 +289,14 @@ class MainWindowStartupController:
         if app is not None:
             for _ in range(4):
                 app.processEvents()
-                logger.debug(
-                    "Main window startup drain pass %d: window=%s maximized=%s",
+                startup_debug(
+                    "drain pass %d: window=%s maximized=%s",
                     _ + 1,
                     window.size().toTuple(),
                     window.isMaximized(),
                 )
-        logger.debug(
-            "Main window startup drain done: window=%s maximized=%s",
+        startup_debug(
+            "drain done: window=%s maximized=%s",
             window.size().toTuple(),
             window.isMaximized(),
         )
@@ -322,7 +327,14 @@ class MainWindowStartupController:
         self._log_layout_summary(window)
 
     def _log_layout_summary(self, window) -> None:
-        """Log a compact summary of the main window widget tree for debug."""
+        """Log a compact summary of the main window widget tree for debug.
+
+        Gated on ``IMGSLI_LAYOUT_DEBUG``: the dump is huge and must never be
+        wired to the global ``debug_mode_enabled`` switch. The tree is not
+        even built when the flag is unset.
+        """
+        if not layout_tree_debug_enabled():
+            return
         from PySide6.QtWidgets import QWidget
         from PySide6.QtCore import Qt
 
@@ -341,8 +353,8 @@ class MainWindowStartupController:
 
         lines = _tree(window)
         if lines:
-            logger.debug(
-                "[layout-tree] main window tree:\n  %s",
+            layout_tree_debug(
+                "main window tree:\n  %s",
                 "\n  ".join(lines),
             )
 

@@ -1,6 +1,7 @@
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import QApplication, QWidget
 
+from ui.host_debug import ctx_menu_debug
 from ui.presenters.main_window.actions import (
     on_error_occurred,
     on_ui_update_requested,
@@ -177,10 +178,8 @@ def _press_is_on_title_bar_menu(global_pos) -> bool:
 def handle_global_mouse_press(presenter, event):
     if event.button() == Qt.MouseButton.RightButton:
         return
-    import logging
-
-    logging.getLogger("ImproveImgSLI").debug(
-        "[ctx-menu] global press button=%s pos=%s",
+    ctx_menu_debug(
+        "global press button=%s pos=%s",
         event.button(),
         event.globalPosition(),
     )

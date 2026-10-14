@@ -8,6 +8,8 @@ from PySide6.QtWidgets import QApplication
 from PySide6.QtGui import QFont, QFontDatabase
 from PySide6.QtWidgets import QApplication
 
+from shared.debug_flags import env_flag as _env_flag
+
 _logger = logging.getLogger("ImproveImgSLI")
 
 
@@ -97,15 +99,16 @@ class FontManager(QObject):
         return None
 
     def set_font(self, mode: str, family: str = ""):
-        _logger.debug(
-            "[flyout-debug] FontManager.set_font(mode=%r, family=%r) "
-            "previous_mode=%r previous_family=%r caller=%s",
-            mode,
-            family,
-            self._current_mode,
-            self._current_family,
-            _caller_str(),
-        )
+        if _env_flag("IMGSLI_FLYOUT_DEBUG"):
+            _logger.debug(
+                "[flyout-debug] FontManager.set_font(mode=%r, family=%r) "
+                "previous_mode=%r previous_family=%r caller=%s",
+                mode,
+                family,
+                self._current_mode,
+                self._current_family,
+                _caller_str(),
+            )
 
         if mode == "system":
             mode = "system_default"
@@ -146,14 +149,15 @@ class FontManager(QObject):
             if new_font.pointSize() <= 8:
                 new_font.setPointSize(11)
 
-            _logger.debug(
-                "[flyout-debug] FontManager.set_font: app.setFont() family=%r "
-                "pointSizeF=%.2f (was family=%r pointSizeF=%.2f)",
-                new_font.family(),
-                new_font.pointSizeF(),
-                app.font().family(),
-                app.font().pointSizeF(),
-            )
+            if _env_flag("IMGSLI_FLYOUT_DEBUG"):
+                _logger.debug(
+                    "[flyout-debug] FontManager.set_font: app.setFont() family=%r "
+                    "pointSizeF=%.2f (was family=%r pointSizeF=%.2f)",
+                    new_font.family(),
+                    new_font.pointSizeF(),
+                    app.font().family(),
+                    app.font().pointSizeF(),
+                )
             app.setFont(new_font)
 
             try:
