@@ -592,8 +592,12 @@ class StatsStrip(QWidget):
         Re-reads the Keep-best/Show-all button text (via ``set_keep_mode``),
         the rejected count and the stats segments so a live language switch
         never leaves stale English behind.
+
+        Also the toolkit protocol hook (``retranslate(lang)`` via
+        ``install_translator``): a non-callable (language string) is ignored and
+        the live ``_tr`` re-applies — never overwrite the callable with a str.
         """
-        if translate is not None:
+        if callable(translate):
             self._tr = translate
         try:
             self._compare_btn.setText(

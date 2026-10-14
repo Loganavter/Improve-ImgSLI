@@ -3099,6 +3099,27 @@ class GalleryGridView(QWidget):
         except Exception:
             pass
 
+    def retranslate_headers(self) -> None:
+        """Re-resolve series/UNGROUPED header text + card content in place.
+
+        Cheap chrome refresh for a live language switch: reuses the existing
+        header (``_rebuild_series``'s surgical reconcile retitles headers and
+        updates kept cards without hide/reparent) and card widgets, so scroll,
+        focus and selection survive. On a flat (no-series) grid the header
+        rebuild is skipped — ``_rebuild_series`` would tear the flat pool down
+        — and only card content is refreshed.
+        """
+        try:
+            if getattr(self, "_series", None) is not None:
+                self._rebuild_series()
+                return
+        except Exception:
+            pass
+        try:
+            self.refresh_cards(list(getattr(self, "_items", None) or []))
+        except Exception:
+            pass
+
     def set_card_visible(self, path: Path, visible: bool) -> None:
         card = self._cards_by_path.get(str(path))
         if card is not None:

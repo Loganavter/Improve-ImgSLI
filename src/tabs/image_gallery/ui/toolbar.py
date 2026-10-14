@@ -871,8 +871,13 @@ class GalleryToolbar(QWidget):
         self.set_sort_index(index)
 
     def retranslate(self, translate: Callable[[str, str], str] | None = None) -> None:
-        """Update translatable texts in place."""
-        if translate is not None:
+        """Update translatable texts in place.
+
+        Also the toolkit protocol hook (``retranslate(lang)`` via
+        ``install_translator``): a non-callable (language string) is ignored and
+        the live ``_tr`` re-applies — never overwrite the callable with a str.
+        """
+        if callable(translate):
             self._tr = translate
         tr = self._tr
 

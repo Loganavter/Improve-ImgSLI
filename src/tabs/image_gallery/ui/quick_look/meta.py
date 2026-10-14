@@ -73,7 +73,7 @@ def populate_filename_meta(overlay, item, is_fidelity: bool, owner=None) -> None
         meta_parts = [t for t in (dims_txt, fmt_txt, size_txt) if t]
         if is_fidelity and overlay._source_path is not None:
             if upscale_n is not None and upscale_n > 1:
-                meta_parts.append(f"upscale ×{upscale_n} from source")
+                meta_parts.append(_ql_upscale(overlay, upscale_n, from_source=True))
             elif upscale_n == 1:
                 # W4 item 7: explicit same-size text when truly ×1.
                 # W5: factor 1 also covers item-smaller-than-source (the
@@ -88,7 +88,7 @@ def populate_filename_meta(overlay, item, is_fidelity: bool, owner=None) -> None
             else:
                 meta_parts.append(_ql_size(overlay, "size_upscale", "upscale from source"))
         elif upscale_n is not None and upscale_n > 1:
-            meta_parts.append(f"upscale ×{upscale_n}")
+            meta_parts.append(_ql_upscale(overlay, upscale_n, from_source=False))
         try:
             _series_note = series_size_note(overlay)
         except Exception:
@@ -328,3 +328,45 @@ def _ql_size(overlay, key: str, default: str) -> str:
         except Exception:
             pass
     return default
+
+
+def _ql_text(overlay, key: str, default: str, **fmt) -> str:
+    """Localized QL string with ``{n}``-style formatting, fail-open.
+
+    Tail-defined for the same reason as ``_ql_size`` (ownership-guard line
+    ratchet): callers pass a full dotted *key*.
+    """
+    text = default
+    tr = getattr(overlay, "_tr", None)
+    if callable(tr):
+        try:
+            text = str(tr(key, default))
+        except Exception:
+            text = default
+    if fmt:
+        try:
+            text = text.format(**fmt)
+        except Exception:
+            pass
+    return text
+
+
+def _ql_upscale(overlay, n: int, *, from_source: bool) -> str:
+    """Localized per-item upscale suffix (``upscale ×N``), fail-open.
+
+    Uses the dedicated keys ``image_gallery.quick_look.upscale_n`` /
+    ``...upscale_n_from_source`` (present in every locale pack).
+    """
+    if from_source:
+        return _ql_text(
+            overlay,
+            "image_gallery.quick_look.upscale_n_from_source",
+            "upscale ×{n} from source",
+            n=n,
+        )
+    return _ql_text(
+        overlay,
+        "image_gallery.quick_look.upscale_n",
+        "upscale ×{n}",
+        n=n,
+    )

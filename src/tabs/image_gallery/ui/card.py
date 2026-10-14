@@ -461,13 +461,9 @@ def update_gallery_card(
             pass
     _tr = translate
     if not callable(_tr):
-        # Reuse the translator attached at build time (no per-update threading).
+        # Single source: the translator attached at build time (no per-update
+        # threading, no dead ``owner._tr`` fallback).
         _tr = getattr(card, "_gallery_translate", None)
-    if not callable(_tr):
-        try:
-            _tr = getattr(owner, "_tr", None)
-        except Exception:
-            _tr = None
     rows = _text_rows(item, _tr, mode=_mode)
     card.update_region("text", rows=rows)
     _set_card_tooltip(card, item)

@@ -84,14 +84,36 @@ def _member_dims(item) -> tuple[int, int] | None:
     return None
 
 
-def _size_note(items) -> str:
+def _ql_note(overlay, key: str, default: str, **fmt) -> str:
+    """Localized Quick Look note (``image_gallery.quick_look.<key>``), fail-open.
+
+    ``overlay._tr`` is the injected tab translator; a missing/non-callable one
+    (or a miss) keeps the EN ``default``. ``**fmt`` fills ``{n}``-style
+    placeholders in the resolved text.
+    """
+    text = default
+    tr = getattr(overlay, "_tr", None)
+    if callable(tr):
+        try:
+            text = str(tr(f"image_gallery.quick_look.{key}", default))
+        except Exception:
+            text = default
+    if fmt:
+        try:
+            text = text.format(**fmt)
+        except Exception:
+            pass
+    return text
+
+
+def _size_note(overlay, items) -> str:
     """Size tracker: 'mixed sizes' when members differ, '' otherwise/unknown.
 
     A uniform series is the expected case and the viewing item's dims are
     already the first part of the meta line, so the old ``same size WxH``
     note only repeated them (and doubled the fidelity ``same size as
     source`` claim) — dropped. Only the non-obvious ``mixed sizes`` signal
-    remains.
+    remains (localized via ``image_gallery.quick_look.mixed_sizes``).
     """
     dims_list = [_member_dims(m) for m in items]
     if not dims_list or any(d is None for d in dims_list):
@@ -99,7 +121,7 @@ def _size_note(items) -> str:
     first = dims_list[0]
     if all(d == first for d in dims_list):
         return ""
-    return "mixed sizes"
+    return _ql_note(overlay, "mixed_sizes", "mixed sizes")
 
 
 def series_size_note(overlay) -> str:
@@ -136,10 +158,17 @@ def series_size_note(overlay) -> str:
                     and all(d is not None for d in member_dims)
                     and all(max(d[0], d[1]) > max(src_dims[0], src_dims[1]) for d in member_dims)  # type: ignore[index]
                 ):
-                    parts.append(f"{n} upscales of one source")
+                    parts.append(
+                        _ql_note(
+                            overlay,
+                            "upscales_note",
+                            "{n} upscales of one source",
+                            n=n,
+                        )
+                    )
             except Exception:
                 pass
-        size_note = _size_note(items)
+        size_note = _size_note(overlay, items)
         if size_note:
             parts.append(size_note)
         return " · ".join(parts)

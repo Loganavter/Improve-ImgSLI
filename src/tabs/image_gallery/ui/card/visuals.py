@@ -168,13 +168,10 @@ def _apply_rejected_visuals(card: Button, item: GalleryItem, translate=None) -> 
             if badge_kind == KIND_SOURCE and badge_text:
                 # The badge string is stamped once as "SOURCE"; localize it at
                 # render via the tab translator (injected, never app i18n —
-                # tabs-isolation contract). Fall back to the owner's ``_tr``.
+                # tabs-isolation contract). Callers pass it explicitly (build
+                # threading / the card's attached ``_gallery_translate``) — no
+                # dead ``_gallery_owner`` fallback.
                 tr = translate
-                if not callable(tr):
-                    try:
-                        tr = getattr(getattr(card, "_gallery_owner", None), "_tr", None)
-                    except Exception:
-                        tr = None
                 if callable(tr):
                     try:
                         badge_text = str(tr("image_gallery.badge.source", badge_text))

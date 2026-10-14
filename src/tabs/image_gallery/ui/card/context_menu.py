@@ -58,6 +58,52 @@ def _t(translate, key: str, default: str) -> str:
             return default
 
 
+def _resolve_menu_translator(card, owner, translate):
+    """Best translator for this menu WITHOUT a threaded ``translate=``.
+
+    Priority: an explicit ``translate=``; the nearest subtree translator
+    bound on *card* (the page's ``install_translator`` root, resolved via
+    ``translator_for``); then the triage owner's ``_tr`` (the Quick Look strip
+    path, whose anchor lives under the window-parented overlay, not the page).
+    ``None`` when nothing is wired — the caller keeps the literal fallbacks.
+    """
+    if callable(translate):
+        return translate
+    try:
+        from sli_ui_toolkit.i18n import translator_for, tr as _global_tr
+
+        resolved = translator_for(card)
+        if resolved is not _global_tr:
+            return resolved
+    except Exception:
+        pass
+    try:
+        owner_tr = getattr(owner, "_tr", None)
+        if callable(owner_tr):
+            return owner_tr
+    except Exception:
+        pass
+    return None
+
+
+def _bind_menu_translator(menu, translate) -> None:
+    """Drive the menu's declarative ``text_key`` rows through *translate*.
+
+    The menu is a popup parented to the card/anchor but created AFTER the
+    page's ``install_translator`` walk ran, so it is never auto-covered;
+    resolve the translator here and bind it explicitly. No-op when *translate*
+    is ``None``. Fail-open (fake/test menus lack the protocol).
+    """
+    if not callable(translate):
+        return
+    try:
+        from sli_ui_toolkit.i18n import bind_translator
+
+        bind_translator(menu, translate)
+    except Exception:
+        pass
+
+
 def _selection_count(owner) -> int:
     try:
         sel = getattr(getattr(owner, "state", None), "selected_paths", None)
@@ -293,6 +339,9 @@ def popup_gallery_card_context_menu(  # type: ignore[no-untyped-def]
         n = int(selection_count) if selection_count is not None else _selection_count(owner)
         has_selection = n > 0
         has_analyze = on_analyze is not None or owner is not None
+        # Resolve the translator from the widget tree (page ``install_translator``
+        # root) or the owner — call sites no longer need to thread ``translate=``.
+        tr = _resolve_menu_translator(card, owner, translate)
 
         def _do_carry() -> None:
             try:
@@ -346,65 +395,78 @@ def popup_gallery_card_context_menu(  # type: ignore[no-untyped-def]
             # close and replays this show — no app-side close/open chain needed.
             _open_ask_ai_now(scope_kind)
 
-        ask_ai_label = _t(translate, "image_gallery.ask_ai.action", "AI…")
+        ask_ai_label = _t(tr, "image_gallery.ask_ai.action", "AI…")
         entries: list = []
         if has_selection:
             sel_actions = [
                 ContextMenuAction(
                     "gallery.selection.analyze",
-                    _t(translate, "image_gallery.selection.analyze", "Analyze"),
+                    _t(tr, "image_gallery.selection.analyze", "Analyze"),
                     icon=_menu_icon(Icon.ANALYZE),
                     enabled=has_analyze,
+                    text_key="image_gallery.selection.analyze",
                 ),
                 ContextMenuAction(
                     "gallery.selection.find_similar",
-                    _t(translate, "image_gallery.selection.find_similar", "Find similar"),
+                    _t(tr, "image_gallery.selection.find_similar", "Find similar"),
                     icon=_menu_icon("compare.svg"),
+                    text_key="image_gallery.selection.find_similar",
                 ),
                 ContextMenuAction(
                     "gallery.selection.ask_ai",
                     ask_ai_label,
                     icon=_menu_icon(Icon.AI),
+                    text_key="image_gallery.ask_ai.action",
                 ),
             ]
-            entries.append(ContextMenuSection(entries=tuple(sel_actions), title=_selection_label(translate, n)))
+            entries.append(ContextMenuSection(entries=tuple(sel_actions), title=_selection_label(tr, n)))
             entries.append(ContextMenuSeparator())
 
         # Reject label follows state: all targets rejected → Unreject
         # (mixed → Reject, matching the uniform apply direction).
         _menu_targets = _action_targets(owner, path)
-        _reject_label = (
-            _t(translate, "image_gallery.card.unreject", "Unreject")
-            if _targets_all_rejected(owner, _menu_targets)
-            else _t(translate, "image_gallery.card.reject", "Reject")
+        _all_rejected = _targets_all_rejected(owner, _menu_targets)
+        _reject_key = (
+            "image_gallery.card.unreject" if _all_rejected else "image_gallery.card.reject"
         )
+        _reject_label = _t(tr, _reject_key, "Unreject" if _all_rejected else "Reject")
         per_card: list = []
         # Ask AI on the clicked card alone — only when there is no selection,
         # so it never competes with the selection-scoped entry above.
         if not has_selection:
-            per_card.append(ContextMenuAction("gallery.ask_ai", ask_ai_label, icon=Icon.AI))
+            per_card.append(
+                ContextMenuAction(
+                    "gallery.ask_ai",
+                    ask_ai_label,
+                    icon=Icon.AI,
+                    text_key="image_gallery.ask_ai.action",
+                )
+            )
         per_card.extend(
             [
                 ContextMenuAction(
                     "gallery.make_best",
-                    _t(translate, "image_gallery.card.make_best", "Make best"),
+                    _t(tr, "image_gallery.card.make_best", "Make best"),
                     icon=_menu_icon("star.svg"),
+                    text_key="image_gallery.card.make_best",
                 ),
                 ContextMenuAction(
                     "gallery.reject",
                     _reject_label,
                     icon=_menu_icon("close.svg"),
+                    text_key=_reject_key,
                 ),
             ]
         )
         per_card.append(
             ContextMenuAction(
                 "gallery.remove",
-                _t(translate, "image_gallery.card.remove", "Remove from view"),
+                _t(tr, "image_gallery.card.remove", "Remove from view"),
                 # Non-destructive: "remove from view" only drops the card from
                 # the grid (files stay on disk, list-mode parity) — no danger
                 # red on the label/icon.
                 icon=_menu_icon("delete"),
+                text_key="image_gallery.card.remove",
             )
         )
         # Explicit path to UNGROUPED when no tail section exists to drop
@@ -414,8 +476,9 @@ def popup_gallery_card_context_menu(  # type: ignore[no-untyped-def]
             per_card.append(
                 ContextMenuAction(
                     "gallery.ungroup",
-                    _t(translate, "image_gallery.card.ungroup", "Ungroup"),
+                    _t(tr, "image_gallery.card.ungroup", "Ungroup"),
                     icon=_menu_icon("unlink.svg"),
+                    text_key="image_gallery.card.ungroup",
                 )
             )
         # Reverse path: pin the menu-rule targets into a brand-new manual
@@ -427,8 +490,9 @@ def popup_gallery_card_context_menu(  # type: ignore[no-untyped-def]
             per_card.append(
                 ContextMenuAction(
                     "gallery.group",
-                    _t(translate, "image_gallery.card.group", "Group"),
+                    _t(tr, "image_gallery.card.group", "Group"),
                     icon=_menu_icon("link.svg"),
+                    text_key="image_gallery.card.group",
                 )
             )
         entries.extend(per_card)
@@ -441,8 +505,9 @@ def popup_gallery_card_context_menu(  # type: ignore[no-untyped-def]
             entries.append(
                 ContextMenuAction(
                     "gallery.set_as_source",
-                    _t(translate, "image_gallery.card.make_source", "Make source"),
+                    _t(tr, "image_gallery.card.make_source", "Make source"),
                     icon=_menu_icon("check.svg"),
+                    text_key="image_gallery.card.make_source",
                 )
             )
         def _on_triggered(action_id: str, _data: object) -> None:
@@ -506,6 +571,10 @@ def popup_gallery_card_context_menu(  # type: ignore[no-untyped-def]
                 on_triggered=_on_triggered,
             )
             if menu is not None:
+                # Localize the declarative text_key rows through the resolved
+                # translator (the popup is created after the page's install
+                # walk, so it is not auto-covered).
+                _bind_menu_translator(menu, tr)
                 if _dbg_on:
                     try:
                         _dbg(
@@ -525,6 +594,7 @@ def popup_gallery_card_context_menu(  # type: ignore[no-untyped-def]
             menu = ContextMenu(source, entries=tuple(entries), on_triggered=_on_triggered, surface="popup")
         except TypeError:
             menu = ContextMenu(source, entries=tuple(entries), on_triggered=_on_triggered)
+        _bind_menu_translator(menu, tr)
         try:
             menu.flyout_group = "context_menu"  # type: ignore[attr-defined]
         except Exception:
@@ -545,6 +615,7 @@ def popup_gallery_card_context_menu(  # type: ignore[no-untyped-def]
             _anchor_menu = popup_context_menu_for_anchor(
                 source or card, card, tuple(entries), on_triggered=_on_triggered
             )
+            _bind_menu_translator(_anchor_menu, tr)
             track_open_menu(card, _anchor_menu, owner)
         except Exception:
             if _dbg_on:

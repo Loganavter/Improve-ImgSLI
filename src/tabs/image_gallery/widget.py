@@ -76,6 +76,19 @@ class ImageGalleryWidget(QWidget):
 
         super().__init__(parent)
         self._context = context
+        # Subtree translator root (W1 toolkit API): bind the tab-injected
+        # translator ONCE here so every descendant implementing the
+        # duck-typed protocol (declarative ``text_key``/``badge_key`` on
+        # Button/Label/Text/ContextMenu, plus the toolbar/stats ``retranslate``
+        # hooks) resolves ``translator_for(self)`` to it. Guarded: storeless
+        # tests construct the widget with ``context=None``.
+        try:
+            if context is not None:
+                from sli_ui_toolkit.i18n import install_translator
+
+                install_translator(self, context._tr)
+        except Exception:
+            pass
         # Jank watchdog (diagnosis only): QTimer ticks on the GUI thread —
         # worker threads keep logging while the GUI loop is stuck, so plain
         # log gaps cannot prove GUI blocks. Any inter-tick gap over the
@@ -322,7 +335,7 @@ class ImageGalleryWidget(QWidget):
         try:
             from sli_ui_toolkit.i18n import translatable_callback
 
-            translatable_callback(self, lambda _lang: self._retranslate_overlays())
+            translatable_callback(self, lambda _lang: self._retranslate_chrome())
         except Exception:
             pass
         # Selection actions live in the card context menu (ex-HUD flyout removed).
@@ -890,10 +903,9 @@ class ImageGalleryWidget(QWidget):
             view_is_list = None
         try:
             # ``_context`` is the TabContext the widget was built with (see
-            # __init__); ``_gallery_context`` is a legacy alias that is never
-            # assigned — reading it left ``tr=None`` and rendered the
-            # empty-canvas Sort by / View menu in English.
-            _ctx = getattr(self, "_context", None) or getattr(self, "_gallery_context", None)
+            # __init__) — the only translator source (the legacy
+            # ``_gallery_context`` alias was never assigned).
+            _ctx = getattr(self, "_context", None)
             tr = getattr(_ctx, "_tr", None) if _ctx is not None else None
         except Exception:
             tr = None
@@ -996,9 +1008,9 @@ class ImageGalleryWidget(QWidget):
             except Exception:
                 sel_n = 0
             try:
-                # Same fix as the empty-canvas menu: the real context lives on
-                # ``_context`` (``_gallery_context`` is never set).
-                _ctx = getattr(self, "_context", None) or getattr(self, "_gallery_context", None)
+                # Same fix as the empty-canvas menu: the translator lives on
+                # ``_context`` only.
+                _ctx = getattr(self, "_context", None)
                 _tr = getattr(_ctx, "_tr", None) if _ctx is not None else None
             except Exception:
                 _tr = None
@@ -1237,6 +1249,31 @@ class ImageGalleryWidget(QWidget):
                 overlay.retranslate(tr)
             except Exception:
                 pass
+
+    def _retranslate_chrome(self) -> None:
+        """Re-render every gallery-owned string on a live language switch.
+
+        The toolbar/stats strip captured ``translate`` at construction and
+        their ``retranslate()`` hooks were never wired; the series headers and
+        cards capture theirs per render. Re-applies all three in place — no
+        teardown, selection/scroll/focus preserved (the grid reuses header and
+        card widgets). Fail-open per surface.
+        """
+        self._retranslate_overlays()
+        for attr in ("toolbar", "stats_strip"):
+            widget = getattr(self, attr, None)
+            if widget is None:
+                continue
+            try:
+                widget.retranslate()
+            except Exception:
+                pass
+        try:
+            gv = getattr(self, "_grid_view", None)
+            if gv is not None:
+                gv.retranslate_headers()
+        except Exception:
+            pass
 
     def _series_names_map(self) -> dict:
         """Session custom-name map (series_id → name); lazily created."""
