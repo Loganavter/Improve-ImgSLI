@@ -50,12 +50,20 @@ _SELECTION_PASTEL_MIX = 0.62
 def _theme_manager_or_none(theme_manager=None):
     if theme_manager is not None:
         return theme_manager
-    try:
-        from sli_ui_toolkit.ui.theme_manager import ThemeManager  # type: ignore[import-untyped]  # toolkit lacks py.typed
-
-        return ThemeManager.get_instance()
-    except Exception:
-        return None
+    # Resolve the app-wide ThemeManager through its real toolkit paths.
+    # The historical ``sli_ui_toolkit.ui.theme_manager`` module no longer
+    # exists; importing it raised, this returned None, and every caller fell
+    # back to the LIGHT ``#0078D4`` / ``#ffffff`` pair in BOTH themes — so the
+    # dark selection fill rendered as a near-white pastel (#9eccef) that made
+    # the light card caption unreadable. Keep a second path for the intrinsic
+    # module (`sli_ui_toolkit.theme`) in case the re-export moves.
+    for module_name in ("sli_ui_toolkit.managers", "sli_ui_toolkit.theme"):
+        try:
+            module = __import__(module_name, fromlist=["ThemeManager"])
+            return module.ThemeManager.get_instance()
+        except Exception:
+            continue
+    return None
 
 
 def _raw_accent(theme_manager=None) -> QColor:
