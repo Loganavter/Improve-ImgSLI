@@ -2012,6 +2012,23 @@ class GalleryGridView(QWidget):
         # right half fills instead of staying empty; narrow windows stack
         # every section full-width as before.
         _plan: list[tuple] = []
+        # Discriminator for the "splitter flashes on the first frames" report:
+        # banding needs >= 2 sections, so log the section set + band inputs at
+        # every series rebuild. Run with IMGSLI_GALLERY_DEBUG=1 to capture it.
+        try:
+            from tabs.image_gallery.debug import gallery_debug as _gdbg
+
+            _gdbg(
+                "layout: sections=%d kinds=%s ungrouped=%d cols=%s split_left=%s band_state=%s",
+                len(_sections),
+                [s.get("kind") for s in _sections],
+                len(list(getattr(self, "_ungrouped", []) or [])),
+                getattr(self, "grid_columns", None),
+                getattr(self, "_split_left", None),
+                getattr(self, "_band_state", None),
+            )
+        except Exception:
+            pass
         try:
             _bands = self._plan_bands(_sections)
         except Exception:
