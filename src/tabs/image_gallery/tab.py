@@ -65,6 +65,7 @@ class ImageGalleryTab(TabContract):
         self._controller = None
         self._active_session_id: str | None = None
         self._nav_section = None
+        self._grid_nav_section = None
         self._session_state = SessionState.bind(
             self,
             namespace="image_gallery",
@@ -193,11 +194,10 @@ class ImageGalleryTab(TabContract):
             try:
                 from sli_ui_toolkit.ui.managers.navigation_manager import NavigationManager
 
-                reason = (
-                    Qt.FocusReason.OtherFocusReason
-                    if NavigationManager.get_instance().last_input_was_keyboard()
-                    else Qt.FocusReason.MouseFocusReason
-                )
+                # Ring modality from the manager (never a literal reason) so a
+                # keyboard-driven activation shows the ring and a mouse-driven
+                # one does not.
+                reason = NavigationManager.get_instance().current_focus_reason()
             except Exception:
                 reason = Qt.FocusReason.OtherFocusReason
             try:
@@ -209,13 +209,18 @@ class ImageGalleryTab(TabContract):
         w = self._widget
         if w is None:
             return []
-        # Only the chrome controls are rows. The card grid owns its own
-        # arrow navigation (``GalleryGridView`` — session-picker parity), so
-        # the widget itself must NOT be a row here: the toolkit rows section
-        # would otherwise claim every descendant (cards included) and
-        # intercept Up/Down on a focused card, handing focus to the toolbar.
-        toolbar = getattr(w, "_pick_button", None)
-        return [getattr(w, "_filter_edit", None), toolbar]
+        # CONTAINER rows, not bare controls: ToolbarRowsSection clusters each
+        # row's StrongFocus descendants by y, so a bare control (a single
+        # widget with no focusable children) is an INERT row — focus_first/
+        # focus_last return False and Up/Down never leave the filter. The
+        # toolbar container holds filter + pick + sort/view/domain controls;
+        # the stats strip is the second row. Cards live in the grid, which is
+        # its own registered section (``_register_nav_section``), so this
+        # section never claims them.
+        return [
+            getattr(w, "toolbar", None),
+            getattr(w, "stats_strip", None),
+        ]
 
     def _register_nav_section(self) -> None:
         if self._widget is None:
@@ -228,6 +233,20 @@ class ImageGalleryTab(TabContract):
                 self._toolbar_rows(),
                 tag="image-gallery",
             )
+        except Exception:
+            pass
+        # Grid section — registered AFTER the toolbar so NavigationManager's
+        # trial-dispatch neighbours are toolbar (above) and grid (below): Up at
+        # the first row hands off to the toolbar, Down from the toolbar enters
+        # the first card.
+        try:
+            grid_view = getattr(self._widget, "_grid_view", None)
+            section = getattr(grid_view, "nav_section", None)
+            if grid_view is not None and section is not None:
+                from sli_ui_toolkit.managers import NavigationManager
+
+                NavigationManager.get_instance().register(grid_view, section)
+                self._grid_nav_section = section
         except Exception:
             pass
 
@@ -278,9 +297,13 @@ class ImageGalleryTab(TabContract):
             try:
                 from core.navigation import NavigationManager
 
+                grid_view = getattr(self._widget, "_grid_view", None)
+                if grid_view is not None:
+                    NavigationManager.get_instance().unregister(grid_view)
                 NavigationManager.get_instance().unregister(self._widget)
             except Exception:
                 pass
+            self._grid_nav_section = None
         # No snapshot (see on_active_session_changed): slot is authoritative.
         self._dismiss_tab_modals()
 
@@ -405,9 +428,13 @@ class ImageGalleryTab(TabContract):
             try:
                 from core.navigation import NavigationManager
 
+                grid_view = getattr(self._widget, "_grid_view", None)
+                if grid_view is not None:
+                    NavigationManager.get_instance().unregister(grid_view)
                 NavigationManager.get_instance().unregister(self._widget)
             except Exception:
                 pass
         self._controller = None
         self._widget = None
         self._active_session_id = None
+        self._grid_nav_section = None
