@@ -859,7 +859,7 @@
     },
     {
       "path": "src/tabs/image_gallery/ui/grid_view.py",
-      "lines": 3122,
+      "lines": 3141,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine size=exempt reason=\"single virtualized grid view — grid_columns/series headers/pool/marquee share one layout lifecycle\"",
@@ -882,7 +882,7 @@
     },
     {
       "path": "src/tabs/image_gallery/ui/quick_look/metrics.py",
-      "lines": 854,
+      "lines": 886,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner-target size=exempt reason=\"one metrics-rows concern: rebuild + row-container cache + hidden-parent warm share one fingerprint contract\"",

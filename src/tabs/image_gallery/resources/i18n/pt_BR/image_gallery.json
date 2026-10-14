@@ -73,7 +73,10 @@
       "rename_prompt": "Nome da série",
       "delete": "Excluir",
       "reset": "Redefinir séries manuais",
-      "recluster": "Reagrupar séries"
+      "recluster": "Reagrupar séries",
+      "header_hub": "SÉRIE {n} · {hub} · {count} variantes",
+      "header": "SÉRIE {n} · {count} imagens",
+      "ungrouped": "SEM GRUPO · {count}"
     },
     "sort_by": "Ordenar por",
     "view": "Visualizar",
@@ -128,6 +131,42 @@
         "title": "Galeria",
         "desc": "Explorar, triar e revisar pastas de imagens"
       }
+    },
+    "scanning": "Analisando {n}/{total}",
+    "metric": {
+      "sharpness": "Nitidez",
+      "exposure": "Exposição",
+      "clipping": "Detalhes nas luzes",
+      "noise": "Limpeza",
+      "white_balance": "Balanço de branco",
+      "ssim": "Semelhança com a origem",
+      "detail_gain": "Detalhe",
+      "color_accuracy": "Precisão de cor",
+      "typicality": "Tipicidade",
+      "aesthetic": "Estética",
+      "lpips": "Perceptual (LPIPS)",
+      "dists": "Perceptual",
+      "brisque": "Naturalidade",
+      "clipping_delta": "Recorte vs origem",
+      "halo_delta": "Halo vs origem",
+      "chroma_fringe_delta": "Croma vs origem",
+      "composition": "Composição"
+    },
+    "artifact": {
+      "banding": "Gradientes",
+      "halo": "Bordas",
+      "over_smoothing": "Detalhe",
+      "invented_texture": "Textura",
+      "blocking": "Blocos",
+      "chroma_fringing": "Croma",
+      "noise_amplification": "Limpeza"
+    },
+    "ql": {
+      "restored_texture": "textura restaurada",
+      "invented_hallucinated": "inventado / alucinado",
+      "size_smaller": "menor que a origem",
+      "size_same": "mesmo tamanho da origem",
+      "size_upscale": "ampliado da origem"
     }
   }
 }

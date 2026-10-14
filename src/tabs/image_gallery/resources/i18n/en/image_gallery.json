@@ -73,7 +73,10 @@
       "rename_prompt": "Series name",
       "delete": "Delete",
       "reset": "Reset manual series",
-      "recluster": "Re-cluster series"
+      "recluster": "Re-cluster series",
+      "header_hub": "SERIES {n} · {hub} · {count} VARIANTS",
+      "header": "SERIES {n} · {count} images",
+      "ungrouped": "UNGROUPED · {count}"
     },
     "sort_by": "Sort by",
     "view": "View",
@@ -128,6 +131,42 @@
         "title": "Image Gallery",
         "desc": "Browse, triage, and review image folders"
       }
+    },
+    "scanning": "Scanning {n}/{total}",
+    "metric": {
+      "sharpness": "Sharpness",
+      "exposure": "Exposure",
+      "clipping": "Highlight detail",
+      "noise": "Clean",
+      "white_balance": "White balance",
+      "ssim": "Source match",
+      "detail_gain": "Detail",
+      "color_accuracy": "Color accuracy",
+      "typicality": "Typicality",
+      "aesthetic": "Aesthetic",
+      "lpips": "Perceptual (LPIPS)",
+      "dists": "Perceptual",
+      "brisque": "Naturalness",
+      "clipping_delta": "Clipping vs source",
+      "halo_delta": "Halo vs source",
+      "chroma_fringe_delta": "Chroma vs source",
+      "composition": "Composition"
+    },
+    "artifact": {
+      "banding": "Gradients",
+      "halo": "Edges",
+      "over_smoothing": "Detail",
+      "invented_texture": "Texture",
+      "blocking": "Blocks",
+      "chroma_fringing": "Chroma",
+      "noise_amplification": "Clean"
+    },
+    "ql": {
+      "restored_texture": "restored texture",
+      "invented_hallucinated": "invented / hallucinated",
+      "size_smaller": "smaller than source",
+      "size_same": "same size as source",
+      "size_upscale": "upscale from source"
     }
   }
 }

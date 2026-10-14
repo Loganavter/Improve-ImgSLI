@@ -73,7 +73,10 @@
       "rename_prompt": "Имя серии",
       "delete": "Удалить",
       "reset": "Сбросить ручные серии",
-      "recluster": "Перегруппировать серии"
+      "recluster": "Перегруппировать серии",
+      "header_hub": "СЕРИЯ {n} · {hub} · {count} вариантов",
+      "header": "СЕРИЯ {n} · {count} изображений",
+      "ungrouped": "БЕЗ ГРУППЫ · {count}"
     },
     "sort_by": "Сортировка",
     "view": "Вид",
@@ -128,6 +131,42 @@
         "title": "Галерея",
         "desc": "Просмотр, триаж и проверка папок с изображениями"
       }
+    },
+    "scanning": "Сканирование {n}/{total}",
+    "metric": {
+      "sharpness": "Резкость",
+      "exposure": "Экспозиция",
+      "clipping": "Детали в светах",
+      "noise": "Чистота",
+      "white_balance": "Баланс белого",
+      "ssim": "Совпадение с источником",
+      "detail_gain": "Детализация",
+      "color_accuracy": "Точность цвета",
+      "typicality": "Типичность",
+      "aesthetic": "Эстетика",
+      "lpips": "Восприятие (LPIPS)",
+      "dists": "Восприятие",
+      "brisque": "Естественность",
+      "clipping_delta": "Пересветы к источнику",
+      "halo_delta": "Ореолы к источнику",
+      "chroma_fringe_delta": "Хрома к источнику",
+      "composition": "Композиция"
+    },
+    "artifact": {
+      "banding": "Градиенты",
+      "halo": "Края",
+      "over_smoothing": "Детализация",
+      "invented_texture": "Текстура",
+      "blocking": "Блоки",
+      "chroma_fringing": "Хрома",
+      "noise_amplification": "Чистота"
+    },
+    "ql": {
+      "restored_texture": "восстановленная текстура",
+      "invented_hallucinated": "придумано / галлюцинация",
+      "size_smaller": "меньше источника",
+      "size_same": "как источник по размеру",
+      "size_upscale": "апскейл из источника"
     }
   }
 }
