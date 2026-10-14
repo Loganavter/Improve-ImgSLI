@@ -115,7 +115,7 @@ def _reset_theme_manager():
          tm._qss_template, qss_paths) = saved
         tm._qss_paths = qss_paths
         app = QApplication.instance()
-        if app is not None and app.styleSheet():
+        if isinstance(app, QApplication) and app.styleSheet():
             app.setStyleSheet("")
 
 
@@ -130,10 +130,10 @@ def _destroy_lingering_toplevels():
     from PySide6.QtWidgets import QApplication
 
     app = QApplication.instance()
-    before = list(app.topLevelWidgets()) if app is not None else []
+    before = list(app.topLevelWidgets()) if isinstance(app, QApplication) else []
     yield
     app = QApplication.instance()
-    if app is None:
+    if not isinstance(app, QApplication):
         return
     victims = [w for w in app.topLevelWidgets() if not any(w is b for b in before)]
     del before

@@ -158,14 +158,19 @@ def test_normal_card_shows_border_edge_in_light(qtbot, qapp, _w1_palettes) -> No
     card = build_gallery_card(item, parent=None)
     qtbot.addWidget(card)
     card.show()
+    qtbot.waitExposed(card)
     qapp.processEvents()
     assert card.borderColor().name().lower() == "#e2e4e8"
     img = card.grab().toImage()
     assert not img.isNull()
     w, h = img.width(), img.height()
-    edge = img.pixelColor(0, h // 2).name().lower()
     fill = img.pixelColor(4, h // 2).name().lower()
-    assert edge != fill, f"card edge {edge} == fill {fill}: border invisible in light"
+    # The 1px hairline may land at x=0 or x=1 (DPR rounding, and it shifts
+    # under parallel load); scan the left band for the edge pixel instead of
+    # reading a single fixed column.
+    band = [img.pixelColor(x, h // 2).name().lower() for x in range(0, 4)]
+    edge = next((px for px in band if px != fill), band[0])
+    assert edge != fill, f"no border edge in {band} (fill {fill}): border invisible in light"
     # The overlay strokes the override (not an AA accident): the edge pixel
     # must sit near the border hex and far from the fill. NOTE: since the
     # shelf-style card base (variant default tint, not pinned white), the
