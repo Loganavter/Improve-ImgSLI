@@ -37,15 +37,21 @@ def item_unreadable(item: GalleryItem) -> bool:
     return False
 
 
-def _badges_text(item: GalleryItem) -> str:
+def _badges_text(item: GalleryItem, translate=None) -> str:
     """Inline badges: the precomputed ``item.badge`` + ★ (leader) + ✕ (rejected).
 
     The badge string is computed once by ``services.rank_badge.stamp_badges``;
-    the list only adds its own ★/✕ affordances and never re-derives it.
+    the list only adds its own ★/✕ affordances and never re-derives it. The
+    SOURCE badge is stamped English once, so it is localized at render via the
+    injected list translator (same key as the card/strip badge).
     """
     parts: list[str] = []
     text = str(getattr(item, "badge", "") or "")
     if text:
+        from tabs.image_gallery.services.rank_badge import KIND_SOURCE
+
+        if str(getattr(item, "badge_kind", "none") or "none") == KIND_SOURCE:
+            text = _tr(translate, "image_gallery.badge.source", text)
         parts.append(text)
     if bool(getattr(item, "is_best", False)):
         parts.append("★")
@@ -114,10 +120,10 @@ def _vlm_text(item: GalleryItem, translate=None) -> str:
     return ""
 
 
-def _list_text_rows(item: GalleryItem) -> list[ButtonRow]:
+def _list_text_rows(item: GalleryItem, translate=None) -> list[ButtonRow]:
     """ONE title row: name + badges inline, full-height centered (compact)."""
     text = item.name
-    badges = _badges_text(item)
+    badges = _badges_text(item, translate)
     if badges:
         text = f"{text} {badges}"
     # Static truncated text (same reason as grid cards: the 60fps

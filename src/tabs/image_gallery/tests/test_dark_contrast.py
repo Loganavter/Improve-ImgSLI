@@ -15,6 +15,10 @@ color math (no Qt), that:
   (the ``gallery.nav.*`` / ``gallery.pill.background`` /
   ``gallery.card.unreadable.plate`` / ``gallery.status.neutral`` set used to
   be fallback-only hardcoded hexes).
+- the scroll-host panel background (``gallery.panel.background``) is a subtle
+  recess, not the raw Qt ``Window`` role (dark ``#1e1e1e`` hole), and the
+  rank-pill hover fill (``gallery.pill.background.hover``) keeps the fixed
+  black ink >= 4.5:1 (the surface hover token ``#4a4a4a`` measured 2.44:1).
 - the light palette is untouched by the dark fix (danger stays ``#c0392b``).
 """
 
@@ -38,7 +42,9 @@ GALLERY_REFERENCED_TOKENS = (
     "gallery.nav.border",
     "gallery.nav.fill",
     "gallery.nav.glyph",
+    "gallery.panel.background",
     "gallery.pill.background",
+    "gallery.pill.background.hover",
     "gallery.stats.background",
     "gallery.stats.text",
     "gallery.status.danger",
@@ -140,3 +146,38 @@ def test_light_palette_unchanged_by_dark_fix() -> None:
     assert light["gallery.stats.background"].lower() == "#ffffff"
     assert light["gallery.card.background"].lower() == "#ffffff"
     assert light["gallery.grid.background"].lower() == "#ffffff"
+
+
+def test_panel_background_is_a_recess_not_a_raw_window_hole() -> None:
+    """Scroll hosts must not fall through to the raw Qt ``Window`` role.
+
+    Red-before: the Quick Look sidebar / filmstrip and clean-review strip
+    auto-filled the Qt ``Window`` palette role — dark ``#1e1e1e``, a near-black
+    band inside the ``#383838`` card plate (ratio 1.42 from the card). Light
+    ``#f5f5f5`` is the same value the ``Window`` role already carried, so the
+    new token is pixel-unchanged there; dark ``#303030`` is a *subtle* recess
+    (ratio 1.13 from the card), matching the mockup's ``#303030`` card tone.
+    """
+    light, dark = _themes()["light"], _themes()["dark"]
+    assert light["gallery.panel.background"].lower() == "#f5f5f5"
+    assert dark["gallery.panel.background"].lower() != "#1e1e1e"
+    assert _ratio(dark["gallery.panel.background"], dark["gallery.card.background"]) < 1.2
+    assert _ratio("#1e1e1e", dark["gallery.card.background"]) > 1.35
+
+
+def test_pill_hover_ink_legible_in_both_themes() -> None:
+    """The rank-pill ink (fixed black) clears 4.5:1 on the hovered pill fill.
+
+    Red-before: the white pill (``gallery.pill.background``) left its hover to
+    the surface token — dark ``#4a4a4a`` (opaque) replaced the white base under
+    the fixed black ink at 2.44:1, so #N vanished on hover. Green-after:
+    ``gallery.pill.background.hover`` stays light, so the ink clears 4.5:1.
+    """
+    data = _themes()
+    ink = "#000000"
+    for theme in ("light", "dark"):
+        hover = data[theme]["gallery.pill.background.hover"]
+        got = _ratio(ink, hover)
+        assert got >= 4.5, f"{theme}: ink on pill hover {hover}: {got:.2f} < 4.5"
+    # Never regress to the surface hover wash that hid the digits.
+    assert _ratio(ink, "#4a4a4a") < 3.0
