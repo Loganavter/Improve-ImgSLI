@@ -110,7 +110,9 @@
       "report_sub": "distância até o centróide · sinalizadores de artefato",
       "artifact_grid_tooltip": "Onde este artefato é mais forte — grade grosseira 5×5:\nverde = nenhum · amarelo = leve · vermelho = mais forte",
       "mixed_sizes": "tamanhos mistos",
-      "upscales_note": "{n} ampliações de uma mesma origem"
+      "upscales_note": "{n} ampliações de uma mesma origem",
+      "upscale_n": "ampliação ×{n}",
+      "upscale_n_from_source": "ampliação ×{n} a partir da origem"
     },
     "clean_review": {
       "title": "Revisar arquivos rejeitados",

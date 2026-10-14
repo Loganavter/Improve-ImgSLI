@@ -56,18 +56,12 @@ def register_settings(tab, registry) -> None:
 def _tab_tr(tab):
     """Reuse the tab's existing context translator (no new resolver).
 
-    ``tab._widget._context._tr`` first, then the legacy
-    ``tab._gallery_context._tr`` fallback; ``None`` when neither is wired.
+    ``tab._widget._context._tr`` — the only translator source
+    (``_gallery_context`` was a never-assigned legacy alias); ``None`` when
+    the widget/context is not wired yet.
     """
     try:
         ctx = getattr(getattr(tab, "_widget", None), "_context", None)
-        tr = getattr(ctx, "_tr", None) if ctx is not None else None
-        if tr is not None:
-            return tr
-    except Exception:
-        pass
-    try:
-        ctx = getattr(tab, "_gallery_context", None)
         tr = getattr(ctx, "_tr", None) if ctx is not None else None
         if tr is not None:
             return tr

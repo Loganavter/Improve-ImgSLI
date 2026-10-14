@@ -591,7 +591,7 @@ def _widget_tr(owner):
     ratchet over this file) keeps its line numbers stable.
     """
     try:
-        ctx = getattr(owner, "_context", None) or getattr(owner, "_gallery_context", None)
+        ctx = getattr(owner, "_context", None)
         return getattr(ctx, "_tr", None) if ctx is not None else None
     except Exception:
         return None

@@ -923,10 +923,25 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
         except Exception:
             pass
         try:
+            mode_str, is_fidelity = self._mode_str_and_fidelity()
             from tabs.image_gallery.ui.quick_look.helpers import populate_report_header
 
-            mode_str, is_fidelity = self._mode_str_and_fidelity()
             populate_report_header(self, is_fidelity, mode_str)
+        except Exception:
+            pass
+        # Filename meta line carries the localized size/upscale notes
+        # (``mixed sizes`` / ``N upscales of one source`` / ``upscale ×N``);
+        # re-render it for the live item so a language switch is not stale.
+        # Cheap: dims come from the metrics cache / QImageReader fast path,
+        # never a preview decode.
+        try:
+            if item is not None:
+                _, _is_fidelity = self._mode_str_and_fidelity()
+                from tabs.image_gallery.ui.quick_look.helpers import populate_filename_meta
+
+                populate_filename_meta(
+                    self, item, _is_fidelity, getattr(self, "_owner", None)
+                )
         except Exception:
             pass
 

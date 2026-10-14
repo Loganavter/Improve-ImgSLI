@@ -215,6 +215,10 @@ def build_gallery_list_card(
         card._rows_compact = True  # type: ignore[attr-defined]
         card.setProperty("_rows_compact", True)
         card._gallery_row_state = state  # type: ignore[attr-defined]
+        # Attach the tab translator ONCE at build (grid ``_gallery_translate``
+        # parity): ``update_gallery_list_card`` defaults to it, so pooled-row
+        # rebinds never need ``translate=`` threaded through every call site.
+        card._gallery_translate = translate  # type: ignore[attr-defined]
         _attach_list_item(card, item)
         _apply_list_rejected_visuals(card, item)
     except Exception:
@@ -236,6 +240,10 @@ def _attach_list_item(card: Button, item: GalleryItem) -> None:
 def update_gallery_list_card(card: Button, item: GalleryItem, mode: object = None, *, translate=None) -> None:
     """In-place update of a live list row (update_gallery_card parity)."""
     _ = mode
+    _tr = translate
+    if not callable(_tr):
+        # Single source: the translator attached at build time.
+        _tr = getattr(card, "_gallery_translate", None)
     _attach_list_item(card, item)
     try:
         state = getattr(card, "_gallery_row_state", None)
@@ -262,8 +270,8 @@ def update_gallery_list_card(card: Button, item: GalleryItem, mode: object = Non
         except Exception:
             pass
     try:
-        card.update_region("text", rows=_list_text_rows(item, translate))
-        card.update_region("meta", rows=_list_meta_rows(item, translate))
+        card.update_region("text", rows=_list_text_rows(item, _tr))
+        card.update_region("meta", rows=_list_meta_rows(item, _tr))
     except Exception:
         pass
     try:

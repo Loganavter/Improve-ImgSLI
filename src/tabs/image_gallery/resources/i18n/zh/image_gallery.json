@@ -110,7 +110,9 @@
       "report_sub": "到质心的距离 · 伪影标记",
       "artifact_grid_tooltip": "此伪影最强的位置 — 粗略 5×5 网格：\n绿色 = 无 · 黄色 = 轻微 · 红色 = 最强",
       "mixed_sizes": "尺寸不一",
-      "upscales_note": "同一源的 {n} 个放大版本"
+      "upscales_note": "同一源的 {n} 个放大版本",
+      "upscale_n": "放大 ×{n}",
+      "upscale_n_from_source": "相对源放大 ×{n}"
     },
     "clean_review": {
       "title": "审阅已拒绝的文件",

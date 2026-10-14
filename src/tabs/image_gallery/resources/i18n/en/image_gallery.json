@@ -110,7 +110,9 @@
       "report_sub": "distance to centroid · artifact flags",
       "artifact_grid_tooltip": "Where this artifact is strongest — coarse 5×5 grid:\ngreen = none · yellow = mild · red = strongest",
       "mixed_sizes": "mixed sizes",
-      "upscales_note": "{n} upscales of one source"
+      "upscales_note": "{n} upscales of one source",
+      "upscale_n": "upscale ×{n}",
+      "upscale_n_from_source": "upscale ×{n} from source"
     },
     "clean_review": {
       "title": "Review rejected files",
