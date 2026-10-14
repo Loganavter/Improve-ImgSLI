@@ -889,7 +889,11 @@ class ImageGalleryWidget(QWidget):
         except Exception:
             view_is_list = None
         try:
-            _ctx = getattr(self, "_gallery_context", None)
+            # ``_context`` is the TabContext the widget was built with (see
+            # __init__); ``_gallery_context`` is a legacy alias that is never
+            # assigned — reading it left ``tr=None`` and rendered the
+            # empty-canvas Sort by / View menu in English.
+            _ctx = getattr(self, "_context", None) or getattr(self, "_gallery_context", None)
             tr = getattr(_ctx, "_tr", None) if _ctx is not None else None
         except Exception:
             tr = None
@@ -992,7 +996,9 @@ class ImageGalleryWidget(QWidget):
             except Exception:
                 sel_n = 0
             try:
-                _ctx = getattr(self, "_gallery_context", None)
+                # Same fix as the empty-canvas menu: the real context lives on
+                # ``_context`` (``_gallery_context`` is never set).
+                _ctx = getattr(self, "_context", None) or getattr(self, "_gallery_context", None)
                 _tr = getattr(_ctx, "_tr", None) if _ctx is not None else None
             except Exception:
                 _tr = None
