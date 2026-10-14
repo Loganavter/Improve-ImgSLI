@@ -405,6 +405,19 @@ def build_overlay_ui(overlay) -> None:
     from sli_ui_toolkit.managers import scaled_px
     from sli_ui_toolkit.widgets import Button, ButtonRegion, ButtonRow, CustomSplit, OverlayScrollArea
 
+    # Translator seam: QuickLookOverlay sets ``self._tr`` before calling
+    # build_overlay_ui; guard with getattr so the EN defaults still build if
+    # a caller constructs without it.
+    _tr = getattr(overlay, "_tr", None)
+
+    def _t(key: str, default: str) -> str:
+        if _tr is None:
+            return default
+        try:
+            return _tr(key, default)
+        except Exception:
+            return default
+
     overlay._content = _CardPlate(overlay)
     overlay._content.setObjectName("QuickLookContent")
     # W9: the whole border is a resize strip — hover cursors need
@@ -817,19 +830,19 @@ def build_overlay_ui(overlay) -> None:
     overlay._multi_btn = None
     # Set as source / Reject are plain default surface buttons (no accent,
     # gold or danger tint): the label itself carries the state
-    # ("Set as source" ↔ "Unset", "Reject" ↔ "Restore"). Set as source sits
+    # (Set as source ↔ Unset, Reject ↔ Restore). Set as source sits
     # at the left edge; Delete keeps its danger tint.
-    overlay._set_source_btn = Button(text="Set as source", variant="surface", parent=bar, defer_click="ripple")
+    overlay._set_source_btn = Button(text=_t("image_gallery.action.set_as_source", "Set as source"), variant="surface", parent=bar, defer_click="ripple")
     overlay._set_source_btn.setObjectName("quicklook_set_source")
     overlay._set_source_btn.clicked.connect(overlay._on_set_source)
     bar_lay.addWidget(overlay._set_source_btn)
-    overlay._reject_btn = Button(text="✕ Reject", variant="surface", parent=bar, defer_click="ripple")
+    overlay._reject_btn = Button(text=f'✕ {_t("image_gallery.quick_look.reject", "Reject")}', variant="surface", parent=bar, defer_click="ripple")
     overlay._reject_btn.setObjectName("quicklook_reject")
     overlay._reject_text_color = None
     overlay._reject_btn.clicked.connect(overlay._on_reject)
     bar_lay.addWidget(overlay._reject_btn)
     overlay._delete_btn = Button(
-        text="Delete", icon=_danger_trash_icon(danger),
+        text=_t("image_gallery.quick_look.delete", "Delete"), icon=_danger_trash_icon(danger),
         variant="surface", parent=bar, defer_click="ripple",
     )
     overlay._delete_btn.setObjectName("quicklook_delete")

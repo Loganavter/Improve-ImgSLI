@@ -835,7 +835,7 @@
     },
     {
       "path": "src/tabs/image_gallery/ui/clean_review.py",
-      "lines": 1694,
+      "lines": 1759,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine size=exempt reason=\"one overlay lifecycle — provenance+filmstrip+toasts share TopLevelInWindowOverlay state\"",
@@ -859,7 +859,7 @@
     },
     {
       "path": "src/tabs/image_gallery/ui/grid_view.py",
-      "lines": 3088,
+      "lines": 3105,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine size=exempt reason=\"single virtualized grid view — grid_columns/series headers/pool/marquee share one layout lifecycle\"",
@@ -871,7 +871,7 @@
     },
     {
       "path": "src/tabs/image_gallery/ui/quick_look.py",
-      "lines": 1686,
+      "lines": 1782,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner reason=\"thin owner delegating to ui/quick_look/* helpers,bars,histograms,metrics,artifacts,strip\"",
@@ -894,7 +894,7 @@
     },
     {
       "path": "src/tabs/image_gallery/ui/quick_look/overlay_build.py",
-      "lines": 882,
+      "lines": 895,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner-target size=exempt reason=\"one overlay-build concern: painted chrome widgets + build_overlay_ui share one card layout\"",
@@ -954,7 +954,7 @@
     },
     {
       "path": "src/tabs/image_gallery/ui/quick_look_hooks.py",
-      "lines": 583,
+      "lines": 597,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner-target size=exempt reason=\"one quick-look hooks concern: owner-first overlay wiring, triage toggles (reject/source set+unset) and strip hooks share one seam\"",
@@ -966,7 +966,7 @@
     },
     {
       "path": "src/tabs/image_gallery/ui/stats_strip.py",
-      "lines": 521,
+      "lines": 585,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=compound-widget size=exempt reason=\"one stats strip — stats/mode/action buttons share one paint/theme lifecycle\"",
@@ -978,7 +978,7 @@
     },
     {
       "path": "src/tabs/image_gallery/ui/toolbar.py",
-      "lines": 851,
+      "lines": 915,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=compound-widget size=exempt reason=\"toolbar + view-switch sharing one paint/theme lifecycle — split tracked post light-theme epic\"",
@@ -1014,7 +1014,7 @@
     },
     {
       "path": "src/tabs/image_gallery/widget.py",
-      "lines": 2583,
+      "lines": 2619,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner size=exempt reason=\"thin owner delegating to use_cases/triage+carry+quick look; splitting would create helpers bag\"",

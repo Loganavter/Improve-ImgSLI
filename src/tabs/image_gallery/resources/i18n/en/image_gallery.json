@@ -31,7 +31,10 @@
       "effort_none": "None",
       "vlm_max_edge": "Image downscale (max edge)",
       "downscale_original": "Original",
-      "api_key_warning": "Stored unencrypted on this device."
+      "api_key_warning": "Stored unencrypted on this device.",
+      "api_key_placeholder": "sk-…",
+      "model_placeholder": "openrouter/auto or vendor/model",
+      "tokens_placeholder": "auto"
     },
     "errors": {
       "not_configured": "Configure the AI API key in Settings first.",
@@ -80,6 +83,47 @@
     "sort_quality": "AI quality",
     "view_grid": "Grid",
     "view_list": "List",
+    "toolbar": {
+      "open_folder": "Open Folder…",
+      "filter_placeholder": "Filter by tag / description…",
+      "sort_prefix": "Sort"
+    },
+    "grid": {
+      "resize_tooltip": "Drag to resize series panes"
+    },
+    "stats": {
+      "show_all": "Show all",
+      "clean_rejected": "Clean rejected ({n})",
+      "compare_finalists": "Compare finalists",
+      "images": "{n} images",
+      "series": "{n} series",
+      "redundant": "{n} redundant"
+    },
+    "quick_look": {
+      "unset_source": "Unset",
+      "reject": "Reject",
+      "restore": "Restore",
+      "delete": "Delete",
+      "report_title": "Batch report",
+      "report_sub": "distance to centroid · artifact flags",
+      "artifact_grid_tooltip": "Where this artifact is strongest — coarse 5×5 grid:\ngreen = none · yellow = mild · red = strongest",
+      "mixed_sizes": "mixed sizes",
+      "upscales_note": "{n} upscales of one source"
+    },
+    "clean_review": {
+      "title": "Review rejected files",
+      "subtitle": "{n} files will be moved to {folder}/_rejected/ — nothing is deleted, Undo available for 10 s.",
+      "provenance_prefix": "from: ",
+      "series": "SERIES {n}",
+      "ungrouped": "UNGROUPED",
+      "no_rejected": "No rejected files.",
+      "move": "Move {n}",
+      "size": "{n} files · {mb} MB",
+      "no_files": "No files to move",
+      "restore": "Restore",
+      "restore_all": "Restore all",
+      "cancel": "Cancel"
+    },
     "help": {
       "hub": {
         "title": "Image Gallery",

@@ -315,6 +315,16 @@ class ImageGalleryWidget(QWidget):
         self._clean_overlay = None  # type: ignore[assignment]
         # Quick look overlay (S4) — created lazily.
         self._quick_look_overlay = None  # type: ignore[assignment]
+        # Language switch: keep the lazily-created overlays in sync with the
+        # active translator (they capture ``_tr`` once at construction).
+        # ``translatable_callback`` ties the connection to this widget's
+        # lifetime (auto-disconnect on destroy) — the toolkit idiom.
+        try:
+            from sli_ui_toolkit.i18n import translatable_callback
+
+            translatable_callback(self, lambda _lang: self._retranslate_overlays())
+        except Exception:
+            pass
         # Selection actions live in the card context menu (ex-HUD flyout removed).
         # Kept as None for back-compat getattr hooks (hover/list/clean_review).
         self._selection_hud = None  # type: ignore[assignment]
@@ -1204,6 +1214,24 @@ class ImageGalleryWidget(QWidget):
         except Exception:
             return default
 
+    def _retranslate_overlays(self) -> None:
+        """Refresh the lazily-created overlays on a live language switch.
+
+        Reuses this widget's context translator (same ``tr`` the toolbar and
+        stats strip got at construction). No-op while an overlay has not been
+        created yet — the next ``show_*`` builds it with the current tr.
+        """
+        ctx = getattr(self, "_context", None)
+        tr = getattr(ctx, "_tr", None) if ctx is not None else None
+        for attr in ("_clean_overlay", "_quick_look_overlay"):
+            overlay = getattr(self, attr, None)
+            if overlay is None:
+                continue
+            try:
+                overlay.retranslate(tr)
+            except Exception:
+                pass
+
     def _series_names_map(self) -> dict:
         """Session custom-name map (series_id → name); lazily created."""
         names = getattr(self, "_series_names", None)
@@ -1528,11 +1556,19 @@ class ImageGalleryWidget(QWidget):
             actual_owner = owner if owner is not None else self._owner_for_triage()
             # Ensure overlay exists. Owner travels via constructor / show_for
             # (both take owner) — never re-poked afterwards (G2 contract).
+            _ctx = getattr(self, "_context", None)
+            _tr = getattr(_ctx, "_tr", None) if _ctx is not None else None
             overlay = getattr(self, "_clean_overlay", None)
             if overlay is None:
                 parent = self.window() or self
-                overlay = CleanReviewOverlay(parent, actual_owner)
+                overlay = CleanReviewOverlay(parent, actual_owner, translate=_tr)
                 self._clean_overlay = overlay
+            elif _tr is not None:
+                # Created before a language switch: re-apply the current tr.
+                try:
+                    overlay.retranslate(_tr)
+                except Exception:
+                    pass
             overlay.show_for(actual_owner)
         except Exception:
             pass

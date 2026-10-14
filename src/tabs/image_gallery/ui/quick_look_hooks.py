@@ -186,7 +186,7 @@ def show_quick_look(owner, item_or_path) -> None:
                         parent = owner.window() or owner  # type: ignore[union-attr]
                     except Exception:
                         parent = owner  # type: ignore[assignment]
-                overlay = QuickLookOverlay(parent, triage_owner)
+                overlay = QuickLookOverlay(parent, triage_owner, translate=_widget_tr(owner))
                 owner._quick_look_overlay = overlay  # type: ignore[attr-defined]
                 try:
                     overlay.compareRequested.connect(lambda p: on_quick_compare(owner, p))
@@ -581,3 +581,17 @@ def event_filter(owner, watched, event) -> bool:
             return _QW2.eventFilter(owner, watched, event)  # type: ignore[call-arg]
         except Exception:
             return False
+
+
+def _widget_tr(owner):
+    """Owner widget's existing context translator (same seam as widget.py's
+    toolbar/stats_strip ``context._tr``); ``None`` keeps the EN defaults.
+
+    Defined at module tail so the ownership-guard ALLOWLIST (a file+line
+    ratchet over this file) keeps its line numbers stable.
+    """
+    try:
+        ctx = getattr(owner, "_context", None) or getattr(owner, "_gallery_context", None)
+        return getattr(ctx, "_tr", None) if ctx is not None else None
+    except Exception:
+        return None
