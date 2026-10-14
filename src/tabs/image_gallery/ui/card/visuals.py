@@ -136,6 +136,16 @@ def _apply_rejected_visuals(card: Button, item: GalleryItem) -> None:
 
             badge_text = str(getattr(item, "badge", "") or "")
             badge_kind = str(getattr(item, "badge_kind", "none") or "none")
+            if badge_kind == KIND_SOURCE and badge_text:
+                # The badge string is stamped once as "SOURCE"; localize it at
+                # render (module tr = current language; cards rebuild on a
+                # language switch, so no stale text).
+                try:
+                    from resources.translations import tr as _tr
+
+                    badge_text = str(_tr("image_gallery.badge.source", default=badge_text))
+                except Exception:
+                    pass
             if badge_text:
                 try:
                     card.setBadge(None)

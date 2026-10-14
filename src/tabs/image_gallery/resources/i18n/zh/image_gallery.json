@@ -167,6 +167,142 @@
       "size_smaller": "小于源",
       "size_same": "与源同尺寸",
       "size_upscale": "由源放大"
+    },
+    "metric_note": {
+      "sharpness": {
+        "good": "清晰",
+        "mid": "略软",
+        "bad": "很软"
+      },
+      "exposure": {
+        "good": "曝光良好",
+        "mid": "略有偏差",
+        "bad": "曝光不佳"
+      },
+      "clipping": {
+        "good": "高光保留",
+        "mid": "轻微过曝",
+        "bad": "高光溢出"
+      },
+      "noise": {
+        "good": "干净",
+        "mid": "可见噪点",
+        "bad": "严重噪点/颗粒"
+      },
+      "white_balance": {
+        "good": "中性",
+        "mid": "轻微偏色",
+        "bad": "严重偏色"
+      },
+      "ssim": {
+        "good": "接近源",
+        "mid": "略有偏移",
+        "bad": "远离源"
+      },
+      "detail_gain": {
+        "good": "细节保留",
+        "mid": "轻微偏移",
+        "bad": "细节丢失或臆造"
+      },
+      "color_accuracy": {
+        "good": "色彩准确",
+        "mid": "轻微偏色",
+        "bad": "色彩失真"
+      },
+      "typicality": {
+        "good": "典型",
+        "mid": "略不典型",
+        "bad": "离群"
+      },
+      "aesthetic": {
+        "good": "悦目",
+        "mid": "普通",
+        "bad": "不美观"
+      },
+      "lpips": {
+        "good": "感知接近",
+        "mid": "轻微感知偏移",
+        "bad": "感知相差远"
+      },
+      "dists": {
+        "good": "感知接近",
+        "mid": "轻微感知偏移",
+        "bad": "感知相差远"
+      },
+      "brisque": {
+        "good": "自然",
+        "mid": "略不自然",
+        "bad": "不自然"
+      },
+      "clipping_delta": {
+        "good": "未增加过曝",
+        "mid": "略有增加过曝",
+        "bad": "增加了过曝"
+      },
+      "halo_delta": {
+        "good": "未增加光晕",
+        "mid": "可能有光晕",
+        "bad": "增加了光晕"
+      },
+      "chroma_fringe_delta": {
+        "good": "未增加色边",
+        "mid": "可能有色边",
+        "bad": "增加了色边"
+      },
+      "composition": {
+        "good": "构图良好",
+        "mid": "构图一般",
+        "bad": "构图差"
+      },
+      "banding": {
+        "good": "渐变平滑",
+        "mid": "可能有色带",
+        "bad": "可见色带"
+      },
+      "halo": {
+        "good": "边缘干净",
+        "mid": "可能有光晕",
+        "bad": "强光晕"
+      },
+      "blocking": {
+        "good": "无块状",
+        "mid": "可能有块状",
+        "bad": "强块状"
+      },
+      "over_smoothing": {
+        "good": "细节保留",
+        "mid": "可能被平滑",
+        "bad": "过度平滑"
+      },
+      "invented_texture": {
+        "good": "真实纹理",
+        "mid": "可能有臆造纹理",
+        "bad": "臆造纹理"
+      },
+      "chroma_fringing": {
+        "good": "无色边",
+        "mid": "可能有色边",
+        "bad": "强色边"
+      }
+    },
+    "selection": {
+      "none": "未选择",
+      "one": "已选择 1 项",
+      "many": "已选择 {n} 项",
+      "analyze": "分析",
+      "find_similar": "查找相似"
+    },
+    "card": {
+      "make_best": "设为最佳",
+      "reject": "拒绝",
+      "unreject": "取消拒绝",
+      "remove": "从视图中移除",
+      "ungroup": "取消分组",
+      "group": "分组",
+      "make_source": "设为源"
+    },
+    "badge": {
+      "source": "源"
     }
   }
 }

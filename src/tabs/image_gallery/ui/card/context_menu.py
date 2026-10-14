@@ -301,9 +301,9 @@ def popup_gallery_card_context_menu(  # type: ignore[no-untyped-def]
         # (mixed → Reject, matching the uniform apply direction).
         _menu_targets = _action_targets(owner, path)
         _reject_label = (
-            "Unreject"
+            _t(translate, "image_gallery.card.unreject", "Unreject")
             if _targets_all_rejected(owner, _menu_targets)
-            else "Reject"
+            else _t(translate, "image_gallery.card.reject", "Reject")
         )
         per_card: list = []
         # Ask AI on the clicked card alone — only when there is no selection,
@@ -314,7 +314,7 @@ def popup_gallery_card_context_menu(  # type: ignore[no-untyped-def]
             [
                 ContextMenuAction(
                     "gallery.make_best",
-                    "Make best",
+                    _t(translate, "image_gallery.card.make_best", "Make best"),
                     icon="star.svg",
                 ),
                 ContextMenuAction(
@@ -327,7 +327,7 @@ def popup_gallery_card_context_menu(  # type: ignore[no-untyped-def]
         per_card.append(
             ContextMenuAction(
                 "gallery.remove",
-                "Remove from view",
+                _t(translate, "image_gallery.card.remove", "Remove from view"),
                 icon="delete",
                 danger=True,
             )
@@ -339,7 +339,7 @@ def popup_gallery_card_context_menu(  # type: ignore[no-untyped-def]
             per_card.append(
                 ContextMenuAction(
                     "gallery.ungroup",
-                    "Ungroup",
+                    _t(translate, "image_gallery.card.ungroup", "Ungroup"),
                     icon="unlink.svg",
                 )
             )
@@ -352,7 +352,7 @@ def popup_gallery_card_context_menu(  # type: ignore[no-untyped-def]
             per_card.append(
                 ContextMenuAction(
                     "gallery.group",
-                    "Group",
+                    _t(translate, "image_gallery.card.group", "Group"),
                     icon="link.svg",
                 )
             )
@@ -363,7 +363,7 @@ def popup_gallery_card_context_menu(  # type: ignore[no-untyped-def]
         entries.append(
             ContextMenuAction(
                 "gallery.set_as_source",
-                "Make source",
+                _t(translate, "image_gallery.card.make_source", "Make source"),
                 icon="check.svg",
             )
         )

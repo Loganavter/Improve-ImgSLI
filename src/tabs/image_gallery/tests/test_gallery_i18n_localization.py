@@ -36,6 +36,15 @@ _KEYS = (
     "types.image_gallery",
     "descriptions.image_gallery",
     "workspace.session_types.image_gallery",
+    # part 3: card context menu, source badge, metric band notes
+    "image_gallery.card.make_best",
+    "image_gallery.card.remove",
+    "image_gallery.card.make_source",
+    "image_gallery.badge.source",
+    "image_gallery.selection.analyze",
+    "image_gallery.metric_note.sharpness.good",
+    "image_gallery.metric_note.clipping.mid",
+    "image_gallery.metric_note.composition.bad",
 )
 
 

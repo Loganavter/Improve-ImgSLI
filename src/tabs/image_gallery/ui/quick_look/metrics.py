@@ -56,6 +56,26 @@ def _metric_label(overlay, spec_id: str, default: str) -> str:
     return _ql_text(overlay, f"image_gallery.metric.{spec_id}", default)
 
 
+def _metric_note(overlay, spec_id: str, score: int) -> str:
+    """Localized band descriptor for a metric row (``metric_note.<id>.<band>``).
+
+    Fail-open: the English ``fallback_note`` when the key/translator is absent.
+    """
+    try:
+        from tabs.image_gallery.services.metric_scores import (
+            fallback_note as _fb,
+            score_band as _sb,
+        )
+
+        default = _fb(spec_id, score)
+        band = _sb(score)
+    except Exception:
+        return ""
+    if not default:
+        return ""
+    return _ql_text(overlay, f"image_gallery.metric_note.{spec_id}.{band}", default)
+
+
 def _metrics_series_snapshot(overlay) -> tuple:
     """Series-wide inputs of ``ssim_subline`` (re-rank/reject neighbor flips)."""
     try:
@@ -602,7 +622,7 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
         # (plan-gallery-ai-quality UX contract): its read lives in the AI
         # block (verdict/reason/defect chips), never on a measured row — so
         # the row reads as one measured answer, not two competing systems.
-        note = _fallback_note(spec_id, score)
+        note = _metric_note(overlay, spec_id, score)
         return f"{label} — {note}" if note else label
 
     def _add_metric_row(title: str, value_text: str, fraction: float, color=None, value_color=None, value_elide: bool = True) -> None:
