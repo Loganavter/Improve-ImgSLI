@@ -38,6 +38,8 @@ def emit_language_changed(lang_code: str) -> None:
     _emit_language_changed(lang)
 
 
+# Convention: module ``tr`` is ``tr(key, language=..., default=...)``; the tab/widget
+# translator contract is ``(key, language) -> str`` (toolkit ``Translator``).
 def tr(
     key: str,
     language: str | None = None,

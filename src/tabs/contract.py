@@ -419,6 +419,19 @@ class TabContext:
         except Exception:
             return default or key
 
+    def _tr_lang(self, key: str, language: str) -> str:
+        """Translate *key* for an EXPLICIT *language* — the toolkit Translator contract.
+        `(key, language) -> str`; returns `key` on a miss/error. Mirrors `_tr`'s live
+        language, but honors the language the caller passes (used by the toolkit
+        `install_translator` fan-out)."""
+        try:
+            from resources.translations import tr
+
+            result = tr(key, language or None)
+            return result if result != key else key
+        except Exception:
+            return key
+
     def call_service(self, service_id: str, *args, **kwargs) -> Any:
         """Call a host capability without importing host implementation details."""
         service = self.services.get(service_id)
