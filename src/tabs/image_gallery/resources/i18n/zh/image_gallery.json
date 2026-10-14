@@ -31,7 +31,10 @@
       "effort_none": "无",
       "vlm_max_edge": "图片缩小（最长边）",
       "downscale_original": "原图",
-      "api_key_warning": "以明文形式存储在本设备上。"
+      "api_key_warning": "以明文形式存储在本设备上。",
+      "api_key_placeholder": "sk-…",
+      "model_placeholder": "openrouter/auto 或 vendor/model",
+      "tokens_placeholder": "自动"
     },
     "errors": {
       "not_configured": "请先在设置中配置 AI API 密钥。",
@@ -70,13 +73,245 @@
       "rename_prompt": "序列名称",
       "delete": "删除",
       "reset": "重置手动序列",
-      "recluster": "重新聚类序列"
+      "recluster": "重新聚类序列",
+      "header_hub": "系列 {n} · {hub} · {count} 个变体",
+      "header": "系列 {n} · {count} 张图片",
+      "ungrouped": "未分组 · {count}"
+    },
+    "sort_by": "排序",
+    "view": "视图",
+    "sort_rank": "排名",
+    "sort_name": "名称",
+    "sort_date": "日期",
+    "sort_quality": "AI 画质",
+    "view_grid": "网格",
+    "view_list": "列表",
+    "toolbar": {
+      "open_folder": "打开文件夹…",
+      "filter_placeholder": "按标签 / 描述筛选…"
+    },
+    "grid": {
+      "resize_tooltip": "拖动以调整系列窗格大小"
+    },
+    "stats": {
+      "show_all": "显示全部",
+      "clean_rejected": "清理已拒绝（{n}）",
+      "compare_finalists": "对比入围作品",
+      "images": "{n} 张图像",
+      "series": "{n} 个系列",
+      "redundant": "{n} 张冗余"
+    },
+    "quick_look": {
+      "unset_source": "取消源",
+      "reject": "拒绝",
+      "restore": "恢复",
+      "delete": "删除",
+      "report_title": "批量报告",
+      "report_sub": "到质心的距离 · 伪影标记",
+      "artifact_grid_tooltip": "此伪影最强的位置 — 粗略 5×5 网格：\n绿色 = 无 · 黄色 = 轻微 · 红色 = 最强",
+      "mixed_sizes": "尺寸不一",
+      "upscales_note": "同一源的 {n} 个放大版本"
+    },
+    "clean_review": {
+      "title": "审阅已拒绝的文件",
+      "subtitle": "{n} 个文件将被移动到 {folder}/_rejected/ — 不会删除任何内容，10 秒内可撤销。",
+      "provenance_prefix": "来自：",
+      "series": "系列 {n}",
+      "ungrouped": "未分组",
+      "no_rejected": "没有被拒绝的文件。",
+      "move": "移动 {n}",
+      "size": "{n} 个文件 · {mb} MB",
+      "no_files": "没有可移动的文件",
+      "restore": "恢复",
+      "restore_all": "全部恢复",
+      "cancel": "取消"
     },
     "help": {
       "hub": {
         "title": "图库",
         "desc": "浏览、分拣和审阅图片文件夹"
       }
+    },
+    "scanning": "扫描 {n}/{total}",
+    "metric": {
+      "sharpness": "锐度",
+      "exposure": "曝光",
+      "clipping": "高光细节",
+      "noise": "纯净度",
+      "white_balance": "白平衡",
+      "ssim": "与源匹配",
+      "detail_gain": "细节",
+      "color_accuracy": "色彩准确度",
+      "typicality": "典型性",
+      "aesthetic": "美感",
+      "lpips": "感知 (LPIPS)",
+      "dists": "感知",
+      "brisque": "自然度",
+      "clipping_delta": "相对源的高光溢出",
+      "halo_delta": "相对源的边缘光晕",
+      "chroma_fringe_delta": "相对源的色边",
+      "composition": "构图"
+    },
+    "artifact": {
+      "banding": "渐变",
+      "halo": "边缘",
+      "over_smoothing": "细节",
+      "invented_texture": "纹理",
+      "blocking": "块状",
+      "chroma_fringing": "色边",
+      "noise_amplification": "纯净度"
+    },
+    "ql": {
+      "restored_texture": "恢复的纹理",
+      "invented_hallucinated": "虚构 / 臆造",
+      "size_smaller": "小于源",
+      "size_same": "与源同尺寸",
+      "size_upscale": "由源放大"
+    },
+    "metric_note": {
+      "sharpness": {
+        "good": "清晰",
+        "mid": "略软",
+        "bad": "很软"
+      },
+      "exposure": {
+        "good": "曝光良好",
+        "mid": "略有偏差",
+        "bad": "曝光不佳"
+      },
+      "clipping": {
+        "good": "高光保留",
+        "mid": "轻微过曝",
+        "bad": "高光溢出"
+      },
+      "noise": {
+        "good": "干净",
+        "mid": "可见噪点",
+        "bad": "严重噪点/颗粒"
+      },
+      "white_balance": {
+        "good": "中性",
+        "mid": "轻微偏色",
+        "bad": "严重偏色"
+      },
+      "ssim": {
+        "good": "接近源",
+        "mid": "略有偏移",
+        "bad": "远离源"
+      },
+      "detail_gain": {
+        "good": "细节保留",
+        "mid": "轻微偏移",
+        "bad": "细节丢失或臆造"
+      },
+      "color_accuracy": {
+        "good": "色彩准确",
+        "mid": "轻微偏色",
+        "bad": "色彩失真"
+      },
+      "typicality": {
+        "good": "典型",
+        "mid": "略不典型",
+        "bad": "离群"
+      },
+      "aesthetic": {
+        "good": "悦目",
+        "mid": "普通",
+        "bad": "不美观"
+      },
+      "lpips": {
+        "good": "感知接近",
+        "mid": "轻微感知偏移",
+        "bad": "感知相差远"
+      },
+      "dists": {
+        "good": "感知接近",
+        "mid": "轻微感知偏移",
+        "bad": "感知相差远"
+      },
+      "brisque": {
+        "good": "自然",
+        "mid": "略不自然",
+        "bad": "不自然"
+      },
+      "clipping_delta": {
+        "good": "未增加过曝",
+        "mid": "略有增加过曝",
+        "bad": "增加了过曝"
+      },
+      "halo_delta": {
+        "good": "未增加光晕",
+        "mid": "可能有光晕",
+        "bad": "增加了光晕"
+      },
+      "chroma_fringe_delta": {
+        "good": "未增加色边",
+        "mid": "可能有色边",
+        "bad": "增加了色边"
+      },
+      "composition": {
+        "good": "构图良好",
+        "mid": "构图一般",
+        "bad": "构图差"
+      },
+      "banding": {
+        "good": "渐变平滑",
+        "mid": "可能有色带",
+        "bad": "可见色带"
+      },
+      "halo": {
+        "good": "边缘干净",
+        "mid": "可能有光晕",
+        "bad": "强光晕"
+      },
+      "blocking": {
+        "good": "无块状",
+        "mid": "可能有块状",
+        "bad": "强块状"
+      },
+      "over_smoothing": {
+        "good": "细节保留",
+        "mid": "可能被平滑",
+        "bad": "过度平滑"
+      },
+      "invented_texture": {
+        "good": "真实纹理",
+        "mid": "可能有臆造纹理",
+        "bad": "臆造纹理"
+      },
+      "chroma_fringing": {
+        "good": "无色边",
+        "mid": "可能有色边",
+        "bad": "强色边"
+      }
+    },
+    "selection": {
+      "none": "未选择",
+      "one": "已选择 1 项",
+      "many": "已选择 {n} 项",
+      "analyze": "分析",
+      "find_similar": "查找相似"
+    },
+    "card": {
+      "make_best": "设为最佳",
+      "reject": "拒绝",
+      "unreject": "取消拒绝",
+      "remove": "从视图中移除",
+      "ungroup": "取消分组",
+      "group": "分组",
+      "make_source": "设为源"
+    },
+    "badge": {
+      "source": "源"
+    },
+    "list": {
+      "artifacts": "存在伪影",
+      "minor": "轻微伪影",
+      "ok": "无伪影",
+      "vlm_err": "AI 错误",
+      "vlm_tie_pending": "AI 比对中…",
+      "vlm_tie_ok": "AI 已比对",
+      "vlm_brief": "AI 已描述"
     }
   }
 }

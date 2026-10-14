@@ -34,8 +34,25 @@ def populate_report_header(overlay, is_fidelity: bool, mode_str: str) -> None:
                     except Exception:
                         pass
             else:
-                overlay._report_title.setText("Batch report")
-                overlay._report_sub.setText("distance to centroid · artifact flags")
+                tr = getattr(overlay, "_tr", None)
+
+                def _t(key: str, default: str) -> str:
+                    if callable(tr):
+                        try:
+                            return tr(key, default)
+                        except Exception:
+                            return default
+                    return default
+
+                overlay._report_title.setText(
+                    _t("image_gallery.quick_look.report_title", "Batch report")
+                )
+                overlay._report_sub.setText(
+                    _t(
+                        "image_gallery.quick_look.report_sub",
+                        "distance to centroid · artifact flags",
+                    )
+                )
                 for w in (overlay._report_title, overlay._report_sub):
                     try:
                         w.setVisible(True)

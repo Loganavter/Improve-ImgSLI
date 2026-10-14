@@ -201,6 +201,28 @@ def _items_of(owner) -> list:
     return list(items)
 
 
+def _resolve_state(owner):
+    """Resolve the state holder that owns ``.items`` (controller/state/widget).
+
+    Single resolution order used by the pool-membership helpers: ``owner.state``
+    first, then the widget's ``_state``/``_controller.state`` fallback, then
+    ``owner._state``. Returns None when no holder exposes ``items``.
+    """
+    st = getattr(owner, "state", None)
+    if st is not None and hasattr(st, "items"):
+        return st
+    w = getattr(owner, "widget", None) or getattr(owner, "_widget", None)
+    if w is not None:
+        st = getattr(w, "_state", None) or getattr(
+            getattr(w, "_controller", None), "state", None
+        )
+    if (st is None or not hasattr(st, "items")) and hasattr(owner, "_state"):
+        st = getattr(owner, "_state", None)
+    if st is not None and hasattr(st, "items"):
+        return st
+    return None
+
+
 def ensure_provenance_series_ids(owner) -> int:
     """Fill ``provenance_series_id`` from ``series_id`` for all items.
 
@@ -503,84 +525,40 @@ def remove_from_grid(owner, path: Path) -> bool:
     return remove_paths_from_grid(owner, [path]) > 0
 
 
-def remove_paths_from_grid(owner, paths) -> int:
-    """Remove every path in *paths* from the gallery grid in one batch.
+def _detach_pool_items(owner, target_set) -> list:
+    """Remove items whose path is in *target_set* from the local pool.
 
-    File on disk is untouched — only the grid mirror + slot membership
-    change. Mirrors the controller write path: mutate the local
-    ``state.items`` mirror first, prune selection/order + series clusters,
-    emit a single ``GalleryItemsRemoved`` so the slot stays in sync, then
-    refresh the grid once. Returns the number of cards removed.
+    Shared pool half of :func:`remove_paths_from_grid` and
+    :func:`clean_rejected`: mutates ``state.items``, prunes
+    ``selected_paths``/``selected_order`` and series clusters, and returns
+    the removed item objects (so callers can stash them for Undo). No slot
+    emit and no grid refresh — callers own those.
     """
-    from tabs.image_gallery.debug import gallery_debug as _dbg
-
-    try:
-        targets: list = []
-        for p in list(paths or []):
-            try:
-                targets.append(Path(p) if not isinstance(p, Path) else p)
-            except Exception:
-                continue
-    except Exception:
-        return 0
-    if not targets:
-        return 0
-    try:
-        target_set = set(targets)
-    except Exception:
-        target_set = set()
-        for t in targets:
-            try:
-                target_set.add(t)
-            except Exception:
-                continue
-    _dbg(
-        "remove_paths_from_grid ENTER n=%d owner=%s",
-        len(targets),
-        type(owner).__name__,
-    )
-    # Resolve the state holder that owns .items (controller.state,
-    # widget._state fallback inside _items_of).
-    st = getattr(owner, "state", None)
-    if st is None or not hasattr(st, "items"):
-        w = getattr(owner, "widget", None) or getattr(owner, "_widget", None)
-        if w is not None:
-            st = getattr(w, "_state", None) or getattr(getattr(w, "_controller", None), "state", None)
-        if st is None and hasattr(owner, "_state"):
-            st = getattr(owner, "_state", None)
-    if st is None or not hasattr(st, "items"):
-        _dbg("remove_paths_from_grid MISS-NOSTATE n=%d", len(targets))
-        return 0
-    try:
-        before = len(list(getattr(st, "items", []) or []))
-    except Exception:
-        before = -1
-    doomed_s: set[str] = set()
+    st = _resolve_state(owner)
+    if st is None:
+        return []
+    removed: list = []
     try:
         kept = []
         for it in list(getattr(st, "items", []) or []):
             try:
                 if Path(getattr(it, "path")) in target_set:
-                    try:
-                        doomed_s.add(str(getattr(it, "path")))
-                    except Exception:
-                        pass
+                    removed.append(it)
                     continue
             except Exception:
                 pass
             kept.append(it)
-        if len(kept) == before:
-            _dbg("remove_paths_from_grid MISS pool=%d", before)
-            return 0
+        if not removed:
+            return []
         try:
             st.items[:] = kept
         except Exception:
             try:
                 st.items = kept
             except Exception:
-                return 0
+                return []
     except Exception:
-        return 0
+        return []
     # Prune selection / order.
     for attr in ("selected_paths", "selected_order"):
         try:
@@ -656,6 +634,63 @@ def remove_paths_from_grid(owner, paths) -> int:
                         pass
             except Exception:
                 pass
+    return removed
+
+
+def remove_paths_from_grid(owner, paths) -> int:
+    """Remove every path in *paths* from the gallery grid in one batch.
+
+    File on disk is untouched — only the grid mirror + slot membership
+    change. Mirrors the controller write path: mutate the local
+    ``state.items`` mirror first, prune selection/order + series clusters,
+    emit a single ``GalleryItemsRemoved`` so the slot stays in sync, then
+    refresh the grid once. Returns the number of cards removed.
+    """
+    from tabs.image_gallery.debug import gallery_debug as _dbg
+
+    try:
+        targets: list = []
+        for p in list(paths or []):
+            try:
+                targets.append(Path(p) if not isinstance(p, Path) else p)
+            except Exception:
+                continue
+    except Exception:
+        return 0
+    if not targets:
+        return 0
+    try:
+        target_set = set(targets)
+    except Exception:
+        target_set = set()
+        for t in targets:
+            try:
+                target_set.add(t)
+            except Exception:
+                continue
+    _dbg(
+        "remove_paths_from_grid ENTER n=%d owner=%s",
+        len(targets),
+        type(owner).__name__,
+    )
+    st = _resolve_state(owner)
+    if st is None:
+        _dbg("remove_paths_from_grid MISS-NOSTATE n=%d", len(targets))
+        return 0
+    try:
+        before = len(list(getattr(st, "items", []) or []))
+    except Exception:
+        before = -1
+    removed = _detach_pool_items(owner, target_set)
+    if not removed:
+        _dbg("remove_paths_from_grid MISS pool=%d", before)
+        return 0
+    doomed_s: set[str] = set()
+    for it in removed:
+        try:
+            doomed_s.add(str(getattr(it, "path")))
+        except Exception:
+            continue
     try:
         _emit_gallery(owner, GalleryItemsRemoved(paths=sorted(doomed_s)))
     except Exception:
@@ -704,7 +739,13 @@ def resolve_move_folder(owner, rejected: list | None = None) -> Path | None:
 def clean_rejected(owner) -> list[dict]:
     """Move rejected files to <folder>/_rejected/ (move-only, never delete).
 
-    Returns list of move records for undo.
+    Mirrors :func:`remove_paths_from_grid`: the moved items are dropped from
+    the local pool (their ``path`` is never rewritten), selection/series are
+    pruned, and ONLY ``GalleryItemsRemoved`` is emitted — the ``_rejected/``
+    locations are NOT gallery members, so nothing re-renders them. The
+    removed item objects ride on the move records so :func:`restore_moves`
+    can put the cards back (files + cards). Returns list of move records
+    for undo.
     """
     st = getattr(owner, "state", None)
     if st is None:
@@ -734,39 +775,81 @@ def clean_rejected(owner) -> list[dict]:
         while dst.exists():
             dst = base_dst.with_name(f"{base_dst.stem}_{counter}{base_dst.suffix}")
             counter += 1
+        # Remember the pool slot so Undo can re-insert in order.
+        try:
+            index = list(getattr(st, "items", []) or []).index(it)
+        except Exception:
+            index = None
         try:
             shutil.move(str(src), str(dst))
-            moves.append({"src": str(dst), "dst": str(src), "path": str(src)})
-            # Keep item but mark as moved? Remove from grid
-            try:
-                it.path = dst
-            except Exception:
-                pass
-        except Exception:
-            logger.exception("triage.clean_rejected: move failed %s -> %s", src, dst)
-    # Route the move through the slot as one batch (remove old + append new
-    # locations) so pool membership stays tracer-visible; the local mirror
-    # keeps the moved items with their new paths, verbatim as before.
-    if moves:
-        try:
-            _transact_gallery(
-                owner,
-                [
-                    GalleryItemsRemoved(paths=[m["path"] for m in moves]),
-                    GalleryPathsAppended(
-                        entries=[(m["src"], _mtime_of(m["src"])) for m in moves]
-                    ),
-                ],
+            moves.append(
+                {
+                    "src": str(dst),
+                    "dst": str(src),
+                    "path": str(src),
+                    "item": it,
+                    "index": index,
+                }
             )
         except Exception:
-            logger.debug("triage.clean_rejected: slot transact failed", exc_info=True)
+            logger.exception("triage.clean_rejected: move failed %s -> %s", src, dst)
+    if moves:
+        # Drop the moved cards from the local pool (no path rewrite), prune
+        # selection/series, then emit ONLY the removal — the _rejected/
+        # locations are not gallery members (working-sibling parity with
+        # remove_paths_from_grid).
+        try:
+            target_set = set()
+            for m in moves:
+                try:
+                    target_set.add(Path(m["path"]))
+                except Exception:
+                    continue
+            _detach_pool_items(owner, target_set)
+            _emit_gallery(
+                owner,
+                GalleryItemsRemoved(paths=sorted({str(m["path"]) for m in moves})),
+            )
+        except Exception:
+            logger.debug("triage.clean_rejected: pool removal failed", exc_info=True)
     _refresh_owner_grid(owner)
     logger.debug("triage.clean_rejected: moved %d", len(moves))
     return moves
 
 
+def _reinsert_pool_item(owner, item, index=None) -> bool:
+    """Put *item* back into ``state.items`` at (or near) *index* (Undo).
+
+    No-op when the same object is already a member. Returns True on insert.
+    """
+    st = _resolve_state(owner)
+    if st is None:
+        return False
+    try:
+        items = list(getattr(st, "items", []) or [])
+        if any(existing is item for existing in items):
+            return False
+        try:
+            pos = int(index)
+        except Exception:
+            pos = len(items)
+        pos = max(0, min(pos, len(items)))
+        items.insert(pos, item)
+        try:
+            st.items[:] = items
+        except Exception:
+            st.items = items
+        return True
+    except Exception:
+        return False
+
+
 def restore_moves(owner, moves: list[dict]) -> int:
-    """Undo clean_rejected moves."""
+    """Undo clean_rejected moves (files + cards).
+
+    Restores the files AND re-inserts the card objects ``clean_rejected``
+    dropped from ``state.items`` (the only reason the old code kept them).
+    """
     restored = 0
     restored_recs: list[dict] = []
     for rec in moves or []:
@@ -778,30 +861,26 @@ def restore_moves(owner, moves: list[dict]) -> int:
             shutil.move(src, dst)
             restored += 1
             restored_recs.append(rec)
-            # Update item path back
-            for it in _items_of(owner):
-                try:
-                    if str(it.path) == src:
-                        it.path = Path(dst)
-                except Exception:
-                    pass
+            # Re-insert the stashed card. The item path was never rewritten
+            # by clean_rejected, so only pool membership returns.
+            item = rec.get("item")
+            if item is not None:
+                _reinsert_pool_item(owner, item, rec.get("index"))
         except Exception:
             logger.exception("triage.restore_moves: undo failed %s -> %s", src, dst)
-    # Mirror the undo through the slot as one batch (remove _rejected
-    # locations, re-append originals).
+    # Mirror the undo through the slot: re-append the restored originals.
+    # Their removal was the only slot change clean_rejected made; the
+    # _rejected/ locations were never slot members.
     if restored_recs:
         try:
-            _transact_gallery(
+            _emit_gallery(
                 owner,
-                [
-                    GalleryItemsRemoved(paths=[r["src"] for r in restored_recs]),
-                    GalleryPathsAppended(
-                        entries=[(r["dst"], _mtime_of(r["dst"])) for r in restored_recs]
-                    ),
-                ],
+                GalleryPathsAppended(
+                    entries=[(r["dst"], _mtime_of(r["dst"])) for r in restored_recs]
+                ),
             )
         except Exception:
-            logger.debug("triage.restore_moves: slot transact failed", exc_info=True)
+            logger.debug("triage.restore_moves: slot append failed", exc_info=True)
     _refresh_owner_grid(owner)
     return restored
 
@@ -890,6 +969,17 @@ def _refresh_owner_grid(owner) -> None:
                 mode_setter = getattr(strip, "set_keep_mode", None) if strip is not None else None
                 if callable(mode_setter):
                     mode_setter("show" if is_keep_best_done(owner) else "keep")
+            except Exception:
+                pass
+            # Re-run the action gate AFTER the mode flip. ``rebuild_grid``
+            # above already ran it with the STALE mode ("keep"), where a
+            # keep-best'd series has a single survivor -> the gate disabled the
+            # button; the mode flip then relabelled it "Show all" while leaving
+            # it disabled (the reported dead button).
+            try:
+                refresher = getattr(w, "_refresh_action_states", None)
+                if callable(refresher):
+                    refresher()
             except Exception:
                 pass
     except Exception:

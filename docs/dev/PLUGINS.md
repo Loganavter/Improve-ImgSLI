@@ -105,6 +105,7 @@ Per-plugin docs: app-wide plugins → [plugins/](plugins/index.md); tab-owned pl
 
 | Name | Path | Tier | Order | Interfaces | Role | Doc |
 |---|---|:-:|---|---|---|
+| `diagnostics` | `plugins/diagnostics/` | bootstrap | — | `IControllablePlugin`, `IServicePlugin` | Local-first crash/diagnostics report (env + logs + breadcrumbs, redacted); "Report a problem" dialog with Copy / Save / Open issue. No auto-upload, no screenshots | — |
 | `settings` | `plugins/settings/` | bootstrap | — | `IUIPlugin`, `IServicePlugin` | Settings dialog, `SettingsManager` disk persistence, canvas-feature setting bindings | [plugins/settings.md](plugins/settings.md) |
 | `layout` | `plugins/layout/` | bootstrap | — | — | UI-mode subscriber; obtains `layout_manager` via tab `create_startup_service` (not a local manager module) | [plugins/layout.md](plugins/layout.md) |
 | `onboarding` | `plugins/onboarding/` | bootstrap | — | — | First-run UI-mode picker on the startup stack; reads `SettingsManager.is_first_run` | [plugins/onboarding.md](plugins/onboarding.md) |

@@ -284,7 +284,10 @@ def test_tie_pending_falls_through_to_rank_path(qapp, _production_dark_palettes)
     assert getattr(card, "_gallery_badge", None) == "#3"
     _filled, _bg, _bd, txt = card._gallery_badge_style
     assert _filled is True
-    assert txt.name().lower() == "#000000"
+    # Dark palette: badge ink is the dark `button.primary.text` (#ffffff) —
+    # a fixed black was invisible on the dark `button.toggle.background.checked`
+    # (#555555) rank pill (≈2.79:1).
+    assert txt.name().lower() == "#ffffff"
     card.deleteLater()
 
 
@@ -298,23 +301,51 @@ def test_best_card_shows_rank_pill_with_default_frame(qapp, _production_dark_pal
     qapp.processEvents()
     _apply_rejected_visuals(card, item)
     # Design verdict: the leader-star pill is removed — the leader shows
-    # its #N (rank 1 derived when no explicit rank is set). Black text on
-    # the rank bg in both themes; the frame stays the default card border.
+    # its #N (rank 1 derived when no explicit rank is set). The ink follows
+    # the theme (``button.primary.text``); the frame stays the default card
+    # border.
     assert card.property("badgeText") in (None, "")
     assert getattr(card, "_gallery_badge", None) == "#1"
     _filled, _bg, _bd, txt = card._gallery_badge_style
     assert _filled is True
-    assert txt.name().lower() == "#000000"
+    assert txt.name().lower() == "#ffffff"
     assert card.borderColor().name().lower() == _card_border_color().name().lower()
     card.deleteLater()
 
 
-def test_leader_rank_pill_text_is_black_in_both_themes(qapp, _production_dark_palettes):
-    """#N text stays black on the rank bg in light and dark themes."""
+def test_rank_pill_text_tracks_theme_and_clears_contrast(qapp, _production_dark_palettes):
+    """#N ink follows ``button.primary.text``: #000000 light / #ffffff dark.
+
+    Red-before/green-after: the previous ink was a hardcoded ``#000000`` in
+    both themes, which measured ≈2.79:1 against the dark rank pill
+    (``button.toggle.background.checked`` = ``#555555``). The tokenised ink
+    keeps each theme's pill legible (>= 4.5:1, WCAG AA body text).
+    """
+    import json
+
     from sli_ui_toolkit.managers import ThemeManager
+    from utils.resource_loader import resource_path
+
+    with open(resource_path("resources/themes.json"), encoding="utf-8") as f:
+        data = json.load(f)
+
+    def _lin(c: float) -> float:
+        return c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4
+
+    def _lum(hex_color: str) -> float:
+        h = hex_color.lstrip("#")
+        if len(h) == 8:  # ARGB
+            h = h[2:]
+        r, g, b = (int(h[i : i + 2], 16) / 255.0 for i in (0, 2, 4))
+        return 0.2126 * _lin(r) + 0.7152 * _lin(g) + 0.0722 * _lin(b)
+
+    def _ratio(a: str, b: str) -> float:
+        la, lb = _lum(a), _lum(b)
+        hi, lo = (la, lb) if la >= lb else (lb, la)
+        return (hi + 0.05) / (lo + 0.05)
 
     tm = ThemeManager.get_instance()
-    for theme in ("light", "dark"):
+    for theme, expected_ink in (("light", "#000000"), ("dark", "#ffffff")):
         tm.set_theme(theme, qapp, await_ripples=False)
         try:
             tm._flush_pending_theme()  # type: ignore[attr-defined]
@@ -330,11 +361,17 @@ def test_leader_rank_pill_text_is_black_in_both_themes(qapp, _production_dark_pa
         _apply_rejected_visuals(card, item)
         assert getattr(card, "_gallery_badge", None) == "#1"
         _filled, _bg, _bd, txt = card._gallery_badge_style
-        assert txt.name().lower() == "#000000"
+        assert txt.name().lower() == expected_ink
+        pill = data[theme]["button.toggle.background.checked"]
+        assert _ratio(expected_ink, pill) >= 4.5, (
+            f"{theme}: rank ink {expected_ink} on {pill}: "
+            f"{_ratio(expected_ink, pill):.2f} < 4.5"
+        )
         card.deleteLater()
 
 
-def test_rank_badge_text_is_black(qapp):
+def test_rank_badge_ink_falls_back_theme_aware(qapp):
+    """Bare manager (no palette) → light default ink #000000, never a crash."""
     from types import SimpleNamespace
 
     card = build_gallery_card(_item(), parent=None)

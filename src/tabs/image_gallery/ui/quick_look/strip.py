@@ -616,16 +616,17 @@ def ensure_strip_visible(overlay) -> None:
         pass
 
 
-def _strip_rank_text_and_style(m):
+def _strip_rank_text_and_style(m, overlay=None):
     """Rank pill content for one series member (badge-button input).
 
     Renders ``item.badge`` / ``item.badge_kind`` — computed ONCE by
     ``services.rank_badge.stamp_badges`` and read verbatim here (the strip
     never re-derives the badge from flags). Priority: no badge on rejected.
-    Returns ``(text, outline, text_color)`` — the pill fills white with
-    ``outline`` as its 1px border — or None when no pill is shown. The build
-    sizes the pill from the shared ``rank_badge.BADGE_*`` geometry. Never
-    raises.
+    The SOURCE string is stamped English once upstream, so it is localized at
+    render through the overlay translator (same key as the card badge,
+    ``image_gallery.badge.source``); ``#N`` needs no translation. Returns
+    ``(text, outline, text_color)`` — the pill fills white with ``outline``
+    as its 1px border — or None when no pill is shown. Never raises.
     """
     try:
         from PySide6.QtGui import QColor as _QC
@@ -641,6 +642,12 @@ def _strip_rank_text_and_style(m):
         _strip_is_dark = _strip_dark()
         _ink = _QC("#000000")
         if kind == KIND_SOURCE:
+            _tr = getattr(overlay, "_tr", None)
+            if callable(_tr):
+                try:
+                    text = str(_tr("image_gallery.badge.source", text))
+                except Exception:
+                    pass
             _gold = _strip_token("gallery.status.warn", "#b77900" if not _strip_is_dark else "#d9a441")
             return (text, _gold, _ink)
         _rank_bg = _strip_token("button.toggle.background.checked", "#555555")
@@ -1266,7 +1273,7 @@ def rebuild_strip(overlay) -> None:
         # shared-hover ButtonFamily) — no toolkit badge anywhere on thumbs.
         # Priority: rejected (none) > badge text (computed once upstream).
         try:
-            _rank_spec = _strip_rank_text_and_style(m)
+            _rank_spec = _strip_rank_text_and_style(m, overlay)
         except Exception:
             _rank_spec = None
         try:
@@ -1482,9 +1489,25 @@ def rebuild_strip(overlay) -> None:
                         # never a gray chip or a translucent wash.
                         from PySide6.QtGui import QColor as _QCO
 
-                        _white = _QCO("#ffffff")
-                        _white.setAlpha(255)
-                        rank_btn.set_override_bg_color(_white)
+                        from tabs.image_gallery.ui.quick_look.helpers import _token_color as _pill_token
+
+                        _pill_bg = _pill_token("gallery.pill.background", "#ffffff")
+                        if _pill_bg is None:
+                            _pill_bg = _QCO("#ffffff")
+                        _pill_bg = _QCO(_pill_bg)  # copy: never mutate a manager-owned instance
+                        _pill_bg.setAlpha(255)
+                        rank_btn.set_override_bg_color(_pill_bg)
+                        # Hover must not fall through to the surface hover
+                        # token (dark ``#4a4a4a``, opaque): painted over the
+                        # white base it left the fixed black ink at ~2:1 —
+                        # the #N digits vanished. Pin a light pill hover so
+                        # the capsule stays readable on the shared-hover glow.
+                        _pill_hover = _pill_token("gallery.pill.background.hover", "#f0f0f0")
+                        if _pill_hover is not None:
+                            try:
+                                rank_btn.set_hover_color(_QCO(_pill_hover))
+                            except Exception:
+                                pass
                         rank_btn.set_border_color(_rank_bg)
                         try:
                             rank_btn.setProperty("borderWidth", 1)

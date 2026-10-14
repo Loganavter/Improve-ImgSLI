@@ -40,6 +40,42 @@ def _token_qcolor(token: str, fallback_hex: str, fallback_dark_hex: str | None =
     return QColor(fallback_hex if not _is_dark_theme() else fallback_dark_hex)
 
 
+def _ql_text(overlay, key: str, default: str) -> str:
+    """Translate a Quick Look string via the overlay's translator (fail-open)."""
+    tr = getattr(overlay, "_tr", None)
+    if callable(tr):
+        try:
+            return str(tr(key, default))
+        except Exception:
+            pass
+    return default
+
+
+def _metric_label(overlay, spec_id: str, default: str) -> str:
+    """Localized metric row label (``image_gallery.metric.<id>``)."""
+    return _ql_text(overlay, f"image_gallery.metric.{spec_id}", default)
+
+
+def _metric_note(overlay, spec_id: str, score: int) -> str:
+    """Localized band descriptor for a metric row (``metric_note.<id>.<band>``).
+
+    Fail-open: the English ``fallback_note`` when the key/translator is absent.
+    """
+    try:
+        from tabs.image_gallery.services.metric_scores import (
+            fallback_note as _fb,
+            score_band as _sb,
+        )
+
+        default = _fb(spec_id, score)
+        band = _sb(score)
+    except Exception:
+        return ""
+    if not default:
+        return ""
+    return _ql_text(overlay, f"image_gallery.metric_note.{spec_id}.{band}", default)
+
+
 def _metrics_series_snapshot(overlay) -> tuple:
     """Series-wide inputs of ``ssim_subline`` (re-rank/reject neighbor flips)."""
     try:
@@ -586,7 +622,7 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
         # (plan-gallery-ai-quality UX contract): its read lives in the AI
         # block (verdict/reason/defect chips), never on a measured row — so
         # the row reads as one measured answer, not two competing systems.
-        note = _fallback_note(spec_id, score)
+        note = _metric_note(overlay, spec_id, score)
         return f"{label} — {note}" if note else label
 
     def _add_metric_row(title: str, value_text: str, fraction: float, color=None, value_color=None, value_elide: bool = True) -> None:
@@ -676,13 +712,13 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
         got = _raw_for(spec, metrics)
         if got is None:
             if gap:
-                _add_unmeasured_row(spec.label)
+                _add_unmeasured_row(_metric_label(overlay, spec.id, spec.label))
             return False
         _key, raw = got
         score = _score_for(spec, raw)
         col = _band_color(score)
         value = f"{score}%" + (f" · {extra}" if extra else "")
-        _add_metric_row(_titled(spec.label, spec_id, score), value, score / 100.0, col, value_color=col)
+        _add_metric_row(_titled(_metric_label(overlay, spec_id, spec.label), spec_id, score), value, score / 100.0, col, value_color=col)
         return True
 
     # A source is the reference, not a variant — comparing it to itself
@@ -714,7 +750,11 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
         _spec = _spec_for("detail_gain")
         _hf = _raw_for(_spec, metrics) if _spec is not None else None
         if _hf is None:
-            _add_unmeasured_row(_spec.label if _spec is not None else "Detail")
+            _add_unmeasured_row(
+                _metric_label(overlay, "detail_gain", _spec.label)
+                if _spec is not None
+                else _metric_label(overlay, "detail_gain", "Detail")
+            )
         else:
             _key, hf_f = _hf
             score = _score_for(_spec, hf_f)
@@ -725,7 +765,10 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
             header = QHBoxLayout()
             header.setContentsMargins(0, 0, 0, 0)
             header.setSpacing(scaled_px(6))
-            t = _make_label(_titled(_spec.label, "detail_gain", score), parent=row, pixel_size=11, pt=11.5)
+            t = _make_label(
+                _titled(_metric_label(overlay, "detail_gain", _spec.label), "detail_gain", score),
+                parent=row, pixel_size=11, pt=11.5,
+            )
             header.addWidget(t)
             # W7: value takes free row width via stretch (see _add_metric_row).
             v = _make_label(f"{score}%", parent=row, pixel_size=11, pt=11.5, color=_band_color(score), elide=True, minimum_width=40)
@@ -742,10 +785,16 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
             sub = QHBoxLayout()
             sub.setContentsMargins(0, 0, 0, 0)
             sub.setSpacing(scaled_px(6))
-            lab_l = _make_label("restored texture", parent=row, pixel_size=11, pt=11.0)
+            lab_l = _make_label(
+                _ql_text(overlay, "image_gallery.ql.restored_texture", "restored texture"),
+                parent=row, pixel_size=11, pt=11.0,
+            )
             sub.addWidget(lab_l)
             sub.addStretch(1)
-            lab_r = _make_label("invented / hallucinated", parent=row, pixel_size=11, pt=11.0)
+            lab_r = _make_label(
+                _ql_text(overlay, "image_gallery.ql.invented_hallucinated", "invented / hallucinated"),
+                parent=row, pixel_size=11, pt=11.0,
+            )
             sub.addWidget(lab_r)
             rl.addLayout(sub)
             overlay._metric_rows.append(row)
@@ -797,7 +846,10 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
         _comp = -1
     if _comp >= 0:
         _ccol = _band_color(_comp)
-        _add_metric_row(_titled("Composition", "composition", _comp), f"{_comp}%", _comp / 100.0, _ccol, value_color=_ccol)
+        _add_metric_row(
+            _titled(_metric_label(overlay, "composition", "Composition"), "composition", _comp),
+            f"{_comp}%", _comp / 100.0, _ccol, value_color=_ccol,
+        )
 
     # Flat placement (rows + uniform spacers) is owned by the coordinator —
     # it also re-seats the artifact rows, so either rebuild order converges.

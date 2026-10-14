@@ -199,6 +199,12 @@ class StatsStrip(QWidget):
         self._tr = translate
         self._rejected = 0
         self._keep_mode = "keep"
+        self._stats = (0, 0, 0)
+        # Last affordance applied per action button ("keep"/"compare"). Used to
+        # swap the dimmed/bright tokens only on the enabled↔disabled boundary
+        # (see ``_apply_action_affordance``) — an empty cache forces the first
+        # ``set_action_states`` call to apply.
+        self._action_affordance: dict[str, bool] = {}
         # Cached surface color; repainted explicitly in paintEvent (never via
         # palette/auto-fill — see THEMING.md warm-up quirk).
         self._stats_bg = _stats_bg_color()
@@ -243,7 +249,12 @@ class StatsStrip(QWidget):
 
         layout.addStretch(1)
 
-        self._keep_btn = Button(text="Keep best", variant="ghost", size=(0, 24), parent=self)
+        self._keep_btn = Button(
+            text=self._t("image_gallery.action.keep_best", "Keep best"),
+            variant="ghost",
+            size=(0, 24),
+            parent=self,
+        )
         self._keep_btn.setObjectName("gallery_keep_best")
         try:
             _c = _stats_text_color()
@@ -261,6 +272,13 @@ class StatsStrip(QWidget):
             self._keep_btn.setEnabled(False)
         except Exception:
             pass
+        # Starts disabled: match the dimmed disabled look immediately (an empty
+        # cache would otherwise leave it lit until the first gate refresh).
+        try:
+            self._apply_action_affordance(self._keep_btn, False)
+            self._action_affordance["keep"] = False
+        except Exception:
+            pass
         layout.addWidget(self._keep_btn)
 
         self._clean_btn = Button(
@@ -269,7 +287,7 @@ class StatsStrip(QWidget):
                     id="_main",
                     rows=[
                         ButtonRow(
-                            text="Clean rejected (0)",
+                            text=self._t("image_gallery.stats.clean_rejected", "Clean rejected ({n})").format(n=0),
                             size=None,
                             ratio=1.0,
                             color=_header_text_color(),
@@ -288,7 +306,14 @@ class StatsStrip(QWidget):
         # Sync Button._rows for correct sizeHint (regions rows alone leave hint 36) then restore fixedHeight 24
         try:
             self._clean_btn.setRows(
-                [ButtonRow(text="Clean rejected (0)", size=None, ratio=1.0, color=_header_text_color())]
+                [
+                    ButtonRow(
+                        text=self._t("image_gallery.stats.clean_rejected", "Clean rejected ({n})").format(n=0),
+                        size=None,
+                        ratio=1.0,
+                        color=_header_text_color(),
+                    )
+                ]
             )
             self._clean_btn.setFixedHeight(scaled_px(24))
             self._clean_btn.setEnabled(False)
@@ -296,7 +321,12 @@ class StatsStrip(QWidget):
             pass
         layout.addWidget(self._clean_btn)
 
-        self._compare_btn = Button(text="Compare finalists", variant="ghost", size=(0, 24), parent=self)
+        self._compare_btn = Button(
+            text=self._t("image_gallery.stats.compare_finalists", "Compare finalists"),
+            variant="ghost",
+            size=(0, 24),
+            parent=self,
+        )
         self._compare_btn.setObjectName("gallery_compare_finalists")
         try:
             _c2 = _stats_text_color()
@@ -312,6 +342,11 @@ class StatsStrip(QWidget):
         self._compare_btn.clicked.connect(self.compareClicked.emit)
         try:
             self._compare_btn.setEnabled(False)
+        except Exception:
+            pass
+        try:
+            self._apply_action_affordance(self._compare_btn, False)
+            self._action_affordance["compare"] = False
         except Exception:
             pass
         layout.addWidget(self._compare_btn)
@@ -334,6 +369,16 @@ class StatsStrip(QWidget):
         except Exception:
             pass
 
+    def _t(self, key: str, default: str) -> str:
+        """Translate *key* via the injected translator (fail-open to *default*)."""
+        tr = getattr(self, "_tr", None)
+        if tr is None:
+            return default
+        try:
+            return tr(key, default)
+        except Exception:
+            return default
+
     def _on_keep_btn_clicked(self) -> None:
         """Route the keep-button click by mode (Keep best ↔ Show all)."""
         try:
@@ -343,24 +388,74 @@ class StatsStrip(QWidget):
             pass
 
     def set_keep_mode(self, mode: str) -> None:
-        """Flip the keep button between "Keep best" and "Show all"."""
+        """Flip the keep-mode button label (keep ↔ show).
+
+        In "show" mode the button is always actionable (there are rejected
+        items to restore), so it is force-enabled here: the gate
+        (``set_action_states``) may have disabled it *before* the mode flipped
+        (``_refresh_owner_grid`` rebuilds the grid, then sets the mode), leaving
+        a disabled "Show all" button that cannot be clicked.
+        """
         show = str(mode or "keep").strip().lower().startswith("show")
         self._keep_mode = "show" if show else "keep"
         try:
-            self._keep_btn.setText("Show all" if show else "Keep best")
+            if show:
+                self._keep_btn.setText(self._t("image_gallery.stats.show_all", "Show all"))
+            else:
+                self._keep_btn.setText(self._t("image_gallery.action.keep_best", "Keep best"))
+        except Exception:
+            pass
+        if show:
+            try:
+                self._keep_btn.setEnabled(True)
+            except Exception:
+                pass
+
+    def _apply_action_affordance(self, btn: Button, enabled: bool) -> None:
+        """Swap an action button's text/border tokens to match *enabled*.
+
+        A disabled ``variant="ghost"`` Button with a host-set foreground/border
+        renders identically to enabled — the ghost resolver ignores DISABLED
+        (``variants.py``) and the text/border overrides have no disabled branch
+        (``content.py``/``border.py``). The host therefore owns the dimmed look:
+        disabled → dimmed tokens (``gallery.header.text`` / ``flyout.border``),
+        enabled → normal ones (``gallery.stats.text`` / ``input.border.thin``).
+        Mirrors ``set_rejected_count``.
+        """
+        if enabled:
+            color, border = _stats_text_color(), _thin_border_color()
+        else:
+            color, border = _header_text_color(), _flyout_border_color()
+        try:
+            btn.setForegroundColor(color)
+        except Exception:
+            pass
+        try:
+            btn.setBorderColor(border)
         except Exception:
             pass
 
     def set_action_states(self, *, keep_best: bool, compare_finalists: bool) -> None:
-        """Enable/disable Keep best + Compare finalists (dead buttons stay off)."""
-        try:
-            self._keep_btn.setEnabled(bool(keep_best))
-        except Exception:
-            pass
-        try:
-            self._compare_btn.setEnabled(bool(compare_finalists))
-        except Exception:
-            pass
+        """Enable/disable Keep best + Compare finalists (dead buttons stay off).
+
+        Also swaps the text/border tokens on the enabled↔disabled boundary so a
+        disabled ghost button reads as disabled instead of lit-but-dead.
+        """
+        for key, btn, enabled in (
+            ("keep", self._keep_btn, bool(keep_best)),
+            ("compare", self._compare_btn, bool(compare_finalists)),
+        ):
+            try:
+                if btn.isEnabled() != enabled:
+                    btn.setEnabled(enabled)
+            except Exception:
+                pass
+            try:
+                if self._action_affordance.get(key) != enabled:
+                    self._apply_action_affordance(btn, enabled)
+                    self._action_affordance[key] = enabled
+            except Exception:
+                pass
 
     def _on_gallery_theme_changed(self) -> None:
         """Refresh cached surface + token-driven foregrounds on theme flip."""
@@ -373,13 +468,15 @@ class StatsStrip(QWidget):
         except Exception:
             pass
         try:
-            self._keep_btn.setForegroundColor(_stats_text_color())
-            self._keep_btn.setBorderColor(_thin_border_color())
+            keep_enabled = self._keep_btn.isEnabled()
+            self._apply_action_affordance(self._keep_btn, keep_enabled)
+            self._action_affordance["keep"] = keep_enabled
         except Exception:
             pass
         try:
-            self._compare_btn.setForegroundColor(_stats_text_color())
-            self._compare_btn.setBorderColor(_thin_border_color())
+            compare_enabled = self._compare_btn.isEnabled()
+            self._apply_action_affordance(self._compare_btn, compare_enabled)
+            self._action_affordance["compare"] = compare_enabled
         except Exception:
             pass
         try:
@@ -436,9 +533,14 @@ class StatsStrip(QWidget):
     def set_stats(self, total: int, series: int, redundant: int) -> None:
         # S2-6: split segments — default prefix + accent "N redundant".
         t = int(total)
-        img_word = "image" if t == 1 else "images"
-        prefix = f"{t} {img_word} · {int(series)} series · "
-        redundant_text = f"{int(redundant)} redundant"
+        self._stats = (t, int(series), int(redundant))
+        prefix = (
+            self._t("image_gallery.stats.images", "{n} images").format(n=t)
+            + " · "
+            + self._t("image_gallery.stats.series", "{n} series").format(n=int(series))
+            + " · "
+        )
+        redundant_text = self._t("image_gallery.stats.redundant", "{n} redundant").format(n=int(redundant))
         try:
             self._stats_prefix_label.setText(prefix)
         except Exception:
@@ -450,7 +552,7 @@ class StatsStrip(QWidget):
 
     def set_rejected_count(self, n: int) -> None:
         self._rejected = int(n)
-        txt = f"Clean rejected ({int(n)})"
+        txt = self._t("image_gallery.stats.clean_rejected", "Clean rejected ({n})").format(n=int(n))
         enabled = int(n) > 0
         if enabled:
             col = _accent_soft_color()
@@ -481,6 +583,34 @@ class StatsStrip(QWidget):
                 pass
         try:
             self._clean_btn.setEnabled(enabled)
+        except Exception:
+            pass
+
+    def retranslate(self, translate=None) -> None:
+        """Re-apply every translated label (language switch).
+
+        Re-reads the Keep-best/Show-all button text (via ``set_keep_mode``),
+        the rejected count and the stats segments so a live language switch
+        never leaves stale English behind.
+        """
+        if translate is not None:
+            self._tr = translate
+        try:
+            self._compare_btn.setText(
+                self._t("image_gallery.stats.compare_finalists", "Compare finalists")
+            )
+        except Exception:
+            pass
+        try:
+            self.set_keep_mode(self._keep_mode)
+        except Exception:
+            pass
+        try:
+            self.set_rejected_count(self._rejected)
+        except Exception:
+            pass
+        try:
+            self.set_stats(*self._stats)
         except Exception:
             pass
 

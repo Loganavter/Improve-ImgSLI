@@ -6,11 +6,13 @@
   "subtitle": "Pick a session type to begin",
   "types": {
     "image_compare": "Image Compare",
-    "multi_compare": "Multi Compare"
+    "multi_compare": "Multi Compare",
+    "image_gallery": "AI Gallery"
   },
   "descriptions": {
     "image_compare": "Side-by-side image comparison with a divider, magnifier, and analysis tools.",
-    "multi_compare": "Grid layout for comparing several sources at once."
+    "multi_compare": "Grid layout for comparing several sources at once.",
+    "image_gallery": "Open a folder of similar shots — AI and quality metrics help you pick the best."
   },
   "recent": {
     "title": "Recent",

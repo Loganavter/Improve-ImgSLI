@@ -218,7 +218,7 @@ def test_sort_combo_opens_dropdown_and_emits(qtbot) -> None:
         qtbot.waitExposed(flyout)
     assert toolbar.sort_combo.property("cornerRadiusPx") == 6
     assert flyout.isVisible()
-    assert flyout._options == ["Sort: Rank", "Sort: Name", "Sort: Date", "Sort: AI quality"]
+    assert flyout._options == ["Rank", "Name", "Date", "AI quality"]
     # Content width (width_mode="content"): uniform rows on the widest
     # label, tight card — no trailing slack by construction. Red pre-fix
     # (anchor-matched card wider than any row needs).

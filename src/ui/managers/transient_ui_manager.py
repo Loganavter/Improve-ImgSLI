@@ -3,6 +3,7 @@ import time
 
 from PySide6.QtCore import QPointF
 
+from ui.host_debug import transient_debug
 from ui.managers.transient_ui_parts import PopupClosingController
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -73,13 +74,13 @@ class TransientUIManager:
             # TTL expired — fall through to re-probe
             self._service_miss_session.pop(attr, None)
         service_id = self._service_ids[attr]
-        logger.debug("[transient] resolving service '%s' (attr=%s)", service_id, attr)
+        transient_debug("resolving service '%s' (attr=%s)", service_id, attr)
         registry.discover()
         service = registry.create_startup_service(service_id, self)
         if service is not None:
             self._services[attr] = service
             self._service_miss_session.pop(attr, None)
-            logger.debug("[transient] '%s' → resolved: %s", service_id, type(service).__name__)
+            transient_debug("'%s' → resolved: %s", service_id, type(service).__name__)
             # panel_visibility (btn_magnifier) and panel_instances
             # (btn_magnifier_instances) are one toolbar group -- both
             # controllers install event filters on their own button in
@@ -97,7 +98,7 @@ class TransientUIManager:
                 self._get_service(sibling)
         else:
             self._service_miss_session[attr] = (miss_key, time.monotonic())
-            logger.debug("[transient] '%s' → None (deferred)", service_id)
+            transient_debug("'%s' → None (deferred)", service_id)
         return service
 
     def __getattr__(self, name: str):

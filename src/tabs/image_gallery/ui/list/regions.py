@@ -37,15 +37,21 @@ def item_unreadable(item: GalleryItem) -> bool:
     return False
 
 
-def _badges_text(item: GalleryItem) -> str:
+def _badges_text(item: GalleryItem, translate=None) -> str:
     """Inline badges: the precomputed ``item.badge`` + ★ (leader) + ✕ (rejected).
 
     The badge string is computed once by ``services.rank_badge.stamp_badges``;
-    the list only adds its own ★/✕ affordances and never re-derives it.
+    the list only adds its own ★/✕ affordances and never re-derives it. The
+    SOURCE badge is stamped English once, so it is localized at render via the
+    injected list translator (same key as the card/strip badge).
     """
     parts: list[str] = []
     text = str(getattr(item, "badge", "") or "")
     if text:
+        from tabs.image_gallery.services.rank_badge import KIND_SOURCE
+
+        if str(getattr(item, "badge_kind", "none") or "none") == KIND_SOURCE:
+            text = _tr(translate, "image_gallery.badge.source", text)
         parts.append(text)
     if bool(getattr(item, "is_best", False)):
         parts.append("★")
@@ -54,7 +60,17 @@ def _badges_text(item: GalleryItem) -> str:
     return " ".join(parts)
 
 
-def _artifacts_text(item: GalleryItem) -> str:
+def _tr(translate, key: str, default: str) -> str:
+    """List-meta i18n lookup (fail-open to the EN default)."""
+    if callable(translate):
+        try:
+            return str(translate(key, default))
+        except Exception:
+            pass
+    return default
+
+
+def _artifacts_text(item: GalleryItem, translate=None) -> str:
     """Plain-words artifact status: Artifacts / Minor / OK / …."""
     try:
         artifacts = getattr(item, "artifacts", None) or {}
@@ -69,14 +85,14 @@ def _artifacts_text(item: GalleryItem) -> str:
             elif s == "mild":
                 mild += 1
         if flagged:
-            return "Artifacts"
+            return _tr(translate, "image_gallery.list.artifacts", "Artifacts")
         if mild:
-            return "Minor"
+            return _tr(translate, "image_gallery.list.minor", "Minor")
         try:
             from tabs.image_gallery.models import AnalysisStatus
 
             if getattr(item, "analysis_status", None) == AnalysisStatus.DONE:
-                return "OK"
+                return _tr(translate, "image_gallery.list.ok", "OK")
         except Exception:
             pass
         return "…"
@@ -84,30 +100,30 @@ def _artifacts_text(item: GalleryItem) -> str:
         return "…"
 
 
-def _vlm_text(item: GalleryItem) -> str:
+def _vlm_text(item: GalleryItem, translate=None) -> str:
     """Compact VLM state: err > tie… > tie-ok / brief > ''."""
     try:
         if getattr(item, "vlm_tie_error", None) or getattr(item, "vlm_brief_error", None):
-            return "err"
+            return _tr(translate, "image_gallery.list.vlm_err", "err")
         if getattr(item, "vlm_tie_pending", False):
-            return "tie…"
+            return _tr(translate, "image_gallery.list.vlm_tie_pending", "tie…")
         if getattr(item, "vlm_tie_result", None) is not None:
-            return "tie-ok"
+            return _tr(translate, "image_gallery.list.vlm_tie_ok", "tie-ok")
         try:
             status = str(getattr(item, "vlm_brief_status", None) or "none")
         except Exception:
             status = "none"
         if status not in ("none", ""):
-            return "brief"
+            return _tr(translate, "image_gallery.list.vlm_brief", "brief")
     except Exception:
         pass
     return ""
 
 
-def _list_text_rows(item: GalleryItem) -> list[ButtonRow]:
+def _list_text_rows(item: GalleryItem, translate=None) -> list[ButtonRow]:
     """ONE title row: name + badges inline, full-height centered (compact)."""
     text = item.name
-    badges = _badges_text(item)
+    badges = _badges_text(item, translate)
     if badges:
         text = f"{text} {badges}"
     # Static truncated text (same reason as grid cards: the 60fps
@@ -115,10 +131,12 @@ def _list_text_rows(item: GalleryItem) -> list[ButtonRow]:
     return [ButtonRow(text=text, size=16, weight="normal", h_align=Qt.AlignmentFlag.AlignLeft, marquee=False, elide=True)]
 
 
-def _list_meta_rows(item: GalleryItem) -> list[ButtonRow]:
+def _list_meta_rows(item: GalleryItem, translate=None) -> list[ButtonRow]:
     """ONE meta row: artifacts + VLM combined with spaces, right-aligned."""
-    parts = [p for p in (_artifacts_text(item), _vlm_text(item)) if p]
-    return [ButtonRow(text=" ".join(parts), size=16, h_align=Qt.AlignmentFlag.AlignRight)]
+    parts = [
+        p for p in (_artifacts_text(item, translate), _vlm_text(item, translate)) if p
+    ]
+    return [ButtonRow(text=" · ".join(parts), size=16, h_align=Qt.AlignmentFlag.AlignRight)]
 
 
 def _thumb_region(item: GalleryItem) -> ButtonRegion:

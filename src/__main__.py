@@ -111,6 +111,18 @@ def _install_sigint_quit(app: QApplication) -> None:
     wake.timeout.connect(lambda: None)
     wake.start()
 
+
+def _startup_dump_delay_ms(args: argparse.Namespace) -> int:
+    """Settle delay before a startup dump fires.
+
+    Tab actions register when their tab is created, and dialog/panel layout
+    settles over a few event-loop turns; both need longer than the plain
+    banner-only dump. Shared by ``--dump-ui-layout`` and
+    ``--dump-app-snapshot`` so the two devtools agree on timing.
+    """
+    return 600 if (args.open_tab or args.run_action) else 300
+
+
 def main():
     parser = argparse.ArgumentParser(description="Improve ImgSLI - Main entry point")
     parser.add_argument(
@@ -144,6 +156,17 @@ def main():
         "present). Startup lands on the Session Picker, so tab actions "
         "(image_compare.*, multi_compare.*) are only in the dump unless you "
         "also pass --open-tab (or a project to open).",
+    )
+    parser.add_argument(
+        "--dump-app-snapshot",
+        metavar="PATH",
+        default=None,
+        help="Dump the live ActionRegistry catalog + Redux Store slices "
+        "(settings, workspace sessions, active document summary) to PATH as "
+        "JSON after startup, then exit. Same startup-timing rules as "
+        "--dump-ui-layout: pass --open-tab to give tab actions a chance to "
+        "register first. Read-only devtool surface for the MCP server "
+        "(see docs/dev/MCP.md).",
     )
     parser.add_argument(
         "--open-tab",
@@ -369,8 +392,26 @@ def main():
         # isn't still the pre-resize placeholder; longer when opening a tab
         # or running actions first so their own layout/animation settles
         # before we snapshot it.
-        dump_delay_ms = 600 if (args.open_tab or args.run_action) else 300
-        QTimer.singleShot(dump_delay_ms, _dump_ui_layout_and_quit)
+        QTimer.singleShot(_startup_dump_delay_ms(args), _dump_ui_layout_and_quit)
+
+    if args.dump_app_snapshot:
+        snapshot_path = args.dump_app_snapshot
+
+        def _dump_app_snapshot_and_quit(path: str = snapshot_path) -> None:
+            import json
+
+            from devtools.app_snapshot import dump_snapshot
+            from ui.actions.registry import get_action_registry
+
+            data = dump_snapshot(window.store, get_action_registry())
+            Path(path).write_text(
+                json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8"
+            )
+            app.quit()
+
+        # Same settle delay as --dump-ui-layout: actions register during
+        # window.start() and tab activation, not before the first loop turn.
+        QTimer.singleShot(_startup_dump_delay_ms(args), _dump_app_snapshot_and_quit)
 
     if args.project:
         project_path = str(Path(args.project).expanduser().resolve())

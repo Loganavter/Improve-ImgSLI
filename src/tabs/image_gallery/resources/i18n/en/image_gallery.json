@@ -31,7 +31,10 @@
       "effort_none": "None",
       "vlm_max_edge": "Image downscale (max edge)",
       "downscale_original": "Original",
-      "api_key_warning": "Stored unencrypted on this device."
+      "api_key_warning": "Stored unencrypted on this device.",
+      "api_key_placeholder": "sk-…",
+      "model_placeholder": "openrouter/auto or vendor/model",
+      "tokens_placeholder": "auto"
     },
     "errors": {
       "not_configured": "Configure the AI API key in Settings first.",
@@ -70,7 +73,10 @@
       "rename_prompt": "Series name",
       "delete": "Delete",
       "reset": "Reset manual series",
-      "recluster": "Re-cluster series"
+      "recluster": "Re-cluster series",
+      "header_hub": "SERIES {n} · {hub} · {count} VARIANTS",
+      "header": "SERIES {n} · {count} images",
+      "ungrouped": "UNGROUPED · {count}"
     },
     "sort_by": "Sort by",
     "view": "View",
@@ -80,11 +86,232 @@
     "sort_quality": "AI quality",
     "view_grid": "Grid",
     "view_list": "List",
+    "toolbar": {
+      "open_folder": "Open Folder…",
+      "filter_placeholder": "Filter by tag / description…"
+    },
+    "grid": {
+      "resize_tooltip": "Drag to resize series panes"
+    },
+    "stats": {
+      "show_all": "Show all",
+      "clean_rejected": "Clean rejected ({n})",
+      "compare_finalists": "Compare finalists",
+      "images": "{n} images",
+      "series": "{n} series",
+      "redundant": "{n} redundant"
+    },
+    "quick_look": {
+      "unset_source": "Unset",
+      "reject": "Reject",
+      "restore": "Restore",
+      "delete": "Delete",
+      "report_title": "Batch report",
+      "report_sub": "distance to centroid · artifact flags",
+      "artifact_grid_tooltip": "Where this artifact is strongest — coarse 5×5 grid:\ngreen = none · yellow = mild · red = strongest",
+      "mixed_sizes": "mixed sizes",
+      "upscales_note": "{n} upscales of one source"
+    },
+    "clean_review": {
+      "title": "Review rejected files",
+      "subtitle": "{n} files will be moved to {folder}/_rejected/ — nothing is deleted, Undo available for 10 s.",
+      "provenance_prefix": "from: ",
+      "series": "SERIES {n}",
+      "ungrouped": "UNGROUPED",
+      "no_rejected": "No rejected files.",
+      "move": "Move {n}",
+      "size": "{n} files · {mb} MB",
+      "no_files": "No files to move",
+      "restore": "Restore",
+      "restore_all": "Restore all",
+      "cancel": "Cancel"
+    },
     "help": {
       "hub": {
         "title": "Image Gallery",
         "desc": "Browse, triage, and review image folders"
       }
+    },
+    "scanning": "Scanning {n}/{total}",
+    "metric": {
+      "sharpness": "Sharpness",
+      "exposure": "Exposure",
+      "clipping": "Highlight detail",
+      "noise": "Clean",
+      "white_balance": "White balance",
+      "ssim": "Source match",
+      "detail_gain": "Detail",
+      "color_accuracy": "Color accuracy",
+      "typicality": "Typicality",
+      "aesthetic": "Aesthetic",
+      "lpips": "Perceptual (LPIPS)",
+      "dists": "Perceptual",
+      "brisque": "Naturalness",
+      "clipping_delta": "Clipping vs source",
+      "halo_delta": "Halo vs source",
+      "chroma_fringe_delta": "Chroma vs source",
+      "composition": "Composition"
+    },
+    "artifact": {
+      "banding": "Gradients",
+      "halo": "Edges",
+      "over_smoothing": "Detail",
+      "invented_texture": "Texture",
+      "blocking": "Blocks",
+      "chroma_fringing": "Chroma",
+      "noise_amplification": "Clean"
+    },
+    "ql": {
+      "restored_texture": "restored texture",
+      "invented_hallucinated": "invented / hallucinated",
+      "size_smaller": "smaller than source",
+      "size_same": "same size as source",
+      "size_upscale": "upscale from source"
+    },
+    "selection": {
+      "none": "No selection",
+      "one": "1 selected",
+      "many": "{n} selected",
+      "analyze": "Analyze",
+      "find_similar": "Find similar"
+    },
+    "card": {
+      "make_best": "Make best",
+      "reject": "Reject",
+      "unreject": "Unreject",
+      "remove": "Remove from view",
+      "ungroup": "Ungroup",
+      "group": "Group",
+      "make_source": "Make source"
+    },
+    "badge": {
+      "source": "SOURCE"
+    },
+    "metric_note": {
+      "sharpness": {
+        "good": "sharp",
+        "mid": "slightly soft",
+        "bad": "very soft"
+      },
+      "exposure": {
+        "good": "well exposed",
+        "mid": "slightly off",
+        "bad": "poorly exposed"
+      },
+      "clipping": {
+        "good": "highlights preserved",
+        "mid": "minor clipping",
+        "bad": "clipped highlights"
+      },
+      "noise": {
+        "good": "clean",
+        "mid": "visible grain",
+        "bad": "heavy noise/grain"
+      },
+      "white_balance": {
+        "good": "neutral",
+        "mid": "slight color cast",
+        "bad": "strong color cast"
+      },
+      "ssim": {
+        "good": "close to source",
+        "mid": "some drift",
+        "bad": "far from source"
+      },
+      "detail_gain": {
+        "good": "detail preserved",
+        "mid": "slight shift",
+        "bad": "detail lost or invented"
+      },
+      "color_accuracy": {
+        "good": "accurate color",
+        "mid": "slight color shift",
+        "bad": "off color"
+      },
+      "typicality": {
+        "good": "typical",
+        "mid": "somewhat atypical",
+        "bad": "outlier"
+      },
+      "aesthetic": {
+        "good": "pleasing",
+        "mid": "ordinary",
+        "bad": "unappealing"
+      },
+      "lpips": {
+        "good": "perceptually close",
+        "mid": "slight perceptual drift",
+        "bad": "perceptually far"
+      },
+      "dists": {
+        "good": "perceptually close",
+        "mid": "slight perceptual drift",
+        "bad": "perceptually far"
+      },
+      "brisque": {
+        "good": "natural",
+        "mid": "slightly unnatural",
+        "bad": "unnatural"
+      },
+      "clipping_delta": {
+        "good": "no added clipping",
+        "mid": "slight added clipping",
+        "bad": "added clipping"
+      },
+      "halo_delta": {
+        "good": "no added halo",
+        "mid": "possible added halo",
+        "bad": "added halo"
+      },
+      "chroma_fringe_delta": {
+        "good": "no added fringing",
+        "mid": "possible added fringing",
+        "bad": "added fringing"
+      },
+      "composition": {
+        "good": "well composed",
+        "mid": "ok composition",
+        "bad": "poor composition"
+      },
+      "banding": {
+        "good": "smooth gradients",
+        "mid": "possible banding",
+        "bad": "visible banding"
+      },
+      "halo": {
+        "good": "clean edges",
+        "mid": "possible halo",
+        "bad": "strong halo"
+      },
+      "blocking": {
+        "good": "no blocking",
+        "mid": "possible blocking",
+        "bad": "strong blocking"
+      },
+      "over_smoothing": {
+        "good": "detail kept",
+        "mid": "possibly smoothed",
+        "bad": "over-smoothed"
+      },
+      "invented_texture": {
+        "good": "authentic texture",
+        "mid": "possible invented texture",
+        "bad": "invented texture"
+      },
+      "chroma_fringing": {
+        "good": "no fringing",
+        "mid": "possible fringing",
+        "bad": "strong fringing"
+      }
+    },
+    "list": {
+      "artifacts": "Artifacts",
+      "minor": "Minor",
+      "ok": "OK",
+      "vlm_err": "err",
+      "vlm_tie_pending": "tie…",
+      "vlm_tie_ok": "tie-ok",
+      "vlm_brief": "brief"
     }
   }
 }

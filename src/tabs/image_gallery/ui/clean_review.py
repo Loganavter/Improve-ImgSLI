@@ -829,7 +829,7 @@ class CleanReviewOverlay(TopLevelInWindowOverlay):
     cleaned = Signal(list)
     dismissed = Signal()  # shadow TopLevelInWindowOverlay.dismissed for compat
 
-    def __init__(self, parent: QWidget, owner=None) -> None:
+    def __init__(self, parent: QWidget, owner=None, *, translate=None) -> None:
         # Quick Look parity: veil click + Esc close, minimize/deactivate
         # stays pinned (WindowDeactivate fires on minimize — with True the
         # menu would die with the window; tab on_deactivated/on_session_closed
@@ -840,6 +840,11 @@ class CleanReviewOverlay(TopLevelInWindowOverlay):
             close_on_escape=True,
             close_on_deactivate=False,
         )
+        # Translator seam: ``translate(key, default) -> str`` (or None for
+        # the EN defaults). Captured once; ``retranslate()`` refreshes it on
+        # a live language switch. Set BEFORE any child text below so the
+        # construction-time labels use it.
+        self._tr = translate
         # G3 dispatch-only: the triage owner (controller) arrives explicitly
         # via __init__/show_for and is stored here. Assigned ONLY from those
         # explicit arguments — never poked from outside, never re-scanned.
@@ -927,6 +932,17 @@ class CleanReviewOverlay(TopLevelInWindowOverlay):
         self._list_layout.setSpacing(scaled_px(8))
         self._list_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         self._scroll.setWidget(self._list_host)
+        # QScrollArea auto-fills its content widget with the raw Qt ``Window``
+        # palette role — dark #1e1e1e, a near-black band inside the #383838
+        # plate. Route the list host + its strip through the gallery panel
+        # token (light pixel-unchanged).
+        try:
+            from tabs.image_gallery.ui.quick_look.labels_theme import _apply_panel_background
+
+            _apply_panel_background(self._scroll)
+            _apply_panel_background(self._list_host)
+        except Exception:
+            pass
         outer.addWidget(self._scroll, 1)
 
         # S3 provenance line — BELOW the filmstrip per mockup v3 (svg:100
@@ -956,7 +972,7 @@ class CleanReviewOverlay(TopLevelInWindowOverlay):
         bar_layout.setContentsMargins(0, 0, 0, 0)
         bar_layout.setSpacing(scaled_px(8))
 
-        self._restore_all_btn = Button(text="Restore all", variant="surface", parent=bar)
+        self._restore_all_btn = Button(text=self._t("image_gallery.clean_review.restore_all", "Restore all"), variant="surface", parent=bar)
         self._restore_all_btn.setObjectName("clean_review_restore_all")
         self._restore_all_btn.clicked.connect(self._on_restore_all)
         bar_layout.addWidget(self._restore_all_btn)
@@ -970,12 +986,16 @@ class CleanReviewOverlay(TopLevelInWindowOverlay):
 
         bar_layout.addStretch(1)
 
-        self._cancel_btn = Button(text="Cancel", variant="surface", parent=bar)
+        self._cancel_btn = Button(text=self._t("image_gallery.clean_review.cancel", "Cancel"), variant="surface", parent=bar)
         self._cancel_btn.setObjectName("clean_review_cancel")
         self._cancel_btn.clicked.connect(self.hide)
         bar_layout.addWidget(self._cancel_btn)
 
-        self._move_btn = Button(text="Move 0", variant="surface", parent=bar)
+        self._move_btn = Button(
+            text=self._t("image_gallery.clean_review.move", "Move {n}").format(n=0),
+            variant="surface",
+            parent=bar,
+        )
         self._move_btn.setObjectName("clean_review_move")
         self._move_btn.clicked.connect(self._on_move)
         try:
@@ -1026,6 +1046,41 @@ class CleanReviewOverlay(TopLevelInWindowOverlay):
         self._row_widgets: list[QWidget] = []
         self._toast_manager: ToastManager | None = None
         self._ql_return = None
+
+    def _t(self, key: str, default: str) -> str:
+        """i18n lookup — EN ``default`` when no translator is wired."""
+        tr = getattr(self, "_tr", None)
+        if tr is None:
+            return default
+        try:
+            return tr(key, default)
+        except Exception:
+            return default
+
+    def retranslate(self, translate=None) -> None:
+        """Re-apply keyed text after a language switch.
+
+        Re-runs the same label pass as ``_populate`` (plus the two static
+        footer buttons that ``_populate`` does not own) so an open overlay
+        never keeps stale-language text.
+        """
+        if translate is not None:
+            self._tr = translate
+        try:
+            self._restore_all_btn.setText(
+                self._t("image_gallery.clean_review.restore_all", "Restore all")
+            )
+        except Exception:
+            pass
+        try:
+            self._cancel_btn.setText(self._t("image_gallery.clean_review.cancel", "Cancel"))
+        except Exception:
+            pass
+        try:
+            if self._owner is not None:
+                self._populate(self._owner)
+        except Exception:
+            pass
 
     def sizeHint(self) -> QSize:  # noqa: N802
         # QuickLook idiom (quick_look.py:848): overlay hint = plate floor.
@@ -1245,14 +1300,22 @@ class CleanReviewOverlay(TopLevelInWindowOverlay):
         """P0-10 modal dim veil (mockup v3 fill-opacity 0.45).
 
         ``TopLevelInWindowOverlay`` paints nothing (transparent
-        background), so the veil lives here in gallery scope.
+        background), so the veil lives here in gallery scope. The opacity is
+        theme-aware (``_dim_veil_alpha``): light keeps the mockup 0.45, dark
+        softens so the surroundings stay one background family with the card.
         """
+        try:
+            from tabs.image_gallery.ui.quick_look.labels_theme import _dim_veil_alpha
+
+            veil_alpha = _dim_veil_alpha()
+        except Exception:
+            veil_alpha = DIM_VEIL_ALPHA
         try:
             painter = QPainter(self)
             # No hardcoded QColor (contracts/test_no_hardcoded_qcolor.py):
             # the veil is mockup-specified plain black at an opacity, not
             # a theme color — Qt global black + painter opacity.
-            painter.setOpacity(DIM_VEIL_ALPHA / 255.0)
+            painter.setOpacity(veil_alpha / 255.0)
             painter.fillRect(self.rect(), QBrush(Qt.GlobalColor.black))
             painter.end()
         except Exception:
@@ -1286,12 +1349,17 @@ class CleanReviewOverlay(TopLevelInWindowOverlay):
         # ``<folder>`` literal as drawn in the mockup).
         folder_name = _display_folder_for_items(owner, items)
         try:
-            self._title.setText("Review rejected files")
+            self._title.setText(
+                self._t("image_gallery.clean_review.title", "Review rejected files")
+            )
         except Exception:
             pass
         try:
             self._subtitle.setText(
-                f"{n} files will be moved to {folder_name}/_rejected/ — nothing is deleted, Undo available for 10 s."
+                self._t(
+                    "image_gallery.clean_review.subtitle",
+                    "{n} files will be moved to {folder}/_rejected/ — nothing is deleted, Undo available for 10 s.",
+                ).format(n=n, folder=folder_name)
             )
         except Exception:
             pass
@@ -1316,29 +1384,31 @@ class CleanReviewOverlay(TopLevelInWindowOverlay):
 
         sorted_sids = sorted(by_series.keys(), key=_series_sort_key)
         # Build hub-aware provenance parts with SERIES N indexing.
+        _series_label = self._t("image_gallery.clean_review.series", "SERIES {n}")
         if by_series:
             parts = []
             for idx, sid in enumerate(sorted_sids, start=1):
                 cnt = len(by_series[sid])
+                _sid_label = _series_label.format(n=idx)
                 if sid == "__ungrouped__":
-                    hub = "UNGROUPED"
-                    parts.append(_with_count(hub, cnt) if len(sorted_sids) == 1 else _with_count(f"SERIES {idx} · {hub}", cnt))
+                    hub = self._t("image_gallery.clean_review.ungrouped", "UNGROUPED")
+                    parts.append(_with_count(hub, cnt) if len(sorted_sids) == 1 else _with_count(f"{_sid_label} · {hub}", cnt))
                 else:
                     hub = _hub_name_for_series(owner, sid)
                     if hub:
-                        parts.append(_with_count(f"SERIES {idx} · {hub}", cnt))
+                        parts.append(_with_count(f"{_sid_label} · {hub}", cnt))
                     else:
                         # Fallback without hub
-                        parts.append(_with_count(f"SERIES {idx}", cnt))
+                        parts.append(_with_count(_sid_label, cnt))
             # Use sorted order enumeration for display but keep original sid for resolver.
             # Rebuild with actual enumeration based on sorted order where hub exists.
             # For ungrouped, use UNGROUPED label.
             # Already built.
-            prov_text = "from: " + " · ".join(parts)
+            prov_text = self._t("image_gallery.clean_review.provenance_prefix", "from: ") + " · ".join(parts)
             # Back-compat: also include raw series label for tests that search lowercase
             # Keep display as built.
         else:
-            prov_text = "No rejected files."
+            prov_text = self._t("image_gallery.clean_review.no_rejected", "No rejected files.")
         try:
             self._provenance_label.setText(prov_text)
         except Exception:
@@ -1346,15 +1416,21 @@ class CleanReviewOverlay(TopLevelInWindowOverlay):
 
         # Move button variant primary, size label total MB.
         try:
-            self._move_btn.setText(f"Move {n}")
+            self._move_btn.setText(self._t("image_gallery.clean_review.move", "Move {n}").format(n=n))
             self._move_btn.setEnabled(n > 0)
         except Exception:
             pass
         try:
             if n > 0:
-                self._size_label.setText(f"{n} files · {total_mb:.1f} MB")
+                self._size_label.setText(
+                    self._t(
+                        "image_gallery.clean_review.size", "{n} files · {mb} MB"
+                    ).format(n=n, mb=f"{total_mb:.1f}")
+                )
             else:
-                self._size_label.setText("No files to move")
+                self._size_label.setText(
+                    self._t("image_gallery.clean_review.no_files", "No files to move")
+                )
         except Exception:
             pass
         try:
@@ -1379,7 +1455,11 @@ class CleanReviewOverlay(TopLevelInWindowOverlay):
         self._row_widgets.clear()
 
         if not items:
-            empty = Label("No rejected files.", pixel_size=14, parent=self._list_host)
+            empty = Label(
+                self._t("image_gallery.clean_review.no_rejected", "No rejected files."),
+                pixel_size=14,
+                parent=self._list_host,
+            )
             empty.setObjectName("clean_review_empty")
             self._list_layout.addWidget(empty)
             self._row_widgets.append(empty)
@@ -1406,6 +1486,15 @@ class CleanReviewOverlay(TopLevelInWindowOverlay):
 
         filmstrip = QWidget()
         filmstrip.setObjectName("clean_review_filmstrip_inner")
+        # Filmstrip host auto-fills raw ``Window`` (dark #1e1e1e) — the band
+        # behind the cells. Same panel token as the list host.
+        try:
+            from tabs.image_gallery.ui.quick_look.labels_theme import _apply_panel_background
+
+            _apply_panel_background(strip_scroll)
+            _apply_panel_background(filmstrip)
+        except Exception:
+            pass
         film_layout = QHBoxLayout(filmstrip)
         film_layout.setContentsMargins(0, 0, 0, 0)
         film_layout.setSpacing(scaled_px(8))
@@ -1453,7 +1542,11 @@ class CleanReviewOverlay(TopLevelInWindowOverlay):
             # the button tooltip instead.
             name = getattr(it, "name", None) or Path(getattr(it, "path", "")).name or str(getattr(it, "path", ""))
 
-            restore_btn = Button(text="↩ Restore", variant="surface", parent=cell)
+            restore_btn = Button(
+                text="↩ " + self._t("image_gallery.clean_review.restore", "Restore"),
+                variant="surface",
+                parent=cell,
+            )
             restore_btn.setObjectName("clean_review_restore")
             try:
                 restore_btn.setToolTip(str(name))

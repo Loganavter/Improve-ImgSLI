@@ -180,6 +180,8 @@ def build_gallery_list_card(
     on_activate: Callable | None = None,
     on_context_menu: Callable | None = None,
     mode: object = None,
+    *,
+    translate=None,
 ) -> Button:
     """Factory for a palette-style gallery list row (thumb + title + meta)."""
     _ = mode
@@ -187,9 +189,9 @@ def build_gallery_list_card(
     card = Button(
         regions=[
             _thumb_region(item),
-            ButtonRegion(id="text", rows=_list_text_rows(item), weight=1.0, group="card",
+            ButtonRegion(id="text", rows=_list_text_rows(item, translate), weight=1.0, group="card",
                          corner_radii=(0, 0, 0, 0)),
-            ButtonRegion(id="meta", rows=_list_meta_rows(item), weight=0.0, group="card",
+            ButtonRegion(id="meta", rows=_list_meta_rows(item, translate), weight=0.0, group="card",
                          corner_radii=(0, 8, 8, 0)),
         ],
         split=CustomSplit(rect_fns=_make_rect_fns(state)),
@@ -231,7 +233,7 @@ def _attach_list_item(card: Button, item: GalleryItem) -> None:
         pass
 
 
-def update_gallery_list_card(card: Button, item: GalleryItem, mode: object = None) -> None:
+def update_gallery_list_card(card: Button, item: GalleryItem, mode: object = None, *, translate=None) -> None:
     """In-place update of a live list row (update_gallery_card parity)."""
     _ = mode
     _attach_list_item(card, item)
@@ -260,8 +262,8 @@ def update_gallery_list_card(card: Button, item: GalleryItem, mode: object = Non
         except Exception:
             pass
     try:
-        card.update_region("text", rows=_list_text_rows(item))
-        card.update_region("meta", rows=_list_meta_rows(item))
+        card.update_region("text", rows=_list_text_rows(item, translate))
+        card.update_region("meta", rows=_list_meta_rows(item, translate))
     except Exception:
         pass
     try:

@@ -57,6 +57,7 @@ class RecentHeaderBar(QWidget):
         layout.setSpacing(8)
 
         self.sort_button = Button(
+            icon=get_session_picker_icon(SessionPickerIcon.SORT_BY_MODIFIED),
             text=self._sort_label(),
             variant="default",
             size=(168, 28),
@@ -171,6 +172,7 @@ class RecentHeaderBar(QWidget):
         self._sort_order = sort_order
         self._view_mode = view_mode
         self.sort_button.setText(self._sort_label())
+        self.sort_button.setIcon(get_session_picker_icon(self._sort_mode_icon()))
         # Exact opaque fill — custom_bg is an 18% tint and cannot lighten
         # a shelf (only darken), so override_bg is required here.
         self.sort_button.set_override_bg_color(chip_bg)
@@ -200,6 +202,15 @@ class RecentHeaderBar(QWidget):
         self.sort_button.setVisible(visible)
         self.sort_order_button.setVisible(visible)
         self.view_button.setVisible(visible)
+
+    def _sort_mode_icon(self):
+        """Leading icon for the sort chip — matches the current sort mode
+        (same icons as the dropdown rows: calendar / Aa)."""
+        if self._sort_mode == SORT_NAME:
+            return SessionPickerIcon.SORT_BY_NAME
+        if self._sort_mode == SORT_CREATED:
+            return SessionPickerIcon.SORT_BY_CREATED
+        return SessionPickerIcon.SORT_BY_MODIFIED
 
     def _sort_label(self) -> str:
         if self._sort_mode == SORT_NAME:

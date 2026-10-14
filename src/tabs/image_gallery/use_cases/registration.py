@@ -53,6 +53,29 @@ def register_settings(tab, registry) -> None:
         )
 
 
+def _tab_tr(tab):
+    """Reuse the tab's existing context translator (no new resolver).
+
+    ``tab._widget._context._tr`` first, then the legacy
+    ``tab._gallery_context._tr`` fallback; ``None`` when neither is wired.
+    """
+    try:
+        ctx = getattr(getattr(tab, "_widget", None), "_context", None)
+        tr = getattr(ctx, "_tr", None) if ctx is not None else None
+        if tr is not None:
+            return tr
+    except Exception:
+        pass
+    try:
+        ctx = getattr(tab, "_gallery_context", None)
+        tr = getattr(ctx, "_tr", None) if ctx is not None else None
+        if tr is not None:
+            return tr
+    except Exception:
+        pass
+    return None
+
+
 def build_topology_overlays(tab, parent):
     """Build + show this tab's grandfathered window-parented modals.
 
@@ -64,7 +87,11 @@ def build_topology_overlays(tab, parent):
     from tabs.image_gallery.ui.clean_review import CleanReviewOverlay
     from tabs.image_gallery.ui.quick_look import QuickLookOverlay
 
-    overlays = [QuickLookOverlay(parent), CleanReviewOverlay(parent)]
+    translate = _tab_tr(tab)
+    overlays = [
+        QuickLookOverlay(parent, translate=translate),
+        CleanReviewOverlay(parent, translate=translate),
+    ]
     for overlay in overlays:
         overlay.show_overlay()
     return overlays

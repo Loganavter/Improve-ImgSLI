@@ -56,6 +56,23 @@ def test_wide_viewport_grows_columns(qtbot) -> None:
     assert len(rows) == 1
 
 
+def test_wide_first_build_uses_responsive_columns_immediately(qtbot) -> None:
+    """First build on a wide viewport must already use the grown column count.
+
+    Falsification (pre-fix): ``rebuild_grid`` laid out at the stale
+    ``GRID_COLUMNS`` (4) and only the debounced ``_adapt_timer`` (150 ms) grew
+    it — the log showed ``cols=4`` at rebuild, ``cols=9`` +135 ms later (cards
+    first in two rows, then one). No ``qtbot.wait`` here: the FIRST build must
+    already be responsive.
+    """
+    w = ImageGalleryWidget()
+    qtbot.addWidget(w)
+    w.resize(1900, 900)
+    w.show()
+    w.rebuild_grid(_items(6))
+    assert w._grid_view.grid_columns > GRID_COLUMNS
+
+
 def test_narrow_two_sections_stack_full_width(qtbot) -> None:
     w = ImageGalleryWidget()
     qtbot.addWidget(w)

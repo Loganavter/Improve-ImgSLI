@@ -6,11 +6,13 @@
   "subtitle": "选择会话类型开始",
   "types": {
     "image_compare": "图像比较",
-    "multi_compare": "多重比较"
+    "multi_compare": "多重比较",
+    "image_gallery": "AI 图库"
   },
   "descriptions": {
     "image_compare": "使用分隔线、放大镜和分析工具进行并排图像比较。",
-    "multi_compare": "用于同时比较多个来源的网格布局。"
+    "multi_compare": "用于同时比较多个来源的网格布局。",
+    "image_gallery": "打开相似照片文件夹——AI 与质量指标帮你挑出最佳。"
   },
   "recent": {
     "title": "最近",
@@ -42,6 +44,8 @@
       "minutes": "{n} 分钟前",
       "hours": "{n} 小时前",
       "days": "{n} 天前"
-    }
+    },
+    "sort_by": "排序",
+    "view": "视图"
   }
 }

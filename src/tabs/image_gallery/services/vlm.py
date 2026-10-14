@@ -22,6 +22,7 @@ from pathlib import Path
 
 from tabs.image_gallery.models import CompareBrief, TieBreakResult
 from tabs.image_gallery.services.ai_client import AiResponseError, call_sync
+from tabs.image_gallery.services.ask_prompt import language_directive
 
 # Stage 3 prompts — visibly targeted, never whole-folder scan
 TIE_BREAK_PROMPT_TEMPLATE = (
@@ -185,7 +186,11 @@ def build_tie_break_request(
     mime_a, data_a = _encode_image(path_a)
     mime_b, data_b = _encode_image(path_b)
     content: list[dict] = [
-        {"type": "text", "text": prompt + f"\nA: {Path(path_a).name}\nB: {Path(path_b).name}"},
+        {
+            "type": "text",
+            "text": f"{prompt}\n{language_directive()}"
+            f"\nA: {Path(path_a).name}\nB: {Path(path_b).name}",
+        },
         {"type": "image_url", "image_url": {"url": f"data:image/{mime_a};base64,{data_a}"}},
         {"type": "image_url", "image_url": {"url": f"data:image/{mime_b};base64,{data_b}"}},
     ]
@@ -213,7 +218,11 @@ def build_compare_brief_request(
     mime_a, data_a = _encode_image(path_a)
     mime_b, data_b = _encode_image(path_b)
     content: list[dict] = [
-        {"type": "text", "text": prompt + f"\nPair: {Path(path_a).name} vs {Path(path_b).name}"},
+        {
+            "type": "text",
+            "text": f"{prompt}\n{language_directive()}"
+            f"\nPair: {Path(path_a).name} vs {Path(path_b).name}",
+        },
         {"type": "image_url", "image_url": {"url": f"data:image/{mime_a};base64,{data_a}"}},
         {"type": "image_url", "image_url": {"url": f"data:image/{mime_b};base64,{data_b}"}},
     ]

@@ -315,6 +315,16 @@ class ImageGalleryWidget(QWidget):
         self._clean_overlay = None  # type: ignore[assignment]
         # Quick look overlay (S4) — created lazily.
         self._quick_look_overlay = None  # type: ignore[assignment]
+        # Language switch: keep the lazily-created overlays in sync with the
+        # active translator (they capture ``_tr`` once at construction).
+        # ``translatable_callback`` ties the connection to this widget's
+        # lifetime (auto-disconnect on destroy) — the toolkit idiom.
+        try:
+            from sli_ui_toolkit.i18n import translatable_callback
+
+            translatable_callback(self, lambda _lang: self._retranslate_overlays())
+        except Exception:
+            pass
         # Selection actions live in the card context menu (ex-HUD flyout removed).
         # Kept as None for back-compat getattr hooks (hover/list/clean_review).
         self._selection_hud = None  # type: ignore[assignment]
@@ -879,7 +889,11 @@ class ImageGalleryWidget(QWidget):
         except Exception:
             view_is_list = None
         try:
-            _ctx = getattr(self, "_gallery_context", None)
+            # ``_context`` is the TabContext the widget was built with (see
+            # __init__); ``_gallery_context`` is a legacy alias that is never
+            # assigned — reading it left ``tr=None`` and rendered the
+            # empty-canvas Sort by / View menu in English.
+            _ctx = getattr(self, "_context", None) or getattr(self, "_gallery_context", None)
             tr = getattr(_ctx, "_tr", None) if _ctx is not None else None
         except Exception:
             tr = None
@@ -982,7 +996,9 @@ class ImageGalleryWidget(QWidget):
             except Exception:
                 sel_n = 0
             try:
-                _ctx = getattr(self, "_gallery_context", None)
+                # Same fix as the empty-canvas menu: the real context lives on
+                # ``_context`` (``_gallery_context`` is never set).
+                _ctx = getattr(self, "_context", None) or getattr(self, "_gallery_context", None)
                 _tr = getattr(_ctx, "_tr", None) if _ctx is not None else None
             except Exception:
                 _tr = None
@@ -1203,6 +1219,24 @@ class ImageGalleryWidget(QWidget):
             return ctx._tr(key, default)
         except Exception:
             return default
+
+    def _retranslate_overlays(self) -> None:
+        """Refresh the lazily-created overlays on a live language switch.
+
+        Reuses this widget's context translator (same ``tr`` the toolbar and
+        stats strip got at construction). No-op while an overlay has not been
+        created yet — the next ``show_*`` builds it with the current tr.
+        """
+        ctx = getattr(self, "_context", None)
+        tr = getattr(ctx, "_tr", None) if ctx is not None else None
+        for attr in ("_clean_overlay", "_quick_look_overlay"):
+            overlay = getattr(self, attr, None)
+            if overlay is None:
+                continue
+            try:
+                overlay.retranslate(tr)
+            except Exception:
+                pass
 
     def _series_names_map(self) -> dict:
         """Session custom-name map (series_id → name); lazily created."""
@@ -1516,6 +1550,28 @@ class ImageGalleryWidget(QWidget):
     def keyPressEvent(self, event) -> None:  # noqa: N802
         from tabs.image_gallery.use_cases import triage_ui
 
+        # While the toolbar filter has focus, arrows/Home/End belong to the
+        # text field — keep the triage_ui typing guard intact (it also runs
+        # inside handle_key, but navigation would steal the keys first).
+        try:
+            from PySide6.QtWidgets import QApplication
+
+            fw = QApplication.focusWidget()
+            filter_edit = getattr(self, "_filter_edit", None)
+            if fw is not None and fw is filter_edit and event.key() != Qt.Key.Key_Escape:
+                return triage_ui.handle_key(self, event)
+        except Exception:
+            pass
+        # Card-grid navigation (arrows / Home / End / Menu) is owned by the
+        # grid view — mirrors session_picker/recent/items_view. When no card
+        # holds focus yet, an arrow bootstraps onto the first card. Everything
+        # else (Space/Delete remove, Enter compare, Esc, B) stays in triage_ui.
+        try:
+            if self._grid_view.handle_navigation_key(event):
+                event.accept()
+                return
+        except Exception:
+            pass
         return triage_ui.handle_key(self, event)
 
     # -- S3 clean review helpers -----------------------------------------------
@@ -1528,11 +1584,19 @@ class ImageGalleryWidget(QWidget):
             actual_owner = owner if owner is not None else self._owner_for_triage()
             # Ensure overlay exists. Owner travels via constructor / show_for
             # (both take owner) — never re-poked afterwards (G2 contract).
+            _ctx = getattr(self, "_context", None)
+            _tr = getattr(_ctx, "_tr", None) if _ctx is not None else None
             overlay = getattr(self, "_clean_overlay", None)
             if overlay is None:
                 parent = self.window() or self
-                overlay = CleanReviewOverlay(parent, actual_owner)
+                overlay = CleanReviewOverlay(parent, actual_owner, translate=_tr)
                 self._clean_overlay = overlay
+            elif _tr is not None:
+                # Created before a language switch: re-apply the current tr.
+                try:
+                    overlay.retranslate(_tr)
+                except Exception:
+                    pass
             overlay.show_for(actual_owner)
         except Exception:
             pass

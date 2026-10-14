@@ -10,6 +10,7 @@ from sli_ui_toolkit.widgets import (
 )
 
 from ui.context_menu.models import ContextMenuProvider, ContextMenuRequest
+from ui.host_debug import ctx_menu_debug
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -109,12 +110,12 @@ class ContextMenuManager:
         active = self._live_active_menu()
         if active is not None and active.isVisible():
             if self._active_key == key:
-                logger.debug("[ctx-menu] reopen same key=%r -> toggle hide", key)
+                ctx_menu_debug("reopen same key=%r -> toggle hide", key)
                 active.hide()
                 self._clear_active_menu()
                 return None
-            logger.debug(
-                "[ctx-menu] reopen other key=%r (was %r) -> replace",
+            ctx_menu_debug(
+                "reopen other key=%r (was %r) -> replace",
                 key,
                 self._active_key,
             )
@@ -153,8 +154,8 @@ class ContextMenuManager:
             ]
         except Exception:
             action_ids = ["<unreadable>"]
-        logger.debug(
-            "[ctx-menu] open key=%r surface=%s pos=%s actions=%s",
+        ctx_menu_debug(
+            "open key=%r surface=%s pos=%s actions=%s",
             key[1],
             surface,
             global_pos,
@@ -165,7 +166,7 @@ class ContextMenuManager:
         return menu
 
     def _on_menu_hidden(self, menu: ContextMenu) -> None:
-        logger.debug("[ctx-menu] hidden key=%r", self._active_key)
+        ctx_menu_debug("hidden key=%r", self._active_key)
         if self._active_menu is menu:
             self._clear_active_menu()
 
@@ -200,8 +201,8 @@ class ContextMenuManager:
 
     def hide_active_menu(self) -> None:
         active = self._live_active_menu()
-        logger.debug(
-            "[ctx-menu] hide_active key=%r visible=%s",
+        ctx_menu_debug(
+            "hide_active key=%r visible=%s",
             self._active_key,
             bool(active is not None and active.isVisible()),
         )
@@ -230,8 +231,8 @@ class ContextMenuManager:
 
     def hide_active_menu_if_outside(self, global_pos) -> None:
         if self._ignore_outside_close:
-            logger.debug(
-                "[ctx-menu] outside-close skipped pos=%s (open-click grace)",
+            ctx_menu_debug(
+                "outside-close skipped pos=%s (open-click grace)",
                 global_pos,
             )
             self._ignore_outside_close = False
@@ -239,8 +240,8 @@ class ContextMenuManager:
         inside = self.active_menu_contains_global(global_pos)
         live = self._live_active_menu()
         submenu_open = bool(getattr(live, "_open_submenu", None) is not None)
-        logger.debug(
-            "[ctx-menu] outside-close check pos=%s inside=%s submenu_open=%s",
+        ctx_menu_debug(
+            "outside-close check pos=%s inside=%s submenu_open=%s",
             global_pos,
             inside,
             submenu_open,

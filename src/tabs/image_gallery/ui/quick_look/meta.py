@@ -82,11 +82,11 @@ def populate_filename_meta(overlay, item, is_fidelity: bool, owner=None) -> None
                 # Falls back to the old text whenever either side's dims
                 # are unknown (never a fabricated comparison).
                 if _item_smaller_than_source(overlay, dims_txt, owner):
-                    meta_parts.append("smaller than source")
+                    meta_parts.append(_ql_size(overlay, "size_smaller", "smaller than source"))
                 else:
-                    meta_parts.append("same size as source")
+                    meta_parts.append(_ql_size(overlay, "size_same", "same size as source"))
             else:
-                meta_parts.append("upscale from source")
+                meta_parts.append(_ql_size(overlay, "size_upscale", "upscale from source"))
         elif upscale_n is not None and upscale_n > 1:
             meta_parts.append(f"upscale ×{upscale_n}")
         try:
@@ -313,3 +313,18 @@ def populate_brief(overlay, item) -> None:
                 div.setVisible(False)
         except Exception:
             pass
+
+
+def _ql_size(overlay, key: str, default: str) -> str:
+    """Localized QL meta string (``image_gallery.ql.<key>``), fail-open.
+
+    Defined at module tail so the ownership-guard ALLOWLIST (a file+line
+    ratchet over this file) keeps its line numbers stable.
+    """
+    tr = getattr(overlay, "_tr", None)
+    if callable(tr):
+        try:
+            return str(tr(f"image_gallery.ql.{key}", default))
+        except Exception:
+            pass
+    return default

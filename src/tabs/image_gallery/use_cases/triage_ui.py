@@ -361,72 +361,9 @@ def handle_key(owner, event) -> None:
     except Exception:
         pass
 
-    # Arrows → navigate selection. GRID_COLUMNS spatial
-    if key in (Qt.Key.Key_Left, Qt.Key.Key_Right, Qt.Key.Key_Up, Qt.Key.Key_Down):
-        try:
-            items = list(owner._items or [])  # type: ignore[attr-defined]
-            if not items:
-                QWidget.keyPressEvent(owner, event)
-                return
-            cur = current_path(owner)
-            cur_idx = 0
-            if cur is not None:
-                for i, it in enumerate(items):
-                    try:
-                        if Path(it.path) == Path(cur):
-                            cur_idx = i
-                            break
-                    except Exception:
-                        continue
-            delta = 0
-            if key == Qt.Key.Key_Left:
-                delta = -1
-            elif key == Qt.Key.Key_Right:
-                delta = 1
-            elif key == Qt.Key.Key_Up:
-                try:
-                    gv = getattr(owner, "_grid_view", None)
-                    nav = getattr(gv, "nav_columns_for", None)
-                    if callable(nav):
-                        try:
-                            delta = -int(nav(cur))
-                        except Exception:
-                            from tabs.image_gallery.ui.grid_view import GRID_COLUMNS
-
-                            delta = -int(GRID_COLUMNS)
-                    else:
-                        from tabs.image_gallery.ui.grid_view import GRID_COLUMNS
-
-                        delta = -int(GRID_COLUMNS)
-                except Exception:
-                    delta = -4
-            elif key == Qt.Key.Key_Down:
-                try:
-                    gv = getattr(owner, "_grid_view", None)
-                    nav = getattr(gv, "nav_columns_for", None)
-                    if callable(nav):
-                        try:
-                            delta = int(nav(cur))
-                        except Exception:
-                            from tabs.image_gallery.ui.grid_view import GRID_COLUMNS
-
-                            delta = int(GRID_COLUMNS)
-                    else:
-                        from tabs.image_gallery.ui.grid_view import GRID_COLUMNS
-
-                        delta = int(GRID_COLUMNS)
-                except Exception:
-                    delta = 4
-            nxt_idx = max(0, min(len(items) - 1, cur_idx + delta))
-            nxt_path = Path(items[nxt_idx].path)
-            triage_owner = owner_for_triage(owner)
-            try:
-                _set_owner_selection(triage_owner, owner, [nxt_path])
-            except Exception:
-                pass
-            event.accept()
-            return
-        except Exception:
-            pass
+    # Arrows are owned by the card grid (``GalleryGridView.move_focus`` /
+    # NavigationManager trial-dispatch) — never re-interpreted here as a
+    # selection move (that was the pre-focus-ring behavior). Unhandled arrows
+    # simply fall through to the base widget.
 
     QWidget.keyPressEvent(owner, event)

@@ -19,6 +19,18 @@ from sli_ui_toolkit.widgets import Button, ComboBox, CustomLineEdit, Label, Load
 
 from tabs.image_gallery.icons import Icon as GalleryIcon
 
+#: Sort option i18n keys, 1:1 with ``GalleryToolbar._sort_items`` indices.
+#: ``_sort_items`` holds the EN canonical machine labels (the ``sortChanged``
+#: signal payload that ``widget.py:_on_sort_changed`` matches substrings on);
+#: these keys feed ONLY the displayed button/row label — index mapping is 1:1.
+SORT_OPTION_KEYS = (
+    "image_gallery.sort_rank",
+    "image_gallery.sort_name",
+    "image_gallery.sort_date",
+    "image_gallery.sort_quality",
+)
+SORT_OPTION_DEFAULTS = ("Rank", "Name", "Date", "AI quality")
+
 
 def _is_dark_theme() -> bool:
     try:
@@ -239,7 +251,7 @@ class GalleryToolbar(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(scaled_px(20))
 
-        pick_text = "Open Folder…"
+        pick_text = _tr("image_gallery.toolbar.open_folder", "Open Folder…")
         # real_design.md:2.1 — 132×34 иконка внутри, без truncation (unified EN)
         self._pick_button = Button(
             icon="folder_open",
@@ -262,7 +274,7 @@ class GalleryToolbar(QWidget):
         self._pick_button.clicked.connect(self.openClicked.emit)
         layout.addWidget(self._pick_button)
 
-        placeholder = "Filter by tag / description…"
+        placeholder = _tr("image_gallery.toolbar.filter_placeholder", "Filter by tag / description…")
         self._filter_edit = CustomLineEdit(self)
         self._filter_edit.setObjectName("gallery_toolbar_filter")
         self._filter_edit.setAcceptDrops(False)
@@ -288,9 +300,9 @@ class GalleryToolbar(QWidget):
         self._sort_index = 0
         self._sort_flyout: SimpleOptionsFlyout | None = None
         self._sort_combo = Button(
-            text="Sort: Rank ▾",
+            text=f"{self._sort_display(0)} ▾",
             variant="surface",
-            width_texts=[f"{text} ▾" for text in self._sort_items],
+            width_texts=[f"{self._sort_display(i)} ▾" for i in range(len(self._sort_items))],
             size=(0, scaled_px(34)),
             corner_radius=6,
             parent=self,
@@ -481,6 +493,14 @@ class GalleryToolbar(QWidget):
             parent=self._view_switch_container,
         )
         self._view_switch_list.setObjectName("gallery_toolbar_view_switch_list")
+        try:
+            self._view_switch.setToolTip(_tr("image_gallery.view_grid", "Grid"))
+        except Exception:
+            pass
+        try:
+            self._view_switch_list.setToolTip(_tr("image_gallery.view_list", "List"))
+        except Exception:
+            pass
         # Exclusive helper — active has border, inactive has none; icon color via tuple, emits viewToggled(bool) is_list
         self._is_list = False  # current view: False grid, True list
         def _apply_view(is_list: bool) -> None:
@@ -629,6 +649,31 @@ class GalleryToolbar(QWidget):
     def sort_index(self) -> int:
         return int(self._sort_index)
 
+    def _tr_text(self, key: str, default: str) -> str:
+        """Translate *key* via the injected translator (fail-open to *default*)."""
+        tr = getattr(self, "_tr", None)
+        if tr is None:
+            return default
+        try:
+            return tr(key, default)
+        except Exception:
+            return default
+
+    def _sort_display(self, index: int) -> str:
+        """Localized option label for *index* (no "Sort:" prefix).
+
+        Indices map 1:1 to ``_sort_items`` (EN canonical machine labels, kept
+        as the ``sortChanged`` payload); this only feeds display surfaces
+        (button text / width hints / flyout rows), never the emitted value.
+        """
+        try:
+            i = int(index)
+        except Exception:
+            i = 0
+        if not (0 <= i < len(SORT_OPTION_KEYS)):
+            i = 0
+        return self._tr_text(SORT_OPTION_KEYS[i], SORT_OPTION_DEFAULTS[i])
+
     def sort_text(self) -> str:
         try:
             return str(self._sort_items[int(self._sort_index)])
@@ -670,7 +715,7 @@ class GalleryToolbar(QWidget):
         if 0 <= index < len(self._sort_items) and index != self._sort_index:
             self._sort_index = index
             try:
-                self._sort_combo.setText(f"{self._sort_items[index]} ▾")
+                self._sort_combo.setText(f"{self._sort_display(index)} ▾")
             except Exception:
                 pass
             try:
@@ -801,7 +846,10 @@ class GalleryToolbar(QWidget):
                 flyout.set_row_height(34)
             except Exception:
                 pass
-            flyout.populate(list(self._sort_items), int(self._sort_index))
+            flyout.populate(
+                [self._sort_display(i) for i in range(len(self._sort_items))],
+                int(self._sort_index),
+            )
             # Domain gate: "Sort: AI quality" is listed (canonical indices)
             # but not selectable outside the AI domain.
             try:
@@ -837,11 +885,25 @@ class GalleryToolbar(QWidget):
                 return default
 
         try:
-            self._pick_button.setText("Open Folder…")
+            self._pick_button.setText(_tr("image_gallery.toolbar.open_folder", "Open Folder…"))
         except Exception:
             pass
         try:
-            self._filter_edit.setPlaceholderText("Filter by tag / description…")
+            self._filter_edit.setPlaceholderText(
+                _tr("image_gallery.toolbar.filter_placeholder", "Filter by tag / description…")
+            )
+        except Exception:
+            pass
+        try:
+            self._view_switch.setToolTip(_tr("image_gallery.view_grid", "Grid"))
+            self._view_switch_list.setToolTip(_tr("image_gallery.view_list", "List"))
+        except Exception:
+            pass
+        try:
+            self._sort_combo.setText(f"{self._sort_display(int(self._sort_index))} ▾")
+            set_widths = getattr(self._sort_combo, "set_width_texts", None)
+            if callable(set_widths):
+                set_widths([f"{self._sort_display(i)} ▾" for i in range(len(self._sort_items))])
         except Exception:
             pass
         try:

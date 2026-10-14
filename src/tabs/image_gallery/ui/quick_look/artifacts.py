@@ -130,6 +130,12 @@ def rebuild_artifacts(overlay, item) -> None:
         # quality score (clean 100 / mild 50 / flagged 15); the value/bar
         # color reuses the single severity mapping (ui/card/dots.py).
         label = _POSITIVE_ARTIFACT_LABELS.get(aid, aid)
+        _tr_ov = getattr(overlay, "_tr", None)
+        if callable(_tr_ov):
+            try:
+                label = str(_tr_ov(f"image_gallery.artifact.{aid}", label))
+            except Exception:
+                pass
         score = _ARTIFACT_QUALITY.get(lvl, 100)
         # Local band descriptor only — the VLM's per-axis read is never shown
         # on the row (plan-gallery-ai-quality UX contract; its narration lives
@@ -161,10 +167,17 @@ def rebuild_artifacts(overlay, item) -> None:
 
                 _hm_lbl = _QLabel(row)
                 _hm_lbl.setPixmap(_heatmap_pixmap(_hm))
-                _hm_lbl.setToolTip(
+                _tip = (
                     "Where this artifact is strongest — coarse 5×5 grid:\n"
                     "green = none · yellow = mild · red = strongest"
                 )
+                _tr_overlay = getattr(overlay, "_tr", None)
+                if callable(_tr_overlay):
+                    try:
+                        _tip = _tr_overlay("image_gallery.quick_look.artifact_grid_tooltip", _tip)
+                    except Exception:
+                        pass
+                _hm_lbl.setToolTip(_tip)
                 header.addWidget(_hm_lbl)
             except Exception:
                 pass

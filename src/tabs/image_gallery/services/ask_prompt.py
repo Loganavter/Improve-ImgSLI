@@ -18,6 +18,20 @@ Design (research-backed — see ``plan-gallery-ask-ai-answer-quality``):
 
 from __future__ import annotations
 
+from sli_ui_toolkit.i18n import get_current_language
+
+#: UI language code → the name the model is told to answer in. Deliberately
+#: small and static: the app ships ``en``/``ru``/``zh``/``pt_BR`` under
+#: ``src/resources/i18n`` (plus tab roots). An unknown code falls back to the
+#: raw code rather than guessing a name.
+_LANGUAGE_NAMES = {
+    "en": "English",
+    "ru": "Russian",
+    "zh": "Chinese",
+    "pt": "Portuguese",
+    "pt_br": "Brazilian Portuguese",
+}
+
 #: How the model must refer to images/metrics (aliases only, never a name it
 #: guessed). Kept verbatim from the original router prompt.
 NAMING_RULE = (
@@ -84,6 +98,37 @@ ASK_REGION_SYSTEM_PROMPT = (
     + ASK_OUTPUT_CONTRACT
 )
 
+
+def language_name(code: str | None = None) -> str:
+    """Human-readable name of the UI language *code* (current one if omitted).
+
+    The AI is always told the target language explicitly — never left to guess
+    it from the (English) system prompt.
+    """
+    try:
+        raw = code if code is not None else get_current_language()
+    except Exception:
+        raw = "en"
+    key = str(raw or "en").strip().lower()
+    return _LANGUAGE_NAMES.get(key) or str(raw or "en")
+
+
+def language_directive(code: str | None = None) -> str:
+    """Directive telling the model which language to answer in."""
+    return f"Answer in {language_name(code)}. Keep numbers/metric names as-is."
+
+
+def with_language(system_prompt: str | None = None, *, language: str | None = None) -> str:
+    """*system_prompt* (or the default Ask prompt) + the language directive.
+
+    The directive is appended, so the base prompt's rules and the JSON output
+    envelope are unchanged; only the language of the prose the user sees is
+    steered. ``language=None`` reads the current UI language.
+    """
+    base = str(system_prompt or "").strip() or ASK_SYSTEM_PROMPT
+    return f"{base}\n{language_directive(language)}"
+
+
 #: One canonical few-shot exemplar (sent as real user/assistant turns). Its data
 #: is deliberately different from real scopes so the model cannot echo it.
 FEWSHOT_CONTEXT = (
@@ -108,4 +153,7 @@ __all__ = [
     "FEWSHOT_CONTEXT",
     "FEWSHOT_QUESTION",
     "NAMING_RULE",
+    "language_directive",
+    "language_name",
+    "with_language",
 ]

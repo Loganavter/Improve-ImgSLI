@@ -65,7 +65,7 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
     #: LMB region selection finished: (image path, normalized box (l,t,r,b)).
     regionAskRequested = Signal(str, object)
 
-    def __init__(self, parent: QWidget, owner=None) -> None:
+    def __init__(self, parent: QWidget | None = None, owner=None, *, translate=None) -> None:
         # Close policy: veil click, Esc, and the X button close;
         # minimize/focus loss stay pinned. Reverses W6 (background ban) and
         # the W11 Esc ban; no report state is lost — triage state lives in
@@ -74,6 +74,11 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
         # dismiss is explicit (ring presses return earlier, children eat
         # their own presses); Esc flows through the base keyPressEvent.
         super().__init__(parent, close_on_background=False, close_on_escape=True, close_on_deactivate=False)
+        # Translator seam: ``translate(key, default) -> str`` (or None for the
+        # EN defaults). Captured once; ``retranslate()`` refreshes it on a live
+        # language switch. Set BEFORE build_overlay_ui so the chrome buttons
+        # (Set as source / Reject / Delete) can resolve their keys.
+        self._tr = translate
         # G3 dispatch-only: the triage owner (controller) arrives explicitly
         # via __init__/show_for and is stored here. Assigned ONLY from those
         # explicit arguments — never poked from outside, never re-scanned.
@@ -848,6 +853,83 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
         except Exception:
             pass
 
+    def _t(self, key: str, default: str) -> str:
+        """i18n lookup — EN ``default`` when no translator is wired."""
+        tr = getattr(self, "_tr", None)
+        if tr is None:
+            return default
+        try:
+            return tr(key, default)
+        except Exception:
+            return default
+
+    def _mode_str_and_fidelity(self) -> tuple[str, bool]:
+        """Current report mode string + fidelity flag (shared by populate/retranslate)."""
+        mode_str = ""
+        try:
+            if self._mode is not None:
+                mode_str = str(self._mode.value) if hasattr(self._mode, "value") else str(self._mode)
+            else:
+                mode_str = "fidelity"
+            mode_str = mode_str.upper()
+            if not mode_str.endswith(" MODE"):
+                mode_str = f"{mode_str} MODE"
+        except Exception:
+            mode_str = "FIDELITY MODE"
+        return mode_str, ("FIDELITY" in mode_str)
+
+    def retranslate(self, translate=None) -> None:
+        """Re-apply keyed chrome after a language switch.
+
+        Re-applies only the flag-dependent toggle labels (Set as
+        source/Unset, Reject/Restore), the static Delete label, and the
+        report header — a full ``_populate`` would re-decode the preview
+        pipeline for a pure text change (W12-A rationale).
+        """
+        if translate is not None:
+            self._tr = translate
+        item = getattr(self, "_current_item", None)
+        try:
+            self._set_source_btn.setVisible(True)
+            is_src = (
+                self._source_path is not None
+                and item is not None
+                and Path(getattr(item, "path", "")) == Path(self._source_path)
+            )
+            if callable(_set_colored_text):
+                _set_colored_text(
+                    self._set_source_btn,
+                    self._t("image_gallery.quick_look.unset_source", "Unset")
+                    if is_src
+                    else self._t("image_gallery.action.set_as_source", "Set as source"),
+                    None,
+                )
+        except Exception:
+            pass
+        try:
+            if item is not None and callable(_set_colored_text):
+                rejected = bool(getattr(item, "rejected", False))
+                _set_colored_text(
+                    self._reject_btn,
+                    self._t("image_gallery.quick_look.restore", "Restore")
+                    if rejected
+                    else f'✕ {self._t("image_gallery.quick_look.reject", "Reject")}',
+                    None,
+                )
+        except Exception:
+            pass
+        try:
+            self._delete_btn.setText(self._t("image_gallery.quick_look.delete", "Delete"))
+        except Exception:
+            pass
+        try:
+            from tabs.image_gallery.ui.quick_look.helpers import populate_report_header
+
+            mode_str, is_fidelity = self._mode_str_and_fidelity()
+            populate_report_header(self, is_fidelity, mode_str)
+        except Exception:
+            pass
+
     def show_for(self, item, owner=None) -> None:
         import time as _time
 
@@ -1081,14 +1163,22 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
         """S4 modal dim veil (mockup fill-opacity 0.45), mirroring clean_review.
 
         ``TopLevelInWindowOverlay`` paints nothing (transparent background),
-        so the veil lives here in gallery scope.
+        so the veil lives here in gallery scope. The opacity is theme-aware
+        (``_dim_veil_alpha``): light keeps the mockup 0.45, dark softens so
+        the surroundings do not read as near-black beside the #383838 card.
         """
+        try:
+            from tabs.image_gallery.ui.quick_look.labels_theme import _dim_veil_alpha
+
+            veil_alpha = _dim_veil_alpha()
+        except Exception:
+            veil_alpha = DIM_VEIL_ALPHA
         try:
             painter = QPainter(self)
             # No hardcoded QColor (contracts/test_no_hardcoded_qcolor.py):
             # the veil is mockup-specified plain black at an opacity, not
             # a theme color — Qt global black + painter opacity.
-            painter.setOpacity(DIM_VEIL_ALPHA / 255.0)
+            painter.setOpacity(veil_alpha / 255.0)
             painter.fillRect(self.rect(), QBrush(Qt.GlobalColor.black))
             painter.end()
         except Exception:
@@ -1294,7 +1384,7 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
         except Exception:
             pass
         try:
-            # Always available (every mode): "Set as source" from camera/batch
+            # Always available (every mode): set-as-source from camera/batch
             # switches to fidelity; on the current source it reads "Unset".
             self._set_source_btn.setVisible(True)
             is_src = (
@@ -1304,7 +1394,9 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
             if callable(_set_colored_text):
                 _set_colored_text(
                     self._set_source_btn,
-                    "Unset" if is_src else "Set as source",
+                    self._t("image_gallery.quick_look.unset_source", "Unset")
+                    if is_src
+                    else self._t("image_gallery.action.set_as_source", "Set as source"),
                     None,
                 )
         except Exception:
@@ -1312,7 +1404,13 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
         try:
             rejected = bool(getattr(item, "rejected", False))
             if callable(_set_colored_text):
-                _set_colored_text(self._reject_btn, "Restore" if rejected else "✕ Reject", None)
+                _set_colored_text(
+                    self._reject_btn,
+                    self._t("image_gallery.quick_look.restore", "Restore")
+                    if rejected
+                    else f'✕ {self._t("image_gallery.quick_look.reject", "Reject")}',
+                    None,
+                )
         except Exception:
             pass
         try:
@@ -1536,7 +1634,13 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
         try:
             rejected = bool(getattr(item, "rejected", False))
             if callable(_set_colored_text):
-                _set_colored_text(self._reject_btn, "Restore" if rejected else "✕ Reject", None)
+                _set_colored_text(
+                    self._reject_btn,
+                    self._t("image_gallery.quick_look.restore", "Restore")
+                    if rejected
+                    else f'✕ {self._t("image_gallery.quick_look.reject", "Reject")}',
+                    None,
+                )
         except Exception:
             pass
         try:

@@ -31,7 +31,10 @@
       "effort_none": "Nenhum",
       "vlm_max_edge": "Redução da imagem (lado maior)",
       "downscale_original": "Original",
-      "api_key_warning": "Armazenada sem criptografia neste dispositivo."
+      "api_key_warning": "Armazenada sem criptografia neste dispositivo.",
+      "api_key_placeholder": "sk-…",
+      "model_placeholder": "openrouter/auto ou fornecedor/modelo",
+      "tokens_placeholder": "auto"
     },
     "errors": {
       "not_configured": "Configure a chave de API de IA nas Configurações primeiro.",
@@ -70,13 +73,245 @@
       "rename_prompt": "Nome da série",
       "delete": "Excluir",
       "reset": "Redefinir séries manuais",
-      "recluster": "Reagrupar séries"
+      "recluster": "Reagrupar séries",
+      "header_hub": "SÉRIE {n} · {hub} · {count} variantes",
+      "header": "SÉRIE {n} · {count} imagens",
+      "ungrouped": "SEM GRUPO · {count}"
+    },
+    "sort_by": "Ordenar por",
+    "view": "Visualizar",
+    "sort_rank": "Classificação",
+    "sort_name": "Nome",
+    "sort_date": "Data",
+    "sort_quality": "Qualidade da IA",
+    "view_grid": "Grade",
+    "view_list": "Lista",
+    "toolbar": {
+      "open_folder": "Abrir pasta…",
+      "filter_placeholder": "Filtrar por tag / descrição…"
+    },
+    "grid": {
+      "resize_tooltip": "Arraste para redimensionar os painéis de séries"
+    },
+    "stats": {
+      "show_all": "Mostrar tudo",
+      "clean_rejected": "Limpar rejeitados ({n})",
+      "compare_finalists": "Comparar finalistas",
+      "images": "{n} imagens",
+      "series": "{n} séries",
+      "redundant": "{n} redundantes"
+    },
+    "quick_look": {
+      "unset_source": "Remover origem",
+      "reject": "Rejeitar",
+      "restore": "Restaurar",
+      "delete": "Excluir",
+      "report_title": "Relatório do lote",
+      "report_sub": "distância até o centróide · sinalizadores de artefato",
+      "artifact_grid_tooltip": "Onde este artefato é mais forte — grade grosseira 5×5:\nverde = nenhum · amarelo = leve · vermelho = mais forte",
+      "mixed_sizes": "tamanhos mistos",
+      "upscales_note": "{n} ampliações de uma mesma origem"
+    },
+    "clean_review": {
+      "title": "Revisar arquivos rejeitados",
+      "subtitle": "{n} arquivos serão movidos para {folder}/_rejected/ — nada é excluído, Desfazer disponível por 10 s.",
+      "provenance_prefix": "de: ",
+      "series": "SÉRIE {n}",
+      "ungrouped": "SEM GRUPO",
+      "no_rejected": "Nenhum arquivo rejeitado.",
+      "move": "Mover {n}",
+      "size": "{n} arquivos · {mb} MB",
+      "no_files": "Nenhum arquivo para mover",
+      "restore": "Restaurar",
+      "restore_all": "Restaurar tudo",
+      "cancel": "Cancelar"
     },
     "help": {
       "hub": {
         "title": "Galeria",
         "desc": "Explorar, triar e revisar pastas de imagens"
       }
+    },
+    "scanning": "Analisando {n}/{total}",
+    "metric": {
+      "sharpness": "Nitidez",
+      "exposure": "Exposição",
+      "clipping": "Detalhes nas luzes",
+      "noise": "Limpeza",
+      "white_balance": "Balanço de branco",
+      "ssim": "Semelhança com a origem",
+      "detail_gain": "Detalhe",
+      "color_accuracy": "Precisão de cor",
+      "typicality": "Tipicidade",
+      "aesthetic": "Estética",
+      "lpips": "Perceptual (LPIPS)",
+      "dists": "Perceptual",
+      "brisque": "Naturalidade",
+      "clipping_delta": "Recorte vs origem",
+      "halo_delta": "Halo vs origem",
+      "chroma_fringe_delta": "Croma vs origem",
+      "composition": "Composição"
+    },
+    "artifact": {
+      "banding": "Gradientes",
+      "halo": "Bordas",
+      "over_smoothing": "Detalhe",
+      "invented_texture": "Textura",
+      "blocking": "Blocos",
+      "chroma_fringing": "Croma",
+      "noise_amplification": "Limpeza"
+    },
+    "ql": {
+      "restored_texture": "textura restaurada",
+      "invented_hallucinated": "inventado / alucinado",
+      "size_smaller": "menor que a origem",
+      "size_same": "mesmo tamanho da origem",
+      "size_upscale": "ampliado da origem"
+    },
+    "metric_note": {
+      "sharpness": {
+        "good": "nítido",
+        "mid": "levemente suave",
+        "bad": "muito suave"
+      },
+      "exposure": {
+        "good": "bem exposto",
+        "mid": "levemente desajustado",
+        "bad": "mal exposto"
+      },
+      "clipping": {
+        "good": "realces preservados",
+        "mid": "leve clipping",
+        "bad": "realces estourados"
+      },
+      "noise": {
+        "good": "limpo",
+        "mid": "granulado visível",
+        "bad": "ruído/grão intenso"
+      },
+      "white_balance": {
+        "good": "neutro",
+        "mid": "leve desvio de cor",
+        "bad": "forte desvio de cor"
+      },
+      "ssim": {
+        "good": "próximo da origem",
+        "mid": "algum desvio",
+        "bad": "distante da origem"
+      },
+      "detail_gain": {
+        "good": "detalhe preservado",
+        "mid": "leve alteração",
+        "bad": "detalhe perdido ou inventado"
+      },
+      "color_accuracy": {
+        "good": "cor precisa",
+        "mid": "leve desvio de cor",
+        "bad": "cor incorreta"
+      },
+      "typicality": {
+        "good": "típico",
+        "mid": "algo atípico",
+        "bad": "discrepante"
+      },
+      "aesthetic": {
+        "good": "agradável",
+        "mid": "comum",
+        "bad": "desagradável"
+      },
+      "lpips": {
+        "good": "perceptualmente próximo",
+        "mid": "leve desvio perceptual",
+        "bad": "perceptualmente distante"
+      },
+      "dists": {
+        "good": "perceptualmente próximo",
+        "mid": "leve desvio perceptual",
+        "bad": "perceptualmente distante"
+      },
+      "brisque": {
+        "good": "natural",
+        "mid": "levemente artificial",
+        "bad": "artificial"
+      },
+      "clipping_delta": {
+        "good": "sem clipping adicionado",
+        "mid": "leve clipping adicionado",
+        "bad": "clipping adicionado"
+      },
+      "halo_delta": {
+        "good": "sem halo adicionado",
+        "mid": "possível halo adicionado",
+        "bad": "halo adicionado"
+      },
+      "chroma_fringe_delta": {
+        "good": "sem franja adicionada",
+        "mid": "possível franja adicionada",
+        "bad": "franja adicionada"
+      },
+      "composition": {
+        "good": "bem composto",
+        "mid": "composição razoável",
+        "bad": "composição ruim"
+      },
+      "banding": {
+        "good": "gradientes suaves",
+        "mid": "possível banding",
+        "bad": "banding visível"
+      },
+      "halo": {
+        "good": "bordas limpas",
+        "mid": "possível halo",
+        "bad": "halo forte"
+      },
+      "blocking": {
+        "good": "sem blocos",
+        "mid": "possíveis blocos",
+        "bad": "blocos fortes"
+      },
+      "over_smoothing": {
+        "good": "detalhe mantido",
+        "mid": "possivelmente suavizado",
+        "bad": "super-suavizado"
+      },
+      "invented_texture": {
+        "good": "textura autêntica",
+        "mid": "possível textura inventada",
+        "bad": "textura inventada"
+      },
+      "chroma_fringing": {
+        "good": "sem franjas",
+        "mid": "possíveis franjas",
+        "bad": "franjas fortes"
+      }
+    },
+    "selection": {
+      "none": "Nenhuma seleção",
+      "one": "1 selecionado",
+      "many": "{n} selecionados",
+      "analyze": "Analisar",
+      "find_similar": "Encontrar semelhantes"
+    },
+    "card": {
+      "make_best": "Marcar como melhor",
+      "reject": "Rejeitar",
+      "unreject": "Reverter rejeição",
+      "remove": "Remover da visualização",
+      "ungroup": "Desagrupar",
+      "group": "Agrupar",
+      "make_source": "Definir como origem"
+    },
+    "badge": {
+      "source": "ORIGEM"
+    },
+    "list": {
+      "artifacts": "Tem artefatos",
+      "minor": "Artefatos leves",
+      "ok": "Sem artefatos",
+      "vlm_err": "Erro da IA",
+      "vlm_tie_pending": "IA comparando…",
+      "vlm_tie_ok": "IA comparou",
+      "vlm_brief": "IA descreveu"
     }
   }
 }
