@@ -73,7 +73,10 @@
       "rename_prompt": "序列名称",
       "delete": "删除",
       "reset": "重置手动序列",
-      "recluster": "重新聚类序列"
+      "recluster": "重新聚类序列",
+      "header_hub": "系列 {n} · {hub} · {count} 个变体",
+      "header": "系列 {n} · {count} 张图片",
+      "ungrouped": "未分组 · {count}"
     },
     "sort_by": "排序",
     "view": "视图",
@@ -128,6 +131,42 @@
         "title": "图库",
         "desc": "浏览、分拣和审阅图片文件夹"
       }
+    },
+    "scanning": "扫描 {n}/{total}",
+    "metric": {
+      "sharpness": "锐度",
+      "exposure": "曝光",
+      "clipping": "高光细节",
+      "noise": "纯净度",
+      "white_balance": "白平衡",
+      "ssim": "与源匹配",
+      "detail_gain": "细节",
+      "color_accuracy": "色彩准确度",
+      "typicality": "典型性",
+      "aesthetic": "美感",
+      "lpips": "感知 (LPIPS)",
+      "dists": "感知",
+      "brisque": "自然度",
+      "clipping_delta": "相对源的高光溢出",
+      "halo_delta": "相对源的边缘光晕",
+      "chroma_fringe_delta": "相对源的色边",
+      "composition": "构图"
+    },
+    "artifact": {
+      "banding": "渐变",
+      "halo": "边缘",
+      "over_smoothing": "细节",
+      "invented_texture": "纹理",
+      "blocking": "块状",
+      "chroma_fringing": "色边",
+      "noise_amplification": "纯净度"
+    },
+    "ql": {
+      "restored_texture": "恢复的纹理",
+      "invented_hallucinated": "虚构 / 臆造",
+      "size_smaller": "小于源",
+      "size_same": "与源同尺寸",
+      "size_upscale": "由源放大"
     }
   }
 }

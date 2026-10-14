@@ -1904,25 +1904,44 @@ class GalleryGridView(QWidget):
         except Exception:
             _mode = None
         # 1. plan sections (same order/texts as the old full rebuild).
+        def _hdr(key: str, default: str, **kw) -> str:
+            try:
+                return str(self._activity_translate(key, default)).format(**kw)
+            except Exception:
+                return default.format(**kw)
+
         _sections: list[dict] = []
         for idx, cluster in enumerate(list(self._series or [])):
             hub = self._hub_names[idx] if idx < len(self._hub_names) else None
             is_collapsed = bool(self._collapsed.get(idx, False))
             if hub:
-                header_text = f"SERIES {idx + 1} · {hub} · {len(cluster)} VARIANTS"
+                header_text = _hdr(
+                    "image_gallery.series.header_hub",
+                    "SERIES {n} · {hub} · {count} VARIANTS",
+                    n=idx + 1, hub=hub, count=len(cluster),
+                )
             else:
-                header_text = f"SERIES {idx + 1} · {len(cluster)} images"
+                header_text = _hdr(
+                    "image_gallery.series.header",
+                    "SERIES {n} · {count} images",
+                    n=idx + 1, count=len(cluster),
+                )
             _sections.append({
                 "kind": "series", "index": idx, "hub": hub,
                 "collapsed": is_collapsed, "text": header_text,
                 "items": list(cluster) if not is_collapsed else [],
             })
         if list(getattr(self, "_ungrouped", []) or []):
+            _ung = list(getattr(self, "_ungrouped", []) or [])
             _sections.append({
                 "kind": "tail", "index": None, "hub": None,
                 "collapsed": False,
-                "text": f"UNGROUPED · {len(list(getattr(self, '_ungrouped', []) or []))}",
-                "items": list(getattr(self, "_ungrouped", []) or []),
+                "text": _hdr(
+                    "image_gallery.series.ungrouped",
+                    "UNGROUPED · {count}",
+                    count=len(_ung),
+                ),
+                "items": _ung,
             })
         # 2. cards: recycle gone paths only.
         try:
@@ -2012,6 +2031,23 @@ class GalleryGridView(QWidget):
         # right half fills instead of staying empty; narrow windows stack
         # every section full-width as before.
         _plan: list[tuple] = []
+        # Discriminator for the "splitter flashes on the first frames" report:
+        # banding needs >= 2 sections, so log the section set + band inputs at
+        # every series rebuild. Run with IMGSLI_GALLERY_DEBUG=1 to capture it.
+        try:
+            from tabs.image_gallery.debug import gallery_debug as _gdbg
+
+            _gdbg(
+                "layout: sections=%d kinds=%s ungrouped=%d cols=%s split_left=%s band_state=%s",
+                len(_sections),
+                [s.get("kind") for s in _sections],
+                len(list(getattr(self, "_ungrouped", []) or [])),
+                getattr(self, "grid_columns", None),
+                getattr(self, "_split_left", None),
+                getattr(self, "_band_state", None),
+            )
+        except Exception:
+            pass
         try:
             _bands = self._plan_bands(_sections)
         except Exception:
