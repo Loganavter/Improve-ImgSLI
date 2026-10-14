@@ -169,7 +169,14 @@ def scan(threshold: int = AUDIT_LIMIT, include_canvas: bool = True) -> list[dict
 def build_registry(entries: list[dict] | None = None) -> dict:
     if entries is None:
         entries = scan()
-    # only include entries that have a marker
+    # only include entries that have a marker.
+    #
+    # ``lines`` is deliberately NOT recorded: the registry is the *enforcement
+    # manifest* (which files carry which Audit-Meta/File-Size-Exempt marker and
+    # why), and a line count is volatile — pinning it staled the registry (and
+    # failed ``test_registry_exists_and_in_sync``) on every ordinary edit to a
+    # large file. Sizes are on-demand statistics (``--report`` / ``cloc.txt``),
+    # never part of the checked-in manifest.
     registry_entries = []
     for e in entries:
         if e["marker"] is None:
@@ -177,7 +184,6 @@ def build_registry(entries: list[dict] | None = None) -> dict:
         registry_entries.append(
             {
                 "path": e["path"],
-                "lines": e["lines"],
                 "limit": e["limit"],
                 "marker": e["marker"],
                 "raw": e["raw"],
