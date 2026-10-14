@@ -211,11 +211,22 @@ def _reset_navigation_manager():
     """
     from sli_ui_toolkit.managers import NavigationManager
 
-    NavigationManager._instance = None
+    def _clear() -> None:
+        mgr = NavigationManager._instance
+        if mgr is not None:
+            # The manager installs itself as an app-wide event filter; clearing
+            # only ``_instance`` leaves it intercepting arrow keys app-wide.
+            try:
+                mgr._uninstall_event_filter()
+            except Exception:
+                pass
+        NavigationManager._instance = None
+
+    _clear()
     try:
         yield
     finally:
-        NavigationManager._instance = None
+        _clear()
 
 
 @pytest.fixture(scope="session")

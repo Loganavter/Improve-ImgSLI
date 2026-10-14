@@ -129,11 +129,20 @@ def _reset_navigation_manager():
     """
     from sli_ui_toolkit.managers import NavigationManager
 
-    NavigationManager._instance = None
+    def _clear() -> None:
+        mgr = NavigationManager._instance
+        if mgr is not None:
+            try:
+                mgr._uninstall_event_filter()
+            except Exception:
+                pass
+        NavigationManager._instance = None
+
+    _clear()
     try:
         yield
     finally:
-        NavigationManager._instance = None
+        _clear()
 
 
 @pytest.fixture(autouse=True)
