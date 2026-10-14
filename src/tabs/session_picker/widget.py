@@ -4,12 +4,14 @@
 from __future__ import annotations
 
 import logging
+from functools import partial
 from typing import Callable
 
-from PySide6.QtCore import QEvent, QLineF, QRectF, Qt, QTimer
+from PySide6.QtCore import QEvent, QLineF, QRectF, Qt
 from PySide6.QtGui import QColor, QPainter
 from PySide6.QtWidgets import QVBoxLayout, QWidget
 from sli_ui_toolkit.i18n import translatable_callback
+from sli_ui_toolkit.icons import lazy_icon
 from sli_ui_toolkit.managers import UiScale, scaled_px
 from sli_ui_toolkit.ui.widgets.buttons import ButtonRow
 from sli_ui_toolkit.widgets import (
@@ -166,11 +168,11 @@ class SessionPickerWidget(ThemedWidget, QWidget):
             self._bg_color = QColor(_fallback_window_color(self._theme_manager))
         self._bg_color.setAlpha(255)
         self._sync_opaque_page_fills()
-        # Cards store eager QIcons from build time; re-resolve light/dark SVGs.
-        # ThemedWidget calls this from __init__ before _populated exists.
+        # Create-card icons are lazy handles resolved at paint time, so a
+        # repaint is enough. ThemedWidget calls this from __init__ before
+        # _populated exists.
         if getattr(self, "_populated", False):
-            # Defer icon SVG re-resolve so it is not on the theme-switch hot path.
-            QTimer.singleShot(0, self.sync_icons)
+            self.sync_icons()
         super().on_theme_changed()
 
     @staticmethod
@@ -346,12 +348,16 @@ class SessionPickerWidget(ThemedWidget, QWidget):
         self._populated = True
 
     def sync_icons(self) -> None:
-        """Refresh card icons in place after deferred tabs register / theme change."""
+        """Repaint create-card icons after deferred tabs register / theme change.
+
+        Icon art is a lazy handle resolved at paint time, so a repaint is enough
+        (no eager re-resolve). Deferred tabs register after bootstrap; the lazy
+        provider then resolves their real icon on the next paint.
+        """
         if not getattr(self, "_populated", False):
             return
-        for session_type, card in self._cards_by_type.items():
-            icon = self._icon_for_session_type(session_type)
-            card.update_region("icon", icon=icon)
+        for card in self._cards_by_type.values():
+            card.update()
 
     def _retranslate(self) -> None:
         if self._title_label is not None:
@@ -435,7 +441,7 @@ class SessionPickerWidget(ThemedWidget, QWidget):
             f"descriptions.{session_type}",
             "",
         )
-        icon = self._icon_for_session_type(session_type)
+        icon = lazy_icon(partial(self._icon_for_session_type, session_type))
 
         rows = [
             ButtonRow(

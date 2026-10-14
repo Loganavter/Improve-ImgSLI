@@ -29,7 +29,7 @@ from PySide6.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget
 
 from sli_ui_toolkit.managers import scaled_px
 from sli_ui_toolkit.theme import ThemeManager
-from sli_ui_toolkit.widgets import Label
+from sli_ui_toolkit.widgets import Label, ThemedContainer
 
 from ui.theming import try_resolve_theme_color
 
@@ -135,7 +135,7 @@ def apply_opaque_widget_fill(widget: QWidget | None, color: QColor) -> None:
     widget.setPalette(palette)
 
 
-class ShelfWidget(QWidget):
+class ShelfWidget(ThemedContainer, QWidget):
     """Shelf chrome + header/content hosts; consumers assemble the contents.
 
     Paints, in order: the opaque host surface, then the rounded panel
@@ -161,8 +161,9 @@ class ShelfWidget(QWidget):
         self._content_well = bool(content_well)
         if not self.objectName():
             self.setObjectName("shelf-widget")
-        self._theme_manager = ThemeManager.get_instance()
-        self._theme_manager.theme_changed.connect(self._on_shelf_theme_changed)
+        # Theme subscription + refresh order are owned by ThemedContainer:
+        # `_theme_manager` is set there, and theme_changed -> on_theme_changed
+        # -> on_theme_derived (chrome) -> on_theme_children (children).
 
         # Initial chrome via theme tokens with visual-preserving fallback (white = light surface.background).
         _init_surface = try_resolve_theme_color(self._theme_manager, self._surface_token)
@@ -396,10 +397,18 @@ class ShelfWidget(QWidget):
         if self._content_well:
             apply_opaque_widget_fill(self._content_host, self.content_bg())
 
-    def _on_shelf_theme_changed(self) -> None:
+    def on_theme_derived(self) -> None:
+        """Re-derive cached chrome (parent-first; see ThemedContainer).
+
+        Runs during ``super().__init__`` before ``_surface_token`` exists —
+        guard, and re-derive explicitly at the end of ``__init__``.
+        """
+        if getattr(self, "_theme_manager", None) is None:
+            return
+        if not getattr(self, "_surface_token", None):
+            return
         self._update_shelf_chrome()
         self._apply_content_well_fill()
-        self.update()
 
     def paintEvent(self, event) -> None:  # noqa: N802
         painter = QPainter(self)
