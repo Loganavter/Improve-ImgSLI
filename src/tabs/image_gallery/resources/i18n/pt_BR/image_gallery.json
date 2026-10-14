@@ -303,6 +303,15 @@
     },
     "badge": {
       "source": "ORIGEM"
+    },
+    "list": {
+      "artifacts": "Tem artefatos",
+      "minor": "Artefatos leves",
+      "ok": "Sem artefatos",
+      "vlm_err": "Erro da IA",
+      "vlm_tie_pending": "IA comparando…",
+      "vlm_tie_ok": "IA comparou",
+      "vlm_brief": "IA descreveu"
     }
   }
 }

@@ -2640,7 +2640,9 @@ class GalleryGridView(QWidget):
             return
         try:
             if self._view_mode == VIEW_LIST:
-                update_gallery_list_card(card, item, mode=self._resolve_mode())  # type: ignore[arg-type]
+                update_gallery_list_card(  # type: ignore[arg-type]
+                    card, item, mode=self._resolve_mode(), translate=self._activity_translate
+                )
             else:
                 update_gallery_card(card, item, mode=self._resolve_mode())  # type: ignore[arg-type]
         except Exception:
@@ -2678,7 +2680,9 @@ class GalleryGridView(QWidget):
                 continue
             try:
                 if self._view_mode == VIEW_LIST:
-                    update_gallery_list_card(card, item, mode=mode)  # type: ignore[arg-type]
+                    update_gallery_list_card(  # type: ignore[arg-type]
+                        card, item, mode=mode, translate=self._activity_translate
+                    )
                 else:
                     update_gallery_card(card, item, mode=mode)  # type: ignore[arg-type]
             except Exception:
@@ -2789,6 +2793,7 @@ class GalleryGridView(QWidget):
                 on_activate=self._handle_toggle,
                 on_context_menu=self._handle_context_menu,
                 mode=_mode,
+                translate=self._activity_translate,
             )
         else:
             card = build_gallery_card(

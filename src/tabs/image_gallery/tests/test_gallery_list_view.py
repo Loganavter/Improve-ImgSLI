@@ -281,7 +281,7 @@ def test_list_meta_single_row() -> None:
     it.artifacts = {Artifact.BLOCKING: Severity.FLAGGED}
     it.vlm_tie_pending = True
     rows = _list_meta_rows(it)
-    assert len(rows) == 1 and rows[0].text == "Artifacts tie…"
+    assert len(rows) == 1 and rows[0].text == "Artifacts · tie…"
 
 
 def test_no_chrome_regions_present(qtbot) -> None:
