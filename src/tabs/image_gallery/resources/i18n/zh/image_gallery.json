@@ -85,8 +85,7 @@
     "view_list": "列表",
     "toolbar": {
       "open_folder": "打开文件夹…",
-      "filter_placeholder": "按标签 / 描述筛选…",
-      "sort_prefix": "排序"
+      "filter_placeholder": "按标签 / 描述筛选…"
     },
     "grid": {
       "resize_tooltip": "拖动以调整系列窗格大小"

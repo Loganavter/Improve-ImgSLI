@@ -85,8 +85,7 @@
     "view_list": "Lista",
     "toolbar": {
       "open_folder": "Abrir pasta…",
-      "filter_placeholder": "Filtrar por tag / descrição…",
-      "sort_prefix": "Ordenar"
+      "filter_placeholder": "Filtrar por tag / descrição…"
     },
     "grid": {
       "resize_tooltip": "Arraste para redimensionar os painéis de séries"

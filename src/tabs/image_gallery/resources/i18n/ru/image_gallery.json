@@ -85,8 +85,7 @@
     "view_list": "Список",
     "toolbar": {
       "open_folder": "Выбрать папку…",
-      "filter_placeholder": "Фильтр по тегу или описанию…",
-      "sort_prefix": "Сортировка"
+      "filter_placeholder": "Фильтр по тегу или описанию…"
     },
     "grid": {
       "resize_tooltip": "Перетащите, чтобы изменить размер панелей серий"

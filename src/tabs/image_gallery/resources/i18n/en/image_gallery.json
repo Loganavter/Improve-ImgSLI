@@ -85,8 +85,7 @@
     "view_list": "List",
     "toolbar": {
       "open_folder": "Open Folder…",
-      "filter_placeholder": "Filter by tag / description…",
-      "sort_prefix": "Sort"
+      "filter_placeholder": "Filter by tag / description…"
     },
     "grid": {
       "resize_tooltip": "Drag to resize series panes"

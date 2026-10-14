@@ -660,7 +660,7 @@ class GalleryToolbar(QWidget):
             return default
 
     def _sort_display(self, index: int) -> str:
-        """Localized ``"{Sort}: {Option}"`` label for *index*.
+        """Localized option label for *index* (no "Sort:" prefix).
 
         Indices map 1:1 to ``_sort_items`` (EN canonical machine labels, kept
         as the ``sortChanged`` payload); this only feeds display surfaces
@@ -672,9 +672,7 @@ class GalleryToolbar(QWidget):
             i = 0
         if not (0 <= i < len(SORT_OPTION_KEYS)):
             i = 0
-        option = self._tr_text(SORT_OPTION_KEYS[i], SORT_OPTION_DEFAULTS[i])
-        prefix = self._tr_text("image_gallery.toolbar.sort_prefix", "Sort")
-        return f"{prefix}: {option}"
+        return self._tr_text(SORT_OPTION_KEYS[i], SORT_OPTION_DEFAULTS[i])
 
     def sort_text(self) -> str:
         try:
