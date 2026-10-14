@@ -54,7 +54,7 @@ python src/devtools/file_meta.py --write-registry
 python src/devtools/file_meta.py --check   # CI: fails if registry stale
 ```
 
-The registry mirrors every `Audit-Meta:` / `File-Size-Exempt:` found under `src/` (excluding `tests/`, `__pycache__`). It exists so `cloc`-based audits don't need `grep -r`:
+The registry mirrors every `Audit-Meta:` / `File-Size-Exempt:` found under `src/` (excluding `tests/`, `__pycache__`). It records the path, threshold, marker and parsed `pattern=`/`reason=` **only** — not the current line count, which is volatile: pinning it staled the registry and failed `test_file_size_policy.py` on every ordinary edit to a large file. The registry is an *enforcement manifest* (which files are exempted and why); sizes are on-demand statistics (`--report`, or cross-check with `cloc.txt`). It exists so `cloc`-based audits don't need `grep -r`:
 
 ```bash
 python src/devtools/file_meta.py --report   # human: oversized without meta
