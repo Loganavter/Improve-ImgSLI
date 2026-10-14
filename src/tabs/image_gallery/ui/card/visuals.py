@@ -94,7 +94,7 @@ def apply_fixed_gallery_card_size(
     card.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
 
 
-def _apply_rejected_visuals(card: Button, item: GalleryItem) -> None:
+def _apply_rejected_visuals(card: Button, item: GalleryItem, translate=None) -> None:
     """Rejected = opacity 0.38 + strike-through (no toolkit badge).
 
     No mode switch on the corner: the only rejected signals are the dim +
@@ -138,14 +138,19 @@ def _apply_rejected_visuals(card: Button, item: GalleryItem) -> None:
             badge_kind = str(getattr(item, "badge_kind", "none") or "none")
             if badge_kind == KIND_SOURCE and badge_text:
                 # The badge string is stamped once as "SOURCE"; localize it at
-                # render (module tr = current language; cards rebuild on a
-                # language switch, so no stale text).
-                try:
-                    from resources.translations import tr as _tr
-
-                    badge_text = str(_tr("image_gallery.badge.source", default=badge_text))
-                except Exception:
-                    pass
+                # render via the tab translator (injected, never app i18n —
+                # tabs-isolation contract). Fall back to the owner's ``_tr``.
+                tr = translate
+                if not callable(tr):
+                    try:
+                        tr = getattr(getattr(card, "_gallery_owner", None), "_tr", None)
+                    except Exception:
+                        tr = None
+                if callable(tr):
+                    try:
+                        badge_text = str(tr("image_gallery.badge.source", badge_text))
+                    except Exception:
+                        pass
             if badge_text:
                 try:
                     card.setBadge(None)

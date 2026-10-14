@@ -54,7 +54,17 @@ def _badges_text(item: GalleryItem) -> str:
     return " ".join(parts)
 
 
-def _artifacts_text(item: GalleryItem) -> str:
+def _tr(translate, key: str, default: str) -> str:
+    """List-meta i18n lookup (fail-open to the EN default)."""
+    if callable(translate):
+        try:
+            return str(translate(key, default))
+        except Exception:
+            pass
+    return default
+
+
+def _artifacts_text(item: GalleryItem, translate=None) -> str:
     """Plain-words artifact status: Artifacts / Minor / OK / …."""
     try:
         artifacts = getattr(item, "artifacts", None) or {}
@@ -69,14 +79,14 @@ def _artifacts_text(item: GalleryItem) -> str:
             elif s == "mild":
                 mild += 1
         if flagged:
-            return "Artifacts"
+            return _tr(translate, "image_gallery.list.artifacts", "Artifacts")
         if mild:
-            return "Minor"
+            return _tr(translate, "image_gallery.list.minor", "Minor")
         try:
             from tabs.image_gallery.models import AnalysisStatus
 
             if getattr(item, "analysis_status", None) == AnalysisStatus.DONE:
-                return "OK"
+                return _tr(translate, "image_gallery.list.ok", "OK")
         except Exception:
             pass
         return "…"
@@ -84,21 +94,21 @@ def _artifacts_text(item: GalleryItem) -> str:
         return "…"
 
 
-def _vlm_text(item: GalleryItem) -> str:
+def _vlm_text(item: GalleryItem, translate=None) -> str:
     """Compact VLM state: err > tie… > tie-ok / brief > ''."""
     try:
         if getattr(item, "vlm_tie_error", None) or getattr(item, "vlm_brief_error", None):
-            return "err"
+            return _tr(translate, "image_gallery.list.vlm_err", "err")
         if getattr(item, "vlm_tie_pending", False):
-            return "tie…"
+            return _tr(translate, "image_gallery.list.vlm_tie_pending", "tie…")
         if getattr(item, "vlm_tie_result", None) is not None:
-            return "tie-ok"
+            return _tr(translate, "image_gallery.list.vlm_tie_ok", "tie-ok")
         try:
             status = str(getattr(item, "vlm_brief_status", None) or "none")
         except Exception:
             status = "none"
         if status not in ("none", ""):
-            return "brief"
+            return _tr(translate, "image_gallery.list.vlm_brief", "brief")
     except Exception:
         pass
     return ""
@@ -115,9 +125,11 @@ def _list_text_rows(item: GalleryItem) -> list[ButtonRow]:
     return [ButtonRow(text=text, size=16, weight="normal", h_align=Qt.AlignmentFlag.AlignLeft, marquee=False, elide=True)]
 
 
-def _list_meta_rows(item: GalleryItem) -> list[ButtonRow]:
+def _list_meta_rows(item: GalleryItem, translate=None) -> list[ButtonRow]:
     """ONE meta row: artifacts + VLM combined with spaces, right-aligned."""
-    parts = [p for p in (_artifacts_text(item), _vlm_text(item)) if p]
+    parts = [
+        p for p in (_artifacts_text(item, translate), _vlm_text(item, translate)) if p
+    ]
     return [ButtonRow(text=" ".join(parts), size=16, h_align=Qt.AlignmentFlag.AlignRight)]
 
 

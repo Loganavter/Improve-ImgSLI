@@ -303,6 +303,15 @@
     },
     "badge": {
       "source": "ИСТОЧНИК"
+    },
+    "list": {
+      "artifacts": "Дефекты",
+      "minor": "Незначит.",
+      "ok": "ОК",
+      "vlm_err": "ошибка",
+      "vlm_tie_pending": "сравн…",
+      "vlm_tie_ok": "сравнено",
+      "vlm_brief": "кратко"
     }
   }
 }

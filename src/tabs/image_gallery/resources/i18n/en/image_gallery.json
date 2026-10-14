@@ -303,6 +303,15 @@
         "mid": "possible fringing",
         "bad": "strong fringing"
       }
+    },
+    "list": {
+      "artifacts": "Artifacts",
+      "minor": "Minor",
+      "ok": "OK",
+      "vlm_err": "err",
+      "vlm_tie_pending": "tie…",
+      "vlm_tie_ok": "tie-ok",
+      "vlm_brief": "brief"
     }
   }
 }

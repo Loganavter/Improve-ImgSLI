@@ -297,7 +297,7 @@ def build_gallery_card(*args, **kwargs) -> Button:  # type: ignore[no-untyped-de
         except Exception:
             pass
     try:
-        _apply_rejected_visuals(card, actual_item)
+        _apply_rejected_visuals(card, actual_item, actual_translate)
     except Exception:
         pass
     try:

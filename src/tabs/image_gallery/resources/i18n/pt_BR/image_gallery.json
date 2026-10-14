@@ -303,6 +303,15 @@
     },
     "badge": {
       "source": "ORIGEM"
+    },
+    "list": {
+      "artifacts": "Artefatos",
+      "minor": "Leve",
+      "ok": "OK",
+      "vlm_err": "erro",
+      "vlm_tie_pending": "empate…",
+      "vlm_tie_ok": "empate-ok",
+      "vlm_brief": "resumo"
     }
   }
 }

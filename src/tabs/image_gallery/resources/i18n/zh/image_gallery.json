@@ -303,6 +303,15 @@
     },
     "badge": {
       "source": "源"
+    },
+    "list": {
+      "artifacts": "伪影",
+      "minor": "轻微",
+      "ok": "正常",
+      "vlm_err": "错误",
+      "vlm_tie_pending": "比对…",
+      "vlm_tie_ok": "已比对",
+      "vlm_brief": "摘要"
     }
   }
 }
