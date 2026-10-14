@@ -61,6 +61,7 @@ _TOPLEVEL_ALLOWED = frozenset(
         Path("ui/actions/palette/__init__.py"),  # ALLOWED: palette init
         Path("tabs/multi_compare/ui/canvas_widget.py"),  # ALLOWED: canvas fallback
         Path("tabs/host_helpers.py"),  # ALLOWED: docstring mentions private name
+        Path("tabs/conftest.py"),  # ALLOWED: test teardown sweep (mirrors tests/conftest.py)
     }
 )
 

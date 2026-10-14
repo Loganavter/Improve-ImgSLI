@@ -22,6 +22,9 @@ ALLOWED_THEME_INFRA_FILES = {
     Path("devtools/ui_layout_dump.py"),
     Path("shared_toolkit/ui/overlay_layer.py"),
     Path("ui/theming.py"),
+    # Tab-suite test scaffolding (mirrors tests/conftest.py): restores the
+    # ThemeManager singleton per test, clearing a leaked app stylesheet.
+    Path("tabs/conftest.py"),
 }
 
 MANUAL_THEME_CALLS = {

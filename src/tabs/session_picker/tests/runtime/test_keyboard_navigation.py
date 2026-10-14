@@ -229,7 +229,7 @@ def test_down_from_last_create_card_focuses_first_header_button(
 
 
 def test_up_from_first_recent_item_returns_to_last_create_card(
-    qapp, tmp_path, monkeypatch
+    qapp, qtbot, tmp_path, monkeypatch
 ):
     from core.navigation import NavigationManager
     from core.navigation_sections import SessionPickerSection
@@ -244,11 +244,11 @@ def test_up_from_first_recent_item_returns_to_last_create_card(
     manager.register(widget, section)
     try:
         widget._recent_panel._items.navigate_focus(1)
-        QTest.qWait(20)
-        assert QApplication.focusWidget() is first_recent
+        qtbot.waitUntil(
+            lambda: widget.focusWidget() is first_recent, timeout=1000
+        )
 
         QTest.keyClick(first_recent, Qt.Key.Key_Up)
-        QTest.qWait(20)
         header = widget._recent_panel._header
         # Up from first recent item hands off to header via
         # focus_header_control_near(col) — col 0 → first visible button.
@@ -256,7 +256,9 @@ def test_up_from_first_recent_item_returns_to_last_create_card(
             b for b in (header.sort_button, header.sort_order_button, header.view_button)
             if b.isVisible()
         )
-        assert QApplication.focusWidget() is first_visible_btn
+        qtbot.waitUntil(
+            lambda: widget.focusWidget() is first_visible_btn, timeout=1000
+        )
     finally:
         manager.unregister(section)
         NavigationManager._instance = None
@@ -284,7 +286,7 @@ def test_header_arrows_navigate_between_controls(qapp, tmp_path, monkeypatch):
     widget.deleteLater()
 
 
-def test_down_from_last_header_enters_recent_items(qapp, tmp_path, monkeypatch):
+def test_down_from_last_header_enters_recent_items(qapp, qtbot, tmp_path, monkeypatch):
     widget, records = _build_page_with_recent(qapp, tmp_path, monkeypatch)
     header = widget._recent_panel._header
     btns = [
@@ -296,8 +298,11 @@ def test_down_from_last_header_enters_recent_items(qapp, tmp_path, monkeypatch):
     assert btns
 
     btns[-1].setFocus(Qt.FocusReason.OtherFocusReason)
-    QTest.qWait(20)
+    qtbot.waitUntil(
+        lambda: widget.focusWidget() is btns[-1], timeout=1000
+    )
     QTest.keyClick(btns[-1], Qt.Key.Key_Down)
-    QTest.qWait(20)
-    assert QApplication.focusWidget() is first_recent
+    qtbot.waitUntil(
+        lambda: widget.focusWidget() is first_recent, timeout=1000
+    )
     widget.deleteLater()

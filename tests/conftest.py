@@ -198,6 +198,37 @@ def _reset_theme_manager():
             app._csd_filter = None  # type: ignore[attr-defined]
 
 
+@pytest.fixture(autouse=True)
+def _reset_navigation_manager():
+    """``NavigationManager`` is a process-wide toolkit singleton; isolate tests.
+
+    ``tests/test_navigation_manager.py`` installs a test instance as
+    ``NavigationManager._instance`` and never restores it. The leaked manager
+    keeps an active section that intercepts arrow keys, so a later tab test's
+    ``Key_Down`` never reaches the widget's own handler (session-picker header →
+    recent-items handoff), which fails only in combined runs. Reset the singleton
+    around every test.
+    """
+    from sli_ui_toolkit.managers import NavigationManager
+
+    def _clear() -> None:
+        mgr = NavigationManager._instance
+        if mgr is not None:
+            # The manager installs itself as an app-wide event filter; clearing
+            # only ``_instance`` leaves it intercepting arrow keys app-wide.
+            try:
+                mgr._uninstall_event_filter()
+            except Exception:
+                pass
+        NavigationManager._instance = None
+
+    _clear()
+    try:
+        yield
+    finally:
+        _clear()
+
+
 @pytest.fixture(scope="session")
 def _hermetic_tps_spill_dir(tmp_path_factory) -> str:
     """One session-scoped tmp dir for all TiledPixelStore spill memmaps."""

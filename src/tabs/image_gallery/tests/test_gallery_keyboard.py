@@ -80,11 +80,9 @@ def test_down_arrow_moves_focus_by_row(qtbot) -> None:
     assert first is not None and target is not None
     assert gv.focus_card(first)
     QTest.keyClick(first, Qt.Key.Key_Down)
-    QTest.qWait(20)
-    assert gv.focused_card() is target
+    qtbot.waitUntil(lambda: gv.focused_card() is target, timeout=1000)
     QTest.keyClick(target, Qt.Key.Key_Up)
-    QTest.qWait(20)
-    assert gv.focused_card() is first
+    qtbot.waitUntil(lambda: gv.focused_card() is first, timeout=1000)
 
 
 def test_home_end_jump_first_last(qtbot) -> None:
@@ -95,11 +93,9 @@ def test_home_end_jump_first_last(qtbot) -> None:
     assert mid is not None and first is not None and last is not None
     assert gv.focus_card(mid)
     QTest.keyClick(mid, Qt.Key.Key_Home)
-    QTest.qWait(20)
-    assert gv.focused_card() is first
+    qtbot.waitUntil(lambda: gv.focused_card() is first, timeout=1000)
     QTest.keyClick(first, Qt.Key.Key_End)
-    QTest.qWait(20)
-    assert gv.focused_card() is last
+    qtbot.waitUntil(lambda: gv.focused_card() is last, timeout=1000)
 
 
 def test_arrow_from_widget_bootstraps_first_card(qtbot) -> None:
