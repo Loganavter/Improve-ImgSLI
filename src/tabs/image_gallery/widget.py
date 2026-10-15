@@ -89,6 +89,17 @@ class ImageGalleryWidget(QWidget):
                 install_translator(self, (lambda k, lang: context._tr_lang(k, lang)))
         except Exception:
             pass
+        # Page background: paint our OWN opaque themed surface and repaint on
+        # theme flip. The page must not rely on an ancestor host — under the
+        # translucent CSD shell a transparent page does not get the host's
+        # surface re-composited on a live switch, so the empty-state area kept
+        # the previous theme's fill until an app restart.
+        try:
+            from sli_ui_toolkit.managers import ThemeManager
+
+            ThemeManager.get_instance().theme_changed.connect(self.update)
+        except Exception:
+            pass
         # Jank watchdog (diagnosis only): QTimer ticks on the GUI thread —
         # worker threads keep logging while the GUI loop is stuck, so plain
         # log gaps cannot prove GUI blocks. Any inter-tick gap over the
@@ -821,6 +832,37 @@ class ImageGalleryWidget(QWidget):
         try:
             state.set("view_list", bool(getattr(self, "_view_mode", False)))
             state.set("judgment_domain", str(getattr(self, "_judgment_domain", "algorithms")))
+        except Exception:
+            pass
+
+    def paintEvent(self, event) -> None:  # noqa: N802
+        """Paint the page's own opaque themed background (live on theme flip).
+
+        Reads the token at paint time (no cached colour) and paints with alpha
+        255, so the page is a self-sufficient opaque surface — the sibling of
+        ``SessionPickerWidget`` / the image_compare page. Without this the
+        content area (e.g. the blank empty state) showed the composited host
+        fill, which does not refresh on a live theme switch.
+        """
+        try:
+            from PySide6.QtGui import QColor, QPainter
+
+            from sli_ui_toolkit.managers import ThemeManager
+            from ui.theming import try_resolve_theme_color
+
+            col = try_resolve_theme_color(ThemeManager.get_instance(), "surface.background")
+            bg = QColor(col) if isinstance(col, str) else col
+            if bg is None or not bg.isValid() or bg.alpha() == 0:
+                bg = QColor("#ffffff")
+            bg.setAlpha(255)
+            painter = QPainter(self)
+            painter.fillRect(event.rect(), bg)
+            painter.end()
+        except Exception:
+            pass
+
+        try:
+            super().paintEvent(event)
         except Exception:
             pass
 
