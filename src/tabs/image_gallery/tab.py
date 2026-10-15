@@ -85,6 +85,28 @@ class ImageGalleryTab(TabContract):
             judgment_domain=str(values.get("judgment_domain") or "algorithms"),
         )
 
+    def apply_appearance(self, host_window) -> None:
+        """Repaint gallery chrome on a theme flip (host-driven hook).
+
+        The page paints its own background and subscribes to ``theme_changed``
+        already; this also re-drives the whole subtree through the toolkit
+        contract so a child that only repaints on the *hook* (not the signal)
+        still refreshes — mirrors image_compare/multi_compare.
+        """
+        widget = self._widget
+        if widget is None:
+            return
+        try:
+            from sli_ui_toolkit.ui.managers.theme_manager import refresh_theme_subtree
+
+            refresh_theme_subtree(widget)
+        except Exception:
+            pass
+        try:
+            widget.update()
+        except Exception:
+            pass
+
     @property
     def session_type(self) -> str:
         return "image_gallery"
