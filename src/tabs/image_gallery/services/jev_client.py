@@ -52,8 +52,8 @@ logger = logging.getLogger("ImproveImgSLI")
 #: stays :func:`ai_client.call_sync` (no second client, no bespoke endpoint).
 JEV_MODEL = "typesafe/jev-router"
 
-#: Transport timeout (s) for one Jev rank call: the router's latency is opaque
-#: and observed 7–37 s (probe 2026-10-15) — over the 30 s ``call_sync`` default.
+#: Idle-timeout (s) for a Jev rank call. The transport streams (idle, not total),
+#: but the opaque router can still stall between steps (observed 7–37 s).
 JEV_TIMEOUT_S = 60.0
 
 #: Confidence gate: a *present* Score below this is indecisive. A decision with
