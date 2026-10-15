@@ -386,3 +386,23 @@ def test_rebuild_series_restores_focus_reason_not_literal(qtbot) -> None:
     QTest.qWait(20)
     gv._focus_reason = orig  # type: ignore[method-assign]
     assert seen, "series regroup did not route focus through _focus_reason()"
+
+
+def test_empty_grid_area_is_owned_and_a_key_reaches_a_card(qtbot) -> None:
+    """Clicking the empty zone below the cards must not kill navigation.
+
+    Regression: a click on the grid host realigned the ring onto the scroll
+    area, which owned no section — arrows were "reveal-only" and nothing was
+    reachable. The grid section now owns the scroll subtree, so a key from
+    there reaches a live card.
+    """
+    from tabs.image_gallery.ui.grid_view import GalleryGridNavSection
+
+    w, gv, items = _shown_widget(qtbot, 6)
+    section = GalleryGridNavSection(gv)
+    assert section.owns(gv.scroll_area) is True
+
+    gv.scroll_area.setFocus(Qt.FocusReason.MouseFocusReason)
+    QTest.qWait(10)
+    assert section.navigate(Qt.Key.Key_Down, gv.scroll_area) is True
+    assert gv.focused_card() is not None

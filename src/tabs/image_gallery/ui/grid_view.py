@@ -491,7 +491,20 @@ class GalleryGridNavSection:
 
     def owns(self, widget) -> bool:
         try:
-            return widget in set(self._view._cards_by_path.values())
+            if widget in set(self._view._cards_by_path.values()):
+                return True
+            # The empty grid area below the cards (grid host / scroll viewport,
+            # incl. its viewport): a click there realigns the ring onto the
+            # scroll area, which owns no keys — arrows died "reveal-only" and
+            # nothing was reachable by keyboard. Claiming the scroll subtree
+            # routes arrows to the grid so a key reaches the nearest card.
+            scroll = getattr(self._view, "scroll_area", None)
+            if scroll is not None and (
+                widget is scroll
+                or bool(getattr(scroll, "isAncestorOf", lambda _w: False)(widget))
+            ):
+                return True
+            return False
         except Exception:
             return False
 
