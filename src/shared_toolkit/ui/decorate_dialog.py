@@ -150,13 +150,13 @@ def install_dialog_help_menu(
             show_command_palette(parent=dialog, active_tab=owner)
 
     try:
-        from ui.icon_manager import get_app_icon as _get_app_icon
+        from ui.icon_manager import themed_icon as _themed_icon
     except Exception:
-        _get_app_icon = None  # type: ignore[assignment]
+        _themed_icon = None  # type: ignore[assignment]
 
     def _icon(name: str):
         try:
-            return _get_app_icon(name) if _get_app_icon is not None else None
+            return _themed_icon(name) if _themed_icon is not None else None
         except Exception:
             return None
 

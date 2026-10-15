@@ -36,8 +36,8 @@ from PySide6.QtWidgets import (
 from typing import Literal
 
 from sli_ui_toolkit.ui.managers.ui_scale import UiScale, scaled_px
-from sli_ui_toolkit.icons import resolve_icon
 from sli_ui_toolkit.theme import ThemeManager
+from ui.icon_manager import themed_icon
 from ui.theming import resolve_theme_color
 from sli_ui_toolkit.ui.managers.ui_font import apply_text_color, rebase_family, rebase_font, ui_font
 from sli_ui_toolkit.ui.widgets.atomic.tooltips import PathTooltip
@@ -305,14 +305,14 @@ class RatingListItem(Button):
             # matches the white row) — the row color shows through idle,
             # hover/press washes paint over the live row background.
             self.btn_minus = Button(
-                resolve_icon(DEFAULT_MINUS_ICON),
+                themed_icon(DEFAULT_MINUS_ICON),
                 icon_size=14,
                 size=(22, 22),
                 variant="ghost",
                 parent=self,
             )
             self.btn_plus = Button(
-                resolve_icon(DEFAULT_PLUS_ICON),
+                themed_icon(DEFAULT_PLUS_ICON),
                 icon_size=14,
                 size=(22, 22),
                 variant="ghost",
@@ -406,8 +406,8 @@ class RatingListItem(Button):
             apply_text_color(
                 self.rating_label, resolve_theme_color(tm, "list_item.text.rating")
             )
-            self.btn_minus.setIcon(resolve_icon(DEFAULT_MINUS_ICON))
-            self.btn_plus.setIcon(resolve_icon(DEFAULT_PLUS_ICON))
+            self.btn_minus.update()
+            self.btn_plus.update()
             self._sync_rating_button_selection_background()
         self.update()
 

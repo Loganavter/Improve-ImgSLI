@@ -189,6 +189,7 @@ def _best_text_score(norm_query: str, texts: tuple[str, ...]) -> int | None:
 
 
 def section_icon(dialog, section_id: str):
+    """Forward the section's lazy icon handle / AppIcon enum (never resolved eagerly)."""
     for section in dialog._active_sections:
         if section.section_id == section_id:
             return section.icon
