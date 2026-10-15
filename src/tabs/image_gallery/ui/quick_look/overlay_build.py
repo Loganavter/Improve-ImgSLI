@@ -357,22 +357,29 @@ class _RuleWidget(QWidget):
 # -- UI construction helpers (thin owner delegation) -------------------------
 
 
-def _danger_trash_icon(danger) -> object:
-    """Red-tinted "delete" icon for the quick-look Delete button.
+_DANGER_TRASH_ICON_CACHE: dict[tuple[str, bool, int], object] = {}
 
-    The toolkit painter draws icon pixmaps verbatim (no foreground tint),
-    so the monochrome source stays black unless recolored. Fill the
-    silhouette with *danger* via CompositionMode_SourceIn (same idiom as
-    toolkit ``sidebar_nav_list.icons.tinted_pixmap``). Falls back to the
-    plain "delete" key when resolution/tinting fails.
-    """
+
+def _resolve_danger_trash_icon(fallback_danger=None) -> object:
+    """Resolve and tint ``delete`` to the live ``gallery.status.danger`` token (cached)."""
     try:
-        if danger is None:
-            return "delete"
         from PySide6.QtCore import QSize, Qt
-        from PySide6.QtGui import QIcon, QPainter, QPixmap
+        from PySide6.QtGui import QColor, QIcon, QPainter, QPixmap
         from sli_ui_toolkit.icons import resolve_icon
 
+        dark = _is_dark_theme()
+        danger = _token_color(
+            "gallery.status.danger", "#c0392b" if not dark else "#d64545"
+        )
+        if danger is None:
+            danger = fallback_danger
+        if danger is None:
+            return "delete"
+        col = danger if isinstance(danger, QColor) else QColor(danger)
+        cache_key = ("delete", bool(dark), int(col.rgba()))
+        cached = _DANGER_TRASH_ICON_CACHE.get(cache_key)
+        if isinstance(cached, QIcon) and not cached.isNull():
+            return cached
         base = resolve_icon("delete")
         if base is None or base.isNull():
             return "delete"
@@ -389,14 +396,33 @@ def _danger_trash_icon(danger) -> object:
         try:
             painter.drawPixmap(0, 0, pm)
             painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceIn)
-            painter.fillRect(out.rect(), danger)
+            painter.fillRect(out.rect(), col)
         finally:
             painter.end()
         if out.isNull():
             return "delete"
-        return QIcon(out)
+        icon = QIcon(out)
+        if not icon.isNull():
+            _DANGER_TRASH_ICON_CACHE[cache_key] = icon
+        return icon
     except Exception:
         return "delete"
+
+
+def _danger_trash_icon(danger=None) -> object:
+    """Lazy red-tinted "delete" icon handle for the quick-look Delete button.
+
+    The toolkit painter draws icon pixmaps verbatim (no foreground tint),
+    so the monochrome source stays black unless recolored. Fill the
+    silhouette with the live ``gallery.status.danger`` token at paint time
+    via CompositionMode_SourceIn and cache per ``("delete", is_dark())`` so
+    ``icon.cacheKey()`` stays stable within a theme.
+    """
+    from functools import partial
+
+    from sli_ui_toolkit.icons import lazy_icon
+
+    return lazy_icon(partial(_resolve_danger_trash_icon, danger))
 
 
 def build_overlay_ui(overlay) -> None:

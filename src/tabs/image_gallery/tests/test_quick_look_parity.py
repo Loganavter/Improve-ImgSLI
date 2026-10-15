@@ -457,11 +457,13 @@ def test_bottom_bar_button_colors(qtbot):
     assert getattr(ov._reject_btn, "_override_bg_color", None) is None
     assert ov._reject_btn.borderColor() is None
     assert ov._set_source_btn.borderColor() is None
-    # Delete: red-tinted trash icon (QIcon, silhouette filled with danger).
+    # Delete: red-tinted trash icon (lazy handle resolving to QIcon, silhouette filled with danger).
     from PySide6.QtGui import QIcon
+    from sli_ui_toolkit.icons import resolve_icon
 
-    assert isinstance(ov._delete_btn._icon_unchecked, QIcon)
-    assert not ov._delete_btn._icon_unchecked.isNull()
+    del_icon = resolve_icon(ov._delete_btn._icon_unchecked)
+    assert isinstance(del_icon, QIcon)
+    assert not del_icon.isNull()
     assert ov._delete_btn.borderColor() is not None
     ov.hide()
 

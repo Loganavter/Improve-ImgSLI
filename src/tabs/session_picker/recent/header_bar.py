@@ -7,6 +7,7 @@ this widget is the "control buttons on top" cluster the shelf host adds via
 
 from __future__ import annotations
 
+from functools import partial
 import logging
 from typing import Callable
 
@@ -262,7 +263,7 @@ class RecentHeaderBar(QWidget):
             ContextMenuAction(
                 action_id,
                 label,
-                icon=get_session_picker_icon(icon),
+                icon=lazy_icon(partial(get_session_picker_icon, icon)),
                 data=mode,
                 checkable=True,
                 checked=self._sort_mode == mode,
