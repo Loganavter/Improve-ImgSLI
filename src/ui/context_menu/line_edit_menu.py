@@ -18,7 +18,7 @@ from sli_ui_toolkit.widgets import (
     CustomLineEdit,
 )
 from ui.context_menu.manager import open_context_menu_entries
-from ui.icon_manager import AppIcon, get_app_icon
+from ui.icon_manager import AppIcon, themed_icon
 
 
 class _LineEditContextMenuFilter(QObject):
@@ -83,21 +83,21 @@ class _LineEditContextMenuFilter(QObject):
             ContextMenuAction(
                 "line_edit.cut",
                 tr("action.context_cut", default="Cut"),
-                icon=get_app_icon("scissors.svg"),
+                icon=themed_icon("scissors.svg"),
                 shortcut="Ctrl+X",
                 enabled=has_selection and not read_only,
             ),
             ContextMenuAction(
                 "line_edit.copy",
                 tr("action.context_copy", default="Copy"),
-                icon=get_app_icon("copy.svg"),
+                icon=themed_icon("copy.svg"),
                 shortcut="Ctrl+C",
                 enabled=has_selection,
             ),
             ContextMenuAction(
                 "line_edit.paste",
                 tr("action.context_paste", default="Paste"),
-                icon=get_app_icon("copy.svg"),
+                icon=themed_icon("copy.svg"),
                 shortcut="Ctrl+V",
                 enabled=clipboard_has_text and not read_only,
             ),

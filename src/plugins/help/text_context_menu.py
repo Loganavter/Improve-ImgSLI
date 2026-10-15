@@ -13,7 +13,7 @@ from sli_ui_toolkit.widgets import (
     HelpDocumentView,
 )
 from ui.context_menu.manager import open_context_menu_entries
-from ui.icon_manager import AppIcon, get_app_icon
+from ui.icon_manager import AppIcon, themed_icon
 
 
 def _tr_help(key: str, fallback: str, language: str) -> str:
@@ -34,7 +34,7 @@ def open_help_text_context_menu(
         ContextMenuAction(
             "help.text.copy",
             _tr_help("help.context.copy", "Copy", language),
-            icon=get_app_icon("copy.svg"),
+            icon=themed_icon("copy.svg"),
             shortcut="Ctrl+C",
             enabled=has_selection,
         ),
@@ -44,7 +44,7 @@ def open_help_text_context_menu(
         ContextMenuAction(
             "help.text.copy_markdown",
             _tr_help("help.context.copy_markdown", "Copy as Markdown", language),
-            icon=get_app_icon("text_filename.svg"),
+            icon=themed_icon("text_filename.svg"),
             shortcut="Ctrl+Shift+C",
             enabled=has_selection,
         )

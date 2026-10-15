@@ -75,6 +75,21 @@ configure_icon_resolver(
     },
 )
 
+
+def themed_icon(icon: "AppIcon | str"):
+    """Lazy themed-icon handle — the ONLY sanctioned way to pass an icon.
+
+    Returns a handle resolved at paint time against the live theme, so icon art
+    recolours on a live theme switch no matter when/where the owning menu,
+    sidebar row, or button was built. ``get_app_icon`` (eager) is for icon infra
+    and genuinely theme-invariant art only — never for a themed UI icon.
+    """
+    from functools import partial
+
+    from sli_ui_toolkit.icons import lazy_icon
+
+    return lazy_icon(partial(get_app_icon, icon))
+
 configure_toolkit(
     timings=FlyoutTimingConfig(
         transient_auto_hide_delay_ms=300,

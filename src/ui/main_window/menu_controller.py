@@ -15,7 +15,7 @@ from sli_ui_toolkit.widgets import (
     ContextMenuSeparator,
     DEFER_CLICK_AWAIT_RIPPLE,
 )
-from ui.icon_manager import get_app_icon
+from ui.icon_manager import themed_icon
 from ui.main_window.csd_menu_strip import CsdMenuSpec, CsdMenuStrip, csd_debug
 from ui.main_window.project_io import MainWindowProjectIo
 from ui.main_window.use_cases import platform_actions, settings_navigation
@@ -268,25 +268,25 @@ class MainWindowMenuController:
             ContextMenuAction(
                 action_id="file.new_session",
                 text=self._tr("menu.new_session", "New Session"),
-                icon=get_app_icon("add.svg"),
+                icon=themed_icon("add.svg"),
                 shortcut=self._menu_shortcut("platform.new_session", "Ctrl+N"),
             ),
             ContextMenuAction(
                 action_id="file.open_project",
                 text=self._tr("menu.open_project", "Open Project"),
-                icon=get_app_icon("folder_open.svg"),
+                icon=themed_icon("folder_open.svg"),
                 shortcut=self._menu_shortcut("platform.open_project", "Ctrl+Shift+O"),
             ),
             ContextMenuAction(
                 action_id="file.save_project",
                 text=self._tr("menu.save_project", "Save Project"),
-                icon=get_app_icon("save_icon.svg"),
+                icon=themed_icon("save_icon.svg"),
                 shortcut=self._menu_shortcut("platform.save_project", "Shift+S"),
             ),
             ContextMenuAction(
                 action_id="file.save_project_as",
                 text=self._tr("menu.save_project_as", "Save Project As…"),
-                icon=get_app_icon("save_icon.svg"),
+                icon=themed_icon("save_icon.svg"),
                 shortcut=self._menu_shortcut(
                     "platform.save_project_as", "Ctrl+Shift+S"
                 ),
@@ -295,7 +295,7 @@ class MainWindowMenuController:
             ContextMenuAction(
                 action_id="file.settings",
                 text=self._tr("menu.settings", "Settings"),
-                icon=get_app_icon("settings.svg"),
+                icon=themed_icon("settings.svg"),
                 shortcut=self._menu_shortcut("platform.settings", "Ctrl+,"),
                 # Row click always hides (and destroys) this menu
                 # synchronously regardless of what the action does next --
@@ -307,7 +307,7 @@ class MainWindowMenuController:
             ContextMenuAction(
                 action_id="file.quit",
                 text=self._tr("menu.quit", "Quit"),
-                icon=get_app_icon("window_close.svg"),
+                icon=themed_icon("window_close.svg"),
                 shortcut=self._menu_shortcut("platform.quit", "Ctrl+Q"),
             ),
         ]
@@ -317,14 +317,14 @@ class MainWindowMenuController:
             ContextMenuAction(
                 action_id="help.show",
                 text=self._tr("menu.show_help", "Help"),
-                icon=get_app_icon("help.svg"),
+                icon=themed_icon("help.svg"),
                 shortcut=self._menu_shortcut("platform.help", "Ctrl+F1"),
                 defer_trigger=True,
             ),
             ContextMenuAction(
                 action_id="help.find_action",
                 text=self._tr("menu.find_action", "Find Action…"),
-                icon=get_app_icon("magnifier.svg"),
+                icon=themed_icon("magnifier.svg"),
                 shortcut=self._menu_shortcut("platform.find_action", "Ctrl+Shift+P"),
                 # Opens the modal Find Action palette (dialog.exec()) --
                 # without this the row (and its click ripple) is destroyed
