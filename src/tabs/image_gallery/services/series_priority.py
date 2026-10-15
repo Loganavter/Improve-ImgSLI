@@ -49,6 +49,16 @@ PRIORITY_REASON_LOW_CONFIDENCE = "AI (Jev) series priority was not confident eno
 PRIORITY_REASON_ERROR = "AI (Jev) series priority request failed"
 PRIORITY_REASON_MALFORMED = "AI (Jev) series priority returned an unusable response"
 
+#: Output contract (system message); aliases are ``series_N``. See the rank seam
+#: ``jev_client.JEV_SYSTEM_PROMPT`` for why the shape must be constrained.
+PRIORITY_SYSTEM_PROMPT = (
+    "You order series by which needs a human first. Reply with ONLY a JSON "
+    'object {"ranking": ["<alias>", ...]} most-attention-first — a full ranking '
+    "whenever at least two series carry signals (break near ties by your best "
+    'judgement). Reply {"noul": true} only when fewer than two series carry '
+    "signals. No prose."
+)
+
 #: A transport takes the chat/completions request and returns the parsed JSON.
 PriorityClient = Callable[[dict], dict]
 
@@ -120,15 +130,20 @@ def build_series_signals(series_list, *, mode: str) -> list[dict]:
 def build_priority_request(series_list, *, mode: str) -> dict:
     """OpenAI-compatible priority request for Jev (text-only aggregate signals).
 
-    ``response_format={"type": "json_object"}`` pins the reply shape (the bare
-    R3 seam showed the model is otherwise unstable — probe 2026-10-15).
+    Same output contract as the rank seam (:data:`PRIORITY_SYSTEM_PROMPT`) plus
+    ``response_format={"type": "json_object"}``: the bare user-only request made
+    the live router answer a narrative object with no ordering (probe 2026-10-15),
+    so the reply shape must be constrained.
     """
     mid, aliased = _aliased(series_list, mode=mode)
     vector = {"mode": mid, "series": [entry for _alias, _sid, entry in aliased]}
     text = json.dumps(vector, sort_keys=True, separators=(",", ":"))
     return {
         "model": JEV_MODEL,
-        "messages": [{"role": "user", "content": [{"type": "text", "text": text}]}],
+        "messages": [
+            {"role": "system", "content": PRIORITY_SYSTEM_PROMPT},
+            {"role": "user", "content": [{"type": "text", "text": text}]},
+        ],
         "response_format": {"type": "json_object"},
     }
 

@@ -106,7 +106,7 @@ def _http_error(code: int, retry_after: str | None = None) -> urllib.error.HTTPE
 
 class _FakeResponse:
     def __init__(self, payload: bytes = b"{}"):
-        self._payload = payload
+        self._buf = io.BytesIO(payload)
 
     def __enter__(self):
         return self
@@ -114,8 +114,13 @@ class _FakeResponse:
     def __exit__(self, *a):
         return False
 
-    def read(self):
-        return self._payload
+    def read(self, *a):
+        return self._buf.read(*a)
+
+    def readline(self, *a):
+        # The transport streams (_read_stream probes response.readline()); a
+        # fake with only read() breaks the 429-then-success path.
+        return self._buf.readline(*a)
 
 
 def test_500_is_server_error_not_plain_network(monkeypatch):

@@ -176,7 +176,11 @@ class Ui_ImageComparisonApp:
             else False
         )
         if not handled:
-            logger.warning(
+            # Not a fault: a tab may legitimately have no host chrome to apply
+            # (``TabContract.apply_host_session_mode`` defaults to False). Keep
+            # it at debug so a normal session does not log a WARNING on every
+            # open/switch.
+            logger.debug(
                 "sync_session_mode(%r): no tab claimed apply_host_session_mode",
                 session_type,
             )

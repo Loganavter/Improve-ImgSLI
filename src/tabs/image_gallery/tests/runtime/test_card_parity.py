@@ -291,25 +291,21 @@ def test_tie_pending_falls_through_to_rank_path(qapp, _production_dark_palettes)
     card.deleteLater()
 
 
-def test_best_card_shows_rank_pill_with_default_frame(qapp, _production_dark_palettes):
+def test_best_card_shows_best_pill_with_accent_frame(qapp, _production_dark_palettes):
     from tabs.image_gallery.services.rank_badge import stamp_badges
-    from tabs.image_gallery.ui.card.visuals import _card_border_color
 
     item = _item(is_best=True)
     stamp_badges([item])
     card = build_gallery_card(item, parent=None)
     qapp.processEvents()
     _apply_rejected_visuals(card, item)
-    # Design verdict: the leader-star pill is removed — the leader shows
-    # its #N (rank 1 derived when no explicit rank is set). The ink follows
-    # the theme (``button.primary.text``); the frame stays the default card
-    # border.
+    # Design (mockup v2-triage): the series winner shows the ★ BEST preset —
+    # an accent pill and an accent frame — never a number, never a ranker label.
     assert card.property("badgeText") in (None, "")
-    assert getattr(card, "_gallery_badge", None) == "#1"
+    assert getattr(card, "_gallery_badge", None) == "★ BEST"
     _filled, _bg, _bd, txt = card._gallery_badge_style
     assert _filled is True
-    assert txt.name().lower() == "#ffffff"
-    assert card.borderColor().name().lower() == _card_border_color().name().lower()
+    assert card.borderColor().name().lower() == _bg.name().lower()  # accent frame
     card.deleteLater()
 
 
@@ -352,14 +348,14 @@ def test_rank_pill_text_tracks_theme_and_clears_contrast(qapp, _production_dark_
         except Exception:
             pass
         qapp.processEvents()
-        item = _item(is_best=True)
+        item = _item(rank=2)  # a NON-winner: the #N rank pill (best shows ★ BEST)
         from tabs.image_gallery.services.rank_badge import stamp_badges
 
         stamp_badges([item])
         card = build_gallery_card(item, parent=None)
         qapp.processEvents()
         _apply_rejected_visuals(card, item)
-        assert getattr(card, "_gallery_badge", None) == "#1"
+        assert getattr(card, "_gallery_badge", None) == "#2"
         _filled, _bg, _bd, txt = card._gallery_badge_style
         assert txt.name().lower() == expected_ink
         pill = data[theme]["button.toggle.background.checked"]
@@ -524,4 +520,27 @@ def test_card_regions_keep_transparent_hover(qapp) -> None:
     for rid in ("bg", "text", "cover"):
         hc = getattr(regions[rid], "hover_color", None)
         assert hc is not None and hc.alpha() == 0
+    card.deleteLater()
+
+
+def test_best_hidden_while_the_card_is_active(qapp, _production_dark_palettes):
+    """★ BEST only once the card SETTLED — never while it is still analyzing
+    (that showed BEST before the work finished). While active the winner keeps
+    its #1; after the phase clears it flips to ★ BEST."""
+    from tabs.image_gallery.models import ActivityPhase
+    from tabs.image_gallery.services.activity import clear_activity, set_activity
+    from tabs.image_gallery.services.rank_badge import stamp_badges
+
+    item = _item(is_best=True, rank=1)
+    stamp_badges([item])
+    card = build_gallery_card(item, parent=None)
+    qapp.processEvents()
+
+    set_activity(item, ActivityPhase.ANALYZING, "local")
+    _apply_rejected_visuals(card, item)
+    assert getattr(card, "_gallery_badge", None) == "#1"
+
+    clear_activity(item)
+    _apply_rejected_visuals(card, item)
+    assert getattr(card, "_gallery_badge", None) == "★ BEST"
     card.deleteLater()

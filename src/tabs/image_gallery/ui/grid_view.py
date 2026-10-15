@@ -2563,10 +2563,19 @@ class GalleryGridView(QWidget):
             btn.clicked.disconnect()
         except Exception:
             pass
-        try:
-            btn.customContextMenuRequested.disconnect()
-        except Exception:
-            pass
+        # Only disconnect what was actually wired: an UNGROUPED header slot is
+        # built WITHOUT a customContextMenuRequested connection, and a bare
+        # disconnect() on an unconnected signal emits a RuntimeWarning (not an
+        # exception, so the except below would not catch it).
+        if getattr(btn, "_gallery_ctx_menu_wired", False):
+            try:
+                btn.customContextMenuRequested.disconnect()
+            except Exception:
+                pass
+            try:
+                btn._gallery_ctx_menu_wired = False  # type: ignore[attr-defined]
+            except Exception:
+                pass
         try:
             btn.clicked.connect(lambda _checked=False, idx=index: self._toggle_collapse(idx))  # type: ignore[misc]
         except Exception:
@@ -2583,6 +2592,7 @@ class GalleryGridView(QWidget):
                 btn.customContextMenuRequested.connect(
                     lambda _pos, i=index, b=btn: self._handle_series_context(b, i, _pos)
                 )
+                btn._gallery_ctx_menu_wired = True  # type: ignore[attr-defined]
             except Exception:
                 pass
 
@@ -3190,6 +3200,7 @@ class GalleryGridView(QWidget):
                 btn.customContextMenuRequested.connect(
                     lambda _pos, i=index, b=btn: self._handle_series_context(b, i, _pos)
                 )
+                btn._gallery_ctx_menu_wired = True  # type: ignore[attr-defined]
             except Exception:
                 pass
             try:

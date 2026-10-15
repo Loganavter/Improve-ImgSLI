@@ -716,6 +716,17 @@
       }
     },
     {
+      "path": "src/tabs/image_gallery/services/jev_client.py",
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=wire-client size=523 reason=\"one Jev rank seam: measured-vector request + decision parser + degrade contract + pin belong together — splitting scatters the wire contract\"",
+      "parsed": {
+        "pattern": "wire-client",
+        "size": "523",
+        "reason": "one Jev rank seam: measured-vector request + decision parser + degrade contract + pin belong together — splitting scatters the wire contract"
+      }
+    },
+    {
       "path": "src/tabs/image_gallery/tab.py",
       "limit": 500,
       "marker": "Audit-Meta:",

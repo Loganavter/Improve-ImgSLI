@@ -56,3 +56,60 @@ def test_jev_trace_dumps_with_key_and_marks_the_pin(tmp_path, caplog, monkeypatc
         second = rank_series_jev_detailed(items, mode="fidelity", client=_client, cache=cache)
     assert "[ai] jev rank cache HIT items=2" in caplog.text
     assert second.cached
+
+
+def test_domain_switch_trace_under_key(caplog, monkeypatch) -> None:
+    """The controller layer states WHY Jev ran or not — same ``[ai]`` key."""
+    from types import SimpleNamespace
+
+    from tabs.image_gallery.controller import GalleryController
+
+    class _Ctrl:
+        def __init__(self) -> None:
+            self.state = SimpleNamespace(series=[], judgment_domain="", rank_domain="")
+
+        def _apply_fusion_ranks(self, series, *, mode=None):
+            return None
+
+        def _clear_series_priority(self):
+            return None
+
+        def _run_ai_for_visible(self):
+            return None
+
+        def _run_jev_ranks(self):
+            GalleryController._run_jev_ranks(self)
+
+        def _run_series_priority(self):
+            return None
+
+    monkeypatch.setenv("IMGSLI_AI_DEBUG", "1")
+    ctrl = _Ctrl()
+    with caplog.at_level(logging.WARNING, logger="ImproveImgSLI"):
+        GalleryController.activate_judgment_domain(ctrl, "algorithms")
+    assert "[ai] judgment domain -> algorithms (Jev off)" in caplog.text
+
+    caplog.clear()
+    with caplog.at_level(logging.WARNING, logger="ImproveImgSLI"):
+        GalleryController.activate_judgment_domain(ctrl, "ai")
+    assert "[ai] judgment domain -> ai (Jev on)" in caplog.text
+    assert "[ai] jev ranks: no series — nothing to rank" in caplog.text
+
+
+def test_judgment_domain_survives_state_rebuild() -> None:
+    """S1: the domain is the controller's durable authority, NOT ``state``
+    (open_folder / append / clear_to_empty replace the ``GalleryState``)."""
+    from types import SimpleNamespace
+
+    from tabs.image_gallery.controller import GalleryController
+    from tabs.image_gallery.models import GalleryState
+
+    ctrl = SimpleNamespace(state=GalleryState())
+    GalleryController._set_judgment_domain(ctrl, "ai")
+    assert ctrl._judgment_domain == "ai"
+    assert ctrl.state.rank_domain == "ai"  # projection
+
+    ctrl.state = GalleryState()  # open_folder/append/clear replaces the object
+    assert ctrl.state.rank_domain == "algorithms"  # projection lost...
+    assert ctrl._judgment_domain == "ai"  # ...but the authority survives
+
