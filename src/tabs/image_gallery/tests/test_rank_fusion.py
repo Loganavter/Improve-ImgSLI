@@ -147,6 +147,27 @@ def test_quality_is_mean_of_all_applicable_axes():
 
 
 # --------------------------------------------------------------------------
+# requirement: worst-axis cap (v2) — one catastrophic axis is not averaged away
+# --------------------------------------------------------------------------
+
+
+def test_worst_axis_caps_the_aggregate():
+    # ssim→100, noise→100, but delta_e=10 → color_accuracy 0. The uncapped mean
+    # is ~66.7; the weakest axis (0) caps the aggregate to the slack.
+    item = _item("capped.png", ssim=1.0, noise=0.0, delta_e=10)
+    assert item_quality(item, mode="fidelity") == rank_fusion.RANK_WORST_AXIS_SLACK
+
+
+def test_worst_axis_cap_can_flip_a_rank_vs_the_plain_mean():
+    balanced = _item("balanced.png", ssim=0.60, noise=0.40)  # 60, 60 → mean 60
+    spiky = _item("spiky.png", ssim=1.0, noise=0.0, delta_e=10)  # 100,100,0
+    ranks = rank_series([balanced, spiky], mode="fidelity")
+    # The uncapped mean would promote spiky (66.7 > 60); the cap demotes it.
+    assert ranks["/gallery/balanced.png"] == 1
+    assert ranks["/gallery/spiky.png"] == 2
+
+
+# --------------------------------------------------------------------------
 # requirement: determinism across runs (in-process + subprocess)
 # --------------------------------------------------------------------------
 
@@ -207,4 +228,4 @@ def test_new_fields_have_safe_defaults():
     assert GalleryItem(Path("/gallery/x.png"), 0).rank_source is None
     assert GalleryState().rank_domain == "algorithms"
     assert GalleryState().judgment_domain == "algorithms"
-    assert RANK_FUSION_VERSION == 1
+    assert RANK_FUSION_VERSION == 2

@@ -16,6 +16,9 @@ Design rules (see ``plan-gallery-rank-backends-2026-10-15`` §Seam):
 - An axis with no raw value is *excluded* from the mean — never counted as
   0/100. An item with no measured axis is *unranked* (``None``) and sorts
   after every measured item.
+- The mean is then capped by the weakest measured axis
+  (``RANK_WORST_AXIS_SLACK``): a single catastrophic axis cannot be averaged
+  away by otherwise-strong ones.
 - Deterministic: no timestamps, no dict-iteration order, no arrival order;
   ties break by ``str(item.path)``, idempotent under input permutation.
 """
@@ -31,11 +34,20 @@ from tabs.image_gallery.services.metric_scores import (
 )
 
 #: Bump when the fusion semantics change (consumers may pin a cached rank).
-RANK_FUSION_VERSION = 1
+#: v1 = the plain mean of applicable measured axes; v2 adds the worst-axis cap.
+RANK_FUSION_VERSION = 2
 
 #: Axis ids that must NEVER contribute to a rank (grouping artefacts, not
 #: quality). Single definition for the whole tree — import, never redefine.
 RANK_EXCLUDED_AXES = ("typicality",)
+
+#: Worst-axis cap: the aggregate may not exceed the item's single weakest
+#: measured axis by more than this margin, so one catastrophic axis (e.g. total
+#: clipping) cannot be averaged away by otherwise-strong axes. A deterministic
+#: rule that needs no real-series calibration; per-mode axis *weights* remain a
+#: follow-up once the baseline is measurable on real series (plan §Open
+#: questions).
+RANK_WORST_AXIS_SLACK = 20.0
 
 #: The mode ids ``measured_axes_for`` understands (``models.Mode`` values).
 _MODES: tuple[str, ...] = ("fidelity", "camera", "batch_synthetic")
@@ -101,8 +113,11 @@ def item_quality(item, *, mode: str) -> float | None:
     """0..100 aggregate over applicable MEASURED axes; None when nothing measured.
 
     The mean of ``score_for`` over every applicable axis that has a raw value
-    in ``item.metrics``. Missing axes are excluded (never treated as 0/100) and
-    ``RANK_EXCLUDED_AXES`` is never consulted. Deterministic; never fabricates.
+    in ``item.metrics``, then capped by the weakest measured axis
+    (``RANK_WORST_AXIS_SLACK``): ``min(mean, worst + slack)`` so a single
+    catastrophic axis is not averaged away. Missing axes are excluded (never
+    treated as 0/100) and ``RANK_EXCLUDED_AXES`` is never consulted.
+    Deterministic; never fabricates.
     """
     metrics = getattr(item, "metrics", None)
     if not isinstance(metrics, dict) or not metrics:
@@ -119,7 +134,8 @@ def item_quality(item, *, mode: str) -> float | None:
         scores.append(score_for(spec, raw))
     if not scores:
         return None
-    return sum(scores) / len(scores)
+    mean = sum(scores) / len(scores)
+    return min(mean, min(scores) + RANK_WORST_AXIS_SLACK)
 
 
 def rank_series(items, *, mode: str) -> dict[str, int]:
@@ -152,6 +168,7 @@ def rank_series(items, *, mode: str) -> dict[str, int]:
 __all__ = [
     "RANK_EXCLUDED_AXES",
     "RANK_FUSION_VERSION",
+    "RANK_WORST_AXIS_SLACK",
     "item_quality",
     "measured_axes_for",
     "rank_series",
