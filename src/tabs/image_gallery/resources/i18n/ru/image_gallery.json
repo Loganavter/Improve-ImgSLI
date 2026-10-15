@@ -86,7 +86,8 @@
       "recluster": "Перегруппировать серии",
       "header_hub": "СЕРИЯ {n} · {hub} · {count} вариантов",
       "header": "СЕРИЯ {n} · {count} изображений",
-      "ungrouped": "БЕЗ ГРУППЫ · {count}"
+      "ungrouped": "БЕЗ ГРУППЫ · {count}",
+      "needs_attention": "нужно внимание"
     },
     "sort_by": "Сортировка",
     "view": "Вид",

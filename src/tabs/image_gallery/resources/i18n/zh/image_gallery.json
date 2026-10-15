@@ -86,7 +86,8 @@
       "recluster": "重新聚类序列",
       "header_hub": "系列 {n} · {hub} · {count} 个变体",
       "header": "系列 {n} · {count} 张图片",
-      "ungrouped": "未分组 · {count}"
+      "ungrouped": "未分组 · {count}",
+      "needs_attention": "需要关注"
     },
     "sort_by": "排序",
     "view": "视图",

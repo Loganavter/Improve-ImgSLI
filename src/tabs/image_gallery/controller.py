@@ -1751,9 +1751,11 @@ class GalleryController:
                 self._apply_fusion_ranks(getattr(self.state, "series", None))
             except Exception:
                 logger.debug("domain switch rank re-derive failed", exc_info=True)
+            self._clear_series_priority()
             return
         self._run_ai_for_visible()
         self._run_jev_ranks()
+        self._run_series_priority()
 
     def _run_ai_for_visible(self) -> None:
         """Analyze the currently-visible, not-yet-analyzed items (bounded)."""
@@ -1827,6 +1829,108 @@ class GalleryController:
                 break
             ran += 1
             self._run_jev_rank_for_series(members)
+
+    def _run_series_priority(self) -> None:
+        """Schedule ONE cross-series routing pass (additive "needs a human first").
+
+        ``services.series_priority`` asks Jev, over per-series aggregate signals,
+        which series deserves attention first. Bounded to series with a visible
+        member and capped like the Jev rank pass; cache-first, so a re-run over
+        unchanged series+signals costs no request. It writes ONLY the hint
+        (``state.series_priority`` + the series-header marker) — never a rank,
+        a selection or the store.
+        """
+        try:
+            groups = list(getattr(self.state, "series", None) or [])
+        except Exception:
+            groups = []
+        if len(groups) < 2:
+            self._clear_series_priority()
+            return
+        try:
+            vis = getattr(self.widget, "visible_paths", None)
+            visible = vis() if callable(vis) else None
+        except Exception:
+            visible = None
+        try:
+            vkeys = {str(p) for p in (visible or [])}
+        except Exception:
+            vkeys = set()
+        chosen: list = []
+        for entry in groups:
+            members = GalleryController._section_members(entry)
+            if len(members) < 2:
+                continue
+            if vkeys and not any(str(getattr(m, "path", "")) in vkeys for m in members):
+                continue
+            chosen.append(entry)
+            if len(chosen) >= self._AI_VISIBLE_CAP:
+                break
+        if len(chosen) < 2:
+            self._clear_series_priority()
+            return
+        try:
+            settings = self._ai_settings_store.load()
+        except Exception:
+            settings = None
+        if (
+            settings is None
+            or not getattr(settings, "enabled", False)
+            or not getattr(settings, "base_url", "")
+            or not getattr(settings, "api_key", "")
+        ):
+            self._clear_series_priority()
+            return
+
+        mode = getattr(self.state, "mode", None)
+        gen = self._folder_gen
+        snapshot = list(chosen)
+        base_url = str(getattr(settings, "base_url", ""))
+        api_key = str(getattr(settings, "api_key", ""))
+
+        def _job():
+            from tabs.image_gallery.services.series_priority import (
+                make_client,
+                route_series_priority_detailed,
+            )
+
+            client = make_client(base_url, api_key)
+            return route_series_priority_detailed(snapshot, mode=mode, client=client)
+
+        worker = GenericWorker(_job)
+
+        def _on_result(outcome, gen=gen):
+            if not self._is_current_folder_gen(gen):
+                return
+            priorities = dict(getattr(outcome, "priorities", None) or {})
+            try:
+                self.state.series_priority = priorities
+            except Exception:
+                pass
+            try:
+                self.widget.set_series_attention(set(priorities))
+            except Exception:
+                pass
+
+        def _on_error(error_info, gen=gen):
+            if not self._is_current_folder_gen(gen):
+                return
+            logger.debug("series priority worker error: %r", error_info, exc_info=True)
+
+        worker.signals.result.connect(_on_result)
+        worker.signals.error.connect(_on_error)
+        self._pool_start(worker, None)
+
+    def _clear_series_priority(self) -> None:
+        """Drop the cross-series hint (domain switch / not configured / <2 series)."""
+        try:
+            self.state.series_priority = {}
+        except Exception:
+            pass
+        try:
+            self.widget.set_series_attention(set())
+        except Exception:
+            pass
 
     def _run_jev_rank_for_series(self, members) -> None:
         """Run one Jev rank worker for one series (cache-first, visible degrade).

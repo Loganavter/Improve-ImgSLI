@@ -86,7 +86,8 @@
       "recluster": "Re-cluster series",
       "header_hub": "SERIES {n} · {hub} · {count} VARIANTS",
       "header": "SERIES {n} · {count} images",
-      "ungrouped": "UNGROUPED · {count}"
+      "ungrouped": "UNGROUPED · {count}",
+      "needs_attention": "needs attention"
     },
     "sort_by": "Sort by",
     "view": "View",

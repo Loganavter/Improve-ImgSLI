@@ -168,6 +168,38 @@ def test_worst_axis_cap_can_flip_a_rank_vs_the_plain_mean():
 
 
 # --------------------------------------------------------------------------
+# requirement: per-mode axis weights (mechanism; neutral by default)
+# --------------------------------------------------------------------------
+
+
+def test_default_weights_are_neutral():
+    assert rank_fusion.RANK_AXIS_WEIGHTS == {}
+    assert item_quality(_item("m.png", ssim=0.90, noise=0.10), mode="fidelity") == 90.0
+
+
+def test_axis_weights_reweight_the_mean(monkeypatch):
+    item = _item("m.png", ssim=1.0, noise=0.10)  # ssim 100, noise 90 → mean 95
+    assert item_quality(item, mode="fidelity") == 95.0
+    monkeypatch.setitem(rank_fusion.RANK_AXIS_WEIGHTS, "fidelity", {"noise": 3.0})
+    assert item_quality(item, mode="fidelity") == 92.5  # (100*1 + 90*3) / 4
+
+
+def test_zero_weight_removes_the_axis_from_the_aggregate(monkeypatch):
+    item = _item("m.png", ssim=1.0, noise=1.0)  # ssim 100, noise 0
+    assert item_quality(item, mode="fidelity") == 20.0  # capped: min(50, 0+20)
+    monkeypatch.setitem(rank_fusion.RANK_AXIS_WEIGHTS, "fidelity", {"noise": 0.0})
+    assert item_quality(item, mode="fidelity") == 100.0  # noise dropped entirely
+
+
+def test_axis_weights_can_flip_a_rank(monkeypatch):
+    a = _item("a.png", ssim=0.60, noise=0.0)  # ssim 60, noise 100 → 80
+    b = _item("b.png", ssim=0.90, noise=0.40)  # ssim 90, noise 60 → 75
+    assert rank_series([a, b], mode="fidelity")["/gallery/a.png"] == 1
+    monkeypatch.setitem(rank_fusion.RANK_AXIS_WEIGHTS, "fidelity", {"ssim": 5.0})
+    assert rank_series([a, b], mode="fidelity")["/gallery/b.png"] == 1
+
+
+# --------------------------------------------------------------------------
 # requirement: determinism across runs (in-process + subprocess)
 # --------------------------------------------------------------------------
 
