@@ -16,6 +16,14 @@
       "algorithms": "Алгоритмы",
       "ai": "ИИ"
     },
+    "rank": {
+      "source": {
+        "algorithms": "Алгоритмы",
+        "ai": "ИИ (Jev)",
+        "manual": "Вручную"
+      },
+      "ranked_by": "Ранжировано: {source}"
+    },
     "settings": {
       "ai_title": "Галерея — ИИ",
       "enable_ai": "Включить ИИ-анализ изображений",

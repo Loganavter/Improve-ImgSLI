@@ -200,6 +200,9 @@ class StatsStrip(QWidget):
         self._rejected = 0
         self._keep_mode = "keep"
         self._stats = (0, 0, 0)
+        # Ranker provenance shown in the strip ("Ranked by Algorithms / AI (Jev)
+        # / Manual"). Resolved token or "" (hidden) — never a fabricated ranker.
+        self._rank_source = ""
         # Last affordance applied per action button ("keep"/"compare"). Used to
         # swap the dimmed/bright tokens only on the enabled↔disabled boundary
         # (see ``_apply_action_affordance``) — an empty cache forces the first
@@ -248,6 +251,20 @@ class StatsStrip(QWidget):
         layout.addWidget(self._stats_label)
 
         layout.addStretch(1)
+
+        # Rank provenance chip — which ranker produced the series ranks
+        # (Algorithms | AI (Jev) | Manual). Hidden until set.
+        self._rank_provenance_label = Label("", pixel_size=11, parent=self)
+        self._rank_provenance_label.setObjectName("gallery_rank_provenance")
+        try:
+            self._rank_provenance_label.setColorToken("accent")
+        except Exception:
+            pass
+        try:
+            self._rank_provenance_label.hide()
+        except Exception:
+            pass
+        layout.addWidget(self._rank_provenance_label)
 
         self._keep_btn = Button(
             text=self._t("image_gallery.action.keep_best", "Keep best"),
@@ -550,6 +567,64 @@ class StatsStrip(QWidget):
         except Exception:
             pass
 
+    def set_rank_provenance(self, source: str | None = None, *, domain: str | None = None) -> None:
+        """State which ranker produced the series ranks.
+
+        *source* is a ``rank_source`` token (``fusion`` = Algorithms,
+        ``jev`` = AI (Jev), ``manual``); when it is missing/unknown, *domain*
+        ("algorithms"|"ai") picks the label for the current backend. Neither
+        known ⇒ the chip hides (never a fabricated ranker).
+        """
+        src = ""
+        try:
+            src = str(source or "").strip().lower()
+        except Exception:
+            src = ""
+        if not src:
+            dom = str(domain or "").strip().lower()
+            if dom == "ai":
+                src = "jev"
+            elif dom == "algorithms":
+                src = "fusion"
+        _valid = ("fusion", "jev", "manual")
+        self._rank_source = src if src in _valid else ""
+        self._apply_rank_provenance()
+
+    def _apply_rank_provenance(self) -> None:
+        """Render/refresh the provenance chip from ``self._rank_source``."""
+        src = str(getattr(self, "_rank_source", "") or "")
+        label = self._rank_provenance_label if hasattr(self, "_rank_provenance_label") else None
+        if label is None:
+            return
+        if not src:
+            try:
+                label.setText("")
+                label.hide()
+            except Exception:
+                pass
+            return
+        try:
+            from tabs.image_gallery.services.rank_badge import RANK_SOURCE_LABEL
+
+            key, default = RANK_SOURCE_LABEL.get(src, ("", ""))
+        except Exception:
+            key, default = ("", "")
+        if not default:
+            try:
+                label.setText("")
+                label.hide()
+            except Exception:
+                pass
+            return
+        text = self._t("image_gallery.rank.ranked_by", "Ranked by {source}").format(
+            source=self._t(key, default)
+        )
+        try:
+            label.setText(text)
+            label.show()
+        except Exception:
+            pass
+
     def set_rejected_count(self, n: int) -> None:
         self._rejected = int(n)
         txt = self._t("image_gallery.stats.clean_rejected", "Clean rejected ({n})").format(n=int(n))
@@ -617,6 +692,10 @@ class StatsStrip(QWidget):
             self.set_stats(*self._stats)
         except Exception:
             pass
+        try:
+            self._apply_rank_provenance()
+        except Exception:
+            pass
 
     def set_mode(self, mode: str, source: str | Path | None = None) -> None:
         mode_up = str(mode or "fidelity").strip().upper()
@@ -649,6 +728,14 @@ class StatsStrip(QWidget):
     @property
     def stats_redundant_label(self) -> Label:
         return self._stats_redundant_label
+
+    @property
+    def rank_provenance_label(self) -> Label:
+        return self._rank_provenance_label
+
+    @property
+    def rank_source(self) -> str:
+        return str(getattr(self, "_rank_source", "") or "")
 
     @property
     def clean_button(self) -> Button:

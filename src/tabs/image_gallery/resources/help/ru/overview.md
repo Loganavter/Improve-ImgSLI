@@ -42,4 +42,5 @@ icon: gallery.svg
 
 - [Триаж и проверка](help://workspace.image_gallery.triage) — оставьте лучшее, отклоните остальное и вынесите отклонённые из папки.
 - [Метрики качества](help://workspace.image_gallery.quality) — что означают оценки и где они показываются.
+- [Ранжирование: Алгоритмы и ИИ](help://workspace.image_gallery.ranking) — кто ранжирует серию и как читать бейдж.
 - [Спросить у ИИ](help://workspace.image_gallery.ask_ai) — задайте вопросы о выделении или целой серии.

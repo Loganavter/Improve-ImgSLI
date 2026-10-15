@@ -42,4 +42,5 @@ A faixa acima da grade informa quantas imagens, séries e imagens redundantes a 
 
 - [Triagem e revisão](help://workspace.image_gallery.triage) — mantenha as melhores, rejeite as demais e mova as rejeitadas para fora da pasta.
 - [Métricas de qualidade](help://workspace.image_gallery.quality) — o que as pontuações significam e onde aparecem.
+- [Classificação: Algoritmos e IA](help://workspace.image_gallery.ranking) — quem classifica uma série e como ler o selo.
 - [Perguntar à IA](help://workspace.image_gallery.ask_ai) — faça perguntas sobre uma seleção ou uma série inteira.

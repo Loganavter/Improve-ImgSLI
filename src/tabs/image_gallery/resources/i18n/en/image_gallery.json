@@ -16,6 +16,14 @@
       "algorithms": "Algorithms",
       "ai": "AI"
     },
+    "rank": {
+      "source": {
+        "algorithms": "Algorithms",
+        "ai": "AI (Jev)",
+        "manual": "Manual"
+      },
+      "ranked_by": "Ranked by {source}"
+    },
     "settings": {
       "ai_title": "Image Gallery — AI",
       "enable_ai": "Enable AI image analysis",

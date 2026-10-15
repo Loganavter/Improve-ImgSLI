@@ -16,6 +16,14 @@
       "algorithms": "算法",
       "ai": "AI"
     },
+    "rank": {
+      "source": {
+        "algorithms": "算法",
+        "ai": "AI (Jev)",
+        "manual": "手动"
+      },
+      "ranked_by": "排序依据：{source}"
+    },
     "settings": {
       "ai_title": "图库 — AI",
       "enable_ai": "启用 AI 图像分析",

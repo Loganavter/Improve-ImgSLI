@@ -223,6 +223,11 @@ class GalleryItem:
     # so no surface re-derives it (add a new badge kind in ONE place).
     badge: str = ""
     badge_kind: str = "none"
+    #: Ranker behind ``badge`` — a declared mirror of ``RankBadge.source``
+    #: ("fusion" | "jev" | "manual"; None when unranked). Surfaces (card / list /
+    #: quick-look strip painters) read it off the item, so it is declared here
+    #: rather than attached dynamically by the badge writer.
+    badge_source: str | None = None
     # Stage 2 artifact catalog — 7 detectors, severity per artifact (design.md:67-83)
     artifacts: dict[Artifact, Severity] = field(default_factory=dict)
     # Coarse localization per artifact name ({name: [[0..1]*grid]*grid}) for the
