@@ -31,8 +31,11 @@ def _ru_tr(key: str, default: str) -> str:
     }.get(key, default)
 
 
-def test_grid_card_tooltip_follows_the_translator(qtbot) -> None:
-    """A rebuilt grid card must show the RU verdict/defect wording, not EN."""
+def test_grid_card_tooltip_is_the_file_name_only(qtbot) -> None:
+    """The grid card tooltip is a SINGLE line — the full file name.
+
+    Product decision: the analysis/verdict second line was removed, so the
+    tooltip must never carry a verdict/defect line (in any language)."""
     w = ImageGalleryWidget()
     qtbot.addWidget(w)
     w.resize(1000, 700)
@@ -47,17 +50,14 @@ def test_grid_card_tooltip_follows_the_translator(qtbot) -> None:
     card = w._grid_view.card_for(item.path)
     assert card is not None, "grid card was not built"
 
-    # The widget-level translator seam is what the fix plumbs through.
     w._context = SimpleNamespace(_tr=_ru_tr)
-
     w._refresh_tooltip(item)
     tip = card.toolTip()
 
-    assert "ОТКЛОН" in tip, f"grid tooltip did not localise the verdict: {tip!r}"
-    assert "дефекты" in tip, f"grid tooltip did not localise the defects label: {tip!r}"
-    assert "REJECT" not in tip, f"grid tooltip still shows the English verdict: {tip!r}"
-    assert "defects: " not in tip, f"grid tooltip still shows the English defects prefix: {tip!r}"
+    assert tip == "sup_tip.png", f"tooltip must be the file name only: {tip!r}"
+    assert "\n" not in tip, f"tooltip must be single-line: {tip!r}"
+    assert "ОТКЛОН" not in tip and "REJECT" not in tip, tip
 
-    # And it must survive the sweep path, which calls the same helper in bulk.
+    # The sweep path writes the same single line.
     w._refresh_rebuilt_cards([item], sweep=True)
-    assert card.toolTip() == tip, "sweep path rewrote the tooltip with a different wording"
+    assert card.toolTip() == tip

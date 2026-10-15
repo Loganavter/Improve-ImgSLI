@@ -221,6 +221,10 @@ class GalleryController:
         # live there; ``state``/widget are read-only projections (see
         # plan-gallery-jev-pipeline-2026-10-15 S1).
         self._judgment_domain = "algorithms"
+        # Folder generation whose METRICS pass has settled. The winner (★ BEST)
+        # is only marked after settle — before that the fusion rank is
+        # provisional and marking it put BEST on a random leader too early.
+        self._metrics_settled_gen = -1
         # S2/J1: single-flight + completed ledger for the declared stages,
         # scoped by folder generation. Per controller, so two live copies (or
         # two tests) never share a key; the AI-domain Jev batch is the only
@@ -325,6 +329,8 @@ class GalleryController:
     def _next_folder_gen(self) -> int:
         """Bump the folder generation: all in-flight workers go stale."""
         self._folder_gen += 1
+        # Fresh world: the winner marker is not settled for the new folder.
+        self._metrics_settled_gen = -1
         # Fresh world: the declared-stage ledger is invalidated — a completed
         # ``jev_rank`` fingerprint from the previous folder must never block the
         # new folder's pass (S2/J1).
@@ -1006,14 +1012,25 @@ class GalleryController:
                 try:
                     m.rank = nxt
                     m.rank_source = "fusion"
-                    # The ★ BEST winner badge belongs to the ACTIVE ranker: on
-                    # the AI domain Jev decides it — fusion must NOT pre-empt it
-                    # (that showed BEST on a provisional fusion leader before the
-                    # analysis ended); on Algorithms fusion's rank 1 is the winner.
-                    if str(getattr(self, "_judgment_domain", "algorithms") or "") == "ai":
-                        m.is_best = False
-                    else:
-                        m.is_best = (nxt == 1)
+                    # The ★ BEST winner is marked ONLY when the ranking is FINAL:
+                    # after the metrics pass settled, by the ACTIVE ranker —
+                    # Algorithms' fusion rank 1 here; the AI domain leaves it to
+                    # Jev. Before settle, no winner is marked (a provisional
+                    # fusion leader must never show BEST).
+                    _settled = False
+                    try:
+                        _settled = int(getattr(self, "_metrics_settled_gen", -1)) == int(
+                            getattr(self, "_folder_gen", 0)
+                        )
+                    except Exception:
+                        _settled = False
+                    _ai = (
+                        str(getattr(self, "_judgment_domain", "algorithms") or "")
+                        .strip()
+                        .lower()
+                        == "ai"
+                    )
+                    m.is_best = bool(_settled and not _ai and nxt == 1)
                 except Exception:
                     pass
                 taken.add(nxt)
@@ -3311,6 +3328,16 @@ class GalleryController:
             self._mark_local_pass(list(items or []), ActivityPhase.DONE)
         except Exception:
             logger.debug("metrics settle local done failed", exc_info=True)
+        # Finality: the metrics pass settled for this folder — now the winner
+        # may be marked. Algorithms marks its fusion rank 1 here (AI lets Jev).
+        try:
+            self._metrics_settled_gen = self._folder_gen
+        except Exception:
+            logger.debug("metrics-settled gen stamp failed", exc_info=True)
+        try:
+            self._apply_fusion_ranks(getattr(self.state, "series", None))
+        except Exception:
+            logger.debug("settle fusion re-mark failed", exc_info=True)
         GalleryController._run_jev_on_settle(self)
 
     def _run_jev_on_settle(self) -> None:

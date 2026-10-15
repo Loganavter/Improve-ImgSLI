@@ -424,7 +424,10 @@ def test_fusion_defers_best_to_jev_on_the_ai_domain() -> None:
     )
     series = [Series(id="s", members=[a, b])]
     ctrl = SimpleNamespace(
-        _judgment_domain="ai", state=SimpleNamespace(items=[a, b], mode="fidelity")
+        _judgment_domain="ai",
+        state=SimpleNamespace(items=[a, b], mode="fidelity"),
+        _metrics_settled_gen=0,
+        _folder_gen=0,
     )
 
     GalleryController._apply_fusion_ranks(ctrl, series, mode="fidelity")
@@ -433,3 +436,9 @@ def test_fusion_defers_best_to_jev_on_the_ai_domain() -> None:
     ctrl._judgment_domain = "algorithms"
     GalleryController._apply_fusion_ranks(ctrl, series, mode="fidelity")
     assert (a.is_best, b.is_best) == (True, False)  # Algorithms: rank 1 wins
+
+    # ...but NOT before the metrics pass settled (no provisional winner).
+    a.is_best = b.is_best = False
+    ctrl._metrics_settled_gen = -1
+    GalleryController._apply_fusion_ranks(ctrl, series, mode="fidelity")
+    assert not a.is_best and not b.is_best
