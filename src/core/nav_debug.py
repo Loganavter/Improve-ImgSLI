@@ -37,4 +37,4 @@ def nav_debug_enabled() -> bool:
 def nav_debug(msg: str, *args, **kwargs) -> None:
     """Emit ``msg`` (already carrying its bracketed prefix) when the flag is set."""
     if _env_flag(_FLAG):
-        logger.warning(msg, *args, **kwargs)
+        logger.debug(msg, *args, **kwargs)
