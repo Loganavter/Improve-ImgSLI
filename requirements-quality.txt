@@ -1,14 +1,20 @@
-# Optional learned perceptual metrics for the gallery fidelity report.
+# DEPRECATED — the learned quality trio is now a hard requirement.
 #
-# Adds LPIPS + DISTS (via `piq`) as "Perceptual" rows — the standard-benchmark
-# winners for ranking variants against a source (BAPPS 2AFC: DISTS 77.2 /
-# LPIPS 73.4 vs SSIM 59.9 on val/traditional; see
-# internal-docs inv-gallery-learned-metrics).
+# LPIPS + DISTS + BRISQUE (via `torch` + `piq`) are pinned in
+# `requirements-gui.txt` and are loaded lazily inside the gallery quality worker
+# (src/tabs/image_gallery/services/quality_models.py). Learned quality is no
+# longer optional: a missing backend is an explicit, queryable state
+# (`backend_status()` -> "missing"), not a silent "report unchanged".
 #
-# This is OPTIONAL: without it the gallery runs exactly as before and those
-# rows are simply absent. It pulls torch + torchvision (~0.6-2 GB); install
-# only where the extra fidelity quality is wanted.
+# This file is kept only so existing `pip install -r requirements-quality.txt`
+# invocations keep resolving the same pinned backend. It is NOT a silent no-op —
+# the pins below are real and identical to requirements-gui.txt.
 #
-#   pip install -r requirements-quality.txt
+# Prefer installing the main GUI requirements instead:
 #
-piq>=0.8
+#   pip install -r requirements-gui.txt
+#
+# Background: internal-docs `inv-gallery-learned-metrics` (why LPIPS + DISTS +
+# BRISQUE, and the torch + PySide6 OpenMP import guard).
+torch==2.14.1
+piq==0.8.0
