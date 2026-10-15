@@ -8,15 +8,13 @@ to ``<base_url>/chat/completions`` on OpenRouter — under the model id
 bespoke HTTP client** here: one transport, one retry/fallback idiom for the
 whole gallery.
 
-The request is a normal chat/completions call whose *user message* is the
-measured vector: the mode plus, per variant, an opaque alias (``img_N``) and the
-0..100 score of every applicable MEASURED axis — **no image bytes, no file
-paths, no prose instruction**. Jev answers with a Choice / Noul / Score decision
-(JSON in the assistant message).
+The request is a chat/completions call whose *user message* is the measured
+vector: the mode plus, per variant, an opaque alias (``img_N``) and the 0..100
+score of every applicable MEASURED axis — **no image bytes, no paths, no prose**.
+Jev answers with a Choice / Noul / Score decision (JSON in the assistant message).
 
-Determinism note (design, not a bug): the AI domain is explicitly
-non-deterministic — the same vector may get a different Choice. Reproducibility
-is bought by the **pin** (:mod:`tabs.image_gallery.services.jev_cache`).
+Determinism (design, not a bug): the AI domain is explicitly non-deterministic;
+reproducibility is bought by the **pin** (:mod:`tabs.image_gallery.services.jev_cache`).
 
 Degrade contract (never silent, never partial):
 
@@ -42,6 +40,7 @@ from dataclasses import dataclass
 from typing import Any, Callable
 
 from tabs.image_gallery.services import jev_cache
+from tabs.image_gallery.services.ai_client import _ai_debug
 from tabs.image_gallery.services.metric_scores import raw_for, score_for, spec_for
 from tabs.image_gallery.services.rank_fusion import measured_axes_for, rank_series
 
@@ -110,12 +109,10 @@ def _path_of(item) -> str:
 
 
 def _aliased(items) -> list[tuple[str, Any]]:
-    """``[(alias, item)]`` — opaque ``img_N`` aliases in a deterministic order.
-
-    Sorted by ``str(path)`` so the alias assignment (and therefore the payload,
-    the cache key and the ranks) never depends on the caller's member order.
-    One shared helper so :func:`build_rank_request` and the decision code cannot
-    drift.
+    """``[(alias, item)]`` — opaque ``img_N`` aliases, sorted by ``str(path)`` so
+    the alias assignment (and thus the payload, cache key and ranks) never
+    depends on caller order; one helper so :func:`build_rank_request` and the
+    decision code cannot drift.
     """
     ordered = sorted(list(items or ()), key=_path_of)
     return [(f"img_{i}", item) for i, item in enumerate(ordered, start=1)]
@@ -124,10 +121,10 @@ def _aliased(items) -> list[tuple[str, Any]]:
 def build_measured_vector(items, *, mode: str) -> dict:
     """The measured-only vector: ``{"mode", "items": [{"alias","scores"}]}``.
 
-    Each entry's ``scores`` holds exactly the applicable MEASURED axes for
-    *mode* (``rank_fusion.measured_axes_for``) that the item actually carries a
-    raw value for — an unmeasured axis is omitted, never fabricated. Contains
-    only the mode, the opaque aliases and the measured numbers.
+    Each entry's ``scores`` holds exactly the applicable MEASURED axes for *mode*
+    (``rank_fusion.measured_axes_for``) that the item actually carries a raw value
+    for — an unmeasured axis is omitted, never fabricated. Only the mode, the
+    opaque aliases and the measured numbers.
     """
     mid = _mode_token(mode)
     axes = measured_axes_for(mid)
@@ -155,14 +152,13 @@ def build_measured_vector(items, *, mode: str) -> dict:
 def build_rank_request(items, *, mode: str) -> dict:
     """OpenAI-compatible rank request for Jev (text-only, measured vector).
 
-    A normal chat/completions body: ``model = JEV_MODEL`` and ONE user message
-    whose text part is the canonical JSON measured vector
-    (:func:`build_measured_vector`). No system prompt (no prose instruction), no
-    image parts, no file paths — asserted by ``tests/test_jev_rank.py``.
-
-    ``response_format={"type": "json_object"}`` pins the reply shape: without it
-    the live ``typesafe/jev-router`` alternates prose / fenced-JSON / bare object
-    (probe 2026-10-15); the parser still tolerates the key/shape variance.
+    A chat/completions body: ``model = JEV_MODEL`` and ONE user message whose
+    text part is the canonical JSON measured vector
+    (:func:`build_measured_vector`) — no system prompt, no image parts, no file
+    paths (``tests/test_jev_rank.py``). ``response_format={"type": "json_object"}``
+    pins the reply shape: without it the live ``typesafe/jev-router`` alternates
+    prose / fenced-JSON / bare object (probe 2026-10-15); the parser still
+    tolerates the key/shape variance.
     """
     vector = build_measured_vector(items, mode=mode)
     text = json.dumps(vector, sort_keys=True, separators=(",", ":"))
@@ -289,12 +285,11 @@ def _is_noul(raw: dict) -> bool:
 
 
 def _ranking_of(raw: dict) -> list[str] | None:
-    """Explicit full ordering from the decision, or ``None`` when absent.
-
-    Accepts a list of aliases, a list of ``{"alias": ...}`` entries (the live
-    "Jev Router" shape, probe 2026-10-15), or an ``alias -> rank`` mapping.
-    Unknown/duplicate entries are dropped by the caller, which appends any
-    missing alias so the result is always a complete 1..N ordering.
+    """Explicit full ordering from the decision, or ``None`` when absent: a list
+    of aliases, a list of ``{"alias": ...}`` entries (the live "Jev Router"
+    shape, probe 2026-10-15) or an ``alias -> rank`` mapping. Unknown/duplicate
+    entries are dropped by the caller, which appends missing aliases so the
+    result is always a complete 1..N ordering.
     """
     for key in ("ranking", "order", "ordered", "ranked", "ranks"):
         value = raw.get(key)
@@ -424,19 +419,23 @@ def rank_series_jev_detailed(
         except Exception:
             hit = None
         if hit is not None:
+            _ai_debug("jev rank cache HIT items=%d", len(member_list))
             ranks = hit.get("ranks")
             if ranks:
                 return JevRankOutcome({str(p): int(r) for p, r in ranks.items()}, cached=True)
             return JevRankOutcome(None, reason=hit.get("reason") or JEV_REASON_NOUL, cached=True)
 
+    _ai_debug("jev rank mode=%s items=%d (call)", _mode_token(mode), len(member_list))
     try:
         raw = client(payload)
     except Exception as exc:
         logger.debug("jev rank call failed: %s", exc, exc_info=True)
+        _ai_debug("jev rank call failed: %s", exc)
         return JevRankOutcome(None, reason=f"{JEV_REASON_ERROR}: {exc}")
 
     decision = _response_dict(raw)
     if decision is None:
+        _ai_debug("jev rank unusable response (no decision object)")
         return JevRankOutcome(None, reason=JEV_REASON_MALFORMED)
 
     try:
@@ -447,6 +446,7 @@ def rank_series_jev_detailed(
 
     # Pin both a decisive rank and an explicit abstain (stable re-runs); do not
     # pin a malformed response — it may be a transient backend glitch.
+    _ai_debug("jev rank => decided=%s reason=%s", outcome.decided, outcome.reason)
     if key and outcome.reason != JEV_REASON_MALFORMED:
         _pin(cache_obj, key, outcome.ranks, outcome.reason)
     return outcome
