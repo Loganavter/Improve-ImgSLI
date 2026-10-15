@@ -912,7 +912,12 @@ class GalleryToolbar(QWidget):
         except Exception:
             pass
         try:
-            self._domain_switch.setText(_tr("image_gallery.domain.algorithms", "Algorithms"))
-            self._domain_switch_ai.setText(_tr("image_gallery.domain.ai", "AI"))
+            # Icon-only segments: the visible label is the icon; the localized
+            # string belongs in the tooltip (setting text clips in the 34px row
+            # and put words next to the icons).
+            self._domain_switch.setToolTip(
+                _tr("image_gallery.domain.algorithms", "Algorithms")
+            )
+            self._domain_switch_ai.setToolTip(_tr("image_gallery.domain.ai", "AI"))
         except Exception:
             pass

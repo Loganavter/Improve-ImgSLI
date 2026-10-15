@@ -38,6 +38,19 @@ def test_domain_switch_widgets_exist_by_objectname(toolbar: GalleryToolbar) -> N
     assert ai is toolbar.domain_switch_ai
 
 
+def test_domain_switch_is_icon_only(toolbar: GalleryToolbar) -> None:
+    """Segments are icon-only; the localized label is a tooltip, never inline.
+
+    Regression: the i18n language-switch refresh called ``setText`` on these
+    icon-only buttons, so «Алгоритмы»/«ИИ» appeared next to the icons and
+    clipped in the 34px toolbar row.
+    """
+    assert getattr(toolbar.domain_switch, "_text", "") == ""
+    assert getattr(toolbar.domain_switch_ai, "_text", "") == ""
+    assert toolbar.domain_switch.toolTip()
+    assert toolbar.domain_switch_ai.toolTip()
+
+
 def test_set_judgment_domain_emits_only_on_change(toolbar: GalleryToolbar) -> None:
     got: list[str] = []
     toolbar.domainChanged.connect(got.append)
