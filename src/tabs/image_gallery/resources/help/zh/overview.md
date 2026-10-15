@@ -42,4 +42,5 @@ icon: gallery.svg
 
 - [分拣与审阅](help://workspace.image_gallery.triage) — 保留最佳的、拒绝其余的，并把被拒绝的图像移出文件夹。
 - [质量指标](help://workspace.image_gallery.quality) — 分数的含义以及它们出现的位置。
+- [排名：算法与 AI](help://workspace.image_gallery.ranking) — 谁为系列排名以及如何阅读徽章。
 - [询问 AI](help://workspace.image_gallery.ask_ai) — 就选中项或整个系列提问。

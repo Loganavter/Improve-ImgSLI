@@ -16,6 +16,14 @@
       "algorithms": "Algoritmos",
       "ai": "IA"
     },
+    "rank": {
+      "source": {
+        "algorithms": "Algoritmos",
+        "ai": "IA (Jev)",
+        "manual": "Manual"
+      },
+      "ranked_by": "Classificado por {source}"
+    },
     "settings": {
       "ai_title": "Galeria — IA",
       "enable_ai": "Ativar análise de imagem por IA",

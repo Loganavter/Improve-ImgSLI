@@ -42,4 +42,5 @@ The strip above the grid reports how many images, series, and redundant images t
 
 - [Triage and Review](help://workspace.image_gallery.triage) — keep the best, reject the rest, and move rejects out of the folder.
 - [Quality Metrics](help://workspace.image_gallery.quality) — what the scores mean and where they appear.
+- [Ranking: Algorithms and AI](help://workspace.image_gallery.ranking) — who ranks a series and how to read the badge.
 - [Ask AI](help://workspace.image_gallery.ask_ai) — ask questions about a selection or a whole series.
