@@ -140,10 +140,12 @@ def rebuild_artifacts(overlay, item) -> None:
         # Local band descriptor only — the VLM's per-axis read is never shown
         # on the row (plan-gallery-ai-quality UX contract; its narration lives
         # in the AI block). The severity is already source-anchored upstream.
+        # Same helper the metric rows use, so the band note resolves through
+        # ``image_gallery.metric_note.<aid>.<band>`` (no second key set).
         try:
-            from tabs.image_gallery.services.metric_scores import fallback_note as _fb
+            from tabs.image_gallery.ui.quick_look.metrics import _metric_note
 
-            _note = _fb(aid, score)
+            _note = _metric_note(overlay, aid, score)
         except Exception:
             _note = ""
         if _note:

@@ -251,12 +251,42 @@ def gallery_selection_accent(theme_manager=None):  # type: ignore[no-untyped-def
         return _accent_color()
 
 
-def analysis_tooltip_lines(analysis) -> list[str]:
+def _tooltip_text(translate, key: str, default: str, **fmt) -> str:  # type: ignore[no-untyped-def]
+    """Card-tooltip i18n lookup — EN ``default`` when no translator is given."""
+    if translate is None:
+        text = default
+    else:
+        try:
+            text = str(translate(key, default))
+        except Exception:
+            text = default
+    if fmt:
+        try:
+            text = text.format(**fmt)
+        except Exception:
+            pass
+    return text
+
+
+def vlm_tiebreak_tooltip_line(translate, err) -> str:  # type: ignore[no-untyped-def]
+    """Card-tooltip line for a failed VLM tie-break (shared grid + list)."""
+    return _tooltip_text(
+        translate,
+        "image_gallery.card.tooltip.vlm_tiebreak",
+        "VLM tie-break: {err}",
+        err=err,
+    )
+
+
+def analysis_tooltip_lines(analysis, translate=None) -> list[str]:
     """Verdict + defect summary lines for a card tooltip.
 
     The gallery reports quality, not scene content: a card tooltip shows
     the keep/reject verdict with its reason and the defect kinds — never
     the (variant-identical) scene description or content tags.
+
+    *translate* is the tab translator ``(key, default) -> str``; None keeps
+    the English wording (standalone callers / no-context tests).
     """
     out: list[str] = []
     if analysis is None:
@@ -264,14 +294,28 @@ def analysis_tooltip_lines(analysis) -> list[str]:
     verdict = str(getattr(analysis, "verdict", "unknown") or "unknown")
     reason = str(getattr(analysis, "verdict_reason", "") or "")
     if verdict in ("keep", "reject"):
-        out.append(verdict.upper() + (f" — {reason}" if reason else ""))
+        out.append(
+            _tooltip_text(
+                translate,
+                f"image_gallery.card.tooltip.{verdict}",
+                verdict.upper(),
+            )
+            + (f" — {reason}" if reason else "")
+        )
     kinds = [
         str(getattr(d, "kind", "")).replace("_", " ")
         for d in (getattr(analysis, "defects", ()) or ())
         if getattr(d, "kind", None)
     ]
     if kinds:
-        out.append("defects: " + ", ".join(kinds))
+        out.append(
+            _tooltip_text(
+                translate,
+                "image_gallery.card.tooltip.defects",
+                "defects: {kinds}",
+                kinds=", ".join(kinds),
+            )
+        )
     return out
 
 

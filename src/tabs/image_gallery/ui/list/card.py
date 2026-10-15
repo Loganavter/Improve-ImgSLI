@@ -277,9 +277,12 @@ def update_gallery_list_card(card: Button, item: GalleryItem, mode: object = Non
     try:
         parts = [item.name]
         try:
-            from tabs.image_gallery.ui.card.visuals import analysis_tooltip_lines
+            from tabs.image_gallery.ui.card.visuals import (
+                analysis_tooltip_lines,
+                vlm_tiebreak_tooltip_line,
+            )
 
-            parts.extend(analysis_tooltip_lines(getattr(item, "analysis", None)))
+            parts.extend(analysis_tooltip_lines(getattr(item, "analysis", None), _tr))
         except Exception:
             pass
         err = getattr(item, "analysis_error", None)
@@ -287,7 +290,7 @@ def update_gallery_list_card(card: Button, item: GalleryItem, mode: object = Non
             parts.append(str(err))
         vlm_err = getattr(item, "vlm_tie_error", None)
         if vlm_err:
-            parts.append(f"VLM tie-break: {vlm_err}")
+            parts.append(vlm_tiebreak_tooltip_line(_tr, vlm_err))
         card.setToolTip("\n".join(parts))
     except Exception:
         pass

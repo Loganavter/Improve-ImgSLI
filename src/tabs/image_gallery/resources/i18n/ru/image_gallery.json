@@ -64,7 +64,9 @@
       "routing_unavailable": "Маршрутизация пока недоступна.",
       "images_toggle_hint": "Отправляйте изображения вместе с вопросом",
       "images_toggle_downsample": "Уменьшение: до {px} px",
-      "region_prompt": "Что не так в этой области?"
+      "region_prompt": "Что не так в этой области?",
+      "cached": " · из кэша",
+      "error_context": "Не удалось собрать контекст запроса."
     },
     "series": {
       "ask_ai": "Спросить у ИИ",
@@ -88,7 +90,11 @@
     "view_list": "Список",
     "toolbar": {
       "open_folder": "Выбрать папку…",
-      "filter_placeholder": "Фильтр по тегу или описанию…"
+      "filter_placeholder": "Фильтр по тегу или описанию…",
+      "filter_images": "Изображения (",
+      "filter_all_files": "Все файлы (*)",
+      "pick_title": "Выберите папку или изображение",
+      "pick_folder": "Выберите папку"
     },
     "grid": {
       "resize_tooltip": "Перетащите, чтобы изменить размер панелей серий"
@@ -112,7 +118,20 @@
       "mixed_sizes": "разные размеры",
       "upscales_note": "{n} апскейлов одного источника",
       "upscale_n": "апскейл ×{n}",
-      "upscale_n_from_source": "апскейл ×{n} от источника"
+      "upscale_n_from_source": "апскейл ×{n} от источника",
+      "ai_brief_pending": "Краткий ответ ИИ…",
+      "not_measured": "— · не измерено",
+      "rank_of": "#{rank} из {total}",
+      "rejected_tail": "отклонённый хвост ≤ {value}",
+      "source_fallback": "источник",
+      "brief_ssim_vs": "SSIM {a} против {b}",
+      "brief_ssim": "SSIM {a}",
+      "brief_detail_vs": "детали {a} против {b}",
+      "brief_detail": "детали {a}",
+      "brief_banding": "на #{rank} видны полосы",
+      "brief_flagged": " (помечено)",
+      "brief_vs": "против #{rank}: {head}",
+      "brief_vs_bare": "против #{rank}"
     },
     "clean_review": {
       "title": "Проверка отклонённых файлов",
@@ -126,7 +145,12 @@
       "no_files": "Нет файлов для перемещения",
       "restore": "Вернуть",
       "restore_all": "Вернуть все",
-      "cancel": "Отмена"
+      "cancel": "Отмена",
+      "moved_toast": "Перемещено файлов в _rejected/: {n}",
+      "undo": "Отменить",
+      "more_tile": "ещё +{n}",
+      "more_tile_sub": "прокручиваемая лента",
+      "more_tooltip": "ещё отклонённых файлов: {n}"
     },
     "help": {
       "hub": {
@@ -301,7 +325,14 @@
       "remove": "Убрать из вида",
       "ungroup": "Разгруппировать",
       "group": "Сгруппировать",
-      "make_source": "Сделать источником"
+      "make_source": "Сделать источником",
+      "unreadable": "не читается — исключено из отбора",
+      "tooltip": {
+        "keep": "ОСТАВИТЬ",
+        "reject": "ОТКЛОНИТЬ",
+        "defects": "дефекты: {kinds}",
+        "vlm_tiebreak": "Разрешение ничьей VLM: {err}"
+      }
     },
     "badge": {
       "source": "ИСТОЧНИК"

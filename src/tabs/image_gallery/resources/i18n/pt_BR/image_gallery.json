@@ -64,7 +64,9 @@
       "routing_unavailable": "O roteamento ainda não está habilitado.",
       "images_toggle_hint": "Enviar imagens com a pergunta",
       "images_toggle_downsample": "Redução: ≤ {px} px",
-      "region_prompt": "O que há de errado nesta região?"
+      "region_prompt": "O que há de errado nesta região?",
+      "cached": " · em cache",
+      "error_context": "Não foi possível montar o contexto da pergunta."
     },
     "series": {
       "ask_ai": "Perguntar à IA",
@@ -88,7 +90,11 @@
     "view_list": "Lista",
     "toolbar": {
       "open_folder": "Abrir pasta…",
-      "filter_placeholder": "Filtrar por tag / descrição…"
+      "filter_placeholder": "Filtrar por tag / descrição…",
+      "filter_images": "Imagens (",
+      "filter_all_files": "Todos os arquivos (*)",
+      "pick_title": "Escolha uma pasta ou imagem",
+      "pick_folder": "Escolher pasta"
     },
     "grid": {
       "resize_tooltip": "Arraste para redimensionar os painéis de séries"
@@ -112,7 +118,20 @@
       "mixed_sizes": "tamanhos mistos",
       "upscales_note": "{n} ampliações de uma mesma origem",
       "upscale_n": "ampliação ×{n}",
-      "upscale_n_from_source": "ampliação ×{n} a partir da origem"
+      "upscale_n_from_source": "ampliação ×{n} a partir da origem",
+      "ai_brief_pending": "Resumo da IA…",
+      "not_measured": "— · não medido",
+      "rank_of": "#{rank} de {total}",
+      "rejected_tail": "cauda rejeitada ≤ {value}",
+      "source_fallback": "origem",
+      "brief_ssim_vs": "SSIM {a} contra {b}",
+      "brief_ssim": "SSIM {a}",
+      "brief_detail_vs": "detalhe {a} contra {b}",
+      "brief_detail": "detalhe {a}",
+      "brief_banding": "#{rank} mostra bandas",
+      "brief_flagged": " (marcado)",
+      "brief_vs": "contra #{rank}: {head}",
+      "brief_vs_bare": "contra #{rank}"
     },
     "clean_review": {
       "title": "Revisar arquivos rejeitados",
@@ -126,7 +145,12 @@
       "no_files": "Nenhum arquivo para mover",
       "restore": "Restaurar",
       "restore_all": "Restaurar tudo",
-      "cancel": "Cancelar"
+      "cancel": "Cancelar",
+      "moved_toast": "{n} arquivos movidos para _rejected/",
+      "undo": "Desfazer",
+      "more_tile": "+{n} mais",
+      "more_tile_sub": "faixa rolável",
+      "more_tooltip": "mais {n} arquivo(s) rejeitado(s)"
     },
     "help": {
       "hub": {
@@ -301,7 +325,14 @@
       "remove": "Remover da visualização",
       "ungroup": "Desagrupar",
       "group": "Agrupar",
-      "make_source": "Definir como origem"
+      "make_source": "Definir como origem",
+      "unreadable": "ilegível — excluído da triagem",
+      "tooltip": {
+        "keep": "MANTER",
+        "reject": "REJEITAR",
+        "defects": "defeitos: {kinds}",
+        "vlm_tiebreak": "Desempate da VLM: {err}"
+      }
     },
     "badge": {
       "source": "ORIGEM"

@@ -2208,7 +2208,7 @@ class ImageGalleryWidget(QWidget):
                 try:
                     from tabs.image_gallery.ui.card.visuals import analysis_tooltip_lines
 
-                    tip_parts.extend(analysis_tooltip_lines(item.analysis))
+                    tip_parts.extend(analysis_tooltip_lines(item.analysis, self._tr_ui))
                 except Exception:
                     pass
                 if item.analysis_error:

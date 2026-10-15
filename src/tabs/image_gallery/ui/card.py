@@ -282,7 +282,7 @@ def build_gallery_card(*args, **kwargs) -> Button:  # type: ignore[no-untyped-de
         pass
     apply_fixed_gallery_card_size(card)
     _attach_item(card, actual_item)
-    _set_card_tooltip(card, actual_item)
+    _set_card_tooltip(card, actual_item, actual_translate)
     try:
         _, _dcols = _dots_for_item(actual_item, mode=mode)
         card._gallery_dot_colors = tuple(_dcols)  # type: ignore[attr-defined]
@@ -350,19 +350,23 @@ def build_gallery_card(*args, **kwargs) -> Button:  # type: ignore[no-untyped-de
     return card
 
 
-def _set_card_tooltip(card: Button, item: GalleryItem) -> None:
+def _set_card_tooltip(card: Button, item: GalleryItem, translate=None) -> None:
     """Hover tooltip: full file name first, then analysis extras.
 
     Called from BOTH build_gallery_card (fresh pooled cards) and
     update_gallery_card (rebinds) — a card must never show a stale or
-    missing tooltip.
+    missing tooltip. *translate* is the tab translator (verdict/defect
+    wording); None keeps the English text.
     """
     try:
         parts = [item.name]
         try:
-            from tabs.image_gallery.ui.card.visuals import analysis_tooltip_lines
+            from tabs.image_gallery.ui.card.visuals import (
+                analysis_tooltip_lines,
+                vlm_tiebreak_tooltip_line,
+            )
 
-            parts.extend(analysis_tooltip_lines(getattr(item, "analysis", None)))
+            parts.extend(analysis_tooltip_lines(getattr(item, "analysis", None), translate))
         except Exception:
             pass
         err = getattr(item, "analysis_error", None)
@@ -370,7 +374,7 @@ def _set_card_tooltip(card: Button, item: GalleryItem) -> None:
             parts.append(str(err))
         vlm_err = getattr(item, "vlm_tie_error", None)
         if vlm_err:
-            parts.append(f"VLM tie-break: {vlm_err}")
+            parts.append(vlm_tiebreak_tooltip_line(translate, vlm_err))
         card.setToolTip("\n".join(parts))
     except Exception:
         pass
@@ -466,7 +470,7 @@ def update_gallery_card(
         _tr = getattr(card, "_gallery_translate", None)
     rows = _text_rows(item, _tr, mode=_mode)
     card.update_region("text", rows=rows)
-    _set_card_tooltip(card, item)
+    _set_card_tooltip(card, item, _tr)
     try:
         _apply_rejected_visuals(card, item, _tr)
     except Exception:

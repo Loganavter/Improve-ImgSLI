@@ -64,7 +64,9 @@
       "routing_unavailable": "Routing is not enabled yet.",
       "images_toggle_hint": "Send images with the question",
       "images_toggle_downsample": "Downscale: ≤ {px} px",
-      "region_prompt": "What is wrong in this region?"
+      "region_prompt": "What is wrong in this region?",
+      "cached": " · cached",
+      "error_context": "Could not assemble the ask context."
     },
     "series": {
       "ask_ai": "Ask AI",
@@ -88,7 +90,11 @@
     "view_list": "List",
     "toolbar": {
       "open_folder": "Open Folder…",
-      "filter_placeholder": "Filter by tag / description…"
+      "filter_placeholder": "Filter by tag / description…",
+      "filter_images": "Images (",
+      "filter_all_files": "All files (*)",
+      "pick_title": "Pick folder or image",
+      "pick_folder": "Pick folder"
     },
     "grid": {
       "resize_tooltip": "Drag to resize series panes"
@@ -112,7 +118,20 @@
       "mixed_sizes": "mixed sizes",
       "upscales_note": "{n} upscales of one source",
       "upscale_n": "upscale ×{n}",
-      "upscale_n_from_source": "upscale ×{n} from source"
+      "upscale_n_from_source": "upscale ×{n} from source",
+      "ai_brief_pending": "AI brief…",
+      "not_measured": "— · not measured",
+      "rank_of": "#{rank} of {total}",
+      "rejected_tail": "rejected tail ≤ {value}",
+      "source_fallback": "source",
+      "brief_ssim_vs": "SSIM {a} vs {b}",
+      "brief_ssim": "SSIM {a}",
+      "brief_detail_vs": "detail {a} vs {b}",
+      "brief_detail": "detail {a}",
+      "brief_banding": "#{rank} shows banding",
+      "brief_flagged": " (flagged)",
+      "brief_vs": "vs #{rank}: {head}",
+      "brief_vs_bare": "vs #{rank}"
     },
     "clean_review": {
       "title": "Review rejected files",
@@ -126,7 +145,12 @@
       "no_files": "No files to move",
       "restore": "Restore",
       "restore_all": "Restore all",
-      "cancel": "Cancel"
+      "cancel": "Cancel",
+      "moved_toast": "Moved {n} files to _rejected/",
+      "undo": "Undo",
+      "more_tile": "+{n} more",
+      "more_tile_sub": "scrollable strip",
+      "more_tooltip": "{n} more rejected file(s)"
     },
     "help": {
       "hub": {
@@ -184,7 +208,14 @@
       "remove": "Remove from view",
       "ungroup": "Ungroup",
       "group": "Group",
-      "make_source": "Make source"
+      "make_source": "Make source",
+      "unreadable": "unreadable — excluded from triage",
+      "tooltip": {
+        "keep": "KEEP",
+        "reject": "REJECT",
+        "defects": "defects: {kinds}",
+        "vlm_tiebreak": "VLM tie-break: {err}"
+      }
     },
     "badge": {
       "source": "SOURCE"

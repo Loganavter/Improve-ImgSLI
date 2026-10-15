@@ -136,7 +136,9 @@ def _text_rows(
     if unreadable:
         try:
             err_text = str(err) if err else _translate_or_default(
-                translate, "gallery.card.unreadable", "unreadable — excluded from triage"
+                translate,
+                "image_gallery.card.unreadable",
+                "unreadable — excluded from triage",
             )
         except Exception:
             err_text = str(err) if err else "unreadable — excluded from triage"

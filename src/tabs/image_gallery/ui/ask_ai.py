@@ -76,6 +76,9 @@ class AskAiFlyout(BaseFlyout):
         self._busy_text = "Thinking…"
         self._read_badge = "AI read, unverified"
         self._error_text = "AI could not answer."
+        # Status-badge suffix for a replayed cached answer. Includes its own
+        # separator (" · cached") — the badge appends it verbatim.
+        self._cached_suffix = " · cached"
         # Currently-selected LLM from the tab's AI settings — shown in the
         # status badge instead of the raw backend token ("vlm"/"text").
         self._model = ""
@@ -250,6 +253,7 @@ class AskAiFlyout(BaseFlyout):
         images_hint: str | None = None,
         images_downsample: str | None = None,
         model: str | None = None,
+        cached: str | None = None,
     ) -> None:
         """Inject localized chrome strings (from the tab i18n)."""
         if title:
@@ -266,6 +270,8 @@ class AskAiFlyout(BaseFlyout):
             self._error_text = str(error)
         if model is not None:
             self._model = str(model or "")
+        if cached is not None:
+            self._cached_suffix = str(cached)
         if images_hint is not None or images_downsample is not None:
             if images_hint is not None:
                 self._images_hint = str(images_hint)
@@ -558,7 +564,7 @@ class AskAiFlyout(BaseFlyout):
         if label:
             badge += f" · {label}"
         if cached:
-            badge += " · cached"
+            badge += str(getattr(self, "_cached_suffix", " · cached") or "")
         self._last_text = str(text or "")
         try:
             self._last_links = {
