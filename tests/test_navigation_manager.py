@@ -427,16 +427,25 @@ class TestClickToArrowRealign:
 
     @patch("sli_ui_toolkit.ui.managers.navigation_manager.QApplication")
     @patch("sli_ui_toolkit.ui.managers.realign.QApplication")
-    def test_first_press_after_click_reveals_without_stepping(
+    def test_first_press_after_click_also_steps(
         self, mock_realign_qapp, mock_qapp
     ):
-        """The ring is invisible right after a mouse click (MouseButtonPress
-        suppresses it) -- if the very first arrow press both silently
-        realigned focus to the nearest widget *and* stepped navigate() one
-        further, the user would see the ring appear two items away from
-        the click with no visual step in between. The first press must
-        only reveal the ring at the realigned widget; a second, distinct
-        press then steps normally.
+        """The first arrow press after a click re-anchors the ring AND steps.
+
+        Reversal of the previous contract: that press used to be consumed as
+        "reveal-only", on the reasoning that stepping in the same press would
+        make the ring appear one item away from the click with no visible step
+        in between. In practice it cost a keypress after *every* click, and
+        when the realign target was a section's own container (the gallery's
+        empty-zone click anchors on its scroll area) the revealed ring was not
+        on a navigable item, so the press looked dead rather than delayed —
+        reported as "почему требуется два раза нажать вверх".
+
+        The trade-off is now accepted deliberately: the ring appears where the
+        press actually landed, one step from the click, and every arrow press
+        moves. ``ClickRealignCoordinator``'s docstring has always described
+        this ("re-anchors the ring ... then lets that same key press navigate
+        from there").
         """
         clicked = _fake_widget("clicked")
         clicked.focusPolicy.return_value = Qt.FocusPolicy.StrongFocus
@@ -464,11 +473,17 @@ class TestClickToArrowRealign:
         first = self.manager.eventFilter(None, _FakeKeyEvent(Qt.Key.Key_Left))
         assert first is True
         clicked.setFocus.assert_called_once()
-        assert navigate_calls == [], "first press after a click must not also step navigate()"
+        assert navigate_calls == [(Qt.Key.Key_Left, clicked)], (
+            "the first press after a click must also step — otherwise every "
+            "click costs a keypress (the reveal-only regression)"
+        )
 
         second = self.manager.eventFilter(None, _FakeKeyEvent(Qt.Key.Key_Left))
         assert second is True
-        assert navigate_calls == [(Qt.Key.Key_Left, clicked)], "second press should step normally"
+        assert navigate_calls == [
+            (Qt.Key.Key_Left, clicked),
+            (Qt.Key.Key_Left, clicked),
+        ], "second press should step normally"
 
     @patch("sli_ui_toolkit.ui.managers.navigation_manager.QApplication")
     @patch("sli_ui_toolkit.ui.managers.realign.QApplication")
