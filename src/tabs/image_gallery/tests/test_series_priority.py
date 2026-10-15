@@ -66,7 +66,8 @@ def _text(payload: dict) -> str:
 def test_request_is_one_user_message_asking_for_json() -> None:
     payload = build_priority_request(_groups(), mode="camera")
     assert payload["model"] == series_priority.JEV_MODEL
-    assert [m["role"] for m in payload["messages"]] == ["user"]
+    assert [m["role"] for m in payload["messages"]] == ["system", "user"]
+    assert "ranking" in payload["messages"][0]["content"]  # output contract
     assert payload["response_format"] == {"type": "json_object"}
     vector = json.loads(_text(payload))
     assert set(vector) == {"mode", "series"}
@@ -74,7 +75,8 @@ def test_request_is_one_user_message_asking_for_json() -> None:
 
 def test_payload_is_aggregate_only_no_paths_no_bytes_no_prose() -> None:
     payload = build_priority_request(_groups(), mode="camera")
-    blob = json.dumps(payload)
+    # The measured VECTOR (the user message) carries no identity / bytes / prose.
+    blob = json.dumps(json.loads(_text(payload)))
     for leak in ("/gallery/", "a1.png", "b2.png"):
         assert leak not in blob
     assert "image_url" not in blob and "base64" not in blob and "data:image" not in blob

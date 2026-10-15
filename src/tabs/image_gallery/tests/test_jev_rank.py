@@ -91,8 +91,8 @@ class _FakeController:
     def _apply_jev_outcome(self, members, outcome):
         return GalleryController._apply_jev_outcome(self, members, outcome)
 
-    def _degrade_jev(self, members, reason):
-        return GalleryController._degrade_jev(self, members, reason)
+    def _degrade_jev(self, members, reason, *, as_error=False):
+        return GalleryController._degrade_jev(self, members, reason, as_error=as_error)
 
     def activate_judgment_domain(self, domain):
         return GalleryController.activate_judgment_domain(self, domain)
@@ -119,13 +119,18 @@ def _ranks_by_name(items) -> dict:
 # --------------------------------------------------------------------------
 
 
-def test_rank_request_is_a_single_user_message_chat_body() -> None:
+def test_rank_request_has_an_output_contract_and_a_user_vector() -> None:
     a = _item("a.png", ssim=0.90, noise=0.10)
     b = _item("b.png", ssim=0.50, noise=0.10)
     payload = build_rank_request([a, b], mode="fidelity")
 
     assert payload["model"] == JEV_MODEL
-    assert [m["role"] for m in payload["messages"]] == ["user"]  # no system prompt
+    assert [m["role"] for m in payload["messages"]] == ["system", "user"]
+    system = payload["messages"][0]["content"]
+    assert "ranking" in system  # the output contract (probe 2026-10-15)
+    # The contract is format-only: no identity and no image bytes.
+    for bad in ("/gallery/", "a.png", "b.png", "base64", "data:image"):
+        assert bad not in system
 
 
 def test_rank_request_asks_for_a_json_object() -> None:
@@ -146,7 +151,8 @@ def test_payload_is_measured_vector_only_no_paths_no_bytes_no_prose() -> None:
     assert set(vector) == {"mode", "items"}
     assert vector["mode"] == "fidelity"
 
-    blob = json.dumps(payload)
+    # The measured VECTOR (the user message) carries no identity / bytes / prose.
+    blob = json.dumps(vector)
     # No file identity of any kind.
     assert "/gallery/" not in blob and "a.png" not in blob and "b.png" not in blob
     # No image bytes / vision envelope.
@@ -556,7 +562,7 @@ def test_switch_back_to_algorithms_re_derives_the_fusion_rank() -> None:
     # Simulate a Jev rank currently displayed on the AI domain.
     b.rank, b.rank_source = 1, "jev"
     a.rank, a.rank_source = 2, "jev"
-    ctrl.state.rank_domain = "ai"
+    ctrl._judgment_domain = "ai"
 
     ctrl.activate_judgment_domain("algorithms")
     assert ctrl.state.rank_domain == "algorithms"
@@ -572,7 +578,8 @@ def test_jev_rank_survives_a_regroup_while_on_the_ai_domain() -> None:
     ctrl = _FakeController([a, b], _series(a, b))
     b.rank, b.rank_source = 1, "jev"
     a.rank, a.rank_source = 2, "jev"
-    ctrl.state.rank_domain = "ai"
+    # S1: the domain authority is the controller field, not ``state``.
+    ctrl._judgment_domain = "ai"
 
     GalleryController._apply_fusion_ranks(ctrl, ctrl.state.series)
     assert b.rank == 1 and b.rank_source == "jev"

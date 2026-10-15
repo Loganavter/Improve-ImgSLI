@@ -8,15 +8,14 @@ to ``<base_url>/chat/completions`` on OpenRouter — under the model id
 bespoke HTTP client** here: one transport, one retry/fallback idiom for the
 whole gallery.
 
-The request is a normal chat/completions call whose *user message* is the
+The request is a chat/completions call with a fixed **output contract** (a
+system message: rank aliases or abstain) and a *user message* that is the
 measured vector: the mode plus, per variant, an opaque alias (``img_N``) and the
-0..100 score of every applicable MEASURED axis — **no image bytes, no file
-paths, no prose instruction**. Jev answers with a Choice / Noul / Score decision
-(JSON in the assistant message).
+0..100 score of every applicable MEASURED axis — **no image bytes, no paths**.
+Jev answers with a Ranking / Choice / Noul decision (JSON in the assistant message).
 
-Determinism note (design, not a bug): the AI domain is explicitly
-non-deterministic — the same vector may get a different Choice. Reproducibility
-is bought by the **pin** (:mod:`tabs.image_gallery.services.jev_cache`).
+Determinism (design, not a bug): the AI domain is explicitly non-deterministic;
+reproducibility is bought by the **pin** (:mod:`tabs.image_gallery.services.jev_cache`).
 
 Degrade contract (never silent, never partial):
 
@@ -34,6 +33,8 @@ No Qt; the transport (``client``) is injectable so tests are network-free. All
 sync calls must run on a ``GenericWorker``, never the UI thread.
 """
 
+# Audit-Meta: pattern=wire-client size=523 reason="one Jev rank seam: measured-vector request + decision parser + degrade contract + pin belong together — splitting scatters the wire contract"
+
 from __future__ import annotations
 
 import json
@@ -42,6 +43,7 @@ from dataclasses import dataclass
 from typing import Any, Callable
 
 from tabs.image_gallery.services import jev_cache
+from tabs.image_gallery.services.ai_client import _ai_debug
 from tabs.image_gallery.services.metric_scores import raw_for, score_for, spec_for
 from tabs.image_gallery.services.rank_fusion import measured_axes_for, rank_series
 
@@ -68,6 +70,22 @@ JEV_REASON_NOUL = "AI (Jev) abstained (Noul) — kept the Algorithms rank"
 JEV_REASON_LOW_CONFIDENCE = "AI (Jev) was not confident enough — kept the Algorithms rank"
 JEV_REASON_ERROR = "AI (Jev) request failed — kept the Algorithms rank"
 JEV_REASON_MALFORMED = "AI (Jev) returned an unusable response — kept the Algorithms rank"
+
+#: Degrade reasons that are a genuine FAULT, not a benign non-answer: a transport
+#: error or an unconfigured client (plan §J1.4). A fault paints the per-card error
+#: chip and keeps the readiness gate retryable (``ok=False``); a benign non-answer
+#: (``Noul`` / low confidence / nothing to rank / malformed) clears the activity
+#: and records completion — malformed is a deterministic "no usable answer", not
+#: a transport fault, so it must not re-introduce the mass false-error chip.
+JEV_FAULT_REASONS = (JEV_REASON_ERROR, JEV_REASON_NOT_CONFIGURED)
+
+
+def reason_is_fault(reason: str | None) -> bool:
+    """True when *reason* is a genuine fault (error chip + gate retry), not a
+    benign non-answer. Prefix match: transport errors append the exception text
+    after :data:`JEV_REASON_ERROR`."""
+    text = str(reason or "")
+    return any(text.startswith(prefix) for prefix in JEV_FAULT_REASONS)
 
 #: A transport takes the chat/completions request and returns the parsed JSON
 #: response. Injectable so tests never touch the network.
@@ -110,12 +128,10 @@ def _path_of(item) -> str:
 
 
 def _aliased(items) -> list[tuple[str, Any]]:
-    """``[(alias, item)]`` — opaque ``img_N`` aliases in a deterministic order.
-
-    Sorted by ``str(path)`` so the alias assignment (and therefore the payload,
-    the cache key and the ranks) never depends on the caller's member order.
-    One shared helper so :func:`build_rank_request` and the decision code cannot
-    drift.
+    """``[(alias, item)]`` — opaque ``img_N`` aliases, sorted by ``str(path)`` so
+    the alias assignment (and thus the payload, cache key and ranks) never
+    depends on caller order; one helper so :func:`build_rank_request` and the
+    decision code cannot drift.
     """
     ordered = sorted(list(items or ()), key=_path_of)
     return [(f"img_{i}", item) for i, item in enumerate(ordered, start=1)]
@@ -124,10 +140,10 @@ def _aliased(items) -> list[tuple[str, Any]]:
 def build_measured_vector(items, *, mode: str) -> dict:
     """The measured-only vector: ``{"mode", "items": [{"alias","scores"}]}``.
 
-    Each entry's ``scores`` holds exactly the applicable MEASURED axes for
-    *mode* (``rank_fusion.measured_axes_for``) that the item actually carries a
-    raw value for — an unmeasured axis is omitted, never fabricated. Contains
-    only the mode, the opaque aliases and the measured numbers.
+    Each entry's ``scores`` holds exactly the applicable MEASURED axes for *mode*
+    (``rank_fusion.measured_axes_for``) that the item actually carries a raw value
+    for — an unmeasured axis is omitted, never fabricated. Only the mode, the
+    opaque aliases and the measured numbers.
     """
     mid = _mode_token(mode)
     axes = measured_axes_for(mid)
@@ -152,27 +168,51 @@ def build_measured_vector(items, *, mode: str) -> dict:
     return {"mode": mid, "items": entries}
 
 
-def build_rank_request(items, *, mode: str) -> dict:
-    """OpenAI-compatible rank request for Jev (text-only, measured vector).
+#: Output contract, sent as the system message. The live ``typesafe/jev-router``
+#: currently routes to a *chat* model that free-forms a narrative
+#: ("summary/observations/next_steps") with no ranking at all when asked only for
+#: a JSON object (probe 2026-10-15) — so the output shape must be constrained.
+#: Carries no image bytes, no paths, no measured values: a format contract only.
+JEV_SYSTEM_PROMPT = (
+    "You rank items by their measured quality scores. Reply with ONLY a JSON "
+    'object {"ranking": ["<alias>", ...]} ordering the aliases best to worst — '
+    "a full ranking whenever at least two aliases carry scores (break near ties "
+    'by your best judgement). Reply {"noul": true} only when fewer than two '
+    "aliases carry scores. No prose."
+)
 
-    A normal chat/completions body: ``model = JEV_MODEL`` and ONE user message
-    whose text part is the canonical JSON measured vector
-    (:func:`build_measured_vector`). No system prompt (no prose instruction), no
-    image parts, no file paths — asserted by ``tests/test_jev_rank.py``.
 
-    ``response_format={"type": "json_object"}`` pins the reply shape: without it
-    the live ``typesafe/jev-router`` alternates prose / fenced-JSON / bare object
-    (probe 2026-10-15); the parser still tolerates the key/shape variance.
+def _request_from_vector(vector: dict) -> dict:
+    """The chat/completions body for a prebuilt measured vector (one shape).
+
+    Split out so :func:`rank_series_jev_detailed` can build the vector ONCE
+    (readiness check + payload) and the contract shape is defined in a single
+    place — the payload test and the wire call cannot drift.
     """
-    vector = build_measured_vector(items, mode=mode)
     text = json.dumps(vector, sort_keys=True, separators=(",", ":"))
     return {
         "model": JEV_MODEL,
         "messages": [
-            {"role": "user", "content": [{"type": "text", "text": text}]}
+            {"role": "system", "content": JEV_SYSTEM_PROMPT},
+            {"role": "user", "content": [{"type": "text", "text": text}]},
         ],
         "response_format": {"type": "json_object"},
     }
+
+
+def build_rank_request(items, *, mode: str) -> dict:
+    """OpenAI-compatible rank request for Jev (text-only, measured vector).
+
+    A chat/completions body: ``model = JEV_MODEL``, ONE system message carrying
+    the output contract (:data:`JEV_SYSTEM_PROMPT`) and ONE user message whose
+    text part is the canonical JSON measured vector
+    (:func:`build_measured_vector`) — no image parts, no file paths
+    (``tests/test_jev_rank.py``). ``response_format={"type": "json_object"}`` **and**
+    the contract pin the reply shape: without the contract the live router's chat
+    model answered a narrative object with no ranking, so every call degraded as
+    unusable (probe 2026-10-15); the parser still tolerates key/shape variance.
+    """
+    return _request_from_vector(build_measured_vector(items, mode=mode))
 
 
 def _normalize_alias(value: Any, aliases: dict[str, str]) -> str | None:
@@ -289,12 +329,11 @@ def _is_noul(raw: dict) -> bool:
 
 
 def _ranking_of(raw: dict) -> list[str] | None:
-    """Explicit full ordering from the decision, or ``None`` when absent.
-
-    Accepts a list of aliases, a list of ``{"alias": ...}`` entries (the live
-    "Jev Router" shape, probe 2026-10-15), or an ``alias -> rank`` mapping.
-    Unknown/duplicate entries are dropped by the caller, which appends any
-    missing alias so the result is always a complete 1..N ordering.
+    """Explicit full ordering from the decision, or ``None`` when absent: a list
+    of aliases, a list of ``{"alias": ...}`` entries (the live "Jev Router"
+    shape, probe 2026-10-15) or an ``alias -> rank`` mapping. Unknown/duplicate
+    entries are dropped by the caller, which appends missing aliases so the
+    result is always a complete 1..N ordering.
     """
     for key in ("ranking", "order", "ordered", "ranked", "ranks"):
         value = raw.get(key)
@@ -402,16 +441,27 @@ def rank_series_jev_detailed(
     *reason* the caller surfaces when the Algorithms rank is kept. Cache-first:
     a hit (including a pinned abstain) is returned without calling ``client``.
     A transport exception is caught, is **not** pinned (a later pass may retry),
-    and degrades to ``None``. Never raises.
+    and degrades to ``None``.
+
+    Precondition (plan §J1.3): a series is only a valid Jev question when **at
+    least two members carry a non-empty applicable MEASURED vector**. A vector
+    with fewer scored aliases degrades with :data:`JEV_REASON_EMPTY` and is
+    **NOT pinned** — pinning a non-answer that arose from missing inputs would
+    poison the cache and hide a later, complete run. Never raises.
     """
     member_list = list(items or ())
     if len(member_list) < 2:
         return JevRankOutcome(None, reason=JEV_REASON_EMPTY)
     try:
-        payload = build_rank_request(member_list, mode=mode)
+        vector = build_measured_vector(member_list, mode=mode)
     except Exception:
-        logger.debug("jev rank payload build failed", exc_info=True)
+        logger.debug("jev rank vector build failed", exc_info=True)
         return JevRankOutcome(None, reason=JEV_REASON_MALFORMED)
+    scored = sum(1 for entry in vector.get("items", ()) if entry.get("scores"))
+    if scored < 2:
+        _ai_debug("jev rank skip: measured vector has %d scored aliases (<2)", scored)
+        return JevRankOutcome(None, reason=JEV_REASON_EMPTY)
+    payload = _request_from_vector(vector)
 
     cache_obj = cache if cache is not None else jev_cache.default_cache()
     try:
@@ -424,19 +474,28 @@ def rank_series_jev_detailed(
         except Exception:
             hit = None
         if hit is not None:
+            _ai_debug("jev rank cache HIT items=%d", len(member_list))
             ranks = hit.get("ranks")
             if ranks:
                 return JevRankOutcome({str(p): int(r) for p, r in ranks.items()}, cached=True)
             return JevRankOutcome(None, reason=hit.get("reason") or JEV_REASON_NOUL, cached=True)
 
     try:
+        _vec = payload["messages"][-1]["content"][0]["text"]
+    except Exception:
+        _vec = "?"
+    _ai_debug("jev rank vector: %.400s", _vec)
+    _ai_debug("jev rank mode=%s items=%d (call)", _mode_token(mode), len(member_list))
+    try:
         raw = client(payload)
     except Exception as exc:
         logger.debug("jev rank call failed: %s", exc, exc_info=True)
+        _ai_debug("jev rank call failed: %s", exc)
         return JevRankOutcome(None, reason=f"{JEV_REASON_ERROR}: {exc}")
 
     decision = _response_dict(raw)
     if decision is None:
+        _ai_debug("jev rank unusable response (no decision object)")
         return JevRankOutcome(None, reason=JEV_REASON_MALFORMED)
 
     try:
@@ -447,6 +506,7 @@ def rank_series_jev_detailed(
 
     # Pin both a decisive rank and an explicit abstain (stable re-runs); do not
     # pin a malformed response — it may be a transient backend glitch.
+    _ai_debug("jev rank => decided=%s reason=%s", outcome.decided, outcome.reason)
     if key and outcome.reason != JEV_REASON_MALFORMED:
         _pin(cache_obj, key, outcome.ranks, outcome.reason)
     return outcome
@@ -481,6 +541,7 @@ def make_client(base_url: str, api_key: str) -> RankClient:
 
 
 __all__ = [
+    "JEV_FAULT_REASONS",
     "JEV_MIN_CONFIDENCE",
     "JEV_MODEL",
     "JEV_TIMEOUT_S",
@@ -496,4 +557,5 @@ __all__ = [
     "make_client",
     "rank_series_jev",
     "rank_series_jev_detailed",
+    "reason_is_fault",
 ]
