@@ -44,10 +44,17 @@ RANK_EXCLUDED_AXES = ("typicality",)
 #: Worst-axis cap: the aggregate may not exceed the item's single weakest
 #: measured axis by more than this margin, so one catastrophic axis (e.g. total
 #: clipping) cannot be averaged away by otherwise-strong axes. A deterministic
-#: rule that needs no real-series calibration; per-mode axis *weights* remain a
-#: follow-up once the baseline is measurable on real series (plan §Open
-#: questions).
+#: rule that needs no real-series calibration.
 RANK_WORST_AXIS_SLACK = 20.0
+
+#: Per-mode axis weights for the fusion mean: ``{mode: {axis_id: weight}}``.
+#: A missing mode or axis is weight ``1.0`` (neutral), so an empty table
+#: reproduces the unweighted baseline exactly. A weight ``<= 0`` removes that
+#: axis from the aggregate (mean AND cap). The mechanism lives here so that
+#: real-series calibration is a *data* edit, not a code change — the plan
+#: (§Open questions) deliberately does not invent weights before that
+#: measurement.
+RANK_AXIS_WEIGHTS: dict[str, dict[str, float]] = {}
 
 #: The mode ids ``measured_axes_for`` understands (``models.Mode`` values).
 _MODES: tuple[str, ...] = ("fidelity", "camera", "batch_synthetic")
