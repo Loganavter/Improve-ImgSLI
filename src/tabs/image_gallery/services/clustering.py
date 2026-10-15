@@ -345,11 +345,8 @@ def cluster_items(items: list["GalleryItem"], threshold: int = 10) -> list["Seri
 
         sid += 1
         series_id = f"series_{sid}"
-        # Assign series_id + the centroid-distance metric (still backs the
-        # ``typicality`` report row). Rank is NOT written here: the gallery's
-        # Algorithms rank is the measured metric fusion
-        # (``services.rank_fusion``, wired in ``controller``) — a centroid
-        # order is never a rank (plan-gallery-rank-backends-2026-10-15).
+        # series_id + centroid distance (still backs ``typicality``); rank is
+        # owned by the measured fusion (plan-gallery-rank-backends-2026-10-15).
         for i in member_indices:
             m = items[i]
             m.series_id = series_id
