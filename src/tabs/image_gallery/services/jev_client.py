@@ -22,8 +22,11 @@ re-run over an unchanged series never re-queries the transport.
 
 Degrade contract (never silent, never partial):
 
-- a decisive Choice/Ranking with ``score >= JEV_MIN_CONFIDENCE`` sets a full
-  1..N rank for the series;
+- a decisive Choice/Ranking sets a full 1..N rank for the series when the
+  confidence is acceptable — a *present* ``score >= JEV_MIN_CONFIDENCE``, or **no
+  ``score`` at all when the decision itself is explicit** (the live
+  ``typesafe/jev-router`` reply carries ``best``/``ranking`` but no confidence
+  number — probe 2026-10-15);
 - ``Noul`` / low confidence / HTTP error / malformed body / empty series returns
   ``None`` and a human-readable :attr:`JevRankOutcome.reason`;
 - the caller then keeps the Algorithms (fusion) rank and surfaces the reason. A
@@ -51,9 +54,10 @@ logger = logging.getLogger("ImproveImgSLI")
 #: stays :func:`ai_client.call_sync` (no second client, no bespoke endpoint).
 JEV_MODEL = "typesafe/jev-router"
 
-#: Confidence gate: a decision whose Score is below this is *indecisive* and the
-#: Algorithms rank survives (documented in the plan; mirrors the VLM tie-break
-#: gate semantics).
+#: Confidence gate: a *present* Score below this is indecisive (Algorithms rank
+#: survives). A decision with no ``score`` is still decisive when explicit: the
+#: live ``typesafe/jev-router`` omits any number (probe 2026-10-15), so requiring
+#: one made every real call degrade to "malformed".
 JEV_MIN_CONFIDENCE = 0.5
 
 #: Visible degrade reasons (English defaults; the caller logs / surfaces them).
@@ -154,6 +158,10 @@ def build_rank_request(items, *, mode: str) -> dict:
     whose text part is the canonical JSON measured vector
     (:func:`build_measured_vector`). No system prompt (no prose instruction), no
     image parts, no file paths — asserted by ``tests/test_jev_rank.py``.
+
+    ``response_format={"type": "json_object"}`` pins the reply shape: without it
+    the live ``typesafe/jev-router`` alternates prose / fenced-JSON / bare object
+    (probe 2026-10-15); the parser still tolerates the key/shape variance.
     """
     vector = build_measured_vector(items, mode=mode)
     text = json.dumps(vector, sort_keys=True, separators=(",", ":"))
@@ -162,6 +170,7 @@ def build_rank_request(items, *, mode: str) -> dict:
         "messages": [
             {"role": "user", "content": [{"type": "text", "text": text}]}
         ],
+        "response_format": {"type": "json_object"},
     }
 
 
@@ -271,7 +280,7 @@ def _is_noul(raw: dict) -> bool:
     for key in ("noul", "is_noul", "abstain", "abstained"):
         if key in raw and bool(raw.get(key)):
             return True
-    for key in ("choice", "winner", "best", "selected", "pick"):
+    for key in ("choice", "winner", "best", "selected", "pick", "recommended"):
         value = raw.get(key)
         if isinstance(value, str) and value.strip().lower() in ("noul", "none", "null"):
             return True
@@ -281,10 +290,10 @@ def _is_noul(raw: dict) -> bool:
 def _ranking_of(raw: dict) -> list[str] | None:
     """Explicit full ordering from the decision, or ``None`` when absent.
 
-    Accepts a list of aliases (``["img_2", "img_1", ...]``) or an
-    ``alias -> rank`` mapping. Unknown/duplicate entries are dropped by the
-    caller, which then appends any missing alias in payload order so the result
-    is always a complete 1..N ordering.
+    Accepts a list of aliases, a list of ``{"alias": ...}`` entries (the live
+    "Jev Router" shape, probe 2026-10-15), or an ``alias -> rank`` mapping.
+    Unknown/duplicate entries are dropped by the caller, which appends any
+    missing alias so the result is always a complete 1..N ordering.
     """
     for key in ("ranking", "order", "ordered", "ranked", "ranks"):
         value = raw.get(key)
@@ -293,6 +302,10 @@ def _ranking_of(raw: dict) -> list[str] | None:
             for entry in value:
                 if isinstance(entry, (str, int)) and not isinstance(entry, bool):
                     seq.append(str(entry))
+                elif isinstance(entry, dict):
+                    alias = entry.get("alias", entry.get("id"))
+                    if isinstance(alias, (str, int)) and not isinstance(alias, bool):
+                        seq.append(str(alias))
             if seq:
                 return seq
         if isinstance(value, dict):
@@ -309,7 +322,7 @@ def _ranking_of(raw: dict) -> list[str] | None:
 
 
 def _choice_of(raw: dict) -> Any:
-    for key in ("choice", "winner", "best", "selected", "pick"):
+    for key in ("choice", "winner", "best", "selected", "pick", "recommended"):
         if key in raw:
             value = raw.get(key)
             if value not in (None, ""):
@@ -333,10 +346,11 @@ def _decide(raw: dict, member_list, *, mode: str) -> JevRankOutcome:
     if _is_noul(raw):
         return JevRankOutcome(None, reason=JEV_REASON_NOUL)
 
+    # A confidence number is optional: gate only when Jev actually reports one.
+    # An explicit decision (ranking/best) with no ``score`` is still decisive —
+    # the live ``typesafe/jev-router`` reply omits ``score`` (probe 2026-10-15).
     score = _score_of(raw)
-    if score is None:
-        return JevRankOutcome(None, reason=JEV_REASON_MALFORMED)
-    if score < JEV_MIN_CONFIDENCE:
+    if score is not None and score < JEV_MIN_CONFIDENCE:
         return JevRankOutcome(None, reason=JEV_REASON_LOW_CONFIDENCE)
 
     by_path = {alias: path for alias, path in aliases.items()}

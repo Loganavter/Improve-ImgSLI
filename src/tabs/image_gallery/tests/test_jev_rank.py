@@ -119,6 +119,15 @@ def test_rank_request_is_a_single_user_message_chat_body() -> None:
     assert [m["role"] for m in payload["messages"]] == ["user"]  # no system prompt
 
 
+def test_rank_request_asks_for_a_json_object() -> None:
+    """The live reply is unstable in shape without structured output (prose vs
+    fenced JSON vs bare object — probe 2026-10-15), so the request pins it."""
+    a = _item("a.png", ssim=0.90, noise=0.10)
+    b = _item("b.png", ssim=0.50, noise=0.10)
+    payload = build_rank_request([a, b], mode="fidelity")
+    assert payload["response_format"] == {"type": "json_object"}
+
+
 def test_payload_is_measured_vector_only_no_paths_no_bytes_no_prose() -> None:
     a = _item("a.png", ssim=0.90, noise=0.10)
     b = _item("b.png", ssim=0.50, noise=0.10)
@@ -218,6 +227,108 @@ def test_rank_series_jev_matches_explicit_full_ranking(tmp_path) -> None:
         str(a.path): 2,
         str(b.path): 3,
     }
+
+
+def test_real_jev_reply_without_a_score_is_still_decisive(tmp_path) -> None:
+    """Falsification: the live ``typesafe/jev-router`` reply carries prose + a
+    fenced JSON block with ``best``/``ranking`` and **no** ``score`` (probe
+    2026-10-15). Reading a missing confidence number as a malformed answer made
+    every real AI-domain call silently degrade to the Algorithms rank."""
+    a = _item("a.png", ssim=0.90, noise=0.10)
+    b = _item("b.png", ssim=0.50, noise=0.10)
+    c = _item("c.png", ssim=0.70, noise=0.10)
+
+    content = (
+        'Best overall: **img_1**\n\nRanking for `mode: "fidelity"`:\n\n'
+        "1. **img_1** ...\n2. **img_3** ...\n3. **img_2** ...\n\n"
+        "```json\n"
+        '{"mode": "fidelity", "best": "img_1", '
+        '"ranking": ["img_1", "img_3", "img_2"], '
+        '"composite_scores": {"img_1": 78.2, "img_3": 71.4, "img_2": 49.0}}\n'
+        "```"
+    )
+
+    def _client(payload):
+        return {"choices": [{"message": {"content": content}}]}
+
+    outcome = rank_series_jev_detailed(
+        [a, b, c], mode="fidelity", client=_client, cache=jev_cache.JevRankCache(tmp_path)
+    )
+    assert outcome.decided, outcome.reason
+    assert outcome.ranks == {str(a.path): 1, str(c.path): 2, str(b.path): 3}
+
+
+def test_decision_keyed_recommended_is_decisive(tmp_path) -> None:
+    """Observed "Jev Router" JSON shape A (probe 2026-10-15): a bare
+    ``recommended`` with no ``ranking``/``best``/``choice`` key still names a
+    winner — the tail keeps the deterministic fusion order."""
+    a = _item("a.png", ssim=0.90, noise=0.10)
+    b = _item("b.png", ssim=0.50, noise=0.10)
+    c = _item("c.png", ssim=0.70, noise=0.10)
+
+    def _client(payload):
+        return _chat({"recommended": "img_1", "mode": "fidelity", "reason": "best balance"})
+
+    outcome = rank_series_jev_detailed(
+        [a, b, c], mode="fidelity", client=_client, cache=jev_cache.JevRankCache(tmp_path)
+    )
+    assert outcome.decided, outcome.reason
+    assert outcome.ranks[str(a.path)] == 1
+    assert sorted(outcome.ranks.values()) == [1, 2, 3]  # complete 1..N
+
+
+def test_ranking_of_alias_objects_is_decisive(tmp_path) -> None:
+    """Observed "Jev Router" JSON shape B (probe 2026-10-15): ``ranking`` is a
+    list of ``{"alias": ...}`` objects, not bare alias strings."""
+    a = _item("a.png", ssim=0.90, noise=0.10)
+    b = _item("b.png", ssim=0.50, noise=0.10)
+    c = _item("c.png", ssim=0.70, noise=0.10)
+
+    def _client(payload):
+        return _chat({
+            "mode": "fidelity",
+            "best": "img_1",
+            "ranking": [
+                {"alias": "img_1", "overall": 78.2},
+                {"alias": "img_3", "overall": 71.4},
+                {"alias": "img_2", "overall": 49.0},
+            ],
+        })
+
+    ranks = rank_series_jev(
+        [a, b, c], mode="fidelity", client=_client, cache=jev_cache.JevRankCache(tmp_path)
+    )
+    assert ranks == {str(a.path): 1, str(c.path): 2, str(b.path): 3}
+
+
+def test_present_low_score_still_degrades_even_with_a_ranking(tmp_path) -> None:
+    """The confidence gate is not weakened: a *present* sub-threshold score
+    degrades even when the reply also carries an explicit ranking."""
+    a = _item("a.png", ssim=0.90, noise=0.10)
+    b = _item("b.png", ssim=0.50, noise=0.10)
+
+    def _client(payload):
+        return _chat({"ranking": ["img_1", "img_2"], "score": 0.1})
+
+    outcome = rank_series_jev_detailed(
+        [a, b], mode="fidelity", client=_client, cache=jev_cache.JevRankCache(tmp_path)
+    )
+    assert outcome.ranks is None
+    assert outcome.reason == JEV_REASON_LOW_CONFIDENCE
+
+
+def test_decision_with_neither_ranking_nor_choice_degrades(tmp_path) -> None:
+    """A score-free body that names no winner/ordering is still unusable."""
+    a = _item("a.png", ssim=0.90, noise=0.10)
+    b = _item("b.png", ssim=0.50, noise=0.10)
+
+    outcome = rank_series_jev_detailed(
+        [a, b],
+        mode="fidelity",
+        client=lambda p: _chat({"mode": "fidelity", "note": "no decision here"}),
+        cache=jev_cache.JevRankCache(tmp_path),
+    )
+    assert outcome.ranks is None
 
 
 # --------------------------------------------------------------------------
