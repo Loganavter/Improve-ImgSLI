@@ -240,8 +240,11 @@ def cluster_items(items: list["GalleryItem"], threshold: int = 10) -> list["Seri
     Embedding distance is a secondary gate: if hamming is just above
     threshold but embedding is very close, we still cluster (tight cloud).
 
-    Returns ``list[Series]``; mutates ``GalleryItem.series_id`` / ``rank``
-    for convenience (explicit but non-Qt). Corrupt/unreadable files (both
+    Returns ``list[Series]``; mutates ``GalleryItem.series_id`` and the
+    ``phash`` / ``embedding_dist_to_centroid`` metrics for convenience
+    (explicit but non-Qt). Rank is intentionally NOT assigned here — it comes
+    from the measured metric fusion (``services.rank_fusion``) in the
+    controller. Corrupt/unreadable files (both
     phash == 0 and embedding is zero vector) are excluded from grouping
     so they become singletons (UNGROUPED).
     """
@@ -342,29 +345,29 @@ def cluster_items(items: list["GalleryItem"], threshold: int = 10) -> list["Seri
 
         sid += 1
         series_id = f"series_{sid}"
-        # Assign series_id to members; rank placeholder sorted by distance to centroid.
-        # Distance to centroid for ranking (smaller = more central).
-        scored: list[tuple[float, "GalleryItem"]] = []
+        # Assign series_id + the centroid-distance metric (still backs the
+        # ``typicality`` report row). Rank is NOT written here: the gallery's
+        # Algorithms rank is the measured metric fusion
+        # (``services.rank_fusion``, wired in ``controller``) — a centroid
+        # order is never a rank (plan-gallery-rank-backends-2026-10-15).
         for i in member_indices:
-            d = _embedding_distance(embeddings[i], centroid)
-            scored.append((d, items[i]))
-        scored.sort(key=lambda x: x[0])
-        for rank, (_, m) in enumerate(scored, start=1):
+            m = items[i]
             m.series_id = series_id
-            m.rank = rank
             # Store metrics for potential UI (pure dict).
-            m.metrics["phash"] = phashes[items.index(m)] if m in items else 0
-            m.metrics["embedding_dist_to_centroid"] = scored[rank - 1][0]
+            m.metrics["phash"] = phashes[i] if 0 <= i < len(phashes) else 0
+            m.metrics["embedding_dist_to_centroid"] = _embedding_distance(
+                embeddings[i], centroid
+            )
 
         ser = Series(id=series_id, members=members, centroid=centroid, phash_centroid=phash_centroid)
         series_list.append(ser)
 
-    # Reset series_id/rank for singletons (UNGROUPED).
+    # Singletons stay UNGROUPED (series_id cleared); rank is owned by the
+    # controller's fusion pass, never by clustering.
     grouped_paths = {id(m) for s in series_list for m in s.members}
     for it in items:
         if id(it) not in grouped_paths:
             it.series_id = None
-            it.rank = None
 
     # Sort series by size descending then id for stable output.
     series_list.sort(key=lambda s: (-len(s.members), s.id))

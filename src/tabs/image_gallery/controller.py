@@ -714,6 +714,15 @@ class GalleryController:
         Never mutates slot values directly. Returns False (local-only) when
         no dispatcher is wired — callers always mirror locally first.
         """
+        # A triage rank snapshot is the moment the local ranks were just
+        # (re)written; freeze any explicit Keep/Make best winner as a manual
+        # rank first so the mirrored provenance is truthful (the UI reaches the
+        # triage helpers directly, not through the wrappers below).
+        if isinstance(action, GalleryTriageFinished):
+            try:
+                self._mark_triage_picks_manual()
+            except Exception:
+                pass
         store = self._gallery_store()
         if store is None:
             return False
@@ -829,8 +838,6 @@ class GalleryController:
                 try:
                     if meta.mtime_ns != old.mtime_ns:
                         old.mtime_ns = meta.mtime_ns
-                    if meta.rank != old.rank:
-                        old.rank = meta.rank
                 except Exception:
                     pass
                 new_items.append(old)
@@ -839,10 +846,6 @@ class GalleryController:
                     item = GalleryItem(path=Path(meta.path), mtime_ns=meta.mtime_ns)
                 except Exception:
                     continue
-                try:
-                    item.rank = meta.rank
-                except Exception:
-                    pass
                 new_items.append(item)
                 fresh.append(item)
         self.state.items = new_items
@@ -871,19 +874,120 @@ class GalleryController:
             except Exception:
                 pass
 
-    def _apply_slot_ranks(self, slot) -> None:
-        """Authoritative rank sync (undo / external replace only)."""
+    def _apply_fusion_ranks(self, series, *, mode=None) -> None:
+        """(Re)derive every series rank from the measured metric fusion.
+
+        Single rank-assignment primitive for the Algorithms domain
+        (plan-gallery-rank-backends-2026-10-15): a series is ranked by
+        ``rank_fusion.rank_series`` over its members — a pure function of the
+        measured quality axes, never of the HSV centroid, arrival order or
+        mtime. Called on every automatic regroup/reconcile path.
+
+        Items whose rank is an explicit user decision — ``rank_source ==
+        "manual"`` or a live ``triage_best`` winner from Keep/Make best — keep
+        their stored rank and are never silently re-derived; the other members
+        fill the free slots in fusion order. Ungrouped items are unranked
+        (``rank``/``rank_source`` cleared) unless explicitly fixed. Never raises.
+        """
         try:
-            metas = {m.path: m.rank for m in _gallery_selectors.get_items(slot)}
+            from tabs.image_gallery.services.rank_fusion import rank_series as _rank
         except Exception:
             return
-        for it in self.state.items:
+        if mode is None:
+            mode = getattr(self.state, "mode", None)
+        try:
+            groups = list(series or ())
+        except Exception:
+            groups = []
+
+        def _locked(m) -> bool:
+            """True when the item's rank is an explicit user decision."""
             try:
-                want = metas.get(str(it.path))
-                if it.rank != want:
-                    it.rank = want
+                if getattr(m, "rank", None) is None:
+                    return False
+                return (
+                    getattr(m, "rank_source", None) == "manual"
+                    or bool(getattr(m, "triage_best", False))
+                )
+            except Exception:
+                return False
+
+        members_of = GalleryController._section_members
+        ranked_ids: set[int] = set()
+        for entry in groups:
+            members = members_of(entry)
+            if not members:
+                continue
+            for m in members:
+                ranked_ids.add(id(m))
+            try:
+                ranks = _rank(members, mode=mode)
+            except Exception:
+                ranks = {}
+
+            def _fusion_rank(m, _ranks=ranks):
+                try:
+                    r = _ranks.get(str(getattr(m, "path", "")))
+                except Exception:
+                    r = None
+                try:
+                    return int(r) if r is not None else 1 << 30
+                except Exception:
+                    return 1 << 30
+
+            def _path_of(m):
+                try:
+                    return str(getattr(m, "path", ""))
+                except Exception:
+                    return ""
+
+            ordered = sorted(members, key=lambda m: (_fusion_rank(m), _path_of(m)))
+            taken: set[int] = set()
+            for m in members:
+                if _locked(m):
+                    try:
+                        taken.add(int(m.rank))
+                        m.rank_source = "manual"  # type: ignore[attr-defined]
+                    except Exception:
+                        pass
+            nxt = 1
+            for m in ordered:
+                if _locked(m):
+                    continue
+                while nxt in taken:
+                    nxt += 1
+                try:
+                    m.rank = nxt
+                    m.rank_source = "fusion"
+                except Exception:
+                    pass
+                taken.add(nxt)
+                nxt += 1
+        # Ungrouped items are unranked — a missing measurement never becomes
+        # a fabricated number.
+        try:
+            live = list(getattr(self.state, "items", []) or ())
+        except Exception:
+            live = []
+        for it in live:
+            if id(it) in ranked_ids:
+                continue
+            if _locked(it):
+                continue
+            try:
+                it.rank = None
+                it.rank_source = None
             except Exception:
                 pass
+
+    def _apply_slot_ranks(self, slot) -> None:
+        """Re-derive series ranks from the measured fusion (undo / external replace).
+
+        The slot no longer owns ranks: the Algorithms rank is a pure function
+        of the item's measured metrics, so an authoritative reconcile
+        re-derives it from the live series instead of copying a stored number.
+        """
+        self._apply_fusion_ranks(getattr(self.state, "series", None))
 
     def _apply_slot_selection_filter(self, slot) -> None:
         try:
@@ -2341,17 +2445,9 @@ class GalleryController:
                         it.series_id = sid
                     except Exception:
                         pass
-                    try:
-                        it.rank = len(members_of(host))
-                    except Exception:
-                        pass
                 except Exception:
                     try:
                         it.series_id = sid
-                    except Exception:
-                        pass
-                    try:
-                        it.rank = 1
                     except Exception:
                         pass
                 continue
@@ -2363,10 +2459,6 @@ class GalleryController:
                 ph = last_phash.get(sid)
             try:
                 it.series_id = sid
-            except Exception:
-                pass
-            try:
-                it.rank = 1
             except Exception:
                 pass
             try:
@@ -2404,6 +2496,10 @@ class GalleryController:
         clustering, no thread hops, no analysis starts.
         """
         self.state.series = series  # type: ignore[assignment]
+        # Rank the regrouped view from the measured fusion (move / append
+        # attach): same primitive as the triage tail, so a regroup never
+        # resurrects the centroid order.
+        self._apply_fusion_ranks(series)
         try:
             ts = getattr(self.state, "triage_state", "idle")
             triage_s = getattr(ts, "value", ts)
@@ -3157,6 +3253,10 @@ class GalleryController:
         self.state.source_path = source  # type: ignore[assignment]
         self.state.mode = mode  # type: ignore[assignment]
         self.state.triage_state = TriageState.DONE
+        # Algorithms rank: measured metric fusion over each series (never the
+        # old centroid order). Single choke point for both the worker and the
+        # inline fast path.
+        self._apply_fusion_ranks(series, mode=mode)
         self._emit_triage_finished("done")
         return series
 
@@ -3319,19 +3419,29 @@ class GalleryController:
             return
         if len(members) < 2:
             return
-        # Sort by rank (1 is best) then embedding distance
+        # Candidates come from the MEASURED FUSION order (not the old centroid
+        # distance/rank): the VLM tie-break is additive on top of the
+        # Algorithms rank, so its top-2 must be the fusion top-2.
+        try:
+            from tabs.image_gallery.services.rank_fusion import rank_series as _rank
+
+            fusion = _rank(members, mode=getattr(self.state, "mode", None))
+        except Exception:
+            fusion = {}
+
         def _sort_key(it: GalleryItem):
-            r = getattr(it, "rank", None) or getattr(it, "crown_rank", None)
             try:
-                rk = int(r) if r is not None else 999
+                r = fusion.get(str(getattr(it, "path", "")))
             except Exception:
-                rk = 999
-            d = it.metrics.get("embedding_dist_to_centroid") if isinstance(it.metrics, dict) else None
+                r = None
             try:
-                df = float(d) if d is not None else 1e9
+                rk = int(r) if r is not None else 1 << 30
             except Exception:
-                df = 1e9
-            return (rk, df)
+                rk = 1 << 30
+            try:
+                return (rk, str(getattr(it, "path", "")))
+            except Exception:
+                return (rk, "")
 
         sorted_members = sorted(members, key=_sort_key)
         top2 = sorted_members[:2]
@@ -3459,18 +3569,19 @@ class GalleryController:
 
             winner = a if _matches(a, winner_str) else (b if _matches(b, winner_str) else a)
             loser = b if winner is a else a
-            # Downgrade loser, promote winner within series (keep other members untouched)
+            # Additive crown: the VLM verdict overlays ``crown_rank``/``is_best``
+            # on top of the fusion rank (#N is crown_rank ?? rank in
+            # ``rank_badge``). ``rank`` stays the measured-fusion number — the
+            # AI hint never fabricates a measured rank.
             try:
                 winner.is_best = True
                 winner.crown_rank = 1
-                winner.rank = 1
                 winner.vlm_tie_result = result
             except Exception:
                 pass
             try:
                 loser.is_best = False
                 loser.crown_rank = 2
-                loser.rank = 2
                 loser.vlm_tie_result = result
             except Exception:
                 pass
@@ -3524,10 +3635,76 @@ class GalleryController:
 
     # -- Stage 2 crown/reject/S3 (thin wrappers → use_cases/triage) --------
 
+    def _mark_triage_picks_manual(self) -> int:
+        """Freeze explicit triage winners (``triage_best``) as manual ranks.
+
+        Keep best / Make best mark their winners ``triage_best``; those are the
+        user's explicit decisions. The gallery UI reaches the triage helpers
+        directly (not through ``make_best``/``keep_best_of_series``), so this is
+        the seam that keeps the badge provenance truthful in production: it is
+        invoked right before a rank snapshot is mirrored. Returns items flagged.
+        """
+        try:
+            items = list(getattr(self.state, "items", None) or ())
+        except Exception:
+            items = []
+        picked = [it for it in items if bool(getattr(it, "triage_best", False))]
+        return self._mark_rank_manual(picked)
+
+    def _mark_rank_manual(self, items) -> int:
+        """Flag the ranks of *items* as explicit USER decisions.
+
+        ``rank_source = "manual"`` so a later automatic regroup never silently
+        re-derives them (``_apply_fusion_ranks`` leaves manual ranks alone).
+        Only items that actually carry a rank are flagged — an unranked item
+        has no manual decision to protect. Returns the number flagged.
+        """
+        count = 0
+        for m in list(items or ()):
+            if getattr(m, "rank", None) is None:
+                continue
+            try:
+                m.rank_source = "manual"  # type: ignore[attr-defined]
+                count += 1
+            except Exception:
+                pass
+        return count
+
+    def _item_for_path(self, path):
+        try:
+            target = path if isinstance(path, Path) else Path(path)
+        except Exception:
+            return None
+        try:
+            items = list(getattr(self.state, "items", None) or ())
+        except Exception:
+            items = []
+        for it in items:
+            try:
+                if Path(getattr(it, "path", None)) == target:
+                    return it
+            except Exception:
+                continue
+        return None
+
     def make_best(self, path: Path) -> bool:
         from tabs.image_gallery.use_cases.triage import make_best as _make_best
 
-        return bool(_make_best(self, path))
+        ok = bool(_make_best(self, path))
+        if ok:
+            # The explicit pick is manual; the remaining members are re-derived
+            # from the fusion around the anchored manual rank.
+            self._mark_rank_manual([self._item_for_path(path)])
+            self._apply_fusion_ranks(getattr(self.state, "series", None))
+            try:
+                from tabs.image_gallery.use_cases.triage import (
+                    _refresh_owner_grid as _refresh,
+                )
+
+                _refresh(self)
+            except Exception:
+                pass
+        return ok
 
     def toggle_reject(self, path: Path) -> bool:
         from tabs.image_gallery.use_cases.triage import toggle_reject as _toggle
@@ -3547,7 +3724,25 @@ class GalleryController:
     def keep_best_of_series(self) -> dict:
         from tabs.image_gallery.use_cases.triage import keep_best_of_series as _keep
 
-        return _keep(self)
+        result = _keep(self)
+        # Every keeper (explicit per-series user decision) is manual; the rest
+        # is re-derived from the fusion around the anchored winners.
+        try:
+            items = list(getattr(self.state, "items", None) or ())
+        except Exception:
+            items = []
+        keepers = [it for it in items if bool(getattr(it, "is_best", False))]
+        self._mark_rank_manual(keepers)
+        self._apply_fusion_ranks(getattr(self.state, "series", None))
+        try:
+            from tabs.image_gallery.use_cases.triage import (
+                _refresh_owner_grid as _refresh,
+            )
+
+            _refresh(self)
+        except Exception:
+            pass
+        return result
 
     def show_all(self) -> int:
         from tabs.image_gallery.use_cases.triage import show_all as _show
@@ -3706,9 +3901,10 @@ class GalleryController:
 
         S1 centroid policy: one nearest-centroid decision per readable
         unpinned item via S1 ``attach_items`` (same threshold rule as
-        ``cluster_items``). Attached items join the series (positional rank
-        at the tail), misses land UNGROUPED. Existing membership (members,
-        ranks, ids) is untouched. Paths carrying a stored override (re-drop
+        ``cluster_items``). Attached items join the series (rank comes from
+        the controller's measured-fusion pass, never positional), misses land
+        UNGROUPED. Existing membership (members, ranks, ids) is untouched.
+        Paths carrying a stored override (re-drop
         of a removed pinned file) take the pin: join the pinned group or
         stand as a 1-member section. Unreadable files (zero phash + zero
         embedding — cluster parity) stay UNGROUPED. Returns
@@ -3808,10 +4004,6 @@ class GalleryController:
                     item.series_id = sid
                 except Exception:
                     pass
-                try:
-                    item.rank = None
-                except Exception:
-                    pass
                 if sid is not None:
                     host = by_id.get(sid)
                     if host is not None:
@@ -3822,17 +4014,9 @@ class GalleryController:
                                 host.append(item)
                             else:
                                 raise TypeError("ungroupable host")
-                            try:
-                                item.rank = len(members_of(host))
-                            except Exception:
-                                pass
                         except Exception:
                             pass
                     else:
-                        try:
-                            item.rank = 1
-                        except Exception:
-                            pass
                         try:
                             entry = Series(id=sid, members=[item])
                         except Exception:
@@ -3859,20 +4043,12 @@ class GalleryController:
                     item.series_id = None
                 except Exception:
                     pass
-                try:
-                    item.rank = None
-                except Exception:
-                    pass
                 attached[key] = None
                 continue
             hit = decided.get(key)
             if hit is None:
                 try:
                     item.series_id = None
-                except Exception:
-                    pass
-                try:
-                    item.rank = None
                 except Exception:
                     pass
                 attached[key] = None
@@ -3886,10 +4062,6 @@ class GalleryController:
                     item.series_id = None
                 except Exception:
                     pass
-                try:
-                    item.rank = None
-                except Exception:
-                    pass
                 attached[key] = None
                 continue
             try:
@@ -3901,15 +4073,8 @@ class GalleryController:
                     entry.members.append(item)  # type: ignore[union-attr]
                 elif isinstance(entry, list):
                     entry.append(item)
-                try:
-                    item.rank = len(members_of(entry))
-                except Exception:
-                    pass
             except Exception:
-                try:
-                    item.rank = None
-                except Exception:
-                    pass
+                pass
             attached[key] = rsid
         try:
             self.state.series = groups  # type: ignore[assignment]
