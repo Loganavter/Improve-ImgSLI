@@ -39,7 +39,7 @@ from sli_ui_toolkit.widgets import (
 )
 
 from ui.host_debug import scroll_value_debug
-from ui.icon_manager import get_app_icon
+from ui.icon_manager import themed_icon
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -703,7 +703,7 @@ class ScrollValueButton(Button):
         # Edit-mode (Enter) → кольцо наверх и без автоскрытия, wheel-preview → кольцо на кнопке с таймером
         _grab = bool(self._keyboard_edit_active)
         if self._is_at_zero():
-            self._flyout.show_value("", icon=get_app_icon(self._zero_icon), anchor=self, grab_focus=_grab)
+            self._flyout.show_value("", icon=themed_icon(self._zero_icon), anchor=self, grab_focus=_grab)
         else:
             self._flyout.show_value(str(self._value), anchor=self, grab_focus=_grab)
         if _grab:

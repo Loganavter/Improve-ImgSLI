@@ -14,12 +14,18 @@ def _make_gallery_sections(tab):  # type: ignore[no-untyped-def]
         # Resolve icon to gallery icon if SECTION.icon is None
         if getattr(AI_SECTION, "icon", None) is None:
             try:
+                from dataclasses import replace
+                from functools import partial
+
+                from sli_ui_toolkit.icons import lazy_icon
                 from tabs.image_gallery.icons import Icon, get_icon
 
-                # Patch icon onto section (dataclass is frozen — recreate)
-                from dataclasses import replace
-
-                patched = replace(AI_SECTION, icon=get_icon(Icon.GALLERY))
+                # Lazy handle: the settings sidebar re-resolves the section icon
+                # on theme change; an eager QIcon froze at registration time.
+                patched = replace(
+                    AI_SECTION,
+                    icon=lazy_icon(partial(get_icon, Icon.GALLERY)),
+                )
                 return (patched,)
             except Exception:
                 return (AI_SECTION,)

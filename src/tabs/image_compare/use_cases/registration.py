@@ -6,7 +6,10 @@ from __future__ import annotations
 
 
 def _make_analysis_section(tab) -> "SettingsSection":  # type: ignore[no-untyped-def]
+    from functools import partial
+
     from plugins.settings.registry import SettingsSection
+    from sli_ui_toolkit.icons import lazy_icon
     from tabs.image_compare.icons import Icon, get_icon
     from plugins.settings.pages.analysis import SEARCH as ANALYSIS_SEARCH
 
@@ -18,7 +21,10 @@ def _make_analysis_section(tab) -> "SettingsSection":  # type: ignore[no-untyped
     return SettingsSection(
         section_id="image_compare.analysis",
         title_key="image_compare.session_type",
-        icon=get_icon(Icon.HIGHLIGHT_DIFFERENCES),
+        # Lazy handle: the sidebar re-resolves the section icon on theme change
+        # (`IconListWidget.refresh_icons`); an eager QIcon here would stay frozen
+        # at the theme active when the section was registered.
+        icon=lazy_icon(partial(get_icon, Icon.HIGHLIGHT_DIFFERENCES)),
         build=_build_analysis_with_perf_extras,
         owner_tab=tab.session_type,
         order=40,

@@ -24,7 +24,7 @@ from resources.translations import get_current_language
 from resources.translations import tr as app_tr
 from shared_toolkit.ui.layout_sizing import handle_application_font_change
 from ui.context_menu.manager import open_context_menu_entries
-from ui.icon_manager import AppIcon, get_app_icon
+from ui.icon_manager import AppIcon, themed_icon
 from utils.resource_loader import resource_path
 
 from .service import ImageProperties
@@ -166,7 +166,7 @@ class ImagePropertiesDialog(ThemedDialog):
             ContextMenuAction(
                 "image_properties.text.copy",
                 self._tr("action.context_copy", "Copy"),
-                icon=get_app_icon("copy.svg"),
+                icon=themed_icon("copy.svg"),
                 shortcut="Ctrl+C",
                 enabled=has_selection,
             ),
