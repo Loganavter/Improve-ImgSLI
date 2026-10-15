@@ -110,6 +110,33 @@ def test_call_sync_raises_on_an_empty_stream(monkeypatch) -> None:
         ai_client.call_sync("https://openrouter.ai/api/v1", "key", {})
 
 
+def test_call_sync_idle_timeout_raises_network_error(monkeypatch) -> None:
+    """`timeout` is an IDLE gap, not a total wall: a stream that stops feeding
+    chunks raises AiNetworkError (not a hang, not a response)."""
+
+    class _StallingStream:
+        status = 200
+        headers: dict = {}
+
+        def readline(self) -> bytes:
+            raise TimeoutError("no data for timeout seconds")
+
+        def read(self) -> bytes:
+            raise TimeoutError("no data for timeout seconds")
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+    monkeypatch.setattr(
+        ai_client.urllib.request, "urlopen", lambda request, timeout=None: _StallingStream()
+    )
+    with pytest.raises(ai_client.AiNetworkError):
+        ai_client.call_sync("https://openrouter.ai/api/v1", "key", {}, timeout=5.0)
+
+
 def test_streamed_tie_break_response_parses(monkeypatch, tmp_path) -> None:
     """End-to-end: a streamed reply drives the real tie-break parser."""
     from pathlib import Path
