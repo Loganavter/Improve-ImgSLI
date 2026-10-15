@@ -885,9 +885,12 @@ class GalleryController:
 
         Items whose rank is an explicit user decision — ``rank_source ==
         "manual"`` or a live ``triage_best`` winner from Keep/Make best — keep
-        their stored rank and are never silently re-derived; the other members
-        fill the free slots in fusion order. Ungrouped items are unranked
-        (``rank``/``rank_source`` cleared) unless explicitly fixed. Never raises.
+        their stored rank and are never silently re-derived; so does a
+        ``rank_source == "jev"`` item while ``state.rank_domain == "ai"`` (the
+        AI domain owns that rank; flipping back to Algorithms clears it). The
+        other members fill the free slots in fusion order. Ungrouped items are
+        unranked (``rank``/``rank_source`` cleared) unless explicitly fixed.
+        Never raises.
         """
         try:
             from tabs.image_gallery.services.rank_fusion import rank_series as _rank
@@ -901,13 +904,23 @@ class GalleryController:
             groups = []
 
         def _locked(m) -> bool:
-            """True when the item's rank is an explicit user decision."""
+            """True when the item's rank is an explicit user decision, or a Jev
+            rank the active AI domain owns (plan R3)."""
             try:
                 if getattr(m, "rank", None) is None:
                     return False
-                return (
+                if (
                     getattr(m, "rank_source", None) == "manual"
                     or bool(getattr(m, "triage_best", False))
+                ):
+                    return True
+                # AI domain: a Jev rank is the domain's ranker — a fusion
+                # regroup must not silently re-derive it. Flipping back to the
+                # Algorithms domain clears this and fusion re-derives.
+                return (
+                    getattr(m, "rank_source", None) == "jev"
+                    and str(getattr(self.state, "rank_domain", "algorithms") or "")
+                    == "ai"
                 )
             except Exception:
                 return False
@@ -947,7 +960,10 @@ class GalleryController:
                 if _locked(m):
                     try:
                         taken.add(int(m.rank))
-                        m.rank_source = "manual"  # type: ignore[attr-defined]
+                        # Preserve the owning source: a Jev rank stays "jev"
+                        # on the AI domain; a user pick is "manual".
+                        src = getattr(m, "rank_source", None)
+                        m.rank_source = src if src in ("manual", "jev") else "manual"  # type: ignore[attr-defined]
                     except Exception:
                         pass
             nxt = 1
@@ -1722,9 +1738,22 @@ class GalleryController:
             self.state.judgment_domain = dom
         except Exception:
             pass
+        # The AI domain's ranker is Jev; mirror it so a fusion regroup never
+        # silently re-derives a Jev rank while the AI domain is active.
+        try:
+            self.state.rank_domain = "ai" if dom == "ai" else "algorithms"
+        except Exception:
+            pass
         if dom != "ai":
+            # Back to Algorithms: re-derive the deterministic fusion rank (a
+            # Jev rank is only authoritative while the AI domain owns the rank).
+            try:
+                self._apply_fusion_ranks(getattr(self.state, "series", None))
+            except Exception:
+                logger.debug("domain switch rank re-derive failed", exc_info=True)
             return
         self._run_ai_for_visible()
+        self._run_jev_ranks()
 
     def _run_ai_for_visible(self) -> None:
         """Analyze the currently-visible, not-yet-analyzed items (bounded)."""
@@ -1760,6 +1789,158 @@ class GalleryController:
                 self.analyze_item(it)
             except Exception:
                 continue
+
+    # -- AI domain ranker: Jev (TypeSafe System One) -----------------------
+
+    def _run_jev_ranks(self) -> None:
+        """Schedule ONE Jev rank per series on the AI domain (lazy + bounded).
+
+        Mirrors the predecessor epic's lazy-AI rule: only series that have a
+        currently-visible member are picked, and the number of series is capped,
+        so flipping to AI never turns into a whole-folder API flood. The cache
+        (``services.jev_cache``) pins each series, so a re-run over unchanged
+        paths+mtimes+payload costs no second request.
+        """
+        try:
+            groups = list(getattr(self.state, "series", None) or [])
+        except Exception:
+            groups = []
+        if not groups:
+            return
+        try:
+            vis = getattr(self.widget, "visible_paths", None)
+            visible = vis() if callable(vis) else None
+        except Exception:
+            visible = None
+        try:
+            vkeys = {str(p) for p in (visible or [])}
+        except Exception:
+            vkeys = set()
+        ran = 0
+        for entry in groups:
+            members = GalleryController._section_members(entry)
+            if len(members) < 2:
+                continue
+            if vkeys and not any(str(getattr(m, "path", "")) in vkeys for m in members):
+                continue
+            if ran >= self._AI_VISIBLE_CAP:
+                break
+            ran += 1
+            self._run_jev_rank_for_series(members)
+
+    def _run_jev_rank_for_series(self, members) -> None:
+        """Run one Jev rank worker for one series (cache-first, visible degrade).
+
+        Pending is visible via the item activity phase; on a decisive answer the
+        ranks are applied (``rank_source="jev"``), otherwise the Algorithms rank
+        is kept and the reason surfaced. Never blocks the UI thread.
+        """
+        members = list(members or ())
+        if len(members) < 2:
+            return
+        try:
+            settings = self._ai_settings_store.load()
+        except Exception:
+            settings = None
+        if (
+            settings is None
+            or not getattr(settings, "enabled", False)
+            or not getattr(settings, "base_url", "")
+            or not getattr(settings, "api_key", "")
+        ):
+            from tabs.image_gallery.services.jev_client import JEV_REASON_NOT_CONFIGURED
+
+            self._degrade_jev(members, JEV_REASON_NOT_CONFIGURED)
+            return
+
+        mode = getattr(self.state, "mode", None)
+        gen = self._folder_gen
+        snapshot = list(members)
+        for m in snapshot:
+            try:
+                set_activity(m, ActivityPhase.QUEUED, "ai")
+                self.widget.refresh_card(m)
+            except Exception:
+                pass
+
+        base_url = str(getattr(settings, "base_url", ""))
+        api_key = str(getattr(settings, "api_key", ""))
+
+        def _job():
+            from tabs.image_gallery.services.jev_client import (
+                make_client,
+                rank_series_jev_detailed,
+            )
+
+            client = make_client(base_url, api_key)
+            return rank_series_jev_detailed(snapshot, mode=mode, client=client)
+
+        worker = GenericWorker(_job)
+
+        def _on_result(outcome, gen=gen):
+            if not self._is_current_folder_gen(gen):
+                return  # folder switched mid-rank — late answer dropped
+            self._apply_jev_outcome(snapshot, outcome)
+
+        def _on_error(error_info, gen=gen):
+            if not self._is_current_folder_gen(gen):
+                return
+            logger.debug("jev rank worker error: %r", error_info, exc_info=True)
+            from tabs.image_gallery.services.jev_client import JEV_REASON_ERROR
+
+            self._degrade_jev(snapshot, JEV_REASON_ERROR)
+
+        worker.signals.result.connect(_on_result)
+        worker.signals.error.connect(_on_error)
+        self._pool_start(worker, None)
+
+    def _apply_jev_outcome(self, members, outcome) -> None:
+        """Apply one Jev result: ranks + ``rank_source="jev"`` or a visible degrade."""
+        ranks = getattr(outcome, "ranks", None)
+        current: list = []
+        for m in list(members or ()):
+            it = self._find_item(getattr(m, "path", None))
+            current.append(it if it is not None else m)
+        if ranks:
+            for it in current:
+                path = str(getattr(it, "path", ""))
+                if path not in ranks:
+                    continue
+                try:
+                    it.rank = int(ranks[path])
+                    it.rank_source = "jev"  # type: ignore[attr-defined]
+                except Exception:
+                    pass
+            try:
+                self.state.rank_domain = "ai"
+            except Exception:
+                pass
+            for it in current:
+                try:
+                    clear_activity(it)
+                    self.widget.refresh_card(it)
+                except Exception:
+                    pass
+            return
+        reason = getattr(outcome, "reason", None) or "AI (Jev) rank unavailable"
+        self._degrade_jev(current, reason)
+
+    def _degrade_jev(self, members, reason: str) -> None:
+        """Keep the Algorithms (fusion) rank and surface a visible reason.
+
+        The stored rank is never touched here — a failed Jev rank must not
+        fabricate a number or re-rank a subset (no silent fallback). The item
+        carries an explicit AI error activity phase so the degrade is visible,
+        and the reason is logged.
+        """
+        logger.debug("jev rank degraded: %s", reason)
+        for m in list(members or ()):
+            it = self._find_item(getattr(m, "path", None)) or m
+            try:
+                set_activity(it, ActivityPhase.ERROR, "ai")
+                self.widget.refresh_card(it)
+            except Exception:
+                pass
 
     def _begin_analysis(self, item: GalleryItem) -> None:
         settings = self._ai_settings_store.load()
