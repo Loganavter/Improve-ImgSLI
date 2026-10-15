@@ -271,6 +271,12 @@ class GalleryState:
     # fusion) | "ai" (Jev). Mirrors ``judgment_domain``; set by the rank wiring
     # (plan-gallery-rank-backends-2026-10-15). Default keeps today's behaviour.
     rank_domain: str = "algorithms"
+    #: Cross-series routing hint (task-gallery-ai-routing-jev-2026-10-09):
+    #: Jev-ordered ``{series_id: priority 1..N}`` (1 = needs a human first).
+    #: Additive — it never touches a series' internal rank, selection or the
+    #: store; empty = no hint. Set by the AI-domain wiring, cleared on return
+    #: to the Algorithms domain.
+    series_priority: dict[str, int] = field(default_factory=dict)
     selected_paths: set[Path] = field(default_factory=set)
     selected_order: list[Path] = field(default_factory=list)
     series: list[Series] = field(default_factory=list)

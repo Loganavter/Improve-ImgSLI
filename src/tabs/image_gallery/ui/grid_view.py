@@ -796,6 +796,15 @@ def _section_members(entry) -> list:
     return []
 
 
+def _cluster_series_id(cluster) -> str:
+    """The owning series id of a member cluster (stable across all members)."""
+    for member in cluster or ():
+        sid = getattr(member, "series_id", None)
+        if sid:
+            return str(sid)
+    return ""
+
+
 def _header_button(hdr):
     """Focusable ``Button`` inside a series/tail header container, or None."""
     if hdr is None:
@@ -888,6 +897,10 @@ class GalleryGridView(QWidget):
 
         # Stage 2 series grouping — headers only for clusters ≥2, singles under UNGROUPED tail.
         self._series: list[list[GalleryItem]] | None = None
+        # Cross-series routing hint (task-gallery-ai-routing-jev-2026-10-09):
+        # series ids that need a human first — rendered as a marker on the
+        # series header. Additive; empty = no marker.
+        self._series_attention: set[str] = set()
         self._ungrouped: list[GalleryItem] = []
         self._series_headers: list[QWidget] = []
         self._hub_names: list[str | None] = []
@@ -2573,6 +2586,22 @@ class GalleryGridView(QWidget):
             except Exception:
                 pass
 
+    def set_series_attention(self, series_ids) -> None:
+        """Mark series that need a human first (additive routing hint).
+
+        Stores the id set rendered as a series-header marker and re-titles in
+        place (never a teardown). Empty/None clears the marker. Never touches
+        cards, rank or selection.
+        """
+        try:
+            self._series_attention = {str(s) for s in (series_ids or ()) if s}
+        except Exception:
+            self._series_attention = set()
+        try:
+            self._rebuild_series()
+        except Exception:
+            pass
+
     def _rebuild_series(self) -> None:
         """Internal: rebuild with series headers + UNGROUPED tail."""
         # Preserve scroll + keyboard focus across the teardown: heights land
@@ -2635,6 +2664,11 @@ class GalleryGridView(QWidget):
                     "image_gallery.series.header",
                     "SERIES {n} · {count} images",
                     n=idx + 1, count=len(cluster),
+                )
+            if _cluster_series_id(cluster) in self._series_attention:
+                header_text = (
+                    f"{header_text} · "
+                    f"{_hdr('image_gallery.series.needs_attention', 'NEEDS ATTENTION')}"
                 )
             _sections.append({
                 "kind": "series", "index": idx, "hub": hub,

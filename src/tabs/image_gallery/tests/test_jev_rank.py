@@ -73,6 +73,8 @@ class _FakeController:
         self.refreshed: list = []
         self.ai_ran = False
         self.jev_ran = False
+        self.priority_ran = False
+        self.priority_cleared = False
         self.widget = SimpleNamespace(
             refresh_card=lambda it: self.refreshed.append(it),
             visible_paths=lambda: [it.path for it in self.state.items],
@@ -99,6 +101,12 @@ class _FakeController:
 
     def _run_jev_ranks(self):
         self.jev_ran = True
+
+    def _run_series_priority(self):
+        self.priority_ran = True
+
+    def _clear_series_priority(self):
+        self.priority_cleared = True
 
 
 def _ranks_by_name(items) -> dict:
@@ -513,6 +521,7 @@ def test_switch_to_ai_sets_rank_domain_and_schedules_jev() -> None:
     assert ctrl.state.rank_domain == "ai"
     assert ctrl.ai_ran is True
     assert ctrl.jev_ran is True
+    assert ctrl.priority_ran is True
 
 
 def test_switch_back_to_algorithms_re_derives_the_fusion_rank() -> None:
@@ -526,6 +535,7 @@ def test_switch_back_to_algorithms_re_derives_the_fusion_rank() -> None:
 
     ctrl.activate_judgment_domain("algorithms")
     assert ctrl.state.rank_domain == "algorithms"
+    assert ctrl.priority_cleared is True
     # Fusion re-derives: a (better ssim) is #1 again, provenance back to fusion.
     assert a.rank == 1 and a.rank_source == "fusion"
     assert b.rank == 2 and b.rank_source == "fusion"

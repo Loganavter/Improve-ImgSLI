@@ -2176,6 +2176,16 @@ class ImageGalleryWidget(QWidget):
         except Exception:
             pass
 
+    def set_series_attention(self, series_ids) -> None:
+        """Forward the cross-series routing hint to the grid (series-header marker).
+
+        Additive: it never changes a card, its rank or the selection.
+        """
+        try:
+            self._grid_view.set_series_attention(series_ids)
+        except Exception:
+            pass
+
     def refresh_card(self, item: GalleryItem) -> None:
         # Re-stamp the display badge (rank/source may have changed since the
         # last triage) before the card renders it — same single computation.

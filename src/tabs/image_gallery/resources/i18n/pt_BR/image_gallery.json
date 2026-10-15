@@ -86,7 +86,8 @@
       "recluster": "Reagrupar séries",
       "header_hub": "SÉRIE {n} · {hub} · {count} variantes",
       "header": "SÉRIE {n} · {count} imagens",
-      "ungrouped": "SEM GRUPO · {count}"
+      "ungrouped": "SEM GRUPO · {count}",
+      "needs_attention": "precisa de atenção"
     },
     "sort_by": "Ordenar por",
     "view": "Visualizar",
