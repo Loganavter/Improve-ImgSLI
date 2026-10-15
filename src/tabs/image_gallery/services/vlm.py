@@ -175,6 +175,48 @@ def encode_region(path, box) -> tuple[str, str] | None:
         return None
 
 
+#: Reasoning effort for the VLM image classification calls (tie-break / brief).
+#: These are short binary decisions; a mandatory-reasoning model
+#: (``z-ai/glm-5.3-flash``) left at its default effort burns the ENTIRE
+#: ``max_tokens`` inside the chain-of-thought and returns empty ``content``
+#: (probed 2026-10-15: 7/8 empty at the old hardcoded 300). ``low`` keeps the
+#: CoT out of the answer budget — the same floor
+#: ``ask_router.resolve_reasoning_effort`` applies to a mandatory reasoner.
+_VLM_REASONING_EFFORT = "low"
+
+
+def _vlm_max_tokens(n_images: int) -> int:
+    """Answer-token budget for a VLM image call, from the shared Ask-AI mechanism.
+
+    Reuses ``ask_router.estimate_ask_max_tokens`` (imported lazily — ``ask_payload``
+    imports this module, so a top-level import would cycle) with the attached
+    image count as the scope and the bounded reasoning headroom above.
+    """
+    from tabs.image_gallery.services.ask_router import estimate_ask_max_tokens
+
+    try:
+        count = max(1, int(n_images))
+    except Exception:
+        count = 1
+    return int(estimate_ask_max_tokens({"count": count}, effort=_VLM_REASONING_EFFORT))
+
+
+def _apply_vlm_openrouter_hardening(payload: dict) -> dict:
+    """OpenRouter extras shared by the VLM calls (mirrors ``ai_client.build_request``).
+
+    ``reasoning`` — bound the CoT effort and keep it out of ``content`` so the
+    answer always fits the budget. ``provider`` — skip overloaded shared pools
+    (``429 upstream_provider_shared_pool``) the same way the Ask-AI call does.
+    """
+    payload["reasoning"] = {"effort": _VLM_REASONING_EFFORT, "exclude": True}
+    payload["provider"] = {
+        "require_parameters": True,
+        "sort": "throughput",
+        "allow_fallbacks": True,
+    }
+    return payload
+
+
 def build_tie_break_request(
     path_a: Path,
     path_b: Path,
@@ -182,6 +224,7 @@ def build_tie_break_request(
     *,
     model: str,
     prompt: str = TIE_BREAK_PROMPT_TEMPLATE,
+    openrouter: bool = False,
 ) -> dict:
     mime_a, data_a = _encode_image(path_a)
     mime_b, data_b = _encode_image(path_b)
@@ -199,13 +242,17 @@ def build_tie_break_request(
             mime_s, data_s = _encode_image(source)
             content.insert(1, {"type": "text", "text": f"Source (reference): {Path(source).name}"})
             content.append({"type": "image_url", "image_url": {"url": f"data:image/{mime_s};base64,{data_s}"}})
+            n_images = 3
         except Exception:
-            pass
-    return {
+            n_images = 2
+    else:
+        n_images = 2
+    payload = {
         "model": model,
         "messages": [{"role": "user", "content": content}],
-        "max_tokens": 300,
+        "max_tokens": _vlm_max_tokens(n_images),
     }
+    return _apply_vlm_openrouter_hardening(payload) if openrouter else payload
 
 
 def build_compare_brief_request(
@@ -214,6 +261,7 @@ def build_compare_brief_request(
     *,
     model: str,
     prompt: str = COMPARE_BRIEF_PROMPT_TEMPLATE,
+    openrouter: bool = False,
 ) -> dict:
     mime_a, data_a = _encode_image(path_a)
     mime_b, data_b = _encode_image(path_b)
@@ -226,11 +274,12 @@ def build_compare_brief_request(
         {"type": "image_url", "image_url": {"url": f"data:image/{mime_a};base64,{data_a}"}},
         {"type": "image_url", "image_url": {"url": f"data:image/{mime_b};base64,{data_b}"}},
     ]
-    return {
+    payload = {
         "model": model,
         "messages": [{"role": "user", "content": content}],
-        "max_tokens": 400,
+        "max_tokens": _vlm_max_tokens(2),
     }
+    return _apply_vlm_openrouter_hardening(payload) if openrouter else payload
 
 
 # Confidence gate: a tie-break below this confidence must not crown — the
@@ -347,7 +396,13 @@ def tie_break_sync(
     source: Path | None = None,
 ) -> TieBreakResult:
     """Blocking tie-break: compare top-2. Call only from GenericWorker."""
-    payload = build_tie_break_request(Path(path_a), Path(path_b), source, model=model)
+    payload = build_tie_break_request(
+        Path(path_a),
+        Path(path_b),
+        source,
+        model=model,
+        openrouter=("openrouter" in str(base_url).lower()),
+    )
     raw = call_sync(base_url, api_key, payload)
     result = parse_tie_break_response(raw, model=model, path_a=Path(path_a), path_b=Path(path_b))
     if not is_decisive_tie_break(result):
@@ -364,6 +419,11 @@ def compare_brief_sync(
     model: str,
 ) -> CompareBrief:
     """Blocking brief for finalist pair. One per pair, cached. Worker thread only."""
-    payload = build_compare_brief_request(Path(path_a), Path(path_b), model=model)
+    payload = build_compare_brief_request(
+        Path(path_a),
+        Path(path_b),
+        model=model,
+        openrouter=("openrouter" in str(base_url).lower()),
+    )
     raw = call_sync(base_url, api_key, payload)
     return parse_compare_brief_response(raw, model=model, path_a=Path(path_a), path_b=Path(path_b))
