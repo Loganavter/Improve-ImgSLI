@@ -214,7 +214,11 @@ class _ScrollValueFlyout(BaseFlyout):
 
     def show_value(self, text: str, icon=None, anchor: QWidget | None = None, grab_focus: bool | None = None) -> None:
         if icon is not None:
-            self._label.setPixmap(icon.pixmap(scaled_px(16), scaled_px(16)))
+            from sli_ui_toolkit.icons import resolve_icon
+
+            self._label.setPixmap(
+                resolve_icon(icon).pixmap(scaled_px(16), scaled_px(16))
+            )
             self._label.setText("")
         else:
             self._label.clear()

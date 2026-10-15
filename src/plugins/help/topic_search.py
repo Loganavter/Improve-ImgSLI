@@ -8,7 +8,7 @@ dialog as first argument, same shape as
 
 from __future__ import annotations
 
-from functools import lru_cache
+from functools import lru_cache, partial
 
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QKeySequence, QShortcut
@@ -17,6 +17,7 @@ from plugins.help.icons import resolve_help_icon
 from plugins.help.labels import node_title
 from plugins.help.tree import read_help_page_markdown
 from resources.translations import tr
+from sli_ui_toolkit.icons import lazy_icon
 from sli_ui_toolkit.managers import scaled_px
 from sli_ui_toolkit.ui.widgets.composite.help_document import (
     blocks_to_plain_text,
@@ -90,8 +91,12 @@ def _apply_topic_search(dialog) -> None:
         node = dialog._tree.require(node_id)
         dialog.nav_widget.add_item(
             node_title(node, dialog.current_language),
-            icon=resolve_help_icon(
-                node.icon, resolvers=dialog._tree.icon_resolvers
+            icon=lazy_icon(
+                partial(
+                    resolve_help_icon,
+                    node.icon,
+                    resolvers=dialog._tree.icon_resolvers,
+                )
             ),
             data=node_id,
             row_height=scaled_px(35),

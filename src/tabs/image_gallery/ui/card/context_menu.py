@@ -249,17 +249,11 @@ def _is_source(owner, path) -> bool:
     return False
 
 
-def _menu_icon(name):  # type: ignore[no-untyped-def]
-    """Resolve a menu icon tinted to the row-text theme color (monochrome family).
+_MENU_ICON_CACHE: dict[tuple[object, bool, int], object] = {}
 
-    The toolkit paints ``ContextMenuAction.icon`` verbatim, so icons from
-    mixed sources (brand-blue ``ai.svg``, black ``compare.svg``, white
-    ``delete``/``star``/``check``) rendered as a rainbow in one menu. Tinting
-    them all to ``dialog.text`` — the same color the row paints its label with
-    — makes the menu one monochrome family that tracks the theme. Fail-open:
-    returns *name* unchanged on any error (the toolkit then resolves it as
-    before).
-    """
+
+def _resolve_menu_icon(name):  # type: ignore[no-untyped-def]
+    """Resolve *name* for the live theme and tint to ``dialog.text`` (cached)."""
     try:
         from PySide6.QtCore import QSize, Qt
         from PySide6.QtGui import QColor, QIcon, QPainter, QPixmap
@@ -268,10 +262,16 @@ def _menu_icon(name):  # type: ignore[no-untyped-def]
 
         from ui.theming import try_resolve_theme_color
 
-        c = try_resolve_theme_color(ThemeManager.get_instance(), "dialog.text")
+        mgr = ThemeManager.get_instance()
+        dark = bool(mgr.is_dark())
+        c = try_resolve_theme_color(mgr, "dialog.text")
         if c is None:
             return name
         col = c if isinstance(c, QColor) else QColor(c)
+        cache_key = (name, dark, int(col.rgba()))
+        cached = _MENU_ICON_CACHE.get(cache_key)
+        if isinstance(cached, QIcon) and not cached.isNull():
+            return cached
         base = resolve_icon(name)
         if base is None or base.isNull():
             return name
@@ -291,9 +291,30 @@ def _menu_icon(name):  # type: ignore[no-untyped-def]
             painter.fillRect(out.rect(), col)
         finally:
             painter.end()
-        return QIcon(out)
+        icon = QIcon(out)
+        if not icon.isNull():
+            _MENU_ICON_CACHE[cache_key] = icon
+        return icon
     except Exception:
         return name
+
+
+def _menu_icon(name):  # type: ignore[no-untyped-def]
+    """Return a lazy menu-icon handle tinted to the row-text theme color.
+
+    The toolkit paints ``ContextMenuAction.icon`` verbatim, so icons from
+    mixed sources (brand-blue ``ai.svg``, black ``compare.svg``, white
+    ``delete``/``star``/``check``) rendered as a rainbow in one menu. Tinting
+    them all to ``dialog.text`` — the same color the row paints its label with
+    — makes the menu one monochrome family that tracks the theme. Resolved at
+    paint time via ``lazy_icon`` and cached per ``(name, is_dark())`` so the
+    provider returns a stable ``QIcon``.
+    """
+    from functools import partial
+
+    from sli_ui_toolkit.icons import lazy_icon
+
+    return lazy_icon(partial(_resolve_menu_icon, name))
 
 
 def popup_gallery_card_context_menu(  # type: ignore[no-untyped-def]
@@ -438,7 +459,7 @@ def popup_gallery_card_context_menu(  # type: ignore[no-untyped-def]
                 ContextMenuAction(
                     "gallery.ask_ai",
                     ask_ai_label,
-                    icon=Icon.AI,
+                    icon=_menu_icon(Icon.AI),
                     text_key="image_gallery.ask_ai.action",
                 )
             )
