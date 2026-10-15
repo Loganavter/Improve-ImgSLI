@@ -206,6 +206,11 @@ class GalleryItem:
     analysis_error: str | None = None
     series_id: str | None = None
     rank: int | None = None
+    #: Which ranker produced ``rank`` — "fusion" (Algorithms) | "jev" (AI) |
+    #: "manual" (user Keep/Make best). None = not ranked yet. Set by the
+    #: wiring consumers (plan-gallery-rank-backends-2026-10-15); fusion itself
+    #: is pure and never touches an item.
+    rank_source: str | None = None
     metrics: dict = field(default_factory=dict)
     # Stage 2 triage fields — crown/reject/S3 safety model (design.md:87-99,129-136)
     rejected: bool = False
@@ -257,6 +262,10 @@ class GalleryState:
     # ("algorithms" | "ai"). Transient view state (plan-gallery-two-domain-axes
     # W2) — session-slot persistence is a follow-up.
     judgment_domain: str = "algorithms"
+    # Which backend owns the series rank: "algorithms" (deterministic metric
+    # fusion) | "ai" (Jev). Mirrors ``judgment_domain``; set by the rank wiring
+    # (plan-gallery-rank-backends-2026-10-15). Default keeps today's behaviour.
+    rank_domain: str = "algorithms"
     selected_paths: set[Path] = field(default_factory=set)
     selected_order: list[Path] = field(default_factory=list)
     series: list[Series] = field(default_factory=list)

@@ -1,0 +1,158 @@
+"""Deterministic rank fusion over the MEASURED gallery axes (plan R0).
+
+Replaces the HSV-centroid "typicality" order with an explicit, measured
+decision: an item's quality is the mean of the quality scores of every
+applicable MEASURED axis (``metric_scores``), and a series is ranked by
+``(-quality, str(path))`` with unmeasured items sorted last by path.
+
+Pure: no Qt, no HTTP, no PIL — numbers in, ranks out. The module reads the
+registry (``spec_for`` / ``raw_for`` / ``score_for``); it never re-derives
+thresholds and never fabricates a value for a missing axis.
+
+Design rules (see ``plan-gallery-rank-backends-2026-10-15`` §Seam):
+
+- Only ``MetricKind.MEASURED`` axes contribute; ``RANK_EXCLUDED_AXES`` never
+  does (``typicality`` is a grouping artefact, not a quality signal).
+- An axis with no raw value is *excluded* from the mean — never counted as
+  0/100. An item with no measured axis is *unranked* (``None``) and sorts
+  after every measured item.
+- Deterministic: no timestamps, no dict-iteration order, no arrival order;
+  ties break by ``str(item.path)``, idempotent under input permutation.
+"""
+
+from __future__ import annotations
+
+from tabs.image_gallery.models import MetricKind
+from tabs.image_gallery.services.metric_scores import (
+    SPECS,
+    raw_for,
+    score_for,
+    spec_for,
+)
+
+#: Bump when the fusion semantics change (consumers may pin a cached rank).
+RANK_FUSION_VERSION = 1
+
+#: Axis ids that must NEVER contribute to a rank (grouping artefacts, not
+#: quality). Single definition for the whole tree — import, never redefine.
+RANK_EXCLUDED_AXES = ("typicality",)
+
+#: The mode ids ``measured_axes_for`` understands (``models.Mode`` values).
+_MODES: tuple[str, ...] = ("fidelity", "camera", "batch_synthetic")
+
+#: Registry tags that scope an axis to a content situation:
+#: ``reference`` needs a source hub (fidelity), ``photo`` needs photographic
+#: content (the BRISQUE gate used by the camera lane). Untagged axes are
+#: absolute local detectors and apply everywhere.
+_REFERENCE_TAG = "reference"
+_PHOTO_TAG = "photo"
+
+
+def _mode_id(mode) -> str:
+    """Normalize a ``Mode`` / str / None to one of ``_MODES`` (or ``""``)."""
+    value = getattr(mode, "value", mode)
+    try:
+        text = str(value or "").strip().lower()
+    except Exception:
+        return ""
+    return text if text in _MODES else ""
+
+
+def _tags_of(spec) -> set[str]:
+    try:
+        return {str(t).strip().lower() for t in (spec.tags or ()) if t}
+    except Exception:
+        return set()
+
+
+def measured_axes_for(mode: str) -> tuple[str, ...]:
+    """MEASURED axis ids applicable to *mode* (fidelity|camera|batch_synthetic).
+
+    Applicability comes from the registry's own tags, not a second axis list:
+
+    - untagged axes (absolute local detectors) — every mode;
+    - ``reference`` axes (need a source hub) — ``fidelity`` only;
+    - ``photo`` axes (the BRISQUE content gate) — ``camera`` only.
+
+    ``RANK_EXCLUDED_AXES`` and non-MEASURED axes are never returned. An
+    unknown/empty *mode* yields the mode-independent (untagged) set, since no
+    source or photographic content can be asserted for it. Order = registry
+    order (stable).
+    """
+    mid = _mode_id(mode)
+    has_source = mid == "fidelity"
+    is_photo = mid == "camera"
+    out: list[str] = []
+    for spec in SPECS:
+        if spec.kind is not MetricKind.MEASURED:
+            continue
+        if spec.id in RANK_EXCLUDED_AXES:
+            continue
+        tags = _tags_of(spec)
+        if _REFERENCE_TAG in tags and not has_source:
+            continue
+        if _PHOTO_TAG in tags and not is_photo:
+            continue
+        out.append(spec.id)
+    return tuple(out)
+
+
+def item_quality(item, *, mode: str) -> float | None:
+    """0..100 aggregate over applicable MEASURED axes; None when nothing measured.
+
+    The mean of ``score_for`` over every applicable axis that has a raw value
+    in ``item.metrics``. Missing axes are excluded (never treated as 0/100) and
+    ``RANK_EXCLUDED_AXES`` is never consulted. Deterministic; never fabricates.
+    """
+    metrics = getattr(item, "metrics", None)
+    if not isinstance(metrics, dict) or not metrics:
+        return None
+    scores: list[int] = []
+    for axis_id in measured_axes_for(mode):
+        spec = spec_for(axis_id)
+        if spec is None:
+            continue
+        got = raw_for(spec, metrics)
+        if got is None:
+            continue
+        _key, raw = got
+        scores.append(score_for(spec, raw))
+    if not scores:
+        return None
+    return sum(scores) / len(scores)
+
+
+def rank_series(items, *, mode: str) -> dict[str, int]:
+    """path -> rank 1..N; measured first by ``(-quality, str(path))``, then
+    unmeasured by ``str(path)``. Idempotent under input permutation."""
+    measured: list[tuple[float, str]] = []
+    unmeasured: list[str] = []
+    for item in items or ():
+        path = str(getattr(item, "path", ""))
+        quality = item_quality(item, mode=mode)
+        if quality is None:
+            unmeasured.append(path)
+        else:
+            measured.append((quality, path))
+
+    measured.sort(key=lambda pair: (-pair[0], pair[1]))
+    unmeasured.sort()
+
+    ranks: dict[str, int] = {}
+    rank = 1
+    for _quality, path in measured:
+        ranks[path] = rank
+        rank += 1
+    for path in unmeasured:
+        ranks[path] = rank
+        rank += 1
+    return ranks
+
+
+__all__ = [
+    "RANK_EXCLUDED_AXES",
+    "RANK_FUSION_VERSION",
+    "item_quality",
+    "measured_axes_for",
+    "rank_series",
+]
