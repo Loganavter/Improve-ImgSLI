@@ -40,15 +40,26 @@ def _token_qcolor(token: str, fallback_hex: str, fallback_dark_hex: str | None =
     return QColor(fallback_hex if not _is_dark_theme() else fallback_dark_hex)
 
 
-def _ql_text(overlay, key: str, default: str) -> str:
-    """Translate a Quick Look string via the overlay's translator (fail-open)."""
+def _ql_text(overlay, key: str, default: str, **fmt) -> str:
+    """Translate a Quick Look string via the overlay's translator (fail-open).
+
+    ``**fmt`` mirrors ``meta._ql_text``: the EN ``default`` carries the
+    ``{n}`` placeholders and the SAME ``.format`` runs on the translated
+    string, so a locale may reorder them.
+    """
     tr = getattr(overlay, "_tr", None)
+    text = default
     if callable(tr):
         try:
-            return str(tr(key, default))
+            text = str(tr(key, default))
         except Exception:
             pass
-    return default
+    if fmt:
+        try:
+            text = text.format(**fmt)
+        except Exception:
+            pass
+    return text
 
 
 def _metric_label(overlay, spec_id: str, default: str) -> str:
@@ -681,7 +692,14 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
         data look measured; gaps must read as gaps. The value is a fixed
         short constant that always fits the column, so it skips elision
         (W5: keeps .text() verbatim for readers that match on it)."""
-        _add_metric_row(title, "— · not measured", 0.0, _muted_color(), value_color=_muted_color(), value_elide=False)
+        _add_metric_row(
+            title,
+            _ql_text(overlay, "image_gallery.quick_look.not_measured", "— · not measured"),
+            0.0,
+            _muted_color(),
+            value_color=_muted_color(),
+            value_elide=False,
+        )
 
     # Canonical scores drive both the text and the bar: every metric reads
     # as "NN%" where higher is always better (see services.metric_scores).
@@ -735,7 +753,14 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
         pass  # the source is the reference — no comparison report rows
     elif is_fidelity:
         rank = getattr(item, "rank", None) or getattr(item, "crown_rank", None)
-        rank_txt = f"#{rank} of {len(overlay._series_items)}" if rank is not None else f"#{overlay._current_idx+1} of {len(overlay._series_items)}"
+        _rank_n = rank if rank is not None else overlay._current_idx + 1
+        rank_txt = _ql_text(
+            overlay,
+            "image_gallery.quick_look.rank_of",
+            "#{rank} of {total}",
+            rank=_rank_n,
+            total=len(overlay._series_items),
+        )
         _add_score_row("ssim", extra=rank_txt)
         subline = ssim_subline(overlay, item)
         if subline:
@@ -900,7 +925,14 @@ def ssim_subline(overlay, item) -> str:
         rejected = [m for m in others if bool(getattr(m, "rejected", False))]
         tail = [v for v in (_ssim_of(m) for m in rejected) if v is not None]
         if tail:
-            parts.append(f"rejected tail ≤ {min(tail):.2f}")
+            parts.append(
+                _ql_text(
+                    overlay,
+                    "image_gallery.quick_look.rejected_tail",
+                    "rejected tail ≤ {value}",
+                    value=f"{min(tail):.2f}",
+                )
+            )
         return " · ".join(parts)
     except Exception:
         return ""

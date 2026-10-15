@@ -178,7 +178,19 @@ def populate_source_inset(overlay, item, is_fidelity: bool, owner=None) -> None:
             overlay._source_inset_pix.update_region("thumb", pixmap=pix)
         else:
             overlay._source_inset_pix.update_region("thumb", pixmap=None, text="—")
-        src_name = Path(src).name if src is not None else "source"
+        # No source path: name the role, localized (fail-open to "source").
+        if src is not None:
+            src_name = Path(src).name
+        else:
+            src_name = "source"
+            try:
+                _ovtr_n = getattr(overlay, "_tr", None)
+                if callable(_ovtr_n):
+                    src_name = str(
+                        _ovtr_n("image_gallery.quick_look.source_fallback", "source")
+                    )
+            except Exception:
+                src_name = "source"
         # Localize the SOURCE pill through the overlay translator (same key
         # the card badge uses) — fail-open to the raw string.
         _src_label = "SOURCE"

@@ -64,7 +64,9 @@
       "routing_unavailable": "路由功能尚未启用。",
       "images_toggle_hint": "随问题一起发送图片",
       "images_toggle_downsample": "缩小：≤ {px} px",
-      "region_prompt": "这个区域有什么问题？"
+      "region_prompt": "这个区域有什么问题？",
+      "cached": " · 已缓存",
+      "error_context": "无法构建提问上下文。"
     },
     "series": {
       "ask_ai": "询问 AI",
@@ -88,7 +90,11 @@
     "view_list": "列表",
     "toolbar": {
       "open_folder": "打开文件夹…",
-      "filter_placeholder": "按标签 / 描述筛选…"
+      "filter_placeholder": "按标签 / 描述筛选…",
+      "filter_images": "图像(",
+      "filter_all_files": "所有文件(*)",
+      "pick_title": "选择文件夹或图像",
+      "pick_folder": "选择文件夹"
     },
     "grid": {
       "resize_tooltip": "拖动以调整系列窗格大小"
@@ -112,7 +118,20 @@
       "mixed_sizes": "尺寸不一",
       "upscales_note": "同一源的 {n} 个放大版本",
       "upscale_n": "放大 ×{n}",
-      "upscale_n_from_source": "相对源放大 ×{n}"
+      "upscale_n_from_source": "相对源放大 ×{n}",
+      "ai_brief_pending": "AI 简述…",
+      "not_measured": "— · 未测量",
+      "rank_of": "第 {rank} / {total}",
+      "rejected_tail": "被拒绝尾部 ≤ {value}",
+      "source_fallback": "源",
+      "brief_ssim_vs": "SSIM {a} 对比 {b}",
+      "brief_ssim": "SSIM {a}",
+      "brief_detail_vs": "细节 {a} 对比 {b}",
+      "brief_detail": "细节 {a}",
+      "brief_banding": "#{rank} 出现条带",
+      "brief_flagged": "（已标记）",
+      "brief_vs": "对比 #{rank}：{head}",
+      "brief_vs_bare": "对比 #{rank}"
     },
     "clean_review": {
       "title": "审阅已拒绝的文件",
@@ -126,7 +145,12 @@
       "no_files": "没有可移动的文件",
       "restore": "恢复",
       "restore_all": "全部恢复",
-      "cancel": "取消"
+      "cancel": "取消",
+      "moved_toast": "已将 {n} 个文件移动到 _rejected/",
+      "undo": "撤销",
+      "more_tile": "还有 {n} 个",
+      "more_tile_sub": "可横向滚动",
+      "more_tooltip": "还有 {n} 个被拒绝的文件"
     },
     "help": {
       "hub": {
@@ -301,7 +325,14 @@
       "remove": "从视图中移除",
       "ungroup": "取消分组",
       "group": "分组",
-      "make_source": "设为源"
+      "make_source": "设为源",
+      "unreadable": "无法读取 — 已排除在筛选之外",
+      "tooltip": {
+        "keep": "保留",
+        "reject": "拒绝",
+        "defects": "缺陷：{kinds}",
+        "vlm_tiebreak": "VLM 决胜：{err}"
+      }
     },
     "badge": {
       "source": "源"

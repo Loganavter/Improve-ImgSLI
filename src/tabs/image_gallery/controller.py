@@ -1861,6 +1861,7 @@ class GalleryController:
                 ),
                 # Status badge shows the selected LLM, not the backend token.
                 "model": _settings.model,
+                "cached": self._tr("image_gallery.ask_ai.cached", " · cached"),
             }
         except Exception:
             default = "What matters here?"
@@ -2004,7 +2005,12 @@ class GalleryController:
             backend = resolve_backend(question, context, include_images=include_images)
         except Exception:
             logger.debug("ask-ai context build failed", exc_info=True)
-            self._show_ask_ai_error("Could not assemble the ask context.")
+            self._show_ask_ai_error(
+                self._tr(
+                    "image_gallery.ask_ai.error_context",
+                    "Could not assemble the ask context.",
+                )
+            )
             return
         is_region = str(getattr(scope, "kind", "") or "") == "region"
         if is_region:

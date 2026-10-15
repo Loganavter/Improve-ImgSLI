@@ -78,6 +78,29 @@ def _dispatch_pick(owner, chosen: str) -> None:
         pass
 
 
+def _owner_translate(owner):  # type: ignore[no-untyped-def]
+    """Tab translator reachable from the owning widget (fail-open to EN).
+
+    ``ImageGalleryWidget`` exposes ``_tr_ui(key, default)`` (its context
+    translator); test doubles only have ``window()``, so a missing
+    attribute degrades to the English defaults instead of raising.
+    """
+    tr = getattr(owner, "_tr_ui", None)
+    if not callable(tr):
+        tr = getattr(owner, "_tr", None)
+    return tr if callable(tr) else None
+
+
+def _tr(tr, key: str, default: str) -> str:  # type: ignore[no-untyped-def]
+    """Gallery i18n lookup — EN ``default`` when no translator is reachable."""
+    if tr is None:
+        return default
+    try:
+        return str(tr(key, default))
+    except Exception:
+        return default
+
+
 def pick_folder_dialog(owner, start_dir: str = "") -> str | None:  # type: ignore[no-untyped-def]
     """Allow picking either a folder or an image file.
 
@@ -86,14 +109,23 @@ def pick_folder_dialog(owner, start_dir: str = "") -> str | None:  # type: ignor
     ``shared.image_extensions.ACCEPTED_IMAGE_EXTENSIONS`` for the image filter.
     """
     QFileDialog = _resolve_qfiledialog()
+    tr = _owner_translate(owner)
     base = owner.window() or owner
     try:
         from shared.image_extensions import ACCEPTED_IMAGE_EXTENSIONS as _EXTS
 
-        filt = "Images ("
+        # The group label and its trailing ");;" stay literal — Qt filter
+        # syntax, not prose. Only the two user-visible labels are keyed.
+        filt = _tr(tr, "image_gallery.toolbar.filter_images", "Images (")
         filt += " ".join(f"*{e}" for e in sorted(_EXTS))
-        filt += ");;All files (*)"
-        dlg = QFileDialog(base, "Pick folder or image", start_dir, filt)
+        filt += ");;"
+        filt += _tr(tr, "image_gallery.toolbar.filter_all_files", "All files (*)")
+        dlg = QFileDialog(
+            base,
+            _tr(tr, "image_gallery.toolbar.pick_title", "Pick folder or image"),
+            start_dir,
+            filt,
+        )
         # Native dialog like everywhere else in the app (export, project
         # open/save, video editor): no DontUseNativeDialog — the gallery
         # was the only non-native outlier. Folder picking stays on the
@@ -108,13 +140,21 @@ def pick_folder_dialog(owner, start_dir: str = "") -> str | None:  # type: ignor
                 p = Path(files[0])
                 _dispatch_pick(owner, str(p))
                 return str(p)
-        directory = QFileDialog.getExistingDirectory(base, "Pick folder", start_dir)
+        directory = QFileDialog.getExistingDirectory(
+            base,
+            _tr(tr, "image_gallery.toolbar.pick_folder", "Pick folder"),
+            start_dir,
+        )
         if directory:
             _dispatch_pick(owner, directory)
         return directory or None
     except Exception:
         try:
-            directory = QFileDialog.getExistingDirectory(base, "Pick folder", start_dir)
+            directory = QFileDialog.getExistingDirectory(
+                base,
+                _tr(tr, "image_gallery.toolbar.pick_folder", "Pick folder"),
+                start_dir,
+            )
             return directory or None
         except Exception:
             return None

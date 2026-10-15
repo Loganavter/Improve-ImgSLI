@@ -1056,15 +1056,26 @@ class CleanReviewOverlay(TopLevelInWindowOverlay):
         self._toast_manager: ToastManager | None = None
         self._ql_return = None
 
-    def _t(self, key: str, default: str) -> str:
-        """i18n lookup — EN ``default`` when no translator is wired."""
+    def _t(self, key: str, default: str, **fmt) -> str:
+        """i18n lookup — EN ``default`` when no translator is wired.
+
+        ``**fmt`` mirrors ``quick_look/meta._ql_text``: the EN default
+        carries the ``{n}`` placeholders and the SAME ``.format`` runs on
+        the translated string, so a locale is free to reorder them.
+        """
         tr = getattr(self, "_tr", None)
-        if tr is None:
-            return default
-        try:
-            return tr(key, default)
-        except Exception:
-            return default
+        text = default
+        if tr is not None:
+            try:
+                text = tr(key, default)
+            except Exception:
+                text = default
+        if fmt:
+            try:
+                text = text.format(**fmt)
+            except Exception:
+                pass
+        return text
 
     def retranslate(self, translate=None) -> None:
         """Re-apply keyed text after a language switch.
@@ -1617,8 +1628,18 @@ class CleanReviewOverlay(TopLevelInWindowOverlay):
         if overflow > 0:
             more_tile = Button(
                 rows=[
-                    ButtonRow(text=f"+{overflow} more", size=14),
-                    ButtonRow(text="scrollable strip", size=10),
+                    ButtonRow(
+                        text=self._t(
+                            "image_gallery.clean_review.more_tile", "+{n} more", n=overflow
+                        ),
+                        size=14,
+                    ),
+                    ButtonRow(
+                        text=self._t(
+                            "image_gallery.clean_review.more_tile_sub", "scrollable strip"
+                        ),
+                        size=10,
+                    ),
                 ],
                 variant="surface",
                 size=(THUMB_WIDTH_PX, THUMB_HEIGHT_PX),
@@ -1627,7 +1648,13 @@ class CleanReviewOverlay(TopLevelInWindowOverlay):
             more_tile.setObjectName("clean_review_filmstrip_more")
             more_tile.setEnabled(False)
             try:
-                more_tile.setToolTip(f"{overflow} more rejected file(s)")
+                more_tile.setToolTip(
+                    self._t(
+                        "image_gallery.clean_review.more_tooltip",
+                        "{n} more rejected file(s)",
+                        n=overflow,
+                    )
+                )
             except Exception:
                 pass
             # Top-aligned with the cells (mockup v3: tile shares the
@@ -1744,12 +1771,22 @@ class CleanReviewOverlay(TopLevelInWindowOverlay):
             total_mb = total_bytes / (1024 * 1024) if total_bytes else 0.0
         except Exception:
             total_mb = 0.0
-        msg = f"Moved {len(moves)} files to _rejected/"
+        msg = self._t(
+            "image_gallery.clean_review.moved_toast",
+            "Moved {n} files to _rejected/",
+            n=len(moves),
+        )
         try:
             tm.show_toast(
                 msg,
                 duration=10000,
-                actions=[ToastAction("Undo", callback=_undo, dismiss=True)],
+                actions=[
+                    ToastAction(
+                        self._t("image_gallery.clean_review.undo", "Undo"),
+                        callback=_undo,
+                        dismiss=True,
+                    )
+                ],
                 success=True,
             )
         except Exception:

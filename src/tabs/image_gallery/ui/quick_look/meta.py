@@ -139,13 +139,20 @@ def _item_smaller_than_source(overlay, dims_txt: str | None, owner=None) -> bool
         return False
 
 
-def local_brief_fallback(item, series_items) -> str:
+def local_brief_fallback(item, series_items, overlay=None) -> str:
     """Deterministic ``vs #N`` brief from local metrics when VLM is absent.
 
     Same shape as the mockup teaser (``vs #2: …``) but every number comes
     from ``item.metrics`` — no invented detail, no region claims. Returns ""
     when there is nothing comparative to say (caller hides the label).
+
+    *overlay* is optional (only for its ``_tr``): every prose fragment is
+    keyed through ``image_gallery.quick_look.brief_*``; without a
+    translator the English defaults render unchanged.
     """
+    def _bt(key: str, default: str, **fmt) -> str:
+        return _ql_text(overlay, key, default, **fmt)
+
     try:
         mates = [m for m in (series_items or []) if m is not item]
         if not mates:
@@ -208,13 +215,39 @@ def local_brief_fallback(item, series_items) -> str:
             return ""
         clauses: list[str] = []
         if ssim_a is not None and ssim_b is not None:
-            clauses.append(f"SSIM {ssim_a:.2f} vs {ssim_b:.2f}")
+            clauses.append(
+                _bt(
+                    "image_gallery.quick_look.brief_ssim_vs",
+                    "SSIM {a} vs {b}",
+                    a=f"{ssim_a:.2f}",
+                    b=f"{ssim_b:.2f}",
+                )
+            )
         elif ssim_a is not None:
-            clauses.append(f"SSIM {ssim_a:.2f}")
+            clauses.append(
+                _bt(
+                    "image_gallery.quick_look.brief_ssim",
+                    "SSIM {a}",
+                    a=f"{ssim_a:.2f}",
+                )
+            )
         if hf_a is not None and hf_b is not None:
-            clauses.append(f"detail {int(hf_a * 100):+d}% vs {int(hf_b * 100):+d}%")
+            clauses.append(
+                _bt(
+                    "image_gallery.quick_look.brief_detail_vs",
+                    "detail {a} vs {b}",
+                    a=f"{int(hf_a * 100):+d}%",
+                    b=f"{int(hf_b * 100):+d}%",
+                )
+            )
         elif hf_a is not None:
-            clauses.append(f"detail {int(hf_a * 100):+d}%")
+            clauses.append(
+                _bt(
+                    "image_gallery.quick_look.brief_detail",
+                    "detail {a}",
+                    a=f"{int(hf_a * 100):+d}%",
+                )
+            )
         # Banding note for the *other* item only, severity-only (no regions).
         banding = None
         try:
@@ -237,9 +270,30 @@ def local_brief_fallback(item, series_items) -> str:
             banding = None
         tail = ""
         if banding in ("mild", "flagged"):
-            tail = f"#{other_rank} shows banding" + (" (flagged)" if banding == "flagged" else "")
+            tail = _bt(
+                "image_gallery.quick_look.brief_banding",
+                "#{rank} shows banding",
+                rank=other_rank,
+            ) + (
+                _bt("image_gallery.quick_look.brief_flagged", " (flagged)")
+                if banding == "flagged"
+                else ""
+            )
         head = " · ".join(clauses)
-        text = f"vs #{other_rank}: {head}" if head else f"vs #{other_rank}"
+        text = (
+            _bt(
+                "image_gallery.quick_look.brief_vs",
+                "vs #{rank}: {head}",
+                rank=other_rank,
+                head=head,
+            )
+            if head
+            else _bt(
+                "image_gallery.quick_look.brief_vs_bare",
+                "vs #{rank}",
+                rank=other_rank,
+            )
+        )
         if tail:
             text += f"; {tail}"
         return text
@@ -276,15 +330,23 @@ def populate_brief(overlay, item) -> None:
                 else:
                     brief = "; ".join(list(diffs)[:2]) if diffs else ""
                 if status == "pending":
-                    brief = "AI brief…"
+                    brief = _ql_text(
+                        overlay,
+                        "image_gallery.quick_look.ai_brief_pending",
+                        "AI brief…",
+                    )
             except Exception:
                 brief = ""
             if not brief and status == "pending":
-                brief = "AI brief…"
+                brief = _ql_text(
+                    overlay, "image_gallery.quick_look.ai_brief_pending", "AI brief…"
+                )
         if not brief:
             # Deterministic local fallback (no VLM): vs-#N from metrics.
             try:
-                brief = local_brief_fallback(item, getattr(overlay, "_series_items", []))
+                brief = local_brief_fallback(
+                    item, getattr(overlay, "_series_items", []), overlay
+                )
             except Exception:
                 brief = ""
         if brief:
