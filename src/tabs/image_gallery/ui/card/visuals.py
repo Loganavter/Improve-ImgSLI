@@ -158,25 +158,32 @@ def _apply_rejected_visuals(card: Button, item: GalleryItem, translate=None) -> 
                 pass
         else:
             # Left top per spec — overlay for ranked cards, clear toolkit right badge.
-            # No accent outline: the frame stays the default card border.
             # The badge text/kind are computed once (services.rank_badge.
-            # stamp_badges) and read verbatim here — never re-derived.
+            # stamp_badges) and read verbatim here — never re-derived. No ranker
+            # label on cards: the SERIES WINNER shows the ★ BEST preset (blue
+            # pill + accent frame, mockup v2), every other ranked card shows #N.
             from tabs.image_gallery.services.rank_badge import KIND_SOURCE
 
+            _BEST = "best"
             badge_text = str(getattr(item, "badge", "") or "")
             badge_kind = str(getattr(item, "badge_kind", "none") or "none")
-            if badge_kind == KIND_SOURCE and badge_text:
-                # The badge string is stamped once as "SOURCE"; localize it at
-                # render via the tab translator (injected, never app i18n —
-                # tabs-isolation contract). Callers pass it explicitly (build
-                # threading / the card's attached ``_gallery_translate``) — no
-                # dead ``_gallery_owner`` fallback.
-                tr = translate
-                if callable(tr):
-                    try:
-                        badge_text = str(tr("image_gallery.badge.source", badge_text))
-                    except Exception:
-                        pass
+            # The series winner shows the ★ BEST preset (mockup v2-triage) instead
+            # of a number — CARD-ONLY: the strip/list keep their #N / ★ behaviour.
+            if getattr(item, "is_best", False):
+                badge_kind = _BEST
+                badge_text = "★ BEST"
+            if badge_text and callable(translate):
+                try:
+                    if badge_kind == KIND_SOURCE:
+                        badge_text = str(
+                            translate("image_gallery.badge.source", badge_text)
+                        ) or badge_text
+                    elif badge_kind == _BEST:
+                        badge_text = str(
+                            translate("image_gallery.badge.best", badge_text)
+                        ) or badge_text
+                except Exception:
+                    pass
             if badge_text:
                 try:
                     card.setBadge(None)
@@ -186,13 +193,17 @@ def _apply_rejected_visuals(card: Button, item: GalleryItem, translate=None) -> 
                     card._gallery_badge = badge_text  # type: ignore[attr-defined]
                     if badge_kind == KIND_SOURCE:
                         accent = _token_qcolor("gallery.status.warn", "#b77900")
+                    elif badge_kind == _BEST:
+                        accent = _token_qcolor("accent", "#0096FF")
                     else:
                         accent = _token_qcolor("button.toggle.background.checked", "#555555")
                     # Badge ink follows the theme (``button.primary.text``):
                     # #000000 light / #ffffff dark — never a fixed black on the
                     # dark #555555 pill.
                     card._gallery_badge_style = (True, accent, accent, _badge_text_color())  # type: ignore[attr-defined]
-                    card.setBorderColor(_card_border_color())
+                    # The winner's frame carries the accent (mockup v2); other
+                    # cards keep the default border.
+                    card.setBorderColor(accent if badge_kind == _BEST else _card_border_color())
                 except Exception:
                     pass
             else:

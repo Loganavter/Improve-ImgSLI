@@ -2223,11 +2223,23 @@ class GalleryController:
         if ranks:
             for it in current:
                 path = str(getattr(it, "path", ""))
-                if path not in ranks:
+                _rank = ranks.get(path)
+                if _rank is None:
+                    # Jev owns the AI-domain ordering: a member Jev did not rank
+                    # is not the winner — never leave a stale BEST from fusion.
+                    try:
+                        it.is_best = False
+                    except Exception:
+                        pass
                     continue
                 try:
-                    it.rank = int(ranks[path])
+                    it.rank = int(_rank)
                     it.rank_source = "jev"  # type: ignore[attr-defined]
+                    # Jev owns the WHOLE ordering on the AI domain: drop any stale
+                    # crown and mark ONLY rank 1 as the series winner (the ★ BEST
+                    # preset) so no two cards ever show the same number again.
+                    it.crown_rank = None
+                    it.is_best = (it.rank == 1)
                 except Exception:
                     pass
             try:
@@ -2236,10 +2248,22 @@ class GalleryController:
                 pass
             for it in current:
                 try:
-                    clear_activity(it)
-                    self.widget.refresh_card(it)
+                    # Complete the badge UX: queued -> done (lingers ~1s -> fades),
+                    # never an abrupt clear that kills the chip mid-ux.
+                    set_activity(it, ActivityPhase.DONE, "ai")
                 except Exception:
                     pass
+            # One atomic repaint of every member: a per-card loop let a snapshot
+            # mix a Jev rank with a stale fusion rank -> two #1s ("Jev chose all
+            # at once"). Apply all ranks/activity, THEN refresh.
+            try:
+                self.widget.refresh_cards(current)
+            except Exception:
+                for it in current:
+                    try:
+                        self.widget.refresh_card(it)
+                    except Exception:
+                        pass
             _ai_debug("jev rank applied: items=%d source=jev", len(current))
             GalleryController._refresh_rank_provenance(self)
             return
@@ -2266,16 +2290,29 @@ class GalleryController:
         """
         logger.debug("jev rank degraded: %s", reason)
         _ai_debug("jev rank degraded: %s", reason)
+        touched: list = []
         for m in list(members or ()):
             it = self._find_item(getattr(m, "path", None)) or m
             try:
                 if as_error:
                     set_activity(it, ActivityPhase.ERROR, "ai")
                 else:
-                    clear_activity(it)
-                self.widget.refresh_card(it)
+                    # Benign non-answer: the Jev work FINISHED — let the chip
+                    # complete its ux (done lingers, then fades) instead of an
+                    # abrupt clear mid-flight.
+                    set_activity(it, ActivityPhase.DONE, "ai")
+                touched.append(it)
             except Exception:
                 pass
+        # Atomic repaint (see _apply_jev_outcome): never a mixed-rank snapshot.
+        try:
+            self.widget.refresh_cards(touched)
+        except Exception:
+            for it in touched:
+                try:
+                    self.widget.refresh_card(it)
+                except Exception:
+                    pass
 
     def _refresh_rank_provenance(self) -> None:
         """State which ranker produced the series ranks (stats-strip chip).

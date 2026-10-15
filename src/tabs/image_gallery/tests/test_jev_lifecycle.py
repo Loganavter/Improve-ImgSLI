@@ -297,7 +297,7 @@ def test_reason_is_fault_classification() -> None:
     assert not reason_is_fault(None)
 
 
-def test_benign_degrade_clears_activity_but_a_fault_paints_error() -> None:
+def test_benign_degrade_completes_the_badge_ux_but_a_fault_paints_error() -> None:
     it = SimpleNamespace(
         path="/g/a.png", activity_phase="queued", activity_source="ai", activity_at=1e18
     )
@@ -305,7 +305,9 @@ def test_benign_degrade_clears_activity_but_a_fault_paints_error() -> None:
         _find_item=lambda p: it, widget=SimpleNamespace(refresh_card=lambda x: None)
     )
     GalleryController._degrade_jev(ctrl, [it], JEV_REASON_NOUL)
-    assert it.activity_phase is None  # benign: cleared, no false error chip
+    # Benign: the Jev work FINISHED -> the chip completes (done), not a false error
+    # and not an abrupt mid-ux clear.
+    assert it.activity_phase == "done"
 
     GalleryController._degrade_jev(ctrl, [it], JEV_REASON_ERROR, as_error=True)
     assert it.activity_phase == "error"
@@ -374,3 +376,32 @@ def test_widget_proxies_rank_provenance_to_the_strip(qtbot) -> None:
 
 def test_jev_rank_stage_declares_metrics_ready() -> None:
     assert ps.stage_requires("jev_rank") == ("metrics_ready",)
+
+
+def test_jev_apply_refreshes_all_members_atomically() -> None:
+    """One refresh_cards(members) call, not a per-card loop: a per-card loop
+    left a snapshot mixing a Jev rank with a stale fusion rank -> two '#1's."""
+    from types import SimpleNamespace
+
+    from tabs.image_gallery.controller import GalleryController
+    from tabs.image_gallery.services.jev_client import JevRankOutcome
+
+    refreshed: list = []
+    a = SimpleNamespace(path="/g/a.png", rank=None, rank_source=None)
+    b = SimpleNamespace(path="/g/b.png", rank=None, rank_source=None)
+    ctrl = SimpleNamespace(
+        state=SimpleNamespace(series=[], rank_domain="ai"),
+        _judgment_domain="ai",
+        _find_item=lambda p: None,
+        widget=SimpleNamespace(
+            refresh_cards=lambda items: refreshed.append(list(items)),
+            refresh_card=lambda x: None,
+            set_rank_provenance=lambda *a, **k: None,
+        ),
+    )
+    GalleryController._apply_jev_outcome(
+        ctrl, [a, b], JevRankOutcome({"/g/a.png": 1, "/g/b.png": 2})
+    )
+    assert len(refreshed) == 1
+    assert {getattr(i, "path", "") for i in refreshed[0]} == {"/g/a.png", "/g/b.png"}
+    assert {a.rank, b.rank} == {1, 2}

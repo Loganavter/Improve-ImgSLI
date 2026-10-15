@@ -102,8 +102,20 @@ def set_activity(item, phase, source) -> bool:
     return changed
 
 
-def clear_activity(item) -> None:
-    """Drop the explicit phase so the item falls back to its persisted state."""
+def clear_activity(item, source=None) -> None:
+    """Drop the explicit phase so the item falls back to its persisted state.
+
+    ``source`` scopes the clear: when given, the phase is dropped ONLY if it
+    belongs to that source. A stage must never wipe another stage's phase (the
+    Jev rank clearing a still-running LOCAL metrics/thumbnail phase made the
+    card's status chip vanish before the work was done).
+    """
+    if source is not None:
+        try:
+            if str(getattr(item, "activity_source", "") or "") != str(source):
+                return
+        except Exception:
+            return
     item.activity_phase = None
     item.activity_source = None
     item.activity_at = 0.0
