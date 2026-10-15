@@ -14,11 +14,9 @@ measured vector: the mode plus, per variant, an opaque alias (``img_N``) and the
 paths, no prose instruction**. Jev answers with a Choice / Noul / Score decision
 (JSON in the assistant message).
 
-Determinism note (design, not a bug): the AI domain is *explicitly
-non-deterministic* — the same vector may get a different Choice on a re-run.
-Reproducibility is bought by the **pin**: the answer is cached per series
-(paths + mtimes + payload) in :mod:`tabs.image_gallery.services.jev_cache`, so a
-re-run over an unchanged series never re-queries the transport.
+Determinism note (design, not a bug): the AI domain is explicitly
+non-deterministic — the same vector may get a different Choice. Reproducibility
+is bought by the **pin** (:mod:`tabs.image_gallery.services.jev_cache`).
 
 Degrade contract (never silent, never partial):
 
@@ -54,10 +52,13 @@ logger = logging.getLogger("ImproveImgSLI")
 #: stays :func:`ai_client.call_sync` (no second client, no bespoke endpoint).
 JEV_MODEL = "typesafe/jev-router"
 
-#: Confidence gate: a *present* Score below this is indecisive (Algorithms rank
-#: survives). A decision with no ``score`` is still decisive when explicit: the
-#: live ``typesafe/jev-router`` omits any number (probe 2026-10-15), so requiring
-#: one made every real call degrade to "malformed".
+#: Transport timeout (s) for one Jev rank call: the router's latency is opaque
+#: and observed 7–37 s (probe 2026-10-15) — over the 30 s ``call_sync`` default.
+JEV_TIMEOUT_S = 60.0
+
+#: Confidence gate: a *present* Score below this is indecisive. A decision with
+#: no ``score`` is still decisive when explicit — the live router omits any
+#: number (probe 2026-10-15), so requiring one degraded every real call.
 JEV_MIN_CONFIDENCE = 0.5
 
 #: Visible degrade reasons (English defaults; the caller logs / surfaces them).
@@ -465,17 +466,16 @@ def rank_series_jev(items, *, mode: str, client: RankClient, cache=None) -> dict
 def make_client(base_url: str, api_key: str) -> RankClient:
     """Bind the rank transport to the **existing** ``ai_client.call_sync`` seam.
 
-    Jev is OpenAI-compatible on OpenRouter (``typesafe/jev-router``), so the
-    request goes over ``<base_url>/chat/completions`` exactly like every other
-    gallery AI call — with its retry/rate-limit handling and no second client.
-    Resolved through the module attribute so tests can monkeypatch
-    ``ai_client.call_sync`` and drive the whole seam without a network.
+    Jev is OpenAI-compatible on OpenRouter (``typesafe/jev-router``): the request
+    goes over ``<base_url>/chat/completions`` like every gallery AI call (one
+    transport), but with ``JEV_TIMEOUT_S`` — router latency is opaque and observed
+    over 30 s. Resolved via the module attr so tests monkeypatch ``call_sync``.
     """
 
     def _client(payload: dict) -> dict:
         from tabs.image_gallery.services import ai_client
 
-        return ai_client.call_sync(base_url, api_key, payload)
+        return ai_client.call_sync(base_url, api_key, payload, timeout=JEV_TIMEOUT_S)
 
     return _client
 
@@ -483,6 +483,7 @@ def make_client(base_url: str, api_key: str) -> RankClient:
 __all__ = [
     "JEV_MIN_CONFIDENCE",
     "JEV_MODEL",
+    "JEV_TIMEOUT_S",
     "JEV_REASON_EMPTY",
     "JEV_REASON_ERROR",
     "JEV_REASON_LOW_CONFIDENCE",

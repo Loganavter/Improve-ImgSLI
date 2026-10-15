@@ -697,11 +697,11 @@
       "path": "src/tabs/image_gallery/services/ai_client.py",
       "limit": 500,
       "marker": "Audit-Meta:",
-      "raw": "pattern=wire-client size=551 reason=\"one OpenAI-compatible vision client: request build + call_sync (retry/429) + response parse + debug belong together — splitting scatters the wire contract\"",
+      "raw": "pattern=wire-client size=762 reason=\"one OpenAI-compatible vision client: request build + call_sync (streaming SSE reassembly + retry/429) + response parse + debug belong together — splitting scatters the wire contract\"",
       "parsed": {
         "pattern": "wire-client",
-        "size": "551",
-        "reason": "one OpenAI-compatible vision client: request build + call_sync (retry/429) + response parse + debug belong together — splitting scatters the wire contract"
+        "size": "762",
+        "reason": "one OpenAI-compatible vision client: request build + call_sync (streaming SSE reassembly + retry/429) + response parse + debug belong together — splitting scatters the wire contract"
       }
     },
     {
