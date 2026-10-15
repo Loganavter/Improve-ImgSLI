@@ -183,7 +183,7 @@ def test_list_row_texts() -> None:
     it.is_best = True
     it.rank = 3
     stamp_badges([it])
-    assert _badges_text(it) == "#3 ★"
+    assert _badges_text(it) == "★ BEST"
     crowned = _items("b.png")[0]
     crowned.crown_rank = 2
     stamp_badges([crowned])
@@ -268,7 +268,7 @@ def test_list_title_single_row(qtbot) -> None:
 
     stamp_badges([it])
     rows = _list_text_rows(it)
-    assert len(rows) == 1 and rows[0].text == "a.png #3 ★"
+    assert len(rows) == 1 and rows[0].text == "a.png ★ BEST"
     card = build_gallery_list_card(it)
     qtbot.addWidget(card)
     assert len(card.region("text").rows) == 1

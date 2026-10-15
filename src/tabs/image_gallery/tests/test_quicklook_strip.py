@@ -193,9 +193,9 @@ def test_rejected_thumb_has_no_badge(qtbot, tmp_path):
     ov.hide()
 
 
-def test_leader_badge_is_rank_like_rest(qtbot, tmp_path):
-    """Leader → #N like every ranked item (no BEST pill); ranked → #N as a
-    real pill button under the shared-hover family."""
+def test_leader_badge_is_best(qtbot, tmp_path):
+    """Leader → the shared ★ BEST preset; ranked → #N as a real pill button
+    under the shared-hover family."""
     from sli_ui_toolkit.widgets import ButtonFamily
 
     paths = [_real_png(tmp_path, f"s{i}.png") for i in range(3)]
@@ -205,7 +205,7 @@ def test_leader_badge_is_rank_like_rest(qtbot, tmp_path):
     ov = _make_overlay(qtbot)
     _show(ov, leader, [leader, ranked, plain])
     pills = _rank_pills_by_path(ov)
-    assert _pill_text(pills[str(paths[0])]) == "#1"
+    assert _pill_text(pills[str(paths[0])]) == "★ BEST"
     assert _pill_text(pills[str(paths[1])]) == "#3"
     assert pills[str(paths[2])] is None
     # Thumbs + pills live in one shared-hover family, thumbs carry no paint.

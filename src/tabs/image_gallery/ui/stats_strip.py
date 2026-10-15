@@ -238,11 +238,11 @@ class StatsStrip(QWidget):
         stats_layout.setSpacing(0)
 
         # gallery.stats.text via color_token so the toolkit re-resolves on flip.
-        self._stats_prefix_label = Label("", pixel_size=13, color_token="gallery.stats.text", parent=self._stats_container)
+        self._stats_prefix_label = Label("", pixel_size=14, color_token="gallery.stats.text", parent=self._stats_container)
         self._stats_prefix_label.setObjectName("gallery_stats_prefix")
         stats_layout.addWidget(self._stats_prefix_label)
 
-        self._stats_redundant_label = Label("", pixel_size=13, color_token="accent", parent=self._stats_container)
+        self._stats_redundant_label = Label("", pixel_size=14, color_token="accent", parent=self._stats_container)
         self._stats_redundant_label.setObjectName("gallery_stats_redundant")
         stats_layout.addWidget(self._stats_redundant_label)
 
@@ -254,7 +254,7 @@ class StatsStrip(QWidget):
 
         # Rank provenance chip — which ranker produced the series ranks
         # (Algorithms | AI (Jev) | Manual). Hidden until set.
-        self._rank_provenance_label = Label("", pixel_size=11, parent=self)
+        self._rank_provenance_label = Label("", pixel_size=14, parent=self)
         self._rank_provenance_label.setObjectName("gallery_rank_provenance")
         try:
             self._rank_provenance_label.setColorToken("accent")

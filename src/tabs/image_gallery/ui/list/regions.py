@@ -47,13 +47,17 @@ def _badges_text(item: GalleryItem, translate=None) -> str:
     """
     parts: list[str] = []
     text = str(getattr(item, "badge", "") or "")
+    _kind = str(getattr(item, "badge_kind", "none") or "none")
     if text:
-        from tabs.image_gallery.services.rank_badge import KIND_SOURCE
+        from tabs.image_gallery.services.rank_badge import KIND_BEST, KIND_SOURCE
 
-        if str(getattr(item, "badge_kind", "none") or "none") == KIND_SOURCE:
+        if _kind == KIND_SOURCE:
             text = _tr(translate, "image_gallery.badge.source", text)
+        elif _kind == KIND_BEST:
+            text = _tr(translate, "image_gallery.badge.best", text)
         parts.append(text)
-    if bool(getattr(item, "is_best", False)):
+    # The leader's ★ is redundant when the shared badge already says ★ BEST.
+    if bool(getattr(item, "is_best", False)) and _kind != "best":
         parts.append("★")
     if bool(getattr(item, "rejected", False)):
         parts.append("✕")

@@ -405,3 +405,40 @@ def test_jev_apply_refreshes_all_members_atomically() -> None:
     assert len(refreshed) == 1
     assert {getattr(i, "path", "") for i in refreshed[0]} == {"/g/a.png", "/g/b.png"}
     assert {a.rank, b.rank} == {1, 2}
+
+
+def test_fusion_defers_best_to_jev_on_the_ai_domain() -> None:
+    """★ BEST belongs to the active ranker: on AI, fusion must NOT pre-empt it
+    (a provisional fusion leader showed BEST before the analysis ended); on
+    Algorithms, fusion's rank 1 is the winner."""
+    from types import SimpleNamespace
+
+    from tabs.image_gallery.controller import GalleryController
+    from tabs.image_gallery.models import Series
+
+    a = SimpleNamespace(
+        path="/g/a.png", metrics={"ssim": 0.9}, rank=None, rank_source=None, is_best=False
+    )
+    b = SimpleNamespace(
+        path="/g/b.png", metrics={"ssim": 0.4}, rank=None, rank_source=None, is_best=False
+    )
+    series = [Series(id="s", members=[a, b])]
+    ctrl = SimpleNamespace(
+        _judgment_domain="ai",
+        state=SimpleNamespace(items=[a, b], mode="fidelity"),
+        _metrics_settled_gen=0,
+        _folder_gen=0,
+    )
+
+    GalleryController._apply_fusion_ranks(ctrl, series, mode="fidelity")
+    assert not a.is_best and not b.is_best  # deferred to Jev on the AI domain
+
+    ctrl._judgment_domain = "algorithms"
+    GalleryController._apply_fusion_ranks(ctrl, series, mode="fidelity")
+    assert (a.is_best, b.is_best) == (True, False)  # Algorithms: rank 1 wins
+
+    # ...but NOT before the metrics pass settled (no provisional winner).
+    a.is_best = b.is_best = False
+    ctrl._metrics_settled_gen = -1
+    GalleryController._apply_fusion_ranks(ctrl, series, mode="fidelity")
+    assert not a.is_best and not b.is_best

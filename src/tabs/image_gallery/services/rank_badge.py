@@ -32,7 +32,12 @@ from pathlib import Path
 #: Badge kinds.
 KIND_RANK = "rank"
 KIND_SOURCE = "source"
+KIND_BEST = "best"
 KIND_NONE = "none"
+
+#: Stamped text for the series-winner badge (localized at render via
+#: ``image_gallery.badge.best``); the ★ BEST preset (mockup ui-mockup-v2-triage).
+BEST_TEXT = "★ BEST"
 
 #: Ranker provenance tokens stored on ``GalleryItem.rank_source`` — the ranker
 #: that produced the number. ``fusion`` = the deterministic Algorithms floor
@@ -199,6 +204,22 @@ def resolve_rank_badge(
     if is_source:
         return RankBadge("SOURCE", KIND_SOURCE, None, is_best, rejected)
 
+    if is_best:
+        # The series winner: the ★ BEST preset (shared by card/strip/list via
+        # ``item.badge``), never a number. ``is_best`` is set ONLY by the final
+        # ranker after the measured pass settles (data-level finality — not a
+        # render-time gate).
+        rank_i = (
+            _int_rank(getattr(item, "crown_rank", None))
+            or _int_rank(getattr(item, "rank", None))
+            or 1
+        )
+        source = rank_source_of(item, domain=domain)
+        key, provenance = (
+            RANK_SOURCE_LABEL[source] if source in RANK_SOURCE_LABEL else ("", "")
+        )
+        return RankBadge(BEST_TEXT, KIND_BEST, rank_i, True, rejected, source, provenance)
+
     rank_val = None
     try:
         rank_val = getattr(item, "crown_rank", None)
@@ -260,7 +281,9 @@ __all__ = [
     "rank_provenance",
     "KIND_RANK",
     "KIND_SOURCE",
+    "KIND_BEST",
     "KIND_NONE",
+    "BEST_TEXT",
     "RANK_SOURCE_FUSION",
     "RANK_SOURCE_JEV",
     "RANK_SOURCE_MANUAL",

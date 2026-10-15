@@ -521,3 +521,19 @@ def test_card_regions_keep_transparent_hover(qapp) -> None:
         hc = getattr(regions[rid], "hover_color", None)
         assert hc is not None and hc.alpha() == 0
     card.deleteLater()
+
+
+def test_best_preset_renders_the_shared_badge(qapp, _production_dark_palettes):
+    """The card renders the SHARED badge (single source of truth): a winner
+    stamped by ``stamp_badges`` as ★ BEST renders the accent preset verbatim —
+    the card never re-derives it from flags."""
+    from tabs.image_gallery.services.rank_badge import KIND_BEST, stamp_badges
+
+    item = _item(is_best=True, rank=1)
+    stamp_badges([item])
+    assert (item.badge, item.badge_kind) == ("★ BEST", KIND_BEST)
+    card = build_gallery_card(item, parent=None)
+    qapp.processEvents()
+    _apply_rejected_visuals(card, item)
+    assert getattr(card, "_gallery_badge", None) == "★ BEST"
+    card.deleteLater()

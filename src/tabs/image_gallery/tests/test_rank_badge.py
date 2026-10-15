@@ -11,6 +11,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from tabs.image_gallery.services.rank_badge import (
+    KIND_BEST,
     KIND_NONE,
     KIND_RANK,
     KIND_SOURCE,
@@ -33,12 +34,11 @@ def test_rank_and_crown_priority() -> None:
     assert crowned.text == "#2" and crowned.rank == 2 and crowned.kind == KIND_RANK
 
 
-def test_leader_as_rank_flag() -> None:
-    # Cards/strip: a leader with no explicit rank shows #1.
-    assert resolve_rank_badge(_item(is_best=True)).text == "#1"
-    # List: keeps the ★ affordance, no synthetic number.
+def test_leader_badge_is_best() -> None:
+    # The series winner shows the ★ BEST preset on every surface (single source).
+    assert resolve_rank_badge(_item(is_best=True)).text == "★ BEST"
     b = resolve_rank_badge(_item(is_best=True), leader_as_rank=False)
-    assert b.text == "" and b.is_best is True
+    assert b.text == "★ BEST" and b.is_best is True
 
 
 def test_source_priority() -> None:
@@ -76,7 +76,7 @@ def test_stamp_badges_leader_and_rejected() -> None:
     leader = _item(path="/gallery/l.png", is_best=True)
     rej = _item(path="/gallery/r.png", rejected=True)
     stamp_badges([leader, rej], None)
-    assert (leader.badge, leader.badge_kind) == ("#1", KIND_RANK)
+    assert (leader.badge, leader.badge_kind) == ("★ BEST", KIND_BEST)
     assert (rej.badge, rej.badge_kind) == ("", KIND_NONE)
 
 

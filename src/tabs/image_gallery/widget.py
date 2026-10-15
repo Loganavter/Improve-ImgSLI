@@ -2235,16 +2235,9 @@ class ImageGalleryWidget(QWidget):
             return
         if card is not None:
             try:
-                tip_parts = [item.name]
-                try:
-                    from tabs.image_gallery.ui.card.visuals import analysis_tooltip_lines
-
-                    tip_parts.extend(analysis_tooltip_lines(item.analysis, self._tr_ui))
-                except Exception:
-                    pass
-                if item.analysis_error:
-                    tip_parts.append(item.analysis_error)
-                card.setToolTip("\n".join(tip_parts))
+                # Single line: the full file name (the analysis second line was
+                # removed — a hover tooltip must not add extra lines).
+                card.setToolTip(str(item.name))
             except Exception:
                 pass
 

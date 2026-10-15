@@ -351,31 +351,15 @@ def build_gallery_card(*args, **kwargs) -> Button:  # type: ignore[no-untyped-de
 
 
 def _set_card_tooltip(card: Button, item: GalleryItem, translate=None) -> None:
-    """Hover tooltip: full file name first, then analysis extras.
+    """Hover tooltip: the full file name ONLY (single line).
 
     Called from BOTH build_gallery_card (fresh pooled cards) and
-    update_gallery_card (rebinds) — a card must never show a stale or
-    missing tooltip. *translate* is the tab translator (verdict/defect
-    wording); None keeps the English text.
+    update_gallery_card (rebinds) — a card must never show a stale or missing
+    tooltip. *translate* is kept for signature compatibility; the analysis/
+    verdict second line was removed (product decision).
     """
     try:
-        parts = [item.name]
-        try:
-            from tabs.image_gallery.ui.card.visuals import (
-                analysis_tooltip_lines,
-                vlm_tiebreak_tooltip_line,
-            )
-
-            parts.extend(analysis_tooltip_lines(getattr(item, "analysis", None), translate))
-        except Exception:
-            pass
-        err = getattr(item, "analysis_error", None)
-        if err:
-            parts.append(str(err))
-        vlm_err = getattr(item, "vlm_tie_error", None)
-        if vlm_err:
-            parts.append(vlm_tiebreak_tooltip_line(translate, vlm_err))
-        card.setToolTip("\n".join(parts))
+        card.setToolTip(str(item.name))
     except Exception:
         pass
 
