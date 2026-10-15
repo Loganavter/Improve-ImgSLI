@@ -36,6 +36,7 @@ from tabs.image_gallery.services.jev_client import (
     JEV_MODEL,
     JEV_REASON_LOW_CONFIDENCE,
     JEV_REASON_NOUL,
+    JEV_TIMEOUT_S,
     build_rank_request,
     make_client,
     rank_series_jev,
@@ -505,6 +506,30 @@ def test_make_client_routes_through_ai_client_call_sync(monkeypatch, tmp_path) -
     assert captured["payload"]["model"] == JEV_MODEL
     blob = json.dumps(captured["payload"])
     assert "image_url" not in blob and "/gallery/" not in blob
+
+
+def test_make_client_uses_the_longer_jev_timeout(monkeypatch, tmp_path) -> None:
+    """The router's latency is opaque and observed over 30 s (probe 2026-10-15),
+    so the Jev transport must not use the 30 s ``call_sync`` default."""
+    from tabs.image_gallery.services import ai_client
+
+    captured: dict = {}
+
+    def _fake_call_sync(base_url, api_key, payload, **kwargs):
+        captured["timeout"] = kwargs.get("timeout")
+        return _chat({"choice": "img_1", "score": 0.9})
+
+    monkeypatch.setattr(ai_client, "call_sync", _fake_call_sync)
+    a = _item("a.png", ssim=0.90, noise=0.10)
+    b = _item("b.png", ssim=0.50, noise=0.10)
+    rank_series_jev(
+        [a, b],
+        mode="fidelity",
+        client=make_client("https://openrouter.ai/api/v1", "sk-test"),
+        cache=jev_cache.JevRankCache(tmp_path),
+    )
+    assert captured["timeout"] == JEV_TIMEOUT_S
+    assert JEV_TIMEOUT_S > 30.0
 
 
 # --------------------------------------------------------------------------
