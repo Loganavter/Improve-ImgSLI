@@ -1,0 +1,220 @@
+# Lane allowlist for scripts/check_comment_citations.py
+#   lane: l1-cites-imagecompare  (root: src/tabs/image_compare)
+#
+# Names below are cited in comments/docstrings of this tree but are NOT
+# in-tree symbols of the scanned root. The checker's symbol index only sees
+# the scanned roots, so a genuinely real name defined elsewhere in the repo
+# (or a runtime/GLSL/Qt name that is still accurate today) reads as
+# "unknown-symbol". Each of these was verified to still exist / still be the
+# real name; none is stale. Bare names only on name lines: this checker
+# version does not strip an inline "# reason" suffix from a name line.
+
+# --- repo symbols defined OUTSIDE the scanned root (still current) ---------
+# canvas geometry provider impl
+CanvasGeometryProvider
+# loupe trace frozen dataclass
+FrameDecision
+# canvas feature pass class
+FullscreenOverlayTexturePass
+# video-editor layout minimum constant
+HorizontalPaneMinimum
+# settings icon list widget
+IconListWidget
+# application logger namespace
+ImproveImgSLI
+# host appearance helper
+MainWindowAppearance
+# presenter-decoupling plan symbol (still current)
+MainWindowPresenter
+# multi_compare tab widget class
+MultiCompareWidget
+# settings nav-row builder
+NavRowBuilder
+# overlay host layer
+OverlayLayer
+# pyramid pixel store class
+PyramidPixelStore
+# toolkit clip effect
+RoundedClipEffect
+# tiling slot dataclass
+TileSlot
+# transient UI manager
+TransientUIManager
+# QRhiCommandBuffer frame methods
+beginPass
+# QRhiCommandBuffer frame methods
+endPass
+# multi-slot tab intake queue key
+pending_uploads
+# UI manager facade
+UIManager
+# residency upload-deadline sentinel
+UploadDeadline
+# viewport reducer
+ViewportReducer
+# viewport runtime cache class
+ViewportRuntimeCache
+# host Ui_* class owning tab widgets
+Ui_ImageComparisonApp
+# context-menu zone builder
+build_context_menu_zones
+# engine tile-plan builder
+build_slot_array_tiles
+# engine draw-plan scale helper
+content_scale_for
+# filename-overlay text rasterizer
+draw_text_bold_supersampled
+# pipeline cache facade
+embedded_cache
+# draw submit helper
+ensure_array_pipeline
+# shared gesture resolver
+gesture_resolver
+# transient-UI dismissal helper
+hide_transient_same_window_ui
+# pixel-store loader
+load_pixel_store
+# tile upload planner
+plan_key_upload
+# engine residency specs
+realize_specs
+# snapshot store rebuild helper
+rebuild_snapshot_store
+# display-tier freshness check
+textures_are_current
+# UI update batcher
+ui_update_batcher
+# ContentStash last-seen content-uid map
+_source_uid_by_key
+# ContentStash preview-flag map
+_prev_is_preview_by_key
+# ContentStash joint preview holds
+_preview_holds
+# ContentStash per-key content memo
+_contents
+# former store-dispatch closure (cited as "former")
+_dispatch_store
+# former video-editor preview method (cited as "old")
+_apply_preview_scene
+# former thumbnail task id (cited as "old")
+_current_task_id
+# former thumbnail cancel flag (cited as "old")
+_generation_cancelled
+# former thumbnail generating flag (cited as "old")
+_is_generating
+# transient-focus runtime flag
+_keyboard_focus
+# first-frame callback name
+_on_first_frame
+# content-swap rekey marker key
+_prev_content
+# preview stash protect-key
+_preview_stash
+# contract test name cited in a comment
+test_no_direct_store_mutation
+# docs name for the QRhi pass registry
+pass_registry
+# phantom host object named as never-existing
+viewport_plugin
+
+# --- telemetry / FrameContext record + perf-span namespaces ---------------
+# perf-span namespace (ic.prepare, ic.submit, ...)
+ic
+# loupe trace record namespace (loupe.mag_*)
+loupe
+# coverage log-line prefix
+coverage_healthy
+# magnifier dropped-slice record
+mag_dropped_slice
+# magnifier fallback-slice record
+mag_fallback_slice
+# fallback reason string
+fallback_grid_unknown
+# fallback reason string
+fallback_grid_empty
+# fallback reason string
+fallback_tile_uncontained
+# fallback reason string
+fallback_slot_not_resident
+# runtime more-pending key
+fallback_more_pending
+# runtime more-pending key
+tile_more_pending
+# runtime stand-down reason key
+mip_layers
+# runtime stand-down reason key
+texture_key_mismatch
+# runtime stand-down reason key
+content_swap
+# chrome batch key
+file_names
+# trace correlation id name
+trace_id
+# tile grid index name
+tile_index
+# filename-overlay layer label list
+layer_labels
+# image identity token used in guards
+image_id
+
+# --- GLSL / shader identifiers (resources *.frag|.vert in this tab) -------
+# shader struct field
+TexCoord
+# shader function
+sampleUV
+# GLSL sampler type
+sampler2DArray
+# shader uniform
+internalSplit
+# shader uniform
+splitPosition
+# shader function
+computeDiff
+# shader function
+canvasLetterbox
+# shader function
+letterboxFill
+# shader uniform
+quadBounds
+# shader uniform
+quadSizePx
+# shader uniform
+bgColor
+# legacy raster magnifier texture name
+magTex
+# legacy raster magnifier texture name
+magTex2
+
+# --- Qt / runtime names that are not in-tree symbols ----------------------
+# context-menu label
+Crop
+# DnD event name in prose
+DragEnter
+# DnD event name in prose
+DragLeave
+# QPainter render hint
+Smooth
+# Wayland popup surface name
+xdg_popup
+# fit-level key name
+k_fit
+# runtime verdict local
+is_same
+# magnifier box-remap local
+box_origin
+# magnifier box-remap local
+eff_rel
+# export canvas objectName
+gpu_export_canvas
+# duck-typed toolkit corner-radius API
+set_corner_radii
+# video-editor signal name (asserted absent)
+layoutSettled
+# settings page namespace (builtin.performance)
+builtin
+# feature command-alias namespace (project.serialize_*)
+project
+# tab/module name used in prose
+image_compare
+# sibling tab/module name used in prose
+multi_compare

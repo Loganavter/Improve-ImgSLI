@@ -110,7 +110,7 @@ def test_no_preview_keeps_pick_display_image_behavior():
 
 def test_display_cache_key_shape_matches_presentation():
     """Stored-role ids must be a (uid1, uid2, size1, size2) 4-tuple like
-    ``live_presentation.display_cache_key`` -- ``_textures_are_current``
+    ``live_presentation.display_cache_key`` -- ``textures_are_current``
     compares the next plan's key against ``_stored_image_ids`` verbatim."""
     img1 = Image.new("RGBA", (20, 10), "red")
     img2 = Image.new("RGBA", (10, 20), "blue")

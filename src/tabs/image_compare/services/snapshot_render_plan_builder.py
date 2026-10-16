@@ -99,8 +99,8 @@ def calculate_still_snapshot_bounds(snap, image1, image2) -> GlobalCanvasBounds:
     )
 
     temp_store = Store()
-    # See the matching comment in video_snapshot_rendering/store_rebuild.py's
-    # `_rebuild_snapshot_store`: `resolve_feature_virtual_layout` below needs
+    # Same requirement as video_snapshot_rendering/store_rebuild.py's
+    # `_get_reusable_store`: `resolve_feature_virtual_layout` below needs
     # an "image_compare" session active, not the default "session_picker".
     temp_store.create_workspace_session(session_type="image_compare", activate=True)
     temp_store.set_session_state_slot("document", DocumentModel())

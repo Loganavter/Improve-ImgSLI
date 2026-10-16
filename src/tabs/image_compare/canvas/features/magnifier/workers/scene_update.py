@@ -14,7 +14,7 @@ _log = logging.getLogger("ImproveImgSLI.magnifier.scene_update")
 
 # P1B explicit-state verdict: sig-throttle for the SSIM diff-state log below
 # (rebuild can run repeatedly while a diff is pending — same recipe as
-# ``rhi_renderer/use_cases/fallback.py`` ``_last_renderer_fallback_sig``:
+# ``rhi_renderer/use_cases/fallback.py``'s ``_last_is_same_sig``:
 # emit once per distinct decision signature, not once per rebuild).
 _last_ssim_diff_state_sig: tuple | None = None
 

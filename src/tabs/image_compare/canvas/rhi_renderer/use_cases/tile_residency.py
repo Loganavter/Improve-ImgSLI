@@ -2,7 +2,7 @@
 """Tile residency extracted from ``RhiCanvasRenderer`` (CODE_PATTERNS thin owner).
 
 ``RhiCanvasRenderer.render``'s residency phase (``realize_tile_plan`` main +
-magnifier) was ~80 LOC living inside ``renderer.py:986``. This module holds
+magnifier) was ~80 LOC living inside the pre-split ``RhiCanvasRenderer.render``. This module holds
 the same bodies as plain functions taking the owning renderer as first arg —
 the owner keeps construction/wiring + instance state
 (``_last_good_*``, ``tile_service``, ``resources``) per CODE_PATTERNS.md:25.
@@ -65,9 +65,9 @@ def realize_main_tiles(
     """Viewport-driven main residency (``realize_tile_plan`` main branch).
 
     Thin-owner wrapper: identical to the ``fallback_protect_keys`` +
-    ``realize_tile_plan`` main call in ``renderer.py:986`` — see its inline
-    comments for contract. Takes ``renderer`` as owner (CODE_PATTERNS) and
-    reads ``renderer._last_good_*`` / ``renderer.tile_service`` /
+    ``realize_tile_plan`` main call in the pre-split ``RhiCanvasRenderer.render``
+    — see this function's inline comments for contract. Takes ``renderer`` as
+    owner (CODE_PATTERNS) and reads ``renderer._last_good_*`` / ``renderer.tile_service`` /
     ``renderer.resources.residency`` exactly as before.
 
     ``extra_protect_keys`` wiring is preserved: previous LOD level's tiles
@@ -237,8 +237,9 @@ def realize_magnifier_tiles(
 ) -> None:
     """Magnifier source residency (``realize_tile_plan`` magnifier branch).
 
-    Thin-owner wrapper: identical to the magnifier branch in
-    ``renderer.py:986`` — see its inline comments for contract. Takes
+    Thin-owner wrapper: identical to the magnifier branch in the pre-split
+    ``RhiCanvasRenderer.render`` — see this function's inline comments for
+    contract. Takes
     ``renderer`` as owner and ``ctx`` (``build_render_runtime_context``
     result) for ``source_texture_ids`` / ``feature_overlay`` /
     ``source_images_ready`` exactly as before.

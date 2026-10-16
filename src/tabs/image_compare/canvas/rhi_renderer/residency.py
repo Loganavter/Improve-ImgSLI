@@ -355,7 +355,7 @@ class TileResidencyRealizer(TileResidencyRealizerBase):
         # (``engine.cache.stash.ContentStash``) -- this realizer only feeds
         # it per-call specs and records its rekeyed-old-content map above
         # for the renderer to fold into the frame's fallback-LOD baseline.
-        # ``_pil_source_uid_by_key``/``_prev_is_preview_by_key`` moved with
+        # ``_source_uid_by_key``/``_prev_is_preview_by_key`` moved with
         # it (``ContentStash.note_source``); the per-(key, uid) content
         # memo and the joint preview holds moved as the stash's own
         # ``_contents``/``_preview_holds``.

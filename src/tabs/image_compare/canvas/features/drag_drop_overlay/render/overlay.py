@@ -1,7 +1,7 @@
 """Live drag/drop overlay painter for Image Compare — canvas-only RHI.
 
 Reuses QPainter rounded-tile logic from sli-ui-toolkit's DragDropOverlay
-(``sli_ui_toolkit/ui/widgets/overlays/drag_drop_overlay.py:93``): margin=10,
+(``sli_ui_toolkit/ui/widgets/overlays/drag_drop_overlay.py``): margin=10,
 QRectF tiles, ThemeManager accent fill (alpha 153), white text, paint_font 20px bold.
 
 Unlike the QWidget overlay which painted into self.rect(), the RHI pass paints

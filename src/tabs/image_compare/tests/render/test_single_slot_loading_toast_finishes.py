@@ -5,8 +5,8 @@ Real bug: the toast is shown per-slot as soon as a preview lands
 (``_session_controller._on_image_loaded`` -> ``_show_loading_toast``), but it
 used to be closed only via ``_start_pyramid_builds``, which is reachable only
 through a successful unification -- and unification requires *both* slots to
-hold an image (``source1 and source2`` in ``loading.trigger_preview_unification``
-/ ``trigger_unification``). Loading a picture into just one slot means that
+hold an image (``source1 and source2`` in
+``loading.trigger_preview_unification``). Loading a picture into just one slot means that
 condition never becomes true, so the toast for that slot never finished.
 """
 

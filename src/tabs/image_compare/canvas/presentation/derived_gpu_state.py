@@ -5,13 +5,13 @@ Systemic fix for divergence between Store (Redux) wish and GPU reality
 (left-on-both, log lie, tiny bbox 0.001):
 
 * Store is the only source of truth (docs/dev/STORE.md, CONTRACTS.md).
-* CanvasRuntimeState / TileTextureService / RhiRenderer._last_good are
+* CanvasRuntimeState / TileTextureService / RhiCanvasRenderer._last_good are
   imperative shadow caches mutated directly from widget (base_images.py,
   residency.py) outside Dispatcher — they survive Store undo/redo and are
   never validated.
 * Previously `update_comparison_if_needed` re-read Store 3-4 times between
   `pick_display_with_preview_backing` and `upload_pil_images`, and
-  `RhiRenderer.render` re-derived `is_same` from `widget.runtime_state`
+  `RhiCanvasRenderer.render` re-derived `is_same` from `widget.runtime_state`
   one frame late (`_prev_sources_is_same` lag).
 
 This module computes a single immutable snapshot after `pick` and passes it
