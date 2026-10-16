@@ -479,284 +479,65 @@ class ImageGalleryWidget(QWidget):
     # -- wiring for toolbar sort/view (A1) ---------------------------------
 
     def _on_sort_changed(self, text: str) -> None:
-        # S2: toolbar sort combo "Sort: Rank/Name/Date" — reorder grid.
-        # Wave 2c note: the frozen seam has no GALLERY_* sort action, so
-        # sort stays view-local (grid order only, no slot write) by design.
-        # Thin owner: delegate to filtering/sorting helper if available, else sort items in place.
-        try:
-            key = str(text or "").lower()
-            # Domain gate (plan-gallery-two-domain-axes W2): "Sort: AI quality"
-            # is a judgment-domain ordering. Outside the AI domain it falls
-            # back to Rank so the algorithms view never orders by an AI score.
-            # ``None`` (unwired fake/legacy path with no domain state) keeps the
-            # legacy behaviour and is not gated.
-            if "quality" in key:
-                _domain = getattr(self, "_judgment_domain", None)
-                if _domain is not None and _domain != "ai":
-                    key = "rank"
-            keyfunc = self._sort_keyfunc(key)
-            if keyfunc is None:
-                return
-            items = list(self._items or [])
-            # Rebuild grid preserving series grouping if active
-            if self._series:
-                # Sort applies to grouped series: members within each
-                # cluster AND cluster order (by first member), then ONE
-                # rebuild via set_triage (stats/hubs recomputed there).
-                # The old flat rebuild_grid first was a wasted pass whose
-                # order set_triage discarded anyway.
-                sorted_series = []
-                for cl in self._series:
-                    try:
-                        sorted_series.append(sorted(cl, key=keyfunc))
-                    except Exception:
-                        sorted_series.append(list(cl))
-                try:
-                    sorted_series.sort(key=lambda cl: keyfunc(cl[0]))
-                except Exception:
-                    pass
-                try:
-                    member_paths = {
-                        str(it.path) for cl in sorted_series for it in cl
-                    }
-                except Exception:
-                    member_paths = set()
-                try:
-                    ungrouped = sorted(
-                        (
-                            it for it in (self._items or [])
-                            if str(it.path) not in member_paths
-                        ),
-                        key=keyfunc,
-                    )
-                except Exception:
-                    ungrouped = [
-                        it for it in (self._items or [])
-                        if str(it.path) not in member_paths
-                    ]
-                self._items = [it for cl in sorted_series for it in cl] + ungrouped
-                try:
-                    self.set_triage(sorted_series, self._mode, self._source_path)
-                except Exception:
-                    pass
-            else:
-                try:
-                    items.sort(key=keyfunc)
-                except Exception:
-                    pass
-                self.rebuild_grid(items)
-        except Exception:
-            pass
+        """Thin delegator to ``ui/widget_parts.view_prefs._on_sort_changed``."""
+        from tabs.image_gallery.ui.widget_parts import view_prefs
+
+        return view_prefs._on_sort_changed(self, text)
 
     @staticmethod
     def _sort_keyfunc(key: str):
-        """Sort key for a toolbar sort label, or None for unknown labels."""
-        if "name" in key:
-            return lambda it: (
-                getattr(getattr(it, "path", None), "name", "") or ""
-            ).lower()
-        if "date" in key:
-            # Newest first: use mtime_ns descending
-            return lambda it: -int(getattr(it, "mtime_ns", 0) or 0)
-        if "quality" in key:
-            # AI quality first (higher mean score first); unscored items sink.
-            def _quality_key(it):
-                try:
-                    from tabs.image_gallery.models import ai_quality_score
+        """Thin delegator to ``ui/widget_parts.view_prefs._sort_keyfunc``."""
+        from tabs.image_gallery.ui.widget_parts import view_prefs
 
-                    score = ai_quality_score(getattr(it, "analysis", None))
-                except Exception:
-                    score = None
-                if score is None:
-                    return (1, 0.0)
-                return (0, -float(score))
-
-            return _quality_key
-        if "rank" in key:
-            # Rank 1 first, then embedding distance
-            def _rank_key(it):
-                r = getattr(it, "rank", None) or getattr(it, "crown_rank", None)
-                try:
-                    rk = int(r) if r is not None else 999
-                except Exception:
-                    rk = 999
-                metrics = getattr(it, "metrics", None)
-                d = metrics.get("embedding_dist_to_centroid") if isinstance(metrics, dict) else None
-                try:
-                    df = float(d) if d is not None else 1e9
-                except Exception:
-                    df = 1e9
-                return (rk, df)
-
-            return _rank_key
-        return None
+        return view_prefs._sort_keyfunc(None, key)
 
     def _on_view_toggled(self, checked: bool) -> None:
-        # View switch toggle (grid/list) — one view, builders swap inside
-        # GalleryGridView (recent items_view parity). Series, selection and
-        # triage state are untouched; the grid rebuilds its cards in place.
-        try:
-            self._view_mode = bool(checked)
-        except Exception:
-            pass
-        try:
-            self._grid_view.set_view_mode("list" if checked else "grid")
-        except Exception:
-            pass
-        try:
-            _dbg("view toggled %s", bool(checked))
-        except Exception:
-            pass
-        try:
-            self._persist_view_prefs()
-        except Exception:
-            pass
+        """Thin delegator to ``ui/widget_parts.view_prefs._on_view_toggled``."""
+        from tabs.image_gallery.ui.widget_parts import view_prefs
+
+        return view_prefs._on_view_toggled(self, checked)
 
     def _on_domain_changed(self, domain: str) -> None:
         """Toolbar domain switch changed — normalize, store, mirror.
 
-        Transient view state only: the session-slot persistence of
-        ``judgment_domain`` is out of scope (follow-up). The controller mirror
-        (``state.judgment_domain``) is best-effort — a widget without an
-        attached controller still tracks its own domain (storeless tests).
+        Thin delegator to ``ui/widget_parts.view_prefs._on_domain_changed``.
         """
-        try:
-            from tabs.image_gallery import models as _models
+        from tabs.image_gallery.ui.widget_parts import view_prefs
 
-            valid = tuple(getattr(_models, "JUDGMENT_DOMAINS", ("algorithms", "ai")))
-        except Exception:
-            valid = ("algorithms", "ai")
-        dom = str(domain or "").strip().lower()
-        if dom not in valid:
-            dom = "algorithms"
-        self._judgment_domain = dom
-        try:
-            ctrl = getattr(self, "_controller", None) or getattr(
-                self, "_attached_controller", None
-            )
-        except Exception:
-            ctrl = None
-        try:
-            activate = getattr(ctrl, "activate_judgment_domain", None)
-            if callable(activate):
-                # The switch's real effect: lazily analyze the visible items
-                # (or show the not-configured error on the cards).
-                activate(dom)
-            else:
-                state = getattr(ctrl, "state", None)
-                if state is not None:
-                    state.judgment_domain = dom
-        except Exception:
-            pass
-        try:
-            _dbg("judgment domain %s", dom)
-        except Exception:
-            pass
-        try:
-            self._persist_view_prefs()
-        except Exception:
-            pass
+        return view_prefs._on_domain_changed(self, domain)
 
     def attach_session_state(self, state) -> None:
-        """Attach the tab's ``SessionState`` facade (toolbar chrome writes)."""
-        self._session_state = state
+        """Attach the tab's ``SessionState`` facade (toolbar chrome writes).
+
+        Thin delegator to ``ui/widget_parts.view_prefs.attach_session_state``.
+        """
+        from tabs.image_gallery.ui.widget_parts import view_prefs
+
+        return view_prefs.attach_session_state(self, state)
 
     def _persist_view_prefs(self) -> None:
-        """Write both toolbar switch positions through the session-state facade."""
-        state = getattr(self, "_session_state", None)
-        if state is None:
-            return
-        try:
-            state.set("view_list", bool(getattr(self, "_view_mode", False)))
-            state.set("judgment_domain", str(getattr(self, "_judgment_domain", "algorithms")))
-        except Exception:
-            pass
+        """Thin delegator to ``ui/widget_parts.view_prefs._persist_view_prefs``."""
+        from tabs.image_gallery.ui.widget_parts import view_prefs
+
+        return view_prefs._persist_view_prefs(self)
 
     def paintEvent(self, event) -> None:  # noqa: N802
-        """Paint the page's own opaque themed background (live on theme flip).
+        """Thin delegator to ``ui/widget_parts.view_prefs.paint_event``.
 
-        Reads the token at paint time (no cached colour) and paints with alpha
-        255, so the page is a self-sufficient opaque surface — the sibling of
-        ``SessionPickerWidget`` / the image_compare page. Without this the
-        content area (e.g. the blank empty state) showed the composited host
-        fill, which does not refresh on a live theme switch.
+        Qt looks this up by name; the body (opaque themed page background,
+        live on theme flip) lives in the module.
         """
-        try:
-            from PySide6.QtGui import QColor, QPainter
+        from tabs.image_gallery.ui.widget_parts import view_prefs
 
-            from sli_ui_toolkit.managers import ThemeManager
-            from ui.theming import try_resolve_theme_color
-
-            col = try_resolve_theme_color(ThemeManager.get_instance(), "surface.background")
-            bg = QColor(col) if isinstance(col, str) else col
-            if bg is None or not bg.isValid() or bg.alpha() == 0:
-                bg = QColor("#ffffff")
-            bg.setAlpha(255)
-            painter = QPainter(self)
-            painter.fillRect(event.rect(), bg)
-            painter.end()
-        except Exception:
-            pass
-
-        try:
-            super().paintEvent(event)
-        except Exception:
-            pass
+        return view_prefs.paint_event(self, event)
 
     def apply_view_prefs(self, *, view_list: bool, judgment_domain: str) -> None:
-        """Restore both switches from the session slot.
+        """Thin delegator to ``ui/widget_parts.view_prefs.apply_view_prefs``."""
+        from tabs.image_gallery.ui.widget_parts import view_prefs
 
-        The view is applied directly (widget ``_view_mode`` + grid) so it never
-        relies on the toolbar's exclusive helper emitting ``viewToggled`` (which
-        early-returns when the toolbar is already in the matching state). The
-        domain is the controller's single authority (``_set_judgment_domain``);
-        the toolbar stays signal-blocked so it never double-emits. No run fires
-        HERE: the AI-domain work is re-derived LEVEL-triggered at the metrics
-        pass settle (``_run_ai_on_settle`` + ``_run_jev_on_settle``), so a
-        restored ``ai`` domain reproduces the scorecards/rank without starting
-        network work during view restore.
-        """
-        is_list = bool(view_list)
-        self._view_mode = is_list
-        try:
-            self._grid_view.set_view_mode("list" if is_list else "grid")
-        except Exception:
-            pass
-        dom = str(judgment_domain or "algorithms").strip().lower()
-        if dom not in ("algorithms", "ai"):
-            dom = "algorithms"
-        self._judgment_domain = dom
-        try:
-            tb = self.toolbar
-            tb.blockSignals(True)
-            try:
-                tb.set_view_list(is_list)
-                tb.set_judgment_domain(dom)
-            finally:
-                tb.blockSignals(False)
-        except Exception:
-            pass
-        try:
-            ctrl = getattr(self, "_controller", None) or getattr(
-                self, "_attached_controller", None
-            )
-            setter = getattr(ctrl, "_set_judgment_domain", None)
-            if callable(setter):
-                setter(dom)
-        except Exception:
-            pass
-        # WHY Jev does / does not run: observability only (the AI work is
-        # re-derived level-triggered at the metrics pass settle). Same
-        # IMGSLI_AI_DEBUG key.
-        try:
-            from tabs.image_gallery.services.ai_client import _ai_debug
-
-            _ai_debug(
-                "view restored: judgment_domain=%s (AI work derived at metrics settle)",
-                dom,
-            )
-        except Exception:
-            pass
+        return view_prefs.apply_view_prefs(
+            self, view_list=view_list, judgment_domain=judgment_domain
+        )
 
     # -- card interaction -------------------------------------------------
 
@@ -1536,120 +1317,39 @@ class ImageGalleryWidget(QWidget):
     # -- A1 scanning/triage done (toolbar + empty state) ---------------------
 
     def set_scanning(self, n: int, total: int) -> None:
-        """S1: progressive scanning n/N — toolbar spinner + empty_state."""
-        try:
-            n_i = int(n)
-            t_i = int(total)
-        except Exception:
-            n_i = int(n) if isinstance(n, int) else 0
-            t_i = int(total) if isinstance(total, int) else 0
-        _dbg("view-cycle scanning cover n=%d total=%d", n_i, t_i)
-        try:
-            self.toolbar.set_scanning(n_i, t_i)
-        except Exception:
-            pass
-        try:
-            self._empty_state.set_state("scanning", n_i, t_i)
-        except TypeError:
-            try:
-                self._empty_state.set_state("scanning", n_i)
-            except Exception:
-                pass
-        except Exception:
-            pass
-        try:
-            # Stack switch — empty stays visible during scanning
-            if hasattr(self, "_content_stack"):
-                self._content_stack.setCurrentWidget(self._empty_state)
-                self._empty_state.show()
-                self._grid_view.show()  # keep in stack but not current
-            else:
-                self._empty_state.show()
-                self._grid_view.hide()
-        except Exception:
-            pass
+        """Thin delegator to ``ui/widget_parts.status.set_scanning``."""
+        from tabs.image_gallery.ui.widget_parts import status
+
+        return status.set_scanning(self, n, total)
 
     def set_background_scanning(self, n: int, total: int) -> None:
-        """S1 progress without hiding the grid (append path).
+        """Thin delegator to ``ui/widget_parts.status.set_background_scanning``.
 
-        Same toolbar spinner as :meth:`set_scanning`, but the current
+        S1 progress without hiding the grid (append path): the current
         series view stays visible — appending one image must not tear
         down good groups behind a spinner while the pool retriages.
         """
-        try:
-            n_i = int(n)
-            t_i = int(total)
-        except Exception:
-            n_i = int(n) if isinstance(n, int) else 0
-            t_i = int(total) if isinstance(total, int) else 0
-        _dbg("view-cycle scanning background n=%d total=%d", n_i, t_i)
-        try:
-            self.toolbar.set_scanning(n_i, t_i)
-        except Exception:
-            pass
+        from tabs.image_gallery.ui.widget_parts import status
+
+        return status.set_background_scanning(self, n, total)
 
     def set_triage_done(self) -> None:
-        """S2: triage complete — hide spinner."""
-        try:
-            self.toolbar.set_triage_done()
-        except Exception:
-            pass
-        try:
-            self._empty_state.set_state("ready")
-        except Exception:
-            pass
+        """Thin delegator to ``ui/widget_parts.status.set_triage_done``."""
+        from tabs.image_gallery.ui.widget_parts import status
+
+        return status.set_triage_done(self)
 
     def reset_session_view(self) -> None:
-        """Reset the view for a session with no pool data (slot-authoritative clear).
+        """Thin delegator to ``ui/widget_parts.status.reset_session_view``.
 
         Called by ``GalleryController.clear_to_empty`` when a restore finds
         an empty/absent slot: drops the series view, hides the stats strip,
         stops the spinner, clears the filter edit (signal-blocked, no loop)
-        and lands on the default empty state. No dispatch — the slot is
-        already empty, there is nothing to persist.
+        and lands on the default empty state.
         """
-        try:
-            self._series = []
-        except Exception:
-            pass
-        try:
-            self._mode = None
-        except Exception:
-            pass
-        try:
-            self._source_path = None
-        except Exception:
-            pass
-        try:
-            self._collapsed = {}
-        except Exception:
-            pass
-        try:
-            gv = getattr(self, "_grid_view", None)
-            if gv is not None and hasattr(gv, "set_series"):
-                gv.set_series([], hub_names=[], collapsed={})
-        except Exception:
-            pass
-        try:
-            self.stats_strip.hide()
-        except Exception:
-            pass
-        try:
-            self.set_triage_done()
-        except Exception:
-            pass
-        try:
-            self.rebuild_grid([])
-        except Exception:
-            pass
-        try:
-            self._empty_state.restore_empty_message()
-        except Exception:
-            pass
-        try:
-            self._render_gallery_filter("")
-        except Exception:
-            pass
+        from tabs.image_gallery.ui.widget_parts import status
+
+        return status.reset_session_view(self)
 
     # -- API expected by GalleryController ---------------------------------
 
