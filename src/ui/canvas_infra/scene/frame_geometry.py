@@ -57,7 +57,7 @@ def resolve_canvas_content_geometry(
 
     ``virtual_layout=None`` (or a layout with unit ``canvas_bounds``) is the
     plain no-padding case: ``outer_rect == inner_rect``, identical to the
-    old ``build_content_rect`` letterbox fit."""
+    plain pre-refactor letterbox fit."""
     if widget_width <= 0 or widget_height <= 0 or image_width <= 0 or image_height <= 0:
         return ContentGeometry(
             canvas_width=max(1, widget_width),

@@ -1,0 +1,160 @@
+# Lane allowlist for scripts/check_comment_citations.py
+# Lane: agent/l3-cites-engine-ui/work — owned dirs src/engine src/ui src/core src/services
+#
+# The lane scan indexes only the four owned roots, so any name defined
+# elsewhere in the repo (src/tabs, src/plugins, src/shared, src/shared_toolkit,
+# tests) reads as "unknown-symbol" even though the comment is accurate. Those
+# cross-dir names are listed here (the checker docstring's own remedy: grow
+# the allowlist rather than reflowing correct comments). External Qt /
+# sli-ui-toolkit / platform / GLSL names and runtime string keys (not code
+# symbols) are listed here too.
+#
+# Reasons are on dedicated comment lines; a trailing "# reason" on a name line
+# would become part of the name (load_name_file does not split on "#").
+
+# --- repo symbols defined outside the lane's scanned roots (other src dirs) ---
+# e.g. src/tabs/image_compare, src/tabs/multi_compare, src/plugins, src/shared,
+# src/shared_toolkit, plus test-name references. Accurate, just out-of-lane.
+_compute_inner_content_rect
+_connect_session_actions
+_connect_text_settings_button
+_ffd_primary
+_first_visual_present_count
+_get_setting
+_load_keyboard_overrides
+_renderer
+_save_keyboard_overrides
+_save_setting
+_theme_or_palette_bg
+analyze_perf_trace
+apply_background_fill
+ArrayResources
+array_draw_plan
+bind_window_shell
+build_array_draw_plan
+CanvasWidget
+chrome_sync
+configure_controller
+content_rect_px
+create_main_window_feature
+CropBox
+DocumentModel
+DocumentReducer
+evict_texture_upload_cache_over_budget
+filename_overlay
+firstFrameRendered
+glass_panels
+HelpDialog
+image_compare
+ImageCompareWidget
+ImageItem
+ImageSessionState
+last_rekeyed_keys
+LabelSettings
+LoadingToastCoordinator
+MultiCompareCanvasWidget
+MultiCompareDividerSettings
+MultiCompareWidget
+multi_compare
+new_last_good_key
+on_magnifier_guides_toggled
+on_resolved
+popup_context_menu_for_anchor
+realize_tile_plan
+RecentItemsView
+rekey_stale_content
+render_context
+restore_texture_uploads
+RhiCanvasRenderer
+RhiResources
+rhi_renderer
+schedule
+session_picker
+set_corner_radius
+set_current_image
+set_slider_value_quietly
+set_state
+show_underline
+sidebar_header
+SlotResources
+test_canvas_fullscreen_pass_resources_single_owner
+test_gallery_dnd_delivery
+test_platform_isolation
+test_ui_tab_sandbox
+TileResidencyRealizer
+ToolbarRowsSection
+trace_invalidation
+WIDGET_FEATURE
+
+# --- external Qt / sli-ui-toolkit / Windows / third-party names ---
+_AdaptiveTabBar
+addItem
+ApplicationInactive
+apply_editable_text_behavior
+autoFillBackground
+ComboBox
+content_padding
+contextMenuEvent
+d3d12
+ensure_overlay_stacking
+exif_transpose
+framebuffer_size
+IconListWidget
+IThumbnailProvider
+ImproveImgSLI
+lib_ui
+ListRowSpec
+LiquidGlassFillWidget
+ModePicker
+NavigationSection
+no_rotate
+Painter
+PopupFocusReason
+QOpenGLWidget
+QRhiD3D11InitParams
+setMask
+SidebarDialogShell
+TextureArraySizeMax
+track_painter
+UnifiedFlyout
+WA_StyledBackground
+
+# --- GLSL / GPU shader-uniform names ---
+ic_
+iPanFit
+iSlotRect
+iTileRect
+iZoom
+mc_
+sampleUV
+slot_array
+slotRect
+sourceTopLeft
+tileRect
+UBuf
+
+# --- runtime string keys / attribute names / trace fields (not code symbols) ---
+_main
+_process_events
+capture_preview_image
+col_parity
+detail_error
+empty_zone
+file_names
+HxWx4
+info_hud
+keepwarm
+mag_gate
+perf_trace_tick
+presents_during_show
+process_name
+qt_liveness_probe
+row_parity
+scroll_value
+surfaceRole
+thread_name
+window_schedule
+xdg_popup
+
+# --- documented cross-tab contract name (docs, not a code symbol) ---
+PixelSource
