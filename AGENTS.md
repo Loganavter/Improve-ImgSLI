@@ -261,6 +261,15 @@ env QT_QPA_PLATFORM=offscreen pytest -q tests/<area>/<target_test>.py
 
 When fixing a rendering/export/UI wiring bug, prefer adding a focused regression test in the matching folder rather than at the top level of `tests/` — but only with a falsification story (proven failing pre-fix). Agent-written tests are low-trust: a test that merely restates the implementation proves nothing (see `docs/dev/TESTING.md` § Rules for writing new tests).
 
+### Comment/docstring-only changes
+
+A change that touches ONLY comments/docstrings does not need the suite. Prove it
+mechanically: parse `HEAD:<file>` and the worktree file, set every
+`ast.Constant` str value to a placeholder, and require the `ast.dump` to be
+identical (no code/signature change); then `python -m compileall` and the
+citation checker. Run a normal suite only for code changes, or for a module
+whose docstring is read at runtime (`__doc__`).
+
 ### Local-green merges
 
 The merge-readiness signal is the **local** run (contracts + affected suites, ~2 min), not CI (~4+ min queue+run). Do not block merges waiting on CI: CI is an async backstop. If CI goes red post-merge, fix forward the same day. Every PR body cites its local evidence (what was run, counts).
