@@ -2160,1216 +2160,204 @@ class GalleryController:
     # -- triage (Stage 2 Pass 1) -----------------------------------------------
 
     def _next_series_gen(self) -> int:
-        """Bump the series-view generation: in-flight triage goes stale."""
-        self._series_gen += 1
-        return self._series_gen
+        from tabs.image_gallery.use_cases import triage_run as _triage_run
+
+        return _triage_run._next_series_gen(self)
 
     def _assign_fresh_stable_ids(self, computed) -> tuple:
-        """Seed-assign fresh stable ids to computed groups IN ORDER.
+        from tabs.image_gallery.use_cases import triage_run as _triage_run
 
-        Thin owner over S1 ``translate_computed_to_stable`` (the single
-        implementation): snapshot counter + pinned ids under the id lock,
-        translate (collision-skip included), commit the returned counter.
-        Member ``series_id`` fields are rewritten to match; computed
-        ranks/centroids untouched. Returns ``(series, next_counter)``.
-        """
-        try:
-            from tabs.image_gallery.use_cases.series_override import (
-                translate_computed_to_stable as _translate,
-            )
-        except Exception:
-            return (list(computed or []), self._series_next_id)
-        try:
-            pinned = {
-                str(v)
-                for v in (self._series_overrides or {}).values()
-                if v is not None
-            }
-        except Exception:
-            pinned = set()
-        with self._series_id_lock:
-            try:
-                start = int(self._series_next_id or 1)
-            except Exception:
-                start = 1
-            try:
-                series, nxt = _translate(computed, start, skip_ids=pinned)
-            except Exception:
-                return (list(computed or []), self._series_next_id)
-            try:
-                self._series_next_id = int(nxt)
-            except Exception:
-                pass
-            return (series, self._series_next_id)
+        return _triage_run._assign_fresh_stable_ids(self, computed)
 
     @staticmethod
     def _section_members(entry) -> list:
-        """Member list of one cluster (Series dataclass or plain list)."""
-        try:
-            if hasattr(entry, "members"):
-                return list(getattr(entry, "members", None) or [])
-            if isinstance(entry, (list, tuple)):
-                return list(entry)
-        except Exception:
-            pass
-        return []
+        from tabs.image_gallery.use_cases import triage_run as _triage_run
+
+        return _triage_run._section_members(entry)
 
     @staticmethod
     def _section_id(entry, members) -> str | None:
-        """Cluster id string (Series.id, else first member's series_id)."""
-        try:
-            eid = getattr(entry, "id", None)
-            if eid is not None:
-                return str(eid)
-        except Exception:
-            pass
-        try:
-            if members:
-                sid = getattr(members[0], "series_id", None)
-                return str(sid) if sid is not None else None
-        except Exception:
-            pass
-        return None
+        from tabs.image_gallery.use_cases import triage_run as _triage_run
+
+        return _triage_run._section_id(entry, members)
 
     def _restore_singletons(self, items, overrides, pre_ids, last_series, regrouped) -> list:
-        """Preserve 1-member manual sections post-apply (S2).
+        from tabs.image_gallery.use_cases import triage_run as _triage_run
 
-        Base ``apply_overrides`` dissolves every group with <2 members.
-        Sync paths keep two kinds of singletons visible as own 1-member
-        ``Series`` sections instead: (a) items carrying a STRING override
-        that end UNGROUPED — restored with the PINNED id (covers moves
-        onto fresh ids plus pins surviving later moves/deliveries); (b)
-        unpinned leftovers whose pre-apply group vanished (``pre_ids``
-        given — the move path only) — restored with the PRE id.
-        0-member series close (nothing to restore) and forced-UNGROUPED
-        (None pin) never restores. Delivery calls with ``pre_ids=None``
-        (pinned only — a fresh cluster world has no leftovers).
-        """
-        try:
-            out = list(regrouped or [])
-        except Exception:
-            out = []
-        try:
-            live = list(items or [])
-        except Exception:
-            return out
-        try:
-            omap = dict(overrides or {})
-        except Exception:
-            omap = {}
-        members_of = GalleryController._section_members
-        id_of = GalleryController._section_id
-        present: set[str] = set()
-        by_id: dict[str, object] = {}
-        for entry in out:
-            members = members_of(entry)
-            eid = id_of(entry, members)
-            if eid is not None:
-                present.add(eid)
-                by_id.setdefault(eid, entry)
-        last_centroid: dict[str, object] = {}
-        last_phash: dict[str, object] = {}
-        try:
-            for entry in list(last_series or []):
-                members = members_of(entry)
-                eid = id_of(entry, members)
-                if eid is None:
-                    continue
-                try:
-                    last_centroid.setdefault(eid, getattr(entry, "centroid", None))
-                except Exception:
-                    pass
-                try:
-                    last_phash.setdefault(eid, getattr(entry, "phash_centroid", None))
-                except Exception:
-                    pass
-        except Exception:
-            pass
-        for it in live:
-            try:
-                cur = getattr(it, "series_id", None)
-            except Exception:
-                continue
-            if cur is not None:
-                continue
-            try:
-                key = str(getattr(it, "path", None))
-            except Exception:
-                continue
-            sid: str | None = None
-            try:
-                if key in omap and omap[key] is not None:
-                    sid = str(omap[key])
-            except Exception:
-                sid = None
-            if sid is None and pre_ids is not None:
-                try:
-                    if key in omap:
-                        # Explicit override wins — including forced
-                        # UNGROUPED (None pin): the item must never be
-                        # re-pinned to its pre-apply series, or the last
-                        # member of a dissolved group resurrects it and
-                        # can never be ungrouped.
-                        continue
-                    pre = pre_ids.get(key)
-                    if pre is not None and str(pre) not in present:
-                        sid = str(pre)
-                except Exception:
-                    pass
-            if sid is None:
-                continue
-            if sid in by_id:
-                # Defensive rejoin: the group survived but the item fell
-                # out (should not happen — apply groups by final sid).
-                host = by_id[sid]
-                try:
-                    if hasattr(host, "members"):
-                        host.members.append(it)  # type: ignore[union-attr]
-                    elif isinstance(host, list):
-                        host.append(it)
-                    else:
-                        raise TypeError("ungroupable host")
-                    try:
-                        it.series_id = sid
-                    except Exception:
-                        pass
-                except Exception:
-                    try:
-                        it.series_id = sid
-                    except Exception:
-                        pass
-                continue
-            try:
-                ph = (getattr(it, "metrics", None) or {}).get("phash")
-            except Exception:
-                ph = None
-            if not isinstance(ph, int):
-                ph = last_phash.get(sid)
-            try:
-                it.series_id = sid
-            except Exception:
-                pass
-            try:
-                out.append(
-                    Series(
-                        id=sid,
-                        members=[it],
-                        centroid=last_centroid.get(sid),  # type: ignore[arg-type]
-                        phash_centroid=ph,  # type: ignore[arg-type]
-                    )
-                )
-            except Exception:
-                continue
-            try:
-                by_id[sid] = out[-1]
-                present.add(sid)
-            except Exception:
-                pass
-        try:
-            out.sort(
-                key=lambda s: (
-                    -len(members_of(s)),
-                    str(getattr(s, "id", "") or ""),
-                )
-            )
-        except Exception:
-            pass
-        return out
+        return _triage_run._restore_singletons(self, items, overrides, pre_ids, last_series, regrouped)
 
     def _apply_series_view(self, series) -> None:
-        """Post-triage view tail for sync paths (move / append-attach).
+        from tabs.image_gallery.use_cases import triage_run as _triage_run
 
-        Same delivery as ``_on_triage_ready`` minus workers: ``state.series``
-        + rank/mode/source emit + ``widget.set_triage`` + spinner off. No
-        clustering, no thread hops, no analysis starts.
-        """
-        self.state.series = series  # type: ignore[assignment]
-        # Rank the regrouped view from the measured fusion (move / append
-        # attach): same primitive as the triage tail, so a regroup never
-        # resurrects the centroid order.
-        self._apply_fusion_ranks(series)
-        try:
-            ts = getattr(self.state, "triage_state", "idle")
-            triage_s = getattr(ts, "value", ts)
-            triage_s = str(triage_s or "idle")
-        except Exception:
-            triage_s = "idle"
-        try:
-            self._emit_triage_finished(triage_s)
-        except Exception:
-            logger.debug("_apply_series_view emit failed", exc_info=True)
-        try:
-            self.widget.set_triage(series, self.state.mode, self.state.source_path)
-        except Exception:
-            logger.debug("_apply_series_view set_triage failed", exc_info=True)
-        try:
-            if hasattr(self.widget, "set_triage_done"):
-                self.widget.set_triage_done()  # type: ignore[attr-defined]
-            elif hasattr(self.widget, "toolbar") and hasattr(
-                self.widget.toolbar, "set_triage_done"
-            ):
-                self.widget.toolbar.set_triage_done()  # type: ignore[attr-defined]
-        except Exception:
-            logger.debug("_apply_series_view set_triage_done failed", exc_info=True)
+        return _triage_run._apply_series_view(self, series)
 
     def _run_triage_sync(
         self, items: list[GalleryItem], overrides: dict | None = None
     ) -> tuple[list[Series], Path | None, Mode]:
-        """Pure pipeline for GenericWorker: cluster → override → mode (no auto hub)."""
-        from tabs.image_gallery.services.clustering import cluster_items
-        from tabs.image_gallery.services.mode import select_mode
-        from tabs.image_gallery.use_cases import series_override as _override
+        from tabs.image_gallery.use_cases import triage_run as _triage_run
 
-        series = cluster_items(items)
-        # S2 stable ids: every seed run renames computed groups to fresh
-        # ``series_<n>`` IN ORDER before overrides apply (pins keep their
-        # stored ids verbatim — override wins in the post-pass below).
-        try:
-            series, _ = self._assign_fresh_stable_ids(series)
-        except Exception:
-            logger.debug("stable-id seed assignment failed", exc_info=True)
-        # Wave B post-pass (pure): manual overrides win over computed ids.
-        # ``overrides`` is an explicit snapshot taken in _start_triage (the
-        # worker must not read live controller state); None keeps old
-        # callers working and means "no overrides".
-        try:
-            series = _override.apply_overrides(items, overrides or {}, series)
-        except Exception:
-            logger.debug("series override apply failed", exc_info=True)
-        # No auto source: hub_detection disabled — source stays None until
-        # the user picks one explicitly ("Set as source" / context menu).
-        source = None
-        mode = select_mode(series, items, source)
-        return (series, source, mode)
+        return _triage_run._run_triage_sync(self, items, overrides)
 
     def retriage_quiet(self) -> bool:
-        """Regroup the current pool after restore/activation (no rescan).
+        from tabs.image_gallery.use_cases import triage_run as _triage_run
 
-        Series live only in controller memory, so a pool restored from a
-        slot comes back FLAT — without this, returning to a tab leaves
-        every card UNGROUPED until the next folder open. Fast path: when
-        every signature is cached (the common return-to-tab case) the
-        pipeline runs INLINE on the GUI thread (~ms, no worker hop, no
-        spinner flash); otherwise the background worker path. Staleness
-        guarded by folder/series generations (a newer triage wins).
-        Returns True when (re)grouping started or applied.
-        """
-        try:
-            if getattr(self.state, "triage_state", None) not in (
-                TriageState.IDLE, TriageState.DONE, TriageState.ERROR,
-            ):
-                return False
-            items = list(getattr(self.state, "items", None) or [])
-        except Exception:
-            return False
-        if not items:
-            return False
-        try:
-            from tabs.image_gallery.debug import gallery_debug as _dbg
-            from tabs.image_gallery.debug import gallery_debug_enabled as _dbg_on
-
-            if _dbg_on():
-                _dbg("retriage_quiet: regrouping %d restored items", len(items))
-        except Exception:
-            pass
-        try:
-            from tabs.image_gallery.services.clustering import (
-                signatures_cached as _cached,
-            )
-
-            if _cached(items):
-                try:
-                    overrides = dict(getattr(self, "_series_overrides", None) or {})
-                except Exception:
-                    overrides = {}
-                try:
-                    import time as _time
-
-                    _t0 = _time.perf_counter()
-                    series, source, mode = self._run_triage_sync(
-                        list(items), overrides
-                    )
-                    _t1 = _time.perf_counter()
-                    series = self._commit_triage_series(series, source, mode)
-                    _t2 = _time.perf_counter()
-                    self._apply_triage_result(series, source, mode)
-                    _t3 = _time.perf_counter()
-                    try:
-                        from tabs.image_gallery.debug import gallery_debug as _dbg2
-                        from tabs.image_gallery.debug import gallery_debug_enabled as _dbg_on2
-
-                        if _dbg_on2():
-                            _dbg2(
-                                "retriage_quiet sync phases: pipeline=%.0fms commit=%.0fms apply=%.0fms",
-                                (_t1 - _t0) * 1000.0,
-                                (_t2 - _t1) * 1000.0,
-                                (_t3 - _t2) * 1000.0,
-                            )
-                    except Exception:
-                        pass
-                except Exception:
-                    logger.debug("retriage_quiet sync pipeline failed", exc_info=True)
-                    raise
-                return True
-        except Exception:
-            pass
-        try:
-            self._start_triage(items, cover_grid=False)
-            return True
-        except Exception:
-            return False
+        return _triage_run.retriage_quiet(self)
 
     def _start_triage(self, items: list[GalleryItem], *, cover_grid: bool = True) -> None:
-        """Cluster in a worker, then ``set_triage`` on delivery.
+        from tabs.image_gallery.use_cases import triage_run as _triage_run
 
-        ``cover_grid=True`` (folder switch / replace) hides the grid behind
-        the S1 scanning state until groups are ready. ``False`` (appending
-        to a live pool) keeps the current groups visible and only spins the
-        toolbar — tearing down a good view for one new image is the jump
-        users see on every drop.
-        """
-        if not items:
-            self.state.triage_state = TriageState.DONE
-            self.state.series = []
-            self.state.mode = None
-            self.state.source_path = None
-            self._emit_triage_finished("done")
-            try:
-                self.widget.set_triage([], None, None)
-            except Exception:
-                logger.debug("widget.set_triage failed for empty folder", exc_info=True)
-            return
-        self.state.triage_state = TriageState.RUNNING
-        # A1: S1 scanning n/N in toolbar + empty state (progressive grid)
-        if cover_grid:
-            try:
-                self.widget.set_scanning(0, len(items))
-            except Exception:
-                logger.debug("widget.set_scanning failed", exc_info=True)
-        else:
-            background = getattr(self.widget, "set_background_scanning", None)
-            if callable(background):
-                try:
-                    background(0, len(items))
-                except Exception:
-                    logger.debug("widget.set_background_scanning failed", exc_info=True)
-            else:
-                # Legacy doubles predate the background API — same covering
-                # behavior as before rather than no progress at all.
-                try:
-                    self.widget.set_scanning(0, len(items))
-                except Exception:
-                    logger.debug("widget.set_scanning failed", exc_info=True)
-        self._mark_local_pass(items, ActivityPhase.ANALYZING)
-        worker = GenericWorker(self._tracked(self._run_triage_sync), list(items), dict(self._series_overrides))
-        gen = self._folder_gen
-        sgen = self._series_gen
-        worker.signals.result.connect(lambda res, g=gen, s=sgen: self._on_triage_ready(res, g, s))
-        # NOTE: the local "done" badge is NOT stamped here. Triage only clusters
-        # series; the card's quality dots come from the Stage-2 proxy pass
-        # (artifacts/fidelity/camera) started in ``_apply_triage_result`` and
-        # settling 1-2 s later. Stamping done on the triage result made the
-        # badge read "done" while the dots were still stale — the exact
-        # inversion the append path avoids. ``_apply_triage_result`` now stamps
-        # done on the proxy settle (or immediately when there is nothing to
-        # compute). See ``_mark_local_pass`` callers.
-        worker.signals.error.connect(lambda err, g=gen: self._on_triage_error(err, g))
-        worker.signals.error.connect(lambda _err, its=list(items): self._mark_local_pass(its, None))
-        # Triage outranks background thumbnails so the grid labels settle first.
-        self._pool_start(worker, TRIAGE_PRIORITY)
+        return _triage_run._start_triage(self, items, cover_grid=cover_grid)
 
     def _mark_local_pass(self, items, phase) -> None:
-        """Pass-level local activity: ``phase=None`` clears the local phase."""
-        for item in items:
-            try:
-                if phase is None:
-                    if getattr(item, "activity_source", None) == "local":
-                        clear_activity(item)
-                else:
-                    set_activity(item, phase, "local")
-            except Exception:
-                continue
-        try:
-            refresh = getattr(self.widget, "refresh_cards", None)
-            if callable(refresh):
-                refresh(items)
-        except Exception:
-            logger.debug("local-pass activity refresh failed", exc_info=True)
+        from tabs.image_gallery.use_cases import triage_run as _triage_run
+
+        return _triage_run._mark_local_pass(self, items, phase)
 
     def _settle_metrics_pass(self, items) -> None:
-        """The measured-metrics pass for a folder settled (S2/J1 trigger).
+        from tabs.image_gallery.use_cases import triage_run as _triage_run
 
-        Retires the local "done" badge (the quality dots are in) AND, on the AI
-        domain, (re)derives the pipeline: the VLM scorecards the rank reads
-        (``_run_ai_on_settle``) and then the Jev rank of the ready series — the
-        declared ``jev_rank`` stage requires ``metrics_ready``, and this settle
-        is where that fact is published. LEVEL-triggered: a folder opened or a
-        session RESTORED in the AI domain re-derives the work from the durable
-        domain, not only via an explicit domain switch. The gate dedups, so the
-        switch triggering the same run is harmless. Reads the DURABLE domain
-        authority (``_judgment_domain``), not ``state`` (replaced by
-        open_folder/append/clear_to_empty).
-        """
-        try:
-            self._mark_local_pass(list(items or []), ActivityPhase.DONE)
-        except Exception:
-            logger.debug("metrics settle local done failed", exc_info=True)
-        # Finality: the metrics pass settled for this folder — now the winner
-        # may be marked. Algorithms marks its fusion rank 1 here (AI lets Jev).
-        try:
-            self._metrics_settled_gen = self._folder_gen
-        except Exception:
-            logger.debug("metrics-settled gen stamp failed", exc_info=True)
-        try:
-            self._apply_fusion_ranks(getattr(self.state, "series", None))
-        except Exception:
-            logger.debug("settle fusion re-mark failed", exc_info=True)
-        # Derive the producer (VLM scorecards) before the consumer (Jev rank):
-        # a restored/opened AI domain must reproduce the WORK, not only the
-        # persisted choice.
-        GalleryController._run_ai_on_settle(self)
-        GalleryController._run_jev_on_settle(self)
+        return _triage_run._settle_metrics_pass(self, items)
 
     def _run_ai_on_settle(self) -> None:
-        """(Re)derive the AI-domain VLM scorecards the Jev rank reads (AI only).
+        from tabs.image_gallery.use_cases import triage_run as _triage_run
 
-        Level-triggered counterpart of the explicit domain switch: a folder
-        opened — or a SESSION RESTORED — in the AI domain must re-derive the
-        WORK out of the persisted CHOICE. Cache-first for the visible items; a
-        cold item gets the bounded live analysis. The Jev rank then follows from
-        the arriving scorecards (``_on_analysis_ready`` →
-        ``_queue_ai_rank_on_settle``). A no-op off the AI domain, so the
-        Algorithms domain never hits the network on open.
-        """
-        if str(getattr(self, "_judgment_domain", "algorithms") or "").strip().lower() != "ai":
-            return
-        runner = getattr(self, "_run_ai_for_visible", None)
-        if callable(runner):
-            try:
-                runner()
-            except Exception:
-                logger.debug("ai analysis on settle failed", exc_info=True)
+        return _triage_run._run_ai_on_settle(self)
 
     def _run_jev_on_settle(self) -> None:
-        """Run the AI-domain Jev batch from a settle point (AI domain only)."""
-        if str(getattr(self, "_judgment_domain", "algorithms") or "").strip().lower() != "ai":
-            return
-        runner = getattr(self, "_run_jev_ranks", None)
-        if callable(runner):
-            try:
-                runner()
-            except Exception:
-                logger.debug("jev rank on settle failed", exc_info=True)
+        from tabs.image_gallery.use_cases import triage_run as _triage_run
+
+        return _triage_run._run_jev_on_settle(self)
 
     def _queue_ai_rank_on_settle(self) -> None:
-        """Coalesce AI-domain Jev re-ranks triggered by arriving analyses.
+        from tabs.image_gallery.use_cases import triage_run as _triage_run
 
-        An AI batch delivers many analyses in one turn; each changes the ranking
-        vector, so a per-arrival Jev pass would flood the API. Coalesce the
-        arrivals into a single scheduling pass (the StageGate still dedups and
-        ``jev_cache`` pins unchanged payloads). Mirrors the card-refresh idiom;
-        a no-op on the Algorithms domain.
-        """
-        if str(getattr(self, "_judgment_domain", "algorithms") or "").strip().lower() != "ai":
-            return
-        if getattr(self, "_ai_rank_flush_scheduled", False):
-            return
-        self._ai_rank_flush_scheduled = True
-        try:
-            if QCoreApplication.instance() is None:
-                # No event loop (headless unit context) — settle synchronously.
-                self._flush_ai_rank_on_settle()
-            else:
-                QTimer.singleShot(0, self._flush_ai_rank_on_settle)
-        except Exception:
-            try:
-                self._flush_ai_rank_on_settle()
-            except Exception:
-                pass
+        return _triage_run._queue_ai_rank_on_settle(self)
 
     def _flush_ai_rank_on_settle(self) -> None:
-        self._ai_rank_flush_scheduled = False
-        try:
-            GalleryController._run_jev_on_settle(self)
-        except Exception:
-            logger.debug("coalesced AI rank on settle failed", exc_info=True)
+        from tabs.image_gallery.use_cases import triage_run as _triage_run
+
+        return _triage_run._flush_ai_rank_on_settle(self)
 
     def _begin_append_processing(self, items: list[GalleryItem]) -> None:
-        """Append path: mirror the first-load processing UX for NEW items.
+        from tabs.image_gallery.use_cases import triage_run as _triage_run
 
-        The attach branch deliberately skips retriage (live groups stay
-        untouched), but that must not silently drop the processing feedback a
-        first load gives: a per-card activity pill (``analyzing``) plus the
-        toolbar spinner + count. Without this the appended cards showed no
-        badge and the toolbar showed no progress, because ``_load_thumbnail``
-        sets ``thumbnail_status = LOADING`` without repainting the card and
-        no local activity phase was ever stamped.
-
-        Closed by :meth:`_finish_append_processing` when the batch settles.
-        """
-        batch = list(items or [])
-        if not batch:
-            return
-        try:
-            background = getattr(self.widget, "set_background_scanning", None)
-            if callable(background):
-                background(0, len(batch))
-        except Exception:
-            logger.debug("append background scanning failed", exc_info=True)
-        try:
-            self._mark_local_pass(batch, ActivityPhase.ANALYZING)
-        except Exception:
-            logger.debug("append local pass failed", exc_info=True)
+        return _triage_run._begin_append_processing(self, items)
 
     def _finish_append_processing(self, items: list[GalleryItem]) -> None:
-        """Retire the append processing indicator: ``done`` fade + spinner off."""
-        batch = list(items or [])
-        if not batch:
-            return
-        try:
-            self._mark_local_pass(batch, ActivityPhase.DONE)
-        except Exception:
-            logger.debug("append local done failed", exc_info=True)
-        try:
-            done = getattr(self.widget, "set_triage_done", None)
-            if callable(done):
-                done()
-        except Exception:
-            logger.debug("append processing indicator hide failed", exc_info=True)
-        # The append proxy pass settled too: on the AI domain, rank the ready
-        # series from the (now complete) measured vector. Gate-deduped.
-        try:
-            GalleryController._run_jev_on_settle(self)
-        except Exception:
-            logger.debug("append jev on settle failed", exc_info=True)
+        from tabs.image_gallery.use_cases import triage_run as _triage_run
+
+        return _triage_run._finish_append_processing(self, items)
 
     def _run_artifacts_sync(self, items: list[GalleryItem], source_path: Path | None) -> dict[str, dict]:
-        """Pure worker for GenericWorker: analyze 7 artifacts per item."""
-        from tabs.image_gallery.services.artifacts import analyze_artifacts
+        from tabs.image_gallery.use_cases import metrics_stage2 as _metrics_stage2
 
-        out: dict[str, dict] = {}
-        for it in items:
-            try:
-                res = analyze_artifacts(it.path, source_path)
-                # Store as str -> Severity value string for serialization, but keep Enum
-                out[str(it.path)] = res
-            except Exception:
-                logger.debug("artifact analyze failed for %s", it.path, exc_info=True)
-                out[str(it.path)] = {}
-        return out
+        return _metrics_stage2._run_artifacts_sync(self, items, source_path)
 
     def _start_artifact_analysis(self, items: list[GalleryItem], source_path: Path | None) -> None:
-        if not items:
-            return
-        if _artifacts_disabled():
-            _dbg("artifact analysis skipped (IMGSLI_GALLERY_NO_ARTIFACTS)")
-            return
-        # Run in background via GenericWorker (never UI-blocking).
-        try:
-            gen = self._folder_gen
-            worker = GenericWorker(self._tracked(self._run_artifacts_sync), list(items), source_path)
-            worker.signals.result.connect(lambda res, g=gen: self._on_artifacts_ready(res, g))
-            worker.signals.error.connect(self._on_artifacts_error)
-            self._pool_start(worker, 1)
-        except Exception:
-            logger.debug("artifact worker start failed", exc_info=True)
+        from tabs.image_gallery.use_cases import metrics_stage2 as _metrics_stage2
+
+        return _metrics_stage2._start_artifact_analysis(self, items, source_path)
 
     def _on_artifacts_ready(self, result: object, gen: int | None = None) -> None:
-        if gen is not None and not self._is_current_folder_gen(gen):
-            return  # folder switched — late artifact catalog dropped
-        # result: dict[str(path), dict[Artifact, Severity]]
-        if not isinstance(result, dict):
-            return
-        self._apply_artifact_map(result)
+        from tabs.image_gallery.use_cases import metrics_stage2 as _metrics_stage2
+
+        return _metrics_stage2._on_artifacts_ready(self, result, gen)
 
     def _apply_artifact_map(self, result: dict, maps: dict | None = None) -> None:
-        """Shared artifact delivery: batched repaint + quick-look refresh."""
-        # Batch the card refresh: per-item refresh_card re-sweeps selection
-        # over the whole grid (O(N^2) repaints in one delivery → stalled UI
-        # thread → compositor busy cursor + dropped quick-look frames at the
-        # clean→flagged flip). Items whose severities did not change skip the
-        # repaint entirely.
-        changed: list = []
-        try:
-            from tabs.image_gallery.use_cases import quality as _quality
-        except Exception:
-            _quality = None  # type: ignore[assignment]
-        for item in self.state.items:
-            key = str(item.path)
-            arts = result.get(key)
-            if arts is None:
-                continue
-            # Localization rides the artifact delivery; store it even when the
-            # severities are unchanged (a first analysis after a metric-only
-            # rebuild still needs the map).
-            if maps is not None:
-                try:
-                    item.artifact_maps = maps.get(key) or {}
-                except Exception:
-                    pass
-            if _quality is None:
-                continue
-            try:
-                # Skip repaints when normalized severities did not change.
-                if _quality.severities(item) and _quality.artifacts_equal(item, arts):
-                    continue
-            except Exception:
-                pass
-            try:
-                if _quality.set_artifacts(item, arts):
-                    changed.append(item)
-            except Exception:
-                logger.debug("artifact apply failed for %s", item.path, exc_info=True)
-        if changed:
-            try:
-                self.widget.refresh_cards(changed)  # type: ignore[attr-defined]
-            except Exception:
-                for item in changed:
-                    try:
-                        self.widget.refresh_card(item)
-                    except Exception:
-                        logger.debug("widget.refresh_card failed for artifact %s", item.path, exc_info=True)
-        # Quick look report: if widget has quick look overlay visible, refresh it.
-        for item in changed:
-                    # Widget owns _quick_look_overlay (QuickLookOverlay).
-                    for attr in ("_quick_look_overlay", "_quick_look", "_quicklook", "_quicklook_overlay"):
-                        ql = getattr(self.widget, attr, None)
-                        if ql is not None and hasattr(ql, "refresh_artifacts"):
-                            try:
-                                ql.refresh_artifacts(item)
-                            except Exception:
-                                pass
-                    # Also try generic widget helpers.
-                    if hasattr(self.widget, "refresh_quick_look"):
-                        try:
-                            self.widget.refresh_quick_look(item)  # type: ignore[attr-defined]
-                        except Exception:
-                            pass
-                    if hasattr(self.widget, "refresh_artifacts_for"):
-                        try:
-                            self.widget.refresh_artifacts_for(item)  # type: ignore[attr-defined]
-                        except Exception:
-                            pass
+        from tabs.image_gallery.use_cases import metrics_stage2 as _metrics_stage2
+
+        return _metrics_stage2._apply_artifact_map(self, result, maps)
 
     def _on_artifacts_error(self, error_info: object) -> None:
-        logger.debug("artifact worker error: %r", error_info, exc_info=True)
+        from tabs.image_gallery.use_cases import metrics_stage2 as _metrics_stage2
+
+        return _metrics_stage2._on_artifacts_error(self, error_info)
 
     # -- fidelity metrics (Stage 2 Pass 1b, wave B producer) --------------------
 
     def _start_fidelity_analysis(self, items: list[GalleryItem], source_path: Path | None) -> None:
-        """Background SSIM/HF/ΔE/upscale metrics vs source (GenericWorker).
+        from tabs.image_gallery.use_cases import metrics_stage2 as _metrics_stage2
 
-        Fail-closed: without a source there is nothing to compare against —
-        keys stay absent and quick look renders "not measured" rows.
-        """
-        if not items or source_path is None:
-            return
-        if _fidelity_disabled():
-            _dbg("fidelity analysis skipped (IMGSLI_GALLERY_NO_FIDELITY)")
-            return
-        try:
-            from tabs.image_gallery.services.fidelity_metrics import run_fidelity_sync
-
-            gen = self._folder_gen
-            worker = GenericWorker(self._tracked(run_fidelity_sync), list(items), source_path)
-            worker.signals.result.connect(lambda res, g=gen: self._on_fidelity_ready(res, g))
-            worker.signals.error.connect(
-                lambda err: logger.debug("fidelity worker error: %r", err, exc_info=True)
-            )
-            self._pool_start(worker, 1)
-        except Exception:
-            logger.debug("fidelity worker start failed", exc_info=True)
+        return _metrics_stage2._start_fidelity_analysis(self, items, source_path)
 
     def _on_fidelity_ready(self, result: object, gen: int | None = None) -> None:
-        if gen is not None and not self._is_current_folder_gen(gen):
-            return  # folder switched — late fidelity metrics dropped
-        if not isinstance(result, dict):
-            return
-        self._apply_fidelity_map(result)
+        from tabs.image_gallery.use_cases import metrics_stage2 as _metrics_stage2
+
+        return _metrics_stage2._on_fidelity_ready(self, result, gen)
 
     def _apply_fidelity_map(self, result: dict) -> None:
-        """Shared fidelity delivery: batched repaint + overlay refresh."""
-        # Same batching as _on_artifacts_ready: skip items whose 4 keys did
-        # not change, refresh the rest with one selection sweep. Optional
-        # learned perceptual keys (LPIPS/DISTS) ride along when the backend is
-        # installed; absent backend → they are simply not in the entry.
-        required = ("ssim", "hf_ratio", "delta_e", "upscale_factor")
-        optional = ("clipping_delta", "halo_delta", "chroma_fringe_delta", "lpips", "dists")
-        try:
-            from tabs.image_gallery.use_cases import quality as _quality
-        except Exception:
-            _quality = None  # type: ignore[assignment]
-        changed: list = []
-        for item in self.state.items:
-            try:
-                key = str(item.path)
-            except Exception:
-                continue
-            entry = result.get(key)
-            if not isinstance(entry, dict):
-                continue
-            # Identity fail-closed: entry key came from this item's own path;
-            # write the 4 keys only when all measured, never a partial copy.
-            if not all(k in entry for k in required):
-                continue
-            if _quality is None:
-                continue
-            keys = {k: entry[k] for k in required}
-            for k in optional:
-                if k in entry:
-                    keys[k] = entry[k]
-            try:
-                if _quality.set_metrics(item, keys):
-                    changed.append(item)
-            except Exception:
-                logger.debug("fidelity apply failed for %s", item.path, exc_info=True)
-        # Shared delivery tail: repaint cards + live-refresh an open overlay.
-        self._refresh_changed_metrics(changed, "fidelity")
+        from tabs.image_gallery.use_cases import metrics_stage2 as _metrics_stage2
+
+        return _metrics_stage2._apply_fidelity_map(self, result)
 
     def _start_camera_metrics_analysis(self, items: list[GalleryItem]) -> None:
-        """Background camera scalars (sharpness/exposure/clipping) — GenericWorker.
+        from tabs.image_gallery.use_cases import metrics_stage2 as _metrics_stage2
 
-        Camera mode only (the report rows exist only there); unreadable items
-        land nothing and keep "not measured" rows (fail-closed per item).
-        """
-        if not items:
-            return
-        if _camera_disabled():
-            _dbg("camera metrics analysis skipped (IMGSLI_GALLERY_NO_CAMERA)")
-            return
-        try:
-            from tabs.image_gallery.services.camera_metrics import run_camera_metrics_sync
-
-            gen = self._folder_gen
-            worker = GenericWorker(self._tracked(run_camera_metrics_sync), list(items))
-            worker.signals.result.connect(lambda res, g=gen: self._on_camera_metrics_ready(res, g))
-            worker.signals.error.connect(
-                lambda err: logger.debug("camera metrics worker error: %r", err, exc_info=True)
-            )
-            self._pool_start(worker, 1)
-        except Exception:
-            logger.debug("camera metrics worker start failed", exc_info=True)
+        return _metrics_stage2._start_camera_metrics_analysis(self, items)
 
     def _refresh_changed_metrics(self, changed: list, tag: str) -> None:
-        """Shared delivery tail: repaint cards + live-refresh an open overlay."""
-        if changed:
-            try:
-                self.widget.refresh_cards(changed)  # type: ignore[attr-defined]
-            except Exception:
-                for item in changed:
-                    try:
-                        self.widget.refresh_card(item)
-                    except Exception:
-                        logger.debug("widget.refresh_card failed for %s %s", tag, item.path, exc_info=True)
-        for item in changed:
-            try:
-                for attr in ("_quick_look_overlay", "_quick_look", "_quicklook", "_quicklook_overlay"):
-                    ql = getattr(self.widget, attr, None)
-                    if ql is not None and hasattr(ql, "refresh_metrics"):
-                        try:
-                            ql.refresh_metrics(item)
-                        except Exception:
-                            pass
-            except Exception:
-                pass
+        from tabs.image_gallery.use_cases import metrics_stage2 as _metrics_stage2
+
+        return _metrics_stage2._refresh_changed_metrics(self, changed, tag)
 
     def _on_camera_metrics_ready(self, result: object, gen: int | None = None) -> None:
-        if gen is not None and not self._is_current_folder_gen(gen):
-            return  # folder switched — late camera metrics dropped
-        if not isinstance(result, dict):
-            return
-        self._apply_camera_map(result)
+        from tabs.image_gallery.use_cases import metrics_stage2 as _metrics_stage2
+
+        return _metrics_stage2._on_camera_metrics_ready(self, result, gen)
 
     def _apply_camera_map(self, result: dict) -> None:
-        """Shared camera delivery: merge scalars + repaint + overlay."""
-        try:
-            from tabs.image_gallery.use_cases import quality as _quality
-        except Exception:
-            return
-        changed: list = []
-        for item in self.state.items:
-            try:
-                key = str(item.path)
-            except Exception:
-                continue
-            entry = result.get(key)
-            if not isinstance(entry, dict):
-                continue
-            try:
-                if _quality.set_metrics(item, entry):
-                    changed.append(item)
-            except Exception:
-                logger.debug("camera metrics apply failed for %s", item.path, exc_info=True)
-        self._refresh_changed_metrics(changed, "camera")
+        from tabs.image_gallery.use_cases import metrics_stage2 as _metrics_stage2
+
+        return _metrics_stage2._apply_camera_map(self, result)
 
     # -- unified Stage-2 proxy step (Phase 2b+3; single-pass) ------------------
 
     @staticmethod
     def _run_proxy_chunk_sync(chunk: list, source_path, include_camera: bool, full_res_artifacts: bool = False) -> dict:
-        """One chunk worker body: shared-proxy single pass (wave A1 API)."""
-        from tabs.image_gallery.services.proxy import run_proxy_stages_sync
+        from tabs.image_gallery.use_cases import proxy_pass as _proxy_pass
 
-        try:
-            return dict(
-                run_proxy_stages_sync(
-                    list(chunk),
-                    source_path,
-                    include_camera=include_camera,
-                    full_res_artifacts=full_res_artifacts,
-                )
-            )
-        except Exception:
-            logger.debug("proxy chunk failed", exc_info=True)
-            return {}
+        return _proxy_pass._run_proxy_chunk_sync(chunk, source_path, include_camera, full_res_artifacts)
 
     def _schedule_proxy(self, items: list, priority: int, source, gen: int, wanted=None, include_camera: bool | None = None, full_res_artifacts: bool = False, on_done=None) -> int:
-        """Chunked proxy batches: one worker per 50 items (never N)."""
-        chunks = [items[i:i + _GALLERY_PROXY_CHUNK] for i in range(0, len(items), _GALLERY_PROXY_CHUNK)]
-        if not chunks:
-            if on_done is not None:
-                try:
-                    on_done()
-                except Exception:
-                    logger.debug("proxy on_done hook failed", exc_info=True)
-            return 0
-        if include_camera is None:
-            try:
-                include_camera = bool(getattr(self.state, "mode", None) == Mode.CAMERA)
-            except Exception:
-                include_camera = False
-        try:
-            wanted_set = frozenset(wanted) if wanted else frozenset(("artifacts", "fidelity", "camera"))
-        except Exception:
-            wanted_set = frozenset(("artifacts", "fidelity", "camera"))
-        self._proxy_done = 0
-        self._proxy_total = len(chunks)
-        # Per-batch settle counter (independent of the global _proxy_* progress):
-        # fires ``on_done`` once after every chunk of THIS batch has delivered.
-        remaining = [len(chunks)]
+        from tabs.image_gallery.use_cases import proxy_pass as _proxy_pass
 
-        def _settle(_payload=None) -> None:
-            remaining[0] -= 1
-            if remaining[0] > 0:
-                return
-            if on_done is not None:
-                try:
-                    on_done()
-                except Exception:
-                    logger.debug("proxy on_done hook failed", exc_info=True)
-
-        started = 0
-        for chunk in chunks:
-            worker = GenericWorker(
-                self._tracked(GalleryController._run_proxy_chunk_sync),
-                list(chunk), source, include_camera, full_res_artifacts,
-            )
-            worker.signals.result.connect(
-                lambda res, g=gen, w=wanted_set: self._on_proxy_batch_ready(res, g, w)
-            )
-            worker.signals.error.connect(
-                lambda err: logger.debug("proxy batch worker error: %r", err, exc_info=True)
-            )
-            if on_done is not None:
-                # Completion hook (append processing UX): counts each chunk
-                # exactly once — result OR error. Connected AFTER the apply
-                # handler so the last chunk is applied before on_done runs.
-                worker.signals.result.connect(_settle)
-                worker.signals.error.connect(_settle)
-            self._pool_start(worker, priority)
-            started += 1
-        # Chunk fan-out for tests (50-item batching assertion).
-        try:
-            self._sched_chunk_workers = int(getattr(self, "_sched_chunk_workers", 0)) + started
-        except Exception:
-            pass
-        return started
+        return _proxy_pass._schedule_proxy(self, items, priority, source, gen, wanted=wanted, include_camera=include_camera, full_res_artifacts=full_res_artifacts, on_done=on_done)
 
     def _start_proxy_analysis(self, items: list[GalleryItem], source_path: Path | None, mode, *, on_done=None) -> None:
-        """Triage-tail Stage 2: ONE single-pass background step (proxy).
+        from tabs.image_gallery.use_cases import proxy_pass as _proxy_pass
 
-        Replaces the old three whole-pool batch workers (artifact +
-        fidelity + camera) with chunked ``run_proxy_stages_sync`` workers
-        sharing one bounded decode per file. Fail-closed per item,
-        path-keyed delivery into the existing apply tails; the
-        ``_analysis_fingerprint`` skip above stays the gate.
-
-        ``on_done`` (optional) fires once after the whole batch settles —
-        including the no-work early returns — so the append path can retire
-        its processing indicator without dangling.
-        """
-
-        def _finish() -> None:
-            if on_done is None:
-                return
-            try:
-                on_done()
-            except Exception:
-                logger.debug("proxy on_done hook failed", exc_info=True)
-
-        if not items:
-            _finish()
-            return
-        want_artifacts = not _artifacts_disabled()
-        want_fidelity = not _fidelity_disabled() and source_path is not None
-        try:
-            want_camera = not _camera_disabled() and mode == Mode.CAMERA
-        except Exception:
-            want_camera = False
-        if not (want_artifacts or want_fidelity or want_camera):
-            _dbg("proxy analysis skipped: all Stage-2 lanes kill-switched")
-            _finish()
-            return
-        wanted = frozenset(
-            [s for s, w in (
-                ("artifacts", want_artifacts),
-                ("fidelity", want_fidelity),
-                ("camera", want_camera),
-            ) if w]
-        )
-        try:
-            self.schedule(
-                list(items), PROXY_BATCH_PRIORITY, op="proxy",
-                source=source_path, gen=self._folder_gen, wanted=wanted,
-                include_camera=want_camera, full_res_artifacts=want_artifacts,
-                on_done=on_done,
-            )
-        except Exception:
-            logger.debug("proxy analysis start failed", exc_info=True)
-            _finish()
+        return _proxy_pass._start_proxy_analysis(self, items, source_path, mode, on_done=on_done)
 
     def _on_proxy_batch_ready(self, result: object, gen: int | None, wanted: object = None) -> None:
-        """One chunk delivery: fan out by path into the legacy apply tails."""
-        if gen is not None and not self._is_current_folder_gen(gen):
-            return  # folder switched — late proxy chunk dropped
-        if not isinstance(result, dict):
-            return
-        try:
-            wanted_set = set(wanted or ("artifacts", "fidelity", "camera"))
-        except Exception:
-            wanted_set = {"artifacts", "fidelity", "camera"}
-        try:
-            if "artifacts" in wanted_set:
-                arts = {
-                    k: (v.get("artifacts") if isinstance(v, dict) else None)
-                    for k, v in result.items()
-                }
-                maps = {
-                    k: (v.get("artifact_maps") if isinstance(v, dict) else None)
-                    for k, v in result.items()
-                }
-                self._apply_artifact_map(arts, maps)
-            if "fidelity" in wanted_set:
-                fid = {
-                    k: (v.get("fidelity") if isinstance(v, dict) else None)
-                    for k, v in result.items()
-                }
-                self._apply_fidelity_map(fid)
-            if "camera" in wanted_set:
-                cam = {
-                    k: (v.get("camera") if isinstance(v, dict) else None)
-                    for k, v in result.items()
-                }
-                self._apply_camera_map(cam)
-        finally:
-            try:
-                self._proxy_done += 1
-                total = int(self._proxy_total)
-                done = int(self._proxy_done)
-            except Exception:
-                total, done = (0, 0)
-            # Multi-chunk progress only: single-chunk (small-folder) runs
-            # stay silent so small-folder latency/behavior cannot regress.
-            if total > 1:
-                background = getattr(self.widget, "set_background_scanning", None)
-                if callable(background):
-                    try:
-                        background(done, total)
-                    except Exception:
-                        logger.debug("proxy progress hook failed", exc_info=True)
-            try:
-                self._trim_proxy_cache()
-            except Exception:
-                pass
+        from tabs.image_gallery.use_cases import proxy_pass as _proxy_pass
+
+        return _proxy_pass._on_proxy_batch_ready(self, result, gen, wanted)
 
     def _on_triage_ready(self, result: object, gen: int | None = None, sgen: int | None = None) -> None:
-        if gen is not None and not self._is_current_folder_gen(gen):
-            logger.debug("triage result dropped: stale folder generation")
-            return
-        if sgen is not None and sgen != self._series_gen:
-            # A sync view rewrite (move / append-attach) landed while this
-            # worker was in flight — its groups predate the manual
-            # arrangement. Drop instead of clobbering it.
-            logger.debug("triage result dropped: stale series generation")
-            return
-        try:
-            series, source, mode = result  # type: ignore[misc]
-        except Exception:
-            logger.debug("triage result unpack failed: %r", result, exc_info=True)
-            self.state.triage_state = TriageState.ERROR
-            self._emit_triage_finished("error")
-            return
-        # Wave B: re-apply overrides on the GUI thread — the worker snapshot
-        # may predate drops that landed while it was in flight. Idempotent.
-        try:
-            from tabs.image_gallery.use_cases import series_override as _override
+        from tabs.image_gallery.use_cases import proxy_pass as _proxy_pass
 
-            series = _override.apply_overrides(
-                list(self.state.items), self._series_overrides, series
-            )
-        except Exception:
-            logger.debug("series override re-apply failed", exc_info=True)
-        series = self._commit_triage_series(series, source, mode)
-        self._apply_triage_result(series, source, mode)
+        return _proxy_pass._on_triage_ready(self, result, gen, sgen)
 
     def _commit_triage_series(self, series, source, mode):
-        """Commit a triage outcome to state (shared sync/async tail).
+        from tabs.image_gallery.use_cases import proxy_pass as _proxy_pass
 
-        Pinned-singleton restore + state assignment + DONE emit. The async
-        worker path and the synchronous fast path converge here so pins
-        survive delivery identically on both.
-        """
-        # S2: pinned singletons survive delivery — a fresh cluster world
-        # dissolves <2 groups, so without this a delivery would ungroup
-        # cards the user manually placed (e.g. onto fresh ids). Pinned
-        # only here (``pre_ids=None``): a fresh world has no leftovers.
-        try:
-            series = self._restore_singletons(
-                list(self.state.items),
-                self._series_overrides,
-                None,
-                series,
-                series,
-            )
-        except Exception:
-            logger.debug("pinned singleton restore failed", exc_info=True)
-        self.state.series = series  # type: ignore[assignment]
-        self.state.source_path = source  # type: ignore[assignment]
-        self.state.mode = mode  # type: ignore[assignment]
-        self.state.triage_state = TriageState.DONE
-        # Algorithms rank: measured metric fusion over each series (never the
-        # old centroid order). Single choke point for both the worker and the
-        # inline fast path.
-        self._apply_fusion_ranks(series, mode=mode)
-        self._emit_triage_finished("done")
-        # The applied rank_source just changed (fresh fusion ranks): refresh the
-        # stats-strip provenance chip. Jev is NOT triggered here — the declared
-        # ``jev_rank`` gate owns ordering (the metrics-pass settle / switch).
-        GalleryController._refresh_rank_provenance(self)
-        return series
+        return _proxy_pass._commit_triage_series(self, series, source, mode)
 
     @staticmethod
     def _analysis_fingerprint(items, source) -> tuple:
-        """Content key for Stage-2 analyses (paths + mtimes + metrics state).
+        from tabs.image_gallery.use_cases import proxy_pass as _proxy_pass
 
-        Analyses derive everything from file content; identical fingerprints
-        imply identical results, so the triage tail skips restarting them
-        (e.g. regroup after tab return). Missing metrics force a re-run
-        even when paths match (fresh objects after restore).
-        """
-        try:
-            parts = []
-            for it in list(items or []):
-                try:
-                    parts.append((
-                        str(getattr(it, "path", "")),
-                        int(getattr(it, "mtime_ns", 0) or 0),
-                        bool(getattr(it, "artifacts", None)),
-                        bool(getattr(it, "metrics", None)),
-                    ))
-                except Exception:
-                    continue
-            parts.sort()
-            return (tuple(parts), str(source) if source is not None else None)
-        except Exception:
-            return ((), None)
+        return _proxy_pass._analysis_fingerprint(items, source)
 
     def _apply_triage_result(self, series, source, mode) -> None:
-        """Paint a triage outcome: view update + spinner off + analyses.
+        from tabs.image_gallery.use_cases import proxy_pass as _proxy_pass
 
-        Shared tail of the async worker delivery and the synchronous
-        fast path — Stage-2 analyses start only when the content
-        fingerprint changed since the last run.
-        """
-        try:
-            self.widget.set_triage(series, mode, source)
-        except Exception:
-            logger.debug("widget.set_triage failed", exc_info=True)
-        # A1: hide toolbar scanning spinner
-        try:
-            # Prefer widget helper, fallback to toolbar directly
-            if hasattr(self.widget, "set_triage_done"):
-                self.widget.set_triage_done()  # type: ignore[attr-defined]
-            elif hasattr(self.widget, "toolbar") and hasattr(self.widget.toolbar, "set_triage_done"):
-                self.widget.toolbar.set_triage_done()  # type: ignore[attr-defined]
-        except Exception:
-            logger.debug("toolbar.set_triage_done failed", exc_info=True)
-        try:
-            fingerprint = GalleryController._analysis_fingerprint(
-                list(self.state.items), source
-            )
-        except Exception:
-            fingerprint = None
-        try:
-            analyses_current = (
-                fingerprint is not None
-                and fingerprint == self._last_analysis_fingerprint
-            )
-        except Exception:
-            analyses_current = False
-        if analyses_current:
-            logger.debug("triage tail: analyses unchanged, skipping restarts")
-            # Nothing to compute — retire the local "analyzing" badge now, or it
-            # would stick forever (no proxy settle will fire to stamp done). The
-            # metrics are already current, so this also IS the pass settle: on a
-            # restored AI domain the gate ranks here (domain authority read).
-            GalleryController._settle_metrics_pass(self, list(self.state.items))
-        else:
-            try:
-                self._last_analysis_fingerprint = fingerprint
-            except Exception:
-                pass
-            # Single-pass Stage 2 (Phase 2b+3): ONE shared-proxy background
-            # step replaces the three whole-pool batch workers (artifact +
-            # fidelity + camera). Delivered strictly by path into the
-            # existing apply tails (batched repaint + quick-look hooks);
-            # the per-stage entry points above stay working but the tail no
-            # longer fans out through them.
-            #
-            # The local "done" badge is gated on this pass settling: the card's
-            # quality dots (artifact severities) are produced here, so stamping
-            # done earlier (on the triage result) showed "done" 1-2 s before the
-            # dots recolored. Same contract as the append path
-            # (``_finish_append_processing`` via ``on_done``).
-            try:
-                self._start_proxy_analysis(
-                    list(self.state.items),
-                    source,
-                    mode,
-                    on_done=lambda: GalleryController._settle_metrics_pass(
-                        self, list(self.state.items)
-                    ),
-                )
-            except Exception:
-                logger.debug("proxy analysis start failed", exc_info=True)
-                # Fail-open: never leave the badge stuck in "analyzing".
-                GalleryController._settle_metrics_pass(self, list(self.state.items))
-        # Stage 3: targeted tie-break for top-2 when local metrics within epsilon (badge pending)
-        try:
-            for ser in series or []:
-                self.run_tie_break_if_needed(ser)
-        except Exception:
-            logger.debug("tie-break auto-run failed", exc_info=True)
+        return _proxy_pass._apply_triage_result(self, series, source, mode)
 
     def _on_triage_error(self, error_info: object, gen: int | None = None) -> None:
-        if gen is not None and not self._is_current_folder_gen(gen):
-            return
-        logger.debug("triage worker error: %r", error_info, exc_info=True)
-        self.state.triage_state = TriageState.ERROR
-        self._emit_triage_finished("error")
-        try:
-            self.widget.set_triage([], None, None)
-        except Exception:
-            pass
+        from tabs.image_gallery.use_cases import proxy_pass as _proxy_pass
+
+        return _proxy_pass._on_triage_error(self, error_info, gen)
 
     # -- Stage 3 VLM: tie-break + compare briefs (GenericWorker, badge pending, silent degrade) --
 
