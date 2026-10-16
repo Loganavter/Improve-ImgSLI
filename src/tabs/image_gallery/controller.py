@@ -20,7 +20,6 @@ from tabs.image_gallery.use_cases import pipeline_stages as _pipeline_stages
 
 from tabs.image_gallery.models import (
     ActivityPhase,
-    AnalysisStatus,
     GalleryItem,
     GalleryState,
     Mode,
@@ -29,16 +28,8 @@ from tabs.image_gallery.models import (
     TriageState,
 )
 from tabs.image_gallery.services.activity import clear_activity, set_activity
-from tabs.image_gallery.services.ai_cache import load_cached_analysis, save_analysis
-from tabs.image_gallery.services.ai_client import (
-    _ai_debug,
-    AiAuthError,
-    AiClientError,
-    AiNetworkError,
-    AiRateLimitError,
-    AiResponseError,
-    analyze_image_sync,
-)
+from tabs.image_gallery.services.ai_cache import save_analysis  # noqa: F401
+from tabs.image_gallery.services.ai_client import _ai_debug
 from tabs.image_gallery.services.ai_settings_store import AiSettingsStore
 from tabs.image_gallery.debug import gallery_debug as _dbg
 from tabs.image_gallery.debug import (
@@ -189,13 +180,6 @@ class _GalleryVisibilityPauseFilter(QObject):
         except Exception:
             pass
         return False
-
-_ERROR_KEYS = {
-    AiAuthError: ("image_gallery.errors.auth", "Authentication failed — check your API key."),
-    AiRateLimitError: ("image_gallery.errors.rate_limit", "Rate limited — try again later."),
-    AiNetworkError: ("image_gallery.errors.network", "Network error while contacting the AI API."),
-    AiResponseError: ("image_gallery.errors.parse", "Could not parse the AI response."),
-}
 
 
 class GalleryController:
@@ -946,217 +930,53 @@ class GalleryController:
         return default
 
     def analyze_item_by_path(self, path: Path) -> None:
-        item = self._find_item(path)
-        if item is None:
-            return
-        self.analyze_item(item)
+        from tabs.image_gallery.use_cases import ai_analysis as _ai_analysis
+
+        return _ai_analysis.analyze_item_by_path(self, path)
 
     def hydrate_cached_analysis(self, item: GalleryItem) -> bool:
-        """Fill ``item`` from the disk cache only (Quick Look pre-read).
+        from tabs.image_gallery.use_cases import ai_analysis as _ai_analysis
 
-        No worker, no settings check — lets the overlay show a cached
-        analysis the moment it opens instead of waiting for an Analyze
-        click. Refreshes the card when something was hydrated. Never raises.
-        """
-        try:
-            from tabs.image_gallery.services.ai_cache import hydrate_item
-        except Exception:
-            return False
-        try:
-            if not hydrate_item(item):
-                return False
-        except Exception:
-            return False
-        try:
-            self.widget.refresh_card(item)
-        except Exception:
-            pass
-        return True
+        return _ai_analysis.hydrate_cached_analysis(self, item)
 
     def _hydrate_ai_cache(self, items) -> int:
-        """Fill pool items from the AI disk cache on a pool (re)build.
+        from tabs.image_gallery.use_cases import ai_analysis as _ai_analysis
 
-        Closed-tab / re-loaded-folder recovery: the live ``analyze_item``
-        path is cache-first, but a pool rebuild (session restore, folder
-        open, append) had no such pass, so previously analyzed images came
-        back "not analyzed" until some other trigger ran — even though the
-        results sat in the disk cache. This pass fills them at rebuild so the
-        read is present the moment the pool appears; the metrics-pass settle
-        then re-derives only the still-missing scorecards (AI domain only,
-        ``_run_ai_on_settle``). Cache-only: no worker, no settings check, no
-        API call. Never raises; returns how many items were filled.
-        """
-        try:
-            from tabs.image_gallery.services.ai_cache import hydrate_item
-        except Exception:
-            return 0
-        filled = 0
-        for it in list(items or []):
-            try:
-                if getattr(it, "analysis", None) is not None:
-                    continue
-                if hydrate_item(it):
-                    filled += 1
-            except Exception:
-                continue
-        return filled
+        return _ai_analysis._hydrate_ai_cache(self, items)
 
     def analyze_item(self, item: GalleryItem) -> None:
-        cached = load_cached_analysis(item.path, item.mtime_ns)
-        if cached is not None:
-            try:
-                from tabs.image_gallery.services.ai_client import _ai_debug
+        from tabs.image_gallery.use_cases import ai_analysis as _ai_analysis
 
-                _ai_debug("analyze cache HIT path=%s (no API call)", item.path)
-            except Exception:
-                pass
-            item.analysis = cached
-            item.analysis_status = AnalysisStatus.DONE
-            item.analysis_error = None
-            self.widget.refresh_card(item)
-            return
-
-        self._begin_analysis(item)
+        return _ai_analysis.analyze_item(self, item)
 
     def reanalyze_item_by_path(self, path: Path) -> None:
-        item = self._find_item(path)
-        if item is None:
-            return
-        self.reanalyze_item(item)
+        from tabs.image_gallery.use_cases import ai_analysis as _ai_analysis
+
+        return _ai_analysis.reanalyze_item_by_path(self, path)
 
     def reanalyze_item(self, item: GalleryItem) -> None:
-        """Force a fresh analysis, bypassing the disk cache (Re-analyze).
+        from tabs.image_gallery.use_cases import ai_analysis as _ai_analysis
 
-        Same worker pipeline as :meth:`analyze_item` minus the cache
-        short-circuit; completion overwrites the cache entry. Never raises.
-        """
-        try:
-            self._begin_analysis(item)
-        except Exception:
-            pass
+        return _ai_analysis.reanalyze_item(self, item)
 
     #: Lazy-AI cap: the domain switch analyzes only the VISIBLE items, bounded
     #: so flipping to AI never turns into a whole-folder API flood.
     _AI_VISIBLE_CAP = 12
 
     def _set_judgment_domain(self, domain: str) -> str:
-        """The ONLY writer of the judgment domain (Algorithms vs AI).
+        from tabs.image_gallery.use_cases import ai_analysis as _ai_analysis
 
-        ``self._judgment_domain`` is the single authority and survives the
-        ``GalleryState`` rebuilds done by open_folder / append / clear_to_empty;
-        ``state.judgment_domain``/``state.rank_domain`` are read-only projections
-        kept for rendering. Returns the normalized value.
-        """
-        dom = str(domain or "").strip().lower()
-        dom = dom if dom in ("algorithms", "ai") else "algorithms"
-        self._judgment_domain = dom
-        try:
-            self.state.judgment_domain = dom
-            self.state.rank_domain = dom
-        except Exception:
-            pass
-        return dom
+        return _ai_analysis._set_judgment_domain(self, domain)
 
     def activate_judgment_domain(self, domain: str) -> None:
-        """Apply the toolbar domain switch (plan-gallery-two-domain-axes).
+        from tabs.image_gallery.use_cases import ai_analysis as _ai_analysis
 
-        Switching to ``ai`` is the switch's actual effect: it lazily analyzes
-        the **visible** items (cache-first, in-flight skipped, capped). Not
-        configured / no key degrades to the existing per-item error on the cards
-        — the control always does something visible, never a silent no-op.
-        Switching back to ``algorithms`` only flips the report domain; it never
-        cancels in-flight work.
-        """
-        try:
-            from tabs.image_gallery.models import JUDGMENT_DOMAINS
-
-            if str(domain or "").strip().lower() not in tuple(JUDGMENT_DOMAINS):
-                domain = "algorithms"
-        except Exception:
-            domain = "algorithms"
-        # Single authoritative setter; state/widget mirror it for rendering.
-        dom = GalleryController._set_judgment_domain(self, domain)
-        # An EXPLICIT domain switch re-opens the rank stage: switching back to AI
-        # must re-apply the pinned Jev rank (cache-first, no second HTTP) even
-        # though the same fingerprint already completed for this folder
-        # generation (the Algorithms switch re-derived the ranks to fusion in
-        # between). The settled-pass trigger does NOT invalidate, so a second
-        # settle over unchanged inputs stays a no-op.
-        try:
-            gate = getattr(self, "_stage_gate", None)
-            if gate is not None:
-                gate.invalidate()
-        except Exception:
-            logger.debug("domain switch stage-gate invalidate failed", exc_info=True)
-        # WHY Jev did / did not run: the domain switch is the only trigger for
-        # the AI ranker (algorithms ⇒ no Jev call at all). Same IMGSLI_AI_DEBUG key.
-        _ai_debug("judgment domain -> %s (%s)", dom, "Jev on" if dom == "ai" else "Jev off")
-        # The open quick-look report/dots are domain-scoped: re-render them for
-        # the new domain (VLM read ↔ detectors) without a reopen. (getattr keeps
-        # this safe on the fake controllers the domain-switch tests drive.)
-        refresh_ql = getattr(self, "_refresh_open_quick_look", None)
-        if callable(refresh_ql):
-            refresh_ql()
-        # Card dots are domain-scoped too — repaint every card for the new read.
-        try:
-            items = list(getattr(self.state, "items", None) or [])
-            refresh_cards = getattr(self.widget, "refresh_cards", None)
-            if callable(refresh_cards) and items:
-                refresh_cards(items)
-            else:
-                refresh_card = getattr(self.widget, "refresh_card", None)
-                if callable(refresh_card):
-                    for it in items:
-                        refresh_card(it)
-        except Exception:
-            logger.debug("domain switch card refresh failed", exc_info=True)
-        if dom != "ai":
-            # Back to Algorithms: re-derive the deterministic fusion rank (a
-            # Jev rank is only in effect while the AI domain owns the rank).
-            try:
-                self._apply_fusion_ranks(getattr(self.state, "series", None))
-            except Exception:
-                logger.debug("domain switch rank re-derive failed", exc_info=True)
-            self._clear_series_priority()
-            return
-        self._run_ai_for_visible()
-        self._run_jev_ranks()
-        self._run_series_priority()
+        return _ai_analysis.activate_judgment_domain(self, domain)
 
     def _run_ai_for_visible(self) -> None:
-        """Analyze the currently-visible, not-yet-analyzed items (bounded)."""
-        try:
-            vis = getattr(self.widget, "visible_paths", None)
-            paths = vis() if callable(vis) else None
-        except Exception:
-            paths = None
-        try:
-            keys = {str(p) for p in (paths or [])}
-        except Exception:
-            keys = set()
-        picked: list = []
-        try:
-            items = list(getattr(self.state, "items", None) or [])
-        except Exception:
-            items = []
-        for it in items:
-            try:
-                if keys and str(it.path) not in keys:
-                    continue
-                status = getattr(it, "analysis_status", None)
-                if status in (AnalysisStatus.DONE, AnalysisStatus.PENDING):
-                    continue
-            except Exception:
-                continue
-            picked.append(it)
-        if not keys:
-            # Viewport not laid out yet — bound instead of flooding.
-            picked = picked[: self._AI_VISIBLE_CAP]
-        for it in picked[: self._AI_VISIBLE_CAP]:
-            try:
-                self.analyze_item(it)
-            except Exception:
-                continue
+        from tabs.image_gallery.use_cases import ai_analysis as _ai_analysis
+
+        return _ai_analysis._run_ai_for_visible(self)
 
     # -- AI domain ranker: Jev (TypeSafe System One) -----------------------
 
@@ -1665,133 +1485,29 @@ class GalleryController:
             logger.debug("rank provenance refresh failed", exc_info=True)
 
     def _begin_analysis(self, item: GalleryItem) -> None:
-        settings = self._ai_settings_store.load()
-        if not settings.enabled or not settings.api_key or not settings.model:
-            item.analysis_status = AnalysisStatus.ERROR
-            item.analysis_error = self._tr(
-                "image_gallery.errors.not_configured",
-                "Configure the AI API key in Settings first.",
-            )
-            self.widget.refresh_card(item)
-            return
+        from tabs.image_gallery.use_cases import ai_analysis as _ai_analysis
 
-        item.analysis_status = AnalysisStatus.PENDING
-        item.analysis_error = None
-        set_activity(item, ActivityPhase.QUEUED, "ai")
-        self.widget.refresh_card(item)
-
-        try:
-            from tabs.image_gallery.services.ai_client import _ai_debug
-
-            _ai_debug(
-                "analyze MISS -> API call path=%s model=%s base_url=%s",
-                item.path,
-                settings.model,
-                settings.base_url,
-            )
-        except Exception:
-            pass
-
-        # Local (Algorithms-domain) numbers ride along as CONTEXT; the AI
-        # returns its own per-axis scorecard (the AI-domain read).
-        try:
-            _metrics = dict(getattr(item, "metrics", None) or {})
-        except Exception:
-            _metrics = {}
-        bridge = _ActivityPhaseBridge(lambda phase, it=item: self._apply_ai_phase(it, phase))
-        worker = GenericWorker(
-            self._tracked(analyze_image_sync),
-            item.path,
-            base_url=settings.base_url,
-            api_key=settings.api_key,
-            model=settings.model,
-            mode=getattr(self.state, "mode", None),
-            metrics=_metrics,
-            on_phase=bridge.phase.emit,
-        )
-        gen = self._folder_gen
-        # ``bridge=bridge`` keeps the phase relay alive until the worker reports.
-        worker.signals.result.connect(
-            lambda result, path=item.path, mtime_ns=item.mtime_ns, g=gen, bridge=bridge: self._on_analysis_ready(
-                path, mtime_ns, result, g
-            )
-        )
-        worker.signals.error.connect(
-            lambda err, path=item.path, g=gen, bridge=bridge: self._on_analysis_error(path, err, g)
-        )
-        set_activity(item, ActivityPhase.CLAIMED, "ai")
-        self.widget.refresh_card(item)
-        self._pool_start(worker, None)
+        return _ai_analysis._begin_analysis(self, item)
 
     def _apply_ai_phase(self, item: GalleryItem, phase: str) -> None:
-        """UI-thread sink for worker phase emits; drops phases of stale items."""
-        if self._find_item(item.path) is not item:
-            return
-        set_activity(item, phase, "ai")
-        self.widget.refresh_card(item)
+        from tabs.image_gallery.use_cases import ai_analysis as _ai_analysis
+
+        return _ai_analysis._apply_ai_phase(self, item, phase)
 
     def _on_analysis_ready(self, path: Path, mtime_ns: int, result, gen: int | None = None) -> None:
-        if gen is not None and not self._is_current_folder_gen(gen):
-            return  # folder switched — late analysis dropped
-        item = self._find_item(path)
-        if item is None:
-            return
-        # The VLM's result IS the AI-domain read (plan-gallery-ai-backend-owns-
-        # quality): no detector merge here — the Algorithms domain keeps reading
-        # ``item.metrics`` through ``services.quality_read``.
-        save_analysis(path, mtime_ns, result)
-        item.analysis = result
-        item.analysis_status = AnalysisStatus.DONE
-        item.analysis_error = None
-        set_activity(item, ActivityPhase.DONE, "ai")
-        self.widget.refresh_card(item)
-        # The AI scorecard IS the AI-domain read — rebuild the open overlay's
-        # rows/dots in place so they switch to the VLM numbers without a reopen.
-        self._refresh_open_quick_look()
-        # A new scorecard changes the Jev ranking vector: coalesce the batch of
-        # arrivals into one AI-rank pass (no-op off the AI domain).
-        self._queue_ai_rank_on_settle()
+        from tabs.image_gallery.use_cases import ai_analysis as _ai_analysis
+
+        return _ai_analysis._on_analysis_ready(self, path, mtime_ns, result, gen)
 
     def _refresh_open_quick_look(self) -> None:
-        """Rebuild the open quick-look report rows + dots for the current domain.
+        from tabs.image_gallery.use_cases import ai_analysis as _ai_analysis
 
-        The report is domain-scoped (``services.quality_read``); a domain switch
-        or a fresh analysis must re-render it in place, not on reopen.
-        """
-        try:
-            ql = getattr(self.widget, "_quick_look_overlay", None)
-            if ql is None:
-                return
-            item = getattr(ql, "_current_item", None)
-            if item is None:
-                return
-            if hasattr(ql, "refresh_metrics"):
-                ql.refresh_metrics(item)
-            if hasattr(ql, "refresh_artifacts"):
-                ql.refresh_artifacts(item)
-        except Exception:
-            logger.debug("quick-look domain refresh failed", exc_info=True)
+        return _ai_analysis._refresh_open_quick_look(self)
 
     def _on_analysis_error(self, path: Path, error_info, gen: int | None = None) -> None:
-        if gen is not None and not self._is_current_folder_gen(gen):
-            return
-        item = self._find_item(path)
-        if item is None:
-            return
-        exctype, value, _tb = error_info
-        message = None
-        for error_cls, (key, default) in _ERROR_KEYS.items():
-            if isinstance(value, error_cls) or (
-                isinstance(exctype, type) and issubclass(exctype, error_cls)
-            ):
-                message = self._tr(key, default)
-                break
-        if message is None and isinstance(value, AiClientError):
-            message = str(value)
-        item.analysis_status = AnalysisStatus.ERROR
-        item.analysis_error = message or str(value)
-        set_activity(item, ActivityPhase.ERROR, "ai")
-        self.widget.refresh_card(item)
+        from tabs.image_gallery.use_cases import ai_analysis as _ai_analysis
+
+        return _ai_analysis._on_analysis_error(self, path, error_info, gen)
 
     # -- Ask AI (A3 entry points + A4 async/cache/generation guard) ------------
 
@@ -2362,262 +2078,24 @@ class GalleryController:
     # -- Stage 3 VLM: tie-break + compare briefs (GenericWorker, badge pending, silent degrade) --
 
     def _is_tie(self, a: GalleryItem, b: GalleryItem, epsilon: float = TIE_EPSILON) -> bool:
-        """Local-metric epsilon check for top-2 tie-break eligibility."""
-        try:
-            da = a.metrics.get("embedding_dist_to_centroid")
-            db = b.metrics.get("embedding_dist_to_centroid")
-            if da is not None and db is not None:
-                return abs(float(da) - float(db)) < epsilon
-            # Fallback: sharpness / ssim deltas
-            for key in ("sharpness", "ssim", "artifact_score"):
-                va = a.metrics.get(key)
-                vb = b.metrics.get(key)
-                if va is not None and vb is not None:
-                    try:
-                        av, bv = float(va), float(vb)
-                        denom = max(abs(av), abs(bv), 1e-6)
-                        if abs(av - bv) / denom < epsilon * 2:
-                            return True
-                    except Exception:
-                        continue
-            # No metrics → conservative: treat rank-1 vs rank-2 as tie candidate if phash close?
-            # Use hamming of phash if available
-            pa = a.metrics.get("phash")
-            pb = b.metrics.get("phash")
-            if isinstance(pa, int) and isinstance(pb, int):
-                ham = bin(int(pa) ^ int(pb)).count("1")
-                if ham <= 4:
-                    return True
-            return False
-        except Exception:
-            return False
+        from tabs.image_gallery.use_cases import tie_break as _tie_break
+
+        return _tie_break._is_tie(self, a, b, epsilon)
 
     def run_tie_break_if_needed(self, series) -> None:
-        """Stage 3: selective VLM tie-break for top-2 when local metrics within epsilon.
+        from tabs.image_gallery.use_cases import tie_break as _tie_break
 
-        *series* may be a ``Series`` dataclass (has .members) or plain list[GalleryItem].
-        Sets badge ``AI tie-break…`` pending on both candidates until resolved;
-        degrades silent-but-visible if unresolved (badge cleared, local ranking kept).
-        Uses ``GenericWorker`` (never UI-blocking), cached via ``vlm_cache`` (hash paths+mtime).
-        """
-        try:
-            members = list(getattr(series, "members", series) or [])
-        except Exception:
-            return
-        if len(members) < 2:
-            return
-        # Candidates come from the MEASURED FUSION order (not the old centroid
-        # distance/rank): the VLM tie-break is additive on top of the
-        # Algorithms rank, so its top-2 must be the fusion top-2.
-        try:
-            from tabs.image_gallery.services.rank_fusion import rank_series as _rank
-
-            fusion = _rank(members, mode=getattr(self.state, "mode", None))
-        except Exception:
-            fusion = {}
-
-        def _sort_key(it: GalleryItem):
-            try:
-                r = fusion.get(str(getattr(it, "path", "")))
-            except Exception:
-                r = None
-            try:
-                rk = int(r) if r is not None else 1 << 30
-            except Exception:
-                rk = 1 << 30
-            try:
-                return (rk, str(getattr(it, "path", "")))
-            except Exception:
-                return (rk, "")
-
-        sorted_members = sorted(members, key=_sort_key)
-        top2 = sorted_members[:2]
-        if len(top2) < 2:
-            return
-        a, b = top2[0], top2[1]
-        if not self._is_tie(a, b):
-            return
-
-        # Use existing analyze_image_sync only via VLM targeted path — tie-break needs 2 images.
-        settings = self._ai_settings_store.load()
-        from tabs.image_gallery.services.vlm import set_vlm_max_edge
-
-        set_vlm_max_edge(settings.vlm_max_edge_px)
-        # Degrade silent-but-visible if AI not configured: keep local ranking, no badge
-        if not settings.enabled or not settings.api_key or not settings.model:
-            logger.debug("tie-break skipped: AI not configured (silent degrade)")
-            return
-
-        # Resolve source path for fidelity mode (if available) — needed early for cache key source_mtime
-        source = getattr(self.state, "source_path", None)
-        try:
-            source = Path(source) if source is not None else None
-        except Exception:
-            source = None
-        # source_mtime for vlm_cache key (design parity: hash(paths+mtime+source_mtime))
-        source_mtime: int | None = None
-        if source is not None:
-            try:
-                si = self._find_item(source)
-                if si is not None:
-                    source_mtime = int(getattr(si, "mtime_ns", 0) or 0) or None
-                else:
-                    source_mtime = int(Path(source).stat().st_mtime_ns)
-            except Exception:
-                source_mtime = None
-
-        # Check cache first (key = hash(paths+mtime+source_mtime))
-        try:
-            from tabs.image_gallery.services.vlm_cache import load_cached_tie_break, save_tie_break
-        except Exception:
-            load_cached_tie_break = None  # type: ignore
-            save_tie_break = None  # type: ignore
-
-        if load_cached_tie_break is not None:
-            try:
-                cached = load_cached_tie_break(a.path, a.mtime_ns, b.path, b.mtime_ns, source_mtime)
-                if cached is not None:
-                    self._apply_tie_break_result(a, b, cached)
-                    return
-            except Exception:
-                logger.debug("tie-break cache load failed", exc_info=True)
-
-        # Badge pending on both candidates
-        for it in top2:
-            it.vlm_tie_pending = True
-            it.vlm_tie_error = None
-            try:
-                self.widget.refresh_card(it)
-            except Exception:
-                pass
-
-        from tabs.image_gallery.services.vlm import tie_break_sync
-
-        worker = GenericWorker(
-            tie_break_sync,
-            a.path,
-            b.path,
-            base_url=settings.base_url,
-            api_key=settings.api_key,
-            model=settings.model,
-            source=source,
-        )
-
-        def _on_result(result, a_path=a.path, b_path=b.path, a_mtime=a.mtime_ns, b_mtime=b.mtime_ns, _src_mtime=source_mtime, gen=self._folder_gen):
-            if not self._is_current_folder_gen(gen):
-                return  # folder switched mid-VLM — late tie-break dropped
-            try:
-                if save_tie_break is not None:
-                    save_tie_break(a_path, a_mtime, b_path, b_mtime, result, _src_mtime)
-            except Exception:
-                logger.debug("tie-break cache save failed", exc_info=True)
-            # Find current items (may have been refreshed)
-            item_a = self._find_item(a_path)
-            item_b = self._find_item(b_path)
-            if item_a is None or item_b is None:
-                return
-            self._apply_tie_break_result(item_a, item_b, result)
-
-        def _on_error(error_info, top2_paths=(a.path, b.path), gen=self._folder_gen):
-            if not self._is_current_folder_gen(gen):
-                return
-            logger.debug("tie-break worker error: %r", error_info, exc_info=True)
-            # Silent-but-visible degrade: clear pending badge, keep local ranking
-            for p in top2_paths:
-                it = self._find_item(p)
-                if it is not None:
-                    it.vlm_tie_pending = False
-                    # keep vlm_tie_error visible as tooltip but not badge
-                    try:
-                        exctype, value, _tb = error_info
-                        it.vlm_tie_error = str(value)[:200] if value is not None else "tie-break unresolved"
-                    except Exception:
-                        it.vlm_tie_error = "tie-break unresolved"
-                    try:
-                        self.widget.refresh_card(it)
-                    except Exception:
-                        pass
-
-        worker.signals.result.connect(_on_result)
-        worker.signals.error.connect(_on_error)
-        self._pool_start(worker, None)
+        return _tie_break.run_tie_break_if_needed(self, series)
 
     def _apply_tie_break_result(self, a: GalleryItem, b: GalleryItem, result) -> None:
-        """Apply VLM winner: mark winner is_best/crown_rank, clear pending badges."""
-        try:
-            winner_str = str(getattr(result, "winner_path", ""))
-            loser_str = str(getattr(result, "loser_path", ""))
-            # Resolve which of a,b is winner by path equality (resolve-aware)
-            def _matches(item: GalleryItem, s: str) -> bool:
-                try:
-                    return str(item.path.resolve()) == s or str(item.path) == s
-                except Exception:
-                    return str(item.path) == s
+        from tabs.image_gallery.use_cases import tie_break as _tie_break
 
-            winner = a if _matches(a, winner_str) else (b if _matches(b, winner_str) else a)
-            loser = b if winner is a else a
-            # Additive crown: the VLM verdict overlays ``crown_rank``/``is_best``
-            # on top of the fusion rank (#N is crown_rank ?? rank in
-            # ``rank_badge``). ``rank`` stays the measured-fusion number — the
-            # AI hint never fabricates a measured rank.
-            try:
-                winner.is_best = True
-                winner.crown_rank = 1
-                winner.vlm_tie_result = result
-            except Exception:
-                pass
-            try:
-                loser.is_best = False
-                loser.crown_rank = 2
-                loser.vlm_tie_result = result
-            except Exception:
-                pass
-            for it in (a, b):
-                it.vlm_tie_pending = False
-                it.vlm_tie_error = None
-                try:
-                    self.widget.refresh_card(it)
-                except Exception:
-                    pass
-            # Persist in state
-            try:
-                key = getattr(a, "series_id", None) or getattr(b, "series_id", None) or f"{a.path}:{b.path}"
-                self.state.tie_breaks[str(key)] = result
-            except Exception:
-                pass
-        except Exception:
-            logger.debug("apply tie-break failed", exc_info=True)
-            for it in (a, b):
-                try:
-                    it.vlm_tie_pending = False
-                    self.widget.refresh_card(it)
-                except Exception:
-                    pass
+        return _tie_break._apply_tie_break_result(self, a, b, result)
 
     def _apply_brief_result(self, pa: Path, pb: Path, result, gen: int | None = None) -> None:
-        if gen is not None and not self._is_current_folder_gen(gen):
-            return  # folder switched — late brief dropped
-        try:
-            # Persist in state (one per pair)
-            try:
-                key = f"{Path(pa).resolve()}:{Path(pb).resolve()}"
-                if str(Path(pa).resolve()) > str(Path(pb).resolve()):
-                    key = f"{Path(pb).resolve()}:{Path(pa).resolve()}"
-                self.state.briefs[key] = result
-            except Exception:
-                pass
-            for p in (pa, pb):
-                it = self._find_item(p)
-                if it is not None:
-                    it.vlm_brief = result
-                    it.vlm_brief_status = "done"
-                    it.vlm_brief_error = None
-                    try:
-                        self.widget.refresh_card(it)
-                    except Exception:
-                        pass
-        except Exception:
-            logger.debug("apply brief failed", exc_info=True)
+        from tabs.image_gallery.use_cases import tie_break as _tie_break
+
+        return _tie_break._apply_brief_result(self, pa, pb, result, gen)
 
     # -- Stage 2 crown/reject/S3 (thin wrappers → use_cases/triage) --------
 
