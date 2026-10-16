@@ -6,8 +6,9 @@ while img_sig was unchanged and coverage healthy 1.0. Source is
 ``canvas/widget.py`` ``_ensure_dnd_keepwarm`` (periodic QTimer calling
 ``update()`` with stand-down only for hidden/minimized/drag overlay) plus
 the unconditional gap ``draw_plan`` log in
-``canvas/rhi_renderer/draw_plan.py`` (no sig dedup, unlike
-``renderer.py:361`` / ``coverage.py:257`` / ``fallback.py:183``).
+``canvas/rhi_renderer/draw_plan.py`` (no sig dedup, unlike the
+sig-throttled ``renderer.draw_plan`` / ``coverage.healthy`` emissions and
+``fallback.py``'s decision-signature guard).
 
 Healthy idle with an unchanged sig across many keep-warm ticks must build
 the draw plan at most twice and emit the gap draw_plan log at most once;

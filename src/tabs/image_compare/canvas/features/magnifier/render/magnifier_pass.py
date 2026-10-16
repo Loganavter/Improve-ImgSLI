@@ -237,7 +237,8 @@ def _low_res_fallback_slice(
     if tile_w_px <= 0 or tile_h_px <= 0:
         return None
     # S5: content-scale math lives in the engine draw-plan module (MC
-    # base_images.py:670 precedent); function-local import keeps the tab ->
+    # src/tabs/multi_compare/scene/passes/base_images.py:764 precedent);
+    # function-local import keeps the tab ->
     # engine edge at the call site, never engine -> tab.
     from engine.cache.draw_plans import content_scale_for as _engine_content_scale
 
@@ -650,7 +651,7 @@ class MagnifierPass(CanvasRenderPass):
         self._prepare_call_seq = 0
         # P1B explicit-state verdict: sig-throttle for the gpu_sampling=0
         # fallback log below (per-frame path — same recipe as
-        # ``rhi_renderer/use_cases/fallback.py`` ``_last_renderer_fallback_sig``:
+        # ``rhi_renderer/use_cases/fallback.py``'s ``_last_is_same_sig``:
         # emit once per distinct decision signature, not once per frame).
         self._last_no_slot_sig: tuple | None = None
         # H3 loupe-debug (trace-only): hold->swap timing + heartbeat gate.

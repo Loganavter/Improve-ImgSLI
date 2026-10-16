@@ -3,7 +3,7 @@
 Stage 2 of the migration: the helpers that used to live in
 ``ui.main_window.layouts.LayoutComposer`` are moved here so they
 no longer pollute the host. They still operate on the primitive
-widgets owned by ``MainWindowUI`` (passed in as ``ui``) — Stage 3
+widgets owned by ``Ui_ImageComparisonApp`` (passed in as ``ui``) — Stage 3
 will route those primitives behind tab-owned proxies.
 """
 
@@ -86,7 +86,7 @@ def _keep_spacing_scaled(layout: QBoxLayout, design_px: int) -> None:
 class ImageCompareLayoutBuilder:
     """Builds the container widgets that make up the image_compare page.
 
-    Holds a reference to the host UI object (``MainWindowUI``) and reuses
+    Holds a reference to the host UI object (``Ui_ImageComparisonApp``) and reuses
     the primitive widgets already created there (buttons, sliders, the
     canvas, etc.). Mutates ``ui`` by setting attributes for built containers
     (``ui.selection_widget``, ``ui.image_container_widget``, ...) so that

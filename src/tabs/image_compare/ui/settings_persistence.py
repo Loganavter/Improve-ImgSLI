@@ -61,7 +61,7 @@ def load_image_compare_feature_settings(store, get_setting: Callable) -> None:
             except Exception:
                 pass
         else:
-            # Early bootstrap before dispatcher is wired (dispatcher.py:118) – defer.
+            # Early bootstrap before dispatcher is wired (src/core/bootstrap.py:176) – defer.
             # Keep immediate setattr for fake stores / tests where no dispatcher
             # ever appears, so the value is still observable without a dispatch.
             try:

@@ -155,7 +155,7 @@ def restore_image_state_prefs(
             pass
         return
     if store is not None:
-        # Early bootstrap – dispatcher not yet bound (dispatcher.py:118), defer.
+        # Early bootstrap – dispatcher not yet bound (src/core/bootstrap.py:176), defer.
         try:
             QTimer.singleShot(
                 0, lambda: restore_image_state_prefs(image_state, data, store)

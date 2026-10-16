@@ -70,7 +70,7 @@ def prepare_frame(
 
     Covers target/rhi guard, ``apply_pending_uploads``, ``build_render_runtime_context``,
     ``should_draw``/``target_size``/``viewport_zoom``/``sources`` raw/pending handling
-    (``renderer.py:344-512`` pre-split). Mutates ``renderer.resources.residency.last_rekeyed_keys``
+    (the pre-split ``RhiCanvasRenderer.render`` preamble). Mutates ``renderer.resources.residency.last_rekeyed_keys``
     and ``renderer._lod_*`` via ``commit_lod_keys`` exactly as before.
 
     ``frame_context`` is the Phase-2 frame-bus hook: when provided, the two
