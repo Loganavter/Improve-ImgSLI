@@ -68,11 +68,11 @@ from services.io.recent_projects import (
     sort_recent_projects,
     VIEW_LIST,
 )
-from tabs.host_helpers import estimate_prelayout_width
 from tabs.session_picker.geometry import (
     SESSION_PICKER_PAGE_HORIZONTAL_MARGINS,
     SESSION_PICKER_RECENT_CONTENT_WIDTH_FLOOR,
 )
+from tabs.session_picker.prelayout import estimate_prelayout_width
 from tabs.session_picker.recent.drop_controller import RecentDropController
 from ui.widgets.shelf.empty_drop_zone import EmptyDropZone
 from tabs.session_picker.recent.header_bar import RecentHeaderBar
