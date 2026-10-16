@@ -979,6 +979,17 @@
       }
     },
     {
+      "path": "src/tabs/image_gallery/use_cases/triage_run.py",
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=thin-owner-target size=exempt reason=\"one Stage-2 triage pipeline (stable ids -> cluster -> settle) sharing GenericWorker + owner generation state\"",
+      "parsed": {
+        "pattern": "thin-owner-target",
+        "size": "exempt",
+        "reason": "one Stage-2 triage pipeline (stable ids -> cluster -> settle) sharing GenericWorker + owner generation state"
+      }
+    },
+    {
       "path": "src/tabs/image_gallery/widget.py",
       "limit": 500,
       "marker": "Audit-Meta:",
