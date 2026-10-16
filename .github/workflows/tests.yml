@@ -63,6 +63,40 @@ jobs:
         run: |
           python -m pytest tests -m "not slow" -n auto -q -p no:cacheprovider --durations=10
 
+  comment-citations:
+    name: Comment citations (stale/ambiguous)
+    runs-on: ubuntu-latest
+    # Unoutdated-comment gate: an outdated comment is a correctness defect
+    # (agents execute prose as truth). Stdlib-only checker; the app+toolkit
+    # sibling layout matches the fast job so `--extra-root` resolves.
+    steps:
+      - name: Check Out App
+        uses: actions/checkout@v4
+        with:
+          path: app
+
+      - name: Check Out Toolkit Sibling
+        uses: actions/checkout@v4
+        with:
+          repository: Loganavter/sli-ui-toolkit-private
+          token: ${{ secrets.TOOLKIT_PAT }}
+          path: sli-ui-toolkit
+
+      - name: Set Up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Check comment/docstring citations
+        working-directory: app
+        run: |
+          # Fails (exit 1) on NEW dangling path:line / symbol / id citations.
+          # `scripts/comment_citations_allow.txt` is the ratchet for accepted
+          # external/runtime names. Never invent a citation to satisfy it.
+          python scripts/check_comment_citations.py \
+            --extra-root ../sli-ui-toolkit/src \
+            --allow scripts/comment_citations_allow.txt
+
   full:
     name: Full suite (nightly)
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
