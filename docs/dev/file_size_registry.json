@@ -968,6 +968,17 @@
       }
     },
     {
+      "path": "src/tabs/image_gallery/ui/widget_parts/grid_api.py",
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=thin-owner-target size=exempt reason=\"grid API bodies extracted verbatim from ImageGalleryWidget (plan-gallery-split-2026-10-17 Part B Wave 3) - one widget-glue surface, splitting further would be a helpers bag\"",
+      "parsed": {
+        "pattern": "thin-owner-target",
+        "size": "exempt",
+        "reason": "grid API bodies extracted verbatim from ImageGalleryWidget (plan-gallery-split-2026-10-17 Part B Wave 3) - one widget-glue surface, splitting further would be a helpers bag"
+      }
+    },
+    {
       "path": "src/tabs/image_gallery/use_cases/series_override.py",
       "limit": 500,
       "marker": "Audit-Meta:",
