@@ -902,7 +902,7 @@
       }
     },
     {
-      "path": "src/tabs/image_gallery/ui/quick_look/resize.py",
+      "path": "src/tabs/image_gallery/ui/quick_look/resize/handlers.py",
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner-target size=exempt reason=\"one card-resize concern: border/ring share one clamp + repin idiom\"",
