@@ -125,7 +125,6 @@ def _parse_kv(raw: str) -> dict:
         # fallback: raw is free-form reason
         kv["reason"] = " ".join(reason_parts)
     elif reason_parts and "reason" in kv:
-        # append stray tokens to reason
         kv["reason"] = kv["reason"] + " " + " ".join(reason_parts)
         kv["reason"] = kv["reason"].strip()
     if not raw:
