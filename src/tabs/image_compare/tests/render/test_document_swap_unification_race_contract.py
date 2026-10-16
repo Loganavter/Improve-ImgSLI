@@ -108,7 +108,6 @@ def test_unification_scheduled_before_a_pair_swap_never_paints_the_old_pair(monk
 
     imgA1, imgA2, document = _pair("red", "green", "a1.png", "a2.png")
     store = _make_store(document)
-    # seed pipeline for A
     store.transact([PutPixelAction(path="a1.png", store=imgA1)], scope="pipeline")
     store.transact([PutPixelAction(path="a2.png", store=imgA2)], scope="pipeline")
     controller = _FakeController(store)
@@ -118,7 +117,6 @@ def test_unification_scheduled_before_a_pair_swap_never_paints_the_old_pair(monk
     controller.thread_pool.started.clear()
 
     imgB1, imgB2, new_document = _pair("blue", "yellow", "b1.png", "b2.png")
-    # seed pipeline for B
     store.set_session_state_slot("document", new_document)
     store.transact([PutPixelAction(path="b1.png", store=imgB1)], scope="pipeline")
     store.transact([PutPixelAction(path="b2.png", store=imgB2)], scope="pipeline")

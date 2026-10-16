@@ -476,7 +476,6 @@ def test_bbox_width_for_distinct_images():
     svc = TileTextureService(max_tile_extent=512)
     svc.register_source("stored_0", (1017, 838))
     svc.register_source("stored_1", (768, 576))
-    # mark both fully resident
     for key in ("stored_0", "stored_1"):
         grid = svc.grid_for(key)
         for r, c, _ in grid.iter_regions():
