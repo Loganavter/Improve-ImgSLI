@@ -4,7 +4,7 @@
 Thin-owner target per ``docs/dev/CODE_PATTERNS.md`` and template
 ``docs/dev/plan_rhi_renderer_decomposition.md`` (Phase 2-5 pattern:
 ``func(renderer, ...)`` in ``use_cases/``). Extracted from
-``background_parts/render_flow.py:501`` (~620L ``update_comparison_if_needed``).
+the pre-split ``update_comparison_if_needed`` (~620L) in ``render_flow.py``.
 
 Sequencing owned here::
 

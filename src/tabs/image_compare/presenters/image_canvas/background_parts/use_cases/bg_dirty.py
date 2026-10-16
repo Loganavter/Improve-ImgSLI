@@ -5,7 +5,7 @@ thin owner + ``use_cases/`` and ``docs/dev/FILE_SIZE_POLICY.md`` (500L).
 Owns ``compute_background_signature`` / ``is_background_dirty``, the
 ``ssim`` diff request + ``sync_diff_texture`` call, and the
 ``bg_is_dirty`` → ``pick`` → ``gap`` → ``apply_store_to_canvas`` branch
-(``render_flow.py:447-746``). Throttle globals for gap logs live here —
+(``handle_background``, below). Throttle globals for gap logs live here —
 the module that owns the logging decision.
 """
 
@@ -144,7 +144,8 @@ def _resolve_unify_gate_cache(presenter):
 def handle_background(presenter, source1, source2, peeked, current_label_dims, label_width, label_height) -> bool:
     """Bg signature + dirty + ssim diff + pick/gap/apply.
 
-    Mirrors ``render_gate.py:423-608``. Returns True if the caller should
+    Called from ``update_comparison_if_needed`` (``render_gate.py:156``) —
+    the pre-split gate inlined this block. Returns True if the caller should
     early-return ``False`` (not a canvas widget), else False to continue to
     overlay/magnifier. Updates ``presenter._last_bg_signature``,
     ``_last_label_dims``, ``_last_mag_signature``, ``_last_img_sig`` and
