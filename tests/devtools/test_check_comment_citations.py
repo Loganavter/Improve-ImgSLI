@@ -214,3 +214,126 @@ def test_report_is_sorted_and_deterministic(checker, tmp_path) -> None:
     assert rows == _findings(second)
     assert rows == sorted(rows, key=lambda r: (r["file"], r["line"], r["kind"], r["snippet"]))
     assert [row["file"] for row in rows] == [str(root / "a.py"), str(root / "b.py"), str(root / "b.py")]
+
+
+# --- v2: shape filter ------------------------------------------------------
+
+
+def test_shape_filter_skips_non_symbol_shapes(checker, tmp_path, capsys) -> None:
+    """MUST-pass: env var, 3-segment token, path, asset file, external symbol."""
+    root = tmp_path / "tree"
+    _write(
+        root / "citing.py",
+        '"""Shape cases: `UI_NAV_DEBUG_XYZ` (env), `acme.card.border` (theme),\n'
+        "`docs/some_dir` (dir), `notes.json` (asset), "
+        '`sli_ui_toolkit.xyz` (external).\n"""\n',
+    )
+
+    assert checker.main(["--root", str(root)]) == 0
+    assert capsys.readouterr().out == ""
+
+
+def test_shape_filter_keeps_real_unknown_symbol(checker, tmp_path, capsys) -> None:
+    """The filter skips shapes, never the whole line — a real symbol still flags."""
+    root = tmp_path / "tree"
+    _write(
+        root / "citing.py",
+        "# `UI_NAV_DEBUG_XYZ` is fine, but `totally_undefined_s05_symbol` is not.\n",
+    )
+    report = tmp_path / "report.json"
+
+    assert checker.main(["--root", str(root), "--json", str(report)]) == 1
+    rows = _findings(report)
+    assert [row["kind"] for row in rows] == ["unknown-symbol"]
+    assert "totally_undefined_s05_symbol" in rows[0]["snippet"]
+
+
+def test_shape_filter_whitespace_is_impossible(checker) -> None:
+    """Phrases cannot reach the filter (regex guard), asserted in code."""
+    assert checker.SYMBOL_RE.search("`two words`") is None
+    with pytest.raises(AssertionError):
+        checker.is_symbol_shaped("two words")
+
+
+# --- v2: basename resolution ----------------------------------------------
+
+
+def test_unique_basename_resolves(checker, tmp_path, capsys) -> None:
+    """MUST-pass: basename-only cite to a file deeper in the tree resolves."""
+    root = tmp_path / "tree"
+    _write(
+        root / "pkg" / "deep" / "unique_basename_mod_s05.py",
+        '"""Deep module."""\n\n\ndef seam() -> int:\n    return 1\n',
+    )
+    _write(
+        root / "citing" / "citing.py",
+        "# The seam lives in unique_basename_mod_s05.py:2.\n",
+    )
+
+    assert checker.main(["--root", str(root)]) == 0
+    assert capsys.readouterr().out == ""
+
+
+def test_unique_basename_out_of_range_is_flagged(checker, tmp_path) -> None:
+    """The resolved basename honours the line bound (proves resolution happened)."""
+    root = tmp_path / "tree"
+    _write(
+        root / "pkg" / "deep" / "unique_basename_mod_s05.py",
+        '"""Deep module."""\n\n\ndef seam() -> int:\n    return 1\n',
+    )
+    _write(
+        root / "citing" / "citing.py",
+        "# The seam lives in unique_basename_mod_s05.py:999.\n",
+    )
+    report = tmp_path / "report.json"
+
+    assert checker.main(["--root", str(root), "--json", str(report)]) == 1
+    rows = _findings(report)
+    assert [row["kind"] for row in rows] == ["line-out-of-range"]
+
+
+def test_ambiguous_basename_is_flagged(checker, tmp_path, capsys) -> None:
+    """MUST-fail: two same-named files -> unresolved-path, collision named."""
+    root = tmp_path / "tree"
+    _write(root / "a" / "dup_mod_s05.py", '"""A."""\n')
+    _write(root / "b" / "dup_mod_s05.py", '"""B."""\n')
+    _write(root / "citing" / "citing.py", "# See dup_mod_s05.py:1 for details.\n")
+    report = tmp_path / "report.json"
+
+    assert checker.main(["--root", str(root), "--json", str(report)]) == 1
+    rows = _findings(report)
+    assert [row["kind"] for row in rows] == ["unresolved-path"]
+    assert "ambiguous basename" in rows[0]["snippet"]
+    assert "2 matches" in rows[0]["snippet"]
+    assert "unresolved-path" in capsys.readouterr().out
+
+
+# --- v2: --extra-root ------------------------------------------------------
+
+
+def test_extra_root_resolves_symbols_without_scanning_comments(
+    checker, tmp_path
+) -> None:
+    """--extra-root indexes names only; its comments are never scanned."""
+    root = tmp_path / "tree"
+    _write(root / "citing.py", "# Provided by `ToolkitSymbolS05` from the toolkit.\n")
+    ext = tmp_path / "ext"
+    _write(
+        ext / "toolkit_mod.py",
+        '"""Toolkit stub."""\n\n\nclass ToolkitSymbolS05:\n'
+        '    """Real definition."""\n',
+    )
+    _write(ext / "dirty.py", "# stale cite to nope_s05.py:3 lives here.\n")
+
+    # Without the extra root the symbol is (correctly) unknown.
+    assert checker.main(["--root", str(root)]) == 1
+
+    report = tmp_path / "report.json"
+    assert (
+        checker.main(
+            ["--root", str(root), "--extra-root", str(ext), "--json", str(report)]
+        )
+        == 0
+    )
+    # The extra root supplied names, but none of its comments were scanned.
+    assert _findings(report) == []
