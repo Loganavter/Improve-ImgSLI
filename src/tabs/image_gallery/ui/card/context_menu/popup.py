@@ -1,5 +1,4 @@
-"""Context menu for gallery card — per-card + selection actions (toolkit ContextMenu).
-Audit-Meta: pattern=qdialog-wiring size=exempt reason="one card-menu builder — entry list + per-card context gating (source/reject/group) + monochrome icon tinting share one menu contract; action bodies live in context_actions.py"
+"""Popup builder for the gallery card context menu.
 
 Right-click on a card opens a standard toolkit ``ContextMenu`` under the
 cursor (``popup_at(QCursor.pos())``). The menu merges two groups:
@@ -26,6 +25,9 @@ carry flows live in the stats strip / keyboard paths, not here.
 Move was removed as well — carrying to another tab is drag-only (press-move
 past the drag threshold on a card starts the QDrag; drop onto a workspace
 tab delivers it).
+
+Split out of ``ui/card/context_menu.py`` per the module→package split
+(``plan-gallery-split-2026-10-17``); the entry point body moved verbatim.
 """
 
 from __future__ import annotations
@@ -45,276 +47,16 @@ from tabs.image_gallery.ui.card.context_actions import (
 )
 from tabs.image_gallery.ui.card.menu_track import track_open_menu
 
-
-def _t(translate, key: str, default: str) -> str:
-    if translate is None:
-        return default
-    try:
-        return translate(key, default)
-    except Exception:
-        try:
-            return translate(key)  # type: ignore[call-arg]
-        except Exception:
-            return default
-
-
-def _resolve_menu_translator(card, owner, translate):
-    """Best translator for this menu WITHOUT a threaded ``translate=``.
-
-    Priority: an explicit ``translate=``; the nearest subtree translator
-    bound on *card* (the page's ``install_translator`` root, resolved via
-    ``translator_for``); then the triage owner's ``_tr`` (the Quick Look strip
-    path, whose anchor lives under the window-parented overlay, not the page).
-    ``None`` when nothing is wired — the caller keeps the literal fallbacks.
-    """
-    if callable(translate):
-        return translate
-    try:
-        from sli_ui_toolkit.i18n import translator_for, tr as _global_tr
-
-        resolved = translator_for(card)
-        if resolved is not _global_tr:
-            return resolved
-    except Exception:
-        pass
-    try:
-        owner_tr = getattr(owner, "_tr", None)
-        if callable(owner_tr):
-            return owner_tr
-    except Exception:
-        pass
-    return None
-
-
-def _bind_menu_translator(menu, translate) -> None:
-    """Drive the menu's declarative ``text_key`` rows through *translate*.
-
-    The menu is a popup parented to the card/anchor but created AFTER the
-    page's ``install_translator`` walk ran, so it is never auto-covered;
-    resolve the translator here and bind it explicitly. No-op when *translate*
-    is ``None``. Fail-open (fake/test menus lack the protocol).
-    """
-    if not callable(translate):
-        return
-    try:
-        from sli_ui_toolkit.i18n import bind_translator
-
-        bind_translator(menu, translate)
-    except Exception:
-        pass
-
-
-def _selection_count(owner) -> int:
-    try:
-        sel = getattr(getattr(owner, "state", None), "selected_paths", None)
-        if sel is None:
-            return 0
-        return len(sel)
-    except Exception:
-        return 0
-
-
-def _targets_are_single_series(owner, targets) -> bool:
-    """True when *targets* are exactly one whole live series (fail-open False).
-
-    Grouping a complete series would pin it onto a fresh id and rebuild
-    for nothing — the menu hides Group in that case (Ungroup stays: it
-    dissolves). Reads controller ``state.series`` plus the grid mirror
-    (``_grid_view._series`` clusters); the UNGROUPED tail is not a series.
-    """
-    try:
-        tset = {str(p) for p in (targets or [])}
-    except Exception:
-        return False
-    if len(tset) < 2:
-        return False
-    try:
-        candidates: list = []
-        try:
-            st = getattr(owner, "state", None)
-            if st is not None and getattr(st, "series", None):
-                candidates.extend(list(st.series or []))
-        except Exception:
-            pass
-        try:
-            gv = getattr(owner, "_grid_view", None)
-            if gv is not None and getattr(gv, "_series", None):
-                candidates.extend(list(gv._series or []))
-        except Exception:
-            pass
-        for entry in candidates:
-            try:
-                if hasattr(entry, "members"):
-                    members = list(getattr(entry, "members", None) or [])
-                elif isinstance(entry, (list, tuple)):
-                    members = list(entry)
-                else:
-                    continue
-                if len(members) >= 2 and {str(getattr(m, "path", None)) for m in members} == tset:
-                    return True
-            except Exception:
-                continue
-    except Exception:
-        return False
-    return False
-
-
-def _targets_any_grouped(owner, targets) -> bool:
-    """True unless every target is positively UNGROUPED (fail-open True).
-
-    Hides Ungroup for an all-UNGROUPED set (nothing to dissolve — the
-    move path would no-op). Targets missing from the known pool (storeless
-    doubles) keep the old visible behavior; only a positively-known
-    all-ungrouped set hides the entry. Mirrors ``_targets_all_rejected``.
-    """
-    try:
-        tset = {str(t) for t in (targets or [])}
-        if not tset:
-            return False
-        from tabs.image_gallery.use_cases import triage as _triage
-
-        pool: dict[str, bool] = {}
-        for it in _triage._items_of(owner):
-            try:
-                pool[str(Path(it.path))] = getattr(it, "series_id", None) is not None
-            except Exception:
-                continue
-        if any(t not in pool for t in tset):
-            return True
-        return any(pool[t] for t in tset)
-    except Exception:
-        return True
-
-
-def _targets_all_rejected(owner, targets) -> bool:
-    """True when every target card is currently rejected (fail-open False).
-
-    Drives the Reject/Unreject label; mirrors the uniform direction in
-    ``_ctx_toggle_reject`` (all rejected → unreject, else reject).
-    """
-    try:
-        if not targets:
-            return False
-        from tabs.image_gallery.use_cases import triage as _triage
-
-        flags: dict[str, bool] = {}
-        for it in _triage._items_of(owner):
-            try:
-                flags[str(Path(it.path))] = bool(
-                    getattr(it, "rejected", getattr(it, "triage_rejected", False))
-                )
-            except Exception:
-                continue
-        return bool(targets) and all(flags.get(str(t), False) for t in targets)
-    except Exception:
-        return False
-
-
-def _selection_label(translate, n: int) -> str:
-    if n <= 0:
-        return _t(translate, "image_gallery.selection.none", "No selection")
-    if n == 1:
-        return _t(translate, "image_gallery.selection.one", "1 selected")
-    raw = _t(translate, "image_gallery.selection.many", "{n} selected")
-    try:
-        if "{n}" in raw:
-            return raw.format(n=n)
-        return f"{n} selected"
-    except Exception:
-        return f"{n} selected"
-
-
-def _is_source(owner, path) -> bool:
-    """True when the clicked card is already the series source (fail-open False)."""
-    try:
-        p = str(Path(path))
-    except Exception:
-        return False
-    try:
-        st = getattr(owner, "state", None)
-        src = getattr(st, "source_path", None) if st is not None else None
-        if src is not None:
-            return str(Path(src)) == p
-    except Exception:
-        pass
-    try:
-        from tabs.image_gallery.services.rank_badge import KIND_SOURCE
-        from tabs.image_gallery.use_cases import triage as _triage
-
-        for it in _triage._items_of(owner):
-            if str(Path(getattr(it, "path", ""))) == p:
-                return str(getattr(it, "badge_kind", "")) == KIND_SOURCE
-    except Exception:
-        pass
-    return False
-
-
-_MENU_ICON_CACHE: dict[tuple[object, bool, int], object] = {}
-
-
-def _resolve_menu_icon(name):  # type: ignore[no-untyped-def]
-    """Resolve *name* for the live theme and tint to ``dialog.text`` (cached)."""
-    try:
-        from PySide6.QtCore import QSize, Qt
-        from PySide6.QtGui import QColor, QIcon, QPainter, QPixmap
-        from sli_ui_toolkit.icons import resolve_icon
-        from sli_ui_toolkit.managers import ThemeManager
-
-        from ui.theming import try_resolve_theme_color
-
-        mgr = ThemeManager.get_instance()
-        dark = bool(mgr.is_dark())
-        c = try_resolve_theme_color(mgr, "dialog.text")
-        if c is None:
-            return name
-        col = c if isinstance(c, QColor) else QColor(c)
-        cache_key = (name, dark, int(col.rgba()))
-        cached = _MENU_ICON_CACHE.get(cache_key)
-        if isinstance(cached, QIcon) and not cached.isNull():
-            return cached
-        base = resolve_icon(name)
-        if base is None or base.isNull():
-            return name
-        pm = base.pixmap(QSize(64, 64))
-        if pm.isNull():
-            return name
-        out = QPixmap(pm.size())
-        try:
-            out.setDevicePixelRatio(pm.devicePixelRatio())
-        except Exception:
-            pass
-        out.fill(Qt.GlobalColor.transparent)
-        painter = QPainter(out)
-        try:
-            painter.drawPixmap(0, 0, pm)
-            painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceIn)
-            painter.fillRect(out.rect(), col)
-        finally:
-            painter.end()
-        icon = QIcon(out)
-        if not icon.isNull():
-            _MENU_ICON_CACHE[cache_key] = icon
-        return icon
-    except Exception:
-        return name
-
-
-def _menu_icon(name):  # type: ignore[no-untyped-def]
-    """Return a lazy menu-icon handle tinted to the row-text theme color.
-
-    The toolkit paints ``ContextMenuAction.icon`` verbatim, so icons from
-    mixed sources (brand-blue ``ai.svg``, black ``compare.svg``, white
-    ``delete``/``star``/``check``) rendered as a rainbow in one menu. Tinting
-    them all to ``dialog.text`` — the same color the row paints its label with
-    — makes the menu one monochrome family that tracks the theme. Resolved at
-    paint time via ``lazy_icon`` and cached per ``(name, is_dark())`` so the
-    provider returns a stable ``QIcon``.
-    """
-    from functools import partial
-
-    from sli_ui_toolkit.icons import lazy_icon
-
-    return lazy_icon(partial(_resolve_menu_icon, name))
+from .icons import _menu_icon
+from .predicates import (
+    _is_source,
+    _selection_count,
+    _selection_label,
+    _targets_all_rejected,
+    _targets_any_grouped,
+    _targets_are_single_series,
+)
+from .translator import _bind_menu_translator, _resolve_menu_translator, _t
 
 
 def popup_gallery_card_context_menu(  # type: ignore[no-untyped-def]
@@ -649,6 +391,3 @@ def popup_gallery_card_context_menu(  # type: ignore[no-untyped-def]
         if _dbg_on:
             _dbg("card menu outer raised path=%s", path, exc_info=True)
         pass
-
-
-
