@@ -14,16 +14,13 @@ import threading
 from pathlib import Path
 
 from PySide6.QtCore import QCoreApplication, QEvent, QObject, QThreadPool, QTimer, Signal
-from PySide6.QtGui import QPixmap
 from sli_ui_toolkit.workers import GenericWorker
 
 from core.state_management.gallery_actions import (
-    GalleryFilterSet,
     GalleryPathsAppended,
     GalleryPoolOpened,
     GalleryPoolReplaced,
     GallerySelectionSet,
-    GalleryThumbnailsReady,
     GalleryTriageFinished,
 )
 from tabs.image_gallery.bootstrap_reducers import GALLERY_SLOT_NAME
@@ -1183,124 +1180,34 @@ class GalleryController:
     # -- coalesced thumbnail completions (ONE action per event-loop turn) -----
 
     def _queue_thumb_ready(self, path: Path, status: str) -> None:
-        try:
-            self._pending_thumb_ready.append((str(path), status))
-        except Exception:
-            return
-        if self._thumb_flush_scheduled:
-            return
-        self._thumb_flush_scheduled = True
-        try:
-            if QCoreApplication.instance() is None:
-                # No event loop (headless unit context) — flush synchronously.
-                self._flush_pending_thumbnails()
-            else:
-                QTimer.singleShot(0, self._flush_pending_thumbnails)
-        except Exception:
-            try:
-                self._flush_pending_thumbnails()
-            except Exception:
-                pass
+        from tabs.image_gallery.use_cases import completion_coalescing as _cc
+
+        _cc._queue_thumb_ready(self, path, status)
 
     def _flush_pending_thumbnails(self) -> None:
-        self._thumb_flush_scheduled = False
-        if not self._pending_thumb_ready:
-            return
-        batch, self._pending_thumb_ready = self._pending_thumb_ready, []
-        # Coalesce same path → last status wins, first-seen order kept.
-        last: dict[str, str] = {}
-        for path, status in batch:
-            last[path] = status
-        ready = [(p, last[p]) for p in dict.fromkeys(p for p, _ in batch)]
-        # Drop entries the slot already has (reducer identity would no-op
-        # without an emit, leaking own-emit accounting).
-        try:
-            slot = self._gallery_slot()
-            if slot is not None:
-                current = {
-                    m.path: m.status for m in _gallery_selectors.get_items(slot)
-                }
-                ready = [(p, s) for p, s in ready if current.get(p) != s]
-        except Exception:
-            pass
-        if not ready:
-            return
-        self._emit_gallery(GalleryThumbnailsReady(ready=ready))
+        from tabs.image_gallery.use_cases import completion_coalescing as _cc
+
+        _cc._flush_pending_thumbnails(self)
 
     def flush_pending_thumbnails(self) -> None:
-        """Flush a coalesced turn synchronously (tests / teardown)."""
-        self._flush_pending_thumbnails()
-        self._flush_pending_card_refresh()
+        from tabs.image_gallery.use_cases import completion_coalescing as _cc
+
+        _cc.flush_pending_thumbnails(self)
 
     def _queue_card_refresh(self, item) -> None:
-        """Defer one card repaint into the per-tick batch (see __init__)."""
-        try:
-            self._pending_card_items[str(getattr(item, "path", item))] = item
-        except Exception:
-            return
-        if self._card_flush_scheduled:
-            return
-        self._card_flush_scheduled = True
-        try:
-            if QCoreApplication.instance() is None:
-                # No event loop (headless unit context) — flush synchronously.
-                self._flush_pending_card_refresh()
-            else:
-                QTimer.singleShot(0, self._flush_pending_card_refresh)
-        except Exception:
-            try:
-                self._flush_pending_card_refresh()
-            except Exception:
-                pass
+        from tabs.image_gallery.use_cases import completion_coalescing as _cc
+
+        _cc._queue_card_refresh(self, item)
 
     def _flush_pending_card_refresh(self) -> None:
-        self._card_flush_scheduled = False
-        if not self._pending_card_items:
-            return
-        batch, self._pending_card_items = list(self._pending_card_items.values()), {}
-        try:
-            refresh_cards = getattr(self.widget, "refresh_cards", None)
-            if callable(refresh_cards):
-                refresh_cards(batch)
-                return
-        except Exception:
-            pass
-        for item in batch:
-            try:
-                self.widget.refresh_card(item)
-            except Exception:
-                pass
+        from tabs.image_gallery.use_cases import completion_coalescing as _cc
+
+        _cc._flush_pending_card_refresh(self)
 
     def _emit_triage_finished(self, triage_state: str, source_path=None) -> bool:
-        """Dispatch GalleryTriageFinished from the local summary + ranks.
+        from tabs.image_gallery.use_cases import completion_coalescing as _cc
 
-        ``source_path`` overrides the mirrored state value when given
-        (set_source path); otherwise the current state mirror is carried.
-        """
-        try:
-            ranks: dict[str, int] = {}
-            for it in self.state.items:
-                try:
-                    if it.rank is not None:
-                        ranks[str(it.path)] = int(it.rank)
-                except Exception:
-                    continue
-            mode = getattr(self.state, "mode", None)
-            mode_s = getattr(mode, "value", mode)
-            source = source_path if source_path is not None else getattr(self.state, "source_path", None)
-            if source is not None and not isinstance(source, (str, Path)):
-                source = None
-            return self._emit_gallery(
-                GalleryTriageFinished(
-                    triage_state=triage_state,
-                    mode=str(mode_s) if mode_s is not None else None,
-                    source_path=str(source) if source is not None else None,
-                    ranks=ranks,
-                )
-            )
-        except Exception:
-            logger.debug("triage-finished dispatch failed", exc_info=True)
-            return False
+        return _cc._emit_triage_finished(self, triage_state, source_path)
 
     # -- folder loading ----------------------------------------------------
 
@@ -1616,63 +1523,19 @@ class GalleryController:
     # -- thumbnails ----------------------------------------------------------
 
     def _load_thumbnail(self, item: GalleryItem, *, priority: int | None = None) -> None:
-        """Schedule one thumbnail load (visible-first callers pass priority).
+        from tabs.image_gallery.use_cases import thumbnails as _thumbnails
 
-        Default is ``VISIBLE_THUMB_PRIORITY`` (fail-open): single loads are
-        user-triggered or already-visible, so latency must not regress. The
-        folder-open path partitions explicitly via ``_begin_folder_schedule``.
-        """
-        if priority is None:
-            priority = VISIBLE_THUMB_PRIORITY
-        try:
-            self.schedule([item], int(priority), gen=self._folder_gen)
-        except Exception:
-            logger.debug("thumbnail schedule failed for %s", getattr(item, "path", "?"), exc_info=True)
+        _thumbnails._load_thumbnail(self, item, priority=priority)
 
     def _on_thumbnail_ready(self, path: Path, cache_path: Path | None, gen: int | None = None) -> None:
-        try:
-            self._thumb_inflight.discard(str(path))
-        except Exception:
-            pass
-        if gen is not None and not self._is_current_folder_gen(gen):
-            return  # folder switched mid-flight — late thumbnail dropped
-        item = self._find_item(path)
-        if item is None:
-            return
-        if cache_path is None:
-            item.thumbnail_status = ThumbnailStatus.ERROR
-        else:
-            pixmap = QPixmap(str(cache_path))
-            if pixmap.isNull():
-                item.thumbnail_status = ThumbnailStatus.ERROR
-            else:
-                item.thumbnail = pixmap
-                item.thumbnail_status = ThumbnailStatus.LOADED
-        # Card repaint is coalesced per tick (see _queue_card_refresh) — a
-        # per-item refresh_card here re-swept selection over the whole grid.
-        self._queue_card_refresh(item)
-        # Per-item completion coalesces to ONE GalleryThumbnailsReady per turn.
-        try:
-            self._queue_thumb_ready(path, item.thumbnail_status.value)
-        except Exception:
-            pass
+        from tabs.image_gallery.use_cases import thumbnails as _thumbnails
+
+        _thumbnails._on_thumbnail_ready(self, path, cache_path, gen)
 
     def _on_thumbnail_error(self, path: Path, gen: int | None = None) -> None:
-        try:
-            self._thumb_inflight.discard(str(path))
-        except Exception:
-            pass
-        if gen is not None and not self._is_current_folder_gen(gen):
-            return
-        item = self._find_item(path)
-        if item is None:
-            return
-        item.thumbnail_status = ThumbnailStatus.ERROR
-        self._queue_card_refresh(item)
-        try:
-            self._queue_thumb_ready(path, ThumbnailStatus.ERROR.value)
-        except Exception:
-            pass
+        from tabs.image_gallery.use_cases import thumbnails as _thumbnails
+
+        _thumbnails._on_thumbnail_error(self, path, gen)
 
     # -- AI analyze -----------------------------------------------------------
 
@@ -4949,96 +4812,31 @@ class GalleryController:
     FILTER_DEBOUNCE_MS = 120
 
     def set_filter_text(self, text: str) -> None:
-        self._pending_filter_text = text or ""
-        timer = self._filter_timer
-        if timer is None:
-            try:
-                timer = QTimer()
-                timer.setSingleShot(True)
-                timer.timeout.connect(self._apply_pending_filter)
-                self._filter_timer = timer
-            except Exception:
-                timer = None
-        if timer is None:
-            # No Qt event loop (headless unit context) — apply synchronously.
-            self._apply_filter(self._pending_filter_text, self._filter_gen + 1)
-            return
-        try:
-            timer.stop()
-            timer.start(self.FILTER_DEBOUNCE_MS)
-        except Exception:
-            self._apply_filter(self._pending_filter_text, self._filter_gen + 1)
+        from tabs.image_gallery.use_cases import filtering as _filtering
+
+        _filtering.set_filter_text(self, text)
 
     def apply_pending_filter(self) -> None:
-        """Flush a debounced keystroke synchronously (tests / teardown)."""
-        timer = self._filter_timer
-        if timer is not None:
-            try:
-                timer.stop()
-            except Exception:
-                pass
-        self._apply_pending_filter()
+        from tabs.image_gallery.use_cases import filtering as _filtering
+
+        _filtering.apply_pending_filter(self)
 
     def _apply_pending_filter(self) -> None:
-        self._filter_gen += 1
-        self._apply_filter(self._pending_filter_text, self._filter_gen)
+        from tabs.image_gallery.use_cases import filtering as _filtering
+
+        _filtering._apply_pending_filter(self)
 
     def _apply_filter_fast(self, text: str) -> None:
-        """UI-thread fast pass: filename + in-memory tags only, no disk."""
-        from tabs.image_gallery.services.filtering import match_fast_items
+        from tabs.image_gallery.use_cases import filtering as _filtering
 
-        fast = {item.path for item in match_fast_items(self.state.items, text)}
-        if not (text or "").strip():
-            fast = {item.path for item in self.state.items}
-        for item in self.state.items:
-            try:
-                self.widget.set_card_visible(item.path, item.path in fast)
-            except Exception:
-                pass
+        _filtering._apply_filter_fast(self, text)
 
     def _apply_filter(self, text: str, filter_gen: int) -> None:
-        from tabs.image_gallery.services.filtering import match_brief_items
+        from tabs.image_gallery.use_cases import filtering as _filtering
 
-        self._filter_gen = max(self._filter_gen, filter_gen)
-        gen = self._filter_gen
-        # Dispatch-only source (set_selection pattern): skip dispatch when
-        # the slot already equals, else emit, then mirror locally.
-        try:
-            slot = self._gallery_slot()
-            if slot is None or _gallery_selectors.get_filter_text(slot) != text:
-                self._emit_gallery(GalleryFilterSet(filter_text=text))
-        except Exception:
-            self._emit_gallery(GalleryFilterSet(filter_text=text))
-        self.state.filter_text = text
-        self._apply_filter_fast(text)
-        if not (text or "").strip():
-            return
-        # Slow pass off the UI thread: brief-cache disk match, mtime-honored.
-        # Merged on arrival only if no newer keystroke/folder switch landed.
-        snapshot = list(self.state.items)
-
-        def _slow() -> set:
-            try:
-                return {item.path for item in match_brief_items(snapshot, text)}
-            except Exception:
-                return set()
-
-        folder_gen = self._folder_gen
-        worker = GenericWorker(_slow)
-        worker.signals.result.connect(
-            lambda extra, g=gen, fg=folder_gen: self._on_brief_filter_ready(extra, g, fg)
-        )
-        worker.signals.error.connect(lambda _err: None)
-        self._pool_start(worker, 0)
+        _filtering._apply_filter(self, text, filter_gen)
 
     def _on_brief_filter_ready(self, extra_paths: set, filter_gen: int, folder_gen: int) -> None:
-        if filter_gen != self._filter_gen or not self._is_current_folder_gen(folder_gen):
-            return  # stale query or folder switch — never resurrect old matches
-        if not extra_paths:
-            return
-        for item in self.state.items:
-            if item.path in extra_paths:
-                try:
-                    self.widget.set_card_visible(item.path, True)
-                except Exception:
-                    pass
+        from tabs.image_gallery.use_cases import filtering as _filtering
+
+        _filtering._on_brief_filter_ready(self, extra_paths, filter_gen, folder_gen)
