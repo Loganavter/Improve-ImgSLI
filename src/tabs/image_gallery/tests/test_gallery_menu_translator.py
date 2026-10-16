@@ -2,7 +2,7 @@
 
 Falsification (pre-fix): both call sites read ``self._gallery_context`` — an
 alias that is **never assigned** (the context lives on ``self._context``,
-``widget.py:78``) — so ``translate=None`` and the empty-canvas Sort by / View
+``tabs/image_gallery/widget.py:78``) — so ``translate=None`` and the empty-canvas Sort by / View
 menu and the card menu rendered English defaults despite having i18n keys.
 """
 

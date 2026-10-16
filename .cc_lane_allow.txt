@@ -1,0 +1,103 @@
+# Lane allowlist for src/tabs/image_gallery + src/tabs/session_picker.
+# One bare name per line (the checker matches the token's first dotted
+# segment).  A reason is given as a comment line above each group; inline
+# "# ..." on a name line is NOT stripped by the loader, so none is used.
+
+# Qt API members cited in prose (not repo symbols).
+setStyleSheet
+setDown
+aboutToHide
+ElideRight
+WindowText
+Base
+Tab
+Down
+
+# External sli-ui-toolkit names (installed dependency, not in this checkout).
+BackgroundLayer
+BorderLayer
+Divider
+DividerLayer
+NavigationSection
+HoverCoordinator
+_main
+content_padding
+
+# Runtime string tokens: UI labels, dict/metric keys, objectNames, properties,
+# settings/theme tokens, mode/stage names (declared as string literals, so the
+# AST name index never sees them).
+Algorithms
+Clean
+Manual
+Noise
+Reject
+Move
+Compare
+Noul
+finish_reason
+sort_keys
+delta_e
+upscale_factor
+clipping_pct
+jev_rank
+metrics_ready
+embedding_dist_to_centroid
+gallery_ai_cache
+gallery_vlm_cache
+text_key
+badge_key
+gallery_path
+strip_selected
+gallery_empty_drop_zone
+quicklook_resize_grip
+quicklook_preview_close_cover
+top_right
+bottom_right
+middle_left
+batch_synthetic
+triage_series
+next_counter
+_gallery_context
+meta_gap
+_file
+surface
+separator
+image_gallery
+session_picker
+image_compare
+shared
+
+# Real repo symbols that live outside this lane's scan roots (src/core,
+# src/shared, src/ui, src/engine, src/tabs/image_compare, ..).
+ActionRegistry
+ActionType
+Dispatcher
+RootReducer
+PluginCoordinator
+GeometryManager
+LoadWindowStateStep
+BootstrapContentStep
+menu_controller
+StartupPlaceholder
+_RecordingDispatcher
+_apply_style
+apply_main_window_minimum
+replace_workspace_session
+window_was_maximized
+content_host
+debug_mode_enabled
+image_drop
+set_background_color
+realize_specs
+record_array_draw
+TileTextureService
+TileArrayResourcesBase
+select_level
+best_level_for_scale
+ensure_level
+build_all
+should_abort
+surface_anchor_rect
+band_widget
+band_rects
+CurrentIndicatorLayer
