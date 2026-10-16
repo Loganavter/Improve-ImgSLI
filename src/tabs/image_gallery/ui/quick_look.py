@@ -88,14 +88,12 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
         self._current_idx: int = 0
         self._mode = None
         self._source_path: Path | None = None
-        # Build UI via helpers
         try:
             from tabs.image_gallery.ui.quick_look.helpers import build_overlay_ui
             build_overlay_ui(self)
         except Exception:
             # Fallback inline minimal if builder fails
             pass
-        # Ensure tracking lists exist
         if not hasattr(self, "_strip_buttons"):
             self._strip_buttons: list = []
         if not hasattr(self, "_metric_rows"):

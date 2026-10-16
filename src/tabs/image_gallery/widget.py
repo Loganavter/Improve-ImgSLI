@@ -369,7 +369,6 @@ class ImageGalleryWidget(QWidget):
         except Exception:
             pass
 
-        # Update initial state
         self._empty_state.set_state("empty")
         self._grid_view.hide()
 
@@ -1939,7 +1938,6 @@ class ImageGalleryWidget(QWidget):
             # (0,0) over the corner). S0 visuals belong to _empty_state.
             self._empty_label.setText(empty_text)
             self._empty_label.hide()
-            # Clear grid
             try:
                 self._grid_view.rebuild_grid([])
             except Exception:
@@ -2596,7 +2594,6 @@ class ImageGalleryWidget(QWidget):
         ``camera`` | ``batch_synthetic`` and *source* is the hub/source file
         for fidelity mode.
         """
-        # Normalize series to list[list[GalleryItem]]
         norm_series: list[list] = []
         try:
             if series is None:

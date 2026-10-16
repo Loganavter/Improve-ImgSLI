@@ -4321,7 +4321,6 @@ class GalleryController:
             # Persist in state (one per pair)
             try:
                 key = f"{Path(pa).resolve()}:{Path(pb).resolve()}"
-                # normalize order
                 if str(Path(pa).resolve()) > str(Path(pb).resolve()):
                     key = f"{Path(pb).resolve()}:{Path(pa).resolve()}"
                 self.state.briefs[key] = result

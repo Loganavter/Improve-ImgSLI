@@ -306,7 +306,6 @@ def cluster_items(items: list["GalleryItem"], threshold: int = 10) -> list["Seri
             if ed <= 0.25:
                 dsu.union(i, j)
 
-    # Gather groups.
     groups: dict[int, list[int]] = {}
     for idx in range(n):
         if not valid[idx]:
