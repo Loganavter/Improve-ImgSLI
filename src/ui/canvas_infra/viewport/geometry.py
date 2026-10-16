@@ -40,7 +40,7 @@ def map_content_rect_through_view(
     ``content_rect_px`` is authored at identity camera (zoom=1, pan=0). The
     base image then applies ``screen = (uv - 0.5 + pan) * zoom + 0.5``. Divider
     scissor must use that transformed rect — otherwise a vertical spit line
-    tracks on X via ``display_split`` but its Y extent stays glued to the
+    tracks on X via ``display_split_position`` but its Y extent stays glued to the
     unzoomed letterbox and detaches from the pictures when panning/zooming.
     """
     cx, cy, cw, ch = (float(v) for v in content_rect)

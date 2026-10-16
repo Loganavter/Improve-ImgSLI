@@ -10,7 +10,7 @@ toolkit widget):
   Picker Recent shelf): the caption goes to the shelf header, a horizontal
   row of small card-style swatch chips to the content host; clicking a chip
   applies that color (does not close the dialog). Chips are custom-painted
-  (``_SVSquare``/``_PreviewChip`` pattern from ``color_picker_dialog``)
+  (``_SVSquare``/``_PreviewChip`` pattern from ``picker_dialog``)
   because alpha < 255 colors must sit on a checkerboard, which the toolkit
   ``Button`` painter pipeline cannot do.
 

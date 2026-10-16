@@ -2,7 +2,7 @@
 
 Core does not know what any given session state slot contains — it only
 knows the generic slot name/value pairs on ``WorkspaceSession.state_slots``
-(see ``core.session_blueprints``). A tab that wants ``RootReducer`` to run
+(see ``session_blueprints``). A tab that wants ``RootReducer`` to run
 its actions through a slot's value registers a reducer function here,
 keyed by slot name; ``RootReducer.reduce`` calls whatever is registered
 without importing the tab's domain types.

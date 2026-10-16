@@ -8,7 +8,7 @@ the exact alpha round-trip semantics are a product concern.
 Supported formats:
 
 - ``HEX``: ``#RRGGBB`` / ``#RRGGBBAA`` (the storage format, see
-  ``color_picker_recents``).
+  ``RecentColorsRow``).
 - ``RGB``: ``rgb(R, G, B)`` / ``rgba(R, G, B, A)``.
 - ``HSL``: ``hsl(H, S%, L%)`` / ``hsla(H, S%, L%, A%)``.
 
