@@ -53,10 +53,13 @@ def test_round_trip_carries_quality_and_verdict(tmp_path, monkeypatch):
     assert stored["verdict"] == "keep"
     assert stored["axis_notes"] == {"noise": "coarse film grain"}
     assert stored["axes"]["ssim"] == 72
+    assert stored["version"] == ai_cache.AI_CACHE_VERSION
 
 
-def test_cache_without_axes_rebuilds_scorecard_from_named_fields(tmp_path, monkeypatch):
-    """A1: an older cache (named fields, no ``axes``) still loads fully."""
+def test_pre_scorecard_cache_is_a_miss_not_an_ai_read(tmp_path, monkeypatch):
+    """A v1 (pre-scorecard) entry is a MISS: its named scores are detector
+    values (old ``_merge_measured_metrics``) — never served as the AI read, so
+    the AI domain re-analyzes it (plan-gallery-ai-backend-owns-quality)."""
     import json
 
     monkeypatch.setattr(ai_cache, "ai_cache_dir", lambda: tmp_path)
@@ -72,22 +75,19 @@ def test_cache_without_axes_rebuilds_scorecard_from_named_fields(tmp_path, monke
     )
     cache_file = next(tmp_path.iterdir())
     data = json.loads(cache_file.read_text(encoding="utf-8"))
-    data.pop("axes", None)  # simulate a pre-scorecard entry
+    data.pop("version", None)  # simulate a pre-scorecard (v1) entry
+    data.pop("axes", None)
     cache_file.write_text(json.dumps(data), encoding="utf-8")
 
-    loaded = ai_cache.load_cached_analysis(path, 123)
-    assert loaded is not None
-    assert loaded.axes == {"sharpness": 64, "composition": 58}
-    assert loaded.sharpness == 64 and loaded.composition == 58
+    assert ai_cache.load_cached_analysis(path, 123) is None
 
 
-def test_legacy_caption_only_cache_loads_as_unscored(tmp_path, monkeypatch):
+def test_current_entry_without_numeric_axes_loads_unscored(tmp_path, monkeypatch):
+    """A v2 entry that carries no scores (all -1) still loads, unscored."""
     import json
 
     monkeypatch.setattr(ai_cache, "ai_cache_dir", lambda: tmp_path)
     path = Path("/some/image.png")
-    # Cache filename is hash-based: save through the writer, then strip the
-    # new keys to simulate a legacy entry.
     ai_cache.save_analysis(
         path,
         123,
