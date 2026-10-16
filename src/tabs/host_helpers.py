@@ -17,11 +17,7 @@ from shared_toolkit.ui.decorate_dialog import decorate_dialog, install_dialog_he
 from shared_toolkit.ui.layout_sizing import (
     GeometryApplyPolicy,
     apply_dialog_geometry,
-    clamp,
-    estimate_prelayout_width,
     handle_application_font_change,
-    tab_widget_intrinsic_width,
-    widget_width_hint,
 )
 from shared_toolkit.ui.message_dialog import AppMessageDialog, MessageKind
 from shared_toolkit.ui.mode_picker import ModePicker
@@ -51,13 +47,9 @@ __all__ = [
     "ModePicker",
     "ThemedDialog",
     "apply_dialog_geometry",
-    "clamp",
     "declare_toolbar_navigation",
     "decorate_dialog",
-    "estimate_prelayout_width",
     "get_overlay_layer",
     "handle_application_font_change",
     "install_dialog_help_menu",
-    "tab_widget_intrinsic_width",
-    "widget_width_hint",
 ]
