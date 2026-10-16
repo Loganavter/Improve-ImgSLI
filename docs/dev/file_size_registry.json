@@ -749,17 +749,6 @@
       }
     },
     {
-      "path": "src/tabs/image_gallery/ui/card/context_menu.py",
-      "limit": 500,
-      "marker": "Audit-Meta:",
-      "raw": "pattern=qdialog-wiring size=exempt reason=\"one card-menu builder — entry list + per-card context gating (source/reject/group) + monochrome icon tinting share one menu contract; action bodies live in context_actions.py\"",
-      "parsed": {
-        "pattern": "qdialog-wiring",
-        "size": "exempt",
-        "reason": "one card-menu builder — entry list + per-card context gating (source/reject/group) + monochrome icon tinting share one menu contract; action bodies live in context_actions.py"
-      }
-    },
-    {
       "path": "src/tabs/image_gallery/ui/card/hover.py",
       "limit": 500,
       "marker": "Audit-Meta:",
