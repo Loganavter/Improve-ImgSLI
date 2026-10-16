@@ -82,7 +82,8 @@ def _toggle_active_magnifier_laser(presenter, enabled: bool) -> None:
 
 
 def _resolve_laser_underline_qcolor(presenter, fallback_state) -> object:
-    # Underline must match what the canvas actually draws (feature.py:58
+    # Underline must match what the canvas actually draws
+    # (src/tabs/image_compare/canvas/features/guides/feature.py:99
     # `guides_color or guides_state.color`): per active magnifier guides_color
     # if present, else global guides_state.color. Previously only the global
     # was used, so auto-palette instances (store.py:_apply_auto_instance_color)

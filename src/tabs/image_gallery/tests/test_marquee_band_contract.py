@@ -6,7 +6,7 @@ API (``on_rect_update`` / ``on_rect_finish`` / ``event_filter`` /
 drift: these tests pass on the overlay path AND on the in-paint path.
 
 Mapping/pixel tests for the new path live in the A2 section below (they
-exercise ``MarqueeState``/``MarqueeHost`` content-space identity and only
+exercise ``MarqueeState``/``MarqueeBandWidget`` content-space identity and only
 pass post-refactor).
 """
 

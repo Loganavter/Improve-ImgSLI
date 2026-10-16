@@ -125,7 +125,6 @@ def _make_store(document: DocumentModel) -> Store:
     store.viewport.geometry_state.image_display_rect_on_label = None
     store.state_changed = type("Sig", (), {"emit": staticmethod(lambda *_a, **_k: None)})()
     store.set_dispatcher(Dispatcher(store))
-    # ensure pipeline slot exists
     from tabs.image_compare.state.models import PipelineCacheState
 
     try:

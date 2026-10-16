@@ -330,7 +330,7 @@ def action_breadcrumb_text(
 
     Every segment falls back to a humanized label when the i18n key has no
     translation, and an action with no breadcrumb falls back to its own
-    humanized id tail — callers never see a raw ``dotted.key`` or an empty
+    humanized id tail — callers never see a raw dotted key or an empty
     string.
     """
     del query, active_tab

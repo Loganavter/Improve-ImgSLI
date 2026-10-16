@@ -142,7 +142,6 @@ def main(argv=None):
     if args.bug_only:
         events = [e for e in events if e.get("is_bug") or e.get("narrow_bug")]
 
-    # Print timeline
     bug_count = sum(1 for e in events if e.get("is_bug"))
     narrow_count = sum(1 for e in events if e.get("narrow_bug"))
     trace_count = sum(1 for e in events if e.get("kind") == "trace_gap")

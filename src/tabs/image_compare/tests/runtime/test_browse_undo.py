@@ -198,7 +198,6 @@ def test_resync_reloads_slot_with_closed_store():
     )
     store = _Store(doc)
     store._dispatcher = Dispatcher(store)  # type: ignore[attr-defined]
-    # seed pipeline with closed store for path "a"
     store.transact([PutPixelAction(path="a", store=_ClosedStore())], scope="pipeline")
     pipeline = ImagePipeline(store=store)  # type: ignore[arg-type]
     # also need pipeline cache direct for peek fallback

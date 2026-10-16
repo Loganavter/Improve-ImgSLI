@@ -87,8 +87,8 @@ def commit_lod_keys(
     canvas_size_px,
     frame_context: FrameContext | None = None,
 ) -> tuple:
-    """Thin-owner wrapper: identical to ``RhiCanvasRenderer`` LOD commit
-    block in ``renderer.py:862`` — see its inline comments for contract.
+    """Thin-owner wrapper: identical to the pre-split ``RhiCanvasRenderer``
+    LOD commit block — see this function's inline comments for contract.
 
     Resolves ``texture_keys``/``sources``/``base_image``/``canvas_size_px``
     via ``resolve_lod_texture_keys``, then applies the pending/since
@@ -102,7 +102,8 @@ def commit_lod_keys(
     existing behavior (``None`` keeps every existing call site
     behavior-identical).
     """
-    # Copy-pasted body from renderer.py:491-597 — keep log throttling identical.
+    # Copy-pasted body from the pre-split ``RhiCanvasRenderer`` LOD commit
+    # block — keep log throttling identical.
     raw_texture_keys = resolve_lod_texture_keys(
         texture_keys,
         sources,

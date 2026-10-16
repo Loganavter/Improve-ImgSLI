@@ -1,4 +1,4 @@
-"""Shared image dimension helper — single source for ``_img_dims`` (B6).
+"""Shared image dimension helper — single source for ``get_image_dims`` (B6).
 
 Four copies inside ``tabs.image_compare`` (plan_applicator, render_config,
 texture_parts/base_images, interaction) used the same duck-typing probe over
@@ -35,7 +35,6 @@ def get_image_dims(img) -> tuple[int, int]:
     except Exception:
         return (0, 0)
     w, h = 0, 0
-    # width
     try:
         if hasattr(img, "width") and callable(getattr(img, "width")):
             try:
@@ -59,7 +58,6 @@ def get_image_dims(img) -> tuple[int, int]:
                 w = 0
     except Exception:
         w = 0
-    # height
     try:
         if hasattr(img, "height") and callable(getattr(img, "height")):
             try:

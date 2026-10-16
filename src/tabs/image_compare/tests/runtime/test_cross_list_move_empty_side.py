@@ -30,14 +30,12 @@ def _make_store(document: DocumentModel) -> Store:
     from tabs.image_compare.state.models import ImageSessionState, RenderCacheState
 
     store = Store()
-    # ensure image_compare session
     store.create_workspace_session(session_type="image_compare", activate=True)
     store.set_session_state_slot("document", document)
     # init session_data for image_compare (Store default is None)
     store.viewport.session_data = SessionData(image_state=ImageSessionState(), render_cache=RenderCacheState())
     # state_changed signal for PlaylistListOperations
     store.state_changed = type("Sig", (), {"emit": staticmethod(lambda *_a, **_k: None)})()
-    # ensure dispatcher
     store.set_dispatcher(Dispatcher(store))
     return store
 

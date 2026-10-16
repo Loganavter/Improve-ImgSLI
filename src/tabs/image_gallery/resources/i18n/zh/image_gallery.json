@@ -1,6 +1,13 @@
 {
   "image_gallery": {
     "tab_name": "图库",
+    "large_drop": {
+      "title": "大量 AI 图片",
+      "body": "您将一次性向 AI 发送 {count} 张图片。这可能需要较长时间，并可能产生较高的 API 费用。是否继续？",
+      "confirm": "确认",
+      "confirm_dont_ask": "确认并不再询问",
+      "cancel": "取消"
+    },
     "empty_state": "选择一个文件夹以查看图片。",
     "empty_view": "暂无可显示的图片。",
     "activity": {

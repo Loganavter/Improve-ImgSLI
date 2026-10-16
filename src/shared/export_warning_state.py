@@ -1,6 +1,6 @@
 """Shared untested-export warning state helpers — single source for B5.
 
-Both tabs duplicated ``_untested_export_suppressed`` / ``_suppress_untested``.
+Both tabs duplicated ``_untested_export_suppressed`` / ``_suppress_untested_export_warning``.
 The dialog itself is already shared (``shared/untested_export_resolution.py``);
 this module shares the suppress-flag plumbing.
 """

@@ -142,7 +142,6 @@ def show_quick_look(owner, item_or_path) -> None:
         except Exception:
             pass
     try:
-        # Normalize to GalleryItem
         item = None
         path_val = None
         if hasattr(item_or_path, "path"):

@@ -5,7 +5,7 @@ The Wayland drag source shows busy/waiting until Qt's
 returns. So the drop handler must accept FIRST on a cheap verdict
 (suffix-only, no resolve/dispatch/stat/emit) and defer everything else
 past the return — mirroring image_compare's hide→accept→``singleShot``
-shape (``window_event_handler.py:186-192,241``).
+shape (``src/events/window_event_handler.py:215,412-434``).
 
 Covered headless with fakes (live cursor check stays manual — see below):
 

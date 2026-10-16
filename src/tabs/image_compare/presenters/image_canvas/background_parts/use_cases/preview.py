@@ -56,7 +56,7 @@ def _display_cache_key(image1, image2):
 
     Must mirror ``live_presentation.display_cache_key``'s shape
     (``(uid1, uid2, size1, size2)``): ``upload_pil_images`` persists it as
-    ``_stored_image_ids`` and ``_textures_are_current`` compares the next
+    ``_stored_image_ids`` and ``textures_are_current`` compares the next
     plan's key against it, so a preview-backed apply has to record the
     preview ids -- otherwise the pyramid-complete pick would compute store
     ids and the flip would be skipped by the scene-only path.

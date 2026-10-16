@@ -9,8 +9,8 @@ etc.) per CODE_PATTERNS.md:25, thin owner keeps frame sequencing.
 
 Extracted segment: ``ensure_array_pipeline``/``pack_array_uniforms``/
 ``pack_array_instance``/``beginPass/draw/endPass`` + ``active_feature_passes``
-gating + ``requires_content`` blank gate (``renderer.py:1464`` / ``1029`` in
-the post-Phase-1 file). Feature pass ``prepare``/``record_pre_pass`` flow is
+gating + ``requires_content`` blank gate — formerly the tail of
+``RhiCanvasRenderer.render``. Feature pass ``prepare``/``record_pre_pass`` flow is
 preserved verbatim so divider/filename still suppress until
 ``array_draw_plan`` non-empty.
 """
@@ -95,7 +95,7 @@ def submit_array_draw(
     **kwargs,
 ) -> None:
     """Thin-owner wrapper: identical to ``RhiCanvasRenderer.render()``'s draw
-    submit block (``renderer.py:1029-1126`` post-Phase-1, ``1473-1546`` pre).
+    submit block.
 
     ``renderer`` is the owning ``RhiCanvasRenderer`` (CODE_PATTERNS
     function-taking-owner). ``widget``/``command_buffer``/``array_draw_plan``
@@ -167,7 +167,7 @@ def submit_array_draw(
     if _diff_ready is None and ctx is not None:
         _diff_ready = bool(getattr(ctx, "diff_source_ready", False))
 
-    # Feature-pass gating — identical to renderer.py:1029-1048
+    # Feature-pass gating — identical to the pre-split ``RhiCanvasRenderer.render``
     # iter_active_render_passes already applies blank_white + visibility +
     # should_paint; the extra requires_content filter suppresses those passes
     # until the base tiles actually cover the screen (array_draw_plan non-empty).

@@ -71,7 +71,8 @@ logger = logging.getLogger("ImproveImgSLI")
 #   build_slot_specs from the tab geometry/LOD model -- disjoint service
 #   objects, and whole-image sets would additionally OVERRIDE viewport
 #   culling (wrong: live culls per viewport through build_slot_plan_tiles).
-# - passes/residency.py:467 realize(...) + :572 realize(...) take no
+# - the two residency.realize(...) entry points
+#   (tabs/multi_compare/scene/passes/residency.py:548,690) take no
 #   authoritative-tile parameter; the feed half flows through the merged
 #   engine pass (EngineBaseImagesPass.realize) over frame.resolve_specs --
 #   plumbing an authoritative set needs a new param through _SlotSpecFrame

@@ -199,6 +199,24 @@ A local daemon snapshots the working tree every 15 min (`systemd --user *-autopu
 - Do not add visible user-facing behavior without checking translations and help impact.
 - Do not silently remove legacy compatibility imports from the toolkit unless the whole tree is migrated.
 
+## Comments — keep why, prune restatement, keep them code-true
+
+An outdated comment is a **correctness defect**: agents execute prose as truth
+(evidence: private `inv-agentic-code-comments-2026-10-15.md`). Rules:
+
+- **Keep** — *why* / `do not reintroduce` / `Audit-Meta` / plan-id (`plan-…`,
+  `inv-…`, `#<pr>`) notes, constraints, and BOTH forms (module docstring +
+  inline). Never strip comments wholesale; never use comment count/ratio as a
+  quality metric.
+- **Prune** — pure restatement of the code (`# increment i`). In doubt ⇒ keep.
+- **Lint** — a comment/docstring must change in the SAME commit as the code it
+  describes. `scripts/check_comment_citations.py` gates the mechanically
+  checkable part (`path.py:NNN`, backticked symbols, ids): run it locally before
+  a PR; CI job `comment-citations` (`.github/workflows/tests.yml`) fails on NEW
+  dangling citations. External/runtime/GLSL names live in
+  `scripts/comment_citations_allow.txt` — ratchet it down over time, and never
+  invent a citation just to satisfy the checker.
+
 ## Known Constraints
 
 - Image load is **decode-backend-scoped**. When libvips streaming decode is
@@ -242,6 +260,15 @@ env QT_QPA_PLATFORM=offscreen pytest -q tests/<area>/<target_test>.py
 ```
 
 When fixing a rendering/export/UI wiring bug, prefer adding a focused regression test in the matching folder rather than at the top level of `tests/` — but only with a falsification story (proven failing pre-fix). Agent-written tests are low-trust: a test that merely restates the implementation proves nothing (see `docs/dev/TESTING.md` § Rules for writing new tests).
+
+### Comment/docstring-only changes
+
+A change that touches ONLY comments/docstrings does not need the suite. Prove it
+mechanically: parse `HEAD:<file>` and the worktree file, set every
+`ast.Constant` str value to a placeholder, and require the `ast.dump` to be
+identical (no code/signature change); then `python -m compileall` and the
+citation checker. Run a normal suite only for code changes, or for a module
+whose docstring is read at runtime (`__doc__`).
 
 ### Local-green merges
 

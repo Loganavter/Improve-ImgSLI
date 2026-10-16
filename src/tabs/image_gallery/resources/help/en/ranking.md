@@ -19,6 +19,7 @@ Opt-in. On the AI domain the assistant **Jev** ranks the series from the AI's ow
 
 - It is cached and pinned per series, so a re-run is stable until the series changes.
 - When Jev is unavailable or unsure it **degrades visibly** back to the Algorithms rank, and the reason is shown — the rank never silently changes hands.
+- **Large drops ask first.** With the AI domain active, dropping more than 35 images at once shows a warning before they are sent — a big batch can mean a big API bill. Pick **Confirm**, **Confirm and don't ask again**, or **Cancel**.
 
 ### Reading the badge {#badge}
 

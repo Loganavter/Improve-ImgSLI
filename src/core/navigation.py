@@ -1,7 +1,7 @@
 """Re-export ``NavigationManager`` and ``NavigationSection`` from the toolkit.
 
 Application-specific section implementations live in
-``core.navigation_sections``.
+``navigation_sections``.
 """
 
 from sli_ui_toolkit.managers import NavigationManager, NavigationSection

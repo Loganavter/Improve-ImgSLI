@@ -56,7 +56,6 @@ def test_mixed_size_draw_plan_no_narrow():
     svc = TileTextureService(max_tile_extent=512)
     svc.register_source("s1", (2797, 2304))
     svc.register_source("s2", (764, 576))
-    # mark all tiles resident
     for r in range(5):
         for c in range(6):
             # s1 5x6 approx (rows 5 cols 6) - mark superset to ensure hit

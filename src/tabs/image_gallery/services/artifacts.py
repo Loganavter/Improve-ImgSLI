@@ -216,7 +216,6 @@ def detect_banding(pil_image: Image.Image, source_image: Image.Image | None = No
             return _SEV_CLEAN
         # Histogram 256 bins for 0..255.
         hist, _ = np.histogram(arr, bins=256, range=(0, 255))
-        # Find occupied range.
         nonzero = np.where(hist > 0)[0]
         if len(nonzero) < 2:
             return _SEV_CLEAN
@@ -389,7 +388,6 @@ def detect_invented_texture(pil_image: Image.Image, source_image: Image.Image | 
                 b0 = b - bm
                 denom = float(np.sqrt(np.sum(a0 * a0) * np.sum(b0 * b0)) + 1e-9)
                 corr = float(np.sum(a0 * b0) / denom) if denom else 0.0
-                # Clamp.
                 corr = max(-1.0, min(1.0, corr))
             except Exception:
                 corr = 0.0

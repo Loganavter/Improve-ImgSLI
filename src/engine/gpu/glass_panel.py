@@ -81,7 +81,7 @@ target at all), while this module keeps doing exactly what it did before:
 crop/blur/composite from the canvas's ``colorTexture()``, now genuinely
 glass-free by construction.
 
-Usage: a ``CanvasWidget`` owns a ``GlassPanelRegistry`` (``widget.glass_panels``)
+Usage: a ``CanvasWidget`` owns a ``GlassPanelRegistry`` (``glass_panels``)
 that HUD widgets (``GlassHUD``/``InfoHUD``/``ZoomIndicator``) register/
 unregister themselves into by geometry key. The canvas's ``RhiCanvasRenderer``
 owns a ``GlassPanelRenderer`` and calls ``render_backdrops()`` once per frame,
@@ -228,8 +228,8 @@ class GlassPanelSpec:
     ``rect_logical`` is the panel's on-screen rect in the *canvas widget's*
     own logical (DIP) pixel space -- the coordinate space
     ``ui/canvas_infra``'s render context (``ctx.width``/``ctx.height``) uses
-    for screen-positioned quads (see ``filename_overlay``'s
-    ``build_quad_vertices``). Computed by the HUD via
+    for screen-positioned quads (see ``filename_overlay``'s per-glyph quad
+    packing in ``text_run.py``). Computed by the HUD via
     ``mapToGlobal``/``mapFromGlobal`` against the canvas widget -- the same
     technique the old cross-widget ``LiquidGlassFillWidget`` used for its UV
     mapping, just for a destination rect now instead of a source one.

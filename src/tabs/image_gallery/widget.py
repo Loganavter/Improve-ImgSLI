@@ -369,7 +369,6 @@ class ImageGalleryWidget(QWidget):
         except Exception:
             pass
 
-        # Update initial state
         self._empty_state.set_state("empty")
         self._grid_view.hide()
 
@@ -873,8 +872,11 @@ class ImageGalleryWidget(QWidget):
         relies on the toolbar's exclusive helper emitting ``viewToggled`` (which
         early-returns when the toolbar is already in the matching state). The
         domain is the controller's single authority (``_set_judgment_domain``);
-        the toolbar stays signal-blocked so it never double-emits. Whether Jev
-        runs on open is decided by the readiness gate (S2/J1), not here.
+        the toolbar stays signal-blocked so it never double-emits. No run fires
+        HERE: the AI-domain work is re-derived LEVEL-triggered at the metrics
+        pass settle (``_run_ai_on_settle`` + ``_run_jev_on_settle``), so a
+        restored ``ai`` domain reproduces the scorecards/rank without starting
+        network work during view restore.
         """
         is_list = bool(view_list)
         self._view_mode = is_list
@@ -905,12 +907,16 @@ class ImageGalleryWidget(QWidget):
                 setter(dom)
         except Exception:
             pass
-        # WHY Jev does / does not run: observability only (Jev scheduling is the
-        # readiness gate's job, S2/J1). Same IMGSLI_AI_DEBUG key.
+        # WHY Jev does / does not run: observability only (the AI work is
+        # re-derived level-triggered at the metrics pass settle). Same
+        # IMGSLI_AI_DEBUG key.
         try:
             from tabs.image_gallery.services.ai_client import _ai_debug
 
-            _ai_debug("view restored: judgment_domain=%s", dom)
+            _ai_debug(
+                "view restored: judgment_domain=%s (AI work derived at metrics settle)",
+                dom,
+            )
         except Exception:
             pass
 
@@ -1939,7 +1945,6 @@ class ImageGalleryWidget(QWidget):
             # (0,0) over the corner). S0 visuals belong to _empty_state.
             self._empty_label.setText(empty_text)
             self._empty_label.hide()
-            # Clear grid
             try:
                 self._grid_view.rebuild_grid([])
             except Exception:
@@ -2596,7 +2601,6 @@ class ImageGalleryWidget(QWidget):
         ``camera`` | ``batch_synthetic`` and *source* is the hub/source file
         for fidelity mode.
         """
-        # Normalize series to list[list[GalleryItem]]
         norm_series: list[list] = []
         try:
             if series is None:

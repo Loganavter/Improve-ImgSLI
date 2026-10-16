@@ -347,7 +347,7 @@ class BaseImagesPass(CanvasRenderPass):
         self._renderer = None
         self._mip_cascade: MipCascadeGenerator | None = None
         # This frame's (array_index -> {layer, ...}) set touched by
-        # _upload_tile_to_array, consumed by the renderer via
+        # upload_tile_to_array, consumed by the renderer via
         # take_dirty_layers() between the tile-upload submit and the main
         # draw pass.
         self._dirty_layers_this_frame: dict[int, set[int]] = {}
@@ -450,7 +450,7 @@ class BaseImagesPass(CanvasRenderPass):
 
     def take_dirty_layers(self) -> dict[int, set[int]]:
         """Pops this frame's array-index/layer set dirtied by
-        ``_upload_tile_to_array`` during ``prepare`` -- read by
+        ``upload_tile_to_array`` during ``prepare`` -- read by
         ``MultiCompareRhiRenderer.render`` once, between submitting the tile
         uploads and running ``generate_all_dirty_mips``."""
         dirty_layers = self._dirty_layers_this_frame
@@ -465,8 +465,8 @@ class BaseImagesPass(CanvasRenderPass):
         (same reach-through as the magnifier's ``widget._rhi_renderer``) --
         only ``widget``/``ctx``/``updates`` cross the contract boundary.
 
-        Does in one batch what used to be the ``realize_residency`` +
-        ``finish_prepare`` pair split around the mip-cascade submit: uploads
+        Does in one batch what used to be a residency + draw-plan pair
+        split around the mip-cascade submit: uploads
         and residency first (must precede ``generate_all_dirty_mips``, which
         samples this frame's just-uploaded tiles -- see
         ``MultiCompareRhiRenderer.render``'s sequencing), then the draw-plan
@@ -489,7 +489,7 @@ class BaseImagesPass(CanvasRenderPass):
                 self.slot_resources.slot_vertex_buffers[0], 0, FULLSCREEN_VERTICES
             )
         self._realize_tile_residency(renderer, ctx, updates)
-        # --- draw-plan half (ex-``finish_prepare``): builds this frame's
+        # --- draw-plan half (the pre-refactor post-mips step): builds this frame's
         # array instances or per-tile uniforms/SRBs into the same batch. ---
         fb_w, fb_h = ctx.framebuffer_size
         composition = ctx.composition

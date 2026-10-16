@@ -104,7 +104,7 @@ def _peek_sources(presenter, document):
 def _have_gate(presenter, source1, source2, document):
     """Have1/have2 wait gate — one-side missing handling.
 
-    Returns (have1, have2, should_return, reason). When ``should_return`` is
+    Returns (have1, have2, should_return, reason). When the should_return flag is
     True, caller should return ``False`` (deferred) — either waiting for the
     other side or having just painted the live half via
     ``display_single_image_on_label``. Delegates the live-half pick to
@@ -172,7 +172,7 @@ def handle_have_gate(presenter, source1, source2, document, peeked) -> bool:
     if reason == "wait_other_side":
         return True
     if reason == "live_half":
-        # live-half paint — mirrors render_gate.py:400-421 / render_flow:781-802
+        # live-half paint — owned here; the pre-split gate inlined this same block
         from engine.cache.display_image_picker import pick_display_image as _pick
 
         global _last_one_side_log_sig

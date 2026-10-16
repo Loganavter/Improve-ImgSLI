@@ -2,7 +2,7 @@
 """Fallback-LOD plan extracted from ``RhiCanvasRenderer`` (CODE_PATTERNS thin owner).
 
 ``RhiCanvasRenderer._resolve_fallback_plan`` was ~410 LOC of decision/logic
-living inside ``renderer.py:291`` (part of the 1611-line state-machine).
+living inside the pre-split 1611-line ``renderer.py`` state-machine.
 This module holds the same bodies as plain functions taking the owning
 renderer as first arg — the owner keeps construction/wiring + instance state
 (``_last_good_*``, ``_content_swap_active``) per CODE_PATTERNS.md:25, thin
@@ -106,11 +106,12 @@ def resolve_fallback_plan(
     frame_context: FrameContext | None = None,
 ) -> tuple[object | None, list]:
     """Thin-owner wrapper: identical to ``RhiCanvasRenderer._resolve_fallback_plan``
-    in ``renderer.py:291`` — see its docstring for contract. Takes ``renderer``
+    — see its docstring for contract. Takes ``renderer``
     as owner (CODE_PATTERNS) and mutates ``renderer._last_good_*`` /
     ``renderer._content_swap_active`` exactly as before.
     """
-    # Copy-pasted body from renderer.py:291 — keep log throttling identical.
+    # Copy-pasted body from the pre-split ``RhiCanvasRenderer._resolve_fallback_plan``
+    # — keep log throttling identical.
     old_texture_keys = renderer._last_good_texture_keys
     last_good_key = (
         (old_texture_keys, renderer._last_good_diff_key)

@@ -254,7 +254,7 @@ def deserialize_session(tab, session_id: str, data: dict, context: TabContext) -
     # Replace direct session.document assignment with slot API (AST-safe).
     # Use batch to coalesce document + viewport writes atomically when
     # dispatcher is bound; defer via QTimer.singleShot if dispatcher not yet
-    # bound (dispatcher.py:118), fallback via setattr for fake stores.
+    # bound (src/core/bootstrap.py:176), fallback via setattr for fake stores.
     def _write_document():
         try:
             store.set_session_state_slot(

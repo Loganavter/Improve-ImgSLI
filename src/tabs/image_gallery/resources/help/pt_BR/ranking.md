@@ -19,6 +19,7 @@ Opcional. No domínio IA, o assistente **Jev** classifica a série a partir da p
 
 - Ela é armazenada em cache e fixada por série, então uma nova execução é estável até a série mudar.
 - Quando o Jev está indisponível ou indeciso, ele **degrada visivelmente** para a classificação dos Algoritmos, e o motivo é mostrado — a classificação nunca muda de dono em silêncio.
+- **Lotes grandes perguntam antes.** Com o domínio IA ativo, soltar mais de 35 imagens de uma vez mostra um aviso antes do envio — um lote grande pode significar uma conta alta de API. Escolha **Confirmar**, **Confirmar e não perguntar novamente** ou **Cancelar**.
 
 ### Lendo o selo {#badge}
 
