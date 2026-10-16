@@ -339,7 +339,6 @@ def keep_best(owner) -> int:
     for cluster in series:
         if not cluster:
             continue
-        # Clear previous best in cluster
         for it in cluster:
             try:
                 it.triage_best = False
@@ -367,7 +366,6 @@ def keep_best(owner) -> int:
                 other.is_best = False
         except Exception:
             pass
-    # Refresh grid if owner has widget
     _refresh_owner_grid(owner)
     try:
         _emit_rank_snapshot(owner)
@@ -382,7 +380,6 @@ def make_best(owner, path: Path) -> bool:
     items = _items_of(owner)
     series = _series_of(owner)
     target: Path = Path(path) if not isinstance(path, Path) else path
-    # Find cluster containing path
     cluster: list | None = None
     for cl in series:
         try:

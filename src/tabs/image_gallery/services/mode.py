@@ -247,7 +247,6 @@ def _is_tight_embedding_cloud(
             continue
     if len(vecs) < 2:
         return False
-    # Compute max distance.
     max_d = 0.0
     for i in range(len(vecs)):
         for j in range(i + 1, len(vecs)):

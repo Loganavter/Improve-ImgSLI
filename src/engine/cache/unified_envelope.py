@@ -40,7 +40,6 @@ def eager_envelope_rect(
     if cw <= 0 or ch <= 0:
         return ((0.0, 0.0, 1.0, 1.0), (0, 0, max(1, cw), max(1, ch)))
 
-    # normalize sizes list to two entries
     w1, h1 = (0, 0)
     w2, h2 = (0, 0)
     if len(sizes) >= 1:

@@ -121,7 +121,7 @@ def test_ic_render_emits_after_settle_flush(monkeypatch):
 
     assert emitted == []  # deferred until the settle flush runs
     assert widget._rhi_presents_completed == 1
-    assert scheduled  # settle flush scheduled
+    assert scheduled
 
     scheduled.pop()()  # run the settle flush -> emit
     assert emitted == ["frame", "visual"]

@@ -105,7 +105,6 @@ def _selected_set(owner) -> set[Path]:
             setattr(owner.state, "selected_paths", sel)  # type: ignore[attr-defined]
         except Exception:
             pass
-    # Normalize to Path set.
     out: set[Path] = set()
     for p in sel:
         out.add(Path(p) if not isinstance(p, Path) else p)

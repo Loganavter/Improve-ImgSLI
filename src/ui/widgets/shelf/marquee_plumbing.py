@@ -327,7 +327,6 @@ def host_mouse_press(view: Any, event: QMouseEvent, wiring: MarqueeWiring) -> bo
         view._marquee_additive = additive  # type: ignore[attr-defined]
     except Exception:
         pass
-    # Snapshot base selection.
     try:
         base = wiring.base_snapshot(view)
         view._marquee_base = set(base) if base is not None else set()  # type: ignore[attr-defined]
@@ -369,7 +368,6 @@ def host_mouse_press(view: Any, event: QMouseEvent, wiring: MarqueeWiring) -> bo
         except Exception:
             pass
         return False
-    # Band on.
     try:
         band = band_widget(view)
         if band is not None:

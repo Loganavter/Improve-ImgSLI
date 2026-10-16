@@ -113,7 +113,6 @@ class DropQueue:
         if entry is None:
             return
         slot, paths, widget, sessions = entry
-        # remove from queue
         try:
             self._queue.remove(entry)  # type: ignore[arg-type]
         except Exception:

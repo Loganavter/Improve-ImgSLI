@@ -2447,18 +2447,15 @@ class GalleryGridView(QWidget):
         ungrouped = [it for it in all_items if str(it.path) not in member_paths]
         self._series = filtered
         self._ungrouped = ungrouped
-        # Normalize hub_names
         if hub_names is not None:
             try:
                 self._hub_names = list(hub_names)[: len(filtered)]
-                # Pad if shorter
                 while len(self._hub_names) < len(filtered):
                     self._hub_names.append(None)
             except Exception:
                 self._hub_names = [None] * len(filtered)
         else:
             self._hub_names = [None] * len(filtered)
-        # Normalize collapsed
         norm_collapsed: dict[int, bool] = {}
         try:
             if isinstance(collapsed, dict):
@@ -3463,7 +3460,6 @@ class GalleryGridView(QWidget):
     def apply_selection(self, selected: set[Path] | set[str] | None = None) -> None:
         if selected is None:
             selected = self._selection
-        # Normalize to str set.
         norm: set[str] = set()
         for p in selected or set():
             norm.add(str(p))
