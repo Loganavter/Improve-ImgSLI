@@ -269,7 +269,8 @@ class SettingsColorPickerCoordinator:
             )
         # Keep active magnifier's per-instance guides_color in sync, otherwise
         # the toolbar underline (which must show the actually rendered laser color
-        # `magnifier.guides_color or guides_state.color` per feature.py:99) stays
+        # `magnifier.guides_color or guides_state.color` per
+        # src/tabs/image_compare/canvas/features/guides/feature.py:99) stays
         # on the auto-palette blue while the global picker appears to do nothing
         # — the reported "expert mode still blue" mismatch. Via capability
         # alias — no direct feature imports in shared/ui code.

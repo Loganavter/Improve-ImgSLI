@@ -18,7 +18,7 @@ class ActionTarget:
     - ``widget`` + ``menu_action_id`` — open that title-bar menu and pulse the row
     - ``ensure_visible`` + ``resolve_widget`` — bring UI on screen (e.g. session
       picker), then pulse whatever ``resolve_widget`` returns
-    - ``widget_family`` — resolve via ``WidgetRegistry`` (lazy, class-level)
+    - ``widget_family`` — resolve via ``_resolve_by_family`` (lazy, class-level)
     """
 
     widget: object | None = None

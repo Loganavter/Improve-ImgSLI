@@ -1,7 +1,7 @@
 """MC residency parity with IC (W5 gap).
 
 Mirrors src/tabs/image_compare/tests/render/test_realize_tile_plan_budget.py
-for multi_compare/scene/passes/residency.py:207.
+for the MC counterpart in multi_compare/scene/passes/residency.py (``_SlotUploadRealizer``).
 Inv: rekey-on-swap and first-tile guarantee must hold for MC too.
 """
 from __future__ import annotations

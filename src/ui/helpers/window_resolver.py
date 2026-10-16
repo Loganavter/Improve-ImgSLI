@@ -1,9 +1,10 @@
 """Centralized main-window / event-bus resolution.
 
 Cross-module review C2 flagged three duplicated ``topLevelWidgets()`` hunts
-for ``.presenter -> .event_bus / .main_controller`` (platform.py:83-90,
-connections.py:104-109, persistence hunt). This module is the single
-sanctioned accessor — all host code must call here instead of re-scanning.
+for ``.presenter -> .event_bus / .main_controller`` (ui/actions/platform.py,
+ui/presenters/main_window/connections.py, and a persistence hunt); those
+call sites now route through this module. It is the single sanctioned
+accessor — all host code must call here instead of re-scanning.
 
 For tabs, prefer ``TabContext`` / ``TabRegistry.get_shared_tab_registry()``
 over reaching into the window.

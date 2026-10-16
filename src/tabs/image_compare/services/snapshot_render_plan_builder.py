@@ -99,8 +99,8 @@ def calculate_still_snapshot_bounds(snap, image1, image2) -> GlobalCanvasBounds:
     )
 
     temp_store = Store()
-    # See the matching comment in video_snapshot_rendering/store_rebuild.py's
-    # `_rebuild_snapshot_store`: `resolve_feature_virtual_layout` below needs
+    # Same requirement as video_snapshot_rendering/store_rebuild.py's
+    # `_get_reusable_store`: `resolve_feature_virtual_layout` below needs
     # an "image_compare" session active, not the default "session_picker".
     temp_store.create_workspace_session(session_type="image_compare", activate=True)
     temp_store.set_session_state_slot("document", DocumentModel())
@@ -443,18 +443,21 @@ class SnapshotRenderPlanBuilder:
         #   from resolve_lod_texture_keys (canvas/rhi_renderer/draw_plan.py)
         #   -- disjoint key spaces AND disjoint service objects.
         # - TileResidencyRealizer.realize_tile_plan
-        #   (canvas/rhi_renderer/residency.py:647) takes no authoritative-
-        #   tile parameter; resolve_specs re-registers grids per key from
-        #   the widget's upload cache (residency.py:535, rekey :525) and
+        #   (src/tabs/image_compare/canvas/rhi_renderer/residency.py:700)
+        #   takes no authoritative-tile parameter; resolve_specs re-registers
+        #   grids per key from the widget's upload cache
+        #   (``rekey_or_restore`` / ``register_source`` in
+        #   src/tabs/image_compare/canvas/rhi_renderer/residency.py) and
         #   re-derives each side's visible rect via resolve_side_visible_rect
-        #   (:591) -- a pre-registered grid would be re-derived, never
-        #   consumed. Plumbing an authoritative set needs a new param
-        #   through RealizeTilePlanContext + the engine realize_specs loop.
+        #   -- a pre-registered grid would be re-derived, never consumed.
+        #   Plumbing an authoritative set needs a new param through
+        #   RealizeTilePlanContext + the engine realize_specs loop.
         # - The export first frame is a single grab
         #   (plugins/export/services/gpu_export_proxy.py::_render_plan_frame_single:
         #   one render_widget_frame + grabFramebuffer), budget-limited
         #   (TILE_UPLOAD_BUDGET_PER_CALL + time budget) and progressive
-        #   (widget.update() on more_pending, residency.py:848) --
+        #   (widget.update() on more_pending,
+        #   src/tabs/image_compare/canvas/rhi_renderer/residency.py:914) --
         #   authoritative residency needs a pump-to-quiescence loop in
         #   export-owned code (use_cases/export.py, out of scope).
         # Equality evidence (not assumed): test_live_export_parity.py pins

@@ -153,7 +153,7 @@ class SessionController(SessionApiMixin, QObject):
             return
         self._resyncing = True  # type: ignore[attr-defined]
         try:
-            # Dispatcher reentrant-safe (dispatcher.py:186 copy subscribers
+            # Dispatcher reentrant-safe (``Dispatcher``: copy subscribers
             # outside _lock, emit outside lock) — resync may dispatch
             # synchronously without QTimer deferral.
             self._resync_current_image_slots_if_needed()

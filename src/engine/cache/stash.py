@@ -1,10 +1,11 @@
 """Per-key content-stash contract for tile residency realizers.
 
 Extracted from the fixed-pair render tab's ``TileResidencyRealizer``
-(``tabs/image_compare/canvas/rhi_renderer/residency.py`` -- its
-``_content_stash``/``_preview_stash``/``_rekey_or_restore``/
-``_release_and_protect_preview_holds`` state machine), with identical
-semantics; only the storage home and the call boundary changed. Engine
+(``tabs/image_compare/canvas/rhi_renderer/residency.py`` -- its stash/hold
+state machine, now ``ContentStash.note_source`` / ``rekey_or_restore`` /
+``release_and_protect_preview_holds`` / ``preview_extra_protect_keys``),
+with identical semantics; only the storage home and the call boundary
+changed. Engine
 types only -- no tab imports (see ``tests/contracts/
 test_platform_isolation.py``).
 

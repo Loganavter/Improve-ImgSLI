@@ -62,7 +62,7 @@ class AddSlot(MultiCompareAction):
 class NoteSlotPixels(MultiCompareAction):
     """A decoded tier landed in the session pixel cache for ``slot_id``.
 
-    B1 replacement for ``ReplaceSlotImage``: pixels travel
+    B1 replacement for the removed image-carrying slot action: pixels travel
     worker → :class:`pipeline.cache.MultiComparePixelCache`, never through
     the action/reducer — this only bumps the slot's ``revision`` (pure
     ``dataclasses.replace``) so subscribers rebuild composition / re-sync

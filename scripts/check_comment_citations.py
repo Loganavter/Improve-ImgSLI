@@ -643,7 +643,11 @@ def collect_findings(
     sibling ``sli-ui-toolkit``) can resolve in-tree ``unknown-symbol``
     findings without importing findings of their own.
     """
-    allow = default_symbol_allowlist() if allowlist is None else set(allowlist)
+    allow = default_symbol_allowlist()
+    if allowlist is not None:
+        # ``--allow`` EXTENDS the builtins/stdlib/PySide6 defaults (a lane
+        # allowlist should not have to re-list ``print``/``Counter``/Qt names).
+        allow |= set(allowlist)
     files = discover_python_files(roots)
 
     index: set[str] = set()

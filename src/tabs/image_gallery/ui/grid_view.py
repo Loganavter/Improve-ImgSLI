@@ -530,7 +530,8 @@ class GalleryGridNavSection:
 class _SeriesHeaderAccentLayer(Layer):
     """Section bar painted on the header button's own left edge.
 
-    Simple-flyout pattern (``_CurrentIndicatorLayer``): the 3×14 accent bar
+    Simple-flyout pattern (``CurrentIndicatorLayer`` in
+    ``ui/actions/palette/row.py``): the 3×14 accent bar
     is a painter layer of the header ``Button`` itself, not a sibling widget —
     bar and label share one geometry/hover lifecycle and can never drift
     apart. Color resolves per-paint, so theme flips need no cached state

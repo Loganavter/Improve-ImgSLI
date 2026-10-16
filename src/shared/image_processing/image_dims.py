@@ -1,4 +1,4 @@
-"""Shared image dimension helper — single source for ``_img_dims`` (B6).
+"""Shared image dimension helper — single source for ``get_image_dims`` (B6).
 
 Four copies inside ``tabs.image_compare`` (plan_applicator, render_config,
 texture_parts/base_images, interaction) used the same duck-typing probe over

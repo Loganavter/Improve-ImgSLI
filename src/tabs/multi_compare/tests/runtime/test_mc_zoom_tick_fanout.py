@@ -3,7 +3,7 @@
 Covers the mc-zoom-fanout findings (wheelEvent -> handle_wheel_event ->
 set_zoom dispatch fan-out): at most 1 dispatch per tick, zero dispatches for
 clamped/float-dust ticks, no texture uploads on zoom-only changes, toolbar
-sync skipped for pure view actions, ``ensure_window_active`` never fires on
+sync skipped for pure view actions, ``ensure_window_active_for_qrhi`` never fires on
 wheel ticks (F1: IC parity -- settle sync owns the catch-up), and
 the cursor-anchor math + clamps pinned byte-identical.
 """

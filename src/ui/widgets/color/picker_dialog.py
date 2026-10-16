@@ -7,9 +7,9 @@ SV square (custom, not a linear control) + a hue ``Slider`` + an alpha
 instead of the default flat track), a color-value ``CustomLineEdit`` plus
 a small format-cycle button that switches the value between ``HEX``
 (``#RRGGBB`` / ``#RRGGBBAA`` when alpha editing is on), ``RGB`` and ``HSL``
-representations (see ``color_value_format``), RGB ``SpinBox`` fields, a
+representations (see ``value_format``), RGB ``SpinBox`` fields, a
 before/after preview chip and a recent-colors chip row
-(``color_picker_recents``). Return/Enter accepts.
+(``RecentColorsRow``). Return/Enter accepts.
 
 Kept API-compatible with the subset of ``QColorDialog`` the callers used
 (``colorSelected``, ``finished``, ``show``/``raise_``/``activateWindow``,

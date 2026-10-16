@@ -242,7 +242,7 @@ class MultiCompareContextMenuProvider:
     def _toggle_crop(self, slot: CompareSlot) -> None:
         """Flip the effective crop state into an explicit override (fail-soft).
 
-        Mirrors IC ``_cycle_crop_override``: the menu always writes an
+        Mirrors IC ``_cycle_crop_override_slot``: the menu always writes an
         explicit bool (Auto is not reachable from the menu, but a stored
         None keeps following the global setting and toggles from its
         effective state). Prefers the controller path (canvas refresh

@@ -420,8 +420,8 @@ def test_unreadable_cover_has_plate_background(qapp):
 def test_rejected_sets_no_toolkit_badge(qapp):
     """Rejected cards carry no toolkit badge — dim + strike signal the state.
 
-    No corner mode switch: the hover-only delete ✕ stays the single corner
-    control in both modes (see ``sync_card_delete_button``).
+    No corner mode switch: the only rejected signals are the dim +
+    strike-through (card actions live in the right-click context menu).
     """
     item = _item(rejected=True)
     card = build_gallery_card(item, parent=None)

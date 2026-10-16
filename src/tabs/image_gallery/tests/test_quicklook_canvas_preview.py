@@ -1050,7 +1050,7 @@ def test_zoomed_frame_pan_shifts_crop():
 # W2: the uncapped tiled kick moved from on-show to on-dwell-fire (canvas
 # ``_ql_gen`` idiom, no second timer) or zoom>1.0. No pre-existing
 # show-kicks-decode assertions existed in this file (verified: no
-# ``_populate_tiled_source`` / ``_decode_full_store`` references before
+# ``_populate_tiled_source`` / ``_decode_full_store_uncapped`` references before
 # these tests), so nothing below updates an old assertion — the dwell
 # contract is asserted fresh here.
 

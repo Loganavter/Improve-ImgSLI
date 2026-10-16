@@ -11,7 +11,7 @@ def invalidate_image_canvas_render_state(controller, clear_overlay_state: bool =
     # Hang fix: previous coalesce introduced infinite loop —
     # _flush → presenter.invalidate → store change → resync → set_current →
     # _invalidate → schedule → loop every event-loop turn. Keep immediate
-    # invalidate (synchronous, dispatcher reentrant dispatcher.py:186) but break re-entrancy and throttle log.
+    # invalidate (synchronous, dispatcher reentrant per ``Dispatcher``) but break re-entrancy and throttle log.
     if getattr(controller, "_invalidating", False):
         if clear_overlay_state:
             controller._deferred_clear_overlay = True  # type: ignore[attr-defined]

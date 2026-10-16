@@ -105,7 +105,7 @@ def calculate_global_canvas_bounds_direct(snapshots, image_loader, auto_crop: bo
     ``tabs.image_compare.services.snapshot_render_plan_builder.calculate_global_canvas_bounds``
     so ``CanvasBoundsAnalyzer`` inside the same tab does not need a string
     dispatch. Host still resolves ``global_canvas_bounds`` via
-    ``create_service`` (``service_factory.py:69``) — this is the intra-tab
+    ``create_service`` (``src/tabs/image_compare/service_factory.py:86``) — this is the intra-tab
     counterpart.
     """
     try:
