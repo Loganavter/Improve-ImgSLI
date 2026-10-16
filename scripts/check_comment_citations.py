@@ -183,6 +183,15 @@ _FILE_EXTENSIONS = (
     ".webp", ".gif", ".ico", ".csv", ".xml", ".html", ".css", ".js", ".ts",
     ".tsx", ".jsx", ".cpp", ".cc", ".h", ".hpp", ".c", ".rs", ".go", ".java",
     ".kt", ".sql", ".lock", ".log",
+    # shaders / GPU assets (cited as ``mag.frag`` in prose, not symbols)
+    ".frag", ".vert", ".geom", ".comp", ".tesc", ".tese", ".glsl", ".qsb",
+    ".spv", ".wgsl",
+)
+
+#: Placeholder-style identifiers (``img_1``, ``series_N``, ``uvRect1``): a
+#: template name, not a symbol that can go stale.
+_PLACEHOLDER_RE = re.compile(
+    r"^(?:[a-z][A-Za-z]*\d+|.*_[A-Z0-9]+|.*_\d+)$"
 )
 
 #: Common stdlib *symbols* (``sys.stdlib_module_names`` only gives modules).
@@ -505,6 +514,13 @@ def is_symbol_shaped(token: str) -> bool:
         return False
     if ALL_CAPS_RE.match(token):
         return False
+    # A bare lowercase word (``gallery``, ``is``, ``pass``) is prose or a module/
+    # package name — module/package names are indexed, so a real one resolves;
+    # this shape rule only stops prose words from being flagged as symbols.
+    if "." not in token and "_" not in token and token.islower():
+        return False
+    if _PLACEHOLDER_RE.match(token):
+        return False
     if len(token.split(".")) >= 3:
         return False
     return token.split(".")[0] not in EXTERNAL_MODULE_PREFIXES
@@ -636,13 +652,29 @@ def collect_findings(
     for path in files:
         names, lines = scan_python_file(path)
         index.update(names)
+        # Module/package names are cited in prose too (``metric_scores``,
+        # ``use_cases``); index the file stem so a module reference resolves.
+        index.add(path.stem)
         basename_index.setdefault(path.name, []).append(path)
         if lines:
             texts[path] = lines
 
+    # Directory / package names under the scanned + extra roots are legitimate
+    # prose references (``background_parts``, ``image_compare``) — index them so
+    # they are not mistaken for stale symbols.
+    for root in list(roots) + list(extra_roots or []):
+        root = Path(root)
+        if not root.is_dir():
+            continue
+        for dirpath, dirnames, _ in os.walk(root):
+            for name in dirnames:
+                if not name.startswith(".") and name not in SKIP_DIRS:
+                    index.add(name)
+
     for path in discover_python_files(list(extra_roots or [])):
         names, _ = scan_python_file(path)
         index.update(names)
+        index.add(path.stem)
 
     line_counts: dict[Path, int] = {}
     findings: set[Finding] = set()
