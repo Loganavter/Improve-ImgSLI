@@ -122,6 +122,25 @@ ALLOWLIST: dict[tuple[str, int], str] = {
     ("src/tabs/image_gallery/ui/quick_look/insets.py", 108): (
         "overlay._owner READ fallback when owner=None (test-required SimpleNamespace doubles)"
     ),
+    # clean_review row builder moved to ui/clean_review/populate.py (package
+    # split, plan-gallery-split-2026-10-17 Part C3): the extracted
+    # ``populate(overlay, owner)`` reads the overlay's OWN _owner (was
+    # ``self._owner`` inside CleanReviewOverlay._populate — same object).
+    ("src/tabs/image_gallery/ui/clean_review/populate.py", 409): (
+        "populate(overlay, ...) reads the overlay's own _owner (moved row builder)"
+    ),
+    ("src/tabs/image_gallery/ui/clean_review/populate.py", 412): (
+        "populate(overlay, ...) reads the overlay's own _owner (moved row builder)"
+    ),
+    ("src/tabs/image_gallery/ui/clean_review/populate.py", 418): (
+        "populate(overlay, ...) reads the overlay's own _owner (moved row builder)"
+    ),
+    ("src/tabs/image_gallery/ui/clean_review/populate.py", 422): (
+        "populate(overlay, ...) reads the overlay's own _owner (moved row builder)"
+    ),
+    ("src/tabs/image_gallery/ui/clean_review/populate.py", 424): (
+        "populate(overlay, ...) reads the overlay's own _owner (moved row builder)"
+    ),
     # --- storeless setattr fallback (R4) ---
     ("src/tabs/image_gallery/ui/quick_look_hooks.py", 97): (
         "_merge_selection_setattr def: storeless fallback (setattr, never bare writes)"

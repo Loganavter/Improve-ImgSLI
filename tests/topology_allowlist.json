@@ -127,7 +127,7 @@
       "reason": "grandfathered-quicklook-focus",
       "justification": "QuickLookOverlay raise+focus on show; window-parented (see tab_modals)."
     },
-    "src/tabs/image_gallery/ui/clean_review.py": {
+    "src/tabs/image_gallery/ui/clean_review/__init__.py": {
       "reason": "grandfathered-clean-review-focus",
       "justification": "CleanReviewOverlay raise+focus on show; window-parented (see tab_modals)."
     },

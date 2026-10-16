@@ -793,7 +793,7 @@
       }
     },
     {
-      "path": "src/tabs/image_gallery/ui/clean_review.py",
+      "path": "src/tabs/image_gallery/ui/clean_review/__init__.py",
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine size=exempt reason=\"one overlay lifecycle — provenance+filmstrip+toasts share TopLevelInWindowOverlay state\"",
@@ -801,6 +801,17 @@
         "pattern": "state-machine",
         "size": "exempt",
         "reason": "one overlay lifecycle — provenance+filmstrip+toasts share TopLevelInWindowOverlay state"
+      }
+    },
+    {
+      "path": "src/tabs/image_gallery/ui/clean_review/populate.py",
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=thin-owner-target size=exempt reason=\"one row-builder concern — filmstrip cells + provenance + footer share the modal layout contract; body moved verbatim from the overlay's _populate\"",
+      "parsed": {
+        "pattern": "thin-owner-target",
+        "size": "exempt",
+        "reason": "one row-builder concern — filmstrip cells + provenance + footer share the modal layout contract; body moved verbatim from the overlay's _populate"
       }
     },
     {

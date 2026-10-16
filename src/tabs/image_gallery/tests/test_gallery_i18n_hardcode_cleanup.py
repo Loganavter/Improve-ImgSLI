@@ -107,9 +107,11 @@ PLACEHOLDER_KEYS = (
 #: relpath -> pre-fix source forms that must not survive. Interpolated f-strings
 #: and un-translated call shapes only; EN ``_tr`` defaults are not listed.
 _PRE_FIX_FORMS: dict[str, tuple[str, ...]] = {
-    "ui/clean_review.py": (
+    "ui/clean_review/__init__.py": (
         'f"Moved {len(moves)} files to _rejected/"',
         'actions=[ToastAction("Undo"',
+    ),
+    "ui/clean_review/populate.py": (
         'ButtonRow(text=f"+{overflow} more"',
         'ButtonRow(text="scrollable strip"',
         'f"{overflow} more rejected file(s)"',
