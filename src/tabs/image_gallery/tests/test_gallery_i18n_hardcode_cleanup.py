@@ -16,7 +16,7 @@ Falsification (pre-fix) — each assertion below fails on the parent commit:
   silently fell back to English.
 * ``ui/card/visuals.py`` emitted ``verdict.upper()`` / ``"defects: " + …``;
   ``ui/card.py`` + ``ui/list/card.py`` emitted ``f"VLM tie-break: {vlm_err}"``;
-  ``ui/quick_look/metrics.py`` emitted ``"— · not measured"`` /
+  ``ui/quick_look/metrics/rows.py`` emitted ``"— · not measured"`` /
   ``"#{rank} of {total}"`` / ``"rejected tail ≤ …"``; ``ui/quick_look/meta.py``
   emitted the whole ``local_brief_fallback`` English prose plus ``"AI brief…"``;
   ``ui/quick_look/artifacts.py`` appended the band note WITHOUT ``_ql_text``;
@@ -141,7 +141,7 @@ _PRE_FIX_FORMS: dict[str, tuple[str, ...]] = {
     "ui/quick_look/artifacts.py": (
         "_note = _fb(aid, score)",
     ),
-    "ui/quick_look/metrics.py": (
+    "ui/quick_look/metrics/rows.py": (
         '"— · not measured", 0.0, _muted_color()',
         'f"#{rank} of {len(overlay._series_items)}"',
         'f"rejected tail ≤ {min(tail):.2f}"',

@@ -548,6 +548,7 @@ def test_metrics_row_cache_lru_bound(qtbot):
 def test_metrics_theme_flip_rebuilds(qtbot, monkeypatch):
     """Theme flip changes the fingerprint → full metrics rebuild (cache miss)."""
     import tabs.image_gallery.ui.quick_look.metrics as _metrics
+    import tabs.image_gallery.ui.quick_look.metrics.cache as _metrics_cache
 
     a = _item("thm0.png", rank=1, metrics={"ssim": 0.9})
     b = _item("thm1.png", rank=2, metrics={"ssim": 0.8})
@@ -557,7 +558,9 @@ def test_metrics_theme_flip_rebuilds(qtbot, monkeypatch):
     rows0 = list(ov._metric_rows)
     assert rows0
     was_dark = bool(_metrics._is_dark_theme())
-    monkeypatch.setattr(_metrics, "_is_dark_theme", lambda: (not was_dark))
+    # ``_metrics_fingerprint`` lives in ``metrics.cache`` and reads its own
+    # module-global ``_is_dark_theme`` — patch there, not on the package.
+    monkeypatch.setattr(_metrics_cache, "_is_dark_theme", lambda: (not was_dark))
     ov._rebuild_metrics(ov._current_item, True, "FIDELITY MODE")
     QApplication.processEvents()
     rows1 = list(ov._metric_rows)

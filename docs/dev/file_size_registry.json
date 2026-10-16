@@ -858,14 +858,14 @@
       }
     },
     {
-      "path": "src/tabs/image_gallery/ui/quick_look/metrics.py",
+      "path": "src/tabs/image_gallery/ui/quick_look/metrics/rows.py",
       "limit": 500,
       "marker": "Audit-Meta:",
-      "raw": "pattern=thin-owner-target size=exempt reason=\"one metrics-rows concern: rebuild + row-container cache + hidden-parent warm share one fingerprint contract\"",
+      "raw": "pattern=thin-owner-target size=exempt reason=\"one metric-rows concern: rebuild + hidden-parent warm share the row pipeline over the cache fingerprint contract\"",
       "parsed": {
         "pattern": "thin-owner-target",
         "size": "exempt",
-        "reason": "one metrics-rows concern: rebuild + row-container cache + hidden-parent warm share one fingerprint contract"
+        "reason": "one metric-rows concern: rebuild + hidden-parent warm share the row pipeline over the cache fingerprint contract"
       }
     },
     {

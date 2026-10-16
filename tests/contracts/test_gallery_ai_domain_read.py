@@ -22,7 +22,7 @@ PLAN = "plan-gallery-ai-backend-owns-quality-2026-10-16"
 GALLERY = SRC / "tabs" / "image_gallery"
 QUALITY_READ = GALLERY / "services" / "quality_read.py"
 MODELS = GALLERY / "models.py"
-METRICS = GALLERY / "ui" / "quick_look" / "metrics.py"
+METRICS = GALLERY / "ui" / "quick_look" / "metrics" / "rows.py"
 JEV = GALLERY / "services" / "jev_client.py"
 #: The AI client source set: the old single module OR its package (the split
 #: moved the prompt text to ``services/ai_client/prompt.py``).
