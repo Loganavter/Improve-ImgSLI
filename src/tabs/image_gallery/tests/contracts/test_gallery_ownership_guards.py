@@ -102,7 +102,7 @@ ALLOWLIST: dict[tuple[str, int], str] = {
     ("src/tabs/image_gallery/ui/quick_look_hooks.py", 45): (
         "owner_for_triage legacy owner._controller READ (last-resort bind, protocol-first since G5)"
     ),
-    ("src/tabs/image_gallery/ui/drag_drop.py", 243): (
+    ("src/tabs/image_gallery/ui/drag_drop/__init__.py", 272): (
         "_explicit_controller legacy owner._controller READ (last-resort bind, G2)"
     ),
     ("src/tabs/image_gallery/use_cases/triage_ui.py", 47): (
