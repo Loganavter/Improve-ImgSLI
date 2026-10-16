@@ -65,15 +65,46 @@ def load_cached_analysis(path: Path, mtime_ns: int) -> AiAnalysisResult | None:
                     ))
             except Exception:
                 continue
+        # Open per-axis scorecard; an older cache without it is rebuilt from
+        # the legacy named fields (both land in ``axes``).
+        axes: dict[str, int] = {}
+        try:
+            from tabs.image_gallery.services.metric_scores import SCORECARD_AXIS_IDS
+
+            allowed = SCORECARD_AXIS_IDS
+        except Exception:
+            allowed = None
+        raw_axes = data.get("axes")
+        if isinstance(raw_axes, dict):
+            for k, v in raw_axes.items():
+                try:
+                    key = str(k).strip().lower()
+                except Exception:
+                    continue
+                if allowed is not None and key not in allowed:
+                    continue
+                try:
+                    score = int(v)
+                except Exception:
+                    continue
+                if 0 <= score <= 100:
+                    axes[key] = score
+        for key in ("sharpness", "noise", "exposure", "composition"):
+            if key in axes:
+                continue
+            score = _score(key)
+            if score >= 0:
+                axes[key] = score
         return AiAnalysisResult(
             description=data["description"],
             tags=tuple(data.get("tags", ())),
             model=data["model"],
             analyzed_at_iso=data["analyzed_at_iso"],
-            sharpness=_score("sharpness"),
-            noise=_score("noise"),
-            exposure=_score("exposure"),
-            composition=_score("composition"),
+            sharpness=axes.get("sharpness", -1),
+            noise=axes.get("noise", -1),
+            exposure=axes.get("exposure", -1),
+            composition=axes.get("composition", -1),
+            axes=axes,
             verdict=verdict,
             verdict_reason=str(data.get("verdict_reason", "") or ""),
             defects=tuple(defects),
@@ -143,6 +174,8 @@ def save_analysis(path: Path, mtime_ns: int, result: AiAnalysisResult) -> None:
                     ],
                     "confidence": result.confidence,
                     "axis_notes": dict(result.axis_notes or {}),
+                    #: Open per-axis scorecard (the AI domain's read).
+                    "axes": dict(result.axes or {}),
                 }
             ),
             encoding="utf-8",

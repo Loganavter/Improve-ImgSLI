@@ -15,7 +15,7 @@ O padrão. Funde todas as leituras de qualidade medidas (nitidez, exposição, r
 
 ### IA (Jev) {#ai}
 
-Opcional. No domínio IA, o assistente **Jev** classifica a série a partir das leituras medidas — não da própria imagem. Essa classificação é **marcada** e **não determinística**: a mesma série pode voltar em outra ordem, e o selo indica **IA (Jev)** para você nunca confundi-la com uma medição.
+Opcional. No domínio IA, o assistente **Jev** classifica a série a partir da própria leitura de qualidade da IA para cada imagem — as pontuações por eixo que a IA atribui, não as leituras dos detectores. Essa classificação é **marcada** e **não determinística**: a mesma série pode voltar em outra ordem, e o selo indica **IA (Jev)** para você nunca confundi-la com a leitura dos Algoritmos.
 
 - Ela é armazenada em cache e fixada por série, então uma nova execução é estável até a série mudar.
 - Quando o Jev está indisponível ou indeciso, ele **degrada visivelmente** para a classificação dos Algoritmos, e o motivo é mostrado — a classificação nunca muda de dono em silêncio.

@@ -281,6 +281,8 @@ class GalleryController:
         # flush once per tick via refresh_cards (single selection sweep).
         self._pending_card_items: dict[str, object] = {}
         self._card_flush_scheduled = False
+        #: Coalesces AI-domain Jev re-ranks triggered by arriving analyses.
+        self._ai_rank_flush_scheduled = False
         self._subscribed_gallery_store = None
         # Session isolation (Wave ISO): this live copy addresses its OWN
         # session id for every slot read — never the active session per
@@ -1825,9 +1827,28 @@ class GalleryController:
         # WHY Jev did / did not run: the domain switch is the only trigger for
         # the AI ranker (algorithms ⇒ no Jev call at all). Same IMGSLI_AI_DEBUG key.
         _ai_debug("judgment domain -> %s (%s)", dom, "Jev on" if dom == "ai" else "Jev off")
+        # The open quick-look report/dots are domain-scoped: re-render them for
+        # the new domain (VLM read ↔ detectors) without a reopen. (getattr keeps
+        # this safe on the fake controllers the domain-switch tests drive.)
+        refresh_ql = getattr(self, "_refresh_open_quick_look", None)
+        if callable(refresh_ql):
+            refresh_ql()
+        # Card dots are domain-scoped too — repaint every card for the new read.
+        try:
+            items = list(getattr(self.state, "items", None) or [])
+            refresh_cards = getattr(self.widget, "refresh_cards", None)
+            if callable(refresh_cards) and items:
+                refresh_cards(items)
+            else:
+                refresh_card = getattr(self.widget, "refresh_card", None)
+                if callable(refresh_card):
+                    for it in items:
+                        refresh_card(it)
+        except Exception:
+            logger.debug("domain switch card refresh failed", exc_info=True)
         if dom != "ai":
             # Back to Algorithms: re-derive the deterministic fusion rank (a
-            # Jev rank is only authoritative while the AI domain owns the rank).
+            # Jev rank is only in effect while the AI domain owns the rank).
             try:
                 self._apply_fusion_ranks(getattr(self.state, "series", None))
             except Exception:
@@ -1924,7 +1945,9 @@ class GalleryController:
             # Readiness is the APPLICABLE MEASURED VECTOR, not "any metrics":
             # an axis Jev cannot score (or a non-applicable axis for this mode)
             # must not earn a call, and a <2-scored series would only abstain.
-            vector = GalleryController._jev_measured_vector(members, mode)
+            vector = GalleryController._jev_measured_vector(
+                members, mode, str(getattr(self, "_judgment_domain", "algorithms"))
+            )
             if GalleryController._jev_scored_count(vector) < 2:
                 no_metrics += 1
                 continue
@@ -1958,12 +1981,16 @@ class GalleryController:
     # -- Jev batch plumbing (S2/J1) -----------------------------------------
 
     @staticmethod
-    def _jev_measured_vector(members, mode) -> dict:
-        """Applicable MEASURED vector for *members* (per-mode axes only)."""
+    def _jev_measured_vector(members, mode, domain: str = "algorithms") -> dict:
+        """Applicable scoring vector for *members* (per-mode axes only).
+
+        *domain* picks the read: the AI domain's VLM scorecard or the Algorithms
+        domain's local detectors (plan-gallery-ai-backend-owns-quality).
+        """
         try:
             from tabs.image_gallery.services.jev_client import build_measured_vector
 
-            return build_measured_vector(members, mode=mode)
+            return build_measured_vector(members, mode=mode, domain=domain)
         except Exception:
             logger.debug("jev measured vector build failed", exc_info=True)
             return {"mode": "", "items": []}
@@ -2201,7 +2228,13 @@ class GalleryController:
             )
 
             client = make_client(base_url, api_key)
-            return rank_series_jev_detailed(snapshot, mode=mode, client=client)
+            # The AI domain ranks from the VLM scorecard (durable authority).
+            return rank_series_jev_detailed(
+                snapshot,
+                mode=mode,
+                client=client,
+                domain=str(getattr(self, "_judgment_domain", "algorithms")),
+            )
 
         worker = GenericWorker(_job)
 
@@ -2395,7 +2428,8 @@ class GalleryController:
         except Exception:
             pass
 
-        # Measured metrics ride along as authoritative context for the model.
+        # Local (Algorithms-domain) numbers ride along as CONTEXT; the AI
+        # returns its own per-axis scorecard (the AI-domain read).
         try:
             _metrics = dict(getattr(item, "metrics", None) or {})
         except Exception:
@@ -2407,6 +2441,7 @@ class GalleryController:
             base_url=settings.base_url,
             api_key=settings.api_key,
             model=settings.model,
+            mode=getattr(self.state, "mode", None),
             metrics=_metrics,
             on_phase=bridge.phase.emit,
         )
@@ -2431,64 +2466,47 @@ class GalleryController:
         set_activity(item, phase, "ai")
         self.widget.refresh_card(item)
 
-    def _merge_measured_metrics(self, result, item):
-        """Overwrite the model's sharpness/noise/exposure with MEASURED
-        quality scores (the detectors are authoritative); keep the AI-only
-        composition axis. Returns the (possibly) replaced result. Never
-        raises — on any failure the original result is returned."""
-        try:
-            from dataclasses import replace
-
-            from tabs.image_gallery.services import metric_scores as _ms
-        except Exception:
-            return result
-        try:
-            metrics = getattr(item, "metrics", None) or {}
-            if not isinstance(metrics, dict) or not metrics:
-                return result
-            axes = {sid: score for sid, _label, _raw, score in _ms.measured_scores(metrics)}
-        except Exception:
-            return result
-        kwargs = {}
-        sharp = axes.get("sharpness")
-        if sharp is not None:
-            kwargs["sharpness"] = sharp
-        noise = axes.get("noise")  # already positive "Clean" quality
-        if noise is not None:
-            kwargs["noise"] = noise
-        exposure = axes.get("exposure")
-        if exposure is not None:
-            kwargs["exposure"] = exposure
-        if not kwargs:
-            return result
-        try:
-            return replace(result, **kwargs)
-        except Exception:
-            return result
-
     def _on_analysis_ready(self, path: Path, mtime_ns: int, result, gen: int | None = None) -> None:
         if gen is not None and not self._is_current_folder_gen(gen):
             return  # folder switched — late analysis dropped
         item = self._find_item(path)
         if item is None:
             return
-        result = self._merge_measured_metrics(result, item)
+        # The VLM's result IS the AI-domain read (plan-gallery-ai-backend-owns-
+        # quality): no detector merge here — the Algorithms domain keeps reading
+        # ``item.metrics`` through ``services.quality_read``.
         save_analysis(path, mtime_ns, result)
         item.analysis = result
         item.analysis_status = AnalysisStatus.DONE
         item.analysis_error = None
         set_activity(item, ActivityPhase.DONE, "ai")
         self.widget.refresh_card(item)
-        # Axis notes ride the metric/artifact row headers — rebuild the open
-        # overlay's rows in place so the notes appear without a walk/reopen.
+        # The AI scorecard IS the AI-domain read — rebuild the open overlay's
+        # rows/dots in place so they switch to the VLM numbers without a reopen.
+        self._refresh_open_quick_look()
+        # A new scorecard changes the Jev ranking vector: coalesce the batch of
+        # arrivals into one AI-rank pass (no-op off the AI domain).
+        self._queue_ai_rank_on_settle()
+
+    def _refresh_open_quick_look(self) -> None:
+        """Rebuild the open quick-look report rows + dots for the current domain.
+
+        The report is domain-scoped (``services.quality_read``); a domain switch
+        or a fresh analysis must re-render it in place, not on reopen.
+        """
         try:
             ql = getattr(self.widget, "_quick_look_overlay", None)
-            if ql is not None and hasattr(ql, "refresh_metrics"):
+            if ql is None:
+                return
+            item = getattr(ql, "_current_item", None)
+            if item is None:
+                return
+            if hasattr(ql, "refresh_metrics"):
                 ql.refresh_metrics(item)
-            if ql is not None and hasattr(ql, "refresh_artifacts"):
+            if hasattr(ql, "refresh_artifacts"):
                 ql.refresh_artifacts(item)
         except Exception:
-            pass
+            logger.debug("quick-look domain refresh failed", exc_info=True)
 
     def _on_analysis_error(self, path: Path, error_info, gen: int | None = None) -> None:
         if gen is not None and not self._is_current_folder_gen(gen):
@@ -3341,7 +3359,7 @@ class GalleryController:
         GalleryController._run_jev_on_settle(self)
 
     def _run_jev_on_settle(self) -> None:
-        """Run the AI-domain Jev batch from a metrics-pass settle (AI domain only)."""
+        """Run the AI-domain Jev batch from a settle point (AI domain only)."""
         if str(getattr(self, "_judgment_domain", "algorithms") or "").strip().lower() != "ai":
             return
         runner = getattr(self, "_run_jev_ranks", None)
@@ -3349,7 +3367,40 @@ class GalleryController:
             try:
                 runner()
             except Exception:
-                logger.debug("jev rank on metrics settle failed", exc_info=True)
+                logger.debug("jev rank on settle failed", exc_info=True)
+
+    def _queue_ai_rank_on_settle(self) -> None:
+        """Coalesce AI-domain Jev re-ranks triggered by arriving analyses.
+
+        An AI batch delivers many analyses in one turn; each changes the ranking
+        vector, so a per-arrival Jev pass would flood the API. Coalesce the
+        arrivals into a single scheduling pass (the StageGate still dedups and
+        ``jev_cache`` pins unchanged payloads). Mirrors the card-refresh idiom;
+        a no-op on the Algorithms domain.
+        """
+        if str(getattr(self, "_judgment_domain", "algorithms") or "").strip().lower() != "ai":
+            return
+        if getattr(self, "_ai_rank_flush_scheduled", False):
+            return
+        self._ai_rank_flush_scheduled = True
+        try:
+            if QCoreApplication.instance() is None:
+                # No event loop (headless unit context) — settle synchronously.
+                self._flush_ai_rank_on_settle()
+            else:
+                QTimer.singleShot(0, self._flush_ai_rank_on_settle)
+        except Exception:
+            try:
+                self._flush_ai_rank_on_settle()
+            except Exception:
+                pass
+
+    def _flush_ai_rank_on_settle(self) -> None:
+        self._ai_rank_flush_scheduled = False
+        try:
+            GalleryController._run_jev_on_settle(self)
+        except Exception:
+            logger.debug("coalesced AI rank on settle failed", exc_info=True)
 
     def _begin_append_processing(self, items: list[GalleryItem]) -> None:
         """Append path: mirror the first-load processing UX for NEW items.

@@ -49,7 +49,7 @@ def _severity_text(name: str, severity) -> str:
 
 #: Legend shown only when at least one item carries an AI flag.
 _KIND_LEGEND = (
-    "Axis kinds: measured = authoritative number; 'possible …' and "
+    "Axis kinds: measured = a number (the current read); 'possible …' and "
     "'AI judgment: …' = unverified AI flag (text only, no number)."
 )
 
@@ -125,7 +125,7 @@ def _user_text(question: str, context: dict, *, correction: str = "") -> str:
     """The user turn: question + measured context (+ optional rewrite feedback)."""
     text = (
         f"QUESTION: {str(question or '').strip()}\n\n"
-        f"MEASURED CONTEXT (authoritative):\n{_context_block(context)}"
+        f"MEASURED CONTEXT:\n{_context_block(context)}"
     )
     if correction:
         text += f"\n\nREVISION REQUEST:\n{correction}"
@@ -143,7 +143,7 @@ def _base_messages(system_prompt: str | None = None) -> list[dict]:
                 {
                     "type": "text",
                     "text": FEWSHOT_QUESTION
-                    + "\n\nMEASURED CONTEXT (authoritative):\n"
+                    + "\n\nMEASURED CONTEXT:\n"
                     + FEWSHOT_CONTEXT,
                 }
             ],

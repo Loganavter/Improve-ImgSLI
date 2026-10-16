@@ -8,7 +8,7 @@ Every image gets a score from 0 to 100, where higher is better. The score summar
 
 ### Measured metrics {#measured-metrics}
 
-The score combines sharpness, exposure, noise, and color, and — once a source is set — how closely the image matches it. **Quick Look** lists each reading as a percentage; a reading the app could not take is shown as **not measured**, never as a zero. When AI image analysis is on, a composition reading joins them.
+The score combines sharpness, exposure, noise, and color, and — once a source is set — how closely the image matches it. **Quick Look** lists each reading as a percentage; a reading the app could not take is shown as **not measured**, never as a zero. On the **AI** domain these readings are the AI's own analysis of the image; on **Algorithms** they are the app's measurements.
 
 ### Where scores appear {#where-scores}
 

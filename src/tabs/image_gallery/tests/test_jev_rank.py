@@ -55,6 +55,14 @@ def _series(*items) -> list[Series]:
     return [Series(id="series_1", members=list(items))]
 
 
+def _analysis(**axes):
+    from tabs.image_gallery.models import AiAnalysisResult
+
+    return AiAnalysisResult(
+        description="", tags=(), model="m", analyzed_at_iso="t", axes=dict(axes)
+    )
+
+
 def _chat(decision: dict) -> dict:
     """A chat/completions envelope whose assistant message is *decision* JSON."""
     return {"choices": [{"message": {"content": json.dumps(decision)}}]}
@@ -177,6 +185,37 @@ def test_payload_omits_an_axis_the_item_did_not_measure() -> None:
     vector = json.loads(_message_text(build_rank_request([a], mode="fidelity")))
     assert "ssim" in vector["items"][0]["scores"]
     assert "noise" not in vector["items"][0]["scores"]  # never fabricated as 0/100
+
+
+def test_ai_domain_vector_reads_the_vlm_scorecard_not_detectors() -> None:
+    """A3: on the AI domain Jev's vector is the VLM scorecard, not the detectors."""
+    a = _item("a.png", sharpness=100.0)  # detector → 25%
+    a.analysis = _analysis(sharpness=88)
+    b = _item("b.png", sharpness=260.0)  # detector → 65%
+    b.analysis = _analysis(sharpness=11)
+
+    vec = json.loads(_message_text(build_rank_request([a, b], mode="camera", domain="ai")))
+    scores = {e["alias"]: e["scores"] for e in vec["items"]}
+    assert scores["img_1"]["sharpness"] == 88
+    assert scores["img_2"]["sharpness"] == 11
+
+    vec_algo = json.loads(
+        _message_text(build_rank_request([a, b], mode="camera", domain="algorithms"))
+    )
+    scores_algo = {e["alias"]: e["scores"] for e in vec_algo["items"]}
+    assert scores_algo["img_1"]["sharpness"] == 25
+    assert scores_algo["img_2"]["sharpness"] == 65
+
+
+def test_ai_domain_vector_omits_unscored_axes() -> None:
+    """An axis the VLM did not score is omitted, never fabricated (0/100)."""
+    a = _item("a.png", sharpness=100.0)
+    a.analysis = _analysis(sharpness=80)  # no noise in the scorecard
+    b = _item("b.png", sharpness=100.0)
+    b.analysis = _analysis(sharpness=40)
+    vec = json.loads(_message_text(build_rank_request([a, b], mode="camera", domain="ai")))
+    for entry in vec["items"]:
+        assert "noise" not in entry["scores"]
 
 
 def test_payload_alias_order_is_deterministic_by_path() -> None:

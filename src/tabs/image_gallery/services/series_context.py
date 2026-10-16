@@ -5,8 +5,9 @@ plus up to ``max_variants`` variants, so an artifact becomes *attributable*
 ("B introduced it, A did not") — a relative comparison, which is what a VLM is
 comparatively good at, rather than a reference-less per-image guess.
 
-Numbers still come from the local detectors (``measured_scores``); this module
-only assembles the comparison context. It never invents an axis.
+Numbers here are the Algorithms domain's local detector readings
+(``measured_scores``); this module only assembles the comparison context and
+never invents an axis. The live Ask-AI context is ``ask_context``.
 """
 
 from __future__ import annotations

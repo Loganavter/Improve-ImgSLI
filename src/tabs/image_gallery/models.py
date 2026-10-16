@@ -72,8 +72,10 @@ class Artifact(str, Enum):
 class MetricKind(str, Enum):
     """What an axis *is* — the slot that lets non-measured axes exist.
 
-    ``MEASURED`` — a local detector produces a number (0-100 quality). The
-    algorithms domain owns these; AI never overwrites them.
+    ``MEASURED`` — an axis answered by a number (0-100 quality). In the
+    Algorithms domain a local detector produces it; on the AI domain the VLM's
+    scorecard answers the same axes (see
+    ``plan-gallery-ai-backend-owns-quality``).
     ``CANDIDATE`` — a flag "possible X" (no number): a learned detector OR an
     AI/human observation, always marked unverified.
     ``JUDGMENT`` — plausibility/behaviour (e.g. a hallucination): AI/human only,
@@ -113,8 +115,9 @@ class AiAxisFlag:
     """An AI-sourced non-measured axis: a candidate flag or a judgment.
 
     ``kind`` is a ``MetricKind`` value (``candidate`` | ``judgment``) — never
-    ``measured`` (numbers stay with the local detectors). ``id`` is an existing
-    axis id when the observation maps to one, else ``flag-for-review``.
+    ``measured`` (a measured axis is the domain's numeric read, never a flag).
+    ``id`` is an existing axis id when the observation maps to one, else
+    ``flag-for-review``.
     See ``plan-gallery-two-domain-axes``.
     """
 
@@ -131,11 +134,12 @@ class AiAnalysisResult:
     model: str
     analyzed_at_iso: str
     # Technical-quality verdict (the app's analysis format). Axis scores are
-    # 0-100 quality (higher=better), -1 means unscored. ``sharpness``/
-    # ``noise``/``exposure`` are filled from the MEASURED detectors (the
-    # model's own estimates are not trusted there); ``composition`` is the
-    # AI-only axis. ``description``/``tags`` are legacy/optional — the
-    # gallery reports quality, not scene content.
+    # 0-100 quality (higher=better), -1 means unscored. On the AI judgment
+    # domain these are the VLM's OWN read of the picture (see ``axes``); the
+    # Algorithms domain never reads them (it reads the local detectors through
+    # ``item.metrics``). The four named fields are aliases kept for callers and
+    # caches that predate the open scorecard. ``description``/``tags`` are
+    # legacy/optional — the gallery reports quality, not scene content.
     sharpness: int = -1
     noise: int = -1
     exposure: int = -1
@@ -147,23 +151,64 @@ class AiAnalysisResult:
     # Short, vision-based note per axis (canonical metric id → phrase), shown
     # next to the metric label, e.g. {"noise": "coarse film grain"}.
     axis_notes: dict[str, str] = field(default_factory=dict)
-    #: AI-sourced non-measured axes (candidate flags / judgments). AI never
-    #: writes a measured number here (see plan-gallery-two-domain-axes).
+    #: AI-sourced non-measured axes (candidate flags / judgments).
     axis_flags: tuple[AiAxisFlag, ...] = ()
+    #: The open per-axis scorecard: canonical axis id → 0-100 quality, exactly
+    #: the axes applicable to the item's mode (``rank_fusion.measured_axes_for``)
+    #: plus ``composition``. This is the VLM's read and is the AI domain's
+    #: quality answer (plan-gallery-ai-backend-owns-quality); the four named
+    #: fields above mirror the ids present here.
+    axes: dict[str, int] = field(default_factory=dict)
+
+
+#: The named alias fields that predate the open ``axes`` scorecard.
+_NAMED_AI_AXES = ("sharpness", "noise", "exposure", "composition")
+
+
+def ai_scored_axes(result: AiAnalysisResult | None) -> dict[str, int]:
+    """The merged per-axis scorecard: ``axes`` plus the named alias fields.
+
+    Returns ``{canonical_id: 0-100}`` for every axis with a score (``-1`` is
+    unscored and dropped). Merging the aliases keeps results built before the
+    open scorecard readable without a migration.
+    """
+    out: dict[str, int] = {}
+    if result is None:
+        return out
+    try:
+        for key, value in dict(getattr(result, "axes", None) or {}).items():
+            try:
+                score = int(value)
+            except Exception:
+                continue
+            if score >= 0:
+                out[str(key)] = score
+    except Exception:
+        pass
+    for key in _NAMED_AI_AXES:
+        if key in out:
+            continue
+        try:
+            score = int(getattr(result, key, -1))
+        except Exception:
+            continue
+        if score >= 0:
+            out[key] = score
+    return out
+
+
+def ai_axis_score(result: AiAnalysisResult | None, axis_id: str) -> int:
+    """One axis from the AI scorecard (0-100), or -1 when unscored."""
+    try:
+        return int(ai_scored_axes(result).get(str(axis_id), -1))
+    except Exception:
+        return -1
 
 
 def ai_quality_score(result: AiAnalysisResult | None) -> float | None:
     """Mean of the scored axes (0-100), or None when nothing is scored."""
     try:
-        if result is None:
-            return None
-        axes = [
-            result.sharpness,
-            result.noise,
-            result.exposure,
-            result.composition,
-        ]
-        scored = [int(v) for v in axes if int(v) >= 0]
+        scored = list(ai_scored_axes(result).values())
     except Exception:
         return None
     if not scored:

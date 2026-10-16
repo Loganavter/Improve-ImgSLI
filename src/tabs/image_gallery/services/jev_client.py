@@ -44,7 +44,6 @@ from typing import Any, Callable
 
 from tabs.image_gallery.services import jev_cache
 from tabs.image_gallery.services.ai_client import _ai_debug
-from tabs.image_gallery.services.metric_scores import raw_for, score_for, spec_for
 from tabs.image_gallery.services.rank_fusion import measured_axes_for, rank_series
 
 logger = logging.getLogger("ImproveImgSLI")
@@ -137,33 +136,37 @@ def _aliased(items) -> list[tuple[str, Any]]:
     return [(f"img_{i}", item) for i, item in enumerate(ordered, start=1)]
 
 
-def build_measured_vector(items, *, mode: str) -> dict:
-    """The measured-only vector: ``{"mode", "items": [{"alias","scores"}]}``.
+def build_measured_vector(items, *, mode: str, domain: str = "algorithms") -> dict:
+    """The scoring vector: ``{"mode", "items": [{"alias","scores"}]}``.
 
-    Each entry's ``scores`` holds exactly the applicable MEASURED axes for *mode*
-    (``rank_fusion.measured_axes_for``) that the item actually carries a raw value
-    for — an unmeasured axis is omitted, never fabricated. Only the mode, the
-    opaque aliases and the measured numbers.
+    Each entry's ``scores`` holds exactly the applicable axes for *mode*
+    (``rank_fusion.measured_axes_for``) that *item* actually carries a score for
+    under *domain* — an unscored axis is omitted, never fabricated. On the AI
+    domain the scores are the VLM's scorecard (``item.analysis``); on Algorithms
+    they are the local detectors (``item.metrics``), via the single per-domain
+    read (``services.quality_read``, plan-gallery-ai-backend-owns-quality). Only
+    the mode, the opaque aliases and the numbers — never paths or images.
     """
     mid = _mode_token(mode)
     axes = measured_axes_for(mid)
     entries: list[dict] = []
     for alias, item in _aliased(items):
-        metrics = getattr(item, "metrics", None)
+        read: dict[str, int] = {}
+        try:
+            from tabs.image_gallery.services.quality_read import domain_axis_scores
+
+            read = domain_axis_scores(item, domain=domain)
+        except Exception:
+            read = {}
         scores: dict[str, int] = {}
-        if isinstance(metrics, dict):
-            for axis_id in axes:
-                spec = spec_for(axis_id)
-                if spec is None:
-                    continue
-                got = raw_for(spec, metrics)
-                if got is None:
-                    continue
-                _key, raw = got
-                try:
-                    scores[axis_id] = int(score_for(spec, raw))
-                except Exception:
-                    continue
+        for axis_id in axes:
+            score = read.get(axis_id)
+            if score is None:
+                continue
+            try:
+                scores[axis_id] = int(score)
+            except Exception:
+                continue
         entries.append({"alias": alias, "scores": scores})
     return {"mode": mid, "items": entries}
 
@@ -200,7 +203,7 @@ def _request_from_vector(vector: dict) -> dict:
     }
 
 
-def build_rank_request(items, *, mode: str) -> dict:
+def build_rank_request(items, *, mode: str, domain: str = "algorithms") -> dict:
     """OpenAI-compatible rank request for Jev (text-only, measured vector).
 
     A chat/completions body: ``model = JEV_MODEL``, ONE system message carrying
@@ -212,7 +215,7 @@ def build_rank_request(items, *, mode: str) -> dict:
     model answered a narrative object with no ranking, so every call degraded as
     unusable (probe 2026-10-15); the parser still tolerates key/shape variance.
     """
-    return _request_from_vector(build_measured_vector(items, mode=mode))
+    return _request_from_vector(build_measured_vector(items, mode=mode, domain=domain))
 
 
 def _normalize_alias(value: Any, aliases: dict[str, str]) -> str | None:
@@ -433,7 +436,7 @@ def _pin(cache_obj, key: str, ranks: dict[str, int] | None, reason: str | None) 
 
 
 def rank_series_jev_detailed(
-    items, *, mode: str, client: RankClient, cache=None
+    items, *, mode: str, client: RankClient, cache=None, domain: str = "algorithms"
 ) -> JevRankOutcome:
     """Jev-rank one series, returning the full :class:`JevRankOutcome`.
 
@@ -453,7 +456,7 @@ def rank_series_jev_detailed(
     if len(member_list) < 2:
         return JevRankOutcome(None, reason=JEV_REASON_EMPTY)
     try:
-        vector = build_measured_vector(member_list, mode=mode)
+        vector = build_measured_vector(member_list, mode=mode, domain=domain)
     except Exception:
         logger.debug("jev rank vector build failed", exc_info=True)
         return JevRankOutcome(None, reason=JEV_REASON_MALFORMED)
@@ -512,7 +515,9 @@ def rank_series_jev_detailed(
     return outcome
 
 
-def rank_series_jev(items, *, mode: str, client: RankClient, cache=None) -> dict[str, int] | None:
+def rank_series_jev(
+    items, *, mode: str, client: RankClient, cache=None, domain: str = "algorithms"
+) -> dict[str, int] | None:
     """``path -> rank 1..N`` from Jev, or ``None`` when it must degrade.
 
     ``None`` covers every non-decisive case (empty series, ``Noul``, confidence
@@ -520,7 +525,7 @@ def rank_series_jev(items, *, mode: str, client: RankClient, cache=None) -> dict
     then keeps the Algorithms (fusion) rank and surfaces the reason from
     :func:`rank_series_jev_detailed`. Never raises.
     """
-    return rank_series_jev_detailed(items, mode=mode, client=client, cache=cache).ranks
+    return rank_series_jev_detailed(items, mode=mode, client=client, cache=cache, domain=domain).ranks
 
 
 def make_client(base_url: str, api_key: str) -> RankClient:

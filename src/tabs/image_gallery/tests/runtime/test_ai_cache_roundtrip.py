@@ -44,6 +44,7 @@ def test_round_trip_carries_quality_and_verdict(tmp_path, monkeypatch):
         verdict="keep",
         verdict_reason="Clean.",
         axis_notes={"noise": "coarse film grain"},
+        axes={"sharpness": 85, "noise": 90, "exposure": 78, "composition": 80, "ssim": 72},
     )
     ai_cache.save_analysis(path, 123, result)
     assert ai_cache.load_cached_analysis(path, 123) == result
@@ -51,6 +52,33 @@ def test_round_trip_carries_quality_and_verdict(tmp_path, monkeypatch):
     assert stored["sharpness"] == 85
     assert stored["verdict"] == "keep"
     assert stored["axis_notes"] == {"noise": "coarse film grain"}
+    assert stored["axes"]["ssim"] == 72
+
+
+def test_cache_without_axes_rebuilds_scorecard_from_named_fields(tmp_path, monkeypatch):
+    """A1: an older cache (named fields, no ``axes``) still loads fully."""
+    import json
+
+    monkeypatch.setattr(ai_cache, "ai_cache_dir", lambda: tmp_path)
+    path = Path("/some/image.png")
+    ai_cache.save_analysis(
+        path,
+        123,
+        AiAnalysisResult(
+            description="d", tags=(), model="m",
+            analyzed_at_iso="2026-01-01T00:00:00+00:00",
+            sharpness=64, composition=58, verdict="keep",
+        ),
+    )
+    cache_file = next(tmp_path.iterdir())
+    data = json.loads(cache_file.read_text(encoding="utf-8"))
+    data.pop("axes", None)  # simulate a pre-scorecard entry
+    cache_file.write_text(json.dumps(data), encoding="utf-8")
+
+    loaded = ai_cache.load_cached_analysis(path, 123)
+    assert loaded is not None
+    assert loaded.axes == {"sharpness": 64, "composition": 58}
+    assert loaded.sharpness == 64 and loaded.composition == 58
 
 
 def test_legacy_caption_only_cache_loads_as_unscored(tmp_path, monkeypatch):

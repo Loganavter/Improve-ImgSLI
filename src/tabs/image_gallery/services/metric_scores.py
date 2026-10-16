@@ -141,6 +141,12 @@ SPECS: tuple[MetricSpec, ...] = (
 
 _BY_ID = {s.id: s for s in SPECS}
 
+#: Canonical axis ids an AI scorecard may carry: the measured registry plus the
+#: AI-only ``composition`` axis (the one axis with no local detector). Single
+#: definition — the prompt builder, the response parser and the cache all import
+#: this, never re-list the ids (plan-gallery-ai-backend-owns-quality).
+SCORECARD_AXIS_IDS: frozenset[str] = frozenset(s.id for s in SPECS) | {"composition"}
+
 
 def spec_for(metric_id: str) -> MetricSpec | None:
     return _BY_ID.get(metric_id)

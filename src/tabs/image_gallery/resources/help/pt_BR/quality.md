@@ -8,7 +8,7 @@ Cada imagem recebe uma pontuação de 0 a 100, e quanto maior, melhor. A pontua�
 
 ### Métricas medidas {#measured-metrics}
 
-A pontuação combina nitidez, exposição, ruído e cor e, quando uma origem é definida, também o quão próxima a imagem está dela. A **Visualização rápida** lista cada leitura como porcentagem; uma leitura que o aplicativo não conseguiu obter aparece como **not measured**, nunca como zero. Quando a análise de imagem por IA está ativada, uma leitura de composição se junta a elas.
+A pontuação combina nitidez, exposição, ruído e cor e, quando uma origem é definida, também o quão próxima a imagem está dela. A **Visualização rápida** lista cada leitura como porcentagem; uma leitura que o aplicativo não conseguiu obter aparece como **not measured**, nunca como zero. No domínio **IA**, essas leituras são a própria análise da IA; em **Algoritmos**, são as medições do aplicativo.
 
 ### Onde as pontuações aparecem {#where-scores}
 

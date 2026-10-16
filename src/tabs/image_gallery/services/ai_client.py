@@ -48,34 +48,73 @@ def _ratelimit_headers(headers) -> str:
     except Exception:
         return ""
 
-PROMPT_TEMPLATE = (
+_PROMPT_CORE = (
     "You assess TECHNICAL image quality for a gallery that compares many "
     "processing variants (upscalers, restorations) of the SAME picture. "
     "Judge quality and DEFECTS only — never describe the scene, objects or "
     "content: they are identical across variants and add nothing.\n"
-    "You are given the locally measured metrics; treat them as authoritative "
-    "and do not contradict them. The per-axis numbers and severities are the "
-    "local detectors' job — do NOT restate or re-judge them per axis; give "
-    "ONE overall conclusion instead.\n"
-    "Reply with ONLY a JSON object, no prose and no code fences:\n"
-    '{"verdict": "keep|reject", "reason": "practical assessment", '
-    '"defects": [{"kind": "halo|banding|blocking|chroma_fringing|noise|'
-    'over_smoothing|invented_texture|clipping|other", '
-    '"severity": "mild|flagged", "note": "short visual description"}], '
-    '"composition": <0-100>, "confidence": <0.0-1.0>}\n'
-    "defects: report only artifacts you actually SEE; prefer an empty list "
-    "when the image is clean. These are top-level observations, not a "
-    "per-axis verdict.\n"
-    "reason: 2-4 sentences — a PRACTICAL read of this image, not a metric "
-    "restatement. Say what the processing actually did to it, whether the "
-    "result is usable, and what a human should watch for. Base it on what "
-    "you SEE; do NOT repeat the measured metric values or their scores "
-    "(those are already shown above).\n"
-    "composition is your subjective framing/quality score — the one axis the "
-    "local detectors cannot measure.\n"
-    "Output the JSON object ONLY: no reasoning, no analysis steps, no "
-    "preamble, no prose before or after the JSON."
+    "Score EVERY applicable axis listed below from 0 (worst) to 100 (best) in "
+    "the \"axes\" object, as YOUR OWN read of this picture. When local "
+    "measurements are shown they are the Algorithms domain's numbers, for "
+    "context only — your scores are independent and need not match them.\n"
 )
+
+#: Default prompt for the no-mode / legacy case (all untagged measured axes).
+PROMPT_TEMPLATE = _PROMPT_CORE
+
+
+def _scorecard_axes(mode=None) -> tuple[tuple[str, str], ...]:
+    """``(axis_id, label)`` for every axis the AI must score for *mode*.
+
+    The set is the mode's applicable MEASURED axes (``measured_axes_for``) —
+    single source of truth, never a second axis list here. Order = registry.
+    """
+    try:
+        from tabs.image_gallery.services.metric_scores import spec_for
+        from tabs.image_gallery.services.rank_fusion import measured_axes_for
+
+        out: list[tuple[str, str]] = []
+        for axis_id in measured_axes_for(mode):
+            spec = spec_for(axis_id)
+            out.append((axis_id, spec.label if spec is not None else axis_id))
+        return tuple(out)
+    except Exception:
+        return ()
+
+
+def build_prompt(mode=None, *, measured_block: str = "") -> str:
+    """The analysis prompt: a per-axis scorecard for *mode* + verdict/defects.
+
+    Every applicable axis is requested by canonical id with its positive label,
+    so the model answers in the ids the report reads (see
+    ``plan-gallery-ai-backend-owns-quality``). ``measured_block`` (local
+    detector numbers) is attached as *context*, explicitly NOT authoritative.
+    """
+    axes = _scorecard_axes(mode)
+    axis_parts = ", ".join(f'"{axis_id}": <0-100 {label}>' for axis_id, label in axes)
+    text = (
+        _PROMPT_CORE
+        + "Reply with ONLY a JSON object, no prose and no code fences:\n"
+        + '{"axes": {' + (axis_parts or '"<axis_id>": <0-100>') + "}, "
+        + '"verdict": "keep|reject", "reason": "practical assessment", '
+        '"defects": [{"kind": "halo|banding|blocking|chroma_fringing|noise|'
+        'over_smoothing|invented_texture|clipping|other", '
+        '"severity": "mild|flagged", "note": "short visual description"}], '
+        '"composition": <0-100>, "confidence": <0.0-1.0>}\n'
+        "axes: one 0-100 score per axis listed above; omit an axis you cannot "
+        "judge (never invent a number you did not see).\n"
+        "defects: report only artifacts you actually SEE; prefer an empty list "
+        "when the image is clean. These are top-level observations.\n"
+        "reason: 2-4 sentences — a PRACTICAL read of this image. Say what the "
+        "processing actually did to it, whether the result is usable, and what "
+        "a human should watch for. Base it on what you SEE.\n"
+        "composition is your subjective framing/quality score.\n"
+        "Output the JSON object ONLY: no reasoning, no analysis steps, no "
+        "preamble, no prose before or after the JSON."
+    )
+    if measured_block:
+        text = f"{text}\n\nLOCAL MEASUREMENTS (Algorithms domain, context only):\n{measured_block}"
+    return text
 
 _DEFECT_KINDS = (
     "halo",
@@ -160,6 +199,33 @@ def _parse_axis_notes(value) -> dict:
     return out
 
 
+def _parse_axes(value) -> dict[str, int]:
+    """Normalize the open per-axis scorecard: canonical ids → 0-100.
+
+    Unknown ids are dropped (never fabricated), unparsable values dropped.
+    """
+    out: dict[str, int] = {}
+    if not isinstance(value, dict):
+        return out
+    try:
+        from tabs.image_gallery.services.metric_scores import SCORECARD_AXIS_IDS
+
+        allowed = SCORECARD_AXIS_IDS
+    except Exception:
+        allowed = None
+    for k, v in value.items():
+        try:
+            key = str(k).strip().lower()
+        except Exception:
+            continue
+        if allowed is not None and key not in allowed:
+            continue
+        score = _parse_score(v)
+        if score >= 0:
+            out[key] = score
+    return out
+
+
 def _parse_defects(value) -> tuple:
     """Normalize a defects list into ``AiDefect`` tuples (kind/severity)."""
     from tabs.image_gallery.models import AiDefect
@@ -192,7 +258,8 @@ def _axis_flags_from_defects(defects) -> tuple:
 
     Uses ``axis_policy.degrade_unknown`` so an observation that maps to a known
     axis id gets it; anything else degrades to ``flag-for-review``. These are
-    candidate flags (see plan-gallery-two-domain-axes), not measurements.
+    candidate flags (text; see plan-gallery-two-domain-axes) — the numeric
+    per-axis answer is the scorecard (``AiAnalysisResult.axes``), never a flag.
     """
     from tabs.image_gallery.models import AiAxisFlag
     from tabs.image_gallery.services.axis_policy import degrade_unknown
@@ -276,7 +343,8 @@ def build_request(
     image_path: Path,
     *,
     model: str,
-    prompt: str = PROMPT_TEMPLATE,
+    prompt: str | None = None,
+    mode=None,
     metrics: dict | None = None,
     openrouter: bool = False,
     fallback_models: tuple[str, ...] | None = None,
@@ -284,9 +352,9 @@ def build_request(
     image_path = Path(image_path)
     mime = _EXT_TO_MIME.get(image_path.suffix.lower(), "png")
     data = base64.b64encode(image_path.read_bytes()).decode("ascii")
-    text = prompt
-    # Inject the locally measured metrics as authoritative context so the
-    # model reasons over real numbers instead of re-estimating them.
+    # Local (Algorithms-domain) numbers ride along as CONTEXT only — the AI's
+    # own per-axis scorecard is the answer (plan-gallery-ai-backend-owns-quality).
+    block = ""
     if metrics:
         try:
             from tabs.image_gallery.services.metric_scores import (
@@ -296,8 +364,13 @@ def build_request(
             block = format_measured_for_prompt(metrics)
         except Exception:
             block = ""
+    if prompt is None:
+        # Default prompt: request every applicable axis for this mode.
+        text = build_prompt(mode, measured_block=block)
+    else:
+        text = prompt
         if block:
-            text = f"{prompt}\n\nMEASURED METRICS (authoritative):\n{block}"
+            text = f"{text}\n\nLOCAL MEASUREMENTS (Algorithms domain, context only):\n{block}"
     # Steer the prose fields (verdict reason / defect notes) into the current
     # UI language; the JSON envelope itself is unchanged.
     text = f"{text}\n{language_directive()}"
@@ -667,6 +740,16 @@ def _parse_lines(content: str, model: str) -> AiAnalysisResult:
             verdict = _parse_verdict(line.split(":", 1)[1])
         elif upper.startswith("REASON:"):
             reason = line.split(":", 1)[1].strip()
+    axes = {
+        key: value
+        for key, value in (
+            ("sharpness", sharpness),
+            ("noise", noise),
+            ("exposure", exposure),
+            ("composition", composition),
+        )
+        if value >= 0
+    }
     return AiAnalysisResult(
         description=description,
         tags=tags,
@@ -678,6 +761,7 @@ def _parse_lines(content: str, model: str) -> AiAnalysisResult:
         composition=composition,
         verdict=verdict,
         verdict_reason=reason,
+        axes=axes,
     )
 
 
@@ -702,20 +786,32 @@ def parse_response(raw: dict, *, model: str) -> AiAnalysisResult:
         _ai_debug("parse NO-JSON -> AiResponseError first200=%.200s", content.replace("\n", " "))
         raise AiResponseError("model did not return the required JSON object")
 
-    comp_raw = obj.get("composition")
+    # Open per-axis scorecard (new prompt) with the legacy named fields merged
+    # in, so an old reply / old prompt still fills the same scorecard.
+    axes = _parse_axes(obj.get("axes"))
+    for key in ("sharpness", "noise", "exposure", "composition"):
+        if key in axes or obj.get(key) is None:
+            continue
+        score = _parse_score(obj.get(key))
+        if score >= 0:
+            axes[key] = score
     defects = _parse_defects(obj.get("defects"))
     return AiAnalysisResult(
         description="",
         tags=(),
         model=model,
         analyzed_at_iso=datetime.now(timezone.utc).isoformat(),
-        composition=_parse_score(comp_raw) if comp_raw is not None else -1,
+        sharpness=axes.get("sharpness", -1),
+        noise=axes.get("noise", -1),
+        exposure=axes.get("exposure", -1),
+        composition=axes.get("composition", -1),
         verdict=_parse_verdict(obj.get("verdict", "")),
         verdict_reason=str(obj.get("reason", "") or "").strip(),
         defects=defects,
         confidence=_parse_confidence(obj.get("confidence")),
         axis_notes=_parse_axis_notes(obj.get("axis_notes")),
         axis_flags=_axis_flags_from_defects(defects),
+        axes=axes,
     )
 
 
@@ -735,24 +831,27 @@ def analyze_image_sync(
     base_url: str,
     api_key: str,
     model: str,
+    mode=None,
     metrics: dict | None = None,
     fallback_models: tuple[str, ...] | None = None,
     on_phase: Callable[[str], None] | None = None,
 ) -> AiAnalysisResult:
     """Full request→parse pipeline. Call only from a worker thread.
 
-    ``on_phase`` (optional) receives ``"analyzing"`` before the request is
-    built and ``"waiting"`` right before the blocking HTTP call.
+    ``mode`` selects the applicable axis set the prompt requests (the AI-domain
+    scorecard). ``on_phase`` (optional) receives ``"analyzing"`` before the
+    request is built and ``"waiting"`` right before the blocking HTTP call.
     """
     openrouter = "openrouter" in str(base_url or "").lower()
     _ai_debug(
-        "analyze start path=%s model=%s host=%s metrics=%d",
-        image_path, model, base_url, len(metrics or {}),
+        "analyze start path=%s model=%s host=%s mode=%s metrics=%d",
+        image_path, model, base_url, getattr(mode, "value", mode), len(metrics or {}),
     )
     _emit_phase(on_phase, "analyzing")
     payload = build_request(
         image_path,
         model=model,
+        mode=mode,
         metrics=metrics,
         openrouter=openrouter,
         fallback_models=fallback_models,
