@@ -5,6 +5,8 @@ from __future__ import annotations
 from tabs.host_helpers import (
     GeometryApplyPolicy,
     apply_dialog_geometry,
+)
+from tabs.image_compare.plugins.video_editor.geometry_helpers import (
     clamp,
     tab_widget_intrinsic_width,
     widget_width_hint,
