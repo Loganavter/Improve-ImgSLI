@@ -56,7 +56,7 @@ ALLOWLIST: dict[str, dict[str, str]] = {
         "drop_prefix": "QShortcut target, non-widget QObject",
     },
     # App: pooled cards are hidden at recycle before re-homing.
-    "src/tabs/image_gallery/ui/grid_view.py": {
+    "src/tabs/image_gallery/ui/grid_view/pool.py": {
         "_acquire_card": "pooled cards hidden at recycle (_recycle_card)",
     },
     # Toolkit: resize filter is a QObject, not a QWidget.
