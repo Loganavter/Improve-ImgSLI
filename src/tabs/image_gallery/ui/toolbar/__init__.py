@@ -11,13 +11,27 @@ from __future__ import annotations
 from typing import Callable
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QHBoxLayout, QWidget
 
 from sli_ui_toolkit.managers import scaled_px
 from sli_ui_toolkit.widgets import Button, ComboBox, CustomLineEdit, Label, LoadingSpinner, SimpleOptionsFlyout
 
 from tabs.image_gallery.icons import Icon as GalleryIcon
+
+# Package split (plan-gallery-split-2026-10-17, Part C6): theme helpers
+# (theme.py), segmented-switch containers (containers.py) and the sort-picker
+# wiring (sort_picker.py) live in submodules; re-export them so
+# ``tabs.image_gallery.ui.toolbar`` keeps its full surface for importers.
+from . import sort_picker
+from .containers import (  # noqa: F401
+    GalleryToolbarDomainSwitchContainer,
+    GalleryToolbarViewSwitchContainer,
+)
+from .theme import (  # noqa: F401
+    _apply_view_fill_chip,
+    _is_dark_theme,
+    _resolve_toolbar_accent_fill,
+)
 
 #: Sort option i18n keys, 1:1 with ``GalleryToolbar._sort_items`` indices.
 #: ``_sort_items`` holds the EN canonical machine labels (the ``sortChanged``
@@ -30,185 +44,6 @@ SORT_OPTION_KEYS = (
     "image_gallery.sort_quality",
 )
 SORT_OPTION_DEFAULTS = ("Rank", "Name", "Date", "AI quality")
-
-
-def _is_dark_theme() -> bool:
-    try:
-        from sli_ui_toolkit.managers import ThemeManager
-
-        inst = ThemeManager.get_instance()
-        try:
-            return bool(inst.is_dark())
-        except Exception:
-            pass
-        try:
-            return str(inst.get_current_theme()).lower() != "light"
-        except Exception:
-            pass
-    except Exception:
-        pass
-    return True
-
-
-def _resolve_toolbar_accent_fill(alpha: int = 51) -> QColor:
-    """S2 mockup x1130 y74: active view segment is a fill-chip (blue 0.2), not a border."""
-    try:
-        from sli_ui_toolkit.managers import ThemeManager
-        from ui.theming import try_resolve_theme_color
-        for token in ("gallery.accent.bar", "accent"):
-            c = try_resolve_theme_color(ThemeManager.get_instance(), token)
-            if c is not None:
-                col = QColor(c) if isinstance(c, str) else QColor(c)
-                try: col.setAlpha(int(alpha))
-                except Exception: pass
-                return col
-    except Exception: pass
-    # NOTE: was (0,150,255) at alpha (dark-only rgba) — now accent light/dark chain.
-    col = QColor("#0078D4" if not _is_dark_theme() else "#0096FF")
-    try:
-        col.setAlpha(int(alpha))
-    except Exception:
-        pass
-    return col
-
-
-def _apply_view_fill_chip(active_btn, inactive_btn) -> None:
-    """Active segment = accent fill-chip; inactive = transparent (no border)."""
-    try:
-        active_btn.set_override_bg_color(_resolve_toolbar_accent_fill())
-    except Exception:
-        pass
-    try:
-        inactive_btn.set_override_bg_color(None)
-    except Exception:
-        pass
-    try:
-        active_btn.setBorderColor(QColor(0, 0, 0, 0))
-        inactive_btn.setBorderColor(QColor(0, 0, 0, 0))
-    except Exception:
-        pass
-
-
-class GalleryToolbarViewSwitchContainer(QWidget):
-    """Segmented view-switch background (106×32, r8, painter-painted, no QSS)."""
-
-    def __init__(self, parent=None) -> None:
-        super().__init__(parent)
-        try:
-            from sli_ui_toolkit.managers import ThemeManager
-
-            ThemeManager.get_instance().theme_changed.connect(self._on_theme_changed)
-        except Exception:
-            pass
-
-    def _on_theme_changed(self) -> None:
-        try:
-            self.update()
-        except Exception:
-            pass
-
-    def on_theme_changed(self) -> None:
-        self._on_theme_changed()
-
-    def paintEvent(self, event) -> None:  # noqa: N802
-        try:
-            from PySide6.QtCore import QRectF
-            from PySide6.QtGui import QColor, QPainter
-
-            from sli_ui_toolkit.managers import ThemeManager
-            from ui.theming import try_resolve_theme_color
-
-            p = QPainter(self)
-            p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-            try:
-                col = try_resolve_theme_color(ThemeManager.get_instance(), "gallery.stats.background")
-                bg = QColor(col) if isinstance(col, str) else col
-                if bg is None:
-                    # NOTE: was #333333 (dark-only) — now stats-background light/dark chain.
-                    bg = QColor("#8a8a8a" if not _is_dark_theme() else "#3c3c3c")
-            except Exception:
-                # NOTE: was #333333 (dark-only) — now stats-background light/dark chain.
-                bg = QColor("#8a8a8a" if not _is_dark_theme() else "#3c3c3c")
-            try:
-                border = try_resolve_theme_color(ThemeManager.get_instance(), "dialog.border")
-                border_col = QColor(border) if isinstance(border, str) else border
-                if border_col is None:
-                    # NOTE: was #4a4a4a (dark-only) — now dialog-border light/dark chain.
-                    border_col = QColor("#c0c0c0" if not _is_dark_theme() else "#555555")
-            except Exception:
-                # NOTE: was #4a4a4a (dark-only) — now dialog-border light/dark chain.
-                border_col = QColor("#c0c0c0" if not _is_dark_theme() else "#555555")
-            p.setPen(border_col)
-            p.setBrush(bg)
-            p.drawRoundedRect(QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5), 8, 8)
-            p.end()
-        except Exception:
-            pass
-        try:
-            super().paintEvent(event)
-        except Exception:
-            pass
-
-
-class GalleryToolbarDomainSwitchContainer(QWidget):
-    """Segmented domain-switch background (Algorithms|AI), painter-painted, no QSS.
-
-    Mirrors ``GalleryToolbarViewSwitchContainer`` — same tokens/shape; only
-    the child segments differ (plan-gallery-two-domain-axes W2).
-    """
-
-    def __init__(self, parent=None) -> None:
-        super().__init__(parent)
-        try:
-            from sli_ui_toolkit.managers import ThemeManager
-
-            ThemeManager.get_instance().theme_changed.connect(self._on_theme_changed)
-        except Exception:
-            pass
-
-    def _on_theme_changed(self) -> None:
-        try:
-            self.update()
-        except Exception:
-            pass
-
-    def on_theme_changed(self) -> None:
-        self._on_theme_changed()
-
-    def paintEvent(self, event) -> None:  # noqa: N802
-        try:
-            from PySide6.QtCore import QRectF
-            from PySide6.QtGui import QColor, QPainter
-
-            from sli_ui_toolkit.managers import ThemeManager
-            from ui.theming import try_resolve_theme_color
-
-            p = QPainter(self)
-            p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-            try:
-                col = try_resolve_theme_color(ThemeManager.get_instance(), "gallery.stats.background")
-                bg = QColor(col) if isinstance(col, str) else col
-                if bg is None:
-                    bg = QColor("#8a8a8a" if not _is_dark_theme() else "#3c3c3c")
-            except Exception:
-                bg = QColor("#8a8a8a" if not _is_dark_theme() else "#3c3c3c")
-            try:
-                border = try_resolve_theme_color(ThemeManager.get_instance(), "dialog.border")
-                border_col = QColor(border) if isinstance(border, str) else border
-                if border_col is None:
-                    border_col = QColor("#c0c0c0" if not _is_dark_theme() else "#555555")
-            except Exception:
-                border_col = QColor("#c0c0c0" if not _is_dark_theme() else "#555555")
-            p.setPen(border_col)
-            p.setBrush(bg)
-            p.drawRoundedRect(QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5), 8, 8)
-            p.end()
-        except Exception:
-            pass
-        try:
-            super().paintEvent(event)
-        except Exception:
-            pass
 
 
 class GalleryToolbar(QWidget):
@@ -785,90 +620,20 @@ class GalleryToolbar(QWidget):
             pass
 
     # -- sort picker (Button + SimpleOptionsFlyout) ------------------------
+    # Bodies live in ``sort_picker.py`` (package split, plan-gallery-split-
+    # 2026-10-17 Part C6); thin delegators keep the method names/signatures.
 
     def _sort_flyout_ensure(self) -> SimpleOptionsFlyout | None:
-        parent = None
-        try:
-            parent = self.window()
-        except Exception:
-            parent = None
-        if parent is None:
-            try:
-                parent = self
-            except Exception:
-                return None
-        flyout = getattr(self, "_sort_flyout", None)
-        if flyout is None:
-            try:
-                flyout = SimpleOptionsFlyout(parent_widget=parent)
-            except Exception:
-                return None
-            try:
-                flyout.item_chosen.connect(self._on_sort_chosen)
-            except Exception:
-                pass
-            self._sort_flyout = flyout
-        return flyout
+        return sort_picker.sort_flyout_ensure(self)
 
     def _sort_options_for_domain(self) -> list[str]:
-        """Sort labels selectable in the current judgment domain.
-
-        The AI-quality sort orders by a judgment-domain score, so the
-        ``algorithms`` domain does not offer it. The row is *listed* in the
-        flyout (canonical ``_sort_items`` indices stay 1:1 — no remap) but
-        disabled; the widget also fails it over to Rank — see
-        ``ImageGalleryWidget._on_sort_changed``.
-        """
-        try:
-            if self.judgment_domain == "ai":
-                return list(self._sort_items)
-        except Exception:
-            return list(self._sort_items)
-        return [opt for opt in self._sort_items if opt != self._AI_SORT_LABEL]
+        return sort_picker.sort_options_for_domain(self)
 
     def _on_sort_clicked(self) -> None:
-        """Open the sort flyout under the button (toggles on re-click)."""
-        try:
-            flyout = self._sort_flyout_ensure()
-            if flyout is None:
-                return
-            # Manual same-anchor toggle: a visible flyout closes on re-click
-            # (deterministic here; show_below toggles same-anchor too).
-            try:
-                if flyout.isVisible():
-                    flyout.hide()
-                    return
-            except Exception:
-                pass
-            # Match the button metrics (transient_interpolation.py precedent:
-            # set_row_height takes design px, button height is 34 design).
-            try:
-                flyout.set_row_height(34)
-            except Exception:
-                pass
-            flyout.populate(
-                [self._sort_display(i) for i in range(len(self._sort_items))],
-                int(self._sort_index),
-            )
-            # Domain gate: "Sort: AI quality" is listed (canonical indices)
-            # but not selectable outside the AI domain.
-            try:
-                selectable = set(self._sort_options_for_domain())
-                for _i, _opt in enumerate(self._sort_items):
-                    _row = flyout.row_widget(_i)
-                    if _row is not None:
-                        _row.setEnabled(_opt in selectable)
-            except Exception:
-                pass
-            # Content width: uniform rows on the widest label
-            # ("Sort: Name"), tight card. The button carries " ▾" the rows
-            # don't, so anchor-matching leaves trailing slack in every row.
-            flyout.show_below(self._sort_combo, width_mode="content")
-        except Exception:
-            pass
+        sort_picker.on_sort_clicked(self)
 
     def _on_sort_chosen(self, index: int) -> None:
-        self.set_sort_index(index)
+        sort_picker.on_sort_chosen(self, index)
 
     def retranslate(self, translate: Callable[[str, str], str] | None = None) -> None:
         """Update translatable texts in place.

@@ -957,7 +957,7 @@
       }
     },
     {
-      "path": "src/tabs/image_gallery/ui/stats_strip.py",
+      "path": "src/tabs/image_gallery/ui/stats_strip/__init__.py",
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=compound-widget size=exempt reason=\"one stats strip — stats/mode/action buttons share one paint/theme lifecycle\"",
@@ -968,7 +968,7 @@
       }
     },
     {
-      "path": "src/tabs/image_gallery/ui/toolbar.py",
+      "path": "src/tabs/image_gallery/ui/toolbar/__init__.py",
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=compound-widget size=exempt reason=\"toolbar + view-switch sharing one paint/theme lifecycle — split tracked post light-theme epic\"",
