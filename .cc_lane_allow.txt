@@ -1,0 +1,142 @@
+# Lane allowlist — comment-citation checker (agent/l4-cites-multicompare-misc).
+#
+# These backticked tokens are NOT stale. They fall into three buckets the
+# six-root scan cannot resolve on its own; nothing here is a renamed/removed
+# repo symbol that should have been "fixed". One name per line (the loader does
+# not strip trailing text, so reasons live on their own lines).
+
+# --- External runtime / toolkit / Qt / GLSL / asset names (not repo symbols) ---
+# toolkit widget / internal (sli-ui-toolkit sibling, not on disk here)
+HelpDocumentBodyCanvas
+IconListWidget
+MarkdownHelpDialog
+_SurfaceWidget
+# application / logger / process names
+ImproveImgSLI
+Xvfb
+# Qt API names (property / method / event handler)
+autoExclusive
+dragEnter
+requestActivate
+setStyleSheet
+sliBold
+# GLSL / GPU uniform + shader identifiers
+iBBox
+tileRect
+# runtime service ids / attributes / settings keys / log fields
+accept_ms
+builtin
+capture_preview_image
+clipboard_paste_service
+_csd_title_bar
+geometry_space
+global_canvas_bounds
+requires_first_run_onboarding
+snapshot_frame_renderer
+toast_anchor_widget
+token_family
+# trace span / fact names and LOD jargon
+ic
+k_fit
+mc
+realize_slots
+# UI labels / key names / prose tuple labels / example filenames
+Copy
+Esc
+http_urls
+stem_1
+# named-on-purpose as a retired token (kept so the guard's history is explicit)
+resolve_alias
+
+# --- Repo symbols that live OUTSIDE this lane's six scanned roots ---
+# (core / ui / engine / image_compare / image_gallery / tabs). Cited from
+# owned-dir comments as cross-reference; they resolve repo-wide, just not in
+# the lane subset the checker indexes.
+ActionType
+Action
+BootstrapContentStep
+CanvasBoundsAnalyzer
+CanvasGeometryProvider
+CompositionNode
+DialogManager
+DocumentModel
+ExportContextBuilder
+ExportPresenter
+GeometryManager
+ImageCompareTab
+ImageItem
+ImageLoadService
+LoadWindowStateStep
+MainWindow
+MainWindowMenuController
+OverlayResolver
+PipelineCache
+PutPreviewAction
+ResolvedComposition
+RhiCanvasRenderer
+RhiResources
+RootReducer
+SetCropOverrideAction
+SettingsState
+SlotSource
+TileResidencyRealizer
+TopTabHost
+WorkspaceSession
+_accept_and_run
+_action_chrome_is_available
+_crop_box_cache
+_cycle_crop_override_slot
+_intersection_rect
+_last_good_texture_keys
+_make_analysis_section
+_safe_update_drag_overlays
+_session_controller
+_suppress_untested_export_warning
+_untested_export_suppressed
+_walk
+as_nav_row
+begin_pending_image_insert
+build_gesture_bindings
+canvas_scale
+clamp_pan
+compute_zoom_wheel_transform
+covered_fraction
+crop_apron_tile
+has_images
+image_compare
+image_decode
+interaction_state
+key_for
+lod_commit
+loupe_trace
+max_duration_ms
+multi_compare
+notify_system
+offscreen_canvas
+open_paths
+preview_zoom
+project_io
+pyramid_registry
+realize_specs
+realize_tile_plan
+render_context
+render_intent
+render_metrics
+resolve_export_snapshot_lod_tiles
+resolve_lod_texture_keys
+runtime_cache
+select_level
+set_drag_overlay_state
+set_last_saved_path
+shared_toolkit
+split_position
+tab_canvas_services
+tiled_pixel_store
+trace_export
+trace_id
+wheel_zoom_pan
+
+# --- Test names defined under tests/ (outside the src-scanned roots) ---
+test_mc_dividers_exposes_ctx_first_resolver
+test_real_repo_has_no_broken_doc_links
+test_registry_exists_and_in_sync

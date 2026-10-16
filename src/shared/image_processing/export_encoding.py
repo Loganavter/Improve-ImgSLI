@@ -2,7 +2,7 @@
 
 Unifies format/ext normalization, alpha-flattening, ``save_kwargs`` defaults,
 and the ``SAVE_CANCELED_MESSAGE`` magic string across both tabs' export
-services (``image_compare/services/image_export/service.py:212-343`` and
+services (``src/tabs/image_compare/services/image_export/service.py:212-343`` and
 ``multi_compare/services/image_export.py:34-85``).
 
 Import via ``from shared.image_processing.export_encoding import ...``.

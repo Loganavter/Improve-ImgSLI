@@ -142,7 +142,7 @@ def release_transition_mask(widget) -> None:
     """Drop the workspace transition cover once an opaque frame is up.
 
     Mirrors image_compare's widget: without this the cover would stay for
-    its whole ``max_duration`` (400 ms) on every tab enter, because the
+    its whole ``max_duration_ms`` (400 ms) on every tab enter, because the
     mask force-releases only on its deadline unless told otherwise.
     """
     context = getattr(widget, "_context", None)

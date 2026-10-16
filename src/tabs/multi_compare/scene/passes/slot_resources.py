@@ -77,7 +77,7 @@ class SlotResources(PlainTextureResourcesBase):
 
     def ensure_pipeline(self, renderer, target) -> bool:
         """Recreate the graphics pipeline when the swapchain RT descriptor
-        changes. Mirrors image_compare's ``RhiCanvasResources.ensure_pipeline``:
+        changes. Mirrors image_compare's canvas-resource pipeline refresh:
         a Qt.Popup parented to the QRhiWidget can restack the color buffer;
         keeping a stale ``renderPassDescriptor``/``sampleCount`` produces a
         present that looks like a zoom nudge even when uniforms stay
