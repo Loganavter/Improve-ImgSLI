@@ -180,8 +180,10 @@ def test_s2_series_header_has_no_raw_hex() -> None:
     """grid_view series headers resolve via theme token (no raw #9a9a9a)."""
     from pathlib import Path
 
-    src = Path(__file__).resolve().parents[1] / "ui" / "grid_view.py"
-    text = src.read_text(encoding="utf-8")
+    # Package split (plan-gallery-split-2026-10-17 Part C1): grid_view is now a
+    # package; scan every module so the header-color helper can't sneak a raw hex.
+    pkg = Path(__file__).resolve().parents[1] / "ui" / "grid_view"
+    text = "\n".join(p.read_text(encoding="utf-8") for p in sorted(pkg.rglob("*.py")))
     assert "#9a9a9a" not in text.lower()
 
 

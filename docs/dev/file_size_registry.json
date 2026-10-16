@@ -837,14 +837,36 @@
       }
     },
     {
-      "path": "src/tabs/image_gallery/ui/grid_view.py",
+      "path": "src/tabs/image_gallery/ui/grid_view/__init__.py",
       "limit": 500,
       "marker": "Audit-Meta:",
-      "raw": "pattern=state-machine size=exempt reason=\"single virtualized grid view — grid_columns/series headers/pool/marquee share one layout lifecycle\"",
+      "raw": "pattern=thin-owner size=exempt reason=\"thin owner + ui/grid_view/* submodules (plan-gallery-split-2026-10-17 Part C1)\"",
       "parsed": {
-        "pattern": "state-machine",
+        "pattern": "thin-owner",
         "size": "exempt",
-        "reason": "single virtualized grid view — grid_columns/series headers/pool/marquee share one layout lifecycle"
+        "reason": "thin owner + ui/grid_view/* submodules (plan-gallery-split-2026-10-17 Part C1)"
+      }
+    },
+    {
+      "path": "src/tabs/image_gallery/ui/grid_view/nav.py",
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=thin-owner-target size=exempt reason=\"2D focus navigation is one concern moved out of the thin GalleryGridView owner (plan-gallery-split-2026-10-17 Part C1)\"",
+      "parsed": {
+        "pattern": "thin-owner-target",
+        "size": "exempt",
+        "reason": "2D focus navigation is one concern moved out of the thin GalleryGridView owner (plan-gallery-split-2026-10-17 Part C1)"
+      }
+    },
+    {
+      "path": "src/tabs/image_gallery/ui/grid_view/series.py",
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=thin-owner-target size=exempt reason=\"series grouping/header lifecycle is one concern moved out of the thin GalleryGridView owner (plan-gallery-split-2026-10-17 Part C1)\"",
+      "parsed": {
+        "pattern": "thin-owner-target",
+        "size": "exempt",
+        "reason": "series grouping/header lifecycle is one concern moved out of the thin GalleryGridView owner (plan-gallery-split-2026-10-17 Part C1)"
       }
     },
     {
