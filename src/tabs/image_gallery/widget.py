@@ -568,475 +568,113 @@ class ImageGalleryWidget(QWidget):
     # -- Ask AI (A3 surface; async lives in the controller) ----------------------
 
     def _ensure_ask_ai_flyout(self):
-        flyout = getattr(self, "_ask_ai_flyout", None)
-        if flyout is None:
-            from tabs.image_gallery.ui.ask_ai import AskAiFlyout
+        """Thin delegator to ``ui/widget_parts.ask_ai_surface._ensure_ask_ai_flyout``."""
+        from tabs.image_gallery.ui.widget_parts import ask_ai_surface
 
-            flyout = AskAiFlyout(self)
-            try:
-                flyout.setObjectName("gallery_ask_ai_flyout")
-            except Exception:
-                pass
-            # An answer's image link opens Quick Look for that image.
-            try:
-                flyout.imageActivated.connect(self._on_ask_ai_image_activated)
-            except Exception:
-                pass
-            self._ask_ai_flyout = flyout
-        return flyout
+        return ask_ai_surface._ensure_ask_ai_flyout(self)
 
     def _on_ask_ai_image_activated(self, path: str) -> None:
-        """Open Quick Look for an image named in the Ask AI answer.
+        """Thin delegator to ``ui/widget_parts.ask_ai_surface._on_ask_ai_image_activated``."""
+        from tabs.image_gallery.ui.widget_parts import ask_ai_surface
 
-        The flyout closes first: leaving it open over Quick Look strands
-        its (link-clicked) text caret on screen.
-        """
-        try:
-            flyout = getattr(self, "_ask_ai_flyout", None)
-            if flyout is not None and flyout.isVisible():
-                flyout.hide()
-        except Exception:
-            pass
-        try:
-            self.show_quick_look(str(path))
-        except Exception:
-            logger.debug("ask-ai image activation failed", exc_info=True)
+        return ask_ai_surface._on_ask_ai_image_activated(self, path)
 
     def open_ask_ai(
         self, anchor, scope, *, default_prompt: str = "What matters here?", texts=None, grow_up: bool = False, show_images_toggle: bool = True
     ) -> None:
-        """Show the Ask AI flyout; submit routes to ``controller.ask_ai_question``."""
-        flyout = self._ensure_ask_ai_flyout()
-        if texts:
-            try:
-                flyout.set_texts(**texts)
-            except Exception:
-                pass
-        # Re-invoking on the SAME scope toggles closed instead of re-running
-        # the show animation (a second right-click looked like "reopening").
-        scope_key = self._ask_scope_key(scope)
-        try:
-            if flyout.isVisible() and getattr(self, "_ask_ai_scope_key", None) == scope_key:
-                flyout.hide()
-                return
-        except Exception:
-            pass
-        # One live scope per open: drop the previous submit binding (disconnect
-        # the exact slot; a bare disconnect() warns when nothing is bound).
-        bound = getattr(self, "_ask_ai_submit_slot", None)
-        if bound is not None:
-            try:
-                flyout.submitted.disconnect(bound)
-            except Exception:
-                pass
-        slot = lambda question, _s=scope: self._submit_ask_ai(_s, question)  # noqa: E731
-        self._ask_ai_submit_slot = slot
-        flyout.submitted.connect(slot)
-        try:
-            label = getattr(scope, "label", "") or ""
-        except Exception:
-            label = ""
-        self._ask_ai_anchor = anchor or self
-        self._ask_ai_scope = scope
-        self._ask_ai_scope_key = scope_key
-        # Preserve the last answer across hide/reopen, seeding it BEFORE the
-        # show animation (seeding after the show calls reposition() mid-fade,
-        # which flashes the panel white).
-        initial_result = None
-        initial_error = ""
-        initial_links: dict = {}
-        if getattr(self, "_ask_ai_last_key", None) == getattr(
-            self, "_ask_ai_scope_key", None
-        ):
-            if getattr(self, "_ask_ai_last_result", None) is not None:
-                initial_result = self._ask_ai_last_result
-                initial_links = dict(getattr(self, "_ask_ai_last_links", None) or {})
-            elif getattr(self, "_ask_ai_last_error", None):
-                initial_error = self._ask_ai_last_error
-        flyout.open_for(
-            self._ask_ai_anchor,
-            scope_label=label,
-            default_prompt=default_prompt,
-            initial_result=initial_result,
-            initial_error=initial_error,
-            initial_links=initial_links,
-            grow_up=grow_up,
-            show_images_toggle=show_images_toggle,
-        )
+        """Thin delegator to ``ui/widget_parts.ask_ai_surface.open_ask_ai``."""
+        from tabs.image_gallery.ui.widget_parts import ask_ai_surface
+
+        return ask_ai_surface.open_ask_ai(self, anchor, scope, default_prompt=default_prompt, texts=texts, grow_up=grow_up, show_images_toggle=show_images_toggle)
 
     @staticmethod
     def _ask_scope_key(scope):
-        """Stable identity for one ask scope (used to restore the last answer)."""
-        try:
-            paths = tuple(sorted(str(p) for p in (getattr(scope, "paths", ()) or ())))
-            return (
-                str(getattr(scope, "kind", "")),
-                paths,
-                str(getattr(scope, "series_id", "") or ""),
-                str(getattr(scope, "label", "") or ""),
-                tuple(getattr(scope, "box", ()) or ()),
-            )
-        except Exception:
-            return None
+        """Thin delegator to ``ui/widget_parts.ask_ai_surface._ask_scope_key``."""
+        from tabs.image_gallery.ui.widget_parts import ask_ai_surface
+
+        return ask_ai_surface._ask_scope_key(None, scope)
 
     def _submit_ask_ai(self, scope, question: str) -> None:
-        owner = self._owner_for_triage()
-        fn = getattr(owner, "ask_ai_question", None)
-        if callable(fn):
-            include = False
-            try:
-                flyout = getattr(self, "_ask_ai_flyout", None)
-                inc = getattr(flyout, "include_images", None)
-                if callable(inc):
-                    include = bool(inc())
-            except Exception:
-                include = False
-            try:
-                fn(scope, question, include_images=include)
-            except TypeError:
-                fn(scope, question)
-            return
-        self.show_ask_ai_error("AI is unavailable.")
+        """Thin delegator to ``ui/widget_parts.ask_ai_surface._submit_ask_ai``."""
+        from tabs.image_gallery.ui.widget_parts import ask_ai_surface
+
+        return ask_ai_surface._submit_ask_ai(self, scope, question)
 
     def show_ask_ai_busy(self) -> None:
-        try:
-            self._ensure_ask_ai_flyout().set_busy(True)
-        except Exception:
-            pass
+        """Thin delegator to ``ui/widget_parts.ask_ai_surface.show_ask_ai_busy``."""
+        from tabs.image_gallery.ui.widget_parts import ask_ai_surface
+
+        return ask_ai_surface.show_ask_ai_busy(self)
 
     def show_ask_ai_result(self, result, model: str = "", links: dict | None = None) -> None:
-        try:
-            flyout = self._ensure_ask_ai_flyout()
-            flyout.set_busy(False)
-            flyout.show_result(
-                getattr(result, "text", "") or "",
-                model=model,
-                backend=getattr(result, "backend", "") or "",
-                cached=bool(getattr(result, "cached", False)),
-                links=links,
-            )
-            self._ask_ai_last_key = getattr(self, "_ask_ai_scope_key", None)
-            self._ask_ai_last_result = result
-            self._ask_ai_last_links = dict(links or {})
-            self._ask_ai_last_error = None
-            self._resume_ask_ai_if_hidden(flyout)
-        except Exception:
-            pass
+        """Thin delegator to ``ui/widget_parts.ask_ai_surface.show_ask_ai_result``."""
+        from tabs.image_gallery.ui.widget_parts import ask_ai_surface
+
+        return ask_ai_surface.show_ask_ai_result(self, result, model, links)
 
     def show_ask_ai_error(self, message: str) -> None:
-        try:
-            flyout = self._ensure_ask_ai_flyout()
-            flyout.set_busy(False)
-            flyout.show_error(message)
-            self._ask_ai_last_key = getattr(self, "_ask_ai_scope_key", None)
-            self._ask_ai_last_result = None
-            self._ask_ai_last_links = {}
-            self._ask_ai_last_error = message
-            self._resume_ask_ai_if_hidden(flyout)
-        except Exception:
-            pass
+        """Thin delegator to ``ui/widget_parts.ask_ai_surface.show_ask_ai_error``."""
+        from tabs.image_gallery.ui.widget_parts import ask_ai_surface
+
+        return ask_ai_surface.show_ask_ai_error(self, message)
 
     def _resume_ask_ai_if_hidden(self, flyout) -> None:
-        """A late answer must not vanish: re-show the flyout if it was dismissed."""
-        try:
-            if flyout.isVisible():
-                return
-            anchor = getattr(self, "_ask_ai_anchor", None)
-            if anchor is not None:
-                flyout.reshow(anchor)
-        except Exception:
-            pass
+        """Thin delegator to ``ui/widget_parts.ask_ai_surface._resume_ask_ai_if_hidden``."""
+        from tabs.image_gallery.ui.widget_parts import ask_ai_surface
+
+        return ask_ai_surface._resume_ask_ai_if_hidden(self, flyout)
 
     # -- series header context menu ---------------------------------------------
 
     def _tr_ui(self, key: str, default: str) -> str:
-        """Gallery i18n lookup for widget-level strings (fail-open to default)."""
-        ctx = getattr(self, "_context", None)
-        if ctx is None:
-            return default
-        try:
-            return ctx._tr(key, default)
-        except Exception:
-            return default
+        """Thin delegator to ``ui/widget_parts.series_headers._tr_ui``."""
+        from tabs.image_gallery.ui.widget_parts import series_headers
+
+        return series_headers._tr_ui(self, key, default)
 
     def _retranslate_overlays(self) -> None:
-        """Refresh the lazily-created overlays on a live language switch.
+        """Thin delegator to ``ui/widget_parts.series_headers._retranslate_overlays``."""
+        from tabs.image_gallery.ui.widget_parts import series_headers
 
-        Reuses this widget's context translator (same ``tr`` the toolbar and
-        stats strip got at construction). No-op while an overlay has not been
-        created yet — the next ``show_*`` builds it with the current tr.
-        """
-        ctx = getattr(self, "_context", None)
-        tr = getattr(ctx, "_tr", None) if ctx is not None else None
-        for attr in ("_clean_overlay", "_quick_look_overlay"):
-            overlay = getattr(self, attr, None)
-            if overlay is None:
-                continue
-            try:
-                overlay.retranslate(tr)
-            except Exception:
-                pass
+        return series_headers._retranslate_overlays(self)
 
     def _retranslate_chrome(self) -> None:
-        """Re-render every gallery-owned string on a live language switch.
+        """Thin delegator to ``ui/widget_parts.series_headers._retranslate_chrome``."""
+        from tabs.image_gallery.ui.widget_parts import series_headers
 
-        The toolbar/stats strip captured ``translate`` at construction and
-        their ``retranslate()`` hooks were never wired; the series headers and
-        cards capture theirs per render. Re-applies all three in place — no
-        teardown, selection/scroll/focus preserved (the grid reuses header and
-        card widgets). Fail-open per surface.
-        """
-        self._retranslate_overlays()
-        for attr in ("toolbar", "stats_strip"):
-            widget = getattr(self, attr, None)
-            if widget is None:
-                continue
-            try:
-                widget.retranslate()
-            except Exception:
-                pass
-        try:
-            gv = getattr(self, "_grid_view", None)
-            if gv is not None:
-                gv.retranslate_headers()
-        except Exception:
-            pass
+        return series_headers._retranslate_chrome(self)
 
     def _series_names_map(self) -> dict:
-        """Session custom-name map (series_id → name); lazily created."""
-        names = getattr(self, "_series_names", None)
-        if not isinstance(names, dict):
-            names = {}
-            self._series_names = names
-        return names
+        """Thin delegator to ``ui/widget_parts.series_headers._series_names_map``."""
+        from tabs.image_gallery.ui.widget_parts import series_headers
+
+        return series_headers._series_names_map(self)
 
     def _compute_series_hub_names(self, norm_series) -> list:
-        """Per-series header names (``SERIES i · <hub> · n VARIANTS``).
+        """Thin delegator to ``ui/widget_parts.series_headers._compute_series_hub_names``."""
+        from tabs.image_gallery.ui.widget_parts import series_headers
 
-        Hub = rank-1 member's file name uppercased, unless a session rename
-        override exists for the cluster's stable ``series_id`` (override wins
-        verbatim; the header upper-cases it for display).
-        """
-        names_map = self._series_names_map()
-        hub_names: list = []
-        try:
-            for cl in [c for c in (norm_series or []) if len(c) >= 2]:
-                hub_item = None
-                try:
-                    ranked = sorted(cl, key=lambda it: int(getattr(it, "rank", 999) or 999))
-                    hub_item = ranked[0] if ranked else cl[0]
-                except Exception:
-                    hub_item = cl[0] if cl else None
-                hub = None
-                if hub_item is not None:
-                    try:
-                        hub = Path(hub_item.path).name.upper()
-                    except Exception:
-                        hub = str(getattr(hub_item, "name", "")).upper() or None
-                sid = None
-                try:
-                    for m in cl:
-                        _s = getattr(m, "series_id", None)
-                        if _s:
-                            sid = str(_s)
-                            break
-                except Exception:
-                    sid = None
-                if sid and names_map.get(sid):
-                    hub = str(names_map[sid])
-                hub_names.append(hub)
-        except Exception:
-            hub_names = []
-        return hub_names
+        return series_headers._compute_series_hub_names(self, norm_series)
 
     def _on_series_context_menu(
         self, index, anchor, member_paths, label, series_id=None, global_pos=None
     ) -> None:
-        """Series-header right-click → toolkit ``ContextMenu``.
+        """Thin delegator to ``ui/widget_parts.series_headers._on_series_context_menu``."""
+        from tabs.image_gallery.ui.widget_parts import series_headers
 
-        Ask AI / Rename / Delete over the whole series, then the manual-series
-        tools (Reset / Re-cluster) as the tail. Popup surface via the app
-        manager — parented to the header Button (a content widget), never the
-        MainWindow (Wayland compositing trap; see the card menu).
-        """
-        paths = tuple(member_paths or ())
-        owner = self._owner_for_triage()
-
-        def _open_ask_ai_now() -> None:
-            try:
-                fn = getattr(owner, "open_ask_ai_for_series", None)
-                if callable(fn):
-                    fn(index, anchor, paths, str(label or ""))
-            except Exception:
-                pass
-
-        def _do_ask_ai() -> None:
-            # The context menu is an in-window registered flyout; the Ask AI
-            # flyout's manager sequenced-cycle opt-in waits for it to close,
-            # then replays the show — no app-side close/open chain needed.
-            _open_ask_ai_now()
-
-        def _do_rename() -> None:
-            try:
-                self._rename_series(series_id, label)
-            except Exception:
-                pass
-
-        def _do_delete() -> None:
-            try:
-                from tabs.image_gallery.use_cases import triage as _triage
-
-                if len(paths) > 1:
-                    _triage.remove_paths_from_grid(owner, paths)
-                elif paths:
-                    _triage.remove_from_grid(owner, paths[0])
-            except Exception:
-                pass
-
-        def _do_reset() -> None:
-            try:
-                fn = getattr(owner, "reset_series_overrides", None)
-                if callable(fn):
-                    fn()
-            except Exception:
-                pass
-
-        def _do_recluster() -> None:
-            try:
-                fn = getattr(owner, "recluster_series", None)
-                if callable(fn):
-                    fn()
-            except Exception:
-                pass
-
-        try:
-            from sli_ui_toolkit.widgets import ContextMenuAction, ContextMenuSeparator
-        except Exception:
-            return
-
-        try:
-            from tabs.image_gallery.icons import Icon as _GalleryIcon
-        except Exception:
-            _GalleryIcon = None  # type: ignore[assignment]
-        has_reset = callable(getattr(owner, "reset_series_overrides", None))
-        has_recluster = callable(getattr(owner, "recluster_series", None))
-        entries: list = [
-            ContextMenuAction(
-                "gallery.series.ask_ai",
-                self._tr_ui("image_gallery.series.ask_ai", "Ask AI"),
-                icon=getattr(_GalleryIcon, "AI", None),
-            ),
-            ContextMenuAction(
-                "gallery.series.rename",
-                self._tr_ui("image_gallery.series.rename", "Rename"),
-                icon="text_filename.svg",
-                enabled=bool(series_id),
-            ),
-            ContextMenuAction(
-                "gallery.series.delete",
-                self._tr_ui("image_gallery.series.delete", "Delete"),
-                icon="delete",
-                danger=True,
-            ),
-        ]
-        tail: list = []
-        if has_reset:
-            tail.append(
-                ContextMenuAction(
-                    "gallery.series.reset",
-                    self._tr_ui("image_gallery.series.reset", "Reset manual series"),
-                    icon="undo.svg",
-                )
-            )
-        if has_recluster:
-            tail.append(
-                ContextMenuAction(
-                    "gallery.series.recluster",
-                    self._tr_ui("image_gallery.series.recluster", "Re-cluster series"),
-                    icon="sync.svg",
-                )
-            )
-        if tail:
-            entries.append(ContextMenuSeparator())
-            entries.extend(tail)
-
-        def _on_triggered(action_id: str, _data: object) -> None:
-            if action_id == "gallery.series.ask_ai":
-                _do_ask_ai()
-            elif action_id == "gallery.series.rename":
-                _do_rename()
-            elif action_id == "gallery.series.delete":
-                _do_delete()
-            elif action_id == "gallery.series.reset":
-                _do_reset()
-            elif action_id == "gallery.series.recluster":
-                _do_recluster()
-
-        source = anchor if anchor is not None else self
-        pos = global_pos
-        if pos is None:
-            try:
-                from PySide6.QtGui import QCursor
-
-                pos = QCursor.pos()
-            except Exception:
-                pos = None
-        try:
-            from ui.context_menu.manager import open_context_menu_entries
-
-            open_context_menu_entries(
-                source_widget=source,
-                global_pos=pos,
-                entries=tuple(entries),
-                key=("gallery-series", int(index), str(series_id or "")),
-                on_triggered=_on_triggered,
-            )
-        except Exception:
-            logger.debug("series header context menu failed", exc_info=True)
+        return series_headers._on_series_context_menu(self, index, anchor, member_paths, label, series_id, global_pos)
 
     def _rename_series(self, series_id, label) -> None:
-        """Prompt for a session-only custom series name and repaint headers."""
-        sid = str(series_id) if series_id else ""
-        if not sid:
-            return
-        try:
-            from tabs.host_helpers import AppTextInputDialog
-        except Exception:
-            return
-        names = self._series_names_map()
-        current = names.get(sid) or str(label or "")
-        title = self._tr_ui("image_gallery.series.rename_title", "Rename series")
-        prompt = self._tr_ui("image_gallery.series.rename_prompt", "Series name")
-        try:
-            parent = self.window() or self
-        except Exception:
-            parent = self
-        value, ok = AppTextInputDialog.get_text(parent, title, prompt, current)
-        if not ok:
-            return
-        name = str(value or "").strip()
-        if name:
-            names[sid] = name
-        else:
-            names.pop(sid, None)  # empty → fall back to the derived hub name
-        self._refresh_series_names()
+        """Thin delegator to ``ui/widget_parts.series_headers._rename_series``."""
+        from tabs.image_gallery.ui.widget_parts import series_headers
+
+        return series_headers._rename_series(self, series_id, label)
 
     def _refresh_series_names(self) -> None:
-        """Repaint series headers with the current custom names (no teardown)."""
-        try:
-            norm_series = list(self._series or [])
-        except Exception:
-            return
-        try:
-            collapsed = dict(self._collapsed or {})
-        except Exception:
-            collapsed = {}
-        try:
-            self._rebuild_series_view(
-                norm_series, self._compute_series_hub_names(norm_series), collapsed
-            )
-        except Exception:
-            logger.debug("series rename repaint failed", exc_info=True)
+        """Thin delegator to ``ui/widget_parts.series_headers._refresh_series_names``."""
+        from tabs.image_gallery.ui.widget_parts import series_headers
+
+        return series_headers._refresh_series_names(self)
 
     # -- S4 quick look ----------------------------------------------------------
 
@@ -1096,29 +734,10 @@ class ImageGalleryWidget(QWidget):
     # -- S3 clean review helpers -----------------------------------------------
 
     def show_clean_review(self, owner=None) -> None:
-        """Open S3 clean review overlay (TopLevelInWindowOverlay + Toast Undo)."""
-        try:
-            from tabs.image_gallery.ui.clean_review import CleanReviewOverlay
+        """Thin delegator to ``ui/widget_parts.triage_actions.show_clean_review``."""
+        from tabs.image_gallery.ui.widget_parts import triage_actions
 
-            actual_owner = owner if owner is not None else self._owner_for_triage()
-            # Ensure overlay exists. Owner travels via constructor / show_for
-            # (both take owner) — never re-poked afterwards (G2 contract).
-            _ctx = getattr(self, "_context", None)
-            _tr = getattr(_ctx, "_tr", None) if _ctx is not None else None
-            overlay = getattr(self, "_clean_overlay", None)
-            if overlay is None:
-                parent = self.window() or self
-                overlay = CleanReviewOverlay(parent, actual_owner, translate=_tr)
-                self._clean_overlay = overlay
-            elif _tr is not None:
-                # Created before a language switch: re-apply the current tr.
-                try:
-                    overlay.retranslate(_tr)
-                except Exception:
-                    pass
-            overlay.show_for(actual_owner)
-        except Exception:
-            pass
+        return triage_actions.show_clean_review(self, owner)
 
     # -- A1 scanning/triage done (toolbar + empty state) ---------------------
 
@@ -1267,367 +886,49 @@ class ImageGalleryWidget(QWidget):
     # -- triage (Stage 2 Pass 1) -----------------------------------------------
 
     def _on_keep_best(self) -> None:
-        try:
-            from tabs.image_gallery.use_cases import triage as _triage
+        """Thin delegator to ``ui/widget_parts.triage_actions._on_keep_best``."""
+        from tabs.image_gallery.ui.widget_parts import triage_actions
 
-            _triage.keep_best_of_series(self._owner_for_triage())
-        except Exception:
-            pass
+        return triage_actions._on_keep_best(self)
 
     def _on_show_all(self) -> None:
-        try:
-            from tabs.image_gallery.use_cases import triage as _triage
+        """Thin delegator to ``ui/widget_parts.triage_actions._on_show_all``."""
+        from tabs.image_gallery.ui.widget_parts import triage_actions
 
-            _triage.show_all(self._owner_for_triage())
-        except Exception:
-            pass
+        return triage_actions._on_show_all(self)
 
     def _on_clean_rejected(self) -> None:
-        try:
-            # Prefer S3 overlay if rejected items exist.
-            owner = self._owner_for_triage()
-            # Check rejected count.
-            n = 0
-            try:
-                from tabs.image_gallery.use_cases.triage import is_rejected as _is_rejected
+        """Thin delegator to ``ui/widget_parts.triage_actions._on_clean_rejected``."""
+        from tabs.image_gallery.ui.widget_parts import triage_actions
 
-                st = getattr(owner, "state", None) or getattr(self, "_state", None)
-                items = list(getattr(st, "items", []) or []) if st is not None else list(self._items or [])
-                n = sum(1 for it in items if _is_rejected(it))
-            except Exception:
-                n = 0
-            if n > 0:
-                self.show_clean_review(owner)
-            else:
-                from tabs.image_gallery.use_cases import triage as _triage
-
-                _triage.clean_rejected(owner)
-        except Exception:
-            pass
+        return triage_actions._on_clean_rejected(self)
 
     def _on_compare_finalists(self) -> None:
-        try:
-            from tabs.image_gallery.use_cases import triage as _triage
+        """Thin delegator to ``ui/widget_parts.triage_actions._on_compare_finalists``."""
+        from tabs.image_gallery.ui.widget_parts import triage_actions
 
-            _triage.compare_finalists(self._owner_for_triage())
-        except Exception:
-            pass
+        return triage_actions._on_compare_finalists(self)
 
     def _series_view_matches(self, norm_series, prev_mode, prev_source, mode, source) -> bool:
-        """True when the painted series view already equals the incoming one.
+        """Thin delegator to ``ui/widget_parts.triage_actions._series_view_matches``."""
+        from tabs.image_gallery.ui.widget_parts import triage_actions
 
-        Compares ordered cluster membership (path strings), the UNGROUPED
-        tail derived from ``self._items``, object identity per path (fresh
-        objects need card refresh, not a skip), plus mode/source (dot
-        palette + strip label depend on them). Lets repeat triage over an
-        unchanged pool skip the full card recycle.
-        """
-        try:
-            if mode != prev_mode:
-                return False
-        except Exception:
-            return False
-        try:
-            if str(source) != str(prev_source):
-                return False
-        except Exception:
-            return False
-        try:
-            gv = getattr(self, "_grid_view", None)
-            if gv is None:
-                return False
-            cur_clusters = [list(cl) for cl in (getattr(gv, "_series", None) or [])]
-            new_clusters = [list(cl) for cl in (norm_series or []) if len(list(cl)) >= 2]
-            if len(cur_clusters) != len(new_clusters):
-                return False
-            try:
-                by_path = {}
-                for it in (self._items or []):
-                    try:
-                        by_path[str(it.path)] = it
-                    except Exception:
-                        continue
-            except Exception:
-                by_path = {}
-            for cur_cl, new_cl in zip(cur_clusters, new_clusters):
-                try:
-                    cur_paths = [str(getattr(m, "path", None)) for m in list(cur_cl)]
-                    new_paths = [str(getattr(m, "path", None)) for m in list(new_cl)]
-                except Exception:
-                    return False
-                if cur_paths != new_paths:
-                    return False
-                for m in list(new_cl):
-                    try:
-                        if m is not by_path.get(str(getattr(m, "path", None))):
-                            return False
-                    except Exception:
-                        return False
-            try:
-                cur_members = {p for cl in cur_clusters for p in [str(getattr(m, "path", None)) for m in list(cl)]}
-                new_members = {p for cl in new_clusters for p in [str(getattr(m, "path", None)) for m in list(cl)]}
-                cur_all = set(by_path)
-            except Exception:
-                return False
-            if cur_members != new_members:
-                return False
-            if (cur_all - cur_members) != (cur_all - new_members):
-                return False
-            return True
-        except Exception:
-            return False
+        return triage_actions._series_view_matches(self, norm_series, prev_mode, prev_source, mode, source)
 
     def _rebuild_series_view(self, norm_series, hub_names, collapsed) -> None:
-        """Paint the series-grouped grid (extracted from set_triage)."""
-        try:
-            if norm_series:
-                self._grid_view.set_series(norm_series, hub_names=hub_names, collapsed=collapsed)
-                # Sync collapsed back (grid may have normalized)
-                try:
-                    self._collapsed = dict(getattr(self._grid_view, "_collapsed", {}) or collapsed)
-                except Exception:
-                    pass
-            else:
-                # No series: show UNGROUPED header for all items (real_design.md:59)
-                self._grid_view.set_series([], hub_names=[], collapsed=collapsed)
-            # set_scanning hid the grid for S1 — S2 content exists again, show it
-            if self._items or norm_series:
-                try:
-                    if hasattr(self, "_content_stack"):
-                        self._content_stack.setCurrentWidget(self._grid_view)
-                    else:
-                        self._grid_view.show()
-                except Exception:
-                    pass
-            # Keep compat dicts in sync after series rebuild
-            self._cards.clear()
-            self._card_labels.clear()
-            for it in (self._items or []):
-                card = self._grid_view.card_for(it.path)
-                if card is not None:
-                    self._cards[it.path] = card
-                    self._card_labels[it.path] = card  # type: ignore[assignment]
-            # Re-hook double-click for newly pooled cards
-            try:
-                self._install_quick_look_hooks()
-            except Exception:
-                pass
-        except Exception:
-            pass
+        """Thin delegator to ``ui/widget_parts.triage_actions._rebuild_series_view``."""
+        from tabs.image_gallery.ui.widget_parts import triage_actions
+
+        return triage_actions._rebuild_series_view(self, norm_series, hub_names, collapsed)
 
     def _refresh_action_states(self) -> None:
-        """Gate Keep best / Compare finalists on live content (fail-open).
+        """Thin delegator to ``ui/widget_parts.triage_actions._refresh_action_states``."""
+        from tabs.image_gallery.ui.widget_parts import triage_actions
 
-        Keep best needs a 2+ survivor cluster (or show-mode, where the
-        button reads "Show all"); compare needs 2+ surviving items.
-        Anything unresolvable leaves the buttons as-is (never strand a
-        live action disabled, never arm a dead one on error).
-        """
-        try:
-            strip = self.stats_strip
-            items = list(getattr(self, "_items", None) or [])
-            series = list(getattr(self, "_series", None) or [])
-        except Exception:
-            return
-
-        def _members(cluster):
-            if hasattr(cluster, "members"):
-                return list(getattr(cluster, "members", None) or [])
-            try:
-                return list(cluster)
-            except Exception:
-                return []
-
-        def _alive(members) -> int:
-            try:
-                from tabs.image_gallery.use_cases.triage import is_rejected as _is_rejected
-            except Exception:
-                _is_rejected = None  # type: ignore[assignment]
-            count = 0
-            for m in members or []:
-                try:
-                    if _is_rejected is None or not _is_rejected(m):
-                        count += 1
-                except Exception:
-                    count += 1
-            return count
-
-        try:
-            keep_mode = str(getattr(strip, "_keep_mode", "keep") or "keep")
-        except Exception:
-            keep_mode = "keep"
-        try:
-            keep = keep_mode.strip().lower().startswith("show") or any(
-                _alive(_members(cl)) >= 2 for cl in series if len(_members(cl)) >= 2
-            )
-        except Exception:
-            return
-        try:
-            compare = _alive(items) >= 2
-        except Exception:
-            return
-        try:
-            strip.set_action_states(keep_best=keep, compare_finalists=compare)
-        except Exception:
-            pass
+        return triage_actions._refresh_action_states(self)
 
     def set_triage(self, series, mode, source) -> None:
-        """Stage 2: update stats strip + series-grouped grid.
+        """Thin delegator to ``ui/widget_parts.triage_actions.set_triage``."""
+        from tabs.image_gallery.ui.widget_parts import triage_actions
 
-        *series* — list of clusters (each ≥2) as ``list[list[GalleryItem]]``
-        or ``list[Series]``. Singles are derived as items not in any cluster
-        and shown under an ``UNGROUPED`` tail. *mode* is ``fidelity`` |
-        ``camera`` | ``batch_synthetic`` and *source* is the hub/source file
-        for fidelity mode.
-        """
-        norm_series: list[list] = []
-        try:
-            if series is None:
-                norm_series = []
-            else:
-                for entry in list(series):
-                    # Accept Series dataclass (has .members) or plain list.
-                    if hasattr(entry, "members"):
-                        members = list(getattr(entry, "members") or [])
-                    else:
-                        members = list(entry) if isinstance(entry, (list, tuple)) else [entry]
-                    if members:
-                        norm_series.append(members)
-        except Exception:
-            norm_series = []
-
-        try:
-            self._series = list(norm_series)
-        except Exception:
-            self._series = []
-        try:
-            prev_mode = self._mode
-        except Exception:
-            prev_mode = None
-        try:
-            prev_source = self._source_path
-        except Exception:
-            prev_source = None
-        self._mode = mode
-        try:
-            self._source_path = Path(source) if source is not None else None
-        except Exception:
-            self._source_path = None
-        # Single source of truth for the display badge: compute it ONCE here
-        # (triage/mode/source all converge in set_triage) so every surface
-        # renders item.badge verbatim and never re-derives it.
-        try:
-            from tabs.image_gallery.services.rank_badge import stamp_badges
-
-            _all_items = list(self._items or [])
-            for _cluster in norm_series:
-                _all_items.extend(_cluster)
-            stamp_badges(_all_items, self._source_path)
-        except Exception:
-            pass
-        try:
-            view_unchanged = self._series_view_matches(
-                norm_series, prev_mode, prev_source, mode, source
-            )
-        except Exception:
-            view_unchanged = False
-
-        # Stats strip — "40 images · 7 series · 33 redundant" synced with grid (real_design §2.3)
-        try:
-            filtered = [cl for cl in norm_series if len(cl) >= 2]
-            series_cnt = len(filtered)
-            try:
-                member_paths = {str(it.path) for cl in filtered for it in cl}
-            except Exception:
-                member_paths = set()
-            # Total synced: prefer grid contents (series+ungrouped) over stale _items
-            if filtered:
-                try:
-                    # ungrouped from _items or derived
-                    if self._items:
-                        ungrouped_cnt = sum(1 for it in self._items if str(it.path) not in member_paths)
-                    else:
-                        ungrouped_cnt = 0
-                    total = sum(len(cl) for cl in filtered) + int(ungrouped_cnt)
-                except Exception:
-                    total = len(self._items) if isinstance(self._items, list) else sum(len(cl) for cl in filtered)
-            else:
-                total = len(self._items) if isinstance(self._items, list) else 0
-                ungrouped_cnt = total  # all ungrouped when no series
-                # but spec expects UNGROUPED · N header, so series 0
-            redundant = max(0, int(total) - int(series_cnt) - int(ungrouped_cnt)) if total else 0
-            # When total from _items mismatches series (e.g. _items 1 but series 2), recompute total from series
-            try:
-                series_total = sum(len(cl) for cl in filtered) + int(ungrouped_cnt)
-                if series_total > total:
-                    total = series_total
-                    redundant = max(0, int(total) - int(series_cnt) - int(ungrouped_cnt))
-            except Exception:
-                pass
-            # Live rejected count
-            rejected_n = 0
-            try:
-                from tabs.image_gallery.use_cases.triage import is_rejected as _is_rejected
-
-                rejected_n = sum(1 for it in (self._items or []) if _is_rejected(it))
-            except Exception:
-                pass
-            self.stats_strip.set_stats(total, series_cnt, redundant)
-            self.stats_strip.set_rejected_count(rejected_n)
-            try:
-                from tabs.image_gallery.use_cases.triage import should_show_all as _should_show_all
-
-                groups = [cl for cl in (filtered or []) if len(cl) >= 2]
-                if not groups:
-                    # Flat fallback: group grid items by series_id.
-                    try:
-                        from tabs.image_gallery.use_cases.triage import _flat_series_groups
-
-                        groups = _flat_series_groups(self._items or [])
-                    except Exception:
-                        groups = []
-                self.stats_strip.set_keep_mode(
-                    "show" if _should_show_all(self._items or [], groups) else "keep"
-                )
-            except Exception:
-                pass
-            self.stats_strip.set_mode(str(mode or "fidelity"), self._source_path)
-            self.stats_strip.show()
-        except Exception:
-            pass
-        try:
-            self._refresh_action_states()
-        except Exception:
-            pass
-
-        # Hub names + collapsed for grid_view (A1 parity: SERIES i · hub · n VARIANTS ▼)
-        hub_names = self._compute_series_hub_names(norm_series)
-
-        # Ensure collapsed dict persists
-        try:
-            collapsed = dict(getattr(self, "_collapsed", {}) or {})
-        except Exception:
-            collapsed = {}
-
-        # Series-grouped grid — headers only for clusters ≥2, singles under UNGROUPED tail.
-        # Identical re-triage (append/change that moved nothing) skips the
-        # full recycle: stats above already synced, cards are current.
-        if view_unchanged:
-            _dbg("set_triage skip rebuild: view identical")
-            _dbg("view-cycle triage series=%d → skip (identical)", len([cl for cl in norm_series if len(cl) >= 2]))
-        else:
-            _dbg(
-                "view-cycle triage series=%d → rebuild",
-                len([cl for cl in norm_series if len(cl) >= 2]),
-            )
-            try:
-                self._rebuild_series_view(norm_series, hub_names, collapsed)
-            except Exception:
-                pass
-        # No setStyleSheet — painter pipeline owns visuals.
-        # Mark triage done (S2) — toolbar ✓
-        try:
-            self.set_triage_done()
-        except Exception:
-            pass
-        # No setStyleSheet — painter pipeline owns visuals.
+        return triage_actions.set_triage(self, series, mode, source)
