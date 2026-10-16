@@ -1,6 +1,13 @@
 {
   "image_gallery": {
     "tab_name": "Galeria",
+    "large_drop": {
+      "title": "Lote grande de IA",
+      "body": "Você enviará {count} imagens para a IA de uma vez. Isso pode demorar e gerar um alto custo de API. Continuar?",
+      "confirm": "Confirmar",
+      "confirm_dont_ask": "Confirmar e não perguntar novamente",
+      "cancel": "Cancelar"
+    },
     "empty_state": "Escolha uma pasta para ver as imagens aqui.",
     "empty_view": "Nenhuma imagem para exibir.",
     "activity": {

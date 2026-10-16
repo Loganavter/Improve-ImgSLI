@@ -57,6 +57,9 @@ class AiSettings:
     reasoning_effort: str = "auto"
     #: Image downscale max edge (px) for AI image uploads; 0 = original.
     vlm_max_edge_px: int = _DEFAULT_VLM_MAX_EDGE
+    #: Set once the user chose “Confirm and don't ask again” on the
+    #: large-drop cost warning — subsequent large drops skip the dialog.
+    suppress_large_drop_warning: bool = False
 
 
 class AiSettingsStore:
@@ -84,6 +87,10 @@ class AiSettingsStore:
                 ask_max_tokens=max(0, _parse_int(settings.value("ask_max_tokens", 0), 0)),
                 reasoning_effort=effort,
                 vlm_max_edge_px=vlm_edge,
+                suppress_large_drop_warning=str(
+                    settings.value("suppress_large_drop_warning", False)
+                ).lower()
+                in ("true", "1"),
             )
         finally:
             settings.endGroup()
@@ -97,6 +104,7 @@ class AiSettingsStore:
             "ask_max_tokens",
             "reasoning_effort",
             "vlm_max_edge_px",
+            "suppress_large_drop_warning",
         ):
             raise ValueError(f"Unknown AI setting field: {name}")
         settings = self._settings()

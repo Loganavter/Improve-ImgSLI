@@ -1,6 +1,13 @@
 {
   "image_gallery": {
     "tab_name": "Image Gallery",
+    "large_drop": {
+      "title": "Large AI batch",
+      "body": "You are about to send {count} images to the AI at once. This can take a while and may add up to a large API cost. Continue?",
+      "confirm": "Confirm",
+      "confirm_dont_ask": "Confirm and don't ask again",
+      "cancel": "Cancel"
+    },
     "empty_state": "Pick a folder to see images here.",
     "empty_view": "No images in view.",
     "activity": {

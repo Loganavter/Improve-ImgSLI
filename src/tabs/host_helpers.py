@@ -16,7 +16,6 @@ from __future__ import annotations
 from shared_toolkit.ui.decorate_dialog import decorate_dialog, install_dialog_help_menu
 from shared_toolkit.ui.layout_sizing import (
     GeometryApplyPolicy,
-    HorizontalPaneMinimum,
     apply_dialog_geometry,
     clamp,
     estimate_prelayout_width,
@@ -24,7 +23,7 @@ from shared_toolkit.ui.layout_sizing import (
     tab_widget_intrinsic_width,
     widget_width_hint,
 )
-from shared_toolkit.ui.message_dialog import MessageKind
+from shared_toolkit.ui.message_dialog import AppMessageDialog, MessageKind
 from shared_toolkit.ui.mode_picker import ModePicker
 from shared_toolkit.ui.overlay_layer import get_overlay_layer
 from shared_toolkit.ui.text_input_dialog import AppTextInputDialog
@@ -45,9 +44,9 @@ def declare_toolbar_navigation(owner, rows, *, tag: str = "toolbar"):
 
 
 __all__ = [
+    "AppMessageDialog",
     "AppTextInputDialog",
     "GeometryApplyPolicy",
-    "HorizontalPaneMinimum",
     "MessageKind",
     "ModePicker",
     "ThemedDialog",

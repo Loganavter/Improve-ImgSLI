@@ -363,6 +363,11 @@ def _route_paths(owner, paths: list[Path], controller=None) -> bool:
     if all_files and not has_dir:
         _dnd_log("dropEvent single/multi image %d files -> open_paths (not parent folder)", len(paths))
         if ctrl is not None and hasattr(ctrl, "open_paths"):
+            from tabs.image_gallery.use_cases.large_drop_guard import guard_large_drop
+
+            if not guard_large_drop(owner, ctrl, len(paths)):
+                _dnd_log("dropEvent: large AI-drop warning declined")
+                return True
             try:
                 ctrl.open_paths(paths)
                 return True

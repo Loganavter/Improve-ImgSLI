@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from tabs.host_helpers import (
     GeometryApplyPolicy,
-    HorizontalPaneMinimum,
     apply_dialog_geometry,
     clamp,
     tab_widget_intrinsic_width,
@@ -66,13 +65,30 @@ def compute_settings_panel_width(dialog) -> int:
     )
 
 
+def _pane_row_min_width(
+    *,
+    left_min: int,
+    spacing: int,
+    right_min: int,
+    outer_margins: int = 0,
+) -> int:
+    """Minimum width of a left|right pane row: outer + left + spacing + right.
+
+    Kept local on purpose: the shared ``HorizontalPaneMinimum`` is a
+    platform-internal layout primitive and is deliberately NOT re-exported
+    through ``tabs.host_helpers`` (the tab-isolation seam). A tab that needs
+    this trivial sum owns it.
+    """
+    return outer_margins + left_min + spacing + right_min
+
+
 def compute_minimum_dialog_width(settings_width: int) -> int:
-    return HorizontalPaneMinimum(
+    return _pane_row_min_width(
         left_min=MIN_VIDEO_EDITOR_PREVIEW_WIDTH,
         spacing=VIDEO_EDITOR_TOP_HORIZONTAL_SPACING_PX,
         right_min=settings_width,
         outer_margins=VIDEO_EDITOR_TOP_MARGIN_PX,
-    ).total_width()
+    )
 
 
 def apply_top_row_geometry(dialog) -> int:
