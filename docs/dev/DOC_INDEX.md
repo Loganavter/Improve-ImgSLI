@@ -25,9 +25,9 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
 - **[Capability aliases](CAPABILITY_ALIASES.md)** — `docs/dev/CAPABILITY_ALIASES.md`
   Referenced by: [docs/dev/CONTRACTS.md](CONTRACTS.md), [docs/dev/README.md](README.md), [docs/dev/rendering/contracts.md](rendering/contracts.md)
 - **[Code Mass Reduction](CODE_MASS_REDUCTION.md)** — `docs/dev/CODE_MASS_REDUCTION.md`
-  Referenced by: [docs/dev/FILE_SIZE_POLICY.md](FILE_SIZE_POLICY.md), [docs/dev/TODO.md](TODO.md)
+  Referenced by: [docs/dev/FILE_SIZE_POLICY.md](FILE_SIZE_POLICY.md), [docs/dev/TODO.md](TODO.md), [src/tabs/image_gallery/docs/investigations/plan-gallery-split-2026-10-17.md](../../src/tabs/image_gallery/docs/investigations/plan-gallery-split-2026-10-17.md)
 - **[Code patterns & anti-patterns](CODE_PATTERNS.md)** — `docs/dev/CODE_PATTERNS.md`
-  Referenced by: [docs/dev/ARCHITECTURE.md](ARCHITECTURE.md), [docs/dev/CODE_MASS_REDUCTION.md](CODE_MASS_REDUCTION.md), [docs/dev/FILE_SIZE_POLICY.md](FILE_SIZE_POLICY.md), [docs/dev/README.md](README.md)
+  Referenced by: [docs/dev/ARCHITECTURE.md](ARCHITECTURE.md), [docs/dev/CODE_MASS_REDUCTION.md](CODE_MASS_REDUCTION.md), [docs/dev/FILE_SIZE_POLICY.md](FILE_SIZE_POLICY.md), [docs/dev/README.md](README.md), [src/tabs/image_gallery/docs/investigations/plan-gallery-split-2026-10-17.md](../../src/tabs/image_gallery/docs/investigations/plan-gallery-split-2026-10-17.md)
 - **[`.imgsli` Container Format](CONTAINER_FORMAT.md)** — `docs/dev/CONTAINER_FORMAT.md`
   Referenced by: [docs/dev/README.md](README.md)
 - **[Application Contracts](CONTRACTS.md)** — `docs/dev/CONTRACTS.md`
@@ -39,7 +39,7 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
 - **[EventBus](EVENT_BUS.md)** — `docs/dev/EVENT_BUS.md`
   Referenced by: [docs/dev/PLUGINS.md](PLUGINS.md), [docs/dev/README.md](README.md), [docs/dev/STORE.md](STORE.md), [docs/dev/TODO.md](TODO.md), [docs/dev/tabs/session-lifecycle.md](tabs/session-lifecycle.md)
 - **[File Size Policy & Audit-Meta](FILE_SIZE_POLICY.md)** — `docs/dev/FILE_SIZE_POLICY.md`
-  Referenced by: [docs/dev/CODE_PATTERNS.md](CODE_PATTERNS.md)
+  Referenced by: [docs/dev/CODE_PATTERNS.md](CODE_PATTERNS.md), [src/tabs/image_gallery/docs/investigations/plan-gallery-split-2026-10-17.md](../../src/tabs/image_gallery/docs/investigations/plan-gallery-split-2026-10-17.md)
 - **[Как писать страницы справки](HELP_AUTHORING.md)** — `docs/dev/HELP_AUTHORING.md`
   Referenced by: [docs/dev/HELP_PROSE_PLAN.md](HELP_PROSE_PLAN.md), [docs/dev/HELP_STYLE_GUIDE.md](HELP_STYLE_GUIDE.md)
 - **[Plan: рефакторинг текста справки](HELP_PROSE_PLAN.md)** — `docs/dev/HELP_PROSE_PLAN.md`
@@ -186,7 +186,11 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
 ## src/tabs/image_gallery/docs/
 
 - **[Image Gallery](../../src/tabs/image_gallery/docs/README.md)** — `src/tabs/image_gallery/docs/README.md`
-  Referenced by: [src/tabs/image_gallery/docs/plugins/image_gallery.md](../../src/tabs/image_gallery/docs/plugins/image_gallery.md)
+  Referenced by: [src/tabs/image_gallery/docs/investigations/plan-gallery-split-2026-10-17.md](../../src/tabs/image_gallery/docs/investigations/plan-gallery-split-2026-10-17.md), [src/tabs/image_gallery/docs/plugins/image_gallery.md](../../src/tabs/image_gallery/docs/plugins/image_gallery.md)
+
+## src/tabs/image_gallery/docs/investigations/
+
+- **[Plan — Image Gallery decomposition (controller + widget + remaining large files)](../../src/tabs/image_gallery/docs/investigations/plan-gallery-split-2026-10-17.md)** — `src/tabs/image_gallery/docs/investigations/plan-gallery-split-2026-10-17.md`
 
 ## src/tabs/image_gallery/docs/plugins/
 

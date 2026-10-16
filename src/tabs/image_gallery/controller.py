@@ -1715,12 +1715,13 @@ class GalleryController:
 
         Closed-tab / re-loaded-folder recovery: the live ``analyze_item``
         path is cache-first, but a pool rebuild (session restore, folder
-        open, append) had no such pass — and the AI domain is restored
-        quietly (no network on open), while re-selecting the same domain is
-        a no-op by contract. So previously analyzed images came back "not
-        analyzed" even though the results sat in the disk cache. Cache-only:
-        no worker, no settings check, no API call. Never raises; returns how
-        many items were filled.
+        open, append) had no such pass, so previously analyzed images came
+        back "not analyzed" until some other trigger ran — even though the
+        results sat in the disk cache. This pass fills them at rebuild so the
+        read is present the moment the pool appears; the metrics-pass settle
+        then re-derives only the still-missing scorecards (AI domain only,
+        ``_run_ai_on_settle``). Cache-only: no worker, no settings check, no
+        API call. Never raises; returns how many items were filled.
         """
         try:
             from tabs.image_gallery.services.ai_cache import hydrate_item
@@ -3336,11 +3337,15 @@ class GalleryController:
         """The measured-metrics pass for a folder settled (S2/J1 trigger).
 
         Retires the local "done" badge (the quality dots are in) AND, on the AI
-        domain, ranks the ready series — the declared ``jev_rank`` stage requires
-        ``metrics_ready``, and this settle is where that fact is published. The
-        gate dedups, so the explicit domain switch triggering the same run is
-        harmless. Reads the DURABLE domain authority (``_judgment_domain``), not
-        ``state`` (replaced by open_folder/append/clear_to_empty).
+        domain, (re)derives the pipeline: the VLM scorecards the rank reads
+        (``_run_ai_on_settle``) and then the Jev rank of the ready series — the
+        declared ``jev_rank`` stage requires ``metrics_ready``, and this settle
+        is where that fact is published. LEVEL-triggered: a folder opened or a
+        session RESTORED in the AI domain re-derives the work from the durable
+        domain, not only via an explicit domain switch. The gate dedups, so the
+        switch triggering the same run is harmless. Reads the DURABLE domain
+        authority (``_judgment_domain``), not ``state`` (replaced by
+        open_folder/append/clear_to_empty).
         """
         try:
             self._mark_local_pass(list(items or []), ActivityPhase.DONE)
@@ -3356,7 +3361,31 @@ class GalleryController:
             self._apply_fusion_ranks(getattr(self.state, "series", None))
         except Exception:
             logger.debug("settle fusion re-mark failed", exc_info=True)
+        # Derive the producer (VLM scorecards) before the consumer (Jev rank):
+        # a restored/opened AI domain must reproduce the WORK, not only the
+        # persisted choice.
+        GalleryController._run_ai_on_settle(self)
         GalleryController._run_jev_on_settle(self)
+
+    def _run_ai_on_settle(self) -> None:
+        """(Re)derive the AI-domain VLM scorecards the Jev rank reads (AI only).
+
+        Level-triggered counterpart of the explicit domain switch: a folder
+        opened — or a SESSION RESTORED — in the AI domain must re-derive the
+        WORK out of the persisted CHOICE. Cache-first for the visible items; a
+        cold item gets the bounded live analysis. The Jev rank then follows from
+        the arriving scorecards (``_on_analysis_ready`` →
+        ``_queue_ai_rank_on_settle``). A no-op off the AI domain, so the
+        Algorithms domain never hits the network on open.
+        """
+        if str(getattr(self, "_judgment_domain", "algorithms") or "").strip().lower() != "ai":
+            return
+        runner = getattr(self, "_run_ai_for_visible", None)
+        if callable(runner):
+            try:
+                runner()
+            except Exception:
+                logger.debug("ai analysis on settle failed", exc_info=True)
 
     def _run_jev_on_settle(self) -> None:
         """Run the AI-domain Jev batch from a settle point (AI domain only)."""
