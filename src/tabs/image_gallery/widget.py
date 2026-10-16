@@ -542,177 +542,28 @@ class ImageGalleryWidget(QWidget):
     # -- card interaction -------------------------------------------------
 
     def _on_card_toggle(self, path: Path, additive: bool = False) -> None:
-        # Click opens, Ctrl+click selects (manual selection stays orthogonal
-        # to triage — Ctrl-click/marquee → selection; plain click → quick look).
-        if not additive:
-            try:
-                self.show_quick_look(path)
-                return
-            except Exception:
-                pass
-        try:
-            from tabs.image_gallery.use_cases import selection as _sel
+        """Thin delegator to ``ui/widget_parts.card_actions._on_card_toggle``."""
+        from tabs.image_gallery.ui.widget_parts import card_actions
 
-            owner = self._owner_for_triage()
-            _sel.toggle_card(owner, path, additive=additive)
-        except Exception:
-            try:
-                self.analyze_requested.emit(path)
-            except Exception:
-                pass
+        return card_actions._on_card_toggle(self, path, additive=additive)
 
     def _on_empty_host_context(self, global_pos) -> None:
-        # FM background menu on empty canvas: Sort by / View (toolbar state).
-        try:
-            from PySide6.QtGui import QCursor
+        """Thin delegator to ``ui/widget_parts.card_actions._on_empty_host_context``."""
+        from tabs.image_gallery.ui.widget_parts import card_actions
 
-            gp = global_pos if global_pos is not None else QCursor.pos()
-        except Exception:
-            gp = global_pos
-        try:
-            sort_index = int(self.toolbar.sort_index)
-        except Exception:
-            sort_index = None
-        try:
-            view_is_list: bool | None = bool(self.toolbar._is_list)
-        except Exception:
-            view_is_list = None
-        try:
-            # ``_context`` is the TabContext the widget was built with (see
-            # __init__) — the only translator source (the legacy
-            # ``_gallery_context`` alias was never assigned).
-            _ctx = getattr(self, "_context", None)
-            tr = getattr(_ctx, "_tr", None) if _ctx is not None else None
-        except Exception:
-            tr = None
-        try:
-            from tabs.image_gallery.ui.card.sort_view_menu import (
-                popup_empty_context_menu,
-            )
-
-            popup_empty_context_menu(
-                self._grid_view,
-                gp,
-                tr,
-                sort_index,
-                self.toolbar.set_sort_index,
-                view_is_list,
-                self.toolbar.set_view_list,
-            )
-        except Exception:
-            pass
+        return card_actions._on_empty_host_context(self, global_pos)
 
     def _on_card_context(self, path: Path) -> None:
-        # ContextMenu under cursor: selection section (ex-HUD) + per-card actions.
-        # Use public sli_ui_toolkit.widgets ContextMenu via card helper.
-        from tabs.image_gallery.debug import gallery_debug_enabled as _dbg_enabled
+        """Thin delegator to ``ui/widget_parts.card_actions._on_card_context``."""
+        from tabs.image_gallery.ui.widget_parts import card_actions
 
-        import time as _time
-
-        _dbg_on = _dbg_enabled()
-        _t0 = _time.perf_counter() if _dbg_on else 0.0
-        if _dbg_on:
-            _dbg("ctx menu entry path=%s", path)
-        try:
-            # Owner is the attached controller (self when unattached) —
-            # no attribute scan, no window walk (G2 gallery contract).
-            owner = self._owner_for_triage()
-            if _dbg_on:
-                _t_owner = _time.perf_counter()
-            card = self._grid_view.card_for(path) if hasattr(self, "_grid_view") else None
-            anchor = card if card is not None else self
-            if _dbg_on:
-                _dbg(
-                    "ctx menu phase resolve=%.1fms card_for=%.1fms anchor=%s owner=%s",
-                    (_t_owner - _t0) * 1000.0,
-                    (_time.perf_counter() - _t_owner) * 1000.0,
-                    type(anchor).__name__,
-                    type(owner).__name__ if owner is not None else "None",
-                )
-            # Try hover helper popup.
-            from tabs.image_gallery.ui.card import popup_gallery_card_context_menu
-
-            try:
-                from PySide6.QtGui import QCursor
-
-                gp = QCursor.pos()
-            except Exception:
-                gp = None
-            def _ctx_owner():
-                try:
-                    return self._owner_for_triage()
-                except Exception:
-                    return owner
-
-            def _ctx_carry():
-                try:
-                    from tabs.image_gallery.use_cases import carry as _carry
-
-                    _carry.carry_selected(_ctx_owner())
-                except Exception:
-                    pass
-
-            def _ctx_analyze():
-                try:
-                    tri = _ctx_owner()
-                    sel = getattr(getattr(tri, "state", None), "selected_paths", None) or set()
-                    if sel:
-                        tri.analyze_item_by_path(next(iter(sel)))  # type: ignore[attr-defined]
-                except Exception:
-                    pass
-
-            def _ctx_find():
-                try:
-                    from tabs.image_gallery.use_cases.carry import find_similar_selected
-
-                    find_similar_selected(_ctx_owner())
-                except Exception:
-                    pass
-
-            def _ctx_ask(scope_kind: str):
-                try:
-                    tri = _ctx_owner()
-                    fn = getattr(tri, "open_ask_ai", None)
-                    if callable(fn):
-                        fn(scope_kind, card, Path(path))
-                except Exception:
-                    pass
-
-            try:
-                sel_set = getattr(getattr(owner, "state", None), "selected_paths", None) or set()
-                sel_n = len(sel_set)
-            except Exception:
-                sel_n = 0
-            try:
-                # Same fix as the empty-canvas menu: the translator lives on
-                # ``_context`` only.
-                _ctx = getattr(self, "_context", None)
-                _tr = getattr(_ctx, "_tr", None) if _ctx is not None else None
-            except Exception:
-                _tr = None
-            popup_gallery_card_context_menu(
-                anchor,
-                owner,
-                Path(path),
-                global_pos=gp,
-                selection_count=sel_n,
-                on_carry=_ctx_carry,
-                on_analyze=_ctx_analyze,
-                on_find_similar=_ctx_find,
-                on_ask_ai=_ctx_ask,
-                translate=_tr,
-            )
-            if _dbg_on:
-                _dbg("ctx menu done total=%.1fms path=%s", (_time.perf_counter() - _t0) * 1000.0, path)
-        except Exception:
-            if _dbg_on:
-                _dbg("ctx menu raised path=%s", path, exc_info=True)
-            pass
+        return card_actions._on_card_context(self, path)
 
     def _on_empty_file_dropped(self, path_str: str) -> None:
-        from tabs.image_gallery.ui import drag_drop as _drag_drop
+        """Thin delegator to ``ui/widget_parts.card_actions._on_empty_file_dropped``."""
+        from tabs.image_gallery.ui.widget_parts import card_actions
 
-        _drag_drop.on_empty_file_dropped(self, path_str, self._owner_for_triage())
+        return card_actions._on_empty_file_dropped(self, path_str)
 
     # -- Ask AI (A3 surface; async lives in the controller) ----------------------
 
@@ -1221,71 +1072,26 @@ class ImageGalleryWidget(QWidget):
     # widget keyPressEvent -> triage functions (design.md:129) ----------------
 
     def attach_controller(self, controller) -> None:
-        """Attach the owning ``GalleryController`` (first wins, fail-open).
+        """Thin delegator to ``ui/widget_parts.keys.attach_controller``."""
+        from tabs.image_gallery.ui.widget_parts import keys
 
-        Called once by ``ImageGalleryTab.create_page`` (G1 side of the
-        gallery-contracts seam). A second call is a protocol violation:
-        logged at debug and ignored — last wins is forbidden.
-        """
-        try:
-            if self._attached_controller is not None:
-                logger.debug(
-                    "ImageGalleryWidget.attach_controller: already attached, ignoring double-attach"
-                )
-                return
-        except AttributeError:
-            pass
-        self._attached_controller = controller
-        # Refresh the zone-drop binding with the now-known controller.
-        try:
-            from tabs.image_gallery.ui import drag_drop as _drag_drop
-
-            _drag_drop.install_zone_drop_forwarding(self, controller)
-        except Exception:
-            pass
+        return keys.attach_controller(self, controller)
 
     def _owner_for_triage(self):
-        """Return the attached controller, or self when unattached (fail-open).
+        """Thin delegator to ``ui/widget_parts.keys._owner_for_triage``."""
+        from tabs.image_gallery.ui.widget_parts import keys
 
-        Storeless unit tests construct the widget bare (no tab wiring), so
-        ``None`` attachment falls back to the widget itself, which carries
-        ``state``-compatible reads. No other fallback chain — no attribute
-        scan, no window walk (G2 gallery contract).
-        """
-        try:
-            ctrl = self._attached_controller
-        except AttributeError:
-            ctrl = None
-        if ctrl is not None:
-            return ctrl
-        return self
+        return keys._owner_for_triage(self)
 
     def keyPressEvent(self, event) -> None:  # noqa: N802
-        from tabs.image_gallery.use_cases import triage_ui
+        """Thin delegator to ``ui/widget_parts.keys.key_press_event``.
 
-        # While the toolbar filter has focus, arrows/Home/End belong to the
-        # text field — keep the triage_ui typing guard intact (it also runs
-        # inside handle_key, but navigation would steal the keys first).
-        try:
-            from PySide6.QtWidgets import QApplication
+        Qt looks this up by name; the body (card-grid navigation vs
+        triage keys) lives in the module.
+        """
+        from tabs.image_gallery.ui.widget_parts import keys
 
-            fw = QApplication.focusWidget()
-            filter_edit = getattr(self, "_filter_edit", None)
-            if fw is not None and fw is filter_edit and event.key() != Qt.Key.Key_Escape:
-                return triage_ui.handle_key(self, event)
-        except Exception:
-            pass
-        # Card-grid navigation (arrows / Home / End / Menu) is owned by the
-        # grid view — mirrors session_picker/recent/items_view. When no card
-        # holds focus yet, an arrow bootstraps onto the first card. Everything
-        # else (Space/Delete remove, Enter compare, Esc, B) stays in triage_ui.
-        try:
-            if self._grid_view.handle_navigation_key(event):
-                event.accept()
-                return
-        except Exception:
-            pass
-        return triage_ui.handle_key(self, event)
+        return keys.key_press_event(self, event)
 
     # -- S3 clean review helpers -----------------------------------------------
 
@@ -1354,547 +1160,82 @@ class ImageGalleryWidget(QWidget):
     # -- API expected by GalleryController ---------------------------------
 
     def set_folder_label(self, folder: Path) -> None:
-        self._folder_label.setText(str(folder))
+        """Thin delegator to ``ui/widget_parts.grid_api.set_folder_label``."""
+        from tabs.image_gallery.ui.widget_parts import grid_api
+
+        return grid_api.set_folder_label(self, folder)
 
     def rebuild_grid(self, items: list[GalleryItem]) -> None:
-        had_items = bool(self._items)
-        # Snapshot the active series view — the flat rebuild below clears
-        # grid_view._series (headers). Every triage action funnels through
-        # here (toggle/make-best/keep-best/remove), so without a re-apply
-        # any of them flattens the SERIES grouping.
-        saved_series = None
-        pre_paths: set[str] = set()
-        try:
-            gv = getattr(self, "_grid_view", None)
-            if gv is not None and getattr(gv, "_series", None) is not None:
-                saved_series = (
-                    list(gv._series),
-                    list(getattr(gv, "_hub_names", []) or []),
-                    dict(getattr(gv, "_collapsed", {}) or {}),
-                )
-        except Exception:
-            saved_series = None
-        try:
-            for it in (self._items or []):
-                pre_paths.add(str(getattr(it, "path", None)))
-        except Exception:
-            pass
-        # Append fast-path: pure pool growth with a live series view keeps
-        # every painted card/header in place (no flat teardown + restore —
-        # that demolished headers twice per drop). New cards land in the
-        # UNGROUPED tail via grid_view.append_new_cards; the imminent
-        # background triage regroups once if clustering actually moved them.
-        # Strict order check: old pool must appear first and unchanged
-        # (reorders still take the full path).
-        try:
-            gv_fast = getattr(self, "_grid_view", None)
-            # Also allow the flat (pre-triage) case: a pure pool growth with
-            # no live series view yet must still group the fresh card(s)
-            # immediately (append_new_cards promotes the flat pool to one
-            # UNGROUPED section) — bug 2, first-drop grouping delay.
-            if pre_paths and (items or []):
-                try:
-                    new_paths = [str(getattr(it, "path", None)) for it in list(items)]
-                    old_paths = [str(getattr(it, "path", None)) for it in list(self._items or [])]
-                except Exception:
-                    new_paths, old_paths = [], []
-                if (
-                    len(new_paths) > len(old_paths)
-                    and gv_fast is not None
-                    and getattr(gv_fast, "_rebuild_pending", None) is None
-                    and [p for p in new_paths if p in set(old_paths)] == list(old_paths)
-                ):
-                    try:
-                        old_set = set(old_paths)
-                        fresh = [it for it in list(items) if str(getattr(it, "path", None)) not in old_set]
-                    except Exception:
-                        fresh = []
-                    if fresh:
-                        self._items = list(items)
-                        _dbg(
-                            "view-cycle rebuild n=%d append-fast-path new=%d",
-                            len(self._items),
-                            len(fresh),
-                        )
-                        try:
-                            gv_fast.append_new_cards(fresh)
-                        except Exception:
-                            gv_fast = None
-                        if gv_fast is not None:
-                            try:
-                                for it in fresh:
-                                    card = gv_fast.card_for(it.path)
-                                    if card is not None:
-                                        self._cards[it.path] = card
-                                        self._card_labels[it.path] = card  # type: ignore[assignment]
-                            except Exception:
-                                pass
-                            # Fresh cards are content-current from acquire;
-                            # tooltips only (no sweep: selection untouched).
-                            try:
-                                for item in fresh:
-                                    self._refresh_tooltip(item)
-                            except Exception:
-                                pass
-                            try:
-                                self._install_quick_look_hooks()
-                            except Exception:
-                                pass
-                            return
-        except Exception:
-            pass
-        self._items = list(items)
-        try:
-            self._refresh_action_states()
-        except Exception:
-            pass
-        _dbg("rebuild_grid n=%d branch=%s", len(self._items), "empty" if not items else "grid")
-        _dbg(
-            "view-cycle rebuild n=%d saved_series=%s pre=%d",
-            len(self._items),
-            "yes" if saved_series is not None else "no",
-            len(pre_paths),
-        )
-        if not items:
-            if had_items:
-                # Emptied by removals (reject/Space/Delete) — files stay on
-                # disk, so the pick-a-folder message would mislead.
-                try:
-                    self._empty_state.set_empty_message(self._empty_view_text)
-                except Exception:
-                    pass
-                empty_text = self._empty_view_text
-            else:
-                try:
-                    self._empty_state.restore_empty_message()
-                except Exception:
-                    pass
-                empty_text = self._empty_text
-            self._empty_state.set_state("empty")
-            try:
-                if hasattr(self, "_content_stack"):
-                    self._content_stack.setCurrentWidget(self._empty_state)
-                else:
-                    self._empty_state.show()
-                    self._grid_view.hide()
-            except Exception:
-                pass
-            # Compat shim only (never in a layout — show() would pin it at
-            # (0,0) over the corner). S0 visuals belong to _empty_state.
-            self._empty_label.setText(empty_text)
-            self._empty_label.hide()
-            try:
-                self._grid_view.rebuild_grid([])
-            except Exception:
-                pass
-            return
-        self._empty_state.set_state("ready")
-        self._empty_label.hide()
-        try:
-            if hasattr(self, "_content_stack"):
-                self._content_stack.setCurrentWidget(self._grid_view)
-            else:
-                self._empty_state.hide()
-                self._grid_view.show()
-        except Exception:
-            pass
-        try:
-            try:
-                self._grid_view.rebuild_grid(
-                    items,
-                    paint_selection=saved_series is None,
-                    flat_ungrouped=saved_series is None,
-                )
-            except TypeError:
-                # Legacy doubles predate the paint_selection kwarg.
-                self._grid_view.rebuild_grid(items)
-        except Exception:
-            pass
-        # Keep compat dicts in sync with grid_view's pool
-        self._cards.clear()
-        self._card_labels.clear()
-        for it in items:
-            card = self._grid_view.card_for(it.path)
-            if card is not None:
-                self._cards[it.path] = card
-                # card is Button, not QLabel — store dummy for refresh compatibility
-                self._card_labels[it.path] = card  # type: ignore[assignment]
+        """Thin delegator to ``ui/widget_parts.grid_api.rebuild_grid``."""
+        from tabs.image_gallery.ui.widget_parts import grid_api
 
-        # Re-apply the series view snapshotted above (if clusters survive).
-        # The restore paints via set_series when it acts (returns True) —
-        # only a non-restored flat grid needs the post-build paint below.
-        restored = False
-        if saved_series is not None:
-            try:
-                restored = bool(self._restore_series_view(saved_series, pre_paths=pre_paths))
-            except Exception:
-                restored = False
-        if not restored:
-            self._refresh_rebuilt_cards(items, sweep=True)
-            # Hook double-click → quick look (restored views hook inside).
-            try:
-                self._install_quick_look_hooks()
-            except Exception:
-                pass
+        return grid_api.rebuild_grid(self, items)
 
     def _restore_series_view(self, saved, pre_paths=None) -> bool:
-        """Re-apply a series view snapshot taken before the flat rebuild.
+        """Thin delegator to ``ui/widget_parts.grid_api._restore_series_view``."""
+        from tabs.image_gallery.ui.widget_parts import grid_api
 
-        Clusters are pruned to current membership (removals); clusters
-        shrinking below 2 members fall out — ``set_series`` lands their
-        survivors in the UNGROUPED tail. When every cluster dissolved but
-        items remain from the same pool (pure removal, e.g. deleted a
-        whole group), survivors get an explicit UNGROUPED view instead of
-        hanging header-less. A wholly new pool (folder switch — every
-        alive path is new) also lands under one UNGROUPED section, so a
-        fresh folder never paints nameless while triage runs.
-
-        Returns True when the view was (re)painted via set_series.
-        """
-        try:
-            series, hub_names, collapsed = saved
-        except Exception:
-            return
-        alive: set[str] = set()
-        for it in (self._items or []):
-            try:
-                alive.add(str(it.path))
-            except Exception:
-                continue
-        kept: list = []
-        kept_hubs: list = []
-        for idx, cl in enumerate(list(series or [])):
-            try:
-                members = [m for m in list(cl) if str(getattr(m, "path", None)) in alive]
-            except Exception:
-                continue
-            if len(members) >= 2:
-                kept.append(members)
-                try:
-                    if idx < len(hub_names):
-                        kept_hubs.append(hub_names[idx])
-                except Exception:
-                    pass
-        if not kept:
-            # Every cluster dissolved. Same-pool removals (no brand-new
-            # paths) → explicit UNGROUPED so survivors don't hang without
-            # a series; replacement pool (folder switch) → stay flat.
-            try:
-                alive_paths = {str(getattr(it, "path", None)) for it in (self._items or [])}
-            except Exception:
-                alive_paths = set(alive)
-            if not alive_paths:
-                _dbg("view-cycle restore dissolved pool=empty → empty-state")
-                return False
-            try:
-                pre = set(pre_paths or set())
-            except Exception:
-                pre = set()
-            try:
-                added = set(alive_paths) - set(pre)
-            except Exception:
-                added = set()
-            if added:
-                _dbg("view-cycle restore dissolved added=%d → UNGROUPED (replacement pool)", len(added))
-                try:
-                    self._grid_view.set_series([], hub_names=[], collapsed={})
-                except Exception:
-                    return False
-                try:
-                    self._series = []
-                except Exception:
-                    pass
-                return True
-            _dbg("view-cycle restore dissolved same-pool → UNGROUPED n=%d", len(alive_paths))
-            try:
-                self._grid_view.set_series([], hub_names=[], collapsed={})
-            except Exception:
-                return False
-            try:
-                self._series = []
-            except Exception:
-                pass
-            try:
-                self._stats_sync_after_dissolve()
-            except Exception:
-                pass
-            try:
-                self._cards.clear()
-                self._card_labels.clear()
-                for it in (self._items or []):
-                    card = self._grid_view.card_for(it.path)
-                    if card is not None:
-                        self._cards[it.path] = card
-                        self._card_labels[it.path] = card  # type: ignore[assignment]
-            except Exception:
-                pass
-            try:
-                for item in (self._items or []):
-                    self._refresh_tooltip(item)
-            except Exception:
-                pass
-            try:
-                self._install_quick_look_hooks()
-            except Exception:
-                pass
-            return True
-        try:
-            self._series = [list(cl) for cl in kept]
-        except Exception:
-            pass
-        try:
-            collapsed = {int(k): bool(v) for k, v in dict(collapsed or {}).items() if 0 <= int(k) < len(kept)}
-        except Exception:
-            collapsed = {}
-        _dbg("rebuild_grid restore series clusters=%d", len(kept))
-        _dbg("view-cycle restore kept=%d alive=%d → set_series", len(kept), len(alive))
-        try:
-            self._grid_view.set_series(kept, hub_names=kept_hubs, collapsed=collapsed)
-        except Exception:
-            return False
-        try:
-            self._collapsed = dict(getattr(self._grid_view, "_collapsed", {}) or collapsed)
-        except Exception:
-            pass
-        # set_series recycled cards again — re-sync compat dicts (mirrors set_triage).
-        try:
-            self._cards.clear()
-            self._card_labels.clear()
-            for it in (self._items or []):
-                card = self._grid_view.card_for(it.path)
-                if card is not None:
-                    self._cards[it.path] = card
-                    self._card_labels[it.path] = card  # type: ignore[assignment]
-        except Exception:
-            pass
-        # set_series already swept selection once — tooltips only (no O(N²)).
-        try:
-            for item in (self._items or []):
-                self._refresh_tooltip(item)
-        except Exception:
-            pass
-        try:
-            self._install_quick_look_hooks()
-        except Exception:
-            pass
-        return True
+        return grid_api._restore_series_view(self, saved, pre_paths=pre_paths)
 
     def _sample_view_frame(self) -> None:
-        """TEMP-DIAG: log the painted signature on change (see __init__)."""
-        try:
-            gv = getattr(self, "_grid_view", None)
-            if gv is None:
-                return
-            try:
-                cur = self._content_stack.currentWidget()
-                stack = type(cur).__name__
-            except Exception:
-                stack = "?"
-            try:
-                series = getattr(gv, "_series", None)
-                series_n = None if series is None else len(series)
-            except Exception:
-                series_n = "?"
-            try:
-                headers = [(h, bool(h.isVisible())) for h in list(getattr(gv, "_series_headers", []) or [])]
-                n_hdr_vis = sum(1 for _, v in headers if v)
-            except Exception:
-                n_hdr_vis = "?"
-            try:
-                cards = list(getattr(gv, "_cards_by_path", {}).values())
-                n_cards_vis = sum(1 for c in cards if bool(c.isVisible()))
-                n_cards = len(cards)
-            except Exception:
-                n_cards_vis, n_cards = "?", "?"
-            sig = f"stack={stack} series={series_n} headers={n_hdr_vis} cards={n_cards_vis}/{n_cards}"
-            if sig != getattr(self, "_view_frame_sig", None):
-                self._view_frame_sig = sig
-                _dbg("view-frame %s", sig)
-        except Exception:
-            pass
+        """Thin delegator to ``ui/widget_parts.grid_api._sample_view_frame``."""
+        from tabs.image_gallery.ui.widget_parts import grid_api
+
+        return grid_api._sample_view_frame(self)
 
     def _stats_sync_after_dissolve(self) -> None:
-        """Sync the stats strip after all series dissolved to UNGROUPED.
+        """Thin delegator to ``ui/widget_parts.grid_api._stats_sync_after_dissolve``."""
+        from tabs.image_gallery.ui.widget_parts import grid_api
 
-        The strip otherwise keeps showing the pre-removal series count
-        next to a grid that has no SERIES headers left.
-        """
-        try:
-            total = len(list(self._items or []))
-        except Exception:
-            return
-        try:
-            self.stats_strip.set_stats(int(total), 0, 0)
-        except Exception:
-            pass
+        return grid_api._stats_sync_after_dissolve(self)
 
     def set_series_attention(self, series_ids) -> None:
-        """Forward the cross-series routing hint to the grid (series-header marker).
+        """Thin delegator to ``ui/widget_parts.grid_api.set_series_attention``."""
+        from tabs.image_gallery.ui.widget_parts import grid_api
 
-        Additive: it never changes a card, its rank or the selection.
-        """
-        try:
-            self._grid_view.set_series_attention(series_ids)
-        except Exception:
-            pass
+        return grid_api.set_series_attention(self, series_ids)
 
     def set_rank_provenance(self, source: str | None = None, *, domain: str | None = None) -> None:
-        """Show which ranker produced the series ranks (stats-strip chip).
+        """Thin delegator to ``ui/widget_parts.grid_api.set_rank_provenance``."""
+        from tabs.image_gallery.ui.widget_parts import grid_api
 
-        *source* is a ``rank_source`` token (``fusion``/``jev``/``manual``); when
-        absent, *domain* ("algorithms"|"ai") picks the label. The strip hides the
-        chip when neither is known (never a fabricated ranker).
-        """
-        try:
-            self.stats_strip.set_rank_provenance(source, domain=domain)
-        except Exception:
-            pass
+        return grid_api.set_rank_provenance(self, source=source, domain=domain)
 
     def refresh_card(self, item: GalleryItem) -> None:
-        # Re-stamp the display badge (rank/source may have changed since the
-        # last triage) before the card renders it — same single computation.
-        try:
-            from tabs.image_gallery.services.rank_badge import stamp_badges
+        """Thin delegator to ``ui/widget_parts.grid_api.refresh_card``."""
+        from tabs.image_gallery.ui.widget_parts import grid_api
 
-            stamp_badges([item], getattr(self, "_source_path", None))
-        except Exception:
-            pass
-        # Delegate to grid_view (Button region update)
-        try:
-            self._grid_view.refresh_card(item)
-        except Exception:
-            pass
-        # Also handle legacy QLabel thumb path if present (for tests that inspect thumb)
-        thumb = self._card_labels.get(item.path)
-        # If thumb is actually a Button, grid_view already handled pixmap; no QLabel logic needed.
-        # Keep tooltip logic for Button cards
-        self._refresh_tooltip(item)
+        return grid_api.refresh_card(self, item)
 
     def _refresh_tooltip(self, item: GalleryItem) -> None:
-        """Sync the card tooltip for *item* (no content update, no sweep)."""
-        try:
-            card = self._cards.get(item.path) or self._grid_view.card_for(item.path)
-        except Exception:
-            return
-        if card is not None:
-            try:
-                # Single line: the full file name (the analysis second line was
-                # removed — a hover tooltip must not add extra lines).
-                card.setToolTip(str(item.name))
-            except Exception:
-                pass
+        """Thin delegator to ``ui/widget_parts.grid_api._refresh_tooltip``."""
+        from tabs.image_gallery.ui.widget_parts import grid_api
+
+        return grid_api._refresh_tooltip(self, item)
 
     def _refresh_rebuilt_cards(self, items, *, sweep: bool) -> None:
-        """Post-(re)build paint without the O(N²) sweep cascade.
+        """Thin delegator to ``ui/widget_parts.grid_api._refresh_rebuilt_cards``."""
+        from tabs.image_gallery.ui.widget_parts import grid_api
 
-        Content is already current from the acquire/update pass — only
-        tooltips (stale on pool-recycled cards) plus a single selection
-        sweep. Replaces per-item ``refresh_card`` loops, each of which
-        re-swept selection over the whole grid.
-        """
-        try:
-            for item in list(items or []):
-                self._refresh_tooltip(item)
-        except Exception:
-            pass
-        if sweep:
-            try:
-                self._grid_view.apply_selection(None)
-            except Exception:
-                pass
+        return grid_api._refresh_rebuilt_cards(self, items, sweep=sweep)
 
     def refresh_cards(self, items) -> None:
-        """Batch passthrough to ``grid_view.refresh_cards`` (single selection sweep).
+        """Thin delegator to ``ui/widget_parts.grid_api.refresh_cards``."""
+        from tabs.image_gallery.ui.widget_parts import grid_api
 
-        Falls back to per-card refresh when the grid view predates the batch
-        API (tests with stubbed grid views). Single-card semantics (incl.
-        the legacy tooltip tail) live in ``refresh_card``.
-        """
-        try:
-            from tabs.image_gallery.services.rank_badge import stamp_badges
-
-            stamp_badges(list(items or []), getattr(self, "_source_path", None))
-        except Exception:
-            pass
-        try:
-            batch = getattr(self._grid_view, "refresh_cards", None)
-            if callable(batch):
-                batch(items)
-                return
-        except Exception:
-            pass
-        try:
-            for item in list(items or []):
-                self.refresh_card(item)
-        except Exception:
-            pass
+        return grid_api.refresh_cards(self, items)
 
     def sync_source_badge(self, source) -> None:
-        """Move the SOURCE badge the instant the source changes.
+        """Thin delegator to ``ui/widget_parts.grid_api.sync_source_badge``."""
+        from tabs.image_gallery.ui.widget_parts import grid_api
 
-        A source change is a pure badge move, so it must not be chained to
-        the heavy comparison pass: ``stamp_badges`` is cheap (no decode, no
-        Qt) and only the two affected cards — the previous and the new
-        source — need a repaint. The background fidelity pass then re-stamps
-        everything in ``set_triage`` when it lands. Without this, pressing
-        "Make source" showed the old badge until every item had been
-        compared against the new source.
-        """
-        try:
-            try:
-                old = getattr(self, "_source_path", None)
-            except Exception:
-                old = None
-            try:
-                new = Path(source) if source is not None else None
-            except Exception:
-                new = None
-            try:
-                self._source_path = new
-            except Exception:
-                pass
-            from tabs.image_gallery.services.rank_badge import stamp_badges
-
-            items: list = []
-            try:
-                items.extend(list(self._items or []))
-            except Exception:
-                pass
-            try:
-                for cluster in getattr(self, "_series", None) or []:
-                    items.extend(list(cluster))
-            except Exception:
-                pass
-            stamp_badges(items, new)
-            want = {str(p) for p in (old, new) if p is not None}
-            if not want:
-                return
-            changed = []
-            seen: set[str] = set()
-            for item in items:
-                try:
-                    key = str(getattr(item, "path", ""))
-                except Exception:
-                    continue
-                if key in want and key not in seen:
-                    seen.add(key)
-                    changed.append(item)
-            if changed:
-                self.refresh_cards(changed)
-        except Exception:
-            pass
+        return grid_api.sync_source_badge(self, source)
 
     def set_card_visible(self, path: Path, visible: bool) -> None:
-        try:
-            self._grid_view.set_card_visible(path, visible)
-        except Exception:
-            pass
-        card = self._cards.get(path)
-        if card is not None:
-            try:
-                card.setVisible(visible)
-            except Exception:
-                pass
+        """Thin delegator to ``ui/widget_parts.grid_api.set_card_visible``."""
+        from tabs.image_gallery.ui.widget_parts import grid_api
+
+        return grid_api.set_card_visible(self, path, visible)
 
     # -- DnD: accept drops anywhere on the widget (fixes "после скидывания ничего") --
 
