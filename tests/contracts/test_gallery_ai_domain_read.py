@@ -24,7 +24,9 @@ QUALITY_READ = GALLERY / "services" / "quality_read.py"
 MODELS = GALLERY / "models.py"
 METRICS = GALLERY / "ui" / "quick_look" / "metrics.py"
 JEV = GALLERY / "services" / "jev_client.py"
-AI_CLIENT_SUFFIX = "/services/ai_client.py"
+#: The AI client source set: the old single module OR its package (the split
+#: moved the prompt text to ``services/ai_client/prompt.py``).
+AI_CLIENT_PREFIX = "/services/ai_client"
 
 #: The reversed mechanism (plan §A2): merging detector numbers INTO the AI
 #: result under the "detectors are authoritative" doctrine.
@@ -75,7 +77,9 @@ def find_prompt_doctrine_violations(sources: dict[str, str]) -> list[str]:
     """The analysis prompt must not re-state the reversed per-axis doctrine."""
     out: list[str] = []
     for path, src in sources.items():
-        if not path.endswith(AI_CLIENT_SUFFIX):
+        if not (
+            path.endswith(AI_CLIENT_PREFIX + ".py") or AI_CLIENT_PREFIX + "/" in path
+        ):
             continue
         low = src.lower()
         for phrase in REVERSED_PROMPT_PHRASES:
@@ -179,7 +183,7 @@ def test_guard_flags_a_reintroduced_detector_merge():
 def test_guard_flags_the_reversed_prompt_phrasing():
     src = 'PROMPT = "You are given the locally measured metrics; treat them as authoritative"\n'
     violations = find_prompt_doctrine_violations(
-        {"src/tabs/image_gallery/services/ai_client.py": src}
+        {"src/tabs/image_gallery/services/ai_client/prompt.py": src}
     )
     assert len(violations) == 1
     assert PLAN in violations[0]
