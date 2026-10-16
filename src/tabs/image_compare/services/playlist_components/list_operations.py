@@ -159,7 +159,8 @@ def _invalidate_caches_for_paths(paths: list[str], main_controller=None) -> None
         except Exception:
             pass
         # PipelineCache (per-session, ImageSession.cache) — evict closed TiledPixelStore
-        # иначе peek(cache.py:98) находит closed store → lazy evict только на peek,
+        # иначе peek (``PipelineCache.get_pixel``,
+        # src/tabs/image_compare/pipeline/cache.py:421) находит closed store → lazy evict только на peek,
         # duplicate теряет refcount, unify memo остаётся с old_uids. pyramid sweep
         # вызывается централизованно внутри PipelineCache.evict — прямого вызова
         # pyramid_registry.sweep() здесь нет (plan_loading_simplification Phase 1C).

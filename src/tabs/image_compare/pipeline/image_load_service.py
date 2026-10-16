@@ -6,7 +6,7 @@ full-frame, сервис только детекция). Заменяет:
 
 * ``slot._inflight[(slot,path)]`` (slot.py:475)
 * ``image_decode._inflight[(slot,path,"full")]`` (image_decode.py:272)
-* ``unify (p1,p2)`` (unify.py:214)
+* ``unify (p1,p2)`` (src/tabs/image_compare/use_cases/unify.py:270)
 * ``pyramid single-flight`` (session.py / pyramid.py)
 
 Key ``(normpath, mtime_ns, size, False)`` (file-identity prefix owned by
