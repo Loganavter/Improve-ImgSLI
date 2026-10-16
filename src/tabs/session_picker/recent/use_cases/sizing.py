@@ -17,11 +17,11 @@ from PySide6.QtWidgets import QApplication
 from shared.debug_flags import env_flag as _env_flag
 from sli_ui_toolkit.managers import scaled_px
 
-from tabs.host_helpers import estimate_prelayout_width
 from tabs.session_picker.geometry import (
     SESSION_PICKER_PAGE_HORIZONTAL_MARGINS,
     SESSION_PICKER_RECENT_CONTENT_WIDTH_FLOOR,
 )
+from tabs.session_picker.prelayout import estimate_prelayout_width
 
 if TYPE_CHECKING:
     from tabs.session_picker.recent.panel import RecentProjectsPanel

@@ -71,6 +71,11 @@ def handle_drop(tab, paths: list[Path], hint: dict | None = None) -> bool:
         has_dir = False
     if all_files and not has_dir:
         _dbg("handle_drop: single/multi image %d -> open_paths", len(accepted))
+        from tabs.image_gallery.use_cases.large_drop_guard import guard_large_drop
+
+        if not guard_large_drop(tab._widget, tab._controller, len(accepted)):
+            _dbg("handle_drop: large AI-drop warning declined -> nothing added")
+            return True
         try:
             from PySide6.QtCore import QTimer
 

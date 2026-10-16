@@ -100,6 +100,8 @@ class AppMessageDialog(ThemedDialog):
         text: str = "",
         ok_text: str = "OK",
         checkbox_text: str | None = None,
+        dont_ask_text: str | None = None,
+        cancel_text: str | None = None,
     ) -> None:
         super().__init__(parent)
         self._kind = kind
@@ -107,7 +109,10 @@ class AppMessageDialog(ThemedDialog):
         self._body_text = text
         self._ok_text = ok_text
         self._checkbox_text = checkbox_text
+        self._dont_ask_text = dont_ask_text
+        self._cancel_text = cancel_text
         self._dont_show_again = False
+        self._dont_ask_pressed = False
         self.theme_manager = ThemeManager.get_instance()
         # Own CSD explicitly — do not let the app-wide Polish interceptor
         # decorate first (avoids a second title bar / wrong chrome race).
@@ -179,17 +184,46 @@ class AppMessageDialog(ThemedDialog):
         actions = QWidget(self)
         action_layout = QGridLayout(actions)
         action_layout.setContentsMargins(0, 0, 0, 0)
+        action_layout.setHorizontalSpacing(scaled_px(8))
         action_layout.setColumnStretch(0, 1)
+
+        # Optional trailing actions (left→right): Cancel, "…and don't ask
+        # again", OK. A plain alert keeps the single OK button it always had.
+        column = 1
+        if self._cancel_text:
+            self._cancel_button = Button(
+                text=self._cancel_text, variant="surface", parent=actions
+            )
+            self._cancel_button.setMinimumSize(scaled_px(96), scaled_px(34))
+            self._cancel_button.clicked.connect(self.reject)
+            action_layout.addWidget(self._cancel_button, 0, column)
+            column += 1
+
+        if self._dont_ask_text:
+            self._dont_ask_button = Button(
+                text=self._dont_ask_text, variant="surface", parent=actions
+            )
+            self._dont_ask_button.setMinimumSize(scaled_px(96), scaled_px(34))
+            self._dont_ask_button.clicked.connect(self._accept_and_suppress)
+            action_layout.addWidget(self._dont_ask_button, 0, column)
+            column += 1
 
         self._ok_button = Button(text=self._ok_text, variant="surface", parent=actions)
         self._ok_button.setMinimumSize(scaled_px(96), scaled_px(34))
         self._ok_button.clicked.connect(self.accept)
 
-        action_layout.addWidget(self._ok_button, 0, 1)
+        action_layout.addWidget(self._ok_button, 0, column)
         root.addWidget(actions)
 
+    def _accept_and_suppress(self) -> None:
+        """Accept via the “…and don't ask again” button."""
+        self._dont_ask_pressed = True
+        self.accept()
+
     def accept(self) -> None:
-        if self._checkbox is not None:
+        if self._dont_ask_pressed:
+            self._dont_show_again = True
+        elif self._checkbox is not None:
             self._dont_show_again = bool(self._checkbox.isChecked())
         else:
             self._dont_show_again = False
@@ -215,6 +249,8 @@ class AppMessageDialog(ThemedDialog):
         *,
         ok_text: str = "OK",
         checkbox_text: str | None = None,
+        dont_ask_text: str | None = None,
+        cancel_text: str | None = None,
     ) -> QDialog.DialogCode:
         dialog = cls(
             parent,
@@ -223,6 +259,8 @@ class AppMessageDialog(ThemedDialog):
             text=text,
             ok_text=ok_text,
             checkbox_text=checkbox_text,
+            dont_ask_text=dont_ask_text,
+            cancel_text=cancel_text,
         )
         return QDialog.DialogCode(dialog.exec())
 
@@ -236,6 +274,8 @@ class AppMessageDialog(ThemedDialog):
         *,
         ok_text: str = "OK",
         checkbox_text: str | None = None,
+        dont_ask_text: str | None = None,
+        cancel_text: str | None = None,
     ) -> tuple[QDialog.DialogCode, bool]:
         """Like ``show_modal``, also returning the optional checkbox state."""
         dialog = cls(
@@ -245,6 +285,8 @@ class AppMessageDialog(ThemedDialog):
             text=text,
             ok_text=ok_text,
             checkbox_text=checkbox_text,
+            dont_ask_text=dont_ask_text,
+            cancel_text=cancel_text,
         )
         code = QDialog.DialogCode(dialog.exec())
         checked = bool(dialog.dont_show_again) if int(code) == int(
