@@ -226,8 +226,9 @@ def test_rank_one_consistent_across_helpers(tmp_path: Path):
 
 def test_keep_best_reads_controller_state_series(tmp_path: Path):
     """P0-1: controller-shaped owner (``state.series`` only, cf.
-    ``controller.py:529`` — no ``_triage_series``/``triage_series``) is
-    resolved by the sole ``_series_of`` implementation."""
+    ``GalleryController`` in src/tabs/image_gallery/controller.py — no
+    ``_triage_series`` nor bare triage_series attribute) is resolved by
+    the sole ``_series_of`` implementation."""
     a = GalleryItem(path=tmp_path / "a.jpg", mtime_ns=1)
     b = GalleryItem(path=tmp_path / "b.jpg", mtime_ns=2)
 
