@@ -49,6 +49,22 @@ def _item(name: str, **metrics) -> GalleryItem:
     return it
 
 
+def _ai_item(name: str, **axes) -> GalleryItem:
+    """An item carrying the VLM scorecard — the AI domain's scoring read.
+
+    On the AI domain Jev's vector comes from ``item.analysis`` (plan-gallery-ai-
+    backend-owns-quality), so the lifecycle fixtures carry an analysis, not
+    detector ``metrics``.
+    """
+    from tabs.image_gallery.models import AiAnalysisResult
+
+    it = GalleryItem(path=Path(f"/gallery/{name}"), mtime_ns=0)
+    it.analysis = AiAnalysisResult(
+        description="", tags=(), model="m", analyzed_at_iso="t", axes=dict(axes)
+    )
+    return it
+
+
 def _series(*items) -> Series:
     return Series(id="series_1", members=list(items))
 
@@ -161,7 +177,7 @@ def test_a_genuine_abstain_from_a_complete_vector_is_still_pinned(tmp_path) -> N
         calls.append(payload)
         return _chat({"noul": True})
 
-    a, b = _item("a.png", ssim=0.9), _item("b.png", ssim=0.4)
+    a, b = _item("a.png", ssim=0.9), _item("b.png", ssim=0.4)  # Algorithms read
     cache = jev_cache.JevRankCache(tmp_path)
     first = rank_series_jev_detailed([a, b], mode="fidelity", client=_client, cache=cache)
     second = rank_series_jev_detailed([a, b], mode="fidelity", client=_client, cache=cache)
@@ -185,14 +201,14 @@ def test_run_jev_ranks_skips_a_series_below_two_scored_members() -> None:
 
 
 def test_run_jev_ranks_schedules_a_series_with_two_scored_members() -> None:
-    a, b = _item("a.png", ssim=0.9), _item("b.png", ssim=0.4)
+    a, b = _ai_item("a.png", ssim=90), _ai_item("b.png", ssim=40)
     ctrl = _LifecycleCtrl([_series(a, b)], [a, b])
     GalleryController._run_jev_ranks(ctrl)
     assert ctrl.scheduled == [[str(a.path), str(b.path)]]
 
 
 def test_run_jev_ranks_does_nothing_on_the_algorithms_domain() -> None:
-    a, b = _item("a.png", ssim=0.9), _item("b.png", ssim=0.4)
+    a, b = _ai_item("a.png", ssim=90), _ai_item("b.png", ssim=40)
     ctrl = _LifecycleCtrl([_series(a, b)], [a, b], domain="algorithms")
     GalleryController._run_jev_ranks(ctrl)
     assert ctrl.scheduled == []
@@ -204,7 +220,7 @@ def test_run_jev_ranks_does_nothing_on_the_algorithms_domain() -> None:
 
 
 def test_metrics_settle_schedules_jev_once() -> None:
-    a, b = _item("a.png", ssim=0.9), _item("b.png", ssim=0.4)
+    a, b = _ai_item("a.png", ssim=90), _ai_item("b.png", ssim=40)
     ctrl = _LifecycleCtrl([_series(a, b)], [a, b])
     GalleryController._settle_metrics_pass(ctrl, [a, b])
     assert ctrl.scheduled == [[str(a.path), str(b.path)]]
@@ -212,7 +228,7 @@ def test_metrics_settle_schedules_jev_once() -> None:
 
 
 def test_second_settle_over_unchanged_inputs_does_not_reschedule() -> None:
-    a, b = _item("a.png", ssim=0.9), _item("b.png", ssim=0.4)
+    a, b = _ai_item("a.png", ssim=90), _ai_item("b.png", ssim=40)
     ctrl = _LifecycleCtrl([_series(a, b)], [a, b])
     GalleryController._settle_metrics_pass(ctrl, [a, b])
     GalleryController._settle_metrics_pass(ctrl, [a, b])
@@ -222,7 +238,7 @@ def test_second_settle_over_unchanged_inputs_does_not_reschedule() -> None:
 
 def test_second_trigger_before_finish_is_single_flight() -> None:
     """A domain-switch trigger racing the settle must not spawn a second batch."""
-    a, b = _item("a.png", ssim=0.9), _item("b.png", ssim=0.4)
+    a, b = _ai_item("a.png", ssim=90), _ai_item("b.png", ssim=40)
     ctrl = _LifecycleCtrl([_series(a, b)], [a, b])
 
     def _no_complete(members, *, on_complete=None):
@@ -238,7 +254,7 @@ def test_explicit_domain_toggle_back_to_ai_reopens_the_gate() -> None:
     """Switching Algorithms→AI must re-apply the Jev rank even though the same
     fingerprint completed: the explicit switch re-opens the stage gate (the
     pinned cache makes the re-run free)."""
-    a, b = _item("a.png", ssim=0.9), _item("b.png", ssim=0.4)
+    a, b = _ai_item("a.png", ssim=90), _ai_item("b.png", ssim=40)
     ctrl = _LifecycleCtrl([_series(a, b)], [a, b], domain="algorithms")
     ctrl.activate_judgment_domain("ai")
     assert len(ctrl.scheduled) == 1
@@ -248,7 +264,7 @@ def test_explicit_domain_toggle_back_to_ai_reopens_the_gate() -> None:
 
 
 def test_folder_change_invalidates_the_gate() -> None:
-    a, b = _item("a.png", ssim=0.9), _item("b.png", ssim=0.4)
+    a, b = _ai_item("a.png", ssim=90), _ai_item("b.png", ssim=40)
     ctrl = _LifecycleCtrl([_series(a, b)], [a, b])
     GalleryController._settle_metrics_pass(ctrl, [a, b])
     assert len(ctrl.scheduled) == 1
@@ -264,7 +280,7 @@ def test_folder_change_invalidates_the_gate() -> None:
 
 
 def test_settle_ranks_when_the_authority_is_ai_even_if_state_says_algorithms() -> None:
-    a, b = _item("a.png", ssim=0.9), _item("b.png", ssim=0.4)
+    a, b = _ai_item("a.png", ssim=90), _ai_item("b.png", ssim=40)
     ctrl = _LifecycleCtrl([_series(a, b)], [a, b], domain="ai")
     ctrl.state.rank_domain = "algorithms"  # a replaced GalleryState projection
     GalleryController._settle_metrics_pass(ctrl, [a, b])
@@ -272,7 +288,7 @@ def test_settle_ranks_when_the_authority_is_ai_even_if_state_says_algorithms() -
 
 
 def test_settle_skips_when_the_authority_is_algorithms_even_if_state_says_ai() -> None:
-    a, b = _item("a.png", ssim=0.9), _item("b.png", ssim=0.4)
+    a, b = _ai_item("a.png", ssim=90), _ai_item("b.png", ssim=40)
     ctrl = _LifecycleCtrl([_series(a, b)], [a, b], domain="algorithms")
     ctrl.state.rank_domain = "ai"
     GalleryController._settle_metrics_pass(ctrl, [a, b])

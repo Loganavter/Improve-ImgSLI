@@ -523,24 +523,17 @@ def test_card_regions_keep_transparent_hover(qapp) -> None:
     card.deleteLater()
 
 
-def test_best_hidden_while_the_card_is_active(qapp, _production_dark_palettes):
-    """★ BEST only once the card SETTLED — never while it is still analyzing
-    (that showed BEST before the work finished). While active the winner keeps
-    its #1; after the phase clears it flips to ★ BEST."""
-    from tabs.image_gallery.models import ActivityPhase
-    from tabs.image_gallery.services.activity import clear_activity, set_activity
-    from tabs.image_gallery.services.rank_badge import stamp_badges
+def test_best_preset_renders_the_shared_badge(qapp, _production_dark_palettes):
+    """The card renders the SHARED badge (single source of truth): a winner
+    stamped by ``stamp_badges`` as ★ BEST renders the accent preset verbatim —
+    the card never re-derives it from flags."""
+    from tabs.image_gallery.services.rank_badge import KIND_BEST, stamp_badges
 
     item = _item(is_best=True, rank=1)
     stamp_badges([item])
+    assert (item.badge, item.badge_kind) == ("★ BEST", KIND_BEST)
     card = build_gallery_card(item, parent=None)
     qapp.processEvents()
-
-    set_activity(item, ActivityPhase.ANALYZING, "local")
-    _apply_rejected_visuals(card, item)
-    assert getattr(card, "_gallery_badge", None) == "#1"
-
-    clear_activity(item)
     _apply_rejected_visuals(card, item)
     assert getattr(card, "_gallery_badge", None) == "★ BEST"
     card.deleteLater()

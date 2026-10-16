@@ -79,7 +79,14 @@ def _make_overlay(qtbot) -> QuickLookOverlay:
     return ov
 
 
-def _show(overlay: QuickLookOverlay, item: GalleryItem, series, mode=Mode.FIDELITY, source=None):
+def _show(
+    overlay: QuickLookOverlay,
+    item: GalleryItem,
+    series,
+    mode=Mode.FIDELITY,
+    source=None,
+    domain: str = "algorithms",
+):
     # state.series is list[Series] | list[list[GalleryItem]] — wrap a flat
     # list of items into one cluster the way the widget stores it.
     if series and not isinstance(series[0], (list, tuple)):
@@ -93,12 +100,14 @@ def _show(overlay: QuickLookOverlay, item: GalleryItem, series, mode=Mode.FIDELI
     except Exception:
         pass
     owner = SimpleNamespace(
+        _judgment_domain=domain,
         state=SimpleNamespace(
             mode=mode,
             source_path=source,
             series=series,
             items=[m for cl in series for m in cl],
-        )
+            judgment_domain=domain,
+        ),
     )
     overlay.show_for(item, owner)
     # Real visibility + layout: the overlay only counts as visible over a
@@ -2994,10 +3003,77 @@ def test_composition_axis_renders_as_metric_row(qtbot):
     ov.hide()
 
 
-def test_metric_row_header_uses_local_note_not_ai(qtbot):
-    """AI per-axis notes are NOT shown on rows; the local band note is.
+def test_ai_domain_rows_read_the_vlm_scorecard_not_detectors(qtbot):
+    """A2: on the AI domain the rows show the VLM's numbers, not the detectors'.
 
-    plan-gallery-ai-quality UX contract: one measured answer per row.
+    The item carries BOTH a detector read (metrics) and a VLM read (analysis
+    axes); the AI domain must render the analysis. plan-gallery-ai-backend-owns-
+    quality.
+    """
+    from tabs.image_gallery.models import AiAnalysisResult, AnalysisStatus
+
+    a = _item(
+        "a.png",
+        metrics={"sharpness": 200.0, "noise": 0.9},  # detector: 50% / 10%
+        analysis=AiAnalysisResult(
+            description="", tags=(), model="m", analyzed_at_iso="t",
+            axes={"sharpness": 33, "noise": 91},
+        ),
+        analysis_status=AnalysisStatus.DONE,
+    )
+    ov = _make_overlay(qtbot)
+    _show(ov, a, [a], mode=Mode.CAMERA, domain="ai")
+    values = [lbl.text() for row in ov._metric_rows for lbl in row.findChildren(_QlLabel)]
+    assert "33%" in values, values  # VLM sharpness
+    assert "91%" in values, values  # VLM noise (positive "Clean")
+    assert "50%" not in values, values  # the detector's sharpness must NOT appear
+    ov.hide()
+
+
+def test_algorithms_domain_rows_still_read_the_detectors(qtbot):
+    """A2: the Algorithms domain is unchanged — it reads item.metrics."""
+    from tabs.image_gallery.models import AiAnalysisResult, AnalysisStatus
+
+    a = _item(
+        "a.png",
+        metrics={"sharpness": 200.0, "noise": 0.9},  # detector: 50% / 10%
+        analysis=AiAnalysisResult(
+            description="", tags=(), model="m", analyzed_at_iso="t",
+            axes={"sharpness": 33, "noise": 91},
+        ),
+        analysis_status=AnalysisStatus.DONE,
+    )
+    ov = _make_overlay(qtbot)
+    _show(ov, a, [a], mode=Mode.CAMERA, domain="algorithms")
+    values = [lbl.text() for row in ov._metric_rows for lbl in row.findChildren(_QlLabel)]
+    assert "50%" in values, values  # detector sharpness
+    assert "33%" not in values, values  # the VLM number must NOT appear
+    ov.hide()
+
+
+def test_ai_domain_artifact_rows_read_the_vlm_defects(qtbot):
+    """A2: artifact rows on the AI domain come from the VLM's reported defects."""
+    from tabs.image_gallery.models import AiAnalysisResult, AiDefect, AnalysisStatus
+
+    a = _item(
+        "a.png",
+        analysis=AiAnalysisResult(
+            description="", tags=(), model="m", analyzed_at_iso="t",
+            defects=(AiDefect(kind="halo", severity="flagged", note="edge glow"),),
+        ),
+        analysis_status=AnalysisStatus.DONE,
+    )
+    ov = _make_overlay(qtbot)
+    _show(ov, a, [a], mode=Mode.FIDELITY, domain="ai")
+    values = [lbl.text() for row in ov._artifact_rows for lbl in row.findChildren(_QlLabel)]
+    assert "15%" in values, values  # flagged halo (3.0 quality map)
+    ov.hide()
+
+
+def test_metric_row_header_uses_local_note_not_ai(qtbot):
+    """Per-axis AI notes are NOT shown as row text; the local band note is.
+
+    Numbers are one answer per row (the domain's read).
     """
     from tabs.image_gallery.models import AiAnalysisResult, AnalysisStatus
 

@@ -102,11 +102,15 @@ def _accent_color():
     return QColor(_ACCENT_TOKEN_FALLBACK[1] if _is_dark() else _ACCENT_FALLBACK_LIGHT)
 
 
-def _dots_for_item(item: GalleryItem, mode: object = None) -> tuple[str, tuple[object, ...]]:
+def _dots_for_item(
+    item: GalleryItem, mode: object = None, domain: object = None
+) -> tuple[str, tuple[object, ...]]:
     """Stage 2: per-dot three quality dots via artifact severities (design.md:67-83).
 
     Severities + mode mapping come from the single source of truth
-    (``use_cases/quality.py``); here only severity→color stays.
+    (``use_cases/quality.py``); the *domain* picks the read
+    (``services/quality_read``): AI = the VLM's reported defects, Algorithms =
+    the local detector severities. Here only severity→color stays.
     Each dot color resolves via theme tokens (S2-12): clean→success,
     mild→warning, flagged→danger (fallback hexes kept for offscreen tests).
     Returns ``(dot_text, tuple[QColor, QColor, QColor])`` for the dots row.
@@ -123,9 +127,14 @@ def _dots_for_item(item: GalleryItem, mode: object = None) -> tuple[str, tuple[o
         return _severity_color("clean")
 
     try:
+        from tabs.image_gallery.services import quality_read as _quality_read
         from tabs.image_gallery.use_cases import quality as _quality
 
-        triplet = _quality.mode_triplet(item, mode)
+        artifacts = _quality.MODE_ARTIFACTS[_quality.normalize_mode(mode)]
+        triplet = tuple(
+            _quality_read.domain_artifact_severity(item, aid, domain=domain)
+            for aid in artifacts
+        )
     except Exception:
         triplet = ("clean", "clean", "clean")
     return dot_text, tuple(_color_for_severity(s) for s in triplet)

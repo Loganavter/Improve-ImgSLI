@@ -15,7 +15,7 @@ The default. It fuses every measured quality reading (sharpness, exposure, noise
 
 ### AI (Jev) {#ai}
 
-Opt-in. On the AI domain the assistant **Jev** ranks the series from the measured readings — not from the picture itself. This ranking is **marked** and **non-deterministic**: the same series can come back in a different order, and the badge says **AI (Jev)** so you never mistake it for a measurement.
+Opt-in. On the AI domain the assistant **Jev** ranks the series from the AI's own quality read of each image — the per-axis scores the AI gives, not the detector readings. This ranking is **marked** and **non-deterministic**: the same series can come back in a different order, and the badge says **AI (Jev)** so you never mistake it for the Algorithms read.
 
 - It is cached and pinned per series, so a re-run is stable until the series changes.
 - When Jev is unavailable or unsure it **degrades visibly** back to the Algorithms rank, and the reason is shown — the rank never silently changes hands.

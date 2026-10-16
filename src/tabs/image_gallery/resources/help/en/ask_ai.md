@@ -19,7 +19,7 @@ The **Ask AI** panel: the scope (**2 images**), the question field, the answer, 
 
 ### Ask about a series {#ask-series}
 
-The series-header menu asks about every member of the series at once. Sharpness and noise readings come from [Quality Metrics](help://workspace.image_gallery.quality) and are shown without a request to the AI model.
+The series-header menu asks about every member of the series at once. Sharpness and noise readings come from [Quality Metrics](help://workspace.image_gallery.quality).
 
 ### Setup and limits {#setup}
 

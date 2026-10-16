@@ -66,12 +66,26 @@ def rebuild_artifacts(overlay, item) -> None:
     # Rows live flat in right_lay (see helpers.relayout_report_rows).
     host = getattr(overlay, "_report_host", None)
     lay = getattr(overlay, "_right_lay", None)
-    # Same triple as the card dots (use_cases/quality.MODE_ARTIFACTS).
+    # Same triple as the card dots (use_cases/quality.MODE_ARTIFACTS). The
+    # severity is the CURRENT domain's read (plan-gallery-ai-backend-owns-
+    # quality): the AI domain shows the VLM's reported defects, Algorithms the
+    # local source-anchored detector severities — never both.
+    try:
+        from tabs.image_gallery.services import quality_read as _quality_read
+        from tabs.image_gallery.ui.quick_look.metrics import _overlay_judgment_domain
+
+        domain = _overlay_judgment_domain(overlay)
+    except Exception:
+        _quality_read = None  # type: ignore[assignment]
+        domain = "algorithms"
     try:
         from tabs.image_gallery.use_cases import quality as _quality
 
         artifacts = list(_quality.MODE_ARTIFACTS[_quality.normalize_mode(getattr(overlay, "_mode", None))])
-        shown = [(aid, _quality.severity(item, aid)) for aid in artifacts]
+        if _quality_read is not None:
+            shown = [(aid, _quality_read.domain_artifact_severity(item, aid, domain=domain)) for aid in artifacts]
+        else:
+            shown = [(aid, _quality.severity(item, aid)) for aid in artifacts]
     except Exception:
         artifacts = ["banding", "halo"]
         shown = [(aid, "clean") for aid in artifacts]
@@ -88,8 +102,8 @@ def rebuild_artifacts(overlay, item) -> None:
     except Exception:
         pass
     shown = [(aid, sev) for aid, sev in shown if aid not in _drop]
-    # Rows depend only on the local (source-anchored) severity — no AI note in
-    # the change key (plan-gallery-ai-quality UX contract).
+    # The change key is the shown (artifact, severity) pairs — the domain's read
+    # already resolved into them, so a domain switch changes the key and rebuilds.
     shown_key = [(aid, lvl) for aid, lvl in shown]
 
 
@@ -137,11 +151,9 @@ def rebuild_artifacts(overlay, item) -> None:
             except Exception:
                 pass
         score = _ARTIFACT_QUALITY.get(lvl, 100)
-        # Local band descriptor only — the VLM's per-axis read is never shown
-        # on the row (plan-gallery-ai-quality UX contract; its narration lives
-        # in the AI block). The severity is already source-anchored upstream.
-        # Same helper the metric rows use, so the band note resolves through
-        # ``image_gallery.metric_note.<aid>.<band>`` (no second key set).
+        # A localized band descriptor for the row (same helper the metric rows
+        # use, ``image_gallery.metric_note.<aid>.<band>`` — no second key set).
+        # The severity itself is already the current domain's read (see above).
         try:
             from tabs.image_gallery.ui.quick_look.metrics import _metric_note
 

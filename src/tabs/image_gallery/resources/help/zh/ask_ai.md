@@ -19,7 +19,7 @@ icon: ai.svg
 
 ### 就系列提问 {#ask-series}
 
-系列的标题菜单会一次对系列中的每个成员提问。锐度和噪点读数来自 [质量指标](help://workspace.image_gallery.quality)，显示时不向 AI 模型发起请求。
+系列的标题菜单会一次对系列中的每个成员提问。锐度和噪点读数来自 [质量指标](help://workspace.image_gallery.quality)。
 
 ### 设置与限制 {#setup}
 

@@ -67,6 +67,22 @@ def _metric_label(overlay, spec_id: str, default: str) -> str:
     return _ql_text(overlay, f"image_gallery.metric.{spec_id}", default)
 
 
+def _overlay_judgment_domain(overlay) -> str:
+    """The judgment domain the open report renders for ("algorithms" | "ai").
+
+    Read from the overlay's owner (the gallery widget), the durable authority the
+    toolbar switch writes (``state.judgment_domain`` is a transient mirror that
+    is wholesale replaced — never read as an authority, plan-gallery-jev-pipeline
+    §S1). Unknown/absent falls back to Algorithms.
+    """
+    try:
+        owner = getattr(overlay, "_owner", None)
+        domain = getattr(owner, "_judgment_domain", None)
+        return "ai" if str(domain or "").strip().lower() == "ai" else "algorithms"
+    except Exception:
+        return "algorithms"
+
+
 def _metric_note(overlay, spec_id: str, score: int) -> str:
     """Localized band descriptor for a metric row (``metric_note.<id>.<band>``).
 
@@ -145,12 +161,14 @@ def _metrics_fingerprint(overlay, item, is_fidelity: bool, mode_str: str) -> tup
             item_path = str(getattr(item, "path", "") or "")
         except Exception:
             item_path = ""
-        # Metric rows depend on the AI-only Composition axis (a row) — include
-        # the analysis identity so a late analysis still rebuilds the row set.
-        # Per-axis AI notes are NOT part of the rows anymore (plan UX contract).
+        # On the AI domain the VLM scorecard IS the row source — include the
+        # analysis identity (axes + composition) so a late analysis and a domain
+        # switch both rebuild the row set. On Algorithms the axes are ignored
+        # downstream, so a changed analysis cannot force a needless rebuild.
         try:
             _a = getattr(item, "analysis", None)
             analysis_part = (
+                tuple(sorted((str(k), int(v)) for k, v in (getattr(_a, "axes", {}) or {}).items())),
                 int(getattr(_a, "composition", -1) or -1),
                 str(getattr(_a, "verdict", "") or ""),
                 tuple(
@@ -159,6 +177,10 @@ def _metrics_fingerprint(overlay, item, is_fidelity: bool, mode_str: str) -> tup
             )
         except Exception:
             analysis_part = ()
+        try:
+            domain_part = _overlay_judgment_domain(overlay)
+        except Exception:
+            domain_part = "algorithms"
         try:
             series = list(getattr(overlay, "_series_items", None) or [])
             series_len = len(series)
@@ -177,7 +199,7 @@ def _metrics_fingerprint(overlay, item, is_fidelity: bool, mode_str: str) -> tup
             sp = int(scaled_px(2))
         except Exception:
             sp = 2
-        return (item_path, metrics_part, analysis_part, bool(is_fidelity), str(mode_str), series_len, current_idx, series_part, dark, sp)
+        return (item_path, metrics_part, analysis_part, domain_part, bool(is_fidelity), str(mode_str), series_len, current_idx, series_part, dark, sp)
     except Exception:
         return ()
 
@@ -625,14 +647,26 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
         except Exception:
             pass
     overlay._metric_rows.clear()
+    # Per-domain read (plan-gallery-ai-backend-owns-quality): the AI domain shows
+    # the VLM's scorecard, the Algorithms domain the local detectors. Only ONE of
+    # them answers here, so a row is always one answer, never two competing ones.
+    domain = _overlay_judgment_domain(overlay)
+    try:
+        from tabs.image_gallery.services import quality_read as _quality_read
+
+        read = _quality_read.domain_axis_scores(item, domain=domain)
+    except Exception:
+        read = {}
+    # Raw detector keys drive the Algorithms-domain extras (raw deltas, the dual
+    # Detail bar); the AI domain has no raws and never reads them.
     metrics = getattr(item, "metrics", None) or {}
     if not isinstance(metrics, dict):
         metrics = {}
+    if domain == "ai":
+        metrics = {}
+
     def _titled(label: str, spec_id: str, score: int) -> str:
-        # Local band descriptor only. The VLM does not own per-axis notes
-        # (plan-gallery-ai-quality UX contract): its read lives in the AI
-        # block (verdict/reason/defect chips), never on a measured row — so
-        # the row reads as one measured answer, not two competing systems.
+        # Localized band descriptor (positive wording), same on both domains.
         note = _metric_note(overlay, spec_id, score)
         return f"{label} — {note}" if note else label
 
@@ -720,20 +754,19 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
         return _warn_color()
 
     def _add_score_row(spec_id: str, *, extra: str = "", gap: bool = True) -> bool:
-        """One measured metric as ``NN%`` (+ optional suffix). A missing
-        measurement stays an explicit gap row when ``gap`` (matching the
-        historical per-metric behavior: noise/WB hide instead). Returns
-        True when measured."""
+        """One axis as ``NN%`` from the CURRENT domain's read (+ optional suffix).
+        A missing score stays an explicit gap row when ``gap`` (matching the
+        historical per-metric behavior: noise/WB hide instead). Returns True
+        when the axis has a score."""
         spec = _spec_for(spec_id)
         if spec is None:
             return False
-        got = _raw_for(spec, metrics)
-        if got is None:
+        score = read.get(spec_id)
+        if score is None:
             if gap:
                 _add_unmeasured_row(_metric_label(overlay, spec.id, spec.label))
             return False
-        _key, raw = got
-        score = _score_for(spec, raw)
+        score = int(score)
         col = _band_color(score)
         value = f"{score}%" + (f" · {extra}" if extra else "")
         _add_metric_row(_titled(_metric_label(overlay, spec_id, spec.label), spec_id, score), value, score / 100.0, col, value_color=col)
@@ -762,7 +795,7 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
             total=len(overlay._series_items),
         )
         _add_score_row("ssim", extra=rank_txt)
-        subline = ssim_subline(overlay, item)
+        subline = ssim_subline(overlay, item) if domain != "ai" else ""
         if subline:
             sub_row = QWidget(host)
             sub_lay = QVBoxLayout(sub_row)
@@ -775,11 +808,9 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
         _spec = _spec_for("detail_gain")
         _hf = _raw_for(_spec, metrics) if _spec is not None else None
         if _hf is None:
-            _add_unmeasured_row(
-                _metric_label(overlay, "detail_gain", _spec.label)
-                if _spec is not None
-                else _metric_label(overlay, "detail_gain", "Detail")
-            )
+            # No raw (the AI domain has none, or Detail is unmeasured) — the
+            # row reads as a normal score/gap row from the current read.
+            _add_score_row("detail_gain")
         else:
             _key, hf_f = _hf
             score = _score_for(_spec, hf_f)
@@ -825,28 +856,30 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
             overlay._metric_rows.append(row)
         _add_score_row("color_accuracy")
         # Source-relative clipping (how much more this variant clips than the
-        # source). Shown only when measured.
-        if "clipping_delta" in metrics:
+        # source); the raw delta is an Algorithms-domain extra. Shown when the
+        # current domain scored the axis.
+        if "clipping_delta" in read:
+            _extra = ""
             try:
-                _cd = float(metrics.get("clipping_delta"))
+                _extra = f"{float(metrics.get('clipping_delta')):+.2f}%"
             except Exception:
-                _cd = 0.0
-            _add_score_row("clipping_delta", gap=False, extra=f"{_cd:+.2f}%")
+                _extra = ""
+            _add_score_row("clipping_delta", gap=False, extra=_extra)
         # Source-relative edge artifacts (halo / chroma fringing) — reliable
-        # form; shown with the raw edge/flat ratio.
+        # form; Algorithms shows the raw edge/flat ratio.
         for _k in ("halo_delta", "chroma_fringe_delta"):
-            if _k in metrics:
+            if _k in read:
+                _extra = ""
                 try:
-                    _rv = float(metrics.get(_k))
+                    _extra = f"{float(metrics.get(_k)):.1f}×"
                 except Exception:
-                    _rv = 0.0
-                _add_score_row(_k, gap=False, extra=f"{_rv:.1f}×")
+                    _extra = ""
+                _add_score_row(_k, gap=False, extra=_extra)
         # Optional learned perceptual closeness (LPIPS/DISTS): rendered only
-        # when the backend is installed (the keys are absent otherwise), so no
-        # empty row ever appears.
-        if "dists" in metrics:
+        # when the current domain scored them, so no empty row ever appears.
+        if "dists" in read:
             _add_score_row("dists", gap=False)
-        if "lpips" in metrics:
+        if "lpips" in read:
             _add_score_row("lpips", gap=False)
     elif "CAMERA" in mode_str:
         _add_score_row("sharpness")
@@ -856,9 +889,9 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
         # the rows simply hide (unchanged historical behavior).
         _add_score_row("noise", gap=False)
         _add_score_row("white_balance", gap=False)
-        # Optional no-reference overall quality (BRISQUE) when the learned
-        # backend is installed; absent backend adds no row.
-        if "brisque" in metrics:
+        # Optional no-reference overall quality (BRISQUE) when scored; an
+        # absent reading adds no row.
+        if "brisque" in read:
             _add_score_row("brisque", gap=False)
     else:
         _add_score_row("typicality")

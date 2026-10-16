@@ -14,10 +14,20 @@ import json
 import logging
 from pathlib import Path
 
-from tabs.image_gallery.models import AiAnalysisResult
+from tabs.image_gallery.models import AiAnalysisResult, ai_scored_axes
 from tabs.image_gallery.services.thumbnail_cache import cache_key_for
 
 logger = logging.getLogger("ImproveImgSLI")
+
+#: Cache format version. v2 = the open per-axis scorecard (``axes``,
+#: plan-gallery-ai-backend-owns-quality): the VLM's OWN numbers. A v1 entry
+#: (pre-scorecard) stored ``sharpness``/``noise``/``exposure`` written by the old
+#: ``controller._merge_measured_metrics`` — i.e. LOCAL DETECTOR values, not the
+#: VLM's. Serving those as the AI-domain read would be a provenance lie (and the
+#: reason a stale entry reads as "the VLM measured only 3 axes"), so a v1 entry
+#: is treated as a cache MISS and the AI domain re-analyzes it with the full
+#: per-axis prompt.
+AI_CACHE_VERSION = 2
 
 
 def ai_cache_dir() -> Path:
@@ -65,15 +75,33 @@ def load_cached_analysis(path: Path, mtime_ns: int) -> AiAnalysisResult | None:
                     ))
             except Exception:
                 continue
+        try:
+            version = int(data.get("version", 1))
+        except Exception:
+            version = 1
+        if version < AI_CACHE_VERSION:
+            # Pre-scorecard entry: its named scores are the local detectors'
+            # (the old ``_merge_measured_metrics``), never the VLM's. Do not
+            # reconstruct a scorecard from them — treat the entry as a miss so
+            # the AI domain re-analyzes with the full per-axis prompt.
+            return None
+        # Open per-axis scorecard (the VLM's own numbers).
+        try:
+            from tabs.image_gallery.services.ai_client import _parse_axes
+
+            axes: dict[str, int] = _parse_axes(data.get("axes"))
+        except Exception:
+            axes = {}
         return AiAnalysisResult(
             description=data["description"],
             tags=tuple(data.get("tags", ())),
             model=data["model"],
             analyzed_at_iso=data["analyzed_at_iso"],
-            sharpness=_score("sharpness"),
-            noise=_score("noise"),
-            exposure=_score("exposure"),
-            composition=_score("composition"),
+            sharpness=axes.get("sharpness", -1),
+            noise=axes.get("noise", -1),
+            exposure=axes.get("exposure", -1),
+            composition=axes.get("composition", -1),
+            axes=axes,
             verdict=verdict,
             verdict_reason=str(data.get("verdict_reason", "") or ""),
             defects=tuple(defects),
@@ -143,6 +171,12 @@ def save_analysis(path: Path, mtime_ns: int, result: AiAnalysisResult) -> None:
                     ],
                     "confidence": result.confidence,
                     "axis_notes": dict(result.axis_notes or {}),
+                    #: The MERGED per-axis scorecard (``axes`` + the named
+                    #: aliases, so a directly-built result's composition is not
+                    #: lost) — the AI domain's read. Plus the format version
+                    #: (v2 = scorecard contract).
+                    "axes": dict(ai_scored_axes(result)),
+                    "version": AI_CACHE_VERSION,
                 }
             ),
             encoding="utf-8",

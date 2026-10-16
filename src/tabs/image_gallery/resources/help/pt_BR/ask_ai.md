@@ -19,7 +19,7 @@ O painel **Perguntar à IA**: o escopo (**2 images**), o campo de pergunta, a re
 
 ### Perguntar sobre uma série {#ask-series}
 
-O menu do cabeçalho da série pergunta de uma vez sobre cada membro da série. As leituras de nitidez e ruído vêm de [Métricas de qualidade](help://workspace.image_gallery.quality) e são mostradas sem uma requisição ao modelo de IA.
+O menu do cabeçalho da série pergunta de uma vez sobre cada membro da série. As leituras de nitidez e ruído vêm de [Métricas de qualidade](help://workspace.image_gallery.quality).
 
 ### Configuração e limites {#setup}
 

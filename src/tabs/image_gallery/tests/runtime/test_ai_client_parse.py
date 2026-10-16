@@ -268,7 +268,7 @@ def test_build_request_injects_measured_metrics(tmp_path):
         img, model="m", metrics={"sharpness": 200.0, "noise": 0.2}
     )
     text = payload["messages"][0]["content"][0]["text"]
-    assert "MEASURED METRICS (authoritative):" in text
+    assert "LOCAL MEASUREMENTS (Algorithms domain, context only):" in text
     assert "- Sharpness: 200 (quality 50%)" in text
     assert "- Clean: 0.2 (quality 80%)" in text
 
@@ -280,4 +280,53 @@ def test_build_request_without_metrics_has_no_block(tmp_path):
     img.write_bytes(b"\x00")
     payload = build_request(img, model="m")
     text = payload["messages"][0]["content"][0]["text"]
-    assert "MEASURED METRICS" not in text
+    assert "LOCAL MEASUREMENTS" not in text
+
+
+def test_build_request_requests_every_axis_for_mode(tmp_path):
+    """A1: the prompt asks for one score per applicable axis for the mode."""
+    from tabs.image_gallery.services.ai_client import build_request
+    from tabs.image_gallery.services.rank_fusion import measured_axes_for
+
+    img = tmp_path / "i.png"
+    img.write_bytes(b"\x00")
+    for mode in ("camera", "fidelity", "batch_synthetic"):
+        payload = build_request(img, model="m", mode=mode)
+        text = payload["messages"][0]["content"][0]["text"]
+        for axis_id in measured_axes_for(mode):
+            assert f'"{axis_id}"' in text, (mode, axis_id)
+        assert '"axes"' in text
+    # Fidelity also asks for the reference axes; camera asks for BRISQUE.
+    fidelity = build_request(img, model="m", mode="fidelity")["messages"][0]["content"][0]["text"]
+    camera = build_request(img, model="m", mode="camera")["messages"][0]["content"][0]["text"]
+    assert '"ssim"' in fidelity and '"brisque"' in camera
+    assert '"ssim"' not in camera
+    # composition stays a separate top-level field.
+    assert '"composition": <0-100>' in fidelity
+
+
+def test_parse_json_axes_scorecard():
+    """A1: an open ``axes`` scorecard parses, unknown ids dropped."""
+    from tabs.image_gallery.models import ai_axis_score
+
+    raw = _json_reply(
+        {
+            "axes": {"sharpness": 81, "ssim": 55, "bogus_axis": 10, "noise": 140},
+            "verdict": "keep",
+            "reason": "ok",
+        }
+    )
+    r = parse_response(raw, model="m")
+    assert r.axes == {"sharpness": 81, "ssim": 55, "noise": 100}
+    assert ai_axis_score(r, "sharpness") == 81
+    assert ai_axis_score(r, "ssim") == 55
+    assert ai_axis_score(r, "exposure") == -1
+
+
+def test_parse_named_fields_merge_into_scorecard():
+    """An old prompt's named fields fill the same open scorecard."""
+    raw = _json_reply({"sharpness": 70, "composition": 60, "verdict": "keep"})
+    r = parse_response(raw, model="m")
+    assert r.axes.get("sharpness") == 70
+    assert r.axes.get("composition") == 60
+    assert r.sharpness == 70 and r.composition == 60

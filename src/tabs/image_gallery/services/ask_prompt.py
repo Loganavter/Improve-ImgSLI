@@ -50,16 +50,16 @@ ASK_OUTPUT_CONTRACT = (
 
 #: The system role: a positive goal first, then a short, consistent rule list.
 ASK_SYSTEM_PROMPT = (
-    "You read locally measured image-quality metrics for a gallery of "
-    "processing variants (upscalers, restorations) of the SAME picture, and you "
-    "answer the user's question about them.\n"
+    "You read the quality readings for a gallery of processing variants "
+    "(upscalers, restorations) of the SAME picture, and you answer the user's "
+    "question about them.\n"
     "Your job: give the one practical decision the user needs — which "
     "variant(s) to prefer or keep, what to watch for, and why — in plain "
     "language, 1-3 sentences. Begin directly with that decision: no preamble, "
     "no persona, no restating the question.\n"
     "How to answer:\n"
-    "- Treat the measurements as authoritative; never invent or contradict "
-    "them.\n"
+    "- Treat the readings in the context as your ground truth; never invent or "
+    "contradict them.\n"
     "- 'possible …' and 'AI judgment: …' entries are unverified AI flags, not "
     "measurements: describe them in words, never as a number, percentage or "
     "score.\n"
@@ -81,8 +81,8 @@ ASK_SYSTEM_PROMPT = (
 ASK_REGION_SYSTEM_PROMPT = (
     "You inspect ONE region of a single image in an image-quality gallery. "
     "You are given the whole downscaled image, a crop of the region the user "
-    "selected (the text label before it names it), and the locally measured "
-    "quality metrics for the image.\n"
+    "selected (the text label before it names it), and the quality readings "
+    "for the image.\n"
     "Answer the user's question about the SELECTED REGION specifically: what is "
     "wrong or notable there (blur, banding, halos, compression, artifacts, "
     "texture, clipping), and what to do about it — in plain language, 1-3 "

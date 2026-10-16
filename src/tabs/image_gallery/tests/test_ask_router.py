@@ -421,14 +421,14 @@ _FLAG_CTX = {
 
 def test_system_prompt_separates_measured_numbers_from_ai_flags():
     text = _system_text(build_text_payload("Summary", _CTX, model="m")).lower()
-    assert "authoritative" in text
+    assert "ground truth" in text
     assert "unverified ai flags" in text
     assert "never as a number" in text
 
 
 def test_context_block_appends_ai_flags_as_text_with_legend():
     user = _user_text(build_text_payload("Summary", _FLAG_CTX, model="m"))
-    assert "Axis kinds: measured = authoritative number" in user
+    assert "Axis kinds: measured = a number" in user
     assert "AI flags: possible Halo vs source; AI judgment: odd" in user
     assert "Sharpness 50%" in user  # measured score is still rendered as before
     assert "possible Halo vs source%" not in user

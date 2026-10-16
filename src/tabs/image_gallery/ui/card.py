@@ -284,7 +284,7 @@ def build_gallery_card(*args, **kwargs) -> Button:  # type: ignore[no-untyped-de
     _attach_item(card, actual_item)
     _set_card_tooltip(card, actual_item, actual_translate)
     try:
-        _, _dcols = _dots_for_item(actual_item, mode=mode)
+        _, _dcols = _dots_for_item(actual_item, mode=mode, domain=getattr(owner, "_judgment_domain", None))
         card._gallery_dot_colors = tuple(_dcols)  # type: ignore[attr-defined]
         card._gallery_mode = mode  # type: ignore[attr-defined]
     except Exception:
@@ -425,7 +425,7 @@ def update_gallery_card(
         except Exception:
             pass
     try:
-        _, _dcols = _dots_for_item(item, mode=_mode)
+        _, _dcols = _dots_for_item(item, mode=_mode, domain=getattr(owner, "_judgment_domain", None))
         card._gallery_dot_colors = tuple(_dcols)  # type: ignore[attr-defined]
         card._gallery_mode = _mode  # type: ignore[attr-defined]
     except Exception:
