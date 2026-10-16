@@ -74,7 +74,7 @@ def realize_main_tiles(
     (``_last_good_*``) survive this call's eviction pass as a fallback draw
     source while the current level's tiles are still uploading (docs/dev/
     rendering/tile-array-atlas-plan.md Phase 2). Preview QImage stash
-    behaviour (``residency.py:394`` ``if pil_source is not None``) stays
+    behaviour (``canvas/rhi_renderer/residency.py:492`` ``if pil_source is not None``) stays
     inside ``TileResidencyRealizer.realize_tile_plan`` itself — this wrapper
     only forwards the call and propagates ``more_pending`` to
     ``widget.runtime_state`` for the union letterbox hold.
