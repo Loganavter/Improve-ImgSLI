@@ -318,7 +318,6 @@ def paths_for_rect(view, rect: QRect) -> set[Path]:  # type: ignore[no-untyped-d
     if rect.isEmpty():
         return set()
     items = getattr(view, "_items", None) or getattr(view, "items", None) or []
-    # Normalize items to list.
     try:
         items = list(items() if callable(items) else items)  # type: ignore[no-untyped-call]
     except Exception:

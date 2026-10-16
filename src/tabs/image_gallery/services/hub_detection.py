@@ -61,7 +61,6 @@ def detect_source(
     if not items:
         return None
 
-    # Build phash cache.
     phashes: dict[Path, int] = {}
     for it in items:
         h = _phash_for(it.path)
