@@ -480,7 +480,7 @@ def populate(overlay, owner) -> None:
     # Add stretch to left align.
     film_layout.addStretch(1)
     strip_scroll.setWidget(filmstrip)
-    # Settle-then-read (quick_look/strip.py:378 documents the trap): a
+    # Settle-then-read (quick_look/strip/rebuild.py documents the trap): a
     # fresh layout can report a stale hint before its first pass, so
     # activate the filmstrip layout before deriving the scroller's
     # fixed height from it.
@@ -494,7 +494,7 @@ def populate(overlay, owner) -> None:
         pass
     overlay._list_layout.addWidget(strip_scroll)
     overlay._row_widgets.append(strip_scroll)
-    # Explicit show (quick_look/strip.py:367 documents the trap): a
+    # Explicit show (quick_look/strip/rebuild.py documents the trap): a
     # child added while the host is visible stays hidden until the next
     # turn — excluded from layout hints, so the host collapses and the
     # strip paints a frame late.
