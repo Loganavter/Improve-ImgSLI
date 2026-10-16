@@ -10,44 +10,79 @@ nothing in the tree.
 It deliberately answers only questions with a mechanical yes/no. It does **not**
 read like a proofreader.
 
-Resolvers (v1)
+Resolvers (v2)
 --------------
 1. ``path.py:NNN`` — regex ``([A-Za-z0-9_][A-Za-z0-9_./\\-]*\\.py):(\\d+)``.
    The candidate is resolved relative to (a) the citing file's directory,
-   (b) the repo root, (c) the repo ``src/``. No candidate exists on disk ->
-   ``unresolved-path``. If one does, require ``NNN <= number_of_lines(file)``,
-   else ``line-out-of-range``.
-2. Backticked symbols — regex ``` `([A-Za-z_][A-Za-z0-9_.]*)` ```. With
+   (b) the repo root, (c) the repo ``src/``. When none of those exist, a
+   **basename index** (``basename -> [paths]`` built over every ``.py`` under
+   the scanned roots) is consulted: exactly one match resolves the citation and
+   the line bound below is enforced against it; zero matches keep
+   ``unresolved-path``; *several* matches also keep ``unresolved-path`` and
+   append ``[ambiguous basename …]`` to the snippet so the fix is obvious. A
+   resolved file must satisfy ``NNN <= number_of_lines(file)``, else
+   ``line-out-of-range``.
+2. Backticked symbols — regex ``` `([A-Za-z_][A-Za-z0-9_.]*)` ```. A token is
+   first passed through the **shape filter** (v2, below); non-symbol shapes are
+   dropped before resolution. For the survivors, with
    ``base = text.split('.')[0]``, resolved when ``base`` is in the repo's
    defined-name index (``ast``: ``FunctionDef`` / ``AsyncFunctionDef`` /
    ``ClassDef`` names, ``Name.id``, ``Attribute.attr`` across every ``.py``
-   under the target roots) **or** in the external allowlist (Python builtins +
-   common stdlib + a broad PySide6 list; extend with ``--allow FILE``, one name
-   per line). Otherwise ``unknown-symbol``.
+   under the target roots **plus every ``--extra-root DIR``**) **or** in the
+   external allowlist (Python builtins + common stdlib + a broad PySide6 list;
+   extend with ``--allow FILE``, one name per line). Otherwise
+   ``unknown-symbol``. ``--extra-root`` contributes *names only*: comments and
+   docstrings under it are never scanned, so a sibling checkout (e.g.
+   ``../sli-ui-toolkit/src``) can supply symbol definitions without adding its
+   own findings.
 3. Session ids ``plan-…`` / ``inv-…`` — **off by default** (the artifacts that
    own those ids live in a sibling docs repo that is not readable here, so ids
    are not resolvable in this checkout). With ``--ids-file FILE`` (one id per
    line) the resolver turns on: ids absent from the file are reported as
    ``unverifiable-id`` and fail the run.
 
+Shape filter — v2 false-positive reduction
+------------------------------------------
+v1 reported 769 ``unknown-symbol`` findings over ``src/`` and the majority were
+false positives: the defined-name index only sees this checkout, so a backticked
+env var, theme token, directory name, shader filename or external toolkit symbol
+all read as "unknown". v2 skips a token *without resolving or flagging it* when
+its shape proves it is not a code symbol:
+
+* **ALL-CAPS constants / env vars** — ``^[A-Z][A-Z0-9_]*$`` (``UI_NAV_DEBUG``,
+  ``MAX_SUPPORTED_IMAGE_DIMENSION``).
+* **paths / directory names / filenames** — anything containing ``/`` or ending
+  in a known doc/asset extension (``.py``, ``.md``, ``.png``, ``.json``,
+  ``.yaml``, ``.qss``, ``.svg``, …).
+* **theme / config tokens** — ``>= 3`` dotted segments
+  (``gallery.card.border``).
+* **external-module symbols** — base segment in
+  ``{PySide6, Qt, sli_ui_toolkit, numpy, PIL, pyvips, shiboken6}``.
+* **phrases** — anything containing whitespace: impossible for the regex to
+  match; asserted in code rather than silently trusted.
+
+Residual false-positive classes this filter does **not** neutralise (documented,
+not hidden): single-word prose in backticks (``gallery``, ``is``, ``pass``,
+``none``), directory names written without a slash (``use_cases``), shader
+filenames whose suffix is not in the extension list (``mag.frag``), GLSL
+identifiers (``uvRect1``, ``sampler2DArray``), 2-segment scope tokens
+(``surface.background``), and external symbols not supplied via
+``--extra-root`` / ``--allow``.
+
 Honest scope — v1 is explicitly OUT of scope for
 ------------------------------------------------
 * **Semantic staleness / prose correctness** (a comment that truthfully names a
   file but describes the wrong behavior, or a deleted feature still described).
 * **Stale numeric counts** ("the 7 passes", "3 call sites").
-* Bare filename citations without a line number (`` `store.py` ``): the v1 path
+* Bare filename citations without a line number (`` `store.py` ``): the path
   resolver only fires on ``:NNN`` and file-like backticks are skipped by the
   symbol resolver, so these are neither checked nor reported.
-* Citations that omit a path prefix (`` `dispatcher.py:280` `` when the file
-  actually lives in ``src/core/state_management/``): only the three v1 bases are
-  tried, so these report ``unresolved-path`` even though a same-named file
-  exists deeper in the tree. Fix the comment (add the path) or baseline it.
-* Backticked names that are not symbols at all — theme tokens
-  (`` `gallery.card.border` ``), directory names (`` `use_cases` ``), doc/plan
-  names, config keys — report ``unknown-symbol``; they are out of scope for the
-  defined-name index. Extend ``--allow`` or baseline them.
+* Ambiguous basename citations: when several files share the cited basename and
+  no primary base resolves, the path stays ``unresolved-path`` (the snippet
+  names the collision) — fix the comment by adding the path.
 * Symbols defined outside the target roots and outside the allowlist (toolkit /
-  third-party names) are false positives by construction — extend ``--allow``.
+  third-party names) are false positives by construction — index the toolkit
+  with ``--extra-root`` or extend ``--allow``.
 * The checker verifies that a cited *thing exists*; it does not verify that the
   cited line still *contains* what the comment claims.
 
@@ -58,6 +93,7 @@ Usage::
 
     python3 scripts/check_comment_citations.py                 # default root: src/
     python3 scripts/check_comment_citations.py --root src --json report.json
+    python3 scripts/check_comment_citations.py --extra-root ../sli-ui-toolkit/src
     python3 scripts/check_comment_citations.py --allow names.txt --baseline .cc_baseline
     python3 scripts/check_comment_citations.py --ids-file ids.txt
 
@@ -120,6 +156,9 @@ SYMBOL_RE = re.compile(r"`([A-Za-z_][A-Za-z0-9_.]*)`")
 
 #: Session ids owned by the sibling docs repo (``plan-…`` / ``inv-…``).
 ID_RE = re.compile(r"\b((?:plan|inv)-[A-Za-z0-9][A-Za-z0-9_.\-]*)")
+
+#: ALL-CAPS tokens (env vars / module-level constants) are never code symbols.
+ALL_CAPS_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
 
 #: Directories never walked.
 SKIP_DIRS = frozenset(
@@ -267,6 +306,12 @@ _KNOWN_THIRD_PARTY_SYMBOLS = (
 
 #: Names that are not builtins but read as "well-known" in comments.
 _COMMON_SYMBOLS = ("self", "cls", "mcs", "kwargs", "args")
+
+#: Base module segments owned by external packages: any backticked token whose
+#: first dotted segment is one of these is resolved (not a stale in-tree name).
+EXTERNAL_MODULE_PREFIXES = frozenset(
+    {"PySide6", "Qt", "sli_ui_toolkit", "numpy", "PIL", "pyvips", "shiboken6"}
+)
 
 _SNIPPET_LIMIT = 160
 
@@ -445,6 +490,26 @@ def _is_file_like(token: str) -> bool:
     return "/" in token or lowered.endswith(_FILE_EXTENSIONS)
 
 
+def is_symbol_shaped(token: str) -> bool:
+    """Whether ``token`` looks enough like a code symbol to resolve/flag it.
+
+    Shape-only filter (no index access): a ``False`` result means the token is
+    skipped silently — it can never be a stale in-tree symbol by construction
+    (env var, theme token, path, external-module name, phrase). See the module
+    docstring "Shape filter" section for the residual false-positive classes
+    this deliberately leaves in place.
+    """
+    # The symbol regex cannot match whitespace; assert rather than trust it.
+    assert not any(ch.isspace() for ch in token), f"phrase token: {token!r}"
+    if _is_file_like(token):
+        return False
+    if ALL_CAPS_RE.match(token):
+        return False
+    if len(token.split(".")) >= 3:
+        return False
+    return token.split(".")[0] not in EXTERNAL_MODULE_PREFIXES
+
+
 def _path_candidates(raw: str, citing: Path) -> list[Path]:
     """Resolve ``raw`` against (a) citing dir, (b) repo root, (c) repo src/."""
     candidates: list[Path] = []
@@ -456,6 +521,26 @@ def _path_candidates(raw: str, citing: Path) -> list[Path]:
         if candidate not in candidates:
             candidates.append(candidate)
     return candidates
+
+
+def _resolve_path_ref(
+    raw: str,
+    citing: Path,
+    basename_index: dict[str, list[Path]],
+) -> tuple[list[Path], int]:
+    """Resolve a ``path.py`` citation.
+
+    Returns ``(resolved_files, ambiguous_count)``. Primary bases first; then the
+    basename index: a single name match resolves, several are reported as an
+    ambiguity (the caller keeps ``unresolved-path`` and names the collision).
+    """
+    primary = [c for c in _path_candidates(raw, citing) if c.is_file()]
+    if primary:
+        return primary, 0
+    matches = basename_index.get(os.path.basename(raw), [])
+    if len(matches) == 1:
+        return list(matches), 0
+    return [], len(matches)
 
 
 def _count_lines(path: Path, cache: dict[Path, int]) -> int:
@@ -484,27 +569,33 @@ def citations_in_text(
     allowlist: set[str],
     known_ids: set[str] | None,
     line_counts: dict[Path, int],
+    basename_index: dict[str, list[Path]] | None = None,
 ) -> list[Finding]:
     """Extract every finding from one scanned line of comment/docstring text."""
     found: list[Finding] = []
     display = _display_path(citing)
     snippet = _snippet(text)
+    basenames = basename_index or {}
 
     for match in PATH_REF_RE.finditer(text):
         raw, number = match.group(1), int(match.group(2))
-        candidates = [c for c in _path_candidates(raw, citing) if c.is_file()]
-        if not candidates:
+        resolved, ambiguous = _resolve_path_ref(raw, citing, basenames)
+        if resolved:
+            if not any(number <= _count_lines(c, line_counts) for c in resolved):
+                found.append(
+                    Finding(display, line, KIND_LINE_OUT_OF_RANGE, snippet)
+                )
+        elif ambiguous > 1:
+            note = f"{snippet} [ambiguous basename: {ambiguous} matches]"
+            found.append(Finding(display, line, KIND_UNRESOLVED_PATH, note))
+        else:
             found.append(
                 Finding(display, line, KIND_UNRESOLVED_PATH, snippet)
-            )
-        elif not any(number <= _count_lines(c, line_counts) for c in candidates):
-            found.append(
-                Finding(display, line, KIND_LINE_OUT_OF_RANGE, snippet)
             )
 
     for match in SYMBOL_RE.finditer(text):
         raw = match.group(1)
-        if _is_file_like(raw):
+        if not is_symbol_shaped(raw):
             continue
         base = raw.split(".")[0]
         if not base:
@@ -527,18 +618,31 @@ def collect_findings(
     roots: list[Path],
     allowlist: set[str] | None = None,
     known_ids: set[str] | None = None,
+    extra_roots: list[Path] | None = None,
 ) -> list[Finding]:
-    """Scan ``roots`` and return findings sorted by ``(file, line, kind, snippet)``."""
+    """Scan ``roots`` and return findings sorted by ``(file, line, kind, snippet)``.
+
+    ``extra_roots`` contribute to the defined-name index **only** — their
+    comments/docstrings are never scanned, so external checkouts (e.g. the
+    sibling ``sli-ui-toolkit``) can resolve in-tree ``unknown-symbol``
+    findings without importing findings of their own.
+    """
     allow = default_symbol_allowlist() if allowlist is None else set(allowlist)
     files = discover_python_files(roots)
 
     index: set[str] = set()
     texts: dict[Path, dict[int, str]] = {}
+    basename_index: dict[str, list[Path]] = {}
     for path in files:
         names, lines = scan_python_file(path)
         index.update(names)
+        basename_index.setdefault(path.name, []).append(path)
         if lines:
             texts[path] = lines
+
+    for path in discover_python_files(list(extra_roots or [])):
+        names, _ = scan_python_file(path)
+        index.update(names)
 
     line_counts: dict[Path, int] = {}
     findings: set[Finding] = set()
@@ -553,6 +657,7 @@ def collect_findings(
                     allow,
                     known_ids,
                     line_counts,
+                    basename_index,
                 )
             )
 
@@ -573,6 +678,16 @@ def build_parser() -> argparse.ArgumentParser:
         action="append",
         metavar="DIR",
         help="directory (or .py file) to scan; repeatable (default: the repo src/)",
+    )
+    parser.add_argument(
+        "--extra-root",
+        action="append",
+        dest="extra_root",
+        metavar="DIR",
+        help=(
+            "directory (or .py file) whose names feed the symbol index only; "
+            "its comments are never scanned (repeatable)"
+        ),
     )
     parser.add_argument(
         "--json",
@@ -605,6 +720,7 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
 
     roots = [Path(r) for r in (args.root or [])] or [DEFAULT_ROOT]
+    extra_roots = [Path(r) for r in (args.extra_root or [])]
     allowlist = default_symbol_allowlist()
     if args.allow_path:
         allowlist |= load_name_file(Path(args.allow_path))
@@ -613,7 +729,7 @@ def main(argv: list[str] | None = None) -> int:
         load_baseline(Path(args.baseline_path)) if args.baseline_path else set()
     )
 
-    findings = collect_findings(roots, allowlist, known_ids)
+    findings = collect_findings(roots, allowlist, known_ids, extra_roots)
     remaining = [f for f in findings if f.key() not in baseline]
 
     for finding in remaining:
@@ -639,6 +755,9 @@ def main(argv: list[str] | None = None) -> int:
     if failing:
         counts = Counter(f.kind for f in failing)
         breakdown = ", ".join(f"{kind}={counts[kind]}" for kind in sorted(counts))
+        # Flush stdout so the breakdown is the LAST line when both streams merge
+        # (``... 2>&1 | tail -1``); otherwise block-buffered stdout lands after.
+        sys.stdout.flush()
         sys.stderr.write(
             f"check_comment_citations: {len(failing)} finding(s): {breakdown}\n"
         )
