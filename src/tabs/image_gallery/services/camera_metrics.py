@@ -1,7 +1,7 @@
 """Per-item camera metrics for the gallery (background worker, never UI-blocking).
 
 Keys match exactly what the quick-look camera report reads
-(``ui/quick_look/metrics.py``); absent keys render "not measured" rows:
+(``ui/quick_look/metrics/rows.py``); absent keys render "not measured" rows:
 
 - ``sharpness``: Laplacian-variance float — the SAME math as mode
   detection (``services/mode._sharpness`` is mirrored by
