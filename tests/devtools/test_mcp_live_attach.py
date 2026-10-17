@@ -197,6 +197,35 @@ def default_handler(method: str, params: dict):
             "target": "QLineEdit",
             "focus_widget": "QLineEdit",
         }
+    if method == "jobs_list":
+        return True, {
+            "count": 2,
+            "jobs": [
+                {
+                    "id": "pool:image_gallery",
+                    "kind": "gallery_pool",
+                    "status": "running",
+                    "progress": {"done": 2, "total": 6},
+                    "elapsed_s": 1.5,
+                    "message": "thumbnails 2/6 loaded (1 active, 3 pending)",
+                    "unexpected": "dropped",
+                },
+                {
+                    "id": "export:multi_compare:3",
+                    "kind": "export",
+                    "status": "running",
+                    "progress": None,
+                    "elapsed_s": None,
+                    "message": "export in progress",
+                },
+            ],
+        }
+    if method == "jobs_cancel":
+        return True, {
+            "cancelled": True,
+            "id": params.get("id"),
+            "kind": "export",
+        }
     return False, {"error": f"unknown method {method!r}", "hint": "check the protocol"}
 
 
@@ -959,6 +988,46 @@ _PROXY_CASES = [
             "rect": [1, 2, 3, 4],
             "target": "QLineEdit",
             "focus_widget": "QLineEdit",
+            "source": "live",
+        },
+    ),
+    (
+        "jobs_list",
+        {},
+        "jobs_list",
+        {},
+        {
+            "count": 2,
+            "jobs": [
+                {
+                    "id": "pool:image_gallery",
+                    "kind": "gallery_pool",
+                    "status": "running",
+                    "progress": {"done": 2, "total": 6},
+                    "elapsed_s": 1.5,
+                    "message": "thumbnails 2/6 loaded (1 active, 3 pending)",
+                },
+                {
+                    "id": "export:multi_compare:3",
+                    "kind": "export",
+                    "status": "running",
+                    "progress": None,
+                    "elapsed_s": None,
+                    "message": "export in progress",
+                },
+            ],
+            "source": "live",
+        },
+    ),
+    (
+        "jobs_cancel",
+        {"id": "export:multi_compare:3"},
+        "jobs_cancel",
+        {"id": "export:multi_compare:3"},
+        {
+            "cancelled": True,
+            "id": "export:multi_compare:3",
+            "kind": "export",
             "source": "live",
         },
     ),

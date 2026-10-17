@@ -64,6 +64,14 @@ TAB_KINDS = ("image_compare", "multi_compare", "image_gallery")
 THEMES = ("light", "dark")
 LANGUAGES = ("en", "ru", "zh", "pt_BR")
 
+#: The long-work kinds ``jobs_list`` reports (mirrors ``core/control/jobs.py``;
+#: the catalog stays app-import-free, so the vocabulary is repeated here).
+JOB_KINDS = ("gallery_pool", "metrics_pass", "ai_analysis", "export")
+#: Lifecycle states a listed job can be in (idle/settled jobs are not listed).
+JOB_STATUSES = ("running", "paused")
+#: The kinds ``jobs_cancel`` may actually stop today.
+CANCELLABLE_JOB_KINDS = ("export",)
+
 
 def _annotations(read_only: bool, destructive: bool, idempotent: bool) -> dict:
     """All four annotation hints; ``openWorldHint`` is always false (local app)."""
@@ -814,6 +822,91 @@ TOOLS: list[dict] = [
         ),
         "annotations": MUTATING,
         "handler": "ui_focus",
+    },
+    {
+        "name": "jobs_list",
+        "title": "List in-flight long jobs",
+        "description": (
+            "Read the app's in-flight long passes: the gallery "
+            "thumbnail/proxy pool, the per-folder metrics pass, the AI analysis "
+            "pass, and running exports. Each row has id, kind, status, progress, "
+            "elapsed_s, message. Poll it to watch minute-long work; an empty list "
+            "means nothing is running, not an error. Live-only: with no running "
+            "app it errors instead of a false empty list. Not for cancelling."
+        ),
+        "inputSchema": _params(),
+        "outputSchema": _object(
+            {
+                "count": _INT,
+                "jobs": _array(
+                    _object(
+                        {
+                            "id": _STR,
+                            "kind": {
+                                **_STR,
+                                "enum": list(JOB_KINDS),
+                                "description": "Which pass this job is.",
+                            },
+                            "status": {
+                                **_STR,
+                                "enum": list(JOB_STATUSES),
+                                "description": "Lifecycle state; only non-idle jobs are listed.",
+                            },
+                            "progress": {
+                                "type": ["object", "null"],
+                                "description": "{done, total} when the app reports a total; JSON null when it does not (never an invented percentage).",
+                            },
+                            "elapsed_s": {
+                                "type": ["number", "null"],
+                                "description": "Seconds continuously observed running, or null; a lower bound, never a guess.",
+                            },
+                            "message": _STR,
+                        },
+                        ["id", "kind", "status", "message"],
+                    )
+                ),
+                "source": _source(),
+            },
+            ["count", "jobs"],
+        ),
+        "annotations": READ_ONLY,
+        "handler": "jobs_list",
+    },
+    {
+        "name": "jobs_cancel",
+        "title": "Cancel an in-flight job",
+        "description": (
+            "Cancel one running job by its id from jobs_list. Only kind 'export' "
+            "has a safe cancel today: it sets the save task's own cancel event, "
+            "so the encoder aborts atomically and leaves no partial file behind. "
+            "Every other kind answers a named refusal — cancellation is not "
+            "invented. An unknown or already-settled id is an error. Not "
+            "idempotent: re-sending an id after it settles fails."
+        ),
+        "inputSchema": _params(
+            {
+                "id": {
+                    **_STR,
+                    "description": "Job id from jobs_list (per-run; ids disappear when the job settles).",
+                }
+            },
+            ["id"],
+        ),
+        "outputSchema": _object(
+            {
+                "cancelled": {"type": "boolean", "description": "True when the cancel was delivered."},
+                "id": _STR,
+                "kind": {
+                    **_STR,
+                    "enum": list(CANCELLABLE_JOB_KINDS),
+                    "description": "The kind that was cancelled.",
+                },
+                "source": _source(),
+            },
+            ["cancelled", "id", "kind"],
+        ),
+        "annotations": MUTATING_INPUT,
+        "handler": "jobs_cancel",
     },
 ]
 

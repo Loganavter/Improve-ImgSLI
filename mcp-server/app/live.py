@@ -520,6 +520,7 @@ class LiveBackend:
             "dump_ui_layout",
             "list_surfaces",
             "ui_elements",
+            "jobs_list",
         }
     )
 
@@ -817,5 +818,36 @@ class LiveBackend:
             "rect": list(result.get("rect") or []),
             "target": str(result.get("target") or ""),
             "focus_widget": str(result.get("focus_widget") or ""),
+            "source": "live",
+        }
+
+    # -- long work (P3) ----------------------------------------------------
+
+    @staticmethod
+    def _job(row: dict) -> dict:
+        return {
+            "id": row.get("id"),
+            "kind": row.get("kind"),
+            "status": row.get("status"),
+            "progress": row.get("progress"),
+            "elapsed_s": row.get("elapsed_s"),
+            "message": row.get("message"),
+        }
+
+    def jobs_list(self, *, client: LiveClient | None = None) -> dict:
+        result = self._request("jobs_list", {}, client)
+        rows = [self._job(row) for row in self._rows(result, "jobs")]
+        return {
+            "count": int(result.get("count") or len(rows)),
+            "jobs": rows,
+            "source": "live",
+        }
+
+    def jobs_cancel(self, *, client: LiveClient | None = None, id: str) -> dict:
+        result = self._request("jobs_cancel", {"id": id}, client)
+        return {
+            "cancelled": bool(result.get("cancelled", True)),
+            "id": str(result.get("id") or id),
+            "kind": str(result.get("kind") or ""),
             "source": "live",
         }

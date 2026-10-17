@@ -178,13 +178,14 @@ def test_read_and_write_tools_do_not_mix_annotations(wired):
     tools = {tool["name"]: tool for tool in _request(protocol, "tools/list")["result"]["tools"]}
 
     for name in ("list_actions", "list_sessions", "get_state", "read_log", "query_trace",
-                 "dump_ui_layout", "list_surfaces", "ui_elements"):
+                 "dump_ui_layout", "list_surfaces", "ui_elements", "jobs_list"):
         annotations = tools[name]["annotations"]
         assert annotations["readOnlyHint"] is True, name
         assert annotations["destructiveHint"] is False, name
 
     for name in ("open_tab", "run_action", "open_folder", "set_theme", "set_language",
-                 "capture_surface", "press_keys", "ui_click", "ui_hover", "ui_focus"):
+                 "capture_surface", "press_keys", "ui_click", "ui_hover", "ui_focus",
+                 "jobs_cancel"):
         assert tools[name]["annotations"]["readOnlyHint"] is False, name
     assert tools["run_action"]["annotations"]["destructiveHint"] is True
     # Injecting input is not destructive, but is not idempotent either.
@@ -211,6 +212,29 @@ def test_element_tool_annotations_are_audited(wired):
         "right",
         "middle",
     ]
+
+
+def test_job_tool_annotations_are_audited(wired):
+    """``jobs_list`` reads; ``jobs_cancel`` mutates without pretending safety."""
+    protocol, _backend, _calls = wired
+    tools = {tool["name"]: tool for tool in _request(protocol, "tools/list")["result"]["tools"]}
+
+    assert tools["jobs_list"]["annotations"]["readOnlyHint"] is True
+    assert tools["jobs_list"]["annotations"]["destructiveHint"] is False
+    assert tools["jobs_cancel"]["annotations"]["readOnlyHint"] is False
+    # Cancelling kills in-flight work: not destructive to user files, but not
+    # repeatable either (a settled id is an error).
+    assert tools["jobs_cancel"]["annotations"]["destructiveHint"] is False
+    assert tools["jobs_cancel"]["annotations"]["idempotentHint"] is False
+    assert tools["jobs_cancel"]["inputSchema"]["required"] == ["id"]
+    assert tools["jobs_list"]["inputSchema"]["additionalProperties"] is False
+    job = tools["jobs_list"]["outputSchema"]["properties"]["jobs"]["items"]
+    assert job["properties"]["kind"]["enum"] == list(catalog.JOB_KINDS)
+    assert job["properties"]["status"]["enum"] == list(catalog.JOB_STATUSES)
+    assert {"id", "kind", "status", "message"} <= set(job.get("required") or ())
+    assert tools["jobs_cancel"]["outputSchema"]["properties"]["kind"]["enum"] == list(
+        catalog.CANCELLABLE_JOB_KINDS
+    )
 
 
 def test_list_actions_output_schema_declares_enabled_and_reason(wired):
@@ -553,6 +577,29 @@ def test_element_tools_without_a_live_instance_error_honestly(wired, monkeypatch
     assert "structuredContent" not in result
     assert spawned == [], "element targeting must never spawn a process"
     assert calls["launches"] == [] and calls["tabs"] == [], "no fake action, no headless boot"
+
+
+@pytest.mark.parametrize(
+    "tool,arguments",
+    [("jobs_list", {}), ("jobs_cancel", {"id": "export:multi_compare:3"})],
+)
+def test_job_tools_without_a_live_instance_error_honestly(wired, monkeypatch, tool, arguments):
+    """Job state is live-only: no instance ⇒ honest error, never a fake empty list."""
+    protocol, _backend, calls = wired
+    import app.backend as backend_module
+
+    spawned: list = []
+    monkeypatch.setattr(backend_module.subprocess, "Popen", lambda *a, **k: spawned.append(a))
+    monkeypatch.setattr(backend_module.subprocess, "run", lambda *a, **k: spawned.append(a))
+
+    result = _call(protocol, tool, arguments)
+    assert result["isError"] is True
+    text = result["content"][0]["text"]
+    assert "no live instance" in text
+    assert "job state needs a running app" in text
+    assert "structuredContent" not in result
+    assert spawned == [], "job reporting must never spawn a process"
+    assert calls["launches"] == [] and calls["tabs"] == [], "no headless boot for job state"
 
 
 # --- stdio round trip -------------------------------------------------------

@@ -771,6 +771,28 @@ class AppBackend:
     def ui_focus(self, *, id: str) -> dict:
         return self._live_only("ui_focus", self._elements_need_live(), id=id)
 
+    @staticmethod
+    def _jobs_need_live() -> ToolError:
+        return ToolError(
+            "no live instance; job state needs a running app",
+            "start the app with the control socket enabled (see docs/dev/MCP.md), then retry",
+        )
+
+    # -- long work (live-only) ----------------------------------------------
+
+    def jobs_list(self) -> dict:
+        """Read in-flight long passes from the running app — live-only.
+
+        The headless fallback has no running passes, so an empty list there
+        would read as "nothing is running" while the user's app is busy; it
+        answers an honest error instead (like the element tools).
+        """
+        return self._live_only("jobs_list", self._jobs_need_live(), mutating=False)
+
+    def jobs_cancel(self, *, id: str) -> dict:
+        """Cancel one running job by id — the real cancel, or a named refusal."""
+        return self._live_only("jobs_cancel", self._jobs_need_live(), id=id)
+
     def _fallback_persist(self, key: str, value: str, label: str) -> dict:
         try:
             if self._settings_writer is not None:
