@@ -254,20 +254,31 @@ def devtool_surfaces() -> dict[str, Any]:
         return {}
 
 
-def live_surfaces(tabs: list[tuple[str, Any]]) -> dict[str, Any]:
+def live_surfaces(tabs: list[tuple[str, Any]], *, page_of: Any = None) -> dict[str, Any]:
     """The surface list a client can drive: live tabs + devtool demos.
 
     ``tabs`` is ``(session_type, TabContract)`` pairs the caller discovered;
     taken as a parameter so this module never imports the tab registry.
+    ``page_of(session_type) -> bool`` (optional) reports whether that tab is
+    OPEN right now — a registered kind whose page does not exist yet is
+    drivable (``open_tab`` first) but NOT capturable, which is exactly the
+    distinction a capture client needs; every live-tab row therefore carries
+    ``capturable``. Devtool demo surfaces are ``live: false`` fallback-only
+    names and are never capturable on the live path.
     """
     rows: dict[str, dict[str, Any]] = {}
     for session_type, tab in tabs:
         name = getattr(tab, "display_name", None)
+        try:
+            capturable = bool(page_of(session_type)) if callable(page_of) else False
+        except Exception:
+            capturable = False
         rows[session_type] = {
             "name": session_type,
             "description": str(name or session_type),
             "isolated": False,
             "live": True,
+            "capturable": capturable,
         }
     for name, surface in devtool_surfaces().items():
         rows.setdefault(
@@ -277,6 +288,7 @@ def live_surfaces(tabs: list[tuple[str, Any]]) -> dict[str, Any]:
                 "description": getattr(surface, "description", ""),
                 "isolated": bool(getattr(surface, "isolated", False)),
                 "live": False,
+                "capturable": False,
             },
         )
     ordered = [rows[key] for key in sorted(rows)]
@@ -395,13 +407,29 @@ def resolve_capture_target(app: Any, window: Any, what: Any) -> tuple[Any, str]:
         try:
             from tabs.registry import TabRegistry
 
-            page = TabRegistry().get_page(label)
+            registry = TabRegistry()
+            page = registry.get_page(label)
         except Exception:
-            page = None
+            registry, page = None, None
         if page is None:
+            # A name the client saw in ``list_surfaces`` is KNOWN but may simply
+            # not be open yet — saying "unknown surface" there is a lie the
+            # client cannot act on (live proof 2026-10-17: the list advertises
+            # every registered kind, while a page only exists once opened).
+            known_kind = False
+            try:
+                known_kind = bool(registry is not None and label in set(registry.registered_types))
+            except Exception:
+                known_kind = False
+            if known_kind:
+                raise MethodError(
+                    f"surface {label!r} is not open in the live app",
+                    "open it first (open_tab) or omit 'what' to capture the active window",
+                )
             raise MethodError(
                 f"unknown surface {label!r}",
-                "call list_surfaces to see live surface names",
+                "call list_surfaces to see live surface names (only rows with capturable=true "
+                "can be grabbed right now)",
             )
         return page, label
     active = None

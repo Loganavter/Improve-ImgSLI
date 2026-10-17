@@ -301,7 +301,16 @@ class ControlHandlers:
         return {"path": str(target), "tab": tab, "windows": len(windows), "node_count": nodes}
 
     def list_surfaces(self, _params: dict[str, Any]) -> dict[str, Any]:
-        return discovery.live_surfaces(self._tabs())
+        return discovery.live_surfaces(self._tabs(), page_of=self._page_of)
+
+    def _page_of(self, session_type: str) -> bool:
+        """Is that tab OPEN right now? Fail-open to False (see list_surfaces)."""
+        try:
+            from tabs.registry import TabRegistry
+
+            return TabRegistry().get_page(session_type) is not None
+        except Exception:
+            return False
 
     # -- mutating methods --------------------------------------------------
 

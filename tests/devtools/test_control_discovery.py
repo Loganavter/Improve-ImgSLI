@@ -167,3 +167,45 @@ def test_capture_label_prefers_the_widget_object_name():
     _target, label2 = discovery.resolve_capture_target(fake2, None, None)
     assert label2 == "QWidget"
     assert app is not None
+
+
+# --------------------------------------------------------------------------
+# live-proof 2026-10-17: the list advertises kinds that are not capturable yet
+# --------------------------------------------------------------------------
+
+
+def test_live_surfaces_marks_capturable_only_for_open_tabs():
+    tabs = [
+        ("image_gallery", types.SimpleNamespace(display_name="Image Gallery")),
+        ("image_compare", types.SimpleNamespace(display_name="Image Compare")),
+    ]
+
+    rows = {r["name"]: r for r in discovery.live_surfaces(tabs, page_of=lambda st: st == "image_gallery")["surfaces"]}
+
+    assert rows["image_gallery"]["capturable"] is True and rows["image_gallery"]["live"] is True
+    assert rows["image_compare"]["capturable"] is False, (
+        "a registered but CLOSED kind is drivable (open_tab) yet not capturable"
+    )
+    # Devtool demo names are fallback-only: never capturable on the live path.
+    demo = [r for r in rows.values() if r.get("live") is False]
+    assert demo and all(r["capturable"] is False for r in demo)
+    # No page_of at all => nothing is claimed capturable.
+    bare = discovery.live_surfaces(tabs)["surfaces"]
+    assert all(r["capturable"] is False for r in bare if r.get("live") is True)
+
+
+def test_resolve_capture_target_tells_closed_apart_from_unknown(monkeypatch):
+    from tabs.registry import TabRegistry
+
+    monkeypatch.setattr(TabRegistry, "get_page", lambda self, st: None, raising=False)
+    monkeypatch.setattr(TabRegistry, "registered_types", ("image_compare",), raising=False)
+
+    with pytest.raises(discovery.MethodError) as closed:
+        discovery.resolve_capture_target(None, None, "image_compare")
+    assert "is not open" in str(closed.value)
+    assert "open_tab" in str(closed.value.hint)
+
+    with pytest.raises(discovery.MethodError) as unknown:
+        discovery.resolve_capture_target(None, None, "no_such_surface")
+    assert "unknown surface" in str(unknown.value)
+    assert "capturable" in str(unknown.value.hint)
