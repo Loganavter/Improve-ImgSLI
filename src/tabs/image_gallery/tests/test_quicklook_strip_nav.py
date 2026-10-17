@@ -28,22 +28,36 @@ focused widget, so the whole manager → section → widget path is exercised.
 
 from __future__ import annotations
 
-from types import SimpleNamespace
-
+import pytest
 from PySide6.QtCore import QEvent, Qt
 from PySide6.QtGui import QKeyEvent
 from PySide6.QtWidgets import QApplication, QWidget
 
-from tabs.image_gallery.models import GalleryItem, Mode
+from sli_ui_toolkit.managers import NavigationManager, ToolbarRowsSection
+from sli_ui_toolkit.widgets import Button
+
+from tabs.image_gallery.models import GalleryItem
 from tabs.image_gallery.tests.test_quicklook_strip import (
     _make_overlay,
     _real_png,
     _show,
 )
 from tabs.image_gallery.ui.quick_look import nav_section as nav
-from sli_ui_toolkit.managers import NavigationManager
-from sli_ui_toolkit.managers import ToolbarRowsSection
-from sli_ui_toolkit.widgets import Button
+
+
+@pytest.fixture(autouse=True)
+def _restore_nav_modality():
+    """Undo the app-wide input-modality flip every injected key causes.
+
+    ``NavigationManager.eventFilter`` sets ``_last_input_keyboard`` on each
+    KeyPress, which decides whether a later programmatic focus grant paints the
+    keyboard ring. The grid's own keyboard test restores it for the same reason;
+    without this, every test that follows this module inherits "keyboard mode".
+    """
+    manager = NavigationManager.get_instance()
+    previous = getattr(manager, "_last_input_keyboard", False)
+    yield
+    manager._last_input_keyboard = previous
 
 
 def _series(tmp_path, n: int = 4) -> list[GalleryItem]:
@@ -127,12 +141,6 @@ class _NeighbourSection:
     def focus_last(self, ref_x=None, *, reason) -> bool:
         self._widget.setFocus(reason)
         return True
-
-
-def _modality_snapshot():
-    """The eventFilter flips the app-wide input-modality flag on each key."""
-    manager = NavigationManager.get_instance()
-    return manager, getattr(manager, "_last_input_keyboard", False)
 
 
 def test_the_panel_is_the_toolkit_rows_section_over_its_two_rows(qtbot, tmp_path) -> None:
