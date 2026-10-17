@@ -164,8 +164,11 @@ def test_hit_test_resolves_by_x_and_y() -> None:
     # A point on a second-row dot resolves to that dot, not the x-nearest one.
     assert dot_tooltip_text_at(card, 100, 54) == "C: 55%"
     assert dot_tooltip_text_at(card, 114, 40) == "B: —"
-    # A point between the two rows is off every dot.
-    assert dot_tooltip_text_at(card, 100, 47) is None
+    # A point BETWEEN the rows keeps the nearest dot's tooltip: the hover cell
+    # tiles the block, so the gap must not revert to the card name.
+    assert dot_tooltip_text_at(card, 100, 47) in ("A: 80%", "C: 55%")
+    # A point genuinely OUTSIDE the block still resolves to nothing.
+    assert dot_tooltip_text_at(card, 400, 40) is None
 
 
 def test_grid_painter_stashes_geometry_for_every_dot(qapp) -> None:
