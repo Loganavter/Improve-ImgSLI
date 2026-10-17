@@ -19,13 +19,12 @@ from ..discovery import MethodError
 from .inventory import (
     Element,
     _is_popup_window,
-    _label_of,
     _make_element,
-    _role_of,
     _top_level_widgets,
     _window_keys,
     collect_elements,
 )
+from .roles import _label_of, _role_of
 
 
 def _window_key_for(widget: QWidget) -> str:
@@ -67,7 +66,7 @@ def _resolve_via_action(registry: Any, needle: str) -> Element | None:
         widget=widget,
         element_id=needle,
         role=_role_of(widget) or "action",
-        label=_label_of(widget),
+        label=_label_of(widget, action),
         rect=widget.rect(),
         window=_window_key_for(widget),
         surface="popup" if _is_popup_window(widget.window()) else "window",

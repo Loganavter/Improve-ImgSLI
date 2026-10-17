@@ -4,7 +4,7 @@ Owns the ``Element`` row, the traversal that flattens every live top-level
 window (including ``Qt.Popup`` / ``Qt.Tool`` menus) into interactive elements,
 and :func:`resolve_element` — the retry loop that lets an agent call
 ``ui_click`` before the element is realized. See the package docstring for the
-id/rect contract.
+id/rect contract and the role mapping (kept in :mod:`.roles`).
 """
 
 from __future__ import annotations
@@ -13,19 +13,14 @@ from dataclasses import dataclass
 from typing import Any
 
 from PySide6.QtCore import QRect, Qt
-from PySide6.QtWidgets import (
-    QAbstractButton,
-    QAbstractItemView,
-    QAbstractSlider,
-    QAbstractSpinBox,
-    QApplication,
-    QComboBox,
-    QLineEdit,
-    QMenu,
-    QPlainTextEdit,
-    QTabBar,
-    QTextEdit,
-    QWidget,
+from PySide6.QtWidgets import QApplication, QMenu, QTabBar, QWidget
+
+from .roles import (
+    _has_area,
+    _is_menu_like,
+    _label_of,
+    _role_of,
+    _safe_visible,
 )
 
 
@@ -123,51 +118,6 @@ def _best_action(descriptors: list[Any] | None) -> Any | None:
     if not descriptors:
         return None
     return sorted(descriptors, key=lambda a: getattr(a, "action_id", ""))[0]
-
-
-def _label_of(widget: QWidget) -> str:
-    """Best-effort human label, duck-typed across Qt and toolkit widgets."""
-    for attr in ("text", "currentText", "placeholderText", "title"):
-        getter = getattr(widget, attr, None)
-        if callable(getter):
-            try:
-                value = getter()
-            except Exception:
-                continue
-            if value:
-                return str(value)
-    # sli-ui-toolkit ``Button`` exposes its caption only privately.
-    fallback = getattr(widget, "_text", None)
-    if fallback:
-        return str(fallback)
-    try:
-        accessible = widget.accessibleName()
-    except Exception:
-        accessible = ""
-    if accessible:
-        return str(accessible)
-    try:
-        name = widget.objectName()
-    except Exception:
-        name = ""
-    return str(name or type(widget).__name__)
-
-
-def _role_of(widget: QWidget) -> str | None:
-    """Role string for an interactive widget, or ``None`` to skip it."""
-    if isinstance(widget, QMenu):
-        return "menu"
-    if isinstance(widget, QAbstractButton):
-        return "button"
-    if isinstance(widget, (QLineEdit, QTextEdit, QPlainTextEdit, QComboBox)):
-        return "input"
-    if isinstance(widget, (QAbstractSpinBox, QAbstractSlider)):
-        return "input"
-    if isinstance(widget, QAbstractItemView):
-        return "view"
-    if "card" in type(widget).__name__.lower():
-        return "card"
-    return None
 
 
 def _is_popup_window(window: QWidget) -> bool:
@@ -336,6 +286,8 @@ def _walk(
     out: list[Element],
     seen: set[int],
     include_disabled: bool,
+    in_menu: bool = False,
+    in_grid_view: bool = False,
 ) -> None:
     if id(widget) in seen:
         return
@@ -347,12 +299,22 @@ def _walk(
     if action_id:
         element_id = f"{element_id}@{action_id}"
 
+    menu_like = _is_menu_like(widget)
+    # A toolkit menu/flyout is a plain child widget (in-window overlay); only
+    # its rows are interesting while it is open, so a hidden one is skipped
+    # rather than polluting the inventory. Stock ``QMenu`` keeps its own path.
+    if menu_like and not isinstance(widget, QMenu) and not _safe_visible(widget):
+        return
+
+    grid_here = in_grid_view or "GridView" in type(widget).__name__
+    role = _role_of(widget, in_menu=in_menu, in_grid_view=grid_here)
+
     if isinstance(widget, QMenu):
         menu_element = _make_element(
             widget=widget,
             element_id=element_id,
             role="menu",
-            label=_label_of(widget),
+            label=_label_of(widget, action),
             rect=widget.rect(),
             window=window,
             surface=surface,
@@ -363,19 +325,21 @@ def _walk(
         out.extend(_menu_rows(widget, window, surface, path, include_disabled))
     elif isinstance(widget, QTabBar):
         out.extend(_tab_rows(widget, window, surface, path, include_disabled))
-    elif _role_of(widget) is not None or action_id is not None:
-        element = _make_element(
-            widget=widget,
-            element_id=element_id,
-            role=_role_of(widget) or "action",
-            label=_label_of(widget),
-            rect=widget.rect(),
-            window=window,
-            surface=surface,
-            action=action,
-        )
-        if include_disabled or element.enabled:
-            out.append(element)
+    elif role is not None or action_id is not None:
+        rect = widget.rect()
+        if _has_area(rect):
+            element = _make_element(
+                widget=widget,
+                element_id=element_id,
+                role=role or "action",
+                label=_label_of(widget, action),
+                rect=rect,
+                window=window,
+                surface=surface,
+                action=action,
+            )
+            if include_disabled or element.enabled:
+                out.append(element)
 
     try:
         children = widget.findChildren(
@@ -400,7 +364,32 @@ def _walk(
             out=out,
             seen=seen,
             include_disabled=include_disabled,
+            in_menu=in_menu or menu_like,
+            in_grid_view=grid_here,
         )
+
+
+def _scope_page(scope: str) -> QWidget | None:
+    """The live page widget a tab id maps to, or ``None`` if not open.
+
+    ``TabRegistry`` creates tab pages lazily, so a registered-but-never-opened
+    tab has no page and yields no elements (an honest empty result).
+    """
+    try:
+        from tabs.registry import TabRegistry
+
+        return TabRegistry().get_page(scope)
+    except Exception:
+        return None
+
+
+def _within_page(widget: QWidget, page: QWidget) -> bool:
+    if widget is page:
+        return True
+    try:
+        return bool(page.isAncestorOf(widget))
+    except Exception:
+        return False
 
 
 def collect_elements(
@@ -412,8 +401,14 @@ def collect_elements(
     """Flatten every live top-level window into interactive elements.
 
     Popup/menu top-levels (``Qt.Popup`` / ``Qt.Tool``) are included so an open
-    menu is discoverable *while it is open*. ``scope`` filters to elements whose
-    window identity or ``owner_tab`` matches (case-insensitive).
+    menu is discoverable *while it is open*, and in-window toolkit flyouts are
+    walked as ordinary children (see :func:`_is_menu_like`).
+
+    ``scope`` is a **tab id**: elements are filtered to those contained in
+    ``TabRegistry().get_page(scope)``. A scope that is not an open tab (or was
+    never registered) returns an empty list — never an error. For backward
+    compatibility a scope that names no page but does match a live window
+    identity still filters by that window.
     """
     windows = _top_level_widgets()
     keys = _window_keys(windows)
@@ -432,17 +427,19 @@ def collect_elements(
                 out=out,
                 seen=seen,
                 include_disabled=include_disabled,
+                # A popup-surface toolkit menu is its own top-level: seed the
+                # menu context so its rows are ``menu-row``, not ``button``.
+                in_menu=_is_menu_like(window),
             )
         except Exception:
             continue
     if scope:
-        needle = str(scope).lower()
-        out = [
-            element
-            for element in out
-            if needle in element.window.lower()
-            or (element.owner_tab or "").lower() == needle
-        ]
+        page = _scope_page(str(scope))
+        if page is not None:
+            out = [element for element in out if _within_page(element.widget, page)]
+        else:
+            needle = str(scope).lower()
+            out = [element for element in out if needle in element.window.lower()]
     return out
 
 
