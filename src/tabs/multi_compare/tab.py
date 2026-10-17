@@ -422,17 +422,17 @@ class MultiCompareTab(TabContract):
         mc_dnd_debug("Tab accepts_drop -> %s", ok)
         return ok
 
-    def handle_drop(self, paths: list[Path], hint: dict | None = None) -> None:
+    def handle_drop(self, paths: list[Path], hint: dict | None = None) -> bool:
         from tabs.multi_compare.debug import mc_dnd_debug
 
         mc_dnd_debug("Tab handle_drop: ENTER %d paths hint=%r", len(paths), hint)
         if self._widget is None:
             mc_dnd_debug("Tab handle_drop: widget is None -> ignored")
-            return
+            return False
         image_paths = _filter_image_paths(paths)
         if not image_paths:
             mc_dnd_debug("Tab handle_drop: no supported image paths -> ignored")
-            return
+            return False
         # P3A: load directly like IC — auto-place via the P2 async path
         # (imageless slot + toast now, preview worker decode). No
         # begin_pending_paste arming, so no click-to-place and no Esc
@@ -455,6 +455,10 @@ class MultiCompareTab(TabContract):
         else:
             mc_dnd_debug("Tab handle_drop: no controller -> images_dropped signal")
             self._widget.images_dropped.emit(list(image_paths), (None, False), None)
+        # bool verdict (gallery/IC parity): the drop was taken. The control
+        # surface routes a folder to the tab that reports True here, so a
+        # bare None would read as "declined" and strand the folder.
+        return True
 
     def dispose(self) -> None:
         if self._widget is not None:

@@ -517,6 +517,85 @@ def test_open_folder_requires_an_existing_directory(tmp_path):
     assert "not an existing directory" in exc.value.message
 
 
+class _DropTab:
+    """Handler-level tab stand-in: takes files, never a directory."""
+
+    def __init__(self) -> None:
+        self.dropped: list[list] = []
+
+    def accepts_drop(self, paths):
+        paths = list(paths)
+        return bool(paths) and all(path.is_file() for path in paths)
+
+    def handle_drop(self, paths):
+        self.dropped.append(list(paths))
+        return True
+
+
+def _series_folder(tmp_path):
+    folder = tmp_path / "series"
+    folder.mkdir()
+    (folder / "1.png").write_bytes(b"x")
+    (folder / "2.jpg").write_bytes(b"x")
+    (folder / "readme.txt").write_bytes(b"x")
+    return folder
+
+
+def test_open_folder_can_target_a_file_only_tab(tmp_path, monkeypatch):
+    """multi_compare's 'add images' dialog is unreachable headlessly; the
+    control surface must be able to feed it by naming the tab."""
+    folder = _series_folder(tmp_path)
+    handlers = _handlers(_store_window(), _registry(), tmp_path)
+    mc = _DropTab()
+    monkeypatch.setattr(handlers, "_tabs", lambda: [("multi_compare", mc)])
+    monkeypatch.setattr(
+        handlers, "_tab_kinds", lambda: ["image_gallery", "multi_compare"]
+    )
+
+    result = handlers.open_folder({"path": str(folder), "tab": "multi_compare"})
+
+    assert result == {
+        "routed": True,
+        "path": str(folder),
+        "tab": "multi_compare",
+        "images": 2,
+    }
+    assert [p.name for p in mc.dropped[-1]] == ["1.png", "2.jpg"]
+
+
+def test_open_folder_target_opens_the_tab_when_absent(tmp_path, monkeypatch):
+    folder = _series_folder(tmp_path)
+    handlers = _handlers(_store_window(), _registry(), tmp_path)
+    mc = _DropTab()
+    live: list = []
+    actions: list = []
+    monkeypatch.setattr(handlers, "_tabs", lambda: list(live))
+    monkeypatch.setattr(handlers, "_tab_kinds", lambda: ["multi_compare"])
+
+    def _run_action(action_id: str) -> None:
+        actions.append(action_id)
+        live.append(("multi_compare", mc))
+
+    monkeypatch.setattr(handlers, "_run_action_id", _run_action)
+
+    result = handlers.open_folder({"path": str(folder), "tab": "multi_compare"})
+
+    assert actions == ["workspace.new_multi_compare"]
+    assert result["tab"] == "multi_compare" and result["images"] == 2
+
+
+def test_open_folder_target_rejects_an_unknown_kind(tmp_path, monkeypatch):
+    handlers = _handlers(_store_window(), _registry(), tmp_path)
+    monkeypatch.setattr(handlers, "_tabs", lambda: [])
+    monkeypatch.setattr(handlers, "_tab_kinds", lambda: ["multi_compare"])
+
+    with pytest.raises(MethodError) as exc:
+        handlers.open_folder({"path": str(tmp_path), "tab": "wibble"})
+
+    assert "unknown tab kind" in exc.value.message
+    assert "open_tab" in exc.value.hint
+
+
 def test_list_surfaces_includes_devtool_demos_as_not_live(tmp_path):
     handlers = _handlers(_store_window(), _registry(), tmp_path)
 

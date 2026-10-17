@@ -318,6 +318,34 @@ _KEY_ALIASES = {
     "menu": "Key_Menu",
 }
 
+#: Punctuation → Qt key, so a client can type a *path* or any other text
+#: field keystroke by keystroke (``/,t,m,p,/,a,.,p,n,g``). Qt names these
+#: keys, so without this map a path is untransmittable -- the one gap that
+#: made headless file dialogs undriveable. ``','`` and ``'+'`` are absent on
+#: purpose: they are the sequence / modifier separators.
+_PUNCTUATION_KEYS = {
+    "/": "Key_Slash",
+    ".": "Key_Period",
+    "-": "Key_Minus",
+    "_": "Key_Underscore",
+    "~": "Key_AsciiTilde",
+    "=": "Key_Equal",
+    ":": "Key_Colon",
+    ";": "Key_Semicolon",
+    "(": "Key_ParenLeft",
+    ")": "Key_ParenRight",
+    "[": "Key_BracketLeft",
+    "]": "Key_BracketRight",
+    "@": "Key_At",
+    "#": "Key_NumberSign",
+    "$": "Key_Dollar",
+    "%": "Key_Percent",
+    "!": "Key_Exclam",
+    "?": "Key_Question",
+    "*": "Key_Asterisk",
+    "\\": "Key_Backslash",
+}
+
 #: Modifier names accepted by ``press_keys`` → ``Qt.KeyboardModifier``.
 _MODIFIERS = {
     "ctrl": Qt.KeyboardModifier.ControlModifier,
@@ -346,12 +374,15 @@ def valid_key_names() -> list[str]:
     names = sorted(_KEY_ALIASES)
     names += [f"f{i}" for i in range(1, 13)]
     names += list(string.ascii_lowercase) + list(string.digits)
+    names += sorted(_PUNCTUATION_KEYS)
     return names
 
 
 def _resolve_key(name: str) -> Any:
     if name in _KEY_ALIASES:
         return getattr(Qt, _KEY_ALIASES[name])
+    if name in _PUNCTUATION_KEYS:
+        return getattr(Qt, _PUNCTUATION_KEYS[name])
     if len(name) == 1 and name.isalpha():
         return getattr(Qt, "Key_" + name.upper())
     if len(name) == 1 and name.isdigit():

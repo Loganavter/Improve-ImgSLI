@@ -558,3 +558,45 @@ def test_scope_is_tab_page_containment_and_closed_scope_is_empty(tmp_path):
         registry._pages.pop("scope_tab", None)  # type: ignore[attr-defined]
         page.close()
         outside_window.close()
+
+
+def test_qrhi_canvas_is_inventoried_and_keys_can_be_aimed_at_it(tmp_path):
+    """A live canvas must be addressable, and keys must reach it.
+
+    Falsification: before this, a ``QRhiWidget`` canvas matched no role, so it
+    never appeared in ``ui_elements`` and ``press_keys`` had no id to aim at --
+    the zoom keys of the multi-compare canvas went to the main window and did
+    nothing (live 2026-10-17).
+    """
+    from PySide6.QtWidgets import QRhiWidget
+
+    class _Canvas(QRhiWidget):
+        def __init__(self, parent=None):
+            super().__init__(parent)
+            self.keys: list[int] = []
+
+        def keyPressEvent(self, event):  # noqa: N802 - Qt name
+            self.keys.append(event.key())
+            event.accept()
+
+    app = QApplication.instance() or QApplication([])
+    window = QWidget()
+    window.resize(320, 240)
+    layout = QVBoxLayout(window)
+    canvas = _Canvas(window)
+    layout.addWidget(canvas)
+    window.show()
+    handlers = _handlers(window, _registry(), tmp_path)
+    try:
+        _pump(app, 0.2)
+        payload = handlers.ui_elements({})
+        row = _find(payload, role="canvas")
+
+        result = handlers.press_keys({"keys": "=,0", "target": row["id"]})
+
+        assert result["target"] == "_Canvas", "the keys went to the canvas"
+        from PySide6.QtCore import Qt as _Qt
+
+        assert canvas.keys == [_Qt.Key.Key_Equal, _Qt.Key.Key_0]
+    finally:
+        window.close()
