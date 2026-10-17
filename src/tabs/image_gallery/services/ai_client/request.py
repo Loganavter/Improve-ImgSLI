@@ -65,6 +65,7 @@ def build_request(
     model: str,
     prompt: str | None = None,
     mode=None,
+    profile=None,
     metrics: dict | None = None,
     openrouter: bool = False,
     fallback_models: tuple[str, ...] | None = None,
@@ -88,8 +89,8 @@ def build_request(
         except Exception:
             block = ""
     if prompt is None:
-        # Default prompt: request every applicable axis for this mode.
-        text = build_prompt(mode, measured_block=block)
+        # Default prompt: request every applicable axis for this mode/profile.
+        text = build_prompt(mode, profile=profile, measured_block=block)
     else:
         text = prompt
         if block:

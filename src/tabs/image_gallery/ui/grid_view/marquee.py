@@ -70,11 +70,13 @@ def refresh_card(view, item: GalleryItem) -> None:
                 mode=self._resolve_mode(),
                 translate=self._activity_translate,
                 domain=domain,
+                profile=self._resolve_profile(),
             )
         else:
             # translate rides the card (attached at build) — no per-update threading.
             update_gallery_card(  # type: ignore[arg-type]
-                card, item, mode=self._resolve_mode(), domain=domain
+                card, item, mode=self._resolve_mode(), domain=domain,
+                profile=self._resolve_profile(),
             )
     except Exception:
         pass
@@ -104,6 +106,10 @@ def refresh_cards(view, items) -> None:
     except Exception:
         mode = None
     try:
+        profile = self._resolve_profile()
+    except Exception:
+        profile = None
+    try:
         from .drag_source import _gallery_domain
 
         domain = _gallery_domain(self)
@@ -124,9 +130,10 @@ def refresh_cards(view, items) -> None:
                     mode=mode,
                     translate=self._activity_translate,
                     domain=domain,
+                    profile=profile,
                 )
             else:
-                update_gallery_card(card, item, mode=mode, domain=domain)  # type: ignore[arg-type]
+                update_gallery_card(card, item, mode=mode, domain=domain, profile=profile)  # type: ignore[arg-type]
         except Exception:
             pass
         self._sync_activity(card)

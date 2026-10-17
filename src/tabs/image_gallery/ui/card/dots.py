@@ -203,11 +203,15 @@ def metric_dots_for_item(
     mode: object = None,
     domain: object = None,
     translate=None,
+    profile=None,
 ) -> tuple[tuple[object, ...], tuple[tuple[str, int | None], ...]]:
     """Per-metric quality dots: one dot per applicable MEASURED axis.
 
-    Dot count/order = ``rank_fusion.measured_axes_for(mode)`` (registry report
-    order). Per-dot value = the CURRENT domain read
+    Dot count/order = ``rank_fusion.measured_axes_for(mode, profile=profile)``
+    (registry report order). ``profile`` is the ACTIVE metric profile (any
+    object with ``.axis_ids``); it wins over *mode* when given, so the dots
+    show exactly the axes the rank and the AI scorecard use. ``profile=None``
+    reproduces the mode mapping. Per-dot value = the CURRENT domain read
     (``quality_read.domain_axis_scores``, 0–100; AI scorecard vs local
     detectors). Color = ``metric_scores.score_band`` mapped onto the existing
     severity tokens; an unscored axis gets the muted neutral dot.
@@ -220,7 +224,7 @@ def metric_dots_for_item(
         from tabs.image_gallery.services.metric_scores import score_band
         from tabs.image_gallery.services.rank_fusion import measured_axes_for
 
-        axes = measured_axes_for(mode)
+        axes = measured_axes_for(mode, profile=profile)
         scores = _quality_read.domain_axis_scores(item, domain=domain)
     except Exception:
         return (), ()
@@ -267,13 +271,15 @@ def _dots_for_item(
     mode: object = None,
     domain: object = None,
     translate=None,
+    profile=None,
 ) -> tuple[str, tuple[object, ...]]:
     """Backward-compatible ``(dot_text, colors)`` over ``metric_dots_for_item``.
 
     ``_DOTS_TEXT`` is kept for old callers/tests but is no longer authoritative:
-    the actual dot count comes from the measured-axis set.
+    the actual dot count comes from the measured-axis set (the active
+    *profile* when given, else *mode*).
     """
     colors, _infos = metric_dots_for_item(
-        item, mode=mode, domain=domain, translate=translate
+        item, mode=mode, domain=domain, translate=translate, profile=profile
     )
     return _DOTS_TEXT, colors

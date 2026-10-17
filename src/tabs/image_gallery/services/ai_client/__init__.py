@@ -100,6 +100,7 @@ def analyze_image_sync(
     api_key: str,
     model: str,
     mode=None,
+    profile=None,
     metrics: dict | None = None,
     fallback_models: tuple[str, ...] | None = None,
     reasoning_effort: str = "auto",
@@ -109,7 +110,9 @@ def analyze_image_sync(
     """Full request→parse pipeline. Call only from a worker thread.
 
     ``mode`` selects the applicable axis set the prompt requests (the AI-domain
-    scorecard). ``reasoning_effort`` is the user's Settings value (``auto`` by
+    scorecard); ``profile`` (the active metric profile) takes precedence over
+    *mode* when given (``measured_axes_for`` — the dots/prompt/rank agree on ONE
+    axis set). ``reasoning_effort`` is the user's Settings value (``auto`` by
     default; ``ask_router.resolve_reasoning_effort`` collapses it to a safe
     floor for mandatory-reasoning models) and ``max_tokens`` overrides the
     estimated answer budget (0 = estimate). ``on_phase`` (optional) receives
@@ -132,6 +135,7 @@ def analyze_image_sync(
         image_path,
         model=model,
         mode=mode,
+        profile=profile,
         metrics=metrics,
         openrouter=openrouter,
         fallback_models=fallback_models,
