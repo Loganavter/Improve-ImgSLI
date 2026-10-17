@@ -3,7 +3,8 @@
 A **local stdio MCP server** that lets an LLM agent drive and inspect the
 Improve-ImgSLI desktop app: list/run Find Actions, open tabs, read Store
 settings and workspace sessions, dump the widget tree, tail the log, query the
-causal tracer, screenshot devtool surfaces.
+causal tracer, screenshot devtool surfaces, and inventory / click / hover /
+focus UI elements by id in the live window.
 
 Speaks MCP spec revision **`2026-07-28`** (stateless per-request envelope,
 `server/discover`, cacheable list results) and also accepts the legacy
@@ -46,10 +47,12 @@ no manual `PYTHONPATH` is needed. Environment knobs:
 
 ## Surface
 
-**Tools** (14 — 7 read-only, 7 mutating; reads and writes never share a tool):
+**Tools** (18 — 8 read-only, 10 mutating; reads and writes never share a tool):
 `list_actions`, `list_sessions`, `get_state`, `read_log`, `query_trace`,
-`dump_ui_layout`, `list_surfaces` · `open_tab`, `run_action`, `open_folder`,
-`set_theme`, `set_language`, `capture_surface`, `press_keys` (live-only).
+`dump_ui_layout`, `list_surfaces`, `ui_elements` · `open_tab`, `run_action`,
+`open_folder`, `set_theme`, `set_language`, `capture_surface`, `press_keys`,
+`ui_click`, `ui_hover`, `ui_focus`. The four element-targeting tools
+(`ui_elements`, `ui_click`, `ui_hover`, `ui_focus`) are live-only.
 
 **Resources**: `app://actions`, `app://state`, `app://sessions`, `app://log`,
 `app://ui-layout`, `app://theme`; templates `app://action/{id}`,
@@ -74,9 +77,10 @@ data dir's `run/`. One newline-delimited JSON request
 `{"id", "method", "params"}` per call, answered by
 `{"id", "ok": true, "result"}` or `{"id", "ok": false, "error", "hint"}`. On
 this path the tools act on the window the user is driving (`open_folder` really
-routes, `set_theme`/`set_language` apply now, `press_keys` injects keys); a
-stale pointer or a socket nobody listens on is "no live instance", and a
-refused/closed connection just falls back — never a user-visible error.
+routes, `set_theme`/`set_language` apply now, `press_keys` injects keys, and
+`ui_elements`/`ui_click`/`ui_hover`/`ui_focus` inventory and target the live
+widgets); a stale pointer or a socket nobody listens on is "no live instance",
+and a refused/closed connection just falls back — never a user-visible error.
 Mutations with no fallback analogue carry `live: true`.
 
 **Fallback (no live instance)** uses the primitives the app already ships:
@@ -105,7 +109,8 @@ Fallback safety rules (`app/process_policy.py`):
 **Fallback limits:** reads boot a throwaway app and can be ~30 s stale;
 mutations start a *new* process (they reach a running window only via live
 attach); `open_folder` reports `routed: false`; `press_keys` has no fallback and
-errors honestly.
+errors honestly, and so do the element-targeting tools (`ui_elements`,
+`ui_click`, `ui_hover`, `ui_focus`) — element ids only exist in a running app.
 
 ## Security model
 
@@ -119,10 +124,15 @@ errors honestly.
   artifacts are returned — never user images or arbitrary files.
 - **Read-only default.** Every mutating tool is a distinct, explicitly named
   tool with honest `annotations` (`run_action` advertises
-  `destructiveHint: true`; `press_keys` is destructive-free but not idempotent).
+  `destructiveHint: true`; `press_keys` and `ui_click` are destructive-free but
+  not idempotent).
 - **Keyboard input is live-only.** `press_keys` injects combos into the running
   app through the control socket (key names allowlisted app-side); with no
   instance it answers an honest error instead of pretending.
+- **Element targeting is live-only.** `ui_elements` inventories the running
+  window's interactive widgets and `ui_click`/`ui_hover`/`ui_focus` act on them
+  by session-scoped id; with no instance they answer an honest error — they
+  never boot a throwaway app to fake a target.
 
 ## The optional MCP SDK
 

@@ -586,3 +586,87 @@ class LiveBackend:
             "target": str(result.get("target") or ""),
             "source": "live",
         }
+
+    # -- element targeting (live-only) -------------------------------------
+
+    @staticmethod
+    def _element(row: dict) -> dict:
+        """One inventory row, normalised to the declared element shape."""
+        return {
+            "id": str(row.get("id") or ""),
+            "role": str(row.get("role") or ""),
+            "label": str(row.get("label") or ""),
+            "rect": list(row.get("rect") or []),
+            "screen_rect": list(row.get("screen_rect") or []),
+            "window": str(row.get("window") or ""),
+            "owner_tab": row.get("owner_tab"),
+            "action_id": row.get("action_id"),
+            "enabled": bool(row.get("enabled")),
+            "visible": bool(row.get("visible")),
+        }
+
+    def ui_elements(
+        self,
+        *,
+        client: LiveClient | None = None,
+        scope: str | None = None,
+        include_disabled: bool | None = None,
+    ) -> dict:
+        params: dict[str, Any] = {}
+        if scope:
+            params["scope"] = scope
+        if include_disabled:
+            params["include_disabled"] = bool(include_disabled)
+        result = self._request("ui_elements", params, client)
+        rows = [self._element(row) for row in self._rows(result, "elements")]
+        return {
+            "count": int(result.get("count") or len(rows)),
+            "window_count": int(result.get("window_count") or 0),
+            "elements": rows,
+            "source": "live",
+        }
+
+    def ui_click(
+        self,
+        *,
+        client: LiveClient | None = None,
+        id: str,
+        button: str | None = None,
+        count: int | None = None,
+    ) -> dict:
+        params: dict[str, Any] = {"id": id}
+        if button:
+            params["button"] = button
+        if count:
+            params["count"] = int(count)
+        result = self._request("ui_click", params, client)
+        return {
+            "clicked": bool(result.get("clicked", True)),
+            "id": str(result.get("id") or id),
+            "rect": list(result.get("rect") or []),
+            "screen_rect": list(result.get("screen_rect") or []),
+            "target": str(result.get("target") or ""),
+            "surface": str(result.get("surface") or ""),
+            "source": "live",
+        }
+
+    def ui_hover(self, *, client: LiveClient | None = None, id: str) -> dict:
+        result = self._request("ui_hover", {"id": id}, client)
+        return {
+            "hovered": bool(result.get("hovered", True)),
+            "id": str(result.get("id") or id),
+            "rect": list(result.get("rect") or []),
+            "target": str(result.get("target") or ""),
+            "source": "live",
+        }
+
+    def ui_focus(self, *, client: LiveClient | None = None, id: str) -> dict:
+        result = self._request("ui_focus", {"id": id}, client)
+        return {
+            "focused": bool(result.get("focused", True)),
+            "id": str(result.get("id") or id),
+            "rect": list(result.get("rect") or []),
+            "target": str(result.get("target") or ""),
+            "focus_widget": str(result.get("focus_widget") or ""),
+            "source": "live",
+        }
