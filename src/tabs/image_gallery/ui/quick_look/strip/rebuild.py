@@ -355,8 +355,10 @@ def rebuild_strip(overlay) -> None:
                     )
                 except Exception:
                     pass
+                prev_idx = None
                 try:
                     target_idx = None
+                    prev_idx = getattr(overlay, "_current_idx", None)
                     for i, mm in enumerate(overlay._series_items):
                         if Path(getattr(mm, "path", "")) == Path(getattr(target, "path", "")):
                             target_idx = i
@@ -392,7 +394,31 @@ def rebuild_strip(overlay) -> None:
                             break
                 except Exception:
                     pass
-                overlay._populate()
+                # A strip click on ANOTHER thumb of the same series is a
+                # within-series step: keep the user's wheel-zoom/pan
+                # (plan-ql-zoom-persist). The already-viewing thumb returned
+                # early above, so a resolvable target that differs from the
+                # pre-click index is always the same series, different member.
+                # Module function called directly — the class delegator in
+                # ``ui/quick_look.py`` takes no flag.
+                _preserve = False
+                try:
+                    _members = list(getattr(overlay, "_series_items", None) or [])
+                    _preserve = (
+                        target_idx is not None
+                        and 0 <= int(target_idx) < len(_members)
+                        and int(target_idx) != int(prev_idx)
+                    )
+                except Exception:
+                    _preserve = False
+                try:
+                    from tabs.image_gallery.ui.quick_look.overlay_parts import (
+                        populate as _populate_parts,
+                    )
+
+                    _populate_parts._populate(overlay, preserve_view=_preserve)
+                except Exception:
+                    overlay._populate()
             return _do
 
         _switch = _make_switch()

@@ -250,7 +250,7 @@ def _store_from_pixmap(pm):
         return None
 
 
-def _populate_preview_canvas(overlay, item) -> bool:
+def _populate_preview_canvas(overlay, item, *, preserve_view: bool = False) -> bool:
     """GPU branch: bounded coarse store (frozen seam) into the canvas slot.
 
     The canvas is the only live surface; the raster cover plate holds the
@@ -259,6 +259,9 @@ def _populate_preview_canvas(overlay, item) -> bool:
     round-trip. Miss: a single coarse build is shared by the canvas store
     and the stash pixmap (no double decode) and the store is memoized
     beside the pixmap under the same key.
+    ``preserve_view`` forwards the within-series-walk intent to
+    ``canvas.set_source`` (pixels change, wheel-zoom/pan do not); the
+    default ``False`` keeps the pre-change reset contract.
     Inner gallery-debug timings (``preview-coarse`` / ``preview-stash`` /
     ``preview-set-source``) split the outer ``preview=`` total. Miss
     (empty path, unreadable source, unbuilt coarse) fails closed to False
@@ -331,7 +334,13 @@ def _populate_preview_canvas(overlay, item) -> bool:
                 except Exception:
                     pass
                 try:
-                    canvas.set_source(_memo_store)
+                    # Only pass the kw when asking to preserve: stub/legacy
+                    # canvases on the default path keep their one-arg
+                    # ``set_source(store)`` surface.
+                    if preserve_view:
+                        canvas.set_source(_memo_store, preserve_view=True)
+                    else:
+                        canvas.set_source(_memo_store)
                 except Exception:
                     try:
                         _host()._preview_store_cache_discard(overlay, _memo_store)
@@ -413,7 +422,10 @@ def _populate_preview_canvas(overlay, item) -> bool:
             )
             _t = _time.perf_counter()
         try:
-            canvas.set_source(store)
+            if preserve_view:
+                canvas.set_source(store, preserve_view=True)
+            else:
+                canvas.set_source(store)
         except Exception:
             try:
                 _host()._preview_store_cache_discard(overlay, store)

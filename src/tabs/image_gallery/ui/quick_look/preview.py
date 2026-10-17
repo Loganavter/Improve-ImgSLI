@@ -394,15 +394,16 @@ def _source_dimensions(src_item, src_path) -> tuple[int, int] | None:
 # -- populate helpers -------------------------------------------------------
 
 
-def populate_preview(overlay, item) -> None:
+def populate_preview(overlay, item, *, preserve_view: bool = False) -> None:
     """Single live image surface: the GPU canvas (``preview_canvas_host``).
 
-    Never raises; a miss leaves the cover plate as the visible surface.
+    ``preserve_view`` keeps the zoom/pan on a within-series walk; the default
+    False is the pre-change reset. Never raises; a miss leaves the cover plate.
     """
     try:
         from tabs.image_gallery.ui.quick_look.preview_canvas_host import _populate_preview_canvas
 
-        _populate_preview_canvas(overlay, item)
+        _populate_preview_canvas(overlay, item, preserve_view=preserve_view)
     except Exception:
         pass
 
