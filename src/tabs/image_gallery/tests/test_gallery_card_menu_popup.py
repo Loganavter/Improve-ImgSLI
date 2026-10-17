@@ -76,3 +76,55 @@ def test_card_menu_renders_unclipped(qtbot) -> None:
         assert len(rows) >= 1, "menu opened with no action rows"
     finally:
         menu.hide()
+
+
+def test_card_menu_binds_the_translator_before_showing(qtbot, monkeypatch) -> None:
+    """The card menu must be localized BEFORE it is shown.
+
+    Regression for ``card-menu-collapse`` (2026-10-17): binding the translator
+    after ``popup_at`` ran ``retranslate`` -> ``_relayout_widths`` ->
+    ``adjustSize`` while the flyout's show-time fade had the container hidden,
+    collapsing the menu to a sliver (16x16 on screen in the live app; the
+    in-process ``isVisible()`` still said True). The invariant is ordering, so
+    assert it at the boundary: when ``popup_at`` runs, the menu already
+    resolves the page translator instead of the toolkit global default.
+    """
+    from sli_ui_toolkit.i18n import tr as global_tr, translator_for
+    from sli_ui_toolkit.widgets import ContextMenu
+
+    w = ImageGalleryWidget()
+    qtbot.addWidget(w)
+    w.resize(900, 600)
+    w.show()
+    items = [_item(f"{i}.png") for i in range(4)]
+    w._grid_view.rebuild_grid(items)
+    qtbot.wait(10)
+
+    card = w._grid_view.card_for(items[0].path)
+    assert card is not None
+
+    seen: list[object] = []
+    original_popup_at = ContextMenu.popup_at
+
+    def spy(self, *args, **kwargs):
+        seen.append(translator_for(self))
+        return original_popup_at(self, *args, **kwargs)
+
+    monkeypatch.setattr(ContextMenu, "popup_at", spy)
+
+    def tr(key: str, default: str | None = None) -> str:
+        return default if default is not None else key
+
+    popup_gallery_card_context_menu(
+        card,
+        w,
+        items[0].path,
+        global_pos=QPoint(300, 200),
+        selection_count=0,
+        translate=tr,
+    )
+    assert seen, "popup_at was never called — the card menu did not open"
+    assert seen[0] is not global_tr, (
+        "the translator was bound AFTER popup_at; a post-show bind collapses "
+        "the menu while the show-time fade hides its container"
+    )

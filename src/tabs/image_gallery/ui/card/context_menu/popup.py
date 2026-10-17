@@ -370,13 +370,14 @@ def popup_gallery_card_context_menu(  # type: ignore[no-untyped-def]
                 entries=tuple(entries),
                 key=("gallery-card", str(path), n),
                 on_triggered=_on_triggered,
+                translator=tr,
                 **_open_kwargs,
             )
             if menu is not None:
-                # Localize the declarative text_key rows through the resolved
-                # translator (the popup is created after the page's install
-                # walk, so it is not auto-covered).
-                _bind_menu_translator(menu, tr)
+                # The translator is bound by the manager BEFORE the popup is
+                # shown (see ContextMenuManager.open_entries): a post-show bind
+                # ran retranslate -> adjustSize while the fade hid the menu's
+                # container and collapsed it (card-menu-collapse, 2026-10-17).
                 if _dbg_on:
                     try:
                         _dbg(
