@@ -41,7 +41,7 @@ fallback window, e.g. `:97`).
 
 ## Surface at a glance
 
-14 tools — 7 read-only, 7 mutating (reads and writes never share a tool):
+18 tools — 8 read-only, 10 mutating (reads and writes never share a tool):
 
 | Tool | Kind | What it does |
 |---|---|---|
@@ -52,6 +52,7 @@ fallback window, e.g. `:97`).
 | `query_trace` | read | search `trace.jsonl` newest-first |
 | `dump_ui_layout` | read | widget tree JSON (geometry, colors, bound action ids) |
 | `list_surfaces` | read | capture-surface names for `capture_surface` |
+| `ui_elements` | read | live inventory of interactive elements (id, role, label, rects, enabled) |
 | `open_tab` | write | open/focus a tab kind (live) or launch it (fallback) |
 | `run_action` | write | run one ActionRegistry id |
 | `open_folder` | write | hand a folder to the gallery (live: routed) |
@@ -59,6 +60,9 @@ fallback window, e.g. `:97`).
 | `set_language` | write | set `language` (en/ru/zh/pt_BR) |
 | `capture_surface` | write | screenshot a named surface to PNG |
 | `press_keys` | write | inject keyboard combos into the running app (live-only) |
+| `ui_click` | write | click an element by id, in-process (live-only) |
+| `ui_hover` | write | hover an element by id, in-process (live-only) |
+| `ui_focus` | write | focus an element by id, in-process (live-only) |
 
 Resources: `app://actions`, `app://state`, `app://sessions`, `app://log`,
 `app://ui-layout`, `app://theme`; templates `app://action/{id}`,
@@ -91,8 +95,16 @@ One tool call is one newline-delimited JSON request
 the user is driving: `open_tab` switches in place, `run_action` runs live,
 `open_folder` really routes the folder (`routed: true`), `set_theme` /
 `set_language` apply now (`applies_on: "now"`), and `press_keys` injects
-keyboard combos the Find Action catalog does not cover. Mutations with no
-Phase-1 analogue carry `live: true` (there is no fresh `pid` to report).
+keyboard combos the Find Action catalog does not cover. `ui_elements` inventories
+the live window's interactive widgets (id, role, label, widget `rect` and
+screen-space `screen_rect`, `enabled`, bound action id) and
+`ui_click` / `ui_hover` / `ui_focus` act on one by its session-scoped id —
+in-process, at the element's centre, with an unknown id retried ~3 s and then
+failed with close matches. In-process delivery fires the handler even when the
+element is off-screen; only the human-visible effect needs it on screen. Both
+rects are 4-number arrays; `rect` is widget-local and `screen_rect` is
+screen-space (best-effort on Wayland). Mutations with no Phase-1 analogue carry
+`live: true` (there is no fresh `pid` to report).
 
 Staleness and failure are non-events for the caller: a pointer whose pid is dead
 is stale, a socket nobody listens on is "no live instance", and a connection
@@ -140,6 +152,9 @@ and may be ~30 s stale; fallback mutations start a *new* process (they affect a
 running window only through live attach); fallback `open_folder` reports
 `routed: false`, so the folder must be dropped on the gallery. `press_keys` is
 **live-only** — with no instance it errors honestly, it never fakes input. The
+element-targeting tools (`ui_elements`, `ui_click`, `ui_hover`, `ui_focus`) are
+live-only too: ids exist only in a running app, so with no instance they answer
+an honest error rather than booting a throwaway app. The
 live QRhi/GL canvas is not capturable headlessly (see
 [SCREENSHOTS.md](SCREENSHOTS.md) §Known limitation).
 
@@ -152,11 +167,15 @@ live QRhi/GL canvas is not capturable headlessly (see
 - **No file contents.** Only the app's own log/tracer/catalog/layout artifacts
   are returned — never user images or arbitrary files.
 - **Read-only default**; mutations are distinct named tools with honest
-  `annotations` (`run_action` sets `destructiveHint: true`; `press_keys` is
-  non-destructive but non-idempotent).
+  `annotations` (`run_action` sets `destructiveHint: true`; `press_keys` and
+  `ui_click` are non-destructive but non-idempotent).
 - **Keyboard input is live-only.** `press_keys` injects into the running app
   through the control socket; with no instance it answers an honest error
   rather than pretending. Key names are allowlisted app-side.
+- **Element targeting is live-only.** `ui_elements` reads the running window's
+  widget inventory; `ui_click`/`ui_hover`/`ui_focus` act on an id from it. With
+  no instance they answer an honest error — no throwaway app is booted to fake a
+  target.
 
 The live channel is the in-app control server: a unix socket in the control dir
 (env-gated, no TCP), refusing connections from other uids. Reads and mutations

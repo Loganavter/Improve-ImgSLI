@@ -686,6 +686,52 @@ class AppBackend:
             "start the app with the control socket enabled (see docs/dev/MCP.md), then retry",
         )
 
+    def _live_only(self, proxy: str, error: ToolError, **params: Any) -> dict:
+        """Proxy a tool with no headless analogue — live-only, never faked.
+
+        Follows the ``press_keys`` pattern: a missing instance (or a transport
+        fault mid-call) answers ``error`` honestly instead of simulating the
+        action; an app-reported failure keeps the app's own message and hint.
+        """
+        client = self.live.client_if_alive()
+        if client is None:
+            raise error
+        try:
+            return getattr(self.live, proxy)(client=client, **params)
+        except LiveUnavailable:
+            self.live.note_failure()
+            raise error
+        except LiveError as exc:
+            raise ToolError(exc.message, exc.hint)
+
+    @staticmethod
+    def _elements_need_live() -> ToolError:
+        return ToolError(
+            "no live instance; element targeting needs a running app",
+            "start the app with the control socket enabled (see docs/dev/MCP.md), then retry",
+        )
+
+    # -- element targeting (live-only) --------------------------------------
+
+    def ui_elements(self, *, scope: str | None = None, include_disabled: bool | None = None) -> dict:
+        return self._live_only(
+            "ui_elements",
+            self._elements_need_live(),
+            scope=scope,
+            include_disabled=include_disabled,
+        )
+
+    def ui_click(self, *, id: str, button: str | None = None, count: int | None = None) -> dict:
+        return self._live_only(
+            "ui_click", self._elements_need_live(), id=id, button=button, count=count
+        )
+
+    def ui_hover(self, *, id: str) -> dict:
+        return self._live_only("ui_hover", self._elements_need_live(), id=id)
+
+    def ui_focus(self, *, id: str) -> dict:
+        return self._live_only("ui_focus", self._elements_need_live(), id=id)
+
     def _fallback_persist(self, key: str, value: str, label: str) -> dict:
         try:
             if self._settings_writer is not None:
