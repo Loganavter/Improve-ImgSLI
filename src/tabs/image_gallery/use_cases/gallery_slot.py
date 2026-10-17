@@ -308,6 +308,15 @@ def _apply_slot_ranks(owner, slot) -> None:
     of the item's measured metrics, so an authoritative reconcile
     re-derives it from the live series instead of copying a stored number.
     """
+    # P1: the slot sync just (re)settled the local mode — refresh the metric
+    # profile BEFORE the rank re-apply so the fusion reads the same axis set the
+    # profile seam publishes (fail-open mode mapping when nothing is stored).
+    refresh = getattr(owner, "refresh_metric_profile", None)
+    if callable(refresh):
+        try:
+            refresh()
+        except Exception:
+            logger.debug("metric profile refresh failed", exc_info=True)
     owner._apply_fusion_ranks(getattr(owner.state, "series", None))
 
 
