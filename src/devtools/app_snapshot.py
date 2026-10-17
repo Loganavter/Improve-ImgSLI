@@ -95,8 +95,10 @@ def encode(value: Any, *, depth: int = 0) -> Any:
 def dump_actions(registry: Any) -> list[dict[str, Any]]:
     """Catalog rows from the ``ActionRegistry`` — ids, labels, owners.
 
-    ``registry`` is duck-typed (``all_actions()``) so a test can pass a real
-    ``ActionRegistry`` built in-process without a ``MainWindow``.
+    Each row carries ``enabled``/``reason`` (the P2 contract-honesty fields: is
+    the action runnable *now*, and if not, why) so an agent can plan rather than
+    fail at call time. ``registry`` is duck-typed (``all_actions()``) so a test
+    can pass a real ``ActionRegistry`` built in-process without a ``MainWindow``.
     """
     rows: list[dict[str, Any]] = []
     try:
@@ -120,6 +122,11 @@ def dump_actions(registry: Any) -> list[dict[str, Any]]:
                         if segment
                     ],
                     "runnable": action.run is not None,
+                    # P2 contract honesty: why an agent cannot run it *now*.
+                    # Duck-typed: a registry row without the (new) fields still
+                    # reports enabled with no reason.
+                    "enabled": bool(getattr(action, "enabled", True)),
+                    "reason": getattr(action, "reason", None),
                 }
             )
         except Exception:

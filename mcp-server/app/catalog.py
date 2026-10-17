@@ -16,7 +16,7 @@ Design rules (MCP spec revision ``2026-07-28`` + 2026 tool-design consensus):
 - every tool carries an ``outputSchema`` and its handler returns matching
   ``structuredContent``;
 - all four ``annotations`` hints are explicit on every tool;
-- the catalog stays tiny (≤ ~15 tools) — large payloads live in resources.
+- the catalog stays tiny (≤ ~20 tools) — large payloads live in resources.
 """
 
 from __future__ import annotations
@@ -48,8 +48,9 @@ INSTRUCTIONS = (
     "headless operation: reads boot a throwaway snapshot and mutations start a "
     "fresh, invisible process (source='fallback'). Read-only tools inspect the "
     "ActionRegistry, Store slices, widget tree, log, tracer, and capture "
-    "surfaces. press_keys needs a live instance. On the fallback path, treat "
-    "cached artifacts as possibly stale."
+    "surfaces. press_keys and the element-targeting tools (ui_elements, "
+    "ui_click, ui_hover, ui_focus) need a live instance. On the fallback path, "
+    "treat cached artifacts as possibly stale."
 )
 
 #: Freshness hint applied to the static list methods (ms).
@@ -62,6 +63,14 @@ TAB_KINDS = ("image_compare", "multi_compare", "image_gallery")
 
 THEMES = ("light", "dark")
 LANGUAGES = ("en", "ru", "zh", "pt_BR")
+
+#: The long-work kinds ``jobs_list`` reports (mirrors ``core/control/jobs.py``;
+#: the catalog stays app-import-free, so the vocabulary is repeated here).
+JOB_KINDS = ("gallery_pool", "metrics_pass", "ai_analysis", "export")
+#: Lifecycle states a listed job can be in (idle/settled jobs are not listed).
+JOB_STATUSES = ("running", "paused")
+#: The kinds ``jobs_cancel`` may actually stop today.
+CANCELLABLE_JOB_KINDS = ("export",)
 
 
 def _annotations(read_only: bool, destructive: bool, idempotent: bool) -> dict:
@@ -79,8 +88,10 @@ MUTATING = _annotations(False, False, True)
 #: ``run_action`` can trigger any registered action — including destructive
 #: ones — so it advertises ``destructiveHint`` honestly.
 MUTATING_RISKY = _annotations(False, True, True)
-#: ``press_keys`` injects input: not destructive, but repeating the same combos
-#: twice is not a no-op (focus/state move), so it is explicitly non-idempotent.
+#: ``press_keys`` / ``ui_click`` inject input: not destructive, but repeating the
+#: same combo/click twice is not a no-op (focus/state move), so it is explicitly
+#: non-idempotent. ``ui_hover``/``ui_focus`` settle to the same state, so they
+#: keep the plain ``MUTATING`` hints.
 MUTATING_INPUT = _annotations(False, False, False)
 
 _STR = {"type": "string"}
@@ -125,6 +136,17 @@ def _array(items: dict) -> dict:
     return {"type": "array", "items": items}
 
 
+def _rect(description: str) -> dict:
+    """Schema for an element geometry as a 4-number ``[x, y, w, h]`` array."""
+    return {
+        "type": "array",
+        "items": _INT,
+        "minItems": 4,
+        "maxItems": 4,
+        "description": description,
+    }
+
+
 def _params(properties: dict | None = None, required: list[str] | None = None) -> dict:
     """Tool input schema: flat object, no extra properties."""
     return _object(properties or {}, required)
@@ -140,11 +162,11 @@ TOOLS: list[dict] = [
         "title": "List Find Action catalog",
         "description": (
             "List the app's registered Find Actions (id, label, owner tab, "
-            "shortcut). Use it to discover exact action ids before run_action, "
-            "or to check what a tab offers. Answers from the live instance when "
-            "one is attached; otherwise it boots a headless snapshot (a few "
-            "seconds). Do NOT use it to run anything, and do NOT invent ids — "
-            "only ids returned here are accepted by run_action."
+            "shortcut, enabled, reason). Use it to discover exact ids before "
+            "run_action, or to check a tab's catalog. Answers from the live "
+            "instance when one is attached; otherwise it boots a headless "
+            "snapshot (a few seconds). Do NOT use it to run anything, and do "
+            "NOT invent ids — only ids returned here are accepted by run_action."
         ),
         "inputSchema": _params(
             {
@@ -169,8 +191,16 @@ TOOLS: list[dict] = [
                             "owner_tab": {"type": ["string", "null"]},
                             "topic": {"type": ["string", "null"]},
                             "shortcut": {"type": ["string", "null"]},
+                            "enabled": {
+                                "type": "boolean",
+                                "description": "Whether the action is runnable right now (false when a precondition is unmet; read reason).",
+                            },
+                            "reason": {
+                                "type": ["string", "null"],
+                                "description": "Why the action is not runnable now, or null when it is.",
+                            },
                         },
-                        ["action_id", "label"],
+                        ["action_id", "label", "enabled", "reason"],
                     )
                 ),
                 "source": _source(),
@@ -635,6 +665,248 @@ TOOLS: list[dict] = [
         ),
         "annotations": MUTATING_INPUT,
         "handler": "press_keys",
+    },
+    {
+        "name": "ui_elements",
+        "title": "Inventory interactive elements",
+        "description": (
+            "Flattened inventory of the live window's interactive elements: "
+            "stable id, role, label, rect, screen_rect, enabled, visible, and "
+            "bound Find Action id. Call it FIRST to get an id for ui_click / "
+            "ui_hover / ui_focus; ids are session-scoped, so re-read instead of "
+            "caching across starts. Live-only. rect is widget-local, "
+            "screen_rect is screen-space (best-effort on Wayland). Do NOT use it "
+            "to run anything."
+        ),
+        "inputSchema": _params(
+            {
+                "scope": {
+                    **_STR,
+                    "description": "Only inventory elements under this scope (e.g. a window or tab id); omit for the whole app.",
+                },
+                "include_disabled": {
+                    **_BOOL,
+                    "description": "Include disabled elements too; omit to list only enabled ones.",
+                },
+            }
+        ),
+        "outputSchema": _object(
+            {
+                "count": _INT,
+                "window_count": _INT,
+                "elements": _array(
+                    _object(
+                        {
+                            "id": _STR,
+                            "role": _STR,
+                            "label": _STR,
+                            "rect": _rect("Widget-local [x, y, w, h] geometry."),
+                            "screen_rect": _rect(
+                                "Screen-space [x, y, w, h] (best-effort on Wayland)."
+                            ),
+                            "window": _STR,
+                            "owner_tab": {"type": ["string", "null"]},
+                            "action_id": {"type": ["string", "null"]},
+                            "enabled": _BOOL,
+                            "visible": _BOOL,
+                        },
+                        ["id"],
+                    )
+                ),
+                "source": _source(),
+            },
+            ["count", "window_count", "elements"],
+        ),
+        "annotations": READ_ONLY,
+        "handler": "ui_elements",
+    },
+    {
+        "name": "ui_click",
+        "title": "Click an element by id",
+        "description": (
+            "Click one interactive element by its id from ui_elements, delivered "
+            "in-process at the element's centre. Call ui_elements first. Unknown "
+            "ids are retried about 3 s and then fail with close matches. "
+            "In-process delivery fires the handler even when the element is "
+            "off-screen, but the visible effect still needs it on screen. "
+            "rect is widget-local, screen_rect is screen-space (Wayland "
+            "best-effort)."
+        ),
+        "inputSchema": _params(
+            {
+                "id": {
+                    **_STR,
+                    "description": "Element id from ui_elements (session-scoped).",
+                },
+                "button": {
+                    **_STR,
+                    "enum": ["left", "right", "middle"],
+                    "description": "Mouse button to click; defaults to left (right opens context menus).",
+                },
+                "count": {
+                    **_INT,
+                    "minimum": 1,
+                    "description": "Click count; omit for a single click.",
+                },
+            },
+            ["id"],
+        ),
+        "outputSchema": _object(
+            {
+                "clicked": _BOOL,
+                "id": _STR,
+                "rect": _rect("Widget-local rect the click resolved to."),
+                "screen_rect": _rect("Screen-space rect (best-effort on Wayland)."),
+                "target": _STR,
+                "surface": _STR,
+                "source": _source(),
+            },
+            ["clicked", "id", "rect", "screen_rect"],
+        ),
+        "annotations": MUTATING_INPUT,
+        "handler": "ui_click",
+    },
+    {
+        "name": "ui_hover",
+        "title": "Hover an element by id",
+        "description": (
+            "Hover one interactive element by its id from ui_elements, delivered "
+            "in-process. Call ui_elements first; ids are session-scoped. Unknown "
+            "ids are retried about 3 s then fail with close matches. Idempotent. "
+            "In-process delivery needs no on-screen visibility, but the visible "
+            "hover effect does. rect is widget-local; screen_rect is screen-space "
+            "(best-effort on Wayland)."
+        ),
+        "inputSchema": _params(
+            {"id": {**_STR, "description": "Element id from ui_elements (session-scoped)."}},
+            ["id"],
+        ),
+        "outputSchema": _object(
+            {
+                "hovered": _BOOL,
+                "id": _STR,
+                "rect": _rect("Widget-local rect the hover resolved to."),
+                "target": _STR,
+                "source": _source(),
+            },
+            ["hovered", "id", "rect"],
+        ),
+        "annotations": MUTATING,
+        "handler": "ui_hover",
+    },
+    {
+        "name": "ui_focus",
+        "title": "Focus an element by id",
+        "description": (
+            "Give keyboard focus to one interactive element by its id from "
+            "ui_elements, delivered in-process. Call ui_elements first; ids are "
+            "session-scoped. Unknown ids are retried about 3 s then fail with "
+            "close matches. Idempotent. In-process delivery needs no on-screen "
+            "visibility, but the visible focus effect does. rect is widget-local; "
+            "screen_rect is screen-space (best-effort on Wayland)."
+        ),
+        "inputSchema": _params(
+            {"id": {**_STR, "description": "Element id from ui_elements (session-scoped)."}},
+            ["id"],
+        ),
+        "outputSchema": _object(
+            {
+                "focused": _BOOL,
+                "id": _STR,
+                "rect": _rect("Widget-local rect the focus resolved to."),
+                "target": _STR,
+                "focus_widget": _STR,
+                "source": _source(),
+            },
+            ["focused", "id", "rect"],
+        ),
+        "annotations": MUTATING,
+        "handler": "ui_focus",
+    },
+    {
+        "name": "jobs_list",
+        "title": "List in-flight long jobs",
+        "description": (
+            "Read the app's in-flight long passes: the gallery "
+            "thumbnail/proxy pool, the per-folder metrics pass, the AI analysis "
+            "pass, and running exports. Each row has id, kind, status, progress, "
+            "elapsed_s, message. Poll it to watch minute-long work; an empty list "
+            "means nothing is running, not an error. Live-only: with no running "
+            "app it errors instead of a false empty list. Not for cancelling."
+        ),
+        "inputSchema": _params(),
+        "outputSchema": _object(
+            {
+                "count": _INT,
+                "jobs": _array(
+                    _object(
+                        {
+                            "id": _STR,
+                            "kind": {
+                                **_STR,
+                                "enum": list(JOB_KINDS),
+                                "description": "Which pass this job is.",
+                            },
+                            "status": {
+                                **_STR,
+                                "enum": list(JOB_STATUSES),
+                                "description": "Lifecycle state; only non-idle jobs are listed.",
+                            },
+                            "progress": {
+                                "type": ["object", "null"],
+                                "description": "{done, total} when the app reports a total; JSON null when it does not (never an invented percentage).",
+                            },
+                            "elapsed_s": {
+                                "type": ["number", "null"],
+                                "description": "Seconds continuously observed running, or null; a lower bound, never a guess.",
+                            },
+                            "message": _STR,
+                        },
+                        ["id", "kind", "status", "message"],
+                    )
+                ),
+                "source": _source(),
+            },
+            ["count", "jobs"],
+        ),
+        "annotations": READ_ONLY,
+        "handler": "jobs_list",
+    },
+    {
+        "name": "jobs_cancel",
+        "title": "Cancel an in-flight job",
+        "description": (
+            "Cancel one running job by its id from jobs_list. Only kind 'export' "
+            "has a safe cancel today: it sets the save task's own cancel event, "
+            "so the encoder aborts atomically and leaves no partial file behind. "
+            "Every other kind answers a named refusal — cancellation is not "
+            "invented. An unknown or already-settled id is an error. Not "
+            "idempotent: re-sending an id after it settles fails."
+        ),
+        "inputSchema": _params(
+            {
+                "id": {
+                    **_STR,
+                    "description": "Job id from jobs_list (per-run; ids disappear when the job settles).",
+                }
+            },
+            ["id"],
+        ),
+        "outputSchema": _object(
+            {
+                "cancelled": {"type": "boolean", "description": "True when the cancel was delivered."},
+                "id": _STR,
+                "kind": {
+                    **_STR,
+                    "enum": list(CANCELLABLE_JOB_KINDS),
+                    "description": "The kind that was cancelled.",
+                },
+                "source": _source(),
+            },
+            ["cancelled", "id", "kind"],
+        ),
+        "annotations": MUTATING_INPUT,
+        "handler": "jobs_cancel",
     },
 ]
 

@@ -20,7 +20,7 @@ import os
 from pathlib import Path
 from typing import Any, Callable
 
-from . import discovery
+from . import discovery, elements as element_inventory, jobs
 from .discovery import MethodError, capture_live_png, parse_key_sequence
 
 #: Minimum-level filter ladder, mirroring the MCP ``read_log`` semantics.
@@ -47,7 +47,8 @@ METHODS: tuple[str, ...] = (
     "read_log",
     "run_action",
     "set_language",
-    "set_theme",
+    "set_theme", "jobs_cancel", "jobs_list", "ui_click", "ui_elements", "ui_focus",
+    "ui_hover",
 )
 
 
@@ -59,7 +60,7 @@ def _count_nodes(node: dict) -> int:
     return total
 
 
-class ControlHandlers:
+class ControlHandlers(element_inventory.ElementMethodsMixin, jobs.JobMethodsMixin):
     """Method dispatch over the live window/app.
 
     ``window`` is duck-typed (``.store`` plus optional live seams such as
@@ -145,6 +146,8 @@ class ControlHandlers:
             "methods": sorted(METHODS),
             "live_actions": True,
             "live_capture": True,
+            "live_elements": True,
+            "live_jobs": True,
             "live_keys": True,
             "subscribe": False,
         }
@@ -198,18 +201,13 @@ class ControlHandlers:
                 if needle not in haystack:
                     continue
             rows.append(action)
+        # Frozen P2 row shape (additive): ``reason`` is JSON null when runnable.
+        frozen = (
+            "action_id", "label", "owner_tab", "topic", "shortcut", "enabled", "reason",
+        )
         return {
             "count": len(rows),
-            "actions": [
-                {
-                    "action_id": row.get("action_id"),
-                    "label": row.get("label"),
-                    "owner_tab": row.get("owner_tab"),
-                    "topic": row.get("topic"),
-                    "shortcut": row.get("shortcut"),
-                }
-                for row in rows
-            ],
+            "actions": [{key: row.get(key) for key in frozen} for row in rows],
         }
 
     def list_sessions(self, _params: dict[str, Any]) -> dict[str, Any]:
@@ -495,6 +493,5 @@ class ControlHandlers:
         return focused
 
 
-#: The frozen method surface: one entry per MCP tool. Defined after the class
-#: body so every method object exists before it is referenced.
+#: The frozen method surface: one entry per MCP tool, built after the class body.
 ControlHandlers._DISPATCH = {name: getattr(ControlHandlers, name) for name in METHODS}
