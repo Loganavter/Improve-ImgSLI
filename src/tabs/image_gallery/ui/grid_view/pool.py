@@ -33,10 +33,13 @@ from ui.widgets.shelf import OpaqueFillHost, apply_opaque_widget_fill
 logger = logging.getLogger("ImproveImgSLI")
 
 from tabs.image_gallery.ui.grid_view import VIEW_GRID, VIEW_LIST
+from .drag_source import _gallery_domain
+
 
 def _acquire_card(view, item: GalleryItem):
     self = view
     _mode = self._resolve_mode()
+    _domain = _gallery_domain(self)
     want_list = self._view_mode == VIEW_LIST
     updater = update_gallery_list_card if want_list else update_gallery_card
     while self._pool:
@@ -54,7 +57,13 @@ def _acquire_card(view, item: GalleryItem):
         except Exception:
             pass
         try:
-            updater(card, item, mode=_mode, translate=self._activity_translate)  # type: ignore[arg-type]
+            updater(  # type: ignore[arg-type]
+                card,
+                item,
+                mode=_mode,
+                translate=self._activity_translate,
+                domain=_domain,
+            )
         except Exception:
             pass
         # Rebind click to current toggle handler (pool may carry old closure).
@@ -75,6 +84,7 @@ def _acquire_card(view, item: GalleryItem):
             on_context_menu=self._handle_context_menu,
             mode=_mode,
             translate=self._activity_translate,
+            domain=_domain,
         )
     else:
         card = build_gallery_card(
@@ -84,6 +94,7 @@ def _acquire_card(view, item: GalleryItem):
             on_context_menu=self._handle_context_menu,
             mode=_mode,
             translate=self._activity_translate,
+            domain=_domain,
         )
     try:
         card._gallery_view_mode = self._view_mode  # type: ignore[attr-defined]

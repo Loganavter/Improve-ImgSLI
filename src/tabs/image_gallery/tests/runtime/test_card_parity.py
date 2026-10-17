@@ -20,6 +20,7 @@ from PySide6.QtCore import QRectF
 from PySide6.QtGui import QColor
 
 from tabs.image_gallery.models import Artifact, GalleryItem, Severity, ThumbnailStatus
+from tabs.image_gallery.services.rank_fusion import measured_axes_for
 from tabs.image_gallery.ui.card import (
     _apply_rejected_visuals,
     _dots_for_item,
@@ -83,31 +84,34 @@ def test_severity_tokens_map_to_success_warning_danger():
 
 
 def test_per_dot_colors_are_individually_computed():
+    # One dot per measured metric axis, colored by the domain score band.
     item = _item(
-        artifacts={
-            Artifact.BANDING: Severity.FLAGGED,
-            Artifact.HALO: Severity.MILD,
-            Artifact.BLOCKING: Severity.CLEAN,
+        metrics={
+            "sharpness": 320.0,  # good
+            "noise": 0.9,  # bad
+            "white_balance": 0.5,  # mid
         }
     )
-    dot_text, colors = _dots_for_item(item)
-    assert dot_text == "● ● ●"
-    assert len(colors) == 3
-    assert len({str(c.name()) for c in colors}) == 3
+    dot_text, colors = _dots_for_item(item, mode="camera")
+    expected = len(measured_axes_for("camera"))
+    assert dot_text == "● ● ●"  # legacy constant, not authoritative
+    assert len(colors) == expected
+    assert len({str(c.name()) for c in colors}) >= 3
 
 
 def test_card_stores_per_dot_colors_and_overlay_is_attached(qapp):
     item = _item(
-        artifacts={
-            Artifact.BANDING: Severity.FLAGGED,
-            Artifact.HALO: Severity.MILD,
-            Artifact.BLOCKING: Severity.CLEAN,
+        metrics={
+            "sharpness": 320.0,
+            "noise": 0.9,
+            "white_balance": 0.5,
         }
     )
-    card = build_gallery_card(item, parent=None)
+    card = build_gallery_card(item, parent=None, mode="camera")
     qapp.processEvents()
     colors = getattr(card, "_gallery_dot_colors", ())
-    assert len(colors) == 3
+    assert len(colors) == len(measured_axes_for("camera"))
+    assert len(getattr(card, "_gallery_dot_infos", ())) == len(colors)
     # S2-1: overlay painter layer present in the button painter pipeline.
     layer_types = [
         type(layer).__name__
@@ -201,8 +205,11 @@ def test_readable_card_has_no_placeholder(qapp):
     assert any(r.text == item.name and r.color is not None and r.color.name().lower() == "#dfdfdf" for r in text_rows)
     # Dots are drawn by overlay, not as a colored text row
     assert not any(r.text == "● ● ●" for r in text_rows if r.color is not None)
-    # Overlay should have dot colors
-    assert len(getattr(card, "_gallery_dot_colors", ())) == 3
+    # Overlay should have one dot per measured axis for the item's mode (None
+    # → the mode-independent measured set).
+    assert len(getattr(card, "_gallery_dot_colors", ())) == len(
+        measured_axes_for(None)
+    )
     card.deleteLater()
 
 

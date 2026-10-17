@@ -327,6 +327,12 @@ def _rebuild_series(view) -> None:
         _mode = self._resolve_mode()
     except Exception:
         _mode = None
+    try:
+        from .drag_source import _gallery_domain
+
+        _domain = _gallery_domain(self)
+    except Exception:
+        _domain = ""
     # 1. plan sections (same order/texts as the old full rebuild).
     def _hdr(key: str, default: str, **kw) -> str:
         try:
@@ -404,7 +410,9 @@ def _rebuild_series(view) -> None:
                 self._cards_by_path[sp] = card
             else:
                 try:
-                    update_gallery_card(card, item, mode=_mode)  # type: ignore[arg-type]
+                    update_gallery_card(  # type: ignore[arg-type]
+                        card, item, mode=_mode, domain=_domain
+                    )
                 except Exception:
                     pass
             cards.append(card)
