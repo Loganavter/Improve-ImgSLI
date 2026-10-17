@@ -78,19 +78,18 @@ def test_card_menu_renders_unclipped(qtbot) -> None:
         menu.hide()
 
 
-def test_card_menu_binds_the_translator_before_showing(qtbot, monkeypatch) -> None:
-    """The card menu must be localized BEFORE it is shown.
+def test_card_menu_with_a_page_translator_stays_full_size(qtbot) -> None:
+    """A localized card menu is a real menu, not a sliver.
 
-    Regression for ``card-menu-collapse`` (2026-10-17): binding the translator
-    after ``popup_at`` ran ``retranslate`` -> ``_relayout_widths`` ->
-    ``adjustSize`` while the flyout's show-time fade had the container hidden,
-    collapsing the menu to a sliver (16x16 on screen in the live app; the
-    in-process ``isVisible()`` still said True). The invariant is ordering, so
-    assert it at the boundary: when ``popup_at`` runs, the menu already
-    resolves the page translator instead of the toolkit global default.
+    Regression for ``card-menu-collapse`` (2026-10-17): the card path used to
+    bind a translator to the menu AFTER ``popup_at``. During the show-time fade
+    the flyout's container is hidden, so ``retranslate`` -> ``_relayout_widths``
+    -> ``adjustSize`` measured an empty layout and collapsed the menu (16x16 in
+    the live app, 94x272 here). Labels are now localized when the entries are
+    built, exactly like every other context menu, and the shown menu is never
+    re-laid-out.
     """
-    from sli_ui_toolkit.i18n import tr as global_tr, translator_for
-    from sli_ui_toolkit.widgets import ContextMenu
+    from ui.context_menu.manager import get_context_menu_manager
 
     w = ImageGalleryWidget()
     qtbot.addWidget(w)
@@ -103,15 +102,6 @@ def test_card_menu_binds_the_translator_before_showing(qtbot, monkeypatch) -> No
     card = w._grid_view.card_for(items[0].path)
     assert card is not None
 
-    seen: list[object] = []
-    original_popup_at = ContextMenu.popup_at
-
-    def spy(self, *args, **kwargs):
-        seen.append(translator_for(self))
-        return original_popup_at(self, *args, **kwargs)
-
-    monkeypatch.setattr(ContextMenu, "popup_at", spy)
-
     def tr(key: str, default: str | None = None) -> str:
         return default if default is not None else key
 
@@ -123,8 +113,17 @@ def test_card_menu_binds_the_translator_before_showing(qtbot, monkeypatch) -> No
         selection_count=0,
         translate=tr,
     )
-    assert seen, "popup_at was never called — the card menu did not open"
-    assert seen[0] is not global_tr, (
-        "the translator was bound AFTER popup_at; a post-show bind collapses "
-        "the menu while the show-time fade hides its container"
-    )
+    menu = get_context_menu_manager()._active_menu
+    assert menu is not None, "card menu was not opened"
+    try:
+        qtbot.wait(60)  # let a show-time fade settle if the toolkit runs one
+        assert (menu.width(), menu.height()) != (16, 16), (
+            f"translated card menu collapsed to {menu.width()}x{menu.height()}"
+        )
+        assert menu.width() >= 100 and menu.height() >= 100, (
+            f"translated card menu is a sliver: {menu.width()}x{menu.height()}"
+        )
+        rows = [c for c in menu.findChildren(QWidget) if hasattr(c, "action_id")]
+        assert len(rows) >= 1, "menu opened with no action rows"
+    finally:
+        menu.hide()

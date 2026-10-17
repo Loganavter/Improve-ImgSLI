@@ -45,21 +45,3 @@ def _resolve_menu_translator(card, owner, translate):
     except Exception:
         pass
     return None
-
-
-def _bind_menu_translator(menu, translate) -> None:
-    """Drive the menu's declarative ``text_key`` rows through *translate*.
-
-    The menu is a popup parented to the card/anchor but created AFTER the
-    page's ``install_translator`` walk ran, so it is never auto-covered;
-    resolve the translator here and bind it explicitly. No-op when *translate*
-    is ``None``. Fail-open (fake/test menus lack the protocol).
-    """
-    if not callable(translate):
-        return
-    try:
-        from sli_ui_toolkit.i18n import bind_translator
-
-        bind_translator(menu, translate)
-    except Exception:
-        pass

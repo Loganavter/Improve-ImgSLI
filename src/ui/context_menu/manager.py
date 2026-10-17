@@ -86,7 +86,6 @@ class ContextMenuManager:
         key: object,
         on_triggered=None,
         menu_parent=None,
-        translator=None,
     ) -> ContextMenu | None:
         """Open a prebuilt entry tuple; *menu_parent* overrides the parent widget.
 
@@ -107,7 +106,6 @@ class ContextMenuManager:
             on_triggered=on_triggered,
             request=None,
             menu_parent=menu_parent,
-            translator=translator,
         )
 
     def _open_menu(
@@ -120,7 +118,6 @@ class ContextMenuManager:
         on_triggered,
         request: ContextMenuRequest | None,
         menu_parent=None,
-        translator=None,
     ) -> ContextMenu | None:
         active = self._live_active_menu()
         if active is not None and active.isVisible():
@@ -155,17 +152,6 @@ class ContextMenuManager:
         )
         self._active_menu = menu
         menu.aboutToHide.connect(lambda: self._on_menu_hidden(menu))
-        # Bind the caller's translator BEFORE ``popup_at``: the show-time fade
-        # hides the menu's container, so a post-show ``retranslate`` would
-        # ``adjustSize`` against that empty layout and collapse the menu
-        # (card-menu-collapse, 2026-10-17).
-        if translator is not None:
-            try:
-                from sli_ui_toolkit.i18n import bind_translator
-
-                bind_translator(menu, translator)
-            except Exception:
-                logger.exception("context menu translator bind failed")
         try:
             from ui.canvas_infra.rhi.rhi_focus import park_keyboard_focus_off_qrhi
 
@@ -332,7 +318,6 @@ def open_context_menu_entries(
     key: object,
     on_triggered=None,
     menu_parent=None,
-    translator=None,
 ) -> ContextMenu | None:
     return get_context_menu_manager().open_entries(
         source_widget=source_widget,
@@ -341,7 +326,6 @@ def open_context_menu_entries(
         key=key,
         on_triggered=on_triggered,
         menu_parent=menu_parent,
-        translator=translator,
     )
 
 

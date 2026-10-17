@@ -59,7 +59,7 @@ from .predicates import (
     _targets_any_grouped,
     _targets_are_single_series,
 )
-from .translator import _bind_menu_translator, _resolve_menu_translator, _t
+from .translator import _resolve_menu_translator, _t
 
 
 def popup_gallery_card_context_menu(  # type: ignore[no-untyped-def]
@@ -370,14 +370,15 @@ def popup_gallery_card_context_menu(  # type: ignore[no-untyped-def]
                 entries=tuple(entries),
                 key=("gallery-card", str(path), n),
                 on_triggered=_on_triggered,
-                translator=tr,
                 **_open_kwargs,
             )
             if menu is not None:
-                # The translator is bound by the manager BEFORE the popup is
-                # shown (see ContextMenuManager.open_entries): a post-show bind
-                # ran retranslate -> adjustSize while the fade hid the menu's
-                # container and collapsed it (card-menu-collapse, 2026-10-17).
+                # Labels are localized when the entries are built (``_t``
+                # above), like every other context menu in the app. Do NOT bind
+                # a translator to the shown menu: ``retranslate`` ->
+                # ``_relayout_widths`` -> ``adjustSize`` ran while the show-time
+                # fade had the container hidden and collapsed the menu to a
+                # sliver (card-menu-collapse, 2026-10-17).
                 if _dbg_on:
                     try:
                         _dbg(
@@ -397,7 +398,6 @@ def popup_gallery_card_context_menu(  # type: ignore[no-untyped-def]
             menu = ContextMenu(source, entries=tuple(entries), on_triggered=_on_triggered, surface="popup")
         except TypeError:
             menu = ContextMenu(source, entries=tuple(entries), on_triggered=_on_triggered)
-        _bind_menu_translator(menu, tr)
         try:
             menu.flyout_group = "context_menu"  # type: ignore[attr-defined]
         except Exception:
@@ -418,7 +418,6 @@ def popup_gallery_card_context_menu(  # type: ignore[no-untyped-def]
             _anchor_menu = popup_context_menu_for_anchor(
                 source or card, card, tuple(entries), on_triggered=_on_triggered
             )
-            _bind_menu_translator(_anchor_menu, tr)
             track_open_menu(card, _anchor_menu, owner)
         except Exception:
             if _dbg_on:
