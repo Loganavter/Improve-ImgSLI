@@ -114,7 +114,7 @@ def test_card_context_menu_localizes_without_translate(qtbot, monkeypatch) -> No
 
     captured: dict = {}
 
-    def _fake_open(*, source_widget, global_pos, entries, key, on_triggered=None):
+    def _fake_open(*, source_widget, global_pos, entries, key, on_triggered=None, **_kwargs):
         # Real menu (the builder binds the resolved translator to it), just
         # without the popup-surface show the manager would perform.
         menu = ContextMenu(source_widget, entries=entries, on_triggered=on_triggered)

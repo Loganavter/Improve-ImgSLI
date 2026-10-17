@@ -225,7 +225,7 @@ def _capture_menu(monkeypatch):
         def show(self):
             captured["shown"] = True
 
-    def _fake_open(*, source_widget, global_pos, entries, key, on_triggered=None):
+    def _fake_open(*, source_widget, global_pos, entries, key, on_triggered=None, **_kwargs):
         captured["entries"] = tuple(entries)
         captured["on_triggered"] = on_triggered
         return _FakeMenu(source_widget, entries=entries, on_triggered=on_triggered)
