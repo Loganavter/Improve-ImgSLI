@@ -9,11 +9,10 @@ local ranking kept.
 from __future__ import annotations
 
 import logging
-import os
 import threading
 from pathlib import Path
 
-from PySide6.QtCore import QCoreApplication, QEvent, QObject, QThreadPool, QTimer, Signal
+from PySide6.QtCore import QCoreApplication, QObject, QThreadPool, QTimer, Signal
 from sli_ui_toolkit.workers import GenericWorker
 
 from tabs.image_gallery.use_cases import pipeline_stages as _pipeline_stages
@@ -24,14 +23,12 @@ from tabs.image_gallery.models import (
     GalleryState,
     Mode,
     Series,
-    ThumbnailStatus,
     TriageState,
 )
 from tabs.image_gallery.services.activity import clear_activity, set_activity
 from tabs.image_gallery.services.ai_cache import save_analysis  # noqa: F401
 from tabs.image_gallery.services.ai_client import _ai_debug
 from tabs.image_gallery.services.ai_settings_store import AiSettingsStore
-from tabs.image_gallery.debug import gallery_debug as _dbg
 from tabs.image_gallery.debug import (
     gallery_artifacts_disabled as _artifacts_disabled,
 )
@@ -41,11 +38,13 @@ from tabs.image_gallery.debug import (
 from tabs.image_gallery.debug import (
     gallery_fidelity_disabled as _fidelity_disabled,
 )
-from tabs.image_gallery.debug import (
-    gallery_thumbs_disabled as _thumbs_disabled,
-)
 from tabs.image_gallery.services.filtering import filter_items
-from tabs.image_gallery.services.thumbnail_cache import render_and_cache_thumbnail
+
+# Re-exported monkeypatch seam: the scheduler reads this from the controller
+# module at call time (``test_pipeline_scheduler`` patches it here).
+from tabs.image_gallery.services.thumbnail_cache import (  # noqa: F401
+    render_and_cache_thumbnail,
+)
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -131,55 +130,15 @@ _pipeline_stages.register_stage(_JEV_STAGE, requires=("metrics_ready",))
 # folder churn evicts). Never restate the literal here.
 
 
-def _scheduler_thread_count() -> int:
-    """Dedicated pool size: os.cpu_count() clamped to [4, 8]."""
-    try:
-        n = int(os.cpu_count() or _GALLERY_SCHED_MIN_THREADS)
-    except Exception:
-        n = _GALLERY_SCHED_MIN_THREADS
-    return max(_GALLERY_SCHED_MIN_THREADS, min(_GALLERY_SCHED_MAX_THREADS, n))
-
-
-def _new_gallery_pool() -> QThreadPool:
-    """Dedicated gallery pool (never QThreadPool.globalInstance())."""
-    pool = QThreadPool()
-    try:
-        pool.setMaxThreadCount(_scheduler_thread_count())
-    except Exception:
-        pass
-    return pool
-
-
-class _GalleryVisibilityPauseFilter(QObject):
-    """Hide/Show watcher: pause the background thumb queue while hidden.
-
-    Mirrors the tab's modal-lifetime Hide filter: only an explicit page
-    hide (``watched.isHidden()``) pauses — ancestor-driven hides (window
-    minimize, ``isHidden()`` False) are ignored. Show resumes the drain.
-    Installed by the controller so no tab.py change is needed; every
-    delivery path keeps its ``_folder_gen`` check regardless.
-    """
-
-    def __init__(self, controller: GalleryController, watched: QObject | None) -> None:
-        super().__init__(watched)
-        self._controller = controller
-
-    def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
-        try:
-            kind = event.type()
-            if kind == QEvent.Type.Hide and watched.isHidden():
-                try:
-                    self._controller.pause_background()
-                except Exception:
-                    pass
-            elif kind == QEvent.Type.Show:
-                try:
-                    self._controller.resume_background()
-                except Exception:
-                    pass
-        except Exception:
-            pass
-        return False
+# -- Bounded gallery scheduler (Phase 2b+3): bodies in use_cases/scheduler.py.
+# The dedicated pool factory + the scheduler helpers are re-exported here so
+# existing imports (``from tabs.image_gallery.controller import
+# _scheduler_thread_count``) keep resolving; the method names below stay on
+# the class as thin delegators (frozen ``schedule`` seam).
+from tabs.image_gallery.use_cases.scheduler import (  # noqa: E402,F401
+    _new_gallery_pool,
+    _scheduler_thread_count,
+)
 
 
 class GalleryController:
@@ -344,285 +303,70 @@ class GalleryController:
     # -- bounded scheduler (Phase 2b+3; frozen seam: schedule) --------------
 
     def schedule(self, items, priority: int, *, op: str = "thumb", source=None, gen: int | None = None, wanted=None, include_camera: bool | None = None, full_res_artifacts: bool = False, on_done=None) -> int:
-        """Single scheduler entry for gallery concurrency (frozen seam).
+        """Thin delegator to ``use_cases.scheduler.schedule`` (frozen seam)."""
+        from tabs.image_gallery.use_cases import scheduler as _scheduler
 
-        ``items`` is a list of GalleryItem; ``priority`` is a Qt pool
-        priority (``VISIBLE_THUMB_PRIORITY`` / ``PROXY_BATCH_PRIORITY`` /
-        ``BACKGROUND_THUMB_PRIORITY``). ``op`` selects the lane: ``"thumb"``
-        (one worker per item) or ``"proxy"`` (chunked single-pass
-        Stage-2 batches, ``source`` = triage source path, ``wanted`` =
-        stage subset to apply, ``include_camera`` = run camera scalars).
-        ``on_done`` (proxy only) fires once on the GUI thread after the LAST
-        chunk of this batch has applied (result or error) — used by the
-        append path to retire its processing indicator.
-        Returns workers started (background-paused items queue instead and
-        return 0 until resumed). No Store/EventBus writes; every delivery
-        keeps its generation check — queued entries from an old gen are
-        dropped, never delivered.
-        """
-        batch = list(items or [])
-        if gen is None:
-            try:
-                gen = self._folder_gen
-            except Exception:
-                gen = 0
-        if op == "proxy":
-            return self._schedule_proxy(batch, int(priority), source, gen, wanted=wanted, include_camera=include_camera, full_res_artifacts=full_res_artifacts, on_done=on_done)
-        return self._schedule_thumbs(batch, int(priority), gen)
+        return _scheduler.schedule(self, items, priority, op=op, source=source, gen=gen, wanted=wanted, include_camera=include_camera, full_res_artifacts=full_res_artifacts, on_done=on_done)
 
     def sched_stats(self) -> dict:
-        """Scheduler introspection (tests / debugging)."""
-        try:
-            with self._sched_lock:
-                pending = int(self._sched_pending)
-                active = int(self._sched_active)
-                peak = int(self._sched_peak)
-        except Exception:
-            pending, active, peak = (0, 0, 0)
-        try:
-            queued = len(self._bg_queue)
-        except Exception:
-            queued = 0
-        return {"pending": pending, "active": active, "peak": peak, "queued": queued}
+        from tabs.image_gallery.use_cases import scheduler as _scheduler
+
+        return _scheduler.sched_stats(self)
 
     def _tracked(self, fn):
-        """Wrap a worker body with active/peak accounting (pool depth)."""
-        def _run(*args, **kwargs):
-            try:
-                with self._sched_lock:
-                    self._sched_active += 1
-                    if self._sched_active > self._sched_peak:
-                        self._sched_peak = self._sched_active
-            except Exception:
-                pass
-            try:
-                return fn(*args, **kwargs)
-            finally:
-                try:
-                    with self._sched_lock:
-                        self._sched_active -= 1
-                except Exception:
-                    pass
-        return _run
+        from tabs.image_gallery.use_cases import scheduler as _scheduler
+
+        return _scheduler._tracked(self, fn)
 
     def _pool_start(self, worker, priority: int | None) -> None:
-        """Start one worker with pending accounting (all pool traffic)."""
-        try:
-            with self._sched_lock:
-                self._sched_pending += 1
-        except Exception:
-            pass
-        try:
-            finished = getattr(getattr(worker, "signals", None), "finished", None)
-            if finished is not None and hasattr(finished, "connect"):
-                try:
-                    finished.connect(self._on_sched_finished)
-                except Exception:
-                    pass
-        except Exception:
-            pass
-        try:
-            if priority is None:
-                self._thread_pool.start(worker)
-            else:
-                self._thread_pool.start(worker, priority)
-        except TypeError:
-            self._thread_pool.start(worker)
+        from tabs.image_gallery.use_cases import scheduler as _scheduler
+
+        return _scheduler._pool_start(self, worker, priority)
 
     def _on_sched_finished(self) -> None:
-        try:
-            with self._sched_lock:
-                self._sched_pending = max(0, self._sched_pending - 1)
-        except Exception:
-            pass
+        from tabs.image_gallery.use_cases import scheduler as _scheduler
+
+        return _scheduler._on_sched_finished(self)
 
     def _schedule_thumbs(self, items: list, priority: int, gen: int) -> int:
-        """One thumbnail worker per item (visible-first caller partitions)."""
-        if _thumbs_disabled():
-            _dbg("scheduler: thumbnails skipped (IMGSLI_GALLERY_NO_THUMBS)")
-            return 0
-        started = 0
-        for item in items:
-            try:
-                key = str(item.path)
-            except Exception:
-                continue
-            try:
-                if key in self._thumb_inflight:
-                    continue
-                if getattr(item, "thumbnail_status", None) == ThumbnailStatus.LOADED:
-                    continue
-            except Exception:
-                pass
-            # Paused background lane queues instead of starting.
-            try:
-                paused = bool(self._bg_paused)
-            except Exception:
-                paused = False
-            if paused and priority <= BACKGROUND_THUMB_PRIORITY:
-                try:
-                    self._bg_queue.append((item, gen))
-                except Exception:
-                    pass
-                continue
-            try:
-                item.thumbnail_status = ThumbnailStatus.LOADING
-            except Exception:
-                pass
-            try:
-                self._thumb_inflight.add(key)
-            except Exception:
-                pass
-            worker = GenericWorker(
-                self._tracked(render_and_cache_thumbnail), item.path, item.mtime_ns
-            )
-            worker.signals.result.connect(
-                lambda cache_path, path=item.path, g=gen: self._on_thumbnail_ready(path, cache_path, g)
-            )
-            worker.signals.error.connect(
-                lambda err, path=item.path, g=gen: self._on_thumbnail_error(path, g)
-            )
-            self._pool_start(worker, priority)
-            started += 1
-        return started
+        from tabs.image_gallery.use_cases import scheduler as _scheduler
+
+        return _scheduler._schedule_thumbs(self, items, priority, gen)
 
     def _begin_folder_schedule(self, items: list, gen: int) -> None:
-        """Visible-first partition for a fresh folder (open_folder only).
+        from tabs.image_gallery.use_cases import scheduler as _scheduler
 
-        Cards intersecting the viewport (+ overscan) decode first at
-        ``VISIBLE_THUMB_PRIORITY``; the rest drain from the background
-        lane. ``visible_paths()`` fails open to everything when the grid
-        is not laid out yet — identical to the old flood, never a
-        starvation. Widgets without the Phase-2a API (older doubles)
-        take the same fail-open path.
-        """
-        try:
-            visible = getattr(self.widget, "visible_paths", None)
-            paths = visible() if callable(visible) else None
-        except Exception:
-            paths = None
-        try:
-            if paths:
-                visible_keys = {str(p) for p in paths}
-            else:
-                visible_keys = set()
-        except Exception:
-            visible_keys = set()
-        if not visible_keys:
-            try:
-                visible_keys = {str(it.path) for it in items}
-            except Exception:
-                visible_keys = set()
-        first: list = []
-        rest: list = []
-        for it in items:
-            try:
-                (first if str(it.path) in visible_keys else rest).append(it)
-            except Exception:
-                continue
-        self.schedule(first, VISIBLE_THUMB_PRIORITY, gen=gen)
-        self.schedule(rest, BACKGROUND_THUMB_PRIORITY, gen=gen)
+        return _scheduler._begin_folder_schedule(self, items, gen)
 
     def _subscribe_visible_range(self) -> None:
-        """Reprioritize on scroll (grid debounces 120 ms upstream)."""
-        try:
-            sig = getattr(self.widget, "visible_range_changed", None)
-            connect = getattr(sig, "connect", None)
-            if callable(connect):
-                connect(self._on_visible_range_changed)
-        except Exception:
-            logger.debug("visible_range_changed subscription failed", exc_info=True)
+        from tabs.image_gallery.use_cases import scheduler as _scheduler
+
+        return _scheduler._subscribe_visible_range(self)
 
     def _on_visible_range_changed(self, paths: object) -> None:
-        """Scroll delivery: newly visible items jump the thumb queue."""
-        try:
-            keys = {str(p) for p in (paths or [])}
-        except Exception:
-            return
-        if not keys:
-            return
-        try:
-            gen = self._folder_gen
-        except Exception:
-            gen = 0
-        for item in list(getattr(self.state, "items", None) or []):
-            try:
-                if str(item.path) not in keys:
-                    continue
-                if getattr(item, "thumbnail_status", None) == ThumbnailStatus.LOADED:
-                    continue
-                if str(item.path) in self._thumb_inflight:
-                    continue
-            except Exception:
-                continue
-            try:
-                self.schedule([item], VISIBLE_THUMB_PRIORITY, gen=gen)
-            except Exception:
-                pass
+        from tabs.image_gallery.use_cases import scheduler as _scheduler
+
+        return _scheduler._on_visible_range_changed(self, paths)
 
     def _install_visibility_pause(self) -> None:
-        """Pause the background lane while the tab page is hidden."""
-        try:
-            widget = self.widget
-            install = getattr(widget, "installEventFilter", None)
-            if not callable(install):
-                return
-            try:
-                parent = widget if isinstance(widget, QObject) else None
-            except Exception:
-                parent = None
-            filt = _GalleryVisibilityPauseFilter(self, parent)
-            install(filt)
-            self._visibility_pause_filter = filt
-        except Exception:
-            logger.debug("visibility pause filter install failed", exc_info=True)
+        from tabs.image_gallery.use_cases import scheduler as _scheduler
+
+        return _scheduler._install_visibility_pause(self)
 
     def pause_background(self) -> None:
-        """Pause the background thumb lane (tab hidden)."""
-        try:
-            self._bg_paused = True
-        except Exception:
-            pass
+        from tabs.image_gallery.use_cases import scheduler as _scheduler
+
+        return _scheduler.pause_background(self)
 
     def resume_background(self) -> None:
-        """Resume the background lane; stale entries drop, fresh drain."""
-        try:
-            self._bg_paused = False
-        except Exception:
-            return
-        try:
-            queued = list(self._bg_queue)
-            self._bg_queue.clear()
-        except Exception:
-            return
-        try:
-            current = self._folder_gen
-        except Exception:
-            current = 0
-        fresh = [it for (it, g) in queued if g == current]
-        if fresh:
-            try:
-                self.schedule(fresh, BACKGROUND_THUMB_PRIORITY, gen=current)
-            except Exception:
-                logger.debug("background resume schedule failed", exc_info=True)
+        from tabs.image_gallery.use_cases import scheduler as _scheduler
+
+        return _scheduler.resume_background(self)
 
     def _trim_proxy_cache(self) -> int:
-        """Bound the shared proxy decode cache (insertion-order eviction)."""
-        try:
-            from tabs.image_gallery.services import proxy as _proxy
+        from tabs.image_gallery.use_cases import scheduler as _scheduler
 
-            cache = _proxy._PROXY_CACHE
-            excess = len(cache) - _proxy.PROXY_CACHE_LIMIT
-            if excess <= 0:
-                return 0
-            for key in list(cache)[:excess]:
-                try:
-                    del cache[key]
-                except Exception:
-                    pass
-            return max(0, excess)
-        except Exception:
-            return 0
+        return _scheduler._trim_proxy_cache(self)
 
     # -- gallery slot (Wave-2 Redux; scope 'gallery') -------------------------
 
@@ -2097,580 +1841,94 @@ class GalleryController:
 
         return _tie_break._apply_brief_result(self, pa, pb, result, gen)
 
-    # -- Stage 2 crown/reject/S3 (thin wrappers → use_cases/triage) --------
+    # -- Stage 2 crown/reject/S3 (thin wrappers → use_cases/triage_actions) --
 
     def _mark_triage_picks_manual(self) -> int:
-        """Freeze explicit triage winners (``triage_best``) as manual ranks.
+        from tabs.image_gallery.use_cases import triage_actions as _triage_actions
 
-        Keep best / Make best mark their winners ``triage_best``; those are the
-        user's explicit decisions. The gallery UI reaches the triage helpers
-        directly (not through ``make_best``/``keep_best_of_series``), so this is
-        the seam that keeps the badge provenance truthful in production: it is
-        invoked right before a rank snapshot is mirrored. Returns items flagged.
-        """
-        try:
-            items = list(getattr(self.state, "items", None) or ())
-        except Exception:
-            items = []
-        picked = [it for it in items if bool(getattr(it, "triage_best", False))]
-        return self._mark_rank_manual(picked)
+        return _triage_actions._mark_triage_picks_manual(self)
 
     def _mark_rank_manual(self, items) -> int:
-        """Flag the ranks of *items* as explicit USER decisions.
+        from tabs.image_gallery.use_cases import triage_actions as _triage_actions
 
-        ``rank_source = "manual"`` so a later automatic regroup never silently
-        re-derives them (``_apply_fusion_ranks`` leaves manual ranks alone).
-        Only items that actually carry a rank are flagged — an unranked item
-        has no manual decision to protect. Returns the number flagged.
-        """
-        count = 0
-        for m in list(items or ()):
-            if getattr(m, "rank", None) is None:
-                continue
-            try:
-                m.rank_source = "manual"  # type: ignore[attr-defined]
-                count += 1
-            except Exception:
-                pass
-        return count
+        return _triage_actions._mark_rank_manual(self, items)
 
     def _item_for_path(self, path):
-        try:
-            target = path if isinstance(path, Path) else Path(path)
-        except Exception:
-            return None
-        try:
-            items = list(getattr(self.state, "items", None) or ())
-        except Exception:
-            items = []
-        for it in items:
-            try:
-                if Path(getattr(it, "path", None)) == target:
-                    return it
-            except Exception:
-                continue
-        return None
+        from tabs.image_gallery.use_cases import triage_actions as _triage_actions
+
+        return _triage_actions._item_for_path(self, path)
 
     def make_best(self, path: Path) -> bool:
-        from tabs.image_gallery.use_cases.triage import make_best as _make_best
+        from tabs.image_gallery.use_cases import triage_actions as _triage_actions
 
-        ok = bool(_make_best(self, path))
-        if ok:
-            # The explicit pick is manual; the remaining members are re-derived
-            # from the fusion around the anchored manual rank.
-            self._mark_rank_manual([self._item_for_path(path)])
-            self._apply_fusion_ranks(getattr(self.state, "series", None))
-            try:
-                from tabs.image_gallery.use_cases.triage import (
-                    _refresh_owner_grid as _refresh,
-                )
-
-                _refresh(self)
-            except Exception:
-                pass
-        return ok
+        return _triage_actions.make_best(self, path)
 
     def toggle_reject(self, path: Path) -> bool:
-        from tabs.image_gallery.use_cases.triage import toggle_reject as _toggle
+        from tabs.image_gallery.use_cases import triage_actions as _triage_actions
 
-        return bool(_toggle(self, path))
+        return _triage_actions.toggle_reject(self, path)
 
     def remove_from_grid(self, path: Path) -> bool:
-        from tabs.image_gallery.use_cases.triage import remove_from_grid as _remove
+        from tabs.image_gallery.use_cases import triage_actions as _triage_actions
 
-        return bool(_remove(self, path))
+        return _triage_actions.remove_from_grid(self, path)
 
     def remove_paths_from_grid(self, paths) -> int:
-        from tabs.image_gallery.use_cases.triage import remove_paths_from_grid as _remove_many
+        from tabs.image_gallery.use_cases import triage_actions as _triage_actions
 
-        return int(_remove_many(self, paths))
+        return _triage_actions.remove_paths_from_grid(self, paths)
 
     def keep_best_of_series(self) -> dict:
-        from tabs.image_gallery.use_cases.triage import keep_best_of_series as _keep
+        from tabs.image_gallery.use_cases import triage_actions as _triage_actions
 
-        result = _keep(self)
-        # Every keeper (explicit per-series user decision) is manual; the rest
-        # is re-derived from the fusion around the anchored winners.
-        try:
-            items = list(getattr(self.state, "items", None) or ())
-        except Exception:
-            items = []
-        keepers = [it for it in items if bool(getattr(it, "is_best", False))]
-        self._mark_rank_manual(keepers)
-        self._apply_fusion_ranks(getattr(self.state, "series", None))
-        try:
-            from tabs.image_gallery.use_cases.triage import (
-                _refresh_owner_grid as _refresh,
-            )
-
-            _refresh(self)
-        except Exception:
-            pass
-        return result
+        return _triage_actions.keep_best_of_series(self)
 
     def show_all(self) -> int:
-        from tabs.image_gallery.use_cases.triage import show_all as _show
+        from tabs.image_gallery.use_cases import triage_actions as _triage_actions
 
-        return int(_show(self))
+        return _triage_actions.show_all(self)
 
     # -- manual series overrides (Wave B drop targets) ---------------------
 
     def move_paths_to_series(self, paths, series_id: str | None) -> int:
-        """Pin *paths* to *series_id* (None = forced UNGROUPED) + SYNC regroup.
+        from tabs.image_gallery.use_cases import series_overrides as _series_overrides
 
-        S2 seam: ZERO clustering, ZERO thread hops, ZERO analysis starts.
-        Internal-DnD entry point (``ui/drag_drop`` routes the gallery mime
-        here, never through ``open_paths``). Writes the controller-local
-        override map, regroups in memory via the base ``apply_overrides``
-        on the live items + last series (call shape
-        ``regroup(items, overrides, last_series)`` — S1 swaps the regroup
-        core mechanically), preserves 1-member leftovers as own sections,
-        then delivers the post-triage view tail directly (``state.series``
-        + emit + ``widget.set_triage`` — never the worker). Returns items
-        pinned.
-        """
-        from tabs.image_gallery.use_cases import series_override as _override
-
-        try:
-            pool = {str(it.path) for it in self.state.items}
-        except Exception:
-            pool = set()
-        try:
-            targets = [Path(p) if not isinstance(p, Path) else p for p in list(paths or [])]
-        except Exception:
-            return 0
-        in_pool = [p for p in targets if str(p) in pool]
-        if not in_pool:
-            return 0
-        try:
-            sid = str(series_id) if series_id is not None else None
-        except Exception:
-            sid = None
-        # No-op guard (Wave C): every in-pool target already sits in the
-        # target series (current post-override view: ``it.series_id`` after
-        # the last triage, None == forced UNGROUPED) → skip the full rebuild
-        # entirely. Partial overlap proceeds for the rest only.
-        try:
-            current_by_path = {}
-            for it in self.state.items:
-                try:
-                    current_by_path[str(it.path)] = it
-                except Exception:
-                    continue
-            rest = []
-            for p in in_pool:
-                try:
-                    cur = getattr(current_by_path.get(str(p)), "series_id", None)
-                    cur_sid = str(cur) if cur is not None else None
-                except Exception:
-                    cur_sid = "<unknown>"
-                if cur_sid != sid:
-                    rest.append(p)
-            if not rest:
-                logger.debug(
-                    "move_paths_to_series noop: %d paths already in series %s",
-                    len(in_pool), sid,
-                )
-                return 0
-            in_pool = rest
-        except Exception:
-            pass
-        moved = int(_override.set_override(self._series_overrides, [str(p) for p in in_pool], sid))
-        try:
-            live = list(self.state.items)
-        except Exception:
-            return moved
-        try:
-            pre_ids: dict[str, str | None] = {}
-            for it in live:
-                try:
-                    cur = getattr(it, "series_id", None)
-                    pre_ids[str(it.path)] = str(cur) if cur is not None else None
-                except Exception:
-                    continue
-            last_series = list(self.state.series or [])
-            regrouped = _override.apply_overrides(live, self._series_overrides, last_series)
-            regrouped = self._restore_singletons(
-                live, self._series_overrides, pre_ids, last_series, regrouped
-            )
-            # Newer than any in-flight triage: its delivery drops (sgen).
-            self._next_series_gen()
-            self._apply_series_view(regrouped)
-        except Exception:
-            logger.debug("move_paths_to_series regroup failed", exc_info=True)
-        return moved
+        return _series_overrides.move_paths_to_series(self, paths, series_id)
 
     def group_paths_as_new_series(self, paths) -> str | None:
-        """Pin *paths* into a brand-new manual series + SYNC regroup.
+        from tabs.image_gallery.use_cases import series_overrides as _series_overrides
 
-        Context-menu "Group" entry point (multi-select): mints a fresh
-        stable id from the series counter (pinned + live ids skipped —
-        never reused, never collides), then routes through
-        ``move_paths_to_series`` (override pins + in-memory regroup +
-        view, zero clustering, zero thread hops). Members may come from
-        anywhere (UNGROUPED tail, other series); leftovers keep their
-        sections via the move path's singleton restore. Returns the new
-        series id, or None when nothing moved.
-        """
-        try:
-            targets = [Path(p) if not isinstance(p, Path) else p for p in list(paths or [])]
-        except Exception:
-            return None
-        if not targets:
-            return None
-        try:
-            with self._series_id_lock:
-                used: set[str] = set()
-                try:
-                    for v in (self._series_overrides or {}).values():
-                        if v is not None:
-                            used.add(str(v))
-                except Exception:
-                    pass
-                try:
-                    for entry in (self.state.series or []):
-                        eid = GalleryController._section_id(
-                            entry, GalleryController._section_members(entry)
-                        )
-                        if eid is not None:
-                            used.add(str(eid))
-                except Exception:
-                    pass
-                # Same convention as translate_computed_to_stable: the
-                # counter holds the LAST issued number, candidates start
-                # past it (monotonic, never reused, gaps allowed).
-                try:
-                    n = int(self._series_next_id or 1)
-                except Exception:
-                    n = 1
-                while True:
-                    n += 1
-                    if f"series_{n}" not in used:
-                        break
-                new_id = f"series_{n}"
-                try:
-                    self._series_next_id = int(n)
-                except Exception:
-                    pass
-        except Exception:
-            return None
-        try:
-            moved = int(self.move_paths_to_series(targets, new_id))
-        except Exception:
-            return None
-        return new_id if moved > 0 else None
+        return _series_overrides.group_paths_as_new_series(self, paths)
 
     def _attach_append_items(self, new_items) -> dict:
-        """Attach NEW files to the nearest EXISTING series (S2 append path).
+        from tabs.image_gallery.use_cases import series_overrides as _series_overrides
 
-        S1 centroid policy: one nearest-centroid decision per readable
-        unpinned item via S1 ``attach_items`` (same threshold rule as
-        ``cluster_items``). Attached items join the series (rank comes from
-        the controller's measured-fusion pass, never positional), misses land
-        UNGROUPED. Existing membership (members, ranks, ids) is untouched.
-        Paths carrying a stored override (re-drop
-        of a removed pinned file) take the pin: join the pinned group or
-        stand as a 1-member section. Unreadable files (zero phash + zero
-        embedding — cluster parity) stay UNGROUPED. Returns
-        ``{str(path): series_id | None}``.
-
-        Mutates ``state.series`` in place (member appends / singleton
-        sections); callers deliver via ``_apply_series_view``.
-        """
-        try:
-            fresh = list(new_items or [])
-        except Exception:
-            return {}
-        if not fresh:
-            return {}
-        try:
-            from tabs.image_gallery.services.clustering import signature_for as _sig
-        except Exception:
-            _sig = None  # type: ignore[assignment]
-        members_of = GalleryController._section_members
-        id_of = GalleryController._section_id
-        try:
-            groups = list(self.state.series or [])
-        except Exception:
-            groups = []
-        # Centroid attach (S1 policy): one nearest-centroid decision for all
-        # readable unpinned items via S1 ``attach_items`` — replaces the
-        # first-member-phash representative scan. Signatures come from the
-        # perceptual cache (no re-decode); unreadable items never reach it.
-        try:
-            from tabs.image_gallery.use_cases.series_override import (
-                attach_items as _attach,
-            )
-        except Exception:
-            _attach = None  # type: ignore[assignment]
-        try:
-            from tabs.image_gallery.services.clustering import signature_for as _sig2
-        except Exception:
-            _sig2 = None  # type: ignore[assignment]
-        decided: dict[str, str | None] = {}
-        try:
-            pairs: list[tuple] = []
-            for item in fresh:
-                try:
-                    key = str(getattr(item, "path", None))
-                except Exception:
-                    continue
-                try:
-                    has_pin = key in (self._series_overrides or {})
-                except Exception:
-                    has_pin = False
-                if has_pin:
-                    continue
-                try:
-                    if _sig2 is not None:
-                        _h, _e = _sig2(item.path)
-                    else:
-                        _h, _e = 0, []
-                except Exception:
-                    _h, _e = 0, []
-                try:
-                    unreadable = _h == 0 and not any(_e or [])
-                except Exception:
-                    unreadable = _h == 0
-                if unreadable:
-                    continue
-                pairs.append((key, list(_e or [])))
-            if _attach is not None and pairs:
-                try:
-                    decided = dict(
-                        _attach(pairs, groups, _ATTACH_THRESHOLD) or {}
-                    )
-                except Exception:
-                    decided = {}
-        except Exception:
-            decided = {}
-        by_id: dict[str, object] = {}
-        for entry in groups:
-            members = members_of(entry)
-            eid = id_of(entry, members)
-            if eid is not None:
-                by_id.setdefault(str(eid), entry)
-        attached: dict[str, str | None] = {}
-        for item in fresh:
-            try:
-                key = str(getattr(item, "path", None))
-            except Exception:
-                continue
-            # Stored pin wins over similarity (re-dropped pinned file).
-            try:
-                has_pin = key in (self._series_overrides or {})
-                pin = (self._series_overrides or {}).get(key) if has_pin else "auto"
-            except Exception:
-                has_pin, pin = False, "auto"
-            if has_pin:
-                sid = str(pin) if pin is not None else None
-                try:
-                    item.series_id = sid
-                except Exception:
-                    pass
-                if sid is not None:
-                    host = by_id.get(sid)
-                    if host is not None:
-                        try:
-                            if hasattr(host, "members"):
-                                host.members.append(item)  # type: ignore[union-attr]
-                            elif isinstance(host, list):
-                                host.append(item)
-                            else:
-                                raise TypeError("ungroupable host")
-                        except Exception:
-                            pass
-                    else:
-                        try:
-                            entry = Series(id=sid, members=[item])
-                        except Exception:
-                            entry = None
-                        if entry is not None:
-                            groups.append(entry)
-                            by_id[sid] = entry
-                attached[key] = sid
-                continue
-            item_hash, item_embed = 0, []
-            if _sig is not None:
-                try:
-                    item_hash, item_embed = _sig(item.path)
-                except Exception:
-                    item_hash, item_embed = 0, []
-            if not isinstance(item_hash, int):
-                item_hash = 0
-            try:
-                unreadable = item_hash == 0 and not any(item_embed or [])
-            except Exception:
-                unreadable = item_hash == 0
-            if unreadable:
-                try:
-                    item.series_id = None
-                except Exception:
-                    pass
-                attached[key] = None
-                continue
-            hit = decided.get(key)
-            if hit is None:
-                try:
-                    item.series_id = None
-                except Exception:
-                    pass
-                attached[key] = None
-                continue
-            rsid, entry = hit, by_id.get(str(hit))
-            if entry is None:
-                # Centroid id with no live group (should not happen — the
-                # centroids come from these groups): fail to UNGROUPED
-                # rather than leaving a dangling series_id.
-                try:
-                    item.series_id = None
-                except Exception:
-                    pass
-                attached[key] = None
-                continue
-            try:
-                item.series_id = rsid
-            except Exception:
-                pass
-            try:
-                if hasattr(entry, "members"):
-                    entry.members.append(item)  # type: ignore[union-attr]
-                elif isinstance(entry, list):
-                    entry.append(item)
-            except Exception:
-                pass
-            attached[key] = rsid
-        try:
-            self.state.series = groups  # type: ignore[assignment]
-        except Exception:
-            pass
-        return attached
+        return _series_overrides._attach_append_items(self, new_items)
 
     def _cluster_tail_into_series(self) -> list:
-        """Form NEW series from the UNGROUPED tail (S2 append follow-up).
+        from tabs.image_gallery.use_cases import series_overrides as _series_overrides
 
-        Runs after ``_attach_append_items`` in the quiet-append branch.
-        Candidates are the current tail — old singletons plus fresh attach
-        misses — minus pinned paths (pins were already placed by attach).
-        ``cluster_items`` groups them (same threshold as the seed run);
-        groups ≥2 join ``state.series`` with fresh stable ids continuing
-        the ``series_<n>`` counter (pinned ids skipped). Existing series
-        (members, ranks, ids) and the triage mode are untouched; misses
-        stay UNGROUPED.
-
-        Cheap by construction, not by batching: ``cluster_items`` reads
-        the perceptual signature cache keyed ``(path, mtime_ns, size)``,
-        so unchanged files never re-decode — appending 1 file to a tail
-        of 50 decodes exactly 1 file, the rest is integer/float compares.
-        Past ``_TAIL_CLUSTER_LIMIT`` candidates the quadratic pass would
-        jank the GUI thread, so it is skipped (manual Re-cluster covers
-        huge tails). Returns the new groups (possibly []).
-        """
-        try:
-            items = list(getattr(self.state, "items", None) or [])
-            groups = list(getattr(self.state, "series", None) or [])
-        except Exception:
-            return []
-        try:
-            member_paths: set[str] = set()
-            for entry in groups:
-                for m in GalleryController._section_members(entry):
-                    try:
-                        member_paths.add(str(getattr(m, "path", None)))
-                    except Exception:
-                        continue
-        except Exception:
-            member_paths = set()
-        try:
-            pinned = {str(k) for k in (getattr(self, "_series_overrides", None) or {})}
-        except Exception:
-            pinned = set()
-        tail = []
-        for it in items:
-            try:
-                key = str(getattr(it, "path", None))
-            except Exception:
-                continue
-            if key in member_paths or key in pinned:
-                continue
-            tail.append(it)
-        if len(tail) < 2 or len(tail) > _TAIL_CLUSTER_LIMIT:
-            return []
-        try:
-            from tabs.image_gallery.services.clustering import cluster_items as _cluster
-        except Exception:
-            return []
-        try:
-            fresh_groups = list(_cluster(list(tail), _ATTACH_THRESHOLD) or [])
-        except Exception:
-            logger.debug("tail cluster failed", exc_info=True)
-            return []
-        if not fresh_groups:
-            return []
-        try:
-            fresh_groups, _ = self._assign_fresh_stable_ids(fresh_groups)
-        except Exception:
-            pass
-        try:
-            self.state.series = list(groups) + list(fresh_groups)
-        except Exception:
-            return []
-        return list(fresh_groups)
+        return _series_overrides._cluster_tail_into_series(self)
 
     def recluster_series(self) -> None:
-        """Fresh cluster+apply world with pins re-applied + rebuild.
+        from tabs.image_gallery.use_cases import series_overrides as _series_overrides
 
-        Header/grid menu entry next to Reset. Unlike ``reset`` (which
-        clears pins), pins are KEPT: the existing ``_start_triage``
-        pipeline snapshots + re-applies overrides, assigns fresh stable
-        ids to auto groups, and rebuilds on delivery (``cover_grid=False``
-        — live groups stay visible until the fresh world lands).
-        """
-        try:
-            items = list(self.state.items)
-        except Exception:
-            items = []
-        try:
-            self._start_triage(items, cover_grid=False)
-        except Exception:
-            logger.debug("recluster_series start failed", exc_info=True)
+        return _series_overrides.recluster_series(self)
 
     def reset_series_overrides(self) -> int:
-        """Clear every manual series override + regroup automatically.
+        from tabs.image_gallery.use_cases import series_overrides as _series_overrides
 
-        Reset affordance behind the series-header context menu
-        (``ui/drag_drop`` installs it at runtime — ``grid_view.py`` stays
-        untouched). Reuses the existing ``_start_triage`` rebuild path.
-        Returns entries cleared (0 = no rebuild).
-        """
-        try:
-            cleared = len(self._series_overrides)
-        except Exception:
-            cleared = 0
-        try:
-            self._series_overrides.clear()
-        except Exception:
-            pass
-        if not cleared:
-            return 0
-        try:
-            self._start_triage(list(self.state.items), cover_grid=False)
-        except Exception:
-            logger.debug("reset_series_overrides retriage failed", exc_info=True)
-        return cleared
+        return _series_overrides.reset_series_overrides(self)
 
     def clean_rejected(self) -> list[dict]:
-        from tabs.image_gallery.use_cases.triage import clean_rejected as _clean
+        from tabs.image_gallery.use_cases import series_overrides as _series_overrides
 
-        return _clean(self)
+        return _series_overrides.clean_rejected(self)
 
     def show_clean_review(self) -> None:
-        # Delegate to widget's S3 overlay (TopLevelInWindowOverlay).
-        try:
-            if hasattr(self.widget, "show_clean_review"):
-                self.widget.show_clean_review(self)
-        except Exception:
-            pass
+        from tabs.image_gallery.use_cases import series_overrides as _series_overrides
+
+        return _series_overrides.show_clean_review(self)
 
     # -- filtering (debounced; brief-disk match off UI thread) --------
 
