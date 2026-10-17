@@ -60,7 +60,7 @@ def _overlay_shader_dir() -> Path | None:
 # -- source lifetime --------------------------------------------------------
 
 
-def set_source(self, store) -> None:
+def set_source(self, store, *, preserve_view: bool = False) -> None:
     """Adopt ``store`` (closes the previous one it owns). Never raises.
 
     Ownership: a held store that is a live memo entry belongs to the
@@ -69,6 +69,15 @@ def set_source(self, store) -> None:
     evict/replace/overlay-release). Only privately-built (uncached)
     held stores are closed here. Fail-open: without a probe every held
     store closes as before.
+
+    ``preserve_view`` (plan-ql-zoom-persist): a within-series walk must
+    change the pixels without throwing away the user's wheel-zoom/pan, so
+    the caller that navigates inside ONE series passes ``True`` and
+    ``_zoom/_pan_x/_pan_y/_drag_last`` survive this call. Open / series
+    change / delete / set-as-source / re-analyze keep the default
+    ``False`` — today's unconditional reset, unchanged for every existing
+    caller. Everything else here (frame + plan + watchdog bookkeeping)
+    is identical either way.
     """
     try:
         _ql_changed = store is not self._store
@@ -90,10 +99,13 @@ def set_source(self, store) -> None:
         self._ql_preframe_fails = 0
         self._settle_pumped = False
         self._settle_scheduled = False
-        self._zoom = 1.0
-        self._pan_x = 0.0
-        self._pan_y = 0.0
-        self._drag_last = None
+        if not preserve_view:
+            # Context change (open / series change / delete / set-as-source
+            # / re-analyze): the previous item's view is meaningless here.
+            self._zoom = 1.0
+            self._pan_x = 0.0
+            self._pan_y = 0.0
+            self._drag_last = None
         self._frame_key = None
         try:
             from tabs.image_gallery.ui.quick_look.preview_watchdog import next_gen
@@ -102,6 +114,22 @@ def set_source(self, store) -> None:
         except Exception:
             gen = None
         self._arm_watchdog(gen)
+    except Exception:
+        pass
+    try:
+        # IMGSLI_QL_COVER_DEBUG + debug.ql_cover (the existing QL diagnostic
+        # gate/helper): lets the user confirm live which branch ran.
+        from tabs.image_gallery.debug import ql_cover
+
+        if preserve_view:
+            ql_cover(
+                "preview view: kept zoom=%.4f pan=(%.4f,%.4f)",
+                float(self._zoom),
+                float(self._pan_x),
+                float(self._pan_y),
+            )
+        else:
+            ql_cover("preview view: reset")
     except Exception:
         pass
     try:
