@@ -900,6 +900,17 @@
       }
     },
     {
+      "path": "src/tabs/image_gallery/ui/quick_look/preview_canvas/rhi_entry.py",
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=thin-owner size=exempt reason=\"one QRhiWidget frame-sequencing lifecycle split from preview_canvas.py (rhi_entry/raster/source); the batch take/consume/drain invariant is one concern and splitting it would scatter ownership across files\"",
+      "parsed": {
+        "pattern": "thin-owner",
+        "size": "exempt",
+        "reason": "one QRhiWidget frame-sequencing lifecycle split from preview_canvas.py (rhi_entry/raster/source); the batch take/consume/drain invariant is one concern and splitting it would scatter ownership across files"
+      }
+    },
+    {
       "path": "src/tabs/image_gallery/ui/quick_look/preview_canvas_host/__init__.py",
       "limit": 500,
       "marker": "Audit-Meta:",
