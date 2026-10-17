@@ -305,6 +305,9 @@ def _bare_socket(path: Path) -> Path:
 #: Real instance provided by the environment (supervisor-run end-to-end proof).
 _REAL_SOCKET = os.environ.get(SOCKET_OVERRIDE_ENV)
 
+#: A pid above the kernel's limit: always "not alive" in any namespace.
+_UNALLOCATED_PID = 2**30
+
 
 @pytest.fixture(autouse=True)
 def _no_ambient_instance(monkeypatch, tmp_path):
@@ -368,11 +371,48 @@ def test_discover_socket_falls_back_to_sibling_control_sock(isolated_env):
 
 def test_discover_socket_ignores_a_stale_pointer(isolated_env):
     directory = isolated_env / "run"
+    # A pid above the kernel's limit never exists, and nothing listens: stale.
+    _write_pointer(directory, pid=_UNALLOCATED_PID)
+    assert discover_socket() is None
+
+
+def test_discover_socket_uses_a_pointer_whose_pid_is_unknown_here(isolated_env):
+    """A pid that is not visible in this namespace is a hint, not a verdict.
+
+    Flatpak apps run in their own PID namespace: the pointer's ``pid`` is
+    sandbox-local, so the host ``kill(pid, 0)`` can say "dead" for a live app.
+    The socket answering is the truth — discovery must return it.
+    """
+    directory = isolated_env / "run"
     socket_path = FakeControlServer(directory / CONTROL_SOCKET_NAME).start().path
     try:
-        # A pid above the kernel's limit never exists: the pointer is stale.
-        _write_pointer(directory, pid=2**30, socket_path=socket_path)
-        assert discover_socket() is None
+        _write_pointer(directory, pid=_UNALLOCATED_PID, socket_path=socket_path)
+        assert discover_socket() == socket_path
+    finally:
+        (directory / CONTROL_SOCKET_NAME).unlink(missing_ok=True)
+
+
+def test_discover_socket_ignores_a_socket_nobody_listens_on(isolated_env):
+    """A node with no listener is not live even when the pointer is present."""
+    directory = isolated_env / "run"
+    _bare_socket(directory / CONTROL_SOCKET_NAME)
+    _write_pointer(directory, pid=_UNALLOCATED_PID)
+    assert discover_socket() is None
+
+
+def test_dead_pid_alone_never_declares_a_working_pointer_stale(isolated_env, monkeypatch):
+    """Regression pin: pid liveness must not override a connectable socket.
+
+    Flatpak sandboxes have their own PID namespace, so ``pid_alive`` can answer
+    ``False`` for a live app. A refactor that restores the old pid-only rule
+    (``if not pid_alive: stale``) fails this test.
+    """
+    directory = isolated_env / "run"
+    socket_path = FakeControlServer(directory / CONTROL_SOCKET_NAME).start().path
+    try:
+        _write_pointer(directory, pid=os.getpid(), socket_path=socket_path)
+        monkeypatch.setattr("app.live.pid_alive", lambda pid: False)
+        assert discover_socket() == socket_path
     finally:
         (directory / CONTROL_SOCKET_NAME).unlink(missing_ok=True)
 
@@ -908,6 +948,29 @@ def test_try_attach_never_raises_and_finds_the_control_dir(tmp_path, monkeypatch
     finally:
         adapter.close()
         socket_path.unlink(missing_ok=True)
+
+
+def test_try_attach_attaches_when_the_pointer_pid_is_not_visible_here(tmp_path, monkeypatch):
+    """A pid that this namespace cannot verify must not block a live attach.
+
+    Simulates a host-side server looking at a Flatpak app's pointer: the pid is
+    sandbox-local (here an unallocated pid, so ``pid_alive`` is ``False``) but
+    the socket exists and answers — the backend must attach and answer live,
+    not report "no live instance".
+    """
+    directory = tmp_path / "run"
+    server = FakeControlServer(directory / CONTROL_SOCKET_NAME).start()
+    _write_pointer(directory, pid=_UNALLOCATED_PID, socket_path=server.path)
+    monkeypatch.delenv(SOCKET_OVERRIDE_ENV, raising=False)
+    monkeypatch.setenv(CONTROL_DIR_ENV, str(directory))
+    adapter = LiveBackend(retry_cooldown_s=0.0)
+    try:
+        client = adapter.try_attach()
+        assert client is not None and client.alive()
+        assert adapter.list_actions()["source"] == "live"
+    finally:
+        adapter.close()
+        server.stop()
 
 
 def test_try_attach_is_none_for_garbage_paths(tmp_path, monkeypatch):

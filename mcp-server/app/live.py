@@ -11,8 +11,9 @@ protocol and proxies the MCP tool surface onto it:
   ``IMGSLI_CONTROL_DIR`` (explicit dir) → ``$XDG_RUNTIME_DIR`` when set and
   writable → ``<app data dir>/run``. The socket is ``control.sock`` and a
   pointer file ``instance.json`` holds ``{pid, socket, started, version}``.
-  A pointer whose pid is dead is stale, and a socket nobody listens on is "no
-  live instance" — never a user-visible error.
+  A pointer is stale only when its socket is unusable: the pid is a hint, not
+  the verdict (Flatpak apps live in their own PID namespace), and a socket
+  nobody listens on is "no live instance" — never a user-visible error.
 - **Degrading cleanly** — the app refuses connections from another uid (its own
   SO_PEERCRED check, not ours) and may close the socket at any time; every
   failure surfaces as ``LiveUnavailable`` so the caller falls back to Phase 1.
@@ -50,6 +51,11 @@ CONTROL_DIR_ENV = "IMGSLI_CONTROL_DIR"
 
 #: Cap on ignored lines while waiting for our own response id.
 _MAX_SKIPPED_LINES = 100
+
+#: Budget for the liveness probe that runs only when the pointer's pid cannot
+#: be verified. A unix-socket connect returns immediately; the timeout only
+#: bounds a pathological listener backlog.
+PID_PROBE_TIMEOUT_S = 0.25
 
 
 class LiveUnavailable(Exception):
@@ -106,12 +112,45 @@ def _runtime_candidates(env: Mapping[str, str]) -> list[Path]:
     return candidates
 
 
+def _socket_answers(path: Path, *, timeout: float = PID_PROBE_TIMEOUT_S) -> bool:
+    """True when something accepts a connection on ``path`` right now.
+
+    A bare connect is enough: it proves a listener owns the node, which is the
+    only fact staleness is allowed to rest on (see ``_pointer_socket``). Any
+    ``OSError`` — missing node, ``ECONNREFUSED``, not a socket — means there is
+    nothing to attach to.
+    """
+    try:
+        probe = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    except OSError:  # pragma: no cover - platform without AF_UNIX
+        return False
+    try:
+        probe.settimeout(timeout)
+        probe.connect(str(path))
+    except OSError:
+        return False
+    finally:
+        probe.close()
+    return True
+
+
 def _pointer_socket(directory: Path) -> tuple[Path | None, bool]:
     """``(socket, stale)`` for a control dir with an ``instance.json`` pointer.
 
     ``socket`` is the pointer's ``socket`` field, falling back to the sibling
-    ``control.sock``. ``stale`` is true when the pointer names a dead pid — a
-    stale pointer must be reported as "no live instance", never trusted.
+    ``control.sock``. ``stale`` means "nothing usable here": the pointer is
+    reported as "no live instance" and must not be trusted.
+
+    The pid is a *hint, never the verdict*. A Flatpak-installed app runs in its
+    own PID namespace, so ``pid_alive`` on the host may raise
+    ``ProcessLookupError`` for a perfectly live sandboxed app (the pointer
+    records the sandbox-local pid) or see a foreign pid as ``PermissionError``.
+    Judging the pointer stale from that alone hides a working socket and the
+    server answers "no live instance" while the app is up and connectable.
+    Staleness therefore requires a dead-looking pid **and** a probe connect that
+    fails: a dead pid with no socket stays "no live instance", a socket nobody
+    listens on is not live either (the attach probe fails), but an unverifiable
+    pid whose socket answers is used.
     """
     pointer = directory / INSTANCE_POINTER_NAME
     if not pointer.is_file():
@@ -122,13 +161,16 @@ def _pointer_socket(directory: Path) -> tuple[Path | None, bool]:
         return None, False
     if not isinstance(data, dict):
         return None, False
-    pid = data.get("pid")
-    if isinstance(pid, int) and not isinstance(pid, bool) and pid > 0 and not pid_alive(pid):
-        return None, True
     field = data.get("socket")
     if isinstance(field, str) and field.strip():
-        return Path(field.strip()).expanduser(), False
-    return directory / CONTROL_SOCKET_NAME, False
+        candidate = Path(field.strip()).expanduser()
+    else:
+        candidate = directory / CONTROL_SOCKET_NAME
+    pid = data.get("pid")
+    verifiable_pid = isinstance(pid, int) and not isinstance(pid, bool) and pid > 0
+    if verifiable_pid and not pid_alive(pid) and not _socket_answers(candidate):
+        return None, True
+    return candidate, False
 
 
 def _socket_in_dir(directory: Path) -> Path | None:
