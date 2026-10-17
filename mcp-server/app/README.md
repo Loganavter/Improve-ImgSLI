@@ -38,7 +38,7 @@ no manual `PYTHONPATH` is needed. Environment knobs:
 | Variable | Meaning | Default |
 |---|---|---|
 | `IMGSLI_REPO_ROOT` | checkout root the server drives | derived from `server.py` |
-| `IMGSLI_MCP_ARTIFACTS` | scratch dir for snapshots / dumps / captures | `$XDG_CACHE_HOME/Improve-ImgSLI/mcp` |
+| `IMGSLI_MCP_ARTIFACTS` | scratch dir for snapshots / dumps / captures | `$XDG_CACHE_HOME/ImproveImgSLI/mcp` |
 | `IMGSLI_MCP_TIMEOUT` | headless boot budget (seconds) | `120` |
 | `IMGSLI_MCP_CONTROL_SOCKET` | explicit live-instance socket path | (discovery) |
 | `IMGSLI_CONTROL_DIR` | explicit control dir to discover in | (discovery) |

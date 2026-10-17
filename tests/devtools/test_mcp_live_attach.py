@@ -671,6 +671,40 @@ def test_adapter_omits_falsy_params_and_keeps_defaults(tmp_path):
     ]
 
 
+def test_read_log_live_normalises_when_the_app_omits_the_path(tmp_path):
+    """The app's live ``read_log`` ring has no file path — normalise honestly.
+
+    The canned default handler is more generous than the real app: the in-app
+    log ring returns only ``total_lines``/``returned``/``lines`` (no ``path``).
+    The adapter must still return the Phase-1 shape, with an empty path rather
+    than inventing one.
+    """
+
+    def handler(method, params):
+        if method == "read_log":
+            return True, {
+                "total_lines": 3,
+                "returned": 1,
+                "lines": [{"n": 3, "level": "ERROR", "text": "boom"}],
+            }
+        return default_handler(method, params)
+
+    server = FakeControlServer(tmp_path / "control.sock", handler).start()
+    adapter = LiveBackend(client=LiveClient(server.path))
+    try:
+        result = adapter.read_log(n=1, level="ERROR")
+    finally:
+        adapter.close()
+        server.stop()
+    assert result == {
+        "path": "",
+        "total_lines": 3,
+        "returned": 1,
+        "lines": [{"n": 3, "level": "ERROR", "text": "boom"}],
+        "source": "live",
+    }
+
+
 # --- adapter: attach lifecycle ----------------------------------------------
 
 
@@ -894,6 +928,92 @@ def test_press_keys_round_trips_through_the_backend(live_wired):
         "source": "live",
     }
     assert ("press_keys", {"keys": "ctrl+shift+p"}) in server.calls
+
+
+def test_backend_falls_back_when_the_socket_refuses(tmp_path, monkeypatch):
+    """A socket node nobody listens on (ECONNREFUSED) is "no live instance".
+
+    Refusal must send the call down the fallback path — never crash and never
+    surface as a user-visible error.
+    """
+    directory = tmp_path / "run"
+    directory.mkdir(parents=True)
+    socket_path = _bare_socket(directory / CONTROL_SOCKET_NAME)  # bound, then closed
+    _write_pointer(directory, pid=os.getpid(), socket_path=socket_path)
+    monkeypatch.setenv(CONTROL_DIR_ENV, str(directory))
+    monkeypatch.delenv(SOCKET_OVERRIDE_ENV, raising=False)
+
+    calls: list = []
+    backend = AppBackend(
+        REPO_ROOT,
+        artifacts_dir=tmp_path / "artifacts",
+        data_dir=tmp_path / "data",
+        snapshot_runner=lambda tab: calls.append(tab) or _snapshot(),
+        live_backend=LiveBackend(retry_cooldown_s=0.0),
+    )
+    protocol = MCPProtocol(backend)
+    result = _call(protocol, "list_actions")
+    assert result["isError"] is False
+    assert result["structuredContent"]["source"] == "fallback"
+    assert calls == [None]
+
+
+def test_press_keys_transport_fault_errors_honestly(tmp_path, monkeypatch):
+    """A live instance that dies mid-call leaves ``press_keys`` an honest error."""
+
+    def handler(method, params):
+        if method == "press_keys":
+            return True, CLOSE  # hang up without answering
+        return default_handler(method, params)
+
+    directory = tmp_path / "run"
+    server = FakeControlServer(directory / CONTROL_SOCKET_NAME, handler).start()
+    _write_pointer(directory, pid=os.getpid(), socket_path=server.path)
+    monkeypatch.setenv(CONTROL_DIR_ENV, str(directory))
+    monkeypatch.delenv(SOCKET_OVERRIDE_ENV, raising=False)
+    backend = AppBackend(
+        REPO_ROOT,
+        artifacts_dir=tmp_path / "artifacts",
+        data_dir=tmp_path / "data",
+        live_backend=LiveBackend(retry_cooldown_s=0.0),
+    )
+    protocol = MCPProtocol(backend)
+    try:
+        result = _call(protocol, "press_keys", {"keys": "ctrl+p"})
+        assert result["isError"] is True
+        assert "keyboard input needs a running app" in result["content"][0]["text"]
+    finally:
+        server.stop()
+
+
+def test_press_keys_live_app_error_keeps_the_apps_hint(tmp_path, monkeypatch):
+    """An app-reported key failure is surfaced with the app's own hint."""
+
+    def handler(method, params):
+        if method == "press_keys":
+            return False, {"error": "unknown key 'nope'", "hint": "valid names: enter, tab"}
+        return default_handler(method, params)
+
+    directory = tmp_path / "run"
+    server = FakeControlServer(directory / CONTROL_SOCKET_NAME, handler).start()
+    _write_pointer(directory, pid=os.getpid(), socket_path=server.path)
+    monkeypatch.setenv(CONTROL_DIR_ENV, str(directory))
+    monkeypatch.delenv(SOCKET_OVERRIDE_ENV, raising=False)
+    backend = AppBackend(
+        REPO_ROOT,
+        artifacts_dir=tmp_path / "artifacts",
+        data_dir=tmp_path / "data",
+        live_backend=LiveBackend(retry_cooldown_s=0.0),
+    )
+    protocol = MCPProtocol(backend)
+    try:
+        result = _call(protocol, "press_keys", {"keys": "nope"})
+        assert result["isError"] is True
+        text = result["content"][0]["text"]
+        assert "unknown key 'nope'" in text
+        assert "valid names: enter, tab" in text
+    finally:
+        server.stop()
 
 
 def test_open_folder_routes_on_the_live_instance(live_wired, tmp_path):
