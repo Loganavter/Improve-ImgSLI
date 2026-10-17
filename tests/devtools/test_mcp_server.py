@@ -13,6 +13,7 @@ are registry ids, not fixtures restating an implementation detail.
 
 from __future__ import annotations
 
+import io
 import json
 import os
 import re
@@ -36,7 +37,12 @@ from app.process_policy import (  # noqa: E402
     pid_alive,
     preserve_live_log,
 )
-from app.protocol import MCPProtocol  # noqa: E402
+from app.protocol import (  # noqa: E402
+    INVALID_REQUEST,
+    MAX_REQUEST_LINE_BYTES,
+    MCPProtocol,
+    serve_stdio,
+)
 
 _NAME_RE = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")
 _ANNOTATION_KEYS = ("readOnlyHint", "destructiveHint", "idempotentHint", "openWorldHint")
@@ -205,6 +211,26 @@ def test_element_tool_annotations_are_audited(wired):
         "right",
         "middle",
     ]
+
+
+def test_list_actions_output_schema_declares_enabled_and_reason(wired):
+    """The catalog publishes the P2 ``enabled``/``reason`` row keys."""
+    protocol, _backend, _calls = wired
+    tools = {tool["name"]: tool for tool in _request(protocol, "tools/list")["result"]["tools"]}
+    item = tools["list_actions"]["outputSchema"]["properties"]["actions"]["items"]
+    assert item["properties"]["enabled"]["type"] == "boolean"
+    assert item["properties"]["reason"]["type"] == ["string", "null"]
+    assert {"enabled", "reason"} <= set(item.get("required") or ())
+
+
+def test_list_actions_fallback_rows_carry_enabled_and_reason(wired):
+    """Every fallback row carries the two keys even when the snapshot omits them."""
+    protocol, _backend, _calls = wired
+    rows = _call(protocol, "list_actions")["structuredContent"]["actions"]
+    assert rows, "the registry snapshot must list platform actions"
+    for row in rows:
+        assert row["enabled"] is True
+        assert row["reason"] is None
 
 
 # --- tools ------------------------------------------------------------------
@@ -604,6 +630,18 @@ def test_stdio_round_trip_over_pipes(tmp_path):
     assert by_id[4]["error"]["code"] == -32602, "unknown tool name is invalid params"
     assert by_id[5]["result"]["supportedVersions"] == ["2026-07-28"]
     assert "serving stdio" in proc.stderr
+
+
+def test_stdio_refuses_an_oversized_request_line(wired):
+    """A request line over the P2 cap is a named error, never truncated."""
+    protocol, _backend, _calls = wired
+    oversized = "x" * (MAX_REQUEST_LINE_BYTES + 1)
+    out = io.StringIO()
+    code = serve_stdio(protocol, stdin=io.StringIO(oversized + "\n"), stdout=out)
+    assert code == 0
+    entry = json.loads(out.getvalue().strip())
+    assert entry["error"]["code"] == INVALID_REQUEST
+    assert "cap" in entry["error"]["message"]
 
 
 def test_check_flag_prints_catalog_without_serving():
