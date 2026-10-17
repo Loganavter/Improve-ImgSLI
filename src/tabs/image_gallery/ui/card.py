@@ -171,7 +171,8 @@ def build_gallery_card(*args, **kwargs) -> Button:  # type: ignore[no-untyped-de
     split vertically via ``VerticalSplit``. Painter pipeline owns visuals.
     """
     # Lazy imports to avoid cycles (CODE_PATTERNS.md).
-    from tabs.image_gallery.ui.card.dots import _dots_for_item
+    from tabs.image_gallery.ui.card.dot_tooltip import ensure_dot_tooltip
+    from tabs.image_gallery.ui.card.dots import metric_dots_for_item
     from tabs.image_gallery.ui.card.hover import _CardHoverFilter
     from tabs.image_gallery.ui.card.painters import _gallery_card_overlay_painter
     from tabs.image_gallery.ui.card.regions import _cover_region, _text_rows
@@ -183,6 +184,7 @@ def build_gallery_card(*args, **kwargs) -> Button:  # type: ignore[no-untyped-de
     parent = kwargs.pop("parent", None)
     item = kwargs.pop("item", None)
     owner = kwargs.pop("owner", None)
+    domain = kwargs.pop("domain", None)
 
     actual_parent = parent
     actual_item = item
@@ -231,6 +233,11 @@ def build_gallery_card(*args, **kwargs) -> Button:  # type: ignore[no-untyped-de
             mode = getattr(st, "mode", None) if st is not None else getattr(owner, "_mode", None)
         except Exception:
             mode = None
+    if domain is None and owner is not None:
+        try:
+            domain = getattr(owner, "_judgment_domain", None)
+        except Exception:
+            domain = None
     cover = _cover_region(actual_item)
     text_rows = _text_rows(actual_item, actual_translate, mode=mode)
     # CustomSplit for 8px padding around preview 234×110 r8 at 8,8, text 52 zone at 118 — matches svg 250×170 r10 outer
@@ -284,12 +291,18 @@ def build_gallery_card(*args, **kwargs) -> Button:  # type: ignore[no-untyped-de
     _attach_item(card, actual_item)
     _set_card_tooltip(card, actual_item, actual_translate)
     try:
-        _, _dcols = _dots_for_item(actual_item, mode=mode, domain=getattr(owner, "_judgment_domain", None))
+        _dcols, _dinfos = metric_dots_for_item(
+            actual_item, mode=mode, domain=domain, translate=actual_translate
+        )
         card._gallery_dot_colors = tuple(_dcols)  # type: ignore[attr-defined]
+        card._gallery_dot_infos = tuple(_dinfos)  # type: ignore[attr-defined]
         card._gallery_mode = mode  # type: ignore[attr-defined]
+        card._gallery_domain = domain  # type: ignore[attr-defined]
+        card._gallery_dot_geometry = None  # type: ignore[attr-defined]
     except Exception:
         try:
             card._gallery_dot_colors = ()  # type: ignore[attr-defined]
+            card._gallery_dot_infos = ()  # type: ignore[attr-defined]
         except Exception:
             pass
     if owner is not None:
@@ -314,6 +327,10 @@ def build_gallery_card(*args, **kwargs) -> Button:  # type: ignore[no-untyped-de
         filt = _CardHoverFilter(card, owner)
         card.installEventFilter(filt)
         card._gallery_hover_filter = filt  # type: ignore[attr-defined]
+    except Exception:
+        pass
+    try:
+        ensure_dot_tooltip(card)
     except Exception:
         pass
     if on_activate is not None or on_context_menu is not None:
@@ -371,6 +388,7 @@ def update_gallery_card(
     owner: object = None,
     *,
     translate=None,
+    domain: object = None,
 ) -> None:
     """In-place update of a live gallery card for ``item``.
 
@@ -384,7 +402,7 @@ def update_gallery_card(
     not — so the SOURCE badge and localized text rows stayed English on
     every rebuild. Thread it through like ``update_gallery_list_card``.
     """
-    from tabs.image_gallery.ui.card.dots import _dots_for_item
+    from tabs.image_gallery.ui.card.dots import metric_dots_for_item
     from tabs.image_gallery.ui.card.regions import _item_unreadable, _text_rows
     from tabs.image_gallery.ui.card.visuals import _apply_rejected_visuals
 
@@ -424,10 +442,26 @@ def update_gallery_card(
             _mode = getattr(st, "mode", None) if st is not None else getattr(owner, "_mode", None)
         except Exception:
             pass
+    _domain = domain
+    if _domain is None and owner is not None:
+        try:
+            _domain = getattr(owner, "_judgment_domain", None)
+        except Exception:
+            _domain = None
+    if _domain is None:
+        _domain = getattr(card, "_gallery_domain", None)
+    _dot_tr = translate
+    if not callable(_dot_tr):
+        _dot_tr = getattr(card, "_gallery_translate", None)
     try:
-        _, _dcols = _dots_for_item(item, mode=_mode, domain=getattr(owner, "_judgment_domain", None))
+        _dcols, _dinfos = metric_dots_for_item(
+            item, mode=_mode, domain=_domain, translate=_dot_tr
+        )
         card._gallery_dot_colors = tuple(_dcols)  # type: ignore[attr-defined]
+        card._gallery_dot_infos = tuple(_dinfos)  # type: ignore[attr-defined]
         card._gallery_mode = _mode  # type: ignore[attr-defined]
+        card._gallery_domain = _domain  # type: ignore[attr-defined]
+        card._gallery_dot_geometry = None  # type: ignore[attr-defined]
     except Exception:
         pass
     thumb = getattr(item, "thumbnail", None)
@@ -469,6 +503,8 @@ _LAZY_REEXPORTS: dict[str, tuple[str, str]] = {
     "_ERROR_LINE_TOKEN_FALLBACK": ("tabs.image_gallery.ui.card.dots", "_ERROR_LINE_TOKEN_FALLBACK"),
     "_SEVERITY_TOKEN_FALLBACKS": ("tabs.image_gallery.ui.card.dots", "_SEVERITY_TOKEN_FALLBACKS"),
     "_dots_for_item": ("tabs.image_gallery.ui.card.dots", "_dots_for_item"),
+    "metric_dots_for_item": ("tabs.image_gallery.ui.card.dots", "metric_dots_for_item"),
+    "dot_tooltip_text": ("tabs.image_gallery.ui.card.dots", "dot_tooltip_text"),
     "_accent_color": ("tabs.image_gallery.ui.card.dots", "_accent_color"),
     "_error_line_color": ("tabs.image_gallery.ui.card.dots", "_error_line_color"),
     "_is_dark": ("tabs.image_gallery.ui.card.dots", "_is_dark"),

@@ -1,8 +1,10 @@
 """List-row card — palette-style row Button (no grid imports).
 
 Own split/regions/routing/overlay live in this package (``ui/list/*``);
-item logic comes from ``models``, triage actions from ``use_cases``.
-Nothing here imports ``ui/card/*`` — grid-side edits cannot leak in.
+item logic comes from ``models``, triage actions from ``use_cases``. No
+grid widget/layout code is imported; the only ``ui/card`` reach is the
+lazy, pure metric-dot helper (``_metric_dots_for``) so the list dots match
+the grid card exactly.
 """
 
 from __future__ import annotations
@@ -174,6 +176,23 @@ def _bind_list_row(
             pass
 
 
+def _metric_dots_for(
+    item: GalleryItem,
+    mode: object,
+    domain: object,
+    translate=None,
+):
+    """Metric-axis dot colors + tooltip infos (grid card parity, lazy import)."""
+    try:
+        from tabs.image_gallery.ui.card.dots import metric_dots_for_item
+
+        return metric_dots_for_item(
+            item, mode=mode, domain=domain, translate=translate
+        )
+    except Exception:
+        return (), ()
+
+
 def build_gallery_list_card(
     item: GalleryItem,
     parent: QWidget | None = None,
@@ -182,9 +201,13 @@ def build_gallery_list_card(
     mode: object = None,
     *,
     translate=None,
+    domain: object = None,
 ) -> Button:
-    """Factory for a palette-style gallery list row (thumb + title + meta)."""
-    _ = mode
+    """Factory for a palette-style gallery list row (thumb + title + meta).
+
+    *domain* is the judgment domain (``"ai"`` / ``"algorithms"``) the metric
+    dots read; unknown/None degrades to Algorithms inside ``quality_read``.
+    """
     state = {"w": _thumb_width_for(item)}
     card = Button(
         regions=[
@@ -219,8 +242,20 @@ def build_gallery_list_card(
         # parity): ``update_gallery_list_card`` defaults to it, so pooled-row
         # rebinds never need ``translate=`` threaded through every call site.
         card._gallery_translate = translate  # type: ignore[attr-defined]
+        _dots, _infos = _metric_dots_for(item, mode, domain, translate)
+        card._gallery_dot_colors = tuple(_dots)  # type: ignore[attr-defined]
+        card._gallery_dot_infos = tuple(_infos)  # type: ignore[attr-defined]
+        card._gallery_mode = mode  # type: ignore[attr-defined]
+        card._gallery_domain = domain  # type: ignore[attr-defined]
+        card._gallery_dot_geometry = None  # type: ignore[attr-defined]
         _attach_list_item(card, item)
         _apply_list_rejected_visuals(card, item)
+    except Exception:
+        pass
+    try:
+        from tabs.image_gallery.ui.card.dot_tooltip import ensure_dot_tooltip
+
+        ensure_dot_tooltip(card)
     except Exception:
         pass
     if on_activate is not None or on_context_menu is not None:
@@ -237,13 +272,34 @@ def _attach_list_item(card: Button, item: GalleryItem) -> None:
         pass
 
 
-def update_gallery_list_card(card: Button, item: GalleryItem, mode: object = None, *, translate=None) -> None:
+def update_gallery_list_card(
+    card: Button,
+    item: GalleryItem,
+    mode: object = None,
+    *,
+    translate=None,
+    domain: object = None,
+) -> None:
     """In-place update of a live list row (update_gallery_card parity)."""
-    _ = mode
     _tr = translate
     if not callable(_tr):
         # Single source: the translator attached at build time.
         _tr = getattr(card, "_gallery_translate", None)
+    _mode = mode
+    if _mode is None:
+        _mode = getattr(card, "_gallery_mode", None)
+    _domain = domain
+    if _domain is None:
+        _domain = getattr(card, "_gallery_domain", None)
+    try:
+        _dots, _infos = _metric_dots_for(item, _mode, _domain, _tr)
+        card._gallery_dot_colors = tuple(_dots)  # type: ignore[attr-defined]
+        card._gallery_dot_infos = tuple(_infos)  # type: ignore[attr-defined]
+        card._gallery_mode = _mode  # type: ignore[attr-defined]
+        card._gallery_domain = _domain  # type: ignore[attr-defined]
+        card._gallery_dot_geometry = None  # type: ignore[attr-defined]
+    except Exception:
+        pass
     _attach_list_item(card, item)
     try:
         state = getattr(card, "_gallery_row_state", None)
