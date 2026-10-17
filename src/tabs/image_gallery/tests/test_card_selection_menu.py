@@ -60,11 +60,12 @@ def _capture_menu(monkeypatch):
         def show(self):
             captured["shown"] = True
 
-    def _fake_open(*, source_widget, global_pos, entries, key, on_triggered=None):
+    def _fake_open(*, source_widget, global_pos, entries, key, on_triggered=None, **_kwargs):
         captured["entries"] = tuple(entries)
         captured["on_triggered"] = on_triggered
         captured["key"] = key
         captured["source_widget"] = source_widget
+        captured["menu_parent"] = _kwargs.get("menu_parent")
         return _FakeMenu(source_widget, entries=entries, on_triggered=on_triggered)
 
     monkeypatch.setattr(_mgr, "open_context_menu_entries", _fake_open)
@@ -481,7 +482,7 @@ def test_empty_menu_sort_view_present_and_checked(monkeypatch) -> None:
 
     captured: dict = {}
 
-    def _fake_open(*, source_widget, global_pos, entries, key, on_triggered=None):
+    def _fake_open(*, source_widget, global_pos, entries, key, on_triggered=None, **_kwargs):
         captured["entries"] = tuple(entries)
         captured["on_triggered"] = on_triggered
         return SimpleNamespace()
@@ -579,11 +580,17 @@ def test_ungroup_without_controller_is_noop() -> None:
 
 
 def test_card_menu_parent_is_card_not_window(qapp, monkeypatch) -> None:
-    """Regression (inv-2026-10-06 ql-rhi-menu-first): the popup must be
-    parented to the CARD, never the top-level window. A ``Qt.Popup`` whose
-    QWidget parent is the MainWindow breaks Wayland compositing for the whole
-    window (in-window translucency -> black, fresh QRhiWidget mint fails).
-    MC parents to its canvas, IC to its flyout; gallery must parent to the card.
+    """Regression (inv-2026-10-06 ql-rhi-menu-first + card-menu-size): the menu
+    keeps the CARD as its source widget (key identity / outside-close), and the
+    top-level window is only the overlay host for the surface="in_window"
+    child overlay — never the QWidget parent of a ``Qt.Popup`` (that breaks Wayland
+    compositing for the whole window: in-window translucency -> black, fresh
+    QRhiWidget mint fails). MC parents its popup to the canvas, IC to its
+    flyout; gallery's popup stays card-anchored.
+
+    The in-window overlay parent came from the 2026-10-17 card-menu-size bug:
+    a child widget is clipped to its parent's rect, so parenting the menu to
+    the card showed a sliver.
     """
     from PySide6.QtWidgets import QWidget
 
@@ -595,6 +602,7 @@ def test_card_menu_parent_is_card_not_window(qapp, monkeypatch) -> None:
         popup_gallery_card_context_menu(card, owner, Path("/a.png"), global_pos=None)
         assert captured.get("source_widget") is card
         assert captured.get("source_widget") is not card.window()
+        assert captured.get("menu_parent") is card.window()
     finally:
         window.close()
 
@@ -611,7 +619,7 @@ def test_ask_ai_action_opens_directly(monkeypatch) -> None:
 
     captured: dict = {}
 
-    def _fake_open(*, source_widget, global_pos, entries, key, on_triggered=None):
+    def _fake_open(*, source_widget, global_pos, entries, key, on_triggered=None, **_kwargs):
         captured["on_triggered"] = on_triggered
         return SimpleNamespace()
 

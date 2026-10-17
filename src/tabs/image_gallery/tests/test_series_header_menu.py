@@ -28,7 +28,7 @@ def _capture_entries(monkeypatch) -> dict:
 
     captured: dict = {}
 
-    def _fake_open(*, source_widget, global_pos, entries, key, on_triggered=None):
+    def _fake_open(*, source_widget, global_pos, entries, key, on_triggered=None, **_kwargs):
         captured["entries"] = tuple(entries)
         captured["on_triggered"] = on_triggered
         captured["source_widget"] = source_widget

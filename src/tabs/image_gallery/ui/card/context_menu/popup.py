@@ -336,8 +336,10 @@ def popup_gallery_card_context_menu(  # type: ignore[no-untyped-def]
                 pos = QCursor.pos()
             except Exception:
                 pos = None
-        # Popup surface via the app manager (real Qt.Popup top-level, above
-        # UnifiedFlyout) — never an in-window flyout competing with the capsule.
+        # Menu through the app manager: it owns the surface policy
+        # (``surface="in_window"`` — a child overlay, no native xdg_popup
+        # teardown before the Ask AI flyout shows) and the outside-close /
+        # keyed-reopen bookkeeping. Never a flyout competing with the capsule.
         try:
             from tabs.image_gallery.ui.card.marquee_snapshot import marquee_snapshot
             from ui.context_menu.manager import open_context_menu_entries
@@ -347,12 +349,28 @@ def popup_gallery_card_context_menu(  # type: ignore[no-untyped-def]
                     "card menu popup path=%s n=%s marquee=%s",
                     path, n, marquee_snapshot(owner, card),
                 )
+            # The manager's app-wide RMB policy is ``surface="in_window"`` (a
+            # plain child widget, no native popup teardown for the Ask AI
+            # sequence). A child widget is clipped to its parent's rectangle,
+            # so parenting to the card itself cut the menu down to a sliver at
+            # the card's edge (2026-10-17 card-menu-size). Parent the overlay
+            # to the card's window instead — NOT a Qt.Popup, so the Wayland
+            # "popup parented to the top-level" trap above does not apply.
+            _parent = None
+            try:
+                _parent = card.window()
+            except Exception:
+                _parent = None
+            _open_kwargs = {}
+            if _parent is not None and _parent is not card:
+                _open_kwargs["menu_parent"] = _parent
             menu = open_context_menu_entries(
                 source_widget=source or card,
                 global_pos=pos,
                 entries=tuple(entries),
                 key=("gallery-card", str(path), n),
                 on_triggered=_on_triggered,
+                **_open_kwargs,
             )
             if menu is not None:
                 # Localize the declarative text_key rows through the resolved
