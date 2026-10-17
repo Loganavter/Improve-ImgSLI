@@ -257,6 +257,24 @@ def _key_names(keys) -> list[str]:
     return out
 
 
+def extra_keys_of(spec) -> list[str]:
+    """A section's claimed extra keys, names sorted.
+
+    ``NavigationSection.extra_keys`` is a *method* (the toolkit's protocol and
+    the flyout sections implement it; app sections often omit it entirely), so
+    this calls it when callable — reading it as an attribute crashed
+    ``ui_nav_state`` the first time a section that declares it was registered
+    (the Quick Look section, 2026-10-17).
+    """
+    raw = getattr(spec, "extra_keys", None)
+    if callable(raw):
+        try:
+            raw = raw()
+        except Exception:
+            raw = None
+    return sorted(_key_names(raw or ()))
+
+
 def nav_state_payload(*, registry: Any, app: Any, window: Any) -> dict[str, Any]:
     """The live navigation model: sections, focus, modality, open overlays."""
     manager = nav_manager()
@@ -272,7 +290,7 @@ def nav_state_payload(*, registry: Any, app: Any, window: Any) -> dict[str, Any]
             "index": index,
             "section": type(spec).__name__,
             "owner": type(owner).__name__,
-            "extra_keys": sorted(_key_names(getattr(spec, "extra_keys", frozenset()))),
+            "extra_keys": extra_keys_of(spec),
         }
         for index, (owner, spec) in enumerate(_sections_of(manager))
     ]
@@ -291,6 +309,7 @@ def nav_state_payload(*, registry: Any, app: Any, window: Any) -> dict[str, Any]
 __all__ = [
     "MAX_OVERLAY_CHILDREN",
     "element_map",
+    "extra_keys_of",
     "focus_widget",
     "nav_manager",
     "nav_state_payload",

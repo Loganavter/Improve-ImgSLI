@@ -37,6 +37,32 @@ from core.control.handlers import ControlHandlers
 from ui.actions.registry import ActionRegistry
 
 
+class _MethodExtraKeysSection:
+    """A section whose ``extra_keys`` is a *method* (the toolkit's protocol shape).
+
+    Falsification for the live crash of 2026-10-17: reading ``extra_keys`` as an
+    attribute iterates a bound method and ``ui_nav_state`` raises.
+    """
+
+    def __init__(self, widget) -> None:
+        self._widget = widget
+
+    def owns(self, widget) -> bool:  # noqa: ANN001
+        return widget is self._widget
+
+    def navigate(self, key: int, widget) -> bool:  # noqa: ANN001
+        return False
+
+    def focus_first(self, ref_x=None, *, reason=Qt.FocusReason.OtherFocusReason) -> bool:  # noqa: ANN001
+        return True
+
+    def focus_last(self, ref_x=None, *, reason=Qt.FocusReason.OtherFocusReason) -> bool:  # noqa: ANN001
+        return True
+
+    def extra_keys(self) -> frozenset:
+        return frozenset({Qt.Key.Key_Return, Qt.Key.Key_Escape})
+
+
 class _RowSection:
     """Minimal section: owns a button row and moves focus Down/Up inside it."""
 
@@ -274,4 +300,21 @@ def test_nav_key_rejects_an_unknown_element() -> None:
         else:  # pragma: no cover - the resolver must fail loudly
             raise AssertionError("an unknown anchor must fail, not silently focus nothing")
     finally:
+        harness.close()
+
+def test_nav_state_serialises_a_method_shaped_extra_keys() -> None:
+    """``extra_keys`` is a method on the toolkit protocol — never iterate it raw."""
+    app = _qapp()
+    harness = _Harness(app)
+    try:
+        extra = _MethodExtraKeysSection(harness.row[1])
+        harness.manager.register(harness.row[1], extra)
+        state = _handlers(harness.window).ui_nav_state({})
+        row = next(r for r in state["sections"] if r["section"] == "_MethodExtraKeysSection")
+        assert row["extra_keys"] == ["Key_Escape", "Key_Return"], row
+    finally:
+        try:
+            harness.manager.unregister(harness.row[1])
+        except Exception:
+            pass
         harness.close()
