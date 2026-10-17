@@ -130,6 +130,62 @@ def default_handler(method: str, params: dict):
         return True, {"surface": params.get("what"), "path": "/live/shot.png", "theme": "dark"}
     if method == "press_keys":
         return True, {"pressed": ["ctrl+shift+p"], "count": 1, "target": "QMainWindow"}
+    if method == "ui_elements":
+        return True, {
+            "count": 2,
+            "window_count": 1,
+            "elements": [
+                {
+                    "id": "main.settings.btn",
+                    "role": "button",
+                    "label": "Settings",
+                    "rect": [1, 2, 3, 4],
+                    "screen_rect": [10, 20, 30, 40],
+                    "window": "main",
+                    "owner_tab": None,
+                    "action_id": "platform.settings",
+                    "enabled": True,
+                    "visible": True,
+                    "unexpected": "dropped",
+                },
+                {
+                    "id": "gallery.card.menu.row1",
+                    "role": "menu-row",
+                    "label": "Open",
+                    "rect": [5, 6, 7, 8],
+                    "screen_rect": [50, 60, 70, 80],
+                    "window": "popup",
+                    "owner_tab": "image_gallery",
+                    "action_id": None,
+                    "enabled": True,
+                    "visible": True,
+                },
+            ],
+        }
+    if method == "ui_click":
+        return True, {
+            "clicked": True,
+            "id": params.get("id"),
+            "rect": [1, 2, 3, 4],
+            "screen_rect": [10, 20, 30, 40],
+            "target": "QPushButton",
+            "surface": "main",
+        }
+    if method == "ui_hover":
+        return True, {
+            "hovered": True,
+            "id": params.get("id"),
+            "rect": [1, 2, 3, 4],
+            "target": "QPushButton",
+        }
+    if method == "ui_focus":
+        return True, {
+            "focused": True,
+            "id": params.get("id"),
+            "rect": [1, 2, 3, 4],
+            "target": "QLineEdit",
+            "focus_widget": "QLineEdit",
+        }
     return False, {"error": f"unknown method {method!r}", "hint": "check the protocol"}
 
 
@@ -457,6 +513,38 @@ def test_client_timeout_is_unavailable(tmp_path):
 # --- adapter: every tool proxied --------------------------------------------
 
 
+_ELEMENTS_LIVE_RESULT = {
+    "count": 2,
+    "window_count": 1,
+    "elements": [
+        {
+            "id": "main.settings.btn",
+            "role": "button",
+            "label": "Settings",
+            "rect": [1, 2, 3, 4],
+            "screen_rect": [10, 20, 30, 40],
+            "window": "main",
+            "owner_tab": None,
+            "action_id": "platform.settings",
+            "enabled": True,
+            "visible": True,
+        },
+        {
+            "id": "gallery.card.menu.row1",
+            "role": "menu-row",
+            "label": "Open",
+            "rect": [5, 6, 7, 8],
+            "screen_rect": [50, 60, 70, 80],
+            "window": "popup",
+            "owner_tab": "image_gallery",
+            "action_id": None,
+            "enabled": True,
+            "visible": True,
+        },
+    ],
+    "source": "live",
+}
+
 _PROXY_CASES = [
     (
         "list_actions",
@@ -629,6 +717,77 @@ _PROXY_CASES = [
         {"keys": "ctrl+shift+p"},
         {"pressed": ["ctrl+shift+p"], "count": 1, "target": "QMainWindow", "source": "live"},
     ),
+    (
+        "ui_elements",
+        {},
+        "ui_elements",
+        {},
+        _ELEMENTS_LIVE_RESULT,
+    ),
+    (
+        "ui_elements",
+        {"scope": "image_gallery", "include_disabled": True},
+        "ui_elements",
+        {"scope": "image_gallery", "include_disabled": True},
+        _ELEMENTS_LIVE_RESULT,
+    ),
+    (
+        "ui_click",
+        {"id": "main.settings.btn"},
+        "ui_click",
+        {"id": "main.settings.btn"},
+        {
+            "clicked": True,
+            "id": "main.settings.btn",
+            "rect": [1, 2, 3, 4],
+            "screen_rect": [10, 20, 30, 40],
+            "target": "QPushButton",
+            "surface": "main",
+            "source": "live",
+        },
+    ),
+    (
+        "ui_click",
+        {"id": "gallery.card.menu.row1", "button": "right", "count": 2},
+        "ui_click",
+        {"id": "gallery.card.menu.row1", "button": "right", "count": 2},
+        {
+            "clicked": True,
+            "id": "gallery.card.menu.row1",
+            "rect": [1, 2, 3, 4],
+            "screen_rect": [10, 20, 30, 40],
+            "target": "QPushButton",
+            "surface": "main",
+            "source": "live",
+        },
+    ),
+    (
+        "ui_hover",
+        {"id": "main.settings.btn"},
+        "ui_hover",
+        {"id": "main.settings.btn"},
+        {
+            "hovered": True,
+            "id": "main.settings.btn",
+            "rect": [1, 2, 3, 4],
+            "target": "QPushButton",
+            "source": "live",
+        },
+    ),
+    (
+        "ui_focus",
+        {"id": "main.settings.btn"},
+        "ui_focus",
+        {"id": "main.settings.btn"},
+        {
+            "focused": True,
+            "id": "main.settings.btn",
+            "rect": [1, 2, 3, 4],
+            "target": "QLineEdit",
+            "focus_widget": "QLineEdit",
+            "source": "live",
+        },
+    ),
 ]
 
 
@@ -669,6 +828,33 @@ def test_adapter_omits_falsy_params_and_keeps_defaults(tmp_path):
         ("get_state", {}),
         ("read_log", {"n": 200}),
     ]
+
+
+def test_ui_click_omits_button_and_count_unless_given(tmp_path):
+    """``button``/``count`` are sent only when provided (falsy ⇒ omitted)."""
+    server = FakeControlServer(tmp_path / "control.sock").start()
+    adapter = LiveBackend(client=LiveClient(server.path))
+    try:
+        adapter.ui_click(id="main.settings.btn")
+        adapter.ui_click(id="main.settings.btn", button="right", count=2)
+    finally:
+        adapter.close()
+        server.stop()
+    assert _wire_calls(server) == [
+        ("ui_click", {"id": "main.settings.btn"}),
+        ("ui_click", {"id": "main.settings.btn", "button": "right", "count": 2}),
+    ]
+
+
+def test_ui_elements_omits_optional_params_unless_given(tmp_path):
+    server = FakeControlServer(tmp_path / "control.sock").start()
+    adapter = LiveBackend(client=LiveClient(server.path))
+    try:
+        adapter.ui_elements()
+    finally:
+        adapter.close()
+        server.stop()
+    assert _wire_calls(server) == [("ui_elements", {})]
 
 
 def test_read_log_live_normalises_when_the_app_omits_the_path(tmp_path):
@@ -930,6 +1116,89 @@ def test_press_keys_round_trips_through_the_backend(live_wired):
     assert ("press_keys", {"keys": "ctrl+shift+p"}) in server.calls
 
 
+def test_element_tools_round_trip_through_the_backend(live_wired):
+    protocol, _backend, _calls, server = live_wired
+    elements = _call(protocol, "ui_elements", {"scope": "main"})
+    assert elements["isError"] is False
+    assert elements["structuredContent"]["count"] == 2
+    assert elements["structuredContent"]["source"] == "live"
+
+    clicked = _call(protocol, "ui_click", {"id": "main.settings.btn", "button": "right"})
+    assert clicked["structuredContent"]["clicked"] is True
+    assert clicked["structuredContent"]["source"] == "live"
+
+    hovered = _call(protocol, "ui_hover", {"id": "main.settings.btn"})
+    assert hovered["structuredContent"]["hovered"] is True
+
+    focused = _call(protocol, "ui_focus", {"id": "main.settings.btn"})
+    assert focused["structuredContent"]["focus_widget"] == "QLineEdit"
+
+    assert ("ui_elements", {"scope": "main"}) in server.calls
+    assert ("ui_click", {"id": "main.settings.btn", "button": "right"}) in server.calls
+    assert ("ui_hover", {"id": "main.settings.btn"}) in server.calls
+    assert ("ui_focus", {"id": "main.settings.btn"}) in server.calls
+
+
+def test_ui_click_transport_fault_errors_honestly(tmp_path, monkeypatch):
+    """A live instance that dies mid-call leaves ``ui_click`` an honest error."""
+
+    def handler(method, params):
+        if method == "ui_click":
+            return True, CLOSE  # hang up without answering
+        return default_handler(method, params)
+
+    directory = tmp_path / "run"
+    server = FakeControlServer(directory / CONTROL_SOCKET_NAME, handler).start()
+    _write_pointer(directory, pid=os.getpid(), socket_path=server.path)
+    monkeypatch.setenv(CONTROL_DIR_ENV, str(directory))
+    monkeypatch.delenv(SOCKET_OVERRIDE_ENV, raising=False)
+    backend = AppBackend(
+        REPO_ROOT,
+        artifacts_dir=tmp_path / "artifacts",
+        data_dir=tmp_path / "data",
+        live_backend=LiveBackend(retry_cooldown_s=0.0),
+    )
+    protocol = MCPProtocol(backend)
+    try:
+        result = _call(protocol, "ui_click", {"id": "main.settings.btn"})
+        assert result["isError"] is True
+        text = result["content"][0]["text"]
+        assert "no live instance" in text
+        assert "element targeting needs a running app" in text
+    finally:
+        server.stop()
+
+
+def test_ui_focus_live_app_error_keeps_the_apps_hint(tmp_path, monkeypatch):
+    """An app-reported element failure is surfaced with the app's own hint."""
+
+    def handler(method, params):
+        if method == "ui_focus":
+            return False, {"error": "no element id 'ghost'", "hint": "did you mean: main.settings.btn?"}
+        return default_handler(method, params)
+
+    directory = tmp_path / "run"
+    server = FakeControlServer(directory / CONTROL_SOCKET_NAME, handler).start()
+    _write_pointer(directory, pid=os.getpid(), socket_path=server.path)
+    monkeypatch.setenv(CONTROL_DIR_ENV, str(directory))
+    monkeypatch.delenv(SOCKET_OVERRIDE_ENV, raising=False)
+    backend = AppBackend(
+        REPO_ROOT,
+        artifacts_dir=tmp_path / "artifacts",
+        data_dir=tmp_path / "data",
+        live_backend=LiveBackend(retry_cooldown_s=0.0),
+    )
+    protocol = MCPProtocol(backend)
+    try:
+        result = _call(protocol, "ui_focus", {"id": "ghost"})
+        assert result["isError"] is True
+        text = result["content"][0]["text"]
+        assert "no element id 'ghost'" in text
+        assert "did you mean: main.settings.btn?" in text
+    finally:
+        server.stop()
+
+
 def test_backend_falls_back_when_the_socket_refuses(tmp_path, monkeypatch):
     """A socket node nobody listens on (ECONNREFUSED) is "no live instance".
 
@@ -1029,6 +1298,10 @@ def test_adapter_without_attachment_raises_unavailable(tmp_path):
         adapter.press_keys(keys="ctrl+p")
     with pytest.raises(LiveUnavailable):
         adapter.list_actions()
+    with pytest.raises(LiveUnavailable):
+        adapter.ui_elements()
+    with pytest.raises(LiveUnavailable):
+        adapter.ui_click(id="main.settings.btn")
 
 
 # --- real instance (only when the environment provides one) ------------------

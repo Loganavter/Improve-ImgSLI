@@ -132,7 +132,7 @@ def test_tools_list_is_a_valid_deterministic_catalog(wired):
     names = [tool["name"] for tool in tools]
     assert len(names) == len(set(names)), "tool names must be unique"
     assert names == [tool["name"] for tool in catalog.TOOLS], "order must be catalog order"
-    assert len(tools) <= 15, "catalog must stay small"
+    assert len(tools) <= 20, "catalog must stay small"
 
     for tool in tools:
         assert _NAME_RE.match(tool["name"]), tool["name"]
@@ -172,13 +172,13 @@ def test_read_and_write_tools_do_not_mix_annotations(wired):
     tools = {tool["name"]: tool for tool in _request(protocol, "tools/list")["result"]["tools"]}
 
     for name in ("list_actions", "list_sessions", "get_state", "read_log", "query_trace",
-                 "dump_ui_layout", "list_surfaces"):
+                 "dump_ui_layout", "list_surfaces", "ui_elements"):
         annotations = tools[name]["annotations"]
         assert annotations["readOnlyHint"] is True, name
         assert annotations["destructiveHint"] is False, name
 
     for name in ("open_tab", "run_action", "open_folder", "set_theme", "set_language",
-                 "capture_surface", "press_keys"):
+                 "capture_surface", "press_keys", "ui_click", "ui_hover", "ui_focus"):
         assert tools[name]["annotations"]["readOnlyHint"] is False, name
     assert tools["run_action"]["annotations"]["destructiveHint"] is True
     # Injecting input is not destructive, but is not idempotent either.
@@ -186,6 +186,25 @@ def test_read_and_write_tools_do_not_mix_annotations(wired):
     assert tools["press_keys"]["annotations"]["idempotentHint"] is False
     for tool in tools.values():
         assert tool["annotations"]["openWorldHint"] is False, tool["name"]
+
+
+def test_element_tool_annotations_are_audited(wired):
+    protocol, _backend, _calls = wired
+    tools = {tool["name"]: tool for tool in _request(protocol, "tools/list")["result"]["tools"]}
+
+    assert tools["ui_elements"]["annotations"]["readOnlyHint"] is True
+    assert tools["ui_click"]["annotations"]["readOnlyHint"] is False
+    assert tools["ui_click"]["annotations"]["destructiveHint"] is False
+    assert tools["ui_click"]["annotations"]["idempotentHint"] is False
+    assert tools["ui_hover"]["annotations"]["idempotentHint"] is True
+    assert tools["ui_focus"]["annotations"]["idempotentHint"] is True
+    assert tools["ui_elements"]["inputSchema"]["additionalProperties"] is False
+    assert tools["ui_click"]["inputSchema"]["required"] == ["id"]
+    assert tools["ui_click"]["inputSchema"]["properties"]["button"]["enum"] == [
+        "left",
+        "right",
+        "middle",
+    ]
 
 
 # --- tools ------------------------------------------------------------------
@@ -480,6 +499,34 @@ def test_press_keys_without_a_live_instance_errors_honestly(wired):
     assert "keyboard input needs a running app" in text
     assert "structuredContent" not in result
     assert calls["launches"] == [] and calls["tabs"] == [], "no fake keys, no headless boot"
+
+
+@pytest.mark.parametrize(
+    "tool,arguments",
+    [
+        ("ui_elements", {}),
+        ("ui_click", {"id": "main.settings.btn"}),
+        ("ui_hover", {"id": "main.settings.btn"}),
+        ("ui_focus", {"id": "main.settings.btn"}),
+    ],
+)
+def test_element_tools_without_a_live_instance_error_honestly(wired, monkeypatch, tool, arguments):
+    """Element targeting is live-only: no instance ⇒ honest error, no process."""
+    protocol, _backend, calls = wired
+    import app.backend as backend_module
+
+    spawned: list = []
+    monkeypatch.setattr(backend_module.subprocess, "Popen", lambda *a, **k: spawned.append(a))
+    monkeypatch.setattr(backend_module.subprocess, "run", lambda *a, **k: spawned.append(a))
+
+    result = _call(protocol, tool, arguments)
+    assert result["isError"] is True
+    text = result["content"][0]["text"]
+    assert "no live instance" in text
+    assert "running app" in text
+    assert "structuredContent" not in result
+    assert spawned == [], "element targeting must never spawn a process"
+    assert calls["launches"] == [] and calls["tabs"] == [], "no fake action, no headless boot"
 
 
 # --- stdio round trip -------------------------------------------------------
