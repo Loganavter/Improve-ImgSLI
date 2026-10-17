@@ -518,6 +518,18 @@ def _settle_metrics_pass(owner, items) -> None:
             refresh()
         except Exception:
             logger.debug("metric profile refresh failed", exc_info=True)
+    # P2: the metrics settled — NOW the VLM may choose the applicable axes (the
+    # probe/salience input exists). The heuristic profile above is the
+    # fail-open fallback and is stored FIRST; the guarded kick is a no-op when
+    # the selector / AI is unavailable or there are < 2 items. Attached with
+    # ``getattr`` (thin-owner style) so a legacy double without the method keeps
+    # working — and it never blocks: the selector runs on a GenericWorker.
+    kick = getattr(owner, "_run_profile_select_on_settle", None)
+    if callable(kick):
+        try:
+            kick()
+        except Exception:
+            logger.debug("metric profile select on settle failed", exc_info=True)
     try:
         owner._apply_fusion_ranks(getattr(owner.state, "series", None))
     except Exception:

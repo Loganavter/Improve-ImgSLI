@@ -124,6 +124,31 @@ _GALLERY_PROXY_CHUNK = 50
 _JEV_STAGE = "jev_rank"
 _pipeline_stages.register_stage(_JEV_STAGE, requires=("metrics_ready",))
 
+# -- Metric-profile stage (P2, plan-adaptive-metric-profiles-2026-10-17) -----
+#: Declared gallery stage for the VLM metric-profile selector. Its declared
+#: input is the settled measured-metrics pass (the salience/probe input); the
+#: controller drives it ONLY from that settle, and the single-flight gate
+#: dedups. The heuristic profile ``refresh_metric_profile`` stores FIRST stays
+#: the fail-open fallback (plan §Fallback); the selector may only REPLACE it
+#: with a ``source="vlm"`` profile once it answers.
+_PROFILE_STAGE = "metric_profile"
+_pipeline_stages.register_stage(_PROFILE_STAGE, requires=("metrics_ready",))
+
+
+def _profile_selector():
+    """Indirection to the P2 VLM profile selector (never imported at load time).
+
+    Returns ``use_cases.profile_ai.choose_profile_sync``. A module-level
+    function (not a method) so the controller module never imports the
+    selector lane at import time — the selector module may be absent — and so
+    tests monkeypatch this ONE seam instead of importing that lane's module.
+    Raises when the selector is unavailable; the kick treats that as fail-open.
+    """
+    from tabs.image_gallery.use_cases.profile_ai import choose_profile_sync
+
+    return choose_profile_sync
+
+
 # Proxy decode-cache bound: owned by services/proxy.py (PROXY_CACHE_LIMIT);
 # batch delivery trims oldest-inserted entries down to that bound (96 x
 # <= ~3 MB ~= <= 288 MB while covering a typical folder's working set;
@@ -478,6 +503,162 @@ class GalleryController:
                 logger.debug("[gallery] metric profile: %s", describe(self.state))
         except Exception:
             logger.debug("metric profile clear failed", exc_info=True)
+
+    # -- VLM metric-profile selector (P2, plan-adaptive-metric-profiles) -----
+
+    def _run_profile_select_on_settle(self) -> None:
+        """Kick the VLM metric-profile selector from the metrics-settled boundary.
+
+        Declared stage ``_PROFILE_STAGE``, gated on the settled measured-metrics
+        pass (the same metrics_ready input ``_JEV_STAGE`` declares): the
+        salience/probe input is the measured-metrics pass that just settled, so
+        this is the only place the selector is driven from. The heuristic
+        profile ``refresh_metric_profile`` already stored is the fail-open
+        fallback (plan §Fallback) — this kick may only REPLACE it with a
+        ``source="vlm"`` profile once the selector answers. Never raises and
+        never blocks the UI thread: unavailable selector / AI not usable / <2
+        items → a no-op; the single-flight gate dedups a second settle for the
+        same ``(stage, folder_gen)``.
+        """
+        try:
+            factory = getattr(self, "_profile_selector", None)
+            if not callable(factory):
+                factory = _profile_selector  # module-level default seam
+            selector = factory() if callable(factory) else None
+        except Exception:
+            logger.debug("metric profile selector unavailable", exc_info=True)
+            selector = None
+        if not callable(selector):
+            return
+        try:
+            items = [it for it in list(getattr(self.state, "items", None) or [])]
+        except Exception:
+            items = []
+        if len(items) < 2:
+            _ai_debug("metric profile skip: %d item(s) (<2) — nothing to select", len(items))
+            return
+        try:
+            settings = self._ai_settings_store.load()
+        except Exception:
+            settings = None
+        if (
+            settings is None
+            or not getattr(settings, "enabled", False)
+            or not getattr(settings, "base_url", "")
+            or not getattr(settings, "api_key", "")
+        ):
+            _ai_debug("metric profile skip: AI not configured (items=%d)", len(items))
+            return
+        mode = getattr(self.state, "mode", None)
+        gen = self._folder_gen
+        # Content key: the folder generation + member count is enough to make
+        # two settles over the same folder one single-flight pass (the selector
+        # lane pins the full content fingerprint in its own cache).
+        fingerprint = f"{gen}:{len(items)}"
+        gate = getattr(self, "_stage_gate", None)
+        claimed = True
+        if gate is not None:
+            try:
+                claimed = bool(gate.begin(_PROFILE_STAGE, gen, fingerprint))
+            except Exception:
+                claimed = True
+        if not claimed:
+            _ai_debug("metric profile: gate skip (selected/in flight) gen=%s", gen)
+            return
+        snapshot = list(items)
+        released = {"done": False}
+
+        def _release(ok: bool) -> None:
+            """Release the stage gate exactly once (idempotent, never raises)."""
+            if released["done"]:
+                return
+            released["done"] = True
+            try:
+                if gate is not None:
+                    gate.finished(_PROFILE_STAGE, gen, ok=bool(ok))
+            except Exception:
+                logger.debug("metric profile gate finished failed", exc_info=True)
+
+        def _job():
+            # The selector lane owns probe + one pinned VLM call + cache; the
+            # wiring passes only the settled items, the mode and the settings.
+            return selector(snapshot, mode=mode, settings=settings)
+
+        worker = GenericWorker(_job)
+
+        def _on_result(profile, gen=gen):
+            if not self._is_current_folder_gen(gen):
+                _release(True)  # stale scope: release the gate, apply nothing
+                return
+            self._apply_profile_outcome(profile, gen)
+            _release(True)
+
+        def _on_error(error_info, gen=gen):
+            if not self._is_current_folder_gen(gen):
+                _release(True)
+                return
+            logger.debug("metric profile selector error: %r", error_info, exc_info=True)
+            # A fault keeps the fingerprint retryable (ok=False).
+            _release(False)
+
+        worker.signals.result.connect(_on_result)
+        worker.signals.error.connect(_on_error)
+        # A None reply emits no ``result``: the job's benign non-answer still
+        # completes the stage so a re-settle over the same folder is a no-op.
+        worker.signals.finished.connect(lambda: _release(True))
+        try:
+            self._pool_start(worker, None)
+        except Exception:
+            logger.debug("metric profile worker launch failed", exc_info=True)
+            _release(False)  # never strand the gate in flight
+            return
+        _ai_debug("metric profile: select scheduled (items=%d gen=%s)", len(items), gen)
+
+    def _apply_profile_outcome(self, profile, gen: int) -> None:
+        """Apply a VLM-selected metric profile (P2) or keep the heuristic.
+
+        Drops a stale result (the folder changed). A usable profile — any
+        object with a non-empty ``axis_ids``, canonically a ``MetricProfile``
+        with ``source="vlm"`` — is stored on the SAME ``state.metric_profile``
+        slot the P1 producer writes, the existing ``[gallery]``/``[ai]``
+        profile line is emitted (naming ``source=vlm`` and the salient axes),
+        and the cards are refreshed like the neighbouring apply-tails. A
+        missing/hollow profile is a no-op: the heuristic profile
+        ``refresh_metric_profile`` stored FIRST remains (fail-open).
+        """
+        if not self._is_current_folder_gen(gen):
+            return
+        try:
+            axis_ids = tuple(getattr(profile, "axis_ids", None) or ())
+        except Exception:
+            axis_ids = ()
+        if not axis_ids:
+            return
+        try:
+            self.state.metric_profile = profile
+        except Exception:
+            logger.debug("metric profile store failed", exc_info=True)
+            return
+        try:
+            from tabs.image_gallery.use_cases.profile_select import describe
+
+            line = describe(self.state)
+            logger.debug("[gallery] metric profile: %s", line)
+            _ai_debug("metric profile: %s", line)
+        except Exception:
+            logger.debug("metric profile describe failed", exc_info=True)
+        try:
+            items = [it for it in list(getattr(self.state, "items", None) or [])]
+        except Exception:
+            items = []
+        try:
+            self.widget.refresh_cards(items)
+        except Exception:
+            for it in items:
+                try:
+                    self.widget.refresh_card(it)
+                except Exception:
+                    pass
 
     def _apply_fusion_ranks(self, series, *, mode=None) -> None:
         """(Re)derive every series rank from the measured metric fusion.
