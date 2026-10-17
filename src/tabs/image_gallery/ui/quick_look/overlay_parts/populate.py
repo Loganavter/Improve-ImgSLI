@@ -79,7 +79,7 @@ def _resolve_series(self, item, series_raw, all_items=None) -> list:
     return [item]
 
 
-def _populate(self) -> None:
+def _populate(self, preserve_view: bool = False) -> None:
     import time as _time
 
     from tabs.image_gallery.debug import gallery_debug as _dbg
@@ -141,7 +141,7 @@ def _populate(self) -> None:
         )
         if _dbg_on:
             _t = _time.perf_counter()
-        populate_preview(self, item)
+        populate_preview(self, item, preserve_view=preserve_view)
         if _dbg_on:
             _dbg("quick look populate preview=%.1fms path=%s", (_time.perf_counter() - _t) * 1000.0, getattr(item, "path", item))
             _t = _time.perf_counter()
@@ -262,4 +262,9 @@ def _walk(self, delta: int) -> None:
         self._current_item = self._series_items[self._current_idx]
     except Exception:
         return
-    self._populate()
+    # A walk steps INSIDE one series: re-bind the new source (the pixels
+    # change) but keep the user's wheel-zoom/pan (plan-ql-zoom-persist).
+    # Call the module function directly: the class delegator in
+    # ``ui/quick_look.py`` is a fixed-signature thin forwarder outside this
+    # change's file set.
+    _populate(self, preserve_view=True)

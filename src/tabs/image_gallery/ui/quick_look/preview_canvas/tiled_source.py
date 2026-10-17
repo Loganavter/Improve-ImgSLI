@@ -23,7 +23,7 @@ logger = logging.getLogger("ImproveImgSLI")
 # -- tiled single-source path (additive) --------------------------------------
 
 
-def set_tiled_source(self, key, store) -> None:
+def set_tiled_source(self, key, store, *, preserve_view: bool = False) -> None:
     """Register a full ``TiledPixelStore`` to draw from array tiles.
 
     Additive: the raster/cover path keeps serving until this tiled
@@ -31,6 +31,14 @@ def set_tiled_source(self, key, store) -> None:
     slot fails closed per tile, so a half-uploaded grid never
     substitutes a neighbor and never surfaces as a transparent frame.
     Never raises.
+
+    ``preserve_view`` is part of the populate-chain signature (uniform
+    with ``set_source``) but this entry point never owned the view:
+    registering a tiled store changes *which* pixels are drawn, never the
+    zoom/pan. The reset owner is ``set_source`` — the tiled install lands
+    later (dwell / zoom>1 worker, ``preview_canvas_host``), and resetting
+    here would clobber a view the walk just preserved. So both values keep
+    today's behavior, exactly: the view is never touched.
     """
     try:
         self._tiled_source = (key, store)

@@ -163,9 +163,9 @@ class QuickLookCanvasWidget(QRhiWidget):
 
     # -- source (moved to preview_canvas.source) -----------------------------
 
-    def set_source(self, store) -> None:
+    def set_source(self, store, *, preserve_view: bool = False) -> None:
         """Thin delegator to ``preview_canvas.source.set_source``."""
-        return _source.set_source(self, store)
+        return _source.set_source(self, store, preserve_view=preserve_view)
 
     def _arm_watchdog(self, gen=None) -> None:
         """Thin delegator to ``preview_canvas.source._arm_watchdog``."""
@@ -185,9 +185,9 @@ class QuickLookCanvasWidget(QRhiWidget):
 
     # -- tiled_source (moved to preview_canvas.tiled_source) -----------------
 
-    def set_tiled_source(self, key, store) -> None:
+    def set_tiled_source(self, key, store, *, preserve_view: bool = False) -> None:
         """Thin delegator to ``preview_canvas.tiled_source.set_tiled_source``."""
-        return _tiled_source.set_tiled_source(self, key, store)
+        return _tiled_source.set_tiled_source(self, key, store, preserve_view=preserve_view)
 
     def clear_tiled_source(self) -> None:
         """Thin delegator to ``preview_canvas.tiled_source.clear_tiled_source``."""
