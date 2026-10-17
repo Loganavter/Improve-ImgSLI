@@ -56,7 +56,8 @@
       "auth": "Authentication failed — check your API key.",
       "rate_limit": "Rate limited — try again later.",
       "network": "Network error while contacting the AI API.",
-      "parse": "Could not parse the AI response."
+      "parse": "Could not parse the AI response.",
+      "truncated": "AI answer truncated (token limit)"
     },
     "action": {
       "keep_best": "Keep best",

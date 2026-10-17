@@ -56,7 +56,8 @@
       "auth": "身份验证失败 — 请检查您的 API 密钥。",
       "rate_limit": "已达到速率限制 — 请稍后重试。",
       "network": "连接 AI API 时发生网络错误。",
-      "parse": "无法解析 AI 响应。"
+      "parse": "无法解析 AI 响应。",
+      "truncated": "AI 回答被令牌上限截断"
     },
     "action": {
       "keep_best": "保留最佳",

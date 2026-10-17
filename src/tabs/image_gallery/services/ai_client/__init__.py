@@ -33,6 +33,7 @@ from .errors import (
     AiRateLimitError,
     AiResponseError,
     AiServerError,
+    AiTruncatedError,
 )
 from .parse import (
     _AXIS_IDS,
@@ -101,18 +102,30 @@ def analyze_image_sync(
     mode=None,
     metrics: dict | None = None,
     fallback_models: tuple[str, ...] | None = None,
+    reasoning_effort: str = "auto",
+    max_tokens: int = 0,
     on_phase: Callable[[str], None] | None = None,
 ) -> AiAnalysisResult:
     """Full request→parse pipeline. Call only from a worker thread.
 
     ``mode`` selects the applicable axis set the prompt requests (the AI-domain
-    scorecard). ``on_phase`` (optional) receives ``"analyzing"`` before the
-    request is built and ``"waiting"`` right before the blocking HTTP call.
+    scorecard). ``reasoning_effort`` is the user's Settings value (``auto`` by
+    default; ``ask_router.resolve_reasoning_effort`` collapses it to a safe
+    floor for mandatory-reasoning models) and ``max_tokens`` overrides the
+    estimated answer budget (0 = estimate). ``on_phase`` (optional) receives
+    ``"analyzing"`` before the request is built and ``"waiting"`` right before
+    the blocking HTTP call.
     """
     openrouter = "openrouter" in str(base_url or "").lower()
     _ai_debug(
-        "analyze start path=%s model=%s host=%s mode=%s metrics=%d",
-        image_path, model, base_url, getattr(mode, "value", mode), len(metrics or {}),
+        "analyze start path=%s model=%s host=%s mode=%s metrics=%d effort=%s max_tokens=%s",
+        image_path,
+        model,
+        base_url,
+        getattr(mode, "value", mode),
+        len(metrics or {}),
+        reasoning_effort,
+        max_tokens or "est",
     )
     _emit_phase(on_phase, "analyzing")
     payload = build_request(
@@ -122,6 +135,8 @@ def analyze_image_sync(
         metrics=metrics,
         openrouter=openrouter,
         fallback_models=fallback_models,
+        reasoning_effort=reasoning_effort,
+        max_tokens=max_tokens,
     )
     _emit_phase(on_phase, "waiting")
     raw = call_sync(base_url, api_key, payload)

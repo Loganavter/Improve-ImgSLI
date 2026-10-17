@@ -56,7 +56,8 @@
       "auth": "Falha na autenticação — verifique sua chave de API.",
       "rate_limit": "Limite de requisições atingido — tente novamente mais tarde.",
       "network": "Erro de rede ao contatar a API de IA.",
-      "parse": "Não foi possível interpretar a resposta da IA."
+      "parse": "Não foi possível interpretar a resposta da IA.",
+      "truncated": "Resposta da IA cortada (limite)"
     },
     "action": {
       "keep_best": "Manter o melhor",
