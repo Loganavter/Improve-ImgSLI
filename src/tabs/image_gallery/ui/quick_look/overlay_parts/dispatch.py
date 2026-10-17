@@ -288,6 +288,15 @@ def _on_set_source(self) -> None:
                             p,
                         )
                         st.mode = new_mode
+                        # P1: the mode just changed — re-derive the metric
+                        # profile on the owning controller (silent no-op on a
+                        # storeless/test owner that has no producer).
+                        _refresh = getattr(owner, "refresh_metric_profile", None)
+                        if callable(_refresh):
+                            try:
+                                _refresh()
+                            except Exception:
+                                pass
                     except Exception:
                         new_mode = None
                 w = getattr(owner, "widget", None) or owner

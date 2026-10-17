@@ -72,6 +72,42 @@ def _resolve_mode(view, explicit: object = None) -> object:
         pass
     return None
 
+def _resolve_profile(view, explicit: object = None) -> object:
+    """Resolve the ACTIVE metric profile from the LIVE state (never cached).
+
+    Mirrors ``_resolve_mode``'s parent/window walk but reads ONLY
+    ``state.metric_profile`` (the same objects ``_resolve_mode`` inspects for
+    ``state.mode``). The profile is refreshed when the folder's metrics
+    settle, while ``_mode`` is only rewritten on triage/source change — so a
+    profile cached on the widget would show stale (base-only) dots. Returns
+    the stored profile, or ``None`` so callers fall back to the mode mapping
+    (fail-open).
+    """
+    self = view
+    if explicit is not None:
+        return explicit
+    for obj in (self.parent(), self.window()):
+        if obj is None:
+            continue
+        st = getattr(obj, "state", None)
+        if st is not None:
+            prof = getattr(st, "metric_profile", None)
+            if prof is not None:
+                return prof
+    # Also walk the parent chain (cards host / nested containers).
+    try:
+        p = self.parent()
+        while p is not None:
+            st = getattr(p, "state", None)
+            if st is not None:
+                prof = getattr(st, "metric_profile", None)
+                if prof is not None:
+                    return prof
+            p = p.parent()  # type: ignore[attr-defined]
+    except Exception:
+        pass
+    return None
+
 def rebuild_grid(view, items: list[GalleryItem], mode: object = None, *, paint_selection: bool = True, flat_ungrouped: bool = False) -> None:
     """Clear and rebuild the 4-column grid from *items* (pool-reusing Buttons).
 

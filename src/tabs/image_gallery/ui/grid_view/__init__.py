@@ -154,6 +154,7 @@ from .rebuild import (
     _promote_flat_ungrouped,
     _rebuild_next_chunk,
     _resolve_mode,
+    _resolve_profile,
     append_new_cards,
     rebuild_grid,
 )
@@ -576,6 +577,9 @@ class GalleryGridView(QWidget):
 
     def _resolve_mode(self, explicit: object = None) -> object:
         return rebuild._resolve_mode(self, explicit)
+
+    def _resolve_profile(self, explicit: object = None) -> object:
+        return rebuild._resolve_profile(self, explicit)
 
     def rebuild_grid(self, items: list[GalleryItem], mode: object = None, *, paint_selection: bool = True, flat_ungrouped: bool = False) -> None:
         return rebuild.rebuild_grid(self, items, mode, paint_selection=paint_selection, flat_ungrouped=flat_ungrouped)

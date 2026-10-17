@@ -37,6 +37,16 @@ def open_folder(owner, folder: Path) -> None:
     t0 = time.perf_counter()
     folder = Path(folder)
     gen = owner._next_folder_gen()
+    # P1: a folder switch invalidates the metric profile — the previous
+    # folder's axis set must never leak into the new one. A fresh state carries
+    # ``metric_profile=None`` anyway; this is the explicit invalidation point,
+    # and the next mode/metrics settle derives the new folder's profile.
+    clear = getattr(owner, "clear_metric_profile", None)
+    if callable(clear):
+        try:
+            clear()
+        except Exception:
+            logger.debug("metric profile clear failed", exc_info=True)
     # Fresh world: stable ids restart (pins are path-keyed and stay
     # inert for the new pool).
     owner._series_next_id = 1
@@ -116,6 +126,14 @@ def open_paths(owner, paths: list[Path], *, replace: bool = False) -> None:
     if replace:
         # Folder switch cancels everything in flight from the previous folder.
         owner._next_folder_gen()
+        # P1: replace = a new folder context — invalidate the previous
+        # folder's metric profile (the next settle derives the new one).
+        clear = getattr(owner, "clear_metric_profile", None)
+        if callable(clear):
+            try:
+                clear()
+            except Exception:
+                logger.debug("metric profile clear failed", exc_info=True)
         old_items: list[GalleryItem] = []
     else:
         # Append: no folder switch — in-flight thumbnail/triage workers for

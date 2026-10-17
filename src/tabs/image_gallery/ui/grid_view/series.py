@@ -328,6 +328,10 @@ def _rebuild_series(view) -> None:
     except Exception:
         _mode = None
     try:
+        _profile = self._resolve_profile()
+    except Exception:
+        _profile = None
+    try:
         from .drag_source import _gallery_domain
 
         _domain = _gallery_domain(self)
@@ -411,7 +415,7 @@ def _rebuild_series(view) -> None:
             else:
                 try:
                     update_gallery_card(  # type: ignore[arg-type]
-                        card, item, mode=_mode, domain=_domain
+                        card, item, mode=_mode, domain=_domain, profile=_profile
                     )
                 except Exception:
                     pass

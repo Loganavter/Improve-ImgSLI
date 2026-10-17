@@ -315,10 +315,9 @@ def on_quick_reject(owner, path) -> None:
 def _unset_quick_source(owner) -> None:
     """Clear the triage source (the "Unset" half of the source toggle).
 
-    Mirrors ``on_quick_set_source``: clears ``source_path`` everywhere, moves
-    the SOURCE badge immediately, then re-runs triage so the pool regroups in
-    its no-source mode (camera/batch) and the mode-appropriate analysis
-    starts. Never raises.
+    Mirrors ``on_quick_set_source``: clears ``source_path``, moves the SOURCE
+    badge immediately, then re-runs triage so the pool regroups in its
+    no-source mode (camera/batch) with the mode-appropriate analysis; never raises.
     """
     try:
         try:
@@ -332,12 +331,13 @@ def _unset_quick_source(owner) -> None:
                 # No source → back to the no-source mode (camera/batch).
                 try:
                     from tabs.image_gallery.services.mode import select_mode
-
                     state.mode = select_mode(  # type: ignore[attr-defined]
                         getattr(state, "series", None),
                         getattr(state, "items", None),
                         None,
                     )
+                    # P1: the mode just changed — re-derive the metric profile.
+                    _refresh_metric_profile(triage_owner)
                 except Exception:
                     pass
         except Exception:
@@ -426,6 +426,8 @@ def on_quick_set_source(owner, path) -> None:
                     Path(path),
                 )
                 state.mode = new_mode  # type: ignore[attr-defined]
+                # P1: the mode just changed — re-derive the metric profile.
+                _refresh_metric_profile(triage_owner)
             except Exception:
                 new_mode = None
         except Exception:
@@ -594,3 +596,20 @@ def _widget_tr(owner):
         return getattr(ctx, "_tr", None) if ctx is not None else None
     except Exception:
         return None
+
+
+def _refresh_metric_profile(owner_like) -> None:
+    """Re-derive the state's metric profile after a mode change (plan P1).
+
+    An optional seam: the triage owner is a controller (the profile producer)
+    on the live path, but a bare widget in storeless/test doubles — a missing
+    method is a silent no-op so a mode flip can never break the overlay.
+    Defined at module tail (with ``_widget_tr``) so the ownership-guard
+    ALLOWLIST line ratchet over this file stays stable.
+    """
+    try:
+        refresh = getattr(owner_like, "refresh_metric_profile", None)
+        if callable(refresh):
+            refresh()
+    except Exception:
+        pass

@@ -42,6 +42,7 @@ from tabs.image_gallery.services.ai_client import (
     AiTruncatedError,
     analyze_image_sync,
 )
+from tabs.image_gallery.use_cases.profile_select import active_profile
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -340,6 +341,7 @@ def _begin_analysis(owner, item: GalleryItem) -> None:
         api_key=settings.api_key,
         model=settings.model,
         mode=getattr(owner.state, "mode", None),
+        profile=active_profile(getattr(owner, "state", None)),
         metrics=_metrics,
         reasoning_effort=str(getattr(settings, "reasoning_effort", "auto") or "auto"),
         on_phase=bridge.phase.emit,
