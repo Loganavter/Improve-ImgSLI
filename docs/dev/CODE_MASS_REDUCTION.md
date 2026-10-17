@@ -467,3 +467,9 @@ Split cuts (each keeps public names; the original module re-exports):
    `canvas/context_menu_slots.py` (signals stay on the widget).
 4. **`magnifier_pass` → `.../magnifier/render/tile_residency_gate.py`**: free
    helpers L128–611 (keep `_comb_divider_thickness_uv`); the pass class is unchanged.
+
+**Executed 2026-10-17** — items 1–4 landed on `int/gallery-split` (verified:
+`contracts + render + runtime + multi_compare + image_compare` = 4496 passed / 72
+skipped; name-freeze + registry + comment-citation gates green). All eight KEEP
+verdicts were left untouched; `video_export/service.py` was **not** split (the
+do-not-touch rule above).
