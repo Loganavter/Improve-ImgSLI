@@ -20,7 +20,7 @@ import os
 from pathlib import Path
 from typing import Any, Callable
 
-from . import discovery, elements as element_inventory
+from . import discovery, elements as element_inventory, jobs
 from .discovery import MethodError, capture_live_png, parse_key_sequence
 
 #: Minimum-level filter ladder, mirroring the MCP ``read_log`` semantics.
@@ -47,7 +47,8 @@ METHODS: tuple[str, ...] = (
     "read_log",
     "run_action",
     "set_language",
-    "set_theme", "ui_click", "ui_elements", "ui_focus", "ui_hover",
+    "set_theme", "jobs_cancel", "jobs_list", "ui_click", "ui_elements", "ui_focus",
+    "ui_hover",
 )
 
 
@@ -59,7 +60,7 @@ def _count_nodes(node: dict) -> int:
     return total
 
 
-class ControlHandlers(element_inventory.ElementMethodsMixin):
+class ControlHandlers(element_inventory.ElementMethodsMixin, jobs.JobMethodsMixin):
     """Method dispatch over the live window/app.
 
     ``window`` is duck-typed (``.store`` plus optional live seams such as
@@ -146,6 +147,7 @@ class ControlHandlers(element_inventory.ElementMethodsMixin):
             "live_actions": True,
             "live_capture": True,
             "live_elements": True,
+            "live_jobs": True,
             "live_keys": True,
             "subscribe": False,
         }
