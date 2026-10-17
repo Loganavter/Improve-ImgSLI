@@ -968,6 +968,17 @@
       }
     },
     {
+      "path": "src/tabs/image_gallery/use_cases/scheduler.py",
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=thin-owner-target size=exempt reason=\"one bounded scheduler — dedicated pool + priority lanes + pausable background queue sharing owner counters\"",
+      "parsed": {
+        "pattern": "thin-owner-target",
+        "size": "exempt",
+        "reason": "one bounded scheduler — dedicated pool + priority lanes + pausable background queue sharing owner counters"
+      }
+    },
+    {
       "path": "src/tabs/image_gallery/use_cases/series_override.py",
       "limit": 500,
       "marker": "Audit-Meta:",
@@ -976,6 +987,28 @@
         "pattern": "single-seam",
         "size": "exempt",
         "reason": "one override/translate/regroup/attach seam — splitting across modules would create a second implementation of the same seam (orchestrator interface rule)"
+      }
+    },
+    {
+      "path": "src/tabs/image_gallery/use_cases/series_overrides.py",
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=thin-owner-target size=exempt reason=\"manual series overrides — override-map writes + in-memory regroup flow over the series_override primitives\"",
+      "parsed": {
+        "pattern": "thin-owner-target",
+        "size": "exempt",
+        "reason": "manual series overrides — override-map writes + in-memory regroup flow over the series_override primitives"
+      }
+    },
+    {
+      "path": "src/tabs/image_gallery/use_cases/triage_actions.py",
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=thin-owner-target size=exempt reason=\"crown/reject wrappers — owner-level manual-rank tail around the triage package bodies\"",
+      "parsed": {
+        "pattern": "thin-owner-target",
+        "size": "exempt",
+        "reason": "crown/reject wrappers — owner-level manual-rank tail around the triage package bodies"
       }
     },
     {
