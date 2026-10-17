@@ -76,3 +76,54 @@ def test_card_menu_renders_unclipped(qtbot) -> None:
         assert len(rows) >= 1, "menu opened with no action rows"
     finally:
         menu.hide()
+
+
+def test_card_menu_with_a_page_translator_stays_full_size(qtbot) -> None:
+    """A localized card menu is a real menu, not a sliver.
+
+    Regression for ``card-menu-collapse`` (2026-10-17): the card path used to
+    bind a translator to the menu AFTER ``popup_at``. During the show-time fade
+    the flyout's container is hidden, so ``retranslate`` -> ``_relayout_widths``
+    -> ``adjustSize`` measured an empty layout and collapsed the menu (16x16 in
+    the live app, 94x272 here). Labels are now localized when the entries are
+    built, exactly like every other context menu, and the shown menu is never
+    re-laid-out.
+    """
+    from ui.context_menu.manager import get_context_menu_manager
+
+    w = ImageGalleryWidget()
+    qtbot.addWidget(w)
+    w.resize(900, 600)
+    w.show()
+    items = [_item(f"{i}.png") for i in range(4)]
+    w._grid_view.rebuild_grid(items)
+    qtbot.wait(10)
+
+    card = w._grid_view.card_for(items[0].path)
+    assert card is not None
+
+    def tr(key: str, default: str | None = None) -> str:
+        return default if default is not None else key
+
+    popup_gallery_card_context_menu(
+        card,
+        w,
+        items[0].path,
+        global_pos=QPoint(300, 200),
+        selection_count=0,
+        translate=tr,
+    )
+    menu = get_context_menu_manager()._active_menu
+    assert menu is not None, "card menu was not opened"
+    try:
+        qtbot.wait(60)  # let a show-time fade settle if the toolkit runs one
+        assert (menu.width(), menu.height()) != (16, 16), (
+            f"translated card menu collapsed to {menu.width()}x{menu.height()}"
+        )
+        assert menu.width() >= 100 and menu.height() >= 100, (
+            f"translated card menu is a sliver: {menu.width()}x{menu.height()}"
+        )
+        rows = [c for c in menu.findChildren(QWidget) if hasattr(c, "action_id")]
+        assert len(rows) >= 1, "menu opened with no action rows"
+    finally:
+        menu.hide()
