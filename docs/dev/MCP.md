@@ -41,7 +41,7 @@ fallback window, e.g. `:97`).
 
 ## Surface at a glance
 
-18 tools — 8 read-only, 10 mutating (reads and writes never share a tool):
+20 tools — 9 read-only, 11 mutating (reads and writes never share a tool):
 
 | Tool | Kind | What it does |
 |---|---|---|
@@ -53,6 +53,7 @@ fallback window, e.g. `:97`).
 | `dump_ui_layout` | read | widget tree JSON (geometry, colors, bound action ids) |
 | `list_surfaces` | read | capture-surface names for `capture_surface` |
 | `ui_elements` | read | live inventory of interactive elements (id, role, label, rects, enabled) |
+| `jobs_list` | read | live in-flight long passes (kind, status, progress, elapsed_s, message) |
 | `open_tab` | write | open/focus a tab kind (live) or launch it (fallback) |
 | `run_action` | write | run one ActionRegistry id |
 | `open_folder` | write | hand a folder to the gallery (live: routed) |
@@ -63,6 +64,7 @@ fallback window, e.g. `:97`).
 | `ui_click` | write | click an element by id, in-process (live-only) |
 | `ui_hover` | write | hover an element by id, in-process (live-only) |
 | `ui_focus` | write | focus an element by id, in-process (live-only) |
+| `jobs_cancel` | write | cancel a running job by id — real cancel, or a named refusal (live-only) |
 
 Resources: `app://actions`, `app://state`, `app://sessions`, `app://log`,
 `app://ui-layout`, `app://theme`; templates `app://action/{id}`,
@@ -117,6 +119,60 @@ failure the server pauses re-attaching for a couple of seconds so a dead socket
 is not retried on every call. The app refuses connections from another uid (its
 own `SO_PEERCRED` check); this client only has to degrade cleanly.
 
+### Jobs: watching and stopping the long passes (P3)
+
+`jobs_list` and `jobs_cancel` expose the passes that take minutes. Both are
+**live-only** (in-flight work is in-memory state of a running app) and both
+report only what the app already keeps — never a fabricated percentage.
+
+`jobs_list` returns `{count, jobs: [{id, kind, status, progress, elapsed_s,
+message}]}` with one row per *active* pass (an idle pass is absent — an empty
+list really means nothing is running). Kinds, in priority order:
+
+| kind | progress from | cancel safe? |
+|---|---|---|
+| `gallery_pool` | `GalleryController.sched_stats()` (`active`/`pending`/`queued`) + each item's `thumbnail_status` (`{done, total}`) | no |
+| `metrics_pass` | the controller's own `_proxy_done` / `_proxy_total` chunk counters (`{done, total}` — the same numbers the app feeds `widget.set_background_scanning`) | no |
+| `ai_analysis` | per-item `analysis_status` aggregated (`{done, total}` — there is no batch object) | no |
+| `export` | the save task's toast progress bar (0–1 float) when the toast manager is already materialized; `null` otherwise | **yes** |
+
+`status` is `running` or `paused` (the gallery's background thumb lane pauses
+while the page is hidden). `progress` is `{done, total}` or a 0–1 float, or
+`null` when the app reports no total — the honest alternative to inventing one.
+
+**`elapsed_s` is a lower bound.** The app stamps no start time for these passes,
+so it measures from the first `jobs_list` that saw the job running (app-process
+scoped) and is `null` until then. It is never back-dated.
+
+**`jobs_cancel {id}` — the real cancel, or a named refusal.** Only `export` has
+a cooperative cancel today: the id names one in-flight save task, and the cancel
+sets that task's own `threading.Event` — the same handle the toast's Cancel
+button sets. `ExportService` checks it at each checkpoint and
+`write_pil_image_cancelable` writes atomically (tmp + `os.replace`), removing
+its tmp file on abort, so a cancelled export leaves **no partial artifact** at
+the output path. A cancel-requested entry is then dropped from `jobs_list`
+immediately rather than lingering as a "cancelling" zombie (the coordinator's
+own registry entry survives until shutdown on the one worker shape that swallows
+the cancel sentinel and returns `None` — an app-side follow-up, tracked in
+`TODO.md`-style notes, not a lie in the API).
+
+Every other kind answers a *named* refusal, because no safe cancel exists: the
+gallery pool is a `QThreadPool` (`clear()` would silently drop queued thumbnails
+and leave items unloaded), and the metrics and AI passes carry no cooperative
+token. Cancelling there would be a fake, so it is refused:
+
+```
+jobs_cancel {id: "metrics:image_gallery"} →
+  ok: false · "cancel is not supported for kind 'metrics_pass'"
+  hint: "only exports expose a safe cancel today …"
+```
+
+**`notifications/progress` is deliberately not carried.** The transport
+(`protocol.py`) is stdio request/response and emits no server→client
+notifications, so progress cannot be pushed without faking it. The honest
+substitute is to poll `jobs_list` while a long tool call is pending. Recorded as
+a gap, not a feature.
+
 ### Mutation contract: reads retry once, edits never
 
 The control transport is local, so this is honest labelling more than
@@ -124,11 +180,11 @@ resilience — but it is what stops an agent from double-applying an edit:
 
 - **Reads retry exactly once** when the wire times out (`list_actions`,
   `list_sessions`, `get_state`, `read_log`, `query_trace`, `dump_ui_layout`,
-  `list_surfaces`, `ui_elements`); a second timeout falls back like any other
-  transport failure.
+  `list_surfaces`, `ui_elements`, `jobs_list`); a second timeout falls back like
+  any other transport failure.
 - **Mutations never auto-retry** (`open_tab`, `run_action`, `open_folder`,
   `set_theme`, `set_language`, `capture_surface`, `press_keys`, `ui_click`,
-  `ui_hover`, `ui_focus`). A retry could double-apply the edit.
+  `ui_hover`, `ui_focus`, `jobs_cancel`). A retry could double-apply the edit.
 - **The two failure kinds stay distinguishable in the message text**: a
   transport failure *before* the request left the process says **"not sent"**
   (connect/write); one *after* the request was written says **"sent, no
@@ -281,6 +337,9 @@ fabricated result:
 | unknown control-channel method | live app | `ok: false` + hint, connection survives |
 | foreign uid | live app (`SO_PEERCRED`, before reading a byte) | connection closed → the call falls back |
 | non-live `press_keys` / `ui_elements` / `ui_click` / `ui_hover` / `ui_focus` | this server | `isError` "needs a running app" (never a throwaway app faking a target) |
+| non-live `jobs_list` / `jobs_cancel` | this server | `isError` "no live instance; job state needs a running app" (never a fake empty list) |
+| `jobs_cancel` on a kind with no cooperative cancel | live app | `ok: false` "cancel is not supported for kind …" + hint; never a fake cancel |
+| `jobs_cancel` on an unknown or settled id | live app | `ok: false` "no running job with id …" + `jobs_list` hint |
 | unknown action id / tab / state path | this server (fallback) | `isError` + close-match suggestions |
 | unknown surface | live app (`capture_live`) or this server (`capture_surface` fallback) | `isError` "unknown surface" + `list_surfaces` hint |
 | surface known but not open in the live app | live app | `isError` "surface … is not open in the live app" |
@@ -291,23 +350,27 @@ fabricated result:
 The `annotations` hints were checked against what each handler actually does,
 because that is what lets a client auto-approve reads:
 
-- **Read-only tools really read.** All eight (`list_actions`, `list_sessions`,
+- **Read-only tools really read.** All nine (`list_actions`, `list_sessions`,
   `get_state`, `read_log`, `query_trace`, `dump_ui_layout`, `list_surfaces`,
-  `ui_elements`) carry `readOnlyHint: true, destructiveHint: false` and touch no
-  app state — `ui_elements` only *inventories* the live window. Reads may retry
-  once (above); none mutate.
-- **Mutating tools are honestly marked.** All ten carry `readOnlyHint: false`.
+  `ui_elements`, `jobs_list`) carry `readOnlyHint: true, destructiveHint: false`
+  and touch no app state — `ui_elements` only *inventories* the live window, and
+  `jobs_list` only reads the app's own counters (it never resolves a lazy tab
+  service, which would materialize a tab as a side effect of listing). Reads may
+  retry once (above); none mutate.
+- **Mutating tools are honestly marked.** All eleven carry `readOnlyHint: false`.
   `run_action` alone advertises `destructiveHint: true` (it can run any
-  registered action, including `platform.quit_app`). `press_keys` and `ui_click`
-  are `destructiveHint: false` but `idempotentHint: false` (repeating the same
-  combo/click is not a no-op — focus and state move). `ui_hover`/`ui_focus`
-  settle to the same state, so they keep `idempotentHint: true`.
+  registered action, including `platform.quit_app`). `press_keys`, `ui_click` and
+  `jobs_cancel` are `destructiveHint: false` but `idempotentHint: false`
+  (repeating the same combo/click is not a no-op; re-sending a settled job id is
+  an error, not a second success). `ui_hover`/`ui_focus` settle to the same
+  state, so they keep `idempotentHint: true`.
   `open_tab`/`open_folder`/`set_theme`/`set_language`/`capture_surface` are
   non-destructive and idempotent.
 - `openWorldHint: false` on every tool (the app is local). **Result: no
   annotation was found to over- or under-state what its tool does.** The test
   suite pins the classification (`test_read_and_write_tools_do_not_mix_annotations`,
-  `test_element_tool_annotations_are_audited`).
+  `test_element_tool_annotations_are_audited`,
+  `test_job_tool_annotations_are_audited`).
 
 The live channel is the in-app control server: a unix socket in the control dir
 (env-gated, no TCP), refusing connections from other uids. Reads and mutations

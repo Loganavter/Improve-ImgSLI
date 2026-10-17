@@ -47,12 +47,13 @@ no manual `PYTHONPATH` is needed. Environment knobs:
 
 ## Surface
 
-**Tools** (18 — 8 read-only, 10 mutating; reads and writes never share a tool):
+**Tools** (20 — 9 read-only, 11 mutating; reads and writes never share a tool):
 `list_actions`, `list_sessions`, `get_state`, `read_log`, `query_trace`,
-`dump_ui_layout`, `list_surfaces`, `ui_elements` · `open_tab`, `run_action`,
-`open_folder`, `set_theme`, `set_language`, `capture_surface`, `press_keys`,
-`ui_click`, `ui_hover`, `ui_focus`. The four element-targeting tools
-(`ui_elements`, `ui_click`, `ui_hover`, `ui_focus`) are live-only.
+`dump_ui_layout`, `list_surfaces`, `ui_elements`, `jobs_list` · `open_tab`,
+`run_action`, `open_folder`, `set_theme`, `set_language`, `capture_surface`,
+`press_keys`, `ui_click`, `ui_hover`, `ui_focus`, `jobs_cancel`. The four
+element-targeting tools (`ui_elements`, `ui_click`, `ui_hover`, `ui_focus`) and
+the two job tools (`jobs_list`, `jobs_cancel`) are live-only.
 
 **Resources**: `app://actions`, `app://state`, `app://sessions`, `app://log`,
 `app://ui-layout`, `app://theme`; templates `app://action/{id}`,
@@ -120,7 +121,37 @@ Fallback safety rules (`app/process_policy.py`):
 mutations start a *new* process (they reach a running window only via live
 attach); `open_folder` reports `routed: false`; `press_keys` has no fallback and
 errors honestly, and so do the element-targeting tools (`ui_elements`,
-`ui_click`, `ui_hover`, `ui_focus`) — element ids only exist in a running app.
+`ui_click`, `ui_hover`, `ui_focus`) and the job tools (`jobs_list`,
+`jobs_cancel`) — element ids and in-flight jobs only exist in a running app.
+
+## Jobs (long work)
+
+`jobs_list` reads the app's in-flight long passes and `jobs_cancel` stops one
+where a real cancel exists. Both are **live-only**, and both report only what
+the app already knows — no invented percentage.
+
+| kind | progress from | cancel |
+|---|---|---|
+| `gallery_pool` | `GalleryController.sched_stats()` (active/pending/queued) + per-item `thumbnail_status` | no |
+| `metrics_pass` | the controller's own `_proxy_done` / `_proxy_total` chunk counters | no |
+| `ai_analysis` | per-item `analysis_status` (aggregated) | no |
+| `export` | the save task's toast progress bar, when the toast manager is materialized | **yes** |
+
+`jobs_cancel {id}` sets the export task's own `threading.Event` — the same
+handle the toast's Cancel button sets, honored by `ExportService` and by
+`write_pil_image_cancelable` (atomic tmp+replace, the tmp is removed on abort, so
+no partial artifact reaches the output path). Every other kind answers a named
+refusal; an unknown or already-settled id is an error.
+
+**`notifications/progress` is not carried.** This server is stdio
+request/response (`app/protocol.py`) and emits no server→client notifications,
+so it cannot push progress without faking it. The honest substitute is to poll
+`jobs_list` while a long tool call is pending. (Recorded as a gap, not a
+feature.)
+
+**`elapsed_s` is a lower bound.** The app does not stamp a start time for these
+passes, so it measures from the first `jobs_list` that observed the job running;
+`null` means "not yet observed running". It is never back-dated.
 
 ## Security model
 
@@ -143,17 +174,25 @@ errors honestly, and so do the element-targeting tools (`ui_elements`,
   window's interactive widgets and `ui_click`/`ui_hover`/`ui_focus` act on them
   by session-scoped id; with no instance they answer an honest error — they
   never boot a throwaway app to fake a target.
+- **Job state is live-only.** `jobs_list`/`jobs_cancel` read the running app's
+  own counters and its one real cancel (export); with no instance they answer an
+  honest error instead of an empty list that would read as "nothing running".
+- **Cancel is never faked.** `jobs_cancel` may only stop kinds with a
+  cooperative cancel (today: `export`); anything else is a named refusal — the
+  gallery pool, the metrics pass and the AI pass have no cancel to call.
 - **Refusals are named, never truncated.** Unknown MCP method (`-32601`) and an
   over-cap request line (`-32600`, 1 MiB) are refused by the transport; an
   unknown control method, a foreign-uid peer (closed before a byte is read), and
   a not-open surface are refused by the live app; a non-live `press_keys` / `ui_*`
-  and an unknown action id / tab / state path / surface are refused by the server
-  with close-match hints. Full table in [docs/dev/MCP.md](../../docs/dev/MCP.md).
-- **Annotations audited (2026-10-17).** The eight read-only tools really read
-  (no state touched, `readOnlyHint: true`); the ten mutating tools are honestly
-  marked (`run_action` = `destructiveHint: true`; `press_keys`/`ui_click` =
-  non-destructive but non-idempotent; `ui_hover`/`ui_focus` idempotent). No
-  over- or under-statement was found; the suite pins the classification.
+  / `jobs_*` and an unknown action id / tab / state path / surface / job id or an
+  uncancellable job kind are refused by the server with close-match hints. Full
+  table in [docs/dev/MCP.md](../../docs/dev/MCP.md).
+- **Annotations audited (2026-10-17).** The nine read-only tools really read
+  (no state touched, `readOnlyHint: true`, `jobs_list` included); the eleven
+  mutating tools are honestly marked (`run_action` = `destructiveHint: true`;
+  `press_keys`/`ui_click`/`jobs_cancel` = non-destructive but non-idempotent;
+  `ui_hover`/`ui_focus` idempotent). No over- or under-statement was found; the
+  suite pins the classification.
 
 ## Known limitations
 
