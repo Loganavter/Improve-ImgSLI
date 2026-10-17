@@ -19,7 +19,7 @@ import math
 
 from PySide6.QtCore import QEvent, QObject
 
-from tabs.image_gallery.ui.card.dots import DOT_DIAMETER, DOT_PITCH, dot_tooltip_text
+from tabs.image_gallery.ui.card.dots import DOT_PITCH, dot_tooltip_text
 
 
 def _local_x(watched, event) -> float | None:
@@ -98,11 +98,12 @@ def _geometry_centers(geometry) -> list[tuple[float, float | None]]:
 def dot_tooltip_text_at(card, x, y=None) -> str | None:
     """``"<label>: <N>%"`` for the dot at cursor ``(x, y)``, or None off a dot.
 
-    The dot block may WRAP into several rows, so the hit test is two
-    dimensional: the nearest dot center within the dot radius (``DOT_DIAMETER``
-    / 2) wins; a point between rows resolves to nothing. When ``y`` is omitted
-    (legacy callers) the test degrades to the old one-dimensional x-only
-    Voronoi cell (``pitch / 2``).
+    Each dot's hover cell is its **Voronoi box inside the wrapped block**
+    (``pitch / 2`` per axis) — NOT the 8px circle. The gaps BETWEEN dots (and
+    between rows) therefore keep the NEAREST dot's tooltip instead of falling
+    back to the card name. A point genuinely outside the block resolves to
+    nothing. When ``y`` is omitted (legacy callers) the test degrades to the
+    one-dimensional x-only cell (``pitch / 2``).
     """
     geometry = getattr(card, "_gallery_dot_geometry", None)
     if not isinstance(geometry, dict):
@@ -127,22 +128,22 @@ def dot_tooltip_text_at(card, x, y=None) -> str | None:
         pitch = DOT_PITCH
     # Two-dimensional only when the caller supplied y and every center has one.
     use_y = cursor_y is not None and all(cy is not None for _cx, cy in centers)
-    radius = float(DOT_DIAMETER) / 2.0
+    half = max(5.0, pitch / 2.0)
     best_index = -1
     best_distance = None
     for index, (cx, cy) in enumerate(centers):
         dx = cursor_x - cx
-        if use_y:
-            distance = math.hypot(dx, cursor_y - float(cy))  # type: ignore[arg-type]
-        else:
-            distance = abs(dx)
+        dy = (cursor_y - float(cy)) if use_y else 0.0
+        distance = math.hypot(dx, dy)
         if best_distance is None or distance < best_distance:
             best_distance = distance
             best_index = index
-    if best_index < 0 or best_distance is None:
+    if best_index < 0:
         return None
-    limit = radius if use_y else max(5.0, pitch / 2.0)
-    if best_distance > limit:
+    bx, by = centers[best_index]
+    if abs(cursor_x - bx) > half:
+        return None
+    if use_y and abs(cursor_y - float(by)) > half:
         return None
     try:
         return dot_tooltip_text(infos[best_index])
