@@ -277,6 +277,16 @@ def _run_ai_for_visible(owner) -> None:
 # -- analysis delivery --------------------------------------------------------
 
 
+def _refresh_ranks_visible(owner) -> None:
+    """Ask the controller to re-evaluate the rank-pill gate (guarded)."""
+    fn = getattr(owner, "_refresh_ranks_visible", None)
+    if callable(fn):
+        try:
+            fn()
+        except Exception:
+            pass
+
+
 def _begin_analysis(owner, item: GalleryItem) -> None:
     settings = owner._ai_settings_store.load()
     if not settings.enabled or not settings.api_key or not settings.model:
@@ -292,6 +302,7 @@ def _begin_analysis(owner, item: GalleryItem) -> None:
     item.analysis_error = None
     set_activity(item, ActivityPhase.QUEUED, "ai")
     owner.widget.refresh_card(item)
+    _refresh_ranks_visible(owner)
 
     try:
         from tabs.image_gallery.services.ai_client import _ai_debug
@@ -372,6 +383,7 @@ def _on_analysis_ready(owner, path: Path, mtime_ns: int, result, gen: int | None
     # A new scorecard changes the Jev ranking vector: coalesce the batch of
     # arrivals into one AI-rank pass (no-op off the AI domain).
     owner._queue_ai_rank_on_settle()
+    _refresh_ranks_visible(owner)
 
 
 def _refresh_open_quick_look(owner) -> None:
@@ -415,3 +427,4 @@ def _on_analysis_error(owner, path: Path, error_info, gen: int | None = None) ->
     item.analysis_error = message or str(value)
     set_activity(item, ActivityPhase.ERROR, "ai")
     owner.widget.refresh_card(item)
+    _refresh_ranks_visible(owner)

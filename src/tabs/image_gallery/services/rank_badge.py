@@ -173,6 +173,7 @@ def resolve_rank_badge(
     is_source: bool = False,
     leader_as_rank: bool = True,
     domain: str | None = None,
+    show_rank: bool = True,
 ) -> RankBadge:
     """Resolve the rank badge for *item* (never raises).
 
@@ -203,6 +204,13 @@ def resolve_rank_badge(
 
     if is_source:
         return RankBadge("SOURCE", KIND_SOURCE, None, is_best, rejected)
+
+    if not show_rank:
+        # The ranking is not FINAL yet (analysis still in flight / metrics pass
+        # not settled): never show a provisional ``#N`` or ``★ BEST``. Identity
+        # (SOURCE, above) is not a ranking and stays visible; the strip/list
+        # still show ``rejected`` (passed through for the caller).
+        return RankBadge("", KIND_NONE, None, is_best, rejected)
 
     if is_best:
         # The series winner: the ★ BEST preset (shared by card/strip/list via
@@ -241,7 +249,7 @@ def resolve_rank_badge(
     return RankBadge("", KIND_NONE, None, is_best, rejected)
 
 
-def stamp_badges(items, source_path=None) -> None:
+def stamp_badges(items, source_path=None, *, show_rank: bool = True) -> None:
     """Compute and store the display badge on every item — ONE place.
 
     Every surface (grid card, quick-look strip, list row) renders
@@ -249,7 +257,9 @@ def stamp_badges(items, source_path=None) -> None:
     from flags, so adding a new badge kind (upscale/underscale/…) is a change
     in :func:`resolve_rank_badge` alone. Called from the single render path
     (``widget.set_triage``) with the current source, so a source/mode/rank
-    change re-stamps. Never raises.
+    change re-stamps. ``show_rank=False`` suppresses the rank/BEST pill while
+    the ranking is not final (analysis in flight) — one gate for all surfaces.
+    Never raises.
     """
     try:
         src = Path(str(source_path)) if source_path is not None else None
@@ -258,7 +268,7 @@ def stamp_badges(items, source_path=None) -> None:
     for it in items or []:
         try:
             is_source = src is not None and Path(str(getattr(it, "path", ""))) == src
-            badge = resolve_rank_badge(it, is_source=is_source)
+            badge = resolve_rank_badge(it, is_source=is_source, show_rank=show_rank)
             it.badge = badge.text
             it.badge_kind = badge.kind
             try:

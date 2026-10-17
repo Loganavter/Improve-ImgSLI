@@ -407,6 +407,50 @@ def set_series_attention(owner, series_ids) -> None:
         pass
 
 
+def set_ranks_visible(owner, visible: bool) -> None:
+    """Flip the rank-pill gate; re-stamp + repaint only when it changes.
+
+    ``show_rank`` is applied at the single badge-stamp point (``stamp_badges``)
+    so the grid card, quick-look strip and list row drop the rank/BEST pill
+    together while a folder is analysing, and restore it once the ranking is
+    final. Never raises.
+    """
+    want = bool(visible)
+    if want == bool(getattr(owner, "_ranks_visible", True)):
+        return
+    try:
+        owner._ranks_visible = want
+    except Exception:
+        return
+    items: list = []
+    try:
+        items.extend(list(owner._items or []))
+    except Exception:
+        pass
+    try:
+        for cluster in getattr(owner, "_series", None) or []:
+            items.extend(list(cluster))
+    except Exception:
+        pass
+    try:
+        from tabs.image_gallery.services.rank_badge import stamp_badges
+
+        stamp_badges(items, getattr(owner, "_source_path", None), show_rank=want)
+    except Exception:
+        pass
+    try:
+        owner.refresh_cards(items)
+    except Exception:
+        pass
+
+
+def _show_rank(owner) -> bool:
+    """Rank/BEST pills render only once the ranking is final for this folder
+    (the controller flips ``widget._ranks_visible``; default True keeps legacy
+    behaviour for storeless/stub owners). Analysis in flight ⇒ no rank pill."""
+    return bool(getattr(owner, "_ranks_visible", True))
+
+
 def set_rank_provenance(owner, source: str | None = None, *, domain: str | None = None) -> None:
     """Show which ranker produced the series ranks (stats-strip chip).
 
@@ -426,7 +470,7 @@ def refresh_card(owner, item: GalleryItem) -> None:
     try:
         from tabs.image_gallery.services.rank_badge import stamp_badges
 
-        stamp_badges([item], getattr(owner, "_source_path", None))
+        stamp_badges([item], getattr(owner, "_source_path", None), show_rank=_show_rank(owner))
     except Exception:
         pass
     # Delegate to grid_view (Button region update)
@@ -486,7 +530,7 @@ def refresh_cards(owner, items) -> None:
     try:
         from tabs.image_gallery.services.rank_badge import stamp_badges
 
-        stamp_badges(list(items or []), getattr(owner, "_source_path", None))
+        stamp_badges(list(items or []), getattr(owner, "_source_path", None), show_rank=_show_rank(owner))
     except Exception:
         pass
     try:
@@ -539,7 +583,7 @@ def sync_source_badge(owner, source) -> None:
                 items.extend(list(cluster))
         except Exception:
             pass
-        stamp_badges(items, new)
+        stamp_badges(items, new, show_rank=_show_rank(owner))
         want = {str(p) for p in (old, new) if p is not None}
         if not want:
             return
