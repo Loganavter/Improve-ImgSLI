@@ -59,6 +59,29 @@ def _load_mip_downsample_shader(name: str) -> QShader:
     return shader
 
 
+class MipCascadeNotReady(RuntimeError):
+    """The downsample pipeline could not be built *yet* -- transient.
+
+    Raised by ``_ensure_downsample_pipeline`` when the probe render target's
+    create() comes back False on a first attempt. Live evidence (2026-10-17,
+    private Xvfb, OpenGL on LLVMpipe): the first one-to-two tiled frames
+    after a store swap hit it, a later attempt in the same session succeeds,
+    and the QL preview keeps rendering from its raster plate throughout.
+
+    So callers must treat it as "not ready this frame": keep whatever plate
+    is up, ask for another frame, retry when it comes. Tearing the bind down
+    (or spinning at full rate) would turn a one-frame miss into a stuck
+    preview. The message carries the probe's identity (attempt counter,
+    array/level/backend) because a bare ``False`` from create() has no facts
+    to diagnose with -- a future root-cause pass needs exactly these.
+    """
+
+    def __init__(self, message: str, *, attempt: int = 0, details: str = "") -> None:
+        super().__init__(message)
+        self.attempt = int(attempt)
+        self.details = str(details)
+
+
 class MipCascadeGenerator:
     """Owns the downsample pipeline/uniform-buffer/SRB-cache/scratch-textures
     needed to regenerate mips for a tab's tile-array texture(s). Callers own
@@ -104,6 +127,10 @@ class MipCascadeGenerator:
         # completion callback this polls result.data() on the next call --
         # by then the GPU has virtually always finished the prior frame.
         self._debug_pending_readbacks: list[tuple[QRhiReadbackResult, int, int, int, int]] = []
+        # Consecutive probe-target create() failures, reset the moment the
+        # pipeline comes up. Reported through MipCascadeNotReady so a
+        # transient "not ready yet" is distinguishable from a hard failure.
+        self._probe_create_failures = 0
 
     @property
     def _rhi(self) -> QRhi:
@@ -121,12 +148,7 @@ class MipCascadeGenerator:
             *self._downsample_scratch_targets.values(),
             *self._downsample_scratch_textures.values(),
         ]
-        for resource in resources:
-            if resource is not None:
-                try:
-                    resource.destroy()
-                except RuntimeError:
-                    pass
+        self._destroy_resources(*resources)
         self._downsample_pipeline = None
         self._downsample_render_pass_descriptor = None
         self._downsample_uniform_buffer = None
@@ -137,6 +159,49 @@ class MipCascadeGenerator:
         self._downsample_scratch_textures = {}
         self._downsample_scratch_targets = {}
         self._debug_pending_readbacks = []
+
+    def _destroy_resources(self, *resources) -> None:
+        """Destroy QRhi resources, tolerating already-destroyed ones.
+
+        A Python wrapper does not own its QRhi resource: dropping the last
+        reference leaks the driver object until the RHI itself is torn down.
+        Every path that has created a resource but cannot keep it must go
+        through here instead of a bare raise -- a failed probe/probe-desc
+        pair used to leak once per rejected frame, and a rejected frame can
+        repeat on every store swap. Never raises.
+        """
+        for resource in resources:
+            if resource is None:
+                continue
+            try:
+                resource.destroy()
+            except RuntimeError:
+                pass
+
+    def _probe_failure_details(self) -> str:
+        """Identity facts for a failed probe-target create (diagnostics only).
+
+        The attach target is layer 0, mip level 1 of the tile array; a bare
+        create() == False says nothing about which array, size, format or
+        backend was in play. Never raises -- a diagnostic must not mask the
+        create failure it is reporting on.
+        """
+        try:
+            texture = self._tile_arrays[0]
+            size = texture.pixelSize()
+            backend = ""
+            try:
+                backend = str(self._rhi.backendName() or "")
+            except Exception:
+                backend = type(self._rhi).__name__
+            return (
+                f"array 0 id={id(texture)} layer_px={self._layer_px} "
+                f"texture={size.width()}x{size.height()} "
+                f"format={texture.format()} attachment=layer0/level1 "
+                f"backend={backend or 'unknown'}"
+            )
+        except Exception as exc:
+            return f"details unavailable ({exc})"
 
     def _mip_level_count(self) -> int:
         return mip_level_count(self._layer_px)
@@ -158,8 +223,18 @@ class MipCascadeGenerator:
         probe_rpdesc = probe_target.newCompatibleRenderPassDescriptor()
         probe_target.setRenderPassDescriptor(probe_rpdesc)
         if not probe_target.create():
-            raise RuntimeError(
-                f"Failed to create {self._name_prefix} probe mip render target"
+            # Transient on this driver stack -- see MipCascadeNotReady. The
+            # half-created pair is destroyed by hand: a bare raise here left
+            # both wrappers unreferenced, leaking one target plus its render
+            # pass descriptor per rejected frame, on every store swap.
+            self._probe_create_failures += 1
+            details = self._probe_failure_details()
+            self._destroy_resources(probe_target, probe_rpdesc)
+            raise MipCascadeNotReady(
+                f"Failed to create {self._name_prefix} probe mip render target "
+                f"(attempt {self._probe_create_failures}; {details})",
+                attempt=self._probe_create_failures,
+                details=details,
             )
 
         pipeline = rhi.newGraphicsPipeline()
@@ -197,16 +272,22 @@ class MipCascadeGenerator:
         self._ensure_downsample_uniform_buffer()
         pipeline.setShaderResourceBindings(self._ensure_downsample_srb(0))
         if not pipeline.create():
+            # Permanent in practice (shader/backend mismatch), but the
+            # half-built pipeline and the probe pair it was created from
+            # must still be released explicitly -- same leak rule as above.
+            self._destroy_resources(pipeline, probe_target, probe_rpdesc)
             raise RuntimeError(
                 f"Failed to create {self._name_prefix} mip-downsample pipeline"
             )
 
         self._downsample_pipeline = pipeline
         self._downsample_render_pass_descriptor = probe_rpdesc
+        # Pipeline is up: the next probe create starts a fresh count.
+        self._probe_create_failures = 0
         # Only needed to obtain probe_rpdesc; the actual per-(layer, level)
         # targets used at draw time are separate objects (see
         # _ensure_downsample_scratch) so this one is disposable.
-        probe_target.destroy()
+        self._destroy_resources(probe_target)
 
     def _ensure_downsample_uniform_buffer(self, slot_count: int = 1) -> None:
         """Growable, multi-slot ``UBuf`` buffer for ``generate_all_dirty_mips`` --
