@@ -85,7 +85,17 @@ class ContextMenuManager:
         entries: tuple[ContextMenuEntry, ...],
         key: object,
         on_triggered=None,
+        menu_parent=None,
     ) -> ContextMenu | None:
+        """Open a prebuilt entry tuple; *menu_parent* overrides the parent widget.
+
+        ``surface="in_window"`` menus are plain child widgets, so Qt clips
+        them to their parent's rectangle: a source widget inside a scroll
+        area / card yields an unusable sliver (gallery card menu,
+        2026-10-17). Pass the enclosing overlay host (e.g.
+        ``source_widget.window()``) when the source is a small content
+        widget. ``surface="popup"`` is a top-level and ignores this.
+        """
         if not entries:
             return None
         return self._open_menu(
@@ -95,6 +105,7 @@ class ContextMenuManager:
             key=(source_widget, key),
             on_triggered=on_triggered,
             request=None,
+            menu_parent=menu_parent,
         )
 
     def _open_menu(
@@ -106,6 +117,7 @@ class ContextMenuManager:
         key: tuple[object, object],
         on_triggered,
         request: ContextMenuRequest | None,
+        menu_parent=None,
     ) -> ContextMenu | None:
         active = self._live_active_menu()
         if active is not None and active.isVisible():
@@ -129,11 +141,11 @@ class ContextMenuManager:
             if request is not None and request.surface is not None
             else rmb_context_menu_surface()
         )
-        menu_parent = source_widget
+        parent_widget = menu_parent if menu_parent is not None else source_widget
         if request is not None and request.menu_parent is not None:
-            menu_parent = request.menu_parent
+            parent_widget = request.menu_parent
         menu = ContextMenu(
-            menu_parent,
+            parent_widget,
             entries=entries,
             on_triggered=on_triggered,
             surface=surface,
@@ -305,6 +317,7 @@ def open_context_menu_entries(
     entries: tuple[ContextMenuEntry, ...],
     key: object,
     on_triggered=None,
+    menu_parent=None,
 ) -> ContextMenu | None:
     return get_context_menu_manager().open_entries(
         source_widget=source_widget,
@@ -312,6 +325,7 @@ def open_context_menu_entries(
         entries=entries,
         key=key,
         on_triggered=on_triggered,
+        menu_parent=menu_parent,
     )
 
 
