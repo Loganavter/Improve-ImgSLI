@@ -157,6 +157,11 @@ def _text_rows(
             text=str(err),
             size=11,
             h_align=Qt.AlignmentFlag.AlignLeft,
+            # The error is a short status line on a ~250px card row: keep it
+            # static (marquee crawl never paid off — see the name row) and let
+            # it elide rather than clip, so a long message degrades cleanly.
+            marquee=False,
+            elide=True,
             strikethrough=_rejected,
         )
     if analysis is not None and getattr(analysis, "tags", None):
