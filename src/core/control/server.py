@@ -20,6 +20,24 @@ Invariants this class enforces:
 * every handler is wrapped so a raise becomes an error envelope, never a crash;
 * the discovery pointer is written only after a successful ``listen()`` and is
   cleared (with the socket) on ``stop()``.
+
+Refusals — every one is a **named** error envelope with a hint, never a silent
+truncation, a hang, or a crash:
+
+* **unknown method** — the name is not in ``handlers.METHODS`` (the hint lists
+  the known methods and any close matches);
+* **foreign uid** — the peer's ``SO_PEERCRED`` uid is not ours: the socket is
+  aborted before a byte is read;
+* **non-live ``press_keys``** — there is no focus widget / live window to
+  receive keys, or a key/modifier name is not in the allowlist;
+* **non-live ``ui_*``** — the element id never resolves while live (the hint
+  lists close ids) or the element cannot take focus;
+* **unknown / not-open surface** — ``capture_live`` with a ``what`` that is
+  neither a known surface nor an *open* one (the two are distinguished);
+* **oversized request** — a single request line above
+  ``MAX_REQUEST_LINE_BYTES`` is answered with ``"request line too large"`` and
+  the limit in the hint; the remainder of that line is discarded, so the
+  connection survives and later lines are still served.
 """
 
 from __future__ import annotations
@@ -46,6 +64,46 @@ _SOCKET_MODE = 0o600
 
 #: Bounded size of the live log ring (records kept for ``read_log``).
 _LOG_RING_CAPACITY = 2000
+
+#: Hard cap on one request line (1 MiB). A larger line is refused by name
+#: (``"request line too large"``) instead of being buffered/truncated silently.
+MAX_REQUEST_LINE_BYTES = 1024 * 1024
+
+#: Sanity cap on one serialized reply (8 MiB). A bigger (or unserialisable)
+#: result is reported as an error frame, never emitted as a broken frame.
+MAX_REPLY_BYTES = 8 * 1024 * 1024
+
+
+def encode_reply(payload: dict[str, Any]) -> bytes | None:
+    """Serialize one reply into a newline-terminated frame, or ``None``.
+
+    ``None`` means the payload cannot be framed — either it is not
+    JSON-serialisable (e.g. a circular structure, which ``json.dumps`` raises
+    on) or it exceeds ``MAX_REPLY_BYTES``. The caller then sends a named error
+    frame instead of writing a broken/truncated frame that would desync the
+    client's line reader.
+    """
+    try:
+        blob = json.dumps(payload, ensure_ascii=False, default=str).encode("utf-8")
+    except Exception:
+        return None
+    if len(blob) > MAX_REPLY_BYTES:
+        return None
+    return blob + b"\n"
+
+
+def _reply_error_frame(request_id: Any) -> bytes:
+    """The fallback frame written when ``encode_reply`` refuses a payload."""
+    payload = {
+        "id": request_id,
+        "ok": False,
+        "error": "reply could not be framed",
+        "hint": (
+            f"the result was not JSON-serialisable or exceeded {MAX_REPLY_BYTES} "
+            "bytes; check the app log via read_log"
+        ),
+    }
+    return json.dumps(payload, ensure_ascii=False).encode("utf-8") + b"\n"
 
 class LogRing(logging.Handler):
     """Bounded in-process capture of the app logger.
@@ -99,6 +157,9 @@ class ControlServer:
         self._server: QLocalServer | None = None
         self._handlers: ControlHandlers | None = None
         self._clients: dict[QLocalSocket, bytes] = {}
+        # Clients whose current (oversized) line is being swallowed up to the
+        # next newline — the named error was already sent for that line.
+        self._discarding: set[QLocalSocket] = set()
         self._path: Path | None = None
         self._running = False
 
@@ -195,6 +256,7 @@ class ControlServer:
             except Exception:
                 pass
         self._clients.clear()
+        self._discarding.clear()
         if self._server is not None:
             try:
                 self._server.close()
@@ -274,12 +336,45 @@ class ControlServer:
         except Exception:
             self._drop_client(socket)
             return
+        # We already refused the current (oversized) line: swallow bytes until
+        # its terminating newline so its tail is not mis-parsed as a new line.
+        if socket in self._discarding:
+            if b"\n" not in buffer:
+                self._clients[socket] = b""
+                return
+            _rejected, buffer = buffer.split(b"\n", 1)
+            self._discarding.discard(socket)
         while b"\n" in buffer:
             line, buffer = buffer.split(b"\n", 1)
+            if len(line) > MAX_REQUEST_LINE_BYTES:
+                self._refuse_oversized_line(socket)
+                continue
             self._handle_line(socket, line)
+        if len(buffer) > MAX_REQUEST_LINE_BYTES:
+            # One line still streaming in and already past the cap — refuse it
+            # now (never buffer unbounded) and swallow the rest of that line.
+            self._refuse_oversized_line(socket)
+            self._discarding.add(socket)
+            buffer = b""
         self._clients[socket] = buffer
 
+    def _refuse_oversized_line(self, socket: QLocalSocket) -> None:
+        """Named refusal for a request line over ``MAX_REQUEST_LINE_BYTES``."""
+        self._send(
+            socket,
+            {
+                "id": None,
+                "ok": False,
+                "error": "request line too large",
+                "hint": (
+                    f"send at most {MAX_REQUEST_LINE_BYTES} bytes per line "
+                    "(one JSON object per line)"
+                ),
+            },
+        )
+
     def _drop_client(self, socket: QLocalSocket) -> None:
+        self._discarding.discard(socket)
         if self._clients.pop(socket, None) is None:
             return
         try:
@@ -370,9 +465,12 @@ class ControlServer:
         self._send(socket, {"id": request_id, "ok": True, "result": result})
 
     def _send(self, socket: QLocalSocket, payload: dict[str, Any]) -> None:
+        request_id = payload.get("id") if isinstance(payload, dict) else None
+        frame = encode_reply(payload) if isinstance(payload, dict) else None
+        if frame is None:
+            frame = _reply_error_frame(request_id)
         try:
-            blob = json.dumps(payload, ensure_ascii=False, default=str).encode("utf-8")
-            socket.write(blob + b"\n")
+            socket.write(frame)
             socket.flush()
         except Exception:
             self._drop_client(socket)

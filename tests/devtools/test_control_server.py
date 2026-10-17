@@ -211,6 +211,49 @@ def test_malformed_line_is_an_error_and_the_connection_survives(tmp_path, monkey
         server.stop()
 
 
+def test_oversized_request_line_is_refused_by_name_and_the_connection_survives(
+    tmp_path, monkeypatch
+):
+    from core.control.server import MAX_REQUEST_LINE_BYTES
+
+    monkeypatch.setenv("IMGSLI_CONTROL_DIR", str(tmp_path / "ctrl"))
+    app = _qapp()
+    server = ControlServer(window=_store_window(), app=app)
+    assert server.start() is True
+    client = _Client(app, server.path)
+    try:
+        oversized = b"x" * (MAX_REQUEST_LINE_BYTES + 64)
+        client.send_raw(oversized + b"\n")
+        response = client.wait_line(seconds=5.0)
+        assert response is not None, "an oversized line is answered, not dropped"
+        assert response["ok"] is False
+        assert response["error"] == "request line too large"
+        assert str(MAX_REQUEST_LINE_BYTES) in response["hint"]
+
+        # The refused line is swallowed whole — the next request is still served.
+        client.send({"id": 20, "method": "ping", "params": {}})
+        assert client.wait_line()["ok"] is True
+    finally:
+        client.close()
+        server.stop()
+
+
+def test_encode_reply_reports_a_frame_it_cannot_emit():
+    """Unit-test the reply guard: ``None`` instead of a broken frame."""
+    from core.control.server import MAX_REPLY_BYTES, encode_reply
+
+    frame = encode_reply({"id": 1, "ok": True, "result": {"a": 1}})
+    assert frame is not None and frame.endswith(b"\n")
+    assert json.loads(frame)["result"] == {"a": 1}
+
+    circular: dict = {}
+    circular["self"] = circular
+    assert encode_reply(circular) is None, "unserialisable result is refused"
+
+    huge = {"blob": "x" * (MAX_REPLY_BYTES + 1)}
+    assert encode_reply(huge) is None, "oversized result is refused, not truncated"
+
+
 def test_foreign_uid_is_refused(tmp_path, monkeypatch):
     monkeypatch.setenv("IMGSLI_CONTROL_DIR", str(tmp_path / "ctrl"))
     app = _qapp()
