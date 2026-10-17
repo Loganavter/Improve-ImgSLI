@@ -427,3 +427,43 @@ non-QRhi and listed in the TODO queue.
   `test_shared_live_snapshot_is_tab_agnostic` requires the delegating stub
 - Core keyframing, video export engine, Redux dispatcher, `src/events`
 - `docs/legacy/`, `features/_template/` — intentionally preserved
+
+## Oversized-file triage — Part D (2026-10-17)
+
+Host / other-tab oversized files flagged by the gallery split plan
+([plan-gallery-split-2026-10-17.md](../../src/tabs/image_gallery/docs/investigations/plan-gallery-split-2026-10-17.md)),
+re-adjudicated **code-first** (each file opened; marker + section banners read).
+Only splits that survive the "one lifecycle" test proceed.
+
+| Lines | File | Marker | Verdict |
+|---|---|---|---|
+| 1258 | `engine/cache/display_tier_service.py` | state-machine | KEEP — `tests/contracts/test_plan_application_boundary.py` pins `apply_plan_full`/`apply_plan_scene_only` to this file; one duck-typed `runtime_state` commit surface |
+| 1245 | `engine/gpu/tiled_image_view.py` | state-machine | KEEP — one tile-array view lifecycle (E2 level maps + shared `resources`) |
+| 985 | `engine/store/tiled_pixel_store.py` | state-machine | **SPLIT** — adapter tail only |
+| 937 | `engine/gpu/glass_panel.py` | state-machine | KEEP — one `rhi`/`_sampler`/`_panels` lifecycle |
+| 1155 | `multi_compare/scene/passes/base_images.py` | state-machine | KEEP — pass contract `initialize→apply_pending→prepare→record→release` |
+| 1033 | `multi_compare/scene/passes/residency.py` | tile-residency | **SPLIT** — crop cluster out |
+| 915 | `image_compare/canvas/rhi_renderer/residency.py` | tile-residency | KEEP — single `TileResidencyRealizer` + shared stash/`ctx` |
+| 1116 | `image_compare/canvas/widget.py` | thin-owner | **SPLIT** — 3 inlined clusters |
+| 759 | `image_compare/presenters/toolbar/connections.py` | state-machine | KEEP — signal-lifetime wiring hub (optional `deferred_plugins.py` carve-out only if touched) |
+| 1458 | `image_compare/.../magnifier/render/magnifier_pass.py` | File-Size-Exempt | **SPLIT** — module-level helpers only; the class keeps its exemption |
+| 1039 | `image_compare/plugins/video_editor/services/thumbnails.py` | state-machine | KEEP — one generation token + pending guard |
+| 968 | `image_compare/plugins/video_editor/services/video_export/service.py` | state-machine | KEEP — the stateless thumbnail-proxy cluster is separable, but "video export engine" is in the do-not-touch list above |
+| 925 | `plugins/help/dialog.py` | qdialog-wiring | KEEP — one `QDialog`; search/nav/chrome already extracted |
+
+Split cuts (each keeps public names; the original module re-exports):
+
+1. **`tiled_pixel_store` → `engine/store/pixel_source_adapters.py`**: L846–985
+   (`qimage_from_pixel_source`, `pixel_source_size`, `maybe_wrap_pixel_store`,
+   `close_pixel_store`, `to_real_pil_copy`) — a duck-typed source adapter that
+   never touches `_memmap`; add it to `test_pixel_source_tiers.py` ALLOWLIST.
+2. **MC `residency` → `multi_compare/scene/passes/crop_clip.py`**: L728–1033
+   (`controller_for_canvas`, `crop_box_for_slot`, `CroppedSlotView`,
+   `_one_px_fallback`, `_qimage_to_pil`, `_materialize_pil`,
+   `cropped_source_for_slot`); repoint `ui/canvas_widget.py`,
+   `canvas/interaction.py`, `use_cases/loading.py`, `test_crop_render_clip.py`.
+3. **IC `canvas/widget`**: DnD keep-warm → `canvas/features/drag_drop_overlay/keepwarm.py`;
+   first-frame settle → `canvas/first_frame.py`; context-menu slots →
+   `canvas/context_menu_slots.py` (signals stay on the widget).
+4. **`magnifier_pass` → `.../magnifier/render/tile_residency_gate.py`**: free
+   helpers L128–611 (keep `_comb_divider_thickness_uv`); the pass class is unchanged.

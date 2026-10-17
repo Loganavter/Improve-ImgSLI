@@ -191,6 +191,7 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
 ## src/tabs/image_gallery/docs/investigations/
 
 - **[Plan — Image Gallery decomposition (controller + widget + remaining large files)](../../src/tabs/image_gallery/docs/investigations/plan-gallery-split-2026-10-17.md)** — `src/tabs/image_gallery/docs/investigations/plan-gallery-split-2026-10-17.md`
+  Referenced by: [docs/dev/CODE_MASS_REDUCTION.md](CODE_MASS_REDUCTION.md)
 
 ## src/tabs/image_gallery/docs/plugins/
 
