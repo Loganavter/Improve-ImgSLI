@@ -17,9 +17,15 @@ over the two rows the panel already has — the filmstrip
 * ``Enter`` and the space bar are never claimed here: the focused toolkit
   ``Button`` activates itself (``widgets/buttons/events.py::_activate_via_keyboard``
   → the same ``clicked`` → ``_switch`` path a mouse click takes).
-* Arrows cannot reach the gallery grid behind the veil: the two rows are the
-  whole section, and :meth:`QuickLookNavSection.navigate` consumes Up/Down at
-  their edge instead of yielding to a neighbouring section.
+* Arrows cannot reach the gallery grid behind the veil: the panel declares
+  :attr:`QuickLookNavSection.modal` (``True``), so the toolkit
+  ``NavigationManager`` treats it as a modal ceiling while it is visible —
+  every arrow, the section's ``extra_keys`` and Tab/Backtab are routed into the
+  panel, an arrow at the panel's edge is consumed by the manager instead of
+  yielding to a neighbouring section, and a foreign focus steal is pulled back
+  (``_reclaim_modal_focus``). The panel-local Up/Down edge-consume this
+  docstring used to describe was the workaround for a missing modal declaration
+  and is gone.
 
 The strip is rebuilt whenever its fingerprint changes — ranks re-stamped by the
 analysis pass, a triage flip, a theme/scale change (``strip/helpers.py::
@@ -308,14 +314,29 @@ class QuickLookNavSection:
     ``OverlayScrollArea`` ancestor (``_ensure_visible``), all with the app's
     focus-reason policy.
 
-    The one addition is the bottom of :meth:`navigate`: ``ToolbarRowsSection``
-    yields ``↓``/``↑`` past its last/first row so the shell can hand focus to
-    the section above/below (its documented contract). This panel has no
-    section above or below — a modal veil covers the page — and yielding walks
-    the ring onto the gallery grid behind the veil (measured 2026-10-17: Up on
-    the first thumb focused a card of the section registered before us, via
-    ``NavigationManager._neighbor``).
+    The one addition is :attr:`modal`: the panel declares itself a modal
+    ceiling, so the toolkit ``NavigationManager`` owns the veil while it is
+    visible. ``ToolbarRowsSection`` yields ``↓``/``↑`` past its last/first row
+    so the shell can hand focus to the section above/below (its documented
+    contract) — correct for a toolbar, wrong for this panel: a modal veil covers
+    the page, and that yield walked the ring onto the gallery grid behind the
+    veil (measured 2026-10-17: Up on the first thumb focused a card of the
+    section registered before us, via ``NavigationManager._neighbor``). With
+    ``modal`` the manager consumes the edge key itself and never calls
+    ``_neighbor`` for this panel — the panel-local edge-consume that patched it
+    is deleted.
     """
+
+    @property
+    def modal(self) -> bool:
+        """The panel owns the keyboard for its window while it is visible.
+
+        Read by the manager as ``getattr(spec, "modal", False)`` (same raw-read
+        pattern as ``extra_keys``): the panel is the last registered section
+        while shown, so it is the modal ceiling and the grid behind the veil
+        receives no key or focus. Must stay a **property**, never a method.
+        """
+        return True
 
     def __init__(self, overlay: QWidget) -> None:
         self._overlay = overlay
@@ -339,10 +360,11 @@ class QuickLookNavSection:
         return self._rows.owns(widget)
 
     def navigate(self, key: int, widget) -> bool:  # noqa: ANN001
-        if self._rows.navigate(key, widget):
-            return True
-        # The panel's edge: consume instead of yielding (see class docstring).
-        return key in (Qt.Key.Key_Up, Qt.Key.Key_Down)
+        # Pure delegation: ``ToolbarRowsSection`` steps ←/→ within a row and
+        # crosses ↓/↑ between rows, and the manager's modal edge consumes an
+        # arrow this section declined instead of handing it to a neighbour
+        # (app-side edge-consume deleted, see class docstring).
+        return bool(self._rows.navigate(key, widget))
 
     def focus_first(self, ref_x=None, *, reason=None) -> bool:  # noqa: ANN001
         """Enter the section on the row item that is already on screen.
