@@ -18,6 +18,29 @@ def _ai_debug(msg: str, *args) -> None:
     if _env_flag("IMGSLI_AI_DEBUG"):
         logger.warning("[ai] " + msg, *args)
 
+def _ai_debug_enabled() -> bool:
+    """True when the ``IMGSLI_AI_DEBUG`` trace gate is on."""
+    return bool(_env_flag("IMGSLI_AI_DEBUG"))
+
+
+def _ai_snippet(text, *, head: int = 600, tail: int = 240) -> str:
+    """One-line, bounded preview of a model reply for the ``[ai]`` trace.
+
+    Shows length + head…tail: a truncated answer loses its TAIL
+    (``finish_reason=length``), a reasoning-only answer shows a long head —
+    both visible without dumping the whole body into the log.
+    """
+    try:
+        s = str(text or "")
+    except Exception:
+        return "<unprintable>"
+    s = s.replace("\r", " ").replace("\n", " ")
+    n = len(s)
+    if n <= head + tail:
+        return f"({n}c) {s}"
+    return f"({n}c) {s[:head]} … {s[-tail:]}"
+
+
 def _ratelimit_headers(headers) -> str:
     """Compact x-ratelimit-* + retry-after summary for one response."""
     try:

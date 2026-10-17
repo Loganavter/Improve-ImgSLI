@@ -40,7 +40,8 @@ def build_request(
 ) -> dict:
     image_path = Path(image_path)
     mime = _EXT_TO_MIME.get(image_path.suffix.lower(), "png")
-    data = base64.b64encode(image_path.read_bytes()).decode("ascii")
+    raw_bytes = image_path.read_bytes()
+    data = base64.b64encode(raw_bytes).decode("ascii")
     # Local (Algorithms-domain) numbers ride along as CONTEXT only — the AI's
     # own per-axis scorecard is the answer (plan-gallery-ai-backend-owns-quality).
     block = ""
@@ -101,7 +102,8 @@ def build_request(
             payload["route"] = "fallback"
     _ai_debug(
         "build_request model=%s openrouter=%s metrics=%d response_format=json_object "
-        "reasoning_exclude=%s provider_routing=%s chain=%s prompt_chars=%d",
+        "reasoning_exclude=%s provider_routing=%s chain=%s prompt_chars=%d "
+        "image_bytes=%d b64_chars=%d mime=%s",
         model,
         openrouter,
         len(metrics or {}),
@@ -109,5 +111,8 @@ def build_request(
         "provider" in payload,
         payload.get("models"),
         len(text),
+        len(raw_bytes),
+        len(data),
+        mime,
     )
     return payload

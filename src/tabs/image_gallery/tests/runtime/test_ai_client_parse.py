@@ -330,3 +330,101 @@ def test_parse_named_fields_merge_into_scorecard():
     assert r.axes.get("sharpness") == 70
     assert r.axes.get("composition") == 60
     assert r.sharpness == 70 and r.composition == 60
+
+
+# --- extended AI-backend trace (IMGSLI_AI_DEBUG) ---------------------------
+
+
+def test_ai_snippet_is_bounded_head_and_tail() -> None:
+    from tabs.image_gallery.services.ai_client import _ai_snippet
+
+    s = _ai_snippet("A" * 5000)
+    assert s.startswith("(5000c) ")
+    assert "…" in s and len(s) < 1200
+    assert _ai_snippet("hi") == "(2c) hi"
+    assert _ai_snippet(None) == "(0c) "
+
+
+def test_parse_failure_trace_reports_finish_and_content(caplog, monkeypatch) -> None:
+    """On an unparseable reply the trace must name finish_reason + the content.
+
+    A truncated answer (finish_reason=length) is the classic consistent
+    parse failure; the [ai] trace now shows it instead of a bare error.
+    """
+    import logging
+
+    monkeypatch.setenv("IMGSLI_AI_DEBUG", "1")
+    raw = {
+        "model": "m",
+        "choices": [
+            {
+                "finish_reason": "length",
+                "message": {"content": '{"axes": {"sharpness": 8'},
+            }
+        ],
+    }
+    with caplog.at_level(logging.WARNING, logger="ImproveImgSLI"):
+        with pytest.raises(AiResponseError):
+            parse_response(raw, model="m")
+    assert "parse NO-JSON" in caplog.text
+    assert "finish=length" in caplog.text
+    assert "content=(" in caplog.text
+
+
+def test_parse_trace_reports_reasoning_and_json(caplog, monkeypatch) -> None:
+    import json as _json
+    import logging
+
+    monkeypatch.setenv("IMGSLI_AI_DEBUG", "1")
+    _reasoning = "<thinking>x</thinking>"
+    content = _reasoning + " scratchpad clearly reasoning about quality<｜end▁of▁thinking｜>" + _json.dumps(
+        {"verdict": "keep", "reason": "ok"}
+    )
+    raw = {"choices": [{"message": {"content": content}}]}
+    with caplog.at_level(logging.WARNING, logger="ImproveImgSLI"):
+        parse_response(raw, model="m")
+    assert "think=True" in caplog.text
+    assert "json_found=True" in caplog.text
+
+
+def test_parse_trace_silent_without_key(caplog, monkeypatch) -> None:
+    import logging
+
+    monkeypatch.delenv("IMGSLI_AI_DEBUG", raising=False)
+    raw = {"choices": [{"message": {"content": "prose that is not json"}}]}
+    with caplog.at_level(logging.WARNING, logger="ImproveImgSLI"):
+        with pytest.raises(AiResponseError):
+            parse_response(raw, model="m")
+    assert "[ai]" not in caplog.text
+
+
+def test_transport_trace_logs_finish_usage_and_content(caplog, monkeypatch) -> None:
+    """The transport summary shows finish_reason / usage / content snippet."""
+    import io
+    import logging
+
+    import tabs.image_gallery.services.ai_client.transport as tr
+
+    monkeypatch.setenv("IMGSLI_AI_DEBUG", "1")
+    body = b"".join(
+        [
+            b'data: {"model":"m","choices":[{"delta":{"content":"{\\"verdict\\":\\"keep\\"}"}}]}\n\n',
+            b'data: {"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"total_tokens":42}}\n\n',
+            b"data: [DONE]\n\n",
+        ]
+    )
+
+    class _Resp(io.BytesIO):
+        status = 200
+        headers: dict = {}
+
+    monkeypatch.setattr(
+        tr.urllib.request, "urlopen", lambda req, timeout=None: _Resp(body)
+    )
+    with caplog.at_level(logging.WARNING, logger="ImproveImgSLI"):
+        raw = tr.call_sync("https://x/api/v1", "key", {"model": "m", "messages": []})
+    assert raw["choices"][0]["finish_reason"] == "stop"
+    assert "response model=m finish=stop" in caplog.text
+    assert "content_chars=" in caplog.text
+    assert "total_tokens" in caplog.text
+    assert "body_bytes=" in caplog.text
