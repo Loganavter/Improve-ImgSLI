@@ -891,14 +891,14 @@
       }
     },
     {
-      "path": "src/tabs/image_gallery/ui/quick_look/preview_canvas_host.py",
+      "path": "src/tabs/image_gallery/ui/quick_look/preview_canvas_host/__init__.py",
       "limit": 500,
       "marker": "Audit-Meta:",
-      "raw": "pattern=thin-owner-target size=exempt reason=\"one canvas-slot lifecycle: canvas/cover share one GPU-path attribution\"",
+      "raw": "pattern=thin-owner size=exempt reason=\"package shell: re-exports the split canvas-slot lifecycle for importers/tests\"",
       "parsed": {
-        "pattern": "thin-owner-target",
+        "pattern": "thin-owner",
         "size": "exempt",
-        "reason": "one canvas-slot lifecycle: canvas/cover share one GPU-path attribution"
+        "reason": "package shell: re-exports the split canvas-slot lifecycle for importers/tests"
       }
     },
     {
