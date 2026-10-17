@@ -652,28 +652,33 @@ class AppBackend:
             "source": "fallback",
         }
 
-    def open_folder(self, *, path: str) -> dict:
+    def open_folder(self, *, path: str, tab: str | None = None) -> dict:
         return self._live_or_fallback(
             "open_folder",
-            lambda: self._fallback_open_folder(path=path),
+            lambda: self._fallback_open_folder(path=path, tab=tab),
             mutating=True,
             path=path,
         )
 
-    def _fallback_open_folder(self, *, path: str) -> dict:
+    def _fallback_open_folder(self, *, path: str, tab: str | None = None) -> dict:
         target = Path(path).expanduser()
         if not target.is_dir():
             raise ToolError(
                 f"{target} is not an existing directory",
                 "pass an absolute (or ~-prefixed) path to a folder of images",
             )
-        pid = self._launch(["--open-tab", "image_gallery"])
-        self.processes.adopt("image_gallery", pid)
+        # A booted process has no control channel to inject images through,
+        # so the folder is never routed here -- 'routed': false stays the
+        # honest answer, with the requested tab opened so a human can drop
+        # the folder on it.
+        pid = self._launch(["--open-tab", str(tab or "image_gallery")])
+        self.processes.adopt(str(tab or "image_gallery"), pid)
         return {
             "launched": True,
             "pid": pid,
             "path": str(target),
             "routed": False,
+            "tab": str(tab or "image_gallery"),
             "source": "fallback",
         }
 
@@ -693,17 +698,19 @@ class AppBackend:
             language=language,
         )
 
-    def press_keys(self, *, keys: str) -> dict:
+    def press_keys(self, *, keys: str, target: str | None = None) -> dict:
         """Inject keyboard input into the live app — live-only, never faked.
 
-        There is no headless analogue: without a running instance this answers
-        an honest error instead of simulating the keys.
+        ``target`` (an element id) aims the keys at that widget: the only way
+        a canvas -- not in the window's focus chain -- receives its own
+        zoom/pan shortcuts. There is no headless analogue: without a running
+        instance this answers an honest error instead of simulating the keys.
         """
         client = self.live.client_if_alive()
         if client is None:
             raise self._keys_need_live()
         try:
-            return self.live.press_keys(client=client, keys=keys)
+            return self.live.press_keys(client=client, keys=keys, target=target)
         except LiveUnavailable as exc:
             if exc.timeout:
                 raise _edit_may_have_completed(exc)

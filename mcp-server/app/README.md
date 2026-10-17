@@ -119,7 +119,8 @@ Fallback safety rules (`app/process_policy.py`):
 
 **Fallback limits:** reads boot a throwaway app and can be ~30 s stale;
 mutations start a *new* process (they reach a running window only via live
-attach); `open_folder` reports `routed: false`; `press_keys` has no fallback and
+attach); `open_folder` reports `routed: false` (it opens `--open-tab <tab>` when
+one was named); `press_keys` has no fallback and
 errors honestly, and so do the element-targeting tools (`ui_elements`,
 `ui_click`, `ui_hover`, `ui_focus`) and the job tools (`jobs_list`,
 `jobs_cancel`) — element ids and in-flight jobs only exist in a running app.
@@ -160,7 +161,11 @@ passes, so it measures from the first `jobs_list` that observed the job running;
   present in the headless ActionRegistry snapshot *before* launching, and
   suggests the closest ids; on the live path the app validates its own ids. No
   arbitrary command, path, or Python evaluation is possible.
-- **Existing directories only** for `open_folder`; no path traversal.
+- **Existing directories only** for `open_folder`; no path traversal. Pass
+  `tab=<kind>` to target one tab (it is opened if absent); a file-only tab
+  (`multi_compare`) receives the folder's images as files, which is the
+  supported way to load images there — its "add images" dialog is not
+  drivable by a client.
 - **No file contents.** Only the app's own log, tracer, catalog, and layout
   artifacts are returned — never user images or arbitrary files.
 - **Read-only default.** Every mutating tool is a distinct, explicitly named
@@ -170,6 +175,9 @@ passes, so it measures from the first `jobs_list` that observed the job running;
 - **Keyboard input is live-only.** `press_keys` injects combos into the running
   app through the control socket (key names allowlisted app-side); with no
   instance it answers an honest error instead of pretending.
+  `target=<element id from ui_elements>` aims the keys at one widget — a live
+  canvas is not in the window's focus chain, so its zoom/pan keys
+  (`=`, `-`, `0` in multi-compare) only arrive when the canvas id is named.
 - **Element targeting is live-only.** `ui_elements` inventories the running
   window's interactive widgets and `ui_click`/`ui_hover`/`ui_focus` act on them
   by session-scoped id; with no instance they answer an honest error — they

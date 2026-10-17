@@ -669,15 +669,25 @@ class LiveBackend:
             "source": "live",
         }
 
-    def open_folder(self, *, client: LiveClient | None = None, path: str) -> dict:
-        result = self._request("open_folder", {"path": path}, client)
-        return {
+    def open_folder(
+        self, *, client: LiveClient | None = None, path: str, tab: str | None = None
+    ) -> dict:
+        params: dict[str, Any] = {"path": path}
+        if tab:
+            params["tab"] = tab
+        result = self._request("open_folder", params, client)
+        payload = {
             "ran": bool(result.get("ran", True)),
             "path": str(result.get("path") or path),
             "routed": bool(result.get("routed", True)),
             "live": True,
             "source": "live",
         }
+        if result.get("tab"):
+            payload["tab"] = str(result["tab"])
+        if result.get("images") is not None:
+            payload["images"] = int(result["images"])
+        return payload
 
     def set_theme(self, *, client: LiveClient | None = None, theme: str) -> dict:
         result = self._request("set_theme", {"theme": theme}, client)
@@ -726,9 +736,20 @@ class LiveBackend:
             "source": "live",
         }
 
-    def press_keys(self, *, client: LiveClient | None = None, keys: str) -> dict:
-        """Inject keyboard input (live-only; there is no headless analogue)."""
-        result = self._request("press_keys", {"keys": keys}, client)
+    def press_keys(
+        self, *, client: LiveClient | None = None, keys: str, target: str | None = None
+    ) -> dict:
+        """Inject keyboard input (live-only; there is no headless analogue).
+
+        ``target`` names an element id (``ui_elements``) so the keys reach a
+        widget the window focus chain never gives them -- a canvas, whose
+        zoom/pan keys are its own. Without it, the running app's focus widget
+        receives them (the historical behaviour).
+        """
+        params: dict[str, Any] = {"keys": keys}
+        if target:
+            params["target"] = target
+        result = self._request("press_keys", params, client)
         pressed = [str(item) for item in result.get("pressed") or []]
         return {
             "pressed": pressed,
