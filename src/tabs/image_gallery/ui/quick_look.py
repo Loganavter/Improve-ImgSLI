@@ -9,6 +9,13 @@ Right: metric bars per mode (SSIM/sharpness/exposure), artifact rows with
        rejected thumbs clickable), bottom bar buttons.
 Public toolkit only: TopLevelInWindowOverlay, Button variant="surface", Label,
 scaled_px. No setStyleSheet — painter pipeline owns visuals.
+
+Thin-owner split (plan-gallery-split-2026-10-17, Part C2): every method body
+lives in ``ui/quick_look/overlay_parts/*.py`` as a plain function taking this
+overlay as its first argument (``CODE_PATTERNS.md`` "thin owner + ui/ parts").
+The class below keeps same-named one-line delegators so Qt virtual dispatch,
+call sites and tests are untouched; module-level names (``DIM_VEIL_ALPHA``,
+the helpers/bars/histograms re-exports) stay here for the package shim.
 """
 
 from __future__ import annotations
@@ -54,6 +61,21 @@ try:
     from tabs.image_gallery.ui.quick_look.histograms import _BandingCombHistogram, _GenericHistogram, _HistogramStub
 except Exception:
     pass
+
+# Concern modules: the actual bodies. Imported here so the delegators are a
+# single attribute call (no per-event import); each module only defines plain
+# functions over the overlay and never imports this file back (no cycle).
+from tabs.image_gallery.ui.quick_look.overlay_parts import (
+    dispatch as _dispatch,
+    filters as _filters,
+    input_events as _input_events,
+    lifecycle as _lifecycle,
+    pinning as _pinning,
+    populate as _populate_parts,
+    region_select as _region_select,
+    show as _show,
+    theming as _theming,
+)
 
 
 class QuickLookOverlay(TopLevelInWindowOverlay):
@@ -128,1676 +150,167 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
         except Exception:
             pass
 
+    # -- child-hover watch + event filters (overlay_parts/filters.py) --------
+
     def _install_subtree_hover_watch(self, root) -> None:
-        """Install this overlay as MouseMove observer on a content subtree.
-
-        Idempotent (remove-then-install): ChildAdded storms must never stack
-        duplicate filter entries on the same widget.
-        """
-        try:
-            from PySide6.QtWidgets import QWidget as _QW
-
-            stack = [root]
-            seen = set()
-            while stack:
-                w = stack.pop()
-                try:
-                    if w is None or id(w) in seen:
-                        continue
-                    seen.add(id(w))
-                    if w is not self:
-                        try:
-                            w.removeEventFilter(self)
-                        except Exception:
-                            pass
-                        try:
-                            w.installEventFilter(self)
-                        except Exception:
-                            pass
-                    try:
-                        stack.extend(w.findChildren(_QW))
-                    except Exception:
-                        pass
-                except Exception:
-                    continue
-        except Exception:
-            pass
-
-    def _reposition_source_inset(self) -> None:
-        # Source/crop inset blocks are absolute children of the preview
-        # (bottom-left over the image) — re-pin with every resize, then nav.
-        try:
-            from tabs.image_gallery.ui.quick_look.insets import reposition_preview_insets
-            reposition_preview_insets(self)
-        except Exception:
-            pass
-        # W4 item 6: nav circles are absolute card children — re-pin with
-        # every resize.
-        try:
-            from tabs.image_gallery.ui.quick_look.helpers import reposition_nav_buttons
-            reposition_nav_buttons(self)
-        except Exception:
-            pass
-
-    def resizeEvent(self, event):  # noqa: N802
-        super().resizeEvent(event)
-        try:
-            self._reposition_source_inset()
-        except Exception:
-            pass
-        # W8: keep the drag handle pinned on overlay (window) resizes.
-        try:
-            from tabs.image_gallery.ui.quick_look.helpers import reposition_grip
-            reposition_grip(self)
-        except Exception:
-            pass
+        _filters._install_subtree_hover_watch(self, root)
 
     def eventFilter(self, watched, event) -> bool:  # noqa: N802
-        # W8: card-plate resizes (user drag via the corner grip or direct
-        # resizes) re-run the same pin hooks as resizeEvent.
-        # W9: the whole card border is an 8px resize strip (8 directions) —
-        # press/move/release on the plate drive the border drag, plain
-        # moves update the hover cursor. Same clamp + re-pin idiom as W8.
-        try:
-            from PySide6.QtCore import QEvent
+        return _filters.eventFilter(self, watched, event)
 
-            _watched_content = getattr(self, "_content", None)
-            if event.type() == QEvent.Type.ChildAdded and (
-                watched is _watched_content
-                or (_watched_content is not None and _watched_content.isAncestorOf(watched))
-            ):
-                # D5: rows/strip/buttons are rebuilt per populate — watch
-                # newcomers the same way as the initial subtree.
-                try:
-                    child = event.child()
-                    if child is not None:
-                        self._install_subtree_hover_watch(child)
-                except Exception:
-                    pass
-            if watched is getattr(self, "_content", None):
-                t = event.type()
-                if t == QEvent.Type.Resize:
-                    try:
-                        self._reposition_source_inset()
-                    except Exception:
-                        pass
-                    try:
-                        from tabs.image_gallery.ui.quick_look.helpers import reposition_grip
-                        reposition_grip(self)
-                    except Exception:
-                        pass
-                elif t == QEvent.Type.MouseButtonPress:
-                    try:
-                        from tabs.image_gallery.ui.quick_look.helpers import handle_border_press
-                        if handle_border_press(self, event):
-                            return True
-                    except Exception:
-                        pass
-                elif t == QEvent.Type.MouseMove:
-                    try:
-                        from tabs.image_gallery.ui.quick_look.helpers import handle_border_move
-                        from tabs.image_gallery.ui.quick_look.helpers import trace_move
+    # -- pinning: resize re-pins (insets/nav/grip) + size floor --------------
 
-                        try:
-                            trace_move(self, "plate-move", event.position().toPoint(), watched)
-                        except Exception:
-                            pass
-                        if handle_border_move(self, event):
-                            return True
-                    except Exception:
-                        pass
-                elif t == QEvent.Type.MouseButtonRelease:
-                    try:
-                        from tabs.image_gallery.ui.quick_look.helpers import handle_border_release
-                        if handle_border_release(self, event):
-                            return True
-                    except Exception:
-                        pass
-                elif t == QEvent.Type.Leave:
-                    try:
-                        if getattr(self, "_border_drag", None) is None:
-                            from tabs.image_gallery.ui.quick_look.helpers import apply_resize_cursor
+    def _reposition_source_inset(self) -> None:
+        _pinning._reposition_source_inset(self)
 
-                            apply_resize_cursor(self, self._content, "plate", None)
-                    except Exception:
-                        pass
-            # D5: landing moves on content descendants (buttons, labels,
-            # viewports, bars) never reach the plate filter above, so a
-            # border→child jump strands a set plate cursor with no clear
-            # path. Recompute the slot from the landing position; hover-only,
-            # never consumed (drags keep the existing plate/ring paths).
-            try:
-                from PySide6.QtCore import QEvent as _QE2
-
-                _content = getattr(self, "_content", None)
-                _in_content = (
-                    _content is not None
-                    and watched is not _content
-                    and _content.isAncestorOf(watched)
-                )
-                if event.type() == _QE2.Type.MouseMove and _in_content:
-                    try:
-                        from PySide6.QtCore import Qt as _Qt2
-
-                        from tabs.image_gallery.ui.quick_look.helpers import (
-                            apply_resize_cursor as _arc2,
-                        )
-                        from tabs.image_gallery.ui.quick_look.helpers import (
-                            nav_button_at as _nba2,
-                        )
-                        from tabs.image_gallery.ui.quick_look.helpers import (
-                            resize_zone_at as _rza2,
-                        )
-
-                        if getattr(self, "_border_drag", None) is None:
-                            try:
-                                _held = event.buttons()
-                            except Exception:
-                                _held = _Qt2.MouseButton.NoButton
-                            if _held == _Qt2.MouseButton.NoButton:
-                                try:
-                                    _global = event.globalPosition().toPoint()
-                                except Exception:
-                                    _global = None
-                                if _global is not None:
-                                    try:
-                                        _ov_local = self.mapFromGlobal(_global)
-                                    except Exception:
-                                        _ov_local = None
-                                    try:
-                                        _c_local = _content.mapFromGlobal(_global)
-                                    except Exception:
-                                        _c_local = None
-                                    if _ov_local is not None and _c_local is not None:
-                                        # W11: nav-arrow rects never show resize.
-                                        try:
-                                            _nav = _nba2(self, _ov_local)
-                                        except Exception:
-                                            _nav = None
-                                        if _nav is not None:
-                                            _arc2(self, _content, "plate", None)
-                                        else:
-                                            from tabs.image_gallery.ui.quick_look.helpers import (
-                                                resize_cursor_for as _rcf2,
-                                            )
-
-                                            _arc2(self, _content, "plate", _rcf2(_rza2(_content, _c_local)))
-                    except Exception:
-                        pass
-            except Exception:
-                pass
-            # Slot frame (IC parity): the preview host is the single
-            # laid-out geometry authority; on its Resize mirror the rect
-            # onto every layout-external child (GPU canvas, first-frame
-            # cover) so the active surface never desyncs. Layout passes
-            # that settle the host without a card resize also re-pin the
-            # insets anchored to it.
-            try:
-                from PySide6.QtCore import QEvent as _QE
-
-                if watched is getattr(self, "_preview_host", None) and event.type() == _QE.Type.Resize:
-                    try:
-                        from tabs.image_gallery.ui.quick_look.preview_canvas_host import (
-                            _fit_preview_slot,
-                        )
-                        _fit_preview_slot(self)
-                    except Exception:
-                        pass
-                    try:
-                        self._reposition_source_inset()
-                    except Exception:
-                        pass
-            except Exception:
-                pass
-        except Exception:
-            pass
-        return super().eventFilter(watched, event)
-
-    # -- region selection (LMB drag over the preview → Ask AI region scope) ---
-
-    def _preview_rect_in_overlay(self):
-        host = getattr(self, "_preview_host", None)
-        if host is None:
-            return None
-        try:
-            top_left = host.mapTo(self, QPoint(0, 0))
-            return QRect(top_left, host.size())
-        except Exception:
-            return None
-
-    def _ensure_region_band(self):
-        band = getattr(self, "_region_band", None)
-        host = getattr(self, "_preview_host", None)
-        if band is None and host is not None:
-            try:
-                from tabs.image_gallery.ui.quick_look.region import RegionBand
-
-                band = RegionBand(host)
-                self._region_band = band
-            except Exception:
-                band = None
-        try:
-            if band is not None and host is not None:
-                band.setGeometry(host.rect())
-        except Exception:
-            pass
-        return band
-
-    def _maybe_start_region(self, event) -> bool:
-        try:
-            if event.button() != Qt.MouseButton.LeftButton:
-                return False
-        except Exception:
-            return False
-        rect = self._preview_rect_in_overlay()
-        if rect is None:
-            return False
-        try:
-            pos = event.position().toPoint()
-        except Exception:
-            return False
-        if not rect.contains(pos):
-            return False
-        host = getattr(self, "_preview_host", None)
-        try:
-            local = host.mapFrom(self, pos)
-        except Exception:
-            return False
-        self._region_active = True
-        self._region_start_host = QPoint(local)
-        band = self._ensure_region_band()
-        if band is not None:
-            try:
-                band.set_band(QRect(QPoint(local), QSize(0, 0)))
-                band.show()
-                band.raise_()
-            except Exception:
-                pass
-            # A new marquee supersedes whatever dismissal the previous
-            # selection armed: the close ending that flyout session must
-            # not wipe this one (one-gesture dismiss + reselect).
-            try:
-                begin = getattr(band, "begin_selection", None)
-                if callable(begin):
-                    begin()
-            except Exception:
-                pass
-        return True
-
-    def _update_region(self, event) -> None:
-        if not getattr(self, "_region_active", False):
-            return
-        band = getattr(self, "_region_band", None)
-        host = getattr(self, "_preview_host", None)
-        if band is None or host is None:
-            return
-        try:
-            local = host.mapFrom(self, event.position().toPoint())
-        except Exception:
-            return
-        local = QPoint(
-            max(0, min(host.width(), local.x())),
-            max(0, min(host.height(), local.y())),
-        )
-        start = getattr(self, "_region_start_host", None) or QPoint(0, 0)
-        band.set_band(QRect(start, local).normalized())
-
-    def _finish_region(self, event) -> None:
-        if not getattr(self, "_region_active", False):
-            return
-        self._region_active = False
-        band = getattr(self, "_region_band", None)
-        rect = getattr(band, "_rect", None) if band is not None else None
-        if rect is None or rect.width() < 4 or rect.height() < 4:
-            # Too small to ask about: drop the band as before.
-            if band is not None:
-                try:
-                    band.hide()
-                except Exception:
-                    pass
-                try:
-                    band.clear()
-                except Exception:
-                    pass
-            return
-        # Valid selection: KEEP the band visible. The Ask AI flyout anchors
-        # to it (RegionBand.flyoutAnchorRect — above the selected region,
-        # not the preview corner) and dismisses it when it closes.
-        if band is not None:
-            try:
-                band.show()
-                band.raise_()
-            except Exception:
-                pass
-        canvas = getattr(self, "_preview_canvas", None)
-        box = None
-        if canvas is not None:
-            try:
-                from tabs.image_gallery.ui.quick_look.region import norm_rect_for_band
-
-                box = norm_rect_for_band(canvas, rect)
-            except Exception:
-                box = None
-        item = getattr(self, "_current_item", None)
-        path = getattr(item, "path", None)
-        if path is None or not box:
-            return
-        try:
-            self.regionAskRequested.emit(str(path), box)
-        except Exception:
-            pass
-
-    def region_selection_anchor(self):
-        """Anchor for the region Ask AI flyout: the held selection band.
-
-        Returns the band while a valid selection is held (so the flyout
-        opens above the selected region via ``flyoutAnchorRect``), else
-        ``None`` (callers fall back to the preview host).
-        """
-        band = getattr(self, "_region_band", None)
-        try:
-            if band is not None and not band.isHidden():
-                rect = getattr(band, "_rect", None)
-                if (
-                    rect is not None
-                    and not rect.isNull()
-                    and rect.width() >= 4
-                    and rect.height() >= 4
-                ):
-                    return band
-        except Exception:
-            pass
-        return None
-
-    def hide_region_band(self) -> None:
-        """Drop a held region selection (the flyout-closed path)."""
-        band = getattr(self, "_region_band", None)
-        if band is None:
-            return
-        try:
-            dismiss = getattr(band, "dismiss_selection", None)
-            if callable(dismiss):
-                dismiss()
-                return
-        except Exception:
-            pass
-        try:
-            band.hide()
-        except Exception:
-            pass
-
-    # W10: the 8px ring OUTSIDE the card (on the veil) is probed here at
-    # overlay level. Card resize drags are enabled (QL_RESIZABLE=True):
-    # W11 ring/plate presses inside either nav-arrow rect walk the series
-    # via the helpers (arrows never start a drag); other ring presses fall
-    # through to the veil dismiss below. Plain veil clicks dismiss the
-    # overlay (reverses the W6/W11 background-click ban; Esc/deactivate
-    # stay pinned).
-    def mousePressEvent(self, event) -> None:  # noqa: N802
-        try:
-            from tabs.image_gallery.debug import gallery_debug as _dbg
-            from tabs.image_gallery.debug import gallery_debug_enabled as _dbg_enabled
-            from tabs.image_gallery.ui.quick_look.helpers import handle_ring_press, ring_zone_at
-
-            _press_dbg = _dbg_enabled()
-            _press_pos = event.position().toPoint()
-            _press_zone = ring_zone_at(self, _press_pos) if _press_dbg else None
-            if handle_ring_press(self, event):
-                return
-            if _press_dbg:
-                try:
-                    _receiver = self.childAt(_press_pos)
-                    _receiver_name = (
-                        f"{type(_receiver).__name__}:{_receiver.objectName()}"
-                        if _receiver is not None
-                        else "veil"
-                    )
-                except Exception:
-                    _receiver_name = "?"
-                _dbg(
-                    "ql-resize veil press declined zone=%s pos=(%d,%d) receiver=%s",
-                    _press_zone,
-                    _press_pos.x(),
-                    _press_pos.y(),
-                    _receiver_name,
-                )
-        except Exception:
-            pass
-        try:
-            if self._maybe_start_region(event):
-                return
-        except Exception:
-            pass
-        # Plain veil press (ring declined above, children eat their own
-        # presses): dismiss the overlay. Reverses the W6/W11 background-click
-        # ban; Esc/deactivate stay pinned (flags unchanged).
-        # NOTE: non-interactive children (Labels, histograms, scroll
-        # viewport gaps) do NOT accept presses — those bubble up here.
-        # A press inside the card is content, not veil: swallow it instead
-        # of dismissing, otherwise every click on metrics/headers/preview
-        # closes the overlay.
-        try:
-            _pos = event.position().toPoint()
-            _content = getattr(self, "_content", None)
-            if _content is not None:
-                try:
-                    import shiboken6 as _shib
-
-                    _valid = bool(_shib.isValid(_content))
-                except Exception:
-                    _valid = True
-                if _valid:
-                    try:
-                        _geo = _content.geometry()
-                    except Exception:
-                        _geo = None
-                    if _geo is not None and int(_geo.width()) > 0 and int(_geo.height()) > 0:
-                        if _geo.contains(_pos):
-                            try:
-                                event.accept()
-                            except Exception:
-                                pass
-                            return
-        except Exception:
-            pass
-        try:
-            self.dismiss()
-        except Exception:
-            pass
-        # Modal: the dismissing press is handled here — never propagate to
-        # the gallery beneath (one veil click must not also toggle/select).
-        try:
-            event.accept()
-        except Exception:
-            pass
-        return
-
-    def mouseDoubleClickEvent(self, event) -> None:  # noqa: N802
-        # Modal: swallow double-clicks landing while visible.
-        try:
-            event.accept()
-        except Exception:
-            pass
-        return
-
-    def wheelEvent(self, event) -> None:  # noqa: N802
-        # Modal: veil wheel must not scroll the gallery behind the overlay
-        # (children viewports eat their own wheel first).
-        try:
-            event.accept()
-        except Exception:
-            pass
-        return
-
-    def contextMenuEvent(self, event) -> None:  # noqa: N802
-        # Modal: no card menu from under the overlay (Menu key or
-        # right-release menu gesture while the overlay owns the window).
-        try:
-            event.accept()
-        except Exception:
-            pass
-        return
-
-    def mouseMoveEvent(self, event) -> None:  # noqa: N802
-        try:
-            from tabs.image_gallery.ui.quick_look.helpers import trace_move
-
-            try:
-                _pos = event.position().toPoint()
-                trace_move(self, "overlay-move", _pos, self.childAt(_pos))
-            except Exception:
-                pass
-        except Exception:
-            pass
-        try:
-            if getattr(self, "_region_active", False):
-                self._update_region(event)
-                return
-        except Exception:
-            pass
-        try:
-            if getattr(self, "_border_drag", None) is not None:
-                from tabs.image_gallery.ui.quick_look.helpers import handle_border_move
-                if handle_border_move(self, event):
-                    return
-            else:
-                from tabs.image_gallery.ui.quick_look.helpers import handle_ring_hover
-                handle_ring_hover(self, event)
-        except Exception:
-            pass
-        super().mouseMoveEvent(event)
-
-    def mouseReleaseEvent(self, event) -> None:  # noqa: N802
-        try:
-            if getattr(self, "_region_active", False):
-                self._finish_region(event)
-                return
-        except Exception:
-            pass
-        try:
-            from tabs.image_gallery.ui.quick_look.helpers import handle_ring_release
-            if handle_ring_release(self, event):
-                return
-        except Exception:
-            pass
-        super().mouseReleaseEvent(event)
-
-    def leaveEvent(self, event) -> None:  # noqa: N802
-        try:
-            if getattr(self, "_border_drag", None) is None:
-                from tabs.image_gallery.ui.quick_look.helpers import apply_resize_cursor
-
-                apply_resize_cursor(self, self, "overlay", None)
-        except Exception:
-            pass
-        super().leaveEvent(event)
-
-    def _release_preview_resources(self, *, for_walk: bool = False) -> None:
-        """Canvas lifecycle: clear_source() + close store + drop the cover.
-
-        Walk steps (``_populate``) keep both memo dicts so revisits reuse
-        the memoized store; hide/close drop everything. Idempotent; no-op
-        when the canvas path was never taken.
-        """
-        try:
-            if for_walk:
-                from tabs.image_gallery.ui.quick_look.preview_canvas_host import (
-                    release_preview_canvas_for_walk,
-                )
-
-                release_preview_canvas_for_walk(self)
-                return
-            from tabs.image_gallery.ui.quick_look.preview_canvas_host import release_preview_canvas
-
-            release_preview_canvas(self)
-        except Exception:
-            pass
-
-    def _grab_close_frame(self):
-        """Grab the last canvas frame for the close cover (None on miss)."""
-        try:
-            canvas = getattr(self, "_preview_canvas", None)
-            if canvas is None:
-                return None
-            try:
-                if not canvas.isVisible():
-                    return None
-            except Exception:
-                pass
-            try:
-                shot = canvas.grab()
-            except Exception:
-                return None
-            try:
-                if shot is None or shot.isNull():
-                    return None
-            except Exception:
-                return None
-            return shot
-        except Exception:
-            return None
-
-    def _plant_close_cover(self, shot) -> None:
-        """Freeze *shot* as an opaque raster cover (call while visible).
-
-        The canvas is a NATIVE window: when it unmaps, the compositor has
-        nothing for that rect for 1-2 frames (black flash) — no amount of
-        backing-store repainting fixes a compositor-level hole (proven:
-        synchronous grid pre-paint changed nothing). The cover is a plain
-        non-native QLabel: shown + repaint()ed synchronously while the
-        overlay is still up, it rides out the unmap and hides with the
-        overlay in the same stack. Next show_for drops it via the existing
-        "re-cover" path (release drops covers too, so plant AFTER release,
-        from a frame grabbed BEFORE it). Fail-open: no frame → no cover.
-        """
-        try:
-            if shot is None:
-                return
-            try:
-                if shot.isNull():
-                    return
-            except Exception:
-                return
-            try:
-                host = getattr(self, "_preview_host", None)
-                if host is None:
-                    return
-                from PySide6.QtCore import Qt as _Qt
-                from PySide6.QtWidgets import QLabel as _QLabel
-
-                cover = _QLabel(host)
-                try:
-                    cover.setObjectName("quicklook_preview_close_cover")
-                except Exception:
-                    pass
-                try:
-                    cover.setAlignment(_Qt.AlignmentFlag.AlignCenter)
-                except Exception:
-                    pass
-                try:
-                    cover.setPixmap(shot)
-                except Exception:
-                    return
-                try:
-                    cover.setAutoFillBackground(True)
-                except Exception:
-                    pass
-                try:
-                    cover.setGeometry(host.rect())
-                except Exception:
-                    pass
-                try:
-                    cover.show()
-                    cover.raise_()
-                    cover.repaint()
-                except Exception:
-                    pass
-                try:
-                    self._preview_cover = cover
-                except Exception:
-                    pass
-            except Exception:
-                pass
-        except Exception:
-            pass
-
-    def hide(self) -> None:  # noqa: N802
-        # Cover-then-release-then-hide, all while still visible: planting in
-        # hideEvent would be too late (hidden parent never paints). Covers
-        # every path — direct hide(), close() (via its internal hide) and
-        # toolkit dismiss() — since all funnel through here.
-        try:
-            if self.isVisible():
-                shot = self._grab_close_frame()
-                try:
-                    self._release_preview_resources()
-                except Exception:
-                    pass
-                if shot is not None:
-                    self._plant_close_cover(shot)
-        except Exception:
-            pass
-        try:
-            super().hide()
-        except Exception:
-            pass
-
-    def hideEvent(self, event) -> None:  # noqa: N802
-        try:
-            self._release_preview_resources()
-        except Exception:
-            pass
-        super().hideEvent(event)
-
-    def closeEvent(self, event) -> None:  # noqa: N802
-        # Same cover-then-release order as hide(): the default closeEvent
-        # hides only at its end, but our release runs first — grab the
-        # frame here while the canvas still presents. The internal hide()
-        # below finds the canvas already released (grab misses, idempotent
-        # release) and keeps the planted cover.
-        try:
-            if self.isVisible():
-                shot = self._grab_close_frame()
-                try:
-                    self._release_preview_resources()
-                except Exception:
-                    pass
-                if shot is not None:
-                    self._plant_close_cover(shot)
-        except Exception:
-            pass
-        try:
-            super().closeEvent(event)
-        except Exception:
-            pass
-
-    def _t(self, key: str, default: str) -> str:
-        """i18n lookup — EN ``default`` when no translator is wired."""
-        tr = getattr(self, "_tr", None)
-        if tr is None:
-            return default
-        try:
-            return tr(key, default)
-        except Exception:
-            return default
-
-    def _mode_str_and_fidelity(self) -> tuple[str, bool]:
-        """Current report mode string + fidelity flag (shared by populate/retranslate)."""
-        mode_str = ""
-        try:
-            if self._mode is not None:
-                mode_str = str(self._mode.value) if hasattr(self._mode, "value") else str(self._mode)
-            else:
-                mode_str = "fidelity"
-            mode_str = mode_str.upper()
-            if not mode_str.endswith(" MODE"):
-                mode_str = f"{mode_str} MODE"
-        except Exception:
-            mode_str = "FIDELITY MODE"
-        return mode_str, ("FIDELITY" in mode_str)
-
-    def retranslate(self, translate=None) -> None:
-        """Re-apply keyed chrome after a language switch.
-
-        Re-applies only the flag-dependent toggle labels (Set as
-        source/Unset, Reject/Restore), the static Delete label, and the
-        report header — a full ``_populate`` would re-decode the preview
-        pipeline for a pure text change (W12-A rationale).
-        """
-        if translate is not None:
-            self._tr = translate
-        item = getattr(self, "_current_item", None)
-        try:
-            self._set_source_btn.setVisible(True)
-            is_src = (
-                self._source_path is not None
-                and item is not None
-                and Path(getattr(item, "path", "")) == Path(self._source_path)
-            )
-            if callable(_set_colored_text):
-                _set_colored_text(
-                    self._set_source_btn,
-                    self._t("image_gallery.quick_look.unset_source", "Unset")
-                    if is_src
-                    else self._t("image_gallery.action.set_as_source", "Set as source"),
-                    None,
-                )
-        except Exception:
-            pass
-        try:
-            if item is not None and callable(_set_colored_text):
-                rejected = bool(getattr(item, "rejected", False))
-                _set_colored_text(
-                    self._reject_btn,
-                    self._t("image_gallery.quick_look.restore", "Restore")
-                    if rejected
-                    else f'✕ {self._t("image_gallery.quick_look.reject", "Reject")}',
-                    None,
-                )
-        except Exception:
-            pass
-        try:
-            self._delete_btn.setText(self._t("image_gallery.quick_look.delete", "Delete"))
-        except Exception:
-            pass
-        try:
-            mode_str, is_fidelity = self._mode_str_and_fidelity()
-            from tabs.image_gallery.ui.quick_look.helpers import populate_report_header
-
-            populate_report_header(self, is_fidelity, mode_str)
-        except Exception:
-            pass
-        # Filename meta line carries the localized size/upscale notes
-        # (``mixed sizes`` / ``N upscales of one source`` / ``upscale ×N``);
-        # re-render it for the live item so a language switch is not stale.
-        # Cheap: dims come from the metrics cache / QImageReader fast path,
-        # never a preview decode.
-        try:
-            if item is not None:
-                _, _is_fidelity = self._mode_str_and_fidelity()
-                from tabs.image_gallery.ui.quick_look.helpers import populate_filename_meta
-
-                populate_filename_meta(
-                    self, item, _is_fidelity, getattr(self, "_owner", None)
-                )
-        except Exception:
-            pass
-
-    def show_for(self, item, owner=None) -> None:
-        import time as _time
-
-        from tabs.image_gallery.debug import gallery_debug as _dbg
-        from tabs.image_gallery.debug import gallery_debug_enabled as _dbg_enabled
-
-        _dbg_on = _dbg_enabled()
-        _t0 = _time.perf_counter() if _dbg_on else 0.0
-        if _dbg_on:
-            try:
-                _dbg("quick look show_for begin path=%s", getattr(item, "path", item))
-            except Exception:
-                pass
-        if owner is not None:
-            # Explicit owner from the caller (see __init__ note): the only
-            # re-assignment point besides construction.
-            self._owner = owner
-        try:
-            self._ql_chrome_painted = False
-        except Exception:
-            pass
-        self._current_item = item
-        # Modal input grab: never disabled, never mouse-transparent — while
-        # visible every press lands here (veil dismiss or card swallow),
-        # never in the gallery beneath.
-        try:
-            self.setEnabled(True)
-            self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, False)
-        except Exception:
-            pass
-        owner = self._owner
-        mode_val = source = series_raw = None
-        all_items = None
-        try:
-            st = getattr(owner, "state", None) if owner is not None else None
-            if st is not None:
-                mode_val = getattr(st, "mode", None)
-                source = getattr(st, "source_path", None)
-                series_raw = getattr(st, "series", None)
-                all_items = getattr(st, "items", None)
-            else:
-                mode_val = getattr(owner, "_mode", None) if owner is not None else None
-                source = getattr(owner, "_source_path", None) if owner is not None else None
-                series_raw = getattr(owner, "_series", None) if owner is not None else None
-        except Exception:
-            pass
-        self._mode = mode_val
-        self._source_path = Path(source) if source is not None else None
-        if _dbg_on:
-            _t_state = _time.perf_counter()
-        self._series_items = self._resolve_series(item, series_raw, all_items)
-        self._current_idx = 0
-        try:
-            for i, m in enumerate(self._series_items):
-                if Path(getattr(m, "path", "")) == Path(getattr(item, "path", "")):
-                    self._current_idx = i
-                    break
-        except Exception:
-            pass
-        if _dbg_on:
-            _t_series = _time.perf_counter()
-            _dbg(
-                "quick look show_for phase state-resolve=%.1fms series-resolve=%.1fms n_series=%d",
-                (_t_state - _t0) * 1000.0,
-                (_t_series - _t_state) * 1000.0,
-                len(self._series_items),
-            )
-            _t_pop = _time.perf_counter()
-        self._populate()
-        if _dbg_on:
-            _t_pop_done = _time.perf_counter()
-            _dbg(
-                "quick look show_for phase populate=%.1fms total=%.1fms",
-                (_t_pop_done - _t_pop) * 1000.0,
-                (_t_pop_done - _t0) * 1000.0,
-            )
-        self.show()
-        try:
-            self.raise_()
-            self.setFocus(Qt.FocusReason.PopupFocusReason)
-        except Exception:
-            pass
-        # Re-assert the modal input grab AFTER show: populate-time rebuilds
-        # must never leave the overlay disabled/transparent (a visible but
-        # hit-test-invisible veil passes every press to the gallery beneath
-        # while looking modal — clicks select behind it, X/veil go dead).
-        try:
-            self.setEnabled(True)
-            self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, False)
-        except Exception:
-            pass
-        if _dbg_on:
-            try:
-                from PySide6.QtWidgets import QApplication as _QA2
-
-                _app2 = _QA2.instance()
-                _grab = None
-                try:
-                    from PySide6.QtWidgets import QWidget as _QW2
-
-                    _grab = _QW2.mouseGrabber()
-                except Exception:
-                    pass
-                _dbg(
-                    "quick look show input grabber=%s focus=%s active=%s",
-                    type(_grab).__name__ if _grab is not None else None,
-                    type(_app2.focusWidget()).__name__ if _app2 is not None and _app2.focusWidget() is not None else None,
-                    type(_app2.activeWindow()).__name__ if _app2 is not None and _app2.activeWindow() is not None else None,
-                )
-            except Exception:
-                pass
-        if _dbg_on:
-            _t_show = _time.perf_counter()
-        try:
-            self.show_overlay()
-        except Exception:
-            pass
-        if _dbg_on:
-            _t_overlay = _time.perf_counter()
-            _dbg(
-                "quick look show_for phase show=%.1fms show_overlay=%.1fms",
-                (_t_show - _t_pop_done) * 1000.0,
-                (_t_overlay - _t_show) * 1000.0,
-            )
-        # Post-show re-pin: base reposition() recenters the card AFTER
-        # _populate ran on stale pre-show geometry, and overlay-child nav
-        # circles are unknown to it — re-run the pin hooks on live geometry
-        # (same idiom as resizeEvent/eventFilter), or arrows/inset/grip keep
-        # the previous opening's coordinates on reopen.
-        try:
-            self._reposition_source_inset()
-        except Exception:
-            pass
-        try:
-            from tabs.image_gallery.ui.quick_look.helpers import reposition_grip
-
-            reposition_grip(self)
-        except Exception:
-            pass
-        if _dbg_on:
-            _dbg(
-                "quick look show_for done total=%.1fms repin=%.1fms path=%s",
-                (_time.perf_counter() - _t0) * 1000.0,
-                (_time.perf_counter() - _t_overlay) * 1000.0,
-                getattr(item, "path", item),
-            )
-
-    def show_quick_look(self, item, owner=None) -> None:
-        self.show_for(item, owner)
-
-    def refresh_artifacts(self, item) -> None:
-        try:
-            cur = getattr(self, "_current_item", None)
-            if cur is None:
-                return
-            try:
-                if Path(getattr(cur, "path", "")) != Path(getattr(item, "path", "")):
-                    return
-            except Exception:
-                if cur is not item:
-                    return
-            if not self.isVisible():
-                return
-            self._rebuild_artifacts(item)
-        except Exception:
-            pass
-
-    def refresh_metrics(self, item) -> None:
-        """W1 seam — W2 calls this from ``_on_fidelity_ready`` / set-source paths.
-
-        Mirrors ``refresh_artifacts``: rebuilds metrics + meta + brief for the
-        open overlay (no reopen needed when fidelity numbers land); no-op when
-        hidden or for another item. Never copied between items (path-guarded).
-        """
-        try:
-            cur = getattr(self, "_current_item", None)
-            if cur is None:
-                return
-            try:
-                if Path(getattr(cur, "path", "")) != Path(getattr(item, "path", "")):
-                    return
-            except Exception:
-                if cur is not item:
-                    return
-            if not self.isVisible():
-                return
-            try:
-                self._current_item = item
-            except Exception:
-                pass
-            # Re-read mode from owner state (W2 may have flipped it, e.g.
-            # set-as-source → FIDELITY) before rebuilding.
-            try:
-                owner = getattr(self, "_owner", None)
-                st = getattr(owner, "state", None) if owner is not None else None
-                if st is not None and getattr(st, "mode", None) is not None:
-                    self._mode = st.mode
-            except Exception:
-                pass
-            mode_str = "FIDELITY MODE"
-            try:
-                mode = getattr(self, "_mode", None)
-                if mode is not None:
-                    mode_str = str(mode.value) if hasattr(mode, "value") else str(mode)
-                mode_str = mode_str.upper()
-                if not mode_str.endswith(" MODE"):
-                    mode_str = f"{mode_str} MODE"
-            except Exception:
-                pass
-            is_fidelity = "FIDELITY" in mode_str
-            try:
-                from tabs.image_gallery.ui.quick_look.helpers import (
-                    populate_brief,
-                    populate_filename_meta,
-                )
-
-                populate_filename_meta(self, item, is_fidelity, getattr(self, "_owner", None))
-            except Exception:
-                pass
-            self._rebuild_metrics(item, is_fidelity, mode_str)
-            try:
-                from tabs.image_gallery.ui.quick_look.helpers import populate_brief as _pb
-
-                _pb(self, item)
-            except Exception:
-                pass
-        except Exception:
-            pass
-
-    def paintEvent(self, event) -> None:  # noqa: N802
-        """S4 modal dim veil (mockup fill-opacity 0.45), mirroring clean_review.
-
-        ``TopLevelInWindowOverlay`` paints nothing (transparent background),
-        so the veil lives here in gallery scope. The opacity is theme-aware
-        (``_dim_veil_alpha``): light keeps the mockup 0.45, dark softens so
-        the surroundings do not read as near-black beside the #383838 card.
-        """
-        try:
-            from tabs.image_gallery.ui.quick_look.labels_theme import _dim_veil_alpha
-
-            veil_alpha = _dim_veil_alpha()
-        except Exception:
-            veil_alpha = DIM_VEIL_ALPHA
-        try:
-            painter = QPainter(self)
-            # No hardcoded QColor (contracts/test_no_hardcoded_qcolor.py):
-            # the veil is mockup-specified plain black at an opacity, not
-            # a theme color — Qt global black + painter opacity.
-            painter.setOpacity(veil_alpha / 255.0)
-            painter.fillRect(self.rect(), QBrush(Qt.GlobalColor.black))
-            painter.end()
-        except Exception:
-            pass
-        try:
-            # Chrome painted: a cold-open canvas staged in populate may show.
-            if getattr(self, "_preview_canvas_pending", None) is not None:
-                try:
-                    from tabs.image_gallery.debug import ql_cover as _qlc
-                    from tabs.image_gallery.debug import ql_cover_enabled as _qlc_on
-
-                    if _qlc_on():
-                        _qlc("overlay paintEvent pending canvas -> reveal")
-                except Exception:
-                    pass
-                from tabs.image_gallery.ui.quick_look.preview_canvas_host import (
-                    reveal_pending_preview_canvas,
-                )
-
-                reveal_pending_preview_canvas(self)
-            self._ql_chrome_painted = True
-        except Exception:
-            pass
-        super().paintEvent(event)
-
-    def refresh_quick_look(self, item) -> None:
-        self.refresh_artifacts(item)
-
-    def _resolve_series(self, item, series_raw, all_items=None) -> list:
-        """Cluster for *item*: its series, or the ungrouped group.
-
-        Multi-member cluster wins. A singleton cluster (or no cluster at
-        all) falls back to the ungrouped group — every item outside a
-        multi-member cluster, in folder order — so the strip and the nav
-        arrows keep working instead of stranding one lonely thumb. The
-        grid shows singles under its UNGROUPED tail the same way.
-        """
-        if series_raw is None:
-            try:
-                series_raw = getattr(self._owner, "_series", None) if self._owner is not None else None
-            except Exception:
-                series_raw = None
-        normalized: list[list] = []
-        if series_raw:
-            for entry in list(series_raw):
-                if hasattr(entry, "members"):
-                    members = list(getattr(entry, "members") or [])
-                elif isinstance(entry, (list, tuple)):
-                    members = list(entry)
-                else:
-                    members = [entry]
-                if members:
-                    normalized.append(members)
-        try:
-            cur_path = Path(getattr(item, "path", ""))
-        except Exception:
-            cur_path = None
-            if normalized:
-                return normalized[0] if normalized else [item]
-            return [item]
-        for cl in normalized:
-            try:
-                if any(Path(getattr(m, "path", "")) == cur_path for m in cl):
-                    if len(cl) > 1:
-                        return list(cl)
-                    break  # singleton cluster → ungrouped group below
-            except Exception:
-                continue
-        try:
-            grouped = set()
-            for cl in normalized:
-                if len(cl) <= 1:
-                    continue
-                for m in cl:
-                    try:
-                        grouped.add(Path(getattr(m, "path", "")))
-                    except Exception:
-                        continue
-            pool = list(all_items) if all_items else [item]
-            ungrouped = []
-            for m in pool:
-                try:
-                    if Path(getattr(m, "path", "")) not in grouped:
-                        ungrouped.append(m)
-                except Exception:
-                    continue
-            if len(ungrouped) > 1:
-                return ungrouped
-        except Exception:
-            pass
-        return [item]
-
-    def _populate(self) -> None:
-        import time as _time
-
-        from tabs.image_gallery.debug import gallery_debug as _dbg
-        from tabs.image_gallery.debug import gallery_debug_enabled as _dbg_enabled
-
-        _dbg_on = _dbg_enabled()
-        _tp0 = _time.perf_counter() if _dbg_on else 0.0
-        item = self._current_item
-        if item is None:
-            return
-        # Hydrate the cached analysis BEFORE the report rebuild: the
-        # Composition metric row reads ``item.analysis`` and must be on the
-        # item by then (otherwise a cached analysis opens without the row).
-        # Per-axis AI notes no longer render on rows (plan-gallery-ai-quality
-        # UX contract).
-        try:
-            if getattr(item, "analysis", None) is None:
-                _owner = getattr(self, "_owner", None)
-                _hydrate = getattr(_owner, "hydrate_cached_analysis", None)
-                if callable(_hydrate):
-                    _hydrate(item)
-        except Exception:
-            pass
-        # Explicit triage owner for the populate helpers (G3: helpers take
-        # owner instead of reading the private attr).
-        try:
-            _populate_owner = self._owner
-        except Exception:
-            _populate_owner = None
-        # Populate-next lifecycle: walk-step release (memos survive the walk;
-        # hide/close take the full release). No fd/memmap leaks across walks;
-        # no-op label-only.
-        try:
-            self._release_preview_resources(for_walk=True)
-        except Exception:
-            pass
-        mode_str = ""
-        try:
-            if self._mode is not None:
-                mode_str = str(self._mode.value) if hasattr(self._mode, "value") else str(self._mode)
-            else:
-                mode_str = "fidelity"
-            mode_str = mode_str.upper()
-            if not mode_str.endswith(" MODE"):
-                mode_str = f"{mode_str} MODE"
-        except Exception:
-            mode_str = "FIDELITY MODE"
-        is_fidelity = "FIDELITY" in mode_str
-        # Delegate populated sections
-        if _dbg_on:
-            _tp_sections = _time.perf_counter()
-        try:
-            from tabs.image_gallery.ui.quick_look.helpers import (
-                populate_brief,
-                populate_filename_meta,
-                populate_preview,
-                populate_report_header,
-                populate_source_inset,
-            )
-            if _dbg_on:
-                _t = _time.perf_counter()
-            populate_preview(self, item)
-            if _dbg_on:
-                _dbg("quick look populate preview=%.1fms path=%s", (_time.perf_counter() - _t) * 1000.0, getattr(item, "path", item))
-                _t = _time.perf_counter()
-            populate_source_inset(self, item, is_fidelity, _populate_owner)
-            if _dbg_on:
-                _dbg("quick look populate source-inset=%.1fms", (_time.perf_counter() - _t) * 1000.0)
-                _t = _time.perf_counter()
-            populate_filename_meta(self, item, is_fidelity, _populate_owner)
-            if _dbg_on:
-                _dbg("quick look populate filename-meta=%.1fms", (_time.perf_counter() - _t) * 1000.0)
-                _t = _time.perf_counter()
-            populate_report_header(self, is_fidelity, mode_str)
-            if _dbg_on:
-                _dbg("quick look populate report-header=%.1fms", (_time.perf_counter() - _t) * 1000.0)
-        except Exception:
-            pass
-        if _dbg_on:
-            _t = _time.perf_counter()
-        self._rebuild_metrics(item, is_fidelity, mode_str)
-        if _dbg_on:
-            _dbg("quick look populate metrics=%.1fms", (_time.perf_counter() - _t) * 1000.0)
-            _t = _time.perf_counter()
-        self._rebuild_artifacts(item)
-        if _dbg_on:
-            _dbg("quick look populate artifacts=%.1fms", (_time.perf_counter() - _t) * 1000.0)
-            _t = _time.perf_counter()
-        try:
-            from tabs.image_gallery.ui.quick_look.helpers import populate_brief as _pb
-            _pb(self, item)
-        except Exception:
-            pass
-        if _dbg_on:
-            _dbg("quick look populate brief=%.1fms", (_time.perf_counter() - _t) * 1000.0)
-            _t = _time.perf_counter()
-        self._rebuild_strip()
-        if _dbg_on:
-            _dbg(
-                "quick look populate strip=%.1fms n_series=%d n_thumbs=%d total_populate=%.1fms",
-                (_time.perf_counter() - _t) * 1000.0,
-                len(self._series_items),
-                len(getattr(self, "_strip_buttons", [])),
-                (_time.perf_counter() - _tp0) * 1000.0,
-            )
-        try:
-            has_series = len(self._series_items) > 1
-            self._prev_btn.setEnabled(bool(has_series))
-            self._next_btn.setEnabled(bool(has_series))
-        except Exception:
-            pass
-        try:
-            # Always available (every mode): set-as-source from camera/batch
-            # switches to fidelity; on the current source it reads "Unset".
-            self._set_source_btn.setVisible(True)
-            is_src = (
-                self._source_path is not None
-                and Path(getattr(item, "path", "")) == Path(self._source_path)
-            )
-            if callable(_set_colored_text):
-                _set_colored_text(
-                    self._set_source_btn,
-                    self._t("image_gallery.quick_look.unset_source", "Unset")
-                    if is_src
-                    else self._t("image_gallery.action.set_as_source", "Set as source"),
-                    None,
-                )
-        except Exception:
-            pass
-        try:
-            rejected = bool(getattr(item, "rejected", False))
-            if callable(_set_colored_text):
-                _set_colored_text(
-                    self._reject_btn,
-                    self._t("image_gallery.quick_look.restore", "Restore")
-                    if rejected
-                    else f'✕ {self._t("image_gallery.quick_look.reject", "Reject")}',
-                    None,
-                )
-        except Exception:
-            pass
-        try:
-            _cmp = getattr(self, "_compare_btn", None)
-            if _cmp is not None:
-                _cmp.setEnabled(True)
-            _mlt = getattr(self, "_multi_btn", None)
-            if _mlt is not None:
-                _mlt.setEnabled(True)
-        except Exception:
-            pass
-        # W4 item 6: best-effort nav pin after populate (resizeEvent re-pins
-        # once live geometry lands).
-        try:
-            from tabs.image_gallery.ui.quick_look.helpers import reposition_nav_buttons
-            reposition_nav_buttons(self)
-        except Exception:
-            pass
-        # W8: pin the resize grip with the other absolute card children
-        # (the _content Resize filter re-pins on every later resize).
-        try:
-            from tabs.image_gallery.ui.quick_look.helpers import reposition_grip
-            reposition_grip(self)
-        except Exception:
-            pass
-        # Modal stacking: stay above window siblings (toasts/flyouts) while
-        # visible — a popup grab (card menu) still wins, by Qt design.
-        try:
-            if self.isVisible():
-                self.raise_()
-        except Exception:
-            pass
-
-    def _rebuild_metrics(self, item, is_fidelity: bool, mode_str: str) -> None:
-        try:
-            from tabs.image_gallery.ui.quick_look.metrics import rebuild_metrics
-            rebuild_metrics(self, item, is_fidelity, mode_str)
-        except Exception:
-            pass
-
-    def _rebuild_artifacts(self, item) -> None:
-        try:
-            from tabs.image_gallery.ui.quick_look.artifacts import rebuild_artifacts
-            rebuild_artifacts(self, item)
-        except Exception:
-            pass
-
-    def _ssim_subline(self, item) -> str:
-        try:
-            from tabs.image_gallery.ui.quick_look.metrics import ssim_subline
-            return ssim_subline(self, item)
-        except Exception:
-            return ""
-
-    def _rebuild_strip(self) -> None:
-        try:
-            from tabs.image_gallery.ui.quick_look.strip import rebuild_strip
-            rebuild_strip(self)
-        except Exception:
-            pass
-
-    def _walk(self, delta: int) -> None:
-        if not self._series_items or len(self._series_items) <= 1:
-            return
-        n = len(self._series_items)
-        self._current_idx = (self._current_idx + delta) % n
-        try:
-            self._current_item = self._series_items[self._current_idx]
-        except Exception:
-            return
-        self._populate()
-
-    def _on_compare(self) -> None:
-        if self._current_item is None:
-            return
-        # No compareRequested.emit here: the direct path below already sets
-        # selection {p} and runs carry_selected, and the only subscriber
-        # (on_quick_compare) would run carry_selected a SECOND time
-        # (double ImageCarryService.begin). on_quick_compare stays for the
-        # _on_multi path, which relies on it for the carry step.
-        try:
-            owner = self._owner
-            if owner is not None and hasattr(owner, "state"):
-                try:
-                    # G3 dispatch-only: narrow to {p} via controller dispatch
-                    # when available; storeless fallback mirrors via setattr.
-                    p = Path(getattr(self._current_item, "path", ""))
-                    setter = getattr(owner, "set_selection", None)
-                    if callable(setter):
-                        setter([p])
-                    else:
-                        st = owner.state
-                        if hasattr(st, "selected_paths"):
-                            setattr(st, "selected_paths", {p})
-                            if hasattr(st, "selected_order"):
-                                setattr(st, "selected_order", [p])
-                except Exception:
-                    pass
-                from tabs.image_gallery.use_cases import carry as _carry
-                _carry.carry_selected(owner)
-        except Exception:
-            pass
-        # W12-A: Compare navigates away (carry flow) — dismiss the overlay.
-        # Reject / Set as source stay open (triage continues); X still closes.
-        try:
-            self.hide()
-        except Exception:
-            pass
-
-    def _on_multi(self) -> None:
-        if self._current_item is None:
-            return
-        try:
-            owner = self._owner
-            p = Path(getattr(self._current_item, "path", ""))
-            if owner is not None and hasattr(owner, "state"):
-                # G3 dispatch-only: merge-add via controller dispatch when
-                # available; storeless fallback keeps the verbatim merge.
-                setter = getattr(owner, "set_selection", None)
-                if callable(setter):
-                    try:
-                        cur = list(getattr(owner.state, "selected_paths", None) or [])
-                        merged: list = []
-                        seen: set = set()
-                        for cand in list(cur) + [p]:
-                            try:
-                                key = str(cand)
-                            except Exception:
-                                continue
-                            if key not in seen:
-                                seen.add(key)
-                                merged.append(cand)
-                        setter(merged)
-                    except Exception:
-                        pass
-                else:
-                    st = owner.state
-                    if hasattr(st, "selected_paths"):
-                        try:
-                            st.selected_paths.add(p)
-                        except Exception:
-                            try:
-                                setattr(st, "selected_paths", {p})
-                            except Exception:
-                                pass
-                        try:
-                            if hasattr(st, "selected_order") and p not in st.selected_order:
-                                st.selected_order.append(p)
-                        except Exception:
-                            pass
-                try:
-                    w = getattr(owner, "widget", None) or owner
-                    if hasattr(w, "_grid_view"):
-                        w._grid_view.apply_selection(getattr(owner.state, "selected_paths", {p}))
-                except Exception:
-                    pass
-            self.compareRequested.emit(p)
-        except Exception:
-            pass
-        # W12-A: verified in code that _on_multi enters the compare flow
-        # (compareRequested -> on_quick_compare -> carry_selected ->
-        # ImageCarryService.begin), so it dismisses like Compare. Reject /
-        # Set as source stay open (triage continues); X still closes.
-        try:
-            self.hide()
-        except Exception:
-            pass
-
-    def _on_reject(self) -> None:
-        if self._current_item is None:
-            return
-        try:
-            p = Path(getattr(self._current_item, "path", ""))
-            owner = self._owner
-            if owner is not None:
-                try:
-                    from tabs.image_gallery.use_cases import triage as _triage
-                    _triage.toggle_reject(owner, p)
-                except Exception:
-                    try:
-                        cur = bool(getattr(self._current_item, "rejected", False))
-                        self._current_item.rejected = not cur
-                    except Exception:
-                        pass
-                try:
-                    w = getattr(owner, "widget", None) or owner
-                    if hasattr(w, "refresh_card"):
-                        w.refresh_card(self._current_item)
-                    if hasattr(w, "set_triage"):
-                        st = getattr(owner, "state", None)
-                        if st is not None:
-                            rejected_n = sum(1 for it in getattr(st, "items", []) if bool(getattr(it, "rejected", False)))
-                            try:
-                                w.stats_strip.set_rejected_count(rejected_n)
-                            except Exception:
-                                pass
-                except Exception:
-                    pass
-            # No rejectToggled.emit here: _on_reject already flipped the flag
-            # above, and the only subscriber (on_quick_reject, wired in
-            # quick_look_hooks.show_quick_look) would flip it BACK plus run a
-            # second full show_for (~300ms of redundant re-populate). External
-            # reject triggers (card menu, hover capsule) still reach the open
-            # overlay via on_quick_reject — that path is untouched.
-            self._refresh_triage_state()  # W12-A: Reject stays open — triage continues.
-        except Exception:
-            pass
-
-    def _refresh_triage_state(self) -> None:
-        """Light refresh after a triage flag flip (reject/unreject).
-
-        A full ``_populate()`` rebuilds the preview pipeline (TileStore
-        stream + pyramid, ~1s per 5K file) — pure waste when only the
-        rejected flag changed. Refresh just the flag-dependent chrome:
-        reject label, brief and strip dim. Preview, metrics, artifacts
-        and report stay untouched.
-        """
-        item = self._current_item
-        if item is None:
-            return
-        try:
-            rejected = bool(getattr(item, "rejected", False))
-            if callable(_set_colored_text):
-                _set_colored_text(
-                    self._reject_btn,
-                    self._t("image_gallery.quick_look.restore", "Restore")
-                    if rejected
-                    else f'✕ {self._t("image_gallery.quick_look.reject", "Reject")}',
-                    None,
-                )
-        except Exception:
-            pass
-        try:
-            from tabs.image_gallery.ui.quick_look.helpers import populate_brief as _pb
-
-            _pb(self, item)
-        except Exception:
-            pass
-        try:
-            self._rebuild_strip()
-        except Exception:
-            pass
-
-    def _on_delete(self) -> None:
-        """Remove the current item from the grid (file on disk stays).
-
-        Same semantics as the card menu "Remove from view"
-        (``triage.remove_from_grid``). After removal the overlay advances
-        to the next series item; the last item dismisses the overlay.
-        """
-        if self._current_item is None:
-            return
-        try:
-            p = Path(getattr(self._current_item, "path", ""))
-            owner = self._owner
-            if owner is not None:
-                try:
-                    from tabs.image_gallery.use_cases import triage as _triage
-
-                    _triage.remove_from_grid(owner, p)
-                except Exception:
-                    pass
-            try:
-                self._series_items = [
-                    m
-                    for m in (self._series_items or [])
-                    if Path(getattr(m, "path", "")) != p
-                ]
-            except Exception:
-                self._series_items = []
-            if not self._series_items:
-                try:
-                    self.hide()
-                except Exception:
-                    pass
-                return
-            try:
-                self._current_idx = min(self._current_idx, len(self._series_items) - 1)
-                self._current_item = self._series_items[self._current_idx]
-            except Exception:
-                return
-            self._populate()
-        except Exception:
-            pass
-
-    def _on_set_source(self) -> None:
-        if self._current_item is None:
-            return
-        try:
-            p = Path(getattr(self._current_item, "path", ""))
-            owner = self._owner
-            # Already the source → the button reads "Unset": clear it and
-            # return the pool to its no-source mode.
-            is_src = self._source_path is not None and p == Path(self._source_path)
-            if is_src:
-                try:
-                    from tabs.image_gallery.ui.quick_look_hooks import on_quick_set_source as _set_src
-
-                    _set_src(owner, None)
-                except Exception:
-                    pass
-                self._source_path = None
-                try:
-                    st = getattr(owner, "state", None) if owner is not None else None
-                    mode = getattr(st, "mode", None)
-                    if mode is not None:
-                        self._mode = mode
-                except Exception:
-                    pass
-                self._populate()
-                return
-            new_mode = None
-            if owner is not None:
-                try:
-                    st = getattr(owner, "state", None)
-                    if st is not None:
-                        # G3 dispatch-only seam: prefer controller.set_source
-                        # (added by G1) when available; absent on this base,
-                        # so mirror locally until the seam lands.
-                        # TODO(G1): route via controller.set_source(p).
-                        set_source = getattr(owner, "set_source", None)
-                        if callable(set_source):
-                            try:
-                                set_source(p)
-                            except Exception:
-                                pass
-                        else:
-                            setattr(st, "source_path", p)
-                        # P0-6: re-run mode selection so the chip flips to
-                        # FIDELITY (a source hub implies fidelity mode).
-                        try:
-                            from tabs.image_gallery.services.mode import select_mode
-
-                            new_mode = select_mode(
-                                getattr(st, "series", None),
-                                getattr(st, "items", None),
-                                p,
-                            )
-                            st.mode = new_mode
-                        except Exception:
-                            new_mode = None
-                    w = getattr(owner, "widget", None) or owner
-                    if hasattr(w, "_source_path"):
-                        w._source_path = p
-                    if hasattr(w, "stats_strip"):
-                        try:
-                            mode = new_mode
-                            if mode is None:
-                                mode = getattr(st, "mode", None) if st is not None else getattr(w, "_mode", None)
-                            mode_name = getattr(mode, "value", mode) or "fidelity"
-                            w.stats_strip.set_mode(str(mode_name), p)
-                        except Exception:
-                            pass
-                except Exception:
-                    pass
-            self._source_path = p
-            if new_mode is not None:
-                self._mode = new_mode
-            self.setSource.emit(p)
-            self._populate()  # W12-A: Set as source stays open — triage continues.
-        except Exception:
-            pass
-
-    def keyPressEvent(self, event) -> None:  # noqa: N802
-        k = event.key()
-        # Esc closes via the toolkit base (close_on_escape=True); ←→ still
-        # walk the series here.
-        if k in (Qt.Key.Key_Left, Qt.Key.Key_Right):
-            delta = -1 if k == Qt.Key.Key_Left else 1
-            self._walk(delta)
-            event.accept()
-            return
-        super().keyPressEvent(event)
+    def resizeEvent(self, event):  # noqa: N802
+        _pinning.resizeEvent(self, event)
 
     def sizeHint(self) -> QSize:  # noqa: N802
-        # Matches the content floor (1040x680 for three artifact rows).
-        return QSize(scaled_px(1040), scaled_px(680))
+        return _pinning.sizeHint(self)
+
+    # -- region selection (LMB drag over the preview → Ask AI region scope) --
+    #       (overlay_parts/region_select.py)
+
+    def _preview_rect_in_overlay(self):
+        return _region_select._preview_rect_in_overlay(self)
+
+    def _ensure_region_band(self):
+        return _region_select._ensure_region_band(self)
+
+    def _maybe_start_region(self, event) -> bool:
+        return _region_select._maybe_start_region(self, event)
+
+    def _update_region(self, event) -> None:
+        _region_select._update_region(self, event)
+
+    def _finish_region(self, event) -> None:
+        _region_select._finish_region(self, event)
+
+    def region_selection_anchor(self):
+        return _region_select.region_selection_anchor(self)
+
+    def hide_region_band(self) -> None:
+        _region_select.hide_region_band(self)
+
+    # -- input events (overlay_parts/input_events.py) ------------------------
+
+    def mousePressEvent(self, event) -> None:  # noqa: N802
+        _input_events.mousePressEvent(self, event)
+
+    def mouseDoubleClickEvent(self, event) -> None:  # noqa: N802
+        _input_events.mouseDoubleClickEvent(self, event)
+
+    def wheelEvent(self, event) -> None:  # noqa: N802
+        _input_events.wheelEvent(self, event)
+
+    def contextMenuEvent(self, event) -> None:  # noqa: N802
+        _input_events.contextMenuEvent(self, event)
+
+    def mouseMoveEvent(self, event) -> None:  # noqa: N802
+        _input_events.mouseMoveEvent(self, event)
+
+    def mouseReleaseEvent(self, event) -> None:  # noqa: N802
+        _input_events.mouseReleaseEvent(self, event)
+
+    def leaveEvent(self, event) -> None:  # noqa: N802
+        _input_events.leaveEvent(self, event)
+
+    def keyPressEvent(self, event) -> None:  # noqa: N802
+        _input_events.keyPressEvent(self, event)
+
+    # -- lifecycle: canvas release + close cover + hide/close ----------------
+    #       (overlay_parts/lifecycle.py)
+
+    def _release_preview_resources(self, *, for_walk: bool = False) -> None:
+        _lifecycle._release_preview_resources(self, for_walk=for_walk)
+
+    def _grab_close_frame(self):
+        return _lifecycle._grab_close_frame(self)
+
+    def _plant_close_cover(self, shot) -> None:
+        _lifecycle._plant_close_cover(self, shot)
+
+    def hide(self) -> None:  # noqa: N802
+        _lifecycle.hide(self)
+
+    def hideEvent(self, event) -> None:  # noqa: N802
+        _lifecycle.hideEvent(self, event)
+
+    def closeEvent(self, event) -> None:  # noqa: N802
+        _lifecycle.closeEvent(self, event)
+
+    # -- theming / translation: veil paint + retranslate ---------------------
+    #       (overlay_parts/theming.py)
+
+    def _t(self, key: str, default: str) -> str:
+        return _theming._t(self, key, default)
+
+    def _mode_str_and_fidelity(self) -> tuple[str, bool]:
+        return _theming._mode_str_and_fidelity(self)
+
+    def retranslate(self, translate=None) -> None:
+        _theming.retranslate(self, translate)
+
+    def paintEvent(self, event) -> None:  # noqa: N802
+        _theming.paintEvent(self, event)
+
+    # -- show / refresh (overlay_parts/show.py) ------------------------------
+
+    def show_for(self, item, owner=None) -> None:
+        _show.show_for(self, item, owner)
+
+    def show_quick_look(self, item, owner=None) -> None:
+        _show.show_quick_look(self, item, owner)
+
+    def refresh_artifacts(self, item) -> None:
+        _show.refresh_artifacts(self, item)
+
+    def refresh_metrics(self, item) -> None:
+        _show.refresh_metrics(self, item)
+
+    def refresh_quick_look(self, item) -> None:
+        _show.refresh_quick_look(self, item)
+
+    def _rebuild_metrics(self, item, is_fidelity: bool, mode_str: str) -> None:
+        _show._rebuild_metrics(self, item, is_fidelity, mode_str)
+
+    def _rebuild_artifacts(self, item) -> None:
+        _show._rebuild_artifacts(self, item)
+
+    def _ssim_subline(self, item) -> str:
+        return _show._ssim_subline(self, item)
+
+    def _rebuild_strip(self) -> None:
+        _show._rebuild_strip(self)
+
+    # -- populate / series resolve / walk (overlay_parts/populate.py) --------
+
+    def _resolve_series(self, item, series_raw, all_items=None) -> list:
+        return _populate_parts._resolve_series(self, item, series_raw, all_items)
+
+    def _populate(self) -> None:
+        _populate_parts._populate(self)
+
+    def _walk(self, delta: int) -> None:
+        _populate_parts._walk(self, delta)
+
+    # -- triage dispatch: bottom-bar buttons (overlay_parts/dispatch.py) -----
+
+    def _on_compare(self) -> None:
+        _dispatch._on_compare(self)
+
+    def _on_multi(self) -> None:
+        _dispatch._on_multi(self)
+
+    def _on_reject(self) -> None:
+        _dispatch._on_reject(self)
+
+    def _refresh_triage_state(self) -> None:
+        _dispatch._refresh_triage_state(self)
+
+    def _on_delete(self) -> None:
+        _dispatch._on_delete(self)
+
+    def _on_set_source(self) -> None:
+        _dispatch._on_set_source(self)

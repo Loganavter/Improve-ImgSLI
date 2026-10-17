@@ -123,9 +123,9 @@
     }
   },
   "focus_reasons": {
-    "src/tabs/image_gallery/ui/quick_look.py": {
+    "src/tabs/image_gallery/ui/quick_look/overlay_parts/show.py": {
       "reason": "grandfathered-quicklook-focus",
-      "justification": "QuickLookOverlay raise+focus on show; window-parented (see tab_modals)."
+      "justification": "QuickLookOverlay raise+focus on show; window-parented (see tab_modals). Moved with show_for() into overlay_parts (plan-gallery-split-2026-10-17 Part C2)."
     },
     "src/tabs/image_gallery/ui/clean_review/__init__.py": {
       "reason": "grandfathered-clean-review-focus",
