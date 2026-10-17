@@ -520,6 +520,7 @@ class LiveBackend:
             "dump_ui_layout",
             "list_surfaces",
             "ui_elements",
+            "ui_nav_state",
             "jobs_list",
         }
     )
@@ -796,6 +797,35 @@ class LiveBackend:
             "elements": rows,
             "source": "live",
         }
+
+    def ui_nav_state(self, *, client: LiveClient | None = None) -> dict:
+        """The live keyboard-navigation model (live-only; no headless analogue).
+
+        Sections (ordered), the Qt focus widget, the last keyboard-granted
+        widget and every open in-window overlay with the children Qt could
+        focus but no section owns. Use it together with ``nav_key`` to judge
+        whether a control is reachable by keyboard at all.
+        """
+        result = self._request("ui_nav_state", {}, client)
+        return {**result, "source": "live"}
+
+    def nav_key(
+        self, *, client: LiveClient | None = None, keys: str, anchor: str | None = None
+    ) -> dict:
+        """Deliver keys through the app's own keyboard-navigation model.
+
+        Unlike ``press_keys`` (one event aimed at one widget), this reports
+        which layer took each key and how focus moved. ``anchor`` names an
+        element id to focus first, with the app's own focus-reason policy.
+        """
+        params: dict[str, Any] = {"keys": keys}
+        if anchor:
+            params["anchor"] = anchor
+        result = self._request("nav_key", params, client)
+        # ``activated`` is reported because the app's navigation is inert while
+        # the window is not OS-active: false means the keys were measured
+        # against an app a real keyboard could not have reached either.
+        return {**result, "source": "live"}
 
     def ui_click(
         self,
