@@ -185,6 +185,7 @@ def build_gallery_card(*args, **kwargs) -> Button:  # type: ignore[no-untyped-de
     item = kwargs.pop("item", None)
     owner = kwargs.pop("owner", None)
     domain = kwargs.pop("domain", None)
+    profile = kwargs.pop("profile", None)
 
     actual_parent = parent
     actual_item = item
@@ -238,6 +239,14 @@ def build_gallery_card(*args, **kwargs) -> Button:  # type: ignore[no-untyped-de
             domain = getattr(owner, "_judgment_domain", None)
         except Exception:
             domain = None
+    if profile is None and owner is not None:
+        # Fallback for direct callers: the LIVE stored profile (never cached
+        # on the widget — see grid_view._resolve_profile).
+        try:
+            st = getattr(owner, "state", None)
+            profile = getattr(st, "metric_profile", None) if st is not None else None
+        except Exception:
+            profile = None
     cover = _cover_region(actual_item)
     text_rows = _text_rows(actual_item, actual_translate, mode=mode)
     # CustomSplit for 8px padding around preview 234×110 r8 at 8,8, text 52 zone at 118 — matches svg 250×170 r10 outer
@@ -292,7 +301,8 @@ def build_gallery_card(*args, **kwargs) -> Button:  # type: ignore[no-untyped-de
     _set_card_tooltip(card, actual_item, actual_translate)
     try:
         _dcols, _dinfos = metric_dots_for_item(
-            actual_item, mode=mode, domain=domain, translate=actual_translate
+            actual_item, mode=mode, domain=domain, translate=actual_translate,
+            profile=profile,
         )
         card._gallery_dot_colors = tuple(_dcols)  # type: ignore[attr-defined]
         card._gallery_dot_infos = tuple(_dinfos)  # type: ignore[attr-defined]
@@ -389,6 +399,7 @@ def update_gallery_card(
     *,
     translate=None,
     domain: object = None,
+    profile: object = None,
 ) -> None:
     """In-place update of a live gallery card for ``item``.
 
@@ -396,6 +407,11 @@ def update_gallery_card(
     by callers); the pooled ``_gallery_owner`` attribute is no longer
     consulted (G2 gallery contract). All live callers pass ``mode``
     explicitly, so ``owner=None`` simply skips the fallback (fail-open).
+
+    *profile* is the ACTIVE metric profile (live, never cached on the card —
+    see ``grid_view._resolve_profile``): it beats *mode* for the dot axis set
+    so the dots track a profile re-derived from the settled metrics. ``None``
+    reproduces the mode mapping.
 
     *translate* is the tab translator (``_tr``); the BUILD path
     (``build_gallery_card``) already receives it, but the update path did
@@ -450,12 +466,22 @@ def update_gallery_card(
             _domain = None
     if _domain is None:
         _domain = getattr(card, "_gallery_domain", None)
+    # The profile is read LIVE (never the card's own memory): a folder with no
+    # stored profile must fall back to the mode mapping, not to the last
+    # profile this pooled card happened to render (grid_view._resolve_profile).
+    _profile = profile
+    if _profile is None and owner is not None:
+        try:
+            st = getattr(owner, "state", None)
+            _profile = getattr(st, "metric_profile", None) if st is not None else None
+        except Exception:
+            _profile = None
     _dot_tr = translate
     if not callable(_dot_tr):
         _dot_tr = getattr(card, "_gallery_translate", None)
     try:
         _dcols, _dinfos = metric_dots_for_item(
-            item, mode=_mode, domain=_domain, translate=_dot_tr
+            item, mode=_mode, domain=_domain, translate=_dot_tr, profile=_profile
         )
         card._gallery_dot_colors = tuple(_dcols)  # type: ignore[attr-defined]
         card._gallery_dot_infos = tuple(_dinfos)  # type: ignore[attr-defined]
