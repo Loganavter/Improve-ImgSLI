@@ -41,7 +41,7 @@ fallback window, e.g. `:97`).
 
 ## Surface at a glance
 
-20 tools — 9 read-only, 11 mutating (reads and writes never share a tool):
+22 tools — 10 read-only, 12 mutating (reads and writes never share a tool):
 
 | Tool | Kind | What it does |
 |---|---|---|
@@ -53,6 +53,7 @@ fallback window, e.g. `:97`).
 | `dump_ui_layout` | read | widget tree JSON (geometry, colors, bound action ids) |
 | `list_surfaces` | read | capture-surface names for `capture_surface` |
 | `ui_elements` | read | live inventory of interactive elements (id, role, label, rects, enabled) |
+| `ui_nav_state` | read | live keyboard-navigation model: sections + focus + overlay children no section owns (live-only) |
 | `jobs_list` | read | live in-flight long passes (kind, status, progress, elapsed_s, message) |
 | `open_tab` | write | open/focus a tab kind (live) or launch it (fallback) |
 | `run_action` | write | run one ActionRegistry id |
@@ -61,6 +62,7 @@ fallback window, e.g. `:97`).
 | `set_language` | write | set `language` (en/ru/zh/pt_BR) |
 | `capture_surface` | write | screenshot a named surface to PNG |
 | `press_keys` | write | inject keyboard combos (`target=` aims them at one element) |
+| `nav_key` | write | press keys through the app's own navigation sections and report what took them (live-only) |
 | `ui_click` | write | click an element by id, in-process (live-only) |
 | `ui_hover` | write | hover an element by id, in-process (live-only) |
 | `ui_focus` | write | focus an element by id, in-process (live-only) |
@@ -118,6 +120,36 @@ answers (see [Flatpak sandbox](#flatpak-installed-app-p0)). After a transport
 failure the server pauses re-attaching for a couple of seconds so a dead socket
 is not retried on every call. The app refuses connections from another uid (its
 own `SO_PEERCRED` check); this client only has to degrade cleanly.
+
+### Judging keyboard reachability (`ui_nav_state` + `nav_key`)
+
+The app's keyboard cursor is **not** `QApplication.focusWidget()`. Arrow keys
+belong to `sli_ui_toolkit`'s `NavigationManager`, which keeps an ordered list of
+*sections* (title bar → tab strip → session picker → a tab's toolbar/grid rows)
+and hands a key to the section whose `owns()` accepts the focused widget; whole
+surfaces (the Quick Look overlay, flyouts) instead handle keys in their own
+`keyPressEvent` and are owned by no section. `press_keys` cannot judge that
+model: it aims one event at one widget (right for a canvas, whose shortcuts are
+not in the focus chain) and its events carry no focus attribution, so the
+sections never engage and "the key reached the control" is indistinguishable
+from "the key went nowhere".
+
+Two tools close that gap; both are **live-only**:
+
+| Call | What it answers |
+|---|---|
+| `ui_nav_state {}` | the model itself: ordered `sections` (section + owner + `extra_keys`), `focus`, `last_keyboard_focus`, `modality`, and every open in-window `overlays` entry with its focusable `children` — each child carrying `owned_by_section` (`null` = Qt could focus it, no section drives it: the honest "a key cannot reach this" signal) and `keyboard_ring` (the toolkit's own cursor-visibility flag) |
+| `nav_key {keys, anchor?}` | what a key *does*: the event goes to the widget a user's key would reach (optionally focusing `anchor=<element id>` first, with the app's own focus-reason policy) and travels through the app's real filters; each `steps[]` entry reports `handled` — `section:<name>` (a navigation section acted), `focus` (Qt moved focus, no section), `surface` (the widget/surface's own `keyPressEvent` took it without moving focus), `unhandled` (the key was lost) — plus `accepted`, `focus_before`/`focus_after` and the owner before/after. `activated: false` means the app window could not be made OS-active, so the measurement describes an app a real keyboard could not reach either |
+
+Reachability is therefore *measured*, not assumed: `ui_nav_state` shows which
+controls no section owns, and `nav_key` shows whether a key aimed at one of
+them changes anything (an `unhandled` step is the evidence, not a guess). Do not
+substitute `ui_click` for this judgement — it delivers in-process, so it fires
+a handler even for a widget a real mouse or keyboard cannot reach. Conversely,
+`ui_click`'s in-process path cannot *reveal* a keyboard gap: after the 2026-10-17
+gallery session, `nav_key` is the only honest instrument for it (20/20 Quick
+Look children unowned, `Down` unhandled at the action row, `Tab` moving focus
+without a section).
 
 ### Jobs: watching and stopping the long passes (P3)
 
@@ -180,11 +212,12 @@ resilience — but it is what stops an agent from double-applying an edit:
 
 - **Reads retry exactly once** when the wire times out (`list_actions`,
   `list_sessions`, `get_state`, `read_log`, `query_trace`, `dump_ui_layout`,
-  `list_surfaces`, `ui_elements`, `jobs_list`); a second timeout falls back like
-  any other transport failure.
+  `list_surfaces`, `ui_elements`, `ui_nav_state`, `jobs_list`); a second timeout
+  falls back like any other transport failure.
 - **Mutations never auto-retry** (`open_tab`, `run_action`, `open_folder`,
-  `set_theme`, `set_language`, `capture_surface`, `press_keys`, `ui_click`,
-  `ui_hover`, `ui_focus`, `jobs_cancel`). A retry could double-apply the edit.
+  `set_theme`, `set_language`, `capture_surface`, `press_keys`, `nav_key`,
+  `ui_click`, `ui_hover`, `ui_focus`, `jobs_cancel`). A retry could double-apply
+  the edit.
 - **The two failure kinds stay distinguishable in the message text**: a
   transport failure *before* the request left the process says **"not sent"**
   (connect/write); one *after* the request was written says **"sent, no
@@ -351,7 +384,7 @@ fabricated result:
 | request line over the 1 MiB cap | this server (stdio) | JSON-RPC `-32600` "request line exceeds the … byte cap" |
 | unknown control-channel method | live app | `ok: false` + hint, connection survives |
 | foreign uid | live app (`SO_PEERCRED`, before reading a byte) | connection closed → the call falls back |
-| non-live `press_keys` / `ui_elements` / `ui_click` / `ui_hover` / `ui_focus` | this server | `isError` "needs a running app" (never a throwaway app faking a target) |
+| non-live `press_keys` / `nav_key` / `ui_elements` / `ui_nav_state` / `ui_click` / `ui_hover` / `ui_focus` | this server | `isError` "needs a running app" (never a throwaway app faking a target) |
 | non-live `jobs_list` / `jobs_cancel` | this server | `isError` "no live instance; job state needs a running app" (never a fake empty list) |
 | `jobs_cancel` on a kind with no cooperative cancel | live app | `ok: false` "cancel is not supported for kind …" + hint; never a fake cancel |
 | `jobs_cancel` on an unknown or settled id | live app | `ok: false` "no running job with id …" + `jobs_list` hint |
@@ -365,16 +398,18 @@ fabricated result:
 The `annotations` hints were checked against what each handler actually does,
 because that is what lets a client auto-approve reads:
 
-- **Read-only tools really read.** All nine (`list_actions`, `list_sessions`,
+- **Read-only tools really read.** All ten (`list_actions`, `list_sessions`,
   `get_state`, `read_log`, `query_trace`, `dump_ui_layout`, `list_surfaces`,
-  `ui_elements`, `jobs_list`) carry `readOnlyHint: true, destructiveHint: false`
+  `ui_elements`, `ui_nav_state`, `jobs_list`) carry `readOnlyHint: true,
+  destructiveHint: false`
   and touch no app state — `ui_elements` only *inventories* the live window, and
   `jobs_list` only reads the app's own counters (it never resolves a lazy tab
   service, which would materialize a tab as a side effect of listing). Reads may
   retry once (above); none mutate.
-- **Mutating tools are honestly marked.** All eleven carry `readOnlyHint: false`.
+- **Mutating tools are honestly marked.** All twelve carry `readOnlyHint: false`.
   `run_action` alone advertises `destructiveHint: true` (it can run any
-  registered action, including `platform.quit_app`). `press_keys`, `ui_click` and
+  registered action, including `platform.quit_app`). `press_keys`, `nav_key`,
+  `ui_click` and
   `jobs_cancel` are `destructiveHint: false` but `idempotentHint: false`
   (repeating the same combo/click is not a no-op; re-sending a settled job id is
   an error, not a second success). `ui_hover`/`ui_focus` settle to the same
@@ -422,3 +457,10 @@ with the SDK's low-level `Server` unchanged.
 - [LOGGING.md](LOGGING.md) — `log.txt` layout `read_log` parses
 - [UI_LAYOUT_DUMP.md](UI_LAYOUT_DUMP.md) — the widget-tree dump
 - [SCREENSHOTS.md](SCREENSHOTS.md) — Xvfb requirements for `capture_surface`
+- Private `improve-imgsli-internal-docs` repo →
+  `docs/dev/RUNBOOK_LIVE_MCP_VERIFICATION.md` — copy-paste recipe for driving and
+  *reading* a live instance on a private Xvfb: private display + isolated
+  `XDG_*`, the RHI-is-live proof steps, the window-on-screen check, and the
+  capture-artifact checklist (which of `method`/`rhi_layers` to trust). Its §0
+  checklist is the blindness list referenced from the private
+  `docs/dev/DEBUGGING.md` rule 7.

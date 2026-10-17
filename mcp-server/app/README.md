@@ -47,12 +47,14 @@ no manual `PYTHONPATH` is needed. Environment knobs:
 
 ## Surface
 
-**Tools** (20 — 9 read-only, 11 mutating; reads and writes never share a tool):
+**Tools** (22 — 10 read-only, 12 mutating; reads and writes never share a tool):
 `list_actions`, `list_sessions`, `get_state`, `read_log`, `query_trace`,
-`dump_ui_layout`, `list_surfaces`, `ui_elements`, `jobs_list` · `open_tab`,
-`run_action`, `open_folder`, `set_theme`, `set_language`, `capture_surface`,
-`press_keys`, `ui_click`, `ui_hover`, `ui_focus`, `jobs_cancel`. The four
-element-targeting tools (`ui_elements`, `ui_click`, `ui_hover`, `ui_focus`) and
+`dump_ui_layout`, `list_surfaces`, `ui_elements`, `ui_nav_state`, `jobs_list` ·
+`open_tab`, `run_action`, `open_folder`, `set_theme`, `set_language`,
+`capture_surface`, `press_keys`, `nav_key`, `ui_click`, `ui_hover`, `ui_focus`,
+`jobs_cancel`. The four
+element-targeting tools (`ui_elements`, `ui_click`, `ui_hover`, `ui_focus`), the
+keyboard pair (`nav_key` + `ui_nav_state`) and
 the two job tools (`jobs_list`, `jobs_cancel`) are live-only.
 
 **Resources**: `app://actions`, `app://state`, `app://sessions`, `app://log`,
@@ -182,6 +184,13 @@ passes, so it measures from the first `jobs_list` that observed the job running;
   window's interactive widgets and `ui_click`/`ui_hover`/`ui_focus` act on them
   by session-scoped id; with no instance they answer an honest error — they
   never boot a throwaway app to fake a target.
+- **Keyboard reachability is measurable (live-only).** `ui_nav_state` reads the
+  app's own keyboard-navigation model (ordered sections, focus, and each open
+  overlay's focusable children with `owned_by_section`), and `nav_key` presses a
+  key through that model, reporting which layer took it (`section:<name>` /
+  `focus` / `unhandled`). Use them instead of judging reachability from
+  `ui_click`, which delivers in-process and therefore fires handlers for widgets
+  a real mouse or keyboard cannot reach.
 - **Job state is live-only.** `jobs_list`/`jobs_cancel` read the running app's
   own counters and its one real cancel (export); with no instance they answer an
   honest error instead of an empty list that would read as "nothing running".

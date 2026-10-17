@@ -778,6 +778,27 @@ class AppBackend:
     def ui_focus(self, *, id: str) -> dict:
         return self._live_only("ui_focus", self._elements_need_live(), id=id)
 
+    # -- keyboard navigation (live-only) -------------------------------------
+
+    def ui_nav_state(self) -> dict:
+        """The live navigation model — sections, focus, overlays (read)."""
+        return self._live_only(
+            "ui_nav_state", self._nav_need_live(), mutating=False
+        )
+
+    def nav_key(self, *, keys: str, anchor: str | None = None) -> dict:
+        """Deliver keys through the app's own navigation (see MCP.md)."""
+        return self._live_only(
+            "nav_key", self._nav_need_live(), keys=keys, anchor=anchor
+        )
+
+    @staticmethod
+    def _nav_need_live() -> ToolError:
+        return ToolError(
+            "no live instance; keyboard navigation needs a running app",
+            "start the app with the control socket enabled (see docs/dev/MCP.md), then retry",
+        )
+
     @staticmethod
     def _jobs_need_live() -> ToolError:
         return ToolError(

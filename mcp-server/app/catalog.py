@@ -16,7 +16,9 @@ Design rules (MCP spec revision ``2026-07-28`` + 2026 tool-design consensus):
 - every tool carries an ``outputSchema`` and its handler returns matching
   ``structuredContent``;
 - all four ``annotations`` hints are explicit on every tool;
-- the catalog stays tiny (≤ ~20 tools) — large payloads live in resources.
+- the catalog stays small (≤ ~24 tools — a review prompt, not a magic number:
+  the surface grows with the app's own subsystems, one read + one write per
+  concern; large payloads live in resources).
 """
 
 from __future__ import annotations
@@ -150,6 +152,30 @@ def _rect(description: str) -> dict:
 def _params(properties: dict | None = None, required: list[str] | None = None) -> dict:
     """Tool input schema: flat object, no extra properties."""
     return _object(properties or {}, required)
+
+
+#: One widget row as ``ui_nav_state`` / ``nav_key`` report it: identity, the
+#: element id a client can pass back, its focus policy, and — the signal that
+#: matters for keyboard reach — the navigation section that owns it (``null``
+#: means Qt could focus it but no section drives it).
+_ROW_PROPERTIES: dict = {
+    "widget": _STR,
+    "object_name": _STR,
+    "label": _STR,
+    "role": {"type": ["string", "null"]},
+    "element_id": {"type": ["string", "null"]},
+    "focus_policy": _STR,
+    "keyboard_ring": {"type": ["boolean", "null"]},
+    "owned_by_section": {"type": ["string", "null"]},
+    "enabled": {"type": ["boolean", "null"]},
+    "visible": {"type": ["boolean", "null"]},
+    "screen_rect": {"type": ["array", "null"], "items": _INT},
+}
+
+
+def _row_or_null(description: str) -> dict:
+    """Nullable widget-row schema (``null`` = nothing is focused/delivered to)."""
+    return {"type": ["object", "null"], "description": description, "properties": dict(_ROW_PROPERTIES)}
 
 
 # ---------------------------------------------------------------------------
@@ -680,6 +706,135 @@ TOOLS: list[dict] = [
         ),
         "annotations": MUTATING_INPUT,
         "handler": "press_keys",
+    },
+    {
+        "name": "nav_key",
+        "title": "Press keys through the app's keyboard navigation",
+        "description": (
+            "Deliver keys through the app's own keyboard navigation — the "
+            "ordered sections (title bar, tab strip, section rows) and each "
+            "surface's key handler — instead of aiming one event at one widget: "
+            "the honest way to judge whether a control is reachable by "
+            "keyboard. Each step reports which layer took the key and how focus "
+            "moved. anchor=<element id> focuses it first. Live-only."
+        ),
+        "inputSchema": _params(
+            {
+                "keys": {
+                    **_STR,
+                    "description": "One combo or comma-separated combos applied in order (Down,Enter,Tab).",
+                },
+                "anchor": {
+                    **_STR,
+                    "description": "Element id from ui_elements to focus first (with the app's own focus reason); omit to use whatever holds focus now.",
+                },
+            },
+            ["keys"],
+        ),
+        "outputSchema": _object(
+            {
+                "keys": _array(_STR),
+                "count": _INT,
+                "anchor": _row_or_null("Where the keys were delivered (null if nothing holds focus)."),
+                "activated": _BOOL,
+                "focus_is_ours": _BOOL,
+                "focus_after": _row_or_null("Focus widget after the last key."),
+                "steps": _array(_object(
+                    {
+                        "key": _STR,
+                        "delivered_to": _row_or_null("Widget this key reached."),
+                        "handled": _STR,
+                        "accepted": _BOOL,
+                        "focus_before": _row_or_null("Focus before this key."),
+                        "focus_after": _row_or_null("Focus after this key."),
+                        "owner_before": {"type": ["string", "null"]},
+                        "owner_after": {"type": ["string", "null"]},
+                    },
+                    ["key", "handled"],
+                )),
+                "source": _source(),
+            },
+            ["keys", "count", "steps"],
+        ),
+        "annotations": MUTATING_INPUT,
+        "handler": "nav_key",
+    },
+    {
+        "name": "ui_nav_state",
+        "title": "Read the keyboard-navigation model",
+        "description": (
+            "The live keyboard-navigation model: ordered sections (section, "
+            "owner, extra keys), the Qt focus widget, the last "
+            "keyboard-granted widget, input modality, and every open in-window "
+            "overlay with the children Qt could focus but no section owns — the "
+            "honest 'a key cannot reach this' signal. Read it before blaming a "
+            "control, and pair it with nav_key. Read-only and live-only."
+        ),
+        "inputSchema": _params(),
+        "outputSchema": _object(
+            {
+                "modality": _object(
+                    {
+                        "last_input_was_keyboard": {"type": ["boolean", "null"]},
+                        "focus_reason": {"type": ["string", "null"]},
+                    },
+                    ["last_input_was_keyboard", "focus_reason"],
+                ),
+                "focus": _row_or_null("Widget holding Qt focus right now."),
+                "last_keyboard_focus": _row_or_null("Last widget the app granted focus to by keyboard."),
+                "owner_section": {"type": ["string", "null"]},
+                "sections": _array(_object(
+                    {
+                        "index": _INT,
+                        "section": _STR,
+                        "owner": _STR,
+                        "extra_keys": _array(_STR),
+                    },
+                    ["index", "section", "owner"],
+                )),
+                "sections_count": _INT,
+                "overlays": _array(_object(
+                    {
+                        "widget": _STR,
+                        "object_name": _STR,
+                        "label": _STR,
+                        "role": {"type": ["string", "null"]},
+                        "element_id": {"type": ["string", "null"]},
+                        "focus_policy": _STR,
+                        "keyboard_ring": {"type": ["boolean", "null"]},
+                        "owned_by_section": {"type": ["string", "null"]},
+                        "enabled": {"type": ["boolean", "null"]},
+                        "visible": {"type": ["boolean", "null"]},
+                        "screen_rect": {"type": ["array", "null"], "items": _INT},
+                        "children_total": _INT,
+                        "children_shown": _INT,
+                        "children_truncated": _BOOL,
+                        "focused_child": _row_or_null("Child of this overlay that holds focus, if any."),
+                        "children": _array(_object(
+                            {
+                                "widget": _STR,
+                                "object_name": _STR,
+                                "label": _STR,
+                                "role": {"type": ["string", "null"]},
+                                "element_id": {"type": ["string", "null"]},
+                                "focus_policy": _STR,
+                                "keyboard_ring": {"type": ["boolean", "null"]},
+                                "owned_by_section": {"type": ["string", "null"]},
+                                "enabled": {"type": ["boolean", "null"]},
+                                "visible": {"type": ["boolean", "null"]},
+                                "screen_rect": {"type": ["array", "null"], "items": _INT},
+                            },
+                            ["widget"],
+                        )),
+                    },
+                    ["widget"],
+                )),
+                "source": _source(),
+            },
+            ["sections", "sections_count", "overlays"],
+        ),
+        "annotations": READ_ONLY,
+        "handler": "ui_nav_state",
     },
     {
         "name": "ui_elements",
