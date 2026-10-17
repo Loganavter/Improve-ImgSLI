@@ -15,6 +15,18 @@ then** mechanism. Two live probes without a narrowed layer ⇒ stop. Full ladder
 `../improve-imgsli-internal-docs/docs/dev/DEBUGGING.md`; evidence + anti-shortcut
 index: `../improve-imgsli-internal-docs/docs/dev/investigations/circling-map-2026-10-06.md`.
 (Skill `diagnosis-ladder`.)
+You can also drive a running instance yourself instead of asking the owner to
+reproduce: the in-app control surface (MCP) inventories elements, injects
+clicks/keys, reads Store/actions/log/tracer and captures surfaces
+([docs/dev/MCP.md](docs/dev/MCP.md)). It has documented blindness — grabs miss a
+QRhi canvas, an off-screen part of the window reads black, `ui_click` is
+in-process (so it is *not* proof a control is reachable), `press_keys target=`
+is aimed rather than typed; the honest list and the keyboard-reachability pair
+(`ui_nav_state` + `nav_key`) live there and in rule 7 of
+`../improve-imgsli-internal-docs/docs/dev/DEBUGGING.md`. To stand the whole thing
+up on a virtual display (private Xvfb, isolated `XDG_*`, RHI-is-live proof,
+capture-artifact checklist) follow
+`../improve-imgsli-internal-docs/docs/dev/RUNBOOK_LIVE_MCP_VERIFICATION.md`.
 
 ---
 

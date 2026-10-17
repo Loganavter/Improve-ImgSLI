@@ -457,3 +457,10 @@ with the SDK's low-level `Server` unchanged.
 - [LOGGING.md](LOGGING.md) — `log.txt` layout `read_log` parses
 - [UI_LAYOUT_DUMP.md](UI_LAYOUT_DUMP.md) — the widget-tree dump
 - [SCREENSHOTS.md](SCREENSHOTS.md) — Xvfb requirements for `capture_surface`
+- Private `improve-imgsli-internal-docs` repo →
+  `docs/dev/RUNBOOK_LIVE_MCP_VERIFICATION.md` — copy-paste recipe for driving and
+  *reading* a live instance on a private Xvfb: private display + isolated
+  `XDG_*`, the RHI-is-live proof steps, the window-on-screen check, and the
+  capture-artifact checklist (which of `method`/`rhi_layers` to trust). Its §0
+  checklist is the blindness list referenced from the private
+  `docs/dev/DEBUGGING.md` rule 7.
