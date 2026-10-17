@@ -116,24 +116,93 @@ def compose_rhi_frames(target: Any, pixmap: Any) -> int:
     return painted
 
 
+def _target_visible_geometry(app: Any, target: Any) -> tuple[Any, bool]:
+    """(*target*-local on-screen rect, fully_visible) — fail-open to (None, True).
+
+    A window that is not fully inside the display has **no pixels** outside
+    it: an X grab returns black there, which a reader mistakes for a broken
+    widget (live 2026-10-17: the private Xvfb was smaller than the app
+    window, and the black landed on the toolbar/footer exactly where a real
+    defect would look). Never raises.
+    """
+    try:
+        from PySide6.QtCore import QPoint, QRect
+
+        screen = app.primaryScreen() if app is not None else None
+        if screen is None:
+            return None, True
+        available = screen.availableGeometry()
+        origin = target.mapToGlobal(QPoint(0, 0))
+        local = QRect(0, 0, int(target.width()), int(target.height()))
+        on_screen = QRect(
+            int(available.x()) - int(origin.x()),
+            int(available.y()) - int(origin.y()),
+            int(available.width()),
+            int(available.height()),
+        )
+        visible = local.intersected(on_screen)
+        return visible, bool(local.isValid() and visible == local)
+    except Exception:
+        return None, True
+
+
+def _raster_grab(target: Any) -> Any:
+    """Qt-rendered grab of *target* (whole widget tree, display-independent)."""
+    try:
+        pixmap = target.grab()
+    except Exception:
+        return None
+    try:
+        return None if pixmap is None or pixmap.isNull() else pixmap
+    except Exception:
+        return None
+
+
 def grab_window(app: Any, target: Any) -> tuple[Any, str, int]:
-    """Live grab: screen ``grabWindow`` first, widget ``grab()`` fallback,
-    then the canvas frames (see ``compose_rhi_frames``)."""
+    """Live grab: the widget raster or the X window, + the canvas frames.
+
+    Order is deliberate. A target that is **not fully on screen** is tried
+    with the Qt raster first: ``QWidget.grab`` renders the widget tree with
+    no X server involved, so the whole window has content, while the X grab
+    of the same window returns black for the off-screen part (see
+    ``_target_visible_geometry``). A fully visible target keeps the X grab
+    (real screen pixels). Either way the canvas frames are composed in (the
+    swapchain surface is in neither grab path — see ``compose_rhi_frames``).
+    When only the X grab is possible and it is partly off screen, the
+    pixmap is clipped to its visible part so black is never presented as
+    content.
+    """
+    visible, fully_visible = _target_visible_geometry(app, target)
+    if not fully_visible:
+        raster = _raster_grab(target)
+        if raster is not None:
+            return raster, "widget_grab", compose_rhi_frames(target, raster)
     screen = app.primaryScreen() if app is not None else None
     if screen is not None:
         try:
             pixmap = screen.grabWindow(int(target.winId()))
             if pixmap is not None and not pixmap.isNull():
+                if not fully_visible:
+                    pixmap = _clip_to_visible(pixmap, visible)
                 return pixmap, "grabWindow", compose_rhi_frames(target, pixmap)
         except Exception:
             pass
+    raster = _raster_grab(target)
+    if raster is not None:
+        return raster, "widget_grab", compose_rhi_frames(target, raster)
+    return None, "", 0
+
+
+def _clip_to_visible(pixmap: Any, visible: Any) -> Any:
+    """Clip a grab to its on-screen rect (no black presented as content)."""
+    if visible is None:
+        return pixmap
     try:
-        pixmap = target.grab()
-        if pixmap is not None and not pixmap.isNull():
-            return pixmap, "widget_grab", compose_rhi_frames(target, pixmap)
+        if visible.isValid() and not visible.isEmpty():
+            return pixmap.copy(visible)
     except Exception:
         pass
-    return None, "", 0
+    return pixmap
 
 
 def capture_live_png(app: Any, window: Any, what: Any, out_dir: Any) -> dict[str, Any]:

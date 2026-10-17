@@ -1,6 +1,38 @@
 from PySide6.QtCore import QByteArray, QSettings, Qt
 from PySide6.QtWidgets import QWidget
 
+
+def fit_into(
+    geometry: tuple[int, int, int, int],
+    available: tuple[int, int, int, int] | None,
+) -> tuple[int, int, int, int]:
+    """Clamp *geometry* (x, y, w, h) into *available* -- never off-screen.
+
+    A saved size outlives the display it was saved on: restored on a smaller
+    screen it leaves part of the window unpainted, which reads as "the widget
+    is broken" -- a live capture of that window is part black exactly where
+    the toolbar/footer hang off the edge (2026-10-17: a restored 2090x1381
+    window on a 1600x1000 private Xvfb; the same window is fine on the
+    display it was saved on, so nothing looks wrong until someone measures).
+    Size is clamped to the screen; the position is pulled back inside so the
+    title bar stays reachable. Pure function: no Qt, no window, no raising.
+    """
+    if available is None:
+        return geometry
+    try:
+        x, y, w, h = (int(v) for v in geometry)
+        ax, ay, aw, ah = (int(v) for v in available)
+    except (TypeError, ValueError):
+        return geometry
+    if aw <= 0 or ah <= 0:
+        return geometry
+    w = max(1, min(w, aw))
+    h = max(1, min(h, ah))
+    x = max(ax, min(x, ax + aw - w))
+    y = max(ay, min(y, ay + ah - h))
+    return x, y, w, h
+
+
 class GeometryManager:
     def __init__(self, window: QWidget, settings: QSettings, store=None):
         self.window = window
@@ -11,6 +43,27 @@ class GeometryManager:
         self.normal_rect_str: str | None = None
         self._freeze_normal_updates: bool = False
 
+    def _available_rect(self) -> tuple[int, int, int, int] | None:
+        """The current screen's available geometry, or ``None``. Never raises."""
+        try:
+            from PySide6.QtWidgets import QApplication
+
+            screen = self.window.screen() or QApplication.primaryScreen()
+            if screen is None:
+                return None
+            rect = screen.availableGeometry()
+            return (rect.x(), rect.y(), rect.width(), rect.height())
+        except Exception:
+            return None
+
+    def _apply_fit(self, x: int, y: int, w: int, h: int) -> tuple[int, int, int, int]:
+        """``setGeometry`` through :func:`fit_into`; returns what was applied."""
+        fit_x, fit_y, fit_w, fit_h = fit_into(
+            (x, y, w, h), self._available_rect()
+        )
+        self.window.setGeometry(fit_x, fit_y, fit_w, fit_h)
+        return fit_x, fit_y, fit_w, fit_h
+
     def load_and_apply(self):
         if self.store and hasattr(self.store.settings, "window_width"):
             was_maximized = self.store.settings.window_was_maximized
@@ -19,10 +72,10 @@ class GeometryManager:
             window_x = self.store.settings.window_x
             window_y = self.store.settings.window_y
 
-            self.window.setGeometry(window_x, window_y, window_width, window_height)
-            self.normal_rect_str = (
-                f"{window_x},{window_y},{window_width},{window_height}"
+            x, y, w, h = self._apply_fit(
+                window_x, window_y, window_width, window_height
             )
+            self.normal_rect_str = f"{x},{y},{w},{h}"
         else:
 
             was_maximized = self.settings.value(
@@ -37,9 +90,10 @@ class GeometryManager:
                 try:
                     parts = [int(p) for p in saved_normal_rect_str.split(",")]
                     if len(parts) == 4:
-                        x, y, w, h = parts
-                        self.window.setGeometry(x, y, max(200, w), max(150, h))
-                        self.normal_rect_str = saved_normal_rect_str
+                        x, y, w, h = self._apply_fit(
+                            parts[0], parts[1], max(200, parts[2]), max(150, parts[3])
+                        )
+                        self.normal_rect_str = f"{x},{y},{w},{h}"
                 except Exception:
                     pass
 
@@ -47,8 +101,15 @@ class GeometryManager:
                 if saved_normal_geom and not saved_normal_geom.isNull():
                     self.normal_geometry = saved_normal_geom
                     self.window.restoreGeometry(self.normal_geometry)
+                    try:
+                        rect = self.window.geometry()
+                        self._apply_fit(
+                            rect.x(), rect.y(), rect.width(), rect.height()
+                        )
+                    except Exception:
+                        pass
                 else:
-                    self.window.setGeometry(100, 100, 1024, 768)
+                    self._apply_fit(100, 100, 1024, 768)
                     self.normal_geometry = self.window.saveGeometry()
 
         self._freeze_normal_updates = bool(was_maximized)
