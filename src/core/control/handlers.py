@@ -21,7 +21,8 @@ from pathlib import Path
 from typing import Any, Callable
 
 from . import discovery, elements as element_inventory, jobs
-from .discovery import MethodError, capture_live_png, parse_key_sequence
+from .capture import capture_live_png
+from .discovery import MethodError, parse_key_sequence
 
 #: Minimum-level filter ladder, mirroring the MCP ``read_log`` semantics.
 _LEVELS = ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")

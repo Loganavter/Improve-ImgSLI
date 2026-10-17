@@ -35,7 +35,6 @@ import stat
 import string
 import struct
 import sys
-import time
 from pathlib import Path
 from typing import Any
 
@@ -449,49 +448,3 @@ def resolve_capture_target(app: Any, window: Any, what: Any) -> tuple[Any, str]:
         if not label:
             label = type(active).__name__
     return active, label or "window"
-
-
-def grab_window(app: Any, target: Any) -> tuple[Any, str]:
-    """Live grab: screen ``grabWindow`` first, widget ``grab()`` fallback."""
-    screen = app.primaryScreen() if app is not None else None
-    if screen is not None:
-        try:
-            pixmap = screen.grabWindow(int(target.winId()))
-            if pixmap is not None and not pixmap.isNull():
-                return pixmap, "grabWindow"
-        except Exception:
-            pass
-    try:
-        pixmap = target.grab()
-        if pixmap is not None and not pixmap.isNull():
-            return pixmap, "widget_grab"
-    except Exception:
-        pass
-    return None, ""
-
-
-def capture_live_png(app: Any, window: Any, what: Any, out_dir: Any) -> dict[str, Any]:
-    """Grab the live window/tab into *out_dir* and report what was produced."""
-    target, label = resolve_capture_target(app, window, what)
-    if target is None:
-        raise MethodError(
-            "no live window to capture",
-            "pass what=<tab> (see list_surfaces) or focus a window first",
-        )
-    pixmap, method = grab_window(app, target)
-    if pixmap is None:
-        raise MethodError(
-            f"could not grab {label}",
-            "run on a real display (a private Xvfb), not the offscreen platform",
-        )
-    path = Path(out_dir) / f"live-capture-{label}-{time.strftime('%Y%m%d-%H%M%S')}.png"
-    if not pixmap.save(str(path), "PNG"):
-        raise MethodError(
-            f"could not write {path}", "check IMGSLI_MCP_ARTIFACTS is writable"
-        )
-    return {
-        "path": str(path),
-        "what": label,
-        "method": method,
-        "size": [pixmap.width(), pixmap.height()],
-    }

@@ -101,3 +101,16 @@ marked `isolated` and run in an offscreen child
 take the tool down — you get the chrome (toolbar + footer) with a blank
 canvas. For a real canvas shot, capture the **running app manually**
 (screenshot tool / `grim`).
+
+**Exception — the live path.** A capture taken from a *running* app
+(MCP `capture_surface` with a live instance, or the app-side
+`capture_live`) composites each visible `QRhiWidget`'s own last frame
+(`QRhiWidget.grabFramebuffer`) on top of the window raster, at the widget's
+geometry — so the canvas does show its content. Canvases are looked up from
+the target's top-level window (the Quick Look canvas rides an in-window
+overlay parented to the window, not to the tab page) and only those landing
+on the grab are painted; a hidden canvas, one that has not rendered yet, or
+one that cannot hand its frame over is skipped, and the capture reports how
+many layers were composited (`rhi_layers`). The isolated devtool surfaces
+above are unaffected — they are separate processes with no live frame to
+read.

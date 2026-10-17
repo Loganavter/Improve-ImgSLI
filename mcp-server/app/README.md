@@ -201,8 +201,9 @@ passes, so it measures from the first `jobs_list` that observed the job running;
   `QContextMenuEvent`, which consumes the menu manager's open-click grace and
   collapses the menu ~150 ms later. The handler still runs; only the visible
   menu life is wrong. The fix belongs to the gallery / control-element lane.
-- The live QRhi/GL canvas is not capturable headlessly (only chrome is
-  meaningful for those surfaces).
+- A **live** capture composites each visible canvas frame (the swapchain
+  surface is in neither grab path), so a canvas does show its content; a
+  devtool-booted surface still cannot grab the live QRhi/GL canvas.
 
 ## The optional MCP SDK
 

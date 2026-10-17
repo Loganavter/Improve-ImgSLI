@@ -596,12 +596,10 @@ TOOLS: list[dict] = [
         "name": "capture_surface",
         "title": "Capture a surface PNG",
         "description": (
-            "Screenshot one named app surface to a PNG and return its path. "
-            "With a live instance attached the running window is captured "
-            "('live': true); otherwise the devtool boots the app on a private "
-            "Xvfb. Use it for visual checks and Help figures after a UI change. "
-            "The live QRhi/GL canvas stays blank headlessly (see "
-            "docs/dev/SCREENSHOTS.md)."
+            "Screenshot one named app surface to a PNG and return its path. With a live "
+            "instance attached the running window is captured ('live': true) and each visible "
+            "canvas frame is composited in, so the QRhi/GL canvas shows its content; otherwise "
+            "the devtool boots the app on a private Xvfb. Use it for visual checks and Help figures."
         ),
         "inputSchema": _params(
             {

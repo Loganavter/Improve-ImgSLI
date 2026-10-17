@@ -302,8 +302,10 @@ running window only through live attach); fallback `open_folder` reports
 **live-only** — with no instance it errors honestly, it never fakes input. The
 element-targeting tools (`ui_elements`, `ui_click`, `ui_hover`, `ui_focus`) are
 live-only too: ids exist only in a running app, so with no instance they answer
-an honest error rather than booting a throwaway app. The
-live QRhi/GL canvas is not capturable headlessly (see
+an honest error rather than booting a throwaway app. A **live** capture
+composites each visible canvas frame into the PNG (the swapchain surface is
+in neither grab path), so the QRhi/GL canvas does show its content; a
+devtool-booted surface still cannot grab it (see
 [SCREENSHOTS.md](SCREENSHOTS.md) §Known limitation).
 
 ## Security model
@@ -387,8 +389,9 @@ result as `source`.
   itself reaches the handler; only the visible menu life is wrong. **Not fixed
   here** — the fix belongs to the gallery / control-element lane (the same
   surface as the collapsed-card-menu bug).
-- The live QRhi/GL canvas is not capturable headlessly — see
-  [SCREENSHOTS.md](SCREENSHOTS.md) §Known limitation.
+- A live QRhi/GL canvas capture is composited from the canvas's own last
+  frame (see [SCREENSHOTS.md](SCREENSHOTS.md) §Known limitation) — a canvas
+  that has not rendered yet contributes nothing.
 
 ## The `mcp` SDK
 

@@ -22,11 +22,13 @@ import types
 
 import pytest
 
+from PySide6.QtCore import QPoint
+from PySide6.QtGui import QColor, QImage, QPixmap
 from PySide6.QtNetwork import QLocalSocket
 from PySide6.QtWidgets import QApplication, QWidget
 
 from core.actions.types import ActionDescriptor
-from core.control import discovery
+from core.control import capture, discovery
 from core.control.handlers import ControlHandlers, MethodError
 from core.control.server import ControlServer, LogRing
 from core.store import Store
@@ -621,5 +623,155 @@ def test_capture_live_writes_a_non_empty_png(tmp_path):
         assert os.path.getsize(path) > 0
         with open(path, "rb") as handle:
             assert handle.read(8) == b"\x89PNG\r\n\x1a\n"
+        # No canvas under this bare widget -> nothing composited, and the
+        # key is still reported (honest, not omitted).
+        assert result["rhi_layers"] == 0
     finally:
         widget.close()
+
+
+class _FakeCanvas:
+    """Duck-typed canvas stand-in: the compositing path touches only these."""
+
+    def __init__(
+        self,
+        *,
+        visible: bool = True,
+        size: tuple[int, int] = (20, 10),
+        anchor: tuple[int, int] = (5, 4),
+        image: QImage | None = None,
+        boom: bool = False,
+    ) -> None:
+        self._visible = visible
+        self._size = size
+        self._anchor = anchor
+        self._image = image
+        self._boom = boom
+
+    def isVisible(self) -> bool:  # noqa: N802 - Qt name
+        return self._visible
+
+    def width(self) -> int:
+        return self._size[0]
+
+    def height(self) -> int:
+        return self._size[1]
+
+    def mapToGlobal(self, _point):  # noqa: N802 - Qt name
+        return QPoint(*self._anchor)
+
+    def grabFramebuffer(self):  # noqa: N802 - Qt name
+        if self._boom:
+            raise RuntimeError("no composited frame")
+        return self._image
+
+
+class _FakeTarget:
+    """A widget wearing only ``findChildren`` + ``mapFromGlobal``."""
+
+    def __init__(self, canvases) -> None:
+        self._canvases = list(canvases)
+
+    def findChildren(self, _cls):  # noqa: N802 - Qt name
+        return list(self._canvases)
+
+    def mapFromGlobal(self, point):  # noqa: N802 - Qt name
+        return point
+
+
+def _solid(size, color) -> QImage:
+    image = QImage(size[0], size[1], QImage.Format.Format_RGBA8888)
+    image.fill(color)
+    return image
+
+
+def test_compose_rhi_frames_paints_a_visible_canvas_at_its_geometry() -> None:
+    """The blind spot: a presenting canvas is absent from both grab paths."""
+    _qapp()
+    pixmap = QPixmap(100, 80)
+    pixmap.fill(QColor(0, 0, 0))
+    canvas = _FakeCanvas(size=(20, 10), anchor=(5, 4), image=_solid((4, 3), QColor(255, 0, 0)))
+
+    assert capture.compose_rhi_frames(_FakeTarget([canvas]), pixmap) == 1
+
+    image = pixmap.toImage()
+    assert image.pixelColor(6, 5).red() > 200, "the canvas frame landed at its anchor"
+    assert image.pixelColor(90, 70).red() < 50, "and nothing else was painted"
+
+
+def test_compose_rhi_frames_skips_hidden_null_and_raising_canvases() -> None:
+    """A capture must never fail (or paint garbage) because of one canvas."""
+    _qapp()
+    pixmap = QPixmap(60, 40)
+    pixmap.fill(QColor(0, 0, 0))
+    canvases = [
+        _FakeCanvas(visible=False, image=_solid((4, 3), QColor(0, 255, 0))),
+        _FakeCanvas(image=None),
+        _FakeCanvas(boom=True),
+    ]
+
+    assert capture.compose_rhi_frames(_FakeTarget(canvases), pixmap) == 0
+    assert pixmap.toImage().pixelColor(10, 10).green() < 50
+
+
+def test_compose_rhi_frames_tolerates_a_target_without_canvases() -> None:
+    """A raising/absent child query is not a capture failure."""
+    _qapp()
+    pixmap = QPixmap(8, 8)
+    pixmap.fill(QColor(0, 0, 0))
+
+    class _Broken:
+        def findChildren(self, _cls):  # noqa: N802 - Qt name
+            raise RuntimeError("no children here")
+
+    assert capture.compose_rhi_frames(_Broken(), pixmap) == 0
+
+
+class _FakeWindow:
+    """Top-level stand-in: the canvases hang off the window, not the page."""
+
+    def __init__(self, canvases) -> None:
+        self._canvases = list(canvases)
+
+    def findChildren(self, _cls):  # noqa: N802 - Qt name
+        return list(self._canvases)
+
+
+class _PageOnWindow(_FakeTarget):
+    def __init__(self, canvases, offset: tuple[int, int]) -> None:
+        super().__init__([])  # the page itself owns no canvas child
+        self._window = _FakeWindow(canvases)
+        self._offset = offset
+
+    def window(self):
+        return self._window
+
+    def mapFromGlobal(self, point):  # noqa: N802 - Qt name
+        return QPoint(point.x() - self._offset[0], point.y() - self._offset[1])
+
+
+def test_compose_rhi_frames_finds_a_canvas_over_a_page() -> None:
+    """The Quick Look canvas is parented to the window, not to the page.
+
+    Capturing a tab page must still composite it (the overlay rides the
+    window), and the frame lands at the page-local anchor.
+    """
+    _qapp()
+    pixmap = QPixmap(100, 80)
+    pixmap.fill(QColor(0, 0, 0))
+    canvas = _FakeCanvas(size=(20, 10), anchor=(30, 40), image=_solid((4, 3), QColor(0, 0, 255)))
+    page = _PageOnWindow([canvas], offset=(20, 36))
+
+    assert capture.compose_rhi_frames(page, pixmap) == 1
+    assert pixmap.toImage().pixelColor(12, 6).blue() > 200
+
+
+def test_compose_rhi_frames_skips_a_canvas_off_the_grab() -> None:
+    """A canvas elsewhere in the window must not bleed into the page grab."""
+    _qapp()
+    pixmap = QPixmap(50, 40)
+    pixmap.fill(QColor(0, 0, 0))
+    canvas = _FakeCanvas(size=(20, 10), anchor=(500, 500), image=_solid((4, 3), QColor(255, 255, 0)))
+
+    assert capture.compose_rhi_frames(_FakeTarget([canvas]), pixmap) == 0
+    assert pixmap.toImage().pixelColor(10, 10).red() < 50
