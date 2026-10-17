@@ -20,7 +20,7 @@ import os
 from pathlib import Path
 from typing import Any, Callable
 
-from . import discovery
+from . import discovery, elements as element_inventory
 from .discovery import MethodError, capture_live_png, parse_key_sequence
 
 #: Minimum-level filter ladder, mirroring the MCP ``read_log`` semantics.
@@ -47,7 +47,7 @@ METHODS: tuple[str, ...] = (
     "read_log",
     "run_action",
     "set_language",
-    "set_theme",
+    "set_theme", "ui_click", "ui_elements", "ui_focus", "ui_hover",
 )
 
 
@@ -59,7 +59,7 @@ def _count_nodes(node: dict) -> int:
     return total
 
 
-class ControlHandlers:
+class ControlHandlers(element_inventory.ElementMethodsMixin):
     """Method dispatch over the live window/app.
 
     ``window`` is duck-typed (``.store`` plus optional live seams such as
@@ -145,6 +145,7 @@ class ControlHandlers:
             "methods": sorted(METHODS),
             "live_actions": True,
             "live_capture": True,
+            "live_elements": True,
             "live_keys": True,
             "subscribe": False,
         }
@@ -495,6 +496,5 @@ class ControlHandlers:
         return focused
 
 
-#: The frozen method surface: one entry per MCP tool. Defined after the class
-#: body so every method object exists before it is referenced.
+#: The frozen method surface: one entry per MCP tool, built after the class body.
 ControlHandlers._DISPATCH = {name: getattr(ControlHandlers, name) for name in METHODS}
