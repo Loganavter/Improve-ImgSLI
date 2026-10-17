@@ -1,5 +1,7 @@
 """Quick-look canvas: QRhiWidget entry points (frame sequencing).
 
+Audit-Meta: pattern=thin-owner size=exempt reason="one QRhiWidget frame-sequencing lifecycle split from preview_canvas.py (rhi_entry/raster/source); the batch take/consume/drain invariant is one concern and splitting it would scatter ownership across files"
+
 Split from ``preview_canvas.py`` (plan-gallery-split-2026-10-17, Part C2).
 Bodies moved verbatim; names and signatures unchanged. Plain functions
 take the canvas widget as their first argument (``CODE_PATTERNS.md`` --
@@ -50,6 +52,58 @@ def _skip_frame(self, reason: str) -> None:
         logger.debug("QuickLook preview: skip frame (%s)", reason)
     except Exception:
         pass
+
+
+def _note_rhi_batch(self, delta: int) -> int:
+    """Advance the outstanding-batch counter (taken minus consumed).
+
+    Diagnostic-only: the counter is a plain int on the widget
+    (``_ql_rhi_batches_outstanding``) and the line is emitted through
+    ``ql_cover`` only under the existing ``IMGSLI_QL_COVER_DEBUG`` gate
+    (DEBUGGING.md rule 5 -- own flag, silent by default), so this is
+    fail-open and effectively free when the gate is off. Never raises.
+    """
+    try:
+        outstanding = int(getattr(self, "_ql_rhi_batches_outstanding", 0) or 0) + int(delta)
+    except Exception:
+        return 0
+    try:
+        self._ql_rhi_batches_outstanding = outstanding
+    except Exception:
+        pass
+    try:
+        from tabs.image_gallery.debug import ql_cover, ql_cover_enabled
+
+        if ql_cover_enabled():
+            ql_cover(
+                "QuickLook preview: rhi batches outstanding=%s (delta=%+d)",
+                outstanding,
+                int(delta),
+            )
+    except Exception:
+        pass
+    return outstanding
+
+
+def _drain_batch(self, command_buffer, batch) -> None:
+    """Consume a taken-but-unused batch via ``command_buffer.resourceUpdate``.
+
+    The tree-wide idiom for a batch that no draw steals (see
+    ``engine.gpu.tiled_image_view.render``): submitting it returns the
+    batch to QRhi's shared resource-update pool. Skipping this on an early
+    ``return`` abandons the batch -- it is never recycled, the pool is
+    exhausted after 64 frames and Qt's own widget-compositing flush later
+    replays a stale batch whose recorded uploads reference resources
+    destroyed in the meantime (SIGSEGV photographed in
+    ``QWidgetRepaintManager::flush -> rhiFlush``). Never raises.
+    """
+    if batch is None:
+        return
+    try:
+        command_buffer.resourceUpdate(batch)
+    except Exception:
+        pass
+    _note_rhi_batch(self, -1)
 
 
 def initialize(self, command_buffer) -> None:  # noqa: N802
@@ -232,23 +286,33 @@ def render(self, command_buffer) -> None:  # noqa: N802
             tiled_updates = rhi.nextResourceUpdateBatch()
         except Exception:
             tiled_updates = None
+        if tiled_updates is not None:
+            _note_rhi_batch(self, 1)
         if tiled_updates is not None and self._render_tiled(
             command_buffer, tiled_updates, target, clear, fb_w, fb_h
         ):
             return
-        # Raster path only: create the shell's update batch here, never
-        # before the tiled check -- on a covered frame render() returns
-        # early and an early batch would leak every frame until QRhi's
-        # 64-batch pool is exhausted (which then silently drops tile
-        # uploads / mip generation).
+        # Raster path only. INVARIANT: every batch taken from
+        # ``nextResourceUpdateBatch()`` is consumed on every path out of
+        # render() -- either handed to ``beginPass(...)`` or drained with
+        # ``resourceUpdate(batch)`` (also for the tiled batch, on the
+        # guards inside ``_render_tiled``). A batch handed out but never
+        # submitted is never recycled; after 64 frames QRhi's pool is
+        # exhausted and Qt's compositor later flushes a stale batch whose
+        # uploads reference destroyed resources (SIGSEGV in
+        # QWidgetRepaintManager::flush). Each early return below therefore
+        # drains its batch.
         try:
             updates = rhi.nextResourceUpdateBatch()
         except Exception:
             return self._skip_frame("no-batch")
+        if updates is not None:
+            _note_rhi_batch(self, 1)
         try:
             self._shell.stage_quad(updates)
             self._shell.stage_clip(updates, _IDENTITY_CLIP)
         except Exception:
+            _drain_batch(self, command_buffer, updates)
             return self._skip_frame("stage-failed")
         frame = self._raster_frame(target)
         if frame is None:
@@ -256,6 +320,7 @@ def render(self, command_buffer) -> None:  # noqa: N802
         try:
             self._shell.upload_frame(updates, target, frame)
         except Exception:
+            _drain_batch(self, command_buffer, updates)
             return self._skip_frame("upload-failed")
         try:
             command_buffer.beginPass(
@@ -265,7 +330,10 @@ def render(self, command_buffer) -> None:  # noqa: N802
                 updates,
             )
         except Exception:
+            _drain_batch(self, command_buffer, updates)
             return self._skip_frame("begin-failed")
+        # beginPass owns the batch from here (it is submitted, not abandoned).
+        _note_rhi_batch(self, -1)
         try:
             if frame is not None:
                 fb_w, fb_h = float(fb_w), float(fb_h)
@@ -330,16 +398,32 @@ def _render_tiled(self, command_buffer, updates, target, clear, fb_w, fb_h) -> b
     even when it draws nothing, so the next frame makes progress while the
     raster stays up.
 
+    Batch ownership: the caller hands the frame's batch in ``updates``.
+    Once ``renderer.render`` is reached the engine view owns (and submits)
+    it; on the guards above (no source / no renderer) it is drained here
+    via ``command_buffer.resourceUpdate`` so no path abandons a batch
+    (an abandoned batch is never recycled by QRhi's 64-batch pool -> the
+    stale-upload SIGSEGV in ``QWidgetRepaintManager::flush``).
+
     Returns ``True`` only on the covered handover (the caller then skips
     the raster path and ``_settle_present`` fires at most once for the
     transition). ``False`` on any partial miss or error. Never raises.
     """
+    handed = False
     try:
         if self._tiled_source is None:
+            _drain_batch(self, command_buffer, updates)
             return False
         renderer = self._ensure_tile_renderer()
         if renderer is None or not renderer.has_source():
+            _drain_batch(self, command_buffer, updates)
             return False
+        # Past this point the engine view owns the batch: ``render`` submits
+        # it internally (``command_buffer.resourceUpdate``), so the caller
+        # must not drain it again.
+        handed = True
+        if updates is not None:
+            _note_rhi_batch(self, -1)
         result = renderer.render(
             command_buffer,
             updates=updates,
@@ -431,6 +515,8 @@ def _render_tiled(self, command_buffer, updates, target, clear, fb_w, fb_h) -> b
             self._pump_throttled(stall)
         return False
     except Exception:
+        if not handed:
+            _drain_batch(self, command_buffer, updates)
         logger.debug("QuickLook preview: tiled frame failed open", exc_info=True)
         return False
 
