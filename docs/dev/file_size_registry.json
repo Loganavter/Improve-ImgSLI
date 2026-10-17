@@ -301,6 +301,15 @@
       }
     },
     {
+      "path": "src/tabs/image_compare/canvas/features/magnifier/render/tile_residency_gate.py",
+      "limit": 400,
+      "marker": "File-Size-Exempt:",
+      "raw": "one cohesive tile-residency helper surface (capture-window",
+      "parsed": {
+        "reason": "one cohesive tile-residency helper surface (capture-window"
+      }
+    },
+    {
       "path": "src/tabs/image_compare/canvas/features/magnifier/widget.py",
       "limit": 400,
       "marker": "File-Size-Exempt:",
