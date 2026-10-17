@@ -183,6 +183,22 @@ class QuickLookCanvasWidget(QRhiWidget):
         """Thin delegator to ``preview_canvas.source._close_held_store``."""
         return _source._close_held_store(self)
 
+    # -- view ----------------------------------------------------------------
+
+    def current_view(self) -> tuple[float, float, float]:
+        """Live view as ``(zoom, pan_x, pan_y)`` — total, never raises.
+
+        The declared read side of the view: the host's static cover plate is
+        built through ``preview_canvas_host._cover_pixmap_from_full`` from
+        THIS accessor, so a within-series walk (which preserves the view)
+        never flashes a fit-frame plate before the preserved frame lands.
+        Degenerate/absent stored values fail open to ``(1.0, 0.0, 0.0)``.
+        """
+        try:
+            return (float(self._zoom), float(self._pan_x), float(self._pan_y))
+        except Exception:
+            return (1.0, 0.0, 0.0)
+
     # -- tiled_source (moved to preview_canvas.tiled_source) -----------------
 
     def set_tiled_source(self, key, store, *, preserve_view: bool = False) -> None:
