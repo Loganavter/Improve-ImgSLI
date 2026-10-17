@@ -154,7 +154,7 @@ def test_the_panel_is_the_toolkit_rows_section_over_its_two_rows(qtbot, tmp_path
     section = nav.section_of(overlay)
     assert section is not None, "the visible panel must be a registered section"
     assert nav.rows(overlay) == [overlay._strip_row, overlay._action_bar]
-    assert isinstance(section._rows, ToolbarRowsSection)
+    assert isinstance(section, ToolbarRowsSection)
     assert section.owns(nav.thumb_for_path(overlay, str(_items[0].path))) is True
     assert section.owns(overlay._close_btn) is False, (
         "only the two rows are claimed — not the whole panel"
@@ -342,7 +342,7 @@ def test_cursor_is_the_thumb_button_not_its_container(qtbot, tmp_path) -> None:
         assert container.focusPolicy() == Qt.FocusPolicy.NoFocus
         assert focused is not container, "the container paints no ring"
 
-    row_section = nav.section_of(overlay)._rows
+    row_section = nav.section_of(overlay)
     targets = row_section._focusable(overlay._strip_row)
     assert [w.objectName() for w in targets] == [
         f"quicklook_strip_{i}" for i in range(len(targets))
@@ -460,19 +460,24 @@ def test_a_rebuild_never_steals_the_key_pressed_right_after_it(qtbot, tmp_path) 
     overlay.hide()
 
 
-def test_up_and_down_stay_inside_the_panel(qtbot, tmp_path) -> None:
+def test_up_and_down_wrap_inside_the_panel(qtbot, tmp_path) -> None:
     """Arrows while the panel is open must not reach the gallery grid behind.
 
     ``ToolbarRowsSection`` yields ``↓``/``↑`` past its last/first row so the
     shell can hand focus to a neighbouring section — correct for a toolbar, wrong
-    for a modal panel: with a section registered either side, the yield walks
-    the ring onto a card behind the veil (measured 2026-10-17). Falsified by:
-    removing the edge-consume from ``QuickLookNavSection.navigate`` — Up on the
-    first thumb then focuses the neighbour registered before the panel.
+    for a modal panel: with a section registered either side, the yield walks the
+    ring onto a card behind the veil while the panel stays up with no ring on it
+    (measured 2026-10-17). The panel wraps instead: ``↑`` from the strip lands on
+    the action row, ``↓`` from the action row lands back on the item on screen.
+    Falsified by: removing the wrap from ``QuickLookNavSection.navigate`` — Up on
+    the first thumb then focuses the neighbour registered before the panel.
     """
     items = _series(tmp_path, 4)
     overlay = _make_overlay(qtbot)
     parent = overlay.parentWidget()
+    parent.resize(1280, 800)
+    parent.show()
+    QApplication.processEvents()
     above = QWidget(parent)
     above.setObjectName("stand-in-above")
     above.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
@@ -486,17 +491,23 @@ def test_up_and_down_stay_inside_the_panel(qtbot, tmp_path) -> None:
         manager.register(below, _NeighbourSection(below))  # ... and one AFTER it
         QApplication.processEvents()
         assert overlay.isVisible() and QApplication.focusWidget() is not None
+        assert QApplication.focusWidget() is nav.thumb_for_path(overlay, str(items[2].path))
 
         focused = _press(Qt.Key.Key_Up)  # first row, at the panel's top edge
         assert focused is not above, "Up must not hand focus to the page behind"
         assert overlay.isAncestorOf(focused), _name(focused)
+        assert overlay._action_bar.isAncestorOf(focused), (
+            f"the top edge wraps to the bottom row: {_name(focused)}"
+        )
 
-        _press(Qt.Key.Key_Down)  # into the action row
-        _press(Qt.Key.Key_Down)  # bottom row, at the panel's lower edge
+        focused = _press(Qt.Key.Key_Down)  # bottom edge wraps back to the strip
         assert QApplication.focusWidget() is not below, (
             "Down must not hand focus to the page below the panel"
         )
-        assert overlay.isAncestorOf(QApplication.focusWidget())
+        assert nav.thumb_for_path(overlay, str(items[2].path)) is focused, (
+            f"the bottom edge wraps to the item on screen: {_name(focused)}"
+        )
+        assert overlay._current_idx == 2, "wrapping is movement, not a re-bind"
     finally:
         manager.unregister(overlay)
         manager.unregister(above)
