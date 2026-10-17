@@ -146,6 +146,58 @@ def _metric_axis_label(axis_id: str, translate=None) -> str:
     return default
 
 
+def layout_dots(
+    n: int,
+    x_right: float,
+    y_center: float,
+    avail_width: float,
+) -> list[tuple[float, float]]:
+    """Right-aligned wrapped dot block — the ONE placement authority.
+
+    Pure geometry (no Qt): too many dots to fit *avail_width* at ``DOT_PITCH``
+    WRAP into multiple rows instead of shrinking the pitch. ``cols`` is the
+    floor of ``avail_width / DOT_PITCH`` (at least 1), rows fill top-to-bottom,
+    every row is right-aligned to the SAME ``x_right`` (a partially filled last
+    row sits flush right), and the whole block is vertically centered on
+    ``y_center`` (the filename line) with ``DOT_PITCH`` between row centers.
+
+    Returns a list of ``(x_center, y_center)`` parallel to the dot index, so
+    index ``i``'s center is at ``result[i]``. Shared by the grid card
+    (``ui/card/painters.py``) and the list row (``ui/list/painters.py``) so both
+    surfaces wrap identically.
+    """
+    try:
+        count = int(n)
+    except Exception:
+        return []
+    if count <= 0:
+        return []
+    try:
+        x_right = float(x_right)
+        y_top_center = float(y_center)
+        avail = float(avail_width)
+    except Exception:
+        return []
+    pitch = float(DOT_PITCH)
+    try:
+        cols = max(1, int(avail // pitch))
+    except Exception:
+        cols = 1
+    rows = -(-count // cols)  # ceil(count / cols) without floats
+    row_step = pitch
+    first_y = y_top_center - (rows - 1) * row_step / 2.0
+    centers: list[tuple[float, float]] = []
+    for index in range(count):
+        row = index // cols
+        col = index % cols
+        # Dots in THIS row (the last row may be partial); all flush right.
+        in_row = min(cols, count - row * cols)
+        x = x_right - (in_row - 1 - col) * pitch
+        y = first_y + row * row_step
+        centers.append((float(x), float(y)))
+    return centers
+
+
 def metric_dots_for_item(
     item: GalleryItem,
     mode: object = None,

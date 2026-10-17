@@ -23,8 +23,10 @@ from tabs.image_gallery.services.metric_scores import spec_for
 from tabs.image_gallery.services.rank_fusion import measured_axes_for
 from tabs.image_gallery.ui.card.dot_tooltip import dot_tooltip_text_at
 from tabs.image_gallery.ui.card.dots import (
+    DOT_PITCH,
     _severity_color,
     dot_tooltip_text,
+    layout_dots,
     metric_dots_for_item,
 )
 from tabs.image_gallery.ui.card.painters import _dots_overlay_painter
@@ -112,6 +114,60 @@ def test_hit_test_maps_cursor_x_to_the_nearest_dot() -> None:
     assert dot_tooltip_text_at(card, 100) is None
 
 
+def test_layout_dots_wraps_and_keeps_the_full_pitch() -> None:
+    # Two columns' worth of width -> 14 dots wrap into 7 full rows.
+    centers = layout_dots(14, 200.0, 40.0, float(DOT_PITCH * 2))
+    assert len(centers) == 14
+    rows: dict[float, list[float]] = {}
+    for cx, cy in centers:
+        rows.setdefault(round(cy, 3), []).append(cx)
+    assert len(rows) >= 2  # wrapped, not one clipped/shrunk line
+    row_ys = sorted(rows)
+    assert row_ys == sorted(row_ys)  # monotonic top-to-bottom row y
+    for ys in row_ys:
+        xs = sorted(rows[ys])
+        # Every row is right-aligned to the block edge...
+        assert xs[-1] == pytest.approx(200.0)
+        # ...and never shrunk below the normal pitch.
+        for left, right in zip(xs, xs[1:]):
+            assert right - left == pytest.approx(float(DOT_PITCH))
+
+
+def test_layout_dots_wide_width_stays_one_row() -> None:
+    centers = layout_dots(14, 300.0, 40.0, 1000.0)
+    assert len(centers) == 14
+    assert len({round(cy, 3) for _cx, cy in centers}) == 1
+    xs = sorted(cx for cx, _cy in centers)
+    assert xs[-1] == pytest.approx(300.0)
+    assert all(cy == pytest.approx(40.0) for _cx, cy in centers)
+    for left, right in zip(xs, xs[1:]):
+        assert right - left == pytest.approx(float(DOT_PITCH))
+
+
+def test_layout_dots_centers_are_vertically_centered() -> None:
+    centers = layout_dots(4, 200.0, 40.0, float(DOT_PITCH))  # 1 col -> 4 rows
+    ys = sorted({round(cy, 3) for _cx, cy in centers})
+    assert ys[0] < 40.0 < ys[-1]  # block extends up and down around y_center
+    assert (ys[0] + ys[-1]) / 2.0 == pytest.approx(40.0)
+
+
+def test_hit_test_resolves_by_x_and_y() -> None:
+    # 2 rows: row 0 at y=40, row 1 at y=54 (one DOT_PITCH below).
+    centers = ((100.0, 40.0), (114.0, 40.0), (100.0, 54.0))
+    card = SimpleNamespace(
+        _gallery_dot_geometry={
+            "centers": centers,
+            "pitch": float(DOT_PITCH),
+            "infos": (("A", 80), ("B", None), ("C", 55)),
+        }
+    )
+    # A point on a second-row dot resolves to that dot, not the x-nearest one.
+    assert dot_tooltip_text_at(card, 100, 54) == "C: 55%"
+    assert dot_tooltip_text_at(card, 114, 40) == "B: —"
+    # A point between the two rows is off every dot.
+    assert dot_tooltip_text_at(card, 100, 47) is None
+
+
 def test_grid_painter_stashes_geometry_for_every_dot(qapp) -> None:
     item = _item(metrics={"sharpness": 320.0})
     from tabs.image_gallery.ui.card import build_gallery_card
@@ -131,6 +187,7 @@ def test_grid_painter_stashes_geometry_for_every_dot(qapp) -> None:
     geometry = card._gallery_dot_geometry
     axes = measured_axes_for("camera")
     assert geometry is not None
+    assert len(geometry["centers"]) == len(axes)
     assert len(geometry["x_centers"]) == len(axes)
     assert len(geometry["infos"]) == len(axes)
     assert geometry["x_centers"] == tuple(sorted(geometry["x_centers"]))
@@ -160,6 +217,7 @@ def test_list_row_has_the_same_metric_dots(qapp) -> None:
         painter.end()
     geometry = card._gallery_dot_geometry
     assert geometry is not None
+    assert len(geometry["centers"]) == len(axes)
     assert len(geometry["x_centers"]) == len(axes)
     # Right-aligned inside the row's meta region.
     assert all(x < 640 for x in geometry["x_centers"])
