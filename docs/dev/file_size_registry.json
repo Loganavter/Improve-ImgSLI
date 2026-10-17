@@ -301,6 +301,15 @@
       }
     },
     {
+      "path": "src/tabs/image_compare/canvas/features/magnifier/render/tile_residency_gate.py",
+      "limit": 400,
+      "marker": "File-Size-Exempt:",
+      "raw": "one cohesive tile-residency helper surface (capture-window",
+      "parsed": {
+        "reason": "one cohesive tile-residency helper surface (capture-window"
+      }
+    },
+    {
       "path": "src/tabs/image_compare/canvas/features/magnifier/widget.py",
       "limit": 400,
       "marker": "File-Size-Exempt:",
@@ -694,17 +703,6 @@
       }
     },
     {
-      "path": "src/tabs/image_gallery/services/ai_client.py",
-      "limit": 500,
-      "marker": "Audit-Meta:",
-      "raw": "pattern=wire-client size=762 reason=\"one OpenAI-compatible vision client: request build + call_sync (streaming SSE reassembly + retry/429) + response parse + debug belong together — splitting scatters the wire contract\"",
-      "parsed": {
-        "pattern": "wire-client",
-        "size": "762",
-        "reason": "one OpenAI-compatible vision client: request build + call_sync (streaming SSE reassembly + retry/429) + response parse + debug belong together — splitting scatters the wire contract"
-      }
-    },
-    {
       "path": "src/tabs/image_gallery/services/artifacts.py",
       "limit": 500,
       "marker": "Audit-Meta:",
@@ -760,17 +758,6 @@
       }
     },
     {
-      "path": "src/tabs/image_gallery/ui/card/context_menu.py",
-      "limit": 500,
-      "marker": "Audit-Meta:",
-      "raw": "pattern=qdialog-wiring size=exempt reason=\"one card-menu builder — entry list + per-card context gating (source/reject/group) + monochrome icon tinting share one menu contract; action bodies live in context_actions.py\"",
-      "parsed": {
-        "pattern": "qdialog-wiring",
-        "size": "exempt",
-        "reason": "one card-menu builder — entry list + per-card context gating (source/reject/group) + monochrome icon tinting share one menu contract; action bodies live in context_actions.py"
-      }
-    },
-    {
       "path": "src/tabs/image_gallery/ui/card/hover.py",
       "limit": 500,
       "marker": "Audit-Meta:",
@@ -793,7 +780,7 @@
       }
     },
     {
-      "path": "src/tabs/image_gallery/ui/clean_review.py",
+      "path": "src/tabs/image_gallery/ui/clean_review/__init__.py",
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine size=exempt reason=\"one overlay lifecycle — provenance+filmstrip+toasts share TopLevelInWindowOverlay state\"",
@@ -804,7 +791,18 @@
       }
     },
     {
-      "path": "src/tabs/image_gallery/ui/drag_drop.py",
+      "path": "src/tabs/image_gallery/ui/clean_review/populate.py",
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=thin-owner-target size=exempt reason=\"one row-builder concern — filmstrip cells + provenance + footer share the modal layout contract; body moved verbatim from the overlay's _populate\"",
+      "parsed": {
+        "pattern": "thin-owner-target",
+        "size": "exempt",
+        "reason": "one row-builder concern — filmstrip cells + provenance + footer share the modal layout contract; body moved verbatim from the overlay's _populate"
+      }
+    },
+    {
+      "path": "src/tabs/image_gallery/ui/drag_drop/__init__.py",
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=single-router size=exempt reason=\"one drop-routing rule for zone+widget surfaces incl. single-writer pool discipline; splitting would scatter the accept/route/dispatch branches pinned as one unit\"",
@@ -815,14 +813,47 @@
       }
     },
     {
-      "path": "src/tabs/image_gallery/ui/grid_view.py",
+      "path": "src/tabs/image_gallery/ui/drag_drop/targets.py",
       "limit": 500,
       "marker": "Audit-Meta:",
-      "raw": "pattern=state-machine size=exempt reason=\"single virtualized grid view — grid_columns/series headers/pool/marquee share one layout lifecycle\"",
+      "raw": "pattern=thin-owner-target size=exempt reason=\"drop-target geometry resolvers split out of the drag_drop router; one owner-space hit-test concern (headers/cards/bands) pinned as a unit\"",
       "parsed": {
-        "pattern": "state-machine",
+        "pattern": "thin-owner-target",
         "size": "exempt",
-        "reason": "single virtualized grid view — grid_columns/series headers/pool/marquee share one layout lifecycle"
+        "reason": "drop-target geometry resolvers split out of the drag_drop router; one owner-space hit-test concern (headers/cards/bands) pinned as a unit"
+      }
+    },
+    {
+      "path": "src/tabs/image_gallery/ui/grid_view/__init__.py",
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=thin-owner size=exempt reason=\"thin owner + ui/grid_view/* submodules (plan-gallery-split-2026-10-17 Part C1)\"",
+      "parsed": {
+        "pattern": "thin-owner",
+        "size": "exempt",
+        "reason": "thin owner + ui/grid_view/* submodules (plan-gallery-split-2026-10-17 Part C1)"
+      }
+    },
+    {
+      "path": "src/tabs/image_gallery/ui/grid_view/nav.py",
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=thin-owner-target size=exempt reason=\"2D focus navigation is one concern moved out of the thin GalleryGridView owner (plan-gallery-split-2026-10-17 Part C1)\"",
+      "parsed": {
+        "pattern": "thin-owner-target",
+        "size": "exempt",
+        "reason": "2D focus navigation is one concern moved out of the thin GalleryGridView owner (plan-gallery-split-2026-10-17 Part C1)"
+      }
+    },
+    {
+      "path": "src/tabs/image_gallery/ui/grid_view/series.py",
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=thin-owner-target size=exempt reason=\"series grouping/header lifecycle is one concern moved out of the thin GalleryGridView owner (plan-gallery-split-2026-10-17 Part C1)\"",
+      "parsed": {
+        "pattern": "thin-owner-target",
+        "size": "exempt",
+        "reason": "series grouping/header lifecycle is one concern moved out of the thin GalleryGridView owner (plan-gallery-split-2026-10-17 Part C1)"
       }
     },
     {
@@ -836,51 +867,51 @@
       }
     },
     {
-      "path": "src/tabs/image_gallery/ui/quick_look/metrics.py",
+      "path": "src/tabs/image_gallery/ui/quick_look/metrics/rows.py",
       "limit": 500,
       "marker": "Audit-Meta:",
-      "raw": "pattern=thin-owner-target size=exempt reason=\"one metrics-rows concern: rebuild + row-container cache + hidden-parent warm share one fingerprint contract\"",
+      "raw": "pattern=thin-owner-target size=exempt reason=\"one metric-rows concern: rebuild + hidden-parent warm share the row pipeline over the cache fingerprint contract\"",
       "parsed": {
         "pattern": "thin-owner-target",
         "size": "exempt",
-        "reason": "one metrics-rows concern: rebuild + row-container cache + hidden-parent warm share one fingerprint contract"
+        "reason": "one metric-rows concern: rebuild + hidden-parent warm share the row pipeline over the cache fingerprint contract"
       }
     },
     {
-      "path": "src/tabs/image_gallery/ui/quick_look/overlay_build.py",
+      "path": "src/tabs/image_gallery/ui/quick_look/overlay_build/build.py",
       "limit": 500,
       "marker": "Audit-Meta:",
-      "raw": "pattern=thin-owner-target size=exempt reason=\"one overlay-build concern: painted chrome widgets + build_overlay_ui share one card layout\"",
+      "raw": "pattern=thin-owner-target size=exempt reason=\"one overlay-build concern: the single Quick Look card layout assembled by build_overlay_ui (chrome widgets/icons live in the sibling widgets/icons modules)\"",
       "parsed": {
         "pattern": "thin-owner-target",
         "size": "exempt",
-        "reason": "one overlay-build concern: painted chrome widgets + build_overlay_ui share one card layout"
+        "reason": "one overlay-build concern: the single Quick Look card layout assembled by build_overlay_ui (chrome widgets/icons live in the sibling widgets/icons modules)"
       }
     },
     {
-      "path": "src/tabs/image_gallery/ui/quick_look/preview_canvas.py",
+      "path": "src/tabs/image_gallery/ui/quick_look/preview_canvas/lazy_levels.py",
       "limit": 500,
       "marker": "Audit-Meta:",
-      "raw": "pattern=thin-owner-target size=exempt reason=\"one QRhiWidget lifecycle: plan/raster/zoom-pan/demand-pyramid share one frame entry + generation\"",
+      "raw": "pattern=thin-owner-target size=exempt reason=\"one demand-pyramid lifecycle: dwell/zoom trigger, lazy level target, abort + resume share one canvas generation\"",
       "parsed": {
         "pattern": "thin-owner-target",
         "size": "exempt",
-        "reason": "one QRhiWidget lifecycle: plan/raster/zoom-pan/demand-pyramid share one frame entry + generation"
+        "reason": "one demand-pyramid lifecycle: dwell/zoom trigger, lazy level target, abort + resume share one canvas generation"
       }
     },
     {
-      "path": "src/tabs/image_gallery/ui/quick_look/preview_canvas_host.py",
+      "path": "src/tabs/image_gallery/ui/quick_look/preview_canvas_host/__init__.py",
       "limit": 500,
       "marker": "Audit-Meta:",
-      "raw": "pattern=thin-owner-target size=exempt reason=\"one canvas-slot lifecycle: canvas/cover share one GPU-path attribution\"",
+      "raw": "pattern=thin-owner size=exempt reason=\"package shell: re-exports the split canvas-slot lifecycle for importers/tests\"",
       "parsed": {
-        "pattern": "thin-owner-target",
+        "pattern": "thin-owner",
         "size": "exempt",
-        "reason": "one canvas-slot lifecycle: canvas/cover share one GPU-path attribution"
+        "reason": "package shell: re-exports the split canvas-slot lifecycle for importers/tests"
       }
     },
     {
-      "path": "src/tabs/image_gallery/ui/quick_look/resize.py",
+      "path": "src/tabs/image_gallery/ui/quick_look/resize/handlers.py",
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner-target size=exempt reason=\"one card-resize concern: border/ring share one clamp + repin idiom\"",
@@ -891,14 +922,14 @@
       }
     },
     {
-      "path": "src/tabs/image_gallery/ui/quick_look/strip.py",
+      "path": "src/tabs/image_gallery/ui/quick_look/strip/rebuild.py",
       "limit": 500,
       "marker": "Audit-Meta:",
-      "raw": "pattern=thin-owner-target size=exempt reason=\"one strip concern: full rebuild + in-place selection refresh share one dynamic-state contract (refresh mirrors rebuild so the rebuild path stays byte-identical)\"",
+      "raw": "pattern=state-machine size=exempt reason=\"one strip rebuild lifecycle: full rebuild + the in-place fingerprint-parity selection refresh + scroll follow share one dynamic-state contract (refresh mirrors rebuild so the rebuild path stays byte-identical)\"",
       "parsed": {
-        "pattern": "thin-owner-target",
+        "pattern": "state-machine",
         "size": "exempt",
-        "reason": "one strip concern: full rebuild + in-place selection refresh share one dynamic-state contract (refresh mirrors rebuild so the rebuild path stays byte-identical)"
+        "reason": "one strip rebuild lifecycle: full rebuild + the in-place fingerprint-parity selection refresh + scroll follow share one dynamic-state contract (refresh mirrors rebuild so the rebuild path stays byte-identical)"
       }
     },
     {
@@ -913,7 +944,7 @@
       }
     },
     {
-      "path": "src/tabs/image_gallery/ui/stats_strip.py",
+      "path": "src/tabs/image_gallery/ui/stats_strip/__init__.py",
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=compound-widget size=exempt reason=\"one stats strip — stats/mode/action buttons share one paint/theme lifecycle\"",
@@ -924,7 +955,7 @@
       }
     },
     {
-      "path": "src/tabs/image_gallery/ui/toolbar.py",
+      "path": "src/tabs/image_gallery/ui/toolbar/__init__.py",
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=compound-widget size=exempt reason=\"toolbar + view-switch sharing one paint/theme lifecycle — split tracked post light-theme epic\"",
@@ -932,6 +963,28 @@
         "pattern": "compound-widget",
         "size": "exempt",
         "reason": "toolbar + view-switch sharing one paint/theme lifecycle — split tracked post light-theme epic"
+      }
+    },
+    {
+      "path": "src/tabs/image_gallery/ui/widget_parts/grid_api.py",
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=thin-owner-target size=exempt reason=\"grid API bodies extracted verbatim from ImageGalleryWidget (plan-gallery-split-2026-10-17 Part B Wave 3) - one widget-glue surface, splitting further would be a helpers bag\"",
+      "parsed": {
+        "pattern": "thin-owner-target",
+        "size": "exempt",
+        "reason": "grid API bodies extracted verbatim from ImageGalleryWidget (plan-gallery-split-2026-10-17 Part B Wave 3) - one widget-glue surface, splitting further would be a helpers bag"
+      }
+    },
+    {
+      "path": "src/tabs/image_gallery/use_cases/scheduler.py",
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=thin-owner-target size=exempt reason=\"one bounded scheduler — dedicated pool + priority lanes + pausable background queue sharing owner counters\"",
+      "parsed": {
+        "pattern": "thin-owner-target",
+        "size": "exempt",
+        "reason": "one bounded scheduler — dedicated pool + priority lanes + pausable background queue sharing owner counters"
       }
     },
     {
@@ -946,14 +999,36 @@
       }
     },
     {
-      "path": "src/tabs/image_gallery/use_cases/triage.py",
+      "path": "src/tabs/image_gallery/use_cases/series_overrides.py",
       "limit": 500,
       "marker": "Audit-Meta:",
-      "raw": "pattern=thin-owner size=exempt reason=\"thin owner helpers — keep_best/provenance/clean wiring shares one triage lifecycle\"",
+      "raw": "pattern=thin-owner-target size=exempt reason=\"manual series overrides — override-map writes + in-memory regroup flow over the series_override primitives\"",
       "parsed": {
-        "pattern": "thin-owner",
+        "pattern": "thin-owner-target",
         "size": "exempt",
-        "reason": "thin owner helpers — keep_best/provenance/clean wiring shares one triage lifecycle"
+        "reason": "manual series overrides — override-map writes + in-memory regroup flow over the series_override primitives"
+      }
+    },
+    {
+      "path": "src/tabs/image_gallery/use_cases/triage_actions.py",
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=thin-owner-target size=exempt reason=\"crown/reject wrappers — owner-level manual-rank tail around the triage package bodies\"",
+      "parsed": {
+        "pattern": "thin-owner-target",
+        "size": "exempt",
+        "reason": "crown/reject wrappers — owner-level manual-rank tail around the triage package bodies"
+      }
+    },
+    {
+      "path": "src/tabs/image_gallery/use_cases/triage_run.py",
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=thin-owner-target size=exempt reason=\"one Stage-2 triage pipeline (stable ids -> cluster -> settle) sharing GenericWorker + owner generation state\"",
+      "parsed": {
+        "pattern": "thin-owner-target",
+        "size": "exempt",
+        "reason": "one Stage-2 triage pipeline (stable ids -> cluster -> settle) sharing GenericWorker + owner generation state"
       }
     },
     {

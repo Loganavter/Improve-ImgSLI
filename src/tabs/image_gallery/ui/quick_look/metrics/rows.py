@@ -1,0 +1,591 @@
+"""Quick Look metric row build + hidden-parent warm.
+
+Split out of the former ``ui/quick_look/metrics.py`` (plan-gallery-split-2026-10-17,
+Part C2). Bodies moved verbatim; names/signatures unchanged. ``rebuild_metrics``
+and ``warm_metrics_for`` are the only callers of the row-container cache
+(``cache.py``) and share its fingerprint contract.
+Audit-Meta: pattern=thin-owner-target size=exempt reason="one metric-rows concern: rebuild + hidden-parent warm share the row pipeline over the cache fingerprint contract"
+"""
+
+from __future__ import annotations
+
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget
+
+from sli_ui_toolkit.managers import scaled_px
+
+from .cache import (
+    _metrics_cache_hit,
+    _metrics_cache_store,
+    _metrics_fingerprint,
+    _mode_str_for,
+)
+from .theme import (
+    _metric_label,
+    _metric_note,
+    _overlay_judgment_domain,
+    _ql_text,
+    _token_qcolor,
+)
+
+
+def warm_metrics_for(overlay, item) -> None:
+    """Pre-build (hidden) the metric row set for *item* into the row cache.
+
+    Computes the fingerprint for the target's own series position (the walk
+    rebuild runs with ``_current_idx`` on the target, and the fingerprint
+    bakes the index in — resolved by identity so the warmed key matches the
+    walk's rebuild exactly), returns at once when already cached or live,
+    else builds the row set under a hidden staging parent (never inserted
+    visible: no paint, no visible relayout) and stores it with the same LRU
+    discipline. Never raises; any surprise is a no-op (fail-open: the walk
+    builds synchronously as today).
+    """
+    try:
+        is_fidelity, mode_str = _mode_str_for(overlay)
+        try:
+            series = list(getattr(overlay, "_series_items", None) or [])
+        except Exception:
+            series = []
+        target_idx = None
+        try:
+            for _i, _m in enumerate(series):
+                if _m is item:
+                    target_idx = int(_i)
+                    break
+        except Exception:
+            target_idx = None
+        try:
+            cur_idx = int(getattr(overlay, "_current_idx", 0) or 0)
+        except Exception:
+            cur_idx = 0
+        if target_idx is None:
+            target_idx = cur_idx
+        try:
+            overlay._current_idx = int(target_idx)
+        except Exception:
+            pass
+        try:
+            fp = _metrics_fingerprint(overlay, item, is_fidelity, mode_str)
+        finally:
+            try:
+                overlay._current_idx = int(cur_idx)
+            except Exception:
+                pass
+        if not fp:
+            return
+        try:
+            cache = getattr(overlay, "_metrics_row_cache", None)
+        except Exception:
+            cache = None
+        if isinstance(cache, dict) and fp in cache:
+            return  # already cached.
+        try:
+            if getattr(overlay, "_metrics_fingerprint", None) == fp and len(getattr(overlay, "_metric_rows", None) or []):
+                return  # a live build for it exists.
+        except Exception:
+            pass
+        try:
+            from PySide6.QtWidgets import QWidget as _QWidget
+        except Exception:
+            return
+        try:
+            staging = getattr(overlay, "_metrics_warm_staging", None)
+            try:
+                if staging is None:
+                    raise ValueError("no staging")
+                staging.objectName()  # raises on C++-deleted stubs.
+            except Exception:
+                staging = None
+            if staging is None:
+                staging = _QWidget()
+                try:
+                    staging.hide()
+                except Exception:
+                    pass
+                try:
+                    overlay._metrics_warm_staging = staging
+                except Exception:
+                    pass
+            if staging is None:
+                return
+        except Exception:
+            return
+        saved_rows = getattr(overlay, "_metric_rows", None)
+        saved_fp = getattr(overlay, "_metrics_fingerprint", None)
+        saved_shown = getattr(overlay, "_metrics_shown_key", None)
+        saved_host = getattr(overlay, "_report_host", None)
+        saved_lay = getattr(overlay, "_right_lay", None)
+        try:
+            overlay._metric_rows = []
+        except Exception:
+            pass
+        try:
+            overlay._report_host = staging
+        except Exception:
+            pass
+        try:
+            overlay._right_lay = None  # relayout no-ops: never visible.
+        except Exception:
+            pass
+        try:
+            overlay._metrics_fingerprint = None
+        except Exception:
+            pass
+        try:
+            overlay._current_idx = int(target_idx)
+        except Exception:
+            pass
+        built: list = []
+        try:
+            rebuild_metrics(overlay, item, is_fidelity, mode_str)
+            built = list(getattr(overlay, "_metric_rows", None) or [])
+        except Exception:
+            built = []
+        finally:
+            try:
+                overlay._metric_rows = saved_rows if isinstance(saved_rows, list) else []
+            except Exception:
+                pass
+            try:
+                overlay._report_host = saved_host
+            except Exception:
+                pass
+            try:
+                overlay._right_lay = saved_lay
+            except Exception:
+                pass
+            try:
+                overlay._metrics_fingerprint = saved_fp
+            except Exception:
+                pass
+            try:
+                overlay._metrics_shown_key = saved_shown
+            except Exception:
+                pass
+            try:
+                overlay._current_idx = int(cur_idx)
+            except Exception:
+                pass
+        if not built:
+            return
+        try:  # keep hidden on the staging parent until a hit re-parents.
+            for w in built:
+                try:
+                    if w.parent() is not staging:
+                        w.setParent(staging)
+                except Exception:
+                    pass
+                try:
+                    w.hide()
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        _metrics_cache_store(overlay, fp, built)
+    except Exception:
+        pass
+
+
+def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
+    # Row-container cache: any cached fingerprint swaps in with zero
+    # rebuild. Checked FIRST (broader than the W2 memo below: any cached
+    # item, not just the exact last one); the W2 single-fingerprint
+    # early-return stays as the fast path for exact revisits.
+    try:
+        _mfp_now = _metrics_fingerprint(overlay, item, is_fidelity, mode_str)
+    except Exception:
+        _mfp_now = ()
+    if _mfp_now:
+        try:
+            _cache_now = getattr(overlay, "_metrics_row_cache", None)
+            if isinstance(_cache_now, dict) and _mfp_now in _cache_now:
+                if _metrics_cache_hit(overlay, _mfp_now, _cache_now):
+                    return
+        except Exception:
+            pass
+    # Memo skip: rows already show this exact item/series/theme/scale state
+    # (they are recreated deterministically from it), so rebuilding would
+    # produce identical widgets. Any input change falls through to today's
+    # rebuild bit-for-bit.
+    if _mfp_now:
+        try:
+            _mfp_stored = getattr(overlay, "_metrics_fingerprint", None)
+            _rows = getattr(overlay, "_metric_rows", None) or []
+            if _mfp_stored == _mfp_now and len(_rows):
+                return
+        except Exception:
+            pass
+    # Full rebuild: drop the stored fingerprint first so a mid-rebuild
+    # failure can never leave a stale match behind (fail-open).
+    try:
+        overlay._metrics_fingerprint = None
+    except Exception:
+        pass
+    try:
+        from tabs.image_gallery.ui.quick_look.helpers import _make_label
+    except Exception:
+        from sli_ui_toolkit.widgets import Label as _Label
+
+        def _make_label(text="", parent=None, pixel_size=10, pt=None, **kwargs):  # type: ignore
+            return _Label(text, pixel_size=pixel_size, parent=parent, **kwargs)
+
+    # Rows live flat in right_lay (see helpers.relayout_report_rows); the
+    # report host is their visible ancestor (falls back to parentless for
+    # bare stubs like the truth-test harness, which only reads _metric_rows).
+    # Miss: detach the currently shown set (it stays cached, hidden) instead
+    # of destroying it; uncached rows are destroyed as before. The builders
+    # below then run bit-for-bit as today into a fresh _metric_rows.
+    try:
+        _miss_shown = getattr(overlay, "_metrics_shown_key", None)
+    except Exception:
+        _miss_shown = None
+    try:
+        _miss_cache = getattr(overlay, "_metrics_row_cache", None)
+    except Exception:
+        _miss_cache = None
+    _miss_keep = False
+    try:
+        _miss_cur = list(getattr(overlay, "_metric_rows", None) or [])
+        _miss_cached = list((_miss_cache.get(_miss_shown) or []) if isinstance(_miss_cache, dict) and _miss_shown is not None else [])
+        _miss_keep = bool(_miss_cur) and len(_miss_cur) == len(_miss_cached) and all(c is k for c, k in zip(_miss_cur, _miss_cached))
+    except Exception:
+        _miss_keep = False
+    host = getattr(overlay, "_report_host", None)
+    lay = getattr(overlay, "_right_lay", None)
+    for w in list(overlay._metric_rows):
+        try:
+            if lay is not None:
+                lay.removeWidget(w)
+            if _miss_keep:
+                w.hide()
+            else:
+                # Hide before orphaning (stillborn-toplevel guard).
+                w.hide()
+                w.setParent(None)
+                w.deleteLater()
+        except Exception:
+            pass
+    overlay._metric_rows.clear()
+    # Per-domain read (plan-gallery-ai-backend-owns-quality): the AI domain shows
+    # the VLM's scorecard, the Algorithms domain the local detectors. Only ONE of
+    # them answers here, so a row is always one answer, never two competing ones.
+    domain = _overlay_judgment_domain(overlay)
+    try:
+        from tabs.image_gallery.services import quality_read as _quality_read
+
+        read = _quality_read.domain_axis_scores(item, domain=domain)
+    except Exception:
+        read = {}
+    # Raw detector keys drive the Algorithms-domain extras (raw deltas, the dual
+    # Detail bar); the AI domain has no raws and never reads them.
+    metrics = getattr(item, "metrics", None) or {}
+    if not isinstance(metrics, dict):
+        metrics = {}
+    if domain == "ai":
+        metrics = {}
+
+    def _titled(label: str, spec_id: str, score: int) -> str:
+        # Localized band descriptor (positive wording), same on both domains.
+        note = _metric_note(overlay, spec_id, score)
+        return f"{label} — {note}" if note else label
+
+    def _add_metric_row(title: str, value_text: str, fraction: float, color=None, value_color=None, value_elide: bool = True) -> None:
+        row = QWidget(host)
+        rl = QVBoxLayout(row)
+        rl.setContentsMargins(0, 0, 0, 0)
+        rl.setSpacing(scaled_px(6))  # label→bar gap (W5 fit budget checked)
+        header = QHBoxLayout()
+        header.setContentsMargins(0, 0, 0, 0)
+        header.setSpacing(scaled_px(6))
+        t = _make_label(title, parent=row, pixel_size=11, pt=11.5)
+        header.addWidget(t)
+        # W7: no spacer here — the value below is horizontal-Ignored (it
+        # contributes no sizeHint so the min-296px column never h-scrolls) and
+        # an Ignored label beside a spacer would collapse to its 40px
+        # minimum and elide EVERYTHING ("+0…"). The value takes the free
+        # row width via stretch and end-aligns per the mockup (svg:84
+        # text-anchor=end); it elides only when the title genuinely
+        # leaves no room.
+        vc = _ok_color() if value_color is None else value_color
+        if value_elide:
+            v = _make_label(value_text, parent=row, pixel_size=11, pt=11.5, color=vc, elide=True, minimum_width=40)
+        else:
+            v = _make_label(value_text, parent=row, pixel_size=11, pt=11.5, color=vc)
+        try:
+            v.setAlignment(Qt.AlignmentFlag.AlignRight)
+        except Exception:
+            pass
+        header.addWidget(v, 1)
+        rl.addLayout(header)
+        # Lazy import bar widget
+        from tabs.image_gallery.ui.quick_look.bars import _BarWidget
+
+        bar = _BarWidget(fraction=fraction, fill_color=color, parent=row)
+        rl.addWidget(bar)
+        overlay._metric_rows.append(row)
+
+    def _ok_color():
+        # NOTE: was #3fbf5f (dark-only) — now gallery.status.ok light/dark chain.
+        return _token_qcolor("gallery.status.ok", "#2e7d32", "#43a047")
+
+    def _warn_color():
+        # NOTE: was #e8b64c (dark-only) — now gallery.status.warn light/dark chain.
+        return _token_qcolor("gallery.status.warn", "#b77900", "#d9a441")
+
+    def _bad_color():
+        # NOTE: was dark-only reds before — now gallery.status.danger light/dark chain.
+        return _token_qcolor("gallery.status.danger", "#c0392b", "#d64545")
+
+    def _muted_color():
+        return _token_qcolor("gallery.status.neutral", "#8a8a8a")
+
+    def _add_unmeasured_row(title: str) -> None:
+        """Unmeasured state: an explicit 'not measured' row, never a plausible
+        constant. Fabricated values (0.94 SSIM, 120 sharpness, …) made missing
+        data look measured; gaps must read as gaps. The value is a fixed
+        short constant that always fits the column, so it skips elision
+        (W5: keeps .text() verbatim for readers that match on it)."""
+        _add_metric_row(
+            title,
+            _ql_text(overlay, "image_gallery.quick_look.not_measured", "— · not measured"),
+            0.0,
+            _muted_color(),
+            value_color=_muted_color(),
+            value_elide=False,
+        )
+
+    # Canonical scores drive both the text and the bar: every metric reads
+    # as "NN%" where higher is always better (see services.metric_scores).
+    from tabs.image_gallery.services.metric_scores import (
+        fallback_note as _fallback_note,
+        raw_for as _raw_for,
+        score_band as _score_band,
+        score_for as _score_for,
+        spec_for as _spec_for,
+    )
+
+    def _band_color(score: int):
+        band = _score_band(score)
+        if band == "good":
+            return _ok_color()
+        if band == "bad":
+            return _bad_color()
+        return _warn_color()
+
+    def _add_score_row(spec_id: str, *, extra: str = "", gap: bool = True) -> bool:
+        """One axis as ``NN%`` from the CURRENT domain's read (+ optional suffix).
+        A missing score stays an explicit gap row when ``gap`` (matching the
+        historical per-metric behavior: noise/WB hide instead). Returns True
+        when the axis has a score."""
+        spec = _spec_for(spec_id)
+        if spec is None:
+            return False
+        score = read.get(spec_id)
+        if score is None:
+            if gap:
+                _add_unmeasured_row(_metric_label(overlay, spec.id, spec.label))
+            return False
+        score = int(score)
+        col = _band_color(score)
+        value = f"{score}%" + (f" · {extra}" if extra else "")
+        _add_metric_row(_titled(_metric_label(overlay, spec_id, spec.label), spec_id, score), value, score / 100.0, col, value_color=col)
+        return True
+
+    # A source is the reference, not a variant — comparing it to itself
+    # ("Source match 100%", "vs #1") is nonsense. Render a source state.
+    _viewing_source = False
+    try:
+        from pathlib import Path as _P
+
+        _sp = getattr(overlay, "_source_path", None)
+        _viewing_source = _sp is not None and _P(getattr(item, "path", "")) == _P(_sp)
+    except Exception:
+        _viewing_source = False
+    if is_fidelity and _viewing_source:
+        pass  # the source is the reference — no comparison report rows
+    elif is_fidelity:
+        rank = getattr(item, "rank", None) or getattr(item, "crown_rank", None)
+        _rank_n = rank if rank is not None else overlay._current_idx + 1
+        rank_txt = _ql_text(
+            overlay,
+            "image_gallery.quick_look.rank_of",
+            "#{rank} of {total}",
+            rank=_rank_n,
+            total=len(overlay._series_items),
+        )
+        _add_score_row("ssim", extra=rank_txt)
+        subline = ssim_subline(overlay, item) if domain != "ai" else ""
+        if subline:
+            sub_row = QWidget(host)
+            sub_lay = QVBoxLayout(sub_row)
+            sub_lay.setContentsMargins(0, 0, 0, 0)
+            sub_lay.setSpacing(0)
+            sub_lay.addWidget(_make_label(subline, parent=sub_row, pixel_size=11, pt=11.0, color_token="list_item.text.rating", elide=True, minimum_width=40))
+            overlay._metric_rows.append(sub_row)
+        # Detail keeps its dual restored/invented bar (special widget) but the
+        # header value is the canonical quality score.
+        _spec = _spec_for("detail_gain")
+        _hf = _raw_for(_spec, metrics) if _spec is not None else None
+        if _hf is None:
+            # No raw (the AI domain has none, or Detail is unmeasured) — the
+            # row reads as a normal score/gap row from the current read.
+            _add_score_row("detail_gain")
+        else:
+            _key, hf_f = _hf
+            score = _score_for(_spec, hf_f)
+            row = QWidget(host)
+            rl = QVBoxLayout(row)
+            rl.setContentsMargins(0, 0, 0, 0)
+            rl.setSpacing(scaled_px(6))  # label→bar gap (W5 fit budget checked)
+            header = QHBoxLayout()
+            header.setContentsMargins(0, 0, 0, 0)
+            header.setSpacing(scaled_px(6))
+            t = _make_label(
+                _titled(_metric_label(overlay, "detail_gain", _spec.label), "detail_gain", score),
+                parent=row, pixel_size=11, pt=11.5,
+            )
+            header.addWidget(t)
+            # W7: value takes free row width via stretch (see _add_metric_row).
+            v = _make_label(f"{score}%", parent=row, pixel_size=11, pt=11.5, color=_band_color(score), elide=True, minimum_width=40)
+            try:
+                v.setAlignment(Qt.AlignmentFlag.AlignRight)
+            except Exception:
+                pass
+            header.addWidget(v, 1)
+            rl.addLayout(header)
+            from tabs.image_gallery.ui.quick_look.bars import _DualRestoredInventedBar
+
+            dual = _DualRestoredInventedBar(hf_ratio=hf_f, parent=row)
+            rl.addWidget(dual)
+            sub = QHBoxLayout()
+            sub.setContentsMargins(0, 0, 0, 0)
+            sub.setSpacing(scaled_px(6))
+            lab_l = _make_label(
+                _ql_text(overlay, "image_gallery.ql.restored_texture", "restored texture"),
+                parent=row, pixel_size=11, pt=11.0,
+            )
+            sub.addWidget(lab_l)
+            sub.addStretch(1)
+            lab_r = _make_label(
+                _ql_text(overlay, "image_gallery.ql.invented_hallucinated", "invented / hallucinated"),
+                parent=row, pixel_size=11, pt=11.0,
+            )
+            sub.addWidget(lab_r)
+            rl.addLayout(sub)
+            overlay._metric_rows.append(row)
+        _add_score_row("color_accuracy")
+        # Source-relative clipping (how much more this variant clips than the
+        # source); the raw delta is an Algorithms-domain extra. Shown when the
+        # current domain scored the axis.
+        if "clipping_delta" in read:
+            _extra = ""
+            try:
+                _extra = f"{float(metrics.get('clipping_delta')):+.2f}%"
+            except Exception:
+                _extra = ""
+            _add_score_row("clipping_delta", gap=False, extra=_extra)
+        # Source-relative edge artifacts (halo / chroma fringing) — reliable
+        # form; Algorithms shows the raw edge/flat ratio.
+        for _k in ("halo_delta", "chroma_fringe_delta"):
+            if _k in read:
+                _extra = ""
+                try:
+                    _extra = f"{float(metrics.get(_k)):.1f}×"
+                except Exception:
+                    _extra = ""
+                _add_score_row(_k, gap=False, extra=_extra)
+        # Optional learned perceptual closeness (LPIPS/DISTS): rendered only
+        # when the current domain scored them, so no empty row ever appears.
+        if "dists" in read:
+            _add_score_row("dists", gap=False)
+        if "lpips" in read:
+            _add_score_row("lpips", gap=False)
+    elif "CAMERA" in mode_str:
+        _add_score_row("sharpness")
+        _add_score_row("exposure")
+        _add_score_row("clipping")
+        # Noise/WB have no "not measured" placeholder by design: when absent
+        # the rows simply hide (unchanged historical behavior).
+        _add_score_row("noise", gap=False)
+        _add_score_row("white_balance", gap=False)
+        # Optional no-reference overall quality (BRISQUE) when scored; an
+        # absent reading adds no row.
+        if "brisque" in read:
+            _add_score_row("brisque", gap=False)
+    else:
+        _add_score_row("typicality")
+        _add_score_row("aesthetic")
+    # AI-only Composition axis (no local detector) as a normal row so the
+    # block stays text-free — numbers live in rows.
+    try:
+        _comp = int(getattr(getattr(item, "analysis", None), "composition", -1) or -1)
+    except Exception:
+        _comp = -1
+    if _comp >= 0:
+        _ccol = _band_color(_comp)
+        _add_metric_row(
+            _titled(_metric_label(overlay, "composition", "Composition"), "composition", _comp),
+            f"{_comp}%", _comp / 100.0, _ccol, value_color=_ccol,
+        )
+
+    # Flat placement (rows + uniform spacers) is owned by the coordinator —
+    # it also re-seats the artifact rows, so either rebuild order converges.
+    try:
+        from tabs.image_gallery.ui.quick_look.helpers import relayout_report_rows
+
+        relayout_report_rows(overlay)
+    except Exception:
+        pass
+    try:
+        overlay._metrics_fingerprint = _mfp_now or _metrics_fingerprint(overlay, item, is_fidelity, mode_str)
+    except Exception:
+        pass
+    # Miss store: a COPY of the container list under the fingerprint (the
+    # live list stays the caller's own), then record the shown key so the
+    # next hit hides exactly this set. Shown set pinned via the LRU guard.
+    try:
+        _stored_fp = getattr(overlay, "_metrics_fingerprint", None)
+    except Exception:
+        _stored_fp = None
+    try:
+        overlay._metrics_shown_key = _stored_fp
+    except Exception:
+        pass
+    try:
+        if _stored_fp and list(getattr(overlay, "_metric_rows", None) or []):
+            _metrics_cache_store(overlay, _stored_fp, list(overlay._metric_rows))
+    except Exception:
+        pass
+
+
+def ssim_subline(overlay, item) -> str:
+    """Build the fidelity SSIM subline: the rejected tail's ceiling (S4-5).
+
+    The old "#N scores X" part named another series member and restated an
+    SSIM the rows already show — dropped (declutter).
+    """
+    try:
+        def _ssim_of(m):
+            mt = getattr(m, "metrics", None) or {}
+            try:
+                return float(mt.get("ssim"))
+            except Exception:
+                return None
+
+        parts: list[str] = []
+        others = [m for m in overlay._series_items if m is not item]
+        rejected = [m for m in others if bool(getattr(m, "rejected", False))]
+        tail = [v for v in (_ssim_of(m) for m in rejected) if v is not None]
+        if tail:
+            parts.append(
+                _ql_text(
+                    overlay,
+                    "image_gallery.quick_look.rejected_tail",
+                    "rejected tail ≤ {value}",
+                    value=f"{min(tail):.2f}",
+                )
+            )
+        return " · ".join(parts)
+    except Exception:
+        return ""

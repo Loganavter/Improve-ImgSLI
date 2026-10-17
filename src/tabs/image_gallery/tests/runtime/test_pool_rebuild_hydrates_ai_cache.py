@@ -2,11 +2,11 @@
 
 Repro: analyze a batch, close the gallery tab, reopen it and load the same
 batch again — the images came back "not analyzed" even though the results
-sat in the disk cache: the AI domain is restored quietly (no network on
-open) and re-selecting the same domain is a no-op by contract, while the
-pool rebuild (session restore / folder open / append) never hydrated the
-cache. ``GalleryController._hydrate_ai_cache`` now fills items from the
-cache on every pool (re)build — cache-only, no API call.
+sat in the disk cache: the pool rebuild (session restore / folder open /
+append) never hydrated the cache. ``GalleryController._hydrate_ai_cache`` now
+fills items from the cache on every pool (re)build — cache-only, no API call
+(the AI-domain scorecards the Jev rank reads are re-derived later, at the
+metrics pass settle).
 
 Red-before: the assertions fail on the pre-change controller (``analysis``
 stays ``None``).

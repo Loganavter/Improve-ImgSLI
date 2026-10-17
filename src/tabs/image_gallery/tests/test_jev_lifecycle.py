@@ -92,6 +92,7 @@ class _LifecycleCtrl:
         )
         self.scheduled: list[list[str]] = []
         self.jev_ranks_calls = 0
+        self.ai_for_visible_calls = 0
 
     # Real primitives, bound to this fake.
     def _find_item(self, path):
@@ -114,6 +115,7 @@ class _LifecycleCtrl:
         return None
 
     def _run_ai_for_visible(self):
+        self.ai_for_visible_calls += 1
         return None
 
     def _run_series_priority(self):
@@ -293,6 +295,39 @@ def test_settle_skips_when_the_authority_is_algorithms_even_if_state_says_ai() -
     ctrl.state.rank_domain = "ai"
     GalleryController._settle_metrics_pass(ctrl, [a, b])
     assert ctrl.scheduled == []
+
+
+# --------------------------------------------------------------------------
+# (4b) the settle re-derives the AI WORK, not only the persisted CHOICE
+# --------------------------------------------------------------------------
+
+
+def test_settle_derives_the_ai_analysis_on_the_ai_domain() -> None:
+    """A folder opened (or a session RESTORED) in the AI domain must reproduce
+    the scorecards Jev reads — the settle is the level-trigger, not only an
+    explicit domain switch. Red-before: the pre-change settle never called
+    ``_run_ai_for_visible``, so a restored ``ai`` domain with a cold cache
+    stayed at ``jev ranks: scheduled=0 (no-metrics=1)`` forever."""
+    a, b = _ai_item("a.png", ssim=90), _ai_item("b.png", ssim=40)
+    ctrl = _LifecycleCtrl([_series(a, b)], [a, b], domain="ai")
+    GalleryController._settle_metrics_pass(ctrl, [a, b])
+    assert ctrl.ai_for_visible_calls == 1
+    assert ctrl.scheduled, "the scorecards are derived, then Jev ranks them"
+
+
+def test_settle_does_not_derive_ai_analysis_on_the_algorithms_domain() -> None:
+    a, b = _ai_item("a.png", ssim=90), _ai_item("b.png", ssim=40)
+    ctrl = _LifecycleCtrl([_series(a, b)], [a, b], domain="algorithms")
+    GalleryController._settle_metrics_pass(ctrl, [a, b])
+    assert ctrl.ai_for_visible_calls == 0, "Algorithms must never hit the network on open"
+
+
+def test_settle_derives_ai_analysis_from_the_durable_authority_not_state() -> None:
+    a, b = _ai_item("a.png", ssim=90), _ai_item("b.png", ssim=40)
+    ctrl = _LifecycleCtrl([_series(a, b)], [a, b], domain="ai")
+    ctrl.state.rank_domain = "algorithms"  # a replaced GalleryState projection
+    GalleryController._settle_metrics_pass(ctrl, [a, b])
+    assert ctrl.ai_for_visible_calls == 1, "the durable authority must drive the derive"
 
 
 # --------------------------------------------------------------------------
