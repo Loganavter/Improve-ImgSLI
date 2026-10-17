@@ -21,14 +21,13 @@ from engine.store.tiled_pixel_store import (
     qimage_from_pixel_source,
 )
 from tabs.multi_compare.models import CompareSlot
-from tabs.multi_compare.scene.passes import residency as _residency
-from tabs.multi_compare.scene.passes.residency import (
+from tabs.multi_compare.scene.passes.crop_clip import (
     CroppedSlotView,
     controller_for_canvas,
     crop_box_for_slot,
     cropped_source_for_slot,
-    lod_key_and_source,
 )
+from tabs.multi_compare.scene.passes.residency import lod_key_and_source
 
 _W, _H = 64, 32
 _RED = (255, 0, 0, 255)
