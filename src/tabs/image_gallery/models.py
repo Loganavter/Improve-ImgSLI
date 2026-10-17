@@ -15,6 +15,11 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from PySide6.QtGui import QPixmap
 
+    # TYPE_CHECKING-only: ``metric_profile`` imports this module at runtime
+    # (it reads ``MetricKind`` from the registry), so a runtime import here
+    # would be a cycle. The annotation is lazy (``from __future__ annotations``).
+    from tabs.image_gallery.services.metric_profile import MetricProfile
+
 
 class ThumbnailStatus(str, Enum):
     NOT_LOADED = "not_loaded"
@@ -328,6 +333,15 @@ class GalleryState:
     mode: Mode | None = None
     source_path: Path | None = None
     triage_state: TriageState = TriageState.IDLE
+    #: The LIVE metric profile of the folder — the axis subset its series are
+    #: measured/scored on (``services.metric_profile.MetricProfile``). Derived by
+    #: the controller when the mode/metrics settle (plan
+    #: ``plan-adaptive-metric-profiles-2026-10-17`` P1) and read by the rank
+    #: fusion and the Jev measured vector. Transient view state (same status as
+    #: ``judgment_domain``): NOT persisted to the session slot. ``None`` =
+    #: nothing derived yet → consumers fall back to the mode mapping
+    #: (``use_cases.profile_select.active_profile``), i.e. the pre-P1 behaviour.
+    metric_profile: MetricProfile | None = None
     # Stage 3 VLM caches (mirrors disk cache in vlm_cache)
     tie_breaks: dict[str, TieBreakResult] = field(default_factory=dict)
     briefs: dict[str, CompareBrief] = field(default_factory=dict)

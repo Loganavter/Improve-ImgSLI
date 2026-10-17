@@ -508,6 +508,16 @@ def _settle_metrics_pass(owner, items) -> None:
         owner._metrics_settled_gen = owner._folder_gen
     except Exception:
         logger.debug("metrics-settled gen stamp failed", exc_info=True)
+    # P1: the measured metrics for this folder just settled — NOW (re)derive the
+    # salience-aware metric profile. At triage time the metrics were absent, so
+    # this is the boundary that must refresh: the fusion re-mark and the Jev
+    # vector below read the content-aware axis set from here on.
+    refresh = getattr(owner, "refresh_metric_profile", None)
+    if callable(refresh):
+        try:
+            refresh()
+        except Exception:
+            logger.debug("metric profile refresh failed", exc_info=True)
     try:
         owner._apply_fusion_ranks(getattr(owner.state, "series", None))
     except Exception:
