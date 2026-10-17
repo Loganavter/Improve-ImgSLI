@@ -83,6 +83,16 @@ widgets); a stale pointer or a socket nobody listens on is "no live instance",
 and a refused/closed connection just falls back — never a user-visible error.
 Mutations with no fallback analogue carry `live: true`.
 
+**Mutation contract (reads retry once, edits never).** Reads retry exactly once
+on a transport timeout; mutations never auto-retry. The two failure kinds stay
+distinguishable in the text — **"not sent"** (nothing left the process) vs
+**"sent, no reply"** (the request was written, the deadline expired). A mutating
+tool whose request was already on the wire is *not* retried and does not fall
+back to a fresh process: it answers `isError` with "the operation may have
+completed" so an agent re-reads state instead of double-applying the edit.
+`list_actions` rows carry `enabled` + `reason` (degrading to `true`/`null` when
+the app omits them) so a precondition can be planned around.
+
 **Fallback (no live instance)** uses the primitives the app already ships:
 
 | Need | Path |
@@ -133,6 +143,27 @@ errors honestly, and so do the element-targeting tools (`ui_elements`,
   window's interactive widgets and `ui_click`/`ui_hover`/`ui_focus` act on them
   by session-scoped id; with no instance they answer an honest error — they
   never boot a throwaway app to fake a target.
+- **Refusals are named, never truncated.** Unknown MCP method (`-32601`) and an
+  over-cap request line (`-32600`, 1 MiB) are refused by the transport; an
+  unknown control method, a foreign-uid peer (closed before a byte is read), and
+  a not-open surface are refused by the live app; a non-live `press_keys` / `ui_*`
+  and an unknown action id / tab / state path / surface are refused by the server
+  with close-match hints. Full table in [docs/dev/MCP.md](../../docs/dev/MCP.md).
+- **Annotations audited (2026-10-17).** The eight read-only tools really read
+  (no state touched, `readOnlyHint: true`); the ten mutating tools are honestly
+  marked (`run_action` = `destructiveHint: true`; `press_keys`/`ui_click` =
+  non-destructive but non-idempotent; `ui_hover`/`ui_focus` idempotent). No
+  over- or under-statement was found; the suite pins the classification.
+
+## Known limitations
+
+- **`ui_click {button: right}` hides the menu it just opened (P1 tool defect).**
+  A right-click by element id sends the mouse button event *plus* an extra
+  `QContextMenuEvent`, which consumes the menu manager's open-click grace and
+  collapses the menu ~150 ms later. The handler still runs; only the visible
+  menu life is wrong. The fix belongs to the gallery / control-element lane.
+- The live QRhi/GL canvas is not capturable headlessly (only chrome is
+  meaningful for those surfaces).
 
 ## The optional MCP SDK
 
