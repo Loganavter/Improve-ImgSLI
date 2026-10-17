@@ -102,7 +102,7 @@ ALLOWLIST: dict[tuple[str, int], str] = {
     ("src/tabs/image_gallery/ui/quick_look_hooks.py", 45): (
         "owner_for_triage legacy owner._controller READ (last-resort bind, protocol-first since G5)"
     ),
-    ("src/tabs/image_gallery/ui/drag_drop.py", 243): (
+    ("src/tabs/image_gallery/ui/drag_drop/__init__.py", 272): (
         "_explicit_controller legacy owner._controller READ (last-resort bind, G2)"
     ),
     ("src/tabs/image_gallery/use_cases/triage_ui.py", 47): (
@@ -122,6 +122,71 @@ ALLOWLIST: dict[tuple[str, int], str] = {
     ("src/tabs/image_gallery/ui/quick_look/insets.py", 108): (
         "overlay._owner READ fallback when owner=None (test-required SimpleNamespace doubles)"
     ),
+    # clean_review row builder moved to ui/clean_review/populate.py (package
+    # split, plan-gallery-split-2026-10-17 Part C3): the extracted
+    # ``populate(overlay, owner)`` reads the overlay's OWN _owner (was
+    # ``self._owner`` inside CleanReviewOverlay._populate — same object).
+    ("src/tabs/image_gallery/ui/clean_review/populate.py", 409): (
+        "populate(overlay, ...) reads the overlay's own _owner (moved row builder)"
+    ),
+    ("src/tabs/image_gallery/ui/clean_review/populate.py", 412): (
+        "populate(overlay, ...) reads the overlay's own _owner (moved row builder)"
+    ),
+    ("src/tabs/image_gallery/ui/clean_review/populate.py", 418): (
+        "populate(overlay, ...) reads the overlay's own _owner (moved row builder)"
+    ),
+    ("src/tabs/image_gallery/ui/clean_review/populate.py", 422): (
+        "populate(overlay, ...) reads the overlay's own _owner (moved row builder)"
+    ),
+    ("src/tabs/image_gallery/ui/clean_review/populate.py", 424): (
+        "populate(overlay, ...) reads the overlay's own _owner (moved row builder)"
+    ),
+    # --- moved card handlers (plan Part B Wave 3) ---
+    # Bodies moved verbatim to ui/widget_parts/card_actions.py, so ``self``
+    # became the functions-taking-owner ``owner``. The ``owner._owner``
+    # probe regex matches the ``owner._owner_for_triage`` prefix, but this is
+    # the widget's OWN triage-owner accessor (same object as before the move),
+    # not a new read of an overlay's ``_owner``.
+    ("src/tabs/image_gallery/ui/widget_parts/card_actions.py", 28): (
+        "moved card handler calls owner._owner_for_triage (self→owner rename, plan Part B Wave 3)"
+    ),
+    ("src/tabs/image_gallery/ui/widget_parts/card_actions.py", 93): (
+        "moved card handler calls owner._owner_for_triage (self→owner rename, plan Part B Wave 3)"
+    ),
+    ("src/tabs/image_gallery/ui/widget_parts/card_actions.py", 117): (
+        "moved card handler calls owner._owner_for_triage (self→owner rename, plan Part B Wave 3)"
+    ),
+    ("src/tabs/image_gallery/ui/widget_parts/card_actions.py", 190): (
+        "moved empty-drop handler calls owner._owner_for_triage (self→owner rename, plan Part B Wave 3)"
+    ),
+    # --- moved widget clusters (plan Part B Wave 4) ---
+    # Bodies moved verbatim to ui/widget_parts/{series_headers,ask_ai_surface,
+    # triage_actions}.py, so ``self`` became the functions-taking-owner
+    # ``owner``. The ``owner._owner`` probe regex matches the
+    # ``owner._owner_for_triage`` prefix, but this is the widget's OWN
+    # triage-owner accessor (same object as before the move), not a new read
+    # of an overlay's ``_owner``.
+    ("src/tabs/image_gallery/ui/widget_parts/ask_ai_surface.py", 132): (
+        "moved ask-ai submit calls owner._owner_for_triage (self→owner rename, plan Part B Wave 4)"
+    ),
+    ("src/tabs/image_gallery/ui/widget_parts/series_headers.py", 133): (
+        "moved series context menu calls owner._owner_for_triage (self→owner rename, plan Part B Wave 4)"
+    ),
+    ("src/tabs/image_gallery/ui/widget_parts/triage_actions.py", 20): (
+        "moved keep-best action calls owner._owner_for_triage (self→owner rename, plan Part B Wave 4)"
+    ),
+    ("src/tabs/image_gallery/ui/widget_parts/triage_actions.py", 29): (
+        "moved show-all action calls owner._owner_for_triage (self→owner rename, plan Part B Wave 4)"
+    ),
+    ("src/tabs/image_gallery/ui/widget_parts/triage_actions.py", 37): (
+        "moved clean-rejected action calls owner._owner_for_triage (self→owner rename, plan Part B Wave 4)"
+    ),
+    ("src/tabs/image_gallery/ui/widget_parts/triage_actions.py", 62): (
+        "moved compare-finalists action calls owner._owner_for_triage (self→owner rename, plan Part B Wave 4)"
+    ),
+    ("src/tabs/image_gallery/ui/widget_parts/triage_actions.py", 394): (
+        "moved show_clean_review calls owner._owner_for_triage (self→owner rename, plan Part B Wave 4)"
+    ),
     # --- storeless setattr fallback (R4) ---
     ("src/tabs/image_gallery/ui/quick_look_hooks.py", 97): (
         "_merge_selection_setattr def: storeless fallback (setattr, never bare writes)"
@@ -135,13 +200,13 @@ ALLOWLIST: dict[tuple[str, int], str] = {
     ("src/tabs/image_gallery/ui/quick_look_hooks.py", 118): (
         "_merge_selection_setattr storeless setattr fallback"
     ),
-    ("src/tabs/image_gallery/ui/quick_look_hooks.py", 278): (
+    ("src/tabs/image_gallery/ui/quick_look_hooks.py", 277): (
         "_merge_selection_setattr storeless call site"
     ),
-    ("src/tabs/image_gallery/ui/quick_look_hooks.py", 280): (
+    ("src/tabs/image_gallery/ui/quick_look_hooks.py", 279): (
         "_merge_selection_setattr storeless call site"
     ),
-    ("src/tabs/image_gallery/ui/quick_look_hooks.py", 419): (
+    ("src/tabs/image_gallery/ui/quick_look_hooks.py", 418): (
         "set_source storeless setattr fallback (never a bare state write)"
     ),
 }

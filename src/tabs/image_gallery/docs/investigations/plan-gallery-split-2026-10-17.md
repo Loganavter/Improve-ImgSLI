@@ -1,6 +1,10 @@
-# Plan — Image Gallery `controller.py` / `widget.py` split (+ oversized-file survey)
+# Plan — Image Gallery decomposition (controller + widget + remaining large files)
 
-Status: draft · Date: 2026-10-17 · Scope: `src/tabs/image_gallery/` (tab-owned)
+Status: executed (2026-10-17) · Date: 2026-10-17 · Scope: `src/tabs/image_gallery/` (tab-owned)
+
+Parts: **A** `controller.py` · **B** `widget.py` · **C** remaining gallery files
+(grid_view, quick_look package, clean_review, drag_drop, triage, secondary) ·
+**D** non-gallery oversized files (triage list only).
 
 Related: [CODE_PATTERNS.md](../../../../../docs/dev/CODE_PATTERNS.md) ·
 [FILE_SIZE_POLICY.md](../../../../../docs/dev/FILE_SIZE_POLICY.md) ·
@@ -181,9 +185,150 @@ Per-wave gate (per `FILE_SIZE_POLICY.md` / `CODE_PATTERNS.md`):
   fails CI; a moved body must not leave a stub still > 500 lines without its
   own marker.
 
-## Out of scope (own epics, tracked here as findings)
+## Part C — gallery: remaining large files (cluster maps)
 
-`ui/grid_view.py` (3972), the `ui/quick_look/` package (11 807), `clean_review.py`
-(1840), `drag_drop.py` (1653), `use_cases/triage.py` (1230), and the
-non-gallery large files in the survey table. Each needs its own criterion +
-cluster map before slicing.
+The survey flagged these as own epics; mapped here so each can start without a
+second discovery pass. Same criterion + per-wave gate as Parts A/B.
+
+### C1. `ui/grid_view.py` — 3972 lines (`state-machine`)
+
+One `GalleryGridView(QWidget)` (~3150 lines) plus module helpers, filters and
+six layer/handle classes. Cluster → target:
+
+| Lines | Cluster | → target |
+|---|---|---|
+| 78–332 | colour resolvers + Wave-A drag-source (`dragged_paths_for_press`, `build_gallery_drag_mime`, `should_start_gallery_drag`, `resolve/compose_gallery_drag_pixmap`) | `ui/grid_view/drag_source.py` |
+| 344–467 | `_CardPressDragFilter`, `_CardKeyFilter` | `ui/grid_view/filters.py` |
+| 469–528 | `GalleryGridNavSection` | `ui/grid_view/nav_section.py` |
+| 530–820 | layers (`_SeriesHeaderAccentLayer`, `_SeriesDropTargetLayer`, `_BandSeparatorHandle`, `_SeriesCollapseArrowLayer`) | `ui/grid_view/layers.py` |
+| 1031–1343 | view mode + column math (`set_view_mode`, `_sync_series_column_widths`, `_compute_columns`, `_adapt_columns_and_reflow`, `_reflow_flat`) | `ui/grid_view/columns.py` |
+| 1343–1520 | side-by-side bands + splitter (`_plan_bands`, `_plan_band_entries`, `set_split_left`, `nav_columns_for`) | `ui/grid_view/bands.py` |
+| 1520–2065 | keyboard focus nav (`_live_cards_in_order`, `focused_*`, `move_focus`, `handle_navigation_key`, `_focus_snapshot/_restore`) | `ui/grid_view/nav.py` |
+| 2065–2284 | rebuild (`rebuild_grid`, `_promote_flat_ungrouped`, `_rebuild_next_chunk`) | `ui/grid_view/rebuild.py` |
+| 2374–3453 | series grouping (`set_series`, `_retitle_header`, `_rebuild_series`, `append_new_cards`, `_make_series_header`, `_toggle_collapse`) | `ui/grid_view/series.py` |
+| 3512–3666 | pool helpers (`_acquire_card`, `_sync_activity`, `_recycle_card`, `_rebind_card`) | `ui/grid_view/pool.py` |
+| 3666–3811 | card drag source (`note_card_press`, `build_card_drag`, `maybe_start_card_drag`) | `ui/grid_view/drag_source.py` |
+| 3811–3896 | card/series context-menu dispatch | `ui/grid_view/context.py` |
+| 3896–3972 | marquee/external helpers + `eventFilter` | `ui/grid_view/marquee.py` |
+
+Residual `GalleryGridView`: `__init__` + theme slots + `visible_paths` + thin
+delegators (~500–700 lines). Watch the coupling: the drag-source helpers and
+`_CardPressDragFilter` share `_drag_owner`/`note_card_press` state — move them
+together.
+
+### C2. `ui/quick_look/` — 11 807 lines / 20 files (epic)
+
+The package already IS the decomposition of the old monolith; the giants are
+two lifecycles (canvas, host), themselves splittable, plus the overlay shell:
+
+| Lines | File | Responsibility | → target |
+|---|---|---|---|
+| 2014 | `preview_canvas.py` | one `QuickLookCanvasWidget(QRhiWidget)`: source lifetime → tiled single-source → lazy levels → applicator plan → QRhi entry points → frame raster | `quick_look/canvas/` per-phase modules (mirrors `magnifier/`) |
+| 1632 | `preview_canvas_host.py` | host glue: preview-store cache, tiled source population, prefetch/warm, cover/first-frame, fallback wiring | `quick_look/host/` (`store_cache.py`, `tiled_source.py`, `prefetch.py`, `cover.py`, `fallback.py`) |
+| 1803 | `quick_look.py` | `QuickLookOverlay(TopLevelInWindowOverlay)` shell + region selection | keep shell; region → `quick_look/region.py` (exists) |
+| 1649 | `strip.py` | filmstrip: wheel/lasso/repin filters + strip paint + `rebuild_strip` | `quick_look/strip/` (`filters.py`, `paint.py`, `rebuild.py`) |
+| 1180 | `resize.py` | overlay resize: border/ring zones + cursors + report-row relayout | `quick_look/resize/` (`zones.py`, `cursors.py`, `relayout.py`) |
+| 971 | `metrics.py` | metric rows + cache + domain read | `quick_look/metrics/` (`rows.py`, `cache.py`) |
+| 951 | `overlay_build.py` | overlay UI construction (`build_overlay_ui` + plate widgets) | keep (one builder) |
+
+**Epic** — the canvas and host lifecycles each need their own criterion pass;
+do not attempt as a single wave.
+
+### C3. `ui/clean_review.py` — 1840 (`state-machine`)
+
+- 71–827 `_ReviewPlate(QWidget)` — its `paintEvent` alone is ~222–826
+  (~600 lines) → `ui/clean_review/plate.py`.
+- 827–1840 `CleanReviewOverlay` — `_populate` (1354–1696, ~340) + row building
+  → `ui/clean_review/populate.py`; shell/interaction stays.
+
+### C4. `ui/drag_drop.py` — 1653 (`single-router`)
+
+Split the ~670-line series-band **drop-target geometry** out of the router:
+
+- 38–980 routing (`is_acceptable_drop`, `drag_*_event`, `_route_paths`,
+  `drop_event`, `_ZoneDropFilter`, header reset menu) → stays (router).
+- 981–1653 geometry (`_section_bands`, `_section_band_target`,
+  `series_target_at`, `_card_hit_series`, `_header_at`, `_grid_has_headers`)
+  → `ui/drag_drop/targets.py`.
+  `test_gallery_dnd_delivery.py` pins `series_target_at`/`_header_at` — keep names.
+
+### C5. `use_cases/triage.py` — 1230 (`thin-owner`)
+
+Already functions-taking-owner; split by concern into a package: Redux emit
+helpers (41–184) → `triage/emit.py`; provenance (226–322) →
+`triage/provenance.py`; crown/reject (323–525) → `triage/crown.py`;
+removal/reinsert (525–844) → `triage/removal.py`; moves (704–885) →
+`triage/moves.py`; `compare_finalists`/aliases/`show_all` (885–1201) →
+`triage/compare.py`. (This is also Part A Wave-3's extension target.)
+
+### C6. Secondary gallery files (brief verdicts)
+
+| Lines | File | Split |
+|---|---|---|
+| 923 | `ui/toolbar.py` (`compound-widget`) | sort flyout (787→) + the two container classes → `ui/toolbar_parts/` |
+| 861 | `services/ai_client.py` (`wire-client`) | parsing (`_parse_*`, 132–295) vs transport (`call_sync`/stream, 342–660) → `ai_parse.py` / `ai_transport.py` |
+| 742 | `ui/stats_strip.py` (`compound-widget`) | theme resolvers (26–188) → `ui/stats_strip_parts/theme.py` |
+| 710 | `ui/ask_ai.py` (`single-surface`) | flyout is one surface — keep |
+| 685 | `services/artifacts.py` (`tiled-pipeline`) | stateless detector kernels — keep |
+| 654 | `ui/card/context_menu.py` | target predicates (107–320) vs popup build → `card/context_parts/` |
+| 596 | `ui/quick_look_hooks.py` | **fix its stale ALLOWLIST entries first** (Wave-1 blocker) |
+| 505 | `ui/card.py` | builders already flat — keep |
+
+## Part D — non-gallery large files (triage list, NOT verdicts)
+
+These belong to other tabs / the host, so their cluster maps go in *their* docs
+(`src/tabs/<tab>/docs/`) or `docs/dev/CODE_MASS_REDUCTION.md` — this plan only
+flags them. **No verdict is asserted here**: per `CODE_PATTERNS` "code first,
+comments last", each must be opened before deciding keep vs split.
+
+| Lines | File | Marker | Note |
+|---|---|---|---|
+| 1458 | `image_compare/.../magnifier/render/magnifier_pass.py` | File-Size-Exempt | single QRhi pass — likely keep |
+| 1258 | `engine/cache/display_tier_service.py` | state-machine | candidate: upload/geometry vs legacy-plan apply |
+| 1245 | `engine/gpu/tiled_image_view.py` | state-machine | one tile-array lifecycle — likely keep |
+| 1155 | `tabs/multi_compare/scene/passes/base_images.py` | — | candidate (1 class, MC render pass) |
+| 1116 | `tabs/image_compare/canvas/widget.py` | thin-owner | verify it still delegates per `CODE_PATTERNS` |
+| 1039 | `video_editor/services/thumbnails.py` | state-machine | one pipeline — likely keep |
+| 1033 | `tabs/multi_compare/scene/passes/residency.py` | — | candidate |
+| 985 | `engine/store/tiled_pixel_store.py` | state-machine | one memmap lifecycle — keep |
+| 937 | `engine/gpu/glass_panel.py` | state-machine | keep |
+| 925 | `plugins/help/dialog.py` | qdialog-wiring | keep |
+| 968 | `video_editor/services/video_export/service.py` | state-machine | keep |
+| 915 | `image_compare/.../rhi_renderer/residency.py` | tile-residency | keep |
+| 759 | `image_compare/presenters/toolbar/connections.py` | state-machine | review |
+
+## Sequencing (all parts)
+
+Parts A/B are the primary target (the tab's two hubs). Then, cheapest-isolated
+first: **C4** (drag targets) → **C5** (triage package) → **C6** (secondary) →
+**C3** (clean_review) → **C1** (grid_view) → **C2** (quick_look package, epic).
+Part D is a separate host/other-tab track; nothing here blocks it.
+
+## Execution log (2026-10-17)
+
+Executed by 6 parallel-writer crews (4 clone cells each, model
+`opencode-go/deepseek-v4.1-flash`), integrated into `int/gallery-split`; every
+wave re-verified on the merged tree (gallery suite + `tests/contracts`, name
+freeze, comment-citation gate, file-size registry).
+
+| Crew | Result |
+|---|---|
+| A | `controller` W1 (filtering/thumbnails/coalescing/ask-ai) · `widget` W1 (slot) · `drag_drop` C4 · `clean_review` C3 |
+| B | `controller` W2 (slot/folder_loading) · `widget` W2 (view-prefs/status) · `triage` C5 · `grid_view` C1 |
+| C | `controller` W3 (triage-run/metrics/proxy) · `widget` W3 (card-actions/keys/grid-api) · `ai_client` C6 · `toolbar`+`stats_strip` C6 |
+| D | `controller` W4 (ai-analyze/Stage-3) · `widget` W4 (series-headers/ask-ai/triage-actions) · `card/context_menu` C6 · `quick_look/strip` C2 |
+| E | `controller` W5 (scheduler/crown-reject/series-overrides) · `quick_look/{preview_canvas_host,resize,metrics}` C2 |
+| F | `quick_look/{preview_canvas,overlay_build}` C2 · `quick_look.py` overlay split C2 |
+
+Sizes: `controller.py` **5043 → 1966**, `widget.py` **2754 → 934**;
+packages now: `ui/grid_view/`, `ui/drag_drop/`, `ui/clean_review/`,
+`ui/card/context_menu/`, `ui/toolbar/`, `ui/stats_strip/`, `ui/widget_parts/`,
+`ui/quick_look/{strip,preview_canvas,preview_canvas_host,resize,metrics,overlay_build,overlay_parts}/`,
+`services/ai_client/`, `use_cases/{triage,…}/`.
+
+Known deviations (deliberate, recorded): the Jev ranker cluster
+(`_run_jev_ranks`/`_launch_jev_batch`) and `_apply_fusion_ranks` **stay** in
+`controller.py` — `tests/contracts/test_gallery_pipeline_substrate.py` pins them
+there; `overlay_build.py` (listed "keep" above) was split (C2) since a
+submodule→package move was safe; the C2 `quick_look/canvas/` name was realised
+as `quick_look/preview_canvas/`.

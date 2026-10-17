@@ -18,6 +18,9 @@ from tests.contracts._framework import ROOT, iter_py, parse, rel
 
 ALLOWLIST = {
     "src/engine/store/tiled_pixel_store.py",
+    # Part D (2026-10-17): duck-typed pixel-source adapters extracted from
+    # tiled_pixel_store.py; `to_real_pil_copy` lives here now.
+    "src/engine/store/pixel_source_adapters.py",
     # memmap-failure fallback in the unify large path (`to_real_pil_copy`).
     "src/engine/store/pixel_ops/unify.py",
 }
