@@ -41,7 +41,7 @@ fallback window, e.g. `:97`).
 
 ## Surface at a glance
 
-14 tools — 7 read-only, 7 mutating (reads and writes never share a tool):
+20 tools — 9 read-only, 11 mutating (reads and writes never share a tool):
 
 | Tool | Kind | What it does |
 |---|---|---|
@@ -52,6 +52,8 @@ fallback window, e.g. `:97`).
 | `query_trace` | read | search `trace.jsonl` newest-first |
 | `dump_ui_layout` | read | widget tree JSON (geometry, colors, bound action ids) |
 | `list_surfaces` | read | capture-surface names for `capture_surface` |
+| `ui_elements` | read | live inventory of interactive elements (id, role, label, rects, enabled) |
+| `jobs_list` | read | live in-flight long passes (kind, status, progress, elapsed_s, message) |
 | `open_tab` | write | open/focus a tab kind (live) or launch it (fallback) |
 | `run_action` | write | run one ActionRegistry id |
 | `open_folder` | write | hand a folder to the gallery (live: routed) |
@@ -59,6 +61,10 @@ fallback window, e.g. `:97`).
 | `set_language` | write | set `language` (en/ru/zh/pt_BR) |
 | `capture_surface` | write | screenshot a named surface to PNG |
 | `press_keys` | write | inject keyboard combos into the running app (live-only) |
+| `ui_click` | write | click an element by id, in-process (live-only) |
+| `ui_hover` | write | hover an element by id, in-process (live-only) |
+| `ui_focus` | write | focus an element by id, in-process (live-only) |
+| `jobs_cancel` | write | cancel a running job by id — real cancel, or a named refusal (live-only) |
 
 Resources: `app://actions`, `app://state`, `app://sessions`, `app://log`,
 `app://ui-layout`, `app://theme`; templates `app://action/{id}`,
@@ -91,16 +97,170 @@ One tool call is one newline-delimited JSON request
 the user is driving: `open_tab` switches in place, `run_action` runs live,
 `open_folder` really routes the folder (`routed: true`), `set_theme` /
 `set_language` apply now (`applies_on: "now"`), and `press_keys` injects
-keyboard combos the Find Action catalog does not cover. Mutations with no
-Phase-1 analogue carry `live: true` (there is no fresh `pid` to report).
+keyboard combos the Find Action catalog does not cover. `ui_elements` inventories
+the live window's interactive widgets (id, role, label, widget `rect` and
+screen-space `screen_rect`, `enabled`, bound action id) and
+`ui_click` / `ui_hover` / `ui_focus` act on one by its session-scoped id —
+in-process, at the element's centre, with an unknown id retried ~3 s and then
+failed with close matches. In-process delivery fires the handler even when the
+element is off-screen; only the human-visible effect needs it on screen. Both
+rects are 4-number arrays; `rect` is widget-local and `screen_rect` is
+screen-space (best-effort on Wayland). Mutations with no Phase-1 analogue carry
+`live: true` (there is no fresh `pid` to report).
 
-Staleness and failure are non-events for the caller: a pointer whose pid is dead
-is stale, a socket nobody listens on is "no live instance", and a connection
-the app refuses or closes surfaces as a fallback — never as a user-visible
-error. After a transport failure the server pauses re-attaching for a couple of
-seconds so a dead socket is not retried on every call. The app refuses
-connections from another uid (its own `SO_PEERCRED` check); this client only has
-to degrade cleanly.
+Staleness and failure are non-events for the caller: a pointer whose socket is
+unusable is stale, a socket nobody listens on is "no live instance", and a
+connection the app refuses or closes surfaces as a fallback — never as a
+user-visible error. The pointer's `pid` is only a *hint*: a Flatpak app runs in
+its own PID namespace, so the host's `kill(pid, 0)` can call a live app dead —
+the server probes the socket instead and only declares staleness when nothing
+answers (see [Flatpak sandbox](#flatpak-installed-app-p0)). After a transport
+failure the server pauses re-attaching for a couple of seconds so a dead socket
+is not retried on every call. The app refuses connections from another uid (its
+own `SO_PEERCRED` check); this client only has to degrade cleanly.
+
+### Jobs: watching and stopping the long passes (P3)
+
+`jobs_list` and `jobs_cancel` expose the passes that take minutes. Both are
+**live-only** (in-flight work is in-memory state of a running app) and both
+report only what the app already keeps — never a fabricated percentage.
+
+`jobs_list` returns `{count, jobs: [{id, kind, status, progress, elapsed_s,
+message}]}` with one row per *active* pass (an idle pass is absent — an empty
+list really means nothing is running). Kinds, in priority order:
+
+| kind | progress from | cancel safe? |
+|---|---|---|
+| `gallery_pool` | `GalleryController.sched_stats()` (`active`/`pending`/`queued`) + each item's `thumbnail_status` (`{done, total}`) | no |
+| `metrics_pass` | the controller's own `_proxy_done` / `_proxy_total` chunk counters (`{done, total}` — the same numbers the app feeds `widget.set_background_scanning`) | no |
+| `ai_analysis` | per-item `analysis_status` aggregated (`{done, total}` — there is no batch object) | no |
+| `export` | the save task's toast progress bar (0–1 float) when the toast manager is already materialized; `null` otherwise | **yes** |
+
+`status` is `running` or `paused` (the gallery's background thumb lane pauses
+while the page is hidden). `progress` is `{done, total}` or a 0–1 float, or
+`null` when the app reports no total — the honest alternative to inventing one.
+
+**`elapsed_s` is a lower bound.** The app stamps no start time for these passes,
+so it measures from the first `jobs_list` that saw the job running (app-process
+scoped) and is `null` until then. It is never back-dated.
+
+**`jobs_cancel {id}` — the real cancel, or a named refusal.** Only `export` has
+a cooperative cancel today: the id names one in-flight save task, and the cancel
+sets that task's own `threading.Event` — the same handle the toast's Cancel
+button sets. `ExportService` checks it at each checkpoint and
+`write_pil_image_cancelable` writes atomically (tmp + `os.replace`), removing
+its tmp file on abort, so a cancelled export leaves **no partial artifact** at
+the output path. A cancel-requested entry is then dropped from `jobs_list`
+immediately rather than lingering as a "cancelling" zombie (the coordinator's
+own registry entry survives until shutdown on the one worker shape that swallows
+the cancel sentinel and returns `None` — an app-side follow-up, tracked in
+`TODO.md`-style notes, not a lie in the API).
+
+Every other kind answers a *named* refusal, because no safe cancel exists: the
+gallery pool is a `QThreadPool` (`clear()` would silently drop queued thumbnails
+and leave items unloaded), and the metrics and AI passes carry no cooperative
+token. Cancelling there would be a fake, so it is refused:
+
+```
+jobs_cancel {id: "metrics:image_gallery"} →
+  ok: false · "cancel is not supported for kind 'metrics_pass'"
+  hint: "only exports expose a safe cancel today …"
+```
+
+**`notifications/progress` is deliberately not carried.** The transport
+(`protocol.py`) is stdio request/response and emits no server→client
+notifications, so progress cannot be pushed without faking it. The honest
+substitute is to poll `jobs_list` while a long tool call is pending. Recorded as
+a gap, not a feature.
+
+### Mutation contract: reads retry once, edits never
+
+The control transport is local, so this is honest labelling more than
+resilience — but it is what stops an agent from double-applying an edit:
+
+- **Reads retry exactly once** when the wire times out (`list_actions`,
+  `list_sessions`, `get_state`, `read_log`, `query_trace`, `dump_ui_layout`,
+  `list_surfaces`, `ui_elements`, `jobs_list`); a second timeout falls back like
+  any other transport failure.
+- **Mutations never auto-retry** (`open_tab`, `run_action`, `open_folder`,
+  `set_theme`, `set_language`, `capture_surface`, `press_keys`, `ui_click`,
+  `ui_hover`, `ui_focus`, `jobs_cancel`). A retry could double-apply the edit.
+- **The two failure kinds stay distinguishable in the message text**: a
+  transport failure *before* the request left the process says **"not sent"**
+  (connect/write); one *after* the request was written says **"sent, no
+  reply"** (read timeout, EOF, read error).
+- **A mutating tool's timeout says the operation may have completed.** When a
+  live edit was already on the wire and the deadline expired, the server does
+  *not* fall back to a fresh process (that would risk applying the edit twice);
+  it answers `isError` with the wire message plus "the operation may have
+  completed", and the hint tells the caller to re-read state rather than retry.
+  `list_actions` rows carry `enabled` + `reason` for exactly this: plan around a
+  precondition instead of failing into it.
+
+### Flatpak-installed app (P0)
+
+A host-side `mcp-server/app/server.py` **cannot attach to the app installed as a
+Flatpak with the current defaults**, and no protocol change fixes that — the
+blocker is the path. Inside the sandbox `$XDG_RUNTIME_DIR` is a private per-app
+tmpfs mounted at the *same string* (`/run/user/1000`, observed as
+`tmpfs[/.flatpak/io.github.Loganavter.Improve-ImgSLI/xdg-run]`, mode 700), so
+host and app write two different `control.sock` files that happen to share a
+name. Unix sockets themselves cross a *granted* path fine in both directions
+(verified: a sandbox-created socket connected from the host, `SO_PEERCRED` uid
+1000 on both sides).
+
+Two things make route **A** work today with no rebuild — `flatpak override
+--user --env=…` on the app, `IMGSLI_MCP_CONTROL_SOCKET` on the server:
+
+```bash
+# app side: keep the channel on and point it at the per-app data dir, whose path
+# and inode are the same on both sides (Flatpak maps ~/.var/app/<id>/data into
+# the sandbox; observed identical inode host vs sandbox).
+flatpak override --user \
+  --env=IMGSLI_CONTROL=1 \
+  --env=IMGSLI_CONTROL_DIR="$HOME/.var/app/io.github.Loganavter.Improve-ImgSLI/data/ImproveImgSLI/run" \
+  io.github.Loganavter.Improve-ImgSLI
+
+# server side: name the socket explicitly (or set this env in the MCP client's
+# `environment` block, next to IMGSLI_REPO_ROOT).
+IMGSLI_MCP_CONTROL_SOCKET="$HOME/.var/app/io.github.Loganavter.Improve-ImgSLI/data/ImproveImgSLI/run/control.sock" \
+  python3 mcp-server/app/server.py
+```
+
+The user restarts the Flatpak app with the channel enabled and sets the server
+env var (or adds it to the MCP client config). No manifest change, no rebuild.
+
+**PID namespace caveat (handled server-side).** The pointer's `pid` is
+sandbox-local: a host `os.kill(pid, 0)` can raise `ProcessLookupError` for a live
+sandboxed app (or `PermissionError` for an alien pid), which would make a
+pid-only staleness check report "no live instance" while the socket is
+connectable. `mcp-server/app/live.py` therefore treats the pid as a hint: a
+pointer is stale only when the pid looks dead **and** a probe connect to the
+socket fails; a socket that answers is used. The app-side
+`src/core/control/discovery.py:stale_pointer_alive()` (startup single-instance
+guard) is still pid-only — a leftover pointer from a crashed sandbox instance
+can still make the next launch refuse, which is why route A wants an explicit
+control dir and remains a documented fallback rather than the default.
+
+Route **B** is the future zero-config end state: grant
+`--filesystem=xdg-run/improve-imgsli:create` in `finish-args`, point the control
+dir at `$XDG_RUNTIME_DIR/improve-imgsli`, and add that path as a discovery
+candidate on both sides. The grant mechanism is verified on an installed app
+(Discord's `xdg-run/pipewire-0` shows the host node at the same path with the
+same inode); the app-created `:create` subdir is **not** verified yet — it needs
+the manifest change and a real build. Route **C** (run the MCP server inside the
+sandbox) is rejected: `build/Flatpak-template/io.github.Loganavter.Improve-ImgSLI.yaml`
+installs `src/` only, so `mcp-server/` is absent from `/app`.
+
+**Re-verify on the next Flatpak build** (recipe; nothing here builds): (1) inside
+the sandbox, `findmnt -T "$XDG_RUNTIME_DIR"` must still show a private per-app
+tmpfs and `$XDG_DATA_HOME`/`~/.var/app/<id>/data` the same inode as the host;
+(2) with route A set, the host must see
+`~/.var/app/io.github.Loganavter.Improve-ImgSLI/data/ImproveImgSLI/run/control.sock`
+and `IMGSLI_MCP_CONTROL_SOCKET=… python3 mcp-server/app/server.py --check` must
+answer; (3) for route B, grant the subdir and confirm a socket the sandbox
+creates at `$XDG_RUNTIME_DIR/improve-imgsli` is present on the host at the same
+string, then a host connect must succeed.
 
 ### Fallback (Phase 1: no live instance)
 
@@ -140,6 +300,9 @@ and may be ~30 s stale; fallback mutations start a *new* process (they affect a
 running window only through live attach); fallback `open_folder` reports
 `routed: false`, so the folder must be dropped on the gallery. `press_keys` is
 **live-only** — with no instance it errors honestly, it never fakes input. The
+element-targeting tools (`ui_elements`, `ui_click`, `ui_hover`, `ui_focus`) are
+live-only too: ids exist only in a running app, so with no instance they answer
+an honest error rather than booting a throwaway app. The
 live QRhi/GL canvas is not capturable headlessly (see
 [SCREENSHOTS.md](SCREENSHOTS.md) §Known limitation).
 
@@ -152,16 +315,80 @@ live QRhi/GL canvas is not capturable headlessly (see
 - **No file contents.** Only the app's own log/tracer/catalog/layout artifacts
   are returned — never user images or arbitrary files.
 - **Read-only default**; mutations are distinct named tools with honest
-  `annotations` (`run_action` sets `destructiveHint: true`; `press_keys` is
-  non-destructive but non-idempotent).
+  `annotations` (`run_action` sets `destructiveHint: true`; `press_keys` and
+  `ui_click` are non-destructive but non-idempotent).
 - **Keyboard input is live-only.** `press_keys` injects into the running app
   through the control socket; with no instance it answers an honest error
   rather than pretending. Key names are allowlisted app-side.
+- **Element targeting is live-only.** `ui_elements` reads the running window's
+  widget inventory; `ui_click`/`ui_hover`/`ui_focus` act on an id from it. With
+  no instance they answer an honest error — no throwaway app is booted to fake a
+  target.
+
+### Refusals (no silent truncation)
+
+Every refusal below is a named, actionable answer — never a truncated or
+fabricated result:
+
+| Refused | Enforced by | Answer |
+|---|---|---|
+| unknown MCP method | this server (`protocol.py`) | JSON-RPC `-32601` |
+| request line over the 1 MiB cap | this server (stdio) | JSON-RPC `-32600` "request line exceeds the … byte cap" |
+| unknown control-channel method | live app | `ok: false` + hint, connection survives |
+| foreign uid | live app (`SO_PEERCRED`, before reading a byte) | connection closed → the call falls back |
+| non-live `press_keys` / `ui_elements` / `ui_click` / `ui_hover` / `ui_focus` | this server | `isError` "needs a running app" (never a throwaway app faking a target) |
+| non-live `jobs_list` / `jobs_cancel` | this server | `isError` "no live instance; job state needs a running app" (never a fake empty list) |
+| `jobs_cancel` on a kind with no cooperative cancel | live app | `ok: false` "cancel is not supported for kind …" + hint; never a fake cancel |
+| `jobs_cancel` on an unknown or settled id | live app | `ok: false` "no running job with id …" + `jobs_list` hint |
+| unknown action id / tab / state path | this server (fallback) | `isError` + close-match suggestions |
+| unknown surface | live app (`capture_live`) or this server (`capture_surface` fallback) | `isError` "unknown surface" + `list_surfaces` hint |
+| surface known but not open in the live app | live app | `isError` "surface … is not open in the live app" |
+| more than 32 key combos in one `press_keys` | live app | `ok: false` "too many key combos" |
+
+### Annotation audit (2026-10-17)
+
+The `annotations` hints were checked against what each handler actually does,
+because that is what lets a client auto-approve reads:
+
+- **Read-only tools really read.** All nine (`list_actions`, `list_sessions`,
+  `get_state`, `read_log`, `query_trace`, `dump_ui_layout`, `list_surfaces`,
+  `ui_elements`, `jobs_list`) carry `readOnlyHint: true, destructiveHint: false`
+  and touch no app state — `ui_elements` only *inventories* the live window, and
+  `jobs_list` only reads the app's own counters (it never resolves a lazy tab
+  service, which would materialize a tab as a side effect of listing). Reads may
+  retry once (above); none mutate.
+- **Mutating tools are honestly marked.** All eleven carry `readOnlyHint: false`.
+  `run_action` alone advertises `destructiveHint: true` (it can run any
+  registered action, including `platform.quit_app`). `press_keys`, `ui_click` and
+  `jobs_cancel` are `destructiveHint: false` but `idempotentHint: false`
+  (repeating the same combo/click is not a no-op; re-sending a settled job id is
+  an error, not a second success). `ui_hover`/`ui_focus` settle to the same
+  state, so they keep `idempotentHint: true`.
+  `open_tab`/`open_folder`/`set_theme`/`set_language`/`capture_surface` are
+  non-destructive and idempotent.
+- `openWorldHint: false` on every tool (the app is local). **Result: no
+  annotation was found to over- or under-state what its tool does.** The test
+  suite pins the classification (`test_read_and_write_tools_do_not_mix_annotations`,
+  `test_element_tool_annotations_are_audited`,
+  `test_job_tool_annotations_are_audited`).
 
 The live channel is the in-app control server: a unix socket in the control dir
 (env-gated, no TCP), refusing connections from other uids. Reads and mutations
 on a live instance are the same tools — the answering path is visible in every
 result as `source`.
+
+## Known limitations
+
+- **`ui_click {button: right}` hides the menu it just opened (P1 tool defect,
+  recorded 2026-10-17).** A right-click by element id delivers the mouse button
+  event *and* an extra `QContextMenuEvent`. The app's menu manager treats that
+  second event as the "click that opened me", which consumes its open-click
+  grace window, so the context menu collapses ~150 ms after opening. The click
+  itself reaches the handler; only the visible menu life is wrong. **Not fixed
+  here** — the fix belongs to the gallery / control-element lane (the same
+  surface as the collapsed-card-menu bug).
+- The live QRhi/GL canvas is not capturable headlessly — see
+  [SCREENSHOTS.md](SCREENSHOTS.md) §Known limitation.
 
 ## The `mcp` SDK
 

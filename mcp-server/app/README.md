@@ -3,7 +3,8 @@
 A **local stdio MCP server** that lets an LLM agent drive and inspect the
 Improve-ImgSLI desktop app: list/run Find Actions, open tabs, read Store
 settings and workspace sessions, dump the widget tree, tail the log, query the
-causal tracer, screenshot devtool surfaces.
+causal tracer, screenshot devtool surfaces, and inventory / click / hover /
+focus UI elements by id in the live window.
 
 Speaks MCP spec revision **`2026-07-28`** (stateless per-request envelope,
 `server/discover`, cacheable list results) and also accepts the legacy
@@ -46,10 +47,13 @@ no manual `PYTHONPATH` is needed. Environment knobs:
 
 ## Surface
 
-**Tools** (14 — 7 read-only, 7 mutating; reads and writes never share a tool):
+**Tools** (20 — 9 read-only, 11 mutating; reads and writes never share a tool):
 `list_actions`, `list_sessions`, `get_state`, `read_log`, `query_trace`,
-`dump_ui_layout`, `list_surfaces` · `open_tab`, `run_action`, `open_folder`,
-`set_theme`, `set_language`, `capture_surface`, `press_keys` (live-only).
+`dump_ui_layout`, `list_surfaces`, `ui_elements`, `jobs_list` · `open_tab`,
+`run_action`, `open_folder`, `set_theme`, `set_language`, `capture_surface`,
+`press_keys`, `ui_click`, `ui_hover`, `ui_focus`, `jobs_cancel`. The four
+element-targeting tools (`ui_elements`, `ui_click`, `ui_hover`, `ui_focus`) and
+the two job tools (`jobs_list`, `jobs_cancel`) are live-only.
 
 **Resources**: `app://actions`, `app://state`, `app://sessions`, `app://log`,
 `app://ui-layout`, `app://theme`; templates `app://action/{id}`,
@@ -74,10 +78,21 @@ data dir's `run/`. One newline-delimited JSON request
 `{"id", "method", "params"}` per call, answered by
 `{"id", "ok": true, "result"}` or `{"id", "ok": false, "error", "hint"}`. On
 this path the tools act on the window the user is driving (`open_folder` really
-routes, `set_theme`/`set_language` apply now, `press_keys` injects keys); a
-stale pointer or a socket nobody listens on is "no live instance", and a
-refused/closed connection just falls back — never a user-visible error.
+routes, `set_theme`/`set_language` apply now, `press_keys` injects keys, and
+`ui_elements`/`ui_click`/`ui_hover`/`ui_focus` inventory and target the live
+widgets); a stale pointer or a socket nobody listens on is "no live instance",
+and a refused/closed connection just falls back — never a user-visible error.
 Mutations with no fallback analogue carry `live: true`.
+
+**Mutation contract (reads retry once, edits never).** Reads retry exactly once
+on a transport timeout; mutations never auto-retry. The two failure kinds stay
+distinguishable in the text — **"not sent"** (nothing left the process) vs
+**"sent, no reply"** (the request was written, the deadline expired). A mutating
+tool whose request was already on the wire is *not* retried and does not fall
+back to a fresh process: it answers `isError` with "the operation may have
+completed" so an agent re-reads state instead of double-applying the edit.
+`list_actions` rows carry `enabled` + `reason` (degrading to `true`/`null` when
+the app omits them) so a precondition can be planned around.
 
 **Fallback (no live instance)** uses the primitives the app already ships:
 
@@ -105,7 +120,38 @@ Fallback safety rules (`app/process_policy.py`):
 **Fallback limits:** reads boot a throwaway app and can be ~30 s stale;
 mutations start a *new* process (they reach a running window only via live
 attach); `open_folder` reports `routed: false`; `press_keys` has no fallback and
-errors honestly.
+errors honestly, and so do the element-targeting tools (`ui_elements`,
+`ui_click`, `ui_hover`, `ui_focus`) and the job tools (`jobs_list`,
+`jobs_cancel`) — element ids and in-flight jobs only exist in a running app.
+
+## Jobs (long work)
+
+`jobs_list` reads the app's in-flight long passes and `jobs_cancel` stops one
+where a real cancel exists. Both are **live-only**, and both report only what
+the app already knows — no invented percentage.
+
+| kind | progress from | cancel |
+|---|---|---|
+| `gallery_pool` | `GalleryController.sched_stats()` (active/pending/queued) + per-item `thumbnail_status` | no |
+| `metrics_pass` | the controller's own `_proxy_done` / `_proxy_total` chunk counters | no |
+| `ai_analysis` | per-item `analysis_status` (aggregated) | no |
+| `export` | the save task's toast progress bar, when the toast manager is materialized | **yes** |
+
+`jobs_cancel {id}` sets the export task's own `threading.Event` — the same
+handle the toast's Cancel button sets, honored by `ExportService` and by
+`write_pil_image_cancelable` (atomic tmp+replace, the tmp is removed on abort, so
+no partial artifact reaches the output path). Every other kind answers a named
+refusal; an unknown or already-settled id is an error.
+
+**`notifications/progress` is not carried.** This server is stdio
+request/response (`app/protocol.py`) and emits no server→client notifications,
+so it cannot push progress without faking it. The honest substitute is to poll
+`jobs_list` while a long tool call is pending. (Recorded as a gap, not a
+feature.)
+
+**`elapsed_s` is a lower bound.** The app does not stamp a start time for these
+passes, so it measures from the first `jobs_list` that observed the job running;
+`null` means "not yet observed running". It is never back-dated.
 
 ## Security model
 
@@ -119,10 +165,44 @@ errors honestly.
   artifacts are returned — never user images or arbitrary files.
 - **Read-only default.** Every mutating tool is a distinct, explicitly named
   tool with honest `annotations` (`run_action` advertises
-  `destructiveHint: true`; `press_keys` is destructive-free but not idempotent).
+  `destructiveHint: true`; `press_keys` and `ui_click` are destructive-free but
+  not idempotent).
 - **Keyboard input is live-only.** `press_keys` injects combos into the running
   app through the control socket (key names allowlisted app-side); with no
   instance it answers an honest error instead of pretending.
+- **Element targeting is live-only.** `ui_elements` inventories the running
+  window's interactive widgets and `ui_click`/`ui_hover`/`ui_focus` act on them
+  by session-scoped id; with no instance they answer an honest error — they
+  never boot a throwaway app to fake a target.
+- **Job state is live-only.** `jobs_list`/`jobs_cancel` read the running app's
+  own counters and its one real cancel (export); with no instance they answer an
+  honest error instead of an empty list that would read as "nothing running".
+- **Cancel is never faked.** `jobs_cancel` may only stop kinds with a
+  cooperative cancel (today: `export`); anything else is a named refusal — the
+  gallery pool, the metrics pass and the AI pass have no cancel to call.
+- **Refusals are named, never truncated.** Unknown MCP method (`-32601`) and an
+  over-cap request line (`-32600`, 1 MiB) are refused by the transport; an
+  unknown control method, a foreign-uid peer (closed before a byte is read), and
+  a not-open surface are refused by the live app; a non-live `press_keys` / `ui_*`
+  / `jobs_*` and an unknown action id / tab / state path / surface / job id or an
+  uncancellable job kind are refused by the server with close-match hints. Full
+  table in [docs/dev/MCP.md](../../docs/dev/MCP.md).
+- **Annotations audited (2026-10-17).** The nine read-only tools really read
+  (no state touched, `readOnlyHint: true`, `jobs_list` included); the eleven
+  mutating tools are honestly marked (`run_action` = `destructiveHint: true`;
+  `press_keys`/`ui_click`/`jobs_cancel` = non-destructive but non-idempotent;
+  `ui_hover`/`ui_focus` idempotent). No over- or under-statement was found; the
+  suite pins the classification.
+
+## Known limitations
+
+- **`ui_click {button: right}` hides the menu it just opened (P1 tool defect).**
+  A right-click by element id sends the mouse button event *plus* an extra
+  `QContextMenuEvent`, which consumes the menu manager's open-click grace and
+  collapses the menu ~150 ms later. The handler still runs; only the visible
+  menu life is wrong. The fix belongs to the gallery / control-element lane.
+- The live QRhi/GL canvas is not capturable headlessly (only chrome is
+  meaningful for those surfaces).
 
 ## The optional MCP SDK
 

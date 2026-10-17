@@ -13,6 +13,7 @@ are registry ids, not fixtures restating an implementation detail.
 
 from __future__ import annotations
 
+import io
 import json
 import os
 import re
@@ -36,7 +37,12 @@ from app.process_policy import (  # noqa: E402
     pid_alive,
     preserve_live_log,
 )
-from app.protocol import MCPProtocol  # noqa: E402
+from app.protocol import (  # noqa: E402
+    INVALID_REQUEST,
+    MAX_REQUEST_LINE_BYTES,
+    MCPProtocol,
+    serve_stdio,
+)
 
 _NAME_RE = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")
 _ANNOTATION_KEYS = ("readOnlyHint", "destructiveHint", "idempotentHint", "openWorldHint")
@@ -132,7 +138,7 @@ def test_tools_list_is_a_valid_deterministic_catalog(wired):
     names = [tool["name"] for tool in tools]
     assert len(names) == len(set(names)), "tool names must be unique"
     assert names == [tool["name"] for tool in catalog.TOOLS], "order must be catalog order"
-    assert len(tools) <= 15, "catalog must stay small"
+    assert len(tools) <= 20, "catalog must stay small"
 
     for tool in tools:
         assert _NAME_RE.match(tool["name"]), tool["name"]
@@ -172,13 +178,14 @@ def test_read_and_write_tools_do_not_mix_annotations(wired):
     tools = {tool["name"]: tool for tool in _request(protocol, "tools/list")["result"]["tools"]}
 
     for name in ("list_actions", "list_sessions", "get_state", "read_log", "query_trace",
-                 "dump_ui_layout", "list_surfaces"):
+                 "dump_ui_layout", "list_surfaces", "ui_elements", "jobs_list"):
         annotations = tools[name]["annotations"]
         assert annotations["readOnlyHint"] is True, name
         assert annotations["destructiveHint"] is False, name
 
     for name in ("open_tab", "run_action", "open_folder", "set_theme", "set_language",
-                 "capture_surface", "press_keys"):
+                 "capture_surface", "press_keys", "ui_click", "ui_hover", "ui_focus",
+                 "jobs_cancel"):
         assert tools[name]["annotations"]["readOnlyHint"] is False, name
     assert tools["run_action"]["annotations"]["destructiveHint"] is True
     # Injecting input is not destructive, but is not idempotent either.
@@ -186,6 +193,68 @@ def test_read_and_write_tools_do_not_mix_annotations(wired):
     assert tools["press_keys"]["annotations"]["idempotentHint"] is False
     for tool in tools.values():
         assert tool["annotations"]["openWorldHint"] is False, tool["name"]
+
+
+def test_element_tool_annotations_are_audited(wired):
+    protocol, _backend, _calls = wired
+    tools = {tool["name"]: tool for tool in _request(protocol, "tools/list")["result"]["tools"]}
+
+    assert tools["ui_elements"]["annotations"]["readOnlyHint"] is True
+    assert tools["ui_click"]["annotations"]["readOnlyHint"] is False
+    assert tools["ui_click"]["annotations"]["destructiveHint"] is False
+    assert tools["ui_click"]["annotations"]["idempotentHint"] is False
+    assert tools["ui_hover"]["annotations"]["idempotentHint"] is True
+    assert tools["ui_focus"]["annotations"]["idempotentHint"] is True
+    assert tools["ui_elements"]["inputSchema"]["additionalProperties"] is False
+    assert tools["ui_click"]["inputSchema"]["required"] == ["id"]
+    assert tools["ui_click"]["inputSchema"]["properties"]["button"]["enum"] == [
+        "left",
+        "right",
+        "middle",
+    ]
+
+
+def test_job_tool_annotations_are_audited(wired):
+    """``jobs_list`` reads; ``jobs_cancel`` mutates without pretending safety."""
+    protocol, _backend, _calls = wired
+    tools = {tool["name"]: tool for tool in _request(protocol, "tools/list")["result"]["tools"]}
+
+    assert tools["jobs_list"]["annotations"]["readOnlyHint"] is True
+    assert tools["jobs_list"]["annotations"]["destructiveHint"] is False
+    assert tools["jobs_cancel"]["annotations"]["readOnlyHint"] is False
+    # Cancelling kills in-flight work: not destructive to user files, but not
+    # repeatable either (a settled id is an error).
+    assert tools["jobs_cancel"]["annotations"]["destructiveHint"] is False
+    assert tools["jobs_cancel"]["annotations"]["idempotentHint"] is False
+    assert tools["jobs_cancel"]["inputSchema"]["required"] == ["id"]
+    assert tools["jobs_list"]["inputSchema"]["additionalProperties"] is False
+    job = tools["jobs_list"]["outputSchema"]["properties"]["jobs"]["items"]
+    assert job["properties"]["kind"]["enum"] == list(catalog.JOB_KINDS)
+    assert job["properties"]["status"]["enum"] == list(catalog.JOB_STATUSES)
+    assert {"id", "kind", "status", "message"} <= set(job.get("required") or ())
+    assert tools["jobs_cancel"]["outputSchema"]["properties"]["kind"]["enum"] == list(
+        catalog.CANCELLABLE_JOB_KINDS
+    )
+
+
+def test_list_actions_output_schema_declares_enabled_and_reason(wired):
+    """The catalog publishes the P2 ``enabled``/``reason`` row keys."""
+    protocol, _backend, _calls = wired
+    tools = {tool["name"]: tool for tool in _request(protocol, "tools/list")["result"]["tools"]}
+    item = tools["list_actions"]["outputSchema"]["properties"]["actions"]["items"]
+    assert item["properties"]["enabled"]["type"] == "boolean"
+    assert item["properties"]["reason"]["type"] == ["string", "null"]
+    assert {"enabled", "reason"} <= set(item.get("required") or ())
+
+
+def test_list_actions_fallback_rows_carry_enabled_and_reason(wired):
+    """Every fallback row carries the two keys even when the snapshot omits them."""
+    protocol, _backend, _calls = wired
+    rows = _call(protocol, "list_actions")["structuredContent"]["actions"]
+    assert rows, "the registry snapshot must list platform actions"
+    for row in rows:
+        assert row["enabled"] is True
+        assert row["reason"] is None
 
 
 # --- tools ------------------------------------------------------------------
@@ -482,6 +551,57 @@ def test_press_keys_without_a_live_instance_errors_honestly(wired):
     assert calls["launches"] == [] and calls["tabs"] == [], "no fake keys, no headless boot"
 
 
+@pytest.mark.parametrize(
+    "tool,arguments",
+    [
+        ("ui_elements", {}),
+        ("ui_click", {"id": "main.settings.btn"}),
+        ("ui_hover", {"id": "main.settings.btn"}),
+        ("ui_focus", {"id": "main.settings.btn"}),
+    ],
+)
+def test_element_tools_without_a_live_instance_error_honestly(wired, monkeypatch, tool, arguments):
+    """Element targeting is live-only: no instance ⇒ honest error, no process."""
+    protocol, _backend, calls = wired
+    import app.backend as backend_module
+
+    spawned: list = []
+    monkeypatch.setattr(backend_module.subprocess, "Popen", lambda *a, **k: spawned.append(a))
+    monkeypatch.setattr(backend_module.subprocess, "run", lambda *a, **k: spawned.append(a))
+
+    result = _call(protocol, tool, arguments)
+    assert result["isError"] is True
+    text = result["content"][0]["text"]
+    assert "no live instance" in text
+    assert "running app" in text
+    assert "structuredContent" not in result
+    assert spawned == [], "element targeting must never spawn a process"
+    assert calls["launches"] == [] and calls["tabs"] == [], "no fake action, no headless boot"
+
+
+@pytest.mark.parametrize(
+    "tool,arguments",
+    [("jobs_list", {}), ("jobs_cancel", {"id": "export:multi_compare:3"})],
+)
+def test_job_tools_without_a_live_instance_error_honestly(wired, monkeypatch, tool, arguments):
+    """Job state is live-only: no instance ⇒ honest error, never a fake empty list."""
+    protocol, _backend, calls = wired
+    import app.backend as backend_module
+
+    spawned: list = []
+    monkeypatch.setattr(backend_module.subprocess, "Popen", lambda *a, **k: spawned.append(a))
+    monkeypatch.setattr(backend_module.subprocess, "run", lambda *a, **k: spawned.append(a))
+
+    result = _call(protocol, tool, arguments)
+    assert result["isError"] is True
+    text = result["content"][0]["text"]
+    assert "no live instance" in text
+    assert "job state needs a running app" in text
+    assert "structuredContent" not in result
+    assert spawned == [], "job reporting must never spawn a process"
+    assert calls["launches"] == [] and calls["tabs"] == [], "no headless boot for job state"
+
+
 # --- stdio round trip -------------------------------------------------------
 
 _STDIO_MESSAGES = [
@@ -557,6 +677,18 @@ def test_stdio_round_trip_over_pipes(tmp_path):
     assert by_id[4]["error"]["code"] == -32602, "unknown tool name is invalid params"
     assert by_id[5]["result"]["supportedVersions"] == ["2026-07-28"]
     assert "serving stdio" in proc.stderr
+
+
+def test_stdio_refuses_an_oversized_request_line(wired):
+    """A request line over the P2 cap is a named error, never truncated."""
+    protocol, _backend, _calls = wired
+    oversized = "x" * (MAX_REQUEST_LINE_BYTES + 1)
+    out = io.StringIO()
+    code = serve_stdio(protocol, stdin=io.StringIO(oversized + "\n"), stdout=out)
+    assert code == 0
+    entry = json.loads(out.getvalue().strip())
+    assert entry["error"]["code"] == INVALID_REQUEST
+    assert "cap" in entry["error"]["message"]
 
 
 def test_check_flag_prints_catalog_without_serving():

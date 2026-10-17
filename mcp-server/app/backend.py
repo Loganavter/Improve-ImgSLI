@@ -44,7 +44,7 @@ import time
 from pathlib import Path
 from typing import Any, Callable
 
-from .live import LiveBackend, LiveError, LiveUnavailable
+from .live import LiveBackend, LiveError, LiveUnavailable, action_enabled, action_reason
 from .process_policy import (
     PRESERVED_LOG_NAME,
     ProcessRegistry,
@@ -105,6 +105,20 @@ def _count_nodes(node: dict) -> int:
 def _read_level(line: str) -> str | None:
     match = _LEVEL_RE.search(line)
     return match.group("level") if match else None
+
+
+def _edit_may_have_completed(exc: LiveUnavailable) -> ToolError:
+    """A mutation whose request was written but never answered (plan P2).
+
+    The app may already have applied the edit, so the caller must not treat
+    this as "nothing happened": the message says so explicitly and the hint
+    steers to re-reading state instead of retrying the edit.
+    """
+    return ToolError(
+        f"{exc.message} — the operation may have completed",
+        "the request was sent before the timeout; re-read state to confirm "
+        "instead of retrying the edit",
+    )
 
 
 class AppBackend:
@@ -301,19 +315,26 @@ class AppBackend:
     # -- live / fallback routing -------------------------------------------
 
     def _live_or_fallback(
-        self, proxy: str, fallback: Callable[[], dict], **params: Any
+        self, proxy: str, fallback: Callable[[], dict], *, mutating: bool = False, **params: Any
     ) -> dict:
         """Answer from the live app when attached, else from the Phase-1 path.
 
         A transport failure (``LiveUnavailable``) falls back for this call and
         parks re-attaching briefly; an app-reported failure (``LiveError``) is
         the live app's honest answer and is surfaced, not papered over.
+
+        A *mutation* whose request already timed out on the wire is the one
+        exception: the app may have applied it, so falling back would risk
+        double-applying the edit — it fails with an explicit "may have
+        completed" error instead (plan P2).
         """
         client = self.live.client_if_alive()
         if client is not None:
             try:
                 return getattr(self.live, proxy)(client=client, **params)
-            except LiveUnavailable:
+            except LiveUnavailable as exc:
+                if mutating and exc.timeout:
+                    raise _edit_may_have_completed(exc)
                 self.live.note_failure()
             except LiveError as exc:
                 raise ToolError(exc.message, exc.hint)
@@ -364,6 +385,8 @@ class AppBackend:
                     "owner_tab": row.get("owner_tab"),
                     "topic": row.get("topic"),
                     "shortcut": row.get("shortcut"),
+                    "enabled": action_enabled(row),
+                    "reason": action_reason(row),
                 }
                 for row in rows
             ],
@@ -565,7 +588,7 @@ class AppBackend:
 
     def open_tab(self, *, tab: str) -> dict:
         return self._live_or_fallback(
-            "open_tab", lambda: self._fallback_open_tab(tab=tab), tab=tab
+            "open_tab", lambda: self._fallback_open_tab(tab=tab), mutating=True, tab=tab
         )
 
     def _fallback_open_tab(self, *, tab: str) -> dict:
@@ -593,6 +616,7 @@ class AppBackend:
         return self._live_or_fallback(
             "run_action",
             lambda: self._fallback_run_action(action_id=action_id, tab=tab),
+            mutating=True,
             action_id=action_id,
             tab=tab,
         )
@@ -630,7 +654,10 @@ class AppBackend:
 
     def open_folder(self, *, path: str) -> dict:
         return self._live_or_fallback(
-            "open_folder", lambda: self._fallback_open_folder(path=path), path=path
+            "open_folder",
+            lambda: self._fallback_open_folder(path=path),
+            mutating=True,
+            path=path,
         )
 
     def _fallback_open_folder(self, *, path: str) -> dict:
@@ -652,13 +679,17 @@ class AppBackend:
 
     def set_theme(self, *, theme: str) -> dict:
         return self._live_or_fallback(
-            "set_theme", lambda: self._fallback_persist("theme", theme, "theme"), theme=theme
+            "set_theme",
+            lambda: self._fallback_persist("theme", theme, "theme"),
+            mutating=True,
+            theme=theme,
         )
 
     def set_language(self, *, language: str) -> dict:
         return self._live_or_fallback(
             "set_language",
             lambda: self._fallback_persist("language", language, "language"),
+            mutating=True,
             language=language,
         )
 
@@ -673,7 +704,9 @@ class AppBackend:
             raise self._keys_need_live()
         try:
             return self.live.press_keys(client=client, keys=keys)
-        except LiveUnavailable:
+        except LiveUnavailable as exc:
+            if exc.timeout:
+                raise _edit_may_have_completed(exc)
             self.live.note_failure()
             raise self._keys_need_live()
         except LiveError as exc:
@@ -685,6 +718,80 @@ class AppBackend:
             "no live instance; keyboard input needs a running app",
             "start the app with the control socket enabled (see docs/dev/MCP.md), then retry",
         )
+
+    def _live_only(self, proxy: str, error: ToolError, *, mutating: bool = True, **params: Any) -> dict:
+        """Proxy a tool with no headless analogue — live-only, never faked.
+
+        Follows the ``press_keys`` pattern: a missing instance (or a transport
+        fault mid-call) answers ``error`` honestly instead of simulating the
+        action; an app-reported failure keeps the app's own message and hint.
+        A mutation's ``timeout`` is the exception — the request was on the wire,
+        so the edit may have landed and is reported as such (plan P2); a read
+        (``mutating=False``) keeps the plain honest error.
+        """
+        client = self.live.client_if_alive()
+        if client is None:
+            raise error
+        try:
+            return getattr(self.live, proxy)(client=client, **params)
+        except LiveUnavailable as exc:
+            if mutating and exc.timeout:
+                raise _edit_may_have_completed(exc)
+            self.live.note_failure()
+            raise error
+        except LiveError as exc:
+            raise ToolError(exc.message, exc.hint)
+
+    @staticmethod
+    def _elements_need_live() -> ToolError:
+        return ToolError(
+            "no live instance; element targeting needs a running app",
+            "start the app with the control socket enabled (see docs/dev/MCP.md), then retry",
+        )
+
+    # -- element targeting (live-only) --------------------------------------
+
+    def ui_elements(self, *, scope: str | None = None, include_disabled: bool | None = None) -> dict:
+        return self._live_only(
+            "ui_elements",
+            self._elements_need_live(),
+            mutating=False,
+            scope=scope,
+            include_disabled=include_disabled,
+        )
+
+    def ui_click(self, *, id: str, button: str | None = None, count: int | None = None) -> dict:
+        return self._live_only(
+            "ui_click", self._elements_need_live(), id=id, button=button, count=count
+        )
+
+    def ui_hover(self, *, id: str) -> dict:
+        return self._live_only("ui_hover", self._elements_need_live(), id=id)
+
+    def ui_focus(self, *, id: str) -> dict:
+        return self._live_only("ui_focus", self._elements_need_live(), id=id)
+
+    @staticmethod
+    def _jobs_need_live() -> ToolError:
+        return ToolError(
+            "no live instance; job state needs a running app",
+            "start the app with the control socket enabled (see docs/dev/MCP.md), then retry",
+        )
+
+    # -- long work (live-only) ----------------------------------------------
+
+    def jobs_list(self) -> dict:
+        """Read in-flight long passes from the running app — live-only.
+
+        The headless fallback has no running passes, so an empty list there
+        would read as "nothing is running" while the user's app is busy; it
+        answers an honest error instead (like the element tools).
+        """
+        return self._live_only("jobs_list", self._jobs_need_live(), mutating=False)
+
+    def jobs_cancel(self, *, id: str) -> dict:
+        """Cancel one running job by id — the real cancel, or a named refusal."""
+        return self._live_only("jobs_cancel", self._jobs_need_live(), id=id)
 
     def _fallback_persist(self, key: str, value: str, label: str) -> dict:
         try:
@@ -729,6 +836,7 @@ class AppBackend:
         return self._live_or_fallback(
             "capture_surface",
             lambda: self._fallback_capture_surface(surface=surface, theme=theme, out=out),
+            mutating=True,
             surface=surface,
             theme=theme,
             out=out,

@@ -211,6 +211,49 @@ def test_malformed_line_is_an_error_and_the_connection_survives(tmp_path, monkey
         server.stop()
 
 
+def test_oversized_request_line_is_refused_by_name_and_the_connection_survives(
+    tmp_path, monkeypatch
+):
+    from core.control.server import MAX_REQUEST_LINE_BYTES
+
+    monkeypatch.setenv("IMGSLI_CONTROL_DIR", str(tmp_path / "ctrl"))
+    app = _qapp()
+    server = ControlServer(window=_store_window(), app=app)
+    assert server.start() is True
+    client = _Client(app, server.path)
+    try:
+        oversized = b"x" * (MAX_REQUEST_LINE_BYTES + 64)
+        client.send_raw(oversized + b"\n")
+        response = client.wait_line(seconds=5.0)
+        assert response is not None, "an oversized line is answered, not dropped"
+        assert response["ok"] is False
+        assert response["error"] == "request line too large"
+        assert str(MAX_REQUEST_LINE_BYTES) in response["hint"]
+
+        # The refused line is swallowed whole — the next request is still served.
+        client.send({"id": 20, "method": "ping", "params": {}})
+        assert client.wait_line()["ok"] is True
+    finally:
+        client.close()
+        server.stop()
+
+
+def test_encode_reply_reports_a_frame_it_cannot_emit():
+    """Unit-test the reply guard: ``None`` instead of a broken frame."""
+    from core.control.server import MAX_REPLY_BYTES, encode_reply
+
+    frame = encode_reply({"id": 1, "ok": True, "result": {"a": 1}})
+    assert frame is not None and frame.endswith(b"\n")
+    assert json.loads(frame)["result"] == {"a": 1}
+
+    circular: dict = {}
+    circular["self"] = circular
+    assert encode_reply(circular) is None, "unserialisable result is refused"
+
+    huge = {"blob": "x" * (MAX_REPLY_BYTES + 1)}
+    assert encode_reply(huge) is None, "oversized result is refused, not truncated"
+
+
 def test_foreign_uid_is_refused(tmp_path, monkeypatch):
     monkeypatch.setenv("IMGSLI_CONTROL_DIR", str(tmp_path / "ctrl"))
     app = _qapp()
@@ -330,6 +373,60 @@ def test_get_state_list_sessions_and_list_actions_shapes(tmp_path):
     assert listed["actions"][0]["topic"] == "settings"
 
     assert handlers.list_actions({"owner_tab": "image_compare"})["count"] == 1
+
+
+def test_list_actions_carries_enabled_and_reason(tmp_path):
+    """P2: a not-runnable action surfaces its reason verbatim; default is enabled."""
+    registry = _registry(
+        _descriptor("image_compare.grid", enabled=False, reason="needs two images"),
+        _descriptor("platform.settings"),
+    )
+    handlers = _handlers(_store_window(), registry, tmp_path)
+
+    rows = {row["action_id"]: row for row in handlers.list_actions({})["actions"]}
+
+    assert rows["image_compare.grid"]["enabled"] is False
+    assert rows["image_compare.grid"]["reason"] == "needs two images"
+    # Default descriptor ⇒ runnable now, JSON null for "no reason".
+    assert rows["platform.settings"]["enabled"] is True
+    assert rows["platform.settings"]["reason"] is None
+
+    # Every frozen row key is present, and "no reason" serialises as JSON null.
+    for row in rows.values():
+        assert {
+            "action_id",
+            "label",
+            "owner_tab",
+            "topic",
+            "shortcut",
+            "enabled",
+            "reason",
+        } <= set(row)
+    serialized = json.loads(json.dumps(handlers.list_actions({})))
+    default = next(
+        row for row in serialized["actions"] if row["action_id"] == "platform.settings"
+    )
+    assert default["reason"] is None and default["enabled"] is True
+
+
+def test_dump_actions_propagates_enabled_and_reason():
+    """The snapshot (``--dump-app-snapshot``) carries the same two fields."""
+    from devtools.app_snapshot import dump_actions
+
+    rows = {
+        row["action_id"]: row
+        for row in dump_actions(
+            _registry(
+                _descriptor("image_compare.grid", enabled=False, reason="needs two images"),
+                _descriptor("platform.settings"),
+            )
+        )
+    }
+
+    assert rows["image_compare.grid"]["enabled"] is False
+    assert rows["image_compare.grid"]["reason"] == "needs two images"
+    assert rows["platform.settings"]["enabled"] is True
+    assert rows["platform.settings"]["reason"] is None
 
 
 def test_read_log_serves_the_live_ring(tmp_path):
