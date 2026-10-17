@@ -556,7 +556,7 @@ class CleanReviewOverlay(TopLevelInWindowOverlay):
 
         # Phase 2 — mockup v3 header (svg:43-45): title 16 bold + 12
         # muted subtitle + divider rule. Bold goes through the Label
-        # constructor (QL overlay_build.py:487 — setBold after would
+        # constructor (QL tabs/image_gallery/ui/quick_look/overlay_build/build.py:113 — setBold after would
         # re-run Label's pixel-based _apply_style and revert sizing).
         # Quick Look parity: top row is title/subtitle + top-right ✕.
         header_row = QHBoxLayout()

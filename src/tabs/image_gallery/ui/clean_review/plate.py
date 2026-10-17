@@ -22,7 +22,7 @@ class _ReviewPlate(QWidget):
     """S3 clean-review card plate — ``gallery.panel.background`` fill + border, rx12.
 
     Mirrors quick-look ``_CardPlate``
-    (``ui/quick_look/overlay_build.py``): painter pipeline owns visuals
+    (``ui/quick_look/overlay_build/widgets.py``): painter pipeline owns visuals
     (explicit paintEvent, theme-subscribed); no QSS, no palette. The plate
     shares the scroll-host panel token (``_apply_panel_background``) so the
     overlay is ONE flat surface — dark mockup svg:42 pins the plate at

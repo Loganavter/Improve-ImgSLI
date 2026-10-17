@@ -869,14 +869,14 @@
       }
     },
     {
-      "path": "src/tabs/image_gallery/ui/quick_look/overlay_build.py",
+      "path": "src/tabs/image_gallery/ui/quick_look/overlay_build/build.py",
       "limit": 500,
       "marker": "Audit-Meta:",
-      "raw": "pattern=thin-owner-target size=exempt reason=\"one overlay-build concern: painted chrome widgets + build_overlay_ui share one card layout\"",
+      "raw": "pattern=thin-owner-target size=exempt reason=\"one overlay-build concern: the single Quick Look card layout assembled by build_overlay_ui (chrome widgets/icons live in the sibling widgets/icons modules)\"",
       "parsed": {
         "pattern": "thin-owner-target",
         "size": "exempt",
-        "reason": "one overlay-build concern: painted chrome widgets + build_overlay_ui share one card layout"
+        "reason": "one overlay-build concern: the single Quick Look card layout assembled by build_overlay_ui (chrome widgets/icons live in the sibling widgets/icons modules)"
       }
     },
     {
