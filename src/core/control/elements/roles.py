@@ -121,6 +121,26 @@ def _is_toolkit_widget(widget: QWidget) -> bool:
     )
 
 
+def _is_canvas_widget(widget: QWidget) -> bool:
+    """True for a live ``QRhiWidget`` canvas (duck-typed, never raises).
+
+    Canvases are the most interactive widget a tab owns -- zoom/pan/selection
+    through wheel, keys and drag -- and they are neither stock Qt patents nor
+    toolkit widgets, so without this they never appear in ``ui_elements``. A
+    client then has no id to focus or to aim keys at, and canvas interaction
+    is undrivable through the control surface (live 2026-10-17: the
+    multi-compare zoom keys all landed on the main window).
+    """
+    try:
+        from PySide6.QtWidgets import QRhiWidget
+    except Exception:
+        return False
+    try:
+        return isinstance(widget, QRhiWidget)
+    except Exception:
+        return False
+
+
 def _is_menu_like(widget: QWidget) -> bool:
     """A menu/flyout: stock ``QMenu`` or a toolkit ``ContextMenu``/``BaseFlyout``.
 
@@ -186,6 +206,9 @@ def _role_of(
         return "menu"
     if _is_menu_like(widget):
         return "menu"
+    if _is_canvas_widget(widget):
+        # A live QRhi canvas: the surface a tab's zoom/pan/selection acts on.
+        return "canvas"
     if in_menu:
         # Inside a toolkit flyout/menu: every row widget is a menu row.
         if isinstance(widget, QAbstractButton) or hasattr(widget, "_text"):
@@ -222,6 +245,7 @@ def _safe_visible(widget: QWidget) -> bool:
 __all__ = [
     "_action_display",
     "_has_area",
+    "_is_canvas_widget",
     "_is_menu_like",
     "_is_toolkit_widget",
     "_label_of",

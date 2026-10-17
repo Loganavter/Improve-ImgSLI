@@ -101,3 +101,31 @@ marked `isolated` and run in an offscreen child
 take the tool down — you get the chrome (toolbar + footer) with a blank
 canvas. For a real canvas shot, capture the **running app manually**
 (screenshot tool / `grim`).
+
+**Exception — the live path.** A capture taken from a *running* app
+(MCP `capture_surface` with a live instance, or the app-side
+`capture_live`) composites each visible `QRhiWidget`'s own last frame(`QRhiWidget.grabFramebuffer`) on top of the window raster, at the widget's
+geometry — so the canvas does show its content. Canvases are looked up from
+the target's top-level window (the Quick Look canvas rides an in-window
+overlay parented to the window, not to the tab page) and only those landing
+on the grab are painted; a hidden canvas, one that has not rendered yet, or
+one that cannot hand its frame over is skipped, and the capture reports how
+many layers were composited (`rhi_layers`). The isolated devtool surfaces
+above are unaffected — they are separate processes with no live frame to
+read.
+
+**Window bigger than the display: no black bands.** A window that does not
+fit the screen has **no pixels** outside it, and an X grab returns black
+there — which reads as "the toolbar/footer is broken" (exactly how it was
+read once, 2026-10-17). Two guards, in order:
+
+1. the app now fits its startup geometry into the available screen
+   (`utils/geometry.py::fit_into`), so a rectangle saved on a bigger display
+   is clamped instead of restored blindly;
+2. if a target still is not fully on screen, the live capture takes the Qt
+   raster grab first (`QWidget.grab` renders the widget tree with no X
+   involvement, so nothing is missing) and only a contentless raster falls
+   back to the X grab, clipped to its visible part.
+
+Keep a private Xvfb at least as large as the window anyway: composing both
+guards is not as good as "it simply fits".

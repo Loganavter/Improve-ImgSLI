@@ -18,6 +18,7 @@ import logging
 from PySide6.QtGui import QColor, QRhiDepthStencilClearValue
 
 from engine.frame.present import begin_source, note_presented
+from engine.gpu.mip_cascade import MipCascadeNotReady
 from engine.gpu.tiled_image_view import (
     LodPolicy,
     TiledImageView,
@@ -231,6 +232,27 @@ def _reset_tiled_pump_state(self) -> None:
             setattr(self, attr, val)
         except Exception:
             pass
+
+
+def _retry_tiled_frame(self) -> None:
+    """Backed-off retry after a failed tiled attempt. Never raises.
+
+    A raised attempt used to wait for an unrelated repaint (mouse move,
+    the next walk): live 2026-10-17 a series step failed its first two
+    tiled frames and then sat on the raster plate until the next click,
+    because nothing asked for frame three. Requesting one more frame here
+    lets the retry the cascade needs actually arrive.
+
+    Throttled, never full rate: a failure that keeps repeating must not
+    spin ``update()`` at GUI-loop rate (the same discipline as the
+    plateau backoff in the hold path below).
+    """
+    try:
+        stall = int(getattr(self, "_tiled_stall_frames", 0) or 0) + 1
+        self._tiled_stall_frames = stall
+        self._pump_throttled(stall)
+    except Exception:
+        pass
 
 
 def render(self, command_buffer) -> None:  # noqa: N802
@@ -514,10 +536,27 @@ def _render_tiled(self, command_buffer, updates, target, clear, fb_w, fb_h) -> b
                 stall = 1
             self._pump_throttled(stall)
         return False
+    except MipCascadeNotReady as exc:
+        # "Not ready yet", not a broken frame: the mip cascade could not
+        # build its probe target on this attempt (transient right after a
+        # store swap -- see engine.gpu.mip_cascade). The raster plate stays
+        # up; the fact goes to the cover timeline instead of a traceback,
+        # and the backed-off retry below is what makes the takeover land.
+        if not handed:
+            _drain_batch(self, command_buffer, updates)
+        try:
+            from tabs.image_gallery.debug import ql_cover
+
+            ql_cover("tiled not ready: %s", exc)
+        except Exception:
+            pass
+        _retry_tiled_frame(self)
+        return False
     except Exception:
         if not handed:
             _drain_batch(self, command_buffer, updates)
         logger.debug("QuickLook preview: tiled frame failed open", exc_info=True)
+        _retry_tiled_frame(self)
         return False
 
 

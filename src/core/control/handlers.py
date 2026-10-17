@@ -21,7 +21,9 @@ from pathlib import Path
 from typing import Any, Callable
 
 from . import discovery, elements as element_inventory, jobs
-from .discovery import MethodError, capture_live_png, parse_key_sequence
+from .capture import capture_live_png
+from .discovery import MethodError, parse_key_sequence
+from .drop_routing import accepts_paths, open_folder_into, route_paths
 
 #: Minimum-level filter ladder, mirroring the MCP ``read_log`` semantics.
 _LEVELS = ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
@@ -375,40 +377,39 @@ class ControlHandlers(element_inventory.ElementMethodsMixin, jobs.JobMethodsMixi
                 f"{target} is not an existing directory",
                 "pass an absolute (or ~-prefixed) path to a folder of images",
             )
+        wanted = str(params.get("tab") or "").strip() or None
+        if wanted is not None:
+            # Targeted: a file-only tab gets the folder's images as files
+            # (it has no driveable "add images" dialog) — see drop_routing.
+            try:
+                return open_folder_into(
+                    target,
+                    wanted,
+                    tabs=self._tabs,
+                    kinds=self._tab_kinds(),
+                    run_action=self._run_action_id,
+                )
+            except ValueError as exc:
+                raise MethodError(
+                    str(exc),
+                    "open that tab first (open_tab), then retry — a folder "
+                    "aimed at a file-only tab loads as that tab's images",
+                ) from None
         # Route via the tab's own drop path (what a user drag-and-drop uses).
         # No concrete tab is named (host isolation contract): the tab that
         # accepts a *directory* reveals itself through ``accepts_drop``.
-        routed = self._route_folder(target)
+        routed = route_paths(self._tabs(), [target])
         if routed is None:
             for session_type, tab in self._tabs():
-                if self._accepts_folder(tab, target):
+                if accepts_paths(tab, [target]):
                     self._run_action_id(f"workspace.new_{session_type}")
-            routed = self._route_folder(target)
+            routed = route_paths(self._tabs(), [target])
         if routed is None:
             raise MethodError(
                 "no live tab accepted the folder",
                 "open a gallery-like tab once, then retry open_folder",
             )
         return {"routed": True, "path": str(target), "tab": routed}
-
-    @staticmethod
-    def _accepts_folder(tab: Any, folder: Path) -> bool:
-        try:
-            return bool(tab.accepts_drop([folder]))
-        except Exception:
-            return False
-
-    def _route_folder(self, folder: Path) -> str | None:
-        """Hand *folder* to the first tab that accepts it; returns its type."""
-        for session_type, tab in self._tabs():
-            if not self._accepts_folder(tab, folder):
-                continue
-            try:
-                if tab.handle_drop([folder]):
-                    return session_type
-            except Exception:
-                continue
-        return None
 
     def set_theme(self, params: dict[str, Any]) -> dict[str, Any]:
         theme = str(params.get("theme") or "")
@@ -458,11 +459,20 @@ class ControlHandlers(element_inventory.ElementMethodsMixin, jobs.JobMethodsMixi
         )
 
     def press_keys(self, params: dict[str, Any]) -> dict[str, Any]:
-        """Inject a real key sequence into the live focus widget (QTest)."""
+        """Inject a real key sequence (QTest) into the live focus widget.
+
+        ``target`` (an id from ``ui_elements``) aims it at that widget instead:
+        canvases are not in the window's focus chain (details in
+        ``elements.resolve.key_target``).
+        """
         from PySide6.QtTest import QTest
 
         sequence = parse_key_sequence(params.get("keys"))
-        target = self._key_target()
+        target = element_inventory.key_target(
+            self._registry(),
+            params.get("target"),
+            fallback=element_inventory.focus_target(self._app, self._window),
+        )
         if target is None:
             raise MethodError(
                 "no live window to receive keys",
@@ -475,23 +485,6 @@ class ControlHandlers(element_inventory.ElementMethodsMixin, jobs.JobMethodsMixi
             "count": len(sequence),
             "target": type(target).__name__,
         }
-
-    def _key_target(self) -> Any:
-        """Active window's focus widget, else the main window (per spec)."""
-        from PySide6.QtWidgets import QApplication, QWidget
-
-        focused = None
-        instance = self._app if self._app is not None else QApplication.instance()
-        if instance is not None:
-            try:
-                window = instance.activeWindow()
-                focused = window.focusWidget() if window is not None else None
-            except Exception:
-                focused = None
-        if focused is None and isinstance(self._window, QWidget):
-            focused = self._window
-        return focused
-
 
 #: The frozen method surface: one entry per MCP tool, built after the class body.
 ControlHandlers._DISPATCH = {name: getattr(ControlHandlers, name) for name in METHODS}

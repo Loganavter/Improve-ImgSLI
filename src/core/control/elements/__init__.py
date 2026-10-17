@@ -4,7 +4,8 @@ The control channel's answer to "an agent must click by *element*, not by
 pixels, and must be able to *see* what exists". Three modules, one concern each:
 
 * :mod:`~core.control.elements.inventory` — flatten the live widget tree into
-  interactive ``Element`` rows (buttons, inputs, views, cards, menu rows, tabs)
+  interactive ``Element`` rows (buttons, inputs, views, cards, menu rows, tabs,
+  live ``QRhiWidget`` canvases)
   with a stable id, role, label, rects, and the Find-Action id a widget is
   bound to.
 * :mod:`~core.control.elements.resolve` — :func:`resolve_element`
@@ -41,6 +42,8 @@ module load:
 * ``*TabItem`` / ``*TabBar`` / ``*TabStrip`` → ``tab``;
 * a ``Button`` (or ``*Card*``) whose nearest ``*GridView`` ancestor makes it a
   grid cell → ``card`` (the image-gallery card case);
+* a live ``QRhiWidget`` → ``canvas`` (the surface a tab's wheel/keys act on;
+  addressable so ``press_keys target=<id>`` can zoom/pan it);
 * ``ContextMenu`` / ``BaseFlyout`` / ``*Flyout`` (a ``flyout_group`` marker
   also counts) → ``menu``; each row widget inside an **open** toolkit menu →
   ``menu-row`` with its ``_text`` as label (a stock ``QMenu`` keeps the
@@ -72,7 +75,7 @@ from .inventory import (
     screen_rect_of,
 )
 from .interaction import click_element, focus_element, hover_element
-from .resolve import resolve_element
+from .resolve import focus_target, key_target, resolve_element
 
 #: Retry budget for an id that is not realized yet (FilmCraft's RETRY semantics:
 #: an agent need not sleep between "open" and "click"). Read at call time by
@@ -162,6 +165,8 @@ __all__ = [
     "focus_element",
     "hover_element",
     "inventory_payload",
+    "focus_target",
+    "key_target",
     "rect_list",
     "resolve_element",
     "screen_rect_of",

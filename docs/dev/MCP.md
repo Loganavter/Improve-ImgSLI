@@ -56,11 +56,11 @@ fallback window, e.g. `:97`).
 | `jobs_list` | read | live in-flight long passes (kind, status, progress, elapsed_s, message) |
 | `open_tab` | write | open/focus a tab kind (live) or launch it (fallback) |
 | `run_action` | write | run one ActionRegistry id |
-| `open_folder` | write | hand a folder to the gallery (live: routed) |
+| `open_folder` | write | hand a folder to a tab (`tab=` targets one; live: routed) |
 | `set_theme` | write | set `theme` (light/dark); live-now or persisted |
 | `set_language` | write | set `language` (en/ru/zh/pt_BR) |
 | `capture_surface` | write | screenshot a named surface to PNG |
-| `press_keys` | write | inject keyboard combos into the running app (live-only) |
+| `press_keys` | write | inject keyboard combos (`target=` aims them at one element) |
 | `ui_click` | write | click an element by id, in-process (live-only) |
 | `ui_hover` | write | hover an element by id, in-process (live-only) |
 | `ui_focus` | write | focus an element by id, in-process (live-only) |
@@ -298,12 +298,15 @@ Fallback safety rules (`mcp-server/app/process_policy.py`):
 **Limitations, stated plainly:** fallback reads boot a throwaway headless app
 and may be ~30 s stale; fallback mutations start a *new* process (they affect a
 running window only through live attach); fallback `open_folder` reports
-`routed: false`, so the folder must be dropped on the gallery. `press_keys` is
+`routed: false`, so the folder must be dropped on the gallery (it opens
+`--open-tab <tab>` when one was named). `press_keys` is
 **live-only** — with no instance it errors honestly, it never fakes input. The
 element-targeting tools (`ui_elements`, `ui_click`, `ui_hover`, `ui_focus`) are
 live-only too: ids exist only in a running app, so with no instance they answer
-an honest error rather than booting a throwaway app. The
-live QRhi/GL canvas is not capturable headlessly (see
+an honest error rather than booting a throwaway app. A **live** capture
+composites each visible canvas frame into the PNG (the swapchain surface is
+in neither grab path), so the QRhi/GL canvas does show its content; a
+devtool-booted surface still cannot grab it (see
 [SCREENSHOTS.md](SCREENSHOTS.md) §Known limitation).
 
 ## Security model
@@ -311,7 +314,12 @@ live QRhi/GL canvas is not capturable headlessly (see
 - **Local only.** stdio subprocess, never TCP/HTTP; no network code.
 - **Allowlisted actions.** `run_action` rejects ids absent from the
   ActionRegistry snapshot *before* launching, with close-match suggestions.
-- **Existing directories only** for `open_folder`; no traversal.
+- **Existing directories only** for `open_folder`; no traversal. `tab=<kind>`
+  targets that tab instead of the first tab that accepts a directory (the tab
+  is opened if absent); a file-only tab (`multi_compare`, `image_compare`)
+  cannot accept a directory, so it receives the folder's images as files
+  (non-recursive, shared extension set) — that is the supported way to load
+  images into those tabs, whose own "add images" dialog a client cannot drive.
 - **No file contents.** Only the app's own log/tracer/catalog/layout artifacts
   are returned — never user images or arbitrary files.
 - **Read-only default**; mutations are distinct named tools with honest
@@ -319,7 +327,14 @@ live QRhi/GL canvas is not capturable headlessly (see
   `ui_click` are non-destructive but non-idempotent).
 - **Keyboard input is live-only.** `press_keys` injects into the running app
   through the control socket; with no instance it answers an honest error
-  rather than pretending. Key names are allowlisted app-side.
+  rather than pretending. Key names are allowlisted app-side: named keys,
+  single letters/digits, and the punctuation a path or text field needs
+  (`/`, `.`, `-`, `_`, `~`, `=`, `:`, …) — one combo per key, e.g.
+  `/,t,m,p,/,a,.,p,n,g` types `/tmp/a.png` (`','` and `'+'` are the
+  separator characters and stay unavailable). `target=<id from ui_elements>`
+  aims the sequence at that element: a live canvas is not in the window's
+  focus chain, so canvas shortcuts (`=`, `-`, `0` in multi-compare) only
+  arrive when the canvas id is named.
 - **Element targeting is live-only.** `ui_elements` reads the running window's
   widget inventory; `ui_click`/`ui_hover`/`ui_focus` act on an id from it. With
   no instance they answer an honest error — no throwaway app is booted to fake a
@@ -387,8 +402,9 @@ result as `source`.
   itself reaches the handler; only the visible menu life is wrong. **Not fixed
   here** — the fix belongs to the gallery / control-element lane (the same
   surface as the collapsed-card-menu bug).
-- The live QRhi/GL canvas is not capturable headlessly — see
-  [SCREENSHOTS.md](SCREENSHOTS.md) §Known limitation.
+- A live QRhi/GL canvas capture is composited from the canvas's own last
+  frame (see [SCREENSHOTS.md](SCREENSHOTS.md) §Known limitation) — a canvas
+  that has not rendered yet contributes nothing.
 
 ## The `mcp` SDK
 

@@ -495,19 +495,23 @@ TOOLS: list[dict] = [
         "name": "open_folder",
         "title": "Open an image folder",
         "description": (
-            "Validate an existing directory and hand it to the gallery. With a "
-            "live instance attached the running app routes it and reports "
-            "'routed': true ('live': true); without one it starts a fresh "
-            "process that cannot inject the folder, so it reports routed=false "
-            "until you drop the folder on the gallery. The path must be a real "
-            "directory."
+            "Validate an existing directory and hand it to a tab. With a live "
+            "instance attached the running app routes it ('routed': true); pass "
+            "tab=<kind> (e.g. multi_compare) to target that tab — it is opened "
+            "if absent, and a file-only tab receives the folder's images as "
+            "files. Without a live instance the folder cannot be injected, so "
+            "routed stays false. The path must be a real directory."
         ),
         "inputSchema": _params(
             {
                 "path": {
                     **_STR,
                     "description": "Absolute (or ~-prefixed) path to an existing directory of images.",
-                }
+                },
+                "tab": {
+                    **_STR,
+                    "description": "Tab kind to hand the folder to (e.g. multi_compare, image_compare); opened if absent. Omit to auto-route to the first tab that accepts a directory.",
+                },
             },
             ["path"],
         ),
@@ -517,6 +521,14 @@ TOOLS: list[dict] = [
                 "pid": {"type": ["integer", "null"]},
                 "path": _STR,
                 "routed": _BOOL,
+                "tab": {
+                    "type": ["string", "null"],
+                    "description": "Session kind that accepted the folder.",
+                },
+                "images": {
+                    "type": ["integer", "null"],
+                    "description": "Files handed over when the tab takes files, not a directory.",
+                },
                 "ran": {"type": "boolean", "description": "True when the live instance routed the folder."},
                 "live": _live_flag(),
                 "source": _source(),
@@ -596,12 +608,10 @@ TOOLS: list[dict] = [
         "name": "capture_surface",
         "title": "Capture a surface PNG",
         "description": (
-            "Screenshot one named app surface to a PNG and return its path. "
-            "With a live instance attached the running window is captured "
-            "('live': true); otherwise the devtool boots the app on a private "
-            "Xvfb. Use it for visual checks and Help figures after a UI change. "
-            "The live QRhi/GL canvas stays blank headlessly (see "
-            "docs/dev/SCREENSHOTS.md)."
+            "Screenshot one named app surface to a PNG and return its path. With a live "
+            "instance attached the running window is captured ('live': true) and each visible "
+            "canvas frame is composited in, so the QRhi/GL canvas shows its content; otherwise "
+            "the devtool boots the app on a private Xvfb. Use it for visual checks and Help figures."
         ),
         "inputSchema": _params(
             {
@@ -640,10 +650,10 @@ TOOLS: list[dict] = [
         "description": (
             "Inject keyboard input into a running instance: one combo such as "
             "ctrl+shift+p, or comma-separated combos applied in order such as "
-            "Down,Down,Enter. Use it for menus, dialogs, and focus moves the "
-            "Find Action catalog does not cover. Live-only — with no attached "
-            "instance it errors honestly instead of simulating keys. Key names "
-            "are allowlisted; modifiers are ctrl/shift/alt/meta."
+            "Down,Down,Enter. Pass target=<element id from ui_elements> to aim "
+            "them at a widget the window focus never reaches (e.g. a canvas). "
+            "Live-only; key names are allowlisted (letters, digits, punctuation, "
+            "named keys); modifiers are ctrl/shift/alt/meta."
         ),
         "inputSchema": _params(
             {
@@ -651,6 +661,11 @@ TOOLS: list[dict] = [
                     **_STR,
                     "description": "One combo (ctrl+shift+p) or comma-separated combos applied in order (Down,Down,Enter).",
                 }
+                ,
+                "target": {
+                    **_STR,
+                    "description": "Element id from ui_elements to type into (e.g. a canvas). Default: the focused widget.",
+                },
             },
             ["keys"],
         ),

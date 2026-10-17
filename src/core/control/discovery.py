@@ -35,7 +35,6 @@ import stat
 import string
 import struct
 import sys
-import time
 from pathlib import Path
 from typing import Any
 
@@ -319,6 +318,34 @@ _KEY_ALIASES = {
     "menu": "Key_Menu",
 }
 
+#: Punctuation → Qt key, so a client can type a *path* or any other text
+#: field keystroke by keystroke (``/,t,m,p,/,a,.,p,n,g``). Qt names these
+#: keys, so without this map a path is untransmittable -- the one gap that
+#: made headless file dialogs undriveable. ``','`` and ``'+'`` are absent on
+#: purpose: they are the sequence / modifier separators.
+_PUNCTUATION_KEYS = {
+    "/": "Key_Slash",
+    ".": "Key_Period",
+    "-": "Key_Minus",
+    "_": "Key_Underscore",
+    "~": "Key_AsciiTilde",
+    "=": "Key_Equal",
+    ":": "Key_Colon",
+    ";": "Key_Semicolon",
+    "(": "Key_ParenLeft",
+    ")": "Key_ParenRight",
+    "[": "Key_BracketLeft",
+    "]": "Key_BracketRight",
+    "@": "Key_At",
+    "#": "Key_NumberSign",
+    "$": "Key_Dollar",
+    "%": "Key_Percent",
+    "!": "Key_Exclam",
+    "?": "Key_Question",
+    "*": "Key_Asterisk",
+    "\\": "Key_Backslash",
+}
+
 #: Modifier names accepted by ``press_keys`` → ``Qt.KeyboardModifier``.
 _MODIFIERS = {
     "ctrl": Qt.KeyboardModifier.ControlModifier,
@@ -347,12 +374,15 @@ def valid_key_names() -> list[str]:
     names = sorted(_KEY_ALIASES)
     names += [f"f{i}" for i in range(1, 13)]
     names += list(string.ascii_lowercase) + list(string.digits)
+    names += sorted(_PUNCTUATION_KEYS)
     return names
 
 
 def _resolve_key(name: str) -> Any:
     if name in _KEY_ALIASES:
         return getattr(Qt, _KEY_ALIASES[name])
+    if name in _PUNCTUATION_KEYS:
+        return getattr(Qt, _PUNCTUATION_KEYS[name])
     if len(name) == 1 and name.isalpha():
         return getattr(Qt, "Key_" + name.upper())
     if len(name) == 1 and name.isdigit():
@@ -449,49 +479,3 @@ def resolve_capture_target(app: Any, window: Any, what: Any) -> tuple[Any, str]:
         if not label:
             label = type(active).__name__
     return active, label or "window"
-
-
-def grab_window(app: Any, target: Any) -> tuple[Any, str]:
-    """Live grab: screen ``grabWindow`` first, widget ``grab()`` fallback."""
-    screen = app.primaryScreen() if app is not None else None
-    if screen is not None:
-        try:
-            pixmap = screen.grabWindow(int(target.winId()))
-            if pixmap is not None and not pixmap.isNull():
-                return pixmap, "grabWindow"
-        except Exception:
-            pass
-    try:
-        pixmap = target.grab()
-        if pixmap is not None and not pixmap.isNull():
-            return pixmap, "widget_grab"
-    except Exception:
-        pass
-    return None, ""
-
-
-def capture_live_png(app: Any, window: Any, what: Any, out_dir: Any) -> dict[str, Any]:
-    """Grab the live window/tab into *out_dir* and report what was produced."""
-    target, label = resolve_capture_target(app, window, what)
-    if target is None:
-        raise MethodError(
-            "no live window to capture",
-            "pass what=<tab> (see list_surfaces) or focus a window first",
-        )
-    pixmap, method = grab_window(app, target)
-    if pixmap is None:
-        raise MethodError(
-            f"could not grab {label}",
-            "run on a real display (a private Xvfb), not the offscreen platform",
-        )
-    path = Path(out_dir) / f"live-capture-{label}-{time.strftime('%Y%m%d-%H%M%S')}.png"
-    if not pixmap.save(str(path), "PNG"):
-        raise MethodError(
-            f"could not write {path}", "check IMGSLI_MCP_ARTIFACTS is writable"
-        )
-    return {
-        "path": str(path),
-        "what": label,
-        "method": method,
-        "size": [pixmap.width(), pixmap.height()],
-    }

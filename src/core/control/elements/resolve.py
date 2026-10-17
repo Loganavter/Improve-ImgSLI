@@ -114,3 +114,42 @@ def resolve_element(
     if close:
         hint = "did you mean: " + ", ".join(close) + "? (" + hint + ")"
     raise MethodError(f"no element with id {needle!r}", hint)
+
+
+def key_target(registry: Any, needle: Any, *, fallback: Any = None) -> Any:
+    """The widget ``press_keys`` should type into.
+
+    A named element id (from ``ui_elements``) types into **that** widget
+    directly. Without this, keys always went to the window's focus widget,
+    which is not where a canvas listens: a live QRhi canvas is not in the
+    window's focus chain, so canvas shortcuts (multi-compare zoom ``=``/``-``,
+    reset ``0``) were delivered to ``MainWindow`` and silently did nothing
+    (live 2026-10-17 -- the whole point of naming the canvas is that keys must
+    be able to reach it). No id keeps the old behaviour (``fallback``).
+    """
+    if needle is None or (isinstance(needle, str) and not needle.strip()):
+        return fallback
+    return resolve_element(registry, needle).widget
+
+
+def focus_target(app: Any, window: Any) -> Any:
+    """The active window's focus widget, else *window*.
+
+    ``press_keys``' default when no element id is named: keys go to whatever
+    holds focus in the running window (the historical behaviour), falling
+    back to the main window so a window-level shortcut still lands. Never
+    raises.
+    """
+    from PySide6.QtWidgets import QApplication, QWidget
+
+    instance = app if app is not None else QApplication.instance()
+    focused = None
+    if instance is not None:
+        try:
+            active = instance.activeWindow()
+            focused = active.focusWidget() if active is not None else None
+        except Exception:
+            focused = None
+    if focused is None and isinstance(window, QWidget):
+        focused = window
+    return focused

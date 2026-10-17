@@ -209,3 +209,25 @@ def test_resolve_capture_target_tells_closed_apart_from_unknown(monkeypatch):
         discovery.resolve_capture_target(None, None, "no_such_surface")
     assert "unknown surface" in str(unknown.value)
     assert "capturable" in str(unknown.value.hint)
+
+
+def test_parse_key_sequence_types_a_path_by_keystroke():
+    """A path must be typeable into a text field: ``/`` and ``.`` are keys.
+
+    Falsification: before this, the parser accepted only named keys plus
+    single letters/digits, so no client could type ``/tmp/a.png`` — the one
+    gap that made a headless file dialog undriveable.
+    """
+    keys = discovery.parse_key_sequence("/,t,m,p,/,a,.,p,n,g")
+
+    assert [label for _key, _mods, label in keys] == [
+        "/", "t", "m", "p", "/", "a", ".", "p", "n", "g",
+    ]
+
+
+def test_parse_key_sequence_still_rejects_an_unknown_name():
+    with pytest.raises(discovery.MethodError) as exc:
+        discovery.parse_key_sequence("wibble")
+
+    assert "unknown key" in exc.value.message
+    assert "/" in exc.value.hint and "f12" in exc.value.hint
