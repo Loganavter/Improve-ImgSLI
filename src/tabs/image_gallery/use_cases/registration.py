@@ -115,6 +115,7 @@ def register_actions(tab, registry) -> None:
         from tabs.image_gallery.actions import (
             GALLERY_CLEAN_REJECTED,
             GALLERY_KEEP_BEST,
+            GALLERY_RESET_METRICS,
             GALLERY_RUN_TRIAGE,
             GALLERY_SET_AS_SOURCE,
         )
@@ -213,6 +214,32 @@ def register_actions(tab, registry) -> None:
                 shortcut=None,
                 help_page="workspace.image_gallery.quality",
                 run=_set_as_source,
+                target=ActionTarget(widget=wid) if wid is not None else None,
+            )
+        )
+        # reset-metrics — same recompute the card menu entry runs: clear the
+        # measured caches and re-enter the rebuild. Guarded like ``_run_triage``
+        # (MCP executes the registry at startup, when there is no folder yet).
+        def _reset_metrics():
+            try:
+                if ctrl is not None and getattr(ctrl.state, "folder", None) is not None:
+                    from tabs.image_gallery.use_cases import cache_reset as _cache_reset
+
+                    _cache_reset.reset_metrics_caches(ctrl)
+            except Exception:
+                pass
+
+        registry.register(
+            ActionDescriptor(
+                action_id=GALLERY_RESET_METRICS,
+                label_key="image_gallery.card.reset_metrics_cache",
+                description_key=None,
+                breadcrumb=("image_gallery.action.breadcrumb.triage", "Image Gallery"),
+                owner_tab=tab.session_type,
+                topic="cache",
+                shortcut=None,
+                help_page="workspace.image_gallery.triage",
+                run=_reset_metrics,
                 target=ActionTarget(widget=wid) if wid is not None else None,
             )
         )

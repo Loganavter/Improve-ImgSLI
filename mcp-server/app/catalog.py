@@ -42,12 +42,14 @@ SERVER_NAME = "improve-imgsli-app"
 SERVER_VERSION = "0.1.0"
 
 INSTRUCTIONS = (
-    "Drives the local Improve-ImgSLI desktop app headlessly. Read-only tools "
-    "inspect the ActionRegistry catalog, Redux Store slices, widget tree, log, "
-    "tracer, and capture surfaces. Mutating tools launch app processes, set "
-    "persisted theme/language, or write PNGs. Phase 1 launches a fresh process "
-    "per mutation (no live channel); prefer reads, and treat cached artifacts "
-    "as possibly stale."
+    "Drives the local Improve-ImgSLI desktop app. When a running instance is "
+    "attached over its in-app control socket every tool acts on that live "
+    "window (results carry source='live'); otherwise the server falls back to "
+    "headless operation: reads boot a throwaway snapshot and mutations start a "
+    "fresh, invisible process (source='fallback'). Read-only tools inspect the "
+    "ActionRegistry, Store slices, widget tree, log, tracer, and capture "
+    "surfaces. press_keys needs a live instance. On the fallback path, treat "
+    "cached artifacts as possibly stale."
 )
 
 #: Freshness hint applied to the static list methods (ms).
@@ -77,10 +79,35 @@ MUTATING = _annotations(False, False, True)
 #: ``run_action`` can trigger any registered action — including destructive
 #: ones — so it advertises ``destructiveHint`` honestly.
 MUTATING_RISKY = _annotations(False, True, True)
+#: ``press_keys`` injects input: not destructive, but repeating the same combos
+#: twice is not a no-op (focus/state move), so it is explicitly non-idempotent.
+MUTATING_INPUT = _annotations(False, False, False)
 
 _STR = {"type": "string"}
 _INT = {"type": "integer"}
 _BOOL = {"type": "boolean"}
+
+
+def _source() -> dict:
+    """Schema for the additive ``source`` key every tool result carries.
+
+    ``live`` = proxied to an attached running instance; ``fallback`` = the
+    headless Phase-1 path (fresh process or on-disk artifact). Callers can tell
+    the two modes apart without guessing.
+    """
+    return {
+        "type": "string",
+        "enum": ["live", "fallback"],
+        "description": "Which answering path produced this result.",
+    }
+
+
+def _live_flag() -> dict:
+    """Schema for ``live: true`` on mutations with no Phase-1 analogue key."""
+    return {
+        "type": "boolean",
+        "description": "True when the live instance performed the mutation (no fresh process was launched).",
+    }
 
 
 def _object(properties: dict, required: list[str] | None = None) -> dict:
@@ -114,9 +141,10 @@ TOOLS: list[dict] = [
         "description": (
             "List the app's registered Find Actions (id, label, owner tab, "
             "shortcut). Use it to discover exact action ids before run_action, "
-            "or to check what a tab offers. Boots a headless app snapshot, so "
-            "it costs a few seconds. Do NOT use it to run anything, and do NOT "
-            "invent ids — only ids returned here are accepted by run_action."
+            "or to check what a tab offers. Answers from the live instance when "
+            "one is attached; otherwise it boots a headless snapshot (a few "
+            "seconds). Do NOT use it to run anything, and do NOT invent ids — "
+            "only ids returned here are accepted by run_action."
         ),
         "inputSchema": _params(
             {
@@ -145,6 +173,7 @@ TOOLS: list[dict] = [
                         ["action_id", "label"],
                     )
                 ),
+                "source": _source(),
             },
             ["count", "actions"],
         ),
@@ -155,12 +184,12 @@ TOOLS: list[dict] = [
         "name": "list_sessions",
         "title": "List workspace sessions",
         "description": (
-            "List the workspace sessions the app would open with (id, type, "
+            "List the workspace sessions the app currently has open (id, type, "
             "title, active flag). Use it to see which tab kinds exist and which "
-            "one is active in the snapshot. Read-only and cheap once the app "
-            "snapshot is cached. Do NOT use it to switch tabs — that is "
-            "open_tab. Phase 1 reads a fresh headless snapshot, not a live "
-            "running window, so it may lag a UI the user is driving."
+            "one is active. Answers from the live instance when one is "
+            "attached, so it reflects the window the user is driving; otherwise "
+            "it reads a fresh headless snapshot and may lag. Do NOT use it to "
+            "switch tabs — that is open_tab."
         ),
         "inputSchema": _params(),
         "outputSchema": _object(
@@ -177,6 +206,7 @@ TOOLS: list[dict] = [
                         ["id", "session_type", "title", "active"],
                     )
                 ),
+                "source": _source(),
             },
             ["count", "sessions"],
         ),
@@ -189,10 +219,10 @@ TOOLS: list[dict] = [
         "description": (
             "Return a slice of the Redux Store (settings, workspace sessions, "
             "active document summary) as JSON; pass a dotted path such as "
-            "settings.theme to narrow it. Use it to answer 'what are the "
-            "current settings/DOM'. Do NOT use it for pixel data or image "
-            "contents — it never returns file bytes. Reads a headless snapshot, "
-            "so live edits are not reflected until it refreshes."
+            "settings.theme to narrow it. Answers from the live instance when "
+            "one is attached, so it shows the user's current DOM; otherwise it "
+            "reads a cached headless snapshot. Do NOT use it for pixel data or "
+            "image contents — it never returns file bytes."
         ),
         "inputSchema": _params(
             {
@@ -206,6 +236,7 @@ TOOLS: list[dict] = [
             {
                 "path": {"type": ["string", "null"]},
                 "state": {"description": "JSON value at path (whole state when path is omitted)."},
+                "source": _source(),
             },
             ["path", "state"],
         ),
@@ -216,12 +247,12 @@ TOOLS: list[dict] = [
         "name": "read_log",
         "title": "Tail the app log file",
         "description": (
-            "Return the last N lines of the app log (log.txt), optionally "
-            "filtered by minimum level. Use it to see recent app errors or "
-            "lifecycle events without a terminal. Do NOT use it to read "
-            "arbitrary files — the path is fixed to the app's own log. The log "
-            "is rewritten on every app start, so capture what you need before "
-            "relaunching."
+            "Return the last N lines of the app log, optionally filtered by "
+            "minimum level. Use it to see recent app errors or lifecycle events "
+            "without a terminal. Do NOT use it to read arbitrary files — the "
+            "path is fixed to the app's own log. The app truncates the log on "
+            "every start, so with a live instance the server serves the copy "
+            "preserved before any fallback boot."
         ),
         "inputSchema": _params(
             {
@@ -247,6 +278,7 @@ TOOLS: list[dict] = [
                 "lines": _array(
                     _object({"n": _INT, "level": {"type": ["string", "null"]}, "text": _STR})
                 ),
+                "source": _source(),
             },
             ["path", "total_lines", "returned", "lines"],
         ),
@@ -257,12 +289,12 @@ TOOLS: list[dict] = [
         "name": "query_trace",
         "title": "Query the causal tracer",
         "description": (
-            "Search trace.jsonl (Redux dispatches, EventBus publishes, render "
-            "frames) by substring, trace id, or kind, newest first. Use it to "
-            "explain 'weird after click/zoom' chains when plain logs are not "
-            "enough. Do NOT use it as a general log — it only holds records "
-            "written while IMGSLI_TRACE was on. Enable the tracer with "
-            "'./launcher.sh run --debug' first."
+            "Search the causal tracer (Redux dispatches, EventBus publishes, "
+            "render frames) by substring, trace id, or kind, newest first. Use "
+            "it to explain 'weird after click/zoom' chains when plain logs are "
+            "not enough. Answers from the live instance when one is attached, "
+            "else from trace.jsonl on disk. Do NOT use it as a general log — it "
+            "only holds records written while IMGSLI_TRACE was on."
         ),
         "inputSchema": _params(
             {
@@ -285,6 +317,7 @@ TOOLS: list[dict] = [
                 "total_records": _INT,
                 "returned": _INT,
                 "records": _array({"type": "object", "additionalProperties": True}),
+                "source": _source(),
             },
             ["path", "total_records", "returned", "records"],
         ),
@@ -295,12 +328,12 @@ TOOLS: list[dict] = [
         "name": "dump_ui_layout",
         "title": "Dump the widget tree",
         "description": (
-            "Boot the app headlessly and dump the live widget tree (class, "
-            "geometry, colors, bound Find Action ids) to JSON, returning a "
-            "summary. Use it for layout/spacing/visibility questions instead of "
-            "a screenshot. Do NOT expect pixels — geometry and color values "
-            "only. Pass tab to open that tab first so its chrome is in the "
-            "dump; without it the dump shows the session picker."
+            "Dump the widget tree (class, geometry, colors, bound Find Action "
+            "ids) to JSON, returning a summary. Use it for layout/spacing/"
+            "visibility questions instead of a screenshot. Pass tab to target a "
+            "tab's chrome. Answers from the live window when an instance is "
+            "attached, else boots the app headlessly; either way it is geometry "
+            "and color values, never pixels."
         ),
         "inputSchema": _params(
             {
@@ -321,6 +354,7 @@ TOOLS: list[dict] = [
                 "tab": {"type": ["string", "null"]},
                 "windows": _INT,
                 "node_count": _INT,
+                "source": _source(),
             },
             ["path", "windows", "node_count"],
         ),
@@ -334,8 +368,9 @@ TOOLS: list[dict] = [
             "List the named surfaces the capture_surface devtool can screenshot "
             "(e.g. settings, gallery-populated), with a description and whether "
             "each runs isolated. Use it before capture_surface to get a valid "
-            "name. Do NOT guess surface names — unknown ones fail. This only "
-            "lists them; it never opens a display or captures anything."
+            "name. Answers from the live instance when one is attached, else "
+            "from the devtool registry. Do NOT guess surface names, and note it "
+            "never captures anything itself."
         ),
         "inputSchema": _params(),
         "outputSchema": _object(
@@ -344,6 +379,7 @@ TOOLS: list[dict] = [
                 "surfaces": _array(
                     _object({"name": _STR, "description": _STR, "isolated": _BOOL}, ["name", "description"]),
                 ),
+                "source": _source(),
             },
             ["count", "surfaces"],
         ),
@@ -354,12 +390,12 @@ TOOLS: list[dict] = [
         "name": "open_tab",
         "title": "Open a workspace tab",
         "description": (
-            "Launch the app with a new workspace tab of the given kind. Use it "
-            "to bring a specific tab up for the user or as a step before "
-            "run_action. This starts a fresh app process, so it does NOT affect "
-            "an already-running window. Do NOT use it when you only need to "
-            "inspect a tab — dump_ui_layout with tab does that without opening "
-            "a visible window."
+            "Open or focus a workspace tab of the given kind. With a live "
+            "instance attached it switches the running window (no new process, "
+            "'ran': true). Without one it launches a fresh app process, reusing "
+            "the tab's live fallback process when there is one ('reused': "
+            "true). Do NOT use it when you only need to inspect a tab — "
+            "dump_ui_layout with tab does that without opening a window."
         ),
         "inputSchema": _params(
             {
@@ -376,8 +412,11 @@ TOOLS: list[dict] = [
                 "launched": _BOOL,
                 "pid": {"type": ["integer", "null"]},
                 "tab": _STR,
+                "ran": {"type": "boolean", "description": "True when the live instance switched to the tab."},
+                "reused": {"type": "boolean", "description": "True when a live fallback process for this tab was reused."},
+                "source": _source(),
             },
-            ["launched", "tab"],
+            ["tab"],
         ),
         "annotations": MUTATING,
         "handler": "open_tab",
@@ -386,12 +425,12 @@ TOOLS: list[dict] = [
         "name": "run_action",
         "title": "Run a Find Action",
         "description": (
-            "Run one registered Find Action by id in a fresh app process. Ids "
-            "must come from list_actions; anything else is rejected before "
-            "launch. Use it to open dialogs (platform.settings) or trigger "
-            "commands. Some actions are destructive (save, quit, export), so "
-            "confirm intent first, and do NOT use it to drive an "
-            "already-running window — Phase 1 cannot reach one."
+            "Run one registered Find Action by id. With a live instance "
+            "attached it runs in the running window ('ran': true, result key "
+            "'live': true); without one it validates against the headless "
+            "ActionRegistry and launches a fresh process. Use it to open "
+            "dialogs (platform.settings) or trigger commands. Some actions are "
+            "destructive (save, quit, export) — confirm intent first."
         ),
         "inputSchema": _params(
             {
@@ -402,7 +441,7 @@ TOOLS: list[dict] = [
                 "tab": {
                     **_STR,
                     "enum": list(TAB_KINDS),
-                    "description": "Optionally open this tab first, so tab-scoped actions register before the action runs.",
+                    "description": "Optionally target this tab first, so tab-scoped actions register before the action runs.",
                 },
             },
             ["action_id"],
@@ -413,8 +452,11 @@ TOOLS: list[dict] = [
                 "pid": {"type": ["integer", "null"]},
                 "action_id": _STR,
                 "tab": {"type": ["string", "null"]},
+                "ran": {"type": "boolean", "description": "True when the live instance ran the action."},
+                "live": _live_flag(),
+                "source": _source(),
             },
-            ["launched", "action_id"],
+            ["action_id"],
         ),
         "annotations": MUTATING_RISKY,
         "handler": "run_action",
@@ -423,12 +465,12 @@ TOOLS: list[dict] = [
         "name": "open_folder",
         "title": "Open an image folder",
         "description": (
-            "Validate an existing directory and launch the app's gallery for "
-            "it. The path must be a real directory; relative and nonexistent "
-            "paths are rejected. Use it to hand the user a folder of images. "
-            "Phase 1 starts a fresh app process and cannot inject the folder "
-            "into the gallery, so it reports routed=false and the folder must "
-            "be dropped on the gallery until the Phase 2 control socket lands."
+            "Validate an existing directory and hand it to the gallery. With a "
+            "live instance attached the running app routes it and reports "
+            "'routed': true ('live': true); without one it starts a fresh "
+            "process that cannot inject the folder, so it reports routed=false "
+            "until you drop the folder on the gallery. The path must be a real "
+            "directory."
         ),
         "inputSchema": _params(
             {
@@ -445,8 +487,11 @@ TOOLS: list[dict] = [
                 "pid": {"type": ["integer", "null"]},
                 "path": _STR,
                 "routed": _BOOL,
+                "ran": {"type": "boolean", "description": "True when the live instance routed the folder."},
+                "live": _live_flag(),
+                "source": _source(),
             },
-            ["launched", "path", "routed"],
+            ["path", "routed"],
         ),
         "annotations": MUTATING,
         "handler": "open_folder",
@@ -455,18 +500,18 @@ TOOLS: list[dict] = [
         "name": "set_theme",
         "title": "Set persisted theme",
         "description": (
-            "Persist the app theme choice via the app's own settings store. "
-            "Use it to make the app light/dark for the next launch. Idempotent "
-            "— setting the same theme twice is a no-op. Phase 1 cannot restyle "
-            "a running window, so it applies on next start; do NOT use it to "
-            "capture a themed screenshot (pass theme to capture_surface)."
+            "Set the app theme. With a live instance attached the running "
+            "window restyles immediately ('live': true, applies_on 'now'); "
+            "otherwise it persists the choice for the next launch. Idempotent — "
+            "setting the same theme twice is a no-op. Do NOT use it to capture "
+            "a themed screenshot (pass theme to capture_surface)."
         ),
         "inputSchema": _params(
             {
                 "theme": {
                     **_STR,
                     "enum": list(THEMES),
-                    "description": "Theme to persist.",
+                    "description": "Theme to apply or persist.",
                 }
             },
             ["theme"],
@@ -476,8 +521,10 @@ TOOLS: list[dict] = [
                 "theme": _STR,
                 "persisted": _BOOL,
                 "applies_on": _STR,
+                "live": _live_flag(),
+                "source": _source(),
             },
-            ["theme", "persisted", "applies_on"],
+            ["theme", "applies_on"],
         ),
         "annotations": MUTATING,
         "handler": "set_theme",
@@ -486,18 +533,18 @@ TOOLS: list[dict] = [
         "name": "set_language",
         "title": "Set persisted UI language",
         "description": (
-            "Persist the app UI language via the app's own settings store. Use "
-            "it to switch the interface language for the next launch. "
-            "Idempotent. Phase 1 cannot retranslate a running window, so it "
-            "applies on next start. Do NOT use it to translate text yourself — "
-            "read app://theme for the active language."
+            "Set the app UI language. With a live instance attached the running "
+            "window retranslates immediately ('live': true, applies_on 'now'); "
+            "otherwise it persists the choice for the next launch. Idempotent. "
+            "Do NOT use it to translate text yourself — read app://theme for "
+            "the active language."
         ),
         "inputSchema": _params(
             {
                 "language": {
                     **_STR,
                     "enum": list(LANGUAGES),
-                    "description": "Language code to persist.",
+                    "description": "Language code to apply or persist.",
                 }
             },
             ["language"],
@@ -507,8 +554,10 @@ TOOLS: list[dict] = [
                 "language": _STR,
                 "persisted": _BOOL,
                 "applies_on": _STR,
+                "live": _live_flag(),
+                "source": _source(),
             },
-            ["language", "persisted", "applies_on"],
+            ["language", "applies_on"],
         ),
         "annotations": MUTATING,
         "handler": "set_language",
@@ -517,11 +566,12 @@ TOOLS: list[dict] = [
         "name": "capture_surface",
         "title": "Capture a surface PNG",
         "description": (
-            "Screenshot one named app surface to a PNG on a private Xvfb "
-            "display and return its path. Use it for visual checks and Help "
-            "figures after a UI change. Do NOT expect the live QRhi/GL canvas "
-            "to render — it is blank headlessly. Pass a name from "
-            "list_surfaces; the display must exist (see docs/dev/SCREENSHOTS.md)."
+            "Screenshot one named app surface to a PNG and return its path. "
+            "With a live instance attached the running window is captured "
+            "('live': true); otherwise the devtool boots the app on a private "
+            "Xvfb. Use it for visual checks and Help figures after a UI change. "
+            "The live QRhi/GL canvas stays blank headlessly (see "
+            "docs/dev/SCREENSHOTS.md)."
         ),
         "inputSchema": _params(
             {
@@ -546,11 +596,45 @@ TOOLS: list[dict] = [
                 "surface": _STR,
                 "path": _STR,
                 "theme": _STR,
+                "live": _live_flag(),
+                "source": _source(),
             },
             ["surface", "path"],
         ),
         "annotations": MUTATING,
         "handler": "capture_surface",
+    },
+    {
+        "name": "press_keys",
+        "title": "Press keys in the running app",
+        "description": (
+            "Inject keyboard input into a running instance: one combo such as "
+            "ctrl+shift+p, or comma-separated combos applied in order such as "
+            "Down,Down,Enter. Use it for menus, dialogs, and focus moves the "
+            "Find Action catalog does not cover. Live-only — with no attached "
+            "instance it errors honestly instead of simulating keys. Key names "
+            "are allowlisted; modifiers are ctrl/shift/alt/meta."
+        ),
+        "inputSchema": _params(
+            {
+                "keys": {
+                    **_STR,
+                    "description": "One combo (ctrl+shift+p) or comma-separated combos applied in order (Down,Down,Enter).",
+                }
+            },
+            ["keys"],
+        ),
+        "outputSchema": _object(
+            {
+                "pressed": _array(_STR),
+                "count": _INT,
+                "target": _STR,
+                "source": _source(),
+            },
+            ["pressed", "count"],
+        ),
+        "annotations": MUTATING_INPUT,
+        "handler": "press_keys",
     },
 ]
 

@@ -14,6 +14,7 @@ are registry ids, not fixtures restating an implementation detail.
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
 import sys
@@ -28,6 +29,13 @@ if str(MCP_DIR) not in sys.path:
 
 from app import catalog  # noqa: E402
 from app.backend import AppBackend  # noqa: E402
+from app.process_policy import (  # noqa: E402
+    PRESERVED_LOG_NAME,
+    ProcessRegistry,
+    launch_env,
+    pid_alive,
+    preserve_live_log,
+)
 from app.protocol import MCPProtocol  # noqa: E402
 
 _NAME_RE = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")
@@ -68,8 +76,14 @@ def _registry_snapshot() -> dict:
 
 
 @pytest.fixture
-def wired(tmp_path):
-    """(protocol, backend, calls) with every external effect faked."""
+def wired(tmp_path, monkeypatch):
+    """(protocol, backend, calls) with every external effect faked.
+
+    Discovery is pinned at an empty tmp control dir so the suite can never
+    attach to a real app instance that happens to be running on this machine.
+    """
+    monkeypatch.delenv("IMGSLI_MCP_CONTROL_SOCKET", raising=False)
+    monkeypatch.setenv("IMGSLI_CONTROL_DIR", str(tmp_path / "no-instance"))
     snapshot = _registry_snapshot()
     calls: dict[str, list] = {"tabs": [], "launches": [], "settings": []}
 
@@ -149,6 +163,8 @@ def test_finite_values_expose_enums_and_defaults(wired):
     read_log = tools["read_log"]["inputSchema"]["properties"]["n"]
     assert read_log["default"] == 200 and read_log["type"] == "integer"
     assert tools["list_actions"]["inputSchema"]["additionalProperties"] is False
+    assert tools["press_keys"]["inputSchema"]["required"] == ["keys"]
+    assert tools["press_keys"]["inputSchema"]["properties"]["keys"]["type"] == "string"
 
 
 def test_read_and_write_tools_do_not_mix_annotations(wired):
@@ -162,9 +178,12 @@ def test_read_and_write_tools_do_not_mix_annotations(wired):
         assert annotations["destructiveHint"] is False, name
 
     for name in ("open_tab", "run_action", "open_folder", "set_theme", "set_language",
-                 "capture_surface"):
+                 "capture_surface", "press_keys"):
         assert tools[name]["annotations"]["readOnlyHint"] is False, name
     assert tools["run_action"]["annotations"]["destructiveHint"] is True
+    # Injecting input is not destructive, but is not idempotent either.
+    assert tools["press_keys"]["annotations"]["destructiveHint"] is False
+    assert tools["press_keys"]["annotations"]["idempotentHint"] is False
     for tool in tools.values():
         assert tool["annotations"]["openWorldHint"] is False, tool["name"]
 
@@ -353,6 +372,116 @@ def test_unknown_prompt_is_reported(wired):
     assert "unknown prompt" in response["error"]["message"]
 
 
+# --- fallback safety: display policy, process reuse, log preservation -------
+
+
+def test_launch_env_defaults_to_headless_and_scrubs_the_session(monkeypatch):
+    """Regression guard (defect 2): a fallback boot must not inherit DISPLAY."""
+    monkeypatch.setenv("DISPLAY", ":0")
+    monkeypatch.setenv("WAYLAND_DISPLAY", "wayland-0")
+    monkeypatch.setenv("XDG_SESSION_TYPE", "wayland")
+    monkeypatch.delenv("IMGSLI_MCP_DISPLAY", raising=False)
+
+    env = launch_env()
+    assert env["QT_QPA_PLATFORM"] == "offscreen"
+    for key in ("DISPLAY", "WAYLAND_DISPLAY", "XDG_SESSION_TYPE"):
+        assert key not in env
+
+
+def test_launch_env_visible_uses_the_opted_in_private_display(monkeypatch):
+    monkeypatch.setenv("DISPLAY", ":0")
+    monkeypatch.setenv("WAYLAND_DISPLAY", "wayland-0")
+    monkeypatch.setenv("XDG_SESSION_TYPE", "wayland")
+    monkeypatch.setenv("IMGSLI_MCP_DISPLAY", ":97")
+
+    env = launch_env(visible=True)
+    assert env["DISPLAY"] == ":97", "the opt-in display wins over the session's"
+    assert env["QT_QPA_PLATFORM"] == "xcb"
+    assert "WAYLAND_DISPLAY" not in env and "XDG_SESSION_TYPE" not in env
+
+
+def test_launch_env_visible_without_opt_in_stays_headless(monkeypatch):
+    monkeypatch.setenv("DISPLAY", ":0")
+    monkeypatch.delenv("IMGSLI_MCP_DISPLAY", raising=False)
+
+    env = launch_env(visible=True)
+    assert env["QT_QPA_PLATFORM"] == "offscreen"
+    assert "DISPLAY" not in env
+
+
+def test_fallback_launch_env_is_headless_on_a_wayland_session(wired, monkeypatch):
+    _protocol, backend, _calls = wired
+    monkeypatch.setenv("DISPLAY", ":0")
+    monkeypatch.setenv("WAYLAND_DISPLAY", "wayland-0")
+    monkeypatch.delenv("IMGSLI_MCP_DISPLAY", raising=False)
+
+    env = backend._launch_env()
+    assert env["QT_QPA_PLATFORM"] == "offscreen"
+    assert "DISPLAY" not in env and "WAYLAND_DISPLAY" not in env
+    assert env["PYTHONPATH"].startswith(str(REPO_ROOT / "src"))
+
+
+def test_process_registry_keeps_only_live_pids():
+    registry = ProcessRegistry()
+    registry.adopt("image_compare", os.getpid())
+    assert registry.live_pid("image_compare") == os.getpid()
+
+    registry.adopt("multi_compare", 2**30)
+    assert registry.live_pid("multi_compare") is None, "a dead pid is dropped, not returned"
+    assert registry.live_pid("multi_compare") is None
+
+    registry.release("image_compare")
+    assert registry.live_pid("image_compare") is None
+    assert pid_alive(os.getpid()) is True
+    assert pid_alive(2**30) is False
+    assert pid_alive(None) is False and pid_alive(0) is False
+
+
+def test_preserve_live_log_copies_the_log_before_a_boot_clobbers_it(tmp_path):
+    source = tmp_path / "data" / "log.txt"
+    source.parent.mkdir(parents=True)
+    source.write_text("live line\n", encoding="utf-8")
+
+    preserved = preserve_live_log(tmp_path / "artifacts", source=source)
+    assert preserved == str(tmp_path / "artifacts" / PRESERVED_LOG_NAME)
+    assert Path(preserved).read_text(encoding="utf-8") == "live line\n"
+    assert preserve_live_log(tmp_path / "artifacts", source=tmp_path / "absent.txt") is None
+
+
+def test_open_tab_reuses_a_live_fallback_process(wired):
+    protocol, backend, calls = wired
+    backend.processes.adopt("image_compare", os.getpid())
+
+    result = _call(protocol, "open_tab", {"tab": "image_compare"})
+    structured = result["structuredContent"]
+    assert structured["reused"] is True
+    assert structured["launched"] is False
+    assert structured["pid"] == os.getpid()
+    assert structured["source"] == "fallback"
+    assert calls["launches"] == [], "a tab with a live process must not spawn a second one"
+
+
+def test_open_tab_spawns_again_when_the_tracked_process_is_gone(wired):
+    protocol, backend, calls = wired
+    backend.processes.adopt("image_compare", 2**30)
+
+    result = _call(protocol, "open_tab", {"tab": "image_compare"})
+    assert result["structuredContent"]["launched"] is True
+    assert result["structuredContent"]["pid"] == 4242
+    assert calls["launches"] == [["--open-tab", "image_compare"]]
+
+
+def test_press_keys_without_a_live_instance_errors_honestly(wired):
+    protocol, _backend, calls = wired
+    result = _call(protocol, "press_keys", {"keys": "ctrl+p"})
+    assert result["isError"] is True
+    text = result["content"][0]["text"]
+    assert "no live instance" in text
+    assert "keyboard input needs a running app" in text
+    assert "structuredContent" not in result
+    assert calls["launches"] == [] and calls["tabs"] == [], "no fake keys, no headless boot"
+
+
 # --- stdio round trip -------------------------------------------------------
 
 _STDIO_MESSAGES = [
@@ -392,6 +521,7 @@ def test_structured_content_matches_declared_output_schema(wired, tmp_path):
         assert set(schema.get("required") or ()) <= set(structured), name
         assert set(structured) <= set(schema["properties"]), (name, set(structured))
         assert isinstance(json.loads(result["content"][0]["text"]), (dict, list)), name
+        assert structured["source"] == "fallback", name
 
 
 def test_error_results_omit_structured_content(wired):

@@ -6,20 +6,30 @@ headlessly is reached the way a developer would: a ``python src/__main__.py``
 subprocess with the launcher's startup flags, plus the devtools
 (``devtools.capture_surface``, ``devtools.app_snapshot``).
 
-Phase 1 model (documented in ``README.md`` and ``docs/dev/MCP.md``):
+Answering model (documented in ``README.md`` and ``docs/dev/MCP.md``):
 
-- **reads** boot one headless app snapshot (``--dump-app-snapshot``) and cache
-  it briefly; ``--dump-ui-layout`` boots for the widget tree; the log and
-  tracer are read straight from disk;
-- **mutations** start a fresh app process (``--open-tab`` / ``--run-action``) or
-  persist a scalar setting through the app's own QSettings keys. There is no
-  channel into an already-running window — that is the Phase-2 in-app control
-  socket, out of scope here.
+- **live first** — when an instance is attached over the in-app control socket
+  (``live.py``), *every* tool is proxied to it and the result is normalised into
+  the shapes below. Results say ``source: "live"``.
+- **fallback (Phase 1)** — with no live instance: reads boot a headless app
+  snapshot (``--dump-app-snapshot``) and cache it briefly, ``--dump-ui-layout``
+  boots for the widget tree, and the log/tracer are read from disk; mutations
+  start a detached process (``--open-tab`` / ``--run-action``) or persist a
+  scalar setting through the app's own QSettings keys. Results say
+  ``source: "fallback"``. ``press_keys`` has no fallback and errors honestly.
+- A transport failure while attached (``LiveUnavailable``) falls back for that
+  call and pauses re-attaching briefly (``process_policy``/``live``); an
+  app-reported failure (``LiveError``) is surfaced as a ``ToolError`` instead.
+
+Fallback launches go through ``process_policy.launch_env`` — headless unless
+``IMGSLI_MCP_DISPLAY`` opts in — and reuse a tab's live fallback process rather
+than spawning a second window.
 
 Security: local-only; ``run_action`` is allowlisted to ids present in the
-ActionRegistry snapshot; ``open_folder`` accepts existing directories only;
-no arbitrary paths, no Python evaluation, and no file *contents* are ever
-returned (only the app's own log/trace/catalog artifacts).
+ActionRegistry snapshot (the live app validates its own ids); ``open_folder``
+accepts existing directories only; no arbitrary paths, no Python evaluation, and
+no file *contents* are ever returned (only the app's own log/trace/catalog
+artifacts).
 """
 
 from __future__ import annotations
@@ -33,6 +43,14 @@ import sys
 import time
 from pathlib import Path
 from typing import Any, Callable
+
+from .live import LiveBackend, LiveError, LiveUnavailable
+from .process_policy import (
+    PRESERVED_LOG_NAME,
+    ProcessRegistry,
+    launch_env,
+    preserve_live_log,
+)
 
 #: How long a headless app snapshot stays usable before a re-boot (seconds).
 SNAPSHOT_TTL_S = 30.0
@@ -93,9 +111,9 @@ class AppBackend:
     """Handlers behind the MCP tools/resources/prompts.
 
     Every external effect is injectable (``snapshot_runner``,
-    ``launcher``, ``settings_writer``, ``artifacts_dir``, ``python``) so the
-    test-suite exercises the wiring without a GUI, a display, a subprocess, or
-    the user's real QSettings.
+    ``launcher``, ``settings_writer``, ``artifacts_dir``, ``python``,
+    ``live_backend``, ``process_registry``) so the test-suite exercises the
+    wiring without a GUI, a display, a subprocess, or the user's real QSettings.
     """
 
     def __init__(
@@ -110,6 +128,8 @@ class AppBackend:
         snapshot_runner: Callable[[str | None], dict] | None = None,
         launcher: Callable[[list[str]], int] | None = None,
         settings_writer: Callable[[str, str], None] | None = None,
+        live_backend: LiveBackend | None = None,
+        process_registry: ProcessRegistry | None = None,
     ) -> None:
         self.repo_root = Path(repo_root).resolve()
         self._python = python
@@ -121,6 +141,10 @@ class AppBackend:
         self._launcher = launcher
         self._settings_writer = settings_writer
         self._snaps: dict[str, tuple[dict, float]] = {}
+        #: Live-instance adapter; ``client_if_alive`` gates every tool call.
+        self.live = live_backend if live_backend is not None else LiveBackend()
+        #: Fallback launches keyed by tab, so ``open_tab`` never spawns twice.
+        self.processes = process_registry if process_registry is not None else ProcessRegistry()
 
     # -- paths / process plumbing ------------------------------------------
 
@@ -146,22 +170,46 @@ class AppBackend:
         return self.data_dir / "trace.jsonl"
 
     def _app_env(self, extra: dict[str, str] | None = None) -> dict[str, str]:
-        env = dict(os.environ)
+        """Environment inheriting the session, plus the app's import path."""
+        return self._with_import_path(dict(os.environ), extra)
+
+    def _with_import_path(
+        self, env: dict[str, str], extra: dict[str, str] | None = None
+    ) -> dict[str, str]:
         src = str(self.repo_root / "src")
         env["PYTHONPATH"] = src + os.pathsep + env.get("PYTHONPATH", "")
         if extra:
             env.update(extra)
         return env
 
+    def _probe_env(self) -> dict[str, str]:
+        """Headless env for read-only probe boots (see ``process_policy``)."""
+        return self._with_import_path(launch_env(visible=False))
+
+    def _launch_env(self) -> dict[str, str]:
+        """Env for a detached fallback launch: headless unless ``IMGSLI_MCP_DISPLAY``."""
+        return self._with_import_path(launch_env(visible=True))
+
+    def _preserve_log_if_live(self) -> str | None:
+        """Keep the running instance's log before a boot rewrites ``log.txt``.
+
+        The app truncates ``log.txt`` on every start, so a fallback boot wipes
+        the live app's log; ``read_log`` then serves the preserved copy while a
+        live instance is attached (defect 3, ``process_policy``).
+        """
+        if self.live.client_if_alive() is None:
+            return None
+        return preserve_live_log(self.artifacts_dir, source=self.log_path)
+
     def _run_app(
         self,
         args: list[str],
         *,
-        offscreen: bool,
         timeout: float | None = None,
     ) -> tuple[int, str, str]:
-        """Blocking app run (used by headless probe flags)."""
-        env = self._app_env({"QT_QPA_PLATFORM": "offscreen"} if offscreen else None)
+        """Blocking headless app run (used by the read-only probe flags)."""
+        self._preserve_log_if_live()
+        env = self._probe_env()
         cmd = [self.python, str(self.repo_root / "src" / "__main__.py"), *args]
         try:
             proc = subprocess.run(
@@ -182,11 +230,12 @@ class AppBackend:
 
     def _launch(self, args: list[str]) -> int:
         """Detached app launch (mutating tools) — returns the child pid."""
+        self._preserve_log_if_live()
         if self._launcher is not None:
             return self._launcher(args)
         proc = subprocess.Popen(
             [self.python, str(self.repo_root / "src" / "__main__.py"), *args],
-            env=self._app_env(),
+            env=self._launch_env(),
             cwd=str(self.repo_root),
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
@@ -231,9 +280,7 @@ class AppBackend:
         target.parent.mkdir(parents=True, exist_ok=True)
         target.unlink(missing_ok=True)
         args = ["--open-tab", tab] if tab else []
-        code, _out, err = self._run_app(
-            [*args, "--dump-app-snapshot", str(target)], offscreen=True
-        )
+        code, _out, err = self._run_app([*args, "--dump-app-snapshot", str(target)])
         if code != 0 or not target.is_file():
             detail = err.strip().splitlines()[-1] if err.strip() else f"exit {code}"
             raise ToolError(
@@ -251,9 +298,44 @@ class AppBackend:
     def _actions(self, tab: str | None = None) -> list[dict]:
         return list(self.snapshot(tab=tab).get("actions") or [])
 
+    # -- live / fallback routing -------------------------------------------
+
+    def _live_or_fallback(
+        self, proxy: str, fallback: Callable[[], dict], **params: Any
+    ) -> dict:
+        """Answer from the live app when attached, else from the Phase-1 path.
+
+        A transport failure (``LiveUnavailable``) falls back for this call and
+        parks re-attaching briefly; an app-reported failure (``LiveError``) is
+        the live app's honest answer and is surfaced, not papered over.
+        """
+        client = self.live.client_if_alive()
+        if client is not None:
+            try:
+                return getattr(self.live, proxy)(client=client, **params)
+            except LiveUnavailable:
+                self.live.note_failure()
+            except LiveError as exc:
+                raise ToolError(exc.message, exc.hint)
+        return fallback()
+
+    def _preserved_log_path(self) -> Path | None:
+        candidate = self.artifacts_dir / PRESERVED_LOG_NAME
+        return candidate if candidate.is_file() else None
+
     # -- read-only tools ---------------------------------------------------
 
     def list_actions(self, *, query: str | None = None, owner_tab: str | None = None) -> dict:
+        return self._live_or_fallback(
+            "list_actions",
+            lambda: self._fallback_list_actions(query=query, owner_tab=owner_tab),
+            query=query,
+            owner_tab=owner_tab,
+        )
+
+    def _fallback_list_actions(
+        self, *, query: str | None = None, owner_tab: str | None = None
+    ) -> dict:
         from . import catalog
 
         # A tab catalog only exists once that tab is created, so filter by a
@@ -285,16 +367,25 @@ class AppBackend:
                 }
                 for row in rows
             ],
+            "source": "fallback",
         }
 
     def list_sessions(self) -> dict:
+        return self._live_or_fallback("list_sessions", self._fallback_list_sessions)
+
+    def _fallback_list_sessions(self) -> dict:
         sessions = list(self.snapshot().get("sessions") or [])
-        return {"count": len(sessions), "sessions": sessions}
+        return {"count": len(sessions), "sessions": sessions, "source": "fallback"}
 
     def get_state(self, *, path: str | None = None) -> dict:
+        return self._live_or_fallback(
+            "get_state", lambda: self._fallback_get_state(path=path), path=path
+        )
+
+    def _fallback_get_state(self, *, path: str | None = None) -> dict:
         state = self.snapshot().get("state") or {}
         if not path:
-            return {"path": None, "state": state}
+            return {"path": None, "state": state, "source": "fallback"}
         current: Any = state
         for part in str(path).split("."):
             if part == "":
@@ -308,10 +399,25 @@ class AppBackend:
                     f"no state at path {path!r}",
                     "call get_state without a path to see the available keys",
                 )
-        return {"path": path, "state": current}
+        return {"path": path, "state": current, "source": "fallback"}
 
     def read_log(self, *, n: int = 200, level: str | None = None) -> dict:
-        path = self.log_path
+        client = self.live.client_if_alive()
+        if client is not None:
+            preserved = self._preserved_log_path()
+            if preserved is not None:
+                # defect 3: a fallback boot rewrote log.txt, so the copy taken
+                # just before it is the running instance's log — serve that.
+                return self._read_log_file(preserved, n=n, level=level)
+            try:
+                return self.live.read_log(client=client, n=n, level=level)
+            except LiveUnavailable:
+                self.live.note_failure()
+            except LiveError as exc:
+                raise ToolError(exc.message, exc.hint)
+        return self._read_log_file(self.log_path, n=n, level=level)
+
+    def _read_log_file(self, path: Path, *, n: int, level: str | None) -> dict:
         if not path.is_file():
             raise ToolError(
                 f"no log file at {path}",
@@ -336,9 +442,15 @@ class AppBackend:
             "total_lines": len(lines),
             "returned": len(tail),
             "lines": tail,
+            "source": "fallback",
         }
 
     def query_trace(self, *, filter: str | None = None, n: int = 100) -> dict:
+        return self._live_or_fallback(
+            "query_trace", lambda: self._fallback_query_trace(filter=filter, n=n), filter=filter, n=n
+        )
+
+    def _fallback_query_trace(self, *, filter: str | None = None, n: int = 100) -> dict:
         path = self.trace_path
         if not path.is_file():
             raise ToolError(
@@ -373,9 +485,18 @@ class AppBackend:
             "total_records": total,
             "returned": len(newest),
             "records": newest,
+            "source": "fallback",
         }
 
     def dump_ui_layout(self, *, tab: str | None = None, out: str | None = None) -> dict:
+        return self._live_or_fallback(
+            "dump_ui_layout",
+            lambda: self._fallback_dump_ui_layout(tab=tab, out=out),
+            tab=tab,
+            out=out,
+        )
+
+    def _fallback_dump_ui_layout(self, *, tab: str | None = None, out: str | None = None) -> dict:
         if out:
             target = Path(out).expanduser()
         else:
@@ -386,7 +507,7 @@ class AppBackend:
         args = ["--dump-ui-layout", str(target)]
         if tab:
             args = ["--open-tab", tab, *args]
-        code, _stdout, err = self._run_app(args, offscreen=True)
+        code, _stdout, err = self._run_app(args)
         if code != 0 or not target.is_file():
             detail = err.strip().splitlines()[-1] if err.strip() else f"exit {code}"
             raise ToolError(
@@ -399,9 +520,18 @@ class AppBackend:
             raise ToolError(f"could not parse the layout dump: {exc}", "retry dump_ui_layout")
         windows = data.get("windows") or []
         nodes = sum(_count_nodes(win) for win in windows if isinstance(win, dict))
-        return {"path": str(target), "tab": tab, "windows": len(windows), "node_count": nodes}
+        return {
+            "path": str(target),
+            "tab": tab,
+            "windows": len(windows),
+            "node_count": nodes,
+            "source": "fallback",
+        }
 
     def list_surfaces(self) -> dict:
+        return self._live_or_fallback("list_surfaces", self._fallback_list_surfaces)
+
+    def _fallback_list_surfaces(self) -> dict:
         surfaces = self._capture_surfaces()
         rows = [
             {
@@ -412,7 +542,7 @@ class AppBackend:
             for name, data in surfaces.items()
         ]
         rows.sort(key=lambda row: row["name"])
-        return {"count": len(rows), "surfaces": rows}
+        return {"count": len(rows), "surfaces": rows, "source": "fallback"}
 
     def _capture_surfaces(self) -> dict[str, dict]:
         try:
@@ -434,6 +564,11 @@ class AppBackend:
     # -- mutating tools ----------------------------------------------------
 
     def open_tab(self, *, tab: str) -> dict:
+        return self._live_or_fallback(
+            "open_tab", lambda: self._fallback_open_tab(tab=tab), tab=tab
+        )
+
+    def _fallback_open_tab(self, *, tab: str) -> dict:
         from . import catalog
 
         if tab not in catalog.TAB_KINDS:
@@ -441,10 +576,28 @@ class AppBackend:
                 f"unknown tab {tab!r}",
                 "use one of: " + ", ".join(catalog.TAB_KINDS),
             )
+        existing = self.processes.live_pid(tab)
+        if existing is not None:
+            return {
+                "launched": False,
+                "pid": existing,
+                "tab": tab,
+                "reused": True,
+                "source": "fallback",
+            }
         pid = self._launch(["--open-tab", tab])
-        return {"launched": True, "pid": pid, "tab": tab}
+        self.processes.adopt(tab, pid)
+        return {"launched": True, "pid": pid, "tab": tab, "source": "fallback"}
 
     def run_action(self, *, action_id: str, tab: str | None = None) -> dict:
+        return self._live_or_fallback(
+            "run_action",
+            lambda: self._fallback_run_action(action_id=action_id, tab=tab),
+            action_id=action_id,
+            tab=tab,
+        )
+
+    def _fallback_run_action(self, *, action_id: str, tab: str | None = None) -> dict:
         from . import catalog
 
         # Tab-scoped ids (``image_compare.*``) only exist once the tab is
@@ -465,9 +618,22 @@ class AppBackend:
         if boot_tab:
             args = ["--open-tab", boot_tab, *args]
         pid = self._launch(args)
-        return {"launched": True, "pid": pid, "action_id": action_id, "tab": boot_tab}
+        if boot_tab:
+            self.processes.adopt(boot_tab, pid)
+        return {
+            "launched": True,
+            "pid": pid,
+            "action_id": action_id,
+            "tab": boot_tab,
+            "source": "fallback",
+        }
 
     def open_folder(self, *, path: str) -> dict:
+        return self._live_or_fallback(
+            "open_folder", lambda: self._fallback_open_folder(path=path), path=path
+        )
+
+    def _fallback_open_folder(self, *, path: str) -> dict:
         target = Path(path).expanduser()
         if not target.is_dir():
             raise ToolError(
@@ -475,15 +641,52 @@ class AppBackend:
                 "pass an absolute (or ~-prefixed) path to a folder of images",
             )
         pid = self._launch(["--open-tab", "image_gallery"])
-        return {"launched": True, "pid": pid, "path": str(target), "routed": False}
+        self.processes.adopt("image_gallery", pid)
+        return {
+            "launched": True,
+            "pid": pid,
+            "path": str(target),
+            "routed": False,
+            "source": "fallback",
+        }
 
     def set_theme(self, *, theme: str) -> dict:
-        return self._persist("theme", theme, "theme")
+        return self._live_or_fallback(
+            "set_theme", lambda: self._fallback_persist("theme", theme, "theme"), theme=theme
+        )
 
     def set_language(self, *, language: str) -> dict:
-        return self._persist("language", language, "language")
+        return self._live_or_fallback(
+            "set_language",
+            lambda: self._fallback_persist("language", language, "language"),
+            language=language,
+        )
 
-    def _persist(self, key: str, value: str, label: str) -> dict:
+    def press_keys(self, *, keys: str) -> dict:
+        """Inject keyboard input into the live app — live-only, never faked.
+
+        There is no headless analogue: without a running instance this answers
+        an honest error instead of simulating the keys.
+        """
+        client = self.live.client_if_alive()
+        if client is None:
+            raise self._keys_need_live()
+        try:
+            return self.live.press_keys(client=client, keys=keys)
+        except LiveUnavailable:
+            self.live.note_failure()
+            raise self._keys_need_live()
+        except LiveError as exc:
+            raise ToolError(exc.message, exc.hint)
+
+    @staticmethod
+    def _keys_need_live() -> ToolError:
+        return ToolError(
+            "no live instance; keyboard input needs a running app",
+            "start the app with the control socket enabled (see docs/dev/MCP.md), then retry",
+        )
+
+    def _fallback_persist(self, key: str, value: str, label: str) -> dict:
         try:
             if self._settings_writer is not None:
                 self._settings_writer(key, value)
@@ -495,7 +698,12 @@ class AppBackend:
                 "check that the app config directory is writable",
             )
         self._invalidate_snapshot()
-        return {label: value, "persisted": True, "applies_on": "next app start"}
+        return {
+            label: value,
+            "persisted": True,
+            "applies_on": "next app start",
+            "source": "fallback",
+        }
 
     def _write_setting(self, key: str, value: str) -> None:
         """Persist one scalar via the app's own QSettings scope (org/app keys)."""
@@ -518,6 +726,17 @@ class AppBackend:
     # -- capture -----------------------------------------------------------
 
     def capture_surface(self, *, surface: str, theme: str | None = None, out: str | None = None) -> dict:
+        return self._live_or_fallback(
+            "capture_surface",
+            lambda: self._fallback_capture_surface(surface=surface, theme=theme, out=out),
+            surface=surface,
+            theme=theme,
+            out=out,
+        )
+
+    def _fallback_capture_surface(
+        self, *, surface: str, theme: str | None = None, out: str | None = None
+    ) -> dict:
         surfaces = self._capture_surfaces()
         if surface not in surfaces:
             close = difflib.get_close_matches(surface, sorted(surfaces), n=3, cutoff=0.5)
@@ -528,6 +747,9 @@ class AppBackend:
         chosen_theme = theme or "dark"
         out_dir = Path(out).expanduser() if out else self.artifacts_dir / "captures"
         out_dir.mkdir(parents=True, exist_ok=True)
+        # The devtool boots a real app (which truncates log.txt): keep the
+        # running instance's log first (defect 3).
+        self._preserve_log_if_live()
         cmd = [
             self.python,
             str(self.repo_root / "src" / "devtools" / "capture_surface.py"),
@@ -562,7 +784,7 @@ class AppBackend:
                 f"capture of {surface!r} produced no PNG",
                 "re-run with a display and check the app log",
             )
-        return {"surface": surface, "path": str(saved), "theme": chosen_theme}
+        return {"surface": surface, "path": str(saved), "theme": chosen_theme, "source": "fallback"}
 
     @staticmethod
     def _parse_saved_path(stdout: str, out_dir: Path, surface: str) -> Path | None:
@@ -599,7 +821,10 @@ class AppBackend:
                     "theme": snap.get("theme"),
                     "language": snap.get("language"),
                     "ui_scale_factor": snap.get("ui_scale_factor"),
-                    "note": "Phase 1 reads a headless snapshot; set_theme/set_language apply on next start.",
+                    "note": (
+                        "Read from a headless snapshot; the set_theme/set_language tools "
+                        "restyle a live instance immediately and otherwise apply on next start."
+                    ),
                 },
                 ensure_ascii=False,
                 indent=2,
