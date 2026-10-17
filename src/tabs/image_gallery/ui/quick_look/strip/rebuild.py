@@ -28,13 +28,14 @@ from .helpers import (
 from .paint import _refresh_strip_selection, _strip_overlay_painter
 
 
-def ensure_strip_visible(overlay) -> None:
-    """Scroll the strip so the current thumb is visible (walk follow).
+def ensure_strip_visible(overlay, idx: int | None = None) -> None:
+    """Scroll the strip so the given thumb (default: the current one) is visible.
 
     Nothing in the app ever scrolled the strip — keyboard/button walks
     left the current thumb out of view with no affordance to find it.
-    Called on every populate (both refresh and full-rebuild tails);
-    fail-open to no-scroll, never correctness. Never raises.
+    Called on every populate (both refresh and full-rebuild tails) and by
+    the keyboard cursor, which can sit ahead of the shown picture; fail-open
+    to no-scroll, never correctness. Never raises.
     """
     try:
         scroll = getattr(overlay, "_strip_scroll", None)
@@ -43,7 +44,7 @@ def ensure_strip_visible(overlay) -> None:
         if scroll is None or not items or len(buttons) != len(items):
             return
         try:
-            idx = int(getattr(overlay, "_current_idx", 0) or 0)
+            idx = int(idx) if idx is not None else int(getattr(overlay, "_current_idx", 0) or 0)
         except Exception:
             return
         if not 0 <= idx < len(buttons):
@@ -83,7 +84,28 @@ def ensure_strip_scroll(overlay) -> None:
     except Exception:
         pass
     ensure_strip_visible(overlay)
+    # The keyboard ring rides the same per-populate sync point: a rebuild whose
+    # fingerprint changed (ranks re-stamped, a triage flip, a theme/scale change)
+    # replaces every thumb widget, so the focus is re-asserted on the live thumb
+    # carrying the snapshotted gallery_path (quick_look/nav_section.py; the
+    # snapshot is taken by the top of rebuild_strip).
+    try:
+        from tabs.image_gallery.ui.quick_look import nav_section as _nav
+
+        _nav.restore_strip_focus(overlay)
+    except Exception:
+        pass
 def rebuild_strip(overlay) -> None:
+    # Snapshot the keyboard ring by gallery_path BEFORE any widget churn below:
+    # both paths (full rebuild + selection-only refresh) end in
+    # ensure_strip_scroll, which restores it (quick_look/nav_section.py).
+    # Mirrors grid_view/rebuild.py's _focus_snapshot/_restore_focus pair.
+    try:
+        from tabs.image_gallery.ui.quick_look import nav_section as _nav
+
+        _nav.snapshot_focus(overlay)
+    except Exception:
+        pass
     # W6: svg pitch is 76px (thumbs x=816/892/968/1044, 66 wide) — the
     # HBox spacing is pinned here so 4 thumbs span 4*66+3*10=294px and
     # fit the 296px right column with no h-scroll. (The layout itself is
@@ -514,6 +536,16 @@ def rebuild_strip(overlay) -> None:
                     from PySide6.QtCore import Qt as _QtRank
 
                     rank_btn.setCursor(_QtRank.CursorShape.ArrowCursor)
+                    # The pill is a redundant affordance for the same item its
+                    # thumb already offers: NoFocus keeps it OUT of the strip
+                    # row's cursor targets (quick_look/nav_section.py — a
+                    # ToolbarRowsSection focuses every StrongFocus child), so
+                    # arrow steps land on the numbered thumb Button, never on
+                    # the badge. Verified 2026-10-17: with this line reverted
+                    # the row's target list carries ``quicklook_rank_N`` beside
+                    # ``quicklook_strip_N`` (the pill is bottom-center, i.e.
+                    # right where its thumb sits in the row's step order).
+                    rank_btn.setFocusPolicy(_QtRank.FocusPolicy.NoFocus)
                 except Exception:
                     pass
                 try:

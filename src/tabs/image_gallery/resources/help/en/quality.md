@@ -13,6 +13,7 @@ The score combines sharpness, exposure, noise, and color, and — once a source 
 ### Where scores appear {#where-scores}
 
 - **Quick Look** — opens a panel with one row per reading and its percentage.
+- **Quick Look filmstrip** — ←/→ (or the ‹/› circles) move the focus along the strip and Enter shows that image, so a series can be read without switching on every key. ↓ moves the focus to the panel's action buttons (**Set as source** / **Reject** / **Delete**), ←/→ then pick one and Enter presses it; ↑ returns to the strip.
 - **Card dots** — one dot per metric the mode measures; a dot turns green (70 %+), amber (40–69 %), or red (below 40 %) as that reading gets worse. Hover a dot to read its metric name and percentage.
 - **AI quality** — a **Sort by** value that orders images by the AI score first; it applies only while the toolbar's **AI** switch is on, and unscored images sink to the end.
 

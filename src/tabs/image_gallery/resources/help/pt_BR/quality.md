@@ -13,6 +13,7 @@ A pontuação combina nitidez, exposição, ruído e cor e, quando uma origem é
 ### Onde as pontuações aparecem {#where-scores}
 
 - **Visualização rápida** — abre um painel com uma linha por leitura e sua porcentagem.
+- **Tira da Visualização rápida** — ←/→ (ou os círculos ‹/›) movem o foco pela tira e Enter mostra essa imagem, então dá para percorrer a série sem trocar a cada tecla. ↓ leva o foco aos botões de ação do painel (**Definir como origem** / **Rejeitar** / **Excluir**), ←/→ escolhem um e Enter o aciona; ↑ volta para a tira.
 - **Pontos do cartão** — um ponto por métrica medida no modo atual; o ponto fica verde (70 %+), âmbar (40–69 %) ou vermelho (abaixo de 40 %) conforme a leitura piora. Passe o cursor sobre um ponto para ver o nome da métrica e a porcentagem.
 - **AI quality** — um valor de **Sort by** que ordena as imagens primeiro pela pontuação de IA; aplica-se apenas enquanto o interruptor **IA** da barra de ferramentas está ligado, e imagens sem pontuação vão para o fim.
 

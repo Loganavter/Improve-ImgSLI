@@ -295,6 +295,11 @@ class QuickLookOverlay(TopLevelInWindowOverlay):
     def _walk(self, delta: int) -> None:
         _populate_parts._walk(self, delta)
 
+    # -- strip navigation (toolkit rows section; quick_look/nav_section.py) --
+    # The section is a plain ToolbarRowsSection over [strip_row, action_bar]:
+    # no cursor index, no zone memory, no painted marker, no keyPressEvent
+    # fallback here (the focused Button activates itself).
+
     # -- triage dispatch: bottom-bar buttons (overlay_parts/dispatch.py) -----
 
     def _on_compare(self) -> None:
