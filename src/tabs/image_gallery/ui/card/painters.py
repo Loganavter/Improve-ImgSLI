@@ -220,7 +220,12 @@ def _dots_overlay_painter(painter, ctx, tm) -> None:  # type: ignore[no-untyped-
             except Exception:
                 heights.append(12)
         # Import here to avoid cycle; dots helper provides constants.
-        from tabs.image_gallery.ui.card.dots import _DOTS_ROW_GAP, DOT_DIAMETER, DOT_PITCH
+        from tabs.image_gallery.ui.card.dots import (
+            _DOTS_ROW_GAP,
+            DOT_DIAMETER,
+            DOT_PITCH,
+            layout_dots,
+        )
 
         total_h = sum(heights) + _DOTS_ROW_GAP * max(0, len(heights) - 1)
         y_rows = padded.y() + max(0, (padded.height() - total_h) // 2)
@@ -234,17 +239,15 @@ def _dots_overlay_painter(painter, ctx, tm) -> None:  # type: ignore[no-untyped-
             h_dots = heights[-1]
         # Reference: dots r=4 diameter 8, distance 14 between centers, right
         # aligned 4px pad, centered on the filename line. ONE dot per metric
-        # axis (camera 8 / fidelity 14 / batch 7): drop the old triple clamp.
+        # axis (camera 8 / fidelity 14 / batch 7). Too many dots to fit the
+        # card WRAP into right-aligned rows at the full pitch — never shrink.
         y_center = y_dots + h_dots // 2
         x_right = padded.x() + padded.width() - 4 - 4  # 4px inner pad + 4 radius
         count = len(colors)
-        pitch = float(DOT_PITCH)
-        if count > 10 and count > 1:
-            # Wide axis sets must still fit the card: shrink the pitch
-            # (never past the dot diameter) instead of clipping the row.
-            available = max(0.0, float(padded.width()) - 8.0)
-            pitch = min(pitch, max(float(DOT_DIAMETER), available / (count - 1)))
-        x_centers = [float(x_right - (count - 1 - idx) * pitch) for idx in range(count)]
+        avail = max(0.0, float(padded.width()) - 8.0)
+        centers = layout_dots(count, x_right, y_center, avail)
+        if len(centers) != count:
+            return
         radius = DOT_DIAMETER / 2.0
         painter.save()
         try:
@@ -254,19 +257,23 @@ def _dots_overlay_painter(painter, ctx, tm) -> None:  # type: ignore[no-untyped-
                     continue
                 painter.setPen(Qt.PenStyle.NoPen)
                 painter.setBrush(color)
+                cx, cy = centers[idx]
                 painter.drawEllipse(
-                    int(x_centers[idx] - radius),
-                    int(y_center - radius),
+                    int(cx - radius),
+                    int(cy - radius),
                     DOT_DIAMETER,
                     DOT_DIAMETER,
                 )
         finally:
             painter.restore()
         # Stashed for the per-dot ToolTip filter (ui/card/dot_tooltip.py).
+        # ``"centers"`` carries both axes (wrapped rows); ``"x_centers"`` is
+        # kept for older readers.
         try:
             widget._gallery_dot_geometry = {  # type: ignore[attr-defined]
-                "x_centers": tuple(x_centers),
-                "pitch": float(pitch),
+                "centers": tuple((float(cx), float(cy)) for cx, cy in centers),
+                "x_centers": tuple(float(cx) for cx, _cy in centers),
+                "pitch": float(DOT_PITCH),
                 "infos": tuple(infos),
                 "y_center": float(y_center),
             }
