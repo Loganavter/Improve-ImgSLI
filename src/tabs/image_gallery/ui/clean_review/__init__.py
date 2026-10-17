@@ -504,6 +504,32 @@ def s3_handle_ring_release(overlay, event) -> bool:
 # the full-border strip + outer ring remain the resize paths.
 
 
+def _register_nav(overlay) -> None:
+    """Register the S3 modal section (idempotent, fail-open)."""
+    try:
+        from tabs.image_gallery.ui.clean_review import nav_section
+
+        nav_section.register(overlay)
+    except Exception:
+        pass
+
+
+def _unregister_nav(overlay) -> None:
+    """Leave the navigation graph (idempotent, fail-open).
+
+    First thing in every close path (``hide`` / ``hideEvent`` / ``closeEvent``)
+    so no section outlives the overlay — a stale section would keep claiming
+    arrows for a hidden overlay. Mirrors Quick Look's
+    ``overlay_parts/lifecycle.py::_unregister_nav``.
+    """
+    try:
+        from tabs.image_gallery.ui.clean_review import nav_section
+
+        nav_section.unregister(overlay)
+    except Exception:
+        pass
+
+
 class CleanReviewOverlay(TopLevelInWindowOverlay):
     """Modal listing rejected files with restore + move.
 
@@ -849,6 +875,12 @@ class CleanReviewOverlay(TopLevelInWindowOverlay):
             int((_t3 - _t2) * 1000),
             _n,
         )
+        # The overlay owns its keys through the app's navigation model while it
+        # is visible: a trap-only modal section (clean_review/nav_section.py)
+        # that keeps every arrow, Tab/Backtab and a stolen focus inside the veil
+        # (the gallery grid behind must receive nothing). Registered LAST, after
+        # show_overlay()'s own focus grab — Quick Look's ordering.
+        _register_nav(self)
 
     def _open_quick_look_for_item(self, item) -> None:
         """Open Quick Look for a card click (anywhere but Restore).
@@ -993,8 +1025,20 @@ class CleanReviewOverlay(TopLevelInWindowOverlay):
         # Base recenters the card.
         super().resizeEvent(event)
 
+    def hide(self) -> None:  # noqa: N802
+        # Every close path funnels through here (direct hide, X/Cancel,
+        # move-end, card-click-to-QL, toolkit dismiss()): drop the modal
+        # navigation section FIRST, so it cannot claim keys for a hidden veil.
+        _unregister_nav(self)
+        super().hide()
+
     def hideEvent(self, event) -> None:  # noqa: N802
+        _unregister_nav(self)
         super().hideEvent(event)
+
+    def closeEvent(self, event) -> None:  # noqa: N802
+        _unregister_nav(self)
+        super().closeEvent(event)
 
     def paintEvent(self, event) -> None:  # noqa: N802
         """P0-10 modal dim veil (mockup v3 fill-opacity 0.45).
