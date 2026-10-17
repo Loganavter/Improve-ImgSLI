@@ -76,6 +76,11 @@ class ImageGalleryWidget(QWidget):
 
         super().__init__(parent)
         self._context = context
+        # Rank/BEST pills are shown only once the ranking is FINAL for the
+        # folder (``GalleryController`` flips this via ``set_ranks_visible``).
+        # Default True preserves storeless/stub behaviour; the controller sets
+        # it False while a folder's analysis is in flight.
+        self._ranks_visible = True
         # Subtree translator root (W1 toolkit API): bind the tab-injected
         # translator ONCE here so every descendant implementing the
         # duck-typed protocol (declarative ``text_key``/``badge_key`` on
@@ -819,6 +824,17 @@ class ImageGalleryWidget(QWidget):
         from tabs.image_gallery.ui.widget_parts import grid_api
 
         return grid_api.set_rank_provenance(self, source=source, domain=domain)
+
+    def set_ranks_visible(self, visible: bool) -> None:
+        """Show/hide the rank/BEST pills (delegator to ``grid_api``).
+
+        The controller hides them while a folder is analysing and shows them
+        once the ranking is final; the single badge-stamp point blanks the
+        card/strip/list pills together.
+        """
+        from tabs.image_gallery.ui.widget_parts import grid_api
+
+        return grid_api.set_ranks_visible(self, visible)
 
     def refresh_card(self, item: GalleryItem) -> None:
         """Thin delegator to ``ui/widget_parts.grid_api.refresh_card``."""

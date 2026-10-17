@@ -19,6 +19,7 @@ from tabs.image_gallery.use_cases import pipeline_stages as _pipeline_stages
 
 from tabs.image_gallery.models import (
     ActivityPhase,
+    AnalysisStatus,
     GalleryItem,
     GalleryState,
     Mode,
@@ -560,6 +561,37 @@ class GalleryController:
                 it.rank = None
                 it.rank_source = None
                 it.is_best = False
+            except Exception:
+                pass
+        GalleryController._refresh_ranks_visible(self)
+
+    def _refresh_ranks_visible(self) -> None:
+        """Ranks/BEST render only once the ranking is FINAL for this folder.
+
+        Final = the metrics pass settled for the current folder generation AND
+        no analysis is in flight (no ``analysis_status == PENDING`` item). Until
+        then ``widget.set_ranks_visible(False)`` blanks the rank/BEST pill on
+        every surface (card/strip/list) at the single badge-stamp point — a
+        provisional ``#N`` or a premature ``★ BEST`` is never shown. Never raises.
+        """
+        try:
+            settled = int(getattr(self, "_metrics_settled_gen", -1)) == int(
+                getattr(self, "_folder_gen", 0)
+            )
+        except Exception:
+            settled = False
+        pending = False
+        try:
+            for it in list(getattr(self.state, "items", None) or []):
+                if getattr(it, "analysis_status", None) == AnalysisStatus.PENDING:
+                    pending = True
+                    break
+        except Exception:
+            pending = False
+        setter = getattr(getattr(self, "widget", None), "set_ranks_visible", None)
+        if callable(setter):
+            try:
+                setter(bool(settled and not pending))
             except Exception:
                 pass
 
@@ -1143,6 +1175,7 @@ class GalleryController:
             # One atomic repaint of every member: a per-card loop let a snapshot
             # mix a Jev rank with a stale fusion rank -> two #1s ("Jev chose all
             # at once"). Apply all ranks/activity, THEN refresh.
+            GalleryController._refresh_ranks_visible(self)
             try:
                 self.widget.refresh_cards(current)
             except Exception:
