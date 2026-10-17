@@ -38,6 +38,16 @@ def show_for(self, item, owner=None) -> None:
     except Exception:
         pass
     self._current_item = item
+    # Remember the opener for the close path: focus must land back on the card
+    # the panel was opened from, and that card can be recycled while the panel
+    # is open — the stable identity is the item's path
+    # (quick_look/focus_restore.py, restored by the lifecycle's nav exit).
+    try:
+        from tabs.image_gallery.ui.quick_look import focus_restore as _focus_restore
+
+        _focus_restore.remember_opener(self, item)
+    except Exception:
+        pass
     # Modal input grab: never disabled, never mouse-transparent — while
     # visible every press lands here (veil dismiss or card swallow),
     # never in the gallery beneath.
@@ -153,6 +163,21 @@ def show_for(self, item, owner=None) -> None:
         from tabs.image_gallery.ui.quick_look.helpers import reposition_grip
 
         reposition_grip(self)
+    except Exception:
+        pass
+    # The overlay owns its keys through the app's navigation model while it is
+    # visible: a ToolbarRowsSection over [strip row, action bar] — ←/→ move the
+    # focus ring along a row, ↓/↑ cross the rows, Enter activates the focused
+    # button (quick_look/nav_section.py). Registered LAST, after show_overlay()
+    # has taken its own focus grab: register() lands the ring on the item
+    # already on screen, and the manager's deferred owner-bootstrap only fires
+    # while the bare owner holds focus — with the registration earlier, the
+    # grab that lands after it left the ring on the FIRST thumb on reopen (found
+    # while writing quick_look's navigation tests, 2026-10-17).
+    try:
+        from tabs.image_gallery.ui.quick_look import nav_section as _nav
+
+        _nav.register(self)
     except Exception:
         pass
     if _dbg_on:
