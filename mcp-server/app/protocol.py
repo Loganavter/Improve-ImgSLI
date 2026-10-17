@@ -50,6 +50,10 @@ CAPABILITIES = {
     "prompts": {"listChanged": False},
 }
 
+#: Cap on one inbound request line (bytes). A longer line is refused with a
+#: named error — the request-line bound from plan P2 (no silent truncation).
+MAX_REQUEST_LINE_BYTES = 1 << 20  # 1 MiB
+
 
 def _error(request_id: Any, code: int, message: str, data: Any = None) -> dict:
     error: dict[str, Any] = {"code": code, "message": message}
@@ -386,12 +390,20 @@ def serve_stdio(protocol: MCPProtocol, stdin: IO[str] | None = None, stdout: IO[
         line = line.strip()
         if not line:
             continue
-        try:
-            message = json.loads(line)
-        except ValueError as exc:
-            response = _error(None, PARSE_ERROR, f"invalid JSON: {exc}")
+        if len(line) > MAX_REQUEST_LINE_BYTES:
+            # Refuse rather than decode an over-cap line (plan P2 bound).
+            response = _error(
+                None,
+                INVALID_REQUEST,
+                f"request line exceeds the {MAX_REQUEST_LINE_BYTES} byte cap",
+            )
         else:
-            response = protocol.handle(message)
+            try:
+                message = json.loads(line)
+            except ValueError as exc:
+                response = _error(None, PARSE_ERROR, f"invalid JSON: {exc}")
+            else:
+                response = protocol.handle(message)
         if response is None:
             continue
         out_stream.write(json.dumps(response, ensure_ascii=False) + "\n")
