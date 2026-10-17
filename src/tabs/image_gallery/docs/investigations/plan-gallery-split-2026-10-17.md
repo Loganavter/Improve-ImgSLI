@@ -1,6 +1,6 @@
 # Plan — Image Gallery decomposition (controller + widget + remaining large files)
 
-Status: draft · Date: 2026-10-17 · Scope: `src/tabs/image_gallery/` (tab-owned)
+Status: executed (2026-10-17) · Date: 2026-10-17 · Scope: `src/tabs/image_gallery/` (tab-owned)
 
 Parts: **A** `controller.py` · **B** `widget.py` · **C** remaining gallery files
 (grid_view, quick_look package, clean_review, drag_drop, triage, secondary) ·
@@ -303,3 +303,32 @@ Parts A/B are the primary target (the tab's two hubs). Then, cheapest-isolated
 first: **C4** (drag targets) → **C5** (triage package) → **C6** (secondary) →
 **C3** (clean_review) → **C1** (grid_view) → **C2** (quick_look package, epic).
 Part D is a separate host/other-tab track; nothing here blocks it.
+
+## Execution log (2026-10-17)
+
+Executed by 6 parallel-writer crews (4 clone cells each, model
+`opencode-go/deepseek-v4.1-flash`), integrated into `int/gallery-split`; every
+wave re-verified on the merged tree (gallery suite + `tests/contracts`, name
+freeze, comment-citation gate, file-size registry).
+
+| Crew | Result |
+|---|---|
+| A | `controller` W1 (filtering/thumbnails/coalescing/ask-ai) · `widget` W1 (slot) · `drag_drop` C4 · `clean_review` C3 |
+| B | `controller` W2 (slot/folder_loading) · `widget` W2 (view-prefs/status) · `triage` C5 · `grid_view` C1 |
+| C | `controller` W3 (triage-run/metrics/proxy) · `widget` W3 (card-actions/keys/grid-api) · `ai_client` C6 · `toolbar`+`stats_strip` C6 |
+| D | `controller` W4 (ai-analyze/Stage-3) · `widget` W4 (series-headers/ask-ai/triage-actions) · `card/context_menu` C6 · `quick_look/strip` C2 |
+| E | `controller` W5 (scheduler/crown-reject/series-overrides) · `quick_look/{preview_canvas_host,resize,metrics}` C2 |
+| F | `quick_look/{preview_canvas,overlay_build}` C2 · `quick_look.py` overlay split C2 |
+
+Sizes: `controller.py` **5043 → 1966**, `widget.py` **2754 → 934**;
+packages now: `ui/grid_view/`, `ui/drag_drop/`, `ui/clean_review/`,
+`ui/card/context_menu/`, `ui/toolbar/`, `ui/stats_strip/`, `ui/widget_parts/`,
+`ui/quick_look/{strip,preview_canvas,preview_canvas_host,resize,metrics,overlay_build,overlay_parts}/`,
+`services/ai_client/`, `use_cases/{triage,…}/`.
+
+Known deviations (deliberate, recorded): the Jev ranker cluster
+(`_run_jev_ranks`/`_launch_jev_batch`) and `_apply_fusion_ranks` **stay** in
+`controller.py` — `tests/contracts/test_gallery_pipeline_substrate.py` pins them
+there; `overlay_build.py` (listed "keep" above) was split (C2) since a
+submodule→package move was safe; the C2 `quick_look/canvas/` name was realised
+as `quick_look/preview_canvas/`.
