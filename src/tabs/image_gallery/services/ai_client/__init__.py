@@ -56,6 +56,8 @@ from .prompt import (
     _PROMPT_CORE,
     PROMPT_TEMPLATE,
     _ai_debug,
+    _ai_debug_enabled,
+    _ai_snippet,
     _ratelimit_headers,
     _scorecard_axes,
     build_prompt,

@@ -12,7 +12,15 @@ from datetime import datetime, timezone
 from tabs.image_gallery.models import AiAnalysisResult
 
 from .errors import AiResponseError
-from .prompt import _ai_debug
+from .prompt import _ai_debug, _ai_snippet
+
+
+def _finish_of(raw) -> str | None:
+    """``finish_reason`` of the first choice (None when absent)."""
+    try:
+        return (raw.get("choices") or [{}])[0].get("finish_reason")
+    except Exception:
+        return None
 
 
 _DEFECT_KINDS = (
@@ -286,13 +294,30 @@ def parse_response(raw: dict, *, model: str) -> AiAnalysisResult:
     try:
         content = raw["choices"][0]["message"]["content"]
     except (KeyError, IndexError, TypeError) as exc:
+        _ai_debug(
+            "parse SHAPE error: %s raw_keys=%s",
+            exc,
+            list(raw.keys()) if isinstance(raw, dict) else type(raw).__name__,
+        )
         raise AiResponseError(f"unexpected response shape: {exc}") from exc
 
     if not isinstance(content, str) or not content.strip():
+        _ai_debug(
+            "parse EMPTY content type=%s finish=%s",
+            type(content).__name__,
+            _finish_of(raw),
+        )
         raise AiResponseError("empty response content")
 
     obj = _extract_json(content)
-    _ai_debug("parse content_chars=%d json_found=%s", len(content), obj is not None)
+    _ai_debug(
+        "parse content_chars=%d after_reasoning=%d json_found=%s think=%s fence=%s",
+        len(content),
+        len(_strip_reasoning(content)),
+        obj is not None,
+        bool(_REASONING_BLOCK_RE.search(content)),
+        content.lstrip().startswith("```"),
+    )
     if obj is None:
         # Accept the legacy KEY: value format, but NOT free-form prose /
         # chain-of-thought: dumping the model's reasoning into the block is
@@ -300,7 +325,11 @@ def parse_response(raw: dict, *, model: str) -> AiAnalysisResult:
         if _looks_like_legacy_lines(content):
             _ai_debug("parse fallback=legacy_lines")
             return _parse_lines(content, model)
-        _ai_debug("parse NO-JSON -> AiResponseError first200=%.200s", content.replace("\n", " "))
+        _ai_debug(
+            "parse NO-JSON -> AiResponseError finish=%s content=%s",
+            _finish_of(raw),
+            _ai_snippet(content),
+        )
         raise AiResponseError("model did not return the required JSON object")
 
     # Open per-axis scorecard (new prompt) with the legacy named fields merged

@@ -13,7 +13,7 @@ from .errors import (
     AiResponseError,
     AiServerError,
 )
-from .prompt import _ai_debug, _ratelimit_headers
+from .prompt import _ai_debug, _ai_snippet, _ratelimit_headers
 
 
 # Retry policy for overloaded servers (429 / 5xx): honor Retry-After, else
@@ -182,7 +182,7 @@ def call_sync(
         },
         method="POST",
     )
-    _ai_debug("POST %s (stream)", url)
+    _ai_debug("POST %s (stream) body_bytes=%d", url, len(getattr(request, "data", b"") or b""))
     attempt = 0
     while True:
         attempt += 1
@@ -195,6 +195,29 @@ def call_sync(
                 attempt,
                 _ratelimit_headers(getattr(response, "headers", None)),
             )
+            # Extended response trace: finish_reason reveals truncation
+            # ("length" => the JSON was cut at max_tokens), usage shows the
+            # token split, and the content/reasoning snippets show WHAT the
+            # model actually returned when a later parse fails.
+            try:
+                _choice = (result.get("choices") or [{}])[0]
+                _msg = _choice.get("message") if isinstance(_choice, dict) else {}
+                _content = _msg.get("content") if isinstance(_msg, dict) else ""
+                _reason = _msg.get("reasoning") if isinstance(_msg, dict) else ""
+                _ai_debug(
+                    "response model=%s finish=%s content_chars=%d reasoning_chars=%d "
+                    "usage=%s content=%s",
+                    result.get("model"),
+                    _choice.get("finish_reason") if isinstance(_choice, dict) else None,
+                    len(_content or ""),
+                    len(_reason or ""),
+                    result.get("usage"),
+                    _ai_snippet(_content),
+                )
+                if _reason:
+                    _ai_debug("response reasoning=%s", _ai_snippet(_reason))
+            except Exception:
+                pass
             return result
         except urllib.error.HTTPError as exc:
             body = ""
