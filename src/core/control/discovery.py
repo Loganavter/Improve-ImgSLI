@@ -1,0 +1,469 @@
+"""Local primitives + discovery artifacts for the in-app control channel.
+
+A running app publishes where to reach it, and the host MCP server finds it
+without any registry service: a unix socket (``control.sock``) plus a small
+JSON pointer (``instance.json``) in a **private** runtime directory. The
+channel is local-only — no TCP, no network code anywhere in ``core.control``.
+
+Security is discovery-level and best-effort:
+* the runtime directory is created/enforced ``0o700``,
+* the socket and pointer are chmodded ``0o600``,
+* every inbound connection's peer uid (``SO_PEERCRED``) must equal
+  ``os.getuid()`` — a foreign uid is refused before a byte is read.
+
+The pointer carries the owning pid so a *stale* pointer (crashed app) can be
+detected and cleaned by the next starter (:func:`stale_pointer_alive`), and
+``read_pointer``/``clear_pointer`` are what the MCP server side polls.
+
+Directory precedence: ``IMGSLI_CONTROL_DIR`` (tests / explicit override) →
+``$XDG_RUNTIME_DIR`` when it exists, is writable, and is private → the app data
+dir's ``run/`` subdirectory (``~/.local/share/ImproveImgSLI/run``).
+
+This module also owns the small host-side primitives the transport and the
+handlers share, so neither has to import the other: the request error type
+(``MethodError``), the ``press_keys`` allowlist + parser, the artifacts-dir
+convention, the live surface listing, and the live window grab.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import re
+import socket
+import stat
+import string
+import struct
+import sys
+import time
+from pathlib import Path
+from typing import Any
+
+from PySide6.QtCore import Qt
+
+#: Socket filename inside the runtime directory.
+SOCKET_NAME = "control.sock"
+
+#: Pointer filename inside the runtime directory.
+POINTER_NAME = "instance.json"
+
+#: Private mode we enforce on our runtime directory.
+_DIR_MODE = 0o700
+
+#: Owner-only mode for the socket and the pointer.
+_FILE_MODE = 0o600
+
+
+def app_data_dir() -> Path:
+    """Per-OS app data dir (``~/.local/share/ImproveImgSLI`` on Linux).
+
+    Mirrors ``sli_ui_toolkit.core.logging`` / ``mcp-server/app/backend.py``.
+    """
+    if sys.platform.startswith("linux"):
+        base = os.environ.get("XDG_DATA_HOME") or str(Path.home() / ".local" / "share")
+    elif sys.platform == "darwin":
+        base = str(Path.home() / "Library" / "Application Support")
+    else:  # pragma: no cover - Windows
+        base = os.environ.get("APPDATA") or str(Path.home() / "AppData" / "Roaming")
+    return Path(base) / "ImproveImgSLI"
+
+
+def artifacts_dir() -> Path:
+    """Where live artifacts (layout dumps, captures) are written.
+
+    Reuses the MCP convention — ``IMGSLI_MCP_ARTIFACTS`` when set, else
+    ``$XDG_CACHE_HOME/ImproveImgSLI/mcp`` — so the MCP server can read back the
+    paths this channel returns.
+    """
+    override = os.environ.get("IMGSLI_MCP_ARTIFACTS", "").strip()
+    if override:
+        return Path(override).expanduser()
+    base = os.environ.get("XDG_CACHE_HOME") or str(Path.home() / ".cache")
+    return Path(base) / "ImproveImgSLI" / "mcp"
+
+
+def _is_private_dir(path: Path) -> bool:
+    """True iff *path* is a directory we own with no group/other access."""
+    try:
+        info = path.stat()
+    except OSError:
+        return False
+    if not stat.S_ISDIR(info.st_mode):
+        return False
+    if info.st_uid != os.getuid():
+        return False
+    return stat.S_IMODE(info.st_mode) & 0o077 == 0
+
+
+def _ensure_private_dir(path: Path) -> Path:
+    """Create *path* (and parents) and enforce ``0o700``.
+
+    Raises ``OSError`` when the directory cannot be created or its mode cannot
+    be tightened — the caller (:meth:`ControlServer.start`) treats that as
+    "control channel unavailable" rather than crashing the app.
+    """
+    path.mkdir(parents=True, exist_ok=True)
+    current = stat.S_IMODE(path.stat().st_mode)
+    if current & 0o077:
+        os.chmod(path, _DIR_MODE)
+    if stat.S_IMODE(path.stat().st_mode) & 0o077:
+        raise OSError(f"control runtime dir is not private: {path}")
+    return path
+
+
+def runtime_dir() -> Path:
+    """Private runtime directory holding the socket + pointer.
+
+    ``IMGSLI_CONTROL_DIR`` wins unconditionally (tests / explicit override);
+    otherwise ``$XDG_RUNTIME_DIR`` is used when it exists, is writable, and is
+    already private; otherwise the app data dir's ``run/`` subdir is created.
+    """
+    override = os.environ.get("IMGSLI_CONTROL_DIR", "").strip()
+    if override:
+        return _ensure_private_dir(Path(override).expanduser())
+
+    xdg = os.environ.get("XDG_RUNTIME_DIR", "").strip()
+    if xdg:
+        candidate = Path(xdg)
+        if candidate.is_dir() and os.access(candidate, os.W_OK) and _is_private_dir(
+            candidate
+        ):
+            return candidate
+
+    return _ensure_private_dir(app_data_dir() / "run")
+
+
+def socket_path(dir: Path | str | None = None) -> Path:
+    """Path of the control unix socket (``<dir>/control.sock``)."""
+    return Path(dir) / SOCKET_NAME if dir is not None else runtime_dir() / SOCKET_NAME
+
+
+def pointer_path(dir: Path | str | None = None) -> Path:
+    """Path of the discovery pointer (``<dir>/instance.json``)."""
+    return Path(dir) / POINTER_NAME if dir is not None else runtime_dir() / POINTER_NAME
+
+
+def write_pointer(*, pid: int, socket: Path | str, version: str) -> Path:
+    """Atomically publish the discovery pointer; returns its path.
+
+    Written to a sibling temp file then ``os.replace``-d, so a concurrent
+    reader sees either the previous pointer or the complete new one — never a
+    half-written JSON document.
+    """
+    target = pointer_path()
+    payload = {
+        "pid": int(pid),
+        "socket": str(socket),
+        "version": str(version or ""),
+        "uid": os.getuid(),
+    }
+    tmp = target.with_name(target.name + f".tmp.{os.getpid()}")
+    try:
+        tmp.write_text(json.dumps(payload), encoding="utf-8")
+        os.chmod(tmp, _FILE_MODE)
+        os.replace(tmp, target)
+    finally:
+        try:
+            tmp.unlink(missing_ok=True)
+        except OSError:
+            pass
+    return target
+
+
+def read_pointer() -> dict[str, Any] | None:
+    """Read the discovery pointer, or ``None`` when absent/unreadable/corrupt."""
+    try:
+        raw = pointer_path().read_text(encoding="utf-8")
+        data = json.loads(raw)
+    except (OSError, ValueError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def clear_pointer() -> None:
+    """Remove the discovery pointer; missing is a no-op."""
+    try:
+        pointer_path().unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
+def peer_uid_ok(socket_descriptor: int) -> bool:
+    """True iff the connected peer's uid equals ``os.getuid()``.
+
+    ``SO_PEERCRED`` on the raw descriptor (Linux). The descriptor is *wrapped,
+    not owned*: ``detach()`` is mandatory so garbage collection cannot close
+    Qt's own socket fd. Any failure (bad fd, no ``SO_PEERCRED``, unsupported
+    platform) returns ``False`` — refuse, never raise.
+    """
+    if not hasattr(socket, "SO_PEERCRED"):
+        return False  # pragma: no cover - non-Linux
+    try:
+        wrapper = socket.socket(fileno=int(socket_descriptor))
+    except Exception:
+        return False
+    try:
+        raw = wrapper.getsockopt(
+            socket.SOL_SOCKET, socket.SO_PEERCRED, struct.calcsize("3i")
+        )
+        _pid, uid, _gid = struct.unpack("3i", raw)
+        return uid == os.getuid()
+    except Exception:
+        return False
+    finally:
+        try:
+            wrapper.detach()
+        except Exception:
+            pass
+
+
+def stale_pointer_alive() -> bool:
+    """True iff the pointer names a live pid (liveness only, no handshake).
+
+    ``False`` when there is no pointer, it is corrupt, or the pid is dead
+    (``os.kill(pid, 0)`` → ``ProcessLookupError``). Callers use this to decide
+    whether a leftover pointer may be cleaned up / a socket reused.
+    """
+    data = read_pointer()
+    if not data:
+        return False
+    try:
+        pid = int(data.get("pid"))
+    except (TypeError, ValueError):
+        return False
+    if pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+    return True
+
+
+def devtool_surfaces() -> dict[str, Any]:
+    """Demo capture surfaces the headless devtool exposes (``live: false``)."""
+    try:
+        from devtools.capture_surface import SURFACES
+
+        return dict(SURFACES)
+    except Exception:
+        return {}
+
+
+def live_surfaces(tabs: list[tuple[str, Any]]) -> dict[str, Any]:
+    """The surface list a client can drive: live tabs + devtool demos.
+
+    ``tabs`` is ``(session_type, TabContract)`` pairs the caller discovered;
+    taken as a parameter so this module never imports the tab registry.
+    """
+    rows: dict[str, dict[str, Any]] = {}
+    for session_type, tab in tabs:
+        name = getattr(tab, "display_name", None)
+        rows[session_type] = {
+            "name": session_type,
+            "description": str(name or session_type),
+            "isolated": False,
+            "live": True,
+        }
+    for name, surface in devtool_surfaces().items():
+        rows.setdefault(
+            name,
+            {
+                "name": name,
+                "description": getattr(surface, "description", ""),
+                "isolated": bool(getattr(surface, "isolated", False)),
+                "live": False,
+            },
+        )
+    ordered = [rows[key] for key in sorted(rows)]
+    return {"count": len(ordered), "surfaces": ordered}
+
+#: Max key combos a single ``press_keys`` request may inject.
+_MAX_KEY_COMBOS = 32
+
+#: Key names accepted by ``press_keys`` → ``Qt.Key`` attribute (lowercased).
+_KEY_ALIASES = {
+    "up": "Key_Up",
+    "down": "Key_Down",
+    "left": "Key_Left",
+    "right": "Key_Right",
+    "home": "Key_Home",
+    "end": "Key_End",
+    "pageup": "Key_PageUp",
+    "pagedown": "Key_PageDown",
+    "tab": "Key_Tab",
+    "enter": "Key_Return",
+    "return": "Key_Return",
+    "escape": "Key_Escape",
+    "esc": "Key_Escape",
+    "space": "Key_Space",
+    "backspace": "Key_Backspace",
+    "delete": "Key_Delete",
+    "del": "Key_Delete",
+    "menu": "Key_Menu",
+}
+
+#: Modifier names accepted by ``press_keys`` → ``Qt.KeyboardModifier``.
+_MODIFIERS = {
+    "ctrl": Qt.KeyboardModifier.ControlModifier,
+    "control": Qt.KeyboardModifier.ControlModifier,
+    "shift": Qt.KeyboardModifier.ShiftModifier,
+    "alt": Qt.KeyboardModifier.AltModifier,
+    "meta": Qt.KeyboardModifier.MetaModifier,
+}
+
+
+class MethodError(Exception):
+    """A client-visible failure ⇒ ``{"ok": false, "error", "hint"}``.
+
+    Defined here (the channel's primitive module) so both the transport and the
+    handlers share one error type without a circular import.
+    """
+
+    def __init__(self, message: str, hint: str | None = None) -> None:
+        super().__init__(message)
+        self.message = message
+        self.hint = hint
+
+
+def valid_key_names() -> list[str]:
+    """Every key name ``press_keys`` accepts (for an actionable hint)."""
+    names = sorted(_KEY_ALIASES)
+    names += [f"f{i}" for i in range(1, 13)]
+    names += list(string.ascii_lowercase) + list(string.digits)
+    return names
+
+
+def _resolve_key(name: str) -> Any:
+    if name in _KEY_ALIASES:
+        return getattr(Qt, _KEY_ALIASES[name])
+    if len(name) == 1 and name.isalpha():
+        return getattr(Qt, "Key_" + name.upper())
+    if len(name) == 1 and name.isdigit():
+        return getattr(Qt, "Key_" + name)
+    if re.fullmatch(r"f(?:[1-9]|1[0-2])", name):
+        return getattr(Qt, "Key_F" + name[1:])
+    raise MethodError(
+        f"unknown key {name!r}", "valid names: " + ", ".join(valid_key_names())
+    )
+
+
+def parse_key_sequence(keys: str | None) -> list[tuple[Any, Any, str]]:
+    """Parse ``'ctrl+shift+p'`` / ``'Down,Down,Enter'`` → (key, modifiers, label).
+
+    Raises ``MethodError`` (with the valid-name list) on any unknown key or
+    modifier, so the client learns the allowlist instead of silently typing.
+    """
+    if not isinstance(keys, str) or not keys.strip():
+        raise MethodError(
+            "press_keys needs a non-empty 'keys' string",
+            "e.g. keys='Down,Down,Enter' or keys='ctrl+shift+p'",
+        )
+    combos = [part.strip() for part in keys.split(",") if part.strip()]
+    if not combos:
+        raise MethodError("press_keys got no key combos", "e.g. keys='Enter'")
+    if len(combos) > _MAX_KEY_COMBOS:
+        raise MethodError(
+            f"too many key combos ({len(combos)} > {_MAX_KEY_COMBOS})",
+            f"send at most {_MAX_KEY_COMBOS} combos",
+        )
+    parsed: list[tuple[Any, Any, str]] = []
+    for combo in combos:
+        parts = [part.strip().lower() for part in combo.split("+") if part.strip()]
+        modifiers = Qt.KeyboardModifier.NoModifier
+        for modifier in parts[:-1]:
+            flag = _MODIFIERS.get(modifier)
+            if flag is None:
+                raise MethodError(
+                    f"unknown modifier {modifier!r}", "modifiers: ctrl, shift, alt, meta"
+                )
+            modifiers |= flag
+        parsed.append((_resolve_key(parts[-1]), modifiers, combo))
+    return parsed
+
+
+def resolve_capture_target(app: Any, window: Any, what: Any) -> tuple[Any, str]:
+    """The widget ``capture_live`` grabs: a named tab page, else the active window."""
+    from PySide6.QtWidgets import QApplication, QWidget
+
+    if what:
+        label = str(what)
+        try:
+            from tabs.registry import TabRegistry
+
+            page = TabRegistry().get_page(label)
+        except Exception:
+            page = None
+        if page is None:
+            raise MethodError(
+                f"unknown surface {label!r}",
+                "call list_surfaces to see live surface names",
+            )
+        return page, label
+    active = None
+    instance = app or QApplication.instance()
+    if instance is not None:
+        try:
+            active = instance.activeWindow()
+        except Exception:
+            active = None
+    if active is None and isinstance(window, QWidget):
+        active = window
+    label = ""
+    if active is not None:
+        # ``objectName`` is a *method* on PySide6 widgets, not an attribute.
+        getter = getattr(active, "objectName", None)
+        label = getter() if callable(getter) else str(getter or "")
+        if not label:
+            label = type(active).__name__
+    return active, label or "window"
+
+
+def grab_window(app: Any, target: Any) -> tuple[Any, str]:
+    """Live grab: screen ``grabWindow`` first, widget ``grab()`` fallback."""
+    screen = app.primaryScreen() if app is not None else None
+    if screen is not None:
+        try:
+            pixmap = screen.grabWindow(int(target.winId()))
+            if pixmap is not None and not pixmap.isNull():
+                return pixmap, "grabWindow"
+        except Exception:
+            pass
+    try:
+        pixmap = target.grab()
+        if pixmap is not None and not pixmap.isNull():
+            return pixmap, "widget_grab"
+    except Exception:
+        pass
+    return None, ""
+
+
+def capture_live_png(app: Any, window: Any, what: Any, out_dir: Any) -> dict[str, Any]:
+    """Grab the live window/tab into *out_dir* and report what was produced."""
+    target, label = resolve_capture_target(app, window, what)
+    if target is None:
+        raise MethodError(
+            "no live window to capture",
+            "pass what=<tab> (see list_surfaces) or focus a window first",
+        )
+    pixmap, method = grab_window(app, target)
+    if pixmap is None:
+        raise MethodError(
+            f"could not grab {label}",
+            "run on a real display (a private Xvfb), not the offscreen platform",
+        )
+    path = Path(out_dir) / f"live-capture-{label}-{time.strftime('%Y%m%d-%H%M%S')}.png"
+    if not pixmap.save(str(path), "PNG"):
+        raise MethodError(
+            f"could not write {path}", "check IMGSLI_MCP_ARTIFACTS is writable"
+        )
+    return {
+        "path": str(path),
+        "what": label,
+        "method": method,
+        "size": [pixmap.width(), pixmap.height()],
+    }

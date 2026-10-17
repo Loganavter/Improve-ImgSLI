@@ -33,6 +33,7 @@ from PySide6.QtCore import QLoggingCategory, QThreadPool, QTimer, Qt
 from PySide6.QtWidgets import QApplication
 from core.runtime_flags import RuntimeFlags
 from plugins.settings.manager import SettingsManager
+from shared.debug_flags import env_flag
 from sli_ui_toolkit.widgets import install_application_tooltips
 from ui.main_window import MainWindow
 from ui.canvas_infra.rhi.rhi_backend import (
@@ -428,6 +429,26 @@ def main():
         # Defer until after the first event-loop turn so project I/O / toasts
         # see a fully started window (double-click / MIME association path).
         QTimer.singleShot(0, _open_startup_project)
+
+    # In-app control channel (Phase 2): env-gated, local unix socket inside the
+    # private runtime dir, so the MCP server can drive THIS window instead of
+    # booting throwaway processes. Fail-open — a broken channel must never
+    # block startup — and torn down on quit so no socket/pointer is left.
+    if env_flag("IMGSLI_CONTROL"):
+        try:
+            from core.control import ControlServer
+
+            control_server = ControlServer(window=window, app=app)
+            if control_server.start():
+                app.aboutToQuit.connect(control_server.stop)
+            else:
+                logging.getLogger("ImproveImgSLI").warning(
+                    "IMGSLI_CONTROL=1 but the control channel could not start"
+                )
+        except Exception:
+            logging.getLogger("ImproveImgSLI").warning(
+                "control channel startup failed", exc_info=True
+            )
 
     def on_quit():
         QThreadPool.globalInstance().clear()
