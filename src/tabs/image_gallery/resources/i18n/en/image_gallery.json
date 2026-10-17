@@ -226,6 +226,7 @@
       "ungroup": "Ungroup",
       "group": "Group",
       "make_source": "Make source",
+      "reset_metrics_cache": "Reset metrics cache",
       "unreadable": "unreadable — excluded from triage",
       "tooltip": {
         "keep": "KEEP",

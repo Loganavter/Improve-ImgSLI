@@ -542,6 +542,20 @@ def test_menu_has_ungroup_entry(monkeypatch) -> None:
     assert "gallery.ungroup" in _action_ids(captured["entries"])
 
 
+def test_menu_has_reset_metrics_entry(monkeypatch) -> None:
+    """Maintenance entry: the metric-cache reset rides in the per-card block."""
+    captured = _capture_menu(monkeypatch)
+    owner = _owner(set())
+    popup_gallery_card_context_menu(
+        SimpleNamespace(), owner, Path("/a.png"), global_pos=None, selection_count=0,
+    )
+    assert "gallery.reset_metrics" in _action_ids(captured["entries"])
+    assert (
+        _action_text(captured["entries"], "gallery.reset_metrics")
+        == "Reset metrics cache"
+    )
+
+
 def test_ungroup_moves_whole_selection_to_none(monkeypatch) -> None:
     from tabs.image_gallery.ui.card import context_actions as _actions
 

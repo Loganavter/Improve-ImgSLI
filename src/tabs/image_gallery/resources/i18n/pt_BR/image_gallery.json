@@ -343,6 +343,7 @@
       "ungroup": "Desagrupar",
       "group": "Agrupar",
       "make_source": "Definir como origem",
+      "reset_metrics_cache": "Redefinir cache de métricas",
       "unreadable": "ilegível — excluído da triagem",
       "tooltip": {
         "keep": "MANTER",

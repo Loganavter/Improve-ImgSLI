@@ -65,6 +65,7 @@ NEW_KEYS = (
     "image_gallery.ask_ai.error_context",
     "image_gallery.ask_ai.cached",
     "image_gallery.card.unreadable",
+    "image_gallery.card.reset_metrics_cache",
     "image_gallery.card.tooltip.keep",
     "image_gallery.card.tooltip.reject",
     "image_gallery.card.tooltip.defects",

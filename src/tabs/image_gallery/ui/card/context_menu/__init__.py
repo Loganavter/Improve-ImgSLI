@@ -24,7 +24,9 @@ cursor (``popup_at(QCursor.pos())``). The menu merges two groups:
    Remove from view (+ Make source, every mode), plus the manual
    grouping pair — Ungroup (dissolve into the tail) and Group (pin the
    menu-rule targets into a brand-new series; multi-select only, hidden
-   when the selection is already exactly one whole series).
+   when the selection is already exactly one whole series) — and the
+   maintenance entry Reset metrics cache (drop the measured caches and
+   re-run the pass; no confirm/undo, the recompute is the feedback).
    Make best / Reject / Remove from view apply to the whole selection when
    the clicked card is selected (file-manager rule), else to the clicked
    card alone.
