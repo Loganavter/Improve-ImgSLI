@@ -332,6 +332,60 @@ def test_get_state_list_sessions_and_list_actions_shapes(tmp_path):
     assert handlers.list_actions({"owner_tab": "image_compare"})["count"] == 1
 
 
+def test_list_actions_carries_enabled_and_reason(tmp_path):
+    """P2: a not-runnable action surfaces its reason verbatim; default is enabled."""
+    registry = _registry(
+        _descriptor("image_compare.grid", enabled=False, reason="needs two images"),
+        _descriptor("platform.settings"),
+    )
+    handlers = _handlers(_store_window(), registry, tmp_path)
+
+    rows = {row["action_id"]: row for row in handlers.list_actions({})["actions"]}
+
+    assert rows["image_compare.grid"]["enabled"] is False
+    assert rows["image_compare.grid"]["reason"] == "needs two images"
+    # Default descriptor ⇒ runnable now, JSON null for "no reason".
+    assert rows["platform.settings"]["enabled"] is True
+    assert rows["platform.settings"]["reason"] is None
+
+    # Every frozen row key is present, and "no reason" serialises as JSON null.
+    for row in rows.values():
+        assert {
+            "action_id",
+            "label",
+            "owner_tab",
+            "topic",
+            "shortcut",
+            "enabled",
+            "reason",
+        } <= set(row)
+    serialized = json.loads(json.dumps(handlers.list_actions({})))
+    default = next(
+        row for row in serialized["actions"] if row["action_id"] == "platform.settings"
+    )
+    assert default["reason"] is None and default["enabled"] is True
+
+
+def test_dump_actions_propagates_enabled_and_reason():
+    """The snapshot (``--dump-app-snapshot``) carries the same two fields."""
+    from devtools.app_snapshot import dump_actions
+
+    rows = {
+        row["action_id"]: row
+        for row in dump_actions(
+            _registry(
+                _descriptor("image_compare.grid", enabled=False, reason="needs two images"),
+                _descriptor("platform.settings"),
+            )
+        )
+    }
+
+    assert rows["image_compare.grid"]["enabled"] is False
+    assert rows["image_compare.grid"]["reason"] == "needs two images"
+    assert rows["platform.settings"]["enabled"] is True
+    assert rows["platform.settings"]["reason"] is None
+
+
 def test_read_log_serves_the_live_ring(tmp_path):
     app_logger = logging.getLogger("ImproveImgSLI")
     previous_level = app_logger.level

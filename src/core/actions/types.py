@@ -107,3 +107,9 @@ class ActionDescriptor:
     sort_key: tuple[int, ...] = ()
     run: Callable[[], None] | None = None
     target: ActionTarget | None = None
+    # Whether the action is runnable *right now* and, when it is not, why —
+    # agent-facing metadata surfaced verbatim by ``list_actions`` so a planner
+    # can wait/route instead of calling and failing. Additive with defaults:
+    # every existing registration stays enabled with no reason.
+    enabled: bool = True
+    reason: str | None = None

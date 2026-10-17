@@ -199,18 +199,13 @@ class ControlHandlers(element_inventory.ElementMethodsMixin):
                 if needle not in haystack:
                     continue
             rows.append(action)
+        # Frozen P2 row shape (additive): ``reason`` is JSON null when runnable.
+        frozen = (
+            "action_id", "label", "owner_tab", "topic", "shortcut", "enabled", "reason",
+        )
         return {
             "count": len(rows),
-            "actions": [
-                {
-                    "action_id": row.get("action_id"),
-                    "label": row.get("label"),
-                    "owner_tab": row.get("owner_tab"),
-                    "topic": row.get("topic"),
-                    "shortcut": row.get("shortcut"),
-                }
-                for row in rows
-            ],
+            "actions": [{key: row.get(key) for key in frozen} for row in rows],
         }
 
     def list_sessions(self, _params: dict[str, Any]) -> dict[str, Any]:
