@@ -17,6 +17,7 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
+from PySide6.QtCore import QPoint
 from PySide6.QtWidgets import QWidget
 
 from sli_ui_toolkit.i18n import emit_language_changed, install_translator
@@ -134,6 +135,85 @@ def test_card_context_menu_localizes_without_translate(qtbot, monkeypatch) -> No
         row = menu.row_for_action("gallery.make_best")
         assert row is not None
         assert row._text == "ru[image_gallery.card.make_best]"
+    finally:
+        emit_language_changed("en")
+
+
+def test_open_card_menu_keeps_its_labels_until_reopened(qtbot) -> None:
+    """A language switch does NOT relayout the already-open card menu.
+
+    Accepted limitation (``card-menu-collapse``, 2026-10-17): the card menu
+    localizes when its entries are built, exactly like every other context
+    menu. Switching the language while it is open leaves its labels as they
+    were; the NEXT open uses the new language. Relabelling the open menu
+    required binding a translator to the shown popup, and that ``retranslate``
+    -> ``_relayout_widths`` -> ``adjustSize`` ran while the show-time fade hid
+    the menu's container, collapsing it to a sliver.
+
+    Falsification: on the pre-fix code the bind subscribes the menu to the
+    language bus, so the emit below changes ``row._text`` and this assertion
+    fails.
+    """
+    from ui.context_menu.manager import get_context_menu_manager
+
+    from tabs.image_gallery.models import GalleryItem
+    from tabs.image_gallery.ui.card.context_menu import popup_gallery_card_context_menu
+
+    # The page lives INSIDE a window: the manager parents the menu to the
+    # window (``card.window()``), so the shown menu is outside the page's
+    # ``install_translator`` subtree — exactly the app layout. Installing the
+    # translator on the top-level would auto-cover the menu and hide the
+    # mechanism this test pins.
+    window = QWidget()
+    qtbot.addWidget(window)
+    _KEEP_ALIVE.append(window)
+    window.resize(900, 600)
+    window.show()
+    w = ImageGalleryWidget(window)
+    w.resize(900, 600)
+    w.show()
+    install_translator(w, _ctx()._tr)
+    items = [
+        GalleryItem(path=Path(f"/g/{i}.png"), mtime_ns=1, series_id="s", rank=i)
+        for i in range(3)
+    ]
+    w._grid_view.rebuild_grid(items)
+    qtbot.wait(10)
+
+    card = w._grid_view.card_for(items[0].path)
+    assert card is not None
+
+    emit_language_changed("ru")
+    try:
+        popup_gallery_card_context_menu(
+            card, w, items[0].path, global_pos=QPoint(300, 200), selection_count=0
+        )
+        manager = get_context_menu_manager()
+        menu = manager._active_menu
+        assert menu is not None, "card menu was not opened"
+        row = menu.row_for_action("gallery.make_best")
+        assert row is not None
+        before = row._text
+        assert before.startswith("ru["), before
+
+        emit_language_changed("pt_BR")
+        qtbot.wait(30)
+        assert row._text == before, (
+            "the OPEN card menu was relayout-ed by a language switch; "
+            "that is the card-menu-collapse mechanism"
+        )
+
+        menu.hide()
+        popup_gallery_card_context_menu(
+            card, w, items[0].path, global_pos=QPoint(300, 200), selection_count=0
+        )
+        menu2 = manager._active_menu
+        assert menu2 is not None, "card menu did not reopen"
+        row2 = menu2.row_for_action("gallery.make_best")
+        assert row2 is not None and row2._text.startswith("pt_BR["), (
+            f"the next open did not localize into the new language: {row2 and row2._text!r}"
+        )
+        menu2.hide()
     finally:
         emit_language_changed("en")
 

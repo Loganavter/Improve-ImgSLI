@@ -9,7 +9,7 @@ working — notably ``popup_gallery_card_context_menu`` (also lazy re-exported b
 
 Submodules by concern:
 
-- ``translator.py`` — ``_t`` / ``_resolve_menu_translator`` / ``_bind_menu_translator``
+- ``translator.py`` — ``_t`` / ``_resolve_menu_translator``
 - ``predicates.py`` — selection + target gating (``_selection_*``, ``_targets_*``, ``_is_source``)
 - ``icons.py`` — ``_resolve_menu_icon`` / ``_menu_icon`` (+ ``_MENU_ICON_CACHE``)
 - ``popup.py`` — ``popup_gallery_card_context_menu`` (entry point)
@@ -55,11 +55,10 @@ from .predicates import (
     _targets_any_grouped,
     _targets_are_single_series,
 )
-from .translator import _bind_menu_translator, _resolve_menu_translator, _t
+from .translator import _resolve_menu_translator, _t
 
 __all__ = [
     "_MENU_ICON_CACHE",
-    "_bind_menu_translator",
     "_is_source",
     "_menu_icon",
     "_resolve_menu_icon",
