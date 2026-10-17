@@ -5,6 +5,7 @@ Action ids (for registry, palette):
   - gallery.clean-rejected       — Open S3 clean review overlay
   - gallery.run-triage           — (Re)run triage pass
   - gallery.set-as-source        — Set selected as source (fidelity mode)
+  - gallery.reset-metrics        — Drop the measured-metrics caches + re-run
 
 These are stubs for the host ``ActionRegistry``; wiring is via
 ``create_service("contribute_actions", registry)`` in ``tab.py``.
@@ -22,12 +23,14 @@ GALLERY_KEEP_BEST = "gallery.keep-best-of-series"
 GALLERY_CLEAN_REJECTED = "gallery.clean-rejected"
 GALLERY_RUN_TRIAGE = "gallery.run-triage"
 GALLERY_SET_AS_SOURCE = "gallery.set-as-source"
+GALLERY_RESET_METRICS = "gallery.reset-metrics"
 
 ALL_GALLERY_ACTION_IDS: tuple[str, ...] = (
     GALLERY_KEEP_BEST,
     GALLERY_CLEAN_REJECTED,
     GALLERY_RUN_TRIAGE,
     GALLERY_SET_AS_SOURCE,
+    GALLERY_RESET_METRICS,
 )
 
 
@@ -49,6 +52,7 @@ def register_gallery_action_stubs(registry) -> None:  # type: ignore[no-untyped-
         GALLERY_CLEAN_REJECTED: "image_gallery.action.clean_rejected",
         GALLERY_RUN_TRIAGE: "image_gallery.action.run_triage",
         GALLERY_SET_AS_SOURCE: "image_gallery.action.set_as_source",
+        GALLERY_RESET_METRICS: "image_gallery.card.reset_metrics_cache",
     }
     # Stable help paths: triage actions land on the triage page,
     # the fidelity entry lands on quality.
@@ -57,6 +61,7 @@ def register_gallery_action_stubs(registry) -> None:  # type: ignore[no-untyped-
         GALLERY_CLEAN_REJECTED: "workspace.image_gallery.triage",
         GALLERY_RUN_TRIAGE: "workspace.image_gallery.triage",
         GALLERY_SET_AS_SOURCE: "workspace.image_gallery.quality",
+        GALLERY_RESET_METRICS: "workspace.image_gallery.triage",
     }
     for action_id in ALL_GALLERY_ACTION_IDS:
         try:

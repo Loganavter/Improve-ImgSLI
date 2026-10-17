@@ -149,6 +149,50 @@ def hydrate_item(item) -> bool:  # type: ignore[no-untyped-def]
         return False
 
 
+def clear_cached_analysis(path: Path, mtime_ns: int) -> bool:
+    """Delete the disk scorecard for one ``(path, mtime_ns)``. Never raises.
+
+    True when a file was removed; a miss returns False (not an error).
+    """
+    try:
+        cache_path = _cache_path(path, mtime_ns)
+    except Exception:
+        return False
+    try:
+        cache_path.unlink()
+        return True
+    except FileNotFoundError:
+        return False
+    except OSError:
+        logger.debug("Gallery AI cache delete failed for %s", path, exc_info=True)
+        return False
+
+
+def clear_all() -> int:
+    """Delete every AI scorecard file; return the count deleted. Never raises.
+
+    The gallery's "Reset metrics cache" default (whole pool): the AI domain
+    re-analyzes from scratch instead of serving a stale scorecard. A missing
+    directory contributes 0.
+    """
+    try:
+        directory = ai_cache_dir()
+    except Exception:
+        return 0
+    try:
+        entries = sorted(Path(directory).glob("*.json"))
+    except Exception:
+        return 0
+    deleted = 0
+    for p in entries:
+        try:
+            p.unlink()
+            deleted += 1
+        except OSError:
+            logger.debug("Gallery AI cache delete failed for %s", p, exc_info=True)
+    return deleted
+
+
 def save_analysis(path: Path, mtime_ns: int, result: AiAnalysisResult) -> None:
     cache_path = _cache_path(path, mtime_ns)
     try:

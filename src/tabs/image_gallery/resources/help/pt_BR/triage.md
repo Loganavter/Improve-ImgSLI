@@ -22,6 +22,7 @@ A faixa de estatísticas (**imagens · séries · redundantes**) com **Manter o 
 - **Make best** — marca a imagem selecionada como vencedora de sua série.
 - **Reject** — alterna a marcação de rejeição nas imagens selecionadas; quando todas estão rejeitadas, o rótulo muda para **Unreject**.
 - **Remove from view** — `Space` ou `Delete` retira os cartões selecionados da grade; os arquivos permanecem no disco.
+- **Redefinir cache de métricas** — descarta as métricas medidas e executa a passagem novamente, então os cartões são medidos do zero.
 
 ### Revisão de limpeza {#clean-review}
 

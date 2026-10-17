@@ -10,7 +10,9 @@ cursor (``popup_at(QCursor.pos())``). The menu merges two groups:
    Remove from view (+ Make source, every mode), plus the manual
    grouping pair — Ungroup (dissolve into the tail) and Group (pin the
    menu-rule targets into a brand-new series; multi-select only, hidden
-   when the selection is already exactly one whole series).
+   when the selection is already exactly one whole series) — and the
+   maintenance entry Reset metrics cache (drop the measured caches and
+   re-run the pass; no confirm/undo, the recompute is the feedback).
    Make best / Reject / Remove from view apply to the whole selection when
    the clicked card is selected (file-manager rule), else to the clicked
    card alone.
@@ -41,6 +43,7 @@ from tabs.image_gallery.ui.card.context_actions import (
     _ctx_group,
     _ctx_make_best,
     _ctx_remove,
+    _ctx_reset_metrics,
     _ctx_set_source,
     _ctx_toggle_reject,
     _ctx_ungroup,
@@ -232,6 +235,22 @@ def popup_gallery_card_context_menu(  # type: ignore[no-untyped-def]
                 text_key="image_gallery.card.remove",
             )
         )
+        # Maintenance: drop the measured-metrics caches and re-run the pass.
+        # NOT destructive of user work (nothing authored is lost — the
+        # recompute IS the feedback), so no confirm dialog / undo, mirroring
+        # the series-header ``gallery.series.reset`` item.
+        per_card.append(
+            ContextMenuAction(
+                "gallery.reset_metrics",
+                _t(
+                    tr,
+                    "image_gallery.card.reset_metrics_cache",
+                    "Reset metrics cache",
+                ),
+                icon=_menu_icon("undo.svg"),
+                text_key="image_gallery.card.reset_metrics_cache",
+            )
+        )
         # Explicit path to UNGROUPED when no tail section exists to drop
         # onto (drop fallback covers the tail only while visible).
         # Hidden for all-UNGROUPED targets (nothing to dissolve).
@@ -289,6 +308,8 @@ def popup_gallery_card_context_menu(  # type: ignore[no-untyped-def]
                     _ctx_toggle_reject(owner, path)
                 elif action_id == "gallery.remove":
                     _ctx_remove(owner, path)
+                elif action_id == "gallery.reset_metrics":
+                    _ctx_reset_metrics(owner, path)
                 elif action_id == "gallery.ungroup":
                     _ctx_ungroup(owner, path)
                 elif action_id == "gallery.group":

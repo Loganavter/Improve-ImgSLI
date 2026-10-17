@@ -151,6 +151,31 @@ class ProfileCache:
         except OSError:
             logger.debug("profile cache write failed %s", p, exc_info=True)
 
+    def clear(self) -> int:
+        """Delete every pin file in this cache's directory; return the count.
+
+        The gallery's "Reset metrics cache" entry point: the VLM selection is
+        pinned per folder-generation, so a stale pin would keep serving the old
+        axis set to the re-derived pipeline. A missing directory / an
+        unreadable entry contributes 0; never raises.
+        """
+        try:
+            directory = self._dir()
+        except Exception:
+            return 0
+        try:
+            entries = sorted(Path(directory).glob("profile_*.json"))
+        except Exception:
+            return 0
+        deleted = 0
+        for path in entries:
+            try:
+                path.unlink()
+                deleted += 1
+            except OSError:
+                logger.debug("profile pin delete failed %s", path, exc_info=True)
+        return deleted
+
 
 _default_cache: ProfileCache | None = None
 
@@ -163,10 +188,19 @@ def default_cache() -> ProfileCache:
     return _default_cache
 
 
+def clear_default_cache() -> int:
+    """Clear the process-wide default cache (drop every disk pin). Never raises."""
+    try:
+        return int(default_cache().clear())
+    except Exception:
+        return 0
+
+
 __all__ = [
     "CACHE_DIR_NAME",
     "PROFILE_CACHE_VERSION",
     "ProfileCache",
+    "clear_default_cache",
     "default_cache",
     "profile_cache_dir",
     "profile_cache_key",

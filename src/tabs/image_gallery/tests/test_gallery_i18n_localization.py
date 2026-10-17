@@ -40,6 +40,7 @@ _KEYS = (
     "image_gallery.card.make_best",
     "image_gallery.card.remove",
     "image_gallery.card.make_source",
+    "image_gallery.card.reset_metrics_cache",
     "image_gallery.badge.source",
     "image_gallery.selection.analyze",
     "image_gallery.metric_note.sharpness.good",

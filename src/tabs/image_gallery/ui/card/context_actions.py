@@ -256,6 +256,26 @@ def _ctx_remove(owner, path: Path) -> None:
         pass
 
 
+def _ctx_reset_metrics(owner, path: Path) -> None:
+    """Reset the measured-metrics caches for the menu targets, then recompute.
+
+    File-manager rule via ``_action_targets`` (whole selection when the clicked
+    card is selected, else the clicked card alone) — the same target resolution
+    its neighbours use. Routes into ``use_cases.cache_reset``, which clears the
+    in-memory + disk caches and re-enters the triage rebuild. Never raises.
+    """
+    try:
+        targets = _action_targets(owner, path)
+    except Exception:
+        targets = []
+    try:
+        from tabs.image_gallery.use_cases import cache_reset as _cache_reset
+
+        _cache_reset.reset_metrics_caches(owner, paths=targets or None)
+    except Exception:
+        pass
+
+
 def _ctx_set_source(owner, path: Path) -> None:
     """Fidelity only: set selected image as source hub (used by IconActionFlyout & ContextMenu)."""
     try:
