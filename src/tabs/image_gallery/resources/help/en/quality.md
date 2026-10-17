@@ -13,7 +13,7 @@ The score combines sharpness, exposure, noise, and color, and — once a source 
 ### Where scores appear {#where-scores}
 
 - **Quick Look** — opens a panel with one row per reading and its percentage.
-- **Card dots** — three dots on each card, one per defect check; a dot turns green, amber, or red as that check gets worse.
+- **Card dots** — one dot per metric the mode measures; a dot turns green (70 %+), amber (40–69 %), or red (below 40 %) as that reading gets worse. Hover a dot to read its metric name and percentage.
 - **AI quality** — a **Sort by** value that orders images by the AI score first; it applies only while the toolbar's **AI** switch is on, and unscored images sink to the end.
 
 :::figure{side=block width=100%}
@@ -23,7 +23,7 @@ The score combines sharpness, exposure, noise, and color, and — once a source 
 
 ### Modes {#modes}
 
-The gallery chooses a mode for the folder, and the mode decides which defect checks the card dots show.
+The gallery chooses a mode for the folder, and the mode decides which metrics the card dots show.
 
 When an image is set as the source, the score also measures how closely each image matches it; the source is always chosen by hand, never automatically. Without a source, the gallery treats the folder either as camera photos or as a synthetic batch.
 

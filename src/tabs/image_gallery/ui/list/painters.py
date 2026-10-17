@@ -1,8 +1,9 @@
-"""List-row overlay painter — rejected dim only (no grid imports).
+"""List-row overlay painter — metric dots + activity pill + rejected dim.
 
 Palette parity: no shared hover wash over the row (find-action rows wash
-only the hovered chrome target via the standard variant hover). The only
-overlay here is the rejected dim.
+only the hovered chrome target via the standard variant hover). The
+metric-axis dots draw in the meta region; only the dot geometry helper is
+shared with the grid card (lazy import, no grid widget/layout code).
 """
 
 from __future__ import annotations
@@ -63,10 +64,85 @@ def _list_activity_overlay(painter, ctx) -> None:  # type: ignore[no-untyped-def
     paint_item_activity(painter, widget, box, corner="middle_left")
 
 
+def _list_metric_dots_overlay(painter, ctx) -> None:  # type: ignore[no-untyped-def]
+    """Metric-axis dots right-aligned in the row's meta region.
+
+    Same colors/values/computation as the grid card (computed in
+    ``ui/list/card.py`` via the card dot helper); this painter only owns
+    placement + stashing the geometry for the shared per-dot tooltip.
+    """
+    widget = getattr(ctx, "widget", None)
+    rect = getattr(ctx, "rect", None)
+    if widget is None or rect is None:
+        return
+    try:
+        widget._gallery_dot_geometry = None  # type: ignore[attr-defined]
+    except Exception:
+        pass
+    colors = getattr(widget, "_gallery_dot_colors", None)
+    if not isinstance(colors, (list, tuple)) or not colors:
+        return
+    infos = getattr(widget, "_gallery_dot_infos", ()) or ()
+    from tabs.image_gallery.ui.card.dots import DOT_DIAMETER, DOT_PITCH, layout_dots
+    from tabs.image_gallery.ui.list.card import LIST_THUMB_W, _list_metrics
+
+    state = getattr(widget, "_gallery_row_state", None)
+    design_w = (
+        float(state.get("w", LIST_THUMB_W))
+        if isinstance(state, dict)
+        else float(LIST_THUMB_W)
+    )
+    _thumb_w, meta_w = _list_metrics(rect, design_w)
+    count = len(colors)
+    try:
+        y_center = float(rect.y()) + float(rect.height()) / 2.0
+        x_right = float(rect.x()) + float(rect.width()) - 4.0 - 4.0
+    except Exception:
+        return
+    # Same wrapping helper as the grid card: keep the full pitch and wrap into
+    # right-aligned rows rather than shrinking the dots to fit the meta width.
+    avail = max(0.0, float(meta_w) - 8.0)
+    centers = layout_dots(count, x_right, y_center, avail)
+    if len(centers) != count:
+        return
+    radius = DOT_DIAMETER / 2.0
+    painter.save()
+    try:
+        painter.setRenderHint(painter.RenderHint.Antialiasing, True)
+        painter.setPen(Qt.PenStyle.NoPen)
+        for idx, color in enumerate(colors):
+            if color is None:
+                continue
+            painter.setBrush(color)
+            cx, cy = centers[idx]
+            painter.drawEllipse(
+                int(cx - radius),
+                int(cy - radius),
+                DOT_DIAMETER,
+                DOT_DIAMETER,
+            )
+    finally:
+        painter.restore()
+    try:
+        widget._gallery_dot_geometry = {  # type: ignore[attr-defined]
+            "centers": tuple((float(cx), float(cy)) for cx, cy in centers),
+            "x_centers": tuple(float(cx) for cx, _cy in centers),
+            "pitch": float(DOT_PITCH),
+            "infos": tuple(infos),
+            "y_center": float(y_center),
+        }
+    except Exception:
+        pass
+
+
 def _list_row_overlay_painter(painter, ctx, tm) -> None:  # type: ignore[no-untyped-def]
-    """Activity pill (thumb) + rejected dim wash (no shared hover wash — palette parity)."""
+    """Activity pill (thumb) + metric dots (meta) + rejected dim wash."""
     try:
         _list_activity_overlay(painter, ctx)
+    except Exception:
+        pass
+    try:
+        _list_metric_dots_overlay(painter, ctx)
     except Exception:
         pass
     try:

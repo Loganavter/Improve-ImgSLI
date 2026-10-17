@@ -57,13 +57,25 @@ def refresh_card(view, item: GalleryItem) -> None:
     if card is None:
         return
     try:
+        from .drag_source import _gallery_domain
+
+        domain = _gallery_domain(self)
+    except Exception:
+        domain = ""
+    try:
         if self._view_mode == VIEW_LIST:
             update_gallery_list_card(  # type: ignore[arg-type]
-                card, item, mode=self._resolve_mode(), translate=self._activity_translate
+                card,
+                item,
+                mode=self._resolve_mode(),
+                translate=self._activity_translate,
+                domain=domain,
             )
         else:
             # translate rides the card (attached at build) — no per-update threading.
-            update_gallery_card(card, item, mode=self._resolve_mode())  # type: ignore[arg-type]
+            update_gallery_card(  # type: ignore[arg-type]
+                card, item, mode=self._resolve_mode(), domain=domain
+            )
     except Exception:
         pass
     self._sync_activity(card)
@@ -91,6 +103,12 @@ def refresh_cards(view, items) -> None:
         mode = self._resolve_mode()
     except Exception:
         mode = None
+    try:
+        from .drag_source import _gallery_domain
+
+        domain = _gallery_domain(self)
+    except Exception:
+        domain = ""
     for item in items:
         try:
             card = self._cards_by_path.get(str(item.path))
@@ -101,10 +119,14 @@ def refresh_cards(view, items) -> None:
         try:
             if self._view_mode == VIEW_LIST:
                 update_gallery_list_card(  # type: ignore[arg-type]
-                    card, item, mode=mode, translate=self._activity_translate
+                    card,
+                    item,
+                    mode=mode,
+                    translate=self._activity_translate,
+                    domain=domain,
                 )
             else:
-                update_gallery_card(card, item, mode=mode)  # type: ignore[arg-type]
+                update_gallery_card(card, item, mode=mode, domain=domain)  # type: ignore[arg-type]
         except Exception:
             pass
         self._sync_activity(card)

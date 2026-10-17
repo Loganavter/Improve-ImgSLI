@@ -152,9 +152,14 @@ def _dots_overlay_painter(painter, ctx, tm) -> None:  # type: ignore[no-untyped-
                 _left_badge_painter(painter, rect, str(b_text), b_style)
         except Exception:
             pass
+        try:
+            widget._gallery_dot_geometry = None  # type: ignore[attr-defined]
+        except Exception:
+            pass
         colors = getattr(widget, "_gallery_dot_colors", None)
-        if not isinstance(colors, (list, tuple)) or len(colors) < 3:
+        if not isinstance(colors, (list, tuple)) or not colors:
             return
+        infos = getattr(widget, "_gallery_dot_infos", ()) or ()
         regions = []
         try:
             regions = list(widget.regions())
@@ -214,8 +219,13 @@ def _dots_overlay_painter(painter, ctx, tm) -> None:  # type: ignore[no-untyped-
                 heights.append(QFontMetrics(f).lineSpacing())
             except Exception:
                 heights.append(12)
-        # Import here to avoid cycle; dots helper provides constant.
-        from tabs.image_gallery.ui.card.dots import _DOTS_ROW_GAP, _DOTS_TEXT
+        # Import here to avoid cycle; dots helper provides constants.
+        from tabs.image_gallery.ui.card.dots import (
+            _DOTS_ROW_GAP,
+            DOT_DIAMETER,
+            DOT_PITCH,
+            layout_dots,
+        )
 
         total_h = sum(heights) + _DOTS_ROW_GAP * max(0, len(heights) - 1)
         y_rows = padded.y() + max(0, (padded.height() - total_h) // 2)
@@ -227,27 +237,48 @@ def _dots_overlay_painter(painter, ctx, tm) -> None:  # type: ignore[no-untyped-
         else:
             y_dots = y_rows + sum(heights[:-1]) + _DOTS_ROW_GAP * (len(heights) - 1)
             h_dots = heights[-1]
-        # Reference: dots r=4 diameter 8, distance 14 between centers, right aligned 4px pad, centered on filename line
+        # Reference: dots r=4 diameter 8, distance 14 between centers, right
+        # aligned 4px pad, centered on the filename line. ONE dot per metric
+        # axis (camera 8 / fidelity 14 / batch 7). Too many dots to fit the
+        # card WRAP into right-aligned rows at the full pitch — never shrink.
         y_center = y_dots + h_dots // 2
         x_right = padded.x() + padded.width() - 4 - 4  # 4px inner pad + 4 radius
+        count = len(colors)
+        avail = max(0.0, float(padded.width()) - 8.0)
+        centers = layout_dots(count, x_right, y_center, avail)
+        if len(centers) != count:
+            return
+        radius = DOT_DIAMETER / 2.0
         painter.save()
         try:
             painter.setRenderHint(painter.RenderHint.Antialiasing, True)
-            # Draw up to 3 dots, right-aligned, left to right order as per colors
-            for idx in range(min(3, len(colors))):
-                color = colors[idx]
+            for idx, color in enumerate(colors):
                 if color is None:
                     continue
-                # idx 0 leftmost at x_right-28, idx1 middle at x_right-14, idx2 rightmost at x_right
-                x_center = x_right - (2 - idx) * 14 if len(colors) >= 3 else x_right - (len(colors) - 1 - idx) * 14
-                # For fewer than 3 dots, still right-aligned: last dot at x_right
-                if len(colors) < 3:
-                    x_center = x_right - (len(colors) - 1 - idx) * 14
                 painter.setPen(Qt.PenStyle.NoPen)
                 painter.setBrush(color)
-                painter.drawEllipse(int(x_center - 4), int(y_center - 4), 8, 8)
+                cx, cy = centers[idx]
+                painter.drawEllipse(
+                    int(cx - radius),
+                    int(cy - radius),
+                    DOT_DIAMETER,
+                    DOT_DIAMETER,
+                )
         finally:
             painter.restore()
+        # Stashed for the per-dot ToolTip filter (ui/card/dot_tooltip.py).
+        # ``"centers"`` carries both axes (wrapped rows); ``"x_centers"`` is
+        # kept for older readers.
+        try:
+            widget._gallery_dot_geometry = {  # type: ignore[attr-defined]
+                "centers": tuple((float(cx), float(cy)) for cx, cy in centers),
+                "x_centers": tuple(float(cx) for cx, _cy in centers),
+                "pitch": float(DOT_PITCH),
+                "infos": tuple(infos),
+                "y_center": float(y_center),
+            }
+        except Exception:
+            pass
         # Hovered blue bar 234×3 r1.5 at 8,159 inside card per svg x874 y359 (card 250×170, 8 left/right, 3 height)
         try:
             if getattr(widget, "_hover_blue_bar", False):

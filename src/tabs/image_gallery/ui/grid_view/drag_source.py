@@ -269,6 +269,20 @@ def _drag_owner(view):
         pass
     return None
 
+def _gallery_domain(view) -> str:
+    """Durable judgment domain for metric dots (``owner._judgment_domain``).
+
+    Shared by every card-update path so a domain switch repaints the dots
+    against the same authority the grid card reads; unknown/absent → ``""``
+    (``quality_read`` degrades to Algorithms).
+    """
+    try:
+        owner = _drag_owner(view)
+        return str(getattr(owner, "_judgment_domain", "") or "")
+    except Exception:
+        return ""
+
+
 def build_card_drag(view, card, global_pos: QPoint):  # type: ignore[no-untyped-def]
     """Build the QDrag for the recorded press, or None (no exec here).
 
