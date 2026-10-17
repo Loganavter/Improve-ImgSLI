@@ -17,10 +17,15 @@ over the two rows the panel already has — the filmstrip
 * ``Enter`` and the space bar are never claimed here: the focused toolkit
   ``Button`` activates itself (``widgets/buttons/events.py::_activate_via_keyboard``
   → the same ``clicked`` → ``_switch`` path a mouse click takes).
-* Arrows cannot reach the gallery grid behind the veil: the panel WRAPS inside
-  itself at its own edges instead of yielding to a neighbouring section —
-  :meth:`QuickLookNavSection.navigate` hands ``↑`` at the strip to the action
-  row and ``↓`` at the action row back to the item on screen.
+* Arrows cannot reach the gallery grid behind the veil: the panel declares
+  :attr:`QuickLookNavSection.modal` (``True``), so the toolkit
+  ``NavigationManager`` treats it as a modal ceiling while it is visible —
+  every arrow, the section's ``extra_keys`` and Tab/Backtab are routed into the
+  panel, and a foreign focus steal is pulled back (``_reclaim_modal_focus``).
+  Inside the panel the row edges **wrap** (``↑`` at the strip hands the ring to
+  the action row, ``↓`` there hands it back to the item on screen) instead of
+  yielding to a neighbouring section; the manager's modal-edge consume stays as
+  the safety net for whatever the wrap does not claim.
 
 The strip is rebuilt whenever its fingerprint changes — ranks re-stamped by the
 analysis pass, a triage flip, a theme/scale change (``strip/helpers.py::
@@ -302,13 +307,12 @@ def move_strip_focus(overlay, delta: int) -> bool:
 class QuickLookNavSection(ToolbarRowsSection):
     """The panel's two rows as a toolkit row section, plus the modal wrap.
 
-    Rows: the filmstrip (``overlay._strip_row``) and the bottom action bar
-    (``overlay._action_bar``), via :func:`rows`. Everything key-related is the
-    toolkit's: it focuses a row's ``StrongFocus`` children (so the ring lands on
-    the thumb ``Button``, never on its NoFocus container), steps ``←``/``→``
-    within a row, crosses ``↓``/``↑`` between rows, scrolls the focused thumb
-    into view through the strip's ``OverlayScrollArea`` (``_ensure_visible``),
-    and resolves the focus reason through the app's policy.
+    Everything key-related is the toolkit section's: it focuses a row's
+    ``StrongFocus`` children (so the ring lands on the thumb ``Button``, never
+    on its NoFocus container), steps ``←``/``→`` within a row, crosses
+    ``↓``/``↑`` between rows, scrolls the focused thumb into view through the
+    strip's ``OverlayScrollArea`` ancestor (``_ensure_visible``), and resolves
+    the focus reason through the app's policy.
 
     Two overrides, both about the panel being **modal**:
 
@@ -316,23 +320,40 @@ class QuickLookNavSection(ToolbarRowsSection):
       ring to the action bar, ``↓`` from the action bar hands it back to the item
       on screen) instead of yielding. ``ToolbarRowsSection`` yields at its
       boundaries so the shell can hand focus to the section above/below — right
-      for a toolbar, wrong here: it walks the ring onto the gallery grid behind
-      the veil while the panel stays up with no ring on it (measured 2026-10-17:
+      for a toolbar, wrong here: it walked the ring onto the gallery grid behind
+      the veil while the panel stayed up with no ring on it (measured 2026-10-17:
       Up on the first thumb focused a card of the section registered before us,
       via ``NavigationManager._neighbor``);
     * :meth:`focus_first` enters on the item already on screen, not on the first
       thumb.
+
+    :attr:`modal` additionally makes the panel the manager's modal ceiling while
+    it is visible: every arrow, its ``extra_keys`` and Tab/Backtab are routed
+    into the panel, and the manager's modal-edge consume stays as the safety net
+    for whatever the wrap does not claim.
     """
 
     def __init__(self, overlay: QWidget) -> None:
         super().__init__(lambda: rows(overlay), tag="quick-look")
         self._overlay = overlay
 
+    @property
+    def modal(self) -> bool:
+        """The panel owns the keyboard for its window while it is visible.
+
+        Read by the manager as ``getattr(spec, "modal", False)`` (same raw-read
+        pattern as ``extra_keys``): the panel is the last registered section
+        while shown, so it is the modal ceiling and the grid behind the veil
+        receives no key or focus. Must stay a **property**, never a method.
+        """
+        return True
+
     def navigate(self, key: int, widget) -> bool:  # noqa: ANN001
         if super().navigate(key, widget):
             return True
         # Panel edge: wrap inside the panel, never yield to the page behind
-        # (see the class docstring).
+        # (see the class docstring). The manager's modal edge would consume the
+        # key anyway; the wrap is the steer's requested shape.
         if key == Qt.Key.Key_Up:
             return self.focus_last(reason=focus_reason())
         if key == Qt.Key.Key_Down:
@@ -354,14 +375,14 @@ class QuickLookNavSection(ToolbarRowsSection):
             return True
         return super().focus_first(ref_x, reason=reason or focus_reason())
 
-    # ``extra_keys`` is inherited (``←``/``→`` only — a **property**, because
-    # every reader iterates the raw attribute: ``NavigationManager.eventFilter``
-    # does ``key in getattr(spec, "extra_keys", frozenset())`` and a
-    # method-shaped one raised ``TypeError: argument of type 'method' is not a
-    # container or iterable`` on every ``←``/``→``, live 2026-10-17).
-    # Return/Enter are deliberately absent: the focused ``Button`` handles them
-    # itself. ``focus_last`` stays the toolkit's — "entering from below" lands on
-    # the bottom row's first focusable, which is right for the action bar.
+    # ``extra_keys`` (``←``/``→`` only — a **property**, because every reader
+    # iterates the raw attribute: ``NavigationManager.eventFilter`` does
+    # ``key in getattr(spec, "extra_keys", frozenset())`` and a method-shaped one
+    # raised ``TypeError: argument of type 'method' is not a container or
+    # iterable`` on every ``←``/``→``, live 2026-10-17), ``owns`` and
+    # ``focus_last`` are inherited: Return/Enter stay with the focused ``Button``,
+    # the section claims exactly its two rows, and "entering from below" lands on
+    # the bottom row's first focusable — right for the action bar.
 
 
 def section_of(overlay):
