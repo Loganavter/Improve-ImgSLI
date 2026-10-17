@@ -9,6 +9,12 @@ Pure: no Qt, no HTTP, no PIL — numbers in, ranks out. The module reads the
 registry (``spec_for`` / ``raw_for`` / ``score_for``); it never re-derives
 thresholds and never fabricates a value for a missing axis.
 
+Which axes are "applicable" is NOT decided here any more: it is the
+**metric profile** (``services/metric_profile``) — the mode mapping today,
+the salience-derived subset per plan P1 (``plan-adaptive-metric-profiles-
+2026-10-17``). This module delegates (``measured_axes_for``) so ranking, the
+AI scorecard, the card dots and the Jev vector read ONE axis set.
+
 Design rules (see ``plan-gallery-rank-backends-2026-10-15`` §Seam):
 
 - Only ``MetricKind.MEASURED`` axes contribute; ``RANK_EXCLUDED_AXES`` never
@@ -26,9 +32,12 @@ Design rules (see ``plan-gallery-rank-backends-2026-10-15`` §Seam):
 
 from __future__ import annotations
 
-from tabs.image_gallery.models import MetricKind
+from tabs.image_gallery.services.metric_profile import (
+    EXCLUDED_AXES,
+    mode_id,
+    profile_for_mode,
+)
 from tabs.image_gallery.services.metric_scores import (
-    SPECS,
     raw_for,
     score_for,
     spec_for,
@@ -40,7 +49,7 @@ RANK_FUSION_VERSION = 2
 
 #: Axis ids that must NEVER contribute to a rank (grouping artefacts, not
 #: quality). Single definition for the whole tree — import, never redefine.
-RANK_EXCLUDED_AXES = ("typicality",)
+RANK_EXCLUDED_AXES = EXCLUDED_AXES
 
 #: Worst-axis cap: the aggregate may not exceed the item's single weakest
 #: measured axis by more than this margin, so one catastrophic axis (e.g. total
@@ -57,67 +66,34 @@ RANK_WORST_AXIS_SLACK = 20.0
 #: measurement.
 RANK_AXIS_WEIGHTS: dict[str, dict[str, float]] = {}
 
-#: The mode ids ``measured_axes_for`` understands (``models.Mode`` values).
-_MODES: tuple[str, ...] = ("fidelity", "camera", "batch_synthetic")
-
-#: Registry tags that scope an axis to a content situation:
-#: ``reference`` needs a source hub (fidelity), ``photo`` needs photographic
-#: content (the BRISQUE gate used by the camera lane). Untagged axes are
-#: absolute local detectors and apply everywhere.
-_REFERENCE_TAG = "reference"
-_PHOTO_TAG = "photo"
+#: Normalized mode id (``services/metric_profile.mode_id`` — single definition,
+#: shared with the profile).
+_mode_id = mode_id
 
 
-def _mode_id(mode) -> str:
-    """Normalize a ``Mode`` / str / None to one of ``_MODES`` (or ``""``)."""
-    value = getattr(mode, "value", mode)
-    try:
-        text = str(value or "").strip().lower()
-    except Exception:
-        return ""
-    return text if text in _MODES else ""
+def measured_axes_for(mode=None, *, profile=None) -> tuple[str, ...]:
+    """MEASURED axis ids applicable to *profile* / *mode* (registry order).
 
-
-def _tags_of(spec) -> set[str]:
-    try:
-        return {str(t).strip().lower() for t in (spec.tags or ()) if t}
-    except Exception:
-        return set()
-
-
-def measured_axes_for(mode: str) -> tuple[str, ...]:
-    """MEASURED axis ids applicable to *mode* (fidelity|camera|batch_synthetic).
-
-    Applicability comes from the registry's own tags, not a second axis list:
-
-    - untagged axes (absolute local detectors) — every mode;
-    - ``reference`` axes (need a source hub) — ``fidelity`` only;
-    - ``photo`` axes (the BRISQUE content gate) — ``camera`` only.
-
-    ``RANK_EXCLUDED_AXES`` and non-MEASURED axes are never returned. An
-    unknown/empty *mode* yields the mode-independent (untagged) set, since no
-    source or photographic content can be asserted for it. Order = registry
-    order (stable).
+    ``profile`` (any object with ``.axis_ids``, canonically
+    ``metric_profile.MetricProfile``) wins when given — that is how the
+    salience-derived subset (plan P1) reaches the rank, the prompt and the
+    dots. Without it the mode-implied profile applies
+    (``metric_profile.profile_for_mode``): untagged axes everywhere,
+    ``reference`` axes in ``fidelity`` only, ``photo`` axes in ``camera``
+    only; ``RANK_EXCLUDED_AXES`` and non-MEASURED axes never. An
+    unknown/empty *mode* yields the mode-independent (untagged) set.
     """
-    mid = _mode_id(mode)
-    has_source = mid == "fidelity"
-    is_photo = mid == "camera"
-    out: list[str] = []
-    for spec in SPECS:
-        if spec.kind is not MetricKind.MEASURED:
-            continue
-        if spec.id in RANK_EXCLUDED_AXES:
-            continue
-        tags = _tags_of(spec)
-        if _REFERENCE_TAG in tags and not has_source:
-            continue
-        if _PHOTO_TAG in tags and not is_photo:
-            continue
-        out.append(spec.id)
-    return tuple(out)
+    if profile is not None:
+        try:
+            axes = tuple(str(a) for a in (profile.axis_ids or ()))
+        except Exception:
+            axes = ()
+        if axes:
+            return axes
+    return profile_for_mode(mode).axis_ids
 
 
-def item_quality(item, *, mode: str) -> float | None:
+def item_quality(item, *, mode=None, profile=None) -> float | None:
     """0..100 aggregate over applicable MEASURED axes; None when nothing measured.
 
     The **weighted** mean of ``score_for`` over every applicable axis that has a
@@ -125,15 +101,17 @@ def item_quality(item, *, mode: str) -> float | None:
     ``1.0`` by default; a weight ``<= 0`` drops the axis), then capped by the
     weakest participating axis (``RANK_WORST_AXIS_SLACK``):
     ``min(mean, worst + slack)`` so a single catastrophic axis is not averaged
-    away. Missing axes are excluded (never treated as 0/100) and
-    ``RANK_EXCLUDED_AXES`` is never consulted. Deterministic; never fabricates.
+    away. Applicability is the metric profile (``profile`` when given, else
+    the mode mapping — see ``measured_axes_for``). Missing axes are excluded
+    (never treated as 0/100) and ``RANK_EXCLUDED_AXES`` is never consulted.
+    Deterministic; never fabricates.
     """
     metrics = getattr(item, "metrics", None)
     if not isinstance(metrics, dict) or not metrics:
         return None
     weights = RANK_AXIS_WEIGHTS.get(_mode_id(mode), {})
     weighted: list[tuple[int, float]] = []
-    for axis_id in measured_axes_for(mode):
+    for axis_id in measured_axes_for(mode, profile=profile):
         spec = spec_for(axis_id)
         if spec is None:
             continue
@@ -153,14 +131,18 @@ def item_quality(item, *, mode: str) -> float | None:
     return min(mean, worst + RANK_WORST_AXIS_SLACK)
 
 
-def rank_series(items, *, mode: str) -> dict[str, int]:
+def rank_series(items, *, mode=None, profile=None) -> dict[str, int]:
     """path -> rank 1..N; measured first by ``(-quality, str(path))``, then
-    unmeasured by ``str(path)``. Idempotent under input permutation."""
+    unmeasured by ``str(path)``. Idempotent under input permutation.
+
+    ``profile`` (metric profile) selects the axes, so the rank can never
+    disagree with the dots/prompt about which axes count.
+    """
     measured: list[tuple[float, str]] = []
     unmeasured: list[str] = []
     for item in items or ():
         path = str(getattr(item, "path", ""))
-        quality = item_quality(item, mode=mode)
+        quality = item_quality(item, mode=mode, profile=profile)
         if quality is None:
             unmeasured.append(path)
         else:
