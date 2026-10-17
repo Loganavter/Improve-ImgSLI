@@ -276,7 +276,7 @@ def set_triage(owner, series, mode, source) -> None:
         _all_items = list(owner._items or [])
         for _cluster in norm_series:
             _all_items.extend(_cluster)
-        stamp_badges(_all_items, owner._source_path)
+        stamp_badges(_all_items, owner._source_path, show_rank=bool(getattr(owner, "_ranks_visible", True)))
     except Exception:
         pass
     try:
