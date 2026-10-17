@@ -242,7 +242,18 @@ class TabStripSection:
                 idx = tab_bar.tabAt(QPoint(int(local_x), tab_bar.height() // 2))
                 if idx < 0:
                     idx = 0 if local_x < 0 else count - 1
-                tab_bar.setCurrentIndex(idx)
+                # Move the keyboard cursor, never the selection. Focusing the
+                # strip is not activation: setCurrentIndex() here emitted
+                # currentChanged -> the app switched the active workspace
+                # session on a bare Down/Up hand-off (no Enter). Activation
+                # stays with _AdaptiveTabBar's Enter/Space handling, the same
+                # contract Left/Right obey (tests/contracts/test_navigation_graph.py).
+                tab_bar._focused_index = idx
+                try:
+                    tab_bar._ensure_visible(idx)
+                except Exception:
+                    pass
+                tab_bar.update()
         tab_bar.setFocus(reason)
         return True
 
