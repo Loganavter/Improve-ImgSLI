@@ -181,13 +181,14 @@ def _metric_dots_for(
     mode: object,
     domain: object,
     translate=None,
+    profile=None,
 ):
     """Metric-axis dot colors + tooltip infos (grid card parity, lazy import)."""
     try:
         from tabs.image_gallery.ui.card.dots import metric_dots_for_item
 
         return metric_dots_for_item(
-            item, mode=mode, domain=domain, translate=translate
+            item, mode=mode, domain=domain, translate=translate, profile=profile
         )
     except Exception:
         return (), ()
@@ -199,6 +200,7 @@ def build_gallery_list_card(
     on_activate: Callable | None = None,
     on_context_menu: Callable | None = None,
     mode: object = None,
+    profile: object = None,
     *,
     translate=None,
     domain: object = None,
@@ -207,6 +209,7 @@ def build_gallery_list_card(
 
     *domain* is the judgment domain (``"ai"`` / ``"algorithms"``) the metric
     dots read; unknown/None degrades to Algorithms inside ``quality_read``.
+    *profile* is the ACTIVE metric profile (beats *mode*; ``None`` → mode map).
     """
     state = {"w": _thumb_width_for(item)}
     card = Button(
@@ -242,7 +245,7 @@ def build_gallery_list_card(
         # parity): ``update_gallery_list_card`` defaults to it, so pooled-row
         # rebinds never need ``translate=`` threaded through every call site.
         card._gallery_translate = translate  # type: ignore[attr-defined]
-        _dots, _infos = _metric_dots_for(item, mode, domain, translate)
+        _dots, _infos = _metric_dots_for(item, mode, domain, translate, profile)
         card._gallery_dot_colors = tuple(_dots)  # type: ignore[attr-defined]
         card._gallery_dot_infos = tuple(_infos)  # type: ignore[attr-defined]
         card._gallery_mode = mode  # type: ignore[attr-defined]
@@ -279,6 +282,7 @@ def update_gallery_list_card(
     *,
     translate=None,
     domain: object = None,
+    profile: object = None,
 ) -> None:
     """In-place update of a live list row (update_gallery_card parity)."""
     _tr = translate
@@ -291,8 +295,11 @@ def update_gallery_list_card(
     _domain = domain
     if _domain is None:
         _domain = getattr(card, "_gallery_domain", None)
+    # Live profile, never the row's own memory (see card.update_gallery_card):
+    # a folder without a stored profile must fall back to the mode mapping.
+    _profile = profile
     try:
-        _dots, _infos = _metric_dots_for(item, _mode, _domain, _tr)
+        _dots, _infos = _metric_dots_for(item, _mode, _domain, _tr, _profile)
         card._gallery_dot_colors = tuple(_dots)  # type: ignore[attr-defined]
         card._gallery_dot_infos = tuple(_infos)  # type: ignore[attr-defined]
         card._gallery_mode = _mode  # type: ignore[attr-defined]

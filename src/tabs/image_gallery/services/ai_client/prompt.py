@@ -67,33 +67,38 @@ _PROMPT_CORE = (
 #: Default prompt for the no-mode / legacy case (all untagged measured axes).
 PROMPT_TEMPLATE = _PROMPT_CORE
 
-def _scorecard_axes(mode=None) -> tuple[tuple[str, str], ...]:
-    """``(axis_id, label)`` for every axis the AI must score for *mode*.
+def _scorecard_axes(mode=None, *, profile=None) -> tuple[tuple[str, str], ...]:
+    """``(axis_id, label)`` for every axis the AI must score.
 
-    The set is the mode's applicable MEASURED axes (``measured_axes_for``) —
-    single source of truth, never a second axis list here. Order = registry.
+    The set is the ACTIVE metric profile's applicable MEASURED axes
+    (``measured_axes_for(mode, profile=profile)``) — single source of truth,
+    never a second axis list here. ``profile`` (any object with ``.axis_ids``,
+    canonically ``MetricProfile``) wins when given; ``profile=None`` is the
+    mode mapping (fail-open). Order = registry.
     """
     try:
         from tabs.image_gallery.services.metric_scores import spec_for
         from tabs.image_gallery.services.rank_fusion import measured_axes_for
 
         out: list[tuple[str, str]] = []
-        for axis_id in measured_axes_for(mode):
+        for axis_id in measured_axes_for(mode, profile=profile):
             spec = spec_for(axis_id)
             out.append((axis_id, spec.label if spec is not None else axis_id))
         return tuple(out)
     except Exception:
         return ()
 
-def build_prompt(mode=None, *, measured_block: str = "") -> str:
-    """The analysis prompt: a per-axis scorecard for *mode* + verdict/defects.
+def build_prompt(mode=None, *, profile=None, measured_block: str = "") -> str:
+    """The analysis prompt: a per-axis scorecard for *mode* / *profile*.
 
     Every applicable axis is requested by canonical id with its positive label,
     so the model answers in the ids the report reads (see
-    ``plan-gallery-ai-backend-owns-quality``). ``measured_block`` (local
+    ``plan-gallery-ai-backend-owns-quality``). ``profile`` is the active
+    metric profile (``measured_axes_for`` wins it over *mode*); ``profile=None``
+    reproduces the mode mapping byte-for-byte. ``measured_block`` (local
     detector numbers) is attached as *context*, explicitly NOT authoritative.
     """
-    axes = _scorecard_axes(mode)
+    axes = _scorecard_axes(mode, profile=profile)
     axis_parts = ", ".join(f'"{axis_id}": <0-100 {label}>' for axis_id, label in axes)
     text = (
         _PROMPT_CORE

@@ -136,7 +136,7 @@ def _aliased(items) -> list[tuple[str, Any]]:
     return [(f"img_{i}", item) for i, item in enumerate(ordered, start=1)]
 
 
-def build_measured_vector(items, *, mode: str, domain: str = "algorithms") -> dict:
+def build_measured_vector(items, *, mode: str, domain: str = "algorithms", profile=None) -> dict:
     """The scoring vector: ``{"mode", "items": [{"alias","scores"}]}``.
 
     Each entry's ``scores`` holds exactly the applicable axes for *mode*
@@ -146,9 +146,13 @@ def build_measured_vector(items, *, mode: str, domain: str = "algorithms") -> di
     they are the local detectors (``item.metrics``), via the single per-domain
     read (``services.quality_read``, plan-gallery-ai-backend-owns-quality). Only
     the mode, the opaque aliases and the numbers — never paths or images.
+
+    ``profile`` (a ``metric_profile.MetricProfile``) overrides the mode-implied
+    axes when given — the salience-derived subset (plan P1). ``None`` keeps the
+    mode mapping, so every existing caller is unchanged (backward compatible).
     """
     mid = _mode_token(mode)
-    axes = measured_axes_for(mid)
+    axes = measured_axes_for(mid, profile=profile)
     entries: list[dict] = []
     for alias, item in _aliased(items):
         read: dict[str, int] = {}
@@ -203,7 +207,7 @@ def _request_from_vector(vector: dict) -> dict:
     }
 
 
-def build_rank_request(items, *, mode: str, domain: str = "algorithms") -> dict:
+def build_rank_request(items, *, mode: str, domain: str = "algorithms", profile=None) -> dict:
     """OpenAI-compatible rank request for Jev (text-only, measured vector).
 
     A chat/completions body: ``model = JEV_MODEL``, ONE system message carrying
@@ -214,8 +218,12 @@ def build_rank_request(items, *, mode: str, domain: str = "algorithms") -> dict:
     the contract pin the reply shape: without the contract the live router's chat
     model answered a narrative object with no ranking, so every call degraded as
     unusable (probe 2026-10-15); the parser still tolerates key/shape variance.
+    ``profile`` (plan P1) forwards the salience-derived axis subset; ``None``
+    keeps the mode mapping.
     """
-    return _request_from_vector(build_measured_vector(items, mode=mode, domain=domain))
+    return _request_from_vector(
+        build_measured_vector(items, mode=mode, domain=domain, profile=profile)
+    )
 
 
 def _normalize_alias(value: Any, aliases: dict[str, str]) -> str | None:
@@ -436,7 +444,7 @@ def _pin(cache_obj, key: str, ranks: dict[str, int] | None, reason: str | None) 
 
 
 def rank_series_jev_detailed(
-    items, *, mode: str, client: RankClient, cache=None, domain: str = "algorithms"
+    items, *, mode: str, client: RankClient, cache=None, domain: str = "algorithms", profile=None
 ) -> JevRankOutcome:
     """Jev-rank one series, returning the full :class:`JevRankOutcome`.
 
@@ -450,13 +458,14 @@ def rank_series_jev_detailed(
     least two members carry a non-empty applicable MEASURED vector**. A vector
     with fewer scored aliases degrades with :data:`JEV_REASON_EMPTY` and is
     **NOT pinned** — pinning a non-answer that arose from missing inputs would
-    poison the cache and hide a later, complete run. Never raises.
+    poison the cache and hide a later, complete run. ``profile`` (plan P1)
+    selects the axes of that vector; ``None`` keeps the mode mapping. Never raises.
     """
     member_list = list(items or ())
     if len(member_list) < 2:
         return JevRankOutcome(None, reason=JEV_REASON_EMPTY)
     try:
-        vector = build_measured_vector(member_list, mode=mode, domain=domain)
+        vector = build_measured_vector(member_list, mode=mode, domain=domain, profile=profile)
     except Exception:
         logger.debug("jev rank vector build failed", exc_info=True)
         return JevRankOutcome(None, reason=JEV_REASON_MALFORMED)
@@ -516,16 +525,19 @@ def rank_series_jev_detailed(
 
 
 def rank_series_jev(
-    items, *, mode: str, client: RankClient, cache=None, domain: str = "algorithms"
+    items, *, mode: str, client: RankClient, cache=None, domain: str = "algorithms", profile=None
 ) -> dict[str, int] | None:
     """``path -> rank 1..N`` from Jev, or ``None`` when it must degrade.
 
     ``None`` covers every non-decisive case (empty series, ``Noul``, confidence
     below :data:`JEV_MIN_CONFIDENCE`, HTTP error, malformed body) — the caller
     then keeps the Algorithms (fusion) rank and surfaces the reason from
-    :func:`rank_series_jev_detailed`. Never raises.
+    :func:`rank_series_jev_detailed`. ``profile`` (plan P1) forwards the
+    selected axis subset. Never raises.
     """
-    return rank_series_jev_detailed(items, mode=mode, client=client, cache=cache, domain=domain).ranks
+    return rank_series_jev_detailed(
+        items, mode=mode, client=client, cache=cache, domain=domain, profile=profile
+    ).ranks
 
 
 def make_client(base_url: str, api_key: str) -> RankClient:

@@ -39,6 +39,7 @@ from .drag_source import _gallery_domain
 def _acquire_card(view, item: GalleryItem):
     self = view
     _mode = self._resolve_mode()
+    _profile = self._resolve_profile()
     _domain = _gallery_domain(self)
     want_list = self._view_mode == VIEW_LIST
     updater = update_gallery_list_card if want_list else update_gallery_card
@@ -63,6 +64,7 @@ def _acquire_card(view, item: GalleryItem):
                 mode=_mode,
                 translate=self._activity_translate,
                 domain=_domain,
+                profile=_profile,
             )
         except Exception:
             pass
@@ -83,6 +85,7 @@ def _acquire_card(view, item: GalleryItem):
             on_activate=self._handle_toggle,
             on_context_menu=self._handle_context_menu,
             mode=_mode,
+            profile=_profile,
             translate=self._activity_translate,
             domain=_domain,
         )
@@ -93,6 +96,7 @@ def _acquire_card(view, item: GalleryItem):
             on_activate=self._handle_toggle,
             on_context_menu=self._handle_context_menu,
             mode=_mode,
+            profile=_profile,
             translate=self._activity_translate,
             domain=_domain,
         )

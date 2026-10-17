@@ -279,6 +279,15 @@ def _commit_triage_series(owner, series, source, mode):
     setattr(owner.state, "source_path", source)
     setattr(owner.state, "mode", mode)
     setattr(owner.state, "triage_state", TriageState.DONE)
+    # P1: the mode was just (re)decided — refresh the metric profile so the
+    # fusion rank below reads the same axis set. At triage time the metrics are
+    # usually not there yet; the metrics-settled boundary picks up the salience.
+    refresh = getattr(owner, "refresh_metric_profile", None)
+    if callable(refresh):
+        try:
+            refresh()
+        except Exception:
+            logger.debug("metric profile refresh failed", exc_info=True)
     # Algorithms rank: measured metric fusion over each series (never the
     # old centroid order). Single choke point for both the worker and the
     # inline fast path.

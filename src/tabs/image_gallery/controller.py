@@ -422,6 +422,63 @@ class GalleryController:
 
         _gallery_slot._sync_from_slot(self)
 
+    def refresh_metric_profile(self) -> object:
+        """Derive the metric profile from the live state and store it (plan P1).
+
+        The **producer** half of the profile seam: derived from ``self.state``
+        (mode + the folder's measured metrics) via the pure
+        ``use_cases.profile_select.derive_for_state``, then stored on the state
+        so the rank fusion and the Jev measured vector read ONE axis set. Called
+        at every site where ``state.mode`` is (re)decided and at the
+        metrics-settled boundary — the metrics are the salience input, so the
+        content-aware axes cannot be derived before they exist. Returns the
+        stored profile. Never raises: a derivation failure keeps the previous
+        value (or ``None``), so consumers fall back to the mode mapping
+        (fail-open, plan §Fallback).
+        """
+        try:
+            from tabs.image_gallery.use_cases.profile_select import (
+                derive_for_state,
+                describe,
+            )
+
+            profile = derive_for_state(self.state)
+            try:
+                previous = getattr(self.state, "metric_profile", None)
+            except Exception:
+                previous = None
+            # Store the raw derived profile verbatim (a successful derivation
+            # is always a usable ``MetricProfile``, even with no salience).
+            self.state.metric_profile = profile
+            if profile != previous:
+                logger.debug("[gallery] metric profile: %s", describe(self.state))
+            return profile
+        except Exception:
+            logger.debug("metric profile refresh failed", exc_info=True)
+            try:
+                return getattr(self.state, "metric_profile", None)
+            except Exception:
+                return None
+
+    def clear_metric_profile(self) -> None:
+        """Invalidate the stored metric profile (folder changed — plan P1).
+
+        Consumers fall back to the mode mapping (``profile_select.active_profile``)
+        until the next ``refresh_metric_profile`` derivation. Never raises.
+        """
+        try:
+            from tabs.image_gallery.use_cases.profile_select import describe
+
+            try:
+                previous = getattr(self.state, "metric_profile", None)
+            except Exception:
+                previous = None
+            self.state.metric_profile = None
+            if previous is not None:
+                logger.debug("[gallery] metric profile: %s", describe(self.state))
+        except Exception:
+            logger.debug("metric profile clear failed", exc_info=True)
+
     def _apply_fusion_ranks(self, series, *, mode=None) -> None:
         """(Re)derive every series rank from the measured metric fusion.
 
@@ -482,7 +539,14 @@ class GalleryController:
             for m in members:
                 ranked_ids.add(id(m))
             try:
-                ranks = _rank(members, mode=mode)
+                # The STORED metric profile (plan P1) selects the axes — the
+                # same set the dots, the prompt and the Jev vector read. Without
+                # one this is the mode mapping (fail-open).
+                ranks = _rank(
+                    members,
+                    mode=mode,
+                    profile=getattr(self.state, "metric_profile", None),
+                )
             except Exception:
                 ranks = {}
 
@@ -806,7 +870,10 @@ class GalleryController:
             # an axis Jev cannot score (or a non-applicable axis for this mode)
             # must not earn a call, and a <2-scored series would only abstain.
             vector = GalleryController._jev_measured_vector(
-                members, mode, str(getattr(self, "_judgment_domain", "algorithms"))
+                members,
+                mode,
+                str(getattr(self, "_judgment_domain", "algorithms")),
+                profile=getattr(self.state, "metric_profile", None),
             )
             if GalleryController._jev_scored_count(vector) < 2:
                 no_metrics += 1
@@ -841,16 +908,19 @@ class GalleryController:
     # -- Jev batch plumbing (S2/J1) -----------------------------------------
 
     @staticmethod
-    def _jev_measured_vector(members, mode, domain: str = "algorithms") -> dict:
-        """Applicable scoring vector for *members* (per-mode axes only).
+    def _jev_measured_vector(members, mode, domain: str = "algorithms", *, profile=None) -> dict:
+        """Applicable scoring vector for *members* (profile's axes).
 
         *domain* picks the read: the AI domain's VLM scorecard or the Algorithms
         domain's local detectors (plan-gallery-ai-backend-owns-quality).
+        *profile* (plan P1) selects the axes; ``None`` keeps the mode mapping.
         """
         try:
             from tabs.image_gallery.services.jev_client import build_measured_vector
 
-            return build_measured_vector(members, mode=mode, domain=domain)
+            return build_measured_vector(
+                members, mode=mode, domain=domain, profile=profile
+            )
         except Exception:
             logger.debug("jev measured vector build failed", exc_info=True)
             return {"mode": "", "items": []}
@@ -1065,6 +1135,10 @@ class GalleryController:
             return
 
         mode = getattr(self.state, "mode", None)
+        # Snapshot the stored metric profile (plan P1) on the UI thread — the
+        # worker closure must read the axis set that was live when the rank was
+        # queued, not whatever a later state replacement left behind.
+        profile = getattr(self.state, "metric_profile", None)
         _ai_debug(
             "jev rank scheduled: series items=%d mode=%s",
             len(members), getattr(mode, "value", mode),
@@ -1088,12 +1162,14 @@ class GalleryController:
             )
 
             client = make_client(base_url, api_key)
-            # The AI domain ranks from the VLM scorecard (durable authority).
+            # The AI domain ranks from the VLM scorecard (durable authority);
+            # the stored metric profile (P1) selects the axes it scores on.
             return rank_series_jev_detailed(
                 snapshot,
                 mode=mode,
                 client=client,
                 domain=str(getattr(self, "_judgment_domain", "algorithms")),
+                profile=profile,
             )
 
         worker = GenericWorker(_job)
