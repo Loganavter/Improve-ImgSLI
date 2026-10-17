@@ -117,6 +117,30 @@ failure the server pauses re-attaching for a couple of seconds so a dead socket
 is not retried on every call. The app refuses connections from another uid (its
 own `SO_PEERCRED` check); this client only has to degrade cleanly.
 
+### Mutation contract: reads retry once, edits never
+
+The control transport is local, so this is honest labelling more than
+resilience — but it is what stops an agent from double-applying an edit:
+
+- **Reads retry exactly once** when the wire times out (`list_actions`,
+  `list_sessions`, `get_state`, `read_log`, `query_trace`, `dump_ui_layout`,
+  `list_surfaces`, `ui_elements`); a second timeout falls back like any other
+  transport failure.
+- **Mutations never auto-retry** (`open_tab`, `run_action`, `open_folder`,
+  `set_theme`, `set_language`, `capture_surface`, `press_keys`, `ui_click`,
+  `ui_hover`, `ui_focus`). A retry could double-apply the edit.
+- **The two failure kinds stay distinguishable in the message text**: a
+  transport failure *before* the request left the process says **"not sent"**
+  (connect/write); one *after* the request was written says **"sent, no
+  reply"** (read timeout, EOF, read error).
+- **A mutating tool's timeout says the operation may have completed.** When a
+  live edit was already on the wire and the deadline expired, the server does
+  *not* fall back to a fresh process (that would risk applying the edit twice);
+  it answers `isError` with the wire message plus "the operation may have
+  completed", and the hint tells the caller to re-read state rather than retry.
+  `list_actions` rows carry `enabled` + `reason` for exactly this: plan around a
+  precondition instead of failing into it.
+
 ### Flatpak-installed app (P0)
 
 A host-side `mcp-server/app/server.py` **cannot attach to the app installed as a
@@ -245,10 +269,63 @@ live QRhi/GL canvas is not capturable headlessly (see
   no instance they answer an honest error — no throwaway app is booted to fake a
   target.
 
+### Refusals (no silent truncation)
+
+Every refusal below is a named, actionable answer — never a truncated or
+fabricated result:
+
+| Refused | Enforced by | Answer |
+|---|---|---|
+| unknown MCP method | this server (`protocol.py`) | JSON-RPC `-32601` |
+| request line over the 1 MiB cap | this server (stdio) | JSON-RPC `-32600` "request line exceeds the … byte cap" |
+| unknown control-channel method | live app | `ok: false` + hint, connection survives |
+| foreign uid | live app (`SO_PEERCRED`, before reading a byte) | connection closed → the call falls back |
+| non-live `press_keys` / `ui_elements` / `ui_click` / `ui_hover` / `ui_focus` | this server | `isError` "needs a running app" (never a throwaway app faking a target) |
+| unknown action id / tab / state path | this server (fallback) | `isError` + close-match suggestions |
+| unknown surface | live app (`capture_live`) or this server (`capture_surface` fallback) | `isError` "unknown surface" + `list_surfaces` hint |
+| surface known but not open in the live app | live app | `isError` "surface … is not open in the live app" |
+| more than 32 key combos in one `press_keys` | live app | `ok: false` "too many key combos" |
+
+### Annotation audit (2026-10-17)
+
+The `annotations` hints were checked against what each handler actually does,
+because that is what lets a client auto-approve reads:
+
+- **Read-only tools really read.** All eight (`list_actions`, `list_sessions`,
+  `get_state`, `read_log`, `query_trace`, `dump_ui_layout`, `list_surfaces`,
+  `ui_elements`) carry `readOnlyHint: true, destructiveHint: false` and touch no
+  app state — `ui_elements` only *inventories* the live window. Reads may retry
+  once (above); none mutate.
+- **Mutating tools are honestly marked.** All ten carry `readOnlyHint: false`.
+  `run_action` alone advertises `destructiveHint: true` (it can run any
+  registered action, including `platform.quit_app`). `press_keys` and `ui_click`
+  are `destructiveHint: false` but `idempotentHint: false` (repeating the same
+  combo/click is not a no-op — focus and state move). `ui_hover`/`ui_focus`
+  settle to the same state, so they keep `idempotentHint: true`.
+  `open_tab`/`open_folder`/`set_theme`/`set_language`/`capture_surface` are
+  non-destructive and idempotent.
+- `openWorldHint: false` on every tool (the app is local). **Result: no
+  annotation was found to over- or under-state what its tool does.** The test
+  suite pins the classification (`test_read_and_write_tools_do_not_mix_annotations`,
+  `test_element_tool_annotations_are_audited`).
+
 The live channel is the in-app control server: a unix socket in the control dir
 (env-gated, no TCP), refusing connections from other uids. Reads and mutations
 on a live instance are the same tools — the answering path is visible in every
 result as `source`.
+
+## Known limitations
+
+- **`ui_click {button: right}` hides the menu it just opened (P1 tool defect,
+  recorded 2026-10-17).** A right-click by element id delivers the mouse button
+  event *and* an extra `QContextMenuEvent`. The app's menu manager treats that
+  second event as the "click that opened me", which consumes its open-click
+  grace window, so the context menu collapses ~150 ms after opening. The click
+  itself reaches the handler; only the visible menu life is wrong. **Not fixed
+  here** — the fix belongs to the gallery / control-element lane (the same
+  surface as the collapsed-card-menu bug).
+- The live QRhi/GL canvas is not capturable headlessly — see
+  [SCREENSHOTS.md](SCREENSHOTS.md) §Known limitation.
 
 ## The `mcp` SDK
 

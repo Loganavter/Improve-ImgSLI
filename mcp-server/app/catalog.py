@@ -154,11 +154,11 @@ TOOLS: list[dict] = [
         "title": "List Find Action catalog",
         "description": (
             "List the app's registered Find Actions (id, label, owner tab, "
-            "shortcut). Use it to discover exact action ids before run_action, "
-            "or to check what a tab offers. Answers from the live instance when "
-            "one is attached; otherwise it boots a headless snapshot (a few "
-            "seconds). Do NOT use it to run anything, and do NOT invent ids — "
-            "only ids returned here are accepted by run_action."
+            "shortcut, enabled, reason). Use it to discover exact ids before "
+            "run_action, or to check a tab's catalog. Answers from the live "
+            "instance when one is attached; otherwise it boots a headless "
+            "snapshot (a few seconds). Do NOT use it to run anything, and do "
+            "NOT invent ids — only ids returned here are accepted by run_action."
         ),
         "inputSchema": _params(
             {
@@ -183,8 +183,16 @@ TOOLS: list[dict] = [
                             "owner_tab": {"type": ["string", "null"]},
                             "topic": {"type": ["string", "null"]},
                             "shortcut": {"type": ["string", "null"]},
+                            "enabled": {
+                                "type": "boolean",
+                                "description": "Whether the action is runnable right now (false when a precondition is unmet; read reason).",
+                            },
+                            "reason": {
+                                "type": ["string", "null"],
+                                "description": "Why the action is not runnable now, or null when it is.",
+                            },
                         },
-                        ["action_id", "label"],
+                        ["action_id", "label", "enabled", "reason"],
                     )
                 ),
                 "source": _source(),
