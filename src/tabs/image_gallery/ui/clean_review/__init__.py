@@ -783,7 +783,7 @@ class CleanReviewOverlay(TopLevelInWindowOverlay):
             pass
 
     def sizeHint(self) -> QSize:  # noqa: N802
-        # QuickLook idiom (quick_look.py:848): overlay hint = plate floor.
+        # QuickLook idiom (src/tabs/image_gallery/ui/quick_look/overlay_parts/pinning.py:47): overlay hint = plate floor.
         return QSize(scaled_px(REVIEW_CARD_WIDTH_PX), scaled_px(REVIEW_CARD_HEIGHT_PX))
 
     # -- public API ---------------------------------------------------
