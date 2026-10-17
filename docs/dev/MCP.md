@@ -106,13 +106,81 @@ rects are 4-number arrays; `rect` is widget-local and `screen_rect` is
 screen-space (best-effort on Wayland). Mutations with no Phase-1 analogue carry
 `live: true` (there is no fresh `pid` to report).
 
-Staleness and failure are non-events for the caller: a pointer whose pid is dead
-is stale, a socket nobody listens on is "no live instance", and a connection
-the app refuses or closes surfaces as a fallback — never as a user-visible
-error. After a transport failure the server pauses re-attaching for a couple of
-seconds so a dead socket is not retried on every call. The app refuses
-connections from another uid (its own `SO_PEERCRED` check); this client only has
-to degrade cleanly.
+Staleness and failure are non-events for the caller: a pointer whose socket is
+unusable is stale, a socket nobody listens on is "no live instance", and a
+connection the app refuses or closes surfaces as a fallback — never as a
+user-visible error. The pointer's `pid` is only a *hint*: a Flatpak app runs in
+its own PID namespace, so the host's `kill(pid, 0)` can call a live app dead —
+the server probes the socket instead and only declares staleness when nothing
+answers (see [Flatpak sandbox](#flatpak-installed-app-p0)). After a transport
+failure the server pauses re-attaching for a couple of seconds so a dead socket
+is not retried on every call. The app refuses connections from another uid (its
+own `SO_PEERCRED` check); this client only has to degrade cleanly.
+
+### Flatpak-installed app (P0)
+
+A host-side `mcp-server/app/server.py` **cannot attach to the app installed as a
+Flatpak with the current defaults**, and no protocol change fixes that — the
+blocker is the path. Inside the sandbox `$XDG_RUNTIME_DIR` is a private per-app
+tmpfs mounted at the *same string* (`/run/user/1000`, observed as
+`tmpfs[/.flatpak/io.github.Loganavter.Improve-ImgSLI/xdg-run]`, mode 700), so
+host and app write two different `control.sock` files that happen to share a
+name. Unix sockets themselves cross a *granted* path fine in both directions
+(verified: a sandbox-created socket connected from the host, `SO_PEERCRED` uid
+1000 on both sides).
+
+Two things make route **A** work today with no rebuild — `flatpak override
+--user --env=…` on the app, `IMGSLI_MCP_CONTROL_SOCKET` on the server:
+
+```bash
+# app side: keep the channel on and point it at the per-app data dir, whose path
+# and inode are the same on both sides (Flatpak maps ~/.var/app/<id>/data into
+# the sandbox; observed identical inode host vs sandbox).
+flatpak override --user \
+  --env=IMGSLI_CONTROL=1 \
+  --env=IMGSLI_CONTROL_DIR="$HOME/.var/app/io.github.Loganavter.Improve-ImgSLI/data/ImproveImgSLI/run" \
+  io.github.Loganavter.Improve-ImgSLI
+
+# server side: name the socket explicitly (or set this env in the MCP client's
+# `environment` block, next to IMGSLI_REPO_ROOT).
+IMGSLI_MCP_CONTROL_SOCKET="$HOME/.var/app/io.github.Loganavter.Improve-ImgSLI/data/ImproveImgSLI/run/control.sock" \
+  python3 mcp-server/app/server.py
+```
+
+The user restarts the Flatpak app with the channel enabled and sets the server
+env var (or adds it to the MCP client config). No manifest change, no rebuild.
+
+**PID namespace caveat (handled server-side).** The pointer's `pid` is
+sandbox-local: a host `os.kill(pid, 0)` can raise `ProcessLookupError` for a live
+sandboxed app (or `PermissionError` for an alien pid), which would make a
+pid-only staleness check report "no live instance" while the socket is
+connectable. `mcp-server/app/live.py` therefore treats the pid as a hint: a
+pointer is stale only when the pid looks dead **and** a probe connect to the
+socket fails; a socket that answers is used. The app-side
+`src/core/control/discovery.py:stale_pointer_alive()` (startup single-instance
+guard) is still pid-only — a leftover pointer from a crashed sandbox instance
+can still make the next launch refuse, which is why route A wants an explicit
+control dir and remains a documented fallback rather than the default.
+
+Route **B** is the future zero-config end state: grant
+`--filesystem=xdg-run/improve-imgsli:create` in `finish-args`, point the control
+dir at `$XDG_RUNTIME_DIR/improve-imgsli`, and add that path as a discovery
+candidate on both sides. The grant mechanism is verified on an installed app
+(Discord's `xdg-run/pipewire-0` shows the host node at the same path with the
+same inode); the app-created `:create` subdir is **not** verified yet — it needs
+the manifest change and a real build. Route **C** (run the MCP server inside the
+sandbox) is rejected: `build/Flatpak-template/io.github.Loganavter.Improve-ImgSLI.yaml`
+installs `src/` only, so `mcp-server/` is absent from `/app`.
+
+**Re-verify on the next Flatpak build** (recipe; nothing here builds): (1) inside
+the sandbox, `findmnt -T "$XDG_RUNTIME_DIR"` must still show a private per-app
+tmpfs and `$XDG_DATA_HOME`/`~/.var/app/<id>/data` the same inode as the host;
+(2) with route A set, the host must see
+`~/.var/app/io.github.Loganavter.Improve-ImgSLI/data/ImproveImgSLI/run/control.sock`
+and `IMGSLI_MCP_CONTROL_SOCKET=… python3 mcp-server/app/server.py --check` must
+answer; (3) for route B, grant the subdir and confirm a socket the sandbox
+creates at `$XDG_RUNTIME_DIR/improve-imgsli` is present on the host at the same
+string, then a host connect must succeed.
 
 ### Fallback (Phase 1: no live instance)
 
