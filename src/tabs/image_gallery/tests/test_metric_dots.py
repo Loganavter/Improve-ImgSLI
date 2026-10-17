@@ -222,3 +222,44 @@ def test_list_row_has_the_same_metric_dots(qapp) -> None:
     # Right-aligned inside the row's meta region.
     assert all(x < 640 for x in geometry["x_centers"])
     card.deleteLater()
+
+
+def test_dot_to_dot_mouse_move_refreshes_instantly(qtbot) -> None:
+    """Moving dot→dot inside ONE card refreshes the bubble with no re-delay.
+
+    Qt sends no ``Enter`` within a single widget and re-delays the next
+    ``ToolTip`` event, so the per-dot filter refreshes on ``MouseMove`` while
+    the ``PathTooltip`` session is live.
+    """
+    from PySide6.QtCore import QEvent, QPointF, Qt
+    from PySide6.QtGui import QMouseEvent
+    from PySide6.QtWidgets import QWidget
+
+    from sli_ui_toolkit.ui.widgets.atomic.tooltips import PathTooltip
+    from tabs.image_gallery.ui.card.dot_tooltip import _CardDotTooltipFilter
+
+    def _move(x: float, y: float) -> QMouseEvent:
+        return QMouseEvent(
+            QEvent.Type.MouseMove,
+            QPointF(x, y),
+            QPointF(x, y),
+            Qt.MouseButton.NoButton,
+            Qt.MouseButton.NoButton,
+            Qt.KeyboardModifier.NoModifier,
+        )
+
+    w = QWidget()
+    qtbot.addWidget(w)
+    w._gallery_dot_geometry = {  # two dots, two rows
+        "centers": ((100.0, 10.0), (100.0, 24.0)),
+        "pitch": 14.0,
+        "infos": (("Резкость", 68), ("Экспозиция", 74)),
+    }
+    filt = _CardDotTooltipFilter(w)
+    pt = PathTooltip.get_instance()
+    pt._session_until_ms = pt._now_ms() + 5000.0  # a tooltip was just shown
+    assert filt.eventFilter(w, _move(100, 24)) is False  # never swallowed
+    assert filt._shown_text == "Экспозиция: 74%"
+    # Off a dot the cache clears so the next dot re-shows.
+    filt.eventFilter(w, _move(5, 5))
+    assert filt._shown_text is None

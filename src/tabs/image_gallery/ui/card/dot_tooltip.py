@@ -52,6 +52,10 @@ def _local_y(watched, event) -> float | None:
 
 def _global_pos(watched, event):
     try:
+        return event.globalPosition().toPoint()
+    except Exception:
+        pass
+    try:
         return event.globalPos()
     except Exception:
         try:
@@ -147,23 +151,23 @@ def dot_tooltip_text_at(card, x, y=None) -> str | None:
 
 
 class _CardDotTooltipFilter(QObject):
-    """Show the per-dot metric tooltip on ``ToolTip`` events for one card."""
+    """Show the per-dot metric tooltip on ``ToolTip`` / ``MouseMove`` events.
+
+    ``ToolTip`` shows the bubble (``delay_ms=0`` — the widget's own tooltip was
+    suppressed); ``MouseMove`` refreshes it INSTANTLY when the cursor crosses
+    dot-to-dot inside the same card (Qt sends no ``Enter`` within one widget and
+    re-delays the next ``ToolTip`` event), gated on ``PathTooltip``'s live
+    session so a first hover still pays the normal delay.
+    """
 
     def __init__(self, card) -> None:
         super().__init__(card)
         self._card = card
+        self._shown_text: str | None = None
 
-    def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
-        if watched is not self._card:
-            return False
+    def _dot_text_at_event(self, event) -> str:
         try:
-            if event.type() != QEvent.Type.ToolTip:
-                return False
-        except Exception:
-            return False
-        text = ""
-        try:
-            text = (
+            return (
                 dot_tooltip_text_at(
                     self._card,
                     _local_x(self._card, event),
@@ -172,24 +176,60 @@ class _CardDotTooltipFilter(QObject):
                 or ""
             )
         except Exception:
-            text = ""
-        if not text:
-            try:
-                text = str(self._card.toolTip() or "")
-            except Exception:
-                text = ""
-        if not text:
-            return False
-        global_pos = _global_pos(self._card, event)
-        if global_pos is None:
+            return ""
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
+        if watched is not self._card:
             return False
         try:
-            from sli_ui_toolkit.ui.widgets.atomic.tooltips import PathTooltip
-
-            PathTooltip.get_instance().show_tooltip(global_pos, text, delay_ms=0)
+            et = event.type()
         except Exception:
             return False
-        return True
+        if et == QEvent.Type.ToolTip:
+            text = self._dot_text_at_event(event)
+            if not text:
+                try:
+                    text = str(self._card.toolTip() or "")
+                except Exception:
+                    text = ""
+            if not text:
+                return False
+            global_pos = _global_pos(self._card, event)
+            if global_pos is None:
+                return False
+            try:
+                from sli_ui_toolkit.ui.widgets.atomic.tooltips import PathTooltip
+
+                PathTooltip.get_instance().show_tooltip(global_pos, text, delay_ms=0)
+            except Exception:
+                return False
+            self._shown_text = text
+            return True
+        if et == QEvent.Type.MouseMove:
+            text = self._dot_text_at_event(event)
+            if not text:
+                self._shown_text = None
+                return False
+            if text == self._shown_text:
+                return False
+            try:
+                from sli_ui_toolkit.ui.widgets.atomic.tooltips import PathTooltip
+
+                pt = PathTooltip.get_instance()
+            except Exception:
+                return False
+            if not pt.session_active():
+                return False
+            global_pos = _global_pos(self._card, event)
+            if global_pos is None:
+                return False
+            try:
+                pt.show_tooltip(global_pos, text, delay_ms=0)
+            except Exception:
+                return False
+            self._shown_text = text
+            return False
+        return False
 
 
 def ensure_dot_tooltip(card) -> None:
@@ -199,6 +239,12 @@ def ensure_dot_tooltip(card) -> None:
             return
         filt = _CardDotTooltipFilter(card)
         card.installEventFilter(filt)
+        # MouseMove refreshes a dot-to-dot move instantly (no cross-widget Enter
+        # inside one card); tracking is required for MouseMove delivery.
+        try:
+            card.setMouseTracking(True)
+        except Exception:
+            pass
         card._gallery_dot_tooltip_installed = True  # type: ignore[attr-defined]
         card._gallery_dot_tooltip_filter = filt  # type: ignore[attr-defined]
         # The app-wide bubble interceptor would consume the ToolTip event
