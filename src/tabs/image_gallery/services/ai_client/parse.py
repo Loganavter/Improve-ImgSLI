@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 
 from tabs.image_gallery.models import AiAnalysisResult
 
-from .errors import AiResponseError
+from .errors import AiResponseError, AiTruncatedError
 from .prompt import _ai_debug, _ai_snippet
 
 
@@ -307,6 +307,8 @@ def parse_response(raw: dict, *, model: str) -> AiAnalysisResult:
             type(content).__name__,
             _finish_of(raw),
         )
+        if _finish_of(raw) == "length":
+            raise AiTruncatedError("answer cut off at max_tokens (empty content)")
         raise AiResponseError("empty response content")
 
     obj = _extract_json(content)
@@ -330,6 +332,11 @@ def parse_response(raw: dict, *, model: str) -> AiAnalysisResult:
             _finish_of(raw),
             _ai_snippet(content),
         )
+        if _finish_of(raw) == "length":
+            raise AiTruncatedError(
+                "model answer cut off at max_tokens — raise the reasoning "
+                "effort/budget (finish_reason=length)"
+            )
         raise AiResponseError("model did not return the required JSON object")
 
     # Open per-axis scorecard (new prompt) with the legacy named fields merged

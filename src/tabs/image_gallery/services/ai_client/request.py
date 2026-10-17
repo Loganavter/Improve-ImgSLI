@@ -28,6 +28,37 @@ DEFAULT_FALLBACK_MODELS: tuple[str, ...] = (
     "openai/gpt-6-luna",
 )
 
+#: Floor for one scorecard answer: the prompt asks for a per-axis scorecard +
+#: reason + defects, so it needs more than a one-line tie-break answer. The
+#: shared estimator (``ask_router.estimate_ask_max_tokens``) adds the reasoning
+#: headroom for the chosen effort; this floor keeps the old 900-token budget
+#: from regressing while the effort is capped.
+_ANALYZE_MIN_TOKENS = 1024
+
+
+def _resolve_effort(effort: str) -> str:
+    """Normalize the configured reasoning effort (the shared Ask-AI rule)."""
+    try:
+        from tabs.image_gallery.services.ask_router import resolve_reasoning_effort
+
+        return resolve_reasoning_effort(effort)
+    except Exception:
+        return "low"
+
+
+def _analyze_budget(effort: str, configured: int) -> int:
+    """Answer-token budget for one scorecard call (shared Ask-AI estimator)."""
+    try:
+        from tabs.image_gallery.services.ask_router import estimate_ask_max_tokens
+
+        budget = int(
+            estimate_ask_max_tokens({"count": 1}, configured=configured, effort=effort)
+        )
+    except Exception:
+        budget = 0
+    return max(_ANALYZE_MIN_TOKENS, budget)
+
+
 def build_request(
     image_path: Path,
     *,
@@ -37,6 +68,8 @@ def build_request(
     metrics: dict | None = None,
     openrouter: bool = False,
     fallback_models: tuple[str, ...] | None = None,
+    reasoning_effort: str = "auto",
+    max_tokens: int = 0,
 ) -> dict:
     image_path = Path(image_path)
     mime = _EXT_TO_MIME.get(image_path.suffix.lower(), "png")
@@ -64,6 +97,7 @@ def build_request(
     # Steer the prose fields (verdict reason / defect notes) into the current
     # UI language; the JSON envelope itself is unchanged.
     text = f"{text}\n{language_directive()}"
+    resolved_effort = _resolve_effort(reasoning_effort)
     payload: dict = {
         "model": model,
         "messages": [
@@ -78,7 +112,7 @@ def build_request(
                 ],
             }
         ],
-        "max_tokens": 900,
+        "max_tokens": _analyze_budget(reasoning_effort, max_tokens),
         # Force a JSON object so reasoning models cannot answer in prose.
         "response_format": {"type": "json_object"},
     }
@@ -88,7 +122,7 @@ def build_request(
         # - provider routing: a cheap model's default host can be an overloaded
         #   shared pool (429 upstream_provider_shared_pool, e.g. DeepInfra);
         #   pick a healthy provider that actually supports response_format.
-        payload["reasoning"] = {"exclude": True}
+        payload["reasoning"] = {"effort": resolved_effort, "exclude": True}
         payload["provider"] = {
             "require_parameters": True,
             "sort": "throughput",
@@ -103,7 +137,7 @@ def build_request(
     _ai_debug(
         "build_request model=%s openrouter=%s metrics=%d response_format=json_object "
         "reasoning_exclude=%s provider_routing=%s chain=%s prompt_chars=%d "
-        "image_bytes=%d b64_chars=%d mime=%s",
+        "image_bytes=%d b64_chars=%d mime=%s effort=%s max_tokens=%s",
         model,
         openrouter,
         len(metrics or {}),
@@ -114,5 +148,7 @@ def build_request(
         len(raw_bytes),
         len(data),
         mime,
+        resolved_effort,
+        payload.get("max_tokens"),
     )
     return payload

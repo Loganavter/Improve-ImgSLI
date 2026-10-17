@@ -39,3 +39,12 @@ class AiServerError(AiNetworkError):
 
 class AiResponseError(AiClientError):
     """Malformed/unexpected response body."""
+
+
+class AiTruncatedError(AiResponseError):
+    """The answer was cut off by the token cap (``finish_reason == "length"``).
+
+    A distinct type so the surface can say "the answer was truncated — raise
+    the reasoning budget/effort" instead of the generic "could not parse".
+    Subclasses :class:`AiResponseError` so existing handlers still catch it.
+    """

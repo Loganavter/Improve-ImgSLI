@@ -231,7 +231,7 @@ def test_build_request_forces_json_and_hides_reasoning_on_openrouter(tmp_path):
     img.write_bytes(b"\x00")
     p = build_request(img, model="m", openrouter=True)
     assert p["response_format"] == {"type": "json_object"}
-    assert p["reasoning"] == {"exclude": True}
+    assert p["reasoning"] == {"effort": "low", "exclude": True}
     assert p["provider"]["require_parameters"] is True
     assert p["provider"]["allow_fallbacks"] is True
     # Default fallback chain, primary first, no duplicate.
@@ -428,3 +428,73 @@ def test_transport_trace_logs_finish_usage_and_content(caplog, monkeypatch) -> N
     assert "content_chars=" in caplog.text
     assert "total_tokens" in caplog.text
     assert "body_bytes=" in caplog.text
+
+
+# --- reasoning effort + budget (the recurring truncation fix) --------------
+
+
+def test_build_request_applies_user_reasoning_effort(tmp_path) -> None:
+    """The scorecard request must send the user's effort (auto -> safe floor).
+
+    Regression: the analyze path dropped ``reasoning_effort`` entirely and sent
+    a bare ``{"exclude": True}`` at the model's DEFAULT effort (max for
+    glm-5.3-flash) with a hardcoded 900-token cap — hidden reasoning ate the
+    budget and the JSON was truncated.
+    """
+    from tabs.image_gallery.services.ai_client import build_request
+
+    img = tmp_path / "i.png"
+    img.write_bytes(b"\x00")
+    auto = build_request(img, model="m", openrouter=True)
+    assert auto["reasoning"] == {"effort": "low", "exclude": True}
+    high = build_request(img, model="m", openrouter=True, reasoning_effort="high")
+    assert high["reasoning"]["effort"] == "high"
+    # Budget from the shared estimator, never below the old 900 floor.
+    assert auto["max_tokens"] >= 900
+    assert high["max_tokens"] >= auto["max_tokens"]
+    # An explicit max_tokens override wins.
+    assert build_request(img, model="m", max_tokens=2048)["max_tokens"] == 2048
+    # No reasoning param off OpenRouter (plain OpenAI API).
+    assert "reasoning" not in build_request(img, model="m")
+
+
+def test_parse_truncated_answer_raises_distinct_error() -> None:
+    """finish_reason=length surfaces as AiTruncatedError (still an AiResponseError)."""
+    from tabs.image_gallery.services.ai_client import AiResponseError, AiTruncatedError
+
+    raw = {
+        "choices": [
+            {"finish_reason": "length", "message": {"content": '{"axes": {"sharp'}}
+        ]
+    }
+    with pytest.raises(AiTruncatedError):
+        parse_response(raw, model="m")
+    assert issubclass(AiTruncatedError, AiResponseError)
+
+
+def test_analyze_forwards_reasoning_effort_into_the_request(tmp_path, monkeypatch) -> None:
+    import tabs.image_gallery.services.ai_client as ai_client
+
+    img = tmp_path / "i.png"
+    img.write_bytes(b"\x00")
+    seen: dict = {}
+
+    def _fake_call(base_url, api_key, payload, **kw):
+        seen["payload"] = payload
+        return {
+            "choices": [
+                {"message": {"content": '{"verdict": "keep", "axes": {"sharpness": 80}}'}}
+            ]
+        }
+
+    monkeypatch.setattr(ai_client, "call_sync", _fake_call)
+    ai_client.analyze_image_sync(
+        img,
+        base_url="https://openrouter.ai/api/v1",
+        api_key="k",
+        model="m",
+        reasoning_effort="high",
+    )
+    assert seen["payload"]["reasoning"] == {"effort": "high", "exclude": True}
+    assert seen["payload"]["max_tokens"] >= 900
+

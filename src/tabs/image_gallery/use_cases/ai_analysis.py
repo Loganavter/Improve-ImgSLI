@@ -39,6 +39,7 @@ from tabs.image_gallery.services.ai_client import (
     AiNetworkError,
     AiRateLimitError,
     AiResponseError,
+    AiTruncatedError,
     analyze_image_sync,
 )
 
@@ -46,6 +47,13 @@ logger = logging.getLogger("ImproveImgSLI")
 
 
 _ERROR_KEYS = {
+    # AiTruncatedError FIRST — it subclasses AiResponseError, and the mapping
+    # loop breaks on the first isinstance match.
+    AiTruncatedError: (
+        "image_gallery.errors.truncated",
+        "The AI answer was cut off at the token limit — raise the reasoning "
+        "effort or answer budget in Settings.",
+    ),
     AiAuthError: ("image_gallery.errors.auth", "Authentication failed — check your API key."),
     AiRateLimitError: ("image_gallery.errors.rate_limit", "Rate limited — try again later."),
     AiNetworkError: ("image_gallery.errors.network", "Network error while contacting the AI API."),
@@ -333,6 +341,7 @@ def _begin_analysis(owner, item: GalleryItem) -> None:
         model=settings.model,
         mode=getattr(owner.state, "mode", None),
         metrics=_metrics,
+        reasoning_effort=str(getattr(settings, "reasoning_effort", "auto") or "auto"),
         on_phase=bridge.phase.emit,
     )
     gen = owner._folder_gen
