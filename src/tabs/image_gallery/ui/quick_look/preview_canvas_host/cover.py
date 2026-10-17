@@ -144,12 +144,35 @@ def _fit_preview_slot(overlay) -> None:
         pass
 
 
-def _cover_pixmap_from_full(overlay, w: int, h: int):
+def _live_view_kwargs(overlay) -> dict:
+    """``zoomed_frame`` kwargs for the canvas's live view (fail-open).
+
+    The canvas is the single owner of the view (``current_view``); the plate
+    must be built through the SAME transform the canvas will present, or a
+    within-series walk — which keeps the zoom — flashes a fit-frame plate
+    before the preserved frame lands. An overlay without a canvas, a foreign
+    double without the accessor, or a raising accessor all yield no kwargs =
+    the historical 1.0 fit (fail-open, backward compatible). Never raises.
+    """
+    try:
+        canvas = getattr(overlay, "_preview_canvas", None)
+        get_view = getattr(canvas, "current_view", None)
+        if not callable(get_view):
+            return {}
+        zoom, pan_x, pan_y = get_view()
+        return {"zoom": float(zoom), "pan_x": float(pan_x), "pan_y": float(pan_y)}
+    except Exception:
+        return {}
+
+
+def _cover_pixmap_from_full(overlay, w: int, h: int, *, zoom=1.0, pan_x=0.0, pan_y=0.0):
     """Canvas-fit plate pixmap from the stashed source (same fit as live).
 
     Uses ``preview_zoom.zoomed_frame`` — the exact fit/crop the GPU canvas
-    uses — so the cover plate and the first GPU frame agree pixel-for-pixel
-    (the old ``scaled(KeepAspectRatio)`` arithmetic was up to 2px off).
+    uses — so the cover plate and the GPU frame agree pixel-for-pixel (the
+    old ``scaled(KeepAspectRatio)`` arithmetic was up to 2px off). The view
+    (zoom/pan, normalized) is passed through verbatim; the defaults are the
+    identity view, so a caller with no known view gets today's behaviour.
     Returns a ``QPixmap`` of exactly ``w`` x ``h`` (transparent letterbox
     margins; the cover's opaque plate shows through) or None. Never raises.
     """
@@ -160,7 +183,9 @@ def _cover_pixmap_from_full(overlay, w: int, h: int):
         from PySide6.QtGui import QImage, QPixmap
         from tabs.image_gallery.ui.quick_look.preview_zoom import zoomed_frame
 
-        frame = zoomed_frame(src.toImage(), int(w), int(h), 1.0)
+        frame = zoomed_frame(
+            src.toImage(), int(w), int(h), float(zoom), float(pan_x), float(pan_y)
+        )
         if frame is None:
             return None
         fw, fh, px = frame
@@ -172,7 +197,11 @@ def _cover_pixmap_from_full(overlay, w: int, h: int):
 
 
 def _fit_cover(overlay) -> None:
-    """Cover == slot frame geometry + canvas-fit plate pixmap (fail-open)."""
+    """Cover == slot frame geometry + canvas-view plate pixmap (fail-open).
+
+    The plate rides the canvas's own live view (``current_view``) so the
+    pre-first-frame raster matches the frame the canvas is about to present.
+    """
     try:
         cover = getattr(overlay, "_preview_cover", None)
         host = getattr(overlay, "_preview_host", None)
@@ -190,7 +219,7 @@ def _fit_cover(overlay) -> None:
             pass
         try:
             if getattr(cover, "_ql_fit_for", None) != (w, h):
-                pm = _host()._cover_pixmap_from_full(overlay, w, h)
+                pm = _host()._cover_pixmap_from_full(overlay, w, h, **_live_view_kwargs(overlay))
                 if pm is not None:
                     cover.setPixmap(pm)
                 cover._ql_fit_for = (w, h)
