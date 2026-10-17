@@ -29,6 +29,33 @@ placement); in-process delivery does **not** require the element to be on
 screen, so a click still reaches its handler even when ``screen_rect`` is
 wrong or off-display.
 
+**Role mapping (toolkit widgets are first-class).** This app's UI is built from
+``sli-ui-toolkit`` widgets, which are plain ``QWidget`` subclasses — not the
+stock patents (``QAbstractButton``, ``QLineEdit``, …) an ``isinstance``-only
+inventory recognises. Roles are therefore duck-typed by class name (and by
+``__module__`` starting with ``sli_ui_toolkit``), with no toolkit import at
+module load:
+
+* ``*Button`` / ``*Switch`` / ``*RadioButton`` / ``*CheckBox`` → ``button``;
+* ``*Slider`` / ``*SpinBox`` / ``*ComboBox`` / ``*LineEdit`` → ``input``;
+* ``*TabItem`` / ``*TabBar`` / ``*TabStrip`` → ``tab``;
+* a ``Button`` (or ``*Card*``) whose nearest ``*GridView`` ancestor makes it a
+  grid cell → ``card`` (the image-gallery card case);
+* ``ContextMenu`` / ``BaseFlyout`` / ``*Flyout`` (a ``flyout_group`` marker
+  also counts) → ``menu``; each row widget inside an **open** toolkit menu →
+  ``menu-row`` with its ``_text`` as label (a stock ``QMenu`` keeps the
+  ``actionGeometry`` row path).
+
+Labels come from the dumper's recipe (``devtools.ui_layout_dump._text_of``,
+which resolves toolkit ``_text``) and fall back to the bound action's resolved
+label when the widget carries no text of its own. Degenerate (zero-width or
+zero-height) widgets are dropped from the inventory; hidden widgets with a real
+rect stay with ``visible=false``.
+
+**Scope.** ``scope`` is a **tab id**: elements are filtered to the subtree of
+``TabRegistry().get_page(scope)``. A scope that is not an open tab returns an
+empty list (never an error).
+
 GUI thread only: every function here touches live widgets and must run where
 they live (the control server dispatches on the GUI thread). No threads.
 """

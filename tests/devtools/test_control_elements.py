@@ -26,11 +26,13 @@ Runs offscreen only — no Xvfb (the supervisor runs the live proof).
 from __future__ import annotations
 
 import time
+from pathlib import Path
 
 import pytest
 
 from PySide6.QtCore import QPoint, Qt, QTimer
 from PySide6.QtWidgets import QApplication, QMenu, QPushButton, QVBoxLayout, QWidget
+from sli_ui_toolkit.widgets import Button, ContextMenu, ContextMenuAction, Slider
 
 from core.actions.types import ActionDescriptor, ActionTarget
 from core.control import elements
@@ -338,3 +340,221 @@ def test_hover_and_focus_reach_the_resolved_widget(tmp_path):
         assert app.focusWidget() is button, "focusWidget identity"
     finally:
         window.close()
+
+
+# -- toolkit widgets are first-class ------------------------------------------
+
+
+def test_toolkit_button_and_slider_are_inventoried_and_zero_area_is_skipped(tmp_path):
+    """Real sli-ui-toolkit widgets (not stock-Qt stand-ins) must be seen.
+
+    The live app's UI is toolkit ``QWidget`` subclasses, invisible to an
+    ``isinstance``-only inventory. A hidden, zero-height slider (the live noise
+    rows ``[0,0,160,0]``) must not pollute the default inventory.
+    """
+    app = _qapp()
+    window = QWidget()
+    window.setObjectName("ToolkitWindow")
+    layout = QVBoxLayout(window)
+    button = Button(text="Toolkit Go", parent=window)
+    layout.addWidget(button)
+    slider = Slider(parent=window)
+    layout.addWidget(slider)
+    ghost = Slider(parent=window)
+    ghost.setGeometry(0, 0, 160, 0)
+    ghost.hide()
+    window.resize(320, 240)
+    window.show()
+    _pump(app, 0.05)
+
+    handlers = _handlers(window, _registry(), tmp_path)
+    try:
+        payload = handlers.ui_elements({})
+
+        row = _find(payload, label="Toolkit Go")
+        assert row["role"] == "button", "toolkit Button is first-class"
+        assert row["rect"][2] > 0 and row["rect"][3] > 0
+        assert row["visible"] is True
+
+        inputs = [e for e in payload["elements"] if e["role"] == "input"]
+        assert len(inputs) == 1, "the live slider is an input"
+        assert inputs[0]["rect"][2] > 0 and inputs[0]["rect"][3] > 0
+
+        assert all(
+            e["rect"][2] > 0 and e["rect"][3] > 0 for e in payload["elements"]
+        ), "zero-area widgets (hidden sliders) are dropped"
+    finally:
+        window.close()
+
+
+def test_toolkit_button_without_text_falls_back_to_action_label(tmp_path):
+    """An icon-only toolkit button reports its action caption, not ``Button``."""
+    app = _qapp()
+    window = QWidget()
+    window.setObjectName("IconButtonWindow")
+    layout = QVBoxLayout(window)
+    button = Button(parent=window)  # no caption of its own
+    layout.addWidget(button)
+    window.resize(240, 120)
+    window.show()
+    _pump(app, 0.05)
+
+    registry = _registry(
+        _descriptor("test.icon", target=ActionTarget(widget=button))
+    )
+    handlers = _handlers(window, registry, tmp_path)
+    try:
+        from devtools.app_snapshot import _display
+
+        row = _find(handlers.ui_elements({}), action_id="test.icon")
+        assert row["role"] == "button"
+        assert row["label"] == _display("action.test.icon")
+        assert row["label"] != "Button", "class-name fallback was replaced"
+    finally:
+        window.close()
+
+
+# -- gallery card -------------------------------------------------------------
+
+
+def test_gallery_card_role_and_right_click_reach_the_real_handler(tmp_path):
+    """A real toolkit card inside ``GalleryGridView`` is a ``card`` element.
+
+    Right-click must reach the app's *own* context-menu opener (the generic
+    toolkit ``rightClicked`` path), proving the click seam without
+    special-casing the gallery in ``core/control``.
+    """
+    app = _qapp()
+    from tabs.image_gallery.models import GalleryItem
+    from tabs.image_gallery.ui.grid_view import GalleryGridView
+
+    grid = GalleryGridView()
+    grid.setObjectName("TestGalleryGrid")
+    grid.resize(720, 380)
+    grid.show()
+    items = [
+        GalleryItem(path=Path(f"/gallery/card_{index}.png"), mtime_ns=index)
+        for index in range(2)
+    ]
+    grid.rebuild_grid(items)
+    _pump(app, 0.08)
+
+    opened: list[Path] = []
+    grid._on_context_menu = lambda path: opened.append(path)  # type: ignore[method-assign]
+    handlers = _handlers(grid, _registry(), tmp_path)
+    try:
+        cards = [
+            e for e in handlers.ui_elements({})["elements"] if e["role"] == "card"
+        ]
+        assert len(cards) >= 2, "gallery cards are inventoried as cards"
+        assert all(c["rect"][2] > 0 and c["rect"][3] > 0 for c in cards)
+
+        result = handlers.ui_click({"id": cards[0]["id"], "button": "right"})
+        assert result["clicked"] is True
+        assert result["target"] == "Button"
+        assert opened, "right-click reached the card's context-menu handler"
+    finally:
+        grid.close()
+        grid.deleteLater()
+
+
+# -- real toolkit context menu ------------------------------------------------
+
+
+def test_open_toolkit_context_menu_rows_are_inventoried_and_clickable(tmp_path):
+    """A toolkit ``ContextMenu`` is a plain child widget — not ``QMenu``.
+
+    While open it and its row Buttons must appear with ``menu``/``menu-row``
+    roles, non-degenerate rects, distinct labels, and a row click must fire the
+    menu's ``actionTriggered`` (the in-window surface the gallery uses).
+    """
+    app = _qapp()
+    window = QWidget()
+    window.setObjectName("ToolkitMenuWindow")
+    QVBoxLayout(window)
+    window.resize(360, 240)
+    window.show()
+    _pump(app, 0.05)
+
+    fired: list[str] = []
+    menu = ContextMenu(
+        window,
+        entries=(
+            ContextMenuAction("alpha", "Alpha"),
+            ContextMenuAction("beta", "Beta"),
+        ),
+        on_triggered=lambda action_id, _data: fired.append(action_id),
+        surface="in_window",
+    )
+    menu.popup_at(window.mapToGlobal(QPoint(20, 20)))
+    _pump(app, 0.1)
+
+    handlers = _handlers(window, _registry(), tmp_path)
+    try:
+        assert menu.isVisible() is True
+        payload = handlers.ui_elements({})
+
+        assert any(
+            e["role"] == "menu" for e in payload["elements"]
+        ), "an open toolkit ContextMenu is discoverable"
+
+        rows = {
+            e["label"]: e
+            for e in payload["elements"]
+            if e["role"] == "menu-row"
+        }
+        assert set(rows) >= {"Alpha", "Beta"}
+        for label in ("Alpha", "Beta"):
+            assert rows[label]["rect"][2] > 0 and rows[label]["rect"][3] > 0
+        assert rows["Alpha"]["id"] != rows["Beta"]["id"]
+
+        handlers.ui_click({"id": rows["Alpha"]["id"]})
+        assert fired == ["alpha"], "clicking a menu row fired actionTriggered"
+    finally:
+        menu.hide()
+        menu.deleteLater()
+        window.close()
+
+
+# -- scope = tab page containment ---------------------------------------------
+
+
+def test_scope_is_tab_page_containment_and_closed_scope_is_empty(tmp_path):
+    """``scope`` filters to the open tab's page subtree; closed → empty, no raise."""
+    app = _qapp()
+    from tabs.registry import TabRegistry
+
+    registry = TabRegistry()
+    page = QWidget()
+    page.setObjectName("ScopePage")
+    page_layout = QVBoxLayout(page)
+    inside = Button(text="inside-scope", parent=page)
+    page_layout.addWidget(inside)
+    page.resize(300, 200)
+    page.show()
+
+    outside_window = QWidget()
+    outside_window.setObjectName("OutsideWindow")
+    outside_layout = QVBoxLayout(outside_window)
+    outside = Button(text="outside-scope", parent=outside_window)
+    outside_layout.addWidget(outside)
+    outside_window.resize(300, 200)
+    outside_window.show()
+    _pump(app, 0.05)
+
+    registry._pages["scope_tab"] = page  # type: ignore[attr-defined]
+    handlers = _handlers(outside_window, _registry(), tmp_path)
+    try:
+        scoped = handlers.ui_elements({"scope": "scope_tab"})
+        labels = [e["label"] for e in scoped["elements"]]
+        assert "inside-scope" in labels, "the page subtree is returned"
+        assert "outside-scope" not in labels, "only the page subtree is returned"
+
+        # A registered-but-closed scope is an honest empty list, not an error.
+        closed = handlers.ui_elements({"scope": "scope_tab_closed"})
+        assert closed["count"] == 0
+        assert closed["elements"] == []
+    finally:
+        registry._pages.pop("scope_tab", None)  # type: ignore[attr-defined]
+        page.close()
+        outside_window.close()

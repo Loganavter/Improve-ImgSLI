@@ -120,6 +120,13 @@ ALLOWED_DEEP_TAB_IMPORTS: dict[str, str] = {
         "shared engine seam); splitting per-tab would defeat the "
         "single-contract purpose"
     ),
+    "tests/devtools/test_control_elements.py": (
+        "host-level control-channel element contract (ui_elements/ui_click); "
+        "the image_gallery card is the real toolkit-widget fixture proving a "
+        "gallery card is inventoried as role 'card' and right-click reaches "
+        "the tab's own context-menu handler — stock-Qt stand-ins cannot "
+        "exercise the toolkit path"
+    ),
 }
 
 
