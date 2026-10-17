@@ -22,11 +22,9 @@ from tabs.image_gallery.ui.list.card import (
     update_gallery_list_card,
 )
 from tabs.image_gallery.ui.list.regions import (
-    _artifacts_text,
     _badges_text,
     _list_meta_rows,
     _list_text_rows,
-    _vlm_text,
 )
 from tabs.image_gallery.widget import ImageGalleryWidget
 
@@ -196,20 +194,6 @@ def test_list_row_texts() -> None:
     stamp_badges([rej])
     assert _badges_text(rej) == "✕"
     assert "R" not in _badges_text(it) and "C" not in _badges_text(crowned)
-    assert _artifacts_text(_items("d.png")[0]) == "…"
-    flagged = _items("e.png")[0]
-    flagged.artifacts = {Artifact.BANDING: Severity.FLAGGED, Artifact.HALO: Severity.FLAGGED}
-    assert _artifacts_text(flagged) == "Artifacts"
-    mild = _items("f.png")[0]
-    mild.artifacts = {Artifact.NOISE_AMPLIFICATION: Severity.MILD}
-    assert _artifacts_text(mild) == "Minor"
-    assert _vlm_text(_items("g.png")[0]) == ""
-    tie = _items("h.png")[0]
-    tie.vlm_tie_pending = True
-    assert _vlm_text(tie) == "tie…"
-    done = _items("i.png")[0]
-    done.vlm_tie_result = "tie"  # type: ignore[assignment]
-    assert _vlm_text(done) == "tie-ok"
 
 
 def _pixmap() -> QPixmap:
@@ -274,14 +258,14 @@ def test_list_title_single_row(qtbot) -> None:
     assert len(card.region("text").rows) == 1
 
 
-def test_list_meta_single_row() -> None:
-    rows = _list_meta_rows(_items("a.png")[0])
-    assert len(rows) == 1 and rows[0].text == "…"
+def test_list_meta_rows_are_empty() -> None:
+    # Artifact/VLM text was removed by product decision: the meta region only
+    # hosts the metric-axis dots (painted by the row overlay painter).
+    assert _list_meta_rows(_items("a.png")[0]) == []
     it = _items("b.png")[0]
     it.artifacts = {Artifact.BLOCKING: Severity.FLAGGED}
     it.vlm_tie_pending = True
-    rows = _list_meta_rows(it)
-    assert len(rows) == 1 and rows[0].text == "Artifacts · tie…"
+    assert _list_meta_rows(it) == []
 
 
 def test_no_chrome_regions_present(qtbot) -> None:

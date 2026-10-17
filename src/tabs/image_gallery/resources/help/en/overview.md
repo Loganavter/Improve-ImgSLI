@@ -28,7 +28,7 @@ After a folder loads, the gallery groups similar images into series — one sect
 
 :::figure{side=block width=100%}
 ![Gallery grid view](../assets/overview_grid.png)
-**Grid** view: the **Open Folder…** toolbar with **Filter** and **Sort by**, then the cards, each with a file name and three quality dots.
+**Grid** view: the **Open Folder…** toolbar with **Filter** and **Sort by**, then the cards, each with a file name and one quality dot per measured metric.
 :::
 
 ### Stats strip and compare {#stats-and-compare}

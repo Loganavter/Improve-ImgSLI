@@ -28,7 +28,7 @@ Depois que uma pasta carrega, a galeria agrupa imagens parecidas em séries — 
 
 :::figure{side=block width=100%}
 ![Grade da galeria](../assets/overview_grid.png)
-Visão **Grid**: a barra com **Open Folder…**, **Filter by tag / description…** e **Sort by**, depois os cartões, cada um com o nome do arquivo e três pontos de qualidade.
+Visão **Grid**: a barra com **Open Folder…**, **Filter by tag / description…** e **Sort by**, depois os cartões, cada um com o nome do arquivo e um ponto de qualidade por métrica medida.
 :::
 
 ### Faixa de estatísticas e comparação {#stats-and-compare}

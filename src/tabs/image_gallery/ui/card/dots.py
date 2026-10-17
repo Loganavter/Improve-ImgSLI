@@ -26,6 +26,17 @@ _ACCENT_FALLBACK_LIGHT = "#0078D4"
 
 _DOTS_TEXT = "● ● ●"
 _DOTS_ROW_GAP = 2  # RowsContent.row_gap default (compact layout)
+#: Dot diameter / center pitch for the metric-axis dots row (grid + list).
+DOT_DIAMETER = 8
+DOT_PITCH = 14
+#: ``metric_scores.score_band`` → the existing severity token trio. ``mid`` is
+#: the current band id (``warn`` kept for forward/backward compatibility).
+_BAND_SEVERITY: dict[str, str] = {
+    "good": "clean",
+    "mid": "mild",
+    "warn": "mild",
+    "bad": "flagged",
+}
 
 
 def _is_dark() -> bool:
@@ -102,39 +113,115 @@ def _accent_color():
     return QColor(_ACCENT_TOKEN_FALLBACK[1] if _is_dark() else _ACCENT_FALLBACK_LIGHT)
 
 
-def _dots_for_item(
-    item: GalleryItem, mode: object = None, domain: object = None
-) -> tuple[str, tuple[object, ...]]:
-    """Stage 2: per-dot three quality dots via artifact severities (design.md:67-83).
+def _neutral_color():
+    """Muted dot for an axis with no score (``gallery.status.neutral``).
 
-    Severities + mode mapping come from the single source of truth
-    (``use_cases/quality.py``); the *domain* picks the read
-    (``services/quality_read``): AI = the VLM's reported defects, Algorithms =
-    the local detector severities. Here only severity→color stays.
-    Each dot color resolves via theme tokens (S2-12): clean→success,
-    mild→warning, flagged→danger (fallback hexes kept for offscreen tests).
-    Returns ``(dot_text, tuple[QColor, QColor, QColor])`` for the dots row.
+    Lower alpha keeps it visually subordinate to measured dots; the tooltip
+    still names the axis (``"<label>: —"``) so the gap reads as a gap.
     """
+    color = _token_color("gallery.status.neutral", "#8a8a8a")
+    try:
+        color.setAlpha(120)
+    except Exception:
+        pass
+    return color
 
-    dot_text = _DOTS_TEXT
 
-    def _color_for_severity(s: str):
-        s = (s or "clean").lower()
-        if s == "flagged":
-            return _severity_color("flagged")
-        if s == "mild":
-            return _severity_color("mild")
-        return _severity_color("clean")
+def _metric_axis_label(axis_id: str, translate=None) -> str:
+    """Localized ``image_gallery.metric.<axis>`` → registry label → id."""
+    default = axis_id
+    try:
+        from tabs.image_gallery.services.metric_scores import spec_for
 
+        spec = spec_for(axis_id)
+        if spec is not None and spec.label:
+            default = spec.label
+    except Exception:
+        pass
+    if callable(translate):
+        try:
+            return str(translate(f"image_gallery.metric.{axis_id}", default))
+        except Exception:
+            pass
+    return default
+
+
+def metric_dots_for_item(
+    item: GalleryItem,
+    mode: object = None,
+    domain: object = None,
+    translate=None,
+) -> tuple[tuple[object, ...], tuple[tuple[str, int | None], ...]]:
+    """Per-metric quality dots: one dot per applicable MEASURED axis.
+
+    Dot count/order = ``rank_fusion.measured_axes_for(mode)`` (registry report
+    order). Per-dot value = the CURRENT domain read
+    (``quality_read.domain_axis_scores``, 0–100; AI scorecard vs local
+    detectors). Color = ``metric_scores.score_band`` mapped onto the existing
+    severity tokens; an unscored axis gets the muted neutral dot.
+
+    Returns ``(colors, infos)`` where ``infos`` is the parallel tuple of
+    ``(localized_label, score | None)`` used by the hover tooltip.
+    """
     try:
         from tabs.image_gallery.services import quality_read as _quality_read
-        from tabs.image_gallery.use_cases import quality as _quality
+        from tabs.image_gallery.services.metric_scores import score_band
+        from tabs.image_gallery.services.rank_fusion import measured_axes_for
 
-        artifacts = _quality.MODE_ARTIFACTS[_quality.normalize_mode(mode)]
-        triplet = tuple(
-            _quality_read.domain_artifact_severity(item, aid, domain=domain)
-            for aid in artifacts
-        )
+        axes = measured_axes_for(mode)
+        scores = _quality_read.domain_axis_scores(item, domain=domain)
     except Exception:
-        triplet = ("clean", "clean", "clean")
-    return dot_text, tuple(_color_for_severity(s) for s in triplet)
+        return (), ()
+    colors: list[object] = []
+    infos: list[tuple[str, int | None]] = []
+    for axis_id in axes:
+        label = _metric_axis_label(str(axis_id), translate)
+        score: int | None = None
+        try:
+            raw_score = scores.get(axis_id)
+            if raw_score is not None:
+                score = int(raw_score)
+        except Exception:
+            score = None
+        if score is None:
+            colors.append(_neutral_color())
+            infos.append((label, None))
+            continue
+        try:
+            band = str(score_band(score)).lower()
+        except Exception:
+            band = "bad"
+        colors.append(_severity_color(_BAND_SEVERITY.get(band, "clean")))
+        infos.append((label, score))
+    return tuple(colors), tuple(infos)
+
+
+def dot_tooltip_text(info: tuple[str, int | None]) -> str:
+    """Hover text for one dot: ``"<label>: <N>%"`` (``—`` when unscored)."""
+    try:
+        label, score = info
+    except Exception:
+        return ""
+    if score is None:
+        return f"{label}: —"
+    try:
+        return f"{label}: {int(score)}%"
+    except Exception:
+        return f"{label}: —"
+
+
+def _dots_for_item(
+    item: GalleryItem,
+    mode: object = None,
+    domain: object = None,
+    translate=None,
+) -> tuple[str, tuple[object, ...]]:
+    """Backward-compatible ``(dot_text, colors)`` over ``metric_dots_for_item``.
+
+    ``_DOTS_TEXT`` is kept for old callers/tests but is no longer authoritative:
+    the actual dot count comes from the measured-axis set.
+    """
+    colors, _infos = metric_dots_for_item(
+        item, mode=mode, domain=domain, translate=translate
+    )
+    return _DOTS_TEXT, colors

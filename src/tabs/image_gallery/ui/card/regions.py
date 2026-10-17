@@ -185,22 +185,15 @@ def _text_rows(
             rows.append(err_row)
     elif err_row is not None:
         rows.append(err_row)
-    # Stage 2: three quality dots — single meta-row space-between (real_design.md:2.4)
-    # Underlying row is kept empty (height only), per-dot colors drawn by overlay_painter at right
-    try:
-        from tabs.image_gallery.ui.card.dots import _dots_for_item
-
-        _dot_text, _dot_colors = _dots_for_item(item, mode=mode)
-        rows.append(
-            ButtonRow(
-                text="",
-                size=10,
-                h_align=Qt.AlignmentFlag.AlignCenter,
-                color=None,  # type: ignore[arg-type]
-            )
+    # Metric-axis dots share the filename line (real_design.md:2.4): the
+    # overlay painter draws them right-aligned, this empty row only reserves
+    # the line height (colors/values are computed by ``ui/card.py``).
+    rows.append(
+        ButtonRow(
+            text="",
+            size=10,
+            h_align=Qt.AlignmentFlag.AlignCenter,
+            color=None,  # type: ignore[arg-type]
         )
-        # stash for overlay already handled outside
-        _ = _dot_text
-    except Exception:
-        pass
+    )
     return rows
