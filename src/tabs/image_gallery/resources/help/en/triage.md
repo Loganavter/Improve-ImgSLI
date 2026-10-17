@@ -22,6 +22,7 @@ The stats strip (**images · series · redundant**) with **Keep best**, **Clean 
 - **Make best** — marks the selected image as the winner of its series.
 - **Reject** — toggles the rejected flag on the selected images; when all of them are rejected, the label flips to **Unreject**.
 - **Remove from view** — `Space` or `Delete` takes the selected cards out of the grid; the files stay on disk.
+- **Reset metrics cache** — drops the measured metrics and re-runs the pass, so the cards are measured from scratch.
 
 ### Clean review {#clean-review}
 

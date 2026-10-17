@@ -22,6 +22,7 @@ icon: star.svg
 - **Make best** — 把选中的图像标记为其系列的优胜者。
 - **Reject** — 在选中的图像上切换被拒绝标记；当它们全部被拒绝时，标签变为 **Unreject**。
 - **Remove from view** — `Space` 或 `Delete` 把选中的卡片移出网格；文件仍保留在磁盘上。
+- **重置指标缓存** — 清除已测量的指标并重新运行流程，卡片会从头测量。
 
 ### 清理审阅 {#clean-review}
 

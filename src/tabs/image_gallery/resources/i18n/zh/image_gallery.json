@@ -343,6 +343,7 @@
       "ungroup": "取消分组",
       "group": "分组",
       "make_source": "设为源",
+      "reset_metrics_cache": "重置指标缓存",
       "unreadable": "无法读取 — 已排除在筛选之外",
       "tooltip": {
         "keep": "保留",
