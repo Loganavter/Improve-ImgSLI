@@ -678,7 +678,12 @@ def cancel_pending_placements(widget) -> None:
 def arm_pending_placement_input(widget) -> None:
     widget.canvas.setCursor(Qt.CursorShape.DragCopyCursor)
     widget.canvas.installEventFilter(widget)
-    widget.canvas.setFocus(Qt.FocusReason.OtherFocusReason)
+    # FocusReason from the manager (last-input modality), never a literal —
+    # keyboard-navigation guide §7. A drop is mouse-driven, so this resolves
+    # to MouseFocusReason: no keyboard focus ring while placing.
+    from core.navigation import NavigationManager
+
+    widget.canvas.setFocus(NavigationManager.get_instance().current_focus_reason())
 
 
 def canvas_cursor_pos(widget):

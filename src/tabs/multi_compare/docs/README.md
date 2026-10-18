@@ -14,9 +14,11 @@ What works:
 - Drag a slot over another slot or split gap to rearrange the layout.
 - Manual divider resize with Redux-backed split weights.
 - Synchronized zoom and pan for the scene.
-- Focus mode: double-click a cell to view it fullscreen, double-click again or
-  press Escape to return.
-- Keyboard shortcuts: `1`-`9` focus slots, `0` resets zoom, Escape exits focus.
+- Focus mode: click a cell to fill the split view with it; click again or
+  press Escape to return. Double-clicking a divider resets its split
+  weights to equal.
+- Canvas keys: arrows pan, `+`/`-` zoom, `0` resets the view, Escape exits
+  focus (while a cell is focused).
 - QRhi rendering through the tab-owned canvas path.
 - Theme-aware clear/background color.
 - Always-on split dividers as GPU quads (`GridDividersPass`).
