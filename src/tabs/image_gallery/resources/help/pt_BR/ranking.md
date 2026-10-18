@@ -1,29 +1,30 @@
 ---
-description: Os algoritmos classificam pela qualidade medida; o domínio IA adiciona um ranking Jev marcado.
+description: Os algoritmos classificam pela qualidade medida; o interruptor IA adiciona uma classificação marcada.
 icon: algorithms.svg
 ---
 ## Classificação: Algoritmos e IA
 
-Cada série recebe uma classificação — qual imagem é melhor. O interruptor **Algoritmos | IA** na barra de ferramentas decide quem classifica.
+Cada série recebe uma classificação — qual imagem é melhor. O interruptor na barra de ferramentas entre **Algoritmos** e **IA** decide quem classifica.
 
 ### Algoritmos {#algorithms}
 
-O padrão. Funde todas as leituras de qualidade medidas (nitidez, exposição, ruído, cor, correspondência com a fonte e as pontuações perceptuais aprendidas) numa única ordem determinística. As mesmas imagens com as mesmas leituras dão sempre a mesma classificação; os empates são desempatados pelo caminho do arquivo, nunca pela ordem em que a pasta foi carregada.
+O classificador padrão. Ele combina as leituras medidas numa única ordem determinística: as mesmas imagens com as mesmas leituras dão sempre a mesma classificação, e os empates são desempatados pelo caminho do arquivo, nunca pela ordem em que a pasta foi carregada. Quais leituras contam depende da pasta — veja [Métricas de qualidade](help://workspace.image_gallery.quality#modes).
 
-- Uma imagem sem nada medido fica **sem classificação** — sem número, nunca `#0`.
+- Uma imagem sem medições não mostra um número de classificação.
 - A classificação ordena imagens apenas dentro de uma série.
 
-### IA (Jev) {#ai}
+### IA {#ai}
 
-Opcional. No domínio IA, o assistente **Jev** classifica a série a partir da própria leitura de qualidade da IA para cada imagem — as pontuações por eixo que a IA atribui, não as leituras dos detectores. Essa classificação é **marcada** e **não determinística**: a mesma série pode voltar em outra ordem, e o selo indica **IA (Jev)** para você nunca confundi-la com a leitura dos Algoritmos.
+Opcional. Quando **IA** está ligado, a IA classifica a série a partir da própria leitura de qualidade de cada imagem, e não das medições do aplicativo. Essa classificação não é fixa: a mesma série pode voltar em outra ordem, e a faixa de estatísticas mostra **Classificado por IA (Jev)** para você nunca confundi-la com a leitura de **Algoritmos**.
 
-- Ela é armazenada em cache e fixada por série, então uma nova execução é estável até a série mudar.
-- Quando o Jev está indisponível ou indeciso, ele **degrada visivelmente** para a classificação dos Algoritmos, e o motivo é mostrado — a classificação nunca muda de dono em silêncio.
-- **Lotes grandes perguntam antes.** Com o domínio IA ativo, soltar mais de 35 imagens de uma vez mostra um aviso antes do envio — um lote grande pode significar uma conta alta de API. Escolha **Confirmar**, **Confirmar e não perguntar novamente** ou **Cancelar**.
+- A classificação é salva por série, então uma nova execução é estável até a série mudar.
+- Quando a IA está indisponível ou indecisa, a classificação volta a **Algoritmos** com o motivo mostrado, então a classificação nunca muda sem uma causa visível.
 
-### Lendo o selo {#badge}
+### Lendo a classificação {#badge}
 
-O selo de classificação indica o classificador: **Algoritmos**, **IA (Jev)** ou **Manual** quando você mesmo escolhe o vencedor com **Manter melhor** / **Tornar melhor**. Uma imagem sem classificação não mostra número.
+- Um cartão mostra seu número de classificação; a vencedora de uma série mostra **★ BEST** no lugar de um número.
+- A faixa de estatísticas mostra qual classificador produziu os números: **Classificado por Algoritmos**, **Classificado por IA (Jev)** ou **Classificado por Manual** quando você escolhe o vencedor com **Manter o melhor** / **Marcar como melhor**.
+- Uma imagem sem classificação não mostra número.
 
 ### Próximos tópicos {#next-topics}
 
