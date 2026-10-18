@@ -11,18 +11,58 @@ consumed instead of handing focus to the section registered behind it (the
 workspace tab, in production).
 
 Rows are the dialog's real containers in visual top→bottom order — the
-settings form rows, the export button, the transport toolbar, the timeline
-scroll area — registered when the dialog is shown and dropped when it closes.
+settings form rows, the export tab bar, the *active* export tab's field rows
+(a vertical form: one row per field, so ``↑``/``↓`` step field by field and
+the set changes with the tab), the export button, the transport toolbar, the
+timeline scroll area — registered when the dialog is shown and dropped when
+it closes.
 """
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QEvent, QObject, Qt
 from PySide6.QtWidgets import QWidget
 
 from sli_ui_toolkit.managers import NavigationManager, ToolbarRowsSection
 from sli_ui_toolkit.ui.managers.nav_graph import focus_reason
 
 _ARROWS = (Qt.Key.Key_Up, Qt.Key.Key_Down, Qt.Key.Key_Left, Qt.Key.Key_Right)
+# Activation keys for the export tab bar (Enter/Space): Enter also gets the
+# numeric-pad flavour. The app's tab-strip idiom is cursor + Enter/Space, but
+# the export bar activates immediately on ←/→ (a page change is the visible
+# feedback — a cursor-only mode would have no ring to draw on the bar); these
+# keys therefore only confirm the current tab.
+_TAB_ACTIVATE_KEYS = (Qt.Key.Key_Return, Qt.Key.Key_Enter, Qt.Key.Key_Space)
+
+
+class TabBarKeyClaim(QObject):
+    """Claim the export bar's activation keys at the ``ShortcutOverride`` stage.
+
+    The dialog-level Space play shortcut is resolved by Qt *before* the
+    app-wide ``NavigationManager`` filter sees the ``KeyPress`` (the manager
+    only receives Focus/KeyPress/MousePress, not ShortcutOverride), so the
+    section's ``extra_keys`` alone cannot stop the shortcut from firing on the
+    focused bar. A widget that handles a key bound to a shortcut must accept
+    the override — the tab bar does handle these keys (Enter/Space confirm the
+    current page), so it claims them here; the real ``KeyPress`` is then
+    delivered normally and the nav section consumes it.
+    """
+
+    def eventFilter(self, obj, event) -> bool:  # noqa: ANN001
+        if (
+            event.type() == QEvent.Type.ShortcutOverride
+            and event.key() in _TAB_ACTIVATE_KEYS
+        ):
+            event.accept()
+            return True
+        return False
+
+
+def claim_tab_bar_keys(tab_bar) -> None:
+    """Install the ShortcutOverride claim on *tab_bar* (idempotent)."""
+    if getattr(tab_bar, "_video_editor_key_claim", None) is None:
+        claim = TabBarKeyClaim()
+        tab_bar._video_editor_key_claim = claim  # type: ignore[attr-defined]
+        tab_bar.installEventFilter(claim)
 
 
 class VideoEditorNavSection(ToolbarRowsSection):
@@ -52,26 +92,77 @@ ring inside the dialog (Quick Look's ``↑``→last / ``↓``→first) was
     def modal(self) -> bool:
         return True
 
+    @property
+    def extra_keys(self) -> frozenset[int]:
+        # Left/Right from the base row section (move within a row) plus the
+        # tab-bar activation keys: the export bar has no focusable child of
+        # its own, so the section must opt into Enter/Space to consume them
+        # before the dialog-level Space play shortcut can fire (see
+        # ``navigate``); for every other row the keys are declined and the
+        # press falls through to native handling, unchanged.
+        return frozenset({Qt.Key.Key_Left, Qt.Key.Key_Right, *_TAB_ACTIVATE_KEYS})
+
+    def _activate_neighbor_tab(self, step: int) -> bool:
+        """Move the export bar to the neighbouring tab (no wrap). Consumed at
+        the edge too, so ``←``/``→`` never fall through to a native handler."""
+        tabs = self._dialog.tabs
+        count = tabs.count()
+        target = tabs.currentIndex() + step
+        if 0 <= target < count:
+            tabs.setCurrentIndex(target)
+        return True
+
     def navigate(self, key: int, widget: QWidget) -> bool:  # noqa: ANN001
+        bar = self._dialog.tabs.tab_bar
+        if widget is bar:
+            if key in _TAB_ACTIVATE_KEYS:
+                # The page already is the one the caret is on; Enter/Space
+                # only confirm it. Consume so nothing leaks to the window.
+                return True
+            if key == Qt.Key.Key_Left:
+                return self._activate_neighbor_tab(-1)
+            if key == Qt.Key.Key_Right:
+                return self._activate_neighbor_tab(+1)
+            # Up/Down leave the bar — the inherited row walk.
+            return super().navigate(key, widget)
         if key in _ARROWS and not super().owns(widget):
             # Focus rests on the bare dialog itself (a line edit's Enter
             # cleared it into the window): re-enter the body on any arrow —
             # the modal edge would otherwise consume the press dead.
             return self.focus_first(reason=focus_reason())
-        return super().navigate(key, widget)
+        if super().navigate(key, widget):
+            return True
+        if key in (Qt.Key.Key_Up, Qt.Key.Key_Down):
+            # The export bar is a row with no StrongFocus child, so the
+            # inherited walk (``_focusable`` finds nothing in it) cannot land
+            # focus on it. Focus the bar itself when it is the neighbour in
+            # the pressed direction.
+            rows = self._rows()
+            row = self._row_of(widget)
+            if row is not None:
+                index = rows.index(row)
+                target = index + (1 if key == Qt.Key.Key_Down else -1)
+                if 0 <= target < len(rows) and rows[target] is bar:
+                    bar.setFocus(focus_reason())
+                    return True
+        return False
 
 
 def _nav_rows(dialog) -> list[QWidget]:
-    """The dialog's nav rows in visual top→bottom order."""
-    return [
-        dialog.res_row,
-        dialog.fps_row,
-        dialog.preview_row,
-        dialog.tabs,
-        dialog.export_row,
-        dialog.toolbar_frame,
-        dialog.scroll_area,
-    ]
+    """The dialog's nav rows in visual top→bottom order.
+
+    Dynamic: the export tab bar is one row, and the *active* export tab's
+    field rows follow it (the pages are vertical forms — see the per-tab
+    ``create_*_tab`` builders in ``sections.py``). Changing the tab therefore
+    changes the traversable rows.
+    """
+    rows = [dialog.res_row, dialog.fps_row, dialog.preview_row, dialog.tabs.tab_bar]
+    tab_rows = getattr(dialog, "export_tab_rows", None) or []
+    index = dialog.tabs.currentIndex()
+    if 0 <= index < len(tab_rows):
+        rows.extend(tab_rows[index])
+    rows.extend([dialog.export_row, dialog.toolbar_frame, dialog.scroll_area])
+    return rows
 
 
 def register_navigation(dialog) -> None:

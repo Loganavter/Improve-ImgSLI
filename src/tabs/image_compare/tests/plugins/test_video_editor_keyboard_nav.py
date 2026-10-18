@@ -30,18 +30,20 @@ from PySide6.QtWidgets import QApplication, QWidget
 from sli_ui_toolkit.managers import NavigationManager
 from sli_ui_toolkit.ui.managers import nav_graph
 
-from tabs.image_compare.plugins.video_editor.dialog.nav import VideoEditorNavSection
+from tabs.image_compare.plugins.video_editor.dialog.nav import (
+    VideoEditorNavSection,
+    _nav_rows,
+)
 from tabs.image_compare.plugins.video_editor.dialog.shell import VideoEditorDialog
 
-# The dialog's nav rows in visual top→bottom order (dialog/nav.py).
-_ROW_NAMES = (
-    "res_row",
-    "fps_row",
-    "preview_row",
-    "tabs",
-    "export_row",
-    "toolbar_frame",
-    "scroll_area",
+# The standard export tab's field rows, visual top→bottom.
+_STANDARD_TAB_ROW_NAMES = (
+    "row_export_container",
+    "row_export_codec",
+    "row_export_pixel_format",
+    "row_export_quality_mode",
+    "row_export_quality_value",
+    "row_export_preset",
 )
 
 
@@ -113,12 +115,15 @@ def _press(key: Qt.Key) -> QWidget | None:
     return QApplication.focusWidget()
 
 
-def _row_of(dialog, widget) -> str | None:
-    """The nav row containing *widget* (or None when focus is outside the rows)."""
-    for name in _ROW_NAMES:
-        row = getattr(dialog, name)
+def _row_name(dialog, widget) -> str | None:
+    """The nav row name containing *widget* (None when focus is outside rows).
+
+    Reads the section's own live row list (``_nav_rows``) so the assertions
+    track the dynamic, per-active-tab rows instead of a hand-kept copy.
+    """
+    for row in _nav_rows(dialog):
         if widget is row or row.isAncestorOf(widget):
-            return name
+            return row.objectName() or type(row).__name__
     return None
 
 
@@ -237,17 +242,19 @@ def test_focus_entry_is_timeline_on_show(dialog):
 
 
 def test_up_walks_rows_in_visual_order(dialog):
-    """From the timeline entry, Up crosses the rows bottom→top; the last
-    press is the modal edge — consumed, focus stays on the first row."""
+    """From the timeline entry, Up crosses the rows bottom→top — through the
+    active export tab's field rows — and the last press is the modal edge:
+    consumed, focus stays on the first row."""
     assert QApplication.focusWidget() is dialog.timeline
     seen = []
-    for _ in range(len(_ROW_NAMES)):
+    for _ in range(len(_nav_rows(dialog))):
         _press(Qt.Key.Key_Up)
-        seen.append(_row_of(dialog, QApplication.focusWidget()))
+        seen.append(_row_name(dialog, QApplication.focusWidget()))
     assert seen == [
         "toolbar_frame",
         "export_row",
-        "tabs",
+        *reversed(_STANDARD_TAB_ROW_NAMES),
+        "TopTabBar",
         "preview_row",
         "fps_row",
         "res_row",
@@ -256,22 +263,24 @@ def test_up_walks_rows_in_visual_order(dialog):
 
 
 def test_down_walks_rows_in_visual_order(dialog):
-    """From the first row, Down crosses the rows top→bottom; the last press
-    is the modal edge — consumed, focus stays on the timeline."""
+    """From the first row, Down crosses the rows top→bottom (tab bar then the
+    active export tab's field rows); the last press is the modal edge —
+    consumed, focus stays on the timeline."""
     dialog.edit_width.setFocus(_focus_reason())
     QApplication.processEvents()
     seen = []
-    for _ in range(len(_ROW_NAMES)):
+    for _ in range(len(_nav_rows(dialog))):
         _press(Qt.Key.Key_Down)
-        seen.append(_row_of(dialog, QApplication.focusWidget()))
+        seen.append(_row_name(dialog, QApplication.focusWidget()))
     assert seen == [
         "fps_row",
         "preview_row",
-        "tabs",
+        "TopTabBar",
+        *_STANDARD_TAB_ROW_NAMES,
         "export_row",
         "toolbar_frame",
-        "scroll_area",
-        "scroll_area",
+        "VideoEditorTimelineScrollArea",
+        "VideoEditorTimelineScrollArea",
     ]
 
 
@@ -324,14 +333,17 @@ def test_modal_edge_arrows_stay_inside_dialog(qtbot):
             QApplication.processEvents()
             _press(Qt.Key.Key_Up)
             assert behind_section.grants == []
-            assert _row_of(dialog, QApplication.focusWidget()) == "res_row"
+            assert _row_name(dialog, QApplication.focusWidget()) == "res_row"
 
             # Down from the timeline (last row): consumed at the bottom edge.
             dialog.timeline.setFocus(_focus_reason())
             QApplication.processEvents()
             _press(Qt.Key.Key_Down)
             assert behind_section.grants == []
-            assert _row_of(dialog, QApplication.focusWidget()) == "scroll_area"
+            assert (
+                _row_name(dialog, QApplication.focusWidget())
+                == "VideoEditorTimelineScrollArea"
+            )
         finally:
             if dialog.isVisible():
                 dialog.close()
@@ -407,6 +419,85 @@ def test_line_edit_yields_arrows_at_caret_edge(dialog):
     dialog.edit_width.setCursorPosition(0)
     _press(Qt.Key.Key_Left)
     assert QApplication.focusWidget() is dialog.edit_width
+
+
+# ------------------------------------------------------------------
+# Export tabs — per-field rows + keyboard-reachable tab bar
+# ------------------------------------------------------------------
+
+
+def test_export_tab_fields_walk_in_visual_order(dialog):
+    """The active export tab is a vertical form: ↓ walks its field rows
+    top→bottom (visual order) and ↑ back up, focusing the *fields* (never a
+    bare row container)."""
+    dialog.tabs.tab_bar.setFocus(_focus_reason())
+    QApplication.processEvents()
+    assert QApplication.focusWidget() is dialog.tabs.tab_bar
+
+    _press(Qt.Key.Key_Down)
+    assert QApplication.focusWidget() is dialog.combo_container
+    seen = [_row_name(dialog, QApplication.focusWidget())]
+    for _ in range(len(_STANDARD_TAB_ROW_NAMES) - 1):
+        _press(Qt.Key.Key_Down)
+        seen.append(_row_name(dialog, QApplication.focusWidget()))
+    assert seen == list(_STANDARD_TAB_ROW_NAMES)
+
+    up = []
+    for _ in range(len(_STANDARD_TAB_ROW_NAMES) - 1):
+        _press(Qt.Key.Key_Up)
+        up.append(_row_name(dialog, QApplication.focusWidget()))
+    assert up == list(reversed(_STANDARD_TAB_ROW_NAMES[:-1]))
+    assert QApplication.focusWidget() is dialog.combo_container
+
+
+def test_export_tab_bar_switches_page_and_rows(dialog):
+    """The tab bar itself is reachable: ←/→ activate the neighbouring tab
+    immediately and the traversable rows become the new page's."""
+    dialog.tabs.tab_bar.setFocus(_focus_reason())
+    QApplication.processEvents()
+    assert QApplication.focusWidget() is dialog.tabs.tab_bar
+
+    _press(Qt.Key.Key_Right)
+    assert dialog.tabs.currentIndex() == 1
+    # The ring stays on the bar — entering a page is a ↓ away, not automatic.
+    assert QApplication.focusWidget() is dialog.tabs.tab_bar
+
+    _press(Qt.Key.Key_Down)
+    assert QApplication.focusWidget() is dialog.edit_manual_args
+    assert _row_name(dialog, QApplication.focusWidget()) == "row_export_manual_args"
+
+    _press(Qt.Key.Key_Up)
+    assert QApplication.focusWidget() is dialog.tabs.tab_bar
+    _press(Qt.Key.Key_Left)
+    assert dialog.tabs.currentIndex() == 0
+    _press(Qt.Key.Key_Down)
+    assert QApplication.focusWidget() is dialog.combo_container
+
+    # Third page (Output) too: its rows are the output-path form.
+    _press(Qt.Key.Key_Up)
+    _press(Qt.Key.Key_Right)
+    _press(Qt.Key.Key_Right)
+    assert dialog.tabs.currentIndex() == 2
+    _press(Qt.Key.Key_Down)
+    assert _row_name(dialog, QApplication.focusWidget()) == "row_export_output_dir"
+
+
+def test_export_tab_bar_activation_keys_do_not_leak(dialog):
+    """Enter/Space on the focused bar are consumed by the dialog's section:
+    the page stays put and the dialog-level Space play shortcut never fires."""
+    play_clicks: list[bool] = []
+    dialog.playClicked.connect(lambda checked: play_clicks.append(checked))
+
+    dialog.tabs.tab_bar.setFocus(_focus_reason())
+    QApplication.processEvents()
+    assert QApplication.focusWidget() is dialog.tabs.tab_bar
+
+    index_before = dialog.tabs.currentIndex()
+    for key in (Qt.Key.Key_Space, Qt.Key.Key_Return, Qt.Key.Key_Enter):
+        _press(key)
+        assert dialog.tabs.currentIndex() == index_before
+        assert QApplication.focusWidget() is dialog.tabs.tab_bar
+    assert play_clicks == []
 
 
 # ------------------------------------------------------------------
