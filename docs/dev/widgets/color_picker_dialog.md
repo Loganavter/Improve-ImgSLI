@@ -29,8 +29,21 @@ clicks, `finished` on close.
   HEX → RGB → HSL via the format button (`color_value_format`).
 - RGB(A) `SpinBox` fields, before/after preview chip, recents chip row
   (`RecentColorsRow`).
-- Return/Enter accepts; the dialog keeps API compatibility with the
-  `QColorDialog` subset the callers used.
+- Return/Enter accepts (handled in `keyPressEvent`, not a window shortcut);
+  the dialog keeps API compatibility with the `QColorDialog` subset the
+  callers used.
+
+## Keyboard
+
+The dialog registers one `ToolbarRowsSection` (`tag="color-picker"`) over its
+two rows in visual order: the recents chips row, then the action buttons
+(Cancel / OK). Chips are `StrongFocus` and paint the toolkit focus ring;
+`Enter`/`Space` on a chip applies that colour (the same signal a click
+emits), and `Enter` on OK accepts. `Esc` (or OK / Cancel / close) returns
+focus to the opener — `opener=` when the caller passes it (e.g.
+`ColorSwatch`), otherwise the widget that was focused when the dialog opened.
+The SV square is deliberately mouse-only: it is a 2D pointer surface with no
+row/column model.
 
 ## Inspection
 

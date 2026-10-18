@@ -78,7 +78,14 @@ class ColorSwatch(Button):
             self._dialog.activateWindow()
             return
         parent_window = self.window()
-        dialog = ColorPickerDialog(self._color, parent_window, show_alpha=self._alpha)
+        dialog = ColorPickerDialog(
+            self._color,
+            parent_window,
+            show_alpha=self._alpha,
+            # Return the keyboard here when the picker closes (Esc/OK/Cancel)
+            # instead of leaving focus nowhere — this swatch is the opener.
+            opener=self,
+        )
         dialog.setModal(False)
 
         def on_selected(c: QColor) -> None:
@@ -88,7 +95,6 @@ class ColorSwatch(Button):
 
         def on_finished(_result: int) -> None:
             self._dialog = None
-            self.clearFocus()
 
         dialog.colorSelected.connect(on_selected)
         dialog.finished.connect(on_finished)
