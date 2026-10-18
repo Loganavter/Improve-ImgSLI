@@ -32,6 +32,10 @@ from tabs.image_compare.plugins.video_editor.layout_geometry import (
     VIDEO_EDITOR_TOP_HORIZONTAL_SPACING_PX,
 )
 from tabs.image_compare.plugins.video_editor.dialog.export import VideoEditorDialogExport
+from tabs.image_compare.plugins.video_editor.dialog.nav import (
+    register_navigation,
+    unregister_navigation,
+)
 from tabs.image_compare.plugins.video_editor.dialog.persistence import VideoEditorDialogPersistence
 from tabs.image_compare.plugins.video_editor.dialog.runtime import VideoEditorDialogRuntime
 from tabs.image_compare.plugins.video_editor.dialog.surface_widgets import VideoPreviewSurface
@@ -592,6 +596,11 @@ class VideoEditorDialog(ThemedDialog):
     def showEvent(self, event):
         super().showEvent(event)
 
+        # Register before the first show's focus work — the manager's own
+        # deferred bootstrap then sees focus already inside the section and
+        # skips. Idempotent: re-shows (raise/unminimize) re-register cleanly.
+        register_navigation(self)
+
         if hasattr(self, "timeline"):
             QTimer.singleShot(100, self._fit_timeline_if_alive)
         self._position_stop_export_button()
@@ -606,6 +615,10 @@ class VideoEditorDialog(ThemedDialog):
         self._contribute_find_actions()
 
     def closeEvent(self, event):
+        # Drop the nav section first: no late key may reach a section whose
+        # owner is mid-teardown. Idempotent (the manager's destroyed-hook is
+        # the backstop for WA_DeleteOnClose).
+        unregister_navigation(self)
         self._withdraw_find_actions()
         self.persistence.persist_export_settings()
         # Dialog side of the bidirectional disconnect (A-shell S1): drop
