@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from tabs.image_compare.plugins.video_editor.dialog.nav import claim_tab_bar_keys
 from tabs.image_compare.plugins.video_editor.dialog.surface_widgets import (
     ThemedExportProgressBar,
     VideoEditorToolbar,
@@ -89,6 +90,28 @@ def _wrap_row_container(item: QWidget | QLayout, attr: str) -> QWidget:
         container = QWidget()
         container.setLayout(item)
     container.setObjectName(attr)
+    return container
+
+
+def _wrap_in_place(item: QWidget, attr: str) -> QWidget:
+    """Wrap a control that already sits in its parent's layout in a row
+    container, taking over *item*'s slot in that layout.
+
+    Distinct from :func:`_wrap_row_container`, which requires an unparented
+    item: reparenting *item* into a fresh container removes it from the old
+    layout, so the container is re-inserted at the vacated index — same
+    position, same margins, one nav row instead of a bare control.
+    """
+    parent = item.parentWidget()
+    parent_layout = parent.layout() if parent is not None else None
+    index = parent_layout.indexOf(item) if parent_layout is not None else -1
+    container = QWidget(parent)
+    container.setObjectName(attr)
+    container_layout = QVBoxLayout(container)
+    container_layout.setContentsMargins(0, 0, 0, 0)
+    container_layout.addWidget(item)
+    if parent_layout is not None and index >= 0:
+        parent_layout.insertWidget(index, container)
     return container
 
 def build_settings_panel(dialog):
@@ -327,6 +350,25 @@ def create_export_tabs(dialog):
     tabs.addTab(dialog.tab_log, dialog._tr("video.export_log"))
     EXPORT_TABS.tag_tab_page(tabs, dialog.tab_log, "video.export_log")
 
+    # Keyboard entry to the page stack. The toolkit tab bar's tab buttons are
+    # all NoFocus and the bar has no ``keyPressEvent`` of its own, so without
+    # this the bar is unreachable and the export pages cannot be switched from
+    # the keyboard. The app gives the bar StrongFocus and the dialog's nav
+    # section (dialog/nav.py) handles ←/→ and Enter/Space while the bar is the
+    # focused widget; the bar also claims its activation keys against the
+    # dialog-level Space shortcut (see ``claim_tab_bar_keys``).
+    tabs.tab_bar.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+    claim_tab_bar_keys(tabs.tab_bar)
+    # Per-tab nav rows, in tab order: the dialog nav section exposes ONLY the
+    # active tab's rows (each tab's content is a vertical form — see the
+    # per-tab ``create_*_tab`` builders).
+    dialog.export_tab_rows = [
+        dialog.standard_tab_rows,
+        dialog.manual_tab_rows,
+        dialog.output_tab_rows,
+        dialog.log_tab_rows,
+    ]
+
     dialog.combo_container.currentTextChanged.connect(dialog._on_container_changed)
     dialog.combo_codec.currentTextChanged.connect(dialog._on_codec_changed)
 
@@ -348,6 +390,9 @@ def create_log_tab(dialog) -> QWidget:
 
     dialog.export_log_edit = log_edit
     layout.addWidget(log_edit)
+    # One nav row: the console's own ConsoleView is the StrongFocus child the
+    # ring lands on (the LogConsoleWidget itself is NoFocus by dialog policy).
+    dialog.log_tab_rows = [log_edit]
     return tab
 
 def _wrap_tab_scroll(content: QWidget) -> QWidget:
@@ -412,10 +457,16 @@ def _add_labeled_field_column(
     label: QWidget,
     field: QWidget,
     *,
+    attr: str,
     field_spacing: int = 6,
-) -> None:
-    """Tight label→field pair; stretch pads live *between* these blocks."""
+) -> QWidget:
+    """Tight label→field pair; stretch pads live *between* these blocks.
+
+    Returns the block so it can be exposed as one keyboard-nav row (see
+    ``create_standard_export_tab``); ``attr`` names it for the nav tests.
+    """
     block = QWidget()
+    block.setObjectName(attr)
     _lock_form_block_height(block)
     col = QVBoxLayout(block)
     col.setContentsMargins(0, 0, 0, 0)
@@ -423,6 +474,7 @@ def _add_labeled_field_column(
     col.addWidget(label)
     col.addWidget(field)
     parent_layout.addWidget(block)
+    return block
 
 
 def _sync_quality_stack_page(dialog) -> None:
@@ -443,6 +495,10 @@ def create_standard_export_tab(dialog):
     layout.setContentsMargins(scaled_px(12), scaled_px(16), scaled_px(12), scaled_px(16))
     # Base gap between stacked rows; extra height goes to addStretch slots.
     layout.setSpacing(scaled_px(8))
+    # The fields are one vertical form: each is exposed as its own keyboard-nav
+    # row (in this build order = visual top→bottom), so ↑/↓ step field by field
+    # instead of treating the whole tab as a single row.
+    rows: list[QWidget] = []
 
     dialog.lbl_container = Label(dialog._tr("image_compare.label.container") + ":", variant="group-title")
     dialog.combo_container = ComboBox()
@@ -450,7 +506,14 @@ def create_standard_export_tab(dialog):
         dialog.combo_container.addItem(dialog._tr(container), container)
     dialog.combo_container.setCurrentIndex(max(0, dialog.combo_container.findData("mp4")))
     _expand_form_control(dialog.combo_container)
-    _add_labeled_field_column(layout, dialog.lbl_container, dialog.combo_container)
+    rows.append(
+        _add_labeled_field_column(
+            layout,
+            dialog.lbl_container,
+            dialog.combo_container,
+            attr="row_export_container",
+        )
+    )
 
     layout.addStretch(1)
 
@@ -461,11 +524,19 @@ def create_standard_export_tab(dialog):
             dialog._tr(ExportConfigBuilder.get_codec_display_key(codec)), codec
         )
     _expand_form_control(dialog.combo_codec)
-    _add_labeled_field_column(layout, dialog.lbl_video_codec, dialog.combo_codec)
+    rows.append(
+        _add_labeled_field_column(
+            layout,
+            dialog.lbl_video_codec,
+            dialog.combo_codec,
+            attr="row_export_codec",
+        )
+    )
 
     layout.addStretch(1)
 
     dialog.pix_fmt_container = QWidget()
+    dialog.pix_fmt_container.setObjectName("row_export_pixel_format")
     _lock_form_block_height(dialog.pix_fmt_container)
     pf_layout = QVBoxLayout(dialog.pix_fmt_container)
     pf_layout.setContentsMargins(0, 0, 0, 0)
@@ -479,12 +550,14 @@ def create_standard_export_tab(dialog):
     _expand_form_control(dialog.combo_pix_fmt)
     pf_layout.addWidget(dialog.combo_pix_fmt)
     layout.addWidget(dialog.pix_fmt_container)
+    rows.append(dialog.pix_fmt_container)
 
     layout.addStretch(1)
 
     # Quality mode and CRF/bitrate value are separate stretch-separated
     # sections (same recipe as Container → Codec), not one glued block.
     dialog.quality_controls_container = QWidget()
+    dialog.quality_controls_container.setObjectName("row_export_quality_mode")
     _lock_form_block_height(dialog.quality_controls_container)
     qc_layout = QVBoxLayout(dialog.quality_controls_container)
     qc_layout.setContentsMargins(0, 0, 0, 0)
@@ -501,15 +574,19 @@ def create_standard_export_tab(dialog):
     qc_layout.addWidget(dialog.lbl_quality_control)
     qc_layout.addWidget(dialog.combo_quality_mode)
     layout.addWidget(dialog.quality_controls_container)
+    rows.append(dialog.quality_controls_container)
 
     layout.addStretch(1)
 
     dialog.stack_quality = create_quality_stack(dialog)
+    dialog.stack_quality.setObjectName("row_export_quality_value")
     layout.addWidget(dialog.stack_quality)
+    rows.append(dialog.stack_quality)
 
     layout.addStretch(1)
 
     dialog.preset_container = QWidget()
+    dialog.preset_container.setObjectName("row_export_preset")
     _lock_form_block_height(dialog.preset_container)
     p_layout = QVBoxLayout(dialog.preset_container)
     p_layout.setContentsMargins(0, 0, 0, 0)
@@ -528,6 +605,7 @@ def create_standard_export_tab(dialog):
     p_layout.addWidget(dialog.combo_preset)
 
     layout.addWidget(dialog.preset_container)
+    rows.append(dialog.preset_container)
 
     dialog.combo_quality_mode.currentIndexChanged.connect(
         lambda _index: _sync_quality_stack_page(dialog)
@@ -536,6 +614,7 @@ def create_standard_export_tab(dialog):
 
     layout.addStretch(1)
     _install_no_wheel_filter_recursive(content, dialog._settings_no_wheel_filter)
+    dialog.standard_tab_rows = rows
     return _wrap_tab_scroll(content)
 
 def create_manual_export_tab(dialog):
@@ -562,6 +641,11 @@ def create_manual_export_tab(dialog):
 
     layout.addStretch(1)
     _install_no_wheel_filter_recursive(content, dialog._settings_no_wheel_filter)
+    # The args field is the tab's one focusable control — one nav row. The
+    # hint label above it is not a row (a row must own a StrongFocus child).
+    dialog.manual_tab_rows = [
+        _wrap_in_place(dialog.edit_manual_args, "row_export_manual_args")
+    ]
     return _wrap_tab_scroll(content)
 
 def _harden_text_buttons(*buttons) -> None:
@@ -625,6 +709,18 @@ def create_output_tab(dialog):
     EXPORT_FOOTER.tag_member(dialog.btn_set_favorite, "misc.set_as_favorite")
     EXPORT_FOOTER.tag_member(dialog.btn_use_favorite, "tooltip.use_favorite")
     layout.addWidget(dialog.output_section)
+
+    # The output form's three focusable rows (folder+Browse is one horizontal
+    # row; favorites the next; the filename field is wrapped in place so it is
+    # a row too). Labels stay outside the rows — a row must own a StrongFocus
+    # child or the row walk stalls on it.
+    section.dir_picker_row.setObjectName("row_export_output_dir")
+    section.favorite_actions.setObjectName("row_export_output_favorites")
+    dialog.output_tab_rows = [
+        section.dir_picker_row,
+        section.favorite_actions,
+        _wrap_in_place(dialog.edit_filename, "row_export_output_filename"),
+    ]
 
     layout.addStretch(1)
     _install_no_wheel_filter_recursive(content, dialog._settings_no_wheel_filter)
@@ -707,7 +803,10 @@ def create_toolbar(dialog):
     toolbar_layout.addWidget(dialog.btn_trim)
 
     toolbar_layout.addStretch()
-    return toolbar_frame
+    # One nav row: wrap the toolbar (``VideoEditorToolbar`` keeps its style
+    # objectName inside) in the same zero-margin row container the other
+    # outer rows use, so the row carries the nav name ``toolbar_frame``.
+    return _wrap_row_container(toolbar_frame, "toolbar_frame")
 
 def create_timeline_scroll_area(dialog):
     scroll_area = SurfaceScrollArea()
