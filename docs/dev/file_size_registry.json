@@ -496,6 +496,16 @@
       }
     },
     {
+      "path": "src/tabs/image_compare/plugins/video_editor/dialog/nav.py",
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=qdialog-wiring reason=\"video editor dialog keyboard navigation — one modal section over the dialog rows\"",
+      "parsed": {
+        "pattern": "qdialog-wiring",
+        "reason": "video editor dialog keyboard navigation — one modal section over the dialog rows"
+      }
+    },
+    {
       "path": "src/tabs/image_compare/plugins/video_editor/dialog/sections.py",
       "limit": 500,
       "marker": "Audit-Meta:",

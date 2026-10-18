@@ -1,6 +1,7 @@
 # Audit-Meta: pattern=thin-owner reason="video editor presenter — dialog/timeline signal connect/disconnect mirror plus coordinator ownership"
 import logging
 import time
+import warnings
 
 from PySide6.QtCore import QObject, QTimer, Signal
 from PySide6.QtGui import QPixmap
@@ -323,7 +324,15 @@ class VideoEditorPresenter(QObject):
         if signal is None:
             return
         try:
-            signal.disconnect(slot)
+            # PySide6 reports an already-disconnected pair as a
+            # RuntimeWarning ("Failed to disconnect ... from signal ..."),
+            # NOT as an exception — the close path disconnects these pairs
+            # twice by design (dialog side in closeEvent, presenter side in
+            # cleanup), so silence exactly that expected failure mode here;
+            # the disconnect itself still runs and drops a live pair.
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", category=RuntimeWarning)
+                signal.disconnect(slot)
         except (TypeError, RuntimeError):
             pass
 

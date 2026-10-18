@@ -115,6 +115,12 @@ class VideoEditorDialogRuntime:
 
     def set_focus_policies(self):
         d = self.dialog
+        # Every control the arrow ring must reach is StrongFocus: the nav
+        # section's _focusable() only collects StrongFocus children (ClickFocus
+        # edits and NoFocus buttons would be invisible to row navigation).
+        # Leaving a field is safe by toolkit design: collapsed combos and
+        # spinboxes ignore Up/Down, and the section yields Left/Right at a
+        # line edit's caret edge.
         for btn in [
             d.btn_undo,
             d.btn_redo,
@@ -125,23 +131,34 @@ class VideoEditorDialogRuntime:
             d.btn_fit_content,
             d.btn_fit_fill_color,
         ]:
-            btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+            btn.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         if hasattr(d, "btn_stop_export"):
-            d.btn_stop_export.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+            d.btn_stop_export.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         d.timeline.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
-        # Settings fields must not steal focus when the window is activated —
-        # same pattern as ExportDialog (ClickFocus: edit on click, not on raise).
-        from sli_ui_toolkit.widgets import ComboBox, SpinBox
+        # Same pattern as ExportDialog (returnPressed drops focus back out of
+        # the field), with StrongFocus so the ring can also ENTER a field.
+        from sli_ui_toolkit.widgets import ComboBox, LogConsoleWidget, SpinBox
 
         for edit in [*d.findChildren(QLineEdit), *d.findChildren(CustomLineEdit)]:
-            edit.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
+            edit.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
             if hasattr(edit, "returnPressed"):
                 edit.returnPressed.connect(edit.clearFocus)
         for spin in d.findChildren(SpinBox):
-            spin.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
+            spin.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         for combo in d.findChildren(ComboBox):
-            combo.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
+            combo.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+
+        # Service containers stay out of the ring: QScrollArea defaults to
+        # StrongFocus, so without this the tab pages' scroll areas would join
+        # the tabs row and their native arrow handling would trap the ring
+        # (the settings dialog does the same with NoFocus page scroll areas).
+        from PySide6.QtWidgets import QScrollArea
+
+        for scroll in d.findChildren(QScrollArea):
+            scroll.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        for console in d.findChildren(LogConsoleWidget):
+            console.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
     def position_stop_export_button(self):
         d = self.dialog

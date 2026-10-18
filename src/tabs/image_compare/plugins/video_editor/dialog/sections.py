@@ -72,6 +72,25 @@ def _install_no_wheel_filter_recursive(root: QWidget, event_filter: QObject) -> 
         if isinstance(child, (CustomLineEdit, SpinBox, ComboBox)):
             child.installEventFilter(event_filter)
 
+
+def _wrap_row_container(item: QWidget | QLayout, attr: str) -> QWidget:
+    """Wrap *item* (a bare control or an unparented layout) in a zero-margin
+    container widget — the shape a nav row must have (``ToolbarRowsSection``
+    rows are QWidgets: it tests ``row.isVisible()``/``row.isAncestorOf()`` and
+    searches ``row.findChildren()``). The container adopts the layout as-is,
+    so the visual result is identical to adding the layout directly.
+    """
+    if isinstance(item, QWidget):
+        container = QWidget()
+        container_layout = QVBoxLayout(container)
+        container_layout.setContentsMargins(0, 0, 0, 0)
+        container_layout.addWidget(item)
+    else:
+        container = QWidget()
+        container.setLayout(item)
+    container.setObjectName(attr)
+    return container
+
 def build_settings_panel(dialog):
     settings_panel = QFrame()
     settings_panel.setObjectName("VideoEditorSettingsPanel")
@@ -86,9 +105,18 @@ def build_settings_panel(dialog):
     static_layout = QVBoxLayout(static_container)
     static_layout.setContentsMargins(scaled_px(12), scaled_px(12), scaled_px(12), scaled_px(10))
     static_layout.setSpacing(scaled_px(14))
-    static_layout.addLayout(create_resolution_settings(dialog))
-    static_layout.addLayout(create_fps_settings(dialog))
-    static_layout.addLayout(create_preview_quality_settings(dialog))
+    # Each form row is wrapped in a plain container so the keyboard-nav
+    # section can treat it as one row (nav rows must be QWidgets — a bare
+    # QHBoxLayout has no isVisible()/isAncestorOf identity). Zero-margin
+    # container adopts the layout: visually identical to addLayout().
+    dialog.res_row = _wrap_row_container(create_resolution_settings(dialog), "res_row")
+    static_layout.addWidget(dialog.res_row)
+    dialog.fps_row = _wrap_row_container(create_fps_settings(dialog), "fps_row")
+    static_layout.addWidget(dialog.fps_row)
+    dialog.preview_row = _wrap_row_container(
+        create_preview_quality_settings(dialog), "preview_row"
+    )
+    static_layout.addWidget(dialog.preview_row)
     sp_layout.addWidget(static_container)
     dialog.settings_static_container = static_container
 
@@ -137,7 +165,9 @@ def build_settings_panel(dialog):
     dialog.btn_stop_export.setCursor(Qt.CursorShape.PointingHandCursor)
     dialog.btn_stop_export.clicked.connect(dialog._on_stop_export_clicked)
     dialog.btn_stop_export.hide()
-    sp_layout.addWidget(dialog.btn_export)
+    # Same row-container wrap as the settings form rows: one nav row.
+    dialog.export_row = _wrap_row_container(dialog.btn_export, "export_row")
+    sp_layout.addWidget(dialog.export_row)
 
     EXPORT_FOOTER.tag_member(dialog.btn_export, "image_compare.action.export_video")
     EXPORT_FOOTER.tag_member(dialog.btn_stop_export, "image_compare.button.stop")
