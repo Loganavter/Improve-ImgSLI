@@ -261,4 +261,6 @@ By the 17th–18th I had come round to building an MCP surface into the app itse
 
 The help system also got a full refactor. I first tried to carry it through Muse, since the volume is enormous — but it was extremely dumb and slop-prone, and I burned a lot of time and effort on it for nothing. Reconnected DeepSeek and we were finished in a couple of hours.
 
+None of it came cheap, either — and not in the way I had budgeted. The refactors I had not planned, the theming pattern pass, the i18n fragility, the help rewrite, ate through the paid quota far faster than I expected, so for a stretch I was living on the free newcomers. Space Bunny (MiniMax M3.1 Flash underneath) is genuinely fun to work with, but the limits are crap; DeepSeek V4.1 Flash and GLM-5.3 Flash are the same story. LongCat 2.5 Preview is the interesting one — but only if you start the session on something smarter and let LongCat continue it; started cold, it is a bit dim, for reasons I never did pin down.
+
 Right now another systemic refactor of the app's backend is underway, together with the keyboard interface control, and after that the update ships. Far from everything I have planned is in — but it is usable without feeling half-finished; what is left is unrealised potential rather than loose ends.
