@@ -231,6 +231,41 @@ class _ScrollValueFlyout(BaseFlyout):
         if timer is not None:
             timer.stop()
 
+    def focusOutEvent(self, event) -> None:  # noqa: N802
+        super().focusOutEvent(event)
+        # Focus is leaving the pill. Down/Esc hand the keyboard back to the
+        # anchor (whose focusInEvent re-arms the preview); every other
+        # departure — Tab, a click on another widget, window deactivation —
+        # ends the interaction. Our own focusInEvent stopped the hide
+        # timer, so without this the pill would linger over an anchor that
+        # keeps its hover/value split while unfocused: the stuck
+        # value-display state (sv-hover-fix). Settle through the anchor's
+        # own ``_hide_flyout`` so ``_is_scrolling`` resets and the digit
+        # returns; the anchor's split settles only when the anchor is
+        # neither hovered nor (about to be) focused — the Down/Esc paths
+        # re-assert it in their focusInEvent right after this runs.
+        anchor = getattr(self, "_anchor_widget", None)
+        if anchor is None:
+            return
+        if getattr(anchor, "_flyout_focus_blip", False):
+            # The edit-mode ring force (singleShot below) does
+            # clearFocus()+setFocus() on the pill within one tick; that blip
+            # is our own repaint trick, not a user departure — settling here
+            # would hide the pill the Enter path just showed (sv-hover-fix).
+            return
+        # The anchor contract (``_hide_flyout``/``_set_hover_split``) belongs
+        # to ScrollValueButton; the flyout is also constructed directly with
+        # a bare QWidget anchor (the live-scale reflow test), so guard both
+        # calls like keyPressEvent guards ``_exit_keyboard_edit`` — an
+        # AttributeError here would raise inside Qt's event filter during
+        # teardown and cascade into unrelated tests (sv-hover-fix).
+        hide_flyout = getattr(anchor, "_hide_flyout", None)
+        if callable(hide_flyout):
+            hide_flyout()
+        set_split = getattr(anchor, "_set_hover_split", None)
+        if callable(set_split) and not anchor.underMouse() and not anchor.hasFocus():
+            set_split(False)
+
     def _exit_to_anchor(self) -> None:
         """Down in preview mode: hand the keyboard back to the anchor.
 
@@ -370,6 +405,10 @@ class ScrollValueButton(Button):
         self._zero_icon = zero_icon
         self._saved_value: int | None = None
         self._hovered_split = False
+        # True only while the mouse is actually over the button
+        # (enterEvent/leaveEvent) — ``_hovered_split`` also covers keyboard
+        # focus, so the hover-persistency checks must read this flag.
+        self._mouse_hovered = False
         self._is_scrolling = False
         self._underline_visible = False
         self._underline_qcolor = None
@@ -377,12 +416,15 @@ class ScrollValueButton(Button):
         self._flyout: _ScrollValueFlyout | None = None
         self._flyout_hide_timer = QTimer()
         self._flyout_hide_timer.setSingleShot(True)
-        self._flyout_hide_timer.timeout.connect(self._hide_flyout)
+        self._flyout_hide_timer.timeout.connect(self._on_flyout_hide_timeout)
         self._keyboard_edit_active = False
         # Set while an exit path is handing focus back to this button, so the
         # resulting focusInEvent does not immediately re-open the preview the
         # user just left (Esc dismisses; Down returns the keyboard).
         self._suppress_focus_preview = False
+        # Set only inside the edit-mode ring-force singleShot's
+        # clearFocus()+setFocus() blip (see _ScrollValueFlyout.focusOutEvent).
+        self._flyout_focus_blip = False
 
         regions, split = self._build_regions()
         super().__init__(
@@ -554,6 +596,7 @@ class ScrollValueButton(Button):
         # Public Button hover seeding (enterEvent → group= mirror) only sees
         # the regions that already exist. Expand to the icon+value capsule
         # first so both siblings share group= when HOVERED is applied.
+        self._mouse_hovered = True
         self._set_hover_split(True)
         super().enterEvent(event)
         # Hover is one of the two preview triggers (the other is keyboard
@@ -562,6 +605,7 @@ class ScrollValueButton(Button):
 
     def leaveEvent(self, event) -> None:
         super().leaveEvent(event)
+        self._mouse_hovered = False
         self._set_hover_split(False)
         self._hide_flyout()
 
@@ -668,13 +712,22 @@ class ScrollValueButton(Button):
 
     def focusInEvent(self, event) -> None:  # noqa: N802
         super().focusInEvent(event)
-        # Нижняя капсула (value) уже была для ховера мышкой — показываем её и для фокуса стрелками
-        if getattr(self, "_keyboard_focus", False):
+        # Нижняя капсула (value) уже была для ховера мышкой — показываем её и для фокуса.
+        # The preview shows on ANY focus, keyboard or mouse: gating it on the
+        # toolkit's ``_keyboard_focus`` (keyboard modality only) left a button
+        # focused the mouse way — a click, the owner's real session — with no
+        # pill at all, so Up had nothing to enter (sv-hover-fix). The preview
+        # never steals focus, so mouse-modality lighting it is safe; the ring
+        # still follows modality.
+        # Both halves of the preview (the anchor's value split and the pill)
+        # are gated on the suppression flag: an exit path returning focus
+        # here — Esc, or the timer dismiss below via Qt's popup focus-restore
+        # — is not a NEW focus grant and must not relight the preview (that
+        # relight is the "button sticks in the value-display state" the
+        # owner reported, sv-hover-fix).
+        if not self._suppress_focus_preview:
             self._set_hover_split(True)
-            # Preview on keyboard focus too (owner asked for both triggers).
-            # Skipped while an exit path is returning focus here.
-            if not self._suppress_focus_preview:
-                self._show_flyout()
+            self._show_flyout()
 
     def focusOutEvent(self, event) -> None:  # noqa: N802
         self._keyboard_edit_active = False
@@ -879,11 +932,24 @@ class ScrollValueButton(Button):
                 self._flyout.update()
                 from PySide6.QtCore import QTimer as _QTimer
 
-                _QTimer.singleShot(0, lambda f=self._flyout: (f.clearFocus(), f.setFocus(_Qt.FocusReason.OtherFocusReason), setattr(f, "_keyboard_focus", True), f.update()))
+                # The clearFocus()+setFocus() blip is our own ring repaint
+                # trick — flag it so the pill's focusOutEvent (which settles
+                # on real departures) does not hide the pill mid-Enter.
+                _QTimer.singleShot(0, lambda f=self._flyout: (setattr(self, "_flyout_focus_blip", True), f.clearFocus(), f.setFocus(_Qt.FocusReason.OtherFocusReason), setattr(self, "_flyout_focus_blip", False), setattr(f, "_keyboard_focus", True), f.update()))
             except Exception:
                 pass
         else:
-            self._flyout_hide_timer.start(_FLYOUT_HIDE_MS)
+            # While the mouse is on the button the preview is persistent:
+            # leaveEvent owns the hide. Arming the timer here as well kills
+            # the pill mid-hover — before a hand can travel from mouse to
+            # keyboard and press Up, which is exactly the owner's
+            # hover → pill → Up → Left/Right value-change path (sv-hover-fix).
+            # Stop a timer an earlier focus/activation show may have armed
+            # before the hover took over — skipping the start is not enough.
+            if self._mouse_hovered:
+                self._flyout_hide_timer.stop()
+            else:
+                self._flyout_hide_timer.start(_FLYOUT_HIDE_MS)
         if not self._is_scrolling:
             self._is_scrolling = True
             self._sync_regions()
@@ -891,6 +957,23 @@ class ScrollValueButton(Button):
         # register_nav_section=True, grab_focus=False) so Up can enter the
         # pill without stealing focus on hover. It used to force-unregister
         # here, which is precisely why Up could never enter.
+
+    def _on_flyout_hide_timeout(self) -> None:
+        """The transient hide (the 700 ms timer fired on its own).
+
+        Closing the popup makes Qt restore the keyboard to the widget that
+        held focus when the pill opened — the anchor. That restored focus is
+        not a new focus grant: without suppression it re-triggers the anchor's
+        focus preview (split relights, pill re-shows, timer re-arms), and the
+        button settles into the value-display state instead of resting — the
+        stuck look the owner reported after a wheel nudge (sv-hover-fix).
+        Same suppression idiom as ``_exit_keyboard_edit``.
+        """
+        self._suppress_focus_preview = True
+        try:
+            self._hide_flyout()
+        finally:
+            self._suppress_focus_preview = False
 
     def _hide_flyout(self) -> None:
         self._flyout_hide_timer.stop()

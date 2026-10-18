@@ -18,6 +18,9 @@ from tabs.image_compare.plugins.video_editor.dialog.surface_widgets import (
     ThemedExportProgressBar,
     VideoEditorToolbar,
 )
+from tabs.image_compare.plugins.video_editor.dialog.tab_cursor import (
+    VideoEditorTopTabHost,
+)
 from tabs.image_compare.plugins.video_editor.services.export_config import ExportConfigBuilder
 from tabs.image_compare.plugins.video_editor.widgets.timeline import VideoTimelineWidget
 from sli_ui_toolkit.managers import scaled_px
@@ -30,7 +33,6 @@ from sli_ui_toolkit.widgets import (
     LogConsoleWidget,
     SpinBox,
     SurfaceScrollArea,
-    TopTabHost,
 )
 from tabs.image_compare.icons import Icon, get_icon
 from tabs.image_compare.plugins.video_editor.search import (
@@ -331,7 +333,7 @@ def create_preview_quality_settings(dialog):
     return preview_layout
 
 def create_export_tabs(dialog):
-    tabs = TopTabHost()
+    tabs = VideoEditorTopTabHost()
     tabs.setObjectName("VideoEditorTabs")
 
     dialog.tab_standard = create_standard_export_tab(dialog)
@@ -355,8 +357,11 @@ def create_export_tabs(dialog):
     # this the bar is unreachable and the export pages cannot be switched from
     # the keyboard. The app gives the bar StrongFocus and the dialog's nav
     # section (dialog/nav.py) handles ←/→ and Enter/Space while the bar is the
-    # focused widget; the bar also claims its activation keys against the
-    # dialog-level Space shortcut (see ``claim_tab_bar_keys``).
+    # focused widget. The app's ``VideoEditorTopTabHost``/``VideoEditorTabBar``
+    # (dialog/tab_cursor.py) add the workspace-strip cursor idiom: ←/→ move a
+    # keyboard cursor (the page does not change), Enter/Space activate it, and
+    # the cursor tab carries the focus ring. The bar also claims its activation
+    # keys against the dialog-level Space shortcut (see ``claim_tab_bar_keys``).
     tabs.tab_bar.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
     claim_tab_bar_keys(tabs.tab_bar)
     # Per-tab nav rows, in tab order: the dialog nav section exposes ONLY the

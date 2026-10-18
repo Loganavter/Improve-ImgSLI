@@ -22,6 +22,8 @@ manager → section → widget path is exercised.
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 from PySide6.QtCore import Qt
 from PySide6.QtTest import QTest
@@ -35,6 +37,9 @@ from tabs.image_compare.plugins.video_editor.dialog.nav import (
     _nav_rows,
 )
 from tabs.image_compare.plugins.video_editor.dialog.shell import VideoEditorDialog
+from tabs.image_compare.plugins.video_editor.dialog.tab_cursor import (
+    VideoEditorCursorRingLayer,
+)
 
 # The standard export tab's field rows, visual top→bottom.
 _STANDARD_TAB_ROW_NAMES = (
@@ -450,41 +455,99 @@ def test_export_tab_fields_walk_in_visual_order(dialog):
     assert QApplication.focusWidget() is dialog.combo_container
 
 
-def test_export_tab_bar_switches_page_and_rows(dialog):
-    """The tab bar itself is reachable: ←/→ activate the neighbouring tab
-    immediately and the traversable rows become the new page's."""
-    dialog.tabs.tab_bar.setFocus(_focus_reason())
+def test_export_tab_bar_left_right_move_cursor_not_page(dialog):
+    """←/→ move the bar's keyboard cursor WITHOUT switching the page — the
+    workspace-strip contract (``test_tab_strip_left_right_requires_enter``)."""
+    bar = dialog.tabs.tab_bar
+    bar.setFocus(_focus_reason())
     QApplication.processEvents()
-    assert QApplication.focusWidget() is dialog.tabs.tab_bar
-
-    _press(Qt.Key.Key_Right)
-    assert dialog.tabs.currentIndex() == 1
-    # The ring stays on the bar — entering a page is a ↓ away, not automatic.
-    assert QApplication.focusWidget() is dialog.tabs.tab_bar
-
-    _press(Qt.Key.Key_Down)
-    assert QApplication.focusWidget() is dialog.edit_manual_args
-    assert _row_name(dialog, QApplication.focusWidget()) == "row_export_manual_args"
-
-    _press(Qt.Key.Key_Up)
-    assert QApplication.focusWidget() is dialog.tabs.tab_bar
-    _press(Qt.Key.Key_Left)
+    assert QApplication.focusWidget() is bar
+    assert bar.cursor_index() == 0
     assert dialog.tabs.currentIndex() == 0
-    _press(Qt.Key.Key_Down)
-    assert QApplication.focusWidget() is dialog.combo_container
 
-    # Third page (Output) too: its rows are the output-path form.
-    _press(Qt.Key.Key_Up)
+    _press(Qt.Key.Key_Right)
+    assert bar.cursor_index() == 1
+    assert dialog.tabs.currentIndex() == 0, "Right must not switch the page"
+
+    _press(Qt.Key.Key_Right)
+    assert bar.cursor_index() == 2
+    assert dialog.tabs.currentIndex() == 0
+
+    _press(Qt.Key.Key_Left)
+    assert bar.cursor_index() == 1
+    assert dialog.tabs.currentIndex() == 0
+
+    # Edges are consumed without wrapping or switching.
+    _press(Qt.Key.Key_Left)
+    _press(Qt.Key.Key_Left)
+    assert bar.cursor_index() == 0
+    assert dialog.tabs.currentIndex() == 0
+
+
+def test_export_tab_bar_enter_activates_cursor_tab(dialog):
+    """Enter/Space activate the cursor's tab (the workspace-strip idiom)."""
+    bar = dialog.tabs.tab_bar
+    bar.setFocus(_focus_reason())
+    QApplication.processEvents()
+
     _press(Qt.Key.Key_Right)
     _press(Qt.Key.Key_Right)
-    assert dialog.tabs.currentIndex() == 2
+    assert bar.cursor_index() == 2
+    assert dialog.tabs.currentIndex() == 0
+
+    _press(Qt.Key.Key_Return)
+    assert dialog.tabs.currentIndex() == 2, "Enter must activate the cursor's tab"
+    assert bar.cursor_index() == 2
+    # The page's rows become the Output tab's form.
     _press(Qt.Key.Key_Down)
     assert _row_name(dialog, QApplication.focusWidget()) == "row_export_output_dir"
+
+    # Space activates too.
+    _press(Qt.Key.Key_Up)
+    _press(Qt.Key.Key_Left)
+    assert bar.cursor_index() == 1
+    assert dialog.tabs.currentIndex() == 2
+    _press(Qt.Key.Key_Space)
+    assert dialog.tabs.currentIndex() == 1
+    assert bar.cursor_index() == 1
+
+
+def test_export_tab_bar_cursor_tab_is_highlighted(dialog):
+    """The cursor tab carries the focus ring while the bar holds keyboard
+    focus — asserted on the actual ring layer's ``applies`` (not a proxy)."""
+    bar = dialog.tabs.tab_bar
+    layer = VideoEditorCursorRingLayer()
+
+    def ctx(widget):
+        return SimpleNamespace(widget=widget)
+
+    # Not focused: no ring, even though the cursor sits on tab 0.
+    assert not layer.applies(ctx(bar.cursor_tab_button()))
+
+    # Keyboard modality (the ring is keyboard-only, like every toolkit bar).
+    NavigationManager.get_instance()._last_input_keyboard = True
+    bar.setFocus(_focus_reason())
+    QApplication.processEvents()
+    assert QApplication.focusWidget() is bar
+    assert bar.cursor_is_keyboard()
+
+    cursor_button = bar.cursor_tab_button()
+    assert cursor_button is not None
+    assert layer.applies(ctx(cursor_button)), "cursor tab must be highlighted"
+
+    # The ring follows the cursor, not the page.
+    _press(Qt.Key.Key_Right)
+    assert bar.cursor_index() == 1
+    assert dialog.tabs.currentIndex() == 0
+    assert layer.applies(ctx(bar.cursor_tab_button()))
+    others = [t.button for t in bar._tabs if t.button is not bar.cursor_tab_button()]
+    assert others and all(not layer.applies(ctx(b)) for b in others)
 
 
 def test_export_tab_bar_activation_keys_do_not_leak(dialog):
     """Enter/Space on the focused bar are consumed by the dialog's section:
-    the page stays put and the dialog-level Space play shortcut never fires."""
+    no Space leak into playback. With the cursor on the current tab they
+    activate it (no page change) — the workspace-strip idiom."""
     play_clicks: list[bool] = []
     dialog.playClicked.connect(lambda checked: play_clicks.append(checked))
 

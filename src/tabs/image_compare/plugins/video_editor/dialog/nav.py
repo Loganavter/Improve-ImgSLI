@@ -27,10 +27,9 @@ from sli_ui_toolkit.ui.managers.nav_graph import focus_reason
 
 _ARROWS = (Qt.Key.Key_Up, Qt.Key.Key_Down, Qt.Key.Key_Left, Qt.Key.Key_Right)
 # Activation keys for the export tab bar (Enter/Space): Enter also gets the
-# numeric-pad flavour. The app's tab-strip idiom is cursor + Enter/Space, but
-# the export bar activates immediately on ←/→ (a page change is the visible
-# feedback — a cursor-only mode would have no ring to draw on the bar); these
-# keys therefore only confirm the current tab.
+# numeric-pad flavour. The export bar follows the workspace-strip idiom: ←/→
+# move a keyboard cursor WITHOUT switching the page (see ``VideoEditorTabBar``
+# in dialog/tab_cursor.py), and these keys activate the cursor's tab.
 _TAB_ACTIVATE_KEYS = (Qt.Key.Key_Return, Qt.Key.Key_Enter, Qt.Key.Key_Space)
 
 
@@ -102,27 +101,22 @@ ring inside the dialog (Quick Look's ``↑``→last / ``↓``→first) was
         # press falls through to native handling, unchanged.
         return frozenset({Qt.Key.Key_Left, Qt.Key.Key_Right, *_TAB_ACTIVATE_KEYS})
 
-    def _activate_neighbor_tab(self, step: int) -> bool:
-        """Move the export bar to the neighbouring tab (no wrap). Consumed at
+    def _move_cursor(self, step: int) -> bool:
+        """Move the export bar's keyboard cursor (no page change). Consumed at
         the edge too, so ``←``/``→`` never fall through to a native handler."""
-        tabs = self._dialog.tabs
-        count = tabs.count()
-        target = tabs.currentIndex() + step
-        if 0 <= target < count:
-            tabs.setCurrentIndex(target)
-        return True
+        return self._dialog.tabs.tab_bar.move_cursor(step)
 
     def navigate(self, key: int, widget: QWidget) -> bool:  # noqa: ANN001
         bar = self._dialog.tabs.tab_bar
         if widget is bar:
             if key in _TAB_ACTIVATE_KEYS:
-                # The page already is the one the caret is on; Enter/Space
-                # only confirm it. Consume so nothing leaks to the window.
-                return True
+                # Enter/Space activate the cursor's tab (the workspace-strip
+                # idiom). Consume so nothing leaks to the window.
+                return bar.activate_cursor()
             if key == Qt.Key.Key_Left:
-                return self._activate_neighbor_tab(-1)
+                return self._move_cursor(-1)
             if key == Qt.Key.Key_Right:
-                return self._activate_neighbor_tab(+1)
+                return self._move_cursor(+1)
             # Up/Down leave the bar — the inherited row walk.
             return super().navigate(key, widget)
         if key in _ARROWS and not super().owns(widget):
