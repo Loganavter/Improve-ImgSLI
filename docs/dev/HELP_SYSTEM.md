@@ -406,7 +406,7 @@ real encyclopedia-level pages.
 | `workspace.multi_compare.layouts` | 0 |
 | `workspace.multi_compare.viewing` | 0 |
 | `workspace.multi_compare.export` | 1 |
-| `workspace.image_gallery.{overview,triage,quality,ask_ai}` | 1 |
+| `workspace.image_gallery.{overview,triage,quality,ranking,ask_ai}` | 1 |
 
 Going above the budget needs an explicit exception here (do not use figures
 to decorate every bullet).
@@ -417,7 +417,8 @@ pages were raised to **1** so each page carries one real screenshot next to
 the surface it explains (previously all were 0). `about`,
 `multi_compare.layouts`, and `multi_compare.viewing` stay at 0 — no
 capturable surface matches them (orientation prose; a QRhi/GL canvas that
-cannot be grabbed headlessly)._
+cannot be grabbed headlessly)._ `ranking` joined the set on 2026-10-18 at
+0 figures (prose only; no capturable surface).
 
 Optional later gaps (still budget-0 unless raised):
 `workspace.session_picker` `#tab-strip`, `comparison` `#scroll-images`, settings shell.

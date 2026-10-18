@@ -4,26 +4,27 @@ icon: algorithms.svg
 ---
 ## Ranking: Algorithms and AI
 
-Each series gets a rank — which image is best. The **Algorithms | AI** switch in the toolbar decides who ranks.
+Each series gets a rank — which image is best. The toolbar switch between **Algorithms** and **AI** decides who ranks.
 
 ### Algorithms {#algorithms}
 
-The default. It fuses every measured quality reading (sharpness, exposure, noise, color, source match, and the learned perceptual scores) into one deterministic order. The same images with the same readings give the same rank every time; ties are broken by file path, never by the order the folder happened to load.
+The default. It combines the measured readings into one deterministic order: the same images with the same readings give the same rank every time, and ties are broken by file path, never by the order the folder happened to load. Which readings count depends on the folder — see [Quality Metrics](help://workspace.image_gallery.quality#modes).
 
-- An image with nothing measured is **unranked** — no number, never `#0`.
+- An image with nothing measured shows no rank number.
 - The rank orders images only within one series.
 
 ### AI (Jev) {#ai}
 
-Opt-in. On the AI domain the assistant **Jev** ranks the series from the AI's own quality read of each image — the per-axis scores the AI gives, not the detector readings. This ranking is **marked** and **non-deterministic**: the same series can come back in a different order, and the badge says **AI (Jev)** so you never mistake it for the Algorithms read.
+Opt-in. When **AI** is on, the AI ranks the series from its own quality read of each image, not the app's measurements. This rank is not fixed: the same series can come back in a different order, and the stats strip shows **Ranked by AI (Jev)** so you never mistake it for the **Algorithms** read.
 
-- It is cached and pinned per series, so a re-run is stable until the series changes.
-- When Jev is unavailable or unsure it **degrades visibly** back to the Algorithms rank, and the reason is shown — the rank never silently changes hands.
-- **Large drops ask first.** With the AI domain active, dropping more than 35 images at once shows a warning before they are sent — a big batch can mean a big API bill. Pick **Confirm**, **Confirm and don't ask again**, or **Cancel**.
+- The rank is saved per series, so a re-run is stable until the series changes.
+- When the AI is unavailable or unsure, the rank falls back to **Algorithms** with the reason shown, so the rank never changes without a visible cause.
 
-### Reading the badge {#badge}
+### Reading the rank {#badge}
 
-The rank badge states the ranker: **Algorithms**, **AI (Jev)**, or **Manual** when you pick the winner yourself with **Keep best** / **Make best**. An image with no rank shows no number.
+- A card shows its rank number; the winner of a series shows **★ BEST** instead of a number.
+- The stats strip shows which ranker produced the numbers: **Ranked by Algorithms**, **Ranked by AI (Jev)**, or **Ranked by Manual** when you pick the winner yourself with **Keep best** / **Make best**.
+- An image with no rank shows no number.
 
 ### Next topics {#next-topics}
 

@@ -8,18 +8,18 @@ Cada imagem recebe uma pontuação de 0 a 100, e quanto maior, melhor. A pontua�
 
 ### Métricas medidas {#measured-metrics}
 
-A pontuação combina nitidez, exposição, ruído e cor e, quando uma origem é definida, também o quão próxima a imagem está dela. A **Visualização rápida** lista cada leitura como porcentagem; uma leitura que o aplicativo não conseguiu obter aparece como **not measured**, nunca como zero. No domínio **IA**, essas leituras são a própria análise da IA; em **Algoritmos**, são as medições do aplicativo.
+A pontuação combina nitidez, exposição, ruído e cor e, quando uma origem é definida, também o quão próxima a imagem está dela. A **Visualização rápida** lista cada leitura como porcentagem; uma leitura que o aplicativo não conseguiu obter aparece como **— · não medido**, nunca como zero. Com **IA** ligado, essas leituras são a própria análise da IA; com **Algoritmos** ligado, são as medições do aplicativo.
 
 ### Onde as pontuações aparecem {#where-scores}
 
-- **Visualização rápida** — abre um painel com uma linha por leitura e sua porcentagem.
-- **Tira da Visualização rápida** — ←/→ (ou os círculos ‹/›) movem o foco pela tira e Enter mostra essa imagem, então dá para percorrer a série sem trocar a cada tecla. ↓ leva o foco aos botões de ação do painel (**Definir como origem** / **Rejeitar** / **Excluir**), ←/→ escolhem um e Enter o aciona; ↑ volta para a tira.
-- **Pontos do cartão** — um ponto por métrica medida no modo atual; o ponto fica verde (70 %+), âmbar (40–69 %) ou vermelho (abaixo de 40 %) conforme a leitura piora. Passe o cursor sobre um ponto para ver o nome da métrica e a porcentagem.
-- **AI quality** — um valor de **Sort by** que ordena as imagens primeiro pela pontuação de IA; aplica-se apenas enquanto o interruptor **IA** da barra de ferramentas está ligado, e imagens sem pontuação vão para o fim.
+- **Visualização rápida** — o painel aberto por um clique em um cartão; ele mostra uma linha por leitura e sua porcentagem.
+- **Tira da Visualização rápida** — `←` / `→` (ou os círculos ‹ / ›) movem o foco pela tira e `Enter` mostra essa imagem. `↓` leva o foco aos botões de ação do painel (**Definir como origem** / **Rejeitar** / **Excluir**); `←` / `→` escolhem um e `Enter` o aciona; `↑` volta para a tira.
+- **Pontos do cartão** — um ponto por métrica da pasta; o ponto fica verde (70 %+), âmbar (40–69 %) ou vermelho (abaixo de 40 %) conforme a leitura piora. Passe o cursor sobre um ponto para ver o nome da métrica e a porcentagem.
+- **Qualidade da IA** — um valor de **Ordenar por** que ordena as imagens primeiro pela pontuação de IA; aplica-se apenas enquanto **IA** está ligado, e imagens sem pontuação vão para o fim.
 
 :::figure{side=block width=100%}
 ![Painel Visualização rápida](../assets/quality_quicklook.png)
-**Visualização rápida**: a imagem à esquerda e, à direita, os dados do arquivo mais uma linha por leitura com uma porcentagem ou **not measured**.
+**Visualização rápida**: a imagem à esquerda e, à direita, os dados do arquivo mais uma linha por leitura com uma porcentagem ou **— · não medido**.
 :::
 
 ### Modos {#modes}
