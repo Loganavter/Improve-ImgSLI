@@ -19,6 +19,20 @@ Built on the toolkit button region/layer pipeline (`ButtonRegion`,
 flyout shows the value split. Keyboard focus is parked off QRhi canvases
 on Wayland/Vulkan via `ui.canvas_infra.rhi.rhi_focus`.
 
+## Keyboard
+
+Hovering the button **or** giving it keyboard focus shows the value pill
+above it (the preview never steals focus). `Up` moves the keyboard into the
+pill; `Left`/`Right` step the value there (the underline follows); `Down`
+hands the keyboard back to the button with the pill still visible (`Up`
+re-enters); `Esc` dismisses the pill and restores the button's own digit.
+`Enter` still toggles the legacy edit mode, in which all four arrows step
+the value.
+
+No `ScrollValueButton` carries a colour of its own, so `Enter` never opens
+the colour picker here — the colour-carrying control is
+`ui.widgets.color.ColorSwatch`.
+
 ## Inspection
 
 Family `ScrollValueButton`; state: `value`, `min_value`, `max_value`,
