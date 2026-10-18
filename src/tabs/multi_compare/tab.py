@@ -171,19 +171,15 @@ class MultiCompareTab(TabContract):
             self.on_active_session_changed(session_id, context)
         if self._widget:
             self._register_nav_section()
-            from PySide6.QtCore import Qt
+            # FocusReason must come from the manager (modality of the last
+            # input device), never a literal — see the keyboard-navigation
+            # guide §7. current_focus_reason() reads the same
+            # last_input_was_keyboard() flag with no literal fallback.
+            from sli_ui_toolkit.ui.managers.navigation_manager import NavigationManager
 
-            try:
-                from sli_ui_toolkit.ui.managers.navigation_manager import NavigationManager
-
-                reason = (
-                    Qt.FocusReason.OtherFocusReason
-                    if NavigationManager.get_instance().last_input_was_keyboard()
-                    else Qt.FocusReason.MouseFocusReason
-                )
-            except Exception:
-                reason = Qt.FocusReason.OtherFocusReason
-            self._widget.setFocus(reason)
+            self._widget.setFocus(
+                NavigationManager.get_instance().current_focus_reason()
+            )
             # Phase2 stale-flush: MC composition may have been deferred.
             try:
                 canvas = getattr(self._widget, "canvas", None)
