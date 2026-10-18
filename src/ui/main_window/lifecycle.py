@@ -67,10 +67,20 @@ class ApplyFontSettingsStep(WindowStartupStep):
     name = "apply_fonts"
 
     def run(self, window) -> None:
+        # Route through the one appearance-apply path (settings application
+        # service) so the boot font re-apply is the same code — and the same
+        # single appearance-bus batch — as the runtime change. Fall back to the
+        # bare FontManager call if the path is unavailable: a chrome-only boot
+        # step must never hard-fail startup.
         try:
-            FontManager.get_instance().apply_from_state(window.store)
+            from plugins.settings.ui_appearance import apply_appearance
+
+            apply_appearance(window.store, font=True)
         except Exception:
-            pass
+            try:
+                FontManager.get_instance().apply_from_state(window.store)
+            except Exception:
+                pass
         # Shell may already have menus; force a sync remasure after the face
         # is pinned so the first painted frame is not mid-jump.
         menu = getattr(window, "_menu_controller", None)

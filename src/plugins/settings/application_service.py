@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 
 from PySide6.QtCore import QObject
 from PySide6.QtWidgets import QApplication
@@ -27,42 +28,11 @@ from core.state_management.actions import (
 )
 from shared_toolkit.ui.managers.font_manager import FontManager
 from shared.video_policy import FpsPolicy, clamp_fps
-from ui.theming import reapply_application_theme, refresh_application_styles
+from ui.theming import refresh_application_styles
 
 from .models import SettingsDialogData
+from .ui_appearance import apply_appearance
 
-
-
-
-
-def _flush_deferred_scale_resyncs(app) -> None:
-    """Run the singleShot(0)-deferred scale resyncs synchronously.
-
-    Called while top-level paints are frozen (see
-    ``SettingsApplicationService._apply_ui_scale_settings``), so the first
-    painted frame after the scale change is already the final layout —
-    nothing needs a later event-loop tick to settle.
-    """
-    if app is None:
-        return
-    for top in app.topLevelWidgets():  # ALLOWED: system-wide scale fan-out — applies UiScale to every top-level window generically, not tab-specific
-        try:
-            bar = getattr(top, "_custom_title_bar", None) or getattr(
-                top, "_csd_title_bar", None
-            )
-            sync = getattr(bar, "_sync_balance_spacer", None)
-            if callable(sync):
-                sync()
-        except Exception:
-            pass
-        try:
-            ui = getattr(top, "ui", None)
-            strip = getattr(ui, "workspace_tabs", None) if ui is not None else None
-            finish = getattr(strip, "_finish_scale_resync", None)
-            if callable(finish):
-                finish()
-        except Exception:
-            pass
 
 class SettingsApplicationService(QObject):
     def __init__(self, store, main_controller, event_bus=None, parent=None):
@@ -103,7 +73,14 @@ class SettingsApplicationService(QObject):
                 self.main_controller.window_shell if self.main_controller else None
             )
             if window_shell is not None:
-                window_shell.main_window_app.apply_application_theme(data.theme)
+                # The one appearance-apply path owns the theme push (and its
+                # placement relative to font/scale); this call site only says
+                # which axis changed.
+                apply_appearance(
+                    self.store,
+                    theme=data.theme,
+                    window=window_shell.main_window_app,
+                )
 
         if data.max_name_length != self.store.viewport.render_config.max_name_length:
             dispatcher.dispatch(
@@ -156,44 +133,16 @@ class SettingsApplicationService(QObject):
         dispatcher = self.store.get_dispatcher()
         dispatcher.dispatch(SetUIScaleFactorAction(new_factor))
 
-        from sli_ui_toolkit.managers import UiFont, UiScale, ThemeManager
-
-        app = QApplication.instance()
-        # Atomic one-pass apply, same as the theme change: freeze top-level
-        # paints across the whole scale fan-out (UiScale.scale_changed
-        # handlers, the QSS re-push, font re-apply) and flush the deferred
-        # layout resyncs synchronously while frozen — otherwise the
-        # singleShot(0)-deferred relayouts (title-bar balance, tab-strip
-        # reflow) paint intermediate stale frames and the UI visibly
-        # "transforms in steps" instead of one pass.
-        with ThemeManager.get_instance().suspend_widget_updates(app):
-            UiScale.get_instance().set_factor(new_factor)
-
-            # Order matters (trap §2.7.1): the QSS push below resets
-            # WA_SetFont-pinned fonts WITHOUT firing ApplicationFontChange, and
-            # FontManager's app.setFont() re-cascade is a no-op event-wise here
-            # (the app font itself never changes with the factor, so Qt does not
-            # emit ApplicationFontChange for an identical font). Therefore the
-            # guaranteed font_changed must come AFTER both, or every Label /
-            # UiFont.apply() pin / HUD label ends up stuck on the reset default
-            # size.
-            if app is not None:
-                try:
-                    reapply_application_theme(app)
-                except Exception:
-                    logging.getLogger("ImproveImgSLI").warning(
-                        "reapply_application_theme failed during UI-scale apply",
-                        exc_info=True,
-                    )
-            try:
-                FontManager.get_instance().apply_from_state(self.store)
-            except Exception:
-                logging.getLogger("ImproveImgSLI").warning(
-                    "font re-apply failed during UI-scale apply",
-                    exc_info=True,
-                )
-            UiFont.get_instance().sync_from_application()
-            _flush_deferred_scale_resyncs(app)
+        # One appearance apply: scale → QSS re-push → font re-apply, in that
+        # order, inside one paint freeze + one appearance-bus batch. ``font=True``
+        # carries the pinned-font re-apply the QSS push requires (see
+        # apply_appearance) — the order lives in the path, not in a comment here.
+        apply_appearance(
+            self.store,
+            scale=new_factor,
+            font=True,
+            app=QApplication.instance(),
+        )
 
     def _apply_ui_font_settings(self, data: SettingsDialogData) -> None:
         font_mode_normalized = (
@@ -212,11 +161,12 @@ class SettingsApplicationService(QObject):
         dispatcher.dispatch(SetUIFontModeAction(font_mode_normalized))
         dispatcher.dispatch(SetUIFontFamilyAction(data.ui_font_family or ""))
 
-        font_manager = FontManager.get_instance()
-        font_manager.apply_from_state(self.store)
+        apply_appearance(self.store, font=True, app=QApplication.instance())
         app = QApplication.instance()
         if app is not None:
             refresh_application_styles(app)
+
+        font_manager = FontManager.get_instance()
 
         window_shell = self.main_controller.window_shell if self.main_controller else None
         if window_shell is not None:
