@@ -30,11 +30,17 @@ from PySide6.QtWidgets import QWidget
 from sli_ui_toolkit.managers import scaled_px
 from sli_ui_toolkit.theme import ThemeManager
 from sli_ui_toolkit.ui.layout_settle import settle_layout
+from sli_ui_toolkit.ui.widgets.buttons.context import DrawContext
+from sli_ui_toolkit.ui.widgets.buttons.layers.focus import FocusLayer as _FocusLayer
 
 from ui.theming import resolve_theme_color
 from ui.widgets.shelf import ShelfWidget
 
 RECENT_COLORS_CAP = 12
+
+# One stateless toolkit layer instance shared by every chip (the layer reads
+# the widget off the DrawContext, same as the painter pipeline).
+_FOCUS_LAYER = _FocusLayer()
 
 _SETTINGS_KEY = "color_picker/recents"
 
@@ -129,6 +135,11 @@ class _RecentColorChip(QWidget):
     accent backing); hover draws an accent ring, pressed dims the swatch —
     interactive feedback like a toolkit ``Button``, but custom-painted
     because the ``Button`` pipeline cannot checkerboard alpha < 255 colors.
+
+    Keyboard-reachable: ``StrongFocus`` so the picker's row section
+    (``ToolbarRowsSection``) can land on it, Enter/Space activate the same
+    ``picked`` signal a click does, and the toolkit's own ``FocusLayer`` draws
+    the ring (guide §12: a ``NoFocus`` child is invisible to navigation).
     """
 
     picked = Signal(QColor)
@@ -143,12 +154,46 @@ class _RecentColorChip(QWidget):
         super().__init__(parent)
         self.setFixedSize(self.SIZE, self.SIZE)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         color = parse_hex_color(hex_code)
         self._color = color if color is not None else QColor("#000000")
         self._hovered = False
         self._pressed = False
+        # FocusLayer.applies() requires this exact attribute (Button/Flyout
+        # convention) — modality from the last input device, not FocusReason.
+        self._keyboard_focus = False
         self.theme_manager = ThemeManager.get_instance()
         self.theme_manager.theme_changed.connect(self.update)
+
+    def focusInEvent(self, event) -> None:  # noqa: N802
+        try:
+            from sli_ui_toolkit.ui.managers.navigation_manager import (
+                resolve_keyboard_focus,
+            )
+
+            self._keyboard_focus = resolve_keyboard_focus(event.reason())
+        except Exception:
+            self._keyboard_focus = True
+        super().focusInEvent(event)
+        self.update()
+
+    def focusOutEvent(self, event) -> None:  # noqa: N802
+        self._keyboard_focus = False
+        super().focusOutEvent(event)
+        self.update()
+
+    def keyPressEvent(self, event) -> None:  # noqa: N802
+        if event.key() in (
+            Qt.Key.Key_Return,
+            Qt.Key.Key_Enter,
+            Qt.Key.Key_Space,
+        ):
+            self.picked.emit(QColor(self._color))
+            event.accept()
+            return
+        # Everything else (incl. Esc) stays native: arrows are the picker row
+        # section's, Esc propagates to the dialog's reject().
+        super().keyPressEvent(event)
 
     def enterEvent(self, event) -> None:
         self._hovered = True
@@ -215,6 +260,23 @@ class _RecentColorChip(QWidget):
             painter.setPen(QPen(accent, self.HOVER_RING_WIDTH))
             painter.setBrush(Qt.BrushStyle.NoBrush)
             painter.drawRoundedRect(rect, radius, radius)
+
+        # Keyboard focus ring — the toolkit's own FocusLayer (same layer every
+        # Button uses), so the chip reads as focused exactly like the rest of
+        # the app instead of a hand-rolled lookalike.
+        focus_ctx = self._focus_ctx(painter)
+        if _FOCUS_LAYER.applies(focus_ctx):
+            _FOCUS_LAYER.draw(focus_ctx, self.theme_manager)
+
+    def _focus_ctx(self, painter: QPainter) -> DrawContext:
+        return DrawContext(
+            widget=self,
+            painter=painter,
+            rect=QRectF(self.rect()),
+            states=frozenset(),
+            variant="default",
+            corner_radius=int(self.CORNER_RADIUS),
+        )
 
 
 class RecentColorsRow(ShelfWidget):

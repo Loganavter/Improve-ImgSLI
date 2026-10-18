@@ -11,6 +11,11 @@ representations (see ``value_format``), RGB ``SpinBox`` fields, a
 before/after preview chip and a recent-colors chip row
 (``RecentColorsRow``). Return/Enter accepts.
 
+Keyboard navigation: a ``ToolbarRowsSection`` over the recent-color chips row
+and the action buttons (``declare_navigation_rows``), with the chips
+themselves ``StrongFocus`` + ``FocusLayer`` ring. Esc (or any close path)
+returns the keyboard to the widget that opened the picker.
+
 Kept API-compatible with the subset of ``QColorDialog`` the callers used
 (``colorSelected``, ``finished``, ``show``/``raise_``/``activateWindow``,
 ``setWindowTitle``) so call sites only need to swap the constructor and
@@ -21,24 +26,24 @@ Audit-Meta: pattern=qdialog-wiring reason="one ColorPicker QDialog — picker + 
 from __future__ import annotations
 from sli_ui_toolkit.ui.inspector.spec import InspectSpec, SpecField  # noqa: E402
 
+import shiboken6
+
 from PySide6.QtCore import QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import (
     QBrush,
     QColor,
     QFontMetrics,
-    QKeySequence,
     QLinearGradient,
     QPainter,
     QPainterPath,
     QPen,
-    QShortcut,
 )
-from PySide6.QtWidgets import QHBoxLayout, QSizePolicy, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QApplication, QHBoxLayout, QSizePolicy, QVBoxLayout, QWidget
 
 from resources.translations import tr
 from shared_toolkit.ui.layout_sizing import GeometryApplyPolicy, apply_dialog_geometry
 from shared_toolkit.ui.themed_dialog import ThemedDialog
-from sli_ui_toolkit.managers import scaled_px
+from sli_ui_toolkit.managers import declare_navigation_rows, scaled_px
 from sli_ui_toolkit.theme import ThemeManager
 from sli_ui_toolkit.widgets import Button, CustomLineEdit, Label, Slider, SpinBox
 
@@ -304,9 +309,18 @@ class ColorPickerDialog(ThemedDialog):
         ok_text: str | None = None,
         cancel_text: str | None = None,
         recents_store: RecentColorsStore | None = None,
+        opener: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self.theme_manager = ThemeManager.get_instance()
+        # Who gets the keyboard back when the picker closes (Esc/OK/Cancel).
+        # The explicit ``opener`` wins; otherwise the widget that held focus
+        # when the picker was constructed (the toolbar button / swatch that
+        # opened it) — captured before show() activates this dialog window and
+        # steals focus.
+        self._opener: QWidget | None = (
+            opener if opener is not None else QApplication.focusWidget()
+        )
         # Fallback initial white via theme token surface.background
         _fallback_init = _themed_or_fallback(
             self.theme_manager, "surface.background", QColor(255, 255, 255)
@@ -333,18 +347,73 @@ class ColorPickerDialog(ThemedDialog):
         self.setSizeGripEnabled(False)
 
         self._build_ui(ok_text=self._ok_text, cancel_text=self._cancel_text)
+        # Keyboard navigation over the picker's two real interaction rows —
+        # the recent-color chips and the action buttons (guide §4:
+        # declare_navigation_rows for "rows already exist as a list"). The
+        # chips became StrongFocus in recents.py; NoFocus children would be
+        # invisible to the section.
+        declare_navigation_rows(
+            self, [self._recents_row, self._actions_container], tag="color-picker"
+        )
         self.set_show_alpha(show_alpha)
         self._preview.set_before(self._color)
         self._sync_from_color()
         self._apply_dialog_geometry()
         self.install_dialog_geometry(self._apply_dialog_geometry)
 
-        return_shortcut = QShortcut(QKeySequence(Qt.Key.Key_Return), self)
-        return_shortcut.activated.connect(self._on_accept)
-        enter_shortcut = QShortcut(QKeySequence(Qt.Key.Key_Enter), self)
-        enter_shortcut.activated.connect(self._on_accept)
-
         self.mark_theme_ui_ready()
+
+    def keyPressEvent(self, event) -> None:  # noqa: N802
+        # Return/Enter accept (QColorDialog-compatible), but deliberately NOT
+        # via a window-level QShortcut: a shortcut swallows the key before the
+        # focused row sees it, so Enter on a keyboard-focused recent-color chip
+        # accepted the dialog instead of applying that colour (probed). Here
+        # the key only reaches this handler when the focused widget (chip,
+        # button, field) did not consume it — Enter keeps activating whatever
+        # is focused, and accepts otherwise.
+        if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+            self._on_accept()
+            event.accept()
+            return
+        super().keyPressEvent(event)
+
+    def done(self, result: int) -> None:  # noqa: N802
+        # Every close path (Esc → reject, OK → accept, Cancel, window close)
+        # funnels through QDialog.done — hand the keyboard back to the widget
+        # that opened the picker instead of leaving focus nowhere.
+        super().done(result)
+        self._restore_opener_focus()
+
+    def _restore_opener_focus(self) -> None:
+        """Give the keyboard back to the widget that opened the picker.
+
+        Widget-level ``setFocus`` only — never ``activateWindow``: on Wayland
+        an activation request issued while the host is not the active window
+        carries a stale xdg-activation token and gets denied (same rule the
+        toolkit's flyout focus-restore follows). The parent usually regains
+        activation right after the dialog hides; until then Qt simply records
+        the window's focus widget, so the opener has the keyboard as soon as
+        the window is active again.
+        """
+        opener = self._opener
+        self._opener = None
+        if opener is None:
+            return
+        try:
+            if not shiboken6.isValid(opener) or not opener.isVisible():
+                return
+        except Exception:
+            return
+        try:
+            from sli_ui_toolkit.managers import NavigationManager
+
+            reason = NavigationManager.get_instance().current_focus_reason()
+        except Exception:
+            reason = Qt.FocusReason.OtherFocusReason
+        try:
+            opener.setFocus(reason)
+        except Exception:
+            pass
 
     def _apply_dialog_geometry(self) -> None:
         # No ``self.adjustSize()`` here: this recipe re-runs on every deferred
@@ -369,8 +438,20 @@ class ColorPickerDialog(ThemedDialog):
         )
         root.setSpacing(scaled_px(12))
 
-        picker_row = QHBoxLayout()
+        # Row containers (not bare layouts) for the two surfaces the picker's
+        # navigation section owns: a NavigationSection's rows must be widgets
+        # (its `owns`/`_focusable` walk descendants) — see the
+        # declare_navigation_rows() call in __init__.
+        self._picker_container = QWidget(self)
+        self._actions_container = QWidget(self)
+
+        picker_row = QHBoxLayout(self._picker_container)
+        picker_row.setContentsMargins(0, 0, 0, 0)
         picker_row.setSpacing(scaled_px(10))
+        # The SV square stays mouse-only on purpose: it is a 2D pointer
+        # surface with no row/column model, so arrow keys there would fight
+        # the picker's row navigation instead of meaning one axis each (see
+        # the picker's ToolbarRowsSection registration below).
         self._sv = _SVSquare(self)
         self._sv.svChanged.connect(self._on_sv_changed)
         picker_row.addWidget(self._sv, 1)
@@ -403,7 +484,7 @@ class ColorPickerDialog(ThemedDialog):
         self._alpha_slider.valueChanged.connect(self._on_alpha_changed)
         picker_row.addWidget(self._alpha_slider)
 
-        root.addLayout(picker_row, 1)
+        root.addWidget(self._picker_container, 1)
 
         fields_row = QHBoxLayout()
         fields_row.setSpacing(scaled_px(6))
@@ -478,7 +559,8 @@ class ColorPickerDialog(ThemedDialog):
         self._recents_row.set_colors(self._recents_store.load())
         root.addWidget(self._recents_row)
 
-        actions = QHBoxLayout()
+        actions = QHBoxLayout(self._actions_container)
+        actions.setContentsMargins(0, 0, 0, 0)
         actions.setSpacing(scaled_px(8))
         actions.addStretch(1)
         self._cancel_btn = Button(text=cancel_text, variant="surface", parent=self)
@@ -489,7 +571,7 @@ class ColorPickerDialog(ThemedDialog):
         self._ok_btn.setMinimumSize(scaled_px(72), scaled_px(30))
         self._ok_btn.clicked.connect(self._on_accept)
         actions.addWidget(self._ok_btn)
-        root.addLayout(actions)
+        root.addWidget(self._actions_container)
 
     def set_show_alpha(self, enabled: bool) -> None:
         self._show_alpha = bool(enabled)

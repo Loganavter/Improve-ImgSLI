@@ -1,10 +1,15 @@
 """Generic scroll-driven numeric control button.
 
 A single icon region when idle, an icon+numeric-value split while hovered,
-a transient flyout mirroring the value during scroll, and an always-visible
-bottom underline (via the toolkit's built-in ``show_underline``/
-``setUnderlineColor`` API) showing an associated color (e.g. divider/guide
-color).
+a transient flyout mirroring the value on hover / keyboard focus / scroll
+(the preview never steals focus; Up moves the keyboard into it and
+Left/Right step the value there), and an always-visible bottom underline
+(via the toolkit's built-in ``show_underline``/``setUnderlineColor`` API)
+showing an associated color (e.g. divider/guide color).
+
+Enter toggles the legacy keyboard edit mode (all four arrows step); it is
+kept for value-only controls — this widget carries no color editor of its
+own (the color-valued control is ``ui.widgets.color.ColorSwatch``).
 
 Used for divider width, magnifier-divider width, and magnifier-guides width
 controls across multi_compare and image_compare toolbars.
@@ -18,7 +23,7 @@ import logging
 
 from PySide6.QtCore import QRectF, Qt, QTimer, Signal
 from PySide6.QtGui import QFontMetrics, QPainter
-from PySide6.QtWidgets import QLabel, QWidget
+from PySide6.QtWidgets import QApplication, QLabel, QWidget
 from sli_ui_toolkit.managers import scaled_px
 from sli_ui_toolkit.ui.managers.ui_font import apply_ui_font
 from sli_ui_toolkit.ui.managers.ui_font import ui_font
@@ -166,8 +171,24 @@ class _ScrollValueFlyout(BaseFlyout):
     # naming it, or DISMISS_ALL). Same shape as "slider_hint" below.
     flyout_group = "scroll_value"
 
+    # Declarative flyout navigation (guide §9): the pill sits ABOVE its
+    # anchor, so Up out of the button enters it and Down hands the keyboard
+    # back to the anchor. Declared as class metadata — the same attributes
+    # PanelVisibility/ColorOptions flyouts use — instead of ad-hoc key
+    # routing, so ToolbarRowsSection reads side/exit from the same registry
+    # it reads them from for everyone else.
+    _nav_side = "above"
+    _nav_mode = "preview"
+    _nav_exit = "down"
+
     def __init__(self, parent: QWidget) -> None:
         super().__init__(parent)
+        # Enter-edit vs hover/focus preview differ in one place only: whether
+        # Down leaves the pill (preview) or steps the value (edit). Recorded
+        # at show time (see ScrollValueButton._show_flyout) because the
+        # anchor's own ``_keyboard_edit_active`` is cleared by its
+        # ``focusOutEvent`` the instant Up moves focus into the pill.
+        self._edit_mode = False
         self._label = QLabel(self)
         # apply_ui_font (not a bare setFont) so the digit follows font and
         # UiScale changes live — see SliderHintFlyout for the same pattern.
@@ -182,6 +203,46 @@ class _ScrollValueFlyout(BaseFlyout):
         # every show (show_aligned -> adjustSize), same as SliderHintFlyout.
         self._label.setMinimumSize(scaled_px(22), scaled_px(20))
         self.add_widget(self._label)
+
+    def focus_first_child(self, ref_x: float | None = None) -> bool:
+        """Enter the pill (Up / focus grant) by focusing its own shell.
+
+        The pill's only content is a bare ``QLabel`` (``NoFocus``), so the
+        toolkit's ``BaseFlyout.focus_first_child`` — which looks for a
+        ``StrongFocus`` *descendant* — reports ``False``, and
+        ``ToolbarRowsSection``'s Up-into-flyout hand-off
+        (``extension_below(...).focus_first_child()``) silently fell back to
+        row navigation. That is exactly why Up could not enter the preview.
+        Focusing the shell keeps the toolkit's own ring paint
+        (``BaseFlyout.paintEvent`` → ``_keyboard_focus`` + ``hasFocus``) and
+        ``_FlyoutNavigationSection.owns`` (flyout or descendant) intact.
+        """
+        from sli_ui_toolkit.managers import NavigationManager
+
+        self.setFocus(NavigationManager.get_instance().current_focus_reason())
+        return True
+
+    def focusInEvent(self, event) -> None:  # noqa: N802
+        super().focusInEvent(event)
+        # While the pill owns the keyboard its preview hide-timer must not
+        # yank the pill out from under the user mid-edit.
+        anchor = getattr(self, "_anchor_widget", None)
+        timer = getattr(anchor, "_flyout_hide_timer", None)
+        if timer is not None:
+            timer.stop()
+
+    def _exit_to_anchor(self) -> None:
+        """Down in preview mode: hand the keyboard back to the anchor.
+
+        The pill stays visible (so Up can re-enter) and the anchor's own
+        focus-preview path re-arms the transient hide timer.
+        """
+        from sli_ui_toolkit.managers import NavigationManager
+
+        anchor = getattr(self, "_anchor_widget", None)
+        if anchor is None:
+            return
+        anchor.setFocus(NavigationManager.get_instance().current_focus_reason())
 
     def keyPressEvent(self, event) -> None:
         # В edit-mode кольцо на флайауте — Esc возвращает, Left/Right шагуют значение якоря
@@ -207,6 +268,14 @@ class _ScrollValueFlyout(BaseFlyout):
         # tests/contracts/test_no_arrow_key_redirection.py. Up/Right increment,
         # Down/Left decrement — split into two tuples.
         if event.key() in (Qt.Key.Key_Left, Qt.Key.Key_Down):
+            # Preview (hover → Up → focus here, no Enter): Down is the
+            # declarative way out (_nav_exit="down") — hand the keyboard to
+            # the anchor instead of stepping. Enter-edit keeps the legacy
+            # "all four arrows step" shortcut (guide §3).
+            if event.key() == Qt.Key.Key_Down and not self._edit_mode:
+                self._exit_to_anchor()
+                event.accept()
+                return
             anchor = getattr(self, "_anchor_widget", None)
             if anchor is not None and hasattr(anchor, "_step_value"):
                 try:
@@ -238,20 +307,22 @@ class _ScrollValueFlyout(BaseFlyout):
             self._label.clear()
             self._label.setText(text)
         if anchor is not None:
-            # Edit-mode (Enter) → кольцо наверх, wheel-preview → без кражи фокуса
+            # Edit-mode (Enter) → кольцо наверх; hover/focus preview → кольцо
+            # остаётся на кнопке (grab_focus=False) и флайаут НЕ крадёт фокус.
             _grab = grab_focus if grab_focus is not None else False
-            # Декларативный side для навигации — flyout визуально выше кнопки
-            try:
-                self._nav_side = "above"  # type: ignore[attr-defined]
-            except Exception:
-                pass
+            # Декларативный side/mode/exit заданы на классе _ScrollValueFlyout
+            # (_nav_side/_nav_mode/_nav_exit, guide §9).
             self.show_aligned(
                 anchor,
                 anchor_point="top-center",
                 flyout_point="bottom-center",
                 offset=6,
                 grab_focus=_grab,
-                register_nav_section=_grab,
+                # Preview registers its section too (grab_focus=False,
+                # register_nav_section=True — the toolkit's documented combo
+                # for "reachable but must not steal focus"): without it the
+                # pill is invisible to arrow routing and Up can never enter.
+                register_nav_section=True,
             )
         else:
             self.show()
@@ -308,6 +379,10 @@ class ScrollValueButton(Button):
         self._flyout_hide_timer.setSingleShot(True)
         self._flyout_hide_timer.timeout.connect(self._hide_flyout)
         self._keyboard_edit_active = False
+        # Set while an exit path is handing focus back to this button, so the
+        # resulting focusInEvent does not immediately re-open the preview the
+        # user just left (Esc dismisses; Down returns the keyboard).
+        self._suppress_focus_preview = False
 
         regions, split = self._build_regions()
         super().__init__(
@@ -330,6 +405,10 @@ class ScrollValueButton(Button):
         super().setShowUnderline(self._underline_visible and not self._is_at_zero())
         self.setUnderlineThickness(self._underline_thickness_for_value(self._value))
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        # Hover/focus now start the preview on every enter, so the hide timer
+        # must not outlive the button: an unparented timer would still fire
+        # after the widget's C++ side is gone and call into a deleted object.
+        self._flyout_hide_timer.setParent(self)
         if self._toggle_enabled:
             self.regionClicked.connect(self._on_region_clicked)
             # A click landing directly on the icon region ("_main") is
@@ -477,6 +556,9 @@ class ScrollValueButton(Button):
         # first so both siblings share group= when HOVERED is applied.
         self._set_hover_split(True)
         super().enterEvent(event)
+        # Hover is one of the two preview triggers (the other is keyboard
+        # focus) — the pill shows the value without stealing focus.
+        self._show_flyout()
 
     def leaveEvent(self, event) -> None:
         super().leaveEvent(event)
@@ -566,23 +648,51 @@ class ScrollValueButton(Button):
         rows and the digit stays blank.
         """
         self._keyboard_edit_active = False
-        self._hide_flyout()
-        self.setProperty("editActive", False)
-        self.style().polish(self)
-        self.update()
+        self._suppress_focus_preview = True
+        try:
+            self._hide_flyout()
+            self.setProperty("editActive", False)
+            self.style().polish(self)
+            self.update()
+            # Hand the keyboard back to the button. The flyout held focus in
+            # edit mode, so without this the closing pill would leave focus
+            # nowhere (Qt falls back to the window's first tab-order widget).
+            try:
+                from sli_ui_toolkit.managers import NavigationManager
+
+                self.setFocus(NavigationManager.get_instance().current_focus_reason())
+            except Exception:
+                pass
+        finally:
+            self._suppress_focus_preview = False
 
     def focusInEvent(self, event) -> None:  # noqa: N802
         super().focusInEvent(event)
         # Нижняя капсула (value) уже была для ховера мышкой — показываем её и для фокуса стрелками
         if getattr(self, "_keyboard_focus", False):
             self._set_hover_split(True)
+            # Preview on keyboard focus too (owner asked for both triggers).
+            # Skipped while an exit path is returning focus here.
+            if not self._suppress_focus_preview:
+                self._show_flyout()
 
     def focusOutEvent(self, event) -> None:  # noqa: N802
         self._keyboard_edit_active = False
         super().focusOutEvent(event)
-        # Гасим капсулу если ушли фокусом и мышка не ховерит
-        if not self.underMouse():
-            self._set_hover_split(False)
+        # Гасим капсулу если ушли фокусом и мышка не ховерит — но НЕ когда
+        # фокус ушёл в наш же флайаут значения (Up/hover-preview → Up): капсула
+        # остаётся частью той же редактирующей группы, и её возврат не должен
+        # мигать при входе в пилюлю и обратно.
+        if self.underMouse():
+            return
+        target = QApplication.focusWidget()
+        if (
+            self._flyout is not None
+            and target is not None
+            and (target is self._flyout or self._flyout.isAncestorOf(target))
+        ):
+            return
+        self._set_hover_split(False)
 
     def _step_value(self, step: int) -> None:
         old = self._value
@@ -723,15 +833,18 @@ class ScrollValueButton(Button):
             pass
         if self._flyout is None:
             self._flyout = _ScrollValueFlyout(self.window())
-            # Навигация: Up входит в флайаут сверху, Left/Right выходят обратно
+            # Навигация: Up входит в флайаут сверху (bind_flyout side="above"),
+            # Down возвращается к якорю (_nav_exit="down" на _ScrollValueFlyout);
+            # Left/Right шагуют значение в самом флайауте.
             try:
                 from sli_ui_toolkit.managers import bind_flyout
 
                 bind_flyout(self, self._flyout, side="above")
             except Exception:
                 pass
-        # Edit-mode (Enter) → кольцо наверх и без автоскрытия, wheel-preview → кольцо на кнопке с таймером
+        # Edit-mode (Enter) → кольцо наверх и без автоскрытия, hover/focus preview → кольцо на кнопке с таймером
         _grab = bool(self._keyboard_edit_active)
+        self._flyout._edit_mode = _grab
         if self._is_at_zero():
             self._flyout.show_value("", icon=themed_icon(self._zero_icon), anchor=self, grab_focus=_grab)
         else:
@@ -774,15 +887,10 @@ class ScrollValueButton(Button):
         if not self._is_scrolling:
             self._is_scrolling = True
             self._sync_regions()
-        # Preview (wheel) не регистрирует секцию — Up/Down остаются у тулбара;
-        # edit-mode регистрирует и крадёт фокус наверх.
-        if not _grab:
-            try:
-                from sli_ui_toolkit.managers import NavigationManager
-
-                NavigationManager.get_instance().unregister(self._flyout)
-            except Exception:
-                pass
+        # Preview registers its nav section too (show_value →
+        # register_nav_section=True, grab_focus=False) so Up can enter the
+        # pill without stealing focus on hover. It used to force-unregister
+        # here, which is precisely why Up could never enter.
 
     def _hide_flyout(self) -> None:
         self._flyout_hide_timer.stop()
