@@ -21,7 +21,8 @@ from PySide6.QtWidgets import (
 from sli_ui_toolkit.widgets import ButtonGroup, Label, Slider
 
 from sli_ui_toolkit.i18n import tr
-from sli_ui_toolkit.managers import UiScale, scaled_px
+from sli_ui_toolkit.managers import scaled_px
+from sli_ui_toolkit.ui.managers import connect_ui_metrics
 from tabs.image_compare.debug import ic_label_debug
 from tabs.image_compare.icons import Icon, get_icon
 from ui.layout_spacing import control_edge_padding
@@ -35,8 +36,8 @@ from ui.widgets.glass_hud import ZoomIndicator
 class ScaledIconLabel(QLabel):
     """Icon ``QLabel`` that re-renders its pixmap when the UI scale changes.
 
-    Toolkit widgets subscribe to ``UiScale.scale_changed`` themselves; a
-    plain ``QLabel`` with a one-shot pixmap (the magnifier-settings flyout's
+    Toolkit widgets subscribe to the metrics channel themselves; a plain
+    ``QLabel`` with a one-shot pixmap (the magnifier-settings flyout's
     slider-row icons) would stay at its build-time size after a live scale
     change while everything around it resized.
     """
@@ -48,7 +49,7 @@ class ScaledIconLabel(QLabel):
         self._icon = icon
         self._pixel_size = pixel_size
         self._apply_scale()
-        UiScale.get_instance().scale_changed.connect(self._apply_scale)
+        connect_ui_metrics(self, self._apply_scale)
 
     def _apply_scale(self, _factor: float | None = None) -> None:
         size = scaled_px(self._pixel_size)
@@ -61,12 +62,17 @@ class ScaledIconLabel(QLabel):
 _SLIDER_GAP_DESIGN_PX = 10
 
 
-def _keep_spacing_scaled(layout: QBoxLayout, design_px: int) -> None:
-    """Keep ``layout``'s spacing at ``scaled_px(design_px)`` live with UiScale.
+def _keep_spacing_scaled(layout: QBoxLayout, design_px: int, owner: QWidget) -> None:
+    """Keep ``layout``'s spacing at ``scaled_px(design_px)`` live with UiMetrics.
 
     QLayout spacing is a plain int captured at build time; re-applying it on
-    ``scale_changed`` is what lets the magnifier flyout's slider gaps grow
+    a metrics change is what lets the magnifier flyout's slider gaps grow
     with the interface size instead of freezing at their first-build px.
+
+    The subscription lives on ``owner`` (a QWidget): a QLayout is not a
+    QObject, so it cannot anchor ``connect_ui_metrics``'s destroyed-teardown
+    itself — when the owner dies, the connection and the spacing re-apply
+    both go away with it.
     """
 
     def _apply(_factor: float | None = None) -> None:
@@ -80,7 +86,7 @@ def _keep_spacing_scaled(layout: QBoxLayout, design_px: int) -> None:
         layout.setSpacing(scaled_px(design_px))
 
     _apply()
-    UiScale.get_instance().scale_changed.connect(_apply)
+    connect_ui_metrics(owner, _apply)
 
 
 class ImageCompareLayoutBuilder:
@@ -338,8 +344,8 @@ class ImageCompareLayoutBuilder:
         panel_layout.setContentsMargins(
             control_edge_padding(), 0, control_edge_padding(), 0
         )
-        _keep_spacing_scaled(panel_layout, 5)
-        panel_layout.addLayout(self._magnifier_sliders_column())
+        _keep_spacing_scaled(panel_layout, 5, panel)
+        panel_layout.addLayout(self._magnifier_sliders_column(panel))
 
         interpolation_layout = QHBoxLayout()
         interpolation_layout.setSpacing(scaled_px(5))
@@ -354,10 +360,10 @@ class ImageCompareLayoutBuilder:
         panel_layout.addLayout(interpolation_layout)
         return panel
 
-    def _magnifier_sliders_column(self) -> QVBoxLayout:
+    def _magnifier_sliders_column(self, panel: QWidget) -> QVBoxLayout:
         ui = self.target
         column = QVBoxLayout()
-        _keep_spacing_scaled(column, _SLIDER_GAP_DESIGN_PX)
+        _keep_spacing_scaled(column, _SLIDER_GAP_DESIGN_PX, panel)
         column.addLayout(
             self._configure_slider(
                 ui.slider_size,

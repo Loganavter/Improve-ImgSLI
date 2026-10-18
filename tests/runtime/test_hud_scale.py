@@ -119,7 +119,13 @@ def test_info_hud_corner_inset_scales(qtbot):
 
 
 def test_info_hud_repositions_on_font_change(qtbot):
-    """font_changed must trigger a re-layout of the info chip (like ZoomIndicator)."""
+    """A UI font change must trigger a re-layout of the info chip.
+
+    Drives the production entry point (``UiFont.set_family`` → ``_emit_changed``
+    → ``UiMetrics.changed``): the raw ``font_changed`` emit bypasses the
+    unified channel the HUD is wired through post-migration, and production
+    never emits the source signal directly either.
+    """
     from sli_ui_toolkit.managers import UiFont
 
     from ui.widgets.glass_hud import InfoHUD
@@ -146,8 +152,15 @@ def test_info_hud_repositions_on_font_change(qtbot):
         return original()
 
     hud._position = _tracking_position
-    UiFont.get_instance().font_changed.emit()
-    qtbot.wait(10)
+    ui_font = UiFont.get_instance()
+    saved_family = ui_font._family_override
+    try:
+        # Any different face: the exact family is irrelevant, the change
+        # itself must wake the re-layout.
+        ui_font.set_family("DejaVu Sans" if saved_family != "DejaVu Sans" else "Liberation Sans")
+        qtbot.wait(10)
+    finally:
+        ui_font.set_family(saved_family)
 
     assert calls, "InfoHUD must re-layout itself when the UI font changes"
     _settle(qtbot)

@@ -127,6 +127,13 @@ ALLOWED_DEEP_TAB_IMPORTS: dict[str, str] = {
         "the tab's own context-menu handler — stock-Qt stand-ins cannot "
         "exercise the toolkit path"
     ),
+    "tests/runtime/test_ui_metrics_parity.py": (
+        "cross-cutting UI-metrics parity contract (one change channel + owned "
+        "derived-geometry refresh); ScaledIconLabel is the image_compare "
+        "layout site fixture proving the migrated site re-derives — the "
+        "surface table spans host chrome and session_picker too, so the tab "
+        "import is fixture data, not the tab's own behavior"
+    ),
 }
 
 

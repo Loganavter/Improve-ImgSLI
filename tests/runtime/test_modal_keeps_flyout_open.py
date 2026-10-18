@@ -76,10 +76,21 @@ def test_focus_to_modal_does_not_schedule_flyout_hide(qapp, monkeypatch):
         drain_until_stable(qapp, lambda: dialog.isVisible(), timeout_ms=1000, stable_frames=2)
 
         scheduled = []
-        monkeypatch.setattr(
-            "PySide6.QtCore.QTimer.singleShot",
-            lambda _ms, fn: scheduled.append(fn),
-        )
+
+        # Intercept ONLY the consumer's QTimer lookup — ``closing.py`` does a
+        # local ``from PySide6.QtCore import QTimer``, so swapping the class on
+        # the QtCore module is what the method under test sees. Patching the
+        # global ``QTimer.singleShot`` instead (as this test once did) also
+        # swallows the toolkit ``UiMetrics`` coalesced metrics flush: its zero
+        # -timer never runs, ``UiMetrics._flush_scheduled`` sticks True, and
+        # every later metrics subscriber in the session stops refreshing (the
+        # whole runtime metrics gate goes red on ordering alone).
+        class _InterceptQTimer:
+            @staticmethod
+            def singleShot(_ms, fn):  # noqa: N802 - Qt API name
+                scheduled.append(fn)
+
+        monkeypatch.setattr("PySide6.QtCore.QTimer", _InterceptQTimer)
 
         controller.on_app_focus_changed(parent, dialog)
         assert scheduled == []

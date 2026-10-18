@@ -13,8 +13,9 @@ from PySide6.QtWidgets import (
 )
 
 from sli_ui_toolkit.widgets import DEFER_CLICK_AWAIT_RIPPLE, Button, CustomLineEdit, Label
-from sli_ui_toolkit.managers import UiScale, scaled_px
+from sli_ui_toolkit.managers import scaled_px
 from sli_ui_toolkit.ui.layout_settle import settle_layout
+from sli_ui_toolkit.ui.managers import connect_ui_metrics
 
 
 class DialogActionBar(QWidget):
@@ -54,9 +55,11 @@ class DialogActionBar(QWidget):
         layout.addWidget(self.secondary_button)
         layout.addWidget(self.primary_button)
         self.lock_content_minimum_height()
-        UiScale.get_instance().scale_changed.connect(self._on_scale_changed)
+        # Button minimums and the height pin derive from the scale AND the
+        # buttons' text sizeHint (font) — one unified subscription.
+        connect_ui_metrics(self, self._on_metrics_changed)
 
-    def _on_scale_changed(self, _factor: float) -> None:
+    def _on_metrics_changed(self) -> None:
         self._apply_button_minimums()
         # The lock is grow-only; drop it first so a shrink back to a smaller
         # factor is not stuck at the larger minimum.
@@ -150,13 +153,14 @@ class OutputPathSection(QWidget):
         self.btn_set_favorite = Button(text=set_favorite_text, variant="surface", parent=self)
         self.btn_use_favorite = Button(text=use_favorite_text, variant="surface", parent=self)
 
-        # Design px; re-applied scaled on ``scale_changed`` so live factor
-        # changes resize the output-path buttons (toolkit Button only
-        # re-applies its own ``size=`` design size, not external min/fixed).
+        # Design px; re-applied scaled on a metrics change (unified font+scale
+        # channel) so live factor changes resize the output-path buttons
+        # (toolkit Button only re-applies its own ``size=`` design size, not
+        # external min/fixed).
         self._design_button_min_size = button_min_size
         self._design_button_fixed_height = button_fixed_height
         self._apply_button_sizes()
-        UiScale.get_instance().scale_changed.connect(self._on_scale_changed)
+        connect_ui_metrics(self, self._on_metrics_changed)
 
         if on_browse is not None:
             self.btn_browse_dir.clicked.connect(on_browse)
@@ -190,7 +194,7 @@ class OutputPathSection(QWidget):
             if self._design_button_fixed_height is not None:
                 button.setFixedHeight(scaled_px(self._design_button_fixed_height))
 
-    def _on_scale_changed(self, _factor: float) -> None:
+    def _on_metrics_changed(self) -> None:
         self._apply_button_sizes()
         self.updateGeometry()
         self.update()

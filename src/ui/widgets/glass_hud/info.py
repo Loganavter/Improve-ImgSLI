@@ -4,7 +4,8 @@ from sli_ui_toolkit.ui.inspector.spec import InspectSpec, SpecField  # noqa: E40
 from PySide6.QtCore import QRect, QTimer
 from PySide6.QtWidgets import QWidget
 
-from sli_ui_toolkit.managers import UiFont, scaled_px
+from sli_ui_toolkit.managers import scaled_px
+from sli_ui_toolkit.ui.managers import connect_ui_metrics
 from sli_ui_toolkit.ui.in_window_surface import (
     clamp_surface_rect,
     surface_anchor_rect,
@@ -51,10 +52,12 @@ class InfoHUD(GlassHUD):
         self._target_widget: QWidget | None = None
         # The host's labels (toolkit `Label`, scale-resolved on their own)
         # resize when the UI scale/font changes; re-lay this HUD around
-        # their new sizeHint like ZoomIndicator does.
-        UiFont.get_instance().font_changed.connect(self._on_ui_font_changed)
+        # their new sizeHint like ZoomIndicator does. Both axes matter —
+        # the corner insets are scaled_px-derived too — so one unified
+        # subscription, not the font signal alone.
+        connect_ui_metrics(self, self._on_ui_metrics_changed)
 
-    def _on_ui_font_changed(self) -> None:
+    def _on_ui_metrics_changed(self) -> None:
         if self.isVisible():
             self._position()
 

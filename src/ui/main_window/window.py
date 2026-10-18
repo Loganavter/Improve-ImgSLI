@@ -301,30 +301,26 @@ class MainWindow(QWidget):
                     pass
 
     def _wire_csd_scale_resync(self) -> None:
-        """Force title-bar repaints shortly after a live UiScale change.
+        """Force title-bar repaints shortly after a live metrics change.
 
         The deferred bar relayout heals the geometry on the next tick; on
         some Wayland compositors the healed frame is never repainted
         (translucent-window quirk) and the stale CSD stays on screen until
         a window resize. Force synchronous repaints after the heal so the
-        correct state is guaranteed visible.
+        correct state is guaranteed visible. Wired through the unified
+        metrics channel (a font change heals the same stale frame), with
+        teardown owned by ``connect_ui_metrics`` via ``destroyed``.
         """
         try:
-            from PySide6.QtCore import QTimer
+            from sli_ui_toolkit.ui.managers import connect_ui_metrics
 
-            from sli_ui_toolkit.managers import UiScale
-
-            self._csd_scale_resync_connection = (
-                UiScale.get_instance().scale_changed.connect(
-                    lambda _factor: (
-                        QTimer.singleShot(50, self._force_csd_repaint),
-                        QTimer.singleShot(250, self._force_csd_repaint),
-                    )
-                )
-            )
-            self.destroyed.connect(self._drop_csd_scale_resync)
+            connect_ui_metrics(self, self._schedule_csd_resync)
         except Exception:
             pass
+
+    def _schedule_csd_resync(self) -> None:
+        QTimer.singleShot(50, self._force_csd_repaint)
+        QTimer.singleShot(250, self._force_csd_repaint)
 
     def _force_csd_repaint(self) -> None:
         try:
@@ -342,16 +338,6 @@ class MainWindow(QWidget):
                     dialog_bar.repaint()
         except Exception:
             pass
-    def _drop_csd_scale_resync(self, *_args) -> None:
-        try:
-            from sli_ui_toolkit.managers import UiScale
-
-            UiScale.get_instance().scale_changed.disconnect(
-                self._csd_scale_resync_connection
-            )
-        except Exception:
-            pass
-
     def closeEvent(self, event: QCloseEvent):
         logger.debug("Начало закрытия главного окна...")
         self._shutdown_pipeline.run(self)

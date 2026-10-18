@@ -1604,7 +1604,10 @@ def test_live_ui_scale_change_resizes_shelf_in_place(qapp, tmp_path, monkeypatch
         # Live factor change on the already-built shelf: the new factor's
         # geometry must land in the same pass (no rebuild, no restart).
         UiScale.get_instance().set_factor(1.5)
-        qapp.processEvents()
+        # The shelf re-derives through the unified metrics channel
+        # (connect_ui_metrics): the flush lands on a coalesced zero-timer,
+        # not synchronously inside set_factor — drain it before asserting.
+        drain_until_stable(qapp, _snapshot, timeout_ms=2000, stable_frames=2)
 
         cards = list(items._cards_by_path.values())
         assert cards
@@ -1642,7 +1645,7 @@ def test_live_ui_scale_change_resizes_shelf_in_place(qapp, tmp_path, monkeypatch
 
         # And back: restoring the factor restores the original geometry.
         UiScale.get_instance().set_factor(1.0)
-        qapp.processEvents()
+        drain_until_stable(qapp, _snapshot, timeout_ms=2000, stable_frames=2)
         assert _snapshot() == at_1_0
 
         panel.deleteLater()

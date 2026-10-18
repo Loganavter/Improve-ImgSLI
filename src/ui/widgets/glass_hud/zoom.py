@@ -14,7 +14,8 @@ from sli_ui_toolkit.ui.in_window_surface import (
     surface_anchor_rect,
     surface_available_rect,
 )
-from sli_ui_toolkit.managers import UiFont, scaled_px
+from sli_ui_toolkit.managers import scaled_px
+from sli_ui_toolkit.ui.managers import connect_ui_metrics
 from sli_ui_toolkit.ui.managers.ui_font import apply_ui_font
 from sli_ui_toolkit.widgets import Button
 
@@ -108,7 +109,10 @@ class ZoomIndicator(GlassHUD):
         # `_reflow_container()`/`_position()` to actually resize the glass
         # panel around it -- see docs/dev/rendering/glass-panel-text-vibrancy-plan.md
         # Phase 3 for the full investigation.
-        UiFont.get_instance().font_changed.connect(self._on_ui_font_changed)
+        # The glass panel's own insets/geometry are scale-derived too — one
+        # unified subscription covers both axes (font-alone wiring left the
+        # chip stale after a live scale change).
+        connect_ui_metrics(self, self._on_ui_metrics_changed)
         layout.addWidget(self._label)
         self.btn_zoom_reset = Button(reset_icon or AppIcon.SYNC, parent=row)
         self.btn_zoom_reset.setFixedSize(scaled_px(22), scaled_px(22))
@@ -136,12 +140,12 @@ class ZoomIndicator(GlassHUD):
             )
         return super().eventFilter(obj, event)
 
-    def _on_ui_font_changed(self) -> None:
+    def _on_ui_metrics_changed(self) -> None:
         # `self._label`'s own font is already re-synced by this point --
         # `UiFont.apply()`'s internal `font_changed` connection (see
-        # `apply_ui_font(self._label)` above) fires before this one, same
-        # signal, connected first. This handler only needs to catch up the
-        # surrounding layout to whatever sizeHint that resync produced.
+        # `apply_ui_font(self._label)` above) fires first. This handler only
+        # needs to catch up the surrounding layout to whatever sizeHint that
+        # resync produced (and to the live scale factor, post-migration).
         if self.isVisible():
             self._position()
 

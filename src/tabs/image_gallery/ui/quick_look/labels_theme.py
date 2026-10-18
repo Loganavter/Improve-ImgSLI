@@ -195,40 +195,30 @@ def _apply_point_size(label, pt: int | float, **font_kwargs) -> None:
         except Exception:
             return
     # Re-assert after Label's own pixel-based _apply_style (wired at Label
-    # construction, so it always runs first): font_changed and scale_changed
-    # would otherwise revert the point font to the pixel value.
+    # construction, so it always runs first): a metrics change (font OR scale)
+    # would otherwise revert the point font to the pixel value. One unified
+    # subscription via connect_ui_metrics — teardown is owned by the label's
+    # ``destroyed`` signal, so no manual disconnect bookkeeping here.
     try:
         import weakref as _wr
 
-        from sli_ui_toolkit.managers import UiFont as _UiFont2, UiScale as _UiScale2
+        from sli_ui_toolkit.managers import UiFont as _UiFont2
+        from sli_ui_toolkit.ui.managers import connect_ui_metrics
 
-        _ui_font = _UiFont2.get_instance()
         _pt = float(pt)
         _fkw = dict(font_kwargs)
         _ref = _wr.ref(label)
-        _conns: list = []
 
         def _reassert() -> None:
             tgt = _ref()
             if tgt is None:
-                for _sig, _slot in list(_conns):
-                    try:
-                        _sig.disconnect(_slot)
-                    except Exception:
-                        pass
-                _conns.clear()
                 return
             try:
                 tgt.setFont(_UiFont2.get_instance().resolve(point_size=_pt, **_fkw))
             except Exception:
                 pass
 
-        try:
-            _conns.append((_ui_font.font_changed, _ui_font.font_changed.connect(_reassert)))
-            _scale = _UiScale2.get_instance()
-            _conns.append((_scale.scale_changed, _scale.scale_changed.connect(_reassert)))
-        except Exception:
-            pass
+        connect_ui_metrics(label, _reassert)
     except Exception:
         pass
 
