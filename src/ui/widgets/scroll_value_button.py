@@ -186,7 +186,21 @@ class _ScrollValueFlyout(BaseFlyout):
     def keyPressEvent(self, event) -> None:
         # В edit-mode кольцо на флайауте — Esc возвращает, Left/Right шагуют значение якоря
         if event.key() == Qt.Key.Key_Escape:
-            self.hide()
+            # Escape here must exit edit mode on the ANCHOR button, not merely
+            # hide this flyout. A bare self.hide() leaves the button's
+            # _is_scrolling True (and _keyboard_edit_active True), so its
+            # "value" region keeps painting the suppressed/empty rows after the
+            # flyout is gone — the digit vanishes. In edit mode the flyout holds
+            # focus, so this is exactly the path the user's Escape takes; route
+            # it through the button's _hide_flyout()-based exit like its own
+            # Escape handler does (anchor._exit_keyboard_edit, see
+            # ScrollValueButton).
+            anchor = getattr(self, "_anchor_widget", None)
+            exit_edit = getattr(anchor, "_exit_keyboard_edit", None)
+            if callable(exit_edit):
+                exit_edit()
+            else:
+                self.hide()
             event.accept()
             return
         # Avoid grouping forbidden pairs (Down+Right, Up+Left) in one tuple — see
@@ -512,11 +526,7 @@ class ScrollValueButton(Button):
         if key == Qt.Key.Key_Escape:
             scroll_value_debug("Escape edit_active=%s widget=%s", self._keyboard_edit_active, id(self))
             if self._keyboard_edit_active:
-                self._keyboard_edit_active = False
-                self._hide_flyout()
-                self.setProperty("editActive", False)
-                self.style().polish(self)
-                self.update()
+                self._exit_keyboard_edit()
                 event.accept()
                 return
             # Even when not in edit mode, Escape should hide the preview flyout
@@ -544,6 +554,22 @@ class ScrollValueButton(Button):
             event.accept()
             return
         super().keyPressEvent(event)
+
+    def _exit_keyboard_edit(self) -> None:
+        """Leave Enter edit mode and restore the button's own digit.
+
+        Shared by both Escape paths: the button's own ``keyPressEvent`` and the
+        flyout's (in edit mode the flyout holds focus, so Escape arrives there —
+        see ``_ScrollValueFlyout.keyPressEvent``). Must go through
+        ``_hide_flyout()``: it is what resets ``_is_scrolling`` and re-syncs the
+        regions, without which the "value" region keeps its suppressed/empty
+        rows and the digit stays blank.
+        """
+        self._keyboard_edit_active = False
+        self._hide_flyout()
+        self.setProperty("editActive", False)
+        self.style().polish(self)
+        self.update()
 
     def focusInEvent(self, event) -> None:  # noqa: N802
         super().focusInEvent(event)
