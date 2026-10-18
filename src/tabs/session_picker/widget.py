@@ -12,7 +12,8 @@ from PySide6.QtGui import QColor, QPainter
 from PySide6.QtWidgets import QVBoxLayout, QWidget
 from sli_ui_toolkit.i18n import translatable_callback
 from sli_ui_toolkit.icons import lazy_icon
-from sli_ui_toolkit.managers import UiScale, scaled_px
+from sli_ui_toolkit.managers import scaled_px
+from sli_ui_toolkit.ui.managers import connect_ui_metrics
 from sli_ui_toolkit.ui.widgets.buttons import ButtonRow
 from sli_ui_toolkit.widgets import (
     Button,
@@ -281,16 +282,18 @@ class SessionPickerWidget(ThemedWidget, QWidget):
         translatable_callback(
             self, lambda _lang: self._retranslate(), defer_when_hidden=True
         )
-        UiScale.get_instance().scale_changed.connect(self._on_ui_scale_changed)
+        # Page geometry derives from the scale (and card text from the font) —
+        # one unified subscription, not scale alone.
+        connect_ui_metrics(self, self._on_ui_metrics_changed)
 
-    def _on_ui_scale_changed(self, _factor: float) -> None:
-        """Re-apply scale-dependent page geometry after a live UiScale change.
+    def _on_ui_metrics_changed(self) -> None:
+        """Re-apply scale-dependent page geometry after a live metrics change.
 
         The page layout margins/spacing, the create-cards spacing, and the
         minimum size are plain px captured at build time; without this pass
         they keep the old factor until the next app start (the create-cards
         and other toolkit children resize themselves via their own
-        ``scale_changed`` handlers).
+        metrics-channel handlers).
         """
         self.setMinimumSize(
             scaled_px(SESSION_PICKER_PAGE_MIN_WIDTH),

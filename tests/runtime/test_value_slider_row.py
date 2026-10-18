@@ -159,7 +159,7 @@ def test_pad_width_fits_widest_value_text(qtbot):
     assert row._right_pad.minimumWidth() >= fm.horizontalAdvance("100,0%")
 
 
-def test_pad_width_follows_live_scale(qtbot):
+def test_pad_width_follows_live_scale(qtbot, qapp):
     slider = ValueSlider()
     dialog = _make_dialog(slider)
     qtbot.addWidget(dialog)
@@ -168,9 +168,18 @@ def test_pad_width_follows_live_scale(qtbot):
     base = row._right_pad.minimumWidth()
 
     UiScale.get_instance().set_factor(1.5)
+    # The row is wired through the unified metrics channel: the re-apply lands
+    # on the coalesced zero-timer's next tick, not synchronously inside
+    # set_factor — drain before asserting (mirrors the parity harness).
+    drain_until_stable(
+        qapp, lambda: row._right_pad.minimumWidth(), stable_frames=1
+    )
     assert row._right_pad.minimumWidth() > base
 
     UiScale.get_instance().set_factor(1.0)
+    drain_until_stable(
+        qapp, lambda: row._right_pad.minimumWidth(), stable_frames=1
+    )
     assert row._right_pad.minimumWidth() == base
 
 

@@ -43,6 +43,7 @@ from PySide6.QtWidgets import (
 )
 
 from sli_ui_toolkit.theme import ThemeManager
+from sli_ui_toolkit.ui.managers import connect_ui_metrics
 from sli_ui_toolkit.ui.managers.ui_font import ui_font
 from sli_ui_toolkit.ui.managers.ui_scale import UiScale, scaled_px
 from sli_ui_toolkit.ui.windows.custom_title_bar import (
@@ -333,7 +334,9 @@ class CsdMenuStrip(QWidget):
         self._row_actions: dict[int, list[str | None]] = {}
         self._theme_manager = ThemeManager.get_instance()
         self._theme_manager.theme_changed.connect(self._on_theme_changed)
-        UiScale.get_instance().scale_changed.connect(self.remeasure)
+        # Trigger widths are measured from the scaled UI font AND the scale
+        # factor — one unified subscription, not scale alone.
+        connect_ui_metrics(self, self.remeasure)
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(
@@ -402,8 +405,8 @@ class CsdMenuStrip(QWidget):
 
         Call after the host applies the UI face (menus are often built before
         ``FontManager`` runs), after a language switch so Cyrillic labels do
-        not clip, or on a UiScale factor change (also connected via
-        ``scale_changed``).
+        not clip, or on any live metrics change (the strip is wired through
+        ``connect_ui_metrics``, so font and scale changes both re-run this).
         """
         self.setFixedHeight(scaled_px(self._height))
         for spec, button in zip(self._menus, self._buttons):

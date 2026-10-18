@@ -19,7 +19,8 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import QApplication, QSizePolicy
 from sli_ui_toolkit.i18n import translatable_callback
-from sli_ui_toolkit.managers import UiScale, scaled_px
+from sli_ui_toolkit.managers import UiScale
+from sli_ui_toolkit.ui.managers import connect_ui_metrics
 from sli_ui_toolkit.widgets import (
     Button,
     ContextMenuAction,
@@ -144,7 +145,10 @@ class RecentProjectsPanel(ShelfWidget):
         translatable_callback(
             self, lambda _lang: self._retranslate(), defer_when_hidden=True
         )
-        UiScale.get_instance().scale_changed.connect(self._on_ui_scale_changed)
+        # Shelf geometry derives from the scale — but a font change must
+        # re-run the same pass too (scale-only wiring left cached shelf
+        # geometry stale on a font change); one unified subscription.
+        connect_ui_metrics(self, self._on_ui_metrics_changed)
 
     def set_open_project_handler(self, handler: Callable[[str], None] | None) -> None:
         self._on_open = handler
@@ -363,9 +367,9 @@ class RecentProjectsPanel(ShelfWidget):
         )
         self._sync_header_controls()
 
-    def _on_ui_scale_changed(self, _factor: float) -> None:
-        """Re-apply scale-dependent shelf geometry after a live UiScale change."""
-        sizing.on_ui_scale_changed(self, _factor)
+    def _on_ui_metrics_changed(self) -> None:
+        """Re-apply scale-dependent shelf geometry after a live metrics change."""
+        sizing.on_ui_scale_changed(self, UiScale.get_instance().factor())
 
     def _on_header_prefs_changed(self) -> None:
         # Header already persisted prefs; re-read and refresh cards.

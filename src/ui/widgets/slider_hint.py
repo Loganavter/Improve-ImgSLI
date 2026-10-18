@@ -26,8 +26,9 @@ from PySide6.QtGui import QCursor, QFontMetrics
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QSizePolicy, QWidget
 
 from core.constants import AppConstants
-from sli_ui_toolkit.managers import DelayedActionTimer, UiScale, scaled_px
+from sli_ui_toolkit.managers import DelayedActionTimer, scaled_px
 from sli_ui_toolkit.ui.layout_settle import settle_layout
+from sli_ui_toolkit.ui.managers import connect_ui_metrics
 from sli_ui_toolkit.ui.managers.ui_font import apply_ui_font
 from sli_ui_toolkit.widgets import BaseFlyout, Slider
 
@@ -469,7 +470,7 @@ class ValueSliderRow(QWidget):
     at all times. The pad is fixed-width — sized to the widest formatted
     value over the slider's range — so the label text never reflows the
     row or shifts the slider's geometry as the value changes. Pad width
-    follows the label font through live ``UiScale`` changes.
+    follows the label font through live metrics changes (unified channel).
     """
 
     def __init__(
@@ -517,9 +518,11 @@ class ValueSliderRow(QWidget):
         slider.valueChanged.connect(self._on_value_changed)
         self._apply_label()
         self._apply_pad_width()
-        UiScale.get_instance().scale_changed.connect(self._on_scale_changed)
+        # Label font + pad width and the slider's design size follow both
+        # metrics axes — one unified subscription, not scale alone.
+        connect_ui_metrics(self, self._on_metrics_changed)
 
-    def _on_scale_changed(self, _factor: float | None = None) -> None:
+    def _on_metrics_changed(self) -> None:
         try:
             import shiboken6
 

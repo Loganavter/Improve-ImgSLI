@@ -6,8 +6,8 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont, QFontMetrics, QPainter, QPen
 from PySide6.QtWidgets import QHBoxLayout, QSizePolicy, QWidget
 
-from sli_ui_toolkit.managers import UiScale
 from sli_ui_toolkit.theme import ThemeManager
+from sli_ui_toolkit.ui.managers import connect_ui_metrics
 from sli_ui_toolkit.ui.managers.ui_font import ui_font
 
 from ui.theming import resolve_theme_color
@@ -84,7 +84,10 @@ class HelpBackBar(QWidget):
         self._layout.addWidget(self._back, 0)
 
         self._crumbs: tuple[tuple[str, str], ...] = ()
-        UiScale.get_instance().scale_changed.connect(self._remeasure_crumbs)
+        # Crumbs cache fixed widths derived from the UI font AND the scale —
+        # one unified subscription, not two source signals (a font change
+        # used to leave them stale until an unrelated reflow).
+        connect_ui_metrics(self, self._on_metrics_changed)
         self._crumbs_host = QWidget(self)
         self._crumbs_layout = QHBoxLayout(self._crumbs_host)
         self._crumbs_layout.setContentsMargins(0, 0, 0, 0)
@@ -111,9 +114,9 @@ class HelpBackBar(QWidget):
         self._back.setEnabled(bool(enabled))
         self.setVisible(True)
 
-    def _remeasure_crumbs(self, _factor: float | None = None) -> None:
+    def _on_metrics_changed(self) -> None:
         # Crumbs' fixed widths are measured from the scaled UI font; rebuild
-        # them on a live UiScale change so they keep fitting their text.
+        # them on a live font/scale change so they keep fitting their text.
         self.set_breadcrumb(self._crumbs)
 
     def set_breadcrumb(self, crumbs: tuple[tuple[str, str], ...]) -> None:
