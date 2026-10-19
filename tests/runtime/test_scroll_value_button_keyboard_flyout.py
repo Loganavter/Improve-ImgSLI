@@ -8,9 +8,10 @@ Owner's decisions:
 - **Up** moves the keyboard *into* the pill, ``Left``/``Right`` step the value
   there (the pill's own ``keyPressEvent`` → ``anchor._step_value``);
 - **Down**/*Esc* leave the pill;
-- **Enter** enters the value-edit mode (owner contract, plan-nav-coverage
-  2026-10-19); it no longer mirrors a right-click. ``rightClicked`` stays the
-  mouse right-button signal (the pill is entered with Up).
+- **Enter** is the secondary action (owner rule 2026-10-20): it emits
+  ``rightClicked`` — the mouse right-click signal wired to the colour pickers
+  — and does NOT enter an edit mode (the value moves via the wheel and the
+  Up-pill's Left/Right; ``is_editing()`` is always False).
 
 Falsification (recorded in DONE.md): with the pre-change binding — the preview
 path force-unregistering the pill's nav section, and ``_ScrollValueFlyout``
@@ -234,14 +235,15 @@ def test_underline_stays_visible_in_the_zero_state(qtbot):
     assert button._show_underline is True, "the underline must survive a rebuild"
 
 
-def test_enter_enters_edit_mode_instead_of_right_click(host_button, qapp):
-    """Enter belongs to the value-edit contract, not to ``rightClicked``.
+def test_enter_emits_right_click_instead_of_entering_edit_mode(host_button, qapp):
+    """Enter is the secondary action, not edit mode (owner rule 2026-10-20).
 
-    Owner contract (plan-nav-coverage-2026-10-19 § Value-edit contract): every
-    value control gets edit mode on Enter (Enter enters, Enter commits, Esc
-    reverts — pinned end-to-end in ``test_value_control_edit_contract.py``).
-    ``rightClicked`` stays the mouse right-button signal, so the colour/context
-    menus it opens are still reached with a real right click.
+    On this control Enter emits ``rightClicked`` — the same signal a mouse
+    right click emits, so the wired colour pickers open from the keyboard.
+    There is no edit mode (``is_editing()`` is always False; the value moves
+    via the wheel and the Up-pill's Left/Right) — pinned in full by
+    ``test_scroll_value_button_enter_secondary.py`` and the reasoned exception
+    in ``test_value_control_edit_contract.py``.
     """
     _, button = host_button
     seen: list[bool] = []
@@ -252,6 +254,6 @@ def test_enter_enters_edit_mode_instead_of_right_click(host_button, qapp):
     QTest.keyClick(button, Qt.Key.Key_Return)
     qapp.processEvents()
 
-    assert seen == [], "Enter must not emit the RMB signal any more"
-    assert button.is_editing() is True, "Enter must enter edit mode"
-    assert button.get_value() == before, "entering edit mode must not step the value"
+    assert seen == [True], "Enter must emit the RMB signal"
+    assert button.is_editing() is False, "Enter must not enter edit mode"
+    assert button.get_value() == before, "the secondary action must not step the value"

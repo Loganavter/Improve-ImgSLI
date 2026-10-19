@@ -8,13 +8,16 @@ value there), and an always-visible bottom underline (via the toolkit's
 built-in ``show_underline``/``setUnderlineColor`` API) showing an associated
 color (e.g. divider/guide color).
 
-``Enter`` follows the app-wide value-edit contract (plan-nav-coverage-2026-10-19):
-the first press enters edit mode (capturing the entry value), arrows/WASD then
-adjust the value, a second ``Enter`` commits and ``Esc`` reverts — the same
-state machine the toolkit ``Slider`` implements, exposed through
-``is_editing()`` so ``ToolbarRowsSection`` only hands the arrows over while
-editing. ``rightClicked`` stays the *mouse* right-button signal (its colour /
-context menus are still reached with a real right click).
+Enter/Return is this control's SECONDARY ACTION — it emits
+``rightClicked``, exactly the signal a mouse right click emits (owner rule
+2026-10-20), so keyboard users reach the divider/guides colour pickers the
+consumers already wire to that channel (``multi_compare`` toolbar,
+onboarding ``b_expert``). This is a reasoned exception to the app-wide
+value-edit contract (plan-nav-coverage-2026-10-19): there is no Enter edit
+mode here, the keyboard value path is the wheel and the Up-pill's
+Left/Right, and ``is_editing()`` always reports ``False`` so
+``ToolbarRowsSection`` keeps handing every arrow to ring navigation instead
+of the control.
 
 The value pill is a separate preview, entered with Up; inside it only
 Left/Right change the value, a second Up leaves it upward to the control above,
@@ -369,23 +372,6 @@ class ScrollValueButton(Button):
 
     _GROUP = "scroll_value"
 
-    # Keys that adjust the value while EDIT MODE is active — the same
-    # arrow/WASD mapping the toolkit ``Slider`` uses (WASD is the 2-D-surface
-    # convention: W/A/S/D map onto Up/Left/Down/Right). None of these adjust
-    # the value while merely navigating; the section gate
-    # (``arrow_gate_open`` -> ``is_editing()``) is what keeps them out of the
-    # control until Enter.
-    _EDIT_ADJUST_KEYS = {
-        Qt.Key.Key_Left: -1,
-        Qt.Key.Key_Right: 1,
-        Qt.Key.Key_Up: 1,
-        Qt.Key.Key_Down: -1,
-        Qt.Key.Key_A: -1,
-        Qt.Key.Key_D: 1,
-        Qt.Key.Key_W: 1,
-        Qt.Key.Key_S: -1,
-    }
-
     def __init__(
         self,
         parent: QWidget | None = None,
@@ -415,12 +401,9 @@ class ScrollValueButton(Button):
         self._is_checked = False
         self._zero_icon = zero_icon
         self._saved_value: int | None = None
-        # Explicit value-edit mode (plan-nav-coverage-2026-10-19): entered with
-        # Enter, exited by Enter (commit), Esc (revert) or focus loss (commit
-        # as-is, same as the toolkit Slider). ``_edit_entry_value`` is the
-        # value captured on entry so Esc can put it back.
-        self._editing = False
-        self._edit_entry_value = self._value
+        # No value-edit mode (owner rule 2026-10-20): Enter is the secondary
+        # action (``rightClicked``), so the Enter/Esc/commit state machine the
+        # toolkit ``Slider`` implements is intentionally absent here.
         self._hovered_split = False
         # True only while the mouse is actually over the button
         # (enterEvent/leaveEvent) — ``_hovered_split`` also covers keyboard
@@ -592,40 +575,20 @@ class ScrollValueButton(Button):
         self._saved_value = None
         return value
 
-    # ---------- value-edit mode (Enter contract) ----------
+    # ---------- value-edit contract query (always idle) ----------
 
     def is_editing(self) -> bool:
-        """True while the user is in explicit edit mode (the value-edit contract).
+        """Always ``False``: this control has no Enter edit mode.
 
-        Sections/flyouts duck-type this query to decide whether arrows belong
-        to the control or to the ring: ``ToolbarRowsSection`` only
-        trial-dispatches arrows to a focused widget while it reports edit mode
-        (see the toolkit's ``arrow_gate_open``), so a focused button never
-        swallows navigation keys.
+        Deliberate exception to the app-wide value-edit contract (owner rule
+        2026-10-20): Enter is the secondary action (``rightClicked`` ->
+        colour picker), the keyboard value path is the wheel and the Up-pill's
+        Left/Right, so arrows never belong to this control while it is
+        focused. The query stays implemented because sections/flyouts
+        duck-type it (``arrow_gate_open`` in the toolkit) — returning ``False``
+        is what keeps every arrow in ring navigation.
         """
-        return self._editing
-
-    def _enter_edit_mode(self) -> None:
-        self._editing = True
-        self._edit_entry_value = self._value
-        # The pill is this control's value readout while editing: the
-        # in-button digit is suppressed by the scroll/preview state, and
-        # ``_step_value`` keeps the pill in sync. ``_show_flyout`` stops its
-        # transient hide timer while ``_editing`` is set.
-        self._show_flyout()
-        self.update()
-
-    def _leave_edit_mode(self, *, commit: bool) -> None:
-        if not self._editing:
-            return
-        self._editing = False
-        if not commit:
-            self.set_value(self._edit_entry_value)
-        # Hand the digit back to the button (the pill was the readout while
-        # editing) — ``_hide_flyout`` also resets ``_is_scrolling`` so the
-        # button repaints its own value region.
-        self._hide_flyout()
-        self.update()
+        return False
 
     # ---------- click: value region (hover split) also toggles orientation ----------
 
@@ -651,7 +614,7 @@ class ScrollValueButton(Button):
         # digit inside the button on hover. ``_set_hover_split(True)`` above
         # paints it — ``_is_scrolling`` stays False here, so the "value"
         # region's row is not suppressed. The flyout stays an affordance of
-        # the other triggers (keyboard focus, wheel, Enter edit mode).
+        # the other triggers (keyboard focus, wheel, a click).
         # See _show_flyout for the suppressed-row contract.
 
     def leaveEvent(self, event) -> None:
@@ -694,27 +657,21 @@ class ScrollValueButton(Button):
     def keyPressEvent(self, event) -> None:  # noqa: N802
         key = event.key()
         scroll_value_debug("keyPressEvent key=%s value=%s widget=%s", key, self._value, id(self))
-        # Value-edit contract (plan-nav-coverage-2026-10-19), the same state
-        # machine as the toolkit Slider: Enter enters (capturing the entry
-        # value), a second Enter commits, Esc reverts, arrows/WASD adjust ONLY
-        # while editing. While merely navigating every arrow belongs to
-        # NavigationManager/ToolbarRowsSection — ``is_editing()`` closes the
-        # section gate, so this handler is not even asked for them.
+        # Enter is this control's SECONDARY ACTION, not an edit-mode toggle
+        # (owner rule 2026-10-20): emit exactly the signal a mouse right click
+        # emits, so every consumer already wired to ``rightClicked`` (the
+        # multi_compare divider-width -> colour picker, onboarding
+        # ``b_expert`` -> colour dialog) works from the keyboard unchanged.
+        # Consumed here so the toolkit Button's own Space/Enter activation
+        # (``_activate_via_keyboard``) never runs: Enter must not toggle, step
+        # or otherwise change the value — the keyboard value path is the wheel
+        # and the Up-pill's Left/Right.
         if key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
-            if self._editing:
-                scroll_value_debug("Enter → commit value=%s widget=%s", self._value, id(self))
-                self._leave_edit_mode(commit=True)
-            else:
-                scroll_value_debug("Enter → edit mode widget=%s", id(self))
-                self._enter_edit_mode()
+            scroll_value_debug("Enter → rightClicked widget=%s", id(self))
+            self.rightClicked.emit()
             event.accept()
             return
         if key == Qt.Key.Key_Escape:
-            if self._editing:
-                scroll_value_debug("Esc → revert value=%s widget=%s", self._value, id(self))
-                self._leave_edit_mode(commit=False)
-                event.accept()
-                return
             # Escape hides the preview flyout (e.g. after wheel) and must not
             # propagate to close unrelated flyouts.
             if self._flyout is not None and self._flyout.isVisible():
@@ -722,18 +679,11 @@ class ScrollValueButton(Button):
                 self._dismiss_preview()
                 event.accept()
                 return
-        if self._editing:
-            step = self._EDIT_ADJUST_KEYS.get(key)
-            if step is not None:
-                self._step_value(step)
-                event.accept()
-                return
         if key == Qt.Key.Key_Up and (self._flyout is None or not self._flyout.isVisible()):
             # No preview yet — a programmatic activation focus deliberately
             # does not raise one. Create it on demand so THIS press can enter
             # it: leave the event unaccepted, the section then finds the fresh
-            # extension and focuses it. (Only reachable while not editing: the
-            # section gate does not dispatch arrows to a navigating control.)
+            # extension and focuses it.
             self._show_flyout()
         super().keyPressEvent(event)
 
@@ -805,13 +755,6 @@ class ScrollValueButton(Button):
 
     def focusOutEvent(self, event) -> None:  # noqa: N802
         super().focusOutEvent(event)
-        # Focus leaving ends edit mode with the value as-is — the implicit exit
-        # in the toolkit Slider's own focusOutEvent (Enter/Esc are the explicit
-        # ones). Without this the section gate would stay open for a control
-        # that no longer holds the keyboard, and a later focus grant would
-        # come back already "editing".
-        if self._editing:
-            self._leave_edit_mode(commit=True)
         _t = QApplication.focusWidget()
         scroll_value_debug(
             "focusOut widget=%s target=%s hover=%s",
@@ -993,15 +936,13 @@ class ScrollValueButton(Button):
             self._flyout.show_value("", icon=themed_icon(self._zero_icon), anchor=self)
         else:
             self._flyout.show_value(str(self._value), anchor=self)
-        # While editing, the pill IS the readout — it must stay up across the
-        # whole edit session (no 700 ms auto-hide between key presses).
-        # While the mouse is on the button the preview is persistent too:
-        # leaveEvent owns the hide. This matters for a button focused by a
-        # click (the mouse is on it) — the pill must not be killed by the
-        # hide timer before a hand can travel from mouse to keyboard and
-        # press Up (the owner's value-change path). Otherwise the transient
-        # wheel/focus preview arms its own timer.
-        if self._editing or self._mouse_hovered:
+        # While the mouse is on the button the preview is persistent: leaveEvent
+        # owns the hide. This matters for a button focused by a click (the
+        # mouse is on it) — the pill must not be killed by the hide timer
+        # before a hand can travel from mouse to keyboard and press Up (the
+        # owner's value-change path). Otherwise the transient wheel/focus
+        # preview arms its own timer.
+        if self._mouse_hovered:
             self._flyout_hide_timer.stop()
         else:
             self._flyout_hide_timer.start(_FLYOUT_HIDE_MS)

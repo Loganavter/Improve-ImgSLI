@@ -235,15 +235,16 @@ def test_up_navigates_when_no_preview_exists(host_button, qapp):
     qapp.processEvents()
 
     assert button._flyout is None or not button._flyout.isVisible(), (
-        "Up must not conjure a preview any more — arrows navigate unless the "
-        "control is in edit mode (Enter)"
+        "Up must not conjure a preview any more — arrows navigate because "
+        "the control never reports edit mode"
     )
     assert not button.is_editing()
 
-    # The explicit affordance that replaced it: Enter enters edit mode.
+    # Enter is not the affordance: it is the secondary action (owner rule
+    # 2026-10-20) and leaves the control out of edit mode.
     QTest.keyClick(button, Qt.Key.Key_Return)
     qapp.processEvents()
-    assert button.is_editing() is True
+    assert button.is_editing() is False
 
 
 def test_click_raises_the_preview_when_focus_was_already_granted(host_button, qapp):
