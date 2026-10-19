@@ -17,6 +17,16 @@ The contract (identical to the toolkit `Slider`):
 4. ``Enter`` commits — the adjusted value stays, edit mode ends;
 5. ``Esc`` reverts to the value captured on entry and ends edit mode.
 
+One registered control carries a REASONED EXCEPTION (recorded in
+``ValueControl.enter_edit`` and in its ``reason``): ``ScrollValueButton`` has
+no Enter edit mode — Enter is its secondary action (the ``rightClicked``
+signal a mouse right click emits, wired to colour pickers), the value moves
+via the wheel and the Up-pill's Left/Right, and ``is_editing()`` is always
+``False``. Its behaviour is pinned by
+``tests/runtime/test_scroll_value_button_enter_secondary.py`` plus the
+dedicated test at the bottom of this file; the generic harness below skips it
+so the exception cannot silently spread to ``Slider``/``ValueSlider``.
+
 Real ``QTest.keyClick`` presses are used so the app-wide ``NavigationManager``
 filter decides, exactly as in the running app (guide §11) — a direct
 ``keyPressEvent`` call would bypass the section gate this file exists to pin.
@@ -69,6 +79,9 @@ class ValueControl:
     qualname: str
     factory: Callable[[], QWidget]
     reason: str
+    #: ``False`` = a documented exception to Enter-to-edit (reason says why);
+    #: the generic behaviour harness below runs only on ``True`` controls.
+    enter_edit: bool = True
 
     @property
     def key(self) -> str:
@@ -104,13 +117,23 @@ VALUE_CONTROLS: dict[str, ValueControl] = {
             qualname="ScrollValueButton",
             factory=_build_scroll_value_button,
             reason=(
-                "button-based value control with app-owned key handling — "
-                "aligned to the same contract (Enter edit, Enter commit, "
-                "Esc revert, is_editing() exposed for the section gate)"
+                "REASONED EXCEPTION to the Enter-to-edit rule (owner rule "
+                "2026-10-20): Enter is the control's secondary action "
+                "(right-click -> colour picker); the value moves via the "
+                "wheel and the Up-pill's Left/Right; is_editing() is always "
+                "False so arrows navigate. Pinned by "
+                "tests/runtime/test_scroll_value_button_enter_secondary.py"
             ),
+            enter_edit=False,
         ),
     )
 }
+
+#: Controls the generic Enter-edit harness drives. An ``enter_edit=False``
+#: control is an explicit exception and must have its own dedicated test.
+_ENTER_EDIT_CONTROLS = sorted(
+    key for key, control in VALUE_CONTROLS.items() if control.enter_edit
+)
 
 # Base class names whose app subclasses are inherently value controls: if a
 # new ``FooSlider(Slider)`` appears anywhere under ``src/`` it must be listed
@@ -301,7 +324,7 @@ def test_arrows_navigate_while_not_editing(control_key, make_host, qapp):
     )
 
 
-@pytest.mark.parametrize("control_key", sorted(VALUE_CONTROLS))
+@pytest.mark.parametrize("control_key", _ENTER_EDIT_CONTROLS)
 def test_enter_adjust_commit_and_escape_revert(control_key, make_host, qapp):
     built = make_host(control_key)
     control = built.control
@@ -358,12 +381,16 @@ def test_enter_adjust_commit_and_escape_revert(control_key, make_host, qapp):
     assert _value(control) == committed, "Esc must revert to the entry value"
 
 
-def test_scroll_value_button_enter_does_not_mirror_right_click(make_host, qapp):
-    """Enter belongs to the value-edit contract now, not to ``rightClicked``.
+def test_scroll_value_button_enter_is_the_secondary_action(make_host, qapp):
+    """Documented exception: Enter emits ``rightClicked`` instead of editing.
 
-    Owner contract (plan-nav-coverage-2026-10-19): Enter enters editing on
-    every value control. ``rightClicked`` stays the mouse right-button signal
-    (its colour/context menus are still reached with an actual right click).
+    Owner rule (2026-10-20): on the scrollable value buttons Enter/Return does
+    what a mouse right click does — ``rightClicked`` — so the consumer wired
+    to it (multi_compare divider-width -> colour picker; onboarding
+    ``b_expert`` -> colour dialog) opens from the keyboard too. There is no
+    edit mode: ``is_editing()`` stays False, the value does not move, and the
+    arrows keep navigating (the generic harness above skips this control via
+    ``enter_edit=False``; the dedicated file pins the rest).
     """
     built = make_host(
         "ui/widgets/scroll_value_button.py:ScrollValueButton"
@@ -373,7 +400,28 @@ def test_scroll_value_button_enter_does_not_mirror_right_click(make_host, qapp):
     control.rightClicked.connect(lambda: seen.append(True))
 
     _kbd_focus(control, qapp)
+    entry = _value(control)
     _press(control, Qt.Key.Key_Return, qapp)
 
-    assert seen == [], "Enter must enter edit mode, not emit the RMB signal"
-    assert control.is_editing() is True
+    assert seen == [True], (
+        "Enter must emit the secondary-action signal (rightClicked) exactly once"
+    )
+    assert control.is_editing() is False, "this control has no Enter edit mode"
+    assert _value(control) == entry, "the secondary action must not step the value"
+
+
+def test_only_the_scroll_value_button_is_an_enter_edit_exception():
+    """Keep the exception set at exactly one, deliberately documented control.
+
+    A second ``enter_edit=False`` entry means another app value control
+    stopped following the owner's Enter-to-edit rule — that needs its own
+    decision (and its own covering test), not a quiet registry edit.
+    """
+    exceptions = {
+        key for key, control in VALUE_CONTROLS.items() if not control.enter_edit
+    }
+    assert exceptions == {"ui/widgets/scroll_value_button.py:ScrollValueButton"}, (
+        "unexpected Enter-edit exception(s); every other app value control "
+        "must keep the generic contract:\n" + "\n".join(sorted(exceptions))
+    )
+
