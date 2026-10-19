@@ -31,15 +31,17 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from PySide6.QtCore import QEventLoop, QRectF, QTimer
+from PySide6.QtCore import QRectF
 from PySide6.QtGui import QColor, QImage, QPainter, QPixmap
 
 from sli_ui_toolkit.managers import UiScale, scaled_px
 
+from core.evidence.journal import record_evidence, reset_journal, verdict
 from tabs.image_gallery.models import GalleryItem
 from tabs.image_gallery.ui.card import GALLERY_CARD_H, GALLERY_CARD_W, build_gallery_card
 from tabs.image_gallery.ui.card.dots import DOT_DIAMETER, DOT_PITCH
 from tabs.image_gallery.ui.card.painters import _dots_overlay_painter
+from tests.helpers.drain_until_stable import drain_until_stable
 
 #: Design px of the preview (thumbnail) box inside the 250x170 card.
 _COVER = (8, 8, 234, 110)
@@ -50,6 +52,7 @@ _TEXT_TOP, _TEXT_H = 118, 52
 @pytest.fixture(autouse=True)
 def _restore_ui_scale():
     """Never leak a parametrized factor into later suites (process singleton)."""
+    reset_journal()
     yield
     UiScale.get_instance().set_factor(1.0)
 
@@ -61,15 +64,6 @@ def _item() -> GalleryItem:
 def _card(factor: float):
     UiScale.get_instance().set_factor(factor)
     return build_gallery_card(_item(), parent=None, mode="camera")
-
-
-def _drain(qapp, frames: int = 4) -> None:
-    """Spin real event-loop turns (``connect_ui_metrics`` coalesces on a zero-timer)."""
-    for _ in range(frames):
-        qapp.processEvents()
-        loop = QEventLoop()
-        QTimer.singleShot(5, loop.quit)
-        loop.exec()
 
 
 def _rect_ints(rect) -> tuple[int, int, int, int]:
@@ -260,18 +254,42 @@ def test_rank_badge_pill_scales_once(qapp) -> None:
 
 
 def test_card_rederives_boxes_on_a_live_scale_change(qapp) -> None:
-    """A live UiScale flip re-derives the card in place (no rebuild, no restart)."""
+    """A live UiScale flip re-derives the card in place (no rebuild, no restart).
+
+    Falsification: the reported bug (red before ``4d5a7572``) was the live
+    card keeping its build-time cover/text boxes after ``set_factor(1.5)`` —
+    the cover read ``(8, 8, 234, 110)`` where the scaled card needs
+    ``(12, 12, 351, 165)``. The re-derivation rides the coalesced metrics
+    channel (a zero-timer), so the read is drained first. The evidence record
+    is derived from the observed rects: a stale cache emits ``violated`` with
+    the measured numbers and fails this probe.
+    """
     card = _card(1.0)
     try:
         card.render(QPixmap(card.size()))
         assert _rect_ints(card.region_rect("cover")) == _COVER
 
         UiScale.get_instance().set_factor(1.5)
-        _drain(qapp)
+        drain_until_stable(qapp, lambda: _rect_ints(card.region_rect("cover")))
         card.render(QPixmap(card.size()))
 
         assert (card.width(), card.height()) == (375, 255)
         assert _rect_ints(card.region_rect("cover")) == (12, 12, 351, 165)
         assert int(card.region_rect("text").top()) == 177
+
+        observed_cover = _rect_ints(card.region_rect("cover"))
+        expected_cover = tuple(int(scaled_px(v)) for v in _COVER)
+        record_evidence("spec.ui.scale_parity",
+                        kind="spec",
+                        verdict="ok" if observed_cover == expected_cover else "violated",
+                        signal=(f"factor={UiScale.get_instance().factor()} "
+                                f"cover={observed_cover} expected={expected_cover} "
+                                f"card={card.width()}x{card.height()}"),
+                        reason="owned derived geometry re-derived after a live scale change",
+                        ids=("card:build_gallery_card",),
+                        area="image_gallery.card")
+        record = verdict(None, "spec.ui.scale_parity")
+        assert record is not None, "scale-parity probe emitted no evidence"
+        assert record.verdict == "ok", record.signal
     finally:
         card.deleteLater()
