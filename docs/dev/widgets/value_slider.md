@@ -22,6 +22,16 @@ changes (e.g. dragging).
 The hint controller is created lazily on first show (the flyout needs a
 real window).
 
+## Keyboard (value-edit contract)
+
+`ValueSlider` adds no key handling: it is a toolkit `Slider`, so it inherits
+the app-wide value-edit contract (plan-nav-coverage-2026-10-19) unchanged —
+arrows navigate while the section focus ring is merely moving, `Enter` enters
+edit mode, arrows/WASD adjust, `Enter` commits, `Esc` reverts to the entry
+value, and `is_editing()` reports the state so `ToolbarRowsSection` only hands
+the arrows over while editing. `tests/runtime/test_value_control_edit_contract.py`
+drives every registered app value control through these keys.
+
 ## ValueSliderRow
 
 `ValueSlider` + an always-visible right-hand value label: `[track] [label]`.
