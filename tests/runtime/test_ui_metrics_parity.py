@@ -3,26 +3,123 @@
 Each surface below is a real app widget built offscreen whose derived
 geometry is owned by a handler migrated to the unified channel
 (``connect_ui_metrics``) in wave A1. The harness
-(``tests/helpers/ui_metrics_parity.py``) changes the UI font and the scale
-through the toolkit singletons and asserts the geometry actually re-derives
-under each axis the surface declares — the behavioural half of the P0 gate
-(the AST contract in ``tests/contracts/test_ui_metrics_contracts.py`` is the
-shape half).
+(``tests/helpers/ui_metrics_parity.py``) changes the UI font, the interface
+scale and the live language through the production levers and asserts the
+geometry/labels actually re-derive under each axis the surface declares — the
+behavioural half of the P0 gate (the AST contract in
+``tests/contracts/test_ui_metrics_contracts.py`` is the shape half).
+
+Registered set (the docstring is the index; ``register_surface`` is the only
+entry point, so a surface cannot be added without an explicit decision on the
+two plan axes ``scale`` and ``language``):
+
+Host chrome
+    ``csd_menu_strip``, ``help_back_bar``, ``dialog_action_bar``,
+    ``context_menu_rows``, ``button_chip_sections``, ``toolkit_switch``,
+    ``color_picker_dialog``.
+Tab surfaces
+    ``value_slider_row``, ``recent_shelf_panel``, ``session_picker_page``,
+    ``ic_scaled_icon_label``, ``rating_item`` (list row), ``export_dialog``,
+    ``image_properties_dialog``, ``gallery_ai_page`` (Image Gallery → AI
+    settings page).
+
+The four surfaces added by ``plan-live-appearance-fixes-2026-10-19``:
+
+* ``rating_item`` — live ``scale`` (the row and its +/- buttons grow with the
+  interface scale). ``language`` is exempt: row text is caller-supplied and
+  the row carries no translated chrome; rows are rebuilt per flyout open.
+* ``export_dialog`` / ``image_properties_dialog`` / ``gallery_ai_page`` — both
+  plan axes are driven through the **rebuild** mode: these surfaces are
+  constructed per open (modal dialogs) or per settings-dialog construction
+  (the AI page), so the truthful assertion is "a fresh instance built under
+  the new metrics carries the new geometry/labels". A live per-instance
+  subscription does not exist for them, and asserting one would test a
+  lifecycle the app does not have.
+
+Known gaps recorded here (production-side, outside this gate's scope; none is
+left as a silent skip):
+
+* ``image_properties_dialog``: the dialog's root chrome (margins/spacing)
+  re-derives on the scale axis, but its content-driven size constants
+  (``IMAGE_PROPERTIES_MIN_WIDTH``/``_HEIGHT`` in
+  ``plugins/image_properties/layout_geometry.py``) are plain ints and do not
+  follow the scale. The probe asserts the owned chrome; the unscaled size
+  constants remain open debt.
+* ``gallery_ai_page``: the page's labels and its fixed 150px label column are
+  resolved from the build language/scale; ``SettingsDialog.update_language``
+  retranslates built-in chrome + the keyboard page but does not rebuild
+  tab-owned settings sections. The language axis therefore asserts the
+  rebuild path (the app opens settings with the current language), not a live
+  retranslation the product does not implement.
 """
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
-from PySide6.QtWidgets import QDialog, QHBoxLayout
+from PySide6.QtWidgets import QDialog, QHBoxLayout, QLabel, QWidget
 
 from tests.helpers.ui_metrics_parity import (
+    REBUILD,
     MetricsSurface,
     assert_reflows_on_metrics_change,
+)
+
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+
+#: Language is a build-time input for these surfaces: their copy is resolved
+#: when the host constructs/rebuilds them, not through a live child binding.
+_LANG_BUILD_TIME_CHROME = (
+    "copy is resolved from the active language when the host builds/rebuilds "
+    "the surface (dialog open, CSD menu rebuild); the probe owns geometry, so "
+    "the live language entry alone cannot move it"
+)
+
+#: Geometry-only probes: the offscreen builder supplies literal labels; live
+#: widget retranslation is covered by the i18n suites, not this metrics probe.
+_LANG_GEOMETRY_ONLY = (
+    "geometry-only probe (literal labels in the builder); the widget's live "
+    "retranslation is covered by the i18n suites, so emit_language_changed "
+    "cannot move its sizeHint"
 )
 
 
 def _tr(key: str, default: str = "", *args, **kwargs) -> str:
     return default or key
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _register_i18n_roots():
+    """Make the plugin/tab language packs resolvable for the rebuild axes.
+
+    ``resources/i18n`` is registered by ``resources.translations`` at import;
+    the per-plugin/tab packs are normally added by discovery, which a narrow
+    offscreen builder does not run.
+    """
+    from resources.translations import add_i18n_root
+
+    for relative in (
+        "src/plugins/export/resources/i18n",
+        "src/plugins/image_properties/resources/i18n",
+        "src/tabs/image_gallery/resources/i18n",
+    ):
+        path = _REPO_ROOT / relative
+        if path.is_dir():
+            add_i18n_root(path)
+
+
+def _isolate_remembered_geometry(monkeypatch) -> None:
+    """Drop remembered dialog sizes so the probe measures computed geometry.
+
+    ``apply_dialog_geometry`` restores a remembered size from QSettings; a
+    developer machine with the app's real settings would otherwise pin the
+    dialog to an old size and hide the metrics change.
+    """
+    monkeypatch.setattr(
+        "shared_toolkit.ui.layout_sizing._load_remembered_size",
+        lambda _key: None,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -292,58 +389,345 @@ def _build_color_picker_dialog(qapp, monkeypatch):
     return dialog, probe
 
 
-SURFACES: dict[str, MetricsSurface] = {
-    # Host chrome — font AND scale derived.
-    "csd_menu_strip": MetricsSurface(
-        "csd_menu_strip", _build_csd_menu_strip, frozenset({"font", "scale"})
-    ),
-    "help_back_bar": MetricsSurface(
-        "help_back_bar", _build_help_back_bar, frozenset({"font", "scale"})
-    ),
-    "dialog_action_bar": MetricsSurface(
-        "dialog_action_bar", _build_dialog_action_bar, frozenset({"scale"})
-    ),
-    # Tab surfaces.
-    "value_slider_row": MetricsSurface(
-        "value_slider_row", _build_value_slider_row, frozenset({"font", "scale"})
-    ),
-    "recent_shelf_panel": MetricsSurface(
-        "recent_shelf_panel", _build_recent_shelf_panel, frozenset({"scale"})
-    ),
-    "session_picker_page": MetricsSurface(
-        "session_picker_page", _build_session_picker_page, frozenset({"scale"})
-    ),
-    "ic_scaled_icon_label": MetricsSurface(
-        "ic_scaled_icon_label", _build_ic_scaled_icon_label, frozenset({"scale"})
-    ),
-    # Toolkit chrome the owner reported broken on a LIVE scale change — these
-    # are RATIO surfaces (all probe values are factor-proportional design px),
-    # so the harness also catches DOUBLE scaling, not just staleness.
-    "context_menu_rows": MetricsSurface(
+def _build_rating_item(qapp, monkeypatch):
+    """RatingListItem: row height + +/- button boxes are live scale-derived.
+
+    The list row is rebuilt per flyout open (production comment on
+    ``_row_layout``), but it is alive while the flyout is open, and its
+    ``Button`` parts re-apply their design size on a live ``UiScale`` change.
+    The probe pins exactly that owned geometry: the row height and the two
+    gesture buttons. Row margins/label width are build-time ``scaled_px`` and
+    are refreshed by the per-open rebuild, not by a live subscription.
+    """
+    from ui.widgets.rating_item import RatingListItem
+
+    row = RatingListItem(
+        index=0,
+        text="A fairly long image name.png",
+        full_path="/tmp/a.png",
+        rating=3,
+        get_rating=lambda: 3,
+        increment_rating=lambda *_: None,
+        decrement_rating=lambda *_: None,
+        list_num=1,
+    )
+
+    def probe():
+        return (row.height(), row.btn_minus.width(), row.btn_plus.height())
+
+    return row, probe
+
+
+def _build_export_dialog(qapp, monkeypatch):
+    """ExportDialog: content-driven geometry re-resolved at build/apply time.
+
+    ``plugins/export/layout_geometry`` used module-level ``scaled_px`` bakes;
+    it now resolves every design px at call time. The probe reads the applied
+    minimum plus the preview/form floors — the values
+    ``apply_export_dialog_geometry`` owns — after a rebuild under the lever.
+    Height is intentionally excluded from the ratio probe: the offscreen
+    screen's height clamp (`clamp_to_screen`) dominates it, while width is
+    factor-proportional end to end.
+    """
+    _isolate_remembered_geometry(monkeypatch)
+    from domain.types import Color
+    from plugins.export.dialog import ExportDialog
+    from plugins.export.models import ExportDialogState
+    from resources.translations import get_current_language
+
+    state = ExportDialogState(
+        current_language=get_current_language() or "en",
+        output_dir="/tmp",
+        favorite_dir=None,
+        last_format="PNG",
+        quality=95,
+        png_compress_level=9,
+        fill_background=True,
+        background_color=Color(255, 255, 255, 255),
+        comment_text="",
+        comment_keep_default=False,
+        resolution_scale=1.0,
+    )
+    dialog = ExportDialog(dialog_state=state, suggested_filename="out")
+
+    def probe():
+        return (
+            dialog.minimumWidth(),
+            dialog.export_preview_frame.minimumWidth(),
+            dialog.export_form_frame.minimumWidth(),
+            dialog.output_section.dir_label.text(),
+            dialog.fmt_label.text(),
+            getattr(dialog.btn_ok, "_text", ""),
+        )
+
+    return dialog, probe
+
+
+def _build_image_properties_dialog(qapp, monkeypatch):
+    """ImagePropertiesDialog: root chrome re-resolved at build (design px).
+
+    The dialog's own migrated geometry is its root margins/spacing
+    (``_connect_design_metrics``). The content-driven size constants are
+    plain ints (see the module docstring's known-gap note), so this probe
+    asserts the chrome the dialog owns rather than pretending the constants
+    follow the scale.
+    """
+    _isolate_remembered_geometry(monkeypatch)
+    monkeypatch.setattr(
+        "shared_toolkit.ui.decorate_dialog.decorate_dialog", lambda *a, **k: None
+    )
+    from plugins.image_properties.dialog import ImagePropertiesDialog
+    from plugins.image_properties.service import (
+        ImageProperties,
+        ImagePropertyRow,
+        ImagePropertySection,
+    )
+    from resources.translations import get_current_language
+
+    properties = ImageProperties(
+        title="Properties",
+        sections=(
+            ImagePropertySection(
+                "section",
+                "Section",
+                (
+                    ImagePropertyRow("name", "Name", "image.png"),
+                    ImagePropertyRow("size", "Size", "1920 x 1080 px"),
+                ),
+            ),
+        ),
+    )
+    dialog = ImagePropertiesDialog(
+        properties, current_language=get_current_language() or "en"
+    )
+
+    def probe():
+        layout = dialog.layout()
+        assert layout is not None
+        margins = layout.contentsMargins()
+        return (
+            margins.left(),
+            margins.top(),
+            margins.right(),
+            margins.bottom(),
+            layout.spacing(),
+            getattr(dialog.copy_all_button, "_text", ""),
+            getattr(dialog.close_button, "_text", ""),
+        )
+
+    return dialog, probe
+
+
+def _build_gallery_ai_page(qapp, monkeypatch):
+    """Image Gallery → AI settings page: group metrics + translated labels.
+
+    The page is built once per ``SettingsDialog`` construction from the
+    dialog's language. The probe reads the group's own toolkit metrics
+    (bottom inset, row spacing) plus the line-edit/combo heights and the
+    labels — the title-clearance top inset is deliberately excluded because
+    it is font-height-derived, not factor-proportional.
+    """
+    from core.store import Store
+    from plugins.settings.dialog import SettingsDialog
+    from resources.translations import get_current_language
+    from sli_ui_toolkit.managers import UiScale
+    from sli_ui_toolkit.widgets import CustomGroupWidget
+
+    store = Store()
+    dialog = SettingsDialog(
+        current_language=get_current_language() or "en",
+        current_theme=store.settings.theme,
+        current_max_length=30,
+        min_limit=1,
+        max_limit=200,
+        debug_mode_enabled=False,
+        system_notifications_enabled=True,
+        current_ui_scale_factor=UiScale.get_instance().factor(),
+        active_tab="image_gallery",
+    )
+    page = dialog.page_gallery_ai
+    group = page.findChild(CustomGroupWidget)
+    assert group is not None, "AI settings group missing"
+
+    def probe():
+        layout = group.layout()
+        assert layout is not None
+        margins = layout.contentsMargins()
+        return (
+            margins.bottom(),
+            layout.spacing(),
+            dialog.gallery_ai_base_url.height(),
+            dialog.gallery_ai_effort.height(),
+            dialog.gallery_ai_enabled.text(),
+            dialog.gallery_ai_base_url_label.text(),
+            dialog.gallery_ai_model_label.text(),
+        )
+
+    return dialog, probe
+
+
+# ---------------------------------------------------------------------------
+# Registry — the ONE entry point. Every surface must make an explicit decision
+# on each plan axis (asserted or exempted with a reason); see
+# ``MetricsSurface.__post_init__``.
+# ---------------------------------------------------------------------------
+
+SURFACES: dict[str, MetricsSurface] = {}
+
+
+def register_surface(surface: MetricsSurface) -> MetricsSurface:
+    """Register a parity surface (the only supported entry point).
+
+    Refuses duplicates and (through ``MetricsSurface.__post_init__``) a
+    surface that leaves a plan axis unaccounted — a new dialog cannot ship
+    ungated and cannot silently skip ``scale``/``language``.
+    """
+    if surface.name in SURFACES:
+        raise ValueError(f"duplicate metrics surface {surface.name!r}")
+    SURFACES[surface.name] = surface
+    return surface
+
+
+# Host chrome — font AND scale derived.
+register_surface(
+    MetricsSurface(
+        "csd_menu_strip",
+        _build_csd_menu_strip,
+        frozenset({"font", "scale"}),
+        exemptions={"language": _LANG_BUILD_TIME_CHROME},
+    )
+)
+register_surface(
+    MetricsSurface(
+        "help_back_bar",
+        _build_help_back_bar,
+        frozenset({"font", "scale"}),
+        exemptions={"language": _LANG_BUILD_TIME_CHROME},
+    )
+)
+register_surface(
+    MetricsSurface(
+        "dialog_action_bar",
+        _build_dialog_action_bar,
+        frozenset({"scale"}),
+        exemptions={"language": _LANG_GEOMETRY_ONLY},
+    )
+)
+# Tab surfaces.
+register_surface(
+    MetricsSurface(
+        "value_slider_row",
+        _build_value_slider_row,
+        frozenset({"font", "scale"}),
+        exemptions={"language": _LANG_BUILD_TIME_CHROME},
+    )
+)
+register_surface(
+    MetricsSurface(
+        "recent_shelf_panel",
+        _build_recent_shelf_panel,
+        frozenset({"scale"}),
+        exemptions={"language": _LANG_GEOMETRY_ONLY},
+    )
+)
+register_surface(
+    MetricsSurface(
+        "session_picker_page",
+        _build_session_picker_page,
+        frozenset({"scale"}),
+        exemptions={"language": _LANG_GEOMETRY_ONLY},
+    )
+)
+register_surface(
+    MetricsSurface(
+        "ic_scaled_icon_label",
+        _build_ic_scaled_icon_label,
+        frozenset({"scale"}),
+        exemptions={"language": _LANG_GEOMETRY_ONLY},
+    )
+)
+# Toolkit chrome the owner reported broken on a LIVE scale change — these
+# are RATIO surfaces (all probe values are factor-proportional design px),
+# so the harness also catches DOUBLE scaling, not just staleness.
+register_surface(
+    MetricsSurface(
         "context_menu_rows",
         _build_context_menu_rows,
         frozenset({"scale"}),
         expect_ratio=True,
-    ),
-    "button_chip_sections": MetricsSurface(
+        exemptions={"language": _LANG_GEOMETRY_ONLY},
+    )
+)
+register_surface(
+    MetricsSurface(
         "button_chip_sections",
         _build_button_chip,
         frozenset({"scale"}),
         expect_ratio=True,
-    ),
-    "toolkit_switch": MetricsSurface(
+        exemptions={"language": _LANG_GEOMETRY_ONLY},
+    )
+)
+register_surface(
+    MetricsSurface(
         "toolkit_switch",
         _build_toolkit_switch,
         frozenset({"scale"}),
         expect_ratio=True,
-    ),
-    "color_picker_dialog": MetricsSurface(
+        exemptions={"language": _LANG_GEOMETRY_ONLY},
+    )
+)
+register_surface(
+    MetricsSurface(
         "color_picker_dialog",
         _build_color_picker_dialog,
         frozenset({"scale"}),
         expect_ratio=True,
-    ),
-}
+        exemptions={"language": _LANG_GEOMETRY_ONLY},
+    )
+)
+# plan-live-appearance-fixes-2026-10-19 additions.
+register_surface(
+    MetricsSurface(
+        "rating_item",
+        _build_rating_item,
+        frozenset({"scale"}),
+        expect_ratio=True,
+        exemptions={
+            "language": (
+                "row text (filename/rating digit) is caller-supplied and the "
+                "row has no translated chrome; rows are rebuilt per flyout "
+                "open with the caller's current language strings"
+            )
+        },
+    )
+)
+register_surface(
+    MetricsSurface(
+        "export_dialog",
+        _build_export_dialog,
+        frozenset({"scale", "language"}),
+        expect_ratio=True,
+        axis_modes={"scale": REBUILD, "language": REBUILD},
+    )
+)
+register_surface(
+    MetricsSurface(
+        "image_properties_dialog",
+        _build_image_properties_dialog,
+        frozenset({"scale", "language"}),
+        expect_ratio=True,
+        axis_modes={"scale": REBUILD, "language": REBUILD},
+    )
+)
+register_surface(
+    MetricsSurface(
+        "gallery_ai_page",
+        _build_gallery_ai_page,
+        frozenset({"scale", "language"}),
+        expect_ratio=True,
+        axis_modes={"scale": REBUILD, "language": REBUILD},
+    )
+)
 
 
 @pytest.mark.parametrize("name", sorted(SURFACES))
@@ -351,9 +735,44 @@ def test_surface_reflows_on_metrics_change(qapp, monkeypatch, name):
     assert_reflows_on_metrics_change(SURFACES[name], qapp=qapp, monkeypatch=monkeypatch)
 
 
+def test_the_plan_surfaces_are_registered():
+    """The four surfaces named by plan-live-appearance-fixes-2026-10-19."""
+    assert {
+        "rating_item",
+        "export_dialog",
+        "image_properties_dialog",
+        "gallery_ai_page",
+    } <= set(SURFACES)
+
+
+def test_a_surface_cannot_ship_without_a_language_decision():
+    """An unaccounted plan axis is a registration error, not a silent skip."""
+    with pytest.raises(ValueError, match="plan axis"):
+        MetricsSurface(
+            "synthetic_ungated",
+            lambda qapp, monkeypatch: (QWidget(), lambda: (1,)),
+            frozenset({"scale"}),
+        )
+
+
+def test_register_surface_rejects_duplicates():
+    surface = MetricsSurface(
+        "synthetic_duplicate",
+        lambda qapp, monkeypatch: (QWidget(), lambda: (1,)),
+        frozenset({"scale"}),
+        exemptions={"language": "synthetic"},
+    )
+    register_surface(surface)
+    try:
+        with pytest.raises(ValueError, match="duplicate"):
+            register_surface(surface)
+    finally:
+        SURFACES.pop(surface.name, None)
+
+
 # ---------------------------------------------------------------------------
-# Harness falsification — a gate nobody has seen fail is not a gate. Both
-# diseases must be caught, and the failure must NAME which one it is.
+# Harness falsification — a gate nobody has seen fail is not a gate. Every
+# disease must be caught, and the failure must NAME which one it is.
 # ---------------------------------------------------------------------------
 
 
@@ -369,7 +788,13 @@ def _constant_surface() -> MetricsSurface:
 
         return widget, probe
 
-    return MetricsSurface("synthetic_stale", build, frozenset({"scale"}), expect_ratio=True)
+    return MetricsSurface(
+        "synthetic_stale",
+        build,
+        frozenset({"scale"}),
+        expect_ratio=True,
+        exemptions={"language": "synthetic"},
+    )
 
 
 def _double_scaled_surface() -> MetricsSurface:
@@ -390,7 +815,48 @@ def _double_scaled_surface() -> MetricsSurface:
         return widget, lambda: (state["v"],)
 
     return MetricsSurface(
-        "synthetic_double", build, frozenset({"scale"}), expect_ratio=True
+        "synthetic_double",
+        build,
+        frozenset({"scale"}),
+        expect_ratio=True,
+        exemptions={"language": "synthetic"},
+    )
+
+
+def _rebuild_stale_surface() -> MetricsSurface:
+    """A rebuild-mode surface whose build ignores the lever — still STALE."""
+    from PySide6.QtWidgets import QWidget
+
+    def build(qapp, monkeypatch):
+        widget = QWidget()
+        return widget, lambda: (10,)  # never reads the new factor
+
+    return MetricsSurface(
+        "synthetic_rebuild_stale",
+        build,
+        frozenset({"scale"}),
+        expect_ratio=True,
+        axis_modes={"scale": REBUILD},
+        exemptions={"language": "synthetic"},
+    )
+
+
+def _language_stale_surface() -> MetricsSurface:
+    """A surface whose copy never retranslates — the language disease."""
+    from PySide6.QtWidgets import QVBoxLayout, QWidget
+
+    def build(qapp, monkeypatch):
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        label = QLabel("Fixed untranslated label")
+        layout.addWidget(label)
+        return widget, lambda: (label.text(),)
+
+    return MetricsSurface(
+        "synthetic_language_stale",
+        build,
+        frozenset({"language"}),
+        exemptions={"scale": "synthetic"},
     )
 
 
@@ -404,3 +870,16 @@ def test_gate_catches_a_double_scaled_surface(qapp):
     with pytest.raises(AssertionError) as exc:
         assert_reflows_on_metrics_change(_double_scaled_surface(), qapp=qapp)
     assert "DOUBLE-SCALED" in str(exc.value), str(exc.value)
+
+
+def test_gate_catches_a_stale_rebuilt_surface(qapp):
+    """The rebuild mode shares the ratio disease detector — no weaker pass."""
+    with pytest.raises(AssertionError) as exc:
+        assert_reflows_on_metrics_change(_rebuild_stale_surface(), qapp=qapp)
+    assert "STALE" in str(exc.value), str(exc.value)
+
+
+def test_gate_catches_a_surface_that_ignores_the_language_axis(qapp):
+    with pytest.raises(AssertionError) as exc:
+        assert_reflows_on_metrics_change(_language_stale_surface(), qapp=qapp)
+    assert "language change" in str(exc.value), str(exc.value)
