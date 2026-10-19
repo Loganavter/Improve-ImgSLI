@@ -184,11 +184,13 @@ def test_keyboard_focus_on_guides_button_opens_panel(qapp, monkeypatch):
     nor got the Down-link into the panel."""
     from sli_ui_toolkit import managers as _managers
 
-    bound = []
+    bound: list[tuple] = []
     monkeypatch.setattr(
         _managers,
-        "bind_flyout",
-        lambda anchor, flyout, **kwargs: bound.append(anchor),
+        "bind_group_flyout",
+        lambda group, flyout, **kwargs: bound.append(
+            (group, flyout, kwargs.get("side"))
+        ),
     )
     fw = _FakeWidget()
     fw.checkbox_widget.setGeometry(0, 0, 600, 80)
@@ -209,8 +211,11 @@ def test_keyboard_focus_on_guides_button_opens_panel(qapp, monkeypatch):
 
     assert guides in controller._group_buttons
     assert top in controller._group_buttons
-    assert guides in bound
-    assert top in bound
+    # One group-level registration serves every member (no per-child bind
+    # loop): the manager resolves it for whichever member is focused.
+    assert bound == [
+        (fw.magnifier_group_container, fw.magnifier_settings_flyout, "below")
+    ]
 
     controller.eventFilter(
         guides, QFocusEvent(QEvent.Type.FocusIn, Qt.FocusReason.TabFocusReason)

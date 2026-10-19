@@ -1,8 +1,8 @@
 # ScrollValueButton
 
-Scroll-driven numeric button: icon + hover value split, with an underline
-whose thickness tracks the value — used for divider/guide widths in Image
-Compare and Multi Compare.
+Scroll-driven numeric button: icon + hover value split (hover shows the
+digit inside the button, no flyout), with an underline whose thickness tracks
+the value — used for divider/guide widths in Image Compare and Multi Compare.
 
 Source: `src/ui/widgets/scroll_value_button.py`
 
@@ -15,22 +15,26 @@ Source: `src/ui/widgets/scroll_value_button.py`
 
 Built on the toolkit button region/layer pipeline (`ButtonRegion`,
 `BackgroundLayer`, `ContentLayer`, `BadgeLayer`, `UnderlineLayer`,
-`VerticalSplit`, …). Scrolling over the button cycles the value; the hover
-flyout shows the value split. Keyboard focus is parked off QRhi canvases
-on Wayland/Vulkan via `ui.canvas_infra.rhi.rhi_focus`.
+`VerticalSplit`, …). Scrolling over the button cycles the value; hovering
+shows the value split (the digit) **inside** the button — no flyout. Keyboard
+focus is parked off QRhi canvases on Wayland/Vulkan via
+`ui.canvas_infra.rhi.rhi_focus`.
 
 ## Keyboard
 
-Hovering the button **or** giving it keyboard focus shows the value pill
-above it (the preview never steals focus). `Up` moves the keyboard into the
-pill; `Left`/`Right` step the value there (the underline follows); `Down`
-hands the keyboard back to the button with the pill still visible (`Up`
-re-enters); `Esc` dismisses the pill and restores the button's own digit.
-`Enter` still toggles the legacy edit mode, in which all four arrows step
-the value.
+Hovering the button shows only the digit inside it; the value pill above the
+button is a **focus** affordance — giving the button keyboard focus (or
+focusing it with a click) raises it (the preview never steals focus). `Up`
+moves the keyboard into the pill; `Left`/`Right` step the value there (the
+underline follows); a second `Up` leaves the pill upward to the control above
+(it never steps); `Down` hands the keyboard back to the button with the
+pill still visible (`Up` re-enters); `Esc` dismisses the pill and restores
+the button's own digit. Only `Left`/`Right` change the value. `Enter` mirrors
+a right-click — it emits `rightClicked` and nothing else; the control has no
+edit mode.
 
-No `ScrollValueButton` carries a colour of its own, so `Enter` never opens
-the colour picker here — the colour-carrying control is
+No `ScrollValueButton` carries a colour of its own, so the right-click/`Enter`
+signal never opens a colour picker here — the colour-carrying control is
 `ui.widgets.color.ColorSwatch`.
 
 ## Inspection

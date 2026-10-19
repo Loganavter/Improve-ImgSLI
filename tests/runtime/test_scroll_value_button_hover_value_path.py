@@ -1,18 +1,24 @@
-"""ScrollValueButton: the owner's real value-change path — hover → pill →
-Up → Left/Right, with NO Enter — and the button must settle afterwards
-(sv-hover-fix).
+"""ScrollValueButton: the owner's real value-change path — focus (a click,
+or keyboard) → pill → Up → Left/Right, with NO Enter — and the button must
+settle afterwards (sv-hover-fix).
+
+Owner decision 2026-10-19: hovering the button raises NO flyout — the digit
+shows inside the button instead (see ``test_hover_alone_shows_digit_not_flyout``
+in ``test_scroll_value_button_keyboard_flyout``). The pill is a focus
+affordance, so the paths below drive it through focus, not hover.
 
 Two owner-reported symptoms, pinned against the merged build (PR #396):
 
 1. "To enter value-change mode you still need Enter." The owner's real
-   interaction is a MOUSE one: hover the button -> the value pill appears ->
-   Up -> Left/Right step the value. Two gaps stand in the way:
-   - the hover preview is transient: ``_show_flyout`` always arms the
-     700 ms hide timer, so the pill is gone before a hand can travel from
-     mouse to keyboard and Up leaves the row (the pill is what Up enters);
-   - the focus preview is gated on the toolkit's ``_keyboard_focus``
+   interaction is a MOUSE one: click the button -> the value pill appears ->
+   Up -> Left/Right step the value. Two gaps stood in the way:
+   - the mouse-focus preview was transient before the fix: ``_show_flyout``
+     always armed the 700 ms hide timer, so the pill was gone before a hand
+     could travel from mouse to keyboard and Up left the row (the pill is
+     what Up enters);
+   - the focus preview was gated on the toolkit's ``_keyboard_focus``
      (keyboard modality only), so a button focused the mouse way (click)
-     shows no pill at all in mouse modality.
+     showed no pill at all in mouse modality.
    The keyboard-modality path (a key pressed first) works — that is why
    keyboard-only testing missed both.
 
@@ -95,22 +101,20 @@ def _value_rows(button: ScrollValueButton):
 
 def _settled(button: ScrollValueButton) -> bool:
     """True when the button is back to its resting (non value-display) visual
-    state: no hover/value split (single icon region), no suppressed digit,
-    no edit-mode property."""
+    state: no hover/value split (single icon region), no suppressed digit."""
     return (
         button._hovered_split is False
         and button._is_scrolling is False
-        and button.property("editActive") in (False, None)
         and {r.id for r in button.regions()} == {"icon"}
     )
 
 
 # ---------------------------------------------------------------------------
-# Symptom 1 — the value-change path must work from a plain hover, no Enter
+# Symptom 1 — the value-change path must work from a plain click, no Enter
 # ---------------------------------------------------------------------------
 
 
-def test_hover_then_up_enters_pill_without_enter(host_button, qapp):
+def test_mouse_focus_then_up_enters_pill_without_enter(host_button, qapp):
     _, button = host_button
 
     _enter_hover(button)
@@ -118,22 +122,31 @@ def test_hover_then_up_enters_pill_without_enter(host_button, qapp):
     qapp.processEvents()
 
     pill = button._flyout
-    assert pill is not None and pill.isVisible(), "hover must preview the value"
+    assert pill is not None and pill.isVisible(), "mouse focus must preview the value"
     assert pill._label.text() == "4"
     assert button._keyboard_focus is False, "this is the mouse-modality session"
 
     QTest.keyClick(button, Qt.Key.Key_Up)
     qapp.processEvents()
 
-    assert pill.hasFocus(), "Up must enter the pill after a plain hover — no Enter"
+    assert pill.hasFocus(), "Up must enter the pill after a plain click — no Enter"
     assert QApplication.focusWidget() is pill
     assert not button.hasFocus()
 
 
-def test_hover_pill_survives_the_hide_delay_and_up_enters(host_button, qapp):
-    """The hover preview must not be killed by the 700 ms hide timer while
-    the mouse is still on the button (the hand-travel-time gap)."""
+def test_mouse_focus_pill_survives_the_hide_delay_and_up_enters(host_button, qapp):
+    """The click-focus preview must not be killed by the 700 ms hide timer
+    while the mouse is still on the button (the hand-travel-time gap).
+
+    Hover alone raises no pill (owner decision 2026-10-19); the preview is
+    the focus affordance. ``waitExposed`` grants activation focus, so drop it
+    first — otherwise ``_mouse_focus`` is a no-op and never re-shows the pill
+    with the hover-persistent path.
+    """
     _, button = host_button
+
+    button.clearFocus()
+    qapp.processEvents()
 
     _enter_hover(button)
     _mouse_focus(button)
@@ -145,7 +158,7 @@ def test_hover_pill_survives_the_hide_delay_and_up_enters(host_button, qapp):
     QTest.qWait(900)  # past _FLYOUT_HIDE_MS — merged code hides the pill here
     qapp.processEvents()
 
-    assert pill.isVisible(), "the hover preview must persist while hovered"
+    assert pill.isVisible(), "the mouse-focus preview must persist while hovered"
     QTest.keyClick(button, Qt.Key.Key_Up)
     qapp.processEvents()
     assert pill.hasFocus(), "Up must still enter the pill after the hide delay"
@@ -204,7 +217,6 @@ def test_settle_after_esc_from_hover_path(host_button, qapp):
     assert not pill.isVisible()
     assert QApplication.focusWidget() is button
     assert button._is_scrolling is False
-    assert button._keyboard_edit_active is False
     assert _value_rows(button) == ["4"], "Esc restores the button's own digit"
 
     # Mouse leaves — the value-display split must settle back.
@@ -244,10 +256,13 @@ def test_settle_after_click_elsewhere_ends_pill_interaction(host_button, qapp):
     assert _settled(button), "the anchor must settle once the pill is gone"
 
 
-def test_settle_after_pill_hide_timer(host_button, qapp):
-    """Keyboard focus, no hover: the timer preview hides itself and the
-    digit returns; focus-out then settles the split."""
-    _, button = host_button
+def test_keyboard_preview_persists_then_focus_out_hides_it(host_button, qapp):
+    """Keyboard focus, no hover: the preview persists — no 700 ms auto-hide
+    (owner decision 2026-10-19) — so Up can enter the pill at any time;
+    moving the focus ring to another widget takes the pill with it and
+    settles the split."""
+    host, button = host_button
+    other = host.findChild(QWidget, "other-focusable")
 
     button.clearFocus()
     QTest.keyClick(button, Qt.Key.Key_F1)
@@ -261,12 +276,16 @@ def test_settle_after_pill_hide_timer(host_button, qapp):
     QTest.qWait(900)
     qapp.processEvents()
 
-    assert not pill.isVisible()
-    assert button._is_scrolling is False
-    assert _value_rows(button) == ["4"], "the digit returns after the preview"
-
-    button.clearFocus()
+    assert pill.isVisible(), "the keyboard preview must not auto-hide"
+    QTest.keyClick(button, Qt.Key.Key_Up)
     qapp.processEvents()
+    assert pill.hasFocus(), "Up enters the still-open preview after the pause"
+
+    other.setFocus(Qt.FocusReason.OtherFocusReason)
+    qapp.processEvents()
+
+    assert not pill.isVisible(), "the pill goes when the focus ring leaves"
+    assert button._is_scrolling is False, "the digit is no longer suppressed"
     assert _settled(button), "focus-out settles the split"
 
 
