@@ -113,7 +113,8 @@ class AskAiFlyout(BaseFlyout):
             icon=(GalleryIcon.ASK_IMAGES_OFF, GalleryIcon.ASK_IMAGES),
             variant="ghost",
             toggle=True,
-            size=(scaled_px(28), scaled_px(28)),
+            # Design px — Button(size=...) scales internally (no scaled_px).
+            size=(28, 28),
             parent=self,
         )
         self._images_toggle.setObjectName("gallery_ask_ai_images_toggle")

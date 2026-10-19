@@ -479,7 +479,9 @@ def rebuild_strip(overlay) -> None:
                     rows=[ButtonRow(text=str(_rank_text), size=11, ratio=1.0, color=_rank_txt)],
                     variant="surface",
                     size=(BADGE_MIN_WIDTH, BADGE_HEIGHT),
-                    corner_radius=scaled_px(BADGE_RADIUS),
+                    # Design px — Button(corner_radius=...) scales internally;
+                    # a scaled_px() here double-scales the pill radius.
+                    corner_radius=BADGE_RADIUS,
                     parent=container,
                 )
                 rank_btn.setObjectName(f"quicklook_rank_{idx}")

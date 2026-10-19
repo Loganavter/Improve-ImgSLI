@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from PySide6.QtWidgets import QWidget
 
+from sli_ui_toolkit.managers import scaled_px
+
 from .theme import _is_dark_theme
 
 class GalleryToolbarViewSwitchContainer(QWidget):
@@ -62,7 +64,7 @@ class GalleryToolbarViewSwitchContainer(QWidget):
                 border_col = QColor("#c0c0c0" if not _is_dark_theme() else "#555555")
             p.setPen(border_col)
             p.setBrush(bg)
-            p.drawRoundedRect(QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5), 8, 8)
+            p.drawRoundedRect(QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5), scaled_px(8), scaled_px(8))
             p.end()
         except Exception:
             pass
@@ -123,7 +125,7 @@ class GalleryToolbarDomainSwitchContainer(QWidget):
                 border_col = QColor("#c0c0c0" if not _is_dark_theme() else "#555555")
             p.setPen(border_col)
             p.setBrush(bg)
-            p.drawRoundedRect(QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5), 8, 8)
+            p.drawRoundedRect(QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5), scaled_px(8), scaled_px(8))
             p.end()
         except Exception:
             pass

@@ -281,7 +281,7 @@ def build_overlay_ui(overlay) -> None:
         btn = Button(
             text="",
             variant="surface",
-            size=(scaled_px(150) + _inset_pad * 2, scaled_px(84) + _inset_pad * 2),
+            size=(150 + _inset_pad * 2, 84 + _inset_pad * 2),
             parent=parent,
             regions=[
                 ButtonRegion(

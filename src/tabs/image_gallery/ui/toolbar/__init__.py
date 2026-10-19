@@ -92,7 +92,9 @@ class GalleryToolbar(QWidget):
             icon="folder_open",
             text=pick_text,
             variant="surface",
-            size=(scaled_px(132), scaled_px(34)),
+            # Design px: Button(size=...) scales internally exactly once — a
+            # scaled_px() here double-scales (factor^2 drift) at factor > 1.0.
+            size=(132, 34),
             parent=self,
         )
         self._pick_button.setObjectName("gallery_toolbar_pick")
@@ -138,7 +140,7 @@ class GalleryToolbar(QWidget):
             text=f"{self._sort_display(0)} ▾",
             variant="surface",
             width_texts=[f"{self._sort_display(i)} ▾" for i in range(len(self._sort_items))],
-            size=(0, scaled_px(34)),
+            size=(0, 34),
             corner_radius=6,
             parent=self,
         )
@@ -180,7 +182,7 @@ class GalleryToolbar(QWidget):
             icon=(GalleryIcon.ALGORITHMS_INACTIVE, GalleryIcon.ALGORITHMS),
             variant="ghost",
             toggle=True,
-            size=(scaled_px(48), scaled_px(28)),
+            size=(48, 28),  # design px — Button scales internally (no scaled_px)
             parent=self._domain_switch_container,
         )
         self._domain_switch.setObjectName("gallery_toolbar_domain_switch")
@@ -192,7 +194,7 @@ class GalleryToolbar(QWidget):
             icon=(GalleryIcon.AI_INACTIVE, GalleryIcon.AI),
             variant="ghost",
             toggle=True,
-            size=(scaled_px(48), scaled_px(28)),
+            size=(48, 28),  # design px — Button scales internally (no scaled_px)
             parent=self._domain_switch_container,
         )
         self._domain_switch_ai.setObjectName("gallery_toolbar_domain_switch_ai")
@@ -316,7 +318,7 @@ class GalleryToolbar(QWidget):
             icon=(GalleryIcon.VIEW_GRID_INACTIVE, GalleryIcon.VIEW_GRID),
             variant="ghost",
             toggle=True,
-            size=(scaled_px(48), scaled_px(28)),
+            size=(48, 28),  # design px — Button scales internally (no scaled_px)
             parent=self._view_switch_container,
         )
         self._view_switch.setObjectName("gallery_toolbar_view_switch")
@@ -324,7 +326,7 @@ class GalleryToolbar(QWidget):
             icon=(GalleryIcon.VIEW_LIST, GalleryIcon.VIEW_LIST_ACTIVE),
             variant="ghost",
             toggle=True,
-            size=(scaled_px(48), scaled_px(28)),
+            size=(48, 28),  # design px — Button scales internally (no scaled_px)
             parent=self._view_switch_container,
         )
         self._view_switch_list.setObjectName("gallery_toolbar_view_switch_list")
