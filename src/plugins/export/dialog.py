@@ -98,6 +98,11 @@ class ExportDialog(ThemedDialog):
                     self._preview_source_pixmap = None
 
         self._init_ui()
+        # Keyboard navigation: the dialog had no section at all (see
+        # plugins/export/navigation.py).
+        from plugins.export.navigation import register_export_navigation
+
+        register_export_navigation(self)
         # Stable focus-attribution names (focus-debug tracer): override the
         # shared OutputPathSection generics with export-specific names.
         self.edit_dir.setObjectName("export-dir")

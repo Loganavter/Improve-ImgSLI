@@ -58,6 +58,13 @@ class ImagePropertiesDialog(ThemedDialog):
         self.setSizeGripEnabled(True)
 
         self._init_ui()
+        # Keyboard navigation: the dialog had no section at all (see
+        # plugins/image_properties/navigation.py).
+        from plugins.image_properties.navigation import (
+            register_image_properties_navigation,
+        )
+
+        register_image_properties_navigation(self)
         self.install_dialog_geometry(self._apply_dialog_geometry)
         self.mark_theme_ui_ready()
 

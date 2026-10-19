@@ -83,8 +83,9 @@ def _list_metric_dots_overlay(painter, ctx) -> None:  # type: ignore[no-untyped-
     if not isinstance(colors, (list, tuple)) or not colors:
         return
     infos = getattr(widget, "_gallery_dot_infos", ()) or ()
-    from tabs.image_gallery.ui.card.dots import DOT_DIAMETER, DOT_PITCH, layout_dots
+    from tabs.image_gallery.ui.card.dots import dot_diameter, dot_pitch, layout_dots
     from tabs.image_gallery.ui.list.card import LIST_THUMB_W, _list_metrics
+    from sli_ui_toolkit.managers import scaled_px
 
     state = getattr(widget, "_gallery_row_state", None)
     design_w = (
@@ -96,16 +97,22 @@ def _list_metric_dots_overlay(painter, ctx) -> None:  # type: ignore[no-untyped-
     count = len(colors)
     try:
         y_center = float(rect.y()) + float(rect.height()) / 2.0
-        x_right = float(rect.x()) + float(rect.width()) - 4.0 - 4.0
+        x_right = (
+            float(rect.x())
+            + float(rect.width())
+            - float(scaled_px(4.0))
+            - float(scaled_px(4.0))
+        )
     except Exception:
         return
     # Same wrapping helper as the grid card: keep the full pitch and wrap into
     # right-aligned rows rather than shrinking the dots to fit the meta width.
-    avail = max(0.0, float(meta_w) - 8.0)
+    avail = max(0.0, float(meta_w) - float(scaled_px(8.0)))
     centers = layout_dots(count, x_right, y_center, avail)
     if len(centers) != count:
         return
-    radius = DOT_DIAMETER / 2.0
+    diameter = dot_diameter()
+    radius = diameter / 2.0
     painter.save()
     try:
         painter.setRenderHint(painter.RenderHint.Antialiasing, True)
@@ -118,8 +125,8 @@ def _list_metric_dots_overlay(painter, ctx) -> None:  # type: ignore[no-untyped-
             painter.drawEllipse(
                 int(cx - radius),
                 int(cy - radius),
-                DOT_DIAMETER,
-                DOT_DIAMETER,
+                int(diameter),
+                int(diameter),
             )
     finally:
         painter.restore()
@@ -127,7 +134,7 @@ def _list_metric_dots_overlay(painter, ctx) -> None:  # type: ignore[no-untyped-
         widget._gallery_dot_geometry = {  # type: ignore[attr-defined]
             "centers": tuple((float(cx), float(cy)) for cx, cy in centers),
             "x_centers": tuple(float(cx) for cx, _cy in centers),
-            "pitch": float(DOT_PITCH),
+            "pitch": dot_pitch(),
             "infos": tuple(infos),
             "y_center": float(y_center),
         }
