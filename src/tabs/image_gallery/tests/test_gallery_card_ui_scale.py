@@ -102,7 +102,12 @@ def _snapshot(factor: float) -> dict:
 
 
 def _fake_widget(colors) -> SimpleNamespace:
-    """Minimal widget surface the dots/badge painter reads (grid + list parity)."""
+    """Minimal widget surface the dots/badge painter reads (grid + list parity).
+
+    Two regions: the painter's text-region math needs ``len(regions) >= 2``,
+    exactly like the real card (bg + cover + text).
+    """
+    art_region = SimpleNamespace(id="art", weight=1.0, rows=None)
     text_region = SimpleNamespace(
         id="text",
         weight=1.0,
@@ -114,7 +119,7 @@ def _fake_widget(colors) -> SimpleNamespace:
         _gallery_dot_colors=list(colors),
         _gallery_dot_infos=tuple(("axis", None) for _ in colors),
         _hover_blue_bar=False,
-        regions=lambda: [text_region],
+        regions=lambda: [art_region, text_region],
         getContentPadding=lambda: (0, 0, 0, 0),
         is_bg_locked=lambda: False,
     )

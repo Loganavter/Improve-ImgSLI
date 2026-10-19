@@ -27,8 +27,27 @@ _ACCENT_FALLBACK_LIGHT = "#0078D4"
 _DOTS_TEXT = "● ● ●"
 _DOTS_ROW_GAP = 2  # RowsContent.row_gap default (compact layout)
 #: Dot diameter / center pitch for the metric-axis dots row (grid + list).
+#: DESIGN px — resolve through :func:`dot_diameter` / :func:`dot_pitch` at USE
+#: time so the painted dots follow UiScale (a raw literal kept them at the 1.0
+#: px on a scaled card — owner report 2026-10-19).
 DOT_DIAMETER = 8
 DOT_PITCH = 14
+
+
+def dot_diameter() -> float:
+    """Metric-dot diameter in DEVICE px at the live UiScale factor."""
+    from sli_ui_toolkit.managers import scaled_px
+
+    return float(scaled_px(DOT_DIAMETER))
+
+
+def dot_pitch() -> float:
+    """Metric-dot center pitch in DEVICE px at the live UiScale factor."""
+    from sli_ui_toolkit.managers import scaled_px
+
+    return float(scaled_px(DOT_PITCH))
+
+
 #: ``metric_scores.score_band`` → the existing severity token trio. ``mid`` is
 #: the current band id (``warn`` kept for forward/backward compatibility).
 _BAND_SEVERITY: dict[str, str] = {
@@ -154,8 +173,9 @@ def layout_dots(
 ) -> list[tuple[float, float]]:
     """Right-aligned wrapped dot block — the ONE placement authority.
 
-    Pure geometry (no Qt): too many dots to fit *avail_width* at ``DOT_PITCH``
-    WRAP into multiple rows instead of shrinking the pitch. ``cols`` is the
+    Pure geometry (no widgets): too many dots to fit *avail_width* at the live
+    ``dot_pitch()`` (design ``DOT_PITCH`` × UiScale) WRAP into multiple rows
+    instead of shrinking the pitch. ``cols`` is the
     floor of ``avail_width / DOT_PITCH`` (at least 1), rows fill top-to-bottom,
     every row is right-aligned to the SAME ``x_right`` (a partially filled last
     row sits flush right), and the whole block is vertically centered on
@@ -178,7 +198,8 @@ def layout_dots(
         avail = float(avail_width)
     except Exception:
         return []
-    pitch = float(DOT_PITCH)
+    # DEVICE px at the live factor — the callers' avail/right edge are device px.
+    pitch = dot_pitch()
     try:
         cols = max(1, int(avail // pitch))
     except Exception:

@@ -22,6 +22,7 @@ from PySide6.QtWidgets import QWidget
 from PySide6.QtCore import QRectF
 from PySide6.QtGui import QColor
 
+from sli_ui_toolkit.managers import scaled_px
 from sli_ui_toolkit.widgets import Button, ButtonRegion, CustomSplit
 
 if TYPE_CHECKING:
@@ -35,6 +36,15 @@ GALLERY_CARD_H = 170
 GALLERY_PATHS_MIME = "application/x-imgsli-gallery-paths"
 # Reference: preview 234×110 r8 at 8,8 inside 250×170 r10 outer, bottom zone 52 (110+52+8+8=170) — balanced vertical
 _GALLERY_CONTENT_PADDING: tuple[float, float, float, float] = (8.0, 8.0, 8.0, 8.0)
+# DESIGN px of the preview box + bottom text zone. The ``CustomSplit`` rect
+# fns below receive the card's ACTUAL rect, so these are resolved through
+# ``scaled_px`` at USE time (a raw literal froze the boxes at the 1.0 px while
+# the outer card grew — owner report 2026-10-19). The cover width follows the
+# card rect (234 = 250 - 2*8), the text zone is the bottom 52px strip.
+GALLERY_COVER_INSET = 8.0
+GALLERY_COVER_H = 110.0
+GALLERY_TEXT_TOP = 118.0
+GALLERY_TEXT_H = 52.0
 
 
 def _theme_is_dark() -> bool:
@@ -249,16 +259,30 @@ def build_gallery_card(*args, **kwargs) -> Button:  # type: ignore[no-untyped-de
             profile = None
     cover = _cover_region(actual_item)
     text_rows = _text_rows(actual_item, actual_translate, mode=mode)
-    # CustomSplit for 8px padding around preview 234×110 r8 at 8,8, text 52 zone at 118 — matches svg 250×170 r10 outer
+    # CustomSplit for the preview 234×110 r8 at 8,8 (cover width follows the
+    # card rect) and the text 52 zone at y118 inside the 250×170 card — every
+    # design px resolved through ``scaled_px`` AT USE TIME here, because these
+    # fns get the card's ACTUAL rect (a raw literal froze the boxes at 1.0 px).
     # Bg region covers whole outer for card-surface padding and bottom rounding — fixes toolkit group seam
     def _bg_rect(r: QRectF) -> QRectF:
         return QRectF(0, 0, r.width(), r.height())
 
     def _cover_rect(r: QRectF) -> QRectF:
-        return QRectF(8, 8, 234, 110)
+        inset = float(scaled_px(GALLERY_COVER_INSET))
+        return QRectF(
+            inset,
+            inset,
+            float(r.width()) - 2.0 * inset,
+            float(scaled_px(GALLERY_COVER_H)),
+        )
 
     def _text_rect(r: QRectF) -> QRectF:
-        return QRectF(0, 118, r.width(), 52)
+        return QRectF(
+            0,
+            float(scaled_px(GALLERY_TEXT_TOP)),
+            r.width(),
+            float(scaled_px(GALLERY_TEXT_H)),
+        )
 
     card = Button(
         regions=[
@@ -297,6 +321,7 @@ def build_gallery_card(*args, **kwargs) -> Button:  # type: ignore[no-untyped-de
     except Exception:
         pass
     apply_fixed_gallery_card_size(card)
+    _subscribe_card_metrics(card)
     _attach_item(card, actual_item)
     _set_card_tooltip(card, actual_item, actual_translate)
     try:
@@ -375,6 +400,49 @@ def build_gallery_card(*args, **kwargs) -> Button:  # type: ignore[no-untyped-de
         except Exception:
             pass
     return card
+
+
+def _subscribe_card_metrics(card: Button) -> None:
+    """Re-derive the card's own geometry on a live UiScale / font change.
+
+    ``Button`` re-derives its ``size=`` and region corner radii live, but the
+    card's ``CustomSplit`` rect fns are app-side closures and the fixed size is
+    pinned with the anti-underscale clamp — both need an explicit re-run on the
+    appearance bus (``connect_ui_metrics``). Declared axes are exactly the ones
+    the card's geometry derives from: ``AXIS_SCALE`` (cover/text boxes, dot
+    diameter/pitch, fixed size) and ``AXIS_FONT`` (the row line height the dots
+    row is centered on).
+    """
+    try:
+        from sli_ui_toolkit.ui.managers import connect_ui_metrics
+        from sli_ui_toolkit.ui.managers.ui_metrics import AXIS_FONT, AXIS_SCALE
+    except Exception:
+        return
+
+    def _on_metrics(_axes=None) -> None:
+        from tabs.image_gallery.ui.card.visuals import apply_fixed_gallery_card_size
+
+        try:
+            apply_fixed_gallery_card_size(card)
+        except Exception:
+            pass
+        try:
+            card._gallery_dot_geometry = None  # type: ignore[attr-defined]
+        except Exception:
+            pass
+        try:
+            card.updateGeometry()
+        except Exception:
+            pass
+        try:
+            card.update()
+        except Exception:
+            pass
+
+    try:
+        connect_ui_metrics(card, _on_metrics, axes=frozenset({AXIS_FONT, AXIS_SCALE}))
+    except Exception:
+        pass
 
 
 def _set_card_tooltip(card: Button, item: GalleryItem, translate=None) -> None:
