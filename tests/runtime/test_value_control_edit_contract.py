@@ -86,6 +86,7 @@ def _build_scroll_value_button() -> QWidget:
     return ScrollValueButton(icon=None, min_value=0, max_value=10, start=5)
 
 
+
 VALUE_CONTROLS: dict[str, ValueControl] = {
     control.key: control
     for control in (
@@ -116,6 +117,17 @@ VALUE_CONTROLS: dict[str, ValueControl] = {
 # above. ``is_editing`` is the contract marker itself — any app class that
 # defines it is a value-edit control by definition and must be covered too.
 _VALUE_BASE_NAMES = {"Slider", "ScrollValueButton", "ValueSlider"}
+
+#: Discovered value controls whose Enter/WASD/Esc contract is pinned by a
+#: DEDICATED file (the scalar harness below reads one number; a 2-D surface
+#: cannot be driven by ``entry + 1`` arithmetic). Exemptions are recorded, not
+#: silent: a new entry needs a named covering test.
+_COVERED_ELSEWHERE: dict[str, str] = {
+    "ui/widgets/color/picker_dialog.py:_SVSquare": (
+        "2-D colour surface — pinned by tests/runtime/test_color_picker_navigation.py "
+        "(reach + Enter edit + WASD + Enter commit + Esc revert)"
+    ),
+}
 _CONTRACT_METHOD = "is_editing"
 
 
@@ -232,7 +244,7 @@ def test_every_app_value_control_is_registered():
     not listed — that is exactly the "new control slipped past the contract"
     case this guard exists for.
     """
-    discovered = _discovered_value_controls()
+    discovered = _discovered_value_controls() - set(_COVERED_ELSEWHERE)
     registered = set(VALUE_CONTROLS)
     assert not discovered - registered, (
         "app value control(s) not covered by the value-edit contract test — "
