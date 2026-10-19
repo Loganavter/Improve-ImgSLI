@@ -18,6 +18,12 @@ from utils.resource_loader import resource_path
 
 _PROMPT_PIXEL_SIZE = 14
 
+#: Design px of the prompt's root chrome, resolved through ``scaled_px`` at
+#: use time and re-resolved on a live ``UiScale`` change.
+_ROOT_MARGIN = (18, 14, 18, 16)  # left, top, right, bottom
+_ROOT_SPACING_PX = 12
+_ACTIONS_TOP_MARGIN_PX = 4
+
 
 class AppTextInputDialog(ThemedDialog):
     """Small themed text prompt with toolkit controls and explicit CSD."""
@@ -55,6 +61,7 @@ class AppTextInputDialog(ThemedDialog):
 
         self._build_ui()
         self._apply_geometry()
+        self._connect_design_metrics()
 
         from shared_toolkit.ui.decorate_dialog import decorate_dialog
 
@@ -63,8 +70,7 @@ class AppTextInputDialog(ThemedDialog):
 
     def _build_ui(self) -> None:
         root = QVBoxLayout(self)
-        root.setContentsMargins(18, 14, 18, 16)
-        root.setSpacing(12)
+        self._apply_root_design_metrics(root)
 
         self._prompt_label = Label(
             self._prompt,
@@ -84,7 +90,9 @@ class AppTextInputDialog(ThemedDialog):
 
         actions = QWidget(self)
         action_layout = QGridLayout(actions)
-        action_layout.setContentsMargins(0, 4, 0, 0)
+        action_layout.setContentsMargins(
+            0, scaled_px(_ACTIONS_TOP_MARGIN_PX), 0, 0
+        )
         action_layout.setHorizontalSpacing(8)
         action_layout.setColumnStretch(0, 1)
 
@@ -105,6 +113,27 @@ class AppTextInputDialog(ThemedDialog):
         action_layout.addWidget(self._cancel_button, 0, 1)
         action_layout.addWidget(self._ok_button, 0, 2)
         root.addWidget(actions)
+
+    @staticmethod
+    def _apply_root_design_metrics(root: QVBoxLayout) -> None:
+        """Resolve the root layout's design px at use time (not at import)."""
+        root.setContentsMargins(*(scaled_px(v) for v in _ROOT_MARGIN))
+        root.setSpacing(scaled_px(_ROOT_SPACING_PX))
+
+    def _connect_design_metrics(self) -> None:
+        """Re-resolve the root chrome when the UI scale changes live."""
+        from sli_ui_toolkit.ui.managers import connect_ui_metrics
+        from sli_ui_toolkit.ui.managers.ui_metrics import AXIS_SCALE
+
+        connect_ui_metrics(
+            self, self._on_design_metrics_changed, axes=frozenset({AXIS_SCALE})
+        )
+
+    def _on_design_metrics_changed(self, *_args) -> None:
+        root = self.layout()
+        if root is not None:
+            self._apply_root_design_metrics(root)
+        self.updateGeometry()
 
     def _apply_geometry(self) -> None:
         self.adjustSize()

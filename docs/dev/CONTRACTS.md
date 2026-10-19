@@ -398,6 +398,48 @@ Enforced by:
 - `src/tabs/image_compare/tests/runtime/test_store_projection_roundtrip.py` —
   behavioral roundtrip (dispatch → both branches → post-restore).
 
+## UI Scale Contract (The DPI Problem)
+
+Chrome geometry (widget sizes, minimums, margins, spacings, icons placed by
+layout) is authored in **design px** and multiplied by `UiScale` at exactly
+one boundary — `scaled_px(...)` or `UiFont` — so a live scale change moves
+every surface together. A raw literal that never reaches that boundary, or a
+value that reached it too early, keeps the old design size while the rest of
+the UI rescales (the "plain px instead of `scaled_px`" class: chips, flyouts
+and dialogs stranded at design px after a scale change).
+
+Rules:
+
+1. **Per site, not per file** — a module that scales one geometry does not
+   license raw literals elsewhere in it. The gate scans each site; there is no
+   whole-file skip for files that merely mention `scaled_px`/`ui_font`.
+2. **No import-time bake** — a module/class-level constant or a default
+   argument that calls `scaled_px(...)` is evaluated once at import and frozen
+   at that factor. Resolve geometry at call time (a helper that reads the
+   current factor) instead.
+3. **No double scaling** — toolkit APIs whose `size=` is already a design-px
+   channel (`Button(size=...)`, overlay `show_popup(size=...)`, bubble
+   `show(size=...)`) scale internally; pass plain design px, never
+   `scaled_px(...)`. `scaled_px(scaled_px(x))` and helper-mediated repeats
+   drift with `factor^2`.
+4. **Sentinels are not design px** — `0`, `1` and `16777215`
+   (`QWIDGETSIZE_MAX`) are structural layout values and are never flagged.
+5. **Exceptions carry a reason** — image-space geometry (canvas widget
+   minimums, QIcon raster requests) is listed per site in the gate's
+   `EXEMPTED_SITES`/`EXEMPTIONS` with a reason. The counts are exact: a new
+   identical literal fails the gate, and a fixed site fails until its
+   allowance is lowered in the same commit.
+
+Enforced by:
+
+- `tests/contracts/test_no_raw_chrome_px.py` — per-site AST ratchet over
+  import-time `scaled_px` bakes, raw literals in
+  `setFixed*`/`setMinimum*`/`setMaximum*`/`resize`/`QSize`/
+  `setContentsMargins`/`setSpacing`, and `scaled_px` into self-scaling
+  `size=` kwargs, with seeded exact-count exemptions and falsification tests.
+- `tests/contracts/test_no_double_scaled_px.py` — nested `scaled_px(...)`
+  calls in one expression.
+
 ## Design Principles Behind These Contracts
 
 These are the **architectural** sense of contract — isolation rules that

@@ -9,7 +9,36 @@ from __future__ import annotations
 
 from PySide6.QtWidgets import QWidget
 
+from sli_ui_toolkit.managers import scaled_px
+
 from .theme import _is_dark_theme
+
+
+def _subscribe_scale_repaint(widget: QWidget) -> None:
+    """Repaint a plain-painted container on a live ``UiScale`` change.
+
+    Both containers paint their rounded rect with ``scaled_px(8)`` at USE time,
+    so a factor change only needs a repaint — but nothing repaints them today
+    (they subscribe to the theme signal, not the unified metrics bus). The
+    corner radius derives from the scale axis only.
+    """
+    try:
+        from sli_ui_toolkit.ui.managers import connect_ui_metrics
+        from sli_ui_toolkit.ui.managers.ui_metrics import AXIS_SCALE
+    except Exception:
+        return
+
+    def _on_metrics(*_axes) -> None:
+        try:
+            widget.update()
+        except Exception:
+            pass
+
+    try:
+        connect_ui_metrics(widget, _on_metrics, axes=frozenset({AXIS_SCALE}))
+    except Exception:
+        pass
+
 
 class GalleryToolbarViewSwitchContainer(QWidget):
     """Segmented view-switch background (106×32, r8, painter-painted, no QSS)."""
@@ -22,6 +51,7 @@ class GalleryToolbarViewSwitchContainer(QWidget):
             ThemeManager.get_instance().theme_changed.connect(self._on_theme_changed)
         except Exception:
             pass
+        _subscribe_scale_repaint(self)
 
     def _on_theme_changed(self) -> None:
         try:
@@ -62,7 +92,7 @@ class GalleryToolbarViewSwitchContainer(QWidget):
                 border_col = QColor("#c0c0c0" if not _is_dark_theme() else "#555555")
             p.setPen(border_col)
             p.setBrush(bg)
-            p.drawRoundedRect(QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5), 8, 8)
+            p.drawRoundedRect(QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5), scaled_px(8), scaled_px(8))
             p.end()
         except Exception:
             pass
@@ -87,6 +117,7 @@ class GalleryToolbarDomainSwitchContainer(QWidget):
             ThemeManager.get_instance().theme_changed.connect(self._on_theme_changed)
         except Exception:
             pass
+        _subscribe_scale_repaint(self)
 
     def _on_theme_changed(self) -> None:
         try:
@@ -123,7 +154,7 @@ class GalleryToolbarDomainSwitchContainer(QWidget):
                 border_col = QColor("#c0c0c0" if not _is_dark_theme() else "#555555")
             p.setPen(border_col)
             p.setBrush(bg)
-            p.drawRoundedRect(QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5), 8, 8)
+            p.drawRoundedRect(QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5), scaled_px(8), scaled_px(8))
             p.end()
         except Exception:
             pass

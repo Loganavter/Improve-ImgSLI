@@ -92,7 +92,9 @@ class GalleryToolbar(QWidget):
             icon="folder_open",
             text=pick_text,
             variant="surface",
-            size=(scaled_px(132), scaled_px(34)),
+            # Design px: Button(size=...) scales internally exactly once — a
+            # scaled_px() here double-scales (factor^2 drift) at factor > 1.0.
+            size=(132, 34),
             parent=self,
         )
         self._pick_button.setObjectName("gallery_toolbar_pick")
@@ -138,7 +140,7 @@ class GalleryToolbar(QWidget):
             text=f"{self._sort_display(0)} ▾",
             variant="surface",
             width_texts=[f"{self._sort_display(i)} ▾" for i in range(len(self._sort_items))],
-            size=(0, scaled_px(34)),
+            size=(0, 34),
             corner_radius=6,
             parent=self,
         )
@@ -174,13 +176,16 @@ class GalleryToolbar(QWidget):
         ds_lay = QHBoxLayout(self._domain_switch_container)
         ds_lay.setContentsMargins(scaled_px(2), scaled_px(2), scaled_px(2), scaled_px(2))
         ds_lay.setSpacing(scaled_px(2))
+        # Kept for the live re-derive (``_on_ui_metrics``): margins/spacing are
+        # design px applied once here, so a later factor change must re-run them.
+        self._domain_switch_layout = ds_lay
         # Icon-only segments (view-switch pattern): a chip = algorithms, a
         # sparkle = AI. Text labels would clip in the 34px toolbar row.
         self._domain_switch = Button(
             icon=(GalleryIcon.ALGORITHMS_INACTIVE, GalleryIcon.ALGORITHMS),
             variant="ghost",
             toggle=True,
-            size=(scaled_px(48), scaled_px(28)),
+            size=(48, 28),  # design px — Button scales internally (no scaled_px)
             parent=self._domain_switch_container,
         )
         self._domain_switch.setObjectName("gallery_toolbar_domain_switch")
@@ -192,7 +197,7 @@ class GalleryToolbar(QWidget):
             icon=(GalleryIcon.AI_INACTIVE, GalleryIcon.AI),
             variant="ghost",
             toggle=True,
-            size=(scaled_px(48), scaled_px(28)),
+            size=(48, 28),  # design px — Button scales internally (no scaled_px)
             parent=self._domain_switch_container,
         )
         self._domain_switch_ai.setObjectName("gallery_toolbar_domain_switch_ai")
@@ -278,6 +283,16 @@ class GalleryToolbar(QWidget):
         # Scanning indicator — LoadingSpinner + Label "Scanning n/N" (S1) stays near Sort
         self._spinner = LoadingSpinner(self)
         self._spinner.setObjectName("gallery_toolbar_spinner")
+        # LoadingSpinner paints a fixed design-px square (``SIZE_PX``) scaled
+        # internally at use time, so the host must NOT pre-scale it: a
+        # ``setFixedSize(scaled_px(...))`` fights the spinner's own re-derive on
+        # the metrics bus and double-plus-scales (measured 16 -> 60 instead of
+        # 24 — the owner's "did not scale itself"). Override the instance's
+        # design constant instead and apply it once for the current factor.
+        try:
+            self._spinner.SIZE_PX = 16
+        except Exception:
+            pass
         try:
             self._spinner.setFixedSize(scaled_px(16), scaled_px(16))
         except Exception:
@@ -290,10 +305,10 @@ class GalleryToolbar(QWidget):
 
         self._scanning_label = Label("", pixel_size=11, parent=self)
         self._scanning_label.setObjectName("gallery_toolbar_scanning")
-        try:
-            self._scanning_label.hide()
-        except Exception:
-            pass
+        # Left in the layout (empty text = invisible) rather than hidden: a
+        # hidden widget never gets laid out, so its size stays Qt's 100x30
+        # default and never reflects the scale (owner: "just did not scale").
+        # ``set_triage_done`` blanking the text keeps it visually absent.
         layout.addWidget(self._scanning_label)
 
         # Stretch pushes view-switcher to the right edge
@@ -310,13 +325,16 @@ class GalleryToolbar(QWidget):
         vs_lay = QHBoxLayout(self._view_switch_container)
         vs_lay.setContentsMargins(scaled_px(2), scaled_px(2), scaled_px(2), scaled_px(2))
         vs_lay.setSpacing(scaled_px(2))
+        # Kept for the live re-derive (``_on_ui_metrics``), same rationale as
+        # the domain switch's layout above.
+        self._view_switch_layout = vs_lay
         # Segmented switcher 106×32 — two exclusive segments grid/list, SVG x1130 y74 r8 highlight 44×16 blue 0.2 on active side.
         # Proper API: icon=(unchecked, checked) per BUTTON_API.md — no QPainter tint hack.
         self._view_switch = Button(
             icon=(GalleryIcon.VIEW_GRID_INACTIVE, GalleryIcon.VIEW_GRID),
             variant="ghost",
             toggle=True,
-            size=(scaled_px(48), scaled_px(28)),
+            size=(48, 28),  # design px — Button scales internally (no scaled_px)
             parent=self._view_switch_container,
         )
         self._view_switch.setObjectName("gallery_toolbar_view_switch")
@@ -324,7 +342,7 @@ class GalleryToolbar(QWidget):
             icon=(GalleryIcon.VIEW_LIST, GalleryIcon.VIEW_LIST_ACTIVE),
             variant="ghost",
             toggle=True,
-            size=(scaled_px(48), scaled_px(28)),
+            size=(48, 28),  # design px — Button scales internally (no scaled_px)
             parent=self._view_switch_container,
         )
         self._view_switch_list.setObjectName("gallery_toolbar_view_switch_list")
@@ -433,6 +451,81 @@ class GalleryToolbar(QWidget):
             from sli_ui_toolkit.managers import ThemeManager
 
             ThemeManager.get_instance().theme_changed.connect(self._on_theme_changed)
+        except Exception:
+            pass
+
+        # Live UI-scale re-derive for the row's cached design geometry.
+        self._subscribe_ui_metrics()
+
+    def _subscribe_ui_metrics(self) -> None:
+        """Subscribe to the unified metrics bus for the SCALE axis only.
+
+        The toolbar's own cached geometry (fixed row height, filter width, the
+        two segmented containers' fixed sizes, child margins/spacing) is design
+        px resolved once in ``__init__``; a live factor change must re-run it.
+        Nothing here derives from the font axis (``Button`` owns its text-hint
+        width itself), so only ``AXIS_SCALE`` is declared.
+        """
+        try:
+            from sli_ui_toolkit.ui.managers import connect_ui_metrics
+            from sli_ui_toolkit.ui.managers.ui_metrics import AXIS_SCALE
+        except Exception:
+            return
+        try:
+            connect_ui_metrics(self, self._on_ui_metrics, axes=frozenset({AXIS_SCALE}))
+        except Exception:
+            pass
+
+    def _on_ui_metrics(self, *_axes) -> None:
+        """Re-apply every build-time-cached design-px value at the new factor."""
+        try:
+            self.setFixedHeight(scaled_px(34))
+        except Exception:
+            pass
+        try:
+            layout = self.layout()
+            if layout is not None:
+                layout.setSpacing(scaled_px(20))
+        except Exception:
+            pass
+        try:
+            self._pick_button.setMinimumWidth(scaled_px(132))
+            self._pick_button.setMaximumWidth(scaled_px(220))
+            self._pick_button.setFixedHeight(scaled_px(34))
+        except Exception:
+            pass
+        try:
+            self._filter_edit.setFixedWidth(scaled_px(280))
+            self._filter_edit.setFixedHeight(scaled_px(34))
+        except Exception:
+            pass
+        try:
+            self._sort_combo.setFixedHeight(scaled_px(34))
+        except Exception:
+            pass
+        for container, layout_attr in (
+            (self._domain_switch_container, "_domain_switch_layout"),
+            (self._view_switch_container, "_view_switch_layout"),
+        ):
+            try:
+                container.setFixedSize(scaled_px(106), scaled_px(32))
+            except Exception:
+                pass
+            try:
+                inner = getattr(self, layout_attr, None)
+                if inner is not None:
+                    inner.setContentsMargins(
+                        scaled_px(2), scaled_px(2), scaled_px(2), scaled_px(2)
+                    )
+                    inner.setSpacing(scaled_px(2))
+            except Exception:
+                pass
+            try:
+                container.update()
+            except Exception:
+                pass
+        try:
+            self.updateGeometry()
         except Exception:
             pass
 

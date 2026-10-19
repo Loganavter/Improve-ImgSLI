@@ -98,6 +98,11 @@ class ExportDialog(ThemedDialog):
                     self._preview_source_pixmap = None
 
         self._init_ui()
+        # Keyboard navigation: the dialog had no section at all (see
+        # plugins/export/navigation.py).
+        from plugins.export.navigation import register_export_navigation
+
+        register_export_navigation(self)
         # Stable focus-attribution names (focus-debug tracer): override the
         # shared OutputPathSection generics with export-specific names.
         self.edit_dir.setObjectName("export-dir")
@@ -566,8 +571,8 @@ class ExportDialog(ThemedDialog):
             target_size = self.preview_label.minimumSize()
             if target_size.isEmpty():
                 target_size = QSize(
-                    export_geo.EXPORT_PREVIEW_MIN_WIDTH,
-                    export_geo.EXPORT_PREVIEW_MIN_HEIGHT,
+                    export_geo.export_preview_min_width(),
+                    export_geo.export_preview_min_height(),
                 )
 
         fmt_current = (

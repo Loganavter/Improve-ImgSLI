@@ -6,7 +6,7 @@ Audit-Meta: pattern=thin-owner-target size=exempt reason="one painters concern: 
 from __future__ import annotations
 
 from PySide6.QtCore import QRect, Qt
-from sli_ui_toolkit.managers import ui_font
+from sli_ui_toolkit.managers import scaled_px, ui_font
 
 
 def _theme_is_dark() -> bool:
@@ -90,7 +90,12 @@ def _resolve_badge_text() -> object:
 
 
 def _left_badge_painter(painter, rect, text: str, style: tuple) -> None:  # type: ignore[no-untyped-def]
-    """Draw pill badge at preview left 13 top 6 per real_design.md:2.5 and svg x52 y206."""
+    """Draw the #N pill at preview left 13 / top 8+6 per real_design.md:2.5.
+
+    Every design px here is painted by the APP (not a toolkit plate), so each
+    is resolved through ``scaled_px`` at USE time — a raw literal kept the pill
+    at its 1.0 px on a scaled card (owner report 2026-10-19).
+    """
     try:
         from PySide6.QtCore import QRectF
         from PySide6.QtGui import QColor, QPen
@@ -108,10 +113,13 @@ def _left_badge_painter(painter, rect, text: str, style: tuple) -> None:  # type
 
             painter.setFont(f)
             fm = painter.fontMetrics()
-            w = max(BADGE_MIN_WIDTH, fm.horizontalAdvance(text) + BADGE_H_PAD)
-            h = BADGE_HEIGHT
-            x = rect.x() + 13
-            y = rect.y() + 8 + 6
+            w = max(
+                float(scaled_px(BADGE_MIN_WIDTH)),
+                fm.horizontalAdvance(text) + float(scaled_px(BADGE_H_PAD)),
+            )
+            h = float(scaled_px(BADGE_HEIGHT))
+            x = rect.x() + float(scaled_px(13))
+            y = rect.y() + float(scaled_px(8)) + float(scaled_px(6))
             r = QRectF(x, y, w, h)
             # background via theme tokens
             if filled:
@@ -124,7 +132,9 @@ def _left_badge_painter(painter, rect, text: str, style: tuple) -> None:  # type
             else:
                 painter.setPen(QColor(0, 0, 0, 0))
             painter.setRenderHint(painter.RenderHint.Antialiasing, True)
-            painter.drawRoundedRect(r, BADGE_RADIUS, BADGE_RADIUS)
+            painter.drawRoundedRect(
+                r, float(scaled_px(BADGE_RADIUS)), float(scaled_px(BADGE_RADIUS))
+            )
             painter.setPen(txt_col if isinstance(txt_col, QColor) else _resolve_badge_text())
             painter.drawText(r, int(Qt.AlignmentFlag.AlignCenter), text)
         finally:
@@ -199,6 +209,10 @@ def _dots_overlay_painter(painter, ctx, tm) -> None:  # type: ignore[no-untyped-
             left, top, right, bottom = widget.getContentPadding()
         except Exception:
             left = top = right = bottom = 0
+        # ``getContentPadding`` reports the DESIGN px passed at construction
+        # (the toolkit applies them scaled internally) — resolve at use time.
+        left, top = int(scaled_px(left)), int(scaled_px(top))
+        right, bottom = int(scaled_px(right)), int(scaled_px(bottom))
         rx, ry, rw, rh = text_region
         padded = QRect(
             int(rx) + int(left),
@@ -222,12 +236,12 @@ def _dots_overlay_painter(painter, ctx, tm) -> None:  # type: ignore[no-untyped-
         # Import here to avoid cycle; dots helper provides constants.
         from tabs.image_gallery.ui.card.dots import (
             _DOTS_ROW_GAP,
-            DOT_DIAMETER,
-            DOT_PITCH,
+            dot_diameter,
+            dot_pitch,
             layout_dots,
         )
 
-        total_h = sum(heights) + _DOTS_ROW_GAP * max(0, len(heights) - 1)
+        total_h = sum(heights) + int(scaled_px(_DOTS_ROW_GAP)) * max(0, len(heights) - 1)
         y_rows = padded.y() + max(0, (padded.height() - total_h) // 2)
         # real_design.md:2.4 — dots on same row as filename, right aligned
         # If filename row exists, draw dots at its y and right edge, not centered bottom
@@ -235,20 +249,24 @@ def _dots_overlay_painter(painter, ctx, tm) -> None:  # type: ignore[no-untyped-
             y_dots = y_rows
             h_dots = heights[0]
         else:
-            y_dots = y_rows + sum(heights[:-1]) + _DOTS_ROW_GAP * (len(heights) - 1)
+            y_dots = y_rows + sum(heights[:-1]) + int(scaled_px(_DOTS_ROW_GAP)) * (len(heights) - 1)
             h_dots = heights[-1]
         # Reference: dots r=4 diameter 8, distance 14 between centers, right
         # aligned 4px pad, centered on the filename line. ONE dot per metric
         # axis (camera 8 / fidelity 14 / batch 7). Too many dots to fit the
         # card WRAP into right-aligned rows at the full pitch — never shrink.
+        # All design px resolved at USE time (dots are painted chrome).
         y_center = y_dots + h_dots // 2
-        x_right = padded.x() + padded.width() - 4 - 4  # 4px inner pad + 4 radius
+        diameter = dot_diameter()
+        inner_pad = float(scaled_px(4))
+        # inner pad + dot radius, both device px at the live factor.
+        x_right = padded.x() + padded.width() - inner_pad - inner_pad
         count = len(colors)
-        avail = max(0.0, float(padded.width()) - 8.0)
+        avail = max(0.0, float(padded.width()) - float(scaled_px(8.0)))
         centers = layout_dots(count, x_right, y_center, avail)
         if len(centers) != count:
             return
-        radius = DOT_DIAMETER / 2.0
+        radius = diameter / 2.0
         painter.save()
         try:
             painter.setRenderHint(painter.RenderHint.Antialiasing, True)
@@ -261,8 +279,8 @@ def _dots_overlay_painter(painter, ctx, tm) -> None:  # type: ignore[no-untyped-
                 painter.drawEllipse(
                     int(cx - radius),
                     int(cy - radius),
-                    DOT_DIAMETER,
-                    DOT_DIAMETER,
+                    int(diameter),
+                    int(diameter),
                 )
         finally:
             painter.restore()
@@ -273,7 +291,7 @@ def _dots_overlay_painter(painter, ctx, tm) -> None:  # type: ignore[no-untyped-
             widget._gallery_dot_geometry = {  # type: ignore[attr-defined]
                 "centers": tuple((float(cx), float(cy)) for cx, cy in centers),
                 "x_centers": tuple(float(cx) for cx, _cy in centers),
-                "pitch": float(DOT_PITCH),
+                "pitch": dot_pitch(),
                 "infos": tuple(infos),
                 "y_center": float(y_center),
             }
@@ -293,9 +311,16 @@ def _dots_overlay_painter(painter, ctx, tm) -> None:  # type: ignore[no-untyped-
                     painter.setRenderHint(painter.RenderHint.Antialiasing, True)
                     painter.setPen(Qt.PenStyle.NoPen)
                     painter.setBrush(_resolve_badge_accent())
-                    # 8 from left/right, 8 from bottom, 3 height, r1.5
-                    bar_rect = _QRF2(rect.x() + 8, rect.y() + rect.height() - 8 - 3, 234, 3)
-                    painter.drawRoundedRect(bar_rect, 1.5, 1.5)
+                    # 8 from left/right, 8 from bottom, 3 height, r1.5 (design px).
+                    inset = float(scaled_px(8))
+                    bar_h = float(scaled_px(3))
+                    bar_rect = _QRF2(
+                        rect.x() + inset,
+                        rect.y() + rect.height() - inset - bar_h,
+                        float(rect.width()) - 2.0 * inset,
+                        bar_h,
+                    )
+                    painter.drawRoundedRect(bar_rect, float(scaled_px(1.5)), float(scaled_px(1.5)))
                 finally:
                     painter.restore()
         except Exception:
@@ -395,7 +420,16 @@ def _gallery_activity_overlay(painter, ctx) -> None:  # type: ignore[no-untyped-
     rect = getattr(ctx, "rect", None)
     if widget is None or rect is None:
         return
-    box = QRectF(rect.x() + 8, rect.y() + 8, rect.width() - 16, 110)
+    # Cover box, design px resolved at USE time (see ui/card.py GALLERY_COVER_*).
+    inset = float(scaled_px(8))
+    from tabs.image_gallery.ui.card import GALLERY_COVER_H
+
+    box = QRectF(
+        rect.x() + inset,
+        rect.y() + inset,
+        float(rect.width()) - 2.0 * inset,
+        float(scaled_px(GALLERY_COVER_H)),
+    )
     paint_item_activity(painter, widget, box, corner="top_right")
 
 

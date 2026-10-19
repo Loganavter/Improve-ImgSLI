@@ -207,8 +207,14 @@ def test_fields_row_gaps_stable_and_right_aligned(qapp):
             assert (
                 dialog._r_spin.x() - (dialog._hex_edit.x() + dialog._hex_edit.width())
             ) == gap_r
-            # Right-aligned: the group hugs the row's right edge.
-            assert dialog._a_spin.x() + dialog._a_spin.width() == dialog.width() - 16
+            # Right-aligned: the group hugs the row's right edge. The fields
+            # row now lives in ``_fields_container`` (a declared navigation
+            # row), so map the spin's edge into dialog coordinates.
+            spin_right = (
+                dialog._a_spin.mapTo(dialog, dialog._a_spin.rect().topLeft()).x()
+                + dialog._a_spin.width()
+            )
+            assert spin_right == dialog.width() - 16
     finally:
         dialog.deleteLater()
 
@@ -273,21 +279,14 @@ def test_field_labels_precede_each_input(qapp):
     try:
         # No "Hex" label — the field is the cycle-format value input.
         assert [label.text() for label in dialog._field_labels] == ["R", "G", "B", "A"]
-        root = dialog.layout()
+        # The fields band is a declared navigation row (``_fields_container``),
+        # so the row layout lives on that container, not directly on the dialog.
+        row = dialog._fields_container.layout()
         widgets = []
-        for i in range(root.count()):
-            item = root.itemAt(i)
-            row = item.layout() if item is not None else None
-            if row is None:
-                continue
-            row_widgets = []
-            for j in range(row.count()):
-                sub = row.itemAt(j)
-                if sub is not None and sub.widget() is not None:
-                    row_widgets.append(sub.widget())
-            if dialog._hex_edit in row_widgets:
-                widgets = row_widgets
-                break
+        for j in range(row.count()):
+            sub = row.itemAt(j)
+            if sub is not None and sub.widget() is not None:
+                widgets.append(sub.widget())
         texts = [w.text() for w in widgets if isinstance(w, Label)]
         assert texts == ["R", "G", "B", "A"]
         for expected, spin in zip(

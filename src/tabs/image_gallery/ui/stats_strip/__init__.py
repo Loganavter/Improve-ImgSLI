@@ -243,6 +243,56 @@ class StatsStrip(QWidget):
         except Exception:
             pass
 
+        # Live UI-scale re-derive for the strip's cached design geometry.
+        self._subscribe_ui_metrics()
+
+    def _subscribe_ui_metrics(self) -> None:
+        """Subscribe to the unified metrics bus for the SCALE axis only.
+
+        The strip's fixed height and the row margins/spacing are design px
+        resolved once in ``__init__``; on a live factor change they stayed at
+        the 1.0 px and clipped the (font-scaled) stats labels. Buttons re-derive
+        their own ``size=`` and labels re-resolve their font, so only the
+        scale-derived chrome needs the explicit re-run.
+        """
+        try:
+            from sli_ui_toolkit.ui.managers import connect_ui_metrics
+            from sli_ui_toolkit.ui.managers.ui_metrics import AXIS_SCALE
+        except Exception:
+            return
+        try:
+            connect_ui_metrics(self, self._on_ui_metrics, axes=frozenset({AXIS_SCALE}))
+        except Exception:
+            pass
+
+    def _on_ui_metrics(self, *_axes) -> None:
+        """Re-apply every build-time-cached design-px value at the new factor."""
+        try:
+            self.setFixedHeight(scaled_px(34))
+        except Exception:
+            pass
+        try:
+            layout = self.layout()
+            if layout is not None:
+                layout.setContentsMargins(
+                    scaled_px(16), scaled_px(5), scaled_px(16), scaled_px(5)
+                )
+                layout.setSpacing(scaled_px(10))
+        except Exception:
+            pass
+        try:
+            self._clean_btn.setFixedHeight(scaled_px(24))
+        except Exception:
+            pass
+        try:
+            self.updateGeometry()
+        except Exception:
+            pass
+        try:
+            self.update()
+        except Exception:
+            pass
+
     def _t(self, key: str, default: str) -> str:
         """Translate *key* via the injected translator (fail-open to *default*)."""
         tr = getattr(self, "_tr", None)
@@ -376,7 +426,7 @@ class StatsStrip(QWidget):
                 bg = _stats_bg_color()
             p.setBrush(bg)
             r = QRectF(self.rect())
-            p.drawRoundedRect(r, 8, 8)
+            p.drawRoundedRect(r, scaled_px(8), scaled_px(8))
             try:
                 border = self._stats_border
             except Exception:
@@ -391,7 +441,7 @@ class StatsStrip(QWidget):
                 except Exception:
                     pass
                 p.setPen(pen)
-                p.drawRoundedRect(r.adjusted(0.5, 0.5, -0.5, -0.5), 8, 8)
+                p.drawRoundedRect(r.adjusted(0.5, 0.5, -0.5, -0.5), scaled_px(8), scaled_px(8))
             except Exception:
                 pass
             p.end()

@@ -15,6 +15,7 @@ from PySide6.QtCore import QEvent, Qt, Signal
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QHBoxLayout, QWidget
 from sli_ui_toolkit.icons import lazy_icon
+from sli_ui_toolkit.managers import scaled_px
 from sli_ui_toolkit.widgets import (
     Button,
     ContextMenuAction,
@@ -39,6 +40,10 @@ from tabs.session_picker.icons import get_icon as get_session_picker_icon
 
 logger = logging.getLogger("ImproveImgSLI")
 
+#: Design px gap between the sort / view chips; resolved at use time and
+#: re-resolved on a live ``UiScale`` change.
+_HEADER_SPACING_PX = 8
+
 
 class RecentHeaderBar(QWidget):
     """Sort/view chips for the shelf header. Emits prefs changes; no MRU data."""
@@ -56,7 +61,7 @@ class RecentHeaderBar(QWidget):
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(8)
+        layout.setSpacing(scaled_px(_HEADER_SPACING_PX))
 
         self.sort_button = Button(
             icon=lazy_icon(lambda: get_session_picker_icon(self._sort_mode_icon())),
@@ -100,6 +105,26 @@ class RecentHeaderBar(QWidget):
         self.view_button.setObjectName("recent-view-button")
         self.view_button.clicked.connect(self._toggle_view)
         layout.addWidget(self.view_button)
+
+        self._connect_design_metrics()
+
+    def _apply_design_metrics(self) -> None:
+        """Resolve the chip gap's design px at the live scale factor."""
+        layout = self.layout()
+        if layout is not None:
+            layout.setSpacing(scaled_px(_HEADER_SPACING_PX))
+
+    def _connect_design_metrics(self) -> None:
+        from sli_ui_toolkit.ui.managers import connect_ui_metrics
+        from sli_ui_toolkit.ui.managers.ui_metrics import AXIS_SCALE
+
+        connect_ui_metrics(
+            self, self._on_design_metrics_changed, axes=frozenset({AXIS_SCALE})
+        )
+
+    def _on_design_metrics_changed(self, *_args) -> None:
+        self._apply_design_metrics()
+        self.updateGeometry()
 
     def keyPressEvent(self, event) -> None:  # noqa: N802
         from PySide6.QtWidgets import QApplication

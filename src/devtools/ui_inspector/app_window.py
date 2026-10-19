@@ -8,6 +8,7 @@ from PySide6.QtWidgets import QHBoxLayout, QWidget
 
 from sli_ui_toolkit.ui.inspector.contract import InspectField
 from sli_ui_toolkit.ui.inspector.view import InspectorWindow
+from sli_ui_toolkit.managers import scaled_px
 from sli_ui_toolkit.widgets import Button, Label
 
 from devtools.ui_inspector.native import NativeWindowInfo
@@ -52,8 +53,10 @@ class AppInspectorWindow(InspectorWindow):
         # Experiment buttons (same three as the legacy panel).
         row = QWidget()
         layout = QHBoxLayout(row)
-        layout.setContentsMargins(8, 4, 8, 2)
-        layout.setSpacing(6)
+        layout.setContentsMargins(
+            scaled_px(8), scaled_px(4), scaled_px(8), scaled_px(2)
+        )
+        layout.setSpacing(scaled_px(6))
         toggle = Button(text="Toggle native window", variant="default", size=(0, 28))
         toggle.clicked.connect(self.toggle_native_window_requested)
         repaint = Button(text="Force repaint()", variant="default", size=(0, 28))

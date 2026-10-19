@@ -733,7 +733,7 @@ def _make_series_header(
                 )
             ],
             variant="ghost",
-            size=(0, scaled_px(24)),
+            size=(0, 24),  # design px — Button scales internally (no scaled_px)
             # 3px bar + 12px gap the sibling widget used to occupy;
             # right reserve keeps the elided title clear of the arrow layer.
             content_padding=(scaled_px(15), 0, scaled_px(SERIES_ARROW_RESERVE), 0),
@@ -788,7 +788,7 @@ def _make_series_header(
                 )
             ],
             variant="ghost",
-            size=(0, scaled_px(24)),
+            size=(0, 24),  # design px — Button scales internally (no scaled_px)
             # 3px bar + 12px gap the sibling widget used to occupy; the
             # right reserve keeps the elided title clear of the arrow
             # layer. UNGROUPED is a NORMAL collapsible group (same

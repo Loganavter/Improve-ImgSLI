@@ -54,6 +54,12 @@ class MetricsSurface:
     name: str
     build: Builder
     axes: frozenset[str]
+    #: When True the probe's numeric values must grow by ~the lever's factor
+    #: (not merely change): the harness then also catches DOUBLE scaling
+    #: (ratio ~ factor**2) and reports which disease a failure is. Reserved for
+    #: surfaces whose probe values are all factor-proportional design px; a
+    #: probe mixing window-relative values stays on the plain "moved" check.
+    expect_ratio: bool = False
 
 
 def _flush_metrics_channel(qapp: QApplication) -> None:
@@ -142,6 +148,81 @@ def _font_lever() -> tuple[Callable[[], None], Callable[[], None]]:
     return apply, restore
 
 
+def _numeric_total(value: Any) -> float | None:
+    """Sum the ints/floats found in a probe value (None when there are none).
+
+    Probes return ints, tuples of ints/QSize, or nested tuples — the harness
+    only needs a monotone scalar to compare before/after, and the RATIO of two
+    such sums is exactly what a factor-proportional surface must produce.
+    """
+    if isinstance(value, bool) or value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    total = 0.0
+    found = False
+    for item in value:
+        part = _numeric_total(item)
+        if part is not None:
+            total += part
+            found = True
+    return total if found else None
+
+
+def assert_scaled_ratio(
+    before: Any,
+    after: Any,
+    factor: float,
+    name: str,
+    axis: str,
+) -> None:
+    """Assert the probe grew by ~*factor*, and name the disease when it did not.
+
+    Three distinguishable failures, each with its own message:
+
+    * ``ratio ~ 1.0``  — the value never re-derived (the class this harness
+      exists for: a cached/baked design px, or a handler that re-runs on the
+      wrong axis);
+    * ``ratio ~ factor**2`` — DOUBLE scaling (a scale-resolved value fed back
+      through the resolver — the second disease, previously invisible to a
+      "did it move?" assertion);
+    * anything in between — a PARTIAL re-derivation (some of the probe's
+      values follow the lever, some do not), which is the shape a half-fixed
+      surface has.
+    """
+    total_before = _numeric_total(before)
+    total_after = _numeric_total(after)
+    if not total_before or total_after is None:
+        raise AssertionError(
+            f"{name!r}: probe is not numeric ({before!r}) — a ratio surface "
+            f"must expose ints/sizes"
+        )
+    ratio = total_after / total_before
+    # A mixed probe (widths that include font-derived text plus design-px
+    # paddings) rounds to a few percent off the factor; the two diseases sit
+    # far outside this band (1.0 and factor**2), so the gate stays sharp.
+    tolerance = max(0.09, abs(factor - 1.0) * 0.35)
+    if abs(ratio - factor) <= tolerance:
+        return
+    if abs(ratio - 1.0) <= tolerance:
+        disease = (
+            "STALE: the value did not re-derive on a "
+            f"{axis} change (cached/baked design px, or a handler on the "
+            "wrong axis)"
+        )
+    elif abs(ratio - factor ** 2) <= max(tolerance, factor ** 2 * 0.1):
+        disease = (
+            "DOUBLE-SCALED: a scale-resolved value was fed back through the "
+            f"resolver (expected ~{factor:.2f}, got ~{factor ** 2:.2f})"
+        )
+    else:
+        disease = "PARTIALLY re-derived (only some of the probe's values follow the lever)"
+    raise AssertionError(
+        f"{name!r}: expected the probe to grow by ~{factor:.2f} on a {axis} "
+        f"change, got {ratio:.3f} ({total_before:.1f} -> {total_after:.1f}) — {disease}"
+    )
+
+
 def assert_reflows_on_metrics_change(
     surface: MetricsSurface,
     qapp: QApplication | None = None,
@@ -171,7 +252,9 @@ def assert_reflows_on_metrics_change(
                 before = drain_until_stable(
                     qapp, probe, timeout_ms=1000, stable_frames=2
                 )
+                factor_before = UiScale.get_instance().factor()
                 apply()
+                factor_after = UiScale.get_instance().factor()
                 _flush_metrics_channel(qapp)
                 after = drain_until_stable(
                     qapp, probe, timeout_ms=1000, stable_frames=2
@@ -179,6 +262,15 @@ def assert_reflows_on_metrics_change(
             finally:
                 restore()
                 _flush_metrics_channel(qapp)
+            if surface.expect_ratio and axis == "scale" and factor_before:
+                assert_scaled_ratio(
+                    before,
+                    after,
+                    factor_after / factor_before,
+                    surface.name,
+                    axis,
+                )
+                continue
             assert after != before, (
                 f"{surface.name!r}: derived geometry did not re-derive on a "
                 f"{axis} change — probe stayed at {before!r}. The widget is "

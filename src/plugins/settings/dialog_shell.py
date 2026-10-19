@@ -27,8 +27,9 @@ def setup_dialog_shell(dialog):
     dialog.search_field.setClearButtonEnabled(True)
     dialog.search_field.setObjectName("SettingsSearchField")
 
+    dialog.search_header_host = sidebar_header_host(dialog.search_field)
     dialog.shell = SidebarDialogShell(
-        sidebar_header=sidebar_header_host(dialog.search_field),
+        sidebar_header=dialog.search_header_host,
         resizable_sidebar=True,
         content_margins=(
             control_edge_padding(),

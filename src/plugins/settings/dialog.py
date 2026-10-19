@@ -130,6 +130,17 @@ class SettingsDialog(ThemedDialog):
         from shared_toolkit.ui.decorate_dialog import decorate_dialog, install_dialog_help_menu
         decorate_dialog(self, title=self._tr("misc.settings", self.current_language))
         install_dialog_help_menu(self, page="settings")
+        # Shell navigation sections, in visual order: title bar → search →
+        # (the sidebar and each page register themselves while the sections
+        # below build) → action bar. See plugins/settings/shell_navigation.py.
+        from plugins.settings.shell_navigation import (
+            register_action_bar_navigation,
+            register_search_navigation,
+            register_title_bar_navigation,
+        )
+
+        register_title_bar_navigation(self)
+        register_search_navigation(self)
         self.active_tab = active_tab
         self._search_mode = False
         self._search_prev_row = 0
@@ -137,6 +148,7 @@ class SettingsDialog(ThemedDialog):
         self._active_sections = get_settings_registry().sections_for(active_tab)
         for section in self._active_sections:
             section.build(self, self.context)
+        register_action_bar_navigation(self)
         self._setup_sidebar_items()
         self._setup_in_dialog_search()
         self.install_dialog_geometry(self._calculate_and_apply_geometry)

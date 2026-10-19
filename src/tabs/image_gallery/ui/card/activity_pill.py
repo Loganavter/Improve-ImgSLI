@@ -24,6 +24,13 @@ _MARGIN = 6.0
 _SPIN_PERIOD_S = 0.9
 _SPIN_SPAN_DEG = 270.0
 
+
+def _px(value: float) -> float:
+    """DESIGN px → DEVICE px at the live UiScale factor (this pill is painted chrome)."""
+    from sli_ui_toolkit.managers import scaled_px
+
+    return float(scaled_px(value))
+
 _DONE = ActivityPhase.DONE.value
 _DANGER = frozenset({ActivityPhase.ERROR.value, ActivityPhase.UNREADABLE.value})
 #: Phases that draw a pill on their own (``done`` only while its fade runs).
@@ -78,22 +85,23 @@ def _pill_colors(phase: str):
 def _draw_spinner(painter, rect: QRectF, color) -> None:
     from PySide6.QtGui import QPen
 
-    pen = QPen(color, 2.0)
+    pen = QPen(color, _px(2.0))
     pen.setCapStyle(Qt.PenCapStyle.RoundCap)
     painter.setPen(pen)
     painter.setBrush(Qt.BrushStyle.NoBrush)
     start = (time.monotonic() % _SPIN_PERIOD_S) / _SPIN_PERIOD_S * 360.0
-    painter.drawArc(rect.adjusted(1, 1, -1, -1), int(-start * 16), int(-_SPIN_SPAN_DEG * 16))
+    d = _px(1.0)
+    painter.drawArc(rect.adjusted(d, d, -d, -d), int(-start * 16), int(-_SPIN_SPAN_DEG * 16))
 
 
 def _draw_check(painter, rect: QRectF, color) -> None:
     from PySide6.QtGui import QPainterPath, QPen
 
     path = QPainterPath()
-    path.moveTo(rect.left() + 1.5, rect.center().y())
-    path.lineTo(rect.left() + 4.0, rect.bottom() - 2.5)
-    path.lineTo(rect.right() - 1.0, rect.top() + 2.5)
-    pen = QPen(color, 1.8)
+    path.moveTo(rect.left() + _px(1.5), rect.center().y())
+    path.lineTo(rect.left() + _px(4.0), rect.bottom() - _px(2.5))
+    path.lineTo(rect.right() - _px(1.0), rect.top() + _px(2.5))
+    pen = QPen(color, _px(1.8))
     pen.setCapStyle(Qt.PenCapStyle.RoundCap)
     pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
     painter.setPen(pen)
@@ -115,16 +123,17 @@ def draw_activity_pill(
 
     font = ui_font(pixel_size=11, bold=False)
     text_w = float(QFontMetrics(font).horizontalAdvance(label))
-    width = _PAD + _ICON_D + _GAP + text_w + _PAD
+    pad, icon_d, gap, margin, pill_h = _px(_PAD), _px(_ICON_D), _px(_GAP), _px(_MARGIN), _px(PILL_H)
+    width = pad + icon_d + gap + text_w + pad
     if corner == "top_right":
-        x = box.right() - _MARGIN - width
-        y = box.top() + _MARGIN
+        x = box.right() - margin - width
+        y = box.top() + margin
     else:
-        x = box.left() + _MARGIN
-        y = box.center().y() - PILL_H / 2.0
-    pill = QRectF(x, y, width, PILL_H)
+        x = box.left() + margin
+        y = box.center().y() - pill_h / 2.0
+    pill = QRectF(x, y, width, pill_h)
     bg, fg, icon_color = _pill_colors(phase)
-    icon = QRectF(pill.left() + _PAD, pill.center().y() - _ICON_D / 2.0, _ICON_D, _ICON_D)
+    icon = QRectF(pill.left() + pad, pill.center().y() - icon_d / 2.0, icon_d, icon_d)
     painter.save()
     try:
         painter.setRenderHint(painter.RenderHint.Antialiasing, True)
@@ -132,7 +141,7 @@ def draw_activity_pill(
         painter.setFont(font)
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(bg)
-        painter.drawRoundedRect(pill, PILL_H / 2.0, PILL_H / 2.0)
+        painter.drawRoundedRect(pill, pill_h / 2.0, pill_h / 2.0)
         if phase in ACTIVE_PHASES:
             _draw_spinner(painter, icon, icon_color)
         elif phase == _DONE:
@@ -140,7 +149,7 @@ def draw_activity_pill(
         else:
             _draw_dot(painter, icon, icon_color)
         painter.setPen(fg)
-        text_rect = QRectF(icon.right() + _GAP, pill.top(), text_w + 1.0, PILL_H)
+        text_rect = QRectF(icon.right() + gap, pill.top(), text_w + 1.0, pill_h)
         painter.drawText(text_rect, int(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft), label)
     finally:
         painter.restore()
