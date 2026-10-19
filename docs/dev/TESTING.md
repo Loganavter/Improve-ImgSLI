@@ -44,6 +44,11 @@ Timing-sensitive tests that fail only under parallel load are marked
 | `tests/contracts/test_chrome_lifetime.py::test_reveal_pulse_exception_swallowed` | `QTimer.singleShot(0)` pulse may not fire before teardown under `-n 8` load; 3/3 green alone. Fix direction: explicit signal wait instead of `delay_ms=0` (see `docs/dev/KNOWN_BUGS.md` Qt quirks). |
 | `src/tabs/session_picker/tests/runtime/test_keyboard_navigation.py::test_down_from_last_header_enters_recent_items` | Offscreen focus handoff (header → recent items) can be dropped under full `-n` load (whole tree in one session); green in the tab suite alone. Hardened to `widget.focusWidget()` + `qtbot.waitUntil`; residual is Qt-offscreen focus timing, not a product bug. |
 | `src/tabs/session_picker/tests/runtime/test_session_picker_refresh_focus.py::test_tab_stores_widget_and_hooks_are_order_safe` | Tab lifecycle + focus timing under parallel load; green alone. |
+| `src/tabs/session_picker/tests/runtime/test_keyboard_navigation.py::test_up_from_first_recent_item_returns_to_last_create_card` | Same offscreen focus handoff as the Down case; fails only in full-suite order (journal `1bf913a7` and 2026-10-14), green in isolation. |
+| `tests/devtools/test_control_nav_state.py::test_nav_key_on_an_unowned_widget_is_reported_unhandled` | Global `NavigationManager` state left by a previous test makes the key report `surface` instead of `unhandled/focus`; fails only in full-suite order (journal `1bf913a7`), green in isolation. |
+
+These stay in the fast tier (no deselect): the list is documentation, not
+silence. `test-journal.sh` carries the per-commit evidence for each.
 
 ### Segfault attribution (CI)
 
