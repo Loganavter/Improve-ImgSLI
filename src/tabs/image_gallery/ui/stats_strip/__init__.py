@@ -376,7 +376,7 @@ class StatsStrip(QWidget):
                 bg = _stats_bg_color()
             p.setBrush(bg)
             r = QRectF(self.rect())
-            p.drawRoundedRect(r, 8, 8)
+            p.drawRoundedRect(r, scaled_px(8), scaled_px(8))
             try:
                 border = self._stats_border
             except Exception:
@@ -391,7 +391,7 @@ class StatsStrip(QWidget):
                 except Exception:
                     pass
                 p.setPen(pen)
-                p.drawRoundedRect(r.adjusted(0.5, 0.5, -0.5, -0.5), 8, 8)
+                p.drawRoundedRect(r.adjusted(0.5, 0.5, -0.5, -0.5), scaled_px(8), scaled_px(8))
             except Exception:
                 pass
             p.end()
