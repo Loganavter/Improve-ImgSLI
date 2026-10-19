@@ -1,8 +1,10 @@
 """Contract: target-bug evidence sites obey the frozen ``target_bug`` vocabulary.
 
 Frozen seam: ``docs/dev/EVIDENCE.md`` (three evidence kinds) + ADR-008.
-Every probe under ``tests/target_bug/`` records with ``record_evidence``;
-this scan keeps the vocabulary honest without executing the probes:
+Every probe under ``tests/target_bug/`` **and** the tab-level
+``src/tabs/*/tests/**/test_*target*.py`` carriers records with
+``record_evidence``; this scan keeps the vocabulary honest without executing
+the probes:
 
 - a ``bug.<case>`` site must pass ``kind="target_bug"``;
 - its ``verdict`` must be a literal ``reproduced`` or ``fixed`` (the two
@@ -30,9 +32,15 @@ def _call_name(func: ast.expr) -> str | None:
     return None
 
 
+def _target_files() -> list[Path]:
+    files = list(TARGET_BUG_DIR.glob("test_*.py"))
+    files += sorted((ROOT / "src" / "tabs").glob("*/tests/**/test_*target*.py"))
+    return sorted(set(files))
+
+
 def _target_bug_sites() -> list[tuple[Path, ast.Call]]:
     sites: list[tuple[Path, ast.Call]] = []
-    for path in sorted(TARGET_BUG_DIR.glob("test_*.py")):
+    for path in _target_files():
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         for node in ast.walk(tree):
             if not isinstance(node, ast.Call) or _call_name(node.func) != "record_evidence":
