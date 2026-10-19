@@ -63,6 +63,15 @@ ALLOWED_DEEP_TAB_IMPORTS: dict[str, str] = {
         "colour picker and the video editor (the modal-ceiling example); the "
         "video editor dialog is the fixture, not the behavior under test"
     ),
+    "tests/test_nav_coverage_contract.py": (
+        "app-wide keyboard-coverage contract: every registered window's "
+        "controls must be nav-owned or reasoned-exempt. It deliberately spans "
+        "host dialogs AND the tab-owned surfaces (Clean Review, Quick Look, "
+        "video editor) — a per-tab split would let one tab's surface drop out "
+        "of the app-wide guarantee, which is the whole point of the contract. "
+        "The tab windows are fixtures, not behavior under test (their own "
+        "tests live under src/tabs/<tab>/tests/)"
+    ),
     "tests/contracts/test_action_registry.py": (
         "generic ActionRegistry contract, image_compare is example fixture data"
     ),
