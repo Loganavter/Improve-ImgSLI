@@ -1,8 +1,10 @@
 """ScrollValueButton: change the value without Enter (sv-button-ux).
 
 Owner's decisions:
-- the value pill is a **preview on hover AND on keyboard focus** — neither
-  trigger steals focus (``grab_focus=False, register_nav_section=True``);
+- the value pill is a **preview on focus** (keyboard or mouse) — it never
+  steals focus (``grab_focus=False, register_nav_section=True``); hover alone
+  shows the digit inside the button and raises no flyout
+  (``test_hover_alone_shows_digit_not_flyout``);
 - **Up** moves the keyboard *into* the pill, ``Left``/``Right`` step the value
   there (the pill's own ``keyPressEvent`` → ``anchor._step_value``);
 - **Down**/*Esc* leave the pill.
@@ -80,17 +82,35 @@ def _value_rows(button: ScrollValueButton):
     ]
 
 
-def test_preview_pill_shows_on_hover_without_stealing_focus(host_button, qapp):
-    _, button = host_button
+def test_hover_alone_shows_digit_not_flyout(qtbot):
+    """Hover shows the digit inside the button and raises no flyout.
+
+    Owner decision (2026-10-19). A sibling focusable widget owns the
+    window's activation focus so the button stays unfocused — otherwise the
+    focus preview would raise the pill and suppress the in-button digit.
+    """
+    host = QWidget()
+    host.resize(240, 140)
+    layout = QVBoxLayout(host)
+    layout.setContentsMargins(24, 24, 24, 24)
+    sibling = QWidget()
+    sibling.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+    layout.addWidget(sibling)
+    button = ScrollValueButton(icon=None, min_value=0, max_value=10, start=4)
+    layout.addWidget(button)
+    qtbot.addWidget(host)
+    host.show()
+    qtbot.waitExposed(host)
+    assert not button.hasFocus(), "the sibling must own the activation focus"
 
     _enter_hover(button)
-    qapp.processEvents()
+    qtbot.wait(50)
 
-    pill = button._flyout
-    assert pill is not None and pill.isVisible(), "hover must preview the value"
-    assert pill._label.text() == "4"
-    assert not pill.hasFocus(), "the hover preview must not steal focus"
-    assert button.hasFocus()
+    assert button._hovered_split is True
+    assert button._flyout is None, "hover must not create the value flyout"
+    assert _value_rows(button) == ["4"], (
+        "hover shows the digit inside the button"
+    )
 
 
 def test_preview_pill_shows_on_keyboard_focus_without_stealing_focus(
