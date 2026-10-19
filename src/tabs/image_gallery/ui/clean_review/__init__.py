@@ -585,6 +585,11 @@ class CleanReviewOverlay(TopLevelInWindowOverlay):
         # constructor (QL tabs/image_gallery/ui/quick_look/overlay_build/build.py:113 — setBold after would
         # re-run Label's pixel-based _apply_style and revert sizing).
         # Quick Look parity: top row is title/subtitle + top-right ✕.
+        # The header layout stays a direct layout item (design-parity pin);
+        # the S3 navigation section's header row is its only focusable
+        # control, the ✕ button (clean_review/nav_section.py::rows). The
+        # header's title/subtitle carry no focus, so no inert container sits
+        # between them and the row model.
         header_row = QHBoxLayout()
         header_row.setContentsMargins(0, 0, 0, 0)
         header_row.setSpacing(scaled_px(8))
@@ -683,6 +688,8 @@ class CleanReviewOverlay(TopLevelInWindowOverlay):
         # primary look).
         bar = QWidget(self._content)
         bar.setObjectName("clean_review_bar")
+        # The action bar is the S3 navigation section's bottom row.
+        self._action_bar = bar
         bar_layout = QHBoxLayout(bar)
         bar_layout.setContentsMargins(0, 0, 0, 0)
         bar_layout.setSpacing(scaled_px(8))
@@ -759,6 +766,9 @@ class CleanReviewOverlay(TopLevelInWindowOverlay):
         except Exception:
             pass
         self._row_widgets: list[QWidget] = []
+        # Current strip row (populate() replaces it on every rebuild); the
+        # navigation section re-reads this attribute per key press.
+        self._strip_row: QWidget | None = None
         self._toast_manager: ToastManager | None = None
         self._ql_return = None
 
@@ -847,6 +857,15 @@ class CleanReviewOverlay(TopLevelInWindowOverlay):
         _t1 = time.perf_counter()
         self._populate(owner)
         _t2 = time.perf_counter()
+        # Return-focus: capture the opener while it still holds the ring (the
+        # show path below grabs focus for the overlay). Re-armed on every
+        # open; the close path restores it (nav_section.unregister).
+        try:
+            from tabs.image_gallery.ui.clean_review import nav_section
+
+            nav_section.remember_opener(self)
+        except Exception:
+            pass
         self.show()
         try:
             self.raise_()
@@ -876,9 +895,9 @@ class CleanReviewOverlay(TopLevelInWindowOverlay):
             _n,
         )
         # The overlay owns its keys through the app's navigation model while it
-        # is visible: a trap-only modal section (clean_review/nav_section.py)
-        # that keeps every arrow, Tab/Backtab and a stolen focus inside the veil
-        # (the gallery grid behind must receive nothing). Registered LAST, after
+        # is visible: a modal row section (clean_review/nav_section.py) over the
+        # header, strip and action bar, so every control is reachable by arrows
+        # and the gallery grid behind receives nothing. Registered LAST, after
         # show_overlay()'s own focus grab — Quick Look's ordering.
         _register_nav(self)
 
@@ -907,12 +926,15 @@ class CleanReviewOverlay(TopLevelInWindowOverlay):
             ql = getattr(w, "_quick_look_overlay", None)
             if ql is None:
                 return
-            self.hide()
+            # Mark the hand-off BEFORE hiding: the close path's return-focus
+            # must not pull the ring back out of the Quick Look overlay that
+            # just opened (nav_section.restore_opener_focus reads this).
             self._ql_return = ql
             try:
                 ql.installEventFilter(self)
             except Exception:
                 pass
+            self.hide()
         except Exception:
             pass
 
@@ -1079,6 +1101,15 @@ class CleanReviewOverlay(TopLevelInWindowOverlay):
         # Row building lives in this package's ``populate`` module (package
         # split, plan-gallery-split-2026-10-17 Part C3); name + signature kept.
         populate(self, owner)
+        # A rebuild replaces the strip row (and every per-item Restore
+        # button), so the navigation section's rows are re-derived on the next
+        # key — and a ring the rebuild dropped is put back inside S3.
+        try:
+            from tabs.image_gallery.ui.clean_review import nav_section
+
+            nav_section.restore_after_rebuild(self)
+        except Exception:
+            pass
 
     def _on_restore_all(self) -> None:
         owner = self._owner
@@ -1218,7 +1249,21 @@ class CleanReviewOverlay(TopLevelInWindowOverlay):
 
     def keyPressEvent(self, event) -> None:  # noqa: N802
         try:
-            if event.key() == Qt.Key.Key_Escape:
+            key = event.key()
+            # The navigation manager leaves horizontal arrows to the focused
+            # widget (clean_review/nav_section.py keeps ``extra_keys`` empty);
+            # re-deliver them to the row section so ←/→ still walk the strip
+            # and the action bar. The section stays the single row owner.
+            if key in (Qt.Key.Key_Left, Qt.Key.Key_Right):
+                from tabs.image_gallery.ui.clean_review import nav_section
+
+                section = nav_section.section_of(self)
+                if section is not None:
+                    focused = nav_section.focused_widget(self) or self
+                    if section.navigate(key, focused):
+                        event.accept()
+                        return
+            if key == Qt.Key.Key_Escape:
                 self.hide()
                 event.accept()
                 return

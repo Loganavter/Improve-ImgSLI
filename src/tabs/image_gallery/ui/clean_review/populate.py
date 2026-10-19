@@ -275,11 +275,10 @@ def populate(overlay, owner) -> None:
     except Exception:
         pass
 
-    # Rebuild list rows — Phase 6: ONE flat horizontal strip over ALL
-    # rejected items in stable order (mockup v3: borderless strip, no
-    # per-series boxes/headers; series survive only in the provenance
-    # line above). Per-series Restore buttons are gone by design
-    # (mockup has none); Restore all + per-thumb Restore remain.
+    # Rebuild the strip — ONE flat horizontal strip over ALL rejected items
+    # in stable order (mockup v3: borderless, no per-series boxes/headers;
+    # series survive in the provenance line above). Restore all + per-thumb
+    # Restore remain; per-series Restore buttons are gone by design.
     for w in overlay._row_widgets:
         try:
             overlay._list_layout.removeWidget(w)
@@ -290,7 +289,8 @@ def populate(overlay, owner) -> None:
         except Exception:
             pass
     overlay._row_widgets.clear()
-
+    # Navigation strip row — replaced below by every rebuild.
+    overlay._strip_row = None
     if not items:
         empty = Label(
             overlay._t("image_gallery.clean_review.no_rejected", "No rejected files."),
@@ -494,6 +494,9 @@ def populate(overlay, owner) -> None:
         pass
     overlay._list_layout.addWidget(strip_scroll)
     overlay._row_widgets.append(strip_scroll)
+    # Strip row for the navigation section (per-item Restore buttons and the
+    # informational +N tile live inside it).
+    overlay._strip_row = strip_scroll
     # Explicit show (quick_look/strip/rebuild.py documents the trap): a
     # child added while the host is visible stays hidden until the next
     # turn — excluded from layout hints, so the host collapses and the
