@@ -20,6 +20,20 @@ place:
 * the stored metric profile (``owner.clear_metric_profile``) and the Stage-2
   fingerprint.
 
+The cleared item state includes the **metric-derived rank state** (``rank`` /
+``rank_source`` / ``crown_rank`` / ``is_best`` / badge triple), not just the
+numbers: a reset asks for a fresh UNRANKED view, so both an automatic
+(fusion/jev) rank and an explicit "Make best" pick go — the manual pick is a
+rank OVER the old measurements. ``series_id`` / ``provenance_series_id`` /
+``rejected`` / ``triage_rejected`` are not metric-derived and survive.
+
+The clear then re-stamps the badges unranked (``rank_badge.stamp_badges(...,
+show_rank=False)``) and refreshes the bound cards through the live view
+(``refresh_cards``) — otherwise the per-card painted dots
+(``_gallery_dot_colors``) and the ★ BEST pill survive on screen even though
+the items are already empty (the painted view is not derived from the items
+at paint time, it is stamped at build/update time).
+
 ``reset_metrics_caches`` then re-enters the rebuild
 (``_start_triage(..., cover_grid=False)``) so the pipeline actually recomputes
 instead of repainting the already-measured view.
@@ -38,6 +52,7 @@ from pathlib import Path
 
 from tabs.image_gallery.models import AnalysisStatus
 from tabs.image_gallery.services.activity import clear_activity
+from tabs.image_gallery.services.rank_badge import KIND_NONE, stamp_badges
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -65,7 +80,16 @@ def _path_key(item) -> str:
 
 
 def _clear_item(item) -> None:
-    """Drop one item's measured / AI state so the pipeline recomputes it."""
+    """Drop one item's measured / AI / metric-derived rank state.
+
+    DECISION: a metrics reset is a *reset*, not a cache refresh. Auto ranks
+    (``fusion``/``jev``) and a manual "Make best" pick both go — the user
+    asked for a fresh unranked view, and a manual pick is a rank over the old
+    measurements (leaving ``triage_best`` set would let the next snapshot
+    re-freeze it as a manual rank and silently undo the reset). What is NOT
+    metric-derived survives: ``series_id`` / ``provenance_series_id`` (group
+    identity), ``rejected`` / ``triage_rejected`` (user triage decisions).
+    """
     try:
         item.metrics = {}
         item.artifacts = {}
@@ -73,6 +97,16 @@ def _clear_item(item) -> None:
         item.analysis = None
         item.analysis_status = AnalysisStatus.NOT_ANALYZED
         item.analysis_error = None
+        # Metric-derived rank state — see the DECISION above.
+        item.rank = None
+        item.rank_source = None
+        item.crown_rank = None
+        item.is_best = False
+        item.triage_best = False
+        item.triage_rank = None
+        item.badge = ""
+        item.badge_kind = KIND_NONE
+        item.badge_source = ""
     except Exception:
         logger.debug("metrics reset: item state clear failed", exc_info=True)
     try:
@@ -87,6 +121,82 @@ def _clear_item(item) -> None:
         pass
 
 
+def _cards_view(owner):
+    """The live view that owns the card widgets, or ``None`` (storeless tests).
+
+    Owner is a controller in production (``owner.widget``), but the widget
+    itself is also a legal owner (storeless/live-menu paths), so both are
+    probed. A bare ``_grid_view`` is the last resort for thin doubles.
+    """
+    try:
+        candidates = (getattr(owner, "widget", None), getattr(owner, "_widget", None), owner)
+    except Exception:
+        return None
+    for cand in candidates:
+        if cand is None:
+            continue
+        try:
+            if callable(getattr(cand, "refresh_cards", None)):
+                return cand
+            grid = getattr(cand, "_grid_view", None)
+            if grid is not None and callable(getattr(grid, "refresh_cards", None)):
+                return grid
+        except Exception:
+            continue
+    return None
+
+
+def _source_path_of(owner, view):
+    """Current source hub for the badge stamp (identity badge stays visible)."""
+    for cand in (owner, view, getattr(owner, "widget", None)):
+        if cand is None:
+            continue
+        try:
+            src = getattr(cand, "_source_path", None)
+        except Exception:
+            src = None
+        if src is not None:
+            return src
+    return None
+
+
+def _refresh_cleared_view(owner, targets) -> None:
+    """Re-stamp the cleared items unranked and repaint their cards.
+
+    The dots and the ★ BEST pill are stamped ON the card at build/update time
+    (``ui/card.py``), so mutating the items alone leaves the painted view
+    showing the old colours until some unrelated event repaints it. Two
+    existing seams, no new render pipeline: the single badge-stamp point
+    (``stamp_badges``, ``show_rank=False`` — the ranking is not final after a
+    reset) and the view's targeted per-card update (``refresh_cards``, the
+    same path a triage tail uses, which recomputes ``_gallery_dot_colors``
+    from the now-empty metrics). Never raises.
+    """
+    try:
+        clear_targets = list(targets or [])
+    except Exception:
+        return
+    if not clear_targets:
+        return
+    view = _cards_view(owner)
+    try:
+        stamp_badges(clear_targets, _source_path_of(owner, view), show_rank=False)
+    except Exception:
+        logger.debug("metrics reset: badge re-stamp failed", exc_info=True)
+    if view is None:
+        return
+    try:
+        view.refresh_cards(clear_targets)
+        return
+    except Exception:
+        logger.debug("metrics reset: batch card refresh failed", exc_info=True)
+    for it in clear_targets:
+        try:
+            view.refresh_card(it)
+        except Exception:
+            logger.debug("metrics reset: per-card refresh failed", exc_info=True)
+
+
 def clear_metrics_caches(owner, *, paths=None) -> dict:
     """Clear the measured-metrics caches (in-memory + disk). Never raises.
 
@@ -94,6 +204,11 @@ def clear_metrics_caches(owner, *, paths=None) -> dict:
     targets); ``None`` means every item of ``owner.state.items`` and a
     whole-directory AI-scorecard sweep (``ai_cache.clear_all``). Returns an
     honest summary: ``{"items": n, "ai_files": n, "profiles": n}``.
+
+    Cleared items lose their metric-derived rank state too (see
+    :func:`_clear_item`), and the bound cards are re-stamped unranked and
+    repainted BEFORE this returns — a reset must look reset immediately, not
+    after the async pass repaints.
     """
     summary = {"items": 0, "ai_files": 0, "profiles": 0}
     items = _items_of(owner)
@@ -154,17 +269,22 @@ def clear_metrics_caches(owner, *, paths=None) -> dict:
         owner._last_analysis_fingerprint = None
     except Exception:
         logger.debug("metrics reset: fingerprint clear failed", exc_info=True)
+
+    # Visible reset LAST: the profile is already dropped, so the refreshed
+    # dots use the fresh (mode-derived) axis set, and the cards show the
+    # unranked/neutral state the re-entered pass starts from.
+    _refresh_cleared_view(owner, targets)
     return summary
 
 
 def reset_metrics_caches(owner, *, paths=None) -> dict:
     """Clear the caches, then RE-ENTER the triage rebuild. Never raises.
 
-    The clear alone leaves the already-painted view intact, so re-entering
-    ``_start_triage(..., cover_grid=False)`` is what makes the proxy pass
-    recompute (the fingerprint gate is now open). A missing folder / controller
-    degrades to the clear-only path — the summary then carries
-    ``"requeued": False``.
+    The clear already resets the visible state (unranked badges + neutral
+    dots); re-entering ``_start_triage(..., cover_grid=False)`` is what makes
+    the proxy pass recompute the numbers (the fingerprint gate is now open).
+    A missing folder / controller degrades to the clear-only path — the
+    summary then carries ``"requeued": False``.
     """
     summary = clear_metrics_caches(owner, paths=paths)
     summary["requeued"] = False
