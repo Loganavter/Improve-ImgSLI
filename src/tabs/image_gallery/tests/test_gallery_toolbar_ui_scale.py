@@ -295,3 +295,28 @@ def test_status_row_refollows_a_live_scale_change(qapp) -> None:
         assert after["clean"][1] == 36
     finally:
         w.deleteLater()
+
+
+def test_scanning_label_scales_live_once_text_is_set(qapp) -> None:
+    """The user-visible scanning path: text resolves at use time on a live flip.
+
+    (An *empty* toolkit ``Label``'s ``sizeHint`` does not re-derive on a live
+    font change — a toolkit-internal quirk — but it draws nothing, so the
+    visible path is ``set_scanning``, which must scale.)
+    """
+    w = _build(1.0, qapp)
+    try:
+        label = w.toolbar._scanning_label
+        base_hint = label.sizeHint()
+
+        UiScale.get_instance().set_factor(1.5)
+        _drain(qapp)
+        w.toolbar.set_scanning(3, 10)
+        _drain(qapp)
+
+        hint = label.sizeHint()
+        assert hint.height() >= int(0.9 * scaled_px(base_hint.height()))
+        assert hint.height() > base_hint.height()
+    finally:
+        w.deleteLater()
+
