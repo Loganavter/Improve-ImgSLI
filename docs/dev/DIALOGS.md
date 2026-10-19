@@ -130,18 +130,21 @@ Text buttons:
 
 `QLabel.setPixmap` makes `sizeHint()` follow the pixmap. After CSD
 `adjustSize`, the dialog can jump to hundreds of pixels of preview width and
-ignore your `EXPORT_PREVIEW_*` constants.
+ignore your preview-floor design px.
 
 Fix:
 
 - Use a small label subclass whose `sizeHint` / `minimumSizeHint` return the
   configured minimum (see `_ExportPreviewLabel` in export `dialog_sections.py`).
 - In the geometry recipe, **do not** feed `export_preview_frame` /
-  `preview_label` width hints into the dialog minimum — only the constant
+  `preview_label` width hints into the dialog minimum — only the preview floor
   (and maybe the title label text width).
-- Read constants via the **module** (`export_geo.EXPORT_PREVIEW_MIN_WIDTH`),
-  not a copied `from … import CONST` binding, if you expect live edits during
-  development.
+- Read the design px through the module's **call-time resolver**
+  (`export_geo.export_preview_min_width()`), not a copied `from … import CONST`
+  binding — and never as a module-level `scaled_px(...)` constant: an
+  import-time `scaled_px` bake is frozen at the factor of the module's first
+  import, so the dialog can never follow a later interface-scale change
+  (plan `plan-live-appearance-fixes-2026-10-19`).
 
 ---
 

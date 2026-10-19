@@ -29,6 +29,11 @@ from utils.resource_loader import resource_path
 
 from .service import ImageProperties
 
+#: Design px of the dialog's root chrome. Resolved through ``scaled_px`` at
+#: use time (never at import) and re-resolved on a live ``UiScale`` change.
+_ROOT_MARGIN_PX = 12
+_ROOT_SPACING_PX = 10
+
 
 class ImagePropertiesDialog(ThemedDialog):
     def __init__(
@@ -58,6 +63,7 @@ class ImagePropertiesDialog(ThemedDialog):
         self.setSizeGripEnabled(True)
 
         self._init_ui()
+        self._connect_design_metrics()
         # Keyboard navigation: the dialog had no section at all (see
         # plugins/image_properties/navigation.py).
         from plugins.image_properties.navigation import (
@@ -78,6 +84,38 @@ class ImagePropertiesDialog(ThemedDialog):
 
     def _apply_dialog_geometry(self) -> None:
         apply_image_properties_dialog_geometry(self)
+
+    @staticmethod
+    def _apply_root_design_metrics(root: QVBoxLayout) -> None:
+        """Resolve the root layout's design px at use time (not at import)."""
+        root.setContentsMargins(
+            scaled_px(_ROOT_MARGIN_PX),
+            scaled_px(_ROOT_MARGIN_PX),
+            scaled_px(_ROOT_MARGIN_PX),
+            scaled_px(_ROOT_MARGIN_PX),
+        )
+        root.setSpacing(scaled_px(_ROOT_SPACING_PX))
+
+    def _connect_design_metrics(self) -> None:
+        """Re-resolve the root chrome when the UI scale changes live.
+
+        The dialog's own geometry pass re-derives its size on a theme/font
+        change, but the root layout's margins/spacing are design px this
+        dialog owns — without a subscription they stay at the factor they
+        were built with.
+        """
+        from sli_ui_toolkit.ui.managers import connect_ui_metrics
+        from sli_ui_toolkit.ui.managers.ui_metrics import AXIS_SCALE
+
+        connect_ui_metrics(
+            self, self._on_design_metrics_changed, axes=frozenset({AXIS_SCALE})
+        )
+
+    def _on_design_metrics_changed(self, *_args) -> None:
+        root = self.layout()
+        if root is not None:
+            self._apply_root_design_metrics(root)
+        self.updateGeometry()
 
     def _finalize_layout_and_size(self) -> None:
         apply_image_properties_dialog_geometry(self)
@@ -113,8 +151,7 @@ class ImagePropertiesDialog(ThemedDialog):
 
     def _init_ui(self) -> None:
         root = QVBoxLayout(self)
-        root.setContentsMargins(12, 12, 12, 12)
-        root.setSpacing(10)
+        self._apply_root_design_metrics(root)
 
         scroll = OverlayScrollArea(self)
         scroll.set_reserve_scrollbar_space(False)

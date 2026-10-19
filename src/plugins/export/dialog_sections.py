@@ -38,13 +38,13 @@ class _ExportPreviewLabel(QLabel):
 
     A normal QLabel reports the pixmap size as sizeHint; after CSD
     ``adjustSize`` that blows the dialog up to hundreds of px and makes
-    ``EXPORT_PREVIEW_MIN_WIDTH`` look like a no-op.
+    ``export_preview_min_width()`` look like a no-op.
     """
 
     def sizeHint(self) -> QSize:
         return QSize(
-            max(self.minimumWidth(), export_geo.EXPORT_PREVIEW_MIN_WIDTH),
-            max(self.minimumHeight(), export_geo.EXPORT_PREVIEW_MIN_HEIGHT),
+            max(self.minimumWidth(), export_geo.export_preview_min_width()),
+            max(self.minimumHeight(), export_geo.export_preview_min_height()),
         )
 
     def minimumSizeHint(self) -> QSize:
@@ -65,8 +65,8 @@ def build_preview_pane(dialog) -> QFrame:
     dialog.preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
     dialog.preview_label.setMinimumSize(
         QSize(
-            export_geo.EXPORT_PREVIEW_MIN_WIDTH,
-            export_geo.EXPORT_PREVIEW_MIN_HEIGHT,
+            export_geo.export_preview_min_width(),
+            export_geo.export_preview_min_height(),
         )
     )
     dialog.preview_label.setFrameShape(QFrame.Shape.NoFrame)
@@ -294,7 +294,7 @@ def assemble_export_form(dialog) -> tuple[QFrame, QFrame]:
     right_layout.addWidget(dialog.output_section)
     # Fixed floor + shared stretch so filename→format never collapses to
     # the generic 8px row spacing.
-    right_layout.addSpacing(export_geo.EXPORT_FILENAME_FORMAT_MIN_GAP_PX)
+    right_layout.addSpacing(export_geo.export_filename_format_min_gap())
     right_layout.addStretch(1)
     right_layout.addWidget(dialog.fmt_label)
     right_layout.addWidget(dialog.combo_format)

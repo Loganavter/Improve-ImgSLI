@@ -12,6 +12,13 @@ from PySide6.QtWidgets import (
 )
 
 from plugins.settings.nav_rows import page_nav_builder, register_page_navigation
+from plugins.settings.pages.keyboard_metrics import (
+    GROUP_BODY_MARGIN_V_PX,
+    GROUP_BODY_SPACING_PX,
+    GROUPS_SPACING_PX,
+    ROW_SPACING_PX,
+    connect_design_metrics,
+)
 from plugins.settings.registry import SettingsSection
 from plugins.settings.search import SearchIndex, group
 from plugins.settings.typography import (
@@ -188,6 +195,7 @@ def build(dialog, p):
     dialog._keyboard_reset_buttons = []
     dialog._keyboard_owner_groups = []
     dialog._keyboard_filter_rows = []
+    dialog._keyboard_group_layouts: list[QVBoxLayout] = []
 
     search = CustomLineEdit(parent=dialog.page_keyboard)
     search.setPlaceholderText(
@@ -200,7 +208,8 @@ def build(dialog, p):
     groups_host = QWidget(dialog.page_keyboard)
     groups_layout = QVBoxLayout(groups_host)
     groups_layout.setContentsMargins(0, 0, 0, 0)
-    groups_layout.setSpacing(10)
+    groups_layout.setSpacing(scaled_px(GROUPS_SPACING_PX))
+    dialog._keyboard_groups_layout = groups_layout
     layout.addWidget(groups_host)
 
     owner_titles = {
@@ -271,15 +280,18 @@ def build(dialog, p):
             group.setProperty(PROP_GROUP, group_key)
             dialog._keyboard_owner_groups.append((group, group_key))
         group_layout = QVBoxLayout()
-        group_layout.setContentsMargins(0, 4, 0, 4)
-        group_layout.setSpacing(4)
+        group_layout.setContentsMargins(
+            0, scaled_px(GROUP_BODY_MARGIN_V_PX), 0, scaled_px(GROUP_BODY_MARGIN_V_PX)
+        )
+        group_layout.setSpacing(scaled_px(GROUP_BODY_SPACING_PX))
+        dialog._keyboard_group_layouts.append(group_layout)
         for entry in entries:
             row = QWidget()
             row.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
             row.setMinimumHeight(_row_min_height)
             row_layout = QHBoxLayout(row)
             row_layout.setContentsMargins(0, 0, 0, 0)
-            row_layout.setSpacing(8)
+            row_layout.setSpacing(scaled_px(ROW_SPACING_PX))
 
             label_text = _tr(dialog, entry.label_key, entry.label_key)
             name = settings_body_label(label_text)
@@ -407,6 +419,7 @@ def build(dialog, p):
 
     search.textChanged.connect(_filter)
     layout.addStretch(1)
+    connect_design_metrics(dialog)
     dialog.pages_stack.addWidget(dialog.page_keyboard)
 
 

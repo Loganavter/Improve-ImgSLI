@@ -1,4 +1,13 @@
-"""Export dialog content-driven geometry."""
+"""Export dialog content-driven geometry.
+
+Design px live here as plain ints; every resolver below reads the live
+``UiScale`` factor **at call time**. They used to be module-level
+``scaled_px(...)`` constants, which are evaluated once at import and frozen at
+that factor — so a later interface-scale change left the export dialog at its
+old design size while the rest of the UI moved (the "dialogs stranded at
+design px" class, plan ``plan-live-appearance-fixes-2026-10-19``). Nothing in
+this module scales at import any more.
+"""
 
 from __future__ import annotations
 
@@ -15,46 +24,91 @@ from shared_toolkit.ui.layout_sizing import (
 )
 from sli_ui_toolkit.managers import scaled_px
 
-EXPORT_PREVIEW_MIN_WIDTH = scaled_px(500)
+# Design px (unscaled). Resolved through the resolvers below, never at import.
+_PREVIEW_MIN_WIDTH_PX = 500
 # Soft floor: when height is tight, preview shrinks before form controls.
-EXPORT_PREVIEW_MIN_HEIGHT = scaled_px(160)
-EXPORT_FORM_MIN_WIDTH = scaled_px(420)
-EXPORT_MIN_DIALOG_WIDTH = scaled_px(640)
-EXPORT_MAX_DIALOG_WIDTH = scaled_px(1400)
-EXPORT_MIN_DIALOG_HEIGHT = scaled_px(520)
-EXPORT_MAIN_MARGIN_PX = scaled_px(24)
-EXPORT_MAIN_SPACING_PX = scaled_px(12)
-EXPORT_FRAME_PADDING_PX = scaled_px(16)
-EXPORT_FORM_ROW_SPACING_PX = scaled_px(10)
+_PREVIEW_MIN_HEIGHT_PX = 160
+_FORM_MIN_WIDTH_PX = 420
+_MIN_DIALOG_WIDTH_PX = 640
+_MAX_DIALOG_WIDTH_PX = 1400
+_MIN_DIALOG_HEIGHT_PX = 520
+_MAIN_MARGIN_PX = 24
+_MAIN_SPACING_PX = 12
+_FRAME_PADDING_PX = 16
+_FORM_ROW_SPACING_PX = 10
 # Minimum Y gap between filename block and format controls (still expands).
-EXPORT_FILENAME_FORMAT_MIN_GAP_PX = scaled_px(20)
-EXPORT_HEIGHT_SCREEN_MARGIN_PX = scaled_px(100)
+_FILENAME_FORMAT_MIN_GAP_PX = 20
+_HEIGHT_SCREEN_MARGIN_PX = 100
 
-# Non-scroll dialog: lock minimum to computed content so controls cannot be
-# crushed (settings keeps a low floor because pages scroll).
-EXPORT_GEOMETRY_POLICY = GeometryApplyPolicy(
-    resize_when_hidden=True,
-    update_minimum=True,
-    minimum_floor=(EXPORT_MIN_DIALOG_WIDTH, EXPORT_MIN_DIALOG_HEIGHT),
-    width_bounds=(EXPORT_MIN_DIALOG_WIDTH, EXPORT_MAX_DIALOG_WIDTH),
-    center_on_parent=True,
-    lock_minimum_to_computed=True,
-    remember_key="export",
-)
 
-# First layout pass after CSD adjustSize: force the computed size even if the
-# dialog is already visible (otherwise pixmap sizeHint keeps a huge shell and
-# EXPORT_PREVIEW_MIN_WIDTH appears to do nothing).
-EXPORT_GEOMETRY_POLICY_INITIAL = GeometryApplyPolicy(
-    resize_when_hidden=True,
-    update_minimum=True,
-    minimum_floor=(EXPORT_MIN_DIALOG_WIDTH, EXPORT_MIN_DIALOG_HEIGHT),
-    width_bounds=(EXPORT_MIN_DIALOG_WIDTH, EXPORT_MAX_DIALOG_WIDTH),
-    center_on_parent=True,
-    lock_minimum_to_computed=True,
-    force_resize=True,
-    remember_key="export",
-)
+def export_preview_min_width() -> int:
+    return scaled_px(_PREVIEW_MIN_WIDTH_PX)
+
+
+def export_preview_min_height() -> int:
+    return scaled_px(_PREVIEW_MIN_HEIGHT_PX)
+
+
+def export_form_min_width() -> int:
+    return scaled_px(_FORM_MIN_WIDTH_PX)
+
+
+def export_min_dialog_width() -> int:
+    return scaled_px(_MIN_DIALOG_WIDTH_PX)
+
+
+def export_max_dialog_width() -> int:
+    return scaled_px(_MAX_DIALOG_WIDTH_PX)
+
+
+def export_min_dialog_height() -> int:
+    return scaled_px(_MIN_DIALOG_HEIGHT_PX)
+
+
+def export_main_margin() -> int:
+    return scaled_px(_MAIN_MARGIN_PX)
+
+
+def export_main_spacing() -> int:
+    return scaled_px(_MAIN_SPACING_PX)
+
+
+def export_frame_padding() -> int:
+    return scaled_px(_FRAME_PADDING_PX)
+
+
+def export_form_row_spacing() -> int:
+    return scaled_px(_FORM_ROW_SPACING_PX)
+
+
+def export_filename_format_min_gap() -> int:
+    return scaled_px(_FILENAME_FORMAT_MIN_GAP_PX)
+
+
+def export_height_screen_margin() -> int:
+    return scaled_px(_HEIGHT_SCREEN_MARGIN_PX)
+
+
+def export_geometry_policy(*, force_resize: bool = False) -> GeometryApplyPolicy:
+    """The dialog's geometry policy, with floor/bounds resolved at THIS call.
+
+    Non-scroll dialog: lock the minimum to the computed content so controls
+    cannot be crushed (settings keeps a low floor because pages scroll).
+    ``force_resize`` is the first-layout pass after CSD ``adjustSize``: force
+    the computed size even if the dialog is already visible (otherwise a
+    pixmap sizeHint keeps a huge shell and ``export_preview_min_width()``
+    appears to do nothing).
+    """
+    return GeometryApplyPolicy(
+        resize_when_hidden=True,
+        update_minimum=True,
+        minimum_floor=(export_min_dialog_width(), export_min_dialog_height()),
+        width_bounds=(export_min_dialog_width(), export_max_dialog_width()),
+        center_on_parent=True,
+        lock_minimum_to_computed=True,
+        force_resize=force_resize,
+        remember_key="export",
+    )
 
 
 def _export_form_widgets(dialog) -> list:
@@ -77,7 +131,7 @@ def _export_form_widgets(dialog) -> list:
 def compute_export_form_width(dialog) -> int:
     form_frame = getattr(dialog, "export_form_frame", None)
     return max(
-        EXPORT_FORM_MIN_WIDTH,
+        export_form_min_width(),
         widget_width_hint(form_frame),
         max_visible_widget_width_hint(_export_form_widgets(dialog)),
     )
@@ -88,10 +142,10 @@ def compute_export_form_height(dialog) -> int:
     form_frame = getattr(dialog, "export_form_frame", None)
     stacked = sum_visible_widget_height_hint(
         _export_form_widgets(dialog),
-        spacing=EXPORT_FORM_ROW_SPACING_PX,
+        spacing=export_form_row_spacing(),
     )
     frame_hint = widget_height_hint(form_frame)
-    return max(stacked, frame_hint) + EXPORT_FRAME_PADDING_PX
+    return max(stacked, frame_hint) + export_frame_padding()
 
 
 def compute_export_dialog_size(dialog) -> tuple[int, int]:
@@ -101,14 +155,14 @@ def compute_export_dialog_size(dialog) -> tuple[int, int]:
     # QPixmap makes QLabel.sizeHint() track the current (large) preview and
     # locks the dialog minimum around 300–700px.
     preview_width = max(
-        EXPORT_PREVIEW_MIN_WIDTH,
+        export_preview_min_width(),
         widget_width_hint(getattr(dialog, "export_preview_title", None)),
     )
     preview_height = max(
-        EXPORT_PREVIEW_MIN_HEIGHT
+        export_preview_min_height()
         + widget_height_hint(getattr(dialog, "export_preview_title", None))
-        + EXPORT_FRAME_PADDING_PX,
-        EXPORT_PREVIEW_MIN_HEIGHT + EXPORT_FRAME_PADDING_PX,
+        + export_frame_padding(),
+        export_preview_min_height() + export_frame_padding(),
     )
 
     form_width = compute_export_form_width(dialog)
@@ -118,26 +172,26 @@ def compute_export_dialog_size(dialog) -> tuple[int, int]:
     title_bar_height = widget_height_hint(title_bar)
 
     total_width = HorizontalPaneMinimum(
-        left_min=preview_width + EXPORT_FRAME_PADDING_PX,
-        spacing=EXPORT_MAIN_SPACING_PX,
-        right_min=form_width + EXPORT_FRAME_PADDING_PX,
-        outer_margins=EXPORT_MAIN_MARGIN_PX,
+        left_min=preview_width + export_frame_padding(),
+        spacing=export_main_spacing(),
+        right_min=form_width + export_frame_padding(),
+        outer_margins=export_main_margin(),
     ).total_width()
     total_height = (
         max(preview_height, form_height)
-        + EXPORT_MAIN_MARGIN_PX
+        + export_main_margin()
         + title_bar_height
     )
 
     final_width = clamp(
         total_width,
-        minimum=EXPORT_MIN_DIALOG_WIDTH,
-        maximum=EXPORT_MAX_DIALOG_WIDTH,
+        minimum=export_min_dialog_width(),
+        maximum=export_max_dialog_width(),
     )
     _final_w, final_height = clamp_to_screen(
         final_width,
-        max(total_height, EXPORT_MIN_DIALOG_HEIGHT),
-        margin=EXPORT_HEIGHT_SCREEN_MARGIN_PX,
+        max(total_height, export_min_dialog_height()),
+        margin=export_height_screen_margin(),
     )
     return final_width, final_height
 
@@ -147,7 +201,7 @@ def apply_export_dialog_geometry(dialog, *, force_resize: bool = False) -> None:
 
     preview = getattr(dialog, "export_preview_frame", None)
     if preview is not None:
-        preview.setMinimumWidth(EXPORT_PREVIEW_MIN_WIDTH)
+        preview.setMinimumWidth(export_preview_min_width())
         preview.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
         )
@@ -155,7 +209,7 @@ def apply_export_dialog_geometry(dialog, *, force_resize: bool = False) -> None:
     preview_label = getattr(dialog, "preview_label", None)
     if preview_label is not None:
         preview_label.setMinimumSize(
-            EXPORT_PREVIEW_MIN_WIDTH, EXPORT_PREVIEW_MIN_HEIGHT
+            export_preview_min_width(), export_preview_min_height()
         )
 
     form = getattr(dialog, "export_form_frame", None)
@@ -198,9 +252,7 @@ def apply_export_dialog_geometry(dialog, *, force_resize: bool = False) -> None:
         )
 
     width, height = compute_export_dialog_size(dialog)
-    policy = (
-        EXPORT_GEOMETRY_POLICY_INITIAL if force_resize else EXPORT_GEOMETRY_POLICY
-    )
+    policy = export_geometry_policy(force_resize=force_resize)
     apply_dialog_geometry(
         dialog,
         width,

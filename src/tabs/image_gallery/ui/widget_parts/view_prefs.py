@@ -208,6 +208,32 @@ def attach_session_state(owner, state) -> None:
     owner._session_state = state
 
 
+#: Design px of the page's root chrome (real_design.md §2.7): 24 horizontal
+#: padding, 40 bottom to clear the selection HUD, 12 between stacked regions.
+ROOT_MARGIN_PX = (24, 12, 24, 40)
+ROOT_SPACING_PX = 12
+
+
+def apply_root_design_metrics(owner) -> None:
+    """Resolve the page root's design px at the live scale factor.
+
+    Called at build and re-called on every ``UiScale`` change so a live
+    interface-scale change moves the page chrome with the rest of the UI.
+    """
+    from sli_ui_toolkit.managers import scaled_px
+
+    layout = owner.layout()
+    if layout is None:
+        return
+    layout.setContentsMargins(*(scaled_px(v) for v in ROOT_MARGIN_PX))
+    layout.setSpacing(scaled_px(ROOT_SPACING_PX))
+
+
+def on_root_metrics_changed(owner, *_args) -> None:
+    apply_root_design_metrics(owner)
+    owner.updateGeometry()
+
+
 def _persist_view_prefs(owner) -> None:
     """Write both toolbar switch positions through the session-state facade."""
     state = getattr(owner, "_session_state", None)

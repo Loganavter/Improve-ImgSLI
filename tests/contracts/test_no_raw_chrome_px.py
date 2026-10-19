@@ -102,54 +102,6 @@ _CANVAS_IMAGE_SPACE = "canvas image-space minimum (UI-scale plan non-goal)"
 #: Drain wave (plan-live-appearance-fixes-2026-10-19) removes entries as it
 #: converts each site; never add an entry without a real reason.
 EXEMPTED_SITES: dict[str, dict[str, tuple[int, str]]] = {
-    "src/devtools/ui_inspector/app_window.py": {
-        "setContentsMargins(8, 4, 8, 2)": (1, _DRAIN),
-        "setSpacing(6)": (1, _DRAIN),
-    },
-    "src/plugins/export/layout_geometry.py": {
-        "EXPORT_FILENAME_FORMAT_MIN_GAP_PX = scaled_px(20)": (1, _IMPORT_BAKE),
-        "EXPORT_FORM_MIN_WIDTH = scaled_px(420)": (1, _IMPORT_BAKE),
-        "EXPORT_FORM_ROW_SPACING_PX = scaled_px(10)": (1, _IMPORT_BAKE),
-        "EXPORT_FRAME_PADDING_PX = scaled_px(16)": (1, _IMPORT_BAKE),
-        "EXPORT_HEIGHT_SCREEN_MARGIN_PX = scaled_px(100)": (1, _IMPORT_BAKE),
-        "EXPORT_MAIN_MARGIN_PX = scaled_px(24)": (1, _IMPORT_BAKE),
-        "EXPORT_MAIN_SPACING_PX = scaled_px(12)": (1, _IMPORT_BAKE),
-        "EXPORT_MAX_DIALOG_WIDTH = scaled_px(1400)": (1, _IMPORT_BAKE),
-        "EXPORT_MIN_DIALOG_HEIGHT = scaled_px(520)": (1, _IMPORT_BAKE),
-        "EXPORT_MIN_DIALOG_WIDTH = scaled_px(640)": (1, _IMPORT_BAKE),
-        "EXPORT_PREVIEW_MIN_HEIGHT = scaled_px(160)": (1, _IMPORT_BAKE),
-        "EXPORT_PREVIEW_MIN_WIDTH = scaled_px(500)": (1, _IMPORT_BAKE),
-    },
-    "src/plugins/help/back_bar.py": {
-        "setContentsMargins(control_edge_padding(), 6, control_edge_padding(), 7)": (
-            1,
-            _DRAIN,
-        ),
-        "setSpacing(6)": (1, _DRAIN),
-    },
-    "src/plugins/image_properties/dialog.py": {
-        "setContentsMargins(12, 12, 12, 12)": (1, _DRAIN),
-        "setSpacing(10)": (1, _DRAIN),
-    },
-    "src/plugins/onboarding/overlay.py": {
-        "setSpacing(8)": (1, _DRAIN),
-    },
-    "src/plugins/onboarding/pages.py": {
-        "setSpacing(30)": (1, _DRAIN),
-        "setSpacing(35)": (1, _DRAIN),
-        "setSpacing(8)": (1, _DRAIN),
-    },
-    "src/plugins/settings/pages/keyboard.py": {
-        "setContentsMargins(0, 4, 0, 4)": (1, _DRAIN),
-        "setSpacing(10)": (1, _DRAIN),
-        "setSpacing(4)": (1, _DRAIN),
-        "setSpacing(8)": (1, _DRAIN),
-    },
-    "src/shared_toolkit/ui/text_input_dialog.py": {
-        "setContentsMargins(0, 4, 0, 0)": (1, _DRAIN),
-        "setContentsMargins(18, 14, 18, 16)": (1, _DRAIN),
-        "setSpacing(12)": (1, _DRAIN),
-    },
     "src/tabs/image_compare/plugins/video_editor/layout_geometry.py": {
         "MAX_VIDEO_EDITOR_SETTINGS_WIDTH = scaled_px(650)": (1, _IMPORT_BAKE),
         "MIN_VIDEO_EDITOR_DIALOG_HEIGHT = scaled_px(600)": (1, _IMPORT_BAKE),
@@ -182,19 +134,8 @@ EXEMPTED_SITES: dict[str, dict[str, tuple[int, str]]] = {
     "src/tabs/image_gallery/ui/quick_look/overlay_build/icons.py": {
         "QSize(64, 64)": (1, _RASTER),
     },
-    "src/tabs/image_gallery/widget.py": {
-        "setContentsMargins(24, 12, 24, 40)": (1, _DRAIN),
-    },
     "src/tabs/multi_compare/widget.py": {
         "setMinimumSize(400, 300)": (1, _CANVAS_IMAGE_SPACE),
-    },
-    "src/tabs/session_picker/recent/header_bar.py": {
-        "setSpacing(8)": (1, _DRAIN),
-    },
-    "src/ui/widgets/zoom_indicator.py": {
-        "QSize(22, 22)": (1, _DRAIN),
-        "setContentsMargins(6, 2, 4, 2)": (1, _DRAIN),
-        "setSpacing(4)": (1, _DRAIN),
     },
 }
 
