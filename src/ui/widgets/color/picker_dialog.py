@@ -29,10 +29,17 @@ navigation stop until ``Enter`` explicitly enters its value-edit mode.
 While navigating, arrows belong to the section (the square does not consume
 them); while editing (``is_editing()`` — the toolkit's value-edit contract),
 arrows and WASD move the crosshair, ``Enter`` commits and ``Esc`` reverts to
-the saturation/value captured on entry. Its keyboard-focus ring is the
-toolkit's shared ``paint_focus_ring`` (keyboard modality only — a mouse
-click focuses without a ring). Esc (or any close path) returns the keyboard
-to the widget that opened the picker.
+the saturation/value captured on entry. Movement is *held-key* based, not
+per-keypress: the square feeds the held arrows into
+``ui.widgets.color.sv_movement.KeyHoldStepper``, so two directions at once
+move diagonally at axis speed (each axis ``step/sqrt(2)``) and a held key
+moves continuously on a 16 ms timer with a 1x->4x ramp; a tap still applies
+one base step. Its keyboard-focus ring is the toolkit's shared
+``paint_focus_ring`` (keyboard modality only — a mouse click focuses without
+a ring), drawn on the outer widget boundary while the gradient/thumb live in
+``content_rect()``, inset by ``_SV_RING_GUTTER_DP`` so the ring reads as
+focus rather than as the square's border. Esc (or any close path) returns
+the keyboard to the widget that opened the picker.
 
 Kept API-compatible with the subset of ``QColorDialog`` the callers used
 (``colorSelected``, ``finished``, ``show``/``raise_``/``activateWindow``,
@@ -74,6 +81,7 @@ from ui.widgets.color.recents import (
     RecentColorsStore,
     checkerboard_brush,
 )
+from ui.widgets.color.sv_movement import KeyHoldStepper
 from ui.widgets.color.value_format import (
     ValueFormat,
     color_format_label,
@@ -106,6 +114,12 @@ _ACTIONS_SPACING_DP = 8
 _SV_MIN_W_DP = 160
 _SV_MIN_H_DP = 120
 _SV_THUMB_RADIUS_DP = 9.0
+# Gap between the SV square's focus ring and its gradient/border. The ring is
+# 2 px thick at factor 1.0 (``paint_focus_ring``), drawn on the outer widget
+# boundary, so 4 design px leaves a visible 2 px gap — the ring reads as
+# "this control has keyboard focus", not as the square's own border. Inset at
+# USE time (``_SVSquare.apply_metrics``), never at import.
+_SV_RING_GUTTER_DP = 4.0
 _SLIDER_MIN_H_DP = 140
 _PREVIEW_CHIP_DP = 34
 _FORMAT_BTN_W_DP = 46
@@ -172,12 +186,13 @@ def _themed_border_color(manager: ThemeManager | None) -> QColor:
 class _SVSquare(QWidget):
     """Saturation (x) / value (y) picking area for a fixed hue.
 
-    The gradient fills the full widget edge-to-edge (so clicking exactly at
-    a border reaches the true 0/1 extreme) and hit-testing maps 1:1 against
-    that same full rect. Only the drawn cursor position is clamped inward by
-    the thumb radius so the ring never paints partway outside the field —
-    at extreme values it hugs the inside of the edge instead of centering
-    exactly on it.
+    The gradient fills ``content_rect()`` — the widget inset by
+    ``_SV_RING_GUTTER_DP`` so the keyboard-focus ring has its own gutter —
+    edge to edge (so clicking exactly at the field's border reaches the true
+    0/1 extreme) and hit-testing maps 1:1 against that same rect. Only the
+    drawn cursor position is clamped inward by the thumb radius so the ring
+    never paints partway outside the field — at extreme values it hugs the
+    inside of the edge instead of centering exactly on it.
 
     Keyboard: the square is a navigation stop (``StrongFocus``) but a
     two-dimensional surface has no single row/column axis, so bare arrows
@@ -185,9 +200,11 @@ class _SVSquare(QWidget):
     colour. ``Enter`` enters the explicit value-edit mode (the toolkit's
     ``is_editing()`` contract): arrows and W/A/S/D then move the crosshair,
     ``Enter`` commits, ``Esc`` restores the saturation/value captured on
-    entry. The keyboard ring is the toolkit's shared
-    ``paint_focus_ring`` — keyboard modality only, so a mouse click focuses
-    the square without painting it.
+    entry. Held keys are sampled by ``KeyHoldStepper`` (16 ms timer, held-key
+    set), so simultaneous directions move diagonally at axis speed and a
+    hold accelerates instead of stepping once per auto-repeat event. The
+    keyboard ring is the toolkit's shared ``paint_focus_ring`` — keyboard
+    modality only, so a mouse click focuses the square without painting it.
     """
 
     svChanged = Signal(float, float)
@@ -205,7 +222,8 @@ class _SVSquare(QWidget):
         Qt.Key.Key_S: Qt.Key.Key_Down,
     }
 
-    #: One edit-mode keypress in saturation/value units (0..1).
+    #: One base edit step in saturation/value units (0..1). A tap applies
+    #: exactly this; a held key scales it by dt and the acceleration ramp.
     EDIT_STEP = 0.01
 
     #: Navigation arrows — handed to the section (never consumed) while the
@@ -233,6 +251,11 @@ class _SVSquare(QWidget):
         self._keyboard_focus = False
         self._editing = False
         self._edit_entry_sv = (self._sat, self._val)
+        # One held-key stepper for this surface: 16 ms timer, WASD mapped to
+        # arrows by the key handler, deltas applied through ``_apply_sv``.
+        self._stepper = KeyHoldStepper(self.EDIT_STEP, self)
+        self._stepper.tick.connect(self._on_stepper_tick)
+        self._ring_gutter_px = 0.0
         self.apply_metrics()
         self.theme_manager = ThemeManager.get_instance()
         self.theme_manager.theme_changed.connect(self.update)
@@ -240,6 +263,7 @@ class _SVSquare(QWidget):
     def apply_metrics(self) -> None:
         """Re-resolve this widget's chrome px from design space at use time."""
         self._thumb_radius_px = float(scaled_px(_SV_THUMB_RADIUS_DP))
+        self._ring_gutter_px = float(scaled_px(_SV_RING_GUTTER_DP))
         self.setMinimumSize(scaled_px(_SV_MIN_W_DP), scaled_px(_SV_MIN_H_DP))
         self.update()
 
@@ -269,6 +293,9 @@ class _SVSquare(QWidget):
 
     def _leave_edit_mode(self, *, commit: bool) -> None:
         self._editing = False
+        # Held keys must not outlive edit mode: Qt delivers the eventual
+        # keyRelease to whatever has focus then, not to this square.
+        self._stepper.clear()
         if not commit:
             # Re-emit so the dialog (colour, preview, hex/spin fields) follows
             # the revert — edit-mode keys already pushed the live colour out.
@@ -284,18 +311,12 @@ class _SVSquare(QWidget):
         self.update()
         self.svChanged.emit(sat, val)
 
-    def _adjust_sv(self, arrow_key: int) -> None:
-        """Move the crosshair one edit step along the key's axis."""
-        sat, val = self._sat, self._val
-        if arrow_key == Qt.Key.Key_Left:
-            sat -= self.EDIT_STEP
-        elif arrow_key == Qt.Key.Key_Right:
-            sat += self.EDIT_STEP
-        elif arrow_key == Qt.Key.Key_Up:
-            val += self.EDIT_STEP
-        elif arrow_key == Qt.Key.Key_Down:
-            val -= self.EDIT_STEP
-        self._apply_sv(sat, val)
+    def _on_stepper_tick(self, dx: float, dy: float, _dt: float) -> None:
+        """Apply one held-key tick (diagonal normalized in the stepper)."""
+        if not self._editing:
+            self._stepper.clear()
+            return
+        self._apply_sv(self._sat + dx, self._val + dy)
 
     def focusInEvent(self, event) -> None:  # noqa: N802
         # Same modality source as the toolkit Slider (and the sibling
@@ -317,11 +338,20 @@ class _SVSquare(QWidget):
 
     def focusOutEvent(self, event) -> None:  # noqa: N802
         self._keyboard_focus = False
+        # Held keys die with the focus: the keyRelease will go to the new
+        # focus widget, so without this clear the timer would run forever.
+        self._stepper.clear()
         # Leaving the widget ends edit mode but keeps the live value (same as
         # the toolkit Slider's focus-out); only Esc reverts.
         self._editing = False
         self.update()
         super().focusOutEvent(event)
+
+    def hideEvent(self, event) -> None:  # noqa: N802
+        # The dialog closing/hiding is the other way focus can vanish without
+        # a matching keyRelease.
+        self._stepper.clear()
+        super().hideEvent(event)
 
     def keyPressEvent(self, event) -> None:  # noqa: N802
         key = event.key()
@@ -343,7 +373,10 @@ class _SVSquare(QWidget):
         if self._editing:
             arrow = self._EDIT_ADJUST_KEYS.get(key)
             if arrow is not None:
-                self._adjust_sv(arrow)
+                # Auto-repeat is redundant: the held-key set already has the
+                # key, and restarting a tap here would double the step.
+                if not event.isAutoRepeat():
+                    self._stepper.press(arrow)
                 event.accept()
                 return
             super().keyPressEvent(event)
@@ -355,6 +388,30 @@ class _SVSquare(QWidget):
             return
         super().keyPressEvent(event)
 
+    def keyReleaseEvent(self, event) -> None:  # noqa: N802
+        """End the held-key movement; a tap still applies one base step."""
+        if self._editing:
+            arrow = self._EDIT_ADJUST_KEYS.get(event.key())
+            if arrow is not None:
+                # Qt emits release+press pairs for auto-repeat; only the real
+                # release may drop the key (and only it may count as a tap).
+                if not event.isAutoRepeat():
+                    self._stepper.release(arrow)
+                event.accept()
+                return
+        super().keyReleaseEvent(event)
+
+    def content_rect(self) -> QRectF:
+        """The gradient/hit-test rect: the widget inset by the ring gutter.
+
+        The focus ring stays on the outer widget boundary; this inset is the
+        visible gap that keeps the ring reading as focus instead of as the
+        square's border. Gradient, border, hit-testing and the thumb all use
+        this same rect, so click mapping stays 1:1 with what is drawn.
+        """
+        gutter = self._ring_gutter_px
+        return QRectF(self.rect()).adjusted(gutter, gutter, -gutter, -gutter)
+
     def _thumb_center(self, rect: QRectF) -> QPointF:
         margin = self._thumb_radius_px + 1.6
         raw_x = rect.left() + self._sat * rect.width()
@@ -364,7 +421,7 @@ class _SVSquare(QWidget):
         return QPointF(x, y)
 
     def _set_from_pos(self, pos: QPointF) -> None:
-        rect = self.rect()
+        rect = self.content_rect()
         if rect.width() <= 0 or rect.height() <= 0:
             return
         sat = max(0.0, min(1.0, (pos.x() - rect.left()) / rect.width()))
@@ -388,7 +445,14 @@ class _SVSquare(QWidget):
     def paintEvent(self, _event) -> None:
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        rect = QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5)
+        content = self.content_rect()
+        if content.width() <= 1.0 or content.height() <= 1.0:
+            # Too small for a gutter + field (e.g. a transient 0-size layout
+            # pass): drawing would paint outside the field or invert the rect.
+            return
+        # Half-pixel inset keeps the 1 px border crisp; the field itself is
+        # ``content_rect`` so the ring gutter stays free of gradient.
+        rect = QRectF(content).adjusted(0.5, 0.5, -0.5, -0.5)
         radius = 8.0
 
         hue_color = QColor.fromHsvF(self._hue / 360.0, 1.0, 1.0)
@@ -422,7 +486,7 @@ class _SVSquare(QWidget):
         painter.setBrush(Qt.BrushStyle.NoBrush)
         painter.drawRoundedRect(rect, radius, radius)
 
-        center = self._thumb_center(rect)
+        center = self._thumb_center(content)
         thumb_radius = self._thumb_radius_px
         # Thumb rings: high-contrast white + soft dark outline — tokenized via
         # slider.thumb.outer and shadow.color
