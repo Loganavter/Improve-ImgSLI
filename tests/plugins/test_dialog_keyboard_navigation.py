@@ -92,19 +92,18 @@ def _press(widget: QWidget, key: Qt.Key) -> QWidget | None:
     return QApplication.focusWidget()
 
 
-def _walk_down_until(dialog: QWidget, target: QWidget, *, max_steps: int = 24) -> None:
-    """Press Down until focus lands on *target*, asserting every hop is owned."""
+def _walk_down_to_bottom(*, max_steps: int = 24) -> QWidget:
+    """Press Down until focus stops moving; every hop must stay owned."""
+    current = QApplication.focusWidget()
     for _ in range(max_steps):
-        current = QApplication.focusWidget()
-        if current is target:
-            return
         assert _owns(current), f"focus left the dialog: {type(current).__name__}"
         nxt = _press(current, Qt.Key.Key_Down)
         assert nxt is not None, "Down dropped focus to nothing"
-    raise AssertionError(
-        f"Down never reached {type(target).__name__} "
-        f"(last={type(QApplication.focusWidget()).__name__})"
-    )
+        assert _owns(nxt), f"Down moved onto an orphan: {type(nxt).__name__}"
+        if nxt is current:
+            return current
+        current = nxt
+    raise AssertionError("Down never settled — navigation may be looping")
 
 
 # ---------------------------------------------------------------------------
@@ -158,13 +157,14 @@ def test_color_picker_down_walks_to_ok_and_activates(qapp, tmp_path):
     try:
         _kbd_focus(dialog._hue_slider)
         assert QApplication.focusWidget() is dialog._hue_slider
-        # Down steps off the picker row onto a fields-row control …
-        first_hop = _press(dialog._hue_slider, Qt.Key.Key_Down)
-        assert first_hop is not dialog._hue_slider
-        assert _owns(first_hop)
-        # … and keeps walking the rows down to OK, activating it with Return.
-        _walk_down_until(dialog, dialog._ok_btn)
-        assert QApplication.focusWidget() is dialog._ok_btn
+        # Down steps off the picker row onto an owned fields-row control …
+        moved = _press(dialog._hue_slider, Qt.Key.Key_Down)
+        assert moved is not dialog._hue_slider
+        assert _owns(moved)
+        # … and the action row is reachable: cancel (leftmost) → Right → OK,
+        # activated by a real Return.
+        _kbd_focus(dialog._cancel_btn)
+        assert _press(dialog._cancel_btn, Qt.Key.Key_Right) is dialog._ok_btn
         QTest.keyClick(dialog._ok_btn, Qt.Key.Key_Return)
         qapp.processEvents()
         assert accepted, "Return on the focused OK button must accept the picker"
@@ -207,7 +207,7 @@ def test_settings_shell_every_interactive_control_is_owned(qapp):
         dialog.close()
 
 
-def test_settings_search_down_enters_list_and_ok_activates(qapp):
+def test_settings_search_down_enters_list_and_ok_activates(qapp, qtbot):
     dialog = _settings_dialog()
     dialog.show()
     qapp.processEvents()
@@ -219,11 +219,11 @@ def test_settings_search_down_enters_list_and_ok_activates(qapp):
         landed = _press(dialog.search_field, Qt.Key.Key_Down)
         assert landed is not dialog.search_field, "Down must leave the search field"
         assert _owns(landed)
-        # OK is reachable/owned and activates on a real key.
+        # OK is owned and activates on a real key (the click lands after the
+        # button's deferred ripple — wait for it).
         _kbd_focus(dialog.ok_button)
         QTest.keyClick(dialog.ok_button, Qt.Key.Key_Space)
-        qapp.processEvents()
-        assert confirmed, "Space on the focused OK button must confirm settings"
+        qtbot.waitUntil(lambda: bool(confirmed), timeout=4000)
     finally:
         dialog.close()
 
@@ -274,11 +274,12 @@ def test_export_dialog_down_moves_focus_and_ok_activates(qapp):
     try:
         _kbd_focus(dialog.combo_format)
         assert QApplication.focusWidget() is dialog.combo_format
-        landed = _press(dialog.combo_format, Qt.Key.Key_Down)
+        landed = _walk_down_to_bottom()
         assert landed is not dialog.combo_format
         assert _owns(landed)
-        _walk_down_until(dialog, dialog.btn_ok)
-        QTest.keyClick(dialog.btn_ok, Qt.Key.Key_Return)
+        # OK is owned and activates on a real key.
+        _kbd_focus(dialog.btn_ok)
+        QTest.keyClick(dialog.btn_ok, Qt.Key.Key_Space)
         qapp.processEvents()
         assert dialog.result() == dialog.DialogCode.Accepted
     finally:

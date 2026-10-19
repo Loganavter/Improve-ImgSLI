@@ -11,10 +11,14 @@ representations (see ``value_format``), RGB ``SpinBox`` fields, a
 before/after preview chip and a recent-colors chip row
 (``RecentColorsRow``). Return/Enter accepts.
 
-Keyboard navigation: a ``ToolbarRowsSection`` over the recent-color chips row
-and the action buttons (``declare_navigation_rows``), with the chips
-themselves ``StrongFocus`` + ``FocusLayer`` ring. Esc (or any close path)
-returns the keyboard to the widget that opened the picker.
+Keyboard navigation: the toolkit's zero-config ``AutoNavigationSection``
+(``auto_navigation``) over the dialog's four interaction rows, visual
+top→bottom — the SV/hue/alpha picker row, the value-fields row (field +
+format button + R/G/B/A spin boxes), the recent-color chips row and the
+action buttons. The chips themselves are ``StrongFocus`` + ``FocusLayer``
+ring; the SV square stays mouse-only (``NoFocus``) so it drops out of the
+row walk. Esc (or any close path) returns the keyboard to the widget that
+opened the picker.
 
 Kept API-compatible with the subset of ``QColorDialog`` the callers used
 (``colorSelected``, ``finished``, ``show``/``raise_``/``activateWindow``,
@@ -43,7 +47,7 @@ from PySide6.QtWidgets import QApplication, QHBoxLayout, QSizePolicy, QVBoxLayou
 from resources.translations import tr
 from shared_toolkit.ui.layout_sizing import GeometryApplyPolicy, apply_dialog_geometry
 from shared_toolkit.ui.themed_dialog import ThemedDialog
-from sli_ui_toolkit.managers import declare_navigation_rows, scaled_px
+from sli_ui_toolkit.managers import auto_navigation, scaled_px
 from sli_ui_toolkit.theme import ThemeManager
 from sli_ui_toolkit.ui.managers import connect_ui_metrics
 from sli_ui_toolkit.ui.managers.ui_metrics import AXIS_FONT, AXIS_SCALE
@@ -402,14 +406,16 @@ class ColorPickerDialog(ThemedDialog):
         self.setSizeGripEnabled(False)
 
         self._build_ui(ok_text=self._ok_text, cancel_text=self._cancel_text)
-        # Keyboard navigation over the picker's two real interaction rows —
-        # the recent-color chips and the action buttons (guide §4:
-        # declare_navigation_rows for "rows already exist as a list"). The
-        # chips became StrongFocus in recents.py; NoFocus children would be
-        # invisible to the section.
-        declare_navigation_rows(
-            self, [self._recents_row, self._actions_container], tag="color-picker"
-        )
+        # Keyboard navigation over the picker's four interaction rows —
+        # picker (hue/alpha sliders), value fields (+ format button + RGB/A
+        # spins), recent-color chips and the action buttons. The dialog is an
+        # arbitrary container of StrongFocus controls, so the toolkit's
+        # zero-config AutoNavigationSection clusters them into rows by y:
+        # the SV square is NoFocus and drops out automatically, and the
+        # chips are StrongFocus (recents.py). The value-fields row is a bare
+        # QHBoxLayout (not a widget), so a declared-row section cannot cover
+        # it without restructuring the layout the geometry tests pin.
+        auto_navigation(self, tag="color-picker")
         self.set_show_alpha(show_alpha)
         self._preview.set_before(self._color)
         self._sync_from_color()
@@ -571,10 +577,9 @@ class ColorPickerDialog(ThemedDialog):
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
 
-        # Row containers (not bare layouts) for the two surfaces the picker's
-        # navigation section owns: a NavigationSection's rows must be widgets
-        # (its `owns`/`_focusable` walk descendants) — see the
-        # declare_navigation_rows() call in __init__.
+        # Row containers (not bare layouts) so each interaction band is one
+        # widget; the picker's navigation section (auto_navigation in
+        # __init__) clusters focusable controls across the whole dialog.
         self._picker_container = QWidget(self)
         self._actions_container = QWidget(self)
 
