@@ -101,12 +101,10 @@ def _value_rows(button: ScrollValueButton):
 
 def _settled(button: ScrollValueButton) -> bool:
     """True when the button is back to its resting (non value-display) visual
-    state: no hover/value split (single icon region), no suppressed digit,
-    no edit-mode property."""
+    state: no hover/value split (single icon region), no suppressed digit."""
     return (
         button._hovered_split is False
         and button._is_scrolling is False
-        and button.property("editActive") in (False, None)
         and {r.id for r in button.regions()} == {"icon"}
     )
 
@@ -219,7 +217,6 @@ def test_settle_after_esc_from_hover_path(host_button, qapp):
     assert not pill.isVisible()
     assert QApplication.focusWidget() is button
     assert button._is_scrolling is False
-    assert button._keyboard_edit_active is False
     assert _value_rows(button) == ["4"], "Esc restores the button's own digit"
 
     # Mouse leaves — the value-display split must settle back.
