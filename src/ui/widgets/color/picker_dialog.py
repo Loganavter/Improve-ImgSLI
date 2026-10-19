@@ -45,6 +45,8 @@ from shared_toolkit.ui.layout_sizing import GeometryApplyPolicy, apply_dialog_ge
 from shared_toolkit.ui.themed_dialog import ThemedDialog
 from sli_ui_toolkit.managers import declare_navigation_rows, scaled_px
 from sli_ui_toolkit.theme import ThemeManager
+from sli_ui_toolkit.ui.managers import connect_ui_metrics
+from sli_ui_toolkit.ui.managers.ui_metrics import AXIS_FONT, AXIS_SCALE
 from sli_ui_toolkit.widgets import Button, CustomLineEdit, Label, Slider, SpinBox
 
 from ui.theming import try_resolve_theme_color
@@ -62,21 +64,65 @@ from ui.widgets.color.value_format import (
     parse_color_value,
 )
 
-_MIN_WIDTH = scaled_px(260)
-_MIN_HEIGHT = scaled_px(300)
-_MAX_WIDTH = scaled_px(640)
+# Chrome geometry in DESIGN px (never scaled at module scope — the use-time
+# ``scaled_px`` calls live in ``ColorPickerDialog._apply_metrics`` / the
+# widget ``apply_metrics`` methods; the contract test
+# ``tests/contracts/test_color_widgets_no_import_time_scaling.py`` guards it).
+# ``scaled_px`` bakes the live ``UiScale`` factor into the value it returns,
+# so evaluating it here would freeze the chrome at the launch factor and the
+# dialog could never follow a later interface-scale change (L5 regression:
+# the picker was destroyed after a scale change precisely because these were
+# module-level constants).
+_MIN_WIDTH_DP = 260
+_MIN_HEIGHT_DP = 300
+_MAX_WIDTH_DP = 640
+_TITLE_EXTRA_WIDTH_DP = 88
+_ROOT_MARGIN_H_DP = 16
+_ROOT_MARGIN_TOP_DP = 14
+_ROOT_MARGIN_BOTTOM_DP = 14
+_ROOT_SPACING_DP = 12
+_PICKER_SPACING_DP = 10
+_FIELDS_SPACING_DP = 6
+_ACTIONS_SPACING_DP = 8
+_SV_MIN_W_DP = 160
+_SV_MIN_H_DP = 120
+_SV_THUMB_RADIUS_DP = 9.0
+_SLIDER_MIN_H_DP = 140
+_PREVIEW_CHIP_DP = 34
+_FORMAT_BTN_W_DP = 46
+_FORMAT_BTN_H_DP = 26
+_ACTION_BTN_W_DP = 72
+_ACTION_BTN_H_DP = 30
+# The toolkit ``CustomLineEdit``'s ``minimumSizeHint().width()`` is 0, so the
+# stretch-pinned fields row collapsed the value field to 0 px and its digits
+# landed under the ``HEX`` format button. A real (small) minimum keeps the
+# field visible at every dialog width its own declared minimum allows.
+_VALUE_FIELD_MIN_W_DP = 96
 
-# Size (not position — always centers on the parent window) is remembered
-# across opens via QSettings, same mechanism as settings/export/help/
-# image-properties. Message/alert dialogs intentionally do not opt into this.
-_GEOMETRY_POLICY = GeometryApplyPolicy(
-    resize_when_hidden=True,
-    update_minimum=True,
-    minimum_floor=(_MIN_WIDTH, _MIN_HEIGHT),
-    width_bounds=(_MIN_WIDTH, _MAX_WIDTH),
-    center_on_parent=True,
-    remember_key="color_picker",
-)
+
+def _geometry_policy() -> GeometryApplyPolicy:
+    """The dialog's geometry recipe, re-derived at use time (never cached).
+
+    Size (not position — always centers on the parent window) is remembered
+    across opens via QSettings, same mechanism as settings/export/help/
+    image-properties. Message/alert dialogs intentionally do not opt into this.
+
+    ``lock_minimum_to_computed`` is what makes the declared window minimum
+    cover the content: without it the only minimum is ``minimum_floor``
+    (260x300 design px), which is *below* the laid-out content (426x424 at
+    factor 1.0) — so a remembered/restored small size crushed every row. Same
+    recipe class as the export dialog (``plugins/export/layout_geometry.py``),
+    the other non-scrollable dialog.
+    """
+    return GeometryApplyPolicy(
+        resize_when_hidden=True,
+        update_minimum=True,
+        minimum_floor=(scaled_px(_MIN_WIDTH_DP), scaled_px(_MIN_HEIGHT_DP)),
+        width_bounds=(scaled_px(_MIN_WIDTH_DP), scaled_px(_MAX_WIDTH_DP)),
+        center_on_parent=True,
+        lock_minimum_to_computed=True,
+        remember_key="color_picker",
+    )
 
 
 def _themed_or_fallback(
@@ -110,25 +156,29 @@ class _SVSquare(QWidget):
     The gradient fills the full widget edge-to-edge (so clicking exactly at
     a border reaches the true 0/1 extreme) and hit-testing maps 1:1 against
     that same full rect. Only the drawn cursor position is clamped inward by
-    ``THUMB_RADIUS`` so the ring never paints partway outside the field —
+    the thumb radius so the ring never paints partway outside the field —
     at extreme values it hugs the inside of the edge instead of centering
     exactly on it.
     """
 
     svChanged = Signal(float, float)
 
-    THUMB_RADIUS = scaled_px(9.0)
-
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.setMinimumSize(scaled_px(160), scaled_px(120))
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.setMouseTracking(True)
         self._hue = 0.0
         self._sat = 1.0
         self._val = 1.0
+        self.apply_metrics()
         self.theme_manager = ThemeManager.get_instance()
         self.theme_manager.theme_changed.connect(self.update)
+
+    def apply_metrics(self) -> None:
+        """Re-resolve this widget's chrome px from design space at use time."""
+        self._thumb_radius_px = float(scaled_px(_SV_THUMB_RADIUS_DP))
+        self.setMinimumSize(scaled_px(_SV_MIN_W_DP), scaled_px(_SV_MIN_H_DP))
+        self.update()
 
     def set_hue(self, hue_deg: float) -> None:
         self._hue = hue_deg
@@ -140,7 +190,7 @@ class _SVSquare(QWidget):
         self.update()
 
     def _thumb_center(self, rect: QRectF) -> QPointF:
-        margin = self.THUMB_RADIUS + 1.6
+        margin = self._thumb_radius_px + 1.6
         raw_x = rect.left() + self._sat * rect.width()
         raw_y = rect.top() + (1.0 - self._val) * rect.height()
         x = min(max(raw_x, rect.left() + margin), rect.right() - margin)
@@ -210,7 +260,7 @@ class _SVSquare(QWidget):
         painter.drawRoundedRect(rect, radius, radius)
 
         center = self._thumb_center(rect)
-        thumb_radius = self.THUMB_RADIUS
+        thumb_radius = self._thumb_radius_px
         # Thumb rings: high-contrast white + soft dark outline — tokenized via
         # slider.thumb.outer and shadow.color
         thumb_outer = _themed_or_fallback(
@@ -248,13 +298,18 @@ class _PreviewChip(QWidget):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.setFixedSize(scaled_px(34), scaled_px(34))
+        self.apply_metrics()
         # Neutral preview defaults: themed dialog.background / surface.background
         _tm = ThemeManager.get_instance()
         self._before = _themed_or_fallback(_tm, "surface.background", QColor(255, 255, 255))
         self._after = _themed_or_fallback(_tm, "surface.background", QColor(255, 255, 255))
         self.theme_manager = _tm
         self.theme_manager.theme_changed.connect(self.update)
+
+    def apply_metrics(self) -> None:
+        """Re-resolve this widget's chrome px from design space at use time."""
+        self.setFixedSize(scaled_px(_PREVIEW_CHIP_DP), scaled_px(_PREVIEW_CHIP_DP))
+        self.update()
 
     def set_before(self, color: QColor) -> None:
         self._before = QColor(color)
@@ -360,6 +415,16 @@ class ColorPickerDialog(ThemedDialog):
         self._sync_from_color()
         self._apply_dialog_geometry()
         self.install_dialog_geometry(self._apply_dialog_geometry)
+        # Font AND scale changes both move this dialog's chrome: the rows'
+        # margins/spacing/fixed sizes and the declared minimum must be
+        # re-derived, and the platform window minimum re-pinned (see
+        # ``_on_metrics_changed``). ``connect_ui_metrics`` coalesces them into
+        # one slot call per appearance change.
+        connect_ui_metrics(
+            self,
+            self._on_metrics_changed,
+            axes=frozenset({AXIS_FONT, AXIS_SCALE}),
+        )
 
         self.mark_theme_ui_ready()
 
@@ -415,6 +480,68 @@ class ColorPickerDialog(ThemedDialog):
         except Exception:
             pass
 
+    def _on_metrics_changed(self, _axes: frozenset[str] | None = None) -> None:
+        """Appearance bus (font / interface scale) changed — re-derive the dialog.
+
+        Every chrome px is re-resolved from design space (``_apply_metrics``)
+        and the declared minimum re-locked to the new content, then the
+        platform window minimum re-pinned. Without the re-lock the *widget*
+        minimum follows the layout while the *window* minimum stays at the
+        previous factor, so a CSD/system resize can still crush the rows.
+        """
+        self._apply_metrics()
+        self.layout().invalidate()
+        self.layout().activate()
+        self._apply_dialog_geometry()
+
+    def _apply_metrics(self) -> None:
+        """Re-resolve every chrome px from design space at USE time.
+
+        Runs once the widget tree exists and again on each appearance change.
+        Never cache a ``scaled_px`` result on a module/class attribute: that
+        bakes the launch factor in and the dialog cannot follow a later
+        interface-scale change (the L5 defect).
+        """
+        root = self.layout()
+        if root is not None:
+            root.setContentsMargins(
+                scaled_px(_ROOT_MARGIN_H_DP),
+                scaled_px(_ROOT_MARGIN_TOP_DP),
+                scaled_px(_ROOT_MARGIN_H_DP),
+                scaled_px(_ROOT_MARGIN_BOTTOM_DP),
+            )
+            root.setSpacing(scaled_px(_ROOT_SPACING_DP))
+        self._picker_row.setSpacing(scaled_px(_PICKER_SPACING_DP))
+        self._fields_row.setSpacing(scaled_px(_FIELDS_SPACING_DP))
+        self._actions_row.setSpacing(scaled_px(_ACTIONS_SPACING_DP))
+        self._sv.apply_metrics()
+        for slider in (self._hue_slider, self._alpha_slider):
+            slider.setMinimumHeight(scaled_px(_SLIDER_MIN_H_DP))
+        self._preview.apply_metrics()
+        self._format_btn.setFixedSize(
+            scaled_px(_FORMAT_BTN_W_DP), scaled_px(_FORMAT_BTN_H_DP)
+        )
+        self._hex_edit.setMinimumWidth(scaled_px(_VALUE_FIELD_MIN_W_DP))
+        for button in (self._cancel_btn, self._ok_btn):
+            button.setMinimumSize(scaled_px(_ACTION_BTN_W_DP), scaled_px(_ACTION_BTN_H_DP))
+        self._recents_row.apply_metrics()
+
+    def _pin_window_minimum(self) -> None:
+        """Re-pin the QWindow minimum to the widget minimum.
+
+        ``apply_dialog_geometry`` only sets the *widget* minimum; the platform
+        window keeps the stale value, so CSD/system resizes could still crush
+        the rows after an appearance change (mirrors
+        ``ui/managers/dialog_manager.py::_pin_dialog_minimum`` and
+        ``SettingsDialog._pin_window_minimum``).
+        """
+        try:
+            handle = self.windowHandle()
+        except RuntimeError:
+            return
+        if handle is not None:
+            handle.setMinimumSize(self.minimumSize())
+
     def _apply_dialog_geometry(self) -> None:
         # No ``self.adjustSize()`` here: this recipe re-runs on every deferred
         # geometry pass (including after the dialog is already visible, e.g.
@@ -427,16 +554,22 @@ class ColorPickerDialog(ThemedDialog):
         # The custom title bar has no elide margin of its own — widen the
         # window past content size when the (often long, translated) title
         # would otherwise get clipped against the close button.
-        title_width = QFontMetrics(self.font()).horizontalAdvance(self.windowTitle()) + scaled_px(88)
-        width = max(content_hint.width(), min(_MAX_WIDTH, title_width))
-        apply_dialog_geometry(self, width, content_hint.height(), policy=_GEOMETRY_POLICY)
+        title_width = (
+            QFontMetrics(self.font()).horizontalAdvance(self.windowTitle())
+            + scaled_px(_TITLE_EXTRA_WIDTH_DP)
+        )
+        width = max(content_hint.width(), min(scaled_px(_MAX_WIDTH_DP), title_width))
+        apply_dialog_geometry(
+            self, width, content_hint.height(), policy=_geometry_policy()
+        )
+        self._pin_window_minimum()
 
     def _build_ui(self, *, ok_text: str, cancel_text: str) -> None:
         root = QVBoxLayout(self)
-        root.setContentsMargins(
-            scaled_px(16), scaled_px(14), scaled_px(16), scaled_px(14)
-        )
-        root.setSpacing(scaled_px(12))
+        # Margins/spacing/fixed sizes are applied in ``_apply_metrics``
+        # (design px -> scaled at use time), not here.
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(0)
 
         # Row containers (not bare layouts) for the two surfaces the picker's
         # navigation section owns: a NavigationSection's rows must be widgets
@@ -445,16 +578,16 @@ class ColorPickerDialog(ThemedDialog):
         self._picker_container = QWidget(self)
         self._actions_container = QWidget(self)
 
-        picker_row = QHBoxLayout(self._picker_container)
-        picker_row.setContentsMargins(0, 0, 0, 0)
-        picker_row.setSpacing(scaled_px(10))
+        self._picker_row = QHBoxLayout(self._picker_container)
+        self._picker_row.setContentsMargins(0, 0, 0, 0)
+        self._picker_row.setSpacing(0)
         # The SV square stays mouse-only on purpose: it is a 2D pointer
         # surface with no row/column model, so arrow keys there would fight
         # the picker's row navigation instead of meaning one axis each (see
         # the picker's ToolbarRowsSection registration below).
         self._sv = _SVSquare(self)
         self._sv.svChanged.connect(self._on_sv_changed)
-        picker_row.addWidget(self._sv, 1)
+        self._picker_row.addWidget(self._sv, 1)
 
         self._hue_slider = Slider(
             Qt.Orientation.Vertical,
@@ -466,9 +599,8 @@ class ColorPickerDialog(ThemedDialog):
         )
         self._hue_slider.setRange(0, 359)
         self._hue_slider.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
-        self._hue_slider.setMinimumHeight(scaled_px(140))
         self._hue_slider.valueChanged.connect(self._on_hue_changed)
-        picker_row.addWidget(self._hue_slider)
+        self._picker_row.addWidget(self._hue_slider)
 
         self._alpha_slider = Slider(
             Qt.Orientation.Vertical,
@@ -480,24 +612,25 @@ class ColorPickerDialog(ThemedDialog):
         )
         self._alpha_slider.setRange(0, 255)
         self._alpha_slider.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
-        self._alpha_slider.setMinimumHeight(scaled_px(140))
         self._alpha_slider.valueChanged.connect(self._on_alpha_changed)
-        picker_row.addWidget(self._alpha_slider)
+        self._picker_row.addWidget(self._alpha_slider)
 
         root.addWidget(self._picker_container, 1)
 
-        fields_row = QHBoxLayout()
-        fields_row.setSpacing(scaled_px(6))
+        self._fields_row = QHBoxLayout()
+        self._fields_row.setSpacing(0)
 
         # Leading stretch pins the whole fields group (preview chip, labels,
         # inputs) to the right edge. It also absorbs the dialog slack so the
         # gaps between the fixed-size items never grow on relayout — without
         # it QBoxLayout redistributes extra width between the items and the
         # fields visibly drift while the dialog is being resized.
-        fields_row.addStretch(1)
+        # NOTE: the stretch takes all slack, so the value field below must
+        # carry its own minimum width (``_apply_metrics``) or it collapses.
+        self._fields_row.addStretch(1)
 
         self._preview = _PreviewChip(self)
-        fields_row.addWidget(self._preview)
+        self._fields_row.addWidget(self._preview)
 
         self._field_labels: list[Label] = []
 
@@ -519,15 +652,14 @@ class ColorPickerDialog(ThemedDialog):
 
         self._hex_edit = CustomLineEdit(self, alignment=Qt.AlignmentFlag.AlignCenter)
         self._hex_edit.editingFinished.connect(self._on_hex_edited)
-        fields_row.addWidget(self._hex_edit)
+        self._fields_row.addWidget(self._hex_edit)
 
         self._format_btn = Button(text="HEX", variant="surface", parent=self)
-        self._format_btn.setFixedSize(scaled_px(46), scaled_px(26))
         self._format_btn.setToolTip(
             tr("ui.color_value_format_cycle_tooltip", default="Change color value format (HEX/RGB/HSL)")
         )
         self._format_btn.clicked.connect(self._on_format_btn_clicked)
-        fields_row.addWidget(self._format_btn)
+        self._fields_row.addWidget(self._format_btn)
 
         self._r_spin = SpinBox(self)
         self._g_spin = SpinBox(self)
@@ -539,17 +671,17 @@ class ColorPickerDialog(ThemedDialog):
         ):
             spin.setRange(0, 255)
             spin.valueChanged.connect(self._on_rgb_changed)
-            fields_row.addWidget(_field_label(text))
-            fields_row.addWidget(spin)
+            self._fields_row.addWidget(_field_label(text))
+            self._fields_row.addWidget(spin)
 
         self._alpha_label = _field_label("A")
         self._a_spin = SpinBox(self)
         self._a_spin.setRange(0, 255)
         self._a_spin.valueChanged.connect(self._on_alpha_spin_changed)
-        fields_row.addWidget(self._alpha_label)
-        fields_row.addWidget(self._a_spin)
+        self._fields_row.addWidget(self._alpha_label)
+        self._fields_row.addWidget(self._a_spin)
 
-        root.addLayout(fields_row)
+        root.addLayout(self._fields_row)
 
         self._recents_row = RecentColorsRow(
             self,
@@ -559,19 +691,22 @@ class ColorPickerDialog(ThemedDialog):
         self._recents_row.set_colors(self._recents_store.load())
         root.addWidget(self._recents_row)
 
-        actions = QHBoxLayout(self._actions_container)
-        actions.setContentsMargins(0, 0, 0, 0)
-        actions.setSpacing(scaled_px(8))
-        actions.addStretch(1)
+        self._actions_row = QHBoxLayout(self._actions_container)
+        self._actions_row.setContentsMargins(0, 0, 0, 0)
+        self._actions_row.setSpacing(0)
+        self._actions_row.addStretch(1)
         self._cancel_btn = Button(text=cancel_text, variant="surface", parent=self)
-        self._cancel_btn.setMinimumSize(scaled_px(72), scaled_px(30))
         self._cancel_btn.clicked.connect(self.reject)
-        actions.addWidget(self._cancel_btn)
+        self._actions_row.addWidget(self._cancel_btn)
         self._ok_btn = Button(text=ok_text, variant="surface", parent=self)
         self._ok_btn.setMinimumSize(scaled_px(72), scaled_px(30))
         self._ok_btn.clicked.connect(self._on_accept)
-        actions.addWidget(self._ok_btn)
+        self._actions_row.addWidget(self._ok_btn)
         root.addWidget(self._actions_container)
+
+        # Resolve the hold-placed (unscaled) chrome above from design space in
+        # one pass so the tree is coherent before the first geometry apply.
+        self._apply_metrics()
 
     def set_show_alpha(self, enabled: bool) -> None:
         self._show_alpha = bool(enabled)
@@ -581,6 +716,10 @@ class ColorPickerDialog(ThemedDialog):
         self._hex_edit.setText(
             format_color_value(self._color, self._value_format, include_alpha=self._show_alpha)
         )
+        # Toggling the alpha row changes the fields row's minimum width: re-lock
+        # the declared minimum (and the window minimum) so the dialog cannot be
+        # left smaller than its own content.
+        self._apply_dialog_geometry()
 
     def color(self) -> QColor:
         return QColor(self._color)
