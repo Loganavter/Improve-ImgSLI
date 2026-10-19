@@ -15,92 +15,16 @@ from shared.image_extensions import is_loadable_image_path
 logger = logging.getLogger("ImproveImgSLI")
 
 
-def _slot_selection(owner) -> list[str] | None:
-    """Gallery slot selection (ordered path-id strings), or None.
-
-    Returns None when no store/slot is available (storeless unit contexts)
-    so callers fall back to the local mirror. When the slot exists it is
-    authoritative — even when empty (a cleared selection must not resurrect
-    the local mirror).
-    """
-    try:
-        from tabs.image_gallery.bootstrap_reducers import GALLERY_SLOT_NAME
-        from tabs.image_gallery.state import selectors as _selectors
-    except Exception:
-        return None
-    candidates = [owner]
-    # Protocol-first (G5): attached controller owns the slot read. Legacy
-    # ``_controller``/``_owner`` scans are gone (no writers since G1/G2);
-    # ``widget``/``_widget`` child links stay as last resort.
-    try:
-        resolve = getattr(owner, "_owner_for_triage", None)
-        proto = resolve() if callable(resolve) else None
-        if proto is not None:
-            candidates.append(proto)
-    except Exception:
-        pass
-    for attr in ("widget", "_widget"):
-        try:
-            candidates.append(getattr(owner, attr, None))
-        except Exception:
-            pass
-    for cand in candidates:
-        if cand is None:
-            continue
-        try:
-            ctx = getattr(cand, "_context", None) or getattr(cand, "context", None)
-            store = getattr(ctx, "store", None) or getattr(cand, "store", None)
-            if store is None or not hasattr(store, "get_session_state_slot"):
-                continue
-            # Session isolation (Wave ISO): address the CANDIDATE's own
-            # session explicitly — never the active-session default (a
-            # foreign active slot would carry the wrong selection).
-            try:
-                from tabs.image_gallery.ui.gallery_store import (
-                    resolve_owner_session_id,
-                )
-
-                own_id = resolve_owner_session_id(cand)
-            except Exception:
-                own_id = None
-            slot = store.get_session_state_slot(GALLERY_SLOT_NAME, session_id=own_id)
-            if slot is None:
-                continue
-            return list(_selectors.get_selection(slot))
-        except Exception:
-            continue
-    return None
-
-
 def _selected_paths(owner) -> list[Path]:
-    slot_sel = _slot_selection(owner)
-    if slot_sel is not None:
-        out: list[Path] = []
-        for p in slot_sel:
-            try:
-                out.append(Path(p) if not isinstance(p, Path) else p)
-            except Exception:
-                continue
-        return out
-    state = getattr(owner, "state", None)
-    if state is None:
-        return []
-    sel = getattr(state, "selected_paths", None) or set()
-    out: list[Path] = []
-    for p in sel:
-        try:
-            out.append(Path(p) if not isinstance(p, Path) else p)
-        except Exception:
-            continue
-    # Preserve selected_order if available for stable dispatch order.
-    order = getattr(state, "selected_order", None)
-    if order:
-        order_map = {Path(x) if not isinstance(x, Path) else x: i for i, x in enumerate(order)}
-        try:
-            out.sort(key=lambda x: order_map.get(x, 10**9))
-        except Exception:
-            pass
-    return out
+    """Current selection, ordered — delegated to ``use_cases.action_scope``.
+
+    The slot/mirror read and its ordering live in ONE place now
+    (``action_scope.selected_paths``); this name stays as the carry-local
+    alias its callers (``carry_selected`` / ``find_similar_selected``) use.
+    """
+    from tabs.image_gallery.use_cases import action_scope
+
+    return action_scope.selected_paths(owner)
 
 
 def _dispatch_via_image_carry(paths: list[Path], *, pixmap=None) -> bool:
