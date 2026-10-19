@@ -21,7 +21,7 @@ import os
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import pytest
-from PySide6.QtCore import QSettings, Qt
+from PySide6.QtCore import QRect, QSettings, Qt
 from PySide6.QtGui import QColor
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QVBoxLayout, QWidget
@@ -84,6 +84,44 @@ def _make_dialog(qapp, store, host, colors=("#FF8800", "#224466")):
     dialog = ColorPickerDialog(QColor("#101010"), host, recents_store=store)
     _show(dialog, qapp)
     return dialog
+
+
+def _section(dialog):
+    """The navigation section the picker registered (live registry)."""
+    manager = NavigationManager.get_instance()
+    for owner, spec in list(manager._sections):
+        if owner is dialog:
+            return spec
+    raise AssertionError("the picker registered no navigation section")
+
+
+def _declared_rows(dialog) -> list[QWidget]:
+    """The four band containers the picker must declare, visual top→bottom.
+
+    The value-fields band has no container by default (it is a bare
+    ``QHBoxLayout``); a section cannot own a bare layout, so the fix wraps it
+    in ``_fields_container``. Failing here pre-fix is the red signal that the
+    fields band was unreachable.
+    """
+    fields = getattr(dialog, "_fields_container", None)
+    assert fields is not None, (
+        "the value-fields band must be its own widget to be a declared "
+        "navigation row (a bare QHBoxLayout cannot be owned by a section)"
+    )
+    return [
+        dialog._picker_container,
+        fields,
+        dialog._recents_row,
+        dialog._actions_container,
+    ]
+
+
+def _global_center(widget: QWidget):
+    return widget.mapToGlobal(widget.rect().center())
+
+
+def _global_rect(widget: QWidget):
+    return QRect(widget.mapToGlobal(widget.rect().topLeft()), widget.size())
 
 
 def test_enter_on_color_swatch_opens_picker(host, qapp):
@@ -209,3 +247,209 @@ def test_picker_action_button_activates_on_enter(qapp, store, host):
     finally:
         NavigationManager.get_instance().unregister(dialog)
         dialog.deleteLater()
+
+
+# ---------------------------------------------------------------------------
+# Declared-row contract + visual-order walk
+# (plan-nav-coverage-2026-10-19 — the live walk stayed on the bare dialog)
+# ---------------------------------------------------------------------------
+
+
+def test_picker_declares_four_rows_and_owns_only_them(qapp, store, host):
+    """The picker's section is a declared-row section over four containers.
+
+    Ownership must be *exact*: the zero-config ``AutoNavigationSection``
+    claimed every descendant (its ``owns`` falls back to ``owner.isAncestorOf``
+    and its rows are y-clustered), which made the previous wave's "every
+    control is owned" assertion vacuously true while the live walk moved
+    nowhere. A focusable control dropped straight into the dialog, outside
+    every declared row, must therefore NOT be owned.
+    """
+    from sli_ui_toolkit.ui.managers.navigation_sections import ToolbarRowsSection
+
+    dialog = _make_dialog(qapp, store, host)
+    try:
+        spec = _section(dialog)
+        assert isinstance(spec, ToolbarRowsSection), (
+            "the picker must use a declared-row section, not the y-clustering "
+            f"auto section (got {type(spec).__name__})"
+        )
+
+        stray = QWidget(dialog)
+        stray.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        stray.show()
+        qapp.processEvents()
+        assert not spec.owns(stray), (
+            "a focusable control outside every declared row must not be owned "
+            "— the auto section's ancestor-fallback claimed it (vacuous "
+            "ownership)"
+        )
+        stray.deleteLater()
+
+        rows = _declared_rows(dialog)
+        assert spec._rows() == [row for row in rows if row.isVisible()], (
+            "the declared rows must be exactly the four band containers, in "
+            "visual top→bottom order"
+        )
+    finally:
+        NavigationManager.get_instance().unregister(dialog)
+        dialog.deleteLater()
+
+
+def test_picker_every_control_is_owned_through_a_declared_row(qapp, store, host):
+    """Every interactive control lives inside one of the four declared rows.
+
+    Stronger than "some section owns it": a control is only reachable if a
+    *declared row* is its ancestor (``_row_of`` walks the row containers).
+    """
+    dialog = _make_dialog(qapp, store, host)
+    try:
+        spec = _section(dialog)
+        rows = _declared_rows(dialog)
+        orphans: list[tuple[str, str]] = []
+        outside_rows: list[tuple[str, str]] = []
+        for widget in dialog.findChildren(QWidget):
+            if widget is dialog or widget.focusPolicy() == Qt.FocusPolicy.NoFocus:
+                continue
+            if not (widget.isVisible() and widget.isEnabled()):
+                continue
+            if not spec.owns(widget):
+                orphans.append((type(widget).__name__, widget.objectName()))
+            if not any(row is widget or row.isAncestorOf(widget) for row in rows):
+                outside_rows.append((type(widget).__name__, widget.objectName()))
+        assert not orphans, f"unowned interactive controls: {orphans}"
+        assert not outside_rows, (
+            f"interactive controls outside the four declared rows: {outside_rows}"
+        )
+    finally:
+        NavigationManager.get_instance().unregister(dialog)
+        dialog.deleteLater()
+
+
+def test_picker_down_walk_visits_rows_in_visual_y_order(qapp, store, host):
+    """Down from the bare dialog reaches every row, top→bottom, and settles.
+
+    This is the live symptom: focus rested on the dialog itself and Down did
+    nothing. Entry is the manager's owner-bootstrap (``focused is owner`` →
+    ``focus_first``); every subsequent hop must stay owned and move down the
+    declared rows, never resting back on the dialog.
+    """
+    dialog = _make_dialog(qapp, store, host)
+    try:
+        spec = _section(dialog)
+        rows = _declared_rows(dialog)
+        visible_rows = [row for row in rows if row.isVisible()]
+
+        dialog.clearFocus()
+        dialog.setFocus(Qt.FocusReason.OtherFocusReason)
+        qapp.processEvents()
+        assert QApplication.focusWidget() is dialog
+
+        visited: list[tuple[QWidget, QWidget]] = []
+        current: QWidget = dialog
+        for _ in range(16):
+            QTest.keyClick(current, Qt.Key.Key_Down)
+            qapp.processEvents()
+            nxt = QApplication.focusWidget()
+            assert nxt is not dialog, (
+                "Down must not leave focus on the bare dialog (the live dead-end)"
+            )
+            assert spec.owns(nxt), (
+                f"Down landed on an unowned control {type(nxt).__name__}"
+            )
+            row = next(r for r in visible_rows if r is nxt or r.isAncestorOf(nxt))
+            visited.append((row, nxt))
+            if nxt is current:
+                break
+            current = nxt
+
+        sequence = [
+            (type(widget).__name__, _global_rect(widget).getRect())
+            for _row, widget in visited
+        ]
+        print(f"\nPICKER DOWN SEQUENCE (class, (x, y, w, h)): {sequence}")
+
+        # Rows are entered in visual top→bottom order, and all are reached.
+        encountered: list[QWidget] = []
+        for row, _widget in visited:
+            if not encountered or encountered[-1] is not row:
+                encountered.append(row)
+        assert encountered == visible_rows, (
+            f"Down must visit rows top→bottom: got "
+            f"{[type(r).__name__ for r in encountered]}"
+        )
+        # …and the control's global y never decreases on the way down.
+        ys = [_global_center(widget).y() for _row, widget in visited]
+        assert ys == sorted(ys), f"Down walked against y order: {ys}"
+    finally:
+        NavigationManager.get_instance().unregister(dialog)
+        dialog.deleteLater()
+
+
+def test_picker_up_walk_returns_up_the_rows(qapp, store, host):
+    dialog = _make_dialog(qapp, store, host)
+    try:
+        spec = _section(dialog)
+        _declared_rows(dialog)
+
+        dialog._ok_btn.setFocus(Qt.FocusReason.OtherFocusReason)
+        qapp.processEvents()
+        start_y = _global_center(dialog._ok_btn).y()
+
+        visited = []
+        current = dialog._ok_btn
+        for _ in range(4):
+            QTest.keyClick(current, Qt.Key.Key_Up)
+            qapp.processEvents()
+            nxt = QApplication.focusWidget()
+            assert spec.owns(nxt), f"Up landed on an unowned control {type(nxt).__name__}"
+            visited.append(nxt)
+            if nxt is current:
+                break
+            current = nxt
+
+        sequence = [
+            (type(w).__name__, _global_rect(w).getRect()) for w in visited
+        ]
+        print(f"\nPICKER UP SEQUENCE (class, (x, y, w, h)): {sequence}")
+        ys = [start_y] + [_global_center(w).y() for w in visited]
+        assert ys == sorted(ys, reverse=True), f"Up walked against y order: {ys}"
+        # The picker row (top) is reachable upward from the actions row.
+        assert any(
+            dialog._picker_container.isAncestorOf(w) for w in visited
+        ), "Up from the actions row must reach the picker row"
+    finally:
+        NavigationManager.get_instance().unregister(dialog)
+        dialog.deleteLater()
+
+
+def test_picker_recents_row_moves_left_right_within_one_visual_row(qapp, store, host):
+    dialog = _make_dialog(qapp, store, host)
+    try:
+        chips = dialog._recents_row._chip_widgets
+        assert len(chips) >= 2, "need at least two recents for a row move"
+        chip0, chip1 = chips[0], chips[1]
+        assert _global_center(chip0).y() == _global_center(chip1).y(), (
+            "the first two chips must sit on the same visual line"
+        )
+
+        chip0.setFocus(Qt.FocusReason.OtherFocusReason)
+        qapp.processEvents()
+        QTest.keyClick(chip0, Qt.Key.Key_Right)
+        qapp.processEvents()
+        assert QApplication.focusWidget() is chip1, (
+            "Right must step to the next chip in the same row"
+        )
+        assert _global_center(chip1).y() == _global_center(chip0).y(), (
+            "Right must not change the visual row"
+        )
+
+        QTest.keyClick(chip1, Qt.Key.Key_Left)
+        qapp.processEvents()
+        assert QApplication.focusWidget() is chip0, (
+            "Left must step back to the previous chip in the same row"
+        )
+    finally:
+        NavigationManager.get_instance().unregister(dialog)
+        dialog.deleteLater()
+
