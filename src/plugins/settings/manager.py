@@ -483,18 +483,53 @@ class SettingsManager:
             return
         self.settings.setValue(key, value)
 
+    def _profile_has_user_state(self) -> bool:
+        """True when the settings file carries anything beyond startup bookkeeping.
+
+        A missing ``is_first_run`` key is not proof of a fresh install: a
+        ``.backup`` restore, a partial conf restore, and an upgrade from a
+        version that predates the key all leave a long-used profile without
+        it (the key is only ever written on onboarding completion). The
+        surviving user settings are the evidence of a real past run. Startup
+        bookkeeping keys are excluded (see the inline note below) because
+        ``core.bootstrap`` writes ``last_seen_app_version`` on EVERY start —
+        including the very first one, before onboarding can be shown.
+        """
+        # QSettings keys this app writes on its own during startup, before
+        # the user can interact: ``last_seen_app_version`` is written on
+        # every start, including the first one (see
+        # ``core.bootstrap.ApplicationContext._maybe_flag_cache_purge_notice``).
+        # They are bookkeeping, not evidence of a past run.
+        bookkeeping = frozenset({"is_first_run", "last_seen_app_version"})
+        return any(
+            key not in bookkeeping
+            for key in self.settings.allKeys()
+        )
+
     def is_first_run(self) -> bool:
-        if not self.settings.contains("is_first_run"):
+        """True only for a profile with no sign of prior use.
+
+        An explicit ``is_first_run`` value always wins (False = completed,
+        True = deliberately armed, e.g. tests). When the key is absent the
+        profile is *not* automatically fresh: that is also the shape of a
+        restored/partially restored/upgraded config that lost the flag.
+        Treating it as first run re-armed the onboarding overlay on profiles
+        that were long past first run (observed after a ``.backup`` restore
+        and a profile copy taken before the first save). Absence therefore
+        means first run only when the file holds nothing but startup
+        bookkeeping — a genuinely empty profile.
+        """
+        if self.settings.contains("is_first_run"):
+            val = self.settings.value("is_first_run")
+            if isinstance(val, bool):
+                return val
+            text = str(val).strip().lower()
+            if text in {"1", "true", "yes", "on"}:
+                return True
+            if text in {"0", "false", "no", "off"}:
+                return False
             return True
-        val = self.settings.value("is_first_run")
-        if isinstance(val, bool):
-            return val
-        text = str(val).strip().lower()
-        if text in {"1", "true", "yes", "on"}:
-            return True
-        if text in {"0", "false", "no", "off"}:
-            return False
-        return True
+        return not self._profile_has_user_state()
 
     def set_first_run_completed(self):
         self._save_setting("is_first_run", False)
