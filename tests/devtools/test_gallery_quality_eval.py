@@ -10,11 +10,20 @@ from pathlib import Path
 
 import pytest
 
+from core.evidence.journal import record_evidence, reset_journal, verdict
+
 np = pytest.importorskip("numpy")
 pytest.importorskip("PIL")
 pytest.importorskip("yaml")
 
 from PIL import Image  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _reset_evidence_journal():
+    """The evidence journal is process-global: reset per probe, never leak."""
+    reset_journal()
+    yield
 
 
 def _gradient(step: int) -> Image.Image:
@@ -60,6 +69,13 @@ def eval_folder(tmp_path: Path) -> Path:
 
 
 def test_eval_scores_and_cel_art_gate(eval_folder: Path) -> None:
+    """Detector verdicts are compared to the hand-labelled truth.yaml.
+
+    Falsification: each observed ``(image, axis, got)`` agreement is derived
+    from the rows; a detector-vs-truth regression makes one case disagree, the
+    record reads ``violated``, and this probe fails with the measured case list
+    in ``signal`` (TESTING.md rule 7 — the label, not the test, is the truth).
+    """
     from devtools.gallery_quality_eval import _load_truth, _summarize, run_eval
 
     truth = _load_truth(eval_folder / "truth.yaml")
@@ -76,6 +92,24 @@ def test_eval_scores_and_cel_art_gate(eval_folder: Path) -> None:
     assert summary["detector"]["banding"]["fn"] == 0
     # cel-art FP gate: the one expected-clean axis must read clean.
     assert summary["cel_art"] == {"total": 1, "clean": 1}
+
+    # Observed per-case verdicts, derived from the same rows the assertions read.
+    case_verdicts = {
+        f"{row['image']}:{axis}": row["detector"].get(axis, "clean") == want
+        for row in result["rows"]
+        for axis, want in row["expect"].items()
+    }
+    failed_cases = sorted(case for case, agrees in case_verdicts.items() if not agrees)
+    record_evidence("gt.gallery.quality", kind="ground_truth",
+                    verdict="ok" if not failed_cases else "violated",
+                    signal=f"cases={sorted(case_verdicts)} failed={failed_cases}",
+                    reason="detector agrees with truth.yaml",
+                    ids=tuple(sorted(case_verdicts)), area="gallery.quality_eval")
+    record = verdict(None, "gt.gallery.quality")
+    assert record is not None, "quality ground-truth probe emitted no evidence"
+    assert record.verdict == "ok", record.signal
+    assert record.kind == "ground_truth"
+    assert record.ids == ("cel_trap.png:banding", "worse.png:banding"), record.ids
 
 
 def test_cli_smoke_writes_json(eval_folder: Path, tmp_path: Path) -> None:
