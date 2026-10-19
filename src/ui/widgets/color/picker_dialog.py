@@ -24,9 +24,15 @@ control is owned" was vacuous, and the walk was not tied to the dialog's
 rows. A declared row is owned iff it is one of the four, and the walk
 follows container order, not pixel clustering. The chips
 themselves are ``StrongFocus`` + ``FocusLayer`` ring (so Left/Right steps
-within the row); the SV square stays mouse-only (``NoFocus``) so it drops
-out of the row walk. Esc (or any close path) returns the keyboard to the
-widget that opened the picker.
+within the row); the SV square is ``StrongFocus`` too, but it stays a
+navigation stop until ``Enter`` explicitly enters its value-edit mode.
+While navigating, arrows belong to the section (the square does not consume
+them); while editing (``is_editing()`` — the toolkit's value-edit contract),
+arrows and WASD move the crosshair, ``Enter`` commits and ``Esc`` reverts to
+the saturation/value captured on entry. Its keyboard-focus ring is the
+toolkit's shared ``paint_focus_ring`` (keyboard modality only — a mouse
+click focuses without a ring). Esc (or any close path) returns the keyboard
+to the widget that opened the picker.
 
 Kept API-compatible with the subset of ``QColorDialog`` the callers used
 (``colorSelected``, ``finished``, ``show``/``raise_``/``activateWindow``,
@@ -59,6 +65,7 @@ from sli_ui_toolkit.managers import declare_navigation_rows, scaled_px
 from sli_ui_toolkit.theme import ThemeManager
 from sli_ui_toolkit.ui.managers import connect_ui_metrics
 from sli_ui_toolkit.ui.managers.ui_metrics import AXIS_FONT, AXIS_SCALE
+from sli_ui_toolkit.ui.widgets.atomic.focus_ring import paint_focus_ring
 from sli_ui_toolkit.widgets import Button, CustomLineEdit, Label, Slider, SpinBox
 
 from ui.theming import try_resolve_theme_color
@@ -171,17 +178,61 @@ class _SVSquare(QWidget):
     the thumb radius so the ring never paints partway outside the field —
     at extreme values it hugs the inside of the edge instead of centering
     exactly on it.
+
+    Keyboard: the square is a navigation stop (``StrongFocus``) but a
+    two-dimensional surface has no single row/column axis, so bare arrows
+    stay the picker row section's — they walk the row and never change the
+    colour. ``Enter`` enters the explicit value-edit mode (the toolkit's
+    ``is_editing()`` contract): arrows and W/A/S/D then move the crosshair,
+    ``Enter`` commits, ``Esc`` restores the saturation/value captured on
+    entry. The keyboard ring is the toolkit's shared
+    ``paint_focus_ring`` — keyboard modality only, so a mouse click focuses
+    the square without painting it.
     """
 
     svChanged = Signal(float, float)
+
+    #: Edit-mode keys → the axis direction they move (mirrors the toolkit
+    #: Slider's ``_EDIT_ADJUST_KEYS``; «W/S = value, A/D = saturation»).
+    _EDIT_ADJUST_KEYS = {
+        Qt.Key.Key_Left: Qt.Key.Key_Left,
+        Qt.Key.Key_Right: Qt.Key.Key_Right,
+        Qt.Key.Key_Up: Qt.Key.Key_Up,
+        Qt.Key.Key_Down: Qt.Key.Key_Down,
+        Qt.Key.Key_A: Qt.Key.Key_Left,
+        Qt.Key.Key_D: Qt.Key.Key_Right,
+        Qt.Key.Key_W: Qt.Key.Key_Up,
+        Qt.Key.Key_S: Qt.Key.Key_Down,
+    }
+
+    #: One edit-mode keypress in saturation/value units (0..1).
+    EDIT_STEP = 0.01
+
+    #: Navigation arrows — handed to the section (never consumed) while the
+    #: square is not editing. Kept as one tuple so the handler does not need a
+    #: four-key inline test (the arrow-redirection ratchet reads those).
+    _NAV_ARROW_KEYS = (
+        Qt.Key.Key_Up,
+        Qt.Key.Key_Down,
+        Qt.Key.Key_Left,
+        Qt.Key.Key_Right,
+    )
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.setMouseTracking(True)
+        # A NoFocus child is invisible to the picker's row walk; StrongFocus
+        # is what makes the section's ``_focusable`` (StrongFocus only) see it.
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self._hue = 0.0
         self._sat = 1.0
         self._val = 1.0
+        # Keyboard ring modality comes from the last input device, not the
+        # FocusReason (guide §7) — set in focusInEvent via resolve_keyboard_focus.
+        self._keyboard_focus = False
+        self._editing = False
+        self._edit_entry_sv = (self._sat, self._val)
         self.apply_metrics()
         self.theme_manager = ThemeManager.get_instance()
         self.theme_manager.theme_changed.connect(self.update)
@@ -201,6 +252,109 @@ class _SVSquare(QWidget):
         self._val = max(0.0, min(1.0, val))
         self.update()
 
+    def is_editing(self) -> bool:
+        """Value-edit contract, duck-typed by the toolkit's navigation sections.
+
+        The section hands arrows to a control only while this returns True;
+        while False the picker row's section keeps them for the ring walk
+        (Up/Down rows, Left/Right columns). Controls without the method keep
+        the legacy always-open gate — this one deliberately closes it.
+        """
+        return self._editing
+
+    def _enter_edit_mode(self) -> None:
+        self._editing = True
+        self._edit_entry_sv = (self._sat, self._val)
+        self.update()
+
+    def _leave_edit_mode(self, *, commit: bool) -> None:
+        self._editing = False
+        if not commit:
+            # Re-emit so the dialog (colour, preview, hex/spin fields) follows
+            # the revert — edit-mode keys already pushed the live colour out.
+            self._apply_sv(*self._edit_entry_sv)
+        self.update()
+
+    def _apply_sv(self, sat: float, val: float) -> None:
+        sat = max(0.0, min(1.0, sat))
+        val = max(0.0, min(1.0, val))
+        if sat == self._sat and val == self._val:
+            return
+        self._sat, self._val = sat, val
+        self.update()
+        self.svChanged.emit(sat, val)
+
+    def _adjust_sv(self, arrow_key: int) -> None:
+        """Move the crosshair one edit step along the key's axis."""
+        sat, val = self._sat, self._val
+        if arrow_key == Qt.Key.Key_Left:
+            sat -= self.EDIT_STEP
+        elif arrow_key == Qt.Key.Key_Right:
+            sat += self.EDIT_STEP
+        elif arrow_key == Qt.Key.Key_Up:
+            val += self.EDIT_STEP
+        elif arrow_key == Qt.Key.Key_Down:
+            val -= self.EDIT_STEP
+        self._apply_sv(sat, val)
+
+    def focusInEvent(self, event) -> None:  # noqa: N802
+        # Same modality source as the toolkit Slider (and the sibling
+        # ``_RecentColorChip``): the manager's last-input flag, so a mouse
+        # click focuses without a ring. The fallback is the chip's (True, not
+        # a reason formula) — ``tests/contracts/test_no_unlisted_app_filter``
+        # allows no Popup/ActiveWindow reason outside its allowlist.
+        reason = getattr(event, "reason", lambda: Qt.FocusReason.OtherFocusReason)()
+        try:
+            from sli_ui_toolkit.ui.managers.navigation_manager import (
+                resolve_keyboard_focus,
+            )
+
+            self._keyboard_focus = resolve_keyboard_focus(reason)
+        except Exception:
+            self._keyboard_focus = True
+        self.update()
+        super().focusInEvent(event)
+
+    def focusOutEvent(self, event) -> None:  # noqa: N802
+        self._keyboard_focus = False
+        # Leaving the widget ends edit mode but keeps the live value (same as
+        # the toolkit Slider's focus-out); only Esc reverts.
+        self._editing = False
+        self.update()
+        super().focusOutEvent(event)
+
+    def keyPressEvent(self, event) -> None:  # noqa: N802
+        key = event.key()
+        if key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+            if self._editing:
+                self._leave_edit_mode(commit=True)
+            else:
+                self._enter_edit_mode()
+            event.accept()
+            return
+        if key == Qt.Key.Key_Escape:
+            if self._editing:
+                self._leave_edit_mode(commit=False)
+                event.accept()
+                return
+            # Not editing: Esc propagates to the dialog's reject().
+            super().keyPressEvent(event)
+            return
+        if self._editing:
+            arrow = self._EDIT_ADJUST_KEYS.get(key)
+            if arrow is not None:
+                self._adjust_sv(arrow)
+                event.accept()
+                return
+            super().keyPressEvent(event)
+            return
+        if key in self._NAV_ARROW_KEYS:
+            # Not editing: arrows are the picker row section's (ring walk).
+            # Ignore so the section's trial dispatch / event filter keeps them.
+            event.ignore()
+            return
+        super().keyPressEvent(event)
+
     def _thumb_center(self, rect: QRectF) -> QPointF:
         margin = self._thumb_radius_px + 1.6
         raw_x = rect.left() + self._sat * rect.width()
@@ -215,10 +369,7 @@ class _SVSquare(QWidget):
             return
         sat = max(0.0, min(1.0, (pos.x() - rect.left()) / rect.width()))
         val = max(0.0, min(1.0, 1.0 - (pos.y() - rect.top()) / rect.height()))
-        if sat != self._sat or val != self._val:
-            self._sat, self._val = sat, val
-            self.update()
-            self.svChanged.emit(sat, val)
+        self._apply_sv(sat, val)
 
     def mousePressEvent(self, event) -> None:
         if event.button() == Qt.MouseButton.LeftButton:
@@ -297,6 +448,14 @@ class _SVSquare(QWidget):
             thumb_shadow = tmp
         painter.setPen(QPen(thumb_shadow, 1.2))
         painter.drawEllipse(center, thumb_radius, thumb_radius)
+
+        # Keyboard focus ring — the toolkit's shared helper (the same one
+        # Switch/Slider use), drawn last so it sits over the gradient. Only
+        # keyboard modality paints it; a mouse click focuses silently.
+        if self._keyboard_focus and self.hasFocus():
+            paint_focus_ring(
+                self, painter, self.theme_manager, corner_radius=radius
+            )
 
 
 class _PreviewChip(QWidget):
@@ -419,8 +578,10 @@ class ColorPickerDialog(ThemedDialog):
         # the layout (``_fields_container`` wraps the otherwise-bare fields
         # QHBoxLayout), so the section's ownership is exact and the walk is
         # container order — never the auto section's y-cluster heuristic.
-        # The SV square is NoFocus and drops out of its row automatically; the
-        # chips are StrongFocus (recents.py). See the module docstring.
+        # The SV square is StrongFocus (it joins this row's walk); its bare
+        # arrows stay the section's until Enter enters its value-edit mode —
+        # see ``_SVSquare.is_editing``. The chips are StrongFocus too
+        # (recents.py). See the module docstring.
         declare_navigation_rows(
             self,
             [
@@ -611,10 +772,11 @@ class ColorPickerDialog(ThemedDialog):
         self._picker_row = QHBoxLayout(self._picker_container)
         self._picker_row.setContentsMargins(0, 0, 0, 0)
         self._picker_row.setSpacing(0)
-        # The SV square stays mouse-only on purpose: it is a 2D pointer
-        # surface with no row/column model, so arrow keys there would fight
-        # the picker's row navigation instead of meaning one axis each (see
-        # the picker's ToolbarRowsSection registration below).
+        # The SV square is a navigation stop (StrongFocus) but its bare arrows
+        # stay the row section's: the 2D surface has no row/column model, so
+        # arrows would fight the ring walk. Enter enters its explicit edit
+        # mode, where arrows + WASD mean one axis each (W/S = value, A/D =
+        # saturation) — see ``_SVSquare.keyPressEvent``.
         self._sv = _SVSquare(self)
         self._sv.svChanged.connect(self._on_sv_changed)
         self._picker_row.addWidget(self._sv, 1)

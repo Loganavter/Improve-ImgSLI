@@ -130,7 +130,7 @@ class ImageCompareLayoutBuilder:
         ui = self.target
         layout = QVBoxLayout(page)
         layout.setContentsMargins(0, control_edge_padding(), 0, 0)
-        layout.setSpacing(6)
+        layout.setSpacing(scaled_px(6))
 
         ui.selection_widget = self._selection_widget(page)
         ui.checkbox_widget = self._checkbox_widget(page)
@@ -164,7 +164,7 @@ class ImageCompareLayoutBuilder:
         widget = ThemedBackgroundContainer(parent)
         layout = QVBoxLayout(widget)
         layout.setContentsMargins(control_edge_padding(), 0, control_edge_padding(), 0)
-        layout.setSpacing(3)
+        layout.setSpacing(scaled_px(3))
         layout.addLayout(self._button_row())
         layout.addLayout(self._combobox_row())
         return widget
@@ -232,7 +232,7 @@ class ImageCompareLayoutBuilder:
     def _button_row(self) -> QHBoxLayout:
         ui = self.target
         layout = QHBoxLayout()
-        layout.setSpacing(8)
+        layout.setSpacing(scaled_px(8))
         ui.btn_image1.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
         )
@@ -249,7 +249,7 @@ class ImageCompareLayoutBuilder:
     def _combobox_row(self) -> QHBoxLayout:
         ui = self.target
         main_layout = QHBoxLayout()
-        main_layout.setSpacing(8)
+        main_layout.setSpacing(scaled_px(8))
         main_layout.addLayout(
             self._rated_combo_layout(ui.label_rating1, ui.combo_image1), 1
         )
@@ -278,7 +278,7 @@ class ImageCompareLayoutBuilder:
     def _checkbox_layout(self) -> QHBoxLayout:
         layout = QHBoxLayout()
         layout.setContentsMargins(control_edge_padding(), 0, control_edge_padding(), 0)
-        layout.setSpacing(8)
+        layout.setSpacing(scaled_px(8))
         layout.addLayout(self._checkbox_groups_layout())
         layout.addStretch(1)
         layout.addLayout(self._checkbox_actions_layout())
@@ -287,7 +287,7 @@ class ImageCompareLayoutBuilder:
     def _checkbox_groups_layout(self) -> QHBoxLayout:
         ui = self.target
         groups_layout = QHBoxLayout()
-        groups_layout.setSpacing(16)
+        groups_layout.setSpacing(scaled_px(16))
         groups_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         ui.line_group_container = self._button_group([ui.btn_orientation], "image_compare.label.line")
         ui.view_group_container = self._button_group(
@@ -331,7 +331,7 @@ class ImageCompareLayoutBuilder:
     def _checkbox_actions_layout(self) -> QHBoxLayout:
         ui = self.target
         layout = QHBoxLayout()
-        layout.setSpacing(8)
+        layout.setSpacing(scaled_px(8))
         layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         layout.addWidget(ui.btn_quick_save)
         return layout
@@ -423,7 +423,7 @@ class ImageCompareLayoutBuilder:
         icon_label = self._slider_icon(icon)
         setattr(self.target, icon_attr, icon_label)
         row = QHBoxLayout()
-        row.setSpacing(8)
+        row.setSpacing(scaled_px(8))
         row.addWidget(icon_label, alignment=Qt.AlignmentFlag.AlignVCenter)
         # The persistent value label sits right of the track (ValueSliderRow
         # replaces the hover hint flyout with it); a fixed-width pad keeps
@@ -444,7 +444,7 @@ class ImageCompareLayoutBuilder:
         ui = self.target
         layout = QHBoxLayout()
         layout.setContentsMargins(control_edge_padding(), 0, control_edge_padding(), 0)
-        layout.setSpacing(8)
+        layout.setSpacing(scaled_px(8))
         ui.edit_name1.setMinimumHeight(scaled_px(30))
         ui.edit_name2.setMinimumHeight(scaled_px(30))
         layout.addWidget(ui.label_edit_name1)

@@ -102,31 +102,8 @@ _CANVAS_IMAGE_SPACE = "canvas image-space minimum (UI-scale plan non-goal)"
 #: Drain wave (plan-live-appearance-fixes-2026-10-19) removes entries as it
 #: converts each site; never add an entry without a real reason.
 EXEMPTED_SITES: dict[str, dict[str, tuple[int, str]]] = {
-    "src/tabs/image_compare/plugins/video_editor/layout_geometry.py": {
-        "MAX_VIDEO_EDITOR_SETTINGS_WIDTH = scaled_px(650)": (1, _IMPORT_BAKE),
-        "MIN_VIDEO_EDITOR_DIALOG_HEIGHT = scaled_px(600)": (1, _IMPORT_BAKE),
-        "MIN_VIDEO_EDITOR_PREVIEW_HEIGHT = scaled_px(135)": (1, _IMPORT_BAKE),
-        "MIN_VIDEO_EDITOR_PREVIEW_WIDTH = scaled_px(240)": (1, _IMPORT_BAKE),
-        "MIN_VIDEO_EDITOR_SETTINGS_WIDTH = scaled_px(350)": (1, _IMPORT_BAKE),
-        "VIDEO_EDITOR_TABS_CONTENT_H_MARGINS_PX = scaled_px(24)": (1, _IMPORT_BAKE),
-        "VIDEO_EDITOR_TOP_HORIZONTAL_SPACING_PX = scaled_px(10)": (1, _IMPORT_BAKE),
-        "VIDEO_EDITOR_TOP_MARGIN_PX = scaled_px(20)": (1, _IMPORT_BAKE),
-    },
-    "src/tabs/image_compare/presenters/toolbar/orientation.py": {
-        "QSize(32, 28)": (1, _DESIGN_PX_API),
-    },
-    "src/tabs/image_compare/ui/layout.py": {
-        "setSpacing(16)": (1, _DRAIN),
-        "setSpacing(3)": (1, _DRAIN),
-        "setSpacing(6)": (1, _DRAIN),
-        "setSpacing(8)": (6, _DRAIN),
-    },
     "src/tabs/image_compare/ui/primitives.py": {
         "setMinimumSize(200, 150)": (1, _CANVAS_IMAGE_SPACE),
-    },
-    "src/tabs/image_compare/ui/transient_magnifier_instances.py": {
-        "QSize(26, 24)": (1, _DESIGN_PX_API),
-        "QSize(32, 24)": (1, _DESIGN_PX_API),
     },
     "src/tabs/image_gallery/ui/card/context_menu/icons.py": {
         "QSize(64, 64)": (1, _RASTER),

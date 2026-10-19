@@ -142,8 +142,9 @@ def test_color_picker_every_interactive_control_is_owned(qapp, tmp_path):
                 f"{type(control).__name__} is an orphan — no section owns it"
             )
         _assert_all_owned(dialog)
-        # The SV square stays a deliberate mouse-only service widget.
-        assert dialog._sv.focusPolicy() == Qt.FocusPolicy.NoFocus
+        # The SV square is a keyboard stop like every other value control
+        # (its own Enter-gated edit contract, see the picker docs).
+        assert dialog._sv.focusPolicy() == Qt.FocusPolicy.StrongFocus
     finally:
         dialog.close()
 

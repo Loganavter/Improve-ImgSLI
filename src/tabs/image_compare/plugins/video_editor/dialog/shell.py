@@ -25,10 +25,10 @@ from tabs.image_compare.plugins.video_editor.dialog.sections import (
     create_toolbar,
 )
 from tabs.image_compare.plugins.video_editor.layout_geometry import (
-    MIN_VIDEO_EDITOR_DIALOG_HEIGHT,
-    MIN_VIDEO_EDITOR_PREVIEW_HEIGHT,
-    MIN_VIDEO_EDITOR_PREVIEW_WIDTH,
-    MIN_VIDEO_EDITOR_SETTINGS_WIDTH,
+    MIN_VIDEO_EDITOR_DIALOG_HEIGHT_PX,
+    MIN_VIDEO_EDITOR_PREVIEW_HEIGHT_PX,
+    MIN_VIDEO_EDITOR_PREVIEW_WIDTH_PX,
+    MIN_VIDEO_EDITOR_SETTINGS_WIDTH_PX,
     VIDEO_EDITOR_TOP_HORIZONTAL_SPACING_PX,
 )
 from tabs.image_compare.plugins.video_editor.dialog.export import VideoEditorDialogExport
@@ -83,7 +83,7 @@ class VideoEditorDialog(ThemedDialog):
 
         self.setWindowTitle(tr("video.video_editor_exporter", self.current_language))
         self.resize(scaled_px(1200), scaled_px(850))
-        self.setMinimumHeight(MIN_VIDEO_EDITOR_DIALOG_HEIGHT)
+        self.setMinimumHeight(scaled_px(MIN_VIDEO_EDITOR_DIALOG_HEIGHT_PX))
 
         self.setWindowFlags(
             Qt.WindowType.Window
@@ -201,7 +201,7 @@ class VideoEditorDialog(ThemedDialog):
         self.top_container = ThemedBackgroundContainer()
         top_layout = QHBoxLayout(self.top_container)
         top_layout.setContentsMargins(scaled_px(10), scaled_px(10), scaled_px(10), scaled_px(10))
-        top_layout.setSpacing(VIDEO_EDITOR_TOP_HORIZONTAL_SPACING_PX)
+        top_layout.setSpacing(scaled_px(VIDEO_EDITOR_TOP_HORIZONTAL_SPACING_PX))
 
         canvas = create_canvas_widget()
         if canvas is None:
@@ -221,13 +221,15 @@ class VideoEditorDialog(ThemedDialog):
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
         )
         self.preview_label.setMinimumSize(
-            MIN_VIDEO_EDITOR_PREVIEW_WIDTH,
-            MIN_VIDEO_EDITOR_PREVIEW_HEIGHT,
+            scaled_px(MIN_VIDEO_EDITOR_PREVIEW_WIDTH_PX),
+            scaled_px(MIN_VIDEO_EDITOR_PREVIEW_HEIGHT_PX),
         )
         top_layout.addWidget(self.preview_label, stretch=1)
 
         self.settings_panel = build_settings_panel(self)
-        self.settings_panel.setMinimumWidth(MIN_VIDEO_EDITOR_SETTINGS_WIDTH)
+        self.settings_panel.setMinimumWidth(
+            scaled_px(MIN_VIDEO_EDITOR_SETTINGS_WIDTH_PX)
+        )
         self.settings_panel.setSizePolicy(
             QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Preferred
         )
