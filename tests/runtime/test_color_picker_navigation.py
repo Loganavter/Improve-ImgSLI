@@ -649,13 +649,13 @@ def test_enter_commits_the_edited_value_and_leaves_edit_mode(qapp, store, host):
         assert dialog.isVisible(), "committing the square must not accept the dialog"
 
         # Arrows are the section's again once edit mode is left.
-        QTest.keyClick(sv, Qt.Key.Key_Left)
+        QTest.keyClick(sv, Qt.Key.Key_Right)
         qapp.processEvents()
         assert _sv_state(sv) == committed_state, (
             "after commit arrows must not edit the value"
         )
         assert QApplication.focusWidget() is dialog._hue_slider, (
-            "after commit Left must step the row, not edit the square"
+            "after commit Right must step the row, not edit the square"
         )
     finally:
         NavigationManager.get_instance().unregister(dialog)
@@ -701,13 +701,28 @@ def test_escape_reverts_to_the_value_captured_on_entering_edit_mode(
 
 
 def test_keyboard_focus_paints_the_shared_ring_and_mouse_focus_does_not(
-    qapp, store, host
+    qapp, store, host, monkeypatch
 ):
     """Distinct-content render check, the switch-focus-ring idiom.
 
     ``grab()`` reads real pixels, so a ring that is only computed (but never
-    painted) would pass a state assertion and fail here.
+    painted) would pass a state assertion and fail here. The helper is also
+    spied on to prove the widget uses the toolkit's shared ``paint_focus_ring``
+    rather than a second, hand-rolled ring.
     """
+    import ui.widgets.color.picker_dialog as picker_module
+
+    ring_calls: list[tuple[object, float | None]] = []
+    real_ring = picker_module.paint_focus_ring
+
+    def _spy_ring(widget, painter, theme_manager=None, *, corner_radius=None):
+        ring_calls.append((widget, corner_radius))
+        return real_ring(
+            widget, painter, theme_manager, corner_radius=corner_radius
+        )
+
+    monkeypatch.setattr(picker_module, "paint_focus_ring", _spy_ring)
+
     dialog = _make_dialog(qapp, store, host)
     try:
         sv = dialog._sv
@@ -717,6 +732,7 @@ def test_keyboard_focus_paints_the_shared_ring_and_mouse_focus_does_not(
         sv.set_sv(0.5, 0.5)
         qapp.processEvents()
         unfocused = sv.grab().toImage()
+        assert ring_calls == [], "an unfocused square must not draw the ring"
 
         # A real mouse click focuses the square under mouse modality.
         QTest.mouseClick(
@@ -733,6 +749,9 @@ def test_keyboard_focus_paints_the_shared_ring_and_mouse_focus_does_not(
         assert mouse_focused == unfocused, (
             "mouse focus must not paint the keyboard focus ring"
         )
+        assert ring_calls == [], (
+            "mouse focus must not even call the shared ring helper"
+        )
 
         _kbd_focus(sv)
         sv.set_sv(0.5, 0.5)
@@ -745,6 +764,13 @@ def test_keyboard_focus_paints_the_shared_ring_and_mouse_focus_does_not(
         assert keyboard_focused != unfocused, (
             "keyboard focus must change the rendered pixels (shared "
             "paint_focus_ring), not just the state flag"
+        )
+        assert ring_calls, "keyboard focus must call the toolkit's paint_focus_ring"
+        assert ring_calls[-1][0] is sv, (
+            "the ring must be drawn for the square itself"
+        )
+        assert ring_calls[-1][1] is not None, (
+            "the square's own 8 px corner radius must be passed to the ring"
         )
     finally:
         NavigationManager.get_instance().unregister(dialog)

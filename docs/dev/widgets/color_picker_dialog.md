@@ -35,15 +35,23 @@ clicks, `finished` on close.
 
 ## Keyboard
 
-The dialog registers one `ToolbarRowsSection` (`tag="color-picker"`) over its
-two rows in visual order: the recents chips row, then the action buttons
-(Cancel / OK). Chips are `StrongFocus` and paint the toolkit focus ring;
+The dialog registers one `ToolbarRowsSection` (`tag="color-picker"`) over four
+rows in visual order: SV/hue/alpha picker, value fields, recents chips, action
+buttons. Chips are `StrongFocus` and paint the toolkit focus ring;
 `Enter`/`Space` on a chip applies that colour (the same signal a click
 emits), and `Enter` on OK accepts. `Esc` (or OK / Cancel / close) returns
 focus to the opener — `opener=` when the caller passes it (e.g.
 `ColorSwatch`), otherwise the widget that was focused when the dialog opened.
-The SV square is deliberately mouse-only: it is a 2D pointer surface with no
-row/column model.
+
+The SV square is `StrongFocus` (so the row walk reaches it) but, being a 2D
+surface with no single row/column axis, it does not consume bare arrows: the
+section keeps them for the ring walk and the colour never changes. `Enter`
+enters its explicit value-edit mode (`is_editing()` — the toolkit's value-edit
+contract): arrows and `W`/`A`/`S`/`D` move the crosshair (`W`/`S` = value,
+`A`/`D` = saturation), `Enter` commits and leaves the mode, `Esc` reverts to
+the saturation/value captured on entry. The keyboard-focus ring is the
+toolkit's shared `paint_focus_ring` (keyboard modality only — a mouse click
+focuses without a ring).
 
 ## Inspection
 
