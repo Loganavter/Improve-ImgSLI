@@ -23,6 +23,7 @@ there either).
 from __future__ import annotations
 from sli_ui_toolkit.ui.inspector.spec import InspectSpec, SpecField  # noqa: E402
 
+import shiboken6
 from PySide6.QtCore import QRectF, QSettings, Qt, Signal
 from PySide6.QtGui import QBrush, QColor, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import QWidget
@@ -54,6 +55,12 @@ _CHIP_SIZE_DP = 64
 _CHIP_CORNER_RADIUS_DP = 10.0
 _CHIP_SWATCH_RADIUS_DP = 6.0
 _CHIP_SWATCH_PADDING_DP = 6.0
+# Gutter between the chip's outer edge and its content (swatch + chrome): the
+# FocusLayer ring is painted inside the content rect, so without a gutter the
+# ring sits flush against the widget border and reads as part of the swatch
+# (owner report 2026-10-19). Design px; resolved per instance in
+# ``apply_metrics`` because a class-level value would freeze at import.
+_CHIP_FOCUS_GUTTER_DP = 2.0
 
 # Assumed content-well width (design px) for the pre-layout chip wrap: the
 # picker dialog's max width (640) minus its shelf root margins (32) minus
@@ -177,9 +184,22 @@ class _RecentColorChip(QWidget):
         self._corner_radius = float(scaled_px(_CHIP_CORNER_RADIUS_DP))
         self._swatch_radius = float(scaled_px(_CHIP_SWATCH_RADIUS_DP))
         self._swatch_padding = float(scaled_px(_CHIP_SWATCH_PADDING_DP))
+        self._focus_gutter = float(scaled_px(_CHIP_FOCUS_GUTTER_DP))
         size = scaled_px(_CHIP_SIZE_DP)
         self.setFixedSize(size, size)
         self.update()
+
+    def content_rect(self) -> QRectF:
+        """The chip's content box: the widget rect inset by the focus gutter.
+
+        The swatch, hover ring and the FocusLayer focus ring all draw inside
+        this box. The gutter is what visually separates the ring from the
+        swatch instead of leaving the ring flush on the chip's outer edge.
+        Kept as a method (not a cached rect) because the gutter and size are
+        re-derived on scale changes.
+        """
+        gutter = self._focus_gutter
+        return QRectF(self.rect()).adjusted(gutter, gutter, -gutter, -gutter)
 
     def focusInEvent(self, event) -> None:  # noqa: N802
         try:
@@ -243,7 +263,9 @@ class _RecentColorChip(QWidget):
     def paintEvent(self, _event) -> None:
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        rect = QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5)
+        # Every visible part lives inside the content rect: the focus gutter
+        # keeps the FocusLayer ring off the widget edge (see content_rect).
+        rect = self.content_rect().adjusted(0.5, 0.5, -0.5, -0.5)
         radius = self._corner_radius
 
         swatch = rect.adjusted(
@@ -288,7 +310,7 @@ class _RecentColorChip(QWidget):
         return DrawContext(
             widget=self,
             painter=painter,
-            rect=QRectF(self.rect()),
+            rect=self.content_rect(),
             states=frozenset(),
             variant="default",
             corner_radius=int(self._corner_radius),
@@ -386,6 +408,36 @@ class RecentColorsRow(ShelfWidget):
         self.content_host().setFixedHeight(
             rows * size + (rows - 1) * spacing + margin_top + margin_bottom
         )
+
+    def live_chips(self) -> list[_RecentColorChip]:
+        """Chips still alive and owned by this row (deleted ones dropped)."""
+        live: list[_RecentColorChip] = []
+        for chip in self._chip_widgets:
+            try:
+                if shiboken6.isValid(chip):  # type: ignore[attr-defined]
+                    live.append(chip)
+            except Exception:
+                continue
+        return live
+
+    def chip_rows(self) -> list[list[_RecentColorChip]]:
+        """Live chips grouped into the visual rows the wrap actually produced.
+
+        Derived from the laid-out geometry left by ``_relayout_chips`` (row =
+        same top ``y``, ordered by ``x`` inside a row) instead of a recomputed
+        column count: a resize or UI-scale change re-wraps the chips, and a
+        stale column guess would send keyboard focus to the wrong chip
+        (owner report 2026-10-19, the recents shelf is a 2D grid). Rescanned on
+        every call — never cached.
+        """
+        chips = sorted(self.live_chips(), key=lambda chip: (chip.y(), chip.x()))
+        rows: list[list[_RecentColorChip]] = []
+        for chip in chips:
+            if rows and chip.y() == rows[-1][0].y():
+                rows[-1].append(chip)
+            else:
+                rows.append([chip])
+        return rows
 
     def set_colors(self, hex_codes: list[str]) -> None:
         for chip in self._chip_widgets:

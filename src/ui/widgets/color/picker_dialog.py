@@ -41,6 +41,14 @@ a ring), drawn on the outer widget boundary while the gradient/thumb live in
 focus rather than as the square's border. Esc (or any close path) returns
 the keyboard to the widget that opened the picker.
 
+Entry from the opener is the manager's extension handoff, not a bespoke key
+filter: the dialog links itself to its opener (``NavigationManager.link(
+opener, self, "below")`` — a dialog below the button it belongs to) and
+implements ``focus_first_child()``, which is what the opener's row section
+calls on Down. Without that pair the picker's rows are perfectly walkable
+once focus is inside, but the rings never get there — the host section has
+nothing linked on its ``"below"`` side and Down dies on the toolbar.
+
 Kept API-compatible with the subset of ``QColorDialog`` the callers used
 (``colorSelected``, ``finished``, ``show``/``raise_``/``activateWindow``,
 ``setWindowTitle``) so call sites only need to swap the constructor and
@@ -68,7 +76,7 @@ from PySide6.QtWidgets import QApplication, QHBoxLayout, QSizePolicy, QVBoxLayou
 from resources.translations import tr
 from shared_toolkit.ui.layout_sizing import GeometryApplyPolicy, apply_dialog_geometry
 from shared_toolkit.ui.themed_dialog import ThemedDialog
-from sli_ui_toolkit.managers import declare_navigation_rows, scaled_px
+from sli_ui_toolkit.managers import NavigationManager, declare_navigation_rows, scaled_px
 from sli_ui_toolkit.theme import ThemeManager
 from sli_ui_toolkit.ui.managers import connect_ui_metrics
 from sli_ui_toolkit.ui.managers.ui_metrics import AXIS_FONT, AXIS_SCALE
@@ -80,6 +88,10 @@ from ui.widgets.color.recents import (
     RecentColorsRow,
     RecentColorsStore,
     checkerboard_brush,
+)
+from ui.widgets.color.recents_nav import (
+    register_recents_grid,
+    unregister_recents_grid,
 )
 from ui.widgets.color.sv_movement import KeyHoldStepper
 from ui.widgets.color.value_format import (
@@ -656,6 +668,26 @@ class ColorPickerDialog(ThemedDialog):
             ],
             tag="color-picker",
         )
+        # The recents shelf wraps its chips onto several visual rows, so the
+        # whole shelf cannot stay one linear row: swap the declared-rows
+        # section for a recents-aware one (Left/Right stay row-local, Up/Down
+        # walk the visual rows, block edges decline to the row above/below).
+        # See ``recents_nav`` for why this is a section swap and not a second
+        # registration; it is unregistered in ``done()`` below.
+        register_recents_grid(self, self._recents_row)
+        # The other half of the picker's keyboard navigation: registering the
+        # row section only makes the dialog walkable once focus is INSIDE it.
+        # A non-modal dialog owns the keyboard through the manager's extension
+        # mechanism — the host toolbar's section asks
+        # ``extension_for(focused, "below")`` for a linked continuation on
+        # Down and enters it through ``focus_first_child()``. Without this
+        # link the opener's Down is a dead key (the host stays on its last
+        # row), which is the live "the ring never enters the picker" report.
+        # ``link`` is a static pairing filtered on visibility at lookup time,
+        # so a closed/hidden picker is never entered and nothing has to be
+        # unlinked on every hide (both sides auto-drop on destruction).
+        self._nav_opener: QWidget | None = None
+        self._bind_opener_navigation()
         self.set_show_alpha(show_alpha)
         self._preview.set_before(self._color)
         self._sync_from_color()
@@ -690,10 +722,75 @@ class ColorPickerDialog(ThemedDialog):
 
     def done(self, result: int) -> None:  # noqa: N802
         # Every close path (Esc → reject, OK → accept, Cancel, window close)
-        # funnels through QDialog.done — hand the keyboard back to the widget
+        # funnels through QDialog.done — drop the recents-grid section swap
+        # (the dialog may be reused) and hand the keyboard back to the widget
         # that opened the picker instead of leaving focus nowhere.
+        unregister_recents_grid(self)
         super().done(result)
         self._restore_opener_focus()
+
+    def _bind_opener_navigation(self) -> None:
+        """Link the opener to this dialog as its ``"below"`` continuation.
+
+        A non-modal dialog that owns the keyboard must be *entered* through
+        ``NavigationManager``'s extension registry: the opener's section
+        (``ToolbarRowsSection`` / ``AutoNavigationSection``) looks up
+        ``extension_for(focused, "below")`` on Down and calls
+        ``focus_first_child()`` on the linked widget. The pairing is
+        registered by the dialog itself because the dialog is the only side
+        that knows both ends — every open path passes (or implies) the
+        opener, and there are six call sites (image_compare settings, export,
+        onboarding, multi_compare, ``ColorSwatch``) that would otherwise each
+        need their own binding.
+        """
+        opener = self._opener
+        if opener is None:
+            return
+        try:
+            if not shiboken6.isValid(opener):
+                return
+        except Exception:
+            return
+        try:
+            NavigationManager.get_instance().link(opener, self, "below")
+        except Exception:
+            return
+        self._nav_opener = opener
+
+    def focus_first_child(self) -> bool:
+        """Enter the picker (extension contract) at its first row's first control.
+
+        Called by the opener's navigation section when the linked side's arrow
+        is pressed — ``hasattr(extension, "focus_first_child")`` is the gate,
+        so a linked dialog without this method is simply skipped and Down
+        stays in the host. Lands on the same target as the picker's own
+        owner-bootstrap: the section's ``focus_first`` (topmost declared row,
+        leftmost focusable — the SV square).
+
+        Activation is part of the handoff, not a steal from the host: Qt
+        delivers arrow keys only to the focus widget of the ACTIVE window, so
+        setting focus inside a visible-but-inactive dialog would paint a ring
+        in the picker while every arrow kept walking the toolbar behind it.
+        The user's own key gesture is entering the dialog; the close path
+        stays ``setFocus``-only on purpose (see ``_restore_opener_focus``).
+        """
+        try:
+            if not self.isActiveWindow():
+                self.activateWindow()
+        except Exception:
+            pass
+        try:
+            if NavigationManager.get_instance().focus_section_for_owner(self):
+                return True
+        except Exception:
+            pass
+        # No section (registration swallowed a failure): still honor the
+        # extension contract by landing on the picker row's first control.
+        try:
+            self._sv.setFocus(NavigationManager.get_instance().current_focus_reason())
+        except Exception:
+            return False
+        return True
 
     def _restore_opener_focus(self) -> None:
         """Give the keyboard back to the widget that opened the picker.

@@ -1288,6 +1288,16 @@
       }
     },
     {
+      "path": "src/ui/widgets/color/recents_nav.py",
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=nav-section reason=\"recents shelf is a 2D grid, not one navigation row\"",
+      "parsed": {
+        "pattern": "nav-section",
+        "reason": "recents shelf is a 2D grid, not one navigation row"
+      }
+    },
+    {
       "path": "src/ui/widgets/rating_item.py",
       "limit": 500,
       "marker": "Audit-Meta:",
