@@ -121,14 +121,19 @@ def popup_gallery_card_context_menu(  # type: ignore[no-untyped-def]
                 pass
 
         def _do_analyze() -> None:
+            # Selection action: EVERY resolved target is analyzed. The old
+            # body took ``next(iter(state.selected_paths))`` — set iteration
+            # order is not a scope decision (one arbitrary card of a group
+            # ran). Failures stay per-item isolated in the resolver helper.
             try:
                 if callable(on_analyze):
                     on_analyze()
                     return
-                sel = getattr(getattr(owner, "state", None), "selected_paths", None) or set()
-                if sel:
-                    p = next(iter(sel))
-                    owner.analyze_item_by_path(p)  # type: ignore[attr-defined]
+                from tabs.image_gallery.use_cases import action_scope
+
+                fn = getattr(owner, "analyze_item_by_path", None)
+                if callable(fn):
+                    action_scope.apply_to_targets(owner, fn, card_path=path)
             except Exception:
                 pass
 
@@ -139,6 +144,9 @@ def popup_gallery_card_context_menu(  # type: ignore[no-untyped-def]
                     return
                 from tabs.image_gallery.use_cases.carry import find_similar_selected
 
+                # Same scope mechanism as Analyze: the use-case reads the
+                # whole resolved selection via ``action_scope.selected_paths``
+                # (never a single arbitrary member).
                 find_similar_selected(owner)
             except Exception:
                 pass

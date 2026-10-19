@@ -174,39 +174,21 @@ def _dismiss_one(overlay) -> None:
 
 
 def current_path(owner) -> Path | None:
-    """Return current gallery path for keyboard actions.
+    """The FIRST resolved target — single-path API for keyboard actions.
 
-    Prefers selected_paths from the triage owner, then focused card's
-    gallery_path property, then first item.
+    Delegates to ``use_cases.action_scope.resolve_targets`` (selection →
+    clicked/focused card → first item); keyboard actions that can only take
+    one path (``B`` make-best, Enter fallback analyze) use its head. Actions
+    that apply to a set must call the resolver themselves instead of looping
+    this function — the old per-site selection ladders disagreed.
     """
-    # Selected first
     try:
-        triage_owner = owner_for_triage(owner)
-        try:
-            sel = triage_owner.state.selected_paths  # type: ignore[attr-defined]
-            if sel:
-                for p in sel:
-                    return Path(p) if not isinstance(p, Path) else p
-        except Exception:
-            pass
+        from tabs.image_gallery.use_cases import action_scope
+
+        targets = action_scope.resolve_targets(owner_for_triage(owner))
     except Exception:
-        pass
-    # Fallback to items / focused card
-    try:
-        items = owner._items  # type: ignore[attr-defined]
-        if items:
-            try:
-                fw = QApplication.focusWidget()
-                if fw is not None and hasattr(fw, "property"):
-                    prop = fw.property("gallery_path")
-                    if prop:
-                        return Path(str(prop))
-            except Exception:
-                pass
-            return Path(items[0].path)
-    except Exception:
-        pass
-    return None
+        return None
+    return targets[0] if targets else None
 
 
 def handle_key(owner, event) -> None:

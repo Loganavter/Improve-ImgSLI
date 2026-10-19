@@ -9,47 +9,18 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from tabs.image_gallery.use_cases.action_scope import resolve_targets
+
 
 def _action_targets(owner, path: Path) -> list[Path]:
     """Cards a per-card menu action applies to (file-manager rule).
 
-    Clicked-inside-selection → the whole selection (ordered by
-    ``selected_order`` when available, like the keyboard path);
-    clicked-outside → just the clicked card. Right-click never mutates
-    the selection itself.
+    Delegates to the ONE scope mechanism (``use_cases.action_scope``):
+    clicked-inside-selection → the whole selection (``selected_order``);
+    clicked-outside → just the clicked card. Right-click never mutates the
+    selection itself.
     """
-    try:
-        clicked = Path(path) if not isinstance(path, Path) else path
-    except Exception:
-        return [path]
-    try:
-        sel = getattr(getattr(owner, "state", None), "selected_paths", None) or set()
-        sel_set = {Path(p) if not isinstance(p, Path) else p for p in sel}
-    except Exception:
-        return [clicked]
-    if clicked not in sel_set:
-        return [clicked]
-    try:
-        order = getattr(getattr(owner, "state", None), "selected_order", None)
-    except Exception:
-        order = None
-    if order:
-        try:
-            ordered = [Path(p) if not isinstance(p, Path) else p for p in order]
-            targets = [p for p in ordered if p in sel_set]
-            missing = [p for p in sel_set if p not in set(targets)]
-            try:
-                missing = sorted(missing, key=str)
-            except Exception:
-                pass
-            targets.extend(missing)
-            return targets
-        except Exception:
-            pass
-    try:
-        return sorted(sel_set, key=str)
-    except Exception:
-        return list(sel_set)
+    return resolve_targets(owner, card_path=path)
 
 
 def _resolve_move_controller(owner):
@@ -259,13 +230,15 @@ def _ctx_remove(owner, path: Path) -> None:
 def _ctx_reset_metrics(owner, path: Path) -> None:
     """Reset the measured-metrics caches for the menu targets, then recompute.
 
-    File-manager rule via ``_action_targets`` (whole selection when the clicked
-    card is selected, else the clicked card alone) — the same target resolution
-    its neighbours use. Routes into ``use_cases.cache_reset``, which clears the
-    in-memory + disk caches and re-enters the triage rebuild. Never raises.
+    Targets come from the ONE scope resolver (``use_cases.action_scope``):
+    whole selection when the clicked card is selected, else the clicked card
+    alone. Routes into ``use_cases.cache_reset``, which clears the in-memory +
+    disk caches and re-enters the triage rebuild. An empty scope passes
+    ``paths=None`` — the whole pool — preserving the maintenance contract.
+    Never raises.
     """
     try:
-        targets = _action_targets(owner, path)
+        targets = resolve_targets(owner, card_path=path)
     except Exception:
         targets = []
     try:
