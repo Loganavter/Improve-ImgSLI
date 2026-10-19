@@ -74,6 +74,10 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import QApplication, QHBoxLayout, QSizePolicy, QVBoxLayout, QWidget
 
 from resources.translations import tr
+from shared_toolkit.ui.decorate_dialog import (
+    register_dialog_title_bar_navigation,
+    unregister_dialog_title_bar_navigation,
+)
 from shared_toolkit.ui.layout_sizing import GeometryApplyPolicy, apply_dialog_geometry
 from shared_toolkit.ui.themed_dialog import ThemedDialog
 from sli_ui_toolkit.managers import NavigationManager, declare_navigation_rows, scaled_px
@@ -706,6 +710,15 @@ class ColorPickerDialog(ThemedDialog):
 
         self.mark_theme_ui_ready()
 
+    def showEvent(self, event) -> None:  # noqa: N802
+        super().showEvent(event)
+        # The picker has no explicit decorate_dialog call: the app-wide
+        # decorator builds the CSD bar at Polish time, which lands just
+        # before this event (production). Register the bar's section once it
+        # exists — Down from the bar re-enters the picker's first row via the
+        # section's own fallback, and Tab reaches the bar's close button.
+        register_dialog_title_bar_navigation(self)
+
     def keyPressEvent(self, event) -> None:  # noqa: N802
         # Return/Enter accept (QColorDialog-compatible), but deliberately NOT
         # via a window-level QShortcut: a shortcut swallows the key before the
@@ -726,6 +739,7 @@ class ColorPickerDialog(ThemedDialog):
         # (the dialog may be reused) and hand the keyboard back to the widget
         # that opened the picker instead of leaving focus nowhere.
         unregister_recents_grid(self)
+        unregister_dialog_title_bar_navigation(self)
         super().done(result)
         self._restore_opener_focus()
 

@@ -17,6 +17,8 @@ from tabs.host_helpers import (
     decorate_dialog,
     handle_application_font_change,
     install_dialog_help_menu,
+    register_dialog_title_bar_navigation,
+    unregister_dialog_title_bar_navigation,
 )
 
 from tabs.image_compare.plugins.video_editor.dialog.sections import (
@@ -602,6 +604,12 @@ class VideoEditorDialog(ThemedDialog):
         # deferred bootstrap then sees focus already inside the section and
         # skips. Idempotent: re-shows (raise/unminimize) re-register cleanly.
         register_navigation(self)
+        # Title bar AFTER the dialog's modal row section: sections registered
+        # after a modal section sit above its ceiling, so the bar keeps the
+        # keyboard instead of the modal reclaim pulling focus back into the
+        # rows. Down from the bar enters the first row via the section's own
+        # Down fallback (see shared_toolkit.ui.decorate_dialog).
+        register_dialog_title_bar_navigation(self)
 
         if hasattr(self, "timeline"):
             QTimer.singleShot(100, self._fit_timeline_if_alive)
@@ -621,6 +629,7 @@ class VideoEditorDialog(ThemedDialog):
         # owner is mid-teardown. Idempotent (the manager's destroyed-hook is
         # the backstop for WA_DeleteOnClose).
         unregister_navigation(self)
+        unregister_dialog_title_bar_navigation(self)
         self._withdraw_find_actions()
         self.persistence.persist_export_settings()
         # Dialog side of the bidirectional disconnect (A-shell S1): drop

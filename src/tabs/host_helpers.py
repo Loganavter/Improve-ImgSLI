@@ -13,7 +13,12 @@ tab must live inside that tab's own package.
 
 from __future__ import annotations
 
-from shared_toolkit.ui.decorate_dialog import decorate_dialog, install_dialog_help_menu
+from shared_toolkit.ui.decorate_dialog import (
+    decorate_dialog,
+    install_dialog_help_menu,
+    register_dialog_title_bar_navigation,
+    unregister_dialog_title_bar_navigation,
+)
 from shared_toolkit.ui.layout_sizing import (
     GeometryApplyPolicy,
     apply_dialog_geometry,
@@ -52,4 +57,6 @@ __all__ = [
     "get_overlay_layer",
     "handle_application_font_change",
     "install_dialog_help_menu",
+    "register_dialog_title_bar_navigation",
+    "unregister_dialog_title_bar_navigation",
 ]

@@ -366,7 +366,14 @@ def test_nonmodal_twin_would_escape(qtbot):
     try:
         dialog = _shown_dialog(qtbot)
         try:
-            # Swap the production modal section for a non-modal twin.
+            # Swap the production modal section for a non-modal twin. The
+            # topmost CSD title-bar section is dropped too — otherwise the
+            # edge key hands off to the bar (now the neighbour above/below the
+            # dialog rows) instead of the section behind, which is the escape
+            # this control exists to demonstrate.
+            from tabs.host_helpers import unregister_dialog_title_bar_navigation
+
+            unregister_dialog_title_bar_navigation(dialog)
             manager.unregister(dialog)
             manager.register(dialog, _NonModalSection(dialog))
             dialog.raise_()
