@@ -4,6 +4,13 @@ Regression: the export window built its text labels with plain ``QLabel``,
 which never re-resolves on ``UiScale.scale_changed`` (the toolkit ``Label``
 does). At 125%/150% interface scale the surrounding controls grew while the
 labels stayed at the design-size app font.
+
+The toolkit widgets re-resolve through the unified metrics channel
+(``connect_ui_metrics``), whose ``UiMetrics.changed`` lands on the coalesced
+zero-timer's next tick — never synchronously inside ``set_factor``. Each live
+assertion below therefore drains first (``drain_until_stable``), the same way
+``tests/runtime/test_value_slider_row.py`` and the parity harness do; an
+undrained exact-equality assert reads the pre-change value (the original red).
 """
 
 from __future__ import annotations
@@ -16,6 +23,8 @@ from sli_ui_toolkit.managers import UiScale, scaled_px
 from plugins.export.dialog_sections import build_format_row
 from ui.widgets.form_controls import OutputPathSection
 from sli_ui_toolkit.widgets import CustomLineEdit
+
+from tests.helpers.drain_until_stable import drain_until_stable
 
 
 @pytest.fixture(autouse=True)
@@ -52,9 +61,13 @@ def test_export_dialog_labels_scale_live(qapp: QApplication):
     assert base > 0
 
     UiScale.get_instance().set_factor(1.5)
+    # Re-apply lands on the coalesced metrics channel's next tick, not inside
+    # set_factor — drain before asserting.
+    drain_until_stable(qapp, lambda: _label_size(dialog.fmt_label))
     assert _label_size(dialog.fmt_label) == scaled_px(12) == 18
 
     UiScale.get_instance().set_factor(1.0)
+    drain_until_stable(qapp, lambda: _label_size(dialog.fmt_label))
     assert _label_size(dialog.fmt_label) == base
 
     host.close()
@@ -79,6 +92,10 @@ def test_output_path_section_labels_scale_live(qapp: QApplication):
     assert base > 0
 
     UiScale.get_instance().set_factor(1.5)
+    drain_until_stable(
+        qapp,
+        lambda: (_label_size(section.dir_label), _label_size(section.filename_label)),
+    )
     assert _label_size(section.dir_label) == scaled_px(12)
     assert _label_size(section.filename_label) == scaled_px(12)
 
@@ -125,6 +142,9 @@ def test_export_output_editors_are_custom_line_edits_and_scale_live(qapp: QAppli
     assert base_dir_h > 0 and base_name_h > 0
 
     UiScale.get_instance().set_factor(2.0)
+    drain_until_stable(
+        qapp, lambda: (dialog.edit_dir.height(), dialog.edit_name.height())
+    )
     assert dialog.edit_dir.height() > base_dir_h
     assert dialog.edit_name.height() > base_name_h
 
