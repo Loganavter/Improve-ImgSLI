@@ -19,7 +19,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from sli_ui_toolkit.ui.managers.ui_font import apply_ui_font
-from sli_ui_toolkit.widgets import CustomGroupWidget, Label
+from sli_ui_toolkit.widgets import CustomGroupWidget, Text
 from ui.actions.search_index import PROP_GROUP
 
 if TYPE_CHECKING:
@@ -95,11 +95,27 @@ class SettingsGroupWidget(CustomGroupWidget):
             )
 
 
-def settings_body_label(text: str, parent=None, **kwargs) -> Label:
-    """Primary row label in the ``BODY`` group."""
-    return Label(text, pixel_size=SETTINGS_BODY_PX, parent=parent, **kwargs)
+def settings_body_label(text: str, parent=None, **kwargs) -> Text:
+    """Primary row label in the ``BODY`` group.
+
+    Returns the unified ``Text`` display widget in plain mode (``Label``
+    parity); call sites keep the same signature and effective pixel size.
+    """
+    return Text(
+        text,
+        parent=parent,
+        mode="plain",
+        pixel_size=SETTINGS_BODY_PX,
+        **kwargs,
+    )
 
 
-def settings_caption_label(text: str, parent=None, **kwargs) -> Label:
+def settings_caption_label(text: str, parent=None, **kwargs) -> Text:
     """Secondary hint/warning/footnote label in the ``CAPTION`` group."""
-    return Label(text, pixel_size=SETTINGS_CAPTION_PX, parent=parent, **kwargs)
+    return Text(
+        text,
+        parent=parent,
+        mode="plain",
+        pixel_size=SETTINGS_CAPTION_PX,
+        **kwargs,
+    )
