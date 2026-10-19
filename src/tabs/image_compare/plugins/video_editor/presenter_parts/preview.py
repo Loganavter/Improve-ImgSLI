@@ -253,7 +253,23 @@ class PreviewCoordinator:
         task_id = self._render_task_id
         snap = self.editor_service.get_snapshot_at(current_frame)
         if not snap:
+            # Sparse/evicted frame: drop the cached plan (it is bound to the
+            # previous frame's prepare_key) and clear the surface. Returning
+            # without invalidating left the neighbour's pixels on screen while
+            # the playhead showed this frame, and _last_render_params kept the
+            # skip check pinned to the stale render.
             self._is_rendering_preview = False
+            self._preview_frame_cache = None
+            self._last_render_params = (None, None, None)
+            canvas = getattr(self.view, "preview_label", None)
+            if canvas is not None:
+                clear = getattr(canvas, "clear", None)
+                if callable(clear):
+                    clear()
+                canvas._preview_source_key = None
+                update = getattr(canvas, "update", None)
+                if callable(update):
+                    update()
             return
 
         # render_preview_gpu returns True when it finished synchronously (or
