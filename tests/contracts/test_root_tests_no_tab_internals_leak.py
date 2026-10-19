@@ -52,6 +52,11 @@ def _tab_names() -> tuple[str, ...]:
 # rel path (POSIX, relative to repo root) -> why this file is allowed to
 # deep-import a specific tab's internals from outside that tab's own tests/.
 ALLOWED_DEEP_TAB_IMPORTS: dict[str, str] = {
+    "tests/runtime/test_dialog_title_bar_nav.py": (
+        "host-level CSD title-bar navigation contract spanning Help, the "
+        "colour picker and the video editor (the modal-ceiling example); the "
+        "video editor dialog is the fixture, not the behavior under test"
+    ),
     "tests/contracts/test_action_registry.py": (
         "generic ActionRegistry contract, image_compare is example fixture data"
     ),

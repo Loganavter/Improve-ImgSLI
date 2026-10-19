@@ -1326,6 +1326,16 @@
         "pattern": "state-machine",
         "reason": "single slider hint painter — custom paint + animations"
       }
+    },
+    {
+      "path": "src/ui/widgets/unified_list_picker/nav.py",
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=nav-section reason=\"two side-by-side list panels are a real 2D focus grid\"",
+      "parsed": {
+        "pattern": "nav-section",
+        "reason": "two side-by-side list panels are a real 2D focus grid"
+      }
     }
   ]
 }

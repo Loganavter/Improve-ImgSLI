@@ -10,8 +10,8 @@ otherwise error/warning popups would slip through with the OS native frame.
 
 from __future__ import annotations
 
-from PySide6.QtCore import QEvent, QObject
-from PySide6.QtWidgets import QApplication, QDialog, QMessageBox
+from PySide6.QtCore import QEvent, QObject, Qt
+from PySide6.QtWidgets import QApplication, QDialog, QMessageBox, QWidget
 
 from sli_ui_toolkit import CustomTitleBar, decorate_dialog as _toolkit_decorate_dialog
 from sli_ui_toolkit.theme import ThemeManager
@@ -19,6 +19,108 @@ from sli_ui_toolkit.widgets import DEFER_CLICK_AWAIT_RIPPLE
 from ui.theming import polish_themed_dialog, resolve_theme_color
 
 CUSTOM_DECORATION_RESIZE_MARGIN = 8
+
+#: Standard CSD window-control roles (the titlebarRole widget property). The
+#: toolkit creates these mouse-only (``NoFocus``); a dialog whose title bar is
+#: keyboard-navigable has to make them focus stops itself, otherwise the bar
+#: section has nothing to land on.
+_WINDOW_CONTROL_ROLES = frozenset({"min", "max", "close"})
+
+_TITLE_BAR_NAV_SECTION_ATTR = "_title_bar_nav_section"
+_DIALOG_TITLE_BAR_SECTION_CLS = None
+
+
+def _dialog_title_bar_section_cls():
+    """Lazily build the dialog-title-bar section class.
+
+    Subclasses the settings/host ``TitleBarNavigationSection`` (same
+    Left/Right delegation to ``CustomTitleBar``, same Up consumption) and adds
+    only the Down fallback a *dialog* needs: when the dialog's own row section
+    is registered after the bar (the modal video editor registers the bar
+    above its ceiling — see ``register_dialog_title_bar_navigation``) registry
+    adjacency points the wrong way, so Down enters the dialog section by
+    identity instead of relying on the manager's neighbour hand-off.
+    """
+    global _DIALOG_TITLE_BAR_SECTION_CLS
+    if _DIALOG_TITLE_BAR_SECTION_CLS is not None:
+        return _DIALOG_TITLE_BAR_SECTION_CLS
+
+    from ui.main_window.title_bar_navigation import TitleBarNavigationSection
+
+    class _DialogTitleBarNavigationSection(TitleBarNavigationSection):
+        def __init__(self, title_bar: QWidget, dialog: QDialog) -> None:
+            super().__init__(title_bar)
+            self._dialog = dialog
+
+        def navigate(self, key: int, widget: QWidget) -> bool:
+            if key == Qt.Key.Key_Down:
+                from sli_ui_toolkit.managers import NavigationManager
+
+                if NavigationManager.get_instance().focus_section_for_owner(
+                    self._dialog
+                ):
+                    return True
+            return super().navigate(key, widget)
+
+    _DIALOG_TITLE_BAR_SECTION_CLS = _DialogTitleBarNavigationSection
+    return _DIALOG_TITLE_BAR_SECTION_CLS
+
+
+def _make_window_controls_focusable(title_bar: QWidget) -> None:
+    """Turn the bar's mouse-only window controls into keyboard focus stops."""
+    for control in title_bar.findChildren(QWidget):
+        try:
+            if control.property("titlebarRole") in _WINDOW_CONTROL_ROLES:
+                control.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        except (RuntimeError, TypeError):
+            continue
+
+
+def register_dialog_title_bar_navigation(dialog: QDialog):
+    """Own a CSD-decorated dialog's title bar (idempotent).
+
+    Call before the dialog's own row section is registered so the bar is the
+    topmost section and Down/Up hand off in visual order — or from a
+    ``showEvent`` (before or after the rows) for dialogs the app-wide
+    decorator builds at Polish time, where the earlier callback only adds the
+    Down fallback. No-op until ``_csd_title_bar`` exists; returns the
+    registered section, or ``None`` when the dialog has no CSD bar. The
+    signature follows the settings shell helper; the only addition is the
+    Down fallback for a dialog whose row section is registered after the bar
+    (see ``_dialog_title_bar_section_cls``).
+    """
+    title_bar = getattr(dialog, "_csd_title_bar", None)
+    if title_bar is None:
+        return None
+
+    section = getattr(dialog, _TITLE_BAR_NAV_SECTION_ATTR, None)
+    if section is None:
+        _make_window_controls_focusable(title_bar)
+        section = _dialog_title_bar_section_cls()(title_bar, dialog)
+        dialog._title_bar_nav_section = section  # type: ignore[attr-defined]  # dynamic attr
+    try:
+        from sli_ui_toolkit.managers import NavigationManager
+
+        NavigationManager.get_instance().register(title_bar, section)
+    except Exception:
+        return section
+    return section
+
+
+def unregister_dialog_title_bar_navigation(dialog: QDialog) -> None:
+    """Drop the dialog title-bar section (idempotent)."""
+    section = getattr(dialog, _TITLE_BAR_NAV_SECTION_ATTR, None)
+    if section is None:
+        return
+    title_bar = getattr(dialog, "_csd_title_bar", None)
+    if title_bar is not None:
+        try:
+            from sli_ui_toolkit.managers import NavigationManager
+
+            NavigationManager.get_instance().unregister(title_bar)
+        except Exception:
+            pass
+    dialog._title_bar_nav_section = None  # type: ignore[attr-defined]  # dynamic attr
 
 
 def resolve_csd_band(window) -> int:

@@ -139,9 +139,15 @@ class HelpDialog(ThemedDialog):
         install_dialog_geometry_lifecycle(self, self._apply_dialog_geometry)
         self.mark_theme_ui_ready()
 
-        from shared_toolkit.ui.decorate_dialog import decorate_dialog
+        from shared_toolkit.ui.decorate_dialog import (
+            decorate_dialog,
+            register_dialog_title_bar_navigation,
+        )
 
         decorate_dialog(self, title=title)
+        # Topmost section: Down from the bar enters the back bar, Up from the
+        # back bar returns here. Registered before the help row sections.
+        register_dialog_title_bar_navigation(self)
         self._setup_topic_search()
         self._setup_help_navigation()
         self._render_current()
@@ -367,6 +373,11 @@ class HelpDialog(ThemedDialog):
         global registry (focus can be routed into dead widgets).
         Idempotent — safe to call from both close and destroy paths.
         """
+        from shared_toolkit.ui.decorate_dialog import (
+            unregister_dialog_title_bar_navigation,
+        )
+
+        unregister_dialog_title_bar_navigation(self)
         if not getattr(self, "_help_navigation_installed", None):
             return
         self._help_navigation_installed = False
