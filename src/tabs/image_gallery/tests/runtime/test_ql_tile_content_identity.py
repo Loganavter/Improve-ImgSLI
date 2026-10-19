@@ -34,8 +34,17 @@ from engine.gpu.tiled_image_view import (
     TiledImageView,
 )
 
+from core.evidence.journal import record_evidence, reset_journal, verdict
+
 
 pytest.importorskip("PIL")
+
+
+@pytest.fixture(autouse=True)
+def _reset_evidence_journal():
+    """The evidence journal is process-global: reset per probe, never leak."""
+    reset_journal()
+    yield
 
 
 # ---------------------------------------------------------------------------
@@ -261,13 +270,19 @@ def _tile_fingerprint(store, grid, index):
 
 
 def _assert_content_identity(
-    view, captured, store, *, fb_w, fb_h, pan, zoom
+    view, captured, store, *, fb_w, fb_h, pan, zoom, emit_evidence=False
 ):
     """Every emitted instance must sample the layer holding *its own* tile.
 
     The expected payload is recomputed from the store's region for the rect's
     plan index — *not* from the service slot lookup the view itself used, so a
     view that binds a neighbour's slot fails here.
+
+    With ``emit_evidence`` the same already-computed ``(index, payload,
+    expected)`` triple is recorded as ``spec.gallery.content_identity`` *after*
+    its per-index assertion passed — the signal is the observation that decided
+    the verdict, never a second fingerprint implementation (TESTING.md rule 7:
+    the derived record, not the green flag, is the proof).
     """
     grid = view.tile_service.grid_for(_key(view))
     plan = _plan(view, fb_w=fb_w, fb_h=fb_h, pan=pan, zoom=zoom)
@@ -287,6 +302,14 @@ def _assert_content_identity(
             f"tile {index} bound layer {inst.layer} holding {actual!r}, "
             f"expected its own content {expected!r} (neighbour/stale binding)"
         )
+        if emit_evidence:
+            record_evidence("spec.gallery.content_identity",
+                            kind="spec",
+                            verdict="ok",
+                            signal=f"index={index} payload={actual} expected={expected}",
+                            reason="rendered payload is the payload of its own index",
+                            ids=(f"index={index}",),
+                            area="gallery.ql_tile")
     return seen, rect_to_index
 
 
@@ -296,6 +319,13 @@ def _assert_content_identity(
 
 
 def test_distinct_content_payload_matches_own_index(monkeypatch):
+    """Distinct tiles draw their own payload, and the proof is journaled.
+
+    Falsification: a neighbour/stale binding makes ``_assert_content_identity``
+    fail on the measured ``(index, actual, expected)`` triple; the evidence
+    record's ``signal`` carries those same numbers, so the journal assertion
+    below fails with the measured signal rather than a bare flag.
+    """
     store = _distinct_store(1024, 1024)
     view, captured = _make_view(monkeypatch)
     view.set_source(TiledImageSource(key="item.png", store=store))
@@ -312,10 +342,17 @@ def test_distinct_content_payload_matches_own_index(monkeypatch):
         assert len(set(fps)) == 4, f"fixture not distinct: {fps}"
 
         seen, _ = _assert_content_identity(
-            view, captured, store, fb_w=512, fb_h=512, pan=(0.0, 0.0), zoom=1.0
+            view, captured, store, fb_w=512, fb_h=512, pan=(0.0, 0.0), zoom=1.0,
+            emit_evidence=True,
         )
         assert seen == {(0, 0), (0, 1), (1, 0), (1, 1)}
         assert len({i.layer for i in instances}) == 4
+
+        record = verdict(None, "spec.gallery.content_identity")
+        assert record is not None, "content-identity probe emitted no evidence"
+        assert record.verdict == "ok", record.signal
+        assert record.kind == "spec"
+        assert record.ids and record.ids[0].startswith("index="), record.ids
     finally:
         view.clear_source()
         store.close()

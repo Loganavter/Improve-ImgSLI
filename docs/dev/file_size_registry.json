@@ -3,6 +3,16 @@
   "_policy": "docs/dev/FILE_SIZE_POLICY.md",
   "entries": [
     {
+      "path": "src/core/evidence/journal.py",
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=leaf-collector reason=\"Evidence layer E1: append-only journal + derived verdict + fail-open trace emission; stdlib-only, no Qt/toolkit imports\"",
+      "parsed": {
+        "pattern": "leaf-collector",
+        "reason": "Evidence layer E1: append-only journal + derived verdict + fail-open trace emission; stdlib-only, no Qt/toolkit imports"
+      }
+    },
+    {
       "path": "src/core/state_management/dispatcher.py",
       "limit": 500,
       "marker": "Audit-Meta:",
