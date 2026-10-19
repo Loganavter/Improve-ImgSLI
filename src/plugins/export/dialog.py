@@ -571,8 +571,8 @@ class ExportDialog(ThemedDialog):
             target_size = self.preview_label.minimumSize()
             if target_size.isEmpty():
                 target_size = QSize(
-                    export_geo.EXPORT_PREVIEW_MIN_WIDTH,
-                    export_geo.EXPORT_PREVIEW_MIN_HEIGHT,
+                    export_geo.export_preview_min_width(),
+                    export_geo.export_preview_min_height(),
                 )
 
         fmt_current = (

@@ -6,6 +6,7 @@ from PySide6.QtWidgets import QLabel, QHBoxLayout, QVBoxLayout, QWidget
 
 from plugins.onboarding.icons import DemoIcon
 from resources.translations import tr
+from sli_ui_toolkit.managers import scaled_px
 from sli_ui_toolkit.widgets import Button
 from ui.theming import resolve_theme_color
 from ui.widgets.scroll_value_button import ScrollValueButton
@@ -13,6 +14,12 @@ from ui.widgets.scroll_value_button import ScrollValueButton
 # Larger than live toolbar so the onboarding demos read clearly on slides.
 _DEMO_BTN_BASE_PX = 56
 _DEMO_ICON_BASE_PX = 28
+
+#: Design px of the slide chrome (pre-pass defaults; ``scale_slide``
+#: re-derives the live values from the same design px).
+_SLIDE_ROOT_SPACING_PX = 30
+_SLIDE_DEMO_SPACING_PX = 35
+_SLIDE_CAPTION_SPACING_PX = 8
 
 
 def build_modes(store) -> list[dict[str, str]]:
@@ -40,7 +47,7 @@ def create_slide_for_mode(overlay, mode_data):
     page = QWidget()
     layout = QVBoxLayout(page)
     layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-    layout.setSpacing(30)
+    layout.setSpacing(scaled_px(_SLIDE_ROOT_SPACING_PX))
     page._onboarding_root_layout = layout
 
     lbl_title = QLabel(mode_data["name"])
@@ -50,7 +57,7 @@ def create_slide_for_mode(overlay, mode_data):
 
     demo_container = QWidget()
     demo_layout = QHBoxLayout(demo_container)
-    demo_layout.setSpacing(35)
+    demo_layout.setSpacing(scaled_px(_SLIDE_DEMO_SPACING_PX))
     demo_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
     page._onboarding_demo_layout = demo_layout
     page._onboarding_demo_buttons = []
@@ -303,7 +310,7 @@ def _style_demo_btn(
 
 def _wrap_btn(overlay, page, btn, text):
     layout = QVBoxLayout()
-    layout.setSpacing(8)
+    layout.setSpacing(scaled_px(_SLIDE_CAPTION_SPACING_PX))
     layout.addWidget(btn, 0, Qt.AlignmentFlag.AlignCenter)
     page._onboarding_caption_layouts.append(layout)
     if text:

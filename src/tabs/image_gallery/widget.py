@@ -174,12 +174,13 @@ class ImageGalleryWidget(QWidget):
             except Exception:
                 return default
 
-        from sli_ui_toolkit.managers import scaled_px
-
         root = QVBoxLayout(self)
-        # real_design.md:0 — horizontal padding 24 fixed, bottom 40 to clear selection HUD (§2.7)
-        root.setContentsMargins(24, 12, 24, 40)
-        root.setSpacing(scaled_px(12))
+        # real_design.md:0 — horizontal padding 24, bottom 40 to clear the
+        # selection HUD (§2.7). Design px resolved at use time via
+        # ``view_prefs.apply_root_design_metrics`` and re-resolved on a live
+        # UiScale change (the old raw literal stayed at design px forever).
+        self._apply_root_design_metrics()
+        self._connect_root_design_metrics()
 
         # Toolbar: Button variant="surface" + CustomLineEdit (painter pipeline) — matches svg toolbar 34px
         self.toolbar = GalleryToolbar(self, translate=(context._tr if context is not None else None))
@@ -510,6 +511,27 @@ class ImageGalleryWidget(QWidget):
         from tabs.image_gallery.ui.widget_parts import view_prefs
 
         return view_prefs._on_domain_changed(self, domain)
+
+    def _apply_root_design_metrics(self) -> None:
+        """Thin delegator to ``ui/widget_parts.view_prefs.apply_root_design_metrics``."""
+        from tabs.image_gallery.ui.widget_parts import view_prefs
+
+        return view_prefs.apply_root_design_metrics(self)
+
+    def _connect_root_design_metrics(self) -> None:
+        """Subscribe the page root's design px to the unified metrics channel."""
+        from sli_ui_toolkit.ui.managers import connect_ui_metrics
+        from sli_ui_toolkit.ui.managers.ui_metrics import AXIS_SCALE
+
+        connect_ui_metrics(
+            self, self._on_root_metrics_changed, axes=frozenset({AXIS_SCALE})
+        )
+
+    def _on_root_metrics_changed(self, *_args) -> None:
+        """Thin delegator to ``ui/widget_parts.view_prefs.on_root_metrics_changed``."""
+        from tabs.image_gallery.ui.widget_parts import view_prefs
+
+        return view_prefs.on_root_metrics_changed(self, *_args)
 
     def attach_session_state(self, state) -> None:
         """Attach the tab's ``SessionState`` facade (toolbar chrome writes).

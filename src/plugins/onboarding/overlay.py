@@ -243,7 +243,9 @@ class OnboardingOverlay(QWidget):
         self.bottom_container = QWidget()
         self.bottom_layout = QVBoxLayout(self.bottom_container)
         self.bottom_layout.setContentsMargins(0, 0, 0, 0)
-        self.bottom_layout.setSpacing(8)
+        # Pre-pass default; ``_scale_all`` re-derives the live value from the
+        # same design px (window-fit x UiScale) on every resize/metrics change.
+        self.bottom_layout.setSpacing(scaled_px(8))
         self.bottom_layout.setAlignment(Qt.AlignmentFlag.AlignHCenter)
 
         welcome_text = tr("onboarding.welcome", current_lang)

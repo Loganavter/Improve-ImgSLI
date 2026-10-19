@@ -11,9 +11,11 @@ Sites covered here (the allowlist entries outside ``src/tabs/image_compare``):
 ``plugins/help/back_bar``, ``plugins/image_properties/dialog``,
 ``plugins/settings/pages/keyboard``, ``plugins/onboarding/{overlay,pages}``,
 ``plugins/export/layout_geometry``,
-``shared_toolkit/ui/text_input_dialog``, ``tabs/image_gallery/widget``,
+``shared_toolkit/ui/text_input_dialog``,
 ``tabs/session_picker/recent/header_bar``, ``devtools/ui_inspector/app_window``
-and the dead ``ui/widgets/zoom_indicator``.
+and the dead ``ui/widgets/zoom_indicator``. The gallery page root (a tab
+internal) is covered from its own suite:
+``src/tabs/image_gallery/tests/test_gallery_widget_root_scale.py``.
 
 Two classes are NOT "fixed" and are pinned as intentional:
 
@@ -43,11 +45,33 @@ from sli_ui_toolkit.managers import UiScale, scaled_px
 _SRC = Path(__file__).resolve().parent.parent.parent / "src"
 
 
+def _drain_metrics_channel() -> None:
+    """Run real event-loop turns until the coalesced metrics zero-timer has fired.
+
+    A factor change queues the ``UiMetrics.changed`` emission on a zero-timer;
+    if a test ends before it fires, it lands in the NEXT test's event loop and
+    re-renders unrelated surfaces (observed: a queued emission kicked a
+    quick-look tiled decode in a later gallery test). Drain at teardown.
+    """
+    from PySide6.QtCore import QEventLoop, QTimer
+    from PySide6.QtWidgets import QApplication
+
+    app = QApplication.instance()
+    if app is None:
+        return
+    for _ in range(6):
+        loop = QEventLoop()
+        QTimer.singleShot(2, loop.quit)
+        loop.exec()
+        app.processEvents()
+
+
 @pytest.fixture(autouse=True)
 def _restore_ui_scale():
     """``UiScale`` is a process-wide singleton — never leak a factor."""
     yield
     UiScale.get_instance().set_factor(1.0)
+    _drain_metrics_channel()
 
 
 def _set(factor: float) -> None:
@@ -232,6 +256,21 @@ def test_session_picker_header_bar_spacing_follows_the_scale(qapp) -> None:
     )
 
 
+def test_session_picker_header_bar_re_resolves_on_a_live_scale_change(qapp) -> None:
+    from tabs.session_picker.recent.header_bar import RecentHeaderBar
+
+    bar = RecentHeaderBar(translate=lambda key, default="": default or key)
+    try:
+        assert bar.layout().spacing() == 8
+        _set(1.5)
+        after = _spin_until_changed(qapp, lambda: bar.layout().spacing())
+        assert after == scaled_px(8), (
+            f"header bar spacing did not re-resolve live: {after}"
+        )
+    finally:
+        bar.deleteLater()
+
+
 def test_ui_inspector_native_row_margins_and_spacing_follow_the_scale(
     qapp,
 ) -> None:
@@ -335,20 +374,147 @@ def test_onboarding_slide_spacings_follow_the_scale(qapp) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Gallery root layout.
+# Live re-derive: a value resolved at build must also follow a live change.
 # ---------------------------------------------------------------------------
 
 
-def test_gallery_widget_root_margins_follow_the_scale(qapp) -> None:
-    from tabs.image_gallery.widget import ImageGalleryWidget
+def _spin_until_changed(qapp, probe, *, timeout_ms: int = 1000):
+    """Run real event-loop turns until ``probe()`` moves.
+
+    The metrics bus coalesces through a zero-timer, so a plain stability drain
+    (``drain_until_stable``) can legitimately read the pre-change value and
+    return: wait for the *change*, not for stability.
+    """
+    import time
+
+    from PySide6.QtCore import QEventLoop, QTimer
+
+    before = probe()
+    deadline = time.monotonic() + timeout_ms / 1000.0
+    while time.monotonic() <= deadline:
+        loop = QEventLoop()
+        QTimer.singleShot(2, loop.quit)
+        loop.exec()
+        qapp.processEvents()
+        current = probe()
+        if current != before:
+            return current
+    return probe()
+
+
+def _assert_re_resolves(qapp, build, design, *, name: str) -> None:
+    """Build at 1.0, move the factor to 1.5, wait for the change, require
+    ``design * factor``."""
+    _set(1.0)
+    widget, probe = build()
+    try:
+        before = _margins(probe) if hasattr(probe, "contentsMargins") else probe()
+        expected_before = tuple(design)
+        assert before == expected_before, (
+            f"{name}: at factor 1.0 got {before}, expected {expected_before}"
+        )
+        _set(1.5)
+
+        def current():
+            return _margins(probe) if hasattr(probe, "contentsMargins") else probe()
+
+        after = _spin_until_changed(qapp, current)
+        expected = tuple(scaled_px(v) for v in design)
+        assert after == expected, (
+            f"{name}: after a live 1.5 change got {after}, expected {expected} — "
+            f"the design px did not re-derive (STALE) or re-derived twice (DOUBLE)"
+        )
+    finally:
+        widget.deleteLater()
+
+
+def test_help_back_bar_re_resolves_on_a_live_scale_change(qapp) -> None:
+    from plugins.help.back_bar import HelpBackBar
 
     def build():
-        widget = ImageGalleryWidget(context=None)
-        return widget, widget.layout()
+        bar = HelpBackBar()
+        return bar, bar._layout
 
-    _assert_scaled_at_1_5(
-        _margins_at(1.5, build), (24, 12, 24, 40, 12), name="gallery widget"
+    _assert_re_resolves(
+        qapp, build, (8, 6, 8, 7, 6), name="help_back_bar live"
     )
+
+
+def test_text_input_dialog_re_resolves_on_a_live_scale_change(qapp) -> None:
+    import shared_toolkit.ui.decorate_dialog as decorate
+
+    def build():
+        original = decorate.decorate_dialog
+        decorate.decorate_dialog = lambda *a, **k: None
+        try:
+            from shared_toolkit.ui.text_input_dialog import AppTextInputDialog
+
+            dialog = AppTextInputDialog(title="t", prompt="p")
+        finally:
+            decorate.decorate_dialog = original
+        return dialog, dialog.layout()
+
+    _assert_re_resolves(
+        qapp, build, (18, 14, 18, 16, 12), name="text_input_dialog live"
+    )
+
+
+def test_image_properties_re_resolves_on_a_live_scale_change(qapp) -> None:
+    import shared_toolkit.ui.decorate_dialog as decorate
+
+    def build():
+        original = decorate.decorate_dialog
+        decorate.decorate_dialog = lambda *a, **k: None
+        try:
+            from plugins.image_properties.dialog import ImagePropertiesDialog
+            from plugins.image_properties.service import (
+                ImageProperties,
+                ImagePropertyRow,
+                ImagePropertySection,
+            )
+
+            props = ImageProperties(
+                title="P",
+                sections=(
+                    ImagePropertySection(
+                        "s", "S", (ImagePropertyRow("r", "n", "v"),)
+                    ),
+                ),
+            )
+            dialog = ImagePropertiesDialog(props, current_language="en")
+        finally:
+            decorate.decorate_dialog = original
+        return dialog, dialog.layout()
+
+    _assert_re_resolves(
+        qapp, build, (12, 12, 12, 12, 10), name="image_properties live"
+    )
+
+
+def test_settings_keyboard_page_re_resolves_on_a_live_scale_change(qapp) -> None:
+    dialog = _build_keyboard_page(1.0)
+    try:
+        content = dialog.page_keyboard.content_layout
+        groups = content.itemAt(1).widget().layout()
+        row = dialog._keyboard_filter_rows[0][0].layout()
+        group_body = dialog._keyboard_group_layouts[0]
+
+        def probe():
+            return (
+                groups.spacing(),
+                row.spacing(),
+                group_body.spacing(),
+                group_body.contentsMargins().top(),
+            )
+
+        assert probe() == (10, 8, 4, 4), probe()
+        _set(1.5)
+        after = _spin_until_changed(qapp, probe)
+        assert after == (scaled_px(10), scaled_px(8), scaled_px(4), scaled_px(4)), (
+            f"keyboard page did not re-resolve on a live scale change: {after}"
+        )
+    finally:
+        dialog.deleteLater()
 
 
 # ---------------------------------------------------------------------------
