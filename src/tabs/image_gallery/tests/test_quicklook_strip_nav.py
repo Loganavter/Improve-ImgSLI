@@ -143,8 +143,12 @@ class _NeighbourSection:
         return True
 
 
-def test_the_panel_is_the_toolkit_rows_section_over_its_two_rows(qtbot, tmp_path) -> None:
+def test_the_panel_is_the_toolkit_rows_section_over_its_three_rows(qtbot, tmp_path) -> None:
     """No bespoke machinery: the registered section IS a ToolbarRowsSection.
+
+    Three rows since ``inv-nav-coverage-audit-2026-10-19`` rank 4: the ✕ header
+    (single-control row), the strip and the action bar — the ✕ used to sit
+    outside every declared row and was keyboard-unreachable.
 
     Falsified by: reverting ``nav_section.QuickLookNavSection`` to the
     hand-written cursor section — there is no ``section_of``/``rows`` then, and
@@ -153,11 +157,15 @@ def test_the_panel_is_the_toolkit_rows_section_over_its_two_rows(qtbot, tmp_path
     overlay, _items = _open(qtbot, tmp_path)
     section = nav.section_of(overlay)
     assert section is not None, "the visible panel must be a registered section"
-    assert nav.rows(overlay) == [overlay._strip_row, overlay._action_bar]
+    assert nav.rows(overlay) == [
+        overlay._close_btn,
+        overlay._strip_row,
+        overlay._action_bar,
+    ]
     assert isinstance(section, ToolbarRowsSection)
     assert section.owns(nav.thumb_for_path(overlay, str(_items[0].path))) is True
-    assert section.owns(overlay._close_btn) is False, (
-        "only the two rows are claimed — not the whole panel"
+    assert section.owns(overlay._close_btn) is True, (
+        "the ✕ is the header row — owned, not click-only"
     )
     overlay.hide()
 
@@ -467,10 +475,13 @@ def test_up_and_down_wrap_inside_the_panel(qtbot, tmp_path) -> None:
     shell can hand focus to a neighbouring section — correct for a toolbar, wrong
     for a modal panel: with a section registered either side, the yield walks the
     ring onto a card behind the veil while the panel stays up with no ring on it
-    (measured 2026-10-17). The panel wraps instead: ``↑`` from the strip lands on
-    the action row, ``↓`` from the action row lands back on the item on screen.
+    (measured 2026-10-17). The panel wraps instead over its three rows — ✕ header,
+    strip, action bar: ``↑`` from the strip lands on the header, ``↑`` at the
+    header (the top edge) lands on the action bar, ``↓`` at the action bar (the
+    bottom edge) lands back on the header.
+
     Falsified by: removing the wrap from ``QuickLookNavSection.navigate`` — Up on
-    the first thumb then focuses the neighbour registered before the panel.
+    the first row then focuses the neighbour registered before the panel.
     """
     items = _series(tmp_path, 4)
     overlay = _make_overlay(qtbot)
@@ -493,19 +504,24 @@ def test_up_and_down_wrap_inside_the_panel(qtbot, tmp_path) -> None:
         assert overlay.isVisible() and QApplication.focusWidget() is not None
         assert QApplication.focusWidget() is nav.thumb_for_path(overlay, str(items[2].path))
 
-        focused = _press(Qt.Key.Key_Up)  # first row, at the panel's top edge
+        focused = _press(Qt.Key.Key_Up)  # strip -> header row
         assert focused is not above, "Up must not hand focus to the page behind"
-        assert overlay.isAncestorOf(focused), _name(focused)
+        assert focused is overlay._close_btn, (
+            f"Up from the strip must reach the ✕ header: {_name(focused)}"
+        )
+
+        focused = _press(Qt.Key.Key_Up)  # header, at the panel's top edge
+        assert focused is not above, "the top edge must not hand focus to the page behind"
         assert overlay._action_bar.isAncestorOf(focused), (
             f"the top edge wraps to the bottom row: {_name(focused)}"
         )
 
-        focused = _press(Qt.Key.Key_Down)  # bottom edge wraps back to the strip
+        focused = _press(Qt.Key.Key_Down)  # bottom edge wraps to the header
         assert QApplication.focusWidget() is not below, (
             "Down must not hand focus to the page below the panel"
         )
-        assert nav.thumb_for_path(overlay, str(items[2].path)) is focused, (
-            f"the bottom edge wraps to the item on screen: {_name(focused)}"
+        assert focused is overlay._close_btn, (
+            f"the bottom edge wraps to the top row (✕): {_name(focused)}"
         )
         assert overlay._current_idx == 2, "wrapping is movement, not a re-bind"
     finally:
