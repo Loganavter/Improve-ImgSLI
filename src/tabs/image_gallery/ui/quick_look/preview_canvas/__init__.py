@@ -72,6 +72,7 @@ from ui.canvas_presentation.composition import LayerNode
 from ui.canvas_presentation.plan import CanvasRenderPlan
 from ui.canvas_presentation.plan_applicator import apply_canvas_render_plan
 from tabs.image_gallery.ui.quick_look.preview_canvas_host import settle_first_frame
+from tabs.image_gallery.ui.quick_look.preview_zoom import ViewportState
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -113,6 +114,13 @@ class QuickLookCanvasWidget(QRhiWidget):
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
+        # One viewport state, shared on request with a second view (the
+        # source inset canvas) via ``bind_view``. ``_zoom/_pan_x/_pan_y``
+        # below are properties over this object, so every existing read
+        # (raster fit/crop, lazy levels, region mapping) sees the shared
+        # view without a parallel variable.
+        self._viewport = ViewportState()
+        self._viewport.subscribe(self._on_viewport_changed)
         try:
             self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         except Exception:
@@ -184,6 +192,73 @@ class QuickLookCanvasWidget(QRhiWidget):
         return _source._close_held_store(self)
 
     # -- view ----------------------------------------------------------------
+
+    @property
+    def _zoom(self) -> float:
+        """Zoom of the (possibly shared) viewport — never a parallel copy."""
+        return self._viewport.zoom
+
+    @_zoom.setter
+    def _zoom(self, value) -> None:
+        self._viewport.zoom = value
+
+    @property
+    def _pan_x(self) -> float:
+        return self._viewport.pan_x
+
+    @_pan_x.setter
+    def _pan_x(self, value) -> None:
+        self._viewport.pan_x = value
+
+    @property
+    def _pan_y(self) -> float:
+        return self._viewport.pan_y
+
+    @_pan_y.setter
+    def _pan_y(self, value) -> None:
+        self._viewport.pan_y = value
+
+    def _on_viewport_changed(self) -> None:
+        """Repaint this view after any bound surface moved the viewport."""
+        try:
+            self._frame_key = None
+        except Exception:
+            pass
+        try:
+            self.update()
+        except Exception:
+            pass
+
+    def set_view(self, zoom, pan_x, pan_y) -> None:
+        """Assign the viewport; every view bound to it follows (never raises)."""
+        try:
+            self._viewport.set_view(zoom, pan_x, pan_y)
+        except Exception:
+            pass
+
+    def bind_view(self, other) -> None:
+        """Share *other*'s viewport: one state, N views (idempotent).
+
+        The main preview owns the viewport; the source inset binds to it so
+        a wheel/drag on either surface moves both (plan-gallery-ql-source-canvas).
+        Foreign doubles without a ``_viewport`` are ignored (fail-open).
+        """
+        try:
+            shared = other._viewport
+        except Exception:
+            return
+        if shared is None or shared is self._viewport:
+            return
+        try:
+            self._viewport.unsubscribe(self._on_viewport_changed)
+        except Exception:
+            pass
+        self._viewport = shared
+        try:
+            shared.subscribe(self._on_viewport_changed)
+        except Exception:
+            pass
+        self._on_viewport_changed()
 
     def current_view(self) -> tuple[float, float, float]:
         """Live view as ``(zoom, pan_x, pan_y)`` — total, never raises.

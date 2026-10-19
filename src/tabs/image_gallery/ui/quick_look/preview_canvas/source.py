@@ -102,9 +102,8 @@ def set_source(self, store, *, preserve_view: bool = False) -> None:
         if not preserve_view:
             # Context change (open / series change / delete / set-as-source
             # / re-analyze): the previous item's view is meaningless here.
-            self._zoom = 1.0
-            self._pan_x = 0.0
-            self._pan_y = 0.0
+            # One call: the viewport may be shared with the source inset.
+            self.set_view(1.0, 0.0, 0.0)
             self._drag_last = None
         self._frame_key = None
         try:

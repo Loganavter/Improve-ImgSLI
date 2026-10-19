@@ -4,6 +4,12 @@ Split from ``preview.py`` per CODE_PATTERNS.md thin owner + ui/ (the file
 hit the 500-line contract gate): preview pixmaps stay in ``preview.py``,
 inset content lives here. Import paths are unchanged via ``helpers.py``
 re-exports. The sharpness-crop inset was removed (see ``populate_crop``).
+
+The source inset's image surface is the ENGINE canvas (``source_canvas``:
+a second ``QuickLookCanvasWidget`` bound to the main preview's single
+``ViewportState``). This module only resolves the SOURCE item, derives the
+bounded coarse store (one memo, shared by the pixmap plate and the canvas)
+and feeds both; the pixmap button remains the rounded plate/cover.
 """
 
 from __future__ import annotations
@@ -13,6 +19,7 @@ from pathlib import Path
 from tabs.image_gallery.ui.quick_look.preview import (
     _load_scaled_pixmap,
     _pyramid_pixmap_for,
+    _sample_coarse_pixmap,
     _source_dimensions,
     _thumb_pixmap,
 )
@@ -67,6 +74,16 @@ def reposition_preview_insets(overlay) -> None:
                     pass
             except Exception:
                 pass
+        # The engine canvas + cover + rounded clip mirror the plate's inner
+        # thumb rect; re-run with the pin (the canvas is layout-external).
+        try:
+            from tabs.image_gallery.ui.quick_look.source_canvas import (
+                layout_source_inset_surfaces,
+            )
+
+            layout_source_inset_surfaces(overlay)
+        except Exception:
+            pass
     except Exception:
         pass
 
@@ -86,7 +103,19 @@ def populate_source_inset(overlay, item, is_fidelity: bool, owner=None) -> None:
             _same = Path(getattr(item, "path", "")) == Path(getattr(overlay, "_source_path", None) or "")
         except Exception:
             _same = False
-        overlay._source_inset_host.setVisible(bool(is_fidelity) and not _same)
+        _show = bool(is_fidelity) and not _same
+        overlay._source_inset_host.setVisible(_show)
+        if not _show:
+            # No source view for this mode/pair: retire the engine canvas so
+            # a stale source never survives behind a hidden inset.
+            try:
+                from tabs.image_gallery.ui.quick_look.source_canvas import (
+                    release_source_inset_canvas,
+                )
+
+                release_source_inset_canvas(overlay)
+            except Exception:
+                pass
     except Exception:
         pass
     if not is_fidelity:
@@ -117,6 +146,18 @@ def populate_source_inset(overlay, item, is_fidelity: bool, owner=None) -> None:
                         break
         except Exception:
             pass
+        # Bounded coarse store for the SOURCE side: one memo feeds both the
+        # pixmap plate and the engine canvas (no second decode on a revisit).
+        store = None
+        try:
+            if src is not None:
+                from tabs.image_gallery.ui.quick_look.source_canvas import (
+                    source_store_for,
+                )
+
+                store = source_store_for(overlay, src)
+        except Exception:
+            store = None
         pix = None
         if src_item is not None:
             try:
@@ -129,16 +170,26 @@ def populate_source_inset(overlay, item, is_fidelity: bool, owner=None) -> None:
                         Qt.TransformationMode.FastTransformation,
                     )
                 else:
-                    # Coarse-direct first (bounded pyramid sample); the
-                    # scaled-reader ladder below stays as fallback.
+                    # Coarse-direct first: sample the memoized bounded store
+                    # (the same pixels the engine canvas is about to show),
+                    # then the bounded pyramid build, then the reader ladder.
                     try:
-                        _pyr = _pyramid_pixmap_for(getattr(src_item, "path", src), long_edge=512)
+                        _pyr = _sample_coarse_pixmap(store) if store is not None else None
                     except Exception:
                         _pyr = None
                     try:
                         _pyr_ok = _pyr is not None and not _pyr.isNull()
                     except Exception:
                         _pyr_ok = False
+                    if not _pyr_ok:
+                        try:
+                            _pyr = _pyramid_pixmap_for(getattr(src_item, "path", src), long_edge=512)
+                        except Exception:
+                            _pyr = None
+                        try:
+                            _pyr_ok = _pyr is not None and not _pyr.isNull()
+                        except Exception:
+                            _pyr_ok = False
                     if _pyr_ok:
                         try:
                             pix = _pyr.scaled(
@@ -165,6 +216,14 @@ def populate_source_inset(overlay, item, is_fidelity: bool, owner=None) -> None:
                 pix = _load_scaled_pixmap(src, scaled_px(150), scaled_px(84))
             except Exception:
                 pix = None
+            if pix is None and store is not None:
+                # Bounded pixels already in hand (memo): no second decode.
+                try:
+                    _pyr3 = _sample_coarse_pixmap(store)
+                    if _pyr3 is not None and not _pyr3.isNull():
+                        pix = _pyr3.scaled(scaled_px(150), scaled_px(84), Qt.AspectRatioMode.KeepAspectRatioByExpanding, Qt.TransformationMode.FastTransformation)
+                except Exception:
+                    pass
             if pix is None:
                 # Bounded last resort: coarse pyramid sample (no full
                 # decode). A miss fails open (inset shows "—" below).
@@ -178,6 +237,17 @@ def populate_source_inset(overlay, item, is_fidelity: bool, owner=None) -> None:
             overlay._source_inset_pix.update_region("thumb", pixmap=pix)
         else:
             overlay._source_inset_pix.update_region("thumb", pixmap=None, text="—")
+        # The engine canvas view of the same source (shared preview viewport).
+        try:
+            from tabs.image_gallery.ui.quick_look.source_canvas import (
+                populate_source_inset_canvas,
+            )
+
+            populate_source_inset_canvas(
+                overlay, src, pixmap=pix, store=store
+            )
+        except Exception:
+            pass
         # No source path: name the role, localized (fail-open to "source").
         if src is not None:
             src_name = Path(src).name

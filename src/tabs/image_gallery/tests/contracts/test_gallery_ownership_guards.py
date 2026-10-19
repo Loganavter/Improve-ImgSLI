@@ -119,7 +119,7 @@ ALLOWLIST: dict[tuple[str, int], str] = {
     ("src/tabs/image_gallery/ui/quick_look/meta.py", 123): (
         "overlay._owner READ fallback when owner=None (test-required SimpleNamespace doubles)"
     ),
-    ("src/tabs/image_gallery/ui/quick_look/insets.py", 108): (
+    ("src/tabs/image_gallery/ui/quick_look/insets.py", 137): (
         "overlay._owner READ fallback when owner=None (test-required SimpleNamespace doubles)"
     ),
     # clean_review row builder moved to ui/clean_review/populate.py (package

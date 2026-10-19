@@ -52,6 +52,12 @@ def _tab_names() -> tuple[str, ...]:
 # rel path (POSIX, relative to repo root) -> why this file is allowed to
 # deep-import a specific tab's internals from outside that tab's own tests/.
 ALLOWED_DEEP_TAB_IMPORTS: dict[str, str] = {
+    "tests/runtime/test_ql_source_canvas.py": (
+        "cross-surface ENGINE-CANVAS contract: the Quick Look source inset must "
+        "be the same QuickLookCanvasWidget/host/ViewportState implementation the "
+        "main preview uses, so the test drives the real gallery overlay + two "
+        "live canvases (a double would not prove the reuse or the shared viewport)"
+    ),
     "tests/runtime/test_dialog_title_bar_nav.py": (
         "host-level CSD title-bar navigation contract spanning Help, the "
         "colour picker and the video editor (the modal-ceiling example); the "
