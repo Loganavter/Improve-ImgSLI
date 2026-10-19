@@ -5,10 +5,24 @@ import logging
 from PySide6.QtCore import QEvent, Qt, QSize
 
 from core.constants import AppConstants
-from sli_ui_toolkit.managers import DelayedActionTimer
+from sli_ui_toolkit.managers import DelayedActionTimer, scaled_px
 from ui.managers.transient_ui_parts.anchored_popup import AnchoredPopupBubbleController
 
 logger = logging.getLogger("ImproveImgSLI")
+
+
+def _instances_popup_size(count: int) -> QSize:
+    """Design-px badge box for the instance count, resolved at use time.
+
+    The app ``OverlayLayer.show_popup(size=...)`` channel copies ``size``
+    verbatim into ``setFixedSize`` (measured at 1.0/1.5: the box does not
+    scale), so the CALLER owns the design-px -> scaled_px conversion. The
+    resolved box is built first and handed over as a plain ``QSize``: an
+    inline ``scaled_px`` inside a ``size=`` kwarg is what the raw-px gate
+    flags as the toolkit Button double-scaling trap.
+    """
+    width = 26 if count < 10 else 32
+    return QSize(scaled_px(width), scaled_px(24))
 
 
 class MagnifierInstancesPopupController:
@@ -122,7 +136,7 @@ class MagnifierInstancesPopupController:
         shown = self._bubble.show(
             anchor_widget=button,
             text=str(count),
-            size=QSize(26, 24) if count < 10 else QSize(32, 24),
+            size=_instances_popup_size(count),
             position="top",
             offset=6,
         )

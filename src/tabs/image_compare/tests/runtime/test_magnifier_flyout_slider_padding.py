@@ -22,6 +22,7 @@ from tabs.image_compare.ui.layout import (
     _SLIDER_GAP_DESIGN_PX,
     _keep_spacing_scaled,
 )
+from tests.helpers.drain_until_stable import drain_until_stable
 
 
 @pytest.fixture(autouse=True)
@@ -32,14 +33,19 @@ def _reset_ui_scale():
 
 def test_keep_spacing_scaled_follows_live_scale(qapp):
     layout = QVBoxLayout()
+    owner = QWidget()
 
-    _keep_spacing_scaled(layout, _SLIDER_GAP_DESIGN_PX)
+    _keep_spacing_scaled(layout, _SLIDER_GAP_DESIGN_PX, owner)
     assert layout.spacing() == _SLIDER_GAP_DESIGN_PX
 
+    # The re-apply rides the coalesced metrics channel (a zero-timer), so a
+    # bare set_factor() is not enough — drain before reading.
     UiScale.get_instance().set_factor(1.5)
+    drain_until_stable(qapp, layout.spacing)
     assert layout.spacing() == scaled_px(_SLIDER_GAP_DESIGN_PX) == 15
 
     UiScale.get_instance().set_factor(1.0)
+    drain_until_stable(qapp, layout.spacing)
     assert layout.spacing() == _SLIDER_GAP_DESIGN_PX
 
 
@@ -69,4 +75,5 @@ def test_slider_column_gap_scales_and_is_applied_to_panel(qapp):
     assert column.spacing() == _SLIDER_GAP_DESIGN_PX
 
     UiScale.get_instance().set_factor(1.5)
+    drain_until_stable(qapp, column.spacing)
     assert column.spacing() == scaled_px(_SLIDER_GAP_DESIGN_PX)
