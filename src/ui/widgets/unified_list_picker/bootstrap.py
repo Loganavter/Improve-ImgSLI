@@ -10,6 +10,10 @@ from ui.widgets.unified_list_picker.common import (
     FlyoutMode,
     _RoundedClipEffect,
 )
+from ui.widgets.unified_list_picker.nav import (
+    register_picker_navigation,
+    unregister_picker_navigation,
+)
 from ui.widgets.unified_list_picker.session import (
     _UnifiedFlyoutSessionMixin,
 )
@@ -33,6 +37,10 @@ class _UnifiedFlyoutBootstrapMixin(_UnifiedFlyoutSessionMixin):
         self._is_refreshing = False
         self._structure_sync_scheduled = False
         self._drag_enabled = True
+        # Keyboard-navigation section, live only while the picker is visible
+        # (registered in showEvent, dropped in hideEvent) — a closed picker
+        # must never keep a section in the app-wide registry.
+        self._nav_section = None
         # The picker re-anchors itself on every refresh (showAsSingle /
         # refreshGeometry re-read the anchor combos); FlyoutManager's
         # anchor-move auto-close would fire on unrelated layout reflows
@@ -60,6 +68,15 @@ class _UnifiedFlyoutBootstrapMixin(_UnifiedFlyoutSessionMixin):
             event.accept()
             return
         super().keyPressEvent(event)
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        # Self-registration on show, BaseFlyout lifecycle precedent: rows are
+        # populated before the first show, so the section scans a live tree.
+        register_picker_navigation(self)
+
+    def _unregister_navigation_section(self):
+        unregister_picker_navigation(self)
 
     def _attach_overlay_layer(self):
         self.overlay_layer = resolve_overlay_layer(self.main_window)
@@ -155,6 +172,7 @@ class _UnifiedFlyoutBootstrapMixin(_UnifiedFlyoutSessionMixin):
         self._apply_style()
 
     def _on_destroyed(self):
+        self._unregister_navigation_section()
         try:
             service = get_dragdrop_service()
             if service is not None:

@@ -99,6 +99,8 @@ class _UnifiedFlyoutStyleMixin(_UnifiedFlyoutBase):
             self.clear_drop_indicator()
         if hasattr(self, "flyout_manager"):
             self.flyout_manager.request_hide(self)
+        # Closed picker must not keep a section in the app-wide registry.
+        self._unregister_navigation_section()
 
         self.last_close_timestamp = time.monotonic()
         self.last_close_mode = closing_mode

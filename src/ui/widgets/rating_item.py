@@ -321,7 +321,11 @@ class RatingListItem(Button):
             self.btn_minus.setObjectName("minusButton")
             self.btn_plus.setObjectName("plusButton")
             for btn in [self.btn_minus, self.btn_plus]:
-                btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+                # Real actions (step the rating), not decoration: StrongFocus
+                # puts them in the picker's 2D navigation section, where the
+                # toolkit Button gives them Enter/Space activation. NoFocus
+                # made the stepper click-only (audit rank 1, 2026-10-19).
+                btn.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
                 btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
 
             self._row_layout.addWidget(self.rating_label)
