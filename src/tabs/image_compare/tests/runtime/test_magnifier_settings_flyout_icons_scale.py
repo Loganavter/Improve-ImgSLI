@@ -17,6 +17,7 @@ from sli_ui_toolkit.managers import UiScale, scaled_px
 
 from tabs.image_compare.icons import Icon
 from tabs.image_compare.ui.layout import ScaledIconLabel
+from tests.helpers.drain_until_stable import drain_until_stable
 
 
 @pytest.fixture(autouse=True)
@@ -41,10 +42,14 @@ def test_icon_label_rerenders_on_scale_change(qapp: QApplication):
     label = ScaledIconLabel(Icon.CAPTURE_SIZE, 18)
     assert label.width() == scaled_px(18)
 
+    # The rescale is delivered through the coalesced metrics channel (a
+    # zero-timer), so a bare set_factor() is not enough — drain before reading.
     UiScale.get_instance().set_factor(1.5)
+    drain_until_stable(qapp, lambda: (label.width(), label.pixmap().width()))
     assert label.width() == scaled_px(18)
     assert label.pixmap().width() == scaled_px(18)
 
     UiScale.get_instance().set_factor(1.0)
+    drain_until_stable(qapp, lambda: (label.width(), label.pixmap().width()))
     assert label.width() == scaled_px(18)
     assert label.pixmap().width() == scaled_px(18)

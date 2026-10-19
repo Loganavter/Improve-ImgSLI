@@ -4,9 +4,13 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pytest
+
+from sli_ui_toolkit.managers import UiScale
+
 from tabs.image_compare.plugins.video_editor.layout_geometry import (
-    MIN_VIDEO_EDITOR_PREVIEW_WIDTH,
-    MIN_VIDEO_EDITOR_SETTINGS_WIDTH,
+    MIN_VIDEO_EDITOR_PREVIEW_WIDTH_PX,
+    MIN_VIDEO_EDITOR_SETTINGS_WIDTH_PX,
     VIDEO_EDITOR_TOP_HORIZONTAL_SPACING_PX,
     VIDEO_EDITOR_TOP_MARGIN_PX,
     compute_minimum_dialog_width,
@@ -14,12 +18,20 @@ from tabs.image_compare.plugins.video_editor.layout_geometry import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _scale_one():
+    """The expectations below are design px; pin factor 1.0 (scaled == design)."""
+    UiScale.get_instance().set_factor(1.0)
+    yield
+    UiScale.get_instance().set_factor(1.0)
+
+
 def test_minimum_dialog_width_tracks_settings_width():
     settings_width = 430
     required = compute_minimum_dialog_width(settings_width)
     assert required == (
         VIDEO_EDITOR_TOP_MARGIN_PX
-        + MIN_VIDEO_EDITOR_PREVIEW_WIDTH
+        + MIN_VIDEO_EDITOR_PREVIEW_WIDTH_PX
         + VIDEO_EDITOR_TOP_HORIZONTAL_SPACING_PX
         + settings_width
     )
@@ -56,7 +68,7 @@ def test_compute_settings_panel_width_uses_widest_section():
 
     # Page content 510 + content_layout margins (12+12); tab strip 320+24 loses.
     assert compute_settings_panel_width(dialog) == 534
-    assert compute_minimum_dialog_width(534) >= MIN_VIDEO_EDITOR_SETTINGS_WIDTH
+    assert compute_minimum_dialog_width(534) >= MIN_VIDEO_EDITOR_SETTINGS_WIDTH_PX
 
 def test_compute_settings_panel_width_includes_tab_parent_margins():
     from tabs.image_compare.plugins.video_editor.layout_geometry import (
