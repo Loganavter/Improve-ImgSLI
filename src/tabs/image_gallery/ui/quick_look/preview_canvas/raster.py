@@ -295,7 +295,7 @@ def wheelEvent(self, event) -> None:  # noqa: N802
                     )
             except Exception:
                 pass
-            self._zoom, self._pan_x, self._pan_y = got
+            self.set_view(*got)
             self._frame_key = None
             self.update()
         event.accept()
@@ -351,7 +351,7 @@ def mouseMoveEvent(self, event) -> None:  # noqa: N802
                         )
                 except Exception:
                     pass
-                self._pan_x, self._pan_y = got
+                self.set_view(self._zoom, got[0], got[1])
                 self._frame_key = None
                 self.update()
             self._drag_last = (float(pos.x()), float(pos.y()))

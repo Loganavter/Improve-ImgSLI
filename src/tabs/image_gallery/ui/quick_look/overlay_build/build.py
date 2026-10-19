@@ -26,6 +26,13 @@ from tabs.image_gallery.ui.quick_look.resize import (
 )
 
 from .icons import _danger_trash_icon
+from .inset_frame import (
+    SOURCE_INSET_FRAME_RADIUS,
+    SOURCE_INSET_H,
+    SOURCE_INSET_PAD,
+    SOURCE_INSET_THUMB_RADIUS,
+    SOURCE_INSET_W,
+)
 from .widgets import (
     _AccentPillHost,
     _CardPlate,
@@ -283,7 +290,7 @@ def build_overlay_ui(overlay) -> None:
     # readable, it was never an action).
     from PySide6.QtCore import QRectF as _QRectF
 
-    _inset_pad = 4
+    _inset_pad = SOURCE_INSET_PAD
 
     def _inset_bg_rect(r):
         return _QRectF(0, 0, r.width(), r.height())
@@ -298,13 +305,16 @@ def build_overlay_ui(overlay) -> None:
         btn = Button(
             text="",
             variant="surface",
-            size=(150 + _inset_pad * 2, 84 + _inset_pad * 2),
+            size=(
+                SOURCE_INSET_W + _inset_pad * 2,
+                SOURCE_INSET_H + _inset_pad * 2,
+            ),
             parent=parent,
             regions=[
                 ButtonRegion(
                     id="bg",
                     group="card",
-                    corner_radii=(8, 8, 8, 8),
+                    corner_radii=(SOURCE_INSET_FRAME_RADIUS,) * 4,
                     hover_color=QColor(0, 0, 0, 0),
                     bg_locked=True,
                 ),
@@ -313,13 +323,13 @@ def build_overlay_ui(overlay) -> None:
                     pixmap=None,
                     image_fill="cover",
                     group="card",
-                    corner_radii=(5, 5, 5, 5),
+                    corner_radii=(SOURCE_INSET_THUMB_RADIUS,) * 4,
                     hover_color=QColor(0, 0, 0, 0),
                     bg_locked=True,
                 ),
             ],
             split=CustomSplit(rect_fns=[_inset_bg_rect, _inset_thumb_rect]),
-            corner_radius=8,
+            corner_radius=SOURCE_INSET_FRAME_RADIUS,
         )
         try:
             btn.setCursor(Qt.CursorShape.ArrowCursor)
@@ -333,6 +343,15 @@ def build_overlay_ui(overlay) -> None:
 
     overlay._source_inset_pix = _make_inset_thumb_button(overlay._source_inset_host)
     overlay._source_inset_pix.setObjectName("quicklook_source_inset_pix")
+    # Engine-canvas view surfaces (source_canvas): created lazily on the
+    # first source populate, geometry mirrored from the plate's thumb rect.
+    overlay._source_inset_canvas = None
+    overlay._source_inset_cover = None
+    overlay._source_inset_frame = None
+    overlay._source_inset_store = None
+    overlay._source_inset_store_key = None
+    overlay._source_inset_token = 0
+    overlay._source_inset_path = None
     src_lay.addWidget(overlay._source_inset_pix)
     overlay._source_inset_host.raise_()
     overlay._source_inset_host.hide()

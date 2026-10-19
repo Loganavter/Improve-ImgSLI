@@ -131,6 +131,17 @@ def release_preview_canvas(overlay) -> None:
     """Overlay release (hide/close): walk step + drop every memoized store."""
     _host().release_preview_canvas_for_walk(overlay)
     try:
+        # The source inset is a second engine canvas with its own private
+        # store memo; hide/close retires both (walks keep them — the inset
+        # re-populates synchronously on the next step).
+        from tabs.image_gallery.ui.quick_look.source_canvas import (
+            release_source_inset_canvas,
+        )
+
+        release_source_inset_canvas(overlay)
+    except Exception:
+        pass
+    try:
         # Hide/close retires prefetches even when no walk populate follows.
         overlay._ql_prefetch_token = int(getattr(overlay, "_ql_prefetch_token", 0) or 0) + 1
     except Exception:

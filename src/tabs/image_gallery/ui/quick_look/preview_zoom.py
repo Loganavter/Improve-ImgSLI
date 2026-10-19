@@ -3,6 +3,13 @@
 Wheel-zoom for the single-quad canvas: centered, ``ZOOM_MIN..ZOOM_MAX``,
 ``ZOOM_STEP`` per wheel notch. Split from ``preview_canvas.py`` (500-line
 contract gate). All functions total and fail-open (``None`` = keep current).
+
+``ViewportState`` is the ONE zoom/pan holder: the main preview canvas owns
+an instance and the source inset canvas binds to the SAME object
+(``QuickLookCanvasWidget.bind_view``), so both views transform identically —
+zooming/panning either surface moves both. Pure Python (observers are plain
+callables, no Qt types), so the state stays testable and the widgets stay
+the only place that paints.
 """
 
 from __future__ import annotations
@@ -10,6 +17,109 @@ from __future__ import annotations
 ZOOM_MIN = 1.0
 ZOOM_MAX = 8.0
 ZOOM_STEP = 1.15
+
+
+class ViewportState:
+    """Shared ``(zoom, pan_x, pan_y)`` state for every view of one frame.
+
+    ``plan-gallery-ql-source-canvas``: the source inset is a second engine
+    canvas, not a pixmap; one viewport state must drive both views. The
+    canvas widget owns one per source and ``bind_view`` makes another widget
+    subscribe to it, so a wheel/drag on either writes the same numbers.
+    Listeners are notified after an actual change; all accessors are total.
+    """
+
+    __slots__ = ("_zoom", "_pan_x", "_pan_y", "_listeners")
+
+    def __init__(self, zoom: float = 1.0, pan_x: float = 0.0, pan_y: float = 0.0) -> None:
+        self._listeners: list = []
+        self._zoom = self._num(zoom, 1.0)
+        self._pan_x = self._num(pan_x, 0.0)
+        self._pan_y = self._num(pan_y, 0.0)
+
+    @staticmethod
+    def _num(value, fallback: float) -> float:
+        try:
+            return float(value)
+        except Exception:
+            return float(fallback)
+
+    @property
+    def zoom(self) -> float:
+        return self._zoom
+
+    @zoom.setter
+    def zoom(self, value) -> None:
+        z = self._num(value, self._zoom)
+        if z == self._zoom:
+            return
+        self._zoom = z
+        self._notify()
+
+    @property
+    def pan_x(self) -> float:
+        return self._pan_x
+
+    @pan_x.setter
+    def pan_x(self, value) -> None:
+        p = self._num(value, self._pan_x)
+        if p == self._pan_x:
+            return
+        self._pan_x = p
+        self._notify()
+
+    @property
+    def pan_y(self) -> float:
+        return self._pan_y
+
+    @pan_y.setter
+    def pan_y(self, value) -> None:
+        p = self._num(value, self._pan_y)
+        if p == self._pan_y:
+            return
+        self._pan_y = p
+        self._notify()
+
+    @property
+    def view(self) -> tuple[float, float, float]:
+        return (self._zoom, self._pan_x, self._pan_y)
+
+    def subscribe(self, callback) -> None:
+        """Register a repaint observer (idempotent, fail-open)."""
+        try:
+            if callback not in self._listeners:
+                self._listeners.append(callback)
+        except Exception:
+            pass
+
+    def unsubscribe(self, callback) -> None:
+        try:
+            self._listeners.remove(callback)
+        except Exception:
+            pass
+
+    def _notify(self) -> None:
+        for callback in tuple(self._listeners):
+            try:
+                callback()
+            except Exception:
+                pass
+
+    def set_view(self, zoom, pan_x, pan_y, *, notify: bool = True) -> bool:
+        """Assign all three axes at once; True when the view actually changed."""
+        z = self._num(zoom, self._zoom)
+        px = self._num(pan_x, self._pan_x)
+        py = self._num(pan_y, self._pan_y)
+        if (z, px, py) == (self._zoom, self._pan_x, self._pan_y):
+            return False
+        self._zoom, self._pan_x, self._pan_y = z, px, py
+        if notify:
+            self._notify()
+        return True
+
+    def reset(self, *, notify: bool = True) -> bool:
+        """Back to the identity view (context change / new pair)."""
+        return self.set_view(ZOOM_MIN, 0.0, 0.0, notify=notify)
 
 
 def step_zoom(zoom: float, delta_y: float) -> float:
