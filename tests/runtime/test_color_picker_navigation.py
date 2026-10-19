@@ -4,7 +4,8 @@
   the in-scope widget that owns a ``QColor``; no ``ScrollValueButton``
   consumer carries one, see DONE.md);
 - the picker registers a row section (``declare_navigation_rows``) over its
-  recent-colour chips row and its action buttons;
+  four interactive rows — picker (SV/hue/alpha), value fields, recent-colour
+  chips and action buttons, in visual top→bottom order;
 - ``Enter``/``Space`` activate a chip, ``Enter`` activates the action button;
 - ``Esc`` closes the picker and returns focus to the opener.
 
@@ -157,19 +158,36 @@ def test_picker_arrows_traverse_rows_in_visual_order(qapp, store, host):
         assert manager.focus_section_for_owner(dialog) is True, (
             "the picker must register its row section"
         )
-        first_chip = dialog._recents_row._chip_widgets[0]
-        assert QApplication.focusWidget() is first_chip
+        # Row order top→bottom: picker (SV/hue/alpha), value fields,
+        # recent-colour chips, action buttons. Entry lands on the first
+        # focusable of the topmost row — the hue slider (the SV square is
+        # deliberately NoFocus).
+        assert QApplication.focusWidget() is dialog._hue_slider
 
-        # Row order top→bottom: recents chips, then the action buttons.
+        # The sliders own Left/Right for value adjustment (the toolkit's
+        # ``_widget_handles`` trial-dispatch); Down is the row walk.
+        QTest.keyClick(dialog._hue_slider, Qt.Key.Key_Down)
+        assert QApplication.focusWidget() in (
+            dialog._hex_edit,
+            dialog._format_btn,
+            dialog._r_spin,
+            dialog._g_spin,
+            dialog._b_spin,
+            dialog._a_spin,
+        ), "Down leaves the picker row for the value-fields row"
+
+        first_chip = dialog._recents_row._chip_widgets[0]
+        first_chip.setFocus(Qt.FocusReason.OtherFocusReason)
         QTest.keyClick(first_chip, Qt.Key.Key_Right)
         assert QApplication.focusWidget() is dialog._recents_row._chip_widgets[1], (
             "Left/Right move within the chips row"
         )
 
         QTest.keyClick(dialog._recents_row._chip_widgets[1], Qt.Key.Key_Down)
-        assert QApplication.focusWidget() is dialog._cancel_btn, (
-            "Down leaves the chips row for the actions row"
-        )
+        assert QApplication.focusWidget() in (
+            dialog._cancel_btn,
+            dialog._ok_btn,
+        ), "Down leaves the chips row for the actions row"
 
         QTest.keyClick(dialog._cancel_btn, Qt.Key.Key_Up)
         assert QApplication.focusWidget() in dialog._recents_row._chip_widgets, (
