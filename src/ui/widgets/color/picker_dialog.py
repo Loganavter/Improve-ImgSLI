@@ -11,14 +11,22 @@ representations (see ``value_format``), RGB ``SpinBox`` fields, a
 before/after preview chip and a recent-colors chip row
 (``RecentColorsRow``). Return/Enter accepts.
 
-Keyboard navigation: the toolkit's zero-config ``AutoNavigationSection``
-(``auto_navigation``) over the dialog's four interaction rows, visual
-top→bottom — the SV/hue/alpha picker row, the value-fields row (field +
-format button + R/G/B/A spin boxes), the recent-color chips row and the
-action buttons. The chips themselves are ``StrongFocus`` + ``FocusLayer``
-ring; the SV square stays mouse-only (``NoFocus``) so it drops out of the
-row walk. Esc (or any close path) returns the keyboard to the widget that
-opened the picker.
+Keyboard navigation: ``declare_navigation_rows`` registers the dialog's
+four interaction rows *by container* (``ToolbarRowsSection``), visual
+top→bottom — the SV/hue/alpha picker row (``_picker_container``), the
+value-fields row (``_fields_container``: field + format button + R/G/B/A
+spin boxes), the recent-color chips row (``_recents_row``) and the action
+buttons (``_actions_container``). Declared rows (not the zero-config
+``AutoNavigationSection``) are deliberate: the auto section claims *any*
+descendant (``owns`` is an ancestor fallback) and derives its rows from
+on-screen pixel clustering rather than the layout containers — so "every
+control is owned" was vacuous, and the walk was not tied to the dialog's
+rows. A declared row is owned iff it is one of the four, and the walk
+follows container order, not pixel clustering. The chips
+themselves are ``StrongFocus`` + ``FocusLayer`` ring (so Left/Right steps
+within the row); the SV square stays mouse-only (``NoFocus``) so it drops
+out of the row walk. Esc (or any close path) returns the keyboard to the
+widget that opened the picker.
 
 Kept API-compatible with the subset of ``QColorDialog`` the callers used
 (``colorSelected``, ``finished``, ``show``/``raise_``/``activateWindow``,
@@ -47,7 +55,7 @@ from PySide6.QtWidgets import QApplication, QHBoxLayout, QSizePolicy, QVBoxLayou
 from resources.translations import tr
 from shared_toolkit.ui.layout_sizing import GeometryApplyPolicy, apply_dialog_geometry
 from shared_toolkit.ui.themed_dialog import ThemedDialog
-from sli_ui_toolkit.managers import auto_navigation, scaled_px
+from sli_ui_toolkit.managers import declare_navigation_rows, scaled_px
 from sli_ui_toolkit.theme import ThemeManager
 from sli_ui_toolkit.ui.managers import connect_ui_metrics
 from sli_ui_toolkit.ui.managers.ui_metrics import AXIS_FONT, AXIS_SCALE
@@ -406,16 +414,23 @@ class ColorPickerDialog(ThemedDialog):
         self.setSizeGripEnabled(False)
 
         self._build_ui(ok_text=self._ok_text, cancel_text=self._cancel_text)
-        # Keyboard navigation over the picker's four interaction rows —
-        # picker (hue/alpha sliders), value fields (+ format button + RGB/A
-        # spins), recent-color chips and the action buttons. The dialog is an
-        # arbitrary container of StrongFocus controls, so the toolkit's
-        # zero-config AutoNavigationSection clusters them into rows by y:
-        # the SV square is NoFocus and drops out automatically, and the
-        # chips are StrongFocus (recents.py). The value-fields row is a bare
-        # QHBoxLayout (not a widget), so a declared-row section cannot cover
-        # it without restructuring the layout the geometry tests pin.
-        auto_navigation(self, tag="color-picker")
+        # Keyboard navigation over the picker's four interaction rows, in
+        # visual top→bottom order. Rows are the real band containers keyed to
+        # the layout (``_fields_container`` wraps the otherwise-bare fields
+        # QHBoxLayout), so the section's ownership is exact and the walk is
+        # container order — never the auto section's y-cluster heuristic.
+        # The SV square is NoFocus and drops out of its row automatically; the
+        # chips are StrongFocus (recents.py). See the module docstring.
+        declare_navigation_rows(
+            self,
+            [
+                self._picker_container,
+                self._fields_container,
+                self._recents_row,
+                self._actions_container,
+            ],
+            tag="color-picker",
+        )
         self.set_show_alpha(show_alpha)
         self._preview.set_before(self._color)
         self._sync_from_color()
@@ -531,6 +546,16 @@ class ColorPickerDialog(ThemedDialog):
         for button in (self._cancel_btn, self._ok_btn):
             button.setMinimumSize(scaled_px(_ACTION_BTN_W_DP), scaled_px(_ACTION_BTN_H_DP))
         self._recents_row.apply_metrics()
+        # The value-fields band is its own container widget (a declared
+        # navigation row — see __init__): resizing its children invalidates
+        # *its* cached layout, but the dialog's root layout keeps its cached
+        # minimum/sizeHint until the container reports geometry back. Without
+        # this the hidden-dialog metrics probe (and a real scale change before
+        # the window is shown) keeps the previous width instead of re-deriving.
+        fields_layout = self._fields_container.layout()
+        if fields_layout is not None:
+            fields_layout.invalidate()
+        self._fields_container.updateGeometry()
 
     def _pin_window_minimum(self) -> None:
         """Re-pin the QWindow minimum to the widget minimum.
@@ -578,8 +603,8 @@ class ColorPickerDialog(ThemedDialog):
         root.setSpacing(0)
 
         # Row containers (not bare layouts) so each interaction band is one
-        # widget; the picker's navigation section (auto_navigation in
-        # __init__) clusters focusable controls across the whole dialog.
+        # widget: ``declare_navigation_rows`` in __init__ registers these four
+        # containers as the picker's navigation rows, in this order.
         self._picker_container = QWidget(self)
         self._actions_container = QWidget(self)
 
@@ -622,7 +647,14 @@ class ColorPickerDialog(ThemedDialog):
 
         root.addWidget(self._picker_container, 1)
 
-        self._fields_row = QHBoxLayout()
+        # The value-fields band is its own container widget (not a bare
+        # QHBoxLayout): a declared navigation row must be a widget so the
+        # section can own its descendants exactly (``_fields_container`` is
+        # row 2 of the picker's section — see __init__). The container adds
+        # no margins, so the fields' right-aligned geometry is unchanged.
+        self._fields_container = QWidget(self)
+        self._fields_row = QHBoxLayout(self._fields_container)
+        self._fields_row.setContentsMargins(0, 0, 0, 0)
         self._fields_row.setSpacing(0)
 
         # Leading stretch pins the whole fields group (preview chip, labels,
@@ -686,7 +718,7 @@ class ColorPickerDialog(ThemedDialog):
         self._fields_row.addWidget(self._alpha_label)
         self._fields_row.addWidget(self._a_spin)
 
-        root.addLayout(self._fields_row)
+        root.addWidget(self._fields_container)
 
         self._recents_row = RecentColorsRow(
             self,
