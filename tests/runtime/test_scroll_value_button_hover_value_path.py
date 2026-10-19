@@ -170,9 +170,15 @@ def test_mouse_focus_pill_survives_the_hide_delay_and_up_enters(host_button, qap
 
 def test_left_right_step_value_after_hover_up(host_button, qapp):
     _, button = host_button
+    # Drop the activation focus first so the click-focus grant below is a real
+    # FocusIn transition that raises the preview (a bare re-grant is a no-op
+    # and the value-edit gate keeps Up for navigation).
+    button.clearFocus()
+    qapp.processEvents()
 
     _enter_hover(button)
     _mouse_focus(button)
+    qapp.processEvents()
     QTest.keyClick(button, Qt.Key.Key_Up)
     qapp.processEvents()
     pill = button._flyout
@@ -207,8 +213,17 @@ def test_focus_alone_does_not_raise_the_preview(host_button, qapp):
     )
 
 
-def test_up_raises_the_pill_when_focus_did_not_preview(host_button, qapp):
-    """Up must still work from a focus that never previewed (pill on demand)."""
+def test_up_navigates_when_no_preview_exists(host_button, qapp):
+    """Without a pill there is nothing for Up to enter — it navigates.
+
+    Value-edit contract (plan-nav-coverage-2026-10-19): a control that exposes
+    ``is_editing()`` only receives arrows while editing, so a *programmatic*
+    focus (the tab bootstrap; no keyboard/hover user grant, hence no preview)
+    no longer gets an on-demand pill on Up — the key navigates, as arrows must.
+    The user paths still raise the preview: keyboard focus, a hover+click, and
+    a plain click all show the pill first (see the tests above and
+    ``test_click_raises_the_preview_when_focus_was_already_granted``).
+    """
     _, button = host_button
     button.clearFocus()
     qapp.processEvents()
@@ -219,10 +234,39 @@ def test_up_raises_the_pill_when_focus_did_not_preview(host_button, qapp):
     QTest.keyClick(button, Qt.Key.Key_Up)
     qapp.processEvents()
 
-    pill = button._flyout
-    assert pill is not None and pill.hasFocus(), (
-        "Up creates the pill on demand and enters it"
+    assert button._flyout is None or not button._flyout.isVisible(), (
+        "Up must not conjure a preview any more — arrows navigate unless the "
+        "control is in edit mode (Enter)"
     )
+    assert not button.is_editing()
+
+    # The explicit affordance that replaced it: Enter enters edit mode.
+    QTest.keyClick(button, Qt.Key.Key_Return)
+    qapp.processEvents()
+    assert button.is_editing() is True
+
+
+def test_click_raises_the_preview_when_focus_was_already_granted(host_button, qapp):
+    """A click is the pointer path into the pill, even without a FocusIn.
+
+    ``waitExposed`` leaves activation focus on the button; a click then
+    produces no new ``FocusIn``, so the focus preview never fires. The press
+    handler raises the preview itself (the button stays focused and the
+    pointer is over it, so the pill persists for the hand-travel + Up).
+    """
+    _, button = host_button
+    assert button.hasFocus(), "activation focus is already on the button"
+
+    _enter_hover(button)
+    QTest.mouseClick(button, Qt.MouseButton.LeftButton)
+    qapp.processEvents()
+
+    pill = button._flyout
+    assert pill is not None and pill.isVisible(), "a click must raise the pill"
+
+    QTest.keyClick(button, Qt.Key.Key_Up)
+    qapp.processEvents()
+    assert pill.hasFocus(), "Up enters the click-raised pill"
 
 
 # ---------------------------------------------------------------------------
@@ -232,9 +276,13 @@ def test_up_raises_the_pill_when_focus_did_not_preview(host_button, qapp):
 
 def test_settle_after_esc_from_hover_path(host_button, qapp):
     _, button = host_button
+    # Real FocusIn transition so the click-focus preview exists for Up.
+    button.clearFocus()
+    qapp.processEvents()
 
     _enter_hover(button)
     _mouse_focus(button)
+    qapp.processEvents()
     QTest.keyClick(button, Qt.Key.Key_Up)
     qapp.processEvents()
     pill = button._flyout
@@ -362,9 +410,13 @@ def test_settle_after_down_returns(host_button, qapp):
     """Down hands the keyboard back; once the mouse leaves, everything
     settles (pill included)."""
     _, button = host_button
+    # Real FocusIn transition so the click-focus preview exists for Up.
+    button.clearFocus()
+    qapp.processEvents()
 
     _enter_hover(button)
     _mouse_focus(button)
+    qapp.processEvents()
     QTest.keyClick(button, Qt.Key.Key_Up)
     qapp.processEvents()
     pill = button._flyout

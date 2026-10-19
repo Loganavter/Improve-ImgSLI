@@ -8,8 +8,9 @@ Owner's decisions:
 - **Up** moves the keyboard *into* the pill, ``Left``/``Right`` step the value
   there (the pill's own ``keyPressEvent`` → ``anchor._step_value``);
 - **Down**/*Esc* leave the pill;
-- **Enter** mirrors a right-click — it emits ``rightClicked`` and nothing else
-  (the control has no edit mode; the pill is entered with Up).
+- **Enter** enters the value-edit mode (owner contract, plan-nav-coverage
+  2026-10-19); it no longer mirrors a right-click. ``rightClicked`` stays the
+  mouse right-button signal (the pill is entered with Up).
 
 Falsification (recorded in DONE.md): with the pre-change binding — the preview
 path force-unregistering the pill's nav section, and ``_ScrollValueFlyout``
@@ -233,12 +234,14 @@ def test_underline_stays_visible_in_the_zero_state(qtbot):
     assert button._show_underline is True, "the underline must survive a rebuild"
 
 
-def test_enter_mirrors_right_click(host_button, qapp):
-    """Enter emits ``rightClicked`` (the RMB signal) and does nothing else.
+def test_enter_enters_edit_mode_instead_of_right_click(host_button, qapp):
+    """Enter belongs to the value-edit contract, not to ``rightClicked``.
 
-    Owner rule (2026-10-19): the value control has no edit mode — Enter must
-    behave like a right-click, not open/step the pill. The pill is entered
-    with Up (``test_up_enters_pill_and_left_right_step_value``).
+    Owner contract (plan-nav-coverage-2026-10-19 § Value-edit contract): every
+    value control gets edit mode on Enter (Enter enters, Enter commits, Esc
+    reverts — pinned end-to-end in ``test_value_control_edit_contract.py``).
+    ``rightClicked`` stays the mouse right-button signal, so the colour/context
+    menus it opens are still reached with a real right click.
     """
     _, button = host_button
     seen: list[bool] = []
@@ -249,5 +252,6 @@ def test_enter_mirrors_right_click(host_button, qapp):
     QTest.keyClick(button, Qt.Key.Key_Return)
     qapp.processEvents()
 
-    assert seen == [True], "Enter must emit rightClicked (the RMB signal)"
-    assert button.get_value() == before, "Enter must not step the value"
+    assert seen == [], "Enter must not emit the RMB signal any more"
+    assert button.is_editing() is True, "Enter must enter edit mode"
+    assert button.get_value() == before, "entering edit mode must not step the value"
