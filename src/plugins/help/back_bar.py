@@ -14,7 +14,7 @@ from sli_ui_toolkit.ui.managers.ui_font import ui_font
 from ui.theming import resolve_theme_color
 from ui.layout_spacing import control_edge_padding
 from sli_ui_toolkit.ui.widgets.helpers import unregister_hover_widget
-from sli_ui_toolkit.widgets import Button, Label
+from sli_ui_toolkit.widgets import Button, Text
 
 # Button sizeHint pads text with +24px; crumbs only need a hair of inset.
 _CRUMB_PAD_X = 4
@@ -145,7 +145,9 @@ class HelpBackBar(QWidget):
 
         for index, (node_id, title) in enumerate(crumbs):
             if index > 0:
-                sep = Label("/", pixel_size=12, parent=self._crumbs_host)
+                sep = Text(
+                    "/", mode="plain", pixel_size=12, parent=self._crumbs_host
+                )
                 sep.setSizePolicy(
                     QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed
                 )

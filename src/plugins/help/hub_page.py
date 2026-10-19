@@ -11,7 +11,7 @@ from plugins.help.tree import HelpNode
 from sli_ui_toolkit.managers import scaled_px
 from sli_ui_toolkit.ui.widgets.buttons import ButtonRow
 from sli_ui_toolkit.ui.widgets.helpers import unregister_hover_widget
-from sli_ui_toolkit.widgets import Button, ButtonRegion, HorizontalSplit, Label
+from sli_ui_toolkit.widgets import Button, ButtonRegion, HorizontalSplit, Text
 from ui.layout_spacing import control_edge_padding
 
 
@@ -60,9 +60,10 @@ class HelpHubPage(QWidget):
             control_edge_padding(), scaled_px(12), control_edge_padding(), scaled_px(16)
         )
         self._layout.setSpacing(scaled_px(12))
-        self._title = Label("", pixel_size=22, bold=True, parent=self)
-        self._subtitle = Label(
+        self._title = Text("", mode="plain", pixel_size=22, bold=True, parent=self)
+        self._subtitle = Text(
             "",
+            mode="plain",
             pixel_size=13,
             word_wrap=True,
             color_token="list_item.text.rating",
