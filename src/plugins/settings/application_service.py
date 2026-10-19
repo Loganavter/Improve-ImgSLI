@@ -109,9 +109,25 @@ class SettingsApplicationService(QObject):
         if data.language == self.store.settings.current_language:
             return
         # Real call site for SetLanguageAction: the Store is mutated via
-        # dispatch (tracer-visible, history-recorded), then the event bus
-        # notifies live UI to retranslate.
+        # dispatch (tracer-visible, history-recorded), then the ONE live
+        # retranslate entry runs.
         self.store.get_dispatcher().dispatch(SetLanguageAction(data.language))
+        # Retranslate from HERE, not from the ``SettingsChangeLanguageEvent``
+        # subscriber: the dispatch above already moved the Store, so
+        # ``SettingsController.change_language`` sees "no change" and
+        # early-returns before it would ever emit — the exact path that used to
+        # swallow a live Settings-OK language change
+        # (plan-live-appearance-fixes-2026-10-19). This is the same single
+        # entry the in-app control ``set_language`` path uses
+        # (core/control/handlers.py) — do not add a second retranslate entry.
+        from resources.translations import emit_language_changed
+
+        emit_language_changed(data.language)
+        # The CSD menu strip (File/Help) builds its labels from the Store
+        # language, not from an i18n binding, so it must be rebuilt as part of
+        # the language apply — it used to be refreshed only from the unrelated
+        # keyboard-override apply.
+        self._rebuild_csd_menu(data.language)
         if self.event_bus is not None:
             self.event_bus.emit(SettingsChangeLanguageEvent(data.language))
         elif (
@@ -120,6 +136,33 @@ class SettingsApplicationService(QObject):
         ):
             self.main_controller.event_bus.emit(
                 SettingsChangeLanguageEvent(data.language)
+            )
+
+    def _rebuild_csd_menu(self, lang_code: str) -> None:
+        """Rebuild the CSD menu strip so its labels match ``lang_code``.
+
+        Fail-open: the strip is host chrome that may be absent (headless apply,
+        tests), and a stale menu label must never break a language apply.
+        """
+        try:
+            window = self._resolve_main_window()
+            menu = None
+            if window is not None:
+                # Public accessor first (window.menu_controller); fall back to
+                # the private attr for stub windows that only set that.
+                menu = getattr(window, "menu_controller", None) or getattr(
+                    window, "_menu_controller", None
+                )
+            rebuild = (
+                getattr(menu, "_on_language_changed", None)
+                if menu is not None
+                else None
+            )
+            if callable(rebuild):
+                rebuild(lang_code)
+        except Exception:
+            logging.getLogger("ImproveImgSLI").exception(
+                "Failed to rebuild the CSD menu after a language change"
             )
 
     def _apply_ui_scale_settings(self, data: SettingsDialogData) -> None:
@@ -334,11 +377,11 @@ class SettingsApplicationService(QObject):
             if window is None:
                 window = getattr(self.parent(), "parent_widget", None)
             resync_action_shortcuts(window, overrides=new_overrides)
-            # Keep CSD menu shortcut labels in sync with remapped chords.
-            menu = getattr(window, "_menu_controller", None) if window else None
-            rebuild = getattr(menu, "_on_language_changed", None) if menu else None
-            if callable(rebuild):
-                rebuild(getattr(self.store.settings, "current_language", "en"))
+            # NOTE: the CSD menu strip is (re)built only by the language apply
+            # (``_apply_language_settings`` → ``_rebuild_csd_menu``); the menu
+            # hook dedupes on the File/Help label, which a keyboard override
+            # does not change, so calling it here was a no-op for its stated
+            # purpose (shortcut labels) anyway.
         except Exception:
             import logging
 
