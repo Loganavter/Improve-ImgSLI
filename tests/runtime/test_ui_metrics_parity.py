@@ -254,6 +254,44 @@ def _build_button_chip(qapp, monkeypatch):
     return chip, probe
 
 
+def _build_toolkit_switch(qapp, monkeypatch):
+    """Toolkit Switch (the owner's "Рисовать фон" control): design-px geometry.
+
+    Registered as a RATIO surface — the switch's chrome is design px resolved
+    through scaled_px(), so its size hint must grow by the scale factor.
+    """
+    from sli_ui_toolkit.widgets import Switch
+
+    switch = Switch()
+
+    def probe():
+        hint = switch.sizeHint()
+        return (hint.width(), hint.height())
+
+    return switch, probe
+
+
+def _build_color_picker_dialog(qapp, monkeypatch):
+    """Colour-picker dialog: the declared minimum must COVER the content and scale.
+
+    Registered as a RATIO surface. Origin: the owner's screenshot (fields and
+    buttons overlapping) which the L5 wave traced to a declared minimum below
+    the laid-out content; the fix locks the minimum to the computed content and
+    re-derives it on the metrics bus, so both must grow by the factor here.
+    """
+    from PySide6.QtGui import QColor
+
+    from ui.widgets.color.picker_dialog import ColorPickerDialog
+
+    dialog = ColorPickerDialog(QColor(255, 136, 0, 170), show_alpha=True)
+
+    def probe():
+        hint = dialog.minimumSizeHint()
+        return (hint.width(), hint.height(), dialog.minimumWidth(), dialog.minimumHeight())
+
+    return dialog, probe
+
+
 SURFACES: dict[str, MetricsSurface] = {
     # Host chrome — font AND scale derived.
     "csd_menu_strip": MetricsSurface(
@@ -290,6 +328,18 @@ SURFACES: dict[str, MetricsSurface] = {
     "button_chip_sections": MetricsSurface(
         "button_chip_sections",
         _build_button_chip,
+        frozenset({"scale"}),
+        expect_ratio=True,
+    ),
+    "toolkit_switch": MetricsSurface(
+        "toolkit_switch",
+        _build_toolkit_switch,
+        frozenset({"scale"}),
+        expect_ratio=True,
+    ),
+    "color_picker_dialog": MetricsSurface(
+        "color_picker_dialog",
+        _build_color_picker_dialog,
         frozenset({"scale"}),
         expect_ratio=True,
     ),
