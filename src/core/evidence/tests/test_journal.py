@@ -93,7 +93,7 @@ def test_latest_record_wins():
         signal="preview pixel differs at (3,7)",
         reason="red before the fix",
         ids=("frame=42",),
-        area="image_compare.canvas",
+        area="demo.canvas",
     )
     record_evidence(
         "bug.demo.recur",
@@ -102,7 +102,7 @@ def test_latest_record_wins():
         signal="preview pixel equals export at (3,7)",
         reason="green after the fix",
         ids=("frame=99",),
-        area="image_compare.canvas",
+        area="demo.canvas",
     )
 
     latest = verdict(None, "bug.demo.recur")
