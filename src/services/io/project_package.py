@@ -21,6 +21,7 @@ import os
 import shutil
 import tempfile
 import zipfile
+import zlib
 from pathlib import Path
 from typing import Any, Callable, Iterable
 
@@ -425,6 +426,37 @@ def _is_within_directory(base: Path, target: Path) -> bool:
         return False
 
 
+def _member_is_intact(target: Path, info: zipfile.ZipInfo) -> tuple[bool, str]:
+    """Is extracted *target* still the archive member described by *info*?
+
+    Size alone is not enough: a crashed writer can leave a full-length file
+    with bad bytes, and in-place damage never changes the length, so a
+    size-only reuse check serves the corruption forever. The ZIP's
+    central-directory CRC32 is the only content signal the archive carries —
+    compare it against a streamed read of the cached member (cheaper than
+    re-inflating and re-writing the member; correctness first).
+    """
+    try:
+        size = target.stat().st_size
+    except OSError:
+        return False, "missing"
+    if size != info.file_size:
+        return False, f"size mismatch {size} != {info.file_size}"
+    try:
+        crc = 0
+        with target.open("rb") as fh:
+            while True:
+                chunk = fh.read(1024 * 1024)
+                if not chunk:
+                    break
+                crc = zlib.crc32(chunk, crc)
+    except OSError:
+        return False, "unreadable"
+    if (crc & 0xFFFFFFFF) != (info.CRC & 0xFFFFFFFF):
+        return False, f"content crc mismatch {crc:#010x} != {info.CRC:#010x}"
+    return True, ""
+
+
 def _atomic_extract_member(
     zf: zipfile.ZipFile, member: str, target: Path, *, per_member_limit: int | None = None
 ) -> None:
@@ -506,9 +538,9 @@ def extract_media(
     """Extract ``media/`` members to ``cache_dir``.
 
     Returns ``{package_relative_member: absolute_cache_path}``.
-    Reuses existing files only when size matches the catalog/ZIP entry;
-    otherwise re-extracts atomically via tmp+rename to avoid truncated files
-    being reused forever. Also purges old project caches.
+    Reuses existing files only when size and CRC32 match the ZIP entry;
+    otherwise re-extracts atomically via tmp+rename so a truncated or
+    damaged file is never reused. Also purges old project caches.
     """
     cache_dir = Path(cache_dir)
     cache_dir.mkdir(parents=True, exist_ok=True)
@@ -538,20 +570,21 @@ def extract_media(
             target = (cache_dir / member).resolve()
             if not _is_within_directory(cache_dir, target):
                 raise ValueError(f"Unsafe zip member path: {member}")
-            # Reuse only when size matches ZIP entry (catalog bytes); a
-            # crash/disk-full can leave a partial file that st_size>0 would
-            # previously have trusted forever.
+            # Reuse only when size AND content match the ZIP entry (catalog
+            # bytes): a crash/disk-full can leave a partial file, and damage
+            # after extraction keeps the length — neither is a reason to keep
+            # serving the poisoned member on every later open.
             if target.is_file():
                 try:
                     info = zf.getinfo(member)
-                    if target.stat().st_size == info.file_size:
-                        mapping[member] = str(target)
-                        continue
-                    logger.debug("Re-extracting %s: size mismatch %s != %s", member, target.stat().st_size, info.file_size)
                 except KeyError:
-                    if target.stat().st_size > 0:
+                    info = None  # no integrity data: re-extract, never trust
+                if info is not None:
+                    intact, why = _member_is_intact(target, info)
+                    if intact:
                         mapping[member] = str(target)
                         continue
+                    logger.debug("Re-extracting %s: %s", member, why)
             _atomic_extract_member(zf, member, target)
             mapping[member] = str(target)
         if progress is not None and total:
@@ -572,8 +605,8 @@ def extract_pixel_cache(
 ) -> dict[str, str]:
     """Extract ``cache/`` members (embedded pixel-cache buffers) to ``cache_dir``.
 
-    Returns ``{asset_id: absolute_cache_path}``. Atomic + size-checked like
-    :func:`extract_media`.
+    Returns ``{asset_id: absolute_cache_path}``. Atomic, size- and
+    CRC32-checked like :func:`extract_media`.
     """
     cache_dir = Path(cache_dir)
     cache_dir.mkdir(parents=True, exist_ok=True)
@@ -606,13 +639,14 @@ def extract_pixel_cache(
             if target.is_file():
                 try:
                     info = zf.getinfo(member)
-                    if target.stat().st_size == info.file_size:
-                        mapping[asset_id] = str(target)
-                        continue
                 except KeyError:
-                    if target.stat().st_size > 0:
+                    info = None  # no integrity data: re-extract, never trust
+                if info is not None:
+                    intact, why = _member_is_intact(target, info)
+                    if intact:
                         mapping[asset_id] = str(target)
                         continue
+                    logger.debug("Re-extracting %s: %s", member, why)
             _atomic_extract_member(zf, member, target)
             mapping[asset_id] = str(target)
         if progress is not None and total:
