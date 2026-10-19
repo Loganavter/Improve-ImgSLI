@@ -36,12 +36,12 @@ def _reset_ui_scale():
 def test_keep_spacing_scaled_follows_live_scale(qapp):
     """The helper re-applies the design gap when the live factor changes.
 
-    Falsification: red on ``main`` before this wave — the helper gained a
-    required ``owner`` argument (``TypeError: missing 1 required positional
-    argument: 'owner'``) and the re-apply rides the coalesced metrics channel
-    (a zero-timer), so a bare ``set_factor`` read the old 10 while 1.5 asked
-    for 15. The helper is the only writer of this spacing, so the assertion
-    cannot pass for an unrelated reason.
+    Falsification: red at the pre-``a7b4e5c0`` base (``1bf913a7``) — the helper
+    gained a required ``owner`` argument (``TypeError: missing 1 required
+    positional argument: 'owner'``) and the re-apply rides the coalesced metrics
+    channel (a zero-timer), so a bare ``set_factor`` read the old 10 while 1.5
+    asked for 15. Green at the current integration head; the assertion still
+    fails with the measured numbers if the invariant regresses.
     """
     layout = QVBoxLayout()
     owner = QWidget()
@@ -77,13 +77,14 @@ def _fake_ui() -> SimpleNamespace:
 def test_slider_column_gap_scales_and_is_applied_to_panel(qapp):
     """The built slider column follows a live factor change, and proves it.
 
-    Falsification: red on ``main`` before this wave — ``column.spacing()`` was
-    read synchronously right after ``set_factor(1.5)`` and still held the
-    design gap (10 != 15) because the coalesced metrics flush had not landed;
-    and the helper call raised ``TypeError`` for the missing ``owner``. The
-    evidence record below is derived from the observed spacing (``violated``
-    on a regression), so the probe fails with the measured numbers, not a
-    guessed verdict.
+    Falsification: red at the pre-``a7b4e5c0`` base (``1bf913a7``) —
+    ``column.spacing()`` was read synchronously right after ``set_factor(1.5)``
+    and still held the design gap (10 != 15) because the coalesced metrics
+    flush had not landed; and the helper call raised ``TypeError`` for the
+    missing ``owner``. Green at the current integration head. The evidence
+    record below is derived from the observed spacing (``violated`` on a
+    regression), so the probe fails with the measured numbers, not a guessed
+    verdict.
     """
     ui = _fake_ui()
     builder = ImageCompareLayoutBuilder(ui, None)

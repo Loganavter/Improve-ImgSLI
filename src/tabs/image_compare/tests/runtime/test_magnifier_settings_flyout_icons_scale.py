@@ -43,12 +43,12 @@ def test_icon_label_renders_at_current_scale(qapp: QApplication):
 def test_icon_label_rerenders_on_scale_change(qapp: QApplication):
     """A live factor change re-renders the icon pixmap at the new size.
 
-    Falsification: red on ``main`` before this wave — ``label.width()`` was
-    asserted synchronously after ``set_factor(1.5)`` and still held the 1.0
-    size (18 != 27) because the rescale rides the coalesced metrics channel
-    (a zero-timer). The evidence record is derived from the observed label
-    and pixmap widths, so a regression emits ``violated`` with the measured
-    numbers and fails the probe.
+    Falsification: red at the pre-``a7b4e5c0`` base (``1bf913a7``) —
+    ``label.width()`` was asserted synchronously after ``set_factor(1.5)`` and
+    still held the 1.0 size (18 != 27) because the rescale rides the coalesced
+    metrics channel (a zero-timer). Green at the current integration head. The
+    evidence record is derived from the observed label and pixmap widths, so a
+    regression emits ``violated`` with the measured numbers and fails the probe.
     """
     label = ScaledIconLabel(Icon.CAPTURE_SIZE, 18)
     assert label.width() == scaled_px(18)
