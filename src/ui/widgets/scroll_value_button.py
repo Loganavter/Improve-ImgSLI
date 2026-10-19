@@ -658,6 +658,11 @@ class ScrollValueButton(Button):
 
     def focusInEvent(self, event) -> None:  # noqa: N802
         super().focusInEvent(event)
+        scroll_value_debug(
+            "focusIn widget=%s reason=%s kb=%s suppress=%s hover=%s",
+            id(self), event.reason().name, getattr(self, "_keyboard_focus", None),
+            self._suppress_focus_preview, self._mouse_hovered,
+        )
         # Нижняя капсула (value) уже была для ховера мышкой — показываем её и для фокуса.
         # The preview shows on ANY focus, keyboard or mouse: gating it on the
         # toolkit's ``_keyboard_focus`` (keyboard modality only) left a button
@@ -684,6 +689,11 @@ class ScrollValueButton(Button):
 
     def focusOutEvent(self, event) -> None:  # noqa: N802
         super().focusOutEvent(event)
+        _t = QApplication.focusWidget()
+        scroll_value_debug(
+            "focusOut widget=%s target=%s hover=%s",
+            id(self), type(_t).__name__ if _t is not None else None, self._mouse_hovered,
+        )
         # Гасим капсулу если ушли фокусом и мышка не ховерит — но НЕ когда
         # фокус ушёл в наш же флайаут значения (hover-preview → Up): капсула
         # остаётся частью той же группы, и её возврат не должен мигать при
@@ -874,6 +884,11 @@ class ScrollValueButton(Button):
         if not self._is_scrolling:
             self._is_scrolling = True
             self._sync_regions()
+        scroll_value_debug(
+            "show flyout widget=%s focus=%s timer=%s hover=%s kb=%s",
+            id(self), self.hasFocus(), self._flyout_hide_timer.isActive(),
+            self._mouse_hovered, getattr(self, "_keyboard_focus", None),
+        )
         # Preview registers its nav section too (show_value →
         # register_nav_section=True) so Up can enter the pill without stealing
         # focus on hover.
@@ -889,6 +904,7 @@ class ScrollValueButton(Button):
         stuck look the owner reported after a wheel nudge (sv-hover-fix).
         Same suppression idiom as ``_dismiss_preview``.
         """
+        scroll_value_debug("hide timeout widget=%s", id(self))
         self._suppress_focus_preview = True
         try:
             self._hide_flyout()
@@ -897,6 +913,7 @@ class ScrollValueButton(Button):
 
     def _hide_flyout(self) -> None:
         self._flyout_hide_timer.stop()
+        scroll_value_debug("hide flyout widget=%s", id(self))
         if self._flyout is not None:
             self._flyout.hide()
         if self._is_scrolling:
