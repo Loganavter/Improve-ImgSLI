@@ -143,6 +143,60 @@ def test_digit_capsule_stays_inside_value_region(qtbot):
     )
 
 
+def test_digit_capsule_uses_the_button_background_stack(qtbot, monkeypatch):
+    """The digit capsule must paint the SAME ordered layers as the button.
+
+    Regression: the capsule filled only ``backgrounds[-1]`` (the last wash)
+    while ``BackgroundLayer.draw`` fills every resolved layer, so the capsule
+    read as a different backdrop — and it looked detached from the group's
+    shared hover wash.
+    """
+    from PySide6.QtCore import QRectF
+    from PySide6.QtGui import QColor
+
+    from sli_ui_toolkit.ui.widgets.buttons.layers.background import BackgroundLayer
+
+    from ui.widgets.scroll_value_button import _ValueOverUnderlineLayer
+
+    colors = [QColor("red"), QColor("blue")]
+    monkeypatch.setattr(
+        BackgroundLayer,
+        "_resolve",
+        staticmethod(lambda ctx, tm: (list(colors), None)),
+    )
+
+    seen: list = []
+
+    class _Painter:
+        def save(self):
+            pass
+
+        def restore(self):
+            pass
+
+        def setRenderHint(self, *_a):
+            pass
+
+        def setPen(self, *_a):
+            pass
+
+        def setBrush(self, brush):
+            seen.append(brush)
+
+        def drawRoundedRect(self, *_a):
+            pass
+
+    class _Ctx:
+        painter = _Painter()
+        effective_rect = QRectF(0, 0, 30, 20)
+
+    _ValueOverUnderlineLayer._draw_capsule(_Ctx(), None, "4")
+
+    assert [c.name() for c in seen] == ["#ff0000", "#0000ff"], (
+        "the capsule must paint the full background stack, in order"
+    )
+
+
 def test_value_flyout_label_reflows_after_live_scale_change(qtbot):
     """The cached value flyout must grow its label with the UI scale.
 
