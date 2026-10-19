@@ -198,9 +198,10 @@ def test_picker_arrows_traverse_rows_in_visual_order(qapp, store, host):
         )
         # Row order top→bottom: picker (SV/hue/alpha), value fields,
         # recent-colour chips, action buttons. Entry lands on the first
-        # focusable of the topmost row — the hue slider (the SV square is
-        # deliberately NoFocus).
-        assert QApplication.focusWidget() is dialog._hue_slider
+        # focusable of the topmost row — the SV square (leftmost, then the
+        # hue/alpha sliders in the same row). It stays reachable without
+        # consuming arrows while navigating (``is_editing()`` is False).
+        assert QApplication.focusWidget() is dialog._sv
 
         # The sliders own Left/Right for value adjustment (the toolkit's
         # ``_widget_handles`` trial-dispatch); Down is the row walk.
@@ -453,3 +454,298 @@ def test_picker_recents_row_moves_left_right_within_one_visual_row(qapp, store, 
         NavigationManager.get_instance().unregister(dialog)
         dialog.deleteLater()
 
+
+# ---------------------------------------------------------------------------
+# SV square: keyboard reach + Enter-gated value edit
+# (plan-nav-coverage-2026-10-19 § Value-edit contract)
+#
+# The square used to be ``NoFocus`` ("mouse-only"), which made it the one
+# interactive control the picker's declared row could not walk to. The
+# contract now: StrongFocus, arrows are the section's while navigating, Enter
+# enters the toolkit's value-edit mode (``is_editing()``), arrows + WASD move
+# the crosshair there, Enter commits, Esc reverts to the saturation/value
+# captured on entry.
+# ---------------------------------------------------------------------------
+
+_SV_EDIT_KEYS = (
+    Qt.Key.Key_Left,
+    Qt.Key.Key_Right,
+    Qt.Key.Key_Up,
+    Qt.Key.Key_Down,
+)
+
+
+def _sv_state(sv) -> tuple[float, float]:
+    return (sv._sat, sv._val)
+
+
+def _color_sv(dialog) -> tuple[float, float]:
+    _h, sat, val, _a = dialog.color().getHsvF()
+    return (sat, val)
+
+
+def _focus_sv(dialog, qapp) -> None:
+    dialog._sv.setFocus(Qt.FocusReason.OtherFocusReason)
+    qapp.processEvents()
+    assert QApplication.focusWidget() is dialog._sv
+
+
+def _settled_color(dialog, qapp, code: str = "#3366cc") -> None:
+    """Give the dialog a saturated colour so the square's state matches it."""
+    dialog.setCurrentColor(QColor(code))
+    qapp.processEvents()
+
+
+def test_sv_square_is_owned_and_reachable_from_the_picker_row(qapp, store, host):
+    """The square is StrongFocus, owned by the picker row, and Down lands on it.
+
+    Red pre-fix: the square is ``NoFocus``, so the row walk entry is the hue
+    slider and ``spec.owns(sv)`` is only true by ancestry (the section's
+    ``_focusable`` skips it) — the square is unreachable.
+    """
+    dialog = _make_dialog(qapp, store, host)
+    try:
+        sv = dialog._sv
+        spec = _section(dialog)
+        assert sv.focusPolicy() == Qt.FocusPolicy.StrongFocus, (
+            "a NoFocus square is invisible to the picker's row walk"
+        )
+        assert spec.owns(sv), "the picker section must own the SV square"
+        assert dialog._picker_container.isAncestorOf(sv)
+        assert sv in spec._focusable(dialog._picker_container), (
+            "the square must be one of the picker row's focusable controls"
+        )
+
+        dialog.clearFocus()
+        dialog.setFocus(Qt.FocusReason.OtherFocusReason)
+        qapp.processEvents()
+        QTest.keyClick(dialog, Qt.Key.Key_Down)
+        qapp.processEvents()
+        assert QApplication.focusWidget() is sv, (
+            "Down from the dialog must land on the picker row's first "
+            "focusable — the leftmost control, the SV square"
+        )
+
+        # Left/Right step across the picker row's columns: square → hue → back.
+        QTest.keyClick(sv, Qt.Key.Key_Right)
+        qapp.processEvents()
+        assert QApplication.focusWidget() is dialog._hue_slider, (
+            "Right from the square must step to the next control in the row"
+        )
+        QTest.keyClick(dialog._hue_slider, Qt.Key.Key_Left)
+        qapp.processEvents()
+        assert QApplication.focusWidget() is sv, (
+            "Left must step back onto the square"
+        )
+    finally:
+        NavigationManager.get_instance().unregister(dialog)
+        dialog.deleteLater()
+
+
+def test_arrows_while_navigating_never_change_the_colour(qapp, store, host):
+    """Not editing: every arrow is the section's (ring walk), never the value."""
+    dialog = _make_dialog(qapp, store, host)
+    try:
+        sv = dialog._sv
+        for key in _SV_EDIT_KEYS:
+            _focus_sv(dialog, qapp)
+            before_state = _sv_state(sv)
+            before_color = dialog.color()
+            QTest.keyClick(sv, key)
+            qapp.processEvents()
+            assert not sv.is_editing(), (
+                "a bare arrow must not enter edit mode"
+            )
+            assert _sv_state(sv) == before_state, (
+                f"{Qt.Key(key).name} changed saturation/value while navigating"
+            )
+            assert dialog.color() == before_color, (
+                f"{Qt.Key(key).name} changed the picker colour while navigating"
+            )
+    finally:
+        NavigationManager.get_instance().unregister(dialog)
+        dialog.deleteLater()
+
+
+def test_enter_starts_edit_mode_where_wasd_and_arrows_move_the_crosshair(
+    qapp, store, host
+):
+    dialog = _make_dialog(qapp, store, host)
+    try:
+        sv = dialog._sv
+        _settled_color(dialog, qapp)
+        _focus_sv(dialog, qapp)
+        entry_sat, entry_val = _sv_state(sv)
+
+        QTest.keyClick(sv, Qt.Key.Key_Return)
+        qapp.processEvents()
+        assert sv.is_editing() is True, "Enter must enter the square's edit mode"
+        assert dialog.isVisible(), "entering edit mode must not accept the dialog"
+        assert _sv_state(sv) == (entry_sat, entry_val)
+
+        QTest.keyClick(sv, Qt.Key.Key_D)
+        qapp.processEvents()
+        sat_d, val_d = _sv_state(sv)
+        assert sat_d > entry_sat, "D (saturation +) must move the crosshair right"
+        assert val_d == pytest.approx(entry_val), "D must not touch value"
+
+        QTest.keyClick(sv, Qt.Key.Key_A)
+        qapp.processEvents()
+        assert _sv_state(sv)[0] == pytest.approx(entry_sat), "A must undo D"
+
+        QTest.keyClick(sv, Qt.Key.Key_W)
+        qapp.processEvents()
+        sat_w, val_w = _sv_state(sv)
+        assert val_w > entry_val, "W (value +) must move the crosshair up"
+        assert sat_w == pytest.approx(entry_sat), "W must not touch saturation"
+
+        QTest.keyClick(sv, Qt.Key.Key_S)
+        qapp.processEvents()
+        assert _sv_state(sv)[1] == pytest.approx(entry_val), "S must undo W"
+
+        # Arrows are handed to the widget only while it reports edit mode.
+        sat_before = _sv_state(sv)[0]
+        QTest.keyClick(sv, Qt.Key.Key_Right)
+        qapp.processEvents()
+        assert sv.is_editing(), "an arrow while editing must stay in the widget"
+        assert QApplication.focusWidget() is sv, (
+            "an arrow while editing must not walk the row"
+        )
+        assert _sv_state(sv)[0] > sat_before, "Right must raise saturation"
+
+        val_before = _sv_state(sv)[1]
+        QTest.keyClick(sv, Qt.Key.Key_Up)
+        qapp.processEvents()
+        assert _sv_state(sv)[1] > val_before, "Up must raise value"
+
+        # The picker colour tracks the crosshair live, before commit.
+        assert _color_sv(dialog) == pytest.approx(_sv_state(sv), abs=1e-4)
+    finally:
+        NavigationManager.get_instance().unregister(dialog)
+        dialog.deleteLater()
+
+
+def test_enter_commits_the_edited_value_and_leaves_edit_mode(qapp, store, host):
+    dialog = _make_dialog(qapp, store, host)
+    try:
+        sv = dialog._sv
+        _settled_color(dialog, qapp)
+        _focus_sv(dialog, qapp)
+
+        QTest.keyClick(sv, Qt.Key.Key_Return)
+        qapp.processEvents()
+        assert sv.is_editing()
+        for _ in range(3):
+            QTest.keyClick(sv, Qt.Key.Key_D)
+        qapp.processEvents()
+        committed_state = _sv_state(sv)
+        committed_color = dialog.color()
+
+        QTest.keyClick(sv, Qt.Key.Key_Return)
+        qapp.processEvents()
+        assert sv.is_editing() is False, "Enter must commit and leave edit mode"
+        assert _sv_state(sv) == committed_state, "commit must keep the new value"
+        assert dialog.color() == committed_color, "commit must keep the new colour"
+        assert dialog.isVisible(), "committing the square must not accept the dialog"
+
+        # Arrows are the section's again once edit mode is left.
+        QTest.keyClick(sv, Qt.Key.Key_Left)
+        qapp.processEvents()
+        assert _sv_state(sv) == committed_state, (
+            "after commit arrows must not edit the value"
+        )
+        assert QApplication.focusWidget() is dialog._hue_slider, (
+            "after commit Left must step the row, not edit the square"
+        )
+    finally:
+        NavigationManager.get_instance().unregister(dialog)
+        dialog.deleteLater()
+
+
+def test_escape_reverts_to_the_value_captured_on_entering_edit_mode(
+    qapp, store, host
+):
+    dialog = _make_dialog(qapp, store, host)
+    try:
+        sv = dialog._sv
+        _settled_color(dialog, qapp)
+        _focus_sv(dialog, qapp)
+        entry_state = _sv_state(sv)
+        entry_color = dialog.color()
+
+        QTest.keyClick(sv, Qt.Key.Key_Return)
+        qapp.processEvents()
+        assert sv.is_editing()
+        QTest.keyClick(sv, Qt.Key.Key_D)
+        QTest.keyClick(sv, Qt.Key.Key_Up)
+        qapp.processEvents()
+        assert _sv_state(sv) != entry_state, "the keys must have moved the crosshair"
+        assert dialog.color() != entry_color
+
+        QTest.keyClick(sv, Qt.Key.Key_Escape)
+        qapp.processEvents()
+        assert sv.is_editing() is False, "Esc must leave edit mode"
+        assert _sv_state(sv) == pytest.approx(entry_state), (
+            "Esc must restore the saturation/value captured on entry"
+        )
+        assert _color_sv(dialog) == pytest.approx(entry_state, abs=1e-4), (
+            "Esc must restore the picker colour, not just the internal state"
+        )
+        assert dialog.isVisible(), (
+            "Esc inside edit mode must not close the picker (that is the "
+            "second Esc, from navigation mode)"
+        )
+    finally:
+        NavigationManager.get_instance().unregister(dialog)
+        dialog.deleteLater()
+
+
+def test_keyboard_focus_paints_the_shared_ring_and_mouse_focus_does_not(
+    qapp, store, host
+):
+    """Distinct-content render check, the switch-focus-ring idiom.
+
+    ``grab()`` reads real pixels, so a ring that is only computed (but never
+    painted) would pass a state assertion and fail here.
+    """
+    dialog = _make_dialog(qapp, store, host)
+    try:
+        sv = dialog._sv
+        _settled_color(dialog, qapp)
+
+        sv.clearFocus()
+        sv.set_sv(0.5, 0.5)
+        qapp.processEvents()
+        unfocused = sv.grab().toImage()
+
+        # A real mouse click focuses the square under mouse modality.
+        QTest.mouseClick(
+            sv,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier,
+            sv.rect().center(),
+        )
+        qapp.processEvents()
+        assert QApplication.focusWidget() is sv
+        sv.set_sv(0.5, 0.5)
+        qapp.processEvents()
+        mouse_focused = sv.grab().toImage()
+        assert mouse_focused == unfocused, (
+            "mouse focus must not paint the keyboard focus ring"
+        )
+
+        _kbd_focus(sv)
+        sv.set_sv(0.5, 0.5)
+        qapp.processEvents()
+        assert QApplication.focusWidget() is sv
+        assert sv._keyboard_focus is True, (
+            "the keyboard modality flag must come from resolve_keyboard_focus"
+        )
+        keyboard_focused = sv.grab().toImage()
+        assert keyboard_focused != unfocused, (
+            "keyboard focus must change the rendered pixels (shared "
+            "paint_focus_ring), not just the state flag"
+        )
+    finally:
+        NavigationManager.get_instance().unregister(dialog)
+        dialog.deleteLater()
