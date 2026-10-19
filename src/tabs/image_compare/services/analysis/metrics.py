@@ -28,6 +28,16 @@ class MetricsService:
         # _unification_task_id and cached-diff request_key).
         self._metrics_request_id: int = 0
 
+    def _invalidate_pending_metrics(self) -> None:
+        """Bump the staleness token so no in-flight result can land.
+
+        The no-worker paths (missing/mismatched images, auto-calc turned off)
+        clear the display, but leaving the token untouched let a worker
+        started for the previous pair pass the request-id check and dispatch
+        its numbers onto the new state.
+        """
+        self._metrics_request_id += 1
+
     def calculate_metrics_async(self, calc_psnr: bool, calc_ssim: bool):
         img1, img2 = self._get_metric_source_images()
         box1, box2 = self._resolve_metric_boxes()
@@ -37,6 +47,7 @@ class MetricsService:
         # worker, which returns None when the windows cannot be compared.
         boxless = box1 is None and box2 is None
         if not img1 or not img2 or (boxless and img1.size != img2.size):
+            self._invalidate_pending_metrics()
             self._close_ssim_metrics_toast()
             self.on_metrics_calculated(None, request_id=None)
             return
@@ -248,6 +259,7 @@ class MetricsService:
         if calc_psnr or calc_ssim:
             self.calculate_metrics_async(calc_psnr=calc_psnr, calc_ssim=calc_ssim)
         else:
+            self._invalidate_pending_metrics()
             self._close_ssim_metrics_toast()
             self.on_metrics_calculated(None, request_id=None)
 
