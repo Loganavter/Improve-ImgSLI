@@ -137,6 +137,12 @@ def build_overlay_ui(overlay) -> None:
     overlay._close_btn.setObjectName("quicklook_close")
     # Full dismiss (filters + dismissed signal), not bare hide().
     overlay._close_btn.clicked.connect(lambda _checked=False: overlay.dismiss())
+    # The panel's HEADER ROW IS THIS BUTTON (nav_section.rows()): single-control
+    # row, so it must stay StrongFocus — arrows reach it (Up from the strip /
+    # Down from the action bar) and the toolkit Button activates it on
+    # Enter/Space. It stays in the title layout; only the row declaration makes
+    # it owned (audit inv-nav-coverage-audit-2026-10-19 rank 4: it used to live
+    # outside every row and was keyboard-unreachable).
     chip_row.addWidget(overlay._close_btn)
     outer.addLayout(chip_row)
     mid = QHBoxLayout()
@@ -185,6 +191,13 @@ def build_overlay_ui(overlay) -> None:
         pass
     # ‹/› move the strip's focus ring (the picture follows on Enter) — the
     # same keyboard-first contract as ←/→ (quick_look/nav_section.py).
+    # They are CLICK-ONLY by written decision (NoFocus): ←/→ already walk the
+    # same ring through the section, so a focus stop here would be a second way
+    # to do one movement — and, living in overlay coords outside every declared
+    # row, it was an unowned Tab stop (audit inv-nav-coverage-audit-2026-10-19
+    # rank 4). Mouse clicks keep working; NoFocus only keeps the keyboard ring
+    # on the row controls.
+    overlay._prev_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
     overlay._prev_btn.clicked.connect(
         lambda: _nav_move_cursor(overlay, -1)
     )
@@ -264,6 +277,10 @@ def build_overlay_ui(overlay) -> None:
     # region with 4px padding around the cover pixmap, rounded + bordered
     # by the painter pipeline — contrast without clickability (no
     # callbacks, no hover overlays via bg_locked, arrow cursor).
+    # NoFocus by the same "no callbacks" rule: a StrongFocus control that does
+    # nothing on Enter is a dead keyboard stop (audit
+    # inv-nav-coverage-audit-2026-10-19 rank 4; the caption/tooltip stays
+    # readable, it was never an action).
     from PySide6.QtCore import QRectF as _QRectF
 
     _inset_pad = 4
@@ -308,6 +325,10 @@ def build_overlay_ui(overlay) -> None:
             btn.setCursor(Qt.CursorShape.ArrowCursor)
         except Exception:
             pass
+        try:
+            btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        except Exception:
+            pass
         return btn
 
     overlay._source_inset_pix = _make_inset_thumb_button(overlay._source_inset_host)
@@ -328,6 +349,8 @@ def build_overlay_ui(overlay) -> None:
     overlay._next_btn.clicked.connect(
         lambda: _nav_move_cursor(overlay, 1)
     )
+    # Same written decision as ‹ (see the comment above _prev_btn): click-only.
+    overlay._next_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
     left_lay.addLayout(preview_row, 1)
     # W4 item 4: the Esc hint lives at the right end of the bottom button
     # bar (built below), not in the left column. Nothing added here.
@@ -337,6 +360,17 @@ def build_overlay_ui(overlay) -> None:
     # only the scrollbar changes, not the column shape).
     right_scroll = OverlayScrollArea(overlay._content, corner_radius=0)
     right_scroll.setObjectName("quicklook_right_scroll")
+    # The sidebar scroller takes no keyboard focus (same reason the strip
+    # scroller below documents): QAbstractScrollArea is StrongFocus by default,
+    # so it was a Tab stop outside every declared nav row where Enter does
+    # nothing — an inert stop. Wheel + the overlay bar still scroll it, and the
+    # panel's arrows belong to the row section. (Audit
+    # inv-nav-coverage-audit-2026-10-19 rank 4 found it while enforcing "every
+    # focus stop is actionable".)
+    try:
+        right_scroll.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+    except Exception:
+        pass
     # W13: the mockup's right column is min 296px (svg x=816 w=296) and
     # STRETCHES with the card — a minimum, never a fixed width. The
     # value/sub labels still elide (they take the free row width via
