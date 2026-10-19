@@ -116,6 +116,10 @@ def _settled(button: ScrollValueButton) -> bool:
 
 def test_mouse_focus_then_up_enters_pill_without_enter(host_button, qapp):
     _, button = host_button
+    # waitExposed grants activation focus to the button; drop it so the hover +
+    # grant below are a real transition (a bare grant raises no preview).
+    button.clearFocus()
+    qapp.processEvents()
 
     _enter_hover(button)
     _mouse_focus(button)
@@ -181,19 +185,44 @@ def test_left_right_step_value_after_hover_up(host_button, qapp):
     assert button.get_value() == before, "Left steps back"
 
 
-def test_focus_alone_shows_preview_in_mouse_modality(host_button, qapp):
-    """A button focused the mouse way (click) must preview the value too —
-    the merged focus-preview was gated on keyboard modality only."""
+def test_focus_alone_does_not_raise_the_preview(host_button, qapp):
+    """A bare focus grant is not a preview by itself (owner rule 2026-10-19).
+
+    The new tab's bootstrap lands activation focus on the first control
+    (MouseFocusReason, no pointer over it) — raising the pill there made it pop
+    up on its own at startup and vanish 700 ms later. A real mouse session (the
+    pointer over the button, then a click) still previews — see
+    ``test_mouse_focus_then_up_enters_pill_without_enter``.
+    """
     _, button = host_button
+    button.clearFocus()
+    qapp.processEvents()
 
     _mouse_focus(button)
     qapp.processEvents()
 
     pill = button._flyout
-    assert pill is not None and pill.isVisible(), (
-        "focus must preview the value in mouse modality as well"
+    assert pill is None or not pill.isVisible(), (
+        "a programmatic focus must not raise the value pill"
     )
-    assert not pill.hasFocus(), "the preview must not steal focus"
+
+
+def test_up_raises_the_pill_when_focus_did_not_preview(host_button, qapp):
+    """Up must still work from a focus that never previewed (pill on demand)."""
+    _, button = host_button
+    button.clearFocus()
+    qapp.processEvents()
+    _mouse_focus(button)
+    qapp.processEvents()
+    assert button._flyout is None or not button._flyout.isVisible()
+
+    QTest.keyClick(button, Qt.Key.Key_Up)
+    qapp.processEvents()
+
+    pill = button._flyout
+    assert pill is not None and pill.hasFocus(), (
+        "Up creates the pill on demand and enters it"
+    )
 
 
 # ---------------------------------------------------------------------------

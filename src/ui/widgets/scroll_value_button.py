@@ -127,8 +127,14 @@ class _ValueOverUnderlineLayer(Layer):
         p.save()
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         p.setPen(Qt.PenStyle.NoPen)
-        p.setBrush(backgrounds[-1])
-        p.drawRoundedRect(rect, height / 2, height / 2)
+        # Same ORDERED layer stack the region itself paints. BackgroundLayer
+        # fills *every* resolved layer (e.g. base + the ambient hover/checked
+        # wash); using only ``backgrounds[-1]`` made the digit capsule visibly
+        # different from the button's own backdrop (the wash without the base
+        # underneath it).
+        for bg in backgrounds:
+            p.setBrush(bg)
+            p.drawRoundedRect(rect, height / 2, height / 2)
         p.restore()
 
 
@@ -609,6 +615,12 @@ class ScrollValueButton(Button):
     def keyPressEvent(self, event) -> None:  # noqa: N802
         key = event.key()
         scroll_value_debug("keyPressEvent key=%s value=%s widget=%s", key, self._value, id(self))
+        if key == Qt.Key.Key_Up and (self._flyout is None or not self._flyout.isVisible()):
+            # No preview yet — a programmatic activation focus deliberately
+            # does not raise one. Create it on demand so THIS press can enter
+            # it: leave the event unaccepted, the section then finds the fresh
+            # extension and focuses it.
+            self._show_flyout()
         # Enter mirrors a right-click (owner rule): this value control has no
         # edit mode — the value pill is entered with Up, and Left/Right step the
         # value there. Arrows otherwise navigate (Left/Right → next button,
@@ -677,15 +689,23 @@ class ScrollValueButton(Button):
         # relight is the "button sticks in the value-display state" the
         # owner reported, sv-hover-fix).
         if not self._suppress_focus_preview:
-            self._set_hover_split(True)
-            self._show_flyout()
-            # Keyboard focus: the preview must persist while the focus ring
-            # is on the button (owner decision 2026-10-19) — no 700 ms
-            # auto-hide, so Up can enter the pill at any time regardless of
-            # how long the owner pauses. The wheel preview stays transient,
-            # and the mouse/click preview keeps its own timer.
-            if self._keyboard_focus:
-                self._flyout_hide_timer.stop()
+            # A *programmatic* focus grant is not a user preview: the new tab's
+            # bootstrap lands activation focus on the first control
+            # (MouseFocusReason, hover=False, keyboard=False) and the pill used
+            # to pop up on its own at startup and vanish 700 ms later. Show the
+            # preview only for a plausible user grant — keyboard (arrow/Tab) or
+            # the pointer actually over the button (a click). Up still works
+            # without a preview: keyPressEvent creates the pill on demand.
+            if self._keyboard_focus or self._mouse_hovered:
+                self._set_hover_split(True)
+                self._show_flyout()
+                # Keyboard focus: the preview must persist while the focus ring
+                # is on the button (owner decision 2026-10-19) — no 700 ms
+                # auto-hide, so Up can enter the pill at any time regardless of
+                # how long the owner pauses. The wheel preview stays transient,
+                # and the mouse/click preview keeps its own timer.
+                if self._keyboard_focus:
+                    self._flyout_hide_timer.stop()
 
     def focusOutEvent(self, event) -> None:  # noqa: N802
         super().focusOutEvent(event)
