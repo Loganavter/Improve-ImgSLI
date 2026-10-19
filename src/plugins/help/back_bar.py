@@ -6,6 +6,7 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont, QFontMetrics, QPainter, QPen
 from PySide6.QtWidgets import QHBoxLayout, QSizePolicy, QWidget
 
+from sli_ui_toolkit.managers import scaled_px
 from sli_ui_toolkit.theme import ThemeManager
 from sli_ui_toolkit.ui.managers import connect_ui_metrics
 from sli_ui_toolkit.ui.managers.ui_font import ui_font
@@ -68,10 +69,7 @@ class HelpBackBar(QWidget):
         self.setObjectName("HelpBackBar")
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self._layout = QHBoxLayout(self)
-        self._layout.setContentsMargins(
-            control_edge_padding(), 6, control_edge_padding(), 7
-        )
-        self._layout.setSpacing(6)
+        self._apply_design_metrics()
 
         self._back = Button(
             text="←",
@@ -114,9 +112,23 @@ class HelpBackBar(QWidget):
         self._back.setEnabled(bool(enabled))
         self.setVisible(True)
 
+    def _apply_design_metrics(self) -> None:
+        """Resolve the bar chrome's design px at the live scale factor."""
+        self._layout.setContentsMargins(
+            control_edge_padding(),
+            scaled_px(6),
+            control_edge_padding(),
+            scaled_px(7),
+        )
+        self._layout.setSpacing(scaled_px(6))
+
     def _on_metrics_changed(self) -> None:
         # Crumbs' fixed widths are measured from the scaled UI font; rebuild
         # them on a live font/scale change so they keep fitting their text.
+        # The bar's own margins/spacing are design px too — re-resolve them
+        # here (before this they were set once and stayed at the built
+        # factor after a live scale change).
+        self._apply_design_metrics()
         self.set_breadcrumb(self._crumbs)
 
     def set_breadcrumb(self, crumbs: tuple[tuple[str, str], ...]) -> None:
