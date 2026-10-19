@@ -30,6 +30,8 @@ from PySide6.QtWidgets import QWidget
 from sli_ui_toolkit.managers import scaled_px
 from sli_ui_toolkit.theme import ThemeManager
 from sli_ui_toolkit.ui.layout_settle import settle_layout
+from sli_ui_toolkit.ui.managers import connect_ui_metrics
+from sli_ui_toolkit.ui.managers.ui_metrics import AXIS_FONT, AXIS_SCALE
 from sli_ui_toolkit.ui.widgets.buttons.context import DrawContext
 from sli_ui_toolkit.ui.widgets.buttons.layers.focus import FocusLayer as _FocusLayer
 
@@ -43,6 +45,15 @@ RECENT_COLORS_CAP = 12
 _FOCUS_LAYER = _FocusLayer()
 
 _SETTINGS_KEY = "color_picker/recents"
+
+# Chip chrome in DESIGN px — resolved with ``scaled_px`` at use time (per
+# instance, see ``_RecentColorChip.apply_metrics``), never at import time:
+# a class-level ``scaled_px(...)`` bakes the launch scale factor in and the
+# chips could never follow a later interface-scale change.
+_CHIP_SIZE_DP = 64
+_CHIP_CORNER_RADIUS_DP = 10.0
+_CHIP_SWATCH_RADIUS_DP = 6.0
+_CHIP_SWATCH_PADDING_DP = 6.0
 
 # Assumed content-well width (design px) for the pre-layout chip wrap: the
 # picker dialog's max width (640) minus its shelf root margins (32) minus
@@ -144,15 +155,11 @@ class _RecentColorChip(QWidget):
 
     picked = Signal(QColor)
 
-    SIZE = scaled_px(64)
-    CORNER_RADIUS = scaled_px(10.0)
-    SWATCH_RADIUS = scaled_px(6.0)
-    SWATCH_PADDING = scaled_px(6.0)
-    HOVER_RING_WIDTH = 2.0
+    HOVER_RING_WIDTH_DP = 2.0
 
     def __init__(self, hex_code: str, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.setFixedSize(self.SIZE, self.SIZE)
+        self.apply_metrics()
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         color = parse_hex_color(hex_code)
@@ -164,6 +171,15 @@ class _RecentColorChip(QWidget):
         self._keyboard_focus = False
         self.theme_manager = ThemeManager.get_instance()
         self.theme_manager.theme_changed.connect(self.update)
+
+    def apply_metrics(self) -> None:
+        """Re-resolve this chip's chrome px from design space at use time."""
+        self._corner_radius = float(scaled_px(_CHIP_CORNER_RADIUS_DP))
+        self._swatch_radius = float(scaled_px(_CHIP_SWATCH_RADIUS_DP))
+        self._swatch_padding = float(scaled_px(_CHIP_SWATCH_PADDING_DP))
+        size = scaled_px(_CHIP_SIZE_DP)
+        self.setFixedSize(size, size)
+        self.update()
 
     def focusInEvent(self, event) -> None:  # noqa: N802
         try:
@@ -228,14 +244,14 @@ class _RecentColorChip(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         rect = QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5)
-        radius = self.CORNER_RADIUS
+        radius = self._corner_radius
 
         swatch = rect.adjusted(
-            self.SWATCH_PADDING, self.SWATCH_PADDING,
-            -self.SWATCH_PADDING, -self.SWATCH_PADDING,
+            self._swatch_padding, self._swatch_padding,
+            -self._swatch_padding, -self._swatch_padding,
         )
         path = QPainterPath()
-        path.addRoundedRect(swatch, self.SWATCH_RADIUS, self.SWATCH_RADIUS)
+        path.addRoundedRect(swatch, self._swatch_radius, self._swatch_radius)
         painter.save()
         painter.setClipPath(path)
         painter.setPen(Qt.PenStyle.NoPen)
@@ -257,7 +273,7 @@ class _RecentColorChip(QWidget):
 
         if self._hovered or self._pressed:
             accent = resolve_theme_color(self.theme_manager, "button.default.border")
-            painter.setPen(QPen(accent, self.HOVER_RING_WIDTH))
+            painter.setPen(QPen(accent, scaled_px(self.HOVER_RING_WIDTH_DP)))
             painter.setBrush(Qt.BrushStyle.NoBrush)
             painter.drawRoundedRect(rect, radius, radius)
 
@@ -275,7 +291,7 @@ class _RecentColorChip(QWidget):
             rect=QRectF(self.rect()),
             states=frozenset(),
             variant="default",
-            corner_radius=int(self.CORNER_RADIUS),
+            corner_radius=int(self._corner_radius),
         )
 
 
@@ -315,6 +331,23 @@ class RecentColorsRow(ShelfWidget):
         # left-aligns its columns, and mutating it inside resizeEvent is
         # unreliable.
         self.setVisible(False)
+        # Chip card size is scaled chrome: re-size the chips and re-wrap on a
+        # live font/scale change (the dialog also calls ``apply_metrics`` before
+        # it re-locks its own minimum, so the row works standalone too).
+        connect_ui_metrics(
+            self,
+            self._on_metrics_changed,
+            axes=frozenset({AXIS_FONT, AXIS_SCALE}),
+        )
+
+    def _on_metrics_changed(self, _axes: frozenset[str] | None = None) -> None:
+        self.apply_metrics()
+
+    def apply_metrics(self) -> None:
+        """Re-resolve chip sizes + the wrap at the live scale factor."""
+        for chip in self._chip_widgets:
+            chip.apply_metrics()
+        self._relayout_chips()
 
     def resizeEvent(self, event) -> None:  # noqa: N802
         super().resizeEvent(event)
@@ -326,7 +359,7 @@ class RecentColorsRow(ShelfWidget):
         chips = self._chip_widgets
         if not chips:
             return
-        size = _RecentColorChip.SIZE
+        size = scaled_px(_CHIP_SIZE_DP)
         spacing = scaled_px(self.CHIPS_SPACING)
         margin_left = scaled_px(self.CHIPS_MARGIN_LEFT)
         margin_top = scaled_px(self.CHIPS_MARGIN_TOP)
