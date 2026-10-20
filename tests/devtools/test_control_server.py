@@ -356,7 +356,10 @@ def test_get_state_list_sessions_and_list_actions_shapes(tmp_path):
 
     state = handlers.get_state({})
     assert state["path"] is None
-    assert set(state["state"]) == {"settings", "workspace", "document"}
+    assert set(state["state"]) == {"settings", "workspace", "document", "tabs"}
+    assert all(
+        row["active"] is False for row in state["state"]["tabs"].values()
+    ), "no discovered tab pages in this process -> inactive slices, not a guess"
 
     scoped = handlers.get_state({"path": "settings.theme"})
     assert scoped["path"] == "settings.theme"

@@ -44,6 +44,17 @@
       }
     },
     {
+      "path": "src/devtools/app_snapshot.py",
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=leaf-collector size=exempt reason=\"one read-only snapshot serializer — actions/sessions/state/tab assertion slices share the depth-capped encoder and path resolver\"",
+      "parsed": {
+        "pattern": "leaf-collector",
+        "size": "exempt",
+        "reason": "one read-only snapshot serializer — actions/sessions/state/tab assertion slices share the depth-capped encoder and path resolver"
+      }
+    },
+    {
       "path": "src/devtools/context_cloc.py",
       "limit": 500,
       "marker": "Audit-Meta:",

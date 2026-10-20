@@ -62,10 +62,13 @@ def test_dump_state_omits_runtime_cache_and_keeps_settings():
     from core.store import Store
 
     state = dump_state(Store())
-    assert set(state) == {"settings", "workspace", "document"}
+    assert set(state) == {"settings", "workspace", "document", "tabs"}
     assert state["settings"]["theme"] == "auto"
     assert "sessions" in state["workspace"]
     assert "runtime_cache" not in state
+    # Assertion surface: no live page/store session -> every tab is inactive.
+    assert set(state["tabs"]) == {"image_gallery", "image_compare", "multi_compare"}
+    assert all(row["active"] is False for row in state["tabs"].values())
 
 
 def test_dump_snapshot_shape():
