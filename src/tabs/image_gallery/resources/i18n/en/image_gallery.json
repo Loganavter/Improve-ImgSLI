@@ -105,7 +105,8 @@
       "images_toggle_downsample": "Downscale: ≤ {px} px",
       "region_prompt": "What is wrong in this region?",
       "cached": " · cached",
-      "error_context": "Could not assemble the ask context."
+      "error_context": "Could not assemble the ask context.",
+      "history_count": "{n} previous questions"
     },
     "series": {
       "ask_ai": "Ask AI",
@@ -146,6 +147,18 @@
       "images": "{n} images",
       "series": "{n} series",
       "redundant": "{n} redundant"
+    },
+    "profile": {
+      "chip": "Metric profile: {profile}",
+      "auto": "auto",
+      "axes": "{n} axes",
+      "domain": {
+        "auto": "Auto (from mode)",
+        "document": "Document",
+        "photo": "Photo",
+        "synthetic": "Synthetic",
+        "mixed": "Mixed"
+      }
     },
     "quick_look": {
       "unset_source": "Unset",

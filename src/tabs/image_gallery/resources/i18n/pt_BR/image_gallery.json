@@ -105,7 +105,8 @@
       "images_toggle_downsample": "Redução: ≤ {px} px",
       "region_prompt": "O que há de errado nesta região?",
       "cached": " · em cache",
-      "error_context": "Não foi possível montar o contexto da pergunta."
+      "error_context": "Não foi possível montar o contexto da pergunta.",
+      "history_count": "{n} perguntas anteriores"
     },
     "series": {
       "ask_ai": "Perguntar à IA",
@@ -146,6 +147,18 @@
       "images": "{n} imagens",
       "series": "{n} séries",
       "redundant": "{n} redundantes"
+    },
+    "profile": {
+      "chip": "Perfil de métricas: {profile}",
+      "auto": "automático",
+      "axes": "{n} ejes",
+      "domain": {
+        "auto": "Automático (según el modo)",
+        "document": "Documento",
+        "photo": "Foto",
+        "synthetic": "Sintético",
+        "mixed": "Mixto"
+      }
     },
     "quick_look": {
       "unset_source": "Remover origem",

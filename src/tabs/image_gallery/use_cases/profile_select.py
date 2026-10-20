@@ -37,10 +37,10 @@ import logging
 from tabs.image_gallery.services.metric_profile import (
     MEASURED_POOL,
     MetricProfile,
+    axis_spreads,
     format_profile,
     profile_for_mode,
 )
-from tabs.image_gallery.services.metric_scores import raw_for, score_for, spec_for
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -52,21 +52,6 @@ logger = logging.getLogger("ImproveImgSLI")
 DEFAULT_SPREAD_FLOOR: float = 20.0
 
 
-def _score_of(spec, item) -> int | None:
-    """The axis' 0–100 quality score for *item*, or None when not measured."""
-    try:
-        metrics = getattr(item, "metrics", None)
-        if not isinstance(metrics, dict) or not metrics:
-            return None
-        got = raw_for(spec, metrics)
-        if got is None:
-            return None
-        _key, raw = got
-        return int(score_for(spec, raw))
-    except Exception:
-        return None
-
-
 def salience_axes(items) -> tuple[tuple[str, float], ...]:
     """``(axis_id, spread)`` for every pool axis the series can separate.
 
@@ -75,26 +60,12 @@ def salience_axes(items) -> tuple[tuple[str, float], ...]:
     Ordered by spread descending, ties in registry (pool) order — a stable
     sort over a pool-ordered build, so the result is deterministic and
     independent of input order and dict iteration.
-    """
-    try:
-        members = list(items or ())
-    except Exception:
-        members = []
-    if len(members) < 2:
-        return ()
 
-    out: list[tuple[str, float]] = []
-    for axis_id in MEASURED_POOL:
-        spec = spec_for(axis_id)
-        if spec is None:
-            continue
-        values: list[int] = []
-        for item in members:
-            score = _score_of(spec, item)
-            if score is not None:
-                values.append(score)
-        if len(values) >= 2:
-            out.append((axis_id, float(max(values) - min(values))))
+    The measurement itself lives in ``metric_profile.axis_spreads`` (ONE
+    implementation: the P4 domain choice reads the same numbers).
+    """
+    spreads = axis_spreads(items)
+    out = [(axis_id, spreads[axis_id]) for axis_id in MEASURED_POOL if axis_id in spreads]
     # Stable sort: descending spread, ties stay in registry (pool) order.
     out.sort(key=lambda pair: -pair[1])
     return tuple(out)

@@ -105,7 +105,8 @@
       "images_toggle_downsample": "缩小：≤ {px} px",
       "region_prompt": "这个区域有什么问题？",
       "cached": " · 已缓存",
-      "error_context": "无法构建提问上下文。"
+      "error_context": "无法构建提问上下文。",
+      "history_count": "之前 {n} 个问题"
     },
     "series": {
       "ask_ai": "询问 AI",
@@ -146,6 +147,18 @@
       "images": "{n} 张图像",
       "series": "{n} 个系列",
       "redundant": "{n} 张冗余"
+    },
+    "profile": {
+      "chip": "指标配置文件：{profile}",
+      "auto": "自动",
+      "axes": "{n} 个轴",
+      "domain": {
+        "auto": "自动（按模式）",
+        "document": "文档",
+        "photo": "照片",
+        "synthetic": "合成",
+        "mixed": "混合"
+      }
     },
     "quick_look": {
       "unset_source": "取消源",

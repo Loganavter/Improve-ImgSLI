@@ -96,6 +96,31 @@ def test_status_badge_shows_selected_model_not_backend(qtbot):
     qtbot.waitUntil(lambda: not flyout.isVisible(), timeout=5000)
 
 
+def test_history_count_row_shows_and_hides(qtbot):
+    """The flyout renders the count-only history affordance and hides it at 0."""
+    anchor = QWidget()
+    qtbot.addWidget(anchor)
+    anchor.resize(200, 100)
+    anchor.show()
+    qtbot.waitExposed(anchor)
+
+    flyout = AskAiFlyout(anchor)
+    qtbot.addWidget(flyout)
+    flyout.set_texts(history="{n} previous questions")
+    flyout.open_for(anchor, default_prompt="Q", history_count=3)
+    qtbot.waitUntil(lambda: flyout.isVisible(), timeout=5000)
+
+    assert flyout._history.text() == "3 previous questions"
+    # The container is hidden during the offscreen fade, so `isVisible()` is
+    # False for every child — the explicit hide state is the meaningful check.
+    assert flyout._history.isHidden() is False
+
+    flyout.set_history_count(0)
+    assert flyout._history.text() == ""
+    assert flyout._history.isHidden() is True
+    flyout.hide()
+
+
 def test_hide_persists_draft_and_images_toggle(qtbot):
     """Draft text + include-images toggle survive a hide/reopen."""
     anchor = QWidget()

@@ -105,7 +105,8 @@
       "images_toggle_downsample": "Уменьшение: до {px} px",
       "region_prompt": "Что не так в этой области?",
       "cached": " · из кэша",
-      "error_context": "Не удалось собрать контекст запроса."
+      "error_context": "Не удалось собрать контекст запроса.",
+      "history_count": "{n} предыдущих вопросов"
     },
     "series": {
       "ask_ai": "Спросить у ИИ",
@@ -146,6 +147,18 @@
       "images": "{n} изображений",
       "series": "{n} серий",
       "redundant": "{n} лишних"
+    },
+    "profile": {
+      "chip": "Метрический профиль: {profile}",
+      "auto": "авто",
+      "axes": "осей: {n}",
+      "domain": {
+        "auto": "Авто (по режиму)",
+        "document": "Документ",
+        "photo": "Фото",
+        "synthetic": "Синтетика",
+        "mixed": "Смешанный"
+      }
     },
     "quick_look": {
       "unset_source": "Сбросить",

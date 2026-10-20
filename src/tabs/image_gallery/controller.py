@@ -176,6 +176,12 @@ class GalleryController:
         # live there; ``state``/widget are read-only projections (see
         # plan-gallery-jev-pipeline-2026-10-15 S1).
         self._judgment_domain = "algorithms"
+        #: Explicit named metric-domain pick (P4, ``""`` = auto). Controller-
+        #: local for the same reason as ``_judgment_domain``: ``state`` is
+        #: replaced on every folder open / pool rebuild. The resolved profile
+        #: is projected onto ``state.metric_profile`` (the consumer slot).
+        self._metric_domain = ""
+
         # Folder generation whose METRICS pass has settled. The winner (★ BEST)
         # is only marked after settle — before that the fusion rank is
         # provisional and marking it put BEST on a random leader too early.
@@ -279,6 +285,15 @@ class GalleryController:
         widget.folder_pick_requested.connect(self._on_pick_folder)
         widget.analyze_requested.connect(self.analyze_item_by_path)
         widget.filter_text_changed.connect(self.set_filter_text)
+        # P4: the stats-strip chip announces a named-domain pick/clear; the
+        # controller owns the value (state is replaced, the pick must not be).
+        # Fail-open for duck-typed widgets without a strip (storeless tests).
+        try:
+            strip = getattr(widget, "stats_strip", None)
+            if strip is not None:
+                strip.profileDomainSelected.connect(self.set_metric_domain)
+        except Exception:
+            logger.debug("metric profile chip wiring failed", exc_info=True)
         # Explicit owner: the widget attaches this controller via
         # ImageGalleryWidget.attach_controller (G2); the controller keeps
         # self.widget from its constructor only — no back-pokes here.
@@ -460,14 +475,34 @@ class GalleryController:
         stored profile. Never raises: a derivation failure keeps the previous
         value (or ``None``), so consumers fall back to the mode mapping
         (fail-open, plan §Fallback).
+
+        P4: an explicit named-domain pick (``self._metric_domain``) is the
+        authority and wins here — the profile is then the domain's axis set,
+        not the mode/salience derivation. The domain lives on the controller
+        because ``state`` is replaced by open_folder/append/clear_to_empty.
         """
         try:
             from tabs.image_gallery.use_cases.profile_select import (
                 derive_for_state,
                 describe,
             )
+            from tabs.image_gallery.services.metric_profile import (
+                domain_for_stats,
+                profile_for_domain,
+            )
 
-            profile = derive_for_state(self.state)
+            domain = str(getattr(self, "_metric_domain", "") or "")
+            if domain:
+                profile = profile_for_domain(
+                    domain, mode=getattr(self.state, "mode", None)
+                )
+                chip_domain = domain
+            else:
+                profile = derive_for_state(self.state)
+                chip_domain = domain_for_stats(
+                    getattr(self.state, "items", None),
+                    mode=getattr(self.state, "mode", None),
+                )
             try:
                 previous = getattr(self.state, "metric_profile", None)
             except Exception:
@@ -475,6 +510,13 @@ class GalleryController:
             # Store the raw derived profile verbatim (a successful derivation
             # is always a usable ``MetricProfile``, even with no salience).
             self.state.metric_profile = profile
+            try:
+                self.state.metric_domain = domain
+            except Exception:
+                pass
+            self._publish_metric_profile(
+                profile, domain=chip_domain, auto=not domain
+            )
             if profile != previous:
                 logger.debug("[gallery] metric profile: %s", describe(self.state))
             return profile
@@ -485,11 +527,103 @@ class GalleryController:
             except Exception:
                 return None
 
+    def set_metric_domain(self, domain: str) -> object:
+        """Pin the metric profile to a named domain, or clear it ("auto") (P4).
+
+        ``domain`` is one of ``services.metric_profile.DOMAINS`` (``document``
+        / ``photo`` / ``synthetic`` / ``mixed``); ``"auto"``, ``""`` or an
+        unknown value clears the override, restoring the mode/salience-derived
+        profile. The pick lives on the controller (``self._metric_domain``) so
+        it survives the ``state`` replacements of open_folder/append; the
+        resolved axes are written to ``state.metric_profile`` — the SAME slot
+        every consumer already reads — and the strip chip is republished.
+
+        The analysis path needs no change: ``ActionContext`` snapshots
+        ``active_profile(state)`` once (``_analysis_parameters``) and carries
+        it as ``ctx.profile``. Returns the stored profile. Never raises.
+        """
+        try:
+            from tabs.image_gallery.services.metric_profile import (
+                domain_id,
+                domain_for_stats,
+                profile_for_domain,
+            )
+            from tabs.image_gallery.use_cases.profile_select import (
+                derive_for_state,
+                describe,
+            )
+
+            chosen = domain_id(domain)
+            self._metric_domain = chosen
+            try:
+                self.state.metric_domain = chosen
+            except Exception:
+                pass
+            if chosen:
+                profile = profile_for_domain(
+                    chosen, mode=getattr(self.state, "mode", None)
+                )
+                chip_domain = chosen
+            else:
+                # Auto: back to the P1 derivation (mode base ∪ salience) — the
+                # exact profile the same state would have had without a pick.
+                profile = derive_for_state(self.state)
+                chip_domain = domain_for_stats(
+                    getattr(self.state, "items", None),
+                    mode=getattr(self.state, "mode", None),
+                )
+            self.state.metric_profile = profile
+            self._publish_metric_profile(
+                profile, domain=chip_domain, auto=not chosen
+            )
+            logger.debug("[gallery] metric profile: %s", describe(self.state))
+            return profile
+        except Exception:
+            logger.debug("metric domain selection failed", exc_info=True)
+            try:
+                return getattr(self.state, "metric_profile", None)
+            except Exception:
+                return None
+
+    def restore_metric_profile(self) -> object:
+        """Re-apply the domain pick to a freshly rebuilt state (P4).
+
+        Call it after ``state = GalleryState(...)`` (append/rebuild) — the
+        controller is the authority, so the pick is not lost with the old
+        state. Without a pick this is a no-op (the next derivation fills the
+        state as before). Never raises; returns the stored profile or ``None``.
+        """
+        try:
+            domain = str(getattr(self, "_metric_domain", "") or "")
+            if not domain:
+                return getattr(self.state, "metric_profile", None)
+            return self.refresh_metric_profile()
+        except Exception:
+            logger.debug("metric profile restore failed", exc_info=True)
+            return None
+
+    def _publish_metric_profile(self, profile, *, domain: str = "", auto: bool = True) -> None:
+        """Push the active profile + domain to the stats-strip chip (P4).
+
+        The chip is pure presentation: the controller owns the value, the strip
+        only renders it (and announces a pick via ``profileDomainSelected``).
+        Fail-open — a storeless/duck-typed widget in tests has no strip.
+        """
+        try:
+            strip = getattr(self.widget, "stats_strip", None)
+            if strip is None:
+                return
+            strip.set_metric_profile(profile, domain=domain, auto=auto)
+        except Exception:
+            logger.debug("metric profile chip publish failed", exc_info=True)
+
     def clear_metric_profile(self) -> None:
         """Invalidate the stored metric profile (folder changed — plan P1).
 
         Consumers fall back to the mode mapping (``profile_select.active_profile``)
-        until the next ``refresh_metric_profile`` derivation. Never raises.
+        until the next ``refresh_metric_profile`` derivation. P4: a folder
+        switch is a fresh context, so the explicit domain pick is cleared too.
+        Never raises.
         """
         try:
             from tabs.image_gallery.use_cases.profile_select import describe
@@ -498,7 +632,14 @@ class GalleryController:
                 previous = getattr(self.state, "metric_profile", None)
             except Exception:
                 previous = None
+            self._metric_domain = ""
             self.state.metric_profile = None
+            try:
+                self.state.metric_domain = ""
+            except Exception:
+                pass
+            # The chip must not keep showing the previous folder's axis set.
+            self._publish_metric_profile(None)
             if previous is not None:
                 logger.debug("[gallery] metric profile: %s", describe(self.state))
         except Exception:
@@ -536,6 +677,11 @@ class GalleryController:
             items = []
         if len(items) < 2:
             _ai_debug("metric profile skip: %d item(s) (<2) — nothing to select", len(items))
+            return
+        # P4: a manual domain pick is authoritative — do not spend a VLM call
+        # on a profile that would be dropped by ``_apply_profile_outcome``.
+        if str(getattr(self, "_metric_domain", "") or ""):
+            _ai_debug("metric profile skip: explicit domain pick")
             return
         try:
             settings = self._ai_settings_store.load()
@@ -628,6 +774,11 @@ class GalleryController:
         """
         if not self._is_current_folder_gen(gen):
             return
+        # P4: a manual domain pick is the user's explicit decision — the VLM
+        # selector may never silently replace it (the pick survives a rebuild
+        # and stays authoritative until "auto" is chosen).
+        if str(getattr(self, "_metric_domain", "") or ""):
+            return
         try:
             axis_ids = tuple(getattr(profile, "axis_ids", None) or ())
         except Exception:
@@ -639,6 +790,19 @@ class GalleryController:
         except Exception:
             logger.debug("metric profile store failed", exc_info=True)
             return
+        try:
+            from tabs.image_gallery.services.metric_profile import domain_for_stats
+
+            self._publish_metric_profile(
+                profile,
+                domain=domain_for_stats(
+                    getattr(self.state, "items", None),
+                    mode=getattr(self.state, "mode", None),
+                ),
+                auto=True,
+            )
+        except Exception:
+            logger.debug("metric profile chip publish failed", exc_info=True)
         try:
             from tabs.image_gallery.use_cases.profile_select import describe
 
@@ -1620,6 +1784,10 @@ class GalleryController:
                 # Status badge shows the selected LLM, not the backend token.
                 "model": _settings.model,
                 "cached": self._tr("image_gallery.ask_ai.cached", " · cached"),
+                "history": self._tr(
+                    "image_gallery.ask_ai.history_count",
+                    "{n} previous questions",
+                ),
             }
         except Exception:
             default = "What matters here?"
@@ -1739,6 +1907,75 @@ class GalleryController:
         blob = json.dumps(ident, sort_keys=True, ensure_ascii=False)
         return hashlib.sha1(blob.encode("utf-8")).hexdigest()
 
+    def _ask_log_meta(self, scope, context, question: str, settings) -> dict:
+        """Deterministic record metadata for one completed ask (no secrets).
+
+        ``mode``/``profile``/``effort``/``model``/``base_url`` come from
+        ``ai_cache.analysis_cache_identity`` — the same identity the scorecard
+        cache keys on — so the history's provenance matches the answer's
+        provenance field-for-field. ``api_key`` is never included: the log is
+        not a credential store (see ``services/ask_log.py``).
+        """
+        from tabs.image_gallery.services.ai_cache import analysis_cache_identity
+
+        try:
+            identity = analysis_cache_identity(
+                settings,
+                mode=(context or {}).get("mode"),
+                profile=getattr(self.state, "metric_profile", None),
+                reasoning_effort=getattr(settings, "reasoning_effort", None),
+            )
+        except Exception:
+            identity = {}
+        try:
+            paths = sorted(
+                {
+                    str(it.get("path", ""))
+                    for it in ((context or {}).get("items") or [])
+                    if str(it.get("path", "") or "").strip()
+                }
+            )
+        except Exception:
+            paths = []
+        label = str(getattr(scope, "label", "") or "")
+        if not label:
+            label = str((context or {}).get("label") or "")
+        return {
+            "scope_kind": str(getattr(scope, "kind", "") or ""),
+            "scope_label": label,
+            "paths": paths,
+            "question": str(question or "").strip(),
+            "mode": str(identity.get("mode", "") or ""),
+            "profile": str(identity.get("profile", "") or ""),
+            "effort": str(identity.get("reasoning_effort", "") or ""),
+            "model": str(identity.get("model", "") or ""),
+            "base_url": str(identity.get("base_url", "") or ""),
+        }
+
+    def _log_ask_answer(self, result, meta, *, cache_hit: bool) -> None:
+        """Append ONE completed answer to the disk Q/A log (never per token).
+
+        Error results (routing stub / transport) never reach here — the
+        completion handler returns before this on ``result.error``. A cache
+        replay is an answer and is recorded with ``cache_hit=True``. Fail-open:
+        a log write failure must never break the ask surface.
+        """
+        if not meta:
+            return
+        try:
+            text = str(getattr(result, "text", "") or "")
+            if not text.strip():
+                return
+            from tabs.image_gallery.services import ask_log
+
+            ask_log.append_answer(
+                answer=text,
+                cache_hit=bool(cache_hit),
+                **meta,
+            )
+        except Exception:
+            logger.debug("ask-ai log append failed", exc_info=True)
+
     def ask_ai_question(self, scope, question: str, *, include_images: bool = False) -> None:
         """Build context, route, and run the backend on a GenericWorker.
 
@@ -1805,6 +2042,7 @@ class GalleryController:
             return
 
         key = self._ask_cache_key(scope, context, question, backend, settings.model)
+        record_meta = self._ask_log_meta(scope, context, question, settings)
         cached = self._ask_cache.get(key)
         if cached is not None:
             logger.debug("[ask-ai] cache hit backend=%s", backend)
@@ -1814,6 +2052,8 @@ class GalleryController:
                 cached = replace(cached, cached=True)  # type: ignore[arg-type]
             except Exception:
                 pass
+            # A replay is still an answer: one record, marked cache_hit.
+            self._log_ask_answer(cached, record_meta, cache_hit=True)
             self._show_ask_ai_result(cached, links)
             return
 
@@ -1851,14 +2091,16 @@ class GalleryController:
         worker = GenericWorker(self._tracked(_run))
         gen = self._folder_gen
         worker.signals.result.connect(
-            lambda result, k=key, g=gen, lnk=links: self._on_ask_ai_ready(result, k, g, lnk)
+            lambda result, k=key, g=gen, lnk=links, meta=record_meta: self._on_ask_ai_ready(
+                result, k, g, lnk, meta
+            )
         )
         worker.signals.error.connect(
             lambda err, g=gen: self._on_ask_ai_error(err, g)
         )
         self._pool_start(worker, None)
 
-    def _on_ask_ai_ready(self, result, key: str, gen: int | None = None, links: dict | None = None) -> None:
+    def _on_ask_ai_ready(self, result, key: str, gen: int | None = None, links: dict | None = None, meta: dict | None = None) -> None:
         if gen is not None and not self._is_current_folder_gen(gen):
             logger.debug("[ask-ai] result dropped (stale folder gen)")
             return  # folder switched — late ask answer dropped
@@ -1870,12 +2112,15 @@ class GalleryController:
             len(getattr(result, "text", "") or ""),
         )
         if error:
+            # Deliberately not logged: the ask log is an answer history, not an
+            # error journal (see services/ask_log.py docstring).
             self._show_ask_ai_error(self._ask_error_text(error))
             return
         try:
             self._ask_cache[key] = result
         except Exception:
             pass
+        self._log_ask_answer(result, meta, cache_hit=False)
         self._show_ask_ai_result(result, links)
 
     def _on_ask_ai_error(self, error_info, gen: int | None = None) -> None:

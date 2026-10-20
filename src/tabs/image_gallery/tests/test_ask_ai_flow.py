@@ -30,6 +30,17 @@ def qapp():
     return app
 
 
+@pytest.fixture(autouse=True)
+def _isolated_ask_log(monkeypatch, tmp_path):
+    """Keep the disk Q/A log (and every cache) inside the test's tmp dir.
+
+    The completion path now appends one record per answer; without this the
+    suite would write into the developer's real app cache.
+    """
+    monkeypatch.setenv("IMGSLI_PROJECT_CACHE", str(tmp_path / "cache"))
+    return tmp_path
+
+
 class _Sig:
     def __init__(self):
         self._slots = []
@@ -184,6 +195,101 @@ def test_second_identical_ask_is_served_from_cache(monkeypatch, tmp_path, qapp):
     assert len(record) == 1  # second call never hit the transport
     assert widget.results[-1].cached is True
     assert widget.results[-1].text == "Cached answer."
+
+
+def test_completed_answer_is_appended_once_to_the_disk_log(monkeypatch, tmp_path, qapp):
+    """One record per completed answer (never per token), with provenance."""
+    from tabs.image_gallery.services import ask_log
+
+    ctrl, widget = _make(monkeypatch)
+    _install_transport(monkeypatch, "Logged answer.")
+    it = _item(tmp_path)
+    ctrl.state.items = [it]
+    ctrl.state.selected_paths = {it.path}
+
+    ctrl.ask_ai_question(_scope(it), "Summary")
+
+    records = ask_log.recent(limit=10)
+    assert len(records) == 1
+    record = records[0]
+    assert list(record) == list(ask_log.RECORD_KEYS)
+    assert record["question"] == "Summary"
+    assert record["answer"] == "Logged answer."
+    assert record["scope_kind"] == "selection"
+    assert record["paths"] == [str(it.path)]
+    assert record["backend"] == {"model": "m", "base_url": "http://x"}
+    assert record["mode"]
+    assert record["effort"] == "auto"
+    assert record["cache_hit"] is False
+    assert "api_key" not in record["backend"]
+
+
+def test_cache_replay_is_logged_as_a_cache_hit(monkeypatch, tmp_path, qapp):
+    """A replayed answer is still an answer: recorded, flagged ``cache_hit``."""
+    from tabs.image_gallery.services import ask_log
+
+    ctrl, widget = _make(monkeypatch)
+    _install_transport(monkeypatch, "Replayed.")
+    it = _item(tmp_path)
+    ctrl.state.items = [it]
+    ctrl.state.selected_paths = {it.path}
+    scope = _scope(it)
+
+    ctrl.ask_ai_question(scope, "Summary")
+    ctrl.ask_ai_question(scope, "Summary")
+
+    records = ask_log.recent(limit=10)
+    assert [r["cache_hit"] for r in records] == [True, False]
+    assert {r["answer"] for r in records} == {"Replayed."}
+
+
+def test_error_answer_is_not_logged(monkeypatch, tmp_path, qapp):
+    """Errors are not answers: the log stays empty (documented policy)."""
+    from tabs.image_gallery.services import ask_log
+
+    ctrl, widget = _make(monkeypatch)
+
+    def boom(*_args, **_kwargs):
+        raise RuntimeError("transport down")
+
+    monkeypatch.setattr(ask_router, "call_sync", boom)
+    it = _item(tmp_path)
+    ctrl.state.items = [it]
+    ctrl.state.selected_paths = {it.path}
+
+    ctrl.ask_ai_question(_scope(it), "Summary")
+
+    assert widget.errors
+    assert ask_log.recent() == []
+
+
+def test_flyout_shows_previous_question_count_after_ask(monkeypatch, tmp_path, qapp, qtbot):
+    """The persisted log is observable: the real flyout shows "N previous questions"."""
+    from tabs.image_gallery.widget import ImageGalleryWidget
+
+    monkeypatch.setattr(_ctrl_module, "GenericWorker", _Worker)
+    _install_transport(monkeypatch, "Counted answer.")
+    widget = ImageGalleryWidget()
+    qtbot.addWidget(widget)
+    widget.resize(600, 400)
+    widget.show()
+    qtbot.waitExposed(widget)
+
+    ctrl = GalleryController(widget, thread_pool=_SyncPool(), context=None)
+    ctrl._ai_settings_store = _Store(
+        AiSettings(enabled=True, base_url="http://x", api_key="k", model="m")
+    )
+    it = _item(tmp_path)
+    ctrl.state.items = [it]
+    ctrl.state.selected_paths = {it.path}
+    scope = _scope(it)
+    widget.open_ask_ai(widget, scope)
+    flyout = widget._ensure_ask_ai_flyout()
+    assert flyout._history.text() == ""  # nothing logged for this scope yet
+
+    ctrl.ask_ai_question(scope, "Summary")
+
+    assert flyout._history.text() == "1 previous questions"
 
 
 def test_late_answer_dropped_after_folder_switch(monkeypatch, tmp_path, qapp):

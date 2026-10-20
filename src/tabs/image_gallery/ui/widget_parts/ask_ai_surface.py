@@ -50,6 +50,22 @@ def _on_ask_ai_image_activated(owner, path: str) -> None:
         logger.debug("ask-ai image activation failed", exc_info=True)
 
 
+def _ask_history_count(owner) -> int:
+    """How many earlier asks the disk log holds for the open scope (0 on fail).
+
+    Backs the flyout's "N previous questions" line. Count only — reading the
+    labels/list is deliberately out of scope here (later task).
+    """
+    try:
+        from tabs.image_gallery.services import ask_log
+
+        scope = getattr(owner, "_ask_ai_scope", None)
+        paths = tuple(getattr(scope, "paths", ()) or ())
+        return int(ask_log.count(scope_paths=paths or None))
+    except Exception:
+        return 0
+
+
 def open_ask_ai(
     owner, anchor, scope, *, default_prompt: str = "What matters here?", texts=None, grow_up: bool = False, show_images_toggle: bool = True
 ) -> None:
@@ -110,6 +126,7 @@ def open_ask_ai(
         initial_links=initial_links,
         grow_up=grow_up,
         show_images_toggle=show_images_toggle,
+        history_count=_ask_history_count(owner),
     )
 
 
@@ -170,6 +187,9 @@ def show_ask_ai_result(owner, result, model: str = "", links: dict | None = None
         owner._ask_ai_last_result = result
         owner._ask_ai_last_links = dict(links or {})
         owner._ask_ai_last_error = None
+        # The completion path appended this answer to the disk log; show the
+        # new count so the persisted history is observable in the app.
+        flyout.set_history_count(_ask_history_count(owner))
         owner._resume_ask_ai_if_hidden(flyout)
     except Exception:
         pass
