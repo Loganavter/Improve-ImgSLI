@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from sli_ui_toolkit.widgets import ButtonGroup, Label, Slider
+from sli_ui_toolkit.widgets import ButtonGroup, Slider, Text
 
 from sli_ui_toolkit.i18n import tr
 from sli_ui_toolkit.managers import scaled_px
@@ -217,8 +217,8 @@ class ImageCompareLayoutBuilder:
 
     def _footer_info_widget(self, parent: QWidget) -> QWidget:
         ui = self.target
-        ui.psnr_label = Label("PSNR: --", variant="group-title")
-        ui.ssim_label = Label("SSIM: --", variant="group-title")
+        ui.psnr_label = Text("PSNR: --", mode="plain", variant="group-title")
+        ui.ssim_label = Text("SSIM: --", mode="plain", variant="group-title")
         widget = ThemedBackgroundContainer(parent)
         layout = QHBoxLayout(widget)
         layout.addStretch()
@@ -407,7 +407,7 @@ class ImageCompareLayoutBuilder:
         maximum: int,
         icon: Icon,
         icon_attr: str,
-        label: Label,
+        label: Text,
         value_row_attr: str,
     ) -> QHBoxLayout:
         slider.setMinimum(minimum)

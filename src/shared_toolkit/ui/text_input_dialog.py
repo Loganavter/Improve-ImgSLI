@@ -13,7 +13,7 @@ from PySide6.QtWidgets import QDialog, QGridLayout, QVBoxLayout, QWidget
 from shared_toolkit.ui.themed_dialog import ThemedDialog
 from sli_ui_toolkit.theme import ThemeManager
 from sli_ui_toolkit.managers import scaled_px
-from sli_ui_toolkit.widgets import Button, CustomLineEdit, Label
+from sli_ui_toolkit.widgets import Button, CustomLineEdit, Text
 from utils.resource_loader import resource_path
 
 _PROMPT_PIXEL_SIZE = 14
@@ -72,8 +72,9 @@ class AppTextInputDialog(ThemedDialog):
         root = QVBoxLayout(self)
         self._apply_root_design_metrics(root)
 
-        self._prompt_label = Label(
+        self._prompt_label = Text(
             self._prompt,
+            mode="plain",
             variant="body",
             pixel_size=_PROMPT_PIXEL_SIZE,
             parent=self,

@@ -138,7 +138,14 @@ def default_handler(method: str, params: dict):
     if method == "set_language":
         return True, {"language": params.get("language"), "persisted": True, "applies_on": "now"}
     if method == "capture_live":
-        return True, {"surface": params.get("what"), "path": "/live/shot.png", "theme": "dark"}
+        what = params.get("what") or "MainWindow"
+        return True, {
+            "path": f"/live/{what}.png",
+            "what": what,
+            "method": "grabWindow",
+            "size": [1280, 800],
+            "rhi_layers": 1,
+        }
     if method == "press_keys":
         return True, {"pressed": ["ctrl+shift+p"], "count": 1, "target": "QMainWindow"}
     if method == "ui_elements":
@@ -904,13 +911,38 @@ _PROXY_CASES = [
         "capture_surface",
         {"surface": "settings", "theme": "light"},
         "capture_live",
-        {"what": "settings", "theme": "light"},
+        {"what": "settings"},
         {
             "surface": "settings",
-            "path": "/live/shot.png",
-            "theme": "dark",
+            "what": "settings",
+            "path": "/live/settings.png",
+            "method": "grabWindow",
+            "size": [1280, 800],
+            "rhi_layers": 1,
+            "theme": None,
             "live": True,
             "source": "live",
+            "options_applied": [],
+            "unavailable": [],
+        },
+    ),
+    (
+        "capture_surface",
+        {},
+        "capture_live",
+        {},
+        {
+            "surface": "",
+            "what": "MainWindow",
+            "path": "/live/MainWindow.png",
+            "method": "grabWindow",
+            "size": [1280, 800],
+            "rhi_layers": 1,
+            "theme": None,
+            "live": True,
+            "source": "live",
+            "options_applied": [],
+            "unavailable": [],
         },
     ),
     (
@@ -1054,6 +1086,39 @@ def test_every_tool_proxies_and_normalises(tmp_path, proxy, args, wire_method, w
         server.stop()
     assert result == expected
     assert _wire_calls(server) == [(wire_method, wire_params)]
+
+
+def test_capture_without_provenance_reports_nulls_not_inventions(tmp_path):
+    """A minimal app answer keeps the shape but never invents method/size/rhi_layers."""
+
+    def handler(method: str, params: dict):
+        if method == "ping":
+            return True, {}
+        if method == "capture_live":
+            return True, {"path": "/live/legacy.png"}
+        return True, {}
+
+    server = FakeControlServer(tmp_path / "control.sock", handler=handler).start()
+    adapter = LiveBackend(client=LiveClient(server.path))
+    try:
+        result = adapter.capture_surface()
+    finally:
+        adapter.close()
+        server.stop()
+    assert result == {
+        "surface": "",
+        "what": "",
+        "path": "/live/legacy.png",
+        "method": None,
+        "size": None,
+        "rhi_layers": None,
+        "theme": None,
+        "live": True,
+        "source": "live",
+        "options_applied": [],
+        "unavailable": ["what", "method", "size", "rhi_layers"],
+    }
+    assert _wire_calls(server) == [("capture_live", {})]
 
 
 def test_adapter_omits_falsy_params_and_keeps_defaults(tmp_path):

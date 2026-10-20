@@ -13,6 +13,10 @@ a real press and reports what happened, per key.
 * the anchor is the widget a user's key would reach — the window's focus widget,
   or the element named by ``anchor`` (focused first, with the app's own
   focus-reason policy, so the keyboard ring behaves as it would for a human);
+* the **window** is the anchor's own top-level window, not always the main one:
+  a dialog (Settings, Help) registers its own sections and keeps its own focus
+  chain, so measuring its routing requires driving *its* window (``window_source``
+  in the result says which one was driven);
 * the window is made OS-active first (``activated`` in the result): an inactive
   window receives no keys from a real keyboard at all, and the manager's filter
   is inert without that;
@@ -80,15 +84,39 @@ def _activate_window(app: Any, window: Any) -> bool:
         return False
 
 
+def _anchor_window(element: Element | None, fallback: Any) -> tuple[Any, str]:
+    """The window a key aimed at *element* must be measured in.
+
+    A dialog is its own top-level window: its navigation sections are registered
+    against it and its focus chain is its own. Delivering to the injected main
+    window instead made a dialog-anchored key report the *main* window's section
+    (live 2026-10-20: a Down anchored at the Settings dialog's keyboard-page
+    filter was handled by ``section:SessionPickerSection``, so the routing half
+    of ``spec.nav.coverage`` could not be measured on a dialog).
+
+    Returns ``(window, source)`` where ``source`` is ``"anchor"`` (the anchor's
+    own top-level), ``"main"`` (no anchor — the historical delivery target) or
+    ``"main-fallback"`` (an anchor whose top-level window vanished mid-call).
+    """
+    if element is None:
+        return fallback, "main"
+    try:
+        top = element.widget.window()
+    except Exception:
+        top = None
+    if isinstance(top, QWidget):
+        return top, "anchor"
+    return fallback, "main-fallback"
+
+
 def _focus_anchor(
-    *, registry: Any, app: Any, window: Any, element_id: str | None, manager
+    *, app: Any, window: Any, element: Element | None, manager
 ) -> tuple[QWidget | None, bool]:
-    """Where a user's key would land; ``element_id`` focuses it first.
+    """Where a user's key would land; *element* (already resolved) is focused first.
 
     Returns ``(widget, focused_by_us)``.
     """
-    if element_id:
-        element = resolve_element(registry, element_id)
+    if element is not None:
         reason = Qt.FocusReason.OtherFocusReason
         try:
             if manager is not None:
@@ -99,7 +127,7 @@ def _focus_anchor(
             element.widget.setFocus(reason)
         except Exception as exc:
             raise MethodError(
-                f"could not focus {element_id!r}: {exc}",
+                f"could not focus {element.id!r}: {exc}",
                 "the element may not accept keyboard focus (check its focus policy)",
             )
         if app is not None:
@@ -178,16 +206,24 @@ def deliver_nav_keys(
     ``NavigationManager``'s sections and each surface's ``keyPressEvent`` take
     part in the decision exactly as they do for a human. Nothing is aimed at a
     single widget behind the routing (that is ``press_keys target=``).
+
+    An anchored key is delivered to the anchor's **own** top-level window (a
+    dialog has its own sections and focus chain); ``window_source`` in the
+    result says which window was driven — ``"anchor"``, ``"main"`` (no anchor:
+    the historical target) or ``"main-fallback"`` (the anchor's window vanished).
     """
     sequence = parse_key_sequence(keys)
     manager = nav_manager()
     elements = element_map(registry)
+    # Resolve first: an id from another process/instance must fail exactly as it
+    # always has, rather than falling back to the main window.
+    element = resolve_element(registry, element_id) if element_id else None
+    window, window_source = _anchor_window(element, window)
     activated = _activate_window(app, window)
     anchor, focused_by_us = _focus_anchor(
-        registry=registry,
         app=app,
         window=window,
-        element_id=element_id,
+        element=element,
         manager=manager,
     )
     if anchor is None:
@@ -234,6 +270,10 @@ def deliver_nav_keys(
         "keys": [label for _key, _mods, label in sequence],
         "count": len(sequence),
         "anchor": widget_row(anchor, elements, manager),
+        # Which window was driven, and why that one — a dialog-anchored key must
+        # be readable as the dialog's, not silently the main window's.
+        "window": widget_row(window, elements, manager),
+        "window_source": window_source,
         "activated": activated,
         "focus_is_ours": focused_by_us,
         "focus_after": widget_row(focus_widget(window), elements, manager),

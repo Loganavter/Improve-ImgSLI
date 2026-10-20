@@ -860,7 +860,9 @@ class AppBackend:
 
     # -- capture -----------------------------------------------------------
 
-    def capture_surface(self, *, surface: str, theme: str | None = None, out: str | None = None) -> dict:
+    def capture_surface(
+        self, *, surface: str | None = None, theme: str | None = None, out: str | None = None
+    ) -> dict:
         return self._live_or_fallback(
             "capture_surface",
             lambda: self._fallback_capture_surface(surface=surface, theme=theme, out=out),
@@ -871,8 +873,20 @@ class AppBackend:
         )
 
     def _fallback_capture_surface(
-        self, *, surface: str, theme: str | None = None, out: str | None = None
+        self, *, surface: str | None = None, theme: str | None = None, out: str | None = None
     ) -> dict:
+        """Headless devtool capture — the only path that needs a surface name.
+
+        Omitting ``surface`` is a live-active-window request, so with no live
+        instance there is nothing to grab: refuse and name the missing piece
+        rather than capturing some other surface the caller did not ask for.
+        """
+        if not surface:
+            raise ToolError(
+                "surface is required when no live instance is attached",
+                "omit 'surface' only to capture a live active window; otherwise pass a "
+                "list_surfaces name (or start the app to attach)",
+            )
         surfaces = self._capture_surfaces()
         if surface not in surfaces:
             close = difflib.get_close_matches(surface, sorted(surfaces), n=3, cutoff=0.5)
@@ -920,7 +934,31 @@ class AppBackend:
                 f"capture of {surface!r} produced no PNG",
                 "re-run with a display and check the app log",
             )
-        return {"surface": surface, "path": str(saved), "theme": chosen_theme, "source": "fallback"}
+        width_height = self._parse_saved_size(proc.stdout)
+        applied = [name for name, value in (("theme", theme), ("out", out)) if value]
+        return {
+            "surface": surface,
+            "what": surface,
+            "path": str(saved),
+            "method": None,
+            "size": width_height,
+            "rhi_layers": None,
+            "theme": chosen_theme,
+            "source": "fallback",
+            "options_applied": applied,
+            "unavailable": ["method", "rhi_layers"],
+        }
+
+    @staticmethod
+    def _parse_saved_size(stdout: str) -> list[int] | None:
+        """``[w, h]`` from the devtool's ``saved <path> <w>x<h>`` line, else None."""
+        for line in stdout.splitlines():
+            parts = line.strip().split()
+            if len(parts) >= 3 and parts[0] == "saved":
+                match = re.fullmatch(r"(\d+)x(\d+)", parts[-1])
+                if match:
+                    return [int(match.group(1)), int(match.group(2))]
+        return None
 
     @staticmethod
     def _parse_saved_path(stdout: str, out_dir: Path, surface: str) -> Path | None:

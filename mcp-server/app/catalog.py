@@ -634,38 +634,79 @@ TOOLS: list[dict] = [
         "name": "capture_surface",
         "title": "Capture a surface PNG",
         "description": (
-            "Screenshot one named app surface to a PNG and return its path. With a live "
-            "instance attached the running window is captured ('live': true) and each visible "
-            "canvas frame is composited in, so the QRhi/GL canvas shows its content; otherwise "
-            "the devtool boots the app on a private Xvfb. Use it for visual checks and Help figures."
+            "Screenshot the live app's active window (omit surface) or one named surface to a PNG; "
+            "a live capture reports what it grabbed (what), the grab method (method) and how many "
+            "canvas frames were composited (rhi_layers). With no live instance the devtool boots "
+            "headless and surface is required. Use it for visual checks and Help figures."
         ),
         "inputSchema": _params(
             {
                 "surface": {
                     **_STR,
-                    "description": "Surface name from list_surfaces, e.g. settings or gallery-populated.",
+                    "description": (
+                        "Surface name from list_surfaces. Omit to capture the live active window "
+                        "(refused if there is no live instance or no window)."
+                    ),
                 },
                 "theme": {
                     **_STR,
                     "enum": list(THEMES),
-                    "description": "Theme for the capture; defaults to the devtool's dark.",
+                    "description": (
+                        "Fallback capture theme (headless devtool boot); a live capture keeps the "
+                        "running window's own theme. See options_applied."
+                    ),
                 },
                 "out": {
                     **_STR,
-                    "description": "Output directory for the PNG; defaults to the server's artifacts directory.",
+                    "description": (
+                        "Fallback output directory; a live capture always writes to the app's "
+                        "artifacts directory. See options_applied."
+                    ),
                 },
             },
-            ["surface"],
         ),
         "outputSchema": _object(
             {
                 "surface": _STR,
+                "what": {
+                    **_STR,
+                    "description": "What was actually grabbed (surface name, or the live window's label).",
+                },
                 "path": _STR,
-                "theme": _STR,
+                "method": {
+                    "type": ["string", "null"],
+                    "description": "Live grab method (grabWindow/widget_grab); null on the fallback path.",
+                },
+                "size": {
+                    "type": ["array", "null"],
+                    "items": _INT,
+                    "minItems": 2,
+                    "maxItems": 2,
+                    "description": "[width, height] in pixels; null when the path cannot report it.",
+                },
+                "rhi_layers": {
+                    "type": ["integer", "null"],
+                    "description": (
+                        "Canvas frames composited into the live grab (0 = no presenting canvas); "
+                        "null on the fallback path."
+                    ),
+                },
+                "theme": {
+                    "type": ["string", "null"],
+                    "description": "Theme the fallback capture applied; null for a live capture (as-is).",
+                },
                 "live": _live_flag(),
                 "source": _source(),
+                "options_applied": {
+                    **_array(_STR),
+                    "description": "Request parameters that took effect (theme/out are fallback-only).",
+                },
+                "unavailable": {
+                    **_array(_STR),
+                    "description": "Provenance fields this path cannot report (named, never invented).",
+                },
             },
-            ["surface", "path"],
+            ["surface", "what", "path", "source"],
         ),
         "annotations": MUTATING,
         "handler": "capture_surface",

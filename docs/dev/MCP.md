@@ -60,7 +60,7 @@ fallback window, e.g. `:97`).
 | `open_folder` | write | hand a folder to a tab (`tab=` targets one; live: routed) |
 | `set_theme` | write | set `theme` (light/dark); live-now or persisted |
 | `set_language` | write | set `language` (en/ru/zh/pt_BR) |
-| `capture_surface` | write | screenshot a named surface to PNG |
+| `capture_surface` | write | screenshot a named surface or the live active window to PNG |
 | `press_keys` | write | inject keyboard combos (`target=` aims them at one element) |
 | `nav_key` | write | press keys through the app's own navigation sections and report what took them (live-only) |
 | `ui_click` | write | click an element by id, in-process (live-only) |
@@ -150,6 +150,20 @@ a handler even for a widget a real mouse or keyboard cannot reach. Conversely,
 gallery session, `nav_key` is the only honest instrument for it (20/20 Quick
 Look children unowned, `Down` unhandled at the action row, `Tab` moving focus
 without a section).
+
+`nav_key` measures the anchor's **window**, not always the main one. When an
+`anchor` (also accepted as `from` / `element_id`) is given, the keys are
+delivered in that widget's own top-level window — a dialog such as Settings or
+Help registers its own sections and keeps its own focus chain, so a
+dialog-anchored `Down` reports the *dialog's* section, where delivering to the
+main window reported `section:SessionPickerSection` and moved focus inside the
+main window instead. `window_source` in the result says which window was driven:
+`"anchor"` (the anchor's own top-level), `"main"` (no anchor — the historical
+target, unchanged for existing callers), or `"main-fallback"` (the anchor's
+window disappeared mid-call). The `window` field describes that window in the
+same row shape as `anchor`/`focus`, so a `handled` verdict is always attributable
+to one window; an id that resolves to no widget in this instance still fails the
+way it always has rather than falling back to the main window.
 
 ### Jobs: watching and stopping the long passes (P3)
 
@@ -342,6 +356,29 @@ in neither grab path), so the QRhi/GL canvas does show its content; a
 devtool-booted surface still cannot grab it (see
 [SCREENSHOTS.md](SCREENSHOTS.md) §Known limitation).
 
+### Capture provenance (`capture_surface`)
+
+`surface` is **optional**: omitting it captures the live instance's active
+window (the app's own `resolve_capture_target` path). With no live instance the
+fallback devtool has nothing to grab, so the call is refused — "surface is
+required when no live instance is attached" — never answered with a different
+surface. With a live instance but no window to grab, the app refuses with
+"no live window to capture".
+
+A live result keeps the app's provenance instead of flattening it: `what`
+(what was actually grabbed), `method` (`grabWindow` / `widget_grab`), `size`
+`[w, h]`, and `rhi_layers` (composited canvas frames; `0` = no presenting
+canvas). Read `method`/`rhi_layers` before judging pixels — the
+live-verification runbook makes them mandatory for exactly this reason.
+
+`theme` and `out` are **fallback-only** parameters: the live handler takes only
+`what`, writes to the app's artifacts directory and captures the running
+window's own theme. A live result therefore reports `theme: null` and lists
+nothing in `options_applied`; a fallback result names the applied ones
+(`theme`, `out`) and puts `method`/`rhi_layers` in `unavailable` rather than
+inventing values. (Fallback `size` is parsed from the devtool's own
+`saved <path> <w>x<h>` line, `null` if absent.)
+
 ## Security model
 
 - **Local only.** stdio subprocess, never TCP/HTTP; no network code.
@@ -391,6 +428,8 @@ fabricated result:
 | unknown action id / tab / state path | this server (fallback) | `isError` + close-match suggestions |
 | unknown surface | live app (`capture_live`) or this server (`capture_surface` fallback) | `isError` "unknown surface" + `list_surfaces` hint |
 | surface known but not open in the live app | live app | `isError` "surface … is not open in the live app" |
+| no `surface` and no live instance | this server (`capture_surface` fallback) | `isError` "surface is required when no live instance is attached" + `list_surfaces` hint |
+| no active window for a live capture (no `surface`) | live app (`capture_live`) | `ok: false` "no live window to capture" + "pass what=<tab> … or focus a window first" |
 | more than 32 key combos in one `press_keys` | live app | `ok: false` "too many key combos" |
 
 ### Annotation audit (2026-10-17)

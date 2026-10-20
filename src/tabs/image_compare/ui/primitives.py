@@ -14,8 +14,8 @@ from sli_ui_toolkit.widgets import (
     CustomLineEdit,
     DEFER_CLICK_AWAIT_RIPPLE,
     InstancesCounterButton,
-    Label,
     ScrollableComboBox,
+    Text,
 )
 from ui.widgets.scroll_value_button import ScrollValueButton
 from ui.widgets.slider_hint import ValueSlider
@@ -70,21 +70,23 @@ class ImageComparePrimitivesFactory:
 
     def _create_static_widgets(self, parent: QWidget) -> None:
         target = self.target
-        target.resolution_label1 = Label(
+        target.resolution_label1 = Text(
             "--x--",
+            mode="plain",
             variant="group-title",
             pixel_size=_INFO_HUD_LABEL_PIXEL_SIZE,
             alignment=Qt.AlignmentFlag.AlignCenter,
         )
-        target.resolution_label2 = Label(
+        target.resolution_label2 = Text(
             "--x--",
+            mode="plain",
             variant="group-title",
             pixel_size=_INFO_HUD_LABEL_PIXEL_SIZE,
             alignment=Qt.AlignmentFlag.AlignCenter,
         )
         target.magnifier_settings_panel = QWidget(parent)
         target.image_label = CanvasWidget(parent)
-        target.length_warning_label = Label(parent=parent)
+        target.length_warning_label = Text(parent=parent, mode="plain")
 
     def _create_selection_controls(self, parent: QWidget) -> None:
         target = self.target
@@ -180,8 +182,8 @@ class ImageComparePrimitivesFactory:
             defer_click=DEFER_CLICK_AWAIT_RIPPLE,
         )
 
-        target.label_rating1 = Label("–", parent, variant="group-title", elide=False)
-        target.label_rating2 = Label("–", parent, variant="group-title", elide=False)
+        target.label_rating1 = Text("–", parent, mode="plain", variant="group-title", elide=False)
+        target.label_rating2 = Text("–", parent, mode="plain", variant="group-title", elide=False)
         target.combo_image1 = ScrollableComboBox(parent)
         target.combo_image2 = ScrollableComboBox(parent)
         target.combo_interpolation = ScrollableComboBox(parent)
@@ -316,19 +318,21 @@ class ImageComparePrimitivesFactory:
         # fields are not drop targets.
         target.edit_name1.setAcceptDrops(False)
         target.edit_name2.setAcceptDrops(False)
-        target.label_magnifier_size = Label(parent=parent, variant="group-title")
-        target.label_capture_size = Label(parent=parent, variant="group-title")
-        target.label_movement_speed = Label(parent=parent, variant="group-title")
-        target.label_interpolation = Label(parent=parent, variant="group-title")
+        target.label_magnifier_size = Text(parent=parent, mode="plain", variant="group-title")
+        target.label_capture_size = Text(parent=parent, mode="plain", variant="group-title")
+        target.label_movement_speed = Text(parent=parent, mode="plain", variant="group-title")
+        target.label_interpolation = Text(parent=parent, mode="plain", variant="group-title")
 
-        target.file_name_label1 = Label(
-            "--", parent, variant="group-title", pixel_size=_INFO_HUD_LABEL_PIXEL_SIZE
+        target.file_name_label1 = Text(
+            "--", parent, mode="plain", variant="group-title",
+            pixel_size=_INFO_HUD_LABEL_PIXEL_SIZE,
         )
-        target.file_name_label2 = Label(
-            "--", parent, variant="group-title", pixel_size=_INFO_HUD_LABEL_PIXEL_SIZE
+        target.file_name_label2 = Text(
+            "--", parent, mode="plain", variant="group-title",
+            pixel_size=_INFO_HUD_LABEL_PIXEL_SIZE,
         )
-        target.label_edit_name1 = Label(parent=parent, variant="group-title")
-        target.label_edit_name2 = Label(parent=parent, variant="group-title")
+        target.label_edit_name1 = Text(parent=parent, mode="plain", variant="group-title")
+        target.label_edit_name2 = Text(parent=parent, mode="plain", variant="group-title")
 
     def _configure_image_label(self) -> None:
         target = self.target

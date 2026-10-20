@@ -173,6 +173,53 @@ def test_finite_values_expose_enums_and_defaults(wired):
     assert tools["press_keys"]["inputSchema"]["properties"]["keys"]["type"] == "string"
 
 
+def test_capture_surface_takes_an_optional_surface_and_reports_provenance(wired):
+    """``surface`` became optional; the result can name what/how it captured."""
+    protocol, _backend, _calls = wired
+    tools = {tool["name"]: tool for tool in _request(protocol, "tools/list")["result"]["tools"]}
+    schema = tools["capture_surface"]["inputSchema"]
+
+    assert "surface" not in (schema.get("required") or [])
+    assert "Omit to capture the live active window" in schema["properties"]["surface"]["description"]
+    assert "Fallback" in schema["properties"]["theme"]["description"]
+    properties = tools["capture_surface"]["outputSchema"]["properties"]
+    for key in (
+        "surface",
+        "what",
+        "path",
+        "method",
+        "size",
+        "rhi_layers",
+        "theme",
+        "options_applied",
+        "unavailable",
+    ):
+        assert key in properties, key
+
+
+def test_capture_without_surface_and_no_live_instance_is_refused(wired):
+    """No surface is a live-active-window request — never a silent other surface."""
+    protocol, _backend, calls = wired
+    result = _call(protocol, "capture_surface", {})
+
+    assert result["isError"] is True
+    text = result["content"][0]["text"]
+    assert "surface is required when no live instance is attached" in text
+    assert calls["launches"] == [], "a refused capture must not boot anything"
+
+
+def test_capture_surface_still_rejects_unknown_parameters(wired):
+    protocol, _backend, _calls = wired
+    response = _request(
+        protocol,
+        "tools/call",
+        {"name": "capture_surface", "arguments": {"what": "settings"}},
+        rid=7,
+    )
+    assert response["error"]["code"] == -32602
+    assert "unexpected parameter 'what'" in response["error"]["message"]
+
+
 def test_read_and_write_tools_do_not_mix_annotations(wired):
     protocol, _backend, _calls = wired
     tools = {tool["name"]: tool for tool in _request(protocol, "tools/list")["result"]["tools"]}

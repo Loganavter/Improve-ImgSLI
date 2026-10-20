@@ -29,7 +29,7 @@ from PySide6.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget
 
 from sli_ui_toolkit.managers import scaled_px
 from sli_ui_toolkit.theme import ThemeManager
-from sli_ui_toolkit.widgets import Label, ThemedContainer
+from sli_ui_toolkit.widgets import Text, ThemedContainer
 
 from ui.theming import try_resolve_theme_color
 
@@ -176,7 +176,7 @@ class ShelfWidget(ThemedContainer, QWidget):
             self._shelf_surface = QColor(255, 255, 255)
         # Panel is derived from surface; init with same token-derived base to keep visual parity until first update.
         self._shelf_panel = QColor(self._shelf_surface)
-        self._shelf_title_label: Label | None = None
+        self._shelf_title_label: Text | None = None
 
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
         self.setAutoFillBackground(False)
@@ -215,15 +215,15 @@ class ShelfWidget(ThemedContainer, QWidget):
     def set_title(self, text: str) -> None:
         """Create or update the shelf title label (bold, 16 px)."""
         if self._shelf_title_label is None:
-            self._shelf_title_label = Label(
-                text, self._header_host, pixel_size=16, bold=True
+            self._shelf_title_label = Text(
+                text, self._header_host, mode="plain", pixel_size=16, bold=True
             )
             self._shelf_title_label.setObjectName("shelf-title")
             self._header_layout.insertWidget(0, self._shelf_title_label)
         else:
             self._shelf_title_label.setText(text)
 
-    def title_label(self) -> Label | None:
+    def title_label(self) -> Text | None:
         return self._shelf_title_label
 
     def add_header_widget(self, widget: QWidget) -> None:

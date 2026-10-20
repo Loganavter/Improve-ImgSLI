@@ -29,10 +29,10 @@ from sli_ui_toolkit.widgets import (
     Button,
     CustomLineEdit,
     ComboBox,
-    Label,
     LogConsoleWidget,
     SpinBox,
     SurfaceScrollArea,
+    Text,
 )
 from tabs.image_compare.icons import Icon, get_icon
 from tabs.image_compare.plugins.video_editor.search import (
@@ -203,7 +203,7 @@ def create_resolution_settings(dialog):
     res_layout = QHBoxLayout()
     res_layout.setSpacing(scaled_px(8))
 
-    dialog.lbl_resolution = Label(dialog._tr("label.resolution") + ":", variant="group-title")
+    dialog.lbl_resolution = Text(dialog._tr("label.resolution") + ":", mode="plain", variant="group-title")
     res_layout.addWidget(dialog.lbl_resolution)
 
     dialog.edit_width = CustomLineEdit()
@@ -257,7 +257,7 @@ def create_resolution_settings(dialog):
 
 def create_fps_settings(dialog):
     fps_layout = QHBoxLayout()
-    dialog.lbl_fps = Label(dialog._tr("image_compare.label.fps") + ":", variant="group-title")
+    dialog.lbl_fps = Text(dialog._tr("image_compare.label.fps") + ":", mode="plain", variant="group-title")
     fps_layout.addWidget(dialog.lbl_fps)
 
     # Fps single source (A-shell S1): the initial value comes from
@@ -310,7 +310,7 @@ def create_fps_settings(dialog):
 def create_preview_quality_settings(dialog):
     preview_layout = QHBoxLayout()
     preview_layout.setSpacing(scaled_px(8))
-    dialog.lbl_preview_quality = Label(dialog._tr("video.preview_quality") + ":", variant="group-title")
+    dialog.lbl_preview_quality = Text(dialog._tr("video.preview_quality") + ":", mode="plain", variant="group-title")
     preview_layout.addWidget(dialog.lbl_preview_quality)
 
     dialog.combo_preview_scale = ComboBox()
@@ -505,7 +505,7 @@ def create_standard_export_tab(dialog):
     # instead of treating the whole tab as a single row.
     rows: list[QWidget] = []
 
-    dialog.lbl_container = Label(dialog._tr("image_compare.label.container") + ":", variant="group-title")
+    dialog.lbl_container = Text(dialog._tr("image_compare.label.container") + ":", mode="plain", variant="group-title")
     dialog.combo_container = ComboBox()
     for container in ExportConfigBuilder.get_available_containers():
         dialog.combo_container.addItem(dialog._tr(container), container)
@@ -522,7 +522,7 @@ def create_standard_export_tab(dialog):
 
     layout.addStretch(1)
 
-    dialog.lbl_video_codec = Label(dialog._tr("image_compare.label.video_codec") + ":", variant="group-title")
+    dialog.lbl_video_codec = Text(dialog._tr("image_compare.label.video_codec") + ":", mode="plain", variant="group-title")
     dialog.combo_codec = ComboBox()
     for codec in ExportConfigBuilder.get_codecs_for_container("mp4"):
         dialog.combo_codec.addItem(
@@ -546,7 +546,7 @@ def create_standard_export_tab(dialog):
     pf_layout = QVBoxLayout(dialog.pix_fmt_container)
     pf_layout.setContentsMargins(0, 0, 0, 0)
     pf_layout.setSpacing(scaled_px(6))
-    dialog.lbl_pix_fmt = Label(dialog._tr("video.pixel_format") + ":", variant="group-title")
+    dialog.lbl_pix_fmt = Text(dialog._tr("video.pixel_format") + ":", mode="plain", variant="group-title")
     pf_layout.addWidget(dialog.lbl_pix_fmt)
     dialog.combo_pix_fmt = ComboBox()
     for pix_fmt in ExportConfigBuilder.get_pixel_formats_for_codec("h264 (AVC)"):
@@ -568,8 +568,9 @@ def create_standard_export_tab(dialog):
     qc_layout.setContentsMargins(0, 0, 0, 0)
     qc_layout.setSpacing(scaled_px(6))
 
-    dialog.lbl_quality_control = Label(
+    dialog.lbl_quality_control = Text(
         dialog._tr("video.quality_control") + ":",
+        mode="plain",
         variant="group-title",
     )
     dialog.combo_quality_mode = ComboBox()
@@ -597,8 +598,9 @@ def create_standard_export_tab(dialog):
     p_layout.setContentsMargins(0, 0, 0, 0)
     p_layout.setSpacing(scaled_px(6))
 
-    dialog.lbl_preset = Label(
+    dialog.lbl_preset = Text(
         dialog._tr("video.encoding_speed_preset") + ":",
+        mode="plain",
         variant="group-title",
     )
     p_layout.addWidget(dialog.lbl_preset)
@@ -632,8 +634,9 @@ def create_manual_export_tab(dialog):
     layout.setContentsMargins(scaled_px(12), scaled_px(16), scaled_px(12), scaled_px(16))
     layout.setSpacing(scaled_px(8))
 
-    dialog.lbl_manual_args_hint = Label(
+    dialog.lbl_manual_args_hint = Text(
         dialog._tr("video.ffmpeg_output_args_hint"),
+        mode="plain",
         variant="group-title",
     )
     dialog.lbl_manual_args_hint.setWordWrap(True)
@@ -740,8 +743,9 @@ def create_quality_stack(dialog):
     l_crf = QVBoxLayout(p_crf)
     l_crf.setContentsMargins(0, 0, 0, 0)
     l_crf.setSpacing(scaled_px(6))
-    dialog.lbl_quality_value = Label(
+    dialog.lbl_quality_value = Text(
         dialog._tr("video.crf_value_hint") + ":",
+        mode="plain",
         variant="group-title",
     )
     dialog.edit_crf = CustomLineEdit()
@@ -760,7 +764,7 @@ def create_quality_stack(dialog):
     l_bit = QVBoxLayout(p_bit)
     l_bit.setContentsMargins(0, 0, 0, 0)
     l_bit.setSpacing(scaled_px(6))
-    dialog.lbl_bitrate = Label(dialog._tr("video.bitrate_hint") + ":", variant="group-title")
+    dialog.lbl_bitrate = Text(dialog._tr("video.bitrate_hint") + ":", mode="plain", variant="group-title")
     dialog.edit_bitrate = CustomLineEdit()
     dialog.edit_bitrate.setText("8000k")
     _expand_form_control(dialog.edit_bitrate)
