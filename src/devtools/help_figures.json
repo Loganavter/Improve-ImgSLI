@@ -1,0 +1,213 @@
+{
+  "figures": [
+    {
+      "captures": [],
+      "covered": false,
+      "crop": null,
+      "destination": null,
+      "id": "help-gallery-empty",
+      "locales": [
+        "en"
+      ],
+      "note": "No shipped figure shows the empty drop-zone state; the gallery surface builder always populates demo cards. New surface state, later slice.",
+      "pins_applied": [],
+      "pins_unavailable": [
+        "font",
+        "ui_scale"
+      ],
+      "reason": "new-surface",
+      "size": null,
+      "surface": "gallery",
+      "themes": [
+        "dark"
+      ]
+    },
+    {
+      "captures": [],
+      "covered": true,
+      "crop": null,
+      "destination": "src/tabs/image_gallery/resources/help/assets/overview_grid.png",
+      "id": "help-gallery-populated",
+      "locales": [
+        "en"
+      ],
+      "note": "Shipped overview_grid.png is 1280x800, exactly the surface default; the six gradient cards come from CaptureSession.make_samples.",
+      "pins_applied": [
+        "locale",
+        "theme"
+      ],
+      "pins_unavailable": [
+        "font",
+        "ui_scale"
+      ],
+      "reason": "",
+      "size": [
+        1280,
+        800
+      ],
+      "surface": "gallery-populated",
+      "themes": [
+        "dark"
+      ]
+    },
+    {
+      "captures": [],
+      "covered": false,
+      "crop": null,
+      "destination": null,
+      "id": "help-multi-empty",
+      "locales": [
+        "en"
+      ],
+      "note": "No shipped figure shows an empty Multi Compare grid, and the surface itself is chrome-only (QRhi/GL canvas is not part of grab()).",
+      "pins_applied": [],
+      "pins_unavailable": [
+        "font",
+        "ui_scale"
+      ],
+      "reason": "new-surface",
+      "size": null,
+      "surface": "multi",
+      "themes": [
+        "dark"
+      ]
+    },
+    {
+      "captures": [],
+      "covered": false,
+      "crop": null,
+      "destination": "src/tabs/multi_compare/resources/help/assets/layouts.jpg",
+      "id": "help-multi-populated",
+      "locales": [
+        "en"
+      ],
+      "note": "layouts.jpg (904x638) shows three populated slots but is a hand-composed canvas shot; the isolated surface yields blank canvas, so it cannot be reproduced here.",
+      "pins_applied": [],
+      "pins_unavailable": [
+        "font",
+        "ui_scale"
+      ],
+      "reason": "hand-composed",
+      "size": null,
+      "surface": "multi-populated",
+      "themes": [
+        "dark"
+      ]
+    },
+    {
+      "captures": [],
+      "covered": true,
+      "crop": null,
+      "destination": "src/plugins/onboarding/resources/help/assets/onboarding_ui_mode.png",
+      "id": "help-onboarding",
+      "locales": [
+        "en"
+      ],
+      "note": "Shipped asset is 1000x684, 36 px shorter than the surface default 1000x720; pinned size reproduces the shipped frame without a crop.",
+      "pins_applied": [
+        "locale",
+        "theme"
+      ],
+      "pins_unavailable": [
+        "font",
+        "locale:constructor-pins-en",
+        "ui_scale"
+      ],
+      "reason": "",
+      "size": [
+        1000,
+        684
+      ],
+      "surface": "onboarding",
+      "themes": [
+        "dark"
+      ]
+    },
+    {
+      "captures": [],
+      "covered": true,
+      "crop": null,
+      "destination": "src/tabs/session_picker/resources/help/assets/platform/session_picker.jpg",
+      "id": "help-session-picker",
+      "locales": [
+        "en"
+      ],
+      "note": "Shipped asset is a 844x529 JPEG; pinned size reproduces the frame, but generation writes PNG, so installing means converting (later slice).",
+      "pins_applied": [
+        "locale",
+        "theme"
+      ],
+      "pins_unavailable": [
+        "font",
+        "ui_scale"
+      ],
+      "reason": "",
+      "size": [
+        844,
+        529
+      ],
+      "surface": "session-picker",
+      "themes": [
+        "dark"
+      ]
+    },
+    {
+      "captures": [],
+      "covered": true,
+      "crop": null,
+      "destination": "src/plugins/settings/resources/help/assets/settings_general.png",
+      "id": "help-settings-general",
+      "locales": [
+        "en"
+      ],
+      "note": "Shipped 1016x776 matches the surface default exactly. SETTINGS_KWARGS pins current_language=en and current_theme=dark, so non-default filters are only partly effective.",
+      "pins_applied": [
+        "locale",
+        "theme"
+      ],
+      "pins_unavailable": [
+        "font",
+        "locale:constructor-pins-en",
+        "theme:constructor-pins-dark",
+        "ui_scale"
+      ],
+      "reason": "",
+      "size": null,
+      "surface": "settings",
+      "themes": [
+        "dark"
+      ]
+    },
+    {
+      "captures": [],
+      "covered": true,
+      "crop": null,
+      "destination": "src/resources/help/assets/platform/settings_keyboard.png",
+      "id": "help-settings-keyboard",
+      "locales": [
+        "en"
+      ],
+      "note": "Shipped 1032x792 is 16 px larger than the surface default each way; the pinned size reproduces it. SETTINGS_KWARGS pins en/dark as above.",
+      "pins_applied": [
+        "locale",
+        "theme"
+      ],
+      "pins_unavailable": [
+        "font",
+        "locale:constructor-pins-en",
+        "theme:constructor-pins-dark",
+        "ui_scale"
+      ],
+      "reason": "",
+      "size": [
+        1032,
+        792
+      ],
+      "surface": "settings-keyboard",
+      "themes": [
+        "dark"
+      ]
+    }
+  ],
+  "schema_version": 1
+}

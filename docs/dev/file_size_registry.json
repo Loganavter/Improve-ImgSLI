@@ -54,6 +54,17 @@
       }
     },
     {
+      "path": "src/devtools/help_figures.py",
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=devtool-pipeline size=exempt reason=\"one devtool contract: recipe schema+IO, capture adapter, drift/apply and display lifecycle all compare against the same manifest — splitting forks the schema\"",
+      "parsed": {
+        "pattern": "devtool-pipeline",
+        "size": "exempt",
+        "reason": "one devtool contract: recipe schema+IO, capture adapter, drift/apply and display lifecycle all compare against the same manifest — splitting forks the schema"
+      }
+    },
+    {
       "path": "src/devtools/ui_layout_dump.py",
       "limit": 500,
       "marker": "Audit-Meta:",

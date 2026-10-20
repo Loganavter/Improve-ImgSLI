@@ -3,6 +3,8 @@
 Capturing real product surfaces as PNGs — for Help figures and quick visual
 verification. **Tool:** `src/devtools/capture_surface.py`
 (devtool only; it imports no app runtime code and changes no product code).
+The Help-figure set on top of it is produced by `src/devtools/help_figures.py`
+(§[Help-figure generator](#help-figure-generator-recipes--drift-check)).
 
 ```bash
 Xvfb :91 -screen 0 1400x1000x24 &
@@ -89,6 +91,52 @@ it body-relative (see [HELP_SYSTEM.md](HELP_SYSTEM.md) §Figure paths):
 Use final filenames (shipping a shot = overwrite the file; no markdown edit).
 Paths must not escape the package's `resources/help/` dir
 (`tests/plugins/test_help_bodies.py`).
+
+## Help-figure generator (recipes + drift check)
+
+`src/devtools/help_figures.py` wraps `capture_surface` (imported, never copied)
+with a committed recipe, `src/devtools/help_figures.json`: one entry per figure
+— `id`, `surface` (a `capture_surface.SURFACES` key), optional
+`crop: [x, y, w, h]`, optional `size: [w, h]`, `locales`, `themes`, `destination`
+(the existing asset path inside the owning package's `assets/`), `covered`,
+`reason` and a `note`. `schema_version` pins the shape. Only figures with
+`covered: true` are generated; an `uncovered` entry names the shipped figure it
+would replace (or `null`) and carries `new-surface` / `hand-composed` as the
+reason it cannot be reproduced from these surfaces yet. The entry set is derived
+from the shipped asset inventory, not invented. The committed file carries no
+timestamps and is written canonically (sorted keys, sorted figures/captures,
+`\n` newlines), so a no-op run is byte-identical.
+
+```bash
+env -u DISPLAY python src/devtools/help_figures.py --list        # no X needed
+python src/devtools/help_figures.py --all --out /tmp/help-shots  # starts a private Xvfb
+python src/devtools/help_figures.py --figure help-gallery-populated --theme light
+python src/devtools/help_figures.py --check                      # exit 1 on drift
+python src/devtools/help_figures.py --all --write-manifest       # record baselines
+```
+
+- **Backend.** `--backend xvfb` (default) starts a private `Xvfb` on a free
+  display number, waits for its socket and tears it down; `--backend native`
+  uses the current `DISPLAY` and refuses to run without one. Neither ever
+  defaults to `:0`.
+- **No asset writes.** Captures go to `--out` (a fresh temp dir by default).
+  Nothing is written into `src/**/resources/help/assets/`: installing a shot is
+  still the copy step above, so a routine run cannot churn a shipped figure.
+- **Drift.** `--check` regenerates every selected figure+locale+theme pair and
+  compares `sha256` against the manifest, printing a table. `ok` = identical,
+  `drift` = different hash (exit code 1), `unbaselined` = the entry has no
+  recorded hash yet (reported, not drift, so a fresh recipe exits 0).
+  `uncovered` recipe entries are listed after the table and are never generated.
+- **Baselines.** `--write-manifest` records `sha256`, byte size, dimensions and
+  the applied pins for what it generated. Recording needs a real display, so a
+  fresh recipe stays `unbaselined` until someone runs `--all --write-manifest`
+  on a private Xvfb.
+- **Pins are recorded, not assumed.** `locale` and `theme` go through
+  `capture_surface`'s CLI (`emit_language_changed`, `ThemeManager.set_theme`);
+  `ui_scale` and `font` have no knob at all. Surfaces that hardcode their own
+  language or theme (`SETTINGS_KWARGS`, the onboarding store) list
+  `locale:constructor-pins-en` / `theme:constructor-pins-dark` under
+  `pins_unavailable`, so a non-default filter is never claimed as applied.
 
 ## Known limitation: the live QRhi/GL canvas
 
