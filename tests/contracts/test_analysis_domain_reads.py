@@ -24,9 +24,10 @@ is: dict keys, i18n keys, ``Literal["ai"]`` aliases, subscripts and call
 arguments are pinned clean by explicit tests below. Only a *comparison* against
 the literal is the anti-pattern.
 
-Wave assignment in the reasons: read-path surfaces (dots/rows/stats_strip/badge/
-toolbar) go with W3's ``AxisReader``; the controller/use-case gates become the
-plan policy in W5 (resolver + ``analysis.policy``). Owned by
+Wave assignment in the reasons: the ``AxisReader`` substrate landed in its own
+wave, so switching the read-path surfaces (dots/rows/stats_strip/badge/toolbar)
+onto it and deleting their domain branches is W5/P9 work; the controller/use-case
+gates become the plan policy in W5 (resolver + ``analysis.policy``). Owned by
 ``plan-gallery-analysis-engine-2026-10-20`` §Ownership.
 """
 
@@ -56,47 +57,49 @@ AI_LITERAL = "ai"
 _COMPARE_OPS = (ast.Eq, ast.NotEq, ast.In, ast.NotIn)
 
 #: Current domain-read sites (derived by running the scanner, never guessed).
-#: Shrink-only: the two waves named in the reasons (W3 read path, W5 resolver)
+#: Shrink-only: the waves named in the reasons (W5 producers/policy, P9 deletion)
 #: each delete their own entries as they land.
 DOMAIN_READ_ALLOWLIST: dict[str, str] = {
-    # --- W3: read-path surfaces stop consulting the domain -------------------
+    # --- W5/P9: read-path surfaces stop consulting the domain -----------------
     "src/tabs/image_gallery/ui/card.py|domain = getattr(owner, \"_judgment_domain\", None)": (
-        "card picks an artifact severity by domain — W3 renders the AxisValue's "
+        "card picks an artifact severity by domain — W5/P9 renders the AxisValue's "
         "own provenance instead (AxisReader / per-axis provenance)"
     ),
     "src/tabs/image_gallery/ui/card.py|_domain = getattr(owner, \"_judgment_domain\", None)": (
-        "same card surface, second call site — W3 (AxisReader) removes it with "
+        "same card surface, second call site — W5/P9 (AxisReader) removes it with "
         "its sibling above"
     ),
     "src/tabs/image_gallery/ui/grid_view/drag_source.py|return str(getattr(owner, \"_judgment_domain\", \"\") or \"\")": (
-        "drag payload carries the domain — W3 deletes the manual domain pin and "
-        "with it this payload field"
+        "drag payload carries the judgment domain — the metric-profile pin it "
+        "mirrored is deleted (2026-10-20); this per-drag field goes in W5"
     ),
     "src/tabs/image_gallery/ui/quick_look/metrics/theme.py|domain = getattr(owner, \"_judgment_domain\", None)": (
-        "row theming branches on the domain — W3 styles from the AxisValue "
+        "row theming branches on the domain — W5/P9 styles from the AxisValue "
         "(producer/status) instead of the domain"
     ),
     "src/tabs/image_gallery/ui/toolbar/__init__.py|if getattr(self, \"_judgment_domain\", \"algorithms\") == dom:": (
-        "toolbar domain switch reads the authority — W3 deletes the switch with "
-        "the metric-profile chip (product decision 2026-10-20)"
+        "toolbar domain switch reads the authority — with the metric-profile chip "
+        "deleted (2026-10-20) this is the judgment-domain switch alone; W5 "
+        "replaces it with the analysis policy slice"
     ),
     "src/tabs/image_gallery/ui/toolbar/__init__.py|apply_domain(str(getattr(self, \"_judgment_domain\", \"algorithms\")))": (
-        "toolbar re-applies the domain after a rebuild — same deleted switch in "
-        "W3 (chip removal)"
+        "toolbar re-applies the judgment domain after a rebuild — same switch, "
+        "W5 policy slice"
     ),
     "src/tabs/image_gallery/ui/toolbar/__init__.py|return str(getattr(self, \"_judgment_domain\", \"algorithms\"))": (
-        "toolbar exposes the domain for the switch — W3 (chip removal)"
+        "toolbar exposes the domain for the switch — W5 policy slice"
     ),
     "src/tabs/image_gallery/ui/toolbar/sort_picker.py|if owner.judgment_domain == \"ai\":": (
-        "sort picker branches on the domain — W3 reads the AxisValue/provenance "
+        "sort picker branches on the domain — W5/P9 reads the AxisValue/provenance "
         "instead (no domain-wide branch)"
     ),
     "src/tabs/image_gallery/ui/widget_parts/view_prefs.py|_domain = getattr(owner, \"_judgment_domain\", None)": (
-        "view restore re-derives AI work from the domain — W3 makes it "
+        "view restore re-derives AI work from the domain — W5/P9 makes it "
         "level-triggered on the read path, not on a domain field"
     ),
     "src/tabs/image_gallery/ui/widget_parts/view_prefs.py|state.set(\"judgment_domain\", str(getattr(owner, \"_judgment_domain\", \"algorithms\")))": (
-        "the state mirror projection — W3 deletes the pin/mirror with the chip"
+        "the judgment-domain state mirror — W5 replaces it with the analysis "
+        "policy slice (the metric-profile pin it sat beside is gone)"
     ),
     # --- W5: controller / use-case gates collapse into the plan policy -------
     "src/tabs/image_gallery/controller.py|if str(getattr(self, \"_judgment_domain\", \"algorithms\") or \"\").strip().lower() != \"ai\":": (
@@ -119,7 +122,7 @@ DOMAIN_READ_ALLOWLIST: dict[str, str] = {
     ),
     "src/tabs/image_gallery/controller.py|domain=str(getattr(self, \"_judgment_domain\", \"algorithms\")),": (
         "domain passed to the quality read (1702) — W5 deletes the domain-wide "
-        "read swap; W3 supplies AxisReader"
+        "read swap; the AxisReader substrate is already in place"
     ),
     "src/tabs/image_gallery/controller.py|src or None, domain=str(getattr(self, \"_judgment_domain\", \"algorithms\"))": (
         "domain passed to the rank fusion (1866) — W5 (provenance per axis)"
@@ -129,8 +132,8 @@ DOMAIN_READ_ALLOWLIST: dict[str, str] = {
         "resolver answers 'may this producer run under this policy?'"
     ),
     "src/tabs/image_gallery/use_cases/large_drop_guard.py|getattr(controller, \"_judgment_domain\", \"algorithms\") or \"algorithms\"": (
-        "drop guard scales its warning by domain — W5 policy slice (W3 reads "
-        "axes, not domains)"
+        "drop guard scales its warning by domain — W5 policy slice (the read "
+        "path reads axes, not domains)"
     ),
     "src/tabs/image_gallery/use_cases/triage_run.py|if str(getattr(owner, \"_judgment_domain\", \"algorithms\") or \"\").strip().lower() != \"ai\":": (
         "three triage tails re-check the domain (582/594/613) — W5 makes the "
@@ -145,38 +148,40 @@ DOMAIN_READ_ALLOWLIST: dict[str, str] = {
 
 #: Current ``== "ai"``-style gate sites (derived the same way).
 AI_COMPARE_ALLOWLIST: dict[str, str] = {
-    # --- W3: read-path surfaces ---------------------------------------------
+    # --- W5/P9: read-path surfaces -------------------------------------------
     "src/tabs/image_gallery/services/rank_badge.py|return RANK_SOURCE_JEV if dom == \"ai\" else RANK_SOURCE_FUSION": (
-        "rank badge infers the ranker from the domain — W3 renders the "
+        "rank badge infers the ranker from the domain — W5/P9 renders the "
         "AxisValue/AnalysisRecord producer + backend instead"
     ),
     "src/tabs/image_gallery/ui/quick_look/metrics/rows.py|if domain == \"ai\":": (
-        "row builder picks the AI read path (287) — W3 reads AxisValue records, "
+        "row builder picks the AI read path (287) — W5/P9 reads AxisValue records, "
         "not a domain branch"
     ),
     "src/tabs/image_gallery/ui/quick_look/metrics/rows.py|subline = ssim_subline(overlay, item) if domain != \"ai\" else \"\"": (
-        "subline shown only outside the AI domain (462) — W3 shows per-axis "
+        "subline shown only outside the AI domain (462) — W5/P9 shows per-axis "
         "provenance/gaps instead of a domain condition"
     ),
     "src/tabs/image_gallery/ui/quick_look/metrics/rows.py|if domain == \"ai\" and _comp >= 0:": (
-        "composition hint gated on the domain (558) — W3 per-axis provenance"
+        "composition hint gated on the domain (558) — W5/P9 per-axis provenance"
     ),
     "src/tabs/image_gallery/ui/quick_look/metrics/theme.py|return \"ai\" if str(domain or \"\").strip().lower() == \"ai\" else \"algorithms\"": (
-        "domain normalizer for row theming — W3 styles from the AxisValue status"
+        "domain normalizer for row theming — W5/P9 styles from the AxisValue status"
     ),
     "src/tabs/image_gallery/ui/stats_strip/__init__.py|if dom == \"ai\":": (
-        "stats strip switches its read by domain (539) — W3 reads AxisValues; "
-        "the strip's own domain status object dies with the chip"
+        "stats strip falls back from the rank token to the domain (539) — "
+        "W5/P9 renders the AxisValue/provenance; the strip's profile chip is "
+        "already deleted (2026-10-20)"
     ),
     "src/tabs/image_gallery/ui/toolbar/__init__.py|self._domain_switch_ai.setChecked(dom == \"ai\")": (
-        "the deleted AI/Algorithms switch (222/238) — W3 removes the control "
-        "with the metric-profile chip"
+        "the judgment-domain switch's checked state (222/238) — the "
+        "metric-profile chip is deleted (2026-10-20); the switch itself goes "
+        "in the W5 policy slice"
     ),
     "src/tabs/image_gallery/ui/toolbar/sort_picker.py|if owner.judgment_domain == \"ai\":": (
-        "sort picker domain branch — W3 (same surface as its domain read)"
+        "sort picker domain branch — W5/P9 (same surface as its domain read)"
     ),
     "src/tabs/image_gallery/ui/widget_parts/view_prefs.py|if _domain is not None and _domain != \"ai\":": (
-        "view restore skips AI work outside the AI domain (33) — W3 makes the "
+        "view restore skips AI work outside the AI domain (33) — W5/P9 makes the "
         "read path level-triggered"
     ),
     # --- W5: controller / use-case gates collapse into the plan policy ------

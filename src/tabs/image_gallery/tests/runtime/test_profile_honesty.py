@@ -32,9 +32,13 @@ Falsification story (what each test would catch):
 - a VLM reply that widens or invents the vocabulary (a free-form id, or an
   axis whose detector needs a source hub in a folder without one), or a reply
   of only-unusable ids silently becoming a profile instead of the honest
-  heuristic fallback;
-- the chip calling a VLM pick "auto": the user cannot tell a model pick from
-  the mode-derived default, and the toggle always means what it means.
+  heuristic fallback.
+
+(The chip/provenance-label assertions that used to live here were deleted with
+the stats-strip metric-profile chip and the manual domain pin — owner decision
+2026-10-20, plan ``plan-gallery-analysis-engine-2026-10-20`` §Product
+decision. What the chip said is now carried per axis by provenance, and the
+automatic profile path asserted below is unchanged.)
 
 Qt-free controller fakes and one offscreen ``StatsStrip`` (real widget).
 """
@@ -143,7 +147,6 @@ class _ProfileCtrl:
             metric_profile=None,
         )
         self._judgment_domain = domain
-        self._metric_domain = ""
         self._folder_gen = gen
         self._metrics_settled_gen = -1
         self._stage_gate = ps.StageGate()
@@ -320,8 +323,8 @@ def test_late_vlm_reply_is_dropped_once_analysis_started(
 
     Falsification: without the freeze the state profile changes mid-flight;
     the scorecards already requested cannot be re-keyed, so the replacement
-    is a silent miss on every later visit (the profile chip also then claims
-    axes the cached scorecards do not carry).
+    is a silent miss on every later visit (the state then claims axes the
+    cached scorecards do not carry).
     """
     a, b = _item("a.png", ssim=0.9), _item("b.png", ssim=0.4)
     ctrl = _ProfileCtrl([a, b])
@@ -407,62 +410,3 @@ def test_vlm_reply_of_only_unusable_ids_falls_back_to_the_heuristic(
     assert any(
         "no usable axis" in rec.getMessage().lower() for rec in caplog.records
     ), "the heuristic fallback must say so in the debug log"
-
-
-# --------------------------------------------------------------------------
-# (4) the chip names the source — a vlm pick is not "auto"
-# --------------------------------------------------------------------------
-
-
-def test_profile_chip_names_the_profile_source(qtbot) -> None:
-    """A vlm/heuristic profile says so; the parenthetical is not a generic "auto"."""
-    from tabs.image_gallery.ui.stats_strip import StatsStrip
-
-    strip = StatsStrip()
-    qtbot.addWidget(strip)
-    strip.show()
-
-    vlm = _vlm_profile(("sharpness", "noise"))
-    strip.set_metric_profile(vlm, domain="photo", auto=True, source="vlm")
-    text = strip.profile_chip_text
-    assert "vlm" in text, text
-    assert "auto" not in text, "a vlm profile is not the auto default"
-    assert "source=vlm" in strip.profile_chip.toolTip()
-    # Off the pin: the flyout still selects "auto" (no domain is pinned).
-    assert strip.profile_domain == ""
-
-    heuristic = profile_for_mode("camera")
-    strip.set_metric_profile(heuristic, domain="photo", auto=True, source="heuristic")
-    assert "heuristic" in strip.profile_chip_text
-    # Short: the chip is width-capped (#454) — the source token, no axis count.
-    assert "axes" not in strip.profile_chip_text.lower()
-    assert strip.profile_chip.minimumWidth() <= strip.profile_chip.sizeHint().width()
-
-
-def test_chip_source_keys_are_localized_in_every_locale() -> None:
-    """Both provenance tokens resolve in every locale (the chip is user-facing).
-
-    ``vlm`` is an acronym and may legitimately read the same in a locale; the
-    ``heuristic`` token is a word and must be translated.
-    """
-    from resources.translations import add_i18n_root, tr
-
-    repo = Path(__file__).resolve().parents[5]
-    roots = sorted((repo / "src").rglob("resources/i18n"))
-    assert roots, "no i18n roots discovered under src/"
-    for root in roots:
-        add_i18n_root(root)
-
-    problems: list[str] = []
-    for key in ("image_gallery.profile.source.vlm", "image_gallery.profile.source.heuristic"):
-        en_value = tr(key, language="en")
-        if not en_value or en_value == key:
-            problems.append(f"{key}: missing from the en reference")
-            continue
-        for language in ("ru", "zh", "pt_BR"):
-            value = tr(key, language=language)
-            if not value or value == key:
-                problems.append(f"{key} [{language}]: unresolved -> {value!r}")
-            elif value == en_value and key.endswith(".heuristic"):
-                problems.append(f"{key} [{language}]: English fallback")
-    assert not problems, "\n".join(problems)

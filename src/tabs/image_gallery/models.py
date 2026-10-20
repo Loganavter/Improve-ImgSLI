@@ -342,13 +342,6 @@ class GalleryState:
     #: nothing derived yet → consumers fall back to the mode mapping
     #: (``use_cases.profile_select.active_profile``), i.e. the pre-P1 behaviour.
     metric_profile: MetricProfile | None = None
-    #: The explicit named metric **domain** this profile is pinned to (P4):
-    #: one of ``services.metric_profile.DOMAINS``, or ``""`` = auto (derive it
-    #: from the mode/measured stats). A projection of the controller's
-    #: ``_metric_domain`` authority — ``state`` is replaced by
-    #: open_folder/append/clear_to_empty, so the choice itself must NOT live
-    #: here (same rationale as ``judgment_domain`` / ``rank_domain``).
-    metric_domain: str = ""
     # Stage 3 VLM caches (mirrors disk cache in vlm_cache)
     tie_breaks: dict[str, TieBreakResult] = field(default_factory=dict)
     briefs: dict[str, CompareBrief] = field(default_factory=dict)

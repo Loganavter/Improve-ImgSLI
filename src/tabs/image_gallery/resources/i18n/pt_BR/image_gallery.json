@@ -152,22 +152,6 @@
       "series": "{n} séries",
       "redundant": "{n} redundantes"
     },
-    "profile": {
-      "chip": "Perfil: {profile}",
-      "auto": "automático",
-      "axes": "{n} ejes",
-      "source": {
-        "vlm": "VLM",
-        "heuristic": "heurística"
-      },
-      "domain": {
-        "auto": "Automático (según el modo)",
-        "document": "Documento",
-        "photo": "Foto",
-        "synthetic": "Sintético",
-        "mixed": "Mixto"
-      }
-    },
     "quick_look": {
       "unset_source": "Remover origem",
       "reject": "Rejeitar",
