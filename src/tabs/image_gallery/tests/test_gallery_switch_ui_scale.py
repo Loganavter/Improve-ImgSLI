@@ -145,6 +145,9 @@ def test_ask_ai_images_toggle_scales_once_at_build(qapp) -> None:
         UiScale.get_instance().set_factor(1.0)
         base = AskAiFlyout(parent)
         try:
+            # The ask body (and its toggle) is built on first use — one shared
+            # surface per host, created lazily since the sidebar split.
+            base._ensure_surface()
             # Read the 1.0 geometry BEFORE the factor moves: an alive Button
             # re-derives live on a scale change (that is correct — the bug
             # this test guards is the BUILD-time factor^2 drift).
@@ -154,6 +157,7 @@ def test_ask_ai_images_toggle_scales_once_at_build(qapp) -> None:
         UiScale.get_instance().set_factor(1.5)
         scaled = AskAiFlyout(parent)
         try:
+            scaled._ensure_surface()
             assert base_size == _ASK_TOGGLE, (
                 f"Ask-AI images toggle at factor 1.0 is {base_size}, "
                 f"expected design {_ASK_TOGGLE}"

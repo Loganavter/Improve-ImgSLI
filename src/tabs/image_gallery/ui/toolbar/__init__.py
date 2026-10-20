@@ -59,6 +59,8 @@ class GalleryToolbar(QWidget):
     sortChanged = Signal(str)
     viewToggled = Signal(bool)
     domainChanged = Signal(str)
+    #: The toolbar's AI toggle — carries the requested sidebar visibility.
+    askSidebarToggled = Signal(bool)
 
     #: Sort option gated to the AI judgment domain (orders by an AI score).
     _AI_SORT_LABEL = "Sort: AI quality"
@@ -313,6 +315,26 @@ class GalleryToolbar(QWidget):
 
         # Stretch pushes view-switcher to the right edge
         layout.addStretch(1)
+
+        # Ask AI sidebar toggle — a docked Q/A panel, not a flyout. Icon-only
+        # like the domain/view segments so it fits the 34px toolbar row; the
+        # tooltip is the literal label ("Show/Hide AI sidebar").
+        self._ask_sidebar_show_text = "Show AI sidebar"
+        self._ask_sidebar_hide_text = "Hide AI sidebar"
+        self._ask_sidebar_button = Button(
+            icon=(GalleryIcon.AI_INACTIVE, GalleryIcon.AI),
+            variant="ghost",
+            toggle=True,
+            size=(28, 28),  # design px — Button scales internally
+            parent=self,
+        )
+        self._ask_sidebar_button.setObjectName("gallery_toolbar_ask_sidebar")
+        try:
+            self._ask_sidebar_button.clicked.connect(self._on_ask_sidebar_clicked)
+        except Exception:
+            pass
+        self._sync_ask_sidebar_tooltip()
+        layout.addWidget(self._ask_sidebar_button)
 
         # View switch — segmented 106×32 bg.band (real_design.md:49) — rounded r8 via paintEvent, no QSS
         self._view_switch_container = GalleryToolbarViewSwitchContainer(self)
@@ -728,6 +750,53 @@ class GalleryToolbar(QWidget):
     def _on_sort_chosen(self, index: int) -> None:
         sort_picker.on_sort_chosen(self, index)
 
+    # -- Ask AI sidebar toggle ---------------------------------------------
+
+    @property
+    def ask_sidebar_button(self):
+        """The AI toggle button (tests / Find Action pulse)."""
+        return self._ask_sidebar_button
+
+    def _on_ask_sidebar_clicked(self) -> None:
+        self._sync_ask_sidebar_tooltip()
+        try:
+            self.askSidebarToggled.emit(bool(self._ask_sidebar_button.isChecked()))
+        except Exception:
+            pass
+
+    def _sync_ask_sidebar_tooltip(self) -> None:
+        label = (
+            self._ask_sidebar_hide_text
+            if self._ask_sidebar_button.isChecked()
+            else self._ask_sidebar_show_text
+        )
+        try:
+            self._ask_sidebar_button.setToolTip(label)
+        except Exception:
+            pass
+
+    def set_ask_sidebar_texts(self, show: str, hide: str) -> None:
+        """Inject the localized Show/Hide tooltip pair."""
+        if show:
+            self._ask_sidebar_show_text = str(show)
+        if hide:
+            self._ask_sidebar_hide_text = str(hide)
+        self._sync_ask_sidebar_tooltip()
+
+    def set_ask_sidebar_checked(self, checked: bool) -> None:
+        """Reflect the sidebar's real visibility without re-emitting the signal."""
+        try:
+            self._ask_sidebar_button.blockSignals(True)
+            self._ask_sidebar_button.setChecked(bool(checked))
+        except Exception:
+            pass
+        finally:
+            try:
+                self._ask_sidebar_button.blockSignals(False)
+            except Exception:
+                pass
+        self._sync_ask_sidebar_tooltip()
+
     def retranslate(self, translate: Callable[[str, str], str] | None = None) -> None:
         """Update translatable texts in place.
 
@@ -760,6 +829,13 @@ class GalleryToolbar(QWidget):
         try:
             self._view_switch.setToolTip(_tr("image_gallery.view_grid", "Grid"))
             self._view_switch_list.setToolTip(_tr("image_gallery.view_list", "List"))
+        except Exception:
+            pass
+        try:
+            self.set_ask_sidebar_texts(
+                _tr("image_gallery.ask_ai.sidebar_show", "Show AI sidebar"),
+                _tr("image_gallery.ask_ai.sidebar_hide", "Hide AI sidebar"),
+            )
         except Exception:
             pass
         try:

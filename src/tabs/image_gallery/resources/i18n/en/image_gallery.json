@@ -106,7 +106,11 @@
       "region_prompt": "What is wrong in this region?",
       "cached": " · cached",
       "error_context": "Could not assemble the ask context.",
-      "history_count": "{n} previous questions"
+      "history_count": "{n} previous questions",
+      "history_title": "History",
+      "history_empty": "No questions yet.",
+      "sidebar_show": "Show AI sidebar",
+      "sidebar_hide": "Hide AI sidebar"
     },
     "series": {
       "ask_ai": "Ask AI",

@@ -449,6 +449,10 @@ def test_i18n_ask_ai_keys_present_in_all_locales():
             "routing_unavailable",
             "images_toggle_hint",
             "images_toggle_downsample",
+            "history_title",
+            "history_empty",
+            "sidebar_show",
+            "sidebar_hide",
         ):
             assert block.get(key), f"{path}: missing ask_ai.{key}"
 

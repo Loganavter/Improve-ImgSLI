@@ -63,6 +63,12 @@ def _retranslate_chrome(owner) -> None:
         except Exception:
             pass
     try:
+        from tabs.image_gallery.ui.widget_parts import ask_ai_sidebar
+
+        ask_ai_sidebar.retranslate(owner)
+    except Exception:
+        pass
+    try:
         gv = getattr(owner, "_grid_view", None)
         if gv is not None:
             gv.retranslate_headers()
