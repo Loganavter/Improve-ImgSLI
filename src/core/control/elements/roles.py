@@ -84,6 +84,12 @@ def _label_of(widget: QWidget, action: Any | None = None) -> str:
     reports its action caption, not the class-name fallback), then Qt's
     accessibility/object-name fallbacks.
     """
+    if _is_secret_field(widget):
+        # Entered text is NOT a label when the widget itself masks it. Live
+        # 2026-10-20: the Settings -> AI API-key field (EchoMode.Password)
+        # reported its full value as ``ui_elements`` label, i.e. a secret was
+        # readable through the control socket while the UI deliberately hides it.
+        return _SECRET_LABEL
     text = _text_of(widget)
     if not text:
         title = getattr(widget, "title", None)
@@ -107,6 +113,31 @@ def _label_of(widget: QWidget, action: Any | None = None) -> str:
     except Exception:
         name = ""
     return str(name or type(widget).__name__)
+
+
+
+#: What an agent sees instead of the contents of a masked field. Fixed length on
+#: purpose: the real length of a secret is information too.
+_SECRET_LABEL = "\u2022\u2022\u2022\u2022\u2022\u2022"
+
+
+def _is_secret_field(widget: QWidget) -> bool:
+    """True for a text field whose own ``echoMode`` hides the characters.
+
+    Duck-typed (``echoMode()`` exists and is not ``Normal``) so toolkit line
+    edits, stock ``QLineEdit`` and anything else that masks input are covered
+    without importing the toolkit. Never raises.
+    """
+    try:
+        mode = widget.echoMode()  # type: ignore[attr-defined]
+    except Exception:
+        return False
+    try:
+        from PySide6.QtWidgets import QLineEdit
+
+        return mode != QLineEdit.EchoMode.Normal
+    except Exception:
+        return bool(mode)
 
 
 def _is_toolkit_widget(widget: QWidget) -> bool:
