@@ -275,3 +275,33 @@ shows seven gap rows.
    (`metric_profile.py:220-286`) goes with it.
 4. **Pinned domains need a mode-filtered pool** so they cannot promise
    unmeasurable axes (§6.3).
+
+---
+
+## 10. Engine dark launch (W9 read path behind a flag)
+
+Status: dark launch, **not** the default. `IMGSLI_ANALYSIS_ENGINE=1` turns on
+the analysis engine's local plan inside the proxy batch
+(`services/proxy.py`): each batch entry gains an `"analysis"` key holding that
+item's per-axis `AxisValue` records — value, producer, status and reason, from
+`engine/analysis/contracts.py`. `use_cases/proxy_pass.py` copies those records
+onto `GalleryItem.analysis_records` (transient: never persisted, never sent
+anywhere).
+
+`analysis/read.py` prefers those records when an item has any: the record's
+value and provenance are what dots/rows/rank receive, regardless of the
+judgment domain. A requested axis with no record — or with a record whose status
+is `gap`/`error` — stays a gap and is never filled from `item.metrics` or
+`item.analysis`. That hard no-fallback rule is the point of the dark launch:
+the engine may disagree with the legacy numbers, and the disagreement is shown
+rather than silently repaired.
+
+What is NOT flipped:
+
+- the flag defaults **off** — a flag-off batch has no `"analysis"` key, so
+  `analysis_records` stays `()`;
+- with no records the reader keeps its unchanged legacy branch
+  (`quality_read.ai_axis_scores` / `detector_axis_scores`), i.e. §3's read seam;
+- producers, ranking, UI surfaces and persistence are untouched. The legacy
+  branch is deleted only after a live check and an explicit default-on decision
+  (plan P9).

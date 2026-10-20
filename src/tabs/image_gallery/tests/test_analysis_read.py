@@ -14,10 +14,13 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
+from engine.analysis.contracts import AxisValue
 from tabs.image_gallery.analysis.read import (
     AI_PRODUCER,
     AXIS_UNMEASURED_REASON,
     AXIS_UNSCORED_REASON,
+    ENGINE_GAP_REASON,
+    ENGINE_PRODUCER,
     LOCAL_PRODUCER,
     NOT_ANALYZED_REASON,
     read_artifact_severities,
@@ -137,6 +140,143 @@ def test_algorithms_gap_is_not_filled_with_the_model_number():
     assert record.value is None
     assert record.reason.strip()
     assert int(read_axis(item, axis="ssim", domain="ai").value) == 88
+
+
+# ---------------------------------------------------------------------------
+# W9: engine records are preferred, and a gap stays a gap
+# ---------------------------------------------------------------------------
+
+
+def _record(
+    axis: str,
+    value: float | None,
+    *,
+    producer: str = "camera_scalars",
+    status: str = "ok",
+    reason: str = "",
+) -> AxisValue:
+    return AxisValue(
+        axis=axis, value=value, producer=producer, status=status, reason=reason
+    )
+
+
+def test_engine_record_is_preferred_over_both_legacy_sources():
+    """The record wins even when the domain's own primitive disagrees."""
+    item = _item(
+        metrics={"sharpness": 320.0},  # local detector would say 80
+        analysis=_analysis(axes={"sharpness": 33}),  # VLM would say 33
+        analysis_records=(_record("sharpness", 12.0),),
+    )
+    algorithms = read_axis(item, axis="sharpness", domain="algorithms")
+    ai = read_axis(item, axis="sharpness", domain="ai")
+    # Preference, not merge: the engine record answers both domains.
+    for record in (algorithms, ai):
+        assert record.status == "ok"
+        assert record.value == 12.0
+        assert record.producer == "camera_scalars"
+
+
+def test_engine_gap_is_never_filled_from_the_legacy_value():
+    """Red-before for W9: a record gap must not borrow ``item.metrics``/AI.
+
+    Both legacy sources HAVE a value for ``sharpness`` here. Before the
+    no-fallback rule the reader would answer from them, hiding the engine's
+    "I have nothing" behind a number that a different producer measured.
+    """
+    item = _item(
+        metrics={"sharpness": 320.0},
+        analysis=_analysis(axes={"sharpness": 33}),
+        analysis_records=(
+            _record(
+                "sharpness",
+                None,
+                status="gap",
+                reason="the shared proxy decoded nothing",
+            ),
+        ),
+    )
+    for domain in ("algorithms", "ai"):
+        record = read_axis(item, axis="sharpness", domain=domain)
+        assert record.status == "gap"
+        assert record.value is None
+        assert record.reason == "the shared proxy decoded nothing"
+
+
+def test_requested_axis_without_a_record_is_an_engine_gap():
+    """No record for the axis = gap with the engine reason, never legacy."""
+    item = _item(
+        metrics={"sharpness": 320.0},
+        analysis=_analysis(axes={"sharpness": 33}),
+        analysis_records=(_record("noise", 71.0),),
+    )
+    record = read_axis(item, axis="sharpness", domain="algorithms")
+    assert record.status == "gap"
+    assert record.value is None
+    assert record.reason == ENGINE_GAP_REASON
+    assert record.producer == ENGINE_PRODUCER
+
+
+def test_item_without_engine_records_keeps_the_legacy_read_exactly():
+    """Flag-off shape: ``analysis_records == ()`` → today's dicts and records."""
+    item = _item(
+        metrics={"sharpness": 200.0, "noise": 0.9},
+        analysis=_analysis(axes={"sharpness": 33}, composition=44),
+    )
+    assert item.analysis_records == ()
+    assert quality_read.domain_axis_scores(item, domain="ai") == {
+        "sharpness": 33,
+        "composition": 44,
+    }
+    assert quality_read.domain_axis_scores(item, domain="algorithms") == {
+        "sharpness": 50,
+        "noise": 10,
+    }
+    ai = read_axes(item, domain="ai", axes=("sharpness", "noise"))
+    assert [
+        (r.axis, r.value, r.producer, r.status, r.reason) for r in ai
+    ] == [
+        ("sharpness", 33.0, AI_PRODUCER, "ok", ""),
+        ("noise", None, AI_PRODUCER, "gap", AXIS_UNSCORED_REASON),
+    ]
+
+
+def test_engine_records_keep_requested_order_one_per_axis():
+    """Requested axes come back verbatim, one record each, in order."""
+    records = (_record("noise", 71.0), _record("sharpness", 12.0))
+    item = _item(analysis_records=records)
+
+    ordered = read_axes(item, domain="ai", axes=("sharpness", "ssim", "noise"))
+    assert [r.axis for r in ordered] == ["sharpness", "ssim", "noise"]
+    assert [r.status for r in ordered] == ["ok", "gap", "ok"]
+    # The present records are the engine's own objects (provenance intact).
+    assert ordered[0] is records[1]
+    assert ordered[2] is records[0]
+    assert ordered[1].reason == ENGINE_GAP_REASON
+
+    # axes=None reports the records' order (plan order), not a legacy dict's.
+    assert [r.axis for r in read_axes(item, domain="algorithms")] == [
+        "noise",
+        "sharpness",
+    ]
+
+
+def test_proxy_delivery_attaches_records_only_when_the_entry_carries_them():
+    """The flag-ON key is copied; its absence leaves the item untouched."""
+    from types import SimpleNamespace
+
+    from tabs.image_gallery.use_cases.proxy_pass import _attach_analysis_records
+
+    record = _record("sharpness", 12.0)
+    item = _item(name="a.png")
+    owner = SimpleNamespace(state=SimpleNamespace(items=[item]))
+
+    # Flag-off batch entry: no "analysis" key → transient field stays empty.
+    _attach_analysis_records(owner, {str(item.path): {"artifacts": {}}})
+    assert item.analysis_records == ()
+
+    # Flag-on entry: the records are attached as a tuple.
+    _attach_analysis_records(owner, {str(item.path): {"analysis": (record,)}})
+    assert item.analysis_records == (record,)
 
 
 # ---------------------------------------------------------------------------

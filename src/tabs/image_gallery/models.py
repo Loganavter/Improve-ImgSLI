@@ -256,6 +256,14 @@ class GalleryItem:
     analysis_status: AnalysisStatus = AnalysisStatus.NOT_ANALYZED
     analysis: AiAnalysisResult | None = None
     analysis_error: str | None = None
+    #: Per-axis records of the analysis engine (``analysis/read.py``), copied
+    #: from the proxy batch entry's ``"analysis"`` key by
+    #: ``use_cases/proxy_pass``. Written ONLY on the flag-ON path
+    #: (``IMGSLI_ANALYSIS_ENGINE=1``); empty means "no engine records", and the
+    #: read path keeps its legacy domain read. Transient: never persisted to
+    #: the session slot and never sent anywhere
+    #: (plan-gallery-analysis-engine-2026-10-20 W9).
+    analysis_records: tuple[AxisValue, ...] = ()
     series_id: str | None = None
     rank: int | None = None
     #: Which ranker produced ``rank`` — "fusion" (Algorithms) | "jev" (AI) |

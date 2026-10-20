@@ -12,10 +12,16 @@ unrepresentable rather than merely discouraged.
 The reader is a thin adapter over the existing primitives, never a second
 source of numbers:
 
-- the AI domain's values come from ``quality_read.ai_axis_scores`` (the VLM
-  scorecard on ``item.analysis``);
-- the Algorithms domain's values come from ``quality_read.detector_axis_scores``
-  (the local detectors on ``item.metrics``, via ``metric_scores``);
+- when the item carries engine records (``item.analysis_records``, written only
+  by the flag-ON proxy hook ``IMGSLI_ANALYSIS_ENGINE=1``), those records are the
+  answer: an axis without a record is a ``gap`` and is NEVER filled from the
+  legacy value — the engine ran and had nothing, which is a different fact from
+  "the legacy source has a number" (plan W9);
+- otherwise the AI domain's values come from ``quality_read.ai_axis_scores``
+  (the VLM scorecard on ``item.analysis``);
+- otherwise the Algorithms domain's values come from
+  ``quality_read.detector_axis_scores`` (the local detectors on
+  ``item.metrics``, via ``metric_scores``);
 - artifact severities delegate to ``quality_read.domain_artifact_severities``
   (the defect→artifact mapping is not duplicated here).
 
@@ -50,6 +56,35 @@ NOT_ANALYZED_REASON = "not analyzed by the model yet"
 AXIS_UNSCORED_REASON = "the model did not score this axis"
 NOT_MEASURED_REASON = "no local detector has measured this image yet"
 AXIS_UNMEASURED_REASON = "no local detector reports this axis"
+
+#: Producer id on the gap the reader synthesises when the item HAS engine
+#: records but none covers the requested axis. It names the engine, not a
+#: backend: no producer ran for that axis, and attributing one that never ran
+#: would be the provenance lie ``AxisValue`` exists to prevent.
+ENGINE_PRODUCER = "engine"
+#: Gap reason for that case — distinct from the legacy per-domain reasons
+#: because the cause is different: the engine ran and had nothing for the axis
+#: (W9's hard no-fallback rule).
+ENGINE_GAP_REASON = "the engine produced no value for this axis"
+
+
+def _engine_by_axis(item) -> dict[str, AxisValue]:
+    """The item's engine records indexed by axis (``{}`` when it has none).
+
+    First record wins: the runner appends each producer in plan order, so a
+    duplicate axis keeps the earlier (higher-priority) producer's answer rather
+    than letting a later producer silently overwrite it.
+    """
+    try:
+        records = tuple(getattr(item, "analysis_records", ()) or ())
+    except Exception:
+        return {}
+    out: dict[str, AxisValue] = {}
+    for record in records:
+        axis = str(getattr(record, "axis", "") or "")
+        if axis and axis not in out:
+            out[axis] = record
+    return out
 
 
 def _ai_values(item) -> dict[str, float]:
@@ -95,10 +130,37 @@ def read_axes(
     profile) gets exactly one record per requested axis, in the requested order,
     so a surface can render its whole axis set without a second lookup.
 
-    An axis the domain does not answer becomes ``status="gap"`` with a reason and
-    ``value=None``. It is never filled from the other domain and never from a
-    neighbour: that substitution is the defect this read path removes.
+    When the item carries engine records (``analysis_records``, flag-ON only),
+    they are the source: the domain no longer decides anything, and a requested
+    axis without a record is a ``gap`` with ``ENGINE_GAP_REASON`` — never the
+    legacy value (W9's no-fallback rule).
+
+    An axis the source does not answer becomes ``status="gap"`` with a reason
+    and ``value=None``. It is never filled from the other domain and never from
+    a neighbour: that substitution is the defect this read path removes.
     """
+    engine = _engine_by_axis(item)
+    if engine:
+        requested = (
+            tuple(str(axis) for axis in axes) if axes is not None else tuple(engine)
+        )
+        records: list[AxisValue] = []
+        for axis in requested:
+            record = engine.get(axis)
+            if record is None:
+                records.append(
+                    AxisValue(
+                        axis=axis,
+                        value=None,
+                        producer=ENGINE_PRODUCER,
+                        status="gap",
+                        reason=ENGINE_GAP_REASON,
+                    )
+                )
+                continue
+            records.append(record)
+        return tuple(records)
+
     dom = normalize_domain(domain)
     if dom == AI_DOMAIN:
         values = _ai_values(item)
@@ -144,6 +206,8 @@ __all__ = [
     "AI_PRODUCER",
     "AXIS_UNMEASURED_REASON",
     "AXIS_UNSCORED_REASON",
+    "ENGINE_GAP_REASON",
+    "ENGINE_PRODUCER",
     "LOCAL_PRODUCER",
     "NOT_ANALYZED_REASON",
     "NOT_MEASURED_REASON",
