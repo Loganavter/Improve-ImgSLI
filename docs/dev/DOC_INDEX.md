@@ -188,14 +188,15 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
 ## src/tabs/image_gallery/docs/
 
 - **[Image Gallery — how image analysis actually works](../../src/tabs/image_gallery/docs/ANALYSIS_BACKENDS.md)** — `src/tabs/image_gallery/docs/ANALYSIS_BACKENDS.md`
-  Referenced by: [src/tabs/image_gallery/docs/README.md](../../src/tabs/image_gallery/docs/README.md)
+  Referenced by: [src/tabs/image_gallery/docs/README.md](../../src/tabs/image_gallery/docs/README.md), [src/tabs/image_gallery/docs/investigations/plan-gallery-analysis-engine-2026-10-20.md](../../src/tabs/image_gallery/docs/investigations/plan-gallery-analysis-engine-2026-10-20.md)
 - **[Image Gallery](../../src/tabs/image_gallery/docs/README.md)** — `src/tabs/image_gallery/docs/README.md`
   Referenced by: [src/tabs/image_gallery/docs/ANALYSIS_BACKENDS.md](../../src/tabs/image_gallery/docs/ANALYSIS_BACKENDS.md), [src/tabs/image_gallery/docs/investigations/plan-gallery-split-2026-10-17.md](../../src/tabs/image_gallery/docs/investigations/plan-gallery-split-2026-10-17.md), [src/tabs/image_gallery/docs/plugins/image_gallery.md](../../src/tabs/image_gallery/docs/plugins/image_gallery.md)
 
 ## src/tabs/image_gallery/docs/investigations/
 
 - **[Plan — adaptive metric profiles (content-aware metric selection from the pool)](../../src/tabs/image_gallery/docs/investigations/plan-adaptive-metric-profiles-2026-10-17.md)** — `src/tabs/image_gallery/docs/investigations/plan-adaptive-metric-profiles-2026-10-17.md`
-  Referenced by: [src/tabs/image_gallery/docs/ANALYSIS_BACKENDS.md](../../src/tabs/image_gallery/docs/ANALYSIS_BACKENDS.md), [src/tabs/image_gallery/docs/README.md](../../src/tabs/image_gallery/docs/README.md)
+  Referenced by: [src/tabs/image_gallery/docs/ANALYSIS_BACKENDS.md](../../src/tabs/image_gallery/docs/ANALYSIS_BACKENDS.md), [src/tabs/image_gallery/docs/README.md](../../src/tabs/image_gallery/docs/README.md), [src/tabs/image_gallery/docs/investigations/plan-gallery-analysis-engine-2026-10-20.md](../../src/tabs/image_gallery/docs/investigations/plan-gallery-analysis-engine-2026-10-20.md)
+- **[Plan — gallery analysis engine (one plan, one registry, one read path)](../../src/tabs/image_gallery/docs/investigations/plan-gallery-analysis-engine-2026-10-20.md)** — `src/tabs/image_gallery/docs/investigations/plan-gallery-analysis-engine-2026-10-20.md`
 - **[Plan — Image Gallery decomposition (controller + widget + remaining large files)](../../src/tabs/image_gallery/docs/investigations/plan-gallery-split-2026-10-17.md)** — `src/tabs/image_gallery/docs/investigations/plan-gallery-split-2026-10-17.md`
   Referenced by: [docs/dev/CODE_MASS_REDUCTION.md](CODE_MASS_REDUCTION.md), [src/tabs/image_gallery/docs/README.md](../../src/tabs/image_gallery/docs/README.md), [src/tabs/image_gallery/docs/investigations/plan-adaptive-metric-profiles-2026-10-17.md](../../src/tabs/image_gallery/docs/investigations/plan-adaptive-metric-profiles-2026-10-17.md)
 
