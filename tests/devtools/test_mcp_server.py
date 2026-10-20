@@ -31,6 +31,7 @@ if str(MCP_DIR) not in sys.path:
 
 from app import catalog  # noqa: E402
 from app.backend import AppBackend  # noqa: E402
+from app.live import LiveBackend  # noqa: E402
 from app.process_policy import (  # noqa: E402
     PRESERVED_LOG_NAME,
     ProcessRegistry,
@@ -44,6 +45,7 @@ from app.protocol import (  # noqa: E402
     MCPProtocol,
     serve_stdio,
 )
+from core.evidence.journal import record_evidence, reset_journal, verdict  # noqa: E402
 
 _NAME_RE = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")
 _ANNOTATION_KEYS = ("readOnlyHint", "destructiveHint", "idempotentHint", "openWorldHint")
@@ -219,6 +221,172 @@ def test_capture_surface_still_rejects_unknown_parameters(wired):
     )
     assert response["error"]["code"] == -32602
     assert "unexpected parameter 'what'" in response["error"]["message"]
+
+
+# --- evidence probe: capture provenance -------------------------------------
+
+#: Frozen spec id this probe owns (``docs/dev/EVIDENCE.md`` / ADR-008 vocabulary).
+CAPTURE_PROVENANCE_SPEC = "spec.mcp.capture_provenance"
+
+
+class _ScriptedCaptureClient:
+    """Live transport stub: one scripted ``capture_live`` answer.
+
+    Faked at ``LiveClient.call`` (never at ``LiveBackend.capture_surface``) so
+    the provenance mapping under test runs for real — a stub at the adapter
+    level would only restate the mapping it is supposed to measure.
+    """
+
+    def __init__(self, answer: dict) -> None:
+        self.answer = dict(answer)
+        self.requests: list[tuple[str, dict]] = []
+
+    def alive(self) -> bool:
+        return True
+
+    def call(self, method, params=None, *, retry_on_timeout=False):
+        self.requests.append((method, dict(params or {})))
+        return dict(self.answer)
+
+    def close(self) -> None:
+        return None
+
+
+def _derived_provenance(payload: dict) -> tuple[bool, str]:
+    """``(complete, signal)`` derived from a capture payload, never the request.
+
+    "Complete" means the payload really carries what was grabbed
+    (``what``), how (``method``), a non-negative ``rhi_layers`` and a two-int
+    ``size``, and reports nothing in ``unavailable``. Anything less is a miss
+    whose signal names the fields, which is what makes the verdict falsifiable.
+    """
+    what = payload.get("what")
+    method = payload.get("method")
+    layers = payload.get("rhi_layers")
+    size = payload.get("size")
+    missing = [str(name) for name in payload.get("unavailable") or ()]
+    complete = bool(
+        what
+        and method
+        and isinstance(layers, int)
+        and layers >= 0
+        and isinstance(size, list)
+        and len(size) == 2
+        and all(isinstance(edge, int) for edge in size)
+        and not missing
+    )
+    if complete:
+        return True, f"what={what}; method={method}; rhi_layers={layers}; size={size}"
+    return False, f"unavailable={','.join(missing) or 'provenance-missing'}"
+
+
+def test_evidence_capture_provenance_is_kept_and_never_invented(
+    wired, monkeypatch, tmp_path
+):
+    """``spec.mcp.capture_provenance``: a capture names what/how it grabbed.
+
+    Requirement (``docs/dev/MCP.md`` § *Capture provenance*): a live result
+    keeps the app's ``what`` / ``method`` / ``size`` / ``rhi_layers``; the
+    fallback path lists ``method`` and ``rhi_layers`` as unavailable rather
+    than inventing values.
+
+    Falsification — the verdict is derived from the payloads, so drift is red:
+
+    * the live answer goes through the *real* ``LiveBackend.capture_surface``
+      with only ``LiveClient.call`` scripted, so a mapping that drops or
+      renames a provenance field is measured instead of restated;
+    * a second live answer with the app-side provenance stripped must flip the
+      same derivation to "missing" (``unavailable`` naming the fields) — the
+      probe cannot go green on a payload that carries nothing;
+    * the fallback capture fakes only the devtool subprocess and must both
+      parse its own size and list exactly the two unknowable fields.
+
+    Runs offscreen only — no Xvfb (the supervisor runs the live proof).
+    """
+    protocol, backend, _calls = wired
+    reset_journal()
+
+    full = {
+        "what": "settings",
+        "path": str(tmp_path / "live.png"),
+        "size": [1440, 900],
+        "method": "grabWindow",
+        "rhi_layers": 2,
+    }
+    client = _ScriptedCaptureClient(full)
+    backend.live = LiveBackend(client=client)
+    live = _call(protocol, "capture_surface", {"surface": "settings"})["structuredContent"]
+
+    # Negative control: same adapter, app answering without provenance.
+    backend.live = LiveBackend(client=_ScriptedCaptureClient({"what": "settings"}))
+    stripped = _call(protocol, "capture_surface", {"surface": "settings"})[
+        "structuredContent"
+    ]
+
+    # Fallback: the fixture pins an empty control dir, so no instance attaches.
+    import app.backend as backend_module
+
+    backend.live = LiveBackend()
+    png = tmp_path / "settings.png"
+    png.write_bytes(b"\x89PNG\r\n\x1a\n")  # content irrelevant; existence is not
+
+    class _Saved:
+        returncode = 0
+        stdout = f"saved {png} 800x600\n"
+        stderr = ""
+
+    monkeypatch.setattr(backend_module.subprocess, "run", lambda *a, **k: _Saved())
+    fallback = _call(protocol, "capture_surface", {"surface": "settings"})[
+        "structuredContent"
+    ]
+
+    live_ok, live_signal = _derived_provenance(live)
+    stripped_ok, stripped_signal = _derived_provenance(stripped)
+    fallback_ok, fallback_signal = _derived_provenance(fallback)
+    fallback_missing = ",".join(fallback.get("unavailable") or ())
+    ok = live_ok and not stripped_ok and not fallback_ok
+
+    record_evidence(
+        CAPTURE_PROVENANCE_SPEC,
+        kind="spec",
+        verdict="ok" if ok else "violated",
+        signal=f"{live_signal}; fallback_unavailable={fallback_missing}",
+        reason=(
+            "live capture kept what/method/size/rhi_layers and the fallback "
+            "named the fields it cannot know"
+            if ok
+            else "capture payload lost provenance it reported holding, or "
+            "invented a value it could not observe"
+        ),
+        ids=("settings",),
+        area="mcp.capture",
+    )
+
+    record = verdict(None, CAPTURE_PROVENANCE_SPEC)
+    assert record is not None, "capture-provenance probe emitted no evidence"
+
+    # Assert AFTER emitting, so a failure reads as evidence, not a bare assert.
+    assert client.requests == [("capture_live", {"what": "settings"})], (
+        "the live adapter must send only 'what' (theme/out are fallback-only)"
+    )
+    assert live["source"] == "live"
+    assert live["method"] == "grabWindow" and live["rhi_layers"] == 2, live
+    assert live["size"] == [1440, 900] and live["unavailable"] == [], live
+    assert live["what"] == "settings" and live["theme"] is None, live
+
+    assert stripped["unavailable"] == ["method", "size", "rhi_layers"], stripped
+    assert not stripped_ok, stripped_signal
+
+    assert fallback["source"] == "fallback" and fallback["what"] == "settings", fallback
+    assert fallback["size"] == [800, 600], fallback
+    assert fallback["method"] is None and fallback["rhi_layers"] is None, fallback
+    assert fallback["unavailable"] == ["method", "rhi_layers"], fallback
+
+    assert ok, (
+        f"spec.mcp.capture_provenance violated — live={live_signal}; "
+        f"stripped={stripped_signal}; fallback={fallback_signal}"
+    )
+    assert record.verdict == "ok", record.signal
 
 
 def test_read_and_write_tools_do_not_mix_annotations(wired):
