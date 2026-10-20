@@ -32,8 +32,15 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
-from PySide6.QtCore import QPoint, QPointF, Qt
-from PySide6.QtGui import QColor, QImage, QPixmap, QWheelEvent
+from PySide6.QtCore import QEvent, QPoint, QPointF, Qt
+from PySide6.QtGui import (
+    QColor,
+    QEnterEvent,
+    QImage,
+    QMouseEvent,
+    QPixmap,
+    QWheelEvent,
+)
 from PySide6.QtWidgets import QApplication, QWidget
 
 from tabs.image_gallery.models import GalleryItem, Mode
@@ -113,6 +120,11 @@ def _is_red(rgb) -> bool:
 def _is_green(rgb) -> bool:
     r, g, b = rgb
     return g > 110 and r < 100 and b < 100
+
+
+def _is_blue(rgb) -> bool:
+    r, g, b = rgb
+    return b > 120 and r < 100 and g < 140
 
 
 def _store_image(store) -> QImage:
@@ -311,5 +323,174 @@ def test_inset_keeps_the_pinned_plate_and_rounded_clip(qtbot, tmp_path):
         # No new focus stop from the canvas itself.
         assert inset.focusPolicy() == Qt.FocusPolicy.NoFocus
         assert plate.focusPolicy() == Qt.FocusPolicy.NoFocus
+    finally:
+        ov.hide()
+
+
+# -- 5. hover / press on the plate swaps the MAIN preview to the SOURCE ------
+#
+# The inset shows the source on its own surface; the interaction shows the
+# SAME source in the MAIN preview (the source is what a fidelity check has to
+# look at closely) without touching the shared ``ViewportState``. The plate is
+# the only non-transparent child of the inset block, so it is the hit target —
+# the engine canvas/cover/frame stay ``WA_TransparentForMouseEvents`` and
+# outside the section graph (docs/dev/KEYBOARD_NAVIGATION.md §9).
+
+
+def _send_enter(widget) -> None:
+    pos = QPointF(5.0, 5.0)
+    ev = QEnterEvent(pos, pos, QPointF(widget.mapToGlobal(pos.toPoint())))
+    QApplication.sendEvent(widget, ev)
+
+
+def _send_leave(widget) -> None:
+    QApplication.sendEvent(widget, QEvent(QEvent.Type.Leave))
+
+
+def _send_lmb(widget, press: bool) -> None:
+    pos = QPointF(widget.width() / 2.0, widget.height() / 2.0)
+    kind = (
+        QEvent.Type.MouseButtonPress if press else QEvent.Type.MouseButtonRelease
+    )
+    buttons = Qt.MouseButton.LeftButton if press else Qt.MouseButton.NoButton
+    ev = QMouseEvent(
+        kind,
+        pos,
+        QPointF(widget.mapToGlobal(pos.toPoint())),
+        Qt.MouseButton.LeftButton,
+        buttons,
+        Qt.KeyboardModifier.NoModifier,
+    )
+    QApplication.sendEvent(widget, ev)
+
+
+def _main_rgb(main) -> tuple[int, int, int]:
+    return _center_rgb(main, 160, 120)
+
+
+def test_hover_on_the_inset_plate_shows_the_source_in_the_main_preview(
+    qtbot, tmp_path
+):
+    """Enter → main preview shows the SOURCE at the SAME view; Leave → restore."""
+    src = _item(_png(tmp_path, "sw_src.png", "#c0392b"))
+    item = _item(_png(tmp_path, "sw_view.png", "#3a6ea5"))
+    ov = _make_overlay(qtbot)
+    try:
+        _show(ov, item, [src, item], src.path)
+        main = ov._preview_canvas
+        plate = ov._source_inset_pix
+        inset = ov._source_inset_canvas
+        view = main.current_view()
+
+        assert main._ql_source_path == str(item.path)
+        assert _is_blue(_main_rgb(main)), "baseline: preview shows the viewed item"
+
+        _send_enter(plate)
+        assert main._ql_source_path == str(src.path), (
+            "hover did not swap the main preview to the source"
+        )
+        assert _is_red(_main_rgb(main)), "main preview pixels are not the source"
+        # SAME viewport state: the swap changes pixels, never zoom/pan, and the
+        # main preview borrows the inset's already-open coarse store.
+        assert main.current_view() == view
+        assert inset.current_view() == view
+        assert main._store is ov._source_inset_store
+
+        # Zooming while swapped still drives the ONE shared viewport.
+        ev = QWheelEvent(
+            QPointF(70.0, 42.0),
+            QPointF(70.0, 42.0),
+            QPoint(0, 0),
+            QPoint(0, 120),
+            Qt.MouseButton.NoButton,
+            Qt.KeyboardModifier.NoModifier,
+            Qt.ScrollPhase.ScrollUpdate,
+            False,
+        )
+        main.wheelEvent(ev)
+        zoomed = main.current_view()
+        assert zoomed[0] > view[0], "wheel while swapped did not zoom"
+        assert inset.current_view() == zoomed, "shared viewport broke during the swap"
+        assert main._ql_source_path == str(src.path), "zoom ended the swap"
+
+        _send_leave(plate)
+        assert main._ql_source_path == str(item.path), "leave did not restore"
+        assert _is_blue(_main_rgb(main)), "restored preview is not the viewed item"
+        assert main.current_view() == zoomed, "restore changed the viewport"
+    finally:
+        ov.hide()
+
+
+def test_inset_lmb_swap_lasts_until_release_even_after_leaving(qtbot, tmp_path):
+    """LMB press swaps; the swap survives Leave and ends on release."""
+    red = _item(_png(tmp_path, "pr_src.png", "#c0392b"))
+    item = _item(_png(tmp_path, "pr_view.png", "#3a6ea5"))
+    ov = _make_overlay(qtbot)
+    try:
+        _show(ov, item, [red, item], red.path)
+        main = ov._preview_canvas
+        plate = ov._source_inset_pix
+        assert main._ql_source_path == str(item.path)
+
+        _send_lmb(plate, press=True)
+        assert main._ql_source_path == str(red.path), "LMB press did not swap"
+        assert _is_red(_main_rgb(main))
+
+        # The pointer leaves the plate while the button is still down: the
+        # press-owned swap must hold (temporary until release).
+        _send_leave(plate)
+        assert main._ql_source_path == str(red.path), (
+            "a press-pending swap was ended by Leave"
+        )
+        assert _is_red(_main_rgb(main))
+
+        _send_lmb(plate, press=False)
+        assert main._ql_source_path == str(item.path), "release did not restore"
+        assert _is_blue(_main_rgb(main))
+    finally:
+        ov.hide()
+
+
+def test_hover_on_another_inset_region_does_nothing(qtbot, tmp_path):
+    """Only the plate is a swap target: the caption/title region is inert."""
+    src = _item(_png(tmp_path, "ot_src.png", "#c0392b"))
+    item = _item(_png(tmp_path, "ot_view.png", "#3a6ea5"))
+    ov = _make_overlay(qtbot)
+    try:
+        _show(ov, item, [src, item], src.path)
+        main = ov._preview_canvas
+        for other in (ov._source_inset_title, ov._source_inset_host):
+            _send_enter(other)
+            assert main._ql_source_path == str(item.path), (
+                f"hover over {type(other).__name__} swapped the preview"
+            )
+            assert _is_blue(_main_rgb(main))
+            _send_leave(other)
+            assert main._ql_source_path == str(item.path)
+    finally:
+        ov.hide()
+
+
+def test_hiding_while_swapped_clears_the_swap(qtbot, tmp_path):
+    """Close/reopen never inherits a hover swap (the source stays retired)."""
+    src = _item(_png(tmp_path, "hd_src.png", "#c0392b"))
+    item = _item(_png(tmp_path, "hd_view.png", "#3a6ea5"))
+    other = _item(_png(tmp_path, "hd_other.png", "#27ae60"))
+    ov = _make_overlay(qtbot)
+    try:
+        _show(ov, item, [src, item], src.path)
+        main = ov._preview_canvas
+        _send_enter(ov._source_inset_pix)
+        assert _is_red(_main_rgb(main))
+
+        ov.hide()
+        QApplication.processEvents()
+        assert not getattr(ov, "_source_swap_active", False), (
+            "closing the overlay kept the swap armed"
+        )
+
+        _show(ov, other, [src, other], src.path)
+        assert main._ql_source_path == str(other.path)
+        assert _is_green(_main_rgb(main)), "reopen shows a stale/pre-swap item"
     finally:
         ov.hide()

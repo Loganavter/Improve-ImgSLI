@@ -284,6 +284,22 @@ def populate_source_inset(overlay, item, is_fidelity: bool, owner=None) -> None:
             pass
     except Exception:
         pass
+    # Hover/press on the plate shows the SOURCE in the main preview
+    # (source_swap.set_source_swap — same shared viewport, pixels only).
+    # A populate just rebuilt the preview for the CURRENT item, so any swap
+    # from before it is stale (the view may have been walked away from).
+    # Installed once, parented to the plate so it dies with the widget; the
+    # engine canvas stays mouse-transparent and out of the section graph.
+    try:
+        from tabs.image_gallery.ui.quick_look.source_swap import (
+            ensure_source_inset_swap,
+            reset_source_swap,
+        )
+
+        reset_source_swap(overlay)
+        ensure_source_inset_swap(overlay)
+    except Exception:
+        pass
 
 
 def populate_crop(overlay, item, is_fidelity: bool = False) -> None:

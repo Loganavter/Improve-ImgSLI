@@ -22,6 +22,15 @@ Source identity is token-guarded: ``populate_source_inset_canvas`` bumps
 late/stale resolve, so a neighbour/previous pair can never replace the
 current frame.
 
+Interaction (``task-gallery-quicklook-source-screen``): the inset plate is a
+swap hit target — hovering it (or holding LMB on it) shows the SOURCE in the
+MAIN preview, leaving/releasing restores the viewed item. The swap is pixels
+only: the main canvas keeps the SAME shared ``ViewportState`` (and renders from
+the inset's already-open coarse store), so zoom/pan never move. The engine
+canvas stays ``WA_TransparentForMouseEvents`` / NoFocus — never a hit target,
+never a focus/section stop. The hit target + swap live in ``source_swap``
+(500-line split); this module only retires a pending swap when the view goes.
+
 No cache keys are touched: the bounded store memo here is a one-entry
 path-keyed memo of its own (normpath/mtime/size, the stash key shape) and
 never consumes the strip/preview caches.
@@ -31,6 +40,8 @@ from __future__ import annotations
 
 from PySide6.QtCore import QRect, Qt
 from PySide6.QtWidgets import QLabel
+
+from tabs.image_gallery.ui.quick_look.source_swap import reset_source_swap
 
 # Geometry/radius names are re-exported here as the inset's public surface
 # (plate Build + tests import them from this module); the single definition
@@ -462,6 +473,9 @@ def release_source_inset_canvas(overlay) -> None:
     hides the cover and closes the private store. Never raises.
     """
     _next_token(overlay)
+    # A retired inset has nothing to show in the main preview: forget a
+    # pending swap (the populate that hid it repopulated the preview first).
+    reset_source_swap(overlay)
     canvas = getattr(overlay, "_source_inset_canvas", None)
     if canvas is not None:
         try:

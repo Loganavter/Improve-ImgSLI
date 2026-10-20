@@ -965,11 +965,10 @@
       "path": "src/tabs/image_gallery/ui/quick_look/preview_canvas/rhi_entry.py",
       "limit": 500,
       "marker": "Audit-Meta:",
-      "raw": "pattern=thin-owner size=exempt reason=\"one QRhiWidget frame-sequencing lifecycle split from preview_canvas.py (rhi_entry/raster/source); the batch take/consume/drain invariant is one concern and splitting it would scatter ownership across files\"",
+      "raw": "pattern=thin-owner reason=\"one QRhiWidget frame-sequencing lifecycle split from preview_canvas.py (rhi_entry/raster/source); the resource-update-batch take/consume/drain invariant and its counter moved to batches.py (task-gallery-ql-preview-batch-module-2026-10-17)\"",
       "parsed": {
         "pattern": "thin-owner",
-        "size": "exempt",
-        "reason": "one QRhiWidget frame-sequencing lifecycle split from preview_canvas.py (rhi_entry/raster/source); the batch take/consume/drain invariant is one concern and splitting it would scatter ownership across files"
+        "reason": "one QRhiWidget frame-sequencing lifecycle split from preview_canvas.py (rhi_entry/raster/source); the resource-update-batch take/consume/drain invariant and its counter moved to batches.py (task-gallery-ql-preview-batch-module-2026-10-17)"
       }
     },
     {
