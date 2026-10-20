@@ -31,7 +31,10 @@ from tabs.image_gallery.models import (
     GalleryItem,
 )
 from tabs.image_gallery.services.activity import set_activity
-from tabs.image_gallery.services.ai_cache import load_cached_analysis
+from tabs.image_gallery.services.ai_cache import (
+    analysis_cache_identity,
+    load_cached_analysis,
+)
 from tabs.image_gallery.services.ai_client import (
     _ai_debug,
     AiAuthError,
@@ -72,19 +75,48 @@ def analyze_item_by_path(owner, path: Path) -> None:
     owner.analyze_item(item)
 
 
+def analysis_identity_for(owner) -> dict:  # type: ignore[no-untyped-def]
+    """The AI disk-cache identity for ``owner``'s CURRENT configuration.
+
+    The single seam for every cache touch (analyze / Quick Look hydrate / pool
+    rebuild): model + base_url + mode + the active profile's axes + reasoning
+    effort. Without them a scorecard cached under another backend is served
+    after a Settings switch (queue id
+    ``task-gallery-ai-cache-backend-key-2026-10-20``); ``api_key`` is never part
+    of it. Never raises (a broken settings store degrades to misses).
+    """
+    try:
+        settings = owner._ai_settings_store.load()
+    except Exception:
+        settings = None
+    state = getattr(owner, "state", None)
+    try:
+        mode = getattr(state, "mode", None) if state is not None else None
+    except Exception:
+        mode = None
+    try:
+        profile = active_profile(state) if state is not None else None
+    except Exception:
+        profile = None
+    return analysis_cache_identity(settings, mode=mode, profile=profile)
+
+
 def hydrate_cached_analysis(owner, item: GalleryItem) -> bool:
     """Fill ``item`` from the disk cache only (Quick Look pre-read).
 
     No worker, no settings check — lets the overlay show a cached
     analysis the moment it opens instead of waiting for an Analyze
-    click. Refreshes the card when something was hydrated. Never raises.
+    click. Identity-scoped: only a scorecard cached under the CURRENT
+    configuration is shown, so another backend's read is never
+    resurrected. Refreshes the card when something was hydrated. Never
+    raises.
     """
     try:
         from tabs.image_gallery.services.ai_cache import hydrate_item
     except Exception:
         return False
     try:
-        if not hydrate_item(item):
+        if not hydrate_item(item, analysis_identity_for(owner)):
             return False
     except Exception:
         return False
@@ -106,18 +138,22 @@ def _hydrate_ai_cache(owner, items) -> int:
     read is present the moment the pool appears; the metrics-pass settle
     then re-derives only the still-missing scorecards (AI domain only,
     ``_run_ai_on_settle``). Cache-only: no worker, no settings check, no
-    API call. Never raises; returns how many items were filled.
+    API call. Identity-scoped: the pass builds ONE identity for the current
+    AI configuration and hydrates only entries cached under it, so a backend
+    switch cannot resurrect the previous backend's reads on restore. Never
+    raises; returns how many items were filled.
     """
     try:
         from tabs.image_gallery.services.ai_cache import hydrate_item
     except Exception:
         return 0
+    identity = analysis_identity_for(owner)
     filled = 0
     for it in list(items or []):
         try:
             if getattr(it, "analysis", None) is not None:
                 continue
-            if hydrate_item(it):
+            if hydrate_item(it, identity):
                 filled += 1
         except Exception:
             continue
@@ -125,7 +161,9 @@ def _hydrate_ai_cache(owner, items) -> int:
 
 
 def analyze_item(owner, item: GalleryItem) -> None:
-    cached = load_cached_analysis(item.path, item.mtime_ns)
+    cached = load_cached_analysis(
+        item.path, item.mtime_ns, analysis_identity_for(owner)
+    )
     if cached is not None:
         try:
             from tabs.image_gallery.services.ai_client import _ai_debug
@@ -334,23 +372,33 @@ def _begin_analysis(owner, item: GalleryItem) -> None:
     from tabs.image_gallery.controller import _ActivityPhaseBridge
 
     bridge = _ActivityPhaseBridge(lambda phase, it=item: owner._apply_ai_phase(it, phase))
+    mode = getattr(owner.state, "mode", None)
+    profile = active_profile(getattr(owner, "state", None))
+    # Snapshot the identity of THIS request: the result may arrive after the
+    # user switched Settings, and it must be stored under the configuration
+    # that actually produced it (a save under the current one would hand a
+    # model-A scorecard to model B on the next hit).
+    identity = analysis_cache_identity(settings, mode=mode, profile=profile)
     worker = GenericWorker(
         owner._tracked(analyze_image_sync),
         item.path,
         base_url=settings.base_url,
         api_key=settings.api_key,
         model=settings.model,
-        mode=getattr(owner.state, "mode", None),
-        profile=active_profile(getattr(owner, "state", None)),
+        mode=mode,
+        profile=profile,
         metrics=_metrics,
         reasoning_effort=str(getattr(settings, "reasoning_effort", "auto") or "auto"),
         on_phase=bridge.phase.emit,
     )
     gen = owner._folder_gen
     # ``bridge=bridge`` keeps the phase relay alive until the worker reports.
+    # The module function is called directly (the controller forwarder is pure
+    # delegation but does not carry the request identity, and controller.py is
+    # outside this task's scope): the identity must survive the worker hop.
     worker.signals.result.connect(
-        lambda result, path=item.path, mtime_ns=item.mtime_ns, g=gen, bridge=bridge: owner._on_analysis_ready(
-            path, mtime_ns, result, g
+        lambda result, path=item.path, mtime_ns=item.mtime_ns, g=gen, bridge=bridge, identity=identity: _on_analysis_ready(
+            owner, path, mtime_ns, result, g, identity=identity
         )
     )
     worker.signals.error.connect(
@@ -369,7 +417,7 @@ def _apply_ai_phase(owner, item: GalleryItem, phase: str) -> None:
     owner.widget.refresh_card(item)
 
 
-def _on_analysis_ready(owner, path: Path, mtime_ns: int, result, gen: int | None = None) -> None:
+def _on_analysis_ready(owner, path: Path, mtime_ns: int, result, gen: int | None = None, identity: dict | None = None) -> None:
     if gen is not None and not owner._is_current_folder_gen(gen):
         return  # folder switched — late analysis dropped
     item = owner._find_item(path)
@@ -379,10 +427,15 @@ def _on_analysis_ready(owner, path: Path, mtime_ns: int, result, gen: int | None
     # quality): no detector merge here — the Algorithms domain keeps reading
     # ``item.metrics`` through ``services.quality_read``.
     # ``save_analysis`` is resolved through the controller module (the seam the
-    # gallery tests patch to suppress the disk write).
+    # gallery tests patch to suppress the disk write). The identity is the one
+    # snapshotted when the request was built; ``None`` (the controller forwarder
+    # path) falls back to the current configuration rather than writing an
+    # unverifiable entry.
     from tabs.image_gallery.controller import save_analysis
 
-    save_analysis(path, mtime_ns, result)
+    if identity is None:
+        identity = analysis_identity_for(owner)
+    save_analysis(path, mtime_ns, result, identity)
     item.analysis = result
     item.analysis_status = AnalysisStatus.DONE
     item.analysis_error = None

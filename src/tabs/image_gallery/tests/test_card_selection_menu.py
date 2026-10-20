@@ -134,7 +134,7 @@ def test_make_source_available_in_every_mode(monkeypatch) -> None:
 
 def test_selection_callbacks_fire(monkeypatch) -> None:
     captured = _capture_menu(monkeypatch)
-    fired: list[str] = []
+    fired: list[tuple[str, list]] = []
     owner = _owner({Path("/a.png")})
     card = SimpleNamespace()
     popup_gallery_card_context_menu(
@@ -143,14 +143,14 @@ def test_selection_callbacks_fire(monkeypatch) -> None:
         Path("/a.png"),
         global_pos=None,
         selection_count=1,
-        on_carry=lambda: fired.append("carry"),
-        on_analyze=lambda: fired.append("analyze"),
-        on_find_similar=lambda: fired.append("find"),
+        on_carry=lambda targets: fired.append(("carry", list(targets))),
+        on_analyze=lambda targets: fired.append(("analyze", list(targets))),
+        on_find_similar=lambda targets: fired.append(("find", list(targets))),
     )
     trig = captured["on_triggered"]
     trig("gallery.selection.analyze", None)
     trig("gallery.selection.find_similar", None)
-    assert fired == ["analyze", "find"]
+    assert fired == [("analyze", [Path("/a.png")]), ("find", [Path("/a.png")])]
 def _owner_with_items(selected, items, order=None):
     st = SimpleNamespace(selected_paths=set(selected), items=list(items))
     if order is not None:

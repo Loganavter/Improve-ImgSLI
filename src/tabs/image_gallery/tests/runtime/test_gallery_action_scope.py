@@ -20,6 +20,7 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
 from PySide6.QtCore import QPoint
 
 from tabs.image_gallery.use_cases import action_scope
@@ -63,18 +64,21 @@ def _capture_menu(monkeypatch):
     return captured
 
 
-def _trigger_analyze(monkeypatch, owner, path):
-    """Open the real card context menu and run its Analyze action."""
+def _open_menu(monkeypatch, owner, path, **kwargs):
+    """Open the real card context menu without showing UI; return the capture."""
     from tabs.image_gallery.ui.card.context_menu import popup_gallery_card_context_menu
 
     captured = _capture_menu(monkeypatch)
+    kwargs.setdefault("selection_count", len(owner.state.selected_paths))
     popup_gallery_card_context_menu(
-        SimpleNamespace(),
-        owner,
-        path,
-        global_pos=QPoint(0, 0),
-        selection_count=len(owner.state.selected_paths),
+        SimpleNamespace(), owner, path, global_pos=QPoint(0, 0), **kwargs
     )
+    return captured
+
+
+def _trigger_analyze(monkeypatch, owner, path):
+    """Open the real card context menu and run its Analyze action."""
+    captured = _open_menu(monkeypatch, owner, path)
     captured["on_triggered"]("gallery.selection.analyze", None)
     return captured
 
@@ -108,23 +112,20 @@ def test_analyze_on_unselected_card_acts_on_that_card_only(monkeypatch) -> None:
 
 
 def test_analyze_callback_precedence_is_kept(monkeypatch) -> None:
-    fired: list[str] = []
+    """A provided callback still wins over the default — and gets the scope."""
+    fired: list[list[Path]] = []
     analyzed: list[Path] = []
     owner = _owner({Path("/a.png"), Path("/b.png")})
     owner.analyze_item_by_path = analyzed.append
-    from tabs.image_gallery.ui.card.context_menu import popup_gallery_card_context_menu
-
-    captured = _capture_menu(monkeypatch)
-    popup_gallery_card_context_menu(
-        SimpleNamespace(),
+    captured = _open_menu(
+        monkeypatch,
         owner,
         Path("/a.png"),
-        global_pos=QPoint(0, 0),
         selection_count=2,
-        on_analyze=lambda: fired.append("analyze"),
+        on_analyze=lambda targets: fired.append(list(targets)),
     )
     captured["on_triggered"]("gallery.selection.analyze", None)
-    assert fired == ["analyze"]
+    assert fired == [[Path("/a.png"), Path("/b.png")]]
     assert analyzed == []
 
 
@@ -257,3 +258,128 @@ def test_carry_selection_uses_the_same_read() -> None:
     a, b, c = Path("/a.png"), Path("/b.png"), Path("/c.png")
     owner = _owner({a, b, c}, order=[b, c, a])
     assert carry._selected_paths(owner) == [b, c, a]
+
+
+# --- the menu owns the scope: callbacks receive the resolved targets --------
+#
+# The contract this pins (owner report 2026-10-20, second round): a card-menu
+# callback describes HOW to act, never WHICH cards. Before this contract the
+# menu called ``on_analyze()`` with no arguments, so a zero-arg production
+# closure re-derived its own scope (``next(iter(selected_paths))``) and a
+# six-card selection analyzed one arbitrary card. Every test below asserts
+# the callback's ARGUMENT; a zero-arg call cannot satisfy them by accident.
+
+
+def test_analyze_callback_receives_all_selected_targets(monkeypatch) -> None:
+    """RED BEFORE: the callback was called with no arguments (scope lost)."""
+    a, b, c = Path("/a.png"), Path("/b.png"), Path("/c.png")
+    seen: list[list[Path]] = []
+    owner = _owner({a, b, c}, order=[a, b, c])
+    captured = _open_menu(monkeypatch, owner, a, on_analyze=lambda t: seen.append(list(t)))
+    captured["on_triggered"]("gallery.selection.analyze", None)
+    assert seen == [[a, b, c]]
+
+
+def test_analyze_callback_outside_selection_is_the_clicked_card(monkeypatch) -> None:
+    a, b, c, d = (Path(p) for p in ("/a.png", "/b.png", "/c.png", "/d.png"))
+    seen: list[list[Path]] = []
+    owner = _owner({a, b, c}, order=[b, a, c])
+    captured = _open_menu(monkeypatch, owner, d, on_analyze=lambda t: seen.append(list(t)))
+    captured["on_triggered"]("gallery.selection.analyze", None)
+    assert seen == [[d]]
+
+
+def test_analyze_callback_with_empty_selection_gets_the_clicked_card(monkeypatch) -> None:
+    card = Path("/a.png")
+    seen: list[list[Path]] = []
+    owner = _owner(set())
+    captured = _open_menu(
+        monkeypatch, owner, card, selection_count=0, on_analyze=lambda t: seen.append(list(t))
+    )
+    captured["on_triggered"]("gallery.selection.analyze", None)
+    assert seen == [[card]]
+
+
+def test_find_similar_callback_receives_all_selected_targets(monkeypatch) -> None:
+    a, b, c = Path("/a.png"), Path("/b.png"), Path("/c.png")
+    seen: list[list[Path]] = []
+    owner = _owner({a, b, c}, order=[c, a, b])
+    captured = _open_menu(
+        monkeypatch, owner, a, on_find_similar=lambda t: seen.append(list(t))
+    )
+    captured["on_triggered"]("gallery.selection.find_similar", None)
+    assert seen == [[c, a, b]]
+
+
+def test_callbacks_and_default_see_the_same_scope(monkeypatch) -> None:
+    """One resolve, one scope: a callback and the default path agree exactly."""
+    a, b, c = Path("/a.png"), Path("/b.png"), Path("/c.png")
+    analyzed: list[Path] = []
+    seen: list[list[Path]] = []
+    owner = _owner({a, b, c}, order=[b, c, a])
+    owner.analyze_item_by_path = analyzed.append
+
+    with_cb = _open_menu(monkeypatch, owner, b, on_analyze=lambda t: seen.append(list(t)))
+    with_cb["on_triggered"]("gallery.selection.analyze", None)
+    without_cb = _open_menu(monkeypatch, owner, b)
+    without_cb["on_triggered"]("gallery.selection.analyze", None)
+
+    assert seen == [[b, c, a]]
+    assert analyzed == seen[0]
+
+
+@pytest.mark.parametrize("param", ["on_analyze", "on_carry", "on_find_similar"])
+def test_zero_arg_callback_fails_closed(monkeypatch, param) -> None:
+    """Contract guard: a callback that cannot take the targets is rejected.
+
+    Silently calling it with no arguments is the bypass this contract
+    removes — it must be loud, not forgiven.
+    """
+    owner = _owner({Path("/a.png")})
+    with pytest.raises((TypeError, ValueError)) as excinfo:
+        _open_menu(monkeypatch, owner, Path("/a.png"), **{param: lambda: None})
+    assert param in str(excinfo.value)
+
+
+def test_default_analyze_isolates_per_target_failures(monkeypatch) -> None:
+    """One failing target never aborts the rest of the resolved scope."""
+    a, b, c = Path("/a.png"), Path("/b.png"), Path("/c.png")
+    seen: list[Path] = []
+
+    def _analyze(path):
+        if path == b:
+            raise RuntimeError("boom")
+        seen.append(path)
+
+    owner = _owner({a, b, c}, order=[a, b, c])
+    owner.analyze_item_by_path = _analyze
+    _trigger_analyze(monkeypatch, owner, a)
+    assert seen == [a, c]
+
+
+def test_card_context_call_site_analyzes_every_selected_target(monkeypatch) -> None:
+    """RED BEFORE: the production path passed a zero-arg closure that analyzed
+    ``next(iter(selected_paths))`` — one arbitrary card of a multi-selection.
+
+    The widget's own context-menu entry (``card_actions._on_card_context``) is
+    what the owner actually clicked; a popup-level test alone cannot catch a
+    caller that shadows the menu's default scope again.
+    """
+    from tabs.image_gallery.ui.widget_parts import card_actions
+
+    a, b, c = Path("/a.png"), Path("/b.png"), Path("/c.png")
+    analyzed: list[Path] = []
+    tri_owner = SimpleNamespace(
+        state=SimpleNamespace(selected_paths={a, b, c}, selected_order=[a, b, c]),
+        analyze_item_by_path=analyzed.append,
+    )
+    owner = SimpleNamespace(
+        _owner_for_triage=lambda: tri_owner,
+        _grid_view=SimpleNamespace(card_for=lambda p: None),
+        _context=None,
+    )
+    captured = _capture_menu(monkeypatch)
+    card_actions._on_card_context(owner, a)
+    captured["on_triggered"]("gallery.selection.analyze", None)
+    assert analyzed == [a, b, c]
+

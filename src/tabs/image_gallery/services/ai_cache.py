@@ -1,6 +1,29 @@
-"""Disk cache for AI analysis results — keyed like ``thumbnail_cache`` (sha256 of
-``path:mtime_ns``), so re-opening a folder never re-spends API credits and an
-edited file is correctly treated as not-yet-analyzed.
+"""Disk cache for AI analysis results.
+
+Keyed like ``thumbnail_cache`` (sha256 of ``path:mtime_ns``) **plus the analysis
+identity** — the AI configuration that produced the scorecard — so re-opening a
+folder never re-spends API credits and an edited file is correctly treated as
+not-yet-analyzed, while switching the backend (model / base_url / mode / active
+profile / reasoning effort / prompt schema) is a MISS instead of a stale result.
+
+WHY the identity is part of the key (the bug this fixes): the key used to be
+``(path, mtime_ns)`` only, so after switching model or base_url
+``use_cases/ai_analysis.analyze_item`` served the PREVIOUS backend's scorecard
+from disk before it had even read ``AiSettings`` — the gallery showed another
+model's judgment against the new one.
+
+Defence in depth: the identity is ALSO written into the JSON payload and validated
+on load, so a key collision, a hand-copied file or a truncated write can still
+never return a foreign result.
+
+Old entries are MISSES, deliberately with no migration: a file written before the
+identity was part of the key carries no ``identity`` field (and an older
+``version``), and new entries use identity-suffixed filenames — so such a file is
+never read, and reading one never raises. It simply stays on disk (invisible)
+until ``clear_all`` / the gallery's "Reset metrics cache" deletes it.
+
+The identity never contains secrets: ``api_key`` is excluded from the key and
+from the cached JSON (the scorecard is not a credential store).
 
 Stage 3: VLM tie-breaks / compare briefs are cached alongside this file via
 ``tabs.image_gallery.services.vlm_cache`` (key = hash(paths+mtime), one per
@@ -10,6 +33,7 @@ tags — see ``vlm_cache.find_briefs_for_path``.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 from pathlib import Path
@@ -19,15 +43,36 @@ from tabs.image_gallery.services.thumbnail_cache import cache_key_for
 
 logger = logging.getLogger("ImproveImgSLI")
 
-#: Cache format version. v2 = the open per-axis scorecard (``axes``,
-#: plan-gallery-ai-backend-owns-quality): the VLM's OWN numbers. A v1 entry
-#: (pre-scorecard) stored ``sharpness``/``noise``/``exposure`` written by the old
-#: ``controller._merge_measured_metrics`` — i.e. LOCAL DETECTOR values, not the
-#: VLM's. Serving those as the AI-domain read would be a provenance lie (and the
-#: reason a stale entry reads as "the VLM measured only 3 axes"), so a v1 entry
-#: is treated as a cache MISS and the AI domain re-analyzes it with the full
-#: per-axis prompt.
-AI_CACHE_VERSION = 2
+#: Payload format version. v3 = the analysis identity is part of the file key AND
+#: stored/validated inside the payload (plan-gallery-ai-backend-owns-quality).
+#: History: v2 = the open per-axis scorecard (``axes``), the VLM's OWN numbers;
+#: a v1 entry (pre-scorecard) stored ``sharpness``/``noise``/``exposure`` written
+#: by the old ``controller._merge_measured_metrics`` — i.e. LOCAL DETECTOR values,
+#: not the VLM's. Serving those as the AI-domain read would be a provenance lie,
+#: so an older-than-current entry is treated as a cache MISS and re-analyzed.
+AI_CACHE_VERSION = 3
+
+#: Prompt/schema revision of the analyze request. Bump this whenever the prompt
+#: text or the expected response schema changes: every cached scorecard becomes a
+#: MISS (it answered a different question), which is the intended invalidation of
+#: the AI disk cache. Part of :func:`analysis_cache_identity`.
+PROMPT_SCHEMA_VERSION = 1
+
+#: The identity fields that define "the same analysis". Order is the canonical
+#: JSON order. Anything else on a passed mapping (notably ``api_key``) is dropped:
+#: the identity is compared, hashed into the filename and stored in the payload,
+#: so it must never carry a secret.
+_IDENTITY_FIELDS = (
+    "model",
+    "base_url",
+    "mode",
+    "profile",
+    "reasoning_effort",
+    "prompt_schema_version",
+)
+
+#: Fields that are textual; the rest are normalized per-field below.
+_TEXT_IDENTITY_FIELDS = ("model", "base_url", "mode", "profile", "reasoning_effort")
 
 
 def ai_cache_dir() -> Path:
@@ -38,16 +83,157 @@ def ai_cache_dir() -> Path:
     return root
 
 
-def _cache_path(path: Path, mtime_ns: int) -> Path:
-    return ai_cache_dir() / f"{cache_key_for(path, mtime_ns)}.json"
+def _clean_text(value) -> str:  # type: ignore[no-untyped-def]
+    """``str(value)`` stripped, or ``""`` — never raises."""
+    try:
+        return str(value or "").strip()
+    except Exception:
+        return ""
 
 
-def load_cached_analysis(path: Path, mtime_ns: int) -> AiAnalysisResult | None:
-    cache_path = _cache_path(path, mtime_ns)
+def _identity_token(value) -> str:  # type: ignore[no-untyped-def]
+    """A stable lowercase token for a str-backed enum / plain string.
+
+    ``state.mode`` is a ``Mode(str, Enum)`` (its ``str()`` is ``"Mode.CAMERA"``)
+    while restored/legacy state may hold the plain ``"camera"`` — both must map
+    to the same token, or the same configuration would key two entries.
+    """
+    try:
+        if not isinstance(value, str):
+            enum_value = getattr(value, "value", None)
+            if enum_value is not None:
+                value = enum_value
+    except Exception:
+        pass
+    return _clean_text(value).lower()
+
+
+def _profile_axis_ids(profile) -> tuple[str, ...]:  # type: ignore[no-untyped-def]
+    """The profile's axis ids, in profile (registry) order — never raises.
+
+    Accepts a ``MetricProfile``, a bare sequence of axis ids, or ``None``. The
+    axis SET is what the prompt asks the VLM to score, so two profiles that
+    differ (e.g. a mode base vs. the salience-derived superset) must not share a
+    cache entry.
+    """
+    try:
+        ids = getattr(profile, "axis_ids", None)
+        if ids is None:
+            ids = profile if isinstance(profile, (tuple, list, set, frozenset)) else ()
+        out: list[str] = []
+        for axis in ids:
+            token = _identity_token(axis)
+            if token and token not in out:
+                out.append(token)
+        return tuple(out)
+    except Exception:
+        return ()
+
+
+def analysis_cache_identity(
+    settings=None,  # type: ignore[no-untyped-def]
+    *,
+    mode=None,  # type: ignore[no-untyped-def]
+    profile=None,  # type: ignore[no-untyped-def]
+    reasoning_effort=None,  # type: ignore[no-untyped-def]
+    schema_version: int | None = None,
+) -> dict[str, object]:
+    """The cache identity of one analysis: "what produced this scorecard".
+
+    ``settings`` is an ``AiSettings`` (or ``None``); ``mode`` the gallery mode the
+    request was built for, ``profile`` the active ``MetricProfile`` (its axis ids
+    reach the prompt), ``reasoning_effort`` the effort sent with the request
+    (defaults to ``settings.reasoning_effort``), ``schema_version`` the prompt
+    revision (defaults to :data:`PROMPT_SCHEMA_VERSION`).
+
+    Stable, JSON-serializable and comparable: the same request configuration
+    yields an equal dict. **``api_key`` is never part of it** — the identity is
+    hashed into the filename and stored in the cache payload, so a secret would
+    leak into both. Never raises; unknown fields are treated as absent.
+    """
+    effort = reasoning_effort
+    if effort is None:
+        effort = getattr(settings, "reasoning_effort", None)
+    try:
+        version = int(
+            PROMPT_SCHEMA_VERSION if schema_version is None else schema_version
+        )
+    except Exception:
+        version = PROMPT_SCHEMA_VERSION
+    return {
+        "model": _clean_text(getattr(settings, "model", "")),
+        "base_url": _clean_text(getattr(settings, "base_url", "")),
+        "mode": _identity_token(mode),
+        "profile": ",".join(_profile_axis_ids(profile)),
+        "reasoning_effort": _identity_token(effort) or "auto",
+        "prompt_schema_version": version,
+    }
+
+
+def _canonical_identity(identity) -> dict[str, object] | None:  # type: ignore[no-untyped-def]
+    """Normalize an identity mapping to exactly ``_IDENTITY_FIELDS`` or ``None``.
+
+    Used on BOTH sides (the expected identity and the stored payload), so the
+    comparison is a plain ``==`` over the same normalization — a missing field, a
+    non-mapping or an out-of-range version is "not this identity".
+    """
+    if not isinstance(identity, dict):
+        return None
+    out: dict[str, object] = {}
+    for field in _TEXT_IDENTITY_FIELDS:
+        out[field] = _clean_text(identity.get(field))
+    try:
+        out["prompt_schema_version"] = int(identity.get("prompt_schema_version"))
+    except Exception:
+        return None
+    return out
+
+
+def _identity_fingerprint(identity: dict[str, object]) -> str:
+    """Short stable digest of a canonical identity (the filename discriminator)."""
+    canonical = json.dumps(identity, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
+
+
+def _cache_path(path: Path, mtime_ns: int, identity) -> Path:  # type: ignore[no-untyped-def]
+    """``<path:mtime hash>-<identity digest>.json``.
+
+    The identity suffix keeps one entry per backend for the same image, so
+    switching back to a previously used model hits its own scorecard again
+    instead of overwriting the other one. A non-canonical identity raises
+    ``ValueError`` — callers fail open to a miss / skip the write.
+    """
+    canonical = _canonical_identity(identity)
+    if canonical is None:
+        raise ValueError("incomplete analysis cache identity")
+    return ai_cache_dir() / (
+        f"{cache_key_for(path, mtime_ns)}-{_identity_fingerprint(canonical)}.json"
+    )
+
+
+def load_cached_analysis(
+    path: Path, mtime_ns: int, identity  # type: ignore[no-untyped-def]
+) -> AiAnalysisResult | None:
+    """The cached scorecard for ``(path, mtime_ns)`` under ``identity``.
+
+    A different identity is a MISS — never another backend's result. The payload
+    must also carry the same identity (defence in depth) and a current
+    ``version``; a pre-identity entry is a miss with no migration attempt. Never
+    raises: any problem degrades to ``None`` (re-analyze).
+    """
+    try:
+        cache_path = _cache_path(path, mtime_ns, identity)
+    except Exception:
+        return None
     if not cache_path.is_file():
         return None
     try:
         data = json.loads(cache_path.read_text(encoding="utf-8"))
+        stored_identity = _canonical_identity(data.get("identity"))
+        if stored_identity is None or stored_identity != _canonical_identity(identity):
+            # A foreign / legacy entry: the file key says it is ours, the payload
+            # does not. Treat it exactly like a miss.
+            return None
 
         def _score(key: str) -> int:
             try:
@@ -80,10 +266,9 @@ def load_cached_analysis(path: Path, mtime_ns: int) -> AiAnalysisResult | None:
         except Exception:
             version = 1
         if version < AI_CACHE_VERSION:
-            # Pre-scorecard entry: its named scores are the local detectors'
-            # (the old ``_merge_measured_metrics``), never the VLM's. Do not
-            # reconstruct a scorecard from them — treat the entry as a miss so
-            # the AI domain re-analyzes with the full per-axis prompt.
+            # Older format (v1 = detector values mislabelled as the AI read,
+            # v2 = pre-identity keying): treat as a miss so the AI domain
+            # re-analyzes with the current prompt and backend.
             return None
         # Open per-axis scorecard (the VLM's own numbers).
         try:
@@ -117,8 +302,11 @@ def load_cached_analysis(path: Path, mtime_ns: int) -> AiAnalysisResult | None:
         return None
 
 
-def hydrate_item(item) -> bool:  # type: ignore[no-untyped-def]
+def hydrate_item(item, identity) -> bool:  # type: ignore[no-untyped-def]
     """Fill ``item.analysis`` from the disk cache only (no worker, no settings).
+
+    ``identity`` is the caller's :func:`analysis_cache_identity` for the CURRENT
+    AI configuration — a cached scorecard from another backend is a miss.
 
     Marks ``item._ai_cache_checked`` so repeated calls are free (callers
     invoke this on every overlay populate). Returns True when the item now
@@ -133,7 +321,7 @@ def hydrate_item(item) -> bool:  # type: ignore[no-untyped-def]
             item._ai_cache_checked = True
         except Exception:
             pass
-        cached = load_cached_analysis(item.path, item.mtime_ns)
+        cached = load_cached_analysis(item.path, item.mtime_ns, identity)
         if cached is None:
             return False
         try:
@@ -149,23 +337,38 @@ def hydrate_item(item) -> bool:  # type: ignore[no-untyped-def]
         return False
 
 
-def clear_cached_analysis(path: Path, mtime_ns: int) -> bool:
-    """Delete the disk scorecard for one ``(path, mtime_ns)``. Never raises.
+def clear_cached_analysis(path: Path, mtime_ns: int, identity=None) -> bool:  # type: ignore[no-untyped-def]
+    """Delete the disk scorecard(s) for one ``(path, mtime_ns)``. Never raises.
 
-    True when a file was removed; a miss returns False (not an error).
+    With an ``identity`` only that backend's entry goes; without one every
+    identity variant (plus a legacy pre-identity file) for the pair goes — the
+    "Reset metrics cache" call site has no backend in hand and wants them all
+    gone. True when at least one file was removed; a miss returns False (not an
+    error).
     """
     try:
-        cache_path = _cache_path(path, mtime_ns)
+        if identity is not None:
+            targets = [_cache_path(path, mtime_ns, identity)]
+        else:
+            base = cache_key_for(path, mtime_ns)
+            directory = ai_cache_dir()
+            targets = [
+                directory / f"{base}.json",
+                *sorted(directory.glob(f"{base}-*.json")),
+            ]
     except Exception:
         return False
-    try:
-        cache_path.unlink()
-        return True
-    except FileNotFoundError:
-        return False
-    except OSError:
-        logger.debug("Gallery AI cache delete failed for %s", path, exc_info=True)
-        return False
+    removed = False
+    for cache_path in targets:
+        try:
+            cache_path.unlink()
+            removed = True
+        except FileNotFoundError:
+            continue
+        except OSError:
+            logger.debug("Gallery AI cache delete failed for %s", path, exc_info=True)
+            continue
+    return removed
 
 
 def clear_all() -> int:
@@ -193,8 +396,27 @@ def clear_all() -> int:
     return deleted
 
 
-def save_analysis(path: Path, mtime_ns: int, result: AiAnalysisResult) -> None:
-    cache_path = _cache_path(path, mtime_ns)
+def save_analysis(
+    path: Path,
+    mtime_ns: int,
+    result: AiAnalysisResult,
+    identity,  # type: ignore[no-untyped-def]
+) -> None:
+    """Persist ``result`` under ``(path, mtime_ns, identity)``. Never raises.
+
+    An incomplete identity skips the write (no entry is better than one that
+    cannot be validated on load). ``api_key`` is not accepted by the identity, so
+    it never reaches the JSON.
+    """
+    try:
+        canonical = _canonical_identity(identity)
+        if canonical is None:
+            logger.debug("Gallery AI cache write skipped: incomplete identity")
+            return
+        cache_path = _cache_path(path, mtime_ns, canonical)
+    except Exception:
+        logger.debug("Gallery AI cache write failed for %s", path, exc_info=True)
+        return
     try:
         cache_path.write_text(
             json.dumps(
@@ -218,9 +440,11 @@ def save_analysis(path: Path, mtime_ns: int, result: AiAnalysisResult) -> None:
                     #: The MERGED per-axis scorecard (``axes`` + the named
                     #: aliases, so a directly-built result's composition is not
                     #: lost) — the AI domain's read. Plus the format version
-                    #: (v2 = scorecard contract).
+                    #: (v3 = identity-keyed scorecard contract) and the identity
+                    #: itself, re-validated on load.
                     "axes": dict(ai_scored_axes(result)),
                     "version": AI_CACHE_VERSION,
+                    "identity": canonical,
                 }
             ),
             encoding="utf-8",

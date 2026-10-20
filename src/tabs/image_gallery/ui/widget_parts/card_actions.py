@@ -118,31 +118,6 @@ def _on_card_context(owner, path: Path) -> None:
             except Exception:
                 return tri_owner
 
-        def _ctx_carry():
-            try:
-                from tabs.image_gallery.use_cases import carry as _carry
-
-                _carry.carry_selected(_ctx_owner())
-            except Exception:
-                pass
-
-        def _ctx_analyze():
-            # Selection-first scope, resolved once. The old body took
-            # next(iter(selected_paths)) — one arbitrary card of a group ran.
-            # Regression: tests/test_card_actions_scope.py.
-            try:
-                analyze_menu_targets(_ctx_owner(), Path(path))
-            except Exception:
-                pass
-
-        def _ctx_find():
-            try:
-                from tabs.image_gallery.use_cases.carry import find_similar_selected
-
-                find_similar_selected(_ctx_owner())
-            except Exception:
-                pass
-
         def _ctx_ask(scope_kind: str):
             try:
                 tri = _ctx_owner()
@@ -170,9 +145,13 @@ def _on_card_context(owner, path: Path) -> None:
             Path(path),
             global_pos=gp,
             selection_count=sel_n,
-            on_carry=_ctx_carry,
-            on_analyze=_ctx_analyze,
-            on_find_similar=_ctx_find,
+            # Scope callbacks for Analyze / Find similar (and carry when it
+            # returns to the menu) are deliberately NOT passed: the menu
+            # resolves the targets through ``use_cases.action_scope`` once and
+            # hands them to the default paths. A zero-arg closure here used to
+            # re-derive its own scope (``next(iter(selected_paths))``) and
+            # analyzed one arbitrary card of a multi-selection. Ask AI keeps a
+            # callback: it takes the kind string and the flyout owns its scope.
             on_ask_ai=_ctx_ask,
             translate=_tr,
         )
@@ -188,25 +167,3 @@ def _on_empty_file_dropped(owner, path_str: str) -> None:
     from tabs.image_gallery.ui import drag_drop as _drag_drop
 
     _drag_drop.on_empty_file_dropped(owner, path_str, owner._owner_for_triage())
-
-
-def analyze_menu_targets(owner, card_path: Path | None = None) -> int:
-    """Analyze every card the menu's ONE scope resolver returns.
-
-    The card context menu documents selection-first scope (a clicked card that
-    is part of the selection means the whole selection). This entry point used
-    to be a ``next(iter(state.selected_paths))`` closure, so a multi-selection
-    menu "Analyze" ran exactly one arbitrary member (2026-10-20: six cards
-    selected, only the RGB variant got a scorecard — set iteration order chose
-    it). ``use_cases.action_scope.apply_to_targets`` resolves once and isolates
-    per-item failures. Returns how many targets reached the analyzer.
-
-    Appended at the end of the module on purpose: this file is line-keyed by
-    ``tests/contracts/test_gallery_ownership_guards.py``, so inserting above
-    existing code would shift every allowlisted line.
-    """
-
-    from tabs.image_gallery.use_cases import action_scope
-
-    fn = getattr(owner, "analyze_item_by_path", None)
-    return action_scope.apply_to_targets(owner, fn, card_path=card_path)
