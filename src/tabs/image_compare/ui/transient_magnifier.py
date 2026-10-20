@@ -105,18 +105,22 @@ class MagnifierVisibilityController:
         btn = getattr(self.widget, "btn_magnifier", None)
         if btn is None:
             return
-        # Preview — keep focus on anchor (btn_magnifier) with ring, don't
-        # steal into flyout. Down/Enter from anchor (extension_below) will
-        # explicitly enter via focus_first_child with ring.
-        # register=True for keyboard preview so Down can enter, False for mouse
-        # hover (user request: both top flyouts now open on hover).
-        # Like bottom MagnifierSettingsFlyout: preview keeps focus on anchor
-        # (grab_focus=False) but we still register for arrow routing so Down/Up
-        # can hand off via extension_below. Keep _keyboard_navigation_active
-        # tied to input modality (showEvent sets it from last_input_was_keyboard)
-        # instead of forcing False — keyboard-driven open should allow
-        # Left/Right inside the toggle immediately, hover open should stay
-        # preview-only (mirrors bottom panel's zone logic).
+        # Preview — keep focus on the anchor button (btn_magnifier) with its
+        # ring; opening the flyout must not steal focus. register_nav_section
+        # is False for BOTH hover and keyboard openings, deliberately: this
+        # panel is transient and non-modal, so it stays outside the section
+        # graph (the canonical preview shape, grab_focus=False plus
+        # register_nav_section=False). Down/Up from the anchor must keep
+        # walking the parent toolbar rows instead of entering a panel that
+        # disappears on hover-out — the parent list keeps ownership of the
+        # arrows. Enter is the explicit act that admits keyboard navigation
+        # into the panel (see the FocusIn branch below and
+        # PanelVisibilityFlyout.focus_first_child), which is also why
+        # _keyboard_navigation_active stays tied to input modality (showEvent
+        # sets it from last_input_was_keyboard) instead of being forced
+        # False: a keyboard peek must allow Left/Right inside the toggle
+        # immediately, while a hover open stays preview-only (mirrors the
+        # bottom panel's zone logic).
         self.widget.magnifier_visibility_flyout.show_for_button(
             btn,
             host.parent_widget,

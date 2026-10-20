@@ -15,7 +15,7 @@ from PySide6.QtWidgets import QFileDialog, QVBoxLayout, QWidget
 
 import logging
 
-from sli_ui_toolkit.widgets import Label
+from sli_ui_toolkit.widgets import Text
 
 from tabs.image_gallery.debug import gallery_debug as _dbg
 from tabs.image_gallery.debug import gallery_dnd_debug as _dnd_log
@@ -220,7 +220,7 @@ class ImageGalleryWidget(QWidget):
             pass
         root.addWidget(self.toolbar)
 
-        # Stats strip (Stage 2 S2) — Label "40 images · 7 series · 33 redundant" + Buttons + mode chip — svg y114 h34
+        # Stats strip (Stage 2 S2) — Text "40 images · 7 series · 33 redundant" + Buttons + mode chip — svg y114 h34
         self.stats_strip = StatsStrip(self, translate=(context._tr if context is not None else None))
         self.stats_strip.setObjectName("image_gallery_stats_strip")
         try:
@@ -243,7 +243,7 @@ class ImageGalleryWidget(QWidget):
             pass
 
         # Folder label — svg has no separate folder path label (stats strip replaces it); keep hidden for compat, Fixed
-        self._folder_label = Label(_tr("image_gallery.empty_state", "Pick a folder to see images here."), pixel_size=12, parent=self)
+        self._folder_label = Text(_tr("image_gallery.empty_state", "Pick a folder to see images here."), mode="plain", pixel_size=12, parent=self)
         self._folder_label.setObjectName("image_gallery_folder_label")
         self._folder_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
         self._folder_label.setWordWrap(True)
@@ -315,8 +315,8 @@ class ImageGalleryWidget(QWidget):
         # Internal card tracking mirrors grid_view for refresh_card compatibility
         self._cards: dict[Path, object] = {}
         self._card_labels: dict[Path, object] = {}
-        # Keep empty label alias for tests that may access _empty_label (toolkit Label, not QLabel)
-        self._empty_label = Label(self._empty_text, pixel_size=12, parent=self)
+        # Keep empty label alias for tests that may access _empty_label (toolkit Text, not QLabel)
+        self._empty_label = Text(self._empty_text, mode="plain", pixel_size=12, parent=self)
         self._empty_label.setObjectName("image_gallery_empty")
         self._empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._empty_label.hide()

@@ -15,7 +15,7 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QHBoxLayout, QWidget
 
 from sli_ui_toolkit.managers import scaled_px
-from sli_ui_toolkit.widgets import BaseFlyout, Button, CustomLineEdit, Label
+from sli_ui_toolkit.widgets import BaseFlyout, Button, CustomLineEdit, Label, Text
 
 from tabs.image_gallery.icons import Icon as GalleryIcon
 from tabs.image_gallery.ui.ask_ai_grip import AskAiResizeGrip
@@ -87,8 +87,8 @@ class AskAiFlyout(BaseFlyout):
         )
         self.content_layout.setSpacing(scaled_px(8))
 
-        self._title = Label(self._title_text, pixel_size=13, bold=True, parent=self)
-        self._scope = Label("", pixel_size=16, parent=self)
+        self._title = Text(self._title_text, mode="plain", pixel_size=13, bold=True, parent=self)
+        self._scope = Text("", mode="plain", pixel_size=16, parent=self)
         self._edit = CustomLineEdit(parent=self)
         self._edit.setPlaceholderText(self._default_prompt)
         self._edit.setMinimumWidth(scaled_px(300))
@@ -150,7 +150,7 @@ class AskAiFlyout(BaseFlyout):
             ThemeManager.get_instance().theme_changed.connect(self._on_theme_changed_links)
         except Exception:
             pass
-        self._status = Label("", pixel_size=16, parent=self)
+        self._status = Text("", mode="plain", pixel_size=16, parent=self)
         # Title, scope, then the question row (edit + images toggle).
         self.content_layout.addWidget(self._title)
         self.content_layout.addWidget(self._scope)

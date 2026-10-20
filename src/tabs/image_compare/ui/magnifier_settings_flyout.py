@@ -347,15 +347,18 @@ class MagnifierSettingsFlyout(BaseFlyout):
         # user must be free to keep arrow-key/Tab-navigating every button in
         # the group while it's open, so opening it must not steal focus onto
         # the panel's own first slider the instant it appears.
-        # register_nav_section=True: without this, the panel would be
-        # entirely invisible to arrow-key navigation -- Down from a group
-        # button would skip straight over it to whatever's next in the
-        # app's unrelated tab order instead of entering the panel. With it
-        # registered (but not focused), the toolbar row's section keeps
-        # routing Left/Right across the whole group as normal, and Down/Up
-        # now hand off into and back out of this panel's own controls at
-        # its boundary (see _FlyoutNavigationSection.navigate() in the
-        # toolkit).
+        # register_nav_section=False is deliberate, not an oversight. This
+        # surface is a transient hover preview (see _nav_mode above), not a
+        # popover the user navigates into: the canonical keyboard guide
+        # documents preview openings as grab_focus=False plus
+        # register_nav_section=False, and the toolkit turns an explicit
+        # False into a skip of section registration. Staying outside the
+        # section graph is the point -- Down/Enter from a group button must
+        # keep walking the parent toolbar rows instead of diving into
+        # sliders that vanish as soon as the pointer leaves the group, so
+        # the group's own section keeps ownership of the arrows while the
+        # panel is open. Only an interactive (Enter/click) opening registers
+        # a flyout section, and this surface is never opened that way.
         self.show_aligned(
             anchor_group,
             "bottom-center",

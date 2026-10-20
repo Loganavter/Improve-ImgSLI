@@ -1,8 +1,8 @@
-"""Stats strip for Stage 2 triage — Label + Buttons + mode chip.
+"""Stats strip for Stage 2 triage — Text + Buttons + mode chip.
 Audit-Meta: pattern=compound-widget size=exempt reason="one stats strip — stats/mode/action buttons share one paint/theme lifecycle"
 
 
-Painter pipeline only: ``Button`` ``variant="surface"``, ``Label``,
+Painter pipeline only: ``Button`` ``variant="surface"``, ``Text``,
 ``scaled_px`` for every geometry constant, no ad-hoc stylesheets.
 
 Signals:
@@ -20,7 +20,7 @@ from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QHBoxLayout, QWidget
 
 from sli_ui_toolkit.managers import scaled_px
-from sli_ui_toolkit.widgets import Button, ButtonRegion, ButtonRow, Label
+from sli_ui_toolkit.widgets import Button, ButtonRegion, ButtonRow, Text
 
 # Package split (plan-gallery-split-2026-10-17, Part C6): the colour/token
 # helpers live in theme.py; re-export them so
@@ -85,21 +85,21 @@ class StatsStrip(QWidget):
         except Exception:
             pass
 
-        # S2-6: stats as a small row of Labels so the "N redundant" segment
+        # S2-6: stats as a small row of Text widgets so the "N redundant" segment
         # can carry the accent token (svg: "33 redundant" in #0096FF) while
-        # the rest stays default. Toolkit Label has no rich-text/segment API,
-        # so the segments are sibling Labels — still no QSS.
+        # the rest stays default. Plain Text has no rich-text/segment API,
+        # so the segments are sibling Text widgets — still no QSS.
         self._stats_container = QWidget(self)
         stats_layout = QHBoxLayout(self._stats_container)
         stats_layout.setContentsMargins(0, 0, 0, 0)
         stats_layout.setSpacing(0)
 
         # gallery.stats.text via color_token so the toolkit re-resolves on flip.
-        self._stats_prefix_label = Label("", pixel_size=14, color_token="gallery.stats.text", parent=self._stats_container)
+        self._stats_prefix_label = Text("", mode="plain", pixel_size=14, color_token="gallery.stats.text", parent=self._stats_container)
         self._stats_prefix_label.setObjectName("gallery_stats_prefix")
         stats_layout.addWidget(self._stats_prefix_label)
 
-        self._stats_redundant_label = Label("", pixel_size=14, color_token="accent", parent=self._stats_container)
+        self._stats_redundant_label = Text("", mode="plain", pixel_size=14, color_token="accent", parent=self._stats_container)
         self._stats_redundant_label.setObjectName("gallery_stats_redundant")
         stats_layout.addWidget(self._stats_redundant_label)
 
@@ -111,7 +111,7 @@ class StatsStrip(QWidget):
 
         # Rank provenance chip — which ranker produced the series ranks
         # (Algorithms | AI (Jev) | Manual). Hidden until set.
-        self._rank_provenance_label = Label("", pixel_size=14, parent=self)
+        self._rank_provenance_label = Text("", mode="plain", pixel_size=14, parent=self)
         self._rank_provenance_label.setObjectName("gallery_rank_provenance")
         try:
             self._rank_provenance_label.setColorToken("accent")
@@ -225,7 +225,7 @@ class StatsStrip(QWidget):
             pass
         layout.addWidget(self._compare_btn)
 
-        self._mode_chip = Label("FIDELITY MODE · source: …", pixel_size=11, parent=self)
+        self._mode_chip = Text("FIDELITY MODE · source: …", mode="plain", pixel_size=11, parent=self)
         self._mode_chip.setObjectName("gallery_mode_chip")
         try:
             self._mode_chip.setColorToken("accent")
@@ -624,20 +624,20 @@ class StatsStrip(QWidget):
 
     @property
     def stats_label(self) -> QWidget:
-        # S2-6: container of the per-segment stat Labels (kept as a property
-        # for callers/tests that looked up the old single Label).
+        # S2-6: container of the per-segment stat Text widgets (kept as a
+        # property for callers/tests that looked up the old single Label).
         return self._stats_label
 
     @property
-    def stats_prefix_label(self) -> Label:
+    def stats_prefix_label(self) -> Text:
         return self._stats_prefix_label
 
     @property
-    def stats_redundant_label(self) -> Label:
+    def stats_redundant_label(self) -> Text:
         return self._stats_redundant_label
 
     @property
-    def rank_provenance_label(self) -> Label:
+    def rank_provenance_label(self) -> Text:
         return self._rank_provenance_label
 
     @property
