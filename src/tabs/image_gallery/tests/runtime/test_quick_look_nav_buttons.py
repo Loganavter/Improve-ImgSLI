@@ -378,3 +378,47 @@ def test_tab_never_lands_on_the_source_inset_or_a_circle(qtbot, tmp_path) -> Non
         assert focused is not overlay._source_inset_pix, "Tab reached the inert inset"
         assert focused not in (overlay._prev_btn, overlay._next_btn)
     overlay.hide()
+
+
+def test_overlay_container_is_claimed_so_a_click_does_not_kill_the_arrows(qtbot, tmp_path):
+    """Clicking the panel focuses the overlay; the section must own that.
+
+    Live 2026-10-20: click inside Quick Look -> focus on ``QuickLookOverlay``
+    (``owned_by_section: null``) -> the first arrow re-entered at the ✕ and the
+    next one was eaten by the ✕'s own surface ("arrows do not work after a
+    click"). Falsified by: removing ``QuickLookNavSection.owns``.
+    """
+    overlay, _items = _open(qtbot, tmp_path)
+    section = getattr(overlay, nav.SECTION_ATTR)
+
+    assert section.owns(overlay) is True
+
+    overlay.setFocus(Qt.FocusReason.MouseFocusReason)
+    QApplication.processEvents()
+    assert QApplication.focusWidget() is overlay
+
+    focused = _press(Qt.Key.Key_Right)
+
+    assert _inside(overlay, focused)
+    assert focused is not overlay, "an arrow after a click must move the cursor into a row"
+
+
+def test_arrow_from_the_close_button_enters_the_strip(qtbot, tmp_path):
+    """The ✕ is a single-control header row; left/right must not dead-end on it.
+
+    Falsified by: removing the header-row branch in
+    ``QuickLookNavSection.navigate`` (Right then reports ``surface`` and the
+    focus never moves).
+    """
+    overlay, _items = _open(qtbot, tmp_path)
+    close_btn = getattr(overlay, "_close_btn")
+    assert close_btn is not None
+
+    close_btn.setFocus(Qt.FocusReason.OtherFocusReason)
+    QApplication.processEvents()
+
+    focused = _press(Qt.Key.Key_Right)
+
+    assert _in_row(getattr(overlay, "_strip_row"), focused), (
+        f"Right on the ✕ landed on {_name(focused)!r}, not in the strip row"
+    )

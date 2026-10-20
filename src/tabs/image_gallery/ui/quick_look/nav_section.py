@@ -1,4 +1,5 @@
 """Quick Look keyboard navigation — the toolkit's own rows, nothing bespoke.
+Audit-Meta: pattern=state-machine reason="one navigation section for one panel: row model, ownership (including the overlay container), header/strip crossing, focus restore across strip rebuilds and the modality rules share a single section state; splitting the crossing helpers out would fork how focus is placed"
 
 The panel is a navigation **section** while it is visible, and the section is a
 ``ToolbarRowsSection`` (``sli_ui_toolkit/ui/managers/navigation_sections.py``)
@@ -399,7 +400,40 @@ class QuickLookNavSection(ToolbarRowsSection):
             pass
         return []
 
+    def owns(self, widget) -> bool:  # noqa: ANN001
+        """The panel container itself belongs to this section.
+
+        Clicking the panel (preview canvas, empty area, source inset) parks the
+        keyboard focus on the overlay widget. Without claiming it the manager
+        reads the ring as unowned, the next arrow re-enters at the header and
+        dead-ends on the single-control ``✕`` row (live 2026-10-20: "arrows do
+        not work after a click").
+        """
+        try:
+            if widget is self._overlay:
+                return True
+        except Exception:
+            pass
+        return super().owns(widget)
+
     def navigate(self, key: int, widget) -> bool:  # noqa: ANN001
+        # Header row is a single control (the ✕) and the panel container itself
+        # is not a row at all: left/right pressed there used to be eaten by the
+        # widget's own surface (``handled: surface``) and the cursor never moved
+        # — that is the live 2026-10-20 "arrows do not work after a click".
+        # Cross into the strip row instead. Handled BEFORE the toolkit rows: a
+        # Button consumes Left/Right itself, so ``super().navigate`` would
+        # report success without moving anything.
+        if key in (Qt.Key.Key_Left, Qt.Key.Key_Right) and self._in_header_row(widget):
+            strip_row = getattr(self._overlay, "_strip_row", None)
+            items = self._focusable(strip_row) if strip_row is not None else []
+            if items:
+                target = items[0] if key == Qt.Key.Key_Right else items[-1]
+                try:
+                    target.setFocus(focus_reason())
+                    return True
+                except Exception:
+                    return False
         if super().navigate(key, widget):
             return True
         # Panel edge: wrap inside the panel, never yield to the page behind
@@ -413,6 +447,22 @@ class QuickLookNavSection(ToolbarRowsSection):
         if key == Qt.Key.Key_Down:
             return ToolbarRowsSection.focus_first(self, reason=focus_reason())
         return False
+
+
+    def _in_header_row(self, widget) -> bool:  # noqa: ANN001
+        """True when *widget* is the panel container or the ✕ header button."""
+        try:
+            if widget is self._overlay:
+                return True
+        except Exception:
+            return False
+        close_btn = getattr(self._overlay, "_close_btn", None)
+        if close_btn is None or widget is None:
+            return False
+        try:
+            return widget is close_btn or close_btn.isAncestorOf(widget)
+        except Exception:
+            return widget is close_btn
 
     def focus_first(self, ref_x=None, *, reason=None) -> bool:  # noqa: ANN001
         """Enter the section on the row item that is already on screen.

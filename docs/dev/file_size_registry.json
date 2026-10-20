@@ -940,6 +940,16 @@
       }
     },
     {
+      "path": "src/tabs/image_gallery/ui/quick_look/nav_section.py",
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=state-machine reason=\"one navigation section for one panel: row model, ownership (including the overlay container), header/strip crossing, focus restore across strip rebuilds and the modality rules share a single section state; splitting the crossing helpers out would fork how focus is placed\"",
+      "parsed": {
+        "pattern": "state-machine",
+        "reason": "one navigation section for one panel: row model, ownership (including the overlay container), header/strip crossing, focus restore across strip rebuilds and the modality rules share a single section state; splitting the crossing helpers out would fork how focus is placed"
+      }
+    },
+    {
       "path": "src/tabs/image_gallery/ui/quick_look/overlay_build/build.py",
       "limit": 500,
       "marker": "Audit-Meta:",
