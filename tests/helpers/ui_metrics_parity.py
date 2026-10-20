@@ -33,16 +33,39 @@ Every registered surface must account for the two plan axes (``scale`` and
 ``language``) either in ``axes`` (asserted) or in ``exemptions`` (explicit
 reason, never a silent skip). ``MetricsSurface.__post_init__`` rejects an
 unaccounted plan axis.
+
+Pixel mode (the LIVE false green this file also closes)
+-------------------------------------------------------
+Geometry parity alone is not enough: a surface can re-derive its *numbers* and
+still paint the wrong **pixels** (the same cached geometry rounded into a row
+whose ink no longer fits, or a label whose "pixmap exists" but whose glyph
+bitmap was built for another language/scale). The pixel half of the gate
+rasterises the real widget offscreen and asserts on the ink itself:
+
+* ``assert_ink_rows_scale_with_interface_scale`` — the ink-row height (the
+  rows of a label that contain glyph pixels) grows by ~the interface-scale
+  factor; a constant ink height is named ``UNSCALED``, a factor² ink height
+  ``DOUBLE-SCALED``;
+* ``assert_ink_fits_its_row`` — the ink bounding box stays strictly inside the
+  row box (a label squeezed below its text touches the edge — ``CLIPPED``);
+* ``assert_glyph_bitmap_differs_across_language`` — the rendered glyph bitmap
+  of a known label has a non-zero pixel diff across en/ru. Presence of a
+  pixmap is not content: identical pixels are named ``IDENTICAL`` and fail.
+
+``PixelSurface.__post_init__`` mirrors ``MetricsSurface``: a new pixel surface
+cannot ship without a decision on both plan axes.
 """
 
 from __future__ import annotations
 
+from collections import Counter
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Any, Callable, Mapping
 
 import pytest
-from PySide6.QtCore import QEventLoop, QTimer
-from PySide6.QtGui import QFontDatabase, QFontMetrics
+from PySide6.QtCore import QEventLoop, QRect, QTimer
+from PySide6.QtGui import QFontDatabase, QFontMetrics, QImage
 from PySide6.QtWidgets import QApplication, QWidget
 
 from sli_ui_toolkit.managers import UiFont, UiScale
@@ -71,6 +94,9 @@ REBUILD = "rebuild"
 #: Builder: (qapp, monkeypatch) -> (widget, probe). monkeypatch may be None
 #: for surfaces that need no module patching.
 Builder = Callable[[QApplication, Any], "tuple[QWidget, Callable[[], Any]]"]
+
+#: Pixel builder: (qapp, monkeypatch) -> (widget, ``PixelProbe``).
+PixelBuilder = Callable[[QApplication, Any], "tuple[QWidget, PixelProbe]"]
 
 
 @dataclass(frozen=True)
@@ -418,3 +444,376 @@ def assert_reflows_on_metrics_change(
         # Drop the Python reference; the conftest teardown destroys top-levels
         # (connect_ui_metrics connections die with the widget's destroyed).
         del widget, probe
+
+
+# ---------------------------------------------------------------------------
+# Pixel mode — rasterise the real widget and assert on the INK, not the
+# geometry numbers. Origin: plan-live-appearance-fixes-2026-10-19, where nine
+# geometry tests passed while the owner's chrome was visibly broken.
+# ---------------------------------------------------------------------------
+
+#: Per-channel delta above which a pixel counts as ink against the region's
+#: modal background. Text antialiasing spans a wide range; 12 separates glyph
+#: coverage from a flat face without swallowing it.
+INK_TOLERANCE = 12
+
+#: Pixel slack (px) allowed when comparing ink heights against the factor.
+#: Font hinting quantises glyph ink at small point sizes (a 9pt label's 10 px
+#: ink becomes 18 px at 18pt, not 20) — the gate must accept that rounding
+#: while still rejecting "did not scale" (ratio 1.0) and "scaled twice".
+_INK_ROUNDING_SLACK = 1.0
+_INK_RELATIVE_SLACK = 0.12
+
+
+@dataclass(frozen=True)
+class InkBounds:
+    """Bounding box of the ink inside a measured region (region-relative)."""
+
+    left: int
+    top: int
+    width: int
+    height: int
+    pixels: int
+    region: QRect
+
+    @property
+    def right(self) -> int:
+        return self.left + self.width - 1
+
+    @property
+    def bottom(self) -> int:
+        return self.top + self.height - 1
+
+    def __str__(self) -> str:
+        return (
+            f"{self.width}x{self.height} ink at ({self.left},{self.top}), "
+            f"{self.pixels} px, in {self.region.width()}x{self.region.height()}"
+        )
+
+
+def ink_bounds(image: QImage, region: QRect) -> InkBounds | None:
+    """Bounding box of pixels that differ from the region's modal colour.
+
+    The modal colour (most frequent pixel in the region) is the row's own
+    background, so a selected tab's white face, a button's face and a dialog's
+    panel all work without the caller passing a colour. ``None`` means the
+    region is empty — a blank render, which is a failure, never a pass.
+    """
+    assert region.isValid() and not region.isEmpty(), f"empty ink region {region!r}"
+    clipped = region.intersected(image.rect())
+    assert clipped == region, (
+        f"ink region {region!r} is not fully inside the rendered image "
+        f"{image.width()}x{image.height()} — the probe would measure dead pixels"
+    )
+    counts: Counter[tuple[int, int, int]] = Counter()
+    for y in range(region.top(), region.bottom() + 1):
+        for x in range(region.left(), region.right() + 1):
+            counts[image.pixelColor(x, y).getRgb()[:3]] += 1
+    background = counts.most_common(1)[0][0]
+
+    min_x = min_y = 10**9
+    max_x = max_y = -1
+    pixels = 0
+    for y in range(region.top(), region.bottom() + 1):
+        for x in range(region.left(), region.right() + 1):
+            colour = image.pixelColor(x, y).getRgb()[:3]
+            if max(abs(colour[i] - background[i]) for i in range(3)) > INK_TOLERANCE:
+                pixels += 1
+                min_x = min(min_x, x)
+                max_x = max(max_x, x)
+                min_y = min(min_y, y)
+                max_y = max(max_y, y)
+    if pixels == 0:
+        return None
+    return InkBounds(
+        left=min_x - region.left(),
+        top=min_y - region.top(),
+        width=max_x - min_x + 1,
+        height=max_y - min_y + 1,
+        pixels=pixels,
+        region=region,
+    )
+
+
+@dataclass(frozen=True)
+class PixelProbe:
+    """The pixel probe a surface owns: render, label region, row box, text.
+
+    ``label_region`` must contain ONLY the known label's ink (no icon, border
+    or neighbouring text) — the harness measures the ink inside it.
+    ``row_region`` is the row/tab/button box the ink must stay inside.
+    """
+
+    image: Callable[[], QImage]
+    label_region: Callable[[], QRect]
+    row_region: Callable[[], QRect]
+    label_text: Callable[[], str]
+
+
+@dataclass(frozen=True)
+class InkSnapshot:
+    """One rasterised state of a surface: image, regions, text and ink bbox."""
+
+    image: QImage
+    label_region: QRect
+    row_region: QRect
+    text: str
+    bounds: InkBounds | None
+    name: str = ""
+
+    def require_ink(self) -> InkBounds:
+        if self.bounds is None:
+            raise AssertionError(
+                f"{self.name!r}: the label region {self.label_region!r} rendered "
+                f"NO ink — a blank/pixmap-held label is not content (text "
+                f"{self.text!r}). The rasteriser or the surface paints nothing here."
+            )
+        return self.bounds
+
+
+@dataclass(frozen=True)
+class PixelSurface:
+    """A registered pixel surface: real widget + the ink probe it owns.
+
+    ``axes``/``exemptions`` follow ``MetricsSurface``: both plan axes must be
+    asserted or explicitly exempted (an unaccounted axis is a registration
+    error). ``modes`` selects LIVE (drive the built widget) or REBUILD (build a
+    fresh instance under the lever) per axis.
+    """
+
+    name: str
+    build: PixelBuilder
+    axes: frozenset[str] = frozenset({"scale", "language"})
+    modes: Mapping[str, str] = field(default_factory=dict)
+    exemptions: Mapping[str, str] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        unknown = (set(self.axes) | set(self.modes) | set(self.exemptions)) - KNOWN_AXES
+        if unknown:
+            raise ValueError(f"{self.name!r}: unknown pixel axis/axes {sorted(unknown)}")
+        both = set(self.axes) & set(self.exemptions)
+        if both:
+            raise ValueError(
+                f"{self.name!r}: pixel axis/axes {sorted(both)} are both asserted "
+                f"and exempt — keep one decision per axis"
+            )
+        for axis, mode in self.modes.items():
+            if axis not in self.axes:
+                raise ValueError(
+                    f"{self.name!r}: pixel axis mode for {axis!r} declared but the "
+                    f"axis is not in axes (the mode would never run)"
+                )
+            if mode not in (LIVE, REBUILD):
+                raise ValueError(f"{self.name!r}: unknown pixel mode {mode!r} for {axis!r}")
+        unaccounted = [a for a in PLAN_AXES if a not in self.axes and a not in self.exemptions]
+        if unaccounted:
+            raise ValueError(
+                f"{self.name!r}: plan axis/axes {unaccounted} neither asserted nor "
+                f"exempted — a new pixel surface cannot ship ungated"
+            )
+
+    def mode_for(self, axis: str) -> str:
+        return self.modes.get(axis, LIVE)
+
+
+def _snapshot(probe: PixelProbe, name: str) -> InkSnapshot:
+    """Rasterise one probe state (call it right before and after a lever)."""
+    image = probe.image()
+    label_region = probe.label_region()
+    return InkSnapshot(
+        image=image,
+        label_region=label_region,
+        row_region=probe.row_region(),
+        text=probe.label_text(),
+        bounds=ink_bounds(image, label_region),
+        name=name,
+    )
+
+
+@contextmanager
+def _built(surface: PixelSurface, qapp: QApplication, monkeypatch: Any | None):
+    """Build the surface, settle it, and tear the instance down afterwards."""
+    widget, probe = surface.build(qapp, monkeypatch)
+    try:
+        drain_until_stable(qapp, probe.row_region, timeout_ms=1000, stable_frames=2)
+        yield probe
+    finally:
+        widget.close()
+        widget.deleteLater()
+        qapp.processEvents()
+
+
+def capture_ink(
+    surface: PixelSurface,
+    qapp: QApplication | None = None,
+    monkeypatch: Any | None = None,
+) -> InkSnapshot:
+    """Build ``surface`` under the CURRENT metrics and rasterise its label ink."""
+    if qapp is None:
+        qapp = QApplication.instance()
+    assert qapp is not None, "a QApplication is required (use the qapp fixture)"
+    with _built(surface, qapp, monkeypatch) as probe:
+        return _snapshot(probe, surface.name)
+
+
+def assert_ink_fits_its_row(snapshot: InkSnapshot) -> None:
+    """The ink must sit strictly inside its row box — touching the edge = clipped.
+
+    A label squeezed below its text is invisible to a geometry probe that only
+    reads ``sizeHint`` (the row can report the right pitch while the glyphs are
+    cut). One pixel of slack on every side proves the text was not truncated.
+    """
+    bounds = snapshot.require_ink()
+    row = snapshot.row_region
+    if (
+        bounds.left < 1
+        or bounds.top < 1
+        or bounds.right > row.width() - 2
+        or bounds.bottom > row.height() - 2
+    ):
+        raise AssertionError(
+            f"{snapshot.name!r}: CLIPPED — the label ink ({bounds}) touches its "
+            f"row box {row.width()}x{row.height()} (text {snapshot.text!r}). "
+            f"A row narrower/shorter than its glyphs truncates the label even "
+            f"when its geometry re-derives."
+        )
+
+
+def assert_ink_scales_with_factor(
+    before: InkSnapshot,
+    after: InkSnapshot,
+    factor: float,
+) -> None:
+    """The ink-row height must grow by ~*factor*; name the disease otherwise."""
+    before_ink = before.require_ink()
+    after_ink = after.require_ink()
+    expected = before_ink.height * factor
+    delta = abs(after_ink.height - expected)
+    slack = max(_INK_ROUNDING_SLACK, _INK_RELATIVE_SLACK * expected)
+    if delta <= slack:
+        return
+    ratio = after_ink.height / before_ink.height
+    if abs(ratio - 1.0) <= _INK_RELATIVE_SLACK:
+        disease = (
+            "UNSCALED: the ink height did not follow the interface scale "
+            "(a baked/fixed pixel font or a row pinned to design px)"
+        )
+    elif abs(ratio - factor**2) <= max(_INK_RELATIVE_SLACK * factor**2, 0.15):
+        disease = (
+            "DOUBLE-SCALED: the ink height grew by ~the squared factor "
+            f"(expected ~{factor:.2f}x, got ~{factor**2:.2f}x)"
+        )
+    else:
+        disease = (
+            "PARTIALLY scaled (only some of the row's ink follows the scale — "
+            "mixed fixed/scaled px in the label or row)"
+        )
+    raise AssertionError(
+        f"{before.name!r}: expected the ink-row height of {before.text!r} to "
+        f"grow by ~{factor:.2f}x ({before_ink.height} px -> ~{expected:.1f} px), "
+        f"got {after_ink.height} px ({ratio:.2f}x) — {disease}"
+    )
+
+
+def assert_ink_rows_scale_with_interface_scale(
+    surface: PixelSurface,
+    qapp: QApplication | None = None,
+    monkeypatch: Any | None = None,
+    *,
+    factor: float = 2.0,
+) -> None:
+    """Drive the scale lever and assert the surface's ink height follows it.
+
+    LIVE surfaces are driven in place (the long-lived chrome the owner
+    reported); REBUILD surfaces are constructed fresh under the new factor
+    (modal dialogs, per-open pages). Both also assert the row containment in
+    both states — a label that scales but no longer fits is still broken.
+    """
+    if qapp is None:
+        qapp = QApplication.instance()
+    assert qapp is not None, "a QApplication is required (use the qapp fixture)"
+    assert "scale" in surface.axes, f"{surface.name!r}: scale axis not asserted"
+
+    ui_scale = UiScale.get_instance()
+    original = ui_scale.factor()
+    target = factor if original != factor else 1.5
+    with _built(surface, qapp, monkeypatch) as probe:
+        before = _snapshot(probe, surface.name)
+        try:
+            ui_scale.set_factor(target)
+            if surface.mode_for("scale") == REBUILD:
+                after = capture_ink(surface, qapp, monkeypatch)
+            else:
+                _flush_metrics_channel(qapp)
+                drain_until_stable(qapp, probe.row_region, timeout_ms=1000, stable_frames=2)
+                after = _snapshot(probe, surface.name)
+        finally:
+            ui_scale.set_factor(original)
+            _flush_metrics_channel(qapp)
+
+    assert_ink_fits_its_row(before)
+    assert_ink_fits_its_row(after)
+    assert_ink_scales_with_factor(before, after, target / original)
+
+
+def assert_glyph_bitmap_differs_across_language(
+    surface: PixelSurface,
+    qapp: QApplication | None = None,
+    monkeypatch: Any | None = None,
+) -> None:
+    """A known label's glyph bitmap must have a non-zero pixel diff across en/ru."""
+    if qapp is None:
+        qapp = QApplication.instance()
+    assert qapp is not None, "a QApplication is required (use the qapp fixture)"
+    assert "language" in surface.axes, f"{surface.name!r}: language axis not asserted"
+
+    apply, restore = _language_lever()
+    before = capture_ink(surface, qapp, monkeypatch)
+    try:
+        apply()
+        after = capture_ink(surface, qapp, monkeypatch)
+    finally:
+        restore()
+        _flush_metrics_channel(qapp)
+
+    assert before.text != after.text, (
+        f"{surface.name!r}: IDENTICAL labels {before.text!r} in both languages — "
+        f"the surface did not retranslate/build in the new language, so the "
+        f"pixel diff below would prove nothing"
+    )
+    before.require_ink()
+    after.require_ink()
+    diff = _glyph_pixel_diff(before, after)
+    assert diff > 0, (
+        f"{surface.name!r}: IDENTICAL glyph bitmap — the label text changed "
+        f"({before.text!r} -> {after.text!r}) but the rasterised label region is "
+        f"pixel-identical; the rendered content never followed the language "
+        f"(a held pixmap/cache is not content)."
+    )
+
+
+def _glyph_pixel_diff(before: InkSnapshot, after: InkSnapshot) -> int:
+    """Count differing pixels between the two label crops (padded to a union)."""
+    left = before.image.copy(before.label_region)
+    right = after.image.copy(after.label_region)
+    width = max(left.width(), right.width())
+    height = max(left.height(), right.height())
+
+    def _padded(source: QImage) -> QImage:
+        canvas = QImage(width, height, QImage.Format.Format_RGB32)
+        canvas.fill(0)
+        for y in range(source.height()):
+            for x in range(source.width()):
+                canvas.setPixelColor(x, y, source.pixelColor(x, y))
+        return canvas
+
+    a = _padded(left)
+    b = _padded(right)
+    diff = 0
+    for y in range(height):
+        for x in range(width):
+            ca = a.pixelColor(x, y).getRgb()[:3]
+            cb = b.pixelColor(x, y).getRgb()[:3]
+            if max(abs(ca[i] - cb[i]) for i in range(3)) > INK_TOLERANCE:
+                diff += 1
+    return diff

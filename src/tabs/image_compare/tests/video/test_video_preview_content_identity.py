@@ -88,6 +88,10 @@ class _FrameRecording:
             name1="a",
             name2="b",
             timestamp=index / _FPS,
+            # Content identity is asserted against the snapshot's own frame
+            # index (never the seek counter), so a wrong snapshot reaching the
+            # pane is visible as the wrong colour.
+            frame_index=index,
             # Stable per-index state objects keep the cache key stable for a
             # repeated render of the same frame (the cache-hit path).
             viewport_state=SimpleNamespace(index=index, render_config=None, view_state=None),
@@ -111,7 +115,7 @@ class _PreviewExporter:
         self.prepare_calls: list[int] = []
 
     def prepare_snapshot_canvas_frame(self, snap, out_w, out_h, **kwargs):
-        index = int(round(float(snap.timestamp) * _FPS))
+        index = int(snap.frame_index)
         self.prepare_calls.append(index)
         image = Image.new("RGBA", _PREVIEW, _frame_color(index))
         plan = SimpleNamespace(
@@ -264,6 +268,42 @@ def test_preview_renders_its_own_frame_payload(monkeypatch):
     harness.teardown()
 
 
+def test_preview_panel_payload_decodes_to_snap_frame_index(monkeypatch):
+    """The pane's pixels are the SNAPSHOT's frame, not just "that snapshot".
+
+    ``test_preview_scene_uses_main_renderer_not_thumbnail`` asserts
+    ``captured['snap'] is snap`` — presence. This decodes the payload's
+    pixels against ``snap.frame_index``, so a stale plan (frame i-1's pixels
+    applied while the playhead/snapshot is frame i) fails here.
+    """
+    harness = _Harness(_FrameRecording(), monkeypatch)
+
+    for index in (0, 5, 9, 2):
+        harness.seek(index)
+        snap = harness.snapshot(index)
+        harness.render_current()
+
+        payload = harness.canvas.rendered_payload
+        assert payload is not None, f"frame {index} produced no preview payload"
+        image = payload.convert("RGBA")
+        expected = _frame_color(snap.frame_index)
+        corners = {
+            (0, 0),
+            (image.width - 1, 0),
+            (image.width // 2, image.height // 2),
+            (image.width // 2, image.height - 1),
+        }
+        for point in corners:
+            got = image.getpixel(point)
+            assert got == expected, (
+                f"frame {index} (snap.frame_index={snap.frame_index}) preview "
+                f"pixel {point} is {got}, expected {expected}"
+            )
+        assert harness.canvas.rendered_store.index == snap.frame_index
+
+    harness.teardown()
+
+
 def test_late_stale_prepare_never_replaces_fresh_payload(monkeypatch):
     """A stale result arriving after a fresher one is dropped by task id."""
     harness = _Harness(_FrameRecording(), monkeypatch)
@@ -299,10 +339,14 @@ def test_missing_snapshot_shows_placeholder_not_neighbour(monkeypatch):
     assert harness.rendered_color() == _frame_color(2)
 
     harness.seek(3)  # evicted / never materialized
+    applied_before = len(harness.canvas.applied)
     harness.render_current()
 
     assert harness.rendered_color() is None, (
         "frame 3 has no snapshot but the preview still shows frame 2's payload"
+    )
+    assert len(harness.canvas.applied) == applied_before, (
+        "missing-snapshot frame pushed a plan to the canvas (neighbor or stale)"
     )
     assert harness.canvas.clears == 1
     assert harness.coordinator._preview_frame_cache is None, (

@@ -15,6 +15,67 @@ from .theme import _is_dark_theme, _overlay_judgment_domain
 _METRICS_ROW_CACHE_MAX = 8
 
 
+def _overlay_mode(overlay, mode_str: str = ""):
+    """The open report's mode object (never raises).
+
+    Prefers the overlay's live ``_mode`` (the same value the walk renders
+    with); a bare stub without one falls back to the ``"<MODE> MODE"`` string
+    the caller derived, so a direct ``rebuild_metrics`` call still gets the
+    right mode mapping.
+    """
+    try:
+        mode = getattr(overlay, "_mode", None)
+    except Exception:
+        mode = None
+    if mode is not None:
+        return mode
+    try:
+        head = str(mode_str or "").strip().split()
+        return head[0].lower() if head else None
+    except Exception:
+        return None
+
+
+def _overlay_metric_profile(overlay, mode_str: str = ""):
+    """The ACTIVE metric profile for this overlay (``profile_select`` seam).
+
+    The SAME read the card dots use: a stored ``state.metric_profile`` wins,
+    else the mode mapping (``active_profile`` fail-open). No second axis list
+    lives here — the profile decides which axes the rows and the dots show.
+    Never raises.
+    """
+    try:
+        from tabs.image_gallery.use_cases.profile_select import active_profile
+    except Exception:
+        return None
+    try:
+        owner = getattr(overlay, "_owner", None)
+        state = getattr(owner, "state", None) if owner is not None else None
+        return active_profile(state, mode=_overlay_mode(overlay, mode_str))
+    except Exception:
+        return None
+
+
+def _profile_fingerprint(overlay, mode_str: str = "") -> tuple:
+    """Hashable identity of the active profile (part of the row cache key).
+
+    A profile/domain change must invalidate cached rows: the same item+metrics
+    under a different axis subset renders a different row set, so replaying the
+    old containers would show stale labels. Never raises.
+    """
+    try:
+        profile = _overlay_metric_profile(overlay, mode_str)
+        return (
+            tuple(str(a) for a in (getattr(profile, "axis_ids", ()) or ())),
+            str(getattr(profile, "source", "") or ""),
+            str(getattr(profile, "mode", "") or ""),
+            str(getattr(profile, "domain", "") or ""),
+            tuple(str(a) for a in (getattr(profile, "salient_axes", ()) or ())),
+        )
+    except Exception:
+        return ()
+
+
 def _metrics_series_snapshot(overlay) -> tuple:
     """Series-wide inputs of ``ssim_subline`` (re-rank/reject neighbor flips)."""
     try:
@@ -55,11 +116,14 @@ def _metrics_series_snapshot(overlay) -> tuple:
 def _metrics_fingerprint(overlay, item, is_fidelity: bool, mode_str: str) -> tuple:
     """Identity of everything ``rebuild_metrics`` renders.
 
-    Rows are already seated for this exact item/series/theme/scale state on
-    a match, so the caller returns early (relayout skipped too). ``rank_txt``
-    falls back to ``current_idx+1`` for rankless items — that equals the
-    item's own stable position, covered by the item path + series snapshot
-    (a reorder changes the snapshot); the index is also stored outright.
+    Rows are already seated for this exact item/series/theme/scale/profile
+    state on a match, so the caller returns early (relayout skipped too).
+    ``rank_txt`` falls back to ``current_idx+1`` for rankless items — that
+    equals the item's own stable position, covered by the item path + series
+    snapshot (a reorder changes the snapshot); the index is also stored
+    outright. ``profile_part`` makes the ACTIVE metric profile (and its pinned
+    domain) part of the identity, so switching profiles can never replay the
+    previous profile's cached row labels.
     """
     try:
         metrics = getattr(item, "metrics", None) or {}
@@ -93,6 +157,10 @@ def _metrics_fingerprint(overlay, item, is_fidelity: bool, mode_str: str) -> tup
             domain_part = _overlay_judgment_domain(overlay)
         except Exception:
             domain_part = "algorithms"
+        # The active profile decides which axes render, so its identity is a
+        # fingerprint input: a profile (or pinned domain) change must rebuild
+        # the rows, never replay the previous profile's cached containers.
+        profile_part = _profile_fingerprint(overlay, mode_str)
         try:
             series = list(getattr(overlay, "_series_items", None) or [])
             series_len = len(series)
@@ -111,7 +179,7 @@ def _metrics_fingerprint(overlay, item, is_fidelity: bool, mode_str: str) -> tup
             sp = int(scaled_px(2))
         except Exception:
             sp = 2
-        return (item_path, metrics_part, analysis_part, domain_part, bool(is_fidelity), str(mode_str), series_len, current_idx, series_part, dark, sp)
+        return (item_path, metrics_part, analysis_part, domain_part, profile_part, bool(is_fidelity), str(mode_str), series_len, current_idx, series_part, dark, sp)
     except Exception:
         return ()
 

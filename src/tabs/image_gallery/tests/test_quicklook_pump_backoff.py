@@ -12,8 +12,11 @@ resize drags. Pinned here:
 
 from __future__ import annotations
 
+import hashlib
 import logging
 from types import SimpleNamespace
+
+import pytest
 
 
 def _make_canvas(qtbot):
@@ -87,6 +90,108 @@ def test_idle_frame_pumps_nothing(qtbot, monkeypatch) -> None:
     full, slow = [], []
     assert _drive(card, monkeypatch, _result(drawn=False, resident=0), full, slow) is False
     assert full == [] and slow == []
+
+
+# -- content-true backoff: a suppressed tick must not change the pixels -------
+# Audit `audit-blind-test-inventory-2026-10-20` (blind pocket #2): the counts
+# above are perf bounds, not correctness. A plateau tick that repainted a
+# neighbour/stale plate, or that handed the pane over to a partly-resident
+# tiled frame, kept every count assertion green while the user saw the wrong
+# pixels. The assertions below decode the frame the canvas would present.
+
+
+def _solid_store(rgb, size: int = 96):
+    """Synthetic source: a solid-colour ``TiledPixelStore`` (distinct payload)."""
+    pytest.importorskip("PIL")
+    from PIL import Image as _PIL
+
+    from engine.store.tiled_pixel_store import TiledPixelStore
+
+    return TiledPixelStore.from_pil(_PIL.new("RGBA", (size, size), (*rgb, 255)))
+
+
+def _frame_centre_rgb(frame):
+    """Centre pixel of a canvas raster frame ``(w, h, RGBA bytes)``."""
+    width, height, pixels = frame
+    offset = ((height // 2) * width + (width // 2)) * 4
+    return tuple(int(v) for v in pixels[offset : offset + 3])
+
+
+def _frame_hash(frame) -> str:
+    return hashlib.sha1(frame[2]).hexdigest()
+
+
+def _target(size: int = 128):
+    from PySide6.QtCore import QSize
+
+    return SimpleNamespace(pixelSize=lambda: QSize(size, size))
+
+
+def test_suppressed_tick_keeps_plate_pixels_and_focused_colour(qtbot, monkeypatch) -> None:
+    """Plateau ticks hold the FOCUSED item's pixels, never the neighbour's.
+
+    The raster plate is what the canvas presents while the tiled plan is not
+    ``covered`` (``rhi_entry._render_tiled`` returns False). Bind it to the
+    focused item (red) and drive the tiled source from a *different* colour
+    (green): a suppressed tick that repaints, re-binds, or takes over early
+    would surface green — every count/perf assertion would still pass.
+    """
+    focused, neighbour = (200, 20, 20), (20, 200, 20)
+    card = _make_canvas(qtbot)
+    card._active_composition = SimpleNamespace(
+        layers=[SimpleNamespace(image=_solid_store(focused))]
+    )
+    # The tiled source is the NEIGHBOUR's image: whatever the hold path does
+    # with it, the presented plate must stay the focused item's.
+    card._tiled_source = ("neighbour", _solid_store(neighbour))
+    before = card._raster_frame(_target())
+    assert before is not None and _frame_centre_rgb(before) == focused
+    before_hash = _frame_hash(before)
+
+    renderer, calls = _fake_renderer(_result(drawn=True, covered=False, resident=5))
+    monkeypatch.setattr(card, "_ensure_tile_renderer", lambda: renderer)
+    full, slow = [], []
+    monkeypatch.setattr(
+        type(card), "_pump_next_frame", lambda self: full.append(1)
+    )
+    monkeypatch.setattr(
+        type(card), "_pump_throttled", lambda self, stall: slow.append(stall)
+    )
+
+    for tick in range(5):
+        # The tiled plan is never covered → no handover, the plate stays.
+        assert (
+            card._render_tiled(object(), None, None, None, 128, 128) is False
+        ), f"tick {tick} handed the pane to an uncovered tiled frame"
+        after = card._raster_frame(_target())
+        assert after is not None
+        assert _frame_hash(after) == before_hash, f"tick {tick} repainted the plate"
+        assert _frame_centre_rgb(after) == focused, (
+            f"tick {tick} shows {_frame_centre_rgb(after)}, "
+            f"focused item is {focused} (neighbour {neighbour})"
+        )
+    # Counts stay as perf bounds: one full-rate pump, then backed-off retries.
+    assert len(calls) == 5, "every suppressed tick still consulted the tiled source"
+    assert len(full) == 1 and slow == [1, 2, 3, 4]
+    assert card._tiled_source[0] == "neighbour", "the held source was not dropped"
+
+
+def test_covered_tick_hands_over_and_changes_the_surface(qtbot, monkeypatch) -> None:
+    """Discriminator for the hold above: a COVERED tick does take the pane.
+
+    Without this, ``_render_tiled(...) is False`` could be true for any
+    reason at all (a dead path), and the plateau assertion would be blind.
+    """
+    card = _make_canvas(qtbot)
+    renderer, _calls = _fake_renderer(_result(drawn=True, covered=True, resident=5))
+    monkeypatch.setattr(card, "_ensure_tile_renderer", lambda: renderer)
+    monkeypatch.setattr(card, "_tiled_level_ready", lambda: True)
+    monkeypatch.setattr(card, "_settle_present", lambda: None)
+    full, slow = [], []
+    monkeypatch.setattr(type(card), "_pump_next_frame", lambda self: full.append(1))
+    monkeypatch.setattr(type(card), "_pump_throttled", lambda self, stall: slow.append(stall))
+    assert card._render_tiled(object(), None, None, None, 128, 128) is True
+    assert full == [] and slow == [], "a covered frame needs no pump"
 
 
 def test_pump_log_silent_by_default(qtbot, monkeypatch, caplog) -> None:
