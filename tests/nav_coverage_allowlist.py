@@ -61,24 +61,6 @@ NAV_COVERAGE_ALLOWLIST: dict[str, str] = {
         "SOURCE image itself is the preview, so the inset has no keyboard "
         "contract of its own."
     ),
-    "SettingsDialog:Button": (
-        "NEW FINDING F2 (keyboard settings page): the unnamed 'Reset all "
-        "shortcuts' Button is added to the page layout after the shortcut rows "
-        "(src/plugins/settings/pages/keyboard.py:369) and is not part of any "
-        "row registered by register_page_navigation(), so no section owns it. "
-        "Mouse/Tab only until the follow-up task adds it as a row. Keyed by "
-        "class because the control has no objectName (KEYBOARD.tag_member is a "
-        "search tag, not a QObject name)."
-    ),
-    "SettingsDialog:CustomLineEdit": (
-        "NEW FINDING F2 (keyboard settings page): the unnamed 'Filter "
-        "shortcuts' field is added directly to the page layout before the row "
-        "host (src/plugins/settings/pages/keyboard.py:200) and is not part of "
-        "any row registered by register_page_navigation(), so no section owns "
-        "it. Mouse/Tab only until the follow-up task adds it as a row. Keyed "
-        "by class because the control has no objectName (KEYBOARD.tag_member "
-        "is a search tag, not a QObject name)."
-    ),
     "UnifiedListPicker:OverlayScrollArea": (
         "the two list panels' scroll viewports inherit QAbstractScrollArea's "
         "StrongFocus but are containers, not controls: UnifiedListNavSection "
