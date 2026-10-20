@@ -149,7 +149,7 @@
       "redundant": "{n} лишних"
     },
     "profile": {
-      "chip": "Метрический профиль: {profile}",
+      "chip": "Профиль: {profile}",
       "auto": "авто",
       "axes": "осей: {n}",
       "domain": {

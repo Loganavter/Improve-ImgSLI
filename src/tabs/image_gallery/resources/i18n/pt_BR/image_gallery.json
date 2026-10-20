@@ -149,7 +149,7 @@
       "redundant": "{n} redundantes"
     },
     "profile": {
-      "chip": "Perfil de métricas: {profile}",
+      "chip": "Perfil: {profile}",
       "auto": "automático",
       "axes": "{n} ejes",
       "domain": {

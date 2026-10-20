@@ -55,8 +55,13 @@ def test_chip_renders_the_active_domain_and_the_format_profile_tooltip(strip) ->
 
     text = strip.profile_chip_text
     assert "Photo" in text
-    assert f"{len(profile.axis_ids)} axes" in text
     assert "auto" not in text
+    # The axis count lives in the tooltip now: a chip is not a paragraph, and
+    # the long "· N axes" tail used to squeeze the button below its text width
+    # (the painter then clipped its right half — live 2026-10-20).
+    assert "axes" not in text.lower()
+    assert strip.profile_chip.minimumWidth() > 0
+    assert strip.profile_chip.minimumWidth() <= strip.profile_chip.sizeHint().width()
     # First production caller: the exact diagnostic line is the tooltip.
     assert strip.profile_chip.toolTip() == format_profile(profile)
     assert strip.profile_chip.isVisible()

@@ -149,7 +149,7 @@
       "redundant": "{n} 张冗余"
     },
     "profile": {
-      "chip": "指标配置文件：{profile}",
+      "chip": "配置：{profile}",
       "auto": "自动",
       "axes": "{n} 个轴",
       "domain": {
