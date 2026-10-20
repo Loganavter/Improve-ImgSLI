@@ -125,7 +125,15 @@ def default_handler(method: str, params: dict):
     if method == "list_surfaces":
         return True, {
             "count": 1,
-            "surfaces": [{"name": "settings", "description": "Settings dialog", "isolated": False}],
+            "surfaces": [
+                {
+                    "name": "settings",
+                    "description": "Settings dialog",
+                    "isolated": False,
+                    "live": False,
+                    "capturable": False,
+                }
+            ],
         }
     if method == "open_tab":
         return True, {"ran": True, "tab": params.get("tab")}
@@ -721,6 +729,7 @@ def test_list_actions_enabled_and_reason_degrade_when_omitted(tmp_path):
 
 _ELEMENTS_LIVE_RESULT = {
     "count": 2,
+    "total": 2,
     "window_count": 1,
     "elements": [
         {
@@ -734,6 +743,7 @@ _ELEMENTS_LIVE_RESULT = {
             "action_id": "platform.settings",
             "enabled": True,
             "visible": True,
+            "properties": {},
         },
         {
             "id": "gallery.card.menu.row1",
@@ -746,6 +756,7 @@ _ELEMENTS_LIVE_RESULT = {
             "action_id": None,
             "enabled": True,
             "visible": True,
+            "properties": {},
         },
     ],
     "source": "live",
@@ -856,7 +867,15 @@ _PROXY_CASES = [
         {},
         {
             "count": 1,
-            "surfaces": [{"name": "settings", "description": "Settings dialog", "isolated": False}],
+            "surfaces": [
+                {
+                    "name": "settings",
+                    "description": "Settings dialog",
+                    "isolated": False,
+                    "live": False,
+                    "capturable": False,
+                }
+            ],
             "source": "live",
         },
     ),
@@ -1163,6 +1182,119 @@ def test_ui_elements_omits_optional_params_unless_given(tmp_path):
         adapter.close()
         server.stop()
     assert _wire_calls(server) == [("ui_elements", {})]
+
+
+def test_ui_elements_forwards_filters_and_keeps_the_properties_bag(tmp_path):
+    """Filters travel to the app; the row's properties bag survives normalisation.
+
+    An older app that emits no properties bag still yields ``properties: {}``
+    so the advertised element shape never changes under a client.
+    """
+
+    def handler(method, params):
+        if method == "ui_elements":
+            row = {
+                "id": "main.gallery.card0",
+                "role": "card",
+                "label": "card_0.png",
+                "rect": [1, 2, 3, 4],
+                "screen_rect": [10, 20, 30, 40],
+                "window": "main",
+                "owner_tab": "image_gallery",
+                "action_id": None,
+                "enabled": True,
+                "visible": True,
+                "unexpected": "dropped",
+            }
+            if params.get("properties") is None:
+                return True, {"count": 1, "window_count": 1, "elements": [row]}
+            return True, {
+                "count": 1,
+                "window_count": 1,
+                "total": 7,
+                "elements": [
+                    {**row, "properties": {"gallery_path": "/gallery/card_0.png"}}
+                ],
+            }
+        return default_handler(method, params)
+
+    server = FakeControlServer(tmp_path / "control.sock", handler).start()
+    adapter = LiveBackend(client=LiveClient(server.path))
+    try:
+        unfiltered = adapter.ui_elements()
+        narrowed = adapter.ui_elements(
+            role="card",
+            label="card_0",
+            properties={"gallery_path": "/gallery/card_0.png"},
+            limit=5,
+        )
+    finally:
+        adapter.close()
+        server.stop()
+
+    assert unfiltered["elements"][0]["properties"] == {}, "shape is stable"
+    row = narrowed["elements"][0]
+    assert row["properties"] == {"gallery_path": "/gallery/card_0.png"}
+    assert "unexpected" not in row
+    assert narrowed["total"] == 7
+    assert _wire_calls(server) == [
+        ("ui_elements", {}),
+        (
+            "ui_elements",
+            {
+                "role": "card",
+                "label": "card_0",
+                "properties": {"gallery_path": "/gallery/card_0.png"},
+                "limit": 5,
+            },
+        ),
+    ]
+
+
+def test_list_surfaces_live_keeps_live_and_capturable(tmp_path):
+    """The app computes ``live``/``capturable``; the proxy must not drop them.
+
+    ``capturable`` is the distinction a screenshot client needs: a registered
+    tab kind is drivable (``live: true``) but only an OPEN page can be grabbed.
+    """
+
+    def handler(method, params):
+        if method == "list_surfaces":
+            return True, {
+                "count": 2,
+                "surfaces": [
+                    {
+                        "name": "image_gallery",
+                        "description": "Image Gallery",
+                        "isolated": False,
+                        "live": True,
+                        "capturable": True,
+                    },
+                    {
+                        "name": "settings",
+                        "description": "Settings",
+                        "isolated": True,
+                        "live": False,
+                        "capturable": False,
+                    },
+                ],
+            }
+        return default_handler(method, params)
+
+    server = FakeControlServer(tmp_path / "control.sock", handler).start()
+    adapter = LiveBackend(client=LiveClient(server.path))
+    try:
+        result = adapter.list_surfaces()
+    finally:
+        adapter.close()
+        server.stop()
+
+    rows = {row["name"]: row for row in result["surfaces"]}
+    assert rows["image_gallery"]["live"] is True
+    assert rows["image_gallery"]["capturable"] is True
+    assert rows["settings"]["live"] is False
+    assert rows["settings"]["capturable"] is False
+
 
 
 def test_read_log_live_normalises_when_the_app_omits_the_path(tmp_path):

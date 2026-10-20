@@ -59,6 +59,16 @@ rect stay with ``visible=false``.
 ``TabRegistry().get_page(scope)``. A scope that is not an open tab returns an
 empty list (never an error).
 
+**Narrowing and content identity.** ``ui_elements`` also accepts ``role``
+(exact), ``label`` (case-insensitive substring), ``properties`` (every entry
+must equal the element's own property) and ``limit`` (≤
+:data:`MAX_ELEMENT_LIMIT`); filters narrow in tree order and never change an
+id. Each row carries a ``properties`` bag of the widget's serialisable
+dynamic properties (``gallery_path`` for gallery cards) — see
+``query.scalar_properties`` for the rule. The same bag backs the
+``property:<name>=<value>`` reference the live tools accept in their ``id``
+position: it is stable across tree reordering, unlike a positional id.
+
 GUI thread only: every function here touches live widgets and must run where
 they live (the control server dispatches on the GUI thread). No threads.
 """
@@ -66,6 +76,8 @@ they live (the control server dispatches on the GUI thread). No threads.
 from __future__ import annotations
 
 from typing import Any
+
+from ..discovery import MethodError
 
 from .inventory import (
     Element,
@@ -75,7 +87,8 @@ from .inventory import (
     screen_rect_of,
 )
 from .interaction import click_element, focus_element, hover_element
-from .resolve import focus_target, key_target, resolve_element
+from .query import MAX_ELEMENT_LIMIT, filter_elements
+from .resolve import PROPERTY_PREFIX, focus_target, key_target, resolve_element
 
 #: Retry budget for an id that is not realized yet (FilmCraft's RETRY semantics:
 #: an agent need not sleep between "open" and "click"). Read at call time by
@@ -95,12 +108,25 @@ class ElementMethodsMixin:
     """
 
     def ui_elements(self, params: dict[str, Any]) -> dict[str, Any]:
+        properties = params.get("properties")
+        if properties is not None and not isinstance(properties, dict):
+            raise MethodError(
+                "ui_elements 'properties' must be an object of name→value pairs",
+                'e.g. properties={"gallery_path": "/gallery/card_0.png"}',
+            )
         collected = collect_elements(
             registry=self._registry(),  # type: ignore[attr-defined]
             scope=params.get("scope"),
             include_disabled=bool(params.get("include_disabled", False)),
         )
-        return inventory_payload(collected)
+        rows, matched = filter_elements(
+            collected,
+            role=params.get("role"),
+            label=params.get("label"),
+            properties=properties,
+            limit=params.get("limit"),
+        )
+        return inventory_payload(rows, total=matched)
 
     def ui_click(self, params: dict[str, Any]) -> dict[str, Any]:
         target = resolve_element(self._registry(), params.get("id"))  # type: ignore[attr-defined]
@@ -158,10 +184,13 @@ class ElementMethodsMixin:
 __all__ = [
     "Element",
     "ElementMethodsMixin",
+    "MAX_ELEMENT_LIMIT",
+    "PROPERTY_PREFIX",
     "RETRY_STEP_MS",
     "RETRY_TIMEOUT_MS",
     "click_element",
     "collect_elements",
+    "filter_elements",
     "focus_element",
     "hover_element",
     "inventory_payload",

@@ -24,7 +24,39 @@ from .inventory import (
     _window_keys,
     collect_elements,
 )
+from .query import property_value_matches
 from .roles import _label_of, _role_of
+
+#: Prefix of a stable property reference (``property:<name>=<value>``). The
+#: reference live-only tools accept in the same ``id`` position as an
+#: inventory id, so an agent need not hold a positional child-index path.
+PROPERTY_PREFIX = "property:"
+
+
+def _parse_property_needle(needle: str) -> tuple[str, str] | None:
+    """``property:<name>=<value>`` → ``(name, value)``, else ``None``.
+
+    A malformed prefix (no ``=``, empty name) is a named error immediately: it
+    can never start matching later, so retrying it would only waste the budget.
+    """
+    if not needle.startswith(PROPERTY_PREFIX):
+        return None
+    body = needle[len(PROPERTY_PREFIX) :]
+    name, separator, value = body.partition("=")
+    if not separator or not name:
+        raise MethodError(
+            f"{PROPERTY_PREFIX} target is malformed (needs name=value): {needle!r}",
+            "property target needs name=value, e.g. property:gallery_path=/gallery/card_0.png",
+        )
+    return name, value
+
+
+def _matches_property(element: Element, name: str, value: str) -> bool:
+    """True when *element*'s own property *name* equals *value*."""
+    properties = getattr(element, "properties", None)
+    if not isinstance(properties, dict) or name not in properties:
+        return False
+    return property_value_matches(properties[name], value)
 
 
 def _window_key_for(widget: QWidget) -> str:
@@ -74,10 +106,44 @@ def _resolve_via_action(registry: Any, needle: str) -> Element | None:
     )
 
 
+def _property_hint(elements: list[Element], name: str, value: str) -> str:
+    """Actionable hint for a property reference that never matched.
+
+    A typo'd name gets close known names; a real name gets the values that do
+    exist, so the client can correct the reference without another full dump.
+    """
+    known: set[str] = set()
+    values: set[str] = set()
+    for element in elements:
+        properties = getattr(element, "properties", None)
+        if not isinstance(properties, dict):
+            continue
+        known.update(str(key) for key in properties)
+        if name in properties:
+            values.add(str(properties[name]))
+    if name not in known:
+        close = difflib.get_close_matches(name, sorted(known), n=5, cutoff=0.5)
+        hint = "no element exposes that property"
+        if close:
+            hint = "did you mean: " + ", ".join(close) + "? (" + hint + ")"
+        return hint + "; call ui_elements — rows carry a properties bag"
+    shown = sorted(values)[:5]
+    hint = f"property {name!r} exists but no element has that value"
+    if shown:
+        hint += "; known values: " + ", ".join(shown)
+    return hint + "; call ui_elements to list the current rows"
+
+
 def resolve_element(
     registry: Any, needle: Any, *, timeout_ms: int | None = None
 ) -> Element:
     """Resolve *needle* to an element, retrying until the UI realizes it.
+
+    *needle* is an inventory id, ``@<action id>``, or a stable property
+    reference ``property:<name>=<value>`` (e.g.
+    ``property:gallery_path=/gallery/card_0.png``). The property form matches
+    the element's own ``properties`` bag, so it survives tree reordering that
+    changes positional ids; the first match in tree order wins.
 
     Raises ``MethodError`` (with close matches + a ``ui_elements`` hint) when
     the id never appears within the retry budget. The event loop is pumped
@@ -90,24 +156,37 @@ def resolve_element(
             "ui_* needs a non-empty 'id'",
             "call ui_elements and pass one of the returned ids verbatim",
         )
+    property_needle = _parse_property_needle(needle)
     budget = package.RETRY_TIMEOUT_MS if timeout_ms is None else int(timeout_ms)
     step = int(getattr(package, "RETRY_STEP_MS", 25))
     deadline = time.monotonic() + max(0, budget) / 1000.0
     elements: list[Element] = []
     while True:
         elements = collect_elements(registry=registry)
-        for element in elements:
-            if element.id == needle:
-                return element
-        fallback = _resolve_via_action(registry, needle)
-        if fallback is not None:
-            return fallback
+        if property_needle is not None:
+            name, value = property_needle
+            for element in elements:
+                if _matches_property(element, name, value):
+                    return element
+        else:
+            for element in elements:
+                if element.id == needle:
+                    return element
+            fallback = _resolve_via_action(registry, needle)
+            if fallback is not None:
+                return fallback
         if time.monotonic() >= deadline:
             break
         try:
             QTest.qWait(step)
         except Exception:
             time.sleep(step / 1000.0)
+    if property_needle is not None:
+        name, value = property_needle
+        raise MethodError(
+            f"no element with property {name}={value!r}",
+            _property_hint(elements, name, value),
+        )
     candidates = [element.id for element in elements]
     close = difflib.get_close_matches(needle, candidates, n=5, cutoff=0.5)
     hint = "call ui_elements to list the current ids"

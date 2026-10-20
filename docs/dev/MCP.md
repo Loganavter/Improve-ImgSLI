@@ -51,8 +51,8 @@ fallback window, e.g. `:97`).
 | `read_log` | read | tail `log.txt`, optional level filter |
 | `query_trace` | read | search `trace.jsonl` newest-first |
 | `dump_ui_layout` | read | widget tree JSON (geometry, colors, bound action ids) |
-| `list_surfaces` | read | capture-surface names for `capture_surface` |
-| `ui_elements` | read | live inventory of interactive elements (id, role, label, rects, enabled) |
+| `list_surfaces` | read | capture-surface names for `capture_surface` (live/capturable flags) |
+| `ui_elements` | read | live inventory of interactive elements (id, role, label, rects, enabled, properties bag; role/label/properties/limit filters) |
 | `ui_nav_state` | read | live keyboard-navigation model: sections + focus + overlay children no section owns (live-only) |
 | `jobs_list` | read | live in-flight long passes (kind, status, progress, elapsed_s, message) |
 | `wait_for` | read | block until one expectation holds (element id visible+enabled, role+label exists, or jobs settle); a timeout returns the last observed state (live-only) |
@@ -102,7 +102,9 @@ the user is driving: `open_tab` switches in place, `run_action` runs live,
 `set_language` apply now (`applies_on: "now"`), and `press_keys` injects
 keyboard combos the Find Action catalog does not cover. `ui_elements` inventories
 the live window's interactive widgets (id, role, label, widget `rect` and
-screen-space `screen_rect`, `enabled`, bound action id) and
+screen-space `screen_rect`, `enabled`, bound action id, and a `properties`
+bag; optional `role`/`label`/`properties`/`limit` filters — see
+[Element ids](#element-ids-filters-and-stable-property-targets)) and
 `ui_click` / `ui_hover` / `ui_focus` act on one by its session-scoped id —
 in-process, at the element's centre, with an unknown id retried ~3 s and then
 failed with close matches. In-process delivery fires the handler even when the
@@ -121,6 +123,42 @@ answers (see [Flatpak sandbox](#flatpak-installed-app-p0)). After a transport
 failure the server pauses re-attaching for a couple of seconds so a dead socket
 is not retried on every call. The app refuses connections from another uid (its
 own `SO_PEERCRED` check); this client only has to degrade cleanly.
+
+### Element ids, filters, and stable property targets
+
+`ui_elements` inventories the whole live window by default. Three optional
+filters narrow **server-side** (the client no longer has to fetch every row and
+diff it): `role` (exact), `label` (case-insensitive substring) and `properties`
+(every name→value pair must equal the element's own value, exactly). `limit`
+caps the returned rows at 2000; `total` is always the pre-limit match count, so
+a short answer is never mistaken for a complete one. Filters narrow in **tree
+order** and leave ids untouched — an id learned before a filter still resolves
+after it. An unknown role/label/property value is an honest empty list, not an
+error.
+
+Every row carries a `properties` bag built from the widget's own Qt dynamic
+properties — `gallery_path` on a gallery card is the motivating one. The rule
+is deliberately narrow: scalars only (`str`/`bool`/`int`/`float`), names
+starting with `_` skipped (Qt internals / private markers), oversized strings
+dropped rather than truncated. Pointers, containers and enums never enter the
+payload.
+
+That bag also backs a **stable element reference**:
+`property:<name>=<value>` (e.g. `property:gallery_path=/gallery/card_0.png`).
+It is accepted in the same `id` position as an inventory id — `ui_click`,
+`ui_hover`, `ui_focus`, `press_keys target=`, `nav_key anchor=` — and matches
+the element's own property, so it survives tree reordering that changes
+positional ids. The first match in tree order wins. A malformed reference, an
+unknown property name, or zero matches is the existing named error: the hint
+lists close property names (or the values that do exist) and points at
+`ui_elements`. (`wait_for` matches rows by their inventory id, so it takes the
+literal id, not a property reference.)
+
+`list_surfaces` keeps the two flags the app computes: `live` (the row is a
+registered tab kind the live instance drives) and `capturable` (that kind's
+page is OPEN right now, so `capture_surface surface=<name>` can grab it).
+A registered-but-closed kind is `live: true, capturable: false` — open it
+first. Devtool demo names are `live: false, capturable: false`.
 
 ### Judging keyboard reachability (`ui_nav_state` + `nav_key`)
 
@@ -452,9 +490,9 @@ inventing values. (Fallback `size` is parsed from the devtool's own
   focus chain, so canvas shortcuts (`=`, `-`, `0` in multi-compare) only
   arrive when the canvas id is named.
 - **Element targeting is live-only.** `ui_elements` reads the running window's
-  widget inventory; `ui_click`/`ui_hover`/`ui_focus` act on an id from it. With
-  no instance they answer an honest error — no throwaway app is booted to fake a
-  target.
+  widget inventory; `ui_click`/`ui_hover`/`ui_focus` act on an id (or a
+  `property:<name>=<value>` reference) from it. With no instance they answer an
+  honest error — no throwaway app is booted to fake a target.
 
 ### Refusals (no silent truncation)
 

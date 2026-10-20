@@ -639,6 +639,12 @@ class LiveBackend:
                 "name": row.get("name"),
                 "description": row.get("description", ""),
                 "isolated": bool(row.get("isolated")),
+                # The app computes both (``core.control.discovery.live_surfaces``);
+                # ``capturable`` is the difference between "drivable after
+                # open_tab" and "grab it right now". Absent means the app did
+                # not claim it — never invent a capability.
+                "live": bool(row.get("live", False)),
+                "capturable": bool(row.get("capturable", False)),
             }
             for row in self._rows(self._request("list_surfaces", {}, client), "surfaces")
         ]
@@ -802,6 +808,14 @@ class LiveBackend:
     @staticmethod
     def _element(row: dict) -> dict:
         """One inventory row, normalised to the declared element shape."""
+        raw_properties = row.get("properties")
+        properties: dict[str, Any] = {}
+        if isinstance(raw_properties, dict):
+            properties = {
+                str(key): value
+                for key, value in raw_properties.items()
+                if isinstance(value, (str, int, float, bool))
+            }
         return {
             "id": str(row.get("id") or ""),
             "role": str(row.get("role") or ""),
@@ -813,6 +827,9 @@ class LiveBackend:
             "action_id": row.get("action_id"),
             "enabled": bool(row.get("enabled")),
             "visible": bool(row.get("visible")),
+            # An older app emits no bag; the key is still present (empty) so
+            # the declared element shape never changes under a client.
+            "properties": properties,
         }
 
     def ui_elements(
@@ -821,16 +838,30 @@ class LiveBackend:
         client: LiveClient | None = None,
         scope: str | None = None,
         include_disabled: bool | None = None,
+        role: str | None = None,
+        label: str | None = None,
+        properties: dict[str, Any] | None = None,
+        limit: int | None = None,
     ) -> dict:
         params: dict[str, Any] = {}
         if scope:
             params["scope"] = scope
         if include_disabled:
             params["include_disabled"] = bool(include_disabled)
+        if role:
+            params["role"] = role
+        if label:
+            params["label"] = label
+        if properties:
+            params["properties"] = dict(properties)
+        if limit is not None:
+            params["limit"] = int(limit)
         result = self._request("ui_elements", params, client)
         rows = [self._element(row) for row in self._rows(result, "elements")]
+        total = result.get("total")
         return {
             "count": int(result.get("count") or len(rows)),
+            "total": int(total) if total is not None else len(rows),
             "window_count": int(result.get("window_count") or 0),
             "elements": rows,
             "source": "live",
