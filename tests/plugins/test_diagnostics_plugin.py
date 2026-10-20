@@ -225,3 +225,35 @@ def test_env_snapshot_has_display_and_gpu_fields() -> None:
     assert "display_server" in env
     assert "rhi_backend" in machine
     assert "gpu" in machine
+
+
+def test_report_preview_is_read_only_code_text_in_a_host_scroll_area(qapp) -> None:
+    """The preview is ``Text(mode="code")`` (read-only) — the same painted
+    buffer ``TextView`` wrapped, with the scroll area now composed by the
+    dialog. Report text and the Copy action must stay identical.
+    """
+    from PySide6.QtGui import QGuiApplication
+
+    from plugins.diagnostics.dialog import DiagnosticsDialog
+    from plugins.diagnostics.report import DiagnosticsReport
+    from sli_ui_toolkit.widgets import SurfaceScrollArea, Text
+
+    text = "diagnostics line\n" * 5
+    report = DiagnosticsReport(payload={"app": {"version": "test"}}, text=text)
+    dialog = DiagnosticsDialog(report, current_language="en")
+    try:
+        dialog.show()
+        qapp.processEvents()
+
+        preview = dialog.preview
+        assert isinstance(preview, Text)
+        assert preview.mode() == "code"
+        assert preview.is_editing() is False
+        assert preview.plain_text() == text
+        assert isinstance(dialog.preview_scroll, SurfaceScrollArea)
+        assert dialog.preview_scroll.widget() is preview
+
+        dialog._copy()
+        assert QGuiApplication.clipboard().text() == text
+    finally:
+        dialog.close()

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import QSize, Qt, QTimer
 from PySide6.QtGui import QGuiApplication, QIcon
 from shared_toolkit.ui.themed_dialog import ThemedDialog
 from PySide6.QtWidgets import (
@@ -10,12 +10,14 @@ from PySide6.QtWidgets import (
 )
 from sli_ui_toolkit.theme import ThemeManager
 from sli_ui_toolkit.managers import scaled_px
+from sli_ui_toolkit.ui.managers import connect_ui_metrics
+from sli_ui_toolkit.ui.managers.ui_metrics import AXIS_SCALE
 from sli_ui_toolkit.widgets import (
     Button,
     ContextMenuAction,
     ContextMenuSeparator,
-    HelpDocumentView,
     OverlayScrollArea,
+    Text,
 )
 
 from plugins.image_properties.layout_geometry import apply_image_properties_dialog_geometry
@@ -33,6 +35,58 @@ from .service import ImageProperties
 #: use time (never at import) and re-resolved on a live ``UiScale`` change.
 _ROOT_MARGIN_PX = 12
 _ROOT_SPACING_PX = 10
+#: Page padding around the property document (``HelpDocumentView``'s root
+#: layout margins: left, top, right, bottom).
+_DOC_PAGE_MARGINS_PX = (20, 16, 20, 24)
+
+
+def _page_margins() -> tuple[int, int, int, int]:
+    left, top, right, bottom = _DOC_PAGE_MARGINS_PX
+    return (
+        scaled_px(left),
+        scaled_px(top),
+        scaled_px(right),
+        scaled_px(bottom),
+    )
+
+
+class _PropertiesDocumentPage(QWidget):
+    """Scroll content host: page padding + the painted ``Text`` document.
+
+    ``HelpDocumentView`` reported its **live width** as ``sizeHint`` and the
+    dialog geometry recipe reads that (``compute_image_properties_dialog_size``
+    → ``_size_hint`` over the scroll content); ``Text`` deliberately reports
+    ``QSize(0, height)`` as a plain widget. The host reproduces the measurable
+    contract while owning the padding the old view laid out itself.
+    """
+
+    def __init__(self, text: Text, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        # Named ``text`` (not ``document``): the store's session "document"
+        # mirror attribute name is contract-reserved for its owner.
+        self.text = text
+        text.setParent(self)
+        self._layout = QVBoxLayout(self)
+        self._layout.setSpacing(0)
+        self._layout.addWidget(text)
+        self._apply_metrics()
+        connect_ui_metrics(
+            self, self._on_metrics_changed, axes=frozenset({AXIS_SCALE})
+        )
+
+    def _apply_metrics(self) -> None:
+        self._layout.setContentsMargins(*_page_margins())
+
+    def _on_metrics_changed(self, *_args: object) -> None:
+        self._apply_metrics()
+        self.updateGeometry()
+        self.text.updateGeometry()
+
+    def sizeHint(self) -> QSize:  # noqa: N802 - Qt API
+        hint = self.text.size_hint_from_content()
+        width = self.width() if self.width() > 1 else hint.width()
+        _, top, _, bottom = _page_margins()
+        return QSize(max(0, width), max(0, hint.height() + top + bottom))
 
 
 class ImagePropertiesDialog(ThemedDialog):
@@ -157,14 +211,17 @@ class ImagePropertiesDialog(ThemedDialog):
         scroll.set_reserve_scrollbar_space(False)
         scroll.set_corner_radius(0)
 
-        self.properties_document = HelpDocumentView(parent=scroll, show_toc=False)
-        self.properties_scroll_content = self.properties_document
+        self.properties_document = Text(mode="document", parent=scroll)
+        self.properties_document.set_panel_fill(True)
         self.properties_document.textContextMenuRequested.connect(
             self._on_text_context_menu
         )
+        self.properties_scroll_content = _PropertiesDocumentPage(
+            self.properties_document, scroll
+        )
         self._render_content()
 
-        scroll.setWidget(self.properties_document)
+        scroll.setWidget(self.properties_scroll_content)
         root.addWidget(scroll, 1)
 
         actions = QWidget(self)

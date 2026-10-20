@@ -152,22 +152,6 @@
       "series": "{n} серий",
       "redundant": "{n} лишних"
     },
-    "profile": {
-      "chip": "Профиль: {profile}",
-      "auto": "авто",
-      "axes": "осей: {n}",
-      "source": {
-        "vlm": "vlm",
-        "heuristic": "эвристика"
-      },
-      "domain": {
-        "auto": "Авто (по режиму)",
-        "document": "Документ",
-        "photo": "Фото",
-        "synthetic": "Синтетика",
-        "mixed": "Смешанный"
-      }
-    },
     "quick_look": {
       "unset_source": "Сбросить",
       "reject": "Отклонить",

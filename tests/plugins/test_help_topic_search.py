@@ -173,11 +173,9 @@ def test_ru_content_match_highlights_real_occurrence(dialog_ru):
         if dialog_ru.nav_widget.item(i).data() == "platform.settings"
     )
     dialog_ru._on_search_result_activated(row_index)
-    canvas = dialog_ru._document._canvas
-    rng = canvas._selection.range()
-    assert rng is not None
-    assert canvas.plain_text()[rng[0] : rng[1]].lower() == "язык"
-    assert not canvas._search_marker.isHidden()
+    # Highlighted through the document selection (the old search marker
+    # widget is gone: Text.scroll_to_text returns the y the host scrolls to).
+    assert dialog_ru._document.selected_plain_text().lower() == "язык"
 
 
 def test_activating_content_match_scrolls_and_highlights(dialog):
@@ -192,14 +190,15 @@ def test_activating_content_match_scrolls_and_highlights(dialog):
     )
     dialog._on_search_result_activated(row_index)
     assert dialog._nav.current_id == "workspace.session_picker"
-    # The first occurrence is highlighted via the document selection and the
-    # canvas exposes a scroll target for the match.
-    canvas = dialog._document._canvas
-    rng = canvas._selection.range()
-    assert rng is not None
-    assert canvas.plain_text()[rng[0] : rng[1]] == needle
-    assert canvas._search_marker is not None
-    assert not canvas._search_marker.isHidden()
+    # The first occurrence is highlighted and the host scroll area is moved to
+    # the document-space y of that fragment.
+    document = dialog._document
+    assert document.selected_plain_text() == needle
+    y = document.scroll_to_text(needle)
+    assert y is not None
+    bar = dialog._scroll.verticalScrollBar()
+    target = dialog._document_scroll_target(y)
+    assert bar.value() == max(bar.minimum(), min(target, bar.maximum()))
 
 
 def test_activating_title_match_does_not_highlight(dialog):
@@ -213,7 +212,7 @@ def test_activating_title_match_does_not_highlight(dialog):
     dialog._on_search_result_activated(row_index)
     assert dialog._nav.current_id == "workspace.image_compare.magnifier"
     # Title match: page opens normally, no content highlight.
-    assert dialog._document._canvas._selection.range() is None
+    assert dialog._document.selected_plain_text() == ""
 
 
 def test_activating_result_pushes_topic_and_keeps_results(dialog):

@@ -1,4 +1,4 @@
-"""Per-domain quality read — the ONE seam that decides which numbers a surface shows.
+"""Per-domain quality read — the primitives whose numbers a surface shows.
 
 Two judgment domains exist (``models.JUDGMENT_DOMAINS``):
 
@@ -7,11 +7,16 @@ Two judgment domains exist (``models.JUDGMENT_DOMAINS``):
 - **AI** — the VLM's own read: the per-axis scorecard on ``item.analysis``
   (``AiAnalysisResult.axes``) and the defect severities it reported.
 
-Every AI/Algorithms-aware surface (quick-look report rows, card dots, artifact
-rows, the Jev rank vector) reads through here, so the domains cannot drift
-apart and the AI domain never silently falls back to detector numbers. This is
-the seam ``plan-gallery-ai-backend-owns-quality-2026-10-16`` introduces; the
-Algorithms domain reads exactly what it did before.
+The seam ``plan-gallery-ai-backend-owns-quality-2026-10-16`` introduced lives
+here; since W3 of ``plan-gallery-analysis-engine-2026-10-20`` the *provenance*
+read path is ``tabs.image_gallery.analysis.read.read_axes``, which wraps the two
+score primitives below into ``AxisValue`` records (producer + status + reason).
+``domain_axis_scores`` stays as the dict view those records back, so a caller
+that only needs ``{axis: score}`` (the Jev vector, tests) keeps one answer.
+
+Each side reads ONLY its own store, so the AI domain never silently falls back
+to detector numbers and vice versa. The Algorithms domain reads exactly what it
+did before.
 """
 
 from __future__ import annotations
@@ -45,7 +50,8 @@ def normalize_domain(domain) -> str:
 
 def ai_axis_scores(item) -> dict[str, int]:
     """The VLM's per-axis scorecard (``{axis_id: 0-100}``) for *item*; {} when
-    unanalyzed. Reads ONLY ``item.analysis``, never the detectors."""
+    unanalyzed. Reads ONLY ``item.analysis``, never the detectors. The AI
+    primitive behind ``analysis.read.read_axes``."""
     try:
         from tabs.image_gallery.models import ai_scored_axes
 
@@ -56,7 +62,8 @@ def ai_axis_scores(item) -> dict[str, int]:
 
 def detector_axis_scores(item) -> dict[str, int]:
     """The local detectors' quality read (``{axis_id: 0-100}``) for *item*; {}
-    when nothing measured. Reads ONLY ``item.metrics``, never the VLM."""
+    when nothing measured. Reads ONLY ``item.metrics``, never the VLM. The
+    Algorithms primitive behind ``analysis.read.read_axes``."""
     try:
         from tabs.image_gallery.services.metric_scores import measured_scores
 
@@ -69,11 +76,21 @@ def detector_axis_scores(item) -> dict[str, int]:
 
 
 def domain_axis_scores(item, *, domain) -> dict[str, int]:
-    """The quality read for *domain*: the VLM scorecard on AI, the detectors on
-    Algorithms."""
-    if normalize_domain(domain) == AI_DOMAIN:
-        return ai_axis_scores(item)
-    return detector_axis_scores(item)
+    """The quality read for *domain* as ``{axis_id: 0-100}``.
+
+    Compatibility view over ``tabs.image_gallery.analysis.read.read_axes``: the
+    per-axis records are the read path (they carry producer/status/reason), and
+    this dict keeps the callers that only need a number (the Jev vector). Only
+    ``status == "ok"`` contributes — a gap has no number, so it is absent rather
+    than ``0`` (a fabricated value).
+    """
+    from tabs.image_gallery.analysis.read import read_axes
+
+    return {
+        record.axis: int(record.value)
+        for record in read_axes(item, domain=domain)
+        if record.status == "ok"
+    }
 
 
 def ai_artifact_severities(item) -> dict[str, str]:

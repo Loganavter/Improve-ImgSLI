@@ -2,19 +2,27 @@
 
 Shows exactly what will be copied / saved / attached to an issue, with
 ``Copy`` / ``Save…`` / ``Open issue`` / ``Close`` actions. Built on the
-toolkit painter pipeline (``ThemedDialog`` + toolkit ``Button`` / ``Text`` /
-``TextView``) — no QSS, no manual theming.
+toolkit painter pipeline (``ThemedDialog`` + toolkit ``Button`` / ``Text``) —
+no QSS, no manual theming. The report itself is a read-only
+``Text(mode="code")``; the host ``SurfaceScrollArea`` scrolls it (``Text``
+never scrolls itself).
 """
 
 from __future__ import annotations
 
 from typing import Any, Callable
 
-from PySide6.QtCore import QTimer, QUrl
+from PySide6.QtCore import Qt, QTimer, QUrl
 from PySide6.QtGui import QDesktopServices, QGuiApplication, QIcon
-from PySide6.QtWidgets import QFileDialog, QGridLayout, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QFileDialog,
+    QGridLayout,
+    QSizePolicy,
+    QVBoxLayout,
+    QWidget,
+)
 from sli_ui_toolkit.managers import scaled_px
-from sli_ui_toolkit.widgets import Button, Text, TextView
+from sli_ui_toolkit.widgets import Button, SurfaceScrollArea, Text
 
 from resources.translations import get_current_language
 from resources.translations import tr as app_tr
@@ -109,9 +117,25 @@ class DiagnosticsDialog(ThemedDialog):
         )
         root.addWidget(self.preview_label)
 
-        self.preview = TextView(self.report.text)
-        self.preview.exit_edit_mode()
-        root.addWidget(self.preview, 1)
+        self.preview = Text(self.report.text, mode="code")
+        self.preview.setObjectName("diagnostics-report")
+        # One keyboard stop for the whole report composite (the old
+        # ``TextView`` was a focusable scroll area around this engine): the
+        # row section needs a focus-capable control it can land on.
+        self.preview.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        # Read-only painted buffer: the host scroll area owns scrolling and
+        # the surface fill (old ``TextView`` was a QScrollArea wrapping the
+        # same engine — the composition is now explicit).
+        self.preview_scroll = SurfaceScrollArea(self)
+        self.preview_scroll.setMinimumSize(0, 1)
+        # Keyboard ownership stays with the report control declared in the
+        # dialog's navigation row (the old ``TextView`` was both at once).
+        self.preview_scroll.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.preview_scroll.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
+        )
+        self.preview_scroll.setWidget(self.preview)
+        root.addWidget(self.preview_scroll, 1)
 
         self._init_actions(root)
 

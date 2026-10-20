@@ -10,7 +10,7 @@ from resources.translations import tr
 from sli_ui_toolkit.widgets import (
     ContextMenuAction,
     ContextMenuSeparator,
-    HelpDocumentView,
+    Text,
 )
 from ui.context_menu.manager import open_context_menu_entries
 from ui.icon_manager import AppIcon, themed_icon
@@ -24,11 +24,17 @@ def _tr_help(key: str, fallback: str, language: str) -> str:
 def open_help_text_context_menu(
     *,
     dialog: QWidget,
-    document: HelpDocumentView,
+    document: Text,
     global_pos: QPoint,
     language: str,
+    source_markdown: str = "",
 ) -> None:
-    """Open the standard in-app context menu for help body text."""
+    """Open the standard in-app context menu for help body text.
+
+    ``document`` is the host's ``Text(mode="document")``. The page source is
+    host state: ``Text.set_blocks`` clears ``source_markdown`` by design, so
+    copy-as-Markdown receives the markdown the dialog rendered from.
+    """
     has_selection = bool(document.selected_plain_text().strip())
     entries: list[ContextMenuAction | ContextMenuSeparator] = [
         ContextMenuAction(
@@ -67,7 +73,7 @@ def open_help_text_context_menu(
         elif action_id == "help.text.select_all":
             document.select_all_text()
         elif action_id == "help.text.copy_markdown":
-            text = document.selected_markdown()
+            text = document.selected_markdown(source_markdown)
             if text:
                 QGuiApplication.clipboard().setText(text)
 

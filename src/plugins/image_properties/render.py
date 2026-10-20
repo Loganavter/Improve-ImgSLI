@@ -1,9 +1,9 @@
-"""Render ImageProperties as HelpDocumentView blocks (unified text canvas).
+"""Render ImageProperties as typed help blocks for the painted document.
 
 Mirrors the help viewer's approach (``plugins/help/dialog.py``): one
-``HelpDocumentBodyCanvas`` renders the whole page and owns text selection
+``Text(mode="document")`` renders the whole page and owns text selection
 across sections, instead of one independently-selectable ``QLabel`` per row.
-Rows render as a ``TableBlock`` — a real bordered table on the canvas, not
+Rows render as a ``TableBlock`` — a real bordered table in the document, not
 just tab-aligned columns.
 """
 
@@ -27,7 +27,7 @@ Translate = Callable[[str, str], str]
 def build_property_blocks(
     properties: ImageProperties, translate: Translate
 ) -> tuple[HelpBlock, ...]:
-    """Convert properties sections/rows into typed blocks for ``HelpDocumentView``.
+    """Convert properties sections/rows into typed blocks for ``Text.set_blocks``.
 
     Row values are carried as plain ``InlineSpan`` text, never re-parsed as
     markdown — file paths / EXIF strings containing ``*``, ``[``, `` ` `` etc.

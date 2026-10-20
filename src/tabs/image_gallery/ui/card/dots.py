@@ -232,34 +232,31 @@ def metric_dots_for_item(
     (registry report order). ``profile`` is the ACTIVE metric profile (any
     object with ``.axis_ids``); it wins over *mode* when given, so the dots
     show exactly the axes the rank and the AI scorecard use. ``profile=None``
-    reproduces the mode mapping. Per-dot value = the CURRENT domain read
-    (``quality_read.domain_axis_scores``, 0–100; AI scorecard vs local
-    detectors). Color = ``metric_scores.score_band`` mapped onto the existing
-    severity tokens; an unscored axis gets the muted neutral dot.
+    reproduces the mode mapping. Per-dot value = the per-axis ``AxisValue`` from
+    ``analysis.read.read_axes`` (0–100; AI scorecard vs local detectors), so the
+    number carries its own producer. Color = ``metric_scores.score_band`` mapped
+    onto the existing severity tokens; an axis the current domain did not answer
+    is a ``status="gap"`` record and keeps the muted neutral dot it always had
+    (the tooltip reads "—", so the gap still reads as a gap).
 
     Returns ``(colors, infos)`` where ``infos`` is the parallel tuple of
     ``(localized_label, score | None)`` used by the hover tooltip.
     """
     try:
-        from tabs.image_gallery.services import quality_read as _quality_read
+        from tabs.image_gallery.analysis.read import read_axes
         from tabs.image_gallery.services.metric_scores import score_band
         from tabs.image_gallery.services.rank_fusion import measured_axes_for
 
         axes = measured_axes_for(mode, profile=profile)
-        scores = _quality_read.domain_axis_scores(item, domain=domain)
+        records = read_axes(item, domain=domain, axes=axes)
     except Exception:
         return (), ()
     colors: list[object] = []
     infos: list[tuple[str, int | None]] = []
-    for axis_id in axes:
+    for record in records:
+        axis_id = record.axis
         label = _metric_axis_label(str(axis_id), translate)
-        score: int | None = None
-        try:
-            raw_score = scores.get(axis_id)
-            if raw_score is not None:
-                score = int(raw_score)
-        except Exception:
-            score = None
+        score: int | None = int(record.value) if record.status == "ok" else None
         if score is None:
             colors.append(_neutral_color())
             infos.append((label, None))

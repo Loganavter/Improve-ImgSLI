@@ -116,10 +116,10 @@ def test_line_edit_menu_filter_matches_painted_custom_line_edit(qapp, monkeypatc
 
     from ui.context_menu import line_edit_menu as line_edit_menu_module
 
-    opened: list[object] = []
+    opened: list[tuple[object, object]] = []
 
-    def _fake_open(source_widget, global_pos, entries, key, on_triggered):
-        opened.append(source_widget)
+    def _fake_open(source_widget, global_pos, entries, key, on_triggered, **kwargs):
+        opened.append((source_widget, kwargs.get("menu_parent")))
 
     monkeypatch.setattr(
         line_edit_menu_module, "open_context_menu_entries", _fake_open
@@ -136,7 +136,9 @@ def test_line_edit_menu_filter_matches_painted_custom_line_edit(qapp, monkeypatc
     handled = event_filter.eventFilter(widget, event)
 
     assert handled is True
-    assert opened == [widget]
+    # The menu is parented to the enclosing window, not the field itself:
+    # an in-window surface is clipped to its parent's rect (line-edit height).
+    assert opened == [(widget, widget.window())]
 
 
 def test_popup_fade_snapshot_captured_after_show(qtbot):
@@ -240,3 +242,120 @@ def test_submenu_rows_get_the_scaled_ui_font(qtbot):
             )
     finally:
         UiScale.get_instance().set_factor(1.0)
+
+
+def _open_line_edit_menu(field, event_filter):
+    """Open the production line-edit menu; returns the live ContextMenu.
+
+    Driven through the app-wide filter (the real opener) instead of calling
+    ``open_context_menu_entries`` here: the filter owns the ``menu_parent``
+    decision these tests guard.
+    """
+    from PySide6.QtCore import QPoint
+
+    from ui.context_menu.manager import get_context_menu_manager
+
+    event_filter._open_menu(field, field.mapToGlobal(QPoint(4, field.height())))
+    return get_context_menu_manager()._active_menu
+
+
+def _assert_fully_inside_parent(menu):
+    from PySide6.QtCore import QRect
+
+    parent = menu.parentWidget()
+    assert parent is not None, "the menu must have a parent surface"
+    geometry = QRect(menu.geometry())
+    visible = geometry.intersected(QRect(parent.rect()))
+    assert visible == geometry, (
+        f"menu {geometry.getRect()} is clipped by its parent "
+        f"{type(parent).__name__} {parent.rect().getRect()}: only "
+        f"{visible.getRect()} would be painted"
+    )
+
+
+@pytest.fixture
+def line_edit_filter(qapp):
+    """The real app-wide line-edit filter, with the overlay resolver armed."""
+    from sli_ui_toolkit.config import configure_toolkit
+
+    from shared_toolkit.ui.overlay_layer import get_overlay_layer
+    from ui.context_menu import line_edit_menu as line_edit_menu_module
+
+    # conftest resets configure_toolkit per test; re-arm the resolver that
+    # bootstrap installs so in-window surfaces resolve a host like live.
+    configure_toolkit(overlay_resolver=get_overlay_layer)
+    return line_edit_menu_module._LineEditContextMenuFilter(None)
+
+
+def test_line_edit_menu_in_dialog_is_not_clipped(qtbot, line_edit_filter):
+    """The line-edit menu inside a dialog must not be clipped to the field.
+
+    Regression (2026-10-17): the menu was parented to its source widget — the
+    line edit. In-window menus are plain child widgets, and a dialog has no
+    ``overlay_layer`` for ``attach_in_window_widget`` to re-parent onto, so the
+    menu stayed a child of the ~25 px field and Qt painted only a sliver of it
+    (measured: a 177 px menu showed 21 px). Parenting it to the enclosing
+    window is the fix; this asserts painted geometry, not ``isVisible()``.
+    """
+    from PySide6.QtWidgets import QDialog, QLineEdit, QVBoxLayout
+
+    dialog = QDialog()
+    dialog.resize(560, 360)
+    layout = QVBoxLayout(dialog)
+    layout.addStretch(1)
+    field = QLineEdit("value")
+    layout.addWidget(field)  # bottom-most field: below it there is no room
+    qtbot.addWidget(dialog)
+    dialog.show()
+    qtbot.waitExposed(dialog)
+    field.setFocus()
+
+    menu = _open_line_edit_menu(field, line_edit_filter)
+    assert menu is not None, "the line-edit filter opened no menu"
+    try:
+        assert menu.parentWidget() is dialog, (
+            "an in-window menu inside a dialog must be parented to the dialog "
+            f"window (got {type(menu.parentWidget()).__name__}): a dialog has no "
+            "overlay layer, so a line-edit parent clips the menu to the field"
+        )
+        assert menu.height() > field.height(), (
+            f"menu height {menu.height()}px is not taller than the "
+            f"{field.height()}px field — the geometry assert would be vacuous"
+        )
+        _assert_fully_inside_parent(menu)
+    finally:
+        menu.hide()
+
+
+def test_line_edit_menu_in_main_window_attaches_to_overlay(qtbot, line_edit_filter):
+    """Positive control: the window parent must not defeat the overlay path.
+
+    The main window owns an ``OverlayLayer``, so the menu must still be
+    re-parented onto that host and sit fully inside it — the dialog fix must
+    not turn the overlay path into a plain window child that other flyouts
+    can cover.
+    """
+    from PySide6.QtWidgets import QLineEdit, QVBoxLayout
+
+    from shared_toolkit.ui.overlay_layer import OverlayLayer
+
+    host = QWidget()
+    host.resize(700, 500)
+    host.overlay_layer = OverlayLayer(host)
+    layout = QVBoxLayout(host)
+    field = QLineEdit("toolbar field")
+    layout.addWidget(field)
+    layout.addStretch(1)
+    qtbot.addWidget(host)
+    host.show()
+    qtbot.waitExposed(host)
+    field.setFocus()
+
+    menu = _open_line_edit_menu(field, line_edit_filter)
+    assert menu is not None, "the line-edit filter opened no menu"
+    try:
+        assert menu.overlay_layer is host.overlay_layer
+        assert menu.parentWidget() is host.overlay_layer.host
+        _assert_fully_inside_parent(menu)
+    finally:
+        menu.hide()

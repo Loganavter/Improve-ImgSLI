@@ -15,6 +15,8 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from PySide6.QtGui import QPixmap
 
+    from engine.analysis.contracts import AxisValue
+
     # TYPE_CHECKING-only: ``metric_profile`` imports this module at runtime
     # (it reads ``MetricKind`` from the registry), so a runtime import here
     # would be a cycle. The annotation is lazy (``from __future__ annotations``).
@@ -254,6 +256,14 @@ class GalleryItem:
     analysis_status: AnalysisStatus = AnalysisStatus.NOT_ANALYZED
     analysis: AiAnalysisResult | None = None
     analysis_error: str | None = None
+    #: Per-axis records of the analysis engine (``analysis/read.py``), copied
+    #: from the proxy batch entry's ``"analysis"`` key by
+    #: ``use_cases/proxy_pass``. Written ONLY on the flag-ON path
+    #: (``IMGSLI_ANALYSIS_ENGINE=1``); empty means "no engine records", and the
+    #: read path keeps its legacy domain read. Transient: never persisted to
+    #: the session slot and never sent anywhere
+    #: (plan-gallery-analysis-engine-2026-10-20 W9).
+    analysis_records: tuple[AxisValue, ...] = ()
     series_id: str | None = None
     rank: int | None = None
     #: Which ranker produced ``rank`` — "fusion" (Algorithms) | "jev" (AI) |
@@ -342,13 +352,13 @@ class GalleryState:
     #: nothing derived yet → consumers fall back to the mode mapping
     #: (``use_cases.profile_select.active_profile``), i.e. the pre-P1 behaviour.
     metric_profile: MetricProfile | None = None
-    #: The explicit named metric **domain** this profile is pinned to (P4):
-    #: one of ``services.metric_profile.DOMAINS``, or ``""`` = auto (derive it
-    #: from the mode/measured stats). A projection of the controller's
-    #: ``_metric_domain`` authority — ``state`` is replaced by
-    #: open_folder/append/clear_to_empty, so the choice itself must NOT live
-    #: here (same rationale as ``judgment_domain`` / ``rank_domain``).
-    metric_domain: str = ""
     # Stage 3 VLM caches (mirrors disk cache in vlm_cache)
     tie_breaks: dict[str, TieBreakResult] = field(default_factory=dict)
     briefs: dict[str, CompareBrief] = field(default_factory=dict)
+    #: Per-item analysis-engine records, keyed by the item's path string — the
+    #: dark launch of ``plan-gallery-analysis-engine-2026-10-20`` (W7). Each
+    #: value is the producer records of the local plan in plan order. Written
+    #: ONLY by the flag-ON proxy hook (``IMGSLI_ANALYSIS_ENGINE=1``); empty in
+    #: the flag-off path, unread by any surface until the read-path wave, and
+    #: transient (never persisted to the session slot).
+    analysis: dict[str, tuple[AxisValue, ...]] = field(default_factory=dict)

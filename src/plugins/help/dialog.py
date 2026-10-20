@@ -1,12 +1,27 @@
-"""Hierarchical help dialog: hubs, back bar, HelpDocumentView pages."""
+"""Hierarchical help dialog: hubs, back bar, host-composed document pages.
+
+The page body is ``Text(mode="document")``; the scroll area, the "On this
+page" TOC card and the figure lightbox are host-owned chrome around it (the
+toolkit ``Text`` never scrolls itself and owns no TOC/lightbox — see
+``sli-ui-toolkit docs/dev/TEXT_UNIFICATION.md`` §4/§7).
+"""
 # Audit-Meta: pattern=qdialog-wiring reason="one Help QDialog — HelpDocumentView + search wiring"
 
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 
-from PySide6.QtCore import QEvent, QObject, QSize, QTimer, Qt, QUrl
-from PySide6.QtGui import QDesktopServices, QMouseEvent
+from PySide6.QtCore import QEvent, QObject, QPoint, QSize, QTimer, Qt, QUrl, Signal
+from PySide6.QtGui import (
+    QColor,
+    QDesktopServices,
+    QFont,
+    QMouseEvent,
+    QPainter,
+    QPen,
+    QPixmap,
+)
 from PySide6.QtWidgets import (
     QApplication,
     QSizePolicy,
@@ -41,18 +56,33 @@ from shared_toolkit.ui.layout_sizing import (
 from shared_toolkit.ui.overlay_layer import OverlayLayer
 from shared_toolkit.ui.themed_dialog import ThemedDialog
 from sli_ui_toolkit.managers import scaled_px
+from sli_ui_toolkit.ui.managers import connect_ui_metrics
+from sli_ui_toolkit.ui.managers.ui_metrics import AXIS_SCALE
+from sli_ui_toolkit.ui.managers.ui_font import ui_font
+from sli_ui_toolkit.ui.widgets.composite.help_document.image_lightbox import (
+    HelpImageLightbox,
+)
 from sli_ui_toolkit.ui.widgets.composite.help_sections import (
     normalize_help_language,
     toc_title_for_language,
 )
+from sli_ui_toolkit.ui.widgets.composite.text_view.markdown import (
+    HeadingBlock,
+    HelpBlock,
+    collect_heading_anchors,
+    parse_help_blocks,
+)
+from sli_ui_toolkit.ui.widgets.helpers import unregister_hover_widget
 from sli_ui_toolkit.widgets import (
+    Button,
     CustomLineEdit,
-    HelpDocumentView,
     SidebarDialogShell,
     SurfaceScrollArea,
+    Text,
 )
 from ui.icon_manager import AppIcon, get_app_icon
 from ui.layout_spacing import sidebar_header_host
+from ui.theming import try_resolve_theme_color
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -71,6 +101,177 @@ def _current_theme_name() -> str:
     except Exception:  # never let theming break help rendering
         logger.debug("Help: theme manager unavailable, using light asset variants")
         return "light"
+
+
+#: "On this page" card metrics (design px, resolved through ``scaled_px``).
+_TOC_TITLE_PX = 13
+_TOC_LINK_PX = 14
+_TOC_LINK_H = 20
+_TOC_PAD_X = 12
+_TOC_PAD_Y = 10
+_TOC_SPACING = 4
+_TOC_RADIUS = 8
+#: Page padding around the document body + TOC (was ``HelpDocumentView``'s
+#: root layout: 20/16/20/24 with 10 px between TOC and body).
+_DOC_PAGE_MARGIN_X = 20
+_DOC_PAGE_MARGIN_TOP = 16
+_DOC_PAGE_MARGIN_BOTTOM = 24
+_DOC_PAGE_SPACING = 10
+
+
+def _theme_manager():
+    from sli_ui_toolkit.theme import ThemeManager
+
+    return ThemeManager.get_instance()
+
+
+def _toc_accent_color() -> QColor | None:
+    """Accent token for TOC links (``None`` when the palette has no accent)."""
+    color = try_resolve_theme_color(_theme_manager(), "accent")
+    return QColor(color) if color is not None and color.isValid() else None
+
+
+def _toc_border_color() -> QColor | None:
+    """TOC card border: ``help.separator`` with a ``dialog.border`` fallback."""
+    manager = _theme_manager()
+    color = try_resolve_theme_color(manager, "help.separator")
+    if color is None or not color.isValid():
+        color = try_resolve_theme_color(manager, "dialog.border")
+    return QColor(color) if color is not None and color.isValid() else None
+
+
+def _toc_link_button(title: str, parent: QWidget) -> Button:
+    """One TOC row: ghost ``Button`` (painter pipeline) painted as an accent link.
+
+    ``HelpDocumentView``'s private ``_LinkLabel`` (a ``Label`` subclass with a
+    hand-painted focus ring) is gone with the old host; a ghost button already
+    carries hover/pressed/focus/Return-Space activation from the toolkit.
+    """
+    button = Button(
+        text=title,
+        variant="ghost",
+        # ``size`` is design px already — the toolkit applies the scale factor.
+        size=(0, _TOC_LINK_H),
+        content_padding=(_TOC_PAD_X, 0, _TOC_PAD_X, 0),
+        content_align=Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+        parent=parent,
+    )
+    button.setCursor(Qt.CursorShape.PointingHandCursor)
+    button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+    font = QFont(ui_font())
+    font.setPixelSize(scaled_px(_TOC_LINK_PX))
+    button.setFont(font)
+    _apply_toc_link_color(button)
+    return button
+
+
+def _apply_toc_link_color(button: Button) -> None:
+    accent = _toc_accent_color()
+    if accent is not None:
+        button.setForegroundColor(accent)
+
+
+class _HelpToc(QWidget):
+    """Host-owned "On this page" card (border painted, never QSS).
+
+    Replaces the TOC frame ``HelpDocumentView`` used to build internally: the
+    toolkit ``Text`` deliberately exposes no TOC surface (TEXT_UNIFICATION §4),
+    so the list, its title and its chrome live here. ``anchorActivated`` carries
+    the heading id; the dialog maps it through ``Text.scroll_to_anchor``.
+    """
+
+    anchorActivated = Signal(str)
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setObjectName("HelpDocumentToc")
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
+        self._title_text = ""
+        self._items: tuple[tuple[str, str], ...] = ()
+        self._rows: list[Button] = []
+        self._layout = QVBoxLayout(self)
+        self._layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+        self._apply_metrics()
+        self._title = Text(
+            "",
+            mode="plain",
+            variant="caption",
+            bold=True,
+            pixel_size=_TOC_TITLE_PX,
+            parent=self,
+        )
+        self._layout.addWidget(self._title, 0, Qt.AlignmentFlag.AlignTop)
+        self.hide()
+        _theme_manager().theme_changed.connect(self._on_theme_changed)
+        connect_ui_metrics(
+            self, self._on_metrics_changed, axes=frozenset({AXIS_SCALE})
+        )
+
+    # -- geometry ----------------------------------------------------------
+
+    def _apply_metrics(self) -> None:
+        self._layout.setContentsMargins(
+            scaled_px(_TOC_PAD_X),
+            scaled_px(_TOC_PAD_Y),
+            scaled_px(_TOC_PAD_X),
+            scaled_px(_TOC_PAD_Y),
+        )
+        self._layout.setSpacing(scaled_px(_TOC_SPACING))
+
+    def _on_metrics_changed(self, *_args: object) -> None:
+        # Row height/font are design px resolved at build time; rebuild.
+        self.set_items(self._title_text, self._items)
+        self._apply_metrics()
+        self.updateGeometry()
+
+    def _on_theme_changed(self, *_args: object) -> None:
+        for row in self._rows:
+            _apply_toc_link_color(row)
+        self.update()
+
+    # -- content -----------------------------------------------------------
+
+    def set_items(
+        self, title: str, items: tuple[tuple[str, str], ...]
+    ) -> None:
+        """Rebuild the card; hidden when there are fewer than two sections."""
+        self._title_text = str(title)
+        self._items = tuple(items)
+        self._title.setText(self._title_text)
+        self._dispose_rows()
+        for anchor, text in self._items:
+            row = _toc_link_button(text, self)
+            row.clicked.connect(lambda a=anchor: self.anchorActivated.emit(a))
+            self._layout.addWidget(row, 0, Qt.AlignmentFlag.AlignTop)
+            self._rows.append(row)
+        self.setVisible(len(self._items) >= 2)
+
+    def _dispose_rows(self) -> None:
+        for row in self._rows:
+            try:
+                unregister_hover_widget(row)
+            except Exception:
+                pass
+            row.hide()
+            row.setParent(None)
+            row.deleteLater()
+        self._rows = []
+
+    # -- chrome ------------------------------------------------------------
+
+    def paintEvent(self, event) -> None:  # noqa: N802 - Qt API
+        del event
+        color = _toc_border_color()
+        if color is None:
+            return
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.setPen(QPen(color, 1))
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawRoundedRect(
+            self.rect().adjusted(0, 0, -1, -1), _TOC_RADIUS, _TOC_RADIUS
+        )
+        painter.end()
 
 
 class _HelpMouseNavFilter(QObject):
@@ -124,6 +325,14 @@ class HelpDialog(ThemedDialog):
         self._pending_video_url: str | None = None
         self._pending_learn_more_url: str | None = None
         self._current_body_file = None
+        #: Host-owned TOC title (retranslated on language change; the toolkit
+        #: ``Text`` deliberately owns no TOC — TEXT_UNIFICATION §4).
+        self._toc_title = toc_title_for_language(current_language)
+        #: Markdown the current page was rendered from (the host keeps it: the
+        #: ``Text`` facade clears ``source_markdown`` on ``set_blocks``, and
+        #: copy-as-Markdown must still map a selection back to the page source).
+        self._document_source_markdown = ""
+        self._lightbox: HelpImageLightbox | None = None
         self._syncing_sidebar = False
         self._search_mode = False
         self.overlay_layer = OverlayLayer(self)
@@ -530,20 +739,42 @@ class HelpDialog(ThemedDialog):
 
         self._hub_page = HelpHubPage(self._content_host)
         self._hub_page.childActivated.connect(self._open_node)
-        self._document = HelpDocumentView(
-            parent=self._content_host,
+        # Host-owned document page: page padding + TOC card + the painted text
+        # body. The toolkit ``Text`` never scrolls itself (the outer
+        # ``SurfaceScrollArea`` does) and owns no TOC/lightbox chrome.
+        self._document_page = QWidget(self._content_host)
+        self._document_page.setObjectName("help-document-page")
+        self._document_page.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
+        )
+        page_layout = QVBoxLayout(self._document_page)
+        page_layout.setContentsMargins(0, 0, 0, 0)
+        page_layout.setSpacing(0)
+        self._document_page_layout = page_layout
+        self._apply_document_page_metrics()
+
+        self._toc = _HelpToc(self._document_page)
+        self._toc.anchorActivated.connect(self._scroll_to_anchor)
+        self._document = Text(
+            mode="document",
+            parent=self._document_page,
             resolve_asset=self._resolve_asset,
             open_external_links=False,
-            show_toc=True,
-            toc_title=toc_title_for_language(self.current_language),
         )
+        self._document.set_panel_fill(True)
         self._document.linkActivated.connect(self._on_document_link)
+        self._document.imageActivated.connect(self._on_document_image)
         self._document.textContextMenuRequested.connect(self._on_text_context_menu)
+        page_layout.addWidget(self._toc, 0, Qt.AlignmentFlag.AlignTop)
+        page_layout.addWidget(self._document, 1)
+        connect_ui_metrics(
+            self, self._on_document_page_metrics_changed, axes=frozenset({AXIS_SCALE})
+        )
 
         self._content_layout.addWidget(self._hub_page)
-        self._content_layout.addWidget(self._document)
+        self._content_layout.addWidget(self._document_page)
         self._hub_page.hide()
-        self._document.hide()
+        self._hide_document()
 
         self.shell.content_layout.addWidget(content_col, 1)
         root.addWidget(self.shell, 1)
@@ -631,7 +862,7 @@ class HelpDialog(ThemedDialog):
     def update_language(self, new_language: str) -> None:
         self.current_language = new_language
         self.setWindowTitle(tr("help.help", language=self.current_language))
-        self._document.set_toc_title(toc_title_for_language(self.current_language))
+        self._toc_title = toc_title_for_language(self.current_language)
         self._search_field.setPlaceholderText(
             tr("help.search_placeholder", language=self.current_language)
         )
@@ -665,9 +896,7 @@ class HelpDialog(ThemedDialog):
     def _render_missing_page(self, slug: str) -> None:
         """Web-canon 404: render a placeholder without touching the nav stack."""
         self._current_body_file = None
-        self._document.set_markdown(f"## Missing page\n\nNo help topic `{slug}`.\n")
-        self._document.show()
-        self._hub_page.hide()
+        self._render_document(f"## Missing page\n\nNo help topic `{slug}`.\n")
 
     def _open_node(self, node_id: str) -> None:
         self._pending_anchor = None
@@ -787,8 +1016,7 @@ class HelpDialog(ThemedDialog):
             children = self._tree.children_of(node.node_id)
             self._hub_page.set_hub(node, children)
             self._hub_page.show()
-            self._document.hide()
-            self._document.clear()
+            self._hide_document()
             self._current_body_file = None
         else:
             body = node.body or ""
@@ -809,9 +1037,7 @@ class HelpDialog(ThemedDialog):
                 extra_parts.append(f"[Learn more]({self._pending_learn_more_url})")
             if extra_parts:
                 md = md.rstrip() + "\n\n" + " — ".join(extra_parts) + "\n"
-            self._document.set_markdown(md)
-            self._document.show()
-            self._hub_page.hide()
+            self._render_document(md)
             if self._pending_anchor:
                 anchor = self._pending_anchor
                 self._pending_anchor = None
@@ -895,10 +1121,108 @@ class HelpDialog(ThemedDialog):
         except Exception:
             pass
 
+    # ---- document page (host-owned chrome around Text) ----
+
+    def _apply_document_page_metrics(self) -> None:
+        """Page padding in design px, re-resolved on a live UI-scale change."""
+        self._document_page_layout.setContentsMargins(
+            scaled_px(_DOC_PAGE_MARGIN_X),
+            scaled_px(_DOC_PAGE_MARGIN_TOP),
+            scaled_px(_DOC_PAGE_MARGIN_X),
+            scaled_px(_DOC_PAGE_MARGIN_BOTTOM),
+        )
+        self._document_page_layout.setSpacing(scaled_px(_DOC_PAGE_SPACING))
+
+    def _on_document_page_metrics_changed(self, *_args: object) -> None:
+        self._apply_document_page_metrics()
+        self._document_page.updateGeometry()
+        self._document.updateGeometry()
+
+    @staticmethod
+    def _toc_items(blocks: tuple[HelpBlock, ...]) -> tuple[tuple[str, str], ...]:
+        """``(anchor, title)`` for the page's ``###`` sections (the old rule)."""
+        return tuple(
+            (anchor, title)
+            for anchor, title in collect_heading_anchors(blocks)
+            if any(
+                isinstance(block, HeadingBlock)
+                and block.level == 3
+                and block.anchor == anchor
+                for block in blocks
+            )
+        )
+
+    def _render_document(self, markdown: str) -> None:
+        """Render one page: parse once, feed ``Text`` blocks + the host TOC."""
+        self._document_source_markdown = markdown
+        blocks = parse_help_blocks(markdown)
+        self._document.set_blocks(blocks)
+        self._toc.set_items(self._toc_title, self._toc_items(blocks))
+        self._show_document()
+
+    def _show_document(self) -> None:
+        self._document_page.show()
+        self._document.show()
+        self._hub_page.hide()
+
+    def _hide_document(self) -> None:
+        # Clear the painted page on hub navigation (the old host cleared its
+        # canvas too); the next page re-renders blocks + TOC.
+        self._document.set_blocks(())
+        self._toc.set_items(self._toc_title, ())
+        self._document.hide()
+        self._document_page.hide()
+
+    def _document_scroll_target(self, y: int) -> int:
+        """Scroll-area value that puts document-space ``y`` at the viewport top.
+
+        ``Text`` reports content-space y; the body sits below the page padding
+        and the TOC card inside the same scroll content, so the host maps it
+        through the page (the old host's ``ensureWidgetVisible(marker, 0, 24)``
+        did the same mapping implicitly).
+        """
+        content_y = self._document.mapTo(self._content_host, QPoint(0, int(y))).y()
+        return max(0, content_y)
+
+    def _scroll_to_document_y(self, y: int) -> None:
+        """Scroll the outer area so document-space ``y`` lands at the top."""
+        bar = self._scroll.verticalScrollBar()
+        bar.setValue(self._document_scroll_target(y))
+
     def _scroll_to_anchor(self, anchor: str) -> None:
-        widget = self._document.scroll_to_anchor(anchor)
-        if widget is not None:
-            self._scroll.ensureWidgetVisible(widget, 0, 24)
+        # ``Text.scroll_to_anchor`` returns a widget-space y (the old host
+        # returned a QWidget for ``ensureWidgetVisible`` — that contract is
+        # gone by design; the host scroll area owns scrolling).
+        y = self._document.scroll_to_anchor(anchor)
+        if y is not None:
+            self._scroll_to_document_y(y)
+
+    def _on_document_image(self, path: str) -> None:
+        """Host-owned lightbox (``Text`` must never open a popup itself)."""
+        pixmap = self._load_full_pixmap(path)
+        if pixmap is None or pixmap.isNull():
+            return
+        host = self.window() if self.window() is not None else self
+        if self._lightbox is None or self._lightbox.parent() is not host:
+            if self._lightbox is not None:
+                self._lightbox.hide()
+                self._lightbox.deleteLater()
+            self._lightbox = HelpImageLightbox(host)
+        self._lightbox.show_pixmap(pixmap)
+
+    def _load_full_pixmap(self, path: str) -> QPixmap | None:
+        resolved: str | Path | QPixmap | None = path
+        if self._resolve_asset is not None:
+            resolved = self._resolve_asset(path)
+        if resolved is None:
+            return None
+        if isinstance(resolved, QPixmap):
+            return resolved
+        file_path = Path(resolved)
+        if not file_path.is_file():
+            return None
+        pix = QPixmap(str(file_path))
+        return pix if not pix.isNull() else None
 
     def _sync_sidebar(self) -> None:
         if self._search_mode:
@@ -940,6 +1264,7 @@ class HelpDialog(ThemedDialog):
             document=self._document,
             global_pos=global_pos,
             language=self.current_language,
+            source_markdown=self._document_source_markdown,
         )
 
     def _on_document_link(self, href: str) -> None:

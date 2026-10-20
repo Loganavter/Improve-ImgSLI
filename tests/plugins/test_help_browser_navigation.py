@@ -1,13 +1,15 @@
-"""Hierarchical HelpDialog navigation and HelpDocumentView wiring."""
+"""Hierarchical HelpDialog navigation and the host-composed document page."""
 
 from __future__ import annotations
 
 import pytest
+from PySide6.QtCore import QPointF, Qt
+from PySide6.QtGui import QMouseEvent
 
 from plugins.help.dialog import HelpDialog
 from plugins.help.plugin import HelpPlugin
 from plugins.help.tree import clear_help_tree_cache
-from sli_ui_toolkit.widgets import SurfaceScrollArea
+from sli_ui_toolkit.widgets import SurfaceScrollArea, Text
 
 
 @pytest.fixture(autouse=True)
@@ -120,6 +122,99 @@ def test_help_dialog_navigate_alias_magnifier(qtbot):
     assert not dialog._document.isHidden()
     assert dialog._document.scroll_to_anchor("freeze") is not None
     assert dialog._document.scroll_to_anchor("enabling") is not None
+
+
+def test_help_document_page_is_text_with_host_owned_toc(qtbot, qapp):
+    """The page body is the toolkit ``Text``; the TOC is host-owned chrome."""
+    dialog = HelpDialog(current_language="en", app_name="Improve-ImgSLI")
+    qtbot.addWidget(dialog)
+    dialog.resize(900, 900)
+    dialog.show()
+    qtbot.waitExposed(dialog)
+    dialog.navigate_to("workspace.image_compare.magnifier")
+    qapp.processEvents()
+
+    document = dialog._document
+    assert isinstance(document, Text)
+    assert document.mode() == "document"
+    assert document.panel_fill is True
+    assert document.plain_text().strip()
+    # One TOC row per ``###`` section; the card is visible on a page with ≥2.
+    assert dialog._toc.isVisible()
+    assert len(dialog._toc._rows) == len(dialog._toc._items) >= 2
+    assert all(row.isVisible() for row in dialog._toc._rows)
+    # The TOC title follows the dialog language, not a widget-owned field.
+    assert dialog._toc._title.text() == dialog._toc_title
+
+    # Hub pages hide the whole composed page (padding + TOC + body).
+    dialog._open_node("workspace")
+    assert dialog._document.isHidden()
+    assert dialog._document_page.isHidden()
+    assert dialog._document.plain_text() == ""
+
+
+def test_help_toc_click_scrolls_the_host_scroll_area(qtbot, qapp):
+    """TOC → ``scroll_to_anchor`` y → the host scroll area (int contract)."""
+    dialog = HelpDialog(current_language="en", app_name="Improve-ImgSLI")
+    qtbot.addWidget(dialog)
+    dialog.resize(900, 900)
+    dialog.show()
+    qtbot.waitExposed(dialog)
+    dialog.navigate_to("workspace.image_compare.magnifier")
+    qapp.processEvents()
+
+    anchor = dialog._toc._items[-1][0]
+    y = dialog._document.scroll_to_anchor(anchor)
+    assert y is not None and y > 0
+    target = dialog._document_scroll_target(y)
+    bar = dialog._scroll.verticalScrollBar()
+    bar.setValue(0)
+
+    dialog._toc._rows[-1].click()
+    qapp.processEvents()
+
+    assert bar.value() == max(bar.minimum(), min(target, bar.maximum()))
+    assert bar.value() > 0
+
+
+def test_help_figure_click_opens_the_host_lightbox(qtbot, qapp):
+    """Image click surfaces the toolkit lightbox from the host, not ``Text``."""
+    dialog = HelpDialog(current_language="en", app_name="Improve-ImgSLI")
+    qtbot.addWidget(dialog)
+    # Tall enough that the first figure is inside the scroll viewport: the
+    # offscreen platform drops mouse events delivered below the visible area.
+    dialog.resize(900, 900)
+    dialog.show()
+    qtbot.waitExposed(dialog)
+    dialog.navigate_to("workspace.image_compare.magnifier")
+    qapp.processEvents()
+
+    engine = dialog._document._engine
+    layout = engine._document_layout
+    assert layout.pixmaps, "the magnifier page must carry a figure"
+    center = layout.pixmaps[0].rect.center()
+    local = QPointF(center.x() + 8, center.y() + 8)  # engine paints at PAD
+
+    for kind in (
+        QMouseEvent.Type.MouseButtonPress,
+        QMouseEvent.Type.MouseButtonRelease,
+    ):
+        event = QMouseEvent(
+            kind,
+            local,
+            local,
+            Qt.MouseButton.LeftButton,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier,
+        )
+        qapp.notify(engine, event)
+    qapp.processEvents()
+
+    lightbox = dialog._lightbox
+    assert lightbox is not None
+    assert lightbox.isVisible()
+    assert not lightbox._pixmap.isNull()
+    lightbox.hide()
 
 
 def test_help_dialog_navigate_unknown_page_renders_missing(qtbot):

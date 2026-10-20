@@ -50,8 +50,14 @@ def test_image_properties_document_stretches_after_geometry_while_visible(qapp):
 
     content_width = dialog.properties_scroll_content.width()
     assert content_width > 0
-    assert dialog.properties_document.width() >= content_width - 4
-    assert dialog.properties_document.height() > 0
+    page = dialog.properties_scroll_content
+    assert page.width() >= content_width - 4
+    # The painted document fills the page inside the host-owned page padding
+    # (HelpDocumentView used to lay that padding out itself).
+    document = dialog.properties_document
+    margins = page.layout().contentsMargins()
+    assert document.width() >= content_width - margins.left() - margins.right() - 4
+    assert document.height() > 0
 
     dialog.close()
 
@@ -100,8 +106,8 @@ def test_image_properties_table_renders_with_border_geometry(qapp):
     dialog.show()
     qapp.processEvents()
 
-    canvas = dialog.properties_document._canvas
-    tables = canvas._layout.tables
+    canvas = dialog.properties_document._engine
+    tables = canvas._document_layout.tables
     assert len(tables) == 3  # one per section
     for table, section in zip(tables, _sample_properties().sections):
         assert table.rect.width() > 0

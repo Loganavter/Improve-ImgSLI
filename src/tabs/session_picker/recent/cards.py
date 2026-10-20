@@ -339,13 +339,18 @@ def grid_text_rows(
     missing: bool,
     translate: Callable[..., str],
 ) -> list[ButtonRow]:
+    # Overflow elides, it does not crawl: the gallery list already truncates
+    # with an ellipsis (`ui/list/regions.py`), and a 60fps marquee driver on
+    # idle cards spends a tick budget for no product value — consistency beats
+    # a second animation (task-session-picker-elide-2026-10-21).
     rows = [
         ButtonRow(
             text=record.display_name,
             size=13,
             weight="bold",
             h_align=Qt.AlignmentFlag.AlignLeft,
-            marquee=True,
+            marquee=False,
+            elide=True,
         ),
     ]
     if missing:
@@ -363,12 +368,13 @@ def grid_text_rows(
                     text=types,
                     size=11,
                     h_align=Qt.AlignmentFlag.AlignLeft,
-                    marquee=True,
+                    marquee=False,
+                    elide=True,
                 )
             )
         return rows
-    # Keep relative time static. Never marquee a composite "time · type"
-    # line — only the session-type row may scroll when it overflows.
+    # Static composite "time · type" line: never marquee it, and keep it
+    # non-elided so the relative time stays readable at its own width.
     rows.append(
         ButtonRow(
             text=format_relative_opened(record.opened_at, translate),
@@ -383,7 +389,8 @@ def grid_text_rows(
                 text=types,
                 size=11,
                 h_align=Qt.AlignmentFlag.AlignLeft,
-                marquee=True,
+                marquee=False,
+                elide=True,
             )
         )
     return rows
@@ -396,19 +403,23 @@ def list_text_rows(
     translate: Callable[..., str],
 ) -> list[ButtonRow]:
     path_text = translate("recent.missing", "File missing") if missing else record.path
+    # Same elide-not-crawl rule as the grid rows above (the path row crawled
+    # too: every real project path overflows a list strip).
     return [
         ButtonRow(
             text=record.display_name,
             size=13,
             weight="bold",
             h_align=Qt.AlignmentFlag.AlignLeft,
-            marquee=True,
+            marquee=False,
+            elide=True,
         ),
         ButtonRow(
             text=path_text,
             size=11,
             h_align=Qt.AlignmentFlag.AlignLeft,
-            marquee=not missing,
+            marquee=False,
+            elide=True,
         ),
     ]
 

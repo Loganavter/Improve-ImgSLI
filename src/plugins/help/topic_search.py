@@ -19,7 +19,7 @@ from plugins.help.tree import read_help_page_markdown
 from resources.translations import tr
 from sli_ui_toolkit.icons import lazy_icon
 from sli_ui_toolkit.managers import scaled_px
-from sli_ui_toolkit.ui.widgets.composite.help_document import (
+from sli_ui_toolkit.ui.widgets.composite.text_view.markdown import (
     blocks_to_plain_text,
     parse_help_blocks,
 )
@@ -27,10 +27,11 @@ from sli_ui_toolkit.ui.widgets.composite.help_document import (
 
 @lru_cache(maxsize=512)
 def _page_search_text(language: str, body_rel: str, body_root) -> str:
-    """Cached plain text of a help page body (what the canvas renders).
+    """Cached plain text of a help page body (what the document renders).
 
-    Mirrors ``HelpDocumentView`` block parsing so the search haystack is
-    exactly the text ``scroll_to_text`` can highlight afterwards.
+    Mirrors the help host's block parsing (``parse_help_blocks`` → ``Text``
+    document blocks) so the search haystack is exactly the text
+    ``Text.scroll_to_text`` can highlight afterwards.
     """
     md = read_help_page_markdown(language, body_rel, body_root=body_root)
     return blocks_to_plain_text(parse_help_blocks(md))
@@ -167,9 +168,9 @@ def _on_search_result_activated(dialog, row: int) -> None:
     if node_id in getattr(dialog, "_search_body_match_ids", ()):
         query = dialog._search_field.text().strip()
         if query:
-            target = dialog._document.scroll_to_text(query)
-            if target is not None:
-                dialog._scroll.ensureWidgetVisible(target, 0, 24)
+            y = dialog._document.scroll_to_text(query)
+            if y is not None:
+                dialog._scroll_to_document_y(y)
 
 
 def clear_topic_search(dialog) -> None:

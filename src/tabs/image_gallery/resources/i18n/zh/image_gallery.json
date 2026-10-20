@@ -152,22 +152,6 @@
       "series": "{n} 个系列",
       "redundant": "{n} 张冗余"
     },
-    "profile": {
-      "chip": "配置：{profile}",
-      "auto": "自动",
-      "axes": "{n} 个轴",
-      "source": {
-        "vlm": "VLM",
-        "heuristic": "启发式"
-      },
-      "domain": {
-        "auto": "自动（按模式）",
-        "document": "文档",
-        "photo": "照片",
-        "synthetic": "合成",
-        "mixed": "混合"
-      }
-    },
     "quick_look": {
       "unset_source": "取消源",
       "reject": "拒绝",
