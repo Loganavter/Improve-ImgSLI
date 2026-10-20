@@ -6,7 +6,10 @@ directory scan — nothing here is hand-wired into a central file (plan
 
 - ``camera_scalars``     — measured, reference-free scalars;
 - ``fidelity_reference`` — measured source-relative deltas;
-- ``artifact_*``         — seven candidate flags (one package per artifact).
+- ``artifact_catalog``   — the seven artifact candidate flags, in one package
+  because the production path is one aggregate call
+  (``artifacts.analyze_images``) whose source-anchoring delta sits above the
+  detectors; per-detector packages could disagree with the report.
 
 Each package is ``manifest.py`` (metadata only: id, ``provides``, ``requires``,
 cost — no imaging or learned-backend import) plus ``producer.py``

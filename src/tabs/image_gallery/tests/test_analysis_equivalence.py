@@ -1,28 +1,27 @@
-"""W7: the dark-launch engine reproduces the legacy numbers, exactly.
+"""W7/W8: the dark-launch engine reproduces the legacy numbers, exactly.
 
 Two halves:
 
-1. **Value equivalence.** For synthetic PIL images (a gradient plus a blurred
-   source variant) the records the resolver + runner produce must equal the
-   legacy values — not merely be "present": camera/fidelity are compared to
-   ``metric_scores.measured_scores(<legacy dict>)`` (the one raw→0..100 mapping
-   the report already shows), and each artifact to the ``Severity`` its legacy
-   detector returns, mapped through the same ``clean=0 / mild=1 / flagged=2``
-   rank the producer declares.
+1. **Value equivalence.** For synthetic PIL images (a gradient, a posterized
+   ramp over its smooth source) the records the resolver + runner produce must
+   equal the legacy values — not merely be "present": camera/fidelity are
+   compared to ``metric_scores.measured_scores(<legacy dict>)`` (the one raw→0..100
+   mapping the report already shows), and the artifact catalog to
+   ``artifacts.analyze_images(proxy, source)`` — the aggregate the production
+   stage actually calls — mapped through the same ``clean=0 / mild=1 /
+   flagged=2`` rank the producer declares.
 2. **Flag isolation.** With ``IMGSLI_ANALYSIS_ENGINE`` unset, the proxy entry is
    the legacy dict with no ``analysis`` key; with the flag on, the only change
    is that added key (every legacy stage value stays byte-for-byte equal).
 
-A note on artifacts that a verifier will ask about: the seven producer packages
-wrap ``services.artifacts.detect_*`` one-to-one. The legacy aggregate
-``analyze_images(image, source)`` layers one extra policy on top of four
-*absolute* detectors — ``_anchor_severity`` (banding/halo/blocking/
-chroma_fringing become a delta against the source). ``analyze_images(image)``
-without a source calls the detectors directly, and the three source-relative
-detectors are passed the source directly in both forms; those are the two
-comparisons pinned here. The anchoring delta is an aggregate policy above the
-wrapped detector, not detector math — recorded as a follow-up finding in the
-W7 hand-off rather than silently asserted as equal.
+W8 note (the gap W7's dark launch exposed): the artifact records are compared to
+the *aggregate*, never to the seven ``detect_*`` functions one-to-one. The
+aggregate layers ``_anchor_severity`` over the four absolute detectors
+(banding/halo/blocking/chroma_fringing) when a source is present, so a
+per-detector producer can disagree with ``entry["artifacts"]`` on those axes. The
+with-source case below asserts the fixture actually exercises that delta
+(otherwise the equality would be vacuous) and would fail against the unanchored
+detectors with the concrete rank diff.
 """
 
 from __future__ import annotations
@@ -62,8 +61,25 @@ ARTIFACT_AXES = (
     "noise_amplification",
     "over_smoothing",
 )
-#: The seven artifact detectors are one-to-one with these legacy functions.
-DETECTORS = {
+#: The four absolute detectors the aggregate anchors against the source; the
+#: other three consume the source directly in both forms.
+ANCHORED = ("banding", "halo", "blocking", "chroma_fringing")
+#: The order ``artifact_catalog`` declares (and therefore returns) — the
+#: manifest's reading order, not alphabetical. ``ARTIFACT_AXES`` is the same set
+#: in the alphabetical order the resolver/spec lists use.
+CATALOG_AXES = (
+    "banding",
+    "halo",
+    "blocking",
+    "chroma_fringing",
+    "invented_texture",
+    "noise_amplification",
+    "over_smoothing",
+)
+#: Direct detector per axis — the unanchored answer a per-detector producer
+#: would have reported. Kept for the non-vacuity assertion below, NOT as the
+#: expected value.
+DIRECT_DETECTORS = {
     "banding": artifacts.detect_banding,
     "blocking": artifacts.detect_blocking,
     "chroma_fringing": artifacts.detect_chroma_fringing,
@@ -74,8 +90,6 @@ DETECTORS = {
 }
 #: The producer's declared flag rank — a candidate flag, not a quality score.
 SEVERITY_RANK = {"clean": 0.0, "mild": 1.0, "flagged": 2.0}
-#: Source-relative detectors: ``analyze_images`` hands them the source too.
-SOURCE_RELATIVE = ("over_smoothing", "invented_texture", "noise_amplification")
 
 
 # ---------------------------------------------------------------------------
@@ -101,6 +115,24 @@ def _source_variant(image):
     from PIL import ImageFilter
 
     return image.filter(ImageFilter.GaussianBlur(1.2))
+
+
+def _banded_pair(size: int = 128, levels: int = 6):
+    """A posterized ramp over its smooth original: a realistic banded candidate.
+
+    Chosen because the aggregate's anchored severities differ from the
+    unanchored detectors here (a known delta, so the equality below cannot pass
+    vacuously) and because the source-relative axes split across all ranks.
+    """
+    import numpy as np
+    from PIL import Image
+
+    ramp = np.tile(np.linspace(40, 220, size), (size, 1))
+    step = 255 // levels
+    quantized = (np.round(ramp / step) * step).clip(0, 255)
+    smooth = Image.fromarray(ramp.astype(np.uint8)).convert("RGB")
+    banded = Image.fromarray(quantized.astype(np.uint8)).convert("RGB")
+    return banded, smooth
 
 
 def _records(image, source, axes) -> tuple:
@@ -176,50 +208,65 @@ def test_fidelity_records_equal_the_legacy_measured_scores_with_a_source():
 
 
 # ---------------------------------------------------------------------------
-# artifact flags: exact severity-rank equality with the legacy detectors
+# artifact flags: exact equality with the legacy AGGREGATE (not the detectors)
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("axis", ARTIFACT_AXES)
-def test_each_artifact_record_equals_its_legacy_detector(axis: str):
-    image = _gradient()
-    source = _source_variant(image)
+def test_artifact_catalog_records_equal_the_aggregate_with_a_source():
+    image, source = _banded_pair()
 
-    records = _records(image, source, (axis,))
+    records = _records(image, source, ARTIFACT_AXES)
 
-    assert len(records) == 1
-    record = records[0]
-    expected = _severity_rank(DETECTORS[axis](image, source))
-    assert record.status == "ok"
-    assert record.value == expected
-    assert record.producer == "local"
+    expected = {
+        artifact.value: _severity_rank(severity)
+        for artifact, severity in artifacts.analyze_images(image, source).items()
+    }
+    assert len(expected) == 7
+    assert tuple(record.axis for record in records) == CATALOG_AXES
+    assert all(record.status == "ok" for record in records), [
+        (record.axis, record.status, record.reason)
+        for record in records
+        if record.status != "ok"
+    ]
+    assert all(record.producer == "local" for record in records)
+    assert _ok_values(records) == expected, (
+        "the engine's artifact catalog must equal artifacts.analyze_images(...), "
+        "including the source-anchoring delta:\n"
+        f"engine:   {_ok_values(records)}\n"
+        f"aggregate:{expected}"
+    )
+
+    # Non-vacuity: the fixture must move at least one anchored axis away from
+    # what the unanchored detector reports, or the assertion above would pass
+    # even if the producer ignored the source (the W7 gap).
+    direct = {axis: _severity_rank(DIRECT_DETECTORS[axis](image)) for axis in ARTIFACT_AXES}
+    anchored_delta = {
+        axis: (direct[axis], expected[axis])
+        for axis in ANCHORED
+        if direct[axis] != expected[axis]
+    }
+    assert anchored_delta, (
+        "fixture does not exercise the anchoring delta: comparing against "
+        f"detect_* would pass. direct={direct}, aggregate={expected}"
+    )
 
 
-def test_artifacts_match_the_sourceless_legacy_catalog():
-    """``analyze_images(image)`` calls every detector directly — same values."""
+def test_artifact_catalog_records_equal_the_sourceless_aggregate():
+    """No source: the aggregate calls every detector directly — same records."""
     image = _gradient()
 
     records = _records(image, None, ARTIFACT_AXES)
 
-    legacy = artifacts.analyze_images(image)
     expected = {
         artifact.value: _severity_rank(severity)
-        for artifact, severity in legacy.items()
+        for artifact, severity in artifacts.analyze_images(image).items()
     }
-    assert _ok_values(records) == expected
     assert len(expected) == 7
-
-
-@pytest.mark.parametrize("axis", SOURCE_RELATIVE)
-def test_source_relative_artifacts_match_the_anchored_catalog(axis: str):
-    """These three consume the source directly, so the aggregate agrees too."""
-    image = _gradient()
-    source = _source_variant(image)
-
-    record = _records(image, source, (axis,))[0]
-
-    legacy = artifacts.analyze_images(image, source)[artifacts.Artifact(axis)]
-    assert record.value == _severity_rank(legacy)
+    assert _ok_values(records) == expected, (
+        f"engine: {_ok_values(records)}\naggregate: {expected}"
+    )
+    assert tuple(record.axis for record in records) == CATALOG_AXES
+    assert all(record.status == "ok" for record in records)
 
 
 # ---------------------------------------------------------------------------
@@ -310,7 +357,8 @@ def test_flag_on_adds_only_the_analysis_records(
     assert axes >= set(FIDELITY_AXES)
     assert all(record.producer in {"local"} for record in records)
     # Dark-launch values equal the legacy stage dicts the same run produced —
-    # measured axes exactly, and the three source-relative artifacts exactly.
+    # measured axes exactly, and ALL seven artifacts exactly against the
+    # aggregate (source anchoring included; W8 closed the four-axis gap).
     values = _ok_values(records)
     assert {axis: values[axis] for axis in CAMERA_AXES if axis in values} == _measured(
         legacy["camera"]
@@ -318,5 +366,7 @@ def test_flag_on_adds_only_the_analysis_records(
     assert {axis: values[axis] for axis in FIDELITY_AXES if axis in values} == _measured(
         legacy["fidelity"]
     )
-    for axis in SOURCE_RELATIVE:
-        assert values[axis] == _severity_rank(legacy["artifacts"][artifacts.Artifact(axis)])
+    assert {axis: values[axis] for axis in ARTIFACT_AXES} == {
+        axis: _severity_rank(legacy["artifacts"][artifacts.Artifact(axis)])
+        for axis in ARTIFACT_AXES
+    }
