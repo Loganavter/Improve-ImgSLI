@@ -11,6 +11,7 @@ from PySide6.QtGui import QColor, QPainter
 from PySide6.QtWidgets import QDialog
 
 from shared_toolkit.ui.layout_sizing import defer_dialog_geometry
+from shared_toolkit.ui.overlay_layer import OverlayLayer
 from sli_ui_toolkit.widgets import ThemedWidget
 from ui.theming import polish_themed_dialog, try_resolve_theme_color
 
@@ -22,6 +23,14 @@ class ThemedDialog(ThemedWidget, QDialog):
         self._theme_ui_ready = False
         super().__init__(*args, **kwargs)
         self._read_dialog_surface_color()
+        # A dialog is its own top-level window, so the toolkit overlay resolver
+        # stops here: without a layer of its own, ``attach_in_window_widget``
+        # finds no host and leaves every in-window flyout/menu parented to its
+        # source widget — a ~30 px child, so Qt clips the surface to a sliver
+        # (measured 32x26 of a 131x141 menu, 2026-10-21). ``MainWindow`` and
+        # ``HelpDialog`` already owned a layer; giving it to the base fixes all
+        # dialogs at once instead of per-dialog ``menu_parent=`` patches.
+        self.overlay_layer = OverlayLayer(self)
 
     def mark_theme_ui_ready(self) -> None:
         """Call once the dialog widget tree is built."""
