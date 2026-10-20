@@ -76,6 +76,12 @@ def _cached_result() -> AiAnalysisResult:
     )
 
 
+#: The identity these reset tests seed/read under (the reset itself is
+#: identity-agnostic: it must drop every variant, see
+#: ``test_clear_removes_every_identity_for_the_image`` in test_ai_cache_identity).
+IDENTITY = ai_cache.analysis_cache_identity(None, mode="fidelity")
+
+
 def test_clear_defeats_the_skip(tmp_path, caches) -> None:
     """Every skip gate (fingerprint / profile / pin / item state) is cleared."""
     from tabs.image_gallery.use_cases import cache_reset
@@ -99,7 +105,7 @@ def test_clear_defeats_the_skip(tmp_path, caches) -> None:
         axis_ids=("ssim",), mode="fidelity", source="vlm"
     )
     # Seed the disk caches the reset must invalidate.
-    ai_cache.save_analysis(img, mtime, item.analysis)
+    ai_cache.save_analysis(img, mtime, item.analysis, IDENTITY)
     key = profile_cache.profile_cache_key([item], mode="fidelity", model="test/model")
     profile_cache.default_cache().put(key, owner.state.metric_profile)
     assert list(ai_dir.glob("*.json"))
@@ -131,25 +137,25 @@ def test_ai_cache_is_really_bypassed(tmp_path, caches) -> None:
     img = tmp_path / "a.jpg"
     img.write_bytes(b"\x00")
     mtime = img.stat().st_mtime_ns
-    ai_cache.save_analysis(img, mtime, _cached_result())
+    ai_cache.save_analysis(img, mtime, _cached_result(), IDENTITY)
 
     # Pre-state: a fresh item is hydrated straight from the disk cache.
     probe = GalleryItem(path=img, mtime_ns=mtime)
-    assert ai_cache.hydrate_item(probe) is True
+    assert ai_cache.hydrate_item(probe, IDENTITY) is True
     assert probe.analysis is not None
 
     item = GalleryItem(path=img, mtime_ns=mtime)
     owner = _Owner([item])
     cache_reset.clear_metrics_caches(owner)
 
-    assert ai_cache.load_cached_analysis(img, mtime) is None
+    assert ai_cache.load_cached_analysis(img, mtime, IDENTITY) is None
     fresh = GalleryItem(path=img, mtime_ns=mtime)
-    assert ai_cache.hydrate_item(fresh) is False
+    assert ai_cache.hydrate_item(fresh, IDENTITY) is False
     assert fresh.analysis is None
     # Explicit: the checked flag must be reset, or ``hydrate_item`` short-circuits
     # on it and never reads the (now deleted) file at all.
     assert not item._ai_cache_checked
-    assert ai_cache.hydrate_item(item) is False
+    assert ai_cache.hydrate_item(item, IDENTITY) is False
     assert item.analysis is None
 
 

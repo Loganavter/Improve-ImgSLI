@@ -309,6 +309,7 @@ def test_reanalyze_bypasses_cache_and_starts_worker(tmp_path, monkeypatch):
             sharpness=10, noise=10, exposure=10, composition=10,
             verdict="reject", verdict_reason="old",
         ),
+        ai_cache.analysis_cache_identity(AiSettings(model="m"), mode="camera"),
     )
     widget = _WidgetStub()
     ctrl, _store = _make_ctrl(widget)

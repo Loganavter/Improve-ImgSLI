@@ -79,7 +79,17 @@ def _make_ctrl() -> tuple[GalleryController, _WidgetStub]:
     return ctrl, widget
 
 
-def _cached(path: Path, mtime_ns: int, *, description: str = "cached") -> AiAnalysisResult:
+def _cached(
+    ctrl: GalleryController, path: Path, mtime_ns: int, *, description: str = "cached"
+) -> AiAnalysisResult:
+    """Seed ONE identity-scoped scorecard, as the analyze path would have.
+
+    The identity is the controller's own (``analysis_identity_for``), so this
+    seeds exactly what the hydrate pass looks up — the identity semantics are
+    covered by ``test_ai_cache_identity.py``.
+    """
+    from tabs.image_gallery.use_cases.ai_analysis import analysis_identity_for
+
     result = AiAnalysisResult(
         description=description,
         tags=("sky",),
@@ -88,7 +98,7 @@ def _cached(path: Path, mtime_ns: int, *, description: str = "cached") -> AiAnal
         sharpness=80,
         verdict="keep",
     )
-    ai_cache.save_analysis(path, mtime_ns, result)
+    ai_cache.save_analysis(path, mtime_ns, result, analysis_identity_for(ctrl))
     return result
 
 
@@ -99,7 +109,7 @@ def test_open_paths_hydrates_cached_ai(tmp_path, monkeypatch):
     ctrl, _widget = _make_ctrl()
     img = tmp_path / "a.jpg"
     img.write_bytes(b"\x00")
-    _cached(img, img.stat().st_mtime_ns)
+    _cached(ctrl, img, img.stat().st_mtime_ns)
 
     ctrl.open_paths([img])
 
@@ -122,7 +132,7 @@ def test_sync_from_slot_hydrates_cached_ai(tmp_path, monkeypatch):
     img = tmp_path / "a.jpg"
     img.write_bytes(b"\x00")
     mtime = img.stat().st_mtime_ns
-    _cached(img, mtime)
+    _cached(ctrl, img, mtime)
 
     slot = gallery_slot(store)
     slot.items.append(GalleryItemMeta(path=str(img), mtime_ns=mtime))
@@ -134,6 +144,39 @@ def test_sync_from_slot_hydrates_cached_ai(tmp_path, monkeypatch):
     assert item.analysis is not None
     assert item.analysis.description == "cached"
     assert item.analysis_status == AnalysisStatus.DONE
+
+
+def test_hydrate_is_identity_scoped(tmp_path, monkeypatch):
+    """A scorecard cached under ANOTHER backend must not be hydrated on rebuild."""
+    from tabs.image_gallery.services.ai_settings_store import AiSettings
+    from tabs.image_gallery.use_cases.ai_analysis import analysis_identity_for
+
+    monkeypatch.setattr(ai_cache, "ai_cache_dir", lambda: tmp_path / "cache")
+    (tmp_path / "cache").mkdir()
+    ctrl, _widget = _make_ctrl()
+    img = tmp_path / "a.jpg"
+    img.write_bytes(b"\x00")
+    mtime = img.stat().st_mtime_ns
+    other_backend = ai_cache.analysis_cache_identity(
+        AiSettings(model="other/model"), mode="camera"
+    )
+    assert other_backend != analysis_identity_for(ctrl)
+    ai_cache.save_analysis(
+        img,
+        mtime,
+        AiAnalysisResult(
+            description="other backend",
+            tags=(),
+            model="other/model",
+            analyzed_at_iso="2026-01-01T00:00:00+00:00",
+        ),
+        other_backend,
+    )
+
+    ctrl.open_paths([img])
+
+    item = next(it for it in ctrl.state.items if it.path == img)
+    assert item.analysis is None
 
 
 def test_uncached_item_is_not_analyzed_on_load(tmp_path, monkeypatch):

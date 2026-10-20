@@ -3127,6 +3127,7 @@ def test_cached_analysis_hydrated_on_open(qtbot, tmp_path, monkeypatch):
     from tabs.image_gallery.services import ai_cache
 
     monkeypatch.setattr(ai_cache, "ai_cache_dir", lambda: tmp_path)
+    identity = ai_cache.analysis_cache_identity(None, mode=Mode.CAMERA)
     ai_cache.save_analysis(
         Path("/g/hnote.png"),
         7,
@@ -3134,6 +3135,7 @@ def test_cached_analysis_hydrated_on_open(qtbot, tmp_path, monkeypatch):
             description="", tags=(), model="m", analyzed_at_iso="t",
             composition=80,
         ),
+        identity,
     )
     item = GalleryItem(path=Path("/g/hnote.png"), mtime_ns=7, metrics={"noise": 0.9})
     other = GalleryItem(path=Path("/g/z.png"), mtime_ns=1)
@@ -3142,7 +3144,7 @@ def test_cached_analysis_hydrated_on_open(qtbot, tmp_path, monkeypatch):
         state=SimpleNamespace(
             mode=Mode.CAMERA, source_path=None, series=[[item, other]], items=[item, other]
         ),
-        hydrate_cached_analysis=lambda it: ai_cache.hydrate_item(it),
+        hydrate_cached_analysis=lambda it: ai_cache.hydrate_item(it, identity),
     )
     ov.show_for(item, owner)
     parent = getattr(ov, "_parity_test_parent", None)

@@ -22,24 +22,20 @@ cursor (``popup_at(QCursor.pos())``). The menu merges two groups:
    stays); selection actions never touch the grid — hence the
    separator between the sections.
 
-Compare actions were removed from this menu (no Compare → / ⇄ Compare):
-carry flows live in the stats strip / keyboard paths, not here.
-Move was removed as well — carrying to another tab is drag-only (press-move
-past the drag threshold on a card starts the QDrag; drop onto a workspace
-tab delivers it).
-
-Split out of ``ui/card/context_menu.py`` per the module→package split
-(``plan-gallery-split-2026-10-17``); the entry point body moved verbatim.
+Compare/Move were removed from this menu (carry flows live in the stats strip
+and keyboard paths; carrying to another tab is drag-only). Split out of
+``ui/card/context_menu.py`` per the module→package split
+(``plan-gallery-split-2026-10-17``).
 """
 
 from __future__ import annotations
 
-import time
+import inspect
+import logging
 from pathlib import Path
 
 from tabs.image_gallery.icons import Icon
 from tabs.image_gallery.ui.card.context_actions import (
-    _action_targets,
     _ctx_group,
     _ctx_make_best,
     _ctx_remove,
@@ -61,6 +57,30 @@ from .predicates import (
 )
 from .translator import _resolve_menu_translator, _t
 
+logger = logging.getLogger("ImproveImgSLI")
+
+
+def _require_target_callback(name: str, cb) -> None:
+    """Fail closed: a scope callback must accept the resolved targets list.
+
+    The menu owns scope, so a zero-arg callable (the bypass this contract
+    removes) raises at menu-build time, never gets called with no arguments.
+    Un-introspectable callables (C builtins) are trusted, not rejected.
+    """
+    if not callable(cb):
+        raise TypeError(f"{name} must be callable and take the resolved targets")
+    try:
+        signature = inspect.signature(cb)
+    except (TypeError, ValueError):
+        return
+    try:
+        signature.bind([])
+    except TypeError as exc:
+        raise ValueError(
+            f"{name} must accept the resolved targets (one positional argument); "
+            "the menu resolves the scope — a zero-arg callback would pick its own"
+        ) from exc
+
 
 def popup_gallery_card_context_menu(  # type: ignore[no-untyped-def]
     card,
@@ -78,15 +98,28 @@ def popup_gallery_card_context_menu(  # type: ignore[no-untyped-def]
 ):
     """Popup toolkit ``ContextMenu`` for gallery card at *global_pos*.
 
-    Selection callbacks default to the gallery use-cases resolved from
-    *owner* when not given explicitly (so existing ``_on_card_context``
-    call sites keep working).
+    THE SCOPE IS THE MENU'S: resolved once through
+    ``use_cases.action_scope.resolve_targets`` and handed to
+    ``on_analyze(targets)`` / ``on_carry(targets)`` / ``on_find_similar(targets)``
+    (``targets: list[Path]``). A callback says HOW to act, never WHICH cards:
+    a zero-arg callable raises ``ValueError`` instead of being called with no
+    arguments (the old ``if callable(cb): cb(); return`` shape let a production
+    closure re-derive its own scope — ``next(iter(selected_paths))`` — and
+    analyze one arbitrary card of a six-card selection, owner report 2026-10-20).
+    ``on_ask_ai(scope_kind)`` keeps its string: the Ask AI flyout owns its own
+    scope line and reads the set itself when it opens (also with no selection).
     """
+    # Fail closed before anything is built, and OUTSIDE the handlers'
+    # fail-soft ``except Exception`` where this TypeError used to vanish.
+    for _cb_name, _cb in (("on_carry", on_carry), ("on_analyze", on_analyze),
+                          ("on_find_similar", on_find_similar)):
+        if _cb is not None:
+            _require_target_callback(_cb_name, _cb)
+
     from tabs.image_gallery.debug import gallery_debug as _dbg
     from tabs.image_gallery.debug import gallery_debug_enabled as _dbg_enabled
 
     _dbg_on = _dbg_enabled()
-    _t0 = time.perf_counter() if _dbg_on else 0.0
     if _dbg_on:
         _dbg(
             "card menu begin path=%s has_pos=%s owner=%s",
@@ -109,49 +142,75 @@ def popup_gallery_card_context_menu(  # type: ignore[no-untyped-def]
         # root) or the owner — call sites no longer need to thread ``translate=``.
         tr = _resolve_menu_translator(card, owner, translate)
 
+        # THE scope of this menu: resolved once, here, through the ONE
+        # resolver, and shared by the labels and every action (callback or
+        # default) — they cannot disagree about which cards are covered.
+        from tabs.image_gallery.use_cases import action_scope
+
+        try:
+            targets = list(action_scope.resolve_targets(owner, card_path=path))
+        except Exception:
+            targets = []
+
         def _do_carry() -> None:
             try:
                 if callable(on_carry):
-                    on_carry()
+                    on_carry(list(targets))
                     return
-                from tabs.image_gallery.use_cases import carry as _carry
+                # No carry entry in this menu today (carry is drag/keyboard);
+                # the hook stays scope-correct — dispatch the resolved targets
+                # like ``context_actions._ctx_move``, never a second read.
+                from events.image_carry import begin_image_carry
+                from shared.image_extensions import is_loadable_image_path
 
-                _carry.carry_selected(owner)
+                carriable = [p for p in targets if is_loadable_image_path(p)]
+                if carriable:
+                    begin_image_carry(carriable)
             except Exception:
                 pass
 
         def _do_analyze() -> None:
-            # Selection action: EVERY resolved target is analyzed. The old
-            # body took ``next(iter(state.selected_paths))`` — set iteration
-            # order is not a scope decision (one arbitrary card of a group
-            # ran). Failures stay per-item isolated in the resolver helper.
+            # EVERY resolved target is analyzed; scope is the menu's job, never
+            # re-derived by the caller (the old body took
+            # ``next(iter(state.selected_paths))`` — set order is not scope).
+            # Same per-item isolation as ``action_scope.apply_to_targets``.
             try:
                 if callable(on_analyze):
-                    on_analyze()
+                    on_analyze(list(targets))
                     return
-                from tabs.image_gallery.use_cases import action_scope
-
                 fn = getattr(owner, "analyze_item_by_path", None)
                 if callable(fn):
-                    action_scope.apply_to_targets(owner, fn, card_path=path)
+                    for target in targets:
+                        try:
+                            fn(target)
+                        except Exception:
+                            continue
             except Exception:
                 pass
 
         def _do_find_similar() -> None:
             try:
                 if callable(on_find_similar):
-                    on_find_similar()
+                    on_find_similar(list(targets))
                     return
-                from tabs.image_gallery.use_cases.carry import find_similar_selected
-
-                # Same scope mechanism as Analyze: the use-case reads the
-                # whole resolved selection via ``action_scope.selected_paths``
-                # (never a single arbitrary member).
-                find_similar_selected(owner)
+                # ``use_cases.carry.find_similar_selected`` is a stub that
+                # re-reads the selection (a second scope); its only observable
+                # is this line, emitted over the menu's scope. A real
+                # implementation arrives as ``on_find_similar(targets)``.
+                if not targets:
+                    logger.debug("find_similar_selected: no selection")
+                    return
+                logger.debug(
+                    "find_similar_selected: stub — %d selected (not implemented)",
+                    len(targets),
+                )
             except Exception:
                 pass
 
         def _open_ask_ai_now(scope_kind: str) -> None:
+            # Ask AI keeps a kind string instead of the resolved targets: the
+            # flyout owns its scope line ("Selection (N)" / the card), applies
+            # with no selection at all, and reads the set itself when it opens.
             try:
                 if callable(on_ask_ai):
                     on_ask_ai(scope_kind)
@@ -198,7 +257,7 @@ def popup_gallery_card_context_menu(  # type: ignore[no-untyped-def]
 
         # Reject label follows state: all targets rejected → Unreject
         # (mixed → Reject, matching the uniform apply direction).
-        _menu_targets = _action_targets(owner, path)
+        _menu_targets = targets
         _all_rejected = _targets_all_rejected(owner, _menu_targets)
         _reject_key = (
             "image_gallery.card.unreject" if _all_rejected else "image_gallery.card.reject"
