@@ -86,6 +86,16 @@
       }
     },
     {
+      "path": "src/devtools/scenario_cost.py",
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=devtool-pipeline reason=\"one measurement pipeline: scenario plan, wire client, per-step receipts, honest logical-vs-wire accounting and budget exit codes share one control-socket contract; splitting the client from the report forks how a step is counted\"",
+      "parsed": {
+        "pattern": "devtool-pipeline",
+        "reason": "one measurement pipeline: scenario plan, wire client, per-step receipts, honest logical-vs-wire accounting and budget exit codes share one control-socket contract; splitting the client from the report forks how a step is counted"
+      }
+    },
+    {
       "path": "src/devtools/ui_layout_dump.py",
       "limit": 500,
       "marker": "Audit-Meta:",
