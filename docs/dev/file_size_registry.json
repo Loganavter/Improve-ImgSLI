@@ -55,6 +55,16 @@
       }
     },
     {
+      "path": "src/devtools/capture_surface.py",
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=devtool-pipeline reason=\"one capture adapter: surface catalogue, window lifecycle + size pin, bootstrap and CLI share one grab contract; splitting the session from the surfaces forks how a frame is produced\"",
+      "parsed": {
+        "pattern": "devtool-pipeline",
+        "reason": "one capture adapter: surface catalogue, window lifecycle + size pin, bootstrap and CLI share one grab contract; splitting the session from the surfaces forks how a frame is produced"
+      }
+    },
+    {
       "path": "src/devtools/context_cloc.py",
       "limit": 500,
       "marker": "Audit-Meta:",

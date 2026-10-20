@@ -23,11 +23,11 @@ CLI: `<surface>`, `--out DIR` (default `/tmp/opencode/capture-surface`),
   (software) X server rasterizes the widget, but it must be a *private*
   display so the user's running app is untouched. The script reads `DISPLAY`
   from the environment and refuses to run without it
-  (`src/devtools/capture_surface.py:362`); it never defaults to `:0`.
+  (`src/devtools/capture_surface.py:407`); it never defaults to `:0`.
   `LIBGL_ALWAYS_SOFTWARE=1` avoids fighting for the GPU.
 - **Theme is mandatory.** Without `ThemeManager.register_palettes(...)` +
   `set_theme(...)` the painter pipeline has no tokens and paints unstyled /
-  black surfaces (`src/devtools/capture_surface.py:375`).
+  black surfaces (`src/devtools/capture_surface.py:420`).
 - **i18n is mandatory.** Without `emit_language_changed(...)` after registering
   the per-tab / per-plugin i18n roots, widget labels show **raw keys**
   (`help.topic.foo`) instead of text. The `I18N_ROOTS` list mirrors the app's
@@ -67,7 +67,7 @@ These are the proven constructions:
   (`src/tabs/session_picker/widget.py:114`). There is no host window, so pass
   a tiny stand-in context that answers `list_session_blueprints` /
   `get_tab_icon` and delegates `_tr` to `resources.translations.tr` — see
-  `_FakeSessionContext` (`src/devtools/capture_surface.py:296`).
+  `_FakeSessionContext` (`src/devtools/capture_surface.py:341`).
   Blueprints come from `SessionBlueprint` (`src/core/session_blueprints.py:18`).
 - **Onboarding overlay** — `OnboardingOverlay(None, SimpleNamespace(settings=SimpleNamespace(current_language="en")))`
   (`src/plugins/onboarding/overlay.py:52`).
@@ -137,6 +137,19 @@ python src/devtools/help_figures.py --all --write-manifest       # record baseli
   language or theme (`SETTINGS_KWARGS`, the onboarding store) list
   `locale:constructor-pins-en` / `theme:constructor-pins-dark` under
   `pins_unavailable`, so a non-default filter is never claimed as applied.
+- **Size pins are applied to the live window, twice.** `CaptureSession` sizes
+  the top-level window, shows it, lets it settle, then applies the pin again
+  before grabbing — a `resize` before `show` is only a request, and show paths
+  do re-fit the window (the onboarding overlay returned 648 px for a 684 px
+  request). A shell that resizes its *content* box and keeps its own frame
+  margin (CSD dialogs: +16 px per axis) is measured live and corrected once;
+  the correction is kept only when the grabbed frame really equals the pin.
+  When a surface still refuses (fixed-size layout, min/max clamp), the run does
+  **not** resample or silently ship a different size: `--all` prints a
+  `pin_unavailable … pinned WxH, achieved WxH` line, the entry records
+  `size:surface-ignores-pin:WxH` under `pins_unavailable`, and `--check`
+  reports drift for a baselined figure whose frame isn't the pinned one. The
+  `--all` run ends with a `figure / pinned / achieved / parity|differ` table.
 
 ## Known limitation: the live QRhi/GL canvas
 
@@ -145,7 +158,7 @@ swapchain is not part of `QWidget.grab()`. On a real X display QRhi init
 *hard-exits* the process; under the offscreen platform it renders the canvas
 **blank** (and logs `renderFailed`). The `multi*` surfaces are therefore
 marked `isolated` and run in an offscreen child
-(`src/devtools/capture_surface.py:436`) so a crash can't
+(`src/devtools/capture_surface.py:481`) so a crash can't
 take the tool down — you get the chrome (toolbar + footer) with a blank
 canvas. For a real canvas shot, capture the **running app manually**
 (screenshot tool / `grim`).
