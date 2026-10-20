@@ -42,3 +42,15 @@ and a fresh state slot (`{"folder": None}`).
 > `TabRegistry` (which only wires the tab's page/UI). Both must exist for a
 > tab to be creatable from the New Session picker — see
 > `tabs/multi_compare/plugin.py` for the template this mirrors.
+
+## Local docs
+
+- [ANALYSIS_BACKENDS.md](ANALYSIS_BACKENDS.md) — how image analysis actually
+  works: the two judgment domains (Algorithms / AI), the five network paths and
+  which model each one really uses, the metric-profile seam, and the three
+  places where the profile chip's label contradicts its own tooltip.
+- [investigations/plan-adaptive-metric-profiles-2026-10-17.md](investigations/plan-adaptive-metric-profiles-2026-10-17.md)
+  — plan P0–P4 for the metric profile (axis set, salience, VLM selection,
+  named domains).
+- [investigations/plan-gallery-split-2026-10-17.md](investigations/plan-gallery-split-2026-10-17.md)
+  — the module split this tab's layout follows.
