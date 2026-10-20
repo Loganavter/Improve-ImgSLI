@@ -145,3 +145,35 @@ upscale_factor
 viewport_plugin
 window_schedule
 xdg_popup
+
+# --- wire / record payload keys (strings in the emitted dict, no Python name) --
+# `ui_nav_state` reports each overlay child with `owned_by_section` and
+# `keyboard_ring` as *dict keys* (src/core/control/nav_state.py); ast cannot
+# index a string key, so the checker cannot resolve them.
+owned_by_section
+keyboard_ring
+# Evidence-journal record `kind` label (`_KIND_VERDICTS` member in
+# src/core/evidence/journal.py); a string value, not a symbol.
+target_bug
+
+# --- Qt key names written in prose -------------------------------------------
+# `Enter`/`Space`/`Return` name key sequences (Qt.Key.Key_Space, key labels),
+# not app symbols; only `Enter` happens to collide with an indexed name.
+Return
+Space
+
+# --- widget objectName / Find Action ids -------------------------------------
+# `setObjectName("quicklook_close")` (quick_look/overlay_build/build.py) — a
+# runtime string id, not a Python name.
+quicklook_close
+
+# --- result-payload key names (documented in prose, not Python symbols) ------
+# ui_elements/docs: the pre-limit match count key returned in the payload.
+matched_total
+
+# --- contract-test prose (tests/.../test_gallery_action_context.py) -----------
+# Deleted helper named in a docstring that asserts its absence — the test scans
+# AST for this name on purpose.
+_first_item_path
+# Refusal reason string literal used by the analyse path (a value, not a symbol).
+not_configured
