@@ -62,10 +62,10 @@ TILE_UPLOAD_BUDGET_PER_CALL = 64
 # Wall-clock budget (milliseconds) for tile uploads within a single
 # realize_tile_plan / _realize_tile_residency call (docs/dev/rendering/
 # tile-rendering-system.md "Planned: time-boxed upload budget"). A flat tile
-# *count* doesn't bound cost -- one LIVE_TILE_EXTENT tile is ~268 MB, so
-# "budgeted" calls could still synchronously move hundreds of MB. The loop
-# checks elapsed time after each tile and stops once this is exceeded,
-# regardless of how many tiles that was.
+# *count* doesn't bound cost -- one LIVE_TILE_EXTENT tile is ~1 MB (it was
+# ~268 MB at the old 8192 extent), but a batch can still move many MB and
+# per-tile cost varies with the decode/upload path. The loop checks elapsed
+# time after each tile and stops once this is exceeded, regardless of count.
 #
 # Raised from 8.0 (docs/dev/KNOWN_BUGS.md same-slot-swap SSIM follow-up,
 # sixth fix): at today's ~1 MB (512px) tiles, 8ms left a full base+diff

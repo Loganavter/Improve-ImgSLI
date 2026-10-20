@@ -1,6 +1,12 @@
 # Audit-Meta: pattern=derived-state reason="single Store snapshot → GPU commit barrier, fixes shadow cache divergence (store-redux-dogma)"
 """Derived GPU state — single commit barrier for Image Compare.
 
+STATUS: design target, not wired — nothing constructs ``DerivedGpuState``
+(0 call sites in ``src/`` and ``tests/``). The barrier described below is the
+intended shape, not the shipped one: today the allowlisted barrier writers
+mutate CanvasRuntimeState directly. Wire it or delete it before citing this
+module as an enforced barrier.
+
 Systemic fix for divergence between Store (Redux) wish and GPU reality
 (left-on-both, log lie, tiny bbox 0.001):
 
@@ -28,7 +34,9 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class DerivedGpuState:
-    """Immutable GPU commit derived from one Store snapshot.
+    """Design target, not wired — see the module STATUS note.
+
+    Immutable GPU commit derived from one Store snapshot.
 
     All fields are computed once in `update_comparison_if_needed` after picking
     display tier, then passed to `apply_store_to_canvas` → `upload_pil_images`

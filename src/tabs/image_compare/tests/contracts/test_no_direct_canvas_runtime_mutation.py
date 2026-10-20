@@ -35,7 +35,6 @@ ALLOWED_WRITERS = {
     "src/tabs/image_compare/canvas/texture_parts/upload_queue.py",
     "src/tabs/image_compare/canvas/texture_parts/layers.py",
     "src/tabs/image_compare/canvas/presentation/plan_applicator.py",
-    "src/shared/rendering/host_texture_cache.py",
     "src/ui/canvas_infra/rhi/rhi_render.py",
     "src/tabs/image_compare/use_cases/canvas_invalidate.py",  # Phase 4 thin-owner forwarder, barrier-equivalent clear on invalidate
     # NOTE (engine-migration C3): upload_pil_images and the plan applicator

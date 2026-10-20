@@ -33,7 +33,7 @@ on the theory that reading colorTexture() any later would need to "reopen"
 the main render target -- confirmed live that's not actually a constraint
 here: nothing in this crop step touches the main render target at all, only
 ``widget.colorTexture()`` as a plain copy *source*, and the app's own
-``shared.rendering.mip_cascade.generate_all_dirty_mips`` already proves this
+``engine.gpu.mip_cascade.generate_all_dirty_mips`` already proves this
 exact shape works within one frame -- write into a target via a pass,
 ``copyTexture()`` out of it once that write is *submitted*, not merely
 batched, then a *later* pass/copy this same frame safely samples the copy
@@ -363,7 +363,7 @@ class GlassPanelRenderer:
         self._debug_dump_seq = 0
         # (result, label, annotate_rects) tuples awaiting readback completion
         # -- same "poll on the next call" idiom as
-        # shared.rendering.mip_cascade's _flush_debug_readbacks (QRhi's
+        # engine.gpu.mip_cascade's _flush_debug_readbacks (QRhi's
         # Python bindings don't expose QRhiReadbackResult.completed).
         # annotate_rects is a list of (x, y, w, h) device-px rects to
         # outline in red (used only for the full-canvas dump, so every live
@@ -534,7 +534,7 @@ class GlassPanelRenderer:
         # rewritten between draws -- a shared Dynamic buffer rewritten
         # between two beginPass/endPass pairs in the same frame is not
         # guaranteed visible only to the pass it was meant for on every QRhi
-        # backend (see shared.rendering.mip_cascade's
+        # backend (see engine.gpu.mip_cascade's
         # _ensure_downsample_uniform_buffer docstring for the investigation
         # this avoided). At most a handful of panels exist at once, so one
         # tiny buffer pair each is cheap.

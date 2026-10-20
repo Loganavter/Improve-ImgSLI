@@ -69,7 +69,12 @@ class CanvasRenderPassBase:
         raise NotImplementedError(f"{type(self).__name__}.paint() is not implemented")
 
     def cleanup(self, widget) -> None:
-        """Called on GL context destruction.  Release shader programs and textures."""
+        """Not called by the runtime — the live destruction hook is ``release()``.
+
+        ``RhiCanvasRenderer.release()`` calls ``release()`` on every feature
+        pass; nothing calls this GL-era hook (no caller in ``src/``). Release
+        shader programs and textures in ``release()`` instead.
+        """
 
 
 class CanvasRenderPass(CanvasRenderPassBase):
