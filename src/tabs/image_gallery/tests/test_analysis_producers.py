@@ -529,7 +529,14 @@ def test_dropping_a_producer_package_shrinks_the_axes_without_raising(
 
 
 NO_DECODE_ATTRS = {"Image.open", "TiledPixelStore.from_path", "read_bytes", "open"}
-FORBIDDEN_MODULES = {"tabs.image_gallery.services.proxy"}
+#: Producers receive their transport through ``AnalysisContext.call`` — a
+#: producer that imports an HTTP client is a network path nobody declared.
+FORBIDDEN_MODULES = {
+    "tabs.image_gallery.services.proxy",
+    "urllib.request",
+    "urllib.error",
+    "requests",
+}
 FORBIDDEN_MODULE_SUFFIXES = (".services.proxy",)
 
 
