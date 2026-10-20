@@ -36,6 +36,32 @@ The four surfaces added by ``plan-live-appearance-fixes-2026-10-19``:
   subscription does not exist for them, and asserting one would test a
   lifecycle the app does not have.
 
+Pixel gate (the LIVE false green this file also closes)
+-------------------------------------------------------
+Geometry parity is not appearance: nine geometry tests passed while the
+owner's chrome was visibly broken (``plan-live-appearance-fixes-2026-10-19``
+§47-50). ``PIXEL_SURFACES`` therefore rasterises the real widget offscreen and
+asserts on the ink (``tests/helpers/ui_metrics_parity.py`` pixel mode):
+
+* ``test_ink_rows_scale_with_the_interface_scale`` — the label's ink-row
+  height grows by ~the scale factor (2x here), so a baked/fixed pixel font is
+  named ``UNSCALED`` and a factor² height ``DOUBLE-SCALED``; the ink bounding
+  box must also stay strictly inside its row box (``CLIPPED`` otherwise);
+* ``test_glyph_bitmap_differs_across_language`` — a known label's rendered
+  glyph bitmap has a non-zero en/ru pixel diff (a swapped label is named
+  ``IDENTICAL glyph bitmap``; a held pixmap is not content).
+
+Registered pixel surfaces (the ones the blind-test inventory
+``audit-blind-test-inventory-2026-10-20`` found missing from the pixel half):
+
+    ``tab_strip`` (live scale), ``export_dialog``, ``image_properties_dialog``,
+    ``settings_dialog`` — the three dialogs are per-open, so both axes rebuild
+    a fresh instance under the lever.
+
+``tab_strip``'s language axis is exempt: the tab title is host-supplied and
+localised by ``ui/main_window/ui.py`` before ``setTabText``; the strip owns no
+translated chrome, so the dialogs carry the translated-glyph check.
+
 Known gaps recorded here (production-side, outside this gate's scope; none is
 left as a silent skip):
 
@@ -58,12 +84,19 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from PySide6.QtCore import QPoint, QRect
 from PySide6.QtWidgets import QDialog, QHBoxLayout, QLabel, QWidget
 
 from tests.helpers.ui_metrics_parity import (
     REBUILD,
     MetricsSurface,
+    PixelProbe,
+    PixelSurface,
+    assert_glyph_bitmap_differs_across_language,
+    assert_ink_fits_its_row,
+    assert_ink_rows_scale_with_interface_scale,
     assert_reflows_on_metrics_change,
+    capture_ink,
 )
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -883,3 +916,353 @@ def test_gate_catches_a_surface_that_ignores_the_language_axis(qapp):
     with pytest.raises(AssertionError) as exc:
         assert_reflows_on_metrics_change(_language_stale_surface(), qapp=qapp)
     assert "language change" in str(exc.value), str(exc.value)
+
+
+# ---------------------------------------------------------------------------
+# Pixel gate — the LIVE false green this half closes. Geometry that re-derives
+# is not appearance: the ink has to scale with the interface scale, stay inside
+# its row, and a known label's glyph bitmap has to change across en/ru.
+#
+# Registered surfaces are the ones the blind-test inventory found missing from
+# the pixel gate (the owner's visibly broken chrome passed nine geometry
+# tests): the workspace tab strip and the export / image-properties / settings
+# dialogs.
+# ---------------------------------------------------------------------------
+
+PIXEL_SURFACES: dict[str, PixelSurface] = {}
+
+
+def register_pixel_surface(surface: PixelSurface) -> PixelSurface:
+    """Register a pixel surface (the only supported entry point)."""
+    if surface.name in PIXEL_SURFACES:
+        raise ValueError(f"duplicate pixel surface {surface.name!r}")
+    PIXEL_SURFACES[surface.name] = surface
+    return surface
+
+
+def _mapped_rect(widget: QWidget, ancestor: QWidget) -> QRect:
+    """``widget``'s geometry in ``ancestor`` coordinates (grab coordinates)."""
+    return QRect(widget.mapTo(ancestor, QPoint(0, 0)), widget.size())
+
+
+def _label_widget_probe(widget: QWidget, dialog: QWidget, *, inner: int = 4) -> PixelProbe:
+    """Probe for a toolkit label widget painted inside ``dialog``.
+
+    ``label_region`` is the widget's inner box (border excluded) so the ink
+    measured is the label content, not the frame; ``row_region`` is the whole
+    widget box the content must stay inside.
+    """
+    return PixelProbe(
+        image=lambda: dialog.grab().toImage(),
+        label_region=lambda: _mapped_rect(widget, dialog).adjusted(inner, inner, -inner, -inner),
+        row_region=lambda: _mapped_rect(widget, dialog),
+        label_text=lambda: getattr(widget, "_text", "") or getattr(widget, "text", lambda: "")(),
+    )
+
+
+def _build_tab_strip_pixels(qapp, monkeypatch):
+    """WorkspaceTabStrip: the tab label's glyph ink inside the tab row.
+
+    The tab strip is long-lived chrome, so its pixel probe drives the LIVE
+    path (scale lever on the built strip) — the same subscription the owner
+    sees when changing the interface scale in Settings. The tab title itself
+    is host-supplied, so the language axis is exempt here.
+    """
+    from PySide6.QtWidgets import QTabBar
+
+    from ui.icon_manager import AppIcon
+    from ui.widgets.workspace_tab_strip import WorkspaceTabStrip
+
+    strip = WorkspaceTabStrip(add_icon=AppIcon.ADD, close_icon=AppIcon.CLOSE)
+    strip.addTab("Image Compare")
+    strip.addTab("Image Gallery")
+    strip.resize(900, strip.sizeHint().height())
+    strip.show()
+    qapp.processEvents()
+
+    def _tab_bar_offset() -> QPoint:
+        return strip.tab_bar.mapTo(strip, QPoint(0, 0))
+
+    def row_region() -> QRect:
+        return strip.tabRect(0).translated(_tab_bar_offset())
+
+    def label_region() -> QRect:
+        tab = row_region()
+        slot = strip.tab_bar.tabButton(0, QTabBar.ButtonPosition.RightSide)
+        right = (
+            slot.geometry().left() + _tab_bar_offset().x()
+            if slot is not None
+            else tab.right()
+        )
+        return QRect(
+            tab.left() + 8,
+            tab.top() + int(tab.height() * 0.28),
+            max(1, right - tab.left() - 12),
+            max(1, int(tab.height() * 0.67)),
+        )
+
+    probe = PixelProbe(
+        image=lambda: strip.grab().toImage(),
+        label_region=label_region,
+        row_region=row_region,
+        label_text=lambda: strip.tabText(0),
+    )
+    return strip, probe
+
+
+def _build_export_dialog_pixels(qapp, monkeypatch):
+    """ExportDialog: the Cancel button's glyph ink (a translated label)."""
+    _isolate_remembered_geometry(monkeypatch)
+    from domain.types import Color
+    from plugins.export.dialog import ExportDialog
+    from plugins.export.models import ExportDialogState
+    from resources.translations import get_current_language
+
+    state = ExportDialogState(
+        current_language=get_current_language() or "en",
+        output_dir="/tmp",
+        favorite_dir=None,
+        last_format="PNG",
+        quality=95,
+        png_compress_level=9,
+        fill_background=True,
+        background_color=Color(255, 255, 255, 255),
+        comment_text="",
+        comment_keep_default=False,
+        resolution_scale=1.0,
+    )
+    dialog = ExportDialog(dialog_state=state, suggested_filename="out")
+    dialog.show()
+    qapp.processEvents()
+    return dialog, _label_widget_probe(dialog.btn_cancel, dialog)
+
+
+def _build_image_properties_dialog_pixels(qapp, monkeypatch):
+    """ImagePropertiesDialog: the "Copy all" button's glyph ink."""
+    _isolate_remembered_geometry(monkeypatch)
+    monkeypatch.setattr(
+        "shared_toolkit.ui.decorate_dialog.decorate_dialog", lambda *a, **k: None
+    )
+    from plugins.image_properties.dialog import ImagePropertiesDialog
+    from plugins.image_properties.service import (
+        ImageProperties,
+        ImagePropertyRow,
+        ImagePropertySection,
+    )
+    from resources.translations import get_current_language
+
+    properties = ImageProperties(
+        title="Properties",
+        sections=(
+            ImagePropertySection(
+                "section",
+                "Section",
+                (ImagePropertyRow("name", "Name", "image.png"),),
+            ),
+        ),
+    )
+    dialog = ImagePropertiesDialog(
+        properties, current_language=get_current_language() or "en"
+    )
+    dialog.show()
+    qapp.processEvents()
+    return dialog, _label_widget_probe(dialog.copy_all_button, dialog)
+
+
+def _build_settings_dialog_pixels(qapp, monkeypatch):
+    """SettingsDialog: the Cancel button's glyph ink (translated chrome)."""
+    _isolate_remembered_geometry(monkeypatch)
+    from core.store import Store
+    from plugins.settings.dialog import SettingsDialog
+    from resources.translations import get_current_language
+    from sli_ui_toolkit.managers import UiScale
+
+    store = Store()
+    dialog = SettingsDialog(
+        current_language=get_current_language() or "en",
+        current_theme=store.settings.theme,
+        current_max_length=30,
+        min_limit=1,
+        max_limit=200,
+        debug_mode_enabled=False,
+        system_notifications_enabled=True,
+        current_ui_scale_factor=UiScale.get_instance().factor(),
+        active_tab="image_gallery",
+    )
+    dialog.show()
+    qapp.processEvents()
+    return dialog, _label_widget_probe(dialog.cancel_button, dialog)
+
+
+#: The tab strip paints a title the HOST localised (``ui/main_window/ui.py``
+#: ``_localized_session_title`` → ``tab.localized_display_name``); the strip
+#: owns no translated chrome, so emitting the live language entry without a
+#: host rebuild cannot change its pixels. The three dialogs carry the
+#: translated-glyph check.
+_TAB_STRIP_LANGUAGE_EXEMPTION = (
+    "tab titles are host-supplied session labels (translated by "
+    "ui/main_window/ui.py before setTabText); the strip paints the string it "
+    "is given and has no translated chrome of its own"
+)
+
+register_pixel_surface(
+    PixelSurface(
+        "tab_strip",
+        _build_tab_strip_pixels,
+        axes=frozenset({"scale"}),
+        exemptions={"language": _TAB_STRIP_LANGUAGE_EXEMPTION},
+    )
+)
+register_pixel_surface(
+    PixelSurface(
+        "export_dialog",
+        _build_export_dialog_pixels,
+        modes={"scale": REBUILD, "language": REBUILD},
+    )
+)
+register_pixel_surface(
+    PixelSurface(
+        "image_properties_dialog",
+        _build_image_properties_dialog_pixels,
+        modes={"scale": REBUILD, "language": REBUILD},
+    )
+)
+register_pixel_surface(
+    PixelSurface(
+        "settings_dialog",
+        _build_settings_dialog_pixels,
+        modes={"scale": REBUILD, "language": REBUILD},
+    )
+)
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _pixel_theme(qapp):
+    """Paint the pixel surfaces under the app's real light palette.
+
+    An unthemed toolkit widget paints a flat (often black) face offscreen, so
+    the ink rasteriser would see background-only. Register the app palettes and
+    select light for the module, restoring the previous theme afterwards.
+    """
+    from core.theme import DARK_THEME_PALETTE, LIGHT_THEME_PALETTE
+    from sli_ui_toolkit.theme import ThemeManager
+
+    manager = ThemeManager.get_instance()
+    original = manager.get_current_theme()
+    manager.register_palettes(LIGHT_THEME_PALETTE, DARK_THEME_PALETTE)
+    manager.set_theme("light", qapp, await_ripples=False)
+    qapp.processEvents()
+    yield
+    if original:
+        manager.set_theme(original, qapp, await_ripples=False)
+        qapp.processEvents()
+
+
+@pytest.mark.parametrize("name", sorted(PIXEL_SURFACES))
+def test_ink_rows_scale_with_the_interface_scale(qapp, monkeypatch, name):
+    """The label's ink-row height must grow by ~the scale factor (2x here)."""
+    assert_ink_rows_scale_with_interface_scale(
+        PIXEL_SURFACES[name], qapp=qapp, monkeypatch=monkeypatch, factor=2.0
+    )
+
+
+@pytest.mark.parametrize(
+    "name", sorted(n for n, s in PIXEL_SURFACES.items() if "language" in s.axes)
+)
+def test_glyph_bitmap_differs_across_language(qapp, monkeypatch, name):
+    """A known label's glyph bitmap must have a non-zero en/ru pixel diff."""
+    assert_glyph_bitmap_differs_across_language(
+        PIXEL_SURFACES[name], qapp=qapp, monkeypatch=monkeypatch
+    )
+
+
+def test_the_pixel_gate_registers_the_plan_surfaces():
+    """The surfaces the blind-test inventory found missing from the pixel gate."""
+    assert {
+        "tab_strip",
+        "export_dialog",
+        "image_properties_dialog",
+        "settings_dialog",
+    } <= set(PIXEL_SURFACES)
+
+
+def test_a_pixel_surface_cannot_ship_without_a_language_decision():
+    with pytest.raises(ValueError, match="plan axis"):
+        PixelSurface(
+            "synthetic_pixel_ungated",
+            lambda qapp, monkeypatch: (QWidget(), _label_widget_probe(QWidget(), QWidget())),
+            axes=frozenset({"scale"}),
+        )
+
+
+# ---------------------------------------------------------------------------
+# Pixel-gate falsification — the LIVE false green must be caught by name:
+# a fixed-px row (UNSCALED), a squeezed label (CLIPPED) and a label whose text
+# changed while its bitmap did not (IDENTICAL glyph bitmap).
+# ---------------------------------------------------------------------------
+
+
+def _fixed_label_surface(
+    *,
+    text: str = "Ink row",
+    pixel_size: int = 12,
+    size: tuple[int, int] = (180, 34),
+    centered: bool = False,
+    reported_text=None,
+) -> PixelSurface:
+    """A label with a fixed pixel font/size — the baked-design-px disease."""
+    from PySide6.QtCore import Qt
+    from PySide6.QtGui import QFont
+    from PySide6.QtWidgets import QLabel
+
+    def build(qapp, monkeypatch):
+        label = QLabel(text)
+        font = QFont(label.font())
+        font.setPixelSize(pixel_size)
+        label.setFont(font)
+        if centered:
+            label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        label.setFixedSize(*size)
+        label.show()
+        qapp.processEvents()
+        probe = PixelProbe(
+            image=lambda: label.grab().toImage(),
+            label_region=lambda: label.rect(),
+            row_region=lambda: label.rect(),
+            label_text=lambda: reported_text() if reported_text else label.text(),
+        )
+        return label, probe
+
+    return PixelSurface(
+        "synthetic_pixel",
+        build,
+        axes=frozenset({"scale", "language"}),
+    )
+
+
+def test_pixel_gate_catches_an_unscaled_row(qapp):
+    surface = _fixed_label_surface(centered=True)
+    with pytest.raises(AssertionError) as exc:
+        assert_ink_rows_scale_with_interface_scale(surface, qapp=qapp, factor=2.0)
+    assert "UNSCALED" in str(exc.value), str(exc.value)
+
+
+def test_pixel_gate_catches_a_clipped_label(qapp):
+    surface = _fixed_label_surface(text="A label wider than its row", size=(40, 22))
+    with pytest.raises(AssertionError) as exc:
+        assert_ink_fits_its_row(capture_ink(surface, qapp=qapp))
+    assert "CLIPPED" in str(exc.value), str(exc.value)
+
+
+def test_pixel_gate_catches_an_identical_glyph_bitmap(qapp):
+    """The swapped-label disease: the text claims ru, the bitmap never moved."""
+    from resources.translations import get_current_language
+
+    surface = _fixed_label_surface(
+        text="Frozen",
+        reported_text=lambda: "Frozen" if (get_current_language() or "en") == "en" else "Заморожено",
+    )
+    with pytest.raises(AssertionError) as exc:
+        assert_glyph_bitmap_differs_across_language(surface, qapp=qapp)
+    assert "IDENTICAL glyph bitmap" in str(exc.value), str(exc.value)
+
