@@ -70,29 +70,6 @@ NAV_COVERAGE_ALLOWLIST: dict[str, str] = {
         "outside the row model; a follow-up should pin NoFocus or teach the "
         "section to own the viewport."
     ),
-    "window:AppMessageDialog": (
-        "no navigation section is registered for this window at all: "
-        "AppMessageDialog decorates its CSD title bar but never calls "
-        "register_dialog_title_bar_navigation() and declares no rows, so the "
-        "body label, checkbox, OK / Cancel / 'Do not ask again' buttons and "
-        "the title-bar close control sit outside the section graph (new "
-        "finding F3; follow-up task)."
-    ),
-    "window:AppTextInputDialog": (
-        "no navigation section is registered for this window at all: "
-        "AppTextInputDialog decorates its CSD title bar but never calls "
-        "register_dialog_title_bar_navigation() and declares no rows, so the "
-        "text field, OK / Cancel and the title-bar close control sit outside "
-        "the section graph (new finding F3; follow-up task)."
-    ),
-    "window:DiagnosticsDialog": (
-        "no navigation section is registered for this window at all: "
-        "DiagnosticsDialog decorates its CSD title bar but never calls "
-        "register_dialog_title_bar_navigation() and declares no rows, so the "
-        "report TextView, Copy / Save / Open issue / Close and the title-bar "
-        "close control sit outside the section graph (new finding F3; "
-        "follow-up task)."
-    ),
 }
 
 __all__ = ["NAV_COVERAGE_ALLOWLIST", "WINDOW_PREFIX"]

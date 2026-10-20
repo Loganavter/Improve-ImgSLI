@@ -55,9 +55,28 @@ class DiagnosticsDialog(ThemedDialog):
         self.install_dialog_geometry(self._apply_dialog_geometry)
         self.mark_theme_ui_ready()
 
-        from shared_toolkit.ui.decorate_dialog import decorate_dialog
+        from shared_toolkit.ui.decorate_dialog import (
+            decorate_dialog,
+            register_dialog_auto_navigation,
+            register_dialog_title_bar_navigation,
+        )
 
         decorate_dialog(self, title=self._tr("diagnostics.title", "Report a problem"))
+        register_dialog_title_bar_navigation(self)
+        # Report view above, action row below, in visual order.
+        register_dialog_auto_navigation(
+            self,
+            [
+                [self.preview],
+                [
+                    self.open_issue_button,
+                    self.copy_button,
+                    self.save_button,
+                    self.close_button,
+                ],
+            ],
+            tag="diagnostics",
+        )
         QTimer.singleShot(0, self._finalize_layout_and_size)
 
     # -- i18n -------------------------------------------------------------

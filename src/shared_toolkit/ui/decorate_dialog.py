@@ -123,6 +123,29 @@ def unregister_dialog_title_bar_navigation(dialog: QDialog) -> None:
     dialog._title_bar_nav_section = None  # type: ignore[attr-defined]  # dynamic attr
 
 
+def register_dialog_auto_navigation(dialog: QWidget, rows, *, tag: str = "dialog-rows"):
+    """Own a dialog's controls as one keyboard-navigation section (idempotent).
+
+    Rows are the dialog's controls in visual order: Down/Up walk them,
+    Left/Right move inside a row, Return/Enter activate the focused control.
+    Call after :func:`decorate_dialog` and AFTER
+    :func:`register_dialog_title_bar_navigation` so the title bar stays the
+    topmost section (Down from the bar enters the first row, Up from the first
+    row yields back to the bar).
+
+    Implementation lives in ``shared_toolkit.ui.dialog_rows_navigation``
+    (CSD decoration and row navigation are separate concerns — file-size
+    policy); this entry point stays next to the title-bar helper it pairs
+    with. See :func:`~shared_toolkit.ui.dialog_rows_navigation.
+    register_dialog_auto_navigation` for the ``rows`` shape.
+    """
+    from shared_toolkit.ui.dialog_rows_navigation import (
+        register_dialog_auto_navigation as _register,
+    )
+
+    return _register(dialog, rows, tag=tag)
+
+
 def resolve_csd_band(window) -> int:
     """Effective CSD outer-band inset for ``window``.
 
