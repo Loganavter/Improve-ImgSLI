@@ -569,6 +569,11 @@ class AppBackend:
                 "name": name,
                 "description": data.get("description", ""),
                 "isolated": bool(data.get("isolated")),
+                # Devtool demo surfaces are headless fallbacks: the capture
+                # devtool can render them, the live app did not advertise them
+                # and no live window exists to grab.
+                "live": False,
+                "capturable": False,
             }
             for name, data in surfaces.items()
         ]
@@ -766,13 +771,26 @@ class AppBackend:
 
     # -- element targeting (live-only) --------------------------------------
 
-    def ui_elements(self, *, scope: str | None = None, include_disabled: bool | None = None) -> dict:
+    def ui_elements(
+        self,
+        *,
+        scope: str | None = None,
+        include_disabled: bool | None = None,
+        role: str | None = None,
+        label: str | None = None,
+        properties: dict | None = None,
+        limit: int | None = None,
+    ) -> dict:
         return self._live_only(
             "ui_elements",
             self._elements_need_live(),
             mutating=False,
             scope=scope,
             include_disabled=include_disabled,
+            role=role,
+            label=label,
+            properties=properties,
+            limit=limit,
         )
 
     def ui_click(self, *, id: str, button: str | None = None, count: int | None = None) -> dict:

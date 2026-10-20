@@ -50,6 +50,7 @@ _ELEMENT_KEYS = {
     "action_id",
     "enabled",
     "visible",
+    "properties",
 }
 
 
@@ -448,6 +449,11 @@ def test_gallery_card_role_and_right_click_reach_the_real_handler(tmp_path):
         ]
         assert len(cards) >= 2, "gallery cards are inventoried as cards"
         assert all(c["rect"][2] > 0 and c["rect"][3] > 0 for c in cards)
+        assert {
+            c["properties"].get("gallery_path") for c in cards
+        } == {str(Path(f"/gallery/card_{index}.png")) for index in range(2)}, (
+            "each card's content identity is its gallery_path"
+        )
 
         result = handlers.ui_click({"id": cards[0]["id"], "button": "right"})
         assert result["clicked"] is True

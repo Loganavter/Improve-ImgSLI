@@ -9,12 +9,13 @@ id/rect contract and the role mapping (kept in :mod:`.roles`).
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from PySide6.QtCore import QRect, Qt
 from PySide6.QtWidgets import QApplication, QMenu, QTabBar, QWidget
 
+from .query import scalar_properties
 from .roles import (
     _has_area,
     _is_menu_like,
@@ -58,6 +59,10 @@ class Element:
     owner_tab: str | None
     enabled: bool
     visible: bool
+    #: Serialisable content identity read from the widget's own dynamic
+    #: properties (see :func:`query.scalar_properties`), e.g. ``gallery_path``
+    #: for a gallery card. Empty when the widget carries none.
+    properties: dict[str, Any] = field(default_factory=dict)
 
     @property
     def screen_rect(self) -> QRect:
@@ -80,6 +85,7 @@ class Element:
             "action_id": self.action_id,
             "enabled": self.enabled,
             "visible": self.visible,
+            "properties": dict(self.properties),
         }
 
 
@@ -197,6 +203,7 @@ def _make_element(
         owner_tab=owner_tab,
         enabled=enabled,
         visible=visible,
+        properties=scalar_properties(widget),
     )
 
 
@@ -443,12 +450,18 @@ def collect_elements(
     return out
 
 
-def inventory_payload(elements: list[Element]) -> dict[str, Any]:
-    """The frozen ``ui_elements`` result shape."""
+def inventory_payload(elements: list[Element], *, total: int | None = None) -> dict[str, Any]:
+    """The frozen ``ui_elements`` result shape.
+
+    ``total`` is the match count before ``limit`` truncation; it equals
+    ``count`` (and is reported for every call) so a client never has to guess
+    whether a short answer was narrowed.
+    """
     rows = [element.payload() for element in elements]
     windows = sorted({element.window for element in elements})
     return {
         "count": len(rows),
+        "total": len(rows) if total is None else int(total),
         "window_count": len(windows),
         "elements": rows,
     }

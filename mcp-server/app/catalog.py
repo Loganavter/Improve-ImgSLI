@@ -433,7 +433,16 @@ TOOLS: list[dict] = [
             {
                 "count": _INT,
                 "surfaces": _array(
-                    _object({"name": _STR, "description": _STR, "isolated": _BOOL}, ["name", "description"]),
+                    _object(
+                        {
+                            "name": _STR,
+                            "description": _STR,
+                            "isolated": _BOOL,
+                            "live": _BOOL,
+                            "capturable": _BOOL,
+                        },
+                        ["name", "description"],
+                    ),
                 ),
                 "source": _source(),
             },
@@ -731,7 +740,7 @@ TOOLS: list[dict] = [
                 ,
                 "target": {
                     **_STR,
-                    "description": "Element id from ui_elements to type into (e.g. a canvas). Default: the focused widget.",
+                    "description": "Element id from ui_elements to type into (e.g. a canvas), or property:<name>=<value>. Default: the focused widget.",
                 },
             },
             ["keys"],
@@ -767,7 +776,7 @@ TOOLS: list[dict] = [
                 },
                 "anchor": {
                     **_STR,
-                    "description": "Element id from ui_elements to focus first (with the app's own focus reason); omit to use whatever holds focus now.",
+                    "description": "Element id from ui_elements to focus first (with the app's own focus reason), or property:<name>=<value>; omit to keep current focus.",
                 },
             },
             ["keys"],
@@ -881,13 +890,12 @@ TOOLS: list[dict] = [
         "name": "ui_elements",
         "title": "Inventory interactive elements",
         "description": (
-            "Flattened inventory of the live window's interactive elements: "
-            "stable id, role, label, rect, screen_rect, enabled, visible, and "
-            "bound Find Action id. Call it FIRST to get an id for ui_click / "
-            "ui_hover / ui_focus; ids are session-scoped, so re-read instead of "
-            "caching across starts. Live-only. rect is widget-local, "
-            "screen_rect is screen-space (best-effort on Wayland). Do NOT use it "
-            "to run anything."
+            "Flattened inventory of the live window's interactive elements: id, "
+            "role, label, rects, enabled, visible, bound action, and a properties "
+            "bag. Narrow with role (exact), label (case-insensitive substring), "
+            "properties (exact matches) and limit. Call it FIRST for ui_click / "
+            "ui_hover / ui_focus ids; they are session-scoped — re-read, do not "
+            "cache across starts. Live-only. Do NOT use it to run anything."
         ),
         "inputSchema": _params(
             {
@@ -899,11 +907,31 @@ TOOLS: list[dict] = [
                     **_BOOL,
                     "description": "Include disabled elements too; omit to list only enabled ones.",
                 },
+                "role": {
+                    **_STR,
+                    "description": "Only elements with exactly this role (e.g. button, card, tab, menu-row). Omit for every role.",
+                },
+                "label": {
+                    **_STR,
+                    "description": "Only elements whose label contains this text, case-insensitively. Omit for every label.",
+                },
+                "properties": {
+                    "type": "object",
+                    "additionalProperties": {"type": ["string", "integer", "number", "boolean"]},
+                    "description": "Only elements whose own properties bag matches every name→value pair exactly (e.g. {\"gallery_path\": \"/a.png\"}).",
+                },
+                "limit": {
+                    **_INT,
+                    "minimum": 1,
+                    "maximum": 2000,
+                    "description": "Return at most this many rows, in tree order; report the pre-limit match count in total. Default: unlimited.",
+                },
             }
         ),
         "outputSchema": _object(
             {
                 "count": _INT,
+                "total": _INT,
                 "window_count": _INT,
                 "elements": _array(
                     _object(
@@ -920,8 +948,13 @@ TOOLS: list[dict] = [
                             "action_id": {"type": ["string", "null"]},
                             "enabled": _BOOL,
                             "visible": _BOOL,
+                            "properties": {
+                                "type": "object",
+                                "additionalProperties": {"type": ["string", "integer", "number", "boolean"]},
+                                "description": "The widget's own serialisable dynamic properties (e.g. gallery_path). Address one with property:<name>=<value>.",
+                            },
                         },
-                        ["id"],
+                        ["id", "properties"],
                     )
                 ),
                 "source": _source(),
@@ -947,7 +980,7 @@ TOOLS: list[dict] = [
             {
                 "id": {
                     **_STR,
-                    "description": "Element id from ui_elements (session-scoped).",
+                    "description": "Element id from ui_elements (session-scoped), or a stable property:<name>=<value> reference.",
                 },
                 "button": {
                     **_STR,
@@ -989,7 +1022,7 @@ TOOLS: list[dict] = [
             "(best-effort on Wayland)."
         ),
         "inputSchema": _params(
-            {"id": {**_STR, "description": "Element id from ui_elements (session-scoped)."}},
+            {"id": {**_STR, "description": "Element id from ui_elements (session-scoped), or a stable property:<name>=<value> reference."}},
             ["id"],
         ),
         "outputSchema": _object(
@@ -1017,7 +1050,7 @@ TOOLS: list[dict] = [
             "screen_rect is screen-space (best-effort on Wayland)."
         ),
         "inputSchema": _params(
-            {"id": {**_STR, "description": "Element id from ui_elements (session-scoped)."}},
+            {"id": {**_STR, "description": "Element id from ui_elements (session-scoped), or a stable property:<name>=<value> reference."}},
             ["id"],
         ),
         "outputSchema": _object(

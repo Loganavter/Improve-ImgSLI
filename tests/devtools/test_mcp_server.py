@@ -262,6 +262,29 @@ def test_element_tool_annotations_are_audited(wired):
     ]
 
 
+def test_ui_elements_catalog_declares_filters_and_properties(wired):
+    """Narrowing happens server-side; each row carries a serialisable bag."""
+    protocol, _backend, _calls = wired
+    tools = {tool["name"]: tool for tool in _request(protocol, "tools/list")["result"]["tools"]}
+    schema = tools["ui_elements"]["inputSchema"]["properties"]
+
+    assert schema["role"]["type"] == "string"
+    assert schema["label"]["type"] == "string"
+    assert schema["properties"]["type"] == "object"
+    assert schema["limit"]["type"] == "integer"
+    assert schema["limit"]["maximum"] == 2000
+    assert schema["limit"]["minimum"] == 1
+
+    element = tools["ui_elements"]["outputSchema"]["properties"]["elements"]["items"]
+    assert element["properties"]["properties"]["type"] == "object"
+    assert {"id", "properties"} <= set(element.get("required") or ())
+
+    surfaces = tools["list_surfaces"]["outputSchema"]["properties"]["surfaces"]["items"]
+    assert surfaces["properties"]["live"]["type"] == "boolean"
+    assert surfaces["properties"]["capturable"]["type"] == "boolean"
+
+
+
 def test_job_tool_annotations_are_audited(wired):
     """``jobs_list`` reads; ``jobs_cancel`` mutates without pretending safety."""
     protocol, _backend, _calls = wired
