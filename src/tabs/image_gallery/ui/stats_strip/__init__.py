@@ -80,6 +80,9 @@ class StatsStrip(QWidget):
         self._profile_domain = ""
         self._profile_suggested = ""
         self._profile_auto = True
+        # Profile provenance (P5): "vlm" | "heuristic" | "" — the chip names it
+        # instead of calling a model pick "auto".
+        self._profile_source = ""
         self._profile_flyout = None
         # Last affordance applied per action button ("keep"/"compare"). Used to
         # swap the dimmed/bright tokens only on the enabled↔disabled boundary
@@ -578,22 +581,39 @@ class StatsStrip(QWidget):
 
     # -- metric-profile chip (P4) -----------------------------------------
 
-    def set_metric_profile(self, profile=None, *, domain: str = "", auto: bool = True) -> None:
-        """Render the active metric profile/domain in the chip (P4).
+    def set_metric_profile(
+        self, profile=None, *, domain: str = "", auto: bool = True, source: str = ""
+    ) -> None:
+        """Render the active metric profile/domain in the chip (P4/P5).
 
         *profile* is the concrete ``MetricProfile`` the controller stored on the
         state — the strip never derives one. *domain* is the name to display
         (the explicit pick, or the domain the measured stats suggest when
-        *auto*); ``auto=True`` means no override is pinned, so the label says
-        so and the menu selects "auto". The full diagnostic line
+        *auto*); ``auto=True`` means no override is pinned, so the flyout
+        selects "auto". *source* is the profile's provenance (``vlm`` |
+        ``heuristic``): a VLM pick is **not** the auto default, so the chip
+        names it instead of the generic "(auto)" (the value stays unpacked —
+        the flyout still shows no pinned domain). The full diagnostic line
         (``format_profile``) is the tooltip — axes, source, mode, domain.
         """
         self._profile = profile
         norm = domain_id(domain)
         self._profile_auto = bool(auto)
+        self._profile_source = str(source or "").strip().lower()
         self._profile_suggested = norm or domain_for_mode(None)
         self._profile_domain = "" if bool(auto) else norm
         self._refresh_profile_chip()
+
+    def _source_label(self, source: str) -> str:
+        """Translated, SHORT provenance token for the chip (``vlm``/``heuristic``).
+
+        The chip is width-capped (#454), so the token never grows into a
+        sentence; an unknown source fails open to its raw id (still truthful).
+        """
+        src = str(source or "").strip().lower()
+        if not src:
+            return ""
+        return self._t(f"image_gallery.profile.source.{src}", src)
 
     def _profile_display_domain(self) -> str:
         return self._profile_domain or self._profile_suggested or "mixed"
@@ -634,7 +654,11 @@ class StatsStrip(QWidget):
         try:
             label = self._domain_label(self._profile_display_domain())
             if self._profile_auto:
-                label = f"{label} ({self._t('image_gallery.profile.auto', 'auto')})"
+                # Name the provenance: a figure of `auto` alone hides whether the
+                # axes came from the mode/measured derivation or from a model
+                # pick (P5). The pin state stays the flyout's "auto" row.
+                token = self._source_label(getattr(self, "_profile_source", ""))
+                label = f"{label} ({token or self._t('image_gallery.profile.auto', 'auto')})"
             text = self._t(
                 "image_gallery.profile.chip", "Metric profile: {profile}"
             ).format(profile=label)

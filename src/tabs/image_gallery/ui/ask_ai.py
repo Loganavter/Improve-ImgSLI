@@ -1,57 +1,42 @@
-"""Ask AI flyout (A3) — one scope-aware ask surface.
-Audit-Meta: pattern=single-surface size=exempt reason="one scope-aware ask flyout — its fade/persist/menu/status state is one cohesive surface; splitting would scatter the flyout lifecycle"
+"""Ask AI flyout (A3) — the anchored shell around the shared ask surface.
 
-A toolkit ``BaseFlyout`` with a ``CustomLineEdit`` on the toolkit submit
-preset (pre-filled, overridable default prompt: ``Tab`` accepts it,
-``Enter`` sends) and a result pane marked
-"AI read, unverified". Advisory only: the flyout renders text, it never
-mutates rank/selection/store. All async work is dispatched by the controller
-(``GalleryController.ask_ai_question``); this widget is pure surface.
+``AskAiSurface`` (``ui/ask_surface.py``) is the body: question field, answer
+pane, status badge and the Q/A history list. This class only adds the flyout
+lifecycle — ``BaseFlyout`` positioning/fade, the manual resize grip, the saved
+user size and the Enter fallback — so the tab-level sidebar can embed the SAME
+surface instance without forking any ask logic.
+
+Anchored to a card, a series header or a region selection. Advisory only: the
+surface renders text, it never mutates rank/selection/store. All async work is
+dispatched by the controller (``GalleryController.ask_ai_question``).
+
+Audit-Meta: pattern=state-machine size=exempt reason="one flyout lifecycle: show/fade/reposition/resize state around the shared surface; splitting would scatter the shell lifecycle"
 """
 
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import QHBoxLayout, QWidget
+from PySide6.QtWidgets import QWidget
 
 from sli_ui_toolkit.managers import scaled_px
-from sli_ui_toolkit.widgets import BaseFlyout, Button, CustomLineEdit, Label, Text
+from sli_ui_toolkit.widgets import BaseFlyout
 
-from tabs.image_gallery.icons import Icon as GalleryIcon
+from tabs.image_gallery.ui import ask_nav
 from tabs.image_gallery.ui.ask_ai_grip import AskAiResizeGrip
+from tabs.image_gallery.ui.ask_surface import (
+    HISTORY_LIMIT,
+    HISTORY_ROW_HEIGHT,
+    IMAGE_HREF_SCHEME,
+    MIN_HEIGHT_PX,
+    MIN_WIDTH_PX,
+    AskAiSurface,
+)
 
-#: Minimum flyout width (the ask surface must not collapse).
-MIN_WIDTH_PX = 300
-#: Fallback minimum height (scaled) used only if the layout cannot report its
-#: own floor; the real minimum tracks the content layout (see _min_height).
-MIN_HEIGHT_PX = 160
+#: Status-badge suffix for a replayed cached answer. Shown verbatim (the
+#: surface appends it to the badge); injected localized via ``set_texts``.
+_CACHED_SUFFIX = " · cached"
 
-#: href scheme for an answer's image link. ``gallery-image:<percent-path>`` —
-#: the flyout emits ``imageActivated(path)`` when one is clicked.
-IMAGE_HREF_SCHEME = "gallery-image:"
 
-def _accent_hex() -> str:
-    """The app's blue accent as a hex string (theme token → light/dark fallback)."""
-    try:
-        from sli_ui_toolkit.managers import ThemeManager
-
-        from ui.theming import try_resolve_theme_color
-
-        color = try_resolve_theme_color(ThemeManager.get_instance(), "accent")
-        if color is not None:
-            from PySide6.QtGui import QColor
-
-            q = QColor(color) if not isinstance(color, QColor) else color
-            if q.isValid():
-                return q.name()
-    except Exception:
-        pass
-    try:
-        from tabs.image_gallery.ui.card.dots import _is_dark
-
-        return "#0096FF" if _is_dark() else "#0078D4"
-    except Exception:
-        return "#0096FF"
 class AskAiFlyout(BaseFlyout):
     """Free-form question + AI result, anchored to a card or series header."""
 
@@ -69,187 +54,141 @@ class AskAiFlyout(BaseFlyout):
 
     def __init__(self, parent: QWidget) -> None:
         super().__init__(parent)
-        self._default_prompt = "What matters here?"
-        # Localized chrome, injected by the controller (i18n). Defaults are
-        # English so the widget is usable standalone (tests/toolkit preview).
-        self._title_text = "Ask AI"
-        self._busy_text = "Thinking…"
-        self._read_badge = "AI read, unverified"
-        self._error_text = "AI could not answer."
-        # Status-badge suffix for a replayed cached answer. Includes its own
-        # separator (" · cached") — the badge appends it verbatim.
-        self._cached_suffix = " · cached"
-        # Currently-selected LLM from the tab's AI settings — shown in the
-        # status badge instead of the raw backend token ("vlm"/"text").
-        self._model = ""
-        self.content_layout.setContentsMargins(
-            scaled_px(12), scaled_px(12), scaled_px(12), scaled_px(12)
-        )
-        self.content_layout.setSpacing(scaled_px(8))
-
-        self._title = Text(self._title_text, mode="plain", pixel_size=13, bold=True, parent=self)
-        self._scope = Text("", mode="plain", pixel_size=16, parent=self)
-        self._edit = CustomLineEdit(parent=self)
-        self._edit.setPlaceholderText(self._default_prompt)
-        self._edit.setMinimumWidth(scaled_px(300))
-        try:
-            self._edit.setClearButtonEnabled(True)
-        except Exception:
-            pass
-        # Standard toolkit submit preset: Tab accepts the placeholder on an
-        # empty field, Enter resolves text-or-placeholder via `submitted`.
-        # (The flyout-level keyPressEvent Enter fallback below stays: the
-        # toolkit nav section does not always deliver Return to the focused
-        # field in the live window.)
-        try:
-            self._edit.setSubmitPreset(True)
-        except Exception:
-            pass
-        self._edit.submitted.connect(self._on_field_submitted)
-        # Include-images toggle (plan: Ask AI carries AI output for now). Off by
-        # default = metrics only (a crossed-out image); on = send the images.
-        self._include_images = False
-        self._images_toggle = Button(
-            icon=(GalleryIcon.ASK_IMAGES_OFF, GalleryIcon.ASK_IMAGES),
-            variant="ghost",
-            toggle=True,
-            # Design px — Button(size=...) scales internally (no scaled_px).
-            size=(28, 28),
-            parent=self,
-        )
-        self._images_toggle.setObjectName("gallery_ask_ai_images_toggle")
-        self._images_hint = ""
-        self._images_downsample = ""
-        try:
-            self._images_toggle.setChecked(False)
-            self._images_toggle.clicked.connect(self._on_images_toggled)
-        except Exception:
-            pass
-        self._result = Label("", pixel_size=16, word_wrap=True, parent=self)
-        self._result.setMinimumWidth(scaled_px(MIN_WIDTH_PX - 40))
-        # Selectable answer text + clickable image links: the answer names its
-        # variants, and each name opens that image (Quick Look). Links get the
-        # app accent + underline + a pointing-hand cursor from Qt's rich text.
-        self._last_text: str = ""
-        self._last_links: dict[str, str] = {}
-        try:
-            self._result.setTextInteractionFlags(
-                Qt.TextInteractionFlag.TextSelectableByMouse
-                | Qt.TextInteractionFlag.TextSelectableByKeyboard
-                | Qt.TextInteractionFlag.LinksAccessibleByMouse
-            )
-        except Exception:
-            pass
-        try:
-            self._result.linkActivated.connect(self._on_result_link)
-        except Exception:
-            pass
-        try:
-            from sli_ui_toolkit.managers import ThemeManager
-
-            ThemeManager.get_instance().theme_changed.connect(self._on_theme_changed_links)
-        except Exception:
-            pass
-        self._status = Text("", mode="plain", pixel_size=16, parent=self)
-        # Persisted-history affordance: only the count ("N previous
-        # questions"), never a list yet — the disk log is observable in the
-        # app without building the sidebar (a later task).
-        self._history_count = 0
-        self._history_text = "{n} previous questions"
-        self._history = Text("", mode="plain", pixel_size=14, parent=self)
-        # Title, scope, then the question row (edit + images toggle).
-        self.content_layout.addWidget(self._title)
-        self.content_layout.addWidget(self._scope)
-        try:
-            edit_row = QHBoxLayout()
-            edit_row.setContentsMargins(0, 0, 0, 0)
-            edit_row.setSpacing(scaled_px(6))
-            edit_row.addWidget(self._edit, 1)
-            edit_row.addWidget(self._images_toggle, 0)
-            self.content_layout.addLayout(edit_row)
-        except Exception:
-            self.content_layout.addWidget(self._edit)
-        self.content_layout.addWidget(self._result)
-        self.content_layout.addWidget(self._status)
-        self.content_layout.addWidget(self._history)
-
-        # Empty result/status rows reserve no height (see _sync_row_visibility).
-        self._sync_row_visibility()
+        self._owner = parent
+        self._surface: AskAiSurface | None = None
+        self._surface_bound = False
+        self._cached_suffix = _CACHED_SUFFIX
+        self._grow_up = False
+        self.content_layout.setContentsMargins(0, 0, 0, 0)
+        self.content_layout.setSpacing(0)
 
         # User resize support (toolkit flyouts auto-size only).
         self._user_size: tuple[int, int] | None = None
+        self._grip = AskAiResizeGrip(self)
         try:
             self.setMinimumSize(scaled_px(MIN_WIDTH_PX), self._min_height())
         except Exception:
             pass
-        self._grip = AskAiResizeGrip(self)
 
-    # -- interaction --------------------------------------------------------
+    # -- shared surface -----------------------------------------------------
 
-    def _on_field_submitted(self, question: str) -> None:
-        """Preset submit path: the field resolved text-or-placeholder."""
+    def attach_surface(self, surface: AskAiSurface | None) -> AskAiSurface:
+        """Install *surface* in the flyout shell (creating one when omitted)."""
+        if surface is None:
+            surface = AskAiSurface(self.container)
+        changed = surface is not self._surface
+        if changed:
+            try:
+                if self._surface is not None:
+                    self.content_layout.removeWidget(self._surface)
+            except Exception:
+                pass
+            # The docked panel may still hold the shared surface (and its
+            # content-well reference); hand it over explicitly.
+            try:
+                owner = getattr(self, "_owner", None)
+                sidebar = getattr(owner, "_ask_ai_sidebar", None)
+                if sidebar is not None and getattr(sidebar, "_surface", None) is surface:
+                    sidebar.detach_surface()
+            except Exception:
+                pass
+            self._surface = surface
+            self.content_layout.addWidget(surface)
+            try:
+                surface.setObjectName("gallery_ask_ai_surface")
+            except Exception:
+                pass
         try:
-            resolved = str(question or "").strip() or self._default_prompt
+            owner = getattr(self, "_owner", None)
+            if owner is not None:
+                owner._ask_ai_surface = surface  # type: ignore[attr-defined]
         except Exception:
-            resolved = self._default_prompt
-        self._submit_question(resolved)
-
-    def _emit_submit(self) -> None:
-        """Fallback submit path (flyout-level Enter): resolve the text here."""
+            pass
+        self._bind_surface()
+        self._sync_aliases()
         try:
-            question = self._edit.text().strip() or self._default_prompt
+            surface.show()
         except Exception:
-            question = self._default_prompt
-        self._submit_question(question)
+            pass
+        return surface
 
-    def _submit_question(self, question: str) -> None:
-        # Guard against a double submit when both the field's submitted and
-        # this flyout's keyPressEvent see the same Return.
-        import time
+    def detach_surface(self) -> AskAiSurface | None:
+        """Hand the surface back to the owner (the sidebar is taking it)."""
+        surface = self._surface
+        if surface is None:
+            return None
+        try:
+            self.content_layout.removeWidget(surface)
+        except Exception:
+            pass
+        try:
+            owner = getattr(self, "_owner", None)
+            surface.setParent(owner)
+            surface.hide()
+        except Exception:
+            pass
+        self._surface = None
+        return surface
 
-        now = time.monotonic()
-        if now - getattr(self, "_last_submit_at", 0.0) < 0.4:
+    def surface(self) -> AskAiSurface | None:
+        """The shared ask surface currently hosted (``None`` before first use)."""
+        return self._surface
+
+    def _ensure_surface(self) -> AskAiSurface:
+        surface = self._surface
+        if surface is None:
+            # A standalone flyout (tests/toolkit preview) gets its own surface;
+            # the gallery use-case installs the shared instance explicitly via
+            # ``attach_surface`` so two flyouts can never adopt each other's.
+            surface = self.attach_surface(None)
+        return surface
+
+    def _bind_surface(self) -> None:
+        surface = self._surface
+        if surface is None or self._surface_bound:
             return
-        self._last_submit_at = now
-        # Enter must send-and-release: drop any selection left by the Tab
-        # prefill and take focus off the field (the field otherwise keeps a
-        # highlighted selection on screen).
         try:
-            self._edit.deselect()
+            surface.submitted.connect(self._emit_submitted)
+            surface.imageActivated.connect(self.imageActivated.emit)
+            surface.layoutRequested.connect(self._relayout)
         except Exception:
             pass
+        self._surface_bound = True
+
+    def _emit_submitted(self, question: str) -> None:
         try:
-            self._edit.clearFocus()
+            self.submitted.emit(question)
         except Exception:
             pass
-        self.submitted.emit(question)
 
-    def _on_images_toggled(self) -> None:
-        try:
-            self._include_images = bool(self._images_toggle.isChecked())
-        except Exception:
-            self._include_images = False
+    def _sync_aliases(self) -> None:
+        """Expose the surface's rows under the shell's historical attribute names.
 
-    def include_images(self) -> bool:
-        """Whether the question should carry the images (VLM) or metrics only."""
-        try:
-            return bool(self._images_toggle.isChecked())
-        except Exception:
-            return bool(getattr(self, "_include_images", False))
+        Tests and older call sites read ``flyout._edit`` / ``_result`` /
+        ``_status`` / ``_history``; keeping the aliases avoids a second
+        surface API just for the flyout host.
+        """
+        surface = self._surface
+        if surface is None:
+            return
+        for name in (
+            "_edit",
+            "_title",
+            "_scope",
+            "_images_toggle",
+            "_result",
+            "_status",
+            "_history",
+            "_history_title",
+            "_history_list",
+            "_history_empty",
+        ):
+            try:
+                setattr(self, name, getattr(surface, name))
+            except Exception:
+                pass
 
-    def keyPressEvent(self, event) -> None:  # noqa: N802 (Qt name)
-        # The flyout's own key handler is the reliable Enter path: the toolkit
-        # nav section delivers Return/Enter here when the focused field yields
-        # it (the field's returnPressed is not always reached in the live
-        # window). Return always sends.
-        try:
-            if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
-                self._emit_submit()
-                event.accept()
-                return
-        except Exception:
-            pass
-        super().keyPressEvent(event)
+    # -- delegation (same API the gallery used before the split) ------------
 
     def set_texts(
         self,
@@ -263,39 +202,77 @@ class AskAiFlyout(BaseFlyout):
         model: str | None = None,
         cached: str | None = None,
         history: str | None = None,
+        history_title: str | None = None,
+        history_empty: str | None = None,
     ) -> None:
         """Inject localized chrome strings (from the tab i18n)."""
-        if title:
-            self._title_text = str(title)
-            try:
-                self._title.setText(self._title_text)
-            except Exception:
-                pass
-        if busy:
-            self._busy_text = str(busy)
-        if read_badge:
-            self._read_badge = str(read_badge)
-        if error:
-            self._error_text = str(error)
-        if model is not None:
-            self._model = str(model or "")
         if cached is not None:
             self._cached_suffix = str(cached)
-        if history is not None:
-            self._history_text = str(history)
-            self._render_history()
-        if images_hint is not None or images_downsample is not None:
-            if images_hint is not None:
-                self._images_hint = str(images_hint)
-            if images_downsample is not None:
-                self._images_downsample = str(images_downsample)
-            self.set_images_tooltip(
-                "\n".join(s for s in (self._images_hint, self._images_downsample) if s)
-            )
+        self._ensure_surface().set_texts(
+            title=title,
+            busy=busy,
+            read_badge=read_badge,
+            error=error,
+            images_hint=images_hint,
+            images_downsample=images_downsample,
+            model=model,
+            cached=cached,
+            history=history,
+            history_title=history_title,
+            history_empty=history_empty,
+        )
 
     def set_images_tooltip(self, text: str) -> None:
         """Tooltip of the include-images toggle (two lines: meaning + downscale)."""
-        self._images_toggle.setToolTip(str(text or ""))
+        self._ensure_surface().set_images_tooltip(text)
+
+    def include_images(self) -> bool:
+        """Whether the question should carry the images (VLM) or metrics only."""
+        return self._ensure_surface().include_images()
+
+    def _on_images_toggled(self) -> None:
+        self._ensure_surface()._on_images_toggled()
+
+    def _on_field_submitted(self, question: str) -> None:
+        self._ensure_surface()._on_field_submitted(question)
+
+    def _emit_submit(self) -> None:
+        self._ensure_surface().emit_submit()
+
+    def set_busy(self, busy: bool) -> None:
+        self._ensure_surface().set_busy(bool(busy))
+        self._relayout()
+
+    def set_history_count(self, count: int) -> None:
+        """Show ``"N previous questions"`` for the persisted Q/A log (0 hides)."""
+        self._ensure_surface().set_history_count(count)
+        self._relayout()
+
+    def set_history_records(self, records, *, show_tail: bool = False) -> None:  # type: ignore[no-untyped-def]
+        """Render the stored Q/A exchanges (oldest → newest)."""
+        self._ensure_surface().set_history_records(records, show_tail=show_tail)
+        self._relayout()
+
+    def show_result(
+        self,
+        text: str,
+        *,
+        model: str = "",
+        backend: str = "",
+        cached: bool = False,
+        links: dict | None = None,
+    ) -> None:
+        self._ensure_surface().show_result(
+            text, model=model, backend=backend, cached=cached, links=links
+        )
+
+    def show_error(self, message: str) -> None:
+        self._ensure_surface().show_error(message)
+
+    def has_answer(self) -> bool:
+        return self._ensure_surface().has_answer()
+
+    # -- open / show --------------------------------------------------------
 
     def open_for(
         self,
@@ -304,84 +281,40 @@ class AskAiFlyout(BaseFlyout):
         scope_label: str = "",
         default_prompt: str = "What matters here?",
         title: str = "",
-        initial_result=None,
+        initial_result=None,  # type: ignore[no-untyped-def]
         initial_error: str = "",
         initial_links: dict | None = None,
         grow_up: bool = False,
         show_images_toggle: bool = True,
         history_count: int | None = None,
+        history_records: list | None = None,
     ) -> None:
-        """Reset + show under *anchor*; focus lands in the question field.
-
-        ``initial_result``/``initial_error`` seed the pane BEFORE the show
-        animation starts (the persisted-answer prefill). Setting them after
-        the show — via ``reposition()`` — would clear the fade snapshot while
-        its animation is still running, flashing the panel white.
-
-        ``show_images_toggle=False`` hides the include-images toggle (region
-        scope: the images always go out, so there is nothing to toggle).
-        """
-        self._default_prompt = str(default_prompt or "What matters here?")
-        self._title.setText(str(title or self._title_text))
-        scope_text = str(scope_label or "")
-        self._scope.setText(scope_text)
-        # No scope line = no empty row (series scope has no label at all).
-        try:
-            self._scope.setVisible(bool(scope_text))
-        except Exception:
-            pass
-        self._edit.setText(str(getattr(self, "_saved_text", "") or ""))
-        self._edit.setPlaceholderText(self._default_prompt)
-        self._edit.setReadOnly(False)
-        self._last_text = ""
-        self._last_links = {}
-        try:
-            self._result.setTextFormat(Qt.TextFormat.PlainText)
-        except Exception:
-            pass
-        self._result.setText("")
-        self._status.setText("")
-        # History count belongs to the scope being opened: reset it (the
-        # caller seeds the persisted number below) so a previous scope's
-        # count is never shown against a new question.
-        self._history_count = 0
-        self._history.setText("")
-        if history_count is not None:
-            self.set_history_count(history_count)
-        # Restore the include-images toggle the user left on last time (saved
-        # on hide) instead of forcing it back off on every open.
-        saved_images = bool(getattr(self, "_saved_include_images", False))
-        try:
-            self._images_toggle.setChecked(saved_images)
-        except Exception:
-            pass
-        self._include_images = saved_images
-        self._sync_row_visibility()
-        # Region scope always sends the images: no toggle to show.
-        try:
-            self._images_toggle.setVisible(bool(show_images_toggle))
-        except Exception:
-            pass
-        if initial_result is not None:
-            self.show_result(
-                getattr(initial_result, "text", "") or "",
-                backend=getattr(initial_result, "backend", "") or "",
-                cached=bool(getattr(initial_result, "cached", False)),
-                links=initial_links,
-            )
-        elif initial_error:
-            self.show_error(initial_error)
-        try:
-            self._edit.setFocus()
-        except Exception:
-            pass
+        """Reset + show under *anchor*; focus lands in the question field."""
+        surface = self._ensure_surface()
+        surface.prepare_scope(
+            scope_label=scope_label,
+            default_prompt=default_prompt,
+            title=title,
+            initial_result=initial_result,
+            initial_error=initial_error,
+            initial_links=initial_links,
+            show_images_toggle=show_images_toggle,
+            history_count=history_count,
+            history_records=history_records,
+        )
+        surface.set_title_visible(True)
+        # Track the live content floor (the history/title rows collapse when
+        # empty) — construction ran before any surface existed, so re-pin it.
+        saved_size = getattr(self, "_user_size", None)
+        if saved_size is None:
+            try:
+                self.setMinimumSize(scaled_px(MIN_WIDTH_PX), self._min_height())
+            except Exception:
+                pass
         # A remembered manual size must land on the FIRST frame: pin the
         # flyout's minimum to it so show_aligned()'s adjustSize() cannot
         # collapse it to the min-content size for the fade-in and then jump
-        # once _relayout applies the saved size after the animation. The
-        # post-animation _relayout still re-applies it (and may grow for
-        # content); this only removes the min-size first frame.
-        saved_size = getattr(self, "_user_size", None)
+        # once _relayout applies the saved size after the animation.
         if saved_size is not None:
             try:
                 self.setMinimumSize(int(saved_size[0]), int(saved_size[1]))
@@ -390,8 +323,8 @@ class AskAiFlyout(BaseFlyout):
         try:
             # ``grow_up`` pins the flyout's BOTTOM-CENTER to the anchor's
             # TOP-CENTER so a taller wrapped result expands upward (the
-            # region-inspection flyout above the held selection); the
-            # default grows downward from the anchor's bottom-left.
+            # region-inspection flyout above the held selection); the default
+            # grows downward from the anchor's bottom-left.
             anchor_point = "top-center" if grow_up else "bottom-left"
             flyout_point = "bottom-center" if grow_up else "top-left"
             self._grow_up = bool(grow_up)
@@ -407,24 +340,55 @@ class AskAiFlyout(BaseFlyout):
                 self.show_aligned(anchor)
             except Exception:
                 pass
-        # Apply a persisted manual size / fit the seeded result, deferred past
-        # the show animation (see _relayout).
+        # Register the surface's rows as a navigation section while visible.
+        ask_nav.register(self, surface)
         self._relayout()
 
-    # -- state (called by the controller) -----------------------------------
+    def reshow(self, anchor: QWidget) -> None:
+        """Re-show in place WITHOUT resetting the question/result pane.
+
+        Used when a late answer arrives after the user dismissed the flyout —
+        the answer must not vanish silently.
+        """
+        if anchor is None:
+            return
+        try:
+            grow_up = bool(getattr(self, "_grow_up", False))
+            self.show_aligned(
+                anchor,
+                anchor_point="top-center" if grow_up else "bottom-left",
+                flyout_point="bottom-center" if grow_up else "top-left",
+                offset=scaled_px(8),
+                animation="none",
+                grab_focus=False,
+            )
+        except Exception:
+            try:
+                self.show_aligned(anchor, grab_focus=False)
+            except Exception:
+                pass
+        surface = self._surface
+        if surface is not None:
+            ask_nav.register(self, surface)
+
+    def restore_focus_on_hide(self) -> bool:
+        return False
+
+    # -- shell layout -------------------------------------------------------
 
     def _relayout(self) -> None:
-        """Re-run the surface layout after the wrapped result text changed.
+        """Re-run the shell layout after the wrapped answer changed.
 
-        A wrapped ``Label`` only reports its tall height once the parent
-        width is fixed; without this the result overflows its row and
-        overlaps the status line. ``reposition()`` is the toolkit's sanctioned
-        re-size path (a raw ``adjustSize()`` collapses the surface because the
-        container is briefly hidden for the fade).
+        A wrapped ``Label`` only reports its tall height once the parent width
+        is fixed; without this the result overflows its row and overlaps the
+        status line. ``reposition()`` is the toolkit's sanctioned re-size path
+        (a raw ``adjustSize()`` collapses the surface because the container is
+        briefly hidden for the fade).
         """
         try:
-            self._result.updateGeometry()
-            self._status.updateGeometry()
+            surface = self._surface
+            if surface is not None:
+                surface.updateGeometry()
             if not self.isVisible():
                 return
             # Never resize while the show animation is running: clearing the
@@ -467,16 +431,8 @@ class AskAiFlyout(BaseFlyout):
         finally:
             self._skip_focus_grab = prev
 
-    # -- manual resize -------------------------------------------------------
-
     def _min_height(self) -> int:
-        """Minimum shell height the content layout actually needs (+ shadow).
-
-        Tracks the layout floor instead of the fixed ``MIN_HEIGHT_PX``
-        constant so the ask surface can never be shrunk below what its rows
-        require — under it the wrapped result/status rows clip or overlap.
-        Falls back to the constant when the layout cannot report a floor.
-        """
+        """Minimum shell height the content layout actually needs (+ shadow)."""
         m = self.SHADOW_RADIUS
         try:
             layout = self.container.layout()
@@ -489,48 +445,7 @@ class AskAiFlyout(BaseFlyout):
             pass
         return scaled_px(MIN_HEIGHT_PX)
 
-    def _sync_row_visibility(self) -> None:
-        """Collapse the result/status rows when they carry no text.
-
-        An empty row must not reserve height: the flyout floor tracks the
-        layout (see ``_min_height``), so a blank pane would otherwise keep the
-        surface tall with dead space under the question field. The scope line
-        is handled the same way in :meth:`open_for`.
-        """
-        for label in (self._result, self._status, self._history):
-            try:
-                label.setVisible(bool(label.text()))
-            except Exception:
-                pass
-
-    def set_history_count(self, count: int) -> None:
-        """Show ``"N previous questions"`` for the persisted Q/A log.
-
-        Count only — the history list itself is a later task. ``0`` hides the
-        row (an untouched scope shows no affordance). Called by the surface
-        after an answer lands and when the flyout opens.
-        """
-        try:
-            self._history_count = max(0, int(count))
-        except Exception:
-            self._history_count = 0
-        self._render_history()
-        self._relayout()
-
-    def _render_history(self) -> None:
-        """Paint the history line from ``_history_text`` + the current count."""
-        count = max(0, int(getattr(self, "_history_count", 0) or 0))
-        text = ""
-        if count > 0:
-            template = str(getattr(self, "_history_text", "") or "")
-            text = template.replace("{n}", str(count)) if template else ""
-            if not text:
-                text = f"{count} previous questions"
-        try:
-            self._history.setText(text)
-        except Exception:
-            pass
-        self._sync_row_visibility()
+    # -- manual resize ------------------------------------------------------
 
     def apply_user_size(self, width: int, height: int) -> None:
         """Set the flyout to a user-chosen size (grip drag), keeping content."""
@@ -571,189 +486,41 @@ class AskAiFlyout(BaseFlyout):
         super().resizeEvent(event)
         self._layout_grip()
 
-    def set_busy(self, busy: bool) -> None:
+    # -- keys / lifecycle ---------------------------------------------------
+
+    def keyPressEvent(self, event) -> None:  # noqa: N802 (Qt name)
+        # The flyout's own key handler is the reliable Enter path: the toolkit
+        # nav section does not always deliver Return to the focused field in
+        # the live window. Return always sends.
         try:
-            self._edit.setReadOnly(bool(busy))
+            if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+                self._emit_submit()
+                event.accept()
+                return
         except Exception:
             pass
-        self._status.setText(self._busy_text if busy else "")
-        self._sync_row_visibility()
-        self._relayout()
-
-    def reshow(self, anchor: QWidget) -> None:
-        """Re-show in place WITHOUT resetting the question/result pane.
-
-        Used when a late answer arrives after the user dismissed the flyout —
-        the answer must not vanish silently.
-        """
-        if anchor is None:
-            return
-        try:
-            grow_up = bool(getattr(self, "_grow_up", False))
-            self.show_aligned(
-                anchor,
-                anchor_point="top-center" if grow_up else "bottom-left",
-                flyout_point="bottom-center" if grow_up else "top-left",
-                offset=scaled_px(8),
-                animation="none",
-                grab_focus=False,
-            )
-        except Exception:
-            try:
-                self.show_aligned(anchor, grab_focus=False)
-            except Exception:
-                pass
-
-    def show_result(self, text: str, *, model: str = "", backend: str = "", cached: bool = False, links: dict | None = None) -> None:
-        badge = self._read_badge
-        # Show the currently-selected LLM (settings), never the raw backend
-        # token ("vlm"/"text"); fall back to the backend only when no model is
-        # configured.
-        label = str(model or "") or str(getattr(self, "_model", "") or "") or str(backend or "")
-        if label:
-            badge += f" · {label}"
-        if cached:
-            badge += str(getattr(self, "_cached_suffix", " · cached") or "")
-        self._last_text = str(text or "")
-        try:
-            self._last_links = {
-                str(k): str(v) for k, v in dict(links or {}).items() if k and v
-            }
-        except Exception:
-            self._last_links = {}
-        self._render_result()
-        self._status.setText(badge)
-        self._sync_row_visibility()
-        self._relayout()
-
-    def _render_result(self) -> None:
-        """Paint the answer: rich text with image links, or plain text."""
-        text = str(getattr(self, "_last_text", "") or "")
-        links = dict(getattr(self, "_last_links", None) or {})
-        try:
-            if links:
-                self._result.setTextFormat(Qt.TextFormat.RichText)
-                self._result.setText(self._render_links(text, links))
-            else:
-                self._result.setTextFormat(Qt.TextFormat.PlainText)
-                self._result.setText(text)
-        except Exception:
-            try:
-                self._result.setText(text)
-            except Exception:
-                pass
-
-    def _render_links(self, text: str, links: dict) -> str:
-        """Escape the answer and wrap every item name in an accent link.
-
-        Names are matched longest-first, case-insensitively, over the HTML-escaped
-        text so an ``<a>`` is never nested inside another (one regex pass, not
-        sequential substitutions).
-        """
-        import html as _html
-        import re as _re
-        from urllib.parse import quote
-
-        raw = str(text or "")
-        escaped = _html.escape(raw)
-        names = [(str(k), str(v)) for k, v in dict(links or {}).items() if k and v]
-        if not raw or not names:
-            return escaped
-        lookup: dict[str, str] = {}
-        parts: list[str] = []
-        for name, path in names:
-            esc = _html.escape(name)
-            if not esc:
-                continue
-            lookup.setdefault(esc.lower(), path)
-            parts.append(_re.escape(esc))
-        if not parts:
-            return escaped
-        # Longest display name first so the alternation prefers the fuller match.
-        parts.sort(key=len, reverse=True)
-        try:
-            pattern = _re.compile("|".join(parts), _re.IGNORECASE)
-        except _re.error:
-            return escaped
-        accent = _accent_hex()
-
-        def _repl(match) -> str:
-            token = match.group(0)
-            path = lookup.get(token.lower())
-            if not path:
-                return token
-            href = f"{IMAGE_HREF_SCHEME}{quote(path)}"
-            return (
-                f'<a href="{href}" style="color:{accent}; '
-                f'text-decoration:underline;">{token}</a>'
-            )
-
-        return pattern.sub(_repl, escaped)
-
-    def _on_result_link(self, href: str) -> None:
-        """A link in the answer was activated → open that image (host side)."""
-        path = self._href_to_path(href)
-        if not path:
-            return
-        try:
-            self.imageActivated.emit(path)
-        except Exception:
-            pass
-
-    @staticmethod
-    def _href_to_path(href: str) -> str:
-        from urllib.parse import unquote
-
-        try:
-            s = str(href or "")
-        except Exception:
-            return ""
-        if not s.startswith(IMAGE_HREF_SCHEME):
-            return ""
-        try:
-            return unquote(s[len(IMAGE_HREF_SCHEME):])
-        except Exception:
-            return ""
-
-    def _on_theme_changed_links(self, *_args) -> None:
-        """Re-render links so the accent follows a live theme flip."""
-        try:
-            if getattr(self, "_last_links", None):
-                self._render_result()
-        except Exception:
-            pass
-
-    def show_error(self, message: str) -> None:
-        self._last_text = ""
-        self._last_links = {}
-        try:
-            self._result.setTextFormat(Qt.TextFormat.PlainText)
-        except Exception:
-            pass
-        self._result.setText("")
-        self._status.setText(str(message or self._error_text))
-        self._sync_row_visibility()
-        self._relayout()
-
-    def restore_focus_on_hide(self) -> bool:
-        return False
+        super().keyPressEvent(event)
 
     def hideEvent(self, event) -> None:  # noqa: N802 (Qt name)
         super().hideEvent(event)
-        # Persist the user's draft + include-images toggle across hide/reopen
-        # (auto-dismiss on outside click must not lose what was typed).
-        try:
-            self._saved_text = self._edit.text()
-        except Exception:
-            pass
-        try:
-            self._saved_include_images = bool(self._images_toggle.isChecked())
-        except Exception:
-            pass
+        # BaseFlyout hides itself while its own __init__ is still running, so
+        # every shell attribute must be read tolerantly here.
+        surface = getattr(self, "_surface", None)
+        if surface is not None:
+            surface.persist_draft()
+        ask_nav.unregister(self)
         try:
             self.closed.emit()
         except Exception:
             pass
 
 
-__all__ = ["AskAiFlyout"]
+__all__ = [
+    "AskAiFlyout",
+    "AskAiSurface",
+    "HISTORY_LIMIT",
+    "HISTORY_ROW_HEIGHT",
+    "IMAGE_HREF_SCHEME",
+    "MIN_HEIGHT_PX",
+    "MIN_WIDTH_PX",
+]

@@ -218,6 +218,10 @@ class ImageGalleryWidget(QWidget):
             self.toolbar.domainChanged.connect(self._on_domain_changed)
         except Exception:
             pass
+        try:
+            self.toolbar.askSidebarToggled.connect(self.set_ask_sidebar_visible)
+        except Exception:
+            pass
         root.addWidget(self.toolbar)
 
         # Stats strip (Stage 2 S2) — Text "40 images · 7 series · 33 redundant" + Buttons + mode chip — svg y114 h34
@@ -305,7 +309,17 @@ class ImageGalleryWidget(QWidget):
             pass
         self._content_stack.addWidget(self._empty_state)
         self._content_stack.addWidget(self._grid_view)
-        root.addWidget(self._content_stack, 1)
+        # Content row: grid/empty stack on the left, the Ask AI sidebar (a
+        # dock-like sibling panel, hidden until the toolbar toggle asks for it)
+        # on the right. The sidebar is created lazily by its use-case module so
+        # a storeless widget pays nothing for it.
+        from PySide6.QtWidgets import QHBoxLayout as _QHBoxLayout
+
+        self._content_row = _QHBoxLayout()
+        self._content_row.setContentsMargins(0, 0, 0, 0)
+        self._content_row.setSpacing(0)
+        self._content_row.addWidget(self._content_stack, 1)
+        root.addLayout(self._content_row, 1)
         # Default: empty
         try:
             self._content_stack.setCurrentWidget(self._empty_state)
@@ -345,6 +359,12 @@ class ImageGalleryWidget(QWidget):
         self._clean_overlay = None  # type: ignore[assignment]
         # Quick look overlay (S4) — created lazily.
         self._quick_look_overlay = None  # type: ignore[assignment]
+        # Ask AI: one shared surface, hosted by either the flyout (anchored) or
+        # the tab-level sidebar (docked). Both are created lazily; the surface
+        # instance is the single source of the ask UI (see ask_surface.py).
+        self._ask_ai_surface = None
+        self._ask_ai_flyout = None
+        self._ask_ai_sidebar = None
         # Language switch: keep the lazily-created overlays in sync with the
         # active translator (they capture ``_tr`` once at construction).
         # ``translatable_callback`` ties the connection to this widget's
@@ -594,6 +614,12 @@ class ImageGalleryWidget(QWidget):
 
     # -- Ask AI (A3 surface; async lives in the controller) ----------------------
 
+    def _ensure_ask_surface(self):
+        """Thin delegator to ``ui/widget_parts.ask_ai_surface._ensure_ask_surface``."""
+        from tabs.image_gallery.ui.widget_parts import ask_ai_surface
+
+        return ask_ai_surface._ensure_ask_surface(self)
+
     def _ensure_ask_ai_flyout(self):
         """Thin delegator to ``ui/widget_parts.ask_ai_surface._ensure_ask_ai_flyout``."""
         from tabs.image_gallery.ui.widget_parts import ask_ai_surface
@@ -650,6 +676,23 @@ class ImageGalleryWidget(QWidget):
         from tabs.image_gallery.ui.widget_parts import ask_ai_surface
 
         return ask_ai_surface._resume_ask_ai_if_hidden(self, flyout)
+
+    def set_ask_sidebar_visible(self, visible: bool) -> None:
+        """Show/hide the tab-level Ask AI sidebar (delegator).
+
+        The sidebar embeds the SAME ``AskAiSurface`` instance the flyout uses;
+        the wiring (reparenthood, history reload, toolbar sync) lives in
+        ``ui/widget_parts/ask_ai_sidebar.py``.
+        """
+        from tabs.image_gallery.ui.widget_parts import ask_ai_sidebar
+
+        return ask_ai_sidebar.set_visible(self, bool(visible))
+
+    def toggle_ask_sidebar(self) -> None:
+        """Flip the Ask AI sidebar (toolbar toggle path; delegator)."""
+        from tabs.image_gallery.ui.widget_parts import ask_ai_sidebar
+
+        return ask_ai_sidebar.toggle(self)
 
     # -- series header context menu ---------------------------------------------
 

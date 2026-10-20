@@ -801,11 +801,22 @@
       "path": "src/tabs/image_gallery/ui/ask_ai.py",
       "limit": 500,
       "marker": "Audit-Meta:",
-      "raw": "pattern=single-surface size=exempt reason=\"one scope-aware ask flyout — its fade/persist/menu/status state is one cohesive surface; splitting would scatter the flyout lifecycle\"",
+      "raw": "pattern=state-machine size=exempt reason=\"one flyout lifecycle: show/fade/reposition/resize state around the shared surface; splitting would scatter the shell lifecycle\"",
       "parsed": {
-        "pattern": "single-surface",
+        "pattern": "state-machine",
         "size": "exempt",
-        "reason": "one scope-aware ask flyout — its fade/persist/menu/status state is one cohesive surface; splitting would scatter the flyout lifecycle"
+        "reason": "one flyout lifecycle: show/fade/reposition/resize state around the shared surface; splitting would scatter the shell lifecycle"
+      }
+    },
+    {
+      "path": "src/tabs/image_gallery/ui/ask_surface.py",
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=state-machine size=exempt reason=\"one ask body: history selection, live-tail pane and status badge share a single widget lifecycle; splitting would fork the ask UI\"",
+      "parsed": {
+        "pattern": "state-machine",
+        "size": "exempt",
+        "reason": "one ask body: history selection, live-tail pane and status badge share a single widget lifecycle; splitting would fork the ask UI"
       }
     },
     {

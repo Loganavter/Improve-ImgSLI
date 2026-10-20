@@ -4,7 +4,10 @@ The content-aware half of the adaptive-profile pipeline: from the probe members
 chosen by ``use_cases/profile_probe`` and a compact salience summary, ask a
 vision model to pick the axes that discriminate THIS series **from the closed
 pool** (``metric_profile.MEASURED_POOL``). The model is a *selector*, never a
-source of new axes: unknown/free-form ids are dropped by ``MetricProfile``.
+source of new axes: the reply is constrained to the pool ids this context can
+actually measure (``profile_for_mode(mode)`` — an axis whose detector needs a
+source hub is unavailable without one), unknown and duplicated ids are dropped
+by ``MetricProfile``, and nothing is ever fabricated.
 
 One call per unchanged folder-generation: the selection is pinned
 (``services/profile_cache``, keyed on member fingerprint + mode + model + pool),
@@ -233,16 +236,39 @@ def parse_profile_reply(text, *, mode=None):
     Accepts ``{"axes": ["<id>", ...]}`` (also a bare array), through the shared
     tolerant JSON extractor. Ids are coerced by ``MetricProfile`` — unknown and
     duplicated ids are dropped, order is registry order. Returns ``None`` when
-    nothing usable was found (no JSON, an empty list, or ids that are all
-    outside the pool): never a guess, never a free-form axis.
+    nothing usable was found (no JSON, an empty list, ids that are all outside
+    the pool, or ids whose detector is unavailable in this context): never a
+    guess, never a free-form axis.
+
+    A profile IS a subset of the fixed pool chosen for the context (plan
+    §General model) — the reply is the SELECTION, not a downgrade. It is
+    therefore constrained, never widened: an id outside ``MEASURED_POOL`` is
+    dropped by ``MetricProfile``, and so is a pool id whose detector cannot
+    run here (``profile_for_mode(mode)`` is the availability map: a
+    ``reference`` axis needs a source hub, so it is unavailable off
+    ``fidelity``). Zero usable ids → ``None`` so the caller falls back to the
+    deterministic heuristic (fail-open, with its own debug line).
     """
     ids = _reply_ids(text)
     if not ids:
         return None
     try:
-        from tabs.image_gallery.services.metric_profile import MetricProfile
+        from tabs.image_gallery.services.metric_profile import (
+            MetricProfile,
+            profile_for_mode,
+        )
 
-        profile = MetricProfile(axis_ids=tuple(ids), mode=mode, source="vlm")
+        chosen = MetricProfile(axis_ids=tuple(ids), mode=mode, source="vlm")
+        if not chosen.axis_ids:
+            # Every id was outside the pool — junk, not a profile.
+            return None
+        available = set(profile_for_mode(mode).axis_ids)
+        kept = tuple(axis for axis in chosen.axis_ids if axis in available)
+        if not kept:
+            # Pool ids, but none this context can measure — the heuristic
+            # fallback (not a hollow vlm profile) is the honest answer.
+            return None
+        profile = MetricProfile(axis_ids=kept, mode=mode, source="vlm")
     except Exception:
         return None
     return profile if profile.axis_ids else None
@@ -374,6 +400,11 @@ def choose_profile_sync(
 
     profile = parse_profile_reply(_reply_text(raw), mode=mode)
     if profile is None:
+        logger.debug(
+            "profile select: reply yielded no usable axis (mode=%s) — "
+            "heuristic fallback",
+            mode,
+        )
         return _heuristic()
     if key:
         try:

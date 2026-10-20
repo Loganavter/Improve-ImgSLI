@@ -167,12 +167,13 @@ ALLOWLIST: dict[tuple[str, int], str] = {
     # ``owner._owner_for_triage`` prefix, but this is the widget's OWN
     # triage-owner accessor (same object as before the move), not a new read
     # of an overlay's ``_owner``.
-    ("src/tabs/image_gallery/ui/widget_parts/ask_ai_surface.py", 149): (
+    ("src/tabs/image_gallery/ui/widget_parts/ask_ai_surface.py", 278): (
         "moved ask-ai submit calls owner._owner_for_triage (self→owner rename, plan Part B Wave 4;"
-        " line shifted by the ask-history count helper, ask-log 2026-10-20)"
+        " line shifted by the shared-surface/history helpers, ask-log sidebar 2026-10-20)"
     ),
-    ("src/tabs/image_gallery/ui/widget_parts/series_headers.py", 133): (
-        "moved series context menu calls owner._owner_for_triage (self→owner rename, plan Part B Wave 4)"
+    ("src/tabs/image_gallery/ui/widget_parts/series_headers.py", 139): (
+        "moved series context menu calls owner._owner_for_triage (self→owner rename, plan Part B Wave 4;"
+        " line shifted by the ask-sidebar retranslate hook, 2026-10-20)"
     ),
     ("src/tabs/image_gallery/ui/widget_parts/triage_actions.py", 20): (
         "moved keep-best action calls owner._owner_for_triage (self→owner rename, plan Part B Wave 4)"

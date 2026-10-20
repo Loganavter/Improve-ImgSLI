@@ -40,7 +40,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from tabs.image_gallery import controller as controller_mod
 from tabs.image_gallery.controller import GalleryController
 from tabs.image_gallery.models import GalleryState, Mode, Series
-from tabs.image_gallery.services.metric_profile import MEASURED_POOL
+from tabs.image_gallery.services.metric_profile import MEASURED_POOL, profile_for_mode
 from tabs.image_gallery.services.profile_cache import ProfileCache
 from tabs.image_gallery.services.rank_fusion import measured_axes_for, rank_series
 from tabs.image_gallery.ui.card.dots import metric_dots_for_item
@@ -56,7 +56,10 @@ from tabs.image_gallery.use_cases.profile_select import (
 )
 
 STAGE = "metric_profile"
-EXTRA = "ssim"  # a reference axis the batch_synthetic base does NOT contain
+#: A ``reference`` axis: it is measured *against* a source hub, so it is not
+#: applicable to a ``batch_synthetic`` folder (no hub) — the selector's reply
+#: must be constrained to the applicable pool axes, never widened with it.
+EXTRA = "ssim"
 
 
 @pytest.fixture(autouse=True)
@@ -89,11 +92,16 @@ def _chat(answer) -> dict:
 
 
 def _scattered():
-    """A decisive spread on sharpness AND on the reference axis ``ssim``."""
+    """A decisive spread on sharpness, on ``noise`` AND on the reference axis.
+
+    ``noise`` deliberately ranks the items the OTHER way round, so a profile
+    that selects it proves the consumers follow the selection (not the mode
+    mapping, which averages sharpness and noise into a tie).
+    """
     return [
-        _item("a.png", 1, sharpness=0.0, ssim=1.0),
-        _item("b.png", 2, sharpness=400.0, ssim=0.0),
-        _item("c.png", 3, sharpness=200.0, ssim=0.5),
+        _item("a.png", 1, sharpness=0.0, ssim=1.0, noise=1.0),
+        _item("b.png", 2, sharpness=400.0, ssim=0.0, noise=0.5),
+        _item("c.png", 3, sharpness=200.0, ssim=0.5, noise=0.0),
     ]
 
 
@@ -210,12 +218,18 @@ def test_ai_unavailable_makes_no_call(tmp_path):
 
 def test_the_vlm_profile_reaches_dots_axes_and_the_rank(tmp_path):
     items = _scattered()
-    transport = _Transport([_chat({"axes": ["sharpness", EXTRA]})])
+    transport = _Transport([_chat({"axes": ["noise", EXTRA]})])
     profile = choose_profile_sync(
         items, mode="batch_synthetic", settings=_settings(),
         cache=ProfileCache(tmp_path), client_call=transport,
     )
-    assert profile.source == "vlm" and EXTRA in profile.axis_ids
+    assert profile.source == "vlm"
+    # The pick is the SELECTION (a subset of the pool), constrained to the
+    # axes this context can measure: the reference axis has no source hub in a
+    # synthetic folder, so it is dropped rather than widening the vocabulary.
+    assert "noise" in profile.axis_ids
+    assert EXTRA not in profile.axis_ids
+    assert set(profile.axis_ids) <= set(profile_for_mode("batch_synthetic").axis_ids)
 
     # This is what the wiring's apply-tail stores; assert the consumers then
     # resolve exactly that set.

@@ -21,6 +21,12 @@ O painel **Perguntar à IA**: o campo de pergunta, a resposta e o selo **Leitura
 
 O menu do cabeçalho da série pergunta de uma vez sobre cada membro da série. A pergunta carrega as leituras medidas — veja [Métricas de qualidade](help://workspace.image_gallery.quality).
 
+### Histórico e barra lateral {#history-sidebar}
+
+- **Histórico** — o painel lista as perguntas já respondidas no registro de perguntas e respostas, as mais novas por último; cada entrada mostra a pergunta e a resposta.
+- Selecionar uma entrada mostra novamente a resposta guardada — nenhuma nova requisição à IA é feita.
+- O botão **IA** da barra de ferramentas mostra ou oculta a barra lateral **Perguntar à IA**: a mesma superfície de pergunta, ancorada ao lado da grade em vez de uma janela pop-up. **✕** fecha a barra; as setas alcançam o botão e cada linha do histórico.
+
 ### Configuração e limites {#setup}
 
 - **Galeria — IA** — a seção de configurações por trás de Perguntar à IA; perguntar exige **Ativar análise de imagem por IA**, uma **Chave de API** e um **Nome do modelo**. Configure em [Configurações](help://platform.settings#image-gallery-ai). Sem os três, o aplicativo mostra **Configure a chave de API de IA nas Configurações primeiro.**

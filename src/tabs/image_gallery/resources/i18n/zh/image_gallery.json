@@ -106,7 +106,11 @@
       "region_prompt": "这个区域有什么问题？",
       "cached": " · 已缓存",
       "error_context": "无法构建提问上下文。",
-      "history_count": "之前 {n} 个问题"
+      "history_count": "之前 {n} 个问题",
+      "history_title": "历史",
+      "history_empty": "还没有提问。",
+      "sidebar_show": "显示 AI 侧边栏",
+      "sidebar_hide": "隐藏 AI 侧边栏"
     },
     "series": {
       "ask_ai": "询问 AI",
@@ -152,6 +156,10 @@
       "chip": "配置：{profile}",
       "auto": "自动",
       "axes": "{n} 个轴",
+      "source": {
+        "vlm": "VLM",
+        "heuristic": "启发式"
+      },
       "domain": {
         "auto": "自动（按模式）",
         "document": "文档",

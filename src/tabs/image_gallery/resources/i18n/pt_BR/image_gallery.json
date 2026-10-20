@@ -106,7 +106,11 @@
       "region_prompt": "O que há de errado nesta região?",
       "cached": " · em cache",
       "error_context": "Não foi possível montar o contexto da pergunta.",
-      "history_count": "{n} perguntas anteriores"
+      "history_count": "{n} perguntas anteriores",
+      "history_title": "Histórico",
+      "history_empty": "Ainda não há perguntas.",
+      "sidebar_show": "Mostrar barra lateral de IA",
+      "sidebar_hide": "Ocultar barra lateral de IA"
     },
     "series": {
       "ask_ai": "Perguntar à IA",
@@ -152,6 +156,10 @@
       "chip": "Perfil: {profile}",
       "auto": "automático",
       "axes": "{n} ejes",
+      "source": {
+        "vlm": "VLM",
+        "heuristic": "heurística"
+      },
       "domain": {
         "auto": "Automático (según el modo)",
         "document": "Documento",

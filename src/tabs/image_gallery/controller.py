@@ -149,6 +149,24 @@ def _profile_selector():
     return choose_profile_sync
 
 
+def _stamp_profile_consumed(owner) -> None:
+    """Freeze the owner's folder-generation profile once an AI call is built (P5).
+
+    Module-level and duck-typed because the controller's thin-owner tests call
+    the real methods on a ``SimpleNamespace`` double (which carries no
+    lifecycle attributes). The stamp itself lives on the controller
+    (``_mark_profile_consumed``); a double without it simply stays unfrozen.
+    Never raises.
+    """
+    stamp = getattr(owner, "_mark_profile_consumed", None)
+    if not callable(stamp):
+        return
+    try:
+        stamp()
+    except Exception:
+        logger.debug("metric profile freeze stamp failed", exc_info=True)
+
+
 # Proxy decode-cache bound: owned by services/proxy.py (PROXY_CACHE_LIMIT);
 # batch delivery trims oldest-inserted entries down to that bound (96 x
 # <= ~3 MB ~= <= 288 MB while covering a typical folder's working set;
@@ -181,6 +199,16 @@ class GalleryController:
         #: replaced on every folder open / pool rebuild. The resolved profile
         #: is projected onto ``state.metric_profile`` (the consumer slot).
         self._metric_domain = ""
+        #: Folder generation whose AI calls were built under the current
+        #: profile (P5). A profile is a REQUEST IDENTITY (the analysis cache
+        #: keys a scorecard on it), so a replacement after the first call of
+        #: a generation can never re-key those calls — it is dropped instead
+        #: (see ``_apply_profile_outcome``). ``None`` = nothing consumed yet.
+        self._profile_consumed_gen: int | None = None
+        #: Folder generation whose settle is waiting for the P2 selector to
+        #: resolve before it starts the AI/Jev tails (P5). Consumed exactly
+        #: once by ``_resume_settle_after_profile``.
+        self._profile_settle_pending_gen: int | None = None
 
         # Folder generation whose METRICS pass has settled. The winner (★ BEST)
         # is only marked after settle — before that the fusion rank is
@@ -607,13 +635,16 @@ class GalleryController:
 
         The chip is pure presentation: the controller owns the value, the strip
         only renders it (and announces a pick via ``profileDomainSelected``).
+        The profile's ``source`` (``heuristic`` | ``vlm``) rides along — a VLM
+        pick is not the "auto" default and the chip must say so (P5).
         Fail-open — a storeless/duck-typed widget in tests has no strip.
         """
         try:
             strip = getattr(self.widget, "stats_strip", None)
             if strip is None:
                 return
-            strip.set_metric_profile(profile, domain=domain, auto=auto)
+            source = str(getattr(profile, "source", "") or "") if profile is not None else ""
+            strip.set_metric_profile(profile, domain=domain, auto=auto, source=source)
         except Exception:
             logger.debug("metric profile chip publish failed", exc_info=True)
 
@@ -660,7 +691,26 @@ class GalleryController:
         never blocks the UI thread: unavailable selector / AI not usable / <2
         items → a no-op; the single-flight gate dedups a second settle for the
         same ``(stage, folder_gen)``.
+
+        P5: the metric profile is a property of the **AI** judgment domain.
+        Off it (the toolbar on Algorithms) the profile belongs to the
+        local/fusion pipeline and must not be swapped for a model-chosen axis
+        set — no gate here meant a live Algorithms session paid for a call and
+        then ranked on ``source=vlm`` (live 2026-10-20). Mirrors the gate in
+        ``triage_run._run_ai_on_settle``.
+
+        When a worker IS launched, the settle's AI/Jev tails wait for it
+        (``_profile_settle_pending_gen`` + ``_resume_settle_after_profile``):
+        the calls must be built under the FINAL profile of the generation or
+        their cached scorecards are keyed on an identity nobody re-reads.
         """
+        # The judgment-domain gate: Algorithms owns the profile derivation.
+        if str(getattr(self, "_judgment_domain", "algorithms") or "").strip().lower() != "ai":
+            _ai_debug(
+                "metric profile skip: judgment domain=%s (selector is AI-only)",
+                getattr(self, "_judgment_domain", ""),
+            )
+            return
         try:
             factory = getattr(self, "_profile_selector", None)
             if not callable(factory):
@@ -715,7 +765,12 @@ class GalleryController:
         released = {"done": False}
 
         def _release(ok: bool) -> None:
-            """Release the stage gate exactly once (idempotent, never raises)."""
+            """Release the stage gate exactly once (idempotent, never raises).
+
+            The release is also the moment the settle's deferred AI/Jev tails
+            resume: the generation's profile is final from here on (a landed
+            vlm profile, the heuristic fallback, or a stale-drop).
+            """
             if released["done"]:
                 return
             released["done"] = True
@@ -724,6 +779,14 @@ class GalleryController:
                     gate.finished(_PROFILE_STAGE, gen, ok=bool(ok))
             except Exception:
                 logger.debug("metric profile gate finished failed", exc_info=True)
+            # Duck-typed (thin-owner seam): a legacy double without the
+            # resumption keeps working, it simply has no deferred tail.
+            resume = getattr(self, "_resume_settle_after_profile", None)
+            if callable(resume):
+                try:
+                    resume(gen)
+                except Exception:
+                    logger.debug("settle tail resume failed", exc_info=True)
 
         def _job():
             # The selector lane owns probe + one pinned VLM call + cache; the
@@ -758,27 +821,127 @@ class GalleryController:
             logger.debug("metric profile worker launch failed", exc_info=True)
             _release(False)  # never strand the gate in flight
             return
+        # P5: from here the settle's AI/Jev tails wait for this reply (and its
+        # ``_release`` resumption) — the request identities must be built under
+        # the FINAL profile of the generation, never the pre-replacement one.
+        try:
+            self._profile_settle_pending_gen = gen
+        except Exception:
+            pass
         _ai_debug("metric profile: select scheduled (items=%d gen=%s)", len(items), gen)
+
+    def _resume_settle_after_profile(self, gen: int) -> None:
+        """Run the settle tails that waited for this generation's profile (P5).
+
+        Called from the selector's single once-only release (landed profile,
+        fault, or stale drop). Idempotent per generation and fail-open: a
+        folder switch drops the deferred work (the new settle owns it), and a
+        fault resumes under the heuristic profile already stored. Never raises.
+        """
+        try:
+            pending = self._profile_settle_pending_gen
+        except Exception:
+            pending = None
+        if pending is None:
+            return
+        try:
+            if int(pending) != int(gen):
+                # Another generation's settle owns the pending flag.
+                return
+        except Exception:
+            return
+        try:
+            self._profile_settle_pending_gen = None
+        except Exception:
+            pass
+        if not self._is_current_folder_gen(gen):
+            return  # stale world: its own settle will drive the tails
+        try:
+            from tabs.image_gallery.use_cases import triage_run as _triage_run
+
+            # Same order as ``triage_run._settle_metrics_pass`` — only now the
+            # profile is final: the fusion re-mark reads the resolved axis set,
+            # then the VLM scorecards, then the Jev rank.
+            self._apply_fusion_ranks(getattr(self.state, "series", None))
+            _triage_run._run_ai_on_settle(self)
+            _triage_run._run_jev_on_settle(self)
+        except Exception:
+            logger.debug("settle tail resume after profile failed", exc_info=True)
+
+    def _mark_profile_consumed(self) -> None:
+        """Freeze this folder generation's profile once an AI call was built (P5).
+
+        A profile is part of the analysis cache identity: the scorecard is
+        stored (and looked up) under ``(mode, profile, model, …)``. Replacing
+        the profile after a request of the same generation was built can never
+        re-key that request — the reply lands under an identity the next open
+        will not read. So the first AI call of a generation freezes it; a late
+        selector reply is dropped with a debug line by ``_apply_profile_outcome``.
+        Never raises.
+        """
+        try:
+            self._profile_consumed_gen = int(self._folder_gen)
+        except Exception:
+            logger.debug("metric profile freeze stamp failed", exc_info=True)
 
     def _apply_profile_outcome(self, profile, gen: int) -> None:
         """Apply a VLM-selected metric profile (P2) or keep the heuristic.
 
-        Drops a stale result (the folder changed). A usable profile — any
-        object with a non-empty ``axis_ids``, canonically a ``MetricProfile``
-        with ``source="vlm"`` — is stored on the SAME ``state.metric_profile``
-        slot the P1 producer writes, the existing ``[gallery]``/``[ai]``
-        profile line is emitted (naming ``source=vlm`` and the salient axes),
-        and the cards are refreshed like the neighbouring apply-tails. A
-        missing/hollow profile is a no-op: the heuristic profile
-        ``refresh_metric_profile`` stored FIRST remains (fail-open).
+        Drops a stale result (the folder changed) and a late one (an AI request
+        of this generation already exists — the profile is that request's cache
+        identity, P5). A usable profile — any object with a non-empty
+        ``axis_ids``, canonically a ``MetricProfile`` with ``source="vlm"`` — is
+        stored on the SAME ``state.metric_profile`` slot the P1 producer writes,
+        the existing ``[gallery]``/``[ai]`` profile line is emitted (naming
+        ``source=vlm`` and the salient axes), and the cards are refreshed like
+        the neighbouring apply-tails. A missing/hollow profile is a no-op: the
+        heuristic profile ``refresh_metric_profile`` stored FIRST remains
+        (fail-open).
         """
         if not self._is_current_folder_gen(gen):
+            return
+        # P5: the toggle is level-triggered — a switch back to Algorithms while
+        # the selector was in flight must not let a late reply replace the
+        # profile the Algorithms pipeline now owns (mirrors the kick's gate).
+        if str(getattr(self, "_judgment_domain", "algorithms") or "").strip().lower() != "ai":
+            logger.debug(
+                "[gallery] metric profile: reply dropped — judgment domain is %r, "
+                "not ai",
+                getattr(self, "_judgment_domain", ""),
+            )
+            _ai_debug(
+                "metric profile: reply dropped (judgment domain=%s)",
+                getattr(self, "_judgment_domain", ""),
+            )
             return
         # P4: a manual domain pick is the user's explicit decision — the VLM
         # selector may never silently replace it (the pick survives a rebuild
         # and stays authoritative until "auto" is chosen).
         if str(getattr(self, "_metric_domain", "") or ""):
             return
+        # P5: once an AI request of this generation has been built, the profile
+        # is part of that request's cache identity — replacing it now would
+        # orphan the in-flight scorecards (they land under the pre-replacement
+        # identity). Drop the late reply with a line instead of applying it.
+        try:
+            consumed = getattr(self, "_profile_consumed_gen", None)
+        except Exception:
+            consumed = None
+        if consumed is not None:
+            try:
+                if int(consumed) == int(gen):
+                    logger.debug(
+                        "[gallery] metric profile: late %s reply dropped — profile "
+                        "frozen for gen %s (AI calls already built under it)",
+                        str(getattr(profile, "source", "") or "vlm"),
+                        gen,
+                    )
+                    _ai_debug(
+                        "metric profile: late reply dropped (frozen gen=%s)", gen
+                    )
+                    return
+            except Exception:
+                pass
         try:
             axis_ids = tuple(getattr(profile, "axis_ids", None) or ())
         except Exception:
@@ -1118,12 +1281,16 @@ class GalleryController:
         """Analyze every ``ctx.targets`` card on ``ctx.backend`` (ONE entry)."""
         from tabs.image_gallery.use_cases import ai_analysis as _ai_analysis
 
+        # The request identity (mode + profile) is snapshotted by the context;
+        # from here on the profile of this folder generation is frozen (P5).
+        _stamp_profile_consumed(self)
         return _ai_analysis.analyze(self, ctx)
 
     def reanalyze(self, ctx):
         """Force a fresh analysis of ``ctx.targets`` (cache bypass)."""
         from tabs.image_gallery.use_cases import ai_analysis as _ai_analysis
 
+        _stamp_profile_consumed(self)
         return _ai_analysis.reanalyze(self, ctx)
 
     def analyze_item_by_path(self, path: Path):
@@ -1177,6 +1344,9 @@ class GalleryController:
     def _run_ai_for_visible(self) -> None:
         from tabs.image_gallery.use_cases import ai_analysis as _ai_analysis
 
+        # The settle/tail guard: an analysis of this generation starts under
+        # the profile it will be cached under, so it may no longer be replaced.
+        _stamp_profile_consumed(self)
         return _ai_analysis._run_ai_for_visible(self)
 
     # -- AI domain ranker: Jev (TypeSafe System One) -----------------------

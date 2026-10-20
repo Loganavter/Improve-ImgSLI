@@ -106,7 +106,11 @@
       "region_prompt": "Что не так в этой области?",
       "cached": " · из кэша",
       "error_context": "Не удалось собрать контекст запроса.",
-      "history_count": "{n} предыдущих вопросов"
+      "history_count": "{n} предыдущих вопросов",
+      "history_title": "История",
+      "history_empty": "Вопросов пока нет.",
+      "sidebar_show": "Показать панель ИИ",
+      "sidebar_hide": "Скрыть панель ИИ"
     },
     "series": {
       "ask_ai": "Спросить у ИИ",
@@ -152,6 +156,10 @@
       "chip": "Профиль: {profile}",
       "auto": "авто",
       "axes": "осей: {n}",
+      "source": {
+        "vlm": "vlm",
+        "heuristic": "эвристика"
+      },
       "domain": {
         "auto": "Авто (по режиму)",
         "document": "Документ",
