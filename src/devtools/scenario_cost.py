@@ -11,9 +11,28 @@ wait_for(overlay) -> nav_key -> capture_surface``.
 
 Two of those tools have no one-to-one control method, so their semantics are
 spelled out client-side: wait_for polls ``jobs_list`` (job_settled) or
-``ui_elements`` (role) exactly as ``backend.wait_for`` does — each poll is a
-real wire call and is counted — and ``capture_surface`` with no surface is the
-live ``capture_live`` call, whose ``method``/``rhi_layers`` provenance is kept.
+``ui_nav_state`` (overlay open) exactly as a client would — each poll is a real
+wire call and is counted — and ``capture_surface`` with no surface is the live
+``capture_live`` call, whose ``method``/``rhi_layers`` provenance is kept.
+
+**Two numbers, never one.** ``logical_steps`` counts the declared steps (one per
+tool call an agent makes); ``wire_calls`` counts requests on the transport,
+including every wait_for poll. A server-side blocking wait is not the fix here:
+control handlers run on the GUI thread, so parking a reply would stall the UI.
+The probe reports both and their ratio, and ``--budget`` fails on the logical
+count only (``--wire-budget`` opts into a transport budget separately).
+
+Poll intervals back off: ``--poll-ms`` is the *first* interval, multiplied by
+1.5 up to ``--poll-max-ms``. With a fixed interval a wait burning its whole
+budget costs ``ceil(timeout_ms / poll_ms)`` wire calls in the worst case; growth
+can only lower that number, never raise it.
+
+The Quick Look overlay is resolved through the navigation model, not a role: its
+frame is a plain widget and its preview canvas is not reliably a visible+enabled
+``canvas`` row (live 2026-10-20: a ``role="canvas"`` wait polled 139 times and
+blocked). While visible the overlay registers ``QuickLookNavSection`` (``nav_key``
+reports ``section:QuickLookNavSection``) and shows up in ``ui_nav_state.overlays[]``;
+the step detail records which signal fired.
 
 Protocol choice: **one persistent connection**, one request id per call,
 newline-delimited JSON ``{"id","method","params"}`` ->
@@ -27,6 +46,7 @@ importer would couple the two) and Qt-free, so it runs headless.
 Usage:
   python src/devtools/scenario_cost.py --folder /path/to/demo/images
   python src/devtools/scenario_cost.py --socket SOCK --folder DIR --budget 5 --json
+  python src/devtools/scenario_cost.py --folder DIR --wire-budget 40
   python src/devtools/scenario_cost.py --dry-run --folder DIR   # plan only
 """
 
@@ -34,6 +54,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import socket
 import stat
@@ -49,12 +70,20 @@ SCENARIO_NAME = "canonical-image-gallery"
 DEFAULT_BUDGET, ESTIMATE_CALLS = 5, (8, 12)  # the plan's target vs. its estimate
 TAB = "image_gallery"  # every step is aimed at the plan's sample tab
 KIND_GALLERY_POOL = "gallery_pool"
-# The Quick Look overlay's observable inventory signal: its preview canvas is a
-# ``QRhiWidget`` (role ``canvas``); the overlay frame is a plain widget with no
-# role of its own (see ``core/control/elements/roles.py``).
-OVERLAY_ROLE = "canvas"
+# The Quick Look overlay's observable open signals. Neither is a
+# ``role="canvas"`` element: the overlay frame is a plain widget with no role,
+# and its preview canvas is not reliably visible+enabled at open time (measured
+# live 2026-10-20: 139 polls, then blocked). What is observable is the
+# navigation model — the panel registers ``QuickLookNavSection`` while visible
+# (``nav_key`` reports ``section:QuickLookNavSection``) and appears in
+# ``ui_nav_state.overlays[]``.
+OVERLAY_SECTION_NAME = "QuickLookNavSection"
+OVERLAY_SIGNAL_OVERLAYS = "nav_state.overlays"
+OVERLAY_SIGNAL_SECTIONS = "nav_state.sections"
 DEFAULT_TIMEOUT_S = 5.0
 DEFAULT_WAIT_TIMEOUT_MS, DEFAULT_POLL_MS = 15_000, 100
+#: Poll growth: ``--poll-ms`` is the first interval, ×1.5 up to this cap.
+DEFAULT_POLL_MAX_MS, POLL_GROWTH = 1_000, 1.5
 MAX_SKIPPED_LINES = 100  # noise bound from the proxy's client
 CONTROL_SOCKET_NAME, INSTANCE_POINTER_NAME = "control.sock", "instance.json"
 SOCKET_OVERRIDE_ENV, CONTROL_DIR_ENV = "IMGSLI_MCP_CONTROL_SOCKET", "IMGSLI_CONTROL_DIR"
@@ -66,11 +95,23 @@ STEP_PLAN: tuple[tuple[str, str, str], ...] = (
     ("wait_for:job_settled", "jobs_list", 'wait_for {job_settled: true, job_kind: "gallery_pool"}'),
     ("ui_elements", "ui_elements", 'ui_elements {scope: "image_gallery"}'),
     ("ui_click", "ui_click", "ui_click {id: <first card>}"),
-    ("wait_for:element", "ui_elements", 'wait_for {role: "canvas"}'),
+    ("wait_for:overlay", "ui_nav_state", 'wait_for {overlay open} -> ui_nav_state overlays/sections'),
     ("nav_key", "nav_key", 'nav_key {keys: "Down,Down"}'),
     ("capture_surface", "capture_live", "capture_surface {} -> capture_live"),
 )
 WIRE_METHODS = {name: method for name, method, _plan in STEP_PLAN}
+
+
+def grow_poll_ms(current_ms: int, max_ms: int) -> int:
+    """The next poll interval: ×1.5, never shrinking, capped at *max_ms*.
+
+    A cap below the initial interval cannot shrink it — a caller asking for a
+    500 ms first poll with a 200 ms max starts at 500 and stays there.
+    """
+    current = max(int(current_ms), 1)
+    cap = max(int(max_ms), current)
+    grown = int(math.ceil(current * POLL_GROWTH))
+    return min(max(grown, current + 1), cap)
 
 class ControlUnavailable(Exception):
     """No live instance answered: the socket is missing, refused, or closed."""
@@ -226,16 +267,33 @@ class StepResult:
 
 @dataclass
 class Report:
-    """The whole run: per-step results plus the counted wire requests."""
+    """The whole run: per-step results plus both call counts.
+
+    ``logical_steps`` is what an agent pays in tool calls (one per declared
+    step); ``wire_calls`` is what the transport pays, including each wait_for
+    poll. They differ by design — the live run that motivated this probe
+    measured 8 logical steps against 280 wire calls.
+    """
     socket: str
     folder: str
     budget: int
     steps: list[StepResult] = field(default_factory=list)
     calls: int = 0
+    wire_budget: int | None = None
     capture_method: str | None = None
     capture_rhi_layers: int | None = None
     @property
-    def over_budget(self) -> bool: return self.calls > self.budget
+    def logical_steps(self) -> int: return len(self.steps)
+    @property
+    def wire_calls(self) -> int: return self.calls
+    @property
+    def ratio(self) -> float:
+        return self.calls / self.logical_steps if self.logical_steps else 0.0
+    @property
+    def over_budget(self) -> bool: return self.logical_steps > self.budget
+    @property
+    def wire_over_budget(self) -> bool:
+        return self.wire_budget is not None and self.calls > self.wire_budget
     @property
     def capture_provenance(self) -> str:
         if self.capture_method and self.capture_rhi_layers is not None:
@@ -245,8 +303,14 @@ class Report:
         return "incomplete:" + ",".join(missing)
     def to_dict(self) -> dict[str, Any]:
         return {"scenario": SCENARIO_NAME, "plan": PLAN_ID, "socket": self.socket,
-                "folder": self.folder, "calls": self.calls, "budget": self.budget,
-                "over_budget": self.over_budget, "estimate": list(ESTIMATE_CALLS),
+                "folder": self.folder,
+                "logical_steps": self.logical_steps, "wire_calls": self.wire_calls,
+                "calls": self.calls,  # back-compat alias for wire_calls
+                "ratio": round(self.ratio, 3),
+                "budget": self.budget, "over_budget": self.over_budget,
+                "wire_budget": self.wire_budget,
+                "wire_over_budget": self.wire_over_budget,
+                "estimate": list(ESTIMATE_CALLS),
                 "steps": [step.to_dict() for step in self.steps],
                 "provenance": {"source": "live", "capture": self.capture_provenance,
                                "method": self.capture_method,
@@ -257,11 +321,17 @@ class ScenarioRunner:
     def __init__(self, client: Any, *, folder: Path, socket_label: str,
                  budget: int = DEFAULT_BUDGET, wait_timeout_ms: int = DEFAULT_WAIT_TIMEOUT_MS,
                  poll_ms: int = DEFAULT_POLL_MS,
-                 sleep: Callable[[float], None] = time.sleep) -> None:
+                 poll_max_ms: int = DEFAULT_POLL_MAX_MS,
+                 wire_budget: int | None = None,
+                 sleep: Callable[[float], None] = time.sleep,
+                 clock: Callable[[], float] = time.monotonic) -> None:
         self.client, self.folder = client, folder
-        self.report = Report(socket=socket_label, folder=str(folder), budget=budget)
+        self.report = Report(socket=socket_label, folder=str(folder), budget=budget,
+                             wire_budget=wire_budget)
         self.wait_timeout_ms, self.poll_ms = int(wait_timeout_ms), max(int(poll_ms), 1)
-        self.sleep, self.transport_dead = sleep, False
+        self.poll_max_ms = int(poll_max_ms)
+        self.sleep, self.clock = sleep, clock
+        self.transport_dead = False
         # The card chosen by ``ui_elements``; the click reuses it instead of
         # re-reading the inventory (a read the real scenario never makes).
         self.card_id = ""
@@ -297,8 +367,13 @@ class ScenarioRunner:
               timeout_detail: Callable[[str], str], start: int) -> StepResult:
         """Poll until ``observe`` holds; a timeout is a normal blocked result
         carrying the last observed state (MCP wait_for semantics), not a crash.
+
+        ``poll_ms`` is the first interval only: each miss multiplies it by 1.5
+        up to ``poll_max_ms``. With a fixed interval a wait that burns its whole
+        budget costs ``ceil(timeout_ms / poll_ms)`` wire calls; growth can only
+        lower that number. Sleeps are clamped to the remaining budget.
         """
-        deadline, polls = time.monotonic() + self.wait_timeout_ms / 1000.0, 0
+        deadline, polls, interval = self.clock() + self.wait_timeout_ms / 1000.0, 0, self.poll_ms
         while True:
             polls += 1
             result, error = self._wire(WIRE_METHODS[name], params)
@@ -307,10 +382,11 @@ class ScenarioRunner:
             matched, detail = observe(result or {})
             if matched:
                 return self._finish(name, "ok", f"{detail} after {polls} poll(s)", start)
-            remaining = deadline - time.monotonic()
+            remaining = deadline - self.clock()
             if remaining <= 0:
                 return self._finish(name, "blocked", timeout_detail(detail), start)
-            self.sleep(min(self.poll_ms / 1000.0, remaining))
+            self.sleep(min(interval / 1000.0, remaining))
+            interval = grow_poll_ms(interval, self.poll_max_ms)
     def _open_tab(self) -> None:
         self._simple("open_tab", {"tab": TAB},
                      lambda r: ("ok", f"tab={r.get('tab', TAB)} via={r.get('via', 'action')}"))
@@ -351,15 +427,26 @@ class ScenarioRunner:
                      lambda r: ("ok" if r.get("clicked", True) else "error",
                                 f"id={self.card_id}"))
     def _wait_for_overlay(self) -> None:
-        """``wait_for {element: <overlay>}``: poll ``ui_elements`` for the canvas."""
+        """``wait_for {overlay open}``: poll ``ui_nav_state`` for the panel.
+
+        Two signals are read from one reply, in order: an open row in
+        ``overlays[]``, else the ``QuickLookNavSection`` the panel registers
+        while visible. The step detail records which one fired, so a live run
+        says what the probe actually observed rather than assuming a role.
+        """
         def observe(result: dict) -> tuple[bool, str]:
-            rows = [r for r in result.get("elements") or [] if isinstance(r, dict)]
-            found = next((r for r in rows if r.get("role") == OVERLAY_ROLE
-                          and r.get("visible") and r.get("enabled")), None)
-            if found is None:
-                return False, f"no visible+enabled role={OVERLAY_ROLE!r} element"
-            return True, f"id={found.get('id')} role={OVERLAY_ROLE}"
-        self._poll("wait_for:element", {"scope": TAB, "include_disabled": True}, observe,
+            overlays = [r for r in result.get("overlays") or [] if isinstance(r, dict)]
+            if overlays:
+                first = overlays[0]
+                return True, (f"signal={OVERLAY_SIGNAL_OVERLAYS} "
+                              f"overlay={first.get('widget')}")
+            sections = [s for s in result.get("sections") or [] if isinstance(s, dict)]
+            if any(str(s.get("section") or "") == OVERLAY_SECTION_NAME for s in sections):
+                return True, (f"signal={OVERLAY_SIGNAL_SECTIONS} "
+                              f"section={OVERLAY_SECTION_NAME}")
+            return False, (f"no overlay row and no {OVERLAY_SECTION_NAME} "
+                           "in ui_nav_state")
+        self._poll("wait_for:overlay", {}, observe,
                    lambda detail: f"blocked:overlay timeout after "
                                   f"{self.wait_timeout_ms} ms ({detail})", self.report.calls)
     def _nav_key(self) -> None:
@@ -398,7 +485,7 @@ class ScenarioRunner:
         if elements.status != "ok":
             # Nothing to click: the rest has no prerequisite. Name it.
             self._blocked("ui_click", "no-card-in-ui_elements")
-            self._blocked("wait_for:element", "no-overlay-to-wait-for")
+            self._blocked("wait_for:overlay", "no-overlay-to-wait-for")
             self._blocked("nav_key", "no-overlay-to-navigate")
             self._blocked("capture_surface", "no-overlay-to-capture")
             return self.report
@@ -415,12 +502,19 @@ class ScenarioRunner:
                 self._blocked(name, "transport-failure")
         return self.report
 
-def format_plan(folder: Path | None, budget: int) -> str:
+def format_plan(folder: Path | None, budget: int, wire_budget: int | None = None,
+                poll_ms: int = DEFAULT_POLL_MS,
+                poll_max_ms: int = DEFAULT_POLL_MAX_MS) -> str:
     lines = [f"scenario: {SCENARIO_NAME}", f"plan: {PLAN_ID}", f"folder: {folder if folder is not None else '<folder>'}",
-             f"budget: {budget} (the plan's estimate was "
+             f"budget: logical_steps <= {budget} (the plan's estimate was "
              f"{ESTIMATE_CALLS[0]}-{ESTIMATE_CALLS[1]} calls; target <= {budget})",
-             "steps (every wire request counts, including wait_for polls):"]
+             f"wire budget: {'not set' if wire_budget is None else f'<= {wire_budget}'}",
+             "steps (one logical tool call each; every wire request, including "
+             "wait_for polls, is counted separately):"]
     lines += [f"  {i}. {name:<20} {plan}" for i, (name, _m, plan) in enumerate(STEP_PLAN, 1)]
+    lines.append(f"poll backoff: {poll_ms} ms initial x{POLL_GROWTH} up to "
+                 f"{poll_max_ms} ms (fixed interval worst case: "
+                 "ceil(timeout_ms / poll_ms) wires)")
     lines.append("dry-run: nothing was sent")
     return "\n".join(lines)
 
@@ -430,10 +524,14 @@ def format_summary(report: Report) -> str:
     for index, step in enumerate(report.steps, start=1):
         lines.append(f"  {index}. {step.name:<20} {step.status:<7} method={step.method} "
                      f"calls={step.wire_calls} {step.detail}".rstrip())
-    lines += [f"calls={report.calls}",
-              f"budget: {report.calls}/<={report.budget}"
-              f"{' EXCEEDED' if report.over_budget else ''}",
-              f"provenance: source=live capture={report.capture_provenance}"]
+    lines += [f"logical_steps={report.logical_steps} wire_calls={report.wire_calls} "
+              f"ratio={report.ratio:.2f}",
+              f"logical budget: {report.logical_steps}/<={report.budget}"
+              f"{' EXCEEDED' if report.over_budget else ''}"]
+    if report.wire_budget is not None:
+        lines.append(f"wire budget: {report.wire_calls}/<={report.wire_budget}"
+                     f"{' EXCEEDED' if report.wire_over_budget else ''}")
+    lines.append(f"provenance: source=live capture={report.capture_provenance}")
     return "\n".join(lines)
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -443,9 +541,13 @@ def _build_parser() -> argparse.ArgumentParser:
                      "the wire calls it really costs. The plan's 8-12 figure was an "
                      "estimate read off agent transcripts; this is the probe behind it."),
         epilog=(f"Budget rationale: {PLAN_ID} calls the canonical loop 8-12 calls and "
-                f"sets a target of <= {DEFAULT_BUDGET}. Each logical step is one MCP tool call, "
-                "but this probe counts the transport honestly: a wait_for step polls (jobs_list "
-                "or ui_elements), so the measured number can exceed the logical step count. "
+                f"sets a target of <= {DEFAULT_BUDGET}. Two numbers are reported and kept "
+                "apart: logical_steps (one per declared step — what an agent pays in tool "
+                "calls) and wire_calls (transport requests, including every wait_for poll). "
+                "--budget fails on logical_steps only; pass --wire-budget to fail on wire "
+                "calls separately. Polls back off from --poll-ms by x1.5 up to "
+                "--poll-max-ms, so a wait's worst case is ceil(timeout_ms / poll_ms) wires "
+                "with a fixed interval, and fewer with growth. "
                 "Exit codes: 0 within budget, 1 over budget, 2 no live instance/folder."),
     )
     parser.add_argument("--socket", metavar="PATH",
@@ -453,13 +555,19 @@ def _build_parser() -> argparse.ArgumentParser:
                         f"({SOCKET_OVERRIDE_ENV}, {CONTROL_DIR_ENV}, $XDG_RUNTIME_DIR, app data)")
     parser.add_argument("--folder", metavar="PATH", help="demo folder of images (required to run)")
     parser.add_argument("--budget", type=int, default=DEFAULT_BUDGET, metavar="M",
-                        help=f"fail (exit 1) above M wire calls (default {DEFAULT_BUDGET})")
+                        help=f"fail (exit 1) when logical steps exceed M (default {DEFAULT_BUDGET}); "
+                        "wire calls are reported but not budgeted here")
+    parser.add_argument("--wire-budget", type=int, default=None, metavar="N",
+                        help="also fail (exit 1) when wire calls exceed N (default: no wire budget)")
     parser.add_argument("--json", action="store_true", help="machine-readable report")
     parser.add_argument("--dry-run", action="store_true", help="print the plan, send nothing")
     parser.add_argument("--wait-timeout-ms", type=int, default=DEFAULT_WAIT_TIMEOUT_MS,
                         metavar="MS", help="budget for one wait_for step")
     parser.add_argument("--poll-ms", type=int, default=DEFAULT_POLL_MS, metavar="MS",
-                        help="floor between wait_for polls")
+                        help=f"first wait_for poll interval (default {DEFAULT_POLL_MS}); "
+                        f"grows x{POLL_GROWTH} per miss")
+    parser.add_argument("--poll-max-ms", type=int, default=DEFAULT_POLL_MAX_MS, metavar="MS",
+                        help=f"ceiling for the poll interval (default {DEFAULT_POLL_MAX_MS})")
     parser.add_argument("--timeout", type=float, default=DEFAULT_TIMEOUT_S, metavar="S",
                         help="one request/response round-trip budget")
     return parser
@@ -469,7 +577,8 @@ def main(argv: Sequence[str] | None = None, *, client: Any | None = None,
     args = _build_parser().parse_args(argv)
     folder = Path(args.folder).expanduser() if args.folder else None
     if args.dry_run:
-        print(format_plan(folder, args.budget)); return 0
+        print(format_plan(folder, args.budget, args.wire_budget,
+                          args.poll_ms, args.poll_max_ms)); return 0
     if folder is None:
         print("error: no demo folder: pass --folder PATH (a folder of images)"); return 2
     if not folder.is_dir():
@@ -484,7 +593,9 @@ def main(argv: Sequence[str] | None = None, *, client: Any | None = None,
     runner = ScenarioRunner(
         client, folder=folder,
         socket_label=str(socket_path) if socket_path is not None else "<injected client>",
-        budget=args.budget, wait_timeout_ms=args.wait_timeout_ms, poll_ms=args.poll_ms)
+        budget=args.budget, wire_budget=args.wire_budget,
+        wait_timeout_ms=args.wait_timeout_ms, poll_ms=args.poll_ms,
+        poll_max_ms=args.poll_max_ms)
     try:
         report = runner.run()
     finally:
@@ -494,7 +605,7 @@ def main(argv: Sequence[str] | None = None, *, client: Any | None = None,
             pass
     print(json.dumps(report.to_dict(), indent=2, ensure_ascii=False)
           if args.json else format_summary(report))
-    return 1 if report.over_budget else 0
+    return 1 if (report.over_budget or report.wire_over_budget) else 0
 
 if __name__ == "__main__":
     sys.exit(main())

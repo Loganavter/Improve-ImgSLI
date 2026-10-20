@@ -313,6 +313,16 @@ second resolver nor a second job view. Sleeps are clamped to the remaining
 budget, so the call does not overshoot `timeout_ms` by more than one poll
 interval (a slow observation adds its own duration).
 
+**`wait_for` saves tool calls, not wire round-trips.** The polling happens
+inside the call, and every poll is still one `ui_elements` / `jobs_list` request
+on the control socket — a caller pays them whether or not it sees them. With a
+fixed `poll_ms` a wait that burns its whole budget costs
+`ceil(timeout_ms / poll_ms)` requests in the worst case. Keep the two numbers
+apart when reasoning about agent ergonomics: `src/devtools/scenario_cost.py`
+reports `logical_steps` (one per declared step) and `wire_calls` (transport,
+polls included) plus their ratio, and only the logical count is budgeted by
+default (`--wire-budget` opts into a transport budget).
+
 A success and a timeout are both **normal results**, never a tool error:
 
 ```
