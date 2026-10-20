@@ -12,6 +12,7 @@ figure. See ``docs/dev/SCREENSHOTS.md`` §Help-figure generator.
     python src/devtools/help_figures.py --list            # no display
     python src/devtools/help_figures.py --all --out /tmp/shots
     python src/devtools/help_figures.py --check
+    python src/devtools/help_figures.py --compare         # WxH parity report
     python src/devtools/help_figures.py --all --write-manifest
 
 Audit-Meta: pattern=devtool-pipeline size=exempt reason="one devtool contract: recipe schema+IO, capture adapter, drift/apply and display lifecycle all compare against the same manifest — splitting forks the schema"
@@ -316,21 +317,63 @@ def write_manifest(path: Path | str, manifest: Manifest) -> Path:
 # --- Pins -------------------------------------------------------------------
 
 
-def pin_report(figure: Figure, locale: str, theme: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
+def pin_report(
+    figure: Figure,
+    locale: str,
+    theme: str,
+    *,
+    captured_size: tuple[int, int] | None = None,
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
     """Which pins the surface API really applied for this capture.
 
     Constructors that hardcode their own language/theme are recorded as caveats
-    instead of being claimed as applied.
+    instead of being claimed as applied. A ``size`` pin is only claimed when the
+    grabbed pixels really are that size; a surface that ignores the pin is
+    recorded as unavailable (never silently resized — that would fake parity).
     """
     unavailable = list(UNPINNABLE)
+    applied = list(PINNABLE)
     if figure.surface in _PINS_EN:
         unavailable.append("locale:constructor-pins-en")
     if figure.surface in _PINS_DARK and theme != "dark":
         unavailable.append("theme:constructor-pins-dark")
-    return tuple(PINNABLE), tuple(sorted(unavailable))
+    if figure.size is not None and captured_size is not None:
+        if tuple(captured_size) == tuple(figure.size):
+            applied.append("size")
+        else:
+            unavailable.append("size:surface-ignores-pin")
+    return tuple(applied), tuple(sorted(unavailable))
 
 
 # --- Capture (reuses capture_surface by import) -----------------------------
+
+
+def _assets_root(destination: Path) -> Path:
+    """``assets`` ancestor of a repo-relative destination (variant roots)."""
+    parts = destination.parts
+    for index in range(len(parts) - 1, -1, -1):
+        if parts[index] == "assets":
+            return Path(*parts[: index + 1])
+    return destination.parent
+
+
+def figure_variant_count(figure: Figure) -> int:
+    """How many locale/theme images this recipe produces."""
+    return len(set(figure.locales)) * len(set(figure.themes))
+
+
+def install_destination(figure: Figure, locale: str, theme: str) -> Path:
+    """Repo-relative path one generated variant installs to.
+
+    A single-variant recipe keeps today's flat destination (the 25 shipped
+    figures do not move). A multi-variant recipe declares the full matrix, so
+    every cell goes under ``assets/<locale>/<theme>/<name>`` — the layout the
+    runtime resolver (``plugins.help.tree.resolve_help_asset``) probes first.
+    """
+    destination = Path(figure.destination or "")
+    if figure_variant_count(figure) <= 1:
+        return destination
+    return _assets_root(destination) / locale / theme / destination.name
 
 
 def crop_png(path: Path | str, crop, *, figure_id: str) -> Path:
@@ -428,16 +471,29 @@ def generate(
         if not figure.covered:
             continue
         for locale, theme in _pairs(figure, locales, themes):
-            path = Path(capture(figure, locale, theme, out_dir))
-            sha256, size, width, height = _fingerprint(path)
-            applied, unavailable = pin_report(figure, locale, theme)
+            captured = Path(capture(figure, locale, theme, out_dir))
+            asset = install_destination(figure, locale, theme)
+            if figure_variant_count(figure) > 1:
+                # Multi-variant: stage into the assets/<locale>/<theme>/ layout
+                # the runtime resolver probes (inside --out, never the repo).
+                staged = out_dir / asset
+                staged.parent.mkdir(parents=True, exist_ok=True)
+                if staged.resolve() != captured.resolve():
+                    shutil.copyfile(captured, staged)
+                captured = staged
+            sha256, size, width, height = _fingerprint(captured)
+            applied, unavailable = pin_report(
+                figure, locale, theme, captured_size=(width, height)
+            )
             records.append({
                 "figure": figure.id, "surface": figure.surface, "locale": locale, "theme": theme,
                 "sha256": sha256, "size": size, "width": width, "height": height,
-                "pins_applied": list(applied), "pins_unavailable": list(unavailable), "path": str(path),
+                "asset": asset.as_posix(),
+                "pins_applied": list(applied), "pins_unavailable": list(unavailable),
+                "path": str(captured),
             })
             print(
-                f"captured {figure.id} [{locale}/{theme}] -> {path} ({width}x{height}, {size} B)",
+                f"captured {figure.id} [{locale}/{theme}] -> {captured} ({width}x{height}, {size} B)",
                 file=stream,
             )
     return records
@@ -495,6 +551,80 @@ def check_figures(
     if uncovered:
         print("uncovered (not checked): " + ", ".join(uncovered), file=stream)
     return 1 if drifted else 0
+
+
+def _shipped_size(figure: Figure, repo_root: Path = REPO_ROOT) -> tuple[int, int] | None:
+    """Measured shipped image size (for figures with no explicit size pin)."""
+    if not figure.destination:
+        return None
+    path = Path(repo_root) / figure.destination
+    if not path.is_file():
+        return None
+    from PIL import Image
+
+    with Image.open(path) as image:
+        return image.size
+
+
+def compare_parity(
+    manifest: Manifest,
+    records: Sequence[dict],
+    *,
+    repo_root: Path = REPO_ROOT,
+) -> tuple[list[dict], bool]:
+    """Per capture: generated WxH vs the pinned (else shipped) WxH.
+
+    ``parity`` means the freshly generated frame has exactly the target size;
+    ``dims-differ`` means it does not; ``no-target`` means neither a pin nor a
+    shipped file exists. Pixel content is not judged here — that is ``--check``.
+    """
+    if not records:
+        return [], False
+    by_id = {figure.id: figure for figure in manifest.figures}
+    rows: list[dict] = []
+    mismatched = False
+    for record in sorted(records, key=lambda r: (r["figure"], r["locale"], r["theme"])):
+        figure = by_id[record["figure"]]
+        if figure.size is not None:
+            target, source = tuple(figure.size), "pin"
+        else:
+            target, source = _shipped_size(figure, repo_root), "shipped"
+        if target is None:
+            status = "no-target"
+        elif (record["width"], record["height"]) == target:
+            status = "parity"
+        else:
+            mismatched, status = True, "dims-differ"
+        rows.append({**record, "target": target, "target_source": source, "status": status})
+    return rows, mismatched
+
+
+def compare_sizes(
+    manifest: Manifest, out_dir: Path | str, *, locales=None, themes=None, capture=None, stream=None
+) -> int:
+    """Regenerate + report size parity. Returns 0 (all parity/no-target) or 1."""
+    stream = sys.stdout if stream is None else stream
+    rows, mismatched = compare_parity(
+        manifest,
+        generate(manifest, out_dir, locales=locales, themes=themes, capture=capture, stream=stream),
+    )
+    header = f"{'figure':<30} {'locale':<7} {'theme':<6} {'generated':<12} {'target':<12} status"
+    print(header, file=stream)
+    print("-" * len(header), file=stream)
+    counts: dict[str, int] = {}
+    for row in rows:
+        generated = f"{row['width']}x{row['height']}"
+        target = "?" if row["target"] is None else "%dx%d" % tuple(row["target"])
+        source = "" if row["target"] is None else f" ({row['target_source']})"
+        print(
+            f"{row['figure']:<30} {row['locale']:<7} {row['theme']:<6} "
+            f"{generated:<12} {target + source:<12} {row['status']}",
+            file=stream,
+        )
+        counts[row["status"]] = counts.get(row["status"], 0) + 1
+    summary = ", ".join(f"{s}={counts[s]}" for s in sorted(counts)) or "no captures"
+    print(f"size parity: {summary}", file=stream)
+    return 1 if mismatched else 0
 
 
 def apply_results(manifest: Manifest, records: Sequence[dict]) -> Manifest:
@@ -601,6 +731,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="regenerate and compare sha256 against the manifest (exit 1 on drift)",
     )
     parser.add_argument(
+        "--compare", action="store_true",
+        help="regenerate and report generated WxH vs pinned/shipped WxH (exit 1 on dims-differ)",
+    )
+    parser.add_argument(
         "--write-manifest", "--update", dest="write_manifest", action="store_true",
         help="record sha256/size/dims for what was generated",
     )
@@ -623,10 +757,12 @@ def _list_recipes(manifest: Manifest) -> int:
         crop = "crop=%dx%d+%d+%d" % figure.crop if figure.crop else "crop=none"
         status = "covered" if figure.covered else f"uncovered:{figure.reason}"
         size = "%dx%d" % figure.size if figure.size else "default"
+        variants = figure_variant_count(figure)
+        layout = "flat" if variants <= 1 else "assets/<locale>/<theme>"
         print(
             f"  {figure.id:<26} surface={figure.surface:<18} size={size:<9} "
             f"locales={','.join(sorted(figure.locales))} "
-            f"themes={','.join(sorted(figure.themes))} {crop} {status}"
+            f"themes={','.join(sorted(figure.themes))} variants={variants}({layout}) {crop} {status}"
         )
         print(f"    -> {figure.destination or '(no shipped figure)'}")
         if figure.note:
@@ -648,10 +784,12 @@ def main(argv: list[str] | None = None) -> int:
         return _list_recipes(manifest)
     if args.all and args.figure:
         parser.error("--all and --figure are mutually exclusive")
-    if not (args.all or args.figure or args.check):
-        parser.error("choose one of: --all, --figure ID, --check, --list")
+    if not (args.all or args.figure or args.check or args.compare):
+        parser.error("choose one of: --all, --figure ID, --check, --compare, --list")
     if args.check and args.write_manifest:
         parser.error("--check does not write the manifest")
+    if args.compare and (args.check or args.write_manifest):
+        parser.error("--compare only reports sizes; do not combine it with --check/--write-manifest")
 
     selected = manifest
     if args.figure:
@@ -675,6 +813,8 @@ def main(argv: list[str] | None = None) -> int:
         with display_context(args.backend):
             if args.check:
                 return check_figures(selected, out_dir, locales=args.locale, themes=args.theme)
+            if args.compare:
+                return compare_sizes(selected, out_dir, locales=args.locale, themes=args.theme)
             records = generate(selected, out_dir, locales=args.locale, themes=args.theme)
     except FigureError as exc:  # CropError subclasses FigureError
         print(f"capture failed: {exc}", file=sys.stderr)

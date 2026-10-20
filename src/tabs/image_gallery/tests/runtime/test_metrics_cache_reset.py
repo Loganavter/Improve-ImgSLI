@@ -259,7 +259,9 @@ def test_menu_entry_and_registry_descriptor(monkeypatch) -> None:
     from tabs.image_gallery.ui.card.context_menu import popup_gallery_card_context_menu
 
     captured = _capture_menu(monkeypatch)
-    owner = SimpleNamespace(state=SimpleNamespace(selected_paths=set()))
+    owner = SimpleNamespace(
+        state=SimpleNamespace(selected_paths=set()), _judgment_domain="algorithms"
+    )
     popup_gallery_card_context_menu(
         SimpleNamespace(), owner, Path("/a.png"), global_pos=None, selection_count=0,
     )

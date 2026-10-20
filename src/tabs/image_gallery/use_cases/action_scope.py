@@ -15,17 +15,20 @@ Precedence (``resolve_targets``), in order:
                                     that card only — file-manager rule)
     b) selection non-empty        -> the selection, in ``selected_order`` order
     c) ``card_path`` given        -> ``[card_path]``
-    d) focused card / first item  -> ``[path]``
+    d) ``focused=True``           -> the card holding keyboard focus, if any
     e) otherwise                  -> ``[]``
 
 WHY this order: a context menu opened on a card carries that card as
 ``card_path``; if the card is part of the selection, the action is a
 *selection* action (b) — that is the bug fix (all members, not one). If it is
 not part of the selection, the user pointed at exactly one card (a) / (c).
-With no card context (keyboard, menu-less paths) the selection wins (b),
-then the keyboard focus, then the first visible item (d) — and nothing at
-all (e) is a valid answer that callers must honour (an empty scope is never
-"the first card by accident").
+With no card context the selection wins (b). Focus is NEVER inferred: the
+keyboard entry passes ``focused=True`` explicitly (an action the user aimed at
+the focused card), everything else stops at (e). Nothing at all is a valid
+answer that callers must honour — there is no "first card by accident"
+fallback any more (removed 2026-10-20, queue id
+``task-gallery-action-context-2026-10-20``: an empty selection used to analyze
+the first visible item).
 
 The selection read (``selected_paths``) is also single-sourced here:
 
@@ -196,37 +199,20 @@ def _focused_path(owner) -> Path | None:
     return None
 
 
-def _first_item_path(owner) -> Path | None:
-    """Path of the first gallery item (state.items → _items → items)."""
-    for holder in (getattr(owner, "state", None), owner):
-        if holder is None:
-            continue
-        try:
-            items = list(getattr(holder, "items", None) or ())
-        except Exception:
-            items = []
-        if not items:
-            try:
-                items = list(getattr(holder, "_items", None) or ())
-            except Exception:
-                items = []
-        for item in items:
-            try:
-                raw = item.get("path") if isinstance(item, dict) else getattr(item, "path", None)
-            except Exception:
-                raw = None
-            p = _as_path(raw) if raw is not None else None
-            if p is not None:
-                return p
-    return None
+# The old first-visible-card scope fallback was deleted here (2026-10-20):
+# an action may never hit a card the user did not point at. Build an
+# ``ActionContext`` in ``use_cases.action_context`` instead.
 
 
-def resolve_targets(owner, *, card_path=None) -> PathList:
+def resolve_targets(owner, *, card_path=None, focused: bool = False) -> PathList:
     """Cards an action applies to — the precedence table in the module docstring.
 
     ``card_path`` is the card the action was invoked on (context menu), or
-    None for menu-less paths (keyboard). Returns a fresh list; callers must
-    treat ``[]`` as "nothing to do" rather than substituting a default.
+    None for menu-less paths. ``focused=True`` is an EXPLICIT keyboard input:
+    the user aimed the action at the focused card, so it may be used when
+    nothing is selected. It is not a fallback — a menu/action entry never
+    passes it, and an empty answer is final. Returns a fresh list; callers
+    must treat ``[]`` as "nothing to do" rather than substituting a default.
     """
     card: Path | None = None
     if card_path is not None:
@@ -247,12 +233,10 @@ def resolve_targets(owner, *, card_path=None) -> PathList:
         return [card]
     if selection:
         return list(selection)
-    focused = _focused_path(owner)
-    if focused is not None:
-        return [focused]
-    first = _first_item_path(owner)
-    if first is not None:
-        return [first]
+    if focused:
+        focused_path = _focused_path(owner)
+        if focused_path is not None:
+            return [focused_path]
     return []
 
 

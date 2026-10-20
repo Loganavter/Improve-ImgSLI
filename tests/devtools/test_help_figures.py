@@ -302,6 +302,180 @@ def test_pin_report_flags_constructor_pins(hf):
     assert "locale:constructor-pins-en" not in gallery_unavailable
 
 
+def test_covered_recipes_pin_the_shipped_frame(hf):
+    """Every reproducible figure declares the frame it must reproduce."""
+    manifest = hf.load_manifest()
+    for figure in manifest.figures:
+        if not figure.covered:
+            continue
+        assert figure.size is not None or figure.crop is not None, (
+            f"{figure.id}: a covered figure needs a size pin or a crop"
+        )
+
+
+def test_surface_as_is_pins_match_shipped_pixels(hf):
+    """Pins come from the measured shipped inventory, not from a guess."""
+    for figure in hf.load_manifest().figures:
+        if not figure.covered or figure.size is None:
+            continue
+        assert hf._shipped_size(figure) == figure.size, (
+            f"{figure.id}: pin {figure.size} != shipped {hf._shipped_size(figure)}"
+        )
+
+
+def test_settings_recipe_pins_the_measured_shipped_size(hf):
+    manifest = hf.load_manifest()
+    settings = next(f for f in manifest.figures if f.surface == "settings")
+
+    assert settings.size == (1016, 776)
+
+
+def test_size_pin_reaches_the_surface_grab(hf, tmp_path, monkeypatch):
+    """The pin is applied before the grab (window size), not by resizing pixels."""
+    from types import SimpleNamespace
+
+    from PIL import Image
+
+    seen = {}
+
+    class _StubSession:
+        def __init__(self, *args, width=None, height=None, **kwargs):
+            seen["size"] = (width, height)
+            self.dest = Path(args[1])
+            self.saved = []
+
+        def grab(self, widget, filename, default_w, default_h, delay=0):
+            path = self.dest / "shot.png"
+            Image.new("RGB", seen["size"], (1, 2, 3)).save(path)
+            self.saved.append(path)
+            return path
+
+    monkeypatch.setattr(hf, "_RecordingSession", _StubSession)
+    monkeypatch.setattr(hf.capture_surface, "_bootstrap_qt", lambda theme, lang: object())
+    surface = SimpleNamespace(
+        isolated=False,
+        name="stub",
+        build=lambda session: session.grab(None, "shot", 10, 10),
+    )
+
+    dest = tmp_path / "out"
+    dest.mkdir()
+    shot = hf._run_surface(surface, dest, "dark", "en", (16, 9))
+
+    assert seen["size"] == (16, 9)
+    with Image.open(shot) as image:
+        assert image.size == (16, 9)
+
+
+def test_pin_honoured_is_recorded_and_an_ignoring_surface_is_not_faked(hf, tmp_path):
+    from PIL import Image
+
+    entry = _entry(size=[10, 8])
+    manifest = hf.load_manifest(_manifest_file(tmp_path, [entry]))
+
+    honoured = hf.generate(
+        manifest, tmp_path / "honoured", capture=_fake_capture(size=(10, 8)), stream=io.StringIO()
+    )
+    assert (honoured[0]["width"], honoured[0]["height"]) == (10, 8)
+    assert "size" in honoured[0]["pins_applied"]
+    assert not any(p.startswith("size:") for p in honoured[0]["pins_unavailable"])
+
+    ignored = hf.generate(
+        manifest, tmp_path / "ignored", capture=_fake_capture(size=(6, 4)), stream=io.StringIO()
+    )
+    assert (ignored[0]["width"], ignored[0]["height"]) == (6, 4), (
+        "an ignored pin must not be faked by resampling the grab"
+    )
+    assert "size:surface-ignores-pin" in ignored[0]["pins_unavailable"]
+    assert "size" not in ignored[0]["pins_applied"]
+
+
+def test_multi_variant_recipe_stages_into_locale_theme_folders(hf, tmp_path):
+    figure = hf.Figure(
+        id="help-multi",
+        surface="settings",
+        destination="src/resources/help/assets/platform/settings_keyboard.png",
+        locales=("en", "ru"),
+        themes=("dark", "light"),
+    )
+    manifest = hf.Manifest(figures=(figure,))
+
+    assert hf.install_destination(figure, "ru", "light").as_posix() == (
+        "src/resources/help/assets/ru/light/settings_keyboard.png"
+    )
+    assert hf.install_destination(figure, "en", "dark").as_posix() == (
+        "src/resources/help/assets/en/dark/settings_keyboard.png"
+    )
+
+    out_dir = tmp_path / "out"
+    records = hf.generate(manifest, out_dir, capture=_fake_capture(), stream=io.StringIO())
+
+    assert len(records) == 4
+    for record in records:
+        assert record["asset"].startswith("src/resources/help/assets/")
+        staged = out_dir / record["asset"]
+        assert staged.is_file(), record["asset"]
+        assert Path(record["path"]) == staged
+
+
+def test_single_variant_recipe_keeps_the_flat_destination(hf):
+    manifest = hf.load_manifest()
+    figure = next(f for f in manifest.figures if f.id == "help-settings-general")
+
+    assert hf.install_destination(figure, "en", "dark").as_posix() == figure.destination
+
+
+def test_compare_reports_parity_and_dims_differ(hf, tmp_path):
+    manifest = hf.load_manifest(_manifest_file(tmp_path, [_entry(size=[10, 8])]))
+
+    rows, mismatched = hf.compare_parity(
+        manifest,
+        hf.generate(manifest, tmp_path / "a", capture=_fake_capture(size=(6, 4)), stream=io.StringIO()),
+    )
+    assert mismatched
+    assert rows[0]["status"] == "dims-differ"
+    assert rows[0]["target"] == (10, 8) and rows[0]["target_source"] == "pin"
+
+    rows, mismatched = hf.compare_parity(
+        manifest,
+        hf.generate(manifest, tmp_path / "b", capture=_fake_capture(size=(10, 8)), stream=io.StringIO()),
+    )
+    assert not mismatched
+    assert rows[0]["status"] == "parity"
+
+
+def test_compare_falls_back_to_the_shipped_size_without_a_pin(hf, tmp_path):
+    manifest = hf.load_manifest(_manifest_file(tmp_path, [_entry(size=None)]))
+
+    rows, mismatched = hf.compare_parity(
+        manifest,
+        hf.generate(manifest, tmp_path / "out", capture=_fake_capture(size=(6, 4)), stream=io.StringIO()),
+    )
+
+    assert mismatched
+    assert rows[0]["target_source"] == "shipped"
+    assert rows[0]["target"] == hf._shipped_size(manifest.figures[0])
+
+
+def test_main_compare_reports_and_exits_one_on_dims_differ(hf, tmp_path, monkeypatch, capsys):
+    from contextlib import contextmanager
+
+    path = _manifest_file(tmp_path, [_entry(size=[10, 8])])
+
+    @contextmanager
+    def _fake_display(backend):
+        yield ":99"
+
+    monkeypatch.setattr(hf, "display_context", _fake_display)
+    monkeypatch.setattr(hf, "capture_png", _fake_capture(size=(6, 4)))
+
+    assert hf.main(["--compare", "--manifest", str(path), "--out", str(tmp_path / "out")]) == 1
+    out = capsys.readouterr().out
+    assert "dims-differ" in out
+    assert "6x4" in out and "10x8" in out
+
+
+
 # ---------------------------------------------------------------------------
 # CLI validation (never touches X)
 # ---------------------------------------------------------------------------

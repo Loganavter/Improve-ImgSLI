@@ -321,6 +321,10 @@ def test_reanalyze_bypasses_cache_and_starts_worker(tmp_path, monkeypatch):
     started = []
     ctrl._pool_start = lambda worker, _=None: started.append(worker)  # type: ignore[method-assign]
     item = GalleryItem(path=path, mtime_ns=7)
+    # Re-analyze is the AI report's refresh: the domain authority says ai and
+    # the card is in the pool (the action context resolves targets to items).
+    ctrl._judgment_domain = "ai"
+    ctrl.state.items = [item]
     ctrl.reanalyze_item(item)
     assert item.analysis_status == AnalysisStatus.PENDING
     assert len(started) == 1

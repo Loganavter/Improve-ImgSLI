@@ -124,7 +124,9 @@ def test_card_context_menu_localizes_without_translate(qtbot, monkeypatch) -> No
 
     monkeypatch.setattr(_mgr, "open_context_menu_entries", _fake_open)
 
-    owner = SimpleNamespace(state=SimpleNamespace(selected_paths=set()))
+    owner = SimpleNamespace(
+        state=SimpleNamespace(selected_paths=set()), _judgment_domain="algorithms"
+    )
     emit_language_changed("ru")
     try:
         popup_gallery_card_context_menu(

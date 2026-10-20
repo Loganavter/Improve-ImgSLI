@@ -32,8 +32,16 @@ def _owner(selected, order=None, items=None, **extra):
         selected_order=[Path(p) for p in (order or [])],
         items=list(items or []),
     )
+    # The action context carries the backend; these doubles are the
+    # algorithms domain unless a test says otherwise.
+    extra.setdefault("_judgment_domain", "algorithms")
     ns = SimpleNamespace(state=st, **extra)
     return ns
+
+
+def _record_analyze(sink):
+    """A controller-shaped ``analyze(ctx)`` double (one call, loops contexts)."""
+    return lambda ctx: sink.extend(ctx.targets)
 
 
 def _capture_menu(monkeypatch):
@@ -88,7 +96,7 @@ def test_analyze_applies_to_every_selected_target(monkeypatch) -> None:
     a, b, c = Path("/a.png"), Path("/b.png"), Path("/c.png")
     analyzed: list[Path] = []
     owner = _owner({a, b, c}, order=[a, b, c])
-    owner.analyze_item_by_path = analyzed.append
+    owner.analyze = _record_analyze(analyzed)
     _trigger_analyze(monkeypatch, owner, a)
     assert analyzed == [a, b, c]
 
@@ -97,7 +105,7 @@ def test_analyze_respects_selected_order(monkeypatch) -> None:
     a, b, c = Path("/a.png"), Path("/b.png"), Path("/c.png")
     analyzed: list[Path] = []
     owner = _owner({a, b, c}, order=[c, a, b])
-    owner.analyze_item_by_path = analyzed.append
+    owner.analyze = _record_analyze(analyzed)
     _trigger_analyze(monkeypatch, owner, a)
     assert analyzed == [c, a, b]
 
@@ -106,7 +114,7 @@ def test_analyze_on_unselected_card_acts_on_that_card_only(monkeypatch) -> None:
     a, b, c, d = (Path(p) for p in ("/a.png", "/b.png", "/c.png", "/d.png"))
     analyzed: list[Path] = []
     owner = _owner({a, b, c}, order=[a, b, c])
-    owner.analyze_item_by_path = analyzed.append
+    owner.analyze = _record_analyze(analyzed)
     _trigger_analyze(monkeypatch, owner, d)
     assert analyzed == [d]
 
@@ -116,7 +124,7 @@ def test_analyze_callback_precedence_is_kept(monkeypatch) -> None:
     fired: list[list[Path]] = []
     analyzed: list[Path] = []
     owner = _owner({Path("/a.png"), Path("/b.png")})
-    owner.analyze_item_by_path = analyzed.append
+    owner.analyze = _record_analyze(analyzed)
     captured = _open_menu(
         monkeypatch,
         owner,
@@ -143,7 +151,7 @@ def test_find_similar_uses_the_whole_selection(monkeypatch, caplog) -> None:
     )
     with caplog.at_level(logging.DEBUG, logger="ImproveImgSLI"):
         captured["on_triggered"]("gallery.selection.find_similar", None)
-    assert any("3 selected" in r.getMessage() for r in caplog.records)
+    assert any("3 target(s)" in r.getMessage() for r in caplog.records)
 
 
 def test_analyze_isolates_per_item_failures(monkeypatch) -> None:
@@ -172,25 +180,30 @@ def test_resolve_empty_selection_with_card_path() -> None:
     assert action_scope.resolve_targets(owner, card_path=card) == [card]
 
 
-def test_resolve_empty_selection_falls_back_to_first_item(monkeypatch) -> None:
+def test_resolve_empty_selection_never_falls_back_to_the_first_item(monkeypatch) -> None:
+    """RED BEFORE: an empty scope resolved to the first visible card."""
     monkeypatch.setattr(action_scope, "_focused_path", lambda owner: None)
     first = SimpleNamespace(path=Path("/first.png"))
     second = SimpleNamespace(path=Path("/second.png"))
     owner = _owner(set(), items=[first, second])
-    assert action_scope.resolve_targets(owner) == [Path("/first.png")]
+    assert action_scope.resolve_targets(owner) == []
+    # Focus is an EXPLICIT keyboard input, never inferred by the resolver.
+    assert action_scope.resolve_targets(owner, focused=True) == []
 
 
 def test_resolve_empty_selection_prefers_focused_card() -> None:
     focused = Path("/focused.png")
     first = SimpleNamespace(path=Path("/first.png"))
     owner = _owner(set(), items=[first], focused_path=focused)
-    assert action_scope.resolve_targets(owner) == [focused]
+    assert action_scope.resolve_targets(owner, focused=True) == [focused]
+    assert action_scope.resolve_targets(owner) == []
 
 
 def test_resolve_empty_scope_is_empty_list(monkeypatch) -> None:
     monkeypatch.setattr(action_scope, "_focused_path", lambda owner: None)
     owner = SimpleNamespace(state=SimpleNamespace(selected_paths=set()))
     assert action_scope.resolve_targets(owner) == []
+    assert action_scope.resolve_targets(owner, focused=True) == []
     assert action_scope.resolve_targets(owner, card_path=Path("/a.png")) == [Path("/a.png")]
 
 
@@ -236,10 +249,9 @@ def test_reset_metrics_empty_scope_keeps_whole_pool_none(monkeypatch) -> None:
         "reset_metrics_caches",
         lambda owner, paths=None, **kw: calls.append(paths),
     )
-    # Deterministic empty scope: no selection, no card, no focus/first item
-    # (the focus fallback reads the process-wide QApplication otherwise).
+    # Deterministic empty scope: no selection, no card, no focus (the focus
+    # probe reads the process-wide QApplication otherwise).
     monkeypatch.setattr(action_scope, "_focused_path", lambda owner: None)
-    monkeypatch.setattr(action_scope, "_first_item_path", lambda owner: None)
     context_actions._ctx_reset_metrics(SimpleNamespace(), None)
     assert calls == [None]
 
@@ -317,7 +329,7 @@ def test_callbacks_and_default_see_the_same_scope(monkeypatch) -> None:
     analyzed: list[Path] = []
     seen: list[list[Path]] = []
     owner = _owner({a, b, c}, order=[b, c, a])
-    owner.analyze_item_by_path = analyzed.append
+    owner.analyze = _record_analyze(analyzed)
 
     with_cb = _open_menu(monkeypatch, owner, b, on_analyze=lambda t: seen.append(list(t)))
     with_cb["on_triggered"]("gallery.selection.analyze", None)
@@ -342,18 +354,37 @@ def test_zero_arg_callback_fails_closed(monkeypatch, param) -> None:
 
 
 def test_default_analyze_isolates_per_target_failures(monkeypatch) -> None:
-    """One failing target never aborts the rest of the resolved scope."""
+    """One failing target never aborts the rest of the analyzer's context."""
+    from tabs.image_gallery.use_cases import ai_analyze
+    from tabs.image_gallery.use_cases.action_context import ActionContext
+
     a, b, c = Path("/a.png"), Path("/b.png"), Path("/c.png")
     seen: list[Path] = []
+    items = [SimpleNamespace(path=p, mtime_ns=0) for p in (a, b, c)]
 
-    def _analyze(path):
-        if path == b:
+    def _begin(ctx, item):
+        if item.path == b:
             raise RuntimeError("boom")
-        seen.append(path)
+        seen.append(item.path)
 
-    owner = _owner({a, b, c}, order=[a, b, c])
-    owner.analyze_item_by_path = _analyze
-    _trigger_analyze(monkeypatch, owner, a)
+    owner = SimpleNamespace(
+        state=SimpleNamespace(mode=None, metric_profile=None, items=items),
+        widget=SimpleNamespace(refresh_card=lambda it: None),
+        _judgment_domain="ai",
+        _ai_settings_store=SimpleNamespace(
+            load=lambda: SimpleNamespace(
+                enabled=True,
+                api_key="k",
+                model="m",
+                base_url="http://h",
+                reasoning_effort="auto",
+            )
+        ),
+        _begin_analysis=_begin,
+    )
+    monkeypatch.setattr(ai_analyze, "load_cached_analysis", lambda *a, **k: None)
+
+    assert ai_analyze.analyze(owner, ActionContext(targets=(a, b, c), backend="ai")) is None
     assert seen == [a, c]
 
 
@@ -371,7 +402,8 @@ def test_card_context_call_site_analyzes_every_selected_target(monkeypatch) -> N
     analyzed: list[Path] = []
     tri_owner = SimpleNamespace(
         state=SimpleNamespace(selected_paths={a, b, c}, selected_order=[a, b, c]),
-        analyze_item_by_path=analyzed.append,
+        _judgment_domain="algorithms",
+        analyze=_record_analyze(analyzed),
     )
     owner = SimpleNamespace(
         _owner_for_triage=lambda: tri_owner,
