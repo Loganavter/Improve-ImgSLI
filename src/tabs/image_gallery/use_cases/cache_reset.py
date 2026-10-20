@@ -7,8 +7,9 @@ Deleting the disk cache files alone is a **no-op**: the Stage-2 measured pass
 is gated by an in-memory content fingerprint
 (``owner._last_analysis_fingerprint`` — see
 ``use_cases.proxy_pass._apply_triage_result``) and the AI domain is cache-first
-(``services.ai_cache.hydrate_item`` sets ``item._ai_cache_checked`` *before* the
-disk read, and ``use_cases.ai_analysis.analyze_item`` short-circuits on
+(``services.ai_cache.hydrate_item`` memoizes an "already checked" verdict on
+the item, scoped to the identity it was earned under, and
+``use_cases.ai_analysis.analyze_item`` short-circuits on
 ``load_cached_analysis``). A genuine recompute therefore has to clear, in ONE
 place:
 
@@ -110,9 +111,11 @@ def _clear_item(item) -> None:
     except Exception:
         logger.debug("metrics reset: item state clear failed", exc_info=True)
     try:
-        # ``hydrate_item`` sets this BEFORE the disk read — left True it would
-        # short-circuit the cache miss and never re-read.
+        # Both halves of the hydrate memo: the flag AND the identity it was
+        # earned under, so the next populate reads the (now deleted) entry
+        # instead of short-circuiting on a stale "checked" verdict.
         item._ai_cache_checked = False
+        item._ai_cache_checked_identity = None
     except Exception:
         pass
     try:

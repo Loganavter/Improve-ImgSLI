@@ -156,6 +156,53 @@ def test_analyze_item_never_serves_a_pre_identity_entry(tmp_path, monkeypatch) -
     assert len(started) == 1
 
 
+def test_hydrate_miss_under_a_stale_profile_identity_does_not_poison_the_next_read(
+    tmp_path, monkeypatch
+) -> None:
+    """A miss under one identity must not make a later read under another skip.
+
+    The fixed bug (queue id ``task-ai-cache-identity-truth-2026-10-20``):
+    ``hydrate_item`` marked the item checked BEFORE the disk read, so a miss
+    under a stale identity (a domain/profile switch, a re-pointed backend) was
+    permanent — when the entry was written under the CURRENT identity, every
+    later overlay populate returned ``False`` without ever touching the disk.
+    """
+    _cache_dir(tmp_path, monkeypatch)
+    path = Path("/gallery/frame.png")
+    item = SimpleNamespace(path=path, mtime_ns=42, analysis=None)
+    stale, fresh = _identity(mode="fidelity"), _identity()
+
+    assert ai_cache.hydrate_item(item, stale) is False  # nothing cached yet
+    expected = _result()
+    ai_cache.save_analysis(path, 42, expected, fresh)
+
+    assert ai_cache.hydrate_item(item, fresh) is True, "the identity switch was poisoned"
+    assert item.analysis is not None
+    assert item.analysis.description == expected.description
+
+
+def test_hydrate_repeats_a_same_identity_miss_only_once(tmp_path, monkeypatch) -> None:
+    """The "never re-read" optimisation survives for the identity that missed."""
+    cache = _cache_dir(tmp_path, monkeypatch)
+    path = Path("/gallery/frame.png")
+    identity = _identity()
+    item = SimpleNamespace(path=path, mtime_ns=42, analysis=None)
+
+    assert ai_cache.hydrate_item(item, identity) is False
+
+    reads: list = []
+    real_load = ai_cache.load_cached_analysis
+
+    def _counting_load(*args, **kwargs):
+        reads.append(args)
+        return real_load(*args, **kwargs)
+
+    monkeypatch.setattr(ai_cache, "load_cached_analysis", _counting_load)
+    assert ai_cache.hydrate_item(item, identity) is False
+    assert reads == [], "a same-identity miss must not be re-read on every populate"
+    assert cache.is_dir()
+
+
 def test_analyze_item_hits_its_own_backend(tmp_path, monkeypatch) -> None:
     """The same identity still hits — the cache is not disabled wholesale."""
     from tabs.image_gallery.use_cases import ai_analysis

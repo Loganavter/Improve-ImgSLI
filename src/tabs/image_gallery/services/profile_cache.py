@@ -1,15 +1,29 @@
 """Disk pin for VLM-selected metric profiles — plan P2/P3.
 
-Key = ``sha256(sorted(path:mtime_ns) + mode + model + pool ids)`` — an edited
-member (mtime), a changed series membership (path), a different mode/model or a
-re-shaped pool all invalidate; an unchanged folder-generation is served from
-disk with **no second VLM call**.
+Key = ``sha256(sorted(path:mtime_ns) + mode + model + base_url + effort + pool
+ids)`` — an edited member (mtime), a changed series membership (path), a
+different mode/model, the SAME model id on another endpoint, a different
+reasoning effort or a re-shaped pool all invalidate; an unchanged
+folder-generation is served from disk with **no second VLM call**.
+
+WHY the endpoint and the effort are part of the key (the bug this fixes): the
+key used to stop at members+mode+model+pool, so pointing the same model id at a
+different ``base_url`` (a provider switch — ``services/ai_providers``) silently
+reused the PREVIOUS endpoint's selection: a pin earned from provider A's answer
+was served as if provider B had chosen it. Both are inputs the VLM actually
+sees, so both define "the same selection".
+
+Old pins are MISSES, deliberately with no migration: a file written before the
+endpoint/effort reached the key hashes to a different (now unreachable)
+filename, so it is simply never read again. It stays on disk until
+``clear`` / the gallery's "Reset metrics cache" deletes it.
 
 The AI domain is *explicitly non-deterministic* (the same request may answer
 differently on a second identical run): the pin makes one run reproducible — a
 folder is profiled once and every later pass over the same paths+mtimes+mode+
-model+pool reuses that pinned selection, so flipping between tabs/domains never
-re-rolls the dice. This mirrors :mod:`tabs.image_gallery.services.jev_cache`
+model+endpoint+effort+pool reuses that pinned selection, so flipping between
+tabs/domains never re-rolls the dice. This mirrors
+:mod:`tabs.image_gallery.services.jev_cache`
 (one JSON file per key, version-gated, **no TTL**, malformed replies
 deliberately **not** pinned) so the gallery keeps ONE cache idiom.
 
@@ -23,11 +37,15 @@ import json
 import logging
 from pathlib import Path
 
+from tabs.image_gallery.services.ai_providers import _url_key
 from tabs.image_gallery.services.metric_profile import MEASURED_POOL, MetricProfile, mode_id
 
 logger = logging.getLogger("ImproveImgSLI")
 
-#: Bump when the cached record shape changes (old pins stop matching).
+#: Bump when the cached record shape changes (old pins stop matching). The
+#: endpoint/effort keying (queue ``task-ai-cache-identity-truth-2026-10-20``)
+#: deliberately does NOT bump it: the record shape is unchanged, and the key
+#: itself already makes pins written under the old derivation unreachable.
 PROFILE_CACHE_VERSION = 1
 
 #: Cache directory name, stored alongside the Jev cache directory.
@@ -56,13 +74,36 @@ def _item_mtime(item) -> int:
         return 0
 
 
-def profile_cache_key(items, *, mode, model, pool=None) -> str:
-    """Stable pin identity: ``sha256(members + mode + model + pool)``.
+def _effort_token(effort) -> str:
+    """A stable lowercase effort token (``""`` → ``auto``, as ``ai_cache`` does).
+
+    ``reasoning_effort`` reaches the request, so it is part of the pin identity;
+    an unset value and ``"auto"`` are the same configuration.
+    """
+    try:
+        value = getattr(effort, "value", effort)
+        return str(value or "").strip().lower() or "auto"
+    except Exception:
+        return "auto"
+
+
+def profile_cache_key(
+    items, *, mode, model, pool=None, base_url="", reasoning_effort=""
+) -> str:
+    """Stable pin identity: ``sha256(members + mode + model + endpoint + effort + pool)``.
 
     Members are sorted by path so the key is independent of the caller's member
     order; the mode is normalized to a registry id (``Mode.FIDELITY`` and
     ``"fidelity"`` pin the same profile); the pool defaults to the immutable
     ``MEASURED_POOL`` so a caller never has to pass it.
+
+    ``base_url`` is normalized with the SAME key as the provider presets
+    (``ai_providers._url_key``: trailing slashes, scheme/host case), so two
+    spellings of one endpoint share a pin while a provider switch to a
+    different endpoint cannot serve the old one. ``reasoning_effort`` is
+    normalized to ``auto`` when unset. Both default to "" / "auto" for callers
+    that legitimately have no backend in hand (tests, ``profile_fingerprint``
+    defaults) — a production caller always passes the live settings.
     """
     pool_ids = tuple(pool) if pool is not None else MEASURED_POOL
     try:
@@ -72,6 +113,8 @@ def profile_cache_key(items, *, mode, model, pool=None) -> str:
     parts = [f"{_item_path(item)}:{_item_mtime(item)}" for item in ordered]
     parts.append(f"mode={mode_id(mode)}")
     parts.append(f"model={str(model or '')}")
+    parts.append(f"base_url={_url_key(base_url)}")
+    parts.append(f"effort={_effort_token(reasoning_effort)}")
     parts.append("pool=" + ",".join(str(p) for p in pool_ids))
     raw = "|".join(parts)
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
