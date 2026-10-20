@@ -464,7 +464,8 @@ def test_export_tab_fields_walk_in_visual_order(dialog):
 
 def test_export_tab_bar_left_right_move_cursor_not_page(dialog):
     """←/→ move the bar's keyboard cursor WITHOUT switching the page — the
-    workspace-strip contract (``test_tab_strip_left_right_requires_enter``)."""
+    workspace-strip contract
+    (``tests/contracts/test_navigation_graph.py::test_tab_strip_left_right_requires_enter``)."""
     bar = dialog.tabs.tab_bar
     bar.setFocus(_focus_reason())
     QApplication.processEvents()

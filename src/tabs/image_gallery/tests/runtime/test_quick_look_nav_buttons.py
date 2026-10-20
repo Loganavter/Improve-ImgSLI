@@ -168,9 +168,10 @@ def test_no_strong_focus_widget_lives_outside_the_declared_rows(qtbot, tmp_path)
     scroller already documents).
 
     Falsified by: re-adding ``StrongFocus`` to any of ``_prev_btn``,
-    ``_next_btn``, ``_source_inset_pix`` or ``_right_scroll``, or by dropping
-    the ✕ from ``nav.rows`` — the walk below then finds a focusable widget that
-    no row owns.
+    ``_next_btn``, ``_source_inset_pix`` or the sidebar scroller
+    ``right_scroll`` (built in ``overlay_build/build.py``, objectName
+    quicklook_right_scroll), or by dropping the ✕ from ``nav.rows`` — the walk
+    below then finds a focusable widget that no row owns.
     """
     overlay, _items = _open(qtbot, tmp_path, current=2)
     rows = nav.rows(overlay)
