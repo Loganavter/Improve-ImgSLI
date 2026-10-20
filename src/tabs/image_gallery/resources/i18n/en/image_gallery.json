@@ -149,7 +149,7 @@
       "redundant": "{n} redundant"
     },
     "profile": {
-      "chip": "Metric profile: {profile}",
+      "chip": "Profile: {profile}",
       "auto": "auto",
       "axes": "{n} axes",
       "domain": {

@@ -638,10 +638,16 @@ class StatsStrip(QWidget):
             text = self._t(
                 "image_gallery.profile.chip", "Metric profile: {profile}"
             ).format(profile=label)
-            text += " · " + self._t("image_gallery.profile.axes", "{n} axes").format(
-                n=len(axes)
-            )
             chip.setText(text)
+            # A chip is not a paragraph: the long "· N axes" tail pushed the
+            # button past the row's budget, so the layout shrank it below its
+            # text and the painter clipped the right half (live 2026-10-20). The
+            # axis count stays in the tooltip (format_profile prints it).
+            try:
+                hint = chip.sizeHint().width()
+                chip.setMinimumWidth(min(hint, scaled_px(320)))
+            except Exception:
+                pass
             # First production caller of format_profile: the chip's tooltip is
             # the exact diagnostic line the log/trace prints.
             chip.setToolTip(format_profile(profile))
