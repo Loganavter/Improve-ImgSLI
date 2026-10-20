@@ -203,7 +203,13 @@ def build(dialog, p):
     )
     KEYBOARD.tag_member(search, "settings.keyboard_search")
     dialog._keyboard_search = search
-    layout.addWidget(search)
+    # The filter is the page's FIRST navigation row: it is wrapped by
+    # builder.row() here, before the chord rows are extended below, so
+    # Down from the page top walks filter → chord rows → Reset all in
+    # visual order. Adding it straight to the page layout (what the
+    # nav-coverage audit found as finding F2) left it outside every row
+    # the section owns, so no arrow key could reach it.
+    layout.addWidget(builder.row(search))
 
     groups_host = QWidget(dialog.page_keyboard)
     groups_layout = QVBoxLayout(groups_host)
@@ -364,7 +370,6 @@ def build(dialog, p):
     # control/layout) so they go through extend() rather than builder.row()
     # (which would re-wrap and re-parent them out of group_layout).
     builder.extend([row for row, _group, _entry in row_widgets])
-    register_page_navigation(dialog, dialog.page_keyboard, builder)
 
     reset_all = Button(
         text=_tr(dialog, "settings.keyboard_reset_all", "Reset all shortcuts"),
@@ -385,7 +390,21 @@ def build(dialog, p):
         _refresh_capture_labels()
 
     reset_all.clicked.connect(_reset_all)
-    layout.addWidget(reset_all, 0, Qt.AlignmentFlag.AlignLeft)
+    # Reset all is the page's LAST navigation row: same builder, same row
+    # container mechanism as the chord rows (no bespoke section), appended
+    # after them so Down continues past the last chord into it. It must be
+    # declared before register_page_navigation(), which snapshots the
+    # builder's rows — the old code added the button straight to the page
+    # layout after that snapshot, leaving it owned by no section (finding
+    # F2). HBox + trailing stretch keeps the button left-aligned exactly
+    # where the page layout used to place it.
+    reset_all_layout = QHBoxLayout()
+    reset_all_layout.setContentsMargins(0, 0, 0, 0)
+    reset_all_layout.addWidget(reset_all, 0)
+    reset_all_layout.addStretch(1)
+    layout.addWidget(builder.row(reset_all_layout))
+
+    register_page_navigation(dialog, dialog.page_keyboard, builder)
 
     def _filter(text: str) -> None:
         needle = (text or "").strip()
