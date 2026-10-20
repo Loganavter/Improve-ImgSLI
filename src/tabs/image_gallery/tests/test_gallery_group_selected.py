@@ -29,7 +29,8 @@ def _img(tmp_path: Path, name: str) -> GalleryItem:
 
 def _owner(selected, items=None):
     st = SimpleNamespace(selected_paths=set(selected), items=list(items or []))
-    return SimpleNamespace(state=st)
+    # The action context carries the backend; these doubles are algorithms.
+    return SimpleNamespace(state=st, _judgment_domain="algorithms")
 
 
 def _pool_item(name: str, series_id=None):

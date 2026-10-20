@@ -157,6 +157,7 @@ def _bare_controller(items: list[GalleryItem]):
     ctl.state = SimpleNamespace(items=items)
     ctl.widget = _Recorder()
     ctl._folder_gen = 0
+    ctl._judgment_domain = "ai"
     ctl._tr = lambda key, default: default
     ctl._ai_settings_store = SimpleNamespace(
         load=lambda: SimpleNamespace(
@@ -175,7 +176,9 @@ def test_begin_analysis_marks_queued_then_claimed_at_pool_start(monkeypatch) -> 
         seen_at_start.append((item.activity_phase, item.activity_source))
 
     monkeypatch.setattr(ctl, "_pool_start", fake_start, raising=False)
-    ctl._begin_analysis(item)
+    from tabs.image_gallery.use_cases.action_context import build_context
+
+    ctl._begin_analysis(build_context(ctl, origin="action", card_path=item.path), item)
     assert seen_at_start == [("claimed", "ai")]
     assert act.activity_of(item) == ("claimed", "ai")
 

@@ -31,20 +31,17 @@ and keyboard paths; carrying to another tab is drag-only). Split out of
 from __future__ import annotations
 
 import inspect
-import logging
 from pathlib import Path
 
 from tabs.image_gallery.icons import Icon
 from tabs.image_gallery.ui.card.context_actions import (
-    _ctx_group,
     _ctx_make_best,
     _ctx_remove,
-    _ctx_reset_metrics,
     _ctx_set_source,
     _ctx_toggle_reject,
-    _ctx_ungroup,
 )
 from tabs.image_gallery.ui.card.menu_track import track_open_menu
+from tabs.image_gallery.use_cases import gallery_actions
 
 from .icons import _menu_icon
 from .predicates import (
@@ -56,9 +53,6 @@ from .predicates import (
     _targets_are_single_series,
 )
 from .translator import _resolve_menu_translator, _t
-
-logger = logging.getLogger("ImproveImgSLI")
-
 
 def _require_target_callback(name: str, cb) -> None:
     """Fail closed: a scope callback must accept the resolved targets list.
@@ -98,8 +92,8 @@ def popup_gallery_card_context_menu(  # type: ignore[no-untyped-def]
 ):
     """Popup toolkit ``ContextMenu`` for gallery card at *global_pos*.
 
-    THE SCOPE IS THE MENU'S: resolved once through
-    ``use_cases.action_scope.resolve_targets`` and handed to
+    THE SCOPE IS THE MENU'S: resolved ONCE through
+    ``use_cases.action_context.build_context`` (the ONE builder) and handed to
     ``on_analyze(targets)`` / ``on_carry(targets)`` / ``on_find_similar(targets)``
     (``targets: list[Path]``). A callback says HOW to act, never WHICH cards:
     a zero-arg callable raises ``ValueError`` instead of being called with no
@@ -108,6 +102,9 @@ def popup_gallery_card_context_menu(  # type: ignore[no-untyped-def]
     analyze one arbitrary card of a six-card selection, owner report 2026-10-20).
     ``on_ask_ai(scope_kind)`` keeps its string: the Ask AI flyout owns its own
     scope line and reads the set itself when it opens (also with no selection).
+
+    The context carries the backend too: Analyze on the ``algorithms`` domain
+    re-measures, Analyze on ``ai`` runs the VLM — the handler cannot re-decide.
     """
     # Fail closed before anything is built, and OUTSIDE the handlers'
     # fail-soft ``except Exception`` where this TypeError used to vanish.
@@ -115,6 +112,22 @@ def popup_gallery_card_context_menu(  # type: ignore[no-untyped-def]
                           ("on_find_similar", on_find_similar)):
         if _cb is not None:
             _require_target_callback(_cb_name, _cb)
+
+    # THE context of this menu: resolved once, here, through the ONE builder,
+    # and shared by the labels and every action (callback or default) — they
+    # cannot disagree about which cards (or which backend) are in play. Built
+    # OUTSIDE the swallowing try: an invalid judgment domain is a named
+    # refusal, never a menu that silently loses its scope.
+    from tabs.image_gallery.use_cases import action_context
+
+    ctx = (
+        action_context.build_context(
+            owner, origin=action_context.ORIGIN_MENU, card_path=path
+        )
+        if owner is not None
+        else None
+    )
+    targets = list(ctx.targets) if ctx is not None else []
 
     from tabs.image_gallery.debug import gallery_debug as _dbg
     from tabs.image_gallery.debug import gallery_debug_enabled as _dbg_enabled
@@ -142,70 +155,17 @@ def popup_gallery_card_context_menu(  # type: ignore[no-untyped-def]
         # root) or the owner — call sites no longer need to thread ``translate=``.
         tr = _resolve_menu_translator(card, owner, translate)
 
-        # THE scope of this menu: resolved once, here, through the ONE
-        # resolver, and shared by the labels and every action (callback or
-        # default) — they cannot disagree about which cards are covered.
-        from tabs.image_gallery.use_cases import action_scope
-
-        try:
-            targets = list(action_scope.resolve_targets(owner, card_path=path))
-        except Exception:
-            targets = []
-
-        def _do_carry() -> None:
-            try:
-                if callable(on_carry):
-                    on_carry(list(targets))
-                    return
-                # No carry entry in this menu today (carry is drag/keyboard);
-                # the hook stays scope-correct — dispatch the resolved targets
-                # like ``context_actions._ctx_move``, never a second read.
-                from events.image_carry import begin_image_carry
-                from shared.image_extensions import is_loadable_image_path
-
-                carriable = [p for p in targets if is_loadable_image_path(p)]
-                if carriable:
-                    begin_image_carry(carriable)
-            except Exception:
-                pass
-
-        def _do_analyze() -> None:
-            # EVERY resolved target is analyzed; scope is the menu's job, never
-            # re-derived by the caller (the old body took
-            # ``next(iter(state.selected_paths))`` — set order is not scope).
-            # Same per-item isolation as ``action_scope.apply_to_targets``.
-            try:
-                if callable(on_analyze):
-                    on_analyze(list(targets))
-                    return
-                fn = getattr(owner, "analyze_item_by_path", None)
-                if callable(fn):
-                    for target in targets:
-                        try:
-                            fn(target)
-                        except Exception:
-                            continue
-            except Exception:
-                pass
-
-        def _do_find_similar() -> None:
-            try:
-                if callable(on_find_similar):
-                    on_find_similar(list(targets))
-                    return
-                # ``use_cases.carry.find_similar_selected`` is a stub that
-                # re-reads the selection (a second scope); its only observable
-                # is this line, emitted over the menu's scope. A real
-                # implementation arrives as ``on_find_similar(targets)``.
-                if not targets:
-                    logger.debug("find_similar_selected: no selection")
-                    return
-                logger.debug(
-                    "find_similar_selected: stub — %d selected (not implemented)",
-                    len(targets),
-                )
-            except Exception:
-                pass
+        # THE scope of this menu was resolved ONCE above (the ActionContext)
+        # and is shared by the labels and every action. The bodies live in
+        # ``use_cases.gallery_actions`` so no closure here can re-derive scope
+        # or backend — the menu only renders.
+        handlers = gallery_actions.menu_action_handlers(
+            owner=owner,
+            ctx=ctx,
+            on_carry=on_carry,
+            on_analyze=on_analyze,
+            on_find_similar=on_find_similar,
+        )
 
         def _open_ask_ai_now(scope_kind: str) -> None:
             # Ask AI keeps a kind string instead of the resolved targets: the
@@ -362,9 +322,9 @@ def popup_gallery_card_context_menu(  # type: ignore[no-untyped-def]
         def _on_triggered(action_id: str, _data: object) -> None:
             try:
                 if action_id == "gallery.selection.analyze":
-                    _do_analyze()
+                    handlers["analyze"]()
                 elif action_id == "gallery.selection.find_similar":
-                    _do_find_similar()
+                    handlers["find_similar"]()
                 elif action_id == "gallery.selection.ask_ai":
                     _do_ask_ai("selection")
                 elif action_id == "gallery.ask_ai":
@@ -376,11 +336,11 @@ def popup_gallery_card_context_menu(  # type: ignore[no-untyped-def]
                 elif action_id == "gallery.remove":
                     _ctx_remove(owner, path)
                 elif action_id == "gallery.reset_metrics":
-                    _ctx_reset_metrics(owner, path)
+                    handlers["reset_metrics"]()
                 elif action_id == "gallery.ungroup":
-                    _ctx_ungroup(owner, path)
+                    handlers["ungroup"]()
                 elif action_id == "gallery.group":
-                    _ctx_group(owner, path)
+                    handlers["group"]()
                 elif action_id == "gallery.set_as_source":
                     _ctx_set_source(owner, path)
             except Exception:

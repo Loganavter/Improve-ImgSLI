@@ -160,7 +160,7 @@
       "locales": [
         "en"
       ],
-      "note": "Shipped 1016x776 matches the surface default exactly. SETTINGS_KWARGS pins current_language=en and current_theme=dark, so non-default filters are only partly effective.",
+      "note": "Shipped settings_general.png is 1016x776 (measured inventory); the surface default is larger, so the shipped size is pinned rather than cropped. SETTINGS_KWARGS pins current_language=en and current_theme=dark, so non-default filters are only partly effective.",
       "pins_applied": [
         "locale",
         "theme"
@@ -172,7 +172,10 @@
         "ui_scale"
       ],
       "reason": "",
-      "size": null,
+      "size": [
+        1016,
+        776
+      ],
       "surface": "settings",
       "themes": [
         "dark"

@@ -1215,6 +1215,9 @@ def test_find_action_set_as_source_reruns_fidelity(tmp_path):
                 series=None,
                 mode=None,
             )
+            # The action context carries the backend (this action is
+            # backend-neutral; the domain only has to be valid).
+            self._judgment_domain = "algorithms"
             self.runs: list = []
 
         def _start_fidelity_analysis(self, items, source_path):

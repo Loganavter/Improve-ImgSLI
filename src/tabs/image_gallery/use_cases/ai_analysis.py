@@ -1,17 +1,26 @@
 """AI analyze / judgment-domain + analysis delivery for the Image Gallery (Wave 4).
 
 Thin-owner helpers: plain functions taking the owner (``GalleryController``).
-This module owns the VLM analyze entry points and their disk-cache hydration
-(``analyze_item*`` / ``reanalyze_*`` / ``hydrate_cached_analysis`` /
-``_hydrate_ai_cache``), the judgment-domain authority writer + toolbar switch
-(``_set_judgment_domain`` / ``activate_judgment_domain``), the bounded
-visible-item trigger (``_run_ai_for_visible``) and the worker delivery tail
-(``_begin_analysis`` / ``_apply_ai_phase`` / ``_on_analysis_ready`` /
-``_refresh_open_quick_look`` / ``_on_analysis_error``). Those two clusters share
-one concern: the AI-domain read (see plan-gallery-ai-backend-owns-quality).
+This module owns the analysis DELIVERY + domain cluster: cache hydration
+(``hydrate_cached_analysis`` / ``_hydrate_ai_cache``), the judgment-domain
+authority writer + toolbar switch (``_set_judgment_domain`` /
+``activate_judgment_domain``), the bounded visible-item trigger
+(``_run_ai_for_visible``) and the worker delivery tail (``_begin_analysis`` /
+``_apply_ai_phase`` / ``_on_analysis_ready`` / ``_refresh_open_quick_look`` /
+``_on_analysis_error``). The analyze ENTRY points (``analyze`` / ``reanalyze``
+and the deprecated point adapters) live in ``use_cases/ai_analyze.py`` and are
+re-exported here for their callers (file-size policy, same wave).
 The owner keeps ``_tr``, the Jev ranker cluster, ``_apply_fusion_ranks`` and the
 shared primitives (``_find_item`` / ``_tracked`` / ``_pool_start`` / folder
 generation discipline); thin delegators keep the method names verbatim.
+
+EVERY actionable entry takes an ``ActionContext`` (``use_cases.action_context``):
+targets, backend, mode, profile and reasoning effort travel as arguments, so
+nothing here re-decides which cards or which backend. In particular
+``_begin_analysis`` reads ``AiSettings`` for credentials (api_key / base_url /
+model) and nothing else, and an invalid domain is a named ``ValueError`` — never
+a silent switch to ``algorithms`` (queue id
+``task-gallery-action-context-2026-10-20``).
 
 The ``state.*`` mirror writes go through ``setattr``: a bare ``.state.X =``
 outside ``controller.py`` is rejected by the gallery ownership guard
@@ -26,15 +35,13 @@ from pathlib import Path
 from sli_ui_toolkit.workers import GenericWorker
 
 from tabs.image_gallery.models import (
+    JUDGMENT_DOMAINS,
     ActivityPhase,
     AnalysisStatus,
     GalleryItem,
 )
 from tabs.image_gallery.services.activity import set_activity
-from tabs.image_gallery.services.ai_cache import (
-    analysis_cache_identity,
-    load_cached_analysis,
-)
+from tabs.image_gallery.services.ai_cache import analysis_cache_identity
 from tabs.image_gallery.services.ai_client import (
     _ai_debug,
     AiAuthError,
@@ -45,7 +52,24 @@ from tabs.image_gallery.services.ai_client import (
     AiTruncatedError,
     analyze_image_sync,
 )
-from tabs.image_gallery.use_cases.profile_select import active_profile
+from tabs.image_gallery.use_cases.action_context import (
+    BACKEND_AI,
+    ORIGIN_ACTION,
+    ActionContext,
+    context_for_paths,
+)
+from tabs.image_gallery.use_cases.ai_analyze import (  # re-exported for callers
+    _is_configured,
+    _load_settings,
+    _mark_not_configured,
+    analysis_identity_for,
+    analyze,  # noqa: F401 — re-exported for the controller delegators
+    analyze_item,  # noqa: F401 — deprecated point adapter
+    analyze_item_by_path,  # noqa: F401 — deprecated point adapter
+    reanalyze,  # noqa: F401 — re-exported for the controller delegators
+    reanalyze_item,  # noqa: F401 — deprecated point adapter
+    reanalyze_item_by_path,  # noqa: F401 — deprecated point adapter
+)
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -68,40 +92,9 @@ _ERROR_KEYS = {
 # -- AI analyze ---------------------------------------------------------------
 
 
-def analyze_item_by_path(owner, path: Path) -> None:
-    item = owner._find_item(path)
-    if item is None:
-        return
-    owner.analyze_item(item)
-
-
-def analysis_identity_for(owner) -> dict:  # type: ignore[no-untyped-def]
-    """The AI disk-cache identity for ``owner``'s CURRENT configuration.
-
-    The single seam for every cache touch (analyze / Quick Look hydrate / pool
-    rebuild): model + base_url + mode + the active profile's axes + reasoning
-    effort. Without them a scorecard cached under another backend is served
-    after a Settings switch (queue id
-    ``task-gallery-ai-cache-backend-key-2026-10-20``); ``api_key`` is never part
-    of it. Never raises (a broken settings store degrades to misses).
-    """
-    try:
-        settings = owner._ai_settings_store.load()
-    except Exception:
-        settings = None
-    state = getattr(owner, "state", None)
-    try:
-        mode = getattr(state, "mode", None) if state is not None else None
-    except Exception:
-        mode = None
-    try:
-        profile = active_profile(state) if state is not None else None
-    except Exception:
-        profile = None
-    return analysis_cache_identity(settings, mode=mode, profile=profile)
-
-
-def hydrate_cached_analysis(owner, item: GalleryItem) -> bool:
+def hydrate_cached_analysis(
+    owner, item: GalleryItem, *, ctx: ActionContext | None = None
+) -> bool:
     """Fill ``item`` from the disk cache only (Quick Look pre-read).
 
     No worker, no settings check — lets the overlay show a cached
@@ -116,7 +109,7 @@ def hydrate_cached_analysis(owner, item: GalleryItem) -> bool:
     except Exception:
         return False
     try:
-        if not hydrate_item(item, analysis_identity_for(owner)):
+        if not hydrate_item(item, analysis_identity_for(owner, ctx=ctx)):
             return False
     except Exception:
         return False
@@ -127,27 +120,26 @@ def hydrate_cached_analysis(owner, item: GalleryItem) -> bool:
     return True
 
 
-def _hydrate_ai_cache(owner, items) -> int:
+def _hydrate_ai_cache(owner, items, *, ctx: ActionContext | None = None) -> int:
     """Fill pool items from the AI disk cache on a pool (re)build.
 
-    Closed-tab / re-loaded-folder recovery: the live ``analyze_item``
-    path is cache-first, but a pool rebuild (session restore, folder
-    open, append) had no such pass, so previously analyzed images came
-    back "not analyzed" until some other trigger ran — even though the
-    results sat in the disk cache. This pass fills them at rebuild so the
-    read is present the moment the pool appears; the metrics-pass settle
-    then re-derives only the still-missing scorecards (AI domain only,
-    ``_run_ai_on_settle``). Cache-only: no worker, no settings check, no
-    API call. Identity-scoped: the pass builds ONE identity for the current
-    AI configuration and hydrates only entries cached under it, so a backend
-    switch cannot resurrect the previous backend's reads on restore. Never
-    raises; returns how many items were filled.
+    Closed-tab / re-loaded-folder recovery: the live ``analyze`` path is
+    cache-first, but a pool rebuild (session restore, folder open, append) had
+    no such pass, so previously analyzed images came back "not analyzed" until
+    some other trigger ran — even though the results sat in the disk cache.
+    This pass fills them at rebuild so the read is present the moment the pool
+    appears; the metrics-pass settle then re-derives only the still-missing
+    scorecards (AI domain only, ``_run_ai_on_settle``). Cache-only: no worker,
+    no settings check, no API call. Identity-scoped: the pass builds ONE
+    identity for the current AI configuration and hydrates only entries cached
+    under it, so a backend switch cannot resurrect the previous backend's reads
+    on restore. Never raises; returns how many items were filled.
     """
     try:
         from tabs.image_gallery.services.ai_cache import hydrate_item
     except Exception:
         return 0
-    identity = analysis_identity_for(owner)
+    identity = analysis_identity_for(owner, ctx=ctx)
     filled = 0
     for it in list(items or []):
         try:
@@ -160,43 +152,20 @@ def _hydrate_ai_cache(owner, items) -> int:
     return filled
 
 
-def analyze_item(owner, item: GalleryItem) -> None:
-    cached = load_cached_analysis(
-        item.path, item.mtime_ns, analysis_identity_for(owner)
-    )
-    if cached is not None:
-        try:
-            from tabs.image_gallery.services.ai_client import _ai_debug
+def _require_domain(domain: str) -> str:
+    """Normalize a judgment domain or refuse with a named error.
 
-            _ai_debug("analyze cache HIT path=%s (no API call)", item.path)
-        except Exception:
-            pass
-        item.analysis = cached
-        item.analysis_status = AnalysisStatus.DONE
-        item.analysis_error = None
-        owner.widget.refresh_card(item)
-        return
-
-    owner._begin_analysis(item)
-
-
-def reanalyze_item_by_path(owner, path: Path) -> None:
-    item = owner._find_item(path)
-    if item is None:
-        return
-    owner.reanalyze_item(item)
-
-
-def reanalyze_item(owner, item: GalleryItem) -> None:
-    """Force a fresh analysis, bypassing the disk cache (Re-analyze).
-
-    Same worker pipeline as :meth:`analyze_item` minus the cache
-    short-circuit; completion overwrites the cache entry. Never raises.
+    THERE IS NO COERCION. The pre-fix writers mapped anything unknown (a typo,
+    an empty toolbar value, a failed read) to ``"algorithms"`` — a silent
+    backend switch after the user picked AI.
     """
-    try:
-        owner._begin_analysis(item)
-    except Exception:
-        pass
+    dom = str(domain or "").strip().lower()
+    if dom not in tuple(JUDGMENT_DOMAINS):
+        raise ValueError(
+            f"invalid judgment domain {domain!r}; expected one of "
+            f"{tuple(JUDGMENT_DOMAINS)!r}"
+        )
+    return dom
 
 
 def _set_judgment_domain(owner, domain: str) -> str:
@@ -205,10 +174,10 @@ def _set_judgment_domain(owner, domain: str) -> str:
     ``owner._judgment_domain`` is the single authority and survives the
     ``GalleryState`` rebuilds done by open_folder / append / clear_to_empty;
     ``state.judgment_domain``/``state.rank_domain`` are read-only projections
-    kept for rendering. Returns the normalized value.
+    kept for rendering. Invalid input raises (no coercion); returns the
+    normalized value.
     """
-    dom = str(domain or "").strip().lower()
-    dom = dom if dom in ("algorithms", "ai") else "algorithms"
+    dom = _require_domain(domain)
     owner._judgment_domain = dom
     try:
         setattr(owner.state, "judgment_domain", dom)
@@ -221,6 +190,10 @@ def _set_judgment_domain(owner, domain: str) -> str:
 def activate_judgment_domain(owner, domain: str) -> None:
     """Apply the toolbar domain switch (plan-gallery-two-domain-axes).
 
+    An invalid domain raises ``ValueError`` BEFORE anything is changed: a
+    failed switch must not leave the domain on algorithms (the pre-fix body
+    coerced unknown input to ``algorithms``).
+
     Switching to ``ai`` is the switch's actual effect: it lazily analyzes
     the **visible** items (cache-first, in-flight skipped, capped). Not
     configured / no key degrades to the existing per-item error on the cards
@@ -228,15 +201,9 @@ def activate_judgment_domain(owner, domain: str) -> None:
     Switching back to ``algorithms`` only flips the report domain; it never
     cancels in-flight work.
     """
-    try:
-        from tabs.image_gallery.models import JUDGMENT_DOMAINS
-
-        if str(domain or "").strip().lower() not in tuple(JUDGMENT_DOMAINS):
-            domain = "algorithms"
-    except Exception:
-        domain = "algorithms"
     # Single authoritative setter; state/widget mirror it for rendering.
-    dom = _set_judgment_domain(owner, domain)
+    dom = _set_judgment_domain(owner, _require_domain(domain))
+
     # An EXPLICIT domain switch re-opens the rank stage: switching back to AI
     # must re-apply the pinned Jev rank (cache-first, no second HTTP) even
     # though the same fingerprint already completed for this folder
@@ -314,11 +281,15 @@ def _run_ai_for_visible(owner) -> None:
     if not keys:
         # Viewport not laid out yet — bound instead of flooding.
         picked = picked[: owner._AI_VISIBLE_CAP]
-    for it in picked[: owner._AI_VISIBLE_CAP]:
-        try:
-            owner.analyze_item(it)
-        except Exception:
-            continue
+    picked = picked[: owner._AI_VISIBLE_CAP]
+    if not picked:
+        return
+    ctx = context_for_paths(owner, (it.path for it in picked), origin=ORIGIN_ACTION)
+    run = getattr(owner, "analyze", None)
+    if callable(run):
+        run(ctx)
+    else:
+        analyze(owner, ctx)
 
 
 # -- analysis delivery --------------------------------------------------------
@@ -334,15 +305,23 @@ def _refresh_ranks_visible(owner) -> None:
             pass
 
 
-def _begin_analysis(owner, item: GalleryItem) -> None:
-    settings = owner._ai_settings_store.load()
-    if not settings.enabled or not settings.api_key or not settings.model:
-        item.analysis_status = AnalysisStatus.ERROR
-        item.analysis_error = owner._tr(
-            "image_gallery.errors.not_configured",
-            "Configure the AI API key in Settings first.",
+def _begin_analysis(owner, ctx: ActionContext, item: GalleryItem) -> None:
+    """Start ONE AI worker for *item* under *ctx*.
+
+    The backend is an ARGUMENT: this function never chooses one (an
+    ``algorithms`` context here is a programming error, raised — not a switch).
+    ``AiSettings`` is read for credentials/transport only (api_key, base_url,
+    model); mode/profile/effort come from *ctx*.
+    """
+    if not isinstance(ctx, ActionContext):
+        raise TypeError("_begin_analysis() requires an ActionContext")
+    if ctx.backend != BACKEND_AI:
+        raise ValueError(
+            f"_begin_analysis is the AI analyzer; ctx.backend={ctx.backend!r}"
         )
-        owner.widget.refresh_card(item)
+    settings = _load_settings(owner)
+    if not _is_configured(settings):
+        _mark_not_configured(owner, [item])
         return
 
     item.analysis_status = AnalysisStatus.PENDING
@@ -352,8 +331,6 @@ def _begin_analysis(owner, item: GalleryItem) -> None:
     _refresh_ranks_visible(owner)
 
     try:
-        from tabs.image_gallery.services.ai_client import _ai_debug
-
         _ai_debug(
             "analyze MISS -> API call path=%s model=%s base_url=%s",
             item.path,
@@ -372,13 +349,15 @@ def _begin_analysis(owner, item: GalleryItem) -> None:
     from tabs.image_gallery.controller import _ActivityPhaseBridge
 
     bridge = _ActivityPhaseBridge(lambda phase, it=item: owner._apply_ai_phase(it, phase))
-    mode = getattr(owner.state, "mode", None)
-    profile = active_profile(getattr(owner, "state", None))
+    mode = ctx.mode
+    profile = ctx.profile
     # Snapshot the identity of THIS request: the result may arrive after the
     # user switched Settings, and it must be stored under the configuration
     # that actually produced it (a save under the current one would hand a
     # model-A scorecard to model B on the next hit).
-    identity = analysis_cache_identity(settings, mode=mode, profile=profile)
+    identity = analysis_cache_identity(
+        settings, mode=mode, profile=profile, reasoning_effort=ctx.effort
+    )
     worker = GenericWorker(
         owner._tracked(analyze_image_sync),
         item.path,
@@ -388,7 +367,7 @@ def _begin_analysis(owner, item: GalleryItem) -> None:
         mode=mode,
         profile=profile,
         metrics=_metrics,
-        reasoning_effort=str(getattr(settings, "reasoning_effort", "auto") or "auto"),
+        reasoning_effort=str(ctx.effort or "auto"),
         on_phase=bridge.phase.emit,
     )
     gen = owner._folder_gen

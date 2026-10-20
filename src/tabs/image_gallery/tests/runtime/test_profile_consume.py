@@ -212,6 +212,7 @@ def _bare_controller(items):
     ctl.state = SimpleNamespace(items=items)
     ctl.widget = SimpleNamespace(refresh_card=lambda item: None)
     ctl._folder_gen = 0
+    ctl._judgment_domain = "ai"
     ctl._tr = lambda key, default: default
     ctl._ai_settings_store = SimpleNamespace(
         load=lambda: SimpleNamespace(
@@ -244,7 +245,11 @@ def test_begin_analysis_passes_the_active_profile(monkeypatch) -> None:
     seen: dict = {}
     monkeypatch.setattr(ai_analysis, "GenericWorker", _capturing_worker(seen))
     monkeypatch.setattr(ctl, "_pool_start", lambda *a, **k: None, raising=False)
-    ctl._begin_analysis(item)
+    from tabs.image_gallery.use_cases.action_context import build_context
+
+    ctx = build_context(ctl, origin="action", card_path=item.path)
+    assert ctx.profile is P_WIDENED
+    ctl._begin_analysis(ctx, item)
     assert seen["kwargs"].get("profile") is P_WIDENED
 
 
@@ -257,6 +262,9 @@ def test_begin_analysis_falls_back_to_the_mode_profile(monkeypatch) -> None:
     seen: dict = {}
     monkeypatch.setattr(ai_analysis, "GenericWorker", _capturing_worker(seen))
     monkeypatch.setattr(ctl, "_pool_start", lambda *a, **k: None, raising=False)
-    ctl._begin_analysis(item)
+    from tabs.image_gallery.use_cases.action_context import build_context
+
+    ctx = build_context(ctl, origin="action", card_path=item.path)
+    ctl._begin_analysis(ctx, item)
     # active_profile on a state without a stored profile = the mode mapping.
     assert seen["kwargs"]["profile"] == profile_for_mode("camera")

@@ -3,139 +3,179 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Loganavter/Improve-ImgSLI/releases/latest">
-    <img src="https://img.shields.io/github/v/release/Loganavter/Improve-ImgSLI?style=flat-square">
-  </a>
-  <a href="LICENSE">
-    <img src="https://img.shields.io/github/license/Loganavter/Improve-ImgSLI?style=flat-square">
-  </a>
-  <a href="https://github.com/Loganavter/Improve-ImgSLI/releases">
-    <img src="https://img.shields.io/github/downloads/Loganavter/Improve-ImgSLI/total?style=flat-square" alt="GitHub Downloads">
-  </a>
-  <a href="https://flathub.org/apps/details/io.github.Loganavter.Improve-ImgSLI">
-    <img src="https://img.shields.io/flathub/downloads/io.github.Loganavter.Improve-ImgSLI?style=flat-square" alt="Flathub Downloads">
-  </a>
+  <a href="https://github.com/Loganavter/Improve-ImgSLI/releases/latest"><img src="https://img.shields.io/github/v/release/Loganavter/Improve-ImgSLI?style=flat-square"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/Loganavter/Improve-ImgSLI?style=flat-square"></a>
+  <a href="https://github.com/Loganavter/Improve-ImgSLI/releases"><img src="https://img.shields.io/github/downloads/Loganavter/Improve-ImgSLI/total?style=flat-square" alt="GitHub Downloads"></a>
+  <a href="https://flathub.org/apps/details/io.github.Loganavter.Improve-ImgSLI"><img src="https://img.shields.io/flathub/downloads/io.github.Loganavter.Improve-ImgSLI?style=flat-square" alt="Flathub Downloads"></a>
 </p>
 
-<p align="center"><strong>Платформа с открытым исходным кодом для продвинутого сравнения изображений и медиа.</strong></p>
+<p align="center"><strong>Рабочее пространство для серьёзного сравнения изображений и видео — с анализом, экспортом и каналом управления для агентов.</strong></p>
 
-<p align="center">
-  Читать на других языках:
-  <a href="readme.md">English</a>
-</p>
+<p align="center">Read this in other languages: <a href="readme.md">English</a></p>
 
 ---
 
-## 📸 Предпросмотр
+## Что это
+
+Improve-ImgSLI открывается на выборе сессии и даёт независимые вкладки-воркспейсы:
+**Image Compare** на два изображения, синхронизированный **Multi Compare** на любое
+число изображений и **Image Gallery** для разбора, измерений и AI-оценки целых папок.
+Каждая вкладка владеет своим холстом, состоянием, справочными страницами и экспортом.
+
+Это не просмотрщик с ползунком. Сравнение — и есть продукт: сплит, зум, лупы,
+режимы различий, объективные метрики, запись сессии в видео и экспорт ровно того,
+что видно на экране.
+
+## Чем отличается
+
+- **Сравнение в первую очередь.** Сплит, панорамирование и зум, несколько луп,
+  навигация WASD/QE и мгновенный предпросмотр одного изображения — основные
+  взаимодействия, а не настройки, спрятанные в меню.
+- **Анализ, а не «на глаз».** Режимы различий highlight / grayscale / edges / SSIM,
+  метрики PSNR + SSIM по паре и опциональная **AI-оценка качества** (VLM), которая
+  оценивает папку по нескольким осям, плюс **Ask AI** по выделению.
+- **Экспорт без расхождений.** Экспортируется именно собранный вид: сплиттеры,
+  оверлеи, лупы, оформленные имена — включая экспорт видео записанной сессии.
+- **Клавиатура и агенты.** Каждая поверхность достижима с клавиатуры, а запущенный
+  экземпляр можно вести LLM-агентом через встроенный **MCP / канал управления**
+  (инвентарь элементов, клики, клавиши, захваты, логи).
+
+## Предпросмотр
 
 <div align="center">
-  <img src="https://raw.githubusercontent.com/Loganavter/media_archive/2.0.0/Improve_ImgSLI/screenshots/screenshot_1.jpg" width="75%">
+  <img src="https://raw.githubusercontent.com/Loganavter/media_archive/2.0.0/Improve_ImgSLI/screenshots/screenshot_1.jpg" width="70%">
 </div>
 
 ---
 
-## 🧭 Быстрые ссылки
+## Возможности
 
-- Скачать: <a href="https://github.com/Loganavter/Improve-ImgSLI/releases/latest">Windows installer</a> • <a href="https://flathub.org/apps/details/io.github.Loganavter.Improve-ImgSLI">Flathub</a> • <a href="https://aur.archlinux.org/packages/improve-imgsli">AUR</a>
-- Установка и запуск из исходников: <a href="docs/INSTALL.md">docs/INSTALL.md</a> • справка по launcher: <a href="docs/LAUNCHER.md">docs/LAUNCHER.md</a>
-- Изучить приложение: встроенный <strong>поиск действий</strong> (<code>Ctrl+Shift+P</code>) и Справка • темы: <a href="src/resources/help/ru/platform/getting_started.md">RU Начало работы</a> • <a href="src/resources/help/ru/">RU</a> • <a href="src/resources/help/en/">EN</a>
-- Внести вклад: <a href="CONTRIBUTING.md">CONTRIBUTING.md</a>
-- Ещё: <a href="docs/DEVELOPMENT_HISTORY.md">История разработки</a> • <a href="VISION.md">Взгляд автора</a>
+### Сравнение
 
----
+- **Вкладки Image Compare / Multi Compare** — два изображения рядом или любое число
+  изображений в одной сцене с перетаскиваемыми слотами и свободно меняющимися разделителями.
+- Плавный GPU-зум и панорамирование, горизонтальный/вертикальный сплит,
+  синхронизация зума по сторонам, режимы каналов, полноэкранный фокус для любой ячейки.
+- **Лупы** — двойная или объединённая, внутренний сплит, субпиксельно-стабильный
+  рендер, EWA Lanczos, режим заморозки, направляющие «лазеры»; луп может быть
+  несколько, у каждой своя область, позиция, размер, цвета и заморозка.
+- Мгновенный предпросмотр одного изображения: <kbd>Space</kbd> + кнопки мыши.
 
-## 🚀 Ключевые возможности
+### Анализ
 
-- 🗂️ Платформа с вкладками: приложение открывается на экране выбора сессии, где можно создать несколько независимых вкладок — пока доступны двухстороннее **Сравнение изображений** и синхронизированное **Мультисравнение** на N картинок; переключение через полоску вкладок в духе Firefox, у каждой вкладки своё состояние, холст и пайплайн экспорта; в планах — новые типы сессий.
-- 🔬 Анализ, а не просто слайдер: интерактивные режимы подсветки различий, градаций серого, сравнения краёв и карты SSIM, плюс опциональные метрики PSNR/SSIM.
-- 📤 WYSIWYG-экспорт: сохранение ровно того композита, что на экране — разделители, лупа, оверлеи и оформленные имена файлов — в PNG, JPEG, WEBP, BMP, TIFF и JXL.
-- 🎬 Запись сессий, таймлайн и экспорт видео: запись процесса сравнения, обрезка или удаление диапазонов, анимация состояний и экспорт в MP4, WebM, AVI, GIF, ProRes, AV1 и другие форматы.
-- 🔍 Высокоточная лупа: двойной или объединённый круг, внутренний сплит, субпиксельная стабильность, поддержка EWA Lanczos, режим заморозки, «лазерные» направляющие и точное управление WASD/QE.
-- 🔭 Несколько луп на одном сравнении: у каждой свои зона захвата, положение, размер, цвета и заморозка; можно скрывать, восстанавливать и удалять по отдельности, есть автоцвет для новых экземпляров и живая подсветка пересечения зон при перетаскивании.
-- 🖼️ Быстрый интерактивный холст: вертикальный/горизонтальный раздел, плавные GPU-зум и панорама, синхронный зум/пан для обеих сторон, режимы каналов, сглаженные разделители и оверлеи, мгновенный просмотр одной стороны через Space + кнопки мыши.
-- 🔀 Вкладка **Мультисравнение**: любое число изображений в одной сцене, перетаскивание слотов для перестройки раскладки, свободное изменение разделителей и полноэкранный режим фокуса по двойному клику на ячейку.
-- 🗂️ Удобная работа с файлами: перетаскивание, переупорядочивание между списками сторон, вставка из буфера, рейтинги, правка имён и быстрое переключение колёсиком мыши.
-- 🎨 Глубокая настройка интерфейса: видимость, цвет и толщина разделителей, стилизация лупы и текстовых подписей, кнопки-иконки, светлая/тёмная темы и свой UI-шрифт — на базе собственного UI-тулкита проекта.
-- 🔎 Поиск действий и иллюстрированная справка: `Ctrl+Shift+P` ищет и запускает любую команду («Подробнее» открывает нужную тему); иерархическая справка с хабами, карточками и страницами для сессий **Сравнение изображений** / **Мультисравнение**.
-- ⚙️ Нормальный desktop-опыт: сохранение компоновки и настроек, мультиязычный интерфейс (EN/RU/zh/pt_BR), трей, уведомления после сохранения, автообрезка и удобный launcher для запуска из исходников.
+- Режимы различий: **highlight, grayscale, edge comparison, SSIM map**; метрики
+  PSNR/SSIM для объективной проверки.
+- **AI-оценка качества** — VLM читает сравниваемые изображения и возвращает баллы
+  по осям и вердикт; нужен ключ API в **Настройки → AI**. Результаты кэшируются
+  по бэкенду, поэтому смена модели или адреса приводит к переанализу, а не к
+  показу устаревших оценок.
+- **Ask AI** по карточке или выделению — ответ в рамках выбранного.
+- Разбор в галерее: сортировка, ранжирование, отклонение/возврат, группировка серий,
+  сброс кэшей метрик, Clean Review.
 
----
+### Запись и экспорт
 
-## 🛠 Установка
+- **Экспорт WYSIWYG**: сплиттеры, лупа, оверлеи и оформленные имена ровно как
+  собрано — PNG, JPEG, WEBP, BMP, TIFF, JXL.
+- **Запись сессии + видеоредактор**: запись сравнения, обрезка и удаление участков
+  таймлайна, ключевые состояния, экспорт в MP4, WebM, AVI, GIF, ProRes, AV1.
+- Задачи экспорта показывают прогресс и отменяются, не оставляя «висящих» строк.
 
-Для пользователей:
-- Windows: скачайте и запустите инсталлятор из <a href="https://github.com/Loganavter/Improve-ImgSLI/releases/latest">Releases</a>.
-- Linux (Flatpak): <code>flatpak install io.github.Loganavter.Improve-ImgSLI</code>, затем <code>flatpak run io.github.Loganavter.Improve-ImgSLI</code>.
-- Linux (AUR): <code>yay -S improve-imgsli</code>.
+### Платформа и интерфейс
 
-Из исходников (минимально):
-```bash
-git clone https://github.com/Loganavter/Improve-ImgSLI.git
-cd Improve-ImgSLI
-chmod +x launcher.sh
-./launcher.sh run
-```
-Полные инструкции: <a href="docs/INSTALL.md">docs/INSTALL.md</a>; команды launcher: <a href="docs/LAUNCHER.md">docs/LAUNCHER.md</a>.
+- **Вкладки-воркспейсы** с таббаром в стиле Firefox, выбор сессии на старте, файлы
+  проекта (`.imgsli`), которые хранят изображения, сплиттеры, лупы и видео-сессии.
+- Собственный **отрисованный тулкит** (без QSS): светлая/тёмная тема, свои шрифты,
+  живой масштаб интерфейса (0.5–2.5×), который пересчитывает геометрию, а не растягивает её.
+- Четыре языка интерфейса (EN / RU / ZH / pt_BR), интеграция с треем, уведомления
+  о сохранении, лаунчер для запуска из исходников, надёжный автокроп.
 
-Текущее ограничение:
-- Изображения больше `65536 px` по любой стороне отклоняются при загрузке: это защита от патологического decode (кадр всё ещё разжимается целиком один раз; spill в `TiledPixelStore` пишется полосами без второго полного буфера), а не потолок тайлинга. Экспорт кадра больше `16384 px` по стороне разрешён, но показывается предупреждение, что путь не тестировали.
+### Управление агентом (MCP)
 
----
-
-## 🧪 Быстрый старт
-
-1. Запустите Improve-ImgSLI — откроется экран выбора сессии; выберите **Сравнение изображений** для классического сравнения двух картинок или **Мультисравнение**, чтобы выложить сразу несколько. Каждый выбор открывается в своей вкладке.
-2. В любой момент нажмите `Ctrl+Shift+P` — **поиск действий**: настройки, инструменты и действия сессии по имени; «Подробнее» на строке открывает соответствующую тему справки.
-3. В сессии **Сравнение изображений** загрузите файлы через «Доб. Изобр(ы)» или перетаскиванием. Для быстрого просмотра одной стороны используйте `Space + ЛКМ/ПКМ`.
-4. Передвигайте линию разделения мышью, при необходимости включите горизонтальный раздел.
-5. Включите лупу, выберите интерполяцию, настройте масштаб и позицию слайдерами или клавишами.
-6. В объединённой лупе можно принудительно выбрать сторону через `Space + Shift + ЛКМ/ПКМ`.
-7. Настройте разделители и текст, затем экспортируйте итоговое изображение.
-8. В **Мультисравнении** добавляйте изображения перетаскиванием или с панели инструментов, перетаскивайте слоты для перестройки раскладки, меняйте размеры разделителей и открывайте полноэкранный режим фокуса двойным кликом по ячейке.
-
-Для подробных руководств, горячих клавиш и настроек используйте встроенную справку (меню «Справка» или поиск действий → Справка) или исходники:
-- RU: <a href="src/resources/help/ru/platform/getting_started.md">Начало работы</a> • <a href="src/resources/help/ru/">Темы приложения</a> • <a href="src/tabs/image_compare/resources/help/ru/">Сравнение изображений</a> • <a href="src/tabs/multi_compare/resources/help/ru/">Мультисравнение</a>
-- EN: <a href="src/resources/help/en/platform/getting_started.md">Getting Started</a> • <a href="src/resources/help/en/">Host topics</a>
+- Живой **канал управления** (`IMGSLI_CONTROL=1`) и MCP-сервер: 23 инструмента —
+  инвентарь элементов, чтение Store/действий/логов/трейсера, клики, клавиши,
+  навигация по клавиатурным секциям, список и отмена задач, тема/язык, захват
+  поверхностей и **ожидание** асинхронного состояния вместо ручных опросов.
+- Рассчитан на честную инструментовку: каждый результат говорит, пришёл ли он от
+  живого экземпляра, захваты несут метод и число слоёв канваса, а достижимость
+  клавиатурой измеряется (`ui_nav_state` + `nav_key`), а не предполагается.
+- Начать: [docs/dev/MCP.md](docs/dev/MCP.md).
 
 ---
 
-## 🤝 Вклад
+## Установка
 
-Спасибо за ваш интерес к проекту! Пожалуйста, ознакомьтесь с <a href="CONTRIBUTING.md">CONTRIBUTING.md</a> для настройки окружения разработки и правил оформления PR. Сообщайте о проблемах и предлагайте изменения через Issues/PRs на GitHub.
+| Платформа | Как |
+|---|---|
+| Windows | установщик из [Releases](https://github.com/Loganavter/Improve-ImgSLI/releases/latest) |
+| Linux (Flatpak) | `flatpak install io.github.Loganavter.Improve-ImgSLI`, затем `flatpak run io.github.Loganavter.Improve-ImgSLI` |
+| Linux (AUR) | `yay -S improve-imgsli` |
+| Из исходников | `git clone … && cd Improve-ImgSLI && ./launcher.sh run` |
 
----
+Полные инструкции: [docs/INSTALL.md](docs/INSTALL.md) · лаунчер: [docs/LAUNCHER.md](docs/LAUNCHER.md).
 
-## 🫂 Мейнтейнеры
+Текущее ограничение: изображения больше `65536 px` по стороне отклоняются на
+ограниченном пути декодирования (потоковое декодирование такого лимита не имеет);
+экспорт изображения больше `16384 px` по стороне работает, но предупреждает, что
+путь не тестировался.
 
-Проект развивается благодаря усилиям мейнтейнеров. Отдельная благодарность:
+## Первые пять минут
+
+1. Запустите приложение — откроется выбор сессии; выберите **Image Compare**,
+   **Multi Compare** или **Image Gallery** (каждый выбор открывается своей вкладкой).
+2. Нажмите <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd> — **Find Action** находит
+   любую команду по имени; «Learn more» открывает соответствующую страницу справки.
+3. В Image Compare добавьте изображения (кнопка или drag-and-drop), затем двигайте
+   линию сплита и зумите колесом; <kbd>Space</kbd> + ЛКМ/ПКМ — предпросмотр стороны.
+4. Включите лупу, выберите интерполяцию, настройте зум; экспортируйте собранный вид.
+5. В галерее проанализируйте папку: метрики по каждой паре и AI-оценка, если настроен ключ API.
+
+Горячие клавиши, настройки и полный сценарий — во встроенной **справке** (меню Help);
+исходники: [EN host topics](src/resources/help/en/) · [RU](src/resources/help/ru/) ·
+[Image Compare](src/tabs/image_compare/resources/help/ru/) ·
+[Multi Compare](src/tabs/multi_compare/resources/help/ru/) ·
+[Gallery](src/tabs/image_gallery/resources/help/ru/).
+
+## Карта документации
+
+| Что нужно | Где читать |
+|---|---|
+| Установка / лаунчер | [docs/INSTALL.md](docs/INSTALL.md), [docs/LAUNCHER.md](docs/LAUNCHER.md) |
+| Вести приложение агентом | [docs/dev/MCP.md](docs/dev/MCP.md) |
+| Участие в разработке | [CONTRIBUTING.md](CONTRIBUTING.md) |
+| Архитектура, контракты, паттерны | [docs/dev/ARCHITECTURE.md](docs/dev/ARCHITECTURE.md), [docs/dev/CONTRACTS.md](docs/dev/CONTRACTS.md) |
+| Видение и история проекта | [VISION.md](VISION.md), [docs/DEVELOPMENT_HISTORY.md](docs/DEVELOPMENT_HISTORY.md) |
+| Открытый технический долг | [docs/dev/TODO.md](docs/dev/TODO.md) |
+
+## Участие
+
+Мы рады вкладу — см. [CONTRIBUTING.md](CONTRIBUTING.md): настройка окружения,
+правила кода и упаковка. Issues и PR — на GitHub.
+
+## Мейнтейнеры
 
 <table>
   <tr>
-    <td align="center" valign="top" width="140">
+    <td align="center" align="top" width="140">
       <a href="https://github.com/nebulosa2007" title="GitHub profile">
         <img src="https://github.com/nebulosa2007.png?size=100" alt="Nebulosa's Avatar" width="100" style="border-radius: 50%;"><br/>
         <sub><b>Nebulosa</b></sub>
       </a>
     </td>
     <td valign="top">
-      <strong>AUR Package Maintainer</strong>
-      <p>Огромная благодарность Nebulosa за поддержание пакета <a href="https://aur.archlinux.org/packages/improve-imgsli">Arch Linux (AUR)</a> с самого начала, оперативные фиксы и стабильность для сообщества Arch.</p>
+      <strong>Мейнтейнер пакета AUR</strong>
+      <p>Большое спасибо Nebulosa за поддержку <a href="https://aur.archlinux.org/packages/improve-imgsli">пакета Arch Linux (AUR)</a> с самого начала — исправления упаковки и работа над стабильностью, которые держат проект надёжным в экосистеме Arch.</p>
       <a href="https://github.com/nebulosa2007"><img src="https://img.shields.io/badge/GitHub-181717?style=for-the-badge&logo=github&logoColor=white" alt="GitHub"></a>
       <a href="https://aur.archlinux.org/account/Nebulosa"><img src="https://img.shields.io/badge/AUR-1793D1?style=for-the-badge&logo=arch-linux&logoColor=white" alt="AUR Profile"></a>
     </td>
   </tr>
 </table>
 
----
+## Лицензия
 
-## 📄 Лицензия
+GPL-3.0-or-later — см. [LICENSE](LICENSE). Зависимости времени выполнения
+(включая PySide6/Qt под LGPL-3.0-or-later) перечислены в [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
 
-GPL-3.0-or-later. См. <a href="LICENSE">LICENSE</a>.
-
-Зависимости времени выполнения (включая PySide6/Qt под LGPL-3.0-or-later) — в <a href="THIRD_PARTY_LICENSES.md">THIRD_PARTY_LICENSES.md</a>.
-
----
-
-## ⭐ История звёзд
+## История звёзд
 
 ![Star History Chart](https://api.star-history.com/svg?repos=Loganavter/Improve-ImgSLI&type=Timeline)

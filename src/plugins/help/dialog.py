@@ -57,6 +57,22 @@ from ui.layout_spacing import sidebar_header_host
 logger = logging.getLogger("ImproveImgSLI")
 
 
+def _current_theme_name() -> str:
+    """Toolkit theme name (``light``/``dark``) that figures variant on.
+
+    Same source as the rest of the app (``ThemeManager``); read at resolve
+    time so a theme switch applies on the next page render. An uninitialised
+    manager (headless imports/tests) degrades to the toolkit default.
+    """
+    try:
+        from sli_ui_toolkit.theme import ThemeManager
+
+        return str(ThemeManager.get_instance().get_current_theme()).strip().lower()
+    except Exception:  # never let theming break help rendering
+        logger.debug("Help: theme manager unavailable, using light asset variants")
+        return "light"
+
+
 class _HelpMouseNavFilter(QObject):
     """App-wide mouse back/forward filter owned by ``HelpDialog``.
 
@@ -909,7 +925,12 @@ class HelpDialog(ThemedDialog):
             self._syncing_sidebar = False
 
     def _resolve_asset(self, rel_path: str):
-        return resolve_help_asset(rel_path, self._current_body_file)
+        return resolve_help_asset(
+            rel_path,
+            self._current_body_file,
+            locale=self.current_language,
+            theme=_current_theme_name(),
+        )
 
     def _on_text_context_menu(self, global_pos) -> None:
         from plugins.help.text_context_menu import open_help_text_context_menu

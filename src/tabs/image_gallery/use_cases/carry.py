@@ -52,17 +52,16 @@ def _dispatch_via_image_carry(paths: list[Path], *, pixmap=None) -> bool:
 
 
 def find_similar_selected(owner, *, threshold: float = 0.15) -> bool:  # type: ignore[no-untyped-def]
-    """Intentional placeholder for “Find similar” — semantic search for images
-    similar to selection (parity plan non-goal: context-menu item stays a stub).
+    """DEPRECATED selection adapter — the action surface passes an ActionContext.
 
-    Context-menu API: ``ui/card/context_menu.py`` wires ``Find similar`` → this.
-    Widget/controller integration (coordinator) will handle actual filtering
-    (embedding/phash nearest neighbours, threshold) and selection update.
+    Use ``use_cases.gallery_actions.find_similar(owner, ctx)``. This name stays
+    for the pre-context callers (and the parity stub contract) and reads the
+    selection through ``action_scope`` (the ONE read), never set iteration.
+
+    Intentional placeholder for “Find similar” — semantic search for images
+    similar to selection (parity plan non-goal: context-menu item stays a stub).
     Currently a stub that validates selection and returns ``False`` so callers
     can degrade gracefully; logs at debug level.
-
-    Returns ``True`` only when a future implementation actually selects similar
-    items; ``False`` otherwise (no selection or not yet implemented).
     """
     paths = _selected_paths(owner)
     if not paths:
@@ -75,7 +74,11 @@ def find_similar_selected(owner, *, threshold: float = 0.15) -> bool:  # type: i
 
 
 def carry_selected(owner, *, pixmap=None) -> bool:  # type: ignore[no-untyped-def]
-    """Dispatch selected images to the workspace carry flow.
+    """DEPRECATED selection adapter — the action surface passes an ActionContext.
+
+    Use ``use_cases.gallery_actions.carry(owner, ctx)`` (menu) for an explicit
+    target set. This name stays for the keyboard/drag call sites, whose scope
+    IS the selection (read once through ``action_scope``).
 
     Returns True if a carry was started (preview ghost shown or drop scheduled),
     False if nothing selected or dispatch failed.

@@ -5,8 +5,9 @@ Audit-Meta: pattern=single-owner reason="one merged HelpTree: fs scan + hub-frag
 
 from __future__ import annotations
 
+import json
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -214,11 +215,144 @@ def read_help_page_markdown(
     return body
 
 
+#: Recipe manifest written by ``src/devtools/help_figures.py``: the declaration
+#: of record for locale/theme figure variants. Runtime reads it defensively —
+#: a packaged/toolkit-only install may not ship devtools, and a missing manifest
+#: must degrade to the flat base image, never to an error.
+_VARIANT_MANIFEST = Path(__file__).resolve().parents[2] / "devtools" / "help_figures.json"
+
+
+def _help_asset_tail(path: Path) -> tuple[str, ...]:
+    """Path tail from the nearest ``help`` component (manifest destinations key)."""
+    parts = path.parts
+    for index in range(len(parts) - 1, -1, -1):
+        if parts[index] == "help":
+            return parts[index:]
+    return parts
+
+
+@lru_cache(maxsize=1)
+def _declared_help_variants() -> dict[tuple[str, ...], frozenset[tuple[str, str]]]:
+    """``(locale, theme)`` pairs declared per figure destination.
+
+    A recipe with a single locale *and* a single theme ships one flat file —
+    today's 25 figures — so it declares no variant folder (empty set). A
+    recipe with more than one variant declares the full locale x theme matrix
+    and the generator writes every cell under ``assets/<locale>/<theme>/``.
+    """
+    try:
+        raw = json.loads(_VARIANT_MANIFEST.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    entries = raw.get("figures") if isinstance(raw, dict) else None
+    if not isinstance(entries, list):
+        return {}
+    declared: dict[tuple[str, ...], frozenset[tuple[str, str]]] = {}
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        destination, locales, themes = (
+            entry.get("destination"),
+            entry.get("locales"),
+            entry.get("themes"),
+        )
+        if (
+            not isinstance(destination, str)
+            or not isinstance(locales, list)
+            or not isinstance(themes, list)
+            or not locales
+            or not themes
+        ):
+            continue
+        pairs = frozenset(
+            (str(locale), str(theme).lower())
+            for locale in locales
+            for theme in themes
+        )
+        if len(pairs) <= 1:
+            pairs = frozenset()
+        declared[_help_asset_tail(Path(destination))] = pairs
+    return declared
+
+
+def clear_help_variant_cache() -> None:
+    """Drop the parsed variant declarations (tests / edited recipes)."""
+    _declared_help_variants.cache_clear()
+
+
+def _declared_variants_for(base: Path) -> frozenset[tuple[str, str]]:
+    return _declared_help_variants().get(_help_asset_tail(base), frozenset())
+
+
+def _help_assets_root(base: Path) -> Path:
+    """Nearest ``assets`` ancestor of the literal asset path (variant home)."""
+    for parent in base.parents:
+        if parent.name == "assets":
+            return parent
+    return base.parent
+
+
 def resolve_help_asset(
-    rel_path: str, body_file: Path | str | None = None
+    rel_path: str,
+    body_file: Path | str | None = None,
+    *,
+    locale: str | None = None,
+    theme: str | None = None,
+    declared_variants: Iterable[tuple[str, str]] | None = None,
 ) -> Path | None:
-    """Resolve a body-relative image path against the rendered body file."""
+    """Resolve a body-relative image path to a locale/theme variant.
+
+    Chain, same literal markdown path (``assets/<name>`` is today's base):
+
+    1. ``assets/<locale>/<theme>/<name>``
+    2. ``assets/<locale>/<name>``
+    3. ``assets/<theme>/<name>``
+    4. ``assets/<name>``
+
+    ``declared_variants`` is the figure's declared ``(locale, theme)`` matrix
+    (default: read from ``src/devtools/help_figures.json``). Fail-closed: a
+    declared variant that is absent is a content bug, so the resolver returns
+    ``None`` (the dialog's placeholder path) instead of silently showing the
+    base image in the wrong language/theme. Falling back to the base image is
+    only allowed when the manifest does not declare the requested variant.
+    Without ``locale``/``theme`` this is exactly the old body-relative lookup.
+    """
     if not body_file:
         return None
-    candidate = Path(body_file).parent / rel_path.lstrip("/")
-    return candidate if candidate.is_file() else None
+    # Canonicalise once: markdown paths carry ``../`` segments, and the variant
+    # folders are built from the asset root (``assets/<locale>/<theme>/``), so a
+    # ``..``-laden base would never compare equal to a real variant.
+    base = (Path(body_file).parent / rel_path.lstrip("/")).resolve()
+    if not locale or not theme:
+        return base if base.is_file() else None
+    language = normalize_help_language(locale)
+    theme_name = theme.strip().lower()
+    if not theme_name:
+        return base if base.is_file() else None
+
+    declared = (
+        frozenset(declared_variants)
+        if declared_variants is not None
+        else _declared_variants_for(base)
+    )
+    declared_locales = {code for code, _ in declared}
+    declared_themes = {name for _, name in declared}
+    root = _help_assets_root(base)
+    candidates = (
+        (root / language / theme_name / base.name, (language, theme_name) in declared),
+        (root / language / base.name, language in declared_locales),
+        (root / theme_name / base.name, theme_name in declared_themes),
+    )
+    for candidate, _declared_here in candidates:
+        if candidate.is_file():
+            return candidate
+    missing = [path for path, declared_here in candidates if declared_here]
+    if missing:
+        logger.warning(
+            "Help asset variant declared but missing: %s (locale=%s theme=%s)",
+            ", ".join(str(path) for path in missing),
+            language,
+            theme_name,
+        )
+        return None
+    return base if base.is_file() else None

@@ -29,7 +29,8 @@ def _owner(selected, order=None, items=()):
     )
     if order is not None:
         st.selected_order = list(order)
-    return SimpleNamespace(state=st)
+    # The action context carries the backend; these doubles are algorithms.
+    return SimpleNamespace(state=st, _judgment_domain="algorithms")
 
 
 def test_mime_constant_value() -> None:

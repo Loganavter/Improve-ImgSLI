@@ -203,7 +203,8 @@ def test_run_ai_for_visible_only_visible_unanalyzed(qapp) -> None:
     fake = SimpleNamespace(
         widget=SimpleNamespace(visible_paths=lambda: [Path("/g/vis.png"), Path("/g/done.png")]),
         state=SimpleNamespace(items=[vis, off, done]),
-        analyze_item=lambda it: analyzed.append(it.path.name),
+        _judgment_domain="ai",
+        analyze=lambda ctx: analyzed.extend(p.name for p in ctx.targets),
         _AI_VISIBLE_CAP=12,
     )
     GalleryController._run_ai_for_visible(fake)

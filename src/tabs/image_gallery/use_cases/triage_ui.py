@@ -174,21 +174,23 @@ def _dismiss_one(overlay) -> None:
 
 
 def current_path(owner) -> Path | None:
-    """The FIRST resolved target — single-path API for keyboard actions.
+    """The head of the KEYBOARD action context — explicit focus, no fallback.
 
-    Delegates to ``use_cases.action_scope.resolve_targets`` (selection →
-    clicked/focused card → first item); keyboard actions that can only take
-    one path (``B`` make-best, Enter fallback analyze) use its head. Actions
-    that apply to a set must call the resolver themselves instead of looping
-    this function — the old per-site selection ladders disagreed.
+    Builds ``build_context(owner, origin="keyboard", focused=True)``: the
+    selection wins when non-empty, otherwise the card that actually holds
+    keyboard focus (an explicit input). With neither, the context is empty and
+    this returns None — the old first-visible-item fallback is gone (an action
+    may never hit a card the user did not point at).
     """
     try:
-        from tabs.image_gallery.use_cases import action_scope
+        from tabs.image_gallery.use_cases import action_context
 
-        targets = action_scope.resolve_targets(owner_for_triage(owner))
+        ctx = action_context.build_context(
+            owner_for_triage(owner), origin=action_context.ORIGIN_KEYBOARD, focused=True
+        )
     except Exception:
         return None
-    return targets[0] if targets else None
+    return ctx.targets[0] if ctx.targets else None
 
 
 def handle_key(owner, event) -> None:
@@ -251,41 +253,12 @@ def handle_key(owner, event) -> None:
     if key in (Qt.Key.Key_Space, Qt.Key.Key_Delete, Qt.Key.Key_Backspace):
         try:
             triage_owner = owner_for_triage(owner)
-            targets: list = []
-            try:
-                sel = triage_owner.state.selected_paths  # type: ignore[attr-defined]
-            except Exception:
-                sel = None
-            if sel:
-                try:
-                    order = triage_owner.state.selected_order  # type: ignore[attr-defined]
-                except Exception:
-                    order = None
-                try:
-                    sel_set = {Path(p) if not isinstance(p, Path) else p for p in sel}
-                except Exception:
-                    sel_set = set()
-                if order:
-                    try:
-                        ordered = [Path(p) if not isinstance(p, Path) else p for p in order]
-                        targets = [p for p in ordered if p in sel_set]
-                        # Survivors missing from order (shouldn't happen) — append sorted.
-                        missing = [p for p in sel_set if p not in set(targets)]
-                        try:
-                            missing = sorted(missing, key=str)
-                        except Exception:
-                            pass
-                        targets.extend(missing)
-                    except Exception:
-                        try:
-                            targets = sorted(sel_set, key=str)
-                        except Exception:
-                            targets = list(sel_set)
-                else:
-                    try:
-                        targets = sorted(sel_set, key=str)
-                    except Exception:
-                        targets = list(sel_set)
+            from tabs.image_gallery.use_cases import action_scope
+
+            # The selection read is single-sourced (action_scope); this keyboard
+            # action never falls back to focus/first card — Delete with nothing
+            # selected must not remove a card the user did not pick.
+            targets = action_scope.selected_paths(triage_owner)
             if not targets:
                 # Nothing selected → ignore, don't delete the first card.
                 QWidget.keyPressEvent(owner, event)

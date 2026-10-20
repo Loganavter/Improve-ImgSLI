@@ -950,32 +950,48 @@ class GalleryController:
             return context._tr(key, default)
         return default
 
-    def analyze_item_by_path(self, path: Path) -> None:
+    def analyze(self, ctx):
+        """Analyze every ``ctx.targets`` card on ``ctx.backend`` (ONE entry)."""
+        from tabs.image_gallery.use_cases import ai_analysis as _ai_analysis
+
+        return _ai_analysis.analyze(self, ctx)
+
+    def reanalyze(self, ctx):
+        """Force a fresh analysis of ``ctx.targets`` (cache bypass)."""
+        from tabs.image_gallery.use_cases import ai_analysis as _ai_analysis
+
+        return _ai_analysis.reanalyze(self, ctx)
+
+    def analyze_item_by_path(self, path: Path):
+        """Deprecated point adapter — builds ``targets=(path,)`` and analyzes."""
         from tabs.image_gallery.use_cases import ai_analysis as _ai_analysis
 
         return _ai_analysis.analyze_item_by_path(self, path)
 
-    def hydrate_cached_analysis(self, item: GalleryItem) -> bool:
+    def hydrate_cached_analysis(self, item: GalleryItem, *, ctx=None) -> bool:
         from tabs.image_gallery.use_cases import ai_analysis as _ai_analysis
 
-        return _ai_analysis.hydrate_cached_analysis(self, item)
+        return _ai_analysis.hydrate_cached_analysis(self, item, ctx=ctx)
 
-    def _hydrate_ai_cache(self, items) -> int:
+    def _hydrate_ai_cache(self, items, *, ctx=None) -> int:
         from tabs.image_gallery.use_cases import ai_analysis as _ai_analysis
 
-        return _ai_analysis._hydrate_ai_cache(self, items)
+        return _ai_analysis._hydrate_ai_cache(self, items, ctx=ctx)
 
-    def analyze_item(self, item: GalleryItem) -> None:
+    def analyze_item(self, item: GalleryItem):
+        """Deprecated point adapter — builds ``targets=(item.path,)``."""
         from tabs.image_gallery.use_cases import ai_analysis as _ai_analysis
 
         return _ai_analysis.analyze_item(self, item)
 
-    def reanalyze_item_by_path(self, path: Path) -> None:
+    def reanalyze_item_by_path(self, path: Path):
+        """Deprecated point adapter — builds ``targets=(path,)``."""
         from tabs.image_gallery.use_cases import ai_analysis as _ai_analysis
 
         return _ai_analysis.reanalyze_item_by_path(self, path)
 
-    def reanalyze_item(self, item: GalleryItem) -> None:
+    def reanalyze_item(self, item: GalleryItem):
+        """Deprecated point adapter — builds ``targets=(item.path,)``."""
         from tabs.image_gallery.use_cases import ai_analysis as _ai_analysis
 
         return _ai_analysis.reanalyze_item(self, item)
@@ -1518,10 +1534,10 @@ class GalleryController:
         except Exception:
             logger.debug("rank provenance refresh failed", exc_info=True)
 
-    def _begin_analysis(self, item: GalleryItem) -> None:
+    def _begin_analysis(self, ctx, item: GalleryItem) -> None:
         from tabs.image_gallery.use_cases import ai_analysis as _ai_analysis
 
-        return _ai_analysis._begin_analysis(self, item)
+        return _ai_analysis._begin_analysis(self, ctx, item)
 
     def _apply_ai_phase(self, item: GalleryItem, phase: str) -> None:
         from tabs.image_gallery.use_cases import ai_analysis as _ai_analysis

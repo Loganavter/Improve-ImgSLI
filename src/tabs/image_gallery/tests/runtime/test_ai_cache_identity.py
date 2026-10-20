@@ -80,8 +80,9 @@ def _owner(settings, started: list) -> SimpleNamespace:
     return SimpleNamespace(
         state=SimpleNamespace(mode="camera", metric_profile=None, items=[]),
         widget=SimpleNamespace(refresh_card=lambda it: None),
+        _judgment_domain="ai",
         _ai_settings_store=SimpleNamespace(load=lambda: settings),
-        _begin_analysis=lambda it: started.append(it),
+        _begin_analysis=lambda ctx, it: started.append(it),
     )
 
 
@@ -99,6 +100,7 @@ def test_analyze_item_does_not_serve_another_models_scorecard(tmp_path, monkeypa
     started: list = []
     owner_b = _owner(_settings(model="model/B"), started)
     item = SimpleNamespace(path=path, mtime_ns=42, analysis=None)
+    owner_b.state.items.append(item)
 
     ai_analysis.analyze_item(owner_b, item)
 
@@ -141,10 +143,12 @@ def test_analyze_item_never_serves_a_pre_identity_entry(tmp_path, monkeypatch) -
     owner = SimpleNamespace(
         state=SimpleNamespace(mode="camera", metric_profile=None, items=[]),
         widget=SimpleNamespace(refresh_card=lambda it: None),
+        _judgment_domain="ai",
         _ai_settings_store=SimpleNamespace(load=lambda: _settings(model="model/B")),
-        _begin_analysis=lambda it: started.append(it),
+        _begin_analysis=lambda ctx, it: started.append(it),
     )
     item = SimpleNamespace(path=path, mtime_ns=42, analysis=None, analysis_status=None)
+    owner.state.items.append(item)
 
     ai_analysis.analyze_item(owner, item)
 
@@ -163,14 +167,16 @@ def test_analyze_item_hits_its_own_backend(tmp_path, monkeypatch) -> None:
     owner = SimpleNamespace(
         state=SimpleNamespace(mode="camera", metric_profile=None, items=[]),
         widget=SimpleNamespace(refresh_card=lambda it: None),
+        _judgment_domain="ai",
         _ai_settings_store=SimpleNamespace(load=lambda: _settings()),
-        _begin_analysis=lambda it: started.append(it),
+        _begin_analysis=lambda ctx, it: started.append(it),
     )
     expected = _result()
     # Seed with the owner's OWN identity — the lookup the analyze path performs.
     ai_cache.save_analysis(path, 42, expected, ai_analysis.analysis_identity_for(owner))
 
     item = SimpleNamespace(path=path, mtime_ns=42, analysis=None)
+    owner.state.items.append(item)
 
     ai_analysis.analyze_item(owner, item)
 

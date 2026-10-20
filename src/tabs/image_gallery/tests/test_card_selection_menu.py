@@ -23,6 +23,9 @@ from tabs.image_gallery.ui.card.context_menu import (
 def _owner(selected: set[Path], mode=None) -> SimpleNamespace:
     return SimpleNamespace(
         state=SimpleNamespace(selected_paths=set(selected), mode=mode),
+        # The action context carries the backend; these doubles are the
+        # algorithms domain unless a test says otherwise.
+        _judgment_domain="algorithms",
     )
 
 
@@ -155,7 +158,7 @@ def _owner_with_items(selected, items, order=None):
     st = SimpleNamespace(selected_paths=set(selected), items=list(items))
     if order is not None:
         st.selected_order = list(order)
-    return SimpleNamespace(state=st)
+    return SimpleNamespace(state=st, _judgment_domain="algorithms")
 
 
 def _triage_item(p, rejected=False):
@@ -628,6 +631,7 @@ def test_ask_ai_action_opens_directly(monkeypatch) -> None:
     calls: list = []
     owner = SimpleNamespace(
         state=SimpleNamespace(selected_paths=set(), mode=None),
+        _judgment_domain="algorithms",
         open_ask_ai=lambda kind, card, path: calls.append(kind),
     )
     popup_gallery_card_context_menu(
