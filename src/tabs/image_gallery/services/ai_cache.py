@@ -302,27 +302,62 @@ def load_cached_analysis(
         return None
 
 
+def _identity_signature(identity) -> str | None:  # type: ignore[no-untyped-def]
+    """The canonical fingerprint of *identity*, or ``None`` when incomplete.
+
+    Used to scope the "already checked" memo to the identity that produced it —
+    never raises.
+    """
+    try:
+        canonical = _canonical_identity(identity)
+        return None if canonical is None else _identity_fingerprint(canonical)
+    except Exception:
+        return None
+
+
+def _remember_checked(item, signature) -> None:  # type: ignore[no-untyped-def]
+    """Memoize "hydrate was tried" on *item*, scoped to *signature*.
+
+    Both attributes move together: ``_ai_cache_checked_identity`` is what makes
+    a later populate re-read after an identity switch. Never raises.
+    """
+    try:
+        item._ai_cache_checked = True
+        item._ai_cache_checked_identity = signature
+    except Exception:
+        pass
+
+
 def hydrate_item(item, identity) -> bool:  # type: ignore[no-untyped-def]
     """Fill ``item.analysis`` from the disk cache only (no worker, no settings).
 
     ``identity`` is the caller's :func:`analysis_cache_identity` for the CURRENT
     AI configuration — a cached scorecard from another backend is a miss.
 
-    Marks ``item._ai_cache_checked`` so repeated calls are free (callers
-    invoke this on every overlay populate). Returns True when the item now
-    carries an analysis. Never raises.
+    The "already checked" memo (``_ai_cache_checked``) is scoped to the identity
+    it was earned under (``_ai_cache_checked_identity``): a miss under a stale
+    identity (domain/profile switch, re-pointed backend) must NOT poison a later
+    read under the current one, while a repeat under the SAME identity stays
+    free — callers invoke this on every overlay populate. Returns True when the
+    item now carries an analysis. Never raises.
     """
     try:
         if getattr(item, "analysis", None) is not None:
             return True
+        signature = _identity_signature(identity)
         if bool(getattr(item, "_ai_cache_checked", False)):
-            return False
-        try:
-            item._ai_cache_checked = True
-        except Exception:
-            pass
+            if getattr(item, "_ai_cache_checked_identity", None) == signature:
+                return False
+            # Checked under a different identity: that verdict says nothing
+            # about THIS configuration, so drop it and read again.
+            try:
+                item._ai_cache_checked = False
+                item._ai_cache_checked_identity = None
+            except Exception:
+                pass
         cached = load_cached_analysis(item.path, item.mtime_ns, identity)
         if cached is None:
+            _remember_checked(item, signature)
             return False
         try:
             from tabs.image_gallery.models import AnalysisStatus
@@ -331,7 +366,10 @@ def hydrate_item(item, identity) -> bool:  # type: ignore[no-untyped-def]
             item.analysis_status = AnalysisStatus.DONE
             item.analysis_error = None
         except Exception:
+            # Not a usable hit: leave the memo unset so a later populate retries
+            # (a half-assigned item must not freeze the miss forever).
             return False
+        _remember_checked(item, signature)
         return True
     except Exception:
         return False

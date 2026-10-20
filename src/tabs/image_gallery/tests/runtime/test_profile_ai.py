@@ -112,6 +112,78 @@ def test_fingerprint_changes_with_every_identity_component():
     assert profile_fingerprint([a, b], mode="fidelity", model="m") != key
     assert profile_fingerprint([a, b], mode="camera", model="other") != key
     assert profile_fingerprint([a, b], mode="camera", model="m", pool=("sharpness",)) != key
+    # The endpoint and the reasoning effort change the ANSWER, so they are part
+    # of the pin identity — the same model id on two providers is not one pin.
+    assert (
+        profile_fingerprint([a, b], mode="camera", model="m", base_url="http://x")
+        != key
+    )
+    assert (
+        profile_fingerprint(
+            [a, b], mode="camera", model="m", reasoning_effort="high"
+        )
+        != key
+    )
+
+
+def test_fingerprint_normalises_the_endpoint():
+    """Two spellings of one URL pin the same selection (no pointless re-roll)."""
+    a, b = _item("a.png"), _item("b.png")
+    left = profile_fingerprint([a, b], mode="camera", model="m", base_url="HTTP://X.test/v1/")
+    right = profile_fingerprint([a, b], mode="camera", model="m", base_url="http://x.test/v1")
+    assert left == right
+
+
+def test_profile_pin_is_scoped_to_the_provider_endpoint(tmp_path):
+    """Same model id, different base_url → the old endpoint's pin is a MISS.
+
+    The fixed bug (queue id ``task-ai-cache-identity-truth-2026-10-20``): the
+    pin key covered members+mode+model+pool only, so pointing the same model id
+    at a new endpoint silently reused the previous endpoint's VLM selection.
+    Old pins (written before the endpoint was part of the key) stay on disk as
+    unreachable orphans — no silent migration, a cache reset deletes them.
+    """
+    cache = ProfileCache(tmp_path)
+    items = [_item("a.png"), _item("b.png")]
+    pinned = MetricProfile(axis_ids=("ssim",), mode="camera", source="vlm")
+    cache.put(
+        profile_cache.profile_cache_key(
+            items,
+            mode="camera",
+            model="m",
+            base_url="http://x",
+            reasoning_effort="auto",
+        ),
+        pinned,
+    )
+    calls: list = []
+
+    def _client(base_url, api_key, payload):
+        calls.append(base_url)
+        return _chat({"axes": ["sharpness"]})
+
+    # Same model id on another endpoint: the A pin must not be served.
+    profile = choose_profile_sync(
+        items,
+        mode="camera",
+        settings=_settings(base_url="http://y"),
+        cache=cache,
+        client_call=_client,
+    )
+    assert calls == ["http://y"], "a foreign endpoint's pin short-circuited the call"
+    assert profile.axis_ids == ("sharpness",)
+
+    # Endpoint A still hits its own pin.
+    calls.clear()
+    same = choose_profile_sync(
+        items,
+        mode="camera",
+        settings=_settings(base_url="http://x"),
+        cache=cache,
+        client_call=_client,
+    )
+    assert calls == [], "the same endpoint must still be served from its pin"
+    assert same == pinned
 
 
 # --------------------------------------------------------------------------
@@ -214,7 +286,12 @@ def test_choose_profile_sync_pin_hit_skips_the_call(tmp_path):
     cache = ProfileCache(tmp_path)
     items = [_item("a.png"), _item("b.png")]
     pinned = MetricProfile(axis_ids=("ssim",), mode="camera", source="vlm")
-    cache.put(profile_cache.profile_cache_key(items, mode="camera", model="m"), pinned)
+    cache.put(
+        profile_cache.profile_cache_key(
+            items, mode="camera", model="m", base_url="http://x", reasoning_effort="auto"
+        ),
+        pinned,
+    )
 
     calls: list = []
 
@@ -264,7 +341,9 @@ def test_choose_profile_sync_malformed_reply_is_heuristic_and_not_pinned(tmp_pat
     )
     assert profile.source == "heuristic"
     assert profile == profile_select.derive_profile(items, mode="camera")
-    key = profile_cache.profile_cache_key(items, mode="camera", model="m")
+    key = profile_cache.profile_cache_key(
+        items, mode="camera", model="m", base_url="http://x", reasoning_effort="auto"
+    )
     assert cache.get(key) is None
 
     choose_profile_sync(items, mode="camera", settings=_settings(), cache=cache, client_call=_client)
@@ -282,7 +361,18 @@ def test_choose_profile_sync_drops_ids_outside_the_pool(tmp_path):
         items, mode="camera", settings=_settings(), cache=cache, client_call=_client
     )
     assert profile.source == "heuristic"
-    assert cache.get(profile_cache.profile_cache_key(items, mode="camera", model="m")) is None
+    assert (
+        cache.get(
+            profile_cache.profile_cache_key(
+                items,
+                mode="camera",
+                model="m",
+                base_url="http://x",
+                reasoning_effort="auto",
+            )
+        )
+        is None
+    )
 
 
 def test_choose_profile_sync_transport_raise_is_heuristic(tmp_path):

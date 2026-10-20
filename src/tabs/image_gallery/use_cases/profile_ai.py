@@ -65,17 +65,26 @@ def ai_selector_available(settings) -> bool:
         return False
 
 
-def profile_fingerprint(items, *, mode, model, pool=None) -> str:
+def profile_fingerprint(
+    items, *, mode, model, pool=None, base_url="", reasoning_effort=""
+) -> str:
     """The pin identity for one folder-generation (delegates to the cache key).
 
-    ``sha256`` over sorted ``str(path):mtime_ns`` plus the mode, the model and
-    the pool ids — one definition, in ``services/profile_cache`` (this is the
-    ``use_cases``-side name, so the wiring lane never imports the cache layer
-    for it).
+    ``sha256`` over sorted ``str(path):mtime_ns`` plus the mode, the model, the
+    normalized ``base_url``, the reasoning effort and the pool ids — one
+    definition, in ``services/profile_cache`` (this is the ``use_cases``-side
+    name, so the wiring lane never imports the cache layer for it).
     """
     from tabs.image_gallery.services import profile_cache
 
-    return profile_cache.profile_cache_key(items, mode=mode, model=model, pool=pool)
+    return profile_cache.profile_cache_key(
+        items,
+        mode=mode,
+        model=model,
+        pool=pool,
+        base_url=base_url,
+        reasoning_effort=reasoning_effort,
+    )
 
 
 def _estimate_budget(count: int, effort: str) -> int:
@@ -314,9 +323,16 @@ def choose_profile_sync(
     model = str(_attr(settings, "model", "") or "")
     base_url = str(_attr(settings, "base_url", "") or "")
     api_key = str(_attr(settings, "api_key", "") or "")
+    effort = str(_attr(settings, "reasoning_effort", "auto") or "auto")
 
     try:
-        key = profile_cache.profile_cache_key(members, mode=mode, model=model)
+        key = profile_cache.profile_cache_key(
+            members,
+            mode=mode,
+            model=model,
+            base_url=base_url,
+            reasoning_effort=effort,
+        )
     except Exception:
         key = ""
 
@@ -342,7 +358,7 @@ def choose_profile_sync(
             probes,
             model=model,
             salience=summary,
-            effort=str(_attr(settings, "reasoning_effort", "auto") or "auto"),
+            effort=effort,
         )
     except Exception:
         return _heuristic()
