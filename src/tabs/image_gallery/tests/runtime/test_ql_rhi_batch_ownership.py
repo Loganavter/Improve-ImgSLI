@@ -19,6 +19,11 @@ No GPU: the rhi + command buffer are pure-Python fakes. Each
 consumption is recorded by object identity, so the fake exposes
 ``outstanding == taken - consumed`` — the exact predicate the pre-fix
 code violated (see ``DONE.md`` for the recorded failing run).
+
+Module split (task-gallery-ql-preview-batch-module-2026-10-17): the batch
+helpers + the outstanding counter live in ``preview_canvas.batches``;
+``rhi_entry.render`` keeps the sequencing and delegates every take/consume
+to that module (the last two tests pin the ownership boundary).
 """
 
 from __future__ import annotations
@@ -26,6 +31,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 from tabs.image_gallery.ui.quick_look.preview_canvas import rhi_entry
+from tabs.image_gallery.ui.quick_look.preview_canvas import batches
 
 
 # ---------------------------------------------------------------------------
@@ -458,3 +464,42 @@ def test_alternating_handover_and_skip_frames_never_leak():
         _drive(widget, cmd)
         _drive(tiled_widget, cmd)
         assert _outstanding(rhi, cmd) == 0
+
+
+# ---------------------------------------------------------------------------
+# module ownership: the invariant + its counter live in ``batches``
+# ---------------------------------------------------------------------------
+
+
+def test_batch_helpers_live_in_the_batches_module():
+    """``rhi_entry`` delegates batch ownership; it keeps no second copy."""
+    assert not hasattr(rhi_entry, "_note_rhi_batch")
+    assert not hasattr(rhi_entry, "_drain_batch")
+    for name in ("take", "drain", "begin_pass", "transfer"):
+        helper = getattr(batches, name)
+        assert callable(helper), name
+        assert helper.__module__ == batches.__name__, name
+
+
+def test_batch_helpers_balance_the_counter_directly():
+    """take(+1) then drain/transfer(-1); a refused take owes nothing."""
+    rhi = _FakeRhi()
+    cmd = _FakeCmd()
+    widget = _FakeWidget(rhi)
+
+    batch, ok = batches.take(widget, rhi)
+    assert ok and batch is not None
+    assert widget._ql_rhi_batches_outstanding == 1
+    batches.drain(widget, cmd, batch)
+    assert widget._ql_rhi_batches_outstanding == 0
+
+    batch, ok = batches.take(widget, rhi)
+    batches.transfer(widget, batch)
+    assert widget._ql_rhi_batches_outstanding == 0
+    # transfer is not a drain: the handed batch went to another owner only.
+    assert cmd.consumed == [rhi.handed[0]]
+
+    refused = _FakeRhi(fail_calls=(1,))
+    batch, ok = batches.take(widget, refused)
+    assert (batch, ok) == (None, False)
+    assert widget._ql_rhi_batches_outstanding == 0

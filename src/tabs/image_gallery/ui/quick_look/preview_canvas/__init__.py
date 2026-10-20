@@ -39,6 +39,8 @@ unchanged -- and the class keeps same-named thin delegators here:
 - ``lazy_levels``: demand-built lazy levels (sharp zoom).
 - ``applicator``: the shared-applicator plan.
 - ``rhi_entry``: QRhiWidget entry points (frame sequencing).
+- ``batches``: resource-update-batch take/consume/drain + the outstanding
+  counter (the batch-ownership invariant).
 - ``raster``: the frame raster + wheel/mouse interaction.
 
 Every module-level name the old single file exposed is re-exported here, so
