@@ -26,6 +26,7 @@ from engine.analysis.contracts import (
     ProducerSpec,
     RunJournal,
 )
+from engine.analysis.context import AnalysisContext
 
 
 def _ref(**overrides) -> BackendRef:
@@ -205,3 +206,63 @@ def test_records_are_frozen():
         field = dataclasses.fields(instance)[0].name
         with pytest.raises(dataclasses.FrozenInstanceError):
             setattr(instance, field, None)
+
+
+# -- AnalysisContext: the executor-provided inputs of a network producer ----
+#
+# W6 adds `backend` / `call` / `image_bytes` so a producer never resolves a
+# model, sends a request or opens a file itself (plan §4 path 1, I2/G11).
+
+
+def _context(**overrides):
+    kwargs: dict[str, object] = {"item_path": "photo.png", "mtime_ns": 1}
+    kwargs.update(overrides)
+    return AnalysisContext(**kwargs)
+
+
+def test_context_executor_fields_default_to_none():
+    ctx = _context()
+
+    assert ctx.backend is None
+    assert ctx.call is None
+    assert ctx.image_bytes is None
+
+
+def test_context_is_still_frozen_with_the_executor_fields():
+    ctx = _context(backend=_ref(), call=lambda payload: "{}")
+    for field in ("backend", "call", "image_bytes"):
+        with pytest.raises(dataclasses.FrozenInstanceError):
+            setattr(ctx, field, None)
+
+
+def test_context_hash_decision_is_pinned():
+    """The record is NOT hashable, and the new ``call`` field is not the reason.
+
+    ``extra`` is a frozen ``MappingProxyType`` (``freeze_mapping``) and has no
+    ``__hash__``; that predates this wave. ``call`` (a function) and
+    ``image_bytes`` are hashable on their own, so adding transport injection did
+    not silently change the record's identity contract. Nothing keys a cache by
+    a context — cache identity takes the ``BackendRef`` (plan I5) — so the
+    decision is "unhashable, documented", not "make it hashable".
+    """
+    assert hash(_ref()) == hash(_ref())
+    assert hash(lambda: None) is not None
+    with pytest.raises(TypeError, match="unhashable"):
+        hash(_context(backend=_ref(), call=lambda payload: "{}", image_bytes=b"x"))
+
+
+def test_context_require_is_unaffected_by_the_executor_fields():
+    ctx = _context(
+        backend=_ref(),
+        call=lambda payload: "{}",
+        image_bytes=b"x",
+        capabilities=frozenset({"images"}),
+    )
+
+    # Supplying bytes/backend/transport does not declare a capability: the
+    # capability set stays the explicit answer to "what can be measured here".
+    assert ctx.has("images") is True
+    assert ctx.has("backend") is False
+    assert ctx.require("images") is None
+    assert ctx.require("images", "reference") == "missing capability: reference"
+    assert _context().require("images") == "missing capability: images"

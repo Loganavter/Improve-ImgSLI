@@ -59,8 +59,19 @@ def _analyze_budget(effort: str, configured: int) -> int:
     return max(_ANALYZE_MIN_TOKENS, budget)
 
 
-def build_request(
-    image_path: Path,
+def mime_for_path(image_path) -> str:
+    """Content type of *image_path* by suffix (``png`` when unknown).
+
+    Suffix parsing only — no filesystem access. Exposed so a producer that
+    already holds the bytes (``AnalysisContext.image_bytes``) names the same
+    mime as the file-path path instead of growing a second suffix table.
+    """
+    return _EXT_TO_MIME.get(Path(image_path).suffix.lower(), "png")
+
+
+def build_request_from_bytes(
+    image_bytes: bytes,
+    mime: str,
     *,
     model: str,
     prompt: str | None = None,
@@ -72,9 +83,14 @@ def build_request(
     reasoning_effort: str = "auto",
     max_tokens: int = 0,
 ) -> dict:
-    image_path = Path(image_path)
-    mime = _EXT_TO_MIME.get(image_path.suffix.lower(), "png")
-    raw_bytes = image_path.read_bytes()
+    """Chat-completion payload for already-read *image_bytes* (no file I/O).
+
+    The ONE payload shape: :func:`build_request` reads the file and delegates
+    here, and a producer holding executor-provided bytes calls this directly.
+    Two builders would mean two payload policies — the defect this plan removes
+    (B2: ``vlm_max_edge_px`` applied to one upload path only).
+    """
+    raw_bytes = bytes(image_bytes or b"")
     data = base64.b64encode(raw_bytes).decode("ascii")
     # Local (Algorithms-domain) numbers ride along as CONTEXT only — the AI's
     # own per-axis scorecard is the answer (plan-gallery-ai-backend-owns-quality).
@@ -153,3 +169,38 @@ def build_request(
         payload.get("max_tokens"),
     )
     return payload
+
+
+def build_request(
+    image_path: Path,
+    *,
+    model: str,
+    prompt: str | None = None,
+    mode=None,
+    profile=None,
+    metrics: dict | None = None,
+    openrouter: bool = False,
+    fallback_models: tuple[str, ...] | None = None,
+    reasoning_effort: str = "auto",
+    max_tokens: int = 0,
+) -> dict:
+    """Payload for one image on disk — reads it once, then delegates.
+
+    Signature and behaviour are unchanged for every existing caller; the file
+    read stays here (the caller owns the path) and the payload comes from
+    :func:`build_request_from_bytes`, so there is one payload policy.
+    """
+    image_path = Path(image_path)
+    return build_request_from_bytes(
+        image_path.read_bytes(),
+        mime_for_path(image_path),
+        model=model,
+        prompt=prompt,
+        mode=mode,
+        profile=profile,
+        metrics=metrics,
+        openrouter=openrouter,
+        fallback_models=fallback_models,
+        reasoning_effort=reasoning_effort,
+        max_tokens=max_tokens,
+    )
