@@ -19,6 +19,8 @@ from .cache import (
     _metrics_cache_store,
     _metrics_fingerprint,
     _mode_str_for,
+    _overlay_metric_profile,
+    _overlay_mode,
 )
 from .theme import (
     _metric_label,
@@ -290,7 +292,15 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
         note = _metric_note(overlay, spec_id, score)
         return f"{label} — {note}" if note else label
 
-    def _add_metric_row(title: str, value_text: str, fraction: float, color=None, value_color=None, value_elide: bool = True) -> None:
+    def _add_metric_row(
+        title: str,
+        value_text: str,
+        fraction: float,
+        color=None,
+        value_color=None,
+        value_elide: bool = True,
+        bar: bool = True,
+    ) -> None:
         row = QWidget(host)
         rl = QVBoxLayout(row)
         rl.setContentsMargins(0, 0, 0, 0)
@@ -318,11 +328,11 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
             pass
         header.addWidget(v, 1)
         rl.addLayout(header)
-        # Lazy import bar widget
-        from tabs.image_gallery.ui.quick_look.bars import _BarWidget
+        if bar:
+            # Lazy import bar widget
+            from tabs.image_gallery.ui.quick_look.bars import _BarWidget
 
-        bar = _BarWidget(fraction=fraction, fill_color=color, parent=row)
-        rl.addWidget(bar)
+            rl.addWidget(_BarWidget(fraction=fraction, fill_color=color, parent=row))
         overlay._metric_rows.append(row)
 
     def _ok_color():
@@ -353,6 +363,9 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
             _muted_color(),
             value_color=_muted_color(),
             value_elide=False,
+            # No bar for a non-measurement: a 0-fraction bar reads as a value
+            # (and its 4px floor is not "0%"). The row stays one honest line.
+            bar=False,
         )
 
     # Canonical scores drive both the text and the bar: every metric reads
@@ -392,6 +405,27 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
         _add_metric_row(_titled(_metric_label(overlay, spec_id, spec.label), spec_id, score), value, score / 100.0, col, value_color=col)
         return True
 
+    # The ROW SET is the active metric profile — the same seam the card dots
+    # read (``active_profile`` → ``measured_axes_for``), so rows, dots, rank
+    # and the AI scorecard cannot disagree about which axes exist (no second
+    # axis list here). Registry order is the profile's own order.
+    try:
+        from tabs.image_gallery.services.rank_fusion import measured_axes_for
+
+        _mode = _overlay_mode(overlay, mode_str)
+        _profile = _overlay_metric_profile(overlay, mode_str)
+        axes = measured_axes_for(_mode, profile=_profile)
+    except Exception:
+        _profile = None
+        axes = ()
+    # A VLM-selected profile is a deliberate report request: render exactly
+    # its axes, gaps included. The wide mode/heuristic base describes the
+    # measurement pool (fidelity alone carries 14 axes); rendering an empty
+    # row for every optional detector would flood the no-scroll report, so
+    # there only the report's core axes keep their gap row and an unscored
+    # optional axis adds no row (the pre-profile rule for noise/WB/LPIPS).
+    _exact_rows = str(getattr(_profile, "source", "") or "") == "vlm"
+
     # A source is the reference, not a variant — comparing it to itself
     # ("Source match 100%", "vs #1") is nonsense. Render a source state.
     _viewing_source = False
@@ -402,6 +436,14 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
         _viewing_source = _sp is not None and _P(getattr(item, "path", "")) == _P(_sp)
     except Exception:
         _viewing_source = False
+    # Always-gap axes of each report kind (the historical placeholders): an
+    # in-profile axis here stays visible as "— · not measured" even in the
+    # compact mode/heuristic report, so a missing measurement never silently
+    # disappears. Optional axes keep the "no empty row" rule unless the VLM
+    # selected the profile (then the exact axis set is the request).
+    _core_axes = ("ssim", "detail_gain", "color_accuracy") if is_fidelity else (
+        ("sharpness", "exposure", "clipping") if "CAMERA" in mode_str else ("aesthetic",)
+    )
     if is_fidelity and _viewing_source:
         pass  # the source is the reference — no comparison report rows
     elif is_fidelity:
@@ -414,115 +456,106 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
             rank=_rank_n,
             total=len(overlay._series_items),
         )
-        _add_score_row("ssim", extra=rank_txt)
-        subline = ssim_subline(overlay, item) if domain != "ai" else ""
-        if subline:
-            sub_row = QWidget(host)
-            sub_lay = QVBoxLayout(sub_row)
-            sub_lay.setContentsMargins(0, 0, 0, 0)
-            sub_lay.setSpacing(0)
-            sub_lay.addWidget(_make_label(subline, parent=sub_row, pixel_size=11, pt=11.0, color_token="list_item.text.rating", elide=True, minimum_width=40))
-            overlay._metric_rows.append(sub_row)
-        # Detail keeps its dual restored/invented bar (special widget) but the
-        # header value is the canonical quality score.
-        _spec = _spec_for("detail_gain")
-        _hf = _raw_for(_spec, metrics) if _spec is not None else None
-        if _hf is None:
-            # No raw (the AI domain has none, or Detail is unmeasured) — the
-            # row reads as a normal score/gap row from the current read.
-            _add_score_row("detail_gain")
-        else:
-            _key, hf_f = _hf
-            score = _score_for(_spec, hf_f)
-            row = QWidget(host)
-            rl = QVBoxLayout(row)
-            rl.setContentsMargins(0, 0, 0, 0)
-            rl.setSpacing(scaled_px(6))  # label→bar gap (W5 fit budget checked)
-            header = QHBoxLayout()
-            header.setContentsMargins(0, 0, 0, 0)
-            header.setSpacing(scaled_px(6))
-            t = _make_label(
-                _titled(_metric_label(overlay, "detail_gain", _spec.label), "detail_gain", score),
-                parent=row, pixel_size=11, pt=11.5,
-            )
-            header.addWidget(t)
-            # W7: value takes free row width via stretch (see _add_metric_row).
-            v = _make_label(f"{score}%", parent=row, pixel_size=11, pt=11.5, color=_band_color(score), elide=True, minimum_width=40)
-            try:
-                v.setAlignment(Qt.AlignmentFlag.AlignRight)
-            except Exception:
-                pass
-            header.addWidget(v, 1)
-            rl.addLayout(header)
-            from tabs.image_gallery.ui.quick_look.bars import _DualRestoredInventedBar
+        for axis_id in axes:
+            if axis_id == "ssim":
+                _add_score_row("ssim", extra=rank_txt)
+                subline = ssim_subline(overlay, item) if domain != "ai" else ""
+                if subline:
+                    sub_row = QWidget(host)
+                    sub_lay = QVBoxLayout(sub_row)
+                    sub_lay.setContentsMargins(0, 0, 0, 0)
+                    sub_lay.setSpacing(0)
+                    sub_lay.addWidget(_make_label(subline, parent=sub_row, pixel_size=11, pt=11.0, color_token="list_item.text.rating", elide=True, minimum_width=40))
+                    overlay._metric_rows.append(sub_row)
+                continue
+            if axis_id == "detail_gain":
+                # Detail keeps its dual restored/invented bar (special widget)
+                # but the header value is the canonical quality score.
+                _spec = _spec_for("detail_gain")
+                _hf = _raw_for(_spec, metrics) if _spec is not None else None
+                if _hf is None:
+                    # No raw (the AI domain has none, or Detail is unmeasured)
+                    # — the row reads as a normal score/gap row from the read.
+                    _add_score_row("detail_gain")
+                    continue
+                _key, hf_f = _hf
+                score = _score_for(_spec, hf_f)
+                row = QWidget(host)
+                rl = QVBoxLayout(row)
+                rl.setContentsMargins(0, 0, 0, 0)
+                rl.setSpacing(scaled_px(6))  # label→bar gap (W5 fit budget checked)
+                header = QHBoxLayout()
+                header.setContentsMargins(0, 0, 0, 0)
+                header.setSpacing(scaled_px(6))
+                t = _make_label(
+                    _titled(_metric_label(overlay, "detail_gain", _spec.label), "detail_gain", score),
+                    parent=row, pixel_size=11, pt=11.5,
+                )
+                header.addWidget(t)
+                # W7: value takes free row width via stretch (see _add_metric_row).
+                v = _make_label(f"{score}%", parent=row, pixel_size=11, pt=11.5, color=_band_color(score), elide=True, minimum_width=40)
+                try:
+                    v.setAlignment(Qt.AlignmentFlag.AlignRight)
+                except Exception:
+                    pass
+                header.addWidget(v, 1)
+                rl.addLayout(header)
+                from tabs.image_gallery.ui.quick_look.bars import _DualRestoredInventedBar
 
-            dual = _DualRestoredInventedBar(hf_ratio=hf_f, parent=row)
-            rl.addWidget(dual)
-            sub = QHBoxLayout()
-            sub.setContentsMargins(0, 0, 0, 0)
-            sub.setSpacing(scaled_px(6))
-            lab_l = _make_label(
-                _ql_text(overlay, "image_gallery.ql.restored_texture", "restored texture"),
-                parent=row, pixel_size=11, pt=11.0,
-            )
-            sub.addWidget(lab_l)
-            sub.addStretch(1)
-            lab_r = _make_label(
-                _ql_text(overlay, "image_gallery.ql.invented_hallucinated", "invented / hallucinated"),
-                parent=row, pixel_size=11, pt=11.0,
-            )
-            sub.addWidget(lab_r)
-            rl.addLayout(sub)
-            overlay._metric_rows.append(row)
-        _add_score_row("color_accuracy")
-        # Source-relative clipping (how much more this variant clips than the
-        # source); the raw delta is an Algorithms-domain extra. Shown when the
-        # current domain scored the axis.
-        if "clipping_delta" in read:
+                dual = _DualRestoredInventedBar(hf_ratio=hf_f, parent=row)
+                rl.addWidget(dual)
+                sub = QHBoxLayout()
+                sub.setContentsMargins(0, 0, 0, 0)
+                sub.setSpacing(scaled_px(6))
+                lab_l = _make_label(
+                    _ql_text(overlay, "image_gallery.ql.restored_texture", "restored texture"),
+                    parent=row, pixel_size=11, pt=11.0,
+                )
+                sub.addWidget(lab_l)
+                sub.addStretch(1)
+                lab_r = _make_label(
+                    _ql_text(overlay, "image_gallery.ql.invented_hallucinated", "invented / hallucinated"),
+                    parent=row, pixel_size=11, pt=11.0,
+                )
+                sub.addWidget(lab_r)
+                rl.addLayout(sub)
+                overlay._metric_rows.append(row)
+                continue
+            # Every other profile axis: the canonical score row, with the
+            # Algorithms-domain raw delta suffix where one exists. An axis the
+            # current domain did not score stays an explicit "not measured"
+            # row for the core axes / a VLM-selected profile (never a
+            # fabricated value); an unscored optional axis in the wide
+            # heuristic report adds no empty row.
+            if not _exact_rows and axis_id not in _core_axes and axis_id not in read:
+                continue
             _extra = ""
             try:
-                _extra = f"{float(metrics.get('clipping_delta')):+.2f}%"
+                if axis_id == "clipping_delta":
+                    _extra = f"{float(metrics.get('clipping_delta')):+.2f}%"
+                elif axis_id in ("halo_delta", "chroma_fringe_delta"):
+                    _extra = f"{float(metrics.get(axis_id)):.1f}×"
             except Exception:
                 _extra = ""
-            _add_score_row("clipping_delta", gap=False, extra=_extra)
-        # Source-relative edge artifacts (halo / chroma fringing) — reliable
-        # form; Algorithms shows the raw edge/flat ratio.
-        for _k in ("halo_delta", "chroma_fringe_delta"):
-            if _k in read:
-                _extra = ""
-                try:
-                    _extra = f"{float(metrics.get(_k)):.1f}×"
-                except Exception:
-                    _extra = ""
-                _add_score_row(_k, gap=False, extra=_extra)
-        # Optional learned perceptual closeness (LPIPS/DISTS): rendered only
-        # when the current domain scored them, so no empty row ever appears.
-        if "dists" in read:
-            _add_score_row("dists", gap=False)
-        if "lpips" in read:
-            _add_score_row("lpips", gap=False)
-    elif "CAMERA" in mode_str:
-        _add_score_row("sharpness")
-        _add_score_row("exposure")
-        _add_score_row("clipping")
-        # Noise/WB have no "not measured" placeholder by design: when absent
-        # the rows simply hide (unchanged historical behavior).
-        _add_score_row("noise", gap=False)
-        _add_score_row("white_balance", gap=False)
-        # Optional no-reference overall quality (BRISQUE) when scored; an
-        # absent reading adds no row.
-        if "brisque" in read:
-            _add_score_row("brisque", gap=False)
+            _add_score_row(axis_id, extra=_extra)
     else:
-        _add_score_row("typicality")
-        _add_score_row("aesthetic")
-    # AI-only Composition axis (no local detector) as a normal row so the
-    # block stays text-free — numbers live in rows.
+        # Camera / batch reports: the profile's axes, in profile order. No
+        # fixed per-mode list — an axis outside the profile never renders.
+        # A core axis without a score stays an honest gap row; an optional
+        # one is shown only when the current domain scored it (or the VLM
+        # selected the exact set).
+        for axis_id in axes:
+            if not _exact_rows and axis_id not in _core_axes and axis_id not in read:
+                continue
+            _add_score_row(axis_id)
+    # AI-only Composition axis (no local detector, not in MEASURED_POOL) is a
+    # VLM judgment: it belongs to the AI domain only, never to the local
+    # Algorithms report — there it would be a second, competing answer.
     try:
         _comp = int(getattr(getattr(item, "analysis", None), "composition", -1) or -1)
     except Exception:
         _comp = -1
-    if _comp >= 0:
+    if domain == "ai" and _comp >= 0:
         _ccol = _band_color(_comp)
         _add_metric_row(
             _titled(_metric_label(overlay, "composition", "Composition"), "composition", _comp),

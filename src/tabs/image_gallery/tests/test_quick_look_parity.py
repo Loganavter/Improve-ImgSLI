@@ -2997,7 +2997,9 @@ def test_composition_axis_renders_as_metric_row(qtbot):
     )
     b = _item("b.png")
     ov = _make_overlay(qtbot)
-    _show(ov, a, [a, b])
+    # Composition is a VLM judgment (not a MEASURED_POOL axis): it renders on
+    # the AI judgment domain only, never in the Algorithms report.
+    _show(ov, a, [a, b], domain="ai")
     # Composition lives as a metric row (title carries a band note).
     titles = [lbl.text() for row in ov._metric_rows for lbl in row.findChildren(_QlLabel)]
     assert any(t.startswith("Composition") for t in titles)
@@ -3110,7 +3112,9 @@ def test_refresh_metrics_rebuilds_when_analysis_arrives(qtbot):
     a = _item("a.png", metrics={"noise": 0.9})
     b = _item("b.png", metrics={"noise": 0.2})
     ov = _make_overlay(qtbot)
-    _show(ov, a, [a, b], mode=Mode.CAMERA)
+    # Composition is an AI-domain (VLM) axis — the late analysis must rebuild
+    # the AI report's rows.
+    _show(ov, a, [a, b], mode=Mode.CAMERA, domain="ai")
     before = [lbl.text() for row in ov._metric_rows for lbl in row.findChildren(_QlLabel)]
     assert not any(t.startswith("Composition") for t in before)
     a.analysis = AiAnalysisResult(
@@ -3144,6 +3148,8 @@ def test_cached_analysis_hydrated_on_open(qtbot, tmp_path, monkeypatch):
     other = GalleryItem(path=Path("/g/z.png"), mtime_ns=1)
     ov = _make_overlay(qtbot)
     owner = SimpleNamespace(
+        # Composition renders on the AI judgment domain (it is a VLM axis).
+        _judgment_domain="ai",
         state=SimpleNamespace(
             mode=Mode.CAMERA, source_path=None, series=[[item, other]], items=[item, other]
         ),
