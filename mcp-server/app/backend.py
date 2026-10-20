@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import difflib
 import json
+import math
 import os
 import re
 import subprocess
@@ -57,6 +58,13 @@ SNAPSHOT_TTL_S = 30.0
 
 #: Subprocess wall-clock budget for a headless boot / capture (seconds).
 DEFAULT_TIMEOUT_S = 120.0
+
+#: ``wait_for`` bounds, mirrored in the catalog's input schema. The hard cap
+#: keeps one MCP call from occupying the request/response channel for minutes.
+DEFAULT_WAIT_TIMEOUT_MS = 5000
+MAX_WAIT_TIMEOUT_MS = 60_000
+DEFAULT_WAIT_POLL_MS = 100
+MIN_WAIT_POLL_MS = 25
 
 _LEVELS = ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
 _LEVEL_RE = re.compile(r"-\s*\[(?P<level>[A-Z]+)\]\s*-\s*(?P<rest>.*)")
@@ -820,6 +828,247 @@ class AppBackend:
     def jobs_cancel(self, *, id: str) -> dict:
         """Cancel one running job by id — the real cancel, or a named refusal."""
         return self._live_only("jobs_cancel", self._jobs_need_live(), id=id)
+
+    # -- waiting for an asynchronous expectation (live-only) -----------------
+
+    def wait_for(
+        self,
+        *,
+        timeout_ms: int | None = None,
+        poll_ms: int | None = None,
+        element: str | None = None,
+        role: str | None = None,
+        label: str | None = None,
+        job_settled: bool | None = None,
+        job_kind: str | None = None,
+    ) -> dict:
+        """Wait for one asynchronous expectation, returning the last state.
+
+        The single-call replacement for hand-written "poll ui_elements /
+        jobs_list until ..." loops. It observes only what the live-only read
+        tools already observe — ``ui_elements`` (the same inventory the
+        ``ui_*`` tools resolve ids against) and ``jobs_list`` — so it mutates
+        nothing and invents neither a second resolver nor a second job view.
+
+        Exactly one selector is required: ``element``, ``role``+``label``, or
+        ``job_settled``. The predicate is evaluated on every observation,
+        including the first and the one at the deadline. A miss is a *normal*
+        result (``ok: false, reason: "timeout"``) carrying the last observed
+        row, never a tool error, so the caller can read why without a second
+        call. Sleeps are clamped to the remaining budget.
+        """
+        predicate = self._wait_predicate(
+            element=element,
+            role=role,
+            label=label,
+            job_settled=job_settled,
+            job_kind=job_kind,
+        )
+        timeout = self._wait_timeout(timeout_ms)
+        interval = self._wait_poll(poll_ms)
+        client = self.live.client_if_alive()
+        if client is None:
+            raise self._wait_need_live()
+        start = time.monotonic()
+        deadline = start + timeout / 1000.0
+        while True:
+            try:
+                observed, matched, seen = self._wait_observe(client, predicate)
+            except LiveUnavailable:
+                self.live.note_failure()
+                raise self._wait_need_live()
+            except LiveError as exc:
+                raise ToolError(exc.message, exc.hint)
+            if matched:
+                return {
+                    "ok": True,
+                    "reason": None,
+                    "waited_ms": self._elapsed_ms(start),
+                    "predicate": predicate,
+                    "observed": observed,
+                    "hint": None,
+                    "source": "live",
+                }
+            now = time.monotonic()
+            if now >= deadline:
+                return {
+                    "ok": False,
+                    "reason": "timeout",
+                    "waited_ms": max(self._elapsed_ms(start), timeout),
+                    "predicate": predicate,
+                    "observed": observed,
+                    "hint": self._wait_timeout_hint(predicate, observed, seen),
+                    "source": "live",
+                }
+            time.sleep(min(interval / 1000.0, deadline - now))
+
+    @staticmethod
+    def _elapsed_ms(start: float) -> int:
+        # Round up: ``waited_ms`` must cover every observation it reports, and
+        # a truncated millisecond would understate the window a caller sees.
+        return int(math.ceil((time.monotonic() - start) * 1000))
+
+    @staticmethod
+    def _wait_timeout(value: int | None) -> int:
+        if value is None:
+            return DEFAULT_WAIT_TIMEOUT_MS
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise ToolError(
+                "wait_for timeout_ms must be an integer",
+                "pass a millisecond budget, e.g. 5000",
+            )
+        if value < 1:
+            raise ToolError("wait_for timeout_ms must be >= 1", "pass a positive millisecond budget")
+        if value > MAX_WAIT_TIMEOUT_MS:
+            raise ToolError(
+                f"wait_for timeout_ms must be <= {MAX_WAIT_TIMEOUT_MS}",
+                "split longer waits into several calls (or raise the cap deliberately)",
+            )
+        return value
+
+    @staticmethod
+    def _wait_poll(value: int | None) -> int:
+        if value is None:
+            return DEFAULT_WAIT_POLL_MS
+        if isinstance(value, bool) or not isinstance(value, int) or value < MIN_WAIT_POLL_MS:
+            raise ToolError(
+                f"wait_for poll_ms must be an integer >= {MIN_WAIT_POLL_MS}",
+                "keep the default 100 ms unless finer polling is genuinely needed",
+            )
+        return value
+
+    @staticmethod
+    def _wait_predicate(
+        *,
+        element: str | None,
+        role: str | None,
+        label: str | None,
+        job_settled: bool | None,
+        job_kind: str | None,
+    ) -> dict:
+        from . import catalog
+
+        if job_settled is not None and not isinstance(job_settled, bool):
+            raise ToolError(
+                "wait_for job_settled must be a boolean",
+                "pass true, or omit it and use element/role+label",
+            )
+        if job_settled is False:
+            raise ToolError(
+                "wait_for job_settled must be true",
+                "false would wait for a job to start, which no selector describes",
+            )
+        if job_kind is not None and job_settled is None:
+            raise ToolError(
+                "wait_for job_kind only applies with job_settled=true",
+                "either add job_settled=true or drop job_kind",
+            )
+        if job_kind is not None and job_kind not in catalog.JOB_KINDS:
+            raise ToolError(
+                f"wait_for job_kind must be one of: {', '.join(catalog.JOB_KINDS)}",
+                "read jobs_list to see the kinds currently in flight",
+            )
+        if (role is None) != (label is None):
+            raise ToolError(
+                "wait_for role and label must be passed together",
+                "both are exact matches against ui_elements rows",
+            )
+        if element is not None and (not isinstance(element, str) or not element.strip()):
+            raise ToolError(
+                "wait_for element must be a non-empty element id",
+                "call ui_elements and pass one of the returned ids verbatim",
+            )
+        selected = [
+            name
+            for name, chosen in (
+                ("element", element is not None),
+                ("role_label", role is not None or label is not None),
+                ("job_settled", job_settled is True),
+            )
+            if chosen
+        ]
+        if len(selected) != 1:
+            raise ToolError(
+                "wait_for needs exactly one predicate selector "
+                "(element | role+label | job_settled)",
+                "pass one of: element=<id>, role=<role> with label=<label>, or "
+                "job_settled=true",
+            )
+        return {
+            "selector": selected[0],
+            "element": element,
+            "role": role,
+            "label": label,
+            "job_kind": job_kind,
+        }
+
+    def _wait_observe(
+        self, client: Any, predicate: dict
+    ) -> tuple[Any, bool, list[str]]:
+        """One observation: ``(observed row(s), predicate held, seen ids)``."""
+        selector = predicate["selector"]
+        if selector == "job_settled":
+            listing = self.live.jobs_list(client=client)
+            rows = [row for row in listing.get("jobs") or [] if isinstance(row, dict)]
+            kind = predicate.get("job_kind")
+            if kind:
+                rows = [row for row in rows if row.get("kind") == kind]
+            # ``jobs_list`` only lists non-idle passes, so "no row" is exactly
+            # "settled" — no invented percentage or second job view.
+            return rows, not rows, []
+        inventory = self.live.ui_elements(client=client, include_disabled=True)
+        rows = [row for row in inventory.get("elements") or [] if isinstance(row, dict)]
+        seen = [str(row.get("id")) for row in rows if row.get("id") is not None]
+        if selector == "element":
+            row = next(
+                (candidate for candidate in rows if candidate.get("id") == predicate["element"]),
+                None,
+            )
+            ready = row is not None and bool(row.get("visible")) and bool(row.get("enabled"))
+            return row, ready, seen
+        matches = [
+            row
+            for row in rows
+            if row.get("role") == predicate["role"] and row.get("label") == predicate["label"]
+        ]
+        return (matches[-1] if matches else None), bool(matches), seen
+
+    @staticmethod
+    def _wait_timeout_hint(predicate: dict, observed: Any, seen: list[str]) -> str:
+        if predicate["selector"] == "element":
+            if isinstance(observed, dict):
+                return (
+                    "the element is present but visible="
+                    f"{str(bool(observed.get('visible'))).lower()} and enabled="
+                    f"{str(bool(observed.get('enabled'))).lower()}; wait for the "
+                    "state change that shows/enables it, then call wait_for again"
+                )
+            close = difflib.get_close_matches(
+                str(predicate["element"]), seen, n=3, cutoff=0.5
+            )
+            hint = "call ui_elements to list the current ids and pass one verbatim"
+            if close:
+                hint = "did you mean: " + ", ".join(close) + "? (" + hint + ")"
+            return hint
+        if predicate["selector"] == "role_label":
+            return (
+                "no element with role "
+                f"{predicate['role']!r} and label {predicate['label']!r} was seen; "
+                "call ui_elements to list the current role/label pairs"
+            )
+        kind = predicate.get("job_kind")
+        scope = f" of kind {kind!r}" if kind else ""
+        return (
+            f"a job{scope} was still listed as running/paused; call jobs_list for "
+            "its progress, or jobs_cancel where a safe cancel exists"
+        )
+
+    @staticmethod
+    def _wait_need_live() -> ToolError:
+        return ToolError(
+            "no live instance; waiting for app state needs a running app",
+            "start the app with the control socket enabled (see docs/dev/MCP.md), then retry",
+        )
 
     def _fallback_persist(self, key: str, value: str, label: str) -> dict:
         try:

@@ -1119,6 +1119,101 @@ TOOLS: list[dict] = [
         "annotations": MUTATING_INPUT,
         "handler": "jobs_cancel",
     },
+    {
+        "name": "wait_for",
+        "title": "Wait for one asynchronous expectation",
+        "description": (
+            "Block until exactly one expectation holds, then return what was "
+            "observed. Selectors: element=<id> (resolves and is visible+enabled), "
+            "role+label (an element with that exact role and label exists), or "
+            "job_settled=true (no listed job of job_kind remains). A timeout is a "
+            "normal result (ok:false, reason timeout) carrying the last observed "
+            "row, so do not hand-poll. Read-only, live-only, one selector."
+        ),
+        "inputSchema": _params(
+            {
+                "timeout_ms": {
+                    **_INT,
+                    "minimum": 1,
+                    "maximum": 60000,
+                    "default": 5000,
+                    "description": "Longest wait before answering timeout; hard cap 60000.",
+                },
+                "poll_ms": {
+                    **_INT,
+                    "minimum": 25,
+                    "default": 100,
+                    "description": "Floor between observations; a slow observation adds its own duration.",
+                },
+                "element": {
+                    **_STR,
+                    "description": "Element id from ui_elements; waits until it is present, visible, and enabled.",
+                },
+                "role": {
+                    **_STR,
+                    "description": "Exact role (ui_elements' role) to pair with label; pass both.",
+                },
+                "label": {
+                    **_STR,
+                    "description": "Exact, case-sensitive label to pair with role; pass both.",
+                },
+                "job_settled": {
+                    **_BOOL,
+                    "description": "True waits until no running/paused job remains (optionally of job_kind).",
+                },
+                "job_kind": {
+                    **_STR,
+                    "enum": list(JOB_KINDS),
+                    "description": "Restrict job_settled to one job kind; omit to wait for all rows to clear.",
+                },
+            }
+        ),
+        "outputSchema": _object(
+            {
+                "ok": {
+                    "type": "boolean",
+                    "description": "True only when the predicate held; a timeout is never ok.",
+                },
+                "reason": {
+                    "type": ["string", "null"],
+                    "description": "'timeout' when the predicate never held; null on success.",
+                },
+                "waited_ms": _INT,
+                "predicate": _object(
+                    {
+                        "selector": {
+                            **_STR,
+                            "enum": ["element", "role_label", "job_settled"],
+                            "description": "Which selector was waited on.",
+                        },
+                        "element": {"type": ["string", "null"]},
+                        "role": {"type": ["string", "null"]},
+                        "label": {"type": ["string", "null"]},
+                        "job_kind": {"type": ["string", "null"]},
+                    },
+                    ["selector"],
+                ),
+                "observed": {
+                    "description": (
+                        "Last observed state: the element row for element/role+label, "
+                        "the job rows for job_settled; null when nothing matched."
+                    )
+                },
+                "hint": {
+                    "type": ["string", "null"],
+                    "description": "What to read next when the predicate timed out; null on success.",
+                },
+                "source": {
+                    "type": "string",
+                    "enum": ["live"],
+                    "description": "Always live: an asynchronous expectation has no headless analogue.",
+                },
+            },
+            ["ok", "waited_ms", "predicate", "observed", "source"],
+        ),
+        "annotations": READ_ONLY,
+        "handler": "wait_for",
+    },
 ]
 
 # ---------------------------------------------------------------------------

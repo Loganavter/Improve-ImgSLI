@@ -19,6 +19,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -225,7 +226,7 @@ def test_read_and_write_tools_do_not_mix_annotations(wired):
     tools = {tool["name"]: tool for tool in _request(protocol, "tools/list")["result"]["tools"]}
 
     for name in ("list_actions", "list_sessions", "get_state", "read_log", "query_trace",
-                 "dump_ui_layout", "list_surfaces", "ui_elements", "jobs_list"):
+                 "dump_ui_layout", "list_surfaces", "ui_elements", "jobs_list", "wait_for"):
         annotations = tools[name]["annotations"]
         assert annotations["readOnlyHint"] is True, name
         assert annotations["destructiveHint"] is False, name
@@ -647,6 +648,337 @@ def test_job_tools_without_a_live_instance_error_honestly(wired, monkeypatch, to
     assert "structuredContent" not in result
     assert spawned == [], "job reporting must never spawn a process"
     assert calls["launches"] == [] and calls["tabs"] == [], "no headless boot for job state"
+
+
+# --- wait_for (live-only, one selector per call) ----------------------------
+
+
+class _ScriptedLive:
+    """``LiveBackend`` stand-in: one scripted observation per poll.
+
+    Frames are returned in order and the last one repeats, so a predicate that
+    only becomes true on the n-th observation is deterministic without a real
+    app or a display. Each poll is timestamped, letting a test prove
+    ``waited_ms`` covers the window it actually observed.
+    """
+
+    def __init__(self, frames):
+        self.frames = [list(frame) for frame in frames]
+        self.polls: list[tuple[str, float]] = []
+        self.returned: list[list] = []
+        self.include_disabled: list[bool | None] = []
+        self.failures = 0
+
+    def client_if_alive(self):
+        return object()
+
+    def note_failure(self):
+        self.failures += 1
+
+    def _frame(self, label):
+        self.polls.append((label, time.monotonic()))
+        index = min(len(self.returned), len(self.frames) - 1)
+        frame = self.frames[index]
+        self.returned.append(frame)
+        return frame
+
+    def ui_elements(self, *, client=None, scope=None, include_disabled=None):
+        self.include_disabled.append(include_disabled)
+        rows = self._frame("ui_elements")
+        return {"count": len(rows), "window_count": 1, "elements": rows, "source": "live"}
+
+    def jobs_list(self, *, client=None):
+        rows = self._frame("jobs_list")
+        return {"count": len(rows), "jobs": rows, "source": "live"}
+
+
+def _element_row(id, *, role="button", label="Open", visible=True, enabled=True):
+    return {
+        "id": id,
+        "role": role,
+        "label": label,
+        "rect": [0, 0, 10, 10],
+        "screen_rect": [0, 0, 10, 10],
+        "window": "main",
+        "owner_tab": None,
+        "action_id": None,
+        "enabled": enabled,
+        "visible": visible,
+    }
+
+
+def _job_row(kind="gallery_pool", id="pool:image_gallery", status="running"):
+    return {
+        "id": id,
+        "kind": kind,
+        "status": status,
+        "progress": {"done": 1, "total": 4},
+        "elapsed_s": 1.0,
+        "message": "thumbnails 1/4 loaded",
+    }
+
+
+def test_wait_for_element_resolves_on_a_later_poll(wired):
+    protocol, backend, _calls = wired
+    row = _element_row("gallery.thumb.3")
+    fake = _ScriptedLive([[], [row]])
+    backend.live = fake
+
+    result = _call(
+        protocol,
+        "wait_for",
+        {"element": "gallery.thumb.3", "timeout_ms": 2000, "poll_ms": 25},
+    )
+
+    structured = result["structuredContent"]
+    assert result["isError"] is False
+    assert structured["ok"] is True
+    assert structured["reason"] is None
+    assert structured["predicate"] == {
+        "selector": "element",
+        "element": "gallery.thumb.3",
+        "role": None,
+        "label": None,
+        "job_kind": None,
+    }
+    assert structured["observed"] == row == fake.returned[-1][0]
+    assert structured["source"] == "live"
+    assert [label for label, _stamp in fake.polls] == ["ui_elements", "ui_elements"]
+    # Visibility/enabled can only be judged when disabled rows are visible too.
+    assert fake.include_disabled == [True, True]
+
+
+def test_wait_for_element_keeps_waiting_until_it_is_enabled(wired):
+    protocol, backend, _calls = wired
+    disabled = _element_row("gallery.thumb.9", enabled=False)
+    enabled = _element_row("gallery.thumb.9")
+    fake = _ScriptedLive([[disabled], [enabled]])
+    backend.live = fake
+
+    result = _call(
+        protocol,
+        "wait_for",
+        {"element": "gallery.thumb.9", "timeout_ms": 2000, "poll_ms": 25},
+    )
+
+    structured = result["structuredContent"]
+    assert structured["ok"] is True
+    assert structured["observed"] == enabled
+    assert len(fake.polls) == 2, "a present-but-disabled row is not the predicate"
+
+
+def test_wait_for_role_and_label_matches_the_exact_pair(wired):
+    protocol, backend, _calls = wired
+    other = _element_row("main.close", role="button", label="Close")
+    match = _element_row("main.open", role="toolbar.button", label="Open")
+    fake = _ScriptedLive([[other], [other, match]])
+    backend.live = fake
+
+    result = _call(
+        protocol,
+        "wait_for",
+        {"role": "toolbar.button", "label": "Open", "timeout_ms": 2000, "poll_ms": 25},
+    )
+
+    structured = result["structuredContent"]
+    assert structured["ok"] is True
+    assert structured["observed"] == match == fake.returned[-1][1]
+    assert structured["predicate"]["selector"] == "role_label"
+    assert structured["predicate"]["role"] == "toolbar.button"
+
+
+def test_wait_for_role_and_label_is_case_sensitive(wired):
+    protocol, backend, _calls = wired
+    fake = _ScriptedLive([[_element_row("main.open", role="button", label="open")]])
+    backend.live = fake
+
+    result = _call(
+        protocol,
+        "wait_for",
+        {"role": "button", "label": "Open", "timeout_ms": 60, "poll_ms": 25},
+    )
+
+    structured = result["structuredContent"]
+    assert structured["ok"] is False
+    assert structured["observed"] is None
+    assert "role 'button' and label 'Open'" in structured["hint"]
+
+
+def test_wait_for_job_settled_sees_the_running_row_disappear(wired):
+    protocol, backend, _calls = wired
+    running = _job_row()
+    fake = _ScriptedLive([[running], [running], []])
+    backend.live = fake
+
+    result = _call(
+        protocol, "wait_for", {"job_settled": True, "timeout_ms": 2000, "poll_ms": 25}
+    )
+
+    structured = result["structuredContent"]
+    assert structured["ok"] is True
+    assert structured["observed"] == []
+    assert structured["predicate"]["selector"] == "job_settled"
+    assert len(fake.polls) == 3, "a listed row is not settled until it disappears"
+
+
+def test_wait_for_job_settled_honours_job_kind(wired):
+    protocol, backend, _calls = wired
+    fake = _ScriptedLive([[_job_row(kind="metrics_pass", id="metrics:image_gallery")]])
+    backend.live = fake
+
+    result = _call(
+        protocol,
+        "wait_for",
+        {"job_settled": True, "job_kind": "export", "timeout_ms": 2000, "poll_ms": 25},
+    )
+
+    structured = result["structuredContent"]
+    assert structured["ok"] is True, "another kind still running must not block an export wait"
+    assert structured["observed"] == []
+    assert structured["predicate"]["job_kind"] == "export"
+
+
+def test_wait_for_timeout_returns_the_last_observed_row(wired):
+    protocol, backend, _calls = wired
+    disabled = _element_row("gallery.thumb.9", enabled=False)
+    fake = _ScriptedLive([[disabled]])
+    backend.live = fake
+
+    started = time.monotonic()
+    result = _call(
+        protocol,
+        "wait_for",
+        {"element": "gallery.thumb.9", "timeout_ms": 80, "poll_ms": 25},
+    )
+    elapsed_ms = (time.monotonic() - started) * 1000
+
+    structured = result["structuredContent"]
+    assert result["isError"] is False, "a timeout is a normal result, never a tool error"
+    assert structured["ok"] is False
+    assert structured["reason"] == "timeout"
+    assert structured["observed"] == disabled == fake.returned[-1][0]
+    assert structured["hint"] and "enabled=false" in structured["hint"]
+    assert structured["source"] == "live"
+    assert structured["waited_ms"] >= 80
+    assert structured["waited_ms"] <= 80 + 25 + 100
+    assert 80 <= elapsed_ms <= 80 + 25 + 250
+    stamps = [stamp for _label, stamp in fake.polls]
+    assert stamps == sorted(stamps), "poll observations must be monotonic"
+    assert structured["waited_ms"] >= (stamps[-1] - stamps[0]) * 1000
+
+
+def test_wait_for_element_timeout_suggests_close_ids(wired):
+    protocol, backend, _calls = wired
+    fake = _ScriptedLive([[_element_row("gallery.thumb.30")]])
+    backend.live = fake
+
+    result = _call(
+        protocol,
+        "wait_for",
+        {"element": "gallery.thumb.3", "timeout_ms": 50, "poll_ms": 25},
+    )
+
+    structured = result["structuredContent"]
+    assert structured["ok"] is False
+    assert structured["observed"] is None
+    assert "did you mean: gallery.thumb.30" in structured["hint"]
+
+
+@pytest.mark.parametrize(
+    "arguments,fragment",
+    [
+        ({}, "exactly one predicate selector"),
+        ({"element": "main.settings.btn", "role": "button", "label": "Open"},
+         "exactly one predicate selector"),
+        ({"element": "main.settings.btn", "job_settled": True},
+         "exactly one predicate selector"),
+        ({"role": "button"}, "role and label must be passed together"),
+        ({"job_kind": "export"}, "only applies with job_settled=true"),
+        ({"job_settled": False}, "job_settled must be true"),
+        ({"element": "   "}, "non-empty element id"),
+    ],
+)
+def test_wait_for_selector_validation_is_named(wired, arguments, fragment):
+    protocol, _backend, calls = wired
+    result = _call(protocol, "wait_for", arguments)
+
+    assert result["isError"] is True
+    text = result["content"][0]["text"]
+    assert fragment in text
+    assert "Hint:" in text
+    assert "structuredContent" not in result
+    assert calls["launches"] == [] and calls["tabs"] == []
+
+
+@pytest.mark.parametrize(
+    "arguments,fragment",
+    [
+        ({"element": "main.settings.btn", "timeout_ms": -5}, ">= 1"),
+        ({"element": "main.settings.btn", "timeout_ms": 60001}, "<= 60000"),
+        ({"element": "main.settings.btn", "poll_ms": 24}, ">= 25"),
+    ],
+)
+def test_wait_for_bounds_are_protocol_validation_errors(wired, arguments, fragment):
+    protocol, _backend, _calls = wired
+    response = _request(
+        protocol, "tools/call", {"name": "wait_for", "arguments": arguments}, rid=11
+    )
+
+    assert response["error"]["code"] == -32602
+    assert fragment in response["error"]["message"]
+    assert "timeout_ms" in response["error"]["message"] or "poll_ms" in response["error"]["message"]
+
+
+def test_wait_for_handler_refuses_out_of_schema_bounds_directly(wired):
+    """A direct handler call (no protocol layer) still validates its budget."""
+    from app.backend import ToolError
+
+    _protocol, backend, _calls = wired
+    with pytest.raises(ToolError, match="timeout_ms must be >= 1"):
+        backend.wait_for(element="main.settings.btn", timeout_ms=0)
+
+
+def test_wait_for_without_a_live_instance_errors_honestly(wired, monkeypatch):
+    """No instance ⇒ the standard live-only refusal, never a silent timeout."""
+    protocol, _backend, calls = wired
+    import app.backend as backend_module
+
+    spawned: list = []
+    monkeypatch.setattr(backend_module.subprocess, "Popen", lambda *a, **k: spawned.append(a))
+    monkeypatch.setattr(backend_module.subprocess, "run", lambda *a, **k: spawned.append(a))
+
+    started = time.monotonic()
+    result = _call(protocol, "wait_for", {"element": "main.settings.btn"})
+    elapsed = time.monotonic() - started
+
+    assert result["isError"] is True
+    text = result["content"][0]["text"]
+    assert "no live instance" in text
+    assert "waiting for app state needs a running app" in text
+    assert "structuredContent" not in result
+    assert elapsed < 1.0, "the refusal must not spend the default wait budget"
+    assert spawned == [], "waiting must never spawn a process"
+    assert calls["launches"] == [] and calls["tabs"] == []
+
+
+def test_wait_for_catalog_declares_one_selector_and_readonly(wired):
+    protocol, _backend, _calls = wired
+    tools = {tool["name"]: tool for tool in _request(protocol, "tools/list")["result"]["tools"]}
+    tool = tools["wait_for"]
+
+    assert tool["annotations"]["readOnlyHint"] is True
+    assert tool["annotations"]["destructiveHint"] is False
+    assert tool["annotations"]["idempotentHint"] is True
+    assert "required" not in tool["inputSchema"], "the one-of rule is cross-field, not required[]"
+    props = tool["inputSchema"]["properties"]
+    assert props["timeout_ms"]["default"] == 5000
+    assert props["timeout_ms"]["maximum"] == 60000
+    assert props["poll_ms"]["default"] == 100
+    assert props["poll_ms"]["minimum"] == 25
+    assert props["job_kind"]["enum"] == list(catalog.JOB_KINDS)
+    output = tool["outputSchema"]
+    assert output["properties"]["source"]["enum"] == ["live"]
+    assert {"ok", "waited_ms", "predicate", "observed", "source"} <= set(output["required"])
 
 
 # --- stdio round trip -------------------------------------------------------

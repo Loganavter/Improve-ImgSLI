@@ -41,7 +41,7 @@ fallback window, e.g. `:97`).
 
 ## Surface at a glance
 
-22 tools — 10 read-only, 12 mutating (reads and writes never share a tool):
+23 tools — 11 read-only, 12 mutating (reads and writes never share a tool):
 
 | Tool | Kind | What it does |
 |---|---|---|
@@ -55,6 +55,7 @@ fallback window, e.g. `:97`).
 | `ui_elements` | read | live inventory of interactive elements (id, role, label, rects, enabled) |
 | `ui_nav_state` | read | live keyboard-navigation model: sections + focus + overlay children no section owns (live-only) |
 | `jobs_list` | read | live in-flight long passes (kind, status, progress, elapsed_s, message) |
+| `wait_for` | read | block until one expectation holds (element id visible+enabled, role+label exists, or jobs settle); a timeout returns the last observed state (live-only) |
 | `open_tab` | write | open/focus a tab kind (live) or launch it (fallback) |
 | `run_action` | write | run one ActionRegistry id |
 | `open_folder` | write | hand a folder to a tab (`tab=` targets one; live: routed) |
@@ -216,8 +217,51 @@ jobs_cancel {id: "metrics:image_gallery"} →
 **`notifications/progress` is deliberately not carried.** The transport
 (`protocol.py`) is stdio request/response and emits no server→client
 notifications, so progress cannot be pushed without faking it. The honest
-substitute is to poll `jobs_list` while a long tool call is pending. Recorded as
-a gap, not a feature.
+substitute is `wait_for` (below) or a `jobs_list` poll while a long tool call is
+pending. Recorded as a gap, not a feature.
+
+### Waiting for an asynchronous expectation (`wait_for`)
+
+Hand-written "poll `ui_elements` until the row appears / poll `jobs_list` until
+the pass ends" loops are the expensive part of driving the app: the canonical
+gallery scenario spent 3–5 of its 8–12 calls on bare polls. `wait_for` replaces
+them. It is **read-only and live-only** (it observes an in-memory app, so with no
+instance it refuses exactly like `ui_elements`).
+
+Pass **exactly one** selector:
+
+| Selector | Holds when |
+|---|---|
+| `element: <id>` | that id resolves **and** the row is `visible` and `enabled` (the inventory is read with disabled rows included, so "present but disabled" is observable rather than invisible) |
+| `role: <role>` + `label: <label>` | an element with that exact role and exact, case-sensitive label exists (matched against the reported label) |
+| `job_settled: true` (`job_kind:` optional) | no listed (running or paused) job remains; with `job_kind` only rows of that kind count |
+
+`timeout_ms` defaults to 5000 and is hard-capped at 60000; `poll_ms` defaults to
+100 with a 25 ms floor. Every observation goes through the same machinery the
+read tools use (`ui_elements` / `jobs_list`), so `wait_for` invents neither a
+second resolver nor a second job view. Sleeps are clamped to the remaining
+budget, so the call does not overshoot `timeout_ms` by more than one poll
+interval (a slow observation adds its own duration).
+
+A success and a timeout are both **normal results**, never a tool error:
+
+```
+wait_for {element: "gallery.thumb.12", timeout_ms: 4000} →
+  ok: true · waited_ms: 214 · source: "live"
+  observed: {id: "gallery.thumb.12", role: "cell", visible: true, enabled: true, …}
+
+wait_for {job_settled: true, job_kind: "export"} →
+  ok: false · reason: "timeout" · waited_ms: 60000
+  observed: [{id: "export:image_compare:3", kind: "export", status: "running", …}]
+  hint: "a job of kind 'export' was still listed as running/paused; …"
+```
+
+`observed` is the last observed state — the element row, or the job rows (`[]`
+when everything settled; `null` when a role+label pair never appeared) — so a
+caller never needs a follow-up read just to see *why* the predicate missed.
+Zero or more than one selector, a lone `role` or `label`, `job_settled: false`,
+and a `job_kind` without `job_settled` are named validation errors; an
+out-of-range budget is `-32602` from the input schema.
 
 ### Mutation contract: reads retry once, edits never
 
@@ -423,6 +467,7 @@ fabricated result:
 | foreign uid | live app (`SO_PEERCRED`, before reading a byte) | connection closed → the call falls back |
 | non-live `press_keys` / `nav_key` / `ui_elements` / `ui_nav_state` / `ui_click` / `ui_hover` / `ui_focus` | this server | `isError` "needs a running app" (never a throwaway app faking a target) |
 | non-live `jobs_list` / `jobs_cancel` | this server | `isError` "no live instance; job state needs a running app" (never a fake empty list) |
+| non-live `wait_for` | this server | `isError` "no live instance; waiting for app state needs a running app" (never a silent 5 s timeout) |
 | `jobs_cancel` on a kind with no cooperative cancel | live app | `ok: false` "cancel is not supported for kind …" + hint; never a fake cancel |
 | `jobs_cancel` on an unknown or settled id | live app | `ok: false` "no running job with id …" + `jobs_list` hint |
 | unknown action id / tab / state path | this server (fallback) | `isError` + close-match suggestions |
@@ -437,14 +482,15 @@ fabricated result:
 The `annotations` hints were checked against what each handler actually does,
 because that is what lets a client auto-approve reads:
 
-- **Read-only tools really read.** All ten (`list_actions`, `list_sessions`,
+- **Read-only tools really read.** All eleven (`list_actions`, `list_sessions`,
   `get_state`, `read_log`, `query_trace`, `dump_ui_layout`, `list_surfaces`,
-  `ui_elements`, `ui_nav_state`, `jobs_list`) carry `readOnlyHint: true,
-  destructiveHint: false`
-  and touch no app state — `ui_elements` only *inventories* the live window, and
+  `ui_elements`, `ui_nav_state`, `jobs_list`, `wait_for`) carry
+  `readOnlyHint: true, destructiveHint: false`
+  and touch no app state — `ui_elements` only *inventories* the live window,
   `jobs_list` only reads the app's own counters (it never resolves a lazy tab
-  service, which would materialize a tab as a side effect of listing). Reads may
-  retry once (above); none mutate.
+  service, which would materialize a tab as a side effect of listing), and
+  `wait_for` only repeats those two observations until a predicate holds. Reads
+  may retry once (above); none mutate.
 - **Mutating tools are honestly marked.** All twelve carry `readOnlyHint: false`.
   `run_action` alone advertises `destructiveHint: true` (it can run any
   registered action, including `platform.quit_app`). `press_keys`, `nav_key`,
