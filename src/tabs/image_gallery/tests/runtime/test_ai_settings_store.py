@@ -30,8 +30,15 @@ def test_save_and_load_round_trip(monkeypatch):
 
     loaded = store.load()
 
+    # No stored ``provider_id``: a pre-provider config loads as ``custom`` and
+    # keeps its own URL verbatim (the user's endpoint is not re-written to a
+    # preset they never chose).
     assert loaded == AiSettings(
-        enabled=True, base_url="https://example.test/v1", api_key="sk-test-123", model="some/model"
+        enabled=True,
+        base_url="https://example.test/v1",
+        api_key="sk-test-123",
+        model="some/model",
+        provider_id="custom",
     )
     settings.remove("image_gallery_ai_test_roundtrip")
 

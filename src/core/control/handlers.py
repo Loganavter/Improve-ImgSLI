@@ -224,14 +224,18 @@ class ControlHandlers(
         return {"count": len(sessions), "sessions": sessions}
 
     def get_state(self, params: dict[str, Any]) -> dict[str, Any]:
-        from devtools.app_snapshot import dump_state, resolve_path
+        from devtools.app_snapshot import (
+            dump_state,
+            resolve_path_present,
+            tab_page_widgets,
+        )
 
-        state = dump_state(self._store())
+        state = dump_state(self._store(), tab_widgets=tab_page_widgets(self._tabs()))
         path = params.get("path")
         if not path:
             return {"path": None, "state": state}
-        resolved = resolve_path(state, str(path))
-        if resolved is None:
+        found, resolved = resolve_path_present(state, str(path))
+        if not found:
             raise MethodError(
                 f"no state at path {path!r}",
                 "call get_state without a path to see the available keys",

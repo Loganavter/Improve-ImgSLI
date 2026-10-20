@@ -269,6 +269,35 @@ def test_missing_hash_is_unbaselined_not_drift(hf, tmp_path, capsys):
     assert "drift check: unbaselined=1" in out
 
 
+def test_pinned_size_mismatch_is_drift_once_baselined(hf, tmp_path, capsys):
+    """A baseline records what was generated; the pin still says what it must be.
+
+    Same bytes, same recorded hash — but the frame is not the pinned one, so a
+    ``--check`` that called this ``ok`` could never tell the shipped set apart
+    from an ignored pin.
+    """
+    path = _manifest_file(tmp_path, [_entry(size=[10, 8])])
+    manifest = hf.load_manifest(path)
+    capture = _fake_capture(size=(6, 4))
+    records = hf.generate(manifest, tmp_path / "out", capture=capture, stream=io.StringIO())
+    hf.write_manifest(path, hf.apply_results(manifest, records))
+
+    assert hf.check_figures(hf.load_manifest(path), tmp_path / "again", capture=capture) == 1
+    out = capsys.readouterr().out
+    assert "drift" in out
+    assert "10x8" in out and "6x4" in out
+
+
+def test_pin_mismatch_without_a_baseline_stays_unbaselined(hf, tmp_path, capsys):
+    manifest = hf.load_manifest(_manifest_file(tmp_path, [_entry(size=[10, 8])]))
+
+    assert hf.check_figures(manifest, tmp_path / "out", capture=_fake_capture(size=(6, 4))) == 0
+    out = capsys.readouterr().out
+    assert "unbaselined" in out
+    assert "drift=" not in out
+
+
+
 def test_generate_writes_only_inside_out_dir(hf, tmp_path):
     manifest = hf.load_manifest()
     out_dir = tmp_path / "shots"
@@ -386,8 +415,55 @@ def test_pin_honoured_is_recorded_and_an_ignoring_surface_is_not_faked(hf, tmp_p
     assert (ignored[0]["width"], ignored[0]["height"]) == (6, 4), (
         "an ignored pin must not be faked by resampling the grab"
     )
-    assert "size:surface-ignores-pin" in ignored[0]["pins_unavailable"]
+    assert "size:surface-ignores-pin:6x4" in ignored[0]["pins_unavailable"], (
+        "a refused pin must record the achieved size for the reader"
+    )
     assert "size" not in ignored[0]["pins_applied"]
+
+
+def test_pin_report_records_the_achieved_size_of_a_refused_pin(hf, tmp_path):
+    manifest = hf.load_manifest(_manifest_file(tmp_path, [_entry(size=[1016, 776])]))
+    figure = manifest.figures[0]
+
+    applied, unavailable = hf.pin_report(figure, "en", "dark", captured_size=(1032, 792))
+
+    assert "size" not in applied
+    assert "size:surface-ignores-pin:1032x792" in unavailable
+
+
+def test_generate_says_when_a_pin_was_not_honoured(hf, tmp_path):
+    """The CLI must not let a different frame pass as the pinned one."""
+    manifest = hf.load_manifest(_manifest_file(tmp_path, [_entry(size=[10, 8])]))
+
+    stream = io.StringIO()
+    hf.generate(manifest, tmp_path / "out", capture=_fake_capture(size=(6, 4)), stream=stream)
+
+    out = stream.getvalue()
+    assert "pin_unavailable help-gallery-populated [en/dark]" in out
+    assert "pinned 10x8" in out and "achieved 6x4" in out
+
+
+def test_parity_table_lists_pinned_achieved_and_verdict(hf, tmp_path, capsys):
+    manifest = hf.load_manifest(_manifest_file(tmp_path, [_entry(size=[10, 8])]))
+
+    rows, mismatched = hf.print_parity_table(
+        manifest,
+        hf.generate(manifest, tmp_path / "out", capture=_fake_capture(size=(6, 4)), stream=io.StringIO()),
+    )
+    out = capsys.readouterr().out
+
+    assert mismatched and rows[0]["status"] == "dims-differ"
+    assert "pinned" in out and "achieved" in out
+    assert "help-gallery-populated" in out
+    assert "10x8" in out and "6x4" in out and "differ" in out
+
+    hf.print_parity_table(
+        manifest,
+        hf.generate(manifest, tmp_path / "ok", capture=_fake_capture(size=(10, 8)), stream=io.StringIO()),
+    )
+    out = capsys.readouterr().out
+    assert "parity" in out and "differ" not in out
+
 
 
 def test_multi_variant_recipe_stages_into_locale_theme_folders(hf, tmp_path):
@@ -473,6 +549,26 @@ def test_main_compare_reports_and_exits_one_on_dims_differ(hf, tmp_path, monkeyp
     out = capsys.readouterr().out
     assert "dims-differ" in out
     assert "6x4" in out and "10x8" in out
+
+
+def test_main_all_prints_the_parity_table(hf, tmp_path, monkeypatch, capsys):
+    from contextlib import contextmanager
+
+    path = _manifest_file(tmp_path, [_entry(size=[10, 8])])
+
+    @contextmanager
+    def _fake_display(backend):
+        yield ":99"
+
+    monkeypatch.setattr(hf, "display_context", _fake_display)
+    monkeypatch.setattr(hf, "capture_png", _fake_capture(size=(6, 4)))
+
+    assert hf.main(["--all", "--manifest", str(path), "--out", str(tmp_path / "out")]) == 0
+    out = capsys.readouterr().out
+    assert "pinned" in out and "achieved" in out
+    assert "help-gallery-populated" in out and "differ" in out
+    assert "pin_unavailable" in out
+
 
 
 

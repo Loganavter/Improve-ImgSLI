@@ -10,9 +10,9 @@ writes into ``--out`` (a fresh temp dir by default), never into
 figure. See ``docs/dev/SCREENSHOTS.md`` §Help-figure generator.
 
     python src/devtools/help_figures.py --list            # no display
-    python src/devtools/help_figures.py --all --out /tmp/shots
+    python src/devtools/help_figures.py --all --out /tmp/shots   # + WxH parity table
     python src/devtools/help_figures.py --check
-    python src/devtools/help_figures.py --compare         # WxH parity report
+    python src/devtools/help_figures.py --compare         # WxH parity report (exit 1)
     python src/devtools/help_figures.py --all --write-manifest
 
 Audit-Meta: pattern=devtool-pipeline size=exempt reason="one devtool contract: recipe schema+IO, capture adapter, drift/apply and display lifecycle all compare against the same manifest — splitting forks the schema"
@@ -328,8 +328,9 @@ def pin_report(
 
     Constructors that hardcode their own language/theme are recorded as caveats
     instead of being claimed as applied. A ``size`` pin is only claimed when the
-    grabbed pixels really are that size; a surface that ignores the pin is
-    recorded as unavailable (never silently resized — that would fake parity).
+    grabbed pixels really are that size; a surface that refuses the pin is
+    recorded as unavailable WITH the achieved size (never silently resized —
+    that would fake parity).
     """
     unavailable = list(UNPINNABLE)
     applied = list(PINNABLE)
@@ -341,7 +342,9 @@ def pin_report(
         if tuple(captured_size) == tuple(figure.size):
             applied.append("size")
         else:
-            unavailable.append("size:surface-ignores-pin")
+            unavailable.append(
+                f"size:surface-ignores-pin:{captured_size[0]}x{captured_size[1]}"
+            )
     return tuple(applied), tuple(sorted(unavailable))
 
 
@@ -496,6 +499,13 @@ def generate(
                 f"captured {figure.id} [{locale}/{theme}] -> {captured} ({width}x{height}, {size} B)",
                 file=stream,
             )
+            if figure.size is not None and (width, height) != tuple(figure.size):
+                print(
+                    f"pin_unavailable {figure.id} [{locale}/{theme}]: "
+                    f"pinned {figure.size[0]}x{figure.size[1]}, achieved {width}x{height} "
+                    "(recorded as pins_unavailable; the grab is not resampled)",
+                    file=stream,
+                )
     return records
 
 
@@ -504,18 +514,28 @@ def compare(manifest: Manifest, records: Sequence[dict]) -> tuple[list[dict], bo
 
     A capture with no baseline is ``unbaselined`` — reported, never counted as
     drift (a fresh recipe has no hashes until someone runs with a display).
+
+    A pinned capture whose fresh frame differs from the pin is drift even when
+    its bytes match the baseline: the baseline records what was generated, the
+    pin records the frame that has to be reproduced. Otherwise a run could
+    baseline an ignored pin and later call the wrong size ``ok``.
     """
     index = {
         (figure.id, baseline.locale, baseline.theme): baseline
         for figure in manifest.figures
         for baseline in figure.captures
     }
+    by_id = {figure.id: figure for figure in manifest.figures}
     rows: list[dict] = []
     drifted = False
     for record in sorted(records, key=lambda r: (r["figure"], r["locale"], r["theme"])):
         baseline = index.get((record["figure"], record["locale"], record["theme"]))
+        pinned = by_id[record["figure"]].size
         if baseline is None:
             status, detail = "unbaselined", "no recorded sha256"
+        elif pinned is not None and (record["width"], record["height"]) != tuple(pinned):
+            drifted, status = True, "drift"
+            detail = f"pinned {pinned[0]}x{pinned[1]} != achieved {record['width']}x{record['height']}"
         elif baseline.sha256 == record["sha256"]:
             status, detail = "ok", ""
         else:
@@ -625,6 +645,33 @@ def compare_sizes(
     summary = ", ".join(f"{s}={counts[s]}" for s in sorted(counts)) or "no captures"
     print(f"size parity: {summary}", file=stream)
     return 1 if mismatched else 0
+
+
+def print_parity_table(
+    manifest: Manifest,
+    records: Sequence[dict],
+    *,
+    stream=None,
+    repo_root: Path = REPO_ROOT,
+) -> tuple[list[dict], bool]:
+    """Print figure/pinned/achieved/verdict after a generation run.
+
+    One row per capture, so a live run answers "did the pin hold?" before any
+    baseline is written. ``dims-differ`` from :func:`compare_parity` prints as
+    ``differ`` here (the word the recipe discussion uses).
+    """
+    stream = sys.stdout if stream is None else stream
+    rows, mismatched = compare_parity(manifest, records, repo_root=repo_root)
+    header = f"{'figure':<30} {'pinned':<12} {'achieved':<12} verdict"
+    print("", file=stream)
+    print(header, file=stream)
+    print("-" * len(header), file=stream)
+    for row in rows:
+        pinned = "?" if row["target"] is None else "%dx%d" % tuple(row["target"])
+        achieved = f"{row['width']}x{row['height']}"
+        verdict = "parity" if row["status"] == "parity" else "differ"
+        print(f"{row['figure']:<30} {pinned:<12} {achieved:<12} {verdict}", file=stream)
+    return rows, mismatched
 
 
 def apply_results(manifest: Manifest, records: Sequence[dict]) -> Manifest:
@@ -816,6 +863,7 @@ def main(argv: list[str] | None = None) -> int:
             if args.compare:
                 return compare_sizes(selected, out_dir, locales=args.locale, themes=args.theme)
             records = generate(selected, out_dir, locales=args.locale, themes=args.theme)
+            print_parity_table(selected, records)
     except FigureError as exc:  # CropError subclasses FigureError
         print(f"capture failed: {exc}", file=sys.stderr)
         return 2

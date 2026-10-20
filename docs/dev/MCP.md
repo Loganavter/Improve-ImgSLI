@@ -47,7 +47,7 @@ fallback window, e.g. `:97`).
 |---|---|---|
 | `list_actions` | read | ActionRegistry catalog (id, label, owner tab, shortcut) |
 | `list_sessions` | read | workspace sessions (id, type, title, active) |
-| `get_state` | read | Redux Store slice by dotted path |
+| `get_state` | read | Redux Store slice by dotted path (+ `tabs.*` assertion slices) |
 | `read_log` | read | tail `log.txt`, optional level filter |
 | `query_trace` | read | search `trace.jsonl` newest-first |
 | `dump_ui_layout` | read | widget tree JSON (geometry, colors, bound action ids) |
@@ -123,6 +123,36 @@ answers (see [Flatpak sandbox](#flatpak-installed-app-p0)). After a transport
 failure the server pauses re-attaching for a couple of seconds so a dead socket
 is not retried on every call. The app refuses connections from another uid (its
 own `SO_PEERCRED` check); this client only has to degrade cleanly.
+
+### Asserting what a tab shows (`get_state` tab slices)
+
+`get_state {path}` also answers **tab-scoped assertion slices** under `tabs.*`,
+so "Quick Look shows image N" / "the gallery has this selection" / "compare is
+on the left image" is one in-channel call — no overlay labels, no tracer
+enabled at app start, no screenshot. They are read-only and live-only: each
+value comes from that tab's own state (its Redux session slot) or its live page
+for widget-local facts (Quick Look, gallery sort).
+
+| Path | Keys |
+|---|---|
+| `tabs.image_gallery` | `active`, `folder`, `item_count`, `selection` (paths), `selection_count`, `filter_text`, `sort`, `judgment_domain`, `metrics_cache_size` (items with live metrics; `null` without a page) |
+| `tabs.image_gallery.quick_look` | `open`, `path`, `index` (0-based in the visible series), `total`, `zoom`, `pan` (`[x, y]`), `source_side` (`preview` when the open item *is* the source, `inset` when the source inset shows another image) |
+| `tabs.image_compare` | `active`, `left_path`, `right_path`, `mode` (`0` both / `1` left / `2` right), `split_ratio`, `diff_mode` |
+| `tabs.multi_compare` | `active`, `slot_count`, `filled` (paths), `focused_slot` |
+
+`active` says whether that tab is the **active workspace session**. A tab that
+is not active (or has no live page/slot) answers `active: false` plus nulls —
+never an exception; `quick_look.open` is `false` only when the gallery itself
+is active and the panel is shut, `null` when the gallery is not the visible
+tab. A value the app cannot read is reported as `null`, never as a plausible
+default. Unknown paths keep the existing `no state at path` error.
+
+```
+get_state {path: "tabs.image_gallery.quick_look"} →
+  {"active": true, "open": true, "path": "/shots/12.png",
+   "index": 2, "total": 9, "zoom": 2.75, "pan": [12.0, -4.0],
+   "source_side": "inset"}
+```
 
 ### Element ids, filters, and stable property targets
 

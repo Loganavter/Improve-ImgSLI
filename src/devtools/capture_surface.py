@@ -5,6 +5,8 @@ the production widgets from a private X display to produce PNGs that answer
 "what does this dialog / grid / overlay actually look like?" (see
 ``docs/dev/SCREENSHOTS.md``).
 
+Audit-Meta: pattern=devtool-pipeline reason="one capture adapter: surface catalogue, window lifecycle + size pin, bootstrap and CLI share one grab contract; splitting the session from the surfaces forks how a frame is produced"
+
 Why not ``QT_QPA_PLATFORM=offscreen``: offscreen Qt paints *black* via
 ``QWidget.grab()`` for anything that goes through the toolkit painter
 pipeline, so the output is useless. A private ``Xvfb`` display gives a real
@@ -125,6 +127,11 @@ def _surface(name: str, description: str, *, isolated: bool = False):
 class CaptureSession:
     """Per-run context: the QApplication, output dir, and the grab helper."""
 
+    #: How long the re-applied size pin gets to settle before the grab (ms).
+    #: A show path can shrink the window after the first pump (the onboarding
+    #: overlay does); the second resize needs one more event-loop turn.
+    PIN_SETTLE_MS = 200
+
     def __init__(
         self,
         app,
@@ -136,6 +143,10 @@ class CaptureSession:
         self.out_dir = out_dir
         self.width = width
         self.height = height
+        #: Frame requested by the last grab (CLI override or surface default).
+        self.last_pin: tuple[int, int] | None = None
+        #: Frame actually grabbed (== ``last_pin`` unless the surface refused).
+        self.last_size: tuple[int, int] | None = None
         self.samples_dir = out_dir / "_samples"
         self.samples_dir.mkdir(parents=True, exist_ok=True)
 
@@ -154,6 +165,56 @@ class CaptureSession:
         loop.exec()
         self.app.processEvents()
 
+    def apply_size(self, widget, width: int, height: int, delay: int = 0) -> tuple[int, int]:
+        """Size the surface to ``width``x``height``; return what it settled at.
+
+        The pin is applied TWICE on purpose. A ``resize`` before ``show`` is
+        only a request: the show path (layout polish, deferred geometry, a
+        ``showEvent`` that re-fits the window) can land somewhere else — the
+        onboarding overlay returns 648 px for a 684 px request. Re-applying
+        the pin once the window is up reaches the pinned frame without
+        touching pixels.
+
+        Some shells (CSD dialogs) resize their *content* box and keep a frame
+        margin of their own, so ``size()`` lands a constant offset off the
+        request. The pin names the frame that gets grabbed, so the measured
+        offset is corrected once and the result re-read — the correction is
+        kept only if the frame really equals the pin. The extra settle after a
+        re-apply is paid only when that re-apply actually changed the frame, so
+        a surface that already honoured the pin keeps its original timing
+        (capture timing shows through on animated chrome, e.g. a fading
+        scrollbar).
+
+        A surface that genuinely refuses (fixed-size layout, minimum/maximum
+        clamp) keeps its own frame. Callers must report that as
+        pin_unavailable with the returned size — never resample the grab
+        to fake the pin.
+        """
+        pin = (width, height)
+        window = widget.window()
+        window.resize(width, height)
+        window.show()
+        self.pump(delay)
+        settled = (window.width(), window.height())
+        window.resize(width, height)
+        if (window.width(), window.height()) != settled:
+            # The re-apply really changed the frame (a show path had re-fitted
+            # it): let the layout/repaint for the new size finish before the
+            # grab. No change => no extra settle, so a surface that already
+            # honoured the pin keeps its original capture timing.
+            self.app.processEvents()
+            self.pump(self.PIN_SETTLE_MS)
+        achieved = (window.width(), window.height())
+        if achieved != pin:
+            offset = (achieved[0] - pin[0], achieved[1] - pin[1])
+            corrected = (pin[0] - offset[0], pin[1] - offset[1])
+            if corrected[0] > 0 and corrected[1] > 0:
+                window.resize(*corrected)
+                self.app.processEvents()
+                self.pump(self.PIN_SETTLE_MS)
+                achieved = (window.width(), window.height())
+        return achieved
+
     def grab(
         self,
         widget,
@@ -162,20 +223,27 @@ class CaptureSession:
         default_h: int,
         delay: int = 1200,
     ) -> Path:
-        """resize -> show -> pump -> processEvents -> grab -> save.
+        """pin -> show -> pump -> re-pin -> pump -> grab -> save.
 
         CLI ``--width``/``--height`` override the surface's default size.
+        ``last_pin``/``last_size`` keep the requested vs grabbed frame so a
+        caller can report an unhonoured pin (the Help-figure generator does).
         """
         w = self.width or default_w
         h = self.height or default_h
-        widget.resize(w, h)
-        widget.show()
-        self.pump(delay)
-        self.app.processEvents()
+        self.last_pin = (w, h)
+        windowed = self.apply_size(widget, w, h, delay=delay)
         pixmap = widget.grab()
         dest = self.out_dir / filename
         pixmap.save(str(dest))
+        self.last_size = (pixmap.width(), pixmap.height())
         print(f"saved {dest} {pixmap.width()}x{pixmap.height()}")
+        if self.last_size != self.last_pin and (self.width or self.height):
+            print(
+                f"pin not honoured: requested {w}x{h}, window settled at "
+                f"{windowed[0]}x{windowed[1]}, grabbed {pixmap.width()}x{pixmap.height()}",
+                file=sys.stderr,
+            )
         return dest
 
     def make_samples(self) -> list[Path]:

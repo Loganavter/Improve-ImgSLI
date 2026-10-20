@@ -44,6 +44,27 @@
       }
     },
     {
+      "path": "src/devtools/app_snapshot.py",
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=leaf-collector size=exempt reason=\"one read-only snapshot serializer — actions/sessions/state/tab assertion slices share the depth-capped encoder and path resolver\"",
+      "parsed": {
+        "pattern": "leaf-collector",
+        "size": "exempt",
+        "reason": "one read-only snapshot serializer — actions/sessions/state/tab assertion slices share the depth-capped encoder and path resolver"
+      }
+    },
+    {
+      "path": "src/devtools/capture_surface.py",
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=devtool-pipeline reason=\"one capture adapter: surface catalogue, window lifecycle + size pin, bootstrap and CLI share one grab contract; splitting the session from the surfaces forks how a frame is produced\"",
+      "parsed": {
+        "pattern": "devtool-pipeline",
+        "reason": "one capture adapter: surface catalogue, window lifecycle + size pin, bootstrap and CLI share one grab contract; splitting the session from the surfaces forks how a frame is produced"
+      }
+    },
+    {
       "path": "src/devtools/context_cloc.py",
       "limit": 500,
       "marker": "Audit-Meta:",
@@ -986,6 +1007,17 @@
       }
     },
     {
+      "path": "src/tabs/image_gallery/ui/settings_ai.py",
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=settings-page size=exempt reason=\"one AI settings page builder: provider/model rows, live persistence and the Apply offer hook share the dialog widget namespace; a split would need a second ui/ module for the same page\"",
+      "parsed": {
+        "pattern": "settings-page",
+        "size": "exempt",
+        "reason": "one AI settings page builder: provider/model rows, live persistence and the Apply offer hook share the dialog widget namespace; a split would need a second ui/ module for the same page"
+      }
+    },
+    {
       "path": "src/tabs/image_gallery/ui/stats_strip/__init__.py",
       "limit": 500,
       "marker": "Audit-Meta:",
@@ -1016,6 +1048,17 @@
         "pattern": "thin-owner-target",
         "size": "exempt",
         "reason": "grid API bodies extracted verbatim from ImageGalleryWidget (plan-gallery-split-2026-10-17 Part B Wave 3) - one widget-glue surface, splitting further would be a helpers bag"
+      }
+    },
+    {
+      "path": "src/tabs/image_gallery/use_cases/ai_analysis.py",
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=thin-owner-target size=exempt reason=\"one analysis delivery + domain + re-analyze-offer concern over the owner; the offer shares the same action context and the same scorecard state as delivery\"",
+      "parsed": {
+        "pattern": "thin-owner-target",
+        "size": "exempt",
+        "reason": "one analysis delivery + domain + re-analyze-offer concern over the owner; the offer shares the same action context and the same scorecard state as delivery"
       }
     },
     {
