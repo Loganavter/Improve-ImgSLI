@@ -121,12 +121,19 @@ class _LineEditContextMenuFilter(QObject):
             elif action_id == "line_edit.select_all":
                 line_edit.selectAll()
 
+        # An in-window menu is a plain child widget, so Qt clips it to its
+        # parent's rect: parented to the line edit (a few dozen px tall) the
+        # menu is cut down to a sliver inside dialogs, which have no overlay
+        # layer to re-parent it. The enclosing window is the right surface;
+        # in the main window attach_in_window_widget() still moves it onto
+        # the overlay layer.
         open_context_menu_entries(
             source_widget=line_edit,
             global_pos=global_pos,
             entries=tuple(entries),
             key=("line_edit", id(line_edit)),
             on_triggered=on_triggered,
+            menu_parent=line_edit.window(),
         )
 
 
