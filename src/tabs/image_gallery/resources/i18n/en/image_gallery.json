@@ -105,7 +105,8 @@
       "images_toggle_downsample": "Downscale: ≤ {px} px",
       "region_prompt": "What is wrong in this region?",
       "cached": " · cached",
-      "error_context": "Could not assemble the ask context."
+      "error_context": "Could not assemble the ask context.",
+      "history_count": "{n} previous questions"
     },
     "series": {
       "ask_ai": "Ask AI",

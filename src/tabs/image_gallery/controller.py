@@ -1620,6 +1620,10 @@ class GalleryController:
                 # Status badge shows the selected LLM, not the backend token.
                 "model": _settings.model,
                 "cached": self._tr("image_gallery.ask_ai.cached", " · cached"),
+                "history": self._tr(
+                    "image_gallery.ask_ai.history_count",
+                    "{n} previous questions",
+                ),
             }
         except Exception:
             default = "What matters here?"
@@ -1739,6 +1743,75 @@ class GalleryController:
         blob = json.dumps(ident, sort_keys=True, ensure_ascii=False)
         return hashlib.sha1(blob.encode("utf-8")).hexdigest()
 
+    def _ask_log_meta(self, scope, context, question: str, settings) -> dict:
+        """Deterministic record metadata for one completed ask (no secrets).
+
+        ``mode``/``profile``/``effort``/``model``/``base_url`` come from
+        ``ai_cache.analysis_cache_identity`` — the same identity the scorecard
+        cache keys on — so the history's provenance matches the answer's
+        provenance field-for-field. ``api_key`` is never included: the log is
+        not a credential store (see ``services/ask_log.py``).
+        """
+        from tabs.image_gallery.services.ai_cache import analysis_cache_identity
+
+        try:
+            identity = analysis_cache_identity(
+                settings,
+                mode=(context or {}).get("mode"),
+                profile=getattr(self.state, "metric_profile", None),
+                reasoning_effort=getattr(settings, "reasoning_effort", None),
+            )
+        except Exception:
+            identity = {}
+        try:
+            paths = sorted(
+                {
+                    str(it.get("path", ""))
+                    for it in ((context or {}).get("items") or [])
+                    if str(it.get("path", "") or "").strip()
+                }
+            )
+        except Exception:
+            paths = []
+        label = str(getattr(scope, "label", "") or "")
+        if not label:
+            label = str((context or {}).get("label") or "")
+        return {
+            "scope_kind": str(getattr(scope, "kind", "") or ""),
+            "scope_label": label,
+            "paths": paths,
+            "question": str(question or "").strip(),
+            "mode": str(identity.get("mode", "") or ""),
+            "profile": str(identity.get("profile", "") or ""),
+            "effort": str(identity.get("reasoning_effort", "") or ""),
+            "model": str(identity.get("model", "") or ""),
+            "base_url": str(identity.get("base_url", "") or ""),
+        }
+
+    def _log_ask_answer(self, result, meta, *, cache_hit: bool) -> None:
+        """Append ONE completed answer to the disk Q/A log (never per token).
+
+        Error results (routing stub / transport) never reach here — the
+        completion handler returns before this on ``result.error``. A cache
+        replay is an answer and is recorded with ``cache_hit=True``. Fail-open:
+        a log write failure must never break the ask surface.
+        """
+        if not meta:
+            return
+        try:
+            text = str(getattr(result, "text", "") or "")
+            if not text.strip():
+                return
+            from tabs.image_gallery.services import ask_log
+
+            ask_log.append_answer(
+                answer=text,
+                cache_hit=bool(cache_hit),
+                **meta,
+            )
+        except Exception:
+            logger.debug("ask-ai log append failed", exc_info=True)
+
     def ask_ai_question(self, scope, question: str, *, include_images: bool = False) -> None:
         """Build context, route, and run the backend on a GenericWorker.
 
@@ -1805,6 +1878,7 @@ class GalleryController:
             return
 
         key = self._ask_cache_key(scope, context, question, backend, settings.model)
+        record_meta = self._ask_log_meta(scope, context, question, settings)
         cached = self._ask_cache.get(key)
         if cached is not None:
             logger.debug("[ask-ai] cache hit backend=%s", backend)
@@ -1814,6 +1888,8 @@ class GalleryController:
                 cached = replace(cached, cached=True)  # type: ignore[arg-type]
             except Exception:
                 pass
+            # A replay is still an answer: one record, marked cache_hit.
+            self._log_ask_answer(cached, record_meta, cache_hit=True)
             self._show_ask_ai_result(cached, links)
             return
 
@@ -1851,14 +1927,16 @@ class GalleryController:
         worker = GenericWorker(self._tracked(_run))
         gen = self._folder_gen
         worker.signals.result.connect(
-            lambda result, k=key, g=gen, lnk=links: self._on_ask_ai_ready(result, k, g, lnk)
+            lambda result, k=key, g=gen, lnk=links, meta=record_meta: self._on_ask_ai_ready(
+                result, k, g, lnk, meta
+            )
         )
         worker.signals.error.connect(
             lambda err, g=gen: self._on_ask_ai_error(err, g)
         )
         self._pool_start(worker, None)
 
-    def _on_ask_ai_ready(self, result, key: str, gen: int | None = None, links: dict | None = None) -> None:
+    def _on_ask_ai_ready(self, result, key: str, gen: int | None = None, links: dict | None = None, meta: dict | None = None) -> None:
         if gen is not None and not self._is_current_folder_gen(gen):
             logger.debug("[ask-ai] result dropped (stale folder gen)")
             return  # folder switched — late ask answer dropped
@@ -1870,12 +1948,15 @@ class GalleryController:
             len(getattr(result, "text", "") or ""),
         )
         if error:
+            # Deliberately not logged: the ask log is an answer history, not an
+            # error journal (see services/ask_log.py docstring).
             self._show_ask_ai_error(self._ask_error_text(error))
             return
         try:
             self._ask_cache[key] = result
         except Exception:
             pass
+        self._log_ask_answer(result, meta, cache_hit=False)
         self._show_ask_ai_result(result, links)
 
     def _on_ask_ai_error(self, error_info, gen: int | None = None) -> None:

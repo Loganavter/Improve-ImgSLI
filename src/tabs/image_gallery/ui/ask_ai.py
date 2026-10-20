@@ -151,6 +151,12 @@ class AskAiFlyout(BaseFlyout):
         except Exception:
             pass
         self._status = Text("", mode="plain", pixel_size=16, parent=self)
+        # Persisted-history affordance: only the count ("N previous
+        # questions"), never a list yet — the disk log is observable in the
+        # app without building the sidebar (a later task).
+        self._history_count = 0
+        self._history_text = "{n} previous questions"
+        self._history = Text("", mode="plain", pixel_size=14, parent=self)
         # Title, scope, then the question row (edit + images toggle).
         self.content_layout.addWidget(self._title)
         self.content_layout.addWidget(self._scope)
@@ -165,6 +171,7 @@ class AskAiFlyout(BaseFlyout):
             self.content_layout.addWidget(self._edit)
         self.content_layout.addWidget(self._result)
         self.content_layout.addWidget(self._status)
+        self.content_layout.addWidget(self._history)
 
         # Empty result/status rows reserve no height (see _sync_row_visibility).
         self._sync_row_visibility()
@@ -255,6 +262,7 @@ class AskAiFlyout(BaseFlyout):
         images_downsample: str | None = None,
         model: str | None = None,
         cached: str | None = None,
+        history: str | None = None,
     ) -> None:
         """Inject localized chrome strings (from the tab i18n)."""
         if title:
@@ -273,6 +281,9 @@ class AskAiFlyout(BaseFlyout):
             self._model = str(model or "")
         if cached is not None:
             self._cached_suffix = str(cached)
+        if history is not None:
+            self._history_text = str(history)
+            self._render_history()
         if images_hint is not None or images_downsample is not None:
             if images_hint is not None:
                 self._images_hint = str(images_hint)
@@ -298,6 +309,7 @@ class AskAiFlyout(BaseFlyout):
         initial_links: dict | None = None,
         grow_up: bool = False,
         show_images_toggle: bool = True,
+        history_count: int | None = None,
     ) -> None:
         """Reset + show under *anchor*; focus lands in the question field.
 
@@ -329,6 +341,13 @@ class AskAiFlyout(BaseFlyout):
             pass
         self._result.setText("")
         self._status.setText("")
+        # History count belongs to the scope being opened: reset it (the
+        # caller seeds the persisted number below) so a previous scope's
+        # count is never shown against a new question.
+        self._history_count = 0
+        self._history.setText("")
+        if history_count is not None:
+            self.set_history_count(history_count)
         # Restore the include-images toggle the user left on last time (saved
         # on hide) instead of forcing it back off on every open.
         saved_images = bool(getattr(self, "_saved_include_images", False))
@@ -478,11 +497,40 @@ class AskAiFlyout(BaseFlyout):
         surface tall with dead space under the question field. The scope line
         is handled the same way in :meth:`open_for`.
         """
-        for label in (self._result, self._status):
+        for label in (self._result, self._status, self._history):
             try:
                 label.setVisible(bool(label.text()))
             except Exception:
                 pass
+
+    def set_history_count(self, count: int) -> None:
+        """Show ``"N previous questions"`` for the persisted Q/A log.
+
+        Count only — the history list itself is a later task. ``0`` hides the
+        row (an untouched scope shows no affordance). Called by the surface
+        after an answer lands and when the flyout opens.
+        """
+        try:
+            self._history_count = max(0, int(count))
+        except Exception:
+            self._history_count = 0
+        self._render_history()
+        self._relayout()
+
+    def _render_history(self) -> None:
+        """Paint the history line from ``_history_text`` + the current count."""
+        count = max(0, int(getattr(self, "_history_count", 0) or 0))
+        text = ""
+        if count > 0:
+            template = str(getattr(self, "_history_text", "") or "")
+            text = template.replace("{n}", str(count)) if template else ""
+            if not text:
+                text = f"{count} previous questions"
+        try:
+            self._history.setText(text)
+        except Exception:
+            pass
+        self._sync_row_visibility()
 
     def apply_user_size(self, width: int, height: int) -> None:
         """Set the flyout to a user-chosen size (grip drag), keeping content."""
