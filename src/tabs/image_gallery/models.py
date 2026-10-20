@@ -15,6 +15,8 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from PySide6.QtGui import QPixmap
 
+    from engine.analysis.contracts import AxisValue
+
     # TYPE_CHECKING-only: ``metric_profile`` imports this module at runtime
     # (it reads ``MetricKind`` from the registry), so a runtime import here
     # would be a cycle. The annotation is lazy (``from __future__ annotations``).
@@ -345,3 +347,10 @@ class GalleryState:
     # Stage 3 VLM caches (mirrors disk cache in vlm_cache)
     tie_breaks: dict[str, TieBreakResult] = field(default_factory=dict)
     briefs: dict[str, CompareBrief] = field(default_factory=dict)
+    #: Per-item analysis-engine records, keyed by the item's path string — the
+    #: dark launch of ``plan-gallery-analysis-engine-2026-10-20`` (W7). Each
+    #: value is the producer records of the local plan in plan order. Written
+    #: ONLY by the flag-ON proxy hook (``IMGSLI_ANALYSIS_ENGINE=1``); empty in
+    #: the flag-off path, unread by any surface until the read-path wave, and
+    #: transient (never persisted to the session slot).
+    analysis: dict[str, tuple[AxisValue, ...]] = field(default_factory=dict)
