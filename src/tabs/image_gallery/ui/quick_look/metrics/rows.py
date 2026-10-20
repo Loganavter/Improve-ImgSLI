@@ -269,14 +269,23 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
         except Exception:
             pass
     overlay._metric_rows.clear()
-    # Per-domain read (plan-gallery-ai-backend-owns-quality): the AI domain shows
-    # the VLM's scorecard, the Algorithms domain the local detectors. Only ONE of
-    # them answers here, so a row is always one answer, never two competing ones.
+    # Per-axis read (plan-gallery-analysis-engine-2026-10-20 §P2): the AI domain
+    # shows the VLM's scorecard, the Algorithms domain the local detectors, and
+    # every axis arrives as an AxisValue carrying its own producer/status/reason
+    # from ``analysis.read.read_axes`` — the single implementation behind
+    # ``services.quality_read.domain_axis_scores`` (the per-domain seam this
+    # surface read before W3). Only ONE domain answers here, so a row is always
+    # one answer, never two competing ones; a gap stays a gap (it never borrows
+    # the other domain's number), so only ``status == "ok"`` reaches the rows.
     domain = _overlay_judgment_domain(overlay)
     try:
-        from tabs.image_gallery.services import quality_read as _quality_read
+        from tabs.image_gallery.analysis.read import read_axes
 
-        read = _quality_read.domain_axis_scores(item, domain=domain)
+        read = {
+            record.axis: int(record.value)
+            for record in read_axes(item, domain=domain)
+            if record.status == "ok"
+        }
     except Exception:
         read = {}
     # Raw detector keys drive the Algorithms-domain extras (raw deltas, the dual
