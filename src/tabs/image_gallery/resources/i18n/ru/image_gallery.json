@@ -152,6 +152,10 @@
       "chip": "Профиль: {profile}",
       "auto": "авто",
       "axes": "осей: {n}",
+      "source": {
+        "vlm": "vlm",
+        "heuristic": "эвристика"
+      },
       "domain": {
         "auto": "Авто (по режиму)",
         "document": "Документ",

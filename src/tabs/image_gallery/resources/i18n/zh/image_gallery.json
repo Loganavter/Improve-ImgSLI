@@ -152,6 +152,10 @@
       "chip": "配置：{profile}",
       "auto": "自动",
       "axes": "{n} 个轴",
+      "source": {
+        "vlm": "VLM",
+        "heuristic": "启发式"
+      },
       "domain": {
         "auto": "自动（按模式）",
         "document": "文档",

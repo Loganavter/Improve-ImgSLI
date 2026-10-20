@@ -534,11 +534,38 @@ def _settle_metrics_pass(owner, items) -> None:
         owner._apply_fusion_ranks(getattr(owner.state, "series", None))
     except Exception:
         logger.debug("settle fusion re-mark failed", exc_info=True)
+    # P5 — the profile is a REQUEST IDENTITY (the analysis cache keys a
+    # scorecard on mode+profile+model): when the selector is still resolving
+    # this folder generation, the AI/Jev tails must wait for it. Starting them
+    # now would build every call under the pre-replacement profile and then
+    # quietly orphan the replies (live 2026-10-20: a vlm axis set replaced the
+    # heuristic one after the calls had gone out). The selector's own release
+    # resumes the tails (``controller._resume_settle_after_profile``), so there
+    # is exactly one tail per settle.
+    if _profile_resolution_pending(owner):
+        logger.debug("settle: AI/jev tails deferred until the metric profile resolves")
+        return
     # Derive the producer (VLM scorecards) before the consumer (Jev rank):
     # a restored/opened AI domain must reproduce the WORK, not only the
     # persisted choice.
     _run_ai_on_settle(owner)
     _run_jev_on_settle(owner)
+
+
+def _profile_resolution_pending(owner) -> bool:
+    """True while the P2 selector still owns this folder generation's profile.
+
+    Reads the controller's pending marker (``_profile_settle_pending_gen``,
+    P5). ``getattr`` keeps a legacy double without the attribute working: no
+    marker means no deferral, exactly the pre-P5 ordering.
+    """
+    try:
+        pending = getattr(owner, "_profile_settle_pending_gen", None)
+        if pending is None:
+            return False
+        return int(pending) == int(owner._folder_gen)
+    except Exception:
+        return False
 
 
 def _run_ai_on_settle(owner) -> None:

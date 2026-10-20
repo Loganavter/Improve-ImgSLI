@@ -152,6 +152,10 @@
       "chip": "Profile: {profile}",
       "auto": "auto",
       "axes": "{n} axes",
+      "source": {
+        "vlm": "vlm",
+        "heuristic": "heuristic"
+      },
       "domain": {
         "auto": "Auto (from mode)",
         "document": "Document",
