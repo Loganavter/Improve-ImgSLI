@@ -1,6 +1,12 @@
 # MCP v2 — plan (agent-control plane, second round)
 
-Status: draft · Date: 2026-10-17 · Scope: `mcp-server/app/**` + `src/core/control/**` (app-side channel)
+Status: shipped · Date: 2026-10-17 (updated 2026-10-20) · Scope: `mcp-server/app/**` + `src/core/control/**` (app-side channel)
+
+The v2 round closed: element inventory + click/hover/focus, honest mutation
+contracts and jobs/progress/cancel all landed in the 2026-10-17..20 waves. The
+current surface is **23 tools** — see `MCP.md` for the authoritative list. Round 2
+(round-trips, assertions, capture provenance, identity) lives in
+`improve-imgsli-internal-docs/docs/dev/investigations/plan-mcp-agent-ergonomics-2026-10-20.md`.
 
 Related: [MCP.md](MCP.md) (the current surface + security model) ·
 [CONTROL-COMPARISON](#appendix-what-photocraft--filmcraft-do-differently) (appendix below).
