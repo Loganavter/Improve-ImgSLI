@@ -135,6 +135,15 @@ class AxisValue:
       cannot be invalidated when its producer is removed.
     - ``status="echo"`` requires the backend it echoed: an echo is attributed
       to the model that repeated it, not presented as a measurement.
+
+    ``value`` is the 0..100 score every surface displays and every ranking reads.
+    ``raw`` is the **pre-score detector value** the score was computed from
+    (Laplacian variance, SSIM, LPIPS distance, an artifact's ``0/1/2`` severity
+    rank). It is not used for display or ranking — it exists so the legacy Stage-2
+    dicts (camera/fidelity/artifacts) can be rebuilt from one detector pass
+    instead of re-running the same detectors a second time (W12 dedupe). No
+    invariant ties it to ``status``: a gap simply carries ``raw=None`` in
+    practice, and a value of ``0.0`` is a measurement, not a missing value.
     """
 
     axis: str
@@ -144,6 +153,7 @@ class AxisValue:
     status: AxisStatus = "ok"
     reason: str = ""
     at: int = 0
+    raw: float | None = None
 
     def __post_init__(self) -> None:
         if not str(self.axis or "").strip():
@@ -174,6 +184,8 @@ class AxisValue:
         if self.reason is None:
             object.__setattr__(self, "reason", "")
         object.__setattr__(self, "at", int(self.at))
+        if self.raw is not None:
+            object.__setattr__(self, "raw", float(self.raw))
 
 
 @dataclass(frozen=True, slots=True)

@@ -94,6 +94,9 @@ def _axis_value(axis: str, raw: dict, missing_reason: str) -> AxisValue:
         axis=axis,
         value=float(metric_scores.score_for(spec, got[1])),
         producer=PRODUCER_ID,
+        # Pre-score distance (LPIPS/DISTS/BRISQUE): the legacy stage dicts are
+        # rebuilt from it instead of re-running the backend (W12 dedupe).
+        raw=float(got[1]),
     )
 
 

@@ -64,7 +64,10 @@ def _axis_value(axis: str, severities: dict) -> AxisValue:
         return _gap(
             axis, f"the artifact catalog returned an unknown severity {severity!r}"
         )
-    return AxisValue(axis=axis, value=rank, producer=PRODUCER_ID)
+    # ``raw`` carries the same severity rank the flag is worth: the legacy
+    # ``{Artifact: Severity}`` dict is rebuilt from it (rank → ``Severity``)
+    # instead of running the detectors again (W12 dedupe).
+    return AxisValue(axis=axis, value=rank, producer=PRODUCER_ID, raw=rank)
 
 
 def run(ctx: AnalysisContext) -> tuple[AxisValue, ...]:
