@@ -144,7 +144,7 @@ def _axis_bbox(
     letterbox_origin: float,
     letterbox_size: float,
 ) -> tuple[float, float]:
-    """One axis of ``_instance_bbox`` -- inverts multi_compare_array.frag's
+    """One axis of ``_instance_bbox`` -- inverts slot_array.frag's
     forward chain (``letterbox -> slotRect -> fit/zoom/pan -> tileRect``,
     each stage's own discard clamped to [0,1] in the same order the
     fragment shader checks it) to find the screen-space span this tile's
@@ -182,8 +182,8 @@ def _instance_bbox(
     ``_intersection_rect``-derived ``iBBox``, computed CPU-side once per
     instance here since it's cheaper than the GPU running every fragment
     shader invocation across the whole framebuffer only to discard almost
-    all of them -- see ``multi_compare_array.vert``'s header comment for
-    the inverse-chain derivation this performs)."""
+    all of them -- the forward chain is ``slot_array.vert``'s per-instance
+    transform; its CPU-side inverse is ``_axis_bbox`` above)."""
     ax0, ax1 = _axis_bbox(
         tile_rect[0], tile_rect[2], pan[0], fit[0], zoom,
         slot_rect[0], slot_rect[2], letterbox[0], letterbox[2],

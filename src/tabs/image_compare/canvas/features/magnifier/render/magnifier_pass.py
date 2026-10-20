@@ -249,7 +249,7 @@ class MagnifierPass(CanvasRenderPass):
         buffer object that's freshly created and written only once, then
         immediately bound and drawn the same frame, is exactly the shape of
         bug this project already hit twice for mip generation (see
-        ``shared.rendering.mip_cascade._ensure_downsample_uniform_buffer``
+        ``engine.gpu.mip_cascade._ensure_downsample_uniform_buffer``
         and docs/dev/rendering/investigations/multitile-uniform-desync.md):
         a `Dynamic` buffer's multi-frame-in-flight rotation isn't guaranteed
         warmed up on its very first write for every QRhi backend. Growing
