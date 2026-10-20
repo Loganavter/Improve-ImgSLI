@@ -2,7 +2,7 @@
 
 ``plan-gallery-analysis-engine-2026-10-20`` §Gates asks for gates that start
 green on today's tree and can only ever shrink: every entry below is a site the
-plan's later waves (W3 read path, W5 AI producers, P9 deletion) must remove, and
+plan's later waves (W5 AI producers, P9 deletion) must remove, and
 the gate fails just as loudly for a **stale** entry (code fixed, list not
 updated) as for a **new** violation. That is the property that makes "a ratchet"
 mean something — an allowlist that can silently rot is a comment with extra
