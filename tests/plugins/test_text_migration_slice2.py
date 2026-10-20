@@ -26,7 +26,7 @@ Call sites (all explicit text displays, no factory funnel in these plugins):
   wrapped, ``list_item.text.rating`` colour).
 - ``plugins/help/back_bar.py`` — breadcrumb ``/`` separators (12 px).
 - ``plugins/image_properties/`` — no ``Label`` call site: rows render through
-  the ``HelpDocumentView`` document canvas (``plugins/image_properties/
+  the ``Text(mode="document")`` document surface (``plugins/image_properties/
   render.py``), which is the plan's separate document-surface slice.
 
 Out of scope (deliberately NOT migrated, documented here instead of an
@@ -37,8 +37,8 @@ allowlist entry because the source scan below only matches the toolkit
   that hosts the preview pixmap and overrides ``sizeHint``; it is a pixmap
   surface, not a text display, and the P3 rules exclude ``Label``
   subclasses / widgets relied on as a ``Label`` type.
-- ``HelpDocumentView`` / ``HelpDocument*`` internals — live in the external
-  toolkit, a separate slice (the app's help document surface composes them).
+- The document surface itself — ``Text(mode="document")`` in the external
+  toolkit; the app hosts its chrome (TOC / lightbox / scroll area) around it.
 
 Falsification story: pre-migration each replaced attribute was a
 ``sli_ui_toolkit.widgets.Label`` (``QLabel``-based), so the behavioural assert
@@ -66,7 +66,7 @@ from plugins.image_properties.service import (
 )
 from resources.translations import add_i18n_root
 from sli_ui_toolkit.managers import UiScale, scaled_px
-from sli_ui_toolkit.widgets import HelpDocumentView, Label, Text
+from sli_ui_toolkit.widgets import Label, Text
 
 _PLUGINS_ROOT = Path(__file__).resolve().parents[2] / "src" / "plugins"
 _SCANNED_PLUGINS = ("export", "help", "image_properties")
@@ -127,11 +127,10 @@ def test_out_of_scope_surfaces_are_not_the_toolkit_label():
     assert issubclass(dialog_sections._ExportPreviewLabel, dialog_sections.QLabel)
     assert not issubclass(dialog_sections._ExportPreviewLabel, Label)
 
-    # Image properties render through the document canvas, not per-row Label.
+    # Image properties render through the document surface, not per-row Label.
     props_root = _PLUGINS_ROOT / "image_properties"
     uses = [use for path in props_root.rglob("*.py") for use in _label_uses(path)]
     assert uses == []
-    assert HelpDocumentView is not None
 
 
 @pytest.fixture(autouse=True)
@@ -276,15 +275,18 @@ def _sample_properties() -> ImageProperties:
 
 
 def test_image_properties_has_no_label_migration_target(qapp: QApplication):
-    """Rows render on the document canvas, so the dialog builds with no
-    per-row ``Label``/``Text`` widgets to migrate in this slice."""
+    """Rows render on the painted document surface, so the dialog builds with
+    no per-row ``Label``/``Text`` widgets to migrate in this slice."""
     dialog = ImagePropertiesDialog(
         _sample_properties(), parent=None, current_language="en"
     )
     try:
         dialog.show()
         qapp.processEvents()
-        assert isinstance(dialog.properties_document, HelpDocumentView)
-        assert dialog.properties_document.plain_text() != ""
+        document = dialog.properties_document
+        assert isinstance(document, Text)
+        assert document.mode() == "document"
+        assert document.panel_fill is True
+        assert document.plain_text() != ""
     finally:
         dialog.close()

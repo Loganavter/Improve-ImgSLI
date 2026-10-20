@@ -85,6 +85,40 @@ def test_help_select_all_includes_headings_and_paragraphs(qtbot):
     assert selected == dialog._document.plain_text()
 
 
+def test_help_copy_markdown_uses_the_host_page_source(qtbot):
+    """Copy-as-Markdown maps the selection against the page markdown the host
+    rendered (``Text.set_blocks`` clears the widget's own source)."""
+    from PySide6.QtGui import QGuiApplication
+
+    dialog = HelpDialog(current_language="en", app_name="Improve-ImgSLI")
+    qtbot.addWidget(dialog)
+    dialog.resize(880, 620)
+    dialog.show()
+    qtbot.waitExposed(dialog)
+
+    dialog.navigate_to("introduction")
+    dialog._document.select_all_text()
+    source = dialog._document_source_markdown
+    assert source.strip()
+
+    global_pos = dialog._document.mapToGlobal(dialog._document.rect().center())
+    open_help_text_context_menu(
+        dialog=dialog,
+        document=dialog._document,
+        global_pos=global_pos,
+        language="en",
+        source_markdown=source,
+    )
+    qtbot.wait(10)
+    menu = get_context_menu_manager()._active_menu
+    assert menu is not None
+    menu._finish_row_click("help.text.copy_markdown", None)
+    qtbot.wait(10)
+
+    assert QGuiApplication.clipboard().text() == source
+    menu.hide()
+
+
 def test_rmb_surface_is_in_window(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
