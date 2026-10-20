@@ -323,6 +323,47 @@ def run_proxy_stages_sync(
                     entry["camera"] = measure_camera_from_image(proxy.image)
                 except Exception:
                     logger.debug("proxy batch: camera failed for %s", own, exc_info=True)
+            if os.environ.get("IMGSLI_ANALYSIS_ENGINE") == "1":
+                # Dark launch (plan-gallery-analysis-engine-2026-10-20 P1, W7):
+                # resolve + run the local analysis plan over the SAME decoded
+                # proxy, so the engine executes for real while every legacy
+                # stage above keeps the payload it always built. Flag is read
+                # per item; OFF means this block never runs and ``entry`` is
+                # byte-identical to the legacy dict (no ``analysis`` key).
+                try:
+                    from engine.analysis.registry import discover
+                    from engine.analysis.resolver import resolve_plan
+                    from tabs.image_gallery.analysis.context_builder import (
+                        build_context,
+                    )
+                    from tabs.image_gallery.analysis.runner import (
+                        PRODUCERS_PACKAGE,
+                        run_plan,
+                    )
+
+                    ctx = build_context(
+                        own,
+                        proxy_image=proxy.image,
+                        source_image=src_img,
+                    )
+                    registry = discover(PRODUCERS_PACKAGE)
+                    resolution = resolve_plan(
+                        registry,
+                        policy="local",
+                        capabilities=ctx.capabilities,
+                    )
+                    records, _journal = run_plan(resolution, {key: ctx})
+                    entry["analysis"] = records[key]
+                except Exception:
+                    # Deliberate broad except, local to the dark-launch hook: it
+                    # must not break the batch, and the legacy payload is always
+                    # complete without it (plan G6 is about producer fallbacks,
+                    # not about this opt-in call site).
+                    logger.warning(
+                        "proxy batch: analysis engine hook failed for %s",
+                        own,
+                        exc_info=True,
+                    )
             out[key] = entry
     finally:
         if source_store is not None:
