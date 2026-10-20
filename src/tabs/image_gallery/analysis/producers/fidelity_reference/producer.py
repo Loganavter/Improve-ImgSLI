@@ -59,6 +59,9 @@ def _axis_value(axis: str, raw: dict) -> AxisValue:
         axis=axis,
         value=float(metric_scores.score_for(spec, got[1])),
         producer=PRODUCER_ID,
+        # Pre-score detector value: the legacy fidelity dict is rebuilt from it
+        # instead of re-computing the pair (W12 dedupe).
+        raw=float(got[1]),
     )
 
 
