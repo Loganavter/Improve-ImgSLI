@@ -147,10 +147,12 @@ controls no section owns, and `nav_key` shows whether a key aimed at one of
 them changes anything (an `unhandled` step is the evidence, not a guess). Do not
 substitute `ui_click` for this judgement — it delivers in-process, so it fires
 a handler even for a widget a real mouse or keyboard cannot reach. Conversely,
-`ui_click`'s in-process path cannot *reveal* a keyboard gap: after the 2026-10-17
-gallery session, `nav_key` is the only honest instrument for it (20/20 Quick
-Look children unowned, `Down` unhandled at the action row, `Tab` moving focus
-without a section).
+`ui_click`'s in-process path cannot *reveal* a keyboard gap: `nav_key` is the
+only honest instrument for it. The 2026-10-17 gallery session measured 20/20
+Quick Look children unowned with `Down` unhandled at the action row; that panel
+now registers its own modal section on show (`ui/quick_look/nav_section.py`,
+`SECTION_ATTR`), so treat those numbers as the historical baseline, not as the
+current state — re-measure with `ui_nav_state`/`nav_key` before quoting them.
 
 `nav_key` measures the anchor's **window**, not always the main one. When an
 `anchor` (also accepted as `from` / `element_id`) is given, the keys are
