@@ -86,17 +86,23 @@ def _show(
     mode=Mode.FIDELITY,
     source=None,
     domain: str = "algorithms",
+    pool=None,
 ):
     # state.series is list[Series] | list[list[GalleryItem]] — wrap a flat
     # list of items into one cluster the way the widget stores it.
     if series and not isinstance(series[0], (list, tuple)):
         series = [list(series)]
+    # ``pool`` is the owner's flat item pool when it differs from the
+    # cluster order (the widget's ``state.items`` is the folder-ordered
+    # pool, the series cluster keeps its own order — see
+    # ``overlay_parts.populate._resolve_series``).
+    flat = [m for cl in series for m in cl]
     # Badges are computed once upstream (widget.set_triage); stamp here so the
     # overlay renders the same item.badge the app would.
     try:
         from tabs.image_gallery.services.rank_badge import stamp_badges
 
-        stamp_badges([m for cl in series for m in cl], source)
+        stamp_badges(flat, source)
     except Exception:
         pass
     owner = SimpleNamespace(
@@ -105,7 +111,7 @@ def _show(
             mode=mode,
             source_path=source,
             series=series,
-            items=[m for cl in series for m in cl],
+            items=list(pool) if pool is not None else flat,
             judgment_domain=domain,
         ),
     )
@@ -1159,6 +1165,224 @@ def test_strip_region_click_switches_preview(qtbot, tmp_path):
     qtbot.wait(450)
     QApplication.processEvents()
     assert ov._current_item.path == p1
+    ov.hide()
+
+
+# -- blind-pocket #2: thumb i / frame centre == item i's own pixels -----------
+# Audit `audit-blind-test-inventory-2026-10-20`: the strip and the preview pane
+# used to be asserted by existence/geometry only, so a strip that binds
+# thumb i to item j's pixmap (neighbour, stale index after a sort/filter, or
+# pool order instead of the resolved series order) passed every test. These
+# decode the rendered pixels and require the *content* the index claims.
+
+
+_STRIP_RGB = (
+    (210, 30, 30),  # red
+    (30, 210, 30),  # green
+    (30, 30, 210),  # blue
+    (215, 175, 20),  # amber
+)
+
+
+def _colour_items(tmp_path, names, colours):
+    """One real PNG per item, each a distinct solid colour (content payload)."""
+    items, expected = [], {}
+    for name, rgb in zip(names, colours):
+        p = tmp_path / name
+        _w3_png(p, rgb)
+        it = _item(name)
+        it.path = p
+        items.append(it)
+        expected[str(p)] = rgb
+    return items, expected
+
+
+def _strip_thumb(ov, idx):
+    """The strip thumb Button carrying index ``idx`` (the nav-target id)."""
+    from sli_ui_toolkit.widgets import Button
+
+    for b in ov._strip_host.findChildren(Button):
+        if b.objectName() == f"quicklook_strip_{idx}":
+            return b
+    return None
+
+
+def _thumb_rgb(button):
+    """Centre pixel of the thumb's own pixmap (its cover-cropped payload)."""
+    assert button is not None, "no strip thumb at this index"
+    regions = button.regions()
+    assert regions and regions[0].pixmap is not None and not regions[0].pixmap.isNull()
+    image = regions[0].pixmap.toImage()
+    c = image.pixelColor(image.width() // 2, image.height() // 2)
+    return (c.red(), c.green(), c.blue())
+
+
+def _assert_strip_binds_each_index(ov, expected):
+    """thumb(i) decodes to item i's colour, for every visible index.
+
+    Three bindings are checked, because each is separately load-bearing:
+    the ``quicklook_strip_{i}`` objectName (the keyboard-nav target), the
+    container at ``_strip_buttons[i]`` (the visual order), and the decoded
+    pixels of that thumb (the content).
+    """
+    items = list(ov._series_items)
+    assert len(ov._strip_buttons) == len(items), "one container per series item"
+    seen = []
+    for idx, member in enumerate(items):
+        thumb = _strip_thumb(ov, idx)
+        assert thumb is not None, f"no quicklook_strip_{idx} thumb"
+        assert thumb.isVisibleTo(ov._strip_host), f"thumb {idx} not visible"
+        assert Path(thumb.property("gallery_path")) == Path(member.path)
+        container_thumbs = [
+            b
+            for b in ov._strip_buttons[idx].findChildren(type(thumb))
+            if b.objectName().startswith("quicklook_strip_")
+        ]
+        assert container_thumbs == [thumb], f"container order drifted at {idx}"
+        rgb = _thumb_rgb(thumb)
+        assert rgb == expected[str(member.path)], (
+            f"strip thumb {idx} shows {rgb}, expected "
+            f"{expected[str(member.path)]} for {Path(member.path).name}"
+        )
+        seen.append(rgb)
+    # Content really is distinguishable: a neighbour payload could not match.
+    assert len(set(seen)) == len(seen), "blind fixture: two thumbs share a colour"
+    assert set(seen) <= set(expected.values())
+
+
+def _preview_centre_rgb(ov):
+    """Centre pixel of the preview slot's rendered frame.
+
+    Offscreen RHI never presents, so the first-frame plate IS the rendered
+    surface: it is the same raster the canvas presents until its first GPU
+    frame, derived from the focused item's stashed source
+    (``preview_canvas_host.cover._cover_pixmap_from_full``). ``grab()``
+    renders the widget, not just its pixmap property.
+    """
+    cover = getattr(ov, "_preview_cover", None)
+    assert cover is not None, "no preview plate for the focused item"
+    frame = cover.grab().toImage()
+    assert frame.width() > 0 and frame.height() > 0
+    c = frame.pixelColor(frame.width() // 2, frame.height() // 2)
+    return (c.red(), c.green(), c.blue())
+
+
+def test_strip_thumb_index_decodes_to_its_own_item(qtbot, tmp_path):
+    items, expected = _colour_items(
+        tmp_path, [f"idx{i}.png" for i in range(4)], _STRIP_RGB
+    )
+    assert len(set(_STRIP_RGB)) == 4  # fixture is not blind
+    ov = _make_overlay(qtbot)
+    _show(ov, items[2], items, source=items[0].path)
+    _assert_strip_binds_each_index(ov, expected)
+    ov.hide()
+
+
+def test_strip_thumb_index_follows_a_resort(qtbot, tmp_path):
+    """A re-sorted series must rebind every index, not keep stale payloads."""
+    items, expected = _colour_items(
+        tmp_path, [f"sort{i}.png" for i in range(4)], _STRIP_RGB
+    )
+    ov = _make_overlay(qtbot)
+    _show(ov, items[1], items, source=items[0].path)
+    before = [_thumb_rgb(_strip_thumb(ov, i)) for i in range(4)]
+    ov._series_items = list(reversed(ov._series_items))
+    ov._current_idx = next(
+        i for i, m in enumerate(ov._series_items) if m.path == ov._current_item.path
+    )
+    ov._rebuild_strip()
+    QApplication.processEvents()
+    after = [_thumb_rgb(_strip_thumb(ov, i)) for i in range(4)]
+    assert after == list(reversed(before)), "sort did not remap the thumbs"
+    assert after != before, "vacuous: the sort left index content unchanged"
+    _assert_strip_binds_each_index(ov, expected)
+    ov.hide()
+
+
+def test_strip_thumb_index_follows_a_filter(qtbot, tmp_path):
+    """Dropping a middle item must shift the later thumbs' payload, not keep it."""
+    items, expected = _colour_items(
+        tmp_path, [f"filt{i}.png" for i in range(4)], _STRIP_RGB
+    )
+    ov = _make_overlay(qtbot)
+    _show(ov, items[3], items, source=items[0].path)
+    dropped = expected[str(items[1].path)]
+    ov._series_items = [m for m in ov._series_items if m.path != items[1].path]
+    ov._current_idx = next(
+        i for i, m in enumerate(ov._series_items) if m.path == ov._current_item.path
+    )
+    ov._rebuild_strip()
+    QApplication.processEvents()
+    assert len(ov._strip_buttons) == 3 and len(ov._series_items) == 3
+    _assert_strip_binds_each_index(ov, expected)
+    survivors = [_thumb_rgb(_strip_thumb(ov, i)) for i in range(3)]
+    assert dropped not in survivors, "a filtered-out thumb's payload survived"
+    ov.hide()
+
+
+def test_strip_thumb_index_follows_series_order_not_pool_order(qtbot, tmp_path):
+    """The strip is bound to the RESOLVED series order, never the item pool.
+
+    ``state.items`` is the folder-ordered pool while the series cluster keeps
+    its own order; a strip built from the pool would show the right set of
+    images in the wrong slots — every existence/geometry check still passes.
+    """
+    items, expected = _colour_items(tmp_path, ["pool_a.png", "pool_b.png"], _STRIP_RGB[:2])
+    pool_a, pool_b = items
+    ov = _make_overlay(qtbot)
+    # Pool order A,B — cluster order B,A (the remap under test).
+    _show(ov, pool_a, [[pool_b, pool_a]], source=pool_a.path, pool=[pool_a, pool_b])
+    assert [Path(m.path) for m in ov._series_items] == [pool_b.path, pool_a.path]
+    _assert_strip_binds_each_index(ov, expected)
+    # index 0 is the cluster's first member, not the pool's first item.
+    assert _thumb_rgb(_strip_thumb(ov, 0)) == expected[str(pool_b.path)]
+    assert _thumb_rgb(_strip_thumb(ov, 1)) == expected[str(pool_a.path)]
+    ov.hide()
+
+
+def test_preview_frame_centre_is_the_focused_items_colour(qtbot, tmp_path):
+    items, expected = _colour_items(
+        tmp_path, ["pv0.png", "pv1.png", "pv2.png"], _STRIP_RGB[:3]
+    )
+    ov = _make_overlay(qtbot)
+    _show(ov, items[1], items, source=items[0].path)
+    centre = _preview_centre_rgb(ov)
+    assert centre == expected[str(items[1].path)], (
+        f"preview shows {centre}, focused item is {items[1].path.name}"
+    )
+    # Not a neighbour's payload (the pane is the focused image, not the source
+    # or the previously-viewed one).
+    assert centre != expected[str(items[0].path)]
+    assert centre != expected[str(items[2].path)]
+    ov.hide()
+
+
+def test_preview_frame_centre_changes_with_focus(qtbot, tmp_path):
+    """Switching focus must change the pixel — not just labels/geometry."""
+    items, expected = _colour_items(
+        tmp_path, ["sw0.png", "sw1.png", "sw2.png"], _STRIP_RGB[:3]
+    )
+    ov = _make_overlay(qtbot)
+    _show(ov, items[0], items, source=items[0].path)
+    first = _preview_centre_rgb(ov)
+    assert first == expected[str(items[0].path)]
+    # Walk focus through the real strip switch path (deferred ripple click).
+    _strip_thumb(ov, 2).click()
+    qtbot.wait(450)
+    QApplication.processEvents()
+    assert ov._current_item.path == items[2].path
+    second = _preview_centre_rgb(ov)
+    assert second == expected[str(items[2].path)], (
+        f"preview kept {second} after focusing {items[2].path.name}"
+    )
+    assert second != first, "focus switch did not change the presented pixel"
+    _strip_thumb(ov, 1).click()
+    qtbot.wait(450)
+    QApplication.processEvents()
+    assert ov._current_item.path == items[1].path
+    third = _preview_centre_rgb(ov)
+    assert third == expected[str(items[1].path)]
+    assert third not in (first, second)
     ov.hide()
 
 

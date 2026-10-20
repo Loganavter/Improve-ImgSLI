@@ -49,7 +49,9 @@ arc/border decoration path, never array-sampled content.
 (3) INVALIDATION: if content ever drops array sampling, this boundary
 dissolves -- single raster upload migrates to ``TexturedOverlayShell``,
 pure decoration (no texture at all) migrates to ``OverlayShell`` +
-``semantic.py`` pack. Until then, array-shape markers pinned by
+``semantic.py`` pack. Until then, the boundary this file documents is pinned
+by pixel assertions over a per-tile-colour fixture (which record/layer/uv
+lands at a given lens pixel, and the shader's content-extent tap clamp) in
 ``src/tabs/image_compare/tests/render/test_magnifier_content_boundary.py``.
 
 Record path + hold gates untouched (ruling 4: math moves, gating stays).
