@@ -168,6 +168,34 @@ def _start_proxy_analysis(owner, items: list[GalleryItem], source_path: Path | N
         _finish()
 
 
+def _attach_analysis_records(owner, result: dict) -> None:
+    """Copy flag-ON engine records onto the matching items (W9).
+
+    ``services/proxy.py`` adds the ``"analysis"`` key to a batch entry ONLY when
+    ``IMGSLI_ANALYSIS_ENGINE=1`` and the plan produced records. With the flag
+    off the key is absent, every item keeps ``analysis_records == ()``, and the
+    read path stays byte-identical to the legacy domain read
+    (plan-gallery-analysis-engine-2026-10-20 W9).
+    """
+    try:
+        items = list(getattr(owner.state, "items", ()) or ())
+    except Exception:
+        return
+    for item in items:
+        try:
+            entry = result.get(str(item.path))
+        except Exception:
+            continue
+        if not isinstance(entry, dict) or "analysis" not in entry:
+            continue
+        try:
+            item.analysis_records = tuple(entry.get("analysis") or ())
+        except Exception:
+            logger.debug(
+                "analysis records attach failed for %s", item.path, exc_info=True
+            )
+
+
 def _on_proxy_batch_ready(owner, result: object, gen: int | None, wanted: object = None) -> None:
     """One chunk delivery: fan out by path into the legacy apply tails."""
     if gen is not None and not owner._is_current_folder_gen(gen):
@@ -178,6 +206,10 @@ def _on_proxy_batch_ready(owner, result: object, gen: int | None, wanted: object
         wanted_set = set(wanted or ("artifacts", "fidelity", "camera"))
     except Exception:
         wanted_set = {"artifacts", "fidelity", "camera"}
+    # Engine records ride every chunk (the hook is not lane-gated) and are
+    # attached before the apply tails so a repaint triggered below already sees
+    # them through ``analysis/read.py``.
+    _attach_analysis_records(owner, result)
     try:
         if "artifacts" in wanted_set:
             arts = {
