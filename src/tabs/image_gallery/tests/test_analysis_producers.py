@@ -1,12 +1,12 @@
-"""W5: the gallery's local analyzers as auto-discovered producer packages.
+"""W5/W6: the gallery's analyzers as auto-discovered producer packages.
 
 ``plan-gallery-analysis-engine-2026-10-20`` §"Analyzers are auto-discovered
 producer packages": one package per analyzer, metadata in ``manifest.py``,
 ``run(ctx)`` in ``producer.py``, discovery by directory scan and removal-safe.
 
-The cases below pin the four properties the wave exists for:
+The cases below pin the properties the waves exist for:
 
-- the registry sees exactly nine producers with the full 18-axis vocabulary,
+- the registry sees exactly ten producers with the full 23-axis vocabulary,
   and it sees them by importing manifests only (a manifest is imported on every
   start, so a heavy backend there would load for everyone);
 - a producer is a pure function of ``AnalysisContext``: it never decodes (AST
@@ -14,13 +14,19 @@ The cases below pin the four properties the wave exists for:
   ``status="gap"`` instead of a substituted number;
 - artifacts are ``candidate`` flags whose value is a severity rank, not a
   0..100 quality score;
+- the AI scorecard (network path 1, W6) is a producer like any other: its model
+  arrives as a ``BackendRef`` from the catalog, its bytes arrive from the
+  executor, and its transport is an injected callable — nothing here opens a
+  file, resolves a model or sends a request on its own;
 - deleting a producer package shrinks the vocabulary and raises nothing.
 """
 
 from __future__ import annotations
 
 import ast
+import base64
 import importlib
+import json
 import shutil
 import sys
 import uuid
@@ -28,6 +34,7 @@ from pathlib import Path
 
 import pytest
 
+from engine.analysis.catalog import resolve
 from engine.analysis.context import AnalysisContext
 from engine.analysis.registry import discover
 
@@ -52,9 +59,30 @@ ARTIFACT_AXES = (
     "chroma_fringing",
     "noise_amplification",
 )
-AXES = CAMERA_AXES + FIDELITY_AXES + ARTIFACT_AXES
+#: The MEASURED registry ids the AI scorecard answers — pinned by name so the
+#: manifest cannot silently drift into a hand-written fourth vocabulary.
+SCORECARD_AXES = (
+    "sharpness",
+    "exposure",
+    "clipping",
+    "noise",
+    "white_balance",
+    "ssim",
+    "detail_gain",
+    "color_accuracy",
+    "typicality",
+    "aesthetic",
+    "lpips",
+    "dists",
+    "brisque",
+    "clipping_delta",
+    "halo_delta",
+    "chroma_fringe_delta",
+)
+AXES = CAMERA_AXES + FIDELITY_AXES + ARTIFACT_AXES + SCORECARD_AXES
 
 PRODUCER_IDS = (
+    "ai_scorecard",
     "artifact_banding",
     "artifact_blocking",
     "artifact_chroma_fringing",
@@ -65,6 +93,10 @@ PRODUCER_IDS = (
     "camera_scalars",
     "fidelity_reference",
 )
+
+#: Arbitrary "already read by the executor" bytes — the producer must never
+#: touch the path these nominally came from.
+IMAGE_BYTES = b"\x89PNG\r\n\x1a\nfake-pixels"
 
 
 # ---------------------------------------------------------------------------
@@ -86,18 +118,50 @@ def _gradient(size: int = 64):
     return image
 
 
-def _ctx(proxy: object | None = None, source: object | None = None, capabilities=()):
+def _ctx(
+    proxy: object | None = None,
+    source: object | None = None,
+    capabilities=(),
+    *,
+    backend=None,
+    call=None,
+    image_bytes: bytes | None = None,
+    extra=None,
+):
     return AnalysisContext(
         item_path="synthetic.png",
         mtime_ns=1,
         proxy_image=proxy,
         source_image=source,
         capabilities=frozenset(capabilities),
+        backend=backend,
+        call=call,
+        image_bytes=image_bytes,
+        extra=extra or {},
     )
 
 
 def _run(package: str):
     return importlib.import_module(f"{PRODUCERS}.{package}.producer").run
+
+
+def _manifest(package: str):
+    return importlib.import_module(f"{PRODUCERS}.{package}.manifest")
+
+
+def _backend(effort: str = "auto"):
+    """A catalog-resolved backend: the only way a model id reaches a producer."""
+    return resolve(
+        "openrouter",
+        "catalog-chosen-model",
+        user_base_url="https://example.invalid/v1",
+        params={"effort": effort},
+    )
+
+
+def _scorecard(**axes: int) -> str:
+    """A well-formed model reply: the ``axes`` object the prompt asks for."""
+    return json.dumps({"axes": dict(axes), "verdict": "keep", "reason": "clean"})
 
 
 ALPHA = """
@@ -147,7 +211,7 @@ def _make_package(
 # ---------------------------------------------------------------------------
 
 
-def test_registry_discovers_exactly_nine_sorted_producers_and_18_axes():
+def test_registry_discovers_exactly_ten_sorted_producers_and_23_axes():
     registry = discover(PRODUCERS, force=True)
 
     ids = tuple(spec.id for spec in registry.producers)
@@ -156,13 +220,45 @@ def test_registry_discovers_exactly_nine_sorted_producers_and_18_axes():
         "discovery order must not leak into registry order"
     )
     assert set(registry.axes()) == set(AXES)
-    assert len(registry.axes()) == 18
+    assert len(registry.axes()) == 23
     assert registry.get("camera_scalars").requires == frozenset({"images"})
     assert registry.get("fidelity_reference").requires == frozenset(
         {"images", "reference"}
     )
+    assert registry.get("ai_scorecard").requires == frozenset({"images", "backend"})
     for axis in ARTIFACT_AXES:
         assert registry.get(f"artifact_{axis}").requires == frozenset({"images"})
+
+
+def test_scorecard_manifest_provides_exactly_the_measured_registry():
+    """The manifest cannot drift into a fourth axis vocabulary."""
+    from tabs.image_gallery.services import metric_scores
+
+    spec = _manifest("ai_scorecard").PRODUCER
+    measured = {
+        item.id
+        for item in metric_scores.SPECS
+        if item.kind is metric_scores.MetricKind.MEASURED
+    }
+
+    assert set(spec.provides) == measured
+    assert tuple(spec.provides) == SCORECARD_AXES
+    assert set(spec.provides.values()) == {"measured"}
+    # ``composition`` is the AI-only axis with no local detector: it is not a
+    # measured axis, so the scorecard producer does not answer it.
+    assert "composition" not in spec.provides
+
+
+def test_scorecard_manifest_is_a_capped_automatic_network_producer():
+    manifest = _manifest("ai_scorecard")
+    spec = manifest.PRODUCER
+
+    assert spec.cost == "per_image"
+    assert spec.automatic is True
+    assert spec.max_per_run == 12 == manifest.MAX_PER_RUN, (
+        "a per-image network producer must keep the visible-item ceiling "
+        "(controller _AI_VISIBLE_CAP)"
+    )
 
 
 def test_discovery_imports_manifests_only_not_producers_or_heavy_backends(
@@ -179,7 +275,7 @@ def test_discovery_imports_manifests_only_not_producers_or_heavy_backends(
 
     registry = discover(PRODUCERS, force=True)
 
-    assert len(registry) == 9
+    assert len(registry) == 10
     assert "torch" not in sys.modules
     assert "piq" not in sys.modules
     leaked = [
@@ -190,10 +286,13 @@ def test_discovery_imports_manifests_only_not_producers_or_heavy_backends(
     assert leaked == []
 
 
-def test_every_manifest_declares_free_non_automatic_metadata_only():
+def test_every_local_manifest_declares_free_non_automatic_metadata_only():
     registry = discover(PRODUCERS, force=True)
 
     for spec in registry.producers:
+        if spec.id == "ai_scorecard":
+            # The network path: its cost class and cap are pinned above.
+            continue
         assert spec.cost == "free"
         assert spec.automatic is False, "the resolver decides when a producer runs"
     for axis in ARTIFACT_AXES:
@@ -293,6 +392,118 @@ def test_artifact_producer_gaps_without_an_image(axis: str):
 
 
 # ---------------------------------------------------------------------------
+# run(ctx) — the AI scorecard (network path 1, W6)
+# ---------------------------------------------------------------------------
+
+
+def test_scorecard_producer_returns_vlm_values_with_the_context_backend():
+    backend = _backend()
+    payloads: list[dict] = []
+
+    def call(payload: dict) -> str:
+        payloads.append(payload)
+        return _scorecard(sharpness=82, noise=12)
+
+    values = _run("ai_scorecard")(
+        _ctx(backend=backend, call=call, image_bytes=IMAGE_BYTES)
+    )
+
+    assert tuple(value.axis for value in values) == SCORECARD_AXES
+    scored = {value.axis: value for value in values if value.status == "ok"}
+    assert set(scored) == {"sharpness", "noise"}
+    for value in scored.values():
+        assert value.producer == "vlm"
+        assert value.backend is backend
+        assert 0.0 <= value.value <= 100.0
+    # One call, and the model is the catalog's — never a literal here (I2).
+    assert len(payloads) == 1
+    assert payloads[0]["model"] == backend.model
+    # The upload carries the executor's bytes: this producer opened nothing.
+    image_part = payloads[0]["messages"][0]["content"][1]
+    assert image_part["image_url"]["url"] == (
+        "data:image/png;base64," + base64.b64encode(IMAGE_BYTES).decode()
+    )
+
+
+def test_scorecard_producer_gaps_an_axis_the_model_omitted_without_substituting():
+    backend = _backend()
+    values = _run("ai_scorecard")(
+        _ctx(
+            backend=backend,
+            call=lambda payload: _scorecard(sharpness=77, composition=55),
+            image_bytes=IMAGE_BYTES,
+        )
+    )
+
+    by_axis = {value.axis: value for value in values}
+    assert by_axis["sharpness"].status == "ok"
+    for axis in SCORECARD_AXES:
+        if axis == "sharpness":
+            continue
+        value = by_axis[axis]
+        assert value.status == "gap"
+        assert value.value is None, "a gap is never filled with another number"
+        assert value.reason == "the model did not score this axis"
+    # ``composition`` is the AI-only axis: it is not a declared measured axis,
+    # so it is not smuggled into the scorecard through the model's reply.
+    assert "composition" not in by_axis
+
+
+@pytest.mark.parametrize("reply", ["", "not json at all", '{"axes": {"sharpness": '])
+def test_scorecard_producer_gaps_every_axis_on_an_unusable_reply(reply: str):
+    values = _run("ai_scorecard")(
+        _ctx(backend=_backend(), call=lambda payload: reply, image_bytes=IMAGE_BYTES)
+    )
+
+    assert tuple(value.axis for value in values) == SCORECARD_AXES
+    for value in values:
+        assert value.status == "gap"
+        assert value.value is None
+        assert "could not be parsed" in value.reason
+
+
+def test_scorecard_producer_turns_a_failed_call_into_gaps():
+    def call(payload: dict) -> str:
+        raise TimeoutError("stream idle timeout")
+
+    values = _run("ai_scorecard")(
+        _ctx(backend=_backend(), call=call, image_bytes=IMAGE_BYTES)
+    )
+
+    assert tuple(value.axis for value in values) == SCORECARD_AXES
+    for value in values:
+        assert value.status == "gap"
+        assert value.value is None
+        assert "TimeoutError" in value.reason
+        assert "stream idle timeout" in value.reason
+
+
+def test_scorecard_producer_names_each_missing_input_and_calls_nothing():
+    calls: list[dict] = []
+
+    def call(payload: dict) -> str:
+        calls.append(payload)
+        return _scorecard(sharpness=90)
+
+    cases = {
+        "no backend resolved for this run": _ctx(
+            call=call, image_bytes=IMAGE_BYTES
+        ),
+        "no transport for this run": _ctx(backend=_backend(), image_bytes=IMAGE_BYTES),
+        "no image bytes in the context": _ctx(backend=_backend(), call=call),
+    }
+
+    for reason, ctx in cases.items():
+        values = _run("ai_scorecard")(ctx)
+        assert tuple(value.axis for value in values) == SCORECARD_AXES
+        for value in values:
+            assert value.status == "gap"
+            assert value.value is None
+            assert value.reason == reason
+    assert calls == [], "a missing input must not reach the transport"
+
+
+# ---------------------------------------------------------------------------
 # removal safety (plan G8)
 # ---------------------------------------------------------------------------
 
@@ -317,7 +528,7 @@ def test_dropping_a_producer_package_shrinks_the_axes_without_raising(
 # ---------------------------------------------------------------------------
 
 
-NO_DECODE_ATTRS = {"Image.open", "TiledPixelStore.from_path", "read_bytes"}
+NO_DECODE_ATTRS = {"Image.open", "TiledPixelStore.from_path", "read_bytes", "open"}
 FORBIDDEN_MODULES = {"tabs.image_gallery.services.proxy"}
 FORBIDDEN_MODULE_SUFFIXES = (".services.proxy",)
 
@@ -361,8 +572,30 @@ def _decode_offences(path: Path) -> list[str]:
 
 def test_producers_own_no_decode_and_never_import_the_proxy_builder():
     files = _producer_files()
-    # Guard against a vacuous pass: 9 packages x (init, manifest, producer) + root.
-    assert len(files) == 28, [path.name for path in files]
+    # Guard against a vacuous pass: 10 packages x (init, manifest, producer) + root.
+    assert len(files) == 31, [path.name for path in files]
 
     offences = [offence for path in files for offence in _decode_offences(path)]
     assert offences == [], offences
+
+
+def test_the_no_io_gate_flags_a_file_read(tmp_path: Path):
+    """The gate above must be able to fail — otherwise it proves nothing.
+
+    A copy of the forbidden shape (``open`` + ``read_bytes``) in a throwaway
+    module: this is the red-before half of the W6 scorecard producer, which
+    receives its bytes from the context instead.
+    """
+    offender = tmp_path / "offender.py"
+    offender.write_text(
+        "def run(ctx):\n"
+        "    with open(ctx.item_path, 'rb') as handle:\n"
+        "        return handle.read_bytes()\n",
+        encoding="utf-8",
+    )
+
+    offences = _decode_offences(offender)
+
+    assert any(offence.endswith("open()") for offence in offences), offences
+    assert any(offence.endswith("read_bytes()") for offence in offences), offences
+

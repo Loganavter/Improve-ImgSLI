@@ -11,15 +11,22 @@ context analogue of the render pipeline's frame context: what was decoded, what
 the item is, and which capabilities its inputs actually provide. A capability
 that is absent is reported by ``require()`` as a human-readable reason, which a
 producer stores on a ``status="gap"`` value rather than fabricating a number.
+
+Same rule for the ``raw`` source bytes and the network transport: the executor
+reads the file once (``image_bytes``) and resolves the model through the catalog
+(``backend``), then injects a closure for the request (``call``). A producer
+therefore opens nothing and knows no endpoint — the two ways a "local" analyzer
+used to become a hidden network path with its own decode and its own model id.
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Iterable, Mapping
 
-from .contracts import freeze_mapping
+from .contracts import BackendRef, freeze_mapping
 
 
 @dataclass(frozen=True, slots=True)
@@ -29,6 +36,26 @@ class AnalysisContext:
     ``proxy_image`` / ``source_image`` / ``tiled_store`` are opaque here on
     purpose — the engine owns the context, not the image types, so this module
     stays importable without an imaging library.
+
+    Capability fields added for the AI scorecard producer (plan §4 path 1):
+
+    - ``backend`` — the ``BackendRef`` the catalog resolved for this run. A
+      producer reads the model/endpoint/params from it and never spells a model
+      id itself (invariant I2).
+    - ``call`` — payload → raw reply text. The executor closes over the real
+      transport **and the credentials**, so an api key never enters the context,
+      a record or a producer: there is nothing here to leak into a repr or a
+      cache key. A function is hashable, but see the note below.
+    - ``image_bytes`` — the item's raw bytes, read once by the executor. This is
+      what keeps "no producer decodes" true for an upload as well (G11).
+
+    Hashability decision, stated rather than assumed: this record is NOT
+    hashable and never was — ``extra`` is a frozen ``MappingProxyType``
+    (``freeze_mapping``), which raises ``TypeError`` on ``hash()``. The new
+    ``call`` field does not change that (functions are hashable); nothing in
+    the engine keys a cache by a context, cache identity takes the
+    ``BackendRef``. The tests pin both halves so a future "make it hashable"
+    refactor has to change the decision on purpose.
     """
 
     item_path: str
@@ -39,6 +66,9 @@ class AnalysisContext:
     tiled_store: object | None = None
     capabilities: frozenset[str] = frozenset()
     extra: Mapping[str, object] = MappingProxyType({})
+    backend: BackendRef | None = None
+    call: Callable[[dict], str] | None = None
+    image_bytes: bytes | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "item_path", str(self.item_path))
