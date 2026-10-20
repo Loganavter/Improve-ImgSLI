@@ -2,7 +2,7 @@
 
 Shows exactly what will be copied / saved / attached to an issue, with
 ``Copy`` / ``Save…`` / ``Open issue`` / ``Close`` actions. Built on the
-toolkit painter pipeline (``ThemedDialog`` + toolkit ``Button`` / ``Label`` /
+toolkit painter pipeline (``ThemedDialog`` + toolkit ``Button`` / ``Text`` /
 ``TextView``) — no QSS, no manual theming.
 """
 
@@ -14,7 +14,7 @@ from PySide6.QtCore import QTimer, QUrl
 from PySide6.QtGui import QDesktopServices, QGuiApplication, QIcon
 from PySide6.QtWidgets import QFileDialog, QGridLayout, QVBoxLayout, QWidget
 from sli_ui_toolkit.managers import scaled_px
-from sli_ui_toolkit.widgets import Button, Label, TextView
+from sli_ui_toolkit.widgets import Button, Text, TextView
 
 from resources.translations import get_current_language
 from resources.translations import tr as app_tr
@@ -73,17 +73,21 @@ class DiagnosticsDialog(ThemedDialog):
         root.setContentsMargins(scaled_px(14), scaled_px(14), scaled_px(14), scaled_px(14))
         root.setSpacing(scaled_px(10))
 
-        self.summary_label = Label(self._tr("diagnostics.summary", ""), self)
+        self.summary_label = Text(
+            self._tr("diagnostics.summary", ""), self, mode="plain"
+        )
         self.summary_label.setWordWrap(True)
         root.addWidget(self.summary_label)
 
-        self.no_screenshots_label = Label(
-            self._tr("diagnostics.no_screenshots", ""), self
+        self.no_screenshots_label = Text(
+            self._tr("diagnostics.no_screenshots", ""), self, mode="plain"
         )
         self.no_screenshots_label.setWordWrap(True)
         root.addWidget(self.no_screenshots_label)
 
-        self.preview_label = Label(self._tr("diagnostics.preview_label", ""), self)
+        self.preview_label = Text(
+            self._tr("diagnostics.preview_label", ""), self, mode="plain"
+        )
         root.addWidget(self.preview_label)
 
         self.preview = TextView(self.report.text)

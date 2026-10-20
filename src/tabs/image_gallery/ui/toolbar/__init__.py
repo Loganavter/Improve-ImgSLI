@@ -14,7 +14,7 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QHBoxLayout, QWidget
 
 from sli_ui_toolkit.managers import scaled_px
-from sli_ui_toolkit.widgets import Button, ComboBox, CustomLineEdit, Label, LoadingSpinner, SimpleOptionsFlyout
+from sli_ui_toolkit.widgets import Button, ComboBox, CustomLineEdit, LoadingSpinner, SimpleOptionsFlyout, Text
 
 from tabs.image_gallery.icons import Icon as GalleryIcon
 
@@ -280,7 +280,7 @@ class GalleryToolbar(QWidget):
             pass
         layout.addSpacing(scaled_px(4))
 
-        # Scanning indicator — LoadingSpinner + Label "Scanning n/N" (S1) stays near Sort
+        # Scanning indicator — LoadingSpinner + Text "Scanning n/N" (S1) stays near Sort
         self._spinner = LoadingSpinner(self)
         self._spinner.setObjectName("gallery_toolbar_spinner")
         # LoadingSpinner paints a fixed design-px square (``SIZE_PX``) scaled
@@ -303,7 +303,7 @@ class GalleryToolbar(QWidget):
             pass
         layout.addWidget(self._spinner)
 
-        self._scanning_label = Label("", pixel_size=11, parent=self)
+        self._scanning_label = Text("", mode="plain", pixel_size=11, parent=self)
         self._scanning_label.setObjectName("gallery_toolbar_scanning")
         # Left in the layout (empty text = invisible) rather than hidden: a
         # hidden widget never gets laid out, so its size stays Qt's 100x30
@@ -664,11 +664,11 @@ class GalleryToolbar(QWidget):
         return self._spinner
 
     @property
-    def scanning_label(self) -> Label:
+    def scanning_label(self) -> Text:
         return self._scanning_label
 
     def set_scanning(self, n: int, total: int) -> None:
-        """Show S1 scanning state: spinner + Label n/N."""
+        """Show S1 scanning state: spinner + Text n/N."""
         try:
             n_i = int(n)
             t_i = int(total)

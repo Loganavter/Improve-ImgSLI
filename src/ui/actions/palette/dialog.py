@@ -13,7 +13,7 @@ from PySide6.QtWidgets import QApplication, QVBoxLayout, QWidget
 from core.actions.types import ActionDescriptor
 from shared_toolkit.ui.themed_dialog import ThemedDialog
 from sli_ui_toolkit.managers import scaled_px
-from sli_ui_toolkit.widgets import CustomLineEdit, Label, SurfaceScrollArea
+from sli_ui_toolkit.widgets import CustomLineEdit, SurfaceScrollArea, Text
 from tabs.registry import get_shared_tab_registry
 from ui.actions.palette.common import (
     current_keyboard_overrides as _current_keyboard_overrides,
@@ -355,8 +355,9 @@ class FindActionDialog(ThemedDialog):
         # manual resize. Re-activate on every viewport resize instead.
         self._scroll.viewport().installEventFilter(self)
 
-        self._empty = Label(
+        self._empty = Text(
             tr_action("action.palette.empty", "No matching actions"),
+            mode="plain",
             variant="caption",
             pixel_size=14,
             color_token="list_item.text.rating",

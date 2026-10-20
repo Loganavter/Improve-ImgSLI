@@ -714,27 +714,65 @@ class LiveBackend:
         self,
         *,
         client: LiveClient | None = None,
-        surface: str,
+        surface: str | None = None,
         theme: str | None = None,
         out: str | None = None,
     ) -> dict:
-        """Proxy ``capture_live`` and normalise to the Phase-1 capture shape.
+        """Proxy ``capture_live`` and keep the app's capture provenance.
+
+        ``surface`` is optional: without it the app grabs its active window
+        (and refuses honestly when there is none — never another surface).
+
+        ``theme``/``out`` are NOT sent: the live handler takes only ``what``
+        and always writes to the app's artifacts dir with the window's own
+        theme. The result says so through ``options_applied`` instead of
+        echoing a request value that had no effect.
 
         An empty ``path`` means the live app answered without a file (e.g. it
         returned inline data this adapter does not save yet) — honest, not fake.
         """
-        params: dict[str, Any] = {"what": surface}
-        if theme:
-            params["theme"] = theme
-        if out:
-            params["out"] = out
+        params: dict[str, Any] = {}
+        if surface:
+            params["what"] = surface
         result = self._request("capture_live", params, client)
+        method = result.get("method")
+        rhi_layers = result.get("rhi_layers")
+        size: list[int] | None = None
+        raw_size = result.get("size")
+        if isinstance(raw_size, (list, tuple)) and len(raw_size) == 2:
+            try:
+                size = [int(raw_size[0]), int(raw_size[1])]
+            except (TypeError, ValueError):
+                size = None
+        rhi_count: int | None = None
+        if rhi_layers is not None:
+            try:
+                rhi_count = int(rhi_layers)
+            except (TypeError, ValueError):
+                rhi_count = None
+        what = str(result.get("what") or surface or "")
+        unavailable = [
+            name
+            for name, value in (
+                ("what", what),
+                ("method", method),
+                ("size", size),
+                ("rhi_layers", rhi_count),
+            )
+            if value is None or value == ""
+        ]
         return {
-            "surface": str(result.get("surface") or surface),
+            "surface": str(surface or ""),
+            "what": what,
             "path": str(result.get("path") or ""),
-            "theme": str(result.get("theme") or theme or "dark"),
+            "method": None if method is None else str(method),
+            "size": size,
+            "rhi_layers": rhi_count,
+            "theme": None,
             "live": True,
             "source": "live",
+            "options_applied": [],
+            "unavailable": unavailable,
         }
 
     def press_keys(

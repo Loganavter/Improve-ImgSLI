@@ -41,7 +41,7 @@ fallback window, e.g. `:97`).
 
 ## Surface at a glance
 
-22 tools — 10 read-only, 12 mutating (reads and writes never share a tool):
+23 tools — 11 read-only, 12 mutating (reads and writes never share a tool):
 
 | Tool | Kind | What it does |
 |---|---|---|
@@ -55,12 +55,13 @@ fallback window, e.g. `:97`).
 | `ui_elements` | read | live inventory of interactive elements (id, role, label, rects, enabled) |
 | `ui_nav_state` | read | live keyboard-navigation model: sections + focus + overlay children no section owns (live-only) |
 | `jobs_list` | read | live in-flight long passes (kind, status, progress, elapsed_s, message) |
+| `wait_for` | read | block until one expectation holds (element id visible+enabled, role+label exists, or jobs settle); a timeout returns the last observed state (live-only) |
 | `open_tab` | write | open/focus a tab kind (live) or launch it (fallback) |
 | `run_action` | write | run one ActionRegistry id |
 | `open_folder` | write | hand a folder to a tab (`tab=` targets one; live: routed) |
 | `set_theme` | write | set `theme` (light/dark); live-now or persisted |
 | `set_language` | write | set `language` (en/ru/zh/pt_BR) |
-| `capture_surface` | write | screenshot a named surface to PNG |
+| `capture_surface` | write | screenshot a named surface or the live active window to PNG |
 | `press_keys` | write | inject keyboard combos (`target=` aims them at one element) |
 | `nav_key` | write | press keys through the app's own navigation sections and report what took them (live-only) |
 | `ui_click` | write | click an element by id, in-process (live-only) |
@@ -151,6 +152,20 @@ gallery session, `nav_key` is the only honest instrument for it (20/20 Quick
 Look children unowned, `Down` unhandled at the action row, `Tab` moving focus
 without a section).
 
+`nav_key` measures the anchor's **window**, not always the main one. When an
+`anchor` (also accepted as `from` / `element_id`) is given, the keys are
+delivered in that widget's own top-level window — a dialog such as Settings or
+Help registers its own sections and keeps its own focus chain, so a
+dialog-anchored `Down` reports the *dialog's* section, where delivering to the
+main window reported `section:SessionPickerSection` and moved focus inside the
+main window instead. `window_source` in the result says which window was driven:
+`"anchor"` (the anchor's own top-level), `"main"` (no anchor — the historical
+target, unchanged for existing callers), or `"main-fallback"` (the anchor's
+window disappeared mid-call). The `window` field describes that window in the
+same row shape as `anchor`/`focus`, so a `handled` verdict is always attributable
+to one window; an id that resolves to no widget in this instance still fails the
+way it always has rather than falling back to the main window.
+
 ### Jobs: watching and stopping the long passes (P3)
 
 `jobs_list` and `jobs_cancel` expose the passes that take minutes. Both are
@@ -202,8 +217,51 @@ jobs_cancel {id: "metrics:image_gallery"} →
 **`notifications/progress` is deliberately not carried.** The transport
 (`protocol.py`) is stdio request/response and emits no server→client
 notifications, so progress cannot be pushed without faking it. The honest
-substitute is to poll `jobs_list` while a long tool call is pending. Recorded as
-a gap, not a feature.
+substitute is `wait_for` (below) or a `jobs_list` poll while a long tool call is
+pending. Recorded as a gap, not a feature.
+
+### Waiting for an asynchronous expectation (`wait_for`)
+
+Hand-written "poll `ui_elements` until the row appears / poll `jobs_list` until
+the pass ends" loops are the expensive part of driving the app: the canonical
+gallery scenario spent 3–5 of its 8–12 calls on bare polls. `wait_for` replaces
+them. It is **read-only and live-only** (it observes an in-memory app, so with no
+instance it refuses exactly like `ui_elements`).
+
+Pass **exactly one** selector:
+
+| Selector | Holds when |
+|---|---|
+| `element: <id>` | that id resolves **and** the row is `visible` and `enabled` (the inventory is read with disabled rows included, so "present but disabled" is observable rather than invisible) |
+| `role: <role>` + `label: <label>` | an element with that exact role and exact, case-sensitive label exists (matched against the reported label) |
+| `job_settled: true` (`job_kind:` optional) | no listed (running or paused) job remains; with `job_kind` only rows of that kind count |
+
+`timeout_ms` defaults to 5000 and is hard-capped at 60000; `poll_ms` defaults to
+100 with a 25 ms floor. Every observation goes through the same machinery the
+read tools use (`ui_elements` / `jobs_list`), so `wait_for` invents neither a
+second resolver nor a second job view. Sleeps are clamped to the remaining
+budget, so the call does not overshoot `timeout_ms` by more than one poll
+interval (a slow observation adds its own duration).
+
+A success and a timeout are both **normal results**, never a tool error:
+
+```
+wait_for {element: "gallery.thumb.12", timeout_ms: 4000} →
+  ok: true · waited_ms: 214 · source: "live"
+  observed: {id: "gallery.thumb.12", role: "cell", visible: true, enabled: true, …}
+
+wait_for {job_settled: true, job_kind: "export"} →
+  ok: false · reason: "timeout" · waited_ms: 60000
+  observed: [{id: "export:image_compare:3", kind: "export", status: "running", …}]
+  hint: "a job of kind 'export' was still listed as running/paused; …"
+```
+
+`observed` is the last observed state — the element row, or the job rows (`[]`
+when everything settled; `null` when a role+label pair never appeared) — so a
+caller never needs a follow-up read just to see *why* the predicate missed.
+Zero or more than one selector, a lone `role` or `label`, `job_settled: false`,
+and a `job_kind` without `job_settled` are named validation errors; an
+out-of-range budget is `-32602` from the input schema.
 
 ### Mutation contract: reads retry once, edits never
 
@@ -342,6 +400,29 @@ in neither grab path), so the QRhi/GL canvas does show its content; a
 devtool-booted surface still cannot grab it (see
 [SCREENSHOTS.md](SCREENSHOTS.md) §Known limitation).
 
+### Capture provenance (`capture_surface`)
+
+`surface` is **optional**: omitting it captures the live instance's active
+window (the app's own `resolve_capture_target` path). With no live instance the
+fallback devtool has nothing to grab, so the call is refused — "surface is
+required when no live instance is attached" — never answered with a different
+surface. With a live instance but no window to grab, the app refuses with
+"no live window to capture".
+
+A live result keeps the app's provenance instead of flattening it: `what`
+(what was actually grabbed), `method` (`grabWindow` / `widget_grab`), `size`
+`[w, h]`, and `rhi_layers` (composited canvas frames; `0` = no presenting
+canvas). Read `method`/`rhi_layers` before judging pixels — the
+live-verification runbook makes them mandatory for exactly this reason.
+
+`theme` and `out` are **fallback-only** parameters: the live handler takes only
+`what`, writes to the app's artifacts directory and captures the running
+window's own theme. A live result therefore reports `theme: null` and lists
+nothing in `options_applied`; a fallback result names the applied ones
+(`theme`, `out`) and puts `method`/`rhi_layers` in `unavailable` rather than
+inventing values. (Fallback `size` is parsed from the devtool's own
+`saved <path> <w>x<h>` line, `null` if absent.)
+
 ## Security model
 
 - **Local only.** stdio subprocess, never TCP/HTTP; no network code.
@@ -386,11 +467,14 @@ fabricated result:
 | foreign uid | live app (`SO_PEERCRED`, before reading a byte) | connection closed → the call falls back |
 | non-live `press_keys` / `nav_key` / `ui_elements` / `ui_nav_state` / `ui_click` / `ui_hover` / `ui_focus` | this server | `isError` "needs a running app" (never a throwaway app faking a target) |
 | non-live `jobs_list` / `jobs_cancel` | this server | `isError` "no live instance; job state needs a running app" (never a fake empty list) |
+| non-live `wait_for` | this server | `isError` "no live instance; waiting for app state needs a running app" (never a silent 5 s timeout) |
 | `jobs_cancel` on a kind with no cooperative cancel | live app | `ok: false` "cancel is not supported for kind …" + hint; never a fake cancel |
 | `jobs_cancel` on an unknown or settled id | live app | `ok: false` "no running job with id …" + `jobs_list` hint |
 | unknown action id / tab / state path | this server (fallback) | `isError` + close-match suggestions |
 | unknown surface | live app (`capture_live`) or this server (`capture_surface` fallback) | `isError` "unknown surface" + `list_surfaces` hint |
 | surface known but not open in the live app | live app | `isError` "surface … is not open in the live app" |
+| no `surface` and no live instance | this server (`capture_surface` fallback) | `isError` "surface is required when no live instance is attached" + `list_surfaces` hint |
+| no active window for a live capture (no `surface`) | live app (`capture_live`) | `ok: false` "no live window to capture" + "pass what=<tab> … or focus a window first" |
 | more than 32 key combos in one `press_keys` | live app | `ok: false` "too many key combos" |
 
 ### Annotation audit (2026-10-17)
@@ -398,14 +482,15 @@ fabricated result:
 The `annotations` hints were checked against what each handler actually does,
 because that is what lets a client auto-approve reads:
 
-- **Read-only tools really read.** All ten (`list_actions`, `list_sessions`,
+- **Read-only tools really read.** All eleven (`list_actions`, `list_sessions`,
   `get_state`, `read_log`, `query_trace`, `dump_ui_layout`, `list_surfaces`,
-  `ui_elements`, `ui_nav_state`, `jobs_list`) carry `readOnlyHint: true,
-  destructiveHint: false`
-  and touch no app state — `ui_elements` only *inventories* the live window, and
+  `ui_elements`, `ui_nav_state`, `jobs_list`, `wait_for`) carry
+  `readOnlyHint: true, destructiveHint: false`
+  and touch no app state — `ui_elements` only *inventories* the live window,
   `jobs_list` only reads the app's own counters (it never resolves a lazy tab
-  service, which would materialize a tab as a side effect of listing). Reads may
-  retry once (above); none mutate.
+  service, which would materialize a tab as a side effect of listing), and
+  `wait_for` only repeats those two observations until a predicate holds. Reads
+  may retry once (above); none mutate.
 - **Mutating tools are honestly marked.** All twelve carry `readOnlyHint: false`.
   `run_action` alone advertises `destructiveHint: true` (it can run any
   registered action, including `platform.quit_app`). `press_keys`, `nav_key`,

@@ -204,8 +204,8 @@ passes, so it measures from the first `jobs_list` that observed the job running;
   / `jobs_*` and an unknown action id / tab / state path / surface / job id or an
   uncancellable job kind are refused by the server with close-match hints. Full
   table in [docs/dev/MCP.md](../../docs/dev/MCP.md).
-- **Annotations audited (2026-10-17).** The nine read-only tools really read
-  (no state touched, `readOnlyHint: true`, `jobs_list` included); the eleven
+- **Annotations audited (2026-10-17).** The ten read-only tools really read
+  (no state touched, `readOnlyHint: true`, `jobs_list` included); the twelve
   mutating tools are honestly marked (`run_action` = `destructiveHint: true`;
   `press_keys`/`ui_click`/`jobs_cancel` = non-destructive but non-idempotent;
   `ui_hover`/`ui_focus` idempotent). No over- or under-statement was found; the

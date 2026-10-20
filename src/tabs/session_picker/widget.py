@@ -20,8 +20,8 @@ from sli_ui_toolkit.widgets import (
     ButtonRegion,
     DEFER_CLICK_AWAIT_RIPPLE,
     HorizontalSplit,
-    Label,
     OverlayScrollArea,
+    Text,
     ThemedWidget,
 )
 
@@ -120,8 +120,8 @@ class SessionPickerWidget(ThemedWidget, QWidget):
         self._context = context
         self._cards_container: QWidget | None = None
         self._cards_layout: QVBoxLayout | None = None
-        self._title_label: Label | None = None
-        self._subtitle_label: Label | None = None
+        self._title_label: Text | None = None
+        self._subtitle_label: Text | None = None
         self._recent_panel: RecentProjectsPanel | None = None
         self._page_scroll: OverlayScrollArea | None = None
         self._page_content: QWidget | None = None
@@ -237,14 +237,16 @@ class SessionPickerWidget(ThemedWidget, QWidget):
         )
         layout.setSpacing(scaled_px(20))
 
-        self._title_label = Label(
+        self._title_label = Text(
             self._context._tr("title", "Create a workspace"),
+            mode="plain",
             pixel_size=26,
             bold=True,
         )
         layout.addWidget(self._title_label)
-        self._subtitle_label = Label(
+        self._subtitle_label = Text(
             self._context._tr("subtitle", "Pick a session type to begin"),
+            mode="plain",
             pixel_size=14,
         )
         layout.addWidget(self._subtitle_label)

@@ -12,7 +12,12 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from sli_ui_toolkit.widgets import DEFER_CLICK_AWAIT_RIPPLE, Button, CustomLineEdit, Label
+from sli_ui_toolkit.widgets import (
+    DEFER_CLICK_AWAIT_RIPPLE,
+    Button,
+    CustomLineEdit,
+    Text,
+)
 from sli_ui_toolkit.managers import scaled_px
 from sli_ui_toolkit.ui.layout_settle import settle_layout
 from sli_ui_toolkit.ui.managers import connect_ui_metrics
@@ -124,7 +129,7 @@ class OutputPathSection(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(scaled_px(6))
 
-        self.dir_label = Label(directory_label_text, self)
+        self.dir_label = Text(directory_label_text, self, mode="plain")
         self.dir_picker_row = QWidget(self)
         self.dir_picker_row.setSizePolicy(
             QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed
@@ -175,7 +180,7 @@ class OutputPathSection(QWidget):
         dir_layout.addWidget(self.edit_dir, 1)
         dir_layout.addWidget(self.btn_browse_dir)
 
-        self.filename_label = Label(filename_label_text, self)
+        self.filename_label = Text(filename_label_text, self, mode="plain")
         self.filename_edit = filename_editor_factory()
         self.filename_edit.setObjectName("output-filename")
 

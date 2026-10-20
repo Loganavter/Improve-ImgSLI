@@ -16,7 +16,7 @@ from typing import Callable
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QVBoxLayout, QWidget
 
-from sli_ui_toolkit.widgets import DragDropOverlay, DropZoneLabel, Label, LoadingSpinner
+from sli_ui_toolkit.widgets import DragDropOverlay, DropZoneLabel, LoadingSpinner, Text
 
 
 class GalleryEmptyState(QWidget):
@@ -98,7 +98,7 @@ class GalleryEmptyState(QWidget):
         self._spinner = LoadingSpinner(self)
         self._spinner.setObjectName("gallery_scanning_spinner")
         self._spinner.hide()
-        self._scanning_label = Label("", pixel_size=16)
+        self._scanning_label = Text("", mode="plain", pixel_size=16)
         self._scanning_label.setObjectName("gallery_scanning_label")
         self._scanning_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._scanning_label.hide()

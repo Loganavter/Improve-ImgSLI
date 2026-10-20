@@ -634,38 +634,79 @@ TOOLS: list[dict] = [
         "name": "capture_surface",
         "title": "Capture a surface PNG",
         "description": (
-            "Screenshot one named app surface to a PNG and return its path. With a live "
-            "instance attached the running window is captured ('live': true) and each visible "
-            "canvas frame is composited in, so the QRhi/GL canvas shows its content; otherwise "
-            "the devtool boots the app on a private Xvfb. Use it for visual checks and Help figures."
+            "Screenshot the live app's active window (omit surface) or one named surface to a PNG; "
+            "a live capture reports what it grabbed (what), the grab method (method) and how many "
+            "canvas frames were composited (rhi_layers). With no live instance the devtool boots "
+            "headless and surface is required. Use it for visual checks and Help figures."
         ),
         "inputSchema": _params(
             {
                 "surface": {
                     **_STR,
-                    "description": "Surface name from list_surfaces, e.g. settings or gallery-populated.",
+                    "description": (
+                        "Surface name from list_surfaces. Omit to capture the live active window "
+                        "(refused if there is no live instance or no window)."
+                    ),
                 },
                 "theme": {
                     **_STR,
                     "enum": list(THEMES),
-                    "description": "Theme for the capture; defaults to the devtool's dark.",
+                    "description": (
+                        "Fallback capture theme (headless devtool boot); a live capture keeps the "
+                        "running window's own theme. See options_applied."
+                    ),
                 },
                 "out": {
                     **_STR,
-                    "description": "Output directory for the PNG; defaults to the server's artifacts directory.",
+                    "description": (
+                        "Fallback output directory; a live capture always writes to the app's "
+                        "artifacts directory. See options_applied."
+                    ),
                 },
             },
-            ["surface"],
         ),
         "outputSchema": _object(
             {
                 "surface": _STR,
+                "what": {
+                    **_STR,
+                    "description": "What was actually grabbed (surface name, or the live window's label).",
+                },
                 "path": _STR,
-                "theme": _STR,
+                "method": {
+                    "type": ["string", "null"],
+                    "description": "Live grab method (grabWindow/widget_grab); null on the fallback path.",
+                },
+                "size": {
+                    "type": ["array", "null"],
+                    "items": _INT,
+                    "minItems": 2,
+                    "maxItems": 2,
+                    "description": "[width, height] in pixels; null when the path cannot report it.",
+                },
+                "rhi_layers": {
+                    "type": ["integer", "null"],
+                    "description": (
+                        "Canvas frames composited into the live grab (0 = no presenting canvas); "
+                        "null on the fallback path."
+                    ),
+                },
+                "theme": {
+                    "type": ["string", "null"],
+                    "description": "Theme the fallback capture applied; null for a live capture (as-is).",
+                },
                 "live": _live_flag(),
                 "source": _source(),
+                "options_applied": {
+                    **_array(_STR),
+                    "description": "Request parameters that took effect (theme/out are fallback-only).",
+                },
+                "unavailable": {
+                    **_array(_STR),
+                    "description": "Provenance fields this path cannot report (named, never invented).",
+                },
             },
-            ["surface", "path"],
+            ["surface", "what", "path", "source"],
         ),
         "annotations": MUTATING,
         "handler": "capture_surface",
@@ -1077,6 +1118,101 @@ TOOLS: list[dict] = [
         ),
         "annotations": MUTATING_INPUT,
         "handler": "jobs_cancel",
+    },
+    {
+        "name": "wait_for",
+        "title": "Wait for one asynchronous expectation",
+        "description": (
+            "Block until exactly one expectation holds, then return what was "
+            "observed. Selectors: element=<id> (resolves and is visible+enabled), "
+            "role+label (an element with that exact role and label exists), or "
+            "job_settled=true (no listed job of job_kind remains). A timeout is a "
+            "normal result (ok:false, reason timeout) carrying the last observed "
+            "row, so do not hand-poll. Read-only, live-only, one selector."
+        ),
+        "inputSchema": _params(
+            {
+                "timeout_ms": {
+                    **_INT,
+                    "minimum": 1,
+                    "maximum": 60000,
+                    "default": 5000,
+                    "description": "Longest wait before answering timeout; hard cap 60000.",
+                },
+                "poll_ms": {
+                    **_INT,
+                    "minimum": 25,
+                    "default": 100,
+                    "description": "Floor between observations; a slow observation adds its own duration.",
+                },
+                "element": {
+                    **_STR,
+                    "description": "Element id from ui_elements; waits until it is present, visible, and enabled.",
+                },
+                "role": {
+                    **_STR,
+                    "description": "Exact role (ui_elements' role) to pair with label; pass both.",
+                },
+                "label": {
+                    **_STR,
+                    "description": "Exact, case-sensitive label to pair with role; pass both.",
+                },
+                "job_settled": {
+                    **_BOOL,
+                    "description": "True waits until no running/paused job remains (optionally of job_kind).",
+                },
+                "job_kind": {
+                    **_STR,
+                    "enum": list(JOB_KINDS),
+                    "description": "Restrict job_settled to one job kind; omit to wait for all rows to clear.",
+                },
+            }
+        ),
+        "outputSchema": _object(
+            {
+                "ok": {
+                    "type": "boolean",
+                    "description": "True only when the predicate held; a timeout is never ok.",
+                },
+                "reason": {
+                    "type": ["string", "null"],
+                    "description": "'timeout' when the predicate never held; null on success.",
+                },
+                "waited_ms": _INT,
+                "predicate": _object(
+                    {
+                        "selector": {
+                            **_STR,
+                            "enum": ["element", "role_label", "job_settled"],
+                            "description": "Which selector was waited on.",
+                        },
+                        "element": {"type": ["string", "null"]},
+                        "role": {"type": ["string", "null"]},
+                        "label": {"type": ["string", "null"]},
+                        "job_kind": {"type": ["string", "null"]},
+                    },
+                    ["selector"],
+                ),
+                "observed": {
+                    "description": (
+                        "Last observed state: the element row for element/role+label, "
+                        "the job rows for job_settled; null when nothing matched."
+                    )
+                },
+                "hint": {
+                    "type": ["string", "null"],
+                    "description": "What to read next when the predicate timed out; null on success.",
+                },
+                "source": {
+                    "type": "string",
+                    "enum": ["live"],
+                    "description": "Always live: an asynchronous expectation has no headless analogue.",
+                },
+            },
+            ["ok", "waited_ms", "predicate", "observed", "source"],
+        ),
+        "annotations": READ_ONLY,
+        "handler": "wait_for",
     },
 ]
 
