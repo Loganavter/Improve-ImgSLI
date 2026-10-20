@@ -131,10 +131,36 @@ class AppMessageDialog(ThemedDialog):
         self._build_ui()
         self._apply_geometry()
 
-        from shared_toolkit.ui.decorate_dialog import decorate_dialog
+        from shared_toolkit.ui.decorate_dialog import (
+            decorate_dialog,
+            register_dialog_auto_navigation,
+            register_dialog_title_bar_navigation,
+        )
 
         decorate_dialog(self, title=title, resizable=True)
+        # Title bar first — registration order is the visual graph (bar above
+        # the body), then the dialog's own rows below it.
+        register_dialog_title_bar_navigation(self)
+        register_dialog_auto_navigation(self, self._navigation_rows(), tag="message")
         self.mark_theme_ui_ready()
+
+    def _navigation_rows(self) -> list:
+        """Visual rows: body text, optional checkbox, then the action row."""
+        rows: list = [[self._message_label]]
+        if self._checkbox is not None:
+            rows.append([self._checkbox])
+        rows.append(
+            [
+                button
+                for button in (
+                    getattr(self, "_cancel_button", None),
+                    getattr(self, "_dont_ask_button", None),
+                    self._ok_button,
+                )
+                if button is not None
+            ]
+        )
+        return rows
 
     @property
     def dont_show_again(self) -> bool:

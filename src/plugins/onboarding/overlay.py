@@ -180,10 +180,19 @@ class OnboardingOverlay(QWidget):
         event.accept()
 
     def keyPressEvent(self, event: QKeyEvent):
-        event.accept()
+        # The overlay owns exactly two things here: Escape (finish with the
+        # current mode) and letting the NavigationManager's section graph
+        # drive Tab/arrows over the chips and Start. Every other key must
+        # reach the focused control — the blanket accept() this used to do
+        # swallowed characters and dead-ended keyboard navigation.
+        if event.key() == Qt.Key.Key_Escape:
+            event.accept()
+            self._finish()
+            return
+        super().keyPressEvent(event)
 
     def keyReleaseEvent(self, event: QKeyEvent):
-        event.accept()
+        super().keyReleaseEvent(event)
 
     def _init_ui(self):
         self.main_layout = QVBoxLayout(self)
@@ -271,6 +280,17 @@ class OnboardingOverlay(QWidget):
         self.main_layout.addWidget(self.bottom_container, 0)
 
         self._update_state(0)
+
+        # Chips (one row, left→right) above Start: Down/Up walk them, so the
+        # overlay no longer needs to swallow keys. Registered after the chips
+        # and button exist so the section's rows are the real controls.
+        from shared_toolkit.ui.decorate_dialog import register_dialog_auto_navigation
+
+        register_dialog_auto_navigation(
+            self,
+            [list(self.mode_buttons), [self.btn_start]],
+            tag="onboarding",
+        )
 
     def _init_slides(self):
         self._slide_widgets = []

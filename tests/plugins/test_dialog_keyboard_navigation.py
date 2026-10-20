@@ -30,8 +30,8 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from pathlib import Path
 
 import pytest
-from PySide6.QtCore import QSettings, Qt
-from PySide6.QtGui import QColor, QGuiApplication
+from PySide6.QtCore import QEvent, QSettings, Qt
+from PySide6.QtGui import QColor, QGuiApplication, QKeyEvent
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QWidget
 
@@ -341,3 +341,282 @@ def test_image_properties_copy_activates_on_key(qapp):
         assert clipboard.text().strip(), "Space on Copy all must copy the properties"
     finally:
         dialog.close()
+
+
+# ---------------------------------------------------------------------------
+# AppMessageDialog / AppTextInputDialog / DiagnosticsDialog
+#
+# The third audit (F3) found these three windows had NO navigation section at
+# all: they decorated a CSD title bar and declared no rows, so every arrow key
+# was dropped and the only path to the buttons was the mouse. The fix is
+# ``register_dialog_auto_navigation`` (src/shared_toolkit/ui/decorate_dialog.py)
+# plus ``register_dialog_title_bar_navigation``. The window-level allowlist
+# exemptions were removed, so the app-wide contract audits these controls.
+# ---------------------------------------------------------------------------
+
+
+def _message_dialog() -> QWidget:
+    from shared_toolkit.ui.message_dialog import AppMessageDialog, MessageKind
+
+    return AppMessageDialog(
+        None,
+        kind=MessageKind.WARNING,
+        title="Watch out",
+        text="Something happened.",
+        checkbox_text="Remember",
+        dont_ask_text="Do not ask again",
+        cancel_text="Cancel",
+    )
+
+
+def test_message_dialog_every_interactive_control_is_owned(qapp):
+    dialog = _message_dialog()
+    dialog.show()
+    qapp.processEvents()
+    try:
+        for control in (
+            dialog._message_label,
+            dialog._checkbox,
+            dialog._cancel_button,
+            dialog._dont_ask_button,
+            dialog._ok_button,
+        ):
+            assert _owns(control), (
+                f"{type(control).__name__} is an orphan — no section owns it"
+            )
+        _assert_all_owned(dialog)
+    finally:
+        dialog.close()
+
+
+def test_message_dialog_down_up_walk_and_enter_accepts(qapp):
+    dialog = _message_dialog()
+    dialog.show()
+    qapp.processEvents()
+    accepted: list[int] = []
+    dialog.accepted.connect(lambda: accepted.append(1))
+    try:
+        _kbd_focus(dialog._message_label)
+        # Body → checkbox → action row, in visual order.
+        assert _press(dialog._message_label, Qt.Key.Key_Down) is dialog._checkbox
+        landed = _press(dialog._checkbox, Qt.Key.Key_Down)
+        assert landed in (
+            dialog._cancel_button,
+            dialog._dont_ask_button,
+            dialog._ok_button,
+        ), f"Down from the checkbox must enter the action row, got {landed}"
+        # Up walks back the same way.
+        assert _press(landed, Qt.Key.Key_Up) is dialog._checkbox
+        # Enter activates the focused button (OK accepts the dialog).
+        _kbd_focus(dialog._ok_button)
+        QTest.keyClick(dialog._ok_button, Qt.Key.Key_Return)
+        qapp.processEvents()
+        assert accepted, "Return on the focused OK button must accept the dialog"
+    finally:
+        dialog.close()
+
+
+def _text_input_dialog() -> QWidget:
+    from shared_toolkit.ui.text_input_dialog import AppTextInputDialog
+
+    return AppTextInputDialog(None, title="Rename", prompt="New name", text="old")
+
+
+def test_text_input_dialog_every_interactive_control_is_owned(qapp):
+    dialog = _text_input_dialog()
+    dialog.show()
+    qapp.processEvents()
+    try:
+        for control in (dialog._line_edit, dialog._cancel_button, dialog._ok_button):
+            assert _owns(control), (
+                f"{type(control).__name__} is an orphan — no section owns it"
+            )
+        _assert_all_owned(dialog)
+    finally:
+        dialog.close()
+
+
+def test_text_input_dialog_down_walks_field_to_actions_and_enter_cancels(qapp):
+    dialog = _text_input_dialog()
+    dialog.show()
+    qapp.processEvents()
+    try:
+        _kbd_focus(dialog._line_edit)
+        landed = _press(dialog._line_edit, Qt.Key.Key_Down)
+        assert landed in (dialog._cancel_button, dialog._ok_button), (
+            f"Down from the field must enter the action row, got {landed}"
+        )
+        assert _press(landed, Qt.Key.Key_Up) is dialog._line_edit
+        # Enter activates the focused button (Cancel rejects the dialog).
+        _kbd_focus(dialog._cancel_button)
+        QTest.keyClick(dialog._cancel_button, Qt.Key.Key_Return)
+        qapp.processEvents()
+        assert dialog.result() == dialog.DialogCode.Rejected
+    finally:
+        dialog.close()
+
+
+def _diagnostics_dialog() -> QWidget:
+    from plugins.diagnostics.dialog import DiagnosticsDialog
+    from plugins.diagnostics.report import DiagnosticsReport
+
+    report = DiagnosticsReport(
+        payload={"app": {"version": "test"}}, text="diagnostics line\n" * 5
+    )
+    return DiagnosticsDialog(report, current_language="en")
+
+
+def test_diagnostics_dialog_every_interactive_control_is_owned(qapp):
+    dialog = _diagnostics_dialog()
+    dialog.show()
+    qapp.processEvents()
+    try:
+        for control in (
+            dialog.preview,
+            dialog.open_issue_button,
+            dialog.copy_button,
+            dialog.save_button,
+            dialog.close_button,
+        ):
+            assert _owns(control), (
+                f"{type(control).__name__} is an orphan — no section owns it"
+            )
+        _assert_all_owned(dialog)
+    finally:
+        dialog.close()
+
+
+def test_diagnostics_dialog_down_walks_report_to_actions_and_enter_accepts(qapp):
+    dialog = _diagnostics_dialog()
+    dialog.show()
+    qapp.processEvents()
+    actions = (
+        dialog.open_issue_button,
+        dialog.copy_button,
+        dialog.save_button,
+        dialog.close_button,
+    )
+    try:
+        _kbd_focus(dialog.preview)
+        landed = _press(dialog.preview, Qt.Key.Key_Down)
+        assert landed in actions, (
+            f"Down from the report must enter the action row, got {landed}"
+        )
+        # Left/Right walk the action row in visual order.
+        first = actions[0]
+        _kbd_focus(first)
+        assert _press(first, Qt.Key.Key_Right) is actions[1]
+        # Up returns to the report view.
+        assert _press(actions[1], Qt.Key.Key_Up) is dialog.preview
+        # Enter activates the focused button (Close accepts the dialog).
+        _kbd_focus(dialog.close_button)
+        QTest.keyClick(dialog.close_button, Qt.Key.Key_Return)
+        qapp.processEvents()
+        assert dialog.result() == dialog.DialogCode.Accepted
+    finally:
+        dialog.close()
+
+
+# ---------------------------------------------------------------------------
+# Onboarding overlay
+#
+# The overlay swallowed every key (blanket ``event.accept()`` in
+# ``keyPressEvent``) and registered no section: arrows and Tab dead-ended and
+# typed characters never reached the focused control. It now registers the
+# mode chips + Start as one section and owns only Escape.
+# ---------------------------------------------------------------------------
+
+
+class _OnboardingSettings:
+    """Minimal settings double for the overlay's finish path."""
+
+    def __init__(self) -> None:
+        self.saved: dict[str, object] = {}
+        self.first_run_completed = False
+
+    def _save_setting(self, key: str, value: object) -> None:
+        self.saved[key] = value
+
+    def set_first_run_completed(self) -> None:
+        self.first_run_completed = True
+
+    def schedule_persist(self, store) -> None:
+        return None
+
+
+def _onboarding_overlay():
+    from core.store import Store
+    from plugins.onboarding.overlay import OnboardingOverlay
+
+    settings = _OnboardingSettings()
+    overlay = OnboardingOverlay(settings, Store())
+    overlay.show()
+    QApplication.processEvents()
+    return overlay, settings
+
+
+def test_onboarding_overlay_owns_chips_and_start(qapp):
+    overlay, _settings = _onboarding_overlay()
+    try:
+        for control in (*overlay.mode_buttons, overlay.btn_start):
+            assert _owns(control), (
+                f"{control.objectName()} is an orphan — no section owns it"
+            )
+        assert [chip.isVisible() for chip in overlay.mode_buttons] == [True] * len(
+            overlay.mode_buttons
+        )
+    finally:
+        overlay.close()
+
+
+def test_onboarding_overlay_arrows_walk_chips_and_start(qapp):
+    overlay, _settings = _onboarding_overlay()
+    try:
+        first, second = overlay.mode_buttons[0], overlay.mode_buttons[1]
+        _kbd_focus(first)
+        assert _press(first, Qt.Key.Key_Right) is second
+        # Down enters the Start row; Up returns to a chip.
+        landed = _walk_down_to_bottom()
+        assert landed is overlay.btn_start, (
+            f"Down from the chips must reach Start, got {landed}"
+        )
+        back = _press(landed, Qt.Key.Key_Up)
+        assert back in overlay.mode_buttons, (
+            f"Up from Start must return to a chip, got {back}"
+        )
+    finally:
+        overlay.close()
+
+
+def test_onboarding_overlay_does_not_swallow_unrelated_keys(qapp):
+    """A typed character is no longer eaten by the overlay (the old bug)."""
+    overlay, _settings = _onboarding_overlay()
+    try:
+        _kbd_focus(overlay.mode_buttons[0])
+        event = QKeyEvent(
+            QEvent.Type.KeyPress, Qt.Key.Key_P, Qt.KeyboardModifier.NoModifier, "p"
+        )
+        # Delivered to the focused chip; the chip ignores it and Qt propagates
+        # to the overlay. The blanket accept() used to swallow it here.
+        QApplication.sendEvent(overlay.mode_buttons[0], event)
+        assert not event.isAccepted(), (
+            "the onboarding overlay swallowed an unrelated key — it must only "
+            "own Escape and the section graph's arrows/Tab"
+        )
+    finally:
+        overlay.close()
+
+
+def test_onboarding_overlay_escape_finishes_and_closes(qapp):
+    overlay, settings = _onboarding_overlay()
+    completed: list[str] = []
+    overlay.completed.connect(completed.append)
+    try:
+        QTest.keyClick(overlay, Qt.Key.Key_Escape)
+        qapp.processEvents()
+        assert completed == [overlay.modes[overlay._current_index]["key"]], (
+            "Escape must finish onboarding with the current mode"
+        )
+        assert settings.first_run_completed
+    finally:
+        overlay.close()

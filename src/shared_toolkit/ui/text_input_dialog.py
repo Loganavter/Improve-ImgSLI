@@ -63,9 +63,21 @@ class AppTextInputDialog(ThemedDialog):
         self._apply_geometry()
         self._connect_design_metrics()
 
-        from shared_toolkit.ui.decorate_dialog import decorate_dialog
+        from shared_toolkit.ui.decorate_dialog import (
+            decorate_dialog,
+            register_dialog_auto_navigation,
+            register_dialog_title_bar_navigation,
+        )
 
         decorate_dialog(self, title=title, resizable=True)
+        register_dialog_title_bar_navigation(self)
+        # Field above, action row below — the prompt label is not focusable
+        # (NoFocus), so it stays out of the walk.
+        register_dialog_auto_navigation(
+            self,
+            [[self._line_edit], [self._cancel_button, self._ok_button]],
+            tag="text-input",
+        )
         self.mark_theme_ui_ready()
 
     def _build_ui(self) -> None:

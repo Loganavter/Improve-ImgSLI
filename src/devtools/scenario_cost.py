@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Measure the canonical MCP gallery loop's call cost against a live app.
+Audit-Meta: pattern=devtool-pipeline reason="one measurement pipeline: scenario plan, wire client, per-step receipts, honest logical-vs-wire accounting and budget exit codes share one control-socket contract; splitting the client from the report forks how a step is counted"
 
 ``plan-mcp-agent-ergonomics-2026-10-20`` states its headline number as an
 estimate: "the canonical scenario is 8-12 calls; target <= 5". That number was
