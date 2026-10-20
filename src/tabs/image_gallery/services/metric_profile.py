@@ -105,25 +105,48 @@ def axis_spreads(items) -> dict[str, float]:
     """``{axis_id: spread}`` for every pool axis the series can separate.
 
     ``spread`` is ``max − min`` of the axis' 0–100 quality score over the items
-    that carry a raw value; axes with fewer than two measured values are
-    omitted (a single value must never invent a signal). Registry (pool) order.
-    The ONE spread implementation: the P1 salience pass reads it, so
-    "what moves" has a single definition.
+    that carry a value; axes with fewer than two measured values are omitted (a
+    single value must never invent a signal). Registry (pool) order.
+
+    A value for an axis is the item's engine record (``analysis_records``,
+    ``status="ok"``) when the item has a record for that axis, else the legacy
+    ``raw_for`` → ``score_for`` score. The record is already 0–100, so it is used
+    as-is. A record that is not ``ok`` (``gap``/``error``) **excludes** the item
+    from that axis — never 0, and never backfilled from ``item.metrics`` (the
+    engine ran and had nothing, which is a different fact). The ONE spread
+    implementation: the P1 salience pass reads it, so "what moves" has a single
+    definition.
     """
+    # Deferred import: ``rank_fusion`` imports this module at load time, so a
+    # module-level import would be circular. One reader of the records
+    # (``rank_fusion._record_scores`` / ``_record_axes``) — never a second one.
+    from tabs.image_gallery.services.rank_fusion import _record_axes, _record_scores
+
     try:
         members = list(items or ())
     except Exception:
         members = []
     if len(members) < 2:
         return {}
+    record_maps: list[tuple[dict[str, float], frozenset[str]]] = []
+    for item in members:
+        try:
+            record_maps.append((_record_scores(item), _record_axes(item)))
+        except Exception:
+            record_maps.append(({}, frozenset()))
     out: dict[str, float] = {}
     for axis_id in MEASURED_POOL:
         spec = spec_for(axis_id)
         if spec is None:
             continue
         values: list[int] = []
-        for item in members:
+        for item, (record_scores, recorded_axes) in zip(members, record_maps):
             try:
+                if axis_id in recorded_axes:
+                    record_value = record_scores.get(axis_id)
+                    if record_value is not None:
+                        values.append(int(record_value))
+                    continue  # a gap/error record excludes the item for this axis
                 metrics = getattr(item, "metrics", None)
                 if not isinstance(metrics, dict) or not metrics:
                     continue

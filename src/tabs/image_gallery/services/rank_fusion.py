@@ -7,7 +7,10 @@ applicable MEASURED axis (``metric_scores``), and a series is ranked by
 
 Pure: no Qt, no HTTP, no PIL — numbers in, ranks out. The module reads the
 registry (``spec_for`` / ``raw_for`` / ``score_for``); it never re-derives
-thresholds and never fabricates a value for a missing axis.
+thresholds and never fabricates a value for a missing axis. When an item
+carries engine records (``item.analysis_records``, flag-ON only), those
+already-scored 0–100 values are the answer and the registry is consulted only
+on the legacy branch (``_record_scores``).
 
 Which axes are "applicable" is NOT decided here any more: it is the
 **metric profile** (``services/metric_profile``) — the mode mapping today,
@@ -19,9 +22,9 @@ Design rules (see ``plan-gallery-rank-backends-2026-10-15`` §Seam):
 
 - Only ``MetricKind.MEASURED`` axes contribute; ``RANK_EXCLUDED_AXES`` never
   does (``typicality`` is a grouping artefact, not a quality signal).
-- An axis with no raw value is *excluded* from the mean — never counted as
-  0/100. An item with no measured axis is *unranked* (``None``) and sorts
-  after every measured item.
+- An axis with no raw value (and no engine record) is *excluded* from the mean
+  — never counted as 0/100. An item with no measured axis is *unranked*
+  (``None``) and sorts after every measured item.
 - The aggregate is a **weighted** mean (``RANK_AXIS_WEIGHTS``; neutral ``1.0``
   by default), then capped by the weakest participating axis
   (``RANK_WORST_AXIS_SLACK``): a single catastrophic axis cannot be averaged
@@ -93,36 +96,114 @@ def measured_axes_for(mode=None, *, profile=None) -> tuple[str, ...]:
     return profile_for_mode(mode).axis_ids
 
 
+def _records_of(item) -> tuple:
+    """The item's engine records as a tuple (``()`` when it has none)."""
+    try:
+        return tuple(getattr(item, "analysis_records", ()) or ())
+    except Exception:
+        return ()
+
+
+def _record_axes(item) -> frozenset[str]:
+    """Axis ids the item has a record for, whatever its status (``gap`` included).
+
+    ``axis_spreads`` needs "a record exists and says no number" to be different
+    from "no record at all": the first excludes the item from that axis' spread,
+    the second may still use the legacy raw path.
+    """
+    return frozenset(
+        axis
+        for axis in (
+            str(getattr(record, "axis", "") or "") for record in _records_of(item)
+        )
+        if axis
+    )
+
+
+def _record_scores(item) -> dict[str, float]:
+    """``{axis: 0..100 score}`` from the item's engine records (``{}`` if none).
+
+    Only ``status="ok"`` records contribute: a ``gap``/``error`` is "no number"
+    (``AxisValue`` forbids a value there), and ``echo``/``stale`` are not an
+    independent measurement — ranking either would be the provenance lie
+    ``engine/analysis/contracts`` exists to prevent. First record wins per axis,
+    exactly like the read path (``analysis/read._engine_by_axis``): the runner
+    appends producers in plan order, so an earlier producer's answer must not be
+    overwritten by a later one. Values are already scored by the producer, so no
+    registry lookup happens here (``spec_for`` is legacy-only).
+    """
+    out: dict[str, float] = {}
+    seen: set[str] = set()
+    for record in _records_of(item):
+        axis = str(getattr(record, "axis", "") or "")
+        if not axis or axis in seen:
+            continue
+        seen.add(axis)
+        if str(getattr(record, "status", "")) != "ok":
+            continue
+        value = getattr(record, "value", None)
+        if value is None:
+            continue
+        try:
+            out[axis] = float(value)
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
 def item_quality(item, *, mode=None, profile=None) -> float | None:
     """0..100 aggregate over applicable MEASURED axes; None when nothing measured.
 
-    The **weighted** mean of ``score_for`` over every applicable axis that has a
-    raw value in ``item.metrics`` (weights from ``RANK_AXIS_WEIGHTS``, neutral
-    ``1.0`` by default; a weight ``<= 0`` drops the axis), then capped by the
-    weakest participating axis (``RANK_WORST_AXIS_SLACK``):
-    ``min(mean, worst + slack)`` so a single catastrophic axis is not averaged
-    away. Applicability is the metric profile (``profile`` when given, else
-    the mode mapping — see ``measured_axes_for``). Missing axes are excluded
-    (never treated as 0/100) and ``RANK_EXCLUDED_AXES`` is never consulted.
+    The **weighted** mean over every applicable axis that has a value — an
+    engine record (``item.analysis_records``, its 0–100 score used directly)
+    when the item has one, else ``score_for`` over the raw ``item.metrics``
+    value (weights from ``RANK_AXIS_WEIGHTS``, neutral ``1.0`` by default; a
+    weight ``<= 0`` drops the axis), then capped by the weakest participating
+    axis (``RANK_WORST_AXIS_SLACK``): ``min(mean, worst + slack)`` so a single
+    catastrophic axis is not averaged away.
+
+    Records win for the axes they cover and only for those: when at least one
+    applicable axis has an ``ok`` record, the records are the answer and an axis
+    without a record is *excluded* — never 0 and never the legacy raw value
+    (the engine ran and had nothing, which is a different fact). An item whose
+    records cover no applicable axis falls back to the legacy raw path
+    unchanged, so a flag-off item keeps today's exact numbers.
+
+    Applicability is the metric profile (``profile`` when given, else the mode
+    mapping — see ``measured_axes_for``). Missing axes are excluded (never
+    treated as 0/100) and ``RANK_EXCLUDED_AXES`` is never consulted.
     Deterministic; never fabricates.
     """
-    metrics = getattr(item, "metrics", None)
-    if not isinstance(metrics, dict) or not metrics:
-        return None
+    axes = measured_axes_for(mode, profile=profile)
     weights = RANK_AXIS_WEIGHTS.get(_mode_id(mode), {})
-    weighted: list[tuple[int, float]] = []
-    for axis_id in measured_axes_for(mode, profile=profile):
-        spec = spec_for(axis_id)
-        if spec is None:
+    records = _record_scores(item)
+    weighted: list[tuple[float, float]] = []
+    from_records = False
+    for axis_id in axes:
+        value = records.get(axis_id)
+        if value is None:
             continue
-        got = raw_for(spec, metrics)
-        if got is None:
-            continue
+        from_records = True
         weight = float(weights.get(axis_id, 1.0))
         if weight <= 0.0:
             continue  # a zero/negative weight removes the axis from the aggregate
-        _key, raw = got
-        weighted.append((score_for(spec, raw), weight))
+        weighted.append((value, weight))
+    if not from_records:
+        metrics = getattr(item, "metrics", None)
+        if not isinstance(metrics, dict) or not metrics:
+            return None
+        for axis_id in axes:
+            spec = spec_for(axis_id)
+            if spec is None:
+                continue
+            got = raw_for(spec, metrics)
+            if got is None:
+                continue
+            weight = float(weights.get(axis_id, 1.0))
+            if weight <= 0.0:
+                continue  # a zero/negative weight removes the axis from the aggregate
+            _key, raw = got
+            weighted.append((score_for(spec, raw), weight))
     if not weighted:
         return None
     total = sum(weight for _score, weight in weighted)
