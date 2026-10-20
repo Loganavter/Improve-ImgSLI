@@ -87,6 +87,32 @@ def _engine_by_axis(item) -> dict[str, AxisValue]:
     return out
 
 
+def _engine_records_for_domain(item, domain) -> dict[str, AxisValue]:
+    """The engine records that may answer *domain* (empty when none may).
+
+    Records carry their own producer, so the domain no longer decides "whose
+    numbers" — but a record still answers only the domain it was produced for:
+    a ``vlm`` record answers the AI domain, every other record answers
+    Algorithms. Without this split, a flag-ON run of the local policy would
+    answer an AI-domain read with detector numbers, which is the substitution
+    the whole read path exists to prevent.
+    """
+    records = _engine_by_axis(item)
+    if not records:
+        return {}
+    if normalize_domain(domain) == AI_DOMAIN:
+        return {
+            axis: record
+            for axis, record in records.items()
+            if str(getattr(record, "producer", "")) == AI_PRODUCER
+        }
+    return {
+        axis: record
+        for axis, record in records.items()
+        if str(getattr(record, "producer", "")) != AI_PRODUCER
+    }
+
+
 def _ai_values(item) -> dict[str, float]:
     """The VLM's per-axis scores for *item* (``{}`` when it has none)."""
     return {str(axis): float(score) for axis, score in ai_axis_scores(item).items()}
@@ -131,15 +157,18 @@ def read_axes(
     so a surface can render its whole axis set without a second lookup.
 
     When the item carries engine records (``analysis_records``, flag-ON only),
-    they are the source: the domain no longer decides anything, and a requested
-    axis without a record is a ``gap`` with ``ENGINE_GAP_REASON`` — never the
-    legacy value (W9's no-fallback rule).
+    the records **for this domain** are the source: ``producer="vlm"`` records
+    answer the AI domain, every other producer answers Algorithms. A requested
+    axis without a record in that domain is a ``gap`` with
+    ``ENGINE_GAP_REASON`` — never the legacy value (W9's no-fallback rule), and
+    never the other domain's record. A domain with no engine records at all
+    falls through to the legacy branch unchanged.
 
     An axis the source does not answer becomes ``status="gap"`` with a reason
     and ``value=None``. It is never filled from the other domain and never from
     a neighbour: that substitution is the defect this read path removes.
     """
-    engine = _engine_by_axis(item)
+    engine = _engine_records_for_domain(item, domain)
     if engine:
         requested = (
             tuple(str(axis) for axis in axes) if axes is not None else tuple(engine)

@@ -160,27 +160,55 @@ def _record(
     )
 
 
-def test_engine_record_is_preferred_over_both_legacy_sources():
-    """The record wins even when the domain's own primitive disagrees."""
+def test_engine_record_is_preferred_over_the_local_primitive():
+    """The record wins over the domain's own primitive — inside that domain.
+
+    A local record answers Algorithms only: it must not answer an AI-domain
+    read, or the flag-ON local plan would leak detector numbers into the VLM
+    view (the exact substitution this read path removes).
+    """
     item = _item(
         metrics={"sharpness": 320.0},  # local detector would say 80
         analysis=_analysis(axes={"sharpness": 33}),  # VLM would say 33
         analysis_records=(_record("sharpness", 12.0),),
     )
     algorithms = read_axis(item, axis="sharpness", domain="algorithms")
+    assert algorithms.status == "ok"
+    assert algorithms.value == 12.0
+    assert algorithms.producer == "camera_scalars"
+
     ai = read_axis(item, axis="sharpness", domain="ai")
-    # Preference, not merge: the engine record answers both domains.
-    for record in (algorithms, ai):
-        assert record.status == "ok"
-        assert record.value == 12.0
-        assert record.producer == "camera_scalars"
+    assert ai.status == "ok"
+    assert ai.value == 33.0  # no vlm record yet: the legacy AI primitive answers
+    assert ai.producer == "vlm"
 
 
-def test_engine_gap_is_never_filled_from_the_legacy_value():
-    """Red-before for W9: a record gap must not borrow ``item.metrics``/AI.
+def test_engine_records_answer_only_their_own_domain():
+    """A vlm record answers AI, a local record answers Algorithms; no cross-reading."""
+    item = _item(
+        metrics={"sharpness": 320.0},
+        analysis=_analysis(axes={"sharpness": 33}),
+        analysis_records=(
+            _record("sharpness", 12.0),  # local producer
+            _record("exposure", 44.0, producer="vlm"),
+        ),
+    )
+    algorithms_sharpness = read_axis(item, axis="sharpness", domain="algorithms")
+    algorithms_exposure = read_axis(item, axis="exposure", domain="algorithms")
+    ai_exposure = read_axis(item, axis="exposure", domain="ai")
 
-    Both legacy sources HAVE a value for ``sharpness`` here. Before the
-    no-fallback rule the reader would answer from them, hiding the engine's
+    assert algorithms_sharpness.value == 12.0
+    assert algorithms_exposure.status == "gap"
+    assert algorithms_exposure.value is None
+    assert ai_exposure.value == 44.0
+    assert ai_exposure.producer == "vlm"
+
+
+def test_engine_gap_is_never_filled_from_the_local_primitive():
+    """Red-before for W9: a record gap must not borrow ``item.metrics``.
+
+    The local primitive HAS a value for ``sharpness`` here. Before the
+    no-fallback rule the reader would answer from it, hiding the engine's
     "I have nothing" behind a number that a different producer measured.
     """
     item = _item(
@@ -195,11 +223,16 @@ def test_engine_gap_is_never_filled_from_the_legacy_value():
             ),
         ),
     )
-    for domain in ("algorithms", "ai"):
-        record = read_axis(item, axis="sharpness", domain=domain)
-        assert record.status == "gap"
-        assert record.value is None
-        assert record.reason == "the shared proxy decoded nothing"
+    record = read_axis(item, axis="sharpness", domain="algorithms")
+    assert record.status == "gap"
+    assert record.value is None
+    assert record.reason == "the shared proxy decoded nothing"
+
+    # The AI domain has no vlm record at all, so its own primitive answers:
+    # that is today's behaviour, not a cross-source substitution.
+    ai = read_axis(item, axis="sharpness", domain="ai")
+    assert ai.value == 33.0
+    assert ai.producer == "vlm"
 
 
 def test_requested_axis_without_a_record_is_an_engine_gap():
@@ -245,7 +278,7 @@ def test_engine_records_keep_requested_order_one_per_axis():
     records = (_record("noise", 71.0), _record("sharpness", 12.0))
     item = _item(analysis_records=records)
 
-    ordered = read_axes(item, domain="ai", axes=("sharpness", "ssim", "noise"))
+    ordered = read_axes(item, domain="algorithms", axes=("sharpness", "ssim", "noise"))
     assert [r.axis for r in ordered] == ["sharpness", "ssim", "noise"]
     assert [r.status for r in ordered] == ["ok", "gap", "ok"]
     # The present records are the engine's own objects (provenance intact).
