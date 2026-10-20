@@ -14,9 +14,16 @@ this explicitly (``image_gallery.settings.api_key_warning``).
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import json
+from dataclasses import dataclass, field
 
 from PySide6.QtCore import QSettings
+
+from tabs.image_gallery.services.ai_providers import (
+    PROVIDER_CUSTOM,
+    PROVIDER_OPENROUTER,
+    provider_by_id,
+)
 
 _QS_ORG = "improve-imgsli"
 _QS_APP = "improve-imgsli"
@@ -51,6 +58,13 @@ class AiSettings:
     base_url: str = DEFAULT_BASE_URL
     api_key: str = ""
     model: str = ""
+    #: Named provider preset owning ``base_url`` (``services/ai_providers``).
+    #: A config written before providers existed loads as ``custom`` with its
+    #: own URL — see :meth:`AiSettingsStore.load`.
+    provider_id: str = PROVIDER_OPENROUTER
+    #: ``{provider_id: model}`` — the model remembered per provider, so a
+    #: switch back restores what the user had (owner decision 3, 2026-10-20).
+    provider_models: dict[str, str] = field(default_factory=dict)
     #: Answer-token budget for Ask AI; 0 = compute from the scope size.
     ask_max_tokens: int = 0
     #: OpenRouter reasoning effort for Ask AI ("auto" | low | medium | high | none).
@@ -60,6 +74,13 @@ class AiSettings:
     #: Set once the user chose “Confirm and don't ask again” on the
     #: large-drop cost warning — subsequent large drops skip the dialog.
     suppress_large_drop_warning: bool = False
+
+    def model_for(self, provider_id: str) -> str:
+        """The model remembered for *provider_id* ("" when none yet)."""
+        try:
+            return str(self.provider_models.get(str(provider_id or "").strip(), "") or "")
+        except Exception:
+            return ""
 
 
 class AiSettingsStore:
@@ -79,11 +100,26 @@ class AiSettingsStore:
             vlm_edge = _parse_int(settings.value("vlm_max_edge_px", _DEFAULT_VLM_MAX_EDGE), -1)
             if vlm_edge not in VLM_MAX_EDGES:
                 vlm_edge = _DEFAULT_VLM_MAX_EDGE
+            stored_provider = str(settings.value("provider_id", "") or "").strip().lower()
+            if stored_provider:
+                provider_id = provider_by_id(stored_provider).id
+            else:
+                # Backward compatibility: a config written before providers
+                # existed owns its free-form URL, so it loads as ``custom``
+                # (its URL is kept verbatim). A virgin config has no
+                # ``base_url`` key at all and starts on the default preset.
+                provider_id = (
+                    PROVIDER_CUSTOM
+                    if settings.contains("base_url")
+                    else PROVIDER_OPENROUTER
+                )
             return AiSettings(
                 enabled=str(settings.value("enabled", False)).lower() in ("true", "1"),
                 base_url=str(settings.value("base_url", DEFAULT_BASE_URL) or DEFAULT_BASE_URL),
                 api_key=str(settings.value("api_key", "") or ""),
                 model=str(settings.value("model", "") or ""),
+                provider_id=provider_id,
+                provider_models=self._read_provider_models(settings),
                 ask_max_tokens=max(0, _parse_int(settings.value("ask_max_tokens", 0), 0)),
                 reasoning_effort=effort,
                 vlm_max_edge_px=vlm_edge,
@@ -95,12 +131,42 @@ class AiSettingsStore:
         finally:
             settings.endGroup()
 
+    @staticmethod
+    def _read_provider_models(settings: QSettings) -> dict[str, str]:
+        """Parse the ``{provider_id: model}`` map. Never raises."""
+        try:
+            raw = str(settings.value("provider_models", "") or "")
+        except Exception:
+            return {}
+        if not raw:
+            return {}
+        try:
+            payload = json.loads(raw)
+        except Exception:
+            return {}
+        if not isinstance(payload, dict):
+            return {}
+        out: dict[str, str] = {}
+        for key, value in payload.items():
+            pid = str(key or "").strip()
+            model = str(value or "").strip()
+            if pid and model:
+                out[pid] = model
+        return out
+
+    def _write_provider_models(self, settings: QSettings, models: dict[str, str]) -> None:
+        try:
+            settings.setValue("provider_models", json.dumps(dict(models), sort_keys=True))
+        except Exception:
+            pass
+
     def save_field(self, name: str, value) -> None:
         if name not in (
             "enabled",
             "base_url",
             "api_key",
             "model",
+            "provider_id",
             "ask_max_tokens",
             "reasoning_effort",
             "vlm_max_edge_px",
@@ -113,3 +179,52 @@ class AiSettingsStore:
         finally:
             settings.endGroup()
             settings.sync()
+
+    def save_provider(self, provider_id: str, base_url: str, model: str) -> None:
+        """Persist provider + URL + model, and remember the model for it.
+
+        ONE write for the three fields that must move together: a provider
+        switch that stored only the URL would leave the old provider's model in
+        place (the bug this task fixes). An empty model is not remembered — the
+        next visit falls back to the provider's curated default instead.
+        """
+        pid = provider_by_id(provider_id).id
+        text = str(model or "").strip()
+        settings = self._settings()
+        try:
+            settings.setValue("provider_id", pid)
+            settings.setValue("base_url", str(base_url or ""))
+            settings.setValue("model", text)
+            if text:
+                models = self._read_provider_models(settings)
+                models[pid] = text
+                self._write_provider_models(settings, models)
+        finally:
+            settings.endGroup()
+            settings.sync()
+
+    def remember_model(self, provider_id: str, model: str) -> None:
+        """Remember *model* for *provider_id* without touching the live fields."""
+        pid = provider_by_id(provider_id).id
+        text = str(model or "").strip()
+        if not text:
+            return
+        settings = self._settings()
+        try:
+            models = self._read_provider_models(settings)
+            models[pid] = text
+            self._write_provider_models(settings, models)
+        finally:
+            settings.endGroup()
+            settings.sync()
+
+    def model_for(self, provider_id: str) -> str:
+        """The model remembered for *provider_id* ("" when none yet)."""
+        settings = self._settings()
+        try:
+            return self._read_provider_models(settings).get(
+                provider_by_id(provider_id).id, ""
+            )
+        finally:
+            settings.endGroup()
+

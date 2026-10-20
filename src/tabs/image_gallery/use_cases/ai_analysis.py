@@ -1,4 +1,5 @@
 """AI analyze / judgment-domain + analysis delivery for the Image Gallery (Wave 4).
+Audit-Meta: pattern=thin-owner-target size=exempt reason="one analysis delivery + domain + re-analyze-offer concern over the owner; the offer shares the same action context and the same scorecard state as delivery"
 
 Thin-owner helpers: plain functions taking the owner (``GalleryController``).
 This module owns the analysis DELIVERY + domain cluster: cache hydration
@@ -57,6 +58,7 @@ from tabs.image_gallery.use_cases.action_context import (
     ORIGIN_ACTION,
     ActionContext,
     context_for_paths,
+    current_backend,
 )
 from tabs.image_gallery.use_cases.ai_analyze import (  # re-exported for callers
     _is_configured,
@@ -471,3 +473,232 @@ def _on_analysis_error(owner, path: Path, error_info, gen: int | None = None) ->
     set_activity(item, ActivityPhase.ERROR, "ai")
     owner.widget.refresh_card(item)
     _refresh_ranks_visible(owner)
+
+
+# -- re-analyze offer after an AI-settings change ------------------------------
+#
+# Owner decision (2026-10-20): the AI settings now name a PROVIDER, and
+# switching one changes the cache identity (model / base_url / profile /
+# effort / mode) every existing scorecard was produced under. Applying such a
+# change therefore asks ONCE, in a modal, which existing analyses to redo —
+# scopes visible / selection / all, plus "not now" — and runs the SAME action
+# path any other re-analyze takes (``ActionContext`` + ``reanalyze``). There is
+# no bespoke loop here: the offer only resolves targets.
+
+REANALYZE_SCOPE_VISIBLE = "visible"
+REANALYZE_SCOPE_SELECTION = "selection"
+REANALYZE_SCOPE_ALL = "all"
+REANALYZE_SCOPES: tuple[str, ...] = (
+    REANALYZE_SCOPE_VISIBLE,
+    REANALYZE_SCOPE_SELECTION,
+    REANALYZE_SCOPE_ALL,
+)
+
+_REANALYZE_TITLE_KEY = "image_gallery.settings.reanalyze_title"
+_REANALYZE_BODY_KEY = "image_gallery.settings.reanalyze_body"
+_REANALYZE_VISIBLE_KEY = "image_gallery.settings.reanalyze_visible"
+_REANALYZE_SELECTION_KEY = "image_gallery.settings.reanalyze_selection"
+_REANALYZE_ALL_KEY = "image_gallery.settings.reanalyze_all"
+_REANALYZE_NOT_NOW_KEY = "image_gallery.settings.reanalyze_not_now"
+
+_REANALYZE_TITLE_DEFAULT = "AI settings changed"
+_REANALYZE_BODY_DEFAULT = (
+    "The existing analyses were made with the previous AI configuration. "
+    "Re-analyze them now? Re-analysis calls the API again and may cost money."
+)
+_REANALYZE_VISIBLE_DEFAULT = "Visible images"
+_REANALYZE_SELECTION_DEFAULT = "Selected images"
+_REANALYZE_ALL_DEFAULT = "All analyzed images"
+_REANALYZE_NOT_NOW_DEFAULT = "Not now"
+
+
+def _owner_tr(owner, key: str, default: str) -> str:
+    """Resolve *key* through the owner's ``_tr``, failing open to *default*."""
+    translate = getattr(owner, "_tr", None)
+    if not callable(translate):
+        return default
+    try:
+        value = translate(key, default)
+    except TypeError:
+        return default
+    except Exception:
+        return default
+    if isinstance(value, str) and value and value != key:
+        return value
+    return default
+
+
+def analyzed_items(owner) -> list[GalleryItem]:
+    """Pool items that already carry an analysis (the offer's subject)."""
+    try:
+        items = list(getattr(getattr(owner, "state", None), "items", None) or ())
+    except Exception:
+        return []
+    out: list[GalleryItem] = []
+    for item in items:
+        try:
+            if getattr(item, "analysis", None) is not None:
+                out.append(item)
+        except Exception:
+            continue
+    return out
+
+
+def reanalyze_targets(owner, scope: str) -> tuple[Path, ...]:
+    """The ``ActionContext`` targets for one offer scope — analyzed items only.
+
+    ``visible`` reads the viewport (``widget.visible_paths``), ``selection``
+    the ONE selection source (``action_scope.selected_paths``), ``all`` the
+    pool order. A scope that resolves to nothing returns ``()`` — the caller
+    no-ops instead of widening to "everything".
+    """
+    analyzed = analyzed_items(owner)
+    if not analyzed:
+        return ()
+    ordered = tuple(item.path for item in analyzed)
+    if scope == REANALYZE_SCOPE_ALL:
+        return ordered
+    keys: set[str] = set()
+    if scope == REANALYZE_SCOPE_VISIBLE:
+        try:
+            visible = getattr(getattr(owner, "widget", None), "visible_paths", None)
+            keys = {str(p) for p in (visible() if callable(visible) else visible or ())}
+        except Exception:
+            keys = set()
+    elif scope == REANALYZE_SCOPE_SELECTION:
+        try:
+            from tabs.image_gallery.use_cases import action_scope
+
+            keys = {str(p) for p in action_scope.selected_paths(owner)}
+        except Exception:
+            keys = set()
+    if not keys:
+        return ()
+    return tuple(path for path in ordered if str(path) in keys)
+
+
+def _ask_reanalyze_scope(owner, *, parent=None) -> str:
+    """Ask which analyses to redo; returns a scope token or "" for "not now".
+
+    Uses the shared ``AppMessageDialog`` (same chrome/CSD as the large-drop
+    guard). Its three action buttons carry the three scopes; the explicit
+    "Not now" is a fourth surface button AND the window-close/Esc path, so a
+    dismissed dialog can never be read as "re-analyze everything".
+    """
+    from tabs.host_helpers import AppMessageDialog, MessageKind
+
+    dialog = AppMessageDialog(
+        parent,
+        kind=MessageKind.QUESTION,
+        title=_owner_tr(owner, _REANALYZE_TITLE_KEY, _REANALYZE_TITLE_DEFAULT),
+        text=_owner_tr(owner, _REANALYZE_BODY_KEY, _REANALYZE_BODY_DEFAULT),
+        ok_text=_owner_tr(owner, _REANALYZE_VISIBLE_KEY, _REANALYZE_VISIBLE_DEFAULT),
+        dont_ask_text=_owner_tr(
+            owner, _REANALYZE_SELECTION_KEY, _REANALYZE_SELECTION_DEFAULT
+        ),
+        cancel_text=_owner_tr(owner, _REANALYZE_ALL_KEY, _REANALYZE_ALL_DEFAULT),
+    )
+    chosen = {"scope": ""}
+
+    def _pick(scope: str):
+        def _apply() -> None:
+            chosen["scope"] = scope
+
+        return _apply
+
+    # The button handlers are connected in addition to the dialog's own
+    # accept/reject: the scope is recorded before ``exec`` returns, and a plain
+    # window close (no button) leaves it empty = "not now".
+    try:
+        dialog._ok_button.clicked.connect(_pick(REANALYZE_SCOPE_VISIBLE))
+        dialog._dont_ask_button.clicked.connect(_pick(REANALYZE_SCOPE_SELECTION))
+        dialog._cancel_button.clicked.connect(_pick(REANALYZE_SCOPE_ALL))
+    except Exception:
+        return ""
+    try:
+        from PySide6.QtCore import Qt
+        from sli_ui_toolkit.widgets import Button
+
+        actions = dialog._ok_button.parentWidget()
+        not_now = Button(
+            text=_owner_tr(owner, _REANALYZE_NOT_NOW_KEY, _REANALYZE_NOT_NOW_DEFAULT),
+            variant="surface",
+            parent=actions,
+        )
+        not_now.clicked.connect(dialog.reject)
+        actions.layout().addWidget(
+            not_now,
+            0,
+            0,
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+        )
+    except Exception:
+        logger.debug("re-analyze offer: no explicit 'not now' button", exc_info=True)
+    dialog.exec()
+    scope = chosen["scope"]
+    return scope if scope in REANALYZE_SCOPES else ""
+
+
+def reanalyze_after_settings_change(owner, ctx: ActionContext) -> None:
+    """Run the standard re-analyze entry for one offer context."""
+    run = getattr(owner, "reanalyze", None)
+    if callable(run):
+        run(ctx)
+        return
+    reanalyze(owner, ctx)
+
+
+def offer_reanalysis(
+    owner,
+    *,
+    old_identity,
+    new_identity,
+    parent=None,
+    show_scope=None,
+    reanalyze_fn=None,
+) -> dict | None:
+    """Offer to re-analyze existing results after an AI-settings change.
+
+    Fires only when the applied identity CHANGED, the pool holds analyses, and
+    the gallery is ranking through the AI backend (a re-analysis of an AI
+    scorecard in the algorithms domain would silently re-measure instead).
+
+    Returns ``{"scope": str, "targets": tuple[Path, ...]}`` when the user picked
+    a scope (targets may be empty — nothing matched, so nothing ran), else
+    ``None``. Re-analysis goes through ``ActionContext`` + the owner's
+    ``reanalyze``; ``show_scope`` / ``reanalyze_fn`` are the test seams.
+    """
+    if not isinstance(old_identity, dict) or not isinstance(new_identity, dict):
+        return None
+    try:
+        if dict(old_identity) == dict(new_identity):
+            return None
+    except Exception:
+        return None
+    if not analyzed_items(owner):
+        return None
+    try:
+        if current_backend(owner) != BACKEND_AI:
+            return None
+    except Exception:
+        return None
+    ask = show_scope if callable(show_scope) else _ask_reanalyze_scope
+    try:
+        scope = str(ask(owner, parent=parent) or "").strip().lower()
+    except TypeError:
+        scope = ""
+    except Exception:
+        logger.debug("re-analyze offer: scope dialog failed", exc_info=True)
+        scope = ""
+    if scope not in REANALYZE_SCOPES:
+        return None
+    targets = reanalyze_targets(owner, scope)
+    if targets:
+        run = reanalyze_fn if callable(reanalyze_fn) else reanalyze_after_settings_change
+        ctx = context_for_paths(owner, targets, origin=ORIGIN_ACTION)
+        try:
+            run(owner, ctx)
+        except Exception:
+            logger.debug("re-analyze after settings change failed", exc_info=True)
+    return {"scope": scope, "targets": targets}
+
