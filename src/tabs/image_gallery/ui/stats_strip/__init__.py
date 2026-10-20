@@ -9,6 +9,8 @@ Signals:
     keepBestClicked — Keep best per series.
     cleanClicked    — Clean rejected (live count).
     compareClicked  — Compare finalists.
+    profileDomainSelected — A metric domain was picked in the profile chip
+                      (``"auto"`` = clear the override; P4).
 """
 
 from __future__ import annotations
@@ -21,6 +23,13 @@ from PySide6.QtWidgets import QHBoxLayout, QWidget
 
 from sli_ui_toolkit.managers import scaled_px
 from sli_ui_toolkit.widgets import Button, ButtonRegion, ButtonRow, Text
+
+from tabs.image_gallery.services.metric_profile import (
+    DOMAINS,
+    domain_for_mode,
+    domain_id,
+    format_profile,
+)
 
 # Package split (plan-gallery-split-2026-10-17, Part C6): the colour/token
 # helpers live in theme.py; re-export them so
@@ -49,6 +58,10 @@ class StatsStrip(QWidget):
     showAllClicked = Signal()  # Keep best ↔ Show all (mode via set_keep_mode)
     cleanClicked = Signal()
     compareClicked = Signal()
+    #: A named metric domain was picked in the profile chip's menu.
+    #: ``"auto"`` = clear the override; otherwise one of ``DOMAINS`` (P4).
+    #: The strip only announces the pick — the controller owns the value.
+    profileDomainSelected = Signal(str)
 
     def __init__(self, parent: QWidget | None = None, *, translate=None) -> None:
         super().__init__(parent)
@@ -60,6 +73,14 @@ class StatsStrip(QWidget):
         # Ranker provenance shown in the strip ("Ranked by Algorithms / AI (Jev)
         # / Manual"). Resolved token or "" (hidden) — never a fabricated ranker.
         self._rank_source = ""
+        # Active metric profile (P4): the controller-published profile object,
+        # the domain it is pinned to ("" = auto) and the domain the measured
+        # stats suggest when auto. The strip renders, never re-derives.
+        self._profile = None
+        self._profile_domain = ""
+        self._profile_suggested = ""
+        self._profile_auto = True
+        self._profile_flyout = None
         # Last affordance applied per action button ("keep"/"compare"). Used to
         # swap the dimmed/bright tokens only on the enabled↔disabled boundary
         # (see ``_apply_action_affordance``) — an empty cache forces the first
@@ -122,6 +143,24 @@ class StatsStrip(QWidget):
         except Exception:
             pass
         layout.addWidget(self._rank_provenance_label)
+
+        # Active metric-profile chip (P4) — which named domain/axis subset the
+        # series is measured on; clicking opens the domain menu (auto + the
+        # named domains). Hidden until the controller publishes a profile, so
+        # the strip never displays a fabricated axis set.
+        self._profile_chip = Button(text="", variant="ghost", size=(0, 24), parent=self)
+        self._profile_chip.setObjectName("gallery_metric_profile_chip")
+        try:
+            self._profile_chip.setForegroundColor(_accent_color())
+            self._profile_chip.setBorderColor(_thin_border_color())
+        except Exception:
+            pass
+        self._profile_chip.clicked.connect(self._on_profile_chip_clicked)
+        try:
+            self._profile_chip.hide()
+        except Exception:
+            pass
+        layout.addWidget(self._profile_chip)
 
         self._keep_btn = Button(
             text=self._t("image_gallery.action.keep_best", "Keep best"),
@@ -408,6 +447,11 @@ class StatsStrip(QWidget):
         except Exception:
             pass
         try:
+            self._profile_chip.setForegroundColor(_accent_color())
+            self._profile_chip.setBorderColor(_thin_border_color())
+        except Exception:
+            pass
+        try:
             self.update()
         except Exception:
             pass
@@ -532,6 +576,155 @@ class StatsStrip(QWidget):
         except Exception:
             pass
 
+    # -- metric-profile chip (P4) -----------------------------------------
+
+    def set_metric_profile(self, profile=None, *, domain: str = "", auto: bool = True) -> None:
+        """Render the active metric profile/domain in the chip (P4).
+
+        *profile* is the concrete ``MetricProfile`` the controller stored on the
+        state — the strip never derives one. *domain* is the name to display
+        (the explicit pick, or the domain the measured stats suggest when
+        *auto*); ``auto=True`` means no override is pinned, so the label says
+        so and the menu selects "auto". The full diagnostic line
+        (``format_profile``) is the tooltip — axes, source, mode, domain.
+        """
+        self._profile = profile
+        norm = domain_id(domain)
+        self._profile_auto = bool(auto)
+        self._profile_suggested = norm or domain_for_mode(None)
+        self._profile_domain = "" if bool(auto) else norm
+        self._refresh_profile_chip()
+
+    def _profile_display_domain(self) -> str:
+        return self._profile_domain or self._profile_suggested or "mixed"
+
+    def _domain_label(self, domain: str) -> str:
+        """Translated label for a domain token (auto has its own menu key)."""
+        defaults = {
+            "document": "Document",
+            "photo": "Photo",
+            "synthetic": "Synthetic",
+            "mixed": "Mixed",
+        }
+        if domain == "auto":
+            return self._t("image_gallery.profile.domain.auto", "Auto (from mode)")
+        return self._t(
+            f"image_gallery.profile.domain.{domain}",
+            defaults.get(domain, domain.title() or "Mixed"),
+        )
+
+    def _refresh_profile_chip(self) -> None:
+        """Repaint the chip label/tooltip from the published profile state."""
+        chip = getattr(self, "_profile_chip", None)
+        if chip is None:
+            return
+        profile = getattr(self, "_profile", None)
+        try:
+            axes = tuple(getattr(profile, "axis_ids", ()) or ())
+        except Exception:
+            axes = ()
+        if not axes:
+            try:
+                chip.setText("")
+                chip.setToolTip("")
+                chip.hide()
+            except Exception:
+                pass
+            return
+        try:
+            label = self._domain_label(self._profile_display_domain())
+            if self._profile_auto:
+                label = f"{label} ({self._t('image_gallery.profile.auto', 'auto')})"
+            text = self._t(
+                "image_gallery.profile.chip", "Metric profile: {profile}"
+            ).format(profile=label)
+            text += " · " + self._t("image_gallery.profile.axes", "{n} axes").format(
+                n=len(axes)
+            )
+            chip.setText(text)
+            # First production caller of format_profile: the chip's tooltip is
+            # the exact diagnostic line the log/trace prints.
+            chip.setToolTip(format_profile(profile))
+            chip.show()
+        except Exception:
+            pass
+
+    def _profile_menu_labels(self) -> list[str]:
+        return [self._domain_label("auto")] + [
+            self._domain_label(domain) for domain in DOMAINS
+        ]
+
+    def _profile_menu_index(self) -> int:
+        """Selected menu row: 0 = auto, 1..N = the pinned domain."""
+        if self._profile_auto or not self._profile_domain:
+            return 0
+        try:
+            return 1 + DOMAINS.index(self._profile_domain)
+        except ValueError:
+            return 0
+
+    def _profile_flyout_ensure(self):
+        """Lazily create the domain menu (SimpleOptionsFlyout, painter pipeline)."""
+        flyout = getattr(self, "_profile_flyout", None)
+        if flyout is not None:
+            return flyout
+        try:
+            from sli_ui_toolkit.widgets import SimpleOptionsFlyout
+        except Exception:
+            return None
+        try:
+            parent = self.window() or self
+        except Exception:
+            parent = self
+        try:
+            flyout = SimpleOptionsFlyout(parent_widget=parent)
+        except Exception:
+            return None
+        try:
+            flyout.item_chosen.connect(self._on_profile_domain_chosen)
+        except Exception:
+            pass
+        self._profile_flyout = flyout
+        return flyout
+
+    def _on_profile_chip_clicked(self) -> None:
+        """Open (or toggle) the domain menu under the chip."""
+        try:
+            flyout = self._profile_flyout_ensure()
+            if flyout is None:
+                return
+            try:
+                if flyout.isVisible():
+                    flyout.hide()
+                    return
+            except Exception:
+                pass
+            try:
+                flyout.set_row_height(24)
+            except Exception:
+                pass
+            flyout.populate(self._profile_menu_labels(), self._profile_menu_index())
+            flyout.show_below(self._profile_chip, width_mode="content")
+        except Exception:
+            pass
+
+    def _on_profile_domain_chosen(self, index: int) -> None:
+        """Announce the picked domain — the controller applies/clears it."""
+        try:
+            idx = int(index)
+        except Exception:
+            return
+        token = "auto"
+        if idx > 0:
+            try:
+                token = DOMAINS[idx - 1]
+            except IndexError:
+                token = "auto"
+        try:
+            self.profileDomainSelected.emit(token)
+        except Exception:
+            pass
+
     def set_rejected_count(self, n: int) -> None:
         self._rejected = int(n)
         txt = self._t("image_gallery.stats.clean_rejected", "Clean rejected ({n})").format(n=int(n))
@@ -603,6 +796,10 @@ class StatsStrip(QWidget):
             self._apply_rank_provenance()
         except Exception:
             pass
+        try:
+            self._refresh_profile_chip()
+        except Exception:
+            pass
 
     def set_mode(self, mode: str, source: str | Path | None = None) -> None:
         mode_up = str(mode or "fidelity").strip().upper()
@@ -639,6 +836,22 @@ class StatsStrip(QWidget):
     @property
     def rank_provenance_label(self) -> Text:
         return self._rank_provenance_label
+
+    @property
+    def profile_chip(self) -> Button:
+        return self._profile_chip
+
+    @property
+    def profile_domain(self) -> str:
+        """The pinned domain (``""`` = auto) — presentation state only."""
+        return str(getattr(self, "_profile_domain", "") or "")
+
+    @property
+    def profile_chip_text(self) -> str:
+        try:
+            return str(self._profile_chip.text() or "")
+        except Exception:
+            return str(getattr(self._profile_chip, "_text", "") or "")
 
     @property
     def rank_source(self) -> str:

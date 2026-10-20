@@ -229,6 +229,22 @@ def open_paths(owner, paths: list[Path], *, replace: bool = False) -> None:
     except Exception:
         prev_triage = TriageState.IDLE
     owner.state = GalleryState(folder=display_folder, items=merged, triage_state=TriageState.RUNNING)
+    # P4: the explicit metric-domain pick lives on the controller (it MUST
+    # survive this state replacement — that is the authority seam); re-apply
+    # it onto the fresh state before analysis reads ``state.metric_profile``.
+    # A replace is a fresh context (folder picker / mixed drop), so the pick is
+    # cleared there exactly as a folder switch does.
+    try:
+        if replace:
+            clear = getattr(owner, "clear_metric_profile", None)
+            if callable(clear):
+                clear()
+        else:
+            restore = getattr(owner, "restore_metric_profile", None)
+            if callable(restore):
+                restore()
+    except Exception:
+        logger.debug("metric profile restore failed", exc_info=True)
     _dnd_log(
         "open_paths -> folder %s items=%d (has_dir=%s replace=%s old=%d new=%d) (%.1f ms)",
         display_folder, len(merged), has_dir_input, replace,

@@ -148,6 +148,18 @@
       "series": "{n} series",
       "redundant": "{n} redundant"
     },
+    "profile": {
+      "chip": "Metric profile: {profile}",
+      "auto": "auto",
+      "axes": "{n} axes",
+      "domain": {
+        "auto": "Auto (from mode)",
+        "document": "Document",
+        "photo": "Photo",
+        "synthetic": "Synthetic",
+        "mixed": "Mixed"
+      }
+    },
     "quick_look": {
       "unset_source": "Unset",
       "reject": "Reject",

@@ -148,6 +148,18 @@
       "series": "{n} серий",
       "redundant": "{n} лишних"
     },
+    "profile": {
+      "chip": "Метрический профиль: {profile}",
+      "auto": "авто",
+      "axes": "осей: {n}",
+      "domain": {
+        "auto": "Авто (по режиму)",
+        "document": "Документ",
+        "photo": "Фото",
+        "synthetic": "Синтетика",
+        "mixed": "Смешанный"
+      }
+    },
     "quick_look": {
       "unset_source": "Сбросить",
       "reject": "Отклонить",

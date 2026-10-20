@@ -176,6 +176,12 @@ class GalleryController:
         # live there; ``state``/widget are read-only projections (see
         # plan-gallery-jev-pipeline-2026-10-15 S1).
         self._judgment_domain = "algorithms"
+        #: Explicit named metric-domain pick (P4, ``""`` = auto). Controller-
+        #: local for the same reason as ``_judgment_domain``: ``state`` is
+        #: replaced on every folder open / pool rebuild. The resolved profile
+        #: is projected onto ``state.metric_profile`` (the consumer slot).
+        self._metric_domain = ""
+
         # Folder generation whose METRICS pass has settled. The winner (★ BEST)
         # is only marked after settle — before that the fusion rank is
         # provisional and marking it put BEST on a random leader too early.
@@ -279,6 +285,15 @@ class GalleryController:
         widget.folder_pick_requested.connect(self._on_pick_folder)
         widget.analyze_requested.connect(self.analyze_item_by_path)
         widget.filter_text_changed.connect(self.set_filter_text)
+        # P4: the stats-strip chip announces a named-domain pick/clear; the
+        # controller owns the value (state is replaced, the pick must not be).
+        # Fail-open for duck-typed widgets without a strip (storeless tests).
+        try:
+            strip = getattr(widget, "stats_strip", None)
+            if strip is not None:
+                strip.profileDomainSelected.connect(self.set_metric_domain)
+        except Exception:
+            logger.debug("metric profile chip wiring failed", exc_info=True)
         # Explicit owner: the widget attaches this controller via
         # ImageGalleryWidget.attach_controller (G2); the controller keeps
         # self.widget from its constructor only — no back-pokes here.
@@ -460,14 +475,34 @@ class GalleryController:
         stored profile. Never raises: a derivation failure keeps the previous
         value (or ``None``), so consumers fall back to the mode mapping
         (fail-open, plan §Fallback).
+
+        P4: an explicit named-domain pick (``self._metric_domain``) is the
+        authority and wins here — the profile is then the domain's axis set,
+        not the mode/salience derivation. The domain lives on the controller
+        because ``state`` is replaced by open_folder/append/clear_to_empty.
         """
         try:
             from tabs.image_gallery.use_cases.profile_select import (
                 derive_for_state,
                 describe,
             )
+            from tabs.image_gallery.services.metric_profile import (
+                domain_for_stats,
+                profile_for_domain,
+            )
 
-            profile = derive_for_state(self.state)
+            domain = str(getattr(self, "_metric_domain", "") or "")
+            if domain:
+                profile = profile_for_domain(
+                    domain, mode=getattr(self.state, "mode", None)
+                )
+                chip_domain = domain
+            else:
+                profile = derive_for_state(self.state)
+                chip_domain = domain_for_stats(
+                    getattr(self.state, "items", None),
+                    mode=getattr(self.state, "mode", None),
+                )
             try:
                 previous = getattr(self.state, "metric_profile", None)
             except Exception:
@@ -475,6 +510,13 @@ class GalleryController:
             # Store the raw derived profile verbatim (a successful derivation
             # is always a usable ``MetricProfile``, even with no salience).
             self.state.metric_profile = profile
+            try:
+                self.state.metric_domain = domain
+            except Exception:
+                pass
+            self._publish_metric_profile(
+                profile, domain=chip_domain, auto=not domain
+            )
             if profile != previous:
                 logger.debug("[gallery] metric profile: %s", describe(self.state))
             return profile
@@ -485,11 +527,103 @@ class GalleryController:
             except Exception:
                 return None
 
+    def set_metric_domain(self, domain: str) -> object:
+        """Pin the metric profile to a named domain, or clear it ("auto") (P4).
+
+        ``domain`` is one of ``services.metric_profile.DOMAINS`` (``document``
+        / ``photo`` / ``synthetic`` / ``mixed``); ``"auto"``, ``""`` or an
+        unknown value clears the override, restoring the mode/salience-derived
+        profile. The pick lives on the controller (``self._metric_domain``) so
+        it survives the ``state`` replacements of open_folder/append; the
+        resolved axes are written to ``state.metric_profile`` — the SAME slot
+        every consumer already reads — and the strip chip is republished.
+
+        The analysis path needs no change: ``ActionContext`` snapshots
+        ``active_profile(state)`` once (``_analysis_parameters``) and carries
+        it as ``ctx.profile``. Returns the stored profile. Never raises.
+        """
+        try:
+            from tabs.image_gallery.services.metric_profile import (
+                domain_id,
+                domain_for_stats,
+                profile_for_domain,
+            )
+            from tabs.image_gallery.use_cases.profile_select import (
+                derive_for_state,
+                describe,
+            )
+
+            chosen = domain_id(domain)
+            self._metric_domain = chosen
+            try:
+                self.state.metric_domain = chosen
+            except Exception:
+                pass
+            if chosen:
+                profile = profile_for_domain(
+                    chosen, mode=getattr(self.state, "mode", None)
+                )
+                chip_domain = chosen
+            else:
+                # Auto: back to the P1 derivation (mode base ∪ salience) — the
+                # exact profile the same state would have had without a pick.
+                profile = derive_for_state(self.state)
+                chip_domain = domain_for_stats(
+                    getattr(self.state, "items", None),
+                    mode=getattr(self.state, "mode", None),
+                )
+            self.state.metric_profile = profile
+            self._publish_metric_profile(
+                profile, domain=chip_domain, auto=not chosen
+            )
+            logger.debug("[gallery] metric profile: %s", describe(self.state))
+            return profile
+        except Exception:
+            logger.debug("metric domain selection failed", exc_info=True)
+            try:
+                return getattr(self.state, "metric_profile", None)
+            except Exception:
+                return None
+
+    def restore_metric_profile(self) -> object:
+        """Re-apply the domain pick to a freshly rebuilt state (P4).
+
+        Call it after ``state = GalleryState(...)`` (append/rebuild) — the
+        controller is the authority, so the pick is not lost with the old
+        state. Without a pick this is a no-op (the next derivation fills the
+        state as before). Never raises; returns the stored profile or ``None``.
+        """
+        try:
+            domain = str(getattr(self, "_metric_domain", "") or "")
+            if not domain:
+                return getattr(self.state, "metric_profile", None)
+            return self.refresh_metric_profile()
+        except Exception:
+            logger.debug("metric profile restore failed", exc_info=True)
+            return None
+
+    def _publish_metric_profile(self, profile, *, domain: str = "", auto: bool = True) -> None:
+        """Push the active profile + domain to the stats-strip chip (P4).
+
+        The chip is pure presentation: the controller owns the value, the strip
+        only renders it (and announces a pick via ``profileDomainSelected``).
+        Fail-open — a storeless/duck-typed widget in tests has no strip.
+        """
+        try:
+            strip = getattr(self.widget, "stats_strip", None)
+            if strip is None:
+                return
+            strip.set_metric_profile(profile, domain=domain, auto=auto)
+        except Exception:
+            logger.debug("metric profile chip publish failed", exc_info=True)
+
     def clear_metric_profile(self) -> None:
         """Invalidate the stored metric profile (folder changed — plan P1).
 
         Consumers fall back to the mode mapping (``profile_select.active_profile``)
-        until the next ``refresh_metric_profile`` derivation. Never raises.
+        until the next ``refresh_metric_profile`` derivation. P4: a folder
+        switch is a fresh context, so the explicit domain pick is cleared too.
+        Never raises.
         """
         try:
             from tabs.image_gallery.use_cases.profile_select import describe
@@ -498,7 +632,14 @@ class GalleryController:
                 previous = getattr(self.state, "metric_profile", None)
             except Exception:
                 previous = None
+            self._metric_domain = ""
             self.state.metric_profile = None
+            try:
+                self.state.metric_domain = ""
+            except Exception:
+                pass
+            # The chip must not keep showing the previous folder's axis set.
+            self._publish_metric_profile(None)
             if previous is not None:
                 logger.debug("[gallery] metric profile: %s", describe(self.state))
         except Exception:
@@ -536,6 +677,11 @@ class GalleryController:
             items = []
         if len(items) < 2:
             _ai_debug("metric profile skip: %d item(s) (<2) — nothing to select", len(items))
+            return
+        # P4: a manual domain pick is authoritative — do not spend a VLM call
+        # on a profile that would be dropped by ``_apply_profile_outcome``.
+        if str(getattr(self, "_metric_domain", "") or ""):
+            _ai_debug("metric profile skip: explicit domain pick")
             return
         try:
             settings = self._ai_settings_store.load()
@@ -628,6 +774,11 @@ class GalleryController:
         """
         if not self._is_current_folder_gen(gen):
             return
+        # P4: a manual domain pick is the user's explicit decision — the VLM
+        # selector may never silently replace it (the pick survives a rebuild
+        # and stays authoritative until "auto" is chosen).
+        if str(getattr(self, "_metric_domain", "") or ""):
+            return
         try:
             axis_ids = tuple(getattr(profile, "axis_ids", None) or ())
         except Exception:
@@ -639,6 +790,19 @@ class GalleryController:
         except Exception:
             logger.debug("metric profile store failed", exc_info=True)
             return
+        try:
+            from tabs.image_gallery.services.metric_profile import domain_for_stats
+
+            self._publish_metric_profile(
+                profile,
+                domain=domain_for_stats(
+                    getattr(self.state, "items", None),
+                    mode=getattr(self.state, "mode", None),
+                ),
+                auto=True,
+            )
+        except Exception:
+            logger.debug("metric profile chip publish failed", exc_info=True)
         try:
             from tabs.image_gallery.use_cases.profile_select import describe
 
