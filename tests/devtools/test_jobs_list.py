@@ -17,12 +17,14 @@ Falsification (written first):
 * a kind with no cooperative cancel must get a *named* refusal, not a fake one;
 * a cancelled export must leave neither the final file nor its ``.tmp``.
 
-Recorded follow-up (not fixed here — those files are read-only for this task):
-``ExportSaveFlowCoordinator._export_worker_task`` swallows the cancel sentinel
-and returns ``None``, and ``GenericWorker`` emits no ``result`` for ``None``, so
-the coordinator's ``_save_cancellation`` entry lingers until shutdown. The last
-export test pins ``jobs_list``'s answer to that: an entry whose cancel event is
-set is never reported as a running job (no zombie row).
+Fixed follow-up (was: "not fixed here"): ``ExportSaveFlowCoordinator._export_worker_task``
+swallows the cancel sentinel and returns ``None``, and ``GenericWorker`` emits no
+``result`` for ``None`` — so the coordinator's ``_save_cancellation`` entry used
+to linger until shutdown. ``start_with_worker`` now also connects
+``signals.finished``, which always fires, so the settled worker releases its
+entry. The last export test pins both answers: an entry whose cancel event is set
+is never reported as a running job (no zombie row), and the registry itself is
+empty once the worker finished.
 """
 
 from __future__ import annotations
@@ -285,8 +287,9 @@ def test_jobs_list_drops_an_export_whose_cancel_was_requested(tmp_path):
     """A cancel-requested entry is never listed as a running job (no zombie).
 
     Mirrors the real worker shape that swallows the cancel sentinel and returns
-    ``None``, leaving the coordinator's registry entry behind; the row must
-    still disappear the moment its cancel event is set.
+    ``None``: no ``result`` is emitted, only ``finished``. The row must
+    disappear the moment its cancel event is set, and the coordinator's own
+    registry entry must be released once that worker finished.
     """
     app = _qapp()
     pool = QThreadPool()
@@ -311,7 +314,9 @@ def test_jobs_list_drops_an_export_whose_cancel_was_requested(tmp_path):
     assert handlers.jobs_list({}) == {"count": 0, "jobs": []}, (
         "a cancelled export must not linger as a running row"
     )
-    assert coordinator._save_cancellation, "the coordinator's own registry entry lingers (app-side)"
+    assert not coordinator._save_cancellation, (
+        "the coordinator's own registry entry must be released when the worker finished"
+    )
 
 
 # --- seam: the duck-typed contract against the real sources -----------------

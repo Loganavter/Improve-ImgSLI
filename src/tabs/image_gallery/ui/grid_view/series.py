@@ -12,7 +12,7 @@ from PySide6.QtGui import QDrag
 from PySide6.QtWidgets import QGridLayout, QSizePolicy, QVBoxLayout, QWidget
 
 from sli_ui_toolkit.managers import scaled_px
-from sli_ui_toolkit.widgets import Button, ButtonRegion, ButtonRow, Label, Layer, OverlayScrollArea
+from sli_ui_toolkit.widgets import Button, ButtonRegion, ButtonRow, Layer, OverlayScrollArea, Text
 
 from tabs.image_gallery.models import GalleryItem
 from tabs.image_gallery.ui.card import (
@@ -815,7 +815,7 @@ def _make_series_header(
         lay.addWidget(btn, 1)
         return container
     except Exception:
-        # Fallback: Label container with theme token
+        # Fallback: Text container with theme token
         container = QWidget(self.items_host)
         container.setObjectName("GallerySeriesHeader")
         from PySide6.QtWidgets import QHBoxLayout
@@ -823,7 +823,7 @@ def _make_series_header(
         lay = QHBoxLayout(container)
         lay.setContentsMargins(scaled_px(8), scaled_px(4), scaled_px(8), scaled_px(4))
         lay.setSpacing(0)
-        lbl = Label(display, pixel_size=16, parent=container)
+        lbl = Text(display, mode="plain", pixel_size=16, parent=container)
         lbl.setObjectName("GallerySeriesHeaderLabel")
         try:
             lbl.setBold(True)

@@ -27,7 +27,7 @@ from tabs.image_gallery.debug import gallery_debug
 from sli_ui_toolkit.widgets import (
     Button,
     ButtonRow,
-    Label,
+    Label, Text,
     OverlayScrollArea,
 )
 
@@ -292,9 +292,9 @@ def populate(overlay, owner) -> None:
     # Navigation strip row — replaced below by every rebuild.
     overlay._strip_row = None
     if not items:
-        empty = Label(
+        empty = Text(
             overlay._t("image_gallery.clean_review.no_rejected", "No rejected files."),
-            pixel_size=14,
+            mode="plain", pixel_size=14,
             parent=overlay._list_host,
         )
         empty.setObjectName("clean_review_empty")

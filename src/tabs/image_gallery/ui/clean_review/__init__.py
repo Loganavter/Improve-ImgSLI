@@ -40,8 +40,8 @@ from tabs.image_gallery.debug import gallery_debug
 # Public toolkit imports.
 from sli_ui_toolkit.widgets import (
     Button,
-    Label,
     OverlayScrollArea,
+    Text,
     TopLevelInWindowOverlay,
     ToastAction,
     ToastManager,
@@ -567,7 +567,7 @@ class CleanReviewOverlay(TopLevelInWindowOverlay):
         self._content = _ReviewPlate(self)
         self._content.setObjectName("CleanReviewContent")
         # Theme tokens — painter pipeline owns visuals (no QSS).
-        # Uses ThemeManager palette tokens via toolkit Button/Label (no direct get_color call
+        # Uses ThemeManager palette tokens via toolkit Button/Text (no direct get_color call
         # to respect tests/contracts/test_no_manual_theming.py — painter pipeline owns colors).
         try:
             from sli_ui_toolkit.managers import ThemeManager  # noqa: F401
@@ -581,9 +581,9 @@ class CleanReviewOverlay(TopLevelInWindowOverlay):
         outer.setSpacing(scaled_px(12))
 
         # Phase 2 — mockup v3 header (svg:43-45): title 16 bold + 12
-        # muted subtitle + divider rule. Bold goes through the Label
+        # muted subtitle + divider rule. Bold goes through the Text
         # constructor (QL tabs/image_gallery/ui/quick_look/overlay_build/build.py:113 — setBold after would
-        # re-run Label's pixel-based _apply_style and revert sizing).
+        # re-run the pixel-based _apply_style and revert sizing).
         # Quick Look parity: top row is title/subtitle + top-right ✕.
         # The header layout stays a direct layout item (design-parity pin);
         # the S3 navigation section's header row is its only focusable
@@ -596,7 +596,7 @@ class CleanReviewOverlay(TopLevelInWindowOverlay):
         title_col = QVBoxLayout()
         title_col.setContentsMargins(0, 0, 0, 0)
         title_col.setSpacing(scaled_px(2))
-        self._title = Label("", pixel_size=16, bold=True, parent=self._content)
+        self._title = Text("", mode="plain", pixel_size=16, bold=True, parent=self._content)
         self._title.setObjectName("clean_review_title")
         self._title.setAlignment(Qt.AlignmentFlag.AlignLeft)
         title_col.addWidget(self._title)
@@ -604,7 +604,7 @@ class CleanReviewOverlay(TopLevelInWindowOverlay):
         # S3-1: reassurance subtitle under the title — safety promise before
         # the move (mockup v3). Muted via the toolkit ``caption`` variant
         # (12 px secondary/status text) — no hand-coloring, tokens own color.
-        self._subtitle = Label("", pixel_size=14, variant="caption", parent=self._content)
+        self._subtitle = Text("", mode="plain", pixel_size=14, variant="caption", parent=self._content)
         self._subtitle.setObjectName("clean_review_subtitle")
         self._subtitle.setWordWrap(True)
         self._subtitle.setAlignment(Qt.AlignmentFlag.AlignLeft)
@@ -667,7 +667,7 @@ class CleanReviewOverlay(TopLevelInWindowOverlay):
 
         # S3 provenance line — BELOW the filmstrip per mockup v3 (svg:100
         # draws it under the thumbs, above the bottom action bar).
-        self._provenance_label = Label("", pixel_size=13, parent=self._content)
+        self._provenance_label = Text("", mode="plain", pixel_size=13, parent=self._content)
         self._provenance_label.setObjectName("clean_review_provenance")
         self._provenance_label.setWordWrap(True)
         self._provenance_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
@@ -701,7 +701,7 @@ class CleanReviewOverlay(TopLevelInWindowOverlay):
 
         bar_layout.addStretch(1)
 
-        self._size_label = Label("", pixel_size=13, parent=bar)
+        self._size_label = Text("", mode="plain", pixel_size=13, parent=bar)
         self._size_label.setObjectName("clean_review_size_label")
         self._size_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         bar_layout.addWidget(self._size_label)

@@ -17,12 +17,12 @@ pytest tests/runtime/test_event_bus_depth.py::TestEventBusDepth
 
 ## Tiers (fast PR vs full nightly)
 
-Markers are registered in `pytest.ini` (`slow`, `gui`, `flaky`). No `addopts`
+Markers are registered in `pytest.ini` (`slow`, `flaky`). No `addopts`
 — default runs are unchanged; tiers are opt-in via `-m`:
 
 ```bash
 pytest tests -m "not slow" -n auto -q     # fast tier: everything except the
-                                          # whole-tree scans (15 files / 44 tests); PR default
+                                          # whole-tree scans (14 files / 44 tests); PR default
 pytest -n auto -q                        # full suite: tests/ + src/tabs/*/tests/ (nightly / pre-merge)
 pytest -m "slow" -q                       # slow scans only
 ```

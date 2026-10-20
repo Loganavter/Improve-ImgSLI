@@ -253,6 +253,18 @@ class SaveFlowCoordinator(SaveToastMixin):
     def _finalize_save_worker(self, save_task_id: int) -> None:
         self._save_cancellation.pop(save_task_id, None)
 
+    def _on_save_worker_finished(self, save_task_id: int) -> None:
+        """Release the registry entry when the worker thread is done.
+
+        ``GenericWorker.finished`` always fires, including the silent-completion
+        path that emits no ``result`` (the exported cancel sentinel is swallowed
+        and the body returns ``None``). Without this, such a task stayed in
+        ``_save_cancellation`` until shutdown and kept showing up as a running
+        export. Idempotent: when ``result``/``error`` already finalized the
+        task, the ``pop`` is a no-op — no second toast, no second repaint.
+        """
+        self._finalize_save_worker(save_task_id)
+
     # --- generic worker launch ---------------------------------------------------
     def start_with_worker(
         self,
@@ -264,7 +276,10 @@ class SaveFlowCoordinator(SaveToastMixin):
         """Create toast, build worker via *worker_factory(cancel_event)*, wire signals, start.
 
         *worker_factory* must return a ``GenericWorker`` (or alike with
-        ``signals.progress/result/error`` and ``kwargs``). Callers that need
+        ``signals.progress/result/error`` and ``kwargs``). ``signals.finished``
+        is wired too when present (best effort): it is the only signal that
+        fires for a worker that completes without a ``result`` (see
+        ``_on_save_worker_finished``). Callers that need
         MC-style sync fallback pass ``sync_fn`` (the synchronous save call).
         """
         final_path_for_display = self._build_display_path(options)
@@ -299,6 +314,15 @@ class SaveFlowCoordinator(SaveToastMixin):
             logger.error("Failed to connect worker signals: %s", exc, exc_info=True)
             self._on_save_worker_error(save_task_id, cancel_event, final_path_for_display, (type(exc), exc, exc.__traceback__))
             return
+        # ``finished`` is the only signal that also fires when the body returned
+        # ``None`` (no ``result``). Best effort: a worker-alike without it keeps
+        # the old result/error lifecycle instead of failing the whole save.
+        try:
+            worker.signals.finished.connect(
+                lambda: self._on_save_worker_finished(save_task_id)
+            )
+        except Exception:
+            logger.debug("Worker has no 'finished' signal; registry released by result/error", exc_info=True)
 
         thread_pool = self._get_thread_pool()
         if thread_pool is None:

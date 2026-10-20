@@ -249,6 +249,62 @@ Declares: *"A tab is a self-contained mini-app. Here's how to create it, handle 
 
 **Why**: Main window doesn't know about specific tabs. Tabs register themselves. Main window treats all tabs uniformly.
 
+## Keyboard Navigation (The Focus Problem)
+
+The app's keyboard cursor is the toolkit's section graph, not Qt focus: an
+arrow key is routed to the `NavigationSection` whose `owns()` accepts the
+focused widget (`src/core/navigation.py` re-exports the singleton), and a
+control no section claims is unreachable by the app's own keyboard model
+even when `Tab` can land on it.
+
+### NavigationManager
+
+Declares: *"Name the owner of each navigable surface once. Arrows route
+through the registry; focus arrival is not activation."*
+
+**Why**: arrow consumption on `QApplication` has exactly one owner, so no
+widget may silently eat Up/Down and strand the keyboard cursor.
+
+A tab participates through its lifecycle hooks:
+
+- **Registration.** `src/tabs/image_compare/tab.py:315` and
+  `src/tabs/image_gallery/tab.py:247` call
+  `declare_toolbar_navigation(...)` (`src/tabs/host_helpers.py:34`) on
+  activation, with toolbar *container* rows (not bare controls), then
+  unregister on deactivation (`src/tabs/image_compare/tab.py:333`).
+- **One owner per section.** A surface may be claimed by exactly one
+  section; overlapping `owns()` makes arrow routing ambiguous. A second
+  surface gets its own registration — the gallery adds the grid after the
+  toolbar (`src/tabs/image_gallery/tab.py:247-271`).
+- **Ordering is the graph.** Registration order defines the neighbours
+  `focus_first` / `focus_last` / `focus_nearest` hand off between, which is
+  why the gallery documents toolbar-above / grid-below explicitly
+  (`src/tabs/image_gallery/tab.py:260`). Hand-offs move the cursor only.
+- **Enter activates.** Focus arrival never does: the tab strip switches on
+  Enter/Space and explicitly not on a Down/Up hand-off
+  (`src/core/navigation_sections.py:245`), and toolkit buttons fire on
+  Space/Return/Enter. Value controls additionally gate editing behind an
+  explicit Enter.
+- **Canvas keys stay separate.** `TabContract.consumes_canvas_key_events()`
+  (`src/tabs/contract.py:258`) defaults to `False`; a tab that opts in gets
+  its canvas keys re-emitted as signals instead of routing them through the
+  section graph.
+
+**Preview flyouts are deliberately outside the graph.** Transient hover /
+keyboard-peek panels open with `grab_focus=False` and
+`register_nav_section=False` — see
+`src/tabs/image_compare/ui/transient_magnifier.py:124` and
+`src/tabs/image_compare/ui/magnifier_settings_flyout.py:369`. Do not "fix"
+that `False` into `True`: it keeps Down/Up walking the parent toolbar rows
+instead of entering a panel that disappears on hover-out, and the parent
+section keeps ownership of the arrows. Enter is the explicit act that admits
+keyboard navigation into the panel
+(`src/ui/widgets/panel_visibility_flyout.py:47`). Only an interactive
+opening — focus grab plus a registered flyout section — joins the graph.
+
+Canonical long guide (sibling private docs repo, path only):
+`improve-imgsli-internal-docs/docs/dev/KEYBOARD_NAVIGATION.md`.
+
 ## Core Events (The Notification Problem)
 
 ### Event Protocol
