@@ -6,14 +6,16 @@ producer packages": one package per analyzer, metadata in ``manifest.py``,
 
 The cases below pin the properties the waves exist for:
 
-- the registry sees exactly ten producers with the full 23-axis vocabulary,
+- the registry sees exactly four producers with the full 23-axis vocabulary,
   and it sees them by importing manifests only (a manifest is imported on every
   start, so a heavy backend there would load for everyone);
 - a producer is a pure function of ``AnalysisContext``: it never decodes (AST
   gate, plan G11), never touches the store, and answers missing inputs with
   ``status="gap"`` instead of a substituted number;
 - artifacts are ``candidate`` flags whose value is a severity rank, not a
-  0..100 quality score;
+  0..100 quality score, and they come from the one aggregate the report uses
+  (``artifacts.analyze_images``), not from seven independently wrapped detectors
+  — the W7 dark launch showed the two can disagree on the anchored axes;
 - the AI scorecard (network path 1, W6) is a producer like any other: its model
   arrives as a ``BackendRef`` from the catalog, its bytes arrive from the
   executor, and its transport is an injected callable — nothing here opens a
@@ -50,14 +52,15 @@ FIDELITY_AXES = (
     "halo_delta",
     "chroma_fringe_delta",
 )
+#: Catalog order — the order ``artifact_catalog`` declares (and returns).
 ARTIFACT_AXES = (
     "banding",
     "halo",
-    "over_smoothing",
-    "invented_texture",
     "blocking",
     "chroma_fringing",
+    "invented_texture",
     "noise_amplification",
+    "over_smoothing",
 )
 #: The MEASURED registry ids the AI scorecard answers — pinned by name so the
 #: manifest cannot silently drift into a hand-written fourth vocabulary.
@@ -83,13 +86,7 @@ AXES = CAMERA_AXES + FIDELITY_AXES + ARTIFACT_AXES + SCORECARD_AXES
 
 PRODUCER_IDS = (
     "ai_scorecard",
-    "artifact_banding",
-    "artifact_blocking",
-    "artifact_chroma_fringing",
-    "artifact_halo",
-    "artifact_invented_texture",
-    "artifact_noise_amplification",
-    "artifact_over_smoothing",
+    "artifact_catalog",
     "camera_scalars",
     "fidelity_reference",
 )
@@ -116,6 +113,19 @@ def _gradient(size: int = 64):
             value = int((x + y) * 255 / span)
             pixels[x, y] = (value, value, value)
     return image
+
+
+def _banded_pair(size: int = 128, levels: int = 6):
+    """A posterized ramp over its smooth original: a banded-vs-source fixture."""
+    import numpy as np
+    from PIL import Image
+
+    ramp = np.tile(np.linspace(40, 220, size), (size, 1))
+    step = 255 // levels
+    quantized = (np.round(ramp / step) * step).clip(0, 255)
+    smooth = Image.fromarray(ramp.astype(np.uint8)).convert("RGB")
+    banded = Image.fromarray(quantized.astype(np.uint8)).convert("RGB")
+    return banded, smooth
 
 
 def _ctx(
@@ -211,7 +221,7 @@ def _make_package(
 # ---------------------------------------------------------------------------
 
 
-def test_registry_discovers_exactly_ten_sorted_producers_and_23_axes():
+def test_registry_discovers_exactly_four_sorted_producers_and_23_axes():
     registry = discover(PRODUCERS, force=True)
 
     ids = tuple(spec.id for spec in registry.producers)
@@ -226,8 +236,8 @@ def test_registry_discovers_exactly_ten_sorted_producers_and_23_axes():
         {"images", "reference"}
     )
     assert registry.get("ai_scorecard").requires == frozenset({"images", "backend"})
-    for axis in ARTIFACT_AXES:
-        assert registry.get(f"artifact_{axis}").requires == frozenset({"images"})
+    assert registry.get("artifact_catalog").requires == frozenset({"images"})
+    assert tuple(registry.get("artifact_catalog").provides) == ARTIFACT_AXES
 
 
 def test_scorecard_manifest_provides_exactly_the_measured_registry():
@@ -275,7 +285,7 @@ def test_discovery_imports_manifests_only_not_producers_or_heavy_backends(
 
     registry = discover(PRODUCERS, force=True)
 
-    assert len(registry) == 10
+    assert len(registry) == 4
     assert "torch" not in sys.modules
     assert "piq" not in sys.modules
     leaked = [
@@ -295,8 +305,9 @@ def test_every_local_manifest_declares_free_non_automatic_metadata_only():
             continue
         assert spec.cost == "free"
         assert spec.automatic is False, "the resolver decides when a producer runs"
+    catalog = registry.get("artifact_catalog")
     for axis in ARTIFACT_AXES:
-        assert registry.get(f"artifact_{axis}").provides[axis] == "candidate"
+        assert catalog.provides[axis] == "candidate"
     for axis in CAMERA_AXES + FIDELITY_AXES:
         assert (
             registry.get(
@@ -366,29 +377,40 @@ def test_fidelity_producer_measures_against_the_source():
             assert 0.0 <= value.value <= 100.0
 
 
-@pytest.mark.parametrize("axis", ARTIFACT_AXES)
-def test_artifact_producer_returns_a_candidate_rank(axis: str):
-    values = _run(axis)(_ctx(_gradient(), capabilities={"images"}))
+@pytest.mark.parametrize("with_source", [False, True], ids=["sourceless", "with-source"])
+def test_artifact_catalog_producer_returns_a_candidate_rank_per_axis(with_source: bool):
+    image, source = _banded_pair()
+    ctx = _ctx(
+        image,
+        source=source if with_source else None,
+        capabilities={"images", "reference"} if with_source else {"images"},
+    )
 
-    assert len(values) == 1
-    value = values[0]
-    assert value.axis == axis
-    assert value.producer == "local"
-    assert value.status == "ok"
-    assert value.value in {0.0, 1.0, 2.0}
+    values = _run("artifact_catalog")(ctx)
+
+    assert tuple(value.axis for value in values) == ARTIFACT_AXES
+    for value in values:
+        assert value.producer == "local"
+        assert value.status == "ok", value.reason
+        assert value.value in {0.0, 1.0, 2.0}
+    # A source is an improvement, not a switch: both forms answer all seven.
+    if with_source:
+        assert any(value.value > 0.0 for value in values), (
+            "the banded-vs-source fixture must exercise a non-clean flag"
+        )
     # The manifest is the declaration a resolver reads: a flag, not a score.
-    spec = discover(PRODUCERS).get(f"artifact_{axis}")
-    assert spec.provides[axis] == "candidate"
+    spec = discover(PRODUCERS).get("artifact_catalog")
+    assert tuple(spec.provides.values()) == ("candidate",) * len(ARTIFACT_AXES)
 
 
-@pytest.mark.parametrize("axis", ARTIFACT_AXES)
-def test_artifact_producer_gaps_without_an_image(axis: str):
-    value = _run(axis)(_ctx())[0]
+def test_artifact_catalog_producer_gaps_every_axis_without_an_image():
+    values = _run("artifact_catalog")(_ctx())
 
-    assert value.axis == axis
-    assert value.status == "gap"
-    assert value.value is None
-    assert value.reason
+    assert tuple(value.axis for value in values) == ARTIFACT_AXES
+    for value in values:
+        assert value.status == "gap"
+        assert value.value is None
+        assert value.reason
 
 
 # ---------------------------------------------------------------------------
@@ -579,8 +601,8 @@ def _decode_offences(path: Path) -> list[str]:
 
 def test_producers_own_no_decode_and_never_import_the_proxy_builder():
     files = _producer_files()
-    # Guard against a vacuous pass: 10 packages x (init, manifest, producer) + root.
-    assert len(files) == 31, [path.name for path in files]
+    # Guard against a vacuous pass: 4 packages x (init, manifest, producer) + root.
+    assert len(files) == 13, [path.name for path in files]
 
     offences = [offence for path in files for offence in _decode_offences(path)]
     assert offences == [], offences
