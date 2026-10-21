@@ -232,9 +232,32 @@ class GlobalKeyboardHandler:
         self._movement_controller.start()
 
     def preview_controller(self):
-        """The tab's preview lifecycle owner (``image_label_handler.preview``)."""
-        handler = getattr(self.presenter, "image_label_handler", None)
-        return getattr(handler, "preview", None)
+        """The preview lifecycle owner, resolved through the image-canvas feature.
+
+        ``self.presenter`` here is the active tab's presenter; the
+        ``image_label_handler`` that owns the preview controller is attached to
+        the tab's IMAGE-CANVAS presenter (the feature the tab builds its canvas
+        lifecycle on), which the tab exposes as the ``image_canvas`` feature.
+        Reading only the tab presenter made every global restore a no-op
+        (``[preview] global release: no preview controller``, measured live
+        2026-10-22 — the release path reported success while the preview stayed
+        on screen).
+        """
+        owners = [self.presenter]
+        try:
+            from events.app_event.common import get_image_canvas_presenter
+
+            owners.append(get_image_canvas_presenter(self.presenter))
+        except Exception:  # noqa: BLE001 - resolution must never raise
+            pass
+        for owner in owners:
+            if owner is None:
+                continue
+            handler = getattr(owner, "image_label_handler", None)
+            preview = getattr(handler, "preview", None)
+            if preview is not None:
+                return preview
+        return None
 
     def restore_preview_if_active(self, reason: str) -> bool:
         """End an active Shift+Space preview from the global release path.
@@ -248,7 +271,11 @@ class GlobalKeyboardHandler:
         canvas path's ``preview.restore()``.
         """
         preview = self.preview_controller()
-        if preview is None or not bool(getattr(preview, "is_active", False)):
+        if preview is None:
+            logger.debug("[preview] global release: no preview controller")
+            return False
+        if not bool(getattr(preview, "is_active", False)):
+            logger.debug("[preview] global release: no active preview (%s)", reason)
             return False
         try:
             preview.restore()

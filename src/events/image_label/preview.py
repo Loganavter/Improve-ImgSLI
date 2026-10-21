@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 
+from shared.debug_flags import env_flag
 from ui.canvas_infra.scene.registry import get_canvas_registry
 
 logger = logging.getLogger("ImproveImgSLI")
@@ -25,7 +26,17 @@ class OverlayPreviewController:
         self._session_id = None
 
     def log_preview_debug(self, message: str, **extra) -> None:
-        pass
+        """Structured preview trace, gated by ``IMGSLI_PREVIEW_DEBUG``.
+
+        Debugging a "the preview did not end" report without these lines is
+        guessing: the lifecycle is split between the gesture (begin/switch) and
+        two release paths (canvas handler + global handler), and the log is the
+        only place that says which one ran and with which snapshot.
+        """
+        if not env_flag("IMGSLI_PREVIEW_DEBUG"):
+            return
+        fields = " ".join(f"{key}={value!r}" for key, value in extra.items())
+        logger.info("[preview] %s %s", message, fields)
 
     @property
     def is_active(self) -> bool:
@@ -57,7 +68,7 @@ class OverlayPreviewController:
         self._quick_preview_active = True
         self._snapshot = dict(result)
         self._session_id = self._active_session_id()
-        self.log_preview_debug("begin_shift_preview")
+        self.log_preview_debug("begin_shift_preview", snapshot=self._snapshot)
 
     def restore(self) -> None:
         if not self._quick_preview_active:
@@ -88,8 +99,8 @@ class OverlayPreviewController:
             self._unwind()
             return
         self._unwind()
+        self.log_preview_debug("restore_shift_preview", changed=bool(changed))
         if changed:
-            self.log_preview_debug("restore_shift_preview")
             self._notify_state_change()
 
     def switch_side(self, side: str) -> None:
