@@ -106,9 +106,9 @@ def test_both_stages_green_print_the_summary_and_exit_zero(fake_run, capsys):
     out = capsys.readouterr().out
     assert runner.scripts == ["help_figures.py", "help_live.py"], "devtool first, then live"
     # Counts pin the committed manifests: 6 covered x 4 locales x 2 themes,
-    # and 9 single-variant live figures. A manifest change must be re-pinned.
+    # and 14 single-variant live figures. A manifest change must be re-pinned.
     assert re.search(r"^devtool: exit=0 \d+\.\ds cells=48$", out, re.M)
-    assert re.search(r"^live: exit=0 \d+\.\ds cells=9$", out, re.M)
+    assert re.search(r"^live: exit=0 \d+\.\ds cells=14$", out, re.M)
     assert out.rstrip().endswith("suite: ok")
     for call in runner.calls:
         assert call["kwargs"]["cwd"] == str(suite.REPO_ROOT)
@@ -128,7 +128,7 @@ def test_second_stage_failure_fails_the_suite_and_names_it(fake_run, capsys):
     captured = capsys.readouterr()
     assert runner.scripts == ["help_figures.py", "help_live.py"]
     assert re.search(r"^devtool: exit=0 \d+\.\ds cells=48$", captured.out, re.M)
-    assert re.search(r"^live: exit=1 \d+\.\ds cells=9$", captured.out, re.M)
+    assert re.search(r"^live: exit=1 \d+\.\ds cells=14$", captured.out, re.M)
     assert captured.out.rstrip().endswith("suite: failed")
     assert "FAILED help-toolbar [en/dark]: app did not boot" in captured.err, (
         "the failing stage's tail must be visible, not just its exit code"
@@ -253,7 +253,7 @@ def test_only_live_runs_exactly_one_stage(fake_run, capsys):
     out = capsys.readouterr().out
     assert runner.scripts == ["help_live.py"]
     assert runner.calls[0]["argv"] == [sys.executable, str(suite.LIVE_SCRIPT), "--all"]
-    assert re.search(r"^live: exit=0 \d+\.\ds cells=9$", out, re.M)
+    assert re.search(r"^live: exit=0 \d+\.\ds cells=14$", out, re.M)
     assert "devtool:" not in out
     assert out.rstrip().endswith("suite: ok")
 
@@ -283,7 +283,7 @@ def test_unknown_only_stage_is_rejected():
 
 def test_manifest_cells_match_the_committed_manifests():
     assert suite.manifest_cells(suite.DEVTOOL_MANIFEST) == 48
-    assert suite.manifest_cells(suite.LIVE_MANIFEST) == 9
+    assert suite.manifest_cells(suite.LIVE_MANIFEST) == 14
 
 
 def test_manifest_cells_skips_uncovered_and_survives_a_broken_file(tmp_path):
