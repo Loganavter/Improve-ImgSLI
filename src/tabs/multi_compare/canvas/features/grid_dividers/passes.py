@@ -33,7 +33,10 @@ from tabs.multi_compare.scene.passes.dividers import (
     DividersOverlaySource,
     resolve_items as resolve_divider_items,
 )
-from ui.canvas_infra.scene.pass_contract import CanvasRenderPass
+from ui.canvas_infra.scene.pass_contract import (
+    CanvasRenderPass,
+    SceneVisibility,
+)
 from ui.canvas_infra.scene.stacking_policy import CanvasStackRole
 
 _SHADER_DIR = Path(__file__).resolve().parent / "shaders"
@@ -111,6 +114,7 @@ class GridDividersPass(CanvasRenderPass):
     """Draw every N-way grid split as a shell-rendered solid-color rect."""
 
     stack_role = CanvasStackRole.UNDERLAY_SPLIT
+    visibility = SceneVisibility.ALL
 
     def __init__(self) -> None:
         self._shell = OverlayShell(_UNIFORM_SIZE)
