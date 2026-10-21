@@ -1,11 +1,11 @@
 """W11 — rank fusion and salience read the engine's per-item records.
 
-``plan-gallery-analysis-engine-2026-10-20`` W11: with
-``IMGSLI_ANALYSIS_ENGINE=1`` the item carries scored ``AxisValue`` records
-(``item.analysis_records``); until ``item_quality`` and ``axis_spreads`` read
-them the legacy raw-metric path stays load-bearing (the live run measured a 2.4x
-double computation). These tests pin both readers and the rule that makes the
-legacy path droppable:
+``plan-gallery-analysis-engine-2026-10-20`` W11: with the analysis engine on
+(the DEFAULT since P9a; ``IMGSLI_ANALYSIS_ENGINE=0`` is the kill-switch) the
+item carries scored ``AxisValue`` records (``item.analysis_records``); until
+``item_quality`` and ``axis_spreads`` read them the legacy raw-metric path stays
+load-bearing (the live run measured a 2.4x double computation). These tests pin
+both readers and the rule that makes the legacy path droppable:
 
 - **equivalence**: records derived from the same detector values produce the
   exact same qualities and rank order as the legacy raw path (weights and the

@@ -14,6 +14,14 @@ Guarded here:
 - the default path's decode count is byte-for-byte unchanged.
 
 Pure PIL/numpy (+ the tile store); no torch, no Qt.
+
+P9a: these tests are about the TILED legacy catalog vs the bounded proxy one, so
+each states its engine mode. The catalog/lifecycle/decode invariants are
+asserted in BOTH modes (the engine owns the tiled call by default); the
+proxy-vs-tiled contrast tests run with the engine killed
+(``IMGSLI_ANALYSIS_ENGINE=0``) so the assertion is about the tiled call itself
+and not about the engine's record→dict rebuild — that rebuild's tiled
+equivalence is covered by ``test_analysis_equivalence.py``.
 """
 
 from __future__ import annotations
@@ -115,8 +123,11 @@ class _OpenSpy:
             return 0
 
 
-def test_tiled_catches_blocking_proxy_misses(tmp_path: Path) -> None:
+def test_tiled_catches_blocking_proxy_misses(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Red-before/green-after: proxy misses the block grid, tiled catches it."""
+    monkeypatch.setenv("IMGSLI_ANALYSIS_ENGINE", "0")
     from tabs.image_gallery.services.proxy import (
         clear_proxy_cache,
         run_proxy_stages_sync,
@@ -134,8 +145,11 @@ def test_tiled_catches_blocking_proxy_misses(tmp_path: Path) -> None:
     assert tiled_out[str(item)]["artifacts"][Artifact.BLOCKING] != Severity.CLEAN
 
 
-def test_tiled_anchored_source_still_catches(tmp_path: Path) -> None:
+def test_tiled_anchored_source_still_catches(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """A readable source does not mask the tiled blocking catch."""
+    monkeypatch.setenv("IMGSLI_ANALYSIS_ENGINE", "0")
     from tabs.image_gallery.services.proxy import (
         clear_proxy_cache,
         run_proxy_stages_sync,
@@ -150,8 +164,11 @@ def test_tiled_anchored_source_still_catches(tmp_path: Path) -> None:
     assert out[str(item)]["artifacts"][Artifact.BLOCKING] != Severity.CLEAN
 
 
-def test_fail_open_missing_item_keeps_batch(tmp_path: Path) -> None:
+def test_fail_open_missing_item_keeps_batch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """A missing item path must not raise or poison sibling tiled results."""
+    monkeypatch.setenv("IMGSLI_ANALYSIS_ENGINE", "0")
     from tabs.image_gallery.services.proxy import (
         clear_proxy_cache,
         run_proxy_stages_sync,
@@ -171,6 +188,7 @@ def test_fail_open_missing_item_keeps_batch(tmp_path: Path) -> None:
 
 def test_fail_open_to_proxy_when_store_raises(tmp_path: Path, monkeypatch) -> None:
     """A full-res store failure falls back to the proxy catalog, never raises."""
+    monkeypatch.setenv("IMGSLI_ANALYSIS_ENGINE", "0")
     from engine.store.tiled_pixel_store import TiledPixelStore
     from tabs.image_gallery.services.proxy import (
         clear_proxy_cache,
@@ -192,8 +210,11 @@ def test_fail_open_to_proxy_when_store_raises(tmp_path: Path, monkeypatch) -> No
     assert out[str(item)]["artifacts"] == expected["artifacts"]
 
 
-def test_fidelity_and_camera_unchanged_with_source(tmp_path: Path) -> None:
+def test_fidelity_and_camera_unchanged_with_source(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Fidelity/camera keep the proxy inputs; values match the default call."""
+    monkeypatch.setenv("IMGSLI_ANALYSIS_ENGINE", "0")
     from tabs.image_gallery.services.proxy import (
         clear_proxy_cache,
         run_proxy_stages_sync,
@@ -218,8 +239,16 @@ def test_fidelity_and_camera_unchanged_with_source(tmp_path: Path) -> None:
     assert entry_tiled["camera"] == entry_proxy["camera"]
 
 
-def test_all_full_res_stores_closed(tmp_path: Path, monkeypatch) -> None:
-    """Every store created (item + shared source) is closed after the call."""
+@pytest.mark.parametrize("engine_mode", ["0", "1"], ids=["legacy", "engine"])
+def test_all_full_res_stores_closed(
+    tmp_path: Path, monkeypatch, engine_mode: str
+) -> None:
+    """Every store created (item + shared source) is closed after the call.
+
+    Both modes: the engine opens the item store itself by default (W14), the
+    legacy tiled call opens it with the switch killed — neither may leak it.
+    """
+    monkeypatch.setenv("IMGSLI_ANALYSIS_ENGINE", engine_mode)
     from engine.store.tiled_pixel_store import TiledPixelStore
     from tabs.image_gallery.services.proxy import (
         clear_proxy_cache,
@@ -248,8 +277,16 @@ def test_all_full_res_stores_closed(tmp_path: Path, monkeypatch) -> None:
     ]
 
 
-def test_default_path_decode_count_unchanged(tmp_path: Path) -> None:
-    """full_res_artifacts=False keeps exactly one decode per item + source."""
+@pytest.mark.parametrize("engine_mode", ["0", "1"], ids=["legacy", "engine"])
+def test_default_path_decode_count_unchanged(
+    tmp_path: Path, monkeypatch, engine_mode: str
+) -> None:
+    """full_res_artifacts=False keeps exactly one decode per item + source.
+
+    Both modes: the engine consumes the shared proxies (it opens no files of its
+    own in the bounded path), so turning it on must not add a decode.
+    """
+    monkeypatch.setenv("IMGSLI_ANALYSIS_ENGINE", engine_mode)
     from tabs.image_gallery.services.proxy import (
         clear_proxy_cache,
         run_proxy_stages_sync,

@@ -135,7 +135,17 @@ def test_warm_zero_decodes(tmp_path: Path) -> None:
     assert spy.total == 0, dict(spy.counts)
 
 
-def test_batch_single_pass_decode_counts_and_identity(tmp_path: Path) -> None:
+@pytest.mark.parametrize("engine_mode", ["0", "1"], ids=["legacy", "engine"])
+def test_batch_single_pass_decode_counts_and_identity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, engine_mode: str
+) -> None:
+    """P9a: the batch decode discipline holds in BOTH engine modes.
+
+    The engine (on by default) consumes the shared proxies and opens no files of
+    its own in this bounded path, so the cold decode count — one per item, one
+    for the source — must not move when it runs.
+    """
+    monkeypatch.setenv("IMGSLI_ANALYSIS_ENGINE", engine_mode)
     from types import SimpleNamespace
 
     from tabs.image_gallery.services.proxy import clear_proxy_cache, run_proxy_stages_sync

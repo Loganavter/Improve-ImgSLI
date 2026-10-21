@@ -395,6 +395,19 @@ An `INTERFACE: none` claim is verified mechanically:
 ## Progress log
 
 - 2026-10-20: draft from verified defects B1-B5; B6 pending axis map.
+- 2026-10-21: **P9a landed — the engine is on by default, with a kill-switch.**
+  `services/analysis_bridge.engine_enabled()` is the one reader of
+  `IMGSLI_ANALYSIS_ENGINE`: OFF only for `0|false|no|off` (case-insensitive,
+  stripped), ON for unset/empty/`1`/anything else; `services/proxy.py` calls it
+  instead of comparing the variable to `"1"` (no other logic change). Evidence
+  for the flip, collected before it: on a real folder with
+  `full_res_artifacts=True`, flag ON vs OFF produced **identical numbers** in
+  headless runs (8.8s vs 8.8s, cold processes), and a GUI run under a private
+  Xvfb produced 2560x1392 captures with **0 differing pixels**. Every test that
+  calls `run_proxy_stages_sync` now states its mode explicitly; the new
+  `tests/test_analysis_default_on.py` pins the default, each off value and the
+  `=1` back-compat. **The legacy branch is still present** — its deletion (and
+  the read path's legacy domain branch) is P9b, a separate wave.
 
 ## Catalog update
 
