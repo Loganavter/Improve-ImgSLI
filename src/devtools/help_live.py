@@ -25,6 +25,13 @@ Rules this tool enforces (each one exists because a real capture lied):
 * Chapter and verse: never ``:0``, always ``LIBGL_ALWAYS_SOFTWARE=1`` +
   ``QT_QPA_PLATFORM=xcb``; ``capture_live`` reports ``rhi_layers`` and a
   canvas figure with ``rhi_layers == 0`` is refused.
+* **A fixture a figure starts is closed with that figure.** A set_clipboard
+  step starts an X clipboard owner child *before* the paste happens and (unlike a
+  hand-run probe) cannot be left owning the selection when the figure ends, so
+  :class:`FigureFixtures` closes it on the normal path and on any exception.
+  ``ai_stub`` is the same idea one level up: the local answer server is started
+  before boot and closed after the app is gone, and the app profile is seeded
+  with its ``base_url`` (never a real endpoint, never a real key).
 
 Audit-Meta: pattern=devtool-pipeline size=exempt reason="one live-capture contract: profile seed + app lifecycle + socket client + scenario + stable-capture/crop/install all share the same recipe schema; splitting forks the meaning of a live figure"
 """
@@ -43,6 +50,7 @@ import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SRC_ROOT = REPO_ROOT / "src"
@@ -50,11 +58,24 @@ if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
 from devtools import capture_surface  # noqa: E402  — canonical font/DPI bootstrap
+from devtools import live_fixtures  # noqa: E402  — deterministic inputs, no import side effect
 from devtools.help_figures import _free_display_number, xvfb_command  # noqa: E402
 
 RECIPE_PATH = Path(__file__).with_name("help_figures_live.json")
 SCHEMA_VERSION = 1
 SAMPLE_NAMES = ("sunset", "forest", "ocean", "desert")
+
+#: QSettings group the Image Gallery's Ask AI surface reads. Read from the app,
+#: not invented: ``tabs/image_gallery/services/ai_settings_store.py`` owns
+#: ``_QS_GROUP = "image_gallery_ai"`` and the keys seeded in
+#: :func:`ai_profile_sections` (``enabled``, ``provider_id``, ``base_url``,
+#: ``api_key``, ``model``). Seeding them is what points the running app at the
+#: local stub instead of a real endpoint — no key, no network.
+AI_SETTINGS_GROUP = "image_gallery_ai"
+#: A placeholder credential: the stub ignores the Authorization header and the
+#: app only requires the field to be non-empty (the Settings page says the same).
+AI_STUB_API_KEY = "stub-key"
+
 #: App boot budget. A blank window is not a capture; the app logs the control
 #: socket line when it is ready and the client pings it before any scenario.
 BOOT_TIMEOUT_S = 60.0
@@ -89,6 +110,27 @@ class LiveFigure:
     crop_element: dict | None = None
     rhi_backend: str = "opengl"
     stable_interval_s: float = STABLE_INTERVAL_S
+    #: Steps run *after* the stable capture (a held press is photographed and
+    #: only then released). A failure here never discards the frame.
+    after_capture: tuple[Step, ...] = ()
+    #: ``{"answer": dict | str}`` — serve this fixed chat completion from a
+    #: local stub whose ``base_url`` is seeded into the profile before boot.
+    ai_stub: dict | None = None
+
+
+def _parse_ai_stub(raw: object, figure_id: str) -> dict | None:
+    """Validate a figure-level ``ai_stub`` block (default off)."""
+    if raw is None:
+        return None
+    if not isinstance(raw, dict) or "answer" not in raw:
+        raise ValueError(f"{figure_id}: ai_stub needs an 'answer' (dict or str)")
+    answer = raw["answer"]
+    if not isinstance(answer, (dict, str)):
+        raise ValueError(
+            f"{figure_id}: ai_stub 'answer' must be a JSON object or a string, "
+            f"got {type(answer).__name__}"
+        )
+    return {"answer": answer}
 
 
 def _parse_step(raw: dict, figure_id: str) -> Step:
@@ -108,12 +150,42 @@ def _parse_step(raw: dict, figure_id: str) -> Step:
         if "side" in value:
             kwargs["side"] = str(value["side"])
         return Step("open_folder", kwargs)
+    if kind == "open_properties":
+        # Pass-through to the control verb of the same name: it shows the app's
+        # own image-properties dialog for an existing file.
+        path = value.get("path") if isinstance(value, dict) else value
+        if not path:
+            raise ValueError(f"{figure_id}: open_properties needs a path")
+        return Step("open_properties", {"path": str(path)})
     if kind in ("run_action", "press_keys"):
         return Step(kind, {"action_id" if kind == "run_action" else "keys": str(value)})
+    if kind == "action":
+        # Recipe spelling of the same pass-through: ``action`` → ``run_action``.
+        return Step("run_action", {"action_id": str(value)})
     if kind == "sleep":
         return Step("sleep", {"seconds": float(value)})
     if kind == "wait_jobs":
         return Step("wait_jobs", {"timeout_s": float(value)})
+    if kind == "set_clipboard":
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError(f"{figure_id}: set_clipboard needs an image path")
+        return Step("set_clipboard", {"path": value})
+    if kind == "ui_press":
+        if not isinstance(value, dict):
+            raise ValueError(f"{figure_id}: ui_press needs a dict")
+        if not value.get("id"):
+            raise ValueError(f"{figure_id}: ui_press needs an 'id'")
+        kwargs = {"id": str(value["id"])}
+        if "release" in value:
+            if not isinstance(value["release"], bool):
+                raise ValueError(
+                    f"{figure_id}: ui_press 'release' must be a boolean "
+                    "(false parks the press until after_capture releases it)"
+                )
+            kwargs["release"] = value["release"]
+        if "hold_ms" in value:
+            kwargs["hold_ms"] = int(value["hold_ms"])
+        return Step("ui_press", kwargs)
     if kind == "ui_click":
         if not isinstance(value, dict):
             raise ValueError(f"{figure_id}: ui_click needs a dict")
@@ -157,6 +229,11 @@ def load_recipes(path: Path = RECIPE_PATH) -> tuple[LiveFigure, ...]:
                 crop_element=dict(entry["crop_element"]) if entry.get("crop_element") else None,
                 rhi_backend=str(entry.get("rhi_backend") or "opengl"),
                 stable_interval_s=float(entry.get("stable_interval_s") or STABLE_INTERVAL_S),
+                after_capture=tuple(
+                    _parse_step(step, figure_id)
+                    for step in entry.get("after_capture") or []
+                ),
+                ai_stub=_parse_ai_stub(entry.get("ai_stub"), figure_id),
             )
         )
     return tuple(figures)
@@ -210,6 +287,7 @@ def write_profile(
     width: int,
     height: int,
     rhi_backend: str = "opengl",
+    extra_sections: dict[str, dict[str, str]] | None = None,
 ) -> Path:
     """Seed QSettings before boot (theme, language, UI mode, window geometry).
 
@@ -217,10 +295,15 @@ def write_profile(
     ``XDG_CONFIG_HOME``. Seeding it is what makes a variant figure possible
     without a live theme/language rebuild (measured: ``set_theme`` /
     ``set_language`` answer ``applied`` but the open window does not repaint).
+
+    *extra_sections* appends further INI sections (``{group: {key: value}}``),
+    which is how a figure points a QSettings-group setting (the Image Gallery
+    Ask AI endpoint) at the local fixture instead of a real host — one write,
+    before the app reads it, exactly as a user's own config would arrive.
     """
     profile = root / "config" / "improve-imgsli" / "improve-imgsli.conf"
     profile.parent.mkdir(parents=True, exist_ok=True)
-    profile.write_text(
+    text = (
         "[General]\n"
         f"theme={theme}\n"
         f"language={locale}\n"
@@ -235,10 +318,34 @@ def write_profile(
         # a real home directory would put the maintainer's username into a
         # shipped figure (and HOME is sandboxed below for the same reason).
         "export_default_dir=/home/user/Pictures\n"
-        f"rhi_backend={rhi_backend}\n",
-        encoding="utf-8",
+        f"rhi_backend={rhi_backend}\n"
     )
+    for section, values in (extra_sections or {}).items():
+        text += f"\n[{section}]\n"
+        for key, value in values.items():
+            text += f"{key}={value}\n"
+    profile.write_text(text, encoding="utf-8")
     return profile
+
+
+def ai_profile_sections(stub: live_fixtures.AiStub) -> dict[str, dict[str, str]]:
+    """QSettings sections that point the app's Ask AI surface at *stub*.
+
+    Keys are the ones ``AiSettingsStore.load`` reads (``enabled``,
+    ``provider_id``, ``base_url``, ``api_key``, ``model``). ``provider_id`` is
+    ``custom`` because that is the preset whose URL is the user's own — a preset
+    id would pin a real vendor URL over the stub's.
+    """
+    return {
+        AI_SETTINGS_GROUP: {
+            "enabled": "true",
+            "provider_id": "custom",
+            "base_url": stub.base_url,
+            "api_key": AI_STUB_API_KEY,
+            "model": live_fixtures.STUB_MODEL_ID,
+        }
+    }
+
 
 
 class LiveClient:
@@ -296,7 +403,8 @@ class LiveApp:
     """One private app instance on a private Xvfb with a seeded profile."""
 
     def __init__(self, *, backend: str, out_dir: Path, locale: str, theme: str,
-                 width: int, height: int, rhi_backend: str = "opengl") -> None:
+                 width: int, height: int, rhi_backend: str = "opengl",
+                 profile_sections: dict[str, dict[str, str]] | None = None) -> None:
         self.backend = backend
         self.out_dir = Path(out_dir)
         self.locale = locale
@@ -304,6 +412,7 @@ class LiveApp:
         self.width = width
         self.height = height
         self.rhi_backend = rhi_backend
+        self.profile_sections = dict(profile_sections or {})
         self.root = self.out_dir / f"profile__{locale}__{theme}"
         for name in ("data", "cache", "config", "run", "artifacts"):
             (self.root / name).mkdir(parents=True, exist_ok=True)
@@ -316,7 +425,8 @@ class LiveApp:
     def __enter__(self) -> "LiveApp":
         write_profile(self.root, locale=self.locale, theme=self.theme,
                       width=self.width, height=self.height,
-                      rhi_backend=self.rhi_backend)
+                      rhi_backend=self.rhi_backend,
+                      extra_sections=self.profile_sections)
         if self.backend == "xvfb":
             if shutil.which("Xvfb") is None:
                 raise LiveError("Xvfb not found on PATH")
@@ -410,34 +520,123 @@ def wait_for_active_session(app: LiveClient, kind: str, timeout: float = 20.0) -
         time.sleep(0.2)
 
 
-def run_steps(app: LiveClient, figure: LiveFigure, samples: Path) -> None:
-    for step in figure.steps:
-        kwargs = dict(step.kwargs)
-        if step.kind == "open_folder":
-            kwargs["path"] = kwargs["path"].replace("@samples", str(samples))
-        for key, value in list(kwargs.items()):
-            if isinstance(value, str) and "@samples" in value:
-                kwargs[key] = value.replace("@samples", str(samples))
-        if step.kind == "sleep":
-            time.sleep(kwargs["seconds"])
-            continue
-        if step.kind == "wait_jobs":
-            deadline = time.monotonic() + kwargs["timeout_s"]
-            quiet = 0
-            while quiet < 2:
-                count = int(app.call("jobs_list").get("count") or 0)
-                quiet = quiet + 1 if count == 0 else 0
-                if time.monotonic() > deadline:
-                    raise LiveError(f"jobs did not settle within {kwargs['timeout_s']:.0f}s")
-                time.sleep(0.4)
-            continue
-        if step.kind == "open_tab":
-            app.call("open_tab", kwargs)
-            wait_for_active_session(app, kwargs["tab"])
-            continue
-        if step.kind == "open_folder" and kwargs.get("tab"):
-            wait_for_active_session(app, kwargs["tab"])
-        app.call(step.kind, kwargs)
+class FigureFixtures:
+    """Fixtures a figure starts by step, closed with (or before) that figure.
+
+    A clipboard owner is a *child process* that keeps the X selection alive: if
+    the figure leaves without closing it, the selection outlives the run and the
+    next figure pastes the previous figure's image. Every started fixture is
+    closed in reverse start order, on the normal path and inside ``__exit__``
+    when a later step raises.
+    """
+
+    def __init__(self) -> None:
+        self._started: list[Any] = []
+        #: Close failures, reported (never silently swallowed) by the caller.
+        self.errors: list[str] = []
+
+    def track(self, fixture: Any) -> Any:
+        """Own *fixture*: it is closed (reverse order) when the scope ends."""
+        self._started.append(fixture)
+        return fixture
+
+    def start_clipboard(self, path: Path) -> Any:
+        return self.track(live_fixtures.set_clipboard_image(Path(path)))
+
+    def close(self) -> None:
+        while self._started:
+            fixture = self._started.pop()
+            closer = getattr(fixture, "close", None)
+            if not callable(closer):
+                continue
+            try:
+                closer()
+            except Exception as exc:  # noqa: BLE001 - reported, not fatal
+                message = f"{type(fixture).__name__}.close(): {exc}"
+                self.errors.append(message)
+                print(f"WARN fixture not closed: {message}", file=sys.stderr)
+
+    def __enter__(self) -> "FigureFixtures":
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self.close()
+
+
+def _substitute(kwargs: dict, samples: Path) -> dict:
+    """Expand ``@samples`` in any string value (paths and stub answers alike)."""
+    out = {}
+    for key, value in kwargs.items():
+        if isinstance(value, str) and "@samples" in value:
+            out[key] = value.replace("@samples", str(samples))
+        else:
+            out[key] = value
+    return out
+
+
+def _run_step(app: LiveClient, step: Step, samples: Path,
+              fixtures: FigureFixtures) -> None:
+    """Run one validated step against the live app."""
+    kwargs = _substitute(dict(step.kwargs), samples)
+    if step.kind == "set_clipboard":
+        fixtures.start_clipboard(Path(kwargs["path"]))
+        return
+    if step.kind == "sleep":
+        time.sleep(kwargs["seconds"])
+        return
+    if step.kind == "wait_jobs":
+        deadline = time.monotonic() + kwargs["timeout_s"]
+        quiet = 0
+        while quiet < 2:
+            count = int(app.call("jobs_list").get("count") or 0)
+            quiet = quiet + 1 if count == 0 else 0
+            if time.monotonic() > deadline:
+                raise LiveError(f"jobs did not settle within {kwargs['timeout_s']:.0f}s")
+            time.sleep(0.4)
+        return
+    if step.kind == "open_tab":
+        app.call("open_tab", kwargs)
+        wait_for_active_session(app, kwargs["tab"])
+        return
+    if step.kind == "open_folder" and kwargs.get("tab"):
+        wait_for_active_session(app, kwargs["tab"])
+    app.call(step.kind, kwargs)
+
+
+def run_steps(app: LiveClient, figure: LiveFigure, samples: Path,
+              *, fixtures: FigureFixtures | None = None) -> None:
+    """Run the figure's scenario steps in order.
+
+    *fixtures* is the figure's fixture scope; without one the steps get a
+    private scope that is closed before returning (or raising), so a caller can
+    never leak a started clipboard. Post-capture steps are not run here — they
+    belong after the frame exists (:func:`run_after_capture`).
+    """
+    scope = fixtures if fixtures is not None else FigureFixtures()
+    owned = fixtures is None
+    try:
+        for step in figure.steps:
+            _run_step(app, step, samples, scope)
+    finally:
+        if owned:
+            scope.close()
+
+
+def run_after_capture(app: LiveClient, figure: LiveFigure, samples: Path,
+                      fixtures: FigureFixtures) -> list[str]:
+    """Run ``after_capture`` steps; return their failures instead of raising.
+
+    The frame is already captured and trustworthy at this point, so a cleanup
+    step (the release of a held press, a fixture stop) must not throw it away —
+    but it must not vanish either: the caller prints every returned message.
+    """
+    errors: list[str] = []
+    for step in figure.after_capture:
+        try:
+            _run_step(app, step, samples, fixtures)
+        except Exception as exc:  # noqa: BLE001 - reported with the frame kept
+            errors.append(f"{step.kind} {step.kwargs}: {exc}")
+    return errors
 
 
 def _screen_png(app: LiveClient, out_path: Path) -> Path:
@@ -588,39 +787,60 @@ def main(argv: list[str] | None = None) -> int:
     for figure in selected:
         for locale in figure.locales:
             for theme in figure.themes:
+                label = f"{figure.id} [{locale}/{theme}]"
+                stub: live_fixtures.AiStub | None = None
                 try:
+                    sections: dict[str, dict[str, str]] = {}
+                    if figure.ai_stub is not None:
+                        # Before boot, never after: the app reads QSettings once
+                        # at startup and an endpoint edited later would need the
+                        # settings page to re-read it.
+                        answer = figure.ai_stub["answer"]
+                        if isinstance(answer, str) and "@samples" in answer:
+                            answer = answer.replace("@samples", str(samples))
+                        stub = live_fixtures.ai_stub_server(answer)
+                        sections = ai_profile_sections(stub)
                     with LiveApp(backend=args.backend, out_dir=out_dir, locale=locale,
                                  theme=theme, width=args.width, height=args.height,
-                                 rhi_backend=figure.rhi_backend) as live:
+                                 rhi_backend=figure.rhi_backend,
+                                 profile_sections=sections) as live:
                         assert live.client is not None
-                        run_steps(live.client, figure, samples)
-                        # Read a flyout's rect BEFORE capturing: the element is
-                        # alive right after the click, and __exit__ terminates
-                        # the app (a lookup after the block is ConnectionRefused).
-                        crop = figure.crop
-                        rect = None
-                        if figure.crop_element is not None:
-                            rect = _element_crop(live.client, figure.crop_element)
-                        shot = stable_capture(live.client, figure.capture,
-                                              out_dir / f"{figure.id}__{locale}__{theme}.png",
-                                              figure.min_size,
-                                              figure.stable_interval_s)
-                        capture_size = _image_size(shot)
-                        if rect is not None:
-                            pad, x, y, w, h = rect
-                            if figure.capture == "@screen":
-                                off_x = off_y = 0
-                            else:
-                                off_x = max(0, (capture_size[0] - live.width) // 2)
-                                off_y = max(0, (capture_size[1] - live.height) // 2)
-                            crop = (max(0, x + off_x - pad), max(0, y + off_y - pad),
-                                    w + 2 * pad, h + 2 * pad)
+                        with FigureFixtures() as fixtures:
+                            run_steps(live.client, figure, samples, fixtures=fixtures)
+                            # Read a flyout's rect BEFORE capturing: the element is
+                            # alive right after the click, and __exit__ terminates
+                            # the app (a lookup after the block is ConnectionRefused).
+                            crop = figure.crop
+                            rect = None
+                            if figure.crop_element is not None:
+                                rect = _element_crop(live.client, figure.crop_element)
+                            shot = stable_capture(live.client, figure.capture,
+                                                  out_dir / f"{figure.id}__{locale}__{theme}.png",
+                                                  figure.min_size,
+                                                  figure.stable_interval_s)
+                            capture_size = _image_size(shot)
+                            if rect is not None:
+                                pad, x, y, w, h = rect
+                                if figure.capture == "@screen":
+                                    off_x = off_y = 0
+                                else:
+                                    off_x = max(0, (capture_size[0] - live.width) // 2)
+                                    off_y = max(0, (capture_size[1] - live.height) // 2)
+                                crop = (max(0, x + off_x - pad), max(0, y + off_y - pad),
+                                        w + 2 * pad, h + 2 * pad)
+                            for message in run_after_capture(live.client, figure, samples, fixtures):
+                                print(f"WARN {label} after_capture: {message}", file=sys.stderr)
+                            for message in fixtures.errors:
+                                print(f"WARN {label} fixture: {message}", file=sys.stderr)
                     destination = REPO_ROOT / figure.destination
                     crop_and_install(shot, destination, crop)
                     print(f"installed {figure.id} [{locale}/{theme}] -> {figure.destination}")
                 except LiveError as exc:
                     failures += 1
-                    print(f"FAILED {figure.id} [{locale}/{theme}]: {exc}", file=sys.stderr)
+                    print(f"FAILED {label}: {exc}", file=sys.stderr)
+                finally:
+                    if stub is not None:
+                        stub.close()
     return 1 if failures else 0
 
 

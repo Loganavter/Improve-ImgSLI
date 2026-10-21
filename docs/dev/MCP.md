@@ -41,7 +41,7 @@ fallback window, e.g. `:97`).
 
 ## Surface at a glance
 
-23 tools — 11 read-only, 12 mutating (reads and writes never share a tool):
+27 tools — 11 read-only, 16 mutating (reads and writes never share a tool):
 
 | Tool | Kind | What it does |
 |---|---|---|
@@ -59,14 +59,18 @@ fallback window, e.g. `:97`).
 | `open_tab` | write | open/focus a tab kind (live) or launch it (fallback) |
 | `run_action` | write | run one ActionRegistry id |
 | `open_folder` | write | hand a folder to a tab (`tab=` targets one; `slot=`/`side=` place it; live: routed) |
+| `open_file` | write | load one image file into a tab that accepts it (`tab=` forces one; a video is refused by name) |
+| `open_properties` | write | show the app's image-properties dialog for a file, non-modally (live-only) |
 | `set_theme` | write | set `theme` (light/dark); live-now or persisted |
 | `set_language` | write | set `language` (en/ru/zh/pt_BR) |
+| `set_setting` | write | write one whitelisted scalar setting (`rhi_backend`); `theme`/`language` keep their own verbs |
 | `capture_surface` | write | screenshot a named surface or the live active window to PNG |
 | `press_keys` | write | inject keyboard combos (`target=` aims them at one element) |
 | `nav_key` | write | press keys through the app's own navigation sections and report what took them (live-only) |
 | `ui_click` | write | click an element by id, in-process (live-only) |
 | `ui_hover` | write | hover an element by id, in-process (live-only) |
 | `ui_focus` | write | focus an element by id, in-process (live-only) |
+| `ui_press` | write | press an element's left button, optionally leaving it held (`release=false`, `hold_ms`) (live-only) |
 | `jobs_cancel` | write | cancel a running job by id — real cancel, or a named refusal (live-only) |
 
 Resources: `app://actions`, `app://state`, `app://sessions`, `app://log`,
@@ -583,15 +587,16 @@ because that is what lets a client auto-approve reads:
   service, which would materialize a tab as a side effect of listing), and
   `wait_for` only repeats those two observations until a predicate holds. Reads
   may retry once (above); none mutate.
-- **Mutating tools are honestly marked.** All twelve carry `readOnlyHint: false`.
+- **Mutating tools are honestly marked.** All sixteen carry `readOnlyHint: false`.
   `run_action` alone advertises `destructiveHint: true` (it can run any
   registered action, including `platform.quit_app`). `press_keys`, `nav_key`,
-  `ui_click` and
+  `ui_click`, `ui_press` and
   `jobs_cancel` are `destructiveHint: false` but `idempotentHint: false`
-  (repeating the same combo/click is not a no-op; re-sending a settled job id is
-  an error, not a second success). `ui_hover`/`ui_focus` settle to the same
-  state, so they keep `idempotentHint: true`.
-  `open_tab`/`open_folder`/`set_theme`/`set_language`/`capture_surface` are
+  (repeating the same combo/click/press is not a no-op; re-sending a settled
+  job id is an error, not a second success). `ui_hover`/`ui_focus` settle to the
+  same state, so they keep `idempotentHint: true`.
+  `open_tab`/`open_folder`/`open_file`/`open_properties`/`set_theme`/
+  `set_language`/`set_setting`/`capture_surface` are
   non-destructive and idempotent.
 - `openWorldHint: false` on every tool (the app is local). **Result: no
   annotation was found to over- or under-state what its tool does.** The test

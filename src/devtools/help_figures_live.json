@@ -367,6 +367,270 @@
       ],
       "rhi_backend": "vulkan",
       "note": "Live IC export dialog with a composed pair (slot=1/2); preview is the real render, output dir is the neutral /home/user/Pictures seed. Vulkan because the IC canvas mips cannot be created on llvmpipe/OpenGL."
+    },
+    {
+      "id": "help-image-properties",
+      "capture": "@window",
+      "steps": [
+        {
+          "open_tab": "image_compare"
+        },
+        {
+          "sleep": 1.5
+        },
+        {
+          "open_folder": {
+            "path": "@samples/singles/sunset",
+            "tab": "image_compare",
+            "slot": 1
+          }
+        },
+        {
+          "sleep": 2.5
+        },
+        {
+          "open_properties": {
+            "path": "@samples/singles/sunset/sunset.png"
+          }
+        },
+        {
+          "sleep": 2.5
+        }
+      ],
+      "crop": null,
+      "destination": "src/plugins/image_properties/resources/help/assets/platform/image_properties.png",
+      "locales": [
+        "en"
+      ],
+      "themes": [
+        "dark"
+      ],
+      "min_size": [
+        420,
+        360
+      ],
+      "rhi_backend": "vulkan",
+      "note": "The app's own image-properties dialog, shown by the open_properties control verb for the loaded slot-1 image. The dialog is its own top-level (non-modal, raised and activated by the verb), so @window is the dialog frame itself and no crop is needed; min_size rejects a 356x194 helper/warning window. Vulkan because the IC canvas behind it holds an image."
+    },
+    {
+      "id": "help-long-press",
+      "capture": "@window",
+      "steps": [
+        {
+          "open_tab": "image_compare"
+        },
+        {
+          "sleep": 1.5
+        },
+        {
+          "ui_press": {
+            "id": "@image_compare.swap",
+            "release": false
+          }
+        },
+        {
+          "sleep": 0.8
+        }
+      ],
+      "after_capture": [
+        {
+          "ui_press": {
+            "id": "@image_compare.swap",
+            "release": true
+          }
+        }
+      ],
+      "crop": null,
+      "crop_element": {
+        "role": "button",
+        "label": "Swap Images",
+        "pad": 6
+      },
+      "destination": "src/resources/help/assets/ui/long_press.png",
+      "locales": [
+        "en"
+      ],
+      "themes": [
+        "dark"
+      ],
+      "min_size": [
+        800,
+        500
+      ],
+      "note": "Hold state of a long-press control: @image_compare.swap is the toolbar button built with long_press=True (src/tabs/image_compare/ui/primitives.py:111-119), i.e. the Swap list control whose long press swaps both lists (comparison.md). The press is parked with ui_press release=false, photographed while held, and released by after_capture. Crop is the button itself (role=button, label from the bound image_compare.swap action); the stronger action the long press would run is not part of the frame."
+    },
+    {
+      "id": "help-paste-overlay",
+      "capture": "@screen",
+      "steps": [
+        {
+          "open_tab": "image_compare"
+        },
+        {
+          "sleep": 1.5
+        },
+        {
+          "open_folder": {
+            "path": "@samples/singles/sunset",
+            "tab": "image_compare",
+            "slot": 1
+          }
+        },
+        {
+          "sleep": 2.5
+        },
+        {
+          "set_clipboard": "@samples/forest.png"
+        },
+        {
+          "action": "platform.paste_clipboard_image"
+        },
+        {
+          "sleep": 1.5
+        }
+      ],
+      "crop": null,
+      "destination": "src/resources/help/assets/platform/paste_overlay.jpg",
+      "locales": [
+        "en"
+      ],
+      "themes": [
+        "dark"
+      ],
+      "min_size": [
+        1000,
+        600
+      ],
+      "rhi_backend": "vulkan",
+      "note": "The direction picker a paste opens: set_clipboard owns the X selection with a demo image, then the platform.paste_clipboard_image action runs the app's own Ctrl+V entry point (it is the keymap default for Ctrl+V, src/ui/actions/platform.py:426-431, and it emits the same ExportPasteImageFromClipboardEvent the canvas Ctrl+V handler emits at events/image_label/keyboard.py:45) so the overlay appears over the loaded session. Captured @window because PasteDirectionOverlay is a window-level in-window overlay (TopLevelInWindowOverlay, parent = main window) and a tab capture never includes a window-level overlay; the overlay itself has no role and no dynamic property, so it is not in ui_elements and has no screen_rect to crop by."
+    },
+    {
+      "id": "help-video-editor",
+      "capture": "@window",
+      "steps": [
+        {
+          "open_tab": "image_compare"
+        },
+        {
+          "sleep": 1.5
+        },
+        {
+          "open_folder": {
+            "path": "@samples/singles/sunset",
+            "tab": "image_compare",
+            "slot": 1
+          }
+        },
+        {
+          "open_folder": {
+            "path": "@samples/singles/forest",
+            "tab": "image_compare",
+            "slot": 2
+          }
+        },
+        {
+          "sleep": 3.0
+        },
+        {
+          "action": "image_compare.record"
+        },
+        {
+          "sleep": 3.0
+        },
+        {
+          "action": "image_compare.pause_recording"
+        },
+        {
+          "sleep": 6.0
+        },
+        {
+          "action": "image_compare.video_editor"
+        },
+        {
+          "sleep": 8.0
+        }
+      ],
+      "crop": null,
+      "destination": "src/tabs/image_compare/resources/help/assets/video_editor_window.png",
+      "locales": [
+        "en"
+      ],
+      "themes": [
+        "dark"
+      ],
+      "min_size": [
+        900,
+        600
+      ],
+      "rhi_backend": "vulkan",
+      "note": "The Video Editor opened on a real recording: record, ~3 s of frames, pause (finalize), then the image_compare.video_editor action. The frame count and the timeline length follow wall time, so the sampler row and the ruler values differ between runs by design. New asset name: the shipped video_timeline.jpg is a hand-cropped timeline strip, and the timeline widget is not in ui_elements (no role), so this wave captures the whole editor window instead of inventing a crop rect."
+    },
+    {
+      "id": "help-video-export",
+      "capture": "@window",
+      "steps": [
+        {
+          "open_tab": "image_compare"
+        },
+        {
+          "sleep": 1.5
+        },
+        {
+          "open_folder": {
+            "path": "@samples/singles/sunset",
+            "tab": "image_compare",
+            "slot": 1
+          }
+        },
+        {
+          "open_folder": {
+            "path": "@samples/singles/forest",
+            "tab": "image_compare",
+            "slot": 2
+          }
+        },
+        {
+          "sleep": 3.0
+        },
+        {
+          "action": "image_compare.record"
+        },
+        {
+          "sleep": 3.0
+        },
+        {
+          "action": "image_compare.pause_recording"
+        },
+        {
+          "sleep": 6.0
+        },
+        {
+          "action": "image_compare.video_editor"
+        },
+        {
+          "sleep": 8.0
+        },
+        {
+          "action": "image_compare.video_editor.group.video.export_tabs.video.standard"
+        },
+        {
+          "sleep": 2.0
+        }
+      ],
+      "crop": null,
+      "destination": "src/tabs/image_compare/resources/help/assets/video_export.jpg",
+      "locales": [
+        "en"
+      ],
+      "themes": [
+        "dark"
+      ],
+      "min_size": [
+        900,
+        600
+      ],
+      "rhi_backend": "vulkan",
+      "note": "The editor's export configuration: recording path as in help-video-editor, then the dialog-local Standard export tab action (registered id image_compare.video_editor.group.video.export_tabs.video.standard while the editor is open). The Export Video footer button itself is NOT pressed: in the running app it starts a real encode (presenter.export_video -> export_coordinator), so pressing it would photograph a progress bar, not the configuration this figure teaches."
     }
   ]
 }
