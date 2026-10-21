@@ -97,6 +97,17 @@
       }
     },
     {
+      "path": "src/devtools/live_scene_cycle.py",
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=devtool-pipeline size=exempt reason=\"one live-cycle contract: the hop plan, its observables, the wire client and the report shape are one document; splitting the hops from the report forks what 'observed' means\"",
+      "parsed": {
+        "pattern": "devtool-pipeline",
+        "size": "exempt",
+        "reason": "one live-cycle contract: the hop plan, its observables, the wire client and the report shape are one document; splitting the hops from the report forks what 'observed' means"
+      }
+    },
+    {
       "path": "src/devtools/scenario_cost.py",
       "limit": 500,
       "marker": "Audit-Meta:",
@@ -773,6 +784,17 @@
         "pattern": "state-machine",
         "size": "exempt",
         "reason": "one controller lifecycle — folder scan/thumbnail/triage/VLM sharing GenericWorker state"
+      }
+    },
+    {
+      "path": "src/tabs/image_gallery/services/ai_cache.py",
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=wire-cache size=exempt reason=\"one cache contract: the analysis identity (model/base_url/mode/profile/effort + the P3 sampling config) and the payload that must carry it cannot be split without letting one side drift — the file grew past 500 lines with the sampling fields + proposed-axis persistence of plan-gallery-ai-judgement P3 and stays cohesive\"",
+      "parsed": {
+        "pattern": "wire-cache",
+        "size": "exempt",
+        "reason": "one cache contract: the analysis identity (model/base_url/mode/profile/effort + the P3 sampling config) and the payload that must carry it cannot be split without letting one side drift — the file grew past 500 lines with the sampling fields + proposed-axis persistence of plan-gallery-ai-judgement P3 and stays cohesive"
       }
     },
     {

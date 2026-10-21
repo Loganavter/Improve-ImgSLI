@@ -22,7 +22,6 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from PySide6.QtCore import QCoreApplication, QTimer
 from sli_ui_toolkit.workers import GenericWorker
 
 from tabs.image_gallery.models import (
@@ -574,10 +573,11 @@ def _run_ai_on_settle(owner) -> None:
     Level-triggered counterpart of the explicit domain switch: a folder
     opened — or a SESSION RESTORED — in the AI domain must re-derive the
     WORK out of the persisted CHOICE. Cache-first for the visible items; a
-    cold item gets the bounded live analysis. The Jev rank then follows from
-    the arriving scorecards (``_on_analysis_ready`` →
-    ``_queue_ai_rank_on_settle``). A no-op off the AI domain, so the
-    Algorithms domain never hits the network on open.
+    cold item gets the bounded live analysis. The Jev rank then follows the
+    LAST arriving scorecard (``analysis_batch.dispatch_terminal_rank`` from
+    ``_on_analysis_ready`` — one call per series, on the complete matrix, never
+    one per arrival). A no-op off the AI domain, so the Algorithms domain never
+    hits the network on open.
     """
     if str(getattr(owner, "_judgment_domain", "algorithms") or "").strip().lower() != "ai":
         return
@@ -590,50 +590,19 @@ def _run_ai_on_settle(owner) -> None:
 
 
 def _run_jev_on_settle(owner) -> None:
-    """Run the AI-domain Jev batch from a settle point (AI domain only)."""
-    if str(getattr(owner, "_judgment_domain", "algorithms") or "").strip().lower() != "ai":
-        return
-    runner = getattr(owner, "_run_jev_ranks", None)
-    if callable(runner):
-        try:
-            runner()
-        except Exception:
-            logger.debug("jev rank on settle failed", exc_info=True)
+    """Run the AI-domain Jev stage at a settle point (AI domain only).
 
-
-def _queue_ai_rank_on_settle(owner) -> None:
-    """Coalesce AI-domain Jev re-ranks triggered by arriving analyses.
-
-    An AI batch delivers many analyses in one turn; each changes the ranking
-    vector, so a per-arrival Jev pass would flood the API. Coalesce the
-    arrivals into a single scheduling pass (the StageGate still dedups and
-    ``jev_cache`` pins unchanged payloads). Mirrors the card-refresh idiom;
-    a no-op on the Algorithms domain.
+    plan-gallery-ai-judgement P3-A / D1.1: Jev is the terminal calculator — ONE
+    call per series, on a COMPLETE matrix. This seam therefore does not call the
+    ranker unconditionally: ``analysis_batch.dispatch_terminal_rank`` refuses
+    while a scorecard of this folder generation is still arriving (the settle
+    often happens BEFORE the VLM work it starts has reported) and the last
+    arrival re-enters here. A cache-only settle (nothing in flight) dispatches
+    immediately, which is the restored-session path.
     """
-    if str(getattr(owner, "_judgment_domain", "algorithms") or "").strip().lower() != "ai":
-        return
-    if getattr(owner, "_ai_rank_flush_scheduled", False):
-        return
-    owner._ai_rank_flush_scheduled = True
-    try:
-        if QCoreApplication.instance() is None:
-            # No event loop (headless unit context) — settle synchronously.
-            owner._flush_ai_rank_on_settle()
-        else:
-            QTimer.singleShot(0, owner._flush_ai_rank_on_settle)
-    except Exception:
-        try:
-            owner._flush_ai_rank_on_settle()
-        except Exception:
-            pass
+    from tabs.image_gallery.use_cases.analysis_batch import dispatch_terminal_rank
 
-
-def _flush_ai_rank_on_settle(owner) -> None:
-    owner._ai_rank_flush_scheduled = False
-    try:
-        _run_jev_on_settle(owner)
-    except Exception:
-        logger.debug("coalesced AI rank on settle failed", exc_info=True)
+    dispatch_terminal_rank(owner)
 
 
 def _begin_append_processing(owner, items: list[GalleryItem]) -> None:

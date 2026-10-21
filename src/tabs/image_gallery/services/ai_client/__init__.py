@@ -51,6 +51,7 @@ from .parse import (
     _parse_score,
     _parse_verdict,
     _strip_reasoning,
+    merge_samples,
     parse_response,
 )
 from .prompt import (
@@ -61,6 +62,7 @@ from .prompt import (
     _ai_snippet,
     _ratelimit_headers,
     _scorecard_axes,
+    attach_measured_context,
     build_prompt,
 )
 from .request import (
@@ -106,6 +108,9 @@ def analyze_image_sync(
     reasoning_effort: str = "auto",
     max_tokens: int = 0,
     on_phase: Callable[[str], None] | None = None,
+    samples: int = 1,
+    temperature: float = 0.0,
+    seed: int = 0,
 ) -> AiAnalysisResult:
     """Full request→parse pipeline. Call only from a worker thread.
 
@@ -118,8 +123,18 @@ def analyze_image_sync(
     estimated answer budget (0 = estimate). ``on_phase`` (optional) receives
     ``"analyzing"`` before the request is built and ``"waiting"`` right before
     the blocking HTTP call.
+
+    ``samples`` (k, plan-gallery-ai-judgement P3-D) is the number of independent
+    draws merged into one scorecard — ONE by default (``AiSettings.sample_count``
+    is the declared gate for a larger number). k>1 costs k image calls per card
+    and the trace states it; the merge is ``parse.merge_samples`` (per-axis
+    median). ``temperature``/``seed`` are sent only when non-default and are part
+    of the analyze cache identity, so a k=3 median never masquerades as a k=1
+    draw.
     """
     openrouter = "openrouter" in str(base_url or "").lower()
+    draws = max(1, int(samples or 1))
+    heat = max(0.0, float(temperature or 0.0))
     _ai_debug(
         "analyze start path=%s model=%s host=%s mode=%s metrics=%d effort=%s max_tokens=%s",
         image_path,
@@ -130,18 +145,32 @@ def analyze_image_sync(
         reasoning_effort,
         max_tokens or "est",
     )
+    if draws > 1 or heat or seed:
+        # Cost line (never silent): k draws are k image uploads per card.
+        _ai_debug(
+            "analyze sampling k=%d (cost=%dx image calls) temperature=%g seed=%d",
+            draws,
+            draws,
+            heat,
+            int(seed or 0),
+        )
     _emit_phase(on_phase, "analyzing")
-    payload = build_request(
-        image_path,
-        model=model,
-        mode=mode,
-        profile=profile,
-        metrics=metrics,
-        openrouter=openrouter,
-        fallback_models=fallback_models,
-        reasoning_effort=reasoning_effort,
-        max_tokens=max_tokens,
-    )
-    _emit_phase(on_phase, "waiting")
-    raw = call_sync(base_url, api_key, payload)
-    return parse_response(raw, model=model)
+    results: list[AiAnalysisResult] = []
+    for draw in range(draws):
+        payload = build_request(
+            image_path,
+            model=model,
+            mode=mode,
+            profile=profile,
+            metrics=metrics,
+            openrouter=openrouter,
+            fallback_models=fallback_models,
+            reasoning_effort=reasoning_effort,
+            max_tokens=max_tokens,
+            temperature=heat,
+            seed=(int(seed) + draw) if seed else 0,
+        )
+        _emit_phase(on_phase, "waiting")
+        raw = call_sync(base_url, api_key, payload)
+        results.append(parse_response(raw, model=model))
+    return merge_samples(results)

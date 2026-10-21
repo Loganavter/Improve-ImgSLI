@@ -259,7 +259,16 @@ def test_build_request_fallback_chain_no_duplicate_and_override(tmp_path):
     assert p2["models"] == ["a", "b", "c"]
 
 
-def test_build_request_injects_measured_metrics(tmp_path):
+def test_build_request_never_echoes_a_judged_axis(tmp_path):
+    """P3-E: the local number for a judged axis is NOT handed to the model.
+
+    Red-before (live 2026-10-21): the prompt carried
+    "LOCAL MEASUREMENTS (Algorithms domain, context only)" with the local number
+    for every axis the model was asked to score, and the model answered a
+    constant ``exposure = 82`` on five of six cards — an echo, not a judgement.
+    ``sharpness`` and ``noise`` are BOTH in the asked set for the no-mode prompt,
+    so neither line may survive.
+    """
     from tabs.image_gallery.services.ai_client import build_request
 
     img = tmp_path / "i.png"
@@ -268,9 +277,24 @@ def test_build_request_injects_measured_metrics(tmp_path):
         img, model="m", metrics={"sharpness": 200.0, "noise": 0.2}
     )
     text = payload["messages"][0]["content"][0]["text"]
-    assert "LOCAL MEASUREMENTS (Algorithms domain, context only):" in text
-    assert "- Sharpness: 200 (quality 50%)" in text
-    assert "- Clean: 0.2 (quality 80%)" in text
+    assert "LOCAL MEASUREMENTS" not in text
+    assert "quality 50%" not in text and "quality 80%" not in text
+
+
+def test_build_request_keeps_a_measurement_for_an_axis_it_does_not_judge(tmp_path):
+    """The filter is not "drop the block": a reference/photo axis the prompt does
+    not ask about may still ride along as context."""
+    from tabs.image_gallery.services.ai_client import build_request
+
+    img = tmp_path / "i.png"
+    img.write_bytes(b"\x00")
+    payload = build_request(img, model="m", metrics={"brisque": 30.0})
+    text = payload["messages"][0]["content"][0]["text"]
+    assert "LOCAL MEASUREMENTS" in text
+    assert "- Naturalness: 30 (quality" in text
+    assert '"brisque"' not in text.split("LOCAL MEASUREMENTS")[0], (
+        "brisque must not be in the asked axis set for the no-mode prompt"
+    )
 
 
 def test_build_request_without_metrics_has_no_block(tmp_path):

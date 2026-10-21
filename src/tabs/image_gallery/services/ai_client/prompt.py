@@ -59,9 +59,7 @@ _PROMPT_CORE = (
     "Judge quality and DEFECTS only — never describe the scene, objects or "
     "content: they are identical across variants and add nothing.\n"
     "Score EVERY applicable axis listed below from 0 (worst) to 100 (best) in "
-    "the \"axes\" object, as YOUR OWN read of this picture. When local "
-    "measurements are shown they are the Algorithms domain's numbers, for "
-    "context only — your scores are independent and need not match them.\n"
+    "the \"axes\" object, as YOUR OWN read of this picture.\n"
 )
 
 #: Default prompt for the no-mode / legacy case (all untagged measured axes).
@@ -88,6 +86,65 @@ def _scorecard_axes(mode=None, *, profile=None) -> tuple[tuple[str, str], ...]:
     except Exception:
         return ()
 
+def attach_measured_context(text: str, measured_block: str, *, mode=None, profile=None) -> str:
+    """Append the local measurement block, minus every axis the model must judge.
+
+    plan-gallery-ai-judgement P3-E: the analyze prompt used to hand the model the
+    LOCAL number for the same axes it was asked to score ("LOCAL MEASUREMENTS
+    (Algorithms domain, context only)"). A constant ``exposure = 82`` on five of
+    six cards is consistent with anchoring on that number, and a model score for
+    a reference-relative axis can be an echo of a detector instead of a
+    judgement — which is the one thing the AI domain must not report.
+
+    So the block is filtered by the ONE axis resolver
+    (``measured_axes_for(mode, profile=profile)``): a line whose label resolves
+    to an axis the model is asked to score is dropped (the echo), and an
+    unreadable line is dropped too (fail closed — a number whose axis is
+    unknown cannot be checked for an echo). When nothing remains there is no
+    block at all, which is the normal case: the profile IS the asked set.
+    ``text`` is returned unchanged when there is nothing to attach.
+    """
+    block = str(measured_block or "").strip()
+    if not block:
+        return text
+    keep = _unechoed_measurement_lines(block, mode=mode, profile=profile)
+    if not keep:
+        return text
+    return f"{text}\n\nLOCAL MEASUREMENTS (axes the model is NOT asked to score):\n{keep}"
+
+
+def _label_to_axis() -> dict[str, str]:
+    """``{label (normalized): axis_id}`` for the measured registry."""
+    try:
+        from tabs.image_gallery.services.metric_scores import SPECS
+
+        return {str(spec.label).strip().lower(): spec.id for spec in SPECS}
+    except Exception:
+        return {}
+
+
+def _unechoed_measurement_lines(block: str, *, mode=None, profile=None) -> str:
+    """The block's lines that do NOT state a number for an asked axis."""
+    try:
+        from tabs.image_gallery.services.rank_fusion import measured_axes_for
+
+        asked = {str(axis) for axis in measured_axes_for(mode, profile=profile)}
+    except Exception:
+        asked = set()
+    labels = _label_to_axis()
+    keep: list[str] = []
+    for line in str(block).splitlines():
+        body = line.strip().lstrip("-").strip()
+        if not body:
+            continue
+        head = body.split(":", 1)[0].strip().lower()
+        axis = labels.get(head) or (head if head in asked else "")
+        if not axis or axis in asked:
+            continue
+        keep.append(line.rstrip())
+    return "\n".join(keep)
+
+
 def build_prompt(mode=None, *, profile=None, measured_block: str = "") -> str:
     """The analysis prompt: a per-axis scorecard for *mode* / *profile*.
 
@@ -108,9 +165,20 @@ def build_prompt(mode=None, *, profile=None, measured_block: str = "") -> str:
         '"defects": [{"kind": "halo|banding|blocking|chroma_fringing|noise|'
         'over_smoothing|invented_texture|clipping|other", '
         '"severity": "mild|flagged", "note": "short visual description"}], '
+        '"axis_proposals": [{"name": "<snake_case id>", '
+        '"definition": "<what it measures, 0 = …, 100 = …>", '
+        '"scale": "0-100", "score": <0-100>}], '
         '"composition": <0-100>, "confidence": <0.0-1.0>}\n'
         "axes: one 0-100 score per axis listed above; omit an axis you cannot "
         "judge (never invent a number you did not see).\n"
+        "axis_proposals: AT MOST 2 technical dimensions the list above is "
+        "missing AND you can actually SEE in this image (e.g. halation, sepia "
+        "drift, jpeg blocking). Each needs a snake_case name, a one-sentence "
+        "definition naming what moves between 0 and 100, and this image's score "
+        "on that scale. Never propose an axis for scene content, an opinion "
+        "without a measurable dimension, or a renamed axis from the list above. "
+        "Omit the field (or send []) when the list already covers the image — "
+        "an invented axis is worse than no axis.\n"
         "defects: report only artifacts you actually SEE; prefer an empty list "
         "when the image is clean. These are top-level observations.\n"
         "reason: 2-4 sentences — a PRACTICAL read of this image. Say what the "
@@ -120,6 +188,4 @@ def build_prompt(mode=None, *, profile=None, measured_block: str = "") -> str:
         "Output the JSON object ONLY: no reasoning, no analysis steps, no "
         "preamble, no prose before or after the JSON."
     )
-    if measured_block:
-        text = f"{text}\n\nLOCAL MEASUREMENTS (Algorithms domain, context only):\n{measured_block}"
-    return text
+    return attach_measured_context(text, measured_block, mode=mode, profile=profile)

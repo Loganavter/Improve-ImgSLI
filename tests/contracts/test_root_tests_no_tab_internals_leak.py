@@ -163,6 +163,15 @@ ALLOWED_DEEP_TAB_IMPORTS: dict[str, str] = {
         "a stand-in store would prove a second command implementation instead of "
         "the one agents actually drive"
     ),
+    "tests/devtools/test_live_scene_cycle.py": (
+        "host-level S3 cycle contract (build -> verify -> capture -> record -> "
+        "video export): the cycle's scene hops ARE the control-channel verbs, so "
+        "they are driven against the REAL Image Compare canvas (the tab's own "
+        "magnifier builder/document slot) exactly as the S1/S2 contracts above; "
+        "only the record/encode chain is modelled, because a clone cannot boot "
+        "the app and offscreen Qt paints the canvas black — the live proof runs "
+        "on a real display"
+    ),
     "tests/runtime/test_ui_metrics_parity.py": (
         "cross-cutting UI-metrics parity contract (one change channel + owned "
         "derived-geometry refresh); ScaledIconLabel is the image_compare "

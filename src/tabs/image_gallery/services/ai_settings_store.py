@@ -37,6 +37,11 @@ DEFAULT_BASE_URL = "https://openrouter.ai/api/v1"
 #: answer budget). ``none`` is reserved for non-reasoning models.
 REASONING_EFFORTS = ("auto", "low", "medium", "high", "none")
 
+#: Allowed draw counts per image (plan-gallery-ai-judgement P3-D). ``1`` is the
+#: default: a k>1 sample costs k image calls per card, so the multiplier is a
+#: declared setting (never a silent default) and its cost is traced.
+SAMPLE_COUNT_CHOICES: tuple[int, ...] = (1, 2, 3, 5)
+
 #: Image downscale max-edge choices for AI calls; 0 = send original bytes.
 #: Owned by services/decode_policy.py (single home); aliases keep historic names.
 from tabs.image_gallery.services.decode_policy import (
@@ -48,6 +53,13 @@ from tabs.image_gallery.services.decode_policy import (
 def _parse_int(value, default: int = 0) -> int:
     try:
         return int(str(value).strip())
+    except Exception:
+        return default
+
+
+def _parse_float(value, default: float = 0.0) -> float:
+    try:
+        return float(str(value).strip())
     except Exception:
         return default
 
@@ -74,6 +86,16 @@ class AiSettings:
     #: Set once the user chose “Confirm and don't ask again” on the
     #: large-drop cost warning — subsequent large drops skip the dialog.
     suppress_large_drop_warning: bool = False
+    #: Sampling configuration of the VLM scorecard (plan-gallery-ai-judgement
+    #: P3-D / gate GA4). ``sample_count`` (k) is the number of independent draws
+    #: merged per image: ONE by default — the owner has not set a cost ceiling, so
+    #: a multiplier is never taken silently. k>1 is a declared setting and the
+    #: trace states its cost (k image calls per card). ``sampling_temperature`` /
+    #: ``sampling_seed`` are sent only when non-default (0.0 / 0 = the backend's
+    #: own default draw) and are always part of the analysis cache identity.
+    sample_count: int = 1
+    sampling_temperature: float = 0.0
+    sampling_seed: int = 0
 
     def model_for(self, provider_id: str) -> str:
         """The model remembered for *provider_id* ("" when none yet)."""
@@ -127,6 +149,13 @@ class AiSettingsStore:
                     settings.value("suppress_large_drop_warning", False)
                 ).lower()
                 in ("true", "1"),
+                sample_count=max(
+                    1, min(SAMPLE_COUNT_CHOICES[-1], _parse_int(settings.value("sample_count", 1), 1))
+                ),
+                sampling_temperature=_parse_float(
+                    settings.value("sampling_temperature", 0.0), 0.0
+                ),
+                sampling_seed=max(0, _parse_int(settings.value("sampling_seed", 0), 0)),
             )
         finally:
             settings.endGroup()
@@ -171,6 +200,9 @@ class AiSettingsStore:
             "reasoning_effort",
             "vlm_max_edge_px",
             "suppress_large_drop_warning",
+            "sample_count",
+            "sampling_temperature",
+            "sampling_seed",
         ):
             raise ValueError(f"Unknown AI setting field: {name}")
         settings = self._settings()
