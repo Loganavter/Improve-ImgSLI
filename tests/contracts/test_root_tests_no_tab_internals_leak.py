@@ -162,6 +162,33 @@ ALLOWED_DEEP_TAB_IMPORTS: dict[str, str] = {
         "behavior; a per-tab copy would let one tab's allocator drift from the "
         "service again, which is the failure this contract exists for"
     ),
+    "tests/contracts/test_gallery_judge_complete.py": (
+        "plan-gallery-ai-judgement-2026-10-21 §Gates GA1 (M2 completeness): the "
+        "rank-dispatch invariant spans the controller readiness loop and the "
+        "declared rank_completeness interface. It lives in the contracts tier "
+        "because the gate must exist BEFORE the behaviour wave that fixes it and "
+        "must not be owned by it (P0 gates run in parallel with P1); the "
+        "controller/models imports are the measured subject, not gallery UI "
+        "behavior (those stay under src/tabs/image_gallery/tests/)"
+    ),
+    "tests/contracts/test_gallery_judge_profile_stamp.py": (
+        "same P0 gate wave (§Gates GA3, defect J3): the profile-freeze invariant "
+        "is driven through the REAL GalleryController.analyze → ai_analyze entry "
+        "with an all-HIT cache seam — a fake entry cannot prove the stamp is "
+        "unreachable before a payload is built, and the gate must stay independent "
+        "of the P2 wave that fixes it"
+    ),
+    "tests/contracts/test_gallery_judge_cache_identity.py": (
+        "same P0 gate wave (§Gates GA4, defect J5): the analysis-cache identity "
+        "is a data contract (declared field tuple + normalizer), asserted by AST "
+        "and runtime over services/ai_cache; the tab-internal import is the "
+        "declaration under measurement"
+    ),
+    "tests/contracts/test_gallery_judge_axis_salience.py": (
+        "same P0 gate wave (§Gates GA5, defect J4): written against the DECLARED "
+        "P2 helper axis_salience / measured_axes_for in services/rank_fusion so the "
+        "interface cannot be invented differently by the wave that implements it"
+    ),
 }
 
 
