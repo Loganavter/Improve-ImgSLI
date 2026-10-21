@@ -361,9 +361,13 @@ def test_the_marker_vocabulary_rejects_a_silent_subset() -> None:
 def test_the_ledger_names_exactly_the_declared_gates() -> None:
     rows = _allowlist_rows()
     gates = [gate for gate, _node, _reason in rows]
-    assert sorted(gates) == ["GA1", "GA3", "GA4", "GA5"], (
-        "the ledger must carry exactly the four P0 gates, once each: "
-        f"{gates!r}"
+    # SHRINK-ONLY: every phase deletes its own row, so the exact set CANNOT be
+    # pinned here. Deleting a row re-arms that gate, and a re-armed gate that
+    # still fails turns this tier red by itself - that is the enforcement. A
+    # hard-coded set would instead punish the phase that fixed its defect.
+    assert len(gates) == len(set(gates)), f"a gate is listed twice: {gates!r}"
+    assert set(gates) <= {"GA1", "GA3", "GA4", "GA5"}, (
+        f"unknown gate in the ledger: {gates!r}"
     )
     for gate, node, reason in rows:
         assert reason.strip(), f"{gate}: an allowlist row without a reason is a rubber stamp"

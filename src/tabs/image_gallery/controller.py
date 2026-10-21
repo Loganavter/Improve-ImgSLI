@@ -1225,7 +1225,7 @@ class GalleryController:
             vkeys = {str(p) for p in (visible or [])}
         except Exception:
             vkeys = set()
-        small = hidden = no_metrics = 0
+        small = hidden = partial = 0
         ready: list = []
         for entry in groups:
             members = GalleryController._section_members(entry)
@@ -1235,25 +1235,34 @@ class GalleryController:
             if vkeys and not any(str(getattr(m, "path", "")) in vkeys for m in members):
                 hidden += 1
                 continue
-            # Readiness is the APPLICABLE MEASURED VECTOR, not "any metrics":
-            # an axis Jev cannot score (or a non-applicable axis for this mode)
-            # must not earn a call, and a <2-scored series would only abstain.
             vector = GalleryController._jev_measured_vector(
                 members,
                 mode,
                 str(getattr(self, "_judgment_domain", "algorithms")),
                 profile=getattr(self.state, "metric_profile", None),
             )
-            if GalleryController._jev_scored_count(vector) < 2:
-                no_metrics += 1
+            # Readiness is the APPLICABLE MEASURED VECTOR of EVERY member (J1,
+            # plan-gallery-ai-judgement P1): an axis Jev cannot score must not
+            # earn a call, and a series whose member carries no score must not
+            # be ranked at all — an order over it ranks that member on nothing
+            # (live 2026-10-21: img_6 got a rank while its last score arrived
+            # during the rank). `rank_completeness` is the ONE place that
+            # decides complete-vs-partial; this site only refuses.
+            scored, total, why = _pipeline_stages.rank_completeness(members, vector)
+            if scored < total:
+                partial += 1
+                _ai_debug(
+                    "jev rank partial: %d/%d scored (%s) — series not ranked",
+                    scored, total, why,
+                )
                 continue
             if len(ready) >= self._AI_VISIBLE_CAP:
                 break
             ready.append((members, vector))
         if not ready:
             _ai_debug(
-                "jev ranks: series=%d scheduled=0 (too-small=%d not-visible=%d no-metrics=%d)",
-                len(groups), small, hidden, no_metrics,
+                "jev ranks: series=%d scheduled=0 (too-small=%d not-visible=%d partial=%d)",
+                len(groups), small, hidden, partial,
             )
             return
         scope = self._folder_gen
@@ -1266,11 +1275,15 @@ class GalleryController:
             except Exception:
                 claimed = True
         if not claimed:
-            _ai_debug("jev ranks: gate skip (already ranked/in flight) series=%d", len(ready))
+            _ai_debug(
+                "jev ranks: gate skip (already ranked, or in flight — a refused "
+                "trigger is remembered and re-run on finish) series=%d",
+                len(ready),
+            )
             return
         _ai_debug(
-            "jev ranks: series=%d scheduled=%d (too-small=%d not-visible=%d no-metrics=%d)",
-            len(groups), len(ready), small, hidden, no_metrics,
+            "jev ranks: series=%d scheduled=%d (too-small=%d not-visible=%d partial=%d)",
+            len(groups), len(ready), small, hidden, partial,
         )
         GalleryController._launch_jev_batch(self, ready, scope)
 
@@ -1293,14 +1306,6 @@ class GalleryController:
         except Exception:
             logger.debug("jev measured vector build failed", exc_info=True)
             return {"mode": "", "items": []}
-
-    @staticmethod
-    def _jev_scored_count(vector) -> int:
-        """Members carrying at least one applicable MEASURED score."""
-        try:
-            return sum(1 for e in (vector or {}).get("items", ()) if e.get("scores"))
-        except Exception:
-            return 0
 
     @staticmethod
     def _jev_series_fingerprint(ready, mode) -> str:
@@ -1341,6 +1346,12 @@ class GalleryController:
         The gate is released once, after the LAST attempt reports (result or
         error): a decisive or benign non-answer records completion; a fault
         passes ``ok=False`` so the same fingerprint stays retryable.
+
+        ``StageGate.finished`` hands back a fingerprint it refused while this
+        batch was in flight (a newer vector arrived — J1). That one is re-run
+        exactly once, through the same single-flight gate; ``None`` (no
+        refusal, or a second identical trigger) means no extra pass, so a
+        repeated trigger can never loop.
         """
         gate = getattr(self, "_stage_gate", None)
         progress = {"remaining": len(ready), "fault": False}
@@ -1350,8 +1361,11 @@ class GalleryController:
                 if not ok:
                     progress["fault"] = True
                 progress["remaining"] = max(0, int(progress["remaining"]) - 1)
-                if progress["remaining"] <= 0 and gate is not None:
-                    gate.finished(_JEV_STAGE, scope, ok=not progress["fault"])
+                if progress["remaining"] > 0 or gate is None:
+                    return
+                pending = gate.finished(_JEV_STAGE, scope, ok=not progress["fault"])
+                if pending:
+                    GalleryController._rerun_jev_rank_pass(self, pending, scope)
             except Exception:
                 logger.debug("jev gate finished failed", exc_info=True)
 
@@ -1361,6 +1375,27 @@ class GalleryController:
             except Exception:
                 logger.debug("jev rank series launch failed", exc_info=True)
                 _complete(False)
+
+    def _rerun_jev_rank_pass(self, pending, scope) -> None:
+        """Re-run the Jev rank pass ONCE for the fingerprint the gate refused.
+
+        *pending* is the content key ``StageGate.finished`` remembered while
+        the batch was in flight (J1: the last VLM score arrived mid-rank).
+        The pass re-reads the world and computes its own fingerprint, so the
+        gate claims the run only when that content key is genuinely new; if a
+        run is in flight again the gate keeps the newer pending for its own
+        release. Never raises.
+        """
+        _ai_debug(
+            "jev ranks: re-run after in-flight batch (scope=%s fingerprint=%s)",
+            scope, pending,
+        )
+        try:
+            runner = getattr(self, "_run_jev_ranks", None)
+            if callable(runner):
+                runner()
+        except Exception:
+            logger.debug("jev rank re-run failed", exc_info=True)
 
     def _run_series_priority(self) -> None:
         """Schedule ONE cross-series routing pass (additive "needs a human first").
@@ -1629,7 +1664,15 @@ class GalleryController:
                         self.widget.refresh_card(it)
                     except Exception:
                         pass
-            _ai_debug("jev rank applied: items=%d source=jev", len(current))
+            # The trace says which tail completed a short model reply: a model
+            # naming every alias (`tail=model`) or the measured fusion
+            # (`tail=deterministic`); a pinned/cached replay has no decision.
+            tail = str(getattr(outcome, "tail", "") or "")
+            if not tail:
+                tail = "cached" if getattr(outcome, "cached", False) else "unknown"
+            _ai_debug(
+                "jev rank applied: items=%d source=jev tail=%s", len(current), tail
+            )
             GalleryController._refresh_rank_provenance(self)
             return
         reason = getattr(outcome, "reason", None) or "AI (Jev) rank unavailable"
