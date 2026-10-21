@@ -233,14 +233,34 @@ Rules (each exists because a live capture lied):
   surfaces (`help_figures.py --check`); a live capture carries no cross-host
   promise. Two independent boots are the review proof (measured identical for
   toolbar, tab strip, Multi Compare save dialog, gallery stats, Quick Look).
-- **`@window` vs a tab name.** A tab name captures that tab's widget (the tab
-  strip/title bar live outside it); `@window` captures the whole active window —
-  use it for chrome and dialogs. `wait_jobs` waits for the app's jobs to settle;
+- **`@window` vs a tab name vs `@screen`.** A tab name captures that tab's
+  widget (the tab strip/title bar live outside it); `@window` captures the whole
+  active window — use it for chrome and dialogs. Toolkit flyouts are in-app
+  `BaseFlyout` (`Qt.Widget`) children attached to the window's **overlay
+  layer**, not native dialogs; the X `grabWindow` capture can still miss them
+  (measured: the menu is in `ui_elements` while the window capture shows only
+  the chrome behind it, and a tab capture never includes a window-level
+  overlay). `@screen` grabs the X root (overlay included) and its pixels are
+  1:1 with `screen_rect`, which is what `crop_element` uses. `wait_jobs` settles analysis;
   a fixed sleep is not a settle signal.
+- **The render backend is per figure.** Image Compare canvas figures pin
+  `rhi_backend=vulkan`: llvmpipe/OpenGL cannot create the IC canvas probe mip
+  render target (`MipCascadeNotReady`, black canvas + the app's report dialog —
+  measured), while Vulkan renders it headless on this driver. Chrome-only
+  figures keep OpenGL. A host without a Vulkan ICD fails loudly, it does not
+  silently ship a black canvas.
+- **Transient flyouts capture fast.** A flyout can close before a normal
+  two-capture settle; `stable_interval_s` (e.g. 0.15) keeps both captures inside
+  its lifetime. Do not open a toolbar flyout with `ui_click` while a Vulkan IC
+  canvas holds images: that kills the injected-input path (the figures open
+  menus without images).
 
 Current live set: `help-toolbar`, `help-tab-strip`, `help-multi-save-dialog`,
-`help-gallery-stats`, `help-gallery-quicklook` (Image Compare pair figures land
-with the `open_folder slot/side` control-API change).
+`help-gallery-stats`, `help-gallery-quicklook`, `help-mc-layouts`,
+`help-ic-magnifier`, `help-diff-modes`, `help-export-dialog`. Still manual:
+`magnifier_combined` (needs a lens state the control surface cannot compose),
+`split_line` (a `ScrollValueButton` popup, not the compact/expanded composite
+the figure teaches), plus video/paste/long-press and Ask AI.
 
 ## Known limitation: the live QRhi/GL canvas
 

@@ -71,46 +71,6 @@
       ]
     },
     {
-      "id": "help-export-dialog",
-      "capture": "@window",
-      "steps": [
-        {
-          "open_tab": "image_compare"
-        },
-        {
-          "sleep": 1.5
-        },
-        {
-          "open_folder": {
-            "path": "@samples",
-            "tab": "image_compare"
-          }
-        },
-        {
-          "sleep": 2.5
-        },
-        {
-          "run_action": "image_compare.save"
-        },
-        {
-          "sleep": 2.5
-        }
-      ],
-      "crop": null,
-      "destination": "src/plugins/export/resources/help/assets/export_dialog.jpg",
-      "locales": [
-        "en"
-      ],
-      "themes": [
-        "dark"
-      ],
-      "note": "Live export dialog (Save Result) with a loaded comparison; captured as the active window, so the preview is the real render the user sees.",
-      "min_size": [
-        800,
-        500
-      ]
-    },
-    {
       "id": "help-multi-save-dialog",
       "capture": "@window",
       "steps": [
@@ -271,6 +231,142 @@
         600
       ],
       "note": "Live Multi Compare row: three slots side by side with dividers and filename labels, composed through open_folder side=right. The first image auto-places; side drives the split of the following ones (documented limitation)."
+    },
+    {
+      "id": "help-ic-magnifier",
+      "capture": "image_compare",
+      "steps": [
+        {
+          "open_tab": "image_compare"
+        },
+        {
+          "sleep": 1.5
+        },
+        {
+          "open_folder": {
+            "path": "@samples/singles/sunset",
+            "tab": "image_compare",
+            "slot": 1
+          }
+        },
+        {
+          "open_folder": {
+            "path": "@samples/singles/forest",
+            "tab": "image_compare",
+            "slot": 2
+          }
+        },
+        {
+          "sleep": 3.0
+        }
+      ],
+      "crop": [
+        0,
+        152,
+        1200,
+        540
+      ],
+      "destination": "src/tabs/image_compare/resources/help/assets/magnifier.jpg",
+      "locales": [
+        "en"
+      ],
+      "themes": [
+        "dark"
+      ],
+      "min_size": [
+        1000,
+        600
+      ],
+      "note": "Live IC canvas (Vulkan backend): side-by-side pair plus the magnifier loupe, captured from the running app. Crop is the canvas below the toolbar. Vulkan is pinned because llvmpipe/OpenGL cannot create the IC canvas probe mip render target (MipCascadeNotReady, measured).",
+      "rhi_backend": "vulkan"
+    },
+    {
+      "id": "help-diff-modes",
+      "capture": "@screen",
+      "steps": [
+        {
+          "open_tab": "image_compare"
+        },
+        {
+          "sleep": 1.5
+        },
+        {
+          "ui_click": {
+            "id": "@image_compare.diff_mode"
+          }
+        },
+        {
+          "sleep": 1.5
+        }
+      ],
+      "crop": null,
+      "crop_element": {
+        "role": "menu",
+        "label": "SimpleOptionsFlyout",
+        "pad": 0
+      },
+      "destination": "src/tabs/image_compare/resources/help/assets/difference_modes.png",
+      "locales": [
+        "en"
+      ],
+      "themes": [
+        "dark"
+      ],
+      "min_size": [
+        1200,
+        800
+      ],
+      "note": "Live Difference Mode flyout (Off/Highlight/Grayscale/Edge Comparison/SSIM Map), screen-grabbed (the flyout is a separate popup window, so a window capture misses it). Opened without images: a synthetic toolbar click while the Vulkan canvas holds images crashes the injected-input path.",
+      "stable_interval_s": 0.15
+    },
+    {
+      "id": "help-export-dialog",
+      "capture": "@window",
+      "steps": [
+        {
+          "open_tab": "image_compare"
+        },
+        {
+          "sleep": 1.5
+        },
+        {
+          "open_folder": {
+            "path": "@samples/singles/sunset",
+            "tab": "image_compare",
+            "slot": 1
+          }
+        },
+        {
+          "open_folder": {
+            "path": "@samples/singles/forest",
+            "tab": "image_compare",
+            "slot": 2
+          }
+        },
+        {
+          "sleep": 3.0
+        },
+        {
+          "run_action": "image_compare.save"
+        },
+        {
+          "sleep": 2.0
+        }
+      ],
+      "crop": null,
+      "destination": "src/plugins/export/resources/help/assets/export_dialog.jpg",
+      "locales": [
+        "en"
+      ],
+      "themes": [
+        "dark"
+      ],
+      "min_size": [
+        800,
+        500
+      ],
+      "rhi_backend": "vulkan",
+      "note": "Live IC export dialog with a composed pair (slot=1/2); preview is the real render, output dir is the neutral /home/user/Pictures seed. Vulkan because the IC canvas mips cannot be created on llvmpipe/OpenGL."
     }
   ]
 }

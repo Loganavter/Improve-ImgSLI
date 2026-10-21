@@ -95,6 +95,38 @@ def test_profile_seeds_theme_language_and_export_dir(tmp_path):
     assert path.name.endswith(".conf")
 
 
+def test_profile_seeds_the_rhi_backend(tmp_path):
+    """IC canvas figures need Vulkan: llvmpipe/OpenGL cannot create the mip probe."""
+    path = help_live.write_profile(
+        tmp_path, locale="en", theme="dark", width=1000, height=700, rhi_backend="vulkan"
+    )
+    assert "rhi_backend=vulkan" in path.read_text(encoding="utf-8")
+    default = help_live.write_profile(
+        tmp_path / "default", locale="en", theme="dark", width=1000, height=700
+    )
+    assert "rhi_backend=opengl" in default.read_text(encoding="utf-8")
+
+
+def test_recipe_carries_backend_and_capture_interval(tmp_path):
+    path = tmp_path / "r.json"
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "figures": [
+                    _entry(rhi_backend="vulkan", stable_interval_s=0.15,
+                           capture="@screen")
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    figure = help_live.load_recipes(path)[0]
+    assert figure.rhi_backend == "vulkan"
+    assert figure.stable_interval_s == 0.15
+    assert figure.capture == "@screen"
+
+
 def test_samples_are_byte_stable(tmp_path):
     first = help_live.ensure_samples(tmp_path)
     hashes = {p.name: p.read_bytes() for p in first.glob("*.png")}
