@@ -23,7 +23,7 @@ from typing import Any, Callable
 from . import discovery, elements as element_inventory, jobs
 from .capture import capture_live_png
 from .discovery import MethodError, parse_key_sequence
-from .drop_routing import accepts_paths, open_folder_into, route_paths
+from .drop_routing import accepts_paths, drop_hint, open_folder_into, route_paths
 from .nav_keys import NavMethodsMixin
 
 #: Minimum-level filter ladder, mirroring the MCP ``read_log`` semantics.
@@ -386,6 +386,7 @@ class ControlHandlers(
                 f"{target} is not an existing directory",
                 "pass an absolute (or ~-prefixed) path to a folder of images",
             )
+        hint = drop_hint(params)
         wanted = str(params.get("tab") or "").strip() or None
         if wanted is not None:
             # Targeted: a file-only tab gets the folder's images as files
@@ -396,7 +397,7 @@ class ControlHandlers(
                     wanted,
                     tabs=self._tabs,
                     kinds=self._tab_kinds(),
-                    run_action=self._run_action_id,
+                    run_action=self._run_action_id, hint=hint,
                 )
             except ValueError as exc:
                 raise MethodError(
@@ -407,12 +408,12 @@ class ControlHandlers(
         # Route via the tab's own drop path (what a user drag-and-drop uses).
         # No concrete tab is named (host isolation contract): the tab that
         # accepts a *directory* reveals itself through ``accepts_drop``.
-        routed = route_paths(self._tabs(), [target])
+        routed = route_paths(self._tabs(), [target], hint=hint)
         if routed is None:
             for session_type, tab in self._tabs():
                 if accepts_paths(tab, [target]):
                     self._run_action_id(f"workspace.new_{session_type}")
-            routed = route_paths(self._tabs(), [target])
+            routed = route_paths(self._tabs(), [target], hint=hint)
         if routed is None:
             raise MethodError(
                 "no live tab accepted the folder",

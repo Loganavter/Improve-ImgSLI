@@ -753,7 +753,7 @@ def apply_full_resolution(
     demand_pyramid_for_slot(controller, store, slot_id=slot_id)
 
 
-def load_external_paths(controller, paths) -> int:
+def load_external_paths(controller, paths, side=None) -> int:
     """Chrome/carry/paste drops without a canvas position (P3A).
 
     Direct-load like IC (``image_compare.use_cases.drag_drop.handle_drop``):
@@ -767,6 +767,13 @@ def load_external_paths(controller, paths) -> int:
     so window-chrome ``slot`` hints and carry drops with no position both
     map to append-like placement. Internal-drag Move stays in
     ``ui/drag_drop`` and is untouched by this path.
+
+    ``side`` is the placement axis a caller may name when it has no canvas
+    position but does have intent (the control surface's
+    ``open_folder(side=...)``): it drives the split axis of the files after
+    the first, so a multi-file drop composes a row/column instead of the
+    auto-picked one. ``None`` (every mouse drive) keeps auto placement
+    exactly as before.
 
     Returns the number of slots created synchronously.
     """
@@ -782,7 +789,7 @@ def load_external_paths(controller, paths) -> int:
     if not valid:
         return 0
     before = len(controller.widget.state.slots)
-    on_images_dropped(controller, valid, (None, False), None)
+    on_images_dropped(controller, valid, (None, False), side)
     return len(controller.widget.state.slots) - before
 
 

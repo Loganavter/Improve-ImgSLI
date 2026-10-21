@@ -13,6 +13,11 @@ icon: gallery.svg
 - **New Image Gallery Session** — opens another gallery session from **Find Action** (`Ctrl+Shift+P`).
 - **Large AI batch** — while **AI** is on, dropping more than 35 images at once shows a warning before they are sent, because a big batch can mean a big API bill. Pick **Confirm**, **Confirm and don't ask again**, or **Cancel**.
 
+:::figure{side=block width=100%}
+![Empty gallery](../assets/empty_state.png)
+Empty gallery: the dashed drop zone asks for a folder; the grid stays empty until one is opened.
+:::
+
 ### Series {#series}
 
 After a folder loads, the gallery groups similar images into series — one section per group.

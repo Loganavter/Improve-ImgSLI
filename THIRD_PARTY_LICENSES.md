@@ -8,6 +8,24 @@ obligations that apply when you distribute Improve-ImgSLI binaries.
 
 ---
 
+## Bundled fonts (SIL OFL 1.1)
+
+`src/shared_toolkit/resources/fonts/` ships two **unmodified** SIL Open Font
+License 1.1 fonts:
+
+- **Source Sans 3 Regular** (`SourceSans3-Regular.ttf`) — © Adobe, OFL 1.1;
+  full text in `LICENSE-SourceSans3.txt`. The product UI face.
+- **Noto Sans SC Regular** (`NotoSansSC-Regular.otf`) — © Adobe / Google,
+  OFL 1.1; full text in `LICENSE-NotoSansSC.txt`. The CJK fallback: Source Sans
+  has no Han glyphs, so without it Chinese UI text resolves to the system font
+  (non-reproducible) or renders as tofu on a machine without a CJK font.
+
+The OFL permits bundling and redistributing the fonts with the application,
+provided the license texts travel with them; the fonts stay under OFL 1.1 and
+are not relicensed by the application's GPL-3.0-or-later.
+
+---
+
 ## PySide6, shiboken6, and Qt 6 (LGPL-3.0-or-later)
 
 Improve-ImgSLI uses **Qt for Python (PySide6)** and **shiboken6**, which link

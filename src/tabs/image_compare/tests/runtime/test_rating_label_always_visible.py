@@ -46,8 +46,22 @@ def test_rating_label_stays_visible_without_score():
 def test_rating_label_stays_visible_with_score():
     widget = _make_widget()
     widget.update_rating_display(2, 4, "en")
-    assert "4" in widget.label_rating2.text
+    assert widget.label_rating2.text == "4"
     assert widget.label_rating2.isVisible()
+
+
+def test_rating_label_is_plain_text_not_markup():
+    """RED-BEFORE: the label was a QLabel with rich text, so the setter kept
+    ``<b>{score}</b>`` after the label became a plain toolkit ``Text`` — the
+    30 px strip painted the literal markup and clipped to ``▸0</|``."""
+    widget = _make_widget()
+    widget.update_rating_display(1, 0, "en")
+    widget.update_rating_display(2, 10, "en")
+
+    for label in (widget.label_rating1, widget.label_rating2):
+        assert "<" not in label.text and ">" not in label.text
+    assert widget.label_rating1.text == "0"
+    assert widget.label_rating2.text == "10"
 
 
 def test_both_sides_keep_their_labels():

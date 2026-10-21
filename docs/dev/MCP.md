@@ -58,7 +58,7 @@ fallback window, e.g. `:97`).
 | `wait_for` | read | block until one expectation holds (element id visible+enabled, role+label exists, or jobs settle); a timeout returns the last observed state (live-only) |
 | `open_tab` | write | open/focus a tab kind (live) or launch it (fallback) |
 | `run_action` | write | run one ActionRegistry id |
-| `open_folder` | write | hand a folder to a tab (`tab=` targets one; live: routed) |
+| `open_folder` | write | hand a folder to a tab (`tab=` targets one; `slot=`/`side=` place it; live: routed) |
 | `set_theme` | write | set `theme` (light/dark); live-now or persisted |
 | `set_language` | write | set `language` (en/ru/zh/pt_BR) |
 | `capture_surface` | write | screenshot a named surface or the live active window to PNG |
@@ -514,6 +514,18 @@ inventing values. (Fallback `size` is parsed from the devtool's own
   cannot accept a directory, so it receives the folder's images as files
   (non-recursive, shared extension set) — that is the supported way to load
   images into those tabs, whose own "add images" dialog a client cannot drive.
+- **A drop can be placed without a pointer.** A mouse drop derives the target
+  from the cursor; a headless client has none, so `open_folder` accepts the
+  same two hints the tabs already read, one per call (both together is an
+  error): `slot=1|2` picks the Image Compare slot (left/right — two calls
+  compose a pair) and `side=left|right|top|bottom` picks the Multi Compare
+  split axis used for the folder's images after the first, so a multi-file
+  folder composes a row (`right`) instead of the auto column. The first image
+  still lands by the usual auto placement (it has no target to split yet), and
+  a single-file drop is therefore unaffected by `side`. Anything other than
+  the listed values is rejected with the app's own error (`unknown slot`,
+  `unknown side`) rather than silently dropped. Omitting both keeps the plain
+  auto-placement route.
 - **No file contents.** Only the app's own log/tracer/catalog/layout artifacts
   are returned — never user images or arbitrary files.
 - **Read-only default**; mutations are distinct named tools with honest

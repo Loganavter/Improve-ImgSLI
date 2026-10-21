@@ -119,6 +119,19 @@ python src/devtools/help_figures.py --all --write-manifest       # record baseli
   display number, waits for its socket and tears it down; `--backend native`
   uses the current `DISPLAY` and refuses to run without one. Neither ever
   defaults to `:0`.
+- **Cells are independent, so they can run in parallel.** `--jobs N` (also with
+  `--check` / `--compare`, which generate) captures `N` `(figure, locale, theme)`
+  cells at a time in a `spawn` pool — each worker builds its own `QApplication`
+  and reuses it across the cells it picks up. `--jobs 1` is the default and the
+  old in-process path (one reused app, input order). `--jobs 0` / `--jobs auto`
+  means `min(4, cpu_count)`; values above 8 are clamped. The parent never creates
+  a `QApplication` before the pool (the display context only starts Xvfb and
+  exports env). Results come back in `(figure, locale, theme)` order no matter
+  which worker finished first, so `--write-manifest` and the drift table are
+  byte-identical to a sequential run; a failing cell aborts the pool and names
+  its `figure [locale/theme]`, and no manifest is written from a partial run.
+  Rough win: a cell is dominated by its settle pumps (~1.2 s), so a 40-cell
+  `--check` is minutes sequentially and a small multiple of one cell at 4 jobs.
 - **No asset writes.** Captures go to `--out` (a fresh temp dir by default).
   Nothing is written into `src/**/resources/help/assets/`: installing a shot is
   still the copy step above, so a routine run cannot churn a shipped figure.
@@ -135,14 +148,29 @@ python src/devtools/help_figures.py --all --write-manifest       # record baseli
   `locales` x `themes` is the matrix: more than one pair makes every capture
   install under `assets/<locale>/<theme>/<name>` (a single-variant recipe keeps
   today's flat destination). The five reproducible figures ship
-  `en|pt_BR|ru` x `dark|light` — 30 files, ~1.6 MB, below the 15 MB
+  `en|pt_BR|ru|zh` x `dark|light` — 40 files, ~2.2 MB, below the 15 MB
   bundle-in-the-binary gate. One literal markdown reference then resolves
   through `resolve_help_asset`: `locale+theme -> locale -> theme -> base`. A
   **declared** cell that is missing is a content bug and returns `None` (the
-  placeholder path), never the base; a locale with no declared matrix (zh
-  today) keeps the base image. zh figures are blocked on a pinned CJK font —
-  the system fallback is not reproducible and a runner without one renders
-  tofu, so they are deliberately not declared yet.
+  placeholder path), never the base; a locale with no declared matrix keeps the
+  base image. zh is reproducible because the app and the captures both pin the
+  bundled **Noto Sans SC** (SIL OFL 1.1) as the CJK fallback: the system
+  fallback is not deterministic, and a runner without a CJK font renders tofu.
+  Both bundled fonts ship their OFL texts next to the files
+  (`LICENSE-SourceSans3.txt`, `LICENSE-NotoSansSC.txt`).
+- **Idle blank is not a bug; drag-hover is a state.** The gallery's S0 repose
+  is deliberately blank — the dashed drop zone + "Pick a folder…" prompt appear
+  only while a drag hovers (`dragEnter`). The `gallery` surface drives that
+  state with a synthetic `QDragEnterEvent` carrying a demo folder URL, so the
+  empty-gallery figure shows what a user sees mid-drag and reads no store/user
+  path. Do not "fix" the blank idle frame by showing the zone unconditionally.
+- **User state never enters a frame.** A capture surface must be a product
+  surface, not the maintainer's session. `session-picker`'s Recent shelf reads
+  `services.io.recent_projects` from disk, so a raw grab embedded the user's
+  real projects (private data in a shipped figure) and their changed
+  thumbnails/mtimes made the sha256 gate flaky. The devtool now injects demo
+  records with sample covers and a frozen relative label; nothing on the shelf
+  comes from the store.
 - **A JPEG destination is converted from the grab.** Captures are PNG; when the
   shipped asset is `.jpg` the generator converts the final frame (`quality=95`,
   `subsampling=0`, Pillow is pinned) so the installed bytes — and therefore the
@@ -173,6 +201,46 @@ python src/devtools/help_figures.py --all --write-manifest       # record baseli
   `size:surface-ignores-pin:WxH` under `pins_unavailable`, and `--check`
   reports drift for a baselined figure whose frame isn't the pinned one. The
   `--all` run ends with a `figure / pinned / achieved / parity|differ` table.
+
+## Live figures (running app)
+
+Some manual figures only exist in a **running** app: real QRhi canvases,
+flyouts, session chrome, the Quick Look overlay. They are captured from a
+private instance by `src/devtools/help_live.py`, with recipes in
+`src/devtools/help_figures_live.json` (one entry per figure: capture target,
+scenario steps, crop, destination).
+
+```bash
+python src/devtools/help_live.py --list
+python src/devtools/help_live.py --figure help-toolbar
+python src/devtools/help_live.py --all --out /tmp/live-shots
+```
+
+Rules (each exists because a live capture lied):
+
+- **Isolate all four XDG dirs, not three.** `XDG_CONFIG_HOME` is where
+  `QSettings` keeps theme/language/window geometry — a recon that isolated only
+  DATA/CACHE/RUNTIME read the host's settings.
+- **Seed the profile before boot** (`theme`, `language`, `ui_mode`, window
+  size/position, `export_default_dir=/home/user/Pictures`) and sandbox `HOME`.
+  `set_theme`/`set_language` answer "applied" but do not repaint/retranslate an
+  open window, and a real home directory would print the maintainer's username
+  into the export dialog.
+- **A figure installs only after two consecutive captures are byte-identical**;
+  `min_size` rejects a helper/warning window (measured: "Save Result" without a
+  pair installed a 356x194 *load both slots* warning over the export figure).
+- **Live figures are not in the sha256 drift gate.** CI gates the devtool
+  surfaces (`help_figures.py --check`); a live capture carries no cross-host
+  promise. Two independent boots are the review proof (measured identical for
+  toolbar, tab strip, Multi Compare save dialog, gallery stats, Quick Look).
+- **`@window` vs a tab name.** A tab name captures that tab's widget (the tab
+  strip/title bar live outside it); `@window` captures the whole active window —
+  use it for chrome and dialogs. `wait_jobs` waits for the app's jobs to settle;
+  a fixed sleep is not a settle signal.
+
+Current live set: `help-toolbar`, `help-tab-strip`, `help-multi-save-dialog`,
+`help-gallery-stats`, `help-gallery-quicklook` (Image Compare pair figures land
+with the `open_folder slot/side` control-API change).
 
 ## Known limitation: the live QRhi/GL canvas
 

@@ -273,9 +273,14 @@ class MultiCompareController:
 
         return dialog_add_use_cases.load_images(self, paths)
 
-    def load_external_paths(self, paths) -> int:
-        """Direct-load for chrome/carry/paste drops (P3A) — thin delegate."""
-        return loading_use_cases.load_external_paths(self, paths)
+    def load_external_paths(self, paths, side=None) -> int:
+        """Direct-load for chrome/carry/paste drops (P3A) — thin delegate.
+
+        ``side`` is the placement axis a caller may name instead of a canvas
+        position (the control surface's ``open_folder(side=...)``); ``None``
+        keeps auto placement.
+        """
+        return loading_use_cases.load_external_paths(self, paths, side=side)
 
     def begin_paste_placement(self, paths: list[Path]) -> None:
         """Paste entry — direct-loads like IC (P3A), no pending-paste arming.

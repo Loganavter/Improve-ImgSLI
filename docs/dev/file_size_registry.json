@@ -86,6 +86,17 @@
       }
     },
     {
+      "path": "src/devtools/help_live.py",
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=devtool-pipeline size=exempt reason=\"one live-capture contract: profile seed + app lifecycle + socket client + scenario + stable-capture/crop/install all share the same recipe schema; splitting forks the meaning of a live figure\"",
+      "parsed": {
+        "pattern": "devtool-pipeline",
+        "size": "exempt",
+        "reason": "one live-capture contract: profile seed + app lifecycle + socket client + scenario + stable-capture/crop/install all share the same recipe schema; splitting forks the meaning of a live figure"
+      }
+    },
+    {
       "path": "src/devtools/scenario_cost.py",
       "limit": 500,
       "marker": "Audit-Meta:",

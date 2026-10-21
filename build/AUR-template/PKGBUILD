@@ -7,7 +7,7 @@ pkgrel=1
 pkgdesc="Image comparison tool with magnifying glass feature"
 arch=('x86_64')
 url="https://github.com/Loganavter/Improve-ImgSLI"
-license=('GPL-3.0-or-later')
+license=('GPL-3.0-or-later' 'OFL-1.1')
 depends=(
   'ffmpeg'
   'hicolor-icon-theme'

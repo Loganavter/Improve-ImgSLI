@@ -12,6 +12,7 @@ figure. See ``docs/dev/SCREENSHOTS.md`` §Help-figure generator.
     python src/devtools/help_figures.py --list            # no display
     python src/devtools/help_figures.py --all --out /tmp/shots   # + WxH parity table
     python src/devtools/help_figures.py --check
+    python src/devtools/help_figures.py --check --jobs 4  # one spawn worker per cell
     python src/devtools/help_figures.py --compare         # WxH parity report (exit 1)
     python src/devtools/help_figures.py --all --write-manifest
 
@@ -23,6 +24,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import multiprocessing
 import os
 import shutil
 import subprocess
@@ -32,7 +34,7 @@ import time
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
-from typing import Iterator, Sequence
+from typing import Callable, Iterator, Sequence, TypeVar
 
 #: Repo root (``<repo>/src/devtools/help_figures.py`` -> ``<repo>``).
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -58,6 +60,12 @@ PINNABLE = ("locale", "theme")
 #: so a capture can never be silently host-flavoured.
 FORCED_PINS = ("font", "ui_scale")
 _SHA_LEN = 64
+#: Parallel capture bounds. A cell costs 0.9–1.5 s of settle pumps, so a 40-cell
+#: run is minutes of wall time; the upper bound keeps a spawn pool from
+#: oversubscribing a small machine (contentious Xvfb grabs are slower, not faster).
+MAX_JOBS = 8
+#: ``--jobs 0`` / ``--jobs auto`` target this many workers, capped by the CPU count.
+AUTO_JOBS_CEILING = 4
 _BASELINE_KEYS = {"locale", "theme", "sha256", "size", "width", "height", "pins_applied", "pins_unavailable"}
 _FIGURE_KEYS = {
     "id", "surface", "crop", "size", "locales", "themes", "destination", "covered",
@@ -394,8 +402,8 @@ class _RecordingSession(capture_surface.CaptureSession):
         super().__init__(*args, **kwargs)
         self.saved: list[Path] = []
 
-    def grab(self, widget, filename, default_w, default_h, delay: int = 1200) -> Path:
-        path = super().grab(widget, filename, default_w, default_h, delay=delay)
+    def grab(self, widget, filename, default_w, default_h, delay: int = 1200, **kwargs) -> Path:
+        path = super().grab(widget, filename, default_w, default_h, delay=delay, **kwargs)
         self.saved.append(path)
         return path
 
@@ -474,6 +482,150 @@ def _fingerprint(path: Path) -> tuple[str, int, int, int]:
     return hashlib.sha256(path.read_bytes()).hexdigest(), path.stat().st_size, width, height
 
 
+# --- Parallel capture (one spawn worker per cell) ---------------------------
+
+
+def resolve_jobs(value: int | str | None = 1) -> int:
+    """Normalise a ``--jobs`` value to ``1..MAX_JOBS``.
+
+    ``0`` and ``auto`` mean "pick for me": ``min(AUTO_JOBS_CEILING, cpu_count)``.
+    Anything above ``MAX_JOBS`` is clamped (a bigger pool only queues for the
+    same X server); negatives are an error, not a silent 1.
+    """
+    if value is None:
+        return 1
+    if isinstance(value, str):
+        text = value.strip().lower()
+        if text == "auto":
+            return min(AUTO_JOBS_CEILING, os.cpu_count() or 1)
+        try:
+            value = int(text, 10)
+        except ValueError:
+            raise ValueError(f"--jobs expects an integer or 'auto', got {text!r}") from None
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(f"--jobs expects an integer or 'auto', got {value!r}")
+    if value < 0:
+        raise ValueError(f"--jobs must be >= 0 (0 = auto), got {value}")
+    if value == 0:
+        return min(AUTO_JOBS_CEILING, os.cpu_count() or 1)
+    return max(1, min(MAX_JOBS, value))
+
+
+@dataclass(frozen=True)
+class _Cell:
+    """One ``(figure, locale, theme)`` unit of capture work (picklable)."""
+
+    figure: Figure
+    locale: str
+    theme: str
+    out_dir: str
+
+    @property
+    def label(self) -> str:
+        return f"{self.figure.id} [{self.locale}/{self.theme}]"
+
+
+def _cells(manifest: Manifest, out_dir: Path, locales=None, themes=None) -> list[_Cell]:
+    """Every selected cell, in the canonical (figure, locale, theme) order."""
+    return [
+        _Cell(figure=figure, locale=locale, theme=theme, out_dir=str(out_dir))
+        for figure in manifest.figures
+        if figure.covered
+        for locale, theme in _pairs(figure, locales, themes)
+    ]
+
+
+def _finish_cell(cell: _Cell, captured: Path | str) -> tuple[dict, list[str]]:
+    """Stage the grab, fingerprint it, and build the record + report lines."""
+    figure = cell.figure
+    out_dir = Path(cell.out_dir)
+    captured = Path(captured)
+    asset = install_destination(figure, cell.locale, cell.theme)
+    if figure_variant_count(figure) > 1:
+        # Multi-variant: stage into the assets/<locale>/<theme>/ layout the
+        # runtime resolver probes (inside --out, never the repo).
+        staged = out_dir / asset
+        staged.parent.mkdir(parents=True, exist_ok=True)
+        if staged.resolve() != captured.resolve():
+            shutil.copyfile(captured, staged)
+        captured = staged
+    sha256, size, width, height = _fingerprint(captured)
+    applied, unavailable = pin_report(figure, cell.locale, cell.theme, captured_size=(width, height))
+    record = {
+        "figure": figure.id, "surface": figure.surface,
+        "locale": cell.locale, "theme": cell.theme,
+        "sha256": sha256, "size": size, "width": width, "height": height,
+        "asset": asset.as_posix(),
+        "pins_applied": list(applied), "pins_unavailable": list(unavailable),
+        "path": str(captured),
+    }
+    lines = [
+        f"captured {figure.id} [{cell.locale}/{cell.theme}] -> {captured} "
+        f"({width}x{height}, {size} B)"
+    ]
+    if figure.size is not None and (width, height) != tuple(figure.size):
+        lines.append(
+            f"pin_unavailable {figure.id} [{cell.locale}/{cell.theme}]: "
+            f"pinned {figure.size[0]}x{figure.size[1]}, achieved {width}x{height} "
+            "(recorded as pins_unavailable; the grab is not resampled)"
+        )
+    return record, lines
+
+
+def _bootstrap_worker_qt(theme: str, locale: str) -> None:
+    """Create this process's QApplication once, then re-theme it per cell.
+
+    ``capture_surface._bootstrap_qt`` reuses ``QApplication.instance()``, so a
+    spawn worker pays app creation for its first cell only and every later cell
+    just switches theme + language — the lifecycle the in-process path has.
+    The parent never creates an app before the pool (``display_context`` only
+    starts Xvfb and exports env), so each worker owns its own.
+    """
+    capture_surface._bootstrap_qt(theme, locale)
+
+
+def _capture_cell(cell: _Cell) -> tuple[dict, list[str]]:
+    """Worker task: capture exactly one cell. Must stay module-level (pickle)."""
+    _bootstrap_worker_qt(cell.theme, cell.locale)
+    try:
+        path = capture_png(cell.figure, cell.locale, cell.theme, Path(cell.out_dir))
+    except Exception as exc:  # noqa: BLE001 — a worker failure must name its cell
+        raise FigureError(f"{cell.label}: {exc}") from exc
+    return _finish_cell(cell, path)
+
+
+_T = TypeVar("_T")
+
+
+def _map_cells(fn: Callable[[_Cell], _T], cells: Sequence[_Cell], jobs: int = 1) -> list[_T]:
+    """Apply ``fn`` to every cell, returning results in input order.
+
+    ``jobs == 1`` is a plain in-process loop. ``jobs > 1`` uses a spawn pool:
+    any exception re-raised from a worker terminates the pool (no half-finished
+    wave keeps painting into ``--out``) and propagates to the caller, so the
+    caller never records a partial result set.
+    """
+    cells = list(cells)
+    workers = resolve_jobs(jobs)
+    if workers <= 1 or len(cells) <= 1:
+        return [fn(cell) for cell in cells]
+    context = multiprocessing.get_context("spawn")
+    pool = context.Pool(processes=min(workers, len(cells)))
+    try:
+        try:
+            results = list(pool.imap(fn, cells, chunksize=1))
+        except BaseException:
+            pool.terminate()
+            raise
+        else:
+            # ``else`` (not a ``return`` in the ``try``): a return skips it, and
+            # ``join`` then refuses a pool that is still RUN.
+            pool.close()
+        return results
+    finally:
+        pool.join()
+
+
 # --- Generation / drift -----------------------------------------------------
 
 
@@ -486,51 +638,42 @@ def _pairs(figure: Figure, locales: Sequence[str] | None, themes: Sequence[str] 
 
 
 def generate(
-    manifest: Manifest, out_dir: Path | str, *, locales=None, themes=None, capture=None, stream=None
+    manifest: Manifest,
+    out_dir: Path | str,
+    *,
+    locales=None,
+    themes=None,
+    capture=None,
+    stream=None,
+    jobs: int | str = 1,
 ) -> list[dict]:
-    """Capture every selected (figure, locale, theme) pair; return records."""
-    capture = capture or capture_png
+    """Capture every selected (figure, locale, theme) pair; return records.
+
+    ``jobs == 1`` keeps the in-process loop (one reused QApplication, inputs
+    order). ``jobs > 1`` captures each cell in its own spawn worker; the
+    printed report follows input order and the returned records are sorted by
+    ``(figure, locale, theme)``, so ``--write-manifest`` and the drift table are
+    byte-identical whichever way the run went. An injected ``capture`` (the
+    test seam) is a closure, not a surface, so it always runs in-process.
+    """
     stream = sys.stdout if stream is None else stream
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
+    capture_fn = capture or capture_png
+    cells = _cells(manifest, out_dir, locales, themes)
+    if capture is None and resolve_jobs(jobs) > 1:
+        results = _map_cells(_capture_cell, cells, jobs)
+    else:
+        results = [
+            _finish_cell(cell, capture_fn(cell.figure, cell.locale, cell.theme, out_dir))
+            for cell in cells
+        ]
     records: list[dict] = []
-    for figure in manifest.figures:
-        if not figure.covered:
-            continue
-        for locale, theme in _pairs(figure, locales, themes):
-            captured = Path(capture(figure, locale, theme, out_dir))
-            asset = install_destination(figure, locale, theme)
-            if figure_variant_count(figure) > 1:
-                # Multi-variant: stage into the assets/<locale>/<theme>/ layout
-                # the runtime resolver probes (inside --out, never the repo).
-                staged = out_dir / asset
-                staged.parent.mkdir(parents=True, exist_ok=True)
-                if staged.resolve() != captured.resolve():
-                    shutil.copyfile(captured, staged)
-                captured = staged
-            sha256, size, width, height = _fingerprint(captured)
-            applied, unavailable = pin_report(
-                figure, locale, theme, captured_size=(width, height)
-            )
-            records.append({
-                "figure": figure.id, "surface": figure.surface, "locale": locale, "theme": theme,
-                "sha256": sha256, "size": size, "width": width, "height": height,
-                "asset": asset.as_posix(),
-                "pins_applied": list(applied), "pins_unavailable": list(unavailable),
-                "path": str(captured),
-            })
-            print(
-                f"captured {figure.id} [{locale}/{theme}] -> {captured} ({width}x{height}, {size} B)",
-                file=stream,
-            )
-            if figure.size is not None and (width, height) != tuple(figure.size):
-                print(
-                    f"pin_unavailable {figure.id} [{locale}/{theme}]: "
-                    f"pinned {figure.size[0]}x{figure.size[1]}, achieved {width}x{height} "
-                    "(recorded as pins_unavailable; the grab is not resampled)",
-                    file=stream,
-                )
-    return records
+    for record, lines in results:
+        for line in lines:
+            print(line, file=stream)
+        records.append(record)
+    return sorted(records, key=lambda r: (r["figure"], r["locale"], r["theme"]))
 
 
 def compare(manifest: Manifest, records: Sequence[dict]) -> tuple[list[dict], bool]:
@@ -570,13 +713,23 @@ def compare(manifest: Manifest, records: Sequence[dict]) -> tuple[list[dict], bo
 
 
 def check_figures(
-    manifest: Manifest, out_dir: Path | str, *, locales=None, themes=None, capture=None, stream=None
+    manifest: Manifest,
+    out_dir: Path | str,
+    *,
+    locales=None,
+    themes=None,
+    capture=None,
+    stream=None,
+    jobs: int | str = 1,
 ) -> int:
     """Regenerate + compare. Returns 0 (identical/unbaselined) or 1 (drift)."""
     stream = sys.stdout if stream is None else stream
     rows, drifted = compare(
         manifest,
-        generate(manifest, out_dir, locales=locales, themes=themes, capture=capture, stream=stream),
+        generate(
+            manifest, out_dir, locales=locales, themes=themes,
+            capture=capture, stream=stream, jobs=jobs,
+        ),
     )
     header = f"{'figure':<30} {'locale':<7} {'theme':<6} {'status':<12} detail"
     print(header, file=stream)
@@ -644,13 +797,23 @@ def compare_parity(
 
 
 def compare_sizes(
-    manifest: Manifest, out_dir: Path | str, *, locales=None, themes=None, capture=None, stream=None
+    manifest: Manifest,
+    out_dir: Path | str,
+    *,
+    locales=None,
+    themes=None,
+    capture=None,
+    stream=None,
+    jobs: int | str = 1,
 ) -> int:
     """Regenerate + report size parity. Returns 0 (all parity/no-target) or 1."""
     stream = sys.stdout if stream is None else stream
     rows, mismatched = compare_parity(
         manifest,
-        generate(manifest, out_dir, locales=locales, themes=themes, capture=capture, stream=stream),
+        generate(
+            manifest, out_dir, locales=locales, themes=themes,
+            capture=capture, stream=stream, jobs=jobs,
+        ),
     )
     header = f"{'figure':<30} {'locale':<7} {'theme':<6} {'generated':<12} {'target':<12} status"
     print(header, file=stream)
@@ -811,6 +974,14 @@ def display_context(backend: str = "xvfb") -> Iterator[str]:
 # --- CLI --------------------------------------------------------------------
 
 
+def _jobs_arg(text: str) -> int:
+    """``argparse`` type for ``--jobs``: an int or ``auto``, normalised."""
+    try:
+        return resolve_jobs(text)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from exc
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="help_figures",
@@ -838,6 +1009,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--locale", action="append", choices=LOCALES, help="restrict locales")
     parser.add_argument("--theme", action="append", choices=THEMES, help="restrict themes")
+    parser.add_argument(
+        "--jobs", type=_jobs_arg, default=1, metavar="N",
+        help=(
+            "capture N cells in parallel (default 1: one in-process app; "
+            "1..8; 0/auto = min(4, cpu_count))"
+        ),
+    )
     parser.add_argument(
         "--manifest", default=str(MANIFEST_PATH), help=f"recipe path (default: {MANIFEST_PATH.name})"
     )
@@ -905,10 +1083,16 @@ def main(argv: list[str] | None = None) -> int:
     try:
         with display_context(args.backend):
             if args.check:
-                return check_figures(selected, out_dir, locales=args.locale, themes=args.theme)
+                return check_figures(
+                    selected, out_dir, locales=args.locale, themes=args.theme, jobs=args.jobs
+                )
             if args.compare:
-                return compare_sizes(selected, out_dir, locales=args.locale, themes=args.theme)
-            records = generate(selected, out_dir, locales=args.locale, themes=args.theme)
+                return compare_sizes(
+                    selected, out_dir, locales=args.locale, themes=args.theme, jobs=args.jobs
+                )
+            records = generate(
+                selected, out_dir, locales=args.locale, themes=args.theme, jobs=args.jobs
+            )
             print_parity_table(selected, records)
     except FigureError as exc:  # CropError subclasses FigureError
         print(f"capture failed: {exc}", file=sys.stderr)

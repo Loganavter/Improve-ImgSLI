@@ -482,6 +482,17 @@ class HelpDialog(ThemedDialog):
 
             if not isValid(self) or not self.isVisible():
                 return
+            # A deferred restore must not steal focus (and therefore the scroll
+            # position) from a widget the user already focused inside the
+            # content: the 60 ms timer can fire after a TOC-row click, focus
+            # the first content row and scroll the area back to the top
+            # (measured: click -> 1196, timer -> 8).
+            focused = QApplication.focusWidget()
+            if focused is not None and (
+                focused is self._content_host
+                or self._content_host.isAncestorOf(focused)
+            ):
+                return
             try:
                 from sli_ui_toolkit.managers import NavigationManager
 

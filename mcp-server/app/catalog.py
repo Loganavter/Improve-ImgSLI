@@ -547,6 +547,24 @@ TOOLS: list[dict] = [
                     **_STR,
                     "description": "Tab kind to hand the folder to (e.g. multi_compare, image_compare); opened if absent. Omit to auto-route to the first tab that accepts a directory.",
                 },
+                "slot": {
+                    "type": "integer",
+                    "enum": [1, 2],
+                    "description": (
+                        "Image Compare target slot: 1 = left, 2 = right. Two "
+                        "calls, one per slot, compose a pair without a mouse "
+                        "drop. Mutually exclusive with side=."
+                    ),
+                },
+                "side": {
+                    **_STR,
+                    "enum": ["left", "right", "top", "bottom"],
+                    "description": (
+                        "Multi Compare placement axis for the folder's images "
+                        "after the first ('right' composes a row, 'bottom' a "
+                        "column). Mutually exclusive with slot=."
+                    ),
+                },
             },
             ["path"],
         ),

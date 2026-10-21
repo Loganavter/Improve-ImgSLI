@@ -1,25 +1,164 @@
 {
   "figures": [
     {
-      "captures": [],
-      "covered": false,
+      "captures": [
+        {
+          "height": 800,
+          "locale": "en",
+          "pins_applied": [
+            "locale",
+            "theme",
+            "font",
+            "ui_scale",
+            "size"
+          ],
+          "pins_unavailable": [],
+          "sha256": "fa5366db3d4d4d7523616b74a2a9a99029673c4b752c2e82d608e249ff721e99",
+          "size": 22349,
+          "theme": "dark",
+          "width": 1280
+        },
+        {
+          "height": 800,
+          "locale": "en",
+          "pins_applied": [
+            "locale",
+            "theme",
+            "font",
+            "ui_scale",
+            "size"
+          ],
+          "pins_unavailable": [],
+          "sha256": "bee5e25df7e5178c101f4a5813987eb952a09a7afbfd4aef11d13745784cf083",
+          "size": 21756,
+          "theme": "light",
+          "width": 1280
+        },
+        {
+          "height": 800,
+          "locale": "pt_BR",
+          "pins_applied": [
+            "locale",
+            "theme",
+            "font",
+            "ui_scale",
+            "size"
+          ],
+          "pins_unavailable": [],
+          "sha256": "84377373c134363db2d7b607ca6abbc1a3e82b06d5707ed8e1f8a8f0e1e021de",
+          "size": 24925,
+          "theme": "dark",
+          "width": 1280
+        },
+        {
+          "height": 800,
+          "locale": "pt_BR",
+          "pins_applied": [
+            "locale",
+            "theme",
+            "font",
+            "ui_scale",
+            "size"
+          ],
+          "pins_unavailable": [],
+          "sha256": "a746108ee4ae68d9f661c946fad5bbb58c070715b4dbd87f820635a1b79012e6",
+          "size": 24436,
+          "theme": "light",
+          "width": 1280
+        },
+        {
+          "height": 800,
+          "locale": "ru",
+          "pins_applied": [
+            "locale",
+            "theme",
+            "font",
+            "ui_scale",
+            "size"
+          ],
+          "pins_unavailable": [],
+          "sha256": "0b9ccf354abd193e58316b6c2f68a74465d351247a6223aeef0b1a0c7691f558",
+          "size": 23150,
+          "theme": "dark",
+          "width": 1280
+        },
+        {
+          "height": 800,
+          "locale": "ru",
+          "pins_applied": [
+            "locale",
+            "theme",
+            "font",
+            "ui_scale",
+            "size"
+          ],
+          "pins_unavailable": [],
+          "sha256": "c5fbb4feede39f39e6f757eca129bf83c52ffa092be209f040cdcf49f33a35a7",
+          "size": 22710,
+          "theme": "light",
+          "width": 1280
+        },
+        {
+          "height": 800,
+          "locale": "zh",
+          "pins_applied": [
+            "locale",
+            "theme",
+            "font",
+            "ui_scale",
+            "size"
+          ],
+          "pins_unavailable": [],
+          "sha256": "b28068d0699fd623faf9d739e31d5e16ec08c2c695f84fe7fd425163502e5d58",
+          "size": 25964,
+          "theme": "dark",
+          "width": 1280
+        },
+        {
+          "height": 800,
+          "locale": "zh",
+          "pins_applied": [
+            "locale",
+            "theme",
+            "font",
+            "ui_scale",
+            "size"
+          ],
+          "pins_unavailable": [],
+          "sha256": "f65f447a589b16556ee5ab3cd166357efca831822744884cf000144c3624a179",
+          "size": 25524,
+          "theme": "light",
+          "width": 1280
+        }
+      ],
+      "covered": true,
       "crop": null,
-      "destination": null,
+      "destination": "src/tabs/image_gallery/resources/help/assets/empty_state.png",
       "id": "help-gallery-empty",
       "locales": [
-        "en"
+        "en",
+        "pt_BR",
+        "ru",
+        "zh"
       ],
-      "note": "No shipped figure shows the empty drop-zone state; the gallery surface builder always populates demo cards. New surface state, later slice.",
-      "pins_applied": [],
-      "pins_unavailable": [
+      "note": "New figure (not a shipped replacement): the gallery drop-zone state the overview page describes in prose. The devtool `gallery` surface builds ImageGalleryWidget without items, so it is reproducible like the populated grid. 1280x800 is the surface default, pinned so the frame cannot drift.",
+      "pins_applied": [
         "font",
+        "locale",
+        "size",
+        "theme",
         "ui_scale"
       ],
-      "reason": "new-surface",
-      "size": null,
+      "pins_unavailable": [],
+      "reason": "",
+      "size": [
+        1280,
+        800
+      ],
       "surface": "gallery",
       "themes": [
-        "dark"
+        "dark",
+        "light"
       ]
     },
     {
@@ -119,6 +258,38 @@
           "size": 37664,
           "theme": "light",
           "width": 1280
+        },
+        {
+          "height": 800,
+          "locale": "zh",
+          "pins_applied": [
+            "locale",
+            "theme",
+            "font",
+            "ui_scale",
+            "size"
+          ],
+          "pins_unavailable": [],
+          "sha256": "f77763b46606d388f8fd741db009c2f072445852aabd58c9f961ca9926578113",
+          "size": 39050,
+          "theme": "dark",
+          "width": 1280
+        },
+        {
+          "height": 800,
+          "locale": "zh",
+          "pins_applied": [
+            "locale",
+            "theme",
+            "font",
+            "ui_scale",
+            "size"
+          ],
+          "pins_unavailable": [],
+          "sha256": "e7748ee4ecc60393dadd3d80b209bb014c80ab641e091367f0aa49d22958b7d3",
+          "size": 38947,
+          "theme": "light",
+          "width": 1280
         }
       ],
       "covered": true,
@@ -128,9 +299,10 @@
       "locales": [
         "en",
         "pt_BR",
-        "ru"
+        "ru",
+        "zh"
       ],
-      "note": "Shipped overview_grid.png is 1280x800, exactly the surface default; the six gradient cards come from CaptureSession.make_samples.",
+      "note": "Shipped overview_grid.png is 1280x800, exactly the surface default; the six gradient cards come from CaptureSession.make_samples. zh 2026-10-21: enabled by the bundled Noto Sans SC CJK fallback (SIL OFL 1.1).",
       "pins_applied": [
         "font",
         "locale",
@@ -291,6 +463,38 @@
           "size": 34724,
           "theme": "light",
           "width": 1000
+        },
+        {
+          "height": 684,
+          "locale": "zh",
+          "pins_applied": [
+            "locale",
+            "theme",
+            "font",
+            "ui_scale",
+            "size"
+          ],
+          "pins_unavailable": [],
+          "sha256": "0c059b6621955022946764fec18eaf2106d3b4b00828923bd4a206a2420a1a05",
+          "size": 33486,
+          "theme": "dark",
+          "width": 1000
+        },
+        {
+          "height": 684,
+          "locale": "zh",
+          "pins_applied": [
+            "locale",
+            "theme",
+            "font",
+            "ui_scale",
+            "size"
+          ],
+          "pins_unavailable": [],
+          "sha256": "333eec3eb14d87b2f69161334e84bd8dc91c0f4dcc144cf152c853a12ecf0593",
+          "size": 33497,
+          "theme": "light",
+          "width": 1000
         }
       ],
       "covered": true,
@@ -300,9 +504,10 @@
       "locales": [
         "en",
         "pt_BR",
-        "ru"
+        "ru",
+        "zh"
       ],
-      "note": "P6 2026-10-21: the onboarding store receives the captured locale (current_language), the overlay chrome follows ThemeManager. Size pin reproduces the shipped 1000x684 frame without a crop.",
+      "note": "P6 2026-10-21: the onboarding store receives the captured locale (current_language), the overlay chrome follows ThemeManager. Size pin reproduces the shipped 1000x684 frame without a crop. zh 2026-10-21: enabled by the bundled Noto Sans SC CJK fallback (SIL OFL 1.1).",
       "pins_applied": [
         "font",
         "locale",
@@ -335,8 +540,8 @@
             "size"
           ],
           "pins_unavailable": [],
-          "sha256": "e02fc509ac45f7685e86310465249f056117198900818fc74de6c4a3477c2f4c",
-          "size": 56065,
+          "sha256": "913072be8da163f588b76a93b124983df056ace3a70f5ecb261b45baacb39c80",
+          "size": 57576,
           "theme": "dark",
           "width": 844
         },
@@ -351,8 +556,8 @@
             "size"
           ],
           "pins_unavailable": [],
-          "sha256": "b6e03d13cd04c5544290573e1fe1d9d0a35b909b9465ae6d3872ed0a8ac2462c",
-          "size": 59401,
+          "sha256": "e3fa044713a00ba8215211a275ad9d9b7ef0a9465ac534226ce2a605d5b20408",
+          "size": 61399,
           "theme": "light",
           "width": 844
         },
@@ -367,8 +572,8 @@
             "size"
           ],
           "pins_unavailable": [],
-          "sha256": "f24c29ab9d915e1298395a96d145dea39002749935213bc20c0246f7a26cd2de",
-          "size": 61362,
+          "sha256": "50475700d7a537b90324f4db2022ae0d98f1f10b0708cd0c976f06c93fb10f08",
+          "size": 62800,
           "theme": "dark",
           "width": 844
         },
@@ -383,8 +588,8 @@
             "size"
           ],
           "pins_unavailable": [],
-          "sha256": "6b08399772b5b8838685f2c416391bcc44a64dce1f21101d7cd767132673a5e3",
-          "size": 64782,
+          "sha256": "ff1a66592ec2bd1281bbef9c79c5b24641ce818b9ce9182120dea25c82e344e1",
+          "size": 66615,
           "theme": "light",
           "width": 844
         },
@@ -399,8 +604,8 @@
             "size"
           ],
           "pins_unavailable": [],
-          "sha256": "f061b80369fa19d8e724c65a9775f3e4c05c0271e3d9542c907a3d9de073a24b",
-          "size": 61850,
+          "sha256": "803fe76c6b65df9515208e7793e3f2f00a17227f5ed9993c3cf050efc94c5f9f",
+          "size": 63257,
           "theme": "dark",
           "width": 844
         },
@@ -415,8 +620,40 @@
             "size"
           ],
           "pins_unavailable": [],
-          "sha256": "3500dc52c833cfafbefa7372cd45d32868ae292241648938f2b9397700ff2d96",
-          "size": 65195,
+          "sha256": "fabebccb3e27b8796b688edf08230d4b1da1fc2e75cca0be4de099d87f8f01e6",
+          "size": 67204,
+          "theme": "light",
+          "width": 844
+        },
+        {
+          "height": 529,
+          "locale": "zh",
+          "pins_applied": [
+            "locale",
+            "theme",
+            "font",
+            "ui_scale",
+            "size"
+          ],
+          "pins_unavailable": [],
+          "sha256": "6f64fb5295b229e8c1d37d08983487e4f81708804d4575b88b47266528a1df22",
+          "size": 54257,
+          "theme": "dark",
+          "width": 844
+        },
+        {
+          "height": 529,
+          "locale": "zh",
+          "pins_applied": [
+            "locale",
+            "theme",
+            "font",
+            "ui_scale",
+            "size"
+          ],
+          "pins_unavailable": [],
+          "sha256": "9f95dc76a6096f93ce32b161744704a802c3287c2e824b91e14b0dfdfab7178e",
+          "size": 57119,
           "theme": "light",
           "width": 844
         }
@@ -428,9 +665,10 @@
       "locales": [
         "en",
         "pt_BR",
-        "ru"
+        "ru",
+        "zh"
       ],
-      "note": "P6 2026-10-21: now reproducible — the fake session context answers get_tab_icon with each tab's real SVG getter (tabs.<tab>.icons), so the plus-placeholder fallback is gone; the live layout carries the AI Gallery card. Shipped asset is JPEG, so install_destination writes .jpg and the generator converts the grab (quality 95, 4:4:4); frame is the shipped 844x529.",
+      "note": "P6 2026-10-21: now reproducible — the fake session context answers get_tab_icon with each tab's real SVG getter (tabs.<tab>.icons), so the plus-placeholder fallback is gone; the live layout carries the AI Gallery card. Shipped asset is JPEG, so install_destination writes .jpg and the generator converts the grab (quality 95, 4:4:4); frame is the shipped 844x529. zh 2026-10-21: enabled by the bundled Noto Sans SC CJK fallback (SIL OFL 1.1).",
       "pins_applied": [
         "font",
         "locale",
@@ -463,8 +701,8 @@
             "size"
           ],
           "pins_unavailable": [],
-          "sha256": "2033e9979d38667bf89813c83e55e673f0464f00aa4ba066591c20edfb8ccdb4",
-          "size": 44814,
+          "sha256": "c2cb7f2ca63610ecf6b21818cb3f2d74496e08fb39139d7e191adbc0b2cf3590",
+          "size": 44893,
           "theme": "dark",
           "width": 1016
         },
@@ -479,8 +717,8 @@
             "size"
           ],
           "pins_unavailable": [],
-          "sha256": "7994b513f2c83ed42804c84b385ea1c87e9d4a2a8caab7391f991337b9d7fa1a",
-          "size": 44891,
+          "sha256": "73bc3988eaf30d8caf171b27d632ccf0a5ad19dcf6b045235987a2890c2c2f56",
+          "size": 44951,
           "theme": "light",
           "width": 1016
         },
@@ -495,8 +733,8 @@
             "size"
           ],
           "pins_unavailable": [],
-          "sha256": "1f376ffe14bbd22c2c481d656a0e72a0f5bffb4a2396c69aedb910f5982cff4f",
-          "size": 47460,
+          "sha256": "96a6096e50a2cb0b88134ee3cc344cd0e6f8ce7f270df133d120e3e0bea24d9d",
+          "size": 47531,
           "theme": "dark",
           "width": 1016
         },
@@ -511,8 +749,8 @@
             "size"
           ],
           "pins_unavailable": [],
-          "sha256": "964ae2feca96a5eab0bffd9dfd5fc3f048b053a405e6cf84d62676eeeda00070",
-          "size": 47226,
+          "sha256": "f62e5a72ebb64de0c7f6c4e6b6c0588e187fd8b52a62692639afbc3197295f2f",
+          "size": 47260,
           "theme": "light",
           "width": 1016
         },
@@ -527,8 +765,8 @@
             "size"
           ],
           "pins_unavailable": [],
-          "sha256": "9421af60b78b01b8121b331e430dd00ee703831386ce53665b499222459979b7",
-          "size": 44665,
+          "sha256": "1938a4c000b39f63a043078ded58110f01f8a489e10e525ccf1e050ddbefbd97",
+          "size": 44749,
           "theme": "dark",
           "width": 1016
         },
@@ -543,8 +781,40 @@
             "size"
           ],
           "pins_unavailable": [],
-          "sha256": "ed4f2d028e08ae7dca25e1b4d1e7ceabd14876ffee2967bc8073b7a1a957a828",
-          "size": 44984,
+          "sha256": "0fdd175ecb4214eacf6d28ed895c58466f2aef1b6a477724d7df3529ee4864cf",
+          "size": 45039,
+          "theme": "light",
+          "width": 1016
+        },
+        {
+          "height": 776,
+          "locale": "zh",
+          "pins_applied": [
+            "locale",
+            "theme",
+            "font",
+            "ui_scale",
+            "size"
+          ],
+          "pins_unavailable": [],
+          "sha256": "f8fdd3623dc801626ba65e9de1756da30aed22e5b535f009e57205078708bdb7",
+          "size": 42377,
+          "theme": "dark",
+          "width": 1016
+        },
+        {
+          "height": 776,
+          "locale": "zh",
+          "pins_applied": [
+            "locale",
+            "theme",
+            "font",
+            "ui_scale",
+            "size"
+          ],
+          "pins_unavailable": [],
+          "sha256": "ada249051d7e64464ba4be5551e16adf313cfb5fc9f84e6fd605281f5786c1d1",
+          "size": 42391,
           "theme": "light",
           "width": 1016
         }
@@ -556,9 +826,10 @@
       "locales": [
         "en",
         "pt_BR",
-        "ru"
+        "ru",
+        "zh"
       ],
-      "note": "P6 2026-10-21: settings_kwargs passes the captured locale/theme into the dialog, so the language radio and the Appearance dropdown match the frame; chrome theme comes from ThemeManager. Size pin reproduces the shipped frame.",
+      "note": "P6 2026-10-21: settings_kwargs passes the captured locale/theme into the dialog, so the language radio and the Appearance dropdown match the frame; chrome theme comes from ThemeManager. Size pin reproduces the shipped frame. zh 2026-10-21: enabled by the bundled Noto Sans SC CJK fallback (SIL OFL 1.1).",
       "pins_applied": [
         "font",
         "locale",
@@ -675,6 +946,38 @@
           "size": 88656,
           "theme": "light",
           "width": 1032
+        },
+        {
+          "height": 792,
+          "locale": "zh",
+          "pins_applied": [
+            "locale",
+            "theme",
+            "font",
+            "ui_scale",
+            "size"
+          ],
+          "pins_unavailable": [],
+          "sha256": "7a5dfda71b2f2739dac0fdc14e8b537e824ca5a3a9cd504a1b152a88d559ad6a",
+          "size": 82649,
+          "theme": "dark",
+          "width": 1032
+        },
+        {
+          "height": 792,
+          "locale": "zh",
+          "pins_applied": [
+            "locale",
+            "theme",
+            "font",
+            "ui_scale",
+            "size"
+          ],
+          "pins_unavailable": [],
+          "sha256": "651575fc6f6fff2b8a781b1d428151fdb0e3a0a1663c2ce2f5b3e84e185304e2",
+          "size": 83019,
+          "theme": "light",
+          "width": 1032
         }
       ],
       "covered": true,
@@ -684,9 +987,10 @@
       "locales": [
         "en",
         "pt_BR",
-        "ru"
+        "ru",
+        "zh"
       ],
-      "note": "P6 2026-10-21: settings_kwargs passes the captured locale/theme into the dialog, so the language radio and the Appearance dropdown match the frame; chrome theme comes from ThemeManager. Size pin reproduces the shipped frame.",
+      "note": "P6 2026-10-21: settings_kwargs passes the captured locale/theme into the dialog, so the language radio and the Appearance dropdown match the frame; chrome theme comes from ThemeManager. Size pin reproduces the shipped frame. zh 2026-10-21: enabled by the bundled Noto Sans SC CJK fallback (SIL OFL 1.1).",
       "pins_applied": [
         "font",
         "locale",

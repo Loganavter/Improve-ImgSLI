@@ -13,6 +13,11 @@ A **Galeria** agrupa em séries uma pasta de fotos parecidas, para manter as mel
 - **Nova sessão Image Gallery** — abre outra sessão de galeria em **Localizar ação** (`Ctrl+Shift+P`).
 - **Lote grande de IA** — com **IA** ligado, soltar mais de 35 imagens de uma vez mostra um aviso antes do envio, pois um lote grande pode gerar um custo alto. Escolha **Confirmar**, **Confirmar e não perguntar novamente** ou **Cancelar**.
 
+:::figure{side=block width=100%}
+![Empty gallery](../assets/empty_state.png)
+Galeria vazia: a zona tracejada pede uma pasta; a grade fica vazia até uma ser aberta.
+:::
+
 ### Séries {#series}
 
 Depois que uma pasta carrega, a galeria agrupa imagens parecidas em séries — uma seção por grupo.
