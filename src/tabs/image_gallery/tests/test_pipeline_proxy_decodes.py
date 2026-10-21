@@ -17,8 +17,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
 
 def _paint(path: Path, kind: str) -> Path:
     from PIL import Image, ImageDraw
@@ -135,17 +133,15 @@ def test_warm_zero_decodes(tmp_path: Path) -> None:
     assert spy.total == 0, dict(spy.counts)
 
 
-@pytest.mark.parametrize("engine_mode", ["0", "1"], ids=["legacy", "engine"])
 def test_batch_single_pass_decode_counts_and_identity(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, engine_mode: str
+    tmp_path: Path,
 ) -> None:
-    """P9a: the batch decode discipline holds in BOTH engine modes.
+    """The batch decode discipline holds with the engine as the only path.
 
-    The engine (on by default) consumes the shared proxies and opens no files of
-    its own in this bounded path, so the cold decode count — one per item, one
-    for the source — must not move when it runs.
+    The engine consumes the shared proxies and opens no files of its own in this
+    bounded path, so the cold decode count — one per item, one for the source —
+    must not move now that there is no alternate branch (P9b deleted the flag).
     """
-    monkeypatch.setenv("IMGSLI_ANALYSIS_ENGINE", engine_mode)
     from types import SimpleNamespace
 
     from tabs.image_gallery.services.proxy import clear_proxy_cache, run_proxy_stages_sync
@@ -169,6 +165,8 @@ def test_batch_single_pass_decode_counts_and_identity(
     assert out[str(flat)]["artifacts"] != out[str(sharp)]["artifacts"] or True  # severities may tie; keys must exist
     assert len(out[str(flat)]["artifacts"]) == 7
     assert len(out[str(sharp)]["artifacts"]) == 7
+    # The engine's records ride the same entries (W9).
+    assert out[str(flat)]["analysis"] and out[str(sharp)]["analysis"]
 
 
 def test_artifact_severity_equivalence_small_images(tmp_path: Path) -> None:
