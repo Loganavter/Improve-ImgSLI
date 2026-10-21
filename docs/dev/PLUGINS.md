@@ -14,20 +14,23 @@ This document covers wiring and the live inventory. For canvas-tool plugins (sli
 | `src/core/plugin_system/decorators.py` | `@plugin(name=..., version=...)` |
 | `src/core/plugin_system/registry.py` | `PluginRegistry` — staged discovery (`tier=bootstrap|deferred|all`) |
 | `src/core/plugin_system/discovery_scan.py` | Filesystem + AST scan for `@plugin(startup_tier=...)` and tab `startup_tier` |
-| `src/core/plugin_system/lifecycle.py` | `PluginLifecycleManager` — initialize / activate / deactivate / shutdown loop |
-| `src/core/plugin_system/contributions.py` | `PluginDefinitionRegistry` — manifests + capability map |
-| `src/core/plugin_system/interfaces.py` | `IControllablePlugin`, `IUIPlugin`, `IServicePlugin`, `ISessionPlugin`, … |
-| `src/core/plugin_coordinator.py` | `PluginCoordinator` — combines registry, lifecycle, capabilities, session blueprints |
+| `src/core/plugin_system/lifecycle.py` | `PluginLifecycleManager` — initialize / activate / deactivate / shutdown loop (log-only error path; emits no events) |
+| `src/core/plugin_system/interfaces.py` | `IControllablePlugin`, `IServicePlugin`, `ISessionPlugin` |
+| `src/core/plugin_system/settings.py` | `PluginSettings` / `SettingsScope` / `auto_persist` — a per-plugin `QSettings` group helper; exported from `core.plugin_system` but **no app plugin uses it** today (settings persistence is centralized, see [SETTINGS_PERSISTENCE.md](SETTINGS_PERSISTENCE.md)) |
+| `src/core/plugin_coordinator.py` | `PluginCoordinator` — event bus + lifecycle + session blueprints |
 | `src/core/bootstrap.py:_initialize_plugins` | The single wiring site |
+
+The old capability/manifest layer (`contributions.py` / `PluginDefinitionRegistry`)
+is gone — the module no longer exists and nothing in `src/` references it.
+Discovery is the registry scan below; there is no manifest file to maintain.
 
 ## Bootstrap flow (`src/core/bootstrap.py`)
 
 **Bootstrap tier** (before main window is usable):
 
 ```
-discover_plugins(tier="bootstrap")                 # manifest import + instantiate
-  └─► PluginDefinitionRegistry.register_plugins
-  └─► PluginCoordinator.register_plugins
+discover_plugins(tier="bootstrap")                 # registry scan + import + instantiate
+  └─► PluginCoordinator.register_plugins           # lifecycle.register + session blueprints
   └─► PluginCoordinator.initialize(context)        # initialize_all → activate_all
 ```
 
@@ -43,9 +46,10 @@ ApplicationContext.load_deferred_plugins()
 
 `context` is the live `ApplicationContext` — plugins pull `store`, `event_bus`, `thread_pool`, and (for deferred plugins) `plugin_coordinator` from it.
 
-## Discovery (`src/core/plugin_system/registry.py`)
+## Discovery
 
-`PluginRegistry.discover_plugins(*, tier="bootstrap"|"deferred"|"all")`:
+`PluginRegistry` (`src/core/plugin_system/registry.py`) exposes
+`discover_plugins(*, tier="bootstrap"|"deferred"|"all")`:
 
 | Tier | When | How modules are chosen |
 |---|---|---|
@@ -70,34 +74,32 @@ Optional `startup_order: int` on deferred plugins controls init order (e.g. `vid
 ```python
 class Plugin(ABC):
     context: Any | None
+    _state: PluginState                              # private; read by the lifecycle manager
     @abstractmethod
     def initialize(self, context: Any) -> None         # MUST call super().initialize(context)
     def activate(self) -> None
     def deactivate(self) -> None
     def shutdown(self) -> None
-    def get_state(self) -> PluginState
-    # contribution hooks (optional, all default empty):
-    def get_ui_components(self) -> dict[str, Any]
-    def get_toolbar_actions(self) -> list
-    def get_menu_items(self) -> list
-    def get_render_entities(self) -> list
-    def get_definition(self) -> Any | None
-    def plugin_resource_path(*parts) -> str            # path under the plugin's own directory
+    def _set_state(self, state: PluginState) -> None
 ```
 
 `PluginState`: `CREATED → INITIALIZED → ACTIVE → INACTIVE → SHUTDOWN`, plus `ERROR` (set by lifecycle manager on exception).
 
+There is **no** `get_ui_components` / `get_toolbar_actions` / `get_menu_items` /
+`get_render_entities` / `get_definition` / `plugin_resource_path` / `get_state`.
+A plugin contributes behaviour by implementing the interfaces below (or its own
+tab contract / services) and by owning its normal package code; UI chrome is
+contributed through the tab/action catalogues, not through `Plugin` hooks.
+
 ### Optional interfaces (`src/core/plugin_system/interfaces.py`)
 
 - **`IControllablePlugin`** — `get_controller()` + `handle_command(command, ...)`. Lets `PluginCoordinator.execute_command(plugin_name, command, ...)` dispatch without knowing the method name.
-- **`IUIPlugin`** — optional toolbar/menu registration hooks (`register_toolbar`, `register_menu`, `get_ui_components`).
-- **`IServicePlugin`** — `get_service()` + optional `provides_capability(capability)`.
+- **`IServicePlugin`** — `get_service()`.
 - **`ISessionPlugin`** — `get_session_blueprints() -> tuple[SessionBlueprint, ...]`. The coordinator registers these; the workspace creates sessions via `create_session(store, session_type)`.
-- **`IVideoTrackProvider`** / **`IRenderPlugin`** — specialized contribution hooks (keyframe adapters / render entities).
 
 ## Inventory
 
-Live `@plugin` entry points (2026-07-18). Source of truth: filesystem scan of every `plugin.py` under `src/plugins/` and `src/tabs/` (incl. nested `tabs/*/plugins/*/`).
+Live `@plugin` entry points (2026-10-22). Source of truth: filesystem scan of every `plugin.py` under `src/plugins/` and `src/tabs/` (incl. nested `tabs/*/plugins/*/`).
 
 Per-plugin docs: app-wide plugins → [plugins/](plugins/index.md); tab-owned plugins → `src/tabs/<tab>/docs/plugins/`.
 
@@ -106,11 +108,11 @@ Per-plugin docs: app-wide plugins → [plugins/](plugins/index.md); tab-owned pl
 | Name | Path | Tier | Order | Interfaces | Role | Doc |
 |---|---|:-:|---|---|---|
 | `diagnostics` | `plugins/diagnostics/` | bootstrap | — | `IControllablePlugin`, `IServicePlugin` | Local-first crash/diagnostics report (env + logs + breadcrumbs, redacted); "Report a problem" dialog with Copy / Save / Open issue. No auto-upload, no screenshots | — |
-| `settings` | `plugins/settings/` | bootstrap | — | `IUIPlugin`, `IServicePlugin` | Settings dialog, `SettingsManager` disk persistence, canvas-feature setting bindings | [plugins/settings.md](plugins/settings.md) |
+| `settings` | `plugins/settings/` | bootstrap | — | `IServicePlugin` | Settings dialog, `SettingsManager` disk persistence, canvas-feature setting bindings | [plugins/settings.md](plugins/settings.md) |
 | `layout` | `plugins/layout/` | bootstrap | — | — | UI-mode subscriber; obtains `layout_manager` via tab `create_startup_service` (not a local manager module) | [plugins/layout.md](plugins/layout.md) |
 | `onboarding` | `plugins/onboarding/` | bootstrap | — | — | First-run UI-mode picker on the startup stack; reads `SettingsManager.is_first_run` | [plugins/onboarding.md](plugins/onboarding.md) |
 | `export` | `plugins/export/` | deferred | 10 | `IControllablePlugin`, `IServicePlugin` | Still/video export dialog, recording/clipboard commands, export QSS | [plugins/export.md](plugins/export.md) |
-| `help` | `plugins/help/` | deferred | — | `IUIPlugin`, `IControllablePlugin` | In-app help dialog (hub/tree); see [HELP_SYSTEM.md](HELP_SYSTEM.md) | [plugins/help.md](plugins/help.md) |
+| `help` | `plugins/help/` | deferred | — | `IControllablePlugin` | In-app help dialog (hub/tree); see [HELP_SYSTEM.md](HELP_SYSTEM.md) | [plugins/help.md](plugins/help.md) |
 | `image_properties` | `plugins/image_properties/` | deferred | — | `IControllablePlugin` | Image metadata dialog + `service.build_image_properties` | [plugins/image_properties.md](plugins/image_properties.md) |
 
 ### Tab / session plugins (`src/tabs/`)
@@ -120,12 +122,14 @@ Per-plugin docs: app-wide plugins → [plugins/](plugins/index.md); tab-owned pl
 | `comparison` | `tabs/image_compare/` | bootstrap | — | `ISessionPlugin` | Primary two-image compare tab; owns analysis services (`services/analysis/`), session controller, canvas | `tabs/image_compare/docs/plugins/comparison.md` |
 | `session_picker` | `tabs/session_picker/` | bootstrap | — | `ISessionPlugin` | Transient "New Tab" session browser / switcher | `tabs/session_picker/docs/plugins/session_picker.md` |
 | `multi_compare` | `tabs/multi_compare/` | deferred | — | `ISessionPlugin` | Grid multi-image compare tab + `multi_compare.state` slot | `tabs/multi_compare/docs/plugins/multi_compare.md` |
+| `image_gallery` | `tabs/image_gallery/` | deferred | — | `ISessionPlugin` | Media gallery tab; owns the `gallery` session slot (`GALLERY_SLOT_NAME`) with its own batch analysis pipeline | `tabs/image_gallery/docs/plugins/image_gallery.md` |
 | `video_editor` | `tabs/image_compare/plugins/video_editor/` | deferred | 0 | `ISessionPlugin` | Tab-owned video editor (dialogs, timeline, recorder/export flows); loads before `export` | `tabs/image_compare/docs/plugins/video_editor.md` |
 
-There is no `@plugin(name="analysis")`. Diff/metrics/SSIM live under
-`tabs/image_compare/services/analysis/` and `shared/analysis/`, constructed by
-`ComparisonPlugin`. Opaque `viewport._analysis_plugin_state` is preserved by
-the dispatcher — see [STORE.md](STORE.md#plugin-state-the-escape-hatch).
+There is no `@plugin(name="analysis")` and no opaque analysis state on the
+viewport. Diff/metrics/SSIM live under `tabs/image_compare/services/analysis/`
+and `shared/analysis/`, constructed by `ComparisonPlugin`; their values are
+Store state (`SET_DIFF_MODE` / `SET_PSNR_VALUE` / `SET_SSIM_VALUE`) — see
+[STORE.md](STORE.md).
 
 ## Reference plugin: `comparison`
 
@@ -140,7 +144,7 @@ src/tabs/image_compare/
 ├── __init__.py
 ├── plugin.py              # @plugin("comparison") class ComparisonPlugin
 ├── tab.py                 # TabContract implementation
-├── events/                # ComparisonUpdateRequestedEvent, ComparisonErrorEvent
+├── events/                # AnalysisSetChannelViewModeEvent, AnalysisSetDiffModeEvent
 ├── _session_controller.py # SessionController — orchestrates loading/navigation
 └── use_cases/             # loading.py, navigation.py — pure logic
 ```
@@ -185,7 +189,6 @@ Patterns:
 - **Controller** appears when the plugin exposes commands (buttons / menus / shortcuts) — typically `IControllablePlugin.handle_command`, or a tab-local controller.
 - **Presenter / dialog** appears for dialog-heavy plugins (settings, export, video_editor, help, image_properties) — owns dialog lifecycle.
 - **Session state** for tab plugins goes through `ISessionPlugin` blueprints / `state_slots`, not a free-floating `state.py` on every plugin.
-- Opaque viewport attrs (`_viewport_plugin_state`, `_analysis_plugin_state`) are the escape hatch documented in [STORE.md](STORE.md#plugin-state-the-escape-hatch) — prefer session slots for new work.
 - **`events.py`** declares the plugin's outbound events for EventBus when the plugin publishes cross-component facts.
 
 ## Lifecycle invariants
@@ -193,7 +196,7 @@ Patterns:
 1. **Construct lazily in `initialize`**, not `__init__`. Services need `context.store`, `event_bus`, etc., which only exist at initialize time.
 2. **Always call `super().initialize(context)`.** Without it `self.context` is `None` and state stays `CREATED`.
 3. **Don't reach into other plugins' internals.** Use `EventBus` for cross-plugin signals; use `PluginCoordinator.execute_command(plugin_name, command, ...)` if you really need a method call. Direct imports between plugins are a smell.
-4. **Errors during `_safe_call` set state to `ERROR`** and emit a `PluginEvent(stage="error")` — lifecycle doesn't propagate the exception.
+4. **Errors during `_safe_call` are logged and set `PluginState.ERROR`** — the lifecycle manager emits no event and does not propagate the exception (`lifecycle.py:92-97`). Watch the log; there is no subscribe-able failure signal.
 5. **`bind_window_shell` (if present) runs after main-window composition**, not during plugin init. UI-side wiring belongs there.
 
 ## Extension recipe — new plugin
