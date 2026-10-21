@@ -382,7 +382,8 @@
       }
     },
     "badge": {
-      "source": "源"
+      "source": "源",
+      "best": "★ 最佳"
     },
     "list": {
       "artifacts": "存在伪影",

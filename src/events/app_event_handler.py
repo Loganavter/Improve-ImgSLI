@@ -1,4 +1,4 @@
-from PySide6.QtCore import QEvent, QObject, Qt, Signal
+from PySide6.QtCore import QEvent, QObject, Qt, Signal, QTimer
 from PySide6.QtGui import (
     QMouseEvent,
     QDragEnterEvent,
@@ -8,7 +8,7 @@ from PySide6.QtGui import (
     QMouseEvent,
     QWheelEvent,
 )
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QWidget
 from events.app_event import (
     route_main_window_event,
 )
@@ -36,6 +36,30 @@ if os.environ.get("UI_NAV_DEBUG", "").strip().lower() in (
 else:
     logger.setLevel(logging.DEBUG)
 
+
+
+def focus_move_stays_inside(old_focus, new_focus) -> bool:
+    """True when a settled focus move stays in the same focus context.
+
+    A click on the Image Compare canvas moves focus shell -> canvas -> shell:
+    the two widgets are ancestor and descendant, so the move is not a context
+    switch. Treating it as one cleared ``space_bar_pressed`` between the Space
+    press and the mouse press that needed it, so `Space` + click never reached
+    the magnifier gesture (measured live 2026-10-22: ``[kbd-state] reset ...
+    space=False`` on the mouse press, then only auto-repeat presses, which are
+    rejected by design).
+
+    A move to an unrelated widget (panel, flyout, another tab) or to no widget
+    at all is NOT inside the context and must reset held keys.
+    """
+    if old_focus is None or new_focus is None:
+        return False
+    try:
+        if old_focus is new_focus:
+            return True
+        return bool(old_focus.isAncestorOf(new_focus) or new_focus.isAncestorOf(old_focus))
+    except Exception:
+        return False
 
 def _wname(w) -> str:
     if w is None:
@@ -182,8 +206,11 @@ class EventHandler(QObject):
             if watched_obj is self.presenter.main_window_app or watched_obj is active_window:
                 self._reset_keyboard_state(f"event:{int(event_type)}")
         elif event_type == QEvent.Type.FocusOut:
-            # Any focus loss (panel/tab-switch included) resets held keys.
-            self._reset_keyboard_state(f"event:{int(event_type)}")
+            # Qt delivers FocusOut BEFORE the new focus owner is known, so the
+            # decision is deferred one event-loop turn: a focus move inside the
+            # same window (shell <-> canvas on every click) keeps held keys, a
+            # move that really leaves the window resets them.
+            self._schedule_focus_out_reset(watched_obj)
 
         if event_type == QEvent.Type.MouseButtonPress and isinstance(event, QMouseEvent):
             # Same QMouseEvent is delivered to every installEventFilter target
@@ -221,6 +248,40 @@ class EventHandler(QObject):
 
     def handle_key_release(self, event: QKeyEvent):
         self.keyboard_handler.handle_key_release(event)
+
+    def _schedule_focus_out_reset(self, watched_obj) -> None:
+        """Decide a FocusOut reset once the new focus owner is known.
+
+        Qt delivers FocusOut BEFORE the new owner exists, and it also delivers
+        it for style objects, so the decision is made one event-loop turn later
+        from the old/new *widgets*.
+
+        The rule: a move between an ancestor and its descendant is the same
+        focus context (the Image Compare click moves focus shell -> canvas ->
+        shell, and that churn cleared ``space_bar_pressed`` between the Space
+        press and the mouse press that needed it — measured live 2026-10-22).
+        A move to an unrelated widget (panel, flyout, another tab) still resets.
+        """
+        app = QApplication.instance()
+        old_focus = app.focusWidget() if isinstance(app, QApplication) else None
+        if old_focus is None and isinstance(watched_obj, QWidget):
+            old_focus = watched_obj
+        generation = getattr(self, "_focus_out_generation", 0) + 1
+        self._focus_out_generation = generation
+
+        def _settle() -> None:
+            if getattr(self, "_focus_out_generation", 0) != generation:
+                return  # superseded by a newer FocusOut
+            application = QApplication.instance()
+            new_focus = (
+                application.focusWidget()
+                if isinstance(application, QApplication)
+                else None
+            )
+            if not focus_move_stays_inside(old_focus, new_focus):
+                self._reset_keyboard_state("focus-out:settled")
+
+        QTimer.singleShot(0, _settle)
 
     def _reset_keyboard_state(self, reason: str) -> None:
         result = self.keyboard_state.reset()

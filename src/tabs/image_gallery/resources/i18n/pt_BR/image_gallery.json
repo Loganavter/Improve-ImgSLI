@@ -382,7 +382,8 @@
       }
     },
     "badge": {
-      "source": "ORIGEM"
+      "source": "ORIGEM",
+      "best": "★ MELHOR"
     },
     "list": {
       "artifacts": "Tem artefatos",

@@ -338,6 +338,10 @@ def test_panel_focusout_resets_held_keys(qapp):
 
     panel = QWidget()
     assert handler.eventFilter(panel, QFocusEvent(QEvent.Type.FocusOut)) is False
+    # The reset decision is deferred one turn: FocusOut arrives before the new
+    # focus owner exists (a click moves focus shell -> canvas -> shell, and the
+    # old synchronous reset cleared Space between the key and its click).
+    qapp.processEvents()
 
     assert interaction.pressed_keys == set()
     assert interaction.last_horizontal_movement_key is None
@@ -366,6 +370,7 @@ def test_idle_focusout_emits_nothing(qapp):
 
     panel = QWidget()
     assert handler.eventFilter(panel, QFocusEvent(QEvent.Type.FocusOut)) is False
+    qapp.processEvents()
 
     assert emits == []
     panel.deleteLater()

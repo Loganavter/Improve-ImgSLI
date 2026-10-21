@@ -129,7 +129,7 @@ def _strip_rank_text_and_style(m, overlay=None):
     try:
         from PySide6.QtGui import QColor as _QC
 
-        from tabs.image_gallery.services.rank_badge import KIND_SOURCE
+        from tabs.image_gallery.services.rank_badge import KIND_BEST, KIND_SOURCE
         from tabs.image_gallery.ui.quick_look.bars import _is_dark_theme as _strip_dark
         from tabs.image_gallery.ui.quick_look.helpers import _token_color as _strip_token
 
@@ -139,19 +139,74 @@ def _strip_rank_text_and_style(m, overlay=None):
             return None  # no pill — dim effect carries the rejected signal
         _strip_is_dark = _strip_dark()
         _ink = _QC("#000000")
-        if kind == KIND_SOURCE:
+        # Every translated kind renders through the SAME key the card badge
+        # uses (``ui/card/visuals.py``) — the stamped text is English by design
+        # (``services/rank_badge.stamp_badges``) and is localized here only.
+        _kind_key = {
+            KIND_SOURCE: "image_gallery.badge.source",
+            KIND_BEST: "image_gallery.badge.best",
+        }.get(kind)
+        if _kind_key is not None:
             _tr = getattr(overlay, "_tr", None)
             if callable(_tr):
                 try:
-                    text = str(_tr("image_gallery.badge.source", text))
+                    text = str(_tr(_kind_key, text))
                 except Exception:
                     pass
+        if kind == KIND_SOURCE:
             _gold = _strip_token("gallery.status.warn", "#b77900" if not _strip_is_dark else "#d9a441")
             return (text, _gold, _ink)
         _rank_bg = _strip_token("button.toggle.background.checked", "#555555")
         return (text, _rank_bg, _ink)
     except Exception:
         return None
+
+
+def _strip_badge_fit(text: str, *, scaled=None, px=None):
+    """Fit one rank-pill label inside its 66px thumb container.
+
+    Returns ``(font_px, width_scaled, elide)``.
+
+    The container is the clip rect: a child wider than it is cut off (and the
+    old pin clamped a too-wide pill to the LEFT edge, so a long localized
+    label was both clipped and visibly off-centre — live report 2026-10-22,
+    ru ``ИСТОЧНИК``). Try the design font ladder (``BADGE_FONT_SIZES``) and
+    take the first face whose ``advance + BADGE_H_PAD`` fits
+    ``thumb - 2px``; if even the smallest does not, cap at the container and
+    let the toolkit elide (``ButtonRow(elide=True)``) — never a silent cut.
+
+    Design px in, scaled px out (the same contract as the pill's
+    ``_design_fixed_size``), so a UiScale change re-derives the same fit.
+    """
+    try:
+        from PySide6.QtGui import QFontMetrics
+
+        from sli_ui_toolkit.managers import scaled_px, ui_font
+
+        from tabs.image_gallery.services.rank_badge import (
+            BADGE_FONT_SIZES,
+            BADGE_H_PAD,
+            BADGE_MIN_WIDTH,
+        )
+
+        text = str(text or "")
+        #: Strip thumb is a 66px design square (W6 svg pitch 76 = 66 + 10 gap);
+        #: one design px of breathing room each side keeps the pill inside the
+        #: container that clips it.
+        thumb_room = scaled_px(64)
+        pad = scaled_px(BADGE_H_PAD)
+        min_w = scaled_px(BADGE_MIN_WIDTH)
+        for size in BADGE_FONT_SIZES:
+            try:
+                adv = int(QFontMetrics(ui_font(pixel_size=int(size))).horizontalAdvance(text))
+            except Exception:
+                continue
+            want = max(min_w, adv + pad)
+            if want <= thumb_room:
+                return int(size), want, False
+        return int(BADGE_FONT_SIZES[-1]), max(min_w, thumb_room), True
+    except Exception:
+        return 11, 0, False
 def _strip_family(overlay):
     """Shared-hover family for strip thumbs + rank pills (created once).
 
@@ -209,8 +264,13 @@ def _repin_strip_rank_buttons(overlay) -> None:
                 ph = 0
             if pw <= 0 or ph <= 0:
                 continue
+            # Center on the thumb's centre line. The old form clamped the
+            # left edge at 0, so a pill wider than its thumb (a long localized
+            # label) sat flush left and read as off-centre; the fit helper now
+            # keeps the pill inside the thumb, and this arithmetic makes an
+            # odd width land on the same centre (QRect.center uses (w-1)//2).
             pill.move(
-                tg.x() + max(0, (tg.width() - pw) // 2),
+                tg.center().x() - (pw - 1) // 2,
                 tg.y() + max(0, tg.height() - ph // 2),
             )
         except Exception:

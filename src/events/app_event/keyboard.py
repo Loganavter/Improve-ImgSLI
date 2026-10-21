@@ -46,6 +46,36 @@ def key_event_chord(event: QKeyEvent) -> str:
         return ""
 
 
+def focused_widget():
+    """The live focus widget (seam for routing tests; never cached)."""
+    return QApplication.focusWidget()
+
+
+def widget_accepts_text_keys(widget) -> bool:
+    """True when unmodified letter/space keys are input for ``widget``.
+
+    The global handler routes W/A/S/D/Q/E and Space to the canvas overlay;
+    that route must not fire when the focused widget consumes those keys as
+    input. Native editors are matched by type; toolkit controls that paint
+    themselves (``ComboBox`` — a ``Button``, not a ``QLineEdit``) opt in with
+    the duck-typed ``acceptsTextKeys()`` protocol. Before it existed, typing
+    ``deepseek`` into a focused model ComboBox delivered only ``p`` and ``k``:
+    d/e/s are overlay-movement keys and were swallowed by this route
+    (measured live 2026-10-22 through the control channel).
+    """
+    if widget is None:
+        return False
+    if isinstance(widget, (QLineEdit, CustomLineEdit, QTextEdit, QPlainTextEdit)):
+        return True
+    checker = getattr(widget, "acceptsTextKeys", None)
+    if callable(checker):
+        try:
+            return bool(checker())
+        except Exception:
+            return False
+    return False
+
+
 def active_tab_shortcut_owns_event(event: QKeyEvent) -> bool:
     """True when the live shortcut binder claims this event's chord.
 
@@ -195,12 +225,10 @@ class GlobalKeyboardHandler:
         if active_tab is not None and active_tab.owns_widget(watched_obj):
             return False
 
-        focused_widget = QApplication.focusWidget()
-        if active_tab is not None and active_tab.owns_widget(focused_widget):
+        focus = focused_widget()
+        if active_tab is not None and active_tab.owns_widget(focus):
             return False
-        if isinstance(
-            focused_widget, (QLineEdit, CustomLineEdit, QTextEdit, QPlainTextEdit)
-        ):
+        if widget_accepts_text_keys(focus):
             return False
 
         key = event.key()

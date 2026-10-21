@@ -469,14 +469,29 @@ def rebuild_strip(overlay) -> None:
             try:
                 _rank_text, _rank_bg, _rank_txt = _rank_spec
                 from tabs.image_gallery.services.rank_badge import (
-                    BADGE_H_PAD,
                     BADGE_HEIGHT,
                     BADGE_MIN_WIDTH,
                     BADGE_RADIUS,
                 )
+                from tabs.image_gallery.ui.quick_look.strip.helpers import (
+                    _strip_badge_fit,
+                )
 
+                # Fit BEFORE creating the row: the font size is part of the
+                # row, and a long localized label (ru ``ИСТОЧНИК`` /
+                # ``★ ЛУЧШЕЕ``) must pick a smaller face instead of being
+                # clipped by the 66px thumb container (live report 2026-10-22).
+                _badge_px, _badge_w, _badge_elide = _strip_badge_fit(str(_rank_text))
                 rank_btn = Button(
-                    rows=[ButtonRow(text=str(_rank_text), size=11, ratio=1.0, color=_rank_txt)],
+                    rows=[
+                        ButtonRow(
+                            text=str(_rank_text),
+                            size=int(_badge_px),
+                            ratio=1.0,
+                            color=_rank_txt,
+                            elide=bool(_badge_elide),
+                        )
+                    ],
                     variant="surface",
                     size=(BADGE_MIN_WIDTH, BADGE_HEIGHT),
                     # Design px — Button(corner_radius=...) scales internally;
@@ -486,19 +501,25 @@ def rebuild_strip(overlay) -> None:
                 )
                 rank_btn.setObjectName(f"quicklook_rank_{idx}")
                 # Size the pill exactly like the grid-card badge (shared
-                # geometry): text + BADGE_H_PAD breathing room, min
-                # BADGE_MIN_WIDTH. The Button's own sizeHint reserves 24px
-                # (12 each side), which left a visible side gap. Computed in
-                # DESIGN px so a UiScale change re-derives the same fit.
+                # geometry): measured text advance + BADGE_H_PAD breathing
+                # room, min BADGE_MIN_WIDTH, capped to the thumb. The Button's
+                # own sizeHint reserves 24px (12 each side) and lagged the
+                # real advance; measuring the label font directly is the same
+                # rule the card painter uses (``card/painters.py:117-118``).
+                # ``_design_fixed_size`` keeps the DESIGN width for a UiScale
+                # re-derive.
                 try:
-                    from sli_ui_toolkit.ui.managers.ui_scale import UiScale as _UiScale
+                    if _badge_w > 0:
+                        _factor = 1.0
+                        try:
+                            from sli_ui_toolkit.ui.managers.ui_scale import UiScale as _UiScale
 
-                    _factor = float(_UiScale.get_instance().factor()) or 1.0
-                    _text_w = max(0, int(rank_btn.sizeHint().width()) - scaled_px(24))
-                    _fit = max(scaled_px(BADGE_MIN_WIDTH), _text_w + scaled_px(BADGE_H_PAD))
-                    _design_w = max(1, int(round(_fit / _factor)))
-                    rank_btn._design_fixed_size = (_design_w, BADGE_HEIGHT)
-                    rank_btn.setFixedSize(scaled_px(_design_w), scaled_px(BADGE_HEIGHT))
+                            _factor = float(_UiScale.get_instance().factor()) or 1.0
+                        except Exception:
+                            _factor = 1.0
+                        _design_w = max(1, int(round(_badge_w / _factor)))
+                        rank_btn._design_fixed_size = (_design_w, BADGE_HEIGHT)
+                        rank_btn.setFixedSize(int(_badge_w), scaled_px(BADGE_HEIGHT))
                 except Exception:
                     pass
                 if _rank_bg is not None:

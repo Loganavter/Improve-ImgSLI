@@ -115,6 +115,16 @@ def retranslate(self, translate=None) -> None:
             )
     except Exception:
         pass
+    # The series strip carries translated rank pills (``SOURCE`` / ``★ BEST``)
+    # whose text AND fitted width are decided at build. The fingerprint is
+    # locale-neutral by design (it tracks the stamped badge, not the rendered
+    # one), so the selection-only fast path would keep the previous language —
+    # invalidate it and rebuild the strip (thumbs only; no preview decode).
+    try:
+        self._strip_fingerprint = None
+        self._rebuild_strip()
+    except Exception:
+        pass
 
 
 def paintEvent(self, event) -> None:  # noqa: N802
