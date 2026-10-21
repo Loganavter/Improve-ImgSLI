@@ -166,6 +166,7 @@
       "upscale_n_from_source": "upscale ×{n} from source",
       "ai_brief_pending": "AI brief…",
       "not_measured": "— · not measured",
+      "axis_inside_noise": "does not separate these variants",
       "rank_of": "#{rank} of {total}",
       "rejected_tail": "rejected tail ≤ {value}",
       "source_fallback": "source",

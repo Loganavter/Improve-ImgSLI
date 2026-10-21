@@ -62,6 +62,28 @@ MODES: tuple[str, ...] = ("fidelity", "camera", "batch_synthetic")
 #: always describable).
 PROFILE_SOURCES: tuple[str, ...] = ("heuristic", "vlm")
 
+#: Why a VLM axis-set answer was NOT applied to the folder generation
+#: (``GalleryState.profile_reject_reason``, plan-gallery-ai-judgement P2/M5:
+#: "every loss is a visible state with a cause"). Codes, never prose — a surface
+#: localizes them, so the reason survives a language switch.
+#:
+#: ``calls-built``      an AI request of this generation was already built under
+#:                      the previous axis set, and the profile is part of that
+#:                      request's cache identity (the freeze the plan keeps);
+#: ``domain-algorithms`` the Algorithms domain owns the profile derivation;
+#: ``stale-generation`` the folder changed while the selector was in flight;
+#: ``hollow-answer``    the reply named no usable pool axis (heuristic kept).
+PROFILE_REJECT_CALLS_BUILT = "calls-built"
+PROFILE_REJECT_DOMAIN = "domain-algorithms"
+PROFILE_REJECT_STALE = "stale-generation"
+PROFILE_REJECT_HOLLOW = "hollow-answer"
+PROFILE_REJECT_CODES: tuple[str, ...] = (
+    PROFILE_REJECT_CALLS_BUILT,
+    PROFILE_REJECT_DOMAIN,
+    PROFILE_REJECT_STALE,
+    PROFILE_REJECT_HOLLOW,
+)
+
 
 def mode_id(mode) -> str:
     """Normalize a ``Mode`` / str / None to one of ``MODES`` (or ``""``)."""
@@ -274,6 +296,11 @@ __all__ = [
     "MEASURED_POOL",
     "MODES",
     "PHOTO_TAG",
+    "PROFILE_REJECT_CALLS_BUILT",
+    "PROFILE_REJECT_CODES",
+    "PROFILE_REJECT_DOMAIN",
+    "PROFILE_REJECT_HOLLOW",
+    "PROFILE_REJECT_STALE",
     "PROFILE_SOURCES",
     "REFERENCE_TAG",
     "MetricProfile",
