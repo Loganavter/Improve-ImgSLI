@@ -9,10 +9,10 @@ Decoupled, type-safe pub/sub for cross-component async notifications. Use it whe
 | Path | Role |
 |---|---|
 | `src/core/plugin_system/event_bus.py` | `EventBus` class, `MAX_EMIT_DEPTH`, `EventBusDepthExceeded` |
-| `src/core/events.py` | Cross-cutting domain events (frozen dataclasses): `CoreUpdateRequestedEvent`, `CoreErrorOccurredEvent`, `CoreUIComponentsUpdateEvent`, `WorkspaceSessionCreatedEvent`, `WorkspaceSessionClosedEvent`, `WorkspaceSessionActivatedEvent`, `PluginEvent` |
+| `src/core/events.py` | Cross-cutting domain events (frozen dataclasses): `CoreUpdateRequestedEvent`, `CoreErrorOccurredEvent`, `CoreUIComponentsUpdateEvent`, `WorkspaceSessionCreatedEvent`, `WorkspaceSessionClosedEvent`, `WorkspaceSessionActivatedEvent` |
 | `src/plugins/<x>/events.py` | Plugin-local events (e.g. `src/plugins/export/events.py`, `src/plugins/settings/events.py`) |
-| `src/tabs/image_compare/events/__init__.py` | Tab-local events (e.g. `ComparisonUpdateRequestedEvent`, `AnalysisRequestMetricsEvent`) |
-| `src/tabs/image_compare/canvas/features/<name>/events.py` | Canvas-feature-local events (e.g. `divider/events.py`, `magnifier/events.py`) |
+| `src/tabs/<tab>/events/__init__.py` | Tab-local events (today `image_compare` holds only `AnalysisSetChannelViewModeEvent` / `AnalysisSetDiffModeEvent`) |
+| `src/tabs/<tab>/canvas/features/<name>/input/events.py` | Canvas-feature-local events (e.g. `divider/input/events.py`, `magnifier/input/events.py`) |
 
 Single instance is held by `ApplicationContext.event_bus` (`src/core/bootstrap.py`) and passed into plugins via `Plugin.initialize(context)`.
 
@@ -48,7 +48,7 @@ Place it where it makes sense to import:
 - Cross-plugin / cross-layer: `src/core/events.py`
 - Plugin-local (only this plugin emits and consumes): `src/plugins/<x>/events.py`
 - Tab-local (only this tab's presenters/services emit and consume): `src/tabs/<tab>/events/__init__.py`
-- Canvas-feature-local (only this feature emits and consumes): `src/tabs/<tab>/canvas/features/<name>/events.py`
+- Canvas-feature-local (only this feature emits and consumes): `src/tabs/<tab>/canvas/features/<name>/input/events.py`
 
 ## Depth limit (re-entrancy guard)
 
@@ -97,12 +97,18 @@ Rule of thumb: if the receiver only needs to do something *once* per occurrence,
 - `core/events.py:WorkspaceSessionCreatedEvent(session_id, session_type)` — emitted after `WorkspaceSessionActions.create_workspace_session`.
 - `core/events.py:WorkspaceSessionClosedEvent(session_id, session_type)` — emitted after a session is closed.
 - `core/events.py:WorkspaceSessionActivatedEvent(session_id, session_type, previous_session_id)` — emitted when the active session id changes (create with activate, switch, or close promoted another session). Routed to `TabRegistry.notify_active_session_changed` and `Dispatcher.bind_history_for_session`.
-- `core/events.py:PluginEvent(plugin_name, stage)` — emitted by `PluginLifecycleManager` on initialize/activate/deactivate/shutdown/error.
-- `tabs/image_compare/events/__init__.py:ComparisonUpdateRequestedEvent` — comparison tab asks for a recomputation.
-- `tabs/image_compare/events/__init__.py:ComparisonErrorEvent` — comparison failure.
-- `tabs/image_compare/events/__init__.py:Analysis*` — analysis / metrics signals (`AnalysisSetChannelViewModeEvent`, `AnalysisToggleDiffModeEvent`, `AnalysisSetDiffModeEvent`, `AnalysisRequestMetricsEvent`).
+- `tabs/image_compare/events/__init__.py:AnalysisSetChannelViewModeEvent(mode)` — toolbar asks analysis to switch channel view mode (emitted `presenters/toolbar/connections.py:547`).
+- `tabs/image_compare/events/__init__.py:AnalysisSetDiffModeEvent(mode)` — toolbar asks analysis to switch diff mode (emitted `presenters/toolbar/connections.py:544`, consumed in `_session_controller.py`).
 
-See `src/plugins/*/events.py` and `src/tabs/image_compare/canvas/features/*/events.py` for the full set.
+Removed, do not reintroduce: `PluginEvent` (the plugin lifecycle never emitted it),
+`ComparisonUpdateRequestedEvent` / `ComparisonErrorEvent`,
+`AnalysisToggleDiffModeEvent` (renamed to `AnalysisSetDiffModeEvent`) and
+`AnalysisRequestMetricsEvent`. Diff mode, PSNR and SSIM are **Store state**
+today (`SET_DIFF_MODE`, `SET_PSNR_VALUE`, `SET_SSIM_VALUE`), not events — see
+[STORE.md](STORE.md). Lifecycle failures are log-only
+(`PluginLifecycleManager._safe_call` logs and sets `PluginState.ERROR`).
+
+See `src/plugins/*/events.py` and `src/tabs/*/canvas/features/*/input/events.py` for the full set.
 
 ## See also
 
