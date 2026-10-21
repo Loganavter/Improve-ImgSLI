@@ -907,6 +907,20 @@ _PROXY_CASES = [
         {"ran": True, "path": "/tmp/folder", "routed": True, "live": True, "source": "live"},
     ),
     (
+        "open_folder",
+        {"path": "/tmp/folder", "slot": 2},
+        "open_folder",
+        {"path": "/tmp/folder", "slot": 2},
+        {"ran": True, "path": "/tmp/folder", "routed": True, "live": True, "source": "live"},
+    ),
+    (
+        "open_folder",
+        {"path": "/tmp/folder", "side": "right"},
+        "open_folder",
+        {"path": "/tmp/folder", "side": "right"},
+        {"ran": True, "path": "/tmp/folder", "routed": True, "live": True, "source": "live"},
+    ),
+    (
         "set_theme",
         {"theme": "light"},
         "set_theme",

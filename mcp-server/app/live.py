@@ -677,11 +677,21 @@ class LiveBackend:
         }
 
     def open_folder(
-        self, *, client: LiveClient | None = None, path: str, tab: str | None = None
+        self,
+        *,
+        client: LiveClient | None = None,
+        path: str,
+        tab: str | None = None,
+        slot: int | None = None,
+        side: str | None = None,
     ) -> dict:
         params: dict[str, Any] = {"path": path}
         if tab:
             params["tab"] = tab
+        if slot is not None:
+            params["slot"] = int(slot)
+        if side:
+            params["side"] = side
         result = self._request("open_folder", params, client)
         payload = {
             "ran": bool(result.get("ran", True)),

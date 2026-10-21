@@ -27,6 +27,25 @@ def _filter_image_paths(paths: list[Path]) -> list[Path]:
     return [p for p in paths if is_accepted_image_path(p)]
 
 
+#: Placement sides a drop hint may name (``scene.actions.add_slot`` sides).
+_DROP_SIDES = ("left", "right", "top", "bottom")
+
+
+def _hint_side(hint: dict | None) -> str | None:
+    """Placement side from a host drop hint, or ``None`` (auto placement).
+
+    A mouse drop carries no position for MC (the overlay is chrome-wide), so
+    ``side`` is how a caller that *does* know the intent says it — the control
+    surface's ``open_folder(side=...)``. Anything other than the four sides is
+    ignored rather than failing a real drop: the control surface validates its
+    own parameters strictly before a hint ever gets here.
+    """
+    if not isinstance(hint, dict):
+        return None
+    side = hint.get("side")
+    return side if side in _DROP_SIDES else None
+
+
 class MultiCompareTab(TabContract):
     """Self-contained multi-image comparison tab."""
 
@@ -434,11 +453,16 @@ class MultiCompareTab(TabContract):
         # begin_pending_paste arming, so no click-to-place and no Esc
         # cancel; the chrome/carry hint carries no canvas position and is
         # ignored for placement. Same placement UX as external canvas DnD.
+        # A ``side`` hint is the one exception: a mouse drop never sends it
+        # (no position on the chrome-wide overlay), but the control surface's
+        # ``open_folder(side=...)`` does — it picks the split axis so a
+        # multi-file drop composes a row/column instead of the auto column.
         # P7: this runs synchronously inside the window's
         # acceptProposedAction window (window_event_handler accepts right
         # after route_drop returns), so only the suffix-only verdict stays
         # synchronous — slot/toast/worker-start move past accept via
         # singleShot, otherwise the DnD source holds its busy cursor.
+        side = _hint_side(hint)
         if self._controller is not None:
             mc_dnd_debug("Tab handle_drop: direct-load %d paths (deferred past accept)", len(image_paths))
             from PySide6.QtCore import QTimer
@@ -446,11 +470,11 @@ class MultiCompareTab(TabContract):
             controller = self._controller
             deferred = list(image_paths)
             QTimer.singleShot(
-                0, lambda: controller.load_external_paths(deferred)
+                0, lambda: controller.load_external_paths(deferred, side=side)
             )
         else:
             mc_dnd_debug("Tab handle_drop: no controller -> images_dropped signal")
-            self._widget.images_dropped.emit(list(image_paths), (None, False), None)
+            self._widget.images_dropped.emit(list(image_paths), (None, False), side)
         # bool verdict (gallery/IC parity): the drop was taken. The control
         # surface routes a folder to the tab that reports True here, so a
         # bare None would read as "declined" and strand the folder.

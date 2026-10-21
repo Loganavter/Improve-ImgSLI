@@ -665,12 +665,21 @@ class AppBackend:
             "source": "fallback",
         }
 
-    def open_folder(self, *, path: str, tab: str | None = None) -> dict:
+    def open_folder(
+        self,
+        *,
+        path: str,
+        tab: str | None = None,
+        slot: int | None = None,
+        side: str | None = None,
+    ) -> dict:
         return self._live_or_fallback(
             "open_folder",
             lambda: self._fallback_open_folder(path=path, tab=tab),
             mutating=True,
             path=path,
+            slot=slot,
+            side=side,
         )
 
     def _fallback_open_folder(self, *, path: str, tab: str | None = None) -> dict:
