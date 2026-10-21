@@ -707,7 +707,7 @@ def test_uncovered_figure_selection_exits_two(hf, monkeypatch, capsys):
     monkeypatch.delenv("DISPLAY", raising=False)
     monkeypatch.setattr(hf, "display_context", lambda *a, **k: pytest.fail("no display"))
 
-    assert hf.main(["--figure", "help-gallery-empty"]) == 2
+    assert hf.main(["--figure", "help-multi-empty"]) == 2
     err = capsys.readouterr().err
     assert "uncovered" in err and "new-surface" in err
 

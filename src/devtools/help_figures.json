@@ -1,25 +1,164 @@
 {
   "figures": [
     {
-      "captures": [],
-      "covered": false,
+      "captures": [
+        {
+          "height": 800,
+          "locale": "en",
+          "pins_applied": [
+            "locale",
+            "theme",
+            "font",
+            "ui_scale",
+            "size"
+          ],
+          "pins_unavailable": [],
+          "sha256": "fa5366db3d4d4d7523616b74a2a9a99029673c4b752c2e82d608e249ff721e99",
+          "size": 22349,
+          "theme": "dark",
+          "width": 1280
+        },
+        {
+          "height": 800,
+          "locale": "en",
+          "pins_applied": [
+            "locale",
+            "theme",
+            "font",
+            "ui_scale",
+            "size"
+          ],
+          "pins_unavailable": [],
+          "sha256": "bee5e25df7e5178c101f4a5813987eb952a09a7afbfd4aef11d13745784cf083",
+          "size": 21756,
+          "theme": "light",
+          "width": 1280
+        },
+        {
+          "height": 800,
+          "locale": "pt_BR",
+          "pins_applied": [
+            "locale",
+            "theme",
+            "font",
+            "ui_scale",
+            "size"
+          ],
+          "pins_unavailable": [],
+          "sha256": "84377373c134363db2d7b607ca6abbc1a3e82b06d5707ed8e1f8a8f0e1e021de",
+          "size": 24925,
+          "theme": "dark",
+          "width": 1280
+        },
+        {
+          "height": 800,
+          "locale": "pt_BR",
+          "pins_applied": [
+            "locale",
+            "theme",
+            "font",
+            "ui_scale",
+            "size"
+          ],
+          "pins_unavailable": [],
+          "sha256": "a746108ee4ae68d9f661c946fad5bbb58c070715b4dbd87f820635a1b79012e6",
+          "size": 24436,
+          "theme": "light",
+          "width": 1280
+        },
+        {
+          "height": 800,
+          "locale": "ru",
+          "pins_applied": [
+            "locale",
+            "theme",
+            "font",
+            "ui_scale",
+            "size"
+          ],
+          "pins_unavailable": [],
+          "sha256": "0b9ccf354abd193e58316b6c2f68a74465d351247a6223aeef0b1a0c7691f558",
+          "size": 23150,
+          "theme": "dark",
+          "width": 1280
+        },
+        {
+          "height": 800,
+          "locale": "ru",
+          "pins_applied": [
+            "locale",
+            "theme",
+            "font",
+            "ui_scale",
+            "size"
+          ],
+          "pins_unavailable": [],
+          "sha256": "c5fbb4feede39f39e6f757eca129bf83c52ffa092be209f040cdcf49f33a35a7",
+          "size": 22710,
+          "theme": "light",
+          "width": 1280
+        },
+        {
+          "height": 800,
+          "locale": "zh",
+          "pins_applied": [
+            "locale",
+            "theme",
+            "font",
+            "ui_scale",
+            "size"
+          ],
+          "pins_unavailable": [],
+          "sha256": "b28068d0699fd623faf9d739e31d5e16ec08c2c695f84fe7fd425163502e5d58",
+          "size": 25964,
+          "theme": "dark",
+          "width": 1280
+        },
+        {
+          "height": 800,
+          "locale": "zh",
+          "pins_applied": [
+            "locale",
+            "theme",
+            "font",
+            "ui_scale",
+            "size"
+          ],
+          "pins_unavailable": [],
+          "sha256": "f65f447a589b16556ee5ab3cd166357efca831822744884cf000144c3624a179",
+          "size": 25524,
+          "theme": "light",
+          "width": 1280
+        }
+      ],
+      "covered": true,
       "crop": null,
-      "destination": null,
+      "destination": "src/tabs/image_gallery/resources/help/assets/empty_state.png",
       "id": "help-gallery-empty",
       "locales": [
-        "en"
+        "en",
+        "pt_BR",
+        "ru",
+        "zh"
       ],
-      "note": "No shipped figure shows the empty drop-zone state; the gallery surface builder always populates demo cards. New surface state, later slice.",
-      "pins_applied": [],
-      "pins_unavailable": [
+      "note": "New figure (not a shipped replacement): the gallery drop-zone state the overview page describes in prose. The devtool `gallery` surface builds ImageGalleryWidget without items, so it is reproducible like the populated grid. 1280x800 is the surface default, pinned so the frame cannot drift.",
+      "pins_applied": [
         "font",
+        "locale",
+        "size",
+        "theme",
         "ui_scale"
       ],
-      "reason": "new-surface",
-      "size": null,
+      "pins_unavailable": [],
+      "reason": "",
+      "size": [
+        1280,
+        800
+      ],
       "surface": "gallery",
       "themes": [
-        "dark"
+        "dark",
+        "light"
       ]
     },
     {

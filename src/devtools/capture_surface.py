@@ -355,7 +355,32 @@ def _gallery(sess: CaptureSession) -> None:
     from tabs.image_gallery.widget import ImageGalleryWidget
 
     widget = ImageGalleryWidget(None, context=TabContext())
+    # S0 repose is deliberately blank: the dashed drop zone is the drag-hover
+    # state (``dragEnter -> set_drag_highlight(True)``), not the idle one. A
+    # synthetic drag-enter with a real folder shows exactly what a user sees
+    # while dragging, without reading any user state or moving the pointer.
+    _show_gallery_drop_zone(widget, sess)
     sess.grab(widget, "gallery.png", 1280, 800, delay=1200)
+
+
+def _show_gallery_drop_zone(widget, sess: CaptureSession) -> None:
+    """Drive the gallery into its drag-hover state (dashed zone + prompt)."""
+    from PySide6.QtCore import QMimeData, QPoint, Qt, QUrl
+    from PySide6.QtGui import QDragEnterEvent
+    from PySide6.QtWidgets import QApplication
+
+    folder = sess.make_samples()[0].parent
+    mime = QMimeData()
+    mime.setUrls([QUrl.fromLocalFile(str(folder))])
+    event = QDragEnterEvent(
+        QPoint(widget.width() // 2, widget.height() // 2),
+        Qt.DropAction.CopyAction,
+        mime,
+        Qt.MouseButton.LeftButton,
+        Qt.KeyboardModifier.NoModifier,
+    )
+    QApplication.sendEvent(widget, event)
+    QApplication.processEvents()
 
 
 def _gallery_item(path, index: int, **extra):

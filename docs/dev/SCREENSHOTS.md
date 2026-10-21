@@ -158,6 +158,12 @@ python src/devtools/help_figures.py --all --write-manifest       # record baseli
   fallback is not deterministic, and a runner without a CJK font renders tofu.
   Both bundled fonts ship their OFL texts next to the files
   (`LICENSE-SourceSans3.txt`, `LICENSE-NotoSansSC.txt`).
+- **Idle blank is not a bug; drag-hover is a state.** The gallery's S0 repose
+  is deliberately blank — the dashed drop zone + "Pick a folder…" prompt appear
+  only while a drag hovers (`dragEnter`). The `gallery` surface drives that
+  state with a synthetic `QDragEnterEvent` carrying a demo folder URL, so the
+  empty-gallery figure shows what a user sees mid-drag and reads no store/user
+  path. Do not "fix" the blank idle frame by showing the zone unconditionally.
 - **User state never enters a frame.** A capture surface must be a product
   surface, not the maintainer's session. `session-picker`'s Recent shelf reads
   `services.io.recent_projects` from disk, so a raw grab embedded the user's
