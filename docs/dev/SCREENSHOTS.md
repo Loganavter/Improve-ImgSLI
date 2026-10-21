@@ -119,6 +119,19 @@ python src/devtools/help_figures.py --all --write-manifest       # record baseli
   display number, waits for its socket and tears it down; `--backend native`
   uses the current `DISPLAY` and refuses to run without one. Neither ever
   defaults to `:0`.
+- **Cells are independent, so they can run in parallel.** `--jobs N` (also with
+  `--check` / `--compare`, which generate) captures `N` `(figure, locale, theme)`
+  cells at a time in a `spawn` pool — each worker builds its own `QApplication`
+  and reuses it across the cells it picks up. `--jobs 1` is the default and the
+  old in-process path (one reused app, input order). `--jobs 0` / `--jobs auto`
+  means `min(4, cpu_count)`; values above 8 are clamped. The parent never creates
+  a `QApplication` before the pool (the display context only starts Xvfb and
+  exports env). Results come back in `(figure, locale, theme)` order no matter
+  which worker finished first, so `--write-manifest` and the drift table are
+  byte-identical to a sequential run; a failing cell aborts the pool and names
+  its `figure [locale/theme]`, and no manifest is written from a partial run.
+  Rough win: a cell is dominated by its settle pumps (~1.2 s), so a 40-cell
+  `--check` is minutes sequentially and a small multiple of one cell at 4 jobs.
 - **No asset writes.** Captures go to `--out` (a fresh temp dir by default).
   Nothing is written into `src/**/resources/help/assets/`: installing a shot is
   still the copy step above, so a routine run cannot churn a shipped figure.

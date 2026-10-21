@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -740,3 +741,157 @@ def test_main_check_uses_injected_display_and_capture(hf, tmp_path, monkeypatch,
     assert hf.main(["--check", "--manifest", str(path), "--out", str(tmp_path / "again")]) == 0
     assert used["backend"] == "xvfb"
     assert "drift check: ok=1" in capsys.readouterr().out
+
+
+# ---------------------------------------------------------------------------
+# Parallel capture (--jobs). Nothing here opens a display: the pool seam is
+# exercised with a module-level helper, and every capture path uses the fake.
+# ---------------------------------------------------------------------------
+
+
+def _ordered_cell_probe(value):
+    """Picklable worker probe: later cells sleep longer, so completion is LIFO."""
+    import time as _time
+
+    _time.sleep(0.02 * (5 - value))
+    return (value, os.getpid())
+
+
+def _explode_on_three(value):
+    """Picklable worker probe that fails for one cell only."""
+    if value == 3:
+        raise RuntimeError(f"boom {value}")
+    return value
+
+
+def _spawn_context_or_skip():
+    mp = pytest.importorskip("multiprocessing")
+    try:
+        mp.get_context("spawn")
+    except ValueError as exc:  # pragma: no cover - spawn exists on Linux/Windows
+        pytest.skip(f"spawn start method unavailable: {exc}")
+
+
+def test_jobs_defaults_to_one_and_clamps(hf):
+    parser = hf.build_parser()
+
+    assert parser.parse_args(["--list"]).jobs == 1
+    assert parser.parse_args(["--list", "--jobs", "3"]).jobs == 3
+    assert parser.parse_args(["--list", "--jobs", "99"]).jobs == hf.MAX_JOBS
+    assert hf.resolve_jobs(0) == min(hf.AUTO_JOBS_CEILING, hf.os.cpu_count() or 1)
+    assert hf.resolve_jobs("auto") == hf.resolve_jobs(0)
+    assert hf.resolve_jobs("AUTO") == hf.resolve_jobs(0)
+    assert hf.resolve_jobs(2) == 2
+    assert hf.resolve_jobs(None) == 1
+
+
+def test_jobs_rejects_negative_and_garbage_values(hf):
+    parser = hf.build_parser()
+
+    for bad in ("-1", "nope"):
+        with pytest.raises(SystemExit) as exc:
+            parser.parse_args(["--list", "--jobs", bad])
+        assert exc.value.code == 2, bad
+    with pytest.raises(ValueError, match=r"--jobs must be >= 0"):
+        hf.resolve_jobs(-2)
+    with pytest.raises(ValueError, match=r"expects an integer or 'auto'"):
+        hf.resolve_jobs("many")
+
+
+def test_jobs_one_keeps_the_in_process_path(hf, tmp_path, monkeypatch):
+    """``jobs=1`` must never touch the pool (no spawn, same records)."""
+    manifest = hf.load_manifest(_manifest_file(tmp_path, [_entry()]))
+
+    def _boom(*args, **kwargs):
+        raise AssertionError("jobs=1 must not start a pool")
+
+    monkeypatch.setattr(hf, "_map_cells", _boom)
+    records = hf.generate(
+        manifest, tmp_path / "out", capture=_fake_capture(), stream=io.StringIO(), jobs=1
+    )
+
+    assert [(r["figure"], r["locale"], r["theme"]) for r in records] == [
+        ("help-gallery-populated", "en", "dark")
+    ]
+    assert (records[0]["width"], records[0]["height"]) == (6, 4)
+
+
+def test_injected_capture_stays_in_process_even_with_high_jobs(hf, tmp_path, monkeypatch):
+    """A test seam closure is not picklable, so it must stay in the parent."""
+    manifest = hf.load_manifest(_manifest_file(tmp_path, [_entry()]))
+
+    monkeypatch.setattr(hf, "_map_cells", lambda *a, **k: pytest.fail("no pool for injected capture"))
+    records = hf.generate(
+        manifest, tmp_path / "out", capture=_fake_capture(), stream=io.StringIO(), jobs=4
+    )
+
+    assert len(records) == 1
+
+
+def test_parallel_map_returns_input_order_and_runs_each_cell_once(hf):
+    _spawn_context_or_skip()
+
+    results = hf._map_cells(_ordered_cell_probe, [1, 2, 3, 4], jobs=2)
+
+    assert [value for value, _pid in results] == [1, 2, 3, 4], (
+        "a parallel run must return results in input order, not completion order"
+    )
+    assert len(results) == 4, "every cell exactly once"
+    assert all(pid != os.getpid() for _value, pid in results), (
+        "cells must run in the pool's workers, not the parent"
+    )
+
+
+def test_parallel_map_propagates_a_worker_exception(hf):
+    _spawn_context_or_skip()
+
+    with pytest.raises(RuntimeError, match=r"boom 3"):
+        hf._map_cells(_explode_on_three, [1, 2, 3, 4], jobs=2)
+
+
+def test_capture_failure_names_the_cell(hf, monkeypatch, tmp_path):
+    """A failed worker must say which figure/locale/theme died."""
+    cell = hf._Cell(
+        figure=hf.Figure(id="help-x", surface="settings", destination=None),
+        locale="ru",
+        theme="light",
+        out_dir=str(tmp_path),
+    )
+
+    monkeypatch.setattr(hf, "_bootstrap_worker_qt", lambda theme, locale: None)
+
+    def _explode(figure, locale, theme, out_dir):
+        raise RuntimeError("surface crashed")
+
+    monkeypatch.setattr(hf, "capture_png", _explode)
+    with pytest.raises(hf.FigureError, match=r"help-x \[ru/light\]: surface crashed"):
+        hf._capture_cell(cell)
+
+
+def test_main_forwards_jobs_to_the_generating_commands(hf, tmp_path, monkeypatch):
+    from contextlib import contextmanager
+
+    path = _manifest_file(tmp_path, [_entry()])
+    seen = {}
+
+    @contextmanager
+    def _fake_display(backend):
+        yield ":99"
+
+    def _fake_check(manifest, out_dir, *, jobs=1, **kwargs):
+        seen["check"] = jobs
+        return 0
+
+    def _fake_compare(manifest, out_dir, *, jobs=1, **kwargs):
+        seen["compare"] = jobs
+        return 0
+
+    monkeypatch.setattr(hf, "display_context", _fake_display)
+    monkeypatch.setattr(hf, "check_figures", _fake_check)
+    monkeypatch.setattr(hf, "compare_sizes", _fake_compare)
+
+    assert hf.main(["--check", "--jobs", "5", "--manifest", str(path)]) == 0
+    assert hf.main(["--compare", "--jobs", "auto", "--manifest", str(path)]) == 0
+    assert seen["check"] == 5
+    assert seen["compare"] == hf.resolve_jobs("auto")
+
