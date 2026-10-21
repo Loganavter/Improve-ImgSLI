@@ -1,4 +1,4 @@
-"""Local primitives + discovery artifacts for the in-app control channel.
+r"""Local primitives + discovery artifacts for the in-app control channel.
 
 A running app publishes where to reach it, and the host MCP server finds it
 without any registry service: a unix socket (``control.sock``) plus a small
@@ -23,6 +23,10 @@ This module also owns the small host-side primitives the transport and the
 handlers share, so neither has to import the other: the request error type
 (``MethodError``), the ``press_keys`` allowlist + parser, the artifacts-dir
 convention, the live surface listing, and the live window grab.
+
+The ``press_keys`` grammar is unchanged — ``+`` joins a combo, ``,`` separates
+combos — but both are real app keys (``Ctrl+,``, ``+``), so they are nameable
+as ``comma`` / ``plus`` or escaped as ``\,`` / ``\+``.
 """
 
 from __future__ import annotations
@@ -316,13 +320,15 @@ _KEY_ALIASES = {
     "delete": "Key_Delete",
     "del": "Key_Delete",
     "menu": "Key_Menu",
+    "comma": "Key_Comma",
+    "plus": "Key_Plus",
 }
 
 #: Punctuation → Qt key, so a client can type a *path* or any other text
 #: field keystroke by keystroke (``/,t,m,p,/,a,.,p,n,g``). Qt names these
 #: keys, so without this map a path is untransmittable -- the one gap that
 #: made headless file dialogs undriveable. ``','`` and ``'+'`` are absent on
-#: purpose: they are the sequence / modifier separators.
+#: purpose: they are the separators (see ``_ESCAPED_SEPARATORS``).
 _PUNCTUATION_KEYS = {
     "/": "Key_Slash",
     ".": "Key_Period",
@@ -345,6 +351,9 @@ _PUNCTUATION_KEYS = {
     "*": "Key_Asterisk",
     "\\": "Key_Backslash",
 }
+
+#: The separator characters as *keys*: ``\,`` / ``\+`` are rewritten to these.
+_ESCAPED_SEPARATORS = {",": "comma", "+": "plus"}
 
 #: Modifier names accepted by ``press_keys`` → ``Qt.KeyboardModifier``.
 _MODIFIERS = {
@@ -375,6 +384,7 @@ def valid_key_names() -> list[str]:
     names += [f"f{i}" for i in range(1, 13)]
     names += list(string.ascii_lowercase) + list(string.digits)
     names += sorted(_PUNCTUATION_KEYS)
+    names += [f"\\{char}" for char in sorted(_ESCAPED_SEPARATORS)]
     return names
 
 
@@ -397,14 +407,19 @@ def _resolve_key(name: str) -> Any:
 def parse_key_sequence(keys: str | None) -> list[tuple[Any, Any, str]]:
     """Parse ``'ctrl+shift+p'`` / ``'Down,Down,Enter'`` → (key, modifiers, label).
 
-    Raises ``MethodError`` (with the valid-name list) on any unknown key or
-    modifier, so the client learns the allowlist instead of silently typing.
+    The separators are also real keys, so a key is written ``comma`` / ``plus``
+    or escaped (``ctrl+\\,`` / ``ctrl+\\+``); the escape is rewritten to the
+    name first, leaving the split rule untouched. Raises ``MethodError`` (with
+    the valid-name list) on any unknown key or modifier, so the client learns
+    the allowlist instead of silently typing.
     """
     if not isinstance(keys, str) or not keys.strip():
         raise MethodError(
             "press_keys needs a non-empty 'keys' string",
             "e.g. keys='Down,Down,Enter' or keys='ctrl+shift+p'",
         )
+    for char, name in _ESCAPED_SEPARATORS.items():
+        keys = keys.replace("\\" + char, name)
     combos = [part.strip() for part in keys.split(",") if part.strip()]
     if not combos:
         raise MethodError("press_keys got no key combos", "e.g. keys='Enter'")
@@ -416,6 +431,8 @@ def parse_key_sequence(keys: str | None) -> list[tuple[Any, Any, str]]:
     parsed: list[tuple[Any, Any, str]] = []
     for combo in combos:
         parts = [part.strip().lower() for part in combo.split("+") if part.strip()]
+        if not parts:
+            raise MethodError(f"empty key combo {combo!r}", "plus key: 'plus' or '\\+'")
         modifiers = Qt.KeyboardModifier.NoModifier
         for modifier in parts[:-1]:
             flag = _MODIFIERS.get(modifier)

@@ -20,7 +20,11 @@ Falsification (written to be RED against a naive stub):
   against a real ``Store`` + ``Dispatcher`` (the store actually changes);
 * MCP — the four catalog entries validate, and each backend method proxies to
   the transport (scripted ``LiveClient.call`` stub) with the documented wire
-  params, or refuses honestly without a live instance.
+  params, or refuses honestly without a live instance;
+* ``press_keys`` *vocabulary* — the two separator characters are also real
+  keys (``Ctrl+,``, ``+``), so ``comma`` / ``plus`` / the escaped ``,`` and
+  ``+`` must resolve to those Qt keys while a bare ``,`` / ``+`` stays a
+  separator.
 
 Runs offscreen only — no Xvfb, no app launch (the supervisor runs the live
 proof).
@@ -34,9 +38,11 @@ from pathlib import Path
 
 import pytest
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication, QPushButton, QVBoxLayout, QWidget
 
 from core.actions.types import ActionDescriptor
+from core.control import discovery as discovery_module
 from core.control import elements
 from core.control import handlers as handlers_module
 from core.control.drop_routing import media_kind, open_file_into
@@ -893,3 +899,94 @@ def test_set_setting_fallback_revalidates_before_writing(
     text = exc.value.message + " " + (exc.value.hint or "")
     assert fragment in text
     assert written == [], "a rejected key never reaches the settings write"
+
+
+# -- app side: press_keys key vocabulary ---------------------------------------
+#
+# Falsification (complaint mcp-c-013: ``press_keys {"keys": "ctrl+comma"}`` and
+# ``{"keys": "plus"}`` were both refused with "unknown key"): ``,`` and ``+``
+# are the combo/sequence separators, so the two *keys* had no spelling at all --
+# yet ``Ctrl+,`` (Settings, ``ui/actions/platform.py``) and ``+`` (zoom in,
+# ``shared/canvas/keyboard_constants.py``) are real app chords. The parse of
+# "\,", which used to resolve to BACKSLASH, is the silent half of the same gap.
+
+
+def test_press_keys_spells_the_separator_keys_by_name():
+    ((comma, mods, label),) = discovery_module.parse_key_sequence("comma")
+    assert (comma, mods, label) == (
+        Qt.Key.Key_Comma,
+        Qt.KeyboardModifier.NoModifier,
+        "comma",
+    )
+
+    ((plus, plus_mods, _label),) = discovery_module.parse_key_sequence("plus")
+    assert (plus, plus_mods) == (Qt.Key.Key_Plus, Qt.KeyboardModifier.NoModifier)
+
+    ((settings, settings_mods, _label),) = discovery_module.parse_key_sequence(
+        "ctrl+comma"
+    )
+    assert (settings, settings_mods) == (
+        Qt.Key.Key_Comma,
+        Qt.KeyboardModifier.ControlModifier,
+    ), "Ctrl+, is the Settings chord"
+
+    ((zoom, zoom_mods, _label),) = discovery_module.parse_key_sequence("ctrl+shift+plus")
+    assert (zoom, zoom_mods) == (
+        Qt.Key.Key_Plus,
+        Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier,
+    )
+
+
+def test_press_keys_escapes_the_separator_characters():
+    """An escaped comma / plus names the literal key, alone or in a combo."""
+    ((escaped_comma, comma_mods, _label),) = discovery_module.parse_key_sequence("\\,")
+    assert (escaped_comma, comma_mods) == (
+        Qt.Key.Key_Comma,
+        Qt.KeyboardModifier.NoModifier,
+    )
+
+    ((escaped_plus, plus_mods, _label),) = discovery_module.parse_key_sequence("\\+")
+    assert (escaped_plus, plus_mods) == (
+        Qt.Key.Key_Plus,
+        Qt.KeyboardModifier.NoModifier,
+    )
+
+    ((chord, chord_mods, _label),) = discovery_module.parse_key_sequence("ctrl+\\,")
+    assert (chord, chord_mods) == (Qt.Key.Key_Comma, Qt.KeyboardModifier.ControlModifier)
+
+    ((chord2, chord2_mods, _label),) = discovery_module.parse_key_sequence(
+        "ctrl+shift+\\+"
+    )
+    assert (chord2, chord2_mods) == (
+        Qt.Key.Key_Plus,
+        Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier,
+    )
+
+    # Two escaped keys in one sequence: the unescaped comma is the separator.
+    keys = [key for key, _mods, _label in discovery_module.parse_key_sequence("\\,,\\+")]
+    assert keys == [Qt.Key.Key_Comma, Qt.Key.Key_Plus]
+
+
+def test_press_keys_keeps_bare_separators_as_separators():
+    """The grammar is unchanged: ``+`` joins a combo, ``,`` separates combos."""
+    assert [
+        label
+        for _key, _mods, label in discovery_module.parse_key_sequence("ctrl+p,Down")
+    ] == ["ctrl+p", "Down"]
+
+    with pytest.raises(MethodError) as exc:
+        discovery_module.parse_key_sequence("+")
+
+    assert "empty key combo" in exc.value.message
+    hint = exc.value.hint or ""
+    assert "\\+" in hint and "plus" in hint, "the escape is the way out"
+
+
+def test_press_keys_unknown_key_still_lists_the_valid_names():
+    with pytest.raises(MethodError) as exc:
+        discovery_module.parse_key_sequence("wibble")
+
+    assert "unknown key" in exc.value.message
+    hint = exc.value.hint or ""
+    for name in ("comma", "plus", "\\,", "\\+", "enter", "f12"):
+        assert name in hint, f"{name!r} missing from the allowlist hint"

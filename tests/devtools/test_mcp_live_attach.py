@@ -1780,6 +1780,79 @@ def test_open_folder_routes_on_the_live_instance(live_wired, tmp_path):
     assert result["structuredContent"]["live"] is True
 
 
+def test_open_folder_forwards_its_tab_to_the_live_instance(live_wired, tmp_path):
+    """A targeted folder must reach the app *targeted* (complaint mcp-c-014).
+
+    Falsification: the adapter always carried ``tab``; the backend dropped it,
+    so the app answered from its untargeted branch ("no live tab accepted the
+    folder") while the identical params on the control socket route fine.
+    """
+    protocol, _backend, _calls, server = live_wired
+    result = _call(
+        protocol,
+        "open_folder",
+        {"path": str(tmp_path), "tab": "image_compare", "slot": 1},
+    )
+
+    assert result["isError"] is False
+    assert result["structuredContent"]["routed"] is True
+    assert _wire_calls(server)[-1] == (
+        "open_folder",
+        {"path": str(tmp_path), "tab": "image_compare", "slot": 1},
+    ), "tab travels with the call, next to slot/side"
+
+
+def test_open_folder_reports_an_unknown_tab_as_an_unknown_tab(tmp_path, monkeypatch):
+    """A named-but-unknown kind is the app's own error, not "nothing accepted"."""
+    launches: list = []
+    known = ("image_compare", "image_gallery", "multi_compare")
+
+    def handler(method: str, params: dict):
+        if method == "open_folder":
+            tab = params.get("tab")
+            if not tab:
+                # What the real app answers when nothing targeted was asked
+                # for (handlers.open_folder, untargeted branch).
+                return False, {
+                    "error": "no live tab accepted the folder",
+                    "hint": "open a gallery-like tab once, then retry open_folder",
+                }
+            if tab not in known:
+                return False, {
+                    "error": f"unknown tab kind {tab!r}",
+                    "hint": "known kinds: image_compare, image_gallery",
+                }
+            return True, {"routed": True, "path": params["path"], "tab": tab}
+        return default_handler(method, params)
+
+    directory = tmp_path / "run"
+    server = FakeControlServer(directory / CONTROL_SOCKET_NAME, handler).start()
+    _write_pointer(directory, pid=os.getpid(), socket_path=server.path)
+    monkeypatch.setenv(CONTROL_DIR_ENV, str(directory))
+    monkeypatch.delenv(SOCKET_OVERRIDE_ENV, raising=False)
+    backend = AppBackend(
+        REPO_ROOT,
+        artifacts_dir=tmp_path / "artifacts",
+        data_dir=tmp_path / "data",
+        launcher=lambda args: launches.append(args) or os.getpid(),
+        live_backend=LiveBackend(retry_cooldown_s=0.0),
+    )
+    protocol = MCPProtocol(backend)
+    try:
+        result = _call(
+            protocol, "open_folder", {"path": str(tmp_path), "tab": "wibble"}
+        )
+
+        assert result["isError"] is True
+        text = result["content"][0]["text"]
+        assert "unknown tab kind 'wibble'" in text
+        assert "known kinds: image_compare" in text, "the app's hint survives"
+        assert "no live tab accepted the folder" not in text
+        assert launches == [], "a rejected kind never starts a headless boot"
+    finally:
+        server.stop()
+
+
 def test_adapter_without_attachment_raises_unavailable(tmp_path):
     adapter = LiveBackend(socket_path=tmp_path / "absent.sock")
     with pytest.raises(LiveUnavailable):
