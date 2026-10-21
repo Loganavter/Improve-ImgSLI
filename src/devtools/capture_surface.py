@@ -60,6 +60,19 @@ BUNDLED_FONT_PATH = (
     SRC_ROOT / "shared_toolkit" / "resources" / "fonts" / "SourceSans3-Regular.ttf"
 )
 BUNDLED_FONT_FAMILY = "Source Sans 3"
+#: Bundled CJK fallback (Noto Sans SC, SIL OFL 1.1) — see LICENSE-NotoSansSC.txt.
+#: Without it a zh frame resolves Han glyphs to whatever the host ships, so the
+#: sha256 baseline is host-specific (and a bare runner renders tofu).
+BUNDLED_CJK_FONT_PATH = (
+    SRC_ROOT / "shared_toolkit" / "resources" / "fonts" / "NotoSansSC-Regular.otf"
+)
+BUNDLED_CJK_FONT_FAMILY = "Noto Sans SC"
+#: Characters every zh frame must be able to draw from the bundled fallback.
+_CJK_PROBE = "设置图像"
+#: Path -> loaded family. ``addApplicationFont`` is not free for an 8 MB CJK
+#: OTF, and ``_bootstrap_qt`` runs once per captured (figure, locale, theme)
+#: cell: without this cache a 40-cell baseline pays the parse 40 times.
+_LOADED_FONTS: dict[str, str] = {}
 
 #: i18n roots registered at bootstrap. Without these, widget strings show the
 #: raw key (``help.topic.foo``) instead of translated text. Mirrors the app's
@@ -259,6 +272,7 @@ class CaptureSession:
         default_w: int,
         default_h: int,
         delay: int = 1200,
+        before_grab=None,
     ) -> Path:
         """pin -> show -> pump -> re-pin -> pump -> grab -> save.
 
@@ -270,6 +284,8 @@ class CaptureSession:
         h = self.height or default_h
         self.last_pin = (w, h)
         windowed = self.apply_size(widget, w, h, delay=delay)
+        if before_grab is not None:
+            before_grab(widget)
         pixmap = widget.grab()
         dest = self.out_dir / filename
         pixmap.save(str(dest))
@@ -449,9 +465,63 @@ class _FakeSessionContext:
         return None
 
 
+def _hide_overlay_scrollbars(widget) -> None:
+    """Force overlay scrollbars hidden before the grab.
+
+    ``MinimalistScrollBar`` auto-hides on an idle timer and glides its opacity;
+    a capture taken while the timer decides lands on either state, so the same
+    figure alternated between "no bar" and "bar visible" across runs (measured
+    as a 12 px right-edge strip and 7/8 drift cells). Hiding is layout-neutral
+    (overlay bar) and deterministic; the figure does not need a transient bar.
+    """
+    try:
+        from sli_ui_toolkit.ui.widgets.atomic.minimalist_scrollbar import (
+            MinimalistScrollBar,
+        )
+    except Exception:
+        return
+    for bar in widget.findChildren(MinimalistScrollBar):
+        try:
+            bar._idle_timer.stop()
+        except Exception:
+            pass
+        bar.hide()
+
+
+def _demo_recent_records(sess: CaptureSession):
+    """Deterministic stand-ins for the user's Recent shelf.
+
+    ``RecentProjectsPanel`` reads ``services.io.recent_projects`` from disk: a
+    raw capture embedded the user's real projects (private data in a shipped
+    help figure) and their thumbnails/mtimes changed between runs, which is
+    exactly what made the sha256 gate flaky. Demo covers come from
+    ``CaptureSession.make_samples()``.
+    """
+    from PySide6.QtGui import QPixmap
+
+    from services.io.recent_projects import RecentProjectRecord
+
+    opened = "2026-01-01T00:00:00+00:00"
+    kinds = ("image_compare", "multi_compare", "image_gallery")
+    records = []
+    for index, path in enumerate(sess.make_samples()[:3]):
+        records.append(
+            RecentProjectRecord(
+                path=str(path),
+                display_name=f"demo-{index + 1}.png",
+                opened_at=opened,
+                pinned_at=opened,
+                session_types=(kinds[index],),
+            )
+        )
+    return records, [QPixmap(str(path)) for path in sess.make_samples()[:3]]
+
+
 @_surface("session-picker", "Session Picker — tab-type chooser with demo sessions.")
 def _session_picker(sess: CaptureSession) -> None:
     from core.session_blueprints import SessionBlueprint
+    from tabs.session_picker.recent import cards as recent_cards
+    from tabs.session_picker.recent import panel as recent_panel
     from tabs.session_picker.widget import SessionPickerWidget
 
     context = _FakeSessionContext(
@@ -467,8 +537,44 @@ def _session_picker(sess: CaptureSession) -> None:
             ),
         ]
     )
-    widget = SessionPickerWidget(context=context)
-    sess.grab(widget, "session-picker.png", 1100, 760, delay=1200)
+    records, covers = _demo_recent_records(sess)
+    covers_by_path = {record.path: pixmap for record, pixmap in zip(records, covers)}
+    patched = [
+        (recent_panel, "list_recent_projects"),
+        (recent_panel, "get_recent_view_mode"),
+        (recent_panel, "get_recent_sort_mode"),
+        (recent_panel, "get_recent_sort_order"),
+        (recent_cards, "preview_for_record"),
+        (recent_cards, "prefetch_previews"),
+        (recent_cards, "format_relative_opened"),
+    ]
+    saved = [(target, name, getattr(target, name)) for target, name in patched]
+    try:
+        # Fixed records/prefs + a frozen relative label: no wall clock, no disk
+        # store, no user thumbnails in the frame.
+        recent_panel.list_recent_projects = lambda *a, **k: list(records)
+        recent_panel.get_recent_view_mode = lambda: "grid"
+        recent_panel.get_recent_sort_mode = lambda: "name"
+        recent_panel.get_recent_sort_order = lambda: "asc"
+        recent_cards.preview_for_record = lambda record: covers_by_path.get(str(record.path))
+        recent_cards.prefetch_previews = lambda records, budget=0: 0
+        recent_cards.format_relative_opened = (
+            lambda opened_at, translate=None: (
+                translate("recent.relative.just_now", "just now") if translate else "just now"
+            )
+        )
+        widget = SessionPickerWidget(context=context)
+        sess.grab(
+            widget,
+            "session-picker.png",
+            1100,
+            760,
+            delay=1200,
+            before_grab=_hide_overlay_scrollbars,
+        )
+    finally:
+        for target, name, value in saved:
+            setattr(target, name, value)
 
 
 @_surface("onboarding", "Onboarding overlay — first-run mode picker.")
@@ -511,33 +617,69 @@ def _pin_canonical_env() -> None:
     os.environ["QT_FONT_DPI"] = str(CANONICAL_DPI)
 
 
-def _apply_canonical_font(app) -> str:
-    """Apply the font the product ships and prove it took.
+def _load_bundled_font(path: Path, expected_family: str) -> str:
+    """Load one bundled font once and prove Qt sees the expected family."""
+    from PySide6.QtGui import QFontDatabase
 
-    The app's default ``ui_font_mode`` is ``builtin`` (Source Sans 3); a capture
-    that silently falls back to the system sans is a different product. Loading
-    the TTF directly (rather than ``FontManager``) keeps this devtool free of
-    app bootstrap imports and fails loudly instead of shipping a host-flavoured
-    frame.
-    """
-    from PySide6.QtGui import QFont, QFontDatabase
-
-    if not BUNDLED_FONT_PATH.is_file():
-        raise RuntimeError(f"bundled font missing: {BUNDLED_FONT_PATH}")
-    font_id = QFontDatabase.addApplicationFont(str(BUNDLED_FONT_PATH))
+    key = str(path)
+    if key in _LOADED_FONTS:
+        family = _LOADED_FONTS[key]
+        if family != expected_family:
+            raise RuntimeError(
+                f"cached family {family!r} != expected {expected_family!r} for {path}"
+            )
+        return family
+    if not path.is_file():
+        raise RuntimeError(f"bundled font missing: {path}")
+    font_id = QFontDatabase.addApplicationFont(str(path))
     families = QFontDatabase.applicationFontFamilies(font_id) if font_id != -1 else []
     if not families:
-        raise RuntimeError(f"bundled font not loadable: {BUNDLED_FONT_PATH}")
-    family = families[0]
-    if family != BUNDLED_FONT_FAMILY:
+        raise RuntimeError(f"bundled font not loadable: {path}")
+    if families[0] != expected_family:
         raise RuntimeError(
-            f"bundled font family is {family!r}, expected {BUNDLED_FONT_FAMILY!r}"
+            f"bundled font family is {families[0]!r}, expected {expected_family!r} ({path})"
         )
-    app.setFont(QFont(family))
-    applied = app.font().family()
-    if applied != BUNDLED_FONT_FAMILY:
-        raise RuntimeError(f"canonical font did not take: app font is {applied!r}")
-    return applied
+    _LOADED_FONTS[key] = families[0]
+    return families[0]
+
+
+def _cjk_run_families(font) -> tuple[str, ...]:
+    """Families Qt actually used to draw a Han probe string with ``font``."""
+    from PySide6.QtGui import QTextLayout
+
+    layout = QTextLayout(_CJK_PROBE, font)
+    layout.beginLayout()
+    line = layout.createLine()
+    layout.endLayout()
+    return tuple(run.rawFont().familyName() for run in line.glyphRuns())
+
+
+def _apply_canonical_font(app) -> str:
+    """Apply the product's font chain and prove BOTH faces took.
+
+    The app's default ``ui_font_mode`` is ``builtin`` (Source Sans 3) plus the
+    bundled CJK fallback (Noto Sans SC). A capture that silently falls back to
+    the system sans / a system Han font is a different product and a different
+    baseline. Loading the TTFs directly (rather than ``FontManager``) keeps this
+    devtool free of app bootstrap imports; both the family list and an actual
+    Han glyph run are asserted, so a cleared fallback cannot slip through.
+    """
+    from PySide6.QtGui import QFont
+
+    family = _load_bundled_font(BUNDLED_FONT_PATH, BUNDLED_FONT_FAMILY)
+    cjk_family = _load_bundled_font(BUNDLED_CJK_FONT_PATH, BUNDLED_CJK_FONT_FAMILY)
+    canonical = QFont(family)
+    canonical.setFamilies([family, cjk_family])
+    app.setFont(canonical)
+    applied = tuple(app.font().families())
+    if applied[:2] != (family, cjk_family):
+        raise RuntimeError(f"canonical font families did not take: {applied!r}")
+    runs = _cjk_run_families(app.font())
+    if cjk_family not in runs:
+        raise RuntimeError(
+            f"bundled CJK fallback did not take: Han probe {_CJK_PROBE!r} ran with {runs!r}"
+        )
+    return family
 
 
 def _bootstrap_qt(theme: str, lang: str):

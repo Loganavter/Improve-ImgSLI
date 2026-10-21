@@ -135,14 +135,23 @@ python src/devtools/help_figures.py --all --write-manifest       # record baseli
   `locales` x `themes` is the matrix: more than one pair makes every capture
   install under `assets/<locale>/<theme>/<name>` (a single-variant recipe keeps
   today's flat destination). The five reproducible figures ship
-  `en|pt_BR|ru` x `dark|light` — 30 files, ~1.6 MB, below the 15 MB
+  `en|pt_BR|ru|zh` x `dark|light` — 40 files, ~2.2 MB, below the 15 MB
   bundle-in-the-binary gate. One literal markdown reference then resolves
   through `resolve_help_asset`: `locale+theme -> locale -> theme -> base`. A
   **declared** cell that is missing is a content bug and returns `None` (the
-  placeholder path), never the base; a locale with no declared matrix (zh
-  today) keeps the base image. zh figures are blocked on a pinned CJK font —
-  the system fallback is not reproducible and a runner without one renders
-  tofu, so they are deliberately not declared yet.
+  placeholder path), never the base; a locale with no declared matrix keeps the
+  base image. zh is reproducible because the app and the captures both pin the
+  bundled **Noto Sans SC** (SIL OFL 1.1) as the CJK fallback: the system
+  fallback is not deterministic, and a runner without a CJK font renders tofu.
+  Both bundled fonts ship their OFL texts next to the files
+  (`LICENSE-SourceSans3.txt`, `LICENSE-NotoSansSC.txt`).
+- **User state never enters a frame.** A capture surface must be a product
+  surface, not the maintainer's session. `session-picker`'s Recent shelf reads
+  `services.io.recent_projects` from disk, so a raw grab embedded the user's
+  real projects (private data in a shipped figure) and their changed
+  thumbnails/mtimes made the sha256 gate flaky. The devtool now injects demo
+  records with sample covers and a frozen relative label; nothing on the shelf
+  comes from the store.
 - **A JPEG destination is converted from the grab.** Captures are PNG; when the
   shipped asset is `.jpg` the generator converts the final frame (`quality=95`,
   `subsampling=0`, Pillow is pinned) so the installed bytes — and therefore the

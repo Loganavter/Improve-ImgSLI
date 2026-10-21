@@ -394,8 +394,8 @@ class _RecordingSession(capture_surface.CaptureSession):
         super().__init__(*args, **kwargs)
         self.saved: list[Path] = []
 
-    def grab(self, widget, filename, default_w, default_h, delay: int = 1200) -> Path:
-        path = super().grab(widget, filename, default_w, default_h, delay=delay)
+    def grab(self, widget, filename, default_w, default_h, delay: int = 1200, **kwargs) -> Path:
+        path = super().grab(widget, filename, default_w, default_h, delay=delay, **kwargs)
         self.saved.append(path)
         return path
 

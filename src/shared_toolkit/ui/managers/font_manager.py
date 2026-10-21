@@ -54,6 +54,17 @@ class FontManager(QObject):
         )
 
         self._built_in_family_cache: str | None = None
+        #: Bundled CJK fallback (Noto Sans SC, SIL OFL 1.1). The product font
+        #: has no Han glyphs, so without this chain every CJK string resolves
+        #: to whatever the system happens to ship (or tofu on a bare machine).
+        self._built_in_cjk_path = (
+            project_root
+            / "shared_toolkit"
+            / "resources"
+            / "fonts"
+            / "NotoSansSC-Regular.otf"
+        )
+        self._built_in_cjk_cache: str | None = None
 
     def apply_from_state(self, store):
 
@@ -97,6 +108,45 @@ class FontManager(QObject):
         except Exception:
             pass
         return None
+
+    def _ensure_cjk_loaded(self) -> str | None:
+        """Load the bundled CJK fallback once; None when the file is absent."""
+        if self._built_in_cjk_cache:
+            return self._built_in_cjk_cache
+        try:
+            path = str(self._built_in_cjk_path)
+            if os.path.exists(path):
+                font_id = QFontDatabase.addApplicationFont(path)
+                families = (
+                    QFontDatabase.applicationFontFamilies(font_id)
+                    if font_id != -1
+                    else []
+                )
+                if families:
+                    self._built_in_cjk_cache = families[0]
+                    return self._built_in_cjk_cache
+        except Exception:
+            pass
+        return None
+
+    def _with_cjk_fallback(self, font: QFont) -> QFont:
+        """Append the bundled CJK family after the chosen primary face.
+
+        ``Qt`` picks the first family that has a glyph; keeping the product
+        font first preserves Latin metrics, while Han/Kana text resolves to
+        the bundled fallback on every machine (reproducible help figures and
+        no tofu on a system without CJK fonts).
+        """
+        cjk_family = self._ensure_cjk_loaded()
+        if not cjk_family:
+            return font
+        primary = font.family() or ""
+        families = [primary] if primary else []
+        if cjk_family not in families:
+            families.append(cjk_family)
+        if len(families) > 1:
+            font.setFamilies(families)
+        return font
 
     def set_font(self, mode: str, family: str = ""):
         if _env_flag("IMGSLI_FLYOUT_DEBUG"):
@@ -148,6 +198,7 @@ class FontManager(QObject):
 
             if new_font.pointSize() <= 8:
                 new_font.setPointSize(11)
+            new_font = self._with_cjk_fallback(new_font)
 
             if _env_flag("IMGSLI_FLYOUT_DEBUG"):
                 _logger.debug(
@@ -177,6 +228,7 @@ class FontManager(QObject):
         except Exception:
             fallback_font = QFont()
             fallback_font.setPointSize(11)
+            fallback_font = self._with_cjk_fallback(fallback_font)
             app.setFont(fallback_font)
             try:
                 from sli_ui_toolkit.managers import UiFont

@@ -385,12 +385,29 @@ def test_canonical_env_pins_scale_and_dpi(hf, monkeypatch):
     assert hf.capture_surface.os.environ["QT_FONT_DPI"] == "96"
 
 
-def test_bootstrap_applies_the_bundled_font(hf, monkeypatch):
-    """The grab must use the product's font, not the host's default sans."""
+def test_bootstrap_applies_the_bundled_font_chain(hf, monkeypatch):
+    """The grab must use the product's fonts, not the host's defaults.
+
+    Both faces are pinned: Source Sans 3 for Latin, Noto Sans SC for Han. The
+    Han probe is a real glyph run, so a cleared fallback chain cannot pass.
+    """
     monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
-    app = hf.capture_surface._bootstrap_qt("dark", "en")
-    assert app.font().family() == hf.capture_surface.BUNDLED_FONT_FAMILY
-    assert hf.capture_surface.BUNDLED_FONT_FAMILY == "Source Sans 3"
+    cs = hf.capture_surface
+    app = cs._bootstrap_qt("dark", "zh")
+    assert cs.BUNDLED_FONT_FAMILY == "Source Sans 3"
+    assert cs.BUNDLED_CJK_FONT_FAMILY == "Noto Sans SC"
+    assert tuple(app.font().families()[:2]) == ("Source Sans 3", "Noto Sans SC")
+    assert "Noto Sans SC" in cs._cjk_run_families(app.font())
+    assert cs.BUNDLED_CJK_FONT_PATH.is_file()
+
+
+def test_bundled_fonts_ship_their_licences(hf):
+    """Both bundled fonts are SIL OFL 1.1, so both licence texts must ship."""
+    fonts_dir = hf.capture_surface.BUNDLED_FONT_PATH.parent
+    for name in ("LICENSE-SourceSans3.txt", "LICENSE-NotoSansSC.txt"):
+        text = (fonts_dir / name).read_text(encoding="utf-8")
+        assert "SIL OPEN FONT LICENSE" in text.upper()
+        assert "Version 1.1" in text
 
 
 
