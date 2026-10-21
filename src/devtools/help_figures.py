@@ -57,11 +57,6 @@ PINNABLE = ("locale", "theme")
 #: Recorded as applied: the bootstrap fails loudly when the font does not take,
 #: so a capture can never be silently host-flavoured.
 FORCED_PINS = ("font", "ui_scale")
-#: Constructors that hardcode ``current_language="en"`` / ``current_theme="dark"``
-#: (``SETTINGS_KWARGS``, the onboarding store): a non-default filter only reaches
-#: text resolved through ``tr`` at build time, so it is recorded as a caveat.
-_PINS_EN = frozenset({"settings", "settings-keyboard", "onboarding"})
-_PINS_DARK = frozenset({"settings", "settings-keyboard"})
 _SHA_LEN = 64
 _BASELINE_KEYS = {"locale", "theme", "sha256", "size", "width", "height", "pins_applied", "pins_unavailable"}
 _FIGURE_KEYS = {
@@ -331,18 +326,15 @@ def pin_report(
 
     ``locale``/``theme`` go through the surface API; ``font``/``ui_scale`` are
     forced by the canonical bootstrap for every frame (see ``FORCED_PINS``).
-    Constructors that hardcode their own language/theme are recorded as caveats
-    instead of being claimed as applied. A ``size`` pin is only claimed when the
+    Constructors that carry their own language/theme now receive the captured
+    values (``capture_surface.settings_kwargs`` / the onboarding store), so both
+    pins are real for every surface. A ``size`` pin is only claimed when the
     grabbed pixels really are that size; a surface that refuses the pin is
     recorded as unavailable WITH the achieved size (never silently resized —
     that would fake parity).
     """
     unavailable: list[str] = []
     applied = list(PINNABLE) + list(FORCED_PINS)
-    if figure.surface in _PINS_EN:
-        unavailable.append("locale:constructor-pins-en")
-    if figure.surface in _PINS_DARK and theme != "dark":
-        unavailable.append("theme:constructor-pins-dark")
     if figure.size is not None and captured_size is not None:
         if tuple(captured_size) == tuple(figure.size):
             applied.append("size")
@@ -430,7 +422,12 @@ def _run_surface(
         return pngs[-1]
     width, height = size if size else (None, None)
     session = _RecordingSession(
-        capture_surface._bootstrap_qt(theme, locale), dest, width=width, height=height
+        capture_surface._bootstrap_qt(theme, locale),
+        dest,
+        width=width,
+        height=height,
+        locale=locale,
+        theme=theme,
     )
     surface.build(session)
     if not session.saved:
@@ -443,7 +440,29 @@ def capture_png(figure: Figure, locale: str, theme: str, out_dir: Path | str) ->
     dest = Path(out_dir) / f"{figure.id}__{locale}__{theme}"
     dest.mkdir(parents=True, exist_ok=True)
     path = _run_surface(capture_surface.SURFACES[figure.surface], dest, theme, locale, figure.size)
-    return crop_png(path, figure.crop, figure_id=figure.id) if figure.crop else path
+    if figure.crop:
+        path = crop_png(path, figure.crop, figure_id=figure.id)
+    return _match_destination_format(path, figure)
+
+
+def _match_destination_format(path: Path, figure: Figure) -> Path:
+    """Convert to JPEG when the shipped asset is a JPEG.
+
+    The grab is always PNG. Installing PNG bytes under a ``.jpg`` name would
+    make the extension lie (Qt sniffs the format, so it "works"), and the
+    baseline would describe bytes that are not in the repo. Pillow is pinned
+    (12.1.1), so the conversion is deterministic and ``--check`` still compares
+    the installed bytes.
+    """
+    destination = (figure.destination or "").lower()
+    if not (destination.endswith(".jpg") or destination.endswith(".jpeg")):
+        return path
+    from PIL import Image
+
+    with Image.open(path) as image:
+        rgb = image.convert("RGB")
+        rgb.save(path, format="JPEG", quality=95, subsampling=0)
+    return path
 
 
 def _fingerprint(path: Path) -> tuple[str, int, int, int]:

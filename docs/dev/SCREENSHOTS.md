@@ -131,6 +131,22 @@ python src/devtools/help_figures.py --all --write-manifest       # record baseli
   the applied pins for what it generated. Recording needs a real display, so a
   fresh recipe stays `unbaselined` until someone runs `--all --write-manifest`
   on a private Xvfb.
+- **Variants are declared per figure, and installed per cell.** A recipe's
+  `locales` x `themes` is the matrix: more than one pair makes every capture
+  install under `assets/<locale>/<theme>/<name>` (a single-variant recipe keeps
+  today's flat destination). The five reproducible figures ship
+  `en|pt_BR|ru` x `dark|light` — 30 files, ~1.6 MB, below the 15 MB
+  bundle-in-the-binary gate. One literal markdown reference then resolves
+  through `resolve_help_asset`: `locale+theme -> locale -> theme -> base`. A
+  **declared** cell that is missing is a content bug and returns `None` (the
+  placeholder path), never the base; a locale with no declared matrix (zh
+  today) keeps the base image. zh figures are blocked on a pinned CJK font —
+  the system fallback is not reproducible and a runner without one renders
+  tofu, so they are deliberately not declared yet.
+- **A JPEG destination is converted from the grab.** Captures are PNG; when the
+  shipped asset is `.jpg` the generator converts the final frame (`quality=95`,
+  `subsampling=0`, Pillow is pinned) so the installed bytes — and therefore the
+  baseline — are the shipped format, not PNG bytes under a lying extension.
 - **Pins are recorded, not assumed.** `locale` and `theme` go through
   `capture_surface`'s CLI (`emit_language_changed`, `ThemeManager.set_theme`).
   `font` and `ui_scale` are forced for every capture by the canonical

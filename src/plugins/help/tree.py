@@ -341,7 +341,12 @@ def resolve_help_asset(
     candidates = (
         (root / language / theme_name / base.name, (language, theme_name) in declared),
         (root / language / base.name, language in declared_locales),
-        (root / theme_name / base.name, theme_name in declared_themes),
+        # A theme-only file serves every locale, so a locale x theme matrix
+        # never declares it: ``declared_themes`` is a projection of the matrix,
+        # and treating it as a theme-only declaration made an undeclared locale
+        # (zh, which ships no figure variants yet) fail closed to a placeholder
+        # instead of falling back to the base image.
+        (root / theme_name / base.name, False),
     )
     for candidate, _declared_here in candidates:
         if candidate.is_file():

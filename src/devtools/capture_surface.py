@@ -116,6 +116,16 @@ SETTINGS_KWARGS = dict(
 )
 
 
+def settings_kwargs(locale: str = "en", theme: str = "dark") -> dict:
+    """``SETTINGS_KWARGS`` for the locale/theme actually being captured.
+
+    The dialog renders both values itself (language radio, Appearance dropdown),
+    so a ru/light figure built from the en/dark pins would show the wrong
+    selection in the very control the figure is teaching.
+    """
+    return {**SETTINGS_KWARGS, "current_language": locale, "current_theme": theme}
+
+
 @dataclass(frozen=True)
 class Surface:
     """One capturable widget: how to build it and what shot it yields.
@@ -156,11 +166,20 @@ class CaptureSession:
         out_dir: Path,
         width: int | None = None,
         height: int | None = None,
+        *,
+        locale: str = "en",
+        theme: str = "dark",
     ) -> None:
         self.app = app
         self.out_dir = out_dir
         self.width = width
         self.height = height
+        #: Locale/theme this frame is rendered for. Surfaces whose constructor
+        #: carries its own language/theme (SettingsDialog, the onboarding store)
+        #: must receive these, otherwise the figure shows the right pixels with
+        #: the wrong selected value in the UI itself.
+        self.locale = locale
+        self.theme = theme
         #: Frame requested by the last grab (CLI override or surface default).
         self.last_pin: tuple[int, int] | None = None
         #: Frame actually grabbed (== ``last_pin`` unless the surface refused).
@@ -301,7 +320,7 @@ class CaptureSession:
 def _settings(sess: CaptureSession) -> None:
     from plugins.settings.dialog import SettingsDialog
 
-    dialog = SettingsDialog(**SETTINGS_KWARGS)
+    dialog = SettingsDialog(**settings_kwargs(sess.locale, sess.theme))
     sess.grab(dialog, "settings.png", 1016, 776, delay=900)
 
 
@@ -309,7 +328,7 @@ def _settings(sess: CaptureSession) -> None:
 def _settings_keyboard(sess: CaptureSession) -> None:
     from plugins.settings.dialog import SettingsDialog
 
-    dialog = SettingsDialog(**SETTINGS_KWARGS)
+    dialog = SettingsDialog(**settings_kwargs(sess.locale, sess.theme))
     dialog.select_section("builtin.keyboard")
     sess.grab(dialog, "settings-keyboard.png", 1016, 776, delay=1000)
 
@@ -379,6 +398,29 @@ def _grab_multi(sess: CaptureSession, widget, filename: str) -> None:
     sess.grab(widget, filename, 1200, 760, delay=2500)
 
 
+def _tab_icon(session_type: str):
+    """The tab's own icon, mirroring each tab's ``.icon`` property.
+
+    ``SessionPickerWidget`` falls back to a plus glyph when the context returns
+    None; the shipped figure shows the real tab glyphs, so the fake context must
+    answer with the same lazy getters the tab classes use (no registry/bootstrap
+    needed, and the SVG bytes are committed + deterministic).
+    """
+    try:
+        if session_type == "image_compare":
+            from tabs.image_compare.icons import Icon, get_icon
+            return get_icon(Icon.PHOTO)
+        if session_type == "multi_compare":
+            from tabs.multi_compare.icons import Icon, get_icon
+            return get_icon(Icon.GRID)
+        if session_type == "image_gallery":
+            from tabs.image_gallery.icons import Icon, get_icon
+            return get_icon(Icon.GALLERY)
+    except Exception:
+        return None
+    return None
+
+
 class _FakeSessionContext:
     """Minimal TabContext stand-in for SessionPickerWidget (no host window)."""
 
@@ -400,7 +442,7 @@ class _FakeSessionContext:
         if name == "list_session_blueprints":
             return tuple(self._blueprints)
         if name == "get_tab_icon":
-            return None
+            return _tab_icon(args[0])
         raise RuntimeError(f"unexpected service: {name}")
 
     def get_active_session(self):
@@ -435,7 +477,7 @@ def _onboarding(sess: CaptureSession) -> None:
 
     from plugins.onboarding.overlay import OnboardingOverlay
 
-    store = SimpleNamespace(settings=SimpleNamespace(current_language="en"))
+    store = SimpleNamespace(settings=SimpleNamespace(current_language=sess.locale))
     overlay = OnboardingOverlay(None, store)
     sess.grab(overlay, "onboarding.png", 1000, 720, delay=1500)
 

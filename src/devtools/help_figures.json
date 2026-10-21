@@ -39,6 +39,86 @@
           "size": 37691,
           "theme": "dark",
           "width": 1280
+        },
+        {
+          "height": 800,
+          "locale": "en",
+          "pins_applied": [
+            "locale",
+            "theme",
+            "font",
+            "ui_scale",
+            "size"
+          ],
+          "pins_unavailable": [],
+          "sha256": "15786508889f93fb114206b7b12c348f2bd4706371c98faf2d314ef483228c12",
+          "size": 37493,
+          "theme": "light",
+          "width": 1280
+        },
+        {
+          "height": 800,
+          "locale": "pt_BR",
+          "pins_applied": [
+            "locale",
+            "theme",
+            "font",
+            "ui_scale",
+            "size"
+          ],
+          "pins_unavailable": [],
+          "sha256": "81bd13c915c3c529d24aff5fc4864de577af2c179286a0474e5f6ca75cd06845",
+          "size": 38721,
+          "theme": "dark",
+          "width": 1280
+        },
+        {
+          "height": 800,
+          "locale": "pt_BR",
+          "pins_applied": [
+            "locale",
+            "theme",
+            "font",
+            "ui_scale",
+            "size"
+          ],
+          "pins_unavailable": [],
+          "sha256": "ebd3d2fcb3f004b7f915d11ecd6f353ab92add59a819fb0d37b83df84fe4201f",
+          "size": 38649,
+          "theme": "light",
+          "width": 1280
+        },
+        {
+          "height": 800,
+          "locale": "ru",
+          "pins_applied": [
+            "locale",
+            "theme",
+            "font",
+            "ui_scale",
+            "size"
+          ],
+          "pins_unavailable": [],
+          "sha256": "65ddc38fb7739122cb1a820b6675cf0ee2f3235ac687f52b0f638dc83f95e2d4",
+          "size": 37760,
+          "theme": "dark",
+          "width": 1280
+        },
+        {
+          "height": 800,
+          "locale": "ru",
+          "pins_applied": [
+            "locale",
+            "theme",
+            "font",
+            "ui_scale",
+            "size"
+          ],
+          "pins_unavailable": [],
+          "sha256": "935af1ce4a23ecc5c1b31a5d669d18c79b3b95657b8443655cefb819330a01f5",
+          "size": 37664,
+          "theme": "light",
+          "width": 1280
         }
       ],
       "covered": true,
@@ -46,7 +126,9 @@
       "destination": "src/tabs/image_gallery/resources/help/assets/overview_grid.png",
       "id": "help-gallery-populated",
       "locales": [
-        "en"
+        "en",
+        "pt_BR",
+        "ru"
       ],
       "note": "Shipped overview_grid.png is 1280x800, exactly the surface default; the six gradient cards come from CaptureSession.make_samples.",
       "pins_applied": [
@@ -64,7 +146,8 @@
       ],
       "surface": "gallery-populated",
       "themes": [
-        "dark"
+        "dark",
+        "light"
       ]
     },
     {
@@ -123,12 +206,90 @@
             "ui_scale",
             "size"
           ],
-          "pins_unavailable": [
-            "locale:constructor-pins-en"
-          ],
+          "pins_unavailable": [],
           "sha256": "1479062c89ced2607597c60af5d293579bd0947b73b3f5360a319feff31db3e7",
           "size": 29310,
           "theme": "dark",
+          "width": 1000
+        },
+        {
+          "height": 684,
+          "locale": "en",
+          "pins_applied": [
+            "locale",
+            "theme",
+            "font",
+            "ui_scale",
+            "size"
+          ],
+          "pins_unavailable": [],
+          "sha256": "0465dec80358eff5521440268c5e0fb0591bd3c9c3b4a81330417a0143eebff8",
+          "size": 29099,
+          "theme": "light",
+          "width": 1000
+        },
+        {
+          "height": 684,
+          "locale": "pt_BR",
+          "pins_applied": [
+            "locale",
+            "theme",
+            "font",
+            "ui_scale",
+            "size"
+          ],
+          "pins_unavailable": [],
+          "sha256": "93170d6ed5b87c838e36f1f34db5e9d4379af8bd34638a318250e090617a1e54",
+          "size": 30340,
+          "theme": "dark",
+          "width": 1000
+        },
+        {
+          "height": 684,
+          "locale": "pt_BR",
+          "pins_applied": [
+            "locale",
+            "theme",
+            "font",
+            "ui_scale",
+            "size"
+          ],
+          "pins_unavailable": [],
+          "sha256": "b05017fc7844f8e17d122d3645b97a635deb4b66459abfc107f93cf47826f03b",
+          "size": 30154,
+          "theme": "light",
+          "width": 1000
+        },
+        {
+          "height": 684,
+          "locale": "ru",
+          "pins_applied": [
+            "locale",
+            "theme",
+            "font",
+            "ui_scale",
+            "size"
+          ],
+          "pins_unavailable": [],
+          "sha256": "fc48d6a68177a9aa0cb12f9c136fb0776344d69cf36945b73f5040cdcb6d74a4",
+          "size": 34807,
+          "theme": "dark",
+          "width": 1000
+        },
+        {
+          "height": 684,
+          "locale": "ru",
+          "pins_applied": [
+            "locale",
+            "theme",
+            "font",
+            "ui_scale",
+            "size"
+          ],
+          "pins_unavailable": [],
+          "sha256": "1046c25ffcbe788fff17604a21639dbb9d002b49235641e276c6daad9056636c",
+          "size": 34724,
+          "theme": "light",
           "width": 1000
         }
       ],
@@ -137,9 +298,11 @@
       "destination": "src/plugins/onboarding/resources/help/assets/onboarding_ui_mode.png",
       "id": "help-onboarding",
       "locales": [
-        "en"
+        "en",
+        "pt_BR",
+        "ru"
       ],
-      "note": "Shipped asset is 1000x684, 36 px shorter than the surface default 1000x720; pinned size reproduces the shipped frame without a crop.",
+      "note": "P6 2026-10-21: the onboarding store receives the captured locale (current_language), the overlay chrome follows ThemeManager. Size pin reproduces the shipped 1000x684 frame without a crop.",
       "pins_applied": [
         "font",
         "locale",
@@ -147,9 +310,7 @@
         "theme",
         "ui_scale"
       ],
-      "pins_unavailable": [
-        "locale:constructor-pins-en"
-      ],
+      "pins_unavailable": [],
       "reason": "",
       "size": [
         1000,
@@ -157,35 +318,136 @@
       ],
       "surface": "onboarding",
       "themes": [
-        "dark"
+        "dark",
+        "light"
       ]
     },
     {
-      "captures": [],
-      "covered": false,
+      "captures": [
+        {
+          "height": 529,
+          "locale": "en",
+          "pins_applied": [
+            "locale",
+            "theme",
+            "font",
+            "ui_scale",
+            "size"
+          ],
+          "pins_unavailable": [],
+          "sha256": "e02fc509ac45f7685e86310465249f056117198900818fc74de6c4a3477c2f4c",
+          "size": 56065,
+          "theme": "dark",
+          "width": 844
+        },
+        {
+          "height": 529,
+          "locale": "en",
+          "pins_applied": [
+            "locale",
+            "theme",
+            "font",
+            "ui_scale",
+            "size"
+          ],
+          "pins_unavailable": [],
+          "sha256": "b6e03d13cd04c5544290573e1fe1d9d0a35b909b9465ae6d3872ed0a8ac2462c",
+          "size": 59401,
+          "theme": "light",
+          "width": 844
+        },
+        {
+          "height": 529,
+          "locale": "pt_BR",
+          "pins_applied": [
+            "locale",
+            "theme",
+            "font",
+            "ui_scale",
+            "size"
+          ],
+          "pins_unavailable": [],
+          "sha256": "f24c29ab9d915e1298395a96d145dea39002749935213bc20c0246f7a26cd2de",
+          "size": 61362,
+          "theme": "dark",
+          "width": 844
+        },
+        {
+          "height": 529,
+          "locale": "pt_BR",
+          "pins_applied": [
+            "locale",
+            "theme",
+            "font",
+            "ui_scale",
+            "size"
+          ],
+          "pins_unavailable": [],
+          "sha256": "6b08399772b5b8838685f2c416391bcc44a64dce1f21101d7cd767132673a5e3",
+          "size": 64782,
+          "theme": "light",
+          "width": 844
+        },
+        {
+          "height": 529,
+          "locale": "ru",
+          "pins_applied": [
+            "locale",
+            "theme",
+            "font",
+            "ui_scale",
+            "size"
+          ],
+          "pins_unavailable": [],
+          "sha256": "f061b80369fa19d8e724c65a9775f3e4c05c0271e3d9542c907a3d9de073a24b",
+          "size": 61850,
+          "theme": "dark",
+          "width": 844
+        },
+        {
+          "height": 529,
+          "locale": "ru",
+          "pins_applied": [
+            "locale",
+            "theme",
+            "font",
+            "ui_scale",
+            "size"
+          ],
+          "pins_unavailable": [],
+          "sha256": "3500dc52c833cfafbefa7372cd45d32868ae292241648938f2b9397700ff2d96",
+          "size": 65195,
+          "theme": "light",
+          "width": 844
+        }
+      ],
+      "covered": true,
       "crop": null,
       "destination": "src/tabs/session_picker/resources/help/assets/platform/session_picker.jpg",
       "id": "help-session-picker",
       "locales": [
-        "en"
+        "en",
+        "pt_BR",
+        "ru"
       ],
-      "note": "P4 2026-10-21: dims parity is there (844x529) but the devtool surface cannot reproduce the shipped figure — the fake session context returns no tab icons (plus placeholders replace the tab glyphs), the widget is grabbed as a bare top-level so it paints the default palette (light) instead of the recipe theme, and the live layout now carries an AI Gallery card. Keep the manual asset; a faithful surface needs a themed host + the real icon service first.",
+      "note": "P6 2026-10-21: now reproducible — the fake session context answers get_tab_icon with each tab's real SVG getter (tabs.<tab>.icons), so the plus-placeholder fallback is gone; the live layout carries the AI Gallery card. Shipped asset is JPEG, so install_destination writes .jpg and the generator converts the grab (quality 95, 4:4:4); frame is the shipped 844x529.",
       "pins_applied": [
-        "locale",
-        "theme"
-      ],
-      "pins_unavailable": [
         "font",
+        "locale",
+        "size",
+        "theme",
         "ui_scale"
       ],
-      "reason": "hand-composed",
+      "pins_unavailable": [],
+      "reason": "",
       "size": [
         844,
         529
       ],
       "surface": "session-picker",
       "themes": [
-        "dark"
+        "dark",
+        "light"
       ]
     },
     {
@@ -200,12 +462,90 @@
             "ui_scale",
             "size"
           ],
-          "pins_unavailable": [
-            "locale:constructor-pins-en"
-          ],
+          "pins_unavailable": [],
           "sha256": "2033e9979d38667bf89813c83e55e673f0464f00aa4ba066591c20edfb8ccdb4",
           "size": 44814,
           "theme": "dark",
+          "width": 1016
+        },
+        {
+          "height": 776,
+          "locale": "en",
+          "pins_applied": [
+            "locale",
+            "theme",
+            "font",
+            "ui_scale",
+            "size"
+          ],
+          "pins_unavailable": [],
+          "sha256": "7994b513f2c83ed42804c84b385ea1c87e9d4a2a8caab7391f991337b9d7fa1a",
+          "size": 44891,
+          "theme": "light",
+          "width": 1016
+        },
+        {
+          "height": 776,
+          "locale": "pt_BR",
+          "pins_applied": [
+            "locale",
+            "theme",
+            "font",
+            "ui_scale",
+            "size"
+          ],
+          "pins_unavailable": [],
+          "sha256": "1f376ffe14bbd22c2c481d656a0e72a0f5bffb4a2396c69aedb910f5982cff4f",
+          "size": 47460,
+          "theme": "dark",
+          "width": 1016
+        },
+        {
+          "height": 776,
+          "locale": "pt_BR",
+          "pins_applied": [
+            "locale",
+            "theme",
+            "font",
+            "ui_scale",
+            "size"
+          ],
+          "pins_unavailable": [],
+          "sha256": "964ae2feca96a5eab0bffd9dfd5fc3f048b053a405e6cf84d62676eeeda00070",
+          "size": 47226,
+          "theme": "light",
+          "width": 1016
+        },
+        {
+          "height": 776,
+          "locale": "ru",
+          "pins_applied": [
+            "locale",
+            "theme",
+            "font",
+            "ui_scale",
+            "size"
+          ],
+          "pins_unavailable": [],
+          "sha256": "9421af60b78b01b8121b331e430dd00ee703831386ce53665b499222459979b7",
+          "size": 44665,
+          "theme": "dark",
+          "width": 1016
+        },
+        {
+          "height": 776,
+          "locale": "ru",
+          "pins_applied": [
+            "locale",
+            "theme",
+            "font",
+            "ui_scale",
+            "size"
+          ],
+          "pins_unavailable": [],
+          "sha256": "ed4f2d028e08ae7dca25e1b4d1e7ceabd14876ffee2967bc8073b7a1a957a828",
+          "size": 44984,
+          "theme": "light",
           "width": 1016
         }
       ],
@@ -214,9 +554,11 @@
       "destination": "src/plugins/settings/resources/help/assets/settings_general.png",
       "id": "help-settings-general",
       "locales": [
-        "en"
+        "en",
+        "pt_BR",
+        "ru"
       ],
-      "note": "Shipped settings_general.png is 1016x776 (measured inventory); the surface default is larger, so the shipped size is pinned rather than cropped. SETTINGS_KWARGS pins current_language=en and current_theme=dark, so non-default filters are only partly effective.",
+      "note": "P6 2026-10-21: settings_kwargs passes the captured locale/theme into the dialog, so the language radio and the Appearance dropdown match the frame; chrome theme comes from ThemeManager. Size pin reproduces the shipped frame.",
       "pins_applied": [
         "font",
         "locale",
@@ -224,9 +566,7 @@
         "theme",
         "ui_scale"
       ],
-      "pins_unavailable": [
-        "locale:constructor-pins-en"
-      ],
+      "pins_unavailable": [],
       "reason": "",
       "size": [
         1016,
@@ -234,7 +574,8 @@
       ],
       "surface": "settings",
       "themes": [
-        "dark"
+        "dark",
+        "light"
       ]
     },
     {
@@ -249,12 +590,90 @@
             "ui_scale",
             "size"
           ],
-          "pins_unavailable": [
-            "locale:constructor-pins-en"
-          ],
+          "pins_unavailable": [],
           "sha256": "25d9c9d8622289c33ff801712ef005217b9be080e5c73ca7726ec62525603d9c",
           "size": 80443,
           "theme": "dark",
+          "width": 1032
+        },
+        {
+          "height": 792,
+          "locale": "en",
+          "pins_applied": [
+            "locale",
+            "theme",
+            "font",
+            "ui_scale",
+            "size"
+          ],
+          "pins_unavailable": [],
+          "sha256": "5f42f0ac8ef7645645afd1796db7311fdbdb8f5077d2220fa0f29e324ea99bd4",
+          "size": 81044,
+          "theme": "light",
+          "width": 1032
+        },
+        {
+          "height": 792,
+          "locale": "pt_BR",
+          "pins_applied": [
+            "locale",
+            "theme",
+            "font",
+            "ui_scale",
+            "size"
+          ],
+          "pins_unavailable": [],
+          "sha256": "41df8ff6d4de59f2eaf206b15aaf8b39832b4462e61ef411711835b2eb021b13",
+          "size": 88432,
+          "theme": "dark",
+          "width": 1032
+        },
+        {
+          "height": 792,
+          "locale": "pt_BR",
+          "pins_applied": [
+            "locale",
+            "theme",
+            "font",
+            "ui_scale",
+            "size"
+          ],
+          "pins_unavailable": [],
+          "sha256": "db0d4a33276d69393b45f9169fbd8f222c8f4579a719c387acc121ac56a8b36d",
+          "size": 88842,
+          "theme": "light",
+          "width": 1032
+        },
+        {
+          "height": 792,
+          "locale": "ru",
+          "pins_applied": [
+            "locale",
+            "theme",
+            "font",
+            "ui_scale",
+            "size"
+          ],
+          "pins_unavailable": [],
+          "sha256": "dadc4ef8898ddab0ad12880c65905997a4a218be6de2cea57557e61092b8f1ee",
+          "size": 88313,
+          "theme": "dark",
+          "width": 1032
+        },
+        {
+          "height": 792,
+          "locale": "ru",
+          "pins_applied": [
+            "locale",
+            "theme",
+            "font",
+            "ui_scale",
+            "size"
+          ],
+          "pins_unavailable": [],
+          "sha256": "a0f3e1dbceae0060e0f3c34b8b918fc78de262f99e086c83d95fda689e932731",
+          "size": 88656,
+          "theme": "light",
           "width": 1032
         }
       ],
@@ -263,9 +682,11 @@
       "destination": "src/resources/help/assets/platform/settings_keyboard.png",
       "id": "help-settings-keyboard",
       "locales": [
-        "en"
+        "en",
+        "pt_BR",
+        "ru"
       ],
-      "note": "Shipped 1032x792 is 16 px larger than the surface default each way; the pinned size reproduces it. SETTINGS_KWARGS pins en/dark as above.",
+      "note": "P6 2026-10-21: settings_kwargs passes the captured locale/theme into the dialog, so the language radio and the Appearance dropdown match the frame; chrome theme comes from ThemeManager. Size pin reproduces the shipped frame.",
       "pins_applied": [
         "font",
         "locale",
@@ -273,9 +694,7 @@
         "theme",
         "ui_scale"
       ],
-      "pins_unavailable": [
-        "locale:constructor-pins-en"
-      ],
+      "pins_unavailable": [],
       "reason": "",
       "size": [
         1032,
@@ -283,7 +702,8 @@
       ],
       "surface": "settings-keyboard",
       "themes": [
-        "dark"
+        "dark",
+        "light"
       ]
     }
   ],
