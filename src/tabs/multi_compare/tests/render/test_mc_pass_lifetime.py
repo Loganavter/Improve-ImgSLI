@@ -183,3 +183,29 @@ def test_each_renderer_owns_its_own_base_images_pass():
     assert r1.image_pass.slot_pixel_sources == {}
     assert r2.image_pass.slot_pixel_sources == {2: sentinel2}
     assert r2.image_pass.pending_uploads == [(2, sentinel2)]
+
+
+def test_release_drops_the_slot_bookkeeping_with_the_old_generation():
+    """A released renderer must not keep "this slot is uploaded" knowledge.
+
+    multi_compare's own comment records the failure this prevents: after an
+    RHI identity change the array/slot textures are new and empty, while a
+    surviving ``slot_pixel_sources`` made ``_sync_textures()`` see "nothing
+    changed" and skip every upload -- the canvas then rendered the clear
+    colour only. ``release()`` re-runs ``__init__``, which builds a fresh base
+    pass from the manifest, so the bookkeeping cannot outlive the generation.
+    """
+    rhi = _fake_rhi()
+    renderer = MultiCompareRhiRenderer(_fake_host(rhi))
+    stale_pass = renderer.image_pass
+    stale_pass.slot_pixel_sources[7] = "stale source"
+    renderer.initialized = True
+
+    renderer.release()
+
+    assert renderer.image_pass is not stale_pass, "the base pass survived release()"
+    assert renderer.image_pass.slot_pixel_sources == {}, (
+        "stale slot bookkeeping survived release(): the next _sync_textures() "
+        "would treat every slot as already uploaded"
+    )
+    assert renderer.initialized is False, "the completed-init latch survived release()"
