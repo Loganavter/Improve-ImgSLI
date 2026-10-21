@@ -512,7 +512,7 @@
     },
     {
       "id": "help-video-editor",
-      "capture": "@window",
+      "capture": "@screen",
       "steps": [
         {
           "open_tab": "image_compare"
@@ -557,6 +557,7 @@
         }
       ],
       "crop": null,
+      "crop_element": {"window": "VideoEditorDialog", "pad": 0},
       "destination": "src/tabs/image_compare/resources/help/assets/video_editor_window.png",
       "locales": [
         "en"
