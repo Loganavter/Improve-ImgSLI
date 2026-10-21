@@ -49,6 +49,7 @@
       "models_from_cache_stale": "无法连接服务提供方（{reason}）——显示缓存列表（{count}）。",
       "models_from_curated": "内置备用列表（{count}）——不是服务提供方的目录（{reason}）。",
       "models_none": "没有模型列表——请手动输入模型名称。",
+      "models_unavailable": "{reason} — 无法获取模型列表",
       "models_reason_auth": "密钥被拒绝",
       "models_reason_network": "没有连接",
       "models_reason_http": "接口返回错误",

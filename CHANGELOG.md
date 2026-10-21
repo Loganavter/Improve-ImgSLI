@@ -2,6 +2,26 @@
 
 ## [Unreleased]
 
+### Changed
+
+- **The AI model list maintains itself; the "Refresh list" button and the
+  cache-status caption are gone (owner request 2026-10-22).** The discovery
+  combo now re-asks the provider on app start / first settings open and on
+  every entry to Image Gallery — AI (`SettingsDialog.section_shown` →
+  `refresh=True`), and the combo is rebuilt only when the fetched catalog
+  differs from the one on screen — an identical re-fetch keeps the current
+  selection and scroll (a changed catalog is replaced, restoring the persisted
+  model). With the button retired, its width goes to the dropdown
+  (model field `2`, discovery combo `3`). When a fetch yields **no models at
+  all** (first run offline / rejected key), the failure is reported on the
+  dropdown itself as a single row ("no connection — no model list" and the
+  other `models_reason_*` texts, translated in en/ru/zh/pt_BR); that row's data
+  is `None`, so picking it never writes the message into the model field.
+  Tests: `src/tabs/image_gallery/tests/test_settings_ai_providers.py` (23 —
+  no refresh control/caption, page entry re-fetches with `refresh=True` and
+  other pages do not, identical catalog keeps the combo untouched, changed
+  catalog replaces it, an empty failed fetch renders one non-model error row).
+
 ### Fixed
 
 - **Typing into a focused combo box no longer loses W/A/S/D/Q/E and Space.**

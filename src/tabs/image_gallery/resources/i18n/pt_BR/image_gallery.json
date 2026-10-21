@@ -49,6 +49,7 @@
       "models_from_cache_stale": "Provedor inacessível ({reason}) — mostrando a lista em cache ({count}).",
       "models_from_curated": "Lista interna de reserva ({count}) — não é o catálogo do provedor ({reason}).",
       "models_none": "Sem lista de modelos — digite o nome de um modelo.",
+      "models_unavailable": "{reason} — lista de modelos indisponível",
       "models_reason_auth": "a chave foi recusada",
       "models_reason_network": "sem conexão",
       "models_reason_http": "o endpoint retornou um erro",

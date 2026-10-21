@@ -10,8 +10,10 @@ owns its default endpoint, a curated fallback catalog and a default model, so a
 switch can replace a model the new provider does not serve. The model picker
 lists what the provider actually serves — ``GET {base_url}/models`` through
 ``services/ai_models.models_for`` (network → 24 h cache → curated fallback),
-fetched OFF the GUI thread so an unreachable endpoint never freezes the dialog —
-and the status line says where the list came from (and why it fell back).
+fetched OFF the GUI thread so an unreachable endpoint never freezes the dialog.
+The catalog is re-requested on app start and on every entry to this page (owner
+request 2026-10-22: no manual refresh control, no status caption), and the combo
+is rebuilt only when the fetched catalog differs from the one on screen.
 
 The model value stays a text field (``CustomLineEdit``) plus a discovery combo
 beside it: the toolkit ``ComboBox`` is a painter-pipeline Button-based control
@@ -40,7 +42,7 @@ from PySide6.QtWidgets import QHBoxLayout
 from PySide6.QtCore import QThreadPool
 
 from sli_ui_toolkit.managers import scaled_px
-from sli_ui_toolkit.widgets import Button, CheckBox, ComboBox, CustomLineEdit
+from sli_ui_toolkit.widgets import CheckBox, ComboBox, CustomLineEdit
 
 from plugins.settings.typography import (
     apply_settings_body,
@@ -70,7 +72,9 @@ _EFFORT_KEYS = (
 )
 _EFFORT_FALLBACKS = ("Auto", "Low", "Medium", "High", "None")
 
-#: Named discovery failures → the status line's reason text.
+#: Named discovery failures → the sentence shown in the discovery combo when
+#: the fetch produced nothing at all. A list that fell back to a cache/curated
+#: catalog still shows those models; this text only owns the empty case.
 _REASON_KEYS = {
     ai_models.REASON_AUTH: (
         "image_gallery.settings.models_reason_auth",
@@ -105,7 +109,6 @@ AI_GROUP = group(
     "image_gallery.settings.base_url",
     "image_gallery.settings.api_key",
     "image_gallery.settings.model_name",
-    "image_gallery.settings.refresh_models",
     "image_gallery.settings.ask_max_tokens",
     "image_gallery.settings.reasoning_effort",
     "image_gallery.settings.effort_auto",
@@ -367,31 +370,11 @@ def build(dialog, p):  # type: ignore[no-untyped-def]
         AI_GROUP.tag_member(dialog.gallery_ai_model_list, "image_gallery.settings.model_name")
     except Exception:
         pass
-    dialog.gallery_ai_refresh = Button(
-        text=_tr("image_gallery.settings.refresh_models", "Refresh list"),
-        variant="surface",
-        parent=dialog,
-    )
-    try:
-        dialog.gallery_ai_refresh.setMinimumHeight(scaled_px(30))
-        AI_GROUP.tag_member(dialog.gallery_ai_refresh, "image_gallery.settings.refresh_models")
-    except Exception:
-        pass
     model_row.addWidget(model_label)
     model_row.addWidget(dialog.gallery_ai_model, 2)
-    model_row.addWidget(dialog.gallery_ai_model_list, 2)
-    model_row.addWidget(dialog.gallery_ai_refresh, 0)
-
-    # Where the list came from (network / cache / curated) + why it fell back.
-    dialog.gallery_ai_models_status = settings_caption_label("", parent=dialog)
-    try:
-        dialog.gallery_ai_models_status.setWordWrap(True)
-    except Exception:
-        pass
-    status_row = QHBoxLayout()
-    status_row.setContentsMargins(scaled_px(150) + scaled_px(8), 0, 0, scaled_px(4))
-    status_row.setSpacing(0)
-    status_row.addWidget(dialog.gallery_ai_models_status, 1)
+    # The discovery combo takes the width the retired "Refresh list" button
+    # used to occupy, plus its own half of the pair.
+    model_row.addWidget(dialog.gallery_ai_model_list, 3)
 
     # Ask AI — answer-token budget (0/empty = auto from the scope size).
     tokens_row = QHBoxLayout()
@@ -503,7 +486,6 @@ def build(dialog, p):  # type: ignore[no-untyped-def]
         _col = max(scaled_px(150), _need + scaled_px(10))
         for _lbl in _labels:
             _lbl.setFixedWidth(_col)
-        status_row.setContentsMargins(_col + scaled_px(8), 0, 0, scaled_px(4))
     except Exception:
         pass
 
@@ -515,7 +497,6 @@ def build(dialog, p):  # type: ignore[no-untyped-def]
         group_widget.add_widget(builder.row(url_row))
         group_widget.add_widget(builder.row(key_row))
         group_widget.add_widget(builder.row(model_row))
-        group_widget.add_widget(builder.row(status_row))
         group_widget.add_widget(builder.row(tokens_row))
         group_widget.add_widget(builder.row(effort_row))
         group_widget.add_widget(builder.row(edge_row))
@@ -528,7 +509,6 @@ def build(dialog, p):  # type: ignore[no-untyped-def]
             url_row,
             key_row,
             model_row,
-            status_row,
             tokens_row,
             effort_row,
             edge_row,
@@ -579,66 +559,75 @@ def build(dialog, p):  # type: ignore[no-untyped-def]
         )
         return _tr(key, default)
 
-    def _status_text(count: int, source: str, reason: str) -> str:
-        if source == ai_models.SOURCE_NETWORK:
-            text = _tr(
-                "image_gallery.settings.models_from_network",
-                "Model list loaded from the provider ({count}).",
-            )
-        elif source == ai_models.SOURCE_CACHE and reason:
-            text = _tr(
-                "image_gallery.settings.models_from_cache_stale",
-                "Provider unreachable ({reason}) — showing the cached list ({count}).",
-            )
-        elif source == ai_models.SOURCE_CACHE:
-            text = _tr(
-                "image_gallery.settings.models_from_cache",
-                "Model list from the local cache ({count}).",
-            )
-        elif not count:
-            return _tr(
-                "image_gallery.settings.models_none",
-                "No model list — type a model name.",
-            )
-        else:
-            text = _tr(
-                "image_gallery.settings.models_from_curated",
-                "Built-in fallback list ({count}) — not the provider's catalog.",
-            )
+    def _empty_reason_text(reason: str) -> str:
+        """The one row a combo shows when discovery returned nothing.
+
+        Owner request 2026-10-22: no separate status caption — report the
+        failure on the dropdown itself. The row's data is ``None`` so it can
+        never be mistaken for a model id (see ``_on_model_list_picked``).
+        """
+        template = _tr(
+            "image_gallery.settings.models_unavailable",
+            "{reason} — no model list",
+        )
         try:
-            return text.format(count=count, reason=_reason_text(reason))
+            return template.format(reason=_reason_text(reason))
         except (KeyError, ValueError, IndexError):
-            return text
+            return template
 
     def _fill_model_list(models, source: str, reason: str) -> None:
-        """Populate the discovery combo; the edit keeps the persisted value."""
+        """Populate the discovery combo; the edit keeps the persisted value.
+
+        A re-fetch that returns the same catalog must not rebuild the combo:
+        clearing it would drop the current selection/scroll for no reason
+        (owner: "если с текущим не сходится — заменять"). An empty catalog
+        becomes a single error row carrying the fetch failure.
+        """
+        # Publisher-first, then model name — the flat combo groups a vendor's
+        # models by order alone. Sorted at this render seam only:
+        # ``models_for``'s provider order stays for other consumers.
+        new_items = [str(model) for model in ai_models.sorted_models(models)]
+        target = new_items if new_items else [_empty_reason_text(reason)]
+        existing = [str(text) for text, _data in dialog.gallery_ai_model_list.items()]
+        if existing == target:
+            logger.debug(
+                "AI model list unchanged (%d models, source=%s)",
+                len(new_items),
+                source,
+            )
+            _sync_model_tooltips()
+            return
         sync_busy["on"] = True
         try:
             dialog.gallery_ai_model_list.clear()
-            # Publisher-first, then model name — the flat combo groups a
-            # vendor's models by order alone. Sorted at this render seam only:
-            # ``models_for``'s provider order stays for other consumers.
-            for model in ai_models.sorted_models(models):
-                try:
-                    dialog.gallery_ai_model_list.addItem(model, model)
-                except Exception:
-                    continue
-            current_model = str(dialog.gallery_ai_model.text()).strip()
-            index = -1
-            if current_model:
-                try:
-                    index = int(dialog.gallery_ai_model_list.findText(current_model))
-                except Exception:
-                    index = -1
-            if models:
+            if new_items:
+                for model in new_items:
+                    try:
+                        dialog.gallery_ai_model_list.addItem(model, model)
+                    except Exception:
+                        continue
+                current_model = str(dialog.gallery_ai_model.text()).strip()
+                index = -1
+                if current_model:
+                    try:
+                        index = int(dialog.gallery_ai_model_list.findText(current_model))
+                    except Exception:
+                        index = -1
                 dialog.gallery_ai_model_list.setCurrentIndex(max(0, index))
+            else:
+                # data=None marks "this row is the error, not a model id".
+                dialog.gallery_ai_model_list.addItem(target[0], None)
+                dialog.gallery_ai_model_list.setCurrentIndex(0)
         finally:
             sync_busy["on"] = False
+        logger.debug(
+            "AI model list replaced (%d models, source=%s, reason=%s)",
+            len(new_items),
+            source,
+            reason,
+        )
         # Restored selection: refresh both hover hints from the live values.
         _sync_model_tooltips()
-        dialog.gallery_ai_models_status.setText(
-            _status_text(len(models), source, reason)
-        )
 
     sync_busy = {"on": False}
 
@@ -661,14 +650,16 @@ def build(dialog, p):  # type: ignore[no-untyped-def]
         except Exception:
             pass
 
+    fetch_state = {"in_flight": False}
+
     def _refresh_models(*, refresh: bool = False) -> None:
         """Fetch the provider's list off the GUI thread (never blocks the page)."""
+        if fetch_state["in_flight"]:
+            return
+        fetch_state["in_flight"] = True
         prov = _selected_provider()
         api_key = str(dialog.gallery_ai_api_key.text())
         report: dict = {}
-        dialog.gallery_ai_models_status.setText(
-            _tr("image_gallery.settings.models_loading", "Loading the model list…")
-        )
 
         def _task():
             try:
@@ -679,6 +670,7 @@ def build(dialog, p):  # type: ignore[no-untyped-def]
                 return (), ai_models.SOURCE_CURATED
 
         def _done(result) -> None:
+            fetch_state["in_flight"] = False
             try:
                 models, source = result if result else ((), ai_models.SOURCE_CURATED)
             except Exception:
@@ -703,9 +695,14 @@ def build(dialog, p):  # type: ignore[no-untyped-def]
         if sync_busy["on"]:
             return
         try:
-            text = str(dialog.gallery_ai_model_list.currentText() or "").strip()
+            data = dialog.gallery_ai_model_list.currentData()
         except Exception:
-            text = ""
+            data = None
+        if data is None:
+            # The sole row is the discovery error message, not a model id.
+            _sync_model_tooltips()
+            return
+        text = str(dialog.gallery_ai_model_list.currentText() or "").strip()
         if text:
             dialog.gallery_ai_model.setText(text)
         _sync_model_tooltips()
@@ -746,6 +743,18 @@ def build(dialog, p):  # type: ignore[no-untyped-def]
             pass
         _refresh_models(refresh=False)
 
+    def _on_settings_section_shown(section_id: str) -> None:
+        """Entering the gallery-AI page re-asks the provider for its catalog.
+
+        The build callable runs once per dialog, not once per visit; the list
+        must be current whenever the user opens this page (owner request
+        2026-10-22: no manual refresh button — fetch on app start and on entry,
+        and replace the combo only when the catalog differs, see
+        ``_fill_model_list``).
+        """
+        if section_id == "image_gallery.ai":
+            _refresh_models(refresh=True)
+
     try:
         dialog.gallery_ai_enabled.toggled.connect(lambda v: _save_field("enabled", bool(v)))
         dialog.gallery_ai_base_url.textChanged.connect(lambda t: _save_field("base_url", str(t)))
@@ -756,7 +765,10 @@ def build(dialog, p):  # type: ignore[no-untyped-def]
             lambda _i: _apply_provider()
         )
         dialog.gallery_ai_model_list.currentIndexChanged.connect(_on_model_list_picked)
-        dialog.gallery_ai_refresh.clicked.connect(lambda: _refresh_models(refresh=True))
+        # Programmatic "ask the provider again" entry (page entry, Find Action
+        # reveal, tests) — the manual Refresh button is retired.
+        dialog.gallery_ai_reload_models = lambda: _refresh_models(refresh=True)
+        dialog.section_shown.connect(_on_settings_section_shown)
         dialog.gallery_ai_effort.currentIndexChanged.connect(
             lambda i: _save_field(
                 "reasoning_effort",
@@ -767,9 +779,9 @@ def build(dialog, p):  # type: ignore[no-untyped-def]
     except Exception:
         pass
 
-    # Initial list (cache first — ``models_for`` only calls out on a stale/empty
-    # cache or an explicit refresh).
-    _refresh_models(refresh=False)
+    # Initial list: an explicit network refresh, not cache-first — this is the
+    # "app start / first settings open" half of the same rule.
+    _refresh_models(refresh=True)
 
     # Apply offer: a changed analysis identity (model / base_url / profile /
     # effort / mode) means the existing scorecards belong to the old
