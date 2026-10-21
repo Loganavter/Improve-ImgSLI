@@ -202,6 +202,46 @@ python src/devtools/help_figures.py --all --write-manifest       # record baseli
   reports drift for a baselined figure whose frame isn't the pinned one. The
   `--all` run ends with a `figure / pinned / achieved / parity|differ` table.
 
+## Live figures (running app)
+
+Some manual figures only exist in a **running** app: real QRhi canvases,
+flyouts, session chrome, the Quick Look overlay. They are captured from a
+private instance by `src/devtools/help_live.py`, with recipes in
+`src/devtools/help_figures_live.json` (one entry per figure: capture target,
+scenario steps, crop, destination).
+
+```bash
+python src/devtools/help_live.py --list
+python src/devtools/help_live.py --figure help-toolbar
+python src/devtools/help_live.py --all --out /tmp/live-shots
+```
+
+Rules (each exists because a live capture lied):
+
+- **Isolate all four XDG dirs, not three.** `XDG_CONFIG_HOME` is where
+  `QSettings` keeps theme/language/window geometry — a recon that isolated only
+  DATA/CACHE/RUNTIME read the host's settings.
+- **Seed the profile before boot** (`theme`, `language`, `ui_mode`, window
+  size/position, `export_default_dir=/home/user/Pictures`) and sandbox `HOME`.
+  `set_theme`/`set_language` answer "applied" but do not repaint/retranslate an
+  open window, and a real home directory would print the maintainer's username
+  into the export dialog.
+- **A figure installs only after two consecutive captures are byte-identical**;
+  `min_size` rejects a helper/warning window (measured: "Save Result" without a
+  pair installed a 356x194 *load both slots* warning over the export figure).
+- **Live figures are not in the sha256 drift gate.** CI gates the devtool
+  surfaces (`help_figures.py --check`); a live capture carries no cross-host
+  promise. Two independent boots are the review proof (measured identical for
+  toolbar, tab strip, Multi Compare save dialog, gallery stats, Quick Look).
+- **`@window` vs a tab name.** A tab name captures that tab's widget (the tab
+  strip/title bar live outside it); `@window` captures the whole active window —
+  use it for chrome and dialogs. `wait_jobs` waits for the app's jobs to settle;
+  a fixed sleep is not a settle signal.
+
+Current live set: `help-toolbar`, `help-tab-strip`, `help-multi-save-dialog`,
+`help-gallery-stats`, `help-gallery-quicklook` (Image Compare pair figures land
+with the `open_folder slot/side` control-API change).
+
 ## Known limitation: the live QRhi/GL canvas
 
 The **Multi Compare grid canvas is not capturable headlessly**: the QRhi/GL

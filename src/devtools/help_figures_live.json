@@ -1,0 +1,276 @@
+{
+  "schema_version": 1,
+  "figures": [
+    {
+      "id": "help-toolbar",
+      "capture": "image_compare",
+      "steps": [
+        {
+          "open_tab": "image_compare"
+        },
+        {
+          "sleep": 2.0
+        }
+      ],
+      "crop": [
+        0,
+        88,
+        1280,
+        58
+      ],
+      "destination": "src/resources/help/assets/ui/toolbar.jpg",
+      "locales": [
+        "en"
+      ],
+      "themes": [
+        "dark"
+      ],
+      "note": "Live Image Compare toolbar row (Line / View / Magnifier / Record). Cropped from the window capture; the states inside the groups are the buttons' own current affordances.",
+      "min_size": [
+        1000,
+        600
+      ]
+    },
+    {
+      "id": "help-tab-strip",
+      "capture": "@window",
+      "steps": [
+        {
+          "open_tab": "image_compare"
+        },
+        {
+          "sleep": 1.5
+        },
+        {
+          "open_tab": "multi_compare"
+        },
+        {
+          "open_tab": "image_gallery"
+        },
+        {
+          "sleep": 2.0
+        }
+      ],
+      "crop": [
+        0,
+        44,
+        1280,
+        44
+      ],
+      "destination": "src/resources/help/assets/platform/tab_strip.png",
+      "locales": [
+        "en"
+      ],
+      "themes": [
+        "dark"
+      ],
+      "note": "Session tab strip with three sessions; live chrome, so the labels are the running app's.",
+      "min_size": [
+        800,
+        500
+      ]
+    },
+    {
+      "id": "help-export-dialog",
+      "capture": "@window",
+      "steps": [
+        {
+          "open_tab": "image_compare"
+        },
+        {
+          "sleep": 1.5
+        },
+        {
+          "open_folder": {
+            "path": "@samples",
+            "tab": "image_compare"
+          }
+        },
+        {
+          "sleep": 2.5
+        },
+        {
+          "run_action": "image_compare.save"
+        },
+        {
+          "sleep": 2.5
+        }
+      ],
+      "crop": null,
+      "destination": "src/plugins/export/resources/help/assets/export_dialog.jpg",
+      "locales": [
+        "en"
+      ],
+      "themes": [
+        "dark"
+      ],
+      "note": "Live export dialog (Save Result) with a loaded comparison; captured as the active window, so the preview is the real render the user sees.",
+      "min_size": [
+        800,
+        500
+      ]
+    },
+    {
+      "id": "help-multi-save-dialog",
+      "capture": "@window",
+      "steps": [
+        {
+          "open_tab": "multi_compare"
+        },
+        {
+          "sleep": 1.5
+        },
+        {
+          "open_folder": {
+            "path": "@samples",
+            "tab": "multi_compare"
+          }
+        },
+        {
+          "sleep": 3.0
+        },
+        {
+          "run_action": "multi_compare.save"
+        },
+        {
+          "sleep": 2.5
+        }
+      ],
+      "crop": null,
+      "destination": "src/tabs/multi_compare/resources/help/assets/export_save_dialog.png",
+      "locales": [
+        "en"
+      ],
+      "themes": [
+        "dark"
+      ],
+      "note": "Live Multi Compare save dialog (Save Grid) over a loaded grid.",
+      "min_size": [
+        800,
+        500
+      ]
+    },
+    {
+      "id": "help-gallery-stats",
+      "capture": "@window",
+      "steps": [
+        {
+          "open_tab": "image_gallery"
+        },
+        {
+          "sleep": 1.5
+        },
+        {
+          "open_folder": {
+            "path": "@samples",
+            "tab": "image_gallery"
+          }
+        },
+        {
+          "wait_jobs": 45.0
+        },
+        {
+          "sleep": 1.5
+        }
+      ],
+      "crop": null,
+      "destination": "src/tabs/image_gallery/resources/help/assets/triage_stats.png",
+      "locales": [
+        "en"
+      ],
+      "themes": [
+        "dark"
+      ],
+      "min_size": [
+        1000,
+        600
+      ],
+      "note": "Live gallery with a loaded folder; the stats strip (images / series / redundant) is the running analysis state."
+    },
+    {
+      "id": "help-gallery-quicklook",
+      "capture": "@window",
+      "steps": [
+        {
+          "open_tab": "image_gallery"
+        },
+        {
+          "sleep": 1.5
+        },
+        {
+          "open_folder": {
+            "path": "@samples",
+            "tab": "image_gallery"
+          }
+        },
+        {
+          "wait_jobs": 45.0
+        },
+        {
+          "sleep": 1.0
+        },
+        {
+          "ui_click": {
+            "id": "property:gallery_path=@samples/forest.png"
+          }
+        },
+        {
+          "sleep": 3.0
+        }
+      ],
+      "crop": null,
+      "destination": "src/tabs/image_gallery/resources/help/assets/quality_quicklook.png",
+      "locales": [
+        "en"
+      ],
+      "themes": [
+        "dark"
+      ],
+      "min_size": [
+        1000,
+        600
+      ],
+      "note": "Live Quick Look overlay after clicking a gallery card; the metrics/rows are the running analysis, not a fixture."
+    },
+    {
+      "id": "help-mc-layouts",
+      "capture": "multi_compare",
+      "steps": [
+        {
+          "open_tab": "multi_compare"
+        },
+        {
+          "sleep": 1.5
+        },
+        {
+          "open_folder": {
+            "path": "@samples/three",
+            "tab": "multi_compare",
+            "side": "right"
+          }
+        },
+        {
+          "sleep": 4.0
+        }
+      ],
+      "crop": [
+        0,
+        222,
+        1280,
+        290
+      ],
+      "destination": "src/tabs/multi_compare/resources/help/assets/layouts.jpg",
+      "locales": [
+        "en"
+      ],
+      "themes": [
+        "dark"
+      ],
+      "min_size": [
+        1000,
+        600
+      ],
+      "note": "Live Multi Compare row: three slots side by side with dividers and filename labels, composed through open_folder side=right. The first image auto-places; side drives the split of the following ones (documented limitation)."
+    }
+  ]
+}
