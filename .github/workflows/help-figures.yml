@@ -1,0 +1,95 @@
+name: Help figures
+
+# Separate from tests.yml on purpose: this gate needs a real (virtual) X
+# display and renders the shipped help surfaces, so it costs minutes the fast
+# test tier must not pay on every push. It also owns its own path filter — a
+# docs/asset/help-surface edit is what can break figure parity, and nothing
+# else in the suite looks at the rendered pixels.
+on:
+  pull_request:
+    paths:
+      - "src/resources/help/**"
+      - "src/**/resources/help/**"
+      - "src/devtools/help_figures.py"
+      - "src/devtools/help_figures.json"
+      - "src/devtools/capture_surface.py"
+      - "src/plugins/settings/**"
+      - "src/plugins/onboarding/**"
+      - "src/plugins/help/**"
+      - "src/tabs/image_gallery/**"
+      - "src/tabs/session_picker/**"
+      - "src/tabs/multi_compare/**"
+      - "src/shared_toolkit/**"
+      - "src/core/theme.py"
+      - "src/resources/themes.json"
+      - ".github/workflows/help-figures.yml"
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  help-figures:
+    name: Help figures
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check Out App
+        uses: actions/checkout@v4
+        with:
+          path: app
+
+      - name: Check Out Toolkit Sibling
+        uses: actions/checkout@v4
+        with:
+          repository: Loganavter/sli-ui-toolkit-private
+          token: ${{ secrets.TOOLKIT_PAT }}
+          path: sli-ui-toolkit
+
+      - name: Set Up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      # Same library set as the fast job in tests.yml, plus `xvfb`: the
+      # generator starts its own private X server (help_figures.py
+      # display_context -> `Xvfb :<free> -screen 0 1400x1000x24 -dpi 96`), and
+      # a CI runner ships no display at all. The bundled Source Sans 3 font is
+      # loaded from the app resources, so no distro font package is needed —
+      # libfontconfig1 is only there because Qt links against it.
+      - name: Install System Libraries
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y libegl1 libgl1 libxkbcommon0 libxkbcommon-x11-0 libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-shape0 libxcb-xfixes0 libfontconfig1 libdbus-1-3 xvfb
+
+      - name: Cache Pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-help-figures-${{ hashFiles('app/requirements-gui.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-help-figures-
+            ${{ runner.os }}-pip-tests-
+            ${{ runner.os }}-pip-
+
+      - name: Install Python Dependencies
+        working-directory: app
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-gui.txt
+
+      # The gate. `--check` regenerates every covered figure and compares the
+      # sha256 against the committed baselines in src/devtools/help_figures.json
+      # — exit 1 on drift, exit 0 when identical or still unbaselined.
+      #
+      # No QT_QPA_PLATFORM=offscreen here (unlike tests.yml): the painter
+      # pipeline renders a black frame offscreen, so the tool starts a real
+      # Xvfb and forces xcb for it (display_context), pinning the bundled font,
+      # QT_SCALE_FACTOR=1 and QT_FONT_DPI=96 itself. Setting offscreen would
+      # defeat both the capture and the DPI pin.
+      - name: Check Help Figure Drift
+        working-directory: app
+        env:
+          LIBGL_ALWAYS_SOFTWARE: "1"
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          python src/devtools/help_figures.py --check
