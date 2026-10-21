@@ -20,13 +20,19 @@ which return new images).
 W12 — one computation, not two: with ``IMGSLI_ANALYSIS_ENGINE=1`` the engine
 plan runs first and the legacy Stage-2 dicts are REBUILT from the records'
 pre-score ``raw`` values (unreproducible stage ⇒ its legacy call), so the
-detectors run once per item; flag off is untouched.
+detectors run once per item; flag off is untouched. That record→dict glue lives
+in ``services/analysis_bridge.py`` (W14), not here.
+
+W14 — one artifact catalog, too: in ``full_res_artifacts`` mode the engine is
+handed the SAME full-resolution store the tiled catalog reads, so the records
+carry the tiled severities the entry shows instead of proxy ones the read path
+would prefer.
 
 Pure + Qt-free (safe for ``GenericWorker``); no Store/EventBus writes.
 
 INTERFACE: ``PROXY_MAX_EDGE``, ``PROXY_CACHE_LIMIT``, ``Proxy``,
-``proxy_for``, ``clear_proxy_cache``, ``run_proxy_stages_sync``,
-``ENGINE_FLAG``.
+``proxy_for``, ``clear_proxy_cache``, ``run_proxy_stages_sync``. The engine
+flag and the record→legacy-dict bridge are ``services.analysis_bridge`` (W14).
 """
 
 from __future__ import annotations
@@ -217,130 +223,6 @@ def _analyze_artifacts_full_res(own, source_store, same, proxy_image, src_img):
                 logger.debug("proxy batch: item store close failed for %s", own, exc_info=True)
 
 
-#: Env flag of the analysis engine (plan-gallery-analysis-engine-2026-10-20 P1).
-ENGINE_FLAG = "IMGSLI_ANALYSIS_ENGINE"
-
-#: Engine axis id -> the raw key its legacy stage dict uses, for the three axes
-#: whose detector key is not the axis id — the entry is consumed by KEY
-#: (``metrics_stage2`` needs ``hf_ratio``/``delta_e``, the report ``clipping_pct``).
-LEGACY_RAW_KEYS = {"clipping": "clipping_pct", "detail_gain": "hf_ratio", "color_accuracy": "delta_e"}
-
-#: The axes each legacy Stage-2 dict carries, in its own order — the legacy
-#: SHAPES (``measure_camera_from_image`` + the BRISQUE it appends;
-#: ``compute_fidelity_from_images``' deltas + LPIPS/DISTS), not a producer
-#: vocabulary: a missing record sends that stage back to its legacy call.
-CAMERA_AXES = ("sharpness", "exposure", "clipping", "noise", "white_balance", "brisque")
-FIDELITY_AXES = ("ssim", "detail_gain", "color_accuracy", "clipping_delta", "halo_delta",
-                 "chroma_fringe_delta", "lpips", "dists")
-ARTIFACT_AXES = ("banding", "halo", "blocking", "chroma_fringing", "invented_texture",
-                 "noise_amplification", "over_smoothing")
-
-
-def _raw_dict(by_axis: dict, axes) -> dict | None:
-    """``{legacy raw key: pre-score raw}`` of the axes answering ``ok``; None when
-    the stage cannot be reproduced (missing/``error`` record, or no ``raw``), so
-    the caller runs that one legacy call. A ``gap`` is an answer: it is absent,
-    exactly as the legacy dict has no such key."""
-    out: dict = {}
-    for axis in axes:
-        record = by_axis.get(axis)
-        if record is None or str(getattr(record, "status", "")) == "error":
-            return None
-        if str(getattr(record, "status", "")) != "ok":
-            continue
-        raw = getattr(record, "raw", None)
-        if raw is None:
-            return None
-        out[LEGACY_RAW_KEYS.get(axis, axis)] = float(raw)
-    return out
-
-
-def _artifact_dict(by_axis: dict) -> dict | None:
-    """``{Artifact: Severity}`` from the catalog ranks; None if any is missing —
-    the legacy catalog always carries all seven flags (clean on error), so a
-    gap/error/unranked record cannot be rebuilt from records."""
-    from tabs.image_gallery.models import Artifact, Severity
-
-    by_rank = {0.0: Severity.CLEAN, 1.0: Severity.MILD, 2.0: Severity.FLAGGED}
-    out: dict = {}
-    for axis in ARTIFACT_AXES:
-        record = by_axis.get(axis)
-        raw = getattr(record, "raw", None)
-        if str(getattr(record, "status", "")) != "ok" or raw is None:
-            return None
-        if float(raw) not in by_rank:
-            return None
-        out[Artifact(axis)] = by_rank[float(raw)]
-    return out
-
-
-def _upscale_factor(item_proxy, source_proxy) -> int | None:
-    """Legacy ``upscale_factor`` (long side item/source) from the ORIGINAL sizes:
-    not an axis — no detector measures it, no score maps it — so no record can
-    carry it; the arithmetic is ``fidelity_metrics``' own (portrait-safe)."""
-    try:
-        (iw, ih), (sw, sh) = tuple(item_proxy.size), tuple(source_proxy.size)
-        liw, lsw = max(int(iw), int(ih)), max(int(sw), int(sh))
-        return max(1, int(round(liw / lsw))) if liw > 0 and lsw > 0 else None
-    except Exception:
-        return None
-
-
-def _stage_dicts_from_records(records, *, proxy, source_proxy, same,
-                              include_camera, full_res_artifacts) -> dict[str, dict]:
-    """The legacy Stage-2 dicts rebuilt from engine records (the W12 dedupe).
-
-    The engine's detector pass is the single computation: what the controller
-    applies is read off the records' pre-score ``raw`` instead of re-measured.
-    Each stage is rebuilt independently and an unreproducible stage stays OUT of
-    the result, so the caller runs only that one legacy call. ``full_res_artifacts``
-    is never deduped: the tiled catalog reads a full-resolution store no producer
-    may open (plan G11), so its severities are a different computation.
-    """
-    by_axis: dict = {}
-    for record in records or ():
-        by_axis.setdefault(str(getattr(record, "axis", "") or ""), record)
-    by_axis.pop("", None)
-    out: dict[str, dict] = {}
-    if not full_res_artifacts and (artifacts := _artifact_dict(by_axis)) is not None:
-        out["artifacts"] = artifacts
-    if include_camera and (camera := _raw_dict(by_axis, CAMERA_AXES)) is not None:
-        out["camera"] = camera
-    if source_proxy is not None and not same:
-        if (fidelity := _raw_dict(by_axis, FIDELITY_AXES)) is not None:
-            factor = _upscale_factor(proxy, source_proxy)
-            if factor is not None:
-                fidelity["upscale_factor"] = factor
-            out["fidelity"] = fidelity
-    return out
-
-
-def _engine_records(own, proxy_image, source_image):
-    """Engine records for one item (None when it did not run): the local plan over
-    the SAME decoded proxy, feeding the entry's numbers
-    (``_stage_dicts_from_records``) and the read path's provenance (W9)."""
-    try:
-        from engine.analysis.registry import discover
-        from engine.analysis.resolver import LOCAL_POLICY, resolve_plan
-        from tabs.image_gallery.analysis.context_builder import build_context
-        from tabs.image_gallery.analysis.runner import PRODUCERS_PACKAGE, run_plan
-
-        ctx = build_context(own, proxy_image=proxy_image, source_image=source_image)
-        resolution = resolve_plan(
-            discover(PRODUCERS_PACKAGE), policy=LOCAL_POLICY, capabilities=ctx.capabilities
-        )
-        records, _journal = run_plan(resolution, {str(own): ctx})
-        return records[str(own)]
-    except Exception:
-        # Deliberate broad except, local to the engine hook: it must not break
-        # the batch, and the legacy stages rebuild a complete entry without it
-        # (plan G6 is about producer fallbacks, not about this opt-in seam).
-        logger.warning(
-            "proxy batch: analysis engine hook failed for %s", own, exc_info=True
-        )
-        return None
-
-
 def run_proxy_stages_sync(
     items: list,
     source_path: Path | str | None,
@@ -352,13 +234,13 @@ def run_proxy_stages_sync(
 
     Builds each item proxy ONCE and the source proxy ONCE, then produces the
     artifact catalog + fidelity metrics (+ camera scalars when ``include_camera``)
-    over the shared bytes: from the analysis engine's records when ``ENGINE_FLAG``
-    is on (W12 — one detector pass, each stage dict rebuilt from its ``raw``),
-    from the legacy stage calls otherwise. Returns ``{str(item.path):
-    {"artifacts": {...}, "fidelity": {...}, "camera": {...}}}`` — stage dicts
-    present only when that stage was requested and measurable (fail-closed per
-    item, path-keyed, never copied between items). The controller still owns
-    delivery (wave B).
+    over the shared bytes: from the analysis engine's records when
+    ``analysis_bridge.ENGINE_FLAG`` is on (W12 — one detector pass, each stage
+    dict rebuilt from its ``raw``), from the legacy stage calls otherwise.
+    Returns ``{str(item.path): {"artifacts": {...}, "fidelity": {...},
+    "camera": {...}}}`` — stage dicts present only when that stage was
+    requested and measurable (fail-closed per item, path-keyed, never copied
+    between items). The controller still owns delivery (wave B).
 
     ``full_res_artifacts`` (wave A3): when True the artifact catalog runs
     tiled over a full-resolution ``TiledPixelStore`` per item instead of the
@@ -367,7 +249,13 @@ def run_proxy_stages_sync(
     fidelity/camera still consume the bounded proxy (inputs unchanged). Any
     per-item failure building/using the full-res store fails open to the
     proxy catalog. Default ``False`` is the unchanged proxy path.
+
+    With the engine flag on, that same item store is handed to the engine
+    (W14), so the artifact records and the entry's tiled severities are ONE
+    computation rather than two catalogs that disagree. The legacy tiled call
+    still runs when no store could be opened — the fail-open is unchanged.
     """
+    from tabs.image_gallery.services import analysis_bridge as bridge
     from tabs.image_gallery.services.artifacts import analyze_images
     from tabs.image_gallery.services.camera_metrics import measure_camera_from_image
     from tabs.image_gallery.services.fidelity_metrics import compute_fidelity_from_images
@@ -407,28 +295,65 @@ def run_proxy_stages_sync(
                         src_img = None  # same-file pair: detectors run sourceless
                 # W12: with the flag on the engine runs FIRST and the legacy stage
                 # dicts are rebuilt from its records — one detector pass per item.
-                engine_on = os.environ.get(ENGINE_FLAG) == "1"
+                engine_on = os.environ.get(bridge.ENGINE_FLAG) == "1"
                 rebuilt: dict[str, dict] = {}
                 records = None
-                if engine_on:
-                    records = _engine_records(own, proxy.image, src_img)
-                    if records is not None:
+                item_store = None
+                # W14: the tiled catalog can only be reproduced when the shared
+                # full-resolution source store the legacy call would anchor on is
+                # actually open (a source whose store failed stays sourceless in
+                # both paths — never anchored on the bounded proxy instead).
+                tiled_reproducible = not (
+                    full_res_artifacts
+                    and source_path is not None
+                    and not same
+                    and source_store is None
+                )
+                if engine_on and full_res_artifacts and tiled_reproducible:
+                    item_store = _open_full_res_store(own)
+                try:
+                    if engine_on:
+                        records = bridge.engine_records(
+                            own, proxy.image, src_img,
+                            tiled_store=item_store,
+                            # The full-resolution reference, not the bounded
+                            # proxy: tile boxes are item coordinates.
+                            tiled_source_store=(
+                                source_store if item_store is not None and not same else None
+                            ),
+                        )
+                        if records is not None:
+                            try:
+                                rebuilt = bridge.stage_dicts_from_records(
+                                    records, proxy=proxy, source_proxy=src_proxy,
+                                    same=same, include_camera=include_camera,
+                                    # Proxy ranks are not the tiled severities the
+                                    # entry shows: only rebuild artifacts from
+                                    # records that measured the tiled store.
+                                    artifacts_from_records=(
+                                        not full_res_artifacts or item_store is not None
+                                    ),
+                                )
+                            except Exception:
+                                # The bridge is a compatibility shim: a failure here
+                                # means "legacy stages for this item", not a broken entry.
+                                logger.debug(
+                                    "proxy batch: engine rebuild failed for %s", own, exc_info=True
+                                )
+                finally:
+                    if item_store is not None:
                         try:
-                            rebuilt = _stage_dicts_from_records(
-                                records, proxy=proxy, source_proxy=src_proxy, same=same,
-                                include_camera=include_camera,
-                                full_res_artifacts=full_res_artifacts,
-                            )
+                            item_store.close()
                         except Exception:
-                            # The bridge is a compatibility shim: a failure here
-                            # means "legacy stages for this item", not a broken entry.
                             logger.debug(
-                                "proxy batch: engine rebuild failed for %s", own, exc_info=True
+                                "proxy batch: item store close failed for %s", own, exc_info=True
                             )
                 if "artifacts" in rebuilt:
                     entry["artifacts"] = rebuilt["artifacts"]
                 else:
-                    if engine_on and not full_res_artifacts:
+                    if full_res_artifacts:
+                        logger.debug("proxy batch: legacy tiled artifact catalog for %s", own)
+                    elif engine_on:
                         logger.debug("proxy batch: legacy artifact catalog for %s", own)
                     if full_res_artifacts:
                         entry["artifacts"] = _analyze_artifacts_full_res(
