@@ -10,7 +10,7 @@ from sli_ui_toolkit.widgets import (
     CustomGroupBuilder,
     CustomGroupWidget,
     CustomLineEdit,
-    Label,
+
     MinimalistScrollBar,
     OverlayScrollArea,
     RadioButton,
@@ -19,6 +19,9 @@ from sli_ui_toolkit.widgets import (
     Switch,
     overlay_scrollbar_max_inset,
 )
+# `Label` left the public surface in text 2b; the class survives as a
+# documented internal exception until the Text-capability tickets close.
+from sli_ui_toolkit.ui.widgets.atomic.text_labels import Label
 
 __all__ = [
     "CheckBox",

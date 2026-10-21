@@ -11,7 +11,6 @@ from sli_ui_toolkit.widgets import (
     CustomGroupBuilder,
     CustomGroupWidget,
     CustomLineEdit,
-    Label,
     MinimalistScrollBar,
     OverlayScrollArea,
     RadioButton,
@@ -20,6 +19,10 @@ from sli_ui_toolkit.widgets import (
     Switch,
     overlay_scrollbar_max_inset,
 )
+# `Label` left the public surface in text 2b (toolkit #97); the class lives on
+# as a documented internal exception until the three Text-capability tickets
+# close. Re-exported here for the app's remaining consumers.
+from sli_ui_toolkit.ui.widgets.atomic.text_labels import Label
 
 __version__ = "1.1.0"
 __author__ = "Loganavter"
