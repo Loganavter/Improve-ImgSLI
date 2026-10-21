@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QPoint
-from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import QWidget
 
 from resources.translations import tr
@@ -67,15 +66,14 @@ def open_help_text_context_menu(
 
     def on_triggered(action_id: str, _data: object) -> None:
         if action_id == "help.text.copy":
-            text = document.selected_plain_text()
-            if text:
-                QGuiApplication.clipboard().setText(text)
+            # Toolkit copy contract: clipboard + the selection is dropped
+            # afterwards (a copy ends the selection gesture). Do not set the
+            # clipboard here — that is what left the highlight behind.
+            document.copy_selection()
         elif action_id == "help.text.select_all":
             document.select_all_text()
         elif action_id == "help.text.copy_markdown":
-            text = document.selected_markdown(source_markdown)
-            if text:
-                QGuiApplication.clipboard().setText(text)
+            document.copy_selection_markdown(source_markdown)
 
     # The menu stays on the app-wide RMB surface (``in_window``): it is a
     # child overlay of the dialog, drawn into the dialog's own surface.

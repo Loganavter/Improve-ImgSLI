@@ -148,7 +148,14 @@ class ContextMenuManager:
             parent_widget,
             entries=entries,
             on_triggered=on_triggered,
-            )
+            surface=surface,
+            # The manager's surface policy MUST reach the widget. Dropping it
+            # left every manager menu on the toolkit's global default (the app
+            # bootstrap configures ``popup``), i.e. a native Qt.Popup parented
+            # to the top-level — the documented Wayland compositing break
+            # (inv-2026-10-06-ql-rhi-menu-first): the host window's frame/alpha
+            # degrades and resizing slows down after the first menu.
+        )
         self._active_menu = menu
         menu.aboutToHide.connect(lambda: self._on_menu_hidden(menu))
         try:

@@ -186,3 +186,33 @@ def test_jpeg_destination_is_converted(tmp_path):
     help_live.crop_and_install(shot, out, None)
     with Image.open(out) as image:
         assert image.format == "JPEG"
+
+
+def test_jpeg_install_composites_the_transparent_window_margin(tmp_path):
+    """RED-BEFORE: alpha was dropped, so the CSD shadow band became black.
+
+    A top-level grab is RGBA with a fully transparent margin (measured on
+    ``ru/light/export_dialog.jpg``: 27588 transparent pixels, black at every
+    corner and along all four edges). ``convert("RGB")`` does not composite —
+    it discards alpha and leaves black, which reads as a rendering defect on a
+    light theme. The margin is also not part of the window, so it is cropped.
+    """
+    from PIL import Image
+
+    source = tmp_path / "shot.png"
+    grab = Image.new("RGBA", (60, 40), (0, 0, 0, 0))
+    window = Image.new("RGBA", (50, 30), (250, 250, 250, 255))
+    grab.paste(window, (5, 5))
+    for x, y in ((5, 5), (6, 5), (5, 6)):  # a rounded corner stays transparent
+        grab.putpixel((x, y), (0, 0, 0, 0))
+    grab.save(source)
+
+    destination = tmp_path / "figure.jpg"
+    help_live.crop_and_install(source, destination, None)
+
+    with Image.open(destination) as image:
+        assert image.size == (50, 30), "the transparent margin is not the window"
+        out = image.convert("RGB")
+    edge = [out.getpixel((x, 0)) for x in range(out.width)]
+    edge += [out.getpixel((0, y)) for y in range(out.height)]
+    assert all(sum(pixel) > 600 for pixel in edge), edge[:4]

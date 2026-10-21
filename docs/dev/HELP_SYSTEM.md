@@ -443,15 +443,20 @@ remains separate chrome above the canvas (clickable `_LinkLabel` rows, not part
 of body selection).
 
 Public document API used by the app: `set_markdown`, `plain_text`,
-`selected_plain_text()`, `selected_markdown()`, `select_all_text()`,
-`scroll_to_anchor`, `textContextMenuRequested(QPoint)`.
+`selected_plain_text()`, `selected_markdown()`, `copy_selection()`,
+`copy_selection_markdown()`, `select_all_text()`, `scroll_to_anchor`,
+`textContextMenuRequested(QPoint)`. Both copy entries set the clipboard and
+then drop the selection (the toolkit's standard copy rule — the highlight must
+not linger after the menu closes).
 
 Help body right-click opens a toolkit `ContextMenu` via
-`open_help_text_context_menu` → `ContextMenuManager`. That path passes
-`surface="popup"` so the menu is a frameless Qt popup (not a child of
-`HelpDialog`'s overlay). Button-anchored menus elsewhere stay in-window.
-Dismiss and hit-testing go through the manager's `contains_global` /
-outside-close paths like canvas ПКМ menus.
+`open_help_text_context_menu` → `ContextMenuManager`. The menu uses the
+manager's app-wide RMB surface (`in_window`): an overlay child of the dialog,
+never a native `Qt.Popup` — a popup parented to the top-level degrades that
+window's frame/compositing on Wayland (`inv-2026-10-06-ql-rhi-menu-first`) and
+made resizing lag after the first menu (2026-10-22). Dismiss and hit-testing go
+through the manager's `contains_global` / outside-close paths like canvas ПКМ
+menus.
 
 v2 blocks: headings `#` … `######` (+ `{#anchor}`), paragraphs
 (bold/italic/code/kbd/links), lists, fenced `` ``` ``` `` code blocks

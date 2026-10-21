@@ -935,6 +935,52 @@ def install_target(figure: LiveFigure, locale: str, theme: str) -> Path:
     return REPO_ROOT / install_destination(figure, locale, theme)
 
 
+def _edge_background(image):
+    """Colour of the window just inside a transparent grab margin.
+
+    A top-level grab is RGBA and its CSD shadow/corner band is fully
+    transparent. The first opaque pixel of the top row (then of the left
+    column) is the dialog's own edge colour — compositing onto it keeps a
+    rounded corner looking like the window, not like a sticker.
+    """
+    width, height = image.size
+    for x in range(width):
+        pixel = image.getpixel((x, 0))
+        if pixel[3] == 255:
+            return pixel[:3]
+    for y in range(height):
+        pixel = image.getpixel((0, y))
+        if pixel[3] == 255:
+            return pixel[:3]
+    return (255, 255, 255)
+
+
+def _flatten_alpha(image):
+    """Crop a grab's transparent margin and composite the rest onto its edge.
+
+    ``Image.convert("RGB")`` drops alpha instead of compositing, so a CSD
+    shadow band became a black frame around the dialog — measured on
+    ``ru/light/export_dialog.jpg``: 27588 fully transparent pixels (3.8% of the
+    frame), black at every corner and along all four edges. The figure looked
+    like a rendering defect on a light theme. Crop to the opaque bbox (that band
+    is not part of the window) and composite the residual corner pixels onto the
+    window's own edge colour.
+    """
+    from PIL import Image
+
+    if image.mode != "RGBA":
+        return image
+    bbox = image.getchannel("A").getbbox()
+    if bbox is None:
+        return image
+    image = image.crop(bbox)
+    if image.getchannel("A").getextrema()[0] == 255:
+        return image.convert("RGB")
+    background = Image.new("RGB", image.size, _edge_background(image))
+    background.paste(image, (0, 0), image)
+    return background
+
+
 def crop_and_install(
     screenshot: Path, destination: Path, crop: tuple[int, int, int, int] | None
 ) -> Path:
@@ -957,7 +1003,9 @@ def crop_and_install(
             image = image.crop((left, top, right, bottom))
         destination.parent.mkdir(parents=True, exist_ok=True)
         if destination.suffix.lower() in (".jpg", ".jpeg"):
-            image.convert("RGB").save(destination, format="JPEG", quality=95, subsampling=0)
+            _flatten_alpha(image).save(
+                destination, format="JPEG", quality=95, subsampling=0
+            )
         else:
             image.save(destination)
     return destination
