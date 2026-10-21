@@ -97,6 +97,17 @@
       }
     },
     {
+      "path": "src/devtools/live_scene_cycle.py",
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=devtool-pipeline size=exempt reason=\"one live-cycle contract: the hop plan, its observables, the wire client and the report shape are one document; splitting the hops from the report forks what 'observed' means\"",
+      "parsed": {
+        "pattern": "devtool-pipeline",
+        "size": "exempt",
+        "reason": "one live-cycle contract: the hop plan, its observables, the wire client and the report shape are one document; splitting the hops from the report forks what 'observed' means"
+      }
+    },
+    {
       "path": "src/devtools/scenario_cost.py",
       "limit": 500,
       "marker": "Audit-Meta:",
