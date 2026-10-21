@@ -98,6 +98,10 @@ otherwise ignored.
       "visible": true,
       "enabled": true,
       "layout": "QVBoxLayout",
+      "text": "Improve-ImgSLI",
+      "tooltip": "…",
+      "range": {"value": 3, "min": 0, "max": 10},
+      "has_focus": true,
       "action_ids": ["platform.settings"],
       "children": [ ... ]
     },
@@ -108,26 +112,46 @@ otherwise ignored.
       "visible": true,
       "...": "..."
     }
-  ]
+  ],
+  "geometry_space": "parent-local",
+  "theme": {"Button": {"surface": {"value": "#2b2b2b", "chain": ["surface", "bg"], "source": "themes.json:81"}}},
+  "mouse_grabber": "QMenu:",
+  "focus_widget": "Button:apply",
+  "active_window": "MainWindow:"
 }
 ```
 
 - `windows` is every top-level widget in the process at dump time, in
   whatever order Qt returns them — includes closed-but-not-destroyed and
   otherwise-hidden helper windows, so check each entry's own `visible`.
+- Root keys: `geometry_space` states the coordinate convention below,
+  `theme` maps a widget family to its resolved `token_family` tokens
+  (`value` / `chain` / `source`), and `mouse_grabber` / `focus_widget` /
+  `active_window` are the process-wide input state. The interactive dump
+  (`dump_ui_layout`) additionally carries `top_levels` (every top-level
+  window, so a stuck invisible popup is visible even when the single root is
+  not) and `input_state` (the same three input fields, grouped).
+- Per-node keys beyond the base set: `text` (label/value, best-effort),
+  `tooltip`, `range` (`{value, min, max}`), `children` (direct children,
+  recursive), and the input-state flags `transparent_for_mouse`,
+  `has_focus`, `is_active_window` — each recorded **only when true**, so
+  absence means false. Those flags plus `top_levels`/`input_state` are what
+  dead-overlay triage reads: a hit-test-invisible overlay shows
+  `transparent_for_mouse: true` or a foreign `mouse_grabber`.
 - `geometry` is `[x, y, w, h]`; for a top-level window this is screen
   coordinates, for a child it's parent-relative (`QWidget.geometry()`).
 - `layout` is the widget's own `QLayout` class name, omitted if none.
 - `action_ids` is omitted if empty; only exact widget matches are included
   (an ancestor's action does not leak onto its children — unlike
   `ActionRegistry.find_for_widget`, which climbs the parent chain for pulse
-  targeting). Chrome tagged via Qt dynamic properties instead of a static
-  `ActionTarget.widget` ref (e.g. Settings page members, tagged through
-  `SearchGroup.tag_member`/`tag_combo` for lazy `resolve_widget` lookup —
-  see [ACTIONS.md](ACTIONS.md)) does **not** show up as `action_ids` here;
-  cross-referencing those would mean calling `resolve_widget()` for every
-  action during the dump, which can have side effects (e.g. opening a
-  dropdown) — deliberately not done.
+  targeting). Both `ActionTarget` kinds are resolved: a static
+  `ActionTarget.widget` ref **and** a lazy `resolve_widget()` (flyout/panel
+  members, Settings page members tagged through
+  `SearchGroup.tag_member`/`tag_combo` — see [ACTIONS.md](ACTIONS.md)). So
+  chrome that is only reachable through `resolve_widget` **does** show up.
+  `resolve_widget()` is cheap and side-effect-free here — it returns the widget
+  the action captured at registration and never calls `ensure_visible`; that
+  one step is deliberately skipped (it can open a dropdown).
 - Tab actions only appear once the tab has run its `contribute_actions`
   (i.e. once it's the active tab) — a dump taken at the Session Picker will
   show host/platform actions only, not `image_compare.*` / `multi_compare.*`.
