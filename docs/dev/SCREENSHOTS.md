@@ -235,11 +235,13 @@ Rules (each exists because a live capture lied):
   toolbar, tab strip, Multi Compare save dialog, gallery stats, Quick Look).
 - **`@window` vs a tab name vs `@screen`.** A tab name captures that tab's
   widget (the tab strip/title bar live outside it); `@window` captures the whole
-  active window — use it for chrome and dialogs. Toolkit **flyouts are separate
-  popup windows**, so a window capture shows only the chrome behind them
-  (measured: the menu is in `ui_elements` while the window capture has no menu);
-  `@screen` grabs the X root (popups included) and its pixels are 1:1 with
-  `screen_rect`, which is what `crop_element` uses. `wait_jobs` settles analysis;
+  active window — use it for chrome and dialogs. Toolkit flyouts are in-app
+  `BaseFlyout` (`Qt.Widget`) children attached to the window's **overlay
+  layer**, not native dialogs; the X `grabWindow` capture can still miss them
+  (measured: the menu is in `ui_elements` while the window capture shows only
+  the chrome behind it, and a tab capture never includes a window-level
+  overlay). `@screen` grabs the X root (overlay included) and its pixels are
+  1:1 with `screen_rect`, which is what `crop_element` uses. `wait_jobs` settles analysis;
   a fixed sleep is not a settle signal.
 - **The render backend is per figure.** Image Compare canvas figures pin
   `rhi_backend=vulkan`: llvmpipe/OpenGL cannot create the IC canvas probe mip
