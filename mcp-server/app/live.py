@@ -515,6 +515,7 @@ class LiveBackend:
             "list_actions",
             "list_sessions",
             "get_state",
+            "get_canvas_scene",
             "read_log",
             "query_trace",
             "dump_ui_layout",
@@ -571,6 +572,17 @@ class LiveBackend:
             for row in self._rows(self._request("list_sessions", {}, client), "sessions")
         ]
         return {"count": len(rows), "sessions": rows, "source": "live"}
+
+    def get_canvas_scene(
+        self, *, client: LiveClient | None = None, tab: str | None = None
+    ) -> dict:
+        params: dict[str, Any] = {}
+        if tab:
+            params["tab"] = tab
+        result = self._request("get_canvas_scene", params, client)
+        payload = {key: value for key, value in result.items() if key != "source"}
+        payload["source"] = "live"
+        return payload
 
     def get_state(self, *, client: LiveClient | None = None, path: str | None = None) -> dict:
         params = {"path": path} if path else {}

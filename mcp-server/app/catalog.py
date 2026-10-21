@@ -311,6 +311,139 @@ TOOLS: list[dict] = [
         "handler": "get_state",
     },
     {
+        "name": "get_canvas_scene",
+        "title": "Read the canvas scene",
+        "description": (
+            "Read a tab's canvas scene as deterministic JSON: panes, dividers, "
+            "every magnifier instance (hidden ones flagged), canvas size, and "
+            "the camera/projection transform. Every geometry field names its "
+            "coordinate space (canvas_px or composition_px) and its source. Use "
+            "it before scene work to learn where the split and loupes are. "
+            "Live-only; not Store state (get_state) or widgets (dump_ui_layout)."
+        ),
+        "inputSchema": _params(
+            {
+                "tab": {
+                    **_STR,
+                    "description": "Tab kind to read (e.g. image_compare); omit to read the active session's tab.",
+                }
+            }
+        ),
+        "outputSchema": _object(
+            {
+                "schema": _STR,
+                "tab": _STR,
+                "scene_source": {
+                    "type": ["string", "null"],
+                    "description": "ic_scene (Image Compare scene graph) / mc_projection (Multi Compare projection), or null when the tab has no canvas.",
+                },
+                "has_canvas": {
+                    "type": "boolean",
+                    "description": "Whether a live canvas widget was found for that tab right now.",
+                },
+                "tab_has_canvas_concept": {
+                    "type": "boolean",
+                    "description": "Whether the tab kind owns a canvas at all (false separates 'never has one' from 'not open yet').",
+                },
+                "reason": {
+                    "type": ["string", "null"],
+                    "description": "Why there is no scene when has_canvas is false; null otherwise.",
+                },
+                "space": {
+                    "type": ["string", "null"],
+                    "description": "The scene's primary coordinate space: canvas_px, composition_px, or null.",
+                },
+                "canvas": {
+                    "type": ["object", "null"],
+                    "description": "Canvas size with its space and source, or null when it is not known yet.",
+                    "properties": {
+                        "w": _INT,
+                        "h": _INT,
+                        "space": _STR,
+                        "source": _STR,
+                    },
+                },
+                "panes": _array(
+                    _object(
+                        {
+                            "slot": _INT,
+                            "path": {"type": ["string", "null"]},
+                            "rect": {"type": "array", "items": {"type": "number"}},
+                            "space": _STR,
+                            "z": {"type": ["integer", "null"]},
+                            "visible": {"type": "boolean"},
+                            "painted": {"type": "boolean"},
+                            "in_composition": {"type": "boolean"},
+                            "reason": {"type": ["string", "null"]},
+                            "rect_source": _STR,
+                        },
+                        ["slot", "rect", "space", "painted", "in_composition"],
+                    )
+                ),
+                "dividers": _array(
+                    _object(
+                        {
+                            "axis": _STR,
+                            "pos": {"type": "number"},
+                            "thickness": {"type": "number"},
+                            "visible": {"type": "boolean"},
+                            "space": _STR,
+                            "thickness_space": _STR,
+                            "source": _STR,
+                        },
+                        ["axis", "pos", "space", "visible"],
+                    )
+                ),
+                "magnifiers": _array(
+                    _object(
+                        {
+                            "id": _STR,
+                            "visible": {"type": "boolean"},
+                            "active": {"type": "boolean"},
+                            "geometry_source": {
+                                "type": ["string", "null"],
+                                "description": "scene_graph when canvas geometry exists; null for a hidden instance (it has none in the render path).",
+                            },
+                            "space": {"type": ["string", "null"]},
+                            "capture": {"type": ["object", "null"]},
+                            "circles": _array({"type": "object", "additionalProperties": True}),
+                            "geometry_unavailable_reason": {"type": ["string", "null"]},
+                        },
+                        ["id", "visible", "active", "geometry_source", "circles"],
+                    )
+                ),
+                "transform": {
+                    "type": ["object", "null"],
+                    "description": "Camera (zoom/pan) plus the canvas→view or composition→framebuffer projection, or null without a canvas.",
+                },
+                "focus": {"type": ["object", "null"]},
+                "sources": {
+                    "type": "object",
+                    "additionalProperties": True,
+                    "description": "Per-field provenance map: which source produced each block.",
+                },
+                "unavailable": _array(
+                    _object(
+                        {"field": _STR, "reason": _STR}, ["field", "reason"]
+                    )
+                ),
+                "source": _source(),
+            },
+            [
+                "schema",
+                "tab",
+                "has_canvas",
+                "panes",
+                "dividers",
+                "magnifiers",
+                "unavailable",
+                "source",
+            ],
+        ),
+        "annotations": READ_ONLY,
+        "handler": "get_canvas_scene",
+    },
+    {
         "name": "read_log",
         "title": "Tail the app log file",
         "description": (
