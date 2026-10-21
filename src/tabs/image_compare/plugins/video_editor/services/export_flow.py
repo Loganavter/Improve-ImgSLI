@@ -304,7 +304,10 @@ class VideoExportFlow:
                 )
             except Exception:
                 msg = f"Saved to: {path}"
-            controller.presenter.main_window_app.actions.notify_system(
+            # ``MainWindow.action_registry`` is the action owner (window.py:88);
+            # ``window.actions`` is ``QWidget.actions()`` (a builtin method), so
+            # that spelling raises AttributeError and the exception below hides it.
+            controller.presenter.main_window_app.action_registry.notify_system(
                 title,
                 msg,
                 image_path=preview,
