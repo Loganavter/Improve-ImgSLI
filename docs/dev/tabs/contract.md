@@ -41,7 +41,7 @@ from `tabs/use_cases/session_lifecycle.py` `activate`). The page is added to
 | `localized_display_name(language)` | `display_name` | Tab-strip title (`ui/main_window/ui.py`). Tabs that own i18n override it — the host never keeps a session-type → title map |
 | `icon` | `None` | Session-picker cards, through the host `get_tab_icon` service |
 | `resources_dir` | `None` | Tab-owned icons/qss; its `i18n/` subtree is auto-registered by discovery |
-| `i18n_namespace` | `None` | Prefix for the tab's keys; also the contribution owner id (`owner_tab`) for settings/help catalogs |
+| `i18n_namespace` | `None` | Prefix for the tab's keys; also the contribution owner id (`owner_tab`, falling back to `session_type`) for settings/help catalogs |
 | `extra_i18n_roots()` | `[]` | `tabs/use_cases/discovery.py` registers each existing dir — for **nested** packages that own i18n (image_compare registers `plugins/video_editor/resources/i18n`) |
 | `startup_tier` | `"deferred"` | `tabs/use_cases/discovery.py`; a typo fails at import time (`__init_subclass__` validates `bootstrap` / `deferred`) |
 | `is_bootstrap_default` | `False` | Reserved exclusively for `session_picker` (`TabRegistry._bootstrap_default_tab()` raises for anyone else) |

@@ -134,10 +134,15 @@ wrong resolution strategy by forgetting an argument.
 ## host → tab: `create_service_for` (named hub tab)
 
 Rare companion to `create_service`: resolve a service against a **specific**
-`session_type`, not the active session. Legitimate when host chrome must talk
-to a known hub tab that may not be active — today that is the session picker,
-addressed via `core.store.INITIAL_WORKSPACE_SESSION_TYPE` (not a tab class
-name and not `getattr` on the page widget).
+`session_type`, not the active session. Legitimate when host code must talk to a
+session that is not the active one:
+
+| Call site | ID | Why not the active tab |
+|---|---|---|
+| `ui/main_window/project/recent.py` | `session_picker.host_chrome` | the picker's chrome is needed while another session is open |
+| `services/io/project_preview.py` | `capture_preview_image` | saving a non-active session still wants its preview |
+| `events/image_carry.py` | `begin_pending_image_insert` | an insert is being started for a named session |
+| `plugins/onboarding/plugin.py` | `requires_first_run_onboarding` | the probe names the session it is asking about |
 
 ```python
 chrome = TabRegistry().create_service_for(
@@ -380,8 +385,8 @@ As of this writing:
   `clipboard_paste_service`, `topology_overlays`, ...); `multi_compare`,
   `image_gallery` and `session_picker` implement a smaller set each
   (contribution IDs, `clipboard_paste_service`, `topology_overlays`, and
-  `session_picker.host_chrome` — the one `create_service_for` target). Grep the
-  ID's `create_service` branches before assuming a tab answers it.
+  `session_picker.host_chrome`, which is reached through `create_service_for`).
+  Grep the ID's `create_service` branches before assuming a tab answers it.
 - `clipboard_paste_service` is the one ID whose absence is fatal:
   `src/plugins/export/plugin.py` raises `RuntimeError("No tab provides
   clipboard_paste_service")` when no tab answers the startup probe. That is the

@@ -23,9 +23,10 @@ argument the registry runs bootstrap first, then deferred.
    `create_default_session_data` factory (`tabs/use_cases/discovery.py`).
 
 Packages with a `_` prefix are ignored. The `contract` and `registry` modules are
-skipped. `tab_packages_for_tier` also finds a tab's own `plugin.py` and nested
-`plugins/*/plugin.py` (see [overview.md](overview.md) — the picker needs the
-plugin, not just the tab).
+skipped. Tab discovery is one family of entry points; the tab's `plugin.py` (and
+nested `plugins/*/plugin.py`) is discovered by the **plugin** family
+(`iter_plugin_entry_points` / `plugin_modules_for_tier` in the same module) — see
+[overview.md](overview.md): the picker needs the plugin, not just the tab.
 
 `TabRegistry` is a **process-wide singleton** (`tabs/registry.py`, `__new__`)
 — strict active-tab routing (see [capability-mechanisms.md](capability-mechanisms.md))
