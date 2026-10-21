@@ -408,6 +408,37 @@ An `INTERFACE: none` claim is verified mechanically:
   `tests/test_analysis_default_on.py` pins the default, each off value and the
   `=1` back-compat. **The legacy branch is still present** — its deletion (and
   the read path's legacy domain branch) is P9b, a separate wave.
+- 2026-10-21: **P9b landed — the legacy analysis branch is deleted.** The engine
+  is the only path. Deleted: the env flag name, its off-value list and
+  `engine_enabled()` from `services/analysis_bridge.py` (and their `__all__`
+  entries), the `engine_on` branch in `services/proxy.py`, and every per-stage
+  "records unusable ⇒ call the legacy detector" fallback — the camera scalars
+  and the fidelity pair are no longer computed outside the engine. A stage the
+  records cannot answer is now ABSENT from the entry plus one `warning` naming
+  the stage and the producer (`analysis_bridge.reportable_gaps` /
+  `describe_gaps`, logged once per stage per batch); a normal `gap` axis stays
+  silent there because the read path shows it with its own reason. The rebuilt
+  dicts are unchanged for a healthy run (`test_entry_equals_the_legacy_stage_dicts`
+  compares them to the stage functions as an oracle), including the documented
+  `brisque` gap — no producer measures it since W13, and its absence is not a
+  reason to re-run the camera call.
+
+  **The one retained fallback: the artifact catalog.** A missing artifact entry
+  renders as `clean` in the UI (`quality_read.domain_artifact_severity`), i.e. a
+  producer failure would read as "nothing wrong" instead of as a failure, so
+  `services/proxy.py` recomputes the catalog (tiled call in `full_res_artifacts`
+  mode, else `artifacts.analyze_images`) and still logs the warning. Every other
+  stage shows the gap.
+
+  Tests: `test_analysis_default_on.py` was replaced by a "the env var is
+  ignored" gate (unset == `0` == `1`, and the flag symbols are gone); the
+  `=0` parametrizations in the equivalence/pipeline tests collapsed into the
+  single engine path; new gates prove both failure modes red-before — a failing
+  camera/fidelity producer leaves no numbers and calls no legacy detector
+  (counter 0), while a failing artifact producer still calls the catalog
+  fallback (counter 1) and the entry stays complete.
+  **Still open:** `analysis/read.py` keeps its legacy domain branch for items
+  without records (the read-path half of the deletion is a later wave).
 
 ## Catalog update
 

@@ -278,9 +278,9 @@ shows seven gap rows.
 
 ---
 
-## 10. Engine on by default (W9 read path; P9a default flip)
+## 10. The engine is the only path (W9 read path; P9a flip; P9b deletion)
 
-Status: **on by default** since P9a. The analysis engine's local plan runs inside
+Status: **the only path** since P9b. The analysis engine's local plan runs inside
 the proxy batch (`services/proxy.py`) for every folder, and each batch entry
 gains an `"analysis"` key holding that item's per-axis `AxisValue` records —
 value, producer, status and reason, from `engine/analysis/contracts.py`.
@@ -288,44 +288,60 @@ value, producer, status and reason, from `engine/analysis/contracts.py`.
 `GalleryItem.analysis_records` (transient: never persisted, never sent
 anywhere).
 
-**Kill-switch.** `IMGSLI_ANALYSIS_ENGINE=0` disables the engine for the next
-batch (no restart needed). The accepted off values are `0`, `false`, `no` and
-`off`, case-insensitive and whitespace-stripped; **unset, empty, `1` or any
-unrecognized value means on** — a typo can never silently restore the legacy
-path. The rule lives in one place, `services/analysis_bridge.engine_enabled()`;
-`=1` (the pre-P9a opt-in) keeps working as a no-op affirmation.
+**No kill-switch.** P9b deleted the env switch, its off-value list and the single
+function that read it (`services/analysis_bridge.py`): the engine has no "run the
+engine first, else the legacy detectors" branch, and a flag left in a shell
+profile changes nothing. There is one detector pass per item, and the legacy
+Stage-2 functions are not a second path — `tests/` still calls them as an oracle
+(`_legacy_oracle`), production code does not.
 
-**What the engine writes.** With the engine on, the plan's detector pass is the
-single computation for the batch:
+**What the engine writes.** The plan's detector pass is the single computation
+for the batch:
 
 - `entry["analysis"]` — the per-axis records (provenance for the read path);
-- `entry["artifacts"]` / `["fidelity"]` / `["camera"]` — the same legacy stage
-  dicts as before, rebuilt from the records' pre-score `raw` values (W12). A
-  stage that cannot be rebuilt from its records falls back to its own legacy
-  call, so a missing producer costs one stage, never a missing key;
+- `entry["artifacts"]` / `["fidelity"]` / `["camera"]` — the stage dicts the
+  report and the card still consume, rebuilt from the records' pre-score `raw`
+  values (W12), axis by axis. An axis no producer answers stays out of the dict
+  (today: `brisque`, whose producer W13 deleted) — a gap, not a borrowed number;
 - in `full_res_artifacts` mode (the production default) the records are measured
   over the SAME full-resolution `TiledPixelStore` the tiled catalog reads (W14),
   so the records and the entry's severities are one computation, not two.
 
-`analysis/read.py` prefers those records when an item has any: the record's
-value and provenance are what dots/rows/rank receive, regardless of the
-judgment domain. A requested axis with no record — or with a record whose status
-is `gap`/`error` — stays a gap and is never filled from `item.metrics` or
-`item.analysis`. That hard no-fallback rule is the point of the flip: the engine
-may disagree with the legacy numbers, and the disagreement is shown rather than
-silently repaired.
+**When a producer fails.** The stage dict is simply absent from the entry and one
+`warning` names the stage and the producer (with the axes and the producer's own
+reason). Nothing is measured a second time, so the reader sees the gap rather
+than a legacy number that disagrees with the records behind it:
 
-The default was flipped only after two A/B checks against the legacy path, both
-on a real folder with `full_res_artifacts=True`: a headless run produced
-identical numbers (8.8s vs 8.8s, cold processes), and a GUI run under a private
-Xvfb produced captures with **0 differing pixels** (2560×1392).
+| Stage | Producer fails | What the entry carries | What the reader sees |
+|---|---|---|---|
+| camera | `camera_scalars` raises | no `camera` dict | camera axes as `error` records, then gaps — never legacy scalars |
+| fidelity | `fidelity_reference` raises | no `fidelity` dict | fidelity axes as `error` records — never a re-run pair |
+| artifacts | `artifact_catalog` raises | the **recomputed catalog** | the real severities (see below) |
 
-What is NOT flipped yet:
+**The one exception: the artifact catalog.** A missing artifact entry renders as
+`clean` in the UI (`quality_read.domain_artifact_severity` defaults to clean), so
+a producer failure without a fallback would look like "nothing wrong" instead of
+a failure. P9b therefore keeps exactly that fallback: `services/proxy.py`
+recomputes the catalog — the tiled call in `full_res_artifacts` mode, else
+`artifacts.analyze_images` over the bounded proxy — and still logs the warning,
+so the substitution is visible in the log even though the entry looks complete.
 
-- the legacy branch is **still present** — the flag-disabled path runs the
-  legacy stage calls unchanged, and `analysis/read.py` keeps its legacy domain
-  branch for items without records. Deleting both is the next wave (P9b), not
-  this one;
-- producers, ranking weights, UI surfaces and persistence are untouched. The
-  only user-visible difference is that surfaces now read per-axis records
-  instead of whole-dict domain swaps.
+`analysis/read.py` prefers the records when an item has any: the record's value
+and provenance are what dots/rows/rank receive, regardless of the judgment
+domain. A requested axis with no record — or with a record whose status is
+`gap`/`error` — stays a gap and is never filled from `item.metrics` or
+`item.analysis`. That hard no-fallback rule is the point: the engine may disagree
+with the legacy numbers, and the disagreement is shown rather than silently
+repaired.
+
+The P9a default flip was validated before P9b removed the branch, by two A/B
+checks against the legacy path on a real folder with `full_res_artifacts=True`: a
+headless run produced identical numbers (8.8s vs 8.8s, cold processes), and a GUI
+run under a private Xvfb produced captures with **0 differing pixels**
+(2560×1392). P9b additionally keeps the rebuilt entries byte-identical to the
+legacy dictionaries on those fixtures (`test_entry_equals_the_legacy_stage_dicts`).
+
+What P9b did NOT change: producers, ranking weights, UI surfaces and
+persistence. The only user-visible difference is that surfaces read per-axis
+records instead of whole-dict domain swaps, and a broken producer now shows a gap
+where it used to show a legacy number.
