@@ -15,16 +15,15 @@ from tabs.image_gallery.ui.quick_look.bars import _BarWidget
 from tabs.image_gallery.tests.test_quick_look_parity import (
     _item,
     _make_overlay,
+    _qlabels,
     _show,
 )
 
 
 def _fills_by_title(ov):
-    from sli_ui_toolkit.widgets import Label as _L
-
     out = {}
     for row in ov._metric_rows:
-        titles = [lbl.text() for lbl in row.findChildren(_L)]
+        titles = [lbl.text() for lbl in _qlabels(row)]
         bars = row.findChildren(_BarWidget)
         if bars:
             out[tuple(titles)] = bars[0]

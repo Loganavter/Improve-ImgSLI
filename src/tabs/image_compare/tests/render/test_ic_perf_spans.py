@@ -223,10 +223,10 @@ def test_submit_span_with_fake_command_buffer():
     )
     command_buffer = _fake_command_buffer()
     submit_array_draw(
-        renderer,
-        widget,
-        command_buffer,
-        [],
+        renderer=renderer,
+        widget=widget,
+        command_buffer=command_buffer,
+        array_draw_plan=[],
         ctx=None,
         updates=SimpleNamespace(),
         target=target,
@@ -254,10 +254,10 @@ def test_submit_none_safe_without_context():
     )
     command_buffer = _fake_command_buffer()
     submit_array_draw(
-        renderer,
-        widget,
-        command_buffer,
-        [],
+        renderer=renderer,
+        widget=widget,
+        command_buffer=command_buffer,
+        array_draw_plan=[],
         ctx=None,
         updates=SimpleNamespace(),
         target=target,
@@ -363,7 +363,8 @@ def test_zoom_burst_chain_covers_all_stages(monkeypatch):
             object(), (1.0, 1.0), (0.0, 0.0), {},
         )
         submit_array_draw(
-            renderer, canvas, _fake_command_buffer(), [],
+            renderer=renderer, widget=canvas,
+            command_buffer=_fake_command_buffer(), array_draw_plan=[],
             ctx=None, updates=SimpleNamespace(), target=target,
             clear_color=SimpleNamespace(), frame_context=renderer.frame_context,
         )

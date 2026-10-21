@@ -285,6 +285,11 @@ def record_array_draw(
     creation is illegal inside an open pass, and the dynamic buffers must be
     written before the same-pass read), then one pass with the instanced
     draw, then ``in_pass`` (feature-pass ``record``), then ``endPass``.
+
+    ``endPass`` runs in a ``finally``: a raise from the draw path or from
+    ``in_pass`` must not leave the pass open on ``command_buffer`` (the next
+    frame would record into a never-closed pass — stuck black frame). The
+    exception still propagates; nothing is swallowed.
     """
     if pre_begin is not None:
         pre_begin()
@@ -317,16 +322,18 @@ def record_array_draw(
         QRhiDepthStencilClearValue(1.0, 0),
         updates,
     )
-    if instances:
-        size = target.pixelSize()
-        draw_array_instances(
-            command_buffer,
-            resources=resources,
-            vertex_buffer=vertex_buffer,
-            instance_count=len(instances),
-            sampler_name=getattr(instances[0], "sampler_name", None),
-            viewport_size=(size.width(), size.height()),
-        )
-    if in_pass is not None:
-        in_pass()
-    command_buffer.endPass()
+    try:
+        if instances:
+            size = target.pixelSize()
+            draw_array_instances(
+                command_buffer,
+                resources=resources,
+                vertex_buffer=vertex_buffer,
+                instance_count=len(instances),
+                sampler_name=getattr(instances[0], "sampler_name", None),
+                viewport_size=(size.width(), size.height()),
+            )
+        if in_pass is not None:
+            in_pass()
+    finally:
+        command_buffer.endPass()

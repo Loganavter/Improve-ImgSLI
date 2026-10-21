@@ -473,12 +473,18 @@ class MultiCompareRhiRenderer:
                 QRhiDepthStencilClearValue(1.0, 0),
                 updates,
             )
-            self.image_pass.record(command_buffer, self.host, ctx)
-            for render_pass in active_feature_passes:
-                render_pass.record(
-                    command_buffer, self.host, ctx, frame_context=self.frame_context
-                )
-            command_buffer.endPass()
+            # ``endPass`` in a ``finally``: a raise from the base or a feature
+            # pass record must not leave the pass open (the next frame would
+            # render into a never-closed pass — stuck black frame). The
+            # exception still propagates.
+            try:
+                self.image_pass.record(command_buffer, self.host, ctx)
+                for render_pass in active_feature_passes:
+                    render_pass.record(
+                        command_buffer, self.host, ctx, frame_context=self.frame_context
+                    )
+            finally:
+                command_buffer.endPass()
 
         # Mirrors image_compare's RhiCanvasRenderer.render() tail: draws
         # every GlassHUD (ZoomIndicator) registered on `self.host.glass_panels`

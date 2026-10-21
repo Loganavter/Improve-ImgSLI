@@ -21,7 +21,8 @@ Rule (AST over ``src/tabs/image_compare/canvas/rhi_renderer/use_cases/``):
 The gate walks every module in the package and every function body — it never
 pins the one function it knows about (a moved shuffle would otherwise escape).
 
-Allowlist: one entry for ``draw.py::submit_array_draw`` (C2).
+Allowlist: ``canvas_gates_allowlist.ALLOWLIST[GATE]`` (empty — the
+``submit_array_draw`` entry was drained in C2).
 """
 
 from __future__ import annotations

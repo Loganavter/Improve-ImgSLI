@@ -169,13 +169,13 @@ def _start_proxy_analysis(owner, items: list[GalleryItem], source_path: Path | N
 
 
 def _attach_analysis_records(owner, result: dict) -> None:
-    """Copy flag-ON engine records onto the matching items (W9).
+    """Copy engine records onto the matching items (W9).
 
     ``services/proxy.py`` adds the ``"analysis"`` key to a batch entry ONLY when
-    ``IMGSLI_ANALYSIS_ENGINE=1`` and the plan produced records. With the flag
-    off the key is absent, every item keeps ``analysis_records == ()``, and the
-    read path stays byte-identical to the legacy domain read
-    (plan-gallery-analysis-engine-2026-10-20 W9).
+    the engine ran — the default since P9a — and the plan produced records. With
+    the kill-switch (``IMGSLI_ANALYSIS_ENGINE=0``) the key is absent, every item
+    keeps ``analysis_records == ()``, and the read path stays byte-identical to
+    the legacy domain read (plan-gallery-analysis-engine-2026-10-20 W9).
     """
     try:
         items = list(getattr(owner.state, "items", ()) or ())

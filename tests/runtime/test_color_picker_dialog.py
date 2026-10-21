@@ -13,7 +13,7 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
 from resources.translations import tr
-from sli_ui_toolkit.widgets import Label
+from sli_ui_toolkit.widgets import Label, Text
 from tests.helpers.drain_until_stable import drain_until_stable
 from ui.widgets.color import ColorPickerDialog, RecentColorsStore
 
@@ -287,7 +287,10 @@ def test_field_labels_precede_each_input(qapp):
             sub = row.itemAt(j)
             if sub is not None and sub.widget() is not None:
                 widgets.append(sub.widget())
-        texts = [w.text() for w in widgets if isinstance(w, Label)]
+        # The field labels are painted ``Text`` now (wave C Label→Text
+        # migration); the row still holds a few ``Label`` widgets elsewhere,
+        # so match both families — the assertion below is unchanged.
+        texts = [w.text() for w in widgets if isinstance(w, (Label, Text))]
         assert texts == ["R", "G", "B", "A"]
         for expected, spin in zip(
             ("R", "G", "B", "A"),

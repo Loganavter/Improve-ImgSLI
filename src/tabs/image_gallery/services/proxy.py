@@ -17,11 +17,12 @@ different paths. Cached images are read-only inputs — stage entry points
 must never mutate or close them (detectors only ``resize``/``convert``,
 which return new images).
 
-W12 — one computation, not two: with ``IMGSLI_ANALYSIS_ENGINE=1`` the engine
-plan runs first and the legacy Stage-2 dicts are REBUILT from the records'
-pre-score ``raw`` values (unreproducible stage ⇒ its legacy call), so the
-detectors run once per item; flag off is untouched. That record→dict glue lives
-in ``services/analysis_bridge.py`` (W14), not here.
+W12 — one computation, not two: with the analysis engine on (the DEFAULT since
+P9a; ``IMGSLI_ANALYSIS_ENGINE=0`` disables it) the engine plan runs first and
+the legacy Stage-2 dicts are REBUILT from the records' pre-score ``raw`` values
+(unreproducible stage ⇒ its legacy call), so the detectors run once per item;
+with the kill-switch set, nothing changes from the pre-engine path. That
+record→dict glue lives in ``services/analysis_bridge.py`` (W14), not here.
 
 W14 — one artifact catalog, too: in ``full_res_artifacts`` mode the engine is
 handed the SAME full-resolution store the tiled catalog reads, so the records
@@ -32,7 +33,8 @@ Pure + Qt-free (safe for ``GenericWorker``); no Store/EventBus writes.
 
 INTERFACE: ``PROXY_MAX_EDGE``, ``PROXY_CACHE_LIMIT``, ``Proxy``,
 ``proxy_for``, ``clear_proxy_cache``, ``run_proxy_stages_sync``. The engine
-flag and the record→legacy-dict bridge are ``services.analysis_bridge`` (W14).
+switch (``analysis_bridge.engine_enabled``) and the record→legacy-dict bridge
+are ``services.analysis_bridge`` (W14).
 """
 
 from __future__ import annotations
@@ -235,8 +237,9 @@ def run_proxy_stages_sync(
     Builds each item proxy ONCE and the source proxy ONCE, then produces the
     artifact catalog + fidelity metrics (+ camera scalars when ``include_camera``)
     over the shared bytes: from the analysis engine's records when
-    ``analysis_bridge.ENGINE_FLAG`` is on (W12 — one detector pass, each stage
-    dict rebuilt from its ``raw``), from the legacy stage calls otherwise.
+    ``analysis_bridge.engine_enabled()`` says the engine is on — the default,
+    W12: one detector pass, each stage dict rebuilt from its ``raw`` — from the
+    legacy stage calls otherwise (``IMGSLI_ANALYSIS_ENGINE=0``).
     Returns ``{str(item.path): {"artifacts": {...}, "fidelity": {...},
     "camera": {...}}}`` — stage dicts present only when that stage was
     requested and measurable (fail-closed per item, path-keyed, never copied
@@ -250,10 +253,10 @@ def run_proxy_stages_sync(
     per-item failure building/using the full-res store fails open to the
     proxy catalog. Default ``False`` is the unchanged proxy path.
 
-    With the engine flag on, that same item store is handed to the engine
-    (W14), so the artifact records and the entry's tiled severities are ONE
-    computation rather than two catalogs that disagree. The legacy tiled call
-    still runs when no store could be opened — the fail-open is unchanged.
+    With the engine on (the default), that same item store is handed to the
+    engine (W14), so the artifact records and the entry's tiled severities are
+    ONE computation rather than two catalogs that disagree. The legacy tiled
+    call still runs when no store could be opened — the fail-open is unchanged.
     """
     from tabs.image_gallery.services import analysis_bridge as bridge
     from tabs.image_gallery.services.artifacts import analyze_images
@@ -293,9 +296,10 @@ def run_proxy_stages_sync(
                         same = False
                     if same:
                         src_img = None  # same-file pair: detectors run sourceless
-                # W12: with the flag on the engine runs FIRST and the legacy stage
-                # dicts are rebuilt from its records — one detector pass per item.
-                engine_on = os.environ.get(bridge.ENGINE_FLAG) == "1"
+                # W12: with the engine on (the default; the env flag is the
+                # kill-switch) the engine runs FIRST and the legacy stage dicts
+                # are rebuilt from its records — one detector pass per item.
+                engine_on = bridge.engine_enabled()
                 rebuilt: dict[str, dict] = {}
                 records = None
                 item_store = None
@@ -412,7 +416,7 @@ def run_proxy_stages_sync(
                     logger.debug("proxy batch: camera failed for %s", own, exc_info=True)
             if records is not None:
                 # Per-axis provenance for the read path (W9) — additive, and only
-                # when the flag produced records (the flag-off entry has no key).
+                # when the engine produced records (a killed-switch entry has no key).
                 entry["analysis"] = records
             out[key] = entry
     finally:

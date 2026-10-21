@@ -1,19 +1,21 @@
 """C1 gate: no ``except NameError`` in the render path.
 
-Dogma: an ``except NameError`` handler in this tree always wraps a
-*dynamically resolved attribute access* (``getattr`` on an optional render
-state, a name that only exists on one context flavour). It turns "this object
-does not have that field today" into a silent fallback: the frame renders with
-a default instead of failing at the seam that is wrong. The two live cases in
-``coverage.py`` were both written to paper over a name that the caller may or
-may not provide — the C2 fix names the seam instead.
+Dogma: an ``except NameError`` handler in this tree wraps a name that the
+author believed could be unbound. It turns "this name is missing" into a
+silent fallback: the frame renders with a default instead of failing at the
+seam that is wrong. The two live cases in ``coverage.py`` were even worse than
+that — the guarded names were *parameters of the enclosing function*, so the
+handler could never fire and only hid the fact that the parameter WAS the
+decision (see ``src/tabs/image_compare/tests/render/
+test_coverage_first_paint_hold.py``). C2 deleted both.
 
 Rule (AST): no ``except NameError`` handler in
 ``src/ui/canvas_infra/**``, ``src/tabs/image_compare/canvas/**``,
 ``src/tabs/multi_compare/scene/**``, ``src/engine/gpu/**``. The gate walks
 every module under those roots — a moved handler is still a finding.
 
-Allowlist: one entry per site (C2).
+Allowlist: ``canvas_gates_allowlist.ALLOWLIST[GATE]`` (empty — both
+``coverage.py`` handlers were drained in C2).
 """
 
 from __future__ import annotations

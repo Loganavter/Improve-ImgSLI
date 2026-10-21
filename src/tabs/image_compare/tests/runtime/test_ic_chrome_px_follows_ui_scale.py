@@ -90,7 +90,7 @@ def _host(layout=None) -> QWidget:
 
 
 def _fake_layout_ui():
-    from sli_ui_toolkit.widgets import Label
+    from sli_ui_toolkit.widgets import Text
     from ui.widgets.slider_hint import ValueSlider
 
     ui = SimpleNamespace(
@@ -117,7 +117,7 @@ def _fake_layout_ui():
         "label_magnifier_size", "label_capture_size", "label_movement_speed",
         "label_interpolation",
     ):
-        setattr(ui, name, Label("x"))
+        setattr(ui, name, Text("x", mode="plain"))
     _HOLD.append(ui)
     return ui
 
@@ -352,11 +352,11 @@ def test_orientation_popup_size_follows_scale():
 
 
 def test_canvas_image_label_minimum_is_scale_independent():
-    from sli_ui_toolkit.widgets import Label
+    from sli_ui_toolkit.widgets import Text
     from tabs.image_compare.ui.primitives import ImageComparePrimitivesFactory
 
     def build():
-        target = SimpleNamespace(image_label=Label("x"))
+        target = SimpleNamespace(image_label=Text("x", mode="plain"))
         _HOLD.append(target)
         ImageComparePrimitivesFactory(target, None)._configure_image_label()
         return (target.image_label.minimumWidth(), target.image_label.minimumHeight())

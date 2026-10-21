@@ -15,7 +15,7 @@ import pytest
 from PySide6.QtWidgets import QVBoxLayout, QWidget
 
 from sli_ui_toolkit.managers import UiScale, scaled_px
-from sli_ui_toolkit.widgets import Label, Slider
+from sli_ui_toolkit.widgets import Slider, Text
 
 from core.evidence.journal import record_evidence, reset_journal, verdict
 from tabs.image_compare.ui.layout import (
@@ -66,11 +66,11 @@ def _fake_ui() -> SimpleNamespace:
         slider_size=Slider(),
         slider_capture=Slider(),
         slider_speed=Slider(),
-        label_magnifier_size=Label("size"),
-        label_capture_size=Label("capture"),
-        label_movement_speed=Label("speed"),
+        label_magnifier_size=Text("size", mode="plain"),
+        label_capture_size=Text("capture", mode="plain"),
+        label_movement_speed=Text("speed", mode="plain"),
         combo_interpolation=Slider(),
-        label_interpolation=Label("interp"),
+        label_interpolation=Text("interp", mode="plain"),
     )
 
 

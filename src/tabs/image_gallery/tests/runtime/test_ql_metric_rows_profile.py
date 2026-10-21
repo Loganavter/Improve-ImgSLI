@@ -25,6 +25,17 @@ from tabs.image_gallery.models import AiAnalysisResult, GalleryItem, Mode
 from tabs.image_gallery.services.metric_profile import MetricProfile
 from tabs.image_gallery.ui.quick_look import QuickLookOverlay
 from sli_ui_toolkit.widgets import Label as _QlLabel
+from sli_ui_toolkit.widgets import Text as _QlText
+
+
+def _qlabels(widget):
+    """Row labels of *widget* from both widget families.
+
+    Metric rows are built by ``_make_label``, which wave C migrated from the
+    retired ``Label`` to painted ``Text``; scanning both keeps these row
+    assertions addressing the same labels regardless of family.
+    """
+    return widget.findChildren(_QlLabel) + widget.findChildren(_QlText)
 
 
 def _item(name: str, **kwargs) -> GalleryItem:
@@ -35,7 +46,7 @@ def _row_texts(overlay) -> list[str]:
     return [
         lbl.text()
         for row in overlay._metric_rows
-        for lbl in row.findChildren(_QlLabel)
+        for lbl in _qlabels(row)
     ]
 
 
@@ -45,7 +56,7 @@ def _row_titles(overlay) -> list[str]:
 
     out: list[str] = []
     for row in overlay._metric_rows:
-        for lbl in row.findChildren(_QlLabel):
+        for lbl in _qlabels(row):
             try:
                 if bool(lbl.alignment() & Qt.AlignmentFlag.AlignRight):
                     continue

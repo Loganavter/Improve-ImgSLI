@@ -65,11 +65,16 @@ _RENDER_PASS_ORDER: dict[CanvasStackRole, tuple[RenderPhase, int]] = {
     CanvasStackRole.DEBUG_VIS:             (RenderPhase.DEBUG, 10),
 }
 
-_RENDER_PASS_DEFAULT: tuple[RenderPhase, int] = (RenderPhase.VIEW_ANNOTATION, 100)
 
 def resolve_render_pass_order(role: CanvasStackRole) -> tuple[RenderPhase, int]:
-    """Resolve a semantic role to concrete ``(RenderPhase, priority)``."""
-    return _RENDER_PASS_ORDER.get(role, _RENDER_PASS_DEFAULT)
+    """Resolve a semantic role to concrete ``(RenderPhase, priority)``.
+
+    ``__getitem__``, deliberately: a member without a row must raise
+    ``KeyError`` at the first frame instead of drawing at a silent default
+    (a default hides a missing declaration forever — see the C1 gate).
+    """
+    return _RENDER_PASS_ORDER[role]
+
 
 _SCENE_OBJECT_ORDER: dict[CanvasStackRole, tuple[CanvasStackLayer, int]] = {
     CanvasStackRole.UNDERLAY_SPLIT:        (CanvasStackLayer.UNDERLAY, 0),
@@ -79,16 +84,22 @@ _SCENE_OBJECT_ORDER: dict[CanvasStackRole, tuple[CanvasStackLayer, int]] = {
     CanvasStackRole.IMAGE_OVERLAY_CONTENT: (CanvasStackLayer.OBJECT, 0),
     CanvasStackRole.ANNOTATION_BORDER:     (CanvasStackLayer.OVERLAY, 5),
     CanvasStackRole.HUD_LABEL:             (CanvasStackLayer.HUD, 0),
+    CanvasStackRole.HUD_INTERACTION_OVERLAY: (CanvasStackLayer.HUD, 10),
     CanvasStackRole.TRANSIENT_PREVIEW:     (CanvasStackLayer.FOREGROUND, 0),
     CanvasStackRole.INTERACTION_HANDLE:    (CanvasStackLayer.FOREGROUND, 10),
     CanvasStackRole.DEBUG_VIS:             (CanvasStackLayer.DEBUG, 0),
 }
 
-_SCENE_OBJECT_DEFAULT: tuple[CanvasStackLayer, int] = (CanvasStackLayer.OBJECT, 0)
 
 def resolve_scene_object_order(role: CanvasStackRole) -> tuple[CanvasStackLayer, int]:
-    """Resolve a semantic role to concrete ``(CanvasStackLayer, priority)``."""
-    return _SCENE_OBJECT_ORDER.get(role, _SCENE_OBJECT_DEFAULT)
+    """Resolve a semantic role to concrete ``(CanvasStackLayer, priority)``.
+
+    ``__getitem__``, deliberately: a member without a row must raise
+    ``KeyError`` at the first frame instead of sharing the default pair with
+    ``IMAGE_OVERLAY_CONTENT`` (the collision this wave removed).
+    """
+    return _SCENE_OBJECT_ORDER[role]
+
 
 @dataclass(frozen=True)
 class CanvasStackHint:

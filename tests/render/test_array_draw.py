@@ -10,6 +10,8 @@ from __future__ import annotations
 import struct
 from types import SimpleNamespace
 
+import pytest
+
 from engine.gpu.array_draw import (
     ARRAY_INSTANCE_ATTRIBUTES,
     ARRAY_INSTANCE_FMT,
@@ -250,6 +252,70 @@ def test_record_array_draw_empty_instances_opens_closes_pass_without_draw():
     assert in_pass == ["in"]
     assert resources.calls == []
     assert updates.writes == []
+
+
+def test_record_array_draw_closes_pass_when_in_pass_raises():
+    """Pass lifetime: a raise inside the open pass still closes it.
+
+    ``endPass`` must run in a ``finally``. Without it a raising feature-pass
+    ``record`` leaves the pass open on the command buffer, so the next frame
+    records into a never-closed pass (stuck black frame) instead of failing
+    once at the seam. The exception still propagates — nothing is swallowed.
+    """
+    resources = _FakeResources()
+    updates = _FakeUpdates()
+    command_buffer = _FakeCommandBuffer()
+
+    def _boom() -> None:
+        raise RuntimeError("feature record failed")
+
+    with pytest.raises(RuntimeError, match="feature record failed"):
+        record_array_draw(
+            command_buffer,
+            resources=resources,
+            vertex_buffer="vbo",
+            instances=[_inst(1, 2)],
+            uniform_bytes=None,
+            target=_target(),
+            clear_color="clear",
+            updates=updates,
+            in_pass=_boom,
+        )
+
+    assert command_buffer.calls.count("beginPass") == 1
+    assert command_buffer.calls.count("endPass") == 1
+    assert command_buffer.calls[-1] == "endPass"
+
+
+class _RaisingDrawCommandBuffer(_FakeCommandBuffer):
+    """Records the draw, then fails — a stand-in for a raising draw path."""
+
+    def draw(self, vertices, instance_count) -> None:
+        super().draw(vertices, instance_count)
+        raise RuntimeError("draw failed")
+
+
+def test_record_array_draw_closes_pass_when_draw_raises():
+    """Pass lifetime: a raise from the instanced draw still closes the pass."""
+    resources = _FakeResources()
+    updates = _FakeUpdates()
+    command_buffer = _RaisingDrawCommandBuffer()
+
+    with pytest.raises(RuntimeError, match="draw failed"):
+        record_array_draw(
+            command_buffer,
+            resources=resources,
+            vertex_buffer="vbo",
+            instances=[_inst(1, 2)],
+            uniform_bytes=None,
+            target=_target(),
+            clear_color="clear",
+            updates=updates,
+        )
+
+    assert command_buffer.calls.count("beginPass") == 1
+    assert command_buffer.calls.count("endPass") == 1
+    assert command_buffer.calls[-1] == "endPass"
 
 
 def test_draw_array_instances_records_documented_sequence():
