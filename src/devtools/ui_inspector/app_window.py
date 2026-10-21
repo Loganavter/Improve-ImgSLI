@@ -9,7 +9,7 @@ from PySide6.QtWidgets import QHBoxLayout, QWidget
 from sli_ui_toolkit.ui.inspector.contract import InspectField
 from sli_ui_toolkit.ui.inspector.view import InspectorWindow
 from sli_ui_toolkit.managers import scaled_px
-from sli_ui_toolkit.widgets import Button, Label
+from sli_ui_toolkit.widgets import Button, Text
 
 from devtools.ui_inspector.native import NativeWindowInfo
 
@@ -26,7 +26,7 @@ class AppInspectorWindow(InspectorWindow):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self._dump_status = Label("", pixel_size=11)
+        self._dump_status = Text("", mode="plain", pixel_size=11)
         self._add_dump_buttons()
         # Each inspection tab gets its own Native section.
         self.pane_created.connect(self._add_native_page)

@@ -17,11 +17,24 @@ from PySide6.QtWidgets import QApplication, QGraphicsOpacityEffect, QWidget
 
 from tabs.image_gallery.models import Artifact, GalleryItem, Mode, Severity
 from sli_ui_toolkit.widgets import Label as _QlLabel
+from sli_ui_toolkit.widgets import Text as _QlText
 from tabs.image_gallery.ui.quick_look import (
     DIM_VEIL_ALPHA,
     QuickLookOverlay,
     _source_dimensions,
 )
+
+
+def _qlabels(widget):
+    """Row/card labels of *widget*, matching both widget families.
+
+    Metric and artifact rows are built by ``_make_label``, which wave C
+    migrated from the retired ``Label`` to painted ``Text``; the remaining
+    quick-look chrome still uses ``Label``. Scanning both keeps these parity
+    assertions addressing exactly the labels they name, whichever family a
+    row happens to use.
+    """
+    return widget.findChildren(_QlLabel) + widget.findChildren(_QlText)
 
 
 def _item(name: str, **kwargs) -> GalleryItem:
@@ -141,7 +154,7 @@ def test_no_region_suffix_on_any_artifact(qtbot):
         texts = [
             lbl.text()
             for w in ov._artifact_rows
-            for lbl in w.findChildren(_QlLabel)
+            for lbl in _qlabels(w)
         ]
         assert "50%" in texts  # mild → 50% unified quality
         assert all("sky region" not in t for t in texts)
@@ -163,9 +176,9 @@ def test_all_artifact_rows_shown_including_clean(qtbot):
     texts = [
         lbl.text()
         for w in ov._artifact_rows
-        for lbl in w.findChildren(_QlLabel)
+        for lbl in _qlabels(w)
     ]
-    titles = [lbl.text() for w in ov._artifact_rows for lbl in w.findChildren(_QlLabel)]
+    titles = [lbl.text() for w in ov._artifact_rows for lbl in _qlabels(w)]
     assert any("Gradients" in t for t in titles)
     assert any("Edges" in t for t in titles)
     assert any("Blocks" in t for t in titles)
@@ -190,7 +203,7 @@ def test_non_clean_artifact_rows_shown(qtbot):
     texts = [
         lbl.text()
         for w in ov._artifact_rows
-        for lbl in w.findChildren(_QlLabel)
+        for lbl in _qlabels(w)
     ]
     assert "50%" in texts and "15%" in texts  # mild / flagged → unified quality
     ov.hide()
@@ -226,7 +239,7 @@ def test_halo_renders_as_bar_widget(qtbot):
     _show(ov, item, [item])
     halo_rows = [
         w for w in ov._artifact_rows
-        if any("Edges" in lbl.text() for lbl in w.findChildren(_QlLabel))
+        if any("Edges" in lbl.text() for lbl in _qlabels(w))
     ]
     assert len(halo_rows) == 1
     assert halo_rows[0].findChild(_BarWidget) is not None
@@ -324,7 +337,7 @@ def test_camera_noise_and_wb_rows_present_when_metrics_exist(qtbot):
     texts = [
         lbl.text()
         for row in ov._metric_rows
-        for lbl in row.findChildren(_QlLabel)
+        for lbl in _qlabels(row)
     ]
     # Positive wording + canonical quality %: Noise→Clean, WB→White balance.
     # Titles carry a short band descriptor ("Clean — clean").
@@ -345,7 +358,7 @@ def test_clipping_reported_as_positive_quality(qtbot):
         _show(ov, item, [item], mode=Mode.CAMERA)
         try:
             for row in ov._metric_rows:
-                labels = row.findChildren(_QlLabel)
+                labels = _qlabels(row)
                 if any(lbl.text().startswith("Highlight detail") for lbl in labels):
                     return next(lbl.text() for lbl in labels if lbl.text().endswith("%"))
         finally:
@@ -375,7 +388,7 @@ def test_noise_value_color_matches_bar_severity(qtbot):
         try:
             out = {}
             for row in ov._metric_rows:
-                labels = row.findChildren(_QlLabel)
+                labels = _qlabels(row)
                 titles = [lbl.text() for lbl in labels]
                 if not any(t.startswith("Clean") for t in titles):
                     continue
@@ -408,7 +421,7 @@ def test_camera_noise_and_wb_rows_skipped_when_missing(qtbot):
     texts = [
         lbl.text()
         for row in ov._metric_rows
-        for lbl in row.findChildren(_QlLabel)
+        for lbl in _qlabels(row)
     ]
     assert "Noise" not in texts
     assert "WB shift" not in texts
@@ -622,7 +635,7 @@ def test_viewing_source_shows_source_state_not_self_compare(qtbot):
     _show(ov, src, [src, variant], source=src.path)
     # No header, no comparison rows, no "vs #N" brief for the source.
     assert ov._report_title.text() == ""
-    titles = [lbl.text() for row in ov._metric_rows for lbl in row.findChildren(_QlLabel)]
+    titles = [lbl.text() for row in ov._metric_rows for lbl in _qlabels(row)]
     assert not any("Source match" in t for t in titles)
     assert ov._brief_label.text() == ""
     ov.hide()
@@ -1017,7 +1030,7 @@ def test_refresh_metrics_rebuilds_without_reopen(qtbot):
     before = [
         lbl.text()
         for row in ov._metric_rows
-        for lbl in row.findChildren(_QlLabel)
+        for lbl in _qlabels(row)
     ]
     assert any("not measured" in t for t in before)
     # Fidelity delivery mutates metrics in place (service contract), then W2
@@ -1027,7 +1040,7 @@ def test_refresh_metrics_rebuilds_without_reopen(qtbot):
     after = [
         lbl.text()
         for row in ov._metric_rows
-        for lbl in row.findChildren(_QlLabel)
+        for lbl in _qlabels(row)
     ]
     assert any("94%" in t for t in after)  # Source match 0.94 → 94%
     assert not any("not measured" in t for t in after)
@@ -1061,13 +1074,13 @@ def test_refresh_metrics_ignores_other_item(qtbot):
     before = [
         lbl.text()
         for row in ov._metric_rows
-        for lbl in row.findChildren(_QlLabel)
+        for lbl in _qlabels(row)
     ]
     ov.refresh_metrics(other)
     after = [
         lbl.text()
         for row in ov._metric_rows
-        for lbl in row.findChildren(_QlLabel)
+        for lbl in _qlabels(row)
     ]
     # Path-guarded: another item's delivery changes nothing on the open card.
     assert after == before
@@ -1752,7 +1765,7 @@ def test_right_column_stretches_with_full_content(qtbot):
     from PySide6.QtWidgets import QScrollArea
 
     from sli_ui_toolkit.managers import scaled_px
-    from sli_ui_toolkit.widgets import Button, Label
+    from sli_ui_toolkit.widgets import Button
 
     src = _item("2x-Futsuu-Anime(1).png", metrics={})
     viewing = _item(
@@ -1788,14 +1801,14 @@ def test_right_column_stretches_with_full_content(qtbot):
     sublines = [
         lbl._original_text
         for w in ov._metric_rows
-        for lbl in w.findChildren(Label)
+        for lbl in _qlabels(w)
         if "rejected tail" in getattr(lbl, "_original_text", "")
     ]
     assert sublines == ["rejected tail ≤ 0.83"]
     captions = [
         lbl._original_text
         for w in ov._artifact_rows
-        for lbl in w.findChildren(Label)
+        for lbl in _qlabels(w)
         if "gradient histogram" in getattr(lbl, "_original_text", "")
     ]
     # Banding caption removed — the histogram widget itself stays, no note label.
@@ -3112,7 +3125,7 @@ def test_no_bold_type_anywhere(qtbot):
     ov = _make_overlay(qtbot)
     _show(ov, a, [a])
     try:
-        for label in ov.findChildren(QLabel):
+        for label in ov.findChildren(QLabel) + ov.findChildren(_QlText):
             assert label.font().bold() is False, label.text()[:40]
         for button in ov.findChildren(QWidget):
             regions = getattr(button, "regions", None)
@@ -3225,10 +3238,10 @@ def test_composition_axis_renders_as_metric_row(qtbot):
     # the AI judgment domain only, never in the Algorithms report.
     _show(ov, a, [a, b], domain="ai")
     # Composition lives as a metric row (title carries a band note).
-    titles = [lbl.text() for row in ov._metric_rows for lbl in row.findChildren(_QlLabel)]
+    titles = [lbl.text() for row in ov._metric_rows for lbl in _qlabels(row)]
     assert any(t.startswith("Composition") for t in titles)
     assert "Composition 80%" not in titles  # value is the separate right label
-    assert any(lbl.text() == "80%" for row in ov._metric_rows for lbl in row.findChildren(_QlLabel))
+    assert any(lbl.text() == "80%" for row in ov._metric_rows for lbl in _qlabels(row))
     ov.hide()
 
 
@@ -3252,7 +3265,7 @@ def test_ai_domain_rows_read_the_vlm_scorecard_not_detectors(qtbot):
     )
     ov = _make_overlay(qtbot)
     _show(ov, a, [a], mode=Mode.CAMERA, domain="ai")
-    values = [lbl.text() for row in ov._metric_rows for lbl in row.findChildren(_QlLabel)]
+    values = [lbl.text() for row in ov._metric_rows for lbl in _qlabels(row)]
     assert "33%" in values, values  # VLM sharpness
     assert "91%" in values, values  # VLM noise (positive "Clean")
     assert "50%" not in values, values  # the detector's sharpness must NOT appear
@@ -3274,7 +3287,7 @@ def test_algorithms_domain_rows_still_read_the_detectors(qtbot):
     )
     ov = _make_overlay(qtbot)
     _show(ov, a, [a], mode=Mode.CAMERA, domain="algorithms")
-    values = [lbl.text() for row in ov._metric_rows for lbl in row.findChildren(_QlLabel)]
+    values = [lbl.text() for row in ov._metric_rows for lbl in _qlabels(row)]
     assert "50%" in values, values  # detector sharpness
     assert "33%" not in values, values  # the VLM number must NOT appear
     ov.hide()
@@ -3294,7 +3307,7 @@ def test_ai_domain_artifact_rows_read_the_vlm_defects(qtbot):
     )
     ov = _make_overlay(qtbot)
     _show(ov, a, [a], mode=Mode.FIDELITY, domain="ai")
-    values = [lbl.text() for row in ov._artifact_rows for lbl in row.findChildren(_QlLabel)]
+    values = [lbl.text() for row in ov._artifact_rows for lbl in _qlabels(row)]
     assert "15%" in values, values  # flagged halo (3.0 quality map)
     ov.hide()
 
@@ -3320,7 +3333,7 @@ def test_metric_row_header_uses_local_note_not_ai(qtbot):
     )
     ov = _make_overlay(qtbot)
     _show(ov, a, [a], mode=Mode.CAMERA)
-    titles = [lbl.text() for row in ov._metric_rows for lbl in row.findChildren(_QlLabel)]
+    titles = [lbl.text() for row in ov._metric_rows for lbl in _qlabels(row)]
     assert not any("coarse film grain" in t for t in titles)
     assert not any("soft edges" in t for t in titles)
     # Local band descriptors still carry meaning (noise 0.9 -> bad, sharp 200 -> mid).
@@ -3339,7 +3352,7 @@ def test_refresh_metrics_rebuilds_when_analysis_arrives(qtbot):
     # Composition is an AI-domain (VLM) axis — the late analysis must rebuild
     # the AI report's rows.
     _show(ov, a, [a, b], mode=Mode.CAMERA, domain="ai")
-    before = [lbl.text() for row in ov._metric_rows for lbl in row.findChildren(_QlLabel)]
+    before = [lbl.text() for row in ov._metric_rows for lbl in _qlabels(row)]
     assert not any(t.startswith("Composition") for t in before)
     a.analysis = AiAnalysisResult(
         description="", tags=(), model="m", analyzed_at_iso="t", composition=80,
@@ -3347,7 +3360,7 @@ def test_refresh_metrics_rebuilds_when_analysis_arrives(qtbot):
     a.analysis_status = AnalysisStatus.DONE
     ov.refresh_metrics(a)
     QApplication.processEvents()
-    after = [lbl.text() for row in ov._metric_rows for lbl in row.findChildren(_QlLabel)]
+    after = [lbl.text() for row in ov._metric_rows for lbl in _qlabels(row)]
     assert any(t.startswith("Composition") for t in after)
     ov.hide()
 
@@ -3386,7 +3399,7 @@ def test_cached_analysis_hydrated_on_open(qtbot, tmp_path, monkeypatch):
         parent.show()
     QApplication.processEvents()
     assert item.analysis is not None  # hydrated from the disk cache
-    titles = [lbl.text() for row in ov._metric_rows for lbl in row.findChildren(_QlLabel)]
+    titles = [lbl.text() for row in ov._metric_rows for lbl in _qlabels(row)]
     assert any(t.startswith("Composition") for t in titles)
     ov.hide()
 
@@ -3396,7 +3409,7 @@ def test_metric_row_header_has_fallback_note_without_ai(qtbot):
     a = _item("a.png", metrics={"exposure": 0.5, "noise": 0.9})
     ov = _make_overlay(qtbot)
     _show(ov, a, [a], mode=Mode.CAMERA)
-    titles = [lbl.text() for row in ov._metric_rows for lbl in row.findChildren(_QlLabel)]
+    titles = [lbl.text() for row in ov._metric_rows for lbl in _qlabels(row)]
     assert "Exposure — well exposed" in titles  # 0.5 → good
     assert any(t.startswith("Clean — ") for t in titles)  # noise 0.9 → bad band
     ov.hide()
@@ -3420,7 +3433,7 @@ def test_artifact_row_header_uses_local_note_not_ai(qtbot):
     )
     ov = _make_overlay(qtbot)
     _show(ov, a, [a])
-    titles = [lbl.text() for w in ov._artifact_rows for lbl in w.findChildren(_QlLabel)]
+    titles = [lbl.text() for w in ov._artifact_rows for lbl in _qlabels(w)]
     assert not any("bright edge glow" in t for t in titles)
     # Local band note for a mild halo still carries meaning.
     assert any(t.startswith("Edges — ") for t in titles)

@@ -1,6 +1,6 @@
 """Quick look labels + theme tokens — plain functions (no owner state).
 
-Mockup-pt Label helpers (``_make_label`` / ``_apply_point_size``) and
+Mockup-pt text helpers (``_make_label`` / ``_apply_point_size``) and
 theme resolution via ``try_resolve_theme_color`` + light/dark fallback
 (contracts/test_no_hardcoded_qcolor.py). Extracted verbatim from
 ``helpers.py`` per CODE_PATTERNS.md thin owner + ui/.
@@ -163,22 +163,22 @@ def _set_colored_text(btn, text: str, color: QColor | None) -> None:
             pass
 
 
-# S4 v2 LIGHT mockup-pt sizing (W4 item 1): every quick-look Label renders at
+# S4 v2 LIGHT mockup-pt sizing (W4 item 1): every quick-look label renders at
 # the mockup's own number as *points* via the UiFont point path
 # (``UiFont.resolve(point_size=...)`` — scaled exactly once, no UiScale or
-# settings changes). ``Label`` itself accepts only ``pixel_size`` (its
+# settings changes). ``Text`` itself accepts only ``pixel_size`` (its
 # ``_apply_style`` re-runs on font/scale changes using the pixel value), so
 # the point font is applied *after* construction and re-asserted after
-# Label's own pixel-based restyle. Theme flips only recolor
-# (``Label._on_theme_changed``), so they never clobber the point font.
+# the widget's own pixel-based restyle. Theme flips only recolor
+# (``Text._on_theme_changed``), so they never clobber the point font.
 _POINT_PT_BY_PIXEL = {13: 13, 12: 12, 11: 11.5, 10: 10, 9: 9}
 
 
 def _apply_point_size(label, pt: int | float, **font_kwargs) -> None:
-    """Apply a mockup-pt font to a Label via the UiFont point path.
+    """Apply a mockup-pt font to a text widget via the UiFont point path.
 
     Extra ``font_kwargs`` (e.g. ``bold=True``) forward to
-    ``UiFont.resolve`` so overrides set via the Label constructor survive.
+    ``UiFont.resolve`` so overrides set via the widget constructor survive.
     """
     try:
         from sli_ui_toolkit.managers import UiFont, UiScale
@@ -194,10 +194,10 @@ def _apply_point_size(label, pt: int | float, **font_kwargs) -> None:
             label.setFont(f)
         except Exception:
             return
-    # Re-assert after Label's own pixel-based _apply_style (wired at Label
+    # Re-assert after the widget's own pixel-based _apply_style (wired at
     # construction, so it always runs first): a metrics change (font OR scale)
     # would otherwise revert the point font to the pixel value. One unified
-    # subscription via connect_ui_metrics — teardown is owned by the label's
+    # subscription via connect_ui_metrics — teardown is owned by the widget's
     # ``destroyed`` signal, so no manual disconnect bookkeeping here.
     try:
         import weakref as _wr
@@ -224,14 +224,15 @@ def _apply_point_size(label, pt: int | float, **font_kwargs) -> None:
 
 
 def _make_label(text: str = "", parent=None, pixel_size: int = 10, pt=None, **kwargs):
-    """Create a toolkit Label with mockup-pt sizing (W4 item 1).
+    """Create a painted ``Text`` (plain mode) with mockup-pt sizing (W4 item 1).
 
-    ``pixel_size`` is kept as the Label fallback; the rendered size is the
-    mockup number as points (``pt`` override or ``_POINT_PT_BY_PIXEL``).
+    ``pixel_size`` is kept as the widget's fallback size; the rendered size is
+    the mockup number as points (``pt`` override or ``_POINT_PT_BY_PIXEL``).
+    Was a toolkit ``Label`` before wave C migrated the call sites to ``Text``.
     """
-    from sli_ui_toolkit.widgets import Label
+    from sli_ui_toolkit.widgets import Text
 
-    lbl = Label(text, pixel_size=pixel_size, parent=parent, **kwargs)
+    lbl = Text(text, parent, mode="plain", pixel_size=pixel_size, **kwargs)
     try:
         _resolve_kw = {k: kwargs[k] for k in ("bold", "italic") if kwargs.get(k) is not None}
         _apply_point_size(lbl, float(pt) if pt is not None else _POINT_PT_BY_PIXEL.get(pixel_size, pixel_size), **_resolve_kw)
@@ -239,7 +240,7 @@ def _make_label(text: str = "", parent=None, pixel_size: int = 10, pt=None, **kw
         pass
     if kwargs.get("elide"):
         # W7: elide paints truncated text but does NOT shrink
-        # QLabel.sizeHint (full-text hint forces the 296px column into
+        # sizeHint (full-text hint forces the 296px column into
         # h-scroll; minimum_width alone only sets minimumSize). Ignored
         # lets the layout reserve the minimum instead of the hint.
         try:

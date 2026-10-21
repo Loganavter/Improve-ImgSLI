@@ -85,7 +85,7 @@ from sli_ui_toolkit.theme import ThemeManager
 from sli_ui_toolkit.ui.managers import connect_ui_metrics
 from sli_ui_toolkit.ui.managers.ui_metrics import AXIS_FONT, AXIS_SCALE
 from sli_ui_toolkit.ui.widgets.atomic.focus_ring import paint_focus_ring
-from sli_ui_toolkit.widgets import Button, CustomLineEdit, Label, Slider, SpinBox
+from sli_ui_toolkit.widgets import Button, CustomLineEdit, Slider, SpinBox, Text
 
 from ui.theming import try_resolve_theme_color
 from ui.widgets.color.recents import (
@@ -1006,18 +1006,18 @@ class ColorPickerDialog(ThemedDialog):
         self._preview = _PreviewChip(self)
         self._fields_row.addWidget(self._preview)
 
-        self._field_labels: list[Label] = []
+        self._field_labels: list[Text] = []
 
-        def _field_label(text: str) -> Label:
-            label = Label(text, self, variant="caption", pixel_size=18)
+        def _field_label(text: str) -> Text:
+            label = Text(text, self, mode="plain", variant="caption", pixel_size=18)
             label.setAlignment(
                 Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
             )
-            # QLabel defaults to Preferred/Preferred: in a wide dialog the
-            # labels would absorb the slack and push the fields right with
-            # every relayout pass (visible as jitter during interactive
-            # resize). Pin the width to the text so field positions are
-            # stable at any dialog width.
+            # The widget's default size policy lets the labels absorb the
+            # slack in a wide dialog and push the fields right with every
+            # relayout pass (visible as jitter during interactive resize).
+            # Pin the width to the text so field positions are stable at any
+            # dialog width.
             label.setSizePolicy(
                 QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Preferred
             )
