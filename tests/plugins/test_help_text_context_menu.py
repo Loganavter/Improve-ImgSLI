@@ -205,3 +205,58 @@ def test_rmb_surface_is_in_window(
     monkeypatch.setattr(sys, "platform", "win32")
     monkeypatch.setattr("sli_ui_toolkit.__version__", "3.1.3")
     assert rmb_context_menu_surface() == "in_window"
+
+
+def test_help_copy_markdown_copies_only_the_selected_list_items(qtbot):
+    """Owner report 2026-10-21: selecting two labels copied the WHOLE page.
+
+    The plain selection never occurs verbatim in the source (the index strips
+    ``1.``/``**`` and joins blocks with blank lines), and the old fallback
+    returned the full page markdown. The copy now maps through the parsed
+    blocks' source geometry, so the clipboard holds exactly those two lines.
+    """
+    from PySide6.QtGui import QGuiApplication
+
+    dialog = HelpDialog(current_language="en", app_name="Improve-ImgSLI")
+    qtbot.addWidget(dialog)
+    dialog.resize(880, 620)
+    dialog.show()
+    qtbot.waitExposed(dialog)
+
+    dialog.navigate_to("platform.getting_started")
+    document = dialog._document
+    index = document.canvas()._document_index
+    plain = index.text
+    items = [
+        segment
+        for segment in index.segments
+        if plain[segment.start : segment.end].startswith(("3. ", "4. "))
+    ]
+    assert len(items) == 2
+    document.canvas()._doc_selection.set_range(items[0].start, items[1].end)
+
+    source = dialog._document_source_markdown
+    first = source.index("3. Load one image")
+    second = source.index("4. Drag the **Divider**")
+    expected = source[first : source.index("\n", second)]
+    assert expected.strip() != source.strip()
+
+    global_pos = document.mapToGlobal(document.rect().center())
+    open_help_text_context_menu(
+        dialog=dialog,
+        document=document,
+        global_pos=global_pos,
+        language="en",
+        source_markdown=source,
+    )
+    qtbot.wait(10)
+    menu = get_context_menu_manager()._active_menu
+    assert menu is not None
+    menu._finish_row_click("help.text.copy_markdown", None)
+    qtbot.wait(10)
+
+    assert QGuiApplication.clipboard().text() == expected
+    try:
+        menu.hide()
+    except RuntimeError:
+        pass

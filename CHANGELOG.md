@@ -4,6 +4,22 @@
 
 ### Fixed
 
+- **"Copy as Markdown" in the help viewer copies the selected fragment, not the
+  whole page.** Selecting two labels (e.g. two list items) and choosing the
+  menu row put the entire page on the clipboard: the mapping was a plain-text
+  substring search over the page source, and a selection spanning more than one
+  block never occurs verbatim there (the text index strips `1.`/`-`/`**` and
+  joins blocks with blank lines), so the "best effort" fallback returned the
+  full markdown. The toolkit now carries each parsed block's source geometry
+  and maps the live selection through it (selected list items / headings /
+  paragraphs copy their own source lines, a whole inline span keeps its
+  `**`/backticks/link target, a partial span copies plain text, table cells
+  keep their ` | ` separators, and Select-all still reproduces the page).
+  Toolkit `CHANGELOG.md` has the mechanism; this repo pins the user-facing case
+  in `tests/plugins/test_help_text_context_menu.py`
+  (`test_help_copy_markdown_copies_only_the_selected_list_items` — red before:
+  the clipboard held the whole page).
+
 - **Hover no longer pops the value flyout on scroll-value controls.** The
   divider / magnifier-guide width buttons (Image Compare, Multi Compare) show
   the value **inside** the button on hover; the value pill above the button is

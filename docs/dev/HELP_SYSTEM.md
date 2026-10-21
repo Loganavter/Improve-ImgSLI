@@ -435,9 +435,12 @@ markdown subset → parse_help_blocks() → HelpDocumentView
 
 The body is a single custom canvas (`HelpDocumentBodyCanvas` in
 `sli-ui-toolkit`): one text index, one selection model, `QTextLayout` paint
-path. Cross-block drag-select, Select all, and Copy as Markdown operate on the
-full page (headings, list markers, paragraphs). TOC remains separate chrome
-above the canvas (clickable `_LinkLabel` rows, not part of body selection).
+path. Selection spans the whole page (headings, list markers, paragraphs), and
+**Copy as Markdown maps the selection back to the page source** — the selected
+blocks only, with their markup (the blocks parsed from the page carry that
+geometry), so a two-label selection copies two lines, never the page. TOC
+remains separate chrome above the canvas (clickable `_LinkLabel` rows, not part
+of body selection).
 
 Public document API used by the app: `set_markdown`, `plain_text`,
 `selected_plain_text()`, `selected_markdown()`, `select_all_text()`,

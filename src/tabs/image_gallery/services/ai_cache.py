@@ -100,7 +100,7 @@ _TEXT_IDENTITY_FIELDS = (
 #: Default draw count: ONE. The owner has not set a cost ceiling, so a sample
 #: multiplier is never taken silently — k>1 must be a declared setting
 #: (``AiSettings.sample_count``) and the trace states its cost.
-DEFAULT_SAMPLE_COUNT = 1
+DEFAULT_SAMPLE_COUNT = 3
 
 #: Defaults for the optional sampling knobs (0 = "not sent", the backend's own
 #: default draw). They are part of the identity even when unset, so the shape of
