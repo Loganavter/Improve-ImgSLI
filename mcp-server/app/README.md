@@ -47,15 +47,18 @@ no manual `PYTHONPATH` is needed. Environment knobs:
 
 ## Surface
 
-**Tools** (22 — 10 read-only, 12 mutating; reads and writes never share a tool):
+**Tools** (27 — 11 read-only, 16 mutating; reads and writes never share a tool):
 `list_actions`, `list_sessions`, `get_state`, `read_log`, `query_trace`,
-`dump_ui_layout`, `list_surfaces`, `ui_elements`, `ui_nav_state`, `jobs_list` ·
-`open_tab`, `run_action`, `open_folder`, `set_theme`, `set_language`,
-`capture_surface`, `press_keys`, `nav_key`, `ui_click`, `ui_hover`, `ui_focus`,
-`jobs_cancel`. The four
-element-targeting tools (`ui_elements`, `ui_click`, `ui_hover`, `ui_focus`), the
-keyboard pair (`nav_key` + `ui_nav_state`) and
-the two job tools (`jobs_list`, `jobs_cancel`) are live-only.
+`dump_ui_layout`, `list_surfaces`, `ui_elements`, `ui_nav_state`, `jobs_list`,
+`wait_for` ·
+`open_tab`, `run_action`, `open_folder`, `open_file`, `open_properties`,
+`set_theme`, `set_language`, `set_setting`, `capture_surface`, `press_keys`,
+`nav_key`, `ui_click`, `ui_hover`, `ui_focus`, `ui_press`, `jobs_cancel`. The four
+element-targeting tools (`ui_elements`, `ui_click`, `ui_hover`, `ui_focus`),
+`ui_press`, the keyboard pair (`nav_key` + `ui_nav_state`), the two job tools
+(`jobs_list`, `jobs_cancel`), `wait_for` and `open_properties` are live-only
+(`open_file` refuses without a running tab; `set_setting` still persists the
+value for the next start).
 
 **Resources**: `app://actions`, `app://state`, `app://sessions`, `app://log`,
 `app://ui-layout`, `app://theme`; templates `app://action/{id}`,
@@ -204,12 +207,12 @@ passes, so it measures from the first `jobs_list` that observed the job running;
   / `jobs_*` and an unknown action id / tab / state path / surface / job id or an
   uncancellable job kind are refused by the server with close-match hints. Full
   table in [docs/dev/MCP.md](../../docs/dev/MCP.md).
-- **Annotations audited (2026-10-17).** The ten read-only tools really read
-  (no state touched, `readOnlyHint: true`, `jobs_list` included); the twelve
+- **Annotations audited (2026-10-17).** The eleven read-only tools really read
+  (no state touched, `readOnlyHint: true`, `jobs_list` included); the sixteen
   mutating tools are honestly marked (`run_action` = `destructiveHint: true`;
-  `press_keys`/`ui_click`/`jobs_cancel` = non-destructive but non-idempotent;
-  `ui_hover`/`ui_focus` idempotent). No over- or under-statement was found; the
-  suite pins the classification.
+  `press_keys`/`ui_click`/`ui_press`/`jobs_cancel` = non-destructive but
+  non-idempotent; `ui_hover`/`ui_focus` idempotent). No over- or under-statement
+  was found; the suite pins the classification.
 
 ## Known limitations
 

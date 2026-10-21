@@ -75,7 +75,7 @@ JOB_STATUSES = ("running", "paused")
 CANCELLABLE_JOB_KINDS = ("export",)
 
 #: The only settings ``set_setting`` may write (mirrors the app's
-#: ``core/control/handlers.SETTING_WHITELIST``; the catalog stays
+#: ``core/control/live_verbs.SETTING_WHITELIST``; the catalog stays
 #: app-import-free, so the vocabulary is repeated here). ``theme``/``language``
 #: keep ``set_theme``/``set_language``.
 SETTING_WHITELIST = ("rhi_backend",)
