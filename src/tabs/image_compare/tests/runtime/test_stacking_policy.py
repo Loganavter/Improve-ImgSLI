@@ -32,13 +32,14 @@ from tabs.image_compare.canvas.render_arch import (
 from ui.canvas_infra.rhi.render_metrics import RenderMetrics
 
 class TestRenderPassResolution:
-    """Every CanvasStackRole must resolve to a valid (RenderPhase, int) pair."""
+    """Role resolution invariants beyond the completeness sweep.
 
-    @pytest.mark.parametrize("role", list(CanvasStackRole))
-    def test_every_role_resolves(self, role: CanvasStackRole):
-        phase, priority = resolve_render_pass_order(role)
-        assert isinstance(phase, RenderPhase)
-        assert isinstance(priority, int)
+    The "every role resolves" sweep was deleted (C2b): it asserted only the
+    return types, so it could not fail while the resolver had a `.get` default,
+    and the rule now lives in ONE owner —
+    `tests/contracts/test_scene_order_table_complete.py` (all 11 roles in both
+    tables, `__getitem__`, zero collisions).
+    """
 
     def test_underlay_before_annotation(self):
         p1, _ = resolve_render_pass_order(CanvasStackRole.UNDERLAY_SPLIT)
@@ -76,13 +77,7 @@ class TestRenderPassResolution:
         assert phase_c < phase_b
 
 class TestSceneObjectResolution:
-    """Every CanvasStackRole must resolve to a valid (CanvasStackLayer, int) pair."""
-
-    @pytest.mark.parametrize("role", list(CanvasStackRole))
-    def test_every_role_resolves(self, role: CanvasStackRole):
-        layer, priority = resolve_scene_object_order(role)
-        assert isinstance(layer, CanvasStackLayer)
-        assert isinstance(priority, int)
+    """Ordering invariants beyond the completeness sweep (see the sibling note)."""
 
     def test_underlay_before_object(self):
         l1, _ = resolve_scene_object_order(CanvasStackRole.UNDERLAY_SPLIT)

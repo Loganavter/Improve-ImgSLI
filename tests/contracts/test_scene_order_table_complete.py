@@ -30,6 +30,7 @@ Allowlist: three entries (both resolvers and the missing scene role — C2).
 from __future__ import annotations
 
 import ast
+from types import SimpleNamespace
 
 from tests.contracts._framework import ROOT, parse
 from tests.contracts.canvas_gates_allowlist import (
@@ -189,20 +190,25 @@ def test_tables_are_not_vacuous():
         )
 
 
-def test_missing_role_and_get_resolver_are_flagged():
-    """Falsification: both halves fire on a synthetic incomplete table."""
+def test_missing_role_and_get_resolver_are_flagged(monkeypatch):
+    """Falsification: both halves fire on a synthetic incomplete/strict table.
+
+    The live tables are complete now, so the missing-row case is injected into
+    a copy — a control that read the live defect would go green forever once the
+    defect is fixed (the vacuity trap this gate exists to avoid).
+    """
     policy = _module()
     role = policy.CanvasStackRole.HUD_INTERACTION_OVERLAY
-    table = dict(policy._SCENE_OBJECT_ORDER)
-    table.pop(role, None)
-    assert role not in table, "the synthetic table still holds the role"
-    # A missing role must be a finding for the table that lacks it.
+    patched = dict(policy._SCENE_OBJECT_ORDER)
+    patched.pop(role, None)
+    monkeypatch.setattr(policy, "_SCENE_OBJECT_ORDER", patched)
+
     incomplete = [
         finding
         for finding in missing_role_findings()
         if finding.symbol == f"_SCENE_OBJECT_ORDER.{role.name}"
     ]
-    assert incomplete, "the real missing HUD role was not flagged"
+    assert incomplete, "a synthetic missing scene row was not flagged"
 
     with_get = ast.parse("def resolve_x(role):\n    return _T.get(role, DEFAULT)\n")
     assert _resolver_uses_get(with_get.body[0]), "a `.get` resolver was not flagged"
@@ -210,14 +216,74 @@ def test_missing_role_and_get_resolver_are_flagged():
     assert not _resolver_uses_get(strict.body[0]), "a `__getitem__` resolver was flagged"
 
 
-def test_collision_is_flagged_on_the_fallback_role():
-    """Falsification: a fallback collision is attributed to the missing role."""
-    collisions = collision_findings()
-    symbols = {finding.symbol for finding in collisions}
-    assert "_SCENE_OBJECT_ORDER.HUD_INTERACTION_OVERLAY" in symbols, (
-        "the HUD_INTERACTION_OVERLAY fallback collision with "
-        f"IMAGE_OVERLAY_CONTENT was not reported: {sorted(symbols)}"
+def test_collision_is_flagged_for_two_roles_sharing_one_pair(monkeypatch):
+    """Falsification: two roles on one explicit pair are reported.
+
+    Injected (not read from the live tables): the live state must be free of
+    collisions, so a control that depended on the real collision would pass
+    vacuously after the fix.
+    """
+    policy = _module()
+    pair_layer, pair_priority = policy._SCENE_OBJECT_ORDER[
+        policy.CanvasStackRole.IMAGE_OVERLAY_CONTENT
+    ]
+    patched = dict(policy._SCENE_OBJECT_ORDER)
+    patched[policy.CanvasStackRole.HUD_LABEL] = (pair_layer, pair_priority)
+    monkeypatch.setattr(policy, "_SCENE_OBJECT_ORDER", patched)
+
+    symbols = {finding.symbol for finding in collision_findings()}
+    assert any(
+        symbol.startswith("_SCENE_OBJECT_ORDER.") for symbol in symbols
+    ), f"a synthetic two-role collision was not reported: {sorted(symbols)}"
+
+
+def test_live_tables_have_no_collisions_and_no_missing_rows():
+    """The live state this wave lands: 11 roles, 0 collisions, both tables."""
+    policy = _module()
+    roles = list(policy.CanvasStackRole)
+    assert len(roles) == 11, f"CanvasStackRole has {len(roles)} members, expected 11"
+    for table_name in RESOLVERS:
+        assert set(getattr(policy, table_name)) == set(roles), (
+            f"{table_name} does not cover every role"
+        )
+    assert missing_role_findings() == [], [f.detail for f in missing_role_findings()]
+    assert collision_findings() == [], [f.detail for f in collision_findings()]
+
+
+def test_hud_interaction_overlay_sits_above_the_hud_label():
+    """The role's declared order, checked through the REAL scene sort.
+
+    ``HUD_INTERACTION_OVERLAY`` is interaction chrome for the HUD: it belongs
+    ABOVE the HUD label it annotates (the pass table already ranks it 150
+    against the label's 100). No scene object declares the role yet, so a live
+    frame cannot show it — this is the ordering proof instead: one object per
+    role, sorted by ``resolve_render_order``. Red before the scene row exists:
+    the missing key resolves the overlay to ``(OBJECT, 0)`` through the
+    resolver's default, so it sorts *below* the label.
+    """
+    from ui.canvas_infra.scene.feature_contract import CanvasFeatureZOrder
+    from ui.canvas_infra.scene.stacking import resolve_render_order
+    from ui.canvas_infra.scene.stacking_policy import CanvasStackLayer, CanvasStackRole
+
+    def _obj(obj_id: str, role: CanvasStackRole) -> SimpleNamespace:
+        return SimpleNamespace(
+            id=obj_id,
+            stack_hint=CanvasFeatureZOrder(stack_role=role).stack_hint(),
+        )
+
+    label = _obj("hud_label", CanvasStackRole.HUD_LABEL)
+    overlay = _obj("interaction_overlay", CanvasStackRole.HUD_INTERACTION_OVERLAY)
+
+    order = [obj.id for obj in resolve_render_order([overlay, label])]
+    assert order == ["hud_label", "interaction_overlay"], (
+        "the HUD interaction overlay must sort ABOVE the HUD label (back-to-front "
+        f"order); got {order} — the missing scene row fell back to "
+        f"{(overlay.stack_hint.layer, overlay.stack_hint.priority)}"
     )
-    assert "_RENDER_PASS_ORDER.HUD_INTERACTION_OVERLAY" not in symbols, (
-        "the render-pass table has the row — it must not report a fallback collision"
+    assert overlay.stack_hint.layer == CanvasStackLayer.HUD, (
+        f"the overlay belongs on the HUD layer, got {overlay.stack_hint.layer!r}"
     )
+    assert (overlay.stack_hint.layer, overlay.stack_hint.priority) > (
+        label.stack_hint.layer,
+        label.stack_hint.priority,
+    ), "the overlay's resolved pair must be strictly above the HUD label's"
