@@ -422,7 +422,7 @@ def _settings() -> AiSettings:
         api_key="sk-not-a-real-key",
         model="model/A",
         reasoning_effort="auto",
-        sample_count=1,
+        sample_count=3,
     )
 
 
@@ -445,10 +445,15 @@ def test_the_identity_changes_with_the_sampling_config(tmp_path, monkeypatch) ->
 
 
 def test_the_declared_k_setting_is_the_default_one() -> None:
-    """k defaults to 1 — the owner never set a cost ceiling (no silent k=3)."""
-    assert _settings().sample_count == 1
+    """k defaults to 3 — the owner set the cost ceiling on 2026-10-21.
+
+    One draw of a stochastic judge moved an axis by 12-23 points while the
+    variants differed by 2-6, so a single draw could not order them. k is part
+    of the cache identity, so the k=1 cards become MISSes once.
+    """
+    assert _settings().sample_count == 3
     identity = ai_cache.analysis_cache_identity(_settings(), mode="camera")
-    assert identity["k"] == "1"
+    assert identity["k"] == "3"
 
 
 def test_the_prompt_does_not_echo_the_numbers_the_model_must_judge() -> None:

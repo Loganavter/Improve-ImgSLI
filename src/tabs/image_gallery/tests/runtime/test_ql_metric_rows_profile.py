@@ -164,6 +164,62 @@ def test_algorithms_domain_hides_the_ai_composition_row(qtbot):
         ov_ai.hide()
 
 
+def test_a_series_offer_renders_its_unscored_axis_as_not_measured(qtbot):
+    """An OFFERED axis the judge never scored says so instead of vanishing.
+
+    P5: ``source=series`` is an offer, not the wide mode pool — the rows must
+    render exactly its axes, so an axis with no reading is a visible gap
+    (M5 "every loss is a visible state"), not a silent omission.
+    """
+    from tabs.image_gallery.ui.quick_look import metrics as m
+
+    item = _item("series-offer.png", rank=1, metrics={"sharpness": 150.0})
+    offer = MetricProfile(
+        axis_ids=("sharpness", "noise"), mode="fidelity", source="series"
+    )
+    ov = _RowsStub(item, offer)
+    qtbot.addWidget(ov._report_host)
+    m.rebuild_metrics(ov, item, True, "FIDELITY")
+
+    titles = _row_titles(ov)
+    assert any(t.startswith("Sharpness") for t in titles), titles
+    assert any(t.startswith("Clean") for t in titles), (
+        "the offered axis with no score was dropped instead of rendered as a "
+        f"gap: {titles}"
+    )
+    assert any("not measured" in t for t in _row_texts(ov)), _row_texts(ov)
+
+
+def test_a_mode_fallback_offer_is_named_as_a_fallback_in_the_rows(qtbot):
+    """A mode-mapping offer says "mode default", an offered set does not.
+
+    P5 precedence: the mode mapping is the LAST fallback. Rendering its axes
+    exactly like a measured offer would present a pool description as if the
+    series had been measured, so the fallback is a visible state row.
+    """
+    from tabs.image_gallery.ui.quick_look import metrics as m
+
+    item = _item("fallback.png", rank=1, metrics={"sharpness": 150.0, "noise": 0.2})
+    fallback = MetricProfile(
+        axis_ids=("sharpness", "noise"), mode="fidelity", source="heuristic"
+    )
+    ov = _RowsStub(item, fallback)
+    qtbot.addWidget(ov._report_host)
+    m.rebuild_metrics(ov, item, True, "FIDELITY")
+
+    texts = _row_texts(ov)
+    assert "Axis set" in texts, f"the fallback offer is unnamed: {texts}"
+    assert "mode default" in texts, f"the fallback offer is unnamed: {texts}"
+
+    # An accepted offer (series or the judge's own) is NOT a fallback.
+    offered = MetricProfile(
+        axis_ids=("sharpness", "noise"), mode="fidelity", source="series"
+    )
+    ov._owner.state.metric_profile = offered
+    m.rebuild_metrics(ov, item, True, "FIDELITY")
+    assert "mode default" not in _row_texts(ov), _row_texts(ov)
+
+
 class _RowsStub:
     """Bare overlay surface for the row pipeline (no window, no layout)."""
 

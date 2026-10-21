@@ -1,4 +1,4 @@
-"""Wave-2 identity gate — ONE metric profile reaches EVERY surface (plan P1).
+"""Wave-2 identity gate — ONE metric profile reaches EVERY surface (P1 → P5).
 
 The produce lane stores the profile and the consume lane reads it; each lane is
 green alone. This file tests the **seam between them**, which is exactly where
@@ -6,12 +6,18 @@ multi-lane work fails: for one state, the stored profile must be the axis set
 that the dots, the AI scorecard prompt, the rank fusion and the Jev measured
 vector all resolve — byte for byte, not "a similar count".
 
+Since P5 the stored profile is the SERIES offer (the axes whose measured spread
+clears the local floor, plus source-relative axes when a source exists), not
+"mode base ∪ salient": a series where white balance is constant must never be
+measured, dotted, prompted or vectorised on it.
+
 Falsification stories (what each test would catch):
 
 - the producer storing a profile nobody reads (every consumer silently keeping
-  the mode mapping): a salient axis the mode base does not imply (`ssim` here —
-  a ``reference`` axis absent from ``batch_synthetic``) must appear in EVERY
-  surface;
+  the mode mapping): an axis the mode base does NOT imply (`ssim` here — a
+  ``reference`` axis absent from the batch-synthetic mode base) must appear in
+  EVERY surface, while an axis the mode base DOES imply but this series cannot
+  separate (white balance) must appear in none;
 - a consumer deriving its own axes (a second source of truth): the four
   surfaces must agree on the exact ordered id list, not merely on the count;
 - the rank reading a different axis set from the dots/prompt: the fusion order
@@ -44,10 +50,13 @@ from tabs.image_gallery.services.rank_fusion import measured_axes_for, rank_seri
 from tabs.image_gallery.ui.card.dots import metric_dots_for_item
 from tabs.image_gallery.use_cases.profile_select import active_profile, describe
 
-#: The axis the salience pass must add: a ``reference`` axis, i.e. one the
-#: ``batch_synthetic`` mode base does NOT contain. If a surface shows it, that
+#: The axis the series offer must carry: a ``reference`` axis, i.e. one the
+#: batch-synthetic mode base does NOT contain. If a surface shows it, that
 #: surface read the stored profile rather than the mode mapping.
 SALIENT = "ssim"
+#: An axis the mode base implies (camera/batch-synthetic both list it) but the
+#: fixture keeps constant across the series: P5 must not offer it anywhere.
+FLAT = "white_balance"
 
 
 class _FakeController:
@@ -55,6 +64,8 @@ class _FakeController:
 
     def __init__(self, items, series, mode=Mode.BATCH_SYNTHETIC) -> None:
         self.state = GalleryState(items=list(items), series=list(series), mode=mode)
+        # A source hub exists: the source-relative axes are measurable here.
+        self.state.source_path = Path("/gallery/source.png")
 
     def refresh_metric_profile(self):
         return GalleryController.refresh_metric_profile(self)
@@ -84,8 +95,8 @@ def _scattered():
     profile adds ``ssim`` (→ ``a`` wins). So the fusion order *is* the proof of
     which axis set the rank used.
     """
-    a = _item("a.png", ssim=1.0, noise=0.9)
-    b = _item("b.png", ssim=0.0, noise=0.0)
+    a = _item("a.png", ssim=1.0, noise=0.9, wb_shift=0.9)
+    b = _item("b.png", ssim=0.0, noise=0.0, wb_shift=0.9)
     return a, b
 
 
@@ -108,10 +119,16 @@ def test_the_stored_profile_is_salience_aware_and_deterministic() -> None:
     profile = _profile(ctrl)
 
     assert ctrl.state.metric_profile == profile
-    assert SALIENT in profile.salient_axes, "the spread on ssim must be salient"
-    assert set(profile.axis_ids) >= set(profile_for_mode(Mode.BATCH_SYNTHETIC).axis_ids)
+    assert profile.source == "series", "the stored profile is the series offer"
+    assert SALIENT in profile.salient_axes, "the spread on ssim must be offered"
+    assert SALIENT in profile.axis_ids
+    assert FLAT not in profile.axis_ids, (
+        "a constant axis reached the offer — the owner's original complaint "
+        f"(white balance/aesthetics on one picture); profile={profile.axis_ids}"
+    )
+    assert profile.axis_ids != measured_axes_for(Mode.BATCH_SYNTHETIC)
     assert SALIENT not in measured_axes_for(Mode.BATCH_SYNTHETIC), (
-        "the salient axis must NOT be part of the mode base, else this test "
+        "the offered axis must NOT be part of the mode base, else this test "
         "cannot tell the profile apart from the mode mapping"
     )
     # Unchanged inputs → equal profile (determinism, plan §Acceptance).
@@ -132,9 +149,14 @@ def test_card_dots_use_the_stored_profile() -> None:
         (spec_for(axis).label if spec_for(axis) else axis) for axis in profile.axis_ids
     ]
     assert labels == expected
-    assert (spec_for(SALIENT).label) in labels, "the salient axis is dotted"
-    # Same axis count the mode mapping would give? No — that is the point.
-    assert len(labels) > len(measured_axes_for(ctrl.state.mode))
+    assert (spec_for(SALIENT).label) in labels, "the offered axis is dotted"
+    # The dots follow the OFFER, not the mode mapping: the constant axis has no
+    # dot at all, and an axis the mode base lacks does.
+    assert labels != [
+        (spec_for(axis).label if spec_for(axis) else axis)
+        for axis in measured_axes_for(ctrl.state.mode)
+    ]
+    assert spec_for(FLAT).label not in labels
 
 
 def test_ai_scorecard_prompt_uses_the_stored_profile() -> None:
@@ -200,10 +222,13 @@ def test_trace_names_the_profile_and_its_source() -> None:
 
     text = describe(ctrl.state)
 
-    assert "source=heuristic" in text
+    assert "source=series" in text
     assert "mode=batch_synthetic" in text
     salient_part = text.split("salient=", 1)[1]
     assert SALIENT in salient_part
+    from tabs.image_gallery.use_cases.profile_select import describe_source
+
+    assert describe_source(ctrl.state) == "series-derived"
 
 
 # --------------------------------------------------------------------------
@@ -215,7 +240,7 @@ def test_clear_falls_back_identically_in_every_surface() -> None:
     a, b = _scattered()
     ctrl = _FakeController([a, b], _series(a, b))
     profile = _profile(ctrl)
-    assert len(profile.axis_ids) > len(measured_axes_for(ctrl.state.mode))
+    assert profile.axis_ids != measured_axes_for(ctrl.state.mode)
 
     ctrl.clear_metric_profile()
     fallback = active_profile(ctrl.state)

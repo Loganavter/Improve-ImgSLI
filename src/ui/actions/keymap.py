@@ -128,6 +128,20 @@ def all_effective_chords(
     return tuple(chords)
 
 
+def shared_scope(owner_a: str | None, owner_b: str | None) -> bool:
+    """True when two actions can be installed in one window scope.
+
+    Mirrors ``ActionShortcutBinder.resync``: the binder installs platform
+    actions (``owner_tab is None``) plus the ACTIVE tab's actions, so a
+    platform action competes with every tab and two different tabs never
+    coexist. A chord shared by two tab owners is therefore NOT a conflict —
+    each tab binds it while it is active (two tabs may ship the same toggle
+    chord). Treating that share as a conflict used to persist a dead ``""``
+    override against the alphabetically later tab, permanently.
+    """
+    return owner_a is None or owner_b is None or owner_a == owner_b
+
+
 def exclusive_overrides(
     defaults: Mapping[str, tuple[str | None, str | None]],
     overrides: Mapping[str, str] | None,
@@ -139,6 +153,10 @@ def exclusive_overrides(
     ``defaults`` maps ``action_id → (default_shortcut, owner_tab)``.
     Conflicting actions other than the winner get an explicit unbound override
     (``""``) so their defaults cannot reclaim the chord.
+
+    Conflicts are resolved in the binder's scope (:func:`shared_scope`): a
+    platform holder wins the chord everywhere, a tab holder wins it inside its
+    own tab, and a chord shared by two different tabs belongs to both.
     """
     result = {
         key: normalize_sequence(value) if value else ""
@@ -170,10 +188,87 @@ def exclusive_overrides(
                 binding_priority(aid, owner_tab=defaults[aid][1]),
             ),
         )
-        for action_id in ranked[1:]:
+        if prefer_action_id and ranked[0] == prefer_action_id:
+            # A deliberate steal (Settings capture) outranks every scope: the
+            # action the user just typed a chord for wins it everywhere.
+            losers = ranked[1:]
+        else:
+            losers = _scope_losers(ranked, defaults)
+        for action_id in losers:
             # Explicitly unbind losers so defaults cannot keep the chord.
             result[action_id] = ""
     return result
+
+
+def _scope_losers(
+    ranked: list[str],
+    defaults: Mapping[str, tuple[str | None, str | None]],
+) -> list[str]:
+    """Holders that lose ``chord`` inside the binder's scope (``ranked[0]`` wins)."""
+    platform_holders = [aid for aid in ranked if defaults[aid][1] is None]
+    if platform_holders:
+        # Platform actions are installed in every tab scope, so their winner
+        # outranks every tab holder. This is the pre-scope behaviour and it is
+        # deliberate: a platform chord keeps winning while any tab is active.
+        return [aid for aid in ranked if aid != platform_holders[0]]
+    losers: list[str] = []
+    claimed_owners: set[str | None] = set()
+    for action_id in ranked:
+        owner_tab = defaults[action_id][1]
+        if owner_tab in claimed_owners:
+            losers.append(action_id)
+        else:
+            claimed_owners.add(owner_tab)
+    return losers
+
+
+def repair_legacy_cross_tab_unbounds(
+    defaults: Mapping[str, tuple[str | None, str | None]],
+    overrides: Mapping[str, str] | None,
+) -> dict[str, str]:
+    """Drop only the ``""`` overrides the old all-tabs ranking poisoned.
+
+    Profiles written before the scope fix carry empty overrides for the loser
+    of a chord two tabs both ship (the divider toggle both tabs bind to one
+    key). The binder never saw that conflict — it installs one tab at a time —
+    so the override was pure damage: the action was dead even in its own tab.
+
+    An empty override is kept when it is a real user choice: the action is the
+    default winner of its own chord, has no chord at all, or shares the chord
+    with another action of the same scope (a genuine same-tab conflict).
+    Pure: the caller's mapping is never mutated, a new dict is returned.
+    """
+    repaired = dict(overrides or {})
+    if not repaired:
+        return repaired
+
+    default_winners = resolve_chord_winners(defaults, {})
+    holders_by_chord: dict[str, list[str]] = {}
+    for action_id, (default, _owner) in defaults.items():
+        chord = normalize_sequence(default)
+        if chord:
+            holders_by_chord.setdefault(chord, []).append(action_id)
+
+    for action_id, value in tuple(repaired.items()):
+        if normalize_sequence(value) or action_id not in defaults:
+            continue
+        default, owner_tab = defaults[action_id]
+        chord = normalize_sequence(default)
+        if not chord:
+            continue
+        same_scope_rival = any(
+            other != action_id and shared_scope(owner_tab, defaults[other][1])
+            for other in holders_by_chord.get(chord, ())
+        )
+        if same_scope_rival:
+            continue
+        winner = default_winners.get(chord)
+        if winner is None or winner == action_id:
+            continue
+        if shared_scope(owner_tab, defaults[winner][1]):
+            continue
+        del repaired[action_id]
+    return repaired
 
 
 def resolve_chord_winners(

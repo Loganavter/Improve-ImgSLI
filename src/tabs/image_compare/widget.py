@@ -42,6 +42,57 @@ class ImageCompareWidget(ThemedWidget, QWidget):
         # _render_stale / _metrics_stale are now Gate-backed properties (see below);
         # init via gate to avoid double storage
         self._stale_gate.clear()
+        # Keyboard focus contract (mirrors ``MultiCompareWidget``): the canvas
+        # is a ``QRhiWidget`` and must stay ``NoFocus`` — a focused RHI host
+        # restacks the Vulkan subsurface on Wayland/Vulkan (see
+        # ``ui/canvas_infra/rhi/rhi_focus.py``). This shell is the focus owner
+        # and forwards keys to the canvas; without it ``tab.on_activated``'s
+        # ``setFocus`` was a no-op and no widget ever saw ``←↑↓→``/``+``/``-``.
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+
+    def keyPressEvent(self, event) -> None:  # noqa: N802
+        """Forward keys to the canvas, then to the global handler if unused.
+
+        The canvas owns pan/zoom chords (``tabs/image_compare/canvas/
+        interaction.py``); everything it does not accept is re-dispatched to
+        the app's global keyboard handler so loupe movement (W/A/S/D/Q/E) and
+        Space preview keep working now that this shell, not the canvas, is the
+        focus owner. A chord the active tab's binder installed (``D`` —
+        Divider Visibility) is never re-dispatched: it belongs to the shortcut
+        map.
+        """
+        if self._forward_key_to_canvas(event, "keyPressEvent"):
+            return
+        from events.app_event.keyboard import (
+            redispatch_unhandled_key_to_global_handler,
+        )
+
+        if redispatch_unhandled_key_to_global_handler(self, event):
+            return
+        super().keyPressEvent(event)
+
+    def keyReleaseEvent(self, event) -> None:  # noqa: N802
+        """Release symmetry for held loupe keys (see ``keyPressEvent``)."""
+        if self._forward_key_to_canvas(event, "keyReleaseEvent"):
+            return
+        from events.app_event.keyboard import (
+            redispatch_unhandled_key_to_global_handler,
+        )
+
+        if redispatch_unhandled_key_to_global_handler(self, event):
+            return
+        super().keyReleaseEvent(event)
+
+    def _forward_key_to_canvas(self, event, handler_name: str) -> bool:
+        canvas = getattr(self, "image_label", None)
+        handler = getattr(canvas, handler_name, None) if canvas is not None else None
+        if handler is None:
+            return False
+        # Qt delivers key events pre-accepted; reopen the decision so only a
+        # canvas that explicitly accepts (pan/zoom chords) counts as handled.
+        event.ignore()
+        handler(event)
+        return bool(event.isAccepted())
 
     @property
     def _render_stale(self) -> bool:  # type: ignore[override]

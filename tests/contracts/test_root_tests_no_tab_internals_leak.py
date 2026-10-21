@@ -52,6 +52,17 @@ def _tab_names() -> tuple[str, ...]:
 # rel path (POSIX, relative to repo root) -> why this file is allowed to
 # deep-import a specific tab's internals from outside that tab's own tests/.
 ALLOWED_DEEP_TAB_IMPORTS: dict[str, str] = {
+    "tests/contracts/test_ic_canvas_keyboard_focus.py": (
+        "cross-layer KEYBOARD REACHABILITY contract (host event router + tab "
+        "shell): the defect was exactly that both halves were locally correct — "
+        "the tab's canvas handled arrows/+- and the host router consumed a "
+        "letter — so neither tier could prove the chord live. The test drives "
+        "the REAL Image Compare shell and QRhi canvas through the REAL router "
+        "and a REAL QShortcut map; a stand-in at either end would restate the "
+        "bug instead of exposing it (the existing runtime suite does exactly "
+        "that: it calls handle_key_press_event on a fake widget and stayed "
+        "green while the live chord was dead)"
+    ),
     "tests/runtime/test_ql_source_canvas.py": (
         "cross-surface ENGINE-CANVAS contract: the Quick Look source inset must "
         "be the same QuickLookCanvasWidget/host/ViewportState implementation the "

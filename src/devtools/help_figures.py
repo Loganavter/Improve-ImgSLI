@@ -50,6 +50,13 @@ SCHEMA_VERSION = 1
 #: caller passes.
 LOCALES = ("en", "pt_BR", "ru", "zh")
 THEMES = ("dark", "light")
+#: How much of a figure's frame depends on the reader's locale and/or theme.
+#: A matrix is justified by WHAT IS IN THE FRAME, not by figure count: chrome
+#: with translatable text needs every locale and both themes, theme-coloured
+#: chrome without text needs both themes only, and a frame of canvas pixels
+#: needs neither. ``tests/devtools/test_help_figure_variant_matrix.py`` enforces
+#: the declared value against the declared matrix.
+VARIANT_NEEDS = ("none", "theme", "locale+theme")
 BACKENDS = ("native", "xvfb")
 #: Pins that really go through the surface API (``capture_surface`` CLI:
 #: ``--theme`` -> ``ThemeManager.set_theme``, ``--lang`` -> ``emit_language_changed``).
@@ -68,8 +75,8 @@ MAX_JOBS = 8
 AUTO_JOBS_CEILING = 4
 _BASELINE_KEYS = {"locale", "theme", "sha256", "size", "width", "height", "pins_applied", "pins_unavailable"}
 _FIGURE_KEYS = {
-    "id", "surface", "crop", "size", "locales", "themes", "destination", "covered",
-    "reason", "note", "pins_applied", "pins_unavailable", "captures",
+    "id", "surface", "crop", "size", "locales", "themes", "variant_need", "destination",
+    "covered", "reason", "note", "pins_applied", "pins_unavailable", "captures",
 }
 
 
@@ -108,6 +115,11 @@ class Figure:
     destination: str | None
     locales: tuple[str, ...] = ("en",)
     themes: tuple[str, ...] = ("dark",)
+    #: ``none`` | ``theme`` | ``locale+theme`` — what the FRAME needs, which is
+    #: what justifies a variant matrix (see ``VARIANT_NEEDS``). Default ``none``
+    #: keeps older/hand-built manifests parseable; the committed manifests must
+    #: declare it explicitly (guarded by the variant-matrix test).
+    variant_need: str = "none"
     crop: tuple[int, int, int, int] | None = None
     size: tuple[int, int] | None = None
     covered: bool = True
@@ -155,6 +167,22 @@ def _strings(value, figure_id: str, key: str) -> tuple[str, ...]:
     if not isinstance(value, (list, tuple)) or not all(isinstance(v, str) for v in value):
         raise ManifestError(f"{figure_id}: {key} must be a list of strings, got {value!r}")
     return tuple(value)
+
+
+def parse_variant_need(value, figure_id: str) -> str:
+    """Validate a figure's ``variant_need`` (absent = ``none``).
+
+    Shared by both manifest readers (recipe + live) so one vocabulary holds:
+    an unknown value is a manifest error, like an unknown locale, instead of a
+    silently weaker variant claim.
+    """
+    if value is None:
+        return "none"
+    if value not in VARIANT_NEEDS:
+        raise ManifestError(
+            f"{figure_id}: unknown variant_need {value!r}; known: {VARIANT_NEEDS}"
+        )
+    return value
 
 
 def _parse_baseline(raw, figure_id: str) -> Baseline:
@@ -237,6 +265,7 @@ def _parse_figure(raw) -> Figure:
         raise ManifestError(f"{figure_id}: unknown locales {bad}; known: {LOCALES}")
     if bad := [v for v in themes if v not in THEMES]:
         raise ManifestError(f"{figure_id}: unknown themes {bad}; known: {THEMES}")
+    variant_need = parse_variant_need(raw.get("variant_need"), figure_id)
     if not isinstance(raw.get("note", ""), str):
         raise ManifestError(f"{figure_id}: note must be a string")
     captures_raw = raw.get("captures", [])
@@ -248,7 +277,7 @@ def _parse_figure(raw) -> Figure:
     crop = raw.get("crop")
     return Figure(
         id=figure_id, surface=surface, destination=None if dest is None else dest.as_posix(),
-        locales=tuple(locales), themes=tuple(themes),
+        locales=tuple(locales), themes=tuple(themes), variant_need=variant_need,
         crop=None if crop is None else validate_crop(crop, figure_id=figure_id), size=size_box,
         covered=covered, reason=reason, note=raw.get("note", ""),
         pins_applied=_strings(raw.get("pins_applied", []), figure_id, "pins_applied"),

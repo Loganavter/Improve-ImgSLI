@@ -168,7 +168,7 @@ def test_unknown_ids_are_dropped_never_fabricated():
     assert profile.source == "vlm"
 
 
-def test_junk_reply_degrades_to_the_heuristic_and_is_not_pinned(tmp_path):
+def test_junk_reply_degrades_to_the_series_offer_and_is_not_pinned(tmp_path):
     items = _scattered()
     cache = ProfileCache(tmp_path)
     transport = _Transport([_chat("I cannot help with that."), _chat("still prose")])
@@ -180,23 +180,29 @@ def test_junk_reply_degrades_to_the_heuristic_and_is_not_pinned(tmp_path):
         items, mode="camera", settings=_settings(), cache=cache, client_call=transport
     )
 
-    assert first.source == "heuristic" and second.source == "heuristic"
-    # The fallback is the SALIENCE-AWARE heuristic: mode base ∪ salient axes
-    # (this dataset spreads on sharpness and ssim, so both are salient).
+    assert first.source == "series" and second.source == "series"
+    # The fallback is the SERIES OFFER (P5): only the axes this series can
+    # separate — sharpness and noise spread; the reference axis needs a source
+    # hub, and the mode base's constant axes are not offered.
     assert first == derive_profile(items, mode="camera")
-    assert set(first.axis_ids) >= set(measured_axes_for("camera"))
+    assert set(first.axis_ids) == {"sharpness", "noise"}
+    assert "white_balance" not in first.axis_ids
     assert len(transport.calls) == 2, "a malformed reply must not be pinned (it may retry)"
 
 
-def test_transport_failure_degrades_to_the_heuristic(tmp_path):
+def test_transport_failure_degrades_to_the_series_offer(tmp_path):
     transport = _Transport([RuntimeError("boom")])
     profile = choose_profile_sync(
         _scattered(), mode="camera", settings=_settings(),
         cache=ProfileCache(tmp_path), client_call=transport,
     )
-    assert profile.source == "heuristic"
-    assert set(profile.axis_ids) >= set(measured_axes_for("camera"))
-    assert EXTRA in profile.salient_axes, "the local spread is still used when the VLM is out"
+    assert profile.source == "series"
+    assert set(profile.axis_ids) == {"sharpness", "noise"}, (
+        "the local spreads still decide the offer when the VLM is out"
+    )
+    assert EXTRA not in profile.axis_ids, (
+        "a reference axis needs a source hub — none here"
+    )
 
 
 def test_ai_unavailable_makes_no_call(tmp_path):
@@ -207,7 +213,7 @@ def test_ai_unavailable_makes_no_call(tmp_path):
             _scattered(), mode="camera", settings=_settings(**overrides),
             cache=ProfileCache(tmp_path), client_call=transport,
         )
-        assert profile.source == "heuristic"
+        assert profile.source == "series"
         assert transport.calls == [], f"an unusable configuration must not hit the transport: {overrides}"
 
 

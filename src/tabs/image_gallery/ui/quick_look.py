@@ -2,7 +2,9 @@
 Audit-Meta: pattern=thin-owner reason="thin owner delegating to ui/quick_look/* helpers,bars,histograms,metrics,artifacts,strip"
 
 Left: large preview (pixmap, source inset for fidelity mode)
-     + prev/next walk the series (←→).
+     + the ‹/› circles walk the series (prev/next); the keyboard moves the
+       strip's ring with ←→ and shows the focused item on Enter
+       (quick_look/nav_section.py).
 Right: metric bars per mode (SSIM/sharpness/exposure), artifact rows with
        mini-visualizations (stub), filename meta + brief (series note, no
        counts); bottom: full-width series strip (SOURCE/viewing/pending/

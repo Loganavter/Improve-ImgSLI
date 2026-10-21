@@ -167,6 +167,8 @@
       "ai_brief_pending": "Resumo da IA…",
       "not_measured": "— · não medido",
       "axis_inside_noise": "não separa estas variantes",
+      "profile_axis_set": "Conjunto de eixos",
+      "profile_mode_fallback": "padrão do modo",
       "rank_of": "#{rank} de {total}",
       "rejected_tail": "cauda rejeitada ≤ {value}",
       "source_fallback": "origem",

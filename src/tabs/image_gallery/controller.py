@@ -128,9 +128,11 @@ _pipeline_stages.register_stage(_JEV_STAGE, requires=("metrics_ready",))
 #: Declared gallery stage for the VLM metric-profile selector. Its declared
 #: input is the settled measured-metrics pass (the salience/probe input); the
 #: controller drives it ONLY from that settle, and the single-flight gate
-#: dedups. The heuristic profile ``refresh_metric_profile`` stores FIRST stays
-#: the fail-open fallback (plan §Fallback); the selector may only REPLACE it
-#: with a ``source="vlm"`` profile once it answers.
+#: dedups. The series-derived offer ``refresh_metric_profile`` stores FIRST stays
+#: the fallback (plan-gallery-ai-judgement P5: ``source=series`` →
+#: ``series-derived``, or the mode mapping marked ``(fallback)`` when nothing was
+#: measured yet); the selector may only REPLACE it with a ``source="vlm"``
+#: profile once it answers — the judge's own choice wins, and the trace says so.
 _PROFILE_STAGE = "metric_profile"
 _pipeline_stages.register_stage(_PROFILE_STAGE, requires=("metrics_ready",))
 
@@ -521,18 +523,27 @@ class GalleryController:
         _gallery_slot._sync_from_slot(self)
 
     def refresh_metric_profile(self) -> object:
-        """Derive the metric profile from the live state and store it (plan P1).
+        """Derive the SERIES offer from the live state and store it (P1 → P5).
 
         The **producer** half of the profile seam: derived from ``self.state``
-        (mode + the folder's measured metrics) via the pure
-        ``use_cases.profile_select.derive_for_state``, then stored on the state
-        so the rank fusion and the Jev measured vector read ONE axis set. Called
-        at every site where ``state.mode`` is (re)decided and at the
-        metrics-settled boundary — the metrics are the salience input, so the
-        content-aware axes cannot be derived before they exist. Returns the
-        stored profile. Never raises: a derivation failure keeps the previous
-        value (or ``None``), so consumers fall back to the mode mapping
-        (fail-open, plan §Fallback).
+        (mode + the folder's measured metrics + whether a source hub exists) via
+        the pure ``use_cases.profile_select.derive_for_state``, which delegates
+        to ``metric_profile.profile_for_series``: the axes whose spread in this
+        series clears the local instrument's noise floor. Stored on the state so
+        the rank fusion, the prompt and the Jev measured vector read ONE axis
+        set. Called at every site where ``state.mode`` is (re)decided and at the
+        metrics-settled boundary — the metrics are the spread input, so the
+        series offer cannot be derived before they exist; until then the mode
+        mapping is stored and traced as the LAST fallback
+        (``profile_source_label`` → ``heuristic-<mode> (fallback)``).
+
+        Precedence (plan-gallery-ai-judgement P5, stated and traced): the
+        judge's own choice wins when it arrives (``_apply_profile_outcome``,
+        ``source=vlm`` → ``judge-vlm``); this series offer is the fallback
+        (``source=series`` → ``series-derived``); the mode mapping is the last
+        one and says so. Returns the stored profile. Never raises: a derivation
+        failure keeps the previous value (or ``None``), so consumers fall back
+        to the mode mapping (fail-open, plan §Fallback).
 
         This is the **automatic** path only: the manual domain pin and the
         stats-strip chip that drove it were deleted (owner decision 2026-10-20,
@@ -542,6 +553,7 @@ class GalleryController:
             from tabs.image_gallery.use_cases.profile_select import (
                 derive_for_state,
                 describe,
+                describe_source,
             )
 
             profile = derive_for_state(self.state)
@@ -554,6 +566,16 @@ class GalleryController:
             self.state.metric_profile = profile
             if profile != previous:
                 logger.debug("[gallery] metric profile: %s", describe(self.state))
+                # P5: the offer's SOURCE is a fact, not an implementation
+                # detail — the trace names which of the three decided it.
+                try:
+                    _ai_debug(
+                        "profile source: %s — %s",
+                        describe_source(self.state),
+                        describe(self.state),
+                    )
+                except Exception:
+                    pass
             return profile
         except Exception:
             logger.debug("metric profile refresh failed", exc_info=True)
@@ -875,11 +897,16 @@ class GalleryController:
             return
         _clear_profile_reject(self)
         try:
-            from tabs.image_gallery.use_cases.profile_select import describe
+            from tabs.image_gallery.use_cases.profile_select import (
+                describe,
+                describe_source,
+            )
 
             line = describe(self.state)
             logger.debug("[gallery] metric profile: %s", line)
-            _ai_debug("metric profile: %s", line)
+            # P5 precedence: the judge's own choice won over the series offer —
+            # the trace says which source decided, not merely which axes won.
+            _ai_debug("profile source: %s — %s", describe_source(self.state), line)
         except Exception:
             logger.debug("metric profile describe failed", exc_info=True)
         try:

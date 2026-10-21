@@ -68,7 +68,13 @@ if str(SRC_ROOT) not in sys.path:
 
 from devtools import capture_surface  # noqa: E402  — canonical font/DPI bootstrap
 from devtools import live_fixtures  # noqa: E402  — deterministic inputs, no import side effect
-from devtools.help_figures import _free_display_number, xvfb_command  # noqa: E402
+from devtools.help_figures import (  # noqa: E402
+    ManifestError,
+    _free_display_number,
+    install_destination,
+    parse_variant_need,
+    xvfb_command,
+)
 
 RECIPE_PATH = Path(__file__).with_name("help_figures_live.json")
 SCHEMA_VERSION = 1
@@ -115,6 +121,10 @@ class LiveFigure:
     locales: tuple[str, ...]
     themes: tuple[str, ...]
     note: str
+    #: ``none`` | ``theme`` | ``locale+theme`` — what the FRAME needs (see
+    #: ``help_figures.VARIANT_NEEDS``). Declared here even while the matrix is
+    #: one ``en``/``dark`` cell: the need is what the capture has to satisfy.
+    variant_need: str = "none"
     min_size: tuple[int, int] | None = None
     crop_element: dict | None = None
     rhi_backend: str = "opengl"
@@ -234,6 +244,7 @@ def load_recipes(path: Path = RECIPE_PATH) -> tuple[LiveFigure, ...]:
                 locales=tuple(entry.get("locales") or ("en",)),
                 themes=tuple(entry.get("themes") or ("dark",)),
                 note=str(entry.get("note") or ""),
+                variant_need=parse_variant_need(entry.get("variant_need"), figure_id),
                 min_size=tuple(int(v) for v in entry["min_size"]) if entry.get("min_size") else None,
                 crop_element=dict(entry["crop_element"]) if entry.get("crop_element") else None,
                 rhi_backend=str(entry.get("rhi_backend") or "opengl"),
@@ -911,6 +922,19 @@ def _capture_origin(
     return x, y
 
 
+def install_target(figure: LiveFigure, locale: str, theme: str) -> Path:
+    """Absolute path one captured cell installs to.
+
+    The layout is the recipe reader's (``help_figures.install_destination``):
+    a single-cell figure keeps its flat destination, a declared matrix writes
+    ``assets/<locale>/<theme>/<name>`` — exactly where
+    ``plugins.help.tree.resolve_help_asset`` probes first. Before this, the
+    live loop wrote every cell to ``figure.destination``, so the last boot of a
+    matrix silently won and only one variant ever shipped.
+    """
+    return REPO_ROOT / install_destination(figure, locale, theme)
+
+
 def crop_and_install(
     screenshot: Path, destination: Path, crop: tuple[int, int, int, int] | None
 ) -> Path:
@@ -1028,9 +1052,12 @@ def main(argv: list[str] | None = None) -> int:
                                 print(f"WARN {label} after_capture: {message}", file=sys.stderr)
                             for message in fixtures.errors:
                                 print(f"WARN {label} fixture: {message}", file=sys.stderr)
-                    destination = REPO_ROOT / figure.destination
-                    crop_and_install(shot, destination, crop)
-                    print(f"installed {figure.id} [{locale}/{theme}] -> {figure.destination}")
+                    target = install_target(figure, locale, theme)
+                    crop_and_install(shot, target, crop)
+                    print(
+                        f"installed {figure.id} [{locale}/{theme}] -> "
+                        f"{target.relative_to(REPO_ROOT).as_posix()}"
+                    )
                 except LiveError as exc:
                     failures += 1
                     print(f"FAILED {label}: {exc}", file=sys.stderr)

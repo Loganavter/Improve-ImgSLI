@@ -81,12 +81,13 @@ RANK_AXIS_WEIGHTS: dict[str, dict[str, float]] = {}
 #: The **stochastic** judge's noise floor, in 0–100 score points: the smallest
 #: per-axis spread across a series that is distinguishable from a model's own
 #: sampling noise. Deliberately the same one-decisive-step the rest of the
-#: gallery uses (``RANK_WORST_AXIS_SLACK`` here, ``profile_select.DEFAULT_SPREAD_FLOOR``
-#: one layer up) and *above* the movement the live VLM showed between two samples
-#: of the SAME picture (12–23 points, plan-gallery-ai-judgement J5) — larger than
-#: the 2–6-point differences it was asked to rank. So an axis whose spread sits
-#: inside this cannot order these variants, and must not pretend to. Used for the
-#: VLM scorecard (``quality_read.axis_noise_floor("ai")``).
+#: gallery uses (``RANK_WORST_AXIS_SLACK`` here) and *above* the movement the
+#: live VLM showed between two samples of the SAME picture (12–23 points,
+#: plan-gallery-ai-judgement J5) — larger than the 2–6-point differences it was
+#: asked to rank. So an axis whose spread sits inside this cannot order these
+#: variants, and must not pretend to. ONE resolver reads it —
+#: ``quality_read.axis_noise_floor("ai")`` — for the VLM scorecard rows/vector
+#: and for the offer's floor when the spreads come from the AI domain.
 AXIS_NOISE_FLOOR: float = 20.0
 
 #: The **deterministic** detectors' noise floor: same pixels always produce the

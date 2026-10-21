@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 
-from PySide6.QtCore import QObject, Qt
+from PySide6.QtCore import QEvent, QObject, Qt
 from PySide6.QtGui import QKeyEvent
 from PySide6.QtWidgets import QApplication, QLineEdit, QPlainTextEdit, QTextEdit
 
@@ -12,6 +12,136 @@ from events.app_event.common import get_main_controller
 from tabs.registry import get_shared_tab_registry
 
 logger = logging.getLogger("ImproveImgSLI")
+
+
+def key_event_chord(event: QKeyEvent) -> str:
+    """Portable-text chord for ``event``, or ``""`` when it has no chord.
+
+    Modifier-only events (Shift/Ctrl/Alt/Meta) are deliberately empty: they
+    carry press/release state the global handler must keep seeing, and no
+    action is ever bound to a bare modifier.
+    """
+    try:
+        key = event.key()
+    except Exception:
+        return ""
+    if key in (
+        Qt.Key.Key_Shift,
+        Qt.Key.Key_Control,
+        Qt.Key.Key_Alt,
+        Qt.Key.Key_Meta,
+    ):
+        return ""
+    try:
+        from PySide6.QtGui import QKeySequence
+
+        from ui.actions.keymap import normalize_sequence
+
+        return normalize_sequence(
+            QKeySequence(event.keyCombination()).toString(
+                QKeySequence.SequenceFormat.PortableText
+            )
+        )
+    except Exception:
+        return ""
+
+
+def active_tab_shortcut_owns_event(event: QKeyEvent) -> bool:
+    """True when the live shortcut binder claims this event's chord.
+
+    ``ActionShortcutBinder`` is resynced for the ACTIVE tab (see
+    ``ui.actions.binder.resync_action_shortcuts``), so its claimed chords are
+    exactly the shortcuts a focused widget of that tab may receive. Whether a
+    chord is globally routed and whether the tab binds it are independent
+    questions: ``D`` is both the divider-visibility shortcut and an
+    overlay-movement key, so the global route used to swallow it before the
+    shortcut map ever saw it (see ``events/router.py`` and the tab shell's
+    ``keyPressEvent``).
+
+    The chord index and its normalization live in
+    ``ActionShortcutBinder.owns_chord`` — this helper only adapts a
+    ``QKeyEvent`` to that method (there is no second normalizer here).
+    """
+    chord = key_event_chord(event)
+    if not chord:
+        return False
+    try:
+        from ui.actions.binder import get_action_shortcut_binder
+
+        active_tab = getattr(
+            get_shared_tab_registry().get_active_tab(), "session_type", None
+        )
+        return get_action_shortcut_binder().owns_chord(chord, active_tab=active_tab)
+    except Exception:
+        return False
+
+
+def chord_claim_report(event: QKeyEvent) -> str:
+    """Route-log diagnostic: which tab is active and who claims this chord.
+
+    Printed only where a key is about to be routed globally despite the
+    binder veto, because a live "the chord died" report cannot be told apart
+    from "the binder had no claim at that instant" (a resync that ran for
+    another tab, or one that has not run yet) without these three values.
+    """
+    chord = key_event_chord(event)
+    try:
+        tab = get_shared_tab_registry().get_active_tab()
+    except Exception as exc:  # noqa: BLE001 - diagnostics must never raise
+        return f"chord={chord!r} active_tab=<registry error {exc!r}>"
+    active_tab = getattr(tab, "session_type", None) if tab is not None else None
+    tab_desc = "none" if tab is None else f"{type(tab).__name__}({active_tab!r})"
+    try:
+        from ui.actions.binder import get_action_shortcut_binder
+
+        claim = get_action_shortcut_binder().describe_claim(
+            chord, active_tab=active_tab
+        )
+    except Exception as exc:  # noqa: BLE001 - diagnostics must never raise
+        claim = f"<binder error {exc!r}>"
+    return f"chord={chord!r} active_tab={tab_desc} {claim}"
+
+
+def redispatch_unhandled_key_to_global_handler(widget, event: QKeyEvent) -> bool:
+    """Hand a key a tab shell could not use back to the global handler.
+
+    A tab that forwards keys to its canvas is a focus owner, not a key sink:
+    once focus lands on it, ``should_route_globally`` no longer sends anything
+    to the global handler for it, so a key the canvas ignores (loupe movement
+    W/A/S/D/Q/E, Space preview) would die in the shell. Returns True when the
+    event was re-dispatched (and accepted).
+
+    Chord-owning keys are NOT re-dispatched: a chord the active tab's binder
+    installed belongs to the shortcut map, never to the loupe handler.
+    """
+    event_type = event.type()
+    if event_type == QEvent.Type.KeyPress:
+        signal_name = "global_keyboard_press_event_signal"
+    elif event_type == QEvent.Type.KeyRelease:
+        signal_name = "global_keyboard_release_event_signal"
+    else:
+        return False
+    try:
+        event_handler = getattr(widget.window(), "event_handler", None)
+    except Exception:
+        return False
+    keyboard_handler = getattr(event_handler, "keyboard_handler", None)
+    if keyboard_handler is None:
+        return False
+    if active_tab_shortcut_owns_event(event):
+        return False
+    try:
+        if not keyboard_handler.should_route_globally(event, widget):
+            return False
+    except Exception:
+        return False
+    emit = getattr(getattr(event_handler, signal_name, None), "emit", None)
+    if emit is None:
+        return False
+    emit(event)
+    event.accept()
+    return True
+
 
 class GlobalKeyboardHandler:
     OVERLAY_MOVEMENT_KEYS = {

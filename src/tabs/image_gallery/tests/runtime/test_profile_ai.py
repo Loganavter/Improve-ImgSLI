@@ -262,7 +262,7 @@ def test_parse_profile_reply_returns_none_on_junk():
 # --------------------------------------------------------------------------
 
 
-def test_choose_profile_sync_ai_unavailable_is_heuristic_without_a_call(tmp_path):
+def test_choose_profile_sync_ai_unavailable_is_the_series_offer_without_a_call(tmp_path):
     calls: list = []
 
     def _client(*args, **kwargs):
@@ -279,7 +279,11 @@ def test_choose_profile_sync_ai_unavailable_is_heuristic_without_a_call(tmp_path
     )
     assert calls == []
     assert profile == profile_select.derive_profile(items, mode="camera")
-    assert profile.source == "heuristic"
+    assert profile.source == "series", (
+        "with AI off the offer must still come from the series' measured "
+        "spreads, not from the mode mapping"
+    )
+    assert profile.axis_ids == ("sharpness",)
 
 
 def test_choose_profile_sync_pin_hit_skips_the_call(tmp_path):
@@ -327,7 +331,7 @@ def test_choose_profile_sync_calls_once_then_pins(tmp_path):
     assert "sharpness" in first and "noise" in first
 
 
-def test_choose_profile_sync_malformed_reply_is_heuristic_and_not_pinned(tmp_path):
+def test_choose_profile_sync_malformed_reply_is_the_series_offer_and_not_pinned(tmp_path):
     cache = ProfileCache(tmp_path)
     items = [_item("a.png", sharpness=0.0), _item("b.png", sharpness=400.0)]
     calls: list = []
@@ -339,7 +343,7 @@ def test_choose_profile_sync_malformed_reply_is_heuristic_and_not_pinned(tmp_pat
     profile = choose_profile_sync(
         items, mode="camera", settings=_settings(), cache=cache, client_call=_client
     )
-    assert profile.source == "heuristic"
+    assert profile.source == "series"
     assert profile == profile_select.derive_profile(items, mode="camera")
     key = profile_cache.profile_cache_key(
         items, mode="camera", model="m", base_url="http://x", reasoning_effort="auto"

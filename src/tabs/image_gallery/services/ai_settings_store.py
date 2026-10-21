@@ -88,12 +88,15 @@ class AiSettings:
     suppress_large_drop_warning: bool = False
     #: Sampling configuration of the VLM scorecard (plan-gallery-ai-judgement
     #: P3-D / gate GA4). ``sample_count`` (k) is the number of independent draws
-    #: merged per image: ONE by default — the owner has not set a cost ceiling, so
-    #: a multiplier is never taken silently. k>1 is a declared setting and the
-    #: trace states its cost (k image calls per card). ``sampling_temperature`` /
+    #: merged per image (per-axis median). The owner set the cost ceiling to
+    #: THREE on 2026-10-21: the judge is stochastic, one draw moved an axis by
+    #: 12-23 points while the variants differed by 2-6, so a single draw could
+    #: not order them. k=3 costs three image calls per card and the trace states
+    #: it. k is part of the analysis cache identity, so the k=1 cards become
+    #: MISSes once and are re-drawn at k=3. ``sampling_temperature`` /
     #: ``sampling_seed`` are sent only when non-default (0.0 / 0 = the backend's
-    #: own default draw) and are always part of the analysis cache identity.
-    sample_count: int = 1
+    #: own default draw) and are always part of that identity.
+    sample_count: int = 3
     sampling_temperature: float = 0.0
     sampling_seed: int = 0
 
@@ -150,7 +153,7 @@ class AiSettingsStore:
                 ).lower()
                 in ("true", "1"),
                 sample_count=max(
-                    1, min(SAMPLE_COUNT_CHOICES[-1], _parse_int(settings.value("sample_count", 1), 1))
+                    1, min(SAMPLE_COUNT_CHOICES[-1], _parse_int(settings.value("sample_count", 3), 3))
                 ),
                 sampling_temperature=_parse_float(
                     settings.value("sampling_temperature", 0.0), 0.0

@@ -385,7 +385,7 @@ def _begin_analysis(owner, ctx: ActionContext, item: GalleryItem) -> None:
         on_phase=bridge.phase.emit,
         # Sampling (plan P3-D): k draws per card, ONE unless the user declared a
         # larger `sample_count`; the trace states the cost.
-        samples=int(getattr(settings, "sample_count", 1) or 1),
+        samples=int(getattr(settings, "sample_count", 3) or 3),
         temperature=float(getattr(settings, "sampling_temperature", 0.0) or 0.0),
         seed=int(getattr(settings, "sampling_seed", 0) or 0),
     )

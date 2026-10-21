@@ -167,6 +167,8 @@
       "ai_brief_pending": "AI brief…",
       "not_measured": "— · not measured",
       "axis_inside_noise": "does not separate these variants",
+      "profile_axis_set": "Axis set",
+      "profile_mode_fallback": "mode default",
       "rank_of": "#{rank} of {total}",
       "rejected_tail": "rejected tail ≤ {value}",
       "source_fallback": "source",

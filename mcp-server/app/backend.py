@@ -729,6 +729,7 @@ class AppBackend:
             lambda: self._fallback_open_folder(path=path, tab=tab),
             mutating=True,
             path=path,
+            tab=tab,
             slot=slot,
             side=side,
         )

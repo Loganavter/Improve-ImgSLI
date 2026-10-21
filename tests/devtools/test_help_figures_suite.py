@@ -108,7 +108,7 @@ def test_both_stages_green_print_the_summary_and_exit_zero(fake_run, capsys):
     # Counts pin the committed manifests: 6 covered x 4 locales x 2 themes,
     # and 14 single-variant live figures. A manifest change must be re-pinned.
     assert re.search(r"^devtool: exit=0 \d+\.\ds cells=48$", out, re.M)
-    assert re.search(r"^live: exit=0 \d+\.\ds cells=14$", out, re.M)
+    assert re.search(rf"^live: exit=0 \d+\.\ds cells={suite.manifest_cells(suite.LIVE_MANIFEST)}$", out, re.M)
     assert out.rstrip().endswith("suite: ok")
     for call in runner.calls:
         assert call["kwargs"]["cwd"] == str(suite.REPO_ROOT)
@@ -128,7 +128,7 @@ def test_second_stage_failure_fails_the_suite_and_names_it(fake_run, capsys):
     captured = capsys.readouterr()
     assert runner.scripts == ["help_figures.py", "help_live.py"]
     assert re.search(r"^devtool: exit=0 \d+\.\ds cells=48$", captured.out, re.M)
-    assert re.search(r"^live: exit=1 \d+\.\ds cells=14$", captured.out, re.M)
+    assert re.search(rf"^live: exit=1 \d+\.\ds cells={suite.manifest_cells(suite.LIVE_MANIFEST)}$", captured.out, re.M)
     assert captured.out.rstrip().endswith("suite: failed")
     assert "FAILED help-toolbar [en/dark]: app did not boot" in captured.err, (
         "the failing stage's tail must be visible, not just its exit code"
@@ -253,7 +253,7 @@ def test_only_live_runs_exactly_one_stage(fake_run, capsys):
     out = capsys.readouterr().out
     assert runner.scripts == ["help_live.py"]
     assert runner.calls[0]["argv"] == [sys.executable, str(suite.LIVE_SCRIPT), "--all"]
-    assert re.search(r"^live: exit=0 \d+\.\ds cells=14$", out, re.M)
+    assert re.search(rf"^live: exit=0 \d+\.\ds cells={suite.manifest_cells(suite.LIVE_MANIFEST)}$", out, re.M)
     assert "devtool:" not in out
     assert out.rstrip().endswith("suite: ok")
 
@@ -282,8 +282,19 @@ def test_unknown_only_stage_is_rejected():
 
 
 def test_manifest_cells_match_the_committed_manifests():
+    # The devtool set is a fixed 6 figures x 4 locales x 2 themes.
     assert suite.manifest_cells(suite.DEVTOOL_MANIFEST) == 48
-    assert suite.manifest_cells(suite.LIVE_MANIFEST) == 14
+    # The live set grows figure by figure AND cell by cell (a declared matrix is
+    # one unit per locale x theme), so the expectation is the walk over the
+    # committed JSON — the number of figures is the stable part.
+    raw = json.loads(suite.LIVE_MANIFEST.read_text(encoding="utf-8"))
+    assert len(raw["figures"]) == 14
+    expected = sum(
+        len(figure.get("locales") or ["en"]) * len(figure.get("themes") or ["dark"])
+        for figure in raw["figures"]
+        if figure.get("covered", True)
+    )
+    assert suite.manifest_cells(suite.LIVE_MANIFEST) == expected
 
 
 def test_manifest_cells_skips_uncovered_and_survives_a_broken_file(tmp_path):

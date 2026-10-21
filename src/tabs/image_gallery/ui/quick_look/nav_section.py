@@ -23,12 +23,17 @@ inset thumb were unowned overlay children (a duplicate cursor and an inert
 ``StrongFocus`` stop). Circles and inset are now ``NoFocus`` by written decision
 (``overlay_build/build.py``); the ✕ is this third row.
 
-* ``←``/``→`` (and the ``‹``/``›`` circles) move the **focus ring** along the
-  current row — the section's own row-local step, so the cursor IS the app's
-  single cursor vocabulary (the toolkit ``FocusLayer``). The picture does not
-  move; ``Enter`` shows the focused item. Same cursor-vs-applied idiom the
-  adaptive tab bar pins
+* ``←``/``→`` move the **focus ring** along the current row — the section's
+  own row-local step, so the cursor IS the app's single cursor vocabulary (the
+  toolkit ``FocusLayer``). The picture does not move; ``Enter`` shows the
+  focused item. Same cursor-vs-applied idiom the adaptive tab bar pins
   (``tests/contracts/test_navigation_graph.py::test_tab_strip_left_right_requires_enter``).
+* The ``‹``/``›`` circles are **click-only prev/next**: a click walks the
+  series (``nav._walk_for_nav_button`` → ``overlay._walk``, the same seam the
+  ring/plate fall-through press uses) and re-pins the ring to the picture now
+  shown. They are not a mouse duplicate of ``←``/``→``: a mouse has no
+  ``Enter`` step, and the ql-nav-rows wave's ring-step wiring (#381) made the
+  circles a dead control that also dropped the ring (live 2026-10-22).
 * ``↓``/``↑`` cross between the three rows, so the action row's three buttons
   (**Set as source** / **Reject** / **Delete**) are reached with ``↓`` then
   ``←``/``→``, and the ✕ with ``↑`` from the strip.
@@ -307,29 +312,6 @@ def restore_strip_focus(overlay) -> bool:
         return False
 
 
-def move_strip_focus(overlay, delta: int) -> bool:
-    """Step the ring one thumb along the strip — the ``‹``/``›`` circles.
-
-    Focus movement, exactly like ``←``/``→`` and through the same section step
-    (the picture follows on ``Enter``), so the circles cannot drift into a
-    second cursor of their own.
-    """
-    section = getattr(overlay, SECTION_ATTR, None)
-    if section is None:
-        return False
-    focused = focused_widget(overlay)
-    if not _in_strip_row(overlay, focused):
-        # The ring is elsewhere (a row button, the bare panel): bring it back
-        # to the item on screen first, then step from there — a circle press
-        # always moves the strip's ring, never the picture.
-        focus_shown_thumb(overlay)
-        focused = focused_widget(overlay)
-    if not _in_strip_row(overlay, focused):
-        return bool(section.focus_first(reason=focus_reason()))
-    key = Qt.Key.Key_Right if int(delta) > 0 else Qt.Key.Key_Left
-    return bool(section.navigate(key, focused))
-
-
 class QuickLookNavSection(ToolbarRowsSection):
     """The panel's three rows as a toolkit row section, plus the modal wrap.
 
@@ -536,7 +518,6 @@ __all__ = [
     "focus_shown_thumb",
     "focus_snapshot",
     "focused_widget",
-    "move_strip_focus",
     "register",
     "restore_focus",
     "restore_strip_focus",

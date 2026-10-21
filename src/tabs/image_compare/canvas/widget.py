@@ -513,6 +513,11 @@ class CanvasWidget(QRhiWidget):
         handle_mouse_move_event(self, event)
 
     def keyPressEvent(self, event):
+        # The tab shell (``ImageCompareWidget``) is the focus owner and
+        # forwards keys here; this widget itself stays ``NoFocus`` (see
+        # ``ui/canvas_infra/rhi/rhi_focus.py``). Pan/zoom chords are accepted
+        # here; anything else is emitted on ``keyPressed`` so the shell can
+        # hand it back to the global handler.
         handle_key_press_event(self, event)
 
     def keyReleaseEvent(self, event):

@@ -37,6 +37,17 @@ def reposition_nav_buttons(overlay) -> None:
             return
         cy = host_pos.y() + host.height() // 2
         for btn, left_edge in ((prev, True), (nxt, False)):
+            # W12: the overlay filters the circle's own presses (see
+            # ``overlay_parts/filters.py``): the base overlay's ring/veil
+            # handling swallowed presses on the inner half before the toolkit
+            # Button saw them (live 2026-10-22: only the outermost ~6px of the
+            # 36px circle produced a click). Idempotent install, re-run on
+            # every re-pin.
+            try:
+                btn.removeEventFilter(overlay)
+                btn.installEventFilter(overlay)
+            except Exception:
+                pass
             try:
                 bw = btn.width() or btn.sizeHint().width()
                 bh = btn.height() or btn.sizeHint().height()
@@ -84,8 +95,23 @@ def nav_button_at(overlay, overlay_pos):
 
 
 def _walk_for_nav_button(overlay, btn) -> None:
-    """Walk the series for a nav-arrow press (W11). Prev → −1, next → +1."""
+    """Walk the series for a nav-arrow press (W11). Prev → −1, next → +1.
+
+    The walk repopulates the strip (new thumb widgets), so the keyboard ring is
+    re-pinned to the picture now shown — deferred, after the rebuild's own
+    focus pass (``nav_section.restore_strip_focus``). Doing it here keeps ALL
+    arrow entry points (the buttons' ``clicked``, the overlay filter, the
+    ring/plate fall-through press) on one seam.
+    """
     try:
         overlay._walk(-1 if btn is getattr(overlay, "_prev_btn", None) else 1)
+    except Exception:
+        pass
+    try:
+        from PySide6.QtCore import QTimer
+
+        from tabs.image_gallery.ui.quick_look import nav_section
+
+        QTimer.singleShot(0, lambda: nav_section.focus_shown_thumb(overlay))
     except Exception:
         pass

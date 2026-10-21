@@ -346,7 +346,10 @@ class SettingsApplicationService(QObject):
     def _apply_keyboard_overrides(self, data: SettingsDialogData) -> None:
         import json
 
-        from ui.actions.keymap import exclusive_overrides
+        from ui.actions.keymap import (
+            exclusive_overrides,
+            repair_legacy_cross_tab_unbounds,
+        )
         from plugins.settings.pages.keyboard import _collect_defaults
 
         defaults = _collect_defaults()
@@ -354,9 +357,15 @@ class SettingsApplicationService(QObject):
             entry.action_id: (entry.default_shortcut, entry.owner_tab)
             for entry in defaults.all_entries()
         }
+        # Repair first: profiles poisoned by the old all-tabs conflict ranking
+        # carry "" on a chord that only another TAB owns — dead in its own tab
+        # too (the binder installs one tab at a time, so it never conflicted).
         new_overrides = exclusive_overrides(
             defaults_map,
-            dict(getattr(data, "keyboard_overrides", None) or {}),
+            repair_legacy_cross_tab_unbounds(
+                defaults_map,
+                dict(getattr(data, "keyboard_overrides", None) or {}),
+            ),
         )
         current = dict(getattr(self.store.settings, "keyboard_overrides", None) or {})
         if new_overrides == current:

@@ -54,12 +54,24 @@ QUICK_LOOK_NAV_GLYPH_PT = 24
 # -- UI construction helpers (thin owner delegation) -------------------------
 
 
-def _nav_move_cursor(overlay, delta: int) -> None:
-    """Step the strip's focus ring (lazy import: nav_section imports this package)."""
-    try:
-        from tabs.image_gallery.ui.quick_look import nav_section
+def _nav_walk(overlay, delta: int) -> None:
+    """Walk the series one item — the ‹/› circles are prev/next, not a cursor.
 
-        nav_section.move_strip_focus(overlay, delta)
+    The click path runs the SAME walk the ring/plate fall-through uses
+    (``nav._walk_for_nav_button`` → ``overlay._walk``): one seam, two entry
+    points. A mouse has no Enter step, so a ring move the user cannot see is a
+    dead control (live 2026-10-22: circle clicks changed no picture and dropped
+    the keyboard ring onto the bare overlay).
+    """
+    try:
+        from tabs.image_gallery.ui.quick_look.nav import _walk_for_nav_button
+
+        btn = (
+            getattr(overlay, "_prev_btn", None)
+            if int(delta) < 0
+            else getattr(overlay, "_next_btn", None)
+        )
+        _walk_for_nav_button(overlay, btn)
     except Exception:
         pass
 
@@ -196,17 +208,19 @@ def build_overlay_ui(overlay) -> None:
             overlay._prev_btn.set_border_color(_nav_border)
     except Exception:
         pass
-    # ‹/› move the strip's focus ring (the picture follows on Enter) — the
-    # same keyboard-first contract as ←/→ (quick_look/nav_section.py).
-    # They are CLICK-ONLY by written decision (NoFocus): ←/→ already walk the
-    # same ring through the section, so a focus stop here would be a second way
-    # to do one movement — and, living in overlay coords outside every declared
-    # row, it was an unowned Tab stop (audit inv-nav-coverage-audit-2026-10-19
-    # rank 4). Mouse clicks keep working; NoFocus only keeps the keyboard ring
-    # on the row controls.
+    # ‹/› are prev/next: a click WALKS the series (same ``_walk`` seam as the
+    # ring/plate fall-through and as the pre-#381 behaviour). The ql-nav-rows
+    # wave (#381) rewired them to a ring step instead, on the theory that ←/→
+    # already move the ring — but a mouse has no Enter step, so the circles
+    # became a dead control that also dropped the keyboard ring (live
+    # 2026-10-22). They stay CLICK-ONLY (NoFocus): ←/→ already move the ring
+    # through the section, and living in overlay coords outside every declared
+    # row these circles were an unowned Tab stop (audit
+    # inv-nav-coverage-audit-2026-10-19 rank 4) — NoFocus keeps the Tab ring on
+    # the row controls.
     overlay._prev_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
     overlay._prev_btn.clicked.connect(
-        lambda: _nav_move_cursor(overlay, -1)
+        lambda: _nav_walk(overlay, -1)
     )
     preview_host = QWidget(left)
     # Expanding on both axes: the host is the sole laid-out slot child, so
@@ -366,9 +380,10 @@ def build_overlay_ui(overlay) -> None:
     except Exception:
         pass
     overlay._next_btn.clicked.connect(
-        lambda: _nav_move_cursor(overlay, 1)
+        lambda: _nav_walk(overlay, 1)
     )
-    # Same written decision as ‹ (see the comment above _prev_btn): click-only.
+    # Same seam as ‹ (see the comment above _prev_btn): click walks the
+    # series, click-only (NoFocus).
     overlay._next_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
     left_lay.addLayout(preview_row, 1)
     # W4 item 4: the Esc hint lives at the right end of the bottom button

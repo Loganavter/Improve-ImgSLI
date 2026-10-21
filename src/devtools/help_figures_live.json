@@ -20,16 +20,21 @@
       ],
       "destination": "src/resources/help/assets/ui/toolbar.jpg",
       "locales": [
-        "en"
+        "en",
+        "pt_BR",
+        "ru",
+        "zh"
       ],
       "themes": [
-        "dark"
+        "dark",
+        "light"
       ],
-      "note": "Live Image Compare toolbar row (Line / View / Magnifier / Record). Cropped from the window capture; the states inside the groups are the buttons' own current affordances.",
+      "note": "Live Image Compare toolbar row (Line / View / Magnifier / Record). Cropped from the window capture; the states inside the groups are the buttons' own current affordances. Variant need: locale+theme — the frame carries translatable group captions (\"Line\", \"View\", \"Magnifier\", \"Record\").",
       "min_size": [
         1000,
         600
-      ]
+      ],
+      "variant_need": "locale+theme"
     },
     {
       "id": "help-tab-strip",
@@ -59,16 +64,21 @@
       ],
       "destination": "src/resources/help/assets/platform/tab_strip.png",
       "locales": [
-        "en"
+        "en",
+        "pt_BR",
+        "ru",
+        "zh"
       ],
       "themes": [
-        "dark"
+        "dark",
+        "light"
       ],
-      "note": "Session tab strip with three sessions; live chrome, so the labels are the running app's.",
+      "note": "Session tab strip with three sessions; live chrome, so the labels are the running app's. Variant need: locale+theme — the tabs read their translatable titles (\"New Tab\", \"Image Compare\", …).",
       "min_size": [
         800,
         500
-      ]
+      ],
+      "variant_need": "locale+theme"
     },
     {
       "id": "help-multi-save-dialog",
@@ -99,16 +109,21 @@
       "crop": null,
       "destination": "src/tabs/multi_compare/resources/help/assets/export_save_dialog.png",
       "locales": [
-        "en"
+        "en",
+        "pt_BR",
+        "ru",
+        "zh"
       ],
       "themes": [
-        "dark"
+        "dark",
+        "light"
       ],
-      "note": "Live Multi Compare save dialog (Save Grid) over a loaded grid.",
+      "note": "Live Multi Compare save dialog (Save Grid) over a loaded grid. Variant need: locale+theme — dialog title and field labels (\"Output directory:\", \"File name:\", the buttons) are translated.",
       "min_size": [
         800,
         500
-      ]
+      ],
+      "variant_need": "locale+theme"
     },
     {
       "id": "help-gallery-stats",
@@ -136,16 +151,21 @@
       "crop": null,
       "destination": "src/tabs/image_gallery/resources/help/assets/triage_stats.png",
       "locales": [
-        "en"
+        "en",
+        "pt_BR",
+        "ru",
+        "zh"
       ],
       "themes": [
-        "dark"
+        "dark",
+        "light"
       ],
       "min_size": [
         1000,
         600
       ],
-      "note": "Live gallery with a loaded folder; the stats strip (images / series / redundant) is the running analysis state."
+      "note": "Live gallery with a loaded folder; the stats strip (images / series / redundant) is the running analysis state. Variant need: locale+theme — window chrome is in frame (\"Open Folder…\", \"Rank\", the series/redundant counters).",
+      "variant_need": "locale+theme"
     },
     {
       "id": "help-gallery-quicklook",
@@ -181,16 +201,21 @@
       "crop": null,
       "destination": "src/tabs/image_gallery/resources/help/assets/quality_quicklook.png",
       "locales": [
-        "en"
+        "en",
+        "pt_BR",
+        "ru",
+        "zh"
       ],
       "themes": [
-        "dark"
+        "dark",
+        "light"
       ],
       "min_size": [
         1000,
         600
       ],
-      "note": "Live Quick Look overlay after clicking a gallery card; the metrics/rows are the running analysis, not a fixture."
+      "note": "Live Quick Look overlay after clicking a gallery card; the metrics/rows are the running analysis, not a fixture. Variant need: locale+theme — the overlay carries translatable copy (\"Batch report\", the per-metric rows, \"Set as source\").",
+      "variant_need": "locale+theme"
     },
     {
       "id": "help-mc-layouts",
@@ -224,13 +249,15 @@
         "en"
       ],
       "themes": [
-        "dark"
+        "dark",
+        "light"
       ],
       "min_size": [
         1000,
         600
       ],
-      "note": "Live Multi Compare row: three slots side by side with dividers and filename labels, composed through open_folder side=right. The first image auto-places; side drives the split of the following ones (documented limitation)."
+      "note": "Live Multi Compare row: three slots side by side with dividers and filename labels, composed through open_folder side=right. The first image auto-places; side drives the split of the following ones (documented limitation). Variant need: theme — the frame is canvas slots + untranslatable filename chips and dividers, no translatable label.",
+      "variant_need": "theme"
     },
     {
       "id": "help-ic-magnifier",
@@ -268,17 +295,22 @@
       ],
       "destination": "src/tabs/image_compare/resources/help/assets/magnifier.jpg",
       "locales": [
-        "en"
+        "en",
+        "pt_BR",
+        "ru",
+        "zh"
       ],
       "themes": [
-        "dark"
+        "dark",
+        "light"
       ],
       "min_size": [
         1000,
         600
       ],
-      "note": "Live IC canvas (Vulkan backend): side-by-side pair plus the magnifier loupe, captured from the running app. Crop is the canvas below the toolbar. Vulkan is pinned because llvmpipe/OpenGL cannot create the IC canvas probe mip render target (MipCascadeNotReady, measured).",
-      "rhi_backend": "vulkan"
+      "note": "Live IC canvas (Vulkan backend): side-by-side pair plus the magnifier loupe, captured from the running app. Crop is the canvas below the toolbar. Vulkan is pinned because llvmpipe/OpenGL cannot create the IC canvas probe mip render target (MipCascadeNotReady, measured). Variant need: locale+theme — the crop includes the bottom action bar, whose label (\"Save Result\") is translated.",
+      "rhi_backend": "vulkan",
+      "variant_need": "locale+theme"
     },
     {
       "id": "help-diff-modes",
@@ -307,17 +339,22 @@
       },
       "destination": "src/tabs/image_compare/resources/help/assets/difference_modes.png",
       "locales": [
-        "en"
+        "en",
+        "pt_BR",
+        "ru",
+        "zh"
       ],
       "themes": [
-        "dark"
+        "dark",
+        "light"
       ],
       "min_size": [
         1200,
         800
       ],
-      "note": "Live Difference Mode flyout (Off/Highlight/Grayscale/Edge Comparison/SSIM Map), screen-grabbed (the flyout is a separate popup window, so a window capture misses it). Opened without images: a synthetic toolbar click while the Vulkan canvas holds images crashes the injected-input path.",
-      "stable_interval_s": 0.15
+      "note": "Live Difference Mode flyout (Off/Highlight/Grayscale/Edge Comparison/SSIM Map), screen-grabbed (the flyout is a separate popup window, so a window capture misses it). Opened without images: a synthetic toolbar click while the Vulkan canvas holds images crashes the injected-input path. Variant need: locale+theme — the flyout lists the translated mode names (Off / Highlight / Grayscale / …).",
+      "stable_interval_s": 0.15,
+      "variant_need": "locale+theme"
     },
     {
       "id": "help-export-dialog",
@@ -356,17 +393,22 @@
       "crop": null,
       "destination": "src/plugins/export/resources/help/assets/export_dialog.jpg",
       "locales": [
-        "en"
+        "en",
+        "pt_BR",
+        "ru",
+        "zh"
       ],
       "themes": [
-        "dark"
+        "dark",
+        "light"
       ],
       "min_size": [
         800,
         500
       ],
       "rhi_backend": "vulkan",
-      "note": "Live IC export dialog with a composed pair (slot=1/2); preview is the real render, output dir is the neutral /home/user/Pictures seed. Vulkan because the IC canvas mips cannot be created on llvmpipe/OpenGL."
+      "note": "Live IC export dialog with a composed pair (slot=1/2); preview is the real render, output dir is the neutral /home/user/Pictures seed. Vulkan because the IC canvas mips cannot be created on llvmpipe/OpenGL. Variant need: locale+theme — dialog title and field labels (\"Output directory:\", \"Format:\", \"Resolution:\") are translated.",
+      "variant_need": "locale+theme"
     },
     {
       "id": "help-image-properties",
@@ -400,17 +442,22 @@
       "crop": null,
       "destination": "src/plugins/image_properties/resources/help/assets/platform/image_properties.png",
       "locales": [
-        "en"
+        "en",
+        "pt_BR",
+        "ru",
+        "zh"
       ],
       "themes": [
-        "dark"
+        "dark",
+        "light"
       ],
       "min_size": [
         420,
         360
       ],
       "rhi_backend": "vulkan",
-      "note": "The app's own image-properties dialog, shown by the open_properties control verb for the loaded slot-1 image. The dialog is its own top-level (non-modal, raised and activated by the verb), so @window is the dialog frame itself and no crop is needed; min_size rejects a 356x194 helper/warning window. Vulkan because the IC canvas behind it holds an image."
+      "note": "The app's own image-properties dialog, shown by the open_properties control verb for the loaded slot-1 image. The dialog is its own top-level (non-modal, raised and activated by the verb), so @window is the dialog frame itself and no crop is needed; min_size rejects a 356x194 helper/warning window. Vulkan because the IC canvas behind it holds an image. Variant need: locale+theme — the dialog's field labels (\"Name\", \"Path\", \"Size\", \"Color mode\") are translated.",
+      "variant_need": "locale+theme"
     },
     {
       "id": "help-long-press",
@@ -453,13 +500,15 @@
         "en"
       ],
       "themes": [
-        "dark"
+        "dark",
+        "light"
       ],
       "min_size": [
         800,
         500
       ],
-      "note": "Hold state of the long-press list controls, not of one button: clear_list1/clear_list2 and swap are the three controls built with long_press=True (src/tabs/image_compare/ui/primitives.py:111-135; the long press clears a whole list or swaps both lists, help://ui.buttons#multi-action). The press is parked with ui_press release=false on @image_compare.swap, photographed while held, and released by after_capture. The crop is a union of two inventory references -- @image_compare.clear_list1 and @image_compare.swap, the adjacent list buttons and the same references ui_press/ui_click drive -- with pad=4, so the whole pressed control sits inside the frame with its neighbour for context: 2 x 36 + 8 (layout spacing scaled_px(8)) + 2 x 4 = 88 px wide, 36 + 2 x 4 = 44 px high at DPI 96. Expected 88x44. Captured @screen because the crop is in screen coordinates and the X root is 1:1 with them (a window grab's origin would have to be proved from the layout dump, and this row is plain raster anyway). Two defects were measured here on 2026-10-21: a role+label selector is a caption substring scan over every window, and a window grab added a guessed (capture - window) / 2 shadow offset, so the shipped 48x48 crop had the 36x36 button clipped on two edges."
+      "note": "Hold state of the long-press list controls, not of one button: clear_list1/clear_list2 and swap are the three controls built with long_press=True (src/tabs/image_compare/ui/primitives.py:111-135; the long press clears a whole list or swaps both lists, help://ui.buttons#multi-action). The press is parked with ui_press release=false on @image_compare.swap, photographed while held, and released by after_capture. The crop is a union of two inventory references -- @image_compare.clear_list1 and @image_compare.swap, the adjacent list buttons and the same references ui_press/ui_click drive -- with pad=4, so the whole pressed control sits inside the frame with its neighbour for context: 2 x 36 + 8 (layout spacing scaled_px(8)) + 2 x 4 = 88 px wide, 36 + 2 x 4 = 44 px high at DPI 96. Expected 88x44. Captured @screen because the crop is in screen coordinates and the X root is 1:1 with them (a window grab's origin would have to be proved from the layout dump, and this row is plain raster anyway). Two defects were measured here on 2026-10-21: a role+label selector is a caption substring scan over every window, and a window grab added a guessed (capture - window) / 2 shadow offset, so the shipped 48x48 crop had the 36x36 button clipped on two edges. Variant need: theme — the 88x44 crop is two icon-only buttons (trash / swap), no translatable text.",
+      "variant_need": "theme"
     },
     {
       "id": "help-paste-overlay",
@@ -508,7 +557,8 @@
         600
       ],
       "rhi_backend": "vulkan",
-      "note": "The direction picker a paste opens: set_clipboard owns the X selection with a demo image, then the platform.paste_clipboard_image action runs the app's own Ctrl+V entry point (keymap default, src/ui/actions/platform.py:426-431, emitting the same ExportPasteImageFromClipboardEvent the canvas Ctrl+V handler emits) so the picker appears over the loaded session. PasteDirectionOverlay (src/services/system/paste_direction_overlay.py:48-58) is a TopLevelInWindowOverlay whose targets are painted inside one paintEvent: no element row, no per-target rect, so its own top-level window rect is the only honest crop (@screen + window crop), and the figure fails loudly when that window is not visible. MEASURED 2026-10-21 on this harness (private Xvfb, no window manager): the picker is not on screen at capture time -- the frame holds the loaded session only (the 'Left: sunset' HUD label over an empty canvas), and its left/right (or up/down for a horizontal split) targets are a STATE, not a phase: they are painted for as long as the overlay is shown, so no earlier step, later step or stable_interval_s finds a transient four-target instant. The one code difference from the two overlays this harness does capture -- QuickLookOverlay (src/tabs/image_gallery/ui/quick_look.py:98) and CleanReviewOverlay (src/tabs/image_gallery/ui/clean_review/__init__.py:556), both close_on_deactivate=False and pinned by parity tests -- is close_on_deactivate=True here: with no window manager to hold activation for the app window, showing the overlay deactivates the window it belongs to and the picker dismisses itself. The shipped 350x154 asset is left untouched (no live frame of this state has been produced yet); the app-side candidate is outside this figure's scope -- the tab already sweeps paste overlays on on_deactivated/on_session_closed (src/tabs/image_compare/tab.py:343-365), so close_on_deactivate=False would not leak the overlay across tabs."
+      "note": "The direction picker a paste opens: set_clipboard owns the X selection with a demo image, then the platform.paste_clipboard_image action runs the app's own Ctrl+V entry point (keymap default, src/ui/actions/platform.py:426-431, emitting the same ExportPasteImageFromClipboardEvent the canvas Ctrl+V handler emits) so the picker appears over the loaded session. PasteDirectionOverlay (src/services/system/paste_direction_overlay.py:48-58) is a TopLevelInWindowOverlay whose targets are painted inside one paintEvent: no element row, no per-target rect, so its own top-level window rect is the only honest crop (@screen + window crop), and the figure fails loudly when that window is not visible. MEASURED 2026-10-21 on this harness (private Xvfb, no window manager): the picker is not on screen at capture time -- the frame holds the loaded session only (the 'Left: sunset' HUD label over an empty canvas), and its left/right (or up/down for a horizontal split) targets are a STATE, not a phase: they are painted for as long as the overlay is shown, so no earlier step, later step or stable_interval_s finds a transient four-target instant. The one code difference from the two overlays this harness does capture -- QuickLookOverlay (src/tabs/image_gallery/ui/quick_look.py:98) and CleanReviewOverlay (src/tabs/image_gallery/ui/clean_review/__init__.py:556), both close_on_deactivate=False and pinned by parity tests -- is close_on_deactivate=True here: with no window manager to hold activation for the app window, showing the overlay deactivates the window it belongs to and the picker dismisses itself. The shipped 350x154 asset is left untouched (no live frame of this state has been produced yet); the app-side candidate is outside this figure's scope -- the tab already sweeps paste overlays on on_deactivated/on_session_closed (src/tabs/image_compare/tab.py:343-365), so close_on_deactivate=False would not leak the overlay across tabs. Variant need: locale+theme — the picker's target labels (\"Left\", \"Right\") are translated. MEASURED 2026-10-22 (variant wave): the matrix could not be installed - all 8 captures failed with \"crop_element: no visible window 'PasteDirectionOverlay'\", because the picker is a TopLevelInWindowOverlay today (src/services/system/paste_direction_overlay.py:48) and therefore has no top-level window for the 'window' crop selector. The figure also still ships its 2026-07-18 asset, so its content predates that move. Declared single-cell until an in-window overlay crop selector exists.",
+      "variant_need": "locale+theme"
     },
     {
       "id": "help-video-editor",
@@ -557,20 +607,28 @@
         }
       ],
       "crop": null,
-      "crop_element": {"window": "VideoEditorDialog", "pad": 0},
+      "crop_element": {
+        "window": "VideoEditorDialog",
+        "pad": 0
+      },
       "destination": "src/tabs/image_compare/resources/help/assets/video_editor_window.png",
       "locales": [
-        "en"
+        "en",
+        "pt_BR",
+        "ru",
+        "zh"
       ],
       "themes": [
-        "dark"
+        "dark",
+        "light"
       ],
       "min_size": [
         900,
         600
       ],
       "rhi_backend": "vulkan",
-      "note": "The Video Editor opened on a real recording: record, ~3 s of frames, pause (finalize), then the image_compare.video_editor action. The frame count and the timeline length follow wall time, so the sampler row and the ruler values differ between runs by design. New asset name: the shipped video_timeline.jpg is a hand-cropped timeline strip, and the timeline widget is not in ui_elements (no role), so this wave captures the whole editor window instead of inventing a crop rect."
+      "note": "The Video Editor opened on a real recording: record, ~3 s of frames, pause (finalize), then the image_compare.video_editor action. The frame count and the timeline length follow wall time, so the sampler row and the ruler values differ between runs by design. New asset name: the shipped video_timeline.jpg is a hand-cropped timeline strip, and the timeline widget is not in ui_elements (no role), so this wave captures the whole editor window instead of inventing a crop rect. Variant need: locale+theme — the window carries translated tab names and field labels.",
+      "variant_need": "locale+theme"
     },
     {
       "id": "help-video-export",
@@ -631,17 +689,22 @@
       },
       "destination": "src/tabs/image_compare/resources/help/assets/video_export.jpg",
       "locales": [
-        "en"
+        "en",
+        "pt_BR",
+        "ru",
+        "zh"
       ],
       "themes": [
-        "dark"
+        "dark",
+        "light"
       ],
       "min_size": [
         900,
         600
       ],
       "rhi_backend": "vulkan",
-      "note": "The editor's export configuration: recording path as in help-video-editor, then the dialog-local Standard export tab action (registered id image_compare.video_editor.group.video.export_tabs.video.standard while the editor is open). The Export Video footer button itself is NOT pressed: in the running app it starts a real encode (presenter.export_video -> export_coordinator), so pressing it would photograph a progress bar, not the configuration this figure teaches. The editor is its own top-level window (VideoEditorDialog, setWindowFlags(Qt.Window) in dialog/shell.py:90-96) while @window grabs app.activeWindow(), which stays the main window -- measured 2026-10-21: a 1296x816 frame of compare-tab chrome instead of the dialog. The frame is therefore the X root (@screen, 1:1 with screen coordinates) cropped to the dialog's own rect from dump_ui_layout, pad 0: expected the reported geometry, 1200x850 at DPI 96 (resize(scaled_px(1200), scaled_px(850)) there), and the figure fails loudly when no visible VideoEditorDialog exists instead of shipping the window. Review caveat: @screen reads X pixels only, so the dialog's QRhi/Vulkan preview pane may come out unread (docs/dev/SCREENSHOTS.md, known limitation) -- a window grab composites that frame, a root grab cannot."
+      "note": "The editor's export configuration: recording path as in help-video-editor, then the dialog-local Standard export tab action (registered id image_compare.video_editor.group.video.export_tabs.video.standard while the editor is open). The Export Video footer button itself is NOT pressed: in the running app it starts a real encode (presenter.export_video -> export_coordinator), so pressing it would photograph a progress bar, not the configuration this figure teaches. The editor is its own top-level window (VideoEditorDialog, setWindowFlags(Qt.Window) in dialog/shell.py:90-96) while @window grabs app.activeWindow(), which stays the main window -- measured 2026-10-21: a 1296x816 frame of compare-tab chrome instead of the dialog. The frame is therefore the X root (@screen, 1:1 with screen coordinates) cropped to the dialog's own rect from dump_ui_layout, pad 0: expected the reported geometry, 1200x850 at DPI 96 (resize(scaled_px(1200), scaled_px(850)) there), and the figure fails loudly when no visible VideoEditorDialog exists instead of shipping the window. Review caveat: @screen reads X pixels only, so the dialog's QRhi/Vulkan preview pane may come out unread (docs/dev/SCREENSHOTS.md, known limitation) -- a window grab composites that frame, a root grab cannot. Variant need: locale+theme — the export tabs and field labels (\"Container:\", \"Video Codec:\") are translated.",
+      "variant_need": "locale+theme"
     }
   ]
 }

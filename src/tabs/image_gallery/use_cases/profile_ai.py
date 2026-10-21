@@ -13,10 +13,12 @@ One call per unchanged folder-generation: the selection is pinned
 (``services/profile_cache``, keyed on member fingerprint + mode + model + pool),
 and a re-run over unchanged inputs is served from disk with no second HTTP
 call. Every failure (AI off, no probe members, transport raise, junk reply)
-degrades to the deterministic heuristic profile
-(``profile_select.derive_profile``) — the control always yields a usable axis
-set. Malformed replies are deliberately not pinned (a later pass may retry),
-mirroring ``services/jev_cache``.
+degrades to the series-derived offer
+(``profile_select.derive_profile`` → ``metric_profile.profile_for_series``) —
+the control always yields a usable axis set. The judge's own choice, when it
+answers, WINS over that offer (P5 precedence). Malformed replies are
+deliberately not pinned (a later pass may retry), mirroring
+``services/jev_cache``.
 
 Reuse, not rebuild: the transport is the shared ``services.ai_client.call_sync``
 seam, the JSON envelope is forced with ``response_format={"type":
@@ -247,7 +249,7 @@ def parse_profile_reply(text, *, mode=None):
     run here (``profile_for_mode(mode)`` is the availability map: a
     ``reference`` axis needs a source hub, so it is unavailable off
     ``fidelity``). Zero usable ids → ``None`` so the caller falls back to the
-    deterministic heuristic (fail-open, with its own debug line).
+    series-derived offer (fail-open, with its own debug line).
     """
     ids = _reply_ids(text)
     if not ids:
@@ -315,15 +317,15 @@ def choose_profile_sync(
 
     Order (plan P2 §Select):
 
-    1. AI not configured → the deterministic heuristic profile
-       (``profile_select.derive_profile``) — **no** call;
+    1. AI not configured → the series-derived offer
+       (``profile_select.derive_profile`` → ``profile_for_series``) — **no** call;
     2. a pin hit for this folder-generation → the pinned profile (source
        ``vlm`` preserved) — **no** call;
     3. otherwise probe the K most-deviant members, build the pool-constrained
        request, call the transport, parse, pin and return.
 
     Any failure — no probe members, no transport, a raising transport, a junk
-    reply — degrades to the heuristic profile. Never raises. ``client_call``
+    reply — degrades to the series offer. Never raises. ``client_call``
     defaults to ``ai_client.call_sync`` and is invoked as
     client_call(base_url, api_key, payload). folder_key is accepted for
     call-site symmetry; the pin identity is the member fingerprint.
@@ -332,7 +334,7 @@ def choose_profile_sync(
 
     members = _as_list(items)
 
-    def _heuristic():
+    def _offer():
         try:
             return profile_select.derive_profile(members, mode=mode)
         except Exception:
@@ -341,7 +343,7 @@ def choose_profile_sync(
             return profile_for_mode(mode)
 
     if not ai_selector_available(settings):
-        return _heuristic()
+        return _offer()
 
     from tabs.image_gallery.services import profile_cache
     from tabs.image_gallery.use_cases import profile_probe
@@ -376,7 +378,7 @@ def choose_profile_sync(
     except Exception:
         probes = ()
     if not probes:
-        return _heuristic()
+        return _offer()
 
     summary = salience if salience is not None else profile_probe.salience_summary(members)
     try:
@@ -387,25 +389,25 @@ def choose_profile_sync(
             effort=effort,
         )
     except Exception:
-        return _heuristic()
+        return _offer()
 
     call = client_call or _default_client_call()
     if call is None:
-        return _heuristic()
+        return _offer()
     try:
         raw = call(base_url, api_key, payload)
     except Exception:
         logger.debug("profile select call failed", exc_info=True)
-        return _heuristic()
+        return _offer()
 
     profile = parse_profile_reply(_reply_text(raw), mode=mode)
     if profile is None:
         logger.debug(
             "profile select: reply yielded no usable axis (mode=%s) — "
-            "heuristic fallback",
+            "series offer kept",
             mode,
         )
-        return _heuristic()
+        return _offer()
     if key:
         try:
             cache_obj.put(key, profile)

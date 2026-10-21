@@ -1,16 +1,18 @@
-"""P1 produce side — the metric profile is derived, stored and READ.
+"""P1 produce side — the metric profile is derived, stored and READ (P1 → P5).
 
-``plan-adaptive-metric-profiles-2026-10-17`` P1: the profile is the LIVE axis
-set of the gallery state — derived from the folder's measured metrics when the
-mode/metrics settle, stored on ``GalleryState.metric_profile``, read by the
+``plan-adaptive-metric-profiles-2026-10-17`` P1 gave the profile a producer;
+``plan-gallery-ai-judgement`` P5 made what it produces the SERIES OFFER: the
+axes whose measured spread clears the local floor. It is derived when the
+mode/metrics settle, stored on ``GalleryState.metric_profile``, and read by the
 rank fusion and the Jev vector. Without a stored profile every consumer keeps
 behaving exactly as before (the mode mapping — fail-open).
 
 Falsification stories (what each test would catch):
 
-- ``refresh_metric_profile`` not storing anything, or deriving only the mode
-  base (no salience): the stored profile of a scattered series must carry a
-  ``salient_axes`` that the mode mapping does not imply;
+- ``refresh_metric_profile`` not storing anything, or storing the mode mapping
+  instead of the series offer: the stored profile of a scattered series must
+  carry a ``salient_axes`` that the mode mapping does not imply, and must NOT
+  carry a constant axis the mode mapping does list;
 - ``_apply_fusion_ranks`` IGNORING the stored profile (ranking from the mode
   mapping instead): a stored one-axis profile must invert the order a
   two-axis profile produces;
@@ -74,24 +76,26 @@ def _series(*items) -> list[Series]:
 # --------------------------------------------------------------------------
 
 
-def test_refresh_stores_a_salience_aware_profile() -> None:
-    # Two items differ only in ``ssim`` — a REFERENCE axis the
-    # ``batch_synthetic`` mode base does NOT include, so a stored salient axis
-    # proves the derivation went past the plain mode mapping.
-    a = _item("a.png", ssim=1.0)
-    b = _item("b.png", ssim=0.0)
+def test_refresh_stores_the_series_offer() -> None:
+    # Both items carry a decisive sharpness spread and a CONSTANT white balance,
+    # and a source hub exists (so the reference axis ``ssim`` is eligible too).
+    a = _item("a.png", sharpness=0.0, wb_shift=0.9, ssim=0.10)
+    b = _item("b.png", sharpness=400.0, wb_shift=0.9, ssim=0.90)
     ctrl = _FakeController([a, b], _series(a, b), mode=Mode.BATCH_SYNTHETIC)
+    ctrl.state.source_path = Path("/gallery/source.png")
     assert ctrl.state.metric_profile is None  # pre-P1 default
 
     profile = ctrl.refresh_metric_profile()
 
     assert ctrl.state.metric_profile is profile
     assert profile.axis_ids, "a derived profile is always a usable axis set"
-    assert set(profile.axis_ids) >= set(
-        profile_for_mode(Mode.BATCH_SYNTHETIC).axis_ids
-    ), "the mode base is always kept (fail-open)"
+    assert profile.source == "series", "the offer comes from the series' spreads"
     assert "ssim" in profile.salient_axes
     assert "ssim" in profile.axis_ids
+    assert "sharpness" in profile.axis_ids
+    assert "white_balance" not in profile.axis_ids, (
+        "a constant axis was offered — the mode mapping was merged back in"
+    )
 
 
 # --------------------------------------------------------------------------

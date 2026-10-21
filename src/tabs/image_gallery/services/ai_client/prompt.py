@@ -8,15 +8,23 @@ from shared.debug_flags import env_flag as _env_flag
 
 logger = logging.getLogger("ImproveImgSLI")
 
+#: The ``[ai]`` trace's own level (plan-gallery-ai-judgement P5, P4 leftover).
+#: The channel is already opt-in (``IMGSLI_AI_DEBUG`` gates every line), so when
+#: it IS on its lines are *information*, not alarms: WARNING made a normal debug
+#: run read like a cascade of failures. A normal run logs nothing here at all.
+AI_TRACE_LEVEL = logging.INFO
+
 
 def _ai_debug(msg: str, *args) -> None:
     """``IMGSLI_AI_DEBUG=1``-gated AI client trace ([ai] prefix).
 
     Logs the request shape, response status and ``x-ratelimit-*`` headers
-    (429 diagnosis) — never the API key or image bytes.
+    (429 diagnosis) — never the API key or image bytes. Emitted at
+    :data:`AI_TRACE_LEVEL` (INFO), not WARNING: the env key is the toggle, and
+    a normal run (key unset) stays silent.
     """
     if _env_flag("IMGSLI_AI_DEBUG"):
-        logger.warning("[ai] " + msg, *args)
+        logger.log(AI_TRACE_LEVEL, "[ai] " + msg, *args)
 
 def _ai_debug_enabled() -> bool:
     """True when the ``IMGSLI_AI_DEBUG`` trace gate is on."""
