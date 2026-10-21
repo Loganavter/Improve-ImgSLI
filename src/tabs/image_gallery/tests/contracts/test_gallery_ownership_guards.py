@@ -126,19 +126,19 @@ ALLOWLIST: dict[tuple[str, int], str] = {
     # split, plan-gallery-split-2026-10-17 Part C3): the extracted
     # ``populate(overlay, owner)`` reads the overlay's OWN _owner (was
     # ``self._owner`` inside CleanReviewOverlay._populate — same object).
-    ("src/tabs/image_gallery/ui/clean_review/populate.py", 409): (
+    ("src/tabs/image_gallery/ui/clean_review/populate.py", 413): (
         "populate(overlay, ...) reads the overlay's own _owner (moved row builder)"
     ),
-    ("src/tabs/image_gallery/ui/clean_review/populate.py", 412): (
-        "populate(overlay, ...) reads the overlay's own _owner (moved row builder)"
-    ),
-    ("src/tabs/image_gallery/ui/clean_review/populate.py", 418): (
+    ("src/tabs/image_gallery/ui/clean_review/populate.py", 416): (
         "populate(overlay, ...) reads the overlay's own _owner (moved row builder)"
     ),
     ("src/tabs/image_gallery/ui/clean_review/populate.py", 422): (
         "populate(overlay, ...) reads the overlay's own _owner (moved row builder)"
     ),
-    ("src/tabs/image_gallery/ui/clean_review/populate.py", 424): (
+    ("src/tabs/image_gallery/ui/clean_review/populate.py", 426): (
+        "populate(overlay, ...) reads the overlay's own _owner (moved row builder)"
+    ),
+    ("src/tabs/image_gallery/ui/clean_review/populate.py", 428): (
         "populate(overlay, ...) reads the overlay's own _owner (moved row builder)"
     ),
     # --- moved card handlers (plan Part B Wave 3) ---
