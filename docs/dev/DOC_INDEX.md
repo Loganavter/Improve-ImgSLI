@@ -41,18 +41,14 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
 - **[File Size Policy & Audit-Meta](FILE_SIZE_POLICY.md)** — `docs/dev/FILE_SIZE_POLICY.md`
   Referenced by: [docs/dev/CODE_PATTERNS.md](CODE_PATTERNS.md), [src/tabs/image_gallery/docs/investigations/plan-gallery-split-2026-10-17.md](../../src/tabs/image_gallery/docs/investigations/plan-gallery-split-2026-10-17.md)
 - **[Как писать страницы справки](HELP_AUTHORING.md)** — `docs/dev/HELP_AUTHORING.md`
-  Referenced by: [docs/dev/HELP_PROSE_PLAN.md](HELP_PROSE_PLAN.md), [docs/dev/HELP_STYLE_GUIDE.md](HELP_STYLE_GUIDE.md)
-- **[Plan: рефакторинг текста справки](HELP_PROSE_PLAN.md)** — `docs/dev/HELP_PROSE_PLAN.md`
+  Referenced by: [docs/dev/HELP_STYLE_GUIDE.md](HELP_STYLE_GUIDE.md)
 - **[Гайдлайн по справке Improve-ImgSLI](HELP_STYLE_GUIDE.md)** — `docs/dev/HELP_STYLE_GUIDE.md`
   Referenced by: [docs/dev/HELP_AUTHORING.md](HELP_AUTHORING.md), [docs/dev/HELP_SYSTEM.md](HELP_SYSTEM.md), [docs/dev/RESOURCES_I18N.md](RESOURCES_I18N.md)
 - **[Help plugin (hierarchical illustrated manual)](HELP_SYSTEM.md)** — `docs/dev/HELP_SYSTEM.md`
-  Referenced by: [docs/dev/ACTIONS.md](ACTIONS.md), [docs/dev/HELP_STYLE_GUIDE.md](HELP_STYLE_GUIDE.md), [docs/dev/PLUGINS.md](PLUGINS.md), [docs/dev/README.md](README.md), [docs/dev/RESOURCES_I18N.md](RESOURCES_I18N.md), [docs/dev/SCREENSHOTS.md](SCREENSHOTS.md), [docs/dev/TODO.md](TODO.md), [docs/dev/plugins/help-per-owner-plan.md](plugins/help-per-owner-plan.md), [docs/dev/plugins/help.md](plugins/help.md), [docs/dev/tabs/capability-mechanisms.md](tabs/capability-mechanisms.md)
-- **[Help web-canon refactor — plan](HELP_WEBCANON_PLAN.md)** — `docs/dev/HELP_WEBCANON_PLAN.md`
+  Referenced by: [docs/dev/ACTIONS.md](ACTIONS.md), [docs/dev/HELP_STYLE_GUIDE.md](HELP_STYLE_GUIDE.md), [docs/dev/PLUGINS.md](PLUGINS.md), [docs/dev/README.md](README.md), [docs/dev/RESOURCES_I18N.md](RESOURCES_I18N.md), [docs/dev/SCREENSHOTS.md](SCREENSHOTS.md), [docs/dev/TODO.md](TODO.md), [docs/dev/plugins/help.md](plugins/help.md), [docs/dev/tabs/capability-mechanisms.md](tabs/capability-mechanisms.md)
 - **[Logging](LOGGING.md)** — `docs/dev/LOGGING.md`
-  Referenced by: [docs/dev/MCP.md](MCP.md), [docs/dev/README.md](README.md), [docs/dev/SETTINGS_PERSISTENCE.md](SETTINGS_PERSISTENCE.md), [docs/dev/TRACING.md](TRACING.md), [docs/dev/toast_stuck_session_report.md](toast_stuck_session_report.md)
+  Referenced by: [docs/dev/MCP.md](MCP.md), [docs/dev/README.md](README.md), [docs/dev/SETTINGS_PERSISTENCE.md](SETTINGS_PERSISTENCE.md), [docs/dev/TRACING.md](TRACING.md)
 - **[MCP server (app control)](MCP.md)** — `docs/dev/MCP.md`
-  Referenced by: [docs/dev/MCP_V2_PLAN.md](MCP_V2_PLAN.md)
-- **[MCP v2 — plan (agent-control plane, second round)](MCP_V2_PLAN.md)** — `docs/dev/MCP_V2_PLAN.md`
 - **[Plugin lifecycle](PLUGINS.md)** — `docs/dev/PLUGINS.md`
   Referenced by: [docs/dev/ARCHITECTURE.md](ARCHITECTURE.md), [docs/dev/EVENT_BUS.md](EVENT_BUS.md), [docs/dev/README.md](README.md), [docs/dev/RESOURCES_I18N.md](RESOURCES_I18N.md), [docs/dev/STORE.md](STORE.md), [docs/dev/THEMING.md](THEMING.md), [docs/dev/plugins/export.md](plugins/export.md), [docs/dev/plugins/image_properties.md](plugins/image_properties.md), [docs/dev/plugins/index.md](plugins/index.md), [docs/dev/plugins/layout.md](plugins/layout.md), [docs/dev/plugins/onboarding.md](plugins/onboarding.md), [docs/dev/plugins/settings.md](plugins/settings.md)
 - **[Presenter layer](PRESENTERS.md)** — `docs/dev/PRESENTERS.md`
@@ -83,14 +79,11 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
   Referenced by: [docs/dev/ACTIONS.md](ACTIONS.md), [docs/dev/MCP.md](MCP.md), [docs/dev/README.md](README.md)
 - **[UI Toolkit Library (app-side boundary)](UI_TOOLKIT_LIBRARY.md)** — `docs/dev/UI_TOOLKIT_LIBRARY.md`
   Referenced by: [docs/dev/DIALOGS.md](DIALOGS.md), [docs/dev/README.md](README.md)
-- **[Session report: stuck loading toast — from dead manager to leaked inflight alias](toast_stuck_session_report.md)** — `docs/dev/toast_stuck_session_report.md`
 
 ## docs/dev/plugins/
 
 - **[Export plugin](plugins/export.md)** — `docs/dev/plugins/export.md`
   Referenced by: [docs/dev/PLUGINS.md](PLUGINS.md), [docs/dev/plugins/index.md](plugins/index.md)
-- **[Plan: help content per-owner (every plugin and tab owns its hub)](plugins/help-per-owner-plan.md)** — `docs/dev/plugins/help-per-owner-plan.md`
-- **[Help per-owner recon (Phase R, 2026-10-12, read-only)](plugins/help-recon.md)** — `docs/dev/plugins/help-recon.md`
 - **[Help plugin](plugins/help.md)** — `docs/dev/plugins/help.md`
   Referenced by: [docs/dev/PLUGINS.md](PLUGINS.md), [docs/dev/plugins/index.md](plugins/index.md)
 - **[Image Properties plugin](plugins/image_properties.md)** — `docs/dev/plugins/image_properties.md`
@@ -98,7 +91,7 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
 - **[App-wide plugins (`src/plugins/`)](plugins/index.md)** — `docs/dev/plugins/index.md`
   Referenced by: [docs/dev/PLUGINS.md](PLUGINS.md)
 - **[Layout plugin](plugins/layout.md)** — `docs/dev/plugins/layout.md`
-  Referenced by: [docs/dev/PLUGINS.md](PLUGINS.md), [docs/dev/plugins/index.md](plugins/index.md), [docs/dev/toast_stuck_session_report.md](toast_stuck_session_report.md)
+  Referenced by: [docs/dev/PLUGINS.md](PLUGINS.md), [docs/dev/plugins/index.md](plugins/index.md)
 - **[Onboarding plugin](plugins/onboarding.md)** — `docs/dev/plugins/onboarding.md`
   Referenced by: [docs/dev/PLUGINS.md](PLUGINS.md), [docs/dev/plugins/index.md](plugins/index.md)
 - **[Settings plugin](plugins/settings.md)** — `docs/dev/plugins/settings.md`
@@ -136,7 +129,7 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
 - **[Background tab policy](tabs/background-tab-policy.md)** — `docs/dev/tabs/background-tab-policy.md`
   Referenced by: [docs/dev/TODO.md](TODO.md)
 - **[Capability mechanisms](tabs/capability-mechanisms.md)** — `docs/dev/tabs/capability-mechanisms.md`
-  Referenced by: [docs/dev/ACTIONS.md](ACTIONS.md), [docs/dev/ARCHITECTURE.md](ARCHITECTURE.md), [docs/dev/HELP_SYSTEM.md](HELP_SYSTEM.md), [docs/dev/TAB_CONTRACT.md](TAB_CONTRACT.md), [docs/dev/plugins/onboarding.md](plugins/onboarding.md), [docs/dev/tabs/contract.md](tabs/contract.md), [docs/dev/tabs/index.md](tabs/index.md), [docs/dev/tabs/isolation.md](tabs/isolation.md), [docs/dev/tabs/registry.md](tabs/registry.md), [docs/dev/toast_stuck_session_report.md](toast_stuck_session_report.md)
+  Referenced by: [docs/dev/ACTIONS.md](ACTIONS.md), [docs/dev/ARCHITECTURE.md](ARCHITECTURE.md), [docs/dev/HELP_SYSTEM.md](HELP_SYSTEM.md), [docs/dev/TAB_CONTRACT.md](TAB_CONTRACT.md), [docs/dev/plugins/onboarding.md](plugins/onboarding.md), [docs/dev/tabs/contract.md](tabs/contract.md), [docs/dev/tabs/index.md](tabs/index.md), [docs/dev/tabs/isolation.md](tabs/isolation.md), [docs/dev/tabs/registry.md](tabs/registry.md)
 - **[TabContract & TabContext](tabs/contract.md)** — `docs/dev/tabs/contract.md`
   Referenced by: [docs/dev/CONTRACTS.md](CONTRACTS.md), [docs/dev/TAB_CONTRACT.md](TAB_CONTRACT.md), [docs/dev/tabs/index.md](tabs/index.md), [docs/dev/tabs/overview.md](tabs/overview.md)
 - **[Tab System Documentation](tabs/index.md)** — `docs/dev/tabs/index.md`
