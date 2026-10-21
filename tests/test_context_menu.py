@@ -359,3 +359,39 @@ def test_line_edit_menu_in_main_window_attaches_to_overlay(qtbot, line_edit_filt
         _assert_fully_inside_parent(menu)
     finally:
         menu.hide()
+
+
+def test_hide_active_menu_reports_whether_it_hid_one(qtbot):
+    """The app-level Escape handler needs a yes/no answer from the manager.
+
+    A top-level-surface menu (the gallery's popup menus) has no focus, so it
+    never receives the Escape key itself — the app-level handler closes it
+    through ``hide_active_menu()`` and only accepts the key when something
+    was actually closed.
+    """
+    from ui.context_menu.manager import get_context_menu_manager
+
+    mgr = get_context_menu_manager()
+    parent = QWidget()
+    parent.resize(400, 300)
+    qtbot.addWidget(parent)
+    parent.show()
+    qtbot.waitExposed(parent)
+
+    # nothing open -> nothing hidden
+    assert mgr.hide_active_menu() is False
+
+    from PySide6.QtCore import QPoint
+
+    mgr.open_entries(
+        source_widget=parent,
+        global_pos=QPoint(20, 20),
+        entries=(ContextMenuAction("a", "A"),),
+        key="escape-net",
+    )
+    qtbot.wait(10)
+    menu = mgr._active_menu
+    assert menu is not None
+    assert menu.isVisible()
+    assert mgr.hide_active_menu() is True
+    assert not menu.isVisible()

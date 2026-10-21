@@ -77,22 +77,24 @@ def open_help_text_context_menu(
             if text:
                 QGuiApplication.clipboard().setText(text)
 
-    # A text-selection menu is a real top-level popup: an in-window child is
-    # clipped to the dialog rect and cannot overflow it (the app-wide RMB
-    # policy is "in_window" for the gallery ask-ai sequence — see
-    # ``ui.context_menu.manager.rmb_context_menu_surface``; this menu is
-    # unrelated to it, so it opts out per call).
+    # The menu stays on the app-wide RMB surface (``in_window``): it is a
+    # child overlay of the dialog, drawn into the dialog's own surface.
     #
-    # The popup is parented to the DOCUMENT, not the dialog: a Qt.Popup whose
-    # QWidget parent is the top-level window breaks that window's
-    # compositing on Wayland (inv-2026-10-06-ql-rhi-menu-first). The
-    # document is a content widget, so the popup transient-parents to the
-    # dialog window and may overflow the dialog.
+    # Do NOT opt this menu out to a native ``Qt.Popup`` top-level (2026-10-21,
+    # live on Wayland/Mutter): in this app's widget tree a popup-surface
+    # ContextMenu gets a wl_surface with NO compositor role — it is not an
+    # xdg_popup, not a subsurface, just an orphan surface. The compositor
+    # therefore never composites it: the menu is painted (its buffer reaches
+    # the server) but nothing appears, and the host window's drawing is
+    # disturbed. Proof: a WAYLAND_DEBUG trace of the live app shows the
+    # menu's surface created with only a viewport and never given an
+    # xdg_surface, while the dialog and the main window get theirs.
+    # The same path is used by the gallery's popup menus — see the
+    # investigation in internal-docs.
     open_context_menu_entries(
-        source_widget=document,
+        source_widget=dialog,
         global_pos=global_pos,
         entries=tuple(entries),
         key=("help_text", id(document)),
         on_triggered=on_triggered,
-        surface="popup",
     )
