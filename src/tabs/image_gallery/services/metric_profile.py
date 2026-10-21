@@ -6,11 +6,16 @@ only the *active subset* varies — so the local detectors, the VLM scorecard,
 the rank fusion, the card dots and the Quick Look rows all speak ONE
 vocabulary (``plan-adaptive-metric-profiles-2026-10-17`` §General model).
 
-Today the profile is derived by P1's salience producer
-(``use_cases/profile_select``, stored on ``state.metric_profile`` by
-``controller.refresh_metric_profile``): the mode base plus the axes whose
-spread in THIS series clears the floor — this module stays the single
-definition of "what the pool is" and "which axes a mode implies".
+The profile the model is ASKED about is derived from the SERIES
+(:func:`profile_for_series`, plan-gallery-ai-judgement P5, stored on
+``state.metric_profile`` by ``controller.refresh_metric_profile``): the pool
+axes whose spread in THIS series the local metrics pass measured above the
+instrument's own noise floor. The mode mapping (:func:`profile_for_mode`) is
+only the LAST fallback — no discriminating measurement yet — and says so in
+the trace (:func:`profile_source_label`); it is never a second axis list.
+
+This module stays the single definition of "what the pool is", "which axes a
+mode implies" and "what can be offered for a series".
 
 The named metric domains (a manual "pin" that replaced the derived axis set)
 were deleted with the stats-strip chip that selected them (owner decision
@@ -57,11 +62,31 @@ EXCLUDED_AXES: tuple[str, ...] = ("typicality",)
 #: The mode ids a profile understands (``models.Mode`` values).
 MODES: tuple[str, ...] = ("fidelity", "camera", "batch_synthetic")
 
-#: Where a profile came from. ``heuristic`` = the deterministic derivation
-#: (mode mapping ∪ salience, P1); ``vlm`` = a model-chosen subset of the pool
-#: (P2). Anything else is coerced to ``heuristic`` (fail-open: a profile is
-#: always describable).
-PROFILE_SOURCES: tuple[str, ...] = ("heuristic", "vlm")
+#: Where a profile came from:
+#:
+#: ``series``     the SERIES-DERIVED offer (``profile_for_series``): the pool
+#:                axes whose spread in this series the local metrics pass
+#:                measured above the producing instrument's noise floor — the
+#:                set the model is asked to score (plan-gallery-ai-judgement
+#:                P5);
+#: ``vlm``        a model-chosen subset of the pool (P2) — the judge's own
+#:                choice, which wins over the offer when it arrives;
+#: ``heuristic``  the mode mapping — the LAST fallback, used only while the
+#:                series has no discriminating measurement at all (or after a
+#:                failed derivation), and named as a fallback by
+#:                :func:`profile_source_label` so it is never mistaken for a
+#:                measured offer.
+#:
+#: Anything else is coerced to ``heuristic`` (fail-open: a profile is always
+#: describable).
+PROFILE_SOURCE_SERIES = "series"
+PROFILE_SOURCE_VLM = "vlm"
+PROFILE_SOURCE_FALLBACK = "heuristic"
+PROFILE_SOURCES: tuple[str, ...] = (
+    PROFILE_SOURCE_SERIES,
+    PROFILE_SOURCE_VLM,
+    PROFILE_SOURCE_FALLBACK,
+)
 
 #: Why a VLM axis-set answer was NOT applied to the folder generation
 #: (``GalleryState.profile_reject_reason``, plan-gallery-ai-judgement P2/M5:
@@ -138,12 +163,15 @@ def axis_spreads(items) -> dict[str, float]:
     from that axis — never 0, and never backfilled from ``item.metrics`` (the
     engine ran and had nothing, which is a different fact).
 
-    The ONE spread over ITEM metrics: the P1 adaptive-profile derivation
-    (``profile_select.salience_axes``) reads it to decide which axes the series
-    is measured on at all. It is NOT the rank's salience measurement: the rank /
-    Jev vector / rows ask a different question — "does this axis separate these
-    variants under the producing INSTRUMENT's noise floor" — over the per-member
-    vectors, and that answer lives in ``rank_fusion.axis_salience``.
+    The ONE spread over ITEM metrics, TWO named readers and no third:
+    the P5 offer (:func:`profile_for_series` — "which axes can separate THIS
+    series", i.e. what the model is asked about, and through
+    ``profile_select.salience_axes`` the adaptive-probe summary) reads it to
+    decide which axes are offered at all. It is NOT the rank's salience
+    measurement: the rank / Jev vector asks a different question — "does this
+    axis separate these variants under the producing INSTRUMENT's noise floor" —
+    over the per-member vectors, and that answer lives in
+    ``rank_fusion.axis_salience``.
     """
     # Deferred import: ``rank_fusion`` imports this module at load time, so a
     # module-level import would be circular. One reader of the records
@@ -197,9 +225,10 @@ class MetricProfile:
     ``axis_ids`` is always pool-filtered, de-duplicated and in **registry
     order** (the dots, the report rows and the fusion mean are
     position-stable; the order carries no ranking intent). ``salient_axes``
-    records which axes the salience pass *added* on top of the mode base, for
-    the trace — it is a subset of ``axis_ids``. ``source`` explains the
-    decision (``heuristic`` | ``vlm``); ``mode`` is the normalized mode id.
+    records which axes the series' own measured spread put in the offer (a
+    subset of ``axis_ids``), for the trace. ``source`` explains the decision
+    (``series`` | ``vlm`` | ``heuristic`` — see :data:`PROFILE_SOURCES` and
+    :func:`profile_source_label`); ``mode`` is the normalized mode id.
 
     Hashable and comparable, so a cached profile is trivially equal to a
     freshly derived one (determinism check).
@@ -227,7 +256,9 @@ class MetricProfile:
         object.__setattr__(self, "salient_axes", salient_ordered)
         object.__setattr__(self, "mode", mode_id(self.mode))
         object.__setattr__(
-            self, "source", source if source in PROFILE_SOURCES else "heuristic"
+            self,
+            "source",
+            source if source in PROFILE_SOURCES else PROFILE_SOURCE_FALLBACK,
         )
 
     def __bool__(self) -> bool:
@@ -273,14 +304,148 @@ def profile_for_mode(mode=None) -> MetricProfile:
     return MetricProfile(axis_ids=tuple(axis_ids), mode=mid, source="heuristic")
 
 
+def profile_for_series(
+    spreads,
+    *,
+    mode=None,
+    has_reference: bool = False,
+    domain=None,
+) -> MetricProfile:
+    """The OFFER for one series: the axes that can separate THESE variants (P5).
+
+    The **third** question about the pool, named so it cannot be confused with
+    the two that already exist:
+
+    * ``metric_profile.axis_spreads`` — "which axes did the local metrics pass
+      measure at all" (the raw spread source this function *consumes*);
+    * ``rank_fusion.axis_salience`` — "may this axis carry weight in the ORDER
+      under the producing instrument's noise" (measured over the per-member
+      vectors the fusion already builds);
+    * **this function** — "which axes are worth ASKING the model about for this
+      series" (the offer). It reuses the spread source (``spreads`` is
+      ``axis_spreads(items)``, passed in so this module stays free of item
+      shapes) and the ONE floor resolver
+      (``quality_read.axis_noise_floor(domain)``); it never re-measures a
+      spread and never picks a floor number of its own.
+
+    Why it exists (plan-gallery-ai-judgement J4 / §P5): the mode mapping asks
+    the model for white balance, aesthetic and brisque on a series of ONE
+    picture, where those axes are constant by construction, so the answer is a
+    number that ranks nothing. An axis whose measured spread in
+    this series is inside the instrument's noise floor cannot separate the
+    variants and is therefore **not offered** — not merely hidden later.
+
+    Rules (one offer per SERIES, never per image):
+
+    - the axis must be eligible for *mode*: untagged axes always, ``photo``
+      axes in ``camera`` only, ``reference`` axes only when *has_reference*
+      (a source hub exists — without one a source-relative axis measures
+      nothing);
+    - an axis with a measured spread ``<= axis_noise_floor(domain)`` is not
+      offered; the floor belongs to the instrument that produced the spreads,
+      so *domain* defaults to the Algorithms domain (the local metrics pass);
+    - an axis with NO measured spread is not offered either: nothing measured
+      says it can separate these variants, and offering it is exactly the
+      constant-axis complaint. A source-relative axis therefore appears when a
+      source exists AND the local pass measured it with a real spread (SSIM and
+      the source deltas are computed then; LPIPS/DISTS only when their optional
+      backend ran);
+    - no discriminating measurement at all (empty *spreads*, or every measured
+      axis inside the floor) → the mode mapping, marked ``source=heuristic``
+      (:func:`profile_source_label` names it a fallback). The mode mapping is
+      the LAST fallback: no measurements yet, never a substitute for a series
+      that has them.
+
+    Pure and deterministic: registry (pool) order, input-permutation invariant,
+    never fabricates an axis outside ``MEASURED_POOL``. Garbage input degrades
+    to the fallback rather than raising.
+    """
+    try:
+        from tabs.image_gallery.services.quality_read import axis_noise_floor
+
+        floor = float(axis_noise_floor(domain))
+    except Exception:
+        floor = 0.0
+    mid = mode_id(mode)
+    try:
+        measured = {
+            str(axis): float(value)
+            for axis, value in dict(spreads or {}).items()
+            if value is not None
+        }
+    except Exception:
+        measured = {}
+    offered: list[str] = []
+    salient: list[str] = []
+    for axis_id in MEASURED_POOL:
+        spec = spec_for(axis_id)
+        if spec is None:
+            continue
+        tags = _tags_of(spec)
+        is_reference = REFERENCE_TAG in tags
+        if is_reference and not has_reference:
+            continue
+        if PHOTO_TAG in tags and mid != "camera":
+            continue
+        if axis_id not in measured:
+            # No measured spread = nothing shows it can separate these variants.
+            # "Not measured locally" is not "does not move", but the offer is a
+            # claim about THIS series; an axis nobody measured has no evidence
+            # behind it, and offering it is how the constant-axis complaint got
+            # in (the model is then asked to score what the variants share).
+            continue
+        try:
+            inside = measured[axis_id] <= floor
+        except Exception:
+            inside = True
+        if inside:
+            continue  # cannot separate this series — never offered
+        offered.append(axis_id)
+        salient.append(axis_id)
+    if not offered:
+        return profile_for_mode(mode)
+    return MetricProfile(
+        axis_ids=tuple(offered),
+        mode=mid,
+        source=PROFILE_SOURCE_SERIES,
+        salient_axes=tuple(salient),
+    )
+
+
+def profile_source_label(profile) -> str:
+    """Where the offered axis set came from, in the trace's own words (P5).
+
+    ``"series-derived"`` — the series' measured spreads chose the axes;
+    ``"judge-vlm"`` — the model's own choice (P2/P3) won;
+    ``"heuristic-<mode> (fallback)"`` — the mode mapping, i.e. the LAST
+    fallback, visible as such so a fallback offer is never read as a
+    measurement. Never raises.
+    """
+    try:
+        source = str(getattr(profile, "source", "") or "").strip().lower()
+    except Exception:
+        source = ""
+    if source == PROFILE_SOURCE_VLM:
+        return "judge-vlm"
+    if source == PROFILE_SOURCE_SERIES:
+        return "series-derived"
+    try:
+        mode = str(getattr(profile, "mode", "") or "")
+    except Exception:
+        mode = ""
+    return f"heuristic-{mode} (fallback)" if mode else "heuristic (fallback)"
+
+
 def format_profile(profile) -> str:
     """One-line profile summary for a log/trace line.
 
-    ``"axes=a,b,c source=heuristic mode=camera salient=x"`` — so an odd or
-    empty measurement set is explained, not silent (plan §Observability).
-    ``salient`` is appended only when set. (The old chip tooltip was the other
-    reader; it was deleted with the chip — ``use_cases.profile_select.describe``
-    is the remaining caller.)
+    ``"axes=a,b,c source=series mode=camera salient=x"`` — so an odd or empty
+    measurement set is explained, not silent (plan §Observability). ``salient``
+    is appended only when set. ``source`` is the raw code; the trace names where
+    the offer came from with :func:`profile_source_label` (``series-derived`` /
+    ``judge-vlm`` / ``heuristic-<mode> (fallback)``). (The old chip tooltip was
+    the other reader; it was deleted with the chip —
+    ``use_cases.profile_select.describe`` is the remaining caller.)
     """
     try:
         axes = ",".join(str(a) for a in (getattr(profile, "axis_ids", ()) or ()))
@@ -307,6 +472,9 @@ __all__ = [
     "PROFILE_REJECT_DOMAIN",
     "PROFILE_REJECT_HOLLOW",
     "PROFILE_REJECT_STALE",
+    "PROFILE_SOURCE_FALLBACK",
+    "PROFILE_SOURCE_SERIES",
+    "PROFILE_SOURCE_VLM",
     "PROFILE_SOURCES",
     "REFERENCE_TAG",
     "MetricProfile",
@@ -315,4 +483,6 @@ __all__ = [
     "mode_id",
     "pool_axis_ids",
     "profile_for_mode",
+    "profile_for_series",
+    "profile_source_label",
 ]

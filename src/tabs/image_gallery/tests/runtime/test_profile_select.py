@@ -1,4 +1,4 @@
-"""P1 — salience-derived profiles, the read accessor and the identity gate.
+"""The series-derived profile offer, the read accessor and the identity gate.
 
 Falsification story (what each test would catch):
 
@@ -6,8 +6,12 @@ Falsification story (what each test would catch):
   variance and a 0–1 SSIM would be compared on one scale);
 - an axis with a single measured value inventing a spread (or a "signal"
   from a lone item);
-- the mode base being *replaced* rather than extended (a folder would lose
-  the axes that already worked);
+- the mode mapping being MERGED into a measured offer — the pre-P5 defect that
+  kept asking the model about white balance/aesthetic on a series where
+  they are constant by construction (plan-gallery-ai-judgement J4/P5);
+- an axis inside the local instrument's noise floor being offered anyway;
+- the mode mapping not being the LAST fallback (and not NAMED as one) when the
+  series has no discriminating measurement at all;
 - a salience threshold that is order-dependent (dict/set iteration leaking
   into the profile) — checked by permutation equality;
 - ``active_profile`` ignoring a stored profile, or throwing it away when the
@@ -23,8 +27,6 @@ import os
 from pathlib import Path
 from types import SimpleNamespace
 
-import pytest
-
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from tabs.image_gallery.models import Mode
@@ -32,11 +34,11 @@ from tabs.image_gallery.services.metric_profile import MEASURED_POOL, MetricProf
 from tabs.image_gallery.services.rank_fusion import measured_axes_for
 from tabs.image_gallery.use_cases import profile_select
 from tabs.image_gallery.use_cases.profile_select import (
-    DEFAULT_SPREAD_FLOOR,
     active_profile,
     derive_for_state,
     derive_profile,
     describe,
+    describe_source,
     salience_axes,
 )
 
@@ -45,8 +47,10 @@ def _item(name: str, **metrics) -> SimpleNamespace:
     return SimpleNamespace(path=Path(f"/gallery/{name}"), metrics=dict(metrics))
 
 
-def _state(items, mode=None):
-    return SimpleNamespace(items=list(items), mode=mode, source_path=None)
+def _state(items, mode=None, *, source_path=None):
+    return SimpleNamespace(
+        items=list(items), mode=mode, source_path=source_path
+    )
 
 
 # --------------------------------------------------------------------------
@@ -99,41 +103,65 @@ def test_salience_never_raises_on_garbage():
 
 
 # --------------------------------------------------------------------------
-# the profile extends the mode base — it never replaces it
+# the offer comes from the series — the mode base is never merged in
 # --------------------------------------------------------------------------
 
 
-def test_derive_profile_keeps_the_mode_base_and_adds_salient_axes():
+def test_derive_profile_offers_only_axes_that_separate_the_series():
+    # sharpness moves across the two variants; white_balance and aesthetic are
+    # constant (the live cel-art shape: same picture, different processing).
     items = [
-        _item("a.png", sharpness=0.0, ssim=0.9),
-        _item("b.png", sharpness=400.0, ssim=0.9),
+        _item("a.png", sharpness=0.0, wb_shift=0.9, aesthetic=0.8),
+        _item("b.png", sharpness=400.0, wb_shift=0.9, aesthetic=0.8),
     ]
-    profile = derive_profile(items, mode="fidelity")
-    base = measured_axes_for("fidelity")
-    assert set(base) <= set(profile.axis_ids)
-    assert "sharpness" in profile.salient_axes
-    # ssim is constant across the series → high score, zero spread → not salient.
-    assert "ssim" not in profile.salient_axes
-    assert profile.source == "heuristic"
-    assert profile.mode == "fidelity"
-    assert profile.axis_ids == tuple(a for a in MEASURED_POOL if a in set(profile.axis_ids))
+    profile = derive_profile(items, mode="camera")
+    assert profile.axis_ids == ("sharpness",)
+    assert "white_balance" not in profile.axis_ids
+    assert "aesthetic" not in profile.axis_ids
+    assert profile.source == "series"
+    assert profile.salient_axes == ("sharpness",)
+    assert profile.mode == "camera"
+    # The mode mapping still describes the pool, but it is NOT the offer.
+    assert "white_balance" in measured_axes_for("camera")
 
 
-def test_derive_profile_below_the_floor_is_exactly_the_mode_base():
-    items = [
-        _item("a.png", sharpness=0.0, ssim=0.9),
-        _item("b.png", sharpness=400.0, ssim=0.9),
-    ]
-    profile = derive_profile(items, mode="camera", spread_floor=1000.0)
+def test_an_axis_inside_the_local_floor_is_not_offered():
+    # sharpness raw 200 vs 204 → scores 50 vs 51: a 1-point spread, i.e. integer
+    # quantization of deterministic detectors — inside the floor (1.0).
+    items = [_item("a.png", sharpness=200.0), _item("b.png", sharpness=204.0)]
+    profile = derive_profile(items, mode="camera")
+    assert profile.source == "heuristic", (
+        "a series with no discriminating measurement must fall back to the mode "
+        f"mapping (marked as a fallback), got {profile.source!r}"
+    )
     assert profile.axis_ids == measured_axes_for("camera")
-    assert profile.salient_axes == ()
-    assert profile == derive_profile(items, mode="camera", spread_floor=1000.0)
 
 
-def test_no_metrics_or_no_items_is_the_mode_base():
-    assert derive_profile([], mode="camera").axis_ids == measured_axes_for("camera")
-    assert derive_profile(None, mode="camera").axis_ids == measured_axes_for("camera")
-    assert derive_profile([_item("a.png")], mode=None).axis_ids == measured_axes_for(None)
+def test_no_measurements_at_all_is_the_mode_fallback():
+    for items in ([], None, [_item("a.png")]):
+        profile = derive_profile(items, mode="camera")
+        assert profile.axis_ids == measured_axes_for("camera")
+        assert profile.source == "heuristic"
+    assert describe_source(_state([], mode="camera")) == "heuristic-camera (fallback)"
+
+
+def test_reference_axes_need_a_source_but_still_need_a_spread():
+    # ssim moves across the variants; sharpness does too.
+    items = [
+        _item("a.png", sharpness=0.0, ssim=0.10),
+        _item("b.png", sharpness=400.0, ssim=0.90),
+    ]
+    without = derive_profile(items, mode="fidelity", has_reference=False)
+    assert "ssim" not in without.axis_ids, (
+        "a source-relative axis must not be offered without a source hub"
+    )
+    with_source = derive_profile(items, mode="fidelity", has_reference=True)
+    assert "ssim" in with_source.axis_ids
+    assert with_source.source == "series"
+    # An optional reference backend that never ran measured nothing: it is not
+    # offered on the mere existence of a source (no spread, no evidence).
+    assert "lpips" not in with_source.axis_ids
+    assert "dists" not in with_source.axis_ids
 
 
 def test_derive_profile_is_deterministic_under_permutation_and_rebuild():
@@ -152,34 +180,34 @@ def test_derive_profile_is_deterministic_under_permutation_and_rebuild():
     assert first == derive_profile(rebuilt, mode="camera")
 
 
-def test_a_bad_floor_falls_back_to_the_default():
-    items = [
-        _item("a.png", sharpness=0.0),
-        _item("b.png", sharpness=400.0),
-    ]
-    assert derive_profile(items, mode="camera", spread_floor="nope") == derive_profile(
-        items, mode="camera", spread_floor=DEFAULT_SPREAD_FLOOR
-    )
-
-
-def test_default_floor_sits_below_a_score_band_width():
-    # Bands are 30 points wide (score_band 70/40) — one decisive step is 20.
-    assert DEFAULT_SPREAD_FLOOR == 20.0
-
-
 # --------------------------------------------------------------------------
 # producer read (state) + consumer accessor
 # --------------------------------------------------------------------------
 
 
-def test_derive_for_state_reads_items_and_mode():
+def test_derive_for_state_reads_items_mode_and_the_source_hub():
     state = _state(
         [_item("a.png", sharpness=0.0), _item("b.png", sharpness=400.0)],
         mode=Mode.CAMERA,
     )
     profile = derive_for_state(state)
     assert profile.mode == "camera"
-    assert "sharpness" in profile.salient_axes
+    assert profile.axis_ids == ("sharpness",)
+    assert profile.source == "series"
+
+    fidelity = _state(
+        [
+            _item("a.png", sharpness=0.0, ssim=0.10),
+            _item("b.png", sharpness=400.0, ssim=0.90),
+        ],
+        mode=Mode.FIDELITY,
+        source_path=Path("/gallery/source.png"),
+    )
+    with_source = derive_for_state(fidelity)
+    assert "ssim" in with_source.axis_ids, (
+        "a fidelity series with a source hub must be offered its measured "
+        "source-relative axes"
+    )
 
 
 def test_derive_for_state_never_raises():
@@ -213,6 +241,7 @@ def test_describe_names_the_profile_source_and_mode():
     state = SimpleNamespace(items=[], mode=Mode.CAMERA)
     text = describe(state)
     assert "source=heuristic" in text and "mode=camera" in text and "axes=" in text
+    assert describe_source(state) == "heuristic-camera (fallback)"
 
 
 def test_profile_select_is_pure_no_qt_contract():
@@ -222,10 +251,10 @@ def test_profile_select_is_pure_no_qt_contract():
 
 def test_module_exports_are_the_frozen_interface():
     assert set(profile_select.__all__) == {
-        "DEFAULT_SPREAD_FLOOR",
         "active_profile",
         "derive_for_state",
         "derive_profile",
         "describe",
+        "describe_source",
         "salience_axes",
     }

@@ -1,13 +1,17 @@
-"""Open-vocabulary axis relevance (plan-gallery-two-domain-axes W1).
+"""Open-vocabulary axis lookup (plan-gallery-two-domain-axes W1).
 
-Pure: no Qt, no HTTP. Maps a *signal* (free-form tags from a content/AI/user
-observation) to a relevance order over axes, and degrades an unmatched
-observation to a candidate ``flag-for-review`` — never a fabricated number.
+Pure: no Qt, no HTTP. Resolves a free-form *observation* (a tag, an axis id or
+a label) to the existing axis it names, and degrades an unmatched observation to
+a candidate ``flag-for-review`` — never a fabricated number.
 
 There is deliberately **no closed operation/content enum**: tags are free-form,
 and an unknown/complementary tag never *drops* a measured axis from the result
-(a measured axis is never hidden — measurement always runs; relevance is only
-an ordering/foreground signal).
+(a measured axis is never hidden — measurement always runs).
+
+The relevance-ORDERING helper was deleted with P5 of
+``plan-gallery-ai-judgement``: it had no production caller (tests only) and is
+not the axis-set seam — the offer is ``metric_profile.profile_for_series`` and
+the only resolver is ``rank_fusion.measured_axes_for``.
 """
 
 from __future__ import annotations
@@ -31,30 +35,6 @@ def normalize_tag(text) -> str:
 
 def _axis_tags(spec) -> set[str]:
     return {normalize_tag(t) for t in (getattr(spec, "tags", ()) or ()) if t}
-
-
-def relevant_axes(signal_tags=(), *, kind=None) -> list[str]:
-    """Axis ids ordered by relevance to *signal_tags* (open vocabulary).
-
-    Order: axes whose tags match the signal, then untagged axes, then the rest.
-    **Every** axis of *kind* is returned — a measured axis is never hidden by an
-    unknown signal, only re-ordered.
-    """
-    want = {normalize_tag(t) for t in (signal_tags or ()) if t}
-    matched: list[str] = []
-    untagged: list[str] = []
-    other: list[str] = []
-    for spec in SPECS:
-        if kind is not None and spec.kind is not kind:
-            continue
-        tags = _axis_tags(spec)
-        if tags and (tags & want):
-            matched.append(spec.id)
-        elif not tags:
-            untagged.append(spec.id)
-        else:
-            other.append(spec.id)
-    return matched + untagged + other
 
 
 def known_axis(observation) -> str | None:
@@ -88,5 +68,4 @@ __all__ = [
     "degrade_unknown",
     "known_axis",
     "normalize_tag",
-    "relevant_axes",
 ]

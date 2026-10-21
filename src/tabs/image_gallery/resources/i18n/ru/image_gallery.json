@@ -167,6 +167,8 @@
       "ai_brief_pending": "Краткий ответ ИИ…",
       "not_measured": "— · не измерено",
       "axis_inside_noise": "не различает эти варианты",
+      "profile_axis_set": "Набор осей",
+      "profile_mode_fallback": "по режиму",
       "rank_of": "#{rank} из {total}",
       "rejected_tail": "отклонённый хвост ≤ {value}",
       "source_fallback": "источник",

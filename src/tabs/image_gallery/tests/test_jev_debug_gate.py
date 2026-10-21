@@ -4,6 +4,11 @@ Falsification story: a Jev rank call that stays silent (no ``[ai] jev`` line) in
 a normal run, and that emits the ``[ai] jev`` request/decision/cache lines — the
 same ``IMGSLI_AI_DEBUG`` key ``ai_client._ai_debug`` already uses — when enabled.
 Mirrors ``tests/test_hover_diag_gate.py`` (gate-zone dump recipe, LOGGING.md).
+
+Level (P5, P4 leftover): the channel is opt-in through the env key, so its lines
+are INFO, never WARNING — a debug run must not read like a cascade of alarms —
+and the level is one named constant (``ai_client.AI_TRACE_LEVEL``) rather than a
+literal at every call site.
 """
 
 from __future__ import annotations
@@ -17,6 +22,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from tabs.image_gallery.models import GalleryItem
 from tabs.image_gallery.services import jev_cache
+from tabs.image_gallery.services.ai_client import AI_TRACE_LEVEL
 from tabs.image_gallery.services.jev_client import rank_series_jev_detailed
 
 
@@ -33,7 +39,7 @@ def _client(payload: dict) -> dict:
 def test_jev_trace_silent_without_key(tmp_path, caplog, monkeypatch) -> None:
     monkeypatch.delenv("IMGSLI_AI_DEBUG", raising=False)
     items = [_item("a.png", ssim=0.9), _item("b.png", ssim=0.4)]
-    with caplog.at_level(logging.WARNING, logger="ImproveImgSLI"):
+    with caplog.at_level(logging.INFO, logger="ImproveImgSLI"):
         outcome = rank_series_jev_detailed(
             items, mode="fidelity", client=_client, cache=jev_cache.JevRankCache(tmp_path)
         )
@@ -45,14 +51,22 @@ def test_jev_trace_dumps_with_key_and_marks_the_pin(tmp_path, caplog, monkeypatc
     monkeypatch.setenv("IMGSLI_AI_DEBUG", "1")
     items = [_item("a.png", ssim=0.9), _item("b.png", ssim=0.4)]
     cache = jev_cache.JevRankCache(tmp_path)
-    with caplog.at_level(logging.WARNING, logger="ImproveImgSLI"):
+    with caplog.at_level(logging.INFO, logger="ImproveImgSLI"):
         first = rank_series_jev_detailed(items, mode="fidelity", client=_client, cache=cache)
     assert first.decided
     assert "[ai] jev rank mode=fidelity items=2 (call)" in caplog.text
     assert "[ai] jev rank => decided=True reason=None" in caplog.text
+    assert AI_TRACE_LEVEL == logging.INFO, (
+        "the [ai] channel must keep its own non-alarm level"
+    )
+    assert all(
+        record.levelno == AI_TRACE_LEVEL
+        for record in caplog.records
+        if record.getMessage().startswith("[ai]")
+    ), "an [ai] trace line was logged at a level other than the channel's own"
 
     caplog.clear()
-    with caplog.at_level(logging.WARNING, logger="ImproveImgSLI"):
+    with caplog.at_level(logging.INFO, logger="ImproveImgSLI"):
         second = rank_series_jev_detailed(items, mode="fidelity", client=_client, cache=cache)
     assert "[ai] jev rank cache HIT items=2" in caplog.text
     assert second.cached
@@ -85,12 +99,12 @@ def test_domain_switch_trace_under_key(caplog, monkeypatch) -> None:
 
     monkeypatch.setenv("IMGSLI_AI_DEBUG", "1")
     ctrl = _Ctrl()
-    with caplog.at_level(logging.WARNING, logger="ImproveImgSLI"):
+    with caplog.at_level(logging.INFO, logger="ImproveImgSLI"):
         GalleryController.activate_judgment_domain(ctrl, "algorithms")
     assert "[ai] judgment domain -> algorithms (Jev off)" in caplog.text
 
     caplog.clear()
-    with caplog.at_level(logging.WARNING, logger="ImproveImgSLI"):
+    with caplog.at_level(logging.INFO, logger="ImproveImgSLI"):
         GalleryController.activate_judgment_domain(ctrl, "ai")
     assert "[ai] judgment domain -> ai (Jev on)" in caplog.text
     assert "[ai] jev ranks: no series — nothing to rank" in caplog.text

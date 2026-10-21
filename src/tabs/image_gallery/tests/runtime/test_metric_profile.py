@@ -120,6 +120,104 @@ def test_existing_rank_fusion_public_names_still_resolve():
 
 
 # --------------------------------------------------------------------------
+# the OFFER comes from the series (plan-gallery-ai-judgement P5)
+# --------------------------------------------------------------------------
+
+
+def test_profile_for_series_offers_the_measured_axes_above_the_floor():
+    # Two axes move decisively; white_balance is constant (the live cel-art
+    # shape: one picture, different processing).
+    spreads = {"sharpness": 40.0, "noise": 30.0, "white_balance": 0.0}
+    profile = metric_profile.profile_for_series(spreads, mode="camera")
+    assert profile.source == "series"
+    assert profile.axis_ids == ("sharpness", "noise"), "registry order, no extras"
+    assert profile.salient_axes == profile.axis_ids
+    assert "white_balance" not in profile.axis_ids, (
+        "an axis whose spread is inside the floor was offered — the pre-P5 "
+        "defect (asking the model about constants)"
+    )
+
+
+def test_profile_for_series_reads_the_one_floor_resolver_per_domain():
+    # 10 score points: ABOVE the deterministic detectors' quantization floor,
+    # INSIDE the stochastic judge's own noise. Same spreads, other domain, so
+    # only the resolver (quality_read.axis_noise_floor) can explain the split.
+    spreads = {"sharpness": 10.0}
+    local = metric_profile.profile_for_series(spreads, mode="camera")
+    assert local.source == "series" and local.axis_ids == ("sharpness",)
+    judge = metric_profile.profile_for_series(spreads, mode="camera", domain="ai")
+    assert judge.axis_ids == measured_axes_for("camera")
+    assert judge == profile_for_mode("camera"), (
+        "inside the judge's noise the offer must be the mode mapping fallback "
+        f"(source={judge.source})"
+    )
+
+
+def test_profile_for_series_asks_the_resolver_instead_of_picking_a_number(monkeypatch):
+    from tabs.image_gallery.services import quality_read
+
+    monkeypatch.setattr(quality_read, "axis_noise_floor", lambda domain=None: 100.0)
+    profile = metric_profile.profile_for_series({"sharpness": 40.0}, mode="camera")
+    assert profile.source == "heuristic", (
+        "a second floor number was used — the resolver was not consulted"
+    )
+
+
+def test_profile_for_series_is_one_offer_per_series_not_per_image():
+    # The offer consumes the AGGREGATE spread, so its shape cannot depend on
+    # how many members produced it: one axis set for the whole series (M1).
+    spreads = {"sharpness": 40.0, "ssim": 35.0}
+    assert metric_profile.profile_for_series(
+        spreads, mode="fidelity", has_reference=True
+    ) == metric_profile.profile_for_series(
+        dict(spreads), mode="fidelity", has_reference=True
+    )
+    assert metric_profile.profile_for_series(
+        spreads, mode="fidelity", has_reference=True
+    ).axis_ids == ("sharpness", "ssim")
+
+
+def test_profile_for_series_gates_reference_and_photo_axes():
+    spreads = {"sharpness": 40.0, "ssim": 40.0, "brisque": 40.0}
+    # No source hub → a source-relative axis measures nothing.
+    no_source = metric_profile.profile_for_series(spreads, mode="fidelity")
+    assert "ssim" not in no_source.axis_ids
+    with_source = metric_profile.profile_for_series(
+        spreads, mode="fidelity", has_reference=True
+    )
+    assert "ssim" in with_source.axis_ids
+    # A photographic axis belongs to the camera mode only.
+    assert "brisque" not in with_source.axis_ids
+    assert "brisque" in metric_profile.profile_for_series(spreads, mode="camera").axis_ids
+
+
+def test_profile_for_series_never_fabricates_or_raises_on_garbage():
+    # Nothing measured that could separate the series → the mode mapping, which
+    # is the LAST fallback (never a fabricated axis, never an exception).
+    for garbage in (
+        None,
+        {},
+        "nope",
+        42,
+        {"composition": 90.0, "typicality": 90.0, "not_an_axis": 90.0},
+        {"sharpness": "nope"},
+    ):
+        profile = metric_profile.profile_for_series(garbage, mode="camera")
+        assert profile.axis_ids == measured_axes_for("camera"), garbage
+        assert profile.source == "heuristic", garbage
+
+
+def test_profile_source_label_names_all_three_sources():
+    label = metric_profile.profile_source_label
+    assert label(MetricProfile(source="series")) == "series-derived"
+    assert label(MetricProfile(source="vlm")) == "judge-vlm", (
+        "the judge's own choice must stay distinguishable from the offer"
+    )
+    assert label(profile_for_mode("camera")) == "heuristic-camera (fallback)"
+    assert "fallback" in label(None) and "fallback" in label(object())
+
+
+# --------------------------------------------------------------------------
 # the value object is closed, ordered and total
 # --------------------------------------------------------------------------
 
@@ -146,7 +244,7 @@ def test_mode_and_source_are_normalized():
     assert MetricProfile(source="VLM").source == "vlm"
     for bad in ("", "telepathy", None, 3):
         assert MetricProfile(source=bad).source == "heuristic"
-    assert set(PROFILE_SOURCES) == {"heuristic", "vlm"}
+    assert set(PROFILE_SOURCES) == {"series", "vlm", "heuristic"}
 
 
 def test_salient_axes_are_a_subset_of_axis_ids_in_registry_order():

@@ -385,7 +385,7 @@ def test_parse_failure_trace_reports_finish_and_content(caplog, monkeypatch) -> 
             }
         ],
     }
-    with caplog.at_level(logging.WARNING, logger="ImproveImgSLI"):
+    with caplog.at_level(logging.INFO, logger="ImproveImgSLI"):
         with pytest.raises(AiResponseError):
             parse_response(raw, model="m")
     assert "parse NO-JSON" in caplog.text
@@ -403,7 +403,7 @@ def test_parse_trace_reports_reasoning_and_json(caplog, monkeypatch) -> None:
         {"reason": "ok"}
     )
     raw = {"choices": [{"message": {"content": content}}]}
-    with caplog.at_level(logging.WARNING, logger="ImproveImgSLI"):
+    with caplog.at_level(logging.INFO, logger="ImproveImgSLI"):
         parse_response(raw, model="m")
     assert "think=True" in caplog.text
     assert "json_found=True" in caplog.text
@@ -414,7 +414,7 @@ def test_parse_trace_silent_without_key(caplog, monkeypatch) -> None:
 
     monkeypatch.delenv("IMGSLI_AI_DEBUG", raising=False)
     raw = {"choices": [{"message": {"content": "prose that is not json"}}]}
-    with caplog.at_level(logging.WARNING, logger="ImproveImgSLI"):
+    with caplog.at_level(logging.INFO, logger="ImproveImgSLI"):
         with pytest.raises(AiResponseError):
             parse_response(raw, model="m")
     assert "[ai]" not in caplog.text
@@ -443,7 +443,7 @@ def test_transport_trace_logs_finish_usage_and_content(caplog, monkeypatch) -> N
     monkeypatch.setattr(
         tr.urllib.request, "urlopen", lambda req, timeout=None: _Resp(body)
     )
-    with caplog.at_level(logging.WARNING, logger="ImproveImgSLI"):
+    with caplog.at_level(logging.INFO, logger="ImproveImgSLI"):
         raw = tr.call_sync("https://x/api/v1", "key", {"model": "m", "messages": []})
     assert raw["choices"][0]["finish_reason"] == "stop"
     assert "response model=m finish=stop" in caplog.text

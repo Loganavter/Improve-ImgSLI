@@ -56,6 +56,7 @@ from .parse import (
 from .prompt import (
     _PROMPT_CORE,
     PROMPT_TEMPLATE,
+    AI_TRACE_LEVEL,
     _ai_debug,
     _ai_debug_enabled,
     _ai_snippet,

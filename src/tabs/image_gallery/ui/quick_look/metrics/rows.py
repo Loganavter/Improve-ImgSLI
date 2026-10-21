@@ -492,13 +492,16 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
     except Exception:
         _salience = {}
         _inside_noise = None
-    # A VLM-selected profile is a deliberate report request: render exactly
-    # its axes, gaps included. The wide mode/heuristic base describes the
-    # measurement pool (fidelity alone carries 14 axes); rendering an empty
-    # row for every optional detector would flood the no-scroll report, so
-    # there only the report's core axes keep their gap row and an unscored
-    # optional axis adds no row (the pre-profile rule for noise/WB/LPIPS).
-    _exact_rows = str(getattr(_profile, "source", "") or "") == "vlm"
+    # An OFFERED axis set (the model's own choice ``source=vlm`` or the
+    # series-derived offer ``source=series``) is a deliberate report request:
+    # render exactly its axes, gaps included, so an axis the judge never scored
+    # says "not measured" instead of vanishing (plan-gallery-ai-judgement P5 /
+    # M5: every loss is a visible state). The mode-mapping FALLBACK keeps the
+    # old compact rule: its axes describe the measurement pool (fidelity alone
+    # carries 14), so only the report's core axes keep their gap row there —
+    # and the fallback itself is named by the state row below.
+    _profile_source = str(getattr(_profile, "source", "") or "")
+    _exact_rows = _profile_source in ("vlm", "series")
 
     # A source is the reference, not a variant — comparing it to itself
     # ("Source match 100%", "vs #1") is nonsense. Render a source state.
@@ -510,11 +513,29 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
         _viewing_source = _sp is not None and _P(getattr(item, "path", "")) == _P(_sp)
     except Exception:
         _viewing_source = False
+    # P5: an offer that is the LAST fallback (the mode mapping, no discriminating
+    # measurement yet) is named as such — the same muted state-row shape as
+    # "not measured"/"does not separate", never a bare number or a silent set.
+    if not _viewing_source and _profile_source in ("", "heuristic"):
+        _add_metric_row(
+            _ql_text(overlay, "image_gallery.quick_look.profile_axis_set", "Axis set"),
+            _ql_text(
+                overlay,
+                "image_gallery.quick_look.profile_mode_fallback",
+                "mode default",
+            ),
+            0.0,
+            _muted_color(),
+            value_color=_muted_color(),
+            value_elide=False,
+            bar=False,
+        )
     # Always-gap axes of each report kind (the historical placeholders): an
     # in-profile axis here stays visible as "— · not measured" even in the
     # compact mode/heuristic report, so a missing measurement never silently
-    # disappears. Optional axes keep the "no empty row" rule unless the VLM
-    # selected the profile (then the exact axis set is the request).
+    # disappears. Optional axes keep the "no empty row" rule unless an offered
+    # profile (vlm/series) selected the exact axis set — then every offered
+    # axis is the request and an unscored one reads "not measured".
     _core_axes = ("ssim", "detail_gain", "color_accuracy") if is_fidelity else (
         ("sharpness", "exposure", "clipping") if "CAMERA" in mode_str else ("aesthetic",)
     )
@@ -603,9 +624,9 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
             # Every other profile axis: the canonical score row, with the
             # Algorithms-domain raw delta suffix where one exists. An axis the
             # current domain did not score stays an explicit "not measured"
-            # row for the core axes / a VLM-selected profile (never a
+            # row for the core axes / an offered (vlm|series) profile (never a
             # fabricated value); an unscored optional axis in the wide
-            # heuristic report adds no empty row.
+            # fallback report adds no empty row.
             if not _exact_rows and axis_id not in _core_axes and axis_id not in read:
                 continue
             _extra = ""
@@ -621,8 +642,8 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
         # Camera / batch reports: the profile's axes, in profile order. No
         # fixed per-mode list — an axis outside the profile never renders.
         # A core axis without a score stays an honest gap row; an optional
-        # one is shown only when the current domain scored it (or the VLM
-        # selected the exact set).
+        # one is shown only when the current domain scored it (or an offered
+        # vlm|series profile selected the exact set).
         for axis_id in axes:
             if not _exact_rows and axis_id not in _core_axes and axis_id not in read:
                 continue
