@@ -215,11 +215,18 @@ def read_help_page_markdown(
     return body
 
 
-#: Recipe manifest written by ``src/devtools/help_figures.py``: the declaration
-#: of record for locale/theme figure variants. Runtime reads it defensively —
-#: a packaged/toolkit-only install may not ship devtools, and a missing manifest
-#: must degrade to the flat base image, never to an error.
+#: Manifests of record for locale/theme figure variants: the recipe set
+#: (``help_figures.py``) and the live set captured from a running app
+#: (``help_live.py``). Both write the same ``assets/<locale>/<theme>/`` layout,
+#: so both must contribute declarations — reading only the recipe manifest left
+#: a live figure's matrix invisible to the resolver, and a missing live cell
+#: silently fell back to the base (English/dark) image instead of failing closed.
+#: Runtime reads them defensively: a packaged/toolkit-only install may ship
+#: neither, and a missing manifest must degrade to the flat base image.
 _VARIANT_MANIFEST = Path(__file__).resolve().parents[2] / "devtools" / "help_figures.json"
+_LIVE_VARIANT_MANIFEST = (
+    Path(__file__).resolve().parents[2] / "devtools" / "help_figures_live.json"
+)
 
 
 def _help_asset_tail(path: Path) -> tuple[str, ...]:
@@ -235,43 +242,48 @@ def _help_asset_tail(path: Path) -> tuple[str, ...]:
 def _declared_help_variants() -> dict[tuple[str, ...], frozenset[tuple[str, str]]]:
     """``(locale, theme)`` pairs declared per figure destination.
 
-    A recipe with a single locale *and* a single theme ships one flat file —
-    today's 25 figures — so it declares no variant folder (empty set). A
-    recipe with more than one variant declares the full locale x theme matrix
-    and the generator writes every cell under ``assets/<locale>/<theme>/``.
+    A figure with a single locale *and* a single theme ships one flat file, so
+    it declares no variant folder (empty set). A figure with more than one
+    variant declares the full locale x theme matrix and every cell lives under
+    ``assets/<locale>/<theme>/``. Declarations are the UNION of both manifests:
+    two figures may describe the same destination (the devtool surface of
+    record and the live recipe that actually captures it), and a union keeps
+    the stronger claim instead of letting load order decide.
     """
-    try:
-        raw = json.loads(_VARIANT_MANIFEST.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {}
-    entries = raw.get("figures") if isinstance(raw, dict) else None
-    if not isinstance(entries, list):
-        return {}
     declared: dict[tuple[str, ...], frozenset[tuple[str, str]]] = {}
-    for entry in entries:
-        if not isinstance(entry, dict):
+    for manifest in (_VARIANT_MANIFEST, _LIVE_VARIANT_MANIFEST):
+        try:
+            raw = json.loads(Path(manifest).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
             continue
-        destination, locales, themes = (
-            entry.get("destination"),
-            entry.get("locales"),
-            entry.get("themes"),
-        )
-        if (
-            not isinstance(destination, str)
-            or not isinstance(locales, list)
-            or not isinstance(themes, list)
-            or not locales
-            or not themes
-        ):
+        entries = raw.get("figures") if isinstance(raw, dict) else None
+        if not isinstance(entries, list):
             continue
-        pairs = frozenset(
-            (str(locale), str(theme).lower())
-            for locale in locales
-            for theme in themes
-        )
-        if len(pairs) <= 1:
-            pairs = frozenset()
-        declared[_help_asset_tail(Path(destination))] = pairs
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            destination, locales, themes = (
+                entry.get("destination"),
+                entry.get("locales"),
+                entry.get("themes"),
+            )
+            if (
+                not isinstance(destination, str)
+                or not isinstance(locales, list)
+                or not isinstance(themes, list)
+                or not locales
+                or not themes
+            ):
+                continue
+            pairs = frozenset(
+                (str(locale), str(theme).lower())
+                for locale in locales
+                for theme in themes
+            )
+            if len(pairs) <= 1:
+                continue
+            key = _help_asset_tail(Path(destination))
+            declared[key] = declared.get(key, frozenset()) | pairs
     return declared
 
 

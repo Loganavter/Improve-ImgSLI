@@ -223,3 +223,94 @@ def test_help_dialog_passes_locale_and_theme_to_the_resolver(qtbot, monkeypatch)
     assert seen["theme"] == "dark"
     assert seen["body_file"] == dialog._current_body_file
 
+
+
+def test_live_manifest_declarations_reach_the_resolver():
+    """The live capture set is a declaration of record too.
+
+    RED-BEFORE: only ``help_figures.json`` was read, so every live figure's
+    declared matrix was invisible to the resolver and a missing cell fell back
+    to the base image — a Russian light-theme help page rendered the English
+    dark dialog with no signal (measured live, 2026-10-22).
+    """
+    from plugins.help import tree as help_tree
+
+    base = Path("/repo/src/plugins/export/resources/help/assets/export_dialog.jpg")
+    declared = help_tree._declared_variants_for(base)
+    assert declared == frozenset(
+        (locale, theme)
+        for locale in ("en", "pt_BR", "ru", "zh")
+        for theme in ("dark", "light")
+    )
+
+
+def test_a_missing_declared_live_cell_fails_closed(tmp_path, monkeypatch):
+    """A live cell the manifest declares but the tree lacks is a content bug."""
+    from plugins.help import tree as help_tree
+
+    help_root = tmp_path / "resources" / "help"
+    body = help_root / "ru" / "page.md"
+    body.parent.mkdir(parents=True)
+    body.write_text("## Page\n", encoding="utf-8")
+    base = help_root / "assets" / "export_dialog.jpg"
+    base.parent.mkdir(parents=True)
+    base.write_bytes(b"base")
+
+    help_tree.clear_help_variant_cache()
+    try:
+        assert (
+            help_tree.resolve_help_asset(
+                "../assets/export_dialog.jpg", body, locale="ru", theme="light"
+            )
+            is None
+        ), "a declared live cell that is absent must not fall back to the base image"
+    finally:
+        help_tree.clear_help_variant_cache()
+
+
+def test_the_two_manifests_merge_into_one_stronger_claim(tmp_path, monkeypatch):
+    """One destination, two manifests: the union wins, not the load order."""
+    from plugins.help import tree as help_tree
+
+    recipe = tmp_path / "help_figures.json"
+    recipe.write_text(
+        json.dumps(
+            {
+                "figures": [
+                    {
+                        "destination": "src/resources/help/assets/platform/shot.png",
+                        "locales": ["en"],
+                        "themes": ["dark"],
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    live = tmp_path / "help_figures_live.json"
+    live.write_text(
+        json.dumps(
+            {
+                "figures": [
+                    {
+                        "destination": "src/resources/help/assets/platform/shot.png",
+                        "locales": ["en", "ru"],
+                        "themes": ["dark", "light"],
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(help_tree, "_VARIANT_MANIFEST", recipe)
+    monkeypatch.setattr(help_tree, "_LIVE_VARIANT_MANIFEST", live)
+    help_tree.clear_help_variant_cache()
+    try:
+        declared = help_tree._declared_variants_for(
+            Path("/repo/src/resources/help/assets/platform/shot.png")
+        )
+        assert declared == frozenset(
+            {("en", "dark"), ("en", "light"), ("ru", "dark"), ("ru", "light")}
+        )
+    finally:
+        help_tree.clear_help_variant_cache()

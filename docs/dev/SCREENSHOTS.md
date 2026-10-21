@@ -176,10 +176,11 @@ python src/devtools/help_figures.py --all --write-manifest       # record baseli
   through `resolve_help_asset`: `locale+theme -> locale -> theme -> base`. A
   **declared** cell that is missing is a content bug and returns `None` (the
   placeholder path), never the base; a locale with no declared matrix keeps the
-  base image. The declaration registry the resolver consults is the recipe
-  manifest (`src/devtools/help_figures.json`), so a *live* figure's matrix is a
-  file-layout fact only — it resolves by the chain, and a missing live cell
-  falls back to the base image instead of the placeholder.
+  base image. The declarations the resolver consults are the **union of both
+  manifests** (recipe + live), so a missing live cell fails closed exactly like
+  a recipe one — measured live on 2026-10-22: an app run from a checkout
+  without the cells rendered the English/dark base image inside a Russian
+  light-theme page, with no signal at all.
   `help-paste-overlay` is the one measured exception still on its single cell:
   the direction picker is a `TopLevelInWindowOverlay` and has no top-level
   window for the `window` crop selector, so all 8 captures fail. zh is
