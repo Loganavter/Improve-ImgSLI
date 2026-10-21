@@ -50,7 +50,7 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
   Referenced by: [docs/dev/MCP.md](MCP.md), [docs/dev/README.md](README.md), [docs/dev/SETTINGS_PERSISTENCE.md](SETTINGS_PERSISTENCE.md), [docs/dev/TRACING.md](TRACING.md)
 - **[MCP server (app control)](MCP.md)** — `docs/dev/MCP.md`
 - **[Plugin lifecycle](PLUGINS.md)** — `docs/dev/PLUGINS.md`
-  Referenced by: [docs/dev/ARCHITECTURE.md](ARCHITECTURE.md), [docs/dev/EVENT_BUS.md](EVENT_BUS.md), [docs/dev/README.md](README.md), [docs/dev/RESOURCES_I18N.md](RESOURCES_I18N.md), [docs/dev/STORE.md](STORE.md), [docs/dev/THEMING.md](THEMING.md), [docs/dev/plugins/export.md](plugins/export.md), [docs/dev/plugins/image_properties.md](plugins/image_properties.md), [docs/dev/plugins/index.md](plugins/index.md), [docs/dev/plugins/layout.md](plugins/layout.md), [docs/dev/plugins/onboarding.md](plugins/onboarding.md), [docs/dev/plugins/settings.md](plugins/settings.md)
+  Referenced by: [docs/dev/ARCHITECTURE.md](ARCHITECTURE.md), [docs/dev/EVENT_BUS.md](EVENT_BUS.md), [docs/dev/README.md](README.md), [docs/dev/RESOURCES_I18N.md](RESOURCES_I18N.md), [docs/dev/STORE.md](STORE.md), [docs/dev/THEMING.md](THEMING.md), [docs/dev/plugins/export.md](plugins/export.md), [docs/dev/plugins/image_properties.md](plugins/image_properties.md), [docs/dev/plugins/index.md](plugins/index.md), [docs/dev/plugins/layout.md](plugins/layout.md), [docs/dev/plugins/onboarding.md](plugins/onboarding.md), [docs/dev/plugins/settings.md](plugins/settings.md), [src/tabs/image_compare/docs/plugins/comparison.md](../../src/tabs/image_compare/docs/plugins/comparison.md), [src/tabs/image_compare/docs/plugins/video_editor.md](../../src/tabs/image_compare/docs/plugins/video_editor.md), [src/tabs/image_gallery/docs/plugins/image_gallery.md](../../src/tabs/image_gallery/docs/plugins/image_gallery.md), [src/tabs/multi_compare/docs/plugins/multi_compare.md](../../src/tabs/multi_compare/docs/plugins/multi_compare.md), [src/tabs/session_picker/docs/plugins/session_picker.md](../../src/tabs/session_picker/docs/plugins/session_picker.md)
 - **[Presenter layer](PRESENTERS.md)** — `docs/dev/PRESENTERS.md`
   Referenced by: [docs/dev/README.md](README.md)
 - **[Development Documentation](README.md)** — `docs/dev/README.md`
@@ -133,7 +133,7 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
 - **[TabContract & TabContext](tabs/contract.md)** — `docs/dev/tabs/contract.md`
   Referenced by: [docs/dev/CONTRACTS.md](CONTRACTS.md), [docs/dev/TAB_CONTRACT.md](TAB_CONTRACT.md), [docs/dev/tabs/index.md](tabs/index.md), [docs/dev/tabs/overview.md](tabs/overview.md)
 - **[Tab System Documentation](tabs/index.md)** — `docs/dev/tabs/index.md`
-  Referenced by: [docs/dev/CONTRACTS.md](CONTRACTS.md), [docs/dev/PLUGINS.md](PLUGINS.md), [docs/dev/PRESENTERS.md](PRESENTERS.md), [docs/dev/README.md](README.md), [docs/dev/RESOURCES_I18N.md](RESOURCES_I18N.md), [docs/dev/TAB_CONTRACT.md](TAB_CONTRACT.md), [docs/dev/plugins/layout.md](plugins/layout.md)
+  Referenced by: [docs/dev/CONTRACTS.md](CONTRACTS.md), [docs/dev/PLUGINS.md](PLUGINS.md), [docs/dev/PRESENTERS.md](PRESENTERS.md), [docs/dev/README.md](README.md), [docs/dev/RESOURCES_I18N.md](RESOURCES_I18N.md), [docs/dev/TAB_CONTRACT.md](TAB_CONTRACT.md), [docs/dev/plugins/layout.md](plugins/layout.md), [src/tabs/image_gallery/docs/README.md](../../src/tabs/image_gallery/docs/README.md), [src/tabs/session_picker/docs/README.md](../../src/tabs/session_picker/docs/README.md)
 - **[Isolation & dependency wiring](tabs/isolation.md)** — `docs/dev/tabs/isolation.md`
   Referenced by: [docs/dev/RESOURCES_I18N.md](RESOURCES_I18N.md), [docs/dev/TAB_CONTRACT.md](TAB_CONTRACT.md), [docs/dev/TESTING.md](TESTING.md), [docs/dev/tabs/background-tab-policy.md](tabs/background-tab-policy.md), [docs/dev/tabs/capability-mechanisms.md](tabs/capability-mechanisms.md), [docs/dev/tabs/index.md](tabs/index.md), [docs/dev/tabs/overview.md](tabs/overview.md), [docs/dev/tabs/package-structure.md](tabs/package-structure.md)
 - **[Overview](tabs/overview.md)** — `docs/dev/tabs/overview.md`
@@ -159,6 +159,7 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
 - **[ScrollValueButton](widgets/scroll_value_button.md)** — `docs/dev/widgets/scroll_value_button.md`
 - **[SettingsDialog](widgets/settings_dialog.md)** — `docs/dev/widgets/settings_dialog.md`
 - **[ShelfWidget](widgets/shelf.md)** — `docs/dev/widgets/shelf.md`
+  Referenced by: [src/tabs/session_picker/docs/README.md](../../src/tabs/session_picker/docs/README.md)
 - **[StartupPlaceholder](widgets/startup_placeholder.md)** — `docs/dev/widgets/startup_placeholder.md`
 - **[ThemedSurface / ThemedBackgroundContainer](widgets/themed_surface.md)** — `docs/dev/widgets/themed_surface.md`
 - **[UnifiedListPicker](widgets/unified_list_picker.md)** — `docs/dev/widgets/unified_list_picker.md`

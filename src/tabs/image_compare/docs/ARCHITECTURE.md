@@ -18,10 +18,12 @@ tab-internal modules for feature behavior.
 src/tabs/image_compare/
     tab.py                    # ImageCompareTab(TabContract)
     plugin.py                 # comparison plugin + image_compare session blueprint
+    service_factory.py        # create_service ID → implementation branches
     widget.py                 # tab page wrapper, still assembles some host primitives
     _session_controller.py    # loading/navigation/session orchestration
     canvas/                   # QRhi canvas, scene contracts, render pipeline
-        features/             # divider, magnifier, guides, capture, filename overlay, paste overlay
+        features/             # divider, magnifier, guides, capture, filename_overlay,
+                              # drag_drop_overlay, _template
         presentation/         # render plan builder/applicator for this tab
         texture_parts/        # image and overlay texture uploads
     events/                   # tab-scoped canvas input and drop routing
@@ -29,7 +31,11 @@ src/tabs/image_compare/
     services/                 # export, live snapshot, analysis, playlist, keyframe adapters
     state/                    # tab-owned models, actions, reducers
     ui/                       # tab-local settings/layout/transient UI helpers
-    video_editor/             # recording, timeline, preview, keyframes, video export
+    use_cases/                # plain functions over the tab/controller (loading, chrome sync, …)
+    pipeline/                 # tiled render/compose pipeline
+    actions/                  # action catalog + keymap defaults
+    plugins/video_editor/     # recording, timeline, preview, keyframes, video export
+    resources/                # i18n (image_compare.json, tooltips.json), help, icons
 ```
 
 ## Runtime Flow
@@ -59,6 +65,8 @@ Current feature packages include:
 - `guides`
 - `filename_overlay`
 - `capture`
+- `drag_drop_overlay`
+- `_template` (skeleton for a new feature package)
 
 Feature packages register through the generic canvas contracts in
 `src/ui/canvas_infra/scene/`, but the feature implementations are tab-local.
@@ -75,45 +83,62 @@ The old shared/export split has been collapsed into tab-owned services:
 | GPU export scene | `services/gpu_export_scene.py` |
 | Snapshot render plan | `services/snapshot_render_plan_builder.py` |
 | Live snapshot | `services/live_snapshot.py` |
-| Video snapshot render | `services/video_snapshot_rendering/` |
-| Video editor export pipeline | `video_editor/services/` |
+| Video snapshot render | `services/video_snapshot_rendering/` (still/export) + `plugins/video_editor/services/video_snapshot_rendering.py` (video frames) |
+| Video editor export pipeline | `plugins/video_editor/services/` |
+
+Two snapshot renderers coexist and both are live: still-image export goes
+through `services/video_snapshot_rendering/` (`renderer.py`, `prepare.py`, pulled
+in by `services/image_export/{service,context_builder}.py`), while the video
+export's frame loop pulls its own `SnapshotFrameRenderer` from
+`plugins/video_editor/services/video_snapshot_rendering.py`
+(`services/video_export/service.py`). Live canvas is
+`canvas/presentation/plan_builder.py`. A visual change must be checked in all
+three.
 
 When changing visual output, inspect live canvas, still export, and video
 snapshot paths together. A fix in only one path is usually incomplete.
 
 ## Analysis
 
-Diff and metric processing is tab-local:
+The tab owns the **orchestration** of diff/metric work; the pixel kernels are a
+real shared contract in `src/shared/analysis/`, and the tile geometry in
+`src/engine/store/`:
 
 ```text
-services/analysis/
-    cached_diff.py
-    metrics.py
-    runtime.py
-    processing/
-        analysis_pair.py
-        background_layers.py
-        channel_analyzer.py
-        differ.py
-        edge_detector.py
-        metrics_core.py
-        regions.py
+src/tabs/image_compare/services/analysis/   # tab-local orchestration
+    analysis_pair.py        # pair-level entry (crop/resample via engine.store)
+    background_layers.py    # highlight/edges/ssim layer builders (calls the kernels)
+    cached_diff.py          # diff image cache over TiledPixelStore
+    metrics.py              # metric computation + cache
+    runtime.py              # analysis runtime/threading glue
+
+src/shared/analysis/                        # shared kernels (not tab-local)
+    differ.py, diff_source.py, ssim_source.py,
+    edge_detector.py, channel_analyzer.py,
+    metrics.py, output.py, tile_boxes.py
+
+src/engine/store/regions.py                  # tile grid geometry used by the kernels
 ```
 
-Keep analysis imports inside this tab package unless a helper is extracted into
-a real shared contract.
+So "diff/metric processing is tab-local" is no longer the rule: the tab owns
+*when and how* analysis runs, the shared modules own *how a pixel becomes a
+diff/ssim/edge/channel value*. Tab code imports `shared.analysis.*` and
+`engine.store.*` directly (`services/analysis/background_layers.py` does both);
+new shared kernels belong in `src/shared/analysis/`, and a helper that only this
+tab needs stays in `services/analysis/`.
 
 ## Video Editor
 
 The video editor is part of the image-compare domain:
 
 ```text
-video_editor/
+plugins/video_editor/
     plugin.py
-    controller.py
-    dialog*.py
-    presenter.py
-    services/
+    presenter.py              # editor logic; presenter_parts/ holds the split-out parts
+    presenter_parts/          # bootstrap, playback, preview, thumbnails, exporting, ...
+    dialog/                   # package: shell, export, nav, sections, persistence,
+                              #          runtime, surface_widgets, tab_cursor
+    services/                 # editor, recorder, timeline, keyframing/, video_export/
     widgets/timeline/
 ```
 
