@@ -132,10 +132,17 @@ python src/devtools/help_figures.py --all --write-manifest       # record baseli
   fresh recipe stays `unbaselined` until someone runs `--all --write-manifest`
   on a private Xvfb.
 - **Pins are recorded, not assumed.** `locale` and `theme` go through
-  `capture_surface`'s CLI (`emit_language_changed`, `ThemeManager.set_theme`);
-  `ui_scale` and `font` have no knob at all. Surfaces that hardcode their own
-  language or theme (`SETTINGS_KWARGS`, the onboarding store) list
-  `locale:constructor-pins-en` / `theme:constructor-pins-dark` under
+  `capture_surface`'s CLI (`emit_language_changed`, `ThemeManager.set_theme`).
+  `font` and `ui_scale` are forced for every capture by the canonical
+  bootstrap: the app's bundled **Source Sans 3** is loaded and proven applied
+  (the run fails loudly if it is not), `QT_SCALE_FACTOR=1` and
+  `QT_FONT_DPI=96` are set before `QApplication`, `QT_QPA_PLATFORM=xcb` is forced
+  for the Xvfb backend, and the private Xvfb starts with `-dpi 96` — so a
+  baseline hash does not depend on the host's fontconfig or DPI. (`96` is Qt's
+  baseline and the toolkit scales px by `logicalDpi / 96`: an Xvfb left at its
+  default 100 DPI misses every size pin by +42/+32 px.) They are recorded as **applied**, not as caveats. Surfaces that
+  hardcode their own language or theme (`SETTINGS_KWARGS`, the onboarding store)
+  list `locale:constructor-pins-en` / `theme:constructor-pins-dark` under
   `pins_unavailable`, so a non-default filter is never claimed as applied.
 - **Size pins are applied to the live window, twice.** `CaptureSession` sizes
   the top-level window, shows it, lets it settle, then applies the pin again

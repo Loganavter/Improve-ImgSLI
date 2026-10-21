@@ -23,7 +23,24 @@
       ]
     },
     {
-      "captures": [],
+      "captures": [
+        {
+          "height": 800,
+          "locale": "en",
+          "pins_applied": [
+            "locale",
+            "theme",
+            "font",
+            "ui_scale",
+            "size"
+          ],
+          "pins_unavailable": [],
+          "sha256": "a56909f0bc9344b5330bc59d2d73ada04a2fb66ef902bbabfaffd960412366e1",
+          "size": 37691,
+          "theme": "dark",
+          "width": 1280
+        }
+      ],
       "covered": true,
       "crop": null,
       "destination": "src/tabs/image_gallery/resources/help/assets/overview_grid.png",
@@ -33,13 +50,13 @@
       ],
       "note": "Shipped overview_grid.png is 1280x800, exactly the surface default; the six gradient cards come from CaptureSession.make_samples.",
       "pins_applied": [
-        "locale",
-        "theme"
-      ],
-      "pins_unavailable": [
         "font",
+        "locale",
+        "size",
+        "theme",
         "ui_scale"
       ],
+      "pins_unavailable": [],
       "reason": "",
       "size": [
         1280,
@@ -95,7 +112,26 @@
       ]
     },
     {
-      "captures": [],
+      "captures": [
+        {
+          "height": 684,
+          "locale": "en",
+          "pins_applied": [
+            "locale",
+            "theme",
+            "font",
+            "ui_scale",
+            "size"
+          ],
+          "pins_unavailable": [
+            "locale:constructor-pins-en"
+          ],
+          "sha256": "1479062c89ced2607597c60af5d293579bd0947b73b3f5360a319feff31db3e7",
+          "size": 29310,
+          "theme": "dark",
+          "width": 1000
+        }
+      ],
       "covered": true,
       "crop": null,
       "destination": "src/plugins/onboarding/resources/help/assets/onboarding_ui_mode.png",
@@ -105,13 +141,14 @@
       ],
       "note": "Shipped asset is 1000x684, 36 px shorter than the surface default 1000x720; pinned size reproduces the shipped frame without a crop.",
       "pins_applied": [
+        "font",
         "locale",
-        "theme"
+        "size",
+        "theme",
+        "ui_scale"
       ],
       "pins_unavailable": [
-        "font",
-        "locale:constructor-pins-en",
-        "ui_scale"
+        "locale:constructor-pins-en"
       ],
       "reason": "",
       "size": [
@@ -125,14 +162,14 @@
     },
     {
       "captures": [],
-      "covered": true,
+      "covered": false,
       "crop": null,
       "destination": "src/tabs/session_picker/resources/help/assets/platform/session_picker.jpg",
       "id": "help-session-picker",
       "locales": [
         "en"
       ],
-      "note": "Shipped asset is a 844x529 JPEG; pinned size reproduces the frame, but generation writes PNG, so installing means converting (later slice).",
+      "note": "P4 2026-10-21: dims parity is there (844x529) but the devtool surface cannot reproduce the shipped figure — the fake session context returns no tab icons (plus placeholders replace the tab glyphs), the widget is grabbed as a bare top-level so it paints the default palette (light) instead of the recipe theme, and the live layout now carries an AI Gallery card. Keep the manual asset; a faithful surface needs a themed host + the real icon service first.",
       "pins_applied": [
         "locale",
         "theme"
@@ -141,7 +178,7 @@
         "font",
         "ui_scale"
       ],
-      "reason": "",
+      "reason": "hand-composed",
       "size": [
         844,
         529
@@ -152,7 +189,26 @@
       ]
     },
     {
-      "captures": [],
+      "captures": [
+        {
+          "height": 776,
+          "locale": "en",
+          "pins_applied": [
+            "locale",
+            "theme",
+            "font",
+            "ui_scale",
+            "size"
+          ],
+          "pins_unavailable": [
+            "locale:constructor-pins-en"
+          ],
+          "sha256": "2033e9979d38667bf89813c83e55e673f0464f00aa4ba066591c20edfb8ccdb4",
+          "size": 44814,
+          "theme": "dark",
+          "width": 1016
+        }
+      ],
       "covered": true,
       "crop": null,
       "destination": "src/plugins/settings/resources/help/assets/settings_general.png",
@@ -162,14 +218,14 @@
       ],
       "note": "Shipped settings_general.png is 1016x776 (measured inventory); the surface default is larger, so the shipped size is pinned rather than cropped. SETTINGS_KWARGS pins current_language=en and current_theme=dark, so non-default filters are only partly effective.",
       "pins_applied": [
+        "font",
         "locale",
-        "theme"
+        "size",
+        "theme",
+        "ui_scale"
       ],
       "pins_unavailable": [
-        "font",
-        "locale:constructor-pins-en",
-        "theme:constructor-pins-dark",
-        "ui_scale"
+        "locale:constructor-pins-en"
       ],
       "reason": "",
       "size": [
@@ -182,7 +238,26 @@
       ]
     },
     {
-      "captures": [],
+      "captures": [
+        {
+          "height": 792,
+          "locale": "en",
+          "pins_applied": [
+            "locale",
+            "theme",
+            "font",
+            "ui_scale",
+            "size"
+          ],
+          "pins_unavailable": [
+            "locale:constructor-pins-en"
+          ],
+          "sha256": "25d9c9d8622289c33ff801712ef005217b9be080e5c73ca7726ec62525603d9c",
+          "size": 80443,
+          "theme": "dark",
+          "width": 1032
+        }
+      ],
       "covered": true,
       "crop": null,
       "destination": "src/resources/help/assets/platform/settings_keyboard.png",
@@ -192,14 +267,14 @@
       ],
       "note": "Shipped 1032x792 is 16 px larger than the surface default each way; the pinned size reproduces it. SETTINGS_KWARGS pins en/dark as above.",
       "pins_applied": [
+        "font",
         "locale",
-        "theme"
+        "size",
+        "theme",
+        "ui_scale"
       ],
       "pins_unavailable": [
-        "font",
-        "locale:constructor-pins-en",
-        "theme:constructor-pins-dark",
-        "ui_scale"
+        "locale:constructor-pins-en"
       ],
       "reason": "",
       "size": [

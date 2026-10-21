@@ -319,16 +319,48 @@ def test_pin_report_flags_constructor_pins(hf):
     gallery = next(f for f in manifest.figures if f.surface == "gallery")
 
     applied, unavailable = hf.pin_report(settings, "en", "dark")
-    assert applied == ("locale", "theme")
+    # font/ui_scale are forced by capture_surface's canonical bootstrap for
+    # every frame (and it fails loudly if the font does not take) — claiming
+    # them as caveats would now be false.
+    assert applied == ("locale", "theme", "font", "ui_scale")
     assert "locale:constructor-pins-en" in unavailable
     assert "theme:constructor-pins-dark" not in unavailable  # pinned theme matches the ctor
-    assert "ui_scale" in unavailable and "font" in unavailable
+    assert "ui_scale" not in unavailable and "font" not in unavailable
 
     _, light_unavailable = hf.pin_report(settings, "en", "light")
     assert "theme:constructor-pins-dark" in light_unavailable
 
     _, gallery_unavailable = hf.pin_report(gallery, "en", "dark")
     assert "locale:constructor-pins-en" not in gallery_unavailable
+
+
+# ---------------------------------------------------------------------------
+# Canonical environment (CI baselines are sha256, so the frame must not depend
+# on the host's font or DPI)
+# ---------------------------------------------------------------------------
+
+
+def test_xvfb_command_pins_dpi(hf):
+    cmd = hf.xvfb_command(91)
+    assert cmd[0] == "Xvfb" and ":91" in cmd
+    assert cmd[cmd.index("-dpi") + 1] == "96"
+
+
+def test_canonical_env_pins_scale_and_dpi(hf, monkeypatch):
+    monkeypatch.delenv("QT_SCALE_FACTOR", raising=False)
+    monkeypatch.delenv("QT_FONT_DPI", raising=False)
+    hf.capture_surface._pin_canonical_env()
+    assert hf.capture_surface.os.environ["QT_SCALE_FACTOR"] == "1"
+    assert hf.capture_surface.os.environ["QT_FONT_DPI"] == "96"
+
+
+def test_bootstrap_applies_the_bundled_font(hf, monkeypatch):
+    """The grab must use the product's font, not the host's default sans."""
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    app = hf.capture_surface._bootstrap_qt("dark", "en")
+    assert app.font().family() == hf.capture_surface.BUNDLED_FONT_FAMILY
+    assert hf.capture_surface.BUNDLED_FONT_FAMILY == "Source Sans 3"
+
 
 
 def test_covered_recipes_pin_the_shipped_frame(hf):

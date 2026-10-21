@@ -52,8 +52,11 @@ BACKENDS = ("native", "xvfb")
 #: Pins that really go through the surface API (``capture_surface`` CLI:
 #: ``--theme`` -> ``ThemeManager.set_theme``, ``--lang`` -> ``emit_language_changed``).
 PINNABLE = ("locale", "theme")
-#: Pins the surface API cannot express. Recorded, never faked.
-UNPINNABLE = ("font", "ui_scale")
+#: Pins the canonical capture bootstrap forces for EVERY frame (bundled
+#: Source Sans 3, ``QT_SCALE_FACTOR=1``, ``QT_FONT_DPI=96``, Xvfb ``-dpi 96``).
+#: Recorded as applied: the bootstrap fails loudly when the font does not take,
+#: so a capture can never be silently host-flavoured.
+FORCED_PINS = ("font", "ui_scale")
 #: Constructors that hardcode ``current_language="en"`` / ``current_theme="dark"``
 #: (``SETTINGS_KWARGS``, the onboarding store): a non-default filter only reaches
 #: text resolved through ``tr`` at build time, so it is recorded as a caveat.
@@ -324,16 +327,18 @@ def pin_report(
     *,
     captured_size: tuple[int, int] | None = None,
 ) -> tuple[tuple[str, ...], tuple[str, ...]]:
-    """Which pins the surface API really applied for this capture.
+    """Which pins the capture really applied for this figure.
 
+    ``locale``/``theme`` go through the surface API; ``font``/``ui_scale`` are
+    forced by the canonical bootstrap for every frame (see ``FORCED_PINS``).
     Constructors that hardcode their own language/theme are recorded as caveats
     instead of being claimed as applied. A ``size`` pin is only claimed when the
     grabbed pixels really are that size; a surface that refuses the pin is
     recorded as unavailable WITH the achieved size (never silently resized —
     that would fake parity).
     """
-    unavailable = list(UNPINNABLE)
-    applied = list(PINNABLE)
+    unavailable: list[str] = []
+    applied = list(PINNABLE) + list(FORCED_PINS)
     if figure.surface in _PINS_EN:
         unavailable.append("locale:constructor-pins-en")
     if figure.surface in _PINS_DARK and theme != "dark":
@@ -715,6 +720,18 @@ def _free_display_number(start: int = 90, stop: int = 140) -> int:
     raise FigureError(f"no free X display number in {start}..{stop}")
 
 
+def xvfb_command(number: int) -> list[str]:
+    """Private Xvfb invocation for a deterministic frame.
+
+    ``-dpi 96`` is explicit on purpose: Xvfb's default DPI is a property of the
+    server build (100 on this host, 96 on others), and the toolkit scales every
+    px by ``logicalDpi / 96``, so a wrong DPI silently misses every size pin.
+    Matches ``capture_surface.CANONICAL_DPI`` (also forced through
+    ``QT_FONT_DPI``) and the DPI the shipped assets were produced at.
+    """
+    return ["Xvfb", f":{number}", "-screen", "0", "1400x1000x24", "-dpi", "96"]
+
+
 @contextmanager
 def display_context(backend: str = "xvfb") -> Iterator[str]:
     """Provide a DISPLAY for the captures; never defaults to ``:0``.
@@ -725,6 +742,7 @@ def display_context(backend: str = "xvfb") -> Iterator[str]:
     if backend not in BACKENDS:
         raise ValueError(f"unknown backend {backend!r}; expected one of {BACKENDS}")
     previous = os.environ.get("DISPLAY")
+    previous_platform = os.environ.get("QT_QPA_PLATFORM")
     if backend == "native":
         if not (previous or "").strip():
             raise FigureError("backend 'native' needs an existing DISPLAY; use --backend xvfb to start one")
@@ -735,7 +753,7 @@ def display_context(backend: str = "xvfb") -> Iterator[str]:
         raise FigureError("Xvfb not found on PATH; use --backend native with a private DISPLAY")
     number = _free_display_number()
     proc = subprocess.Popen(
-        ["Xvfb", f":{number}", "-screen", "0", "1400x1000x24"],
+        xvfb_command(number),
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
     )
     try:
@@ -747,6 +765,11 @@ def display_context(backend: str = "xvfb") -> Iterator[str]:
                 raise FigureError(f"Xvfb :{number} did not create its socket within 10s")
             time.sleep(0.05)
         os.environ["DISPLAY"] = f":{number}"
+        # A Wayland desktop session exports WAYLAND_DISPLAY, and Qt then picks
+        # the wayland plugin even with DISPLAY pointing at our Xvfb ("no
+        # outputs - creating placeholder screen"): a different renderer and a
+        # different frame. The Xvfb backend is an X server, so force xcb.
+        os.environ["QT_QPA_PLATFORM"] = "xcb"
         os.environ.setdefault("LIBGL_ALWAYS_SOFTWARE", "1")
         yield os.environ["DISPLAY"]
     finally:
@@ -754,6 +777,10 @@ def display_context(backend: str = "xvfb") -> Iterator[str]:
             os.environ.pop("DISPLAY", None)
         else:
             os.environ["DISPLAY"] = previous
+        if previous_platform is None:
+            os.environ.pop("QT_QPA_PLATFORM", None)
+        else:
+            os.environ["QT_QPA_PLATFORM"] = previous_platform
         proc.terminate()
         try:
             proc.wait(timeout=5)
