@@ -632,25 +632,35 @@ TOOLS: list[dict] = [
     },
     {
         "name": "run_action",
-        "title": "Run a Find Action",
+        "title": "Run a Find Action or a scene command",
         "description": (
-            "Run one registered Find Action by id. With a live instance "
-            "attached it runs in the running window ('ran': true, result key "
-            "'live': true); without one it validates against the headless "
-            "ActionRegistry and launches a fresh process. Use it to open "
-            "dialogs (platform.settings) or trigger commands. Some actions are "
-            "destructive (save, quit, export) — confirm intent first."
+            "Run one registered Find Action by id (a bare action_id), or a scene "
+            "command by name with typed params — e.g. magnifier.set_visible, "
+            "divider.set_thickness, layout.set_split_weights. A scene command is "
+            "value-taking and idempotent; pass expect (scene path → value) and the "
+            "scene is re-read afterwards to prove the change ('verified'). Unknown "
+            "params are refused with the schema in the hint."
         ),
         "inputSchema": _params(
             {
                 "action_id": {
                     **_STR,
-                    "description": "Exact ActionRegistry id, e.g. platform.settings (see list_actions).",
+                    "description": "Exact ActionRegistry id (e.g. platform.settings, see list_actions) or a scene command name (see set_scene_commands).",
+                },
+                "params": {
+                    "type": "object",
+                    "additionalProperties": True,
+                    "description": "Typed params for a scene command (e.g. {\"id\": \"loupe-a\", \"visible\": false}); refuse-with-schema on an unknown key. Omit for Find Actions.",
+                },
+                "expect": {
+                    "type": "object",
+                    "additionalProperties": True,
+                    "description": "Scene post-conditions for a scene command: {\"magnifiers[0].visible\": true}. With it the scene is re-read and verified; a command that changed nothing fails.",
                 },
                 "tab": {
                     **_STR,
                     "enum": list(TAB_KINDS),
-                    "description": "Optionally target this tab first, so tab-scoped actions register before the action runs.",
+                    "description": "Optionally target this tab first, so tab-scoped actions register before the action runs (or the scene command resolves the right canvas).",
                 },
             },
             ["action_id"],
@@ -661,7 +671,18 @@ TOOLS: list[dict] = [
                 "pid": {"type": ["integer", "null"]},
                 "action_id": _STR,
                 "tab": {"type": ["string", "null"]},
-                "ran": {"type": "boolean", "description": "True when the live instance ran the action."},
+                "ran": {"type": "boolean", "description": "True when the live instance ran the action (or the scene command executed)."},
+                "scene_command": {
+                    "type": "boolean",
+                    "description": "True when action_id named a scene command instead of a Find Action.",
+                },
+                "params": {"type": "object", "additionalProperties": True},
+                "changed": _array(_STR),
+                "verified": {"type": ["boolean", "null"], "description": "Verification verdict when expect was given; null otherwise."},
+                "failure": {
+                    "type": ["object", "null"],
+                    "description": "Why verification failed (problems + changed paths), null when verified or unverified.",
+                },
                 "live": _live_flag(),
                 "source": _source(),
             },
@@ -669,6 +690,79 @@ TOOLS: list[dict] = [
         ),
         "annotations": MUTATING_RISKY,
         "handler": "run_action",
+    },
+    {
+        "name": "set_scene_commands",
+        "title": "Run an ordered scene command list",
+        "description": (
+            "Set a canvas scene by running an ordered list of value-taking commands "
+            "(magnifier visible/position/size, divider visible/thickness, Multi "
+            "Compare split weights). Stops at the first error; nothing after it "
+            "runs. With verify=true (default) each command declares expect scene "
+            "paths and the scene is re-read: a command that changed nothing, or "
+            "changed undeclared state, fails."
+        ),
+        "inputSchema": _params(
+            {
+                "commands": {
+                    **_array(
+                        _object(
+                            {
+                                "action": {
+                                    **_STR,
+                                    "description": "Scene command name, e.g. magnifier.set_visible.",
+                                },
+                                "params": {
+                                    "type": "object",
+                                    "additionalProperties": True,
+                                    "description": "Typed params for that command (unknown keys are refused with the schema).",
+                                },
+                                "expect": {
+                                    "type": "object",
+                                    "additionalProperties": True,
+                                    "description": "Scene path → expected value, checked by re-reading the scene (required when verify=true).",
+                                },
+                            },
+                            ["action"],
+                        )
+                    ),
+                    "description": "Ordered commands; each item is {action, params, expect}. Execution stops at the first failure.",
+                },
+                "verify": {
+                    "type": "boolean",
+                    "default": True,
+                    "description": "Re-read the scene after each command and check expect; a no-op or undeclared change fails.",
+                },
+                "tab": {
+                    **_STR,
+                    "enum": list(TAB_KINDS),
+                    "description": "Tab kind whose canvas is commanded; omit to use the active session's tab.",
+                },
+            },
+            ["commands"],
+        ),
+        "outputSchema": _object(
+            {
+                "ok": _BOOL,
+                "verified": {"type": ["boolean", "null"]},
+                "count": _INT,
+                "applied": _array({"type": "object", "additionalProperties": True}),
+                "stopped_at": {"type": ["integer", "null"], "description": "Index of the first failing command, null when every command ran and verified."},
+                "error": {
+                    "type": ["object", "null"],
+                    "description": "The first failure: index, action, kind (invalid_command / verification_failed / command_crashed), message, hint.",
+                },
+                "tab": {"type": ["string", "null"]},
+                "scene": {
+                    "type": ["object", "null"],
+                    "description": "The scene as re-read through get_canvas_scene after the run.",
+                },
+                "source": _source(),
+            },
+            ["ok", "count", "applied", "stopped_at", "error"],
+        ),
+        "annotations": MUTATING,
+        "handler": "set_scene_commands",
     },
     {
         "name": "open_folder",

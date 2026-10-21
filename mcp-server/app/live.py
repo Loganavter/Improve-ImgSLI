@@ -674,19 +674,51 @@ class LiveBackend:
         }
 
     def run_action(
-        self, *, client: LiveClient | None = None, action_id: str, tab: str | None = None
+        self,
+        *,
+        client: LiveClient | None = None,
+        action_id: str,
+        params: dict[str, Any] | None = None,
+        expect: dict[str, Any] | None = None,
+        tab: str | None = None,
     ) -> dict:
-        params: dict[str, Any] = {"action_id": action_id}
+        wire: dict[str, Any] = {"action_id": action_id}
+        if params is not None:
+            wire["params"] = params
+        if expect is not None:
+            wire["expect"] = expect
         if tab:
-            params["tab"] = tab
-        result = self._request("run_action", params, client)
-        return {
+            wire["tab"] = tab
+        result = self._request("run_action", wire, client)
+        payload = {
             "ran": bool(result.get("ran", True)),
             "action_id": result.get("action_id", action_id),
             "tab": result.get("tab", tab),
-            "live": True,
-            "source": "live",
         }
+        # A scene command answers with its evidence; carry it through verbatim
+        # instead of flattening it into a boolean "ran".
+        for key in ("scene_command", "params", "changed", "changed_count", "verified", "failure"):
+            if key in result:
+                payload[key] = result[key]
+        payload["live"] = True
+        payload["source"] = "live"
+        return payload
+
+    def set_scene_commands(
+        self,
+        *,
+        client: LiveClient | None = None,
+        commands: list[dict],
+        verify: bool = True,
+        tab: str | None = None,
+    ) -> dict:
+        wire: dict[str, Any] = {"commands": commands, "verify": bool(verify)}
+        if tab:
+            wire["tab"] = tab
+        result = self._request("set_scene_commands", wire, client)
+        payload = {key: value for key, value in result.items() if key != "source"}
+        payload["source"] = "live"
+        return payload
 
     def open_folder(
         self,

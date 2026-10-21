@@ -631,17 +631,62 @@ class AppBackend:
         self.processes.adopt(tab, pid)
         return {"launched": True, "pid": pid, "tab": tab, "source": "fallback"}
 
-    def run_action(self, *, action_id: str, tab: str | None = None) -> dict:
+    def run_action(
+        self,
+        *,
+        action_id: str,
+        params: dict | None = None,
+        expect: dict | None = None,
+        tab: str | None = None,
+    ) -> dict:
         return self._live_or_fallback(
             "run_action",
-            lambda: self._fallback_run_action(action_id=action_id, tab=tab),
+            lambda: self._fallback_run_action(
+                action_id=action_id, params=params, expect=expect, tab=tab
+            ),
             mutating=True,
             action_id=action_id,
+            params=params,
+            expect=expect,
             tab=tab,
         )
 
-    def _fallback_run_action(self, *, action_id: str, tab: str | None = None) -> dict:
+    def set_scene_commands(
+        self,
+        *,
+        commands: list[dict],
+        verify: bool = True,
+        tab: str | None = None,
+    ) -> dict:
+        """Set a canvas scene by command (live-only: the scene exists in the app)."""
+        return self._live_only(
+            "set_scene_commands",
+            self._scene_need_live(),
+            mutating=True,
+            commands=commands,
+            verify=bool(verify),
+            tab=tab,
+        )
+
+    def _fallback_run_action(
+        self,
+        *,
+        action_id: str,
+        params: dict | None = None,
+        expect: dict | None = None,
+        tab: str | None = None,
+    ) -> dict:
         from . import catalog
+
+        if params is not None or expect is not None:
+            # No headless analogue: a scene command changes a rendered scene and
+            # is verified by re-reading it — both need the running app.
+            raise ToolError(
+                f"{action_id!r} was given params but no live instance is attached",
+                "scene commands are live-only (see set_scene_commands); "
+                "run one Find Action without params, or start the app with the "
+                "control socket enabled",
+            )
 
         # Tab-scoped ids (``image_compare.*``) only exist once the tab is
         # created; infer the tab from the id so validation can succeed.

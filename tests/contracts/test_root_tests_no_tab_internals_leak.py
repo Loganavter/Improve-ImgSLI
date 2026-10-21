@@ -155,6 +155,14 @@ ALLOWED_DEEP_TAB_IMPORTS: dict[str, str] = {
         "scene object could not prove the two-loupe-truths or the projection "
         "reuse the contract exists to pin"
     ),
+    "tests/devtools/test_control_scene_commands.py": (
+        "host-level control-channel scene command contract (run_action params / "
+        "set_scene_commands): a command path can only be proven against the REAL "
+        "canvases — the magnifier and divider setters are the tab's own feature "
+        "commands and the split-weight path is the tab's own dispatch/reducer, so "
+        "a stand-in store would prove a second command implementation instead of "
+        "the one agents actually drive"
+    ),
     "tests/runtime/test_ui_metrics_parity.py": (
         "cross-cutting UI-metrics parity contract (one change channel + owned "
         "derived-geometry refresh); ScaledIconLabel is the image_compare "
