@@ -42,6 +42,32 @@ def _reset_toolkit_config():
 
 
 @pytest.fixture(autouse=True)
+def _restore_scene_read_seam():
+    """``scene_read.page_widget`` is a MODULE-LEVEL seam; keep it per test.
+
+    The devtools scene helpers pin it with a plain assignment and never
+    restored it, so it leaked into every later test in the process. With
+    ``pytest-randomly`` shuffling the order on every run, the leaking test and
+    the victim changed places from run to run - the whole-suite failure SET was
+    unstable (6/5/1 failures in three runs of one tree), which turned every
+    "is this failure mine?" comparison into a coin flip. Measured 2026-10-21;
+    the two polluters were tests/devtools/test_control_scene_commands.py and
+    tests/devtools/test_live_scene_cycle.py. Restored here, so it holds
+    whoever pinned it.
+    """
+    try:
+        from core.control import scene_read
+    except Exception:  # pragma: no cover - the module may not import headless
+        yield
+        return
+    original = scene_read.page_widget
+    try:
+        yield
+    finally:
+        scene_read.page_widget = original
+
+
+@pytest.fixture(autouse=True)
 def _destroy_lingering_toplevels():
     """Deterministically destroy lingering top-levels at teardown (suite-wide).
 
