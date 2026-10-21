@@ -10,9 +10,10 @@ Three parts:
    ``artifacts.analyze_images(proxy, source)`` — the aggregate the production
    stage actually calls — mapped through the same ``clean=0 / mild=1 /
    flagged=2`` rank the producer declares.
-2. **Flag isolation.** With ``IMGSLI_ANALYSIS_ENGINE`` unset, the proxy entry is
-   the legacy dict with no ``analysis`` key; with the flag on, the entry is the
-   same dict plus that key.
+2. **Flag isolation.** With the engine disabled (``IMGSLI_ANALYSIS_ENGINE=0``,
+   the P9a kill-switch — unset now means ON), the proxy entry is the legacy
+   dict with no ``analysis`` key; with the engine on, the entry is the same dict
+   plus that key. Every test below therefore sets its mode explicitly.
 3. **W12 — one computation.** The measured 2.4x came from the engine and the
    legacy stages each running the same detectors. The flag-ON path now runs the
    engine FIRST and rebuilds ``artifacts``/``fidelity``/``camera`` from the
@@ -347,13 +348,14 @@ def _tiled_stages(item, source=None):
 def test_flag_off_returns_the_legacy_dict_without_an_analysis_key(
     tmp_path, monkeypatch: pytest.MonkeyPatch
 ):
-    monkeypatch.delenv("IMGSLI_ANALYSIS_ENGINE", raising=False)
+    # P9a: the engine is ON when unset, so the legacy mode is the kill-switch.
+    monkeypatch.setenv("IMGSLI_ANALYSIS_ENGINE", "0")
     item, source = _write_pair(tmp_path)
 
     entry = _run_stages(item, source)
 
     assert "analysis" not in entry, (
-        "the flag-off path must not grow an analysis key (W8 flips the read path)"
+        "the kill-switched path must not grow an analysis key (W8 flips the read path)"
     )
     # The payload is the legacy computation over the shared decoded proxies,
     # compared key by key to the stage functions the proxy already calls.
@@ -550,7 +552,8 @@ def test_flag_on_entry_equals_the_flag_off_entry(
     """The rebuild is not "close": same keys, same values, same Severity objects."""
     item, source = _write_pair(tmp_path)
     src = source if with_source else None
-    monkeypatch.delenv("IMGSLI_ANALYSIS_ENGINE", raising=False)
+    # P9a: legacy mode = the kill-switch, not an unset variable.
+    monkeypatch.setenv("IMGSLI_ANALYSIS_ENGINE", "0")
     legacy = _run_stages(item, src)
 
     monkeypatch.setenv("IMGSLI_ANALYSIS_ENGINE", "1")
@@ -620,7 +623,8 @@ def test_flag_on_rebuilds_the_learned_keys_into_their_legacy_dicts(
     )
     monkeypatch.setattr(quality_models, "nr_metrics", lambda image, **_kw: {"brisque": 12.5})
     item, source = _write_pair(tmp_path)
-    monkeypatch.delenv("IMGSLI_ANALYSIS_ENGINE", raising=False)
+    # P9a: legacy mode = the kill-switch, not an unset variable.
+    monkeypatch.setenv("IMGSLI_ANALYSIS_ENGINE", "0")
     legacy = _run_stages(item, source)
 
     monkeypatch.setenv("IMGSLI_ANALYSIS_ENGINE", "1")
@@ -706,7 +710,8 @@ def test_flag_on_runs_the_tiled_catalog_in_full_res_mode(
     source = tmp_path / "source.png"
     _source_variant(_gradient(96)).save(source)
     src = source if with_source else None
-    monkeypatch.delenv("IMGSLI_ANALYSIS_ENGINE", raising=False)
+    # P9a: legacy mode = the kill-switch, not an unset variable.
+    monkeypatch.setenv("IMGSLI_ANALYSIS_ENGINE", "0")
     proxy_mode = _run_stages(item, src)
     legacy = _tiled_stages(item, src)
 
@@ -843,7 +848,8 @@ def test_flag_on_full_res_anchors_on_the_full_resolution_reference(
     _blocky_pair().save(item)
     source = tmp_path / "source.png"
     _source_variant(_blocky_pair(size=(1200, 900), offset=8)).save(source)
-    monkeypatch.delenv("IMGSLI_ANALYSIS_ENGINE", raising=False)
+    # P9a: legacy mode = the kill-switch, not an unset variable.
+    monkeypatch.setenv("IMGSLI_ANALYSIS_ENGINE", "0")
     legacy = _tiled_stages(item, source)
 
     monkeypatch.setenv("IMGSLI_ANALYSIS_ENGINE", "1")
@@ -909,7 +915,8 @@ def test_flag_on_full_res_fails_open_to_the_proxy_catalog(
     _blocky_pair().save(item)
     source = tmp_path / "source.png"
     _source_variant(_gradient(96)).save(source)
-    monkeypatch.delenv("IMGSLI_ANALYSIS_ENGINE", raising=False)
+    # P9a: legacy mode = the kill-switch, not an unset variable.
+    monkeypatch.setenv("IMGSLI_ANALYSIS_ENGINE", "0")
     expected = _run_stages(item, source)
 
     def _boom(cls, *args, **kwargs):  # pragma: no cover - exercised by injection
@@ -929,6 +936,8 @@ def test_the_record_bridge_lives_in_analysis_bridge_not_the_proxy():
 
     moved = (
         "ENGINE_FLAG",
+        "ENGINE_OFF_VALUES",
+        "engine_enabled",
         "LEGACY_RAW_KEYS",
         "CAMERA_AXES",
         "FIDELITY_AXES",
@@ -953,7 +962,8 @@ def test_flag_on_same_file_pair_keeps_the_identity_fidelity(
 ):
     """A same-file pair writes identity scores in both modes (no pair call)."""
     item, _source = _write_pair(tmp_path)
-    monkeypatch.delenv("IMGSLI_ANALYSIS_ENGINE", raising=False)
+    # P9a: legacy mode = the kill-switch, not an unset variable.
+    monkeypatch.setenv("IMGSLI_ANALYSIS_ENGINE", "0")
     legacy = _run_stages(item, item)
 
     monkeypatch.setenv("IMGSLI_ANALYSIS_ENGINE", "1")

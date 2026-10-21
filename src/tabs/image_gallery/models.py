@@ -258,10 +258,10 @@ class GalleryItem:
     analysis_error: str | None = None
     #: Per-axis records of the analysis engine (``analysis/read.py``), copied
     #: from the proxy batch entry's ``"analysis"`` key by
-    #: ``use_cases/proxy_pass``. Written ONLY on the flag-ON path
-    #: (``IMGSLI_ANALYSIS_ENGINE=1``); empty means "no engine records", and the
-    #: read path keeps its legacy domain read. Transient: never persisted to
-    #: the session slot and never sent anywhere
+    #: ``use_cases/proxy_pass``. Written when the engine ran — the DEFAULT since
+    #: P9a, ``IMGSLI_ANALYSIS_ENGINE=0`` kills it; empty means "no engine
+    #: records", and the read path keeps its legacy domain read. Transient:
+    #: never persisted to the session slot and never sent anywhere
     #: (plan-gallery-analysis-engine-2026-10-20 W9).
     analysis_records: tuple[AxisValue, ...] = ()
     series_id: str | None = None
@@ -358,7 +358,8 @@ class GalleryState:
     #: Per-item analysis-engine records, keyed by the item's path string — the
     #: dark launch of ``plan-gallery-analysis-engine-2026-10-20`` (W7). Each
     #: value is the producer records of the local plan in plan order. Written
-    #: ONLY by the flag-ON proxy hook (``IMGSLI_ANALYSIS_ENGINE=1``); empty in
-    #: the flag-off path, unread by any surface until the read-path wave, and
+    #: ONLY by the proxy engine hook (on by default since P9a,
+    #: ``IMGSLI_ANALYSIS_ENGINE=0`` kills it); empty when the hook is off or
+    #: produced nothing, unread by any surface until the read-path wave, and
     #: transient (never persisted to the session slot).
     analysis: dict[str, tuple[AxisValue, ...]] = field(default_factory=dict)

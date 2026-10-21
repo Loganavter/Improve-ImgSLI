@@ -12,11 +12,12 @@ unrepresentable rather than merely discouraged.
 The reader is a thin adapter over the existing primitives, never a second
 source of numbers:
 
-- when the item carries engine records (``item.analysis_records``, written only
-  by the flag-ON proxy hook ``IMGSLI_ANALYSIS_ENGINE=1``), those records are the
-  answer: an axis without a record is a ``gap`` and is NEVER filled from the
-  legacy value — the engine ran and had nothing, which is a different fact from
-  "the legacy source has a number" (plan W9);
+- when the item carries engine records (``item.analysis_records``, written by
+  the proxy engine hook — on by default since P9a, disabled by
+  ``IMGSLI_ANALYSIS_ENGINE=0``), those records are the answer: an axis without
+  a record is a ``gap`` and is NEVER filled from the legacy value — the engine
+  ran and had nothing, which is a different fact from "the legacy source has a
+  number" (plan W9);
 - otherwise the AI domain's values come from ``quality_read.ai_axis_scores``
   (the VLM scorecard on ``item.analysis``);
 - otherwise the Algorithms domain's values come from
@@ -93,7 +94,7 @@ def _engine_records_for_domain(item, domain) -> dict[str, AxisValue]:
     Records carry their own producer, so the domain no longer decides "whose
     numbers" — but a record still answers only the domain it was produced for:
     a ``vlm`` record answers the AI domain, every other record answers
-    Algorithms. Without this split, a flag-ON run of the local policy would
+    Algorithms. Without this split, an engine run of the local policy would
     answer an AI-domain read with detector numbers, which is the substitution
     the whole read path exists to prevent.
     """
@@ -156,7 +157,8 @@ def read_axes(
     profile) gets exactly one record per requested axis, in the requested order,
     so a surface can render its whole axis set without a second lookup.
 
-    When the item carries engine records (``analysis_records``, flag-ON only),
+    When the item carries engine records (``analysis_records``, engine-on only
+    — the default; ``IMGSLI_ANALYSIS_ENGINE=0`` kills it),
     the records **for this domain** are the source: ``producer="vlm"`` records
     answer the AI domain, every other producer answers Algorithms. A requested
     axis without a record in that domain is a ``gap`` with

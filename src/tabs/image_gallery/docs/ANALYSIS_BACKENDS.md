@@ -278,30 +278,54 @@ shows seven gap rows.
 
 ---
 
-## 10. Engine dark launch (W9 read path behind a flag)
+## 10. Engine on by default (W9 read path; P9a default flip)
 
-Status: dark launch, **not** the default. `IMGSLI_ANALYSIS_ENGINE=1` turns on
-the analysis engine's local plan inside the proxy batch
-(`services/proxy.py`): each batch entry gains an `"analysis"` key holding that
-item's per-axis `AxisValue` records — value, producer, status and reason, from
-`engine/analysis/contracts.py`. `use_cases/proxy_pass.py` copies those records
-onto `GalleryItem.analysis_records` (transient: never persisted, never sent
+Status: **on by default** since P9a. The analysis engine's local plan runs inside
+the proxy batch (`services/proxy.py`) for every folder, and each batch entry
+gains an `"analysis"` key holding that item's per-axis `AxisValue` records —
+value, producer, status and reason, from `engine/analysis/contracts.py`.
+`use_cases/proxy_pass.py` copies those records onto
+`GalleryItem.analysis_records` (transient: never persisted, never sent
 anywhere).
+
+**Kill-switch.** `IMGSLI_ANALYSIS_ENGINE=0` disables the engine for the next
+batch (no restart needed). The accepted off values are `0`, `false`, `no` and
+`off`, case-insensitive and whitespace-stripped; **unset, empty, `1` or any
+unrecognized value means on** — a typo can never silently restore the legacy
+path. The rule lives in one place, `services/analysis_bridge.engine_enabled()`;
+`=1` (the pre-P9a opt-in) keeps working as a no-op affirmation.
+
+**What the engine writes.** With the engine on, the plan's detector pass is the
+single computation for the batch:
+
+- `entry["analysis"]` — the per-axis records (provenance for the read path);
+- `entry["artifacts"]` / `["fidelity"]` / `["camera"]` — the same legacy stage
+  dicts as before, rebuilt from the records' pre-score `raw` values (W12). A
+  stage that cannot be rebuilt from its records falls back to its own legacy
+  call, so a missing producer costs one stage, never a missing key;
+- in `full_res_artifacts` mode (the production default) the records are measured
+  over the SAME full-resolution `TiledPixelStore` the tiled catalog reads (W14),
+  so the records and the entry's severities are one computation, not two.
 
 `analysis/read.py` prefers those records when an item has any: the record's
 value and provenance are what dots/rows/rank receive, regardless of the
 judgment domain. A requested axis with no record — or with a record whose status
 is `gap`/`error` — stays a gap and is never filled from `item.metrics` or
-`item.analysis`. That hard no-fallback rule is the point of the dark launch:
-the engine may disagree with the legacy numbers, and the disagreement is shown
-rather than silently repaired.
+`item.analysis`. That hard no-fallback rule is the point of the flip: the engine
+may disagree with the legacy numbers, and the disagreement is shown rather than
+silently repaired.
 
-What is NOT flipped:
+The default was flipped only after two A/B checks against the legacy path, both
+on a real folder with `full_res_artifacts=True`: a headless run produced
+identical numbers (8.8s vs 8.8s, cold processes), and a GUI run under a private
+Xvfb produced captures with **0 differing pixels** (2560×1392).
 
-- the flag defaults **off** — a flag-off batch has no `"analysis"` key, so
-  `analysis_records` stays `()`;
-- with no records the reader keeps its unchanged legacy branch
-  (`quality_read.ai_axis_scores` / `detector_axis_scores`), i.e. §3's read seam;
-- producers, ranking, UI surfaces and persistence are untouched. The legacy
-  branch is deleted only after a live check and an explicit default-on decision
-  (plan P9).
+What is NOT flipped yet:
+
+- the legacy branch is **still present** — the flag-disabled path runs the
+  legacy stage calls unchanged, and `analysis/read.py` keeps its legacy domain
+  branch for items without records. Deleting both is the next wave (P9b), not
+  this one;
+- producers, ranking weights, UI surfaces and persistence are untouched. The
+  only user-visible difference is that surfaces now read per-axis records
+  instead of whole-dict domain swaps.

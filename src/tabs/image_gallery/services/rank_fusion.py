@@ -8,9 +8,9 @@ applicable MEASURED axis (``metric_scores``), and a series is ranked by
 Pure: no Qt, no HTTP, no PIL — numbers in, ranks out. The module reads the
 registry (``spec_for`` / ``raw_for`` / ``score_for``); it never re-derives
 thresholds and never fabricates a value for a missing axis. When an item
-carries engine records (``item.analysis_records``, flag-ON only), those
-already-scored 0–100 values are the answer and the registry is consulted only
-on the legacy branch (``_record_scores``).
+carries engine records (``item.analysis_records``, engine-on only — the
+default since P9a), those already-scored 0–100 values are the answer and the
+registry is consulted only on the legacy branch (``_record_scores``).
 
 Which axes are "applicable" is NOT decided here any more: it is the
 **metric profile** (``services/metric_profile``) — the mode mapping today,
@@ -167,7 +167,8 @@ def item_quality(item, *, mode=None, profile=None) -> float | None:
     without a record is *excluded* — never 0 and never the legacy raw value
     (the engine ran and had nothing, which is a different fact). An item whose
     records cover no applicable axis falls back to the legacy raw path
-    unchanged, so a flag-off item keeps today's exact numbers.
+    unchanged, so an item with the engine killed (``IMGSLI_ANALYSIS_ENGINE=0``)
+    keeps today's exact numbers.
 
     Applicability is the metric profile (``profile`` when given, else the mode
     mapping — see ``measured_axes_for``). Missing axes are excluded (never

@@ -1,6 +1,6 @@
 """The record → legacy-dict bridge, and the engine hook that produces records.
 
-W12 removed the second detector pass from the flag-ON Stage-2 path: the engine
+W12 removed the second detector pass from the engine-on Stage-2 path: the engine
 runs FIRST and the legacy ``{stage: dict}`` entries are rebuilt from the
 records' pre-score ``raw`` values. This module is that glue, moved out of
 ``services/proxy.py`` (W14) so the proxy stays a decode/cache module instead of
@@ -17,21 +17,52 @@ Two independent pieces:
 - ``stage_dicts_from_records`` — the compatibility shim back to the legacy
   dicts, plus the constants describing their SHAPES.
 
+P9a — the engine is the DEFAULT. ``engine_enabled`` is the one reader of the
+env flag: ON unless the value is an explicit off value, so a normal run needs no
+env var and ``IMGSLI_ANALYSIS_ENGINE=0`` is the kill-switch (the legacy stage
+calls are still present and are what a disabled run executes). The legacy
+branch is deleted in a later wave, not here.
+
 Pure + Qt-free (safe for ``GenericWorker``); no Store/EventBus writes.
 
-INTERFACE: ``ENGINE_FLAG``, ``LEGACY_RAW_KEYS``, ``CAMERA_AXES``,
-``FIDELITY_AXES``, ``ARTIFACT_AXES``, ``raw_dict``, ``artifact_dict``,
-``upscale_factor``, ``stage_dicts_from_records``, ``engine_records``.
+INTERFACE: ``ENGINE_FLAG``, ``ENGINE_OFF_VALUES``, ``engine_enabled``,
+``LEGACY_RAW_KEYS``, ``CAMERA_AXES``, ``FIDELITY_AXES``, ``ARTIFACT_AXES``,
+``raw_dict``, ``artifact_dict``, ``upscale_factor``,
+``stage_dicts_from_records``, ``engine_records``.
 """
 
 from __future__ import annotations
 
 import logging
+import os
 
 logger = logging.getLogger("ImproveImgSLI")
 
-#: Env flag of the analysis engine (plan-gallery-analysis-engine-2026-10-20 P1).
+#: Env flag of the analysis engine (plan-gallery-analysis-engine-2026-10-20 P1;
+#: P9a made the engine the default, so this is now a kill-switch).
 ENGINE_FLAG = "IMGSLI_ANALYSIS_ENGINE"
+
+#: The only values that turn the engine OFF (``str.strip().lower()`` before the
+#: comparison). Anything else — unset, empty, whitespace, garbage — is ON: a
+#: typo must not silently restore the legacy path.
+ENGINE_OFF_VALUES = frozenset({"0", "false", "no", "off"})
+
+
+def engine_enabled() -> bool:
+    """Whether the analysis engine owns the proxy batch (P9a: ON by default).
+
+    Read per call rather than cached, so the kill-switch applies to the next
+    batch without a restart. Only ``ENGINE_OFF_VALUES`` disables the engine;
+    everything else (unset, empty, unknown) keeps it on.
+    """
+    try:
+        raw = os.environ.get(ENGINE_FLAG)
+    except Exception:  # pragma: no cover - environ is a plain dict in CPython
+        return True
+    if raw is None:
+        return True
+    return raw.strip().lower() not in ENGINE_OFF_VALUES
+
 
 #: Engine axis id -> the raw key its legacy stage dict uses, for the three axes
 #: whose detector key is not the axis id — the entry is consumed by KEY
@@ -182,9 +213,11 @@ __all__ = [
     "ARTIFACT_AXES",
     "CAMERA_AXES",
     "ENGINE_FLAG",
+    "ENGINE_OFF_VALUES",
     "FIDELITY_AXES",
     "LEGACY_RAW_KEYS",
     "artifact_dict",
+    "engine_enabled",
     "engine_records",
     "raw_dict",
     "stage_dicts_from_records",
