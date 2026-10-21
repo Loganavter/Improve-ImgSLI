@@ -56,14 +56,25 @@ class ActionRegistry:
         active_tab: str | None,
         query: str = "",
         topic: str | None = None,
+        chrome_only: bool = True,
     ) -> list[ActionDescriptor]:
+        """Actions the active tab may use.
+
+        ``chrome_only`` separates two questions that used to be one: *is this
+        action worth listing* (Find Action / Settings — a toolbar slot hidden
+        by the current UI mode should not appear) and *may this action own a
+        keyboard shortcut* (yes — a hidden button is still a live target, and
+        a shortcut must not disappear because a layout mode hid its control).
+        The live binder calls this with ``chrome_only=False``; see
+        ``ActionShortcutBinder.resync``.
+        """
         needle = _normalize((query or "").strip())
         visible = (
             a
             for a in self._by_id.values()
             if (a.owner_tab is None or a.owner_tab == active_tab)
             and (topic is None or a.topic == topic)
-            and _action_chrome_is_available(a)
+            and (not chrome_only or _action_chrome_is_available(a))
         )
         if not needle:
             out = list(visible)

@@ -140,6 +140,32 @@ def route_global_keyboard_event(event_handler, watched_obj, event: QEvent) -> bo
             type(watched_obj).__name__,
         )
         return True
+    # A chord the ACTIVE TAB's shortcut binder installed is the tab's, not the
+    # global handler's — even when the focused widget is not tab-owned (null
+    # focus, a toolbar button, a foreign popup). Without this, Image Compare's
+    # documented ``D`` (Divider Visibility) was swallowed here as an
+    # overlay-movement key before the shortcut map could fire it.
+    from events.app_event.keyboard import active_tab_shortcut_owns_event
+
+    if active_tab_shortcut_owns_event(event):
+        logger.debug(
+            "[kbd-route] %s -> TAB_SHORTCUT (watched=%s binder owns key=%s)",
+            "Press" if event_type == QEvent.Type.KeyPress else "Release",
+            type(watched_obj).__name__,
+            event.key() if isinstance(event, QKeyEvent) else "?",
+        )
+        return False
+    if logger.isEnabledFor(logging.DEBUG):
+        # A live "the tab chord died" report cannot be told apart from "the
+        # binder held no claim for it at that instant" without these values.
+        from events.app_event.keyboard import chord_claim_report
+
+        logger.debug(
+            "[kbd-route] %s -> veto-miss (watched=%s) %s",
+            "Press" if event_type == QEvent.Type.KeyPress else "Release",
+            type(watched_obj).__name__,
+            chord_claim_report(event),
+        )
     if not event_handler.keyboard_handler.should_route_globally(event, watched_obj):
         logger.debug(
             "[kbd-route] %s -> CONSUMED_BY_TAB (watched=%s should_route_globally=False)",

@@ -93,6 +93,55 @@ class ActionShortcutBinder:
         self._shortcuts: list = []
         self._claimed: dict[str, str] = {}
         self._entries: list[tuple[str, object]] = []
+        # chord -> owning action's tab (None = platform action). Lets
+        # ``owns_chord`` answer per-tab questions without a registry lookup.
+        self._owner_tabs: dict[str, str | None] = {}
+
+    def owns_chord(self, chord: str, *, active_tab: str | None = None) -> bool:
+        """True when this binder installed ``chord`` in the active tab's scope.
+
+        The binder is resynced for the ACTIVE tab (see
+        ``resync_action_shortcuts``), so its claimed chords are exactly the
+        shortcuts that tab's focused widgets may receive. Platform actions
+        (``owner_tab is None``) are installed in every tab's scope and count
+        for any ``active_tab``. ``active_tab=None`` asks the plain question
+        "is this chord bound at all".
+
+        Shared-event code uses this to decide whether a key belongs to the
+        shortcut map instead of the global keyboard route — e.g. Image
+        Compare's ``D`` is both the divider-visibility shortcut and an
+        overlay-movement key.
+        """
+        portable = normalize_sequence(chord)
+        if not portable:
+            return False
+        action_id = self._claimed.get(portable)
+        if action_id is None:
+            return False
+        if active_tab is None:
+            return True
+        return self._owner_tabs.get(portable) in (None, active_tab)
+
+    def describe_claim(
+        self, chord: str, *, active_tab: str | None = None
+    ) -> str:
+        """One-line "who claims ``chord``" report for the ``[kbd-route]`` log.
+
+        ``owns_chord`` is a boolean and a False is indistinguishable between
+        "no claim at all" (binder not resynced yet, or a resync that ran with
+        another tab) and "claimed by a different tab". Live debugging needs
+        that difference, and shared event code must not reach into
+        ``_claimed``/``_owner_tabs`` itself — so the diagnostic lives here,
+        next to the data it reports. Never used for control flow.
+        """
+        portable = normalize_sequence(chord)
+        action_id = self._claimed.get(portable)
+        owner = self._owner_tabs.get(portable)
+        return (
+            f"claims={len(self._claimed)} claim={action_id or '-'} "
+            f"owner_tab={owner!r} "
+            f"tab_match={active_tab is None or owner in (None, active_tab)}"
+        )
 
     def clear(self) -> None:
         for shortcut in self._shortcuts:
@@ -113,6 +162,7 @@ class ActionShortcutBinder:
         self._shortcuts.clear()
         self._claimed.clear()
         self._entries.clear()
+        self._owner_tabs.clear()
 
     def drop_prefix(self, prefix: str) -> None:
         """Delete live shortcuts whose action id starts with ``prefix``.
@@ -148,6 +198,11 @@ class ActionShortcutBinder:
                 for chord, action_id in self._claimed.items()
                 if not action_id.startswith(prefix)
             }
+            self._owner_tabs = {
+                chord: owner_tab
+                for chord, owner_tab in self._owner_tabs.items()
+                if chord in self._claimed
+            }
 
     def resync(
         self,
@@ -158,7 +213,11 @@ class ActionShortcutBinder:
         active_tab: str | None,
     ) -> None:
         self.clear()
-        actions = registry.list_for(active_tab=active_tab)
+        # Shortcut installation must not follow toolbar visibility: in the
+        # simple UI mode the divider button is hidden while its action still
+        # has a live target, and dropping it here silently removed the ``D``
+        # chord (Image Compare). Find Action keeps the chrome filter.
+        actions = registry.list_for(active_tab=active_tab, chrome_only=False)
         # Rank through the shared scheme so the winner matches keymap /
         # Settings even when registration order disagrees with priority.
         ranked = sorted(
@@ -226,6 +285,7 @@ class ActionShortcutBinder:
         self._shortcuts.append(shortcut)
         self._entries.append((portable, action_id))
         self._claimed[portable] = action_id
+        self._owner_tabs[portable] = getattr(action, "owner_tab", None)
 
     @staticmethod
     def _invoke(run, action_id: str) -> None:
