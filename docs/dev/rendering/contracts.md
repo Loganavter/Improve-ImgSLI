@@ -3,7 +3,7 @@
 Field catalog for **interface** canvas contracts. For *why* they exist and how
 “contract” is used elsewhere (host call sequences, AST dogmas), start at
 [CONTRACTS.md](../CONTRACTS.md#three-senses-of-contract).
-Actual contracts live in `src/ui/canvas_infra/scene/` (`pass_contract.py:75`
+Actual contracts live in `src/ui/canvas_infra/scene/` (`pass_contract.py`
 `CanvasRenderPass`/`SceneVisibility`/`RenderPhase`, `widget_contract.py`
 `CanvasWidgetFeature`, `feature_contract.py` `CanvasSceneFeature`) and
 `src/ui/canvas_presentation/` (`plan.py` `CanvasRenderPlan`, `composition.py`
@@ -28,6 +28,7 @@ Optional fields:
 |---|---|
 | `reduce_interaction_state` | Handle interaction-related actions |
 | `reduce_geometry_state` | Handle geometry-related actions |
+| `reduce_cache_state` | Handle runtime-cache actions |
 | `build_commands` | `fn() -> dict[str, handler]` — register callable commands |
 | `command_aliases` | `tuple[CanvasFeatureCommandAlias, ...]` — capability aliases |
 | `build_properties` | Register keyframe-animatable properties |
@@ -37,10 +38,13 @@ Optional fields:
 | `build_context_menu_zones` | Declare territory where host context menus are suppressed |
 | `build_render_scene_overrides` | Contribute data to the render scene |
 | `prepare_worker_viewport` | Prepare viewport state for background workers |
+| `build_state_queries` | Expose read-only state queries |
+| `build_state_commands` | Expose state-mutating commands |
 | `apply_plan_runtime_overlay` | Apply overlays from render plan |
 | `apply_live_runtime_overlay` | Apply live overlays during rendering |
 | `reducer_order` | Sort order for reducer dispatch (default 100) |
 | `property_order` | Sort order for property listing (default 100) |
+| `i18n_namespace` | Translation namespace for the feature's own resources |
 
 ## CanvasSceneFeature (`feature_contract.py`)
 
@@ -53,6 +57,8 @@ Scene-graph contract. Only needed if feature participates in scene (hit-testing,
 | `build_overlay` | `fn(graph, ctx) -> tuple[SceneObject, ...]` | yes | Create overlay objects |
 | `apply` | `fn(graph, ctx) -> None` | yes | Apply scene state to viewport |
 | `hit_test` | `fn(graph, point) -> SceneObject\|None` | no | Find object at position |
+| `resolve_active_object_id` | `fn(ctx) -> str \| None` | no | Which scene object is active this frame |
+| `sync_geometry` | `fn(graph, ctx) -> None` | no | Sync scene-object geometry from state |
 | `z_order` | `CanvasFeatureZOrder` | no | Stacking role |
 
 Phase order controls when a feature runs: `primary_order`, `overlay_order`, `apply_order`, `hit_order`.
@@ -91,13 +97,13 @@ If the feature is absent, returns `None`. See [CAPABILITY_ALIASES.md](../CAPABIL
 
 Each feature reports its layout requirement explicitly in normalized
 base-image coordinates (see
-[The foundation](coordinate-systems.md#the-foundation-normalized-00-10-base-image-space-and-how-uncropcrop-fits-into-it)
+[The foundation](coordinate-systems.md#the-foundation-normalized-0010-base-image-space-and-how-uncropcrop-fits-into-it)
 for the full geometric model). Shared types live in
-`src/shared/rendering/layout_contract.py`: `NormalizedBounds`,
+`src/engine/cache/layout_contract.py`: `NormalizedBounds`,
 `FeatureLayoutRequirement`, `VirtualCanvasLayout`. Comparison base geometry is
 **not** a layout requirement — it is the eager unified envelope
 `pw,ph = max(w1,w2), max(h1,h2)` owned by
-`src/tabs/image_compare/canvas/texture_parts/base_images.py:189`
+`src/tabs/image_compare/canvas/texture_parts/base_images.py`
 (`update_common_letterbox_geometry`) via
 `src/ui/canvas_infra/scene/frame_geometry.py::resolve_canvas_content_geometry`
 (see [rendering-model.md](rendering-model.md) and

@@ -56,8 +56,7 @@ class of bug hard to catch in a quick smoke test.
 ### Single resolver for both rects: `resolve_canvas_content_geometry`
 
 Both rects above come from exactly one function,
-`ui/canvas_infra/scene/frame_geometry.py::resolve_canvas_content_geometry`
-(plus its store-driven wrapper, `resolve_canvas_content_geometry_for_store`),
+`ui/canvas_infra/scene/frame_geometry.py::resolve_canvas_content_geometry`,
 returning a `ContentGeometry` with `outer_rect_px` (== `_content_rect_px`) and
 `inner_rect_px` (== `_inner_content_rect_px`). It takes widget dims, image
 dims, and an optional `VirtualCanvasLayout`; with `virtual_layout=None` (or a
@@ -69,24 +68,37 @@ feature-agnostically (it has no knowledge of the magnifier, divider, or any
 other specific feature).
 
 This single-owner chain is wired into **both** the live authoring path and
-the snapshot replay path (still-image export, video export/preview): the
-live canvas's per-frame letterbox step
-(`tabs/image_compare/canvas/texture_parts/base_images.py::update_letterbox_geometry`)
-calls `resolve_canvas_content_geometry_for_store` every frame — not only on
-image change — so a feature's padding requirement changing (e.g. the
-magnifier needing more room this frame) is reflected immediately, with no
-stale-geometry window. Live rendering therefore shows uncrop/fit-content and
-magnifier-overflow padding the same way exports do. `gpu_export_scene.py::apply_virtual_canvas_layout_to_scene`,
-`magnifier/snapshot_store.py::apply_virtual_canvas_layout_to_snapshot_store`,
-and `divider/commands.py::command_build_export_overlay` all call this same
-resolver rather than recombining split position and padded-canvas geometry by
-hand, and none of them mutate `split_position_visual` as a side effect.
+the snapshot replay path (still-image export, video export/preview):
+
+- **Live canvas** — `engine/cache/display_tier_service.py`
+  (`update_letterbox_geometry`, `update_common_letterbox_geometry` via
+  `eager_envelope_rect`, `refresh_live_content_rect`) fits the raw displayed
+  image pair, and `canvas/presentation/plan_builder.py` resolves the same
+  `live_virtual_layout` (`resolve_feature_virtual_layout`) into
+  `store.runtime_cache.overlay_clip_rect` plus a padded `target_size`. The
+  live plan keeps `geometry_letterbox=False`
+  (`src/ui/canvas_presentation/plan.py`), so the shader canvas-frame path
+  (`_canvas_frame_letterbox` / `_letterbox_fill_rgba`, set only by
+  `apply_plan_letterbox_from_clip`) stays export/video-only.
+- **Export/video snapshot** — `src/tabs/image_compare/services/snapshot_render_plan_builder.py`
+  resolves the `VirtualCanvasLayout` once
+  (`resolve_feature_virtual_layout`), passes it into
+  `resolve_canvas_content_geometry`, and the plan owns the padded
+  framebuffer (`geometry_letterbox=True`).
+
+`gpu_export_scene.py::apply_virtual_canvas_layout_to_scene` and
+`magnifier/state/snapshot_store.py::apply_virtual_canvas_layout_to_snapshot_store`
+turn the resolved layout into a clip rect via `resolve_canvas_clip_rect_px`;
+`divider/commands/registry.py::command_build_export_overlay` maps the split
+position through `resolve_axis_position` (`viewport/geometry.py`) instead of
+recombining split position and padded-canvas geometry by hand. None of them
+mutate `split_position_visual` as a side effect.
 
 A structural contract test, `tests/contracts/test_canvas_content_geometry_single_owner.py`,
 enforces this stays a single owner going forward: it greps `src/` for direct
 `VirtualCanvasLayout.canvas_bounds`/`.content_bounds` access outside an
 explicit allowlist (`frame_geometry.py`, `layout_requirements.py`,
-`shared/rendering/layout_contract.py`, and their tests), and separately flags
+`engine/cache/layout_contract.py`, and their tests), and separately flags
 any file outside `viewport/zoom.py`/`viewport/pipeline.py` that combines
 `split_position_visual` with rect/canvas arithmetic in the same function body
 — the exact shape all three deleted duplicates had. A new hand-rolled copy of
@@ -119,9 +131,9 @@ letterbox = (ux/cw, uy/ch, uw/cw, uh/ch)  # same for both slots
   Both `state._letterbox_params[0/1]`, `state._content_rect_px` and
   `state._inner_content_rect_px` receive that same rect (`outer == inner`
   with `virtual_layout=None`), dispatched via `store.transact()` — see
-  `tabs/image_compare/canvas/texture_parts/base_images.py:189`
+  `tabs/image_compare/canvas/texture_parts/base_images.py`
   `update_common_letterbox_geometry` and
-  `presenters/image_canvas/background_parts/render_flow.py:75`
+  `presenters/image_canvas/background_parts/render_flow.py`
   `_update_comparison_geometry`.
 - Fallback: when only one side has a size, fit that single image (no `max`).
 
@@ -129,7 +141,7 @@ Result: `letterbox` is stable from the first `gap draw_plan` (the `44.007`
 frame that already has two previews), not after a `350 ms` hold. There is no
 `UNION_LETTERBOX_HOLD_MS` / `more_pending` freeze for geometry — `HOLD`
 and the `atomic` fallback-LOD guard remain only for **pixel** coverage
-(`rhi_renderer/renderer.py:463` `resolve_fallback_lod(atomic=True)` /
+(`rhi_renderer/renderer.py::_resolve_fallback_plan` `resolve_fallback_lod(atomic=True)` /
 `more_pending` tiling), not for rect placement. The old
 `union fitted rects: min(x)..max(x+w)` description and the `1138 vs 1080`
 example no longer apply and must not be reintroduced.
@@ -205,7 +217,7 @@ inside the formula and once again by the caller.
   clamp/hit-test/derive split-position off this rect already apply the
   `_inner_content_rect_px` fallback rule stated above
   (`render_config.py`, `interaction.py`, `divider/passes.py`,
-  `magnifier/plan_overlay.py`, `scene/builder.py`, `plan_applicator.py`).
+  `magnifier/render/plan_overlay.py`, `scene/builder.py`, `plan_applicator.py`).
 - **Device/framebuffer-px** (widget-px × device pixel ratio) exists only at
   the final `QRhiScissor` / `QRhiViewport` construction, inside `record()`.
   Nothing upstream of that last conversion should think in device pixels —

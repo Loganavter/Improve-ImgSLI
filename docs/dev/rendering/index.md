@@ -8,7 +8,7 @@ that keep them consistent across the live editor, preview, and export paths.
 - **[overview.md](overview.md)** — Quick Start, layer split (`canvas_infra` / features / presentation / renderer), examples, doc status (eager unified envelope `max(w1,w2)` — single owner `base_images.py`)
 - **[package-structure.md](package-structure.md)** — feature package layout, auto-discovery, splitting a feature into subpackages, current feature status
 - **[feature-decomposition-playbook.md](feature-decomposition-playbook.md)** — step-by-step procedure for splitting an overgrown feature into the subpackage taxonomy (the `magnifier/` refactor, generalized)
-- **[render-pass-contract.md](render-pass-contract.md)** — `CanvasRenderPass` (`src/ui/canvas_infra/scene/pass_contract.py:75`) interface + host call sequence, stack roles, scene visibility, alpha/blending rules; composition via `src/ui/canvas_presentation/composition.py`
+- **[render-pass-contract.md](render-pass-contract.md)** — `CanvasRenderPass` (`src/ui/canvas_infra/scene/pass_contract.py`) interface + host call sequence, stack roles, scene visibility, alpha/blending rules; composition via `src/ui/canvas_presentation/composition.py`
 - **[rendering-model.md](rendering-model.md)** — live authoring path vs. snapshot replay path (same eager `max` letterbox, single `resolve_canvas_content_geometry` owner), snapshot renderer notes
 - **[coordinate-systems.md](coordinate-systems.md)** — normalized base-image space, canvas-px overlay model, base-image-anchored geometry, the single-resolver rule (`src/ui/canvas_infra/scene/frame_geometry.py::resolve_canvas_content_geometry`), composition tree (`src/ui/canvas_presentation/composition.py`)
 - **`patterns.md`** (private, `improve-imgsli-internal-docs` repo) — patterns & anti-patterns (short rules + links to case write-ups)
@@ -16,7 +16,7 @@ that keep them consistent across the live editor, preview, and export paths.
 - **[contracts.md](contracts.md)** — interface field catalog (`CanvasWidgetFeature`, scene/property/aliases, layout, `CanvasRenderPass`/`CompositionPlan`); glossary in [CONTRACTS.md](../CONTRACTS.md#three-senses-of-contract)
 - **[zoom-pan.md](zoom-pan.md)** — gesture bindings, viewport change contract, zoom/pan invariants, semantic geometry vs paint extents, debugging
 - **[checklist.md](checklist.md)** — pre-merge tick list (stack_role/visibility, `resolve_rhi_scissor`, eager envelope)
-- **[display-image-pipeline.md](display-image-pipeline.md)** — unify → display-cache → render pipeline; single-writer/single-picker rule for `render_cache.display_cache_image1/2`
+- **[display-image-pipeline.md](display-image-pipeline.md)** — preview tier → unify → pyramid → tiled render pipeline; single-picker rule (`display_image_picker.pick_display_image`) for the stored/source roles
 - **[tile-rendering-system.md](tile-rendering-system.md)** — GPU tile grid for oversized sources (`TileTextureService`), apron padding, residency/draw-plan invariant, and host-side memory bounding (`HostTextureUploadCache` LRU, `TiledPixelStore` memmap spill)
 - **`plan-comparison-letterbox` (private, `improve-imgsli-internal-docs` repo, `docs/dev/investigations/`)** — eager `max` envelope target, single owner, no HOLD for geometry (pixel fallback LOD is separate)
 - **`glass-panel-text-vibrancy-plan.md`** (private, `improve-imgsli-internal-docs` repo, `docs/legacy/rendering/`) — in-progress: per-pixel HUD text color adaptation (GPU text mask + shader recolor), phased plan + status
