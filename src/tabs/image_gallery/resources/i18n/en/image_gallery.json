@@ -265,7 +265,8 @@
       }
     },
     "badge": {
-      "source": "SOURCE"
+      "source": "SOURCE",
+      "best": "★ BEST"
     },
     "metric_note": {
       "sharpness": {

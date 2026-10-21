@@ -72,6 +72,13 @@ BADGE_H_PAD = 12
 BADGE_HEIGHT = 18
 BADGE_RADIUS = 9
 
+#: Pill font sizes (design px), tried in order when a label does not fit its
+#: 66px thumb container. The strip container CLIPS its children, so a long
+#: localized label (ru ``ИСТОЧНИК`` / ``★ ЛУЧШЕЕ``) used to be cut off; it now
+#: takes the first face that fits, and only elides at the smallest one.
+#: ``ui/quick_look/strip/helpers.py::_strip_badge_fit`` owns the ladder walk.
+BADGE_FONT_SIZES: tuple[int, ...] = (11, 10, 9, 8)
+
 
 @dataclass(frozen=True)
 class RankBadge:

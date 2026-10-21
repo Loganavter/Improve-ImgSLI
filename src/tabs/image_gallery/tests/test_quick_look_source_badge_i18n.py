@@ -148,3 +148,57 @@ def test_filmstrip_and_list_source_badge_localized_per_locale(language: str) -> 
     tr_fn = lambda k, d, _l=language: tr(k, language=_l)  # noqa: E731
     assert _strip_rank_text_and_style(item, SimpleNamespace(_tr=tr_fn))[0] == localized
     assert _badges_text(item, tr_fn) == localized
+
+
+@pytest.mark.parametrize("language", ("ru", "zh", "pt_BR"))
+def test_filmstrip_best_badge_localized_per_locale(language: str) -> None:
+    """★ BEST is a keyed badge too — it used to stay English everywhere.
+
+    ``image_gallery.badge.best`` did not exist in ANY catalogue, so the card
+    (``ui/card/visuals.py:184``) and the list
+    (``ui/list/regions.py:57``) asked for it and fell back to the stamped
+    English ``★ BEST``; the filmstrip did not even ask. Live report
+    2026-10-22: "some badges are not translated at all".
+    """
+    from types import SimpleNamespace
+
+    from resources.translations import add_i18n_root, tr
+
+    from tabs.image_gallery.services.rank_badge import BEST_TEXT, KIND_BEST
+    from tabs.image_gallery.ui.list.regions import _badges_text
+    from tabs.image_gallery.ui.quick_look.strip import _strip_rank_text_and_style
+
+    repo = Path(__file__).resolve().parents[4]
+    for root in sorted((repo / "src").rglob("resources/i18n")):
+        add_i18n_root(root)
+
+    localized = tr("image_gallery.badge.best", language=language)
+    assert localized and localized != "image_gallery.badge.best", localized
+    assert localized != BEST_TEXT, f"{language}: catalogue still English ({localized!r})"
+
+    item = SimpleNamespace(badge=BEST_TEXT, badge_kind=KIND_BEST, rejected=False)
+    tr_fn = lambda k, d, _l=language: tr(k, language=_l)  # noqa: E731
+    assert _strip_rank_text_and_style(item, SimpleNamespace(_tr=tr_fn))[0] == localized
+    assert _badges_text(item, tr_fn) == localized
+
+
+def test_every_locale_carries_the_badge_keys() -> None:
+    """Both keyed badge labels exist in every shipped catalogue.
+
+    A missing key degrades silently to the English stamp (``tr`` falls back to
+    the default), which is exactly how ``★ BEST`` stayed untranslated while
+    looking "wired" — the callers asked for a key nobody had authored.
+    """
+    import json
+
+    repo = Path(__file__).resolve().parents[4]
+    root = repo / "src/tabs/image_gallery/resources/i18n"
+    assert root.is_dir(), root
+    for locale in ("en", "ru", "zh", "pt_BR"):
+        data = json.loads((root / locale / "image_gallery.json").read_text())
+        badge = data.get("image_gallery", {}).get("badge", {})
+        assert badge.get("source"), f"{locale}: badge.source missing"
+        assert badge.get("best"), f"{locale}: badge.best missing"
+        if locale != "en":
+            assert badge["best"] != "★ BEST", f"{locale}: badge.best not localized"
+            assert badge["source"] != "SOURCE", f"{locale}: badge.source not localized"

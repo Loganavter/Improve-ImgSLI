@@ -16,6 +16,7 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
 from PySide6.QtGui import QColor, QPixmap
 from PySide6.QtWidgets import QApplication, QWidget
 
@@ -1223,4 +1224,115 @@ def test_strip_rank_pill_not_clipped_by_container(qtbot, tmp_path):
         pill.geometry(),
         container.height(),
     )
+    ov.hide()
+
+
+# -- badge fit / locale (live report 2026-10-22) ------------------------------
+
+
+def _pill_row(pill):
+    """The pill's painted text row (ButtonRow) — text, font size, elide."""
+    for region in pill.regions():
+        for row in getattr(region, "rows", None) or []:
+            if getattr(row, "text", ""):
+                return row
+    return None
+
+
+def _localized_tr(language):
+    from resources.translations import add_i18n_root, tr
+
+    repo = Path(__file__).resolve().parents[4]
+    for root in sorted((repo / "src").rglob("resources/i18n")):
+        add_i18n_root(root)
+    return lambda key, default, _lang=language: tr(key, language=_lang)
+
+
+@pytest.mark.parametrize("language", ("ru", "zh", "pt_BR"))
+def test_rank_pill_fits_translated_label_inside_the_thumb(
+    qtbot, tmp_path, language: str
+) -> None:
+    """A long localized badge shrinks the face instead of being clipped.
+
+    Live report 2026-10-22: on ru the ``ИСТОЧНИК`` pill was WIDER than its
+    66px thumb container — the container clipped the right side of the word
+    and the pin clamped the left edge at 0, so the pill read as both cut and
+    off-centre (``pill_cx - thumb_cx = +7``). The pill now picks the first
+    font size (``BADGE_FONT_SIZES``) that fits ``thumb - 2`` and centers on the
+    thumb's centre line.
+
+    Falsified by: reverting ``_strip_badge_fit`` to the ``sizeHint - 24``
+    width (the pill then exceeds the thumb on ru and is clipped) or reverting
+    the pin to ``tg.x() + max(0, (tg.width() - pw) // 2)`` (off-centre again).
+    """
+    from PySide6.QtGui import QFontMetrics
+
+    from sli_ui_toolkit.managers import ui_font
+
+    paths = [_real_png(tmp_path, f"f{i}.png") for i in range(3)]
+    src = GalleryItem(path=paths[0], mtime_ns=1)
+    best = GalleryItem(path=paths[1], mtime_ns=2, is_best=True, rank=1)
+    ranked = GalleryItem(path=paths[2], mtime_ns=3, rank=3)
+    ov = _make_overlay(qtbot)
+    ov._tr = _localized_tr(language)
+    _show(ov, src, [src, best, ranked], source=src.path)
+    QApplication.processEvents()
+    QApplication.processEvents()
+
+    pills = _rank_pills_by_path(ov)
+    thumbs = {b.property("gallery_path"): b for b in _strip_buttons(ov)}
+    assert len(pills) == 3, pills
+    for path, pill in pills.items():
+        thumb = thumbs[path]
+        row = _pill_row(pill)
+        assert row is not None
+        advance = QFontMetrics(ui_font(pixel_size=int(row.size))).horizontalAdvance(
+            row.text
+        )
+        assert pill.width() <= thumb.width(), (
+            f"{language}: {row.text!r} pill {pill.width()} > thumb {thumb.width()}"
+        )
+        assert pill.width() >= advance, (
+            f"{language}: {row.text!r} clipped ({advance} > {pill.width()})"
+        )
+        assert not row.elide, f"{language}: {row.text!r} elided at the smallest face"
+        assert pill.geometry().center().x() == thumb.geometry().center().x(), (
+            f"{language}: {row.text!r} off-centre "
+            f"({pill.geometry().center().x()} vs {thumb.geometry().center().x()})"
+        )
+    # The translated labels are visible in the strip, not only on cards.
+    texts = {_pill_text(p) for p in pills.values() if p is not None}
+    assert any("ИСТОЧНИК" in t or "源" in t or "ORIGEM" in t for t in texts), texts
+    ov.hide()
+
+
+def test_language_switch_rebuilds_the_strip_badges(qtbot, tmp_path) -> None:
+    """``retranslate`` re-renders the strip pills (they were stale in EN).
+
+    The strip's fingerprint tracks the stamped (language-neutral) badge, so
+    the selection-only fast path kept the previous language; the pills are
+    only translated at build. Live report 2026-10-22: switching to ru left
+    ``SOURCE``/``★ BEST`` in English until the panel was reopened.
+
+    Falsified by: dropping the fingerprint invalidation + ``_rebuild_strip``
+    from ``overlay_parts/theming.py::retranslate``.
+    """
+    paths = [_real_png(tmp_path, f"l{i}.png") for i in range(3)]
+    src = GalleryItem(path=paths[0], mtime_ns=1)
+    best = GalleryItem(path=paths[1], mtime_ns=2, is_best=True, rank=1)
+    ranked = GalleryItem(path=paths[2], mtime_ns=3, rank=3)
+    ov = _make_overlay(qtbot)
+    ov._tr = _localized_tr("en")
+    _show(ov, src, [src, best, ranked], source=src.path)
+    QApplication.processEvents()
+    en_texts = {_pill_text(p) for p in _rank_pills_by_path(ov).values() if p is not None}
+    assert "SOURCE" in en_texts and "★ BEST" in en_texts, en_texts
+
+    ov.retranslate(_localized_tr("ru"))
+    QApplication.processEvents()
+    QApplication.processEvents()
+    ru_texts = {_pill_text(p) for p in _rank_pills_by_path(ov).values() if p is not None}
+    assert "ИСТОЧНИК" in ru_texts, ru_texts
+    assert "★ ЛУЧШЕЕ" in ru_texts, ru_texts
+    assert "SOURCE" not in ru_texts and "★ BEST" not in ru_texts, ru_texts
     ov.hide()
