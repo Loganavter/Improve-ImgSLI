@@ -216,3 +216,48 @@ def test_jpeg_install_composites_the_transparent_window_margin(tmp_path):
     edge = [out.getpixel((x, 0)) for x in range(out.width)]
     edge += [out.getpixel((0, y)) for y in range(out.height)]
     assert all(sum(pixel) > 600 for pixel in edge), edge[:4]
+
+
+def test_screen_window_crop_drops_the_root_window_band(tmp_path):
+    """RED-BEFORE: a @screen crop kept the black root window around the dialog.
+
+    The window rect from ``dump_ui_layout`` includes the CSD shadow, and on a
+    bare X server the pixels outside the dialog are the root window, so the
+    figure shipped a solid band (measured on ``ru/light/video_export.jpg``:
+    33507 dark pixels, 33688 inside a 12 px border).
+    """
+    from PIL import Image
+
+    screen = Image.new("RGB", (60, 50), (0, 0, 0))
+    dialog = Image.new("RGB", (40, 30), (245, 245, 245))
+    screen.paste(dialog, (10, 10))
+    source = tmp_path / "screen.png"
+    screen.save(source)
+
+    destination = tmp_path / "figure.png"
+    help_live.crop_and_install(source, destination, None, trim_uniform_border=24)
+
+    with Image.open(destination) as image:
+        assert image.size == (40, 30), "the root-window band is not window content"
+        out = image.convert("RGB")
+    assert out.getpixel((0, 0)) == (245, 245, 245)
+    assert out.getpixel((39, 29)) == (245, 245, 245)
+
+
+def test_a_uniform_border_trim_never_eats_content(tmp_path):
+    """The band stops at the first differing pixel, even inside ``max_px``."""
+    from PIL import Image
+
+    image = Image.new("RGB", (40, 40), (0, 0, 0))
+    for x in range(40):
+        for y in range(40):
+            if 5 <= x < 35 and 5 <= y < 35:
+                image.putpixel((x, y), (10, 118, 168))
+    source = tmp_path / "shot.png"
+    image.save(source)
+
+    destination = tmp_path / "figure.png"
+    help_live.crop_and_install(source, destination, None, trim_uniform_border=24)
+
+    with Image.open(destination) as out:
+        assert out.size == (30, 30)

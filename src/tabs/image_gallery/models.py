@@ -134,23 +134,46 @@ class AiAxisFlag:
     note: str = ""
 
 
+#: Which way a score on an axis points. ``higher-is-better`` is the default (the
+#: pool's own 0–100 quality scale); ``lower-is-better`` exists because a FREE
+#: axis may name a defect ("invented detail", "JPEG ringing") where 0 is the
+#: better end. The direction is what stops a ranker from GUESSING — live
+#: 2026-10-21 a ranker with one axis left wrote "Noise higher = better? … noise
+#: score likely quality, higher better" and was right by luck (plan-gallery-
+#: ai-judgement §OWNER REVISION 2026-10-22, item 2). Canonical tokens only: a
+#: surface localizes the token, never the prose.
+AXIS_DIRECTIONS: tuple[str, ...] = ("higher-is-better", "lower-is-better")
+
+#: The direction an axis carries when its definition does not say otherwise
+#: (owner rule: "higher is better unless the definition says otherwise").
+AXIS_DIRECTION_DEFAULT = "higher-is-better"
+
+
 @dataclass(frozen=True)
 class AiAxisProposal:
-    """A VLM-PROPOSED axis, as a first-class entry (plan-gallery-ai-judgement P3-B).
+    """A model-NAMED axis, as a first-class entry (plan-gallery-ai-judgement P3-B/P7-A).
 
-    The axis pool is the fixed registry (``metric_scores.SPECS``) plus the
-    AI-only ``composition``; a model that needs a dimension the pool lacks
-    ("halation", "sepia drift", …) proposes it here instead of smuggling a
-    number into an unrelated axis. ``producer``/``kind`` are the same
-    vocabulary every other axis carries, so a surface can label the source:
+    The judged axis set has two halves: the registry (``metric_scores.SPECS``
+    plus the AI-only ``composition`` — the axes a local detector can produce) and
+    the axes the model NAMES for THIS series. A name outside the registry
+    ("halation", "jpeg_noise", "hallucination", …) is the normal case, not an
+    exception: the judge is asked for 3..8 axes that most differentiate these
+    pictures, and most of them have no local detector by construction.
+
+    ``producer``/``kind`` are the same vocabulary every other axis carries, so a
+    surface can label the source and never mixes the two in one bar without it:
 
     - ``producer = "vlm"`` — no local detector can ever produce this axis;
-    - ``kind = "candidate"`` — it is a candidate dimension, not a measured one
-      (``MetricKind.CANDIDATE``; only the model scores it).
+    - ``kind = "candidate"`` — it is a candidate dimension, not a registry-
+      measured one (``MetricKind.CANDIDATE``; only the model scores it).
 
-    ``definition`` is what makes it usable: one sentence naming the dimension and
-    both ends of the 0–100 ``scale``. A proposal without a measurable definition
-    is refused at parse time (``axis_proposal.py``) and never stored.
+    ``definition`` is what makes it usable: one line naming the dimension and
+    both ends of the 0–100 ``scale``. An entry without a definition is refused at
+    parse time (``axis_proposal.py``) and never stored.
+
+    ``score`` is the per-image reading: ``-1`` on a SELECTOR entry (the axis is
+    chosen before any card is scored — the scorecard fills the numbers), 0–100 on
+    a per-image proposal.
     """
 
     name: str
@@ -159,6 +182,9 @@ class AiAxisProposal:
     score: int = -1
     producer: str = "vlm"
     kind: str = "candidate"
+    #: ``higher-is-better`` | ``lower-is-better`` (``AXIS_DIRECTIONS``) — carried
+    #: with the entry so a payload/ranker never has to infer it from the name.
+    direction: str = AXIS_DIRECTION_DEFAULT
 
 
 @dataclass(frozen=True)

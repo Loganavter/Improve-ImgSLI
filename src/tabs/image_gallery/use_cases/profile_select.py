@@ -135,7 +135,9 @@ def active_profile(state=None, *, mode=None) -> MetricProfile:
     """
     try:
         cached = getattr(state, "metric_profile", None) if state is not None else None
-        if isinstance(cached, MetricProfile) and cached.axis_ids:
+        if isinstance(cached, MetricProfile) and cached:
+            # Truthiness, not ``axis_ids``: a VLM answer may name ONLY its own
+            # axes (no registry id), and that is a complete profile (P7-A).
             return cached
     except Exception:
         pass

@@ -1,13 +1,27 @@
-"""The VLM metric-profile selector — plan P2/P3 (one pinned, pool-constrained call).
+"""The VLM metric-profile selector — plan P2/P3/P7-A (one pinned call).
 
 The content-aware half of the adaptive-profile pipeline: from the probe members
 chosen by ``use_cases/profile_probe`` and a compact salience summary, ask a
-vision model to pick the axes that discriminate THIS series **from the closed
-pool** (``metric_profile.MEASURED_POOL``). The model is a *selector*, never a
-source of new axes: the reply is constrained to the pool ids this context can
-actually measure (``profile_for_mode(mode)`` — an axis whose detector needs a
-source hub is unavailable without one), unknown and duplicated ids are dropped
-by ``MetricProfile``, and nothing is ever fabricated.
+vision model to **name the axes that most differentiate THIS series** (plan-
+gallery-ai-judgement §OWNER REVISION 2026-10-22).
+
+The model is an AUTHOR, not a selector from a closed menu:
+
+- the prompt offers EXAMPLES of what an axis can be (each with a one-line
+  meaning) and says explicitly that none of them has to be taken;
+- it asks for **3 to 8 axes in free form** — the most differentiating ones for
+  these pictures — and keeps the salience summary, because that summary is the
+  "most differentiating" instruction made concrete (which measurable axes
+  already separate this series);
+- an axis that IS a registry id is kept as that id (a local detector can score
+  it too); any other name becomes a first-class
+  ``models.AiAxisProposal`` entry (name + definition + scale + direction).
+
+The pool/mode filter that used to drop every non-registry name and every
+registry id the mode could not measure is GONE: a free name with a definition is
+the normal case. What is still refused (with a recorded reason) is an axis that
+is NOT MEASURABLE — an unusable/empty name, a name with no definition, a name
+repeated inside the reply (``services/axis_choice.parse_axis_choices``).
 
 One call per unchanged folder-generation: the selection is pinned
 (``services/profile_cache``, keyed on member fingerprint + mode + model + pool),
@@ -37,6 +51,25 @@ import json
 import logging
 
 logger = logging.getLogger("ImproveImgSLI")
+
+
+#: Example axes for the selector prompt: ``(name, one-line meaning)``.
+#:
+#: SHAPE, not a menu (plan-gallery-ai-judgement §OWNER REVISION 2026-10-22). The
+#: owner's own examples ("чистота, галлюцинации, бандинг, баланс белого, JPEG шум")
+#: are here as the English equivalents the app's prompts are written in, and the
+#: prompt says in one clause that none of them has to be taken. Each one names
+#: WHAT it measures, so the model copies the shape (a dimension, not a label)
+#: rather than picking from a list.
+AXIS_EXAMPLES: tuple[tuple[str, str], ...] = (
+    ("clarity", "how clean the picture reads — residual grain, blotches and smudge"),
+    ("hallucination", "detail the processing invented that the source cannot support"),
+    ("banding", "stepped tone transitions in smooth gradients (sky, skin, walls)"),
+    ("white_balance", "a colour cast that pushes every neutral warm or cool"),
+    ("jpeg_noise", "8x8 block edges and mosquito noise around high-contrast edges"),
+    ("halation", "a red or orange glow bleeding past bright edges"),
+    ("posterization", "tones flattened into visible bands, lost micro-contrast"),
+)
 
 
 def _as_list(items) -> list:
@@ -102,29 +135,49 @@ def _estimate_budget(count: int, effort: str) -> int:
 
 
 def _selector_text(salience) -> str:
-    """The single text part: every pool axis id + label, the salience, the rule."""
-    try:
-        from tabs.image_gallery.services.metric_profile import MEASURED_POOL
-    except Exception:
-        MEASURED_POOL = ()
-    try:
-        from tabs.image_gallery.services.metric_scores import spec_for
-    except Exception:
-        spec_for = lambda _axis_id: None  # noqa: E731
+    """The single text part: axis EXAMPLES, the salience summary, the 3..8 rule.
 
-    lines = ["METRIC POOL — choose axis ids ONLY from this list:"]
-    for axis_id in MEASURED_POOL:
-        spec = spec_for(axis_id)
-        label = str(getattr(spec, "label", "") or axis_id)
-        lines.append(f"- {axis_id} — {label}")
+    The pool listing that used to open this text ("METRIC POOL — choose axis ids
+    ONLY from this list") is gone (plan-gallery-ai-judgement P7-A): the judge
+    names the axes in free form. The salience summary stays — it is the concrete
+    "most differentiating" evidence for THIS series, and a registry id named there
+    is an axis a local detector can measure too, so the judge is told to reuse the
+    id when its own axis is that dimension.
+    """
+    lines = [
+        "The pictures below are variants of ONE picture (upscalers, restorations, "
+        "denoisers). The content is identical across them, so an axis about the "
+        "scene or the subject cannot separate them — axes about TECHNICAL "
+        "quality and artefacts can.",
+        "",
+        "EXAMPLES of what an axis can be — the SHAPE of a good axis, NOT A MENU. "
+        "You are not obliged to take any of these: name your own if they fit "
+        "these pictures better. Each example is a NAME and one line saying what "
+        "it measures:",
+    ]
+    for name, meaning in AXIS_EXAMPLES:
+        lines.append(f"- {name} — {meaning}")
     lines.append("")
     lines.append("SALIENCE SUMMARY (members, adaptive probe size k, axes by spread):")
     lines.append(_summary_text(salience))
     lines.append("")
     lines.append(
-        'INSTRUCTION: reply with ONLY a JSON object {"axes": ["<id>", ...]} '
-        "choosing the axes that discriminate THIS series, from the listed ids "
-        "only, or an empty list if none."
+        "INSTRUCTION: look at THESE pictures and name FROM 3 TO 8 axes, in free "
+        "form — the ones that most differentiate these variants, i.e. the axes "
+        "whose value actually MOVES between them (an axis every variant shares "
+        "equally is useless here). The salience summary above already names the "
+        "measurable axes whose spread separates this series; if your axis IS one "
+        "of those, answer with its id so the local detector scores it too."
+    )
+    lines.append(
+        'Reply with ONLY a JSON object: {"axes": [{"name": "<short id, e.g. '
+        'jpeg_noise>", "definition": "<one line: what it measures, 0 = …, 100 = '
+        '…>", "scale": "0-100", "direction": "higher-is-better|'
+        'lower-is-better"}]}'
+    )
+    lines.append(
+        'A bare id (e.g. "noise") is also accepted for an axis the summary lists. '
+        "No prose, no code fences."
     )
     return "\n".join(lines)
 
@@ -187,8 +240,8 @@ def build_profile_request(probe_items, *, model, salience, effort: str = "auto",
     }
 
 
-def _bare_id_list(text) -> list | None:
-    """A bare JSON array of ids in a reply (fences/reasoning tolerated)."""
+def _bare_list(text) -> list | None:
+    """A bare JSON array in a reply (fences/reasoning tolerated)."""
     source = str(text or "")
     try:
         from tabs.image_gallery.services.ai_client.parse import _strip_reasoning
@@ -210,8 +263,13 @@ def _bare_id_list(text) -> list | None:
     return None
 
 
-def _reply_ids(text) -> list | None:
-    """The id list a reply carries: ``{"axes": [...]}`` or a bare array."""
+def _reply_axes(text) -> list | None:
+    """The axis list a reply carries: ``{"axes": [...]}`` or a bare array.
+
+    An element may be a bare id string (terse/older answers) or an object with
+    ``name``/``definition``/``scale``/``direction`` (the free-form answer this
+    prompt asks for) — ``axis_choice.parse_axis_choices`` classifies them.
+    """
     obj = None
     try:
         from tabs.image_gallery.services.ai_client.parse import _extract_json
@@ -219,61 +277,64 @@ def _reply_ids(text) -> list | None:
         obj = _extract_json(text)
     except Exception:
         obj = None
-    ids = None
+    axes = None
     if isinstance(obj, dict):
-        axes = obj.get("axes")
-        if isinstance(axes, list):
-            ids = axes
-    if ids is None:
-        ids = _bare_id_list(text)
-    if ids is None:
+        candidate = obj.get("axes")
+        if isinstance(candidate, list):
+            axes = candidate
+    if axes is None:
+        axes = _bare_list(text)
+    if axes is None:
         return None
-    out = [entry.strip() for entry in ids if isinstance(entry, str) and entry.strip()]
-    return out or None
+    return list(axes) or None
 
 
 def parse_profile_reply(text, *, mode=None):
-    """Tolerant parse of a profile reply → ``MetricProfile`` | ``None``.
+    """Tolerant parse of a selector reply → ``MetricProfile`` | ``None``.
 
-    Accepts ``{"axes": ["<id>", ...]}`` (also a bare array), through the shared
-    tolerant JSON extractor. Ids are coerced by ``MetricProfile`` — unknown and
-    duplicated ids are dropped, order is registry order. Returns ``None`` when
-    nothing usable was found (no JSON, an empty list, ids that are all outside
-    the pool, or ids whose detector is unavailable in this context): never a
-    guess, never a free-form axis.
+    Accepts ``{"axes": [{"name": …, "definition": …, "scale": …, "direction": …}]}``
+    (also bare ids, also a bare array), through the shared tolerant JSON extractor
+    and the ONE classifier (``axis_choice.parse_axis_choices``):
 
-    A profile IS a subset of the fixed pool chosen for the context (plan
-    §General model) — the reply is the SELECTION, not a downgrade. It is
-    therefore constrained, never widened: an id outside ``MEASURED_POOL`` is
-    dropped by ``MetricProfile``, and so is a pool id whose detector cannot
-    run here (``profile_for_mode(mode)`` is the availability map: a
-    ``reference`` axis needs a source hub, so it is unavailable off
-    ``fidelity``). Zero usable ids → ``None`` so the caller falls back to the
-    series-derived offer (fail-open, with its own debug line).
+    - a name that IS a registry id is the registry axis (``axis_ids``) — a local
+      detector can score it;
+    - any other name WITH a definition is a first-class entry
+      (``axis_entries``: name + definition + scale + direction) — the normal
+      answer of the free-form selector, no filter, no mode availability check;
+    - a name with NO definition, an unusable name or a repeat is refused with a
+      recorded reason (logged, never stored).
+
+    Returns ``None`` when nothing usable was found (no JSON, an empty list, every
+    pick refused): never a guess, and never a hollow ``vlm`` profile — the caller
+    falls back to the series-derived offer (``profile_for_series``), fail-open
+    with its own debug line.
     """
-    ids = _reply_ids(text)
-    if not ids:
+    axes = _reply_axes(text)
+    if not axes:
         return None
     try:
-        from tabs.image_gallery.services.metric_profile import (
-            MetricProfile,
-            profile_for_mode,
-        )
+        from tabs.image_gallery.services.axis_choice import parse_axis_choices
+        from tabs.image_gallery.services.metric_profile import MetricProfile
 
-        chosen = MetricProfile(axis_ids=tuple(ids), mode=mode, source="vlm")
-        if not chosen.axis_ids:
-            # Every id was outside the pool — junk, not a profile.
+        choices = parse_axis_choices(axes)
+        if choices.refusals:
+            logger.debug(
+                "profile select refused axes: %s (a pick with no measurable "
+                "meaning is recorded, never stored)",
+                ", ".join(f"{name}={reason}" for name, reason in choices.refusals),
+            )
+        if not (choices.registry_ids or choices.entries):
             return None
-        available = set(profile_for_mode(mode).axis_ids)
-        kept = tuple(axis for axis in chosen.axis_ids if axis in available)
-        if not kept:
-            # Pool ids, but none this context can measure — the heuristic
-            # fallback (not a hollow vlm profile) is the honest answer.
-            return None
-        profile = MetricProfile(axis_ids=kept, mode=mode, source="vlm")
+        profile = MetricProfile(
+            axis_ids=choices.registry_ids,
+            mode=mode,
+            source="vlm",
+            axis_entries=choices.entries,
+        )
     except Exception:
+        logger.debug("profile select parse failed", exc_info=True)
         return None
-    return profile if profile.axis_ids else None
+    return profile if profile else None
 
 
 def _reply_text(raw) -> str:
@@ -321,8 +382,8 @@ def choose_profile_sync(
        (``profile_select.derive_profile`` → ``profile_for_series``) — **no** call;
     2. a pin hit for this folder-generation → the pinned profile (source
        ``vlm`` preserved) — **no** call;
-    3. otherwise probe the K most-deviant members, build the pool-constrained
-       request, call the transport, parse, pin and return.
+    3. otherwise probe the K most-deviant members, build the free-form
+       axis-naming request, call the transport, parse, pin and return.
 
     Any failure — no probe members, no transport, a raising transport, a junk
     reply — degrades to the series offer. Never raises. ``client_call``
@@ -417,6 +478,7 @@ def choose_profile_sync(
 
 
 __all__ = [
+    "AXIS_EXAMPLES",
     "ai_selector_available",
     "build_profile_request",
     "choose_profile_sync",

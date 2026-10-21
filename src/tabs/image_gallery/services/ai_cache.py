@@ -40,7 +40,11 @@ import json
 import logging
 from pathlib import Path
 
-from tabs.image_gallery.models import AiAnalysisResult, ai_scored_axes
+from tabs.image_gallery.models import (
+    AXIS_DIRECTION_DEFAULT,
+    AiAnalysisResult,
+    ai_scored_axes,
+)
 from tabs.image_gallery.services.thumbnail_cache import cache_key_for
 
 logger = logging.getLogger("ImproveImgSLI")
@@ -155,12 +159,20 @@ def _identity_token(value) -> str:  # type: ignore[no-untyped-def]
 
 
 def _profile_axis_ids(profile) -> tuple[str, ...]:  # type: ignore[no-untyped-def]
-    """The profile's axis ids, in profile (registry) order — never raises.
+    """The profile's axis SET, in profile order — never raises.
 
     Accepts a ``MetricProfile``, a bare sequence of axis ids, or ``None``. The
     axis SET is what the prompt asks the VLM to score, so two profiles that
     differ (e.g. a mode base vs. the salience-derived superset) must not share a
     cache entry.
+
+    The axes the JUDGE NAMED are part of that set (plan-gallery-ai-judgement
+    P7-A): each is carried as ``name~<digest>``, where the digest covers the
+    definition/scale/direction that the prompt TEXT carries. A judge that names a
+    different axis — or redefines one — asked a different question, and its
+    scorecards must not be served from the previous answer. A registry-only
+    profile produces exactly the ids it always did, so existing entries stay
+    readable.
     """
     try:
         ids = getattr(profile, "axis_ids", None)
@@ -170,6 +182,18 @@ def _profile_axis_ids(profile) -> tuple[str, ...]:  # type: ignore[no-untyped-de
         for axis in ids:
             token = _identity_token(axis)
             if token and token not in out:
+                out.append(token)
+        for entry in getattr(profile, "axis_entries", ()) or ():
+            name = _identity_token(getattr(entry, "name", ""))
+            if not name:
+                continue
+            text = "|".join(
+                _identity_token(getattr(entry, field, ""))
+                for field in ("definition", "scale", "direction")
+            )
+            digest = hashlib.sha256(text.encode("utf-8")).hexdigest()[:8]
+            token = f"{name}~{digest}"
+            if token not in out:
                 out.append(token)
         return tuple(out)
     except Exception:
@@ -350,6 +374,12 @@ def load_cached_analysis(
                         definition=str(entry.get("definition", "") or ""),
                         scale=str(entry.get("scale", "") or ""),
                         score=int(entry.get("score", -1)),
+                        # A v3 payload written before the direction field has no
+                        # value: the owner default is the honest read, and a HIT
+                        # must not hand the ranker a different axis than a MISS.
+                        direction=str(
+                            entry.get("direction") or AXIS_DIRECTION_DEFAULT
+                        ),
                     )
                 )
             except Exception:
@@ -574,6 +604,9 @@ def save_analysis(
                             "definition": p.definition,
                             "scale": p.scale,
                             "score": p.score,
+                            # The direction travels with the entry (P7-A): it is
+                            # what stops a ranker from guessing which end is good.
+                            "direction": getattr(p, "direction", ""),
                         }
                         for p in (getattr(result, "axis_proposals", ()) or ())
                     ],

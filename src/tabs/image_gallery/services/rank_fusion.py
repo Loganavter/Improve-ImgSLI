@@ -45,6 +45,7 @@ from __future__ import annotations
 
 from tabs.image_gallery.services.metric_profile import (
     EXCLUDED_AXES,
+    judged_axis_entries,
     mode_id,
     profile_for_mode,
 )
@@ -111,7 +112,7 @@ _mode_id = mode_id
 
 
 def measured_axes_for(mode=None, *, profile=None) -> tuple[str, ...]:
-    """MEASURED axis ids applicable to *profile* / *mode* (registry order).
+    """MEASURED registry axis ids of *profile* / *mode* (registry order).
 
     ``profile`` (any object with ``.axis_ids``, canonically
     ``metric_profile.MetricProfile``) wins when given — that is how the
@@ -121,6 +122,16 @@ def measured_axes_for(mode=None, *, profile=None) -> tuple[str, ...]:
     ``reference`` axes in ``fidelity`` only, ``photo`` axes in ``camera``
     only; ``RANK_EXCLUDED_AXES`` and non-MEASURED axes never. An
     unknown/empty *mode* yields the mode-independent (untagged) set.
+
+    The axes the JUDGE named (``profile.axis_entries``) are deliberately NOT
+    returned (plan-gallery-ai-judgement P7-A): this resolver is the REGISTRY
+    half — the ids a local detector can produce — and the rows/fusion read it to
+    show and weight measured numbers. The judge's own axes have no local
+    producer; they are read through ``judged_axis_entries`` and labeled
+    ``measured-by-judge`` (``metric_profile.axis_provenance``). A profile with
+    judge entries and no registry id therefore falls back to the mode mapping
+    here (fail-open: the local pipeline always has an axis set), while the
+    scorecard prompt asks exactly the judge's axes.
     """
     if profile is not None:
         try:

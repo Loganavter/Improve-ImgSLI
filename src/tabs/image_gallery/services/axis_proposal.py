@@ -1,23 +1,27 @@
-"""VLM-proposed axes: the pool a model may extend (plan-gallery-ai-judgement P3-B).
+"""Model-NAMED axes: the per-image proposal rule and the shared axis vocabulary.
 
-The judged axis pool is the fixed registry (``metric_scores.SPECS``) plus the
-AI-only ``composition`` — one vocabulary, resolved by
-``rank_fusion.measured_axes_for`` and by nothing else. The model may *extend*
-that pool for a series, but only with an axis it can actually measure:
+Two producers name axes in this app, and this module owns the rules they SHARE
+plus the scorecard's own:
 
-- a NAME (a lowercase snake_case id, not a sentence);
-- a DEFINITION that names a technical dimension (noise, halation, banding, …)
-  and is not a description of the scene — the prompt's own rule: content is
-  identical across variants and adds nothing;
-- a SCALE it scores on (0–100 today);
-- a SCORE on that scale for this image.
+- the **scorecard** (``services/ai_client/parse``) lets a per-image reply add at
+  most :data:`AXIS_PROPOSAL_LIMIT` dimensions the asked set is missing, each with
+  this image's score. That rule lives here: name, measurable definition, 0–100
+  scale, score.
+- the **selector** (``use_cases/profile_ai``) asks the model for 3..8 axes for a
+  whole series (plan-gallery-ai-judgement §OWNER REVISION 2026-10-22). Its
+  classification is ``services/axis_choice`` — a separate rule for a separate
+  reply shape, importing the vocabulary from here (``normalize_name``,
+  ``direction_of``, ``scale_of``, the refusal codes).
 
-A proposal that fails any of those is **refused with a reason** and never
-stored: an axis with no measurable meaning cannot be ranked on, and a stored
-one would silently become a weight in the order (the "nine bars that meant
-nothing" failure). Accepted proposals become ``models.AiAxisProposal`` entries
-(``producer="vlm"``, ``kind="candidate"``) and travel with the scorecard into
-the Jev vector by name.
+Shared vocabulary: a NAME (an axis id, not a phrase), a DEFINITION that names a
+technical dimension (content is identical across variants of one picture and
+cannot separate them), a 0–100 SCALE, and a DIRECTION ("higher is better" unless
+the definition says otherwise). A proposal that fails the per-image rule is
+**refused with a reason** and never stored: an axis with no measurable meaning
+cannot be ranked on, and a stored one would silently become a weight in the order
+(the "nine bars that meant nothing" failure). Accepted proposals become
+``models.AiAxisProposal`` entries (``producer="vlm"``, ``kind="candidate"``,
+plus the direction) and travel with the scorecard into the Jev vector by name.
 
 Pure: no Qt, no HTTP, no registry mutation. The pool itself is never written —
 the proposal lives on the result of the image that proposed it.
@@ -26,8 +30,13 @@ the proposal lives on the result of the image that proposed it.
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 
-from tabs.image_gallery.models import AiAxisProposal
+from tabs.image_gallery.models import (
+    AXIS_DIRECTION_DEFAULT,
+    AXIS_DIRECTIONS,
+    AiAxisProposal,
+)
 
 #: The only scale a scorecard answer may use (the pool's own 0-100 quality
 #: scale). A proposal on another scale cannot be compared with a measured axis.
@@ -58,6 +67,8 @@ REJECT_SCALE = "unsupported-scale"
 REJECT_SCORE = "no-score"
 REJECT_DUPLICATE = "duplicate-pool-axis"
 REJECT_LIMIT = "over-limit"
+#: A name repeated inside ONE reply (the first occurrence is kept).
+REJECT_REPEAT = "repeated-axis"
 PROPOSAL_REJECT_CODES: tuple[str, ...] = (
     REJECT_NAME,
     REJECT_DEFINITION,
@@ -66,9 +77,14 @@ PROPOSAL_REJECT_CODES: tuple[str, ...] = (
     REJECT_SCORE,
     REJECT_DUPLICATE,
     REJECT_LIMIT,
+    REJECT_REPEAT,
 )
 
-_NAME_RE = re.compile(r"^[a-z][a-z0-9_ -]{1,39}$")
+#: A name is an axis id, not a phrase: 2–40 characters, starts with a letter,
+#: then letters/digits/underscore/space/hyphen (Unicode letters allowed — the
+#: judge answers in the UI language, "чистота" is a valid axis name).
+_NAME_RE = re.compile(r"^[^\W\d_][\w \-]{1,39}$", re.UNICODE)
+
 
 #: Vocabulary that makes a definition MEASURABLE: it names a technical
 #: dimension of the image (what a detector or a careful eye could score). A
@@ -219,7 +235,78 @@ def _score_of(value) -> int:
     return score if 0 <= score <= 100 else -1
 
 
-def _scale_of(value) -> str:
+def normalize_direction(value) -> str:
+    """Canonical direction token for *value* (``""`` when it says nothing).
+
+    Accepts the canonical tokens plus the spellings a model actually writes
+    ("higher", "higher_is_better", "more is better", "lower", "less-is-better",
+    "max"/"min"). An unknown value returns ``""`` so the caller applies the
+    definition/default rule instead of storing a guess.
+    """
+    try:
+        text = re.sub(r"[\s_]+", "-", str(value or "").strip().lower())
+    except Exception:
+        return ""
+    text = text.strip("-")
+    if not text:
+        return ""
+    if text in AXIS_DIRECTIONS:
+        return text
+    if text in {"higher", "more", "more-is-better", "higher-better", "max", "up", "asc"}:
+        return AXIS_DIRECTIONS[0]
+    if text in {"lower", "less", "less-is-better", "lower-better", "min", "down", "desc"}:
+        return AXIS_DIRECTIONS[1]
+    return ""
+
+
+#: Definition phrases that flip the DEFAULT direction: the owner rule is
+#: "higher is better unless the definition says otherwise", so a definition that
+#: names 0 as the good end ("0 = no ringing") is a lower-is-better axis.
+_LOWER_IS_BETTER_CUES: tuple[str, ...] = (
+    "lower is better",
+    "lower-is-better",
+    "less is better",
+    "smaller is better",
+    "fewer is better",
+    "0 = no",
+    "0=no",
+    "0 = none",
+    "0=none",
+    "0 = clean",
+    "0=clean",
+    "0 is clean",
+    "0 = absent",
+)
+
+
+def direction_of(entry, definition=None) -> str:
+    """The direction of an axis entry: explicit field, else its definition.
+
+    ``entry`` may be the raw reply dict (``{"direction": "lower-is-better"}``) or
+    any object carrying ``.direction``. An explicit but unrecognized value is
+    ignored in favour of the definition; the fallback is
+    ``AXIS_DIRECTION_DEFAULT`` ("higher is better").
+    """
+    if isinstance(entry, dict):
+        explicit = entry.get("direction")
+    else:
+        explicit = getattr(entry, "direction", "")
+    token = normalize_direction(explicit)
+    if token:
+        return token
+    if definition is None:
+        if isinstance(entry, dict):
+            definition = entry.get("definition")
+        else:
+            definition = getattr(entry, "definition", "")
+    text = str(definition or "").strip().lower()
+    for cue in _LOWER_IS_BETTER_CUES:
+        if cue in text:
+            return AXIS_DIRECTIONS[1]
+    return AXIS_DIRECTION_DEFAULT
+
+
+def scale_of(value) -> str:
     try:
         text = str(value or "").strip().lower()
     except Exception:
@@ -240,7 +327,7 @@ def refusal_reason(entry) -> str:
     problem = _definition_problem(str(entry.get("definition", "") or ""))
     if problem:
         return problem
-    if not _scale_of(entry.get("scale")):
+    if not scale_of(entry.get("scale")):
         return REJECT_SCALE
     if _score_of(entry.get("score")) < 0:
         return REJECT_SCORE
@@ -275,12 +362,14 @@ def parse_proposals(value, *, limit: int = AXIS_PROPOSAL_LIMIT):
             refusals.append((row_name, reason))
             continue
         seen.add(name)
+        definition = str(entry.get("definition", "") or "").strip()[:240]
         accepted.append(
             AiAxisProposal(
                 name=name,
-                definition=str(entry.get("definition", "") or "").strip()[:240],
+                definition=definition,
                 scale=AXIS_PROPOSAL_SCALE,
                 score=_score_of(entry.get("score")),
+                direction=direction_of(entry, definition),
             )
         )
     return tuple(accepted), tuple(refusals)
@@ -295,9 +384,13 @@ __all__ = [
     "REJECT_DUPLICATE",
     "REJECT_LIMIT",
     "REJECT_NAME",
+    "REJECT_REPEAT",
     "REJECT_SCALE",
     "REJECT_SCORE",
+    "direction_of",
+    "normalize_direction",
     "normalize_name",
     "parse_proposals",
     "refusal_reason",
+    "scale_of",
 ]
