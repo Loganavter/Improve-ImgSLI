@@ -13,11 +13,10 @@ The reader is a thin adapter over the existing primitives, never a second
 source of numbers:
 
 - when the item carries engine records (``item.analysis_records``, written by
-  the proxy engine hook — on by default since P9a, disabled by
-  ``IMGSLI_ANALYSIS_ENGINE=0``), those records are the answer: an axis without
-  a record is a ``gap`` and is NEVER filled from the legacy value — the engine
-  ran and had nothing, which is a different fact from "the legacy source has a
-  number" (plan W9);
+  the proxy engine hook — the only path since P9b), those records are the
+  answer: an axis without a record is a ``gap`` and is NEVER filled from the
+  legacy value — the engine ran and had nothing, which is a different fact from
+  "the legacy source has a number" (plan W9);
 - otherwise the AI domain's values come from ``quality_read.ai_axis_scores``
   (the VLM scorecard on ``item.analysis``);
 - otherwise the Algorithms domain's values come from
@@ -158,7 +157,7 @@ def read_axes(
     so a surface can render its whole axis set without a second lookup.
 
     When the item carries engine records (``analysis_records``, engine-on only
-    — the default; ``IMGSLI_ANALYSIS_ENGINE=0`` kills it),
+    — the engine is the only path since P9b),
     the records **for this domain** are the source: ``producer="vlm"`` records
     answer the AI domain, every other producer answers Algorithms. A requested
     axis without a record in that domain is a ``gap`` with

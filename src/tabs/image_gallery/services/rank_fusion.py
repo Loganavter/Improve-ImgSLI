@@ -167,7 +167,7 @@ def item_quality(item, *, mode=None, profile=None) -> float | None:
     without a record is *excluded* — never 0 and never the legacy raw value
     (the engine ran and had nothing, which is a different fact). An item whose
     records cover no applicable axis falls back to the legacy raw path
-    unchanged, so an item with the engine killed (``IMGSLI_ANALYSIS_ENGINE=0``)
+    unchanged, so an item the engine could not measure (producer failure, no records)
     keeps today's exact numbers.
 
     Applicability is the metric profile (``profile`` when given, else the mode
