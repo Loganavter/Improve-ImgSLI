@@ -1,6 +1,11 @@
 from __future__ import annotations
 
+import logging
+
+from PySide6.QtCore import QTimer
 from PySide6.QtGui import QColor, QPalette
+
+from engine.gpu.mip_cascade import MipCascadeNotReady
 
 from shared.debug_flags import env_flag as _env_flag
 
@@ -73,10 +78,66 @@ def _log_clear_color(widget, color: QColor, *, source: str) -> None:
         pass
 
 
-def render_clear_frame(widget, command_buffer) -> bool:
-    """Run the tab RHI renderer; return whether a pass was actually recorded."""
-    return bool(
-        widget._rhi_renderer.render(
-            widget, command_buffer, resolve_clear_color(widget)
+#: A typed "not ready yet" render failure is deferred, never raised: an
+#: exception escaping a ``QRhiWidget`` render override is printed by PySide as
+#: ``Error calling Python override of QRhiWidget::render()`` and, on the
+#: default OpenGL backend (llvmpipe), killed the app in the 2026-10-21 audit.
+_NOT_READY_INITIAL_MS = 50
+_NOT_READY_MAX_MS = 1000
+
+
+def defer_not_ready_render(widget, label: str, error: BaseException) -> None:
+    """Keep the last frame up and retry a typed not-ready render shortly.
+
+    The condition is transient by definition (a probe render target cannot be
+    created on this driver stack *yet*), so the only correct reaction is to
+    draw nothing, say so once, and try again on a timer. Backoff doubles per
+    consecutive failure up to ``_NOT_READY_MAX_MS`` and resets on the first
+    successful frame.
+    """
+    retries = int(getattr(widget, "_not_ready_retries", 0)) + 1
+    delay = int(getattr(widget, "_not_ready_delay_ms", _NOT_READY_INITIAL_MS))
+    widget._not_ready_retries = retries
+    widget._not_ready_delay_ms = min(max(delay, _NOT_READY_INITIAL_MS) * 2, _NOT_READY_MAX_MS)
+    if retries == 1:
+        logging.getLogger("ImproveImgSLI").info(
+            "[render-not-ready] %s: %s; keeping the last frame, retrying in %d ms",
+            label,
+            error,
+            delay,
         )
+    QTimer.singleShot(delay, widget.update)
+
+
+def render_or_defer(widget, label: str, render) -> bool:
+    """Run one render; a typed not-ready condition defers instead of escaping.
+
+    Returns the render's own truth value (``True`` only for a completed pass),
+    ``False`` when the render was deferred. Any other exception propagates: only
+    the typed, transient condition is absorbed.
+    """
+    try:
+        painted = render()
+    except MipCascadeNotReady as error:
+        defer_not_ready_render(widget, label, error)
+        return False
+    if painted:
+        widget._not_ready_retries = 0
+        widget._not_ready_delay_ms = _NOT_READY_INITIAL_MS
+    return bool(painted)
+
+
+def render_clear_frame(widget, command_buffer) -> bool:
+    """Run the tab RHI renderer; return whether a pass was actually recorded.
+
+    A typed ``MipCascadeNotReady`` (the canvas probe mip target is not
+    creatable on this backend *yet*) is deferred, not raised: the last frame
+    stays on screen and a retry is scheduled (``render_or_defer``).
+    """
+    return render_or_defer(
+        widget,
+        "ic-canvas",
+        lambda: widget._rhi_renderer.render(
+            widget, command_buffer, resolve_clear_color(widget)
+        ),
     )

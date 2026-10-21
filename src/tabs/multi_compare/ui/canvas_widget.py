@@ -16,6 +16,7 @@ from PySide6.QtGui import QColor, QContextMenuEvent, QMouseEvent, QPalette, QWhe
 from PySide6.QtWidgets import QRhiWidget, QWidget
 
 from ui.canvas_infra.rhi.rhi_backend import configure_rhi_widget
+from ui.canvas_infra.rhi.rhi_render import render_or_defer
 from engine.gpu.coalesced_flush import CoalescedFlush
 from engine.gpu.glass_panel import GlassPanelRegistry
 
@@ -325,7 +326,9 @@ class MultiCompareCanvasWidget(QRhiWidget):
         # requestUpdate/restack makes that frame visible. Emitting on
         # present #1 hides the startup placeholder a frame too early — the
         # user sees the transparent subsurface until the flush lands.
-        painted = self._renderer.render(command_buffer)
+        painted = render_or_defer(
+            self, "mc-canvas", lambda: self._renderer.render(command_buffer)
+        )
         if not painted:
             mc_first_frame_debug(
                 self, "render() returned NOT-painted (engine not ready yet)"
