@@ -17,8 +17,9 @@ video_editor) see each tab's own docs under `src/tabs/<tab>/docs/`.
 | `export` | deferred (10) | [export.md](export.md) | Still/video export dialog, recording/clipboard commands, GPU warm-up |
 | `help` | deferred | [help.md](help.md) | In-app hierarchical illustrated manual (hub/tree) |
 | `image_properties` | deferred | [image_properties.md](image_properties.md) | Image metadata dialog + `build_image_properties` |
+| `diagnostics` | bootstrap | — (see [PLUGINS.md](../PLUGINS.md)) | Local-first crash/diagnostics report: redacted env + log ring + breadcrumbs, "Report a problem" dialog with Copy / Save / Open issue; no auto-upload |
 
-Tier/order semantics: see [PLUGINS.md](../PLUGINS.md#discovery).
+Tier/order semantics: see [PLUGINS.md](../PLUGINS.md#inventory).
 
 ## Files (common pattern)
 

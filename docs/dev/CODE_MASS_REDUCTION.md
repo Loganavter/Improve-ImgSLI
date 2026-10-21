@@ -9,12 +9,26 @@ verification of every candidate). Audit reports live outside the repo in
 Related: [TODO.md](TODO.md) · [CODE_PATTERNS.md](CODE_PATTERNS.md) ·
 [CONTRACTS.md](CONTRACTS.md) · [AGENTS.md](../../AGENTS.md)
 
+**Every number in this doc is a snapshot, not current state.** Paths and LOC
+counts below are dated (Sprint records 2026-08-17, triage 2026-10-17); where a
+figure was re-measured it carries the date. Re-measure before quoting:
+
+```bash
+find src -name '*.py' -not -path '*/__pycache__/*' -not -path '*/tests/*' -print0 | xargs -0 cat | wc -l
+find src -name '*.py' -not -path '*/__pycache__/*' -not -path '*/tests/*' | wc -l
+for d in src/engine/*/ src/tabs/*/; do printf '%-40s %s\n' "$d" "$(find "$d" -name '*.py' -print0 | xargs -0 cat | wc -l)"; done | sort -k2 -nr | head -20
+```
+
 ---
 
 ## Why this exists
 
-Improve-ImgSLI is ~147 600 LOC + `sli-ui-toolkit` ~55 800 LOC (~203 000
-together). The audit verdict: **~75–85% of `src/` is necessary complexity**
+Improve-ImgSLI is ~275 000 LOC of app code (274 412 lines over 1 374
+non-test modules under `src/`, measured 2026-10-22) + `sli-ui-toolkit` ~55 800
+LOC as measured in the 2026-08-17 audit (separate repo; not measured here).
+Growth since that audit is dominated by `src/tabs/image_gallery/` (72 701
+non-test LOC), which landed afterwards — the audit's per-axis estimates below
+are therefore historical, not current. The audit verdict: **~75–85% of `src/` is necessary complexity**
 (QRhi canvas pipeline, keyframing/video-export engine, Redux undo/redo,
 input routing, plugin logic, test coverage). But ~15–25% is grown scaffolding,
 and per-axis reduction potential is:
@@ -106,7 +120,7 @@ Executing the safe round-2 findings; each step verified with import sweep
   `plan_applicator` for display-plan cache invalidation) — not removed.
 - **Batch 4 — Done (committed `7a3cde2a`)**: semantic consolidation —
   `first_frame_debug.py` IC↔MC (195-line mirrors) merged into one
-  parameterized `shared/rendering/first_frame_debug.py` + two thin
+  parameterized `engine/cache/first_frame_debug.py` + two thin
   per-tab wrappers keeping the public names (no call-site changes); shared
   `SaveToastMixin` (`src/tabs/save_toast.py`) replacing the byte-identical
   `_get_toast_manager`/`_update_toast_safe`/`_build_toast_path_line` in
@@ -138,8 +152,8 @@ Executing the safe round-2 findings; each step verified with import sweep
    (including attribute access and lazy `import_module` tables), because the
    runtime uses reflection: plugin discovery, `CanvasFeatureRegistry`,
    `pkgutil` settings pages, `__getattr__` facades.**
-4. **Never delete localized content** (i18n/help ×4 languages). The 4 611 LOC
-   of translations are product, not waste; only a key registry + lint is
+4. **Never delete localized content** (i18n/help ×4 languages). The ~4 890 lines
+   of i18n JSON are product, not waste; only a key registry + lint is
    planned.
 5. **No GUI runs during verification** — offscreen pytest only.
 
@@ -261,12 +275,14 @@ tests use the old path. Fix the test import, delete the shim.
 
 ### 1.6 Merge (not delete): `shared/regions.py` (~160 LOC)
 
-`src/shared/regions.py` and `src/shared/image_processing/regions.py` differ
-only by `region_for()` (added in the latter, `diff` = 24 lines). Four modules
+As of Sprint 1: `src/shared/regions.py` and `src/shared/image_processing/regions.py`
+differ only by `region_for()` (added in the latter, `diff` = 24 lines). Four modules
 import `build_uniform_tile_grid` from `shared.regions`:
 `src/shared/analysis/{ssim_source,diff_source,differ,edge_detector}.py`.
 Rewrite those imports to `shared.image_processing.regions`, delete
-`shared/regions.py`, run analysis tests.
+`shared/regions.py`, run analysis tests. **Done** — both modules are gone and
+the four importers (plus `tile_boxes.py`) now read
+`engine.store.regions.build_uniform_tile_grid`, which is the current home.
 
 ### Sprint 1 exit criteria (met)
 
@@ -302,22 +318,28 @@ in `video_editor/model.py` (`VideoSessionModel` + `VideoDecoderState` +
 write-only registries (`contributions.py`, `ui_integration.py`) — see the
 Sprint 1 result note.
 
-Still open:
-
-- 16 dead public functions (~205 LOC) from `audit-dead-code.md` §2.3:
-  `pil_save.attach_comment_metadata`/`flatten_rgba_over_background`/
-  `format_needs_alpha_flatten`, `frame_geometry.resolve_*` ×2,
-  `runtime.build_canvas_surface_format`/`log_canvas_backend_choice`,
-  `render_common.resolve_widget_background`,
-  `render_metrics.resolve_image_px`/`resolve_screen_px`,
-  `dialog_search.build_results`, `property_access.get_canvas_feature_property_by_id`,
-  `interfaces.IRenderPlugin`, `keymap.collect_bindings`,
-  `export_tiling.create_offscreen_export_widget`,
-  `multi_compare.ui.layout_geometry.nearest_rect_distance_sq`,
-  `extension_reducers.clear_extension_reducers`,
-  `slot_reducers.get_state_slot_reducer`,
-  `first_frame_gate.first_present_settle_count`,
-  `help.interpolate.help_figures_path`
+Remaining list closed out (sweep verified 2026-10-22): the 16 functions the
+2026-08-17 audit had left open — `pil_save.attach_comment_metadata`/
+`flatten_rgba_over_background`/`format_needs_alpha_flatten`,
+`frame_geometry.resolve_*` ×2,
+`runtime.build_canvas_surface_format`/`log_canvas_backend_choice`,
+`render_common.resolve_widget_background`,
+`render_metrics.resolve_image_px`/`resolve_screen_px`,
+`dialog_search.build_results`,
+`property_access.get_canvas_feature_property_by_id`,
+`interfaces.IRenderPlugin`, `keymap.collect_bindings`,
+`export_tiling.create_offscreen_export_widget`,
+`multi_compare.ui.layout_geometry.nearest_rect_distance_sq`,
+`extension_reducers.clear_extension_reducers`,
+`slot_reducers.get_state_slot_reducer`,
+`first_frame_gate.first_present_settle_count`,
+`help.interpolate.help_figures_path` — every named entry above has zero
+`def`/`class` definitions left in `src/` (checked 2026-10-22). Do not re-add them
+from this list. The one wildcard entry (`frame_geometry.resolve_*` ×2) is
+unreliable: `ui/canvas_infra/scene/frame_geometry.py` now exposes two **live**
+functions, `resolve_canvas_content_geometry` (:43) and
+`resolve_canvas_clip_rect_px` (:101), both used by the letterbox path — treat
+that bullet as superseded, not as a deletion target.
 
 ### Exit criteria
 
@@ -367,14 +389,17 @@ I/O, devtools tests.
 
 Each item was checked against the code before deciding:
 
-- **`src/devtools/` relocation (1 753) — deferred (packaging lever).** Only
-  one production importer exists (`src/__main__.py` under a flag:
-  `from devtools.ui_layout_dump import …`) plus `tests/devtools/`; the module
+- **`src/devtools/` relocation (~12 100) — deferred (packaging lever).** Eight
+  production modules import `devtools.*` — lazily, inside functions: the in-app
+  control surface under `src/core/control/` (13 imports across `discovery`,
+  `handlers`, `scene_read`, `scene_commands`, `scene_command_schema`,
+  `elements/roles`) plus `src/__main__.py` (2, behind a flag) and
+  `src/ui/main_window/startup.py` (two test modules also import it). The module
   path `devtools.*` must stay resolvable via `src/` on `sys.path`. The real
   lever is the Flatpak/Windows packaging step (exclude `src/devtools` from
   the copy), not a code move — and it cannot be verified in this repo's
   test scope. No repo-LOC change either way.
-- **`core/tracing` (840) — audit correction: do NOT move.** `Tracer` is a
+- **`core/tracing` (1 106) — audit correction: do NOT move.** `Tracer` is a
   live runtime dependency: `core/bootstrap.py` installs tracing under env
   flags and three production modules import it
   (`video_editor/presenter_parts/preview.py`,
@@ -390,7 +415,7 @@ Each item was checked against the code before deciding:
   the public face used by UI buttons and event handlers and it owns
   recording flags. ~200 LOC of savings do not justify the churn/regression
   surface; the audit overestimated "thinness".
-- **`multi_compare/scene`+`canvas` consolidation (5 407) — long-term design
+- **`multi_compare/scene`+`canvas` consolidation (7 450) — long-term design
   item.** Parallel reimplementation of the IC canvas; merging render paths
   is the highest-risk item (QRhi fragility). Needs a dedicated design note
   and render-contract test changes before any code.
@@ -409,7 +434,7 @@ re-verified this plan's open items and added a low-risk consolidation queue
 (tracked in [TODO.md](TODO.md), sections tagged "review 2026-08-25").
 Status corrections: **renderer-unification Phase 4 (`drop_covered_*`) is
 effectively complete** — the coverage primitive lives in
-`shared/rendering/tile_coverage.py` and both tabs import it; only two thin
+`engine/cache/tile_coverage.py` and both tabs import it; only two thin
 meaningfully-drifted wrappers remain (~20 LOC). The residency budget loop
 is likewise already shared (`TileResidencyRealizerBase.realize_specs`);
 what remains parallel is spec-building (~130 LOC/tab) — inside the deferred
@@ -418,13 +443,15 @@ non-QRhi and listed in the TODO queue.
 
 ## Explicitly out of scope (do not touch)
 
-- i18n/help translation packs (product content, 4 611 LOC)
+- i18n/help translation packs (product content, ~4 890 lines of i18n JSON
+  across `src/**/resources/i18n/` plus help pages)
 - `tests/contracts` AST dogma — guarded, only deliberate edits
 - `canvas/shaders/{base,step1}.*` — contract tests
   (`test_canvas_widget_ownership.py`, `test_windows_shader_bundle.py`) require
   them; revisit consciously with the test authors
-- `src/shared/rendering/live_snapshot.py` — contract
-  `test_shared_live_snapshot_is_tab_agnostic` requires the delegating stub
+- `src/engine/cache/live_snapshot.py` — contract
+  `test_shared_live_snapshot_is_tab_agnostic` (in
+  `tests/contracts/test_platform_isolation.py`) requires the delegating stub
 - Core keyframing, video export engine, Redux dispatcher, `src/events`
 - `docs/legacy/`, `features/_template/` — intentionally preserved
 
@@ -449,7 +476,7 @@ Only splits that survive the "one lifecycle" test proceed.
 | 1458 | `image_compare/.../magnifier/render/magnifier_pass.py` | File-Size-Exempt | **SPLIT** — module-level helpers only; the class keeps its exemption |
 | 1039 | `image_compare/plugins/video_editor/services/thumbnails.py` | state-machine | KEEP — one generation token + pending guard |
 | 968 | `image_compare/plugins/video_editor/services/video_export/service.py` | state-machine | KEEP — the stateless thumbnail-proxy cluster is separable, but "video export engine" is in the do-not-touch list above |
-| 925 | `plugins/help/dialog.py` | qdialog-wiring | KEEP — one `QDialog`; search/nav/chrome already extracted |
+| 1 290 | `plugins/help/dialog.py` | qdialog-wiring | KEEP (re-adjudicated 2026-10-22, was 925 at the 2026-10-17 triage) — still one `QDialog`; search/nav/chrome/tree/lightbox live in the sibling modules of `plugins/help/`, and the remainder is the TOC + mouse-nav filter + dialog chrome wiring |
 
 Split cuts (each keeps public names; the original module re-exports):
 

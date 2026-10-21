@@ -8,6 +8,25 @@ rules see `docs/dev/rendering/patterns.md` in the private
 interface contracts between subsystems see [CONTRACTS.md](CONTRACTS.md).
 This page is about internal code organization *within* one subsystem.
 
+## Placement: `engine/` vs `shared/`
+
+Two homes decide most "where does this belong" questions before any pattern
+applies:
+
+- **`src/engine/`** — the tile engine both canvas tabs share: residency/LOD/
+  coverage (`cache/`), the QRhi shell (`gpu/`), frame context, shared passes,
+  pixel stores (`store/`), analysis backend registry, overlay primitives,
+  pyramid coordinator. It may not import `tabs.*`, `plugins.*` or `core/store`
+  (sealed by `tests/contracts/test_engine_no_app_imports.py`), so code that
+  needs a tab or the Store does not belong here.
+- **`src/shared/`** — cross-cutting helpers that are *not* the tile engine:
+  analysis kernels, image-processing utilities, clipboard/drop policies,
+  keyframe descriptor dataclasses. `src/shared/rendering/` no longer exists —
+  rendering moved to `engine/`.
+
+Rule of thumb: if both canvas tabs already need it and it touches tiles,
+levels or GPU resources, it goes in `engine/`; otherwise `shared/`.
+
 ---
 
 ## Pattern: thin owner + `use_cases/` module
@@ -105,8 +124,9 @@ Examples already judged this way and left alone:
 `tabs/image_compare/plugins/video_editor/presenter_parts/preview.py`
 (`PreviewCoordinator` — one render pipeline: schedule → GPU render /
 background prepare-worker → apply-to-canvas → cache, all sharing one
-render-task-id race-guard), `shared/image_processing/tiled_pixel_store.py`
-(one class, one storage lifecycle), `tabs/image_compare/canvas/rhi_renderer/__init__.py`
+render-task-id race-guard), `engine/store/tiled_pixel_store.py`
+(one class, one storage lifecycle; moved here from
+`shared/image_processing/`), `tabs/image_compare/canvas/rhi_renderer/__init__.py`
 (`RhiCanvasRenderer.render()` — one frame's sequencing, see its own
 module docstring), `plugins/export/dialog.py` (one `QDialog`, size is
 layout/signal-wiring bulk, not mixed concerns).
@@ -184,7 +204,7 @@ it and never restates the literal or the predicate.
 - **No implied lookups** — don't substitute one hidden lookup
   (`registry.get`, `getattr(widget, "btn_x", None)`) for an explicit
   dependency passed in. See `TAB_CONTRACT.md`'s dependency-wiring rule and
-  `tests/runtime/test_no_implied_widget_lookup.py`.
+  `tests/contracts/test_no_implied_widget_lookup.py`.
 - **Extension points** — before inventing a new mechanism, check
   [ARCHITECTURE.md](ARCHITECTURE.md)'s "Extension Points" table for the
   smallest viable integration point.
