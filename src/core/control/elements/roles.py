@@ -220,6 +220,10 @@ def _toolkit_role(widget: QWidget, *, in_grid_view: bool) -> str | None:
         return "tab"
     if toolkit and "card" in lower:
         return "card"
+    if toolkit and name == "Text":
+        # TEMP REPRO INSTRUMENT (not for commit): expose the painted text
+        # surface to the element inventory so a right-click can be delivered.
+        return "text"
     return None
 
 

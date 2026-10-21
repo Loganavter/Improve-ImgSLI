@@ -207,6 +207,20 @@ def _clip_to_visible(pixmap: Any, visible: Any) -> Any:
 
 def capture_live_png(app: Any, window: Any, what: Any, out_dir: Any) -> dict[str, Any]:
     """Grab the live window/tab into *out_dir* and report what was produced."""
+    if str(what or "") == "screen":
+        # TEMP REPRO INSTRUMENT (not for commit): whole-screen grab.
+        screen = app.primaryScreen() if app is not None else None
+        if screen is not None:
+            try:
+                pm = screen.grabWindow(0)
+                if pm is not None and not pm.isNull():
+                    path = Path(out_dir) / f"live-capture-screen-{time.strftime('%Y%m%d-%H%M%S')}.png"
+                    pm.save(str(path), "PNG")
+                    return {"path": str(path), "what": "screen", "method": "screen_grab",
+                            "size": [pm.width(), pm.height()], "rhi_layers": 0}
+            except Exception as exc:
+                return {"path": "", "what": "screen", "method": "screen_grab_failed",
+                        "size": [0, 0], "rhi_layers": 0, "error": str(exc)}
     target, label = resolve_capture_target(app, window, what)
     if target is None:
         raise MethodError(
