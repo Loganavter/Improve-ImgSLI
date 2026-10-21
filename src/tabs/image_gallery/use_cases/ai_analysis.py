@@ -60,6 +60,11 @@ from tabs.image_gallery.use_cases.action_context import (
     context_for_paths,
     current_backend,
 )
+from tabs.image_gallery.use_cases.analysis_batch import begin as _ai_batch_begin
+from tabs.image_gallery.use_cases.analysis_batch import end as _ai_batch_end
+from tabs.image_gallery.use_cases.analysis_batch import (
+    dispatch_terminal_rank as _dispatch_terminal_rank,
+)
 from tabs.image_gallery.use_cases.ai_analyze import (  # re-exported for callers
     _is_configured,
     _load_settings,
@@ -250,7 +255,11 @@ def activate_judgment_domain(owner, domain: str) -> None:
         owner._clear_series_priority()
         return
     owner._run_ai_for_visible()
-    owner._run_jev_ranks()
+    # The terminal ranker, guarded by the batch ledger: a switch that started
+    # analyses waits for the LAST one instead of ranking a partial matrix
+    # (plan-gallery-ai-judgement P3-A). A cache-only switch (nothing in flight)
+    # dispatches here and now.
+    _dispatch_terminal_rank(owner)
     owner._run_series_priority()
 
 
@@ -331,6 +340,9 @@ def _begin_analysis(owner, ctx: ActionContext, item: GalleryItem) -> None:
     set_activity(item, ActivityPhase.QUEUED, "ai")
     owner.widget.refresh_card(item)
     _refresh_ranks_visible(owner)
+    # plan-gallery-ai-judgement P3-A / D1.1: this build opens a slot in the
+    # matrix. The terminal Jev call is dispatched when the LAST slot closes.
+    _ai_batch_begin(owner)
 
     try:
         _ai_debug(
@@ -371,6 +383,11 @@ def _begin_analysis(owner, ctx: ActionContext, item: GalleryItem) -> None:
         metrics=_metrics,
         reasoning_effort=str(ctx.effort or "auto"),
         on_phase=bridge.phase.emit,
+        # Sampling (plan P3-D): k draws per card, ONE unless the user declared a
+        # larger `sample_count`; the trace states the cost.
+        samples=int(getattr(settings, "sample_count", 1) or 1),
+        temperature=float(getattr(settings, "sampling_temperature", 0.0) or 0.0),
+        seed=int(getattr(settings, "sampling_seed", 0) or 0),
     )
     gen = owner._folder_gen
     # ``bridge=bridge`` keeps the phase relay alive until the worker reports.
@@ -425,9 +442,11 @@ def _on_analysis_ready(owner, path: Path, mtime_ns: int, result, gen: int | None
     # The AI scorecard IS the AI-domain read — rebuild the open overlay's
     # rows/dots in place so they switch to the VLM numbers without a reopen.
     owner._refresh_open_quick_look()
-    # A new scorecard changes the Jev ranking vector: coalesce the batch of
-    # arrivals into one AI-rank pass (no-op off the AI domain).
-    owner._queue_ai_rank_on_settle()
+    # plan-gallery-ai-judgement P3-A / D1.1: NO per-arrival rank trigger. Jev is
+    # the terminal calculator — one call per series, at the settle of the
+    # matrix. This arrival only closes the batch; the LAST one dispatches.
+    _ai_batch_end(owner)
+    _dispatch_terminal_rank(owner)
     _refresh_ranks_visible(owner)
 
 
@@ -472,6 +491,12 @@ def _on_analysis_error(owner, path: Path, error_info, gen: int | None = None) ->
     item.analysis_error = message or str(value)
     set_activity(item, ActivityPhase.ERROR, "ai")
     owner.widget.refresh_card(item)
+    # A failed card does not change the ranking vector, but it DOES close its
+    # slot in the batch: the remaining analyses still settle the matrix (a card
+    # with no score is what `rank_completeness` reports as partial — the series
+    # is then refused, not ranked on the missing member).
+    _ai_batch_end(owner)
+    _dispatch_terminal_rank(owner)
     _refresh_ranks_visible(owner)
 
 

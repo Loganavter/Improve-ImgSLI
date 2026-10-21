@@ -17,6 +17,16 @@ Jev answers with a Ranking / Choice / Noul decision (JSON in the assistant messa
 Determinism (design, not a bug): the AI domain is explicitly non-deterministic;
 reproducibility is bought by the **pin** (:mod:`tabs.image_gallery.services.jev_cache`).
 
+The floor and the band (plan-gallery-ai-judgement D1.2, owner decision): on the
+AI domain the CODE owns the order — :func:`_measured_ranking` over the measured
+axes — and the model may reorder ONLY items whose measured quality is
+indistinguishable (|quality − band leader| ≤ the instrument's noise floor,
+:func:`_band_blocks`). A pair the reply moves across a band boundary is refused
+(the measured order stands for it) and recorded as a conflict; every pair of the
+applied order records its source (``measured`` | ``model`` | ``model:<axis>``).
+The Algorithms domain is untouched: there the local fusion is the reference, not
+the judge, and the model's order is applied as before.
+
 Degrade contract (never silent, never partial):
 
 - a decisive Choice/Ranking sets a full 1..N rank for the series when the
@@ -42,7 +52,7 @@ from __future__ import annotations
 
 import json
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Callable
 
 from tabs.image_gallery.services import jev_cache
@@ -105,6 +115,12 @@ def reason_is_fault(reason: str | None) -> bool:
     text = str(reason or "")
     return any(text.startswith(prefix) for prefix in JEV_FAULT_REASONS)
 
+#: Applied-order provenance vocabulary (plan-gallery-ai-judgement D1.2):
+#: the pair kept the deterministic measured order, or the MODEL moved it inside
+#: the noise band (optionally on a named axis: ``model:<axis>``).
+SOURCE_MEASURED = "measured"
+SOURCE_MODEL = "model"
+
 #: A transport takes the chat/completions request and returns the parsed JSON
 #: response. Injectable so tests never touch the network.
 RankClient = Callable[[dict], dict]
@@ -129,6 +145,20 @@ class JevRankOutcome:
     #: (``_tail_order``), ``""`` = no decision was consulted (cache hit /
     #: degrade). The controller traces it so the applied order states its source.
     tail: str = ""
+    #: ``{"a>b": source}`` — which source decided each pair of the APPLIED order
+    #: (plan-gallery-ai-judgement D1.2): ``"measured"`` (the deterministic order
+    #: stood) or ``"model"`` / ``"model:<axis>"`` (the model moved ``a`` above
+    #: ``b`` inside the noise band, and the axis that supports the move, if any).
+    sources: dict[str, str] = field(default_factory=dict)
+    #: Non-empty when the model asked for an ordering the measurements refuse:
+    #: a pair moved ACROSS a band boundary. The measured order wins for that
+    #: pair; this field is the visible conflict (traced + surfaced), never a
+    #: silent win.
+    conflict: str = ""
+    #: The band the order was decided in — one tuple of paths per block, best
+    #: block first. Inside a block the model may reorder; across blocks it may
+    #: not. Empty when no floor was applied (Algorithms domain).
+    band: tuple[tuple[str, ...], ...] = ()
 
     @property
     def decided(self) -> bool:
@@ -223,7 +253,48 @@ def build_measured_vector(items, *, mode: str, domain: str = "algorithms", profi
             # make the series "partial" and block the rank for the wrong reason).
             if kept:
                 entry["scores"] = kept
-    return {"mode": mid, "items": entries}
+    vector = {"mode": mid, "items": entries}
+    proposed = _proposed_axes_of(items)
+    if proposed:
+        # plan-gallery-ai-judgement P3-B / D1.2: an axis the MODEL proposed is a
+        # first-class entry the model leads on (no local producer exists, so no
+        # measured comparison is possible). Carried here BY NAME with the scale
+        # and the per-alias scores, so the ranker sees a dimension, not a number
+        # glued onto a pool axis.
+        vector["proposed_axes"] = proposed
+    return vector
+
+
+def _proposed_axes_of(items) -> list[dict]:
+    """``[{"name","definition","scale","scores"}]`` from the series' scorecards.
+
+    One entry per accepted proposal name across the series (order = first
+    appearance in alias order, so the payload is deterministic). A member that
+    did not score the axis simply has no entry in ``scores`` — the axis is not
+    fabricated for it. Empty when no member proposed anything.
+    """
+    grouped: dict[str, dict] = {}
+    for alias, item in _aliased(items):
+        analysis = getattr(item, "analysis", None)
+        for proposal in getattr(analysis, "axis_proposals", ()) or ():
+            try:
+                name = str(getattr(proposal, "name", "") or "").strip()
+                score = int(getattr(proposal, "score", -1))
+            except Exception:
+                continue
+            if not name or score < 0:
+                continue
+            entry = grouped.setdefault(
+                name,
+                {
+                    "name": name,
+                    "definition": str(getattr(proposal, "definition", "") or ""),
+                    "scale": str(getattr(proposal, "scale", "") or ""),
+                    "scores": {},
+                },
+            )
+            entry["scores"][alias] = score
+    return list(grouped.values())
 
 
 #: Output contract, sent as the system message. The live ``typesafe/jev-router``
@@ -235,8 +306,10 @@ JEV_SYSTEM_PROMPT = (
     "You rank items by their measured quality scores. Reply with ONLY a JSON "
     'object {"ranking": ["<alias>", ...]} ordering the aliases best to worst — '
     "a full ranking whenever at least two aliases carry scores (break near ties "
-    'by your best judgement). Reply {"noul": true} only when fewer than two '
-    "aliases carry scores. No prose."
+    'by your best judgement). ``proposed_axes`` (when present) are dimensions '
+    "with a name, a definition and a 0-100 scale per alias — use them by name "
+    "when they separate these items. Reply {\"noul\": true} only when fewer than "
+    "two aliases carry scores. No prose."
 )
 
 
@@ -433,17 +506,17 @@ def _choice_of(raw: dict) -> Any:
     return None
 
 
-def _tail_order(members, *, mode: str, domain: str = "algorithms", profile=None) -> list[str]:
-    """Deterministic score-ordered tail (aliases below the winner).
+def _measured_ranking(
+    members, *, mode: str, domain: str = "algorithms", profile=None
+) -> tuple[list[str], dict[str, float]]:
+    """``(order, quality)`` — the deterministic measured order and its scale.
 
-    BY SCORE, never by alias/``str(path)`` (J2, plan-gallery-ai-judgement P1).
-    On the Algorithms domain the order is the fusion aggregate
-    (``rank_fusion.rank_series``). The AI domain reads its numbers from
-    ``item.analysis`` — the fusion aggregate reads ``item.metrics``, which the
-    AI domain never fills, so it would degenerate to path order (the exact
-    alphabetical tail this replaced); there the order comes from the same
-    measured vector the request was built from (mean applicable score, path as
-    the tie-break, unscored members last).
+    The ONE deterministic order (plan-gallery-ai-judgement P1/P3-C): on the
+    Algorithms domain it is the fusion aggregate (``rank_fusion.rank_series``);
+    on the AI domain it is the mean of the applicable VLM scores, path as the
+    tie-break, unscored members last. ``quality`` is the number the order was
+    built from (a lower fusion rank is better, so it is stored negated) — the
+    band in :func:`_band_blocks` compares members on it.
     """
     paths = sorted(_path_of(m) for m in members)
     if normalize_domain(domain) != AI_DOMAIN:
@@ -451,7 +524,9 @@ def _tail_order(members, *, mode: str, domain: str = "algorithms", profile=None)
             fusion = rank_series(members, mode=mode, profile=profile)
         except Exception:
             fusion = {}
-        return sorted(paths, key=lambda p: (fusion.get(p, 1 << 30), p))
+        order = sorted(paths, key=lambda p: (fusion.get(p, 1 << 30), p))
+        quality = {p: -float(fusion.get(p, 1 << 30)) for p in paths}
+        return order, quality
     try:
         vector = build_measured_vector(
             members, mode=mode, domain=domain, profile=profile
@@ -461,6 +536,7 @@ def _tail_order(members, *, mode: str, domain: str = "algorithms", profile=None)
     alias_paths = {alias: _path_of(item) for alias, item in _aliased(members)}
     measured: list[tuple[float, str]] = []
     unmeasured: list[str] = []
+    quality: dict[str, float] = {}
     for entry in vector.get("items", ()) or ():
         try:
             path = alias_paths.get(str(entry.get("alias")), "")
@@ -472,15 +548,148 @@ def _tail_order(members, *, mode: str, domain: str = "algorithms", profile=None)
         if not scores:
             unmeasured.append(path)
             continue
-        measured.append((sum(scores) / len(scores), path))
+        mean = sum(scores) / len(scores)
+        quality[path] = mean
+        measured.append((mean, path))
     measured.sort(key=lambda pair: (-pair[0], pair[1]))
-    return [p for _q, p in measured] + sorted(unmeasured)
+    order = [p for _q, p in measured] + sorted(unmeasured)
+    lowest = min(quality.values()) if quality else 0.0
+    for path in unmeasured:
+        quality[path] = lowest  # no reading: never above a measured member
+    return order, quality
+
+
+def _tail_order(
+    members, *, mode: str, domain: str = "algorithms", profile=None
+) -> list[str]:
+    """Deterministic score-ordered tail (aliases below the winner).
+
+    BY SCORE, never by alias/``str(path)`` (J2, plan-gallery-ai-judgement P1).
+    The order itself is :func:`_measured_ranking`; this name is the seam the
+    decision code reads, so there is one deterministic order in the tree.
+    """
+    return _measured_ranking(
+        members, mode=mode, domain=domain, profile=profile
+    )[0]
+
+
+def _band_blocks(
+    order: list[str], quality: dict[str, float], floor: float
+) -> dict[str, int]:
+    """``{path: block}`` — the noise band over *order* (plan-gallery-ai-judgement D1.2).
+
+    A block is the measured leader of the remaining items plus every member
+    whose quality is within *floor* of THAT leader's: those members are
+    indistinguishable from it (the same rule ``rank_fusion.axis_salience``
+    applies to an axis' spread, here applied to the members' aggregate). The
+    band therefore anchors on the top of each block, never on an adjacency
+    chain — 90 / 70 / 50 with a floor of 20 puts 70 in the leader's block and 50
+    outside it, instead of one long "everything is close" block that would let
+    one sample reorder the whole series.
+
+    ``floor`` is the producing instrument's noise floor
+    (``quality_read.axis_noise_floor``); a member with no reading never joins
+    the leader's block.
+    """
+    blocks: dict[str, int] = {}
+    try:
+        limit = float(floor)
+    except (TypeError, ValueError):
+        limit = 0.0
+    index = 0
+    block = 0
+    while index < len(order):
+        leader = order[index]
+        blocks[leader] = block
+        leader_quality = quality.get(leader)
+        index += 1
+        while index < len(order):
+            candidate = order[index]
+            if leader_quality is None or candidate not in quality:
+                break
+            if abs(float(leader_quality) - float(quality[candidate])) > limit:
+                break
+            blocks[candidate] = block
+            index += 1
+        block += 1
+    return blocks
+
+
+def _scores_by_path(members, *, mode: str, domain: str, profile=None) -> dict[str, dict]:
+    """``{path: {axis: score}}`` from the measured vector (the payload's numbers)."""
+    try:
+        vector = build_measured_vector(
+            members, mode=mode, domain=domain, profile=profile
+        )
+    except Exception:
+        return {}
+    alias_paths = {alias: _path_of(item) for alias, item in _aliased(members)}
+    out: dict[str, dict] = {}
+    for entry in vector.get("items", ()) or ():
+        try:
+            path = alias_paths.get(str(entry.get("alias")), "")
+            scores = dict(entry.get("scores") or {})
+        except Exception:
+            continue
+        if path:
+            out[path] = {str(k): float(v) for k, v in scores.items()}
+    return out
+
+
+def _deciding_axis(scores: dict[str, dict], first: str, second: str) -> str:
+    """The axis on which *first* outscores *second* most (``""`` when none)."""
+    a = scores.get(first) or {}
+    b = scores.get(second) or {}
+    best = ""
+    best_gap = 0.0
+    for axis, value in a.items():
+        other = b.get(axis)
+        if other is None:
+            continue
+        gap = float(value) - float(other)
+        if gap > best_gap:
+            best, best_gap = axis, gap
+    return best
+
+
+def _sources_for(applied: list[str], measured: list[str], scores) -> dict[str, str]:
+    """``{"a>b": source}`` for every pair, in the APPLIED order (D1.2).
+
+    ``measured`` = the pair keeps the deterministic order; ``model`` /
+    ``model:<axis>`` = the model moved ``a`` above ``b`` and the axis that
+    supports it (``_deciding_axis``), or a bare ``model`` when no axis favours
+    the move (an in-band reorder the measurements cannot argue about).
+    """
+    position = {path: i for i, path in enumerate(measured)}
+    out: dict[str, str] = {}
+    for i, first in enumerate(applied):
+        for second in applied[i + 1 :]:
+            mine, theirs = position.get(first), position.get(second)
+            if mine is None or theirs is None or mine < theirs:
+                out[f"{first}>{second}"] = SOURCE_MEASURED
+                continue
+            axis = _deciding_axis(scores, first, second)
+            out[f"{first}>{second}"] = f"{SOURCE_MODEL}:{axis}" if axis else SOURCE_MODEL
+    return out
+
 
 
 def _decide(
     raw: dict, member_list, *, mode: str, domain: str = "algorithms", profile=None
 ) -> JevRankOutcome:
-    """Turn one Jev decision into a decisive outcome or a degrade."""
+    """Turn one Jev decision into a decisive outcome or a degrade.
+
+    plan-gallery-ai-judgement D1.2 (the floor and the band) on the AI domain: the
+    CODE owns the deterministic order (:func:`_measured_ranking`); the model may
+    reorder ONLY inside a noise band (items whose measured quality is
+    indistinguishable). A pair the model moves ACROSS a band boundary is refused
+    — the measured order stands for it — and recorded in
+    :attr:`JevRankOutcome.conflict`; every pair of the applied order records its
+    source in :attr:`JevRankOutcome.sources`.
+
+    On the Algorithms domain the model's order is applied as before (the local
+    fusion is the reference, not the judge; D1.2 is the AI-domain rule).
+    """
     aliases = {alias: _path_of(item) for alias, item in _aliased(member_list)}
     if _is_noul(raw):
         return JevRankOutcome(None, reason=JEV_REASON_NOUL)
@@ -494,51 +703,81 @@ def _decide(
 
     by_path = {alias: path for alias, path in aliases.items()}
 
-    # Preferred: an explicit ranking from Jev. A reply that names only the top
-    # aliases (the live probe answered 2 of 6) is completed by the measured
-    # fusion (``_tail_order``), NEVER by alias/path order (J2, live 2026-10-21:
-    # ``["img_5","img_4"]`` applied as ``1..6`` with the tail in ``str(path)``
-    # order, i.e. an alphabetical tail promoted to a full ranking). The tail
-    # used is recorded on the outcome so the trace can state it.
     raw_order = _ranking_of(raw)
+    model_seq: list[str] = []
     if raw_order is not None:
         seen: set[str] = set()
-        order_paths: list[str] = []
         for entry in raw_order:
             alias = _normalize_alias(entry, aliases)
             if alias and alias not in seen:
                 seen.add(alias)
-                order_paths.append(by_path[alias])
-        rest = [path for alias, path in aliases.items() if alias not in seen]
-        tail = "model"
-        if rest:
-            tail = "deterministic"
-            rest_paths = set(rest)
-            order_paths.extend(
-                p
-                for p in _tail_order(
-                    member_list, mode=mode, domain=domain, profile=profile
-                )
-                if p in rest_paths
-            )
-        ranks = {path: i for i, path in enumerate(order_paths, start=1)}
+                model_seq.append(by_path[alias])
+        tail = "model" if len(model_seq) >= len(aliases) else "deterministic"
+    else:
+        # Jev picked the winner (Choice): a one-element model order.
+        winner = _normalize_alias(_choice_of(raw), aliases)
+        if winner is None:
+            return JevRankOutcome(None, reason=JEV_REASON_MALFORMED)
+        model_seq = [by_path[winner]]
+        tail = "deterministic"
+
+    measured = _tail_order(member_list, mode=mode, domain=domain, profile=profile)
+    if normalize_domain(domain) != AI_DOMAIN:
+        # Algorithms domain untouched: the model's order (completed by the
+        # deterministic tail) is applied exactly as before D1.2.
+        applied = list(model_seq) + [p for p in measured if p not in set(model_seq)]
+        ranks = {path: i for i, path in enumerate(applied, start=1)}
         return JevRankOutcome(ranks, tail=tail)
 
-    # Otherwise: Jev picked the winner (Choice); the tail keeps the deterministic
-    # measured order. This is still a COMPLETE 1..N assignment (never partial).
-    winner = _normalize_alias(_choice_of(raw), aliases)
-    if winner is None:
-        return JevRankOutcome(None, reason=JEV_REASON_MALFORMED)
-    winner_path = by_path[winner]
-    tail_paths = [
-        p
-        for p in _tail_order(member_list, mode=mode, domain=domain, profile=profile)
-        if p != winner_path
-    ]
-    ranks = {winner_path: 1}
-    for i, path in enumerate(tail_paths, start=2):
-        ranks[path] = i
-    return JevRankOutcome(ranks, tail="deterministic")
+    quality = _measured_ranking(
+        member_list, mode=mode, domain=domain, profile=profile
+    )[1]
+    try:
+        floor = axis_noise_floor(domain)
+    except Exception:
+        floor = 0.0
+    blocks = _band_blocks(measured, quality, floor)
+    model_position = {path: i for i, path in enumerate(model_seq)}
+    applied: list[str] = []
+    conflicts: list[str] = []
+    band: list[tuple[str, ...]] = []
+    for block in sorted(set(blocks.values())):
+        members = [p for p in measured if blocks.get(p) == block]
+        band.append(tuple(members))
+        members.sort(
+            key=lambda p: (
+                model_position.get(p, len(model_seq)),
+                measured.index(p),
+            )
+        )
+        applied.extend(members)
+    # A pair the model moved ACROSS a band boundary: refused, recorded. The
+    # model's reply asserts each named alias above the aliases it did not name
+    # (the P1 tail is a completion, not a claim), so both cases are checked.
+    named = list(model_seq)
+    unnamed = [p for p in measured if p not in model_position]
+    for index, first in enumerate(named):
+        for second in named[index + 1 :] + unnamed:
+            if blocks.get(first, 0) > blocks.get(second, 0):
+                conflicts.append(
+                    "model placed "
+                    f"{first} above {second} outside the noise band "
+                    f"(quality {quality.get(first, 0.0):.0f} vs "
+                    f"{quality.get(second, 0.0):.0f}, floor {float(floor):g})"
+                )
+    sources = _sources_for(
+        applied,
+        measured,
+        _scores_by_path(member_list, mode=mode, domain=domain, profile=profile),
+    )
+    ranks = {path: i for i, path in enumerate(applied, start=1)}
+    return JevRankOutcome(
+        ranks,
+        tail=tail,
+        sources=sources,
+        conflict="; ".join(conflicts),
+        band=tuple(band),
+    )
 
 
 def _pin(cache_obj, key: str, ranks: dict[str, int] | None, reason: str | None) -> None:
@@ -687,6 +926,8 @@ __all__ = [
     "JEV_REASON_NOT_CONFIGURED",
     "JEV_REASON_NOUL",
     "JevRankOutcome",
+    "SOURCE_MEASURED",
+    "SOURCE_MODEL",
     "build_measured_vector",
     "build_rank_request",
     "make_client",

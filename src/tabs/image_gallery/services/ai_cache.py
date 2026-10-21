@@ -29,6 +29,8 @@ Stage 3: VLM tie-breaks / compare briefs are cached alongside this file via
 ``tabs.image_gallery.services.vlm_cache`` (key = hash(paths+mtime), one per
 pair). Filtering (``filtering.py``) now searches both analysis tags and brief
 tags — see ``vlm_cache.find_briefs_for_path``.
+
+Audit-Meta: pattern=wire-cache size=exempt reason="one cache contract: the analysis identity (model/base_url/mode/profile/effort + the P3 sampling config) and the payload that must carry it cannot be split without letting one side drift — the file grew past 500 lines with the sampling fields + proposed-axis persistence of plan-gallery-ai-judgement P3 and stays cohesive"
 """
 
 from __future__ import annotations
@@ -56,23 +58,65 @@ AI_CACHE_VERSION = 3
 #: text or the expected response schema changes: every cached scorecard becomes a
 #: MISS (it answered a different question), which is the intended invalidation of
 #: the AI disk cache. Part of :func:`analysis_cache_identity`.
-PROMPT_SCHEMA_VERSION = 1
+#: History: v1 = the per-axis scorecard; v2 (P3) = the scorecard plus
+#: ``axis_proposals`` and no local-measurement echo in the prompt (P3-B/P3-E).
+PROMPT_SCHEMA_VERSION = 2
 
 #: The identity fields that define "the same analysis". Order is the canonical
 #: JSON order. Anything else on a passed mapping (notably ``api_key``) is dropped:
 #: the identity is compared, hashed into the filename and stored in the payload,
 #: so it must never carry a secret.
+#:
+#: ``k`` / ``temperature`` / ``seed`` are the SAMPLING configuration (plan P3-D /
+#: gate GA4): one sample of a stochastic judge is not a measurement, so a k=1
+#: scorecard and the median of k=3 must never share an entry — "reproducible
+#: within a stated tolerance" is only checkable if the draw is identified.
 _IDENTITY_FIELDS = (
     "model",
     "base_url",
     "mode",
     "profile",
     "reasoning_effort",
+    "k",
+    "temperature",
+    "seed",
     "prompt_schema_version",
 )
 
 #: Fields that are textual; the rest are normalized per-field below.
-_TEXT_IDENTITY_FIELDS = ("model", "base_url", "mode", "profile", "reasoning_effort")
+_TEXT_IDENTITY_FIELDS = (
+    "model",
+    "base_url",
+    "mode",
+    "profile",
+    "reasoning_effort",
+    "k",
+    "temperature",
+    "seed",
+)
+
+#: Default draw count: ONE. The owner has not set a cost ceiling, so a sample
+#: multiplier is never taken silently — k>1 must be a declared setting
+#: (``AiSettings.sample_count``) and the trace states its cost.
+DEFAULT_SAMPLE_COUNT = 1
+
+#: Defaults for the optional sampling knobs (0 = "not sent", the backend's own
+#: default draw). They are part of the identity even when unset, so the shape of
+#: an identity never depends on whether a value was passed.
+DEFAULT_TEMPERATURE = 0.0
+DEFAULT_SEED = 0
+
+
+def _number_token(value, default, *, cast=float) -> str:
+    """Canonical text for a numeric identity field (``str(default)`` when bad)."""
+    try:
+        number = cast(value)
+    except (TypeError, ValueError):
+        number = cast(default)
+    if cast is float:
+        return f"{float(number):.2f}"
+    return str(int(number))
+
 
 
 def ai_cache_dir() -> Path:
@@ -137,6 +181,9 @@ def analysis_cache_identity(
     profile=None,  # type: ignore[no-untyped-def]
     reasoning_effort=None,  # type: ignore[no-untyped-def]
     schema_version: int | None = None,
+    k: int | None = None,
+    temperature=None,  # type: ignore[no-untyped-def]
+    seed=None,  # type: ignore[no-untyped-def]
 ) -> dict[str, object]:
     """The cache identity of one analysis: "what produced this scorecard".
 
@@ -145,6 +192,11 @@ def analysis_cache_identity(
     reach the prompt), ``reasoning_effort`` the effort sent with the request
     (defaults to ``settings.reasoning_effort``), ``schema_version`` the prompt
     revision (defaults to :data:`PROMPT_SCHEMA_VERSION`).
+
+    ``k`` / ``temperature`` / ``seed`` are the sampling configuration (plan P3-D,
+    gate GA4). They default to the ``AiSettings`` values — ``k=1`` out of the box
+    — and are always PRESENT in the returned mapping, so "how many draws produced
+    this scorecard" can never be unknown.
 
     Stable, JSON-serializable and comparable: the same request configuration
     yields an equal dict. **``api_key`` is never part of it** — the identity is
@@ -160,12 +212,26 @@ def analysis_cache_identity(
         )
     except Exception:
         version = PROMPT_SCHEMA_VERSION
+    draws = k if k is not None else getattr(settings, "sample_count", DEFAULT_SAMPLE_COUNT)
+    heat = (
+        temperature
+        if temperature is not None
+        else getattr(settings, "sampling_temperature", DEFAULT_TEMPERATURE)
+    )
+    drawn_seed = seed if seed is not None else getattr(settings, "sampling_seed", DEFAULT_SEED)
+    try:
+        draws = max(1, int(draws))
+    except (TypeError, ValueError):
+        draws = DEFAULT_SAMPLE_COUNT
     return {
         "model": _clean_text(getattr(settings, "model", "")),
         "base_url": _clean_text(getattr(settings, "base_url", "")),
         "mode": _identity_token(mode),
         "profile": ",".join(_profile_axis_ids(profile)),
         "reasoning_effort": _identity_token(effort) or "auto",
+        "k": _number_token(draws, DEFAULT_SAMPLE_COUNT, cast=int),
+        "temperature": _number_token(heat, DEFAULT_TEMPERATURE),
+        "seed": _number_token(drawn_seed, DEFAULT_SEED, cast=int),
         "prompt_schema_version": version,
     }
 
@@ -277,6 +343,27 @@ def load_cached_analysis(
             axes: dict[str, int] = _parse_axes(data.get("axes"))
         except Exception:
             axes = {}
+        from tabs.image_gallery.models import AiAxisProposal
+
+        proposals: list[AiAxisProposal] = []
+        for entry in data.get("axis_proposals", []) or []:
+            try:
+                proposals.append(
+                    AiAxisProposal(
+                        name=str(entry.get("name", "") or ""),
+                        definition=str(entry.get("definition", "") or ""),
+                        scale=str(entry.get("scale", "") or ""),
+                        score=int(entry.get("score", -1)),
+                    )
+                )
+            except Exception:
+                continue
+        refusals: list[tuple[str, str]] = []
+        for entry in data.get("axis_proposal_refusals", []) or []:
+            try:
+                refusals.append((str(entry[0]), str(entry[1])))
+            except Exception:
+                continue
         return AiAnalysisResult(
             description=data["description"],
             tags=tuple(data.get("tags", ())),
@@ -296,6 +383,8 @@ def load_cached_analysis(
                 for k, v in (data.get("axis_notes", {}) or {}).items()
                 if str(v).strip()
             },
+            axis_proposals=tuple(proposals),
+            axis_proposal_refusals=tuple(refusals),
         )
     except Exception:
         logger.debug("Gallery AI cache read failed for %s", path, exc_info=True)
@@ -481,6 +570,25 @@ def save_analysis(
                     #: (v3 = identity-keyed scorecard contract) and the identity
                     #: itself, re-validated on load.
                     "axes": dict(ai_scored_axes(result)),
+                    #: Axes the model proposed beyond the pool (P3-B): kept in
+                    #: the payload so a cache HIT reaches the Jev vector with the
+                    #: same named axes a fresh call would (and the refusals stay
+                    #: visible as a recorded loss).
+                    "axis_proposals": [
+                        {
+                            "name": p.name,
+                            "definition": p.definition,
+                            "scale": p.scale,
+                            "score": p.score,
+                        }
+                        for p in (getattr(result, "axis_proposals", ()) or ())
+                    ],
+                    "axis_proposal_refusals": [
+                        [str(name), str(reason)]
+                        for name, reason in (
+                            getattr(result, "axis_proposal_refusals", ()) or ()
+                        )
+                    ],
                     "version": AI_CACHE_VERSION,
                     "identity": canonical,
                 }

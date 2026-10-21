@@ -776,6 +776,17 @@
       }
     },
     {
+      "path": "src/tabs/image_gallery/services/ai_cache.py",
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=wire-cache size=exempt reason=\"one cache contract: the analysis identity (model/base_url/mode/profile/effort + the P3 sampling config) and the payload that must carry it cannot be split without letting one side drift — the file grew past 500 lines with the sampling fields + proposed-axis persistence of plan-gallery-ai-judgement P3 and stays cohesive\"",
+      "parsed": {
+        "pattern": "wire-cache",
+        "size": "exempt",
+        "reason": "one cache contract: the analysis identity (model/base_url/mode/profile/effort + the P3 sampling config) and the payload that must carry it cannot be split without letting one side drift — the file grew past 500 lines with the sampling fields + proposed-axis persistence of plan-gallery-ai-judgement P3 and stays cohesive"
+      }
+    },
+    {
       "path": "src/tabs/image_gallery/services/artifacts.py",
       "limit": 500,
       "marker": "Audit-Meta:",

@@ -7,7 +7,7 @@ from pathlib import Path
 
 from tabs.image_gallery.services.ask_prompt import language_directive
 
-from .prompt import _ai_debug, build_prompt
+from .prompt import _ai_debug, attach_measured_context, build_prompt
 
 
 _EXT_TO_MIME = {
@@ -82,6 +82,8 @@ def build_request_from_bytes(
     fallback_models: tuple[str, ...] | None = None,
     reasoning_effort: str = "auto",
     max_tokens: int = 0,
+    temperature: float = 0.0,
+    seed: int = 0,
 ) -> dict:
     """Chat-completion payload for already-read *image_bytes* (no file I/O).
 
@@ -108,9 +110,10 @@ def build_request_from_bytes(
         # Default prompt: request every applicable axis for this mode/profile.
         text = build_prompt(mode, profile=profile, measured_block=block)
     else:
-        text = prompt
-        if block:
-            text = f"{text}\n\nLOCAL MEASUREMENTS (Algorithms domain, context only):\n{block}"
+        # A custom prompt goes through the SAME echo filter as the scorecard
+        # prompt (plan-gallery-ai-judgement P3-E): the local numbers for an axis
+        # the model is asked to judge are an echo, not an independent read.
+        text = attach_measured_context(prompt, block, mode=mode, profile=profile)
     # Steer the prose fields (verdict reason / defect notes) into the current
     # UI language; the JSON envelope itself is unchanged.
     text = f"{text}\n{language_directive()}"
@@ -133,6 +136,13 @@ def build_request_from_bytes(
         # Force a JSON object so reasoning models cannot answer in prose.
         "response_format": {"type": "json_object"},
     }
+    # Sampling knobs (plan-gallery-ai-judgement P3-D): sent only when the user
+    # declared them — a default (0.0 / 0) means "the backend's own draw", and
+    # leaving the field out keeps every existing payload byte-identical.
+    if temperature and float(temperature) > 0:
+        payload["temperature"] = float(temperature)
+    if seed:
+        payload["seed"] = int(seed)
     if openrouter:
         # OpenRouter extensions:
         # - reasoning.exclude: keep the chain-of-thought out of `content`.
@@ -183,6 +193,8 @@ def build_request(
     fallback_models: tuple[str, ...] | None = None,
     reasoning_effort: str = "auto",
     max_tokens: int = 0,
+    temperature: float = 0.0,
+    seed: int = 0,
 ) -> dict:
     """Payload for one image on disk — reads it once, then delegates.
 
@@ -203,4 +215,6 @@ def build_request(
         fallback_models=fallback_models,
         reasoning_effort=reasoning_effort,
         max_tokens=max_tokens,
+        temperature=temperature,
+        seed=seed,
     )

@@ -219,6 +219,20 @@ def _extract_json(content: str) -> dict | None:
         pass
     return None
 
+def _parse_axis_proposals(value):
+    """Normalize the reply's proposed axes into ``(accepted, refusals)``.
+
+    plan-gallery-ai-judgement P3-B: a proposed axis is a first-class entry
+    (``ai.models.AiAxisProposal``, ``producer="vlm"`` / ``kind="candidate"``)
+    only when it carries a usable name, a measurable definition, the 0-100 scale
+    and a score. Everything else is REFUSED with a recorded reason — never
+    silently stored as an axis (and never silently dropped either). One
+    implementation of the rule: ``services.axis_proposal``.
+    """
+    from tabs.image_gallery.services.axis_proposal import parse_proposals
+
+    return parse_proposals(value)
+
 _LEGACY_LINE_RE = re.compile(
     r"^\s*(DESCRIPTION|TAGS|VERDICT|SHARPNESS|NOISE|EXPOSURE|COMPOSITION|REASON)\s*:",
     re.IGNORECASE,
@@ -290,6 +304,107 @@ def _parse_lines(content: str, model: str) -> AiAnalysisResult:
         axes=axes,
     )
 
+def merge_samples(results) -> AiAnalysisResult:
+    """Merge k independent scorecards of ONE image into one measured read.
+
+    plan-gallery-ai-judgement P3-D/M4: one draw of a stochastic judge is not a
+    measurement. With ``AiSettings.sample_count > 1`` the analyze path repeats
+    the call and lands here:
+
+    - every AXIS becomes the MEDIAN over the samples that scored it (a single
+      wild draw cannot decide a variant);
+    - a PROPOSED axis survives only when at least half the samples proposed it
+      (a one-off invention is not a dimension), its score the median too;
+    - ``verdict``/``reason``/``defects``/axis notes come from the FIRST sample —
+      they are prose about the picture, not a measurement to average;
+    - ``confidence`` is the median.
+
+    An empty sequence returns the caller's single result unchanged (k=1 never
+    reaches here). Never raises: a malformed entry is skipped.
+    """
+    sampled = [r for r in (results or ()) if r is not None]
+    if not sampled:
+        raise AiResponseError("no samples to merge")
+    if len(sampled) == 1:
+        return sampled[0]
+
+    def _median(values: list[int]) -> int:
+        ordered = sorted(values)
+        middle = len(ordered) // 2
+        if len(ordered) % 2:
+            return int(ordered[middle])
+        return int(round((ordered[middle - 1] + ordered[middle]) / 2.0))
+
+    per_axis: dict[str, list[int]] = {}
+    for result in sampled:
+        for axis, value in (getattr(result, "axes", None) or {}).items():
+            try:
+                per_axis.setdefault(str(axis), []).append(int(value))
+            except Exception:
+                continue
+    axes = {axis: _median(values) for axis, values in per_axis.items()}
+
+    needed = max(1, (len(sampled) + 1) // 2)
+    proposals: dict[str, list] = {}
+    for result in sampled:
+        seen: set[str] = set()
+        for proposal in getattr(result, "axis_proposals", ()) or ():
+            name = str(getattr(proposal, "name", "") or "")
+            if not name or name in seen:
+                continue
+            seen.add(name)
+            proposals.setdefault(name, []).append(proposal)
+    merged_proposals = []
+    for name, group in proposals.items():
+        if len(group) < needed:
+            continue
+        first = group[0]
+        scores = []
+        for proposal in group:
+            try:
+                scores.append(int(getattr(proposal, "score", -1)))
+            except Exception:
+                continue
+        merged_proposals.append(
+            type(first)(
+                name=name,
+                definition=first.definition,
+                scale=first.scale,
+                score=_median(scores) if scores else -1,
+            )
+        )
+    refusals: list[tuple[str, str]] = []
+    for result in sampled:
+        for name, reason in getattr(result, "axis_proposal_refusals", ()) or ():
+            pair = (str(name), str(reason))
+            if pair not in refusals:
+                refusals.append(pair)
+
+    head = sampled[0]
+    confidence = _median(
+        [int(round(float(getattr(r, "confidence", 0.0) or 0.0) * 100.0)) for r in sampled]
+    )
+    return AiAnalysisResult(
+        description=head.description,
+        tags=head.tags,
+        model=head.model,
+        analyzed_at_iso=head.analyzed_at_iso,
+        sharpness=axes.get("sharpness", -1),
+        noise=axes.get("noise", -1),
+        exposure=axes.get("exposure", -1),
+        composition=axes.get("composition", -1),
+        verdict=head.verdict,
+        verdict_reason=head.verdict_reason,
+        defects=head.defects,
+        confidence=round(confidence / 100.0, 2),
+        axis_notes=dict(head.axis_notes or {}),
+        axis_flags=head.axis_flags,
+        axes=axes,
+        axis_proposals=tuple(merged_proposals),
+        axis_proposal_refusals=tuple(refusals),
+    )
+
+
 def parse_response(raw: dict, *, model: str) -> AiAnalysisResult:
     try:
         content = raw["choices"][0]["message"]["content"]
@@ -349,6 +464,13 @@ def parse_response(raw: dict, *, model: str) -> AiAnalysisResult:
         if score >= 0:
             axes[key] = score
     defects = _parse_defects(obj.get("defects"))
+    proposals, proposal_refusals = _parse_axis_proposals(obj.get("axis_proposals"))
+    if proposal_refusals:
+        _ai_debug(
+            "axis proposals refused: %s (a proposal with no measurable meaning is "
+            "recorded, never stored)",
+            ", ".join(f"{name}={reason}" for name, reason in proposal_refusals),
+        )
     return AiAnalysisResult(
         description="",
         tags=(),
@@ -365,4 +487,6 @@ def parse_response(raw: dict, *, model: str) -> AiAnalysisResult:
         axis_notes=_parse_axis_notes(obj.get("axis_notes")),
         axis_flags=_axis_flags_from_defects(defects),
         axes=axes,
+        axis_proposals=proposals,
+        axis_proposal_refusals=proposal_refusals,
     )

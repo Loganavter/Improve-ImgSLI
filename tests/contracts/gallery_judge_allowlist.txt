@@ -6,4 +6,5 @@
 # (strict=True turns a still-listed but now-passing gate into an XPASS failure).
 #
 # Format:  <GATE> | <test node id> | <why it is still red / which phase deletes it>
-GA4 | tests/contracts/test_gallery_judge_cache_identity.py::test_the_analysis_identity_carries_the_sampling_config_and_schema | delete with P3: ai_cache._IDENTITY_FIELDS (65-72) carries model/base_url/mode/profile/reasoning_effort/schema and no sampling config (k / temperature / seed)
+#
+# Deleted rows (the gate is armed): GA1/GA5 by P1/P2, GA3 by P2, GA4 by P3.

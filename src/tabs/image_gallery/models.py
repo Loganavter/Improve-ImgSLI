@@ -135,6 +135,33 @@ class AiAxisFlag:
 
 
 @dataclass(frozen=True)
+class AiAxisProposal:
+    """A VLM-PROPOSED axis, as a first-class entry (plan-gallery-ai-judgement P3-B).
+
+    The axis pool is the fixed registry (``metric_scores.SPECS``) plus the
+    AI-only ``composition``; a model that needs a dimension the pool lacks
+    ("halation", "sepia drift", …) proposes it here instead of smuggling a
+    number into an unrelated axis. ``producer``/``kind`` are the same
+    vocabulary every other axis carries, so a surface can label the source:
+
+    - ``producer = "vlm"`` — no local detector can ever produce this axis;
+    - ``kind = "candidate"`` — it is a candidate dimension, not a measured one
+      (``MetricKind.CANDIDATE``; only the model scores it).
+
+    ``definition`` is what makes it usable: one sentence naming the dimension and
+    both ends of the 0–100 ``scale``. A proposal without a measurable definition
+    is refused at parse time (``axis_proposal.py``) and never stored.
+    """
+
+    name: str
+    definition: str = ""
+    scale: str = "0-100"
+    score: int = -1
+    producer: str = "vlm"
+    kind: str = "candidate"
+
+
+@dataclass(frozen=True)
 class AiAnalysisResult:
     description: str
     tags: tuple[str, ...]
@@ -166,6 +193,13 @@ class AiAnalysisResult:
     #: quality answer (plan-gallery-ai-backend-owns-quality); the four named
     #: fields above mirror the ids present here.
     axes: dict[str, int] = field(default_factory=dict)
+    #: Axes the model PROPOSED beyond the pool (plan-gallery-ai-judgement P3-B),
+    #: accepted only with a name, a measurable definition, a scale and a score.
+    #: The Jev vector carries them by name (``proposed_axes``).
+    axis_proposals: tuple[AiAxisProposal, ...] = ()
+    #: ``(name, reason)`` for every proposal refused at parse time — a refused
+    #: proposal is a recorded loss, never a silently dropped one.
+    axis_proposal_refusals: tuple[tuple[str, str], ...] = ()
 
 
 #: The named alias fields that predate the open ``axes`` scorecard.

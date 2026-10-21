@@ -305,8 +305,12 @@ class GalleryController:
         # flush once per tick via refresh_cards (single selection sweep).
         self._pending_card_items: dict[str, object] = {}
         self._card_flush_scheduled = False
-        #: Coalesces AI-domain Jev re-ranks triggered by arriving analyses.
-        self._ai_rank_flush_scheduled = False
+        #: AI analysis batch ledger (plan-gallery-ai-judgement P3-A): how many
+        #: scorecards of the current folder generation are in flight. Jev is the
+        #: TERMINAL calculator — the rank pass is dispatched when this reaches
+        #: zero (``use_cases.analysis_batch``), never per arrival.
+        self._ai_batch_gen = self._folder_gen
+        self._ai_batch_pending = 0
         self._subscribed_gallery_store = None
         # Session isolation (Wave ISO): this live copy addresses its OWN
         # session id for every slot read — never the active session per
@@ -1325,6 +1329,10 @@ class GalleryController:
                 continue
             if len(ready) >= self._AI_VISIBLE_CAP:
                 break
+            # The target trace line of the plan: a rank is dispatched on a
+            # COMPLETE matrix (every member carries a reading), one per series.
+            _ai_debug("jev rank complete=%d/%d (profile=%s)", scored, total,
+                      getattr(getattr(self.state, "metric_profile", None), "source", "") or "heuristic")
             ready.append((members, vector))
         if not ready:
             _ai_debug(
@@ -1737,9 +1745,27 @@ class GalleryController:
             tail = str(getattr(outcome, "tail", "") or "")
             if not tail:
                 tail = "cached" if getattr(outcome, "cached", False) else "unknown"
+            # D1.2: which source decided each pair of the APPLIED order
+            # ("measured" | "model:<axis>"), and whether the model asked for an
+            # ordering the measurements refused (visible, never silent).
+            sources = dict(getattr(outcome, "sources", None) or {})
+            counts: dict[str, int] = {}
+            for source in sources.values():
+                key = "model" if source.startswith("model") else source
+                counts[key] = counts.get(key, 0) + 1
+            summary = ",".join(f"{key}:{value}" for key, value in sorted(counts.items()))
+            conflict = str(getattr(outcome, "conflict", "") or "")
             _ai_debug(
-                "jev rank applied: items=%d source=jev tail=%s", len(current), tail
+                "jev rank applied: items=%d source=jev tail=%s pairs=%s conflict=%s",
+                len(current),
+                tail,
+                summary or "none",
+                conflict or "none",
             )
+            if conflict:
+                # Visible conflict: the measured order stood for the affected
+                # pairs — the model's out-of-band move is reported, not applied.
+                _ai_debug("jev rank conflict: %s", conflict)
             GalleryController._refresh_rank_provenance(self)
             return
         reason = getattr(outcome, "reason", None) or "AI (Jev) rank unavailable"
@@ -2356,16 +2382,6 @@ class GalleryController:
         from tabs.image_gallery.use_cases import triage_run as _triage_run
 
         return _triage_run._run_jev_on_settle(self)
-
-    def _queue_ai_rank_on_settle(self) -> None:
-        from tabs.image_gallery.use_cases import triage_run as _triage_run
-
-        return _triage_run._queue_ai_rank_on_settle(self)
-
-    def _flush_ai_rank_on_settle(self) -> None:
-        from tabs.image_gallery.use_cases import triage_run as _triage_run
-
-        return _triage_run._flush_ai_rank_on_settle(self)
 
     def _begin_append_processing(self, items: list[GalleryItem]) -> None:
         from tabs.image_gallery.use_cases import triage_run as _triage_run
