@@ -41,10 +41,6 @@ class SettingsDialog(ThemedDialog):
     """Settings chrome. OK applies and keeps the window open; Cancel closes."""
 
     settings_confirmed = Signal()
-    #: Sidebar page became current, by ``SettingsSection.section_id``.
-    #: Lets a page re-fetch live data when the user actually enters it (the
-    #: build callable runs once per dialog, not once per visit).
-    section_shown = Signal(str)
 
     def __init__(
         self,
@@ -254,12 +250,6 @@ class SettingsDialog(ThemedDialog):
             return
         self.pages_stack.setCurrentIndex(row)
         self._update_sidebar_icons()
-        sections = getattr(self, "_active_sections", None) or ()
-        if 0 <= int(row) < len(sections):
-            try:
-                self.section_shown.emit(sections[row].section_id)
-            except Exception:
-                logger.debug("section_shown emit failed for %s", row, exc_info=True)
 
     # ---- in-dialog search (Find Action catalog reuse) ----
 
