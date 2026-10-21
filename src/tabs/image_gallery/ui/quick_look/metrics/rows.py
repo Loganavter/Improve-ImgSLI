@@ -227,7 +227,10 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
     try:
         from tabs.image_gallery.ui.quick_look.helpers import _make_label
     except Exception:
-        from sli_ui_toolkit.widgets import Label as _Label
+        # Fallback for harnesses that stub `helpers` (the truth-test harness).
+        # Internal module on purpose: the public `widgets.Label` export is being
+        # retired (text 2b); this is a fallback, not a production consumer.
+        from sli_ui_toolkit.ui.widgets.atomic.text_labels import Label as _Label
 
         def _make_label(text="", parent=None, pixel_size=10, pt=None, **kwargs):  # type: ignore
             return _Label(text, pixel_size=pixel_size, parent=parent, **kwargs)
