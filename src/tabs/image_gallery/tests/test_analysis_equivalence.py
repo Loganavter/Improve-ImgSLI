@@ -20,6 +20,12 @@ Three parts:
    detector pass per item, a rebuilt entry equal to the flag-OFF one (same keys,
    same values, same ``Severity`` objects), and a per-stage fail-open when a
    producer raises.
+4. **W13 — one learned pass.** ``compute_fidelity_from_images`` already calls
+   ``quality_models.pair_metrics`` for the item/source pair. The deleted
+   learned-quality producer called the same seam again for the same pair —
+   identical numbers, a second torch forward pass. The count is the test: the
+   local plan must reach the seam exactly once per item, and restoring a second
+   caller must turn that counter red.
 
 W8 note (the gap W7's dark launch exposed): the artifact records are compared to
 the *aggregate*, never to the seven ``detect_*`` functions one-to-one. The
@@ -58,6 +64,10 @@ FIDELITY_AXES = (
     "clipping_delta",
     "halo_delta",
     "chroma_fringe_delta",
+    # W13: LPIPS/DISTS are fidelity axes — the same ``compute_fidelity_from_images``
+    # call that produces the deltas already runs the learned pair pass.
+    "lpips",
+    "dists",
 )
 ARTIFACT_AXES = (
     "banding",
@@ -406,28 +416,125 @@ def _seam_calls(monkeypatch: pytest.MonkeyPatch) -> _SeamCalls:
 
 
 @pytest.mark.parametrize("with_source", [False, True], ids=["sourceless", "source"])
-def test_flag_on_runs_each_detector_once_and_no_legacy_stage(
+def test_flag_on_runs_each_detector_once_per_item(
     tmp_path, monkeypatch: pytest.MonkeyPatch, with_source: bool
 ):
-    """The core assertion of W12: no double work, one detector pass per item."""
+    """W12/W13: no duplicate detector pass, and the pair pass happens once.
+
+    Artifacts and fidelity are rebuilt from the engine's records, so neither
+    legacy stage runs. Camera is the exception: after W13 deleted the
+    duplicating learned-quality producer, no producer measures BRISQUE, so
+    the camera dict cannot be rebuilt from records and ``services.proxy`` runs
+    its own camera call. That fallback is the only computation of the camera
+    dict, but it repeats the engine ``camera_scalars`` pass — total 2. Removing
+    it needs a producer for BRISQUE (``camera_scalars`` already computes it and
+    drops it) or BRISQUE out of ``proxy.CAMERA_AXES``; both are outside W13,
+    whose target is the extra learned PAIR pass (see
+    ``test_local_plan_calls_the_pair_seam_once_per_item``).
+    """
     item, source = _write_pair(tmp_path)
     monkeypatch.setenv("IMGSLI_ANALYSIS_ENGINE", "1")
     calls = _seam_calls(monkeypatch)
 
     entry = _run_stages(item, source if with_source else None)
 
-    assert calls.legacy == {"artifacts": 0, "camera": 0, "fidelity": 0}, (
-        "services.proxy must not call a legacy Stage-2 detector when the engine "
-        f"ran — that call IS the 2.4x duplicate (counts: {calls.total})"
+    assert calls.legacy == {"artifacts": 0, "camera": 1, "fidelity": 0}, (
+        "services.proxy must not call a legacy artifact/fidelity detector when "
+        f"the engine ran; camera is the BRISQUE fallback (counts: {calls.total})"
     )
     assert calls.total == {
         "artifacts": 1,
-        "camera": 1,
+        "camera": 2,
         "fidelity": 1 if with_source else 0,
-    }, "the detectors must run exactly once per item (the engine's pass only)"
+    }, "artifacts/fidelity run once; camera runs in the engine and its fallback"
     assert set(entry) >= {"artifacts", "camera", "analysis"}
     if with_source:
         assert "fidelity" in entry
+
+
+def _counting_pair(monkeypatch: pytest.MonkeyPatch, pair: dict) -> list[str]:
+    """Count ``quality_models.pair_metrics`` passes — the learned seam itself.
+
+    ``nr_metrics`` is stubbed empty as well: W13 left BRISQUE without a producer,
+    and a pair-count test must not try to import torch/piq to prove its point.
+    """
+    from tabs.image_gallery.services import quality_models
+
+    calls: list[str] = []
+
+    def pair_metrics(item, source, *args, **kwargs):
+        calls.append("pair")
+        return dict(pair)
+
+    monkeypatch.setattr(quality_models, "pair_metrics", pair_metrics)
+    monkeypatch.setattr(quality_models, "nr_metrics", lambda *args, **kwargs: {})
+    return calls
+
+
+def _local_plan_item():
+    image = _gradient(64)
+    ctx = build_context(
+        "item.png",
+        proxy_image=image,
+        source_image=_source_variant(image),
+        capabilities={"images", "reference"},
+    )
+    resolution = resolve_plan(discover(PRODUCERS), policy="local")
+    return resolution, {"item.png": ctx}
+
+
+def test_local_plan_calls_the_pair_seam_once_per_item(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """W13: one LPIPS/DISTS pass per item, made by the fidelity computation."""
+    calls = _counting_pair(monkeypatch, {"lpips": 0.31, "dists": 0.22})
+    resolution, contexts = _local_plan_item()
+
+    records, _journal = run_plan(resolution, contexts)
+
+    assert len(calls) == 1, (
+        "the same pair must reach pair_metrics once: "
+        "compute_fidelity_from_images already calls it, so a second producer "
+        "means a second torch forward pass over the same two images"
+    )
+    by_axis = {record.axis: record for record in records["item.png"]}
+    assert by_axis["lpips"].status == "ok"
+    assert by_axis["dists"].status == "ok"
+
+
+def test_a_second_pair_caller_turns_the_counter_red(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Red-before for the test above: a second caller must be visible as 2.
+
+    This restores exactly what the deleted learned-quality producer did —
+    call ``pair_metrics`` after the fidelity dict already carried the pair — in
+    the runner's producer wrapper. Without this case the single-pass assertion
+    could pass for the wrong reason (e.g. the seam never being reached at all).
+    """
+    from tabs.image_gallery.analysis import runner
+    from tabs.image_gallery.analysis.producers.fidelity_reference import (
+        producer as fidelity,
+    )
+    from tabs.image_gallery.services import quality_models
+
+    calls = _counting_pair(monkeypatch, {"lpips": 0.31, "dists": 0.22})
+    real_run = fidelity.run
+
+    def run_and_duplicate(ctx):
+        records = real_run(ctx)
+        quality_models.pair_metrics(ctx.proxy_image, ctx.source_image)
+        return records
+
+    monkeypatch.setitem(runner._RUN_FUNCS, "fidelity_reference", run_and_duplicate)
+    resolution, contexts = _local_plan_item()
+
+    run_plan(resolution, contexts)
+
+    assert len(calls) == 2, (
+        "the counter must see the duplicate pair pass; a count of 1 here would "
+        "mean the gate above proves nothing"
+    )
 
 
 @pytest.mark.parametrize("with_source", [False, True], ids=["sourceless", "source"])
@@ -476,7 +583,7 @@ def test_flag_on_falls_back_to_the_legacy_stage_when_a_producer_raises(
 
     entry = _run_stages(item, source)
 
-    assert calls.legacy == {"artifacts": 0, "camera": 0, "fidelity": 1}
+    assert calls.legacy == {"artifacts": 0, "camera": 1, "fidelity": 1}
     assert set(entry) >= {"artifacts", "fidelity", "camera", "analysis"}
     proxy = proxy_for(item)
     source_proxy = proxy_for(source)
