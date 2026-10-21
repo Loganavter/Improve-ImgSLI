@@ -6,10 +6,12 @@ description: Authors and maintains the in-app Help manual (host + tab topics, fs
 # In-app Help authoring
 
 Improve-ImgSLI ships an illustrated manual (hubs → cards → pages) rendered by
-the toolkit `HelpDocumentView`. Primary discovery stays Find Action; Help
+the app's `HelpDialog` (`src/plugins/help/dialog.py`): toolkit
+`parse_help_blocks` → `Text(mode="document")`, with host-owned TOC card,
+scroll area and figure lightbox. Primary discovery stays Find Action; Help
 teaches shape and habits.
 
-Authoritative reference: [docs/dev/HELP_SYSTEM.md](../../../docs/dev/HELP_SYSTEM.md) — read it before designing a page. This skill is the decision map.
+Authoritative reference: [docs/dev/HELP_SYSTEM.md](../../docs/dev/HELP_SYSTEM.md) — read it before designing a page. This skill is the decision map.
 
 ## When to touch Help
 
@@ -25,7 +27,7 @@ its page.
 | Host scan / dialog | `src/plugins/help/` |
 | Host topics + shared assets | `src/resources/help/` (`en|ru|zh|pt_BR/`, `assets/`) |
 | Tab topics | `src/tabs/<tab>/help.py` (`build_help_hub_contribution()` for multi-page hubs, mount = `workspace.<tab>` by convention) + `src/tabs/<tab>/resources/help/` |
-| Toolkit rendering | `sli_ui_toolkit.widgets.HelpDocumentView` (read-only from the app side) |
+| Rendering | toolkit `parse_help_blocks` → `Text(mode="document")`; dialog, TOC, scroll area and lightbox are app chrome (`src/plugins/help/dialog.py`, `image_lightbox.py`) — read-only from the app side |
 
 Tabs publish hub presentation via `create_service("contribute_help")`; the
 Help plugin never imports `tabs.*`. Structure itself is scanned from the
@@ -34,8 +36,8 @@ filesystem — dirs are hubs, `*.md` files are pages, ids are dotted paths.
 ## Authoring rules (summary)
 
 - Page title `##`; concept sections `###` with stable `{#anchor}`; the TOC is generated from anchored `###` — keep titles short.
-- **No GFM pipe tables** in bodies: consecutive `| … |` rows render as one paragraph. Use `- **X** — …` lists.
-- Labels are literal, on-screen names in `**bold**` (no `{{tr:}}` tokens): write the control exactly as the UI shows it. Bodies ship in en + ru + zh + pt_BR; a missing language falls back to EN. Prose canon: [docs/dev/HELP_STYLE_GUIDE.md](../../../docs/dev/HELP_STYLE_GUIDE.md). <!-- doc-truth:allow -->
+- **Tables parse** (`parse_help_blocks` → `TableBlock`: first row is the header when the next line is a `---` separator; `\|` escapes a pipe) — but the corpus test still rejects `| … |` rows in shipped bodies (`test_help_tree.py`), so keep `- **X** — …` lists until that assertion is lifted.
+- Labels are literal, on-screen names in `**bold**` (no `{{tr:}}` tokens): write the control exactly as the UI shows it. Bodies ship in en + ru + zh + pt_BR; a missing language falls back to EN. Prose canon: [docs/dev/HELP_STYLE_GUIDE.md](../../docs/dev/HELP_STYLE_GUIDE.md). <!-- doc-truth:allow -->
 - Figures as body-relative paths into the owning package's `assets/`. Never add figures outside the per-topic budget table in HELP_SYSTEM.md.
 - Cross-link with `help://dotted.path#anchor`; no trailing `### Related` dumps — weave links into prose or use a short `### Next topics`.
 
@@ -45,7 +47,7 @@ filesystem — dirs are hubs, `*.md` files are pages, ids are dotted paths.
 - In host leave a stub only: `###` header + stable `{#anchor}` + one line + `help://` link to the tab overview.
 - Keep anchors stable — TOC and `help://dotted.path#anchor` links depend on them; never rename to fix duplication.
 - Anti-pattern (pre-webcanon): a host page duplicated the MC overview instead of linking to `help://workspace.multi_compare.overview`.
-- Positive pattern: `platform.settings` shell + tab sections via `build_settings_contribution` (`src/tabs/image_compare/use_cases/registration.py:43`).
+- Positive pattern: `platform.settings` shell + tab sections via `build_settings_contribution` (`src/tabs/image_compare/use_cases/registration.py:49`).
 
 ## Figure policy (default zero)
 
