@@ -160,6 +160,71 @@ get_state {path: "tabs.image_gallery.quick_look"} →
    "source_side": "inset"}
 ```
 
+### Canvas control: scene reads and verified commands (`get_canvas_scene`, scene commands)
+
+A canvas tab is not driveable through the element inventory alone: the panes,
+dividers and magnifier instances are painted, not widgets. Three tools cover it,
+and they share one rule — **a field is either measured and labelled, or named as
+unavailable, never approximated**.
+
+`get_canvas_scene` (read) answers one tab's scene as deterministic JSON:
+
+```json
+{"schema": "imgsli-canvas-scene/1", "tab": "image_compare",
+ "canvas": {"w": 640, "h": 480, "space": "canvas_px", "source": "ic_render_plan"},
+ "panes": [], "dividers": [{"kind": null, "visible": true}],
+ "magnifiers": [{"id": "default", "visible": true, "active": true,
+                 "model": {"position_relative": [0.5, 0.5], "size_relative": 0.2,
+                           "divider_visible": true, "divider_thickness": 2,
+                           "offset_relative": [0.0, 0.0]}}],
+ "transform": {"camera": {"zoom": 1.0, "pan": [0.0, 0.0], "space": "relative"}},
+ "sources": {"magnifiers": "magnifier_widget_state (no instances)"},
+ "unavailable": [{"field": "canvas", "reason": "no rendered frame …"}]}
+```
+
+- **Every geometry field names its space and its source.** `space` is
+  `canvas_px` or `relative`; `source` names the owner the value was read from.
+  Two owners can disagree on purpose — the scene graph keeps hidden instances
+  and canvas pixels, the renderer paints a filtered layout — so a value is only
+  meaningful together with its source.
+- **Honest gaps instead of guesses.** A field that cannot be derived is absent
+  from the value and listed in `unavailable` with a reason (`no rendered frame
+  and no decoded image-pair size`, `no split line without a content rect`, …).
+  A caller must treat `unavailable` as "not measurable right now", not as zero.
+- **Hidden magnifier instances are listed**, flagged with `visible: false`, and
+  keep their state; `active` names the one the app is currently driving.
+- **The read does not change the scene.** It must not create state on first
+  read; a getter that materializes state is a bug in the getter.
+
+Six **scene commands** take absolute values (never toggles, never deltas):
+
+| command | params | canvas |
+|---|---|---|
+| `magnifier.set_visible` | `id` (instance id exactly as listed), `visible: bool` | image_compare |
+| `magnifier.set_position` | `id`, `x`/`y` as fractions `0..1` of the canvas | image_compare |
+| `magnifier.set_size` | `id`, `size` as a fraction of the short side (default 0.2) | image_compare |
+| `divider.set_visible` | `visible: bool` | image_compare |
+| `divider.set_thickness` | `thickness: int px` `0..10` (0 also hides) | image_compare |
+| `layout.set_split_weights` | `path: [int]` (child-index chain, root `[]`), `weights: [float]` summing to ~1.0 (clamped per child ≥ 0.15) | multi_compare |
+
+Two ways to run them, both rejecting anything outside the schema:
+
+- `run_action {"action_id": "<command>", "params": {…}, "expect": {…}, "tab": …}` —
+  a scene command id routes to the command; any other id runs the Find Action.
+  Supplying `expect` turns the call into a verified one.
+- `set_scene_commands {"commands": [{"action": …, "params": {…}, "expect": {…}}],
+  "verify": true, "tab": …}` — an **ordered** list, stopping at the first error,
+  each command re-reading the scene when `verify` is on.
+
+`expect` maps a scene path (as `get_canvas_scene` names it, e.g.
+`magnifiers.0.model.size_relative`, `dividers.0.visible`) to the value that must
+hold afterwards. A command that ran but changed nothing is a **failure**, not a
+success: the answer carries the observed value next to the expected one. Unknown
+key, wrong type, or out-of-range value is refused with the schema in the hint.
+
+Scene commands dispatch through the app's own handlers (the same path a user
+action takes) — they never mutate the Redux Store directly.
+
 ### Element ids, filters, and stable property targets
 
 `ui_elements` inventories the whole live window by default. Three optional
@@ -611,6 +676,88 @@ The live channel is the in-app control server: a unix socket in the control dir
 on a live instance are the same tools — the answering path is visible in every
 result as `source`.
 
+## Verifying a live instance
+
+A capture or a state read answers a question only after you know **what you are
+looking at**. This section is the method; how the instance is hosted (display,
+virtual screen, container) is outside this document.
+
+### Prove the canvas is live before judging it
+
+- `ui_elements` must list a row with `"role": "canvas"` for the tab you are
+  about to judge (a live `QRhiWidget` inventories as `canvas`).
+- The log must show the canvas working (`query_trace` / `read_log`): a first
+  frame or takeover line for that tab.
+- `capture_live` / `capture_surface` report `rhi_layers`: `0` on a tab that has
+  a canvas means **this build cannot composite it** — not that the canvas is
+  blank.
+
+### Three layers, three owners
+
+| Layer | Who owns it | Visible to |
+|---|---|---|
+| cover / plate (the pre-first-frame image) | a sibling `QLabel` | window grab **and** raster grab |
+| canvas raster frame (the image inside the canvas) | the canvas' own pass | the canvas framebuffer (`rhi_layers`) |
+| tiled handover (seam-safe tiles) | the canvas' own pass | same as above |
+
+A capture that composes canvas frames shows all three; one that does not shows
+chrome and whatever raster layer sits behind the canvas.
+
+### Artifact signatures
+
+| Signature | It is | Do |
+|---|---|---|
+| an all-black band whose edge sits at `screen_width − window_x` | the window is partly **off screen** | check the window rect against the screen size; move it or use a build that fits its saved rect |
+| the whole canvas area black while the log says it drew | canvas not composited, or genuinely off screen | read `rhi_layers` first, then the geometry |
+| black over toolbar/footer/controls | the same off-screen band, not broken chrome | same as above |
+| the window grab is black but the canvas framebuffer has content | presentation vs content split | trust the canvas frame, then re-check geometry |
+| keys do nothing | they went to whatever holds focus | aim them at the target element, or use `nav_key` |
+| a pointer gesture does nothing | the pointer was outside the window, or no leaf under it | move the pointer inside first; prefer keys |
+| two captures in the same second overwrite each other | filename granularity is 1 s | wait ≥ 1 s between captures |
+
+### Before calling something broken
+
+1. Is the window fully on screen (rect vs screen)?
+2. Is the capture honest (`method`, `rhi_layers`, plus the log line that should
+   accompany the state)?
+3. Did the state change with an input you can name (hash before/after)?
+4. Does it reproduce in a second, independent probe (canvas frame, log, moved
+   or resized window)?
+
+A "defect" that exists in one capture with no log or second-probe support is an
+artifact until proven otherwise.
+
+### Do not
+
+- Judge a canvas from a capture of a window that is not fully on screen.
+- Read black as a broken widget before checking geometry.
+- Conclude "the render path paints black" from a window grab alone.
+- Drive the app's own file dialogs from a client — use `open_folder {path, tab}`
+  (a file-only tab receives the folder's images as files).
+- Restore a saved window rect without fitting it to the current screen.
+- Invent a second read path for a scene value: `get_canvas_scene` is the one
+  read verb, `set_scene_commands` the one write verb (see the canvas section).
+
+### Appearance step (interface scale / language) — mandatory for UI waves
+
+The parity gate (`tests/runtime/test_ui_metrics_parity.py`) is the offscreen
+tripwire; this is the observed half:
+
+1. Set the interface scale to **1.25** (Settings → Appearance), keep the window
+   size, and read the dialog under test: its minimum width must still cover the
+   scaled content (no clipped row, no label under its field, no bracket narrower
+   than its contents). Repeat at **1.5**.
+2. Change the language with the dialog open where the surface supports it:
+   labels and the CSD menu strip must retranslate in the same interaction. A
+   surface the host rebuilds per open (export, image-properties, the AI settings
+   page) only has to be correct *when opened after* the change — the gate
+   records that as `REBUILD`.
+3. Capture the dialog at each factor (same window, no resize) and compare row
+   pitch and the focus ring: the ring must stay separated from the control's
+   content at every factor.
+4. A surface that only re-lays-out after a second event-loop turn is a bug, not
+   a slow render.
+
 ## Known limitations
 
 - **`ui_click {button: right}` hides the menu it just opened (P1 tool defect,
@@ -642,9 +789,7 @@ with the SDK's low-level `Server` unchanged.
 - [UI_LAYOUT_DUMP.md](UI_LAYOUT_DUMP.md) — the widget-tree dump
 - [SCREENSHOTS.md](SCREENSHOTS.md) — Xvfb requirements for `capture_surface`
 - Private `improve-imgsli-internal-docs` repo →
-  `docs/dev/RUNBOOK_LIVE_MCP_VERIFICATION.md` — copy-paste recipe for driving and
-  *reading* a live instance on a private Xvfb: private display + isolated
-  `XDG_*`, the RHI-is-live proof steps, the window-on-screen check, and the
-  capture-artifact checklist (which of `method`/`rhi_layers` to trust). Its §0
-  checklist is the blindness list referenced from the private
-  `docs/dev/DEBUGGING.md` rule 7.
+  `docs/dev/RUNBOOK_LIVE_MCP_VERIFICATION.md` — the **host** half only:
+  private display + isolated `XDG_*`, the RHI backend matrix for this machine,
+  and the window-on-screen check. The method (what to prove, which artifact to
+  trust, what not to conclude) lives in § *Verifying a live instance* above.
