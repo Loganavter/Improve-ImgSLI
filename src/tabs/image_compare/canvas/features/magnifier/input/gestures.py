@@ -89,6 +89,12 @@ def _matches_internal_split_drag(ctx) -> bool:
 
 
 def _matches_side_preview(ctx) -> bool:
+    # The preview is a MODE, not a hit-test: it starts whenever the modifier
+    # contract holds (space held + shift + combined overlay with both sides
+    # visible) — the click may land on the loupe or anywhere else on the
+    # canvas and must behave the same (owner requirement, 2026-10-22). The
+    # overlay-point guard that used to be here made the gesture depend on
+    # where the user happened to click.
     if not _space_pressed(ctx.store):
         return False
     if not _shift_pressed(ctx):
@@ -97,9 +103,7 @@ def _matches_side_preview(ctx) -> bool:
         return False
     if not _active_combined(ctx.store):
         return False
-    if not _has_both_sides_visible(ctx.store):
-        return False
-    return _point_in_overlay(ctx)
+    return _has_both_sides_visible(ctx.store)
 
 
 def _matches_keyboard_move_absorb(ctx) -> bool:

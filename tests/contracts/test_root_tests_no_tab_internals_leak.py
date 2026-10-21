@@ -52,6 +52,16 @@ def _tab_names() -> tuple[str, ...]:
 # rel path (POSIX, relative to repo root) -> why this file is allowed to
 # deep-import a specific tab's internals from outside that tab's own tests/.
 ALLOWED_DEEP_TAB_IMPORTS: dict[str, str] = {
+    "tests/runtime/test_preview_release_restore.py": (
+        "cross-layer PREVIEW LIFECYCLE contract (host keyboard routing + tab "
+        "gesture bindings): the owner-reported defect was split across the two "
+        "tiers — the tab's gesture started the preview and its canvas path "
+        "restored it, while the host's global release path (which now receives "
+        "Space/Shift once the tab shell owns focus) restored nothing. The test "
+        "imports the real gesture predicate and the real GlobalKeyboardHandler "
+        "so both halves are exercised as shipped; local stubs at either end "
+        "would restate one side of the bug."
+    ),
     "tests/contracts/test_ic_canvas_keyboard_focus.py": (
         "cross-layer KEYBOARD REACHABILITY contract (host event router + tab "
         "shell): the defect was exactly that both halves were locally correct — "

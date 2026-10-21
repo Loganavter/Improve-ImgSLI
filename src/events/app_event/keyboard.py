@@ -46,36 +46,6 @@ def key_event_chord(event: QKeyEvent) -> str:
         return ""
 
 
-def focused_widget():
-    """The live focus widget (seam for routing tests; never cached)."""
-    return QApplication.focusWidget()
-
-
-def widget_accepts_text_keys(widget) -> bool:
-    """True when unmodified letter/space keys are input for ``widget``.
-
-    The global handler routes W/A/S/D/Q/E and Space to the canvas overlay;
-    that route must not fire when the focused widget consumes those keys as
-    input. Native editors are matched by type; toolkit controls that paint
-    themselves (``ComboBox`` — a ``Button``, not a ``QLineEdit``) opt in with
-    the duck-typed ``acceptsTextKeys()`` protocol. Before it existed, typing
-    ``deepseek`` into a focused model ComboBox delivered only ``p`` and ``k``:
-    d/e/s are overlay-movement keys and were swallowed by this route
-    (measured live 2026-10-22 through the control channel).
-    """
-    if widget is None:
-        return False
-    if isinstance(widget, (QLineEdit, CustomLineEdit, QTextEdit, QPlainTextEdit)):
-        return True
-    checker = getattr(widget, "acceptsTextKeys", None)
-    if callable(checker):
-        try:
-            return bool(checker())
-        except Exception:
-            return False
-    return False
-
-
 def active_tab_shortcut_owns_event(event: QKeyEvent) -> bool:
     """True when the live shortcut binder claims this event's chord.
 
@@ -225,10 +195,12 @@ class GlobalKeyboardHandler:
         if active_tab is not None and active_tab.owns_widget(watched_obj):
             return False
 
-        focus = focused_widget()
-        if active_tab is not None and active_tab.owns_widget(focus):
+        focused_widget = QApplication.focusWidget()
+        if active_tab is not None and active_tab.owns_widget(focused_widget):
             return False
-        if widget_accepts_text_keys(focus):
+        if isinstance(
+            focused_widget, (QLineEdit, CustomLineEdit, QTextEdit, QPlainTextEdit)
+        ):
             return False
 
         key = event.key()
@@ -259,8 +231,40 @@ class GlobalKeyboardHandler:
 
         self._movement_controller.start()
 
+    def preview_controller(self):
+        """The tab's preview lifecycle owner (``image_label_handler.preview``)."""
+        handler = getattr(self.presenter, "image_label_handler", None)
+        return getattr(handler, "preview", None)
+
+    def restore_preview_if_active(self, reason: str) -> bool:
+        """End an active Shift+Space preview from the global release path.
+
+        The gesture begins on a canvas click, but once the tab shell owns the
+        keyboard focus the matching Space/Shift RELEASE is delivered here, not
+        to the canvas handler that used to restore it — so the preview stayed
+        on screen after the keys were let go (measured live 2026-10-22, owner
+        report). The controller is feature-neutral and restores its own
+        snapshot, so calling it from this path is the same contract as the
+        canvas path's ``preview.restore()``.
+        """
+        preview = self.preview_controller()
+        if preview is None or not bool(getattr(preview, "is_active", False)):
+            return False
+        try:
+            preview.restore()
+        except Exception:
+            logger.exception("global preview restore failed (%s)", reason)
+            return False
+        return True
+
     def handle_key_release(self, event: QKeyEvent) -> None:
         key_code = event.key()
+        if key_code == Qt.Key.Key_Shift:
+            # Shift is deliberately NOT a managed key (see
+            # ``should_route_globally``); its release only has to end an
+            # active preview.
+            self.restore_preview_if_active("shift_released")
+            return
         result = self.keyboard_state.release(key_code, is_auto_repeat=event.isAutoRepeat())
         if not result.applied:
             if not self._should_log_suppressed_reason(result.reason):
@@ -283,6 +287,11 @@ class GlobalKeyboardHandler:
 
         if key_code != Qt.Key.Key_Space:
             return
+
+        # Restore first and unconditionally: the preview mode is independent of
+        # single-image mode, and the release must undo it on whichever path it
+        # arrives.
+        self.restore_preview_if_active("space_released")
 
         if self.store.viewport.view_state.showing_single_image_mode == 0:
             return
