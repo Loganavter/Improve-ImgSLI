@@ -14,12 +14,40 @@ here -- the two never hold the same content.
 
 from __future__ import annotations
 
+import logging
+
 from PySide6.QtGui import QImage
 
 from engine.gpu.host_texture_cache import cache_for_widget, qimage_from_pil
 from engine.cache.image_identity import image_uid
 
 _QIMAGE_BY_UID_CACHE_CAPACITY = 4
+
+logger = logging.getLogger("ImproveImgSLI")
+
+
+def _record_crop_failure(widget, texture_key, exc: BaseException) -> None:
+    """Drop a failed crop and record it (V11: never upload the unclipped image).
+
+    Before this, both crop paths swallowed the exception and fell through to the
+    *unclipped* upload, which was then marked as a finished tile — the frame showed
+    content from outside the tile's slot as if it were the tile (silent-wrong).
+    The counter and the once-per-key warning make the degradation a recorded fact
+    instead of an invisible one.
+    """
+    widget._crop_failure_count = int(getattr(widget, "_crop_failure_count", 0) or 0) + 1
+    seen = getattr(widget, "_crop_failure_keys", None)
+    if seen is None:
+        seen = set()
+        widget._crop_failure_keys = seen
+    if texture_key not in seen:
+        seen.add(texture_key)
+        logger.warning(
+            "[upload-queue] crop failed for %r — upload skipped, the unclipped "
+            "image is never substituted: %s",
+            texture_key,
+            exc,
+        )
 
 
 def _qimage_by_uid_cache(widget):
@@ -92,33 +120,37 @@ def queue_texture_upload(
                 int(crop_box[2]),
                 int(crop_box[3]),
             )
+        except Exception as exc:
+            # An unparseable crop box is a caller bug; falling through here used
+            # to upload the WHOLE image under this tile's key (V11).
+            _record_crop_failure(widget, texture_key, exc)
+            return
+        try:
+            from engine.store.tiled_pixel_store import (
+                TiledPixelStore,
+                qimage_from_pixel_source,
+            )
         except Exception:
-            box_tuple = None
-        if box_tuple is not None:
+            # Import failure is not a crop failure: fall through to the PIL path.
+            TiledPixelStore = None  # type: ignore[assignment,misc]
+            qimage_from_pixel_source = None  # type: ignore[assignment]
+        if TiledPixelStore is not None and isinstance(pil_image, TiledPixelStore):
+            # Existing sub-rect util: box region straight from the
+            # memmap, never a full-frame materialization.
             try:
-                from engine.store.tiled_pixel_store import (
-                    TiledPixelStore,
-                    qimage_from_pixel_source,
-                )
+                prepared = qimage_from_pixel_source(pil_image, box_tuple)
+            except Exception as exc:
+                _record_crop_failure(widget, texture_key, exc)
+                return
+            queue_prepared_texture_upload(widget, texture_key, prepared, slot_index)
+            return
+        try:
+            from .crop_clip import clip_image_for_upload
 
-                if isinstance(pil_image, TiledPixelStore):
-                    # Existing sub-rect util: box region straight from the
-                    # memmap, never a full-frame materialization.
-                    queue_prepared_texture_upload(
-                        widget,
-                        texture_key,
-                        qimage_from_pixel_source(pil_image, box_tuple),
-                        slot_index,
-                    )
-                    return
-            except Exception:
-                pass
-            try:
-                from .crop_clip import clip_image_for_upload
-
-                pil_image = clip_image_for_upload(pil_image, box_tuple)
-            except Exception:
-                pass
+            pil_image = clip_image_for_upload(pil_image, box_tuple)
+        except Exception as exc:
+            _record_crop_failure(widget, texture_key, exc)
+            return
     uid = image_uid(pil_image)
     uid_cache = _qimage_by_uid_cache(widget)
     image = uid_cache.get(uid)

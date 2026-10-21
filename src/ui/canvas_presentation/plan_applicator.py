@@ -7,6 +7,9 @@ from .plan import CanvasRenderPlan
 
 logger = logging.getLogger("ImproveImgSLI")
 
+#: Service ids already reported as unprovided this session (log once, not per frame).
+_logged_missing_services: set[str] = set()
+
 
 def _call_tab_canvas_service(service_id: str, *args, **kwargs):
     from tabs.registry import get_shared_tab_registry
@@ -17,10 +20,16 @@ def _call_tab_canvas_service(service_id: str, *args, **kwargs):
     # per frame spams DEBUG when the active tab has no canvas (session_picker).
     registry = get_shared_tab_registry()
     result = registry.create_service(service_id, *args, **kwargs)
-    if result is None:
-        # Expected for tabs without canvas — log once per session type, not per frame.
-        # Keep at DEBUG but avoid flood; callers already degrade gracefully.
-        pass
+    if result is None and service_id not in _logged_missing_services:
+        # Expected for tabs without a canvas. Recorded once per service id (not
+        # per frame) so the degradation is a visible fact instead of silence;
+        # callers already degrade gracefully.
+        _logged_missing_services.add(service_id)
+        logger.debug(
+            "[canvas-plan] no tab provides the %r service — that plan step is "
+            "skipped (logged once per session)",
+            service_id,
+        )
     return result
 
 

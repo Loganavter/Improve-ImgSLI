@@ -17,6 +17,7 @@ preserved verbatim so divider/filename still suppress until
 
 from __future__ import annotations
 
+import time
 from contextlib import nullcontext
 
 from ui.canvas_infra.rhi.render_executor import iter_active_render_passes
@@ -264,8 +265,7 @@ def submit_array_draw(
         if frame_context is not None
         else nullcontext()
     )
-    _began = True
-    _ended = True
+    _submit_t0 = time.perf_counter()
     with _submit_cm:
         record_array_draw(
             command_buffer,
@@ -279,6 +279,7 @@ def submit_array_draw(
             pre_begin=_pre_begin,
             in_pass=_in_pass,
         )
+    _submit_us = (time.perf_counter() - _submit_t0) * 1e6
 
     # Phase-2 frame bus: submit gate + begin/end fact (record only).
     if frame_context is not None:
@@ -287,7 +288,7 @@ def submit_array_draw(
             "ran" if array_draw_plan else "skipped",
             f"submit entries={len(array_draw_plan)}"
             f" gated_passes={len(active_feature_passes)}"
-            f" begin={_began} end={_ended}",
+            f" submit_us={_submit_us:.0f}",
             ids=make_ids(
                 frame_context.frame_id,
                 len(array_draw_plan),
