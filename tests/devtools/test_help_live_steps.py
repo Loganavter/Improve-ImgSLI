@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-from devtools import help_live, live_fixtures
+from devtools import help_figures, help_live, live_fixtures
 
 #: Figures this wave added; each must parse, carry en/dark and a min_size, and
 #: land inside a help ``assets`` dir that already exists in the tree.
@@ -566,8 +566,10 @@ def test_every_new_figure_parses_with_locales_sizes_and_an_asset_dir():
     for figure_id in NEW_FIGURES:
         assert figure_id in figures, f"{figure_id} missing from the recipe file"
         figure = figures[figure_id]
-        assert figure.locales == ("en",)
-        assert figure.themes == ("dark",)
+        # A figure's matrix is declared per locale x theme (the variant wave
+        # installs cells), so the stable contract is membership, not one cell.
+        assert figure.locales and set(figure.locales) <= set(help_figures.LOCALES)
+        assert figure.themes and set(figure.themes) <= set(help_figures.THEMES)
         assert figure.min_size is not None, f"{figure_id} needs a min_size"
         assert figure.note, f"{figure_id} needs a note"
         assert "/resources/help/assets/" in figure.destination

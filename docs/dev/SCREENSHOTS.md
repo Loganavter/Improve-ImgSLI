@@ -159,18 +159,31 @@ python src/devtools/help_figures.py --all --write-manifest       # record baseli
   the applied pins for what it generated. Recording needs a real display, so a
   fresh recipe stays `unbaselined` until someone runs `--all --write-manifest`
   on a private Xvfb.
-- **Variants are declared per figure, and installed per cell.** A recipe's
-  `locales` x `themes` is the matrix: more than one pair makes every capture
-  install under `assets/<locale>/<theme>/<name>` (a single-variant recipe keeps
-  today's flat destination). Six reproducible figures ship
-  `en|pt_BR|ru|zh` x `dark|light` — 48 installed cells, ~2.2 MB (measured),
-  below the 15 MB bundle-in-the-binary gate. `empty_state.png` joined the
-  matrix in #507, after the earlier "five figures, 40 files" line was written.
+- **Variants are declared per figure, and installed per cell — in both
+  pipelines.** A figure's `locales` x `themes` is the matrix: more than one
+  pair makes every capture install under `assets/<locale>/<theme>/<name>` (a
+  single-variant figure keeps today's flat destination). The recipe path
+  (`help_figures.install_destination`) always did this; the live path
+  (`help_live.install_target`) used to write every cell to the flat
+  destination, so a declared live matrix shipped exactly one variant. Measured
+  2026-10-22: **19 figures carry a matrix — 140 installed cells, ~8.5 MB**, still
+  below the 15 MB bundle-in-the-binary gate. `empty_state.png` joined the matrix
+  in #507, after the earlier "five figures, 40 files" line was written, and the
+  live matrices landed in the variant wave (13 live figures: 11 at
+  `en|pt_BR|ru|zh` x `dark|light`, `long_press`/`mc-layouts` at
+  `en` x `dark|light`).
   One literal markdown reference then resolves
   through `resolve_help_asset`: `locale+theme -> locale -> theme -> base`. A
   **declared** cell that is missing is a content bug and returns `None` (the
   placeholder path), never the base; a locale with no declared matrix keeps the
-  base image. zh is reproducible because the app and the captures both pin the
+  base image. The declaration registry the resolver consults is the recipe
+  manifest (`src/devtools/help_figures.json`), so a *live* figure's matrix is a
+  file-layout fact only — it resolves by the chain, and a missing live cell
+  falls back to the base image instead of the placeholder.
+  `help-paste-overlay` is the one measured exception still on its single cell:
+  the direction picker is a `TopLevelInWindowOverlay` and has no top-level
+  window for the `window` crop selector, so all 8 captures fail. zh is
+  reproducible because the app and the captures both pin the
   bundled **Noto Sans SC** (SIL OFL 1.1) as the CJK fallback: the system
   fallback is not deterministic, and a runner without a CJK font renders tofu.
   Both bundled fonts ship their OFL texts next to the files

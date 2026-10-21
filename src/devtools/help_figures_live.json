@@ -20,10 +20,14 @@
       ],
       "destination": "src/resources/help/assets/ui/toolbar.jpg",
       "locales": [
-        "en"
+        "en",
+        "pt_BR",
+        "ru",
+        "zh"
       ],
       "themes": [
-        "dark"
+        "dark",
+        "light"
       ],
       "note": "Live Image Compare toolbar row (Line / View / Magnifier / Record). Cropped from the window capture; the states inside the groups are the buttons' own current affordances. Variant need: locale+theme — the frame carries translatable group captions (\"Line\", \"View\", \"Magnifier\", \"Record\").",
       "min_size": [
@@ -60,10 +64,14 @@
       ],
       "destination": "src/resources/help/assets/platform/tab_strip.png",
       "locales": [
-        "en"
+        "en",
+        "pt_BR",
+        "ru",
+        "zh"
       ],
       "themes": [
-        "dark"
+        "dark",
+        "light"
       ],
       "note": "Session tab strip with three sessions; live chrome, so the labels are the running app's. Variant need: locale+theme — the tabs read their translatable titles (\"New Tab\", \"Image Compare\", …).",
       "min_size": [
@@ -101,10 +109,14 @@
       "crop": null,
       "destination": "src/tabs/multi_compare/resources/help/assets/export_save_dialog.png",
       "locales": [
-        "en"
+        "en",
+        "pt_BR",
+        "ru",
+        "zh"
       ],
       "themes": [
-        "dark"
+        "dark",
+        "light"
       ],
       "note": "Live Multi Compare save dialog (Save Grid) over a loaded grid. Variant need: locale+theme — dialog title and field labels (\"Output directory:\", \"File name:\", the buttons) are translated.",
       "min_size": [
@@ -139,10 +151,14 @@
       "crop": null,
       "destination": "src/tabs/image_gallery/resources/help/assets/triage_stats.png",
       "locales": [
-        "en"
+        "en",
+        "pt_BR",
+        "ru",
+        "zh"
       ],
       "themes": [
-        "dark"
+        "dark",
+        "light"
       ],
       "min_size": [
         1000,
@@ -185,10 +201,14 @@
       "crop": null,
       "destination": "src/tabs/image_gallery/resources/help/assets/quality_quicklook.png",
       "locales": [
-        "en"
+        "en",
+        "pt_BR",
+        "ru",
+        "zh"
       ],
       "themes": [
-        "dark"
+        "dark",
+        "light"
       ],
       "min_size": [
         1000,
@@ -229,7 +249,8 @@
         "en"
       ],
       "themes": [
-        "dark"
+        "dark",
+        "light"
       ],
       "min_size": [
         1000,
@@ -274,10 +295,14 @@
       ],
       "destination": "src/tabs/image_compare/resources/help/assets/magnifier.jpg",
       "locales": [
-        "en"
+        "en",
+        "pt_BR",
+        "ru",
+        "zh"
       ],
       "themes": [
-        "dark"
+        "dark",
+        "light"
       ],
       "min_size": [
         1000,
@@ -314,10 +339,14 @@
       },
       "destination": "src/tabs/image_compare/resources/help/assets/difference_modes.png",
       "locales": [
-        "en"
+        "en",
+        "pt_BR",
+        "ru",
+        "zh"
       ],
       "themes": [
-        "dark"
+        "dark",
+        "light"
       ],
       "min_size": [
         1200,
@@ -364,10 +393,14 @@
       "crop": null,
       "destination": "src/plugins/export/resources/help/assets/export_dialog.jpg",
       "locales": [
-        "en"
+        "en",
+        "pt_BR",
+        "ru",
+        "zh"
       ],
       "themes": [
-        "dark"
+        "dark",
+        "light"
       ],
       "min_size": [
         800,
@@ -409,10 +442,14 @@
       "crop": null,
       "destination": "src/plugins/image_properties/resources/help/assets/platform/image_properties.png",
       "locales": [
-        "en"
+        "en",
+        "pt_BR",
+        "ru",
+        "zh"
       ],
       "themes": [
-        "dark"
+        "dark",
+        "light"
       ],
       "min_size": [
         420,
@@ -463,7 +500,8 @@
         "en"
       ],
       "themes": [
-        "dark"
+        "dark",
+        "light"
       ],
       "min_size": [
         800,
@@ -519,7 +557,7 @@
         600
       ],
       "rhi_backend": "vulkan",
-      "note": "The direction picker a paste opens: set_clipboard owns the X selection with a demo image, then the platform.paste_clipboard_image action runs the app's own Ctrl+V entry point (keymap default, src/ui/actions/platform.py:426-431, emitting the same ExportPasteImageFromClipboardEvent the canvas Ctrl+V handler emits) so the picker appears over the loaded session. PasteDirectionOverlay (src/services/system/paste_direction_overlay.py:48-58) is a TopLevelInWindowOverlay whose targets are painted inside one paintEvent: no element row, no per-target rect, so its own top-level window rect is the only honest crop (@screen + window crop), and the figure fails loudly when that window is not visible. MEASURED 2026-10-21 on this harness (private Xvfb, no window manager): the picker is not on screen at capture time -- the frame holds the loaded session only (the 'Left: sunset' HUD label over an empty canvas), and its left/right (or up/down for a horizontal split) targets are a STATE, not a phase: they are painted for as long as the overlay is shown, so no earlier step, later step or stable_interval_s finds a transient four-target instant. The one code difference from the two overlays this harness does capture -- QuickLookOverlay (src/tabs/image_gallery/ui/quick_look.py:98) and CleanReviewOverlay (src/tabs/image_gallery/ui/clean_review/__init__.py:556), both close_on_deactivate=False and pinned by parity tests -- is close_on_deactivate=True here: with no window manager to hold activation for the app window, showing the overlay deactivates the window it belongs to and the picker dismisses itself. The shipped 350x154 asset is left untouched (no live frame of this state has been produced yet); the app-side candidate is outside this figure's scope -- the tab already sweeps paste overlays on on_deactivated/on_session_closed (src/tabs/image_compare/tab.py:343-365), so close_on_deactivate=False would not leak the overlay across tabs. Variant need: locale+theme — the picker's target labels (\"Left\", \"Right\") are translated.",
+      "note": "The direction picker a paste opens: set_clipboard owns the X selection with a demo image, then the platform.paste_clipboard_image action runs the app's own Ctrl+V entry point (keymap default, src/ui/actions/platform.py:426-431, emitting the same ExportPasteImageFromClipboardEvent the canvas Ctrl+V handler emits) so the picker appears over the loaded session. PasteDirectionOverlay (src/services/system/paste_direction_overlay.py:48-58) is a TopLevelInWindowOverlay whose targets are painted inside one paintEvent: no element row, no per-target rect, so its own top-level window rect is the only honest crop (@screen + window crop), and the figure fails loudly when that window is not visible. MEASURED 2026-10-21 on this harness (private Xvfb, no window manager): the picker is not on screen at capture time -- the frame holds the loaded session only (the 'Left: sunset' HUD label over an empty canvas), and its left/right (or up/down for a horizontal split) targets are a STATE, not a phase: they are painted for as long as the overlay is shown, so no earlier step, later step or stable_interval_s finds a transient four-target instant. The one code difference from the two overlays this harness does capture -- QuickLookOverlay (src/tabs/image_gallery/ui/quick_look.py:98) and CleanReviewOverlay (src/tabs/image_gallery/ui/clean_review/__init__.py:556), both close_on_deactivate=False and pinned by parity tests -- is close_on_deactivate=True here: with no window manager to hold activation for the app window, showing the overlay deactivates the window it belongs to and the picker dismisses itself. The shipped 350x154 asset is left untouched (no live frame of this state has been produced yet); the app-side candidate is outside this figure's scope -- the tab already sweeps paste overlays on on_deactivated/on_session_closed (src/tabs/image_compare/tab.py:343-365), so close_on_deactivate=False would not leak the overlay across tabs. Variant need: locale+theme — the picker's target labels (\"Left\", \"Right\") are translated. MEASURED 2026-10-22 (variant wave): the matrix could not be installed - all 8 captures failed with \"crop_element: no visible window 'PasteDirectionOverlay'\", because the picker is a TopLevelInWindowOverlay today (src/services/system/paste_direction_overlay.py:48) and therefore has no top-level window for the 'window' crop selector. The figure also still ships its 2026-07-18 asset, so its content predates that move. Declared single-cell until an in-window overlay crop selector exists.",
       "variant_need": "locale+theme"
     },
     {
@@ -575,10 +613,14 @@
       },
       "destination": "src/tabs/image_compare/resources/help/assets/video_editor_window.png",
       "locales": [
-        "en"
+        "en",
+        "pt_BR",
+        "ru",
+        "zh"
       ],
       "themes": [
-        "dark"
+        "dark",
+        "light"
       ],
       "min_size": [
         900,
@@ -647,10 +689,14 @@
       },
       "destination": "src/tabs/image_compare/resources/help/assets/video_export.jpg",
       "locales": [
-        "en"
+        "en",
+        "pt_BR",
+        "ru",
+        "zh"
       ],
       "themes": [
-        "dark"
+        "dark",
+        "light"
       ],
       "min_size": [
         900,

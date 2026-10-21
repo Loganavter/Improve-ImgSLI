@@ -37,6 +37,7 @@ the parser raises ``AttributeError``/reports no field for the same reason.
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -80,8 +81,8 @@ def _cell_path(figure, locale: str, theme: str) -> Path:
 
     The recipe reader owns the install layout (``install_destination``: flat for
     a single cell, ``assets/<locale>/<theme>/<name>`` for a matrix) and the live
-    reader installs the same literal destination today. The layout function is
-    duck-typed on ``destination``/``locales``/``themes``, so it describes both.
+    reader installs through the same function (``help_live.install_target``), so
+    one layout describes both.
     """
     return REPO_ROOT / help_figures.install_destination(figure, locale, theme)
 
@@ -150,12 +151,25 @@ def test_every_declared_cell_exists_on_disk():
 
 
 def test_single_cell_figures_have_no_stray_variant_folder():
-    """An undeclared cell is dead weight the storage gate still charges for."""
+    """An undeclared cell is dead weight the storage gate still charges for.
+
+    A destination may be described by two manifests (``help-multi-populated``
+    is the devtool surface of record, ``help-mc-layouts`` is the live recipe
+    that actually produces the cells), so a figure whose flat destination is
+    owned by a matrix elsewhere is not stray.
+    """
+    matrix_destinations = {
+        Path(figure.destination)
+        for _source, figure in _figures()
+        if figure.destination and len(_declared_pairs(figure)) > 1
+    }
     for source, figure in _figures():
         pairs = _declared_pairs(figure)
         if len(pairs) != 1 or not figure.destination:
             continue
         destination = Path(figure.destination)
+        if destination in matrix_destinations:
+            continue
         root = _assets_root(destination)
         stray = [
             (root / locale / theme / destination.name).as_posix()
@@ -180,3 +194,31 @@ def test_unknown_variant_need_is_a_manifest_error(tmp_path):
     live_path.write_text(json.dumps(live), encoding="utf-8")
     with pytest.raises(help_figures.ManifestError, match=r"unknown variant_need 'glossy'"):
         help_live.load_recipes(live_path)
+
+
+def test_live_install_writes_one_cell_per_declared_pair():
+    """RED-BEFORE: the live loop wrote every cell to the flat destination.
+
+    A declared matrix therefore shipped exactly one variant (the last boot won)
+    even though the recipe asked for eight — the live counterpart of the
+    recipe path, which already installed per cell.
+    """
+    figure = next(f for f in help_live.load_recipes() if f.id == "help-toolbar")
+    single = replace(figure, locales=("en",), themes=("dark",))
+    assert help_live.install_target(single, "en", "dark") == (
+        help_live.REPO_ROOT / figure.destination
+    ), "a single-cell figure keeps its flat destination"
+
+    matrix = replace(
+        figure, locales=tuple(help_figures.LOCALES), themes=tuple(help_figures.THEMES)
+    )
+    destination = Path(figure.destination)
+    target = help_live.install_target(matrix, "ru", "light")
+    assert target == (
+        help_live.REPO_ROOT
+        / _assets_root(destination)
+        / "ru"
+        / "light"
+        / destination.name
+    )
+    assert target != help_live.REPO_ROOT / figure.destination

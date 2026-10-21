@@ -71,6 +71,7 @@ from devtools import live_fixtures  # noqa: E402  — deterministic inputs, no i
 from devtools.help_figures import (  # noqa: E402
     ManifestError,
     _free_display_number,
+    install_destination,
     parse_variant_need,
     xvfb_command,
 )
@@ -921,6 +922,19 @@ def _capture_origin(
     return x, y
 
 
+def install_target(figure: LiveFigure, locale: str, theme: str) -> Path:
+    """Absolute path one captured cell installs to.
+
+    The layout is the recipe reader's (``help_figures.install_destination``):
+    a single-cell figure keeps its flat destination, a declared matrix writes
+    ``assets/<locale>/<theme>/<name>`` — exactly where
+    ``plugins.help.tree.resolve_help_asset`` probes first. Before this, the
+    live loop wrote every cell to ``figure.destination``, so the last boot of a
+    matrix silently won and only one variant ever shipped.
+    """
+    return REPO_ROOT / install_destination(figure, locale, theme)
+
+
 def crop_and_install(
     screenshot: Path, destination: Path, crop: tuple[int, int, int, int] | None
 ) -> Path:
@@ -1038,9 +1052,12 @@ def main(argv: list[str] | None = None) -> int:
                                 print(f"WARN {label} after_capture: {message}", file=sys.stderr)
                             for message in fixtures.errors:
                                 print(f"WARN {label} fixture: {message}", file=sys.stderr)
-                    destination = REPO_ROOT / figure.destination
-                    crop_and_install(shot, destination, crop)
-                    print(f"installed {figure.id} [{locale}/{theme}] -> {figure.destination}")
+                    target = install_target(figure, locale, theme)
+                    crop_and_install(shot, target, crop)
+                    print(
+                        f"installed {figure.id} [{locale}/{theme}] -> "
+                        f"{target.relative_to(REPO_ROOT).as_posix()}"
+                    )
                 except LiveError as exc:
                     failures += 1
                     print(f"FAILED {label}: {exc}", file=sys.stderr)
