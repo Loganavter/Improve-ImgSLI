@@ -1,0 +1,12 @@
+# Gallery AI judgement — P0 gate ledger (plan-gallery-ai-judgement-2026-10-21).
+#
+# SHRINK-ONLY. One line per gate that is still xfailed on today's tree. The
+# line is the switch that keeps the gate xfailed: deleting it RE-ARMS the test,
+# so "the defect is fixed" and "the entry is gone" are the same commit
+# (strict=True turns a still-listed but now-passing gate into an XPASS failure).
+#
+# Format:  <GATE> | <test node id> | <why it is still red / which phase deletes it>
+#
+GA3 | tests/contracts/test_gallery_judge_profile_stamp.py::test_a_cache_only_analyze_run_does_not_freeze_the_profile | delete with P2: controller.analyze/reanalyze/_run_ai_for_visible stamp the profile freeze BEFORE the delegate runs, so an all-HIT run freezes it with no request payload built (controller.py:1124/1131/1187)
+GA4 | tests/contracts/test_gallery_judge_cache_identity.py::test_the_analysis_identity_carries_the_sampling_config_and_schema | delete with P3: ai_cache._IDENTITY_FIELDS (65-72) carries model/base_url/mode/profile/reasoning_effort/schema and no sampling config (k / temperature / seed)
+GA5 | tests/contracts/test_gallery_judge_axis_salience.py::test_an_axis_inside_the_noise_floor_carries_no_rank_weight | delete with P2: services/rank_fusion has no axis_salience(vectors, *, noise_floor) and the fusion/jev vector path applies every measured axis regardless of its spread

@@ -25,7 +25,10 @@ Degrade contract (never silent, never partial):
   ``typesafe/jev-router`` reply carries ``best``/``ranking`` but no confidence
   number — probe 2026-10-15);
 - ``Noul`` / low confidence / HTTP error / malformed body / empty series returns
-  ``None`` and a human-readable :attr:`JevRankOutcome.reason`;
+  ``None`` and a human-readable :attr:`JevRankOutcome.reason`; a vector that does
+  not score every member of the series is refused the same way
+  (:data:`JEV_REASON_INCOMPLETE`, plan-gallery-ai-judgement P1/M2) — a member
+  the model was never shown cannot be ranked;
 - the caller then keeps the Algorithms (fusion) rank and surfaces the reason. A
   failed Jev rank never fabricates a number and never re-ranks a subset.
 
@@ -44,7 +47,9 @@ from typing import Any, Callable
 
 from tabs.image_gallery.services import jev_cache
 from tabs.image_gallery.services.ai_client import _ai_debug
+from tabs.image_gallery.services.quality_read import AI_DOMAIN, normalize_domain
 from tabs.image_gallery.services.rank_fusion import measured_axes_for, rank_series
+from tabs.image_gallery.use_cases.pipeline_stages import rank_completeness
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -65,6 +70,11 @@ JEV_MIN_CONFIDENCE = 0.5
 #: Visible degrade reasons (English defaults; the caller logs / surfaces them).
 JEV_REASON_NOT_CONFIGURED = "AI (Jev) is not configured — kept the Algorithms rank"
 JEV_REASON_EMPTY = "AI (Jev): nothing to rank"
+#: A vector that does not score EVERY member of the series: a rank built from it
+#: would place a member that was never scored (live 2026-10-21: the last VLM
+#: score arrived during the rank and ``img_6`` was ranked anyway). Benign — the
+#: caller keeps the Algorithms rank; the next arriving score re-triggers.
+JEV_REASON_INCOMPLETE = "AI (Jev): the series is incomplete — kept the Algorithms rank"
 JEV_REASON_NOUL = "AI (Jev) abstained (Noul) — kept the Algorithms rank"
 JEV_REASON_LOW_CONFIDENCE = "AI (Jev) was not confident enough — kept the Algorithms rank"
 JEV_REASON_ERROR = "AI (Jev) request failed — kept the Algorithms rank"
@@ -104,6 +114,12 @@ class JevRankOutcome:
     ranks: dict[str, int] | None
     reason: str | None = None
     cached: bool = False
+    #: Which tail completed a short model reply (J2, plan-gallery-ai-judgement
+    #: P1): ``"model"`` = the reply itself named every alias, ``"deterministic"``
+    #: = the remaining aliases were ordered by the measured fusion
+    #: (``_tail_order``), ``""`` = no decision was consulted (cache hit /
+    #: degrade). The controller traces it so the applied order states its source.
+    tail: str = ""
 
     @property
     def decided(self) -> bool:
@@ -340,11 +356,12 @@ def _is_noul(raw: dict) -> bool:
 
 
 def _ranking_of(raw: dict) -> list[str] | None:
-    """Explicit full ordering from the decision, or ``None`` when absent: a list
+    """Explicit ordering from the decision, or ``None`` when absent: a list
     of aliases, a list of ``{"alias": ...}`` entries (the live "Jev Router"
-    shape, probe 2026-10-15) or an ``alias -> rank`` mapping. Unknown/duplicate
-    entries are dropped by the caller, which appends missing aliases so the
-    result is always a complete 1..N ordering.
+    shape, probe 2026-10-15) or an ``alias -> rank`` mapping. The reply may name
+    only the leading aliases (the live probe answered 2 of 6): unknown/duplicate
+    entries are dropped by the caller, which completes the tail from the
+    measured fusion — never from alias/path order (J2, plan P1).
     """
     for key in ("ranking", "order", "ordered", "ranked", "ranks"):
         value = raw.get(key)
@@ -381,17 +398,53 @@ def _choice_of(raw: dict) -> Any:
     return None
 
 
-def _tail_order(members, *, mode: str) -> list[str]:
-    """Deterministic tail order (measured fusion) for aliases below the winner."""
-    try:
-        fusion = rank_series(members, mode=mode)
-    except Exception:
-        fusion = {}
+def _tail_order(members, *, mode: str, domain: str = "algorithms", profile=None) -> list[str]:
+    """Deterministic score-ordered tail (aliases below the winner).
+
+    BY SCORE, never by alias/``str(path)`` (J2, plan-gallery-ai-judgement P1).
+    On the Algorithms domain the order is the fusion aggregate
+    (``rank_fusion.rank_series``). The AI domain reads its numbers from
+    ``item.analysis`` — the fusion aggregate reads ``item.metrics``, which the
+    AI domain never fills, so it would degenerate to path order (the exact
+    alphabetical tail this replaced); there the order comes from the same
+    measured vector the request was built from (mean applicable score, path as
+    the tie-break, unscored members last).
+    """
     paths = sorted(_path_of(m) for m in members)
-    return sorted(paths, key=lambda p: (fusion.get(p, 1 << 30), p))
+    if normalize_domain(domain) != AI_DOMAIN:
+        try:
+            fusion = rank_series(members, mode=mode, profile=profile)
+        except Exception:
+            fusion = {}
+        return sorted(paths, key=lambda p: (fusion.get(p, 1 << 30), p))
+    try:
+        vector = build_measured_vector(
+            members, mode=mode, domain=domain, profile=profile
+        )
+    except Exception:
+        vector = {"items": []}
+    alias_paths = {alias: _path_of(item) for alias, item in _aliased(members)}
+    measured: list[tuple[float, str]] = []
+    unmeasured: list[str] = []
+    for entry in vector.get("items", ()) or ():
+        try:
+            path = alias_paths.get(str(entry.get("alias")), "")
+            scores = list((entry.get("scores") or {}).values())
+        except Exception:
+            continue
+        if not path:
+            continue
+        if not scores:
+            unmeasured.append(path)
+            continue
+        measured.append((sum(scores) / len(scores), path))
+    measured.sort(key=lambda pair: (-pair[0], pair[1]))
+    return [p for _q, p in measured] + sorted(unmeasured)
 
 
-def _decide(raw: dict, member_list, *, mode: str) -> JevRankOutcome:
+def _decide(
+    raw: dict, member_list, *, mode: str, domain: str = "algorithms", profile=None
+) -> JevRankOutcome:
     """Turn one Jev decision into a decisive outcome or a degrade."""
     aliases = {alias: _path_of(item) for alias, item in _aliased(member_list)}
     if _is_noul(raw):
@@ -406,22 +459,35 @@ def _decide(raw: dict, member_list, *, mode: str) -> JevRankOutcome:
 
     by_path = {alias: path for alias, path in aliases.items()}
 
-    # Preferred: an explicit full ranking from Jev.
+    # Preferred: an explicit ranking from Jev. A reply that names only the top
+    # aliases (the live probe answered 2 of 6) is completed by the measured
+    # fusion (``_tail_order``), NEVER by alias/path order (J2, live 2026-10-21:
+    # ``["img_5","img_4"]`` applied as ``1..6`` with the tail in ``str(path)``
+    # order, i.e. an alphabetical tail promoted to a full ranking). The tail
+    # used is recorded on the outcome so the trace can state it.
     raw_order = _ranking_of(raw)
     if raw_order is not None:
-        seq: list[str] = []
         seen: set[str] = set()
+        order_paths: list[str] = []
         for entry in raw_order:
             alias = _normalize_alias(entry, aliases)
             if alias and alias not in seen:
-                seq.append(alias)
                 seen.add(alias)
-        for alias in aliases:
-            if alias not in seen:
-                seq.append(alias)
-                seen.add(alias)
-        ranks = {by_path[alias]: i for i, alias in enumerate(seq, start=1)}
-        return JevRankOutcome(ranks)
+                order_paths.append(by_path[alias])
+        rest = [path for alias, path in aliases.items() if alias not in seen]
+        tail = "model"
+        if rest:
+            tail = "deterministic"
+            rest_paths = set(rest)
+            order_paths.extend(
+                p
+                for p in _tail_order(
+                    member_list, mode=mode, domain=domain, profile=profile
+                )
+                if p in rest_paths
+            )
+        ranks = {path: i for i, path in enumerate(order_paths, start=1)}
+        return JevRankOutcome(ranks, tail=tail)
 
     # Otherwise: Jev picked the winner (Choice); the tail keeps the deterministic
     # measured order. This is still a COMPLETE 1..N assignment (never partial).
@@ -429,11 +495,15 @@ def _decide(raw: dict, member_list, *, mode: str) -> JevRankOutcome:
     if winner is None:
         return JevRankOutcome(None, reason=JEV_REASON_MALFORMED)
     winner_path = by_path[winner]
-    tail = [p for p in _tail_order(member_list, mode=mode) if p != winner_path]
+    tail_paths = [
+        p
+        for p in _tail_order(member_list, mode=mode, domain=domain, profile=profile)
+        if p != winner_path
+    ]
     ranks = {winner_path: 1}
-    for i, path in enumerate(tail, start=2):
+    for i, path in enumerate(tail_paths, start=2):
         ranks[path] = i
-    return JevRankOutcome(ranks)
+    return JevRankOutcome(ranks, tail="deterministic")
 
 
 def _pin(cache_obj, key: str, ranks: dict[str, int] | None, reason: str | None) -> None:
@@ -469,10 +539,20 @@ def rank_series_jev_detailed(
     except Exception:
         logger.debug("jev rank vector build failed", exc_info=True)
         return JevRankOutcome(None, reason=JEV_REASON_MALFORMED)
-    scored = sum(1 for entry in vector.get("items", ()) if entry.get("scores"))
+    scored, total, why = rank_completeness(member_list, vector)
     if scored < 2:
         _ai_debug("jev rank skip: measured vector has %d scored aliases (<2)", scored)
         return JevRankOutcome(None, reason=JEV_REASON_EMPTY)
+    if scored < total:
+        # Plan P1/M2: the ONE completeness decision (the same helper the
+        # controller's dispatcher uses). A vector that does not score every
+        # member must never become a rank — Jev would place a member it was
+        # never shown (live 2026-10-21: img_6 ranked while its score arrived).
+        _ai_debug(
+            "jev rank skip: partial vector %d/%d scored (%s) — not ranked",
+            scored, total, why,
+        )
+        return JevRankOutcome(None, reason=JEV_REASON_INCOMPLETE)
     payload = _request_from_vector(vector)
 
     cache_obj = cache if cache is not None else jev_cache.default_cache()
@@ -511,7 +591,9 @@ def rank_series_jev_detailed(
         return JevRankOutcome(None, reason=JEV_REASON_MALFORMED)
 
     try:
-        outcome = _decide(decision, member_list, mode=mode)
+        outcome = _decide(
+            decision, member_list, mode=mode, domain=domain, profile=profile
+        )
     except Exception:
         logger.debug("jev rank decision failed", exc_info=True)
         return JevRankOutcome(None, reason=JEV_REASON_MALFORMED)
@@ -564,6 +646,7 @@ __all__ = [
     "JEV_TIMEOUT_S",
     "JEV_REASON_EMPTY",
     "JEV_REASON_ERROR",
+    "JEV_REASON_INCOMPLETE",
     "JEV_REASON_LOW_CONFIDENCE",
     "JEV_REASON_MALFORMED",
     "JEV_REASON_NOT_CONFIGURED",

@@ -45,8 +45,12 @@ class ExportSaveFlowCoordinator:
     # -- IC-specific ------------------------------------------------------------
     def _on_success_notify(self, out_path: str) -> None:
         try:
-            self.main_window_app.actions.set_last_saved_path(out_path)
-            self.main_window_app.actions.update_tray_actions_visibility()
+            # ``MainWindow.action_registry`` is the action owner (window.py:88).
+            # ``window.actions`` is ``QWidget.actions()`` — a builtin method, so
+            # that spelling can only raise AttributeError.
+            actions = self.main_window_app.action_registry
+            actions.set_last_saved_path(out_path)
+            actions.update_tray_actions_visibility()
             notifications_enabled = getattr(
                 self.store.settings,
                 "system_notifications_enabled",
@@ -56,7 +60,7 @@ class ExportSaveFlowCoordinator:
                 image_for_icon = (
                     out_path if isinstance(out_path, str) and os.path.isfile(out_path) else None
                 )
-                self.main_window_app.actions.notify_system(
+                actions.notify_system(
                     self._tr("msg.saved"),
                     f"{self._tr('msg.saved')}: {out_path}",
                     image_path=image_for_icon,
