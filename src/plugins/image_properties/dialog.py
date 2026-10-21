@@ -288,12 +288,18 @@ class ImagePropertiesDialog(ThemedDialog):
             elif action_id == "image_properties.text.select_all":
                 document.select_all_text()
 
+        # Real top-level popup, parented to the DOCUMENT (a content widget):
+        # an in-window child is clipped to the dialog rect, and a Qt.Popup
+        # parented to the top-level breaks its compositing on Wayland
+        # (inv-2026-10-06-ql-rhi-menu-first). The app-wide RMB policy stays
+        # "in_window" for the gallery ask-ai sequence; this menu opts out.
         open_context_menu_entries(
-            source_widget=self,
+            source_widget=document,
             global_pos=global_pos,
             entries=tuple(entries),
             key=("image_properties_text", id(document)),
             on_triggered=on_triggered,
+            surface="popup",
         )
 
     def _tr(self, key: str, default: str) -> str:

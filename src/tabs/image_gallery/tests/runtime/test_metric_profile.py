@@ -111,7 +111,10 @@ def test_mode_scope_comes_from_registry_tags():
 def test_existing_rank_fusion_public_names_still_resolve():
     # Backward-compatible re-exports (older callers/tests import these).
     assert rank_fusion.RANK_EXCLUDED_AXES == metric_profile.EXCLUDED_AXES
-    assert rank_fusion.RANK_FUSION_VERSION == 2
+    # v3 = P2 salience (plan-gallery-ai-judgement): the fusion now drops the axes
+    # whose series spread is inside the judge's noise floor, a semantics change
+    # the version constant exists to announce.
+    assert rank_fusion.RANK_FUSION_VERSION == 3
     # The profile is an optional kwarg — existing mode-only callers are intact.
     assert rank_fusion.measured_axes_for.__kwdefaults__ == {"profile": None}
 

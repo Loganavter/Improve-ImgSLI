@@ -48,6 +48,27 @@ def normalize_domain(domain) -> str:
     return AI_DOMAIN if text == AI_DOMAIN else ALGORITHMS_DOMAIN
 
 
+def axis_noise_floor(domain=None) -> float:
+    """The noise floor of the instrument that produced *domain*'s scores.
+
+    "Inside the noise" is only meaningful relative to the instrument (plan
+    ``plan-gallery-ai-judgement`` M3): the AI domain's numbers come from a
+    stochastic model whose own sample-to-sample spread was 12–23 points
+    (``rank_fusion.AXIS_NOISE_FLOOR``), while the local detectors are
+    deterministic for the same pixels, so only their integer quantization is
+    indistinguishable (``rank_fusion.DETECTOR_NOISE_FLOOR``). ONE definition:
+    the rows, the Jev vector and any report ask here instead of picking a number.
+    """
+    try:
+        from tabs.image_gallery.services.rank_fusion import (
+            AXIS_NOISE_FLOOR,
+            DETECTOR_NOISE_FLOOR,
+        )
+    except Exception:  # pragma: no cover - defensive: never block a read
+        return 0.0
+    return AXIS_NOISE_FLOOR if normalize_domain(domain) == AI_DOMAIN else DETECTOR_NOISE_FLOOR
+
+
 def ai_axis_scores(item) -> dict[str, int]:
     """The VLM's per-axis scorecard (``{axis_id: 0-100}``) for *item*; {} when
     unanalyzed. Reads ONLY ``item.analysis``, never the detectors. The AI
@@ -159,6 +180,7 @@ __all__ = [
     "AI_DOMAIN",
     "ALGORITHMS_DOMAIN",
     "normalize_domain",
+    "axis_noise_floor",
     "ai_axis_scores",
     "detector_axis_scores",
     "domain_axis_scores",

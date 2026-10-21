@@ -260,4 +260,6 @@ def test_new_fields_have_safe_defaults():
     assert GalleryItem(Path("/gallery/x.png"), 0).rank_source is None
     assert GalleryState().rank_domain == "algorithms"
     assert GalleryState().judgment_domain == "algorithms"
-    assert RANK_FUSION_VERSION == 2
+    # v3 = P2 salience (plan-gallery-ai-judgement): inside-noise axes carry no
+    # rank weight, so the fusion semantics changed and the constant says so.
+    assert RANK_FUSION_VERSION == 3

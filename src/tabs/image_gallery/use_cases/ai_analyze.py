@@ -34,6 +34,25 @@ from tabs.image_gallery.use_cases.action_context import (
 from tabs.image_gallery.use_cases.profile_select import active_profile
 
 
+def _stamp_profile_consumed(owner) -> None:
+    """Freeze the folder generation's profile — ONE call, right before a payload.
+
+    Deferred import: ``controller`` imports this module's callers lazily, so a
+    module-level import here would be a cycle (mirrors
+    ``ai_analysis._begin_analysis``'s deferred controller import). The rule
+    itself lives on the controller (``_mark_profile_consumed``); this forwarder
+    exists so the payload-build site names what it is doing.
+
+    Plan-gallery-ai-judgement P2: this is the fact the freeze was always about —
+    "a request was built" — not "the analyze entry was reached". A run whose
+    every card is a disk-cache HIT builds no payload and must stay unfrozen so
+    the paid VLM axis-set answer can still be applied to it.
+    """
+    from tabs.image_gallery.controller import _stamp_profile_consumed as _stamp
+
+    _stamp(owner)
+
+
 def _item_for(owner, path: Path):
     """The pool item for *path* (owner ``_find_item``, else a state scan)."""
     finder = getattr(owner, "_find_item", None)
@@ -175,6 +194,12 @@ def _analyze_ai(owner, ctx: ActionContext) -> Refusal | None:
         try:
             # Per-target isolation: one failing card never aborts the context
             # (same contract the old per-path loop in the menu upheld).
+            #
+            # P2 (plan-gallery-ai-judgement J3): THIS is where a request payload
+            # is built — a MISS, under this generation's profile. Freeze the
+            # profile here, never on the analyze entry: a HIT above builds no
+            # request, so a cache-only run must not freeze anything.
+            _stamp_profile_consumed(owner)
             owner._begin_analysis(ctx, item)
         except Exception:
             continue
@@ -225,6 +250,10 @@ def reanalyze(owner, ctx: ActionContext) -> Refusal | None:
         return Refusal(REFUSAL_NO_ITEMS, ctx.targets, "no resolved target is in the pool")
     for item in items:
         try:
+            # P2: a reanalyze MISSES by definition (no cache read), so this is a
+            # payload-build site too — the freeze must be stamped here, not on
+            # the entry (plan-gallery-ai-judgement J3).
+            _stamp_profile_consumed(owner)
             owner._begin_analysis(ctx, item)
         except Exception:
             continue

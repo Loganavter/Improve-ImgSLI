@@ -147,6 +147,14 @@ ALLOWED_DEEP_TAB_IMPORTS: dict[str, str] = {
         "the tab's own context-menu handler — stock-Qt stand-ins cannot "
         "exercise the toolkit path"
     ),
+    "tests/devtools/test_control_scene.py": (
+        "host-level control-channel scene contract (get_canvas_scene): the read "
+        "verb must serialize the REAL canvases — the Image Compare scene graph "
+        "is built by the tab's own magnifier builder and the Multi Compare "
+        "composition by the tab's own _rebuild_composition — because a stand-in "
+        "scene object could not prove the two-loupe-truths or the projection "
+        "reuse the contract exists to pin"
+    ),
     "tests/runtime/test_ui_metrics_parity.py": (
         "cross-cutting UI-metrics parity contract (one change channel + owned "
         "derived-geometry refresh); ScaledIconLabel is the image_compare "

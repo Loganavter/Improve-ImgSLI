@@ -47,8 +47,17 @@ from typing import Any, Callable
 
 from tabs.image_gallery.services import jev_cache
 from tabs.image_gallery.services.ai_client import _ai_debug
-from tabs.image_gallery.services.quality_read import AI_DOMAIN, normalize_domain
-from tabs.image_gallery.services.rank_fusion import measured_axes_for, rank_series
+from tabs.image_gallery.services.quality_read import (
+    AI_DOMAIN,
+    axis_noise_floor,
+    normalize_domain,
+)
+from tabs.image_gallery.services.rank_fusion import (
+    _inside_noise_axes,
+    axis_salience,
+    measured_axes_for,
+    rank_series,
+)
 from tabs.image_gallery.use_cases.pipeline_stages import rank_completeness
 
 logger = logging.getLogger("ImproveImgSLI")
@@ -166,6 +175,15 @@ def build_measured_vector(items, *, mode: str, domain: str = "algorithms", profi
     ``profile`` (a ``metric_profile.MetricProfile``) overrides the mode-implied
     axes when given — the salience-derived subset (plan P1). ``None`` keeps the
     mode mapping, so every existing caller is unchanged (backward compatible).
+
+    P2 salience (plan-gallery-ai-judgement M3): an axis whose spread across THIS
+    series sits inside the producing instrument's noise floor cannot order these
+    variants, so it is not put in front of the ranker either — the model would be
+    ranking on a constant (live 2026-10-21: ``exposure=82`` on five of six cards
+    while the variants differed by 2–6 points elsewhere). The floor comes from
+    ``quality_read.axis_noise_floor(domain)`` and the suppression rule from
+    ``rank_fusion._inside_noise_axes`` — the SAME ones the deterministic fusion
+    applies, imported, never re-derived here.
     """
     mid = _mode_token(mode)
     axes = measured_axes_for(mid, profile=profile)
@@ -188,6 +206,23 @@ def build_measured_vector(items, *, mode: str, domain: str = "algorithms", profi
             except Exception:
                 continue
         entries.append({"alias": alias, "scores": scores})
+    try:
+        verdicts = axis_salience(
+            [entry["scores"] for entry in entries],
+            noise_floor=axis_noise_floor(domain),
+        )
+        suppressed = _inside_noise_axes(verdicts)
+    except Exception:
+        suppressed = frozenset()
+    if suppressed:
+        for entry in entries:
+            scores = dict(entry.get("scores") or {})
+            kept = {a: v for a, v in scores.items() if a not in suppressed}
+            # Never erase a member's only reading: suppression is about weight,
+            # not about re-labelling a scored member as unscored (that would
+            # make the series "partial" and block the rank for the wrong reason).
+            if kept:
+                entry["scores"] = kept
     return {"mode": mid, "items": entries}
 
 

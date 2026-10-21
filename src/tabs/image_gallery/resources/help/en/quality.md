@@ -10,6 +10,8 @@ Every image gets a score from 0 to 100, where higher is better. The score summar
 
 The score combines sharpness, exposure, noise, and color, and — once a source is set — how closely the image matches it. **Quick Look** lists each reading as a percentage; a reading the app could not take is shown as **— · not measured**, never as a zero. While **AI** is on these readings are the AI's own analysis of the image; while **Algorithms** is on they are the app's measurements.
 
+A reading whose spread across the whole series is inside the measuring instrument's own noise reads **does not separate these variants** instead of a percentage: the row stays, but that reading cannot order these images and carries no weight in the rank.
+
 ### Where scores appear {#where-scores}
 
 - **Quick Look** — the panel opened by a click on a card; it shows one row per reading and its percentage.

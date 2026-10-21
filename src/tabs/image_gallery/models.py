@@ -352,6 +352,14 @@ class GalleryState:
     #: nothing derived yet → consumers fall back to the mode mapping
     #: (``use_cases.profile_select.active_profile``), i.e. the pre-P1 behaviour.
     metric_profile: MetricProfile | None = None
+    #: Why the last VLM axis-set answer was NOT applied to this folder's
+    #: generation (``""`` = nothing was rejected). One of
+    #: ``services.metric_profile.PROFILE_REJECT_CODES`` — a CODE, not prose, so a
+    #: surface can localize it; the trace line carries the human detail
+    #: (``controller._apply_profile_outcome``). Exists because a dropped profile
+    #: is a loss the user paid for (plan-gallery-ai-judgement P2/M5) and used to
+    #: be one debug line. Transient view state, like ``metric_profile``.
+    profile_reject_reason: str = ""
     # Stage 3 VLM caches (mirrors disk cache in vlm_cache)
     tie_breaks: dict[str, TieBreakResult] = field(default_factory=dict)
     briefs: dict[str, CompareBrief] = field(default_factory=dict)

@@ -432,6 +432,12 @@ class AppBackend:
                 )
         return {"path": path, "state": current, "source": "fallback"}
 
+    def get_canvas_scene(self, *, tab: str | None = None) -> dict:
+        """The live canvas scene (panes/dividers/loupes/transform) — read-only."""
+        return self._live_only(
+            "get_canvas_scene", self._scene_need_live(), mutating=False, tab=tab
+        )
+
     def read_log(self, *, n: int = 200, level: str | None = None) -> dict:
         client = self.live.client_if_alive()
         if client is not None:
@@ -880,6 +886,13 @@ class AppBackend:
             raise error
         except LiveError as exc:
             raise ToolError(exc.message, exc.hint)
+
+    @staticmethod
+    def _scene_need_live() -> ToolError:
+        return ToolError(
+            "no live instance; the canvas scene exists only in the running app",
+            "start the app with the control socket enabled (see docs/dev/MCP.md), then retry",
+        )
 
     @staticmethod
     def _elements_need_live() -> ToolError:

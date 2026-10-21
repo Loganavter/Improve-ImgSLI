@@ -166,6 +166,7 @@
       "upscale_n_from_source": "ampliação ×{n} a partir da origem",
       "ai_brief_pending": "Resumo da IA…",
       "not_measured": "— · não medido",
+      "axis_inside_noise": "não separa estas variantes",
       "rank_of": "#{rank} de {total}",
       "rejected_tail": "cauda rejeitada ≤ {value}",
       "source_fallback": "origem",

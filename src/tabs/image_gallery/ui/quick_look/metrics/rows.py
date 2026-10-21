@@ -401,11 +401,33 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
     def _add_score_row(spec_id: str, *, extra: str = "", gap: bool = True) -> bool:
         """One axis as ``NN%`` from the CURRENT domain's read (+ optional suffix).
         A missing score stays an explicit gap row when ``gap`` (matching the
-        historical per-metric behavior: noise/WB hide instead). Returns True
-        when the axis has a score."""
+        historical per-metric behavior: noise/WB hide instead). An axis whose
+        spread across the series is inside the instrument's noise floor renders
+        as that reason instead of a bare number — the row is KEPT (plan P2/D3:
+        "не различает эти варианты"), only its fake authority is gone. Returns
+        True when the axis has a row."""
         spec = _spec_for(spec_id)
         if spec is None:
             return False
+        if _inside_noise is not None and _salience.get(spec_id) == _inside_noise:
+            reason = _ql_text(
+                overlay,
+                "image_gallery.quick_look.axis_inside_noise",
+                "does not separate these variants",
+            )
+            if extra:
+                reason = f"{reason} · {extra}"
+            _add_metric_row(
+                _metric_label(overlay, spec.id, spec.label),
+                reason,
+                0.0,
+                _muted_color(),
+                value_color=_muted_color(),
+                value_elide=False,
+                # No bar: a fill reads as a value, and this axis ranks nothing.
+                bar=False,
+            )
+            return True
         score = read.get(spec_id)
         if score is None:
             if gap:
@@ -430,6 +452,46 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
     except Exception:
         _profile = None
         axes = ()
+    # P2 salience (plan-gallery-ai-judgement M3): an axis whose spread across
+    # THIS series sits inside the judge's noise floor cannot separate these
+    # variants, so its row says exactly that instead of showing a number that
+    # ranked nothing. The verdict is the SAME one the rank and the Jev vector
+    # apply (``axis_salience``), measured from the same domain read the rows
+    # render — never a second measurement.
+    _salience: dict[str, str] = {}
+    _inside_noise = None
+    try:
+        from tabs.image_gallery.services.rank_fusion import (
+            INSIDE_NOISE,
+            _inside_noise_axes,
+            axis_salience,
+        )
+        from tabs.image_gallery.services.quality_read import (
+            axis_noise_floor,
+            domain_axis_scores,
+        )
+
+        _series = list(getattr(overlay, "_series_items", None) or [])
+        if len(_series) > 1:
+            _verdicts = axis_salience(
+                [domain_axis_scores(member, domain=domain) for member in _series],
+                noise_floor=axis_noise_floor(domain),
+            )
+            # The rows render the verdict the RANK applies: when the floor cannot
+            # separate anything in this series (every axis inside it), the fusion
+            # keeps the full set rather than degrading to path order, so the rows
+            # keep their numbers too (``_inside_noise_axes`` is that ONE rule).
+            _suppressed = _inside_noise_axes(_verdicts)
+            if _suppressed:
+                _inside_noise = INSIDE_NOISE
+                _salience = {
+                    axis: verdict
+                    for axis, verdict in _verdicts.items()
+                    if axis in _suppressed
+                }
+    except Exception:
+        _salience = {}
+        _inside_noise = None
     # A VLM-selected profile is a deliberate report request: render exactly
     # its axes, gaps included. The wide mode/heuristic base describes the
     # measurement pool (fidelity alone carries 14 axes); rendering an empty
@@ -482,7 +544,12 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
                 continue
             if axis_id == "detail_gain":
                 # Detail keeps its dual restored/invented bar (special widget)
-                # but the header value is the canonical quality score.
+                # but the header value is the canonical quality score. An axis
+                # inside the noise floor has no bar to draw: its row states the
+                # reason instead (the dual bar would imply it separates).
+                if _inside_noise is not None and _salience.get("detail_gain") == _inside_noise:
+                    _add_score_row("detail_gain")
+                    continue
                 _spec = _spec_for("detail_gain")
                 _hf = _raw_for(_spec, metrics) if _spec is not None else None
                 if _hf is None:

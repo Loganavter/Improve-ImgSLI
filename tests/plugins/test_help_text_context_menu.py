@@ -5,6 +5,7 @@ from __future__ import annotations
 import sys
 
 import pytest
+from PySide6.QtWidgets import QApplication
 
 from plugins.help.dialog import HelpDialog
 from plugins.help.text_context_menu import open_help_text_context_menu
@@ -22,7 +23,15 @@ def _help_tabs_discovered():
     clear_help_tree_cache()
 
 
-def test_help_text_context_menu_uses_platform_surface(qtbot):
+def test_help_text_context_menu_is_a_popup_top_level(qtbot):
+    """The text-selection menu is a REAL top-level popup.
+
+    Falsification: an in-window menu is a plain child widget of the dialog —
+    clipped to the dialog rect, unable to overflow it, and not a native menu.
+    It is parented to the DOCUMENT (a content widget), never to the
+    top-level dialog: a Qt.Popup parented to the top-level breaks that
+    window's compositing on Wayland (inv-2026-10-06-ql-rhi-menu-first).
+    """
     dialog = HelpDialog(current_language="en", app_name="Improve-ImgSLI")
     qtbot.addWidget(dialog)
     dialog.resize(880, 620)
@@ -42,9 +51,10 @@ def test_help_text_context_menu_uses_platform_surface(qtbot):
     menu = get_context_menu_manager()._active_menu
     assert menu is not None
     assert menu.isVisible()
-    assert menu._surface == rmb_context_menu_surface()
-    assert menu.isWindow() is (rmb_context_menu_surface() == "popup")
-    assert menu._logical_parent is dialog
+    assert menu._surface == "popup"
+    assert menu.isWindow()
+    # parented to the document (content widget), NOT the top-level dialog
+    assert menu._logical_parent is dialog._document
     menu.hide()
 
 
@@ -116,7 +126,67 @@ def test_help_copy_markdown_uses_the_host_page_source(qtbot):
     qtbot.wait(10)
 
     assert QGuiApplication.clipboard().text() == source
-    menu.hide()
+    # A popup-surface menu deletes itself on hide (it is ephemeral), so the
+    # wrapper may already be gone — that is the documented popup contract.
+    try:
+        menu.hide()
+    except RuntimeError:
+        pass
+
+
+def test_help_text_context_menu_keeps_the_selection(qtbot):
+    """The right-click that OPENS the menu must not clear the selection.
+
+    Falsification: the document canvas used to reset the selection on ANY
+    mouse press, so the menu was built from an empty selection and every
+    copy row came up disabled (2026-10-21). The canvas now ignores
+    non-left buttons (toolkit: text/engine/events.py), so a real
+    right-click keeps the selection and the copy rows stay enabled.
+    """
+    from PySide6.QtCore import QPoint, QPointF, Qt
+    from PySide6.QtGui import QMouseEvent
+
+    dialog = HelpDialog(current_language="en", app_name="Improve-ImgSLI")
+    qtbot.addWidget(dialog)
+    dialog.resize(880, 620)
+    dialog.show()
+    qtbot.waitExposed(dialog)
+
+    dialog.navigate_to("introduction")
+    document = dialog._document
+    document.select_all_text()
+    qtbot.wait(10)
+    selected = document.selected_plain_text()
+    assert selected
+
+    press = QMouseEvent(
+        QMouseEvent.Type.MouseButtonPress,
+        QPointF(60.0, 40.0),
+        Qt.MouseButton.RightButton,
+        Qt.MouseButton.RightButton,
+        Qt.KeyboardModifier.NoModifier,
+    )
+    QApplication.sendEvent(document.canvas(), press)
+    qtbot.wait(10)
+    assert document.selected_plain_text() == selected
+
+    global_pos = document.mapToGlobal(QPoint(60, 40))
+    open_help_text_context_menu(
+        dialog=dialog,
+        document=document,
+        global_pos=global_pos,
+        language="en",
+    )
+    qtbot.wait(10)
+
+    menu = get_context_menu_manager()._active_menu
+    assert menu is not None
+    assert menu._rows[0].isEnabled()
+    assert menu._rows[1].isEnabled()
+    try:
+        menu.hide()
+    except RuntimeError:
+        pass
 
 
 def test_rmb_surface_is_in_window(

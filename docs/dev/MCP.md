@@ -41,7 +41,7 @@ fallback window, e.g. `:97`).
 
 ## Surface at a glance
 
-27 tools — 11 read-only, 16 mutating (reads and writes never share a tool):
+28 tools — 12 read-only, 16 mutating (reads and writes never share a tool):
 
 | Tool | Kind | What it does |
 |---|---|---|
@@ -56,6 +56,7 @@ fallback window, e.g. `:97`).
 | `ui_nav_state` | read | live keyboard-navigation model: sections + focus + overlay children no section owns (live-only) |
 | `jobs_list` | read | live in-flight long passes (kind, status, progress, elapsed_s, message) |
 | `wait_for` | read | block until one expectation holds (element id visible+enabled, role+label exists, or jobs settle); a timeout returns the last observed state (live-only) |
+| `get_canvas_scene` | read | one tab's canvas scene as deterministic JSON: panes, dividers, every magnifier instance (hidden ones flagged), canvas size, camera/projection transform; every geometry field names its coordinate space and its source (live-only) |
 | `open_tab` | write | open/focus a tab kind (live) or launch it (fallback) |
 | `run_action` | write | run one ActionRegistry id |
 | `open_folder` | write | hand a folder to a tab (`tab=` targets one; `slot=`/`side=` place it; live: routed) |

@@ -166,6 +166,7 @@
       "upscale_n_from_source": "相对源放大 ×{n}",
       "ai_brief_pending": "AI 简述…",
       "not_measured": "— · 未测量",
+      "axis_inside_noise": "无法区分这些变体",
       "rank_of": "第 {rank} / {total}",
       "rejected_tail": "被拒绝尾部 ≤ {value}",
       "source_fallback": "源",

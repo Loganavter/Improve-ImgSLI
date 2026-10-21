@@ -12,7 +12,8 @@ folder; ``capture_live`` names its grab method (a widget grab may still render a
 QRhi/GL canvas blank — it reports what it produced).
 
 Mixin bodies live in ``elements``/``jobs``/``nav_keys``/``live_verbs``; routing
-in ``drop_routing``; ``_pause``/``show_properties_dialog`` are re-exported patch seams.
+in ``drop_routing``; canvas scene serialization in ``scene_read``;
+``_pause``/``show_properties_dialog`` are re-exported patch seams.
 """
 
 from __future__ import annotations
@@ -39,29 +40,12 @@ VALID_LANGUAGES = ("en", "ru", "zh", "pt_BR")
 
 #: The frozen method surface — one entry per MCP tool.
 METHODS: tuple[str, ...] = (
-    "capture_live",
-    "dump_ui_layout",
-    "get_capabilities",
-    "get_state",
-    "list_actions",
-    "list_sessions",
-    "list_surfaces",
-    "nav_key",
-    "open_file",
-    "open_folder",
-    "open_properties",
-    "open_tab",
-    "ping",
-    "press_keys",
-    "query_trace",
-    "read_log",
-    "run_action",
-    "set_language",
-    "set_setting",
-    "set_theme", "jobs_cancel", "jobs_list", "ui_click", "ui_elements", "ui_focus",
-    "ui_hover",
-    "ui_nav_state",
-    "ui_press",
+    "capture_live", "dump_ui_layout", "get_canvas_scene", "get_capabilities",
+    "get_state", "jobs_cancel", "jobs_list", "list_actions", "list_sessions",
+    "list_surfaces", "nav_key", "open_file", "open_folder", "open_properties",
+    "open_tab", "ping", "press_keys", "query_trace", "read_log", "run_action",
+    "set_language", "set_setting", "set_theme", "ui_click", "ui_elements",
+    "ui_focus", "ui_hover", "ui_nav_state", "ui_press",
 )
 
 
@@ -236,6 +220,12 @@ class ControlHandlers(
 
         sessions = dump_sessions(self._store())
         return {"count": len(sessions), "sessions": sessions}
+
+    def get_canvas_scene(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Read the scene (panes/dividers/loupes/canvas/transform) as JSON."""
+        from .scene_read import read_canvas_scene
+
+        return read_canvas_scene(self, params)
 
     def get_state(self, params: dict[str, Any]) -> dict[str, Any]:
         from devtools.app_snapshot import (

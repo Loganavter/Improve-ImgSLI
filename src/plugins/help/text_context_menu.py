@@ -77,10 +77,22 @@ def open_help_text_context_menu(
             if text:
                 QGuiApplication.clipboard().setText(text)
 
+    # A text-selection menu is a real top-level popup: an in-window child is
+    # clipped to the dialog rect and cannot overflow it (the app-wide RMB
+    # policy is "in_window" for the gallery ask-ai sequence — see
+    # ``ui.context_menu.manager.rmb_context_menu_surface``; this menu is
+    # unrelated to it, so it opts out per call).
+    #
+    # The popup is parented to the DOCUMENT, not the dialog: a Qt.Popup whose
+    # QWidget parent is the top-level window breaks that window's
+    # compositing on Wayland (inv-2026-10-06-ql-rhi-menu-first). The
+    # document is a content widget, so the popup transient-parents to the
+    # dialog window and may overflow the dialog.
     open_context_menu_entries(
-        source_widget=dialog,
+        source_widget=document,
         global_pos=global_pos,
         entries=tuple(entries),
         key=("help_text", id(document)),
         on_triggered=on_triggered,
+        surface="popup",
     )

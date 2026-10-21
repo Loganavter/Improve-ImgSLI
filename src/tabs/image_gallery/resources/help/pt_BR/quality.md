@@ -10,6 +10,8 @@ Cada imagem recebe uma pontuação de 0 a 100, e quanto maior, melhor. A pontua�
 
 A pontuação combina nitidez, exposição, ruído e cor e, quando uma origem é definida, também o quão próxima a imagem está dela. A **Visualização rápida** lista cada leitura como porcentagem; uma leitura que o aplicativo não conseguiu obter aparece como **— · não medido**, nunca como zero. Com **IA** ligado, essas leituras são a própria análise da IA; com **Algoritmos** ligado, são as medições do aplicativo.
 
+Uma leitura cuja variação em toda a série fica dentro do próprio ruído do instrumento de medição aparece como **não separa estas variantes** em vez de uma porcentagem: a linha permanece, mas essa leitura não consegue ordenar estas imagens e não tem peso no ranking.
+
 ### Onde as pontuações aparecem {#where-scores}
 
 - **Visualização rápida** — o painel aberto por um clique em um cartão; ele mostra uma linha por leitura e sua porcentagem.

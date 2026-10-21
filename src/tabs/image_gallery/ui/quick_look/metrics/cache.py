@@ -77,11 +77,27 @@ def _profile_fingerprint(overlay, mode_str: str = "") -> tuple:
 
 
 def _metrics_series_snapshot(overlay) -> tuple:
-    """Series-wide inputs of ``ssim_subline`` (re-rank/reject neighbor flips)."""
+    """Series-wide inputs of ``rebuild_metrics`` (subline + row salience).
+
+    Two row readers depend on the OTHER members' numbers: ``ssim_subline`` (the
+    rejected tail) and the P2 salience verdict (an axis is "inside-noise" only
+    relative to the whole series). A late score on a NEIGHBOUR therefore changes
+    this item's rows, so the per-member domain score map is part of the
+    fingerprint — otherwise a cached row set would keep saying "separates" (or a
+    stale percentage) after the series changed.
+    """
     try:
         series = list(getattr(overlay, "_series_items", None) or [])
     except Exception:
         return ()
+    try:
+        domain = _overlay_judgment_domain(overlay)
+    except Exception:
+        domain = "algorithms"
+    try:
+        from tabs.image_gallery.services.quality_read import domain_axis_scores
+    except Exception:  # pragma: no cover - defensive
+        domain_axis_scores = None
     parts = []
     for m in series:
         try:
@@ -109,7 +125,18 @@ def _metrics_series_snapshot(overlay) -> tuple:
             rej = bool(getattr(m, "rejected", False))
         except Exception:
             rej = False
-        parts.append((p, rk, s, rej))
+        scores: tuple = ()
+        if domain_axis_scores is not None:
+            try:
+                scores = tuple(
+                    sorted(
+                        (str(k), int(v))
+                        for k, v in domain_axis_scores(m, domain=domain).items()
+                    )
+                )
+            except Exception:
+                scores = ()
+        parts.append((p, rk, s, rej, scores))
     return tuple(parts)
 
 

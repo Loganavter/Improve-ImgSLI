@@ -150,7 +150,15 @@ def _profile_selector():
 
 
 def _stamp_profile_consumed(owner) -> None:
-    """Freeze the owner's folder-generation profile once an AI call is built (P5).
+    """Freeze the owner's folder-generation profile once a REQUEST PAYLOAD is built (P5/P2).
+
+    Called from the one site that constructs a request
+    (``use_cases.ai_analyze``'s cache-MISS branch, immediately before
+    ``_begin_analysis``) — NOT from the analyze entry points: entering ``analyze``
+    proves nothing about the request identity, and an all-cache-HIT run builds no
+    payload at all. Stamping on entry froze such a run's generation and threw away
+    the paid VLM axis-set answer for it (plan-gallery-ai-judgement J3, live
+    2026-10-21: six HITs, zero API calls, then "late reply dropped").
 
     Module-level and duck-typed because the controller's thin-owner tests call
     the real methods on a ``SimpleNamespace`` double (which carries no
@@ -165,6 +173,38 @@ def _stamp_profile_consumed(owner) -> None:
         stamp()
     except Exception:
         logger.debug("metric profile freeze stamp failed", exc_info=True)
+
+
+def _note_profile_reject(owner, code: str, detail: str, gen: int) -> None:
+    """Record WHY a VLM axis-set answer was not applied (state + trace).
+
+    The ONE writer of ``state.profile_reject_reason`` (plan-gallery-ai-judgement
+    P2/M5: a rejected reply cost a paid call and an 11 MB upload, so it is a LOSS
+    the user can be shown, never one silent line). The code is machine-readable
+    (``metric_profile.PROFILE_REJECT_CODES``) so a surface can localize it;
+    *detail* is the human explanation and goes to the trace.
+
+    Module-level and duck-typed for the same reason as
+    ``_stamp_profile_consumed``: the thin-owner tests bind the real methods onto a
+    ``SimpleNamespace`` double, which carries no sibling methods. Never raises.
+    """
+    try:
+        owner.state.profile_reject_reason = str(code or "")
+    except Exception:
+        logger.debug("metric profile reject state write failed", exc_info=True)
+    logger.debug(
+        "[gallery] metric profile: vlm reply rejected — %s (gen=%s)", detail, gen
+    )
+    _ai_debug("metric profile: vlm reply rejected — %s (gen=%s)", detail, gen)
+
+
+def _clear_profile_reject(owner) -> None:
+    """Clear the visible rejection once a profile IS applied. Never raises."""
+    try:
+        if getattr(owner.state, "profile_reject_reason", ""):
+            owner.state.profile_reject_reason = ""
+    except Exception:
+        logger.debug("metric profile reject state clear failed", exc_info=True)
 
 
 # Proxy decode-cache bound: owned by services/proxy.py (PROXY_CACHE_LIMIT);
@@ -732,8 +772,11 @@ class GalleryController:
         the profile after a request of the same generation was built can never
         re-key that request — the reply lands under an identity the next open
         will not read. So the first AI call of a generation freezes it; a late
-        selector reply is dropped with a debug line by ``_apply_profile_outcome``.
-        Never raises.
+        selector reply is then dropped with a VISIBLE reason
+        (``_apply_profile_outcome`` → ``state.profile_reject_reason``).
+
+        Written only when a payload was actually built — the analyze entry
+        points no longer stamp (plan-gallery-ai-judgement P2/J3). Never raises.
         """
         try:
             self._profile_consumed_gen = int(self._folder_gen)
@@ -743,37 +786,54 @@ class GalleryController:
     def _apply_profile_outcome(self, profile, gen: int) -> None:
         """Apply a VLM-selected metric profile (P2) or keep the heuristic.
 
-        Drops a stale result (the folder changed) and a late one (an AI request
-        of this generation already exists — the profile is that request's cache
-        identity, P5). A usable profile — any object with a non-empty
-        ``axis_ids``, canonically a ``MetricProfile`` with ``source="vlm"`` — is
-        stored on the SAME ``state.metric_profile`` slot the P1 producer writes,
-        the existing ``[gallery]``/``[ai]`` profile line is emitted (naming
-        ``source=vlm`` and the salient axes), and the cards are refreshed like
-        the neighbouring apply-tails. A missing/hollow profile is a no-op: the
-        heuristic profile ``refresh_metric_profile`` stored FIRST remains
-        (fail-open).
+        Drops a stale result (the folder changed), a reply the Algorithms domain
+        owns, and a late one (an AI request of this generation was ALREADY built
+        under the previous axis set — the profile is that request's cache
+        identity, P5). Every drop is recorded with its code + reason
+        (:func:`_note_profile_reject`) instead of vanishing into a debug line.
+
+        P2: the drop condition is the fact "a call was built", not "analyze was
+        entered" (``_mark_profile_consumed`` is stamped by the request builder),
+        so a generation whose run was 100% cache HITs still accepts the answer —
+        which is what the user paid for.
+
+        A usable profile — any object with a non-empty ``axis_ids``, canonically a
+        ``MetricProfile`` with ``source="vlm"`` — is stored on the SAME
+        ``state.metric_profile`` slot the P1 producer writes, the existing
+        ``[gallery]``/``[ai]`` profile line is emitted (naming ``source=vlm`` and
+        the salient axes), and the cards are refreshed like the neighbouring
+        apply-tails. A missing profile is a no-op (the heuristic profile
+        ``refresh_metric_profile`` stored FIRST remains — fail-open); a non-empty
+        reply with no usable axis is a no-op WITH a visible reason.
         """
+        from tabs.image_gallery.services.metric_profile import (
+            PROFILE_REJECT_CALLS_BUILT,
+            PROFILE_REJECT_DOMAIN,
+            PROFILE_REJECT_HOLLOW,
+            PROFILE_REJECT_STALE,
+        )
+
         if not self._is_current_folder_gen(gen):
+            _note_profile_reject(
+                self, PROFILE_REJECT_STALE, f"folder generation {gen} is not current", gen
+            )
             return
         # P5: the toggle is level-triggered — a switch back to Algorithms while
         # the selector was in flight must not let a late reply replace the
         # profile the Algorithms pipeline now owns (mirrors the kick's gate).
         if str(getattr(self, "_judgment_domain", "algorithms") or "").strip().lower() != "ai":
-            logger.debug(
-                "[gallery] metric profile: reply dropped — judgment domain is %r, "
-                "not ai",
-                getattr(self, "_judgment_domain", ""),
-            )
-            _ai_debug(
-                "metric profile: reply dropped (judgment domain=%s)",
-                getattr(self, "_judgment_domain", ""),
+            _note_profile_reject(
+                self,
+                PROFILE_REJECT_DOMAIN,
+                "the judgment domain is not ai — the Algorithms pipeline owns "
+                "this profile",
+                gen,
             )
             return
-        # P5: once an AI request of this generation has been built, the profile
-        # is part of that request's cache identity — replacing it now would
-        # orphan the in-flight scorecards (they land under the pre-replacement
-        # identity). Drop the late reply with a line instead of applying it.
+        # P5: once an AI request of this generation has been BUILT, the profile
+        # is part of that request's cache identity — replacing it now would orphan
+        # the in-flight scorecards (they land under the pre-replacement identity).
+        # Drop the late reply with a visible reason instead of applying it.
         try:
             consumed = getattr(self, "_profile_consumed_gen", None)
         except Exception:
@@ -781,14 +841,12 @@ class GalleryController:
         if consumed is not None:
             try:
                 if int(consumed) == int(gen):
-                    logger.debug(
-                        "[gallery] metric profile: late %s reply dropped — profile "
-                        "frozen for gen %s (AI calls already built under it)",
-                        str(getattr(profile, "source", "") or "vlm"),
+                    _note_profile_reject(
+                        self,
+                        PROFILE_REJECT_CALLS_BUILT,
+                        f"late vlm reply dropped — profile frozen for gen {gen}: "
+                        "an AI request was already built under the previous axis set",
                         gen,
-                    )
-                    _ai_debug(
-                        "metric profile: late reply dropped (frozen gen=%s)", gen
                     )
                     return
             except Exception:
@@ -798,12 +856,20 @@ class GalleryController:
         except Exception:
             axis_ids = ()
         if not axis_ids:
+            if profile is not None:
+                _note_profile_reject(
+                    self,
+                    PROFILE_REJECT_HOLLOW,
+                    "the reply named no usable pool axis — heuristic profile kept",
+                    gen,
+                )
             return
         try:
             self.state.metric_profile = profile
         except Exception:
             logger.debug("metric profile store failed", exc_info=True)
             return
+        _clear_profile_reject(self)
         try:
             from tabs.image_gallery.use_cases.profile_select import describe
 
@@ -1119,16 +1185,17 @@ class GalleryController:
         """Analyze every ``ctx.targets`` card on ``ctx.backend`` (ONE entry)."""
         from tabs.image_gallery.use_cases import ai_analysis as _ai_analysis
 
-        # The request identity (mode + profile) is snapshotted by the context;
-        # from here on the profile of this folder generation is frozen (P5).
-        _stamp_profile_consumed(self)
+        # P2: the profile freeze is NOT stamped here any more. Entering the entry
+        # proves nothing about the request identity — an all-cache-HIT run builds
+        # no payload, and freezing on entry dropped the paid VLM axis-set answer
+        # for the whole generation (plan-gallery-ai-judgement J3). The stamp lives
+        # at the one site that builds a request (``ai_analyze``'s MISS branch).
         return _ai_analysis.analyze(self, ctx)
 
     def reanalyze(self, ctx):
         """Force a fresh analysis of ``ctx.targets`` (cache bypass)."""
         from tabs.image_gallery.use_cases import ai_analysis as _ai_analysis
 
-        _stamp_profile_consumed(self)
         return _ai_analysis.reanalyze(self, ctx)
 
     def analyze_item_by_path(self, path: Path):
@@ -1182,9 +1249,9 @@ class GalleryController:
     def _run_ai_for_visible(self) -> None:
         from tabs.image_gallery.use_cases import ai_analysis as _ai_analysis
 
-        # The settle/tail guard: an analysis of this generation starts under
-        # the profile it will be cached under, so it may no longer be replaced.
-        _stamp_profile_consumed(self)
+        # P2: no stamp here — this delegates to ``analyze``, and the freeze is
+        # stamped by the request builder of each card that actually builds a
+        # payload (a visible run of pure cache HITs must not freeze the profile).
         return _ai_analysis._run_ai_for_visible(self)
 
     # -- AI domain ranker: Jev (TypeSafe System One) -----------------------

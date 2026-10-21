@@ -29,6 +29,14 @@ Design rules (see ``plan-gallery-rank-backends-2026-10-15`` §Seam):
   by default), then capped by the weakest participating axis
   (``RANK_WORST_AXIS_SLACK``): a single catastrophic axis cannot be averaged
   away by otherwise-strong ones.
+- **Salience** (plan-gallery-ai-judgement P2 / invariant M3): a series is ranked
+  only on axes that *separate* it. ``axis_salience`` measures each axis' spread
+  across the series' vectors and marks it ``inside-noise`` when the spread sits
+  within the producing instrument's own noise floor (``DETECTOR_NOISE_FLOOR`` for
+  the deterministic detectors this module aggregates, ``AXIS_NOISE_FLOOR`` for a
+  stochastic judge); such an axis carries no weight here and no score in the Jev
+  vector. One rule for both paths (``_inside_noise_axes``), never a second axis
+  list — the axis set still comes from ``measured_axes_for``.
 - Deterministic: no timestamps, no dict-iteration order, no arrival order;
   ties break by ``str(item.path)``, idempotent under input permutation.
 """
@@ -47,8 +55,9 @@ from tabs.image_gallery.services.metric_scores import (
 )
 
 #: Bump when the fusion semantics change (consumers may pin a cached rank).
-#: v1 = the plain mean of applicable measured axes; v2 adds the worst-axis cap.
-RANK_FUSION_VERSION = 2
+#: v1 = the plain mean of applicable measured axes; v2 adds the worst-axis cap;
+#: v3 drops the axes whose series spread is inside the judge's noise floor.
+RANK_FUSION_VERSION = 3
 
 #: Axis ids that must NEVER contribute to a rank (grouping artefacts, not
 #: quality). Single definition for the whole tree — import, never redefine.
@@ -68,6 +77,32 @@ RANK_WORST_AXIS_SLACK = 20.0
 #: (§Open questions) deliberately does not invent weights before that
 #: measurement.
 RANK_AXIS_WEIGHTS: dict[str, dict[str, float]] = {}
+
+#: The **stochastic** judge's noise floor, in 0–100 score points: the smallest
+#: per-axis spread across a series that is distinguishable from a model's own
+#: sampling noise. Deliberately the same one-decisive-step the rest of the
+#: gallery uses (``RANK_WORST_AXIS_SLACK`` here, ``profile_select.DEFAULT_SPREAD_FLOOR``
+#: one layer up) and *above* the movement the live VLM showed between two samples
+#: of the SAME picture (12–23 points, plan-gallery-ai-judgement J5) — larger than
+#: the 2–6-point differences it was asked to rank. So an axis whose spread sits
+#: inside this cannot order these variants, and must not pretend to. Used for the
+#: VLM scorecard (``quality_read.axis_noise_floor("ai")``).
+AXIS_NOISE_FLOOR: float = 20.0
+
+#: The **deterministic** detectors' noise floor: same pixels always produce the
+#: same number, so the only indistinguishability at a detector is integer
+#: quantization — a 0-or-1-point spread. Using the model floor here would drop
+#: real differences between two variants the user is comparing (a 5-point
+#: sharpness gap is a measurement, not noise). Used for the local-aggregate
+#: fusion (``rank_series``) and the Algorithms-domain Jev vector.
+DETECTOR_NOISE_FLOOR: float = 1.0
+
+#: ``axis_salience`` verdict vocabulary (plan §Interface — the values are part of
+#: the contract: surfaces render the reason from the verdict, never from a second
+#: measurement).
+DISCRIMINATING = "discriminating"
+INSIDE_NOISE = "inside-noise"
+SALIENCE_VERDICTS: tuple[str, str] = (DISCRIMINATING, INSIDE_NOISE)
 
 #: Normalized mode id (``services/metric_profile.mode_id`` — single definition,
 #: shared with the profile).
@@ -94,6 +129,119 @@ def measured_axes_for(mode=None, *, profile=None) -> tuple[str, ...]:
         if axes:
             return axes
     return profile_for_mode(mode).axis_ids
+
+
+def axis_salience(vectors, *, noise_floor) -> dict[str, str]:
+    """``{axis: "discriminating" | "inside-noise"}`` for one series.
+
+    ``vectors`` is one ``{axis: 0..100 score}`` mapping per member of the series —
+    the shape the fusion builds (:func:`_axis_vector`), the Jev measured vector
+    carries (``items[*].scores``) and the Quick Look rows read. For each axis the
+    spread is ``max − min`` over the members that carry a value; a spread
+    ``<= noise_floor`` is **inside** the instrument's own noise, so that axis
+    cannot separate these variants: it must carry no rank weight (``rank_series``
+    / ``build_measured_vector``) and must be rendered with that reason instead of
+    a bare number (plan-gallery-ai-judgement M3).
+
+    An axis carried by fewer than two members has no measured spread and reports
+    ``discriminating``: "cannot be shown to move" is not "does not move", and
+    suppressing a real measurement on no evidence is the same lie as fabricating
+    one. An unusable *noise_floor* degrades to the stochastic floor (the widest
+    one, i.e. fail-open toward measuring). Pure and deterministic (order of
+    ``vectors`` is irrelevant; the result is keyed by axis, never by member).
+    """
+    try:
+        floor = float(noise_floor)
+    except (TypeError, ValueError):
+        floor = AXIS_NOISE_FLOOR
+    values: dict[str, list[float]] = {}
+    try:
+        members = list(vectors or ())
+    except Exception:
+        members = []
+    for vector in members:
+        try:
+            pairs = dict(vector or {}).items()
+        except Exception:
+            continue
+        for axis, value in pairs:
+            try:
+                number = float(value)
+            except (TypeError, ValueError):
+                continue
+            if number != number:  # NaN: not a measurement
+                continue
+            values.setdefault(str(axis), []).append(number)
+    out: dict[str, str] = {}
+    for axis, numbers in values.items():
+        if len(numbers) < 2:
+            out[axis] = DISCRIMINATING
+            continue
+        out[axis] = (
+            INSIDE_NOISE if (max(numbers) - min(numbers)) <= floor else DISCRIMINATING
+        )
+    return out
+
+
+def _inside_noise_axes(verdicts) -> frozenset[str]:
+    """Axes to suppress as rank weight — or none when nothing separates at all.
+
+    One rule for the fusion and the Jev vector (never two). The exception is
+    deliberate: a series whose *every* measured axis is inside the noise floor
+    would otherwise have no aggregate and no rank vector, and the order would
+    silently degrade to ``str(path)`` (alphabetical) — a fabricated authority
+    instead of a measured one. There, suppressing nothing keeps the order
+    measured (a tie is still a measurement), while the rows and the vector keep
+    saying the axes do not separate the series.
+    """
+    try:
+        inside = {
+            str(axis) for axis, verdict in dict(verdicts or {}).items()
+            if str(verdict) == INSIDE_NOISE
+        }
+    except Exception:
+        return frozenset()
+    if not inside:
+        return frozenset()
+    try:
+        total = len(dict(verdicts or {}))
+    except Exception:
+        total = 0
+    if total and len(inside) >= total:
+        return frozenset()
+    return frozenset(inside)
+
+
+def _axis_vector(item, axes) -> dict[str, float]:
+    """``{axis: 0..100}`` the item actually carries for *axes* (never fabricated).
+
+    The item's engine record answers for the axes it covers (``status="ok"``,
+    ``_record_scores``); when it covers none, the legacy raw ``item.metrics``
+    path answers. This is the ONE per-member vector: :func:`item_quality`
+    aggregates it and :func:`axis_salience` measures its spread, so "what an axis
+    says about this member" has a single definition.
+    """
+    vector: dict[str, float] = {}
+    records = _record_scores(item)
+    for axis_id in axes:
+        value = records.get(axis_id)
+        if value is not None:
+            vector[axis_id] = float(value)
+    if vector:
+        return vector
+    metrics = getattr(item, "metrics", None)
+    if not isinstance(metrics, dict) or not metrics:
+        return {}
+    for axis_id in axes:
+        spec = spec_for(axis_id)
+        if spec is None:
+            continue
+        got = raw_for(spec, metrics)
+        if got is None:
+            continue
+        _key, raw = got
+        vector[axis_id] = float(score_for(spec, raw))
+    return vector
 
 
 def _records_of(item) -> tuple:
@@ -151,7 +299,7 @@ def _record_scores(item) -> dict[str, float]:
     return out
 
 
-def item_quality(item, *, mode=None, profile=None) -> float | None:
+def item_quality(item, *, mode=None, profile=None, excluded_axes=()) -> float | None:
     """0..100 aggregate over applicable MEASURED axes; None when nothing measured.
 
     The **weighted** mean over every applicable axis that has a value — an
@@ -170,6 +318,12 @@ def item_quality(item, *, mode=None, profile=None) -> float | None:
     unchanged, so an item the engine could not measure (producer failure, no records)
     keeps today's exact numbers.
 
+    ``excluded_axes`` is the series' salience verdict (``_inside_noise_axes``):
+    those axes carry no weight because they cannot separate these variants.
+    Suppression never *erases* a reading — an item whose every value sits on an
+    excluded axis keeps them (otherwise it would be re-labelled "unmeasured" and
+    dropped out of the order for a reason that is about weights, not scores).
+
     Applicability is the metric profile (``profile`` when given, else the mode
     mapping — see ``measured_axes_for``). Missing axes are excluded (never
     treated as 0/100) and ``RANK_EXCLUDED_AXES`` is never consulted.
@@ -177,34 +331,21 @@ def item_quality(item, *, mode=None, profile=None) -> float | None:
     """
     axes = measured_axes_for(mode, profile=profile)
     weights = RANK_AXIS_WEIGHTS.get(_mode_id(mode), {})
-    records = _record_scores(item)
+    try:
+        skip = frozenset(str(axis) for axis in (excluded_axes or ()))
+    except Exception:
+        skip = frozenset()
+    vector = _axis_vector(item, axes)
+    if skip:
+        kept = {axis: value for axis, value in vector.items() if axis not in skip}
+        if kept:
+            vector = kept
     weighted: list[tuple[float, float]] = []
-    from_records = False
-    for axis_id in axes:
-        value = records.get(axis_id)
-        if value is None:
-            continue
-        from_records = True
+    for axis_id, value in vector.items():
         weight = float(weights.get(axis_id, 1.0))
         if weight <= 0.0:
             continue  # a zero/negative weight removes the axis from the aggregate
         weighted.append((value, weight))
-    if not from_records:
-        metrics = getattr(item, "metrics", None)
-        if not isinstance(metrics, dict) or not metrics:
-            return None
-        for axis_id in axes:
-            spec = spec_for(axis_id)
-            if spec is None:
-                continue
-            got = raw_for(spec, metrics)
-            if got is None:
-                continue
-            weight = float(weights.get(axis_id, 1.0))
-            if weight <= 0.0:
-                continue  # a zero/negative weight removes the axis from the aggregate
-            _key, raw = got
-            weighted.append((score_for(spec, raw), weight))
     if not weighted:
         return None
     total = sum(weight for _score, weight in weighted)
@@ -218,13 +359,25 @@ def rank_series(items, *, mode=None, profile=None) -> dict[str, int]:
     unmeasured by ``str(path)``. Idempotent under input permutation.
 
     ``profile`` (metric profile) selects the axes, so the rank can never
-    disagree with the dots/prompt about which axes count.
+    disagree with the dots/prompt about which axes count. The axes whose spread
+    across THIS series is inside the judge's noise carry no weight
+    (``axis_salience`` + ``_inside_noise_axes``): the callers get an order built
+    only from what actually separates the variants.
     """
+    members = list(items or ())
+    axes = measured_axes_for(mode, profile=profile)
+    verdicts = axis_salience(
+        [_axis_vector(member, axes) for member in members],
+        noise_floor=DETECTOR_NOISE_FLOOR,
+    )
+    excluded = _inside_noise_axes(verdicts)
     measured: list[tuple[float, str]] = []
     unmeasured: list[str] = []
-    for item in items or ():
+    for item in members:
         path = str(getattr(item, "path", ""))
-        quality = item_quality(item, mode=mode, profile=profile)
+        quality = item_quality(
+            item, mode=mode, profile=profile, excluded_axes=excluded
+        )
         if quality is None:
             unmeasured.append(path)
         else:
@@ -245,10 +398,16 @@ def rank_series(items, *, mode=None, profile=None) -> dict[str, int]:
 
 
 __all__ = [
+    "AXIS_NOISE_FLOOR",
+    "DETECTOR_NOISE_FLOOR",
+    "DISCRIMINATING",
+    "INSIDE_NOISE",
     "RANK_AXIS_WEIGHTS",
     "RANK_EXCLUDED_AXES",
     "RANK_FUSION_VERSION",
     "RANK_WORST_AXIS_SLACK",
+    "SALIENCE_VERDICTS",
+    "axis_salience",
     "item_quality",
     "measured_axes_for",
     "rank_series",

@@ -166,6 +166,7 @@
       "upscale_n_from_source": "апскейл ×{n} от источника",
       "ai_brief_pending": "Краткий ответ ИИ…",
       "not_measured": "— · не измерено",
+      "axis_inside_noise": "не различает эти варианты",
       "rank_of": "#{rank} из {total}",
       "rejected_tail": "отклонённый хвост ≤ {value}",
       "source_fallback": "источник",
