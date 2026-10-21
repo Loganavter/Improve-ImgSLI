@@ -173,7 +173,6 @@ def _metrics_fingerprint(overlay, item, is_fidelity: bool, mode_str: str) -> tup
             analysis_part = (
                 tuple(sorted((str(k), int(v)) for k, v in (getattr(_a, "axes", {}) or {}).items())),
                 int(getattr(_a, "composition", -1) or -1),
-                str(getattr(_a, "verdict", "") or ""),
                 tuple(
                     sorted(str(getattr(d, "kind", "")) for d in (getattr(_a, "defects", ()) or ()))
                 ),

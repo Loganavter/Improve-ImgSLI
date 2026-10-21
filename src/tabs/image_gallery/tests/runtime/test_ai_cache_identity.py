@@ -59,7 +59,7 @@ def _result(description: str = "from A", model: str = "model/A") -> AiAnalysisRe
         analyzed_at_iso="2026-01-01T00:00:00+00:00",
         sharpness=80,
         composition=70,
-        verdict="keep",
+        reason="Clean.",
     )
 
 
@@ -120,7 +120,6 @@ def _write_legacy_entry(cache: Path, path: Path, mtime: int, *, description: str
                 "analyzed_at_iso": "2026-01-01T00:00:00+00:00",
                 "sharpness": 80,
                 "composition": 70,
-                "verdict": "keep",
                 "axes": {"sharpness": 80, "composition": 70},
                 "version": ai_cache.AI_CACHE_VERSION,
             }

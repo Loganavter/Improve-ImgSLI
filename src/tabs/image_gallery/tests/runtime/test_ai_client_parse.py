@@ -46,40 +46,38 @@ def _quality_content() -> str:
         "NOISE: 90\n"
         "EXPOSURE: 78\n"
         "COMPOSITION: 80\n"
-        "VERDICT: keep\n"
         "REASON: Clean and sharp.\n"
         "DESCRIPTION: A cat on a sofa.\n"
         "TAGS: cat, sofa"
     )
 
 
-def test_parse_quality_format_scores_and_verdict():
+def test_parse_quality_format_scores_and_reason():
     from tabs.image_gallery.models import ai_quality_score
 
     raw = {"choices": [{"message": {"content": _quality_content()}}]}
     result = parse_response(raw, model="test/model")
     assert (result.sharpness, result.noise, result.exposure, result.composition) == (85, 90, 78, 80)
-    assert result.verdict == "keep"
-    assert result.verdict_reason == "Clean and sharp."
+    assert result.reason == "Clean and sharp."
     assert result.description == "A cat on a sofa."
     assert result.tags == ("cat", "sofa")
     assert ai_quality_score(result) == pytest.approx((85 + 90 + 78 + 80) / 4)
 
 
-def test_parse_scores_clamped_and_verdict_normalized():
+def test_parse_scores_clamped():
     raw = {
         "choices": [
             {
                 "message": {
                     "content": "SHARPNESS: 140\nNOISE: -5\nEXPOSURE: 72%\nCOMPOSITION: n/a\n"
-                    "VERDICT: REJECTED!\nREASON: blurry\nDESCRIPTION: x\nTAGS: y"
+                    "REASON: blurry\nDESCRIPTION: x\nTAGS: y"
                 }
             }
         ]
     }
     result = parse_response(raw, model="test/model")
     assert (result.sharpness, result.noise, result.exposure, result.composition) == (100, 0, 72, -1)
-    assert result.verdict == "reject"
+    assert result.reason == "blurry"
 
 
 def test_parse_legacy_caption_only_leaves_quality_unknown():
@@ -96,8 +94,7 @@ def test_parse_legacy_caption_only_leaves_quality_unknown():
     }
     result = parse_response(raw, model="test/model")
     assert (result.sharpness, result.noise, result.exposure, result.composition) == (-1, -1, -1, -1)
-    assert result.verdict == "unknown"
-    assert result.verdict_reason == ""
+    assert result.reason == ""
     assert ai_quality_score(result) is None
 
 
@@ -115,9 +112,12 @@ def _json_reply(obj) -> dict:
     return {"choices": [{"message": {"content": _json.dumps(obj)}}]}
 
 
-def test_parse_json_contract_verdict_defects_confidence():
+def test_parse_json_contract_reason_defects_confidence():
     raw = _json_reply(
         {
+            # A legacy reply still carrying the DELETED verdict key: it must be
+            # ignored, never resurrected as a field (plan-gallery-ai-judgement
+            # P4/D4 — the keep/reject label was removed end to end).
             "verdict": "reject",
             "reason": "Strong halo on edges.",
             "defects": [
@@ -131,8 +131,8 @@ def test_parse_json_contract_verdict_defects_confidence():
         }
     )
     r = parse_response(raw, model="m")
-    assert r.verdict == "reject"
-    assert r.verdict_reason == "Strong halo on edges."
+    assert not hasattr(r, "verdict")
+    assert r.reason == "Strong halo on edges."
     assert r.composition == 72
     assert r.confidence == pytest.approx(0.85)
     kinds = [d.kind for d in r.defects]
@@ -143,10 +143,10 @@ def test_parse_json_contract_verdict_defects_confidence():
 
 
 def test_parse_json_in_code_fences_and_prose():
-    content = 'Sure!\n```json\n{"verdict": "keep", "reason": "ok", "defects": []}\n```'
+    content = 'Sure!\n```json\n{"reason": "ok", "defects": []}\n```'
     raw = {"choices": [{"message": {"content": content}}]}
     r = parse_response(raw, model="m")
-    assert r.verdict == "keep"
+    assert r.reason == "ok"
     assert r.defects == ()
     assert r.composition == -1
 
@@ -178,7 +178,6 @@ def test_parse_legacy_line_format_still_falls_back():
 def test_parse_axis_notes_normalized_to_known_ids():
     raw = _json_reply(
         {
-            "verdict": "keep",
             "reason": "ok",
             "defects": [],
             "axis_notes": {
@@ -199,11 +198,11 @@ def test_parse_axis_notes_normalized_to_known_ids():
 def test_parse_strips_reasoning_block_before_json():
     content = (
         " thinkingLet me reason about sharpness and noise...<｜end▁of▁thinking｜>"
-        '{"verdict": "keep", "reason": "ok", "defects": []}'
+        '{"reason": "ok", "defects": []}'
     )
     raw = {"choices": [{"message": {"content": content}}]}
     r = parse_response(raw, model="m")
-    assert r.verdict == "keep"
+    assert r.reason == "ok"
 
 
 def test_ratelimit_headers_compact():
@@ -336,7 +335,6 @@ def test_parse_json_axes_scorecard():
     raw = _json_reply(
         {
             "axes": {"sharpness": 81, "ssim": 55, "bogus_axis": 10, "noise": 140},
-            "verdict": "keep",
             "reason": "ok",
         }
     )
@@ -349,7 +347,7 @@ def test_parse_json_axes_scorecard():
 
 def test_parse_named_fields_merge_into_scorecard():
     """An old prompt's named fields fill the same open scorecard."""
-    raw = _json_reply({"sharpness": 70, "composition": 60, "verdict": "keep"})
+    raw = _json_reply({"sharpness": 70, "composition": 60, "reason": "ok"})
     r = parse_response(raw, model="m")
     assert r.axes.get("sharpness") == 70
     assert r.axes.get("composition") == 60
@@ -402,7 +400,7 @@ def test_parse_trace_reports_reasoning_and_json(caplog, monkeypatch) -> None:
     monkeypatch.setenv("IMGSLI_AI_DEBUG", "1")
     _reasoning = "<thinking>x</thinking>"
     content = _reasoning + " scratchpad clearly reasoning about quality<｜end▁of▁thinking｜>" + _json.dumps(
-        {"verdict": "keep", "reason": "ok"}
+        {"reason": "ok"}
     )
     raw = {"choices": [{"message": {"content": content}}]}
     with caplog.at_level(logging.WARNING, logger="ImproveImgSLI"):
@@ -432,7 +430,7 @@ def test_transport_trace_logs_finish_usage_and_content(caplog, monkeypatch) -> N
     monkeypatch.setenv("IMGSLI_AI_DEBUG", "1")
     body = b"".join(
         [
-            b'data: {"model":"m","choices":[{"delta":{"content":"{\\"verdict\\":\\"keep\\"}"}}]}\n\n',
+            b'data: {"model":"m","choices":[{"delta":{"content":"{\\"reason\\":\\"ok\\"}"}}]}\n\n',
             b'data: {"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"total_tokens":42}}\n\n',
             b"data: [DONE]\n\n",
         ]
@@ -507,7 +505,7 @@ def test_analyze_forwards_reasoning_effort_into_the_request(tmp_path, monkeypatc
         seen["payload"] = payload
         return {
             "choices": [
-                {"message": {"content": '{"verdict": "keep", "axes": {"sharpness": 80}}'}}
+                {"message": {"content": '{"reason": "ok", "axes": {"sharpness": 80}}'}}
             ]
         }
 

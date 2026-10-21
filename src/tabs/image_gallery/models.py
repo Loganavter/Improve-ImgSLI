@@ -167,7 +167,7 @@ class AiAnalysisResult:
     tags: tuple[str, ...]
     model: str
     analyzed_at_iso: str
-    # Technical-quality verdict (the app's analysis format). Axis scores are
+    # Technical-quality scorecard (the app's analysis format). Axis scores are
     # 0-100 quality (higher=better), -1 means unscored. On the AI judgment
     # domain these are the VLM's OWN read of the picture (see ``axes``); the
     # Algorithms domain never reads them (it reads the local detectors through
@@ -178,8 +178,13 @@ class AiAnalysisResult:
     noise: int = -1
     exposure: int = -1
     composition: int = -1
-    verdict: str = "unknown"  # "keep" | "reject" | "unknown"
-    verdict_reason: str = ""
+    #: The model's prose read of the picture (``reason`` on the wire): what the
+    #: processing did and what a human should watch for. NOT a decision — the
+    #: keep/reject field it used to accompany was deleted (plan-gallery-ai-
+    #: judgement P4/D4: six of six live scorecards answered "keep", so the label
+    #: carried no information). This text still feeds search and the list
+    #: tooltip; nothing ranks on it.
+    reason: str = ""
     defects: tuple[AiDefect, ...] = ()
     confidence: float = 0.0
     # Short, vision-based note per axis (canonical metric id → phrase), shown

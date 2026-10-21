@@ -49,7 +49,6 @@ from .parse import (
     _parse_defects,
     _parse_lines,
     _parse_score,
-    _parse_verdict,
     _strip_reasoning,
     merge_samples,
     parse_response,

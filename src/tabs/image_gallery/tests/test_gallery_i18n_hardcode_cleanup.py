@@ -14,7 +14,8 @@ Falsification (pre-fix) — each assertion below fails on the parent commit:
   namespace — ``gallery.card.*`` is the THEME-TOKEN namespace
   (``gallery.card.unreadable.plate``) — so the lookup always missed and the row
   silently fell back to English.
-* ``ui/card/visuals.py`` emitted ``verdict.upper()`` / ``"defects: " + …``;
+* ``ui/card/visuals.py`` emitted ``"defects: " + …`` (its ``verdict.upper()``
+  pill was deleted later, plan-gallery-ai-judgement P4/D4);
   ``ui/card.py`` + ``ui/list/card.py`` emitted ``f"VLM tie-break: {vlm_err}"``;
   ``ui/quick_look/metrics/rows.py`` emitted ``"— · not measured"`` /
   ``"#{rank} of {total}"`` / ``"rejected tail ≤ …"``; ``ui/quick_look/meta.py``
@@ -66,8 +67,6 @@ NEW_KEYS = (
     "image_gallery.ask_ai.cached",
     "image_gallery.card.unreadable",
     "image_gallery.card.reset_metrics_cache",
-    "image_gallery.card.tooltip.keep",
-    "image_gallery.card.tooltip.reject",
     "image_gallery.card.tooltip.defects",
     "image_gallery.card.tooltip.vlm_tiebreak",
     "image_gallery.quick_look.ai_brief_pending",
@@ -130,7 +129,6 @@ _PRE_FIX_FORMS: dict[str, tuple[str, ...]] = {
         'badge += " · cached"',
     ),
     "ui/card/visuals.py": (
-        "verdict.upper() + (f\" — {reason}\"",
         'out.append("defects: " + ", ".join(kinds))',
     ),
     "ui/card.py": (
@@ -260,29 +258,30 @@ def test_wrong_namespace_key_is_gone() -> None:
 
 
 def test_analysis_tooltip_lines_follows_translator() -> None:
-    """Verdict/defect wording is a function of the injected translator.
+    """Defect wording is a function of the injected translator.
 
     Content identity: with a marker translator the lines must BE the marker
     output. Pre-fix ``analysis_tooltip_lines`` took no translator and always
-    returned frozen English (``verdict.upper()``, ``"defects: " + ...``).
+    returned frozen English (``"defects: " + ...``). The ``KEEP``/``REJECT``
+    pill that used to open the list was deleted (plan-gallery-ai-judgement
+    P4/D4): the model's reason is now the plain first line.
     """
     from tabs.image_gallery.ui.card.visuals import analysis_tooltip_lines
 
     analysis = SimpleNamespace(
-        verdict="keep",
-        verdict_reason="soft",
+        reason="soft",
         defects=(
             SimpleNamespace(kind="over_smoothing"),
             SimpleNamespace(kind="chroma_fringing"),
         ),
     )
     assert analysis_tooltip_lines(analysis) == [
-        "KEEP — soft",
+        "soft",
         "defects: over smoothing, chroma fringing",
     ]
 
     marked = analysis_tooltip_lines(analysis, lambda k, d: f"<{k.rsplit('.', 1)[-1]}>")
-    assert marked == ["<keep> — soft", "<defects>"]
+    assert marked == ["soft", "<defects>"]
 
 
 def test_vlm_tiebreak_tooltip_line_follows_translator() -> None:

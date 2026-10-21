@@ -72,7 +72,7 @@ def _cached_result() -> AiAnalysisResult:
         model="test/model",
         analyzed_at_iso="2026-01-01T00:00:00+00:00",
         sharpness=80,
-        verdict="keep",
+        reason="Clean.",
     )
 
 

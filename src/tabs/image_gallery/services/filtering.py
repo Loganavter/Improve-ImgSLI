@@ -13,15 +13,14 @@ from tabs.image_gallery.models import AnalysisStatus, GalleryItem
 
 
 def _analysis_haystack(analysis) -> str:
-    """Searchable text for one analysis result — verdict/defects first.
+    """Searchable text for one analysis result — assessment/defects first.
 
-    The gallery reports quality (verdict reason + defect kinds), so those
+    The gallery reports quality (the model's reason + defect kinds), so those
     are the searchable signal; legacy caption/tags are included when an
     old cache entry still carries them.
     """
     parts = [
-        str(getattr(analysis, "verdict_reason", "") or ""),
-        str(getattr(analysis, "verdict", "") or ""),
+        str(getattr(analysis, "reason", "") or ""),
     ]
     for d in getattr(analysis, "defects", ()) or ():
         try:

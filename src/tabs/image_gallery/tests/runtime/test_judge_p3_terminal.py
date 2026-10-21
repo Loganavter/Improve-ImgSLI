@@ -5,9 +5,10 @@ Falsification story (each test names the live defect it kills):
 - **a** — the per-arrival trigger. N VLM scorecards arriving one by one must
   produce exactly ONE Jev dispatch, at the moment the matrix is COMPLETE, and
   the payload it ranks covers every member. Pre-change ``_on_analysis_ready``
-  re-ran the ranker on EVERY arrival (``_queue_ai_rank_on_settle``), and the
-  metrics settle dispatched before any scorecard existed — a rank was asked
-  for on a 3/6 and then a 5/6 matrix (plan §D1.1, live 19:12:19-22).
+  re-ran the ranker on EVERY arrival through a per-arrival coalescing flush
+  (deleted with P3), and the metrics settle dispatched before any scorecard
+  existed — a rank was asked for on a 3/6 and then a 5/6 matrix (plan §D1.1,
+  live 19:12:19-22).
 - **b** — the floor and the band. The code owns the deterministic order; the
   model may reorder ONLY items whose measured quality is indistinguishable
   (|quality - band leader| <= the instrument's noise floor). A model order
@@ -162,27 +163,10 @@ class _TerminalCtrl:
             if analysis_batch is not None:
                 analysis_batch.begin(self)
 
-    def _flush_ai_rank_on_settle(self) -> None:
-        """RED-BEFORE BRIDGE — the pre-change coalesced flush (P3 deletes it)."""
-        flush = getattr(triage_run, "_flush_ai_rank_on_settle", None)
-        if callable(flush):
-            flush(self)
-
     def _run_jev_on_settle(self) -> None:
         run = getattr(triage_run, "_run_jev_on_settle", None)
         if callable(run):
             run(self)
-
-    def _queue_ai_rank_on_settle(self) -> None:
-        """RED-BEFORE BRIDGE — the pre-change per-arrival trigger.
-
-        Present only so the pre-change tree can run this test at all: the
-        deleted seam is looked up on the production module instead of being
-        re-implemented here. Post-change ``_on_analysis_ready`` never calls it.
-        """
-        flush = getattr(triage_run, "_queue_ai_rank_on_settle", None)
-        if callable(flush):
-            flush(self)
 
     def _run_jev_ranks(self) -> None:
         self.dispatch_sizes.append(

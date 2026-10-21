@@ -37,7 +37,7 @@ def test_load_returns_none_when_uncached(tmp_path, monkeypatch):
     assert ai_cache.load_cached_analysis(Path("/nope.png"), 1, IDENTITY) is None
 
 
-def test_round_trip_carries_quality_and_verdict(tmp_path, monkeypatch):
+def test_round_trip_carries_quality_and_reason(tmp_path, monkeypatch):
     import json
 
     monkeypatch.setattr(ai_cache, "ai_cache_dir", lambda: tmp_path)
@@ -51,8 +51,7 @@ def test_round_trip_carries_quality_and_verdict(tmp_path, monkeypatch):
         noise=90,
         exposure=78,
         composition=80,
-        verdict="keep",
-        verdict_reason="Clean.",
+        reason="Clean.",
         axis_notes={"noise": "coarse film grain"},
         axes={"sharpness": 85, "noise": 90, "exposure": 78, "composition": 80, "ssim": 72},
     )
@@ -60,7 +59,7 @@ def test_round_trip_carries_quality_and_verdict(tmp_path, monkeypatch):
     assert ai_cache.load_cached_analysis(path, 123, IDENTITY) == result
     stored = json.loads(next(tmp_path.iterdir()).read_text(encoding="utf-8"))
     assert stored["sharpness"] == 85
-    assert stored["verdict"] == "keep"
+    assert stored["reason"] == "Clean."
     assert stored["axis_notes"] == {"noise": "coarse film grain"}
     assert stored["axes"]["ssim"] == 72
     assert stored["version"] == ai_cache.AI_CACHE_VERSION
@@ -81,7 +80,7 @@ def test_pre_scorecard_cache_is_a_miss_not_an_ai_read(tmp_path, monkeypatch):
         AiAnalysisResult(
             description="d", tags=(), model="m",
             analyzed_at_iso="2026-01-01T00:00:00+00:00",
-            sharpness=64, composition=58, verdict="keep",
+            sharpness=64, composition=58, reason="stale",
         ),
         IDENTITY,
     )
@@ -113,14 +112,15 @@ def test_current_entry_without_numeric_axes_loads_unscored(tmp_path, monkeypatch
     )
     cache_file = next(tmp_path.iterdir())
     data = json.loads(cache_file.read_text(encoding="utf-8"))
-    for key in ("sharpness", "noise", "exposure", "composition", "verdict", "verdict_reason"):
+    for key in ("sharpness", "noise", "exposure", "composition", "reason"):
         data.pop(key, None)
     cache_file.write_text(json.dumps(data), encoding="utf-8")
     loaded = ai_cache.load_cached_analysis(path, 123, IDENTITY)
     assert loaded is not None
     assert loaded.description == "old caption"
     assert (loaded.sharpness, loaded.noise, loaded.exposure, loaded.composition) == (-1, -1, -1, -1)
-    assert loaded.verdict == "unknown"
+    assert loaded.reason == ""
+    assert not hasattr(loaded, "verdict")
 
 
 def test_key_changes_with_mtime_treats_edited_file_as_uncached(tmp_path, monkeypatch):
