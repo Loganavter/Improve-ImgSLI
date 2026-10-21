@@ -414,7 +414,7 @@
     },
     {
       "id": "help-long-press",
-      "capture": "@window",
+      "capture": "@screen",
       "steps": [
         {
           "open_tab": "image_compare"
@@ -442,9 +442,11 @@
       ],
       "crop": null,
       "crop_element": {
-        "role": "button",
-        "label": "Swap Images",
-        "pad": 6
+        "ids": [
+          "@image_compare.clear_list1",
+          "@image_compare.swap"
+        ],
+        "pad": 4
       },
       "destination": "src/resources/help/assets/ui/long_press.png",
       "locales": [
@@ -457,7 +459,7 @@
         800,
         500
       ],
-      "note": "Hold state of a long-press control: @image_compare.swap is the toolbar button built with long_press=True (src/tabs/image_compare/ui/primitives.py:111-119), i.e. the Swap list control whose long press swaps both lists (comparison.md). The press is parked with ui_press release=false, photographed while held, and released by after_capture. Crop is the button itself (role=button, label from the bound image_compare.swap action); the stronger action the long press would run is not part of the frame."
+      "note": "Hold state of the long-press list controls, not of one button: clear_list1/clear_list2 and swap are the three controls built with long_press=True (src/tabs/image_compare/ui/primitives.py:111-135; the long press clears a whole list or swaps both lists, help://ui.buttons#multi-action). The press is parked with ui_press release=false on @image_compare.swap, photographed while held, and released by after_capture. The crop is a union of two inventory references -- @image_compare.clear_list1 and @image_compare.swap, the adjacent list buttons and the same references ui_press/ui_click drive -- with pad=4, so the whole pressed control sits inside the frame with its neighbour for context: 2 x 36 + 8 (layout spacing scaled_px(8)) + 2 x 4 = 88 px wide, 36 + 2 x 4 = 44 px high at DPI 96. Expected 88x44. Captured @screen because the crop is in screen coordinates and the X root is 1:1 with them (a window grab's origin would have to be proved from the layout dump, and this row is plain raster anyway). Two defects were measured here on 2026-10-21: a role+label selector is a caption substring scan over every window, and a window grab added a guessed (capture - window) / 2 shadow offset, so the shipped 48x48 crop had the 36x36 button clipped on two edges."
     },
     {
       "id": "help-paste-overlay",
@@ -490,6 +492,10 @@
         }
       ],
       "crop": null,
+      "crop_element": {
+        "window": "PasteDirectionOverlay",
+        "pad": 0
+      },
       "destination": "src/resources/help/assets/platform/paste_overlay.jpg",
       "locales": [
         "en"
@@ -502,11 +508,11 @@
         600
       ],
       "rhi_backend": "vulkan",
-      "note": "The direction picker a paste opens: set_clipboard owns the X selection with a demo image, then the platform.paste_clipboard_image action runs the app's own Ctrl+V entry point (it is the keymap default for Ctrl+V, src/ui/actions/platform.py:426-431, and it emits the same ExportPasteImageFromClipboardEvent the canvas Ctrl+V handler emits at events/image_label/keyboard.py:45) so the overlay appears over the loaded session. Captured @window because PasteDirectionOverlay is a window-level in-window overlay (TopLevelInWindowOverlay, parent = main window) and a tab capture never includes a window-level overlay; the overlay itself has no role and no dynamic property, so it is not in ui_elements and has no screen_rect to crop by."
+      "note": "The direction picker a paste opens: set_clipboard owns the X selection with a demo image, then the platform.paste_clipboard_image action runs the app's own Ctrl+V entry point (keymap default, src/ui/actions/platform.py:426-431, emitting the same ExportPasteImageFromClipboardEvent the canvas Ctrl+V handler emits) so the picker appears over the loaded session. PasteDirectionOverlay (src/services/system/paste_direction_overlay.py:48-58) is a TopLevelInWindowOverlay whose targets are painted inside one paintEvent: no element row, no per-target rect, so its own top-level window rect is the only honest crop (@screen + window crop), and the figure fails loudly when that window is not visible. MEASURED 2026-10-21 on this harness (private Xvfb, no window manager): the picker is not on screen at capture time -- the frame holds the loaded session only (the 'Left: sunset' HUD label over an empty canvas), and its left/right (or up/down for a horizontal split) targets are a STATE, not a phase: they are painted for as long as the overlay is shown, so no earlier step, later step or stable_interval_s finds a transient four-target instant. The one code difference from the two overlays this harness does capture -- QuickLookOverlay (src/tabs/image_gallery/ui/quick_look.py:98) and CleanReviewOverlay (src/tabs/image_gallery/ui/clean_review/__init__.py:556), both close_on_deactivate=False and pinned by parity tests -- is close_on_deactivate=True here: with no window manager to hold activation for the app window, showing the overlay deactivates the window it belongs to and the picker dismisses itself. The shipped 350x154 asset is left untouched (no live frame of this state has been produced yet); the app-side candidate is outside this figure's scope -- the tab already sweeps paste overlays on on_deactivated/on_session_closed (src/tabs/image_compare/tab.py:343-365), so close_on_deactivate=False would not leak the overlay across tabs."
     },
     {
       "id": "help-video-editor",
-      "capture": "@window",
+      "capture": "@screen",
       "steps": [
         {
           "open_tab": "image_compare"
@@ -551,6 +557,7 @@
         }
       ],
       "crop": null,
+      "crop_element": {"window": "VideoEditorDialog", "pad": 0},
       "destination": "src/tabs/image_compare/resources/help/assets/video_editor_window.png",
       "locales": [
         "en"
@@ -567,7 +574,7 @@
     },
     {
       "id": "help-video-export",
-      "capture": "@window",
+      "capture": "@screen",
       "steps": [
         {
           "open_tab": "image_compare"
@@ -618,6 +625,10 @@
         }
       ],
       "crop": null,
+      "crop_element": {
+        "window": "VideoEditorDialog",
+        "pad": 0
+      },
       "destination": "src/tabs/image_compare/resources/help/assets/video_export.jpg",
       "locales": [
         "en"
@@ -630,7 +641,7 @@
         600
       ],
       "rhi_backend": "vulkan",
-      "note": "The editor's export configuration: recording path as in help-video-editor, then the dialog-local Standard export tab action (registered id image_compare.video_editor.group.video.export_tabs.video.standard while the editor is open). The Export Video footer button itself is NOT pressed: in the running app it starts a real encode (presenter.export_video -> export_coordinator), so pressing it would photograph a progress bar, not the configuration this figure teaches."
+      "note": "The editor's export configuration: recording path as in help-video-editor, then the dialog-local Standard export tab action (registered id image_compare.video_editor.group.video.export_tabs.video.standard while the editor is open). The Export Video footer button itself is NOT pressed: in the running app it starts a real encode (presenter.export_video -> export_coordinator), so pressing it would photograph a progress bar, not the configuration this figure teaches. The editor is its own top-level window (VideoEditorDialog, setWindowFlags(Qt.Window) in dialog/shell.py:90-96) while @window grabs app.activeWindow(), which stays the main window -- measured 2026-10-21: a 1296x816 frame of compare-tab chrome instead of the dialog. The frame is therefore the X root (@screen, 1:1 with screen coordinates) cropped to the dialog's own rect from dump_ui_layout, pad 0: expected the reported geometry, 1200x850 at DPI 96 (resize(scaled_px(1200), scaled_px(850)) there), and the figure fails loudly when no visible VideoEditorDialog exists instead of shipping the window. Review caveat: @screen reads X pixels only, so the dialog's QRhi/Vulkan preview pane may come out unread (docs/dev/SCREENSHOTS.md, known limitation) -- a window grab composites that frame, a root grab cannot."
     }
   ]
 }

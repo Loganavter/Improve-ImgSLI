@@ -347,6 +347,216 @@ def test_ai_group_name_is_the_apps_own_constant():
     assert groups == [help_live.AI_SETTINGS_GROUP]
 
 
+# --- crop selectors ---------------------------------------------------------
+
+
+class _CropClient:
+    """Answers the two read-only verbs a crop is derived from, and nothing else."""
+
+    def __init__(self, *, directory: Path, elements=None, windows=None, active=""):
+        self.directory = Path(directory)
+        self.elements = list(elements or [])
+        self.windows = list(windows or [])
+        self.active = active
+        self.calls: list[tuple[str, dict]] = []
+
+    def call(self, method, params=None):
+        self.calls.append((method, dict(params or {})))
+        if method == "ui_elements":
+            return {
+                "count": len(self.elements),
+                "total": len(self.elements),
+                "elements": self.elements,
+            }
+        if method == "dump_ui_layout":
+            path = self.directory / "ui-layout.json"
+            path.write_text(
+                json.dumps({"windows": self.windows, "active_window": self.active}),
+                encoding="utf-8",
+            )
+            return {"path": str(path), "windows": len(self.windows)}
+        raise AssertionError(f"unexpected control call: {method}")
+
+
+def _row(element_id, rect, *, action_id=None, visible=True):
+    return {
+        "id": element_id,
+        "action_id": action_id,
+        "role": "button",
+        "label": element_id,
+        "rect": list(rect),
+        "screen_rect": list(rect),
+        "visible": visible,
+    }
+
+
+def _window(class_name, geometry, *, active=False, visible=True, object_name=""):
+    node = {
+        "class": class_name,
+        "object_name": object_name,
+        "geometry": list(geometry),
+        "visible": visible,
+    }
+    if active:
+        node["is_active_window"] = True
+    return node
+
+
+def test_crop_by_ids_is_the_union_of_the_controls(tmp_path):
+    """Two adjacent controls crop as one region (the two long-press buttons)."""
+    client = _CropClient(
+        directory=tmp_path,
+        elements=[
+            _row("MainWindow/0.1@image_compare.clear_list1", (500, 100, 36, 36),
+                 action_id="image_compare.clear_list1"),
+            _row("MainWindow/0.2@image_compare.swap", (544, 100, 36, 36),
+                 action_id="image_compare.swap"),
+        ],
+    )
+
+    crop = help_live._element_crop(
+        client,
+        {"ids": ["@image_compare.clear_list1", "@image_compare.swap"], "pad": 4},
+    )
+
+    # 500..580 wide (36 + 8 layout spacing + 36), 100..136 high, pad not applied here.
+    assert crop == (4, 500, 100, 80, 36)
+    # A disabled-but-present control still has to be addressable.
+    assert client.calls[0] == ("ui_elements", {"include_disabled": True})
+
+
+def test_crop_by_ids_refuses_a_control_that_is_not_on_screen(tmp_path):
+    client = _CropClient(
+        directory=tmp_path,
+        elements=[_row("MainWindow/0.1@image_compare.swap", (1, 2, 36, 36), visible=False)],
+    )
+
+    with pytest.raises(help_live.LiveError, match="not visible"):
+        help_live._element_crop(client, {"ids": ["@image_compare.swap"]})
+
+
+def test_crop_by_ids_names_the_missing_reference(tmp_path):
+    client = _CropClient(directory=tmp_path, elements=[])
+
+    with pytest.raises(help_live.LiveError, match="@image_compare.swap"):
+        help_live._element_crop(client, {"ids": ["@image_compare.swap"]})
+
+
+def test_crop_by_window_uses_the_dumped_geometry(tmp_path):
+    """A dialog has no element row; its own top-level rect is the crop."""
+    client = _CropClient(
+        directory=tmp_path,
+        windows=[_window("VideoEditorDialog", (100, 40, 1200, 850))],
+    )
+
+    assert help_live._element_crop(client, {"window": "VideoEditorDialog", "pad": 0}) == (
+        0,
+        100,
+        40,
+        1200,
+        850,
+    )
+
+
+def test_crop_by_window_prefers_the_active_instance(tmp_path):
+    client = _CropClient(
+        directory=tmp_path,
+        windows=[
+            _window("SettingsDialog", (0, 0, 800, 600)),
+            _window("SettingsDialog", (300, 200, 800, 600), active=True),
+        ],
+    )
+
+    assert help_live._element_crop(client, {"window": "SettingsDialog", "pad": 0})[1:3] == (
+        300,
+        200,
+    )
+
+
+def test_crop_by_window_fails_when_the_surface_is_not_on_screen(tmp_path):
+    """A missing overlay must fail the figure, never crop empty background."""
+    client = _CropClient(
+        directory=tmp_path,
+        windows=[_window("MainWindow", (0, 0, 1296, 816), active=True)],
+        active="MainWindow:",
+    )
+
+    with pytest.raises(help_live.LiveError, match="PasteDirectionOverlay"):
+        help_live._element_crop(client, {"window": "PasteDirectionOverlay", "pad": 0})
+
+
+def test_a_hidden_window_is_not_a_crop_target(tmp_path):
+    client = _CropClient(
+        directory=tmp_path,
+        windows=[_window("PasteDirectionOverlay", (0, 0, 1280, 800), visible=False)],
+    )
+
+    with pytest.raises(help_live.LiveError, match="no visible window"):
+        help_live._element_crop(client, {"window": "PasteDirectionOverlay", "pad": 0})
+
+
+# --- capture origin (screen_rect → image pixels) -----------------------------
+
+
+def test_the_root_grab_is_one_to_one_with_the_screen(tmp_path):
+    assert help_live._capture_origin(
+        _CropClient(directory=tmp_path), "@screen", (1400, 1000)
+    ) == (0, 0)
+
+
+def test_a_window_grab_starts_at_that_windows_screen_position(tmp_path):
+    """No centred-shadow guess: the dump names where the grabbed window sits."""
+    client = _CropClient(
+        directory=tmp_path,
+        windows=[_window("MainWindow", (12, 7, 1296, 816), active=True)],
+        active="MainWindow:",
+    )
+
+    assert help_live._capture_origin(client, "@window", (1296, 816)) == (12, 7)
+
+
+def test_a_clipped_or_scaled_grab_has_no_known_origin(tmp_path):
+    client = _CropClient(
+        directory=tmp_path,
+        windows=[_window("MainWindow", (0, 0, 1296, 816), active=True)],
+        active="MainWindow:",
+    )
+
+    with pytest.raises(help_live.LiveError, match="clipped"):
+        help_live._capture_origin(client, "@window", (1296, 400))
+
+
+def test_an_unlisted_active_window_fails_loudly(tmp_path):
+    client = _CropClient(directory=tmp_path, windows=[], active="MainWindow:")
+
+    with pytest.raises(help_live.LiveError, match="not in the layout dump"):
+        help_live._capture_origin(client, "@window", (1296, 816))
+
+
+def test_crop_is_clamped_to_the_capture_instead_of_padded(tmp_path):
+    """PIL pads an out-of-bounds crop with black, which reads as a defect."""
+    from PIL import Image
+
+    shot = tmp_path / "shot.png"
+    Image.new("RGB", (200, 100), (10, 20, 30)).save(shot)
+    out = tmp_path / "x.png"
+
+    help_live.crop_and_install(shot, out, (180, 80, 60, 40))
+
+    with Image.open(out) as image:
+        assert image.size == (20, 20)
+
+
+def test_a_crop_outside_the_capture_is_an_error(tmp_path):
+    from PIL import Image
+
+    shot = tmp_path / "shot.png"
+    Image.new("RGB", (200, 100), (10, 20, 30)).save(shot)
+
+    with pytest.raises(help_live.LiveError, match="outside the 200x100"):
+        help_live.crop_and_install(shot, tmp_path / "x.png", (400, 400, 50, 50))
+
+
 # --- shipped manifest -------------------------------------------------------
 
 
@@ -376,6 +586,41 @@ def test_held_press_figure_releases_in_after_capture():
     assert released[-1].kwargs["id"] == held[-1].kwargs["id"]
 
 
+def test_held_press_figure_crops_by_the_reference_it_pressed():
+    """The crop must name the pressed control, not a caption that matches it.
+
+    A ``role``+``label`` crop is a substring scan over every window (it pointed
+    at "Swap Images" wherever that caption landed); the reference form is the
+    same ``@action`` id the press drives, so the two can never diverge.
+    """
+    figure = {f.id: f for f in help_live.load_recipes()}["help-long-press"]
+    pressed = [step for step in figure.steps if step.kind == "ui_press"][-1]
+    spec = figure.crop_element or {}
+
+    assert "ids" in spec, "the long-press crop must use inventory references"
+    assert pressed.kwargs["id"] in spec["ids"]
+    assert spec.get("pad", 0) > 0, "the pressed control needs its margin in frame"
+    # Screen-coordinate crop ⇒ the 1:1 root grab (a window grab's origin is a
+    # separate question, and the +8 guess it used once clipped the button).
+    assert figure.capture == "@screen"
+
+
+def test_window_figures_crop_to_their_own_top_level():
+    """A dialog/overlay is a top-level window, so the crop names the window."""
+    figures = {f.id: f for f in help_live.load_recipes()}
+
+    dialog = figures["help-video-export"]
+    assert dialog.capture == "@screen", (
+        "@window grabs app.activeWindow(), which stays the main window while the "
+        "editor is open"
+    )
+    assert (dialog.crop_element or {}).get("window") == "VideoEditorDialog"
+
+    picker = figures["help-paste-overlay"]
+    assert picker.capture == "@screen"
+    assert (picker.crop_element or {}).get("window") == "PasteDirectionOverlay"
+
+
 def test_clipboard_figure_pastes_through_the_platform_action():
     """A clipboard step and a paste trigger must both be present, in order."""
     figure = {f.id: f for f in help_live.load_recipes()}["help-paste-overlay"]
@@ -385,7 +630,9 @@ def test_clipboard_figure_pastes_through_the_platform_action():
     assert kinds.index("set_clipboard") < kinds.index("run_action")
     paste = figure.steps[kinds.index("run_action")]
     assert paste.kwargs["action_id"] == "platform.paste_clipboard_image"
-    assert figure.capture == "@window"
+    # The picker is a window-level overlay a window grab never includes (and its
+    # only other content is the loaded session), so the frame is the X root.
+    assert figure.capture == "@screen"
 
 
 def test_list_prints_the_new_figures(capsys):
