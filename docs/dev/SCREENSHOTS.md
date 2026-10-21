@@ -131,11 +131,34 @@ python src/devtools/help_figures.py --all --write-manifest       # record baseli
   the applied pins for what it generated. Recording needs a real display, so a
   fresh recipe stays `unbaselined` until someone runs `--all --write-manifest`
   on a private Xvfb.
+- **Variants are declared per figure, and installed per cell.** A recipe's
+  `locales` x `themes` is the matrix: more than one pair makes every capture
+  install under `assets/<locale>/<theme>/<name>` (a single-variant recipe keeps
+  today's flat destination). The five reproducible figures ship
+  `en|pt_BR|ru` x `dark|light` — 30 files, ~1.6 MB, below the 15 MB
+  bundle-in-the-binary gate. One literal markdown reference then resolves
+  through `resolve_help_asset`: `locale+theme -> locale -> theme -> base`. A
+  **declared** cell that is missing is a content bug and returns `None` (the
+  placeholder path), never the base; a locale with no declared matrix (zh
+  today) keeps the base image. zh figures are blocked on a pinned CJK font —
+  the system fallback is not reproducible and a runner without one renders
+  tofu, so they are deliberately not declared yet.
+- **A JPEG destination is converted from the grab.** Captures are PNG; when the
+  shipped asset is `.jpg` the generator converts the final frame (`quality=95`,
+  `subsampling=0`, Pillow is pinned) so the installed bytes — and therefore the
+  baseline — are the shipped format, not PNG bytes under a lying extension.
 - **Pins are recorded, not assumed.** `locale` and `theme` go through
-  `capture_surface`'s CLI (`emit_language_changed`, `ThemeManager.set_theme`);
-  `ui_scale` and `font` have no knob at all. Surfaces that hardcode their own
-  language or theme (`SETTINGS_KWARGS`, the onboarding store) list
-  `locale:constructor-pins-en` / `theme:constructor-pins-dark` under
+  `capture_surface`'s CLI (`emit_language_changed`, `ThemeManager.set_theme`).
+  `font` and `ui_scale` are forced for every capture by the canonical
+  bootstrap: the app's bundled **Source Sans 3** is loaded and proven applied
+  (the run fails loudly if it is not), `QT_SCALE_FACTOR=1` and
+  `QT_FONT_DPI=96` are set before `QApplication`, `QT_QPA_PLATFORM=xcb` is forced
+  for the Xvfb backend, and the private Xvfb starts with `-dpi 96` — so a
+  baseline hash does not depend on the host's fontconfig or DPI. (`96` is Qt's
+  baseline and the toolkit scales px by `logicalDpi / 96`: an Xvfb left at its
+  default 100 DPI misses every size pin by +42/+32 px.) They are recorded as **applied**, not as caveats. Surfaces that
+  hardcode their own language or theme (`SETTINGS_KWARGS`, the onboarding store)
+  list `locale:constructor-pins-en` / `theme:constructor-pins-dark` under
   `pins_unavailable`, so a non-default filter is never claimed as applied.
 - **Size pins are applied to the live window, twice.** `CaptureSession` sizes
   the top-level window, shows it, lets it settle, then applies the pin again

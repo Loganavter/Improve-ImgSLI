@@ -116,6 +116,27 @@ def test_undeclared_missing_variant_may_fall_back_to_base(tmp_path):
     assert resolved == base
 
 
+def test_undeclared_locale_falls_back_for_a_declared_theme(tmp_path):
+    """A matrix declares (locale, theme) pairs, never a theme-only folder.
+
+    zh ships no figure variants; a zh reader on the dark theme must keep the
+    base image (today's behaviour) instead of failing closed because ``dark`` is
+    declared for other locales.
+    """
+    body, assets = _body_and_assets(tmp_path)
+    base = _write(assets / "shot.png", "base")
+
+    resolved = resolve_help_asset(
+        "../assets/shot.png",
+        body,
+        locale="zh",
+        theme="dark",
+        declared_variants=[("ru", "dark"), ("en", "dark")],
+    )
+
+    assert resolved == base
+
+
 def test_nested_asset_variants_live_under_the_assets_root(tmp_path):
     """``assets/ui/toolbar.jpg`` variants are ``assets/<locale>/<theme>/toolbar.jpg``."""
     body, assets = _body_and_assets(tmp_path)

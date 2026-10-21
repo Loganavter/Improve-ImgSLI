@@ -137,6 +137,9 @@
     "src/tabs/image_compare/plugins/video_editor/dialog/shell.py": {
       "reason": "grandfathered-video-editor-focus",
       "justification": "Video editor dialog focuses timeline/self on show; dismissal asserted."
+    },
+    "src/plugins/help/image_lightbox.py": {
+      "justification": "Help figure lightbox takes focus when opened so Esc/zoom/pan work; it is an in-window overlay parented to the Help dialog (dialog family), never a top-level window."
     }
   }
 }

@@ -34,6 +34,11 @@ ALLOW_PATHS = {
     "src/core/theme.py",  # QColor(v) from themes.json is allowed (variable, not literal)
     "src/engine/gpu/glass_panel.py",  # debug red QColor(255,0,0)
     "src/ui/widgets/color/picker_dialog.py",  # HSV-generated, keep allow for fromHsvF
+    # Full-frame dim scrim over the Help page: a rendering overlay (like the
+    # canvas patterns below), not themeable chrome. Black at 78% is the overlay
+    # contract, independent of theme — moved here from the toolkit with the
+    # text-unification wave C (PR #98).
+    "src/plugins/help/image_lightbox.py",
 }
 
 ALLOW_FILE_PATTERNS = [

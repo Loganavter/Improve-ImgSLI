@@ -25,12 +25,22 @@ PRODUCERS = "tabs.image_gallery.analysis.producers"
 
 #: The axes no *local* producer answers today — the local policy must report
 #: them as gaps, never borrow a number for them. ``typicality``/``aesthetic`` are
-#: identity/proxy axes the network scorecard owns; ``brisque`` joined them in W13
-#: when the learned-quality producer was deleted (it duplicated
-#: ``pair_metrics``): no producer measures BRISQUE now, so a local plan gaps it.
-AI_ONLY_AXES = ("typicality", "aesthetic", "brisque")
+#: identity/proxy axes the network scorecard owns. ``brisque`` left this list:
+#: ``camera_scalars`` answers it from the raw the legacy camera stage already
+#: appends (``measure_camera_from_image`` merges ``nr_metrics``), so a local plan
+#: carries it instead of gapping it (task-gallery-brisque-axis-2026-10-21).
+AI_ONLY_AXES = ("typicality", "aesthetic")
 
-CAMERA_AXES = ("sharpness", "exposure", "clipping", "noise", "white_balance")
+CAMERA_AXES = (
+    "sharpness",
+    "exposure",
+    "clipping",
+    "noise",
+    "white_balance",
+    # The legacy camera stage appends ``nr_metrics`` (BRISQUE); the axis is
+    # declared so the engine carries it too (task-gallery-brisque-axis-2026-10-21).
+    "brisque",
+)
 FIDELITY_AXES = (
     "ssim",
     "detail_gain",

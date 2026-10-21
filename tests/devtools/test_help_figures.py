@@ -303,7 +303,9 @@ def test_generate_writes_only_inside_out_dir(hf, tmp_path):
     out_dir = tmp_path / "shots"
     records = hf.generate(manifest, out_dir, capture=_fake_capture(), stream=io.StringIO())
 
-    assert len(records) == len([f for f in manifest.figures if f.covered])
+    assert len(records) == sum(
+        hf.figure_variant_count(f) for f in manifest.figures if f.covered
+    )
     for record in records:
         assert Path(record["path"]).is_relative_to(out_dir)
 
@@ -313,22 +315,83 @@ def test_generate_writes_only_inside_out_dir(hf, tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def test_pin_report_flags_constructor_pins(hf):
+def test_pin_report_claims_every_forced_pin(hf):
     manifest = hf.load_manifest()
     settings = next(f for f in manifest.figures if f.surface == "settings")
     gallery = next(f for f in manifest.figures if f.surface == "gallery")
 
-    applied, unavailable = hf.pin_report(settings, "en", "dark")
-    assert applied == ("locale", "theme")
-    assert "locale:constructor-pins-en" in unavailable
-    assert "theme:constructor-pins-dark" not in unavailable  # pinned theme matches the ctor
-    assert "ui_scale" in unavailable and "font" in unavailable
+    # font/ui_scale are forced by capture_surface's canonical bootstrap for
+    # every frame (and it fails loudly if the font does not take). Locale/theme
+    # reach the constructor-carrying surfaces too (settings_kwargs / the
+    # onboarding store), so no constructor caveat remains.
+    for figure in (settings, gallery):
+        for theme in ("dark", "light"):
+            applied, unavailable = hf.pin_report(figure, "ru", theme)
+            assert applied == ("locale", "theme", "font", "ui_scale")
+            assert unavailable == ()
 
-    _, light_unavailable = hf.pin_report(settings, "en", "light")
-    assert "theme:constructor-pins-dark" in light_unavailable
 
-    _, gallery_unavailable = hf.pin_report(gallery, "en", "dark")
-    assert "locale:constructor-pins-en" not in gallery_unavailable
+def test_settings_kwargs_follow_the_captured_locale_and_theme(hf):
+    cs = hf.capture_surface
+    assert cs.settings_kwargs() == cs.SETTINGS_KWARGS
+    ru_light = cs.settings_kwargs("ru", "light")
+    assert ru_light["current_language"] == "ru"
+    assert ru_light["current_theme"] == "light"
+    assert ru_light["active_tab"] == cs.SETTINGS_KWARGS["active_tab"]
+
+
+def test_jpeg_destination_is_converted_from_the_png_grab(hf, tmp_path):
+    import types
+    from PIL import Image
+
+    path = tmp_path / "shot.png"
+    Image.new("RGB", (8, 6), (10, 20, 30)).save(path)
+    figure = types.SimpleNamespace(destination="src/x/help/assets/fig.jpg")
+    out = hf._match_destination_format(path, figure)
+    with Image.open(out) as image:
+        assert image.format == "JPEG"
+        assert image.size == (8, 6)
+
+    png = types.SimpleNamespace(destination="src/x/help/assets/fig.png")
+    assert hf._match_destination_format(path, png) == path
+
+
+def test_fake_session_context_answers_with_the_tab_svg_icons(hf, monkeypatch):
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    hf.capture_surface._bootstrap_qt("dark", "en")
+    for kind in ("image_compare", "multi_compare", "image_gallery"):
+        icon = hf.capture_surface._tab_icon(kind)
+        assert icon is not None and not icon.isNull(), kind
+    assert hf.capture_surface._tab_icon("nope") is None
+
+
+# ---------------------------------------------------------------------------
+# Canonical environment (CI baselines are sha256, so the frame must not depend
+# on the host's font or DPI)
+# ---------------------------------------------------------------------------
+
+
+def test_xvfb_command_pins_dpi(hf):
+    cmd = hf.xvfb_command(91)
+    assert cmd[0] == "Xvfb" and ":91" in cmd
+    assert cmd[cmd.index("-dpi") + 1] == "96"
+
+
+def test_canonical_env_pins_scale_and_dpi(hf, monkeypatch):
+    monkeypatch.delenv("QT_SCALE_FACTOR", raising=False)
+    monkeypatch.delenv("QT_FONT_DPI", raising=False)
+    hf.capture_surface._pin_canonical_env()
+    assert hf.capture_surface.os.environ["QT_SCALE_FACTOR"] == "1"
+    assert hf.capture_surface.os.environ["QT_FONT_DPI"] == "96"
+
+
+def test_bootstrap_applies_the_bundled_font(hf, monkeypatch):
+    """The grab must use the product's font, not the host's default sans."""
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    app = hf.capture_surface._bootstrap_qt("dark", "en")
+    assert app.font().family() == hf.capture_surface.BUNDLED_FONT_FAMILY
+    assert hf.capture_surface.BUNDLED_FONT_FAMILY == "Source Sans 3"
+
 
 
 def test_covered_recipes_pin_the_shipped_frame(hf):
@@ -495,8 +558,13 @@ def test_multi_variant_recipe_stages_into_locale_theme_folders(hf, tmp_path):
 
 
 def test_single_variant_recipe_keeps_the_flat_destination(hf):
-    manifest = hf.load_manifest()
-    figure = next(f for f in manifest.figures if f.id == "help-settings-general")
+    figure = hf.Figure(
+        id="help-flat",
+        surface="settings",
+        destination="src/resources/help/assets/platform/settings_keyboard.png",
+        locales=("en",),
+        themes=("dark",),
+    )
 
     assert hf.install_destination(figure, "en", "dark").as_posix() == figure.destination
 

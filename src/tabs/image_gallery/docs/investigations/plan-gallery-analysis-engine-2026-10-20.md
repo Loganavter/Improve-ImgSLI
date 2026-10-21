@@ -439,6 +439,16 @@ An `INTERFACE: none` claim is verified mechanically:
   fallback (counter 1) and the entry stays complete.
   **Still open:** `analysis/read.py` keeps its legacy domain branch for items
   without records (the read-path half of the deletion is a later wave).
+- 2026-10-21: **BRISQUE parity — `camera_scalars` declares six axes.** The
+  legacy camera stage already computed BRISQUE (`measure_camera_from_image`
+  merges `quality_models.nr_metrics`, content-gated by `is_photographic`), so
+  the engine computed the raw and dropped it: a photographic folder showed one
+  axis fewer than the legacy UI. The producer now maps that raw through
+  `metric_scores` like every other axis; a cartoon/screenshot item (or a missing
+  learned backend) is a `gap` with its own reason, never a `0` and never an
+  absent axis. `analysis_bridge` needed no change — its `CAMERA_AXES` already
+  listed `brisque`, so the rebuilt camera dict carries it as soon as a record
+  does (`task-gallery-brisque-axis-2026-10-21`).
 
 ## Catalog update
 

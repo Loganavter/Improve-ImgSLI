@@ -6,7 +6,7 @@ producer packages": one package per analyzer, metadata in ``manifest.py``,
 
 The cases below pin the properties the waves exist for:
 
-- the registry sees exactly five producers with the full 23-axis vocabulary,
+- the registry sees exactly four producers with the full 23-axis vocabulary,
   and it sees them by importing manifests only (a manifest is imported on every
   start, so a heavy backend there would load for everyone);
 - a producer is a pure function of ``AnalysisContext``: it never decodes (AST
@@ -48,7 +48,16 @@ from engine.analysis.registry import discover
 PRODUCERS = "tabs.image_gallery.analysis.producers"
 PRODUCERS_DIR = Path(__file__).resolve().parents[1] / "analysis" / "producers"
 
-CAMERA_AXES = ("sharpness", "exposure", "clipping", "noise", "white_balance")
+CAMERA_AXES = (
+    "sharpness",
+    "exposure",
+    "clipping",
+    "noise",
+    "white_balance",
+    # The legacy camera stage appends ``nr_metrics`` (BRISQUE); the axis is
+    # declared so the engine carries it too (task-gallery-brisque-axis-2026-10-21).
+    "brisque",
+)
 FIDELITY_AXES = (
     "ssim",
     "detail_gain",
@@ -94,11 +103,11 @@ SCORECARD_AXES = (
 AXES = CAMERA_AXES + FIDELITY_AXES + ARTIFACT_AXES + SCORECARD_AXES
 
 #: The learned pair, still part of the vocabulary through ``ai_scorecard`` and
-#: measured locally by ``fidelity_reference`` (W13). BRISQUE is the odd one out:
-#: it is no-reference, no *producer* measures it, and it stays in the scorecard's
-#: vocabulary only — the legacy camera stage still computes it
-#: (``camera_metrics.measure_camera_from_image`` appends ``nr_metrics``), so it
-#: is a gap in the analysis records, not a number the product never had.
+#: measured locally by ``fidelity_reference`` (W13). BRISQUE is the no-reference
+#: axis: ``camera_scalars`` answers it because the legacy camera stage already
+#: computes it (``measure_camera_from_image`` merges ``nr_metrics``), so the
+#: engine shows the same axes the legacy report did instead of gapping one
+#: (task-gallery-brisque-axis-2026-10-21).
 LEARNED_AXES = ("lpips", "dists")
 
 PRODUCER_IDS = (
@@ -259,10 +268,13 @@ def test_registry_discovers_exactly_four_sorted_producers_and_23_axes():
     # order: one ``pair_metrics`` pass inside ``compute_fidelity_from_images``
     # feeds both the detector deltas and LPIPS/DISTS (W13).
     assert tuple(registry.get("fidelity_reference").provides) == FIDELITY_AXES
-    # BRISQUE has no local producer after W13 deleted the learned-quality
-    # producer: the network scorecard is its only declared provider, so a local
-    # plan reports it as a gap instead of inventing a number.
-    assert tuple(spec.id for spec in registry.by_axis("brisque")) == ("ai_scorecard",)
+    # BRISQUE is a camera axis: the legacy camera stage appends ``nr_metrics``,
+    # so the local producer answers it (it used to be a gap on every folder).
+    assert tuple(spec.id for spec in registry.by_axis("brisque")) == (
+        "ai_scorecard",
+        "camera_scalars",
+    )
+    assert registry.get("camera_scalars").provides["brisque"] == "measured"
 
 
 def test_scorecard_manifest_provides_exactly_the_measured_registry():
@@ -374,6 +386,81 @@ def test_camera_producer_gaps_every_axis_without_an_image():
         assert value.status == "gap"
         assert value.value is None
         assert value.reason
+
+
+def _fake_nr(monkeypatch: pytest.MonkeyPatch, raw: dict):
+    """Replace the BRISQUE seam ``measure_camera_from_image`` merges.
+
+    The camera measurement imports ``quality_models.nr_metrics`` lazily inside
+    the call, so patching the module attribute is what the legacy stage itself
+    sees — no torch/piq (this cell has none) and no second code path.
+    """
+    from tabs.image_gallery.services import quality_models
+
+    calls: list[object] = []
+
+    def nr_metrics(image, *args, **kwargs):
+        calls.append(image)
+        return dict(raw)
+
+    monkeypatch.setattr(quality_models, "nr_metrics", nr_metrics)
+    return calls
+
+
+def test_camera_producer_carries_brisque_with_the_legacy_score(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """The axis the legacy camera stage reports is a record, not a dropped raw.
+
+    ``measure_camera_from_image`` merges ``nr_metrics`` (BRISQUE) into its dict;
+    before this case ``camera_scalars`` declared five axes and threw the raw
+    away, so a photographic folder showed fewer axes in the engine than in the
+    legacy report.
+    """
+    from tabs.image_gallery.services import metric_scores
+
+    calls = _fake_nr(monkeypatch, {"brisque": 12.5})
+
+    values = _run("camera_scalars")(_ctx(_gradient(), capabilities={"images"}))
+
+    by_axis = {value.axis: value for value in values}
+    assert tuple(by_axis) == CAMERA_AXES
+    brisque = by_axis["brisque"]
+    assert brisque.producer == "local"
+    assert brisque.status == "ok", brisque.reason
+    # The pre-score raw is the detector value, and the score is the ONE
+    # ``metric_scores`` mapping — not a second scale invented here.
+    assert brisque.raw == 12.5
+    assert brisque.value == float(
+        metric_scores.score_for(metric_scores.spec_for("brisque"), 12.5)
+    )
+    assert len(calls) == 1, "one BRISQUE pass per item, made by the measurement"
+
+
+def test_camera_producer_gaps_brisque_on_content_the_stage_skips(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Cartoon/line-art/screenshot: ``nr_metrics`` answers ``{}`` — a gap.
+
+    The content gate is applicability, not a failure, so the axis must stay in
+    the report with its own reason: not a ``0`` (which would read as "perfectly
+    natural" and outrank measured items) and not absent (which is what the
+    engine did before the axis was declared).
+    """
+    _fake_nr(monkeypatch, {})
+
+    values = _run("camera_scalars")(_ctx(_gradient(), capabilities={"images"}))
+
+    by_axis = {value.axis: value for value in values}
+    assert tuple(by_axis) == CAMERA_AXES
+    brisque = by_axis["brisque"]
+    assert brisque.status == "gap"
+    assert brisque.value is None
+    assert brisque.raw is None
+    assert "photographic" in brisque.reason and "backend" in brisque.reason
+    # One axis is content-gated, the rest of the stage still measures.
+    assert by_axis["sharpness"].status == "ok"
+    assert by_axis["exposure"].status == "ok"
 
 
 def test_fidelity_below_a_reference_gaps_every_axis_with_a_reason():

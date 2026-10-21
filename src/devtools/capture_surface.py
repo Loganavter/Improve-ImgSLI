@@ -43,6 +43,24 @@ SRC_ROOT = REPO_ROOT / "src"
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
+#: Canonical render environment. Help figures are baselined by ``sha256`` and
+#: gated in CI (``docs/dev/SCREENSHOTS.md`` §Help-figure generator), so a frame
+#: must not depend on the host's fontconfig or DPI: the app's shipped font is
+#: applied explicitly and the scale/DPI Qt reads at ``QApplication`` creation
+#: are fixed here. Without this, a CI runner (DejaVu) and a maintainer host
+#: (Noto) produce different pixels from the same widgets.
+#:
+#: ``96`` is Qt's baseline (``logicalDpi / 96`` is the toolkit's px scale) and
+#: the DPI the shipped Help assets were produced at, so a pinned 1016x776 frame
+#: is really 1016x776. An Xvfb started without ``-dpi`` reports 100 on this
+#: host, which scales every toolkit px by 100/96 and silently misses the pin by
+#: +42/+32 px (measured 2026-10-21) — hence the explicit value, not a default.
+CANONICAL_DPI = 96
+BUNDLED_FONT_PATH = (
+    SRC_ROOT / "shared_toolkit" / "resources" / "fonts" / "SourceSans3-Regular.ttf"
+)
+BUNDLED_FONT_FAMILY = "Source Sans 3"
+
 #: i18n roots registered at bootstrap. Without these, widget strings show the
 #: raw key (``help.topic.foo``) instead of translated text. Mirrors the app's
 #: own bootstrap registration; validated against the throwaway capture
@@ -98,6 +116,16 @@ SETTINGS_KWARGS = dict(
 )
 
 
+def settings_kwargs(locale: str = "en", theme: str = "dark") -> dict:
+    """``SETTINGS_KWARGS`` for the locale/theme actually being captured.
+
+    The dialog renders both values itself (language radio, Appearance dropdown),
+    so a ru/light figure built from the en/dark pins would show the wrong
+    selection in the very control the figure is teaching.
+    """
+    return {**SETTINGS_KWARGS, "current_language": locale, "current_theme": theme}
+
+
 @dataclass(frozen=True)
 class Surface:
     """One capturable widget: how to build it and what shot it yields.
@@ -138,11 +166,20 @@ class CaptureSession:
         out_dir: Path,
         width: int | None = None,
         height: int | None = None,
+        *,
+        locale: str = "en",
+        theme: str = "dark",
     ) -> None:
         self.app = app
         self.out_dir = out_dir
         self.width = width
         self.height = height
+        #: Locale/theme this frame is rendered for. Surfaces whose constructor
+        #: carries its own language/theme (SettingsDialog, the onboarding store)
+        #: must receive these, otherwise the figure shows the right pixels with
+        #: the wrong selected value in the UI itself.
+        self.locale = locale
+        self.theme = theme
         #: Frame requested by the last grab (CLI override or surface default).
         self.last_pin: tuple[int, int] | None = None
         #: Frame actually grabbed (== ``last_pin`` unless the surface refused).
@@ -283,7 +320,7 @@ class CaptureSession:
 def _settings(sess: CaptureSession) -> None:
     from plugins.settings.dialog import SettingsDialog
 
-    dialog = SettingsDialog(**SETTINGS_KWARGS)
+    dialog = SettingsDialog(**settings_kwargs(sess.locale, sess.theme))
     sess.grab(dialog, "settings.png", 1016, 776, delay=900)
 
 
@@ -291,7 +328,7 @@ def _settings(sess: CaptureSession) -> None:
 def _settings_keyboard(sess: CaptureSession) -> None:
     from plugins.settings.dialog import SettingsDialog
 
-    dialog = SettingsDialog(**SETTINGS_KWARGS)
+    dialog = SettingsDialog(**settings_kwargs(sess.locale, sess.theme))
     dialog.select_section("builtin.keyboard")
     sess.grab(dialog, "settings-keyboard.png", 1016, 776, delay=1000)
 
@@ -361,6 +398,29 @@ def _grab_multi(sess: CaptureSession, widget, filename: str) -> None:
     sess.grab(widget, filename, 1200, 760, delay=2500)
 
 
+def _tab_icon(session_type: str):
+    """The tab's own icon, mirroring each tab's ``.icon`` property.
+
+    ``SessionPickerWidget`` falls back to a plus glyph when the context returns
+    None; the shipped figure shows the real tab glyphs, so the fake context must
+    answer with the same lazy getters the tab classes use (no registry/bootstrap
+    needed, and the SVG bytes are committed + deterministic).
+    """
+    try:
+        if session_type == "image_compare":
+            from tabs.image_compare.icons import Icon, get_icon
+            return get_icon(Icon.PHOTO)
+        if session_type == "multi_compare":
+            from tabs.multi_compare.icons import Icon, get_icon
+            return get_icon(Icon.GRID)
+        if session_type == "image_gallery":
+            from tabs.image_gallery.icons import Icon, get_icon
+            return get_icon(Icon.GALLERY)
+    except Exception:
+        return None
+    return None
+
+
 class _FakeSessionContext:
     """Minimal TabContext stand-in for SessionPickerWidget (no host window)."""
 
@@ -382,7 +442,7 @@ class _FakeSessionContext:
         if name == "list_session_blueprints":
             return tuple(self._blueprints)
         if name == "get_tab_icon":
-            return None
+            return _tab_icon(args[0])
         raise RuntimeError(f"unexpected service: {name}")
 
     def get_active_session(self):
@@ -417,7 +477,7 @@ def _onboarding(sess: CaptureSession) -> None:
 
     from plugins.onboarding.overlay import OnboardingOverlay
 
-    store = SimpleNamespace(settings=SimpleNamespace(current_language="en"))
+    store = SimpleNamespace(settings=SimpleNamespace(current_language=sess.locale))
     overlay = OnboardingOverlay(None, store)
     sess.grab(overlay, "onboarding.png", 1000, 720, delay=1500)
 
@@ -440,6 +500,46 @@ def _require_display() -> str:
     return display
 
 
+def _pin_canonical_env() -> None:
+    """Fix the variables Qt reads *before* ``QApplication`` is created.
+
+    ``QT_SCALE_FACTOR``/``QT_FONT_DPI`` are read once at app creation; setting
+    them later is a no-op. Forced (not defaulted) on purpose: a devtool frame
+    that changes with the caller's shell is not reproducible.
+    """
+    os.environ["QT_SCALE_FACTOR"] = "1"
+    os.environ["QT_FONT_DPI"] = str(CANONICAL_DPI)
+
+
+def _apply_canonical_font(app) -> str:
+    """Apply the font the product ships and prove it took.
+
+    The app's default ``ui_font_mode`` is ``builtin`` (Source Sans 3); a capture
+    that silently falls back to the system sans is a different product. Loading
+    the TTF directly (rather than ``FontManager``) keeps this devtool free of
+    app bootstrap imports and fails loudly instead of shipping a host-flavoured
+    frame.
+    """
+    from PySide6.QtGui import QFont, QFontDatabase
+
+    if not BUNDLED_FONT_PATH.is_file():
+        raise RuntimeError(f"bundled font missing: {BUNDLED_FONT_PATH}")
+    font_id = QFontDatabase.addApplicationFont(str(BUNDLED_FONT_PATH))
+    families = QFontDatabase.applicationFontFamilies(font_id) if font_id != -1 else []
+    if not families:
+        raise RuntimeError(f"bundled font not loadable: {BUNDLED_FONT_PATH}")
+    family = families[0]
+    if family != BUNDLED_FONT_FAMILY:
+        raise RuntimeError(
+            f"bundled font family is {family!r}, expected {BUNDLED_FONT_FAMILY!r}"
+        )
+    app.setFont(QFont(family))
+    applied = app.font().family()
+    if applied != BUNDLED_FONT_FAMILY:
+        raise RuntimeError(f"canonical font did not take: app font is {applied!r}")
+    return applied
+
+
 def _bootstrap_qt(theme: str, lang: str):
     """Create the QApplication and install theme + i18n (both mandatory).
 
@@ -448,7 +548,9 @@ def _bootstrap_qt(theme: str, lang: str):
     """
     from PySide6.QtWidgets import QApplication
 
+    _pin_canonical_env()
     app = QApplication.instance() or QApplication([])
+    _apply_canonical_font(app)
 
     from core.theme import DARK_THEME_PALETTE, LIGHT_THEME_PALETTE
     from resources.translations import add_i18n_root, emit_language_changed
@@ -518,6 +620,7 @@ def _run_isolated(args) -> int:
     if args.height is not None:
         cmd += ["--height", str(args.height)]
 
+    _pin_canonical_env()
     env = dict(os.environ)
     env["QT_QPA_PLATFORM"] = "offscreen"
     print(LIMITATION, file=sys.stderr)
