@@ -85,6 +85,44 @@ def _clean_models(values) -> tuple[str, ...]:
     return tuple(out)
 
 
+def publisher_of(model_id: str) -> str:
+    """The publisher (vendor) part of a model id: text before the FIRST ``/``.
+
+    ``a/b/c`` -> ``a``; an id without a ``/`` has no publisher (``""``). Case is
+    preserved — comparison code casefolds. Never raises.
+    """
+    text = str(model_id or "").strip()
+    head, separator, _rest = text.partition("/")
+    return head if separator else ""
+
+
+def sorted_models(models) -> tuple[str, ...]:
+    """Model ids deduped and ordered publisher-first, then by model name.
+
+    The picker is a FLAT list (no group headers), so the ordering is the only
+    thing that groups a vendor's models together. The sort key is
+    ``(publisher.casefold(), model_rest.casefold(), original)``:
+
+    * ``publisher`` is :func:`publisher_of` (text before the first ``/``);
+    * the model rest is what follows it (``a/b/c`` -> ``b/c``);
+    * a bare id (no ``/``) is its own publisher with an empty rest, so
+      ``gpt-6-luna`` sorts by its own name among the vendor-prefixed ids.
+
+    Comparison is case-insensitive; the trailing ``original`` makes the result
+    deterministic for ids that differ only in case. Dedupe is exact (same
+    string), matching :func:`_clean_models` — case variants are distinct ids a
+    provider can genuinely serve. Never raises.
+    """
+
+    def _key(model: str) -> tuple[str, str, str]:
+        publisher = publisher_of(model)
+        if not publisher:
+            return (model.casefold(), "", model)
+        return (publisher.casefold(), model[len(publisher) + 1 :].casefold(), model)
+
+    return tuple(sorted(_clean_models(models), key=_key))
+
+
 def parse_models(payload) -> tuple[str, ...]:
     """The ids inside an OpenAI-compatible ``{"data": [{"id": ...}]}`` body.
 
@@ -290,5 +328,7 @@ __all__ = [
     "http_get_models",
     "models_for",
     "parse_models",
+    "publisher_of",
     "remember_models",
+    "sorted_models",
 ]

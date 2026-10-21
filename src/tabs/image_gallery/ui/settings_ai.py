@@ -349,6 +349,11 @@ def build(dialog, p):  # type: ignore[no-untyped-def]
     dialog.gallery_ai_model = CustomLineEdit(parent=dialog)
     apply_settings_body(dialog.gallery_ai_model)
     dialog.gallery_ai_model.setText(current.model or provider.default_model)
+    # The field elides a long id; the full value stays reachable on hover.
+    try:
+        dialog.gallery_ai_model.setToolTip(str(dialog.gallery_ai_model.text()).strip())
+    except Exception:
+        pass
     dialog.gallery_ai_model.setPlaceholderText(
         _tr("image_gallery.settings.model_placeholder", "openrouter/auto or vendor/model")
     )
@@ -610,7 +615,10 @@ def build(dialog, p):  # type: ignore[no-untyped-def]
         sync_busy["on"] = True
         try:
             dialog.gallery_ai_model_list.clear()
-            for model in models:
+            # Publisher-first, then model name — the flat combo groups a
+            # vendor's models by order alone. Sorted at this render seam only:
+            # ``models_for``'s provider order stays for other consumers.
+            for model in ai_models.sorted_models(models):
                 try:
                     dialog.gallery_ai_model_list.addItem(model, model)
                 except Exception:
@@ -626,11 +634,32 @@ def build(dialog, p):  # type: ignore[no-untyped-def]
                 dialog.gallery_ai_model_list.setCurrentIndex(max(0, index))
         finally:
             sync_busy["on"] = False
+        # Restored selection: refresh both hover hints from the live values.
+        _sync_model_tooltips()
         dialog.gallery_ai_models_status.setText(
             _status_text(len(models), source, reason)
         )
 
     sync_busy = {"on": False}
+
+    def _sync_model_tooltips() -> None:
+        """Full model id on hover — the closed combo elides a long name.
+
+        The field tooltip mirrors the editable value (custom ids included); the
+        combo tooltip mirrors the selection, and clears when nothing is picked.
+        """
+        try:
+            dialog.gallery_ai_model.setToolTip(
+                str(dialog.gallery_ai_model.text()).strip()
+            )
+        except Exception:
+            pass
+        try:
+            dialog.gallery_ai_model_list.setToolTip(
+                str(dialog.gallery_ai_model_list.currentText() or "").strip()
+            )
+        except Exception:
+            pass
 
     def _refresh_models(*, refresh: bool = False) -> None:
         """Fetch the provider's list off the GUI thread (never blocks the page)."""
@@ -679,9 +708,11 @@ def build(dialog, p):  # type: ignore[no-untyped-def]
             text = ""
         if text:
             dialog.gallery_ai_model.setText(text)
+        _sync_model_tooltips()
 
     def _remember_current_model(text) -> None:
         _save_field("model", str(text))
+        _sync_model_tooltips()
         pid = state["provider_id"]
         if pid and str(text).strip():
             try:

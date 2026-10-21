@@ -181,6 +181,103 @@ def test_discovery_failure_shows_the_curated_fallback_reason(dialog, monkeypatch
     assert "fallback" in status
 
 
+# -- Picker order: publisher first, then model (flat list, no headers) --------
+
+#: The owner's example, in provider order.
+SCRAMBLED_MODELS = (
+    "meta/muse",
+    "deepseek/r1",
+    "meta/llama2",
+    "deepseek/deepseek-v3",
+)
+
+
+def _install_models(monkeypatch, models):
+    """Replace the discovery seam after the dialog is built."""
+    from tabs.image_gallery.ui import settings_ai
+
+    def _fake(provider, api_key, *, refresh=False, report=None):
+        if report is not None:
+            report["reason"] = ai_models.REASON_OK
+        return tuple(models), ai_models.SOURCE_NETWORK
+
+    monkeypatch.setattr(settings_ai, "MODELS_FOR", _fake)
+
+
+def _listed(combo) -> list[str]:
+    return [combo.itemText(i) for i in range(combo.count())]
+
+
+def test_model_list_renders_publisher_first_order(dialog, monkeypatch):
+    _install_models(monkeypatch, SCRAMBLED_MODELS)
+
+    dialog.gallery_ai_refresh.clicked.emit()
+
+    assert _listed(dialog.gallery_ai_model_list) == [
+        "deepseek/deepseek-v3",
+        "deepseek/r1",
+        "meta/llama2",
+        "meta/muse",
+    ]
+    # Sorting is a render detail: the status line still counts every model.
+    assert "(4)" in dialog.gallery_ai_models_status.text()
+
+
+def test_model_list_restores_the_persisted_selection_after_sorting(dialog, monkeypatch):
+    _install_models(monkeypatch, SCRAMBLED_MODELS)
+    dialog.gallery_ai_model.setText("meta/muse")
+
+    dialog.gallery_ai_refresh.clicked.emit()
+
+    combo = dialog.gallery_ai_model_list
+    assert combo.currentText() == "meta/muse"
+    assert combo.currentData() == "meta/muse"
+    # Restoring the selection must not rewrite the editable field.
+    assert dialog.gallery_ai_model.text() == "meta/muse"
+
+
+def test_a_typed_custom_model_id_survives_a_refresh(dialog, monkeypatch):
+    _install_models(monkeypatch, SCRAMBLED_MODELS)
+    dialog.gallery_ai_model.setText("vendor/typed-by-hand")
+
+    dialog.gallery_ai_refresh.clicked.emit()
+
+    # The id is not in the discovered list — the free text field keeps it.
+    assert dialog.gallery_ai_model.text() == "vendor/typed-by-hand"
+
+
+def test_model_tooltips_carry_the_full_id(dialog, monkeypatch):
+    _install_models(monkeypatch, SCRAMBLED_MODELS)
+    dialog.gallery_ai_refresh.clicked.emit()
+
+    combo = dialog.gallery_ai_model_list
+    # Pick from the list: field and closed combo both hover-hint the full id.
+    combo.setCurrentIndex(combo.findText("meta/muse"))
+
+    assert dialog.gallery_ai_model.text() == "meta/muse"
+    assert dialog.gallery_ai_model.toolTip() == "meta/muse"
+    assert combo.toolTip() == "meta/muse"
+
+
+def test_model_tooltip_follows_a_typed_custom_id(dialog, monkeypatch):
+    _install_models(monkeypatch, SCRAMBLED_MODELS)
+    dialog.gallery_ai_refresh.clicked.emit()
+
+    dialog.gallery_ai_model.setText("vendor/typed-by-hand")
+
+    assert dialog.gallery_ai_model.toolTip() == "vendor/typed-by-hand"
+
+
+def test_model_tooltip_is_restored_with_the_persisted_selection(dialog, monkeypatch):
+    _install_models(monkeypatch, SCRAMBLED_MODELS)
+    dialog.gallery_ai_model.setText("meta/muse")
+
+    dialog.gallery_ai_refresh.clicked.emit()
+
+    assert dialog.gallery_ai_model.toolTip() == "meta/muse"
+    assert dialog.gallery_ai_model_list.toolTip() == "meta/muse"
+
+
 def test_recorded_value_round_trips_through_the_payload_reader(dialog):
     from plugins.settings.registry import get_settings_registry
 
