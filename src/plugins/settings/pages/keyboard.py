@@ -176,7 +176,10 @@ class _ShortcutCaptureButton(Button):
 
 
 def build(dialog, p):
-    from ui.actions.keymap import exclusive_overrides
+    from ui.actions.keymap import (
+        exclusive_overrides,
+        repair_legacy_cross_tab_unbounds,
+    )
 
     dialog.page_keyboard, layout = dialog._create_scrollable_page()
     builder = page_nav_builder(dialog, tag="settings-keyboard")
@@ -185,9 +188,15 @@ def build(dialog, p):
         entry.action_id: (entry.default_shortcut, entry.owner_tab)
         for entry in defaults.all_entries()
     }
+    # Repair before display: a profile poisoned by the old all-tabs conflict
+    # ranking must show the chord as active for its owner instead of "—", and
+    # the repaired map is what the dialog carries into the apply path.
     overrides = exclusive_overrides(
         defaults_map,
-        dict(getattr(p, "keyboard_overrides", None) or {}),
+        repair_legacy_cross_tab_unbounds(
+            defaults_map,
+            dict(getattr(p, "keyboard_overrides", None) or {}),
+        ),
     )
     dialog._keyboard_overrides = overrides
     dialog._keyboard_capture_rows = {}
