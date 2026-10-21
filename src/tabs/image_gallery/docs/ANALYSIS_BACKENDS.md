@@ -302,7 +302,10 @@ for the batch:
 - `entry["artifacts"]` / `["fidelity"]` / `["camera"]` — the stage dicts the
   report and the card still consume, rebuilt from the records' pre-score `raw`
   values (W12), axis by axis. An axis no producer answers stays out of the dict
-  (today: `brisque`, whose producer W13 deleted) — a gap, not a borrowed number;
+  — a gap, not a borrowed number. Every key of the legacy camera dict has a
+  producer today: `camera_scalars` answers the `brisque` raw that
+  `measure_camera_from_image` appends from `quality_models.nr_metrics` (and
+  gaps it, with a reason, when the content gate or the backend says no);
 - in `full_res_artifacts` mode (the production default) the records are measured
   over the SAME full-resolution `TiledPixelStore` the tiled catalog reads (W14),
   so the records and the entry's severities are one computation, not two.

@@ -26,6 +26,19 @@ PRODUCER_ID = "local"
 NO_IMAGE_REASON = "the analysis context carries no decoded proxy image"
 NOT_MEASURED_REASON = "camera metrics measured nothing on this image"
 
+#: Per-axis reason for an axis the measurement did not report. ``brisque`` comes
+#: from ``quality_models.nr_metrics``, which is backend-gated (torch/piq absent ⇒
+#: ``{}``) AND content-gated (cartoon/line-art/screenshot ⇒ ``{}``: BRISQUE is
+#: trained on natural photographs), so its absence is "not applicable here", not
+#: a measurement of 0 — naming both gates keeps the gap self-describing.
+ABSENT_REASONS = {
+    "brisque": (
+        "no-reference BRISQUE was not measured: the learned backend is absent "
+        "or the content is not photographic"
+    ),
+}
+DEFAULT_ABSENT_REASON = "camera metrics report no {axis!r} value"
+
 
 def _axes() -> tuple[str, ...]:
     """The declared axes, from the manifest (single source of the vocabulary)."""
@@ -52,7 +65,8 @@ def _axis_value(axis: str, raw: dict) -> AxisValue:
         return _gap(axis, f"no metric spec is registered for {axis!r}")
     got = metric_scores.raw_for(spec, raw)
     if got is None:
-        return _gap(axis, f"camera metrics report no {axis!r} value")
+        reason = ABSENT_REASONS.get(axis) or DEFAULT_ABSENT_REASON.format(axis=axis)
+        return _gap(axis, reason)
     return AxisValue(
         axis=axis,
         value=float(metric_scores.score_for(spec, got[1])),

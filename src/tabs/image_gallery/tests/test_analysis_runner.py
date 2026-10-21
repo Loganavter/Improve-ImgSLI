@@ -27,7 +27,16 @@ from tabs.image_gallery.analysis.runner import run_plan
 
 PRODUCERS = "tabs.image_gallery.analysis.producers"
 
-CAMERA_AXES = ("sharpness", "exposure", "clipping", "noise", "white_balance")
+CAMERA_AXES = (
+    "sharpness",
+    "exposure",
+    "clipping",
+    "noise",
+    "white_balance",
+    # The legacy camera stage appends ``nr_metrics`` (BRISQUE); the axis is
+    # declared so the engine carries it too (task-gallery-brisque-axis-2026-10-21).
+    "brisque",
+)
 FIDELITY_AXES = (
     "ssim",
     "detail_gain",
@@ -96,6 +105,12 @@ def test_happy_path_returns_one_entry_per_item_in_plan_order(
         "pair_metrics",
         lambda item, source, *a, **kw: {"lpips": 0.2, "dists": 0.15},
     )
+    # BRISQUE shares the same learned seam (the camera stage merges
+    # ``nr_metrics``): stub it too, so the camera record set does not depend on
+    # the backend or the fixture's content gate.
+    monkeypatch.setattr(
+        quality_models, "nr_metrics", lambda image, *a, **kw: {}
+    )
     registry = discover(PRODUCERS)
     resolution = resolve_plan(
         registry,
@@ -122,7 +137,9 @@ def test_happy_path_returns_one_entry_per_item_in_plan_order(
         *FIDELITY_AXES,
         *ARTIFACT_AXES,
     )
-    assert len(records["a.png"]) == len(expected_axes) == 20
+    # 7 artifacts + 6 camera axes (BRISQUE included: the camera stage reports it)
+    # + 8 fidelity axes.
+    assert len(records["a.png"]) == len(expected_axes) == 21
     assert all(isinstance(record, AxisValue) for record in records["a.png"])
     # Plan order = the resolver's registry order (artifacts … camera … fidelity),
     # and the tuple order is that plan order, not the axis vocabulary order.
