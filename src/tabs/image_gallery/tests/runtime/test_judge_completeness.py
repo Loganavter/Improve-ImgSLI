@@ -44,7 +44,14 @@ from tabs.image_gallery.use_cases import pipeline_stages as ps
 
 
 def _ai_item(name: str, **axes) -> GalleryItem:
-    """An item carrying the VLM scorecard — the AI domain's scoring read."""
+    """An item carrying the VLM scorecard — the AI domain's scoring read.
+
+    ``ssim`` is mirrored onto ``sharpness`` (same quality, same spread): P7-B
+    refuses a vector with fewer than two axes; the refusal has its own test, so
+    these completeness fixtures stay about completeness.
+    """
+    if "sharpness" not in axes and "ssim" in axes:
+        axes["sharpness"] = axes["ssim"]
     it = GalleryItem(path=Path(f"/gallery/{name}"), mtime_ns=0)
     it.analysis = AiAnalysisResult(
         description="", tags=(), model="m", analyzed_at_iso="t", axes=dict(axes)

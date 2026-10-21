@@ -537,19 +537,25 @@ class GalleryController:
         mapping is stored and traced as the LAST fallback
         (``profile_source_label`` → ``heuristic-<mode> (fallback)``).
 
-        Precedence (plan-gallery-ai-judgement P5, stated and traced): the
-        judge's own choice wins when it arrives (``_apply_profile_outcome``,
-        ``source=vlm`` → ``judge-vlm``); this series offer is the fallback
-        (``source=series`` → ``series-derived``); the mode mapping is the last
-        one and says so. Returns the stored profile. Never raises: a derivation
-        failure keeps the previous value (or ``None``), so consumers fall back
-        to the mode mapping (fail-open, plan §Fallback).
+        Precedence (plan-gallery-ai-judgement P5/P7-B, stated, TRACED and
+        enforced here): the judge's own choice wins while it is current
+        (``_apply_profile_outcome``, ``source=vlm`` → ``judge-vlm``); a later
+        settle of the SAME folder+mode does not replace it with the series offer
+        (the bug this guard closes: the paid answer vanished mid-session). This
+        series offer is the fallback (``source=series`` → ``series-derived``);
+        the mode mapping is the last one and says so. Returns the stored profile.
+        Never raises: a derivation failure keeps the previous value (or
+        ``None``), so consumers fall back to the mode mapping (fail-open,
+        plan §Fallback).
 
         This is the **automatic** path only: the manual domain pin and the
         stats-strip chip that drove it were deleted (owner decision 2026-10-20,
         plan §Product decision), so nothing overrides the derivation.
         """
         try:
+            from tabs.image_gallery.services.metric_profile import (
+                PROFILE_SOURCE_VLM,
+            )
             from tabs.image_gallery.use_cases.profile_select import (
                 derive_for_state,
                 describe,
@@ -561,6 +567,26 @@ class GalleryController:
                 previous = getattr(self.state, "metric_profile", None)
             except Exception:
                 previous = None
+            # The JUDGE's answer owns the slot for this folder + mode
+            # (plan-gallery-ai-judgement P7-B; task-gallery-profile-lifecycle):
+            # a later metrics/slot settle derives the series offer again, and
+            # overwriting a landed ``source="vlm"`` profile with it silently
+            # discarded the paid answer the user was looking at. A folder change
+            # clears the slot (``clear_metric_profile``) and a mode change makes
+            # ``profile.mode`` differ, so both still derive a fresh offer.
+            if (
+                previous is not None
+                and str(getattr(previous, "source", "")) == PROFILE_SOURCE_VLM
+                and str(getattr(previous, "mode", "")) == str(getattr(profile, "mode", ""))
+            ):
+                try:
+                    _ai_debug(
+                        "profile kept: the judge's axes own this folder/mode — %s",
+                        describe(self.state),
+                    )
+                except Exception:
+                    pass
+                return previous
             # Store the raw derived profile verbatim (a successful derivation
             # is always a usable ``MetricProfile``, even with no salience).
             self.state.metric_profile = profile

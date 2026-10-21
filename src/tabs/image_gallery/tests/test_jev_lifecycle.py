@@ -46,6 +46,13 @@ from tabs.image_gallery.use_cases import pipeline_stages as ps
 def _item(name: str, **metrics) -> GalleryItem:
     it = GalleryItem(path=Path(f"/gallery/{name}"), mtime_ns=0)
     it.metrics.update(metrics)
+    # P7-B: a rank needs two axes that MOVE; mirror ssim onto sharpness so the
+    # one-axis refusal is tested by its own focused test, not by this fixture.
+    if "sharpness" not in it.metrics and "ssim" in it.metrics:
+        try:
+            it.metrics["sharpness"] = float(it.metrics["ssim"]) * 400.0
+        except (TypeError, ValueError):
+            pass
     return it
 
 
@@ -54,10 +61,14 @@ def _ai_item(name: str, **axes) -> GalleryItem:
 
     On the AI domain Jev's vector comes from ``item.analysis`` (plan-gallery-ai-
     backend-owns-quality), so the lifecycle fixtures carry an analysis, not
-    detector ``metrics``.
+    detector ``metrics``. ``ssim`` is mirrored onto ``sharpness`` (same quality,
+    same spread): P7-B refuses a vector with fewer than two axes, and the
+    refusal has its own focused test — these fixtures test the lifecycle.
     """
     from tabs.image_gallery.models import AiAnalysisResult
 
+    if "sharpness" not in axes and "ssim" in axes:
+        axes["sharpness"] = axes["ssim"]
     it = GalleryItem(path=Path(f"/gallery/{name}"), mtime_ns=0)
     it.analysis = AiAnalysisResult(
         description="", tags=(), model="m", analyzed_at_iso="t", axes=dict(axes)

@@ -96,31 +96,25 @@ def _scorecard_axes(mode=None, *, profile=None) -> tuple[tuple[str, str], ...]:
     """
     try:
         from tabs.image_gallery.services.metric_scores import spec_for
-        from tabs.image_gallery.services.rank_fusion import (
+        from tabs.image_gallery.services.profile_judged import (
             judged_axis_entries,
-            measured_axes_for,
+            scorecard_axis_ids,
         )
 
         out: list[tuple[str, str]] = []
         judge_entries = judged_axis_entries(profile)
-        registry_axes: tuple[str, ...] = measured_axes_for(mode, profile=profile)
-        if (
-            judge_entries
-            and profile is not None
-            and not tuple(getattr(profile, "axis_ids", ()) or ())
-        ):
-            registry_axes = ()
-        for axis_id in registry_axes:
+        judge_definition = {
+            str(getattr(entry, "name", "") or "").strip(): str(
+                getattr(entry, "definition", "") or ""
+            ).strip()
+            for entry in judge_entries
+        }
+        for axis_id in scorecard_axis_ids(mode, profile=profile):
+            if axis_id in judge_definition:
+                out.append((axis_id, judge_definition[axis_id] or axis_id))
+                continue
             spec = spec_for(axis_id)
             out.append((axis_id, spec.label if spec is not None else axis_id))
-        seen = {axis for axis, _label in out}
-        for entry in judge_entries:
-            name = str(getattr(entry, "name", "") or "").strip()
-            if not name or name in seen:
-                continue
-            definition = str(getattr(entry, "definition", "") or "").strip() or name
-            out.append((name, definition))
-            seen.add(name)
         return tuple(out)
     except Exception:
         return ()

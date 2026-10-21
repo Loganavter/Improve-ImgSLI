@@ -52,6 +52,13 @@ from tabs.image_gallery.use_cases import pipeline_stages as ps
 
 
 def _ai_item(name: str, **axes) -> GalleryItem:
+    """An AI-domain item; ``ssim`` is mirrored onto ``sharpness``.
+
+    P7-B refuses a one-axis vector, and that refusal has its own test — these
+    fixtures keep their original ordering intent (same quality, same spread).
+    """
+    if "sharpness" not in axes and "ssim" in axes:
+        axes["sharpness"] = axes["ssim"]
     it = GalleryItem(path=Path(f"/gallery/{name}"), mtime_ns=0)
     it.analysis = AiAnalysisResult(
         description="", tags=(), model="m", analyzed_at_iso="t", axes=dict(axes)
@@ -210,7 +217,14 @@ def test_n_arrivals_produce_one_jev_call_on_the_complete_matrix(tmp_path, monkey
     assert ctrl.launches == [], "a rank was dispatched on a 0/6 matrix"
 
     for item, score in zip(items, scores):
-        _deliver(ctrl, item, {"ssim": score}, monkeypatch)
+        # P7-B: two moving axes (ssim mirrored onto sharpness) — the one-axis
+        # refusal has its own test; here the point is ONE terminal dispatch.
+        _deliver(
+            ctrl,
+            item,
+            {"ssim": score, "sharpness": score},
+            monkeypatch,
+        )
         if item is not items[-1]:
             assert ctrl.launches == [], (
                 f"a Jev rank was dispatched before the matrix was complete "

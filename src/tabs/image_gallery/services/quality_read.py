@@ -48,17 +48,65 @@ def normalize_domain(domain) -> str:
     return AI_DOMAIN if text == AI_DOMAIN else ALGORITHMS_DOMAIN
 
 
-def axis_noise_floor(domain=None) -> float:
+def _spread_of_draws(draws) -> float | None:
+    """Widest per-axis ``max − min`` across *draws* of ONE item (``None`` when
+    fewer than two draws scored a shared axis). Never raises."""
+    per_axis: dict[str, list[float]] = {}
+    for draw in draws or ():
+        try:
+            pairs = dict(draw or {}).items()
+        except Exception:
+            continue
+        for axis, value in pairs:
+            try:
+                number = float(value)
+            except (TypeError, ValueError):
+                continue
+            per_axis.setdefault(str(axis), []).append(number)
+    spreads = [
+        max(values) - min(values)
+        for values in per_axis.values()
+        if len(values) >= 2
+    ]
+    return max(spreads) if spreads else None
+
+
+def axis_noise_floor(domain=None, *, samples=None) -> float:
     """The noise floor of the instrument that produced *domain*'s scores.
 
     "Inside the noise" is only meaningful relative to the instrument (plan
-    ``plan-gallery-ai-judgement`` M3): the AI domain's numbers come from a
-    stochastic model whose own sample-to-sample spread was 12–23 points
-    (``rank_fusion.AXIS_NOISE_FLOOR``), while the local detectors are
-    deterministic for the same pixels, so only their integer quantization is
-    indistinguishable (``rank_fusion.DETECTOR_NOISE_FLOOR``). ONE definition:
-    the rows, the Jev vector and any report ask here instead of picking a number.
+    ``plan-gallery-ai-judgement`` M3), and with k draws it is MEASURED: the
+    spread BETWEEN the variants can only order them when it is larger than the
+    spread WITHIN one variant — the same picture scored k times. ``samples``
+    carries that knowledge (P7-B):
+
+    - an analysis result whose ``axis_samples`` holds its k draw scorecards;
+    - or the k draw scorecards of one item directly (``[{axis: score}, ...]``).
+
+    The floor is then the widest per-axis ``max − min`` those draws show over
+    the whole series (the instrument's own worst movement here), and the
+    constants stay the FALLBACK for a single draw, where no within-item spread
+    exists: ``rank_fusion.AXIS_NOISE_FLOOR`` (the stochastic judge) or
+    ``DETECTOR_NOISE_FLOOR`` (the deterministic detectors). ONE resolver: the
+    rows, the Jev vector and any report ask here instead of picking a number.
     """
+    try:
+        items = list(samples or ())
+    except Exception:
+        items = []
+    measured: list[float] = []
+    if items and all(isinstance(sample, dict) for sample in items):
+        # The raw draw scorecards of ONE item: that IS the within-item spread.
+        spread = _spread_of_draws(items)
+        if spread is not None:
+            measured.append(spread)
+    else:
+        for sample in items:
+            spread = _spread_of_draws(getattr(sample, "axis_samples", None) or ())
+            if spread is not None:
+                measured.append(spread)
+    if measured:
+        return max(measured)
     try:
         from tabs.image_gallery.services.rank_fusion import (
             AXIS_NOISE_FLOOR,
