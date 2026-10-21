@@ -61,12 +61,18 @@ _SKIP_MIP_CASCADE = os.environ.get("IMGSLI_SKIP_MIP_CASCADE", "").strip().lower(
 
 
 def _manifest_base_images_pass() -> BaseImagesPass:
-    """The scene's base-image stage, routed via the ``RENDER_PASSES``
-    declaration -- never instantiated directly here (mirrors how feature
-    passes come from ``registry().get_render_passes()``)."""
+    """A fresh per-renderer instance of the scene's base-image stage.
+
+    ``RENDER_PASSES`` is the declaration (which pass class stages the base
+    image, and its ``stack_role``/``visibility``); the instance itself is
+    built here, per renderer, mirroring how feature passes come from
+    ``registry().get_render_passes()`` and are instantiated per renderer.
+    Returning the module-level manifest instance instead made the live
+    canvas and the export renderer share one pass -- and with it one set of
+    GPU resources and slot bookkeeping."""
     for pass_ in RENDER_PASSES:
         if isinstance(pass_, BaseImagesPass):
-            return pass_
+            return type(pass_)()
     raise RuntimeError("RENDER_PASSES must route a BaseImagesPass")
 
 
@@ -74,7 +80,8 @@ class MultiCompareRhiRenderer:
     """Persistent QRhi renderer for ``MultiCompareCanvasWidget``.
 
     ``image_pass`` (base image tiles) is routed via the scene's
-    ``RENDER_PASSES`` manifest and still recorded first — mirrors how
+    ``RENDER_PASSES`` manifest but instantiated per renderer (like the
+    feature passes below) and still recorded first — mirrors how
     image_compare's own base-image draw is hardcoded ahead of its feature
     passes (see MULTI_COMPARE_QRHI_REFACTOR.md A6). ``feature_passes`` are
     discovered through the shared canvas feature registry, same as
@@ -88,8 +95,10 @@ class MultiCompareRhiRenderer:
         self.sampler: QRhiSampler | None = None
         self.placeholder: QRhiTexture | None = None
         self.tile_service = TileTextureService()
-        # Manifest-routed (see _manifest_base_images_pass); release() resets
-        # this same instance in place via BaseImagesPass.release().
+        # Manifest-routed (see _manifest_base_images_pass): a fresh instance
+        # owned by this renderer -- the manifest declares the class, it is
+        # never shared across renderers. release() resets this instance in
+        # place via BaseImagesPass.release().
         self.image_pass = _manifest_base_images_pass()
         # Mirrors image_compare's RhiCanvasRenderer.glass_panel_renderer --
         # draws the blurred/tinted backdrop + text mask for every GlassHUD
@@ -166,11 +175,12 @@ class MultiCompareRhiRenderer:
         # source`) saw "nothing changed" and never re-queued the uploads —
         # the array/slot textures stayed bound to the destroyed context and
         # the canvas rendered blank (background clear color only). Routing
-        # a real identity change through `self.release()` (which resets
-        # the manifest `image_pass` in place via `BaseImagesPass.release()`,
-        # clearing that bookkeeping) makes the post-rebuild `_sync_textures()` call below
+        # a real identity change through `self.release()` (which resets this
+        # renderer's own manifest-declared `image_pass` in place via
+        # `BaseImagesPass.release()`, clearing that bookkeeping) makes the
+        # post-rebuild `_sync_textures()` call below
         # see every currently-loaded slot as new and re-upload it.
-        if new_rhi is self.rhi and self.feature_passes:
+        if new_rhi is self.rhi and self.initialized:
             self.target = target
             return
         self.release()
@@ -213,11 +223,26 @@ class MultiCompareRhiRenderer:
 
         self.glass_panel_renderer.initialize(self.rhi)
 
-        self.feature_passes = [
-            type(render_pass)() for render_pass in registry().get_render_passes()
-        ]
-        for render_pass in self.feature_passes:
-            render_pass.initialize(self.rhi, target)
+        passes = [type(render_pass)() for render_pass in registry().get_render_passes()]
+        # Publish only on full success (mirrors image_compare's initialize):
+        # a pass that raises mid-loop must not leave a non-empty
+        # ``feature_passes`` behind, or the same-rhi early return above would
+        # treat the half-initialized set as "done" and never retry. Release
+        # just the passes whose initialize() returned; a failing cleanup never
+        # masks the original exception.
+        initialized: list = []
+        try:
+            for render_pass in passes:
+                render_pass.initialize(self.rhi, target)
+                initialized.append(render_pass)
+        except BaseException:
+            for done in initialized:
+                try:
+                    done.release()
+                except Exception:
+                    pass
+            raise
+        self.feature_passes = passes
 
         self.initialized = True
         self.host._sync_textures()

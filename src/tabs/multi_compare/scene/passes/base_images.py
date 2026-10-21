@@ -1149,7 +1149,9 @@ class BaseImagesPass(CanvasRenderPass):
 
 # Contract-shape manifest for the scene's base pass:
 # ``stack_role``/``visibility`` above declare order via stacking_policy.
-# The live renderer takes its ``image_pass`` from this list (see
-# scene/renderer.py) -- never instantiating ``BaseImagesPass`` directly --
-# while still recording it first, ahead of the registry feature passes.
+# The manifest declares *which* pass class stages the base image; each
+# renderer instantiates its own from it (see ``_manifest_base_images_pass``
+# in scene/renderer.py) -- the instance here is never handed to a renderer,
+# so live and export renderers never share GPU resources -- while still
+# recording the base pass first, ahead of the registry feature passes.
 RENDER_PASSES: list[CanvasRenderPass] = [BaseImagesPass()]
