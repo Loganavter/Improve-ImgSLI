@@ -706,6 +706,34 @@ class LiveBackend:
             payload["images"] = int(result["images"])
         return payload
 
+    def open_file(
+        self, *, client: LiveClient | None = None, path: str, tab: str | None = None
+    ) -> dict:
+        """Route one file into the running app's accepting tab (see open_file)."""
+        params: dict[str, Any] = {"path": path}
+        if tab:
+            params["tab"] = tab
+        result = self._request("open_file", params, client)
+        return {
+            "opened": bool(result.get("opened", True)),
+            "path": str(result.get("path") or path),
+            "tab": str(result.get("tab") or ""),
+            "count": int(result.get("count") or 1),
+            "source": "live",
+        }
+
+    def open_properties(
+        self, *, client: LiveClient | None = None, path: str
+    ) -> dict:
+        """Show the app's image-properties dialog for *path* (non-modal)."""
+        result = self._request("open_properties", {"path": path}, client)
+        return {
+            "opened": bool(result.get("opened", True)),
+            "path": str(result.get("path") or path),
+            "dialog": str(result.get("dialog") or ""),
+            "source": "live",
+        }
+
     def set_theme(self, *, client: LiveClient | None = None, theme: str) -> dict:
         result = self._request("set_theme", {"theme": theme}, client)
         return {
@@ -723,6 +751,21 @@ class LiveBackend:
             "persisted": bool(result.get("persisted", True)),
             "applies_on": str(result.get("applies_on") or "now"),
             "live": True,
+            "source": "live",
+        }
+
+    def set_setting(
+        self, *, client: LiveClient | None = None, key: str, value: str
+    ) -> dict:
+        """Write one whitelisted setting; ``previous`` stays ``null`` when unset."""
+        result = self._request("set_setting", {"key": key, "value": value}, client)
+        previous = result.get("previous")
+        return {
+            "key": str(result.get("key") or key),
+            "value": str(result.get("value") or value),
+            "applied": bool(result.get("applied", False)),
+            "persisted": bool(result.get("persisted", True)),
+            "previous": None if previous is None else str(previous),
             "source": "live",
         }
 
@@ -948,6 +991,28 @@ class LiveBackend:
             "rect": list(result.get("rect") or []),
             "target": str(result.get("target") or ""),
             "focus_widget": str(result.get("focus_widget") or ""),
+            "source": "live",
+        }
+
+    def ui_press(
+        self,
+        *,
+        client: LiveClient | None = None,
+        id: str,
+        hold_ms: int | None = None,
+        release: bool | None = None,
+    ) -> dict:
+        """Press (and optionally hold) one element; omit absent optional knobs."""
+        params: dict[str, Any] = {"id": id}
+        if hold_ms is not None:
+            params["hold_ms"] = int(hold_ms)
+        if release is not None:
+            params["release"] = bool(release)
+        result = self._request("ui_press", params, client)
+        return {
+            "pressed": str(result.get("pressed") or id),
+            "held_ms": int(result.get("held_ms") or 0),
+            "released": bool(result.get("released", False)),
             "source": "live",
         }
 
