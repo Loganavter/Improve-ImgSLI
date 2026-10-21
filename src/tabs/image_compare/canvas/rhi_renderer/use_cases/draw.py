@@ -81,6 +81,7 @@ def resolve_instance_bbox(
 
 
 def submit_array_draw(
+    *,
     renderer,
     widget,
     command_buffer,
@@ -92,20 +93,18 @@ def submit_array_draw(
     base_image=None,
     diff_ready=None,
     frame_context: FrameContext | None = None,
-    **kwargs,
 ) -> None:
     """Thin-owner wrapper: identical to ``RhiCanvasRenderer.render()``'s draw
     submit block.
 
     ``renderer`` is the owning ``RhiCanvasRenderer`` (CODE_PATTERNS
-    function-taking-owner). ``widget``/``command_buffer``/``array_draw_plan``
-    are the per-frame inputs; ``ctx``/``updates``/``target``/``clear_color``
-    are the frame's runtime context objects created just before this call.
-    ``base_image``/``diff_ready`` are accepted for the plan's alternative
-    signature ``submit_array_draw(renderer, widget, command_buffer,
-    array_draw_plan, base_image, diff_ready)`` — when supplied they override
-    the values derived from ``ctx``. Extra ``**kwargs`` are ignored so both
-    call styles are accepted.
+    function-taking-owner). Every parameter is keyword-only: the signature is
+    the contract, so a mis-slotted argument is a ``TypeError`` at the call
+    site instead of a silently different frame. ``widget``/``command_buffer``/
+    ``array_draw_plan`` are the per-frame inputs; ``ctx``/``updates``/
+    ``target``/``clear_color`` are the frame's runtime context objects created
+    just before this call. ``base_image``/``diff_ready`` override the values
+    derived from ``ctx`` when supplied.
 
     ``frame_context`` is the Phase-2 frame-bus hook: when provided, the
     submit gate + begin/end fact record IN ADDITION to existing behavior
@@ -115,31 +114,6 @@ def submit_array_draw(
     records ``prepare``/``record_pre_pass``/``beginPass``/``draw``/
     ``record``/``endPass`` on ``command_buffer`` exactly as before.
     """
-    # Allow call signature from plan doc: submit_array_draw(renderer, widget,
-    # command_buffer, array_draw_plan, base_image, diff_ready) where
-    # base_image is passed positionally as ``ctx``. Detect by duck-typing:
-    # a real ``ctx`` has ``scene_frame`` or ``render_list``; a base_image
-    # does not. If mis-bound, shuffle args.
-    if ctx is not None and not hasattr(ctx, "scene_frame") and not hasattr(ctx, "render_list"):
-        # ctx actually holds base_image in the (renderer, widget, command_buffer,
-        # array_draw_plan, base_image, diff_ready) call style.
-        if base_image is None and diff_ready is None:
-            # fifth positional was base_image, sixth would be in ``updates`` slot
-            base_image = ctx  # type: ignore[assignment]
-            diff_ready = updates  # type: ignore[assignment]
-            ctx = kwargs.get("ctx")
-            updates = kwargs.get("updates")
-            target = kwargs.get("target", target)
-            clear_color = kwargs.get("clear_color", clear_color)
-            # If still no ctx, try to derive from renderer? Must have ctx for passes.
-            # Fall back to None — gating will be skipped.
-        else:
-            # Explicit keyword base_image already, ignore confusion
-            pass
-
-    # Derive ctx if not supplied but base_image is — reconstruct minimal?
-    # For feature-pass gating we need ctx; if caller used base_image style
-    # without ctx, feature passes will be skipped (no-op) but draw still runs.
     if target is None:
         try:
             target = widget.renderTarget()
@@ -151,8 +125,6 @@ def submit_array_draw(
             updates = renderer.rhi.nextResourceUpdateBatch()
         except Exception:
             updates = None
-    if clear_color is None:
-        clear_color = kwargs.get("clear_color")
 
     # Resolve base_image / diff_ready from ctx when not explicitly supplied
     _base_image = base_image

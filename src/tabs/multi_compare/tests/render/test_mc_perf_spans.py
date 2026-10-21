@@ -33,10 +33,14 @@ from types import SimpleNamespace
 
 from PySide6.QtCore import QPoint, QRect
 
+import pytest
+
 from engine.frame.context import FrameContext
 from tabs.multi_compare.canvas import interaction as mc_interaction
 from tabs.multi_compare.models import CompareSlot, LeafNode, MultiCompareState
 from tabs.multi_compare.scene.store import reduce as mc_reduce
+from ui.canvas_infra.scene.pass_contract import CanvasRenderPass, SceneVisibility
+from ui.canvas_infra.scene.stacking_policy import CanvasStackRole
 
 #: Every stage the Wave D chain must emit (analyzer must list all of
 #: these — zero missing stages — for the zoom-burst repro).
@@ -254,6 +258,52 @@ def test_full_render_fake_path_emits_prepare_realize_mips_submit():
     assert renderer.render(_fake_command_buffer()) is True
     names = _span_names(renderer.frame_context)
     assert {"mc.prepare", "mc.realize_slots", "mc.mips", "mc.submit"} <= names
+
+
+class _RaisingFeaturePass(CanvasRenderPass):
+    """Feature pass whose ``record`` raises after the pass is already open."""
+
+    stack_role = CanvasStackRole.HUD_LABEL
+    visibility = SceneVisibility.ALL
+
+    def __init__(self) -> None:
+        self.recorded = 0
+
+    def prepare(self, widget, ctx, resource_updates, frame_context=None) -> None:
+        pass
+
+    def record(self, command_buffer, widget, ctx, frame_context=None) -> None:
+        self.recorded += 1
+        raise RuntimeError("feature record failed")
+
+
+def test_submit_pass_closes_when_feature_record_raises():
+    """Pass lifetime: a raising feature ``record`` still ends the pass.
+
+    ``endPass`` must run in a ``finally``. Without it the MC submit pass stays
+    open on the command buffer, so the next frame records into a never-closed
+    pass (stuck black frame) instead of failing once at the seam. The
+    exception still propagates.
+    """
+    from tabs.multi_compare.scene.renderer import MultiCompareRhiRenderer
+
+    host, rhi, _target = _fake_full_render_host()
+    renderer = MultiCompareRhiRenderer(host)
+    renderer.rhi = rhi
+    renderer.target = _target
+    renderer.initialized = True
+    renderer.image_pass = _stub_image_pass()
+    raising = _RaisingFeaturePass()
+    renderer.feature_passes = [raising]
+
+    command_buffer = _fake_command_buffer()
+    with pytest.raises(RuntimeError, match="feature record failed"):
+        renderer.render(command_buffer)
+
+    assert raising.recorded == 1
+    assert command_buffer.calls.count("beginPass") == 1
+    assert command_buffer.calls.count("endPass") == 1
+    assert command_buffer.calls[-1] == "endPass"
 
 
 def test_zoom_burst_chain_covers_all_stages():

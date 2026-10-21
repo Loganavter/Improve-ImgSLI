@@ -295,10 +295,11 @@ def evaluate_coverage(
     _gap_atomic = getattr(renderer, "_fallback_atomic_snapshot", getattr(renderer, "_content_swap_active", False))
     _gap_more = getattr(renderer, "_fallback_more_pending_snapshot", False)
     if _gap_more is None:
-        try:
-            _gap_more = main_more_pending  # type: ignore[has-type]
-        except NameError:
-            _gap_more = False
+        # ``main_more_pending`` is this function's own parameter — the previous
+        # `except NameError` fallback could never fire (the name is always
+        # bound), so the "missing field becomes False" story was wrong: the
+        # caller's value IS the decision.
+        _gap_more = main_more_pending
     _bbox_cov_for_gap = _bbox_cov
     _bbox_min_for_gap = _bbox_min
     if covered1 < 0.999 or covered2 < 0.999 or _bbox_cov_for_gap < 0.999:
@@ -519,10 +520,10 @@ def apply_first_paint_hold(
     if _hold_covered_ok is None:
         _hold_covered_ok = _hold_cov1 >= 0.999 and _hold_cov2 >= 0.999 and _hold_bbox >= 0.999  # type: ignore[operator]
 
-    try:
-        _prev_hold_is_first = prev_last_good is None  # type: ignore[has-type]
-    except NameError:
-        _prev_hold_is_first = False
+    # ``prev_last_good`` is this function's own parameter, so the deleted
+    # `except NameError` fallback was dead code — its "False" branch could
+    # never run and silently claimed the hold decision had a missing input.
+    _prev_hold_is_first = prev_last_good is None
 
     if _prev_hold_is_first and array_draw_plan:
         if main_more_pending or not _hold_covered_ok:

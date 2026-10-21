@@ -68,13 +68,13 @@ def iter_active_render_passes(ctx, passes) -> tuple:
 
 
 def _visibility_matches(pass_visibility, current_visibility: SceneVisibility) -> bool:
-    try:
-        return bool(pass_visibility & current_visibility)
-    except TypeError:
-        pass
-    pass_names = {member.name for member in getattr(pass_visibility, "__iter__", lambda: ())()}
-    if not pass_names:
-        pass_names = {getattr(pass_visibility, "name", "")}
-    if "ALL" in pass_names:
-        return True
-    return current_visibility.name in pass_names
+    """True when a pass declaring *pass_visibility* paints in *current_visibility*.
+
+    Both sides must be ``SceneVisibility`` flags: a wrong-typed value raises
+    ``TypeError`` from ``&`` instead of silently matching by member name. A
+    name-string fallback made ``_visibility_matches("interactive", PREVIEW)``
+    return a verdict, so a caller that passed a string (or a list, or ``None``)
+    painted or skipped every frame without an error — the wrong frame, on the
+    user, instead of a failure at the seam.
+    """
+    return bool(pass_visibility & current_visibility)

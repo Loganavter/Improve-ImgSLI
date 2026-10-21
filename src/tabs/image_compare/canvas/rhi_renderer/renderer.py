@@ -501,10 +501,10 @@ class RhiCanvasRenderer:
         from .use_cases.draw import submit_array_draw as _submit_array_draw_impl
 
         _submit_array_draw_impl(
-            self,
-            widget,
-            command_buffer,
-            array_draw_plan,
+            renderer=self,
+            widget=widget,
+            command_buffer=command_buffer,
+            array_draw_plan=array_draw_plan,
             ctx=ctx,
             updates=updates,
             target=target,

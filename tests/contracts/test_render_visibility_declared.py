@@ -24,14 +24,15 @@ and a name-keyed set silently collapses them into one entry — the gate then
 stops seeing half the tree.
 
 Second half: ``render_executor._visibility_matches`` must not *swallow* a
-wrong-typed visibility. Today it catches ``TypeError`` from ``&`` and falls
+wrong-typed visibility. It used to catch ``TypeError`` from ``&`` and fall
 back to name-string matching, so ``_visibility_matches("interactive",
-SceneVisibility.PREVIEW)`` yields a verdict (or an incidental ``AttributeError``
-from the fallback) instead of the deliberate ``TypeError`` a wrong type must
-raise — a silent mis-match in production.
+SceneVisibility.PREVIEW)`` yielded a verdict (or an incidental
+``AttributeError`` from the fallback) instead of the deliberate ``TypeError``
+a wrong type must raise — a silent mis-match in production. C2 removed that
+fallback; the gate keeps the rule so it cannot come back.
 
-Allowlist: ``canvas_gates_allowlist.ALLOWLIST[GATE]`` (one entry: the executor
-fallback, C2).
+Allowlist: ``canvas_gates_allowlist.ALLOWLIST[GATE]`` (empty — the executor
+fallback was drained in C2).
 """
 
 from __future__ import annotations
@@ -43,6 +44,8 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 from types import ModuleType
+
+import pytest
 
 from tests.contracts._framework import SRC, parse, rel
 from tests.contracts.canvas_gates_allowlist import (
@@ -375,6 +378,93 @@ def test_correctly_typed_visibility_still_resolves():
     assert _visibility_matches(SceneVisibility.ALL, SceneVisibility.PREVIEW) is True
     assert _visibility_matches(SceneVisibility.EXPORT, SceneVisibility.PREVIEW) is False
     assert _visibility_matches(SceneVisibility.INTERACTIVE, SceneVisibility.INTERACTIVE)
+
+    # Full match/non-match matrix, so "resolve" means the flag algebra and not
+    # an incidental truthiness of the enum.
+    matches = {
+        (SceneVisibility.INTERACTIVE, SceneVisibility.INTERACTIVE): True,
+        (SceneVisibility.INTERACTIVE, SceneVisibility.PREVIEW): False,
+        (SceneVisibility.INTERACTIVE, SceneVisibility.EXPORT): False,
+        (SceneVisibility.INTERACTIVE, SceneVisibility.ALL): True,
+        (SceneVisibility.EXPORT, SceneVisibility.INTERACTIVE): False,
+        (SceneVisibility.EXPORT, SceneVisibility.PREVIEW): False,
+        (SceneVisibility.EXPORT, SceneVisibility.EXPORT): True,
+        (SceneVisibility.EXPORT, SceneVisibility.ALL): True,
+        (SceneVisibility.PREVIEW, SceneVisibility.INTERACTIVE): False,
+        (SceneVisibility.PREVIEW, SceneVisibility.PREVIEW): True,
+        (SceneVisibility.PREVIEW, SceneVisibility.EXPORT): False,
+        (SceneVisibility.PREVIEW, SceneVisibility.ALL): True,
+        (SceneVisibility.ALL, SceneVisibility.INTERACTIVE): True,
+        (SceneVisibility.ALL, SceneVisibility.PREVIEW): True,
+        (SceneVisibility.ALL, SceneVisibility.EXPORT): True,
+        (SceneVisibility.ALL, SceneVisibility.ALL): True,
+    }
+    for (pass_visibility, current_visibility), expected in matches.items():
+        assert (
+            _visibility_matches(pass_visibility, current_visibility) is expected
+        ), (pass_visibility, current_visibility)
+
+
+@pytest.mark.parametrize(
+    "wrong",
+    ["interactive", ["INTERACTIVE"], None, 1.5, object()],
+    ids=["str", "list", "none", "float", "object"],
+)
+def test_wrong_typed_visibility_raises_type_error(wrong):
+    """No name-string fallback: a wrong-typed visibility fails at the seam.
+
+    Before C2 the ``except TypeError`` fallback turned these inputs into a
+    verdict (or an incidental ``AttributeError``), i.e. a silent mis-match on
+    a live frame instead of an error in the code that built the pass.
+    """
+    from ui.canvas_infra.scene.pass_contract import SceneVisibility
+    from ui.canvas_infra.rhi.render_executor import _visibility_matches
+
+    with pytest.raises(TypeError):
+        _visibility_matches(wrong, SceneVisibility.PREVIEW)
+    with pytest.raises(TypeError):
+        _visibility_matches(SceneVisibility.ALL, wrong)
+
+
+def test_executor_keeps_the_filter_contract_on_real_passes():
+    """The strict matcher still filters a real pass list by frame kind."""
+    from types import SimpleNamespace
+
+    from ui.canvas_infra.rhi.render_executor import execute_render_passes
+    from ui.canvas_infra.scene.pass_contract import (
+        CanvasRenderPassBase,
+        SceneVisibility,
+    )
+    from ui.canvas_infra.scene.stacking_policy import CanvasStackRole
+
+    painted: list[str] = []
+
+    def _pass(name: str, visibility: SceneVisibility):
+        return type(
+            f"_Pass_{name}",
+            (CanvasRenderPassBase,),
+            {
+                "stack_role": CanvasStackRole.HUD_LABEL,
+                "visibility": visibility,
+                "paint": lambda self, widget, ctx: painted.append(name),
+                "should_paint": lambda self, ctx: True,
+            },
+        )()
+
+    ctx = SimpleNamespace(
+        render_metrics=SimpleNamespace(mode="export"),
+        scene_frame=SimpleNamespace(single_image_preview=0),
+    )
+    execute_render_passes(
+        widget=None,
+        ctx=ctx,
+        passes=(
+            _pass("interactive", SceneVisibility.INTERACTIVE),
+            _pass("export", SceneVisibility.EXPORT),
+            _pass("all", SceneVisibility.ALL),
+        ),
+    )
+    assert painted == ["export", "all"]
 
 
 def test_discovery_is_not_vacuous():

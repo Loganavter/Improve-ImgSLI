@@ -60,43 +60,9 @@ class Finding:
 #: gate file name -> {entry -> reason}. Namespaced by gate so a slice is
 #: reviewable on its own and stale entries are attributed to one gate.
 ALLOWLIST: dict[str, dict[str, str]] = {
-    "test_render_visibility_declared.py": {
-        "src/ui/canvas_infra/rhi/render_executor.py::_visibility_matches": (
-            "the matcher still catches TypeError and falls back to name-string "
-            "matching, so a wrong-typed visibility yields a verdict instead of "
-            "an error. C2 removes the fallback; precondition: FIRST grep that "
-            "no caller passes a string visibility, and add a runtime-assert "
-            "test — removing the fallback turns a silent mis-match into a "
-            "crash, so it must fail in a test, not on a user."
-        ),
-    },
-    "test_no_duck_typed_arg_shuffle.py": {
-        "src/tabs/image_compare/canvas/rhi_renderer/use_cases/draw.py::submit_array_draw": (
-            "the function still accepts the plan-doc positional call style by "
-            "duck-typing (`hasattr(ctx, 'scene_frame')` re-binds the arguments) "
-            "and keeps a **kwargs catch-all. C2 removes the accepted positional "
-            "style, which changes a public signature; precondition: migrate all "
-            "four call sites (renderer.py's `_submit_array_draw_impl` plus the "
-            "three in src/tabs/image_compare/tests/render/test_ic_perf_spans.py) "
-            "to the keyword form and re-run the render suite."
-        ),
-    },
-    "test_no_except_nameerror.py": {
-        "src/tabs/image_compare/canvas/rhi_renderer/use_cases/coverage.py::evaluate_coverage": (
-            "the coverage read still wraps an optional context field in a "
-            "NameError handler, turning a missing field into a default coverage "
-            "verdict. C2 names the field on the seam (and extends the context "
-            "contract) instead; precondition: every caller passes a context with "
-            "the field or the evaluated coverage test builds the real context."
-        ),
-        "src/tabs/image_compare/canvas/rhi_renderer/use_cases/coverage.py::apply_first_paint_hold": (
-            "the first-paint hold still falls back through an `except "
-            "NameError` for a name its callers may not provide, so a broken "
-            "hold decision silently becomes 'hold nothing'. C2 names the seam "
-            "and removes the handler; precondition: the hold path has a "
-            "falsifying test that fails when the field is absent."
-        ),
-    },
+    "test_render_visibility_declared.py": {},
+    "test_no_duck_typed_arg_shuffle.py": {},
+    "test_no_except_nameerror.py": {},
     "test_scene_order_table_complete.py": {
         "src/ui/canvas_infra/scene/stacking_policy.py::resolve_render_pass_order": (
             "the render-pass resolver still returns `_RENDER_PASS_ORDER.get(role, "
