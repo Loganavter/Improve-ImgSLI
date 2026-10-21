@@ -165,6 +165,15 @@ class EventHandler(QObject):
                 if ContextMenu.close_visible():
                     event.accept()
                     return True
+                # A popup-surface menu is a top-level WITHOUT focus, so it
+                # never sees the Escape key itself and is not in the
+                # toolkit's in-window registry. The app manager owns the
+                # active one — close it here (text context menus use this
+                # surface, 2026-10-21).
+                from ui.context_menu.manager import get_context_menu_manager
+                if get_context_menu_manager().hide_active_menu():
+                    event.accept()
+                    return True
 
         if event_type == QEvent.Type.ApplicationDeactivate:
             self._reset_keyboard_state(f"event:{int(event_type)}")

@@ -11,6 +11,26 @@
   suppress the in-button digit, so the same number appeared twice and hover
   looked like a separate mode.
 
+### Fixed
+
+- **The text context menu is a real popup, and opening it no longer wipes the
+  text selection.** The help-page and image-properties text menus were opened
+  through the app-wide RMB policy (`in_window`), so they were plain child
+  widgets of the dialog: clipped to the dialog rect and unable to overflow it.
+  Both now open as a native top-level popup, parented to the **document**
+  (a content widget — a `Qt.Popup` parented to the top-level breaks that
+  window's compositing on Wayland, see `inv-2026-10-06-ql-rhi-menu-first`);
+  the popup transient-parents to the dialog and sits at the click point.
+  `ContextMenuManager.open_entries`/`open_context_menu_entries` gained an
+  optional per-call `surface=` override for this; the app-wide policy is
+  unchanged (the gallery ask-ai sequence still needs `in_window`).
+  A popup-surface menu is a top-level without focus, so it never sees the
+  Escape key itself — the app-level Escape handler now also closes the
+  manager's active menu. The selection half of the report (the right-press
+  collapsing the selection, so every copy row came up disabled) was a
+  toolkit bug and is fixed there: `sli-ui-toolkit` PR for
+  `ui/widgets/text/engine/events.py`.
+
 ### Changed
 
 - **Image Gallery — ranking now states its provenance.** A series rank is
