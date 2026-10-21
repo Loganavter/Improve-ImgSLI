@@ -72,8 +72,8 @@ before deferred, first non-`None` answer wins) instead of the active one,
 for use during one-time startup shell construction (`MainWindowComposer.compose()`
 builds the main-window shell — `UIManager`, toolbar, layout manager, ... —
 once, synchronously, before the user's real initial session is necessarily
-active). See `tabs/registry.py`'s docstring on `create_startup_service` for
-the full ordering argument.
+active). See `tabs/use_cases/capability_routing.py`'s `create_startup_service`
+docstring for the full ordering argument.
 
 Error behaviour differs by mechanism and this is deliberate
 (`tabs/use_cases/capability_routing.py`):
