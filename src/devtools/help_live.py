@@ -87,6 +87,8 @@ class LiveFigure:
     note: str
     min_size: tuple[int, int] | None = None
     crop_element: dict | None = None
+    rhi_backend: str = "opengl"
+    stable_interval_s: float = STABLE_INTERVAL_S
 
 
 def _parse_step(raw: dict, figure_id: str) -> Step:
@@ -153,6 +155,8 @@ def load_recipes(path: Path = RECIPE_PATH) -> tuple[LiveFigure, ...]:
                 note=str(entry.get("note") or ""),
                 min_size=tuple(int(v) for v in entry["min_size"]) if entry.get("min_size") else None,
                 crop_element=dict(entry["crop_element"]) if entry.get("crop_element") else None,
+                rhi_backend=str(entry.get("rhi_backend") or "opengl"),
+                stable_interval_s=float(entry.get("stable_interval_s") or STABLE_INTERVAL_S),
             )
         )
     return tuple(figures)
@@ -198,7 +202,15 @@ def ensure_samples(out_dir: Path) -> Path:
     return samples
 
 
-def write_profile(root: Path, *, locale: str, theme: str, width: int, height: int) -> Path:
+def write_profile(
+    root: Path,
+    *,
+    locale: str,
+    theme: str,
+    width: int,
+    height: int,
+    rhi_backend: str = "opengl",
+) -> Path:
     """Seed QSettings before boot (theme, language, UI mode, window geometry).
 
     ``QSettings("improve-imgsli", "improve-imgsli")`` writes the INI below
@@ -222,7 +234,8 @@ def write_profile(root: Path, *, locale: str, theme: str, width: int, height: in
         # Neutral, fictional locations: the export dialog shows this string, so
         # a real home directory would put the maintainer's username into a
         # shipped figure (and HOME is sandboxed below for the same reason).
-        "export_default_dir=/home/user/Pictures\n",
+        "export_default_dir=/home/user/Pictures\n"
+        f"rhi_backend={rhi_backend}\n",
         encoding="utf-8",
     )
     return profile
@@ -283,13 +296,14 @@ class LiveApp:
     """One private app instance on a private Xvfb with a seeded profile."""
 
     def __init__(self, *, backend: str, out_dir: Path, locale: str, theme: str,
-                 width: int, height: int) -> None:
+                 width: int, height: int, rhi_backend: str = "opengl") -> None:
         self.backend = backend
         self.out_dir = Path(out_dir)
         self.locale = locale
         self.theme = theme
         self.width = width
         self.height = height
+        self.rhi_backend = rhi_backend
         self.root = self.out_dir / f"profile__{locale}__{theme}"
         for name in ("data", "cache", "config", "run", "artifacts"):
             (self.root / name).mkdir(parents=True, exist_ok=True)
@@ -301,7 +315,8 @@ class LiveApp:
 
     def __enter__(self) -> "LiveApp":
         write_profile(self.root, locale=self.locale, theme=self.theme,
-                      width=self.width, height=self.height)
+                      width=self.width, height=self.height,
+                      rhi_backend=self.rhi_backend)
         if self.backend == "xvfb":
             if shutil.which("Xvfb") is None:
                 raise LiveError("Xvfb not found on PATH")
@@ -425,15 +440,39 @@ def run_steps(app: LiveClient, figure: LiveFigure, samples: Path) -> None:
         app.call(step.kind, kwargs)
 
 
+def _screen_png(app: LiveClient, out_path: Path) -> Path:
+    """Whole-X-screen grab (popups included), for flyout/menu figures.
+
+    ``capture_live`` grabs one window; a toolkit flyout is a separate popup
+    window, so it is absent from that grab (measured: the menu is in
+    ``ui_elements`` while the window capture shows only chrome). The screen
+    image is 1:1 with screen coordinates, which is exactly what an element's
+    ``screen_rect`` names.
+    """
+    tmp = out_path.with_suffix(".xwd")
+    subprocess.run(["xwd", "-silent", "-root", "-out", str(tmp)], check=True,
+                   env=dict(os.environ))
+    subprocess.run(["convert", str(tmp), str(out_path)], check=True,
+                   env=dict(os.environ))
+    tmp.unlink(missing_ok=True)
+    return out_path
+
+
 def stable_capture(app: LiveClient, what: str, out_path: Path,
-                   min_size: tuple[int, int] | None = None) -> Path:
+                   min_size: tuple[int, int] | None = None,
+                   interval_s: float = STABLE_INTERVAL_S) -> Path:
     """Capture until two consecutive frames are byte-identical."""
     out_path.parent.mkdir(parents=True, exist_ok=True)
     previous: str | None = None
     for attempt in range(STABLE_ATTEMPTS):
-        result = app.call(
-            "capture_live", {} if what == "@window" else {"what": what}
-        )
+        if what == "@screen":
+            source = _screen_png(app, out_path)
+            data = source.read_bytes()
+            result = {"size": _image_size(source)}
+        else:
+            result = app.call(
+                "capture_live", {} if what == "@window" else {"what": what}
+            )
         if min_size is not None:
             width, height = (int(v) for v in result.get("size") or (0, 0))
             if width < min_size[0] or height < min_size[1]:
@@ -442,6 +481,13 @@ def stable_capture(app: LiveClient, what: str, out_path: Path,
                     f"min_size {min_size[0]}x{min_size[1]} - that is a helper/warning "
                     "window, not the figure"
                 )
+        if what == "@screen":
+            digest = hashlib.sha256(data).hexdigest()
+            if digest == previous:
+                return out_path
+            previous = digest
+            time.sleep(interval_s)
+            continue
         source = Path(result["path"])
         data = source.read_bytes()
         digest = hashlib.sha256(data).hexdigest()
@@ -449,11 +495,19 @@ def stable_capture(app: LiveClient, what: str, out_path: Path,
             out_path.write_bytes(data)
             return out_path
         previous = digest
-        time.sleep(STABLE_INTERVAL_S)
+        time.sleep(interval_s)
     raise LiveError(f"{what}: no two consecutive captures matched in {STABLE_ATTEMPTS} attempts")
 
 
-def _crop_from_element(app: LiveClient, spec: dict) -> tuple[int, int, int, int]:
+def _image_size(path: Path) -> tuple[int, int]:
+    from PIL import Image
+
+    with Image.open(path) as image:
+        return image.size
+
+
+def _element_crop(app: LiveClient, spec: dict) -> tuple[int, int, int, int, int]:
+    """Read one element's screen rect as ``(pad, x, y, w, h)`` (no crop math)."""
     """Crop box for one live element (menu/flyout), from its screen rect."""
     params = {}
     for key in ("role", "label"):
@@ -469,7 +523,7 @@ def _crop_from_element(app: LiveClient, spec: dict) -> tuple[int, int, int, int]
         raise LiveError(f"crop_element: element has no screen rect ({params!r})")
     pad = int(spec.get("pad", 6))
     x, y, width, height = (int(v) for v in rect)
-    return (max(0, x - pad), max(0, y - pad), width + 2 * pad, height + 2 * pad)
+    return pad, x, y, width, height
 
 
 def crop_and_install(
@@ -534,16 +588,32 @@ def main(argv: list[str] | None = None) -> int:
             for theme in figure.themes:
                 try:
                     with LiveApp(backend=args.backend, out_dir=out_dir, locale=locale,
-                                 theme=theme, width=args.width, height=args.height) as live:
+                                 theme=theme, width=args.width, height=args.height,
+                                 rhi_backend=figure.rhi_backend) as live:
                         assert live.client is not None
                         run_steps(live.client, figure, samples)
+                        # Read a flyout's rect BEFORE capturing: the element is
+                        # alive right after the click, and __exit__ terminates
+                        # the app (a lookup after the block is ConnectionRefused).
+                        crop = figure.crop
+                        rect = None
+                        if figure.crop_element is not None:
+                            rect = _element_crop(live.client, figure.crop_element)
                         shot = stable_capture(live.client, figure.capture,
                                               out_dir / f"{figure.id}__{locale}__{theme}.png",
-                                              figure.min_size)
+                                              figure.min_size,
+                                              figure.stable_interval_s)
+                        capture_size = _image_size(shot)
+                        if rect is not None:
+                            pad, x, y, w, h = rect
+                            if figure.capture == "@screen":
+                                off_x = off_y = 0
+                            else:
+                                off_x = max(0, (capture_size[0] - live.width) // 2)
+                                off_y = max(0, (capture_size[1] - live.height) // 2)
+                            crop = (max(0, x + off_x - pad), max(0, y + off_y - pad),
+                                    w + 2 * pad, h + 2 * pad)
                     destination = REPO_ROOT / figure.destination
-                    crop = figure.crop
-                    if figure.crop_element is not None:
-                        crop = _crop_from_element(live.client, figure.crop_element)
                     crop_and_install(shot, destination, crop)
                     print(f"installed {figure.id} [{locale}/{theme}] -> {figure.destination}")
                 except LiveError as exc:
