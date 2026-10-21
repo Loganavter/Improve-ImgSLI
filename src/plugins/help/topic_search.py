@@ -19,7 +19,7 @@ from plugins.help.tree import read_help_page_markdown
 from resources.translations import tr
 from sli_ui_toolkit.icons import lazy_icon
 from sli_ui_toolkit.managers import scaled_px
-from sli_ui_toolkit.ui.widgets.composite.text_view.markdown import (
+from sli_ui_toolkit.ui.widgets.text.engine.markdown import (
     blocks_to_plain_text,
     parse_help_blocks,
 )

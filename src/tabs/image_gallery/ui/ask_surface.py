@@ -32,9 +32,12 @@ from sli_ui_toolkit.widgets import (
     ButtonRow,
     CustomLineEdit,
     IconListWidget,
-    Label,
     Text,
 )
+
+# Documented exception (text-unification wave C): Label is no longer public; the
+# class stays on the internal module until the rich-text capability ticket lands.
+from sli_ui_toolkit.ui.widgets.atomic.text_labels import Label
 
 from tabs.image_gallery.icons import Icon as GalleryIcon
 

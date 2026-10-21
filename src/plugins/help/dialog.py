@@ -54,18 +54,17 @@ from shared_toolkit.ui.layout_sizing import (
     install_dialog_geometry_lifecycle,
 )
 from shared_toolkit.ui.themed_dialog import ThemedDialog
+
+from .image_lightbox import HelpImageLightbox
 from sli_ui_toolkit.managers import scaled_px
 from sli_ui_toolkit.ui.managers import connect_ui_metrics
 from sli_ui_toolkit.ui.managers.ui_metrics import AXIS_SCALE
 from sli_ui_toolkit.ui.managers.ui_font import ui_font
-from sli_ui_toolkit.ui.widgets.composite.help_document.image_lightbox import (
-    HelpImageLightbox,
-)
 from sli_ui_toolkit.ui.widgets.composite.help_sections import (
     normalize_help_language,
     toc_title_for_language,
 )
-from sli_ui_toolkit.ui.widgets.composite.text_view.markdown import (
+from sli_ui_toolkit.ui.widgets.text.engine.markdown import (
     HeadingBlock,
     HelpBlock,
     collect_heading_anchors,

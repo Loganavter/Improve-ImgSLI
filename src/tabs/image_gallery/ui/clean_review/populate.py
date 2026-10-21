@@ -27,9 +27,13 @@ from tabs.image_gallery.debug import gallery_debug
 from sli_ui_toolkit.widgets import (
     Button,
     ButtonRow,
-    Label, Text,
+    Text,
     OverlayScrollArea,
 )
+
+# Documented exception (text-unification wave C): Label is no longer public; the
+# class stays on the internal module until the inline-pixmap ticket lands.
+from sli_ui_toolkit.ui.widgets.atomic.text_labels import Label
 
 from .plate import _ReviewPlate
 

@@ -2,6 +2,10 @@ from sli_ui_toolkit.managers import FlyoutManager
 
 from .managers import ThemeManager
 from .services import IconService, get_icon_by_name, get_icon_service
+
+# Documented exception (text-unification wave C): Label is no longer public.
+from sli_ui_toolkit.ui.widgets.atomic.text_labels import Label
+
 from sli_ui_toolkit.widgets import (
     MINIMAL_SCROLLBAR_WIDTH,
     Button,
@@ -10,7 +14,6 @@ from sli_ui_toolkit.widgets import (
     CustomGroupBuilder,
     CustomGroupWidget,
     CustomLineEdit,
-    Label,
     MinimalistScrollBar,
     OverlayScrollArea,
     RadioButton,
