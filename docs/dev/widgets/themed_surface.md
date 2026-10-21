@@ -1,8 +1,11 @@
 # ThemedSurface / ThemedBackgroundContainer
 
-Plain `QWidget` that paints a live theme-token background in `paintEvent`
-instead of relying on Qt's `setPalette`/`autoFillBackground` path — see
-`docs/dev/KNOWN_BUGS.md` and `docs/dev/THEMING.md`.
+`ThemedWidget` + `QWidget` that paints a live theme-token background in
+`paintEvent` instead of relying on Qt's `setPalette`/`autoFillBackground` path
+— the theme subscription and refresh are inherited from `ThemedWidget`
+(`on_theme_changed`), the class itself only implements the fill. See
+`docs/dev/KNOWN_BUGS.md` in `improve-imgsli-internal-docs` (private) and
+`docs/dev/THEMING.md`.
 
 Source: `src/ui/widgets/themed_surface.py`
 
@@ -10,7 +13,7 @@ Source: `src/ui/widgets/themed_surface.py`
 
 | Param | Meaning |
 |---|---|
-| `color_token` | theme token to resolve; `ThemedSurface` defaults to `label.image.background`, `ThemedBackgroundContainer` to `Window` |
+| `color_token` | theme token to resolve; `ThemedSurface` defaults to `label.image.background`, `ThemedBackgroundContainer` to `surface.background` |
 | `opaque: bool = True` | set `WA_OpaquePaintEvent` (the container is non-opaque — chrome bars) |
 
 `apply_qrhi_theme_background(widget, theme_manager, color_token=...)` pushes

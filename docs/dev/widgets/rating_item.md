@@ -9,9 +9,24 @@ Source: `src/ui/widgets/rating_item.py`
 
 ## Construction
 
-`Button`-family row; see `make_rating_row_factory` for the row factory the
-picklists use. State read from `index`, `full_path`, `list_num`,
+```python
+RatingListItem(
+    index, text, rating, full_path,      # required, positional
+    list_num=None,                       # required in effect: one of
+    image_number=None,                   #   list_num / image_number (TypeError otherwise)
+    get_rating=None, increment_rating=None, decrement_rating=None,
+    create_rating_gesture=None,
+    on_update_drop_indicator=None, on_clear_drop_indicator=None,
+    parent=None, is_current=False,
+    item_height=36, item_font=None,
+    item_type="image", position="middle", wheel_requires_focus=False,
+)
+```
+
+State read from `index`, `full_path`, `list_num`,
 `image_number`, `item_type`, `position`, `is_current`, `is_selected`.
+The row factory `make_rating_row_factory(get_rating, increment_rating,
+decrement_rating, create_rating_gesture)` builds these from a `ListRowSpec`.
 
 ## Inspection
 
