@@ -53,7 +53,6 @@ from shared_toolkit.ui.layout_sizing import (
     handle_application_font_change,
     install_dialog_geometry_lifecycle,
 )
-from shared_toolkit.ui.overlay_layer import OverlayLayer
 from shared_toolkit.ui.themed_dialog import ThemedDialog
 from sli_ui_toolkit.managers import scaled_px
 from sli_ui_toolkit.ui.managers import connect_ui_metrics
@@ -335,7 +334,6 @@ class HelpDialog(ThemedDialog):
         self._lightbox: HelpImageLightbox | None = None
         self._syncing_sidebar = False
         self._search_mode = False
-        self.overlay_layer = OverlayLayer(self)
         self._mouse_nav_filter: _HelpMouseNavFilter | None = None
 
         title = tr("help.help", language=current_language)

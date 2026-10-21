@@ -1,6 +1,6 @@
-"""W7/W8: the dark-launch engine reproduces the legacy numbers, exactly.
+"""W7/W8/W12: the engine reproduces the legacy numbers — and now computes them once.
 
-Two halves:
+Three parts:
 
 1. **Value equivalence.** For synthetic PIL images (a gradient, a posterized
    ramp over its smooth source) the records the resolver + runner produce must
@@ -11,8 +11,15 @@ Two halves:
    stage actually calls — mapped through the same ``clean=0 / mild=1 /
    flagged=2`` rank the producer declares.
 2. **Flag isolation.** With ``IMGSLI_ANALYSIS_ENGINE`` unset, the proxy entry is
-   the legacy dict with no ``analysis`` key; with the flag on, the only change
-   is that added key (every legacy stage value stays byte-for-byte equal).
+   the legacy dict with no ``analysis`` key; with the flag on, the entry is the
+   same dict plus that key.
+3. **W12 — one computation.** The measured 2.4x came from the engine and the
+   legacy stages each running the same detectors. The flag-ON path now runs the
+   engine FIRST and rebuilds ``artifacts``/``fidelity``/``camera`` from the
+   records' pre-score ``raw`` values, so: zero legacy Stage-2 calls, exactly one
+   detector pass per item, a rebuilt entry equal to the flag-OFF one (same keys,
+   same values, same ``Severity`` objects), and a per-stage fail-open when a
+   producer raises.
 
 W8 note (the gap W7's dark launch exposed): the artifact records are compared to
 the *aggregate*, never to the seven ``detect_*`` functions one-to-one. The
@@ -235,6 +242,9 @@ def test_artifact_catalog_records_equal_the_aggregate_with_a_source():
         f"engine:   {_ok_values(records)}\n"
         f"aggregate:{expected}"
     )
+    # ``raw`` carries the same rank ``value`` scores: that is what lets the proxy
+    # rebuild ``{Artifact: Severity}`` without a second catalog run (W12).
+    assert all(record.raw == record.value for record in records)
 
     # Non-vacuity: the fixture must move at least one anchored axis away from
     # what the unanchored detector reports, or the assertion above would pass
@@ -290,7 +300,7 @@ def _write_pair(tmp_path):
     return item, source
 
 
-def _run_stages(item, source):
+def _run_stages(item, source=None):
     from types import SimpleNamespace
 
     clear_proxy_cache()
@@ -298,6 +308,21 @@ def _run_stages(item, source):
         [SimpleNamespace(path=item)],
         source,
         include_camera=True,
+    )
+    assert tuple(out) == (str(item),)
+    return out[str(item)]
+
+
+def _tiled_stages(item, source=None):
+    """Same call with the production full-resolution artifact catalog."""
+    from types import SimpleNamespace
+
+    clear_proxy_cache()
+    out = run_proxy_stages_sync(
+        [SimpleNamespace(path=item)],
+        source,
+        include_camera=True,
+        full_res_artifacts=True,
     )
     assert tuple(out) == (str(item),)
     return out[str(item)]
@@ -335,9 +360,152 @@ def test_flag_off_returns_the_legacy_dict_without_an_analysis_key(
     assert set(entry) <= {"artifacts", "artifact_maps", "fidelity", "camera"}
 
 
-def test_flag_on_adds_only_the_analysis_records(
+# ---------------------------------------------------------------------------
+# W12: the engine is the SINGLE computation, the legacy stages are rebuilt
+# ---------------------------------------------------------------------------
+
+#: Module whose legacy Stage-2 calls W12 removed from the flag-ON path.
+PROXY_MODULE = "tabs.image_gallery.services.proxy"
+
+
+class _SeamCalls:
+    """Call counts for the three legacy Stage-2 seams.
+
+    ``total`` counts every call (the detector pass, whoever makes it) and
+    ``legacy`` counts only the calls made BY ``services.proxy`` — the stage code
+    the dedupe removes. Both are needed: "zero legacy calls" alone would pass if
+    the engine never ran, and the detector total proves the pass happened once.
+    """
+
+    def __init__(self) -> None:
+        self.total = {"artifacts": 0, "camera": 0, "fidelity": 0}
+        self.legacy = {"artifacts": 0, "camera": 0, "fidelity": 0}
+
+
+def _seam_calls(monkeypatch: pytest.MonkeyPatch) -> _SeamCalls:
+    """Count the legacy seams; the caller module decides ``total`` vs ``legacy``."""
+    import sys
+
+    calls = _SeamCalls()
+
+    def _patch(module, name: str, stage: str) -> None:
+        real = getattr(module, name)
+
+        def counted(*a, **kw):
+            calls.total[stage] += 1
+            if sys._getframe(1).f_globals.get("__name__") == PROXY_MODULE:
+                calls.legacy[stage] += 1
+            return real(*a, **kw)
+
+        monkeypatch.setattr(module, name, counted)
+
+    _patch(camera_metrics, "measure_camera_from_image", "camera")
+    _patch(fidelity_metrics, "compute_fidelity_from_images", "fidelity")
+    _patch(artifacts, "analyze_images", "artifacts")
+    return calls
+
+
+@pytest.mark.parametrize("with_source", [False, True], ids=["sourceless", "source"])
+def test_flag_on_runs_each_detector_once_and_no_legacy_stage(
+    tmp_path, monkeypatch: pytest.MonkeyPatch, with_source: bool
+):
+    """The core assertion of W12: no double work, one detector pass per item."""
+    item, source = _write_pair(tmp_path)
+    monkeypatch.setenv("IMGSLI_ANALYSIS_ENGINE", "1")
+    calls = _seam_calls(monkeypatch)
+
+    entry = _run_stages(item, source if with_source else None)
+
+    assert calls.legacy == {"artifacts": 0, "camera": 0, "fidelity": 0}, (
+        "services.proxy must not call a legacy Stage-2 detector when the engine "
+        f"ran — that call IS the 2.4x duplicate (counts: {calls.total})"
+    )
+    assert calls.total == {
+        "artifacts": 1,
+        "camera": 1,
+        "fidelity": 1 if with_source else 0,
+    }, "the detectors must run exactly once per item (the engine's pass only)"
+    assert set(entry) >= {"artifacts", "camera", "analysis"}
+    if with_source:
+        assert "fidelity" in entry
+
+
+@pytest.mark.parametrize("with_source", [False, True], ids=["sourceless", "source"])
+def test_flag_on_entry_equals_the_flag_off_entry(
+    tmp_path, monkeypatch: pytest.MonkeyPatch, with_source: bool
+):
+    """The rebuild is not "close": same keys, same values, same Severity objects."""
+    item, source = _write_pair(tmp_path)
+    src = source if with_source else None
+    monkeypatch.delenv("IMGSLI_ANALYSIS_ENGINE", raising=False)
+    legacy = _run_stages(item, src)
+
+    monkeypatch.setenv("IMGSLI_ANALYSIS_ENGINE", "1")
+    launched = _run_stages(item, src)
+
+    assert set(launched) == set(legacy) | {"analysis"}
+    rebuilt = {key: value for key, value in launched.items() if key != "analysis"}
+    assert rebuilt == legacy
+    # The artifacts are the SAME enum members the aggregate returned — a rebuilt
+    # rank that produced equal-but-different values would be a silent swap.
+    for artifact, severity in legacy["artifacts"].items():
+        assert rebuilt["artifacts"][artifact] is severity
+    # And the records behind them are what the read path sees (W9).
+    assert launched["analysis"] and all(
+        record.producer == "local" for record in launched["analysis"]
+    )
+
+
+def test_flag_on_falls_back_to_the_legacy_stage_when_a_producer_raises(
     tmp_path, monkeypatch: pytest.MonkeyPatch
 ):
+    """A raising producer costs its OWN legacy call — never a missing stage."""
+    from tabs.image_gallery.analysis import runner
+    from tabs.image_gallery.services.proxy import proxy_for
+
+    item, source = _write_pair(tmp_path)
+
+    def _boom(_ctx):
+        raise RuntimeError("synthetic producer failure")
+
+    # The runner caches each producer's ``run`` after the first plan: patch the
+    # cache slot too, or an earlier test leaves the real callable in place.
+    monkeypatch.setitem(runner._RUN_FUNCS, "fidelity_reference", _boom)
+    monkeypatch.setenv("IMGSLI_ANALYSIS_ENGINE", "1")
+    calls = _seam_calls(monkeypatch)
+
+    entry = _run_stages(item, source)
+
+    assert calls.legacy == {"artifacts": 0, "camera": 0, "fidelity": 1}
+    assert set(entry) >= {"artifacts", "fidelity", "camera", "analysis"}
+    proxy = proxy_for(item)
+    source_proxy = proxy_for(source)
+    assert entry["fidelity"] == fidelity_metrics.compute_fidelity_from_images(
+        proxy.image,
+        source_proxy.image,
+        item_size=proxy.size,
+        source_size=source_proxy.size,
+    )
+    failed = {record.axis: record.status for record in entry["analysis"]}
+    assert failed["ssim"] == "error", "the failing producer must be recorded, not hidden"
+
+
+def test_flag_on_rebuilds_the_learned_keys_into_their_legacy_dicts(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+):
+    """BRISQUE belongs to the camera dict, LPIPS/DISTS to the fidelity dict.
+
+    The learned backend needs torch, so the seam is stubbed: both paths call the
+    same stub, and the rebuilt entry must still place each key in the dict the
+    legacy services put it in (``camera_metrics`` appends BRISQUE,
+    ``fidelity_metrics`` appends the pair).
+    """
+    from tabs.image_gallery.services import quality_models
+
+    monkeypatch.setattr(
+        quality_models, "pair_metrics", lambda item, src, **_kw: {"lpips": 0.31, "dists": 0.22}
+    )
+    monkeypatch.setattr(quality_models, "nr_metrics", lambda image, **_kw: {"brisque": 12.5})
     item, source = _write_pair(tmp_path)
     monkeypatch.delenv("IMGSLI_ANALYSIS_ENGINE", raising=False)
     legacy = _run_stages(item, source)
@@ -345,28 +513,100 @@ def test_flag_on_adds_only_the_analysis_records(
     monkeypatch.setenv("IMGSLI_ANALYSIS_ENGINE", "1")
     launched = _run_stages(item, source)
 
-    assert set(launched) == set(legacy) | {"analysis"}
-    assert {
-        key: value for key, value in launched.items() if key != "analysis"
-    } == legacy, "the dark-launch hook must not alter any legacy stage value"
+    assert legacy["camera"]["brisque"] == 12.5
+    assert legacy["fidelity"]["lpips"] == 0.31
+    assert legacy["fidelity"]["dists"] == 0.22
+    assert {k: v for k, v in launched.items() if k != "analysis"} == legacy
 
-    records = launched["analysis"]
-    axes = {record.axis for record in records}
-    assert axes >= set(CAMERA_AXES) | set(ARTIFACT_AXES)
-    # A source is present, so the reference producer ran too.
-    assert axes >= set(FIDELITY_AXES)
-    assert all(record.producer in {"local"} for record in records)
-    # Dark-launch values equal the legacy stage dicts the same run produced —
-    # measured axes exactly, and ALL seven artifacts exactly against the
-    # aggregate (source anchoring included; W8 closed the four-axis gap).
-    values = _ok_values(records)
-    assert {axis: values[axis] for axis in CAMERA_AXES if axis in values} == _measured(
-        legacy["camera"]
-    )
-    assert {axis: values[axis] for axis in FIDELITY_AXES if axis in values} == _measured(
-        legacy["fidelity"]
-    )
-    assert {axis: values[axis] for axis in ARTIFACT_AXES} == {
-        axis: _severity_rank(legacy["artifacts"][artifacts.Artifact(axis)])
-        for axis in ARTIFACT_AXES
+
+def test_producers_carry_the_pre_score_detector_value():
+    """``raw`` is the detector value the score came from — not a second score."""
+    image = _gradient()
+
+    records = _records(image, None, CAMERA_AXES)
+
+    measured = {record.axis: record for record in records if record.status == "ok"}
+    expected = camera_metrics.measure_camera_from_image(image)
+    assert measured, "the fixture must produce measurable camera scalars"
+    for axis, record in measured.items():
+        spec = metric_scores.spec_for(axis)
+        raw = metric_scores.raw_for(spec, expected)[1]
+        assert record.raw == raw
+        assert metric_scores.score_for(spec, record.raw) == record.value
+    # A gap is a gap: no borrowed raw value either.
+    assert all(record.raw is None for record in records if record.status == "gap")
+
+
+def _blocky_pair(size: tuple[int, int] = (1600, 1200), offset: int = 24):
+    """8x8 DCT-like blocks: a proxy decode misses the grid, the tiled one does not."""
+    import numpy as np
+    from PIL import Image
+
+    width, height = size
+    x = np.arange(width)
+    ramp = x % 8
+    bx = x // 8
+    by = np.arange(height) // 8
+    dc = ((bx[None, :] + by[:, None]) % 2) * offset
+    base = np.clip(ramp[None, :] + dc, 0, 255).astype(np.uint8)
+    return Image.fromarray(np.dstack([base, base, base]), "RGB")
+
+
+def test_flag_on_falls_back_to_the_tiled_catalog_in_full_res_mode(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+):
+    """``full_res_artifacts`` stays the tiled catalog: different pixels, not a dupe.
+
+    The dedupe must never substitute the proxy severities for the full-resolution
+    ones (the 8x8 blocking grid would vanish), so this mode rebuilds fidelity and
+    camera from records and keeps the tiled artifacts.
+    """
+    item = tmp_path / "blocky.png"
+    _blocky_pair().save(item)
+    source = tmp_path / "source.png"
+    _source_variant(_gradient(96)).save(source)
+    monkeypatch.delenv("IMGSLI_ANALYSIS_ENGINE", raising=False)
+    proxy_mode = _run_stages(item)
+    legacy = _tiled_stages(item)
+
+    monkeypatch.setenv("IMGSLI_ANALYSIS_ENGINE", "1")
+    launched = _tiled_stages(item)
+
+    assert {k: v for k, v in launched.items() if k != "analysis"} == legacy
+    assert "analysis" in launched
+    # Non-vacuity: on this fixture the tiled catalog and the proxy catalog differ,
+    # so the equality above would fail if the rebuild leaked proxy severities in.
+    assert legacy["artifacts"] != proxy_mode["artifacts"]
+
+    # With a reference the production shape is the same: fidelity comes from the
+    # records, artifacts still from the tiled store.
+    monkeypatch.delenv("IMGSLI_ANALYSIS_ENGINE", raising=False)
+    legacy_src = _tiled_stages(item, source)
+    proxy_src = _run_stages(item, source)
+
+    monkeypatch.setenv("IMGSLI_ANALYSIS_ENGINE", "1")
+    launched_src = _tiled_stages(item, source)
+
+    assert {k: v for k, v in launched_src.items() if k != "analysis"} == legacy_src
+    assert legacy_src["artifacts"] != proxy_src["artifacts"]
+
+
+def test_flag_on_same_file_pair_keeps_the_identity_fidelity(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+):
+    """A same-file pair writes identity scores in both modes (no pair call)."""
+    item, _source = _write_pair(tmp_path)
+    monkeypatch.delenv("IMGSLI_ANALYSIS_ENGINE", raising=False)
+    legacy = _run_stages(item, item)
+
+    monkeypatch.setenv("IMGSLI_ANALYSIS_ENGINE", "1")
+    launched = _run_stages(item, item)
+
+    assert legacy["fidelity"] == {
+        "ssim": 1.0,
+        "hf_ratio": 0.0,
+        "delta_e": 0.0,
+        "upscale_factor": 1,
     }
+    assert {k: v for k, v in launched.items() if k != "analysis"} == legacy
+
