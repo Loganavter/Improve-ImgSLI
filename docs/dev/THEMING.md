@@ -61,8 +61,8 @@ theme_changed: Signal()                       # no payload; subscribers re-read 
 ## Palettes (`src/resources/themes.json`)
 
 Two flat dicts of `{token_name: hex_color}`. Conventions:
-- Semantic names (`button.background`, `flyout.border`), not visual names (`gray-200`).
-- Same key set for both light and dark — if a key is missing from dark, theme switching looks broken at runtime.
+- Semantic names (`surface.button`, `flyout.border`), not visual names (`gray-200`).
+- Dark must be a **superset** of light (today dark adds `list_item.background.selected` / `list_item.icon.selected`). Extra dark keys are harmless; a key missing from dark is what makes theme switching look broken at runtime.
 - Add new tokens here, never as inline `#xxxxxx` in widgets.
 
 Loaded once at module import by `core/theme.py:load_themes()` and exposed as `LIGHT_THEME_PALETTE`, `DARK_THEME_PALETTE`.
@@ -81,27 +81,29 @@ pipeline (`paintEvent` + token reads) owns every surface:
   (near-black in the dark theme). That was the Settings sidebar "black
   substrate" bug, fixed by painting surfaces from tokens instead. Verified
   2026-08-29.
-- Surfaces paint themselves from `dialog.background`: toolkit
+- Surfaces paint themselves from `surface.background`: toolkit
   `IconListWidget`, `SidebarDialogShell`'s content area (`_SurfaceWidget`),
   and app `ThemedDialog` (every app dialog paints its own surface).
   App-side containers use `ThemedSurface`/`ThemedBackgroundContainer`
   (`src/ui/widgets/themed_surface.py`) or a small `ThemedWidget` subclass
   with a `paintEvent` fill. The same explicit-`paintEvent` pattern is the
   documented fix for any future "this surface is black" bug (see "Known Qt
-  quirk" below).
+  quirk" below). The legacy `dialog.background` key still exists and resolves
+  to the same colours, but these surfaces read `surface.background` — a
+  `set_color("dialog.background")` override does not reach them.
 - Stock `QScrollArea`s paint the raw `Window` role; scroll surfaces use the
   toolkit `SurfaceScrollArea` (Help dialog content, Find Action list,
   video-editor tab panes and timeline): token fill by default
-  (`dialog.background` — a widget-level `background-color` resolved from the
+  (`surface.background` — a widget-level `background-color` resolved from the
   token, cascades to the viewport and content and survives `QStyle::polish`
   at `show()`, same mechanism as the toolkit's
   `ScrollableDialogPage._apply_dialog_surface`), or transparent mode
   (`surface_token=None`) where the host pane already paints the surface
   (video-editor tabs). `ui.theming.tint_scroll_surface` was deleted
   2026-09-16, dead-code sweep (zero callers); hosts that cannot swap
-  classes use the token-fill / transparent modes above. Toolkit
-  `HelpDocumentView` also paints its own surface from `dialog.background`
-  (used standalone in the Image Properties dialog).
+  classes use the token-fill / transparent modes above. The retired toolkit
+  `HelpDocumentView` is gone: Help and Image Properties host a document
+  `Text` (Image Properties inside an `OverlayScrollArea`).
 - `bootstrap.py` registers no QSS; `Plugin.get_qss_paths()` was removed.
   The toolkit `ThemeManager` still ships the QSS template machinery
   (`register_qss_path`, `_scale_qss_px`) — dormant, kept for other hosts.
@@ -153,14 +155,15 @@ skipped by `suspend_widget_updates`.
 Language Apply is a text fan-out (`language_changed` → `translatable_*`), not
 QSS. Toolkit ≥ 3.1.8: workspace-page bindings use `defer_when_hidden=True` so
 stacked-away tabs (Image Compare while the session picker is up, and vice
-versa) skip updates until the next `Show`. Presenter extras
-(`do_update_*` / flyouts) are gated the same way and flushed via
-`flush_stale_workspace_language` on session switch. Do not call
-`reapply_button_styles` from the language path — polish is theme-owned.
+versa) skip updates until the next `Show`.
 
 App-side: `TabRegistry.apply_appearance` updates only the **visible**
-workspace page; hidden tabs flush on the next session switch. Session-picker
-icon SVG re-resolve is deferred off the hot path. Do not re-apply fonts from
+workspace page; hidden tabs flush on the next session switch. Presenter
+extras (`do_update_*` / flyouts) are gated the same way and flushed via
+`flush_stale_workspace_language` (`src/ui/presenters/main_window/state.py`)
+on session switch. Session-picker icon SVG re-resolve is deferred off the
+hot path. Do not call `reapply_button_styles` from the language path — polish
+is theme-owned. Do not re-apply fonts from
 `MainWindowAppearance.on_theme_changed` — fonts are theme-independent.
 
 ## Extension recipe — adding a color token
@@ -219,9 +222,9 @@ App dialogs inherit `ThemedDialog`
 (`shared_toolkit/ui/themed_dialog.py`): settings, image_properties, export,
 video_editor. Call `mark_theme_ui_ready()` after building the widget tree;
 override `on_dialog_theme_changed()` (not `on_theme_changed()`) for
-dialog-specific extras such as sidebar icon refresh or preview palette. Help
-uses toolkit `MarkdownHelpDialog`'s own `theme_changed` wiring until that
-class moves to `ThemedWidget`.
+dialog-specific extras such as sidebar icon refresh or preview palette. Help is
+a `ThemedDialog` too (`src/plugins/help/dialog.py`) and overrides
+`on_dialog_theme_changed()` for its extras.
 
 Startup surfaces (`_startup_placeholder`, `_startup_cover`, `StartupPlaceholder`)
 use `ThemedSurface` (`ui/widgets/themed_surface.py`) — same explicit-`paintEvent`
@@ -284,7 +287,7 @@ enum handles) are recorded in the contract test.
 ## See also
 
 - `src/ui/theming.py` — small facade (`install_application_theme`, `polish_themed_dialog`, `resolve_theme_color`)
-- [PLUGINS.md](PLUGINS.md) — `get_qss_paths()` plugin contribution hook
+- [PLUGINS.md](PLUGINS.md) — plugin discovery and contributions (no QSS hook: `Plugin.get_qss_paths()` was removed)
 - [UI_INSPECTOR.md](UI_INSPECTOR.md) — runtime tool for inspecting which color token a widget resolves to
 - `docs/dev/KNOWN_BUGS.md` in `improve-imgsli-internal-docs` (private) — Qt/platform quirks, including the palette/autoFillBackground issue above
 - `sli-ui-toolkit/docs/dev/DESIGN_LANGUAGE.md` — toolkit-side conventions
