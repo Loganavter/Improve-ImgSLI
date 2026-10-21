@@ -155,6 +155,14 @@ python src/devtools/help_figures.py --all --write-manifest       # record baseli
   `drift` = different hash (exit code 1), `unbaselined` = the entry has no
   recorded hash yet (reported, not drift, so a fresh recipe exits 0).
   `uncovered` recipe entries are listed after the table and are never generated.
+- **A `@screen` crop of a top-level window trims the root-window band.**
+  The window rect from `dump_ui_layout` includes the CSD shadow, and on a bare
+  X server everything outside the dialog is the root window, so the crop used to
+  bake a solid band into the figure (measured on `video_export`: 33507 dark
+  pixels, 33688 inside a 12 px border). Rows/columns that are *entirely* the
+  corner colour are trimmed, at most `SCREEN_WINDOW_MARGIN_TRIM` (24 px) per
+  side, and only for `capture: @screen` + a `window` crop element — exact colour
+  equality stops at the first differing pixel, so content is never eaten.
 - **Baselines.** `--write-manifest` records `sha256`, byte size, dimensions and
   the applied pins for what it generated. Recording needs a real display, so a
   fresh recipe stays `unbaselined` until someone runs `--all --write-manifest`

@@ -981,8 +981,60 @@ def _flatten_alpha(image):
     return background
 
 
+#: A ``@screen`` grab cropped by a window rect keeps the pixels OUTSIDE the
+#: dialog: on a bare X server that is the root window, so the crop bakes a solid
+#: band into the figure (measured on ``ru/light/video_export.jpg``: 33507 dark
+#: pixels, 33688 of them inside a 12 px border, corners (0,0,0) while the dialog
+#: edge is light). Alpha flattening cannot repair an opaque band, so trim it.
+SCREEN_WINDOW_MARGIN_TRIM = 24
+
+
+def _trim_uniform_border(image, max_px: int):
+    """Drop rows/columns that are entirely the corner colour (at most ``max_px``).
+
+    Only used for a ``@screen`` capture cropped by a window rect, where the band
+    is the X root window rather than window content. Exact colour equality, so a
+    dialog whose edge merely resembles the band is never eaten: the crop stops
+    at the first line that carries a single different pixel.
+    """
+    if max_px <= 0:
+        return image
+    rgb = image.convert("RGB")
+    pixels = rgb.load()
+    width, height = rgb.size
+    if width < 3 or height < 3:
+        return image
+    colour = pixels[0, 0]
+
+    def row_is_band(y: int) -> bool:
+        return all(pixels[x, y] == colour for x in range(width))
+
+    def column_is_band(x: int) -> bool:
+        return all(pixels[x, y] == colour for y in range(height))
+
+    top = 0
+    while top < max_px and top < height and row_is_band(top):
+        top += 1
+    bottom = 0
+    while bottom < max_px and bottom < height - top and row_is_band(height - 1 - bottom):
+        bottom += 1
+    left = 0
+    while left < max_px and left < width and column_is_band(left):
+        left += 1
+    right = 0
+    while right < max_px and right < width - left and column_is_band(width - 1 - right):
+        right += 1
+    if not (top or bottom or left or right):
+        return image
+    return image.crop((left, top, width - right, height - bottom))
+
+
 def crop_and_install(
-    screenshot: Path, destination: Path, crop: tuple[int, int, int, int] | None
+    screenshot: Path,
+    destination: Path,
+    crop: tuple[int, int, int, int] | None,
+    *,
+    trim_uniform_border: int = 0,
 ) -> Path:
     from PIL import Image
 
@@ -1001,6 +1053,8 @@ def crop_and_install(
             # Clamped, never padded: PIL pads an out-of-bounds crop with black,
             # which reads as a rendering defect in the shipped figure.
             image = image.crop((left, top, right, bottom))
+        if trim_uniform_border:
+            image = _trim_uniform_border(image, trim_uniform_border)
         destination.parent.mkdir(parents=True, exist_ok=True)
         if destination.suffix.lower() in (".jpg", ".jpeg"):
             _flatten_alpha(image).save(
@@ -1101,7 +1155,17 @@ def main(argv: list[str] | None = None) -> int:
                             for message in fixtures.errors:
                                 print(f"WARN {label} fixture: {message}", file=sys.stderr)
                     target = install_target(figure, locale, theme)
-                    crop_and_install(shot, target, crop)
+                    crop_and_install(
+                        shot,
+                        target,
+                        crop,
+                        trim_uniform_border=(
+                            SCREEN_WINDOW_MARGIN_TRIM
+                            if figure.capture == "@screen"
+                            and (figure.crop_element or {}).get("window")
+                            else 0
+                        ),
+                    )
                     print(
                         f"installed {figure.id} [{locale}/{theme}] -> "
                         f"{target.relative_to(REPO_ROOT).as_posix()}"
