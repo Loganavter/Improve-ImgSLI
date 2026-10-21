@@ -421,3 +421,41 @@ def test_zoom_burst_chain_covers_all_stages(monkeypatch):
         event["name"] for event in events if event.get("ph") == "X"
     }
     assert EXPECTED_IC_STAGES <= stage_names
+
+
+def test_submit_record_carries_a_measured_duration_not_constant_flags():
+    """V12: the submit record must state a measurement, never a constant fact.
+
+    ``_began = True; _ended = True`` used to be written into the frame bus as if
+    begin/end had been observed, so the bus reported two constants as facts for
+    every frame. The record now carries a submit duration measured around the
+    ``record_array_draw`` call; a constant (0 us on every frame regardless of
+    work) or a missing field would fail here.
+    """
+    from tabs.image_compare.canvas.rhi_renderer.renderer import RhiCanvasRenderer
+    from tabs.image_compare.canvas.rhi_renderer.use_cases.draw import submit_array_draw
+
+    renderer = RhiCanvasRenderer()
+    submit_array_draw(
+        renderer=renderer,
+        widget=SimpleNamespace(renderTarget=lambda: None),
+        command_buffer=_fake_command_buffer(),
+        array_draw_plan=[],
+        ctx=None,
+        updates=SimpleNamespace(),
+        target=SimpleNamespace(
+            pixelSize=lambda: SimpleNamespace(width=lambda: 100, height=lambda: 80)
+        ),
+        clear_color=SimpleNamespace(),
+        frame_context=renderer.frame_context,
+    )
+
+    decisions = [d for d in renderer.frame_context._decisions if d.pass_name == "submit"]
+    assert len(decisions) == 1
+    reason = decisions[0].reason
+    assert "submit_us=" in reason, f"the submit record lost its measurement: {reason!r}"
+    assert "begin=" not in reason and "end=" not in reason, (
+        f"constant begin/end flags are back in the frame bus: {reason!r}"
+    )
+    measured = int(reason.split("submit_us=")[1].split()[0])
+    assert measured >= 0
