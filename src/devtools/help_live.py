@@ -443,10 +443,12 @@ def run_steps(app: LiveClient, figure: LiveFigure, samples: Path) -> None:
 def _screen_png(app: LiveClient, out_path: Path) -> Path:
     """Whole-X-screen grab (popups included), for flyout/menu figures.
 
-    ``capture_live`` grabs one window; a toolkit flyout is a separate popup
-    window, so it is absent from that grab (measured: the menu is in
-    ``ui_elements`` while the window capture shows only chrome). The screen
-    image is 1:1 with screen coordinates, which is exactly what an element's
+    ``capture_live`` grabs one window; a toolkit flyout is an in-app
+    ``BaseFlyout`` (``Qt.Widget``) child attached to the window's overlay
+    layer, and the X ``grabWindow`` path still misses it (measured: the menu is
+    in ``ui_elements`` while the window capture shows only the chrome behind
+    it; a tab grab never includes a window-level overlay). The screen image is
+    1:1 with screen coordinates, which is exactly what an element's
     ``screen_rect`` names.
     """
     tmp = out_path.with_suffix(".xwd")
