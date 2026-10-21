@@ -521,8 +521,12 @@ class ImageCompareWidget(ThemedWidget, QWidget):
     ):
         try:
             label = self.label_rating1 if image_number == 1 else self.label_rating2
+            # The label is a plain toolkit ``Text`` (the Label/rich-text
+            # migration): HTML would be painted literally and clipped to a
+            # 30 px strip (`<b>0</b>` -> "▸0</|"). Bold is a widget property
+            # (``variant`` + ``setBold``), not markup.
             if score is not None:
-                label.setText(f"<b>{score}</b>")
+                label.setText(str(score))
             else:
                 label.setText("–")
             # Always visible (even as "–"): hiding collapses the rated-combo
