@@ -9,8 +9,8 @@ Toolkit docs usually answer the question. Read them before grepping `sli_ui_tool
 
 ## Read order (stop when enough)
 
-1. App bridge: [docs/dev/UI_TOOLKIT_LIBRARY.md](../../../docs/dev/UI_TOOLKIT_LIBRARY.md)
-2. App theming / dialogs: [docs/dev/THEMING.md](../../../docs/dev/THEMING.md), [docs/dev/DIALOGS.md](../../../docs/dev/DIALOGS.md)
+1. App bridge: [docs/dev/UI_TOOLKIT_LIBRARY.md](../../docs/dev/UI_TOOLKIT_LIBRARY.md)
+2. App theming / dialogs: [docs/dev/THEMING.md](../../docs/dev/THEMING.md), [docs/dev/DIALOGS.md](../../docs/dev/DIALOGS.md)
 3. External toolkit docs (sibling `../sli-ui-toolkit`, install path, or repo `Loganavter/sli-ui-toolkit`):
    - `docs/user/API_CATALOG.md` — full public surface
    - `docs/user/BUTTON_API.md` — buttons, regions, `group=`, checked state
@@ -28,7 +28,7 @@ ref / PyPI), the sibling — if present at all — is NOT what the app imports:
 treat the toolkit as a fixed external dependency and use its released
 docs/API only.
 
-If visuals still do not match after reading docs, run `./launcher.sh run --ui-inspector` ([docs/dev/UI_INSPECTOR.md](../../../docs/dev/UI_INSPECTOR.md)).
+If visuals still do not match after reading docs, run `./launcher.sh run --ui-inspector` ([docs/dev/UI_INSPECTOR.md](../../docs/dev/UI_INSPECTOR.md)).
 
 ## Hard rules
 
@@ -44,7 +44,7 @@ If visuals still do not match after reading docs, run `./launcher.sh run --ui-in
 | Toolkit | Generic widgets, flyouts, theme bridge, painter, `AdaptiveTabStrip`, `TopTabHost` |
 | App | `ui/flyout_policy.py`, dialog geometry (`plugins/*/layout_geometry.py`), canvas, store wiring, icons and i18n roots injected at startup |
 
-Dialog sizing recipe: [docs/dev/DIALOGS.md](../../../docs/dev/DIALOGS.md) + per-dialog `layout_geometry.py` modules.
+Dialog sizing recipe: [docs/dev/DIALOGS.md](../../docs/dev/DIALOGS.md) + per-dialog `layout_geometry.py` modules.
 
 ## When to open toolkit source
 

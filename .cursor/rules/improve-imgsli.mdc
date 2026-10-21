@@ -34,7 +34,7 @@ Runtime tracer: `docs/dev/TRACING.md` (`IMGSLI_TRACE=1`, output `~/.local/share/
 
 | Task | Start |
 |---|---|
-| Canvas / diff / magnifier | `docs/dev/QRHI_CANVAS_FEATURES.md` |
+| Canvas / diff / magnifier | `docs/dev/rendering/index.md` |
 | Export / video snapshots | `src/tabs/image_compare/services/image_export/` |
 | Help UI / topics | `docs/dev/HELP_SYSTEM.md` |
 | Toolkit buttons / flyouts | external `sli-ui-toolkit` `docs/user/BUTTON_API.md` |

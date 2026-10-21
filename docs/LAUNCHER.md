@@ -49,7 +49,7 @@ Runtime log file:
 Run one test file:
 
 ```bash
-./launcher.sh test tests/plugins/test_help_plugin.py -q
+./launcher.sh test tests/plugins/test_help_dialog_opens.py -q
 ```
 
 Run tests by keyword:
