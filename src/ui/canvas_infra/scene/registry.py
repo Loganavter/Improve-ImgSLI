@@ -67,12 +67,18 @@ class CanvasFeatureRegistry:
             ):
                 if module_info.name.startswith("_"):
                     continue
+                qualified = f"{features_pkg.__name__}.{module_info.name}.{module_name}"
                 try:
-                    module = importlib.import_module(
-                        f"{features_pkg.__name__}.{module_info.name}.{module_name}"
-                    )
-                except ModuleNotFoundError:
-                    continue
+                    module = importlib.import_module(qualified)
+                except ModuleNotFoundError as exc:
+                    # Only "this feature ships no <module_name>" is a skip. A
+                    # ModuleNotFoundError for anything else was raised *inside*
+                    # an existing module (broken transitive import) and must
+                    # propagate: silently skipping it drops the feature's
+                    # passes from every frame with no error.
+                    if exc.name == qualified:
+                        continue
+                    raise
                 yield features_pkg, module_info, module
 
     # -- widget features -------------------------------------------------

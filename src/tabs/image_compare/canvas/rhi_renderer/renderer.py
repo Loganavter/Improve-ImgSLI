@@ -62,6 +62,7 @@ from .draw_plan import (
 )
 from .residency import _TILE_CACHE_BUDGET_BYTES
 from .resources import (
+    _ARRAY_CAPACITY,
     _ARRAY_LAYER_PX,
     _LIVE_TILE_EXTENT,
     RhiResources,
@@ -125,7 +126,9 @@ class RhiCanvasRenderer:
     def __init__(self) -> None:
         self.rhi = None
         self.resources = RhiResources()
-        self.tile_service = TileTextureService()
+        # Same capacity the pool sizes its SRB-bound array from: the service
+        # must never hand out a layer `tile_arrays[0]` cannot address.
+        self.tile_service = TileTextureService(max_array_size=_ARRAY_CAPACITY)
         self.feature_passes: list[object] = []
         # Set only after every feature pass initialized successfully (see
         # initialize()). Gates the same-rhi early return on *completed* init,
@@ -221,7 +224,8 @@ class RhiCanvasRenderer:
         # as a defensive floor only — real backends support far more than
         # 2048px, so this clamp should never actually bind in practice.
         self.tile_service = TileTextureService(
-            max_tile_extent=min(_LIVE_TILE_EXTENT, query_max_texture_size(self.rhi))
+            max_tile_extent=min(_LIVE_TILE_EXTENT, query_max_texture_size(self.rhi)),
+            max_array_size=_ARRAY_CAPACITY,
         )
         self.resources.initialize(self.rhi, widget, command_buffer)
         self.glass_panel_renderer.initialize(self.rhi)

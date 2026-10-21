@@ -37,6 +37,7 @@ from engine.frame.trace_export import maybe_dump_trace
 from tabs.multi_compare.canvas.registry import registry
 from tabs.multi_compare.first_frame_debug import mc_first_frame_debug
 from tabs.multi_compare.scene.passes import RENDER_PASSES, BaseImagesPass
+from tabs.multi_compare.scene.passes.base_images import _ARRAY_CAPACITY
 from tabs.multi_compare.scene.projection import build_render_context
 from tabs.multi_compare.scene.resources import SLOT_LIVE_TILE_EXTENT
 from ui.canvas_infra.rhi.render_executor import iter_active_render_passes
@@ -94,7 +95,9 @@ class MultiCompareRhiRenderer:
         self.target = None
         self.sampler: QRhiSampler | None = None
         self.placeholder: QRhiTexture | None = None
-        self.tile_service = TileTextureService()
+        # Same capacity BaseImagesPass sizes its SRB-bound array from: the
+        # service must never hand out a layer `tile_arrays[0]` cannot address.
+        self.tile_service = TileTextureService(max_array_size=_ARRAY_CAPACITY)
         # Manifest-routed (see _manifest_base_images_pass): a fresh instance
         # owned by this renderer -- the manifest declares the class, it is
         # never shared across renderers. release() resets this instance in
@@ -190,7 +193,8 @@ class MultiCompareRhiRenderer:
         # (SLOT_LIVE_TILE_EXTENT), clamped by the backend's real max texture
         # size as a defensive floor only.
         self.tile_service = TileTextureService(
-            max_tile_extent=min(SLOT_LIVE_TILE_EXTENT, query_max_texture_size(new_rhi))
+            max_tile_extent=min(SLOT_LIVE_TILE_EXTENT, query_max_texture_size(new_rhi)),
+            max_array_size=_ARRAY_CAPACITY,
         )
 
         # Mip-capable (docs/dev/rendering/tile-array-atlas-plan.md Phase 9):
