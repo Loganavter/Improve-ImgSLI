@@ -165,7 +165,7 @@ def test_header_divider_present_and_ordered(qtbot, tmp_path):
 
 
 def test_thumbs_are_toolkit_labels_150x100(qtbot, tmp_path):
-    from sli_ui_toolkit.widgets import Label as ToolkitLabel
+    from sli_ui_toolkit.ui.widgets.atomic.text_labels import Label as ToolkitLabel  # internal: documented Label exception (queue task-text-unification-retirement-2026-10-21)
 
     owner = _make_owner(tmp_path, [str(tmp_path / f"img_{i}.jpg") for i in range(3)])
     overlay = _make_overlay(qtbot, owner)

@@ -7,7 +7,7 @@ Right: metric bars per mode (SSIM/sharpness/exposure), artifact rows with
        mini-visualizations (stub), filename meta + brief (series note, no
        counts); bottom: full-width series strip (SOURCE/viewing/pending/
        rejected thumbs clickable), bottom bar buttons.
-Public toolkit only: TopLevelInWindowOverlay, Button variant="surface", Label,
+Public toolkit only: TopLevelInWindowOverlay, Button variant="surface",
 scaled_px. No setStyleSheet — painter pipeline owns visuals.
 
 Thin-owner split (plan-gallery-split-2026-10-17, Part C2): every method body
@@ -37,7 +37,7 @@ from PySide6.QtGui import QBrush, QPainter
 from PySide6.QtWidgets import QWidget
 
 from sli_ui_toolkit.managers import scaled_px
-from sli_ui_toolkit.widgets import Label, TopLevelInWindowOverlay
+from sli_ui_toolkit.widgets import TopLevelInWindowOverlay
 
 # S4 v2 LIGHT (svg:27): modal dim-veil alpha, mirroring
 # ui/clean_review.py DIM_VEIL_ALPHA (mockup "modal veil" fill-opacity 0.45).

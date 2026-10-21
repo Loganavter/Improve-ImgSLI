@@ -16,7 +16,7 @@ from PySide6.QtCore import QSize
 from PySide6.QtWidgets import QApplication, QGraphicsOpacityEffect, QWidget
 
 from tabs.image_gallery.models import Artifact, GalleryItem, Mode, Severity
-from sli_ui_toolkit.widgets import Label as _QlLabel
+from sli_ui_toolkit.ui.widgets.atomic.text_labels import Label as _QlLabel  # internal: documented Label exception (queue task-text-unification-retirement-2026-10-21)
 from sli_ui_toolkit.widgets import Text as _QlText
 from tabs.image_gallery.ui.quick_look import (
     DIM_VEIL_ALPHA,

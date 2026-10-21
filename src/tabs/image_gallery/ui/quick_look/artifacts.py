@@ -58,7 +58,7 @@ def rebuild_artifacts(overlay, item) -> None:
     try:
         from tabs.image_gallery.ui.quick_look.helpers import _make_label
     except Exception:
-        from sli_ui_toolkit.widgets import Label as _Label
+        from sli_ui_toolkit.ui.widgets.atomic.text_labels import Label as _Label  # internal: documented Label exception (queue task-text-unification-retirement-2026-10-21)
 
         def _make_label(text="", parent=None, pixel_size=10, pt=None, **kwargs):  # type: ignore
             return _Label(text, pixel_size=pixel_size, parent=parent, **kwargs)
