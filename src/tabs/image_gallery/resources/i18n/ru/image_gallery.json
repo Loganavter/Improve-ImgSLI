@@ -375,8 +375,6 @@
       "reset_metrics_cache": "Сбросить кэш метрик",
       "unreadable": "не читается — исключено из отбора",
       "tooltip": {
-        "keep": "ОСТАВИТЬ",
-        "reject": "ОТКЛОНИТЬ",
         "defects": "дефекты: {kinds}",
         "vlm_tiebreak": "Разрешение ничьей VLM: {err}"
       }

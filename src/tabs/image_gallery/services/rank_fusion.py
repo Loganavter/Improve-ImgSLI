@@ -12,11 +12,11 @@ carries engine records (``item.analysis_records``, engine-on only — the
 default since P9a), those already-scored 0–100 values are the answer and the
 registry is consulted only on the legacy branch (``_record_scores``).
 
-Which axes are "applicable" is NOT decided here any more: it is the
-**metric profile** (``services/metric_profile``) — the mode mapping today,
-the salience-derived subset per plan P1 (``plan-adaptive-metric-profiles-
-2026-10-17``). This module delegates (``measured_axes_for``) so ranking, the
-AI scorecard, the card dots and the Jev vector read ONE axis set.
+Which axes are "applicable" is NOT decided here: it is the **metric profile**
+(``services/metric_profile``) — the mode base plus the salience-derived subset
+that ``use_cases/profile_select`` stores on the state (plan P1). This module
+delegates (``measured_axes_for``) so ranking, the AI scorecard, the card dots
+and the Jev vector read ONE axis set.
 
 Design rules (see ``plan-gallery-rank-backends-2026-10-15`` §Seam):
 

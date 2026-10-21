@@ -450,8 +450,8 @@ def _set_card_tooltip(card: Button, item: GalleryItem, translate=None) -> None:
 
     Called from BOTH build_gallery_card (fresh pooled cards) and
     update_gallery_card (rebinds) — a card must never show a stale or missing
-    tooltip. *translate* is kept for signature compatibility; the analysis/
-    verdict second line was removed (product decision).
+    tooltip. *translate* is kept for signature compatibility; the analysis
+    second line was removed (product decision).
     """
     try:
         card.setToolTip(str(item.name))

@@ -1261,16 +1261,17 @@ class GalleryController:
     # -- AI domain ranker: Jev (TypeSafe System One) -----------------------
 
     def _run_jev_ranks(self) -> None:
-        """Schedule ONE Jev rank batch on the AI domain (declared-readiness gate).
+        """Schedule ONE Jev rank batch on the AI domain (completeness + settle).
 
-        The AI domain is a durable view setting: after the measured-metrics pass
-        for a folder settles, each series with **≥2 members carrying an applicable
-        MEASURED vector** is ranked once from its complete vector. Driven from the
-        pass settle (``_settle_metrics_pass``) and the explicit domain switch —
-        the single-flight gate dedups, so a second trigger over unchanged inputs
-        is a no-op. The domain is read from the DURABLE authority
-        (``_judgment_domain``), never ``state`` (replaced by open_folder/append/
-        clear_to_empty), so a restored ``ai`` domain ranks too.
+        The AI domain is a durable view setting: the last analysis of the folder
+        generation dispatches the terminal rank pass (``analysis_batch``), and
+        each series whose members ALL carry an applicable MEASURED vector is
+        ranked once from that complete vector. The single-flight gate dedups, so
+        a second trigger over unchanged inputs is a no-op; a trigger the gate
+        refused is re-run once when the batch finishes (P1). Derived from the
+        DURABLE authority (``_judgment_domain``), never ``state`` (replaced by
+        open_folder/append/clear_to_empty), so a restored ``ai`` domain ranks
+        too.
 
         Bounded lazy-AI rule (unchanged): only series with a currently-visible
         member are picked and the count is capped, so an AI-domain switch never

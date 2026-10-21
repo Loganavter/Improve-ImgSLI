@@ -375,8 +375,6 @@
       "reset_metrics_cache": "Redefinir cache de métricas",
       "unreadable": "ilegível — excluído da triagem",
       "tooltip": {
-        "keep": "MANTER",
-        "reject": "REJEITAR",
         "defects": "defeitos: {kinds}",
         "vlm_tiebreak": "Desempate da VLM: {err}"
       }

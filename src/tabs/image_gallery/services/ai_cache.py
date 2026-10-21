@@ -59,8 +59,10 @@ AI_CACHE_VERSION = 3
 #: MISS (it answered a different question), which is the intended invalidation of
 #: the AI disk cache. Part of :func:`analysis_cache_identity`.
 #: History: v1 = the per-axis scorecard; v2 (P3) = the scorecard plus
-#: ``axis_proposals`` and no local-measurement echo in the prompt (P3-B/P3-E).
-PROMPT_SCHEMA_VERSION = 2
+#: ``axis_proposals`` and no local-measurement echo in the prompt (P3-B/P3-E);
+#: v3 (P4) = the keep/reject verdict field is gone and the assessment prose is
+#: stored as ``reason`` (plan-gallery-ai-judgement P4/D4).
+PROMPT_SCHEMA_VERSION = 3
 
 #: The identity fields that define "the same analysis". Order is the canonical
 #: JSON order. Anything else on a passed mapping (notably ``api_key``) is dropped:
@@ -308,12 +310,6 @@ def load_cached_analysis(
                 return -1
             return v if 0 <= v <= 100 else -1
 
-        try:
-            verdict = str(data.get("verdict", "unknown") or "unknown").lower()
-        except Exception:
-            verdict = "unknown"
-        if verdict not in ("keep", "reject"):
-            verdict = "unknown"
         from tabs.image_gallery.models import AiDefect
 
         defects = []
@@ -374,8 +370,7 @@ def load_cached_analysis(
             exposure=axes.get("exposure", -1),
             composition=axes.get("composition", -1),
             axes=axes,
-            verdict=verdict,
-            verdict_reason=str(data.get("verdict_reason", "") or ""),
+            reason=str(data.get("reason", "") or ""),
             defects=tuple(defects),
             confidence=float(data.get("confidence", 0.0) or 0.0),
             axis_notes={
@@ -556,8 +551,7 @@ def save_analysis(
                     "noise": result.noise,
                     "exposure": result.exposure,
                     "composition": result.composition,
-                    "verdict": result.verdict,
-                    "verdict_reason": result.verdict_reason,
+                    "reason": result.reason,
                     "defects": [
                         {"kind": d.kind, "severity": d.severity, "note": d.note}
                         for d in (result.defects or ())

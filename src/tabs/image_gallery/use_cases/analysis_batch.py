@@ -2,9 +2,9 @@
 
 plan-gallery-ai-judgement P3-A / owner decision D1.1: Jev is the TERMINAL
 calculator. He runs ONCE per series, at the settle of the series' measurements,
-on a COMPLETE matrix — never on every arriving scorecard (the old
-``_on_analysis_ready`` → ``_queue_ai_rank_on_settle`` trigger asked for a rank on
-a 3/6 and then a 5/6 matrix; live 2026-10-21 19:12).
+on a COMPLETE matrix — never on every arriving scorecard (the deleted
+per-arrival trigger asked for a rank on a 3/6 and then a 5/6 matrix; live
+2026-10-21 19:12).
 
 "Arriving" is what this module counts. :func:`begin` is called where a payload
 is actually built (``ai_analysis._begin_analysis``), :func:`end` where a result

@@ -96,7 +96,7 @@ def _cached(
         model="test/model",
         analyzed_at_iso="2026-01-01T00:00:00+00:00",
         sharpness=80,
-        verdict="keep",
+        reason="Clean.",
     )
     ai_cache.save_analysis(path, mtime_ns, result, analysis_identity_for(ctrl))
     return result

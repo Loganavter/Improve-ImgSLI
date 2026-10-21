@@ -55,7 +55,7 @@ def test_parse_response_maps_defects_to_candidate_flags_not_numbers():
         "choices": [
             {
                 "message": {
-                    "content": '{"verdict":"keep","defects":[{"kind":"halo","severity":"mild","note":"x"}]}'
+                    "content": '{"reason":"ok","defects":[{"kind":"halo","severity":"mild","note":"x"}]}'
                 }
             }
         ]

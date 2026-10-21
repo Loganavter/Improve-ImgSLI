@@ -86,7 +86,6 @@ class ContextMenuManager:
         key: object,
         on_triggered=None,
         menu_parent=None,
-        surface: ContextMenuSurface | None = None,
     ) -> ContextMenu | None:
         """Open a prebuilt entry tuple; *menu_parent* overrides the parent widget.
 
@@ -96,12 +95,6 @@ class ContextMenuManager:
         2026-10-17). Pass the enclosing overlay host (e.g.
         ``source_widget.window()``) when the source is a small content
         widget. ``surface="popup"`` is a top-level and ignores this.
-
-        *surface* overrides the app-wide RMB policy for this call only.
-        Use it for a menu that must be a real top-level popup (e.g. a
-        text-selection menu inside a dialog: an in-window child is clipped
-        to the dialog rect and cannot overflow it). Leave it unset to
-        inherit ``rmb_context_menu_surface()``.
         """
         if not entries:
             return None
@@ -113,7 +106,6 @@ class ContextMenuManager:
             on_triggered=on_triggered,
             request=None,
             menu_parent=menu_parent,
-            surface=surface,
         )
 
     def _open_menu(
@@ -126,7 +118,6 @@ class ContextMenuManager:
         on_triggered,
         request: ContextMenuRequest | None,
         menu_parent=None,
-        surface: ContextMenuSurface | None = None,
     ) -> ContextMenu | None:
         active = self._live_active_menu()
         if active is not None and active.isVisible():
@@ -148,8 +139,6 @@ class ContextMenuManager:
         surface = (
             request.surface
             if request is not None and request.surface is not None
-            else surface
-            if surface is not None
             else rmb_context_menu_surface()
         )
         parent_widget = menu_parent if menu_parent is not None else source_widget
@@ -159,8 +148,7 @@ class ContextMenuManager:
             parent_widget,
             entries=entries,
             on_triggered=on_triggered,
-            surface=surface,
-        )
+            )
         self._active_menu = menu
         menu.aboutToHide.connect(lambda: self._on_menu_hidden(menu))
         try:
@@ -225,8 +213,8 @@ class ContextMenuManager:
     def hide_active_menu(self) -> bool:
         """Hide the tracked menu (if any). Returns True when one was hidden.
 
-        A popup-surface menu is a top-level without focus, so it never
-        receives the Escape key itself; the app-level Escape handler
+        A top-level-surface menu (the gallery's popup menus) has no focus, so
+        it never receives the Escape key itself; the app-level Escape handler
         closes it through this method (2026-10-21).
         """
         active = self._live_active_menu()
@@ -338,7 +326,6 @@ def open_context_menu_entries(
     key: object,
     on_triggered=None,
     menu_parent=None,
-    surface: ContextMenuSurface | None = None,
 ) -> ContextMenu | None:
     return get_context_menu_manager().open_entries(
         source_widget=source_widget,
@@ -347,7 +334,6 @@ def open_context_menu_entries(
         key=key,
         on_triggered=on_triggered,
         menu_parent=menu_parent,
-        surface=surface,
     )
 
 

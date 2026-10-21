@@ -197,7 +197,7 @@ def _backend(effort: str = "auto"):
 
 def _scorecard(**axes: int) -> str:
     """A well-formed model reply: the ``axes`` object the prompt asks for."""
-    return json.dumps({"axes": dict(axes), "verdict": "keep", "reason": "clean"})
+    return json.dumps({"axes": dict(axes), "reason": "clean"})
 
 
 ALPHA = """

@@ -114,8 +114,8 @@ def build_request_from_bytes(
         # prompt (plan-gallery-ai-judgement P3-E): the local numbers for an axis
         # the model is asked to judge are an echo, not an independent read.
         text = attach_measured_context(prompt, block, mode=mode, profile=profile)
-    # Steer the prose fields (verdict reason / defect notes) into the current
-    # UI language; the JSON envelope itself is unchanged.
+    # Steer the prose fields (the assessment reason / defect notes) into the
+    # current UI language; the JSON envelope itself is unchanged.
     text = f"{text}\n{language_directive()}"
     resolved_effort = _resolve_effort(reasoning_effort)
     payload: dict = {

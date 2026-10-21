@@ -42,18 +42,6 @@ def _parse_score(value) -> int:
     except Exception:
         return -1
 
-def _parse_verdict(value) -> str:
-    """Normalize to keep | reject | unknown."""
-    try:
-        v = str(value).strip().lower()
-    except Exception:
-        return "unknown"
-    if v.startswith("keep"):
-        return "keep"
-    if v.startswith("reject"):
-        return "reject"
-    return "unknown"
-
 def _parse_confidence(value) -> float:
     try:
         return max(0.0, min(1.0, float(value)))
@@ -234,7 +222,7 @@ def _parse_axis_proposals(value):
     return parse_proposals(value)
 
 _LEGACY_LINE_RE = re.compile(
-    r"^\s*(DESCRIPTION|TAGS|VERDICT|SHARPNESS|NOISE|EXPOSURE|COMPOSITION|REASON)\s*:",
+    r"^\s*(DESCRIPTION|TAGS|SHARPNESS|NOISE|EXPOSURE|COMPOSITION|REASON)\s*:",
     re.IGNORECASE,
 )
 
@@ -255,11 +243,11 @@ def _looks_like_legacy_lines(content: str) -> bool:
     return hits == len(lines)
 
 def _parse_lines(content: str, model: str) -> AiAnalysisResult:
-    """Legacy line-order fallback (DESCRIPTION/TAGS/VERDICT lines)."""
+    """Legacy line-order fallback (DESCRIPTION/TAGS/REASON lines)."""
     description = content.strip()
     tags: tuple[str, ...] = ()
     sharpness = noise = exposure = composition = -1
-    verdict, reason = "unknown", ""
+    reason = ""
     for line in content.splitlines():
         line = line.strip()
         upper = line.upper()
@@ -276,8 +264,6 @@ def _parse_lines(content: str, model: str) -> AiAnalysisResult:
             exposure = _parse_score(line.split(":", 1)[1])
         elif upper.startswith("COMPOSITION:"):
             composition = _parse_score(line.split(":", 1)[1])
-        elif upper.startswith("VERDICT:"):
-            verdict = _parse_verdict(line.split(":", 1)[1])
         elif upper.startswith("REASON:"):
             reason = line.split(":", 1)[1].strip()
     axes = {
@@ -299,8 +285,7 @@ def _parse_lines(content: str, model: str) -> AiAnalysisResult:
         noise=noise,
         exposure=exposure,
         composition=composition,
-        verdict=verdict,
-        verdict_reason=reason,
+        reason=reason,
         axes=axes,
     )
 
@@ -315,8 +300,8 @@ def merge_samples(results) -> AiAnalysisResult:
       wild draw cannot decide a variant);
     - a PROPOSED axis survives only when at least half the samples proposed it
       (a one-off invention is not a dimension), its score the median too;
-    - ``verdict``/``reason``/``defects``/axis notes come from the FIRST sample —
-      they are prose about the picture, not a measurement to average;
+    - ``reason``/``defects``/axis notes come from the FIRST sample — they are
+      prose about the picture, not a measurement to average;
     - ``confidence`` is the median.
 
     An empty sequence returns the caller's single result unchanged (k=1 never
@@ -393,8 +378,7 @@ def merge_samples(results) -> AiAnalysisResult:
         noise=axes.get("noise", -1),
         exposure=axes.get("exposure", -1),
         composition=axes.get("composition", -1),
-        verdict=head.verdict,
-        verdict_reason=head.verdict_reason,
+        reason=head.reason,
         defects=head.defects,
         confidence=round(confidence / 100.0, 2),
         axis_notes=dict(head.axis_notes or {}),
@@ -480,8 +464,7 @@ def parse_response(raw: dict, *, model: str) -> AiAnalysisResult:
         noise=axes.get("noise", -1),
         exposure=axes.get("exposure", -1),
         composition=axes.get("composition", -1),
-        verdict=_parse_verdict(obj.get("verdict", "")),
-        verdict_reason=str(obj.get("reason", "") or "").strip(),
+        reason=str(obj.get("reason", "") or "").strip(),
         defects=defects,
         confidence=_parse_confidence(obj.get("confidence")),
         axis_notes=_parse_axis_notes(obj.get("axis_notes")),

@@ -6,10 +6,11 @@ only the *active subset* varies — so the local detectors, the VLM scorecard,
 the rank fusion, the card dots and the Quick Look rows all speak ONE
 vocabulary (``plan-adaptive-metric-profiles-2026-10-17`` §General model).
 
-Today the profile is exactly the mode mapping (``profile_for_mode``); P1
-derives it per context from a salience pre-analysis
-(``use_cases/profile_select``) — this module stays the single definition of
-"what the pool is" and "which axes a mode implies".
+Today the profile is derived by P1's salience producer
+(``use_cases/profile_select``, stored on ``state.metric_profile`` by
+``controller.refresh_metric_profile``): the mode base plus the axes whose
+spread in THIS series clears the floor — this module stays the single
+definition of "what the pool is" and "which axes a mode implies".
 
 The named metric domains (a manual "pin" that replaced the derived axis set)
 were deleted with the stats-strip chip that selected them (owner decision
@@ -135,9 +136,14 @@ def axis_spreads(items) -> dict[str, float]:
     ``raw_for`` → ``score_for`` score. The record is already 0–100, so it is used
     as-is. A record that is not ``ok`` (``gap``/``error``) **excludes** the item
     from that axis — never 0, and never backfilled from ``item.metrics`` (the
-    engine ran and had nothing, which is a different fact). The ONE spread
-    implementation: the P1 salience pass reads it, so "what moves" has a single
-    definition.
+    engine ran and had nothing, which is a different fact).
+
+    The ONE spread over ITEM metrics: the P1 adaptive-profile derivation
+    (``profile_select.salience_axes``) reads it to decide which axes the series
+    is measured on at all. It is NOT the rank's salience measurement: the rank /
+    Jev vector / rows ask a different question — "does this axis separate these
+    variants under the producing INSTRUMENT's noise floor" — over the per-member
+    vectors, and that answer lives in ``rank_fusion.axis_salience``.
     """
     # Deferred import: ``rank_fusion`` imports this module at load time, so a
     # module-level import would be circular. One reader of the records

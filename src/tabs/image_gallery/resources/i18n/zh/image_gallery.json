@@ -375,8 +375,6 @@
       "reset_metrics_cache": "重置指标缓存",
       "unreadable": "无法读取 — 已排除在筛选之外",
       "tooltip": {
-        "keep": "保留",
-        "reject": "拒绝",
         "defects": "缺陷：{kinds}",
         "vlm_tiebreak": "VLM 决胜：{err}"
       }

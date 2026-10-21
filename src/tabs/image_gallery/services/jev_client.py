@@ -92,7 +92,8 @@ JEV_REASON_EMPTY = "AI (Jev): nothing to rank"
 #: A vector that does not score EVERY member of the series: a rank built from it
 #: would place a member that was never scored (live 2026-10-21: the last VLM
 #: score arrived during the rank and ``img_6`` was ranked anyway). Benign — the
-#: caller keeps the Algorithms rank; the next arriving score re-triggers.
+#: caller keeps the Algorithms rank and the terminal dispatch re-runs on the
+#: complete matrix (``analysis_batch`` / the P1 refused-fingerprint re-run).
 JEV_REASON_INCOMPLETE = "AI (Jev): the series is incomplete — kept the Algorithms rank"
 JEV_REASON_NOUL = "AI (Jev) abstained (Noul) — kept the Algorithms rank"
 JEV_REASON_LOW_CONFIDENCE = "AI (Jev) was not confident enough — kept the Algorithms rank"
@@ -101,7 +102,8 @@ JEV_REASON_MALFORMED = "AI (Jev) returned an unusable response — kept the Algo
 
 #: Degrade reasons that are a genuine FAULT, not a benign non-answer: a transport
 #: error or an unconfigured client (plan §J1.4). A fault paints the per-card error
-#: chip and keeps the readiness gate retryable (``ok=False``); a benign non-answer
+#: chip and releases the stage gate as not-ok (``ok=False``), so the same
+#: fingerprint stays retryable; a benign non-answer
 #: (``Noul`` / low confidence / nothing to rank / malformed) clears the activity
 #: and records completion — malformed is a deterministic "no usable answer", not
 #: a transport fault, so it must not re-introduce the mass false-error chip.
@@ -317,7 +319,7 @@ def _request_from_vector(vector: dict) -> dict:
     """The chat/completions body for a prebuilt measured vector (one shape).
 
     Split out so :func:`rank_series_jev_detailed` can build the vector ONCE
-    (readiness check + payload) and the contract shape is defined in a single
+    (completeness check + payload) and the contract shape is defined in a single
     place — the payload test and the wire call cannot drift.
     """
     text = json.dumps(vector, sort_keys=True, separators=(",", ":"))

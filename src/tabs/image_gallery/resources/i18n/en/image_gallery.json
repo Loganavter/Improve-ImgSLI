@@ -258,8 +258,6 @@
       "reset_metrics_cache": "Reset metrics cache",
       "unreadable": "unreadable — excluded from triage",
       "tooltip": {
-        "keep": "KEEP",
-        "reject": "REJECT",
         "defects": "defects: {kinds}",
         "vlm_tiebreak": "VLM tie-break: {err}"
       }

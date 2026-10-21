@@ -11,25 +11,25 @@
   suppress the in-button digit, so the same number appeared twice and hover
   looked like a separate mode.
 
-### Fixed
-
-- **The text context menu is a real popup, and opening it no longer wipes the
-  text selection.** The help-page and image-properties text menus were opened
-  through the app-wide RMB policy (`in_window`), so they were plain child
-  widgets of the dialog: clipped to the dialog rect and unable to overflow it.
-  Both now open as a native top-level popup, parented to the **document**
-  (a content widget — a `Qt.Popup` parented to the top-level breaks that
-  window's compositing on Wayland, see `inv-2026-10-06-ql-rhi-menu-first`);
-  the popup transient-parents to the dialog and sits at the click point.
-  `ContextMenuManager.open_entries`/`open_context_menu_entries` gained an
-  optional per-call `surface=` override for this; the app-wide policy is
-  unchanged (the gallery ask-ai sequence still needs `in_window`).
-  A popup-surface menu is a top-level without focus, so it never sees the
-  Escape key itself — the app-level Escape handler now also closes the
-  manager's active menu. The selection half of the report (the right-press
-  collapsing the selection, so every copy row came up disabled) was a
-  toolkit bug and is fixed there: `sli-ui-toolkit` PR for
-  `ui/widgets/text/engine/events.py`.
+- **The text context menu keeps the text selection, and stays a visible
+  in-window menu.** Two reported symptoms in one menu: opening it wiped the
+  text selection (so every copy row came up disabled) and the menu was not a
+  "real" top-level popup. The selection half is a **toolkit** bug and is
+  fixed there: the document canvas treated *every* mouse press as the start
+  of a selection gesture, so the right-press that opens the menu re-anchored
+  the selection to a caret; non-left buttons are now ignored (toolkit PR:
+  `ui/widgets/text/engine/events.py`). The popup half was tried and
+  **reverted**: on Wayland/Mutter a `Qt.Popup`-surface `ContextMenu` gets a
+  `wl_surface` with **no compositor role** (neither an `xdg_popup` nor a
+  subsurface), so the compositor never composites it — the menu is painted
+  (its buffer reaches the server) but nothing appears, and the host window's
+  drawing is disturbed. Proof: a `WAYLAND_DEBUG` trace of the live app shows
+  the menu's surface created with only a viewport and never given an
+  `xdg_surface`, while the dialog and the main window get theirs. Both text
+  menus therefore stay on the app-wide RMB surface (`in_window`), i.e. a
+  child overlay of the dialog, which is always visible. A top-level-surface
+  menu has no focus, so it never sees the Escape key itself — the app-level
+  Escape handler now also closes the manager's active menu.
 
 ### Changed
 

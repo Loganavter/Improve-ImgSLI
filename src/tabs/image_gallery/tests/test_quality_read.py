@@ -101,7 +101,7 @@ def test_ai_read_survives_parse_to_read_with_distinct_values():
                         {
                             "axes": {"sharpness": 11, "noise": 22, "exposure": 33},
                             "composition": 44,
-                            "verdict": "keep",
+                            "reason": "clean",
                         }
                     )
                 }

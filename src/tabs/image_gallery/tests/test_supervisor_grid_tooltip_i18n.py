@@ -3,7 +3,7 @@
 ``_refresh_tooltip`` rebuilds the grid card tooltip from
 ``analysis_tooltip_lines`` at five call sites (rebuild, pool recycle, selection,
 update, sweep). It passed no translator, so every one of those paths rendered
-``KEEP — …`` / ``defects: …`` in English and overwrote the localized tooltip
+``defects: …`` in English and overwrote the localized tooltip
 ``_set_card_tooltip`` had written. The list view was already localized — only
 the grid was not.
 """
@@ -18,15 +18,13 @@ from tabs.image_gallery.widget import ImageGalleryWidget
 
 def _analysis():
     return SimpleNamespace(
-        verdict="reject",
-        verdict_reason="too soft",
+        reason="too soft",
         defects=[SimpleNamespace(kind="over_smoothing"), SimpleNamespace(kind="chroma_fringing")],
     )
 
 
 def _ru_tr(key: str, default: str) -> str:
     return {
-        "image_gallery.card.tooltip.reject": "ОТКЛОН",
         "image_gallery.card.tooltip.defects": "дефекты",
     }.get(key, default)
 
@@ -34,8 +32,8 @@ def _ru_tr(key: str, default: str) -> str:
 def test_grid_card_tooltip_is_the_file_name_only(qtbot) -> None:
     """The grid card tooltip is a SINGLE line — the full file name.
 
-    Product decision: the analysis/verdict second line was removed, so the
-    tooltip must never carry a verdict/defect line (in any language)."""
+    Product decision: the analysis second line was removed, so the tooltip
+    must never carry an assessment/defect line (in any language)."""
     w = ImageGalleryWidget()
     qtbot.addWidget(w)
     w.resize(1000, 700)
@@ -56,7 +54,7 @@ def test_grid_card_tooltip_is_the_file_name_only(qtbot) -> None:
 
     assert tip == "sup_tip.png", f"tooltip must be the file name only: {tip!r}"
     assert "\n" not in tip, f"tooltip must be single-line: {tip!r}"
-    assert "ОТКЛОН" not in tip and "REJECT" not in tip, tip
+    assert "ОТКЛОН" not in tip and "REJECT" not in tip and "дефекты" not in tip, tip
 
     # The sweep path writes the same single line.
     w._refresh_rebuilt_cards([item], sweep=True)

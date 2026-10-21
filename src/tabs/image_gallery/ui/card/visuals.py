@@ -291,11 +291,15 @@ def vlm_tiebreak_tooltip_line(translate, err) -> str:  # type: ignore[no-untyped
 
 
 def analysis_tooltip_lines(analysis, translate=None) -> list[str]:
-    """Verdict + defect summary lines for a card tooltip.
+    """Assessment + defect summary lines for a card tooltip.
 
-    The gallery reports quality, not scene content: a card tooltip shows
-    the keep/reject verdict with its reason and the defect kinds — never
-    the (variant-identical) scene description or content tags.
+    The gallery reports quality, not scene content: a card tooltip shows the
+    model's practical read (``reason``) and the defect kinds — never the
+    (variant-identical) scene description or content tags.
+
+    The ``KEEP``/``REJECT`` pill that used to open this list was deleted
+    (plan-gallery-ai-judgement P4 / owner decision D4): six of six live
+    scorecards answered "keep", so the label carried no information.
 
     *translate* is the tab translator ``(key, default) -> str``; None keeps
     the English wording (standalone callers / no-context tests).
@@ -303,17 +307,9 @@ def analysis_tooltip_lines(analysis, translate=None) -> list[str]:
     out: list[str] = []
     if analysis is None:
         return out
-    verdict = str(getattr(analysis, "verdict", "unknown") or "unknown")
-    reason = str(getattr(analysis, "verdict_reason", "") or "")
-    if verdict in ("keep", "reject"):
-        out.append(
-            _tooltip_text(
-                translate,
-                f"image_gallery.card.tooltip.{verdict}",
-                verdict.upper(),
-            )
-            + (f" — {reason}" if reason else "")
-        )
+    reason = str(getattr(analysis, "reason", "") or "")
+    if reason:
+        out.append(reason)
     kinds = [
         str(getattr(d, "kind", "")).replace("_", " ")
         for d in (getattr(analysis, "defects", ()) or ())

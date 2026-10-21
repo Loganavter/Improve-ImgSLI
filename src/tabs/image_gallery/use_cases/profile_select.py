@@ -61,8 +61,12 @@ def salience_axes(items) -> tuple[tuple[str, float], ...]:
     sort over a pool-ordered build, so the result is deterministic and
     independent of input order and dict iteration.
 
-    The measurement itself lives in ``metric_profile.axis_spreads`` (ONE
-    implementation: the P4 domain choice reads the same numbers).
+    The measurement itself lives in ``metric_profile.axis_spreads`` over the
+    items' metrics — the adaptive-profile question ("which axes is this series
+    measured on at all"). The rank's salience (which axis is allowed to ORDER
+    these variants, against the producing instrument's noise floor) is
+    ``rank_fusion.axis_salience`` over the per-member vectors; the two read the
+    same registry but answer different questions.
     """
     spreads = axis_spreads(items)
     out = [(axis_id, spreads[axis_id]) for axis_id in MEASURED_POOL if axis_id in spreads]

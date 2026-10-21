@@ -307,7 +307,7 @@ def test_reanalyze_bypasses_cache_and_starts_worker(tmp_path, monkeypatch):
         AiAnalysisResult(
             description="old", tags=(), model="m", analyzed_at_iso="t",
             sharpness=10, noise=10, exposure=10, composition=10,
-            verdict="reject", verdict_reason="old",
+            reason="old",
         ),
         ai_cache.analysis_cache_identity(AiSettings(model="m"), mode="camera"),
     )

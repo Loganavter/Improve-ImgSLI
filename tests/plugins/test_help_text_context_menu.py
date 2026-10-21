@@ -23,16 +23,18 @@ def _help_tabs_discovered():
     clear_help_tree_cache()
 
 
-def test_help_text_context_menu_is_a_popup_top_level(qtbot):
-    """The text-selection menu is a REAL top-level popup.
+def test_help_text_context_menu_stays_an_in_window_child(qtbot):
+    """The text-selection menu is an in-window child of the dialog.
 
-    Falsification: an in-window menu is a plain child widget of the dialog —
-    clipped to the dialog rect, unable to overflow it, and not a native menu.
-    It is parented to the DOCUMENT (a content widget), never to the
-    top-level dialog: a Qt.Popup parented to the top-level breaks that
-    window's compositing on Wayland (inv-2026-10-06-ql-rhi-menu-first).
+    Falsification: opting this menu out to a native ``Qt.Popup`` top-level
+    ("a real popup") breaks it on Wayland/Mutter - the popup's wl_surface
+    gets NO compositor role (no xdg_surface, no subsurface), so the
+    compositor never composites it: the menu is painted but nothing appears,
+    and the host window's drawing is disturbed (live report 2026-10-21; the
+    protocol proof lives in internal-docs). An in-window child is drawn into
+    the dialog's own surface and is always visible.
     """
-    dialog = HelpDialog(current_language="en", app_name="Improve-ImgSLI")
+    dialog = HelpDialog(current_language="en", app_name="Improve ImgSLI")
     qtbot.addWidget(dialog)
     dialog.resize(880, 620)
     dialog.show()
@@ -51,10 +53,11 @@ def test_help_text_context_menu_is_a_popup_top_level(qtbot):
     menu = get_context_menu_manager()._active_menu
     assert menu is not None
     assert menu.isVisible()
-    assert menu._surface == "popup"
-    assert menu.isWindow()
-    # parented to the document (content widget), NOT the top-level dialog
-    assert menu._logical_parent is dialog._document
+    # the app-wide RMB policy, not a per-call popup opt-out
+    assert menu._surface == "in_window"
+    assert not menu.isWindow()
+    # a child of the dialog: drawn into the dialog's own surface
+    assert menu._logical_parent is dialog
     menu.hide()
 
 

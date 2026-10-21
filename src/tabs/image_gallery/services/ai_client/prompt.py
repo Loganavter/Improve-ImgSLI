@@ -161,7 +161,7 @@ def build_prompt(mode=None, *, profile=None, measured_block: str = "") -> str:
         _PROMPT_CORE
         + "Reply with ONLY a JSON object, no prose and no code fences:\n"
         + '{"axes": {' + (axis_parts or '"<axis_id>": <0-100>') + "}, "
-        + '"verdict": "keep|reject", "reason": "practical assessment", '
+        + '"reason": "practical assessment", '
         '"defects": [{"kind": "halo|banding|blocking|chroma_fringing|noise|'
         'over_smoothing|invented_texture|clipping|other", '
         '"severity": "mild|flagged", "note": "short visual description"}], '

@@ -11,7 +11,7 @@ gets label + raw + score + direction so the model reasons over measured
 facts instead of re-estimating.
 
 Only measured axes are listed here; model-only judgements (composition,
-subjective defects, verdict) stay with the caller.
+subjective defects) stay with the caller.
 """
 
 from __future__ import annotations
