@@ -329,32 +329,32 @@ def test_space_also_activates_the_close_button(qtbot, tmp_path) -> None:
     assert not overlay.isVisible(), "Space on ✕ must dismiss Quick Look"
 
 
-def test_prev_next_stay_click_only_cursor_steps(qtbot, tmp_path) -> None:
-    """``‹``/``›`` are NoFocus but still step the preview's focus ring on click.
+def test_prev_next_are_click_only_prev_next(qtbot, tmp_path) -> None:
+    """``‹``/``›`` are NoFocus but a CLICK walks the series (prev/next).
 
-    Left/Right already move the ring (``nav_section.move_strip_focus``), so the
-    circles are a mouse duplicate of that movement, not a second cursor — the
-    written decision is "NoFocus, the arrows own the movement".
+    NoFocus keeps the Tab ring on the declared rows. The click itself must
+    change the picture: a ring step is invisible to a mouse user (no ``Enter``
+    step exists for them), and the ql-nav-rows wiring (#381) additionally
+    dropped the ring onto the bare overlay — live 2026-10-22, "the edge arrows
+    click but the image does not change".
 
     Falsified by: dropping the NoFocus decision (they become unowned Tab stops)
-    or by removing the ``clicked`` hookup while making them NoFocus (a dead
-    button).
+    or by a click that leaves ``_current_idx`` untouched (a dead button).
     """
     overlay, items = _open(qtbot, tmp_path, current=2)
     assert overlay._prev_btn.focusPolicy() == Qt.FocusPolicy.NoFocus
     assert overlay._next_btn.focusPolicy() == Qt.FocusPolicy.NoFocus
     assert overlay._prev_btn.isEnabled() and overlay._next_btn.isEnabled()
-    assert QApplication.focusWidget() is nav.thumb_for_path(overlay, str(items[2].path))
 
     overlay._next_btn.clicked.emit()
-    QApplication.processEvents()
-    assert QApplication.focusWidget() is nav.thumb_for_path(overlay, str(items[3].path))
-    assert overlay._current_idx == 2, "a circle press moves the ring, never the picture"
+    QTest.qWait(10)
+    assert overlay._current_idx == 3, "a circle click must show the next item"
+    assert overlay._current_item.path == items[3].path
 
     overlay._prev_btn.clicked.emit()
-    QApplication.processEvents()
-    assert QApplication.focusWidget() is nav.thumb_for_path(overlay, str(items[2].path))
-    assert overlay._current_idx == 2
+    QTest.qWait(10)
+    assert overlay._current_idx == 2, "a circle click must show the previous item"
+    assert overlay._current_item.path == items[2].path
     overlay.hide()
 
 

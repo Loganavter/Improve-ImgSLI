@@ -56,6 +56,39 @@ def eventFilter(self, watched, event) -> bool:  # noqa: N802
     try:
         from PySide6.QtCore import QEvent
 
+        # W12: an arrow press is a WALK wherever it lands inside the circle.
+        # The ‹/› circles sit half outside the card, over content descendants
+        # and the ring band; the base overlay's press handling swallowed the
+        # press before the toolkit Button saw it (live 2026-10-22: only the
+        # outermost ~6px of the 36px circle clicked, the rest changed nothing).
+        # The filter is installed on the circles too (``nav.reposition_nav_buttons``)
+        # and consumes the press here, so the walk happens exactly once; the
+        # buttons' own ``clicked`` then covers keyboard activation only.
+        if event.type() == QEvent.Type.MouseButtonPress:
+            try:
+                from PySide6.QtCore import Qt as _Qt4
+
+                if event.button() == _Qt4.MouseButton.LeftButton:
+                    from tabs.image_gallery.ui.quick_look.helpers import (
+                        _walk_for_nav_button as _wfnb4,
+                    )
+                    from tabs.image_gallery.ui.quick_look.helpers import (
+                        nav_button_at as _nba4,
+                    )
+
+                    try:
+                        _gp = event.globalPosition().toPoint()
+                    except Exception:
+                        _gp = None
+                    if _gp is not None:
+                        _hit = _nba4(self, self.mapFromGlobal(_gp))
+                        if _hit is not None:
+                            _wfnb4(self, _hit)
+                            event.accept()
+                            return True
+            except Exception:
+                pass
+
         _watched_content = getattr(self, "_content", None)
         if event.type() == QEvent.Type.ChildAdded and (
             watched is _watched_content

@@ -386,23 +386,63 @@ def test_the_cursor_is_the_focus_ring_not_a_painted_marker(qtbot, tmp_path) -> N
     overlay.hide()
 
 
-def test_move_strip_focus_is_the_circle_handler(qtbot, tmp_path) -> None:
-    """The ‹/› circles step the same ring (focus movement, not a re-bind)."""
-    overlay, items = _open(qtbot, tmp_path)
-    assert nav.move_strip_focus(overlay, 1) is True
-    assert QApplication.focusWidget() is nav.thumb_for_path(overlay, str(items[3].path))
-    assert overlay._current_idx == 2, "a circle press must not re-bind the picture"
-    assert nav.move_strip_focus(overlay, -1) is True
-    assert QApplication.focusWidget() is nav.thumb_for_path(overlay, str(items[2].path))
+def test_a_press_anywhere_on_the_circle_walks(qtbot, tmp_path) -> None:
+    """W12: the whole 36px circle walks, not just its outermost sliver.
 
-    # From the action row the circles put the ring back on the shown item.
-    # From the action row the circles put the ring back on the strip first (the
-    # item on screen) and then step from there — the ring, never the picture.
-    _press(Qt.Key.Key_Down)
-    assert overlay._action_bar.isAncestorOf(QApplication.focusWidget())
-    assert nav.move_strip_focus(overlay, 1) is True
-    assert QApplication.focusWidget() is nav.thumb_for_path(overlay, str(items[3].path))
-    assert overlay._current_idx == 2, "a circle press must never re-bind the picture"
+    Live 2026-10-22: only the ~6px of ``‹``/``›`` outside the content answered
+    a click; a press on the inner half was swallowed before the toolkit
+    ``Button`` saw it, so the picture never changed ("the edge arrows click but
+    the image does not change"). The overlay filters the circle's own presses
+    (``overlay_parts/filters.py``) and walks the series.
+
+    Falsified by: dropping the overlay filter install in
+    ``nav.reposition_nav_buttons`` — presses at x ≥ 8 then reach no walk.
+    """
+    from PySide6.QtCore import QPoint
+    from PySide6.QtTest import QTest
+
+    overlay, items = _open(qtbot, tmp_path)
+    btn = overlay._next_btn
+    assert btn.isEnabled()
+    for dx in (2, 10, 18, 30):
+        before = overlay._current_idx
+        QTest.mouseClick(btn, Qt.MouseButton.LeftButton, pos=QPoint(dx, 18))
+        QTest.qWait(10)
+        assert overlay._current_idx == (before + 1) % len(items), (
+            f"a press at x={dx} inside the circle did not walk the series"
+        )
+    overlay.hide()
+
+
+def test_circle_click_walks_the_series_and_pins_the_ring(qtbot, tmp_path) -> None:
+    """The ‹/› circles are prev/next: a click re-binds the picture.
+
+    The ql-nav-rows wave (#381) wired them to a ring step; a mouse has no
+    ``Enter`` step, so that made them a dead control (live 2026-10-22: click
+    changed no picture and dropped the keyboard ring onto the bare overlay).
+    The click path is the same ``_walk`` seam the ring/plate fall-through
+    press uses.
+
+    Falsified by: a circle click leaving ``_current_idx`` untouched, or the
+    ring not following the picture the panel now shows.
+    """
+    from PySide6.QtTest import QTest
+
+    overlay, items = _open(qtbot, tmp_path)
+    assert overlay._current_idx == 2
+    overlay._next_btn.clicked.emit()
+    QTest.qWait(10)
+    assert overlay._current_idx == 3, "a circle click must re-bind the picture"
+    assert overlay._current_item.path == items[3].path
+    assert QApplication.focusWidget() is nav.thumb_for_path(overlay, str(items[3].path)), (
+        "the ring must follow the picture the click showed"
+    )
+
+    overlay._prev_btn.clicked.emit()
+    QTest.qWait(10)
+    assert overlay._current_idx == 2
+    assert overlay._current_item.path == items[2].path
+    assert QApplication.focusWidget() is nav.thumb_for_path(overlay, str(items[2].path))
     overlay.hide()
 
 
@@ -570,4 +610,3 @@ def test_closing_the_panel_leaves_the_navigation_graph(qtbot, tmp_path) -> None:
     QApplication.processEvents()
     assert nav.section_of(overlay) is None
     assert not any(owner is overlay for owner, _spec in manager._sections)
-    assert nav.move_strip_focus(overlay, 1) is False, "a closed panel navigates nothing"
