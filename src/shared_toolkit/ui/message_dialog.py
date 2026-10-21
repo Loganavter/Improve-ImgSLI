@@ -16,7 +16,8 @@ from shared_toolkit.ui.themed_dialog import ThemedDialog
 from sli_ui_toolkit.managers import scaled_px
 from sli_ui_toolkit.theme import ThemeManager
 from sli_ui_toolkit.ui.managers.ui_font import paint_font
-from sli_ui_toolkit.widgets import Button, CheckBox, Label
+from sli_ui_toolkit.ui.widgets.atomic.text_labels import Label  # internal: documented Label exception (queue task-text-unification-retirement-2026-10-21)
+from sli_ui_toolkit.widgets import Button, CheckBox
 from ui.theming import resolve_theme_color
 from utils.resource_loader import resource_path
 

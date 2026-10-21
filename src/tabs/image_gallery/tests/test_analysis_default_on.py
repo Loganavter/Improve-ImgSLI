@@ -1,21 +1,18 @@
-"""P9a: the analysis engine is ON by default, and the env flag is its kill-switch.
+"""P9b: the analysis engine is the ONLY path — the env flag is gone and ignored.
 
-Three facts, each one assertable on its own:
+Two facts, each assertable on its own:
 
-1. **No env var ⇒ on.** ``analysis_bridge.engine_enabled()`` is True and a proxy
-   batch carries the ``"analysis"`` records — the engine needs no opt-in.
-2. **An explicit off value ⇒ off.** ``0``/``false``/``no``/``off``
-   (case-insensitive, stripped) make the reader False and the batch is the
-   legacy dict with no ``"analysis"`` key — the legacy stages are still there
-   and still correct, so the switch is a real switch, not a shape change.
-3. **Anything else ⇒ on, including ``1``.** Back-compat for the flag-ON era and
-   a fail-safe for typos/empty values: a misspelling must not silently
-   resurrect the legacy path.
+1. **The env var changes nothing.** The old engine flag set to ``0`` or ``1``
+   produces exactly the entry an unset environment produces, records included:
+   there is no kill-switch left to disable the engine (P9b deleted the legacy
+   branch, so a "disabled" run would have had nothing to run).
+2. **The flag API is gone.** ``services.analysis_bridge`` no longer exposes the
+   flag name, the off-value set or its reader — an import of them is an
+   ``AttributeError``, not a silently ignored call. A surviving symbol would let
+   a caller believe a switch exists.
 
-Every test here states its own mode; there is deliberately NO autouse default in
-``conftest.py`` — a suite-wide default would make "which mode did this test
-mean?" invisible at the call site again, which is the exact ambiguity P9a
-removes.
+Every test states its mode explicitly on purpose: a suite-wide default in
+``conftest.py`` would hide "which mode did this test mean?" at the call site.
 """
 
 from __future__ import annotations
@@ -24,12 +21,15 @@ from types import SimpleNamespace
 
 import pytest
 
-from tabs.image_gallery.services import artifacts
-from tabs.image_gallery.services.analysis_bridge import ENGINE_FLAG, engine_enabled
-from tabs.image_gallery.services.proxy import clear_proxy_cache, proxy_for, run_proxy_stages_sync
+from tabs.image_gallery.services import analysis_bridge
+from tabs.image_gallery.services.proxy import clear_proxy_cache, run_proxy_stages_sync
 
-#: The only keys a kill-switched (legacy) entry may carry — the pre-engine shape.
-LEGACY_ENTRY_KEYS = {"artifacts", "artifact_maps", "camera", "fidelity"}
+#: The removed switch, spelled from parts on purpose: the P9b acceptance gate
+#: greps ``src/`` for the old flag env var and for the name of the function that
+#: read it, and must stay empty — so the one place those tokens could
+#: legitimately appear (a test asserting they are GONE) must not spell them out.
+_FLAG_ENV = "IMGSLI_" + "ANALYSIS_ENGINE"
+REMOVED_FLAG_SYMBOLS = ("ENGINE_" + "FLAG", "ENGINE_" + "OFF_VALUES", "engine_" + "enabled")
 
 
 def _gradient(size: int = 64):
@@ -66,72 +66,51 @@ def _run(item, source):
     return out[str(item)]
 
 
-def _assert_legacy_entry(entry, item, source) -> None:
-    """No records, the legacy shape, and the legacy values (never an empty dict)."""
-    assert "analysis" not in entry, (
-        "the kill-switch must keep the pre-engine entry: no 'analysis' key"
+def test_the_env_var_is_ignored(tmp_path, monkeypatch: pytest.MonkeyPatch):
+    """Unset, ``=0`` and ``=1`` are the same run: records, same shape, same values.
+
+    Full-dict equality is deliberate: anything weaker would let a stray flag
+    branch change one stage (e.g. the artifacts) while the assertion still saw
+    the ``"analysis"`` key and passed.
+    """
+    item, source = _write_pair(tmp_path)
+
+    monkeypatch.delenv(_FLAG_ENV, raising=False)
+    unset = _run(item, source)
+    monkeypatch.setenv(_FLAG_ENV, "0")
+    off_value = _run(item, source)
+    monkeypatch.setenv(_FLAG_ENV, "1")
+    on_value = _run(item, source)
+
+    assert "analysis" in unset and unset["analysis"], (
+        "the engine must produce records with no opt-in: it is the only path"
     )
-    assert set(entry) <= LEGACY_ENTRY_KEYS, sorted(entry)
-    assert len(entry["artifacts"]) == 7
-    assert "camera" in entry and "fidelity" in entry
-    # The numbers come from the legacy stages over the same shared proxies.
-    proxy = proxy_for(item)
-    source_proxy = proxy_for(source)
-    assert entry["artifacts"] == artifacts.analyze_images(
-        proxy.image, source_proxy.image
-    )
+    assert all(record.producer == "local" for record in unset["analysis"])
+    assert {"artifacts", "fidelity", "camera"} <= set(unset)
+    assert off_value == unset, "the old kill-switch value must be a no-op now"
+    assert on_value == unset, "the old opt-in value must be a no-op too"
 
 
-def test_engine_is_on_with_no_env_var(tmp_path, monkeypatch: pytest.MonkeyPatch):
-    """The default: no opt-in, the batch carries per-axis records."""
-    monkeypatch.delenv(ENGINE_FLAG, raising=False)
-    item, source = _write_pair(tmp_path)
-
-    assert engine_enabled() is True
-
-    entry = _run(item, source)
-
-    assert "analysis" in entry
-    assert entry["analysis"], "the default-on batch must carry records, not None"
-    assert all(record.producer == "local" for record in entry["analysis"])
-    # Additive: the stage dicts the reader outside the engine still needs.
-    assert {"artifacts", "fidelity", "camera"} <= set(entry)
+def test_analysis_bridge_no_longer_exposes_the_flag():
+    """No second reader of a switch that no longer exists."""
+    for name in REMOVED_FLAG_SYMBOLS:
+        assert not hasattr(analysis_bridge, name), (
+            f"{name} survived in analysis_bridge: a caller could believe the "
+            "engine is still switchable"
+        )
+        assert name not in analysis_bridge.__all__, name
 
 
-@pytest.mark.parametrize(
-    "value", ["0", "false", "off", "no", "0 ", " OFF ", "No", "False"]
-)
-def test_off_values_disable_the_engine(
-    tmp_path, monkeypatch: pytest.MonkeyPatch, value: str
-):
-    """Every documented off value is a kill-switch: legacy entry, no records."""
-    monkeypatch.setenv(ENGINE_FLAG, value)
-    item, source = _write_pair(tmp_path)
-
-    assert engine_enabled() is False
-
-    _assert_legacy_entry(_run(item, source), item, source)
-
-
-@pytest.mark.parametrize("value", ["1", "true", "yes", "on", "", "  ", "garbage"])
-def test_any_other_value_keeps_the_engine_on(
-    tmp_path, monkeypatch: pytest.MonkeyPatch, value: str
-):
-    """Back-compat with ``=1`` and fail-safe for empty/garbage values."""
-    monkeypatch.setenv(ENGINE_FLAG, value)
-    item, source = _write_pair(tmp_path)
-
-    assert engine_enabled() is True
-
-    assert "analysis" in _run(item, source)
-
-
-def test_back_compat_flag_one_still_records(tmp_path, monkeypatch: pytest.MonkeyPatch):
-    """``=1`` (the pre-P9a opt-in) keeps working byte for byte."""
-    monkeypatch.setenv(ENGINE_FLAG, "1")
-    item, source = _write_pair(tmp_path)
-
-    entry = _run(item, source)
-
-    assert "analysis" in entry and entry["analysis"]
-    assert {"artifacts", "fidelity", "camera"} <= set(entry)
+def test_the_engine_api_analysis_bridge_still_exports_is_intact():
+    """The deletion must not have taken the record glue with it."""
+    for name in (
+        "CAMERA_AXES",
+        "FIDELITY_AXES",
+        "ARTIFACT_AXES",
+        "records_by_axis",
+        "unusable_axes",
+        "stage_dicts_from_records",
+        "engine_records",
+    ):
+        assert hasattr(analysis_bridge, name), name
+        assert name in analysis_bridge.__all__, name

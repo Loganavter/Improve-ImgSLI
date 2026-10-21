@@ -65,57 +65,8 @@ ALLOWLIST: dict[str, dict[str, str]] = {
     "test_no_except_nameerror.py": {},
     "test_scene_order_table_complete.py": {
                             },
-    "test_capacity_agreement.py": {
-        "src/tabs/image_compare/canvas/rhi_renderer/resources.py::_ARRAY_CAPACITY": (
-            "the IC pool sizes its SRB-bound array for 2032 layers "
-            "(_TILE_CACHE_BUDGET_BYTES // _ARRAY_LAYER_BYTES) while "
-            "TileTextureService's default is 2048, so the service may hold 16 "
-            "layers tile_arrays[0] cannot address. C3 makes the numbers agree "
-            "(test-only fix: pass the computed capacity through every site "
-            "below in the same commit, then delete this entry)."
-        ),
-        "src/tabs/image_compare/canvas/rhi_renderer/renderer.py::RhiCanvasRenderer.__init__": (
-            "the renderer default-constructs its TileTextureService, so the "
-            "service's 2048-layer default disagrees with the pool's 2032. C3 "
-            "passes the computed capacity in here; precondition: the "
-            "_ARRAY_CAPACITY entry above is cleared in the same commit and the "
-            "image-compare render suite stays green."
-        ),
-        "src/tabs/image_compare/canvas/rhi_renderer/renderer.py::RhiCanvasRenderer.initialize": (
-            "the re-init call passes max_tile_extent but not max_array_size, so "
-            "a re-initialized renderer silently returns to the 2048 default "
-            "against the pool's 2032. C3 passes the computed capacity here too "
-            "(same commit as the other call sites); precondition: initialize() "
-            "has a test that asserts the service limit matches the pool after a "
-            "real re-init."
-        ),
-        "src/tabs/multi_compare/scene/renderer.py::MultiCompareRhiRenderer.__init__": (
-            "the multi-compare renderer default-constructs its TileTextureService "
-            "while its BaseImagesPass array is sized from the tab's own "
-            "capacity derivation, so the allocator and the bound array can "
-            "disagree. C3 passes the computed capacity in; precondition: the "
-            "multi-compare render suite stays green with the explicit value."
-        ),
-        "src/tabs/multi_compare/scene/renderer.py::MultiCompareRhiRenderer.initialize": (
-            "the multi-compare re-init call passes max_tile_extent but not "
-            "max_array_size, so a re-initialized renderer falls back to the "
-            "2048 default. C3 passes the computed capacity here too; "
-            "precondition: a test asserts the service limit after re-init, and "
-            "the same commit clears the __init__ entry above."
-        ),
-    },
-    "test_pass_discovery_raises_on_broken_import.py": {
-        "src/ui/canvas_infra/scene/registry.py::_iter_feature_modules": (
-            "the feature-module iterator catches every ModuleNotFoundError and "
-            "continues, so a broken transitive import inside an existing "
-            "passes.py is indistinguishable from 'this feature has no "
-            "passes.py' — its passes silently vanish from every frame. C3 "
-            "narrows the catch to `exc.name == '<feature>.passes'` and lets "
-            "every other ImportError propagate; precondition: this gate's "
-            "three-feature probe stays green and the registry's own tests "
-            "still cover a feature that genuinely ships no passes.py."
-        ),
-    },
+    "test_capacity_agreement.py": {},
+    "test_pass_discovery_raises_on_broken_import.py": {},
 }
 
 

@@ -1,7 +1,7 @@
 """W11 — rank fusion and salience read the engine's per-item records.
 
 ``plan-gallery-analysis-engine-2026-10-20`` W11: with the analysis engine on
-(the DEFAULT since P9a; ``IMGSLI_ANALYSIS_ENGINE=0`` is the kill-switch) the
+(the only path since P9b) the
 item carries scored ``AxisValue`` records (``item.analysis_records``); until
 ``item_quality`` and ``axis_spreads`` read them the legacy raw-metric path stays
 load-bearing (the live run measured a 2.4x double computation). These tests pin

@@ -62,6 +62,7 @@ from .draw_plan import (
 )
 from .residency import _TILE_CACHE_BUDGET_BYTES
 from .resources import (
+    _ARRAY_CAPACITY,
     _ARRAY_LAYER_PX,
     _LIVE_TILE_EXTENT,
     RhiResources,
@@ -125,8 +126,17 @@ class RhiCanvasRenderer:
     def __init__(self) -> None:
         self.rhi = None
         self.resources = RhiResources()
-        self.tile_service = TileTextureService()
+        # Same capacity the pool sizes its SRB-bound array from: the service
+        # must never hand out a layer `tile_arrays[0]` cannot address.
+        self.tile_service = TileTextureService(max_array_size=_ARRAY_CAPACITY)
         self.feature_passes: list[object] = []
+        # Set only after every feature pass initialized successfully (see
+        # initialize()). Gates the same-rhi early return on *completed* init,
+        # not on a merely non-empty ``feature_passes`` list: one raising pass
+        # used to leave a half-initialized list that the guard treated as
+        # "already done", so the retry never happened. ``release()`` ends with
+        # ``self.__init__()``, which resets this to False.
+        self.initialized = False
         self.glass_panel_renderer = GlassPanelRenderer(name_prefix="image_compare")
         # docs/dev/rendering/tile-array-atlas-plan.md Phase 2 fallback-LOD
         # finding: the last texture_keys/diff_key combo that produced a
@@ -205,7 +215,7 @@ class RhiCanvasRenderer:
         # the same object we already initialized against -- see
         # docs/dev/rendering/qrhi-gotchas.md
         # #canvas-resize-tears-down-the-whole-tile-array-on-every-resize.
-        if new_rhi is self.rhi and self.feature_passes:
+        if new_rhi is self.rhi and self.initialized:
             return
         self.release()
         self.rhi = new_rhi
@@ -214,16 +224,15 @@ class RhiCanvasRenderer:
         # as a defensive floor only — real backends support far more than
         # 2048px, so this clamp should never actually bind in practice.
         self.tile_service = TileTextureService(
-            max_tile_extent=min(_LIVE_TILE_EXTENT, query_max_texture_size(self.rhi))
+            max_tile_extent=min(_LIVE_TILE_EXTENT, query_max_texture_size(self.rhi)),
+            max_array_size=_ARRAY_CAPACITY,
         )
         self.resources.initialize(self.rhi, widget, command_buffer)
         self.glass_panel_renderer.initialize(self.rhi)
 
         from tabs.image_compare.canvas.registry import registry
 
-        self.feature_passes = [
-            type(render_pass)() for render_pass in registry().get_render_passes()
-        ]
+        passes = [type(render_pass)() for render_pass in registry().get_render_passes()]
         target = widget.renderTarget()
         rhi_render_debug(
             "initialize widget=%s size=%dx%d target_px=%s api=%s",
@@ -233,8 +242,26 @@ class RhiCanvasRenderer:
             target.pixelSize() if target is not None else None,
             getattr(widget.api(), "name", "unknown"),
         )
-        for render_pass in self.feature_passes:
-            render_pass.initialize(self.rhi, target)
+        # Publish only on full success: a pass that raises mid-loop must not
+        # leave ``feature_passes`` non-empty, or the same-rhi early return
+        # above could latch the renderer into drawing with a half-initialized
+        # pass set. Release just the passes whose initialize() returned (an
+        # uninitialized pass may own no GPU objects); a failing cleanup never
+        # masks the original exception.
+        initialized: list[object] = []
+        try:
+            for render_pass in passes:
+                render_pass.initialize(self.rhi, target)
+                initialized.append(render_pass)
+        except BaseException:
+            for done in initialized:
+                try:
+                    done.release()
+                except Exception:
+                    pass
+            raise
+        self.feature_passes = passes
+        self.initialized = True
         self.resources.restore_texture_uploads(widget)
 
     def release(self) -> None:

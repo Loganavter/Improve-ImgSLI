@@ -66,7 +66,8 @@ from plugins.image_properties.service import (
 )
 from resources.translations import add_i18n_root
 from sli_ui_toolkit.managers import UiScale, scaled_px
-from sli_ui_toolkit.widgets import Label, Text
+from sli_ui_toolkit.ui.widgets.atomic.text_labels import Label  # internal: documented Label exception (queue task-text-unification-retirement-2026-10-21)
+from sli_ui_toolkit.widgets import Text
 
 _PLUGINS_ROOT = Path(__file__).resolve().parents[2] / "src" / "plugins"
 _SCANNED_PLUGINS = ("export", "help", "image_properties")

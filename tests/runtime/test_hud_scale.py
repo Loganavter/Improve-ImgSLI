@@ -13,7 +13,7 @@ import pytest
 from PySide6.QtWidgets import QWidget
 
 from sli_ui_toolkit.managers import UiScale
-from sli_ui_toolkit.widgets import Label
+from sli_ui_toolkit.ui.widgets.atomic.text_labels import Label  # internal: documented Label exception (queue task-text-unification-retirement-2026-10-21)
 
 
 @pytest.fixture(autouse=True)

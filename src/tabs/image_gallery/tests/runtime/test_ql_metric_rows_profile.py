@@ -24,7 +24,7 @@ from PySide6.QtWidgets import QApplication, QWidget
 from tabs.image_gallery.models import AiAnalysisResult, GalleryItem, Mode
 from tabs.image_gallery.services.metric_profile import MetricProfile
 from tabs.image_gallery.ui.quick_look import QuickLookOverlay
-from sli_ui_toolkit.widgets import Label as _QlLabel
+from sli_ui_toolkit.ui.widgets.atomic.text_labels import Label as _QlLabel  # internal: documented Label exception (queue task-text-unification-retirement-2026-10-21)
 from sli_ui_toolkit.widgets import Text as _QlText
 
 

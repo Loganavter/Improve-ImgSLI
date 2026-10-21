@@ -13,7 +13,8 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
 from resources.translations import tr
-from sli_ui_toolkit.widgets import Label, Text
+from sli_ui_toolkit.ui.widgets.atomic.text_labels import Label  # internal: documented Label exception (queue task-text-unification-retirement-2026-10-21)
+from sli_ui_toolkit.widgets import Text
 from tests.helpers.drain_until_stable import drain_until_stable
 from ui.widgets.color import ColorPickerDialog, RecentColorsStore
 

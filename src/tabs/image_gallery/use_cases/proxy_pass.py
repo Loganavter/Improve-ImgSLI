@@ -173,7 +173,7 @@ def _attach_analysis_records(owner, result: dict) -> None:
 
     ``services/proxy.py`` adds the ``"analysis"`` key to a batch entry ONLY when
     the engine ran — the default since P9a — and the plan produced records. With
-    the kill-switch (``IMGSLI_ANALYSIS_ENGINE=0``) the key is absent, every item
+    the engine could not produce records (P9b: no kill-switch) the key is absent, every item
     keeps ``analysis_records == ()``, and the read path stays byte-identical to
     the legacy domain read (plan-gallery-analysis-engine-2026-10-20 W9).
     """

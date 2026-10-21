@@ -34,7 +34,8 @@ from plugins.settings.typography import (
     SETTINGS_BODY_PX,
     SETTINGS_CAPTION_PX,
 )
-from sli_ui_toolkit.widgets import Label, Text
+from sli_ui_toolkit.ui.widgets.atomic.text_labels import Label  # internal: documented Label exception (queue task-text-unification-retirement-2026-10-21)
+from sli_ui_toolkit.widgets import Text
 
 _SETTINGS_ROOT = (
     Path(__file__).resolve().parents[2] / "src" / "plugins" / "settings"

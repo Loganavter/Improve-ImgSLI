@@ -12,7 +12,7 @@ from PySide6.QtGui import QDrag
 from PySide6.QtWidgets import QGridLayout, QSizePolicy, QVBoxLayout, QWidget
 
 from sli_ui_toolkit.managers import scaled_px
-from sli_ui_toolkit.widgets import Button, ButtonRegion, ButtonRow, Label, Layer, OverlayScrollArea
+from sli_ui_toolkit.widgets import Button, ButtonRegion, ButtonRow, Layer, OverlayScrollArea
 
 from tabs.image_gallery.models import GalleryItem
 from tabs.image_gallery.ui.card import (
