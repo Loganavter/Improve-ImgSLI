@@ -31,7 +31,10 @@ from tabs.image_compare.canvas.features.drag_drop_overlay.render.overlay import 
     paint_drag_drop_overlay,
     should_paint_drag_overlay,
 )
-from ui.canvas_infra.scene.pass_contract import CanvasRenderPass
+from ui.canvas_infra.scene.pass_contract import (
+    CanvasRenderPass,
+    SceneVisibility,
+)
 from ui.canvas_infra.scene.stacking_policy import CanvasStackRole
 
 
@@ -186,6 +189,7 @@ class DragDropOverlayPass(CanvasRenderPass):
     """Draw live drag/drop affordances through the shared textured shell."""
 
     stack_role = CanvasStackRole.TRANSIENT_PREVIEW
+    visibility = SceneVisibility.ALL
     # Must paint even when no images are loaded (empty canvas drop hint)
     requires_content = False
 

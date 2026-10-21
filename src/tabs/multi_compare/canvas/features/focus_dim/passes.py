@@ -38,7 +38,10 @@ from engine.overlay import (
     Rgba,
     pack_grid_dividers,
 )
-from ui.canvas_infra.scene.pass_contract import CanvasRenderPass
+from ui.canvas_infra.scene.pass_contract import (
+    CanvasRenderPass,
+    SceneVisibility,
+)
 from ui.canvas_infra.scene.stacking_policy import CanvasStackRole
 
 logger = logging.getLogger("ImproveImgSLI")
@@ -120,6 +123,7 @@ def resolve(ctx: Any) -> tuple[bytes, ...]:
 
 class FocusDimPass(CanvasRenderPass):
     stack_role = CanvasStackRole.HUD_LABEL
+    visibility = SceneVisibility.ALL
 
     def __init__(self) -> None:
         self._shell = OverlayShell(GRID_DIVIDER_UNIFORM_SIZE)

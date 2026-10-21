@@ -13,6 +13,7 @@ as first arg — the owner keeps construction/wiring + instance state
 from __future__ import annotations
 
 from ui.canvas_infra.rhi.render_common import should_render_blank_white
+from ui.canvas_infra.rhi.render_mode import EXPORT_CANVAS_OBJECT_NAME
 from engine.cache.image_identity import image_uid
 
 from .._debug import rhi_render_debug
@@ -47,12 +48,13 @@ def resolve_canvas_scale_px(widget, target_size) -> float:
     it into the LOD input would resolve a per-tile level (seams: all tiles
     of one export must sample one level). Export canvas px are device px by
     construction (the exporter explicitly resizes the widget in those px),
-    so the multiplier is 1.0. Same ``gpu_export_canvas`` objectName signal
-    ``build_render_runtime_context`` uses for its export mode; unknown
-    widgets fall through to the measured ratio (old behavior).
+    so the multiplier is 1.0. Same objectName signal that
+    ``build_render_runtime_context`` uses for its export mode
+    (``EXPORT_CANVAS_OBJECT_NAME`` in ``ui/canvas_infra/rhi/render_mode.py``);
+    unknown widgets fall through to the measured ratio (old behavior).
     """
     try:
-        if str(widget.objectName()) == "gpu_export_canvas":
+        if str(widget.objectName()) == EXPORT_CANVAS_OBJECT_NAME:
             return 1.0
     except Exception:
         pass

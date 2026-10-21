@@ -29,6 +29,7 @@ from tabs.image_compare.canvas.render_arch import (
 
 from .render_config import update_display_split_position
 from ui.canvas_infra.rhi.render_metrics import RenderMetrics
+from ui.canvas_infra.rhi.render_mode import EXPORT_CANVAS_OBJECT_NAME
 from engine.cache.render_debug import rhi_render_debug
 from .texture_parts.base_images import (
     update_common_letterbox_geometry,
@@ -131,7 +132,7 @@ def build_render_runtime_context(widget) -> RenderRuntimeContext:
     read_only = bool(getattr(state, "_read_only", False))
     mode = (
         "export"
-        if object_name == "gpu_export_canvas"
+        if object_name == EXPORT_CANVAS_OBJECT_NAME
         else "preview" if read_only or store is None else "interactive"
     )
     inner_rect = getattr(state, "_inner_content_rect_px", None)

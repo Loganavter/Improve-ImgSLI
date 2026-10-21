@@ -41,7 +41,10 @@ from engine.overlay import (
 from engine.frame.context import make_ids
 from tabs.multi_compare.debug import mc_dnd_debug, mc_dnd_debug_enabled
 from tabs.multi_compare.scene.passes.drag_overlay import DragDropOverlaySource
-from ui.canvas_infra.scene.pass_contract import CanvasRenderPass
+from ui.canvas_infra.scene.pass_contract import (
+    CanvasRenderPass,
+    SceneVisibility,
+)
 from ui.canvas_infra.scene.stacking_policy import CanvasStackRole
 
 logger = logging.getLogger("ImproveImgSLI")
@@ -161,6 +164,7 @@ class DragDropOverlayPass(CanvasRenderPass):
     """Rasterizes live drag/drop affordances into their own overlay texture."""
 
     stack_role = CanvasStackRole.TRANSIENT_PREVIEW
+    visibility = SceneVisibility.ALL
 
     def __init__(self) -> None:
         self._shell = TexturedOverlayShell()

@@ -154,6 +154,14 @@ ALLOWED_DEEP_TAB_IMPORTS: dict[str, str] = {
         "surface table spans host chrome and session_picker too, so the tab "
         "import is fixture data, not the tab's own behavior"
     ),
+    "tests/contracts/test_capacity_agreement.py": (
+        "cross-tab capacity contract (C1): the image_compare pool's array "
+        "capacity must equal the shared TileTextureService default, and every "
+        "TileTextureService call site in BOTH tabs must pass that capacity "
+        "explicitly. The pool module is the measured subject, not a tab-owned "
+        "behavior; a per-tab copy would let one tab's allocator drift from the "
+        "service again, which is the failure this contract exists for"
+    ),
 }
 
 

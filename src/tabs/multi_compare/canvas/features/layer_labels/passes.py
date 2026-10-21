@@ -30,7 +30,10 @@ from engine.overlay import (
 from engine.frame.context import make_ids
 from tabs.multi_compare.scene.passes.labels import LabelsOverlaySource
 from tabs.multi_compare.scene.projection import layer_fit_scale
-from ui.canvas_infra.scene.pass_contract import CanvasRenderPass
+from ui.canvas_infra.scene.pass_contract import (
+    CanvasRenderPass,
+    SceneVisibility,
+)
 from ui.canvas_infra.scene.stacking_policy import CanvasStackRole
 
 logger = logging.getLogger("ImproveImgSLI")
@@ -183,6 +186,7 @@ class LayerLabelsPass(CanvasRenderPass):
     """Rasterizes per-layer filename labels into their own overlay texture."""
 
     stack_role = CanvasStackRole.HUD_LABEL
+    visibility = SceneVisibility.ALL
 
     def __init__(self) -> None:
         self._shell = TexturedOverlayShell()
