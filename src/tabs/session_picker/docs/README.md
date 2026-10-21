@@ -4,7 +4,7 @@ The Session Picker is the transient "New Tab" session browser / switcher. It
 registers the `session_picker` session blueprint and owns its own tab page.
 
 Local docs live here (`src/tabs/session_picker/docs/`) per the tab-doc
-placement rule — see [docs/dev/tabs/index.md(../../../../docs/dev/tabs/index.md).
+placement rule — see [docs/dev/tabs/index.md](../../../../docs/dev/tabs/index.md).
 
 ## Module layout
 
@@ -14,11 +14,13 @@ session_picker/
     tab.py            # TabContract implementation
     widget.py         # page wrapper
     geometry.py       # picker geometry
+    prelayout.py      # pre-layout pass for the picker's cards
     host_chrome.py    # host chrome helpers
+    help.py           # tab-owned Help topics
     icons.py
-    recent/           # "Recent projects" shelf: panel, items_view, header_bar
-    resources/i18n/
-    tests/
+    recent/           # "Recent projects" shelf: panel, items_view, header_bar, use_cases/
+    resources/{i18n,help,icons}/
+    tests/            # runtime/ only (no contracts/)
     docs/
 ```
 
@@ -33,4 +35,4 @@ way to live on the startup stack without persisting as a real workspace.
 
 The `recent/` subpackage shows recently opened projects in a shared
 `ShelfWidget`-based panel (see
-[docs/dev/widgets/shelf.md(../../../../docs/dev/widgets/shelf.md)).
+[docs/dev/widgets/shelf.md](../../../../docs/dev/widgets/shelf.md)).

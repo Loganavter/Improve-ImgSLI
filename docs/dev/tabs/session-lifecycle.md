@@ -25,6 +25,15 @@ Per-session arbitrary state lives on `WorkspaceSession.state_slots` (see
 defaults; use `store.ensure_session_state_slot` / `set_session_state_slot` with
 an explicit `session_id=` when snapshotting from tab hooks.
 
+For a tab's own chrome (toolbar switches, view prefs) the sanctioned tab-side API
+is `SessionState` (`tabs/use_cases/session_state.py`): `SessionState.bind(...)`
+binds it to a namespace or to the tab's typed slot, and the tab's thin
+`on_activated` / `on_active_session_changed` delegates call
+`apply_from_slot(context, session_id)` — which reads the **live slot**, never the
+project snapshot — while `seed_slot` gives a new session the last-used values.
+Both `multi_compare` (typed slot) and `image_gallery` use it; `image_compare`
+keeps its host-widget camera snapshot instead (its own sanctioned dialect).
+
 `state_slots["action_history"]` holds the per-session dispatched-action log.
 `state_slots["undo_stack"]` / `["redo_stack"]` hold reference-snapshots for
 **undo/redo** (`Dispatcher.undo()/redo()`, Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y,
@@ -37,7 +46,9 @@ swaps all three on `WorkspaceSessionActivatedEvent`.
 
 Undo records only "user-meaningful" actions (`Dispatcher._UNDOABLE_TYPES`):
 viewport/appearance/feature settings and `SET_CURRENT_INDEX` for image
-compare, plus the multi_compare session actions. Global settings, transient
+compare, the multi_compare session actions, and the gallery's pool/triage
+actions (`GALLERY_POOL_OPENED`, `GALLERY_PATHS_APPENDED`, `GALLERY_POOL_REPLACED`,
+`GALLERY_ITEMS_REMOVED`, `GALLERY_TRIAGE_FINISHED`). Global settings, transient
 interaction/visual state, caches/metrics, and pixel-bearing document actions
 (which close the replaced `TiledPixelStore`) are excluded. Continuous
 gestures coalesce to one undo step (`_COALESCE_TYPES`). Undo is blocked while
@@ -47,13 +58,15 @@ core `Dispatcher`, so undo/redo (and the CSD buttons) cover both.
 
 ## Project I/O
 
-`services/io/project_io.py` writes portable **ZIP** `.imgsli` packages
-(version 2): `project.json` plus byte-copied originals under
-`media/<asset_id>/`, and optional top-level `preview.png` (cover-scaled grab
-of the active workspace canvas). Paths inside
-session blobs are rewritten to package members on save and to a per-project
-extract cache on load. Legacy plain-JSON v1 files remain loadable (path
-references only).
+`services/io/project_io.py` writes portable `.imgsli` **ZIP** packages
+(`PROJECT_VERSION = 3`): `project.json`, byte-copied originals under
+`media/<asset_id>/`, an optional top-level `preview.png` (cover-scaled grab of
+the active workspace canvas) and an optional `cache/<asset_id>/pixels.raw` pixel
+cache. Paths inside session blobs are rewritten to package members on save and
+to a per-project extract cache on load. Legacy plain-JSON v1 and ZIP v2 files
+remain loadable (path references only). The authoritative layout — including the
+`pixel_cache` catalog and the opt-in embedded pixel cache — is
+[CONTAINER_FORMAT.md](../CONTAINER_FORMAT.md); do not restate it here.
 
 **Linux desktop integration** (MIME + open-with + FM thumbnails):
 
@@ -101,8 +114,10 @@ Project default) for a clean workspace replace. Tabs that return `None` from
 
 Image Compare session blobs include viewport/view settings, canvas feature
 property settings, magnifier instances, and camera (zoom/pan). Multi Compare
-keeps layout/zoom/pan/labels/dividers. Pixel buffers are never embedded —
-only file copies.
+keeps layout/zoom/pan/labels/dividers. Pixel data is not part of a session blob:
+decoded buffers are regenerated on load, unless the save opted into the embedded
+pixel cache (`collect_pixel_cache_sources` → `cache/*/pixels.raw`), in which case
+the reopen skips the re-decode.
 
 Duplicate: `WorkspaceSessionActions.duplicate_workspace_session` →
 `duplicate_session` snapshot → new session → `deserialize_session` →
@@ -113,9 +128,10 @@ rehydrate), use `store.using_workspace_session(session_id)` — a public
 context manager on `WorkspaceStoreMixin` that temporarily swaps the active
 session and restores the previous one on exit.
 
-Multi Compare: every new `multi_compare` session seeds divider/label chrome
-from QSettings last-used prefs (`_settings_from_qsettings`), falling back to
-another live MC session's slot when QSettings is empty. Live slots stay
+Multi Compare: every new `multi_compare` session seeds divider/label chrome from
+`SessionState.seed_slot` — the last-used QSettings value under
+`f"{namespace}/chrome"` (`multi_compare/chrome`), falling back to the blueprint
+defaults (`SessionState._defaults`) when QSettings is empty. Live slots stay
 isolated after seed — editing one tab does not mutate another's slot.
 
 Multi Compare's session state is `state_slots["multi_compare.state"]`,

@@ -6,9 +6,9 @@ tab. It registers the `image_compare` session type, owns the analysis
 services, the session controller, and the canvas.
 
 Tab architecture: [ARCHITECTURE.md](../ARCHITECTURE.md). Plugin system:
-[docs/dev/PLUGINS.md(../../../../../docs/dev/PLUGINS.md). This plugin is the
+[docs/dev/PLUGINS.md](../../../../../docs/dev/PLUGINS.md). This plugin is the
 canonical "reference plugin" used as the template for new plugins (see
-[PLUGINS.md(../../../../../docs/dev/PLUGINS.md#reference-plugin-comparison)).
+[PLUGINS.md](../../../../../docs/dev/PLUGINS.md#reference-plugin-comparison)).
 
 ## Wiring
 

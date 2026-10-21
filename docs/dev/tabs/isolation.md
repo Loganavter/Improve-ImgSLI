@@ -2,10 +2,18 @@
 
 ## Tests
 
-A tab owns its own tests, just like it owns its own resources. Any test that
-imports `tabs.<tab_name>.*` — directly or via a lazy import inside a test
-function — belongs under `src/tabs/<tab_name>/tests/`, not under the
-top-level `tests/` tree.
+A tab owns its own tests, just like it owns its own resources. A test that
+imports *another tab's internals* (`tabs.image_compare.canvas...`,
+`tabs.multi_compare.widget`, ...) belongs under that tab's own `tests/`, not
+under the top-level `tests/` tree — the top-level suite is the host-level
+suite and must keep working when any single non-bootstrap tab is deleted.
+
+`session_picker` is the exception: it is the bootstrap tab, always present, so
+root tests may use it. This is enforced, not advisory:
+`tests/contracts/test_root_tests_no_tab_internals_leak.py` scans every
+`tests/**/test_*.py` for `tabs.<tab>.…` imports of the other tabs and fails on
+any file that is not in its `ALLOWED_DEEP_TAB_IMPORTS` table (each entry carries
+the reason it is a genuine host-level contract; a stale entry fails too).
 
 ```
 src/tabs/<tab_name>/tests/
@@ -15,19 +23,23 @@ src/tabs/<tab_name>/tests/
     runtime/       # Lifecycle/state contracts specific to this tab
     plugins/       # Tests for this tab's plugin-facing behavior (export, settings, ...)
     video/         # image_compare only — video editor contracts
+    compare_unify/ # image_compare / multi_compare — comparison-unification parity
 ```
 
 Rules:
 
-- Mirror the type-based subfolders (`contracts/`, `render/`, `runtime/`,
-  `plugins/`, ...) used by the top-level `tests/` tree — see
-  [TESTING.md](../TESTING.md) for what each subfolder is for. This keeps the
-  "one file — one topic" discipline even though tests are now split by tab.
-- `sys.path` resolution for `src/` still comes from pytest's own rootdir
-  package-insertion (every directory down to `tests/` has an `__init__.py`),
-  not from `tests/conftest.py` — that conftest only applies to the top-level
-  `tests/` tree. If a moved test used a `Path(__file__).parents[N]` trick to
-  find the repo root, recompute `N` for the new depth
+- Mirror the type-based subfolders used by the top-level `tests/` tree
+  (`contracts/`, `render/`, `runtime/`, `plugins/`, ...) — see
+  [TESTING.md](../TESTING.md) for what each subfolder is for. The set is
+  per-tab, not mandatory: `session_picker` ships `runtime/` only, and flat
+  test modules at the tab's `tests/` root are fine for one-topic files.
+- `sys.path` resolution for `src/` comes from `src/tabs/conftest.py`, which
+  inserts `src/` (pytest's own rootdir insertion adds the repo root, because
+  `src/__init__.py` exists). That conftest also owns the tab-suite autouse
+  fixtures — a hermetic `TiledPixelStore` spill dir (so tests never write the
+  user's real cache), plus language/toolkit/theme/navigation resets mirrored
+  from `tests/conftest.py`. If a moved test used a `Path(__file__).parents[N]`
+  trick to find the repo root, recompute `N` for the new depth
   (`src/tabs/<tab>/tests/<kind>/test_x.py` is 5 levels below repo root).
 - Tests that exercise the tab **mechanism** itself — the registry, the
   `TabContract` ABC, generic drop-routing/dispose lifecycle — stay in
@@ -37,15 +49,19 @@ Rules:
 - Run a single tab's suite the same way as any other pytest path:
   `pytest src/tabs/image_compare/tests/`.
 
-Enforcement tests (top-level `tests/contracts/`):
+Enforcement tests:
 
 | File | What it guards |
 |---|---|
-| `test_tabs.py` | Every tab is a filled `TabContract`; `session_type` unique |
-| `test_tabs_isolation.py` | No app-i18n/theme/`ui.icon_manager` imports; JSON keys in own namespace |
-| `test_tab_icons.py` | Tab `Icon` enum members resolve from local `resources/icons/` |
-
-Plus `tests/runtime/test_tabs_lifecycle.py` for generic registry lifecycle.
+| `tests/contracts/test_tabs.py` | Every tab is a filled `TabContract`; `session_type` unique |
+| `tests/contracts/test_tabs_isolation.py` | No app-i18n/theme/`ui.icon_manager` imports; JSON keys in own namespace |
+| `tests/contracts/test_tab_icons.py` | Tab `Icon` enum members resolve from local `resources/icons/` |
+| `tests/contracts/test_root_tests_no_tab_internals_leak.py` | Root tests do not deep-import another tab's internals (allowlist with reasons) |
+| `tests/contracts/test_tab_framework_lifecycle.py` | Fail-closed activation and probe isolation in the framework |
+| `tests/contracts/test_tab_session_isolation.py` | Gallery slot reads pass an explicit `session_id` |
+| `tests/contracts/test_tab_pixel_lifecycle_uses_release.py` | Shared pixel registry lifecycle goes through release |
+| `tests/runtime/test_tabs_lifecycle.py` | Generic registry lifecycle |
+| `tests/runtime/test_overlay_topology_conformity.py` | Every registered tab answers `create_service("topology_overlays", parent)` |
 
 ## Isolation rule: do not borrow app-level keys or theme tokens
 
@@ -79,6 +95,32 @@ broke, because the host's own tests pass.
 entirely, your tab must still render its UI correctly (modulo the host
 chrome around it). Everything visual or textual that your tab needs lives
 under `src/tabs/<your_tab>/resources/`.
+
+## Intra-tab shared helpers (`tabs/_shared/`)
+
+`src/tabs/_shared/` is a small, **import-based** package for helpers used by more
+than one module *inside* `src/tabs/` — today the loading pipeline
+(`loading_pipeline.py`, `overflow_summary.py`), the save flow (`save_flow.py`),
+user-facing error mapping (`user_errors.py`) and canvas capability forwarding
+(`canvas.py`: canvas feature aliases, snapshot bounds). `canvas.py` imports
+`tabs.image_compare.canvas.registry`,
+`tabs.image_compare.services.snapshot_render_plan_builder` and
+`...services.video_snapshot_rendering` directly, because routing those through
+`TabRegistry.create_service` made an intra-tab call look like a tab→tab
+dependency and forced the producer tab to be active.
+
+The split to keep in mind:
+
+- **host → tab** stays on the registry (`create_service` /
+  `create_startup_service` / `create_service_for`) — the host must not import tab
+  internals;
+- **tab → tab / intra-tab** may import from `tabs._shared` (or, as a last
+  resort, from the producer's module) instead of string-dispatching through the
+  registry.
+
+That is why the "no implied lookups" rule below forbids *string-keyed* and
+`getattr` side channels, not imports: an explicit import is a compile-time
+dependency that a refactor can follow.
 
 ## Dependency wiring rule: no implied lookups
 

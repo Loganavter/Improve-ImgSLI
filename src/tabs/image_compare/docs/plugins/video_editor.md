@@ -6,7 +6,7 @@ records and animates image-compare states: recording, pause, timeline,
 preview, keyframes, and video export.
 
 Plugin system mechanics (tiers, `@plugin`, discovery): see
-[PLUGINS.md(../../../../../docs/dev/PLUGINS.md). For how the editor fits the
+[PLUGINS.md](../../../../../docs/dev/PLUGINS.md). For how the editor fits the
 tab, see [ARCHITECTURE.md](../ARCHITECTURE.md).
 
 ## Wiring
