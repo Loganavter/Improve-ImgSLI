@@ -44,7 +44,7 @@ METHODS: tuple[str, ...] = (
     "list_surfaces", "nav_key", "open_file", "open_folder", "open_properties",
     "open_tab", "ping", "press_keys", "query_trace", "read_log", "run_action",
     "set_language", "set_scene_commands", "set_setting", "set_theme", "ui_click",
-    "ui_elements", "ui_focus", "ui_hover", "ui_nav_state", "ui_press",
+    "ui_elements", "ui_focus", "ui_hover", "ui_nav_state", "ui_press", "ui_wheel",
 )
 
 

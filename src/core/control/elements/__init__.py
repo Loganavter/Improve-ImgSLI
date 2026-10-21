@@ -86,7 +86,7 @@ from .inventory import (
     rect_list,
     screen_rect_of,
 )
-from .interaction import click_element, focus_element, hover_element
+from .interaction import click_element, focus_element, hover_element, wheel_element
 from .query import MAX_ELEMENT_LIMIT, filter_elements
 from .resolve import PROPERTY_PREFIX, focus_target, key_target, resolve_element
 
@@ -144,6 +144,24 @@ class ElementMethodsMixin:
             "surface": target.surface,
         }
 
+    def ui_wheel(self, params: dict[str, Any]) -> dict[str, Any]:
+        target = resolve_element(self._registry(), params.get("id"))  # type: ignore[attr-defined]
+        delta = int(params.get("delta", 120))
+        phase = str(params.get("phase") or "none")
+        count = int(params.get("count", 1))
+        raw = bool(params.get("raw", False))
+        wheel_element(target, delta=delta, phase=phase, count=count, raw=raw)
+        return {
+            "sent": max(1, count),
+            "delta": delta,
+            "phase": phase.lower(),
+            "raw": raw,
+            "id": target.id,
+            "rect": rect_list(target.rect),
+            "target": target.target,
+            "surface": target.surface,
+        }
+
     def ui_hover(self, params: dict[str, Any]) -> dict[str, Any]:
         target = resolve_element(self._registry(), params.get("id"))  # type: ignore[attr-defined]
         hover_element(target)
@@ -193,6 +211,7 @@ __all__ = [
     "filter_elements",
     "focus_element",
     "hover_element",
+    "wheel_element",
     "inventory_payload",
     "focus_target",
     "key_target",
