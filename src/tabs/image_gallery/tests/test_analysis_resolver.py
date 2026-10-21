@@ -24,11 +24,11 @@ from engine.analysis.resolver import (
 PRODUCERS = "tabs.image_gallery.analysis.producers"
 
 #: The axes no *local* producer answers today — the local policy must report
-#: them as gaps, never borrow a number for them. LPIPS/DISTS/BRISQUE used to be
-#: here too (they arrived only through the network scorecard); W10 added the
-#: free ``learned_quality`` producer, so the learned trio is now a local
-#: measurement and only the identity/proxy axes stay network-only.
-AI_ONLY_AXES = ("typicality", "aesthetic")
+#: them as gaps, never borrow a number for them. ``typicality``/``aesthetic`` are
+#: identity/proxy axes the network scorecard owns; ``brisque`` joined them in W13
+#: when the learned-quality producer was deleted (it duplicated
+#: ``pair_metrics``): no producer measures BRISQUE now, so a local plan gaps it.
+AI_ONLY_AXES = ("typicality", "aesthetic", "brisque")
 
 CAMERA_AXES = ("sharpness", "exposure", "clipping", "noise", "white_balance")
 FIDELITY_AXES = (
@@ -38,6 +38,8 @@ FIDELITY_AXES = (
     "clipping_delta",
     "halo_delta",
     "chroma_fringe_delta",
+    "lpips",
+    "dists",
 )
 
 BOTH_INPUTS = frozenset({"images", "reference"})
@@ -96,9 +98,14 @@ def test_local_policy_selects_only_free_non_automatic_producers():
     assert resolution.plan.policy == "local"
     assert resolution.plan.runs == tuple(spec.id for spec in resolution.runs)
     assert "ai_scorecard" not in resolution.plan.runs
-    # The learned trio is local and free: it must be in the default plan, or a
-    # read-path flip would lose LPIPS/DISTS/BRISQUE for everyone.
-    assert "learned_quality" in resolution.plan.runs
+    # The local plan is the three free analyzers: W13 deleted learned-quality
+    # and folded LPIPS/DISTS into the fidelity producer that already computes
+    # them, so no run repeats another run's detector pass.
+    assert resolution.plan.runs == (
+        "artifact_catalog",
+        "camera_scalars",
+        "fidelity_reference",
+    )
     for spec in resolution.runs:
         assert spec.cost == "free"
         assert spec.automatic is False

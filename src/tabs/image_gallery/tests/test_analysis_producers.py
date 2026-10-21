@@ -16,10 +16,11 @@ The cases below pin the properties the waves exist for:
   0..100 quality score, and they come from the one aggregate the report uses
   (``artifacts.analyze_images``), not from seven independently wrapped detectors
   — the W7 dark launch showed the two can disagree on the anchored axes;
-- the learned trio (LPIPS / DISTS / BRISQUE, W10) is measured by a free local
-  producer over ``services.quality_models``, the seam that loads ``torch``/``piq``
-  lazily — without it a read-path flip to the engine would lose the two
-  perceptual axes the legacy report already showed;
+- the learned pair (LPIPS / DISTS) is measured by ``fidelity_reference``, which
+  reads the dict ``fidelity_metrics.compute_fidelity_from_images`` already built
+  — that computation calls ``services.quality_models.pair_metrics`` once per
+  pair (the seam that loads ``torch``/``piq`` lazily), and W13 deleted the
+  separate learned-quality producer that asked for the same pair again;
 - the AI scorecard (network path 1, W6) is a producer like any other: its model
   arrives as a ``BackendRef`` from the catalog, its bytes arrive from the
   executor, and its transport is an injected callable — nothing here opens a
@@ -55,6 +56,10 @@ FIDELITY_AXES = (
     "clipping_delta",
     "halo_delta",
     "chroma_fringe_delta",
+    # W13: the learned pair is a fidelity axis — it comes from the same
+    # ``compute_fidelity_from_images`` call the detector deltas come from.
+    "lpips",
+    "dists",
 )
 #: Catalog order — the order ``artifact_catalog`` declares (and returns).
 ARTIFACT_AXES = (
@@ -88,18 +93,19 @@ SCORECARD_AXES = (
 )
 AXES = CAMERA_AXES + FIDELITY_AXES + ARTIFACT_AXES + SCORECARD_AXES
 
-#: The learned trio. Already part of the vocabulary through ``ai_scorecard``
-#: (which echoes every measured axis), but no local producer measured them until
-#: ``learned_quality`` — so flipping the read path to the engine would have lost
-#: LPIPS/DISTS/BRISQUE for every user.
-LEARNED_AXES = ("lpips", "dists", "brisque")
+#: The learned pair, still part of the vocabulary through ``ai_scorecard`` and
+#: measured locally by ``fidelity_reference`` (W13). BRISQUE is the odd one out:
+#: it is no-reference, no *producer* measures it, and it stays in the scorecard's
+#: vocabulary only — the legacy camera stage still computes it
+#: (``camera_metrics.measure_camera_from_image`` appends ``nr_metrics``), so it
+#: is a gap in the analysis records, not a number the product never had.
+LEARNED_AXES = ("lpips", "dists")
 
 PRODUCER_IDS = (
     "ai_scorecard",
     "artifact_catalog",
     "camera_scalars",
     "fidelity_reference",
-    "learned_quality",
 )
 
 #: Arbitrary "already read by the executor" bytes — the producer must never
@@ -232,7 +238,7 @@ def _make_package(
 # ---------------------------------------------------------------------------
 
 
-def test_registry_discovers_exactly_five_sorted_producers_and_23_axes():
+def test_registry_discovers_exactly_four_sorted_producers_and_23_axes():
     registry = discover(PRODUCERS, force=True)
 
     ids = tuple(spec.id for spec in registry.producers)
@@ -249,11 +255,14 @@ def test_registry_discovers_exactly_five_sorted_producers_and_23_axes():
     assert registry.get("ai_scorecard").requires == frozenset({"images", "backend"})
     assert registry.get("artifact_catalog").requires == frozenset({"images"})
     assert tuple(registry.get("artifact_catalog").provides) == ARTIFACT_AXES
-    # The learned producer only needs the decoded image: BRISQUE has no
-    # reference, and the reference half gaps per axis instead of dropping the
-    # producer (and BRISQUE with it) on a sourceless item.
-    assert registry.get("learned_quality").requires == frozenset({"images"})
-    assert tuple(registry.get("learned_quality").provides) == LEARNED_AXES
+    # The fidelity producer answers the learned pair too, in the legacy dict's
+    # order: one ``pair_metrics`` pass inside ``compute_fidelity_from_images``
+    # feeds both the detector deltas and LPIPS/DISTS (W13).
+    assert tuple(registry.get("fidelity_reference").provides) == FIDELITY_AXES
+    # BRISQUE has no local producer after W13 deleted the learned-quality
+    # producer: the network scorecard is its only declared provider, so a local
+    # plan reports it as a gap instead of inventing a number.
+    assert tuple(spec.id for spec in registry.by_axis("brisque")) == ("ai_scorecard",)
 
 
 def test_scorecard_manifest_provides_exactly_the_measured_registry():
@@ -301,7 +310,7 @@ def test_discovery_imports_manifests_only_not_producers_or_heavy_backends(
 
     registry = discover(PRODUCERS, force=True)
 
-    assert len(registry) == 5
+    assert len(registry) == 4
     assert "torch" not in sys.modules
     assert "piq" not in sys.modules
     leaked = [
@@ -331,9 +340,6 @@ def test_every_local_manifest_declares_free_non_automatic_metadata_only():
             ).provides[axis]
             == "measured"
         )
-    learned = registry.get("learned_quality")
-    for axis in LEARNED_AXES:
-        assert learned.provides[axis] == "measured"
 
 
 # ---------------------------------------------------------------------------
@@ -433,156 +439,114 @@ def test_artifact_catalog_producer_gaps_every_axis_without_an_image():
 
 
 # ---------------------------------------------------------------------------
-# run(ctx) — the learned trio (LPIPS / DISTS / BRISQUE), faked at the seam
+# run(ctx) — the learned pair comes from the fidelity dict itself (W13)
 # ---------------------------------------------------------------------------
 
 
-def _fake_learned(
+def _fake_pair(
     monkeypatch: pytest.MonkeyPatch,
     *,
     pair: dict | None = None,
-    single: dict | None = None,
+    status: str = "ready",
+    reason: str | None = None,
 ):
-    """Replace the two ``quality_models`` entry points with fixed raws.
+    """Replace the learned ``pair_metrics`` seam with a fixed raw dict.
 
-    The seam is monkeypatched instead of installing torch/piq: the cell has no
-    learned backend, and the producer's contract is "map what the seam returns",
-    not "run the models" (the backend itself is covered by
-    ``test_quality_backend_required.py``).
+    Monkeypatched instead of installing torch/piq: this cell has no learned
+    backend, and the contract under test is "the fidelity producer maps the raws
+    its own computation returned", not "run the models" (the backend itself is
+    covered by ``test_quality_backend_required.py``). The returned list counts
+    the passes, which is how a duplicate caller is caught.
     """
     from tabs.image_gallery.services import quality_models
 
-    calls: list[tuple[str, object, object]] = []
+    calls: list[tuple[object, object]] = []
 
     def pair_metrics(item, source, *args, **kwargs):
-        calls.append(("pair", item, source))
+        calls.append((item, source))
         return dict(pair or {})
 
-    def nr_metrics(image, *args, **kwargs):
-        calls.append(("nr", image, None))
-        return dict(single or {})
-
     monkeypatch.setattr(quality_models, "pair_metrics", pair_metrics)
-    monkeypatch.setattr(quality_models, "nr_metrics", nr_metrics)
+    monkeypatch.setattr(quality_models, "backend_status", lambda: status)
+    monkeypatch.setattr(quality_models, "backend_reason", lambda: reason)
     return calls
 
 
-def _learned_ctx(source: bool = True, image: bool = True):
-    image_obj = _gradient() if image else None
+def _pair_ctx():
+    image = _gradient()
     return _ctx(
-        image_obj,
-        source=_gradient() if source else None,
-        capabilities={"images", "reference"} if source else {"images"},
+        image, source=image.copy(), capabilities={"images", "reference"}
     )
 
 
-def test_learned_quality_scores_the_trio_through_metric_scores(
+def test_fidelity_scores_the_learned_pair_from_its_own_dict(
     monkeypatch: pytest.MonkeyPatch,
 ):
+    """LPIPS/DISTS are read off the dict ``compute_fidelity_from_images`` built.
+
+    That computation already calls ``pair_metrics`` once for the pair, so the
+    producer must not ask the seam again: the count is what catches the deleted
+    learned-quality producer coming back (same numbers, second torch pass).
+    """
     from tabs.image_gallery.services import metric_scores
 
-    _fake_learned(
-        monkeypatch, pair={"lpips": 0.2, "dists": 0.15}, single={"brisque": 10.0}
-    )
+    calls = _fake_pair(monkeypatch, pair={"lpips": 0.2, "dists": 0.15})
 
-    values = _run("learned_quality")(_learned_ctx())
+    values = _run("fidelity_reference")(_pair_ctx())
 
-    assert tuple(value.axis for value in values) == LEARNED_AXES
-    raws = {"lpips": 0.2, "dists": 0.15, "brisque": 10.0}
-    for value in values:
+    by_axis = {value.axis: value for value in values}
+    assert tuple(by_axis) == FIDELITY_AXES
+    for axis, raw in (("lpips", 0.2), ("dists", 0.15)):
+        value = by_axis[axis]
         assert value.producer == "local"
         assert value.status == "ok", value.reason
-        spec = metric_scores.spec_for(value.axis)
-        assert value.value == float(metric_scores.score_for(spec, raws[value.axis]))
-    # The mapping is the registry's, per axis — not one reused number.
-    assert len({value.value for value in values}) > 1
-
-
-def test_learned_quality_gaps_every_axis_when_the_backend_returns_nothing(
-    monkeypatch: pytest.MonkeyPatch,
-):
-    from tabs.image_gallery.services import quality_models
-
-    _fake_learned(monkeypatch)  # both halves empty: the unavailable-backend shape
-    monkeypatch.setattr(quality_models, "backend_status", lambda: "missing")
-    monkeypatch.setattr(
-        quality_models, "backend_reason", lambda: "No module named 'piq'"
+        assert value.raw == raw
+        assert value.value == float(
+            metric_scores.score_for(metric_scores.spec_for(axis), raw)
+        )
+    assert len(calls) == 1, (
+        "one pair pass per item — the fidelity computation's own; a second "
+        "caller is a second forward pass for the same two images"
     )
 
-    values = _run("learned_quality")(_learned_ctx())
 
-    assert tuple(value.axis for value in values) == LEARNED_AXES
-    for value in values:
+def test_fidelity_gaps_the_learned_pair_when_the_backend_returns_nothing(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    _fake_pair(monkeypatch, status="missing", reason="No module named 'piq'")
+
+    values = _run("fidelity_reference")(_pair_ctx())
+
+    by_axis = {value.axis: value for value in values}
+    for axis in LEARNED_AXES:
+        value = by_axis[axis]
         assert value.status == "gap"
         assert value.value is None, "a gap is never filled with a substitute"
         assert "missing" in value.reason
         assert "piq" in value.reason
+    # The backend gap costs its own axes only: the detector deltas still measure.
+    assert by_axis["ssim"].status == "ok"
 
 
-def test_learned_quality_gaps_the_reference_axes_without_a_source(
-    monkeypatch: pytest.MonkeyPatch,
-):
-    from tabs.image_gallery.services import metric_scores
+def test_fidelity_gaps_every_axis_without_an_image():
+    values = _run("fidelity_reference")(_ctx())
 
-    calls = _fake_learned(monkeypatch, single={"brisque": -5.0})
-
-    values = _run("learned_quality")(_learned_ctx(source=False))
-
-    by_axis = {value.axis: value for value in values}
-    assert tuple(by_axis) == LEARNED_AXES
-    for axis in ("lpips", "dists"):
-        assert by_axis[axis].status == "gap"
-        assert by_axis[axis].value is None
-        assert by_axis[axis].reason, "a reference gap names the missing source"
-    assert by_axis["brisque"].status == "ok"
-    assert by_axis["brisque"].value == float(
-        metric_scores.score_for(metric_scores.spec_for("brisque"), -5.0)
-    )
-    # No pair call without a source — the backend is never asked for a
-    # comparison it cannot make.
-    assert [kind for kind, *_rest in calls] == ["nr"]
-
-
-def test_learned_quality_turns_a_backend_exception_into_gaps(
-    monkeypatch: pytest.MonkeyPatch,
-):
-    from tabs.image_gallery.services import quality_models
-
-    def explode(*args, **kwargs):
-        raise RuntimeError("libgomp: failed to load")
-
-    monkeypatch.setattr(quality_models, "pair_metrics", explode)
-    monkeypatch.setattr(quality_models, "nr_metrics", explode)
-
-    values = _run("learned_quality")(_learned_ctx())
-
-    assert tuple(value.axis for value in values) == LEARNED_AXES
-    for value in values:
-        assert value.status == "gap"
-        assert value.value is None
-        assert "RuntimeError" in value.reason
-        assert "libgomp" in value.reason
-
-
-def test_learned_quality_gaps_the_trio_without_an_image():
-    values = _run("learned_quality")(_ctx())
-
-    assert tuple(value.axis for value in values) == LEARNED_AXES
+    assert tuple(value.axis for value in values) == FIDELITY_AXES
     for value in values:
         assert value.status == "gap"
         assert value.value is None
         assert value.reason
 
 
-def test_learned_quality_manifest_is_metadata_only(monkeypatch: pytest.MonkeyPatch):
-    """The manifest names the trio and imports no imaging/learned backend.
+def test_fidelity_manifest_is_metadata_only(monkeypatch: pytest.MonkeyPatch):
+    """The manifest names the axes and imports no imaging/learned backend.
 
     Discovery imports every manifest on each start, so a manifest that pulled in
     ``torch`` would load it for everyone (and torch + PySide6 sharing OpenMP
     segfaults at teardown). Pinned twice: an AST scan of the file, and the
     ``sys.modules`` probe the discovery test already applies to the registry.
     """
-    path = PRODUCERS_DIR / "learned_quality" / "manifest.py"
+    path = PRODUCERS_DIR / "fidelity_reference" / "manifest.py"
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
     heavy_roots = {"torch", "piq", "PIL", "numpy"}
     imported: list[str] = []
@@ -595,14 +559,14 @@ def test_learned_quality_manifest_is_metadata_only(monkeypatch: pytest.MonkeyPat
         name
         for name in imported
         if name.split(".")[0] in heavy_roots
-        or name.endswith("services.quality_models")
+        or name.endswith(("services.quality_models", "services.fidelity_metrics"))
     ] == []
 
     for heavy in ("torch", "piq"):
         monkeypatch.delitem(sys.modules, heavy, raising=False)
-    spec = _manifest("learned_quality").PRODUCER
-    assert spec.id == "learned_quality"
-    assert tuple(spec.provides) == LEARNED_AXES
+    spec = _manifest("fidelity_reference").PRODUCER
+    assert spec.id == "fidelity_reference"
+    assert tuple(spec.provides) == FIDELITY_AXES
     assert spec.cost == "free" and spec.automatic is False
     assert "torch" not in sys.modules
     assert "piq" not in sys.modules
@@ -796,8 +760,8 @@ def _decode_offences(path: Path) -> list[str]:
 
 def test_producers_own_no_decode_and_never_import_the_proxy_builder():
     files = _producer_files()
-    # Guard against a vacuous pass: 5 packages x (init, manifest, producer) + root.
-    assert len(files) == 16, [path.name for path in files]
+    # Guard against a vacuous pass: 4 packages x (init, manifest, producer) + root.
+    assert len(files) == 13, [path.name for path in files]
 
     offences = [offence for path in files for offence in _decode_offences(path)]
     assert offences == [], offences

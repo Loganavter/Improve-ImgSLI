@@ -35,6 +35,9 @@ FIDELITY_AXES = (
     "clipping_delta",
     "halo_delta",
     "chroma_fringe_delta",
+    # W13: the learned pair is measured by the fidelity producer.
+    "lpips",
+    "dists",
 )
 ARTIFACT_AXES = (
     "banding",
@@ -45,8 +48,6 @@ ARTIFACT_AXES = (
     "chroma_fringing",
     "noise_amplification",
 )
-#: The learned trio (free, local, systematically in the plan since W10).
-LEARNED_AXES = ("lpips", "dists", "brisque")
 
 
 def _gradient(size: int = 48):
@@ -85,18 +86,15 @@ def _resolution(*specs: ProducerSpec) -> Resolution:
 def test_happy_path_returns_one_entry_per_item_in_plan_order(
     monkeypatch: pytest.MonkeyPatch,
 ):
-    # The learned trio is part of the local plan since W10; fake its seam so the
-    # happy path stays deterministic whether or not torch/piq are installed
-    # (the real backend is covered by test_quality_backend_required.py).
+    # LPIPS/DISTS are part of the fidelity producer since W13; fake the learned
+    # seam so the happy path stays deterministic whether or not torch/piq are
+    # installed (the real backend is covered by test_quality_backend_required.py).
     from tabs.image_gallery.services import quality_models
 
     monkeypatch.setattr(
         quality_models,
         "pair_metrics",
         lambda item, source, *a, **kw: {"lpips": 0.2, "dists": 0.15},
-    )
-    monkeypatch.setattr(
-        quality_models, "nr_metrics", lambda image, *a, **kw: {"brisque": 10.0}
     )
     registry = discover(PRODUCERS)
     resolution = resolve_plan(
@@ -123,9 +121,8 @@ def test_happy_path_returns_one_entry_per_item_in_plan_order(
         *CAMERA_AXES,
         *FIDELITY_AXES,
         *ARTIFACT_AXES,
-        *LEARNED_AXES,
     )
-    assert len(records["a.png"]) == len(expected_axes) == 21
+    assert len(records["a.png"]) == len(expected_axes) == 20
     assert all(isinstance(record, AxisValue) for record in records["a.png"])
     # Plan order = the resolver's registry order (artifacts … camera … fidelity),
     # and the tuple order is that plan order, not the axis vocabulary order.
