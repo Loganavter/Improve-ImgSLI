@@ -141,7 +141,7 @@ def test_tools_list_is_a_valid_deterministic_catalog(wired):
     names = [tool["name"] for tool in tools]
     assert len(names) == len(set(names)), "tool names must be unique"
     assert names == [tool["name"] for tool in catalog.TOOLS], "order must be catalog order"
-    assert len(tools) <= 28, "catalog must stay small (review prompt, not a magic number)"
+    assert len(tools) <= 29, "catalog must stay small (review prompt, not a magic number)"
 
     for tool in tools:
         assert _NAME_RE.match(tool["name"]), tool["name"]

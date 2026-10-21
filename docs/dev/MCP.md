@@ -41,7 +41,7 @@ fallback window, e.g. `:97`).
 
 ## Surface at a glance
 
-28 tools — 12 read-only, 16 mutating (reads and writes never share a tool):
+29 tools — 12 read-only, 17 mutating (reads and writes never share a tool):
 
 | Tool | Kind | What it does |
 |---|---|---|
@@ -58,7 +58,8 @@ fallback window, e.g. `:97`).
 | `wait_for` | read | block until one expectation holds (element id visible+enabled, role+label exists, or jobs settle); a timeout returns the last observed state (live-only) |
 | `get_canvas_scene` | read | one tab's canvas scene as deterministic JSON: panes, dividers, every magnifier instance (hidden ones flagged), canvas size, camera/projection transform; every geometry field names its coordinate space and its source (live-only) |
 | `open_tab` | write | open/focus a tab kind (live) or launch it (fallback) |
-| `run_action` | write | run one ActionRegistry id |
+| `run_action` | write | run one ActionRegistry id; with `params`/`expect` it also runs the six named scene commands (magnifier visible/position/size, divider visible/thickness, MC split weights) and can verify the change against scene paths (live-only) |
+| `set_scene_commands` | write | run an ordered list of value-taking scene commands; stops at the first error, and with `verify=true` each command declares expected scene paths and the scene is re-read (live-only) |
 | `open_folder` | write | hand a folder to a tab (`tab=` targets one; `slot=`/`side=` place it; live: routed) |
 | `open_file` | write | load one image file into a tab that accepts it (`tab=` forces one; a video is refused by name) |
 | `open_properties` | write | show the app's image-properties dialog for a file, non-modally (live-only) |

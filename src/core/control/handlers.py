@@ -8,12 +8,11 @@ real tab methods, exactly as a user click would. Shapes mirror
 
 Honesty kept from Phase 1: ``query_trace`` refuses when the tracer was never
 installed; ``open_folder`` reports ``routed`` only after a live tab accepted the
-folder; ``capture_live`` names its grab method (a widget grab may still render a
-QRhi/GL canvas blank — it reports what it produced).
+folder; ``capture_live`` names its grab method (a QRhi/GL canvas may grab blank).
 
-Mixin bodies live in ``elements``/``jobs``/``nav_keys``/``live_verbs``; routing
-in ``drop_routing``; canvas scene serialization in ``scene_read``;
-``_pause``/``show_properties_dialog`` are re-exported patch seams.
+Mixin bodies live in ``elements``/``jobs``/``nav_keys``/``live_verbs``; routing in
+``drop_routing``; the canvas scene (read + commands) in ``scene_read`` /
+``scene_commands``; ``_pause``/``show_properties_dialog`` are re-exported seams.
 """
 
 from __future__ import annotations
@@ -44,8 +43,8 @@ METHODS: tuple[str, ...] = (
     "get_state", "jobs_cancel", "jobs_list", "list_actions", "list_sessions",
     "list_surfaces", "nav_key", "open_file", "open_folder", "open_properties",
     "open_tab", "ping", "press_keys", "query_trace", "read_log", "run_action",
-    "set_language", "set_setting", "set_theme", "ui_click", "ui_elements",
-    "ui_focus", "ui_hover", "ui_nav_state", "ui_press",
+    "set_language", "set_scene_commands", "set_setting", "set_theme", "ui_click",
+    "ui_elements", "ui_focus", "ui_hover", "ui_nav_state", "ui_press",
 )
 
 
@@ -372,6 +371,11 @@ class ControlHandlers(
         return True
 
     def run_action(self, params: dict[str, Any]) -> dict[str, Any]:
+        from .scene_commands import scene_command_run
+
+        scene = scene_command_run(self, params)
+        if scene is not None:
+            return scene
         action_id = str(params.get("action_id") or "")
         known = sorted(a.action_id for a in self._registry().all_actions())
         if not self._run_action_id(action_id):
@@ -381,6 +385,12 @@ class ControlHandlers(
                 hint = "did you mean: " + ", ".join(close) + "? (" + hint + ")"
             raise MethodError(f"{action_id!r} is not a registered Find Action", hint)
         return {"ran": True, "action_id": action_id}
+
+    def set_scene_commands(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Run an ordered scene-command list, verified against a scene re-read."""
+        from .scene_commands import run_scene_command_list
+
+        return run_scene_command_list(self, params)
 
     def open_folder(self, params: dict[str, Any]) -> dict[str, Any]:
         raw = params.get("path")
