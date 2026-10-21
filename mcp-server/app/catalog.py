@@ -16,7 +16,7 @@ Design rules (MCP spec revision ``2026-07-28`` + 2026 tool-design consensus):
 - every tool carries an ``outputSchema`` and its handler returns matching
   ``structuredContent``;
 - all four ``annotations`` hints are explicit on every tool;
-- the catalog stays small (≤ ~24 tools — a review prompt, not a magic number:
+- the catalog stays small (≤ ~28 tools — a review prompt, not a magic number:
   the surface grows with the app's own subsystems, one read + one write per
   concern; large payloads live in resources).
 """
@@ -73,6 +73,17 @@ JOB_KINDS = ("gallery_pool", "metrics_pass", "ai_analysis", "export")
 JOB_STATUSES = ("running", "paused")
 #: The kinds ``jobs_cancel`` may actually stop today.
 CANCELLABLE_JOB_KINDS = ("export",)
+
+#: The only settings ``set_setting`` may write (mirrors the app's
+#: ``core/control/handlers.SETTING_WHITELIST``; the catalog stays
+#: app-import-free, so the vocabulary is repeated here). ``theme``/``language``
+#: keep ``set_theme``/``set_language``.
+SETTING_WHITELIST = ("rhi_backend",)
+#: Values ``rhi_backend`` accepts (the app's own render-backend choice list).
+RHI_BACKENDS = ("opengl", "vulkan")
+#: Settings whose own verb owns them — ``set_setting`` names that verb.
+DEDICATED_SETTING_VERBS = {"theme": "set_theme", "language": "set_language"}
+
 
 
 def _annotations(read_only: bool, destructive: bool, idempotent: bool) -> dict:
@@ -592,6 +603,82 @@ TOOLS: list[dict] = [
         "handler": "open_folder",
     },
     {
+        "name": "open_file",
+        "title": "Open one image file in a tab",
+        "description": (
+            "Load one file into the tab that accepts it, through that tab's own "
+            "drag-and-drop hook. With a live instance an image goes to Image "
+            "Compare when that tab is open, else to the gallery; pass tab=<kind> "
+            "to force the target. A video or other extension is refused by name "
+            "— no video-file intake exists. Live-only: with no instance nothing "
+            "can be routed, so it errors rather than pretending."
+        ),
+        "inputSchema": _params(
+            {
+                "path": {
+                    **_STR,
+                    "description": "Absolute (or ~-prefixed) path to an existing image file.",
+                },
+                "tab": {
+                    **_STR,
+                    "description": (
+                        "Tab kind to hand the file to (validated against the "
+                        "registered kinds); omit to auto-route. A kind that does "
+                        "not accept the file is an error, never a fallback."
+                    ),
+                },
+            },
+            ["path"],
+        ),
+        "outputSchema": _object(
+            {
+                "opened": _BOOL,
+                "path": _STR,
+                "tab": {
+                    **_STR,
+                    "description": "Session kind whose own drop hook took the file.",
+                },
+                "count": _INT,
+                "source": _source(),
+            },
+            ["opened", "path", "tab", "count"],
+        ),
+        "annotations": MUTATING,
+        "handler": "open_file",
+    },
+    {
+        "name": "open_properties",
+        "title": "Show image properties for a file",
+        "description": (
+            "Show the app's own image-properties dialog for an existing file, "
+            "through the plugin the Image Compare context menu uses. The dialog "
+            "is shown non-modally, so the call answers while it is on screen, "
+            "and it returns the dialog class name. Use it to read metadata no "
+            "screenshot shows. A missing path is rejected before any dialog "
+            "opens, and there is no headless analogue: it needs a running app."
+        ),
+        "inputSchema": _params(
+            {
+                "path": {
+                    **_STR,
+                    "description": "Absolute (or ~-prefixed) path to an existing image file.",
+                }
+            },
+            ["path"],
+        ),
+        "outputSchema": _object(
+            {
+                "opened": _BOOL,
+                "path": _STR,
+                "dialog": _STR,
+                "source": _source(),
+            },
+            ["opened", "path", "dialog"],
+        ),
+        "annotations": MUTATING,
+        "handler": "open_properties",
+    },
+    {
         "name": "set_theme",
         "title": "Set persisted theme",
         "description": (
@@ -656,6 +743,56 @@ TOOLS: list[dict] = [
         ),
         "annotations": MUTATING,
         "handler": "set_language",
+    },
+    {
+        "name": "set_setting",
+        "title": "Write one whitelisted setting",
+        "description": (
+            "Write one whitelisted scalar setting and report the value it "
+            "replaced. The whitelist is rhi_backend (opengl|vulkan); theme and "
+            "language keep their own verbs and are refused by name. The value is "
+            "persisted through the app's settings scope; applied says whether the "
+            "running store took it now — rhi_backend applies at restart. Without "
+            "a live instance it persists for the next start, with previous null."
+        ),
+        "inputSchema": _params(
+            {
+                "key": {
+                    **_STR,
+                    "description": (
+                        "Setting key; only rhi_backend is accepted (theme and "
+                        "language belong to set_theme/set_language)."
+                    ),
+                },
+                "value": {
+                    **_STR,
+                    "description": "New value; rhi_backend accepts only opengl or vulkan.",
+                },
+            },
+            ["key", "value"],
+        ),
+        "outputSchema": _object(
+            {
+                "key": _STR,
+                "value": _STR,
+                "applied": {
+                    "type": "boolean",
+                    "description": "True when the running store adopted the value now (rhi_backend applies at restart).",
+                },
+                "persisted": {
+                    "type": "boolean",
+                    "description": "True when the value was written to the app's settings.",
+                },
+                "previous": {
+                    "type": ["string", "null"],
+                    "description": "The value it replaced, or null when unset/unknown.",
+                },
+                "source": _source(),
+            },
+            ["key", "value", "applied", "persisted", "previous"],
+        ),
+        "annotations": MUTATING,
+        "handler": "set_setting",
     },
     {
         "name": "capture_surface",
@@ -1084,6 +1221,56 @@ TOOLS: list[dict] = [
         ),
         "annotations": MUTATING,
         "handler": "ui_focus",
+    },
+    {
+        "name": "ui_press",
+        "title": "Press an element and optionally hold it",
+        "description": (
+            "Press one element's left mouse button by id from ui_elements, "
+            "in-process. release=true (default) is one press and release with "
+            "hold_ms of waiting between (clamped to 5000); release=false parks "
+            "the press and answers, and the next call with that id releases the "
+            "same widget — pressing another element releases the parked one too, "
+            "so a button is never left down. Live-only, session-scoped ids."
+        ),
+        "inputSchema": _params(
+            {
+                "id": {
+                    **_STR,
+                    "description": "Element id from ui_elements (session-scoped), or a stable property:<name>=<value> reference.",
+                },
+                "hold_ms": {
+                    **_INT,
+                    "minimum": 0,
+                    "maximum": 5000,
+                    "default": 0,
+                    "description": "Milliseconds to hold between press and release of one press+release; clamped to 0..5000.",
+                },
+                "release": {
+                    **_BOOL,
+                    "default": True,
+                    "description": "True presses and releases; false leaves the button held until a later ui_press.",
+                },
+            },
+            ["id"],
+        ),
+        "outputSchema": _object(
+            {
+                "pressed": {
+                    **_STR,
+                    "description": "Element id whose press this call delivered (or the parked press it released).",
+                },
+                "held_ms": {
+                    **_INT,
+                    "description": "The hold this call waited between press and release (0 when it released an earlier hold).",
+                },
+                "released": _BOOL,
+                "source": _source(),
+            },
+            ["pressed", "held_ms", "released"],
+        ),
+        "annotations": MUTATING_INPUT,
+        "handler": "ui_press",
     },
     {
         "name": "jobs_list",

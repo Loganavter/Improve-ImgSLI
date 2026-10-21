@@ -23,6 +23,9 @@ for Image Compare, ``side`` for Multi Compare) travels verbatim to the tab's
 own ``handle_drop``; the router never interprets it. Tabs whose
 ``handle_drop`` predates the hint parameter keep working: the hinted call is
 retried without it (see :func:`_drop`).
+
+:func:`open_file_into` is the one-file shape of the same routing (``open_file``
+verb): one path, one accepting tab, in a caller-named preference order.
 """
 
 from __future__ import annotations
@@ -33,11 +36,16 @@ from typing import Any, Callable, Iterable
 from .discovery import MethodError
 
 __all__ = [
+    "MEDIA_IMAGE",
+    "MEDIA_VIDEO",
     "VALID_SIDES",
     "VALID_SLOTS",
+    "VIDEO_EXTENSIONS",
     "accepts_paths",
     "drop_hint",
     "folder_image_paths",
+    "media_kind",
+    "open_file_into",
     "open_folder_into",
     "route_paths",
 ]
@@ -47,6 +55,39 @@ __all__ = [
 #: call — see :func:`drop_hint`.
 VALID_SLOTS: tuple[int, ...] = (1, 2)
 VALID_SIDES: tuple[str, ...] = ("left", "right", "top", "bottom")
+
+#: Media kinds :func:`media_kind` reports. Classification only — it never
+#: claims a tab can load the file.
+MEDIA_IMAGE = "image"
+MEDIA_VIDEO = "video"
+
+#: Suffixes classified as video. The app has **no video-file intake yet**: the
+#: gallery tab ships ``services/video_compare_hooks.py`` as a Stage-4 stub, and
+#: the video editor edits recorded snapshots — it does not open a video file.
+#: The set exists so ``open_file`` can name a video for what it is instead of
+#: calling it "unknown extension" — no tab is offered it.
+VIDEO_EXTENSIONS: frozenset[str] = frozenset(
+    {".mp4", ".webm", ".mkv", ".mov", ".avi", ".m4v", ".mpeg", ".mpg"}
+)
+
+
+def media_kind(path: Path) -> str:
+    """``"image"`` / ``"video"`` for *path*'s suffix, else ``""``.
+
+    Images come from the shared extension set (the same one the tabs' drop
+    hooks use), so this classifier and the accept verdict never disagree about
+    what an image is. An empty answer is "neither" — the caller's signal for
+    the unknown-extension refusal.
+    """
+    from shared.image_extensions import ACCEPTED_IMAGE_EXTENSIONS
+
+    suffix = path.suffix.lower()
+    if suffix in ACCEPTED_IMAGE_EXTENSIONS:
+        return MEDIA_IMAGE
+    if suffix in VIDEO_EXTENSIONS:
+        return MEDIA_VIDEO
+    return ""
+
 
 
 def drop_hint(params: dict[str, Any]) -> dict[str, Any] | None:
@@ -207,3 +248,52 @@ def open_folder_into(
     if images:
         result["images"] = len(images)
     return result
+
+
+def open_file_into(
+    path: Path,
+    *,
+    wanted: str | None,
+    candidates: Iterable[str],
+    tabs: Callable[[], list[tuple[str, Any]]],
+    kinds: Iterable[str],
+    run_action: Callable[[str], Any],
+) -> dict[str, Any]:
+    """Hand ONE file to the first tab that accepts it.
+
+    The one-file sibling of :func:`open_folder_into`, reusing the same routing
+    (:func:`route_paths` → each tab's own ``accepts_drop``/``handle_drop``, i.e.
+    exactly what a user's drag-and-drop does). ``wanted`` is a caller-forced tab
+    kind (validated against ``kinds``, the error listing the known kinds) and
+    wins alone; otherwise the first accepting kind of ``candidates`` wins — the
+    caller derives that order from the tabs themselves, so no tab is named here
+    and the platform stays tab-agnostic. ``tabs`` is a provider, not a snapshot:
+    a candidate whose page does not exist yet is created through
+    ``workspace.new_<kind>`` and the list re-read, so a registered-but-closed
+    tab gets its page and then decides for itself.
+
+    Returns ``{"opened": True, "path", "tab", "count": 1}``. Raises
+    ``ValueError`` for an unknown forced kind or when no candidate accepts —
+    the caller maps it to the control surface's own error type with a
+    media-kind-aware hint (never a partial success).
+    """
+    known = list(kinds)
+    if wanted is not None and wanted not in known:
+        raise ValueError(
+            f"unknown tab kind {wanted!r} (kinds: {', '.join(sorted(known))})"
+        )
+    ordered = [wanted] if wanted is not None else [
+        kind for kind in candidates if kind in known
+    ]
+    for kind in ordered:
+        routed = route_paths(tabs(), [path], only=kind)
+        if routed is None:
+            # Focus it when it is open, create it when it is not: either way
+            # the tab's own drop hook is what decides, never this router.
+            run_action(f"workspace.new_{kind}")
+            routed = route_paths(tabs(), [path], only=kind)
+        if routed is not None:
+            return {"opened": True, "path": str(path), "tab": routed, "count": 1}
+    tried = ", ".join(ordered) if ordered else "no registered tab kind"
+    raise ValueError(f"no tab accepted {path} (tried: {tried})")
+

@@ -704,6 +704,55 @@ class AppBackend:
             "source": "fallback",
         }
 
+    def open_file(self, *, path: str, tab: str | None = None) -> dict:
+        return self._live_or_fallback(
+            "open_file",
+            lambda: self._fallback_open_file(path=path),
+            mutating=True,
+            path=path,
+            tab=tab,
+        )
+
+    def _fallback_open_file(self, *, path: str) -> dict:
+        """Validate the file, then refuse: routing needs a running tab.
+
+        A headless boot has no control channel to hand a file to (the same
+        reason ``open_folder`` reports ``routed: false``), so answering
+        "opened" here would be a lie. The path is validated first, so bad input
+        fails identically on both paths.
+        """
+        target = Path(path).expanduser()
+        if not target.is_file():
+            raise ToolError(
+                f"{target} is not an existing file",
+                "pass an absolute (or ~-prefixed) path to an image file",
+            )
+        raise ToolError(
+            "no live instance; open_file routes a file into a running tab",
+            "start the app with the control socket enabled (see docs/dev/MCP.md), then retry",
+        )
+
+    def open_properties(self, *, path: str) -> dict:
+        return self._live_or_fallback(
+            "open_properties",
+            lambda: self._fallback_open_properties(path=path),
+            mutating=True,
+            path=path,
+        )
+
+    def _fallback_open_properties(self, *, path: str) -> dict:
+        """Validate the file, then refuse: the dialog lives in the running app."""
+        target = Path(path).expanduser()
+        if not target.is_file():
+            raise ToolError(
+                f"{target} is not an existing file",
+                "pass an absolute (or ~-prefixed) path to an existing image",
+            )
+        raise ToolError(
+            "no live instance; the image-properties dialog needs a running app",
+            "start the app with the control socket enabled (see docs/dev/MCP.md), then retry",
+        )
+
     def set_theme(self, *, theme: str) -> dict:
         return self._live_or_fallback(
             "set_theme",
@@ -719,6 +768,67 @@ class AppBackend:
             mutating=True,
             language=language,
         )
+
+    def set_setting(self, *, key: str, value: str) -> dict:
+        return self._live_or_fallback(
+            "set_setting",
+            lambda: self._fallback_set_setting(key=key, value=value),
+            mutating=True,
+            key=key,
+            value=value,
+        )
+
+    def _fallback_set_setting(self, *, key: str, value: str) -> dict:
+        """Persist one whitelisted scalar for the next start — no live store.
+
+        The whitelist and the value vocabulary are re-validated here (a client
+        that skips the live path must not reach a wider write surface), and
+        ``previous`` is ``null``: nothing in this process holds the current
+        value, and a plausible default would be an invention.
+        """
+        from . import catalog
+
+        if key in catalog.DEDICATED_SETTING_VERBS:
+            verb = catalog.DEDICATED_SETTING_VERBS[key]
+            raise ToolError(
+                f"{key!r} has its own verb — set_setting does not write it",
+                f"call {verb} instead; set_setting writes: "
+                + ", ".join(catalog.SETTING_WHITELIST),
+            )
+        if key not in catalog.SETTING_WHITELIST:
+            raise ToolError(
+                f"{key!r} is not a settable key",
+                "settable keys: "
+                + ", ".join(catalog.SETTING_WHITELIST)
+                + " (theme/language use set_theme/set_language)",
+            )
+        value = str(value).strip()
+        if key == "rhi_backend":
+            value = value.lower()
+            if value not in catalog.RHI_BACKENDS:
+                raise ToolError(
+                    f"unknown rhi_backend {value!r}",
+                    "use one of: " + ", ".join(catalog.RHI_BACKENDS),
+                )
+        try:
+            if self._settings_writer is not None:
+                self._settings_writer(key, value)
+            else:
+                self._write_setting(key, value)
+        except Exception as exc:
+            raise ToolError(
+                f"could not persist {key}={value!r}: {exc}",
+                "check that the app config directory is writable",
+            )
+        self._invalidate_snapshot()
+        return {
+            "key": key,
+            "value": value,
+            "applied": False,
+            "persisted": True,
+            "previous": None,
+            "source": "fallback",
+        }
 
     def press_keys(self, *, keys: str, target: str | None = None) -> dict:
         """Inject keyboard input into the live app — live-only, never faked.
@@ -812,6 +922,31 @@ class AppBackend:
 
     def ui_focus(self, *, id: str) -> dict:
         return self._live_only("ui_focus", self._elements_need_live(), id=id)
+
+    def ui_press(
+        self, *, id: str, hold_ms: int | None = None, release: bool | None = None
+    ) -> dict:
+        """Press one element (optionally holding it) — live-only, never faked.
+
+        No element exists without a running window, so the fallback is the
+        named "needs a running app" refusal rather than a simulated press.
+        """
+        return self._live_or_fallback(
+            "ui_press",
+            self._refuse_press,
+            mutating=True,
+            id=id,
+            hold_ms=hold_ms,
+            release=release,
+        )
+
+    @staticmethod
+    def _refuse_press() -> dict:
+        """The honest fallback: there is nothing to press without a window."""
+        raise ToolError(
+            "no live instance; pressing an element needs a running app",
+            "start the app with the control socket enabled (see docs/dev/MCP.md), then retry",
+        )
 
     # -- keyboard navigation (live-only) -------------------------------------
 

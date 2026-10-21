@@ -3,6 +3,16 @@
   "_policy": "docs/dev/FILE_SIZE_POLICY.md",
   "entries": [
     {
+      "path": "src/core/control/handlers.py",
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=thin-owner reason=\"one frozen method table = one MCP tool surface; element/job/nav methods delegate to mixins, routing bodies live in drop_routing\"",
+      "parsed": {
+        "pattern": "thin-owner",
+        "reason": "one frozen method table = one MCP tool surface; element/job/nav methods delegate to mixins, routing bodies live in drop_routing"
+      }
+    },
+    {
       "path": "src/core/evidence/journal.py",
       "limit": 500,
       "marker": "Audit-Meta:",
