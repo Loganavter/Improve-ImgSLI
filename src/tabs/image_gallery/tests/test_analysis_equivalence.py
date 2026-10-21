@@ -69,7 +69,16 @@ from tabs.image_gallery.services.proxy import clear_proxy_cache, run_proxy_stage
 
 PRODUCERS = "tabs.image_gallery.analysis.producers"
 
-CAMERA_AXES = ("sharpness", "exposure", "clipping", "noise", "white_balance")
+CAMERA_AXES = (
+    "sharpness",
+    "exposure",
+    "clipping",
+    "noise",
+    "white_balance",
+    # The legacy camera stage appends ``nr_metrics`` (BRISQUE); the axis is
+    # declared so the engine carries it too (task-gallery-brisque-axis-2026-10-21).
+    "brisque",
+)
 FIDELITY_AXES = (
     "ssim",
     "detail_gain",
@@ -222,6 +231,57 @@ def test_camera_records_equal_the_legacy_measured_scores():
     assert gapped == set(CAMERA_AXES) - set(expected)
 
 
+def test_camera_brisque_record_equals_the_legacy_measured_score(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """BRISQUE: the engine's record, ``measured_scores`` and the read path agree.
+
+    The legacy camera stage appends ``nr_metrics`` (BRISQUE) to the dict
+    ``measure_camera_from_image`` returns, and the report renders it through
+    ``metric_scores.measured_scores``. The engine declared only five camera
+    axes, so that raw was computed and dropped: a photographic folder showed
+    fewer axes than the legacy UI. This builds the legacy dict exactly as the
+    stage does (BRISQUE faked through the learned seam — this cell has no
+    torch/piq) and pins the three views to one number: the record, the legacy
+    report row, and what ``read_axes`` returns for the record.
+    """
+    from tabs.image_gallery.analysis.read import read_axes
+    from tabs.image_gallery.models import GalleryItem
+    from tabs.image_gallery.services import quality_models
+
+    monkeypatch.setattr(
+        quality_models, "nr_metrics", lambda image, **_kw: {"brisque": 12.5}
+    )
+    image = _gradient()
+
+    metrics = camera_metrics.measure_camera_from_image(image)
+    assert "brisque" in metrics, "the legacy camera stage reports the no-ref raw"
+
+    records = _records(image, None, ("brisque",))
+    by_axis = {record.axis: record for record in records}
+    # The camera producer answers its whole declared set; the requested axis is
+    # the one under test.
+    assert CAMERA_NO_REF_AXIS in by_axis, tuple(by_axis)
+    record = by_axis[CAMERA_NO_REF_AXIS]
+    assert record.status == "ok", record.reason
+    assert record.raw == 12.5
+
+    legacy = {
+        axis: float(score)
+        for axis, _label, _raw, score in metric_scores.measured_scores(metrics)
+    }
+    assert "brisque" in legacy, "the legacy report shows the axis"
+    assert record.value == legacy["brisque"]
+
+    item = GalleryItem(path=Path("item.png"), mtime_ns=1)
+    item.analysis_records = records
+    read = read_axes(item, domain="algorithms", axes=("brisque",))[0]
+    assert read.status == "ok"
+    assert read.value == legacy["brisque"], (
+        "the Algorithms domain must show the same score the legacy report did"
+    )
+
+
 def test_fidelity_records_equal_the_legacy_measured_scores_with_a_source():
     image = _gradient()
     source = _source_variant(image)
@@ -351,9 +411,11 @@ def _tiled_stages(item, source=None):
     return out[str(item)]
 
 
-#: The one camera key no producer answers (W13 deleted the BRISQUE producer), so
-#: the rebuilt dict carries a gap there rather than a substituted number.
-CAMERA_WITHOUT_PRODUCER = "brisque"
+#: The one camera key the legacy stage appends that used to have no producer
+#: (W13 deleted the learned-quality producer). ``camera_scalars`` answers it now
+#: by reading the raw ``measure_camera_from_image`` already carries
+#: (task-gallery-brisque-axis-2026-10-21), so the rebuilt dict keeps it.
+CAMERA_NO_REF_AXIS = "brisque"
 
 
 def _legacy_oracle(item, source=None) -> dict:
@@ -423,12 +485,11 @@ def _tiled_oracle(item, source=None) -> dict:
 
 
 def _assert_rebuilt_entry(entry: dict, expected: dict) -> None:
-    """The entry's stage dicts equal the oracle's — one documented gap aside.
+    """The entry's stage dicts equal the oracle's — same keys, same values.
 
-    ``CAMERA_WITHOUT_PRODUCER`` is excluded and then asserted ABSENT from the
-    entry: the legacy dict carries it only when the learned backend is installed,
-    and no producer measures it (W13), so a present value would mean a legacy
-    call ran — the exact thing P9b deleted.
+    The camera dict includes ``CAMERA_NO_REF_AXIS`` when the learned stage
+    measured it, because ``camera_scalars`` answers it now: the rebuild reads the
+    producer's raw instead of dropping the key.
 
     ``artifact_maps`` is the SalArt coarse localization overlay, not a stage:
     it is computed from whichever catalog the entry carries, so it has no oracle
@@ -439,15 +500,7 @@ def _assert_rebuilt_entry(entry: dict, expected: dict) -> None:
         for key, value in entry.items()
         if key not in ("analysis", "artifact_maps")
     }
-    oracle = dict(expected)
-    oracle_camera = dict(oracle.get("camera") or {})
-    oracle_camera.pop(CAMERA_WITHOUT_PRODUCER, None)
-    oracle["camera"] = oracle_camera
-    assert launched == oracle
-    assert CAMERA_WITHOUT_PRODUCER not in (entry.get("camera") or {}), (
-        "no producer measures BRISQUE: the rebuilt camera dict must carry a gap, "
-        "not a number measured by the deleted legacy call"
-    )
+    assert launched == expected
 
 
 # ---------------------------------------------------------------------------
@@ -785,15 +838,12 @@ def test_the_artifact_fallback_is_the_one_kept_fallback(
 def test_the_rebuilt_dicts_place_the_learned_keys_where_the_services_do(
     tmp_path, monkeypatch: pytest.MonkeyPatch
 ):
-    """LPIPS/DISTS belong to the fidelity dict — the learned pair, not a 2nd pass.
+    """LPIPS/DISTS belong to the fidelity dict; BRISQUE to the camera dict.
 
     The learned backend needs torch, so the seam is stubbed: the fidelity
-    producer calls ``fidelity_metrics`` which calls the stub, and the rebuilt
-    entry must still place each key in the dict the legacy service put it in.
-
-    BRISQUE is deliberately NOT here: W13 deleted its producer, so the rebuilt
-    camera dict cannot carry it. That is a gap (asserted below), not a reason to
-    run the legacy camera call again — P9b.
+    producer calls ``fidelity_metrics`` which calls the stub, the camera producer
+    calls ``camera_metrics`` which merges ``nr_metrics`` — and the rebuilt entry
+    must still place each key in the dict the legacy service put it in.
     """
     from tabs.image_gallery.services import quality_models
 
@@ -807,14 +857,14 @@ def test_the_rebuilt_dicts_place_the_learned_keys_where_the_services_do(
 
     assert launched["fidelity"]["lpips"] == 0.31
     assert launched["fidelity"]["dists"] == 0.22
-    assert CAMERA_WITHOUT_PRODUCER not in launched["camera"], (
-        "BRISQUE has no producer any more: it must stay a gap"
+    assert CAMERA_NO_REF_AXIS not in launched["fidelity"], (
+        "BRISQUE is no-reference: it is a camera key, never a fidelity one"
     )
-    gaps = {record.axis for record in launched["analysis"] if record.status != "ok"}
-    assert CAMERA_WITHOUT_PRODUCER not in gaps, (
-        "the camera producer does not declare BRISQUE at all, so it is absent "
-        "from the plan rather than a record"
+    assert launched["camera"][CAMERA_NO_REF_AXIS] == 12.5, (
+        "the camera producer must carry the raw the legacy camera stage appends"
     )
+    statuses = {record.axis: record.status for record in launched["analysis"]}
+    assert statuses[CAMERA_NO_REF_AXIS] == "ok", statuses
 
 
 def test_producers_carry_the_pre_score_detector_value():
