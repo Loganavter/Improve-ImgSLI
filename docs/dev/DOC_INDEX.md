@@ -29,7 +29,7 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
 - **[Code patterns & anti-patterns](CODE_PATTERNS.md)** — `docs/dev/CODE_PATTERNS.md`
   Referenced by: [docs/dev/ARCHITECTURE.md](ARCHITECTURE.md), [docs/dev/CODE_MASS_REDUCTION.md](CODE_MASS_REDUCTION.md), [docs/dev/FILE_SIZE_POLICY.md](FILE_SIZE_POLICY.md), [docs/dev/README.md](README.md), [src/tabs/image_gallery/docs/investigations/plan-adaptive-metric-profiles-2026-10-17.md](../../src/tabs/image_gallery/docs/investigations/plan-adaptive-metric-profiles-2026-10-17.md), [src/tabs/image_gallery/docs/investigations/plan-gallery-persistent-catalog-2026-10-21.md](../../src/tabs/image_gallery/docs/investigations/plan-gallery-persistent-catalog-2026-10-21.md), [src/tabs/image_gallery/docs/investigations/plan-gallery-split-2026-10-17.md](../../src/tabs/image_gallery/docs/investigations/plan-gallery-split-2026-10-17.md)
 - **[`.imgsli` Container Format](CONTAINER_FORMAT.md)** — `docs/dev/CONTAINER_FORMAT.md`
-  Referenced by: [docs/dev/README.md](README.md)
+  Referenced by: [docs/dev/README.md](README.md), [docs/dev/tabs/contract.md](tabs/contract.md), [docs/dev/tabs/session-lifecycle.md](tabs/session-lifecycle.md)
 - **[Application Contracts](CONTRACTS.md)** — `docs/dev/CONTRACTS.md`
   Referenced by: [docs/dev/CAPABILITY_ALIASES.md](CAPABILITY_ALIASES.md), [docs/dev/CODE_MASS_REDUCTION.md](CODE_MASS_REDUCTION.md), [docs/dev/CODE_PATTERNS.md](CODE_PATTERNS.md), [docs/dev/PRESENTERS.md](PRESENTERS.md), [docs/dev/README.md](README.md), [docs/dev/SETTINGS_PERSISTENCE.md](SETTINGS_PERSISTENCE.md), [docs/dev/STORE.md](STORE.md), [docs/dev/TESTING.md](TESTING.md), [docs/dev/rendering/contracts.md](rendering/contracts.md), [docs/dev/rendering/index.md](rendering/index.md), [docs/dev/rendering/overview.md](rendering/overview.md), [docs/dev/rendering/render-pass-contract.md](rendering/render-pass-contract.md), [docs/dev/tabs/contract.md](tabs/contract.md), [docs/dev/tabs/index.md](tabs/index.md)
 - **[App Dialogs / Windows](DIALOGS.md)** — `docs/dev/DIALOGS.md`
@@ -127,7 +127,7 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
 ## docs/dev/tabs/
 
 - **[Background tab policy](tabs/background-tab-policy.md)** — `docs/dev/tabs/background-tab-policy.md`
-  Referenced by: [docs/dev/TODO.md](TODO.md)
+  Referenced by: [docs/dev/TODO.md](TODO.md), [docs/dev/tabs/index.md](tabs/index.md)
 - **[Capability mechanisms](tabs/capability-mechanisms.md)** — `docs/dev/tabs/capability-mechanisms.md`
   Referenced by: [docs/dev/ACTIONS.md](ACTIONS.md), [docs/dev/ARCHITECTURE.md](ARCHITECTURE.md), [docs/dev/HELP_SYSTEM.md](HELP_SYSTEM.md), [docs/dev/TAB_CONTRACT.md](TAB_CONTRACT.md), [docs/dev/plugins/onboarding.md](plugins/onboarding.md), [docs/dev/tabs/contract.md](tabs/contract.md), [docs/dev/tabs/index.md](tabs/index.md), [docs/dev/tabs/isolation.md](tabs/isolation.md), [docs/dev/tabs/registry.md](tabs/registry.md)
 - **[TabContract & TabContext](tabs/contract.md)** — `docs/dev/tabs/contract.md`
@@ -135,9 +135,9 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
 - **[Tab System Documentation](tabs/index.md)** — `docs/dev/tabs/index.md`
   Referenced by: [docs/dev/CONTRACTS.md](CONTRACTS.md), [docs/dev/PLUGINS.md](PLUGINS.md), [docs/dev/PRESENTERS.md](PRESENTERS.md), [docs/dev/README.md](README.md), [docs/dev/RESOURCES_I18N.md](RESOURCES_I18N.md), [docs/dev/TAB_CONTRACT.md](TAB_CONTRACT.md), [docs/dev/plugins/layout.md](plugins/layout.md)
 - **[Isolation & dependency wiring](tabs/isolation.md)** — `docs/dev/tabs/isolation.md`
-  Referenced by: [docs/dev/RESOURCES_I18N.md](RESOURCES_I18N.md), [docs/dev/TAB_CONTRACT.md](TAB_CONTRACT.md), [docs/dev/TESTING.md](TESTING.md), [docs/dev/tabs/background-tab-policy.md](tabs/background-tab-policy.md), [docs/dev/tabs/capability-mechanisms.md](tabs/capability-mechanisms.md), [docs/dev/tabs/index.md](tabs/index.md), [docs/dev/tabs/overview.md](tabs/overview.md)
+  Referenced by: [docs/dev/RESOURCES_I18N.md](RESOURCES_I18N.md), [docs/dev/TAB_CONTRACT.md](TAB_CONTRACT.md), [docs/dev/TESTING.md](TESTING.md), [docs/dev/tabs/background-tab-policy.md](tabs/background-tab-policy.md), [docs/dev/tabs/capability-mechanisms.md](tabs/capability-mechanisms.md), [docs/dev/tabs/index.md](tabs/index.md), [docs/dev/tabs/overview.md](tabs/overview.md), [docs/dev/tabs/package-structure.md](tabs/package-structure.md)
 - **[Overview](tabs/overview.md)** — `docs/dev/tabs/overview.md`
-  Referenced by: [docs/dev/TAB_CONTRACT.md](TAB_CONTRACT.md), [docs/dev/tabs/index.md](tabs/index.md)
+  Referenced by: [docs/dev/TAB_CONTRACT.md](TAB_CONTRACT.md), [docs/dev/tabs/capability-mechanisms.md](tabs/capability-mechanisms.md), [docs/dev/tabs/index.md](tabs/index.md), [docs/dev/tabs/registry.md](tabs/registry.md)
 - **[Tab package structure](tabs/package-structure.md)** — `docs/dev/tabs/package-structure.md`
   Referenced by: [docs/dev/RESOURCES_I18N.md](RESOURCES_I18N.md), [docs/dev/TAB_CONTRACT.md](TAB_CONTRACT.md), [docs/dev/tabs/index.md](tabs/index.md), [docs/dev/tabs/overview.md](tabs/overview.md)
 - **[TabRegistry](tabs/registry.md)** — `docs/dev/tabs/registry.md`

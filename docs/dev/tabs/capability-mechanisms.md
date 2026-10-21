@@ -16,6 +16,7 @@ context = TabContext(
     services={
         "list_session_blueprints":  ...,
         "create_workspace_session": ...,
+        "replace_workspace_session": ...,  # swap a session in place (project load)
         "close_workspace_session":  ...,
                 "show_help_dialog":         ...,
                 "show_settings_dialog":     ...,
@@ -74,9 +75,19 @@ once, synchronously, before the user's real initial session is necessarily
 active). See `tabs/registry.py`'s docstring on `create_startup_service` for
 the full ordering argument.
 
-Both `create_service`/`create_startup_service` **catch and re-raise**
-exceptions from the tab's implementation (logged first) — they do not
-swallow errors; only an unrecognized ID silently resolves to `None`.
+Error behaviour differs by mechanism and this is deliberate
+(`tabs/use_cases/capability_routing.py`):
+
+- `create_service` (active tab) and `create_service_for` (named tab)
+  **re-raise** an exception from the tab's implementation (logged first) — the
+  caller asked *that* tab, so a failure is not silently replaced;
+- the by-capability probes — `create_startup_service`,
+  `create_main_window_feature` — **isolate** a raising tab: the exception is
+  logged and the probe continues with the next tab, so one broken tab cannot
+  veto an unrelated tab's capability.
+
+In both directions an unrecognized ID is not an error: the active-tab call
+returns `None`, the probe simply keeps looking.
 
 ## host → tab: `notify_all` (broadcast, not session-scoped)
 
@@ -84,9 +95,11 @@ A distinct mechanism from `create_service`, for the minority of hooks that
 are genuinely global broadcasts rather than session-scoped requests: every
 registered tab needs its own chance to act, regardless of which one is
 active. Current call sites: `install_translations` (each tab binds its
-own UI's translation signals at startup, not just the active one's) and
+own UI's translation signals at startup, not just the active one's),
 `refresh_startup_button_visuals` (cosmetic startup refresh every tab's page
-should get).  **Former** call sites `contribute_settings` /
+should get), and `contribute_keymap_defaults` (Settings → Keyboard must list
+every tab's default chords, not only the active tab's — see the catalog
+note below).  **Former** call sites `contribute_settings` /
 `contribute_help` have migrated to typed collectors
 (`tabs/use_cases/capability_routing.py:32`
 `collect_help_contributions()` /
@@ -103,6 +116,11 @@ registry.notify_all("install_translations", ui)
 from tabs.use_cases.capability_routing import collect_help_contributions
 contributions = collect_help_contributions(registry)  # -> list[HelpHubContribution]
 ```
+
+Verified `notify_all` call sites: `ui/main_window/translations.py`
+(`install_translations`), `ui/main_window/startup.py`
+(`refresh_startup_button_visuals`), `plugins/settings/pages/keyboard.py`
+(`contribute_keymap_defaults`).
 
 Iterates every registered tab, calls `tab.create_service(hook_id, *args,
 **kwargs)` on each (for `notify_all`) or collects typed return values (for
@@ -152,7 +170,9 @@ attribute on it, which in practice is once `image_compare`'s page is
 materialized (`ImageCompareTab.create_main_window_feature` returns `None`
 while `self._widget` is still unset). This is what let `image_compare` stop
 being forced into existence at every boot merely because the legacy shell
-depended on it. See `docs/dev/investigations/lazy-legacy-shell-plan.md` for
+depended on it. See
+`../improve-imgsli-internal-docs/docs/dev/investigations/lazy-legacy-shell-plan.md`
+(private docs repo) for
 the full writeup, including the small set of call sites
 (`ui/presenters/main_window/connections.py`,
 `ui/presenters/main_window/presenter.py::schedule_canvas_update`) that had to
@@ -282,21 +302,51 @@ CATALOG REFRESH — "re-publish into a host-owned registry":
   (filtered by owner_tab on display). For actions, only the active tab's
   chrome targets are live. Host callers must not import tabs.* builders by
   module path. Tab-owned label keys live under the tab i18n namespace.
+```
 
 Why this divergence (C10): settings/help are *browsable catalogs* — browser
 must list every inactive tab's sections/help subtrees (user hasn't switched
 yet), so the host broadcasts ``notify_all`` and filters by ``owner_tab`` on
-display. Actions (including keymap defaults) are *active-tab chrome* — only
+display. **Keymap defaults are a catalog too**: Settings → Keyboard lists every
+tab's default chords, so ``contribute_keymap_defaults`` is a
+``notify_all`` broadcast (``plugins/settings/pages/keyboard.py``), not an
+active-tab query. **Actions are active-tab chrome** — only
 the live tab's widget targets exist and are hittable; inactive tabs' targets
-are not in the widget tree. Hence ``contribute_actions`` / ``contribute_keymap_defaults``
-resolve strictly against the active tab via ``create_service`` (``_active_session_type``),
+are not in the widget tree. Hence ``contribute_actions`` resolves strictly
+against the active tab via ``create_service`` (``_active_session_type``),
 and ``connections.py:_refresh_active_tab_actions`` re-calls it on every
-``currentChanged``. Same verb prefix, opposite routing by product need.
-```
+``currentChanged``. Same verb prefix, opposite routing by product need —
+check which side of the catalog/chrome split a new ``contribute_*`` id is on
+before choosing a mechanism.
 
 Anything that exists only to let host code *push* a value or *command* a tab
 to do something host code had to already know the shape of is the
 anti-pattern, regardless of whether it's spelled as a method or a string ID.
+
+### Mandatory ID: `topology_overlays`
+
+`create_service("topology_overlays", parent_widget)` is the **one ID every
+registered tab must answer** — `tests/runtime/test_overlay_topology_conformity.py`
+walks `TabRegistry` and fails for any tab whose branch is missing or does not
+return a list. It returns the tab's window-parented modal overlays (flyouts,
+popups, in-window sheets) so host chrome can reason about what currently covers
+the window; **`[]` is the correct answer for a tab that owns none**. Provide it
+from the tab's `create_service` branch:
+
+```python
+def create_service(self, service_id, *args, **kwargs):
+    if service_id == "topology_overlays":
+        return build_topology_overlays(self, args[0] if args else kwargs.get("parent"))
+    ...
+```
+
+All four tabs implement it (`src/tabs/image_compare/service_factory.py`,
+`src/tabs/multi_compare/tab.py`, `src/tabs/image_gallery/tab.py` →
+`use_cases/registration.build_topology_overlays`, and
+`src/tabs/session_picker/tab.py`).
+A tab added without it passes discovery but fails that test — see
+[overview.md](overview.md) "How to add a new tab".
+
 
 ## Decision rule for a new capability need
 
@@ -323,15 +373,21 @@ and never let host code reach into a tab's widget by attribute name
 
 As of this writing:
 
-- Every `create_service`/`create_startup_service`/`create_main_window_feature`
-  ID in the codebase was historically implemented only by `ImageCompareTab`.
-  `session_picker` now implements `session_picker.host_chrome` (resolved via
-  `create_service_for`); `multi_compare` implements a few contribution /
-  clipboard IDs. Several call sites still treat some results as mandatory
-  (`raise RuntimeError(...)` on `None`) rather than degrading gracefully —
-  a policy violation per rule 1 above, not yet fully cleaned up.
-  Verify, don't assume, before assuming a new ID "just works" for
-  a non-`image_compare` tab.
+- The active-ID inventory is **not** kept here — a hand-copied list is stale the
+  next time a tab gains a service. The largest producer is
+  `src/tabs/image_compare/service_factory.py` (~48 IDs: snapshot/export
+  presenters, canvas commands, flyout controllers, `settings_*` sync,
+  `clipboard_paste_service`, `topology_overlays`, ...); `multi_compare`,
+  `image_gallery` and `session_picker` implement a smaller set each
+  (contribution IDs, `clipboard_paste_service`, `topology_overlays`, and
+  `session_picker.host_chrome` — the one `create_service_for` target). Grep the
+  ID's `create_service` branches before assuming a tab answers it.
+- `clipboard_paste_service` is the one ID whose absence is fatal:
+  `src/plugins/export/plugin.py` raises `RuntimeError("No tab provides
+  clipboard_paste_service")` when no tab answers the startup probe. That is the
+  single `raise`-on-`None` call site in the tree (policy rule 1 above says it
+  should not exist); it survives because export cannot wire paste without an
+  owner.
 - `multi_compare`/`session_picker` still lack several session-scoped IDs they
   could plausibly be the active tab for (`canvas_widget_class`,
   `layout_manager`, `toolbar_presenter` are the live candidates if those
@@ -342,6 +398,9 @@ As of this writing:
   IDs now fail at test time (not silently at runtime as `None`).  Other IDs
   still lack a generic enforcement test — the `contribute_*` family closed the
   biggest concrete gap (this paragraph previously documented it as missing).
+- **Enforced** for `topology_overlays` by
+  `tests/runtime/test_overlay_topology_conformity.py` — every registered tab
+  must answer `create_service("topology_overlays", parent)` with a list.
 - `getattr(widget, "attr_name", None)` guards for tab-owned widgets have
   **not** been fully audited/removed. Confirmed still present (unaudited) in
   `tabs/image_compare/ui/popup_closing.py`,
@@ -355,13 +414,18 @@ As of this writing:
   tab-owned `ImageComparePopupClosing` extension via
   `create_startup_service("popup_close_extension", ...)`, not widget-name
   lookups.
- - Session-switch state dialects (C3): IC snapshot/restore per switch
-  (``tabs/image_compare/use_cases/persistence.py``), MC slot-authoritative
-  re-read (post 2026-08 unification, ``tabs/multi_compare/use_cases/persistence.py``),
-  image_gallery raw ``state_slots.get`` (``tabs/image_gallery/tab.py:86``).
-  All three are now documented as sanctioned — they reflect different ownership
-  models (IC camera lives on host widget, MC state in Redux slot, gallery folder
-  in slot dict). New tabs should pick the slot-authoritative model (MC) unless
-  host-widget state forces snapshot semantics (IC).
+ - Session-switch state dialects (C3): two, not three. **IC** snapshots and
+  restores its own camera/viewport on a switch
+  (``tabs/image_compare/use_cases/persistence.py``) because that state lives on
+  the host widget. **MC and gallery** both bind ``SessionState``
+  (``tabs/use_cases/session_state.py``) over their own slot and re-read the LIVE
+  slot on ``on_active_session_changed`` (``tabs/multi_compare/tab.py`` typed
+  slot; ``tabs/image_gallery/tab.py`` ``_apply_chrome`` plain slot). New tabs
+  should pick the slot-authoritative model unless host-widget state forces
+  snapshot semantics.
  - `notify_all` and the `is_bootstrap_default` stopgap above are both in
   active use.
+
+The lazy legacy-shell writeup behind `create_main_window_feature` lives in the
+private docs repo, not here:
+`../improve-imgsli-internal-docs/docs/dev/investigations/lazy-legacy-shell-plan.md`.
