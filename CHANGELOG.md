@@ -4,6 +4,22 @@
 
 ### Fixed
 
+- **Typing into a focused combo box no longer loses W/A/S/D/Q/E and Space.**
+  The global keyboard route sends those keys to the canvas overlay whenever the
+  focused widget is not a native text editor; a toolkit `ComboBox` is a
+  painted `Button`, so it was not recognised as a text consumer. Measured live
+  (control channel + real X keys): typing `deepseek` into the gallery's model
+  list delivered only `p` and `k` — d/e/s were consumed as overlay-movement
+  keys before the field saw them, and Space never opened the list. The focus
+  check now also honours the toolkit's `acceptsTextKeys()` protocol, which the
+  `ComboBox` implements (false while typing is disabled or the widget is
+  disabled); the decision lives in one place —
+  `src/events/app_event/keyboard.py::widget_accepts_text_keys`. Tests:
+  `tests/test_global_keyboard_text_keys.py` (5 — overlay keys stay global for a
+  plain widget, and are not stolen from a typing combo for letters or Space;
+  typing-disabled/disabled combos release the keys; a native editor still
+  declines them).
+
 - **The help dialog's frame survives a context menu again (Wayland), and
   resizing stops lagging.** `ContextMenuManager` computed the RMB surface
   policy (`in_window`) and never passed it to `ContextMenu`, so every manager

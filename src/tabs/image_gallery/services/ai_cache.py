@@ -65,8 +65,11 @@ AI_CACHE_VERSION = 3
 #: History: v1 = the per-axis scorecard; v2 (P3) = the scorecard plus
 #: ``axis_proposals`` and no local-measurement echo in the prompt (P3-B/P3-E);
 #: v3 (P4) = the keep/reject verdict field is gone and the assessment prose is
-#: stored as ``reason`` (plan-gallery-ai-judgement P4/D4).
-PROMPT_SCHEMA_VERSION = 3
+#: stored as ``reason`` (plan-gallery-ai-judgement P4/D4); v4 (P7-B) = the
+#: scorecard keeps the axes the JUDGE named (free names) and carries the k draw
+#: scorecards — an entry written by the pre-P7-B parser answered the same
+#: question but lost every free axis' number, so it must not be served.
+PROMPT_SCHEMA_VERSION = 4
 
 #: The identity fields that define "the same analysis". Order is the canonical
 #: JSON order. Anything else on a passed mapping (notably ``api_key``) is dropped:
@@ -356,14 +359,40 @@ def load_cached_analysis(
             # v2 = pre-identity keying): treat as a miss so the AI domain
             # re-analyzes with the current prompt and backend.
             return None
-        # Open per-axis scorecard (the VLM's own numbers).
+        # Open per-axis scorecard (the VLM's own numbers). The judge's free
+        # names are validated against the entries stored WITH the payload
+        # (P7-B): a cache HIT must keep every axis a MISS parsed, and a name
+        # that was never asked is still dropped.
+        from tabs.image_gallery.models import AXIS_DIRECTION_DEFAULT, AiAxisProposal
+
+        judged: list[AiAxisProposal] = []
+        for entry in data.get("axis_entries", []) or []:
+            try:
+                judged.append(
+                    AiAxisProposal(
+                        name=str(entry.get("name", "") or ""),
+                        definition=str(entry.get("definition", "") or ""),
+                        scale=str(entry.get("scale", "") or ""),
+                        score=-1,
+                        direction=str(entry.get("direction") or AXIS_DIRECTION_DEFAULT),
+                    )
+                )
+            except Exception:
+                continue
         try:
             from tabs.image_gallery.services.ai_client import _parse_axes
 
-            axes: dict[str, int] = _parse_axes(data.get("axes"))
+            axes: dict[str, int] = _parse_axes(
+                data.get("axes"), allowed=tuple(e.name for e in judged)
+            )
         except Exception:
             axes = {}
-        from tabs.image_gallery.models import AiAxisProposal
+        samples: list[dict[str, int]] = []
+        for draw in data.get("axis_samples", []) or []:
+            try:
+                samples.append({str(k): int(v) for k, v in dict(draw).items()})
+            except Exception:
+                continue
 
         proposals: list[AiAxisProposal] = []
         for entry in data.get("axis_proposals", []) or []:
@@ -410,6 +439,8 @@ def load_cached_analysis(
             },
             axis_proposals=tuple(proposals),
             axis_proposal_refusals=tuple(refusals),
+            axis_entries=tuple(judged),
+            axis_samples=tuple(samples),
         )
     except Exception:
         logger.debug("Gallery AI cache read failed for %s", path, exc_info=True)
@@ -615,6 +646,26 @@ def save_analysis(
                         for name, reason in (
                             getattr(result, "axis_proposal_refusals", ()) or ()
                         )
+                    ],
+                    #: The JUDGE-named axes this card answered (P7-B): name +
+                    #: definition + scale + direction. Kept beside the numbers so
+                    #: a HIT can re-validate the free names (and reach the ranker
+                    #: with the same axis set a fresh call would).
+                    "axis_entries": [
+                        {
+                            "name": p.name,
+                            "definition": p.definition,
+                            "scale": p.scale,
+                            "direction": getattr(p, "direction", ""),
+                        }
+                        for p in (getattr(result, "axis_entries", ()) or ())
+                    ],
+                    #: The k draw scorecards the result was merged from (P3-D /
+                    #: P7-B): the measured within-item spread, which the noise
+                    #: floor reads. Empty for a single draw.
+                    "axis_samples": [
+                        {str(axis): int(score) for axis, score in dict(draw).items()}
+                        for draw in (getattr(result, "axis_samples", ()) or ())
                     ],
                     "version": AI_CACHE_VERSION,
                     "identity": canonical,

@@ -172,5 +172,5 @@ def analyze_image_sync(
         )
         _emit_phase(on_phase, "waiting")
         raw = call_sync(base_url, api_key, payload)
-        results.append(parse_response(raw, model=model))
+        results.append(parse_response(raw, model=model, profile=profile))
     return merge_samples(results)

@@ -29,6 +29,10 @@ from tabs.image_gallery.services.jev_client import rank_series_jev_detailed
 def _item(name: str, **metrics) -> GalleryItem:
     it = GalleryItem(path=Path(f"/gallery/{name}"), mtime_ns=0)
     it.metrics.update(metrics)
+    # P7-B: Jev refuses a one-axis vector; mirror ssim onto sharpness so this
+    # trace fixture still ranks (the refusal has its own focused test).
+    if "sharpness" not in it.metrics and "ssim" in it.metrics:
+        it.metrics["sharpness"] = float(it.metrics["ssim"]) * 400.0
     return it
 
 

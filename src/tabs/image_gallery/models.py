@@ -231,6 +231,16 @@ class AiAnalysisResult:
     #: ``(name, reason)`` for every proposal refused at parse time — a refused
     #: proposal is a recorded loss, never a silently dropped one.
     axis_proposal_refusals: tuple[tuple[str, str], ...] = ()
+    #: The JUDGE-named axes this scorecard answered (plan-gallery-ai-judgement
+    #: P7-B): the profile half the prompt asked for BY NAME, carried so a cache
+    #: HIT can validate the same free names a MISS parsed (never a second axis
+    #: record — the entries are ``AiAxisProposal``).
+    axis_entries: tuple[AiAxisProposal, ...] = ()
+    #: The k independent draw scorecards this result was merged from (P3-D
+    #: sampling, ``{axis: score}`` each). Empty for a single draw: only two or
+    #: more draws can say how far the SAME picture moves under the instrument,
+    #: which is the measured noise floor (``quality_read.axis_noise_floor``).
+    axis_samples: tuple[dict[str, int], ...] = ()
 
 
 #: The named alias fields that predate the open ``axes`` scorecard.

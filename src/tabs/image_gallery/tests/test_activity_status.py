@@ -111,7 +111,7 @@ def test_analyze_image_sync_emits_analyzing_then_waiting(monkeypatch, tmp_path) 
     calls: list[str] = []
     monkeypatch.setattr(ai_client, "build_request", lambda *a, **k: calls.append("built") or {})
     monkeypatch.setattr(ai_client, "call_sync", lambda *a, **k: calls.append("sent") or {})
-    monkeypatch.setattr(ai_client, "parse_response", lambda raw, model: "result")
+    monkeypatch.setattr(ai_client, "parse_response", lambda raw, model, **kw: "result")
 
     phases: list[str] = []
     out = ai_client.analyze_image_sync(
@@ -129,7 +129,7 @@ def test_analyze_image_sync_emits_analyzing_then_waiting(monkeypatch, tmp_path) 
 def test_failing_phase_hook_never_breaks_analysis(monkeypatch, tmp_path) -> None:
     monkeypatch.setattr(ai_client, "build_request", lambda *a, **k: {})
     monkeypatch.setattr(ai_client, "call_sync", lambda *a, **k: {})
-    monkeypatch.setattr(ai_client, "parse_response", lambda raw, model: "ok")
+    monkeypatch.setattr(ai_client, "parse_response", lambda raw, model, **kw: "ok")
 
     def boom(_phase: str) -> None:
         raise RuntimeError("ui gone")

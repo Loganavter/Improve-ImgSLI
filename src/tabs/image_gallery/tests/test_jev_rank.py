@@ -48,6 +48,16 @@ from tabs.image_gallery.services.rank_fusion import measured_axes_for
 def _item(name: str, **metrics) -> GalleryItem:
     it = GalleryItem(path=Path(f"/gallery/{name}"), mtime_ns=0)
     it.metrics.update(metrics)
+    # P7-B: Jev refuses a vector carrying fewer than two axes (one number cannot
+    # order variants and the ranker guessed its direction). These fixtures mirror
+    # ``ssim`` onto ``sharpness`` (same quality, same spread) so the refusal is
+    # asserted by its own test instead of by every rank fixture — the constant
+    # ``noise`` axis is correctly suppressed for these series.
+    if "sharpness" not in it.metrics and "ssim" in it.metrics:
+        try:
+            it.metrics["sharpness"] = float(it.metrics["ssim"]) * 400.0
+        except (TypeError, ValueError):
+            pass
     return it
 
 
@@ -156,7 +166,10 @@ def test_payload_is_measured_vector_only_no_paths_no_bytes_no_prose() -> None:
     payload = build_rank_request([a, b], mode="fidelity")
     vector = json.loads(_message_text(payload))
 
-    assert set(vector) == {"mode", "items"}
+    # P6 (folded into P7-B) added the top-level ``axes`` description: every axis
+    # the payload carries states its name, its MEANING and its DIRECTION, so the
+    # ranker never guesses which end is good.
+    assert set(vector) == {"mode", "items", "axes"}
     assert vector["mode"] == "fidelity"
 
     # The measured VECTOR (the user message) carries no identity / bytes / prose.

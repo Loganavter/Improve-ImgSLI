@@ -57,6 +57,9 @@ from typing import Any, Callable
 
 from tabs.image_gallery.services import jev_cache
 from tabs.image_gallery.services.ai_client import _ai_debug
+from tabs.image_gallery.services.axis_proposal import direction_of
+from tabs.image_gallery.services.jev_axes import payload_axes, scored_axis_names
+from tabs.image_gallery.services.profile_judged import scorecard_axis_ids
 from tabs.image_gallery.services.quality_read import (
     AI_DOMAIN,
     axis_noise_floor,
@@ -65,7 +68,6 @@ from tabs.image_gallery.services.quality_read import (
 from tabs.image_gallery.services.rank_fusion import (
     _inside_noise_axes,
     axis_salience,
-    measured_axes_for,
     rank_series,
 )
 from tabs.image_gallery.use_cases.pipeline_stages import rank_completeness
@@ -99,6 +101,17 @@ JEV_REASON_NOUL = "AI (Jev) abstained (Noul) — kept the Algorithms rank"
 JEV_REASON_LOW_CONFIDENCE = "AI (Jev) was not confident enough — kept the Algorithms rank"
 JEV_REASON_ERROR = "AI (Jev) request failed — kept the Algorithms rank"
 JEV_REASON_MALFORMED = "AI (Jev) returned an unusable response — kept the Algorithms rank"
+#: A vector carrying fewer than two axes (P7-B / P6): one number cannot order
+#: variants, and the live ranker responded by GUESSING the axis' direction
+#: ("Noise higher = better? ... likely quality, higher better", owner log
+#: 2026-10-21). Named code first, then the human sentence, so a caller can act
+#: on the cause without parsing prose.
+JEV_REJECT_ONE_AXIS = "single-axis-vector"
+JEV_REASON_ONE_AXIS = (
+    "AI (Jev): single-axis-vector — only one axis carries a number and a single "
+    "number cannot order the variants (at least two are required); kept the "
+    "Algorithms rank"
+)
 
 #: Degrade reasons that are a genuine FAULT, not a benign non-answer: a transport
 #: error or an unconfigured client (plan §J1.4). A fault paints the per-card error
@@ -193,32 +206,58 @@ def _aliased(items) -> list[tuple[str, Any]]:
     return [(f"img_{i}", item) for i, item in enumerate(ordered, start=1)]
 
 
-def build_measured_vector(items, *, mode: str, domain: str = "algorithms", profile=None) -> dict:
-    """The scoring vector: ``{"mode", "items": [{"alias","scores"}]}``.
+def _floor_for(domain: str, items) -> float:
+    """The instrument's floor for THIS series — measured when the draws carry it.
 
-    Each entry's ``scores`` holds exactly the applicable axes for *mode*
-    (``rank_fusion.measured_axes_for``) that *item* actually carries a score for
-    under *domain* — an unscored axis is omitted, never fabricated. On the AI
-    domain the scores are the VLM's scorecard (``item.analysis``); on Algorithms
-    they are the local detectors (``item.metrics``), via the single per-domain
-    read (``services.quality_read``, plan-gallery-ai-backend-owns-quality). Only
-    the mode, the opaque aliases and the numbers — never paths or images.
+    ``axis_noise_floor`` is the ONE resolver: with k samples the items'
+    analyses carry their draw scorecards, so the floor is the measured
+    within-item spread; a single draw falls back to the constant. Never raises
+    (the constant path is the resolver's own fallback).
+    """
+    try:
+        return axis_noise_floor(
+            domain,
+            samples=[getattr(item, "analysis", None) for item in (items or ())],
+        )
+    except Exception:
+        return axis_noise_floor(domain)
+
+
+def build_measured_vector(items, *, mode: str, domain: str = "algorithms", profile=None) -> dict:
+    """The scoring vector: ``{"mode", "items": [{"alias","scores"}], "axes": [...]}``.
+
+    Each entry's ``scores`` holds exactly the asked axes for *mode*/*profile*
+    (``profile_judged.scorecard_axis_ids`` — the registry half the local
+    detectors can produce, plus the axes the JUDGE named for this series) that
+    *item* actually carries a score for under *domain* — an unscored axis is
+    omitted, never fabricated. On the AI domain the scores are the VLM's
+    scorecard (``item.analysis``); on Algorithms they are the local detectors
+    (``item.metrics``), via the single per-domain read (``services.quality_read``,
+    plan-gallery-ai-backend-owns-quality). Only the mode, the opaque aliases and
+    the numbers — never paths or images.
+
+    ``axes`` is the P6 axis description: each axis the payload carries appears
+    once with ``name`` + ``definition`` (its MEANING) + ``scale`` +
+    ``direction``, so the ranker never guesses which end is good
+    (``services.jev_axes``). The system prompt states the same rule.
 
     ``profile`` (a ``metric_profile.MetricProfile``) overrides the mode-implied
-    axes when given — the salience-derived subset (plan P1). ``None`` keeps the
-    mode mapping, so every existing caller is unchanged (backward compatible).
+    axes when given — the salience-derived subset (plan P1) and the judge's own
+    entries (P7-A/P7-B). ``None`` keeps the mode mapping, so every existing
+    caller is unchanged (backward compatible).
 
     P2 salience (plan-gallery-ai-judgement M3): an axis whose spread across THIS
     series sits inside the producing instrument's noise floor cannot order these
     variants, so it is not put in front of the ranker either — the model would be
     ranking on a constant (live 2026-10-21: ``exposure=82`` on five of six cards
     while the variants differed by 2–6 points elsewhere). The floor comes from
-    ``quality_read.axis_noise_floor(domain)`` and the suppression rule from
-    ``rank_fusion._inside_noise_axes`` — the SAME ones the deterministic fusion
+    ``quality_read.axis_noise_floor(domain, samples=...)`` — MEASURED from the
+    k draws when they exist (P7-B) — and the suppression rule from
+    ``rank_fusion._inside_noise_axes``; the SAME ones the deterministic fusion
     applies, imported, never re-derived here.
     """
     mid = _mode_token(mode)
-    axes = measured_axes_for(mid, profile=profile)
+    axes = scorecard_axis_ids(mid, profile=profile)
     entries: list[dict] = []
     for alias, item in _aliased(items):
         read: dict[str, int] = {}
@@ -241,7 +280,7 @@ def build_measured_vector(items, *, mode: str, domain: str = "algorithms", profi
     try:
         verdicts = axis_salience(
             [entry["scores"] for entry in entries],
-            noise_floor=axis_noise_floor(domain),
+            noise_floor=_floor_for(domain, items),
         )
         suppressed = _inside_noise_axes(verdicts)
     except Exception:
@@ -260,10 +299,17 @@ def build_measured_vector(items, *, mode: str, domain: str = "algorithms", profi
     if proposed:
         # plan-gallery-ai-judgement P3-B / D1.2: an axis the MODEL proposed is a
         # first-class entry the model leads on (no local producer exists, so no
-        # measured comparison is possible). Carried here BY NAME with the scale
-        # and the per-alias scores, so the ranker sees a dimension, not a number
-        # glued onto a pool axis.
+        # measured comparison is possible). Carried here BY NAME with the scale,
+        # the direction and the per-alias scores, so the ranker sees a dimension,
+        # not a number glued onto a pool axis.
         vector["proposed_axes"] = proposed
+    described = payload_axes(
+        list(scored_axis_names(vector)), profile=profile
+    )
+    if described:
+        # P6: every axis the payload carries is described once — name + meaning
+        # + direction — so the rank never guesses what a number means.
+        vector["axes"] = described
     return vector
 
 
@@ -292,6 +338,11 @@ def _proposed_axes_of(items) -> list[dict]:
                     "name": name,
                     "definition": str(getattr(proposal, "definition", "") or ""),
                     "scale": str(getattr(proposal, "scale", "") or ""),
+                    # P6: the direction travels with the axis so the ranker is
+                    # never asked to infer it from the name.
+                    "direction": direction_of(
+                        proposal, getattr(proposal, "definition", "")
+                    ),
                     "scores": {},
                 },
             )
@@ -307,11 +358,16 @@ def _proposed_axes_of(items) -> list[dict]:
 JEV_SYSTEM_PROMPT = (
     "You rank items by their measured quality scores. Reply with ONLY a JSON "
     'object {"ranking": ["<alias>", ...]} ordering the aliases best to worst — '
-    "a full ranking whenever at least two aliases carry scores (break near ties "
-    'by your best judgement). ``proposed_axes`` (when present) are dimensions '
-    "with a name, a definition and a 0-100 scale per alias — use them by name "
-    "when they separate these items. Reply {\"noul\": true} only when fewer than "
-    "two aliases carry scores. No prose."
+    "a full ranking whenever at least two axes carry scores (break near ties "
+    'by your best judgement). ``axes`` describes every axis the payload carries: '
+    "its name, its definition (what the number measures) and its direction. "
+    "Treat every axis as a QUALITY axis (higher = better) unless its direction "
+    "says otherwise: ``higher-is-better`` means a larger number is better, "
+    "``lower-is-better`` means a smaller number is better — never guess the "
+    "direction from the axis name. ``proposed_axes`` (when present) are "
+    "dimensions with a name, a definition, a direction and a 0-100 scale per "
+    'alias — use them by name when they separate these items. Reply {"noul": '
+    "true} only when fewer than two aliases carry scores. No prose."
 )
 
 
@@ -735,7 +791,7 @@ def _decide(
         member_list, mode=mode, domain=domain, profile=profile
     )[1]
     try:
-        floor = axis_noise_floor(domain)
+        floor = _floor_for(domain, member_list)
     except Exception:
         floor = 0.0
     blocks = _band_blocks(measured, quality, floor)
@@ -829,6 +885,18 @@ def rank_series_jev_detailed(
             scored, total, why,
         )
         return JevRankOutcome(None, reason=JEV_REASON_INCOMPLETE)
+    axes = scored_axis_names(vector)
+    if len(axes) < 2:
+        # P7-B / P6: one axis is not a comparison. The live ranker, handed a
+        # single number, GUESSED the axis' direction and said so in its own
+        # words (owner log 2026-10-21) — the refusal is the honest answer, never
+        # a padded second axis.
+        _ai_debug(
+            "jev rank skip: %d axis carries a number (%s) — at least two are "
+            "required, not ranked",
+            len(axes), ", ".join(axes) or "none",
+        )
+        return JevRankOutcome(None, reason=JEV_REASON_ONE_AXIS)
     payload = _request_from_vector(vector)
 
     cache_obj = cache if cache is not None else jev_cache.default_cache()
@@ -927,6 +995,8 @@ __all__ = [
     "JEV_REASON_MALFORMED",
     "JEV_REASON_NOT_CONFIGURED",
     "JEV_REASON_NOUL",
+    "JEV_REASON_ONE_AXIS",
+    "JEV_REJECT_ONE_AXIS",
     "JevRankOutcome",
     "SOURCE_MEASURED",
     "SOURCE_MODEL",

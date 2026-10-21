@@ -100,6 +100,44 @@ def judged_axis_entries(profile=None) -> tuple:
     return entries
 
 
+def scorecard_axis_ids(mode=None, *, profile=None) -> tuple[str, ...]:
+    """Every axis the scorecard ASKS for — registry half then the judge's.
+
+    The ONE asked-set resolver (P7-A/P7-B): the profile's registry axes
+    (``rank_fusion.measured_axes_for``, the mode mapping when no profile is
+    given) followed by the axes the judge NAMED for this series, in profile
+    order, de-duplicated. A profile carrying ONLY judge axes has no registry set
+    to narrow, so the registry half is empty rather than the mode mapping — an
+    absent profile (``None``) is the only case that falls back.
+
+    Callers: the scorecard prompt (to ask) and the measured vector (to carry the
+    answers), so the question and the payload can never disagree.
+    """
+    try:
+        from tabs.image_gallery.services.rank_fusion import measured_axes_for
+
+        registry: tuple[str, ...] = measured_axes_for(mode, profile=profile)
+    except Exception:
+        registry = ()
+    entries = judged_axis_entries(profile)
+    if (
+        entries
+        and profile is not None
+        and not tuple(getattr(profile, "axis_ids", ()) or ())
+    ):
+        registry = ()
+    out: list[str] = []
+    for axis in registry:
+        name = str(axis)
+        if name and name not in out:
+            out.append(name)
+    for entry in entries:
+        name = str(getattr(entry, "name", "") or "").strip()
+        if name and name not in out:
+            out.append(name)
+    return tuple(out)
+
+
 def axis_provenance(axis, *, mode=None, profile=None) -> str:
     """Which instrument measures *axis* here: ``measured-locally`` / judge / ``""``.
 
@@ -152,4 +190,5 @@ __all__ = [
     "axis_provenance",
     "judged_axis_entries",
     "normalized_entries",
+    "scorecard_axis_ids",
 ]

@@ -46,6 +46,36 @@ def key_event_chord(event: QKeyEvent) -> str:
         return ""
 
 
+def focused_widget():
+    """The live focus widget (seam for routing tests; never cached)."""
+    return QApplication.focusWidget()
+
+
+def widget_accepts_text_keys(widget) -> bool:
+    """True when unmodified letter/space keys are input for ``widget``.
+
+    The global handler routes W/A/S/D/Q/E and Space to the canvas overlay;
+    that route must not fire when the focused widget consumes those keys as
+    input. Native editors are matched by type; toolkit controls that paint
+    themselves (``ComboBox`` — a ``Button``, not a ``QLineEdit``) opt in with
+    the duck-typed ``acceptsTextKeys()`` protocol. Before it existed, typing
+    ``deepseek`` into a focused model ComboBox delivered only ``p`` and ``k``:
+    d/e/s are overlay-movement keys and were swallowed by this route
+    (measured live 2026-10-22 through the control channel).
+    """
+    if widget is None:
+        return False
+    if isinstance(widget, (QLineEdit, CustomLineEdit, QTextEdit, QPlainTextEdit)):
+        return True
+    checker = getattr(widget, "acceptsTextKeys", None)
+    if callable(checker):
+        try:
+            return bool(checker())
+        except Exception:
+            return False
+    return False
+
+
 def active_tab_shortcut_owns_event(event: QKeyEvent) -> bool:
     """True when the live shortcut binder claims this event's chord.
 
@@ -195,12 +225,10 @@ class GlobalKeyboardHandler:
         if active_tab is not None and active_tab.owns_widget(watched_obj):
             return False
 
-        focused_widget = QApplication.focusWidget()
-        if active_tab is not None and active_tab.owns_widget(focused_widget):
+        focus = focused_widget()
+        if active_tab is not None and active_tab.owns_widget(focus):
             return False
-        if isinstance(
-            focused_widget, (QLineEdit, CustomLineEdit, QTextEdit, QPlainTextEdit)
-        ):
+        if widget_accepts_text_keys(focus):
             return False
 
         key = event.key()
@@ -232,9 +260,32 @@ class GlobalKeyboardHandler:
         self._movement_controller.start()
 
     def preview_controller(self):
-        """The tab's preview lifecycle owner (``image_label_handler.preview``)."""
-        handler = getattr(self.presenter, "image_label_handler", None)
-        return getattr(handler, "preview", None)
+        """The preview lifecycle owner, resolved through the image-canvas feature.
+
+        ``self.presenter`` here is the active tab's presenter; the
+        ``image_label_handler`` that owns the preview controller is attached to
+        the tab's IMAGE-CANVAS presenter (the feature the tab builds its canvas
+        lifecycle on), which the tab exposes as the ``image_canvas`` feature.
+        Reading only the tab presenter made every global restore a no-op
+        (``[preview] global release: no preview controller``, measured live
+        2026-10-22 — the release path reported success while the preview stayed
+        on screen).
+        """
+        owners = [self.presenter]
+        try:
+            from events.app_event.common import get_image_canvas_presenter
+
+            owners.append(get_image_canvas_presenter(self.presenter))
+        except Exception:  # noqa: BLE001 - resolution must never raise
+            pass
+        for owner in owners:
+            if owner is None:
+                continue
+            handler = getattr(owner, "image_label_handler", None)
+            preview = getattr(handler, "preview", None)
+            if preview is not None:
+                return preview
+        return None
 
     def restore_preview_if_active(self, reason: str) -> bool:
         """End an active Shift+Space preview from the global release path.
@@ -248,7 +299,11 @@ class GlobalKeyboardHandler:
         canvas path's ``preview.restore()``.
         """
         preview = self.preview_controller()
-        if preview is None or not bool(getattr(preview, "is_active", False)):
+        if preview is None:
+            logger.debug("[preview] global release: no preview controller")
+            return False
+        if not bool(getattr(preview, "is_active", False)):
+            logger.debug("[preview] global release: no active preview (%s)", reason)
             return False
         try:
             preview.restore()

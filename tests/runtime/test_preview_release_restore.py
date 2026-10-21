@@ -90,6 +90,29 @@ def test_space_release_restores_an_active_preview():
     assert preview.restores == 1
 
 
+def test_preview_controller_is_resolved_through_the_image_canvas_feature(monkeypatch):
+    """The tab presenter has no image_label_handler; its image_canvas does."""
+    import events.app_event.common as common
+
+    preview = _Preview()
+    canvas_presenter = SimpleNamespace(
+        image_label_handler=SimpleNamespace(preview=preview)
+    )
+    monkeypatch.setattr(
+        common, "get_image_canvas_presenter", lambda presenter: canvas_presenter
+    )
+    from events.app_event.keyboard import GlobalKeyboardHandler
+
+    bare_presenter = SimpleNamespace()  # the tab presenter has no handler of its own
+    handler = GlobalKeyboardHandler(
+        _Store(),
+        presenter_provider=lambda: bare_presenter,
+        movement_controller=_Movement(),
+        keyboard_state=_KeyboardState(),
+    )
+    assert handler.preview_controller() is preview
+
+
 def test_shift_release_restores_an_active_preview():
     preview = _Preview()
     handler = _handler(preview)
@@ -140,3 +163,74 @@ def test_side_preview_still_requires_shift(monkeypatch):
         store=object(), handler=object(), local_pos=(0.0, 0.0), button=1, modifiers=0
     )
     assert gestures._matches_side_preview(ctx) is False
+
+
+# --------------------------------------------------------------------------
+# E — Shift means "side preview": never fall back to single-image mode
+# --------------------------------------------------------------------------
+
+
+def test_space_click_without_shift_previews_one_side():
+    from events.image_label.mouse import space_click_single_image_side
+    from PySide6.QtCore import Qt
+
+    assert (
+        space_click_single_image_side(
+            space_pressed=True, shift_pressed=False, button=Qt.MouseButton.LeftButton
+        )
+        == 1
+    )
+    assert (
+        space_click_single_image_side(
+            space_pressed=True, shift_pressed=False, button=Qt.MouseButton.RightButton
+        )
+        == 2
+    )
+
+
+def test_space_click_with_shift_never_falls_back_to_single_image():
+    """Owner report: with the loupes NOT combined, Space+Shift hid the whole pair."""
+    from events.image_label.mouse import space_click_single_image_side
+    from PySide6.QtCore import Qt
+
+    for button in (Qt.MouseButton.LeftButton, Qt.MouseButton.RightButton):
+        assert (
+            space_click_single_image_side(
+                space_pressed=True, shift_pressed=True, button=button
+            )
+            is None
+        )
+
+
+def test_space_click_without_space_does_nothing():
+    from events.image_label.mouse import space_click_single_image_side
+    from PySide6.QtCore import Qt
+
+    assert (
+        space_click_single_image_side(
+            space_pressed=False, shift_pressed=False, button=Qt.MouseButton.LeftButton
+        )
+        is None
+    )
+
+
+def test_preview_debug_logging_is_gated_and_reports_the_snapshot(monkeypatch, caplog):
+    import logging
+
+    import events.image_label.preview as preview_module
+
+    preview = preview_module.OverlayPreviewController.__new__(
+        preview_module.OverlayPreviewController
+    )
+    preview._quick_preview_active = True
+    preview._snapshot = {"prev_left": True, "prev_right": False}
+
+    monkeypatch.setattr(preview_module, "env_flag", lambda name: False)
+    with caplog.at_level(logging.INFO):
+        preview.log_preview_debug("restore_shift_preview", changed=True)
+    assert "[preview]" not in caplog.text
+
+    monkeypatch.setattr(preview_module, "env_flag", lambda name: True)
+    with caplog.at_level(logging.INFO):
+        preview.log_preview_debug("restore_shift_preview", changed=True)
+    assert "[preview] restore_shift_preview changed=True" in caplog.text

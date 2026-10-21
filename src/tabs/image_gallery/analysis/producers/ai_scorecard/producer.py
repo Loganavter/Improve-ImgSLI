@@ -46,8 +46,28 @@ NO_BYTES_REASON = "no image bytes in the context"
 NOT_SCORED_REASON = "the model did not score this axis"
 
 
-def _axes() -> tuple[str, ...]:
-    """The declared axes, from the manifest (single source of the vocabulary)."""
+def _axes(profile=None) -> tuple[str, ...]:
+    """The declared axes (manifest) plus the axes the JUDGE named (P7-B).
+
+    The manifest is the registry vocabulary; a judge-named axis has no manifest
+    entry (it is not a local measurement), but the scorecard asked for it by
+    name, so its record must reach the read path instead of becoming a gap.
+    """
+    out = list(_axes_registry())
+    try:
+        from tabs.image_gallery.services.profile_judged import judged_axis_entries
+
+        for entry in judged_axis_entries(profile):
+            name = str(getattr(entry, "name", "") or "").strip()
+            if name and name not in out:
+                out.append(name)
+    except Exception:
+        pass
+    return tuple(out)
+
+
+def _axes_registry() -> tuple[str, ...]:
+    """The declared registry axes, from the manifest (single vocabulary)."""
     return tuple(manifest.PRODUCER.provides)
 
 
@@ -104,7 +124,8 @@ def _value(axis: str, scored: dict, backend: BackendRef) -> AxisValue:
 
 def run(ctx: AnalysisContext) -> tuple[AxisValue, ...]:
     """The model's scorecard for *ctx*; gaps (with reasons) when it cannot answer."""
-    axes = _axes()
+    profile = ctx.extra.get("profile")
+    axes = _axes(profile)
     if ctx.backend is None:
         return _gaps(axes, NO_BACKEND_REASON)
     if ctx.call is None:
@@ -128,7 +149,9 @@ def run(ctx: AnalysisContext) -> tuple[AxisValue, ...]:
             axes, f"the AI call failed ({type(exc).__name__}: {exc})"
         )
     try:
-        result = parse_response(_reply_as_response(reply), model=ctx.backend.model)
+        result = parse_response(
+            _reply_as_response(reply), model=ctx.backend.model, profile=profile
+        )
     except Exception as exc:
         return _gaps(
             axes, f"the AI reply could not be parsed ({type(exc).__name__}: {exc})"

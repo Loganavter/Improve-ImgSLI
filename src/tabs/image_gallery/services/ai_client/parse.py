@@ -13,6 +13,7 @@ from tabs.image_gallery.models import AiAnalysisResult
 
 from .errors import AiResponseError, AiTruncatedError
 from .prompt import _ai_debug, _ai_snippet
+from .scorecard import _parse_axes, _parse_score
 
 
 def _finish_of(raw) -> str | None:
@@ -34,13 +35,6 @@ _DEFECT_KINDS = (
     "clipping",
     "other",
 )
-
-def _parse_score(value) -> int:
-    """Parse a 0-100 score, clamped; -1 when unparsable."""
-    try:
-        return max(0, min(100, int(float(str(value).strip().rstrip("%")))))
-    except Exception:
-        return -1
 
 def _parse_confidence(value) -> float:
     try:
@@ -86,32 +80,6 @@ def _parse_axis_notes(value) -> dict:
             continue
         if note:
             out[key] = note[:120]
-    return out
-
-def _parse_axes(value) -> dict[str, int]:
-    """Normalize the open per-axis scorecard: canonical ids → 0-100.
-
-    Unknown ids are dropped (never fabricated), unparsable values dropped.
-    """
-    out: dict[str, int] = {}
-    if not isinstance(value, dict):
-        return out
-    try:
-        from tabs.image_gallery.services.metric_scores import SCORECARD_AXIS_IDS
-
-        allowed = SCORECARD_AXIS_IDS
-    except Exception:
-        allowed = None
-    for k, v in value.items():
-        try:
-            key = str(k).strip().lower()
-        except Exception:
-            continue
-        if allowed is not None and key not in allowed:
-            continue
-        score = _parse_score(v)
-        if score >= 0:
-            out[key] = score
     return out
 
 def _parse_defects(value) -> tuple:
@@ -328,6 +296,24 @@ def merge_samples(results) -> AiAnalysisResult:
             except Exception:
                 continue
     axes = {axis: _median(values) for axis, values in per_axis.items()}
+    # The DRAWS themselves are carried (P7-B): the merged median is one number,
+    # but how far the same picture moved between draws is the instrument's own
+    # measured noise — the only honest floor for "inside the noise"
+    # (``quality_read.axis_noise_floor``). Two or more draws are required; a
+    # single draw cannot say anything about its own spread.
+    draws: list[dict[str, int]] = []
+    for result in sampled:
+        row: dict[str, int] = {}
+        for axis, value in (getattr(result, "axes", None) or {}).items():
+            try:
+                row[str(axis)] = int(value)
+            except Exception:
+                continue
+        draws.append(row)
+    # The judge half is the same question for every draw: the first sample's
+    # asked set is the card's set (a draw cannot add an axis the profile did not
+    # ask for).
+    judge_entries = tuple(getattr(sampled[0], "axis_entries", ()) or ())
 
     needed = max(1, (len(sampled) + 1) // 2)
     proposals: dict[str, list] = {}
@@ -386,10 +372,12 @@ def merge_samples(results) -> AiAnalysisResult:
         axes=axes,
         axis_proposals=tuple(merged_proposals),
         axis_proposal_refusals=tuple(refusals),
+        axis_entries=judge_entries,
+        axis_samples=tuple(draws),
     )
 
 
-def parse_response(raw: dict, *, model: str) -> AiAnalysisResult:
+def parse_response(raw: dict, *, model: str, profile=None) -> AiAnalysisResult:
     try:
         content = raw["choices"][0]["message"]["content"]
     except (KeyError, IndexError, TypeError) as exc:
@@ -439,8 +427,20 @@ def parse_response(raw: dict, *, model: str) -> AiAnalysisResult:
         raise AiResponseError("model did not return the required JSON object")
 
     # Open per-axis scorecard (new prompt) with the legacy named fields merged
-    # in, so an old reply / old prompt still fills the same scorecard.
-    axes = _parse_axes(obj.get("axes"))
+    # in, so an old reply / old prompt still fills the same scorecard. The judge
+    # half of *profile* is the set of FREE names the prompt asked for — without
+    # it the scorecard would keep the registry numbers and lose the axes the
+    # judge named (P7-B).
+    try:
+        from tabs.image_gallery.services.profile_judged import judged_axis_entries
+
+        judge_entries = judged_axis_entries(profile)
+    except Exception:
+        judge_entries = ()
+    axes = _parse_axes(
+        obj.get("axes"),
+        allowed=tuple(str(getattr(e, "name", "") or "") for e in judge_entries),
+    )
     for key in ("sharpness", "noise", "exposure", "composition"):
         if key in axes or obj.get(key) is None:
             continue
@@ -472,4 +472,5 @@ def parse_response(raw: dict, *, model: str) -> AiAnalysisResult:
         axes=axes,
         axis_proposals=proposals,
         axis_proposal_refusals=proposal_refusals,
+        axis_entries=judge_entries,
     )

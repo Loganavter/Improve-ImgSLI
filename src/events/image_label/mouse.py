@@ -8,6 +8,25 @@ from ui.canvas_infra.scene.gesture_resolver import (
     resolve_press,
 )
 
+def space_click_single_image_side(*, space_pressed: bool, shift_pressed: bool, button) -> int | None:
+    """Side a space+click previews, or ``None`` when the click must do nothing.
+
+    Shift signals "side preview". If that preview could not start (its
+    preconditions are unmet — e.g. the loupes are not combined), the click must
+    NOT fall through to single-image mode: doing so hides the whole pair, which
+    the owner reported as "all loupes turned off" (2026-10-22).
+    """
+    if not space_pressed:
+        return None
+    if shift_pressed:
+        return None
+    if button == Qt.MouseButton.LeftButton:
+        return 1
+    if button == Qt.MouseButton.RightButton:
+        return 2
+    return None
+
+
 class ImageLabelMouseHandler:
     """Mouse routing for the image-label widget.
 
@@ -108,15 +127,29 @@ class ImageLabelMouseHandler:
             event.accept()
             return
 
-        if viewport.interaction_state.space_bar_pressed:
+        side = space_click_single_image_side(
+            space_pressed=viewport.interaction_state.space_bar_pressed,
+            shift_pressed=shift_pressed,
+            button=event.button(),
+        )
+        if side is not None:
             sessions = self.handler.main_controller and self.handler.main_controller.sessions
             if sessions is not None:
-                if event.button() == Qt.MouseButton.LeftButton:
-                    self.handler.preview.log_preview_debug("single_preview_started", side="left")
-                    sessions.activate_single_image_mode(1)
-                elif event.button() == Qt.MouseButton.RightButton:
-                    self.handler.preview.log_preview_debug("single_preview_started", side="right")
-                    sessions.activate_single_image_mode(2)
+                self.handler.preview.log_preview_debug(
+                    "single_preview_started", side="left" if side == 1 else "right"
+                )
+                sessions.activate_single_image_mode(side)
+            event.accept()
+            return
+
+        if viewport.interaction_state.space_bar_pressed:
+            # Shift was held (the helper vetoed single-image mode) or the button
+            # is not LMB/RMB: swallow the click so nothing else claims it.
+            self.handler.preview.log_preview_debug(
+                "mouse_press_ignored_shift_without_preview",
+                shift=shift_pressed,
+                single_mode=viewport.view_state.showing_single_image_mode,
+            )
             event.accept()
 
     def handle_mouse_move(self, event) -> None:

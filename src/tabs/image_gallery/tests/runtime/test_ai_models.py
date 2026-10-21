@@ -181,3 +181,71 @@ def test_cached_models_ignores_a_corrupt_value(monkeypatch):
     monkeypatch.setattr(ai_models, "_settings", lambda: _FakeSettings())
 
     assert ai_models.cached_models("openrouter") == ((), 0.0)
+
+
+# -- Picker order: publisher first, then model (flat list, no headers) --------
+
+
+def test_publisher_of_is_the_part_before_the_first_slash():
+    assert ai_models.publisher_of("meta/llama2") == "meta"
+    assert ai_models.publisher_of("a/b/c") == "a"
+    assert ai_models.publisher_of("gpt-6-luna") == ""
+    assert ai_models.publisher_of("") == ""
+    assert ai_models.publisher_of(None) == ""
+
+
+def test_sorted_models_matches_the_owner_example():
+    """Provider order in: meta/muse, deepseek/r1, meta/llama2, deepseek/…v3."""
+    provider_order = (
+        "meta/muse",
+        "deepseek/r1",
+        "meta/llama2",
+        "deepseek/deepseek-v3",
+    )
+
+    assert ai_models.sorted_models(provider_order) == (
+        "deepseek/deepseek-v3",
+        "deepseek/r1",
+        "meta/llama2",
+        "meta/muse",
+    )
+
+
+def test_sorted_models_compares_publishers_case_insensitively():
+    # Plain ASCII sort would put "Meta/Muse" first; casefold puts it under "m".
+    assert ai_models.sorted_models(("Meta/Muse", "deepseek/r1")) == (
+        "deepseek/r1",
+        "Meta/Muse",
+    )
+
+
+def test_sorted_models_dedupes_exact_ids_and_keeps_case_variants():
+    assert ai_models.sorted_models(("a/b", "a/b", "a/c")) == ("a/b", "a/c")
+    # Case variants are distinct ids a provider can serve; the original string
+    # breaks the tie deterministically.
+    assert ai_models.sorted_models(("openai/gpt", "OpenAI/GPT")) == (
+        "OpenAI/GPT",
+        "openai/gpt",
+    )
+
+
+def test_sorted_models_treats_a_bare_id_as_its_own_publisher():
+    # "gpt-6-luna" sorts by its own name among the vendor-prefixed ids.
+    assert ai_models.sorted_models(("zeta/model", "gpt-6-luna", "alpha/model")) == (
+        "alpha/model",
+        "gpt-6-luna",
+        "zeta/model",
+    )
+
+
+def test_sorted_models_keeps_the_rest_of_a_multi_slash_id_together():
+    assert ai_models.sorted_models(("a/z/x", "a/b/y", "a/b/c")) == (
+        "a/b/c",
+        "a/b/y",
+        "a/z/x",
+    )
+
+
+def test_sorted_models_never_raises_on_junk():
+    assert ai_models.sorted_models(None) == ()
+    assert ai_models.sorted_models(["", "  ", 5]) == ("5",)

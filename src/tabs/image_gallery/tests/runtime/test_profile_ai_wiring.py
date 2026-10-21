@@ -298,6 +298,30 @@ def test_vlm_profile_lands_on_state_and_consumers_follow(monkeypatch, fake_worke
     assert len(infos) == len(vlm.axis_ids)
 
 
+def test_a_later_settle_keeps_the_judges_answer(monkeypatch, fake_workers) -> None:
+    """P7-B / task-gallery-profile-lifecycle: a later settle must not replace the
+    judge's ``source=vlm`` profile with the series offer (the paid answer was
+    silently discarded mid-session), while a mode change still re-derives."""
+    a, b = _item("a.png", ssim=0.9), _item("b.png", ssim=0.4)
+    ctrl = _ProfileCtrl([a, b], mode=Mode.CAMERA)
+    ctrl.refresh_metric_profile()  # heuristic stored first
+    vlm = _vlm_profile(("sharpness",))
+    monkeypatch.setattr(controller_mod, "_profile_selector", lambda: _selector_returning(vlm))
+    ctrl._run_profile_select_on_settle()
+    ctrl.launched[0].run()
+    stored = ctrl.state.metric_profile
+    assert stored is not None and stored.source == "vlm"
+
+    ctrl.refresh_metric_profile()  # a later metrics/slot settle
+
+    assert ctrl.state.metric_profile is stored, (
+        "the judge's answer owns the slot for this folder+mode"
+    )
+    ctrl.state.mode = Mode.FIDELITY  # a different question: re-derive
+    ctrl.refresh_metric_profile()
+    assert ctrl.state.metric_profile is not stored
+
+
 def test_stale_generation_result_is_dropped(monkeypatch, fake_workers) -> None:
     a, b = _item("a.png", ssim=0.9), _item("b.png", ssim=0.4)
     ctrl = _ProfileCtrl([a, b])
