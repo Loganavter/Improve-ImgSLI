@@ -1453,13 +1453,12 @@ TOOLS: list[dict] = [
         "name": "ui_wheel",
         "title": "Send wheel events to an element (phase-aware)",
         "description": (
-            "Deliver `count` wheel events to one element by id from ui_elements, "
-            "in-process, one angle-delta step each. `phase` selects the Qt scroll "
-            "phase: `none` (a plain discrete-wheel notch), `begin`/`update`/`end` "
-            "(touchpads and smooth-scroll compositors, which may mark every event "
-            "`begin`). This is how a caller reproduces a high-resolution wheel "
-            "stream without a physical device and measures the scroll result via "
-            "ui_elements. Live-only, session-scoped ids."
+            "Deliver `count` wheel events to one element by id, in-process, one 120"
+            "-unit step each. `phase` picks the scroll phase: `none` (plain notch) "
+            "or `begin`/`update`/`end` (touchpads mark every event `begin`). `ctrl`"
+            "/`shift`/`alt` carry modifiers — a canvas zooms on Ctrl+wheel only. `r"
+            "aw=true` keeps the event on the element; a canvas always keeps it. Liv"
+            "e-only."
         ),
         "inputSchema": _params(
             {
@@ -1488,8 +1487,11 @@ TOOLS: list[dict] = [
                 "raw": {
                     **_BOOL,
                     "default": False,
-                    "description": "False (default) routes the wheel to the scroll area that owns the element — what a real wheel there scrolls. True keeps it on the element (a widget that consumes the wheel itself).",
+                    "description": "Keep the event on the element instead of routing to its owning scroll area (a canvas always keeps it).",
                 },
+                "ctrl": {**_BOOL, "default": False, "description": "Hold Ctrl (canvases zoom on Ctrl+wheel)."},
+                "shift": {**_BOOL, "default": False, "description": "Hold Shift."},
+                "alt": {**_BOOL, "default": False, "description": "Hold Alt."},
             },
             ["id"],
         ),
@@ -1501,6 +1503,7 @@ TOOLS: list[dict] = [
                 },
                 "delta": _INT,
                 "phase": _STR,
+                "modifiers": {"type": "array", "items": _STR},
                 "raw": _BOOL,
                 "id": _STR,
                 "surface": _source(),

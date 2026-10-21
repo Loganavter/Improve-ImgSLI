@@ -73,7 +73,7 @@ fallback window, e.g. `:97`).
 | `ui_hover` | write | hover an element by id, in-process (live-only) |
 | `ui_focus` | write | focus an element by id, in-process (live-only) |
 | `ui_press` | write | press an element's left button, optionally leaving it held (`release=false`, `hold_ms`) (live-only) |
-| `ui_wheel` | write | send `count` wheel events to an element with a chosen Qt scroll phase (`none`/`begin`/`update`/`end`) — reproduces a discrete notch or a high-resolution stream and lets the caller measure the scroll result via `ui_elements` (live-only) |
+| `ui_wheel` | write | send `count` wheel events to an element with a chosen Qt scroll phase (`none`/`begin`/`update`/`end`) and modifiers (`ctrl`/`shift`/`alt`) — reproduces a discrete notch, a high-resolution stream, or a Ctrl+wheel canvas zoom; `raw=true` keeps the event on the element (a canvas always keeps it) (live-only) |
 | `jobs_cancel` | write | cancel a running job by id — real cancel, or a named refusal (live-only) |
 
 Resources: `app://actions`, `app://state`, `app://sessions`, `app://log`,

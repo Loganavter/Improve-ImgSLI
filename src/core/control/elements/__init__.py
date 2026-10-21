@@ -145,17 +145,52 @@ class ElementMethodsMixin:
         }
 
     def ui_wheel(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Deliver wheel events to an element (scrolling, zoom, smooth streams).
+
+        ``phase`` reproduces high-resolution wheels; ``ctrl``/``shift``/``alt``
+        carry modifiers, which every zoom gesture needs (an Image Compare
+        canvas zooms on ``Ctrl+wheel`` only); ``raw`` keeps the event on the
+        element instead of routing it to the owning scroll area. A canvas is
+        never re-routed: it consumes the wheel itself.
+        """
+        from PySide6.QtCore import Qt
+
         target = resolve_element(self._registry(), params.get("id"))  # type: ignore[attr-defined]
-        delta = int(params.get("delta", 120))
+        try:
+            delta = int(params.get("delta", 120))
+            count = int(params.get("count", 1))
+        except (TypeError, ValueError):
+            raise MethodError(
+                "ui_wheel 'delta' and 'count' must be integers",
+                "delta is angle units of one notch (120 = one step); count repeats it",
+            )
         phase = str(params.get("phase") or "none")
-        count = int(params.get("count", 1))
         raw = bool(params.get("raw", False))
-        wheel_element(target, delta=delta, phase=phase, count=count, raw=raw)
+        modifiers = Qt.KeyboardModifier.NoModifier
+        held: list[str] = []
+        if params.get("ctrl"):
+            modifiers |= Qt.KeyboardModifier.ControlModifier
+            held.append("ctrl")
+        if params.get("shift"):
+            modifiers |= Qt.KeyboardModifier.ShiftModifier
+            held.append("shift")
+        if params.get("alt"):
+            modifiers |= Qt.KeyboardModifier.AltModifier
+            held.append("alt")
+        wheel_element(
+            target,
+            delta=delta,
+            phase=phase,
+            count=count,
+            raw=raw,
+            modifiers=modifiers,
+        )
         return {
             "sent": max(1, count),
             "delta": delta,
             "phase": phase.lower(),
             "raw": raw,
+            "modifiers": held,
             "id": target.id,
             "rect": rect_list(target.rect),
             "target": target.target,

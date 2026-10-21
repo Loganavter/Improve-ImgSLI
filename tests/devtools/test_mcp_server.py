@@ -141,7 +141,10 @@ def test_tools_list_is_a_valid_deterministic_catalog(wired):
     names = [tool["name"] for tool in tools]
     assert len(names) == len(set(names)), "tool names must be unique"
     assert names == [tool["name"] for tool in catalog.TOOLS], "order must be catalog order"
-    assert len(tools) <= 29, "catalog must stay small (review prompt, not a magic number)"
+    # Review prompt, not a magic number: 29 -> 30 when `ui_wheel` landed
+    # (mcp-c-020 — the surface had no wheel verb, so scroll/zoom streams were
+    # unreachable). Raise it again only with the same kind of justification.
+    assert len(tools) <= 30, "catalog must stay small (review prompt, not a magic number)"
 
     for tool in tools:
         assert _NAME_RE.match(tool["name"]), tool["name"]
