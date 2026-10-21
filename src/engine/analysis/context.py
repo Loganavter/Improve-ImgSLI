@@ -33,9 +33,19 @@ from .contracts import BackendRef, freeze_mapping
 class AnalysisContext:
     """One item's inputs: identity, mode, decoded images and capabilities.
 
-    ``proxy_image`` / ``source_image`` / ``tiled_store`` are opaque here on
-    purpose — the engine owns the context, not the image types, so this module
-    stays importable without an imaging library.
+    ``proxy_image`` / ``source_image`` / ``tiled_store`` /
+    ``tiled_source_store`` are opaque here on purpose — the engine owns the
+    context, not the image types, so this module stays importable without an
+    imaging library.
+
+    The two ``tiled_*`` fields are the FULL-RESOLUTION decode the caller
+    already owns, for producers that cannot answer on the bounded proxy: the
+    artifact catalog misses the 8x8 block grid and thin chroma rims once the
+    image is downscaled, so production runs it tiled over the store. They are
+    ``None`` unless the caller opened one (the caller still owns ``close()``),
+    and ``tiled_source_store`` is the full-resolution REFERENCE, not the
+    bounded ``source_image``: cropping item coordinates out of a downscaled
+    reference would anchor full-resolution tiles against different pixels.
 
     Capability fields added for the AI scorecard producer (plan §4 path 1):
 
@@ -64,6 +74,7 @@ class AnalysisContext:
     proxy_image: object | None = None
     source_image: object | None = None
     tiled_store: object | None = None
+    tiled_source_store: object | None = None
     capabilities: frozenset[str] = frozenset()
     extra: Mapping[str, object] = MappingProxyType({})
     backend: BackendRef | None = None

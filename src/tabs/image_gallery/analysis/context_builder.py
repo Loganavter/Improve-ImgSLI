@@ -7,8 +7,9 @@ context, and this module is that translation — and nothing else:
 
 - no file I/O, no decoding, no ``Image.open``, no ``TiledPixelStore``: the
   caller owns the decode (``services/proxy.py`` passes the shared bounded proxy
-  it already built), so "how many decodes did this folder cost?" stays
-  answerable;
+  it already built, and — in ``full_res_artifacts`` mode — the full-resolution
+  stores it opened for the tiled catalog), so "how many decodes did this folder
+  cost?" stays answerable;
 - no store, no controller, no Qt: a context is a value, not a view;
 - no policy decision: which producers run is the resolver's answer, not this
   module's.
@@ -44,6 +45,8 @@ def build_context(
     mode=None,
     proxy_image=None,
     source_image=None,
+    tiled_store=None,
+    tiled_source_store=None,
     capabilities: Iterable[str] = frozenset(),
     backend=None,
     call=None,
@@ -59,6 +62,10 @@ def build_context(
     *mode* accepts the gallery's ``Mode`` enum or its string value; the context
     stores the plain string (or ``None``) so the engine never imports the tab's
     enums.
+
+    ``tiled_store`` / ``tiled_source_store`` are handed through untouched: they
+    are the caller's full-resolution decode (and its reference), never opened
+    here, and the caller keeps ownership of closing them.
     """
     item_path, mtime_ns = _item_identity(item)
     caps = {
@@ -74,6 +81,8 @@ def build_context(
         mode=_mode_value(mode),
         proxy_image=proxy_image,
         source_image=source_image,
+        tiled_store=tiled_store,
+        tiled_source_store=tiled_source_store,
         capabilities=frozenset(caps),
         backend=backend,
         call=call,

@@ -20,7 +20,13 @@ Three parts:
    detector pass per item, a rebuilt entry equal to the flag-OFF one (same keys,
    same values, same ``Severity`` objects), and a per-stage fail-open when a
    producer raises.
-4. **W13 — one learned pass.** ``compute_fidelity_from_images`` already calls
+4. **W14 — one artifact catalog.** In ``full_res_artifacts`` mode (the
+   production default) the entry's artifacts come from the TILED catalog, while
+   the records used to come from the bounded proxy: two catalogs, two answers
+   for the same flag (the proxy cannot see the 8x8 block grid). The proxy now
+   hands the engine the same full-resolution store, so the records ARE the
+   entry's severities and the tiled runner runs exactly once.
+5. **W13 — one learned pass.** ``compute_fidelity_from_images`` already calls
    ``quality_models.pair_metrics`` for the item/source pair. The deleted
    learned-quality producer called the same seam again for the same pair —
    identical numbers, a second torch forward pass. The count is the test: the
@@ -659,43 +665,287 @@ def _blocky_pair(size: tuple[int, int] = (1600, 1200), offset: int = 24):
     return Image.fromarray(np.dstack([base, base, base]), "RGB")
 
 
-def test_flag_on_falls_back_to_the_tiled_catalog_in_full_res_mode(
-    tmp_path, monkeypatch: pytest.MonkeyPatch
+def _assert_records_are_the_entry(entry: dict) -> None:
+    """The artifact records carry the SAME severities the entry shows, by axis."""
+    records = {
+        record.axis: record
+        for record in entry["analysis"]
+        if record.axis in ARTIFACT_AXES
+    }
+    assert set(records) == set(ARTIFACT_AXES)
+    assert all(record.status == "ok" for record in records.values()), [
+        (axis, record.status, record.reason)
+        for axis, record in records.items()
+        if record.status != "ok"
+    ]
+    for artifact, severity in entry["artifacts"].items():
+        axis = getattr(artifact, "value", artifact)
+        assert records[axis].raw == _severity_rank(severity), (
+            "the read path prefers the records (W9), so a record whose rank "
+            "differs from the entry is the W14 finding: "
+            f"{axis}: record {records[axis].raw} vs entry {_severity_rank(severity)}"
+        )
+        # The rebuilt ``Severity`` must be the catalog's own enum member.
+        assert entry["artifacts"][artifact] is severity
+
+
+@pytest.mark.parametrize("with_source", [False, True], ids=["sourceless", "source"])
+def test_flag_on_runs_the_tiled_catalog_in_full_res_mode(
+    tmp_path, monkeypatch: pytest.MonkeyPatch, with_source: bool
 ):
-    """``full_res_artifacts`` stays the tiled catalog: different pixels, not a dupe.
+    """``full_res_artifacts``: the entry is the tiled catalog, and so are the records.
 
     The dedupe must never substitute the proxy severities for the full-resolution
-    ones (the 8x8 blocking grid would vanish), so this mode rebuilds fidelity and
-    camera from records and keeps the tiled artifacts.
+    ones (the 8x8 blocking grid would vanish), but it also must not leave the
+    records answering the proxy catalog while the entry shows the tiled one —
+    the read path prefers the records, so that would show a different severity
+    than the flag-off path for the same file.
     """
     item = tmp_path / "blocky.png"
     _blocky_pair().save(item)
     source = tmp_path / "source.png"
     _source_variant(_gradient(96)).save(source)
+    src = source if with_source else None
     monkeypatch.delenv("IMGSLI_ANALYSIS_ENGINE", raising=False)
-    proxy_mode = _run_stages(item)
-    legacy = _tiled_stages(item)
+    proxy_mode = _run_stages(item, src)
+    legacy = _tiled_stages(item, src)
 
     monkeypatch.setenv("IMGSLI_ANALYSIS_ENGINE", "1")
-    launched = _tiled_stages(item)
+    launched = _tiled_stages(item, src)
 
     assert {k: v for k, v in launched.items() if k != "analysis"} == legacy
     assert "analysis" in launched
+    _assert_records_are_the_entry(launched)
+    # Identity, not equality: the rebuilt dict holds the same enum members.
+    for artifact, severity in legacy["artifacts"].items():
+        assert launched["artifacts"][artifact] is severity
     # Non-vacuity: on this fixture the tiled catalog and the proxy catalog differ,
     # so the equality above would fail if the rebuild leaked proxy severities in.
     assert legacy["artifacts"] != proxy_mode["artifacts"]
 
-    # With a reference the production shape is the same: fidelity comes from the
-    # records, artifacts still from the tiled store.
+
+class _TiledCalls:
+    """Call count of the tiled seam, split by caller module.
+
+    ``total`` proves the catalog ran; ``by_proxy`` proves ``services.proxy`` is
+    not still running its own copy of it (the W14 double work).
+    """
+
+    def __init__(self) -> None:
+        self.total = 0
+        self.by_proxy = 0
+        self.references: list = []
+
+
+def _count_tiled(monkeypatch: pytest.MonkeyPatch) -> _TiledCalls:
+    """Count ``analyze_artifacts_tiled`` (resolved per call by both callers)."""
+    import sys
+
+    from tabs.image_gallery.services import artifact_tiles
+
+    calls = _TiledCalls()
+    real = artifact_tiles.analyze_artifacts_tiled
+
+    def counted(source, *, source_image=None, **kwargs):
+        calls.total += 1
+        if sys._getframe(1).f_globals.get("__name__") == PROXY_MODULE:
+            calls.by_proxy += 1
+        try:
+            calls.references.append(tuple(int(v) for v in source_image.size))
+        except Exception:
+            calls.references.append(None)
+        return real(source, source_image=source_image, **kwargs)
+
+    monkeypatch.setattr(artifact_tiles, "analyze_artifacts_tiled", counted)
+    return calls
+
+
+def test_flag_on_full_res_calls_the_tiled_catalog_once(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+):
+    """One tiled pass, made by the engine — never a second one by the proxy."""
+    item = tmp_path / "blocky.png"
+    _blocky_pair().save(item)
+    source = tmp_path / "source.png"
+    _source_variant(_gradient(96)).save(source)
+    monkeypatch.setenv("IMGSLI_ANALYSIS_ENGINE", "1")
+    calls = _count_tiled(monkeypatch)
+
+    entry = _tiled_stages(item, source)
+
+    assert calls.total == 1, (
+        "the tiled catalog is the engine's single pass; a second one means the "
+        "proxy still ran its own copy"
+    )
+    assert calls.by_proxy == 0, "services.proxy must not call the tiled catalog"
+    _assert_records_are_the_entry(entry)
+    # The reference handed to the tiles is the caller's reference for it.
+    assert calls.references == [(96, 96)]
+
+
+def test_the_pre_w14_shape_turns_the_seam_gate_red(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+):
+    """Red-before for the two gates above: the pre-W14 shape is visible.
+
+    Restoring exactly what the tree did before this wave — the engine hook gets
+    no store, and the rebuild refuses to answer artifacts in full-res mode — is
+    one tiled call made BY THE PROXY, and records that disagree with the entry
+    (proxy ranks vs tiled severities). ``total`` alone would not catch it (1
+    either way); ``by_proxy`` is the gate, and ``_assert_records_are_the_entry``
+    is the second.
+    """
+    from tabs.image_gallery.services import analysis_bridge
+
+    real_engine = analysis_bridge.engine_records
+    real_stage = analysis_bridge.stage_dicts_from_records
+
+    def proxy_only_records(*args, **kwargs):
+        kwargs["tiled_store"] = None
+        kwargs["tiled_source_store"] = None
+        return real_engine(*args, **kwargs)
+
+    def pre_w14_rebuild(*args, **kwargs):
+        kwargs["artifacts_from_records"] = False
+        return real_stage(*args, **kwargs)
+
+    item = tmp_path / "blocky.png"
+    _blocky_pair().save(item)
+    source = tmp_path / "source.png"
+    _source_variant(_gradient(96)).save(source)
+    monkeypatch.setattr(analysis_bridge, "engine_records", proxy_only_records)
+    monkeypatch.setattr(
+        analysis_bridge, "stage_dicts_from_records", pre_w14_rebuild
+    )
+    monkeypatch.setenv("IMGSLI_ANALYSIS_ENGINE", "1")
+    calls = _count_tiled(monkeypatch)
+
+    entry = _tiled_stages(item, source)
+
+    assert calls.by_proxy == 1, (
+        "the pre-W14 proxy still ran its own tiled catalog; a 0 here would mean "
+        "the seam gate above proves nothing"
+    )
+    with pytest.raises(AssertionError, match="W14 finding"):
+        _assert_records_are_the_entry(entry)
+
+
+def test_flag_on_full_res_anchors_on_the_full_resolution_reference(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+):
+    """A tiled anchor crops item coordinates, so the reference must be full-res.
+
+    Feeding the bounded proxy source (longest edge <= 1024) into tile-sized
+    crops would anchor full-resolution tiles against downscaled pixels and
+    silently report a different severity than the flag-off path.
+    """
+    item = tmp_path / "blocky.png"
+    _blocky_pair().save(item)
+    source = tmp_path / "source.png"
+    _source_variant(_blocky_pair(size=(1200, 900), offset=8)).save(source)
     monkeypatch.delenv("IMGSLI_ANALYSIS_ENGINE", raising=False)
-    legacy_src = _tiled_stages(item, source)
-    proxy_src = _run_stages(item, source)
+    legacy = _tiled_stages(item, source)
 
     monkeypatch.setenv("IMGSLI_ANALYSIS_ENGINE", "1")
-    launched_src = _tiled_stages(item, source)
+    calls = _count_tiled(monkeypatch)
+    launched = _tiled_stages(item, source)
 
-    assert {k: v for k, v in launched_src.items() if k != "analysis"} == legacy_src
-    assert legacy_src["artifacts"] != proxy_src["artifacts"]
+    assert calls.total == 1
+    assert calls.references == [(1200, 900)], (
+        "the tiles were anchored on a downscaled reference (the proxy caps at "
+        "1024): the full-resolution store must be handed to the context"
+    )
+    assert {k: v for k, v in launched.items() if k != "analysis"} == legacy
+    _assert_records_are_the_entry(launched)
+
+
+def test_a_bounded_proxy_reference_turns_the_anchor_gate_red(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+):
+    """Red-before: without the full-resolution reference the gate sees the cap.
+
+    The same call with ``tiled_source_store`` dropped anchors the tiles on
+    ``ctx.source_image`` — the bounded proxy (longest edge 1024) — which is what
+    the producer would fall back to if the proxy forgot to hand the store over.
+    """
+    from tabs.image_gallery.services import analysis_bridge
+
+    real = analysis_bridge.engine_records
+
+    def without_full_res_reference(*args, **kwargs):
+        kwargs["tiled_source_store"] = None
+        return real(*args, **kwargs)
+
+    item = tmp_path / "blocky.png"
+    _blocky_pair().save(item)
+    source = tmp_path / "source.png"
+    _source_variant(_blocky_pair(size=(1200, 900), offset=8)).save(source)
+    monkeypatch.setattr(
+        analysis_bridge, "engine_records", without_full_res_reference
+    )
+    monkeypatch.setenv("IMGSLI_ANALYSIS_ENGINE", "1")
+    calls = _count_tiled(monkeypatch)
+
+    _tiled_stages(item, source)
+
+    assert calls.references == [(1024, 768)], (
+        "a proxy-sized reference must be visible as such, or the gate above "
+        "could pass for the wrong reason"
+    )
+
+
+def test_flag_on_full_res_fails_open_to_the_proxy_catalog(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+):
+    """No full-res store ⇒ no tiled records: the entry stays the proxy catalog.
+
+    The W14 store hand-over must not turn a decode failure into a missing stage:
+    both the engine and the legacy tiled call fall back to the same proxy
+    catalog, so ``artifacts`` is exactly the flag-off answer.
+    """
+    from engine.store.tiled_pixel_store import TiledPixelStore
+
+    item = tmp_path / "blocky.png"
+    _blocky_pair().save(item)
+    source = tmp_path / "source.png"
+    _source_variant(_gradient(96)).save(source)
+    monkeypatch.delenv("IMGSLI_ANALYSIS_ENGINE", raising=False)
+    expected = _run_stages(item, source)
+
+    def _boom(cls, *args, **kwargs):  # pragma: no cover - exercised by injection
+        raise OSError("synthetic full-res decode failure")
+
+    monkeypatch.setattr(TiledPixelStore, "from_path", classmethod(_boom))
+    monkeypatch.setenv("IMGSLI_ANALYSIS_ENGINE", "1")
+    entry = _tiled_stages(item, source)
+
+    assert entry["artifacts"] == expected["artifacts"]
+    assert "analysis" in entry
+
+
+def test_the_record_bridge_lives_in_analysis_bridge_not_the_proxy():
+    """W14: the proxy imports the bridge; it does not own (or re-export) it."""
+    from tabs.image_gallery.services import analysis_bridge, proxy
+
+    moved = (
+        "ENGINE_FLAG",
+        "LEGACY_RAW_KEYS",
+        "CAMERA_AXES",
+        "FIDELITY_AXES",
+        "ARTIFACT_AXES",
+        "raw_dict",
+        "artifact_dict",
+        "upscale_factor",
+        "stage_dicts_from_records",
+        "engine_records",
+    )
+    for name in moved:
+        assert hasattr(analysis_bridge, name), name
+        assert name in analysis_bridge.__all__, name
+        assert not hasattr(proxy, name), (
+            f"{name} moved to analysis_bridge; services.proxy must not keep a "
+            "second home (or a re-export) for the record glue"
+        )
 
 
 def test_flag_on_same_file_pair_keeps_the_identity_fidelity(
