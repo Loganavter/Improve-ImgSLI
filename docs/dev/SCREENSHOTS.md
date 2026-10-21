@@ -6,6 +6,21 @@ verification. **Tool:** `src/devtools/capture_surface.py`
 The Help-figure set on top of it is produced by `src/devtools/help_figures.py`
 (§[Help-figure generator](#help-figure-generator-recipes--drift-check)).
 
+**One command for the whole covered set:** `src/devtools/help_figures_suite.py`
+runs the devtool stage and then the live stage over both manifests, prints one
+summary row per stage and fails fast (a red stage stops the run; its exit code
+and output tail are reported, and nothing from a failed cell is installed).
+
+```bash
+python src/devtools/help_figures_suite.py              # devtool --all --jobs 4, then live --all
+python src/devtools/help_figures_suite.py --check      # devtool drift gate; live prints 'unverified' (no baseline yet)
+python src/devtools/help_figures_suite.py --dry-run    # print both commands, needs no DISPLAY
+```
+
+Measured 2026-10-21 on the 12-core host: **2 m 20 s** end to end (devtool 48
+cells in 29.9 s, live 9 cells in 109.7 s) with **every one of the 75 help
+assets byte-identical** to the committed set.
+
 ```bash
 Xvfb :91 -screen 0 1400x1000x24 &
 DISPLAY=:91 LIBGL_ALWAYS_SOFTWARE=1 \
@@ -215,6 +230,10 @@ python src/devtools/help_live.py --list
 python src/devtools/help_live.py --figure help-toolbar
 python src/devtools/help_live.py --all --out /tmp/live-shots
 ```
+
+For the whole set (both stages, one summary) use
+`src/devtools/help_figures_suite.py` above; `--figure`/`--all` here stay the
+per-figure tools.
 
 Rules (each exists because a live capture lied):
 
