@@ -25,6 +25,15 @@ Rules this tool enforces (each one exists because a real capture lied):
 * Chapter and verse: never ``:0``, always ``LIBGL_ALWAYS_SOFTWARE=1`` +
   ``QT_QPA_PLATFORM=xcb``; ``capture_live`` reports ``rhi_layers`` and a
   canvas figure with ``rhi_layers == 0`` is refused.
+* **A crop names the thing that was driven.** ``crop_element`` takes an
+  inventory/``@action`` reference (the same one ``ui_press`` uses), a union of
+  references, or a top-level window; a caption substring is the legacy fallback,
+  not the way to point at a control. And a crop is only placed correctly when
+  the capture's own origin in screen space is known — ``@screen`` is ``(0, 0)``,
+  a window grab is that window's screen position (see :func:`_capture_origin`).
+* **A missing target fails the figure.** Cropping a frame that does not contain
+  the surface installs a picture of empty background under a caption that
+  describes something else; every selector raises instead.
 * **A fixture a figure starts is closed with that figure.** A set_clipboard
   step starts an X clipboard owner child *before* the paste happens and (unlike a
   hand-run probe) cannot be left owning the selection when the figure ends, so
@@ -707,24 +716,199 @@ def _image_size(path: Path) -> tuple[int, int]:
         return image.size
 
 
+#: Margin around a cropped target, in screen px. Wide enough that a press ring
+#: (and the neighbouring control in a union crop) is not clipped at the edge.
+DEFAULT_CROP_PAD = 6
+
+
+def _layout_dump(app: LiveClient) -> dict:
+    """The app's own widget-tree dump (``dump_ui_layout``), parsed.
+
+    The one place that names a *window* rather than an element: a dialog or an
+    in-window overlay has no interactive row to point at, but the dump lists
+    every top-level widget with its screen geometry and its ``visible`` flag.
+    """
+    result = app.call("dump_ui_layout", {})
+    path = Path(str(result.get("path") or ""))
+    if not path.is_file():
+        raise LiveError(f"dump_ui_layout wrote no readable file ({path})")
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _window_node(data: dict, name: str) -> dict | None:
+    """The visible top-level window whose class or object name is *name*."""
+    matches = [
+        node
+        for node in data.get("windows") or []
+        if isinstance(node, dict)
+        and node.get("visible")
+        and name in (str(node.get("class") or ""), str(node.get("object_name") or ""))
+    ]
+    if not matches:
+        return None
+    # A dialog family can be instantiated twice; the active one is the one a
+    # reader is looking at, and it is the only one a still frame can show.
+    for node in matches:
+        if node.get("is_active_window"):
+            return node
+    return matches[0]
+
+
+def _rect_of(rect: object, what: str) -> tuple[int, int, int, int]:
+    """``[x, y, w, h]`` → an int tuple, refusing a degenerate/absent rect."""
+    if not rect or not isinstance(rect, (list, tuple)) or len(rect) != 4:
+        raise LiveError(f"crop_element: {what} has no usable rect ({rect!r})")
+    x, y, width, height = (int(v) for v in rect)
+    if width <= 0 or height <= 0:
+        raise LiveError(f"crop_element: {what} is collapsed ({width}x{height})")
+    return x, y, width, height
+
+
+def _element_rows(app: LiveClient) -> dict[str, dict]:
+    """Inventory rows by full id *and* by ``@<action id>``.
+
+    ``include_disabled`` is on purpose: a control can be present and visible but
+    disabled (``clear list`` with nothing to clear), and a pressed neighbour is
+    still part of the picture. A hidden row is filtered by the caller instead of
+    here, so the failure can name *why* it is unusable.
+    """
+    rows = app.call("ui_elements", {"include_disabled": True}).get("elements") or []
+    index: dict[str, dict] = {}
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        element_id = str(row.get("id") or "")
+        if element_id:
+            index.setdefault(element_id, row)
+            # The ``@<action id>`` suffix is how ``ui_press``/``ui_click`` name
+            # a control too, so both spellings must reach the same row.
+            if "@" in element_id:
+                index.setdefault("@" + element_id.rsplit("@", 1)[-1], row)
+        action_id = row.get("action_id")
+        if action_id:
+            index.setdefault(f"@{action_id}", row)
+    return index
+
+
 def _element_crop(app: LiveClient, spec: dict) -> tuple[int, int, int, int, int]:
-    """Read one element's screen rect as ``(pad, x, y, w, h)`` (no crop math)."""
-    """Crop box for one live element (menu/flyout), from its screen rect."""
+    """Crop box ``(pad, x, y, w, h)`` in screen px for one live target.
+
+    Three selectors, each the smallest surface that can name the region:
+
+    * ``id`` / ``ids`` — inventory references, ``@<action id>`` included, i.e.
+      the *same* reference ``ui_press``/``ui_click`` drives. Photographing by
+      reference is what keeps a figure from cropping a different widget than the
+      one it pressed (measured 2026-10-21: the long-press recipe named its
+      button by ``role``+``label`` and a label lookup is a *substring scan* over
+      every window, so the crop followed the caption, not the control). Several
+      ids crop their union — the two adjacent long-press list buttons are one
+      figure.
+    * ``window`` — a top-level window's own rect (see :func:`_window_node`): the
+      video-editor export dialog is a separate top-level, and the paste direction
+      picker paints its targets in one ``paintEvent``, so neither owns an
+      element row to crop by.
+    * ``role`` / ``label`` — the guarded legacy form, kept for the flyout figure.
+
+    A target that is not on screen raises instead of cropping nothing: a missing
+    overlay must fail the figure, never install a frame of empty background.
+    """
+    pad = int(spec.get("pad", DEFAULT_CROP_PAD))
+    name = spec.get("window")
+    if name:
+        node = _window_node(_layout_dump(app), str(name))
+        if node is None:
+            raise LiveError(
+                f"crop_element: no visible window {str(name)!r} at capture time - "
+                "that surface is not on screen (its class is what dump_ui_layout "
+                "reports for a top-level)"
+            )
+        x, y, width, height = _rect_of(node.get("geometry"), f"window {str(name)!r}")
+        return pad, x, y, width, height
+    ids = spec.get("ids") or ([spec["id"]] if spec.get("id") else [])
+    if ids:
+        index = _element_rows(app)
+        rects = []
+        for needle in ids:
+            row = index.get(str(needle))
+            if row is None:
+                raise LiveError(
+                    f"crop_element: no live element {str(needle)!r} - use an "
+                    "inventory id or @action id (ui_elements rows carry both)"
+                )
+            if not row.get("visible"):
+                raise LiveError(
+                    f"crop_element: element {str(needle)!r} is not visible, so it "
+                    "has no pixels to crop"
+                )
+            rects.append(_rect_of(row.get("screen_rect") or row.get("rect"), str(needle)))
+        left = min(rect[0] for rect in rects)
+        top = min(rect[1] for rect in rects)
+        right = max(rect[0] + rect[2] for rect in rects)
+        bottom = max(rect[1] + rect[3] for rect in rects)
+        return pad, left, top, right - left, bottom - top
     params = {}
     for key in ("role", "label"):
         if spec.get(key):
             params[key] = str(spec[key])
     if not params:
-        raise LiveError("crop_element needs role and/or label")
+        raise LiveError("crop_element needs id/ids, window or role/label")
     elements = app.call("ui_elements", params).get("elements") or []
     if not elements:
         raise LiveError(f"crop_element: no element matched {params!r}")
-    rect = elements[0].get("screen_rect") or elements[0].get("rect")
-    if not rect or len(rect) != 4:
-        raise LiveError(f"crop_element: element has no screen rect ({params!r})")
-    pad = int(spec.get("pad", 6))
-    x, y, width, height = (int(v) for v in rect)
+    x, y, width, height = _rect_of(
+        elements[0].get("screen_rect") or elements[0].get("rect"), repr(params)
+    )
     return pad, x, y, width, height
+
+
+def _capture_origin(
+    app: LiveClient, what: str, capture_size: tuple[int, int]
+) -> tuple[int, int]:
+    """Screen origin of a captured image, for mapping ``screen_rect`` onto it.
+
+    ``screen_rect`` is absolute screen space, so a crop must subtract the image's
+    own origin. ``@screen`` is the X root, i.e. ``(0, 0)`` — the 1:1 mapping the
+    live-capture docs promise. A window grab starts at that window's own screen
+    position, which the layout dump names; guessing it from the seeded window
+    size is what shipped a shifted crop once (measured 2026-10-21: the guess
+    centred the 16 px CSD shadow on both sides and re-added it, so a 36x36
+    button was clipped on two edges inside its own 48x48 crop).
+
+    A grab that was clipped (window partly off screen, DPR-scaled pixels) has an
+    origin this cannot name: that raises, with the ``@screen`` form as the hint,
+    instead of cropping a shifted region.
+    """
+    if what == "@screen":
+        return 0, 0
+    data = _layout_dump(app)
+    # ``dump_ui_layout`` names the active window as "Class:objectName" — the same
+    # window ``capture_live`` grabs when no ``what`` is given.
+    active_class, _, active_object = str(data.get("active_window") or "").partition(":")
+    node = None
+    for candidate in data.get("windows") or []:
+        if not isinstance(candidate, dict):
+            continue
+        identity = (
+            str(candidate.get("class") or ""),
+            str(candidate.get("object_name") or ""),
+        )
+        if active_class and identity == (active_class, active_object):
+            node = candidate
+            break
+    if node is None:
+        raise LiveError(
+            f"{what}: the grabbed window is not in the layout dump (active_window="
+            f"{data.get('active_window') or 'none'!r}), so a screen-rect crop cannot "
+            "be placed - capture @screen for a crop_element figure"
+        )
+    x, y, width, height = _rect_of(node.get("geometry"), "the captured window")
+    if (width, height) != tuple(capture_size):
+        raise LiveError(
+            f"{what}: grabbed {capture_size[0]}x{capture_size[1]} but the window is "
+            f"{width}x{height} (clipped or scaled grab), so the image origin is "
+            "unknown - capture @screen for a crop_element figure"
+        )
+    return x, y
 
 
 def crop_and_install(
@@ -734,8 +918,19 @@ def crop_and_install(
 
     with Image.open(screenshot) as image:
         if crop is not None:
-            x, y, w, h = crop
-            image = image.crop((x, y, x + w, y + h))
+            x, y, w, h = (int(v) for v in crop)
+            left = max(0, min(x, image.width))
+            top = max(0, min(y, image.height))
+            right = max(left, min(x + w, image.width))
+            bottom = max(top, min(y + h, image.height))
+            if right <= left or bottom <= top:
+                raise LiveError(
+                    f"crop {tuple(crop)} falls outside the {image.width}x{image.height} "
+                    "capture - the target moved or the capture does not cover it"
+                )
+            # Clamped, never padded: PIL pads an out-of-bounds crop with black,
+            # which reads as a rendering defect in the shipped figure.
+            image = image.crop((left, top, right, bottom))
         destination.parent.mkdir(parents=True, exist_ok=True)
         if destination.suffix.lower() in (".jpg", ".jpeg"):
             image.convert("RGB").save(destination, format="JPEG", quality=95, subsampling=0)
@@ -765,7 +960,10 @@ def main(argv: list[str] | None = None) -> int:
     figures = load_recipes(Path(args.manifest))
     if args.list:
         for figure in figures:
-            print(f"{figure.id:28} capture={figure.capture:16} crop={figure.crop} "
+            crop = f"crop={figure.crop}"
+            if figure.crop_element is not None:
+                crop += " crop_element=" + json.dumps(figure.crop_element, sort_keys=True)
+            print(f"{figure.id:28} capture={figure.capture:16} {crop} "
                   f"locales={','.join(figure.locales)} themes={','.join(figure.themes)}")
             print(f"    -> {figure.destination}")
         return 0
@@ -821,12 +1019,10 @@ def main(argv: list[str] | None = None) -> int:
                             capture_size = _image_size(shot)
                             if rect is not None:
                                 pad, x, y, w, h = rect
-                                if figure.capture == "@screen":
-                                    off_x = off_y = 0
-                                else:
-                                    off_x = max(0, (capture_size[0] - live.width) // 2)
-                                    off_y = max(0, (capture_size[1] - live.height) // 2)
-                                crop = (max(0, x + off_x - pad), max(0, y + off_y - pad),
+                                origin_x, origin_y = _capture_origin(
+                                    live.client, figure.capture, capture_size
+                                )
+                                crop = (x - origin_x - pad, y - origin_y - pad,
                                         w + 2 * pad, h + 2 * pad)
                             for message in run_after_capture(live.client, figure, samples, fixtures):
                                 print(f"WARN {label} after_capture: {message}", file=sys.stderr)
