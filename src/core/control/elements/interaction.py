@@ -9,6 +9,7 @@ on the mouse path and one that uses ``CustomContextMenu`` behave identically.
 from __future__ import annotations
 
 from PySide6.QtCore import QPoint, QPointF, Qt
+from PySide6.QtGui import QWheelEvent
 from PySide6.QtGui import QContextMenuEvent, QEnterEvent
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QWidget
@@ -86,3 +87,76 @@ def focus_element(element: Element) -> None:
             f"could not focus {element.id!r}: {exc}",
             "the element may not accept keyboard focus",
         )
+
+
+#: ``ui_wheel`` phase names → Qt scroll phase (the toolkit's glide keys off it).
+_WHEEL_PHASES = {
+    "none": Qt.ScrollPhase.NoScrollPhase,
+    "begin": Qt.ScrollPhase.ScrollBegin,
+    "update": Qt.ScrollPhase.ScrollUpdate,
+    "end": Qt.ScrollPhase.ScrollEnd,
+}
+
+
+def wheel_element(
+    element: Element,
+    *,
+    delta: int = 120,
+    phase: str = "none",
+    count: int = 1,
+    raw: bool = False,
+) -> None:
+    """Deliver wheel events to *element* in-process (one angle-delta step each).
+
+    ``phase`` selects the Qt scroll phase: ``none`` (a plain notch, what a
+    discrete mouse wheel sends), ``begin``/``update``/``end`` (what touchpads
+    and smooth-scroll compositors send). High-resolution wheels mark every
+    event ``begin``, which is the stream that used to starve the scroll glide
+    — this verb is how a caller reproduces it without a physical device.
+    """
+    qt_phase = _WHEEL_PHASES.get(str(phase or "none").lower())
+    if qt_phase is None:
+        raise MethodError(
+            f"unknown wheel phase {phase!r}",
+            "use one of: " + ", ".join(sorted(_WHEEL_PHASES)),
+        )
+    widget = element.widget
+    # A wheel over an element means "scroll whatever owns it". The owning
+    # QAbstractScrollArea handles the wheel on its VIEWPORT, and an
+    # interactive child may accept-and-ignore it first (a toolkit Button with
+    # capabilities returns without scrolling), so route to the nearest
+    # ancestor scroll area's viewport. ``raw=True`` keeps the event on the
+    # element itself (widgets that consume the wheel on purpose).
+    target = widget
+    if not raw:
+        try:
+            from PySide6.QtWidgets import QAbstractScrollArea
+
+            area = widget if isinstance(widget, QAbstractScrollArea) else None
+            parent = widget.parentWidget() if area is None else None
+            while area is None and parent is not None:
+                if isinstance(parent, QAbstractScrollArea):
+                    area = parent
+                    break
+                parent = parent.parentWidget()
+            if area is not None:
+                target = area.viewport() or area
+        except Exception:
+            target = widget
+    widget = target
+    pos = widget.rect().center()
+    global_pos = widget.mapToGlobal(pos)
+    angle = QPoint(0, int(delta))
+    no_delta = QPoint(0, 0)
+    for _ in range(max(1, int(count))):
+        event = QWheelEvent(
+            QPointF(pos),
+            QPointF(global_pos),
+            no_delta,
+            angle,
+            Qt.MouseButton.NoButton,
+            Qt.KeyboardModifier.NoModifier,
+            qt_phase,
+            False,
+        )
+        QApplication.sendEvent(widget, event)

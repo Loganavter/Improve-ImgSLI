@@ -1450,6 +1450,67 @@ TOOLS: list[dict] = [
         "handler": "ui_focus",
     },
     {
+        "name": "ui_wheel",
+        "title": "Send wheel events to an element (phase-aware)",
+        "description": (
+            "Deliver `count` wheel events to one element by id from ui_elements, "
+            "in-process, one angle-delta step each. `phase` selects the Qt scroll "
+            "phase: `none` (a plain discrete-wheel notch), `begin`/`update`/`end` "
+            "(touchpads and smooth-scroll compositors, which may mark every event "
+            "`begin`). This is how a caller reproduces a high-resolution wheel "
+            "stream without a physical device and measures the scroll result via "
+            "ui_elements. Live-only, session-scoped ids."
+        ),
+        "inputSchema": _params(
+            {
+                "id": {
+                    **_STR,
+                    "description": "Element id from ui_elements (session-scoped), or a stable property:<name>=<value> reference.",
+                },
+                "delta": {
+                    **_INT,
+                    "default": 120,
+                    "description": "Angle delta per event in Qt units (120 = one mouse-wheel notch); negative scrolls the other way.",
+                },
+                "phase": {
+                    **_STR,
+                    "enum": ["none", "begin", "update", "end"],
+                    "default": "none",
+                    "description": "Qt scroll phase: none | begin | update | end.",
+                },
+                "count": {
+                    **_INT,
+                    "minimum": 1,
+                    "maximum": 200,
+                    "default": 1,
+                    "description": "How many wheel events to send (1..200).",
+                },
+                "raw": {
+                    **_BOOL,
+                    "default": False,
+                    "description": "False (default) routes the wheel to the scroll area that owns the element — what a real wheel there scrolls. True keeps it on the element (a widget that consumes the wheel itself).",
+                },
+            },
+            ["id"],
+        ),
+        "outputSchema": _object(
+            {
+                "sent": {
+                    **_INT,
+                    "description": "How many wheel events this call delivered.",
+                },
+                "delta": _INT,
+                "phase": _STR,
+                "raw": _BOOL,
+                "id": _STR,
+                "surface": _source(),
+            },
+            ["sent", "delta", "phase", "id"],
+        ),
+        "annotations": MUTATING_INPUT,
+        "handler": "ui_wheel",
+    },
+    {
         "name": "ui_press",
         "title": "Press an element and optionally hold it",
         "description": (
