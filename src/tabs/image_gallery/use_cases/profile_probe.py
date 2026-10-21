@@ -22,9 +22,11 @@ function of the metric values and the member set — a permuted input produces a
 equal result, and ties break by ``str(path)`` (ascending), so a stable run
 never depends on dict/set iteration or list order.
 
-Axis ids outside the pool are dropped (never fabricated), mirroring
-``services/metric_profile``; the pool is the closed vocabulary the model may
-choose from.
+Axis ids in the summary are registry ids: they are the axes a local detector can
+also measure, so a model that names one of them lets the app cross-check its
+judgement. The summary is *evidence*, never a menu — the selector asks for 3..8
+axes in free form and may name axes the pool does not have at all (plan
+``plan-gallery-ai-judgement`` §OWNER REVISION 2026-10-22).
 """
 
 from __future__ import annotations

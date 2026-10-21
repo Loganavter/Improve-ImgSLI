@@ -353,24 +353,27 @@ def test_late_vlm_reply_is_dropped_once_analysis_started(
 
 
 def test_vlm_profile_is_constrained_to_the_available_pool(caplog) -> None:
-    """The reply is a SELECTION of the pool — never widened, never invented.
+    """A reply is a set of neo axes or pool picks — never an invention.
 
-    ``profile_for_mode(mode)`` is the availability map: a ``reference`` axis
-    needs a source hub, so it cannot be measured in a camera folder. The pick
-    may be narrower than the mode base (that is the feature); it may not name
-    an axis the context cannot measure and it may not fabricate one.
+    Superseded wording (2026-10-22, plan-gallery-ai-judgement §OWNER REVISION):
+    the model NAMES the axes, so an id outside the pool is no longer dropped — a
+    bare name with no definition still is (it cannot be measured), and a pool id
+    the context cannot measure locally is KEPT (the judge measures it itself).
     """
     base = profile_for_mode("camera")
-    assert "sharpness" in base.axis_ids and "halo_delta" not in base.axis_ids
+    assert "sharpness" in base.axis_ids and "ssim" not in base.axis_ids
 
     profile = profile_ai.parse_profile_reply(
-        '{"axes": ["sharpness", "halo_delta", "invented"]}', mode="camera"
+        '{"axes": ["sharpness", "ssim", "invented"]}', mode="camera"
     )
 
     assert profile is not None and profile.source == "vlm"
-    assert profile.axis_ids == ("sharpness",), "only the measurable pool id survives"
-    assert set(profile.axis_ids) <= set(base.axis_ids)
+    assert profile.axis_ids == ("sharpness", "ssim"), (
+        "registry ids are kept even where no local detector runs (the judge "
+        "measures them); only a bare name with no meaning is refused"
+    )
     assert "invented" not in profile.axis_ids
+    assert profile.axis_entries == (), "a bare id carries no definition"
 
 
 def test_vlm_reply_of_only_unusable_ids_falls_back_to_the_heuristic(
@@ -383,8 +386,9 @@ def test_vlm_reply_of_only_unusable_ids_falls_back_to_the_heuristic(
     """
     assert profile_ai.parse_profile_reply('{"axes": ["made_up"]}', mode="camera") is None
     assert profile_ai.parse_profile_reply('{"axes": []}', mode="camera") is None
-    # Pool id, but its detector needs a source hub this folder does not have.
-    assert profile_ai.parse_profile_reply('{"axes": ["halo_delta"]}', mode="camera") is None
+    # P7-A: a registry id is kept even where no local detector runs — the judge
+    # measures it. Only a bare NAME with no definition is refused.
+    assert profile_ai.parse_profile_reply('{"axes": ["halo_delta"]}', mode="camera")
 
     from tabs.image_gallery.services.profile_cache import ProfileCache
     from tabs.image_gallery.use_cases import profile_probe

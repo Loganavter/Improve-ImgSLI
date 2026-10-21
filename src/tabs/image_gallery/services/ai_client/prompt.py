@@ -76,20 +76,51 @@ PROMPT_TEMPLATE = _PROMPT_CORE
 def _scorecard_axes(mode=None, *, profile=None) -> tuple[tuple[str, str], ...]:
     """``(axis_id, label)`` for every axis the AI must score.
 
-    The set is the ACTIVE metric profile's applicable MEASURED axes
-    (``measured_axes_for(mode, profile=profile)``) — single source of truth,
-    never a second axis list here. ``profile`` (any object with ``.axis_ids``,
-    canonically ``MetricProfile``) wins when given; ``profile=None`` is the
-    mode mapping (fail-open). Order = registry.
+    One set, two provenances (plan-gallery-ai-judgement P7-A):
+
+    - the profile's REGISTRY axes (``measured_axes_for(mode, profile=profile)``) —
+      single source of truth, labeled by their registry label, exactly as before;
+    - the axes the JUDGE NAMED for this series (``judged_axis_entries(profile)``) —
+      requested BY NAME with their own definition, which is what makes a free axis
+      measurable: the model is told what moves between 0 and 100 instead of
+      guessing from an id.
+
+    ``profile`` (any object with ``.axis_ids`` / ``.axis_entries``, canonically
+    ``MetricProfile``) wins when given; ``profile=None`` is the mode mapping
+    (fail-open). Order = registry, then the judge's entries in profile order.
+
+    A profile that carries ONLY judge axes has no registry set to narrow, and the
+    mode mapping is the fallback for an ABSENT profile — not for a judge that
+    answered with no registry axis. So in that case the registry half is empty and
+    the scorecard asks exactly the judge's axes.
     """
     try:
         from tabs.image_gallery.services.metric_scores import spec_for
-        from tabs.image_gallery.services.rank_fusion import measured_axes_for
+        from tabs.image_gallery.services.rank_fusion import (
+            judged_axis_entries,
+            measured_axes_for,
+        )
 
         out: list[tuple[str, str]] = []
-        for axis_id in measured_axes_for(mode, profile=profile):
+        judge_entries = judged_axis_entries(profile)
+        registry_axes: tuple[str, ...] = measured_axes_for(mode, profile=profile)
+        if (
+            judge_entries
+            and profile is not None
+            and not tuple(getattr(profile, "axis_ids", ()) or ())
+        ):
+            registry_axes = ()
+        for axis_id in registry_axes:
             spec = spec_for(axis_id)
             out.append((axis_id, spec.label if spec is not None else axis_id))
+        seen = {axis for axis, _label in out}
+        for entry in judge_entries:
+            name = str(getattr(entry, "name", "") or "").strip()
+            if not name or name in seen:
+                continue
+            definition = str(getattr(entry, "definition", "") or "").strip() or name
+            out.append((name, definition))
+            seen.add(name)
         return tuple(out)
     except Exception:
         return ()
@@ -156,15 +187,32 @@ def _unechoed_measurement_lines(block: str, *, mode=None, profile=None) -> str:
 def build_prompt(mode=None, *, profile=None, measured_block: str = "") -> str:
     """The analysis prompt: a per-axis scorecard for *mode* / *profile*.
 
-    Every applicable axis is requested by canonical id with its positive label,
-    so the model answers in the ids the report reads (see
-    ``plan-gallery-ai-backend-owns-quality``). ``profile`` is the active
-    metric profile (``measured_axes_for`` wins it over *mode*); ``profile=None``
-    reproduces the mode mapping byte-for-byte. ``measured_block`` (local
-    detector numbers) is attached as *context*, explicitly NOT authoritative.
+    Every applicable axis is requested by canonical id with its positive label;
+    an axis the JUDGE NAMED (no registry id, no registry label) is requested by
+    its own name with its definition as the label, so the model measures the
+    dimension it was asked for rather than guessing what an id means
+    (``plan-gallery-ai-judgement`` P7-A). ``profile`` is the active metric
+    profile (``measured_axes_for`` wins the registry half, ``axis_entries`` adds
+    the judge's half); ``profile=None`` reproduces the mode mapping byte-for-byte.
+    ``measured_block`` (local detector numbers) is attached as *context*,
+    explicitly NOT authoritative.
     """
     axes = _scorecard_axes(mode, profile=profile)
     axis_parts = ", ".join(f'"{axis_id}": <0-100 {label}>' for axis_id, label in axes)
+    # A judge-named axis carries its own 0..100 meaning in the definition ("0 =
+    # none, 100 = everywhere"), which is NOT always "100 = best quality". Say so
+    # only for such a profile: a registry-only prompt stays byte-identical (its
+    # cached scorecards keep answering the same question), and a prompt that does
+    # carry judge axes is already a new identity in the analyze cache.
+    axes_rule = (
+        "axes: one 0-100 score per axis listed above; for an axis whose definition "
+        "names its own scale (0 = …, 100 = …), score exactly that scale — do not "
+        "re-read it as quality; omit an axis you cannot judge (never invent a "
+        "number you did not see).\n"
+        if bool(getattr(profile, "axis_entries", ()) or ())
+        else "axes: one 0-100 score per axis listed above; omit an axis you cannot "
+        "judge (never invent a number you did not see).\n"
+    )
     text = (
         _PROMPT_CORE
         + "Reply with ONLY a JSON object, no prose and no code fences:\n"
@@ -177,9 +225,8 @@ def build_prompt(mode=None, *, profile=None, measured_block: str = "") -> str:
         '"definition": "<what it measures, 0 = …, 100 = …>", '
         '"scale": "0-100", "score": <0-100>}], '
         '"composition": <0-100>, "confidence": <0.0-1.0>}\n'
-        "axes: one 0-100 score per axis listed above; omit an axis you cannot "
-        "judge (never invent a number you did not see).\n"
-        "axis_proposals: AT MOST 2 technical dimensions the list above is "
+        + axes_rule
+        + "axis_proposals: AT MOST 2 technical dimensions the list above is "
         "missing AND you can actually SEE in this image (e.g. halation, sepia "
         "drift, jpeg blocking). Each needs a snake_case name, a one-sentence "
         "definition naming what moves between 0 and 100, and this image's score "

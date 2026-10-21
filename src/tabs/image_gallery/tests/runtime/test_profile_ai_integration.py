@@ -45,6 +45,7 @@ from tabs.image_gallery.services.profile_cache import ProfileCache
 from tabs.image_gallery.services.rank_fusion import measured_axes_for, rank_series
 from tabs.image_gallery.ui.card.dots import metric_dots_for_item
 from tabs.image_gallery.use_cases import pipeline_stages
+from tabs.image_gallery.use_cases import profile_ai
 from tabs.image_gallery.use_cases.profile_ai import (
     choose_profile_sync,
     parse_profile_reply,
@@ -153,8 +154,12 @@ def test_pin_prevents_a_second_call_and_returns_the_same_profile(tmp_path):
     assert payload.get("response_format") == {"type": "json_object"}
     content = payload["messages"][-1]["content"]
     text = content[0]["text"]
-    for axis in MEASURED_POOL:
-        assert axis in text, "every pool id is offered (the vocabulary is closed)"
+    # P7-A (owner revision 2026-10-22): the text offers axis EXAMPLES with their
+    # meanings and asks for 3..8 free axes — the pool is no longer a menu.
+    assert "ONLY from this list" not in text
+    assert "from 3 to 8" in text.lower()
+    for name, meaning in profile_ai.AXIS_EXAMPLES:
+        assert name in text and meaning in text
     images = [part for part in content if part.get("type") == "image_url"]
     assert 2 <= len(images) <= len(items), "the probe sends the deviant members as images"
 
@@ -230,12 +235,13 @@ def test_the_vlm_profile_reaches_dots_axes_and_the_rank(tmp_path):
         cache=ProfileCache(tmp_path), client_call=transport,
     )
     assert profile.source == "vlm"
-    # The pick is the SELECTION (a subset of the pool), constrained to the
-    # axes this context can measure: the reference axis has no source hub in a
-    # synthetic folder, so it is dropped rather than widening the vocabulary.
+    # P7-A (owner revision 2026-10-22): the mode-availability intersection is
+    # gone — a registry id the context cannot measure locally is KEPT (the judge
+    # measures it; ``axis_provenance`` labels it "measured-by-judge"). It is still
+    # a registry id, so the local consumers read the registry half.
     assert "noise" in profile.axis_ids
-    assert EXTRA not in profile.axis_ids
-    assert set(profile.axis_ids) <= set(profile_for_mode("batch_synthetic").axis_ids)
+    assert EXTRA in profile.axis_ids
+    assert set(profile.axis_ids) <= set(MEASURED_POOL)
 
     # This is what the wiring's apply-tail stores; assert the consumers then
     # resolve exactly that set.

@@ -191,9 +191,13 @@ def test_profile_pin_is_scoped_to_the_provider_endpoint(tmp_path):
 # --------------------------------------------------------------------------
 
 
-def test_build_profile_request_lists_the_pool_and_attaches_one_image_per_probe():
-    from tabs.image_gallery.services.metric_scores import spec_for
+def test_build_profile_request_offers_examples_and_attaches_one_image_per_probe():
+    """The probe request: axis EXAMPLES + salience in the text, one image each.
 
+    The closed pool listing this test used to require ("every MEASURED_POOL id is
+    offered") is withdrawn — plan-gallery-ai-judgement §OWNER REVISION 2026-10-22:
+    the judge names the axes and the examples are its vocabulary, not a menu.
+    """
     probes = [_item("a.png"), _item("b.png"), _item("c.png")]
     payload = build_profile_request(probes, model="m", salience=salience_summary(probes))
 
@@ -203,9 +207,11 @@ def test_build_profile_request_lists_the_pool_and_attaches_one_image_per_probe()
     content = payload["messages"][0]["content"]
     assert content[0]["type"] == "text"
     text = content[0]["text"]
-    for axis_id in MEASURED_POOL:
-        assert axis_id in text
-        assert spec_for(axis_id).label in text
+    assert "ONLY from this list" not in text
+    for name, meaning in profile_ai.AXIS_EXAMPLES:
+        assert name in text and meaning in text
+    assert "from 3 to 8" in text.lower()
+    assert "members=" in text, "the salience summary travels with the images"
     assert "ONLY a JSON object" in text
     image_parts = [part for part in content if part["type"] == "image_url"]
     assert len(image_parts) == 3
@@ -463,6 +469,7 @@ def test_profile_ai_is_qt_free_at_import():
 
 def test_module_exports_are_the_frozen_interface():
     assert set(profile_ai.__all__) == {
+        "AXIS_EXAMPLES",
         "ai_selector_available",
         "build_profile_request",
         "choose_profile_sync",

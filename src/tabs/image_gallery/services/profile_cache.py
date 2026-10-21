@@ -42,11 +42,14 @@ from tabs.image_gallery.services.metric_profile import MEASURED_POOL, MetricProf
 
 logger = logging.getLogger("ImproveImgSLI")
 
-#: Bump when the cached record shape changes (old pins stop matching). The
+#: Bump when the cached record shape changes (old pins stop matching). v2 adds
+#: the judge's own axes (``axis_entries``, plan-gallery-ai-judgement P7-A): a
+#: selection is name + definition + scale + direction, and a v1 record has no way
+#: to carry a free axis — it is therefore an honest MISS, not a lossy read. The
 #: endpoint/effort keying (queue ``task-ai-cache-identity-truth-2026-10-20``)
-#: deliberately does NOT bump it: the record shape is unchanged, and the key
-#: itself already makes pins written under the old derivation unreachable.
-PROFILE_CACHE_VERSION = 1
+#: deliberately did NOT bump it: the record shape was unchanged and the key itself
+#: already made old pins unreachable.
+PROFILE_CACHE_VERSION = 2
 
 #: Cache directory name, stored alongside the Jev cache directory.
 CACHE_DIR_NAME = "gallery_profile_cache"
@@ -120,6 +123,58 @@ def profile_cache_key(
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
+def _entries_to_record(entries) -> list:
+    """JSON rows for the judge's axes (name + definition + scale + direction).
+
+    The selector chose these axes; their per-image score is ``-1`` by definition
+    (nothing has been scored yet), so it is not stored. One shape for ``put`` and
+    ``get``, so a cached selection is trivially equal to the fresh one.
+    """
+    out: list = []
+    for entry in entries or ():
+        try:
+            name = str(getattr(entry, "name", "") or "").strip()
+        except Exception:
+            continue
+        if not name:
+            continue
+        out.append(
+            {
+                "name": name,
+                "definition": str(getattr(entry, "definition", "") or ""),
+                "scale": str(getattr(entry, "scale", "") or "0-100"),
+                "direction": str(getattr(entry, "direction", "") or ""),
+            }
+        )
+    return out
+
+
+def _entries_from_record(rows):
+    """``AiAxisProposal`` entries from a cached record (never raises)."""
+    try:
+        from tabs.image_gallery.models import AiAxisProposal
+
+        out = []
+        for row in list(rows or ()):
+            if not isinstance(row, dict):
+                continue
+            name = str(row.get("name", "") or "").strip()
+            if not name:
+                continue
+            out.append(
+                AiAxisProposal(
+                    name=name,
+                    definition=str(row.get("definition", "") or ""),
+                    scale=str(row.get("scale", "") or "0-100"),
+                    score=-1,
+                    direction=str(row.get("direction", "") or ""),
+                )
+            )
+        return tuple(out)
+    except Exception:
+        return ()
+
+
 class ProfileCache:
     """One-file-per-folder JSON pin for VLM-selected metric profiles.
 
@@ -164,19 +219,23 @@ class ProfileCache:
         axis_ids = data.get("axis_ids")
         if not isinstance(axis_ids, list):
             return None
+        entries = _entries_from_record(data.get("axis_entries"))
         try:
             profile = MetricProfile(
                 axis_ids=tuple(str(a) for a in axis_ids),
                 mode=data.get("mode", ""),
                 source=data.get("source", "vlm"),
                 salient_axes=tuple(data.get("salient_axes") or ()),
+                axis_entries=entries,
             )
         except Exception:
             return None
-        return profile if profile.axis_ids else None
+        # A free-only selection IS a usable profile (no registry id required) —
+        # truthiness, not ``axis_ids``, decides (P7-A).
+        return profile if profile else None
 
     def put(self, key: str, profile) -> None:
-        if profile is None or not getattr(profile, "axis_ids", ()):
+        if profile is None or not profile:
             return
         try:
             p = self._path(key)
@@ -188,6 +247,7 @@ class ProfileCache:
             "mode": str(getattr(profile, "mode", "") or ""),
             "source": str(getattr(profile, "source", "vlm") or "vlm"),
             "salient_axes": [str(a) for a in (getattr(profile, "salient_axes", ()) or ())],
+            "axis_entries": _entries_to_record(getattr(profile, "axis_entries", ()) or ()),
         }
         try:
             p.write_text(json.dumps(record, sort_keys=True), encoding="utf-8")

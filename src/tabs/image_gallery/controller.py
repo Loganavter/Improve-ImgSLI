@@ -823,14 +823,19 @@ class GalleryController:
         so a generation whose run was 100% cache HITs still accepts the answer —
         which is what the user paid for.
 
-        A usable profile — any object with a non-empty ``axis_ids``, canonically a
+        A usable profile — any object with a non-empty axis set (registry ids
+        AND/OR axes the judge named, ``bool(profile)``), canonically a
         ``MetricProfile`` with ``source="vlm"`` — is stored on the SAME
         ``state.metric_profile`` slot the P1 producer writes, the existing
         ``[gallery]``/``[ai]`` profile line is emitted (naming ``source=vlm`` and
-        the salient axes), and the cards are refreshed like the neighbouring
+        the judged axes), and the cards are refreshed like the neighbouring
         apply-tails. A missing profile is a no-op (the heuristic profile
         ``refresh_metric_profile`` stored FIRST remains — fail-open); a non-empty
         reply with no usable axis is a no-op WITH a visible reason.
+
+        P7-A: a free axis (name + definition, no local producer) is the normal
+        answer, so emptiness is asked of the PROFILE, never of ``axis_ids`` —
+        otherwise a judge that named only its own axes would be reported hollow.
         """
         from tabs.image_gallery.services.metric_profile import (
             PROFILE_REJECT_CALLS_BUILT,
@@ -878,15 +883,19 @@ class GalleryController:
             except Exception:
                 pass
         try:
-            axis_ids = tuple(getattr(profile, "axis_ids", None) or ())
+            usable = bool(profile) and bool(
+                tuple(getattr(profile, "axis_ids", None) or ())
+                or tuple(getattr(profile, "axis_entries", ()) or ())
+            )
         except Exception:
-            axis_ids = ()
-        if not axis_ids:
+            usable = bool(getattr(profile, "axis_ids", None))
+        if not usable:
             if profile is not None:
                 _note_profile_reject(
                     self,
                     PROFILE_REJECT_HOLLOW,
-                    "the reply named no usable pool axis — heuristic profile kept",
+                    "the reply named no usable axis (no name with a definition, "
+                    "no measurable registry id) — heuristic profile kept",
                     gen,
                 )
             return
