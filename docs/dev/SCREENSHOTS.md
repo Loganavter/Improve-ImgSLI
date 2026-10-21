@@ -162,9 +162,11 @@ python src/devtools/help_figures.py --all --write-manifest       # record baseli
 - **Variants are declared per figure, and installed per cell.** A recipe's
   `locales` x `themes` is the matrix: more than one pair makes every capture
   install under `assets/<locale>/<theme>/<name>` (a single-variant recipe keeps
-  today's flat destination). The five reproducible figures ship
-  `en|pt_BR|ru|zh` x `dark|light` — 40 files, ~2.2 MB, below the 15 MB
-  bundle-in-the-binary gate. One literal markdown reference then resolves
+  today's flat destination). Six reproducible figures ship
+  `en|pt_BR|ru|zh` x `dark|light` — 48 installed cells, ~2.2 MB (measured),
+  below the 15 MB bundle-in-the-binary gate. `empty_state.png` joined the
+  matrix in #507, after the earlier "five figures, 40 files" line was written.
+  One literal markdown reference then resolves
   through `resolve_help_asset`: `locale+theme -> locale -> theme -> base`. A
   **declared** cell that is missing is a content bug and returns `None` (the
   placeholder path), never the base; a locale with no declared matrix keeps the
@@ -173,6 +175,22 @@ python src/devtools/help_figures.py --all --write-manifest       # record baseli
   fallback is not deterministic, and a runner without a CJK font renders tofu.
   Both bundled fonts ship their OFL texts next to the files
   (`LICENSE-SourceSans3.txt`, `LICENSE-NotoSansSC.txt`).
+- **A variant matrix is justified by what is in the frame, not by figure
+  count.** Every figure declares `variant_need`, and the value is what its
+  frame needs: `locale+theme` (the frame contains UI chrome — labels, buttons,
+  panel titles, dialog fields), `theme` (theme-coloured chrome but no
+  translatable text — a plain button row, an overlay) or `none` (canvas/image
+  pixels only — a lens over a photo with no chrome in the crop). The asset
+  itself is the evidence, not the recipe name, so each declaration carries a
+  one-clause justification in the figure's `note`. Both manifest readers
+  validate the vocabulary (`ManifestError` on an unknown value), and
+  `tests/devtools/test_help_figure_variant_matrix.py` enforces it against the
+  declared matrix: `none` declares exactly one cell, `theme` declares `en`
+  locales only, and a declared `locale+theme` matrix is the full 4 locales x
+  2 themes. A figure may declare one `en`/`dark` cell while its need is larger
+  — that is recorded debt, and the full shape is required the moment a second
+  cell is declared, in the same change as the capture: declaring cells that are
+  not on disk fails closed to the placeholder.
 - **Idle blank is not a bug; drag-hover is a state.** The gallery's S0 repose
   is deliberately blank — the dashed drop zone + "Pick a folder…" prompt appear
   only while a drag hovers (`dragEnter`). The `gallery` surface drives that
@@ -280,6 +298,19 @@ Current live set: `help-toolbar`, `help-tab-strip`, `help-multi-save-dialog`,
 `magnifier_combined` (needs a lens state the control surface cannot compose),
 `split_line` (a `ScrollValueButton` popup, not the compact/expanded composite
 the figure teaches), plus video/paste/long-press and Ask AI.
+
+Two decisions on that manual pair (2026-10-21), recorded so neither is solved by
+multiplying variants:
+
+- `split_line` teaches a control that no longer exists — today's
+  `ScrollValueButton` has a hover split and a value pill, not the
+  compact/expanded composite in the prose. It is regenerated as a two-state
+  figure or retired. If kept, its frame is chrome with text →
+  `variant_need: locale+theme`.
+- `magnifier_combined`'s "two halves become one" state must be proven reachable
+  through a control verb (`set_setting`, or the lens settings read from
+  `get_state`) before it is photographed; otherwise the figure is retired. A
+  state that no verb can compose is not a variant question at all.
 
 ## Known limitation: the live QRhi/GL canvas
 

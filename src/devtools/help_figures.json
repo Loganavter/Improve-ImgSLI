@@ -141,7 +141,7 @@
         "ru",
         "zh"
       ],
-      "note": "New figure (not a shipped replacement): the gallery drop-zone state the overview page describes in prose. The devtool `gallery` surface builds ImageGalleryWidget without items, so it is reproducible like the populated grid. 1280x800 is the surface default, pinned so the frame cannot drift.",
+      "note": "New figure (not a shipped replacement): the gallery drop-zone state the overview page describes in prose. The devtool `gallery` surface builds ImageGalleryWidget without items, so it is reproducible like the populated grid. 1280x800 is the surface default, pinned so the frame cannot drift. Variant need: locale+theme — the frame carries translatable chrome (\"Pick a folder…\", the Open Folder / Rank / Filter toolbar).",
       "pins_applied": [
         "font",
         "locale",
@@ -159,7 +159,8 @@
       "themes": [
         "dark",
         "light"
-      ]
+      ],
+      "variant_need": "locale+theme"
     },
     {
       "captures": [
@@ -302,7 +303,7 @@
         "ru",
         "zh"
       ],
-      "note": "Shipped overview_grid.png is 1280x800, exactly the surface default; the six gradient cards come from CaptureSession.make_samples. zh 2026-10-21: enabled by the bundled Noto Sans SC CJK fallback (SIL OFL 1.1).",
+      "note": "Shipped overview_grid.png is 1280x800, exactly the surface default; the six gradient cards come from CaptureSession.make_samples. zh 2026-10-21: enabled by the bundled Noto Sans SC CJK fallback (SIL OFL 1.1). Variant need: locale+theme — the frame carries translatable chrome (toolbar controls, card badges).",
       "pins_applied": [
         "font",
         "locale",
@@ -320,7 +321,8 @@
       "themes": [
         "dark",
         "light"
-      ]
+      ],
+      "variant_need": "locale+theme"
     },
     {
       "captures": [],
@@ -331,7 +333,7 @@
       "locales": [
         "en"
       ],
-      "note": "No shipped figure shows an empty Multi Compare grid, and the surface itself is chrome-only (QRhi/GL canvas is not part of grab()).",
+      "note": "No shipped figure shows an empty Multi Compare grid, and the surface itself is chrome-only (QRhi/GL canvas is not part of grab()). Variant need: locale+theme — uncovered, so its single en/dark cell is a placeholder: the empty grid is chrome (toolbar + slot placeholders), not canvas pixels, and a captured frame needs every locale and both themes.",
       "pins_applied": [],
       "pins_unavailable": [
         "font",
@@ -342,7 +344,8 @@
       "surface": "multi",
       "themes": [
         "dark"
-      ]
+      ],
+      "variant_need": "locale+theme"
     },
     {
       "captures": [],
@@ -353,7 +356,7 @@
       "locales": [
         "en"
       ],
-      "note": "layouts.jpg (904x638) shows three populated slots but is a hand-composed canvas shot; the isolated surface yields blank canvas, so it cannot be reproduced here.",
+      "note": "layouts.jpg (904x638) shows three populated slots but is a hand-composed canvas shot; the isolated surface yields blank canvas, so it cannot be reproduced here. Variant need: theme — layouts.jpg shows canvas slots with untranslatable filename chips and dividers, no translatable label.",
       "pins_applied": [],
       "pins_unavailable": [
         "font",
@@ -364,7 +367,8 @@
       "surface": "multi-populated",
       "themes": [
         "dark"
-      ]
+      ],
+      "variant_need": "theme"
     },
     {
       "captures": [
@@ -507,7 +511,7 @@
         "ru",
         "zh"
       ],
-      "note": "P6 2026-10-21: the onboarding store receives the captured locale (current_language), the overlay chrome follows ThemeManager. Size pin reproduces the shipped 1000x684 frame without a crop. zh 2026-10-21: enabled by the bundled Noto Sans SC CJK fallback (SIL OFL 1.1).",
+      "note": "P6 2026-10-21: the onboarding store receives the captured locale (current_language), the overlay chrome follows ThemeManager. Size pin reproduces the shipped 1000x684 frame without a crop. zh 2026-10-21: enabled by the bundled Noto Sans SC CJK fallback (SIL OFL 1.1). Variant need: locale+theme — the frame carries translatable chrome (headings, card titles, body copy).",
       "pins_applied": [
         "font",
         "locale",
@@ -525,7 +529,8 @@
       "themes": [
         "dark",
         "light"
-      ]
+      ],
+      "variant_need": "locale+theme"
     },
     {
       "captures": [
@@ -668,7 +673,7 @@
         "ru",
         "zh"
       ],
-      "note": "P6 2026-10-21: now reproducible — the fake session context answers get_tab_icon with each tab's real SVG getter (tabs.<tab>.icons), so the plus-placeholder fallback is gone; the live layout carries the AI Gallery card. Shipped asset is JPEG, so install_destination writes .jpg and the generator converts the grab (quality 95, 4:4:4); frame is the shipped 844x529. zh 2026-10-21: enabled by the bundled Noto Sans SC CJK fallback (SIL OFL 1.1).",
+      "note": "P6 2026-10-21: now reproducible — the fake session context answers get_tab_icon with each tab's real SVG getter (tabs.<tab>.icons), so the plus-placeholder fallback is gone; the live layout carries the AI Gallery card. Shipped asset is JPEG, so install_destination writes .jpg and the generator converts the grab (quality 95, 4:4:4); frame is the shipped 844x529. zh 2026-10-21: enabled by the bundled Noto Sans SC CJK fallback (SIL OFL 1.1). Variant need: locale+theme — the frame carries translatable chrome (\"Create a workspace\", the session-type cards and their descriptions).",
       "pins_applied": [
         "font",
         "locale",
@@ -686,7 +691,8 @@
       "themes": [
         "dark",
         "light"
-      ]
+      ],
+      "variant_need": "locale+theme"
     },
     {
       "captures": [
@@ -829,7 +835,7 @@
         "ru",
         "zh"
       ],
-      "note": "P6 2026-10-21: settings_kwargs passes the captured locale/theme into the dialog, so the language radio and the Appearance dropdown match the frame; chrome theme comes from ThemeManager. Size pin reproduces the shipped frame. zh 2026-10-21: enabled by the bundled Noto Sans SC CJK fallback (SIL OFL 1.1).",
+      "note": "P6 2026-10-21: settings_kwargs passes the captured locale/theme into the dialog, so the language radio and the Appearance dropdown match the frame; chrome theme comes from ThemeManager. Size pin reproduces the shipped frame. zh 2026-10-21: enabled by the bundled Noto Sans SC CJK fallback (SIL OFL 1.1). Variant need: locale+theme — the frame is a settings dialog: page names, field labels and the language/appearance selectors.",
       "pins_applied": [
         "font",
         "locale",
@@ -847,7 +853,8 @@
       "themes": [
         "dark",
         "light"
-      ]
+      ],
+      "variant_need": "locale+theme"
     },
     {
       "captures": [
@@ -990,7 +997,7 @@
         "ru",
         "zh"
       ],
-      "note": "P6 2026-10-21: settings_kwargs passes the captured locale/theme into the dialog, so the language radio and the Appearance dropdown match the frame; chrome theme comes from ThemeManager. Size pin reproduces the shipped frame. zh 2026-10-21: enabled by the bundled Noto Sans SC CJK fallback (SIL OFL 1.1).",
+      "note": "P6 2026-10-21: settings_kwargs passes the captured locale/theme into the dialog, so the language radio and the Appearance dropdown match the frame; chrome theme comes from ThemeManager. Size pin reproduces the shipped frame. zh 2026-10-21: enabled by the bundled Noto Sans SC CJK fallback (SIL OFL 1.1). Variant need: locale+theme — the frame is the same settings dialog with its page names and field labels.",
       "pins_applied": [
         "font",
         "locale",
@@ -1008,7 +1015,8 @@
       "themes": [
         "dark",
         "light"
-      ]
+      ],
+      "variant_need": "locale+theme"
     }
   ],
   "schema_version": 1
