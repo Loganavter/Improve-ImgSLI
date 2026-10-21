@@ -61,6 +61,47 @@ def test_help_text_context_menu_stays_an_in_window_child(qtbot):
     menu.hide()
 
 
+def test_help_text_context_menu_stays_in_window_under_the_app_popup_default(qtbot):
+    """The manager policy must win over the toolkit's app-wide ``popup``.
+
+    Live report 2026-10-22 (Wayland): after opening this menu once, the help
+    dialog's frame broke (an extra bottom-right badge) and resizing lagged —
+    the documented "Qt.Popup parented to the top-level breaks the host's
+    compositing" failure (inv-2026-10-06-ql-rhi-menu-first). Cause: the app
+    bootstrap configures the toolkit global to ``popup``
+    (``ui/icon_manager.py``) and the manager forgot to pass its own
+    ``in_window`` policy to ``ContextMenu``. Before the fix this menu IS the
+    popup window (``isWindow() is True``).
+    """
+    from sli_ui_toolkit import config as tk_config
+
+    tk_config.configure_toolkit(context_menu_surface="popup")
+    assert tk_config.get_context_menu_surface() == "popup"
+
+    dialog = HelpDialog(current_language="en", app_name="Improve-ImgSLI")
+    qtbot.addWidget(dialog)
+    dialog.resize(880, 620)
+    dialog.show()
+    qtbot.waitExposed(dialog)
+
+    dialog.navigate_to("platform.getting_started")
+    dialog._document.select_all_text()
+    global_pos = dialog._document.mapToGlobal(dialog._document.rect().center())
+    open_help_text_context_menu(
+        dialog=dialog,
+        document=dialog._document,
+        global_pos=global_pos,
+        language="en",
+    )
+    qtbot.wait(10)
+
+    menu = get_context_menu_manager()._active_menu
+    assert menu is not None
+    assert menu._surface == "in_window"
+    assert not menu.isWindow()
+    menu.hide()
+
+
 def test_help_text_context_menu_enables_copy_with_selection(qtbot):
     dialog = HelpDialog(current_language="en", app_name="Improve-ImgSLI")
     qtbot.addWidget(dialog)
@@ -129,6 +170,8 @@ def test_help_copy_markdown_uses_the_host_page_source(qtbot):
     qtbot.wait(10)
 
     assert QGuiApplication.clipboard().text() == source
+    # Copy is a toolkit-standard action: it ends the selection gesture.
+    assert dialog._document.hasSelectedText() is False
     # A popup-surface menu deletes itself on hide (it is ephemeral), so the
     # wrapper may already be gone — that is the documented popup contract.
     try:
@@ -233,7 +276,23 @@ def test_help_copy_markdown_copies_only_the_selected_list_items(qtbot):
         if plain[segment.start : segment.end].startswith(("3. ", "4. "))
     ]
     assert len(items) == 2
-    document.canvas()._doc_selection.set_range(items[0].start, items[1].end)
+
+    def _select_items() -> None:
+        document.canvas()._doc_selection.set_range(items[0].start, items[1].end)
+
+    def _open_menu():
+        global_pos = document.mapToGlobal(document.rect().center())
+        open_help_text_context_menu(
+            dialog=dialog,
+            document=document,
+            global_pos=global_pos,
+            language="en",
+            source_markdown=source,
+        )
+        qtbot.wait(10)
+        menu = get_context_menu_manager()._active_menu
+        assert menu is not None
+        return menu
 
     source = dialog._document_source_markdown
     first = source.index("3. Load one image")
@@ -241,21 +300,25 @@ def test_help_copy_markdown_copies_only_the_selected_list_items(qtbot):
     expected = source[first : source.index("\n", second)]
     assert expected.strip() != source.strip()
 
-    global_pos = document.mapToGlobal(document.rect().center())
-    open_help_text_context_menu(
-        dialog=dialog,
-        document=document,
-        global_pos=global_pos,
-        language="en",
-        source_markdown=source,
-    )
+    # Plain Copy: the plain selection, and the highlight is dropped.
+    _select_items()
+    menu = _open_menu()
+    menu._finish_row_click("help.text.copy", None)
     qtbot.wait(10)
-    menu = get_context_menu_manager()._active_menu
-    assert menu is not None
+    assert QGuiApplication.clipboard().text() == plain[items[0].start : items[1].end]
+    assert document.hasSelectedText() is False
+    try:
+        menu.hide()
+    except RuntimeError:
+        pass
+
+    # Copy as Markdown: exactly the two source lines, highlight dropped too.
+    _select_items()
+    menu = _open_menu()
     menu._finish_row_click("help.text.copy_markdown", None)
     qtbot.wait(10)
-
     assert QGuiApplication.clipboard().text() == expected
+    assert document.hasSelectedText() is False
     try:
         menu.hide()
     except RuntimeError:

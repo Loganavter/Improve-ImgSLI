@@ -395,3 +395,49 @@ def test_hide_active_menu_reports_whether_it_hid_one(qtbot):
     assert menu.isVisible()
     assert mgr.hide_active_menu() is True
     assert not menu.isVisible()
+
+
+def test_manager_applies_its_surface_policy_over_the_global_popup_default(
+    qapp, qtbot
+):
+    """The manager's surface policy must reach the widget it creates.
+
+    Falsification (live report 2026-10-22): ``ContextMenuManager`` computed
+    ``rmb_context_menu_surface()`` (``in_window``) and dropped it on the floor —
+    ``ContextMenu(...)`` used the toolkit global default, which the app
+    bootstrap sets to ``popup`` (``ui/icon_manager.py``). Every manager menu —
+    including the help text menu — therefore became a native ``Qt.Popup``
+    parented to its top-level, the documented Wayland compositing break
+    (``inv-2026-10-06-ql-rhi-menu-first``): the host window's frame/alpha
+    degrades and resizing slows down after the first menu. Before the fix this
+    test sees ``_surface == "popup"`` and ``isWindow() is True``.
+    """
+    from PySide6.QtCore import QPoint
+
+    from sli_ui_toolkit import config as tk_config
+
+    from ui.context_menu.manager import ContextMenuManager, rmb_context_menu_surface
+
+    # The app bootstrap value (ui/icon_manager.py::configure_toolkit).
+    tk_config.configure_toolkit(context_menu_surface="popup")
+    assert tk_config.get_context_menu_surface() == "popup"
+    assert rmb_context_menu_surface() == "in_window"
+
+    parent = QWidget()
+    parent.resize(500, 400)
+    qtbot.addWidget(parent)
+    parent.show()
+    qtbot.waitExposed(parent)
+
+    manager = ContextMenuManager()
+    menu = manager.open_entries(
+        source_widget=parent,
+        global_pos=QPoint(40, 40),
+        entries=(ContextMenuAction("a", "A"),),
+        key="surface-policy",
+    )
+    assert menu is not None
+    assert menu._surface == "in_window"
+    assert menu.isWindow() is False
+    assert menu._logical_parent is parent
+    menu.hide()

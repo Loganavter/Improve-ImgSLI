@@ -4,6 +4,22 @@
 
 ### Fixed
 
+- **The help dialog's frame survives a context menu again (Wayland), and
+  resizing stops lagging.** `ContextMenuManager` computed the RMB surface
+  policy (`in_window`) and never passed it to `ContextMenu`, so every manager
+  menu — including the help text menu — used the toolkit's app-wide default
+  `popup` (set by `ui/icon_manager.py`). That made it a native `Qt.Popup`
+  parented to the help dialog (the top-level), i.e. the documented Wayland
+  compositing break (`inv-2026-10-06-ql-rhi-menu-first`): after the first menu
+  the dialog's frame/alpha degraded (an opaque badge at the bottom-right
+  corner) and resizing lagged. The manager now passes `surface=surface`, so
+  menus are in-window overlay children as its policy intends — no native
+  popup surface is created at all. Tests:
+  `tests/test_context_menu.py::test_manager_applies_its_surface_policy_over_the_global_popup_default`
+  and
+  `tests/plugins/test_help_text_context_menu.py::test_help_text_context_menu_stays_in_window_under_the_app_popup_default`
+  — both red before the fix (`_surface == "popup"`, `isWindow() is True`).
+
 - **"Copy as Markdown" in the help viewer copies the selected fragment, not the
   whole page.** Selecting two labels (e.g. two list items) and choosing the
   menu row put the entire page on the clipboard: the mapping was a plain-text
@@ -19,6 +35,16 @@
   in `tests/plugins/test_help_text_context_menu.py`
   (`test_help_copy_markdown_copies_only_the_selected_list_items` — red before:
   the clipboard held the whole page).
+
+- **Copy actions drop the selection highlight.** Choosing "Copy" or "Copy as
+  Markdown" left the text washed as if the selection were still live. The rule
+  is now the toolkit's standard copy behaviour (`Text.copy_selection()` /
+  `Text.copy_selection_markdown(source)` — copy, then clear), used by the help
+  menu rows instead of setting the clipboard directly; the toolkit routes its
+  built-in Ctrl+C paths and the default label (menu row + Ctrl+C) through the
+  same rule. Toolkit CHANGELOG has the mechanism; the app test asserts the
+  selection is gone after BOTH menu rows
+  (`tests/plugins/test_help_text_context_menu.py`).
 
 - **Hover no longer pops the value flyout on scroll-value controls.** The
   divider / magnifier-guide width buttons (Image Compare, Multi Compare) show
