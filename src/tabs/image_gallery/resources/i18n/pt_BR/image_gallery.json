@@ -167,6 +167,8 @@
       "ai_brief_pending": "Resumo da IA…",
       "not_measured": "— · não medido",
       "axis_inside_noise": "não separa estas variantes",
+      "axis_measured_locally": "medido localmente",
+      "axis_measured_by_judge": "medido pela IA",
       "profile_axis_set": "Conjunto de eixos",
       "profile_mode_fallback": "padrão do modo",
       "rank_of": "#{rank} de {total}",

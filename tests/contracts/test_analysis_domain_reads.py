@@ -161,8 +161,10 @@ AI_COMPARE_ALLOWLIST: dict[str, str] = {
         "subline shown only outside the AI domain (462) — W5/P9 shows per-axis "
         "provenance/gaps instead of a domain condition"
     ),
-    "src/tabs/image_gallery/ui/quick_look/metrics/rows.py|if domain == \"ai\" and _comp >= 0:": (
-        "composition hint gated on the domain (558) — W5/P9 per-axis provenance"
+    "src/tabs/image_gallery/ui/quick_look/metrics/rows.py|if domain == \"ai\" and _comp >= 0 and not _is_judged_axis(\"composition\"):": (
+        "composition hint gated on the domain (558) — W5/P9 per-axis provenance; "
+        "P7-C adds the judge-named guard so a judged composition row is not "
+        "duplicated"
     ),
     "src/tabs/image_gallery/ui/quick_look/metrics/theme.py|return \"ai\" if str(domain or \"\").strip().lower() == \"ai\" else \"algorithms\"": (
         "domain normalizer for row theming — W5/P9 styles from the AxisValue status"

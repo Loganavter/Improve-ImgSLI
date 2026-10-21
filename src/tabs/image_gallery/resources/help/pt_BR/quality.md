@@ -12,6 +12,14 @@ A pontuação combina nitidez, exposição, ruído e cor e, quando uma origem é
 
 Uma leitura cuja variação em toda a série fica dentro do próprio ruído do instrumento de medição aparece como **não separa estas variantes** em vez de uma porcentagem: a linha permanece, mas essa leitura não consegue ordenar estas imagens e não tem peso no ranking.
 
+### Eixos escolhidos pela IA {#judge-axes}
+
+Quando a IA escolhe os eixos de uma série, a Visualização rápida mostra cada eixo nomeado com as palavras do modelo e a sua definição, marcado **medido pela IA**; as leituras do registro mantêm os nomes de sempre e aparecem como **medido localmente**.
+
+- Um eixo nomeado pela IA mas não pontuado aparece como **— · não medido**: a linha não desaparece e nenhum zero é inventado.
+- Um eixo que não muda ao longo da série aparece como **não separa estas variantes**.
+- No cartão, o ponto de um eixo nomeado pela IA traz o mesmo rótulo **medido pela IA** ao passar o cursor e uma cor diferente das faixas medidas.
+
 ### Onde as pontuações aparecem {#where-scores}
 
 - **Visualização rápida** — o painel aberto por um clique em um cartão; ele mostra uma linha por leitura e sua porcentagem.

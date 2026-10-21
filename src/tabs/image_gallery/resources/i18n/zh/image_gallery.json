@@ -167,6 +167,8 @@
       "ai_brief_pending": "AI 简述…",
       "not_measured": "— · 未测量",
       "axis_inside_noise": "无法区分这些变体",
+      "axis_measured_locally": "本地测量",
+      "axis_measured_by_judge": "由 AI 测量",
       "profile_axis_set": "指标集",
       "profile_mode_fallback": "模式默认",
       "rank_of": "第 {rank} / {total}",

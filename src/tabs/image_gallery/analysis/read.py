@@ -25,12 +25,19 @@ source of numbers:
 - artifact severities delegate to ``quality_read.domain_artifact_severities``
   (the defect→artifact mapping is not duplicated here).
 
+Since P7-C the caller may pass the active metric ``profile``: each record then
+carries the instrument token the profile's one vocabulary defines
+(``measured-locally`` / ``measured-by-judge``), so the axes a model NAMED are
+read here like any other axis — same records, same gap reasons — and a surface
+can label their provenance without a second axis list.
+
 ``backend`` stays ``None`` until the catalog is wired into the producers (W5): a
 ``BackendRef`` invented at read time would attribute a model that never ran.
 """
 
 from __future__ import annotations
 
+import dataclasses
 from typing import Iterable
 
 from engine.analysis.contracts import AxisValue
@@ -143,18 +150,66 @@ def _local_gap_reason(item) -> str:
     )
 
 
+def _provenance_for(axis: str, *, profile) -> str:
+    """The P7-A instrument token for *axis* in *profile* (``""`` = no claim).
+
+    ``services.profile_judged.axis_provenance`` is the ONE definition of the
+    two-token vocabulary (``measured-locally`` / ``measured-by-judge``); this
+    reader only stamps its answer on the record so a surface never has to
+    re-derive it from the axis name (plan-gallery-ai-judgement P7-C: the
+    judge's axes reach the ONE read path, with their provenance). No profile
+    means the reader cannot say which instrument is authoritative — an empty
+    token, never a guess.
+    """
+    if profile is None:
+        return ""
+    try:
+        from tabs.image_gallery.services.profile_judged import axis_provenance
+
+        return str(axis_provenance(axis, profile=profile) or "")
+    except Exception:
+        return ""
+
+
+def _stamped(record: AxisValue, *, axis: str, profile) -> AxisValue:
+    """*record* with the reader's provenance token (identity when it cannot say).
+
+    The engine records are frozen and the reader never rewrites a producer's
+    value: only the provenance field is added, and only when a profile lets the
+    reader name the instrument. Without a profile the record is returned
+    verbatim (the engine's own object, provenance intact).
+    """
+    provenance = _provenance_for(axis, profile=profile)
+    if not provenance or str(getattr(record, "provenance", "") or "") == provenance:
+        return record
+    try:
+        return dataclasses.replace(record, provenance=provenance)
+    except Exception:
+        return record
+
+
 def read_axes(
     item,
     *,
     domain,
     axes: Iterable[str] | None = None,
+    profile=None,
 ) -> tuple[AxisValue, ...]:
     """One ``AxisValue`` per requested axis, read from *domain* only.
 
     ``axes=None`` means "the axes the source actually reports", in the source's
     own order. A caller that passes ``axes`` (dots/rows pass the active metric
-    profile) gets exactly one record per requested axis, in the requested order,
-    so a surface can render its whole axis set without a second lookup.
+    profile's full set — registry half plus the axes the judge NAMED) gets
+    exactly one record per requested axis, in the requested order, so a surface
+    can render its whole axis set without a second lookup.
+
+    ``profile`` (the active ``MetricProfile``) lets the reader stamp each record
+    with the P7-A provenance token: ``measured-locally`` for a registry axis a
+    detector produces here, ``measured-by-judge`` for an axis the judge named
+    (or a registry id this context has no local producer for). That is how the
+    judge's own axes arrive on THIS path — as records whose ``axis`` is the
+    judge's name and whose ``provenance`` says who measured it — instead of a
+    parallel axis list a surface would have to reconcile.
 
     When the item carries engine records (``analysis_records``, engine-on only
     — the engine is the only path since P9b),
@@ -185,10 +240,11 @@ def read_axes(
                         producer=ENGINE_PRODUCER,
                         status="gap",
                         reason=ENGINE_GAP_REASON,
+                        provenance=_provenance_for(axis, profile=profile),
                     )
                 )
                 continue
-            records.append(record)
+            records.append(_stamped(record, axis=axis, profile=profile))
         return tuple(records)
 
     dom = normalize_domain(domain)
@@ -206,6 +262,7 @@ def read_axes(
     )
     records: list[AxisValue] = []
     for axis in requested:
+        provenance = _provenance_for(axis, profile=profile)
         value = values.get(axis)
         if value is None:
             records.append(
@@ -215,16 +272,21 @@ def read_axes(
                     producer=producer,
                     status="gap",
                     reason=gap_reason,
+                    provenance=provenance,
                 )
             )
             continue
-        records.append(AxisValue(axis=axis, value=value, producer=producer))
+        records.append(
+            AxisValue(
+                axis=axis, value=value, producer=producer, provenance=provenance
+            )
+        )
     return tuple(records)
 
 
-def read_axis(item, *, axis: str, domain) -> AxisValue:
+def read_axis(item, *, axis: str, domain, profile=None) -> AxisValue:
     """The record of one axis for *domain* (a gap when it has no value)."""
-    return read_axes(item, domain=domain, axes=(axis,))[0]
+    return read_axes(item, domain=domain, axes=(axis,), profile=profile)[0]
 
 
 def read_artifact_severities(item, *, domain) -> dict[str, str]:

@@ -226,40 +226,82 @@ def metric_dots_for_item(
     translate=None,
     profile=None,
 ) -> tuple[tuple[object, ...], tuple[tuple[str, int | None], ...]]:
-    """Per-metric quality dots: one dot per applicable MEASURED axis.
+    """Per-metric quality dots: one dot per axis of the ACTIVE axis set.
 
-    Dot count/order = ``rank_fusion.measured_axes_for(mode, profile=profile)``
-    (registry report order). ``profile`` is the ACTIVE metric profile (any
-    object with ``.axis_ids``); it wins over *mode* when given, so the dots
-    show exactly the axes the rank and the AI scorecard use. ``profile=None``
-    reproduces the mode mapping. Per-dot value = the per-axis ``AxisValue`` from
-    ``analysis.read.read_axes`` (0–100; AI scorecard vs local detectors), so the
-    number carries its own producer. Color = ``metric_scores.score_band`` mapped
-    onto the existing severity tokens; an axis the current domain did not answer
-    is a ``status="gap"`` record and keeps the muted neutral dot it always had
-    (the tooltip reads "—", so the gap still reads as a gap).
+    Dot count/order = ``profile_judged.scorecard_axis_ids(mode, profile=profile)``
+    — the registry report order followed by the axes the judge NAMED for this
+    series (P7-C). ``profile`` is the ACTIVE metric profile; it wins over *mode*
+    when given, so the dots show exactly the axes the rows, the rank and the AI
+    scorecard use. ``profile=None`` reproduces the mode mapping (registry only).
+    Per-dot value = the per-axis ``AxisValue`` from ``analysis.read.read_axes``
+    (0–100; AI scorecard vs local detectors), so the number carries its own
+    producer and provenance. Color = ``metric_scores.score_band`` mapped onto
+    the existing severity tokens for a registry axis; a MEASURED judge axis
+    paints the accent token (it is another instrument, not a band); an axis the
+    current domain did not answer is a ``status="gap"`` record and keeps the
+    muted neutral dot it always had (the tooltip reads "—", so the gap still
+    reads as a gap).
 
     Returns ``(colors, infos)`` where ``infos`` is the parallel tuple of
     ``(localized_label, score | None)`` used by the hover tooltip.
+
+    Since P7-C the axis set is BOTH halves (``scorecard_axis_ids``: the registry
+    axes plus the names the judge invented), read through the one read path so a
+    judge dot carries the same measured/gap record as a registry dot. A judge
+    dot is never blended into the registry indicator unlabeled: an invented name
+    has no registry label, so its tooltip carries ``name · measured by the
+    judge``, and a MEASURED judge axis paints the accent token instead of a
+    severity band, so the two instruments are distinguishable at a glance as
+    well as on hover. A registry axis keeps its registry label (the P5/P7-A
+    parity) even when this context has no local producer for it.
     """
     try:
         from tabs.image_gallery.analysis.read import read_axes
         from tabs.image_gallery.services.metric_scores import score_band
-        from tabs.image_gallery.services.rank_fusion import measured_axes_for
+        from tabs.image_gallery.services.profile_judged import (
+            PROVENANCE_JUDGE,
+            axis_provenance,
+            scorecard_axis_ids,
+        )
+        from tabs.image_gallery.ui.quick_look.metrics.judged import (
+            is_judged_axis,
+            judged_axis_label,
+        )
 
-        axes = measured_axes_for(mode, profile=profile)
-        records = read_axes(item, domain=domain, axes=axes)
+        axes = scorecard_axis_ids(mode, profile=profile)
+        records = read_axes(item, domain=domain, axes=axes, profile=profile)
     except Exception:
         return (), ()
     colors: list[object] = []
     infos: list[tuple[str, int | None]] = []
     for record in records:
         axis_id = record.axis
-        label = _metric_axis_label(str(axis_id), translate)
+        provenance = str(getattr(record, "provenance", "") or "")
+        if not provenance:
+            try:
+                provenance = str(
+                    axis_provenance(axis_id, mode=mode, profile=profile) or ""
+                )
+            except Exception:
+                provenance = ""
+        # A judge-INVENTED name has no registry label, so its label carries the
+        # name and the provenance; a registry axis keeps its registry label
+        # (P5/P7-A parity), even when the judge is the only instrument able to
+        # measure it in this context.
+        if is_judged_axis(axis_id, profile=profile):
+            label = judged_axis_label(str(axis_id), profile=profile, translate=translate)
+        else:
+            label = _metric_axis_label(str(axis_id), translate)
         score: int | None = int(record.value) if record.status == "ok" else None
         if score is None:
             colors.append(_neutral_color())
             infos.append((label, None))
+            continue
+        if provenance == PROVENANCE_JUDGE:
+            # The judge's instrument, not a detector band: one token for every
+            # measured judge dot, so the accent dot itself says "the model".
+            colors.append(_accent_color())
+            infos.append((label, score))
             continue
         try:
             band = str(score_band(score)).lower()

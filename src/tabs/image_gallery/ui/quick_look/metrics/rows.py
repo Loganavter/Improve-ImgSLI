@@ -281,16 +281,6 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
     # one answer, never two competing ones; a gap stays a gap (it never borrows
     # the other domain's number), so only ``status == "ok"`` reaches the rows.
     domain = _overlay_judgment_domain(overlay)
-    try:
-        from tabs.image_gallery.analysis.read import read_axes
-
-        read = {
-            record.axis: int(record.value)
-            for record in read_axes(item, domain=domain)
-            if record.status == "ok"
-        }
-    except Exception:
-        read = {}
     # Raw detector keys drive the Algorithms-domain extras (raw deltas, the dual
     # Detail bar); the AI domain has no raws and never reads them.
     metrics = getattr(item, "metrics", None) or {}
@@ -312,6 +302,7 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
         value_color=None,
         value_elide: bool = True,
         bar: bool = True,
+        title_elide: bool = False,
     ) -> None:
         row = QWidget(host)
         rl = QVBoxLayout(row)
@@ -320,7 +311,18 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
         header = QHBoxLayout()
         header.setContentsMargins(0, 0, 0, 0)
         header.setSpacing(scaled_px(6))
-        t = _make_label(title, parent=row, pixel_size=11, pt=11.5)
+        if title_elide:
+            # A judge-named axis' title is the model's own wording + definition,
+            # so its length is not the design's (P7-C). Elide paints the
+            # truncated text but keeps the full string in ``.text()``; the
+            # Ignored size policy (helpers._make_label) stops the full-text
+            # sizeHint from forcing the fixed report column into h-scroll — the
+            # W5 fit budget holds, the row never clips.
+            t = _make_label(
+                title, parent=row, pixel_size=11, pt=11.5, elide=True, minimum_width=40
+            )
+        else:
+            t = _make_label(title, parent=row, pixel_size=11, pt=11.5)
         header.addWidget(t)
         # W7: no spacer here — the value below is horizontal-Ignored (it
         # contributes no sizeHint so the min-296px column never h-scrolls) and
@@ -362,7 +364,7 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
     def _muted_color():
         return _token_qcolor("gallery.status.neutral", "#8a8a8a")
 
-    def _add_unmeasured_row(title: str) -> None:
+    def _add_unmeasured_row(title: str, *, title_elide: bool = False) -> None:
         """Unmeasured state: an explicit 'not measured' row, never a plausible
         constant. Fabricated values (0.94 SSIM, 120 sharpness, …) made missing
         data look measured; gaps must read as gaps. The value is a fixed
@@ -378,6 +380,7 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
             # No bar for a non-measurement: a 0-fraction bar reads as a value
             # (and its 4px floor is not "0%"). The row stays one honest line.
             bar=False,
+            title_elide=title_elide,
         )
 
     # Canonical scores drive both the text and the bar: every metric reads
@@ -439,25 +442,112 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
         _add_metric_row(_titled(_metric_label(overlay, spec_id, spec.label), spec_id, score), value, score / 100.0, col, value_color=col)
         return True
 
+    def _add_judged_row(axis_id: str) -> bool:
+        """One axis the JUDGE named: its NAME + MEANING + provenance (P7-C).
+
+        The registry's ``_spec_for`` gate cannot answer a name the model
+        invented, so this is the second (and only other) row shape — the same
+        primitives, the same read map, the same noise-floor verdict. The two
+        honest states are the ones the owner asked for and they are the SAME
+        texts the registry rows use: no measurement -> "not measured", constant
+        across the series -> "does not separate these variants". Returns True
+        when the axis has a row.
+        """
+        try:
+            from tabs.image_gallery.ui.quick_look.metrics.judged import (
+                judged_axis_title,
+            )
+
+            title = judged_axis_title(
+                axis_id,
+                profile=_profile,
+                translate=lambda key, default: _ql_text(overlay, key, default),
+            )
+        except Exception:
+            title = str(axis_id)
+        if not title:
+            return False
+        if _inside_noise is not None and _salience.get(axis_id) == _inside_noise:
+            _add_metric_row(
+                title,
+                _ql_text(
+                    overlay,
+                    "image_gallery.quick_look.axis_inside_noise",
+                    "does not separate these variants",
+                ),
+                0.0,
+                _muted_color(),
+                value_color=_muted_color(),
+                value_elide=False,
+                bar=False,  # no fill: this axis ranks nothing
+                title_elide=True,
+            )
+            return True
+        score = read.get(axis_id)
+        if score is None:
+            _add_unmeasured_row(title, title_elide=True)
+            return True
+        score = int(score)
+        col = _band_color(score)
+        # No band note here: a registry note is keyed by a registry id, and the
+        # judge's definition already states both ends of the scale in the title.
+        _add_metric_row(
+            title,
+            f"{score}%",
+            score / 100.0,
+            col,
+            value_color=col,
+            title_elide=True,
+        )
+        return True
+
+    def _is_judged_axis(axis_id: str) -> bool:
+        """True when *axis_id* is a name the judge invented (P7-C)."""
+        try:
+            from tabs.image_gallery.ui.quick_look.metrics.judged import (
+                is_judged_axis,
+            )
+
+            return bool(is_judged_axis(axis_id, profile=_profile))
+        except Exception:
+            return False
+
     # The ROW SET is the active metric profile — the same seam the card dots
-    # read (``active_profile`` → ``measured_axes_for``), so rows, dots, rank
+    # read (``active_profile`` → ``scorecard_axis_ids``), so rows, dots, rank
     # and the AI scorecard cannot disagree about which axes exist (no second
-    # axis list here). Registry order is the profile's own order.
+    # axis list here). The set is BOTH halves: the registry axes a detector can
+    # produce and the axes the judge NAMED for this series (P7-C — the judge's
+    # name is what the user asked to see). Registry order first, judge order
+    # after, exactly as ``scorecard_axis_ids`` returns them.
     try:
-        from tabs.image_gallery.services.rank_fusion import measured_axes_for
+        from tabs.image_gallery.services.profile_judged import scorecard_axis_ids
 
         _mode = _overlay_mode(overlay, mode_str)
         _profile = _overlay_metric_profile(overlay, mode_str)
-        axes = measured_axes_for(_mode, profile=_profile)
+        axes = scorecard_axis_ids(_mode, profile=_profile)
     except Exception:
         _profile = None
         axes = ()
+    # P7-C: every axis of that set — registry or judge-named — is read through
+    # the ONE read path, and each record carries its own producer/status/reason
+    # plus the P7-A provenance token. No second reader, no second axis list.
+    try:
+        from tabs.image_gallery.analysis.read import read_axes
+
+        read = {
+            record.axis: int(record.value)
+            for record in read_axes(item, domain=domain, axes=axes, profile=_profile)
+            if record.status == "ok"
+        }
+    except Exception:
+        read = {}
     # P2 salience (plan-gallery-ai-judgement M3): an axis whose spread across
     # THIS series sits inside the judge's noise floor cannot separate these
     # variants, so its row says exactly that instead of showing a number that
     # ranked nothing. The verdict is the SAME one the rank and the Jev vector
     # apply (``axis_salience``), measured from the same domain read the rows
-    # render — never a second measurement.
+    # render — never a second measurement. The floor is the MEASURED one when
+    # the k draws carry it (P7-B), else the producing instrument's constant.
     _salience: dict[str, str] = {}
     _inside_noise = None
     try:
@@ -473,9 +563,17 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
 
         _series = list(getattr(overlay, "_series_items", None) or [])
         if len(_series) > 1:
+            # The floor reads the k draw scorecards P7-B carries on each
+            # analysis result (the within-item spread); a member without one
+            # contributes nothing and the constant stays the fallback.
+            _samples = [
+                getattr(member, "analysis", None) for member in _series
+            ]
             _verdicts = axis_salience(
                 [domain_axis_scores(member, domain=domain) for member in _series],
-                noise_floor=axis_noise_floor(domain),
+                noise_floor=axis_noise_floor(
+                    domain, samples=[s for s in _samples if s is not None]
+                ),
             )
             # The rows render the verdict the RANK applies: when the floor cannot
             # separate anything in this series (every axis inside it), the fusion
@@ -629,6 +727,11 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
             # fallback report adds no empty row.
             if not _exact_rows and axis_id not in _core_axes and axis_id not in read:
                 continue
+            if _is_judged_axis(axis_id):
+                # P7-C: a name the judge invented has no registry spec, so it
+                # takes the judged row shape (name + meaning + provenance).
+                _add_judged_row(axis_id)
+                continue
             _extra = ""
             try:
                 if axis_id == "clipping_delta":
@@ -647,6 +750,9 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
         for axis_id in axes:
             if not _exact_rows and axis_id not in _core_axes and axis_id not in read:
                 continue
+            if _is_judged_axis(axis_id):
+                _add_judged_row(axis_id)
+                continue
             _add_score_row(axis_id)
     # AI-only Composition axis (no local detector, not in MEASURED_POOL) is a
     # VLM judgment: it belongs to the AI domain only, never to the local
@@ -655,7 +761,10 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
         _comp = int(getattr(getattr(item, "analysis", None), "composition", -1) or -1)
     except Exception:
         _comp = -1
-    if domain == "ai" and _comp >= 0:
+    if domain == "ai" and _comp >= 0 and not _is_judged_axis("composition"):
+        # A judge-named "composition" already rendered through the judged row
+        # (with the model's own wording) — drawing this one too would show the
+        # same axis twice under two labels.
         _ccol = _band_color(_comp)
         _add_metric_row(
             _titled(_metric_label(overlay, "composition", "Composition"), "composition", _comp),

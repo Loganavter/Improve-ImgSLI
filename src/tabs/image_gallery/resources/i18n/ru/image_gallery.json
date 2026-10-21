@@ -167,6 +167,8 @@
       "ai_brief_pending": "Краткий ответ ИИ…",
       "not_measured": "— · не измерено",
       "axis_inside_noise": "не различает эти варианты",
+      "axis_measured_locally": "измерено локально",
+      "axis_measured_by_judge": "измерено ИИ",
       "profile_axis_set": "Набор осей",
       "profile_mode_fallback": "по режиму",
       "rank_of": "#{rank} из {total}",
