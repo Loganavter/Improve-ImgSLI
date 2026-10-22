@@ -144,6 +144,16 @@ class AxisValue:
     instead of re-running the same detectors a second time (W12 dedupe). No
     invariant ties it to ``status``: a gap simply carries ``raw=None`` in
     practice, and a value of ``0.0`` is a measurement, not a missing value.
+
+    ``provenance`` is the INSTRUMENT token the reader stamped on the record
+    (plan-gallery-ai-judgement P7-C): ``"measured-locally"`` or
+    ``"measured-by-judge"``, the vocabulary ``services.profile_judged`` owns.
+    It is separate from ``producer`` on purpose — ``producer`` names the engine
+    producer that emitted the value (``vlm`` / ``local`` / …), while provenance
+    says which instrument is authoritative for this axis *here*. Empty means
+    "no claim" (a reader that had no profile to answer from), never a guess.
+    The engine layer does not validate the token: the vocabulary belongs to the
+    tab's profile seam, and an engine import of it would invert the dependency.
     """
 
     axis: str
@@ -154,6 +164,7 @@ class AxisValue:
     reason: str = ""
     at: int = 0
     raw: float | None = None
+    provenance: str = ""
 
     def __post_init__(self) -> None:
         if not str(self.axis or "").strip():

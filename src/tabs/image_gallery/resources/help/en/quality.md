@@ -12,6 +12,14 @@ The score combines sharpness, exposure, noise, and color, and — once a source 
 
 A reading whose spread across the whole series is inside the measuring instrument's own noise reads **does not separate these variants** instead of a percentage: the row stays, but that reading cannot order these images and carries no weight in the rank.
 
+### Axes chosen by AI {#judge-axes}
+
+When the AI picks the axes for a series, Quick Look shows each named axis with the model's own wording and its definition, marked **measured by the judge**; the registry readings keep their usual names and are marked **measured locally**.
+
+- An axis the AI named but never scored reads **— · not measured** — the row is not dropped and no zero is invented.
+- An axis that stays the same across the series reads **does not separate these variants**.
+- On a card, a dot for an axis the AI named carries the same **measured by the judge** label on hover and a different colour from the measured bands.
+
 ### Where scores appear {#where-scores}
 
 - **Quick Look** — the panel opened by a click on a card; it shows one row per reading and its percentage.

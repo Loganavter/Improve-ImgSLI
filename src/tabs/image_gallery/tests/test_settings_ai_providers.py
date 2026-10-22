@@ -122,8 +122,6 @@ def test_model_list_is_populated_from_the_injected_discovery(dialog):
         "fake/model-two",
     ]
     assert dialog._ai_calls and dialog._ai_calls[0]["provider"] == "openrouter"
-    # The status line says where the list came from.
-    assert "provider" in dialog.gallery_ai_models_status.text().lower()
 
 
 def test_provider_change_moves_base_url_and_model(dialog):
@@ -158,27 +156,77 @@ def test_switching_back_restores_the_remembered_model(dialog):
 def test_refresh_uses_the_injected_fetch_with_refresh_flag(dialog):
     before = len(dialog._ai_calls)
 
-    dialog.gallery_ai_refresh.clicked.emit()
+    dialog.gallery_ai_reload_models()
 
     assert len(dialog._ai_calls) == before + 1
     assert dialog._ai_calls[-1]["refresh"] is True
 
 
-def test_discovery_failure_shows_the_curated_fallback_reason(dialog, monkeypatch):
+def test_an_empty_failed_fetch_reports_on_the_dropdown_itself(dialog, monkeypatch):
+    """Owner request 2026-10-22: no caption line — the list row says the reason."""
     from tabs.image_gallery.ui import settings_ai
 
     def _failing(provider, api_key, *, refresh=False, report=None):
         if report is not None:
-            report["reason"] = ai_models.REASON_AUTH
-        return tuple(provider.curated_models), ai_models.SOURCE_CURATED
+            report["reason"] = ai_models.REASON_NETWORK
+        return (), ai_models.SOURCE_CURATED
 
     monkeypatch.setattr(settings_ai, "MODELS_FOR", _failing)
+    dialog.gallery_ai_model.setText("vendor/typed-by-hand")
 
-    dialog.gallery_ai_refresh.clicked.emit()
+    dialog.gallery_ai_reload_models()
 
-    status = dialog.gallery_ai_models_status.text().lower()
-    assert "rejected" in status
-    assert "fallback" in status
+    combo = dialog.gallery_ai_model_list
+    assert combo.count() == 1
+    assert "no connection" in combo.itemText(0).lower()
+    # The error row is not a model: picking it must not rewrite the field.
+    assert combo.itemData(0) is None
+    combo.setCurrentIndex(0)
+    assert dialog.gallery_ai_model.text() == "vendor/typed-by-hand"
+
+
+def test_no_manual_refresh_control_and_no_status_caption(dialog):
+    assert not hasattr(dialog, "gallery_ai_refresh")
+    assert not hasattr(dialog, "gallery_ai_models_status")
+
+
+def test_entering_the_page_re_asks_the_provider(dialog):
+    before = len(dialog._ai_calls)
+
+    dialog.section_shown.emit("image_gallery.ai")
+
+    assert len(dialog._ai_calls) == before + 1
+    assert dialog._ai_calls[-1]["refresh"] is True
+    # Another page's entry must not touch the model list.
+    before = len(dialog._ai_calls)
+    dialog.section_shown.emit("builtin.general")
+    assert len(dialog._ai_calls) == before
+
+
+def test_identical_catalog_keeps_the_combo_untouched(dialog):
+    combo = dialog.gallery_ai_model_list
+    combo.setCurrentIndex(combo.findText("fake/model-two"))
+    assert combo.currentIndex() == 1
+
+    dialog.gallery_ai_reload_models()  # same fake catalog
+
+    # No rebuild: a rebuild would re-select the persisted field value (index 0).
+    assert [combo.itemText(i) for i in range(combo.count())] == [
+        "fake/model-one",
+        "fake/model-two",
+    ]
+    assert combo.currentIndex() == 1
+
+
+def test_changed_catalog_replaces_the_list(dialog, monkeypatch):
+    _install_models(monkeypatch, ("vendor/new-one", "vendor/new-two"))
+
+    dialog.gallery_ai_reload_models()
+
+    assert _listed(dialog.gallery_ai_model_list) == [
+        "vendor/new-one",
+        "vendor/new-two",
+    ]
 
 
 # -- Picker order: publisher first, then model (flat list, no headers) --------
@@ -211,7 +259,7 @@ def _listed(combo) -> list[str]:
 def test_model_list_renders_publisher_first_order(dialog, monkeypatch):
     _install_models(monkeypatch, SCRAMBLED_MODELS)
 
-    dialog.gallery_ai_refresh.clicked.emit()
+    dialog.gallery_ai_reload_models()
 
     assert _listed(dialog.gallery_ai_model_list) == [
         "deepseek/deepseek-v3",
@@ -219,15 +267,13 @@ def test_model_list_renders_publisher_first_order(dialog, monkeypatch):
         "meta/llama2",
         "meta/muse",
     ]
-    # Sorting is a render detail: the status line still counts every model.
-    assert "(4)" in dialog.gallery_ai_models_status.text()
 
 
 def test_model_list_restores_the_persisted_selection_after_sorting(dialog, monkeypatch):
     _install_models(monkeypatch, SCRAMBLED_MODELS)
     dialog.gallery_ai_model.setText("meta/muse")
 
-    dialog.gallery_ai_refresh.clicked.emit()
+    dialog.gallery_ai_reload_models()
 
     combo = dialog.gallery_ai_model_list
     assert combo.currentText() == "meta/muse"
@@ -240,7 +286,7 @@ def test_a_typed_custom_model_id_survives_a_refresh(dialog, monkeypatch):
     _install_models(monkeypatch, SCRAMBLED_MODELS)
     dialog.gallery_ai_model.setText("vendor/typed-by-hand")
 
-    dialog.gallery_ai_refresh.clicked.emit()
+    dialog.gallery_ai_reload_models()
 
     # The id is not in the discovered list — the free text field keeps it.
     assert dialog.gallery_ai_model.text() == "vendor/typed-by-hand"
@@ -248,7 +294,7 @@ def test_a_typed_custom_model_id_survives_a_refresh(dialog, monkeypatch):
 
 def test_model_tooltips_carry_the_full_id(dialog, monkeypatch):
     _install_models(monkeypatch, SCRAMBLED_MODELS)
-    dialog.gallery_ai_refresh.clicked.emit()
+    dialog.gallery_ai_reload_models()
 
     combo = dialog.gallery_ai_model_list
     # Pick from the list: field and closed combo both hover-hint the full id.
@@ -261,7 +307,7 @@ def test_model_tooltips_carry_the_full_id(dialog, monkeypatch):
 
 def test_model_tooltip_follows_a_typed_custom_id(dialog, monkeypatch):
     _install_models(monkeypatch, SCRAMBLED_MODELS)
-    dialog.gallery_ai_refresh.clicked.emit()
+    dialog.gallery_ai_reload_models()
 
     dialog.gallery_ai_model.setText("vendor/typed-by-hand")
 
@@ -272,7 +318,7 @@ def test_model_tooltip_is_restored_with_the_persisted_selection(dialog, monkeypa
     _install_models(monkeypatch, SCRAMBLED_MODELS)
     dialog.gallery_ai_model.setText("meta/muse")
 
-    dialog.gallery_ai_refresh.clicked.emit()
+    dialog.gallery_ai_reload_models()
 
     assert dialog.gallery_ai_model.toolTip() == "meta/muse"
     assert dialog.gallery_ai_model_list.toolTip() == "meta/muse"
@@ -387,13 +433,7 @@ def test_apply_without_a_live_gallery_tab_does_not_offer(
 
 _LOCALIZED_KEYS = (
     "image_gallery.settings.provider",
-    "image_gallery.settings.refresh_models",
-    "image_gallery.settings.models_loading",
-    "image_gallery.settings.models_from_network",
-    "image_gallery.settings.models_from_cache",
-    "image_gallery.settings.models_from_cache_stale",
-    "image_gallery.settings.models_from_curated",
-    "image_gallery.settings.models_none",
+    "image_gallery.settings.models_unavailable",
     "image_gallery.settings.models_reason_auth",
     "image_gallery.settings.models_reason_network",
     "image_gallery.settings.models_reason_http",

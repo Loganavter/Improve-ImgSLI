@@ -68,6 +68,35 @@ def _restore_scene_read_seam():
 
 
 @pytest.fixture(autouse=True)
+def _restore_capture_frame_pins():
+    """``capture_surface`` repins the PROCESS frame; hand it back per test.
+
+    The devtool must render Help figures with its canonical face (Source Sans 3
+    / Noto Sans SC at 12 pt, 96 DPI) — that is what makes the sha256 baselines
+    reproducible — and it used to leave both the font and
+    ``QT_SCALE_FACTOR``/``QT_FONT_DPI`` applied after it finished. Every later
+    widget in the process then inherited a 12 pt face, which moved text-derived
+    geometry: the gallery toolbar's pick button measured 148 px instead of the
+    design 132 px (measured 2026-10-22).
+
+    A per-test ``QFont()`` snapshot CANNOT fix this — two measured traps:
+    ``QFont()`` is default-constructed (unresolved), so ``app.setFont(QFont())``
+    re-resolves to the *current* app font, and a copy taken after the polluter
+    already holds the canonical face. Both restore the leak. ``capture_surface``
+    therefore anchors the app's own font on its FIRST override and exposes it
+    as ``restore_app_font``/``restore_canonical_env``; this fixture is the
+    hand-back, sitting next to ``_restore_scene_read_seam`` because it is the
+    same kind of process-wide seam.
+    """
+    yield
+    module = sys.modules.get("devtools.capture_surface")
+    if module is None:
+        return
+    module.restore_app_font()
+    module.restore_canonical_env()
+
+
+@pytest.fixture(autouse=True)
 def _destroy_lingering_toplevels():
     """Deterministically destroy lingering top-levels at teardown (suite-wide).
 

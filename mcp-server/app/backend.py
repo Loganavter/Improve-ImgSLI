@@ -982,6 +982,37 @@ class AppBackend:
     def ui_focus(self, *, id: str) -> dict:
         return self._live_only("ui_focus", self._elements_need_live(), id=id)
 
+    def ui_wheel(
+        self,
+        *,
+        id: str,
+        delta: int = 120,
+        phase: str = "none",
+        count: int = 1,
+        raw: bool = False,
+        ctrl: bool = False,
+        shift: bool = False,
+        alt: bool = False,
+    ) -> dict:
+        """Wheel one element — live-only, never faked.
+
+        The catalog declared ``ui_wheel`` without a backend method, so the tool
+        answered "has no handler" through MCP while working over the raw socket
+        (catalog/backend mismatch is a server bug).
+        """
+        return self._live_only(
+            "ui_wheel",
+            self._elements_need_live(),
+            id=id,
+            delta=delta,
+            phase=phase,
+            count=count,
+            raw=raw,
+            ctrl=ctrl,
+            shift=shift,
+            alt=alt,
+        )
+
     def ui_press(
         self, *, id: str, hold_ms: int | None = None, release: bool | None = None
     ) -> dict:

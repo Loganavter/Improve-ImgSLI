@@ -160,3 +160,94 @@ def test_wheel_over_a_child_scrolls_the_owning_area(qapp) -> None:
 def test_count_never_sends_zero_events(qapp) -> None:
     _, phases = _run("none", count=0)
     assert len(phases) >= 1, "count=0 sent no event at all"
+
+
+# --------------------------------------------------------------------------
+# Modifiers and canvas routing (owner report, 2026-10-22)
+# --------------------------------------------------------------------------
+
+
+class _RecordingWheel(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.events: list = []
+        self.accepts = True
+
+    def wheelEvent(self, event):  # noqa: N802 - Qt spelling
+        self.events.append(event)
+        if self.accepts:
+            event.accept()
+        else:
+            event.ignore()
+
+
+def _wheel_el(widget):
+    from types import SimpleNamespace
+
+    return SimpleNamespace(widget=widget, rect=widget.rect(), id="stub", target="QWidget")
+
+
+def test_wheel_element_carries_modifiers(qapp):
+    from PySide6.QtCore import Qt
+
+    from core.control.elements.interaction import wheel_element
+
+    widget = _RecordingWheel()
+    wheel_element(
+        _wheel_el(widget), delta=120, modifiers=Qt.KeyboardModifier.ControlModifier
+    )
+    assert widget.events[-1].modifiers() & Qt.KeyboardModifier.ControlModifier
+
+
+def test_wheel_target_keeps_a_canvas_and_routes_other_elements(qapp, monkeypatch):
+    """A canvas owns its Ctrl+wheel zoom; every other element scrolls its owner.
+
+    ``QRhiWidget`` cannot be instantiated offscreen, so the canvas PREDICATE is
+    pinned: with it true the element's own widget is the target even inside a
+    scroll area; with it false the scroll area's viewport is — the routing
+    every other element gets.
+    """
+    from PySide6.QtWidgets import QAbstractScrollArea
+
+    import core.control.elements.interaction as interaction
+
+    area = QAbstractScrollArea()
+    child = _RecordingWheel(area)
+    child.resize(100, 100)
+    try:
+        monkeypatch.setattr(interaction, "_is_canvas_widget", lambda widget: True)
+        assert interaction.wheel_target(child) is child
+
+        monkeypatch.setattr(interaction, "_is_canvas_widget", lambda widget: False)
+        assert interaction.wheel_target(child) is area.viewport()
+        assert interaction.wheel_target(child, raw=True) is child
+    finally:
+        area.deleteLater()
+
+
+def test_backend_exposes_ui_wheel_that_forwards_every_argument(monkeypatch):
+    """The catalog declared the tool; the backend must actually answer it."""
+    import sys
+    from pathlib import Path
+
+    repo_root = Path(__file__).resolve().parents[2]
+    mcp_dir = repo_root / "mcp-server"
+    if str(mcp_dir) not in sys.path:
+        sys.path.insert(0, str(mcp_dir))
+    from app.backend import AppBackend
+
+    backend = AppBackend.__new__(AppBackend)
+    seen: dict = {}
+
+    def _fake_live_only(proxy, error, *, mutating=True, **params):
+        seen["proxy"] = proxy
+        seen.update(params)
+        return {"sent": params.get("count", 1)}
+
+    monkeypatch.setattr(backend, "_live_only", _fake_live_only)
+    backend.ui_wheel(
+        id="x", delta=240, phase="begin", count=3, raw=True, ctrl=True, shift=False, alt=True
+    )
+    assert seen["proxy"] == "ui_wheel"
+    assert seen["delta"] == 240 and seen["phase"] == "begin" and seen["count"] == 3
+    assert seen["raw"] is True and seen["ctrl"] is True and seen["alt"] is True

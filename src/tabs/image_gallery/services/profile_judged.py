@@ -42,6 +42,43 @@ PROVENANCE_LOCAL = "measured-locally"
 PROVENANCE_JUDGE = "measured-by-judge"
 AXIS_PROVENANCE: tuple[str, ...] = (PROVENANCE_LOCAL, PROVENANCE_JUDGE)
 
+#: Token → ``(i18n key, English default)`` for a SURFACE that must label the two
+#: instruments (plan-gallery-ai-judgement P7-C: the rows/dots never mix them into
+#: one indicator without a label). Same vocabulary, one mapping: a surface passes
+#: its own translator, so the token itself stays language-free.
+PROVENANCE_LABELS: dict[str, tuple[str, str]] = {
+    PROVENANCE_LOCAL: (
+        "image_gallery.quick_look.axis_measured_locally",
+        "measured locally",
+    ),
+    PROVENANCE_JUDGE: (
+        "image_gallery.quick_look.axis_measured_by_judge",
+        "measured by the judge",
+    ),
+}
+
+
+def provenance_label(provenance, translate=None) -> str:
+    """Localized label for a provenance token (``""`` for an empty/unknown one).
+
+    *translate* is the surface's ``translate(key, default)`` callable; without
+    one the English default is returned (never a bare token in the UI).
+    """
+    try:
+        token = str(provenance or "").strip()
+    except Exception:
+        return ""
+    pair = PROVENANCE_LABELS.get(token)
+    if pair is None:
+        return ""
+    key, default = pair
+    if callable(translate):
+        try:
+            return str(translate(key, default))
+        except Exception:
+            pass
+    return default
+
 
 def normalized_entries(entries, registry_ids=()):
     """Judge-named entries, de-duplicated and free of unusable/duplicate rows.
@@ -186,9 +223,11 @@ def axis_provenance(axis, *, mode=None, profile=None) -> str:
 __all__ = [
     "AXIS_PROVENANCE",
     "PROVENANCE_JUDGE",
+    "PROVENANCE_LABELS",
     "PROVENANCE_LOCAL",
     "axis_provenance",
     "judged_axis_entries",
     "normalized_entries",
+    "provenance_label",
     "scorecard_axis_ids",
 ]

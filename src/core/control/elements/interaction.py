@@ -89,6 +89,51 @@ def focus_element(element: Element) -> None:
         )
 
 
+def wheel_target(widget, *, raw: bool = False):
+    """The widget a wheel over *widget* must be delivered to.
+
+    A wheel over an element means "scroll whatever owns it": the owning
+    ``QAbstractScrollArea`` handles the wheel on its VIEWPORT, and an
+    interactive child may accept-and-ignore it first (a toolkit Button returns
+    without scrolling), so the event is routed to the nearest ancestor scroll
+    area's viewport. Two exceptions keep the event where it belongs:
+    ``raw=True`` (the caller knows the widget consumes the wheel) and a live
+    RHI canvas, which owns its ``Ctrl+wheel`` zoom and must never be routed to
+    an ancestor.
+    """
+    if raw or _is_canvas_widget(widget):
+        return widget
+    try:
+        from PySide6.QtWidgets import QAbstractScrollArea
+
+        area = widget if isinstance(widget, QAbstractScrollArea) else None
+        parent = widget.parentWidget() if area is None else None
+        while area is None and parent is not None:
+            if isinstance(parent, QAbstractScrollArea):
+                area = parent
+                break
+            parent = parent.parentWidget()
+        if area is not None:
+            return area.viewport() or area
+    except Exception:
+        return widget
+    return widget
+
+
+def _is_canvas_widget(widget) -> bool:
+    """True for a live RHI canvas — it consumes the wheel itself.
+
+    Routing a canvas' wheel to an ancestor scroll area (the default for every
+    other element) would steal the ``Ctrl+wheel`` zoom the canvas owns.
+    """
+    try:
+        from PySide6.QtWidgets import QRhiWidget
+
+        return isinstance(widget, QRhiWidget)
+    except Exception:
+        return False
+
+
 #: ``ui_wheel`` phase names → Qt scroll phase (the toolkit's glide keys off it).
 _WHEEL_PHASES = {
     "none": Qt.ScrollPhase.NoScrollPhase,
@@ -105,6 +150,7 @@ def wheel_element(
     phase: str = "none",
     count: int = 1,
     raw: bool = False,
+    modifiers: Qt.KeyboardModifier = Qt.KeyboardModifier.NoModifier,
 ) -> None:
     """Deliver wheel events to *element* in-process (one angle-delta step each).
 
@@ -127,23 +173,7 @@ def wheel_element(
     # capabilities returns without scrolling), so route to the nearest
     # ancestor scroll area's viewport. ``raw=True`` keeps the event on the
     # element itself (widgets that consume the wheel on purpose).
-    target = widget
-    if not raw:
-        try:
-            from PySide6.QtWidgets import QAbstractScrollArea
-
-            area = widget if isinstance(widget, QAbstractScrollArea) else None
-            parent = widget.parentWidget() if area is None else None
-            while area is None and parent is not None:
-                if isinstance(parent, QAbstractScrollArea):
-                    area = parent
-                    break
-                parent = parent.parentWidget()
-            if area is not None:
-                target = area.viewport() or area
-        except Exception:
-            target = widget
-    widget = target
+    widget = wheel_target(widget, raw=raw)
     pos = widget.rect().center()
     global_pos = widget.mapToGlobal(pos)
     angle = QPoint(0, int(delta))
@@ -155,7 +185,7 @@ def wheel_element(
             no_delta,
             angle,
             Qt.MouseButton.NoButton,
-            Qt.KeyboardModifier.NoModifier,
+            modifiers,
             qt_phase,
             False,
         )

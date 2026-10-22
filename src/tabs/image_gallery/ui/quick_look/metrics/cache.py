@@ -71,6 +71,13 @@ def _profile_fingerprint(overlay, mode_str: str = "") -> tuple:
             str(getattr(profile, "mode", "") or ""),
             str(getattr(profile, "domain", "") or ""),
             tuple(str(a) for a in (getattr(profile, "salient_axes", ()) or ())),
+            # P7-C: the judge's axes are ROW TEXT (name + definition), so a
+            # profile that names different axes must not replay a cached row set
+            # that labels the previous ones.
+            tuple(
+                (str(getattr(e, "name", "") or ""), str(getattr(e, "definition", "") or ""))
+                for e in (getattr(profile, "axis_entries", ()) or ())
+            ),
         )
     except Exception:
         return ()

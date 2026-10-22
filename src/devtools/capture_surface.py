@@ -33,9 +33,10 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable
 
 #: Repo root (``<repo>/src/devtools/capture_surface.py`` -> ``<repo>``).
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -73,6 +74,23 @@ _CJK_PROBE = "设置图像"
 #: OTF, and ``_bootstrap_qt`` runs once per captured (figure, locale, theme)
 #: cell: without this cache a 40-cell baseline pays the parse 40 times.
 _LOADED_FONTS: dict[str, str] = {}
+
+#: Environment Qt reads at ``QApplication`` creation, owned by this module.
+_CANONICAL_ENV_VARS = ("QT_SCALE_FACTOR", "QT_FONT_DPI")
+
+#: Session anchor: the environment found on the first pin, ``None`` = unset.
+_CANONICAL_ENV_ANCHOR: dict[str, str | None] | None = None
+
+#: Session anchor: ``(app, QFont)`` — the app's OWN font, copied the first time
+#: a capture repins the process font, never overwritten afterwards.
+#:
+#: Anchored (not snapshotted per use) because the trap is the *QFont() default*:
+#: ``QFont()`` has unresolved fields, so ``app.setFont(QFont())`` and a copy
+#: taken AFTER a capture both resolve to the canonical face — restoring either
+#: restores the leak (measured 2026-10-22: pick-button sizeHint stayed 148 px).
+#: Only a copy taken before the first canonical application brings the metrics
+#: back (148 -> 129 px).
+_APP_FONT_ANCHOR: tuple[Any, Any] | None = None
 
 #: i18n roots registered at bootstrap. Without these, widget strings show the
 #: raw key (``help.topic.foo``) instead of translated text. Mirrors the app's
@@ -637,9 +655,38 @@ def _pin_canonical_env() -> None:
     ``QT_SCALE_FACTOR``/``QT_FONT_DPI`` are read once at app creation; setting
     them later is a no-op. Forced (not defaulted) on purpose: a devtool frame
     that changes with the caller's shell is not reproducible.
+
+    The environment is process-wide and this function is the only writer, so
+    it also *owns* what it overwrites: the values found on the FIRST call are
+    anchored and put back by :func:`restore_canonical_env`. Without an owner a
+    capture left ``QT_SCALE_FACTOR=1``/``QT_FONT_DPI=96`` visible to every
+    later test in the same process (measured 2026-10-22).
     """
+    global _CANONICAL_ENV_ANCHOR
+    if _CANONICAL_ENV_ANCHOR is None:
+        _CANONICAL_ENV_ANCHOR = {name: os.environ.get(name) for name in _CANONICAL_ENV_VARS}
     os.environ["QT_SCALE_FACTOR"] = "1"
     os.environ["QT_FONT_DPI"] = str(CANONICAL_DPI)
+
+
+def restore_canonical_env() -> bool:
+    """Put back the environment that :func:`_pin_canonical_env` overwrote.
+
+    Returns ``True`` when an anchor existed (i.e. this process pinned the
+    environment at least once) and the values were restored. Removing a
+    variable that was absent before the capture is part of the restore: the
+    anchor stores ``None`` for "not set", not an empty string.
+    """
+    global _CANONICAL_ENV_ANCHOR
+    if _CANONICAL_ENV_ANCHOR is None:
+        return False
+    for name, value in _CANONICAL_ENV_ANCHOR.items():
+        if value is None:
+            os.environ.pop(name, None)
+        else:
+            os.environ[name] = value
+    _CANONICAL_ENV_ANCHOR = None
+    return True
 
 
 def _load_bundled_font(path: Path, expected_family: str) -> str:
@@ -688,11 +735,19 @@ def _apply_canonical_font(app) -> str:
     baseline. Loading the TTFs directly (rather than ``FontManager``) keeps this
     devtool free of app bootstrap imports; both the family list and an actual
     Han glyph run are asserted, so a cleared fallback cannot slip through.
+
+    The canonical face is what makes a frame reproducible, so it is applied
+    for the whole capture and NEVER weakened. What the capture does own is the
+    hand-back: the app's own font is copied *before* the first override (see
+    ``_APP_FONT_ANCHOR``) and reinstalled by :func:`restore_app_font`.
     """
+    global _APP_FONT_ANCHOR
     from PySide6.QtGui import QFont
 
     family = _load_bundled_font(BUNDLED_FONT_PATH, BUNDLED_FONT_FAMILY)
     cjk_family = _load_bundled_font(BUNDLED_CJK_FONT_PATH, BUNDLED_CJK_FONT_FAMILY)
+    if _APP_FONT_ANCHOR is None or _APP_FONT_ANCHOR[0] is not app:
+        _APP_FONT_ANCHOR = (app, QFont(app.font()))
     canonical = QFont(family)
     canonical.setFamilies([family, cjk_family])
     app.setFont(canonical)
@@ -705,6 +760,74 @@ def _apply_canonical_font(app) -> str:
             f"bundled CJK fallback did not take: Han probe {_CJK_PROBE!r} ran with {runs!r}"
         )
     return family
+
+
+def _font_matches(left, right) -> bool:
+    """Compare the fields a restore must put back (family chain + size + style)."""
+    return (
+        tuple(left.families()) == tuple(right.families())
+        and left.family() == right.family()
+        and left.pointSizeF() == right.pointSizeF()
+        and left.pixelSize() == right.pixelSize()
+        and left.weight() == right.weight()
+        and left.italic() == right.italic()
+    )
+
+
+def restore_app_font(app=None) -> bool:
+    """Reinstall the app's own font after a capture repinned the process face.
+
+    Returns ``True`` when this process has an anchor (a capture ran) and the
+    font was handed back; ``False`` when there is nothing to restore, so a
+    caller in a plain test session pays nothing.
+
+    A copy is used, not ``QFont()``: the default-constructed font has unresolved
+    fields and resolves against the *current* application font, so it would
+    re-assert the canonical face instead of the app's own (measured: 148 px
+    pick button either way).
+    """
+    global _APP_FONT_ANCHOR
+    if _APP_FONT_ANCHOR is None:
+        return False
+    owner, font = _APP_FONT_ANCHOR
+    if app is None:
+        from PySide6.QtWidgets import QApplication
+
+        app = QApplication.instance()
+    if app is None or app is not owner:
+        return False
+    from PySide6.QtGui import QFont
+
+    if not _font_matches(app.font(), font):
+        app.setFont(QFont(font))
+    _APP_FONT_ANCHOR = None
+    return True
+
+
+@contextmanager
+def canonical_frame_scope(app=None):
+    """Pin the canonical frame for one capture, then hand the process back.
+
+    This is the owner for both process-wide pins the capture makes: the app
+    font and the ``QT_SCALE_FACTOR``/``QT_FONT_DPI`` environment. They are
+    pinned as before (Help figures are sha256 baselines and must keep rendering
+    with Source Sans 3 / Noto Sans SC at 96 DPI) and restored on exit, so an
+    in-process capture cannot move a later test's text metrics — the leaked
+    12 pt face used to widen the toolkit's text-derived controls (132 -> 148 px
+    pick button) and fail the gallery toolbar pin.
+    """
+    from PySide6.QtWidgets import QApplication
+
+    _pin_canonical_env()
+    target = app if app is not None else QApplication.instance()
+    if target is None:
+        target = QApplication([])
+    _apply_canonical_font(target)
+    try:
+        yield target
+    finally:
+        restore_app_font(target)
+        restore_canonical_env()
 
 
 def _bootstrap_qt(theme: str, lang: str):
@@ -791,7 +914,11 @@ def _run_isolated(args) -> int:
     env = dict(os.environ)
     env["QT_QPA_PLATFORM"] = "offscreen"
     print(LIMITATION, file=sys.stderr)
-    proc = subprocess.run(cmd, env=env, cwd=str(REPO_ROOT))
+    try:
+        proc = subprocess.run(cmd, env=env, cwd=str(REPO_ROOT))
+    finally:
+        # The pin exists to build the child's ``env``; the parent keeps its own.
+        restore_canonical_env()
     if proc.returncode != 0:
         print(
             f"surface {args.surface!r} exited {proc.returncode} — not capturable "
@@ -826,8 +953,12 @@ def main(argv: list[str] | None = None) -> int:
     out_dir = Path(args.out).expanduser()
     out_dir.mkdir(parents=True, exist_ok=True)
     session = CaptureSession(app, out_dir, width=args.width, height=args.height)
-    surface.build(session)
-    app.processEvents()
+    # The canonical font/env are pinned by ``_bootstrap_qt``; the scope hands
+    # them back when the last frame is written, so an in-process caller (tests,
+    # notebooks) does not inherit the capture's text metrics.
+    with canonical_frame_scope(app):
+        surface.build(session)
+        app.processEvents()
     return 0
 
 
