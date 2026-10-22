@@ -26,6 +26,7 @@ from tabs.image_gallery.debug import gallery_camera_disabled as _camera_disabled
 from tabs.image_gallery.debug import gallery_debug as _dbg
 from tabs.image_gallery.debug import gallery_fidelity_disabled as _fidelity_disabled
 from tabs.image_gallery.models import GalleryItem, Mode, TriageState
+from tabs.image_gallery.use_cases import local_metrics as _local_metrics
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -92,7 +93,10 @@ def _schedule_proxy(owner, items: list, priority: int, source, gen: int, wanted=
             list(chunk), source, include_camera, full_res_artifacts,
         )
         worker.signals.result.connect(
-            lambda res, g=gen, w=wanted_set: owner._on_proxy_batch_ready(res, g, w)
+            lambda res, g=gen, w=wanted_set: owner._on_proxy_batch_ready(
+                res, g, w, source=source,
+                include_camera=include_camera, full_res_artifacts=full_res_artifacts,
+            )
         )
         worker.signals.error.connect(
             lambda err: logger.debug("proxy batch worker error: %r", err, exc_info=True)
@@ -196,8 +200,8 @@ def _attach_analysis_records(owner, result: dict) -> None:
             )
 
 
-def _on_proxy_batch_ready(owner, result: object, gen: int | None, wanted: object = None) -> None:
-    """One chunk delivery: fan out by path into the legacy apply tails."""
+def _on_proxy_batch_ready(owner, result: object, gen: int | None, wanted: object = None, *, source=None, include_camera: bool | None = None, full_res_artifacts: bool = False) -> None:
+    """One chunk delivery: persist it, then fan out by path into the apply tails."""
     if gen is not None and not owner._is_current_folder_gen(gen):
         return  # folder switched — late proxy chunk dropped
     if not isinstance(result, dict):
@@ -206,6 +210,10 @@ def _on_proxy_batch_ready(owner, result: object, gen: int | None, wanted: object
         wanted_set = set(wanted or ("artifacts", "fidelity", "camera"))
     except Exception:
         wanted_set = {"artifacts", "fidelity", "camera"}
+    # Persist the FULL entry (severities + maps + fidelity/camera + engine
+    # records) under the identity this pass ran with, BEFORE the apply tails
+    # replace the raw entry with the item's mirror.
+    _local_metrics.persist(owner, result, wanted_set, source=source, include_camera=include_camera, full_res_artifacts=full_res_artifacts)
     # Engine records ride every chunk (the hook is not lane-gated) and are
     # attached before the apply tails so a repaint triggered below already sees
     # them through ``analysis/read.py``.
@@ -348,12 +356,12 @@ def _commit_triage_series(owner, series, source, mode):
 
 
 def _analysis_fingerprint(items, source) -> tuple:
-    """Content key for Stage-2 analyses (paths + mtimes + metrics state).
+    """In-RUN memo of the last Stage-2 input set (paths + mtimes + result presence).
 
-    Analyses derive everything from file content; identical fingerprints
-    imply identical results, so the triage tail skips restarting them
-    (e.g. regroup after tab return). Missing metrics force a re-run
-    even when paths match (fresh objects after restore).
+    Deliberately NOT a durable identity: two fields are presence flags of the
+    in-memory result, so it self-invalidates as soon as items are rebuilt. It
+    only spares a second tail inside one run — the cross-restart decision is
+    ``services/metrics_cache``'s fail-closed identity (``_local_metrics.hydrate``).
     """
     try:
         parts = []
@@ -420,31 +428,46 @@ def _apply_triage_result(owner, series, source, mode) -> None:
             owner._last_analysis_fingerprint = fingerprint
         except Exception:
             pass
-        # Single-pass Stage 2 (Phase 2b+3): ONE shared-proxy background
-        # step replaces the three whole-pool batch workers (artifact +
-        # fidelity + camera). Delivered strictly by path into the
-        # existing apply tails (batched repaint + quick-look hooks);
-        # the per-stage entry points above stay working but the tail no
-        # longer fans out through them.
-        #
-        # The local "done" badge is gated on this pass settling: the card's
-        # quality dots (artifact severities) are produced here, so stamping
-        # done earlier (on the triage result) showed "done" 1-2 s before the
-        # dots recolored. Same contract as the append path
-        # (``_finish_append_processing`` via ``on_done``).
+        # Durable identity FIRST (the fingerprint above is only an in-run memo):
+        # a known folder answers every image from ``services/metrics_cache`` with
+        # zero detector runs; only the misses enter the Stage-2 pass.
         try:
-            owner._start_proxy_analysis(
-                list(owner.state.items),
-                source,
-                mode,
-                on_done=lambda: _triage_run._settle_metrics_pass(
-                    owner, list(owner.state.items)
-                ),
-            )
+            missing = _local_metrics.hydrate(owner, list(owner.state.items), source, mode)
         except Exception:
-            logger.debug("proxy analysis start failed", exc_info=True)
-            # Fail-open: never leave the badge stuck in "analyzing".
+            logger.debug("local metrics hydrate failed", exc_info=True)
+            missing = list(owner.state.items)
+        if not missing:
+            logger.debug("triage tail: every item came from the local-metrics cache")
+            # Nothing to compute — retire the local "analyzing" badge now (no
+            # proxy settle will fire). The numbers are current, so this also IS
+            # the pass settle: the rank fusion re-marks here.
             _triage_run._settle_metrics_pass(owner, list(owner.state.items))
+        else:
+            # Single-pass Stage 2 (Phase 2b+3): ONE shared-proxy background
+            # step replaces the three whole-pool batch workers (artifact +
+            # fidelity + camera). Delivered strictly by path into the
+            # existing apply tails (batched repaint + quick-look hooks);
+            # the per-stage entry points above stay working but the tail no
+            # longer fans out through them.
+            #
+            # The local "done" badge is gated on this pass settling: the card's
+            # quality dots (artifact severities) are produced here, so stamping
+            # done earlier (on the triage result) showed "done" 1-2 s before the
+            # dots recolored. Same contract as the append path
+            # (``_finish_append_processing`` via ``on_done``).
+            try:
+                owner._start_proxy_analysis(
+                    missing,
+                    source,
+                    mode,
+                    on_done=lambda: _triage_run._settle_metrics_pass(
+                        owner, list(owner.state.items)
+                    ),
+                )
+            except Exception:
+                logger.debug("proxy analysis start failed", exc_info=True)
+                # Fail-open: never leave the badge stuck in "analyzing".
+                _triage_run._settle_metrics_pass(owner, list(owner.state.items))
     # Stage 3: targeted tie-break for top-2 when local metrics within epsilon (badge pending)
     try:
         for ser in series or []:

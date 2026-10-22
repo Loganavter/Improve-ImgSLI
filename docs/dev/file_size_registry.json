@@ -820,6 +820,16 @@
       }
     },
     {
+      "path": "src/tabs/image_gallery/services/metrics_cache.py",
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=wire-cache reason=\"one local-metrics contract: the fail-closed identity (10 fields), its payload validator and the entry/record codec that must carry it cannot be split without letting one side drift — the ai_cache precedent (the sibling this store mirrors) carries the same marker for the same reason\"",
+      "parsed": {
+        "pattern": "wire-cache",
+        "reason": "one local-metrics contract: the fail-closed identity (10 fields), its payload validator and the entry/record codec that must carry it cannot be split without letting one side drift — the ai_cache precedent (the sibling this store mirrors) carries the same marker for the same reason"
+      }
+    },
+    {
       "path": "src/tabs/image_gallery/tab.py",
       "limit": 500,
       "marker": "Audit-Meta:",

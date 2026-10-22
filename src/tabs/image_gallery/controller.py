@@ -2650,10 +2650,10 @@ class GalleryController:
 
         return _proxy_pass._start_proxy_analysis(self, items, source_path, mode, on_done=on_done)
 
-    def _on_proxy_batch_ready(self, result: object, gen: int | None, wanted: object = None) -> None:
+    def _on_proxy_batch_ready(self, result: object, gen: int | None, wanted: object = None, *, source=None, include_camera: bool | None = None, full_res_artifacts: bool = False) -> None:
         from tabs.image_gallery.use_cases import proxy_pass as _proxy_pass
 
-        return _proxy_pass._on_proxy_batch_ready(self, result, gen, wanted)
+        return _proxy_pass._on_proxy_batch_ready(self, result, gen, wanted, source=source, include_camera=include_camera, full_res_artifacts=full_res_artifacts)
 
     def _on_triage_ready(self, result: object, gen: int | None = None, sgen: int | None = None) -> None:
         from tabs.image_gallery.use_cases import proxy_pass as _proxy_pass
