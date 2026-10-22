@@ -24,6 +24,8 @@ This document is the contract reference. For the broader "why" and architectural
 | `src/core/state_management/reducers.py` | `RootReducer` + generic per-substate reducers |
 | `src/core/state_management/extension_reducers.py` | Registry for tab-owned session-data (`register_session_data_reducer`) and render-config (`register_render_config_reducer`) reducers |
 | `src/core/state_management/slot_reducers.py` | `register_state_slot_reducer` — registry of tab-owned session-slot reducers that `RootReducer` runs generically |
+| `src/core/state_management/session_state_slots.py` | `SessionStateSet` + the session-slot registries: `register_session_state_slot` (plain dict slots) and `register_typed_session_slot` / `reduce_typed_session_slot` (typed slots with pure `merge`/`extract`) |
+| `src/core/state_management/settings_scalars.py` | `ScalarSpec` registry — one record per persisted settings scalar, pinning its `SettingsState` field, `ActionType`, action, reducer branch and load/save pair (`tests/contracts/test_settings_scalar_registry.py`) |
 | `src/core/state_management/transaction.py` | `TransactionAction` — the batch action dispatched by `Store.transact` |
 | `src/core/state_management/viewport_scopes.py` | `LIGHTWEIGHT_VIEWPORT_SUBDOMAINS` — the `viewport.<sub>` scopes that skip the full chrome batch |
 | `src/core/state_management/dispatcher.py` | `Dispatcher` — the only mutation gate |
@@ -114,6 +116,11 @@ while an image is loading. Covers image_compare and multi_compare session
 state alike (both are slot-reducer slots).
 
 `dispatch` is thread-safe (`threading.Lock`). It calls `RootReducer.reduce`, swaps `store.viewport`/`settings` references and **every registered slot-reducer slot** (`document`, `pipeline`, `multi_compare.state`, `gallery`) **on the same Store instance**, then re-points the active workspace session to the new sub-states and emits `emit_state_change(scope)`.
+
+A session can also declare plain, non-reducer blueprint slots (e.g.
+`image_compare.state`, the camera snapshot, written only through the core slot
+API). The full inventory of slot names and their writers is
+[STATE_SLOT_MANIFEST.md](STATE_SLOT_MANIFEST.md).
 
 ### Action (`src/core/state_management/action_base.py:110`)
 
