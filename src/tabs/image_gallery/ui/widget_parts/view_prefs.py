@@ -209,8 +209,12 @@ def attach_session_state(owner, state) -> None:
 
 
 #: Design px of the page's root chrome (real_design.md §2.7): 24 horizontal
-#: padding, 40 bottom to clear the selection HUD, 12 between stacked regions.
-ROOT_MARGIN_PX = (24, 12, 24, 40)
+#: padding and 12 between stacked regions. NO bottom margin: the grid's
+#: ``OpaqueFillHost`` (the scroll well) must reach the tab's bottom edge — the
+#: old 40 px band "to clear the selection HUD" outlived the HUD (removed,
+#: ``widget.py``: selection lives in the card context menu) and read as a dead
+#: strip under the grid (owner report 2026-10-22).
+ROOT_MARGIN_PX = (24, 12, 24, 0)
 ROOT_SPACING_PX = 12
 
 
@@ -225,7 +229,7 @@ def apply_root_design_metrics(owner) -> None:
     layout = owner.layout()
     if layout is None:
         return
-    layout.setContentsMargins(*(scaled_px(v) for v in ROOT_MARGIN_PX))
+    layout.setContentsMargins(*(scaled_px(v) if v else 0 for v in ROOT_MARGIN_PX))
     layout.setSpacing(scaled_px(ROOT_SPACING_PX))
 
 
