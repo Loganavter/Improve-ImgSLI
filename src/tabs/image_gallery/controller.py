@@ -1828,9 +1828,12 @@ class GalleryController:
                 _rank = ranks.get(path)
                 if _rank is None:
                     # Jev owns the AI-domain ordering: a member Jev did not rank
-                    # is not the winner — never leave a stale BEST from fusion.
+                    # is not the winner — never leave a stale BEST from fusion
+                    # OR from an earlier tie-break crown (owner saw two BEST
+                    # cards, 2026-10-22).
                     try:
                         it.is_best = False
+                        it.crown_rank = None
                     except Exception:
                         pass
                     continue

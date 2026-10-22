@@ -246,11 +246,58 @@ def run_tie_break_if_needed(owner, series) -> None:
     owner._pool_start(worker, None)
 
 
+def _series_is_ranked_by_jev(owner, *items) -> bool:
+    """True when the terminal Jev ranker owns this series' ordering.
+
+    P3-A: Jev is the terminal calculator, so its rank-1 member is the ONE card
+    allowed to wear BEST. A tie-break verdict that lands afterwards (or a stale
+    crown that survived) must not add a second one — the owner saw two
+    "★ ЛУЧШЕЕ" cards at once (2026-10-22). The verdict stays visible as
+    information (``state.tie_breaks`` + ``vlm_tie_result``), never as a crown.
+    """
+    seen = list(items or ())
+    try:
+        seen.extend(list(getattr(getattr(owner, "state", None), "items", None) or ()))
+    except Exception:
+        pass
+    for it in seen:
+        try:
+            if str(getattr(it, "rank_source", "") or "") == "jev":
+                return True
+        except Exception:
+            continue
+    return False
+
+
 def _apply_tie_break_result(owner, a: GalleryItem, b: GalleryItem, result) -> None:
     """Apply VLM winner: mark winner is_best/crown_rank, clear pending badges."""
     if not _tie_break_still_owned(owner, None):
         # Direct callers (tests, an old queued callback) get the same rule as the
         # worker path: the Algorithms domain never receives a VLM crown.
+        return
+    if _series_is_ranked_by_jev(owner, a, b):
+        # ONE crown per series: the terminal ranker already marked its winner.
+        # Keep the verdict (hover/state) but do not touch is_best/crown_rank.
+        try:
+            owner.state.tie_breaks[
+                str(getattr(a, "series_id", None) or getattr(b, "series_id", None) or f"{a.path}:{b.path}")
+            ] = result
+        except Exception:
+            pass
+        for it in (a, b):
+            try:
+                it.vlm_tie_result = result
+                it.vlm_tie_pending = False
+                it.vlm_tie_error = None
+                owner.widget.refresh_card(it)
+            except Exception:
+                pass
+        try:
+            from tabs.image_gallery.services.ai_client.prompt import _ai_debug
+
+            _ai_debug("tie-break verdict recorded, crown left to the Jev rank")
+        except Exception:
+            pass
         return
     try:
         winner_str = str(getattr(result, "winner_path", ""))
