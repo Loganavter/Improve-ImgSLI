@@ -322,7 +322,13 @@ def activate_judgment_domain(owner, domain: str) -> None:
             logger.debug("domain switch rank re-derive failed", exc_info=True)
         owner._clear_series_priority()
         return
-    owner._run_ai_for_visible()
+    # Cache-only on purpose: a switch never spends a request for metrics the
+    # other backend already produced (owner 2026-10-22). The duck-typed call
+    # keeps legacy doubles (no ``cache_only``) working.
+    try:
+        owner._run_ai_for_visible(cache_only=True)
+    except TypeError:
+        owner._run_ai_for_visible()
     # The terminal ranker, guarded by the batch ledger: a switch that started
     # analyses waits for the LAST one instead of ranking a partial matrix
     # (plan-gallery-ai-judgement P3-A). A cache-only switch (nothing in flight)
@@ -331,8 +337,15 @@ def activate_judgment_domain(owner, domain: str) -> None:
     owner._run_series_priority()
 
 
-def _run_ai_for_visible(owner) -> None:
-    """Analyze the currently-visible, not-yet-analyzed items (bounded)."""
+def _run_ai_for_visible(owner, *, cache_only: bool = False) -> None:
+    """Analyze the currently-visible, not-yet-analyzed items (bounded).
+
+    ``cache_only`` is the DOMAIN-SWITCH path: switching backends must not spend
+    a new request on metrics the other backend already produced (owner order
+    2026-10-22). It hydrates the disk cache for the picked items and returns —
+    live analysis belongs to the folder's settle / an explicit analyze, not to
+    flipping a switch.
+    """
     try:
         vis = getattr(owner.widget, "visible_paths", None)
         paths = vis() if callable(vis) else None
@@ -362,6 +375,16 @@ def _run_ai_for_visible(owner) -> None:
         picked = picked[: owner._AI_VISIBLE_CAP]
     picked = picked[: owner._AI_VISIBLE_CAP]
     if not picked:
+        return
+    if cache_only:
+        hydrate = getattr(owner, "_hydrate_ai_cache", None)
+        try:
+            if callable(hydrate):
+                hydrate(picked)
+            else:
+                _hydrate_ai_cache(owner, picked)
+        except Exception:
+            logger.debug("domain switch: cache-only hydrate failed", exc_info=True)
         return
     ctx = context_for_paths(owner, (it.path for it in picked), origin=ORIGIN_ACTION)
     run = getattr(owner, "analyze", None)

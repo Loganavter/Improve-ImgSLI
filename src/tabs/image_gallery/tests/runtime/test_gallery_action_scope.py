@@ -220,8 +220,14 @@ def test_selected_paths_normalizes_strings_and_hides_mirror_types() -> None:
     assert action_scope.selected_paths(owner) == [Path("/b.png"), Path("/a.png")]
 
 
-def test_reset_metrics_receives_all_selected_targets(monkeypatch) -> None:
-    """The reset call site passes the whole resolved scope (not `or None`)."""
+def test_reset_metrics_zeroes_the_whole_pool(monkeypatch) -> None:
+    """Owner decision 2026-10-22: the reset is pool-wide, not selection-scoped.
+
+    A per-card reset left every other card's numbers in place, which reads as a
+    broken button ("сброс всё так же не сбрасывает все метрики везде"). The
+    resolved scope still names the right owner; it is simply not the reset's
+    scope any more.
+    """
     from tabs.image_gallery.ui.card import context_actions
     from tabs.image_gallery.use_cases import cache_reset
 
@@ -236,7 +242,7 @@ def test_reset_metrics_receives_all_selected_targets(monkeypatch) -> None:
     context_actions._ctx_reset_metrics(owner, b)
     assert len(calls) == 1
     assert calls[0]["owner"] is owner
-    assert calls[0]["paths"] == [b, a, c]
+    assert calls[0]["paths"] is None
 
 
 def test_reset_metrics_empty_scope_keeps_whole_pool_none(monkeypatch) -> None:

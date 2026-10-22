@@ -65,6 +65,27 @@ def sort_items(owner, items, keyfunc):
         return list(items)
 
 
+def resort_after_rank_change(owner) -> None:
+    """Re-apply the ACTIVE sort after ranks changed (fusion / Jev).
+
+    The sort is a live ORDER, not a one-off shuffle: with "Sort: Rank" the grid
+    must follow the numbers when a ranker writes them. It did not — a Jev pass
+    stamped ranks on the cards while the grid kept the old order until the user
+    re-picked the sort (owner report 2026-10-22: "jev проставил оценки и нихуя
+    порядок не изменился"). One entry point, called from both rank landings.
+    """
+    try:
+        widget = getattr(owner, "widget", None) or owner
+        text = current_sort_text(widget)
+        if sort_keyfunc(widget, text) is None:
+            return
+        setter = getattr(widget, "_on_sort_changed", None)
+        if callable(setter):
+            setter(text)
+    except Exception:
+        pass
+
+
 def _persist_sort(owner) -> None:
     """Remember the toolbar sort position with the other view prefs."""
     state = getattr(owner, "_session_state", None)
@@ -350,6 +371,15 @@ def apply_view_prefs(owner, *, view_list: bool, judgment_domain: str, sort_index
     if sort_index is not None:
         try:
             owner.toolbar.set_sort_index(int(sort_index))
+            # The index alone does not reorder anything: the grid was (or will
+            # be) built in triage order. Apply the restored sort to the current
+            # items too, otherwise a reopened tab shows "Sort: Name" on an
+            # unsorted grid until the user re-picks it.
+            text = current_sort_text(owner)
+            if sort_keyfunc(owner, text) is not None:
+                setter = getattr(owner, "_on_sort_changed", None)
+                if callable(setter):
+                    setter(text)
         except Exception:
             pass
     dom = str(judgment_domain or "algorithms").strip().lower()

@@ -1350,13 +1350,15 @@ class GalleryController:
 
         return _ai_analysis.activate_judgment_domain(self, domain)
 
-    def _run_ai_for_visible(self) -> None:
+    def _run_ai_for_visible(self, *, cache_only: bool = False) -> None:
         from tabs.image_gallery.use_cases import ai_analysis as _ai_analysis
 
         # P2: no stamp here — this delegates to ``analyze``, and the freeze is
         # stamped by the request builder of each card that actually builds a
         # payload (a visible run of pure cache HITs must not freeze the profile).
-        return _ai_analysis._run_ai_for_visible(self)
+        # ``cache_only`` is the domain-switch path (no new request for metrics
+        # the other backend already produced).
+        return _ai_analysis._run_ai_for_visible(self, cache_only=cache_only)
 
     # -- AI domain ranker: Jev (TypeSafe System One) -----------------------
 
@@ -1862,6 +1864,14 @@ class GalleryController:
             # mix a Jev rank with a stale fusion rank -> two #1s ("Jev chose all
             # at once"). Apply all ranks/activity, THEN refresh.
             GalleryController._refresh_ranks_visible(self)
+            # A rank IS an order: with "Sort: Rank" the grid must follow the
+            # numbers the moment the ranker writes them (owner 2026-10-22).
+            try:
+                from tabs.image_gallery.ui.widget_parts import view_prefs as _vp
+
+                _vp.resort_after_rank_change(self)
+            except Exception:
+                logger.debug("resort after jev rank failed", exc_info=True)
             try:
                 self.widget.refresh_cards(current)
             except Exception:
