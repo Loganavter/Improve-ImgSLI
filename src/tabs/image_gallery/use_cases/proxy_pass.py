@@ -31,7 +31,7 @@ from tabs.image_gallery.use_cases import local_metrics as _local_metrics
 logger = logging.getLogger("ImproveImgSLI")
 
 
-def _run_proxy_chunk_sync(chunk: list, source_path, include_camera: bool, full_res_artifacts: bool = False) -> dict:
+def _run_proxy_chunk_sync(chunk: list, source_path, include_camera: bool, full_res_artifacts: bool = False, cancel=None) -> dict:
     """One chunk worker body: shared-proxy single pass (wave A1 API)."""
     from tabs.image_gallery.services.proxy import run_proxy_stages_sync
 
@@ -40,6 +40,7 @@ def _run_proxy_chunk_sync(chunk: list, source_path, include_camera: bool, full_r
             run_proxy_stages_sync(
                 list(chunk),
                 source_path,
+                cancel=cancel,
                 include_camera=include_camera,
                 full_res_artifacts=full_res_artifacts,
             )
@@ -87,10 +88,20 @@ def _schedule_proxy(owner, items: list, priority: int, source, gen: int, wanted=
                 logger.debug("proxy on_done hook failed", exc_info=True)
 
     started = 0
+    # One closure for every chunk of this pass: the generation check the pass
+    # itself cannot own (``services/proxy`` is Qt-free and knows no owner). A
+    # folder switch mid-pass stops the remaining items instead of finishing a
+    # folder the user already left while a scroll waits for a pool thread.
+    def _cancelled() -> bool:
+        try:
+            return not owner._is_current_folder_gen(gen)
+        except Exception:
+            return False
+
     for chunk in chunks:
         worker = GenericWorker(
             owner._tracked(_run_proxy_chunk_sync),
-            list(chunk), source, include_camera, full_res_artifacts,
+            list(chunk), source, include_camera, full_res_artifacts, _cancelled,
         )
         worker.signals.result.connect(
             lambda res, g=gen, w=wanted_set: owner._on_proxy_batch_ready(

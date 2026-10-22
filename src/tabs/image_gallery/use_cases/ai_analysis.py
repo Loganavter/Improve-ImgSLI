@@ -31,9 +31,11 @@ outside ``controller.py`` is rejected by the gallery ownership guard
 from __future__ import annotations
 
 import logging
+import time
 from functools import partial
 from pathlib import Path
 
+from PySide6.QtCore import QCoreApplication, QTimer
 from sli_ui_toolkit.workers import GenericWorker
 
 from tabs.image_gallery.models import (
@@ -128,7 +130,21 @@ def hydrate_cached_analysis(
     return True
 
 
-def _hydrate_ai_cache(owner, items, *, ctx: ActionContext | None = None) -> int:
+#: GUI-thread budget for ONE hydrate batch. The settle runs this pass right
+#: after the metrics land — i.e. exactly while the user is scrolling a folder
+#: whose cards just appeared. One disk read + JSON parse per item is cheap, a
+#: large folder is not, and the pass used to run the whole list in one event-loop
+#: turn. Over budget it continues on the next turn instead of holding the loop.
+#: Deliberately NOT a worker: the settle tails must not rank before the reads
+#: are in, and a left-behind item is filled by the cache-first HIT in
+#: ``analyze()`` (``use_cases/ai_analyze.py:183``) on the same turn, so the
+#: bounded batch keeps the ordering while shortening the stall.
+_HYDRATE_BUDGET_MS = 8.0
+
+
+def _hydrate_ai_cache(
+    owner, items, *, ctx: ActionContext | None = None, budget_ms: float | None = None
+) -> int:
     """Fill pool items from the AI disk cache on a pool (re)build.
 
     Closed-tab / re-loaded-folder recovery: the live ``analyze`` path is
@@ -141,25 +157,29 @@ def _hydrate_ai_cache(owner, items, *, ctx: ActionContext | None = None) -> int:
     no settings check, no API call. Identity-scoped: the pass builds ONE
     identity for the current AI configuration and hydrates only entries cached
     under it, so a backend switch cannot resurrect the previous backend's reads
-    on restore. Never raises; returns how many items were filled.
+    on restore. Never raises; returns how many items were filled so far.
+
+    ``budget_ms`` bounds one GUI-thread batch (default
+    ``_HYDRATE_BUDGET_MS``); the remainder is resumed on the next event-loop
+    turn and dropped when the folder generation moved meanwhile. At least one
+    item always runs per batch, so a tight budget cannot starve the pass.
     """
     try:
         from tabs.image_gallery.services.ai_cache import hydrate_item
     except Exception:
         return 0
     identity = analysis_identity_for(owner, ctx=ctx)
-    filled = 0
-    filled_items: list = []
-    for it in list(items or []):
-        try:
-            if getattr(it, "analysis", None) is not None:
-                continue
-            if hydrate_item(it, identity):
-                filled += 1
-                filled_items.append(it)
-        except Exception:
-            continue
-    if filled_items:
+    try:
+        budget = _HYDRATE_BUDGET_MS if budget_ms is None else max(0.0, float(budget_ms))
+    except (TypeError, ValueError):
+        budget = _HYDRATE_BUDGET_MS
+    try:
+        gen = int(getattr(owner, "_folder_gen", 0) or 0)
+    except Exception:
+        gen = 0
+    filled_total = [0]
+
+    def _repaint(filled_items: list) -> None:
         # A hydrated item is a NEW read for every surface: the card's dots and
         # its AI/ALG marker are derived at update time, and the open quick-look
         # report holds a row set. Without this repaint the data was present but
@@ -180,7 +200,46 @@ def _hydrate_ai_cache(owner, items, *, ctx: ActionContext | None = None) -> int:
                 refresh_ql()
         except Exception:
             logger.debug("hydrate: quick-look refresh failed", exc_info=True)
-    return filled
+
+    def _batch(pending: list) -> None:
+        deadline = time.monotonic() + budget / 1000.0
+        filled_items: list = []
+        rest: list = []
+        for index, it in enumerate(pending):
+            # ``index`` 0 always runs: a zero budget must not degenerate into an
+            # endless chain of single-item event-loop turns.
+            if index and time.monotonic() >= deadline:
+                rest = pending[index:]
+                break
+            try:
+                if getattr(it, "analysis", None) is not None:
+                    continue
+                if hydrate_item(it, identity):
+                    filled_total[0] += 1
+                    filled_items.append(it)
+            except Exception:
+                continue
+        if filled_items:
+            _repaint(filled_items)
+        if not rest:
+            return
+        if QCoreApplication.instance() is None:
+            # No event loop to come back to (headless unit call): finish now —
+            # the bound is a GUI-latency fix, not a throughput one.
+            _batch(rest)
+            return
+        QTimer.singleShot(0, lambda: _resume(rest))
+
+    def _resume(rest: list) -> None:
+        try:
+            if int(getattr(owner, "_folder_gen", 0) or 0) != gen:
+                return  # folder switched: the rest belongs to a dead pool
+        except Exception:
+            return
+        _batch(rest)
+
+    _batch(list(items or []))
+    return filled_total[0]
 
 
 def _require_domain(domain: str) -> str:
@@ -432,6 +491,17 @@ def _begin_analysis(owner, ctx: ActionContext, item: GalleryItem) -> None:
     if not _is_configured(settings):
         _mark_not_configured(owner, [item])
         return
+    # The user's VLM upload edge is ALSO the per-card payload ceiling (defect B2:
+    # the setting reached only the tie-break / Ask-AI paths, so a card shipped
+    # full-resolution bytes — measured 9.29 MB for one 2400-px PNG, three times
+    # per card at ``sample_count`` = 3). Cheap: an int on a worker-shared
+    # module global, read by ``ai_client.request.resolve_wire_max_edge``.
+    try:
+        from tabs.image_gallery.services.vlm import set_vlm_max_edge
+
+        set_vlm_max_edge(settings.vlm_max_edge_px)
+    except Exception:
+        logger.debug("VLM wire edge apply failed", exc_info=True)
 
     item.analysis_status = AnalysisStatus.PENDING
     item.analysis_error = None
@@ -516,7 +586,14 @@ def _apply_ai_phase(owner, item: GalleryItem, phase: str) -> None:
     """UI-thread sink for worker phase emits; drops phases of stale items."""
     if owner._find_item(item.path) is not item:
         return
-    set_activity(item, phase, "ai")
+    # A repeated phase is not a content change: k draws each emit ``waiting``, and
+    # every ``refresh_card`` re-runs the grid's selection sweep — on the same GUI
+    # thread a wheel notch is served from (measured 2026-10-22, the CPU half of
+    # the scroll contention). ``set_activity`` still refreshes the phase TTL, and
+    # the pulse driver repaints the pill on its own tick, so only the redundant
+    # full-card refresh is dropped.
+    if not set_activity(item, phase, "ai"):
+        return
     owner.widget.refresh_card(item)
 
 

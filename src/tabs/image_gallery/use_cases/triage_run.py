@@ -526,6 +526,10 @@ def _settle_metrics_pass(owner, items) -> None:
     # Without this, every open looks unanalyzed: the selector spends a probe
     # image and the tail rebuilds contexts for items already on disk (measured
     # live 2026-10-22, and it defeated the warm-matrix selector skip).
+    # The pass is TIME-BUDGETED (``ai_analysis._HYDRATE_BUDGET_MS``): a large
+    # folder continues on the next event-loop turn, and the items it leaves
+    # behind are filled by the cache-first HIT in ``analyze()`` before any
+    # request is built, so the ordering below still holds.
     hydrate = getattr(owner, "_hydrate_ai_cache", None)
     if callable(hydrate):
         try:
