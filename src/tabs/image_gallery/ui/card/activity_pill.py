@@ -117,8 +117,14 @@ def _draw_dot(painter, rect: QRectF, color) -> None:
 
 def draw_activity_pill(
     painter, phase: str, box: QRectF, *, corner: str, label: str, alpha: float = 1.0
-) -> None:
-    """Paint one pill inside ``box``: ``top_right`` (grid cover) or ``middle_left`` (list thumb)."""
+) -> QRectF:
+    """Paint one pill inside ``box`` and return its rect (widget coordinates).
+
+    The rect is the repaint region ``ActivityPulse`` uses: a live pill changes
+    every ~83 ms (spinner/fade), and repainting the WHOLE card for that cost a
+    full cover rescale + dot/badge pass per tick per active card — the measured
+    AI-gallery scroll cost (2026-10-22). Callers stash it for the pulse.
+    """
     from PySide6.QtGui import QFontMetrics
 
     font = ui_font(pixel_size=11, bold=False)
@@ -153,6 +159,7 @@ def draw_activity_pill(
         painter.drawText(text_rect, int(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft), label)
     finally:
         painter.restore()
+    return pill
 
 
 def paint_item_activity(painter, widget, box: QRectF, *, corner: str) -> None:
@@ -175,4 +182,9 @@ def paint_item_activity(painter, widget, box: QRectF, *, corner: str) -> None:
     else:
         return
     label = activity_label(phase, getattr(widget, "_gallery_activity_tr", None))
-    draw_activity_pill(painter, phase, box, corner=corner, label=label, alpha=float(alpha))
+    pill = draw_activity_pill(painter, phase, box, corner=corner, label=label, alpha=float(alpha))
+    try:
+        # The pulse repaints THIS rect, not the whole card (see draw_activity_pill).
+        widget._gallery_activity_rect = pill
+    except Exception:
+        pass
