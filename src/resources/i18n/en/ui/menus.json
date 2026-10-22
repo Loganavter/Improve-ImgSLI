@@ -10,7 +10,7 @@
     "quit": "Quit",
     "show_help": "Show Help",
     "find_action": "Find Action",
-    "project_filter": "Improve ImgSLI Project (*.imgsli)",
+    "project_filter": "BlinkTable Project (*.imgsli)",
     "project_untitled": "Untitled",
     "project_opening": "Opening project…",
     "project_saving": "Saving project…",

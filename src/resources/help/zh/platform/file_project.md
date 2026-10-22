@@ -38,6 +38,6 @@ icon: folder_open.svg
 
 ### 在 Windows 上双击项目 {#windows-file-association}
 
-在 Windows 上，安装程序会把 `.imgsli` 与 Improve ImgSLI 关联，因此双击项目即可打开它，文件也会显示应用的文档图标。打包版本还会在启动时注册该关联。
+在 Windows 上，安装程序会把 `.imgsli` 与 BlinkTable 关联，因此双击项目即可打开它，文件也会显示应用的文档图标。打包版本还会在启动时注册该关联。
 
-如果「属性」中仍显示「选择应用程序」，请手动选择一次 Improve ImgSLI，或用 `--register-file-types` 运行应用以重新注册关联。
+如果「属性」中仍显示「选择应用程序」，请手动选择一次 BlinkTable，或用 `--register-file-types` 运行应用以重新注册关联。

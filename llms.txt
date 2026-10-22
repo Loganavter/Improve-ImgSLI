@@ -1,35 +1,37 @@
 > **WARNING: Info only for webcrawlers/chatbot websearch (Experimental). DO NOT USE it for development if you code agent. Search docs info into `docs/dev`**
 
 
-# Improve-ImgSLI Documentation
+# BlinkTable Documentation
 
-> Improve-ImgSLI is a declarative, highly-optimized image comparison tool for developers, QA, and content creators. It features a responsive UI, advanced canvas rendering, and extensive diffing tools.
+> BlinkTable is a declarative, highly-optimized image comparison workspace for developers, QA, and content creators: compare, measure, prove. It features a responsive UI, advanced canvas rendering, and extensive diffing tools.
 
 
 ## About
 
-*Improve ImgSLI is a desktop workspace for precise image and media comparison. Side-by-side and multi-image views, pixel-scale difference inspection, still export, and comparison video recording.*
+*Where the app came from, what it does, and what to read next.*
 
 
 #### About
 
-Improve ImgSLI is a desktop workspace for precise image and media comparison. Side-by-side and multi-image views, pixel-scale difference inspection, still export, and comparison video recording.
+BlinkTable is a desktop workspace where you compare images side by side or as a grid, inspect differences at pixel scale, and keep the result as an exported still or a recorded comparison video.
 
 ##### What it is for
 
-Comparison of visual change with the context kept: retouching, upscaling QA, photography — sessions where a split, a magnifier, and an exportable result matter more than a one-off screenshot.
+Use it wherever visual change has to be checked with its context kept: retouching, upscaling QA, and photography. These are tasks where a **Divider**, a **Magnifier**, and an exportable result matter more than a one-off screenshot.
 
 ##### Workspace modes
 
-One card per connected tab; the set grows with the installed tabs. Image Compare compares image pairs with a movable split, magnifiers, and difference modes — [Comparison](help://workspace.image_compare.comparison). Multi Compare lays many images into a grid of slots — [Multi Compare](help://workspace.multi_compare.overview). The session picker card opens, resumes, and manages sessions — [Workspace Tabs](help://workspace.session_picker). First orientation: [Getting Started](help://platform.getting_started).
+A session is one open workspace with its own images and view settings, shown in its own tab — see [Tabs](help://platform.tabs). Its layout comes from the tab's session type: for example, [Comparison](help://workspace.image_compare.comparison) puts two images around a movable **Divider**, and [Multi Compare](help://workspace.multi_compare.overview) lays many images into slots. The [Session Picker](help://workspace.session_picker) lists one card per connected tab and opens that session when you click a card; the set of cards grows with the tabs you install.
 
 ##### License and source
 
-Released under the GNU GPL version 3 (or later). Uses PySide6 / Qt under LGPL. The UI widget library [sli-ui-toolkit](https://github.com/Loganavter/sli-ui-toolkit) is separate and distributed under the MIT License. Project home: [improve-imgsli.ru](https://improve-imgsli.ru/).
+BlinkTable is released under the GNU GPL version 3 (or later). It uses PySide6 / Qt under LGPL. The UI widget library [sli-ui-toolkit](https://github.com/Loganavter/sli-ui-toolkit) is separate and distributed under the MIT License. Project home: [improve-imgsli.ru](https://improve-imgsli.ru/).
 
 ##### Next topics
 
-[Getting Started](help://platform.getting_started), [Hotkeys](help://platform.hotkeys), [Settings](help://platform.settings), [Files and Projects](help://platform.file_project).
+- [Getting Started](help://platform.getting_started) — first steps after installing the app.
+- [Hotkeys](help://platform.hotkeys) — default chords and the keys that stay fixed.
+- [Settings](help://platform.settings) — appearance, keyboard, and analysis options.
 
 
 
@@ -52,58 +54,57 @@ Controls, lists, canvas chrome [en]
 
 ### Buttons and Controls
 
-*The toolbar sits above the canvas in a compare session. It holds the tools for that session — split line, view modes, magnifier, recording — while lists, add/save, and the settings gear live in the surrounding chrome.*
+*Understand the toolbar and how UI modes group controls.*
 
 
 ##### Buttons and Controls
 
-The toolbar sits above the canvas in a compare session. It holds the tools for that session — split line, view modes, magnifier, recording — while lists, add/save, and the settings gear live in the surrounding chrome.
+The toolbar holds the tools of the active session, and the **UI Mode** setting decides how many actions share one control.
 
 ###### The toolbar
 
-- **Toolbar** — strip of icon controls for the active session type. Each control is a toggle, a value nudge, or a button that opens a panel or dialog.
-- **settings.ui_mode** — sets how many controls the toolbar shows. First-run onboarding sets it; [Settings → Appearance](help://platform.settings#interface) changes it later.
+The **Toolbar** is the strip of icon controls for the active session. Each control either toggles a feature on or off, steps a numeric value, or opens a panel or dialog. The tab contributes the set of controls, so the strip changes when you switch tabs.
 
 
 
 ###### UI modes
 
-The same tools are laid out differently in each settings.ui_mode. First-run onboarding sets the mode once; [Settings → Appearance](help://platform.settings#interface) changes it later.
+The same tools appear in every **UI Mode**; only their layout differs. Fewer controls per mode means fewer clicks but more combinations packed onto each control. Pick a mode during the first run, or change it later in [Settings](help://platform.settings#interface) → **Appearance**.
 
-###### settings.ui_mode_beginner
+####### Beginner
 
-More separate buttons — one control ≈ one job.
-
-
-
-###### settings.ui_mode_advanced
-
-Fewer icons. Some controls already combine a short click with a scroll (for example orientation + thickness).
+The default mode: each control does one job, so the tools spread over more, single-purpose buttons.
 
 
 
-###### settings.ui_mode_expert
+####### Advanced
 
-Densest strip: one control combines click, scroll, and other mouse buttons.
+Fewer icons. Some controls combine a short click with a scroll — for example, orientation and thickness on one control.
+
+
+
+####### Expert
+
+The densest strip: a single control combines a click, a scroll, and the other mouse buttons.
 
 
 
 ###### Multi-action controls
 
-In settings.ui_mode_advanced and especially settings.ui_mode_expert, the same icon often does more than one thing:
+In **Advanced** and especially in **Expert**, the same icon often does more than one thing:
 
 - **Short click** — primary action or toggle.
-- **Scroll** — nudge a numeric value (divider thickness, magnifier size, …) without opening a dialog.
+- **Scroll** — nudge a numeric value without opening a dialog.
 - **Long-press** — stronger variant on some list buttons (clear a whole list; swap both lists).
-- **Other mouse buttons** (expert) — for example right-click for color or middle-click to reset on compact divider controls.
+- **Other mouse buttons** — in **Expert**, for example right-click for color or middle-click to hide or restore the divider on a compact divider control.
 
-settings.ui_mode_beginner keeps those jobs on separate buttons instead of stacking them.
+**Beginner** splits the click-plus-scroll combinations across separate single-purpose controls; the list buttons' long-press works in every mode.
 
 
 
 ###### Find a control by name
 
-Open the palette with `Ctrl+Shift+P` (Find Action), type part of the label, and run the action or press `Ctrl+Enter` to open Learn more when the row has a help topic.
+**Find Action** (`Ctrl+Shift+P`) finds every action by part of its label, including ones with no visible button. `Ctrl+Enter` on a row opens **Learn more** when the row has a help topic.
 
 
 
@@ -115,132 +116,145 @@ Settings, files, shortcuts [en]
 
 ### Files and Projects
 
-*Load images into session lists, paste from the clipboard, and open or save portable project files that bundle session layout, compare settings, and copies of the source images.*
+*How images enter a session and how projects bundle them.*
 
 
 ##### Files and Projects
 
-Load images into session lists, paste from the clipboard, and open or save portable project files that bundle session layout, compare settings, and copies of the source images.
+Load images into session lists, paste from the clipboard, and open or save a project file that bundles the session layout, the compare settings, and copies of the source images.
 
 ###### Loading images
 
-- **Add files** — use the side add buttons (or Find Action) to pick one or more files.
-- **Drag-and-drop** — a drop into the window lands in the list on the side under the cursor.
-- **Paste** (`Ctrl+V`) — clipboard image; the direction overlay appears, a click on an arrow picks the side, `Esc` cancels.
+- **Add Img(s) 1** / **Add Img(s) 2** — the add buttons beside the left and right lists open a file picker; pick one or several images for that side.
+- **Add images** — in **Multi Compare** a single add button loads images into the grid.
+- **Drag and drop** — drop files into the window; they land in the list on the side under the cursor.
+- **Paste image from clipboard** (`Ctrl+V`) — the image goes to the active session. A direction overlay appears: click an arrow to choose the side, or press `Esc` to cancel.
 
 
 
 ###### Lists
 
-- **Image Compare** — left and right lists are independent; the list-manager panel covers reorder, rate, rename, path, properties, remove — see [Comparison](help://workspace.image_compare.comparison).
-- **Multi Compare** — per-slot drops instead of dual lists — [Multi Compare](help://workspace.multi_compare.overview).
+- In **Image Compare**, the left and right lists are independent. The list-manager panel lets you reorder, rate, rename, inspect the path, open properties, and remove images — see [Comparison](help://workspace.image_compare.comparison).
+- In **Multi Compare**, images are dropped into individual slots instead of two lists — see [Multi Compare](help://workspace.multi_compare.overview).
 
 Each session has its own tab; see [Tabs](help://platform.tabs).
 
 ###### Projects
 
-- **Open** — `Ctrl+Shift+O`, or Find Action, opens a `.imgsli` file from the File menu. Opening a project names the active tab after the file. The project restores workspace sessions, compare settings (split, diff, magnifier, and related features), and embedded image copies.
-- **Save** — `Shift+S` writes the current file; when no file exists yet, **Save As** opens instead. Saving also retargets the file basename when the tab was renamed.
-- **Save As** — `Ctrl+Shift+S`. Suggests a renamed tab title when the active tab is custom, otherwise Untitled.
-- **Portable package** — the file is a ZIP: session JSON plus a `media/` folder with embedded copies of the images.
-- **Missing sources on save** — if a listed path no longer exists, the project still saves; that image is omitted and a warning lists it.
-- **App preferences** — theme, language, and hotkeys stay in application settings; they are not part of the project file.
+A project file (`.imgsli`) keeps a whole workspace in one portable file: the open sessions, their compare settings, and copies of the source images.
 
-###### Windows file association
+- **Open Project** — on the **File** menu, `Ctrl+Shift+O`, or **Find Action**. The active tab takes the file's name, and the project restores the sessions, the compare settings (divider, diff, magnifier, and related features), and the embedded image copies.
+- **Save Project** — `Shift+S` writes the current file. When no file exists yet, **Save Project As…** opens instead. Saving also retargets the file name when the tab was renamed.
+- **Save Project As…** — `Ctrl+Shift+S` suggests the renamed tab name, otherwise **Untitled**.
+- **What the file contains** — a ZIP archive: `project.json` with the sessions, and a `media/` folder holding an embedded copy of each image.
+- **If a source is missing** — when a listed path no longer exists, the project still saves; that image is left out and a warning names it.
+- **What is not saved** — the theme, language, and hotkeys stay in the application settings; they are not part of the project file.
 
-On Windows, the installer associates `.imgsli` with Improve ImgSLI, so double-clicking a project opens it and the file shows the application's document icon. Frozen builds also register the association on startup.
+###### Double-click a project on Windows
 
-If Properties still shows "Choose application", pick Improve ImgSLI once, or run the app with `--register-file-types` to register the association again.
+On Windows the installer associates `.imgsli` with BlinkTable, so double-clicking a project opens it and the file shows the application's document icon. Packaged builds also register the association on startup.
+
+If Properties still shows "Choose application", pick BlinkTable once, or run the app with `--register-file-types` to register the association again.
 
 
 
 
 ### Hotkeys
 
-*Default chords below. Most action shortcuts remap under Settings → settings.keyboard. Canvas `WASD`, arrow, `Space` movement and `+`/`-` zoom stay fixed and are not remappable.*
+*Look up a shortcut or remap the ones you use.*
 
 
 ##### Hotkeys
 
-Default chords below. Most action shortcuts remap under Settings → settings.keyboard. Canvas `WASD`, arrow, `Space` movement and `+`/`-` zoom stay fixed and are not remappable.
+Below are the default chords. Most action shortcuts can be remapped in **Settings** → **Keyboard**; the canvas keys `WASD` / `QE`, the arrow keys, `Space`, and `+` / `-` are fixed and cannot be remapped.
+
+
 
 ###### Discover first
 
-`Ctrl+Shift+P` plus a typed name beats memorizing a list: the palette runs the action or opens Learn more for the illustrated topic. F1 pulses the matching action when focus is tagged.
+`Ctrl+Shift+P` and part of a name are faster than scanning the list: **Find Action** runs the matching action or opens **Learn more** for the illustrated topic. `F1` opens the help topic for the focused control.
 
 ###### Platform
 
-- `Ctrl+,` — Settings
-- `Ctrl+F1` — Help
-- `Ctrl+N` — Session picker / new session
-- `Ctrl+Tab` / `Ctrl+Shift+Tab` — Next / previous workspace session
-- `Ctrl+Shift+P` — Find Action
-- `Ctrl+V` — Paste image
-- `Ctrl+Shift+O` / `Shift+S` / `Ctrl+Shift+S` — Open / save / save project as (`.imgsli`)
-- `Ctrl+Q` — Quit
+- `Ctrl+,` — **Settings**
+- `Ctrl+F1` — **Show Help**
+- `Ctrl+N` — **New Session** (opens the **Session Picker**)
+- `Ctrl+Tab` / `Ctrl+Shift+Tab` — next / previous session
+- `Ctrl+Shift+P` — **Find Action**
+- `Ctrl+V` — **Paste image from clipboard**
+- `Ctrl+Shift+O` / `Shift+S` / `Ctrl+Shift+S` — **Open Project** / **Save Project** / **Save Project As…** (`.imgsli`)
+- `Ctrl+Q` — **Quit**
 
-Exact labels follow the language pack; overrides live under Settings → Keyboard → platform group.
+Menu labels follow the language you select. Custom shortcuts are set in **Settings** → **Keyboard**, in the platform group.
 
 ###### Image Compare
 
-- `M` / `F` — Magnifier / freeze
-- `N` / `D` — Filename labels / divider visibility
-- `H` / `C` — Difference mode / channel mode
-- `X` — Swap
-- `R` / `Ctrl+E` — Record / Video Editor
-- `Ctrl+S` — Quick save
-- `WASD` / `QE` — Magnifier move / spacing (fixed)
-- `Shift` + `Space` — Side preview in combined mode (fixed)
-- `←↑↓→` / `+` / `-` — Pan / zoom (fixed)
+- `M` / `F` — **Toggle Magnifier** / **Freeze Magnifier**
+- `N` / `D` — **Filename Overlay** / **Divider Visibility**
+- `H` / `C` — **Difference Mode** / **Channel Mode**
+- `X` — **Swap Images**
+- `R` / `Ctrl+E` — **Record Video** / **Video Editor**
+- `Ctrl+S` — **Quick Save**
+- `WASD` / `QE` — move the magnifier / change its spacing (fixed)
+- `Shift+Space` — preview one side in combined mode (fixed)
+- `←↑↓→` / `+` / `-` — pan / zoom (fixed)
 
 Details: [Comparison](help://workspace.image_compare.comparison), [Magnifier](help://workspace.image_compare.magnifier), [Video Editor](help://workspace.image_compare.video).
 
 ###### Multi Compare
 
-- `Ctrl+O` — Add images
-- `D` — Grid visibility
-- `Ctrl+S` — Quick save
-- `Esc` — Exit slot focus
-- `←↑↓→` / `+` / `-` — Pan / zoom (fixed)
+- `Ctrl+O` — **Add images**
+- `D` — **Grid Visibility**
+- `Ctrl+S` — **Quick Save**
+- `Esc` — leave slot focus
+- `←↑↓→` / `+` / `-` — pan / zoom (fixed)
 
 See [Multi Compare](help://workspace.multi_compare.overview).
 
-###### image_gallery.tab_name
+###### Image Gallery
 
-- `Space` / `Delete` — take the selected cards out of the grid; files stay on disk.
+- `Space` / `Delete` — remove the selected images from the grid; the files stay on disk.
 
 See [Triage and Review](help://workspace.image_gallery.triage).
 
 ###### Video editor window
 
-While the editor is open: `Space` play/pause, `Ctrl+Z` / `Ctrl+Y` undo/redo, `Delete` / `Backspace` trim to selection. Full encode workflow: [Video Editor](help://workspace.image_compare.video).
+While the editor window is open:
+
+- `Space` — play or pause
+- `Ctrl+Z` / `Ctrl+Y` — undo / redo
+- `Delete` / `Backspace` — remove the selected range
+
+Full encode workflow: [Video Editor](help://workspace.image_compare.video).
 
 ###### Keyboard navigation
 
-- `F1` — contextual help for the focused control. When focus is tagged to an action, the Find Action result pulses the match; otherwise the palette opens pre-filtered by topic.
-- In Find Action (`Ctrl+Shift+P`): `↑` / `↓` move the selection, `Enter` runs it, `Ctrl+Enter` opens Learn more, `Esc` closes the palette.
+- `F1` — opens the help topic for the focused control; a control with no resolvable topic falls back to **Find Action** (with the matching action highlighted when there is one).
+- In **Find Action** (`Ctrl+Shift+P`): `↑` / `↓` move the selection, `Enter` runs it, `Ctrl+Enter` opens **Learn more**, `Esc` closes the list.
 - In the Multi Compare overview, slot focus follows the pointer: a click toggles single-image focus, `Esc` exits it. Arrow keys pan the canvas instead of moving focus between slots.
 - In the session picker, arrow keys move focus between cards and `Enter` opens the focused card, same as clicking it.
-- There is no `Tab` traversal between canvas slots: focus follows the pointer, and the keyboard drives actions through the palette.
+- There is no `Tab` traversal between canvas slots: focus follows the pointer, and the keyboard drives actions through **Find Action**.
 
 
 
 
 ### Tabs
 
-*The tab strip above the workspace holds one tab per open session. The active tab decides what the canvas, toolbar, and lists show.*
+*Manage the sessions open in the workspace.*
 
 
 ##### Tabs
 
-The tab strip above the workspace holds one tab per open session. The active tab decides what the canvas, toolbar, and lists show.
+The tab strip above the workspace holds one tab per open session. The active tab decides what the canvas, toolbar, and lists show, so switching tabs changes the whole workspace view.
 
 ###### Tab strip
 
-- **Switch** — a click activates the session of that tab.
-- **Close** — the close control removes the tab's session. Closing the last session replaces it with the session picker, so the strip never stands empty.
-- **Context menu** — rename, duplicate, closing of the other tabs, and creation of a new tab of any connected type. Duplicate stays hidden on the session picker itself; closing of the others appears only with more than one session open.
-- **Automatic titles** — untouched tabs show the session-type name in the current language; a rename stores a custom title that survives language switches.
+- **Switch** — click a tab to activate that session.
+- **Close** — the close control removes the tab's session. Closing the last session replaces it with the **Session Picker**, so the strip never stands empty.
+- **Context menu** — right-click a tab to rename it, duplicate it, close the other tabs, or open a new tab of any connected type. **Duplicate** stays hidden on the **Session Picker** itself, and closing the others appears only when more than one session is open.
+- **Tab names** — a tab that was never renamed shows the session-type name in the current language. Renaming stores a custom title that survives language switches, so a renamed tab keeps its name when you change the interface language.
+
+
 
 
 
@@ -311,7 +325,12 @@ are no longer documented separately — both remain loadable today, they're just
 
 ```text
 
+Path                                                                     |      Files |      Blank |      Comment |       Code
+----------------------------------------------------------------------------------------------------
 --------------------------------------------------------------------------------
+app-branding (total)                                                     |       2706 |      77524 |        67252 |     368609
+app-branding (total)                                                     |         33 |        187 |          367 |       1306
+app-branding (total)                                                     |        874 |      36852 |        22708 |     134079
 
 ```
 

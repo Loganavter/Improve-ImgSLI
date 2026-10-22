@@ -4,7 +4,7 @@ icon: about.svg
 ---
 ## 关于
 
-Improve ImgSLI 是一款桌面工作区：可以并排或以网格对比图像，逐像素检查差异，并把结果保存为导出的静态图或录制的对比视频。
+BlinkTable 是一款桌面工作区：可以并排或以网格对比图像，逐像素检查差异，并把结果保存为导出的静态图或录制的对比视频。
 
 ### 适用场景 {#purpose}
 
@@ -16,7 +16,7 @@ Improve ImgSLI 是一款桌面工作区：可以并排或以网格对比图像�
 
 ### 许可与源码 {#license}
 
-Improve ImgSLI 以 GNU GPL 第 3 版（或更新版本）发布。它使用 LGPL 下的 PySide6 / Qt。UI 组件库 [sli-ui-toolkit](https://github.com/Loganavter/sli-ui-toolkit) 是独立项目，以 MIT 许可分发。项目主页：[improve-imgsli.ru](https://improve-imgsli.ru/)。
+BlinkTable 以 GNU GPL 第 3 版（或更新版本）发布。它使用 LGPL 下的 PySide6 / Qt。UI 组件库 [sli-ui-toolkit](https://github.com/Loganavter/sli-ui-toolkit) 是独立项目，以 MIT 许可分发。项目主页：[improve-imgsli.ru](https://improve-imgsli.ru/)。
 
 ### 接下来 {#next}
 

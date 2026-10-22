@@ -125,7 +125,7 @@ def _startup_dump_delay_ms(args: argparse.Namespace) -> int:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Improve ImgSLI - Main entry point")
+    parser = argparse.ArgumentParser(description="BlinkTable - Main entry point")
     parser.add_argument(
         "--enable-logging",
         action="store_true",
@@ -304,7 +304,7 @@ def main():
     install_application_dialog_decorations(app)
 
     app.setApplicationName("Improve ImgSLI")
-    app.setApplicationDisplayName("Improve ImgSLI")
+    app.setApplicationDisplayName("BlinkTable")
     from core.constants import AppConstants
 
     app.setApplicationVersion(AppConstants.APP_VERSION)

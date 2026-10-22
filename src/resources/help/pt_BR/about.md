@@ -4,7 +4,7 @@ icon: about.svg
 ---
 ## Sobre
 
-Improve ImgSLI é um espaço de trabalho para desktop onde imagens são comparadas lado a lado ou em grade, as diferenças são inspecionadas no nível do pixel e o resultado é mantido como uma imagem exportada ou um vídeo da comparação.
+BlinkTable é um espaço de trabalho para desktop onde imagens são comparadas lado a lado ou em grade, as diferenças são inspecionadas no nível do pixel e o resultado é mantido como uma imagem exportada ou um vídeo da comparação.
 
 ### Para que serve {#purpose}
 
@@ -16,7 +16,7 @@ Uma sessão é um espaço de trabalho aberto, com suas próprias imagens e confi
 
 ### Licença e código-fonte {#license}
 
-O Improve ImgSLI é distribuído sob a GNU GPL versão 3 (ou posterior). Usa PySide6 / Qt sob a LGPL. A biblioteca de widgets [sli-ui-toolkit](https://github.com/Loganavter/sli-ui-toolkit) é um projeto separado e é distribuída sob a licença MIT. Página do projeto: [improve-imgsli.ru](https://improve-imgsli.ru/).
+O BlinkTable é distribuído sob a GNU GPL versão 3 (ou posterior). Usa PySide6 / Qt sob a LGPL. A biblioteca de widgets [sli-ui-toolkit](https://github.com/Loganavter/sli-ui-toolkit) é um projeto separado e é distribuída sob a licença MIT. Página do projeto: [improve-imgsli.ru](https://improve-imgsli.ru/).
 
 ### Próximos tópicos {#next}
 

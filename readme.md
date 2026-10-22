@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/johnpetersa19/Improve-ImgSLI/037ab021aa79aa40a85a25d591e887dca85cd50d/src/icons/logo-github%20.svg" alt="Logo" width="384">
+  <img src="src/resources/icons/blinktable-logo.svg" alt="BlinkTable" width="384">
 </p>
 
 <p align="center">
@@ -9,7 +9,7 @@
   <a href="https://flathub.org/apps/details/io.github.Loganavter.Improve-ImgSLI"><img src="https://img.shields.io/flathub/downloads/io.github.Loganavter.Improve-ImgSLI?style=flat-square" alt="Flathub Downloads"></a>
 </p>
 
-<p align="center"><strong>A workspace for serious image and video comparison — with analysis, export, and an agent-control surface.</strong></p>
+<p align="center"><strong>BlinkTable — a workspace for serious image and video comparison: compare, measure, prove.</strong></p>
 
 <p align="center">Read this in other languages: <a href="README.ru.md">Русский</a></p>
 
@@ -17,7 +17,7 @@
 
 ## What it is
 
-Improve-ImgSLI opens on a session picker and gives you independent workspace tabs:
+BlinkTable opens on a session picker and gives you independent workspace tabs:
 a two-image **Image Compare**, a synchronized N-image **Multi Compare**, and an
 **Image Gallery** for triaging, measuring and AI-scoring whole folders. Each tab
 owns its canvas, state, help pages and export pipeline.

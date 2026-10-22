@@ -1,6 +1,6 @@
 [Desktop Entry]
-Name=Improve ImgSLI
-Comment=An intuitive, open-source tool for advanced image comparison and interaction.
+Name=BlinkTable
+Comment=Compare, measure and prove image quality
 Exec=improve-imgsli %F
 Icon=improve-imgsli
 Terminal=false

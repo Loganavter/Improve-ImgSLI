@@ -107,7 +107,7 @@ def _commit() -> str | None:
 
 def collect_app_info() -> dict[str, Any]:
     return {
-        "name": _safe(lambda: "Improve ImgSLI", "Improve ImgSLI"),
+        "name": _safe(lambda: "BlinkTable", "BlinkTable"),
         "version": _safe(_app_version),
         "commit": _safe(_commit),
         "channel": _safe(lambda: os.environ.get("IMPROVE_IMGSLI_CHANNEL") or "stable"),
