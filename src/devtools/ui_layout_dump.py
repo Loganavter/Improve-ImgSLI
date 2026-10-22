@@ -26,6 +26,13 @@ parent-local coordinates (position relative to the parent widget). Only
 top-level windows are screen-relative (they have no parent widget). The
 dump root carries a ``geometry_space`` key stating this so headless
 consumers never mistake child offsets for screen positions.
+
+The root also carries ``overlays``: every ``TopLevelInWindowOverlay`` *child*
+(fills its parent window, so it is not a top-level) with a ``screen_rect`` and,
+when the overlay declares ``painted_target_rects()``, the screen rects of the
+targets it paints. This is the only place an in-window overlay is addressable —
+``windows``/``top_levels`` name top-levels alone (see the paste direction
+picker, which has neither a window nor an element row).
 """
 
 from __future__ import annotations
@@ -419,6 +426,100 @@ def _resolve_theme_tokens(used_families: dict[str, tuple]) -> dict[str, Any]:
     return theme
 
 
+def _screen_rect_of(widget: QWidget) -> list[int] | None:
+    """``[x, y, w, h]`` of *widget* in screen space (``mapToGlobal``).
+
+    The node ``geometry`` is parent-local by convention; a capture crop is
+    expressed in screen pixels, so an overlay — a child whose position is only
+    known relative to its parent — has to be mapped.
+    """
+    try:
+        origin = widget.mapToGlobal(QPoint(0, 0))
+        return [origin.x(), origin.y(), widget.width(), widget.height()]
+    except Exception:
+        return None
+
+
+def _painted_target_rows(overlay: QWidget) -> list[dict[str, Any]]:
+    """Screen rects of the targets *overlay* paints, by name.
+
+    A painted overlay (the paste direction picker: ``paintEvent`` draws its
+    buttons into ``btn_*_rect``) owns no child widget per target, so those rects
+    exist nowhere in the widget tree. The read-only protocol is one attribute —
+    ``painted_target_rects()`` returning ``{name: QRect}`` in overlay-local
+    coordinates — and an overlay without it simply reports no targets.
+    """
+    source = getattr(overlay, "painted_target_rects", None)
+    if callable(source):
+        try:
+            source = source()
+        except Exception:
+            return []
+    if not isinstance(source, dict):
+        return []
+    rows: list[dict[str, Any]] = []
+    for name, rect in source.items():
+        if not isinstance(rect, QRect):
+            continue
+        try:
+            origin = overlay.mapToGlobal(rect.topLeft())
+        except Exception:
+            continue
+        rows.append(
+            {
+                "name": str(name),
+                "screen_rect": [origin.x(), origin.y(), rect.width(), rect.height()],
+            }
+        )
+    return rows
+
+
+def _in_window_overlays(app: QApplication | None) -> list[dict[str, Any]]:
+    """Every ``TopLevelInWindowOverlay`` child in the process, in screen space.
+
+    ``windows``/``top_levels`` enumerate ``topLevelWidgets()`` only, and an
+    in-window overlay is a *child* of the window it fills — so a ``window``
+    selector could never name one (measured: the paste direction picker fills
+    the main window, so its own rect is the whole window and it has no
+    interactive row either, being painted rather than built from widgets).
+    Each row: class/object name, parent class, visibility, the overlay's own
+    screen rect, and its painted target rects when it declares them.
+    """
+    windows = getattr(app, "topLevelWidgets", None)
+    if not callable(windows):
+        return []
+    try:
+        from sli_ui_toolkit.ui.widgets.overlays.in_window_overlay import (
+            TopLevelInWindowOverlay,
+        )
+    except Exception:
+        return []
+    try:
+        top_levels = list(windows())
+    except Exception:
+        return []
+    rows: list[dict[str, Any]] = []
+    for window in top_levels:
+        try:
+            overlays = list(window.findChildren(TopLevelInWindowOverlay))
+        except Exception:
+            continue
+        for overlay in overlays:
+            parent = overlay.parentWidget()
+            row: dict[str, Any] = {
+                "class": type(overlay).__name__,
+                "object_name": overlay.objectName(),
+                "parent_class": type(parent).__name__ if parent is not None else None,
+                "visible": overlay.isVisible(),
+                "screen_rect": _screen_rect_of(overlay),
+            }
+            targets = _painted_target_rows(overlay)
+            if targets:
+                row["targets"] = targets
+            rows.append(row)
+    return rows
+
+
 def dump_ui_layout(root: QWidget, registry: ActionRegistry) -> dict[str, Any]:
     """Recursively snapshot ``root``'s widget tree, tagging each node with the
     Find Action ids (if any) whose ``ActionTarget.widget`` is that exact widget.
@@ -450,6 +551,7 @@ def dump_ui_layout(root: QWidget, registry: ActionRegistry) -> dict[str, Any]:
                 except Exception:
                     continue
         node["top_levels"] = tops
+        node["overlays"] = _in_window_overlays(app)
     except Exception:
         pass
     try:
@@ -494,7 +596,11 @@ def dump_all_windows(registry: ActionRegistry) -> dict[str, Any]:
     windows = list(app.topLevelWidgets()) if isinstance(app, QApplication) else []  # ALLOWED: devtools dump — enumerates all top-level windows generically, not tab-specific
     used_families: dict[str, tuple] = {}
     nodes = [_node(w, action_map, used_families) for w in windows]
-    out: dict[str, Any] = {"windows": nodes, "geometry_space": GEOMETRY_SPACE}
+    out: dict[str, Any] = {
+        "windows": nodes,
+        "overlays": _in_window_overlays(app),
+        "geometry_space": GEOMETRY_SPACE,
+    }
     # Process-wide input state for dead-overlay diagnosis: a stuck popup
     # grab or lost focus explains hit-test-invisible windows that look
     # fine node-by-node.

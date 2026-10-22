@@ -88,6 +88,24 @@ class PasteDirectionOverlay(TopLevelInWindowOverlay):
         if not self._direction_emitted:
             self.cancelled.emit()
 
+    def painted_target_rects(self) -> dict[str, QRect]:
+        """The rects this picker paints, by name — overlay-local, read-only.
+
+        The targets are drawn in :meth:`paintEvent` and own no widget, so there
+        is no element row (and no ``window``: this overlay is a child of the
+        window it fills) to point a screenshot crop at. ``devtools.ui_layout_dump``
+        reads this accessor to report them in screen space. Pure accessor: no
+        hover/geometry/paint state is touched.
+        """
+        rects = {
+            "left": self.btn_left_rect,
+            "right": self.btn_right_rect,
+            "up": self.btn_up_rect,
+            "down": self.btn_down_rect,
+            "cancel": self.btn_cancel_rect,
+        }
+        return {name: rect for name, rect in rects.items() if rect is not None}
+
     def _update_button_rects(self):
         if self.image_label_widget and self.image_label_widget.isVisible():
             image_label_pos = self.image_label_widget.mapTo(

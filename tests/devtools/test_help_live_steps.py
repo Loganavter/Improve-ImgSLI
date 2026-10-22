@@ -353,10 +353,13 @@ def test_ai_group_name_is_the_apps_own_constant():
 class _CropClient:
     """Answers the two read-only verbs a crop is derived from, and nothing else."""
 
-    def __init__(self, *, directory: Path, elements=None, windows=None, active=""):
+    def __init__(
+        self, *, directory: Path, elements=None, windows=None, overlays=None, active=""
+    ):
         self.directory = Path(directory)
         self.elements = list(elements or [])
         self.windows = list(windows or [])
+        self.overlays = list(overlays or [])
         self.active = active
         self.calls: list[tuple[str, dict]] = []
 
@@ -371,7 +374,13 @@ class _CropClient:
         if method == "dump_ui_layout":
             path = self.directory / "ui-layout.json"
             path.write_text(
-                json.dumps({"windows": self.windows, "active_window": self.active}),
+                json.dumps(
+                    {
+                        "windows": self.windows,
+                        "overlays": self.overlays,
+                        "active_window": self.active,
+                    }
+                ),
                 encoding="utf-8",
             )
             return {"path": str(path), "windows": len(self.windows)}
@@ -399,6 +408,26 @@ def _window(class_name, geometry, *, active=False, visible=True, object_name="")
     }
     if active:
         node["is_active_window"] = True
+    return node
+
+
+def _overlay(class_name, screen_rect, *, visible=True, object_name="", targets=None):
+    """One ``overlays`` row of the layout dump (a child overlay, screen space).
+
+    Unlike a ``windows`` row this carries ``screen_rect`` directly: the node's
+    ``geometry`` is parent-local, and the crop is in screen pixels.
+    """
+    node = {
+        "class": class_name,
+        "object_name": object_name,
+        "parent_class": "MainWindow",
+        "visible": visible,
+        "screen_rect": list(screen_rect),
+    }
+    if targets:
+        node["targets"] = [
+            {"name": name, "screen_rect": list(rect)} for name, rect in targets.items()
+        ]
     return node
 
 
@@ -493,6 +522,154 @@ def test_a_hidden_window_is_not_a_crop_target(tmp_path):
 
     with pytest.raises(help_live.LiveError, match="no visible window"):
         help_live._element_crop(client, {"window": "PasteDirectionOverlay", "pad": 0})
+
+
+def test_crop_by_overlay_uses_the_overlay_rect_when_it_paints_nothing(tmp_path):
+    """An in-window overlay is a child of its window, so it is not in ``windows``.
+
+    RED-BEFORE: the only selectors were ``id``/``ids``, ``window`` and
+    ``role``+``label``; the picker has no element row and no top-level window,
+    so every capture of ``help-paste-overlay`` failed with "no visible window".
+    """
+    client = _CropClient(
+        directory=tmp_path,
+        windows=[_window("MainWindow", (0, 0, 1280, 800), active=True)],
+        overlays=[_overlay("PasteDirectionOverlay", (160, 200, 320, 120))],
+    )
+
+    assert help_live._element_crop(
+        client, {"overlay": "PasteDirectionOverlay", "pad": 0}
+    ) == (0, 160, 200, 320, 120)
+
+
+def test_crop_by_overlay_crops_the_union_of_its_painted_targets(tmp_path):
+    """The picker paints its targets; they own no widget and no element row.
+
+    The overlay's own rect is the whole parent window (it fills it), so a crop
+    of *that* would frame the loaded session instead of the picker. The painted
+    target rects are the honest frame.
+    """
+    client = _CropClient(
+        directory=tmp_path,
+        overlays=[
+            _overlay(
+                "PasteDirectionOverlay",
+                (0, 0, 1280, 800),
+                targets={
+                    "left": (440, 340, 120, 120),
+                    "right": (760, 340, 120, 120),
+                    "cancel": (610, 370, 60, 60),
+                },
+            )
+        ],
+    )
+
+    # 440..880 wide, 340..460 high; the pad is returned, not applied here.
+    assert help_live._element_crop(
+        client, {"overlay": "PasteDirectionOverlay", "pad": 8}
+    ) == (8, 440, 340, 440, 120)
+
+
+def test_crop_by_overlay_full_opts_out_of_the_painted_union(tmp_path):
+    """A documented fallback: the whole overlay (i.e. the whole parent window)."""
+    client = _CropClient(
+        directory=tmp_path,
+        overlays=[
+            _overlay(
+                "PasteDirectionOverlay",
+                (12, 7, 1280, 800),
+                targets={"left": (440, 340, 120, 120)},
+            )
+        ],
+    )
+
+    assert help_live._element_crop(
+        client, {"overlay": "PasteDirectionOverlay", "pad": 0, "full": True}
+    ) == (0, 12, 7, 1280, 800)
+
+
+def test_crop_by_overlay_names_the_overlays_that_are_on_screen(tmp_path):
+    """A missing overlay must say which overlays *are* there — typo vs dismissed."""
+    client = _CropClient(
+        directory=tmp_path,
+        overlays=[_overlay("QuickLookOverlay", (0, 0, 800, 600))],
+    )
+
+    with pytest.raises(help_live.LiveError, match="QuickLookOverlay"):
+        help_live._element_crop(client, {"overlay": "PasteDirectionOverlay"})
+
+
+def test_crop_by_overlay_refuses_a_dismissed_overlay(tmp_path):
+    client = _CropClient(
+        directory=tmp_path,
+        overlays=[_overlay("PasteDirectionOverlay", (0, 0, 1280, 800), visible=False)],
+    )
+
+    with pytest.raises(help_live.LiveError, match="not visible"):
+        help_live._element_crop(client, {"overlay": "PasteDirectionOverlay"})
+
+
+# --- the dump section the overlay selector reads ----------------------------
+
+
+def test_the_dump_lists_in_window_overlays_with_screen_rects(qapp):
+    """``windows`` can never carry an in-window overlay: it is a child widget.
+
+    The paste picker fills its parent window, so its own ``geometry`` (parent
+    -local) and screen rect are the *window*; only the painted target rects say
+    where the picker actually is. This pins the dump section that the
+    ``overlay`` crop selector resolves against.
+    """
+    from types import SimpleNamespace
+
+    from PySide6.QtCore import QRect
+    from PySide6.QtWidgets import QWidget
+    from sli_ui_toolkit.ui.widgets.overlays.in_window_overlay import (
+        TopLevelInWindowOverlay,
+    )
+
+    from devtools.ui_layout_dump import dump_all_windows
+
+    host = QWidget()
+    host.setObjectName("HostWindow")
+    host.setGeometry(100, 120, 640, 480)
+    overlay = TopLevelInWindowOverlay(host, close_on_deactivate=False)
+    overlay.setObjectName("ProbeOverlay")
+    # The read-only protocol: overlay-local rects, by name. A real overlay that
+    # paints its targets (the paste picker) implements the same attribute.
+    overlay.painted_target_rects = lambda: {"left": QRect(10, 20, 30, 40)}
+    host.show()
+    overlay.show_overlay()
+    qapp.processEvents()
+    try:
+        dump = dump_all_windows(SimpleNamespace(all_actions=lambda: []))
+    finally:
+        host.close()
+        host.deleteLater()
+
+    assert [w for w in dump["windows"] if w["class"] == "TopLevelInWindowOverlay"] == [], (
+        "an in-window overlay is a child, so it must never be reported as a window"
+    )
+    rows = [row for row in dump["overlays"] if row.get("object_name") == "ProbeOverlay"]
+    assert len(rows) == 1, dump["overlays"]
+    row = rows[0]
+    assert row["class"] == "TopLevelInWindowOverlay"
+    assert row["parent_class"] == "QWidget"
+    assert row["visible"] is True
+    # Both rects are screen space (mapToGlobal), not parent-local geometry.
+    origin = overlay.mapToGlobal(overlay.rect().topLeft())
+    assert row["screen_rect"] == [
+        origin.x(),
+        origin.y(),
+        overlay.width(),
+        overlay.height(),
+    ]
+    assert row["targets"] == [
+        {
+            "name": "left",
+            "screen_rect": [origin.x() + 10, origin.y() + 20, 30, 40],
+        }
+    ]
 
 
 # --- capture origin (screen_rect → image pixels) -----------------------------
@@ -607,8 +784,8 @@ def test_held_press_figure_crops_by_the_reference_it_pressed():
     assert figure.capture == "@screen"
 
 
-def test_window_figures_crop_to_their_own_top_level():
-    """A dialog/overlay is a top-level window, so the crop names the window."""
+def test_window_and_overlay_figures_crop_to_their_own_surface():
+    """A dialog is a top-level window; a picker is an in-window child overlay."""
     figures = {f.id: f for f in help_live.load_recipes()}
 
     dialog = figures["help-video-export"]
@@ -620,7 +797,12 @@ def test_window_figures_crop_to_their_own_top_level():
 
     picker = figures["help-paste-overlay"]
     assert picker.capture == "@screen"
-    assert (picker.crop_element or {}).get("window") == "PasteDirectionOverlay"
+    # RED-BEFORE: `window` names only ``topLevelWidgets()``, so the picker (a
+    # child of the window it fills) could never resolve — all 8 captures of the
+    # figure failed with "no visible window 'PasteDirectionOverlay'".
+    spec = picker.crop_element or {}
+    assert spec.get("overlay") == "PasteDirectionOverlay"
+    assert "window" not in spec, "an in-window overlay is not a top-level window"
 
 
 def test_clipboard_figure_pastes_through_the_platform_action():

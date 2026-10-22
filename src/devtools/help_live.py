@@ -27,8 +27,9 @@ Rules this tool enforces (each one exists because a real capture lied):
   canvas figure with ``rhi_layers == 0`` is refused.
 * **A crop names the thing that was driven.** ``crop_element`` takes an
   inventory/``@action`` reference (the same one ``ui_press`` uses), a union of
-  references, or a top-level window; a caption substring is the legacy fallback,
-  not the way to point at a control. And a crop is only placed correctly when
+  references, an in-window overlay (union of the targets it paints), or a
+  top-level window; a caption substring is the legacy fallback, not the way to
+  point at a control. And a crop is only placed correctly when
   the capture's own origin in screen space is known — ``@screen`` is ``(0, 0)``,
   a window grab is that window's screen position (see :func:`_capture_origin`).
 * **A missing target fails the figure.** Cropping a frame that does not contain
@@ -930,9 +931,10 @@ DEFAULT_CROP_PAD = 6
 def _layout_dump(app: LiveClient) -> dict:
     """The app's own widget-tree dump (``dump_ui_layout``), parsed.
 
-    The one place that names a *window* rather than an element: a dialog or an
-    in-window overlay has no interactive row to point at, but the dump lists
-    every top-level widget with its screen geometry and its ``visible`` flag.
+    The place that names a *surface* rather than an element: a dialog is a
+    top-level window with a screen geometry and a ``visible`` flag, and an
+    in-window overlay (a child of the window it fills) is listed separately in
+    ``overlays`` with its screen rect and the rects of its painted targets.
     """
     result = app.call("dump_ui_layout", {})
     path = Path(str(result.get("path") or ""))
@@ -996,10 +998,53 @@ def _element_rows(app: LiveClient) -> dict[str, dict]:
     return index
 
 
+def _overlay_node(data: dict, name: str) -> dict:
+    """The visible in-window overlay whose class or object name is *name*.
+
+    An overlay is a *child* of the window it fills, so ``windows`` (the
+    top-level window list) never carries it — the name has to be looked up
+    in the dump's ``overlays`` section. The failure names the overlays that are
+    actually there: a typo and a dismissed overlay are different bugs.
+    """
+    rows = [row for row in data.get("overlays") or [] if isinstance(row, dict)]
+    matches = [
+        row
+        for row in rows
+        if name in (str(row.get("class") or ""), str(row.get("object_name") or ""))
+    ]
+    if not matches:
+        available = sorted({str(row.get("class") or "?") for row in rows})
+        raise LiveError(
+            f"crop_element: no in-window overlay {str(name)!r} in the layout dump - "
+            f"available overlays: {', '.join(available) or 'none'}. An overlay is a "
+            "child of the window it fills, so it is never listed under 'windows'; "
+            "name it with 'overlay', not 'window'"
+        )
+    visible = [row for row in matches if row.get("visible")]
+    if not visible:
+        raise LiveError(
+            f"crop_element: overlay {str(name)!r} is in the dump but not visible, so "
+            "it has no pixels to crop (dismissed before the capture?)"
+        )
+    return visible[0]
+
+
+def _union_of(rects: list, what: str) -> list[int] | None:
+    """Bounding box of several ``[x, y, w, h]`` rects; ``None`` when none."""
+    boxes = [_rect_of(rect, what) for rect in rects if rect]
+    if not boxes:
+        return None
+    left = min(box[0] for box in boxes)
+    top = min(box[1] for box in boxes)
+    right = max(box[0] + box[2] for box in boxes)
+    bottom = max(box[1] + box[3] for box in boxes)
+    return [left, top, right - left, bottom - top]
+
+
 def _element_crop(app: LiveClient, spec: dict) -> tuple[int, int, int, int, int]:
     """Crop box ``(pad, x, y, w, h)`` in screen px for one live target.
 
-    Three selectors, each the smallest surface that can name the region:
+    Four selectors, each the smallest surface that can name the region:
 
     * ``id`` / ``ids`` — inventory references, ``@<action id>`` included, i.e.
       the *same* reference ``ui_press``/``ui_click`` drives. Photographing by
@@ -1009,16 +1054,39 @@ def _element_crop(app: LiveClient, spec: dict) -> tuple[int, int, int, int, int]
       every window, so the crop followed the caption, not the control). Several
       ids crop their union — the two adjacent long-press list buttons are one
       figure.
+    * ``overlay`` — an in-window overlay (``TopLevelInWindowOverlay``), looked up
+      in the dump's ``overlays`` section (see :func:`_overlay_node`). It is a
+      *child* of the window it fills, so ``window`` can never name it, and a
+      painted overlay has no element row for ``ids`` either: the paste direction
+      picker is the measured case. When the overlay reports
+      ``painted_target_rects`` the crop is their union — its own rect is the
+      whole parent window (the loaded session, not the picker). ``"full": true``
+      opts into that whole-overlay rect as a documented fallback, and the recipe
+      note has to say so.
     * ``window`` — a top-level window's own rect (see :func:`_window_node`): the
-      video-editor export dialog is a separate top-level, and the paste direction
-      picker paints its targets in one ``paintEvent``, so neither owns an
-      element row to crop by.
+      video-editor export dialog is a separate top-level.
     * ``role`` / ``label`` — the guarded legacy form, kept for the flyout figure.
 
     A target that is not on screen raises instead of cropping nothing: a missing
     overlay must fail the figure, never install a frame of empty background.
     """
     pad = int(spec.get("pad", DEFAULT_CROP_PAD))
+    overlay = spec.get("overlay")
+    if overlay:
+        node = _overlay_node(_layout_dump(app), str(overlay))
+        if spec.get("full"):
+            rect = node.get("screen_rect")
+        else:
+            painted = [
+                target.get("screen_rect")
+                for target in node.get("targets") or []
+                if isinstance(target, dict)
+            ]
+            rect = _union_of(painted, f"a painted target of {str(overlay)!r}") or node.get(
+                "screen_rect"
+            )
+        x, y, width, height = _rect_of(rect, f"overlay {str(overlay)!r}")
+        return pad, x, y, width, height
     name = spec.get("window")
     if name:
         node = _window_node(_layout_dump(app), str(name))
@@ -1047,17 +1115,14 @@ def _element_crop(app: LiveClient, spec: dict) -> tuple[int, int, int, int, int]
                     "has no pixels to crop"
                 )
             rects.append(_rect_of(row.get("screen_rect") or row.get("rect"), str(needle)))
-        left = min(rect[0] for rect in rects)
-        top = min(rect[1] for rect in rects)
-        right = max(rect[0] + rect[2] for rect in rects)
-        bottom = max(rect[1] + rect[3] for rect in rects)
-        return pad, left, top, right - left, bottom - top
+        left, top, width, height = _union_of(rects, "the referenced controls")
+        return pad, left, top, width, height
     params = {}
     for key in ("role", "label"):
         if spec.get(key):
             params[key] = str(spec[key])
     if not params:
-        raise LiveError("crop_element needs id/ids, window or role/label")
+        raise LiveError("crop_element needs id/ids, overlay, window or role/label")
     elements = app.call("ui_elements", params).get("elements") or []
     if not elements:
         raise LiveError(f"crop_element: no element matched {params!r}")
