@@ -328,7 +328,7 @@ are no longer documented separately — both remain loadable today, they're just
 Path                                                                     |      Files |      Blank |      Comment |       Code
 ----------------------------------------------------------------------------------------------------
 --------------------------------------------------------------------------------
-Improve-ImgSLI (total)                                                   |       2720 |      78216 |        67953 |     371568
+Improve-ImgSLI (total)                                                   |       2719 |      78061 |        67959 |     371389
 Improve-ImgSLI shaders (total)                                           |         33 |        187 |          367 |       1306
 Improve-ImgSLI (total)                                                   |        884 |      37267 |        23043 |     135284
 sli-ui-toolkit (total)                                                   |        603 |      18028 |        15564 |      88929

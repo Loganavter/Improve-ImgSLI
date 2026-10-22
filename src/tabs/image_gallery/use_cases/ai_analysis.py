@@ -149,14 +149,37 @@ def _hydrate_ai_cache(owner, items, *, ctx: ActionContext | None = None) -> int:
         return 0
     identity = analysis_identity_for(owner, ctx=ctx)
     filled = 0
+    filled_items: list = []
     for it in list(items or []):
         try:
             if getattr(it, "analysis", None) is not None:
                 continue
             if hydrate_item(it, identity):
                 filled += 1
+                filled_items.append(it)
         except Exception:
             continue
+    if filled_items:
+        # A hydrated item is a NEW read for every surface: the card's dots and
+        # its AI/ALG marker are derived at update time, and the open quick-look
+        # report holds a row set. Without this repaint the data was present but
+        # the view showed the pre-hydration state until an unrelated event
+        # (owner 2026-10-22: the marker appeared only after opening and closing
+        # quick look; the same staleness read as "reset did nothing").
+        try:
+            owner.widget.refresh_cards(filled_items)
+        except Exception:
+            for it in filled_items:
+                try:
+                    owner.widget.refresh_card(it)
+                except Exception:
+                    pass
+        try:
+            refresh_ql = getattr(owner, "_refresh_open_quick_look", None)
+            if callable(refresh_ql):
+                refresh_ql()
+        except Exception:
+            logger.debug("hydrate: quick-look refresh failed", exc_info=True)
     return filled
 
 

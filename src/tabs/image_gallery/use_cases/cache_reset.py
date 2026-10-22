@@ -186,6 +186,16 @@ def _refresh_cleared_view(owner, targets) -> None:
         stamp_badges(clear_targets, _source_path_of(owner, view), show_rank=False)
     except Exception:
         logger.debug("metrics reset: badge re-stamp failed", exc_info=True)
+    # The OPEN quick-look report holds its own row set: it must rebuild from the
+    # cleared items, or the reset looks like a no-op while the panel still shows
+    # the old numbers (owner 2026-10-22: "кэш сброшен, нумерации нет, а метрики
+    # остались").
+    try:
+        refresh_ql = getattr(owner, "_refresh_open_quick_look", None)
+        if callable(refresh_ql):
+            refresh_ql()
+    except Exception:
+        logger.debug("metrics reset: quick-look refresh failed", exc_info=True)
     if view is None:
         return
     try:
@@ -277,6 +287,18 @@ def clear_metrics_caches(owner, *, paths=None) -> dict:
     # dots use the fresh (mode-derived) axis set, and the cards show the
     # unranked/neutral state the re-entered pass starts from.
     _refresh_cleared_view(owner, targets)
+    try:
+        from tabs.image_gallery.debug import gallery_debug as _dbg
+
+        _dbg(
+            "metrics reset: scope=%s items=%d ai_files=%d profiles=%d",
+            "pool" if paths is None else f"{len(targets)} card(s)",
+            summary["items"],
+            summary["ai_files"],
+            summary["profiles"],
+        )
+    except Exception:
+        pass
     return summary
 
 
