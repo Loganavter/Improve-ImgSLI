@@ -240,6 +240,75 @@ def test_oversized_request_line_is_refused_by_name_and_the_connection_survives(
         server.stop()
 
 
+def test_inflight_note_survives_a_handler_crash_and_is_cleared_by_a_reply(
+    tmp_path, monkeypatch
+):
+    """The request being handled must outlive a crash — that note *is* the evidence.
+
+    A segfault never runs teardown and never writes a reply, so the only trace a
+    sibling process can read is the note written before the handler ran. A
+    request that *is* answered must clear it, or the next "no live instance"
+    answer would quote an old request.
+    """
+    from core.control.server import INFLIGHT_NOTE_NAME
+
+    monkeypatch.setenv("IMGSLI_CONTROL_DIR", str(tmp_path / "ctrl"))
+    app = _qapp()
+    server = ControlServer(window=_store_window(), app=app)
+    assert server.start() is True
+    note = tmp_path / "ctrl" / INFLIGHT_NOTE_NAME
+
+    class _Crash(BaseException):
+        """A crash analogue: ``_handle_line`` catches ``Exception`` only."""
+
+    class _CrashingHandlers:
+        def handle(self, method, params):
+            if method == "press_keys":
+                raise _Crash("the process is going down")
+            return {"pong": True, "pid": os.getpid()}
+
+    class _RecordingSocket:
+        """``_send`` only needs ``write`` + ``flush``."""
+
+        def __init__(self):
+            self.written = b""
+
+        def write(self, data):
+            self.written += bytes(data)
+
+        def flush(self):
+            pass
+
+    socket_double = _RecordingSocket()
+    try:
+        server._handlers = _CrashingHandlers()
+        assert not note.exists()
+        line = json.dumps(
+            {
+                "id": 1,
+                "method": "press_keys",
+                "params": {"keys": "ctrl+p", "api_key": "sk-or-v1-di0dbeef"},
+            }
+        ).encode("utf-8")
+        with pytest.raises(_Crash):
+            server._handle_line(socket_double, line)
+        # The handler died without a reply: the note names the request ...
+        assert note.is_file(), "a crash must leave the in-flight record behind"
+        payload = json.loads(note.read_text(encoding="utf-8"))
+        assert payload["method"] == "press_keys"
+        assert payload["summary"] == "keys='ctrl+p', api_key=<redacted>"
+        assert payload["pid"] == os.getpid()
+        assert payload["at"]
+        assert "di0dbeef" not in note.read_text(encoding="utf-8")
+        assert socket_double.written == b"", "no reply was written"
+        # ... and an answered request clears it again.
+        server._handle_line(socket_double, b'{"id": 2, "method": "ping", "params": {}}')
+        assert not note.exists(), "a reply means the app survived that request"
+        assert json.loads(socket_double.written.decode("utf-8"))["ok"] is True
+    finally:
+        server.stop()
+
+
 def test_encode_reply_reports_a_frame_it_cannot_emit():
     """Unit-test the reply guard: ``None`` instead of a broken frame."""
     from core.control.server import MAX_REPLY_BYTES, encode_reply

@@ -18,6 +18,9 @@ Invariants this class enforces:
 * an unknown method yields an error + hint and the connection survives;
 * a foreign-uid peer is closed before a byte is read (``SO_PEERCRED``);
 * every handler is wrapped so a raise becomes an error envelope, never a crash;
+* the request being handled is recorded in ``inflight.json`` before the handler
+  runs and the record is removed once the reply is sent — a record left behind
+  by a dead process is the only evidence a sibling has of *what* it died doing;
 * the discovery pointer is written only after a successful ``listen()`` and is
   cleared (with the socket) on ``stop()``.
 
@@ -45,7 +48,9 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 from collections import deque
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
@@ -72,6 +77,74 @@ MAX_REQUEST_LINE_BYTES = 1024 * 1024
 #: Sanity cap on one serialized reply (8 MiB). A bigger (or unserialisable)
 #: result is reported as an error frame, never emitted as a broken frame.
 MAX_REPLY_BYTES = 8 * 1024 * 1024
+
+#: Name of the in-flight request note, written next to the pointer. It is
+#: written *before* a handler runs and removed once the reply is sent, so a note
+#: that outlives the process is where the app died — the only trace a sibling
+#: process can read after a segfault (no teardown, no reply). The MCP client
+#: mirrors this name (`mcp-server/app/live.py`, stdlib-only, cannot import here).
+INFLIGHT_NOTE_NAME = "inflight.json"
+
+#: Cap on the redacted params digest kept in the note.
+_PARAM_SUMMARY_LIMIT = 400
+
+#: Per-value cap inside the digest.
+_PARAM_VALUE_LIMIT = 48
+
+#: Parameter NAMES whose value is never written down. ``run_action`` forwards
+#: free-form params, so a token can sit in the request that kills the app.
+_SECRET_KEY_RE = re.compile(
+    r"(?i)(api[_-]?key|token|secret|passw|credential|authori[sz]|cookie|bearer|private[_-]?key)"
+)
+
+#: Values that *look* like a credential, whatever their parameter is called.
+_SECRET_VALUE_RE = re.compile(
+    r"(?i)^(sk-|pk-|ghp_|gho_|ghs_|github_pat_|xox[abp]-|bearer[ =:]|ey[A-Za-z0-9_-]{8,}\.)"
+)
+
+
+def _param_value(value: Any) -> str:
+    """One digest fragment: short scalars verbatim, secrets and shapes masked."""
+    if isinstance(value, str):
+        if _SECRET_VALUE_RE.match(value.strip()):
+            return "<redacted>"
+        shown = (
+            value
+            if len(value) <= _PARAM_VALUE_LIMIT
+            else value[:_PARAM_VALUE_LIMIT] + "…"
+        )
+        return repr(shown)
+    if isinstance(value, dict):
+        return f"{{{len(value)} keys}}"
+    if isinstance(value, (list, tuple, set)):
+        return f"[{len(value)} items]"
+    if isinstance(value, (bool, int, float)) or value is None:
+        return repr(value)
+    return f"<{type(value).__name__}>"
+
+
+def summarize_request_params(params: Any) -> str:
+    r"""A bounded, secret-free digest of one request's params (``k=v, ...``).
+
+    Identifies the request after the fact without echoing what it carried:
+    secret-named parameters become ``<redacted>``, credential-shaped values are
+    masked wherever they appear, strings are truncated, and containers are
+    reduced to their shape. ``mcp-server/app/live.py`` carries the same rule for
+    the request *it* sent (it cannot import this module — stdlib only).
+    """
+    if not isinstance(params, dict) or not params:
+        return ""
+    parts: list[str] = []
+    for key, value in params.items():
+        name = str(key)
+        if _SECRET_KEY_RE.search(name):
+            parts.append(f"{name}=<redacted>")
+        else:
+            parts.append(f"{name}={_param_value(value)}")
+    summary = ", ".join(parts)
+    if len(summary) > _PARAM_SUMMARY_LIMIT:
+        summary = summary[:_PARAM_SUMMARY_LIMIT] + "…"
+    return summary
 
 
 def encode_reply(payload: dict[str, Any]) -> bytes | None:
@@ -161,6 +234,7 @@ class ControlServer:
         # next newline — the named error was already sent for that line.
         self._discarding: set[QLocalSocket] = set()
         self._path: Path | None = None
+        self._note_path: Path | None = None
         self._running = False
 
     # -- state -------------------------------------------------------------
@@ -225,6 +299,10 @@ class ControlServer:
         self._server = server
         self._path = path
         self._running = True
+        # A leftover note belongs to a previous, dead process: clear it so this
+        # instance's death report can never quote someone else's last request.
+        self._note_path = directory / INFLIGHT_NOTE_NAME
+        self._clear_inflight()
         ring = self._log_ring or LogRing()
         self._log_ring = ring
         logging.getLogger(APP_LOGGER_NAME).addHandler(ring)
@@ -274,6 +352,9 @@ class ControlServer:
             discovery.clear_pointer()
         except Exception:
             pass
+        # A clean stop is not a death: nothing should be left to explain.
+        self._clear_inflight()
+        self._note_path = None
         if self._path is not None:
             try:
                 self._path.unlink(missing_ok=True)
@@ -388,6 +469,55 @@ class ControlServer:
 
     # -- request handling --------------------------------------------------
 
+    def _note_inflight(
+        self, *, request_id: Any, method: str, params: dict[str, Any]
+    ) -> None:
+        """Record the request about to run, atomically, next to the pointer.
+
+        Written to a sibling temp file then ``os.replace``-d so a reader never
+        sees a half-written note. Best-effort: a read-only runtime dir must not
+        stop the request from running.
+        """
+        if self._note_path is None:
+            return
+        payload = {
+            "method": method,
+            "summary": summarize_request_params(params),
+            "request_id": request_id
+            if isinstance(request_id, (int, float, str))
+            else None,
+            "pid": os.getpid(),
+            "at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        }
+        tmp = self._note_path.with_name(
+            self._note_path.name + f".tmp.{os.getpid()}"
+        )
+        try:
+            tmp.write_text(json.dumps(payload), encoding="utf-8")
+            os.chmod(tmp, _SOCKET_MODE)
+            os.replace(tmp, self._note_path)
+        except OSError:
+            logger.debug("control channel: could not record the in-flight request")
+        finally:
+            try:
+                tmp.unlink(missing_ok=True)
+            except OSError:
+                pass
+
+    def _clear_inflight(self) -> None:
+        """Drop the in-flight record: the app answered, or is shutting down."""
+        if self._note_path is None:
+            return
+        try:
+            self._note_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+    def _reply(self, socket: QLocalSocket, payload: dict[str, Any]) -> None:
+        """Send one reply, then clear the note (the app survived the request)."""
+        self._send(socket, payload)
+        self._clear_inflight()
+
     def _handle_line(self, socket: QLocalSocket, line: bytes) -> None:
         if not line.strip():
             return  # stray blank line — ignore, never an error
@@ -442,17 +572,21 @@ class ControlServer:
                 },
             )
             return
+        # Record the request before it can die: a handler that takes the process
+        # down (segfault, abort) never reaches the reply below, so this note is
+        # what survives to explain the death to the MCP client.
+        self._note_inflight(request_id=request_id, method=method, params=params)
         try:
             result = self._handlers.handle(method, params)
         except MethodError as exc:
-            self._send(
+            self._reply(
                 socket,
                 {"id": request_id, "ok": False, "error": exc.message, "hint": exc.hint},
             )
             return
         except Exception as exc:
             logger.debug("control channel: handler %s failed", method, exc_info=True)
-            self._send(
+            self._reply(
                 socket,
                 {
                     "id": request_id,
@@ -462,7 +596,7 @@ class ControlServer:
                 },
             )
             return
-        self._send(socket, {"id": request_id, "ok": True, "result": result})
+        self._reply(socket, {"id": request_id, "ok": True, "result": result})
 
     def _send(self, socket: QLocalSocket, payload: dict[str, Any]) -> None:
         request_id = payload.get("id") if isinstance(payload, dict) else None

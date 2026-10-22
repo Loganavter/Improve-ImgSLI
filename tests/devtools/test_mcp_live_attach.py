@@ -18,7 +18,9 @@ from __future__ import annotations
 
 import json
 import os
+import signal
 import socket
+import subprocess
 import sys
 import threading
 import time
@@ -35,6 +37,7 @@ from app.backend import AppBackend  # noqa: E402
 from app.live import (  # noqa: E402
     CONTROL_DIR_ENV,
     CONTROL_SOCKET_NAME,
+    INFLIGHT_NOTE_NAME,
     NOT_SENT,
     READ_RETRY_BUDGET,
     SENT_NO_REPLY,
@@ -44,9 +47,10 @@ from app.live import (  # noqa: E402
     LiveError,
     LiveUnavailable,
     discover_socket,
+    summarize_request_params,
 )
 from app.protocol import MCPProtocol  # noqa: E402
-from app.process_policy import PRESERVED_LOG_NAME  # noqa: E402
+from app.process_policy import PRESERVED_LOG_NAME, process_report  # noqa: E402
 
 #: Handler sentinel: close the connection without answering (transport fault).
 CLOSE = object()
@@ -265,6 +269,24 @@ class FakeControlServer:
         self._thread = threading.Thread(target=self._accept, daemon=True)
         self._thread.start()
         return self
+
+    def die(self) -> None:
+        """Simulate a crashed app: stop accepting and remove the socket node.
+
+        A segfault does not run the app's teardown, so the socket node is left
+        behind only until the kernel closes the fds — from the client's side the
+        connection hits EOF *and* the node stops answering. Closing the listener
+        from the serving thread also makes ``accept`` fail, which ends the
+        accept loop; the current connection is closed by ``_serve`` when the
+        handler returns ``CLOSE``.
+        """
+        if self._server is not None:
+            try:
+                self._server.close()
+            except OSError:
+                pass
+            self._server = None
+        self.path.unlink(missing_ok=True)
 
     def stop(self, *, unlink: bool = True) -> None:
         self._stop.set()
@@ -1627,8 +1649,16 @@ def test_element_tools_round_trip_through_the_backend(live_wired):
     assert ("ui_focus", {"id": "main.settings.btn"}) in server.calls
 
 
-def test_ui_click_transport_fault_errors_honestly(tmp_path, monkeypatch):
-    """A live instance that dies mid-call leaves ``ui_click`` an honest error."""
+def test_ui_click_transport_fault_names_the_request_and_the_broken_channel(
+    tmp_path, monkeypatch
+):
+    """A mid-``ui_click`` drop names the request instead of "no live instance".
+
+    This fake server keeps *listening* (only the one connection is dropped), so
+    the honest verdict here is "the channel broke, the process still answers",
+    and the request that was in flight is named. The death wording is pinned by
+    the ``press_keys`` test, where the socket node goes away too.
+    """
 
     def handler(method, params):
         if method == "ui_click":
@@ -1651,8 +1681,12 @@ def test_ui_click_transport_fault_errors_honestly(tmp_path, monkeypatch):
         result = _call(protocol, "ui_click", {"id": "main.settings.btn"})
         assert result["isError"] is True
         text = result["content"][0]["text"]
-        assert "no live instance" in text
-        assert "element targeting needs a running app" in text
+        assert "ui_click" in text
+        assert "id='main.settings.btn'" in text
+        assert "still answers" in text
+        assert "the app's process is still running" in text
+        assert "no live instance" not in text
+        assert "element targeting needs a running app" not in text
     finally:
         server.stop()
 
@@ -1715,17 +1749,32 @@ def test_backend_falls_back_when_the_socket_refuses(tmp_path, monkeypatch):
     assert calls == [None]
 
 
-def test_press_keys_transport_fault_errors_honestly(tmp_path, monkeypatch):
-    """A live instance that dies mid-call leaves ``press_keys`` an honest error."""
+def test_press_keys_mid_call_death_reports_the_signal_and_last_request(tmp_path, monkeypatch):
+    """A live instance that dies mid-call must report *the death*, not "no live instance".
+
+    The app's control socket closing under a request is the only witness a
+    sibling process has of a crash: the request was sent and the process is
+    gone. Pinned before this test: the backend answered "no live instance;
+    keyboard input needs a running app" — true of a missing app, a lie about a
+    dead one, and silent about the request that was on the wire.
+
+    The fake server drops the connection *and* removes its socket node (what a
+    crashed app leaves behind) and the pointer pid is unallocated, so the report
+    has a process to describe.
+    """
+    holder: dict = {}
 
     def handler(method, params):
         if method == "press_keys":
+            holder["server"].die()  # the crash: connection + socket node go
             return True, CLOSE  # hang up without answering
         return default_handler(method, params)
 
     directory = tmp_path / "run"
-    server = FakeControlServer(directory / CONTROL_SOCKET_NAME, handler).start()
-    _write_pointer(directory, pid=os.getpid(), socket_path=server.path)
+    server = holder["server"] = FakeControlServer(
+        directory / CONTROL_SOCKET_NAME, handler
+    ).start()
+    _write_pointer(directory, pid=_UNALLOCATED_PID, socket_path=server.path)
     monkeypatch.setenv(CONTROL_DIR_ENV, str(directory))
     monkeypatch.delenv(SOCKET_OVERRIDE_ENV, raising=False)
     backend = AppBackend(
@@ -1737,10 +1786,159 @@ def test_press_keys_transport_fault_errors_honestly(tmp_path, monkeypatch):
     protocol = MCPProtocol(backend)
     try:
         result = _call(protocol, "press_keys", {"keys": "ctrl+p"})
-        assert result["isError"] is True
-        assert "keyboard input needs a running app" in result["content"][0]["text"]
     finally:
         server.stop()
+    assert result["isError"] is True
+    text = result["content"][0]["text"]
+    # The death itself, with the request that was in flight ...
+    assert "the app died" in text
+    assert "press_keys" in text
+    assert "keys='ctrl+p'" in text
+    # ... and what can honestly be said about the process: it is gone, and a
+    # sibling cannot reap its exit status/signal.
+    assert "is gone" in text
+    assert "not observable" in text
+    # The old, false half of the message must be gone.
+    assert "keyboard input needs a running app" not in text
+
+
+def test_press_keys_without_an_instance_repeats_the_recorded_death(
+    tmp_path, monkeypatch
+):
+    """A dead app is not a missing one: the app's own in-flight note survives it.
+
+    Nothing listens any more (the socket is gone with the process), so the
+    backend cannot see a mid-call EOF. The app recorded the request it was
+    handling in ``inflight.json``; that note is what turns a bare "no live
+    instance" into "it died while handling press_keys".
+    """
+    directory = tmp_path / "run"
+    directory.mkdir(parents=True)
+    _write_pointer(
+        directory, pid=_UNALLOCATED_PID, socket_path=directory / CONTROL_SOCKET_NAME
+    )
+    # Time the app's own control server stamped into the note it left behind.
+    (directory / INFLIGHT_NOTE_NAME).write_text(
+        json.dumps(
+            {
+                "method": "press_keys",
+                "summary": "keys='ctrl+p'",
+                "request_id": 7,
+                "pid": _UNALLOCATED_PID,
+                "at": "2026-10-21T18:22:03+00:00",
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv(CONTROL_DIR_ENV, str(directory))
+    monkeypatch.delenv(SOCKET_OVERRIDE_ENV, raising=False)
+    backend = AppBackend(
+        REPO_ROOT,
+        artifacts_dir=tmp_path / "artifacts",
+        data_dir=tmp_path / "data",
+        live_backend=LiveBackend(retry_cooldown_s=0.0),
+    )
+    protocol = MCPProtocol(backend)
+    result = _call(protocol, "press_keys", {"keys": "ctrl+p"})
+    assert result["isError"] is True
+    text = result["content"][0]["text"]
+    # The old contract still holds — there is no app to type into ...
+    assert "no live instance" in text
+    assert "keyboard input needs a running app" in text
+    # ... but it now says *why*: the app died inside this request.
+    assert "the app died while handling request 'press_keys'" in text
+    assert "keys='ctrl+p'" in text
+    assert "2026-10-21T18:22:03+00:00" in text
+
+
+def test_death_report_names_the_request_without_echoing_secrets(tmp_path):
+    """The request digest must identify the call and never leak a secret value.
+
+    ``set_setting``/``run_action`` carry free-form values, so a token can sit in
+    the params of the very request that killed the app.
+    """
+    holder: dict = {}
+
+    def handler(method, params):
+        if method == "set_setting":
+            holder["server"].die()
+            return True, CLOSE
+        return default_handler(method, params)
+
+    server = holder["server"] = FakeControlServer(
+        tmp_path / CONTROL_SOCKET_NAME, handler
+    ).start()
+    client = LiveClient(server.path, timeout=0.5)
+    try:
+        with pytest.raises(LiveUnavailable) as excinfo:
+            client.call(
+                "set_setting",
+                {"key": "theme", "value": "sk-or-v1-di0dbeefdi0dbeef"},
+            )
+    finally:
+        client.close()
+        server.stop()
+    message = excinfo.value.message
+    assert server.calls == [("set_setting", {"key": "theme", "value": "sk-or-v1-di0dbeefdi0dbeef"})]
+    assert "set_setting" in message
+    assert "the app died" in message
+    assert "<redacted>" in message
+    assert "di0dbeef" not in message
+    assert "sk-or-v1" not in message
+
+
+def test_request_digest_redacts_secret_names_and_token_shaped_values():
+    """The digest identifies the call without ever echoing what it carried."""
+    summary = summarize_request_params(
+        {
+            "action_id": "image_compare.export",
+            "api_key": "abc123",
+            "token": "def456",
+            "value": "sk-or-v1-di0dbeef",
+            "n": 3,
+            "nested": {"a": 1, "b": 2},
+            "keys": "ctrl+p",
+        }
+    )
+    for secret in ("abc123", "def456", "di0dbeef"):
+        assert secret not in summary
+    assert "<redacted>" in summary
+    assert "action_id='image_compare.export'" in summary
+    assert "keys='ctrl+p'" in summary
+    assert "n=3" in summary
+    assert "nested={2 keys}" in summary
+
+
+@pytest.mark.skipif(not Path("/proc/self/stat").exists(), reason="needs procfs")
+def test_process_report_reads_a_zombies_signal_then_admits_it_is_gone():
+    """A signal is reported when ``/proc`` still has it, and never invented after."""
+    child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
+    try:
+        child.kill()  # SIGKILL: unreaped, so /proc still carries the wait status
+        deadline = time.monotonic() + 5.0
+        report = process_report(child.pid)
+        while report["state"] != "zombie" and time.monotonic() < deadline:
+            time.sleep(0.02)
+            report = process_report(child.pid)
+        assert report["state"] == "zombie"
+        assert report["observable"] is True
+        assert report["signal"] == int(signal.SIGKILL)
+        assert "SIGKILL" in report["detail"]
+    finally:
+        child.wait()
+    # Reaped: a sibling can no longer read the status, and must not guess one.
+    gone = process_report(child.pid)
+    assert gone["state"] == "gone"
+    assert gone["observable"] is False
+    assert gone["signal"] is None
+    assert "not observable" in gone["detail"]
+
+
+def test_process_report_without_a_pid_does_not_guess():
+    report = process_report(None)
+    assert report["state"] == "no-pid"
+    assert report["observable"] is False
+    assert "not observable" in report["detail"]
 
 
 def test_press_keys_live_app_error_keeps_the_apps_hint(tmp_path, monkeypatch):

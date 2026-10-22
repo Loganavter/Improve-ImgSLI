@@ -17,6 +17,12 @@ protocol and proxies the MCP tool surface onto it:
 - **Degrading cleanly** — the app refuses connections from another uid (its own
   SO_PEERCRED check, not ours) and may close the socket at any time; every
   failure surfaces as ``LiveUnavailable`` so the caller falls back to Phase 1.
+- **A death is not an absence** — an EOF *after* the request left this process,
+  with the socket node no longer answering, means the app died under it. That
+  failure carries the request it was handling (a redacted digest — never a
+  secret), the pid and whatever ``/proc`` can still say about it (a zombie's
+  signal; "not observable" when reaped or sandboxed). A timeout keeps its own
+  honest wording: a slow app is not a dead one.
 
 Stdlib only, like the rest of ``mcp-server/app``.
 """
@@ -25,6 +31,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import socket
 import stat
 import sys
@@ -32,7 +39,7 @@ import time
 from pathlib import Path
 from typing import Any, Mapping
 
-from .process_policy import pid_alive
+from .process_policy import pid_alive, process_report
 
 #: Wall-clock budget for one request/response round trip (seconds).
 DEFAULT_TIMEOUT_S = 5.0
@@ -55,6 +62,11 @@ DEFAULT_RETRY_COOLDOWN_S = 2.0
 #: Names inside a control dir (frozen by the app-side implementation).
 CONTROL_SOCKET_NAME = "control.sock"
 INSTANCE_POINTER_NAME = "instance.json"
+#: The app's own record of the request it was handling (``core.control.server``
+#: writes it before the handler runs and removes it once the reply is sent). A
+#: note that outlives the process is where it died; on a clean stop there is
+#: none, so this is the difference between "app died" and "app is not running".
+INFLIGHT_NOTE_NAME = "inflight.json"
 
 #: Explicit overrides, highest priority first.
 SOCKET_OVERRIDE_ENV = "IMGSLI_MCP_CONTROL_SOCKET"
@@ -62,6 +74,21 @@ CONTROL_DIR_ENV = "IMGSLI_CONTROL_DIR"
 
 #: Cap on ignored lines while waiting for our own response id.
 _MAX_SKIPPED_LINES = 100
+
+#: Cap on the request digest echoed in a death report (mirrors the app's note).
+_PARAM_SUMMARY_LIMIT = 400
+_PARAM_VALUE_LIMIT = 48
+
+#: Parameter NAMES whose value is never echoed — the request that kills the app
+#: can carry a token (``run_action`` forwards free-form params).
+_SECRET_KEY_RE = re.compile(
+    r"(?i)(api[_-]?key|token|secret|passw|credential|authori[sz]|cookie|bearer|private[_-]?key)"
+)
+
+#: Values that look like a credential, whatever the parameter is called.
+_SECRET_VALUE_RE = re.compile(
+    r"(?i)^(sk-|pk-|ghp_|gho_|ghs_|github_pat_|xox[abp]-|bearer[ =:]|ey[A-Za-z0-9_-]{8,}\.)"
+)
 
 #: Budget for the liveness probe that runs only when the pointer's pid cannot
 #: be verified. A unix-socket connect returns immediately; the timeout only
@@ -78,7 +105,11 @@ class LiveUnavailable(Exception):
 
     ``sent`` is True only once the request bytes left this process (a failure in
     ``connect``/``send`` is ``not sent``); ``timeout`` marks a read deadline
-    expiry specifically (the reads' one retry is scoped to timeouts).
+    expiry specifically (the reads' one retry is scoped to timeouts); ``died``
+    marks an EOF *after* the send — the app closed the connection instead of
+    answering, which (with the socket node gone) means the process died under
+    the request. ``method``/``request_summary`` name what was in flight and
+    ``process`` is the ``process_report`` the client could read at that moment.
     """
 
     def __init__(
@@ -88,12 +119,22 @@ class LiveUnavailable(Exception):
         *,
         sent: bool = False,
         timeout: bool = False,
+        died: bool = False,
     ) -> None:
         super().__init__(message)
         self.message = message
         self.hint = hint
         self.sent = bool(sent)
         self.timeout = bool(timeout)
+        self.died = bool(died)
+        #: The request that was in flight (filled in by ``LiveClient._call_once``).
+        self.method: str | None = None
+        self.request_summary: str | None = None
+        #: ``process_policy.process_report`` for the app's pid, when it can be read.
+        self.process: dict[str, Any] | None = None
+        #: True when the app demonstrably outlived the connection (it still
+        #: answers its socket, or its pid is alive): the *channel* broke.
+        self.app_alive: bool | None = None
 
 
 class LiveError(Exception):
@@ -115,6 +156,167 @@ def _is_socket(path: Path) -> bool:
         return stat.S_ISSOCK(path.stat().st_mode)
     except OSError:
         return False
+
+
+def _read_pointer(directory: Path) -> dict[str, Any] | None:
+    """The discovery pointer's JSON object, or ``None`` when unusable."""
+    try:
+        data = json.loads(
+            (directory / INSTANCE_POINTER_NAME).read_text(encoding="utf-8")
+        )
+    except (OSError, ValueError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def _pointer_pid(data: Mapping[str, Any] | None) -> int | None:
+    pid = (data or {}).get("pid")
+    if isinstance(pid, int) and not isinstance(pid, bool) and pid > 0:
+        return int(pid)
+    return None
+
+
+def pointer_pid(socket_path: Path | str) -> int | None:
+    """The pid the pointer next to *socket_path* records, or ``None``.
+
+    A hint, never a verdict (see ``_pointer_socket``): it is what lets a death
+    report name the process and ask ``/proc`` what happened to it.
+    """
+    return _pointer_pid(_read_pointer(Path(socket_path).parent))
+
+
+def _read_note(path: Path) -> dict[str, Any] | None:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(data, dict) or not isinstance(data.get("method"), str):
+        return None
+    return data
+
+
+def read_inflight_note(socket_path: Path | str) -> dict[str, Any] | None:
+    """The app's record of the request it was handling, when one is left over.
+
+    Written and cleared by ``core.control.server`` (the name is duplicated here
+    because this package is stdlib-only). Present after a crash, absent after a
+    clean stop or a finished request.
+    """
+    return _read_note(Path(socket_path).parent / INFLIGHT_NOTE_NAME)
+
+
+def _param_value(value: Any) -> str:
+    """One digest fragment: short scalars verbatim, secrets and shapes masked."""
+    if isinstance(value, str):
+        if _SECRET_VALUE_RE.match(value.strip()):
+            return "<redacted>"
+        shown = (
+            value
+            if len(value) <= _PARAM_VALUE_LIMIT
+            else value[:_PARAM_VALUE_LIMIT] + "…"
+        )
+        return repr(shown)
+    if isinstance(value, dict):
+        return f"{{{len(value)} keys}}"
+    if isinstance(value, (list, tuple, set)):
+        return f"[{len(value)} items]"
+    if isinstance(value, (bool, int, float)) or value is None:
+        return repr(value)
+    return f"<{type(value).__name__}>"
+
+
+def summarize_request_params(params: Any) -> str:
+    r"""A bounded, secret-free digest of one request's params (``k=v, ...``).
+
+    The same rule the app applies to its own ``inflight.json`` note
+    (``core.control.server.summarize_request_params`` — this package cannot
+    import it): secret-named parameters become ``<redacted>``,
+    credential-shaped values are masked wherever they appear, strings are
+    truncated and containers are reduced to their shape.
+    """
+    if not isinstance(params, dict) or not params:
+        return ""
+    parts: list[str] = []
+    for key, value in params.items():
+        name = str(key)
+        if _SECRET_KEY_RE.search(name):
+            parts.append(f"{name}=<redacted>")
+        else:
+            parts.append(f"{name}={_param_value(value)}")
+    summary = ", ".join(parts)
+    if len(summary) > _PARAM_SUMMARY_LIMIT:
+        summary = summary[:_PARAM_SUMMARY_LIMIT] + "…"
+    return summary
+
+
+def death_message(
+    *,
+    method: str,
+    summary: str | None,
+    report: Mapping[str, Any],
+    socket_answers: bool,
+    died: bool = True,
+) -> str:
+    """The user-facing sentence for a connection that died under a request.
+
+    Four distinguishable cases, never merged into "no live instance":
+
+    * the socket still answers → the process is running, the *connection* broke;
+    * the pid is still there but the socket does not answer → the channel died,
+      whether the process did is not observable from here;
+    * EOF and the process is gone (or a zombie whose status was readable) →
+      "the app died", plus the signal/exit code when ``/proc`` still had it;
+    * no readable pid → say the exit status is not observable, do not guess.
+    """
+    request = f"request {method!r}"
+    if summary:
+        request += f" ({summary})"
+    detail = str(report.get("detail") or "").strip()
+    state = report.get("state")
+    if socket_answers:
+        return (
+            f"{SENT_NO_REPLY}: the control socket closed while {request} was in "
+            "flight, but the app still answers on it — the process is running and "
+            "the connection was interrupted"
+        )
+    if not died:
+        return (
+            f"{SENT_NO_REPLY}: the control connection failed while {request} was in "
+            "flight; whether the app is still running is not observable from this "
+            "process"
+        )
+    if state == "alive":
+        return (
+            f"{SENT_NO_REPLY}: the control socket closed and no longer answers while "
+            f"{request} was in flight — {detail}"
+        )
+    return f"{SENT_NO_REPLY}: the app died while {request} was in flight — {detail}"
+
+
+def evidence_sentence(evidence: Mapping[str, Any]) -> str:
+    """One sentence about a stopped instance, from its on-disk evidence.
+
+    ``evidence`` is ``LiveBackend.death_evidence()``: the app's own in-flight
+    note (when it died inside a request) and ``process_report`` for its pid. It
+    says "died" only where the evidence supports it — a pid that still exists
+    is reported as a broken channel, not a death.
+    """
+    request = evidence.get("request") or {}
+    report = evidence.get("process") or {}
+    detail = str(report.get("detail") or "").strip()
+    method = request.get("method") if isinstance(request, Mapping) else None
+    if method:
+        text = f"the app died while handling request {method!r}"
+        summary = request.get("summary")
+        if summary:
+            text += f" ({summary})"
+        at = request.get("at")
+        if at:
+            text += f" at {at}"
+        return f"{text} — {detail}" if detail else text
+    if report.get("state") == "alive":
+        return f"the control channel stopped answering — {detail}"
+    return f"the app stopped without a request in flight — {detail}"
 
 
 def _app_data_dir(env: Mapping[str, str]) -> Path:
@@ -181,20 +383,16 @@ def _pointer_socket(directory: Path) -> tuple[Path | None, bool]:
     pointer = directory / INSTANCE_POINTER_NAME
     if not pointer.is_file():
         return None, False
-    try:
-        data = json.loads(pointer.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return None, False
-    if not isinstance(data, dict):
+    data = _read_pointer(directory)
+    if data is None:
         return None, False
     field = data.get("socket")
     if isinstance(field, str) and field.strip():
         candidate = Path(field.strip()).expanduser()
     else:
         candidate = directory / CONTROL_SOCKET_NAME
-    pid = data.get("pid")
-    verifiable_pid = isinstance(pid, int) and not isinstance(pid, bool) and pid > 0
-    if verifiable_pid and not pid_alive(pid) and not _socket_answers(candidate):
+    pid = _pointer_pid(data)
+    if pid is not None and not pid_alive(pid) and not _socket_answers(candidate):
         return None, True
     return candidate, False
 
@@ -252,9 +450,18 @@ class LiveClient:
     back or to surface the app's own error message respectively.
     """
 
-    def __init__(self, socket_path: Path | str, *, timeout: float = DEFAULT_TIMEOUT_S) -> None:
+    def __init__(
+        self,
+        socket_path: Path | str,
+        *,
+        timeout: float = DEFAULT_TIMEOUT_S,
+        pid: int | None = None,
+    ) -> None:
         self.socket_path = Path(socket_path)
         self.timeout = float(timeout)
+        #: The pid the discovery pointer named, if any — a hint for the death
+        #: report, never a verdict (a sandboxed pointer pid may not resolve here).
+        self.pid = pid
         self._sock: socket.socket | None = None
         self._buffer = b""
         self._counter = 0
@@ -310,6 +517,7 @@ class LiveClient:
                     raise LiveUnavailable(
                         f"{SENT_NO_REPLY}: the control socket was closed by the app",
                         sent=True,
+                        died=True,
                     )
                 self._buffer += chunk
                 continue
@@ -372,14 +580,16 @@ class LiveClient:
             raise LiveUnavailable(f"{NOT_SENT}: control socket write failed: {exc}")
         try:
             message = self._read_message(sock, request_id)
-        except LiveUnavailable:
+        except LiveUnavailable as exc:
             self.close()
-            raise
+            raise self._explain_transport(exc, method, params)
         except OSError as exc:
             self.close()
-            raise LiveUnavailable(
-                f"{SENT_NO_REPLY}: control socket {self.socket_path} failed: {exc}", sent=True
+            failure = LiveUnavailable(
+                f"{SENT_NO_REPLY}: control socket {self.socket_path} failed: {exc}",
+                sent=True,
             )
+            raise self._explain_transport(failure, method, params)
         if message.get("ok") is not True:
             raise LiveError(str(message.get("error") or f"{method} failed"), _hint(message))
         result = message.get("result")
@@ -388,6 +598,35 @@ class LiveClient:
         if not isinstance(result, dict):
             raise LiveError(f"{method} returned a non-object result", "report an app-side bug")
         return result
+
+    def _explain_transport(
+        self, exc: LiveUnavailable, method: str, params: dict | None
+    ) -> LiveUnavailable:
+        """Attach *what was in flight* and, for a mid-call drop, the death report.
+
+        Only a failure that left the request on the wire can be a death: a
+        connect/send failure says nothing about the app (it may simply not be
+        running), and a timeout is a slow app, not a dead one — both keep their
+        own wording. For a post-send failure the socket is probed once (a live
+        app that still answers means the *connection* broke, not the process)
+        and ``/proc`` is read for the pid, when the pointer named one.
+        """
+        exc.method = method
+        exc.request_summary = summarize_request_params(params)
+        if not exc.sent or exc.timeout:
+            return exc
+        report = process_report(self.pid)
+        exc.process = report
+        answers = bool(exc.died and _socket_answers(self.socket_path))
+        exc.app_alive = answers or report.get("state") == "alive"
+        exc.message = death_message(
+            method=method,
+            summary=exc.request_summary,
+            report=report,
+            socket_answers=answers,
+            died=exc.died,
+        )
+        return exc
 
     def alive(self) -> bool:
         """True when a live instance answers ``ping`` on this socket."""
@@ -474,7 +713,7 @@ class LiveBackend:
             path = self.socket_path or discover_socket(self._env)
             if path is None:
                 return None
-            candidate = LiveClient(path, timeout=self.timeout)
+            candidate = LiveClient(path, timeout=self.timeout, pid=pointer_pid(path))
             if candidate.alive():
                 self._client = candidate
                 return candidate
@@ -494,6 +733,53 @@ class LiveBackend:
         self.close()
         if self._retry_cooldown_s > 0:
             self._retry_after = time.monotonic() + self._retry_cooldown_s
+
+    # -- after the fact ----------------------------------------------------
+
+    def _control_dirs(self) -> list[Path]:
+        """Control dirs to inspect when there is no socket to ask.
+
+        Mirrors ``discover_socket``'s precedence exactly, so evidence is scoped
+        to the instance the caller is talking about: an explicit socket or
+        control dir wins *alone* (never mixing in another instance's leftovers),
+        otherwise the app's runtime candidates.
+        """
+        if self.socket_path is not None:
+            return [Path(self.socket_path).parent]
+        env = dict(os.environ) if self._env is None else self._env
+        explicit_socket = (env.get(SOCKET_OVERRIDE_ENV) or "").strip()
+        if explicit_socket:
+            return [Path(explicit_socket).expanduser().parent]
+        explicit_dir = (env.get(CONTROL_DIR_ENV) or "").strip()
+        if explicit_dir:
+            return [Path(explicit_dir).expanduser()]
+        return _runtime_candidates(env)
+
+    def death_evidence(self) -> dict[str, Any] | None:
+        """What is on disk about an instance that stopped answering.
+
+        ``None`` when nothing suggests an app was ever there (no pointer, no
+        note): then "no live instance" is the plain truth and the caller keeps
+        its shorter wording. Otherwise the app's own in-flight note (only a
+        crash leaves one) and what ``/proc`` can say about its pid. Read-only —
+        the app clears both artifacts on a clean start/stop.
+        """
+        note: dict[str, Any] | None = None
+        pid: int | None = None
+        for directory in self._control_dirs():
+            if note is None:
+                note = _read_note(directory / INFLIGHT_NOTE_NAME)
+            if pid is None:
+                pid = _pointer_pid(_read_pointer(directory))
+            if note is not None and pid is not None:
+                break
+        if note is None and pid is None:
+            return None
+        if note is not None:
+            note_pid = _pointer_pid(note)
+            if note_pid is not None:
+                pid = note_pid
+        return {"request": note, "pid": pid, "process": process_report(pid)}
 
     def close(self) -> None:
         client, self._client = self._client, None

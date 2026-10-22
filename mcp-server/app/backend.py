@@ -20,6 +20,11 @@ Answering model (documented in ``README.md`` and ``docs/dev/MCP.md``):
 - A transport failure while attached (``LiveUnavailable``) falls back for that
   call and pauses re-attaching briefly (``process_policy``/``live``); an
   app-reported failure (``LiveError``) is surfaced as a ``ToolError`` instead.
+- **A death is reported as a death** — when the request was already on the wire
+  and the app stopped answering, the tool that has no fallback (``press_keys``,
+  the element/scene/job/wait verbs) answers with what happened to the process
+  (a readable signal/exit status, or "not observable") and the request that was
+  in flight; only a genuinely absent instance keeps "no live instance".
 
 Fallback launches go through ``process_policy.launch_env`` — headless unless
 ``IMGSLI_MCP_DISPLAY`` opts in — and reuse a tab's live fallback process rather
@@ -45,7 +50,14 @@ import time
 from pathlib import Path
 from typing import Any, Callable
 
-from .live import LiveBackend, LiveError, LiveUnavailable, action_enabled, action_reason
+from .live import (
+    LiveBackend,
+    LiveError,
+    LiveUnavailable,
+    action_enabled,
+    action_reason,
+    evidence_sentence,
+)
 from .process_policy import (
     PRESERVED_LOG_NAME,
     ProcessRegistry,
@@ -889,17 +901,17 @@ class AppBackend:
         a canvas -- not in the window's focus chain -- receives its own
         zoom/pan shortcuts. There is no headless analogue: without a running
         instance this answers an honest error instead of simulating the keys.
+        An instance that dies *under* the keys is reported as a death (with the
+        request that was in flight), never as a missing instance.
         """
         client = self.live.client_if_alive()
         if client is None:
-            raise self._keys_need_live()
+            raise self._missing_instance(self._keys_need_live())
         try:
             return self.live.press_keys(client=client, keys=keys, target=target)
         except LiveUnavailable as exc:
-            if exc.timeout:
-                raise _edit_may_have_completed(exc)
             self.live.note_failure()
-            raise self._keys_need_live()
+            raise self._transport_error(exc, self._keys_need_live())
         except LiveError as exc:
             raise ToolError(exc.message, exc.hint)
 
@@ -910,6 +922,68 @@ class AppBackend:
             "start the app with the control socket enabled (see docs/dev/MCP.md), then retry",
         )
 
+    # -- transport failures -------------------------------------------------
+
+    def _missing_instance(self, error: ToolError) -> ToolError:
+        """*error*, extended with the app's own death evidence when there is any.
+
+        "No live instance" describes an app that was never started; it is the
+        wrong answer for one that died a second ago. The app records the request
+        it is handling, so a leftover note lets this answer say which happened,
+        and when it happened.
+        """
+        evidence = self.live.death_evidence()
+        if not evidence:
+            return error
+        return ToolError(
+            f"{error.message} — {evidence_sentence(evidence)}", error.hint
+        )
+
+    def _death_error(self, exc: LiveUnavailable) -> ToolError:
+        """A request that died on the wire: name it, and the process if possible.
+
+        The exception already carries the method, the redacted request digest
+        and the process report (``live.LiveClient._explain_transport``). Nothing
+        is retried and nothing is faked: the app may or may not have applied the
+        request before dying, so the hint steers to a re-read.
+        """
+        if exc.app_alive:
+            return ToolError(
+                exc.message,
+                "the app's process is still running — the control channel was "
+                "interrupted; retry once it re-attaches, and re-read state before "
+                "repeating the request",
+            )
+        return ToolError(
+            exc.message,
+            "the app is no longer answering — restart it with the control socket "
+            "enabled (see docs/dev/MCP.md), then re-read state instead of assuming "
+            "the request did nothing",
+        )
+
+    def _transport_error(
+        self, exc: LiveUnavailable, fallback: ToolError, *, mutating: bool = True
+    ) -> ToolError:
+        """Map a live transport failure to the honest answer for this tool.
+
+        Four distinguishable cases (plan P2 kept intact):
+
+        * timeout, mutation → the request was sent and may have landed;
+        * timeout, read → the app is slow; never "no live instance";
+        * sent, then the socket closed → the app died under the request;
+        * not sent → the instance is absent; keep *fallback* (which may name a
+          recorded death from :meth:`_missing_instance`).
+        """
+        if exc.timeout:
+            if mutating:
+                return _edit_may_have_completed(exc)
+            return ToolError(
+                exc.message, "the app did not answer in time; retry once it responds"
+            )
+        if exc.sent:
+            return self._death_error(exc)
+        return self._missing_instance(fallback)
+
     def _live_only(self, proxy: str, error: ToolError, *, mutating: bool = True, **params: Any) -> dict:
         """Proxy a tool with no headless analogue — live-only, never faked.
 
@@ -918,18 +992,17 @@ class AppBackend:
         action; an app-reported failure keeps the app's own message and hint.
         A mutation's ``timeout`` is the exception — the request was on the wire,
         so the edit may have landed and is reported as such (plan P2); a read
-        (``mutating=False``) keeps the plain honest error.
+        (``mutating=False``) keeps the plain honest error. A mid-call death is
+        reported as a death either way (``_transport_error``).
         """
         client = self.live.client_if_alive()
         if client is None:
-            raise error
+            raise self._missing_instance(error)
         try:
             return getattr(self.live, proxy)(client=client, **params)
         except LiveUnavailable as exc:
-            if mutating and exc.timeout:
-                raise _edit_may_have_completed(exc)
             self.live.note_failure()
-            raise error
+            raise self._transport_error(exc, error, mutating=mutating)
         except LiveError as exc:
             raise ToolError(exc.message, exc.hint)
 
@@ -1120,15 +1193,17 @@ class AppBackend:
         interval = self._wait_poll(poll_ms)
         client = self.live.client_if_alive()
         if client is None:
-            raise self._wait_need_live()
+            raise self._missing_instance(self._wait_need_live())
         start = time.monotonic()
         deadline = start + timeout / 1000.0
         while True:
             try:
                 observed, matched, seen = self._wait_observe(client, predicate)
-            except LiveUnavailable:
+            except LiveUnavailable as exc:
                 self.live.note_failure()
-                raise self._wait_need_live()
+                raise self._transport_error(
+                    exc, self._wait_need_live(), mutating=False
+                )
             except LiveError as exc:
                 raise ToolError(exc.message, exc.hint)
             if matched:
