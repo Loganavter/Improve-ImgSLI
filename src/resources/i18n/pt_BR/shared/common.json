@@ -13,6 +13,17 @@
     "switch": {
       "off": "Desligado",
       "on": "Ligado"
+    },
+    "calendar": {
+      "weekday": {
+        "mon": "Seg",
+        "tue": "Ter",
+        "wed": "Qua",
+        "thu": "Qui",
+        "fri": "Sex",
+        "sat": "Sáb",
+        "sun": "Dom"
+      }
     }
   }
 }

@@ -87,7 +87,8 @@
       "select_images": "Select Image(s)",
       "stop": "Stop",
       "trim_to_selection": "Trim to Selection",
-      "undo_ctrlz": "Undo (Ctrl+Z)"
+      "undo_ctrlz": "Undo (Ctrl+Z)",
+      "hold_clear_entire_list": "Hold to clear the whole list"
     },
     "common": {
       "position": {
@@ -106,7 +107,9 @@
       "choose_magnifier_guides_color": "Choose Magnifier Guides Color",
       "edit_current_image_1_name": "Edit Current Image 1 Name",
       "edit_current_image_2_name": "Edit Current Image 2 Name",
-      "include_file_names_in_saved_image": "Include file names in saved image"
+      "include_file_names_in_saved_image": "Include file names in saved image",
+      "psnr": "PSNR",
+      "ssim": "SSIM"
     },
     "label": {
       "border": "Border",
@@ -139,7 +142,12 @@
       "specify_output_directory_and_file_name": "Please specify output directory and file name.",
       "ssim_calculation_done": "SSIM done",
       "ssim_calculation_in_progress": "SSIM calculation...",
-      "ssim_calculation_failed": "SSIM calculation failed"
+      "ssim_calculation_failed": "SSIM calculation failed",
+      "failed_to_save_image": "Failed to save the image",
+      "failed_to_quick_save_image": "Failed to save the image quickly",
+      "error_normalizing_path": "error normalising the path",
+      "error_processing_path": "error processing the path",
+      "invalid_item_type_or_empty_path": "unsupported item type or empty path"
     },
     "settings": {
       "recording_fps": "Recording FPS",

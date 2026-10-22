@@ -87,7 +87,8 @@
       "select_images": "选择图像",
       "stop": "停止",
       "trim_to_selection": "裁剪到选择",
-      "undo_ctrlz": "撤销 (Ctrl+Z)"
+      "undo_ctrlz": "撤销 (Ctrl+Z)",
+      "hold_clear_entire_list": "按住以清空整个列表"
     },
     "common": {
       "position": {
@@ -106,7 +107,9 @@
       "choose_magnifier_guides_color": "选择放大镜引导线颜色",
       "edit_current_image_1_name": "编辑当前图像1名称",
       "edit_current_image_2_name": "编辑当前图像2名称",
-      "include_file_names_in_saved_image": "在保存的图像中包含文件名"
+      "include_file_names_in_saved_image": "在保存的图像中包含文件名",
+      "psnr": "PSNR",
+      "ssim": "SSIM"
     },
     "label": {
       "border": "边框",
@@ -139,7 +142,12 @@
       "specify_output_directory_and_file_name": "请指定输出目录和文件名。",
       "ssim_calculation_done": "SSIM 已完成",
       "ssim_calculation_in_progress": "SSIM 计算中...",
-      "ssim_calculation_failed": "SSIM 计算失败"
+      "ssim_calculation_failed": "SSIM 计算失败",
+      "failed_to_save_image": "无法保存图像",
+      "failed_to_quick_save_image": "无法快速保存图像",
+      "error_normalizing_path": "路径规范化错误",
+      "error_processing_path": "路径处理错误",
+      "invalid_item_type_or_empty_path": "不支持的项目类型或路径为空"
     },
     "settings": {
       "recording_fps": "录制帧率",
