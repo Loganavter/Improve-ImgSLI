@@ -34,6 +34,13 @@ jobs:
         with:
           python-version: "3.13"
 
+      - name: Translation Gate (parity + code keys)
+        # Every locale must carry every key, and every literal tr()/_tr() key in
+        # the app (plus the sibling toolkit, checked out above) must exist in a
+        # catalog. Parity alone once stayed green while a widget asked for a key
+        # no catalog defined (the half-translated switch, 2026-10-22).
+        run: python app/src/devtools/check_translations.py --strict --code-keys
+
       - name: Install System Libraries
         run: |
           sudo apt-get update -y

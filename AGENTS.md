@@ -213,6 +213,9 @@ A local daemon snapshots the working tree every 15 min (`systemd --user *-autopu
 - Do not assume export preview and final export work the same as live canvas. Verify them.
 - Do not move app code into `sli-ui-toolkit` unless it is truly reusable and app-agnostic.
 - Do not add visible user-facing behavior without checking translations and help impact.
+  The check is one command: `python3 src/devtools/check_translations.py --strict --code-keys`
+  (locale parity **and** "every literal `tr()`/`_tr()` key exists in a catalog" — parity alone
+  once stayed green while a widget asked for a key no catalog had).
 - Do not silently remove legacy compatibility imports from the toolkit unless the whole tree is migrated.
 
 ## Comments — keep why, prune restatement, keep them code-true
