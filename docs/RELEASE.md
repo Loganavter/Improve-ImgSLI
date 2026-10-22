@@ -103,3 +103,14 @@ the exact file list: internal-docs
 
 Do **not** rename the app-id or the package inside a release: it resubmits the
 listing, orphans the AUR package and moves user settings.
+
+The logo's master file is `src/resources/icons/blinktable-logo.svg`. Anything
+derived from the mark is regenerated, never hand-edited:
+
+```bash
+rsvg-convert -w 512 -h 512 src/resources/icons/blinktable-logo.svg -o src/resources/icons/icon.png
+cp src/resources/icons/icon.png build/Flatpak-template/icon.png
+# Windows app icon (16-256) from the same PNG (Pillow), then the MIME icons +
+# the .imgsli document icon, which are painted from icon.png:
+QT_QPA_PLATFORM=offscreen python3 build/linux/icons/render_mime_icons.py
+```
