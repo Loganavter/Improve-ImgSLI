@@ -11,7 +11,8 @@
       "up": "Para cima"
     },
     "switch": {
-      "off": "Desligado"
+      "off": "Desligado",
+      "on": "Ligado"
     }
   }
 }
