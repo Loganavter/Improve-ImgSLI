@@ -1,13 +1,122 @@
-"""Chat-completion request payload for the AI client."""
+"""Chat-completion request payload for the AI client.
+
+ONE payload policy (defect B2: a size setting applied to one upload path only):
+:func:`build_request_from_bytes` encodes the wire copy through
+:func:`encode_wire_image` — the single ceiling + mime decision — so every
+producer (per-card analysis, the engine's scorecard producer, the probe) ships
+the same bounded image.
+
+Why the ceiling and the gate (owner 2026-10-22: 40 wheel notches cost 6.6 s idle
+vs 21.4 s during an analysis, 288-514 ms GUI-loop gaps): each card built its
+payload from the FULL-RESOLUTION file (``read_bytes`` → ``b64encode`` →
+``json.dumps``) three times, on a 4-8 thread pool that must also land the
+scroll's thumbnails. The wire copy is capped at the user's VLM edge (default
+``decode_policy.VLM_DEFAULT_MAX_EDGE_PX``); at most
+:data:`DEFAULT_WIRE_ENCODE_SLOTS` builders encode at once.
+"""
 
 from __future__ import annotations
 
 import base64
+import os
+import threading
+from contextlib import contextmanager
 from pathlib import Path
+from typing import NamedTuple
 
 from tabs.image_gallery.services.ask_prompt import language_directive
 
 from .prompt import _ai_debug, attach_measured_context, build_prompt
+
+#: How many payload builders may decode+encode at once. The gallery pool has 4-8
+#: threads (``scheduler._scheduler_thread_count``) and up to
+#: ``controller._AI_VISIBLE_CAP`` = 12 cards queue k draws each: ungated, every
+#: thread sits in a ``b64encode``/``json.dumps`` and a visible thumbnail has
+#: nowhere to run. Two leaves the rest of the pool for scroll decodes.
+DEFAULT_WIRE_ENCODE_SLOTS = 2
+
+#: Env override for the gate width (tests use 1 to make the bound observable).
+WIRE_ENCODE_SLOTS_ENV = "IMGSLI_GALLERY_WIRE_ENCODE_SLOTS"
+
+
+class WireImage(NamedTuple):
+    """One wire copy; ``edge`` = longest edge of the ENCODED image, named in the trace."""
+
+    mime: str
+    data_b64: str
+    edge: int
+    source_bytes: int
+    wire_bytes: int
+
+
+class _WireEncodeGate:
+    """Bounded admission for a payload's decode+encode; ``peak`` is instrumented."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._sem: threading.Semaphore | None = None
+        self._slots = 0
+        self._active = 0
+        self._peak = 0
+
+    def _ensure(self) -> threading.Semaphore:
+        with self._lock:
+            if self._sem is None:
+                self._slots = _configured_wire_slots()
+                self._sem = threading.Semaphore(self._slots)
+            return self._sem
+
+    def reset(self) -> None:
+        """Drop the sized semaphore so the next use re-reads the env knob."""
+        with self._lock:
+            self._sem = None
+            self._slots = 0
+            self._active = 0
+            self._peak = 0
+
+    def stats(self) -> dict:
+        self._ensure()
+        with self._lock:
+            return {"slots": self._slots, "active": self._active, "peak": self._peak}
+
+    @contextmanager
+    def slot(self):
+        sem = self._ensure()
+        sem.acquire()
+        try:
+            with self._lock:
+                self._active += 1
+                if self._active > self._peak:
+                    self._peak = self._active
+            yield
+        finally:
+            with self._lock:
+                self._active = max(0, self._active - 1)
+            sem.release()
+
+
+_WIRE_GATE = _WireEncodeGate()
+
+
+def _configured_wire_slots() -> int:
+    """Gate width from the env knob, defaulting to the declared constant."""
+    raw = os.environ.get(WIRE_ENCODE_SLOTS_ENV)
+    if raw is None or not str(raw).strip():
+        return DEFAULT_WIRE_ENCODE_SLOTS
+    try:
+        return max(1, int(str(raw).strip()))
+    except (TypeError, ValueError):
+        return DEFAULT_WIRE_ENCODE_SLOTS
+
+
+def wire_encode_gate_stats() -> dict:
+    """Gate introspection: ``slots`` / ``active`` / ``peak`` (never raises)."""
+    return _WIRE_GATE.stats()
+
+
+def reset_wire_encode_gate() -> None:
+    """Re-size the gate from the env knob (tests only — not called in app flow)."""
+    _WIRE_GATE.reset()
 
 
 _EXT_TO_MIME = {
@@ -69,6 +178,135 @@ def mime_for_path(image_path) -> str:
     return _EXT_TO_MIME.get(Path(image_path).suffix.lower(), "png")
 
 
+def resolve_wire_max_edge(explicit: int | None = None) -> int:
+    """Longest edge on the wire: ``explicit``, else the user setting.
+
+    The setting is ``vlm_max_edge_px`` (``services/vlm.get_vlm_max_edge``,
+    default ``decode_policy.VLM_DEFAULT_MAX_EDGE_PX``); ``0`` = "send the
+    original bytes" and is honored. Imported lazily: ``vlm`` imports this
+    package, so a module-level import would cycle.
+    """
+    if explicit is not None:
+        try:
+            return max(0, int(explicit))
+        except (TypeError, ValueError):
+            pass
+    try:
+        from tabs.image_gallery.services import vlm
+
+        return max(0, int(vlm.get_vlm_max_edge()))
+    except Exception:
+        from tabs.image_gallery.services.decode_policy import (
+            VLM_DEFAULT_MAX_EDGE_PX,
+        )
+
+        return int(VLM_DEFAULT_MAX_EDGE_PX)
+
+
+def _reencode_within_edge(
+    raw: bytes, mime: str, cap: int, prefer_jpeg: bool
+) -> tuple[bytes | None, str, int]:
+    """``(new_bytes | None, mime, longest_edge)`` for *raw*, bounded by *cap*.
+
+    ``None`` = "keep the original bytes": the image already fits, Pillow could
+    not decode it (fail-open — an exotic format must not fail a request), or the
+    re-encode came out no smaller. Never raises.
+    """
+    try:
+        import io
+
+        from PIL import Image, ImageOps
+
+        with Image.open(io.BytesIO(raw)) as im:
+            try:
+                width, height = im.size
+            except Exception:
+                return (None, mime, 0)
+            edge = max(width, height)
+            if edge <= cap or edge <= 0:
+                return (None, mime, edge)
+            # EXIF first: a re-encode drops the orientation tag, so a rotated
+            # photo would reach the model sideways (the original bytes carried
+            # the tag, which the endpoint honors).
+            out = ImageOps.exif_transpose(im.convert("RGB"))
+            out.thumbnail((cap, cap), Image.LANCZOS)
+            fmt = "JPEG" if (mime == "jpeg" or prefer_jpeg) else "PNG"
+            buf = io.BytesIO()
+            if fmt == "JPEG":
+                out.save(buf, format=fmt, quality=85, optimize=True)
+            else:
+                out.save(buf, format=fmt)
+            data = buf.getvalue()
+            sent_edge = max(out.size)
+    except Exception:
+        return (None, mime, 0)
+    if len(data) >= len(raw):
+        # A small, highly compressed source can re-encode larger: keep the
+        # original bytes rather than ship a bigger payload.
+        return (None, mime, edge)
+    return (data, "jpeg" if fmt == "JPEG" else "png", sent_edge)
+
+
+def encode_wire_image(
+    image_bytes: bytes,
+    mime: str,
+    *,
+    max_edge: int | None = None,
+    prefer_jpeg: bool = True,
+) -> WireImage:
+    """Encode *image_bytes* into the wire copy the model receives.
+
+    THE per-card encoder seam: the ceiling (:func:`resolve_wire_max_edge`), the
+    re-encode and the admission gate live here, so no caller ships
+    full-resolution bytes by building its own payload. ``prefer_jpeg`` is the
+    format of a RE-ENCODED image (a downscaled PNG is still large); a source
+    that already fits the cap goes byte-identical, so the setting means "cap",
+    not "transcode".
+    """
+    raw = bytes(image_bytes or b"")
+    cap = resolve_wire_max_edge(max_edge)
+    wire_bytes = raw
+    wire_mime = str(mime or "png")
+    edge = 0
+    if cap > 0 and raw:
+        with _WIRE_GATE.slot():
+            recoded, recoded_mime, seen_edge = _reencode_within_edge(
+                raw, wire_mime, cap, prefer_jpeg
+            )
+        edge = seen_edge
+        if recoded is not None:
+            wire_bytes, wire_mime = recoded, recoded_mime
+    data = base64.b64encode(wire_bytes).decode("ascii")
+    _ai_debug(
+        "wire image mime=%s edge=%s cap=%d source_bytes=%d wire_bytes=%d b64_chars=%d gate=%s",
+        wire_mime,
+        edge or "unknown",
+        cap,
+        len(raw),
+        len(wire_bytes),
+        len(data),
+        wire_encode_gate_stats(),
+    )
+    return WireImage(
+        mime=wire_mime,
+        data_b64=data,
+        edge=int(edge or 0),
+        source_bytes=len(raw),
+        wire_bytes=len(wire_bytes),
+    )
+
+
+def encode_wire_path(image_path, *, max_edge=None, prefer_jpeg: bool = True) -> WireImage:
+    """Read *image_path* once and encode its wire copy (:func:`encode_wire_image`)."""
+    path = Path(image_path)
+    return encode_wire_image(
+        path.read_bytes(),
+        mime_for_path(path),
+        max_edge=max_edge,
+        prefer_jpeg=prefer_jpeg,
+    )
+
+
 def build_request_from_bytes(
     image_bytes: bytes,
     mime: str,
@@ -84,6 +322,8 @@ def build_request_from_bytes(
     max_tokens: int = 0,
     temperature: float = 0.0,
     seed: int = 0,
+    wire: WireImage | None = None,
+    max_edge: int | None = None,
 ) -> dict:
     """Chat-completion payload for already-read *image_bytes* (no file I/O).
 
@@ -91,9 +331,18 @@ def build_request_from_bytes(
     here, and a producer holding executor-provided bytes calls this directly.
     Two builders would mean two payload policies — the defect this plan removes
     (B2: ``vlm_max_edge_px`` applied to one upload path only).
+
+    ``wire`` is an already-encoded :class:`WireImage` (the k-draw loop encodes
+    ONCE and re-uses it: only the seed differs per draw); without it the bytes
+    are encoded here through the same ceiling and gate.
     """
     raw_bytes = bytes(image_bytes or b"")
-    data = base64.b64encode(raw_bytes).decode("ascii")
+    wire = (
+        wire
+        if wire is not None
+        else encode_wire_image(raw_bytes, mime, max_edge=max_edge)
+    )
+    data = wire.data_b64
     # Local (Algorithms-domain) numbers ride along as CONTEXT only — the AI's
     # own per-axis scorecard is the answer (plan-gallery-ai-backend-owns-quality).
     block = ""
@@ -127,7 +376,9 @@ def build_request_from_bytes(
                     {"type": "text", "text": text},
                     {
                         "type": "image_url",
-                        "image_url": {"url": f"data:image/{mime};base64,{data}"},
+                        "image_url": {
+                            "url": f"data:image/{wire.mime};base64,{data}"
+                        },
                     },
                 ],
             }
@@ -164,7 +415,7 @@ def build_request_from_bytes(
     _ai_debug(
         "build_request model=%s openrouter=%s metrics=%d response_format=json_object "
         "reasoning_exclude=%s provider_routing=%s chain=%s prompt_chars=%d "
-        "image_bytes=%d b64_chars=%d mime=%s effort=%s max_tokens=%s",
+        "image_bytes=%d b64_chars=%d mime=%s wire_edge=%s effort=%s max_tokens=%s",
         model,
         openrouter,
         len(metrics or {}),
@@ -172,9 +423,10 @@ def build_request_from_bytes(
         "provider" in payload,
         payload.get("models"),
         len(text),
-        len(raw_bytes),
+        wire.source_bytes,
         len(data),
-        mime,
+        wire.mime,
+        wire.edge or "unknown",
         resolved_effort,
         payload.get("max_tokens"),
     )
@@ -195,14 +447,37 @@ def build_request(
     max_tokens: int = 0,
     temperature: float = 0.0,
     seed: int = 0,
+    wire: WireImage | None = None,
+    max_edge: int | None = None,
 ) -> dict:
     """Payload for one image on disk — reads it once, then delegates.
 
     Signature and behaviour are unchanged for every existing caller; the file
     read stays here (the caller owns the path) and the payload comes from
     :func:`build_request_from_bytes`, so there is one payload policy.
+
+    ``wire`` (optional) is a wire copy already encoded by the caller — the
+    k-draw loop of ``ai_client.analyze_image_sync`` reads and encodes once and
+    passes it here, so the multi-MB read+b64 is not repeated per draw.
     """
     image_path = Path(image_path)
+    if wire is not None:
+        return build_request_from_bytes(
+            b"",
+            wire.mime,
+            model=model,
+            prompt=prompt,
+            mode=mode,
+            profile=profile,
+            metrics=metrics,
+            openrouter=openrouter,
+            fallback_models=fallback_models,
+            reasoning_effort=reasoning_effort,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            seed=seed,
+            wire=wire,
+        )
     return build_request_from_bytes(
         image_path.read_bytes(),
         mime_for_path(image_path),
@@ -217,4 +492,5 @@ def build_request(
         max_tokens=max_tokens,
         temperature=temperature,
         seed=seed,
+        max_edge=max_edge,
     )

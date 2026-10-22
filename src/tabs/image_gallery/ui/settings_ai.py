@@ -23,8 +23,8 @@ Picking from the combo fills the field; typing stays possible for a model the
 endpoint does not list.
 
 On Apply, a change to the analysis identity (model / base_url / profile /
-effort / mode) offers to re-analyze the existing results — see
-``use_cases/ai_analysis.offer_reanalysis``.
+effort / mode / the judge's run count k) offers to re-analyze the existing
+results — see ``use_cases/ai_analysis.offer_reanalysis``.
 
 Uses QSettings via ``AiSettingsStore`` — no Redux path (8-file cost for a setting
 nothing else needs to react to). Section is ambient (always visible) like other
@@ -56,6 +56,7 @@ from plugins.settings.search import SearchIndex, group
 from tabs.image_gallery.services import ai_models, ai_providers, vlm
 from tabs.image_gallery.services.ai_settings_store import (
     REASONING_EFFORTS,
+    SAMPLE_COUNT_CHOICES,
     VLM_MAX_EDGES,
     AiSettingsStore,
     DEFAULT_BASE_URL,
@@ -71,6 +72,16 @@ _EFFORT_KEYS = (
     "image_gallery.settings.effort_none",
 )
 _EFFORT_FALLBACKS = ("Auto", "Low", "Medium", "High", "None")
+
+#: Draw-count picker: English fallbacks for the choice rows, keyed by the value
+#: the combo stores as its item data (``SAMPLE_COUNT_CHOICES`` owns the order).
+_SAMPLE_COUNT_FALLBACKS = {
+    1: "1 run",
+    2: "2 runs",
+    3: "3 runs",
+    5: "5 runs",
+}
+
 
 #: Named discovery failures → the sentence shown in the discovery combo when
 #: the fetch produced nothing at all. A list that fell back to a cache/curated
@@ -118,7 +129,11 @@ AI_GROUP = group(
     "image_gallery.settings.effort_none",
     "image_gallery.settings.vlm_max_edge",
     "image_gallery.settings.downscale_original",
-    "image_gallery.settings.api_key_warning",
+    "image_gallery.settings.sample_count",
+    "image_gallery.settings.sample_count_1",
+    "image_gallery.settings.sample_count_2",
+    "image_gallery.settings.sample_count_3",
+    "image_gallery.settings.sample_count_5",
 )
 SEARCH = SearchIndex.of(AI_GROUP)
 
@@ -226,16 +241,6 @@ def build(dialog, p):  # type: ignore[no-untyped-def]
         return val if isinstance(val, str) and val and val != key else default
 
     group_widget = settings_group(dialog, AI_GROUP)
-    # Title note inside group
-    warning = settings_caption_label(
-        AI_GROUP.text(dialog, "image_gallery.settings.api_key_warning") if hasattr(AI_GROUP, "text") else "Stored unencrypted on this device.",
-        parent=dialog,
-    )
-    try:
-        warning.setWordWrap(True)
-        # muted color via theme token? Keep default; no setStyleSheet
-    except Exception:
-        pass
 
     # Enable AI checkbox
     dialog.gallery_ai_enabled = CheckBox(
@@ -338,6 +343,7 @@ def build(dialog, p):  # type: ignore[no-untyped-def]
         pass
     key_row.addWidget(key_label)
     key_row.addWidget(dialog.gallery_ai_api_key, 1)
+
 
     # Model: the editable value plus the provider's discovered list beside it.
     model_row = QHBoxLayout()
@@ -466,6 +472,46 @@ def build(dialog, p):  # type: ignore[no-untyped-def]
     edge_row.addWidget(edge_label)
     edge_row.addWidget(dialog.gallery_ai_edge, 1)
 
+    # Judge's run count (k): the number of independent draws merged per card.
+    # Each draw is one more image call, so the multiplier is a visible choice
+    # instead of a hidden default (plan-gallery-ai-judgement P3-D).
+    samples_row = QHBoxLayout()
+    samples_row.setContentsMargins(0, scaled_px(4), 0, scaled_px(4))
+    samples_row.setSpacing(scaled_px(8))
+    samples_label = settings_body_label(
+        AI_GROUP.text(dialog, "image_gallery.settings.sample_count") if hasattr(AI_GROUP, "text") else "Runs per card",
+        parent=dialog,
+    )
+    samples_label.setFixedWidth(scaled_px(150))
+    dialog.gallery_ai_samples_label = samples_label
+    dialog.gallery_ai_samples = ComboBox(dialog)
+    apply_settings_body(dialog.gallery_ai_samples)
+    for _count in SAMPLE_COUNT_CHOICES:
+        _choice_key = f"image_gallery.settings.sample_count_{_count}"
+        try:
+            dialog.gallery_ai_samples.addItem(
+                _tr(_choice_key, _SAMPLE_COUNT_FALLBACKS.get(_count, str(_count))),
+                _count,
+            )
+            AI_GROUP.note_combo_option(dialog.gallery_ai_samples, _choice_key)
+        except Exception:
+            continue
+    _cur_samples = int(getattr(current, "sample_count", 3) or 3)
+    dialog.gallery_ai_samples.setCurrentIndex(
+        SAMPLE_COUNT_CHOICES.index(_cur_samples)
+        if _cur_samples in SAMPLE_COUNT_CHOICES
+        else SAMPLE_COUNT_CHOICES.index(3)
+    )
+    try:
+        AI_GROUP.tag_member(
+            dialog.gallery_ai_samples, "image_gallery.settings.sample_count"
+        )
+    except Exception:
+        pass
+    samples_row.addWidget(samples_label)
+    samples_row.addWidget(dialog.gallery_ai_samples, 1)
+
+
     # One label column for the whole group, sized to the longest translated
     # label — a fixed 150px clipped longer Cyrillic/Portuguese strings.
     try:
@@ -479,6 +525,7 @@ def build(dialog, p):  # type: ignore[no-untyped-def]
             tokens_label,
             effort_label,
             edge_label,
+            samples_label,
         ]
         _need = max(
             QFontMetrics(lbl.font()).horizontalAdvance(lbl.text()) for lbl in _labels
@@ -500,7 +547,7 @@ def build(dialog, p):  # type: ignore[no-untyped-def]
         group_widget.add_widget(builder.row(tokens_row))
         group_widget.add_widget(builder.row(effort_row))
         group_widget.add_widget(builder.row(edge_row))
-        group_widget.add_widget(builder.row(warning))
+        group_widget.add_widget(builder.row(samples_row))
     else:
         group_widget.add_widget(dialog.gallery_ai_enabled)
         # fallback: add layouts via containers
@@ -512,13 +559,13 @@ def build(dialog, p):  # type: ignore[no-untyped-def]
             tokens_row,
             effort_row,
             edge_row,
+            samples_row,
         ):
             from PySide6.QtWidgets import QWidget
 
             w = QWidget()
             w.setLayout(lay)
             group_widget.add_widget(w)
-        group_widget.add_widget(warning)
 
     layout.addWidget(group_widget)
 
@@ -541,6 +588,14 @@ def build(dialog, p):  # type: ignore[no-untyped-def]
         px = VLM_MAX_EDGES[int(index)] if 0 <= int(index) < len(VLM_MAX_EDGES) else 0
         _save_field("vlm_max_edge_px", px)
         vlm.set_vlm_max_edge(px)
+
+    def _save_samples(index):
+        """Persist the draw count (the cost explanation lives in the help page)."""
+        try:
+            k = SAMPLE_COUNT_CHOICES[int(index)]
+        except (IndexError, TypeError, ValueError):
+            k = 3
+        _save_field("sample_count", k)
 
     # Current provider id (kept so the OLD provider's model is remembered when
     # the combo moves: the text field still holds that model at that moment).
@@ -776,6 +831,7 @@ def build(dialog, p):  # type: ignore[no-untyped-def]
             )
         )
         dialog.gallery_ai_edge.currentIndexChanged.connect(_save_vlm_edge)
+        dialog.gallery_ai_samples.currentIndexChanged.connect(_save_samples)
     except Exception:
         pass
 
@@ -825,6 +881,12 @@ def build(dialog, p):  # type: ignore[no-untyped-def]
             effort = _EFFORT_CHOICES[idx] if 0 <= idx < len(_EFFORT_CHOICES) else "auto"
             edge_idx = int(_dialog.gallery_ai_edge.currentIndex())
             edge = VLM_MAX_EDGES[edge_idx] if 0 <= edge_idx < len(VLM_MAX_EDGES) else 0
+            samples_idx = int(_dialog.gallery_ai_samples.currentIndex())
+            samples = (
+                SAMPLE_COUNT_CHOICES[samples_idx]
+                if 0 <= samples_idx < len(SAMPLE_COUNT_CHOICES)
+                else 3
+            )
             return {
                 "enabled": bool(_dialog.gallery_ai_enabled.isChecked()),
                 "provider_id": _selected_provider().id,
@@ -834,6 +896,7 @@ def build(dialog, p):  # type: ignore[no-untyped-def]
                 "ask_max_tokens": tokens,
                 "reasoning_effort": effort,
                 "vlm_max_edge_px": edge,
+                "sample_count": samples,
             }
         except Exception:
             return {}
@@ -855,6 +918,7 @@ def build(dialog, p):  # type: ignore[no-untyped-def]
                     "ask_max_tokens": cur.ask_max_tokens,
                     "reasoning_effort": cur.reasoning_effort,
                     "vlm_max_edge_px": cur.vlm_max_edge_px,
+                    "sample_count": cur.sample_count,
                 }
             except Exception:
                 return {}

@@ -68,7 +68,17 @@ from .prompt import (
 from .request import (
     _EXT_TO_MIME,
     DEFAULT_FALLBACK_MODELS,
+    DEFAULT_WIRE_ENCODE_SLOTS,
+    WIRE_ENCODE_SLOTS_ENV,
+    WireImage,
     build_request,
+    build_request_from_bytes,
+    encode_wire_image,
+    encode_wire_path,
+    mime_for_path,
+    reset_wire_encode_gate,
+    resolve_wire_max_edge,
+    wire_encode_gate_stats,
 )
 from .transport import (
     _RETRY_BASE_DELAY_S,
@@ -155,6 +165,23 @@ def analyze_image_sync(
             int(seed or 0),
         )
     _emit_phase(on_phase, "analyzing")
+    # The wire copy does not depend on the draw (only the seed does): encode it
+    # ONCE for all k draws. Building it per draw meant k full-resolution reads,
+    # k base64 copies and k JSON copies of the same image on a thread the scroll
+    # is waiting for (measured 2026-10-22: 21.4 s vs 6.6 s idle for 40 notches).
+    try:
+        wire = encode_wire_path(image_path)
+        _ai_debug(
+            "analyze wire ready path=%s mime=%s edge=%d source_bytes=%d wire_bytes=%d",
+            image_path,
+            wire.mime,
+            wire.edge,
+            wire.source_bytes,
+            wire.wire_bytes,
+        )
+    except Exception:
+        # Fail-open: a read/encode problem is the transport's error to report.
+        wire = None
     results: list[AiAnalysisResult] = []
     for draw in range(draws):
         payload = build_request(
@@ -169,6 +196,7 @@ def analyze_image_sync(
             max_tokens=max_tokens,
             temperature=heat,
             seed=(int(seed) + draw) if seed else 0,
+            wire=wire,
         )
         _emit_phase(on_phase, "waiting")
         raw = call_sync(base_url, api_key, payload)

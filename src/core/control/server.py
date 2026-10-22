@@ -18,6 +18,15 @@ Invariants this class enforces:
 * an unknown method yields an error + hint and the connection survives;
 * a foreign-uid peer is closed before a byte is read (``SO_PEERCRED``);
 * every handler is wrapped so a raise becomes an error envelope, never a crash;
+* a handler that hangs inside a nested event loop (the app's own modal dialog)
+  is answered **on the channel's own initiative** once it overruns
+  ``MODAL_ACK_BUDGET_MS``; the handler's late result is then dropped, so one
+  request never produces two frames (see ``modal_ack.arm_early_answer``);
+* the request being handled is recorded in ``inflight.json`` before the handler
+  runs and the record is removed once the reply is sent (or, for a request the
+  watchdog answered early, once the handler finally returns — the app is still
+  busy with it) — a record left behind by a dead process is the only evidence a
+  sibling has of *what* it died doing;
 * the discovery pointer is written only after a successful ``listen()`` and is
   cleared (with the socket) on ``stop()``.
 
@@ -45,7 +54,6 @@ from __future__ import annotations
 import json
 import logging
 import os
-from collections import deque
 from pathlib import Path
 from typing import Any, Callable
 
@@ -53,82 +61,26 @@ from PySide6.QtNetwork import QLocalServer, QLocalSocket
 
 from . import discovery
 from .discovery import MethodError
+from .frames import (  # noqa: F401 — re-exported for the tests/MCP docs
+    MAX_REPLY_BYTES,
+    MAX_REQUEST_LINE_BYTES,
+    _reply_error_frame,
+    encode_reply,
+    send_frame,
+)
+from .inflight import (  # noqa: F401 — re-exported for the tests/MCP docs
+    INFLIGHT_NOTE_NAME,
+    clear_inflight,
+    note_inflight,
+    summarize_request_params,
+)
+from .log_ring import APP_LOGGER_NAME, LogRing  # noqa: F401 — re-exported for the tests
+from .modal_ack import MODAL_ACK_BUDGET_MS, arm_early_answer, report_late_failure
 
 logger = logging.getLogger("ImproveImgSLI")
 
-#: Logger whose records the live ``read_log`` ring captures.
-APP_LOGGER_NAME = "ImproveImgSLI"
-
 #: Owner-only mode for the socket file (matches the pointer).
 _SOCKET_MODE = 0o600
-
-#: Bounded size of the live log ring (records kept for ``read_log``).
-_LOG_RING_CAPACITY = 2000
-
-#: Hard cap on one request line (1 MiB). A larger line is refused by name
-#: (``"request line too large"``) instead of being buffered/truncated silently.
-MAX_REQUEST_LINE_BYTES = 1024 * 1024
-
-#: Sanity cap on one serialized reply (8 MiB). A bigger (or unserialisable)
-#: result is reported as an error frame, never emitted as a broken frame.
-MAX_REPLY_BYTES = 8 * 1024 * 1024
-
-
-def encode_reply(payload: dict[str, Any]) -> bytes | None:
-    """Serialize one reply into a newline-terminated frame, or ``None``.
-
-    ``None`` means the payload cannot be framed — either it is not
-    JSON-serialisable (e.g. a circular structure, which ``json.dumps`` raises
-    on) or it exceeds ``MAX_REPLY_BYTES``. The caller then sends a named error
-    frame instead of writing a broken/truncated frame that would desync the
-    client's line reader.
-    """
-    try:
-        blob = json.dumps(payload, ensure_ascii=False, default=str).encode("utf-8")
-    except Exception:
-        return None
-    if len(blob) > MAX_REPLY_BYTES:
-        return None
-    return blob + b"\n"
-
-
-def _reply_error_frame(request_id: Any) -> bytes:
-    """The fallback frame written when ``encode_reply`` refuses a payload."""
-    payload = {
-        "id": request_id,
-        "ok": False,
-        "error": "reply could not be framed",
-        "hint": (
-            f"the result was not JSON-serialisable or exceeded {MAX_REPLY_BYTES} "
-            "bytes; check the app log via read_log"
-        ),
-    }
-    return json.dumps(payload, ensure_ascii=False).encode("utf-8") + b"\n"
-
-class LogRing(logging.Handler):
-    """Bounded in-process capture of the app logger.
-
-    ``log.txt`` is truncated by ``setup_logging`` on every start, so it cannot
-    answer "what happened in the *running* process". This handler keeps the
-    newest records in memory instead; the server attaches it to the app logger
-    (``APP_LOGGER_NAME``) on start and detaches on stop.
-    """
-
-    def __init__(self, capacity: int = _LOG_RING_CAPACITY) -> None:
-        super().__init__(level=logging.DEBUG)
-        self._entries: deque[tuple[str, str]] = deque(maxlen=capacity)
-        self.setFormatter(
-            logging.Formatter("%(asctime)s - [%(levelname)s] - %(message)s")
-        )
-
-    def emit(self, record: logging.LogRecord) -> None:
-        try:
-            self._entries.append((record.levelname, self.format(record)))
-        except Exception:  # never let logging kill the app
-            pass
-
-    def entries(self) -> list[tuple[str, str]]:
-        return list(self._entries)
 
 
 class ControlServer:
@@ -161,7 +113,14 @@ class ControlServer:
         # next newline — the named error was already sent for that line.
         self._discarding: set[QLocalSocket] = set()
         self._path: Path | None = None
+        self._note_path: Path | None = None
         self._running = False
+        #: How long a handler may run before the channel answers on its behalf
+        #: (see ``MODAL_ACK_BUDGET_MS``). Tests shorten it.
+        self._ack_budget_ms = MODAL_ACK_BUDGET_MS
+        #: Bumped per recorded request so a late finisher cannot erase a newer
+        #: request's in-flight note (see ``_note_inflight``/``_clear_inflight``).
+        self._note_token = 0
 
     # -- state -------------------------------------------------------------
 
@@ -225,6 +184,10 @@ class ControlServer:
         self._server = server
         self._path = path
         self._running = True
+        # A leftover note belongs to a previous, dead process: clear it so this
+        # instance's death report can never quote someone else's last request.
+        self._note_path = directory / INFLIGHT_NOTE_NAME
+        self._clear_inflight()
         ring = self._log_ring or LogRing()
         self._log_ring = ring
         logging.getLogger(APP_LOGGER_NAME).addHandler(ring)
@@ -274,6 +237,9 @@ class ControlServer:
             discovery.clear_pointer()
         except Exception:
             pass
+        # A clean stop is not a death: nothing should be left to explain.
+        self._clear_inflight()
+        self._note_path = None
         if self._path is not None:
             try:
                 self._path.unlink(missing_ok=True)
@@ -360,7 +326,7 @@ class ControlServer:
 
     def _refuse_oversized_line(self, socket: QLocalSocket) -> None:
         """Named refusal for a request line over ``MAX_REQUEST_LINE_BYTES``."""
-        self._send(
+        send_frame(self,
             socket,
             {
                 "id": None,
@@ -388,13 +354,47 @@ class ControlServer:
 
     # -- request handling --------------------------------------------------
 
+    def _note_inflight(
+        self, *, request_id: Any, method: str, params: dict[str, Any]
+    ) -> int | None:
+        """Record the request about to run, atomically, next to the pointer.
+
+        Returns this request's token — the note is one slot and a handler parked
+        in a modal loop still re-enters the server, so only the token owner may
+        clear it (``_clear_inflight``); a late finisher must not erase a newer
+        record. The write itself lives in ``core.control.inflight``.
+        """
+        if self._note_path is None:
+            return None
+        self._note_token += 1
+        note_inflight(
+            self._note_path, method=method, request_id=request_id, params=params
+        )
+        return self._note_token
+
+    def _clear_inflight(self, token: int | None = None) -> None:
+        """Drop the in-flight record: the app answered, or is shutting down.
+
+        ``token`` (from :meth:`_note_inflight`) makes the clear conditional: a
+        request that finishes after a nested one took the note over must leave
+        that newer record alone — it may be all that explains a death.
+        """
+        clear_inflight(self._note_path, token=token, current_token=self._note_token)
+
+
+    def _reply(self, socket: QLocalSocket, payload: dict[str, Any]) -> None:
+        """Send one reply, then clear the note (the app survived the request)."""
+        send_frame(self, socket, payload)
+        self._clear_inflight()
+
+
     def _handle_line(self, socket: QLocalSocket, line: bytes) -> None:
         if not line.strip():
             return  # stray blank line — ignore, never an error
         try:
             request = json.loads(line.decode("utf-8"))
         except Exception:
-            self._send(
+            send_frame(self,
                 socket,
                 {
                     "id": None,
@@ -405,7 +405,7 @@ class ControlServer:
             )
             return
         if not isinstance(request, dict):
-            self._send(
+            send_frame(self,
                 socket,
                 {
                     "id": None,
@@ -421,7 +421,7 @@ class ControlServer:
         if not isinstance(params, dict):
             params = {}
         if not isinstance(method, str) or not method:
-            self._send(
+            send_frame(self,
                 socket,
                 {
                     "id": request_id,
@@ -432,7 +432,7 @@ class ControlServer:
             )
             return
         if self._handlers is None:
-            self._send(
+            send_frame(self,
                 socket,
                 {
                     "id": request_id,
@@ -442,35 +442,55 @@ class ControlServer:
                 },
             )
             return
+        # Record the request before it can die: a handler that takes the process
+        # down (segfault, abort) never reaches the reply below, so this note is
+        # what survives to explain the death to the MCP client.
+        note = self._note_inflight(request_id=request_id, method=method, params=params)
+        timer, answer = arm_early_answer(self, socket, request_id, method)
         try:
-            result = self._handlers.handle(method, params)
-        except MethodError as exc:
-            self._send(
-                socket,
-                {"id": request_id, "ok": False, "error": exc.message, "hint": exc.hint},
+            try:
+                result = self._handlers.handle(method, params)
+            except MethodError as exc:
+                if answer["answered"]:
+                    report_late_failure(self, method, exc, note)
+                    return
+                self._reply(
+                    socket,
+                    {
+                        "id": request_id,
+                        "ok": False,
+                        "error": exc.message,
+                        "hint": exc.hint,
+                    },
+                )
+                return
+            except Exception as exc:
+                if answer["answered"]:
+                    report_late_failure(self, method, exc, note)
+                    return
+                logger.debug("control channel: handler %s failed", method, exc_info=True)
+                self._reply(
+                    socket,
+                    {
+                        "id": request_id,
+                        "ok": False,
+                        "error": f"{type(exc).__name__}: {exc}",
+                        "hint": "unexpected failure; check the app log via read_log",
+                    },
+                )
+                return
+        finally:
+            # No event is processed between the handler returning and the reply
+            # below, so a stopped watchdog can never race that frame.
+            timer.stop()
+        if answer["answered"]:
+            # Already answered while the handler was parked in a modal loop: the
+            # one-frame-per-request rule wins over reporting the real result.
+            self._clear_inflight(note)
+            logger.debug(
+                "control channel: %s returned after its early answer — result dropped",
+                method,
             )
             return
-        except Exception as exc:
-            logger.debug("control channel: handler %s failed", method, exc_info=True)
-            self._send(
-                socket,
-                {
-                    "id": request_id,
-                    "ok": False,
-                    "error": f"{type(exc).__name__}: {exc}",
-                    "hint": "unexpected failure; check the app log via read_log",
-                },
-            )
-            return
-        self._send(socket, {"id": request_id, "ok": True, "result": result})
+        self._reply(socket, {"id": request_id, "ok": True, "result": result})
 
-    def _send(self, socket: QLocalSocket, payload: dict[str, Any]) -> None:
-        request_id = payload.get("id") if isinstance(payload, dict) else None
-        frame = encode_reply(payload) if isinstance(payload, dict) else None
-        if frame is None:
-            frame = _reply_error_frame(request_id)
-        try:
-            socket.write(frame)
-            socket.flush()
-        except Exception:
-            self._drop_client(socket)

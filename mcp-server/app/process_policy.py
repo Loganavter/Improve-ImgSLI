@@ -21,6 +21,11 @@ documented defects this module fixes:
 Also hosts ``ProcessRegistry``: ``open_tab`` for a tab that already has a live
 process must reuse it rather than spawn a second window.
 
+``pid_alive`` answers "may the process still exist"; ``process_report`` answers
+"what happened to it", which is what a failed control call must say: ``/proc``
+can still expose a zombie's exit status/signal, and when it cannot the report
+says so instead of inventing one.
+
 Stdlib only, like the rest of ``mcp-server/app``.
 """
 
@@ -28,7 +33,9 @@ from __future__ import annotations
 
 import os
 import shutil
+import signal
 from pathlib import Path
+from typing import Any
 
 #: Explicit opt-in for a visible fallback window: the display to open it on.
 DISPLAY_OPT_IN_ENV = "IMGSLI_MCP_DISPLAY"
@@ -89,6 +96,122 @@ def pid_alive(pid: int | None) -> bool:
     except OSError:
         return False
     return True
+
+
+def _proc_stat_fields(pid: int) -> list[str] | None:
+    """``/proc/<pid>/stat`` fields after the comm field, or ``None``.
+
+    ``comm`` may contain spaces and parentheses, so the split starts after the
+    last ``)``; index 0 is then the state letter (field 3).
+    """
+    try:
+        raw = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    _head, _sep, rest = raw.rpartition(")")
+    fields = rest.split()
+    return fields or None
+
+
+def _decode_wait_status(code: int) -> tuple[int | None, int | None]:
+    """``(signal, exit_code)`` from a wait-status-shaped ``exit_code``.
+
+    Same encoding as ``waitpid``: a non-zero low 7 bits are the signal, else the
+    upper byte is the exit code.
+    """
+    low = code & 0x7F
+    if low and low != 0x7F:
+        return low, None
+    return None, (code >> 8) & 0xFF
+
+
+def _signal_name(number: int | None) -> str | None:
+    if number is None:
+        return None
+    try:
+        return signal.Signals(number).name
+    except ValueError:  # pragma: no cover - realtime signal, no name
+        return None
+
+
+def process_report(pid: int | None) -> dict[str, Any]:
+    """What this process can *honestly* say about *pid* after a connection died.
+
+    A sibling is not the app's parent: it cannot ``waitpid`` an exit status, and
+    a crashed app is usually reaped long before anyone looks. What is left is
+    ``/proc`` — a zombie still carries its wait status (signal + exit code), a
+    reaped one is simply gone, and a sandboxed pid from another namespace does
+    not resolve at all. The report says which of those happened and never
+    guesses a signal it could not read.
+
+    Keys: ``pid``, ``state`` (``no-pid`` | ``alive`` | ``zombie`` | ``gone`` |
+    ``unobservable``), ``signal``, ``exit_code``, ``observable`` and a
+    one-sentence ``detail`` for the user-facing message.
+    """
+    report: dict[str, Any] = {
+        "pid": pid,
+        "state": "no-pid",
+        "signal": None,
+        "exit_code": None,
+        "observable": False,
+        "detail": (
+            "the app's pid is not recorded in the discovery pointer (a sandboxed "
+            "or detached instance), so its exit status is not observable"
+        ),
+    }
+    try:
+        candidate = int(pid)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return report
+    if candidate <= 0:
+        return report
+    report["pid"] = candidate
+
+    fields = _proc_stat_fields(candidate)
+    if fields is None:
+        if pid_alive(candidate):
+            report["state"] = "unobservable"
+            report["detail"] = (
+                f"pid {candidate} exists but could not be inspected (/proc is "
+                "unavailable or permission denied), so its exit status is not "
+                "observable from this process"
+            )
+        else:
+            report["state"] = "gone"
+            report["detail"] = (
+                f"pid {candidate} is gone; its exit status and signal are not "
+                "observable from this process (only the app's parent can reap them)"
+            )
+        return report
+
+    state = fields[0]
+    if state != "Z":
+        report["state"] = "alive"
+        report["detail"] = (
+            f"pid {candidate} still exists (state {state}); the process itself "
+            "has not exited"
+        )
+        return report
+
+    report["state"] = "zombie"
+    try:
+        code = int(fields[49])  # field 52: exit_code, wait-status shaped
+    except (IndexError, ValueError):
+        report["detail"] = (
+            f"pid {candidate} is a zombie; its exit status could not be read"
+        )
+        return report
+    number, exit_code = _decode_wait_status(code)
+    report["signal"] = number
+    report["exit_code"] = exit_code
+    report["observable"] = number is not None or exit_code is not None
+    if number is not None:
+        name = _signal_name(number)
+        label = f"{name} (signal {number})" if name else f"signal {number}"
+        report["detail"] = f"pid {candidate} exited via {label}"
+    else:
+        report["detail"] = f"pid {candidate} exited with status {exit_code}"
+    return report
 
 
 class ProcessRegistry:

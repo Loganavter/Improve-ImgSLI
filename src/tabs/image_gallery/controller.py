@@ -1128,9 +1128,13 @@ class GalleryController:
                 nxt += 1
         # WHY fusion did / did not rewrite the ranks (the switch-back path is
         # otherwise invisible): groups, members, locked (user/AI-owned) and the
-        # fusion source it produced. Same IMGSLI_AI_DEBUG key as the rest.
+        # fusion source it produced. Same IMGSLI_AI_DEBUG key as the rest. The
+        # domain is read through the DECLARED accessor
+        # (``action_context.current_backend``), never a bare field read — G2
+        # pins domain reads to that one validated site.
         try:
             from tabs.image_gallery.services.ai_client import _ai_debug
+            from tabs.image_gallery.use_cases.action_context import current_backend
 
             _ai_debug(
                 "fusion ranks: groups=%d members=%d locked=%d domain=%s profile=%s",
@@ -1142,7 +1146,7 @@ class GalleryController:
                     for m in (members_of(g) or ())
                     if _locked(m)
                 ),
-                getattr(self, "_judgment_domain", "?"),
+                current_backend(self),
                 getattr(getattr(self.state, "metric_profile", None), "source", None),
             )
         except Exception:
@@ -2650,10 +2654,10 @@ class GalleryController:
 
         return _proxy_pass._start_proxy_analysis(self, items, source_path, mode, on_done=on_done)
 
-    def _on_proxy_batch_ready(self, result: object, gen: int | None, wanted: object = None) -> None:
+    def _on_proxy_batch_ready(self, result: object, gen: int | None, wanted: object = None, *, source=None, include_camera: bool | None = None, full_res_artifacts: bool = False) -> None:
         from tabs.image_gallery.use_cases import proxy_pass as _proxy_pass
 
-        return _proxy_pass._on_proxy_batch_ready(self, result, gen, wanted)
+        return _proxy_pass._on_proxy_batch_ready(self, result, gen, wanted, source=source, include_camera=include_camera, full_res_artifacts=full_res_artifacts)
 
     def _on_triage_ready(self, result: object, gen: int | None = None, sgen: int | None = None) -> None:
         from tabs.image_gallery.use_cases import proxy_pass as _proxy_pass

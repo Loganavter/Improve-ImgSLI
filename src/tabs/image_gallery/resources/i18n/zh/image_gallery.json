@@ -70,7 +70,11 @@
       "effort_none": "无",
       "vlm_max_edge": "图片缩小（最长边）",
       "downscale_original": "原图",
-      "api_key_warning": "以明文形式存储在本设备上。",
+      "sample_count": "每张卡片的运行次数",
+      "sample_count_1": "1 次",
+      "sample_count_2": "2 次",
+      "sample_count_3": "3 次",
+      "sample_count_5": "5 次",
       "api_key_placeholder": "sk-…",
       "model_placeholder": "openrouter/auto 或 vendor/model",
       "tokens_placeholder": "自动"

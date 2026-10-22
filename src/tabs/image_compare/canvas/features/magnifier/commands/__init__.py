@@ -36,6 +36,7 @@ from tabs.image_compare.canvas.features.magnifier.commands.settings import (
     settings_set_optimize_movement,
 )
 from tabs.image_compare.canvas.features.magnifier.commands.viewport import (
+    magnifier_scene_graph,
     viewport_add_instance,
     viewport_ensure_active,
     viewport_move_active_position,
@@ -56,6 +57,7 @@ from tabs.image_compare.canvas.features.magnifier.commands.viewport import (
     viewport_set_all_freeze,
     viewport_set_instance_visibility,
     viewport_set_internal_split,
+    viewport_refresh_magnifier_scene,
     viewport_toggle_enabled,
 )
 from tabs.image_compare.canvas.features.magnifier.persistence import (
@@ -138,6 +140,16 @@ def build_magnifier_commands(render_canvas_payload) -> dict[str, Any]:
             settings, color
         ),
         "render.canvas_payload": render_canvas_payload,
+        # The cached scene graph, as capabilities: a scene command verified
+        # inside ONE call asks whether a usable graph exists and rebuilds it
+        # through this feature's own builder (the two S2 callers live in
+        # ``devtools/canvas_scene/commands.py`` and reach them by alias, never by
+        # importing the feature). ``canvas`` is the widget — the same
+        # ``(store, canvas)`` shape as ``apply_live_runtime_overlay``.
+        "query.scene_graph": lambda _store, canvas: magnifier_scene_graph(canvas),
+        "runtime.refresh_scene_graph": lambda store, canvas: viewport_refresh_magnifier_scene(
+            store, canvas
+        ),
         "render.drawing_coords": build_magnifier_drawing_coords,
         "render.layout_requirement": lambda store, *, drawing_width, drawing_height: compute_magnifier_layout_requirement(
             store,

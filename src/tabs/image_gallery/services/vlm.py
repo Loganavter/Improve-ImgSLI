@@ -46,15 +46,9 @@ COMPARE_BRIEF_PROMPT_TEMPLATE = (
     "TAGS: <comma-separated tags>"
 )
 
-_EXT_TO_MIME = {
-    ".png": "png",
-    ".jpg": "jpeg",
-    ".jpeg": "jpeg",
-    ".bmp": "bmp",
-    ".tiff": "tiff",
-    ".tif": "tiff",
-    ".webp": "webp",
-}
+#: Content types come from the ONE table (``ai_client.request.mime_for_path``):
+#: this module encodes through the shared encoder, so it keeps no suffix rule of
+#: its own (the drift this module used to have was defect B2).
 
 
 # API payload budget: full-resolution images are never uploaded by default. The
@@ -94,45 +88,29 @@ def _encode_image(
 ) -> tuple[str, str]:
     """Encode one image for an upload; ``max_edge=None`` obeys the user setting.
 
+    Delegates to ``ai_client.request.encode_wire_image`` — the ONE encoder (the
+    ceiling, the mime rule and the admission gate live there), so this path and
+    the per-card payload cannot drift (defect B2).
+
     ``prefer_jpeg`` exists for the PROFILE SELECTOR: its probe asks a coarse
     question ("which axes separate these variants?"), so a full-resolution PNG
     is pure cost — the owner's log showed an 11.3 MB probe request and a 6.9 s
     round trip before any per-card analysis started (2026-10-22). The per-card
     analysis keeps the user's setting and mime.
     """
+    from tabs.image_gallery.services.ai_client.request import (
+        encode_wire_image,
+        mime_for_path,
+    )
+
     p = Path(path)
-    mime = _EXT_TO_MIME.get(p.suffix.lower(), "png")
-    try:
-        raw = p.read_bytes()
-    except OSError:
-        raise
+    raw = p.read_bytes()
     edge_setting = get_vlm_max_edge()
-    max_edge = edge_setting if max_edge is None else int(max_edge)
-    try:
-        if max_edge > 0:
-            from PIL import Image
-
-            import io
-
-            with Image.open(p) as im:
-                w, h = im.size
-                edge = max(w, h)
-                if edge > max_edge and edge > 0:
-                    im = im.convert("RGB")
-                    im.thumbnail((max_edge, max_edge), Image.LANCZOS)
-                    buf = io.BytesIO()
-                    fmt = "JPEG" if (mime == "jpeg" or prefer_jpeg) else "PNG"
-                    if fmt == "JPEG":
-                        im.save(buf, format=fmt, quality=85, optimize=True)
-                    else:
-                        im.save(buf, format=fmt)
-                    raw = buf.getvalue()
-                    mime = "jpeg" if fmt == "JPEG" else "png"
-    except Exception:
-        # Fail-open: send original bytes (any PIL/import/decode problem).
-        pass
-    data = base64.b64encode(raw).decode("ascii")
-    return mime, data
+    cap = edge_setting if max_edge is None else int(max_edge)
+    wire = encode_wire_image(
+        raw, mime_for_path(p), max_edge=cap, prefer_jpeg=prefer_jpeg
+    )
+    return wire.mime, wire.data_b64
 
 
 def encode_region(path, box) -> tuple[str, str] | None:

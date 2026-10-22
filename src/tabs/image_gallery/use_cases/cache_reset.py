@@ -292,6 +292,25 @@ def clear_metrics_caches(owner, *, paths=None) -> dict:
                 summary[key] = int(clear_all())
         except Exception:
             logger.debug("metrics reset: %s clear failed", key, exc_info=True)
+    # The LOCAL Stage-2 result is a measurement cache too: left on disk, the
+    # next triage hydrates it straight back and the reset looks like a no-op
+    # (the exact failure the AI-scorecard clear above exists to prevent).
+    # Deliberately no ``summary`` key: ``test_metrics_cache_reset`` asserts the
+    # summary dict EXACTLY, and the count is diagnostic, not an API.
+    try:
+        from tabs.image_gallery.services import metrics_cache as _metrics_cache
+
+        if paths is None:
+            dropped = int(_metrics_cache.clear_all())
+        else:
+            dropped = sum(
+                1
+                for it in targets
+                if _metrics_cache.clear_local_metrics(it.path, it.mtime_ns)
+            )
+        logger.debug("metrics reset: local metrics entries dropped=%d", dropped)
+    except Exception:
+        logger.debug("metrics reset: local metrics clear failed", exc_info=True)
     # The selection profile's generation markers: a reset re-opens the selector
     # for the SAME folder generation (the frozen/consumed guard would otherwise
     # suppress it after the first run).
