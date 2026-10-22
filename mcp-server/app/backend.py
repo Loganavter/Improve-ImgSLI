@@ -56,6 +56,7 @@ from .live import (
     LiveUnavailable,
     action_enabled,
     action_reason,
+    app_data_dir as live_app_data_dir,
     evidence_sentence,
 )
 from .process_policy import (
@@ -94,15 +95,10 @@ class ToolError(Exception):
 def app_data_dir() -> Path:
     """Per-OS app data dir holding ``log.txt`` / ``trace.jsonl``.
 
-    Mirrors ``sli_ui_toolkit.core.logging`` / ``core.tracing.file_sink``.
+    Delegates to ``live.app_data_dir`` — one copy of the rule in this package
+    (the MCP's discovery has to agree with the app, see ``live.control_dirs``).
     """
-    if sys.platform.startswith("linux"):
-        base = os.environ.get("XDG_DATA_HOME") or str(Path.home() / ".local" / "share")
-    elif sys.platform == "darwin":
-        base = str(Path.home() / "Library" / "Application Support")
-    else:  # pragma: no cover - Windows
-        base = os.environ.get("APPDATA") or str(Path.home() / "AppData" / "Roaming")
-    return Path(base) / "ImproveImgSLI"
+    return live_app_data_dir()
 
 
 def default_artifacts_dir() -> Path:

@@ -8,9 +8,12 @@ protocol and proxies the MCP tool surface onto it:
   JSON: one request ``{"id", "method", "params"}`` per line, one response
   ``{"id", "ok": true, "result"}`` / ``{"id", "ok": false, "error", "hint"}``.
 - **Discovery** — ``IMGSLI_MCP_CONTROL_SOCKET`` (explicit socket path) →
-  ``IMGSLI_CONTROL_DIR`` (explicit dir) → ``$XDG_RUNTIME_DIR`` when set and
-  writable → ``<app data dir>/run``. The socket is ``control.sock`` and a
-  pointer file ``instance.json`` holds ``{pid, socket, started, version}``.
+  ``IMGSLI_CONTROL_DIR`` (explicit dir) → ``$XDG_RUNTIME_DIR`` when it is
+  writable **and private** (owner, no group/other access — the app's own rule,
+  see :func:`control_dirs`) → ``<app data dir>/run``. The socket is
+  ``control.sock`` and a pointer file ``instance.json`` holds
+  ``{pid, socket, started, version, uid}``; a pointer recording another ``uid``
+  is not a live instance.
   A pointer is stale only when its socket is unusable: the pid is a hint, not
   the verdict (Flatpak apps live in their own PID namespace), and a socket
   nobody listens on is "no live instance" — never a user-visible error.
@@ -319,24 +322,68 @@ def evidence_sentence(evidence: Mapping[str, Any]) -> str:
     return f"the app stopped without a request in flight — {detail}"
 
 
-def _app_data_dir(env: Mapping[str, str]) -> Path:
-    """Per-OS app data dir — mirrors ``backend.app_data_dir`` for explicit envs."""
+def app_data_dir(env: Mapping[str, str] | None = None) -> Path:
+    """Per-OS app data dir (``~/.local/share/ImproveImgSLI`` on Linux).
+
+    The ONLY copy of this rule in ``mcp-server`` (``backend.app_data_dir``
+    delegates here); ``env`` lets discovery be evaluated for an explicit
+    environment instead of the process one.
+    """
+    source = dict(os.environ) if env is None else env
     if sys.platform.startswith("linux"):
-        base = env.get("XDG_DATA_HOME") or str(Path.home() / ".local" / "share")
+        base = source.get("XDG_DATA_HOME") or str(Path.home() / ".local" / "share")
     elif sys.platform == "darwin":
         base = str(Path.home() / "Library" / "Application Support")
     else:  # pragma: no cover - Windows
-        base = env.get("APPDATA") or str(Path.home() / "AppData" / "Roaming")
+        base = source.get("APPDATA") or str(Path.home() / "AppData" / "Roaming")
     return Path(base) / "ImproveImgSLI"
 
 
-def _runtime_candidates(env: Mapping[str, str]) -> list[Path]:
-    """Control dirs to probe, in the app's own priority order."""
+def _is_private_dir(path: Path) -> bool:
+    """True iff *path* is a directory we own with no group/other access.
+
+    The same predicate the app applies in
+    ``core.control.discovery._is_private_dir`` (the app owns that copy because
+    ``core`` pulls in PySide6 and this package is stdlib-only). Discovery must
+    agree in BOTH directions: a shared dir the app refuses must not be probed
+    here either, or the client looks in a place the app never publishes in and
+    silently falls back to headless (measured 2026-10-21).
+    """
+    try:
+        info = path.stat()
+    except OSError:
+        return False
+    if not stat.S_ISDIR(info.st_mode):
+        return False
+    if info.st_uid != os.getuid():
+        return False
+    return stat.S_IMODE(info.st_mode) & 0o077 == 0
+
+
+def control_dirs(env: Mapping[str, str] | None = None) -> list[Path]:
+    """Control dirs to probe, in the app's own priority order.
+
+    ``[<private, writable $XDG_RUNTIME_DIR>, <app data dir>/run]`` — the FIRST
+    entry is exactly what ``core.control.discovery.runtime_dir()`` returns when
+    no explicit override is set, which is what makes the two sides agree. The
+    second entry stays as a fallback for a socket left in the data dir by an
+    earlier env (the app only ever writes in one of them).
+
+    ``XDG_RUNTIME_DIR`` is deliberately NOT ``expanduser``-ed: the app does not
+    expand it either, and two derivations of one rule may not differ.
+    """
+    source = dict(os.environ) if env is None else env
     candidates: list[Path] = []
-    runtime = (env.get("XDG_RUNTIME_DIR") or "").strip()
-    if runtime and os.path.isdir(runtime) and os.access(runtime, os.W_OK):
-        candidates.append(Path(runtime))
-    candidates.append(_app_data_dir(env) / "run")
+    runtime = (source.get("XDG_RUNTIME_DIR") or "").strip()
+    if runtime:
+        candidate = Path(runtime)
+        if (
+            candidate.is_dir()
+            and os.access(candidate, os.W_OK)
+            and _is_private_dir(candidate)
+        ):
+            candidates.append(candidate)
+    candidates.append(app_data_dir(source) / "run")
     return candidates
 
 
@@ -362,12 +409,30 @@ def _socket_answers(path: Path, *, timeout: float = PID_PROBE_TIMEOUT_S) -> bool
     return True
 
 
+def _pointer_uid(data: Mapping[str, Any] | None) -> int | None:
+    """The pointer's recorded owning uid, or ``None`` when it does not say.
+
+    Absence is not a refusal (pointers written before the field existed, or by
+    a sandbox that maps uids, stay usable); a present integer that is not ours
+    is.
+    """
+    uid = (data or {}).get("uid")
+    if isinstance(uid, int) and not isinstance(uid, bool):
+        return int(uid)
+    return None
+
+
 def _pointer_socket(directory: Path) -> tuple[Path | None, bool]:
     """``(socket, stale)`` for a control dir with an ``instance.json`` pointer.
 
     ``socket`` is the pointer's ``socket`` field, falling back to the sibling
     ``control.sock``. ``stale`` means "nothing usable here": the pointer is
     reported as "no live instance" and must not be trusted.
+
+    A foreign ``uid`` is stale before anything else is considered: the app
+    publishes the pointer for its own user only, and handing another user's
+    socket to the request layer would earn a bare ``SO_PEERCRED`` refusal
+    instead of the honest "no live instance".
 
     The pid is a *hint, never the verdict*. A Flatpak-installed app runs in its
     own PID namespace, so ``pid_alive`` on the host may raise
@@ -386,6 +451,9 @@ def _pointer_socket(directory: Path) -> tuple[Path | None, bool]:
     data = _read_pointer(directory)
     if data is None:
         return None, False
+    owner = _pointer_uid(data)
+    if owner is not None and owner != os.getuid():
+        return None, True
     field = data.get("socket")
     if isinstance(field, str) and field.strip():
         candidate = Path(field.strip()).expanduser()
@@ -414,9 +482,10 @@ def discover_socket(env: Mapping[str, str] | None = None) -> Path | None:
 
     Priority: ``IMGSLI_MCP_CONTROL_SOCKET`` (an explicit socket path, honoured
     alone), ``IMGSLI_CONTROL_DIR`` (an explicit control dir, honoured alone),
-    then ``$XDG_RUNTIME_DIR`` (when set and writable) and the app-data ``run``
-    dir. An override that points at nothing plausible yields ``None`` — the
-    caller treats that as "no live instance", not an error.
+    then :func:`control_dirs` — ``$XDG_RUNTIME_DIR`` **when it is private** (the
+    app's rule, not merely "writable") and the app-data ``run`` dir. An override
+    that points at nothing plausible yields ``None`` — the caller treats that as
+    "no live instance", not an error.
     """
     source = dict(os.environ) if env is None else env
 
@@ -429,7 +498,7 @@ def discover_socket(env: Mapping[str, str] | None = None) -> Path | None:
     if override_dir:
         return _socket_in_dir(Path(override_dir).expanduser())
 
-    for directory in _runtime_candidates(source):
+    for directory in control_dirs(source):
         found = _socket_in_dir(directory)
         if found is not None:
             return found
@@ -742,7 +811,7 @@ class LiveBackend:
         Mirrors ``discover_socket``'s precedence exactly, so evidence is scoped
         to the instance the caller is talking about: an explicit socket or
         control dir wins *alone* (never mixing in another instance's leftovers),
-        otherwise the app's runtime candidates.
+        otherwise the app's own candidates (``control_dirs``).
         """
         if self.socket_path is not None:
             return [Path(self.socket_path).parent]
@@ -753,7 +822,7 @@ class LiveBackend:
         explicit_dir = (env.get(CONTROL_DIR_ENV) or "").strip()
         if explicit_dir:
             return [Path(explicit_dir).expanduser()]
-        return _runtime_candidates(env)
+        return control_dirs(env)
 
     def death_evidence(self) -> dict[str, Any] | None:
         """What is on disk about an instance that stopped answering.

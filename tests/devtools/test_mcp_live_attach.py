@@ -46,6 +46,7 @@ from app.live import (  # noqa: E402
     LiveClient,
     LiveError,
     LiveUnavailable,
+    control_dirs,
     discover_socket,
     summarize_request_params,
 )
@@ -362,11 +363,19 @@ class FakeControlServer:
         return True
 
 
-def _write_pointer(directory: Path, *, pid: int, socket_path: Path | None = None) -> Path:
+def _write_pointer(
+    directory: Path,
+    *,
+    pid: int,
+    socket_path: Path | None = None,
+    uid: int | None = None,
+) -> Path:
     directory.mkdir(parents=True, exist_ok=True)
     data = {"pid": pid, "started": "2026-10-17T00:00:00Z", "version": "0.1.0"}
     if socket_path is not None:
         data["socket"] = str(socket_path)
+    if uid is not None:
+        data["uid"] = uid
     pointer = directory / "instance.json"
     pointer.write_text(json.dumps(data), encoding="utf-8")
     return pointer
@@ -496,17 +505,84 @@ def test_dead_pid_alone_never_declares_a_working_pointer_stale(isolated_env, mon
         (directory / CONTROL_SOCKET_NAME).unlink(missing_ok=True)
 
 
-def test_discover_socket_uses_the_runtime_dir_when_no_override(monkeypatch, tmp_path):
+def test_discover_socket_uses_a_private_runtime_dir(monkeypatch, tmp_path):
+    """A private ``$XDG_RUNTIME_DIR`` is the app's first choice, so it is ours.
+
+    The mode is set explicitly: a bare ``mkdir()`` yields ``0755`` under the
+    usual umask, which BOTH sides must now refuse (this test used to pin the
+    opposite — discovery succeeding in a world-readable dir).
+    """
     runtime = tmp_path / "runtime"
     runtime.mkdir()
+    os.chmod(runtime, 0o700)
     socket_path = FakeControlServer(runtime / "control.sock").start().path
     try:
         monkeypatch.delenv(SOCKET_OVERRIDE_ENV, raising=False)
         monkeypatch.delenv(CONTROL_DIR_ENV, raising=False)
+        monkeypatch.delenv("XDG_DATA_HOME", raising=False)
         monkeypatch.setenv("XDG_RUNTIME_DIR", str(runtime))
         assert discover_socket() == socket_path
     finally:
         (runtime / "control.sock").unlink(missing_ok=True)
+
+
+def test_discover_socket_refuses_a_shared_runtime_dir(monkeypatch, tmp_path):
+    """Symmetric with ``core.control.discovery._is_private_dir``.
+
+    Falsification: with the old ``isdir + W_OK`` rule this returned the socket
+    in the ``0755`` dir, while the app refused to publish there — the same
+    machine, two different answers for "where is the control socket".
+    """
+    runtime = tmp_path / "shared"
+    runtime.mkdir()
+    os.chmod(runtime, 0o755)
+    listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    listener.bind(str(runtime / "control.sock"))
+    listener.listen(4)
+    try:
+        monkeypatch.delenv(SOCKET_OVERRIDE_ENV, raising=False)
+        monkeypatch.delenv(CONTROL_DIR_ENV, raising=False)
+        data_home = tmp_path / "share"
+        monkeypatch.setenv("XDG_DATA_HOME", str(data_home))
+        monkeypatch.setenv("XDG_RUNTIME_DIR", str(runtime))
+        assert discover_socket() is None
+
+        # And the fallback is the dir the app would publish in, not the shared one.
+        assert control_dirs()[0] == data_home / "ImproveImgSLI" / "run"
+    finally:
+        listener.close()
+
+
+def test_discover_socket_refuses_a_pointer_from_another_uid(isolated_env):
+    """A pointer written by a different user is not a live instance.
+
+    The pointer carries the owning ``uid`` (the app writes it); a client that
+    ignored it would hand a foreign socket to the request layer, which the app
+    then refuses at ``SO_PEERCRED`` — a confusing refusal instead of "absent".
+    """
+    directory = isolated_env / "run"
+    socket_path = FakeControlServer(directory / CONTROL_SOCKET_NAME).start().path
+    try:
+        _write_pointer(
+            directory,
+            pid=os.getpid(),
+            socket_path=socket_path,
+            uid=os.getuid() + 1,
+        )
+        assert discover_socket() is None
+    finally:
+        (directory / CONTROL_SOCKET_NAME).unlink(missing_ok=True)
+
+
+def test_discover_socket_accepts_a_pointer_without_a_uid(isolated_env):
+    """Older pointers (no ``uid`` field) stay usable: absence is not a refusal."""
+    directory = isolated_env / "run"
+    socket_path = FakeControlServer(directory / CONTROL_SOCKET_NAME).start().path
+    try:
+        _write_pointer(directory, pid=os.getpid(), socket_path=socket_path)
+        assert discover_socket() == socket_path
+    finally:
+        (directory / CONTROL_SOCKET_NAME).unlink(missing_ok=True)
 
 
 def test_discover_socket_falls_back_to_the_app_data_run_dir(monkeypatch, tmp_path):

@@ -19,6 +19,15 @@ Directory precedence: ``IMGSLI_CONTROL_DIR`` (tests / explicit override) →
 ``$XDG_RUNTIME_DIR`` when it exists, is writable, and is private → the app data
 dir's ``run/`` subdirectory (``~/.local/share/ImproveImgSLI/run``).
 
+The MCP server re-derives the same dir with its own copy of the rule
+(``mcp-server/app/live.py`` — its ``_is_private_dir`` and its control_dirs
+list; that package is stdlib-only and cannot import this one, which pulls in
+PySide6).
+Two copies of one rule drifted once already (a ``0755`` runtime dir was refused
+here but accepted there, so the client silently fell back to headless):
+``tests/devtools/test_control_discovery.py`` pins both sides to the same answer
+over an env matrix. Change one, change the other.
+
 This module also owns the small host-side primitives the transport and the
 handlers share, so neither has to import the other: the request error type
 (``MethodError``), the ``press_keys`` allowlist + parser, the artifacts-dir
@@ -60,7 +69,8 @@ _FILE_MODE = 0o600
 def app_data_dir() -> Path:
     """Per-OS app data dir (``~/.local/share/ImproveImgSLI`` on Linux).
 
-    Mirrors ``sli_ui_toolkit.core.logging`` / ``mcp-server/app/backend.py``.
+    Mirrors ``sli_ui_toolkit.core.logging`` / ``mcp-server/app/live.py``
+    (``app_data_dir`` — the one copy the MCP server derives discovery from).
     """
     if sys.platform.startswith("linux"):
         base = os.environ.get("XDG_DATA_HOME") or str(Path.home() / ".local" / "share")
