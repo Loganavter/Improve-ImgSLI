@@ -60,6 +60,7 @@ AI features in [Image Gallery](help://workspace.image_gallery.triage) use the se
 - **Model name** — the model the AI uses for requests.
 - **Answer token budget** and **Reasoning effort** — limits on the answer: the token cap (empty = auto) and how much the model reasons before answering.
 - **Image downscale (max edge)** — the largest side sent to the model; **Original** keeps the file's own bytes.
+- **Runs per card** — how many independent judgments each card gets (1, 2, 3 or 5). Every run is another image call, so more runs mean steadier scores at a proportionally higher cost; near-ties can still swap places even at 5.
 
 ### Keyboard {#keyboard}
 

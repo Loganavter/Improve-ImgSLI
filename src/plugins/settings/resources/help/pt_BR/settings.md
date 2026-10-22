@@ -60,6 +60,7 @@ Os recursos de IA na [Galeria](help://workspace.image_gallery.triage) usam as co
 - **Nome do modelo** — o modelo que a IA usa nas requisições.
 - **Orçamento de tokens da resposta** e **Esforço de raciocínio** — limites da resposta: o teto de tokens (vazio = automático) e o quanto o modelo raciocina antes de responder.
 - **Redução da imagem (lado maior)** — o lado maior enviado ao modelo; **Original** mantém os bytes do próprio arquivo.
+- **Execuções por cartão** — quantas avaliações independentes cada cartão recebe (1, 2, 3 ou 5). Cada execução é outra chamada de imagem, então mais execuções dão notas mais estáveis a um custo proporcionalmente maior; quase empates ainda podem trocar de lugar mesmo com 5.
 
 ### Teclado {#keyboard}
 

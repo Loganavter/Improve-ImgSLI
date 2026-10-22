@@ -233,6 +233,7 @@ def test_settings_gallery_labels_fit(qapp: QApplication):
             dialog.gallery_ai_model_label,
             dialog.gallery_ai_ask_tokens_label,
             dialog.gallery_ai_effort_label,
+            dialog.gallery_ai_samples_label,
         ):
             need = QFontMetrics(label.font()).horizontalAdvance(label.text())
             assert label.width() >= need, (label.text(), label.width(), need)
