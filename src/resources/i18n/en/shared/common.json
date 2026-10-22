@@ -11,7 +11,8 @@
       "up": "Up"
     },
     "switch": {
-      "off": "Off"
+      "off": "Off",
+      "on": "On"
     }
   }
 }
