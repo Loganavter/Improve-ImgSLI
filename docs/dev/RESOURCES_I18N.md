@@ -271,7 +271,7 @@ Host pages: `src/resources/help/` + `en|ru|zh|pt_BR/ui/…` + `en|ru|zh|pt_BR/pl
 
 ## See also
 
-- [THEMING.md](THEMING.md) — palette & QSS pipeline
+- [THEMING.md](THEMING.md) — palettes, `polish_themed_dialog` (QSS is retired)
 - [tabs/index.md](tabs/index.md) — tab-owned resources & isolation rules
 - [HELP_SYSTEM.md](HELP_SYSTEM.md) — Help shell, contribution, and authoring
 - [PLUGINS.md](PLUGINS.md) — plugin i18n auto-discovery in `PluginRegistry`

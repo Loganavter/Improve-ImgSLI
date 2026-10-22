@@ -12,7 +12,13 @@ Source: `src/ui/widgets/scroll_value_button.py`
 | Param | Meaning |
 |---|---|
 | `min_value` / `max_value` / `start` | value range and initial value |
-| `*button kwargs` | toolkit `Button` parameters (icon, size, …) |
+| `icon` | one icon, or a `(normal, checked)` pair for `toggle=True` |
+| `toggle: bool = False` | the button also carries a checked state (`toggled`) |
+| `zero_icon` | icon shown instead of the digit `0` when `min_value` is the "hidden" state (`None` = show `0`) |
+| `*button kwargs` | remaining toolkit `Button` parameters (size, …) |
+
+`valueChanged(int)` fires whenever `set_value(...)` moves the value; re-setting
+the same clamped value emits nothing.
 
 Built on the toolkit button region/layer pipeline (`ButtonRegion`,
 `BackgroundLayer`, `ContentLayer`, `BadgeLayer`, `UnderlineLayer`,

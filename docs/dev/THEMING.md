@@ -137,11 +137,15 @@ For QPainter-based custom widgets, call `theme_manager.get_color(...)` inside `p
 
 ## Theme switch performance
 
-`ThemeManager.set_theme` (toolkit ≥ 3.1.5) freezes top-level widget updates
-for the whole theme apply **and** the `theme_changed` fan-out, then issues one
-`update()` pass. Labels (toolkit ≥ 3.1.6) only recolor on theme flip.
+(The toolkit is consumed as an editable sibling checkout
+(`requirements-gui.txt`: `-e ../sli-ui-toolkit`), not a pinned release, so these
+paragraphs name the mechanism rather than a minimum toolkit version.)
 
-Toolkit ≥ 3.1.7: `set_theme(..., await_ripples=True)` (default) postpones that
+`ThemeManager.set_theme` freezes top-level widget updates
+for the whole theme apply **and** the `theme_changed` fan-out, then issues one
+`update()` pass. Labels only recolor on theme flip.
+
+`set_theme(..., await_ripples=True)` (default) postpones that
 blocking apply until any active button ripple finishes, so the press wave is
 not frozen mid-frame. Improve-ImgSLI does **not** set a process-wide
 `default_defer_click`; only heavy actions opt in with
@@ -153,7 +157,7 @@ skipped by `suspend_widget_updates`.
 ## Language switch performance
 
 Language Apply is a text fan-out (`language_changed` → `translatable_*`), not
-QSS. Toolkit ≥ 3.1.8: workspace-page bindings use `defer_when_hidden=True` so
+QSS. Workspace-page bindings use `defer_when_hidden=True` so
 stacked-away tabs (Image Compare while the session picker is up, and vice
 versa) skip updates until the next `Show`.
 
