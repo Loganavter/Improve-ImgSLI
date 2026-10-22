@@ -328,9 +328,12 @@ are no longer documented separately — both remain loadable today, they're just
 Path                                                                     |      Files |      Blank |      Comment |       Code
 ----------------------------------------------------------------------------------------------------
 --------------------------------------------------------------------------------
-app-branding (total)                                                     |       2706 |      77524 |        67252 |     368609
-app-branding (total)                                                     |         33 |        187 |          367 |       1306
-app-branding (total)                                                     |        874 |      36852 |        22708 |     134079
+Improve-ImgSLI (total)                                                   |       2720 |      78216 |        67953 |     371568
+Improve-ImgSLI shaders (total)                                           |         33 |        187 |          367 |       1306
+Improve-ImgSLI (total)                                                   |        884 |      37267 |        23043 |     135284
+sli-ui-toolkit (total)                                                   |        603 |      18028 |        15564 |      88929
+sli-ui-toolkit (total)                                                   |          2 |          7 |            6 |         19
+sli-ui-toolkit (total)                                                   |        203 |       7016 |         4449 |      27219
 
 ```
 
