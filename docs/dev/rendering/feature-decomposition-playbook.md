@@ -14,8 +14,10 @@ Two things make this risky if done manually or with naive regex:
 - Feature-internal modules use a **mix of relative import depths**
   (`.store`, `..actions`, `...scene.build`) that depend on how deep the
   importing file sits in the tree. Moving a file changes that depth, so
-  every relative import touching the moved module silently starts
-  resolving to the wrong place — no `ImportError`, just wrong behavior.
+  every relative import touching the moved module can resolve to a *different*
+  module than intended: an `ImportError` when nothing exists at the new depth,
+  and — the dangerous case — silent wrong behavior when a same-named module
+  does exist there.
 - Generic module names inside a feature (`state`, `actions`, `events`,
   `mode`, `geometry`) collide with unrelated names elsewhere in the
   codebase (`core.state_management.actions`, other features' `events.py`,

@@ -30,13 +30,13 @@ is scanned from the filesystem, so there is nothing to hardcode.
 
 ```text
 scan_help_tree()  # scan.py — dirs are hubs, *.md files are pages
-  + TabRegistry.collect_help_contributions()  # capability_routing.py
+  + capability_routing.collect_help_contributions(registry)  # tabs/use_cases/capability_routing.py
       → each tab create_service("contribute_help") -> HelpHubContribution | None
   → install_help_contributions(fragments)  # tree.py — hub meta + resolvers overlay
   → host HelpTree
 ```
 
-Called from `TabRegistry.install_pages` via `contribute_all_help()`.
+Called from `TabRegistry.install_pages` via `capability_routing.contribute_all_help(registry)`.
 `HelpHubContribution` is frozen and `owner_tab == i18n_namespace`, pinned by
 `tests/contracts/test_tabs_isolation.py`, so `tabs.*` is never imported by the
 Help plugin.
@@ -54,6 +54,9 @@ from each page's own `##` heading (see `labels.py`).
 | `navigator.py` | Stack + back / forward |
 | `hub_page.py` | Session-picker-style topic cards |
 | `back_bar.py` | Full-width breadcrumb + back |
+| `image_lightbox.py` | `HelpImageLightbox` — the full-resolution figure viewer |
+| `text_context_menu.py` | RMB menu over the document surface (`open_help_text_context_menu`) |
+| `topic_search.py` | Live topic filter (`match_score_normalized`), top ~12 content hits |
 | `tree.py` | Scan assembly (`install_help_contributions(list[HelpHubContribution])`), `resolve_path`, body/asset resolve |
 | `scan.py` | Filesystem discovery (dirs = hubs, `*.md` = pages, dotted ids) + hub-meta overlay |
 | `contribution.py` | `HelpHubContribution` (frozen, `owner_tab`, `mount`, hub title/desc/icon, `resolve_icon`) |
@@ -149,7 +152,7 @@ src/plugins/<plugin>/             # export, settings, image_properties, onboardi
     assets/…
   resources/i18n/<lang>/….json    # owner pack keys (auto-registered, see below)
 src/resources/help/               # host package (host pages only)
-  en|ru|zh|pt_BR/about.md, ui/…, platform/{file_project,hotkeys}.md
+  en|ru|zh|pt_BR/about.md, ui/…, platform/{file_project,hotkeys,tabs}.md
   assets/
     ui/…                          # host screenshots only
 src/tabs/<tab>/
@@ -164,7 +167,7 @@ Two registration paths, opposite defaults: `<pkg>/resources/i18n` packs
 **auto-register** on plugin/tab discovery (zero code — drop the files), so
 moved `settings.*` keys needed no registration change; help packages are
 **discovered** the same way — a new `resources/help/` dir under `tabs/*`
-mounts at `workspace/<name>` with zero code (plugins add one `HELP_MOUNT`
+mounts at `workspace.<name>` with zero code (plugins add one `HELP_MOUNT`
 line).
 
 Bodies reference figures as body-relative paths (`../../assets/ui/x.jpg`)
@@ -348,6 +351,12 @@ image is only a fallback when the manifest does *not* declare the requested
 install) keeps the flat-base behaviour. Pinned by
 `tests/plugins/test_help_asset_variants.py`.
 
+Variant cells are **flat per package**: the resolver keys on the figure's
+basename only, dropping the body path's subdirectory (`assets/platform/x.png`
+→ `assets/<locale>/<theme>/x.png`). Figure basenames must therefore be unique
+within one `resources/help/` package — two same-named figures in different
+subdirectories would resolve to the same variant cell.
+
 ### What the renderer cannot do yet
 
 Tracked as toolkit / Help follow-ups — do **not** author pages as if these
@@ -485,10 +494,12 @@ rendered markdown back in, so a two-label selection copies two lines, never the
 page. The TOC card stays outside the document (its rows scroll the host area;
 they are not part of body selection).
 
-Public document API used by the app: `set_blocks`, `plain_text`,
+Document API the host uses: `set_blocks`, `scroll_to_anchor`,
+`textContextMenuRequested(QPoint)` and the `linkActivated` / `imageActivated`
+signals; the rest of the shared selection surface (`plain_text()`,
 `selected_plain_text()`, `selected_markdown(source_markdown)`,
 `copy_selection()`, `copy_selection_markdown(source_markdown)`,
-`select_all_text()`, `scroll_to_anchor`, `textContextMenuRequested(QPoint)`.
+`select_all_text()`) is available to tools and tests.
 Both copy entries set the clipboard and then drop the selection (the toolkit's
 standard copy rule — the highlight must not linger after the menu closes).
 
@@ -590,5 +601,4 @@ env QT_QPA_PLATFORM=offscreen pytest -q tests/plugins/test_help_*.py
 ## Follow-ups
 
 - Toolkit: optional `:::tip` / richer definition-list blocks if the subset grows
-- F1 → topic page without opening the palette
 - Guides / capture / laser as separate pages (only if first-class UI grows)

@@ -659,16 +659,16 @@ because that is what lets a client auto-approve reads:
   service, which would materialize a tab as a side effect of listing), and
   `wait_for` only repeats those two observations until a predicate holds. Reads
   may retry once (above); none mutate.
-- **Mutating tools are honestly marked.** All seventeen carry `readOnlyHint: false`.
+- **Mutating tools are honestly marked.** All eighteen carry `readOnlyHint: false`.
   `run_action` alone advertises `destructiveHint: true` (it can run any
   registered action, including `platform.quit_app`). `press_keys`, `nav_key`,
-  `ui_click`, `ui_press` and
+  `ui_click`, `ui_wheel`, `ui_press` and
   `jobs_cancel` are `destructiveHint: false` but `idempotentHint: false`
   (repeating the same combo/click/press is not a no-op; re-sending a settled
   job id is an error, not a second success). `ui_hover`/`ui_focus` settle to the
   same state, so they keep `idempotentHint: true`.
   `open_tab`/`open_folder`/`open_file`/`open_properties`/`set_theme`/
-  `set_language`/`set_setting`/`capture_surface` are
+  `set_language`/`set_setting`/`capture_surface`/`set_scene_commands` are
   non-destructive and idempotent.
 - `openWorldHint: false` on every tool (the app is local). **Result: no
   annotation was found to over- or under-state what its tool does.** The test

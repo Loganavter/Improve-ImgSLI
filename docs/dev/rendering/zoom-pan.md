@@ -254,7 +254,8 @@ top of that rect jumped with it.
 Now `update_common_letterbox_geometry` / `_update_comparison_geometry`
 compute `pw,ph = max(w1,w2), max(h1,h2)` from whatever sizes are already
 present (preview or full-res) and derive one
-`resolve_canvas_content_geometry(cw,ch,pw,ph)` rect for both sides. The
+`resolve_canvas_content_geometry(widget_width=cw, image_width=pw, …)` rect for
+both sides. The
 letterbox converges to the final `max` rect on the first `gap draw_plan`
 that has two previews, before the unify worker even starts — `store.transact`
 publishes it once, and the unified `2797×2797` pixels that arrive later reuse
