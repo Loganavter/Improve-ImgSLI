@@ -1,6 +1,7 @@
 """Runtime overlay snapshots are the authoritative live geometry source.
 
-Dogma source: docs/dev/QRHI_CANVAS_FEATURES.md §Canvas presentation.
+Dogma source: docs/dev/rendering/contracts.md § Scene Pipeline -> Apply (feature
+appliers populate the runtime overlay state the passes then consume).
 """
 
 from __future__ import annotations

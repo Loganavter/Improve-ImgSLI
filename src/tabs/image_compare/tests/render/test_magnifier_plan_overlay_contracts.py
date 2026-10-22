@@ -1,6 +1,7 @@
 """Magnifier plan overlays convert through the active image-content rect.
 
-Dogma source: docs/dev/QRHI_CANVAS_FEATURES.md §Canvas presentation.
+Dogma source: docs/dev/rendering/coordinate-systems.md (overlay geometry is
+converted through the active content rect, not recomputed ad hoc).
 """
 
 from __future__ import annotations

@@ -5,7 +5,8 @@ can't be split further. Without this, the existing structural contracts
 (manifest exports the right name, passes.py exports RENDER_PASSES, etc.) are
 all satisfied by a single 800+ line file that mixes unrelated
 responsibilities — the file-*role* contracts in
-docs/dev/QRHI_CANVAS_FEATURES.md never constrained what goes *inside* a role.
+docs/dev/rendering/package-structure.md never constrained what goes *inside* a
+role.
 
 Rule: a ``.py`` file inside a canvas feature package longer than
 ``LINE_LIMIT`` must contain a ``File-Size-Exempt:`` marker (in a comment or
@@ -15,7 +16,9 @@ one resource lifecycle" (see
 without the marker is either genuinely unsplit debt (fix it) or missing its
 justification (add the marker).
 
-Dogma source: docs/dev/QRHI_CANVAS_FEATURES.md, "File size & cohesion".
+Dogma source: docs/dev/rendering/checklist.md ("No file over ~400 lines without
+a ``File-Size-Exempt:`` justification"); the threshold table lives in
+docs/dev/FILE_SIZE_POLICY.md.
 """
 
 from __future__ import annotations

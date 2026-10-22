@@ -5,8 +5,8 @@
     (controller / presenter / state / dialog) — cross-plugin communication
     goes via events / services / plugin_coordinator
 
-Dogma source: docs/dev/QRHI_CANVAS_FEATURES.md (no feature imports in plugins/)
-and docs/dev/ARCHITECTURE.md (plugin decoupling).
+Dogma source: docs/dev/rendering/checklist.md (no feature imports in shared
+ui/, events/, or plugins/) and docs/dev/ARCHITECTURE.md (plugin decoupling).
 """
 
 from __future__ import annotations

@@ -84,7 +84,9 @@ class MultiCompareRhiRenderer:
     ``RENDER_PASSES`` manifest but instantiated per renderer (like the
     feature passes below) and still recorded first — mirrors how
     image_compare's own base-image draw is hardcoded ahead of its feature
-    passes (see MULTI_COMPARE_QRHI_REFACTOR.md A6). ``feature_passes`` are
+    passes (A6: the base image is the frame's substrate — feature passes blend
+    over it, so it must be recorded first and cannot be discovered out of
+    order). ``feature_passes`` are
     discovered through the shared canvas feature registry, same as
     image_compare (``rhi_renderer/__init__.py``'s ``initialize()``).
     """

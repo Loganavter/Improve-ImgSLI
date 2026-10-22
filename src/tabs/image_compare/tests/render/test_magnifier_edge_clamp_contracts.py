@@ -1,6 +1,7 @@
 """Magnifier capture clamp stays stable across viewport zoom changes.
 
-Dogma source: docs/dev/QRHI_CANVAS_FEATURES.md §Canvas features.
+Dogma source: docs/dev/rendering/coordinate-systems.md (base-image-anchored
+geometry stays in its own space; zoom does not shift the content clamp).
 """
 
 from __future__ import annotations

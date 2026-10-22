@@ -1,7 +1,9 @@
 """Color settings: changing a color keeps the laser/guide segment intact even
 when guides are hidden — no silent loss of the laser color.
 
-Dogma source: docs/dev/QRHI_CANVAS_FEATURES.md (guides/laser color state).
+Dogma source: docs/dev/rendering/contracts.md § Command Aliases (shared code
+resolves feature state through capability aliases, never a feature name — so a
+missing alias is `None`, not a silent overwrite).
 """
 
 from types import SimpleNamespace

@@ -5,9 +5,10 @@ Weight-redistribution math lives here, operating purely on the canvas widget
 Unlike ``image_compare``'s single two-way ``split_position``, multi_compare's
 N-way grid tracks per-divider ``(split_path, idx, weights)`` state, so the
 drag session data is carried on ``handler._divider_drag`` rather than in the
-store's ``interaction_state`` (see the D1 gesture-mapping note in
-``MULTI_COMPARE_QRHI_REFACTOR.md`` for why this diverges from image_compare's
-store-resident convention).
+store's ``interaction_state`` (D1: the widget is the only object that sees
+both the drag and its chrome state, so the drag session rides on it instead of
+fanning a second copy of the drag flag into the store — a deliberate
+divergence from image_compare's store-resident convention).
 """
 
 from __future__ import annotations

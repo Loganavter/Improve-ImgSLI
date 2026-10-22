@@ -1,8 +1,8 @@
 """Shared event code must not branch on feature-specific state.
 
-Dogma source: docs/dev/QRHI_CANVAS_FEATURES.md Anti-patterns
-("Adding new central ``if feature == ...`` logic",
- "Duplicating state in both feature-owned storage and flat ``ViewState``").
+Dogma source: docs/dev/rendering/contracts.md § Source of Truth Rules
+("Feature-owned state" — no second flat compatibility copy in ``ViewState``, so
+no central ``if feature == ...`` branching on a duplicated flag).
 
 Shared event modules under ``src/events/`` should resolve canvas gestures via
 ``GestureResolver`` and call only feature-neutral alias namespaces (currently
@@ -50,11 +50,11 @@ def _events_files() -> list:
 # multi_compare has no shared `src/events/` mouse module of its own — its
 # canvas widget (`src/tabs/multi_compare/ui/canvas_widget.py`) both routes
 # gestures *and* legitimately owns widget-level chrome (RMB context menu,
-# middle-button pan, wheel-zoom, both double-click behaviors — see the D1
-# gesture-mapping note in docs/dev/MULTI_COMPARE_QRHI_REFACTOR.md for why
-# those stay inline). So the tests above, which are scoped to
+# middle-button pan, wheel-zoom, both double-click behaviors — those stay
+# inline by that decision, not by accident). So the tests above, which are
+# scoped to
 # `EVENTS_ROOT`/`MOUSE_FILE`, do not and should not cover it wholesale — a
-# blanket "no branching" rule would contradict D1's own scope decision. This
+# blanket "no branching" rule would contradict that scope decision. This
 # narrower check only guards the two gestures that *were* extracted
 # (divider-drag, slot-drag): their transient state (`_divider_drag`,
 # `_lmb_press_pos`, `_lmb_press_slot_id`) must only be touched through

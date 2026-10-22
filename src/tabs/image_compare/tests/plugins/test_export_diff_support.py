@@ -2,7 +2,9 @@
 GPU render-plan base (not a shader diff over padded textures), and export base
 filtering coerces ``NEAREST`` to an export-safe resampler.
 
-Dogma source: docs/dev/QRHI_CANVAS_FEATURES.md §Render/export parity.
+Dogma source: docs/dev/rendering/rendering-model.md (the snapshot replay path
+feeds the same passes as the live path — an export/video-only fix is the wrong
+fix).
 """
 
 import os

@@ -6,7 +6,9 @@ discipline): the 160x90 request resolves pyramid-coarse / cached-base
 sources without decoding, falls back to the full-res path on miss, and
 cover output lands exactly on 160x90.
 
-Dogma source: docs/dev/QRHI_CANVAS_FEATURES.md (video timeline thumbnails).
+Dogma source: docs/dev/rendering/display-image-pipeline.md (thumbnail requests
+resolve through the preview tier / pyramid-coarse sources picked by
+``display_image_picker``, not a fresh decode).
 """
 
 from __future__ import annotations

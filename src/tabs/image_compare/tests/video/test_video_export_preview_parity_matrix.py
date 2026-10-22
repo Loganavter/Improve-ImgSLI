@@ -1,7 +1,9 @@
 """Export/preview parity across the diff x fit-content x interpolation matrix;
 mismatched source pairs prescale directly to one shared target size.
 
-Dogma source: docs/dev/QRHI_CANVAS_FEATURES.md §Render/export parity.
+Dogma source: docs/dev/rendering/rendering-model.md (the snapshot
+replay path feeds the same passes as the live path — export/preview/video
+logic with no live counterpart is the wrong fix).
 """
 
 from __future__ import annotations
@@ -53,7 +55,7 @@ def test_snapshot_render_plan_export_preview_parity_matrix(
     fit_content,
     interpolation,
 ):
-    """QRHI_CANVAS_FEATURES.md: export/video paths must share render-plan parity."""
+    """Export/video paths must share render-plan parity (rendering-model.md)."""
     import tabs.image_compare.services.snapshot_render_plan_builder as builder_module
 
     fill_rgba = (9, 8, 7, 255)

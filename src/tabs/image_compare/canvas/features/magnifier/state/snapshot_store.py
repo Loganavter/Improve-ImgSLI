@@ -14,7 +14,7 @@ There are two entry points, exposed as capability aliases:
   It also used to hand-roll a re-expression of
   ``store.viewport.view_state.split_position_visual`` against the padded
   canvas. That duplicated the one thing
-  ``docs/dev/QRHI_CANVAS_FEATURES.md`` says must never be
+  ``docs/dev/rendering/coordinate-systems.md`` says must never be
   recombined by hand outside ``ui/canvas_infra/viewport/zoom.py`` — dropped.
   This function only sets ``store.runtime_cache.overlay_clip_rect`` (via the
   shared ``resolve_canvas_clip_rect_px`` helper, the single owner of that

@@ -4,8 +4,9 @@
 Parameterized forwarding (where ``feature_name`` comes from a variable —
 e.g. a feature-declared binding) is allowed.
 
-Dogma source: docs/dev/QRHI_CANVAS_FEATURES.md ("Shared code must not use
-get_canvas_feature_command(...). Instead: ... use the capability alias").
+Dogma source: docs/dev/rendering/contracts.md § Command Aliases ("Shared code
+must not use get_canvas_feature_command(...). Instead: ... use the capability
+alias").
 """
 
 from __future__ import annotations

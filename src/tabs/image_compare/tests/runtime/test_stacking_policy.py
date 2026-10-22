@@ -360,7 +360,7 @@ class TestFeatureRenderPassesUseStackRole:
         )
 
     def test_stack_policy_has_no_render_order_collisions(self):
-        """QRHI_CANVAS_FEATURES.md: stack roles resolve to unambiguous render pass ordering."""
+        """Stack roles resolve to unambiguous ordering (rendering/render-pass-contract.md)."""
         seen = {}
         for role in CanvasStackRole:
             order = resolve_render_pass_order(role)
@@ -368,7 +368,7 @@ class TestFeatureRenderPassesUseStackRole:
             seen[order] = role
 
     def test_image_overlay_content_renders_before_hud_label(self):
-        """QRHI_CANVAS_FEATURES.md: image annotations must stay below HUD labels."""
+        """Image annotations must stay below HUD labels (rendering/render-pass-contract.md)."""
         content_order = resolve_render_pass_order(CanvasStackRole.IMAGE_OVERLAY_CONTENT)
         hud_order = resolve_render_pass_order(CanvasStackRole.HUD_LABEL)
 
