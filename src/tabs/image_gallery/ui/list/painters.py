@@ -78,7 +78,13 @@ def _list_provenance_overlay(painter, ctx) -> None:  # type: ignore[no-untyped-d
         box = QRectF(widget.region_rect("text"))
     except Exception:
         return
-    paint_source_marker(painter, box, item, translate=getattr(widget, "_gallery_translate", None))
+    paint_source_marker(
+        painter,
+        box,
+        item,
+        translate=getattr(widget, "_gallery_translate", None),
+        domain=getattr(widget, "_gallery_domain", None),
+    )
 
 
 def _list_metric_dots_overlay(painter, ctx) -> None:  # type: ignore[no-untyped-def]

@@ -453,7 +453,16 @@ def _provenance_overlay(painter, ctx) -> None:  # type: ignore[no-untyped-def]
         box = QRectF(widget.region_rect("text"))
     except Exception:
         return
-    paint_source_marker(painter, box, item, translate=getattr(widget, "_gallery_translate", None))
+    paint_source_marker(
+        painter,
+        box,
+        item,
+        translate=getattr(widget, "_gallery_translate", None),
+        # The ACTIVE domain decides which backend's numbers the card shows: a
+        # cached AI read must not make an Algorithms card say AI (owner
+        # 2026-10-22). ``_gallery_domain`` is re-stamped on every card update.
+        domain=getattr(widget, "_gallery_domain", None),
+    )
 
 
 def _gallery_card_overlay_painter(painter, ctx, tm) -> None:  # type: ignore[no-untyped-def]

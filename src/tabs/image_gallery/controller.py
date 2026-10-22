@@ -1126,6 +1126,27 @@ class GalleryController:
                     pass
                 taken.add(nxt)
                 nxt += 1
+        # WHY fusion did / did not rewrite the ranks (the switch-back path is
+        # otherwise invisible): groups, members, locked (user/AI-owned) and the
+        # fusion source it produced. Same IMGSLI_AI_DEBUG key as the rest.
+        try:
+            from tabs.image_gallery.services.ai_client import _ai_debug
+
+            _ai_debug(
+                "fusion ranks: groups=%d members=%d locked=%d domain=%s profile=%s",
+                len(groups),
+                sum(len(members_of(g) or ()) for g in groups),
+                sum(
+                    1
+                    for g in groups
+                    for m in (members_of(g) or ())
+                    if _locked(m)
+                ),
+                getattr(self, "_judgment_domain", "?"),
+                getattr(getattr(self.state, "metric_profile", None), "source", None),
+            )
+        except Exception:
+            pass
         # Ungrouped items are unranked — a missing measurement never becomes
         # a fabricated number.
         try:
@@ -1144,6 +1165,21 @@ class GalleryController:
             except Exception:
                 pass
         GalleryController._refresh_ranks_visible(self)
+        # The stats-strip chip reads the parse ACTUAL ``rank_source``: without
+        # this the Algorithms view kept saying "Ranked by AI (Jev)" after a
+        # switch back (owner screenshot, 2026-10-22).
+        try:
+            GalleryController._refresh_rank_provenance(self)
+        except Exception:
+            logger.debug("fusion provenance refresh failed", exc_info=True)
+        # A rank IS an order: re-apply the active sort so "Sort: Rank" follows
+        # the re-derived numbers instead of the previous ranker's order.
+        try:
+            from tabs.image_gallery.ui.widget_parts import view_prefs as _vp
+
+            _vp.resort_after_rank_change(self)
+        except Exception:
+            logger.debug("resort after fusion ranks failed", exc_info=True)
 
     def _refresh_ranks_visible(self) -> None:
         """Ranks/BEST render only once the ranking is FINAL for this folder.

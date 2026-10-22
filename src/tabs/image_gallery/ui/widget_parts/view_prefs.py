@@ -77,8 +77,20 @@ def resort_after_rank_change(owner) -> None:
     try:
         widget = getattr(owner, "widget", None) or owner
         text = current_sort_text(widget)
-        if sort_keyfunc(widget, text) is None:
+        keyfunc = sort_keyfunc(widget, text)
+        if keyfunc is None:
             return
+        # Only rebuild when the ORDER actually changed: a fusion pass that
+        # leaves the measured order intact must not repaint the whole grid
+        # (the sync-move contract asserts zero extra paints).
+        try:
+            current = list(getattr(widget, "_items", None) or [])
+        except Exception:
+            current = []
+        if current:
+            desired = sort_items(widget, current, keyfunc)
+            if [id(it) for it in desired] == [id(it) for it in current]:
+                return
         setter = getattr(widget, "_on_sort_changed", None)
         if callable(setter):
             setter(text)

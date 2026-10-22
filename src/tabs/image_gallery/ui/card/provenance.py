@@ -79,7 +79,7 @@ def _token(translate, _source: str, key: str, default: str) -> str:
     return default
 
 
-def paint_source_marker(painter, box: QRectF, item, *, translate=None) -> None:
+def paint_source_marker(painter, box: QRectF, item, *, translate=None, domain=None) -> None:
     """Draw the marker as plain text at *box*'s bottom-left (no pill, no image).
 
     Owner 2026-10-22: the first version was a pill INSIDE the cover — it covered
@@ -87,12 +87,15 @@ def paint_source_marker(painter, box: QRectF, item, *, translate=None) -> None:
     small caption in the card's TEXT zone (grid) / text region (list): no
     background chip, no overlap with the preview.
     """
-    text = marker_text(item, translate)
+    text = marker_text(item, translate, domain=domain)
     if not text:
         return
     from tabs.image_gallery.analysis.read import SOURCE_AI, analysis_source
 
-    is_ai = analysis_source(item) == SOURCE_AI
+    live = str(domain or "").strip().lower()
+    # Colour follows what the card SHOWS: in Algorithms mode the token is the
+    # muted detector label even when a cached AI read still sits on the item.
+    is_ai = analysis_source(item) == SOURCE_AI and live in ("", SOURCE_AI)
     font = ui_font(pixel_size=_MARK_FONT_PX, bold=True)
     metrics = QFontMetrics(font)
     pad = float(scaled_px(_MARK_PAD))
