@@ -493,13 +493,15 @@ class HelpDialog(ThemedDialog):
                 or self._content_host.isAncestorOf(focused)
             ):
                 return
-            try:
-                from sli_ui_toolkit.managers import NavigationManager
+            # Modality comes from the input device, never from this dialog:
+            # forcing ``_last_input_keyboard = True`` here made a MOUSE-opened
+            # help window grant ``OtherFocusReason`` to the section bootstrap
+            # (``focus_first``), which paints the keyboard ring on the first
+            # content card ("About"). Same policy as every other programmatic
+            # setFocus: ``current_focus_reason()`` (mouse → no ring).
+            from sli_ui_toolkit.managers import NavigationManager
 
-                NavigationManager.get_instance()._last_input_keyboard = True
-            except Exception:
-                pass
-            reason = Qt.FocusReason.OtherFocusReason
+            reason = NavigationManager.get_instance().current_focus_reason()
             # Prefer the sidebar column (search+list) when visible — like main
             # window, keep focus on the container before first arrow, not on an
             # invisible Button. Down from the container will land on the first
@@ -536,16 +538,21 @@ class HelpDialog(ThemedDialog):
             inside = fw is not None and _isValid(fw) and self.isAncestorOf(fw)
             lost = fw is None or (fw is not None and not _isValid(fw))
             if inside or lost:
+                # Returning focus must follow the input device, not a hard-coded
+                # OtherFocusReason: a mouse-driven close would otherwise paint
+                # the keyboard ring on the restored widget (same class as
+                # inv-flyout-focus-mouse; policy: current_focus_reason()).
+                reason = Qt.FocusReason.OtherFocusReason
+                try:
+                    from sli_ui_toolkit.managers import NavigationManager
+
+                    reason = NavigationManager.get_instance().current_focus_reason()
+                except Exception:
+                    pass
                 target = getattr(self, "_external_prev_focus", None)
                 win = getattr(self, "_external_prev_window", None)
                 if target is not None and _isValid(target) and target.isVisible():
-                    try:
-                        from sli_ui_toolkit.managers import NavigationManager
-
-                        NavigationManager.get_instance()._last_input_keyboard = True
-                    except Exception:
-                        pass
-                    target.setFocus(Qt.FocusReason.OtherFocusReason)
+                    target.setFocus(reason)
                 elif win is not None and _isValid(win):
                     # Widget-level setFocus only — no request_window_activation:
                     # a hide-time activation tick lands a turn after the user
@@ -556,22 +563,22 @@ class HelpDialog(ThemedDialog):
 
                         kbd = NavigationManager.get_instance().last_keyboard_focus()
                         if kbd is not None and _isValid(kbd) and kbd.isVisible() and win.isAncestorOf(kbd):
-                            kbd.setFocus(Qt.FocusReason.OtherFocusReason)
+                            kbd.setFocus(reason)
                         else:
-                            win.setFocus(Qt.FocusReason.OtherFocusReason)
+                            win.setFocus(reason)
                     except Exception:
-                        win.setFocus(Qt.FocusReason.OtherFocusReason)
+                        win.setFocus(reason)
                 else:
                     # Последний фолбэк — первое topLevel MainWindow (setFocus —
                     # виджетный фокус без токена активации, без тиков).
                     for w in QApplication.topLevelWidgets():  # ALLOWED: focus-fallback — generic top-level MainWindow activation, not tab-specific
                         if w.isVisible() and (w.objectName() == "MainWindow" or "ImageComparisonApp" in type(w).__name__):
-                            w.setFocus(Qt.FocusReason.OtherFocusReason)
+                            w.setFocus(reason)
                             break
                     else:
                         aw = QApplication.activeWindow()
                         if aw is not None and _isValid(aw):
-                            aw.setFocus(Qt.FocusReason.OtherFocusReason)
+                            aw.setFocus(reason)
         except Exception:
             pass
         super().hideEvent(event)
@@ -587,7 +594,11 @@ class HelpDialog(ThemedDialog):
                 # Тот же возврат что в hideEvent, но до super().closeEvent
                 target = getattr(self, "_external_prev_focus", None)
                 if target is not None and _isValid(target) and target.isVisible():
-                    target.setFocus(Qt.FocusReason.OtherFocusReason)
+                    from sli_ui_toolkit.managers import NavigationManager
+
+                    target.setFocus(
+                        NavigationManager.get_instance().current_focus_reason()
+                    )
         except Exception:
             pass
         self._remove_mouse_nav_filter()
@@ -1079,12 +1090,11 @@ class HelpDialog(ThemedDialog):
                     # они не внутри _content_host/nav_widget/_back_bar
                     if focused.objectName() not in ("HelpBackBar",):
                         return
-            try:
-                from sli_ui_toolkit.managers import NavigationManager
+            from sli_ui_toolkit.managers import NavigationManager
 
-                NavigationManager.get_instance()._last_input_keyboard = True
-            except Exception:
-                pass
+            # Modality policy (never forced): a page re-render triggered by a
+            # mouse click must not give the restored widget a keyboard ring.
+            _reason = NavigationManager.get_instance().current_focus_reason()
             was_left = getattr(self, "_prev_focus_was_left", False)
             was_search = getattr(self, "_prev_focus_was_search", False)
             # Декларативно: фокус в ту колонку где был до навигации, без ручного findChildren
@@ -1096,7 +1106,7 @@ class HelpDialog(ThemedDialog):
                 sidebar_owner = getattr(self.shell, "sidebar_column", None) or self.nav_widget
                 if was_left:
                     if was_search and self._search_field.isVisible():
-                        self._search_field.setFocus(Qt.FocusReason.OtherFocusReason)
+                        self._search_field.setFocus(_reason)
                         return
                     # Список: предпочитаем current_row_button, а не первый StrongFocus (search)
                     try:
@@ -1105,7 +1115,7 @@ class HelpDialog(ThemedDialog):
                             from shiboken6 import isValid as _isValid
 
                             if _isValid(btn) and btn.isVisible():
-                                btn.setFocus(Qt.FocusReason.OtherFocusReason)
+                                btn.setFocus(_reason)
                                 return
                     except Exception:
                         pass
@@ -1122,10 +1132,10 @@ class HelpDialog(ThemedDialog):
                 pass
             # Fallback — прямые setFocus
             if self._search_field.isVisible():
-                self._search_field.setFocus(Qt.FocusReason.OtherFocusReason)
+                self._search_field.setFocus(_reason)
                 return
             if self._back_bar.isVisible():
-                self._back_bar.setFocus(Qt.FocusReason.OtherFocusReason)
+                self._back_bar.setFocus(_reason)
         except Exception:
             pass
 
