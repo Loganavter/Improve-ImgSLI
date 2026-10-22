@@ -165,3 +165,94 @@ def test_the_judges_axes_never_leak_into_the_algorithms_vector():
     payload_axes = [entry.get("name") for entry in vector.get("axes", [])]
     assert "jpeg_noise" not in payload_axes, payload_axes
     assert "sharpness" in payload_axes, payload_axes
+
+
+def test_a_new_session_inherits_the_last_used_domain_even_when_the_slot_exists(
+    _memory_qsettings,
+):
+    """The CONFIG route, end to end: a NEW session takes the last-used chrome.
+
+    MEASURED gap (found by the live binding, 2026-10-22): the blueprint
+    auto-allocates the gallery's session slot at the factory defaults, and
+    ``seed_slot`` treated that slot as an existing value - so the QSettings
+    fallback was never read and a config carrying ``judgment_domain="ai"`` was
+    IGNORED (the live app restored "algorithms"). The slot that holds only the
+    defaults carries nothing the user chose, so the last-used value wins.
+    """
+    from core.state_management.slot_reducers import iter_state_slot_reducers
+    from tabs.use_cases.session_state import SessionState
+
+    class _Session(SimpleNamespace):
+        pass
+
+    class _Store:
+        def __init__(self):
+            self.sessions: dict = {}
+
+        def add(self, sid):
+            # the blueprint auto-allocates the PLAIN namespace slot at the
+            # factory defaults - that auto-allocated slot is what used to
+            # block the last-used inheritance
+            self.sessions[sid] = _Session(
+                id=sid,
+                session_type="image_gallery",
+                state_slots={
+                    "image_gallery": {
+                        "view_list": False,
+                        "judgment_domain": "algorithms",
+                    }
+                },
+            )
+            return sid
+
+        def get_workspace_session(self, sid):
+            return self.sessions.get(sid)
+
+        def get_active_workspace_session(self):
+            return None
+
+        def get_session_state_slot(self, name, session_id=None, default=None):
+            sess = self.sessions.get(session_id)
+            return default if sess is None else sess.state_slots.get(name, default)
+
+        def set_session_state_slot(self, name, value, session_id=None, emit_scope=None):
+            self.sessions[session_id].state_slots[name] = value
+
+        def get_dispatcher(self):
+            return _Dispatcher(self)
+
+    class _Dispatcher:
+        def __init__(self, store):
+            self._store = store
+
+        def dispatch(self, action, scope="viewport", session_id=None):
+            target = session_id or self._store.active
+            for name, reducer in iter_state_slot_reducers():
+                if name != action.namespace:
+                    continue
+                cur = self._store.get_session_state_slot(name, session_id=target)
+                new = reducer(cur, action)
+                if new is not cur:
+                    self._store.set_session_state_slot(name, new, session_id=target)
+
+    _memory_qsettings["image_gallery/chrome"] = json.dumps(
+        {"view_list": False, "judgment_domain": "ai"}
+    )
+
+    applied: dict = {}
+    state = SessionState.bind(
+        SimpleNamespace(),
+        namespace="image_gallery",
+        fields={"view_list": (bool, False), "judgment_domain": (str, "algorithms")},
+        apply=lambda values: applied.update(values),
+    )
+    store = _Store()
+    sid = store.add("S1")
+    ctx = SimpleNamespace(store=store)
+    state.seed_slot(ctx, sid)
+    # the tab applies the chrome when the session becomes active
+    state.apply_from_slot(ctx, sid)
+    assert applied.get("judgment_domain") == "ai", applied
+    # and the slot now carries the inherited value (not the factory defaults)
+    slot = store.get_session_state_slot("image_gallery", session_id=sid) or {}
+    assert slot.get("judgment_domain") == "ai", slot

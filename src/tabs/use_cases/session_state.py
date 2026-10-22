@@ -209,7 +209,15 @@ class SessionState:
         """
         self.attach(context)
         existing = None if self._typed else self._slot_values(session_id)
-        if existing is None:
+        # A slot that holds ONLY the factory defaults carries nothing the user
+        # chose. The blueprint auto-allocates the slot at the defaults, so
+        # treating it as "existing" silently BLOCKED the documented
+        # inheritance: "a NEW session inherits the last-used toolbar chrome
+        # (QSettings) so it does not reset the switches" - the config route was
+        # dead for every plain slot (measured live 2026-10-22: a config with
+        # judgment_domain=ai was ignored and the app restored 'algorithms').
+        # A slot with a NON-default value is the user's choice and wins.
+        if existing is None or existing == self._defaults():
             values = self._last_used_values() or self._defaults()
             self._write_slot(session_id, values)
         else:
