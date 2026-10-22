@@ -438,3 +438,57 @@ def test_the_marker_receives_the_active_domain_from_both_painters(qapp, monkeypa
     finally:
         painter2.end()
     assert captured and captured[-1] == "ai", captured
+
+
+# -- the marker: only after the analysis, and clear of the hover bar --------
+
+
+def test_the_marker_waits_for_the_analysis_to_finish() -> None:
+    """A freshly loaded card must NOT say ALG before the local pass finishes."""
+    from tabs.image_gallery.models import ActivityPhase
+    from tabs.image_gallery.services.activity import set_activity
+    from tabs.image_gallery.ui.card.provenance import marker_text
+
+    item = _item("fresh.png")  # local metrics present (the pass is running)
+    set_activity(item, ActivityPhase.QUEUED, "local")
+    assert marker_text(item, domain="algorithms") == "", (
+        "the card claims a backend while its analysis is still running"
+    )
+
+    set_activity(item, ActivityPhase.DONE, "local")
+    assert marker_text(item, domain="algorithms") == "ALG"
+
+
+def test_the_marker_clears_the_hover_underline(qapp) -> None:
+    """The caption must sit above the 3px accent bar (owner: invisible on hover)."""
+    from PySide6.QtCore import QRectF
+    from PySide6.QtGui import QImage, QPainter
+
+    from tabs.image_gallery.ui.card.provenance import paint_source_marker
+
+    item = _item("a.png")
+    box = QRectF(0, 118, 250, 52)  # the card's text zone at design scale
+    canvas = QImage(250, 170, QImage.Format.Format_ARGB32_Premultiplied)
+    canvas.fill(0)
+    painter = QPainter(canvas)
+    try:
+        paint_source_marker(painter, box, item, domain="algorithms")
+    finally:
+        painter.end()
+
+    # The hover bar lives in the bottom 11 px (3px bar at 8 from the bottom).
+    band_top = int(box.bottom() - 11)
+    ink_in_band = sum(
+        1
+        for y in range(band_top, canvas.height())
+        for x in range(0, 90)
+        if canvas.pixelColor(x, y).alpha() > 0
+    )
+    assert ink_in_band == 0, f"the marker paints over the hover bar ({ink_in_band} px)"
+    lit = sum(
+        1
+        for y in range(int(box.top()), band_top)
+        for x in range(0, 90)
+        if canvas.pixelColor(x, y).alpha() > 0
+    )
+    assert lit > 0, "the marker did not paint at all"

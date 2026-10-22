@@ -60,14 +60,29 @@ def marker_text(item, translate=None, *, domain=None) -> str:
     live = str(domain or "").strip().lower()
     if live and live != SOURCE_AI:
         # Algorithms view: the displayed numbers are the detectors', whatever
-        # AI reads may still sit on the item.
-        return _token(translate, SOURCE_LOCAL, "image_gallery.card.source_local", "ALG") if analysis_source(item) else ""
+        # AI reads may still sit on the item. The token appears only once the
+        # local pass FINISHED for this item: a card that is still being
+        # analyzed must not claim a backend (owner 2026-10-22: a freshly
+        # loaded image already said ALG).
+        if not analysis_source(item) or _analyzing(item):
+            return ""
+        return _token(translate, SOURCE_LOCAL, "image_gallery.card.source_local", "ALG")
     source = analysis_source(item)
     if source == SOURCE_AI:
         return _token(translate, SOURCE_AI, "image_gallery.card.source_ai", "AI")
     if source == SOURCE_LOCAL:
         return _token(translate, SOURCE_LOCAL, "image_gallery.card.source_local", "ALG")
     return ""
+
+
+def _analyzing(item) -> bool:
+    """Is this item's analysis in flight right now (the pill's truth)?"""
+    try:
+        from tabs.image_gallery.ui.card.dots import _is_analyzing
+
+        return bool(_is_analyzing(item))
+    except Exception:
+        return False
 
 
 def _token(translate, _source: str, key: str, default: str) -> str:
@@ -103,7 +118,13 @@ def paint_source_marker(painter, box: QRectF, item, *, translate=None, domain=No
     width = float(metrics.horizontalAdvance(text) + 1.0)
     if width > box.width() or height > box.height():
         return
-    rect = QRectF(box.left() + pad, box.bottom() - height - pad / 2.0, width, height)
+    # Clear the hover underline: the accent bar is 3 design px at 8 from the
+    # bottom, and the caption used to sit exactly on it (owner 2026-10-22).
+    try:
+        bar_reserve = float(scaled_px(8.0)) + float(scaled_px(3.0)) + pad
+    except Exception:
+        bar_reserve = 12.0
+    rect = QRectF(box.left() + pad, box.bottom() - height - bar_reserve, width, height)
     painter.save()
     try:
         painter.setRenderHint(painter.RenderHint.Antialiasing, True)
