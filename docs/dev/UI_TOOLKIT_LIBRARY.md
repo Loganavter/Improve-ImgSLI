@@ -37,8 +37,10 @@ it** (see AGENTS.md) — don't default to stock Qt.
   icons/resources passed in from app code — never the reverse.
 - Prefer public imports from `sli_ui_toolkit.widgets` for app code; keep
   app-specific logic out of toolkit code.
-- **Never** use raw `QFormLayout`/`QVBoxLayout` blocks for widget
-  construction — use the toolkit painter pipeline.
+- **Never** build a *widget* out of stock `QFormLayout`/`QVBoxLayout` +
+  stock controls — use the toolkit painter pipeline and toolkit controls
+  (`Button`, `Text`, `ComboBox`, …). Plain layout containers are fine: 90+
+  `QVBoxLayout` call sites remain in app dialogs (`QFormLayout` is at 0).
 - **Never** use QSS (`setStyleSheet`) to style toolkit widgets — the
   painter pipeline owns all visual output.
 
@@ -54,8 +56,15 @@ Short recipe:
 
 1. **Primitives** — `widget_width_hint`, `sum_visible_widget_height_hint`, `measure_scroll_pages_stack`, `clamp_to_screen`.
 2. **Per-dialog module** — e.g. `plugins/export/layout_geometry.py`, `plugins/settings/layout_geometry.py`.
-3. **Apply** — `apply_dialog_geometry` + `GeometryApplyPolicy` (`lock_minimum_to_computed` for non-scroll dialogs; `force_resize` on the **initial** finalize after CSD).
-4. **Lifecycle** — `ThemedDialog.install_dialog_geometry`; deferred finalize via `QTimer.singleShot(0, …)`; `sync_csd_chrome` after programmatic resize.
+3. **Apply** — `apply_dialog_geometry` + `GeometryApplyPolicy`
+   (`lock_minimum_to_computed` for non-scroll dialogs; `force_resize` on the
+   **initial** finalize after CSD; `minimum_floor` / `width_bounds` for the
+   floor and cap; `remember_key` to persist the size in QSettings — leave it
+   unset for fixed-size alerts such as `AppMessageDialog`).
+4. **Lifecycle** — `ThemedDialog.install_dialog_geometry` (which defers through
+   `defer_dialog_geometry` in `shared_toolkit/ui/layout_sizing.py`);
+   `QTimer.singleShot(0, …)` is the ad-hoc fallback used by a few dialogs;
+   `sync_csd_chrome` after programmatic resize.
 
 Reference consumers: Export (preview + form — best template for
 content-locked dialogs), Settings (sidebar + scroll pages), Video editor,

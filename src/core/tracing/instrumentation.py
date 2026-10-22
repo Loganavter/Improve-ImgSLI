@@ -211,10 +211,11 @@ def _patch_event_bus() -> None:
 def _patch_widget_registry() -> None:
     """Trace alias->command resolution on every per-tab canvas registry.
 
-    Patches each ``CanvasFeatureRegistry`` instance's bound method directly,
+    Patches each ``CanvasFeatureRegistry`` instance's bound method directly
+    (one registry per tab type, see docs/dev/rendering/package-structure.md),
     because this runs once at bootstrap before any tab session exists (no
-    ``session_type`` to resolve against) — see
-    docs/dev/CANVAS_FEATURE_REGISTRY_PER_TAB.md Group D.
+    ``session_type`` to resolve against) — so there is no active-session
+    registry to reach through.
     """
     try:
         from tabs.registry import TabRegistry

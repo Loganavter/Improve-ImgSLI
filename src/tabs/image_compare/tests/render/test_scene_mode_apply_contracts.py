@@ -1,7 +1,8 @@
 """Scene mode apply: export mode omits interactive magnifier payloads while
 interactive mode keeps them; the mode service no longer gates hidden selection.
 
-Dogma source: docs/dev/QRHI_CANVAS_FEATURES.md §SceneVisibility / RenderPhase.
+Dogma source: docs/dev/rendering/render-pass-contract.md (SceneVisibility /
+RenderPhase; interactive-only payloads are suppressed in feature ``apply()``).
 """
 
 from __future__ import annotations

@@ -9,28 +9,30 @@ GPU-recolored text mask (the dynamic text-vibrancy feature was removed; see
 the private plan `glass-panel-soft-threshold-adaptive-tint-plan.md`).
 
 Sources: `src/ui/widgets/glass_hud/{hud,info,zoom}.py`,
-`src/ui/widgets/glass_hud/target_watch.py`,
-`src/ui/widgets/glass_hud/shaders/`
+`src/ui/widgets/glass_hud/target_watch.py`
 
 ## GlassHUD
 
 | Param | Meaning |
 |---|---|
-| `parent` / `anchor` | flyout host / anchored widget |
+| `parent: QWidget` | flyout host (no `anchor` kwarg — see `target_watch`) |
 | `flyout_group` | `info_hud` or `zoom_indicator` (see `ui/flyout_policy.py`) |
 
+`GlassHUD.__init__(parent)` passes `pinned=True` to `BaseFlyout`.
 `target_watch` (a use_cases module per CODE_PATTERNS) owns the
 anchor-tracking and backdrop re-registration.
 
 ## InfoHUD
 
-Read-only info chip (PSNR/SSIM, dimensions) in a canvas corner;
-`add_label(Label)` stacks readouts; re-lays itself out on
+`InfoHUD(parent, *, corner="left")` — read-only info chip (PSNR/SSIM,
+dimensions) in a canvas corner; `add_label(QWidget)` stacks readouts (any
+widget, not just a `Label`); re-lays itself out on
 `font_changed`/`scale_changed`.
 
 ## ZoomIndicator
 
-Zoom-percent chip with a reset button, pinned to the canvas corner; cold-
+`ZoomIndicator(parent, *, lang_provider, target_widget, reset_icon)` —
+zoom-percent chip with a reset button, pinned to the canvas corner; cold-
 start double-deferred `_position()` workaround for first-show placement.
 
 ## Inspection

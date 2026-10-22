@@ -41,6 +41,8 @@ Commands and facilities wired for automated assistants:
 | Runtime tracer | `IMGSLI_TRACE=1` or `./launcher.sh run --debug` | Causal chain across dispatch / EventBus / render. Output: `~/.local/share/ImproveImgSLI/trace.jsonl`. See [docs/dev/TRACING.md](docs/dev/TRACING.md). |
 | UI inspector | `./launcher.sh run --ui-inspector` | In-app widget, palette, theme-token, QSS diagnostics. See [docs/dev/UI_INSPECTOR.md](docs/dev/UI_INSPECTOR.md). |
 | UI layout dump | `./launcher.sh run --open-tab image_compare --dump-ui-layout /path/to/layout.json` | Headless JSON snapshot of the live widget tree (class, geometry, visibility, Find Action ids) — no screenshot needed to check spacing/margins. `--run-action <id>` opens other windows (Settings, Help, …) first. See [docs/dev/UI_LAYOUT_DUMP.md](docs/dev/UI_LAYOUT_DUMP.md). |
+| App snapshot dump | `./launcher.sh run --open-tab image_compare --dump-app-snapshot /path/to/snapshot.json` | Headless JSON of the live ActionRegistry catalog + Store slices (settings, workspace sessions, active document summary); same startup-timing rules as `--dump-ui-layout` (`src/__main__.py`). |
+| QRhi backend | `./launcher.sh run --rhi-backend <name>` | Force the QRhi backend for every render widget in the process; choices come from `supported_rhi_backend_names()` (`src/ui/canvas_infra/rhi/rhi_backend.py`), flag declared in `src/__main__.py`. |
 | Startup phases | `IMGSLI_STARTUP_TRACE=1` | Bootstrap timing via `src/core/startup_trace.py`. |
 | Focused tests | `env QT_QPA_PLATFORM=offscreen pytest -q tests/<area>/…` | Offscreen Qt for headless runs. |
 
@@ -53,7 +55,7 @@ Local-only dirs (gitignored, not in repo): `.cursor/` (except committed `.cursor
 | Architecture overview | [docs/dev/ARCHITECTURE.md](docs/dev/ARCHITECTURE.md) |
 | Interface / isolation contracts | [docs/dev/CONTRACTS.md](docs/dev/CONTRACTS.md) (three senses) |
 | Code organization patterns (thin owner + `use_cases/`, growing-class splits) | [docs/dev/CODE_PATTERNS.md](docs/dev/CODE_PATTERNS.md) |
-| New canvas feature | [docs/dev/QRHI_CANVAS_FEATURES.md](docs/dev/QRHI_CANVAS_FEATURES.md) |
+| New canvas feature | [docs/dev/rendering/index.md](docs/dev/rendering/index.md) — then `feature-decomposition-playbook.md` / `render-pass-contract.md` |
 | New workspace tab | [docs/dev/tabs/index.md](docs/dev/tabs/index.md) |
 | Dialog / CSD chrome | [docs/dev/DIALOGS.md](docs/dev/DIALOGS.md) |
 | Toolkit widgets | [docs/dev/UI_TOOLKIT_LIBRARY.md](docs/dev/UI_TOOLKIT_LIBRARY.md) |
@@ -61,7 +63,7 @@ Local-only dirs (gitignored, not in repo): `.cursor/` (except committed `.cursor
 | Help authoring | [docs/dev/HELP_SYSTEM.md](docs/dev/HELP_SYSTEM.md) |
 | Screenshot a surface / Help figures | [docs/dev/SCREENSHOTS.md](docs/dev/SCREENSHOTS.md) |
 | “Weird after click/zoom” | [docs/dev/TRACING.md](docs/dev/TRACING.md) |
-| Known Qt quirks | [docs/dev/KNOWN_BUGS.md](docs/dev/KNOWN_BUGS.md) |
+| Known Qt quirks | `../improve-imgsli-internal-docs/docs/dev/KNOWN_BUGS.md` (private sibling repo, not in this checkout) |
 | Drive/inspect the app from an LLM agent (MCP tools/resources/prompts) | [docs/dev/MCP.md](docs/dev/MCP.md) |
 | Open engineering debt | [docs/dev/TODO.md](docs/dev/TODO.md) |
 | Code mass / where the code is heavy, reduction plan | [docs/dev/CODE_MASS_REDUCTION.md](docs/dev/CODE_MASS_REDUCTION.md) |
@@ -76,7 +78,7 @@ The Python tree under `src/` is the reference implementation and the production 
 
 Read:
 
-1. [docs/dev/QRHI_CANVAS_FEATURES.md](docs/dev/QRHI_CANVAS_FEATURES.md)
+1. [docs/dev/rendering/index.md](docs/dev/rendering/index.md) — rendering docs hub (successor of `docs/dev/QRHI_CANVAS_FEATURES.md`, deleted in `b981d692`); follow it to `overview.md` (Quick Start, layer split) and `render-pass-contract.md`
 2. [docs/dev/CONTRACTS.md](docs/dev/CONTRACTS.md) — complete contracts reference
 3. [src/ui/canvas_presentation](src/ui/canvas_presentation)
 4. [src/ui/canvas_infra/rhi](src/ui/canvas_infra/rhi)
@@ -93,14 +95,15 @@ Important:
 Read:
 
 1. [docs/dev/HELP_SYSTEM.md](docs/dev/HELP_SYSTEM.md) — host shell, tab `contribute_help`, authoring, figure budgets
-2. [src/plugins/help/dialog.py](src/plugins/help/dialog.py)
-3. `sli_ui_toolkit.widgets.HelpDocumentView` in the external
-   `Loganavter/sli-ui-toolkit` repository
+2. [src/plugins/help/dialog.py](src/plugins/help/dialog.py) — `HelpDialog(ThemedDialog)`: a toolkit `Text(mode="document")` inside `SidebarDialogShell` + `SurfaceScrollArea`, with host-owned TOC/figure chrome
+3. `parse_help_blocks` (`sli_ui_toolkit.ui.widgets.text.engine.markdown`) in the
+   external `Loganavter/sli-ui-toolkit` repository — the markdown → block parser
+   that feeds that `Text` (the toolkit's old `HelpDocumentView` is retired)
 
 Important:
 
-- Host topics: `src/resources/help/` (`en|ru/ui|platform/` + `assets/`). Tab topics: `src/tabs/<tab>/resources/help/`. No registry: dirs are hubs, `*.md` files are pages, ids are dotted paths (see `docs/dev/HELP_SYSTEM.md`).
-- Prefer `HelpDocumentView` + illustrated topic pages over `QTextBrowser` HTML.
+- Host topics: `src/resources/help/` (`en|ru|zh|pt_BR`, each with `ui/` + `platform/`, plus `assets/`). Tab topics: `src/tabs/<tab>/resources/help/`. No registry: dirs are hubs, `*.md` files are pages, ids are dotted paths (see `docs/dev/HELP_SYSTEM.md`).
+- Prefer the document `Text` fed by `parse_help_blocks` + illustrated topic pages over `QTextBrowser` HTML.
 - Keep help pages scenario-based, anchor-friendly, and split into short `###` sections.
 - When features change, update help pages as part of the same task.
 
@@ -171,7 +174,7 @@ Read:
 
 Important:
 
-- A new tab is a self-contained module under `src/tabs/<tab_name>/` implementing `TabContract` (`tab.py`, `controller.py`, `widget.py`, own `resources/i18n/`) — don't wire tab-specific logic into core.
+- A new tab is a self-contained module under `src/tabs/<tab_name>/` implementing `TabContract` ([src/tabs/contract.py](src/tabs/contract.py)) — required pair `tab.py` + `widget.py`, logic in `controller.py` (or `presenters/`, as in `image_compare`), own `resources/i18n/` — don't wire tab-specific logic into core.
 - All state mutation goes through `Dispatcher.dispatch` → `RootReducer.reduce`; never mutate `Store` fields directly.
 - `EventBus` is for facts about the past ("an export finished"), not for state — state changes belong in the Store. Don't use one where the other belongs.
 - Theming is centralized in the external `sli-ui-toolkit` `ThemeManager`; app-side palette/QSS registration happens in `src/core/bootstrap.py`. Don't hand-roll colors outside `themes.json`.
@@ -183,7 +186,8 @@ Use this mental model for `src/`:
 - `src/core/`: app state, settings, events, reducers, shared runtime contracts
 - `src/plugins/`: feature/domain plugin layer
 - `src/ui/`: presenters, canvas integration, Qt widgets, main window
-- `src/shared/`: shared processing and rendering helpers
+- `src/engine/`: rendering/analysis engine — `cache/` (Qt-free residency/LOD/coverage/tile geometry), `gpu/` (QRhi passes, texture cache, export tiling), `store/` (`TiledPixelStore`), `frame/`, `passes/`, `overlay/`, `pyramid/`, `analysis/`
+- `src/shared/`: shared processing helpers (image loading, analysis, keyframing, export warnings) — rendering itself lives in `src/engine/`
 - `src/shared_toolkit/`: app-side QSS/resources and older shared UI integration points
 - `sli-ui-toolkit`: external reusable PySide6 toolkit installed from `requirements-gui.txt`
 - `src/resources/help/`: localized in-app help content
@@ -233,7 +237,7 @@ An outdated comment is a **correctness defect**: agents execute prose as truth
 
 - Image load is **decode-backend-scoped**. When libvips streaming decode is
   available for a file's format (`pyvips_can_stream` in
-  `shared/image_processing/progressive_loader.py`), there is **no size
+  `src/shared/image_processing/progressive_loader.py`), there is **no size
   bound** — `TiledPixelStore.from_path` streams strips straight into the
   memmap without a full-frame decode buffer. Otherwise the PIL/imagecodecs
   full-frame path applies `AppConstants.MAX_SUPPORTED_IMAGE_DIMENSION`
@@ -246,7 +250,7 @@ An outdated comment is a **correctness defect**: agents execute prose as truth
   streams it. Still-image export above `16384 px`
   (`AppConstants.EXPORT_TESTED_MAX_EDGE`) is allowed but warns that the
   path is untested (Image Compare and Multi Compare).
-- Full-resolution pixel data for all canvas tabs lives in `TiledPixelStore` (`shared/image_processing/tiled_pixel_store.py`) — memmap-backed, always tiled. Shared render helpers: `shared/rendering/host_texture_cache.py`, `export_tiling.py`, `tile_geometry.py`.
+- Full-resolution pixel data for all canvas tabs lives in `TiledPixelStore` ([src/engine/store/tiled_pixel_store.py](src/engine/store/tiled_pixel_store.py)) — memmap-backed, always tiled. Shared render helpers: [src/engine/gpu/host_texture_cache.py](src/engine/gpu/host_texture_cache.py) (`HostTextureUploadCache`), [src/engine/gpu/export_tiling.py](src/engine/gpu/export_tiling.py), [src/engine/cache/tile_geometry.py](src/engine/cache/tile_geometry.py).
 - `ssim` has special handling because some paths depend on cached diff images and GPU diff textures.
 - Help pages now support anchors and generated in-page TOC. Keep headings stable.
 
@@ -262,8 +266,8 @@ Tests are grouped by subsystem under `tests/`:
 - `tests/runtime/` — registry, Feature State API, stacking policy.
 - `tests/render/` — GL pass behavior with fake `SimpleNamespace` context.
 - `tests/plugins/` — plugin behavior (export, help, settings, toast, clipboard).
-- `tests/video/` — video editor preview/timeline/keyframes contracts.
-- `tests/devtools/` — developer tooling (UI inspector, QSS index, docs link graph).
+- `tests/video/` — one remnant module (`test_timeline_selection_handles.py`); the video preview/timeline/keyframe contract suite lives per-tab in `src/tabs/image_compare/tests/video/`.
+- `tests/devtools/` — developer tooling (UI inspector wiring, app snapshot, docs link graph, MCP/live fixtures).
 
 Common focused test pattern:
 
@@ -314,7 +318,7 @@ Usually this means touching one of:
 - external `sli-ui-toolkit` `docs/user/API_CATALOG.md`
 - external `sli-ui-toolkit` `docs/dev/ARCHITECTURE.md`
 - [docs/dev/HELP_SYSTEM.md](docs/dev/HELP_SYSTEM.md)
-- [docs/dev/QRHI_CANVAS_FEATURES.md](docs/dev/QRHI_CANVAS_FEATURES.md)
+- [docs/dev/rendering/index.md](docs/dev/rendering/index.md) and the page it points at for the changed subsystem (`overview.md`, `render-pass-contract.md`, `checklist.md`)
 
 ### Doc placement and the doc-link graph
 
@@ -323,10 +327,12 @@ cross-tab material only. A doc about one tab's own behavior — most
 investigations, tab-specific notes — belongs under
 `src/tabs/<tab>/docs/` (mirrors `src/tabs/<tab>/tests/`; see
 [docs/dev/tabs/index.md](docs/dev/tabs/index.md)), e.g.
-`src/tabs/image_compare/docs/investigations/`,
-`src/tabs/multi_compare/docs/investigations/`. Cross-tab rendering
+`src/tabs/image_gallery/docs/investigations/` — create the `investigations/`
+dir on demand (the other tabs ship only `docs/README.md` + `docs/plugins/`,
+plus `docs/ARCHITECTURE.md` in the two canvas tabs). Cross-tab rendering
 investigations (bugs spanning both tabs' renderers, or shared widgets like
-`InfoHUD`/`ZoomIndicator`) stay in `docs/dev/rendering/investigations/`.
+`InfoHUD`/`ZoomIndicator`) stay at `docs/dev/rendering/investigations/` in the
+private sibling `../improve-imgsli-internal-docs` repo.
 
 Cross-doc links are checked, not hand-maintained: after moving, renaming, or
 adding a doc anywhere under `docs/` or `src/tabs/*/docs/`, run
@@ -334,7 +340,10 @@ adding a doc anywhere under `docs/` or `src/tabs/*/docs/`, run
 [docs/dev/DOC_INDEX.md](docs/dev/DOC_INDEX.md) (full doc list + auto-computed
 backlinks). `tests/devtools/test_docs_link_graph.py` fails the suite on any
 broken relative doc link or a stale `DOC_INDEX.md` — treat that failure as
-"you moved a doc and didn't update links," not a flaky test.
+"you moved a doc and didn't update links," not a flaky test. That checker's
+scope is `docs/` + `src/tabs/*/docs/` only (`discover_doc_files` in
+`src/devtools/docs_link_graph.py`) — links written in `AGENTS.md`, `skills/`,
+`.github/` and `.cursor/` are **not** scanned, so check them by hand.
 
 Private sibling docs: hard-won QRhi/Wayland gotchas live in `../improve-imgsli-internal-docs` (sibling checkout, not committed) — see `skills/imgsli-devtools/SKILL.md` `qrhi-gotchas.md`/`KNOWN_BUGS.md` links. Check there before re-diagnosing rendering quirks.
 

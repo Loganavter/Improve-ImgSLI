@@ -83,9 +83,15 @@ from its `create_service(service_id, ...)`. See
 
 ## Help ownership
 
-`help.py` `build_help_plugin_contribution()` (`owner_plugin="onboarding"`,
-attach `platform`): owns page `platform.getting_started` + alias
-`introduction` (moved byte-identical from host, RU quirk preserved). Pack:
-`resources/help/` bodies ×4, no figures (budget-0); the
-`image_compare.action.save` key ref stays by decision (IC tab always loaded).
+`help.py` carries exactly one symbol, `HELP_MOUNT = "platform.getting_started"`
+— the fs-scanned help tree mounts this package's pages there, so the section
+owns page `platform.getting_started` (moved byte-identical from host). Pack:
+`resources/help/` bodies ×4 + one figure (`getting_started.md` references
+`../assets/onboarding_ui_mode.png`). The `image_compare.action.save` key ref
+stays by decision (IC tab always loaded).
+
+The former `build_help_plugin_contribution()` (`owner_plugin="onboarding"`,
+attach `platform`, with the `introduction` alias) was removed in `c8231456`
+with the rest of the contribution layer, and the alias did not survive —
+`HELP_MOUNT` is the whole contribution now.
 

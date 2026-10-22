@@ -33,11 +33,44 @@ Also enabled automatically when `--debug` mode is on.
 | `dispatch.begin` / `dispatch.end` | Every Redux action with `diff` of `viewport` / `document` / `settings` between pre- and post-reduce. | yes |
 | `store.emit_state` / `store.emit_viewport` | Every state-change notification with caller + scope + subscriber count. | no |
 | `eventbus.emit` / `eventbus.end` | Every EventBus emission with subscriber count. | yes |
-| `alias.command` | Each capability-alias resolve via `widget_registry.get_canvas_feature_command_by_alias`. | no |
+| `alias.command` | Each per-tab `CanvasFeatureRegistry.get_feature_command_by_alias` call (`src/ui/canvas_infra/scene/registry.py`). | no |
 | `render.apply_plan` / `render.apply_end` | Each `apply_canvas_render_plan` call with a snapshot diff of changed `CanvasRenderPlan` fields vs the previous frame on the same canvas. | yes |
 | `video.preview.*` | Video editor preview request/apply sizes, selected render target, fit-content state, and prepared-frame debug payload. | no |
 | `video.render.*` | Snapshot renderer prescale/layout/plan sizes, interpolation method, render scene filter, diff mode, and canvas/content geometry. | no |
 | `hit_test` | Each `find_scene_object_at_position` result (kind + id). | no |
+
+### Tab-local kinds
+
+Beyond the shared set above, the canvas tabs emit their own families with
+`Tracer.instance().record(...)` directly — these are what an IC/MC render or
+magnifier trace is actually made of:
+
+- **Background-tab deferral / flush** — `render.ic.deferred` / `render.ic.flush`
+  (`src/tabs/image_compare/presenters/image_canvas/background_parts/use_cases/background.py`,
+  plus the stale-render flush from `src/tabs/image_compare/widget.py`),
+  `render.ic.chrome_deferred` / `render.ic.chrome_flush`
+  (`src/tabs/image_compare/use_cases/chrome_sync.py`),
+  `render.mc.deferred` / `render.mc.flush`
+  (`src/tabs/multi_compare/ui/canvas_widget.py`), and
+  `metrics.deferred` / `metrics.flush`
+  (`src/tabs/image_compare/use_cases/metrics_trigger.py` and the stale-metrics
+  flush in `src/tabs/image_compare/widget.py`).
+- **Gap / coverage diagnostics** — `ic.gap.narrow_bbox`
+  (`src/tabs/image_compare/canvas/rhi_renderer/draw_plan.py`,
+  `.../rhi_renderer/use_cases/coverage.py`) and `ic.gap.mixed_tier`
+  (`src/tabs/image_compare/presenters/image_canvas/background_parts/use_cases/bg_dirty.py`).
+- **Magnifier** — `magnifier.instances.added` / `.removed`
+  (`src/tabs/image_compare/canvas/features/magnifier/commands/viewport.py`),
+  `magnifier.instances.add` / `.remove`
+  (`.../magnifier/toolbar/handlers.py`), and `magnifier.toolbar.sync`
+  (`.../magnifier/toolbar/sync.py`). Note `instances.added/removed` are span
+  records; `instances.add/remove` are the toolbar command ids.
+- **Video editor (IC tab)** — `video.editor.debug`
+  (`src/tabs/image_compare/plugins/video_editor/services/recording_flow.py`)
+  and `video.editor.toolbar_click`
+  (`src/tabs/image_compare/presenters/toolbar/connections.py`).
+
+These are additive to the table above, not a second schema.
 
 Each record carries:
 - `seq` — monotonic insertion index
@@ -61,8 +94,14 @@ IMGSLI_TRACE_KINDS="dispatch.*,render.apply_plan,hit_test,input.mpress"
 IMGSLI_TRACE_SKIP="alias.command,input.mmove"
 
 # Record absolutely everything (override default mmove-skip)
-IMGSLI_TRACE_SKIP=""
+IMGSLI_TRACE_SKIP="none"
 ```
+
+An **empty** `IMGSLI_TRACE_SKIP` is identical to unset — the default
+`input.mmove` skip stays on (`tracer._load_filter_from_env` only replaces the
+default when the value is non-empty). Pass any token that matches no kind
+(`none`, `off`) to disable the skip. Note the pattern is the exact kind, not a
+prefix: the default drops `input.mmove` but still emits `input.mmove.end`.
 
 ## Reading the file
 
@@ -208,9 +247,12 @@ Files in `src/core/tracing/`:
 - `records.py` — `TraceRecord` dataclass.
 - `instrumentation.py` — install-time monkey patches for `Dispatcher.dispatch`,
   `Store.emit_state_change`, `Store.emit_viewport_change`, `EventBus.emit`,
-  `widget_registry.get_canvas_feature_command_by_alias`,
-  `apply_canvas_render_plan`, `find_scene_object_at_position`, and all
-  `CanvasWidget` mouse/wheel/key handlers (`src/tabs/image_compare/canvas/widget.py`).
+  each per-tab `CanvasFeatureRegistry.get_feature_command_by_alias`
+  (`src/ui/canvas_infra/scene/registry.py`), `apply_canvas_render_plan`,
+  `find_scene_object_at_position`, and all `CanvasWidget` mouse/wheel/key
+  handlers — every tab's `canvas/widget.py` `CanvasWidget` is discovered by a
+  pkgutil scan (`_iter_tab_canvas_widget_classes`), so `multi_compare` is
+  patched too, not only `src/tabs/image_compare/canvas/widget.py`.
 - `file_sink.py` — subscribes to Tracer and appends JSON lines to the log
   directory file.
 - `print_tree.py` — CLI for reading the file and rendering trees.

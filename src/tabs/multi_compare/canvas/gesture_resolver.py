@@ -10,8 +10,10 @@ here carry whatever the caller passes — ``canvas_widget.py`` passes itself
 (the handler), since multi_compare's transient drag state lives on the
 widget instance (``_divider_drag``, ``_lmb_press_slot_id``), not in
 ``MultiCompareState`` the way image_compare keeps it in
-``viewport.interaction_state``. See the D1 gesture-mapping note in
-``docs/dev/MULTI_COMPARE_QRHI_REFACTOR.md`` for why.
+``viewport.interaction_state``. That divergence is deliberate (D1):
+multi_compare's widget is the only object that sees both the gesture and its
+own chrome state, so the drag session rides on it instead of fanning a second
+copy of the drag flag into the store.
 """
 
 from __future__ import annotations

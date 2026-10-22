@@ -11,8 +11,9 @@ DPR behavior is unchanged from the retired mirror (R0): the painter is
 scaled by the host DPR before ``DragDropOverlaySource.paint`` (unlike
 labels, which are source-owned). Do NOT unify DPR handling across passes.
 
-Live-only, interaction-driven — uses ``TRANSIENT_PREVIEW`` stacking (see
-MULTI_COMPARE_QRHI_REFACTOR.md B1). Does *not* set
+Live-only, interaction-driven — uses ``TRANSIENT_PREVIEW`` stacking (B1: the
+drop hint is chrome, not scene content, so it sorts with the HUD). Does *not*
+set
 ``visibility = SceneVisibility.INTERACTIVE``: ``MultiCompareRenderContext``
 carries no render-mode signal (no ``render_metrics``/``render_intent``),
 so ``iter_active_render_passes``' visibility resolver always defaults to

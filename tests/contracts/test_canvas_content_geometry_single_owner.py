@@ -1,7 +1,9 @@
 """Guard against reintroducing hand-rolled canvas-bounds/split-position math.
 
-Dogma source: docs/dev/QRHI_CANVAS_FEATURES.md, "Mechanical
-duplication guard". Three independent call sites (``gpu_export_scene.py``,
+Dogma source: docs/dev/rendering/coordinate-systems.md § "Single resolver for
+both rects: ``resolve_canvas_content_geometry``" — the single-owner rule that
+hand-rolled canvas-bounds/split-position math keeps violating (prose alone did
+not hold; this test scans source instead). Three independent call sites (``gpu_export_scene.py``,
 ``magnifier/snapshot_store.py``, ``divider/commands.py``) each hand-rolled a
 copy of "recombine split-position with padded-canvas geometry" before that
 refactor — twice within the same working session, despite the doc already
@@ -45,7 +47,7 @@ from ._framework import SRC, iter_py, parse, rel
 
 pytestmark = pytest.mark.slow
 
-_DOC = "docs/dev/QRHI_CANVAS_FEATURES.md"
+_DOC = "docs/dev/rendering/coordinate-systems.md"
 
 _BOUNDS_ALLOWLIST = {
     # Producer side: the single owner of canvas-bounds -> widget-px / clip-rect

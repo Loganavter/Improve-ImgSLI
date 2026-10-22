@@ -19,15 +19,18 @@ is an eager `max` envelope.
 2. **Full decode** (`TiledPixelStore`, memmap-backed) — background workers
    via `TiledPixelStore.from_path` (pyvips streaming when available, else
    PIL/imagecodecs full-frame). A unify of a mixed pair (one side full, other
-   preview) is *deferred* while the other side's decode is still in flight
-   (`use_cases/loading.py::_defer_mixed_unify`), so we never LANCZOS-upscale
-   a 1024 preview to 20k.
+   preview) is *skipped* while the other side's decode is still in flight
+   (`use_cases/unify.py::ensure_unification` serves the ready side and leaves
+   no unify flag behind; the full-res arrival re-triggers unify), so we never
+   LANCZOS-upscale a 1024 preview to 20k.
 3. **Unify** (`_session_controller.py::_unify_images_worker_task` →
-   `shared/image_processing/pixel_ops/unify.py::unify_pair`) resizes both
+   `engine/store/pixel_ops/unify.py::unify_pair`) resizes both
    sides to a common size `pw,ph = max(w1,w2), max(h1,h2)` (e.g. `2797` in the
    `21:36 IMGSLI_IC_GAP_DEBUG` trace) tile-native via
-   `write_resampled_to_store` (`BICUBIC`, `shared/image_processing/resample_map.py`)
-   into memmap-backed `TiledPixelStore`s (`image_state.image1/2`). Small
+   `write_resampled_to_store` (`BICUBIC` via
+   `engine/store/pixel_ops/resample.py`; method names in
+   `shared/image_processing/resample_map.py`) into memmap-backed
+   `TiledPixelStore`s (`image_state.image1/2`). Small
    outputs (`≤4096²`) fall back to `resize_images_processor` PIL path for exact
    match. Aborts via `should_abort` when superseded by a newer unification
    task.
@@ -38,17 +41,17 @@ is an eager `max` envelope.
    its own `TiledPixelStore` (own memmap), so tile addressing and apron are
    identical at every level.
 5. **Render** — per frame, `resolve_lod_texture_keys` picks the pyramid
-   level for the current on-screen scale (`shared/rendering/lod.py::
+   level for the current on-screen scale (`src/engine/cache/lod.py::
    select_level`, shared with snapshot/export for parity), the draw plan
    selects visible tiles, and `realize_tile_plan` lazily crops+uploads
-   only those tiles (budgeted via `shared/rendering/tile_constants.py`).
+   only those tiles (budgeted via `src/engine/cache/tile_constants.py`).
 
 ## Eager max envelope (geometry)
 
 Single owner, eager, no HOLD:
 
-- `canvas/texture_parts/base_images.py:196` `update_common_letterbox_geometry`
-  and `presenters/image_canvas/background_parts/render_flow.py:55`
+- `canvas/texture_parts/base_images.py` `update_common_letterbox_geometry`
+  and `presenters/image_canvas/background_parts/render_flow.py`
   `_update_comparison_geometry` are the **single geometry owners**. When both
   sides have sizes, they compute `pw,ph = max(w1,w2), max(h1,h2)` once from
   `shared/image_processing/image_dims.py::get_image_dims` and derive a single
@@ -58,9 +61,9 @@ Single owner, eager, no HOLD:
   `ux/cw, uy/ch, uw/cw, uh/ch`, dispatched via `store.transact`
   (`SetPixmapDimensionsAction` + `SetImageDisplayRectAction`).
 - **No `UNION_LETTERBOX_HOLD_MS` / `more_pending` / `Store.predicted_unified_size`
-  for geometry.** `HOLD` (`shared/rendering/tile_constants.py:111`
+  for geometry.** `HOLD` (`src/engine/cache/tile_constants.py`
   `UNION_LETTERBOX_HOLD_MS = 350.0`) and `atomic` remain **only for pixels**
-  — fallback-LOD in `rhi_renderer/renderer.py:463` (`_resolve_fallback_plan` →
+  — fallback-LOD in `rhi_renderer/renderer.py::_resolve_fallback_plan` →
   `resolve_fallback_lod(atomic=True)`). Geometry is stable from the first
   `gap draw_plan` (`IMGSLI_IC_GAP_DEBUG=1`): e.g. `44.007 gap draw_plan`
   already `0.545/1080` (`pw=2797` eager max) and stays `0.545` through
@@ -74,7 +77,7 @@ Single owner, eager, no HOLD:
 ## The roles
 
 - **stored_*** — the background/base pair the canvas draws. Chosen by
-  `shared/rendering/display_image_picker.py::pick_display_image`: a
+  `src/engine/cache/display_image_picker.py::pick_display_image`: a
   `TiledPixelStore` is only eligible once its pyramid is complete; until
   then the preview tier stays on screen (with optional
   `pick_display_with_preview_backing` freshness guard in `render_flow.py`).
@@ -102,7 +105,7 @@ Invariants:
   transient zoom/pan through `zoomChanged` listeners.
 - The flip must be **atomic on screen** for pixels: the preview's tiles stay
   drawn in full until every current-view tile of the store has uploaded, then
-  the draw plan flips over in one frame. This is `renderer.py:463` atomic
+  the draw plan flips over in one frame. This is `renderer.py::_resolve_fallback_plan` atomic
   fallback (`resolve_fallback_lod(atomic=True)`), not a geometry HOLD — the
   flip commits the store under fresh `LevelKey`s and rekeys nothing, so its
   fallback baseline carries no rekeyed marker — the renderer's content-swap
@@ -122,7 +125,7 @@ Invariants:
 - First touch of a 512-px live tile (crop + upload) is cheap (~1 MB/tile);
   at the old `LIVE_TILE_EXTENT=8192` it was ~0.4s/~268 MB per tile. Deep-zoom
   boundary crossing now realizes via budgeted `TILE_UPLOAD_BUDGET_PER_CALL=64`
-  + `TILE_UPLOAD_TIME_BUDGET_MS=12.0` (`shared/rendering/tile_constants.py:111`).
+  + `TILE_UPLOAD_TIME_BUDGET_MS=12.0` (`src/engine/cache/tile_constants.py`).
 - `stored_*` and `source_*` can both point at the same unified store,
   registering the same image under two tile-grid keys (potential duplicate
   GPU tiles when hires mode engages). Candidate for unification into one

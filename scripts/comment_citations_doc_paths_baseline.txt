@@ -1,0 +1,26 @@
+# Cited-doc-path baseline for scripts/check_comment_citations.py.
+# Format: <citing file><TAB><accepted missing-doc-path count>.
+# Regenerate: python scripts/check_comment_citations.py --update-doc-path-baseline
+# A count may only shrink. Never add a file here to silence a NEW dead doc
+# citation — fix the comment (or write the sibling prefix for sibling docs).
+src/core/evidence/__init__.py	1
+src/core/evidence/journal.py	1
+src/core/evidence/tests/test_journal.py	1
+src/plugins/settings/nav_rows.py	1
+src/tabs/image_compare/canvas/features/filename_overlay/render/glyph_atlas.py	1
+src/tabs/image_compare/canvas/features/magnifier/passes.py	1
+src/tabs/image_compare/canvas/features/magnifier/state/snapshot_store.py	1
+src/tabs/image_compare/presenters/image_canvas/background_parts/render_flow.py	1
+src/tabs/image_compare/presenters/image_canvas/background_parts/use_cases/render_gate.py	1
+src/tabs/image_compare/state/reducers.py	1
+src/tabs/image_compare/tests/plugins/test_export_notify_target.py	1
+src/tabs/image_compare/tests/runtime/test_metrics_staleness_target.py	2
+src/tabs/image_gallery/tests/runtime/test_profile_honesty.py	1
+src/tabs/image_gallery/tests/test_toolbar_parity.py	1
+src/tabs/multi_compare/canvas/gesture_resolver.py	1
+src/ui/widgets/shelf/widget.py	1
+tests/contracts/test_bug_case_contracts.py	1
+tests/contracts/test_render_visibility_declared.py	1
+tests/devtools/test_mcp_server.py	1
+tests/devtools/test_nav_coverage_gate.py	1
+tests/target_bug/test_extract_cache_reuse.py	2

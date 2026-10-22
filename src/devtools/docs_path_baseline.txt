@@ -1,0 +1,32 @@
+# Cited-path baseline for src/devtools/docs_link_graph.py.
+# Format: <repo-relative doc path><TAB><accepted missing-path count>.
+# Regenerate: python src/devtools/docs_link_graph.py --update-path-baseline
+# A count may only shrink. Never add a file here to silence a NEW dead path
+# — fix the citation instead (or write the sibling prefix for sibling paths).
+.cursor/rules/improve-imgsli.mdc	1
+AGENTS.md	10
+docs/dev/ARCHITECTURE.md	2
+docs/dev/CODE_MASS_REDUCTION.md	23
+docs/dev/CODE_PATTERNS.md	3
+docs/dev/MCP.md	1
+docs/dev/PLUGINS.md	1
+docs/dev/README.md	4
+docs/dev/TESTING.md	1
+docs/dev/THEMING.md	2
+docs/dev/TODO.md	8
+docs/dev/UI_TOOLKIT_LIBRARY.md	4
+docs/dev/plugins/layout.md	1
+docs/dev/rendering/checklist.md	5
+docs/dev/rendering/contracts.md	1
+docs/dev/rendering/coordinate-systems.md	4
+docs/dev/rendering/display-image-pipeline.md	1
+docs/dev/rendering/index.md	4
+docs/dev/rendering/render-pass-contract.md	1
+docs/dev/rendering/tile-rendering-system.md	6
+docs/dev/rendering/zoom-pan.md	1
+docs/dev/widgets/themed_surface.md	1
+skills/imgsli-devtools/SKILL.md	3
+skills/sli-ui-toolkit-docs-first/SKILL.md	4
+src/tabs/image_compare/docs/README.md	2
+src/tabs/multi_compare/docs/ARCHITECTURE.md	6
+src/tabs/multi_compare/docs/README.md	2

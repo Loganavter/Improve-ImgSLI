@@ -1,6 +1,7 @@
 """Canvas preserve-zoom keeps image focus stable across letterbox changes.
 
-Dogma source: docs/dev/QRHI_CANVAS_FEATURES.md §Working with zoom & pan.
+Dogma source: docs/dev/rendering/zoom-pan.md § Preserving the image sample point
+when the letterbox changes.
 """
 
 from __future__ import annotations

@@ -6,7 +6,9 @@
   * no feature-named files under ``shader_sources/`` (feature shaders live in
     the feature's own package)
 
-Dogma source: docs/dev/QRHI_CANVAS_FEATURES.md (render pass section + anti-patterns).
+Dogma source: docs/dev/rendering/render-pass-contract.md (``stack_role``
+ordering, scene visibility) + docs/dev/rendering/checklist.md (feature-owned
+shaders, nothing hand-wired into a central registry).
 
 NB: tests/runtime/test_stacking_policy.py already covers the *runtime* side of
 this (``TestFeatureRenderPassesUseStackRole``); these tests are the *static* check.

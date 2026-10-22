@@ -1,6 +1,7 @@
 """Active magnifier slots render last so the focused overlay is drawn on top.
 
-Dogma source: docs/dev/QRHI_CANVAS_FEATURES.md §GL passes / stacking.
+Dogma source: docs/dev/rendering/render-pass-contract.md (stack_role ordering via
+``CanvasStackRole``; a pass never computes its own layer/priority).
 """
 
 from __future__ import annotations

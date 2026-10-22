@@ -30,7 +30,13 @@ Format:
 4. Persisted setting `debug_mode_enabled` (in QSettings, toggled via `--enable-logging` / `--disable-logging` or the Settings UI) → `DEBUG` or `INFO`.
 5. Default → `INFO`.
 
-The level applies to both handlers. Switching it from the Settings UI takes effect immediately via re-`setup_logging`.
+The level applies to both handlers. Switching it from the Settings UI does
+**not** re-level the running process: that path only dispatches
+`SetDebugModeEnabledAction` (`src/plugins/settings/application_service.py`),
+whose reducer replaces the persisted field; `setup_logging` is called only from
+`src/core/bootstrap.py:_configure_logging` (twice, both during init). The
+persisted flag therefore applies on the **next start** — `--debug` is the
+per-session switch.
 
 ## Getting a logger
 
@@ -84,7 +90,7 @@ Env-gated streams following the canonical unique-prefix recipe:
 - `IMGSLI_IC_PREVIEW_DEBUG` → `[ic-preview]` preview display gate (`src/tabs/image_compare/debug.py:ic_preview_debug`): applied display tier per `apply_store_to_canvas` plus deferred/skip reasons.
 - `IMGSLI_IC_GAP_DEBUG` → `[ic-gap]` gap diagnostics (`src/tabs/image_compare/debug.py:ic_gap_debug`): geometry, pick, `gap_correlation`, `resolve_lod`, `draw_plan`, bbox coverage. Also emits `core.tracing` `ic.gap.*` when `IMGSLI_TRACE=1`. Analyze with `python src/devtools/analyze_ic_gap.py --log ~/.local/share/ImproveImgSLI/log.txt`.
 - `IMGSLI_IC_LOUPE_DEBUG` → `[ic-loupe]` magnifier residency/LOD trace (`src/tabs/image_compare/debug.py:ic_loupe_debug`): `TileTextureService.request_level` answers, dropped-slice reasons, texture-choice and dedup verdicts; the same points also record into the per-frame `FrameContext` (see `src/tabs/image_compare/canvas/loupe_trace.py` for the sig/time/once throttle recipes).
-- `IMGSLI_IC_INVALIDATE_DEBUG` → `[ic-invalidate]` attributed invalidation bus (`src/tabs/image_compare/debug.py:ic_invalidate_debug`): every scheduler/keep-warm/timer arm and fire/skip records source+reason into `FrameContext` (`src/tabs/image_compare/canvas/frame_context.py`); flag off costs one env check per site.
+- `IMGSLI_IC_INVALIDATE_DEBUG` → `[ic-invalidate]` attributed invalidation bus (`src/tabs/image_compare/debug.py:ic_invalidate_debug`): every scheduler/keep-warm/timer arm and fire/skip records source+reason into `FrameContext` (`src/engine/frame/context.py`); flag off costs one env check per site.
 - `IMGSLI_MULTI_COMPARE_DEBUG` / `IMGSLI_MC_DEBUG` → `[mc-dnd]` drag/drop routing + `[mc-zoom]` wheel-tick diagnostics (`src/tabs/multi_compare/debug.py:mc_dnd_debug`): each wheel tick also records an `invalidate.mc_zoom_tick` marker (tick id only, no timing) into the per-frame `FrameContext`; the existing `[mc-dnd]` tick log is untouched — the bus record is additive.
 - MC decision bus (no env gate — record-only, same as IC): `MultiCompareRhiRenderer.frame_context` (`src/tabs/multi_compare/scene/renderer.py`, shared `engine.frame.context`, reset per `render()` incl. early-skip paths) records `prepare_frame` (ran/skipped), `resourceUpdate`, `mips`, `lod_commit`/`realize_slots` (`scene/passes/residency.py`), `fallback`/`coverage`/`submit` (`scene/passes/base_images.py`), `overlay.*` (feature passes), `invalidate.mc_zoom_tick` (wheel) and `invalidate.cascade_deferred` (mips deferral). Every `ids[0]` is `frame=N` (`make_ids`); the frozen per-frame copy surfaces via `snapshot_last_frame` (test hook; pilot: `src/tabs/multi_compare/tests/render/test_frame_context_pilot.py`). Existing `mc_dnd_debug`/`mc_first_frame` (`IMGSLI_MC_FIRST_FRAME_DEBUG`) logs stay as-is.
 - `IMGSLI_AUTOCROP_DEBUG` → `[autocrop-debug]` auto-crop diagnostics (`src/shared/image_processing/autocrop/debug.py`; consumed at load/presentation sites).
@@ -99,10 +105,11 @@ Env-gated streams following the canonical unique-prefix recipe:
 - `IMGSLI_CAPABILITY_DEBUG` → `[startup-service]` startup capability routing (`src/tabs/use_cases/capability_routing.py:create_startup_service`, local `_startup_service_debug`): one line per capability lookup.
 - `IMGSLI_FLYOUT_DEBUG` also gates the `[flyout-debug]` font-apply trace in `src/shared_toolkit/ui/managers/font_manager.py` (gated inline with `shared/debug_flags.env_flag`; that module stays free of `ui.*` imports).
 
-### Full env-flag registry (audit 2026-09-20, reorg waves W1–W3)
+### Full env-flag registry (audit 2026-09-20, reorg waves W1–W3, live-gate pass 2026-10-22)
 
-Every `IMGSLI_*` gate parses via `shared/debug_flags.env_flag` (permissive:
-any non-empty value except `0/false/no/off`). Scope legend: `log` = gated
+Most `IMGSLI_*` gates parse via `shared/debug_flags.env_flag` (permissive:
+any non-empty value except `0/false/no/off`); rows whose Parsing cell says
+`direct os.environ.get` parse inline instead. Scope legend: `log` = gated
 log lines only; `visual` = changes pixels; `dump` = writes capture files;
 `behavior` = changes runtime behavior (NOT a debug log — do not mistake for one);
 `tuning` = numeric/path knob; `trace` = tracer/startup facility; `removed` = deleted.
@@ -133,7 +140,7 @@ log lines only; `visual` = changes pixels; `dump` = writes capture files;
 | `IMGSLI_IC_FIRST_FRAME_DEBUG` / `IMGSLI_MC_FIRST_FRAME_DEBUG` | log | `env_flag` (thin wrappers, shared body) | `src/tabs/*/first_frame_debug.py`, `src/ui/canvas_infra/rhi/rhi_render.py` |
 | `IMGSLI_VIDEO_EDITOR_DEBUG` / `IMGSLI_IC_VIDEO_DEBUG` | log | `env_flag` (aliases, editor zone) | `src/tabs/image_compare/debug.py:ic_video_debug`, `plugins/video_editor/*` (editor sites), `src/plugins/export/*` (platform-local inline gates) |
 | `IMGSLI_TIMELINE_DEBUG` | log | `env_flag` (timeline zone only) | `plugins/video_editor/debug_timeline.py:timeline_debug_enabled`, dialog `shell.py` |
-| `IMGSLI_THUMBNAIL_DEBUG` | log + dump | `env_flag` (pipeline zone only) | `src/tabs/image_compare/debug.py:ic_thumbnail_debug`, thumbnail pipeline (`services/thumbnails.py`, `presenter_parts/thumbnails.py`) |
+| `IMGSLI_THUMBNAIL_DEBUG` | log + dump | `env_flag` (pipeline zone only) | `src/tabs/image_compare/debug.py:ic_thumbnail_debug`, video-editor thumbnail pipeline (`src/tabs/image_compare/plugins/video_editor/services/thumbnails.py`, `.../presenter_parts/thumbnails.py`) |
 | `IMGSLI_VIDEO_PERF_DEBUG` / `IMGSLI_IC_PERF_DEBUG` | log | `env_flag` (aliases) | `src/tabs/image_compare/debug.py:ic_perf_debug` |
 | `IMGSLI_LASER_DEBUG` | log | `env_flag` (all 14 sites verified log-only 2026-09-20) | guides/magnifier/scroll/pickers (5 files) |
 | `IMGSLI_LASER_UI_DEBUG` | reserved | `env_flag` (read nowhere yet) | convention only — mandatory gate for any future laser UI-visibility use |
@@ -141,10 +148,18 @@ log lines only; `visual` = changes pixels; `dump` = writes capture files;
 | `IMGSLI_DND_DEBUG` | log | `env_flag` | `src/events/app_event/window_events.py`, `src/events/window_event_handler.py` |
 | `IMGSLI_DOUBLE_GEOM_DEBUG` | log | `env_flag` | `src/ui/widgets/unified_list_picker/debug.py` |
 | `IMGSLI_SHELF_RESIZE_DEBUG` | log | single helper `sizing._shelf_resize_debug` | `src/tabs/session_picker/recent/use_cases/sizing.py`, `panel.py` |
-| `IMGSLI_GLASS_PANEL_DEBUG` (+ `_SIZE`, `_SYNC_PROBE`) | log | cached at import / truthy | `src/engine/gpu/glass_panel.py`, `src/ui/widgets/glass_hud/*` |
+| `IMGSLI_TILED_VIEW_DEBUG` | log + dump | direct `os.environ.get` (truthy) | `src/engine/gpu/tiled_image_view.py` (`_draw_instances` first-draw line + `_issue_debug_readback` layer readback) |
+| `IMGSLI_QL_COVER_DEBUG` | log | direct `os.environ.get` (truthy) | `src/engine/gpu/tiled_image_view.py` (`_draw_instances`, same first-draw line as above) |
+| `IMGSLI_QL_RESIZE_TRACE` | log | `env_flag` | `src/tabs/image_gallery/ui/quick_look/resize/cursors.py` (`_resize_trace_on`) — full quick-look resize firehose |
+| `IMGSLI_JANK_WATCH` | log | direct `os.environ.get`, permissive (`""/0/no/off` off) | `src/tabs/image_gallery/widget.py` — GUI-thread stall watchdog (`[jank] gui-loop gap …ms` on a >0.15 s inter-tick gap) |
+| `SLI_FOCUS_DEBUG` | log | `env_flag` (`focus_debug_enabled`) | `src/ui/focus_debug.py` → `[focus-debug]`; installed from `src/ui/main_window/lifecycle.py` |
+| `IMGSLI_PERF_TRACE_PATH` | tuning | path override | `src/engine/frame/trace_export.py:default_trace_path` — fixed path for the perf-trace dump (default is pid-suffixed under `/tmp`; this is the override for the "Frame perf spans" export) |
+| `IMPROVE_ENABLE_TRAY` | behavior | direct `os.environ.get` (unset = enabled; `=1` forces on, any other value off) | `src/ui/main_window/composer.py` (`_should_enable_system_tray`) |
+| `IMGSLI_GLASS_PANEL_DEBUG` (+ `_SIZE`) | log | cached at import / truthy | `src/engine/gpu/glass_panel.py`, `src/ui/widgets/glass_hud/panel_display.py` |
 | `IMGSLI_GLASS_PANEL_DEBUG_TINT` | visual | cached at import | `src/engine/gpu/glass_panel.py` |
 | `IMGSLI_GLASS_PANEL_DEBUG_DUMP` | dump | `<dir>` path | `src/engine/gpu/glass_panel.py` |
-| `IMGSLI_GLASS_PANEL_DISPLAY_BACKEND` | behavior | `=rhi` switch | `src/ui/widgets/glass_hud/*` |
+| `IMGSLI_GLASS_PANEL_SYNC_PROBE` | removed | historical only — named in comments, no live `os.environ` read (`src/engine/gpu/glass_panel.py`) | — |
+| `IMGSLI_GLASS_PANEL_DISPLAY_BACKEND` | removed | read nowhere (re-checked 2026-10-22); there is no `=rhi` env switch — the panel's RHI path is `GlassPanelDisplayWidget`'s own descriptor | — |
 | `IMGSLI_FAULT_DUMP` (+ `_FILE`, `_INTERVAL`) | dump | `env_flag` + path + int w/ fail-open default 15 | `src/core/windowed_stdio.py` |
 | `IMGSLI_SKIP_MIP_CASCADE` | behavior | `env_flag` | `src/tabs/multi_compare/scene/renderer.py` |
 | `IMGSLI_MC_RMB_SURFACE` | behavior | `=in_window\|popup` | `src/tabs/multi_compare/canvas/interaction.py` |
@@ -208,7 +223,7 @@ cross-link.
 
 ```bash
 tail -f ~/.local/share/ImproveImgSLI/log.txt              # follow live
-grep '\[mag-recolor-debug\]' ~/.local/share/ImproveImgSLI/log.txt
+grep '\[ic-loupe\]' ~/.local/share/ImproveImgSLI/log.txt
 ```
 
 The log file is overwritten on every app start (`mode="w"`), so capture sessions you care about.

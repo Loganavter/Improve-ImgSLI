@@ -2,7 +2,9 @@
 quality scales large previews, uses the main renderer (not thumbnail), and
 prescale targets the exact output size.
 
-Dogma source: docs/dev/QRHI_CANVAS_FEATURES.md §Render/export parity.
+Dogma source: docs/dev/rendering/rendering-model.md (the snapshot
+replay path feeds the same passes as the live path — export/preview/video
+logic with no live counterpart is the wrong fix).
 """
 
 from __future__ import annotations

@@ -16,10 +16,13 @@ full-snapshot writer; Dogma 5 — mutation service requires a key),
 |---|---|
 | Settings file | `~/.config/improve-imgsli/improve-imgsli.conf` (Qt `QSettings("improve-imgsli", "improve-imgsli")`, INI format) |
 | Backup | same path + `.backup` — refreshed after every full save; heals a truncated file at startup |
-| Format | flat keys in `[General]` (plus `[multi_compare]` and per-plugin groups) |
+| Format | flat keys under `[General]`, plus two gallery-tab groups: `[image_gallery_ai]` (`src/tabs/image_gallery/services/ai_settings_store.py:30`) and `[image_gallery_ai_models]` (`src/tabs/image_gallery/services/ai_models.py:40`). No `[multi_compare]` or per-plugin group exists |
 
 `SettingsState` (`src/core/store_settings.py`) is the in-memory authority;
 the file is a derived serialization of it, not a second source of truth.
+`PluginSettings` (`src/core/plugin_system/settings.py`) implements the
+per-plugin-group idea but has no app consumer — it creates exactly the
+`[<plugin>]` groups this table says do not exist.
 
 ## Load path (startup)
 
@@ -29,10 +32,13 @@ the file is a derived serialization of it, not a second source of truth.
 2. `SettingsManager.load_all_settings(store)` reads every key with an
    explicit type (`_get_setting`) and fills the Store. Canvas-feature and
    tab-owned settings are loaded through the same pass.
-3. If the file exists but is missing the critical keys (`language`,
-   `theme`) and a `.backup` exists, the backup is restored first
-   (`_restore_backup_if_corrupt`) — covers a kill mid-save leaving a
-   truncated INI.
+3. If the file exists but has **neither** `language` **nor** `theme` and a
+   `.backup` exists, the backup is restored first
+   (`_restore_backup_if_corrupt`, `src/plugins/settings/manager.py:66`; the
+   guard is at `:87`) —
+   covers a kill mid-save leaving a truncated INI. One hit is enough to skip
+   the restore (`if self.settings.contains("language") or
+   self.settings.contains("theme"): return False`).
 
 Logging is configured before the load so the `[settings]` diagnostics are
 actually emitted — the previous order (logging last) silently dropped every

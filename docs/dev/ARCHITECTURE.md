@@ -20,14 +20,17 @@ flowchart LR
 
 | Area | What it owns |
 |---|---|
-| `core/` | bootstrap, dispatcher, store, state_management (reducers/actions), plugin_system, event bus |
+| `core/` | bootstrap, dispatcher, store, state_management (reducers/actions), plugin_system, event bus, tracing |
 | `domain/` | Qt-agnostic data shapes (workspace/session model, geometry types) and Qt adapters |
+| `engine/` | the tile engine both canvas tabs share — `cache/` (Qt-free residency/LOD/coverage), `gpu/` (QRhi shell), `frame/`, `passes/`, `store/` (pixel stores), `analysis/`, `overlay/`, `pyramid/` |
+| `events/` | input routing and window/image event handlers (`router.py`, `runtime.py`, `image_label/`) |
 | `ui/` | main window shell, presenters, canvas infra shared across tabs, dialogs, transient UI |
-| `plugins/` | app-wide capability modules not tied to a single tab: export, settings, help, image_properties, layout |
-| `tabs/` | self-contained workspace modes (image_compare, multi_compare, session_picker), each owning its own widget tree, state slot, and canvas features |
-| `shared/` | app-specific rendering and image-processing utilities (analysis, offscreen render, interpolation) |
-| `shared_toolkit/` | vendored `sli-ui-toolkit` — base widgets, theming, i18n, gesture resolvers |
+| `plugins/` | app-wide capability modules not tied to a single tab: settings, layout, onboarding, export, help, image_properties, diagnostics |
+| `tabs/` | self-contained workspace modes (image_compare, multi_compare, image_gallery, session_picker), each owning its own widget tree, state slot, and canvas features |
+| `shared/` | cross-cutting helpers: analysis kernels, image-processing utilities, clipboard/drop policies, keyframe extension dataclasses — rendering moved to `engine/` |
+| `shared_toolkit/` | app-side facade over the external `sli-ui-toolkit` (re-exports) plus app-specific dialogs and overlay |
 | `services/` | filesystem, notifications, system integration |
+| `devtools/` | developer tooling (UI inspector, layout dump, help figures, doc-link graph); imported lazily by the in-app control surface (`core/control/`) and by `__main__.py` behind flags |
 
 ## Runtime Layers
 
@@ -112,6 +115,7 @@ A tab is a self-contained workspace mode: it owns its widget tree, a state slot 
 |---|---|
 | `tabs/image_compare/` | Primary two-image comparison: full canvas, overlays, guides, capture circles, split view, video editor integration |
 | `tabs/multi_compare/` | Grid-layout multi-image comparison, composition-aware rendering |
+| `tabs/image_gallery/` | Grid review/analysis workspace over a whole folder: folder scan, triage pipeline, analysis modes, Quick Look preview (deferred plugin) |
 | `tabs/session_picker/` | Workspace session browser / switcher |
 
 Each tab implements a `TabContract` (`tab.py`) responsible for page creation and session lifecycle.
@@ -129,7 +133,7 @@ that is the single source of truth for this topic, not duplicated here.
 
 ## Canvas Stack
 
-The canvas is treated as its own subsystem per tab because it mixes interaction, scene building, and QRhi rendering. Shared canvas infrastructure lives in `ui/canvas_infra/` and `ui/canvas_presentation/`; each canvas-owning tab (currently `image_compare`) has its own `canvas/` package built on top of that infrastructure.
+The canvas is treated as its own subsystem per tab because it mixes interaction, scene building, and QRhi rendering. Shared canvas infrastructure lives in `ui/canvas_infra/` and `ui/canvas_presentation/`; each canvas-owning tab (`image_compare`, `multi_compare`) has its own `canvas/` package built on top of that infrastructure.
 
 ```mermaid
 flowchart LR
@@ -152,22 +156,38 @@ flowchart LR
 | `tabs/image_compare/canvas/` | tab-specific `CanvasWidget` (QRhiWidget), renderer, scene, interaction, state, shaders, textures |
 | `tabs/image_compare/canvas/presentation/` | tab-specific render plan assembly |
 | `tabs/image_compare/canvas/features/` | auto-discovered canvas features (masks, analysis, rulers, guides, etc.) |
+| `tabs/multi_compare/canvas/` + `tabs/multi_compare/scene/` | the grid tab's own canvas, passes and scene — a parallel render path, not a subclass of the image-compare one |
 
 Rendering uses **QRhi**, not raw OpenGL — see [rendering/index.md](rendering/index.md) for the feature contract and auto-discovery mechanism.
 
-Comparison letterbox (`image_compare`): `update_common_letterbox_geometry` (`canvas/texture_parts/base_images.py:189`) / `_update_comparison_geometry` (`presenters/image_canvas/background_parts/render_flow.py:75`) compute eager envelope `pw,ph = max(w1,w2), max(h1,h2)` from `get_image_dims` and derive a single `resolve_canvas_content_geometry(cw,ch,pw,ph)` fitted rect for both sides — `letterbox` stable from first `gap draw_plan` (no `UNION_LETTERBOX_HOLD_MS` / `more_pending` freeze for geometry; `HOLD` + `atomic` remain only for pixel fallback LOD in `rhi_renderer/renderer.py:463`).
+Comparison letterbox (`image_compare`): `update_common_letterbox_geometry` (`tabs/image_compare/canvas/texture_parts/base_images.py:114`) / `_update_comparison_geometry` (`tabs/image_compare/presenters/image_canvas/background_parts/render_flow.py:34`, aliasing `update_comparison_geometry` in `background_parts/use_cases/geometry.py:83`) compute eager envelope `pw,ph = max(w1,w2), max(h1,h2)` from `get_image_dims` and derive a single `resolve_canvas_content_geometry(cw,ch,pw,ph)` (`ui/canvas_infra/scene/frame_geometry.py:43`) fitted rect for both sides — `letterbox` stable from first `gap draw_plan` (no `UNION_LETTERBOX_HOLD_MS` / `more_pending` freeze for geometry; `HOLD` + `atomic` remain only for pixel fallback LOD, decided in `tabs/image_compare/canvas/rhi_renderer/use_cases/fallback.py` (`resolve_fallback_plan`)).
 
 ### Important constraint
 
 Canvas features are discovered automatically from `tabs/<tab>/canvas/features/<name>/`. A feature package should be removable without breaking startup, as long as no other code imports it directly.
 
-### Tile engine (direction)
+### Tile engine
 
-The tile stack both canvas tabs share is becoming a named engine instead of
-an unnamed convention each feature re-solves (residency, fallback, throttle).
-Target shape — `src/engine/` with `cache/` (Qt-free residency/LOD/coverage),
-`gpu/` (Qt-tainted shell behind engine-owned interfaces), `frame/` (context +
-ordered passes), `passes/` (merged tab passes), `store/` (pixel stores).
+The tile stack both canvas tabs share is a named engine, not a per-feature
+convention (residency, fallback, throttle). It lives in `src/engine/`:
+
+| Package | Role |
+|---|---|
+| `engine/cache/` | Qt-free residency, LOD/display tiers, coverage, layout contract, interpolation |
+| `engine/gpu/` | Qt-tainted QRhi shell behind engine-owned interfaces (`tiled_image_view`, `offscreen_canvas`) |
+| `engine/frame/` | frame context, present step, trace export |
+| `engine/passes/` | base-image pass hook seam shared by both tabs (interface only; the tabs own residency and pass bodies) |
+| `engine/store/` | pixel stores (`tiled_pixel_store`, `pyramid_pixel_store`, `regions`, source adapters) |
+| `engine/analysis/` | analysis-backend catalog, registry and resolver |
+| `engine/overlay/` | overlay binding/textured/semantic render primitives |
+| `engine/pyramid/` | pyramid-build coordinator shared by image_compare and multi_compare (abort predicate parameterized) |
+
+The package arrived in two mechanical moves: `shared/rendering/` →
+`engine/{cache,gpu}`, and the pixel-store units (`tiled_pixel_store`, `regions`,
+`pixel_source`) from `shared/image_processing/` → `engine/store/`. The old
+`src/shared/rendering/` directory no longer exists; `src/shared/image_processing/`
+survives with the remaining decode/resize helpers.
+
 Rules, enforced by contract tests (`tests/contracts/test_engine_no_app_imports.py`,
 `test_no_private_grid.py`, `test_coverage_uses_slot_for.py`):
 
@@ -208,6 +228,7 @@ flowchart LR
 | `plugins/export/` | export pipeline integration (image/video) + recording commands |
 | `plugins/help/` | in-app help dialog |
 | `plugins/image_properties/` | image metadata display |
+| `plugins/diagnostics/` | local-first crash/diagnostics report ("Report a problem" dialog; redacted env + logs + breadcrumbs, no auto-upload) |
 
 ### Tab / session plugins (`src/tabs/`)
 
@@ -216,6 +237,7 @@ flowchart LR
 | `comparison` | `tabs/image_compare/` | primary two-image compare session (incl. analysis services) |
 | `session_picker` | `tabs/session_picker/` | transient new-session switcher |
 | `multi_compare` | `tabs/multi_compare/` | grid multi-image compare session |
+| `image_gallery` | `tabs/image_gallery/` | folder grid review/analysis workspace (deferred) |
 | `video_editor` | `tabs/image_compare/plugins/video_editor/` | tab-owned video editor (deferred, before export) |
 
 Note: `video_editor` (dialogs, timeline, keyframing, recorder/export flows, and
@@ -226,16 +248,17 @@ via nested filesystem scan (`discovery_scan.iter_plugin_entry_points`); the
 plugin lifecycle (`get_plugin("video_editor")`, event bus) is the same as for
 app-wide plugins.
 
-The keyframe snapshot contracts (`FrameSnapshot`, `ChannelDescriptor`,
-`TrackDescriptor`, `ToolDescriptor`, `KeyframeToolAdapter`) live in
-`shared/keyframing/` rather than under `tabs/image_compare/plugins/video_editor/`,
-because genuinely platform-level code (`ui/canvas_infra/scene/` property
-access, capability alias contracts) needs to reference these types without
-importing a tab package — `tests/contracts/test_platform_isolation.py`
-enforces that platform code never imports `tabs.*` directly. The concrete
-`RecordingFlow`/`VideoExportFlow` service classes stay tab-owned; `plugins/
-export/controller.py` obtains instances through
-`VideoEditorPlugin.create_control_flows(controller)` instead of importing
+The keyframe contracts are split by ownership. Only the three descriptor
+dataclasses — `ChannelDescriptor`, `TrackDescriptor`, `ToolDescriptor` — live in
+`shared/keyframing/adapters_base.py`, because genuinely platform-level code
+(`ui/canvas_infra/scene/widget_contract.py` imports `ChannelDescriptor` for
+`CanvasFeatureProperty.channels`) needs them without importing a tab package.
+`FrameSnapshot` and the `KeyframeToolAdapter` protocol stay tab-owned in
+`tabs/image_compare/plugins/video_editor/services/keyframing/types.py`, alongside
+the concrete `RecordingFlow`/`VideoExportFlow` service classes.
+`tests/contracts/test_platform_isolation.py` enforces that platform code never
+imports `tabs.*` directly. `plugins/export/controller.py` obtains flow instances
+through `VideoEditorPlugin.create_control_flows(controller)` instead of importing
 them directly, mirroring the existing `create_recording_services` pattern.
 
 ## State Model
@@ -252,7 +275,7 @@ The store is intentionally small at the top level (`core/store.py`).
 
 ### Image-compare SlotSource vs PipelineView (Phase 5–6)
 
-`DocumentModel` (`tabs/image_compare/state/document.py`) is now a **SlotSource** only — list + index + path. Pixel-bearing fields (`full_res_image*`, `preview_image*`, `original_image*`) are **PipelineView** (`tabs/image_compare/pipeline/pipeline.py:PipelineView`) published via a single `Store.transact(Transaction)` from `PipelineCache` (LRU 8, memo by `(uid1,uid2,method)`). Browsing is `O(1)` cache hit; `rehydrate_session` restores only `SlotSource` paths (0 decodes). `ImageSession` per `session_id` (`pipeline/session.py`) holds `SlotSource` + `ImagePipeline` + `AbortSignal`. `SessionController` (`_session_controller.py:287` Phase 6) is a ≤300 LOC thin owner (MethodObject split per CODE_PATTERNS.md:161) forwarding to `use_cases/canvas_invalidate, image_decode, document_slot, metrics_trigger, session_api, session_init` + `ui_batcher` + `ImageSession`. Chrome stale is single `StaleGate` (`use_cases/stale_gate.py`) merging `widget._render_stale/_metrics_stale` and `chrome_sync._render_stale`. See `plan_image_pipeline.md` Phase 5 and `plan_loading_simplification.md` Phase 4.
+`DocumentModel` (`tabs/image_compare/state/document.py`) is now a **SlotSource** only — list + index + path. Pixel-bearing fields (`full_res_image*`, `preview_image*`, `original_image*`) are **PipelineView** (`tabs/image_compare/pipeline/pipeline.py:PipelineView`) published via a single `Store.transact(actions: list, scope=..., session_id=...)` (`core/store.py:147`) from `PipelineCache` (`tabs/image_compare/pipeline/cache.py`, LRU 8, memo by `(uid1,uid2,method)`) — it coalesces N actions into one `Dispatcher.dispatch(TransactionAction)` (`core/state_management/transaction.py`). Browsing is `O(1)` cache hit; `rehydrate_session` restores only `SlotSource` paths (0 decodes). `ImageSession` per `session_id` (`pipeline/session.py`) holds `SlotSource` + `ImagePipeline` + `AbortSignal`. `SessionController` (`tabs/image_compare/_session_controller.py:21`) is a ≤300 LOC thin owner (MethodObject split per [CODE_PATTERNS.md](CODE_PATTERNS.md) "thin owner + `use_cases/`") forwarding to `use_cases/` modules (`canvas_invalidate`, `chrome_sync`, `image_decode`, `document_slot`, `metrics_trigger`, `session_api`, `session_init`, `stale_gate`, …) + `ImageSession`. Chrome stale is single `StaleGate` (`tabs/image_compare/use_cases/stale_gate.py`) merging `widget._render_stale/_metrics_stale` and `chrome_sync._render_stale`.
 
 ### Rules
 

@@ -20,6 +20,7 @@ src/ui/presenters/
 │   ├── actions.py              # user-action handlers (button clicks, hover)
 │   ├── state.py                # store→UI sync (the `on_store_state_changed` reducer)
 │   ├── workspace.py            # tab/session glue
+│   ├── workspace_tab_menu.py   # workspace tab context menu
 │   └── features.py             # MainWindowFeatureSet — bag of feature presenters (built via TabRegistry)
 └── ui_update_batcher.py        # UIUpdateBatcher — coalesce multiple UI refresh requests
 
@@ -31,11 +32,11 @@ src/tabs/image_compare/presenters/
 │   ├── lifecycle.py              # init/resize/teardown logic used by the lifecycle coordinator
 │   ├── view.py                   # actual setPixmap/setGeometry calls into Qt widgets
 │   ├── signatures.py             # frame/state signature diffing (skip redundant redraws)
-│   └── background_parts/         # diff.py, diff_toasts.py, image_cache.py, render_flow.py
+│   └── background_parts/         # diff.py, diff_toasts.py, render_flow.py, use_cases/
 ├── toolbar_presenter.py          # ToolbarPresenter — top toolbar logic
-├── toolbar/                      # connections.py, state.py, orientation.py (helpers)
+├── toolbar/                      # connections.py, actions.py, state.py, orientation.py (helpers)
 ├── export_presenter.py           # ExportPresenter glue for this tab
-├── actions.py / connections.py / state.py   # tab-level presenter wiring (parallel to main_window's)
+├── connections.py                # tab-level presenter wiring (tab-level actions live in tabs/image_compare/actions/, state in state/)
 ```
 
 ## The shape: facade + free functions
@@ -73,7 +74,7 @@ The cardinal rule:
 - **`state.py` reads from the store** (and writes to widgets).
 - They don't cross over. If a state-sync function calls `dispatch`, you've created a loop with the store subscriber.
 
-## MainWindowPresenter (`src/ui/presenters/main_window/presenter.py:45`)
+## MainWindowPresenter (`src/ui/presenters/main_window/presenter.py:37`)
 
 The shell. Holds references to everything the window-level code needs:
 
@@ -121,7 +122,7 @@ Use it instead of calling `do_update_X(presenter)` directly when several state c
 
 ## ImageCanvasPresenter (`src/tabs/image_compare/presenters/image_canvas/presenter.py:14`)
 
-Owns the canvas (`CanvasWidget`, the tab's QRhi widget) and the magnifier/overlay state. It is a **tab-owned service**, instantiated by `MainWindowComposer._create_tab_owned_feature(window, "image_canvas", ...)` via `TabRegistry` — not constructed directly by the shell. Decomposed into four coordinators (`coordinators.py`):
+Owns the canvas (`CanvasWidget`, the tab's QRhi widget) and the magnifier/overlay state. It is a **tab-owned service**, instantiated by `MainWindowComposer._create_tab_owned_feature("image_canvas", …, main_window_app=window)` (`src/ui/main_window/composer.py:129`, call at `:88-95`) via `TabRegistry` — not constructed directly by the shell. Decomposed into four coordinators (`coordinators.py`):
 
 ```python
 presenter.lifecycle    # CanvasLifecycleCoordinator — init/resize/movement state
@@ -144,7 +145,7 @@ Smaller, same shape: `connections.py` wires button signals, `state.py:update_too
 
 1. **Presenter MAY** call `widget.setText()`, `widget.setVisible()`, etc. — it owns the view. But...
 2. **Presenter MUST NOT** import or construct `QPainter`, `QImage`, paint events, or anything that's strictly View-painting territory. That belongs in the widget class.
-3. **Presenter MUST NOT** mutate `store.viewport.*` / `store.document.*` directly. Dispatch an action (see [STORE.md](STORE.md#invariants--what-you-must-hold)).
+3. **Presenter MUST NOT** mutate `store.viewport.*` / `store.document.*` directly. Dispatch an action (see [STORE.md](STORE.md#invariants-what-you-must-hold)).
 4. **View widgets MUST NOT** know about the store. They emit signals; the presenter translates.
 5. **Free functions in `actions.py`/`state.py` MUST take `presenter` as their first arg** and only touch what's on it (`presenter.store`, `presenter.ui`, etc.). No module-level state.
 

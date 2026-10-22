@@ -1,10 +1,12 @@
 # Image Gallery — how image analysis actually works
 
-Status: as-is map (2026-10-20) · Scope: `src/tabs/image_gallery/` (tab-owned)
+Status: as-is map · Scope: `src/tabs/image_gallery/` (tab-owned)
 
-Every claim below is a `file:line` in the tree at commit `94f438e2`. Where the
-code and the UI text disagree, both are shown — that disagreement is the
-point of this document.
+Sections §5–§9 were re-verified against `f6df0b79` (2026-10-22); §1–§4 are the
+older survey and §10 is the dated P9b record. Citations name a module and a
+symbol: this document was originally pinned to `94f438e2` and `file:NNN` refs rot
+within a few commits, so a line number that no longer lands on the named symbol
+is stale, not a contradiction.
 
 Related: [plan-adaptive-metric-profiles-2026-10-17.md](investigations/plan-adaptive-metric-profiles-2026-10-17.md) ·
 [README.md](README.md)
@@ -18,9 +20,10 @@ network paths**. They are not one "AI backend": the toolbar switch changes
 *whose numbers are shown*, while the AI Settings change *which endpoint and
 model the calls go to*, and two of the five paths (Jev rank, series priority)
 ignore the user's model entirely and hard-code `typesafe/jev-router`
-(`services/jev_client.py:54`). The metric **profile** is a third, orthogonal
-axis: it decides *which axes exist*, not who computes them
-(`services/rank_fusion.py:74`).
+(`services/jev_client.py` `JEV_MODEL`). The metric **profile** is a third,
+orthogonal axis: it decides *which axes exist*, not who computes them
+(`services/rank_fusion.py` `measured_axes_for` for the registry half,
+`services/profile_judged.py` for the axes the judge named).
 
 ---
 
@@ -156,96 +159,112 @@ is not the one selected in Settings.
 
 ---
 
-## 5. The metric profile — a third, orthogonal axis
+## 5. The metric profile — registry half + judge half
 
-The profile answers **"which axes exist"**. It never answers "who computed
-them" and never carries a value.
+The profile answers **"which axes exist"**. It never answers "who computed them"
+and never carries a value; the numbers travel per item, the profile only names
+the axes and their provenance.
 
 ```mermaid
 flowchart LR
-    subgraph PROD["Producers (pick the axis set)"]
-        H["heuristic<br/>profile_select.derive_profile:74<br/>mode base U salient"]
-        V["VLM pick<br/>profile_ai.choose_profile_sync:303<br/>subset of the pool"]
-        D["manual domain<br/>controller.set_metric_domain:558"]
+    subgraph PROD["Producers (each yields a full profile)"]
+        S["series offer<br/>profile_select.derive_profile -> profile_for_series<br/>axes whose spread separates THIS series"]
+        V["judge<br/>profile_ai.choose_profile_sync<br/>3..8 free-form axes named for this series"]
+        F["mode fallback<br/>metric_profile.profile_for_mode<br/>no discriminating measurement yet"]
     end
-    H --> ST["state.metric_profile"]
+    S --> ST["state.metric_profile"]
     V --> ST
-    D --> ST
-    ST --> C1["dots / rows<br/>measured_axes_for<br/>rank_fusion.py:74"]
-    ST --> C2["AI prompt axis list<br/>ai_client/prompt.py:70"]
-    ST --> C3["fusion rank<br/>rank_fusion.item_quality"]
-    ST --> C4["Jev measured vector<br/>jev_client.py:139"]
-    ST --> C5["chip label + tooltip<br/>stats_strip:636"]
+    F --> ST
+    ST --> C1["dots / rows<br/>rank_fusion.measured_axes_for"]
+    ST --> C2["scorecard prompt axes<br/>ai_client/prompt.py (registry + judged)"]
+    ST --> C3["fusion rank<br/>rank_fusion.rank_series"]
+    ST --> C4["Jev measured vector<br/>jev_client.py"]
+    ST --> C5["per-axis provenance<br/>profile_judged.axis_provenance"]
 ```
 
-Three producers, one consumer seam (`rank_fusion.measured_axes_for`,
-`rank_fusion.py:74`). Everything that shows or scores an axis reads the same
-set — dots, quick-look rows, the AI prompt, the fusion rank, the Jev vector.
-That is why the profile is the right place to hang a "which axes" decision.
+`source` is one of three values (`PROFILE_SOURCES` in
+`services/metric_profile.py`):
 
-**Provenance is one of two values** (`services/metric_profile.py:61`):
+- `series` — the default producer: the axes whose measured spread in this folder
+  separates the images (`profile_for_series`, fed by
+  `services/axis_spread.py`);
+- `vlm` — the judge named the axes (`use_cases/profile_ai.py`, pinned per folder
+  generation in `services/profile_cache.py`);
+- `heuristic` — the mode mapping (`profile_for_mode`), used only while there is
+  no discriminating measurement; `profile_source_label` traces it as a fallback.
 
-- `heuristic` — the deterministic derivation (mode base ∪ salient);
-- `vlm` — a model picked a subset of the closed pool.
+**Two halves, two vocabularies** (`services/metric_profile.py` docstring,
+`MetricProfile.axis_ids` vs `axis_entries`):
 
-`vlm` is possible **only** in the AI judgment domain: the selector is gated
-(`controller.py:708` — `judgment_domain != "ai"` ⇒ skip) and only when AI is
-configured (`:740`). So the chip's `(vlm)` token can never appear while the
-shown numbers are detector numbers.
+- **registry half** — `axis_ids`: ids from the closed pool (`MEASURED_POOL`),
+  i.e. axes a local detector can produce. `rank_fusion.measured_axes_for`
+  answers only from this half, so local rows, the fusion mean and the Jev vector
+  keep ONE vocabulary.
+- **judge half** — `axis_entries`: `models.AiAxisProposal` records (name +
+  definition + 0–100 scale + direction) the model named for this series. No
+  local producer exists and none is required: the scorecard prompt asks for them
+  by name (`ai_client/prompt.py` reads `judged_axis_entries`) and the judge
+  measures them. `services/profile_judged.normalized_entries` is the only way an
+  entry reaches a profile (a registry id of the same profile is not a second
+  axis; a name with no definition is dropped, with a refusal code from
+  `services/axis_choice.parse_axis_choices`).
+
+**Provenance of a measurement is one of two tokens**
+(`services/profile_judged.py`: `PROVENANCE_LOCAL` / `PROVENANCE_JUDGE`):
+
+- `measured-locally` — a registry axis this context has a detector for;
+- `measured-by-judge` — an axis the judge named, **or** a registry axis this
+  context has no local producer for (a `reference` axis in `camera` mode, say).
+
+`axis_provenance(axis, mode=…, profile=…)` is the one answer a surface must use
+before it puts two axes in one bar; it returns `""` (no claim) when it cannot
+decide — never a guess.
+
+Profile choice is possible **only** in the AI judgment domain: the Algorithms
+domain owns the derivation and records the refusal as
+`GalleryState.profile_reject_reason = "domain-algorithms"`
+(`PROFILE_REJECT_DOMAIN`); every other failure has its own code there
+(`calls-built`, `stale-generation`, `hollow-answer`). So a judge-named axis can
+never appear while the shown numbers are detector numbers.
 
 ---
 
-## 6. Where the chip lies — three concrete defects
+## 6. Removed: the metric-profile chip (2026-10-20)
 
-The chip is `ui/stats_strip/__init__.py:154`; the label is built in
-`_refresh_profile_chip` (`:636`); the tooltip is `format_profile`
-(`services/metric_profile.py:413`).
+The stats-strip chip, the domain flyout it opened, `GalleryController.set_metric_domain`,
+`_metric_domain` (+ its `state.metric_domain` mirror), the stats-driven domain
+guess `domain_for_stats` and `profile_for_domain`'s pinning use were deleted with
+the manual domain pin (owner decision recorded in
+`investigations/plan-gallery-analysis-engine-2026-10-20.md` §Product decision).
 
-### 6.1 The label names a domain that is not the active profile
-
-In auto mode the label domain is `domain_for_stats(...)`
-(`controller.py:530`, `metric_profile.py:246`) — a weighted-mean-spread
-*guess* about the content. The active axis set is `derive_profile`
-(`profile_select.py:74`) — mode base ∪ salient. Two different rules.
-
-Measured on a camera folder: `domain_for_stats` → `photo`, while the active
-profile was the camera mode base ∪ salient. In the mixed case the label says
-*Mixed* (whose own profile is the whole 15-axis pool) while 8 axes are active.
-
-### 6.2 The tooltip's `source=` is overloaded
-
-`source=vlm` / `source=heuristic` describes **the axis set's provenance**. A
-user reads it as "the numbers came from the AI". The tooltip is a raw
-`axes=… source=… mode=…` debug line, not a user sentence.
-
-### 6.3 A pinned domain can promise axes that cannot be measured
-
-`profile_for_domain(domain, mode=…)` (`metric_profile.py:377`) filters to the
-pool **only when a `pool` is passed** — the docstring's "unavailable axes are
-dropped". The controller calls it without a pool
-(`controller.py:591`), so pinning *Synthetic* in a camera folder yields
-`ssim, lpips, dists, halo_delta, chroma_fringe_delta, color_accuracy` — all
-`reference`-tagged, i.e. unmeasurable without a source hub. The report then
-shows seven gap rows.
+Do not re-add a profile label or a domain pin here: per-axis provenance (§5)
+replaces the chip's one-line claim, and the measured axes are already visible as
+rows/dots. The three defects that motivated the deletion — a label naming a
+domain that was not the active profile, an overloaded `source=` token in the
+tooltip, a pinned domain promising axes that cannot be measured — are recorded
+in that plan, not re-litigated here.
 
 ---
 
 ## 7. Mode, axes, and the closed pool
 
 - **Mode** (folder-level): `fidelity` (a source is set) / `camera` /
-  `batch_synthetic` — `services/mode.py:264` `select_mode`.
-- **Pool** (closed vocabulary, 16 axes): `metric_profile.py:115`
-  `MEASURED_POOL` = the MEASURED registry minus `typicality`.
-- **Axis kind**: `models.py:77` `MetricKind` — `MEASURED` (a number),
+  `batch_synthetic` — `services/mode.py` `select_mode`.
+- **Pool** (closed vocabulary): `metric_profile.MEASURED_POOL`, materialized
+  from `pool_axis_ids()` = the MEASURED registry minus `EXCLUDED_AXES`. It is
+  the **registry half's** vocabulary, not a limit on the judge: an axis the
+  judge names lives in `MetricProfile.axis_entries` and is not in the pool and
+  does not have to be (plan P7-A).
+- **Axis kind**: `models.py` `MetricKind` — `MEASURED` (a number),
   `CANDIDATE` (a flag, no number), `JUDGMENT` (plausibility, never a number).
-- **Raw → quality**: `metric_scores.py:118` `SPECS`; every axis reads a raw
+- **Raw → quality**: `metric_scores.py` `SPECS`; every axis reads a raw
   key and maps it to 0..100 (higher is always better).
-- **Local producers**: `services/proxy.py:214` — artifacts + fidelity metrics
+- **Local producers**: `services/proxy.py` — artifacts + fidelity metrics
   (+ camera scalars when the mode asks), in one chunked pass
-  (`use_cases/proxy_pass.py:33`).
-- **Ranking**: `rank_fusion.rank_series:134` — weighted mean of the applicable
+  (`use_cases/proxy_pass.py`).
+- **Ranking**: `rank_fusion.rank_series` — weighted mean of the applicable
   axes, capped by the weakest axis (`RANK_WORST_AXIS_SLACK = 20`,
-  `rank_fusion.py:58`).
+  `services/rank_fusion.py`).
 
 ---
 
@@ -253,28 +272,25 @@ shows seven gap rows.
 
 | Surface | Reads | Source of the numbers |
 |---|---|---|
-| Card dots | `dots.py:248-249` | domain read: VLM scorecard (AI) / detectors (Algorithms) |
-| Quick-look rows | `rows.py:279,417` | same read; row set = the profile's axes |
-| Rank | `rank_fusion.py:134` | same read; weight per axis |
-| Rank badge | `rank_badge.py:60-62` | `fusion` / `jev` / `manual` |
-| Profile chip | `stats_strip:636` | the axis set + its provenance |
-| Ask AI answer | `ask_router.py:298` | text or image payload, advisory only |
+| Card dots | `dots.py` | domain read: VLM scorecard (AI) / detectors (Algorithms) |
+| Quick-look rows | `rows.py` | same read; row set = the profile's axes |
+| Rank | `rank_fusion.rank_series` | same read; weight per axis |
+| Rank badge | `rank_badge.py` | `fusion` / `jev` / `manual` |
+| Axis provenance | `profile_judged.axis_provenance` | `measured-locally` / `measured-by-judge` per axis |
+| Ask AI answer | `ask_router.py` | text or image payload, advisory only |
 
 ---
 
 ## 9. Open questions (not fixed by this document)
 
 1. **Should paths 2 and 3 use the user's model?** Today they cannot: Jev is
-   a specific router model id. Either the Settings need a separate "ranking
-   model" field, or the strip must say *which* model ranked.
-2. **Should the chip exist at all?** It is the only entry point to the manual
-   domain picker (`stats_strip:720`), but in auto mode its label is a guess
-   that can contradict its own tooltip.
-3. **`domain_for_stats` is a guess with no consumer other than the label.**
-   If the label goes, the whole weighted-spread domain-choice machinery
-   (`metric_profile.py:220-286`) goes with it.
-4. **Pinned domains need a mode-filtered pool** so they cannot promise
-   unmeasurable axes (§6.3).
+   a specific router model id (`JEV_MODEL`). Either the Settings need a separate
+   "ranking" model field, or the strip must say *which* model ranked.
+2. **Do judge-named axes need a stability rule?** They are free-form by owner
+   decision (3..8, each with a definition); `services/profile_cache.py` keys a
+   selection on the sorted member paths + mtimes + mode + model + base_url +
+   effort + pool. Whether a series that gains a member should keep its earlier
+   axis set, or accept a fresh one, is not decided.
 
 ---
 

@@ -88,9 +88,10 @@ Contract files stay at the feature root, never moved: `manifest.py`,
 `constants.py`, `runtime_hooks.py`, `passes.py`, `__init__.py`. Registries
 import these by hardcoded name
 (`CanvasFeatureRegistry._iter_feature_modules` in
-`src/ui/canvas_infra/scene/registry.py`) and silently skip the feature if
-the import fails — there is no error message pointing you back here if you
-move one of these by mistake, only a feature that stops loading.
+`src/ui/canvas_infra/scene/registry.py`); a package that simply lacks one of
+them is skipped, but a broken import *inside* an existing module raises out of
+the registry instead of silently dropping the feature — so a misplaced
+contract file fails loudly, not as a feature that quietly stops loading.
 
 Rename-on-move a module only if its bare name is ambiguous once out of
 context (e.g. `magnifier/geometry.py` → `geometry/core.py`, to avoid
@@ -159,10 +160,11 @@ shallow is easy to miss until the feature renders wrong at runtime.
 3. Clear all `__pycache__` under the feature and run its scoped test suite,
    then the full project test suite (not just the feature's) — other
    tabs/tests may import the feature's modules by absolute path.
-4. Use the `run` or `verify` skill to actually launch the app and exercise
-   the feature — auto-discovery failures (a silently skipped feature
-   because `manifest.py`'s import chain broke) don't show up as import
-   errors or test failures, only as the feature quietly not being there.
+4. Launch the app (`./launcher.sh run` — see `AGENTS.md`) or drive a running
+   instance through the in-app control surface (`docs/dev/MCP.md`, tools
+   `ui_elements`/`ui_click`) and exercise the feature — auto-discovery
+   failures don't show up as import errors or test failures, only as the
+   feature quietly not being there.
 
 ## Step 6 — Housekeeping
 
@@ -179,7 +181,7 @@ shallow is easy to miss until the feature renders wrong at runtime.
 
 All `image_compare` and `multi_compare` canvas feature packages have been
 swept — every feature that had any non-contract module has been split into
-subpackages. `image_compare/layer_labels`-style features that only contain
+subpackages. `multi_compare/layer_labels`-style features that only contain
 the root contract files (`manifest.py`, `widget.py`, `feature.py`,
 `passes.py`, `__init__.py`, ...) have nothing to decompose and are left
 flat.
@@ -191,6 +193,8 @@ flat.
 | `image_compare/guides` | done | see [package-structure.md](package-structure.md) |
 | `image_compare/capture` | done | see [package-structure.md](package-structure.md) |
 | `image_compare/filename_overlay` | done | see [package-structure.md](package-structure.md) |
+| `image_compare/drag_drop_overlay` | n/a | render-only (`keepwarm.py` + `render/`), no root contract files to move |
+| `multi_compare/focus_dim` | n/a | render-pass-only (`passes.py` + `shaders/`), nothing to move |
 | `multi_compare/drag_drop_overlay` | done | `gestures.py`/`interaction.py` moved to `input/` |
 | `multi_compare/grid_dividers` | done | `gestures.py`/`interaction.py` moved to `input/` |
 | `multi_compare/layer_labels` | n/a | root-contract-only, nothing to move |

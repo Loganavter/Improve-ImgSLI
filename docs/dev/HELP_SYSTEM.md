@@ -9,7 +9,8 @@ for `help_page` / `help_anchor` on actions.
 Related:
 
 - [tabs/capability-mechanisms.md](./tabs/capability-mechanisms.md) — `notify_all("contribute_help")`
-- Toolkit: `sli_ui_toolkit.widgets.HelpDocumentView`
+- Rendering: toolkit `parse_help_blocks` → `Text(mode="document")` hosted by
+  `HelpDialog` (`src/plugins/help/dialog.py`) — see [Rendering](#rendering)
 
 ---
 
@@ -36,8 +37,9 @@ scan_help_tree()  # scan.py — dirs are hubs, *.md files are pages
 ```
 
 Called from `TabRegistry.install_pages` via `contribute_all_help()`.
-`HelpHubContribution` is frozen, `owner_tab == i18n_namespace` per
-`isolation.md:60`, so `tabs.*` is never imported by the Help plugin.
+`HelpHubContribution` is frozen and `owner_tab == i18n_namespace`, pinned by
+`tests/contracts/test_tabs_isolation.py`, so `tabs.*` is never imported by the
+Help plugin.
 Single-page tabs (and all plugins) contribute nothing — page titles come
 from each page's own `##` heading (see `labels.py`).
 
@@ -60,7 +62,8 @@ from each page's own `##` heading (see `labels.py`).
 | `icons.py` | App icons + contributed tab resolvers |
 | `layout_geometry.py` | Dialog size / sidebar widths |
 
-Toolkit owns rendering only (`HelpDocumentView` / `parse_help_blocks`).
+Toolkit owns block parsing and the document widget (`parse_help_blocks` →
+`Text`); the dialog, TOC card, scroll area and figure lightbox are host chrome.
 
 ---
 
@@ -129,7 +132,7 @@ Rules:
 - Stable entry points (`help_page` on actions, F1, Learn more) are **dotted
   paths** (`workspace.image_compare.comparison`), not slugs. A move breaks
   inbound prose links visibly — the dialog renders a `## Missing page`
-  placeholder ("ну увы") instead of failing.
+  placeholder instead of failing.
 - Deleting a doc = deleting its files. Inbound `help://` links need no
   same-day fix; they resolve to the placeholder until prose is cleaned.
 
@@ -316,6 +319,35 @@ package's `assets/` — host for platform/UI, tab for workspace topics:
 - Missing image → broken image, intentionally visible (same as an unknown
   path anywhere on the web).
 
+### Figure variants (locale / theme)
+
+The body-relative path in the markdown is the base; the dialog resolves it to
+a locale/theme cell when the figure ships variants. `resolve_help_asset()`
+(`src/plugins/help/tree.py`) is handed to the document `Text` as `resolve_asset=`
+and the body is set with `set_blocks(parse_help_blocks(markdown))`
+(`HelpDialog._resolve_asset`); the resolver tries, in order:
+
+1. `assets/<locale>/<theme>/<name>`
+2. `assets/<locale>/<name>`
+3. `assets/<theme>/<name>`
+4. `assets/<name>` — today’s flat base
+
+Which cells must exist is **declared**, not sniffed. The resolver reads the
+union of two manifests — the recipe set `src/devtools/help_figures.json` <!-- doc-truth:allow -->
+(written by `src/devtools/help_figures.py`) and the live set
+`src/devtools/help_figures_live.json` (written by `src/devtools/help_live.py`)
+— keyed by the path tail from the nearest `help` component. A figure with a
+single locale *and* a single theme declares nothing and ships flat; a larger
+matrix is declared per destination.
+
+**Fail-closed.** A declared cell that is missing resolves to `None` and logs a
+warning: the renderer paints the caption/alt text in the figure box (visible
+placeholder) instead of silently showing the English/dark base image. The base
+image is only a fallback when the manifest does *not* declare the requested
+`(locale, theme)`. A tree that ships neither manifest (packaged / toolkit-only
+install) keeps the flat-base behaviour. Pinned by
+`tests/plugins/test_help_asset_variants.py`.
+
 ### What the renderer cannot do yet
 
 Tracked as toolkit / Help follow-ups — do **not** author pages as if these
@@ -406,7 +438,9 @@ real encyclopedia-level pages.
 | `workspace.multi_compare.layouts` | 0 |
 | `workspace.multi_compare.viewing` | 0 |
 | `workspace.multi_compare.export` | 1 |
-| `workspace.image_gallery.{overview,triage,quality,ranking,ask_ai}` | 1 |
+| `workspace.image_gallery.overview` | 2 |
+| `workspace.image_gallery.{triage,quality,ask_ai}` | 1 |
+| `workspace.image_gallery.ranking` | 0 |
 
 Going above the budget needs an explicit exception here (do not use figures
 to decorate every bullet).
@@ -418,7 +452,8 @@ the surface it explains (previously all were 0). `about`,
 `multi_compare.layouts`, and `multi_compare.viewing` stay at 0 — no
 capturable surface matches them (orientation prose; a QRhi/GL canvas that
 cannot be grabbed headlessly)._ `ranking` joined the set on 2026-10-18 at
-0 figures (prose only; no capturable surface).
+0 figures (prose only; no capturable surface). `overview` ships **2** (empty
+state + grid view), above the blanket raise to 1.
 
 Optional later gaps (still budget-0 unless raised):
 `workspace.session_picker` `#tab-strip`, `comparison` `#scroll-images`, settings shell.
@@ -428,26 +463,34 @@ Optional later gaps (still budget-0 unless raised):
 ## Rendering
 
 ```text
-markdown subset → parse_help_blocks() → HelpDocumentView
-  ├── HelpDocumentToc (chrome, optional)
-  └── HelpDocumentBodyCanvas (unified paint + selection)
+markdown subset → parse_help_blocks() → Text(mode="document")
+  ├── _HelpToc (host chrome: "On this page", ghost Button rows)
+  └── SurfaceScrollArea (host-owned scroll container)
 ```
 
-The body is a single custom canvas (`HelpDocumentBodyCanvas` in
-`sli-ui-toolkit`): one text index, one selection model, `QTextLayout` paint
-path. Selection spans the whole page (headings, list markers, paragraphs), and
-**Copy as Markdown maps the selection back to the page source** — the selected
-blocks only, with their markup (the blocks parsed from the page carry that
-geometry), so a two-label selection copies two lines, never the page. TOC
-remains separate chrome above the canvas (clickable `_LinkLabel` rows, not part
-of body selection).
+The body is a toolkit `Text(mode="document")` widget; `HelpDialog(ThemedDialog)`
+hosts it in a `SurfaceScrollArea` inside a `SidebarDialogShell`. The toolkit
+`HelpDocumentView` — and with it the `HelpDocumentBodyCanvas` paint surface and <!-- doc-truth:allow: retired names, history only -->
+its private `_LinkLabel` TOC rows — was deleted toolkit-side in `db47b2d`
+(2026-10-21); do not reintroduce it. The host owns the chrome: `_HelpToc`
+builds one ghost `Button` per anchored `###`
+(`collect_heading_anchors` → `Text.scroll_to_anchor`) and `HelpImageLightbox`
+(`src/plugins/help/image_lightbox.py`) owns the figure viewer. Pinned by
+`tests/plugins/test_help_browser_navigation.py::test_help_document_page_is_text_with_host_owned_toc`.
 
-Public document API used by the app: `set_markdown`, `plain_text`,
-`selected_plain_text()`, `selected_markdown()`, `copy_selection()`,
-`copy_selection_markdown()`, `select_all_text()`, `scroll_to_anchor`,
-`textContextMenuRequested(QPoint)`. Both copy entries set the clipboard and
-then drop the selection (the toolkit's standard copy rule — the highlight must
-not linger after the menu closes).
+The document widget keeps one text index and one selection model. Selection
+spans the whole page (headings, list markers, paragraphs), and **Copy as
+Markdown maps the selection back to the page source** — the dialog passes the
+rendered markdown back in, so a two-label selection copies two lines, never the
+page. The TOC card stays outside the document (its rows scroll the host area;
+they are not part of body selection).
+
+Public document API used by the app: `set_blocks`, `plain_text`,
+`selected_plain_text()`, `selected_markdown(source_markdown)`,
+`copy_selection()`, `copy_selection_markdown(source_markdown)`,
+`select_all_text()`, `scroll_to_anchor`, `textContextMenuRequested(QPoint)`.
+Both copy entries set the clipboard and then drop the selection (the toolkit's
+standard copy rule — the highlight must not linger after the menu closes).
 
 Help body right-click opens a toolkit `ContextMenu` via
 `open_help_text_context_menu` → `ContextMenuManager`. The menu uses the
@@ -455,23 +498,28 @@ manager's app-wide RMB surface (`in_window`): an overlay child of the dialog,
 never a native `Qt.Popup` — a popup parented to the top-level degrades that
 window's frame/compositing on Wayland (`inv-2026-10-06-ql-rhi-menu-first`) and
 made resizing lag after the first menu (2026-10-22). Dismiss and hit-testing go
-through the manager's `contains_global` / outside-close paths like canvas ПКМ
-menus.
+through the manager's `active_menu_contains_global` /
+`hide_active_menu_if_outside` paths like canvas ПКМ menus.
 
 v2 blocks: headings `#` … `######` (+ `{#anchor}`), paragraphs
 (bold/italic/code/kbd/links), lists, fenced `` ``` ``` `` code blocks
-(monospaced), optional `:::figure` / images (see [Figure policy](#figure-policy)),
-optional TOC. **No GFM pipe tables** — consecutive `| … |` rows become one
-paragraph; use `- \`chord\` — action` lists instead (see `platform/hotkeys.md`).
+(monospaced), GFM pipe tables (see [Tables](#tables)), optional `:::figure` /
+images (see [Figure policy](#figure-policy)), optional TOC.
 The toolkit's own `docs/user/*.md` (shown in the inspector's Docs section)
 rely on `#` headings and code fences; app help pages keep using `##`/`###`
 for TOC-friendly anchors.
+
+> The corpus test still rejects `| … |` rows in shipped bodies
+> (`tests/plugins/test_help_tree.py::test_help_page_bodies_are_scenario_cards`,
+> whose in-test comment names the retired `HelpDocumentView`). <!-- doc-truth:allow: retired name, history only --> Tables parse, but
+> keep them out of `resources/help/*.md` until that assertion is lifted — use
+> bullet inventories (see `platform/hotkeys.md`).
 
 Dialog navigation:
 
 | Zone | Behaviour |
 |------|-----------|
-| Content | hub cards or `HelpDocumentView` |
+| Content | hub cards or the document `Text` |
 | Sidebar | siblings of the current level only |
 | Back bar | full width; stack pop + breadcrumb |
 | Links | `help://dotted.path#anchor`, `#anchor`, http(s) |
@@ -497,7 +545,8 @@ No new methods on `TabContract` — only `create_service("contribute_help", …)
 `SidebarDialogShell(sidebar_header=…)`). It matches node **titles** and
 **page body content** in the current language **and** English (Find
 Action-style cross-language haystack — a query survives a language switch),
-ranks with the toolkit `match_score` scorer, and shows the top ~12 results
+ranks with the toolkit `match_score_normalized` scorer, and shows the top ~12
+results
 in the sidebar list with node icons. Matching is NFKD-normalized and
 **non-fuzzy** (exact / prefix / substring): body content only ranks when
 the query is a real locatable substring — a fuzzy subsequence hit cannot
@@ -526,7 +575,9 @@ into a hub or page.
 - `tests/plugins/test_help_bodies.py` — literal labels (no `{{tr:`), body-relative images <!-- doc-truth:allow -->
 - `tests/plugins/test_help_browser_navigation.py` — navigator / dialog UX (incl. Missing-page)
 - `tests/plugins/test_help_dialog_opens.py` — plugin open path
-- Toolkit: `HelpDocumentView` / block parse tests
+- Toolkit: `parse_help_blocks` / `Text(mode="document")` block tests
+  (`tests/plugins/test_help_dialog_anchors.py` drives the toolkit anchor/TOC
+  markdown helpers)
 
 Focused run:
 

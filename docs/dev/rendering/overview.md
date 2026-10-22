@@ -32,8 +32,9 @@ feature business logic. Shared across every tab — not tab-owned (see
 Key files:
 - `scene/feature_contract.py` — `CanvasSceneFeature`
 - `scene/widget_contract.py` — `CanvasWidgetFeature`, `CanvasFeatureProperty`
-- `scene/feature_registry.py` — auto-discovers `manifest.py`, fallback `feature.py`
-- `scene/widget_registry.py` — auto-discovers `manifest.py`, fallback `widget.py`
+- `scene/registry.py` — the one per-tab `CanvasFeatureRegistry`: auto-discovers
+  `manifest.py` (fallback `feature.py` / `widget.py`) and `passes.py`, for every
+  package registered through `register_canvas_feature_package(tab_type, package)`
 - `scene/pass_contract.py` — `CanvasRenderPass`, `SceneVisibility`, single-preview helpers
 - `scene/property_access.py` — shared property read/write/persistence
 - `scene/pipeline.py` — ordered build/apply/hit-test pipelines
@@ -69,8 +70,9 @@ Shader ownership:
 - `canvas/shaders/` — compiled `.qsb` sources (base_array, label_downsample,
   etc.) loaded by `rhi_renderer`/`load_qshader`; legacy GLSL-string containers
   (`shader_sources/`) were removed in the 2026-08 mass-reduction pass
-- Feature shaders live inside `canvas/features/<name>/` (`passes.py`,
-  `shaders.py`, or `shaders/qrhi/*.qsb`), not in the generic canvas renderer.
+- Feature shaders live inside `canvas/features/<name>/` (`shaders/*.qsb`, or
+  `shaders/qrhi/*.qsb` for a multi-shader feature like the magnifier), not in
+  the generic canvas renderer.
 
 ## Examples
 

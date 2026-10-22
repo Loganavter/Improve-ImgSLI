@@ -10,15 +10,19 @@ Source: `src/ui/widgets/drag_ghost_widget.py`
 
 | Param | Meaning |
 |---|---|
-| `parent` | the window the ghost floats over |
+| `parent` | in-content overlay parent (`get_content_overlay_layer()`) — **required**; `None` raises `ValueError`, and the message forbids the window overlay host |
 
 `set_pixmap(pixmap)` sets the ghost image; `setOpacity` controls
-translucency; `move(pos)` is parent-relative. `make_count_slot_pixmap`
-builds the "N items" slot badge for multi-select drags.
+translucency; `move(QPoint)` takes **global** coordinates and maps them into
+the parent (`mapFromGlobal`), while non-`QPoint` args go to `QWidget.move` as
+usual. `make_count_slot_pixmap` builds the "N items" slot badge for
+multi-select drags.
 
 ## Inspection
 
 Family `DragGhostWidget` (config auto-derives; transient widget, state
 intentionally empty).
 
-Used by: `events/drag_drop_handler.py`, `events/image_carry.py`.
+Used by: `ui/widgets/drag_ghost_service.py` (`GhostService`, owns the
+lifecycle); the flows reach it from `events/image_carry.py` and
+`events/drag_drop_handler.py`.

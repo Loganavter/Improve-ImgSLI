@@ -3,7 +3,7 @@
 image_compare features are only ever visible to image_compare — no
 call site in this tab needs to resolve "which tab" at runtime, since
 registration happens once per tab type at startup. See
-docs/dev/CANVAS_FEATURE_REGISTRY_PER_TAB.md.
+docs/dev/rendering/package-structure.md (one registry per tab type).
 
 Phase 2 canvas-only overlay: ``drag_drop_overlay`` is a pure RHI feature
 (``canvas/features/drag_drop_overlay`` — ``DragDropOverlayPass`` via

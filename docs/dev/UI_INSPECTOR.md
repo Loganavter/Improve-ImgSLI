@@ -11,7 +11,7 @@ own tab (re-opening an already-open widget switches to its tab instead of
 duplicating). Each tab has its own section set:
 
 - **Object** — class/objectName/geometry/visibility/source file.
-- **Config / State** — the widget's own `inspect_spec` (self-description):
+- **Config** / **State** — the widget's own `inspect_spec` (self-description):
   config auto-derived from the `__init__` signature, state from runtime
   getters, with human labels and `(private)` markers.
 - **Regions** — Button-family regions: rects, per-region states, weights;
@@ -189,14 +189,20 @@ The inspection contract and the inspector UI live in **sli-ui-toolkit**
 - `registry.py` — `inspect_widget`: spec → `families/` matchers (buttons,
   flyouts, inputs, labels, nav, timeline, misc) → generic QWidget fallback.
 - `capture.py` — live token capture (the `get_color` funnel).
+- `colors.py` — color-origin analysis behind the Colors page (candidate QSS
+  rules + effective palette roles).
+- `modality.py` / `overlay_state.py` — modal-window lifting and overlay
+  lifecycle/geometry coordination, split out of `InspectorController`.
+- `tree_walk.py` — the shared widget-tree walk behind the Layout/Constructor
+  rows.
 - `qss_scan.py` — QSS candidate matching + dead-selector analysis.
 - `code/editor.py` — `CodeSectionEditor` owner (construction, document model,
   editing/save/revert); per the thin-owner pattern its orthogonal
   concerns are split into `code/preview.py` (preview panel mechanics),
-  `code/apply.py` (Apply: class patch + config apply), and
-  `code/config.py` (snippet parsing shared by both) — plain functions
-  taking the editor as their first argument, delegated under the same
-  method names.
+  `code/apply.py` (Apply: class patch + config apply), `code/config.py`
+  (snippet parsing shared by both) and `code/factory.py` (wiring the editor
+  into a page) — plain functions taking the editor as their first argument,
+  delegated under the same method names.
 - `fields.py` / `rendering.py` / `tree.py` — shared field-row rendering
   and tree rows for the pages.
 - `view.py` / `overlay.py` / `controller.py` — InspectorWindow (SidebarDialog-
@@ -204,16 +210,19 @@ The inspection contract and the inspector UI live in **sli-ui-toolkit**
 
 The app (`src/devtools/ui_inspector/`) keeps a thin wiring layer:
 `installer.py`, `app_window.py` (Native page + Dump layout),
-`app_controller.py`, `native.py`, and app-family specs co-located in the app
-widgets. Every app-side widget family under `src/ui/widgets/` (and the
-Settings dialog) carries an `inspect_spec` with a `docs=` reference into
-[docs/dev/widgets/](widgets/) — the Docs page renders that per-widget file.
+`app_controller.py`, `native.py`, `theme_sources.py` (per-family token →
+source-file map used by the Theme page and by
+`src/devtools/ui_layout_dump.py`'s theme section), and app-family specs
+co-located in the app widgets. Every app-side widget family under
+`src/ui/widgets/` (and the Settings dialog) carries an `inspect_spec` with a
+`docs=` reference into [docs/dev/widgets/](widgets/) — the Docs page renders
+that per-widget file.
 Families: `ColorPickerDialog`, `ColorSwatch`, `RecentColorsRow`,
 `DialogActionBar`, `OutputPathSection`, `ShelfWidget`, `ValueSlider`,
 `ValueSliderRow`, `ScrollValueButton`, `WorkspaceTabStrip`, `ThemedSurface`,
 `ThemedBackgroundContainer`, `StartupPlaceholder`, `DragGhostWidget`,
 `FontSettingsFlyout`, `GlassHUD`, `InfoHUD`, `ZoomIndicator`,
-`GlassPanelDisplayWidgetCpu`/`Rhi`, `RatingListItem`, `UnifiedListPicker`,
+`GlassPanelDisplayWidget`, `RatingListItem`, `UnifiedListPicker`,
 `SettingsDialog`. (New widgets: add the spec in the widget's own file; the
 duck registry and the generic QWidget fallback cover everything else.)
 
