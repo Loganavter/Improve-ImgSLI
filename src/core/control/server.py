@@ -21,7 +21,7 @@ Invariants this class enforces:
 * a handler that hangs inside a nested event loop (the app's own modal dialog)
   is answered **on the channel's own initiative** once it overruns
   ``MODAL_ACK_BUDGET_MS``; the handler's late result is then dropped, so one
-  request never produces two frames (see ``_arm_early_answer``);
+  request never produces two frames (see ``modal_ack.arm_early_answer``);
 * the request being handled is recorded in ``inflight.json`` before the handler
   runs and the record is removed once the reply is sent (or, for a request the
   watchdog answered early, once the handler finally returns — the app is still
@@ -54,194 +54,33 @@ from __future__ import annotations
 import json
 import logging
 import os
-import re
-from collections import deque
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
-from PySide6.QtCore import QTimer
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 
 from . import discovery
 from .discovery import MethodError
+from .frames import (  # noqa: F401 — re-exported for the tests/MCP docs
+    MAX_REPLY_BYTES,
+    MAX_REQUEST_LINE_BYTES,
+    _reply_error_frame,
+    encode_reply,
+    send_frame,
+)
+from .inflight import (  # noqa: F401 — re-exported for the tests/MCP docs
+    INFLIGHT_NOTE_NAME,
+    clear_inflight,
+    note_inflight,
+    summarize_request_params,
+)
+from .log_ring import APP_LOGGER_NAME, LogRing  # noqa: F401 — re-exported for the tests
+from .modal_ack import MODAL_ACK_BUDGET_MS, arm_early_answer, report_late_failure
 
 logger = logging.getLogger("ImproveImgSLI")
 
-#: Logger whose records the live ``read_log`` ring captures.
-APP_LOGGER_NAME = "ImproveImgSLI"
-
 #: Owner-only mode for the socket file (matches the pointer).
 _SOCKET_MODE = 0o600
-
-#: Bounded size of the live log ring (records kept for ``read_log``).
-_LOG_RING_CAPACITY = 2000
-
-#: Hard cap on one request line (1 MiB). A larger line is refused by name
-#: (``"request line too large"``) instead of being buffered/truncated silently.
-MAX_REQUEST_LINE_BYTES = 1024 * 1024
-
-#: Sanity cap on one serialized reply (8 MiB). A bigger (or unserialisable)
-#: result is reported as an error frame, never emitted as a broken frame.
-MAX_REPLY_BYTES = 8 * 1024 * 1024
-
-#: How long a handler may run before the channel answers on its own behalf
-#: (milliseconds). A handler that opens one of the app's modal dialogs
-#: (``QFileDialog.getOpenFileName`` behind ``platform.open_project``, reached by
-#: ``ctrl+shift+o`` through ``press_keys``/``run_action``/``ui_click``) is parked
-#: inside that dialog's nested event loop until a human closes it, so the reply
-#: would otherwise be written minutes later and the client would report
-#: "sent, no reply" for a call that had already worked (and retry it).
-#:
-#: Chosen well above the slowest honest verb (a big capture / layout dump) and
-#: well below the MCP client's 5 s request timeout, with room for the
-#: round trip. Qt *does* deliver timers inside a nested modal loop, which is
-#: what makes the early answer possible without a second thread — the transport
-#: stays GUI-thread-only on purpose (see the module docstring).
-MODAL_ACK_BUDGET_MS = 2000
-
-#: Name of the in-flight request note, written next to the pointer. It is
-#: written *before* a handler runs and removed once the reply is sent (for a
-#: request the ack watchdog answered early: once its handler returns), so a note
-#: that outlives the process is where the app died — the only trace a sibling
-#: process can read after a segfault (no teardown, no reply). The MCP client
-#: mirrors this name (`mcp-server/app/live.py`, stdlib-only, cannot import here).
-INFLIGHT_NOTE_NAME = "inflight.json"
-
-#: Cap on the redacted params digest kept in the note.
-_PARAM_SUMMARY_LIMIT = 400
-
-#: Per-value cap inside the digest.
-_PARAM_VALUE_LIMIT = 48
-
-#: Parameter NAMES whose value is never written down. ``run_action`` forwards
-#: free-form params, so a token can sit in the request that kills the app.
-_SECRET_KEY_RE = re.compile(
-    r"(?i)(api[_-]?key|token|secret|passw|credential|authori[sz]|cookie|bearer|private[_-]?key)"
-)
-
-#: Values that *look* like a credential, whatever their parameter is called.
-_SECRET_VALUE_RE = re.compile(
-    r"(?i)^(sk-|pk-|ghp_|gho_|ghs_|github_pat_|xox[abp]-|bearer[ =:]|ey[A-Za-z0-9_-]{8,}\.)"
-)
-
-
-def _param_value(value: Any) -> str:
-    """One digest fragment: short scalars verbatim, secrets and shapes masked."""
-    if isinstance(value, str):
-        if _SECRET_VALUE_RE.match(value.strip()):
-            return "<redacted>"
-        shown = (
-            value
-            if len(value) <= _PARAM_VALUE_LIMIT
-            else value[:_PARAM_VALUE_LIMIT] + "…"
-        )
-        return repr(shown)
-    if isinstance(value, dict):
-        return f"{{{len(value)} keys}}"
-    if isinstance(value, (list, tuple, set)):
-        return f"[{len(value)} items]"
-    if isinstance(value, (bool, int, float)) or value is None:
-        return repr(value)
-    return f"<{type(value).__name__}>"
-
-
-def summarize_request_params(params: Any) -> str:
-    r"""A bounded, secret-free digest of one request's params (``k=v, ...``).
-
-    Identifies the request after the fact without echoing what it carried:
-    secret-named parameters become ``<redacted>``, credential-shaped values are
-    masked wherever they appear, strings are truncated, and containers are
-    reduced to their shape. ``mcp-server/app/live.py`` carries the same rule for
-    the request *it* sent (it cannot import this module — stdlib only).
-    """
-    if not isinstance(params, dict) or not params:
-        return ""
-    parts: list[str] = []
-    for key, value in params.items():
-        name = str(key)
-        if _SECRET_KEY_RE.search(name):
-            parts.append(f"{name}=<redacted>")
-        else:
-            parts.append(f"{name}={_param_value(value)}")
-    summary = ", ".join(parts)
-    if len(summary) > _PARAM_SUMMARY_LIMIT:
-        summary = summary[:_PARAM_SUMMARY_LIMIT] + "…"
-    return summary
-
-
-def encode_reply(payload: dict[str, Any]) -> bytes | None:
-    """Serialize one reply into a newline-terminated frame, or ``None``.
-
-    ``None`` means the payload cannot be framed — either it is not
-    JSON-serialisable (e.g. a circular structure, which ``json.dumps`` raises
-    on) or it exceeds ``MAX_REPLY_BYTES``. The caller then sends a named error
-    frame instead of writing a broken/truncated frame that would desync the
-    client's line reader.
-    """
-    try:
-        blob = json.dumps(payload, ensure_ascii=False, default=str).encode("utf-8")
-    except Exception:
-        return None
-    if len(blob) > MAX_REPLY_BYTES:
-        return None
-    return blob + b"\n"
-
-
-def _reply_error_frame(request_id: Any) -> bytes:
-    """The fallback frame written when ``encode_reply`` refuses a payload."""
-    payload = {
-        "id": request_id,
-        "ok": False,
-        "error": "reply could not be framed",
-        "hint": (
-            f"the result was not JSON-serialisable or exceeded {MAX_REPLY_BYTES} "
-            "bytes; check the app log via read_log"
-        ),
-    }
-    return json.dumps(payload, ensure_ascii=False).encode("utf-8") + b"\n"
-
-
-def _active_modal_widget() -> Any:
-    """The modal widget blocking the app right now, or ``None``.
-
-    Measured, never assumed: it is only ever reported as a *hint* on an early
-    answer, because a native file dialog (the desktop portal on Wayland/Flatpak)
-    is not a ``QWidget`` at all — ``None`` there means "no Qt modal widget",
-    not "nothing is open". Imported lazily: the transport needs QtCore only.
-    """
-    try:
-        from PySide6.QtWidgets import QApplication
-
-        return QApplication.activeModalWidget()
-    except Exception:
-        return None
-
-
-class LogRing(logging.Handler):
-    """Bounded in-process capture of the app logger.
-
-    ``log.txt`` is truncated by ``setup_logging`` on every start, so it cannot
-    answer "what happened in the *running* process". This handler keeps the
-    newest records in memory instead; the server attaches it to the app logger
-    (``APP_LOGGER_NAME``) on start and detaches on stop.
-    """
-
-    def __init__(self, capacity: int = _LOG_RING_CAPACITY) -> None:
-        super().__init__(level=logging.DEBUG)
-        self._entries: deque[tuple[str, str]] = deque(maxlen=capacity)
-        self.setFormatter(
-            logging.Formatter("%(asctime)s - [%(levelname)s] - %(message)s")
-        )
-
-    def emit(self, record: logging.LogRecord) -> None:
-        try:
-            self._entries.append((record.levelname, self.format(record)))
-        except Exception:  # never let logging kill the app
-            pass
-
-    def entries(self) -> list[tuple[str, str]]:
-        return list(self._entries)
 
 
 class ControlServer:
@@ -487,7 +326,7 @@ class ControlServer:
 
     def _refuse_oversized_line(self, socket: QLocalSocket) -> None:
         """Named refusal for a request line over ``MAX_REQUEST_LINE_BYTES``."""
-        self._send(
+        send_frame(self,
             socket,
             {
                 "id": None,
@@ -520,132 +359,34 @@ class ControlServer:
     ) -> int | None:
         """Record the request about to run, atomically, next to the pointer.
 
-        Written to a sibling temp file then ``os.replace``-d so a reader never
-        sees a half-written note. Best-effort: a read-only runtime dir must not
-        stop the request from running.
-
-        Returns this request's token. The note is one slot, and a handler parked
-        in a modal loop still *re-enters* this method — the nested loop serves a
-        **new** connection's first line (Qt guards ``readyRead`` against
-        re-entry per socket, not per server). A late finisher must therefore not
-        erase a newer request's record: that record is the only evidence left if
-        the app then dies in the newer call (``_clear_inflight`` takes the
-        token).
+        Returns this request's token — the note is one slot and a handler parked
+        in a modal loop still re-enters the server, so only the token owner may
+        clear it (``_clear_inflight``); a late finisher must not erase a newer
+        record. The write itself lives in ``core.control.inflight``.
         """
         if self._note_path is None:
             return None
         self._note_token += 1
-        token = self._note_token
-        payload = {
-            "method": method,
-            "summary": summarize_request_params(params),
-            "request_id": request_id
-            if isinstance(request_id, (int, float, str))
-            else None,
-            "pid": os.getpid(),
-            "at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-        }
-        tmp = self._note_path.with_name(
-            self._note_path.name + f".tmp.{os.getpid()}"
+        note_inflight(
+            self._note_path, method=method, request_id=request_id, params=params
         )
-        try:
-            tmp.write_text(json.dumps(payload), encoding="utf-8")
-            os.chmod(tmp, _SOCKET_MODE)
-            os.replace(tmp, self._note_path)
-        except OSError:
-            logger.debug("control channel: could not record the in-flight request")
-        finally:
-            try:
-                tmp.unlink(missing_ok=True)
-            except OSError:
-                pass
-        return token
+        return self._note_token
 
     def _clear_inflight(self, token: int | None = None) -> None:
         """Drop the in-flight record: the app answered, or is shutting down.
 
-        ``token`` (from :meth:`_note_inflight`) makes the clear conditional:
-        a request that finishes after a nested one took the note over must leave
+        ``token`` (from :meth:`_note_inflight`) makes the clear conditional: a
+        request that finishes after a nested one took the note over must leave
         that newer record alone — it may be all that explains a death.
         """
-        if self._note_path is None:
-            return
-        if token is not None and token != self._note_token:
-            return
-        try:
-            self._note_path.unlink(missing_ok=True)
-        except OSError:
-            pass
+        clear_inflight(self._note_path, token=token, current_token=self._note_token)
+
 
     def _reply(self, socket: QLocalSocket, payload: dict[str, Any]) -> None:
         """Send one reply, then clear the note (the app survived the request)."""
-        self._send(socket, payload)
+        send_frame(self, socket, payload)
         self._clear_inflight()
 
-    def _arm_early_answer(
-        self, socket: QLocalSocket, request_id: Any, method: str
-    ) -> tuple[QTimer, dict[str, bool]]:
-        """Arm the watchdog that answers a handler parked inside a nested loop.
-
-        The chord path is synchronous: ``press_keys ctrl+shift+o`` runs
-        ``platform.open_project`` inline, which calls
-        ``QFileDialog.getOpenFileName`` — a modal ``exec()``. Every handler reply
-        is written *after* the handler returns, so the answer would sit inside
-        the dialog until a human closed it and the client would time out on a
-        call that had already worked. Qt delivers timers inside that nested
-        loop, so the timer (not a thread) is what lets the channel answer.
-
-        Returns the timer and the state the caller must consult: once
-        ``state["answered"]`` is set, a frame is already on the wire and the
-        late real result must be dropped (never a second frame for one id).
-
-        The answer is ``ok: true`` with ``answered_early`` because the request
-        *is* being carried out; reporting it as a failure would invite the retry
-        that double-applies the edit. A handler that fails *before* the budget
-        is unaudited by this: it returns (or raises) first and keeps its own
-        full result / named error.
-        """
-        state = {"answered": False}
-
-        def _overran() -> None:
-            if state["answered"]:
-                return
-            state["answered"] = True
-            modal = _active_modal_widget()
-            # ``_send``, not ``_reply``: the in-flight note stays until the
-            # handler returns, because the app is still busy with this request
-            # and a crash in the dialog would otherwise leave no record of it.
-            self._send(
-                socket,
-                {
-                    "id": request_id,
-                    "ok": True,
-                    "result": {
-                        "accepted": True,
-                        "answered_early": True,
-                        "still_running": True,
-                        "modal_open": modal is not None,
-                        "method": method,
-                        "budget_ms": self._ack_budget_ms,
-                    },
-                },
-            )
-            logger.info(
-                "control channel: %s still running after %s ms (%s) — answered "
-                "early; its real result will be dropped",
-                method,
-                self._ack_budget_ms,
-                "a Qt modal widget is open"
-                if modal is not None
-                else "no Qt modal widget",
-            )
-
-        timer = QTimer()
-        timer.setSingleShot(True)
-        timer.setInterval(self._ack_budget_ms)
-        timer.timeout.connect(_overran)
-        timer.start()
-        return timer, state
 
     def _handle_line(self, socket: QLocalSocket, line: bytes) -> None:
         if not line.strip():
@@ -653,7 +394,7 @@ class ControlServer:
         try:
             request = json.loads(line.decode("utf-8"))
         except Exception:
-            self._send(
+            send_frame(self,
                 socket,
                 {
                     "id": None,
@@ -664,7 +405,7 @@ class ControlServer:
             )
             return
         if not isinstance(request, dict):
-            self._send(
+            send_frame(self,
                 socket,
                 {
                     "id": None,
@@ -680,7 +421,7 @@ class ControlServer:
         if not isinstance(params, dict):
             params = {}
         if not isinstance(method, str) or not method:
-            self._send(
+            send_frame(self,
                 socket,
                 {
                     "id": request_id,
@@ -691,7 +432,7 @@ class ControlServer:
             )
             return
         if self._handlers is None:
-            self._send(
+            send_frame(self,
                 socket,
                 {
                     "id": request_id,
@@ -705,13 +446,13 @@ class ControlServer:
         # down (segfault, abort) never reaches the reply below, so this note is
         # what survives to explain the death to the MCP client.
         note = self._note_inflight(request_id=request_id, method=method, params=params)
-        timer, answer = self._arm_early_answer(socket, request_id, method)
+        timer, answer = arm_early_answer(self, socket, request_id, method)
         try:
             try:
                 result = self._handlers.handle(method, params)
             except MethodError as exc:
                 if answer["answered"]:
-                    self._report_late_failure(method, exc, note)
+                    report_late_failure(self, method, exc, note)
                     return
                 self._reply(
                     socket,
@@ -725,7 +466,7 @@ class ControlServer:
                 return
             except Exception as exc:
                 if answer["answered"]:
-                    self._report_late_failure(method, exc, note)
+                    report_late_failure(self, method, exc, note)
                     return
                 logger.debug("control channel: handler %s failed", method, exc_info=True)
                 self._reply(
@@ -753,31 +494,3 @@ class ControlServer:
             return
         self._reply(socket, {"id": request_id, "ok": True, "result": result})
 
-    def _report_late_failure(
-        self, method: str, exc: BaseException, note: int | None
-    ) -> None:
-        """A handler that overran then failed: the client already has its frame.
-
-        Nothing can be rewritten on the wire, so the failure goes to the log
-        (``read_log`` serves it) instead of vanishing, and the in-flight note is
-        cleared (only if this request still owns it) — the app is alive, it just
-        cannot report this one.
-        """
-        logger.warning(
-            "control channel: %s failed after it was answered early: %s: %s",
-            method,
-            type(exc).__name__,
-            exc,
-        )
-        self._clear_inflight(note)
-
-    def _send(self, socket: QLocalSocket, payload: dict[str, Any]) -> None:
-        request_id = payload.get("id") if isinstance(payload, dict) else None
-        frame = encode_reply(payload) if isinstance(payload, dict) else None
-        if frame is None:
-            frame = _reply_error_frame(request_id)
-        try:
-            socket.write(frame)
-            socket.flush()
-        except Exception:
-            self._drop_client(socket)

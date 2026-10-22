@@ -1128,9 +1128,13 @@ class GalleryController:
                 nxt += 1
         # WHY fusion did / did not rewrite the ranks (the switch-back path is
         # otherwise invisible): groups, members, locked (user/AI-owned) and the
-        # fusion source it produced. Same IMGSLI_AI_DEBUG key as the rest.
+        # fusion source it produced. Same IMGSLI_AI_DEBUG key as the rest. The
+        # domain is read through the DECLARED accessor
+        # (``action_context.current_backend``), never a bare field read — G2
+        # pins domain reads to that one validated site.
         try:
             from tabs.image_gallery.services.ai_client import _ai_debug
+            from tabs.image_gallery.use_cases.action_context import current_backend
 
             _ai_debug(
                 "fusion ranks: groups=%d members=%d locked=%d domain=%s profile=%s",
@@ -1142,7 +1146,7 @@ class GalleryController:
                     for m in (members_of(g) or ())
                     if _locked(m)
                 ),
-                getattr(self, "_judgment_domain", "?"),
+                current_backend(self),
                 getattr(getattr(self.state, "metric_profile", None), "source", None),
             )
         except Exception:

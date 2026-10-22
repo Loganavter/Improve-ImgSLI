@@ -129,6 +129,25 @@ def _ic_select(canvas: Any, tab: str, magnifier_id: str) -> None:
     )
 
 
+def _ic_scene_graph(canvas: Any, tab: str) -> Any:
+    """The canvas' usable cached scene graph, or ``None`` when there is none.
+
+    Through the feature's capability alias — devtools must not import a canvas
+    feature directly (``tests/contracts/test_canvas_features_imports.py``: "use
+    capability aliases").
+    """
+    return _ic_command(tab, "overlay.scene_graph", alias=True)(
+        _ic_store(canvas), canvas
+    )
+
+
+def _ic_refresh_scene_graph(canvas: Any, tab: str) -> None:
+    """Rebuild the cached magnifier objects from the current state (alias)."""
+    _ic_command(tab, "overlay.refresh_scene_graph", alias=True)(
+        _ic_store(canvas), canvas
+    )
+
+
 def _ic_set_magnifier_visible(canvas: Any, params: dict[str, Any], *, tab: str) -> None:
     magnifier_id = _require_magnifier(canvas, params["id"])
     _ic_command(tab, "overlay.set_instance_visibility", alias=True)(
@@ -169,11 +188,6 @@ def _ic_set_magnifier_combined(canvas: Any, params: dict[str, Any], *, tab: str)
     loupe with one side hidden can never be combined — both would turn
     "unverifiable" into a state change nobody can see.
     """
-    from tabs.image_compare.canvas.features.magnifier.commands.viewport import (
-        magnifier_scene_graph,
-        viewport_refresh_magnifier_scene,
-    )
-
     magnifier_id = _require_magnifier(canvas, params["id"])
     model = _magnifier_models(canvas)[magnifier_id]
     if not bool(getattr(model, "visible", False)):
@@ -197,7 +211,7 @@ def _ic_set_magnifier_combined(canvas: Any, params: dict[str, Any], *, tab: str)
             "enable the hidden side (left/right visibility) in the magnifier "
             "toolbar, then retry",
         )
-    if magnifier_scene_graph(canvas) is None:
+    if _ic_scene_graph(canvas, tab) is None:
         raise _method_error(
             "this canvas has no scene graph yet, so the combined mode cannot be "
             "verified in this call",
@@ -209,7 +223,7 @@ def _ic_set_magnifier_combined(canvas: Any, params: dict[str, Any], *, tab: str)
     _ic_command(tab, "overlay.set_active_combined", alias=True)(
         _ic_store(canvas), combined
     )
-    viewport_refresh_magnifier_scene(_ic_store(canvas), canvas)
+    _ic_refresh_scene_graph(canvas, tab)
 
 
 def _ic_set_divider_visible(canvas: Any, params: dict[str, Any], *, tab: str) -> None:
