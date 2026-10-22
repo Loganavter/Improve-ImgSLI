@@ -9,6 +9,10 @@ imagecodecs>=2024.1.1
 pyvips[binary]>=3.1
 # Learned perceptual quality trio (LPIPS + DISTS + BRISQUE) — hard requirement
 # for the gallery ranker (see src/tabs/image_gallery/services/quality_models.py).
-# torch is pinned together with piq so the backend is reproducible.
+# torch + torchvision are pinned together with piq so the backend is
+# reproducible; `piq` imports torchvision at module import, so all three are
+# mandatory (a missing one is reported as an explicit `backend_status() ==
+# "missing"`, not silently ignored).
 torch==2.14.1
+torchvision==0.29.1
 piq==0.8.0
