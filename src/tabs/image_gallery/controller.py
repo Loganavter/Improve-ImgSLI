@@ -689,6 +689,36 @@ class GalleryController:
         if len(items) < 2:
             _ai_debug("metric profile skip: %d item(s) (<2) — nothing to select", len(items))
             return
+        # Nothing to re-key: the profile is an ANALYSIS-CACHE IDENTITY, so when
+        # every item already carries a scorecard (a warm folder: hydrated from
+        # disk or analyzed under the current axis set) a selector answer cannot
+        # re-point a single call — it can only burn one probe image per open.
+        # Measured live 2026-10-22: every warm reopen of a fully analyzed folder
+        # emitted exactly one image POST that never applied. The AI tail is
+        # cache-first, so a warm matrix is a normal state, not a corner case.
+        try:
+            if all(getattr(it, "analysis", None) is not None for it in items):
+                _ai_debug(
+                    "metric profile skip: matrix already analyzed (items=%d) — "
+                    "a selector answer could not re-key any call",
+                    len(items),
+                )
+                return
+        except Exception:
+            pass
+        # A profile already CONSUMED for this generation is frozen: P5 stamps it
+        # once an AI payload was built, so a reply arriving now is rejected by
+        # ``_apply_profile_outcome`` anyway — asking for it is pure cost.
+        try:
+            consumed = getattr(self, "_profile_consumed_gen", None)
+            if consumed is not None and int(consumed) == int(self._folder_gen):
+                _ai_debug(
+                    "metric profile skip: frozen for gen %s (a payload was built)",
+                    self._folder_gen,
+                )
+                return
+        except Exception:
+            pass
         try:
             settings = self._ai_settings_store.load()
         except Exception:
