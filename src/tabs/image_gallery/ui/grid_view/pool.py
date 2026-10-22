@@ -151,6 +151,15 @@ def _recycle_card(view, str_path: str) -> None:
     except Exception:
         pass
     try:
+        # The tint is CLEARED above, so the idempotence stamp the selection
+        # sweep trusts must be cleared with it: leaving ``(True, accent)`` on a
+        # pooled card made the next ``apply_selection`` skip a genuinely
+        # selected item and it rendered unselected (measured 2026-10-22:
+        # recycled card, locked=False, stamp=(True, ...), no override).
+        card._gallery_sel_applied = None  # type: ignore[attr-defined]
+    except Exception:
+        pass
+    try:
         # Hover/menu state is per-widget; drop it before the pooled card
         # is rebound to another item (or the bar rides it to a new card).
         from tabs.image_gallery.ui.card.hover import reset_card_hover_state
