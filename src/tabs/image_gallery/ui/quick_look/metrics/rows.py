@@ -303,6 +303,8 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
         value_elide: bool = True,
         bar: bool = True,
         title_elide: bool = False,
+        title_tooltip: str | None = None,
+        title_min_width: int = 40,
     ) -> None:
         row = QWidget(host)
         rl = QVBoxLayout(row)
@@ -319,10 +321,24 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
             # sizeHint from forcing the fixed report column into h-scroll — the
             # W5 fit budget holds, the row never clips.
             t = _make_label(
-                title, parent=row, pixel_size=11, pt=11.5, elide=True, minimum_width=40
+                title,
+                parent=row,
+                pixel_size=11,
+                pt=11.5,
+                elide=True,
+                minimum_width=title_min_width,
             )
         else:
             t = _make_label(title, parent=row, pixel_size=11, pt=11.5)
+        if title_tooltip:
+            # An elided title keeps the full text only in ``.text()``; the row
+            # tooltip is what makes it readable (the judge's definition does not
+            # fit the fixed report column — owner saw "cl…", 2026-10-22). Set on
+            # the ROW so hovering anywhere over it (label, bar, value) shows it.
+            try:
+                row.setToolTip(str(title_tooltip))
+            except Exception:
+                pass
         header.addWidget(t)
         # W7: no spacer here — the value below is horizontal-Ignored (it
         # contributes no sizeHint so the min-296px column never h-scrolls) and
@@ -453,16 +469,21 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
         across the series -> "does not separate these variants". Returns True
         when the axis has a row.
         """
+        tooltip = None
         try:
             from tabs.image_gallery.ui.quick_look.metrics.judged import (
+                judged_axis_label,
                 judged_axis_title,
             )
 
-            title = judged_axis_title(
-                axis_id,
-                profile=_profile,
-                translate=lambda key, default: _ql_text(overlay, key, default),
-            )
+            _judged_tr = lambda key, default: _ql_text(overlay, key, default)
+            # The full "name — meaning · provenance" stays the label's TEXT
+            # (P7-C: paint elides, the data is not truncated), the row tooltip
+            # repeats it, and the label keeps a readable minimum width — with
+            # the old 40px floor the judge's own long definition elided to
+            # "cl…" (owner 2026-10-22).
+            title = judged_axis_title(axis_id, profile=_profile, translate=_judged_tr)
+            tooltip = title
         except Exception:
             title = str(axis_id)
         if not title:
@@ -481,6 +502,8 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
                 value_elide=False,
                 bar=False,  # no fill: this axis ranks nothing
                 title_elide=True,
+                title_tooltip=tooltip,
+                title_min_width=140,
             )
             return True
         score = read.get(axis_id)
@@ -498,6 +521,8 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
             col,
             value_color=col,
             title_elide=True,
+            title_tooltip=tooltip,
+            title_min_width=140,
         )
         return True
 
