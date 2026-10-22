@@ -494,7 +494,10 @@ def test_card_dots_show_the_judge_axes_with_their_provenance():
     )
 
     labels = [label for label, _score in infos]
-    assert len(infos) == 3, labels  # sharpness, noise, jpeg_noise
+    # sharpness (measured locally) + the judge's jpeg_noise; the unmeasured
+    # registry axis (noise) has no dot (owner 2026-10-22: gaps are suppressed
+    # once anything in the set is measured).
+    assert len(infos) == 2, labels  # sharpness, jpeg_noise
     judged = [(label, score) for label, score in infos if FREE.name in label]
     assert judged and judged[0][1] == 73
     assert "measured by the judge" in judged[0][0], (
@@ -512,16 +515,28 @@ def test_card_dots_show_the_judge_axes_with_their_provenance():
     )
 
 
-def test_a_dot_for_an_unmeasured_judge_axis_keeps_the_label_and_reads_as_a_gap():
-    item = _item("dots_gap.png", axes={"sharpness": 80})
+def test_an_unmeasured_judge_axis_reads_as_a_gap_only_while_nothing_is_measured():
+    """Gap dots exist in the PENDING phase only (owner 2026-10-22).
+
+    With one axis measured the dots narrow to the measured set, so the judge's
+    unmeasured axis has no dot; with nothing measured the pending affordance
+    still dots it and the tooltip still says "—" (the gap-label machinery the
+    judge provenance owns is unchanged, it just only shows before any value).
+    """
     profile = _profile(FREE)
 
+    measured_item = _item("dots_gap.png", axes={"sharpness": 80})
     _colors, infos = metric_dots_for_item(
-        item, mode=Mode.CAMERA, domain="ai", profile=profile
+        measured_item, mode=Mode.CAMERA, domain="ai", profile=profile
     )
+    assert [label for label, _score in infos] == ["Sharpness"], infos
 
-    judged = [(label, score) for label, score in infos if FREE.name in label]
-    assert judged, infos
+    pending_item = _item("dots_pending.png")
+    _colors, pending_infos = metric_dots_for_item(
+        pending_item, mode=Mode.CAMERA, domain="ai", profile=profile
+    )
+    judged = [(label, score) for label, score in pending_infos if FREE.name in label]
+    assert judged, pending_infos
     assert judged[0][1] is None, "an unscored judge axis must read as a gap"
     assert "measured by the judge" in judged[0][0]
 

@@ -61,6 +61,13 @@ _COMPARE_OPS = (ast.Eq, ast.NotEq, ast.In, ast.NotIn)
 #: each delete their own entries as they land.
 DOMAIN_READ_ALLOWLIST: dict[str, str] = {
     # --- W5/P9: read-path surfaces stop consulting the domain -----------------
+    "src/tabs/image_gallery/use_cases/ai_analysis.py|live = getattr(owner, \"_judgment_domain\", None)": (
+        "gallery-six 2026-10-22: the ONE shared AI-domain gate "
+        "(``_epoch_is_current``) that every AI/Jev/tie-break emission AND landing "
+        "site now routes through (measured leaks: a VLM tie-break on Algorithms "
+        "and four POSTs after a live switch). It REPLACES the per-site ad-hoc "
+        "gates above, so it is removed by the same W5 policy slice, not before."
+    ),
     "src/tabs/image_gallery/ui/card.py|domain = getattr(owner, \"_judgment_domain\", None)": (
         "card picks an artifact severity by domain — W5/P9 renders the AxisValue's "
         "own provenance instead (AxisReader / per-axis provenance)"

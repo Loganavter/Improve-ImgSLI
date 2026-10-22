@@ -13,7 +13,8 @@ Two things this guards:
     ``matches``/``is_active`` must return cleanly (not raise) on a neutral
     store, otherwise its gesture would be silently dead in production.
 
-Dogma source: docs/dev/QRHI_CANVAS_FEATURES.md §"Gesture Bindings (Mouse Routing)".
+Dogma source: docs/dev/rendering/zoom-pan.md §"Gesture Bindings (Mouse
+Routing)".
 """
 
 from __future__ import annotations

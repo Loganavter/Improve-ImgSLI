@@ -28,7 +28,7 @@ class CanvasFeatureRegistry:
 
     One instance exists per tab type, not per open session/document —
     feature *packages* are registered once at tab startup. See
-    docs/dev/CANVAS_FEATURE_REGISTRY_PER_TAB.md.
+    docs/dev/rendering/package-structure.md.
     """
 
     def __init__(self, tab_type: str | None) -> None:

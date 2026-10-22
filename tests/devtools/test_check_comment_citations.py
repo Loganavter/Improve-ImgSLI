@@ -60,6 +60,8 @@ def test_module_import_has_no_side_effects(checker) -> None:
     assert checker.KIND_LINE_OUT_OF_RANGE == "line-out-of-range"
     assert checker.KIND_UNKNOWN_SYMBOL == "unknown-symbol"
     assert checker.KIND_UNVERIFIABLE_ID == "unverifiable-id"
+    assert checker.KIND_MISSING_DOC_PATH == "missing-doc-path"
+    assert checker.KIND_MISSING_DOC_PATH in checker.FAILING_KINDS
 
 
 def test_valid_path_and_stdlib_symbol_pass(checker, tmp_path, capsys) -> None:
@@ -337,3 +339,133 @@ def test_extra_root_resolves_symbols_without_scanning_comments(
     )
     # The extra root supplied names, but none of its comments were scanned.
     assert _findings(report) == []
+
+
+# --- v3: cited doc paths ----------------------------------------------------
+
+
+def _doc_repo(tmp_path: Path) -> Path:
+    """A tiny checkout with one live doc to cite."""
+    repo = tmp_path / "checkout"
+    _write(repo / "docs" / "dev" / "live.md", "# Live\n\nA real doc.\n")
+    return repo
+
+
+def test_missing_doc_path_is_flagged(checker, tmp_path, capsys) -> None:
+    """MUST-fail: a comment citing a doc that never existed."""
+    repo = _doc_repo(tmp_path)
+    root = tmp_path / "tree"
+    _write(
+        root / "citing.py",
+        "# The seam is frozen by `docs/dev/never_existed_s05.md` (ADR-008).\n",
+    )
+    report = tmp_path / "report.json"
+
+    assert checker.main(
+        ["--root", str(root), "--repo-root", str(repo), "--json", str(report)]
+    ) == 1
+    rows = _findings(report)
+    assert [row["kind"] for row in rows] == ["missing-doc-path"]
+    assert rows[0]["token"] == "docs/dev/never_existed_s05.md"
+    assert "missing-doc-path" in capsys.readouterr().out
+
+
+def test_existing_doc_path_passes(checker, tmp_path, capsys) -> None:
+    """MUST-pass: the same citation shape resolves against a live doc."""
+    repo = _doc_repo(tmp_path)
+    root = tmp_path / "tree"
+    _write(root / "citing.py", "# The seam is frozen by `docs/dev/live.md` (ADR-008).\n")
+
+    assert checker.main(["--root", str(root), "--repo-root", str(repo)]) == 0
+    assert capsys.readouterr().out == ""
+
+
+@pytest.mark.parametrize(
+    "citation",
+    [
+        "docs/dev/…",
+        "docs/dev/...",
+        "docs/{a,b}/x.md",
+        "tests/<tab>/test_x.md",
+        "tests/**/*.py",
+        "docs/dev/x.md:12",
+        "./docs/dev/x.md",
+        "../improve-imgsli-internal-docs/docs/dev/x.md",
+        "README.md",
+        "live.md",
+    ],
+)
+def test_illustrative_doc_citations_pass(checker, tmp_path, capsys, citation: str) -> None:
+    """Illustrative / ambiguous / sibling shapes are not citations of this repo."""
+    repo = _doc_repo(tmp_path)
+    root = tmp_path / "tree"
+    _write(root / "citing.py", f"# Shape: `{citation}`\n")
+
+    assert checker.main(["--root", str(root), "--repo-root", str(repo)]) == 0
+    assert capsys.readouterr().out == ""
+
+
+def test_doc_path_baseline_ratchet(checker, tmp_path, capsys) -> None:
+    """Grow -> fail; a baselined count passes; shrinking is a pass."""
+    repo = _doc_repo(tmp_path)
+    root = tmp_path / "tree"
+    citing = root / "citing.py"
+    baseline = tmp_path / "doc_paths_baseline.txt"
+    _write(citing, "# Old home: `docs/dev/gone_s05.md`.\n")
+
+    assert (
+        checker.main(
+            [
+                "--root",
+                str(root),
+                "--repo-root",
+                str(repo),
+                "--doc-path-baseline",
+                str(baseline),
+                "--update-doc-path-baseline",
+            ]
+        )
+        == 0
+    )
+    assert baseline.read_text(encoding="utf-8").count("gone_s05") == 0
+    assert "citing.py\t1" in baseline.read_text(encoding="utf-8")
+
+    def run() -> int:
+        return checker.main(
+            [
+                "--root",
+                str(root),
+                "--repo-root",
+                str(repo),
+                "--doc-path-baseline",
+                str(baseline),
+            ]
+        )
+
+    assert run() == 0
+    capsys.readouterr()
+
+    _write(citing, "# Old home: `docs/dev/gone_s05.md`, new: `docs/dev/gone2_s05.md`.\n")
+    assert run() == 1
+    assert "gone2_s05" in capsys.readouterr().out
+
+    _write(citing, "# Old home: `docs/dev/gone_s05.md`.\n")
+    assert run() == 0
+
+
+def test_real_repo_doc_path_baseline_holds(checker) -> None:
+    """The committed baseline accepts pre-existing drift and nothing newer."""
+    baseline_file = checker.DOC_PATH_BASELINE
+    assert baseline_file.is_file(), (
+        "missing-doc-path needs its committed ratchet — regenerate with "
+        "`python3 scripts/check_comment_citations.py --root src --root tests "
+        "--update-doc-path-baseline`"
+    )
+    baseline = checker.load_doc_path_baseline(baseline_file)
+    assert baseline, "an empty baseline cannot be a ratchet"
+
+    findings = checker.collect_findings([checker.DEFAULT_ROOT])
+    _, regressions = checker.split_doc_path_baseline(findings, baseline)
+    assert not regressions, "\n".join(
+        f"{f.file}:{f.line} `{f.token}`" for f in regressions
+    )

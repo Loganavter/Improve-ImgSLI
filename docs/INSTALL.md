@@ -48,6 +48,11 @@ The launcher:
 - Installs dependencies
 - Runs the application
 
+Note: `requirements-gui.txt` pulls `sli-ui-toolkit` from a sibling checkout
+(`-e ../sli-ui-toolkit`). Clone it next to this repo, or point the launcher at
+your copy with `export SLI_TOOLKIT_DIR=/path/to/sli-ui-toolkit` — without the
+sibling the launcher drops that line and the app fails on `import sli_ui_toolkit`.
+
 Helpful commands:
 ```bash
 ./launcher.sh help
@@ -61,7 +66,7 @@ Manual venv (optional):
 python -m venv venv
 source venv/bin/activate        # Linux/macOS
 # .\venv\Scripts\activate      # Windows PowerShell
-pip install -r requirements.txt
+pip install -r requirements-gui.txt
 python -m src
 ```
 
@@ -73,7 +78,7 @@ In-app Help (recommended):
 - English: src/resources/help/en/
 - Russian: src/resources/help/ru/
 
-Entry topic (EN): src/resources/help/en/introduction.md
+Entry topic (EN): src/resources/help/en/about.md
 
 ---
 

@@ -1,7 +1,8 @@
 # ScrollValueButton
 
 Scroll-driven numeric button: icon + hover value split (hover shows the
-digit inside the button, no flyout), with an underline whose thickness tracks
+digit inside the button; keyboard focus, click or scroll raise a value pill
+above it), with an underline whose thickness tracks
 the value — used for divider/guide widths in Image Compare and Multi Compare.
 
 Source: `src/ui/widgets/scroll_value_button.py`
@@ -11,12 +12,19 @@ Source: `src/ui/widgets/scroll_value_button.py`
 | Param | Meaning |
 |---|---|
 | `min_value` / `max_value` / `start` | value range and initial value |
-| `*button kwargs` | toolkit `Button` parameters (icon, size, …) |
+| `icon` | one icon, or a `(normal, checked)` pair for `toggle=True` |
+| `toggle: bool = False` | the button also carries a checked state (`toggled`) |
+| `zero_icon` | icon shown instead of the digit `0` when `min_value` is the "hidden" state (`None` = show `0`) |
+| `*button kwargs` | remaining toolkit `Button` parameters (size, …) |
+
+`valueChanged(int)` fires whenever `set_value(...)` moves the value; re-setting
+the same clamped value emits nothing.
 
 Built on the toolkit button region/layer pipeline (`ButtonRegion`,
 `BackgroundLayer`, `ContentLayer`, `BadgeLayer`, `UnderlineLayer`,
 `VerticalSplit`, …). Scrolling over the button cycles the value; hovering
-shows the value split (the digit) **inside** the button — no flyout. Keyboard
+shows the value split (the digit) **inside** the button, while keyboard
+focus, click or scroll raise the transient value pill above it (`_ScrollValueFlyout`). Keyboard
 focus is parked off QRhi canvases on Wayland/Vulkan via
 `ui.canvas_infra.rhi.rhi_focus`.
 
@@ -44,7 +52,7 @@ consumers already wire to that channel open from the keyboard too
 edit mode.
 
 This is a deliberate exception to the app-wide Enter-to-edit contract
-(`KEYBOARD_NAVIGATION.md` §15): `is_editing()` always returns `False`, so
+(`improve-imgsli-internal-docs/docs/dev/KEYBOARD_NAVIGATION.md` §15): `is_editing()` always returns `False`, so
 `ToolbarRowsSection` keeps handing every arrow to ring navigation. The
 keyboard value path is the wheel and `Left`/`Right` inside the `Up` pill. The
 contract registry (`tests/runtime/test_value_control_edit_contract.py`) marks

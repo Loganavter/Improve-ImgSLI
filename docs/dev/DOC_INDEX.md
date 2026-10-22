@@ -29,7 +29,7 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
 - **[Code patterns & anti-patterns](CODE_PATTERNS.md)** — `docs/dev/CODE_PATTERNS.md`
   Referenced by: [docs/dev/ARCHITECTURE.md](ARCHITECTURE.md), [docs/dev/CODE_MASS_REDUCTION.md](CODE_MASS_REDUCTION.md), [docs/dev/FILE_SIZE_POLICY.md](FILE_SIZE_POLICY.md), [docs/dev/README.md](README.md), [src/tabs/image_gallery/docs/investigations/plan-adaptive-metric-profiles-2026-10-17.md](../../src/tabs/image_gallery/docs/investigations/plan-adaptive-metric-profiles-2026-10-17.md), [src/tabs/image_gallery/docs/investigations/plan-gallery-persistent-catalog-2026-10-21.md](../../src/tabs/image_gallery/docs/investigations/plan-gallery-persistent-catalog-2026-10-21.md), [src/tabs/image_gallery/docs/investigations/plan-gallery-split-2026-10-17.md](../../src/tabs/image_gallery/docs/investigations/plan-gallery-split-2026-10-17.md)
 - **[`.imgsli` Container Format](CONTAINER_FORMAT.md)** — `docs/dev/CONTAINER_FORMAT.md`
-  Referenced by: [docs/dev/README.md](README.md)
+  Referenced by: [docs/dev/README.md](README.md), [docs/dev/tabs/contract.md](tabs/contract.md), [docs/dev/tabs/session-lifecycle.md](tabs/session-lifecycle.md)
 - **[Application Contracts](CONTRACTS.md)** — `docs/dev/CONTRACTS.md`
   Referenced by: [docs/dev/CAPABILITY_ALIASES.md](CAPABILITY_ALIASES.md), [docs/dev/CODE_MASS_REDUCTION.md](CODE_MASS_REDUCTION.md), [docs/dev/CODE_PATTERNS.md](CODE_PATTERNS.md), [docs/dev/PRESENTERS.md](PRESENTERS.md), [docs/dev/README.md](README.md), [docs/dev/SETTINGS_PERSISTENCE.md](SETTINGS_PERSISTENCE.md), [docs/dev/STORE.md](STORE.md), [docs/dev/TESTING.md](TESTING.md), [docs/dev/rendering/contracts.md](rendering/contracts.md), [docs/dev/rendering/index.md](rendering/index.md), [docs/dev/rendering/overview.md](rendering/overview.md), [docs/dev/rendering/render-pass-contract.md](rendering/render-pass-contract.md), [docs/dev/tabs/contract.md](tabs/contract.md), [docs/dev/tabs/index.md](tabs/index.md)
 - **[App Dialogs / Windows](DIALOGS.md)** — `docs/dev/DIALOGS.md`
@@ -49,8 +49,9 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
 - **[Logging](LOGGING.md)** — `docs/dev/LOGGING.md`
   Referenced by: [docs/dev/MCP.md](MCP.md), [docs/dev/README.md](README.md), [docs/dev/SETTINGS_PERSISTENCE.md](SETTINGS_PERSISTENCE.md), [docs/dev/TRACING.md](TRACING.md)
 - **[MCP server (app control)](MCP.md)** — `docs/dev/MCP.md`
+  Referenced by: [docs/dev/ACTIONS.md](ACTIONS.md)
 - **[Plugin lifecycle](PLUGINS.md)** — `docs/dev/PLUGINS.md`
-  Referenced by: [docs/dev/ARCHITECTURE.md](ARCHITECTURE.md), [docs/dev/EVENT_BUS.md](EVENT_BUS.md), [docs/dev/README.md](README.md), [docs/dev/RESOURCES_I18N.md](RESOURCES_I18N.md), [docs/dev/STORE.md](STORE.md), [docs/dev/THEMING.md](THEMING.md), [docs/dev/plugins/export.md](plugins/export.md), [docs/dev/plugins/image_properties.md](plugins/image_properties.md), [docs/dev/plugins/index.md](plugins/index.md), [docs/dev/plugins/layout.md](plugins/layout.md), [docs/dev/plugins/onboarding.md](plugins/onboarding.md), [docs/dev/plugins/settings.md](plugins/settings.md)
+  Referenced by: [docs/dev/ARCHITECTURE.md](ARCHITECTURE.md), [docs/dev/EVENT_BUS.md](EVENT_BUS.md), [docs/dev/README.md](README.md), [docs/dev/RESOURCES_I18N.md](RESOURCES_I18N.md), [docs/dev/THEMING.md](THEMING.md), [docs/dev/plugins/export.md](plugins/export.md), [docs/dev/plugins/image_properties.md](plugins/image_properties.md), [docs/dev/plugins/index.md](plugins/index.md), [docs/dev/plugins/layout.md](plugins/layout.md), [docs/dev/plugins/onboarding.md](plugins/onboarding.md), [docs/dev/plugins/settings.md](plugins/settings.md), [src/tabs/image_compare/docs/plugins/comparison.md](../../src/tabs/image_compare/docs/plugins/comparison.md), [src/tabs/image_compare/docs/plugins/video_editor.md](../../src/tabs/image_compare/docs/plugins/video_editor.md), [src/tabs/image_gallery/docs/plugins/image_gallery.md](../../src/tabs/image_gallery/docs/plugins/image_gallery.md), [src/tabs/multi_compare/docs/plugins/multi_compare.md](../../src/tabs/multi_compare/docs/plugins/multi_compare.md), [src/tabs/session_picker/docs/plugins/session_picker.md](../../src/tabs/session_picker/docs/plugins/session_picker.md)
 - **[Presenter layer](PRESENTERS.md)** — `docs/dev/PRESENTERS.md`
   Referenced by: [docs/dev/README.md](README.md)
 - **[Development Documentation](README.md)** — `docs/dev/README.md`
@@ -59,8 +60,9 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
 - **[Screenshots](SCREENSHOTS.md)** — `docs/dev/SCREENSHOTS.md`
   Referenced by: [docs/dev/MCP.md](MCP.md)
 - **[Settings persistence](SETTINGS_PERSISTENCE.md)** — `docs/dev/SETTINGS_PERSISTENCE.md`
-  Referenced by: [docs/dev/CONTRACTS.md](CONTRACTS.md), [docs/dev/README.md](README.md), [docs/dev/plugins/settings.md](plugins/settings.md)
+  Referenced by: [docs/dev/CONTRACTS.md](CONTRACTS.md), [docs/dev/PLUGINS.md](PLUGINS.md), [docs/dev/README.md](README.md), [docs/dev/plugins/settings.md](plugins/settings.md)
 - **[image_compare State Slot Manifest](STATE_SLOT_MANIFEST.md)** — `docs/dev/STATE_SLOT_MANIFEST.md`
+  Referenced by: [docs/dev/STORE.md](STORE.md)
 - **[Store / Redux](STORE.md)** — `docs/dev/STORE.md`
   Referenced by: [docs/dev/ARCHITECTURE.md](ARCHITECTURE.md), [docs/dev/EVENT_BUS.md](EVENT_BUS.md), [docs/dev/PLUGINS.md](PLUGINS.md), [docs/dev/PRESENTERS.md](PRESENTERS.md), [docs/dev/README.md](README.md), [docs/dev/SETTINGS_PERSISTENCE.md](SETTINGS_PERSISTENCE.md)
 - **[Tab Contract](TAB_CONTRACT.md)** — `docs/dev/TAB_CONTRACT.md`
@@ -110,7 +112,7 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
 - **[Feature Decomposition Playbook](rendering/feature-decomposition-playbook.md)** — `docs/dev/rendering/feature-decomposition-playbook.md`
   Referenced by: [docs/dev/rendering/index.md](rendering/index.md)
 - **[Canvas & Rendering Documentation](rendering/index.md)** — `docs/dev/rendering/index.md`
-  Referenced by: [docs/dev/ARCHITECTURE.md](ARCHITECTURE.md), [docs/dev/CAPABILITY_ALIASES.md](CAPABILITY_ALIASES.md), [docs/dev/CONTRACTS.md](CONTRACTS.md), [docs/dev/PLUGINS.md](PLUGINS.md), [docs/dev/PRESENTERS.md](PRESENTERS.md), [docs/dev/README.md](README.md), [docs/dev/plugins/export.md](plugins/export.md)
+  Referenced by: [docs/dev/ARCHITECTURE.md](ARCHITECTURE.md), [docs/dev/CAPABILITY_ALIASES.md](CAPABILITY_ALIASES.md), [docs/dev/CONTRACTS.md](CONTRACTS.md), [docs/dev/PLUGINS.md](PLUGINS.md), [docs/dev/PRESENTERS.md](PRESENTERS.md), [docs/dev/README.md](README.md), [docs/dev/TESTING.md](TESTING.md), [docs/dev/plugins/export.md](plugins/export.md)
 - **[Overview](rendering/overview.md)** — `docs/dev/rendering/overview.md`
   Referenced by: [docs/dev/rendering/index.md](rendering/index.md)
 - **[Package Structure](rendering/package-structure.md)** — `docs/dev/rendering/package-structure.md`
@@ -127,23 +129,23 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
 ## docs/dev/tabs/
 
 - **[Background tab policy](tabs/background-tab-policy.md)** — `docs/dev/tabs/background-tab-policy.md`
-  Referenced by: [docs/dev/TODO.md](TODO.md)
+  Referenced by: [docs/dev/TODO.md](TODO.md), [docs/dev/tabs/index.md](tabs/index.md)
 - **[Capability mechanisms](tabs/capability-mechanisms.md)** — `docs/dev/tabs/capability-mechanisms.md`
   Referenced by: [docs/dev/ACTIONS.md](ACTIONS.md), [docs/dev/ARCHITECTURE.md](ARCHITECTURE.md), [docs/dev/HELP_SYSTEM.md](HELP_SYSTEM.md), [docs/dev/TAB_CONTRACT.md](TAB_CONTRACT.md), [docs/dev/plugins/onboarding.md](plugins/onboarding.md), [docs/dev/tabs/contract.md](tabs/contract.md), [docs/dev/tabs/index.md](tabs/index.md), [docs/dev/tabs/isolation.md](tabs/isolation.md), [docs/dev/tabs/registry.md](tabs/registry.md)
 - **[TabContract & TabContext](tabs/contract.md)** — `docs/dev/tabs/contract.md`
   Referenced by: [docs/dev/CONTRACTS.md](CONTRACTS.md), [docs/dev/TAB_CONTRACT.md](TAB_CONTRACT.md), [docs/dev/tabs/index.md](tabs/index.md), [docs/dev/tabs/overview.md](tabs/overview.md)
 - **[Tab System Documentation](tabs/index.md)** — `docs/dev/tabs/index.md`
-  Referenced by: [docs/dev/CONTRACTS.md](CONTRACTS.md), [docs/dev/PLUGINS.md](PLUGINS.md), [docs/dev/PRESENTERS.md](PRESENTERS.md), [docs/dev/README.md](README.md), [docs/dev/RESOURCES_I18N.md](RESOURCES_I18N.md), [docs/dev/TAB_CONTRACT.md](TAB_CONTRACT.md), [docs/dev/plugins/layout.md](plugins/layout.md)
+  Referenced by: [docs/dev/CONTRACTS.md](CONTRACTS.md), [docs/dev/PLUGINS.md](PLUGINS.md), [docs/dev/PRESENTERS.md](PRESENTERS.md), [docs/dev/README.md](README.md), [docs/dev/RESOURCES_I18N.md](RESOURCES_I18N.md), [docs/dev/TAB_CONTRACT.md](TAB_CONTRACT.md), [docs/dev/plugins/layout.md](plugins/layout.md), [src/tabs/image_gallery/docs/README.md](../../src/tabs/image_gallery/docs/README.md), [src/tabs/session_picker/docs/README.md](../../src/tabs/session_picker/docs/README.md)
 - **[Isolation & dependency wiring](tabs/isolation.md)** — `docs/dev/tabs/isolation.md`
-  Referenced by: [docs/dev/RESOURCES_I18N.md](RESOURCES_I18N.md), [docs/dev/TAB_CONTRACT.md](TAB_CONTRACT.md), [docs/dev/TESTING.md](TESTING.md), [docs/dev/tabs/background-tab-policy.md](tabs/background-tab-policy.md), [docs/dev/tabs/capability-mechanisms.md](tabs/capability-mechanisms.md), [docs/dev/tabs/index.md](tabs/index.md), [docs/dev/tabs/overview.md](tabs/overview.md)
+  Referenced by: [docs/dev/RESOURCES_I18N.md](RESOURCES_I18N.md), [docs/dev/TAB_CONTRACT.md](TAB_CONTRACT.md), [docs/dev/TESTING.md](TESTING.md), [docs/dev/tabs/background-tab-policy.md](tabs/background-tab-policy.md), [docs/dev/tabs/capability-mechanisms.md](tabs/capability-mechanisms.md), [docs/dev/tabs/index.md](tabs/index.md), [docs/dev/tabs/overview.md](tabs/overview.md), [docs/dev/tabs/package-structure.md](tabs/package-structure.md)
 - **[Overview](tabs/overview.md)** — `docs/dev/tabs/overview.md`
-  Referenced by: [docs/dev/TAB_CONTRACT.md](TAB_CONTRACT.md), [docs/dev/tabs/index.md](tabs/index.md)
+  Referenced by: [docs/dev/TAB_CONTRACT.md](TAB_CONTRACT.md), [docs/dev/tabs/capability-mechanisms.md](tabs/capability-mechanisms.md), [docs/dev/tabs/index.md](tabs/index.md), [docs/dev/tabs/registry.md](tabs/registry.md)
 - **[Tab package structure](tabs/package-structure.md)** — `docs/dev/tabs/package-structure.md`
   Referenced by: [docs/dev/RESOURCES_I18N.md](RESOURCES_I18N.md), [docs/dev/TAB_CONTRACT.md](TAB_CONTRACT.md), [docs/dev/tabs/index.md](tabs/index.md), [docs/dev/tabs/overview.md](tabs/overview.md)
 - **[TabRegistry](tabs/registry.md)** — `docs/dev/tabs/registry.md`
   Referenced by: [docs/dev/TAB_CONTRACT.md](TAB_CONTRACT.md), [docs/dev/tabs/index.md](tabs/index.md)
 - **[Workspace session lifecycle](tabs/session-lifecycle.md)** — `docs/dev/tabs/session-lifecycle.md`
-  Referenced by: [docs/dev/TAB_CONTRACT.md](TAB_CONTRACT.md), [docs/dev/TODO.md](TODO.md), [docs/dev/tabs/background-tab-policy.md](tabs/background-tab-policy.md), [docs/dev/tabs/index.md](tabs/index.md)
+  Referenced by: [docs/dev/STORE.md](STORE.md), [docs/dev/TAB_CONTRACT.md](TAB_CONTRACT.md), [docs/dev/TODO.md](TODO.md), [docs/dev/tabs/background-tab-policy.md](tabs/background-tab-policy.md), [docs/dev/tabs/index.md](tabs/index.md)
 
 ## docs/dev/widgets/
 
@@ -159,6 +161,7 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
 - **[ScrollValueButton](widgets/scroll_value_button.md)** — `docs/dev/widgets/scroll_value_button.md`
 - **[SettingsDialog](widgets/settings_dialog.md)** — `docs/dev/widgets/settings_dialog.md`
 - **[ShelfWidget](widgets/shelf.md)** — `docs/dev/widgets/shelf.md`
+  Referenced by: [src/tabs/session_picker/docs/README.md](../../src/tabs/session_picker/docs/README.md)
 - **[StartupPlaceholder](widgets/startup_placeholder.md)** — `docs/dev/widgets/startup_placeholder.md`
 - **[ThemedSurface / ThemedBackgroundContainer](widgets/themed_surface.md)** — `docs/dev/widgets/themed_surface.md`
 - **[UnifiedListPicker](widgets/unified_list_picker.md)** — `docs/dev/widgets/unified_list_picker.md`

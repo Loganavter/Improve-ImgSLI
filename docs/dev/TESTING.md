@@ -12,13 +12,15 @@ pytest tests/contracts                   # cross-cutting architectural contracts
 pytest src/tabs/image_compare/tests      # image_compare tab tests only
 pytest src/tabs/multi_compare/tests/render -q
 pytest -k divider                        # all tests whose name contains divider
-pytest tests/runtime/test_event_bus_depth.py::TestEventBusDepth
+pytest tests/runtime/test_event_bus_depth.py::test_circular_chain_stops_at_max_depth
 ```
 
 ## Tiers (fast PR vs full nightly)
 
-Markers are registered in `pytest.ini` (`slow`, `flaky`). No `addopts`
-— default runs are unchanged; tiers are opt-in via `-m`:
+Markers are registered in `pytest.ini` (`slow`, `flaky`). Its one `addopts`
+is `--randomly-seed=20261021`: `pytest-randomly` stays on (order bugs still
+surface) but the shuffled order — and therefore the failure set — is
+reproducible. Tiers are opt-in via `-m`:
 
 ```bash
 pytest tests -m "not slow" -n auto -q     # fast tier: everything except the
@@ -41,7 +43,7 @@ Timing-sensitive tests that fail only under parallel load are marked
 
 | Test | Symptom |
 |---|---|
-| `tests/contracts/test_chrome_lifetime.py::test_reveal_pulse_exception_swallowed` | `QTimer.singleShot(0)` pulse may not fire before teardown under `-n 8` load; 3/3 green alone. Fix direction: explicit signal wait instead of `delay_ms=0` (see `docs/dev/KNOWN_BUGS.md` Qt quirks). |
+| `tests/contracts/test_chrome_lifetime.py::test_reveal_pulse_exception_swallowed` | `QTimer.singleShot(0)` pulse may not fire before teardown under `-n 8` load; 3/3 green alone. Fix direction: explicit signal wait instead of `delay_ms=0` (see `../improve-imgsli-internal-docs/docs/dev/KNOWN_BUGS.md` Qt quirks). |
 | `src/tabs/session_picker/tests/runtime/test_keyboard_navigation.py::test_down_from_last_header_enters_recent_items` | Offscreen focus handoff (header → recent items) can be dropped under full `-n` load (whole tree in one session); green in the tab suite alone. Hardened to `widget.focusWidget()` + `qtbot.waitUntil`; residual is Qt-offscreen focus timing, not a product bug. |
 | `src/tabs/session_picker/tests/runtime/test_session_picker_refresh_focus.py::test_tab_stores_widget_and_hooks_are_order_safe` | Tab lifecycle + focus timing under parallel load; green alone. |
 | `src/tabs/session_picker/tests/runtime/test_keyboard_navigation.py::test_up_from_first_recent_item_returns_to_last_create_card` | Same offscreen focus handoff as the Down case; fails only in full-suite order (journal `1bf913a7` and 2026-10-14), green in isolation. |
@@ -71,9 +73,13 @@ it by re-running the parent commit by hand. `test-journal.sh` (packed in the
 internal-docs `machine/bin/`) records runs keyed to the commit:
 
 - `test-journal.sh run <repo> [--scope NAME] [-- <paths/args>]` after any
-  non-trivial run (or `import <repo> <commit> <log>` to backfill an existing log);
+  non-trivial run (a whole-suite run with no paths is refused unless `--full`);
+- `test-journal.sh import <repo> <commit> <log>` to backfill an existing log;
 - `test-journal.sh query <repo> --test <substr>` / `last <repo> --test <substr>`
-  for the per-commit history of one test.
+  for the per-commit history of one test;
+- `test-journal.sh baseline <repo> --ref REF` (machine-readable lookup that
+  acceptance uses, `delta:` when `--current` counts are supplied) and
+  `show <repo> [N]` (recent records).
 
 The journal is `<repo>/.git/test-journal.jsonl` (untracked). A failure present at
 the pre-change commit is pre-existing; an isolated-green vs a combined-run fail is
@@ -120,9 +126,9 @@ as an external dependency from `requirements-gui.txt`; there is no local
 fallback path to a vendored toolkit. App tests cover app integration with the
 toolkit, not the external library's public API.
 
-The repository uses a minimal `pytest.ini` (marker registration only —
-no `addopts`, so default runs are unchanged) — discovery follows pytest
-defaults.
+The repository uses a minimal `pytest.ini` (marker registration +
+`faulthandler_timeout` + the pinned `--randomly-seed` described above) —
+discovery follows pytest defaults.
 
 ## Layout
 
@@ -140,10 +146,13 @@ instantiates a concrete tab as an example. Folder structure details —
 
 | Folder | What it checks | Style |
 |---|---|---|
-| `tests/contracts/` | **Architectural dogmas** (AST), not the interface field catalogs. Isolation rules such as “no direct feature imports”. See [CONTRACTS.md](CONTRACTS.md#three-senses-of-contract); feature layout also in `QRHI_CANVAS_FEATURES.md`. | Static analysis |
+| `tests/contracts/` | **Architectural dogmas** (AST), not the interface field catalogs. Isolation rules such as “no direct feature imports”. See [CONTRACTS.md](CONTRACTS.md#three-senses-of-contract); feature layout also in [rendering/index.md](rendering/index.md). | Static analysis |
 | `tests/runtime/` | Shared import/behavior checks: registry, event bus, stacking policy, presentation isolation, graceful degradation. Not the same as render-pass *lifecycle* docs. | Import + assertions |
 | `tests/render/` | Shared composition/render-plan behavior, not tied to a specific tab. | Fake-context |
 | `tests/plugins/` | Plugin behavior (`src/plugins/*`) not owned by one tab: settings, help, clipboard, workspace chrome. | Unit/integration |
+| `tests/devtools/` | Developer tooling: docs link graph, UI-inspector wiring, capture-surface/help-figure gates, control-surface (MCP) routing, launcher checks. | Mixed |
+| `tests/*.py` (top level) | App-shell mechanics with no subfolder of their own: navigation manager/coverage, context menu, flyout fade, session state. | Unit/integration |
+| `tests/{video,ui,target_bug}/`, `tests/helpers/` | Remnants and support: `video/` keeps one module (the video suite moved to the image_compare tab), `ui/` one dialog-layer test, `target_bug/` one regression, `helpers/` importable fixtures (no `test_*.py`). | Mixed |
 | `src/tabs/image_compare/tests/{contracts,render,runtime,plugins,video}/` | Everything specific to image_compare (canvas features, magnifier, divider, video editor). | Mixed — see [tabs/isolation.md](tabs/isolation.md) |
 | `src/tabs/multi_compare/tests/{contracts,render,runtime,plugins}/` | Everything specific to multi_compare (composition, dividers, labels, context menu). | Mixed — see [tabs/isolation.md](tabs/isolation.md) |
 
@@ -158,9 +167,11 @@ folder stays self-contained.
 
 ## File catalog
 
-What each file guards — so you do not have to read sources one by one. Each
-test's dogma is the first line of its docstring. Below covers only `tests/`
-(cross-cutting contracts). For a specific tab's catalog, look next to that tab:
+The load-bearing files, not every file — so you do not have to read sources one
+by one. Each test's dogma is the first line of its docstring, so the catalog can
+be regenerated from the tree (`grep -rn '^"""' tests/<dir>`); it is not a
+complete inventory. Below covers only `tests/` (cross-cutting contracts). For a
+specific tab's catalog, look next to that tab:
 `src/tabs/image_compare/tests/`, `src/tabs/multi_compare/tests/` (the docstring
 first line plays the same role — we do not duplicate a per-tab table here).
 
@@ -207,7 +218,7 @@ first line plays the same role — we do not duplicate a per-tab table here).
 | `test_composition_plan.py` | Shared composition-plan assembly not tied to a specific tab. |
 | `test_plan_applicator_composition.py` | Applicator combines composition plans correctly regardless of tab. |
 | `test_qrhi_backend_selection.py` | QRhi backend selection is a shared mechanism, not tab-specific. |
-| `test_qrhi_canvas_resize_contract.py` | QRhi canvas resize delegates to shared resize-geometry pipeline. |
+| `src/tabs/image_compare/tests/render/test_qrhi_canvas_resize_contract.py` | QRhi canvas resize delegates to shared resize-geometry pipeline. |
 
 ### `plugins/` — plugin behavior not owned by one tab
 
@@ -218,7 +229,7 @@ first line plays the same role — we do not duplicate a per-tab table here).
 | `test_help_dialog_anchors.py` | Help: anchor suffix strip, heading-id generation, TOC from h3 sections. |
 | `test_image_properties.py` | Image properties readable regardless of active tab. |
 | `test_main_window_canvas_theme_background.py` | Theme change updates canvas container background and placeholder at host level. |
-| `test_main_window_save_button.py` | Main-window save button is host chrome, not tab-specific. |
+| `src/tabs/image_compare/tests/plugins/test_main_window_save_button.py` | Main-window save button is host chrome, not tab-specific. |
 | `test_settings_dialog_geometry.py` | Settings dialog geometry. |
 | `test_workspace_session_menu_translations.py` | Workspace session menu uses host-level translations. |
 | `test_workspace_tab_close.py` | Closing last workspace tab closes main window (workspace host mechanics, not a specific tab). |
@@ -320,15 +331,17 @@ extend the sweep or leave the case to it.
 
 A test that cannot fail is worse than a missing test (false confidence).
 Before adding a test, make sure it contains at least one assertion that can
-actually fail; an AST scan for assert-less `test_*` functions is part of the
-suite revision. If a specific test's assertions are fully subsumed by a
+actually fail (no assert-less AST scan exists in the suite — this stays a
+review rule). If a specific test's assertions are fully subsumed by a
 stronger sibling, delete the weaker one — do not keep it "for documentation".
 
 ## When tests break
 
 - Failure "new vs pre-existing" — answer with the **test-run journal**
   (`test-journal.sh query|last`), not a hand re-run of the parent commit (see below).
-- Contract test fails after adding a feature/plugin — the feature violates the dogma (`docs/dev/QRHI_CANVAS_FEATURES.md` or `CONTRACTS.md`). Fix the feature, not the test.
+- Contract test fails after adding a feature/plugin — the feature violates the dogma (`docs/dev/rendering/index.md` and the page it
+  points at for the changed subsystem, or `CONTRACTS.md`). Fix the feature, not
+  the test.
 - Render contract fails — pass behavior changed. If intentional, update the test docstring and assertion in one change.
 - Import failure — check that new code does not import Qt/QRhi at module top level. Use lazy import inside functions.
 

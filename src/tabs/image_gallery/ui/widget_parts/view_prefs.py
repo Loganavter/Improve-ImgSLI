@@ -15,26 +15,74 @@ from __future__ import annotations
 from tabs.image_gallery.debug import gallery_debug as _dbg
 
 
+def current_sort_text(owner) -> str:
+    """The toolbar's current sort label ("" when the chrome is not built)."""
+    try:
+        text = owner.toolbar.sort_text()
+        return str(text or "")
+    except Exception:
+        return ""
+
+
+def sort_keyfunc(owner, text: str):
+    """The active sort key function, or ``None`` for an unknown label.
+
+    Domain gate (plan-gallery-two-domain-axes W2): "Sort: AI quality" is an
+    AI-domain ordering; outside the AI domain it falls back to Rank so the
+    algorithms view never orders by an AI score. ``None`` (an unwired
+    fake/legacy owner with no domain state) keeps the legacy behaviour.
+    """
+    key = str(text or "").lower()
+    if "quality" in key:
+        _domain = getattr(owner, "_judgment_domain", None)
+        if _domain is not None and _domain != "ai":
+            key = "rank"
+    try:
+        return owner._sort_keyfunc(key)
+    except Exception:
+        return None
+
+
+def sort_series(owner, series, keyfunc):
+    """Sort clusters' members and the clusters themselves (idempotent)."""
+    out = []
+    for cl in list(series or []):
+        try:
+            out.append(sorted(cl, key=keyfunc))
+        except Exception:
+            out.append(list(cl))
+    try:
+        out.sort(key=lambda cl: keyfunc(cl[0]) if cl else None)
+    except Exception:
+        pass
+    return out
+
+
+def sort_items(owner, items, keyfunc):
+    try:
+        return sorted(items, key=keyfunc)
+    except Exception:
+        return list(items)
+
+
+def _persist_sort(owner) -> None:
+    """Remember the toolbar sort position with the other view prefs."""
+    state = getattr(owner, "_session_state", None)
+    if state is None:
+        return
+    try:
+        state.set("sort_index", int(owner.toolbar.sort_index))
+    except Exception:
+        pass
+
+
 def _on_sort_changed(owner, text: str) -> None:
     # S2: toolbar sort combo "Sort: Rank/Name/Date" — reorder grid.
-    # Wave 2c note: the frozen seam has no GALLERY_* sort action, so
-    # sort stays view-local (grid order only, no slot write) by design.
-    # Thin owner: delegate to filtering/sorting helper if available, else
-    # sort items in place.
     try:
-        key = str(text or "").lower()
-        # Domain gate (plan-gallery-two-domain-axes W2): "Sort: AI quality"
-        # is a judgment-domain ordering. Outside the AI domain it falls
-        # back to Rank so the algorithms view never orders by an AI score.
-        # ``None`` (unwired fake/legacy path with no domain state) keeps the
-        # legacy behaviour and is not gated.
-        if "quality" in key:
-            _domain = getattr(owner, "_judgment_domain", None)
-            if _domain is not None and _domain != "ai":
-                key = "rank"
-        keyfunc = owner._sort_keyfunc(key)
+        keyfunc = sort_keyfunc(owner, text)
         if keyfunc is None:
             return
+        _persist_sort(owner)
         items = list(owner._items or [])
         # Rebuild grid preserving series grouping if active
         if owner._series:
@@ -43,16 +91,7 @@ def _on_sort_changed(owner, text: str) -> None:
             # rebuild via set_triage (stats/hubs recomputed there).
             # The old flat rebuild_grid first was a wasted pass whose
             # order set_triage discarded anyway.
-            sorted_series = []
-            for cl in owner._series:
-                try:
-                    sorted_series.append(sorted(cl, key=keyfunc))
-                except Exception:
-                    sorted_series.append(list(cl))
-            try:
-                sorted_series.sort(key=lambda cl: keyfunc(cl[0]))
-            except Exception:
-                pass
+            sorted_series = sort_series(owner, owner._series, keyfunc)
             try:
                 member_paths = {
                     str(it.path) for cl in sorted_series for it in cl
@@ -209,8 +248,12 @@ def attach_session_state(owner, state) -> None:
 
 
 #: Design px of the page's root chrome (real_design.md §2.7): 24 horizontal
-#: padding, 40 bottom to clear the selection HUD, 12 between stacked regions.
-ROOT_MARGIN_PX = (24, 12, 24, 40)
+#: padding and 12 between stacked regions. NO bottom margin: the grid's
+#: ``OpaqueFillHost`` (the scroll well) must reach the tab's bottom edge — the
+#: old 40 px band "to clear the selection HUD" outlived the HUD (removed,
+#: ``widget.py``: selection lives in the card context menu) and read as a dead
+#: strip under the grid (owner report 2026-10-22).
+ROOT_MARGIN_PX = (24, 12, 24, 0)
 ROOT_SPACING_PX = 12
 
 
@@ -225,7 +268,7 @@ def apply_root_design_metrics(owner) -> None:
     layout = owner.layout()
     if layout is None:
         return
-    layout.setContentsMargins(*(scaled_px(v) for v in ROOT_MARGIN_PX))
+    layout.setContentsMargins(*(scaled_px(v) if v else 0 for v in ROOT_MARGIN_PX))
     layout.setSpacing(scaled_px(ROOT_SPACING_PX))
 
 
@@ -242,6 +285,10 @@ def _persist_view_prefs(owner) -> None:
     try:
         state.set("view_list", bool(getattr(owner, "_view_mode", False)))
         state.set("judgment_domain", str(getattr(owner, "_judgment_domain", "algorithms")))
+        try:
+            state.set("sort_index", int(owner.toolbar.sort_index))
+        except Exception:
+            pass
     except Exception:
         pass
 
@@ -281,7 +328,7 @@ def paint_event(owner, event) -> None:
         pass
 
 
-def apply_view_prefs(owner, *, view_list: bool, judgment_domain: str) -> None:
+def apply_view_prefs(owner, *, view_list: bool, judgment_domain: str, sort_index=None) -> None:
     """Restore both switches from the session slot.
 
     The view is applied directly (widget ``_view_mode`` + grid) so it never
@@ -300,6 +347,11 @@ def apply_view_prefs(owner, *, view_list: bool, judgment_domain: str) -> None:
         owner._grid_view.set_view_mode("list" if is_list else "grid")
     except Exception:
         pass
+    if sort_index is not None:
+        try:
+            owner.toolbar.set_sort_index(int(sort_index))
+        except Exception:
+            pass
     dom = str(judgment_domain or "algorithms").strip().lower()
     if dom not in ("algorithms", "ai"):
         dom = "algorithms"

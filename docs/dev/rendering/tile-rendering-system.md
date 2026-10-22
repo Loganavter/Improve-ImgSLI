@@ -10,7 +10,7 @@ before relying on exact names.
 A GPU texture has a practical size ceiling, and even below that ceiling,
 uploading/holding a full 18000×18000px texture per side is wasteful when
 only a fraction of it is ever on-screen at once (interactive pan/zoom on a
-hi-res source). `shared/rendering/tile_constants.py` defines
+hi-res source). `src/engine/cache/tile_constants.py` defines
 `LIVE_TILE_EXTENT` (512px — see
 `tile-array-atlas-plan.md` Phase 3 (private, `improve-imgsli-internal-docs`, `docs/legacy/rendering/`) for why it's
 no longer 8192) as the threshold: any texture source wider or taller than
@@ -18,8 +18,9 @@ that gets split into an N×M grid of tiles instead of one whole-image
 texture, and only the tiles currently intersecting the viewport are
 actually resident on the GPU. Letterbox geometry itself is **not** tiled —
 both sides share one eager `max` envelope `pw,ph = max(w1,w2), max(h1,h2)`
-(`base_images.py:196`, `render_flow.py:55`) fitted once via
-`resolve_canvas_content_geometry(cw,ch,pw,ph)` → identical `letterbox`
+(`base_images.py`, `render_flow.py`) fitted once via keyword-only
+`resolve_canvas_content_geometry(widget_width=…, image_width=pw, …)` →
+identical `letterbox`
 `0.545` for both sides, no `needs_union`/`grid_mismatch` branching, no
 `HOLD` — so the draw-plan grid and residency agree on geometry from the
 first `gap draw_plan`.
@@ -55,7 +56,7 @@ breakdown):
 
 ## `TileTextureService` — grid bookkeeping
 
-`shared/rendering/tile_texture_service.py`. One `TileTextureService` instance
+`src/engine/cache/tile_texture_service.py`. One `TileTextureService` instance
 owns a dict of `source_id -> grid` for every texture key currently in use.
 
 - `register_source(source_id, image_size)` — the only place that creates or
@@ -64,8 +65,9 @@ owns a dict of `source_id -> grid` for every texture key currently in use.
   `queue_texture_upload` → `apply_pending_uploads` path. If a key never goes
   through that path, its grid is never (re-)registered and `grid_for(key)`
   returns `None` or a stale grid — a footgun for lazy sources, since
-  `upload_pil_images` intentionally skips queuing an upload
-  for a `TiledPixelStore` in the "stored" role (display cache is downscaled PIL).
+  `upload_pil_images`/`upload_source_pil_image` intentionally skip the
+  whole-image upload for a `TiledPixelStore` (tiles are cropped from the
+  store by `realize_tile_plan` instead, never uploaded as one texture).
 - A grid smaller than `_LIVE_TILE_EXTENT` on both axes registers as a
   trivial 1×1 grid — the common case, treated as "not tiled" everywhere
   downstream (`grid.rows == 1 and grid.columns == 1` is the standard
@@ -78,14 +80,14 @@ owns a dict of `source_id -> grid` for every texture key currently in use.
   pixel space, returns the set of `(row, col)` indices whose region
   intersects it. This is the single computation that both the residency pass
   (`TileResidencyRealizer.realize_tile_plan` (owned by `RhiResources` as `.residency`)) and the draw-plan pass
-  (`draw_plan.py::_visible_tile_pairs`) rely on, so what's uploaded and what's
-  drawn are guaranteed to agree.
+  (`draw_plan.py::build_array_draw_plan`, via `iter_visible_side_tiles`) rely
+  on, so what's uploaded and what's drawn are guaranteed to agree.
 - `grid.iter_regions()` — yields `(row, col, region)` for every cell, where
   `region` has pixel-space `left/top/right/bottom`.
 
 ## Mipmap pyramid and LOD selection
 
-`shared/image_processing/pyramid_pixel_store.py::PyramidPixelStore` wraps a
+`src/engine/store/pyramid_pixel_store.py::PyramidPixelStore` wraps a
 unified base `TiledPixelStore` with derived levels (2×2 box-filter halving,
 finest-first, down to `min(w, h) <= COARSEST_MIN_DIM` = 1024px). Each level
 is its own `TiledPixelStore` (own memmap spill), so tile addressing, leases
@@ -94,12 +96,12 @@ and apron handling are identical at every level. `pyramid_registry.py`
 sides without one (plain PIL, preview tier, pyramid not yet built or
 invalidated) fall through untouched.
 
-`shared/rendering/lod.py::select_level(dest_scale, level_count)` is the
+`src/engine/cache/lod.py::select_level(dest_scale, level_count)` is the
 single pure function both the live canvas and snapshot/export call to pick
 a level — see [rendering-model.md](rendering-model.md) for the parity
 requirement. `dest_scale` is derived from the eager `pw,ph = max(w1,w2),
 max(h1,h2)` envelope's fitted rect (same `letterbox 0.545` for both sides,
-`base_images.py:196`), so LOD is consistent even though geometry no longer
+`base_images.py`), so LOD is consistent even though geometry no longer
 freezes on HOLD. `draw_plan.py` substitutes each side's texture key with a
 `LevelKey(base, level)` before building tile pairs; `resources.py` resolves
 a `LevelKey` back to the level's `TiledPixelStore` at realize time, clamping
@@ -109,7 +111,7 @@ byte-identical.
 
 ## Apron padding
 
-`shared/rendering/tile_geometry.py::_apron_rect` / `_TILE_APRON_PX`. Each tile's
+`src/engine/cache/tile_geometry.py::_apron_rect` / `_TILE_APRON_PX`. Each tile's
 uploaded pixel region is padded by a few pixels beyond its "logical" grid
 cell before cropping, so bilinear sampling near a tile's edge doesn't sample
 outside that tile's own texture (which would either clamp to edge color or
@@ -126,7 +128,7 @@ Owned by `RhiResources` as `self.residency`; callers invoke it as
 
 Runs once per frame (or whenever geometry/viewport changes trigger it).
 For each `(texture_key, letterbox)` pair that has a real (non-1×1) grid
-(`LIVE_TILE_EXTENT = 512`, `shared/rendering/tile_constants.py:32`):
+(`LIVE_TILE_EXTENT = 512`, `src/engine/cache/tile_constants.py`):
 
 1. Determine which tiles are currently visible (same `visible_tiles` call the
    draw plan will use).
@@ -140,29 +142,37 @@ For each `(texture_key, letterbox)` pair that has a real (non-1×1) grid
 
 ## Draw plan: `rhi_renderer/draw_plan.py`
 
-`build_draw_plan()` produces a flat list of `DrawItem`s, one per actual draw
-call the frame needs. The shader binds exactly one texture per side (image1,
-image2, optionally diff) per draw call, so if image1 has 2 visible tiles and
-image2 has 3, the draw plan is their **cross product** — up to 6 draw calls,
-each pairing one image1 tile with one image2 tile, with `tileRect1`/`rect2`
-uniforms telling the shader which sub-region of each bound texture
-corresponds to that draw call's on-screen geometry.
+`build_array_draw_plan()` produces a flat list of `ArrayDrawItem`s, one per
+instanced draw the frame needs. The texture-array pipeline binds one array
+layer per side (image1, image2, optionally diff) per instance, so if image1
+has 2 visible tiles and image2 has 3, the plan is their **cross product** —
+up to 6 instances, each pairing one image1 tile with one image2 tile, with
+the per-instance `rect1`/`rect2`/`content_scale` attributes telling
+`base_array.vert`/`.frag` which sub-region of each array layer corresponds to
+that instance's on-screen geometry. `resources.pack_array_instance`
+(`src/engine/gpu/array_draw.py`) packs each item into vertex attributes.
 
-`_visible_tile_pairs()` does the per-side visible-tile lookup (delegating to
-`TileTextureService.visible_tiles`, using the same viewport-rect computation
-`_visible_side_image_rect` that residency uses) and returns the cross
-product. A 1×1 (untiled) side just contributes its single whole-image key +
-full-rect entry, so the untiled case is really this same code path with a
-degenerate one-element list on each side.
+Visible-tile enumeration is `iter_visible_side_tiles`
+(`texture_parts/tile_geometry.py`, sharing `_visible_side_image_rect` with
+residency), and every enumerated tile is filtered through
+`TileTextureService.slot_for(...) is not None` before it reaches the pairing
+builder — so a not-yet-uploaded tile never enters the plan (or the
+fallback-coverage check; pinned by
+`tests/contracts/test_coverage_uses_slot_for.py`). The pairing/bbox/diff math
+itself lives in `src/engine/cache/draw_plans.py::build_compare_pair_plan`;
+this module is a thin adapter from engine plan structs to `ArrayDrawItem`. A
+1×1 (untiled) side contributes its single whole-image key + full-rect entry,
+so the untiled case is the same code path with a degenerate one-element list
+on each side.
 
 ### Diff texture tiling
 
 The diff overlay only has a single sampler slot in the shader and is always
-computed from image1's full-resolution pixels, so a draw call reuses
-`tileRect1` to sample it — `_resolve_diff_tile_key()` picks whichever single
-diff tile best overlaps that draw call's `rect1` window (`best-pixel-overlap`
-by area). This is exact whenever the diff grid and image1's live grid match
-(the steady-state case). It only degrades to an approximate pick during
+computed from image1's full-resolution pixels, so a draw instance reuses
+`rect1` to sample it — the plan picks whichever single diff tile best
+overlaps that instance's `rect1` window (`best-pixel-overlap` by area). This
+is exact whenever the diff grid and image1's live grid match (the
+steady-state case). It only degrades to an approximate pick during
 interactive pan/zoom, when image1's *display* texture is transiently
 downscaled for smoothing and simultaneously both it and the diff exceed a
 single tile — cosmetic-only, not a correctness bug.
@@ -179,13 +189,13 @@ needs to remember, per side/slot, "what key was last known to be fully
 drawable" and keep serving that key's tiles until the new key catches up.
 
 **Geometry is eager max, not HOLD:** fallback-LOD here covers **pixels**
-only (`rhi_renderer/renderer.py:463` `resolve_fallback_lod(atomic=...)`);
+only (`rhi_renderer/renderer.py::_resolve_fallback_plan` → `resolve_fallback_lod(atomic=...)`);
 letterbox geometry itself is already stable from the first `gap draw_plan`
-(`0.545`, `pw,ph = max(w1,w2), max(h1,h2)` via `base_images.py:196` /
-`render_flow.py:55`, `resolve_canvas_content_geometry(cw,ch,pw,ph)`). Both
+(`0.545`, `pw,ph = max(w1,w2), max(h1,h2)` via `base_images.py` /
+`render_flow.py`, keyword-only `resolve_canvas_content_geometry`). Both
 sides share one fitted rect, so `needs_union` / `grid_mismatch` (old
 `6×5 vs 2×2 → 1138` union) is removed, there is no per-side letterbox
-divergence, and no `UNION_LETTERBOX_HOLD_MS` (`tile_constants.py:111`) or
+divergence, and no `UNION_LETTERBOX_HOLD_MS` (`tile_constants.py`) or
 `more_pending` freeze for `letterbox` — HOLD/atomic remain only for the
 pixel fallback path described below.
 
@@ -208,14 +218,14 @@ state at all, only fixed config; see
 ### The critical invariant: coverage must be computed from resident tiles only
 
 The fallback tile set shrinks over time via a coverage check
-(`shared/rendering/tile_coverage.py::covered_fraction`,
+(`src/engine/cache/tile_coverage.py::covered_fraction`,
 `FALLBACK_COVERAGE_THRESHOLD = 0.98`, point-sampled 9×9 — see that module's
 docstring for why point-sampling instead of an area sum: overlapping/
 duplicate rects in the "current" list, which arise by design here, made an
 area sum overcount and falsely read as 100% covered) — a fallback tile is
 dropped once the *current* key's own tiles already cover ~all of its
 footprint, so old and new content don't visibly overlap for longer than
-necessary. Coverage is pixel-tile coverage (`512`, `tile_constants.py:32` +
+necessary. Coverage is pixel-tile coverage (`512`, `tile_constants.py` +
 `TILE_APRON_PX`); letterbox geometry is uniform `0.545` for both sides via the
 eager envelope, so no per-side scale correction is needed — `needs_union`
 divergence removed.
@@ -249,9 +259,9 @@ i.e. exactly the blank-hole flash the whole mechanism exists to prevent.
   This was the actual root cause of the original multi-session
   "zoom/pyramid-cascade corruption" investigation (half-flipped/
   overlapping/translucent tiles), not any of the earlier hypotheses tried
-  against it — see `docs/dev/KNOWN_BUGS.md` "multi_compare: fallback-LOD
-  coverage computed from non-resident tiles" for the full incident
-  writeup.
+  against it — see `KNOWN_BUGS.md` in `improve-imgsli-internal-docs` (private)
+  "multi_compare: fallback-LOD coverage computed from non-resident tiles" for
+  the full incident writeup.
 - **image_compare** (`rhi_renderer/draw_plan.py::build_array_draw_plan`):
   checked, **does not have this bug**. Its pairing loop calls
   `tile_service.slot_for(src, idx)` for both sides and `continue`s past any
@@ -260,11 +270,12 @@ i.e. exactly the blank-hole flash the whole mechanism exists to prevent.
   the first place; there's no separate filter step to forget because the
   filtering is inherent to how the list gets built. (An earlier version of
   this investigation, before the code was re-read carefully, mistook
-  `_array_side_tiles` — a genuinely unfiltered *intermediate* helper,
-  analogous to multi_compare's `build_slot_array_tiles` — for what actually
-  reaches the coverage check; it isn't, `build_array_draw_plan`'s own
-  pairing loop filters before anything is appended to the list it
-  returns.) multi_compare's fix above brings it in line with this same
+  `iter_visible_side_tiles` (`texture_parts/tile_geometry.py`) — a genuinely
+  unfiltered *intermediate* helper, analogous to multi_compare's
+  `build_slot_array_tiles` — for what actually reaches the coverage check;
+  it isn't, `build_array_draw_plan` filters its output through `slot_for`
+  before anything is appended to the list it returns.) multi_compare's fix
+  above brings it in line with this same
   invariant, closing the divergence noted in
   `renderer-unification-plan.md` Phase 4 (private, `improve-imgsli-internal-docs`, `docs/legacy/rendering/`).
 
@@ -286,19 +297,19 @@ a same-slot image swap, a source-role switch) must not: the user sees the
 new content appear tile-by-tile over several frames as a patchwork mix of
 old and new regions. Geometry again is
 not part of this decision — letterbox is already identical for both sides
-(`base_images.py:196`), so `atomic` here gates **pixels only** (no HOLD).
+(`base_images.py`), so `atomic` here gates **pixels only** (no HOLD).
 ``resolve_fallback_lod``'s ``atomic=True`` mode draws
 *only* the fallback baseline (the old content) until the new content's
 current-view tiles are all resident, then flips the whole draw plan over in
-one frame. The caller (``RhiCanvasRenderer._resolve_fallback_plan`` in
-image_compare
-`rhi_renderer/renderer.py:463`; the fixed-pair render tab is the only ``atomic`` caller
+one frame. The caller (`RhiCanvasRenderer._resolve_fallback_plan` in
+`rhi_renderer/renderer.py`; the fixed-pair render tab is the only ``atomic`` caller
 today) identifies a content swap by either of two signals:
 
 1. A rekeyed old-content marker in the fallback baseline —
    ``("_prev_content", ...)`` (eager whole-image/diff-role path,
    ``residency.rekey_stale_content``) or ``("_content_stash", ...)`` (lazy
-   TiledPixelStore path, ``residency._rekey_or_restore``). The marker
+   TiledPixelStore path, ``ContentStash.rekey_or_restore`` in
+   ``src/engine/cache/stash.py``). The marker
    persists in the caller's ``_last_good_*`` state for the whole
    transition, so no extra state is needed — the marker check must
    recognize *both* forms (a ``_prev_content``-only check left the lazy
@@ -338,7 +349,7 @@ logic below it does.
 
 ## GEGL-style pixel storage
 
-`TiledPixelStore` (`shared/image_processing/tiled_pixel_store.py`) is the
+`TiledPixelStore` (`src/engine/store/tiled_pixel_store.py`) is the
 single full-res pixel backend for all canvas tabs. Every decoded image is
 spilled to a memmap RGBA8 file in host tiles of
 `AppConstants.PIXEL_TILE_SIZE` (512px). There is no small-image fast path at
@@ -346,15 +357,15 @@ the public API — `maybe_wrap_pixel_store()` always wraps.
 
 Shared cross-tab render helpers (2026-07-15):
 
-- `shared/rendering/host_texture_cache.py` — LRU QImage upload cache
-- `shared/rendering/export_tiling.py` — `TiledFramebufferExporter`,
+- `src/engine/gpu/host_texture_cache.py` — LRU QImage upload cache
+- `src/engine/gpu/export_tiling.py` — `TiledFramebufferExporter`,
   `iter_export_tile_rects`
-- `shared/rendering/tile_geometry.py` — `crop_apron_tile`,
+- `src/engine/cache/tile_geometry.py` — `crop_apron_tile`,
   `viewport_zoom_offset_for_tile`
 
 ## PixelSource contract and tier rules
 
-Two explicit tiers — cross-tier work goes through `shared/image_processing/pixel_ops/`:
+Two explicit tiers — cross-tier work goes through `src/engine/store/pixel_ops/`:
 
 | Tier | Type | Used for |
 |------|------|----------|
@@ -379,15 +390,15 @@ image.
 ### Host vs GPU tile granularity
 
 Two tile sizes are **intentional**, not drift, and now formalized in one
-shared module: `shared/rendering/tile_constants.py:12,32` (`PIXEL_TILE_SIZE = 512`,
+shared module: `src/engine/cache/tile_constants.py` (`PIXEL_TILE_SIZE = 512`,
 `LIVE_TILE_EXTENT = 512`, `DEFAULT_TILE_EXTENT`, `TILE_APRON_PX = 1`,
 `TILE_RESIDENCY_MARGIN`, `TILE_UPLOAD_BUDGET_PER_CALL`, `TILE_UPLOAD_TIME_BUDGET_MS`,
-`UNION_LETTERBOX_HOLD_MS:111`).
+`UNION_LETTERBOX_HOLD_MS`).
 
 | Layer | Constant | Typical size | Role |
 |-------|----------|--------------|------|
-| Host storage / CPU ops | `PIXEL_TILE_SIZE` (`tile_constants.py:12`) | 512 (square) | memmap `TiledPixelStore`, crop/read_tile, pixel_ops blocks |
-| GPU residency | `LIVE_TILE_EXTENT` (`tile_constants.py:32`) | 512 | texture upload grid, draw-plan cross product, VRAM budget |
+| Host storage / CPU ops | `PIXEL_TILE_SIZE` (`tile_constants.py`) | 512 (square) | memmap `TiledPixelStore`, crop/read_tile, pixel_ops blocks |
+| GPU residency | `LIVE_TILE_EXTENT` (`tile_constants.py`) | 512 | texture upload grid, draw-plan cross product, VRAM budget |
 
 **GEGL precedent:** storage uses small tiles (env default `128×64`; commit
 history moved between `128×128`, `512×64`, etc. via `GEGL_TILE_SIZE`), while
@@ -403,13 +414,13 @@ GPU 512 (since `tile-array-atlas-plan.md` Phase 3 (private, `improve-imgsli-inte
 budget `TILE_UPLOAD_BUDGET_PER_CALL = 64` / `TILE_UPLOAD_TIME_BUDGET_MS = 12.0`
 covers a full refill without draw-call explosion (array/instanced draw).
 Letterbox geometry is orthogonal to this: both sides share the same eager
-`0.545` rect (`base_images.py:196`), so host/GPU tiling never needs a
+`0.545` rect (`base_images.py`), so host/GPU tiling never needs a
 per-side `needs_union` size mismatch correction.
 `AppConstants.PIXEL_TILE_SIZE`
-still exists in `core/constants.py` for import-direction reasons (core must
-not import `shared.rendering`) and is pinned equal to
-`tile_constants.PIXEL_TILE_SIZE` by `tests/contracts/test_tile_constants.py`,
-which also asserts `LIVE_TILE_EXTENT % PIXEL_TILE_SIZE == 0`.
+still exists in `src/core/constants.py` as a duplicate of
+`tile_constants.PIXEL_TILE_SIZE`; `tests/contracts/test_tile_constants.py`
+pins the two equal (`test_app_constants_mirror`) and asserts
+`LIVE_TILE_EXTENT % PIXEL_TILE_SIZE == 0`.
 
 
 - **Pixel sources**: `TiledPixelStore` and QImage-backed sources are normalized through [`tiled_pixel_store.py`](../../../src/engine/store/tiled_pixel_store.py) (`qimage_from_pixel_source`, `pixel_source_size`)
@@ -437,11 +448,11 @@ an OOM investigation (18000×18000px sources driving the process to a
 13GB+ RSS peak and swap-thrashing) but are permanent architecture, not a
 one-off fix:
 
-- **`HostTextureUploadCache`** (`shared/rendering/host_texture_cache.py`) —
+- **`HostTextureUploadCache`** (`src/engine/gpu/host_texture_cache.py`) —
   generalized from image_compare's `upload_queue.py`; image_compare keeps a
   thin facade keyed on its five texture roles. Tests:
-  `tests/render/test_host_texture_cache.py` and
-  `src/tabs/image_compare/tests/render/test_host_texture_cache_budget.py`.
+  `src/tabs/image_compare/tests/render/test_host_texture_cache.py` and
+  `src/tabs/image_compare/tests/render/test_preview_hold_host_eviction.py`.
 
 - **`TiledPixelStore`** — see [GEGL-style pixel storage](#gegl-style-pixel-storage).
   `.crop(box)` / `read_tile(row, col)` return small materialized regions for
@@ -524,7 +535,7 @@ still in `target` (or its replacement) on the next call and gets picked up
 then, so the budgeted version is a strict subset filter on the existing
 per-call upload loop, not a new async pipeline.
 
-1. `TileTextureService.select_upload_batch()` (`shared/rendering/
+1. `TileTextureService.select_upload_batch()` (`src/engine/cache/
    tile_texture_service.py`) orders a `missing` set by distance from
    `visible_rect`'s center (nearest first — mirrors GIMP's inside-out
    perceived fill) and truncates to `budget`. Distance is computed from
@@ -559,13 +570,15 @@ per-call upload loop, not a new async pipeline.
 
 ### Budget constant
 
-`shared/rendering/tile_constants.py`: `TILE_UPLOAD_BUDGET_PER_CALL = 2`, a
-flat tile count next to `TILE_RESIDENCY_MARGIN`. Not bytes: at
-`LIVE_TILE_EXTENT = 8192`, a single RGBA8 tile is ~268 MB pre-crop-cost-
-dominated already, so a byte budget would degenerate to "0 or 1 tile" in
-practice while adding a second unit (bytes vs. count) to reason about.
-`2` matches "one tile finishing this frame, one starting"; the exact value
-is a profiling knob, not load-bearing for correctness.
+`src/engine/cache/tile_constants.py`: `TILE_UPLOAD_BUDGET_PER_CALL = 64`, a
+flat tile count next to `TILE_RESIDENCY_MARGIN`. Not bytes: at the old
+`LIVE_TILE_EXTENT = 8192`, a single RGBA8 tile is ~268 MB, so a byte budget
+would degenerate to "0 or 1 tile" in practice while adding a second unit
+(bytes vs. count) to reason about. 64 is a backstop, not the loop's real
+stop condition: at today's 512px tiles (~1 MB each) the wall-clock
+`TILE_UPLOAD_TIME_BUDGET_MS` is what stops a batch first; the count only
+guards a pathologically fast/no-op upload path. The scope is per key, not
+per call (see the constant's own comment).
 
 **Resolved (2026-07-25):** `select_upload_batch`'s nearest-first ordering
 did degenerate to an arbitrary order whenever multiple tiles tied on
@@ -586,8 +599,8 @@ that same call regardless of order.
 
 | File | Function | Change |
 |---|---|---|
-| `src/shared/rendering/tile_texture_service.py` | `select_upload_batch()` | new method |
-| `src/shared/rendering/tile_constants.py` | `TILE_UPLOAD_BUDGET_PER_CALL` | new constant |
+| `src/engine/cache/tile_texture_service.py` | `select_upload_batch()` | new method |
+| `src/engine/cache/tile_constants.py` | `TILE_UPLOAD_BUDGET_PER_CALL` | new constant |
 | `src/tabs/image_compare/canvas/rhi_renderer/resources.py` | `realize_tile_plan` (multi-tile branch) | filter `target` → `missing` → `batch`; `widget.update()` when tiles remain outstanding |
 | `src/tabs/multi_compare/scene/passes/base_images.py` | `_realize_tile_residency` | same filter shape; `renderer.host.update()` when tiles remain outstanding |
 
@@ -608,8 +621,8 @@ untouched — budgeting only applies where `grid.rows > 1 or grid.columns >
   same `target` monotonically fill in the remaining tiles.
 - `src/tabs/multi_compare/tests/render/test_realize_tile_residency_budget.py`
   — same shape against `_realize_tile_residency`.
-- Existing multi-tile residency tests (`test_tiled_rendering_phase2.py`,
-  `test_multi_compare_tiling.py`) kept passing unmodified — their fixtures
+- Existing multi-tile residency tests (`src/tabs/image_compare/tests/render/test_tiled_rendering_phase2.py`,
+  `src/tabs/multi_compare/tests/render/test_multi_compare_tiling.py`) kept passing unmodified — their fixtures
   only ever have ≤2 tiles in `target`, at or under the default budget.
 
 ## Time-boxed upload budget (+ evaluated: smaller `LIVE_TILE_EXTENT`)
@@ -639,8 +652,9 @@ across several events (continuous zoom, not idle time between scrolls).
 
 ### Why the count-based budget doesn't bound this
 
-`TILE_UPLOAD_BUDGET_PER_CALL = 2` bounds tile *count*, not the work each
-tile costs. At `LIVE_TILE_EXTENT = 8192`, one RGBA8 tile is ~268 MB, so a
+`TILE_UPLOAD_BUDGET_PER_CALL` (then `2`; `64` today) bounds tile *count*, not
+the work each tile costs. At `LIVE_TILE_EXTENT = 8192`, one RGBA8 tile is
+~268 MB, so a
 "budgeted" call can still synchronously crop + `uploadTexture` up to ~512 MB
 in the same call/frame — the exact shape of hitch the budget was meant to
 prevent, just at a coarser granularity (every other tile-boundary crossing
@@ -677,8 +691,9 @@ still used to pick candidates (perceived fill-in order, and an upper bound
 on how many tiles are even attempted — `TILE_UPLOAD_BUDGET_PER_CALL` stays
 as a backstop), but before each tile's `upload_whole`/`_upload_tile` call
 the loop checks `time.monotonic()` against a deadline computed once at the
-top of the call (`TILE_UPLOAD_TIME_BUDGET_MS = 8.0`, half a 16.6ms/60fps
-frame) and breaks — without uploading that tile — once it's passed. The
+top of the call (`TILE_UPLOAD_TIME_BUDGET_MS = 12.0`, leaving ~4.6ms of a
+16.6ms/60fps frame for the rest of `render()`) and breaks — without uploading
+that tile — once it's passed. The
 deadline is shared across every key/layer in the same call (bounds total
 per-frame tile-upload time, not per-source fairness); `protected_by_key`
 already used the full `target` (not just `batch`) so tiles skipped by the
@@ -692,7 +707,7 @@ below).** Original proposal: lower the GPU residency tile size (candidate:
 8192 → 2048, a 16x reduction in per-tile bytes to ~16 MB) so a *single* tile
 upload can't dominate a time budget even without Part A's early-exit saving
 it. Not free: smaller tiles multiply the draw-plan cross product
-(`_visible_tile_pairs`) and the number of live `QRhiTexture`/SRB objects for
+(`build_array_draw_plan`) and the number of live `QRhiTexture`/SRB objects for
 the same viewport, both called out as the reason `LIVE_TILE_EXTENT` was set
 high in [Host vs GPU tile granularity](#host-vs-gpu-tile-granularity).
 
@@ -719,7 +734,7 @@ With that fixed, a pure-Python analytical profile (`TileTextureService
 replicates `_visible_side_image_rect`'s center-pan zoom UV math inline: a
 one-off ad-hoc script, not checked into the repo, re-derivable from the two
 functions named here) measured visible-tile count, draw-plan cross product
-(`tiles_per_side²`, matching `_visible_tile_pairs`), and resident VRAM
+(`tiles_per_side²`, matching `build_array_draw_plan`), and resident VRAM
 across two huge-source sizes (18000×12000, 24000×16000), all six zoom
 levels tested (1.0, 1.5, 2.0, 4.0, 8.0, 16.0), and three tile-extent
 candidates (8192 current, 4096, 2048). Full, actually-run numbers (all
@@ -757,7 +772,9 @@ zoom=1.0: **36 → 9216 draw calls**, a 256x increase, at `te=2048`. `te=4096`
 is milder (16x) but still a real regression at exactly the low-zoom,
 both-sides-tiled case this system exists to handle well.
 
-**Conclusion: reject Part B, keep `LIVE_TILE_EXTENT = 8192`.** Part A
+**Conclusion: reject Part B, keep `LIVE_TILE_EXTENT = 8192`.** (Superseded:
+the array/instanced-draw path later removed that blocker and
+`LIVE_TILE_EXTENT` is `512` today — see the section status above.) Part A
 already removes the acute multi-second-stall symptom (the actual user-facing
 bug) by bounding *time* instead of tile count, independent of per-tile byte
 size. Part B's proposed fix addresses a secondary, harder-to-observe
@@ -808,7 +825,7 @@ smaller tile size is revisited.
 ## Summary of the invariant
 
 Registration (`register_source`), residency (`realize_tile_plan`), and the
-draw plan (`_visible_tile_pairs`) all go through the same
+draw plan (`build_array_draw_plan`) all go through the same
 `TileTextureService` grid and the same `visible_tiles`/viewport-rect
 computation. As long as a texture key's grid is registered before either
 residency or the draw plan run against it, "what's GPU-resident" and "what

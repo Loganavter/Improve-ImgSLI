@@ -10,17 +10,17 @@ The tab owns:
 
 | Area | Path |
 |---|---|
-| Tab contract and page assembly | `tab.py`, `widget.py` |
-| Session loading and playlist operations | `_session_controller.py`, `services/playlist*`, `use_cases/` |
+| Tab contract and page assembly | `tab.py`, `widget.py`, `service_factory.py` |
+| Session loading and playlist operations | `_session_controller.py`, `services/playlist.py`, `services/playlist_components/`, `use_cases/` |
 | Two-image canvas widget and QRhi renderer | `canvas/` |
 | Canvas features | `canvas/features/<name>/` |
 | Canvas input routing | `events/` |
 | Image-compare presenters | `presenters/` |
 | Export and snapshots for this tab | `services/image_export/`, `services/gpu_export_scene.py`, `services/snapshot_render_plan_builder.py`, `services/video_snapshot_rendering/` |
-| Analysis/diff/metrics | `services/analysis/` |
-| Video recording/editor integration | `video_editor/` |
-| Tab-specific state reducers/models | `state/` |
-| Tab-specific settings UI | `ui/settings_*.py` |
+| Analysis/diff/metrics orchestration (kernels: `src/shared/analysis/`) | `services/analysis/` |
+| Video recording/editor integration | `plugins/video_editor/` |
+| Tab-specific state reducers/models | `state/`, `bootstrap_reducers.py` |
+| Tab-specific settings UI | `ui/` |
 
 App-level `plugins/` modules can still expose commands, dialogs, or lifecycle
 hooks, but image-compare behavior should live here unless it is genuinely
@@ -31,11 +31,11 @@ shared by multiple tabs.
 - [ARCHITECTURE.md](ARCHITECTURE.md) - current tab architecture and boundaries.
 - [plugins/](plugins/) - tab-owned plugins: [comparison](plugins/comparison.md),
   [video_editor](plugins/video_editor.md).
-- `investigations/` — case write-ups for bugs confined to
-  this tab (divider, magnifier).
-  This folder mirrors a private `improve-imgsli-internal-docs` repo
-  (same relative path) for long-form write-ups that stay out of the public
-  history; cross-tab investigations live at
+- `investigations/` — **not in this repo**: case write-ups for bugs confined to
+  this tab (divider, magnifier) live in the private
+  `improve-imgsli-internal-docs` repo at the same relative path
+  (`src/tabs/image_compare/docs/investigations/`), for long-form write-ups that
+  stay out of the public history. Cross-tab investigations live at
   `docs/dev/rendering/investigations/` in that same private repo.
 
 ## Rules

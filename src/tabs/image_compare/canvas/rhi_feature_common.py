@@ -107,8 +107,9 @@ def build_fullscreen_quad_pipeline(
 ) -> QRhiGraphicsPipeline:
     """Graphics pipeline for a fullscreen-quad pass: standard 2xFloat2 vertex
     layout (matches ``FULLSCREEN_VERTICES``) and the alpha-preserving blend
-    every blending pass must use (see docs/dev/QRHI_CANVAS_FEATURES.md,
-    "Alpha / Blending Contract"). Shared by ``FullscreenUniformPassResources``
+    every blending pass must use (see
+    docs/dev/rendering/render-pass-contract.md#alpha-and-blending-contract).
+    Shared by ``FullscreenUniformPassResources``
     and any pass that draws a fullscreen quad but needs a different shader
     resource layout (e.g. texture-sampling passes, which still fill their own
     SRBs after this call) — don't hand-roll this setup a second time."""

@@ -414,9 +414,31 @@ def _rebuild_series(view) -> None:
                 self._cards_by_path[sp] = card
             else:
                 try:
-                    update_gallery_card(  # type: ignore[arg-type]
-                        card, item, mode=_mode, domain=_domain, profile=_profile
-                    )
+                    # MODE-AWARE, exactly like ``marquee.refresh_card``: a list
+                    # row carries the inline badge inside its TEXT rows and has
+                    # no ``cover`` region, so the grid updater raised
+                    # ``ValueError: unknown button region id: 'cover'`` here and
+                    # the swallowed exception left the row's badge stale
+                    # (measured 2026-10-22: a rebuilt series kept ``#2`` after
+                    # the badge was cleared). One implementation of the choice:
+                    # the two sibling refreshers do the same branch.
+                    if getattr(self, "_view_mode", VIEW_GRID) == VIEW_LIST:
+                        update_gallery_list_card(  # type: ignore[arg-type]
+                            card,
+                            item,
+                            mode=_mode,
+                            translate=self._activity_translate,
+                            domain=_domain,
+                            profile=_profile,
+                        )
+                    else:
+                        update_gallery_card(  # type: ignore[arg-type]
+                            card, item, mode=_mode, domain=_domain, profile=_profile
+                        )
+                except Exception:
+                    logger.debug("series card refresh failed", exc_info=True)
+                try:
+                    self._sync_activity(card)
                 except Exception:
                     pass
             cards.append(card)

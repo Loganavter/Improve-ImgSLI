@@ -1,7 +1,7 @@
 """Gallery page root chrome follows the UI scale (live, not just at build).
 
 The page root carried the raw ``setContentsMargins(24, 12, 24, 40)`` literal
-(real_design.md §2.7) while its sibling ``setSpacing`` already resolved
+(real_design.md §2.7, no bottom band since 2026-10-22) while its sibling ``setSpacing`` already resolved
 ``scaled_px(12)``: the margins stayed at design px after every interface-scale
 change. They now resolve through ``view_prefs.apply_root_design_metrics`` at
 use time and re-resolve on the unified metrics channel
@@ -20,8 +20,15 @@ from sli_ui_toolkit.managers import UiScale, scaled_px
 from tabs.image_gallery.widget import ImageGalleryWidget
 
 #: Design px of the page root chrome (real_design.md §2.7).
-_ROOT_MARGIN = (24, 12, 24, 40)
+#: No bottom margin: the grid well reaches the tab bottom edge (2026-10-22).
+_ROOT_MARGIN = (24, 12, 24, 0)
 _ROOT_SPACING = 12
+
+
+def _scaled_margins() -> tuple[int, ...]:
+    # ``scaled_px`` floors at 1px, so a ZERO design margin must stay 0 (the grid
+    # well has to reach the tab edge at every scale) — mirrors the app helper.
+    return tuple(scaled_px(v) if v else 0 for v in _ROOT_MARGIN)
 
 
 def _drain_metrics_channel() -> None:
@@ -71,11 +78,8 @@ def test_root_margins_follow_the_scale_at_build(qapp) -> None:
     UiScale.get_instance().set_factor(1.5)
     widget = ImageGalleryWidget(context=None)
     try:
-        expected = (
-            *(scaled_px(v) for v in _ROOT_MARGIN),
-            scaled_px(_ROOT_SPACING),
-        )
-        assert expected == (36, 18, 36, 60, 18), f"UiScale 1.5 sanity: {expected}"
+        expected = (*_scaled_margins(), scaled_px(_ROOT_SPACING))
+        assert expected == (36, 18, 36, 0, 18), f"UiScale 1.5 sanity: {expected}"
         assert _margins(widget) == expected, (
             f"gallery root chrome at factor 1.5 is {_margins(widget)}, expected "
             f"{expected} (design {_ROOT_MARGIN} x factor)"
@@ -115,7 +119,7 @@ def test_root_margins_re_resolve_on_a_live_scale_change(qapp) -> None:
         before = _margins(widget)
         UiScale.get_instance().set_factor(1.5)
         after = _spin_until_changed(qapp, lambda: _margins(widget))
-        expected = (*(scaled_px(v) for v in _ROOT_MARGIN), scaled_px(_ROOT_SPACING))
+        expected = (*_scaled_margins(), scaled_px(_ROOT_SPACING))
         assert after == expected, (
             f"gallery root chrome did not re-resolve on a live scale change: "
             f"{before} -> {after}, expected {expected}"

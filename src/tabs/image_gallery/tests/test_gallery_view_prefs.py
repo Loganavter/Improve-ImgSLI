@@ -104,7 +104,9 @@ class _Widget:
     def attach_session_state(self, state):
         self._session_state = state
 
-    def apply_view_prefs(self, *, view_list, judgment_domain):
+    def apply_view_prefs(self, *, view_list, judgment_domain, sort_index=None):
+        # ``sort_index`` mirrors the real widget signature; this double keeps no
+        # toolbar, so the restored index is accepted and ignored.
         self._view_mode = self.view_list = bool(view_list)
         self._judgment_domain = self.domain = str(judgment_domain)
 

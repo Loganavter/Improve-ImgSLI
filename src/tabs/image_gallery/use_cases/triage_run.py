@@ -517,6 +517,21 @@ def _settle_metrics_pass(owner, items) -> None:
             refresh()
         except Exception:
             logger.debug("metric profile refresh failed", exc_info=True)
+    # Cache-first, at the FIRST moment the identity is real: the open-time
+    # hydrate runs while the rebuilt state still has ``mode=None``, so its
+    # identity can never match a scorecard written under ``mode="camera"`` +
+    # the profile (structural 0% hit). Here the mode and the heuristic profile
+    # are known — the same inputs a real analysis built its key from — so a warm
+    # folder is filled from disk BEFORE the selector and the AI tail look at it.
+    # Without this, every open looks unanalyzed: the selector spends a probe
+    # image and the tail rebuilds contexts for items already on disk (measured
+    # live 2026-10-22, and it defeated the warm-matrix selector skip).
+    hydrate = getattr(owner, "_hydrate_ai_cache", None)
+    if callable(hydrate):
+        try:
+            hydrate(list(items or []))
+        except Exception:
+            logger.debug("settle AI-cache hydrate failed", exc_info=True)
     # P2: the metrics settled — NOW the VLM may choose the applicable axes (the
     # probe/salience input exists). The heuristic profile above is the
     # fail-open fallback and is stored FIRST; the guarded kick is a no-op when

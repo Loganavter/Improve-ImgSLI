@@ -4,7 +4,7 @@ Capturing real product surfaces as PNGs — for Help figures and quick visual
 verification. **Tool:** `src/devtools/capture_surface.py`
 (devtool only; it imports no app runtime code and changes no product code).
 The Help-figure set on top of it is produced by `src/devtools/help_figures.py`
-(§[Help-figure generator](#help-figure-generator-recipes--drift-check)).
+(§[Help-figure generator](#help-figure-generator-recipes-drift-check)).
 
 **One command for the whole covered set:** `src/devtools/help_figures_suite.py`
 runs the devtool stage and then the live stage over both manifests, prints one
@@ -15,11 +15,14 @@ and output tail are reported, and nothing from a failed cell is installed).
 python src/devtools/help_figures_suite.py              # devtool --all --jobs 4, then live --all
 python src/devtools/help_figures_suite.py --check      # devtool drift gate; live prints 'unverified' (no baseline yet)
 python src/devtools/help_figures_suite.py --dry-run    # print both commands, needs no DISPLAY
+python src/devtools/help_figures_suite.py --only devtool --jobs 2   # one stage, N devtool workers
 ```
 
 Measured 2026-10-21 on the 12-core host: **2 m 20 s** end to end (devtool 48
-cells in 29.9 s, live 9 cells in 109.7 s) with **every one of the 75 help
-assets byte-identical** to the committed set.
+cells in 29.9 s, live 9 cells in 109.7 s) with the generated cells
+byte-identical to the committed set. Those are dated numbers — the live set
+has grown since, the help-asset tree holds 168 files (2026-10-22), and
+`--check` is the authority for byte-identity, not this paragraph.
 
 ```bash
 Xvfb :91 -screen 0 1400x1000x24 &
@@ -38,11 +41,12 @@ CLI: `<surface>`, `--out DIR` (default `/tmp/opencode/capture-surface`),
   (software) X server rasterizes the widget, but it must be a *private*
   display so the user's running app is untouched. The script reads `DISPLAY`
   from the environment and refuses to run without it
-  (`src/devtools/capture_surface.py:407`); it never defaults to `:0`.
+  (`_require_display` in `src/devtools/capture_surface.py`); it never defaults
+  to `:0`.
   `LIBGL_ALWAYS_SOFTWARE=1` avoids fighting for the GPU.
 - **Theme is mandatory.** Without `ThemeManager.register_palettes(...)` +
   `set_theme(...)` the painter pipeline has no tokens and paints unstyled /
-  black surfaces (`src/devtools/capture_surface.py:420`).
+  black surfaces (`_bootstrap_qt` in `src/devtools/capture_surface.py`).
 - **i18n is mandatory.** Without `emit_language_changed(...)` after registering
   the per-tab / per-plugin i18n roots, widget labels show **raw keys**
   (`help.topic.foo`) instead of text. The `I18N_ROOTS` list mirrors the app's
@@ -69,21 +73,22 @@ CLI: `<surface>`, `--out DIR` (default `/tmp/opencode/capture-surface`),
 Deep-import the widget in the builder and hand it to `CaptureSession.grab`.
 These are the proven constructions:
 
-- **Settings dialog** — `SettingsDialog(**SETTINGS_KWARGS)`; the kwargs mirror
-  `tests/plugins/test_settings_dialog_sync.py:22`. Call
+- **Settings dialog** — `SettingsDialog(**SETTINGS_KWARGS)`; `SETTINGS_KWARGS`
+  lives in `src/devtools/capture_surface.py` and mirrors the kwargs of
+  `_dialog(**overrides)` in `tests/plugins/test_settings_dialog_sync.py`. Call
   `dialog.select_section("builtin.keyboard")` for the keyboard shot
   (`_settings` in the script).
 - **Image Gallery** — `ImageGalleryWidget(None, context=TabContext())`
-  (`src/tabs/image_gallery/widget.py:70`), then `widget.rebuild_grid(items)`
-  (`:1663`). Build `GalleryItem(path=…, mtime_ns=…)`
-  (`src/tabs/image_gallery/models.py:199`), set `.thumbnail = QPixmap(p).scaled(320, 240)`
+  (`src/tabs/image_gallery/widget.py`), then `widget.rebuild_grid(items)`.
+  Build `GalleryItem(path=…, mtime_ns=…)`
+  (`src/tabs/image_gallery/models.py`), set `.thumbnail = QPixmap(p).scaled(320, 240)`
   and `.thumbnail_status = ThumbnailStatus.LOADED` so cells aren't empty.
 - **Session Picker** — `SessionPickerWidget(context=ctx)`
-  (`src/tabs/session_picker/widget.py:114`). There is no host window, so pass
+  (`src/tabs/session_picker/widget.py`). There is no host window, so pass
   a tiny stand-in context that answers `list_session_blueprints` /
   `get_tab_icon` and delegates `_tr` to `resources.translations.tr` — see
-  `_FakeSessionContext` (`src/devtools/capture_surface.py:341`).
-  Blueprints come from `SessionBlueprint` (`src/core/session_blueprints.py:18`).
+  `_FakeSessionContext` (`src/devtools/capture_surface.py`).
+  Blueprints come from `SessionBlueprint` (`src/core/session_blueprints.py`).
 - **Onboarding overlay** — `OnboardingOverlay(None, SimpleNamespace(settings=SimpleNamespace(current_language="en")))`
   (`src/plugins/onboarding/overlay.py:52`).
 - **Populate content** — `CaptureSession.make_samples()` generates six gradient
@@ -107,7 +112,7 @@ Use final filenames (shipping a shot = overwrite the file; no markdown edit).
 Paths must not escape the package's `resources/help/` dir
 (`tests/plugins/test_help_bodies.py`).
 
-## Help-figure generator (recipes + drift check)
+## Help-figure generator (recipes, drift check)
 
 `src/devtools/help_figures.py` wraps `capture_surface` (imported, never copied)
 with a committed recipe, `src/devtools/help_figures.json`: one entry per figure
@@ -127,6 +132,8 @@ env -u DISPLAY python src/devtools/help_figures.py --list        # no X needed
 python src/devtools/help_figures.py --all --out /tmp/help-shots  # starts a private Xvfb
 python src/devtools/help_figures.py --figure help-gallery-populated --theme light
 python src/devtools/help_figures.py --check                      # exit 1 on drift
+python src/devtools/help_figures.py --compare                    # report generated vs pinned WxH (exit 1 on dims-differ)
+python src/devtools/help_figures.py --all --locale ru --theme light  # restrict the matrix
 python src/devtools/help_figures.py --all --write-manifest       # record baselines
 ```
 
@@ -150,6 +157,9 @@ python src/devtools/help_figures.py --all --write-manifest       # record baseli
 - **No asset writes.** Captures go to `--out` (a fresh temp dir by default).
   Nothing is written into `src/**/resources/help/assets/`: installing a shot is
   still the copy step above, so a routine run cannot churn a shipped figure.
+- **Recipe source.** `--manifest <path>` points the run at a different recipe
+  file (default `src/devtools/help_figures.json`); `--locale` / `--theme` are
+  repeatable and restrict the matrix actually captured.
 - **Drift.** `--check` regenerates every selected figure+locale+theme pair and
   compares `sha256` against the manifest, printing a table. `ok` = identical,
   `drift` = different hash (exit code 1), `unbaselined` = the entry has no
@@ -174,7 +184,7 @@ python src/devtools/help_figures.py --all --write-manifest       # record baseli
   (`help_figures.install_destination`) always did this; the live path
   (`help_live.install_target`) used to write every cell to the flat
   destination, so a declared live matrix shipped exactly one variant. Measured
-  2026-10-22: **19 figures carry a matrix — 140 installed cells, ~8.5 MB**, still
+  2026-10-22: **19 figures carry a matrix — 140 installed cells, ~7.3 MB**, still
   below the 15 MB bundle-in-the-binary gate. `empty_state.png` joined the matrix
   in #507, after the earlier "five figures, 40 files" line was written, and the
   live matrices landed in the variant wave (13 live figures: 11 at
@@ -314,12 +324,16 @@ Rules (each exists because a live capture lied):
   canvas holds images: that kills the injected-input path (the figures open
   menus without images).
 
-Current live set: `help-toolbar`, `help-tab-strip`, `help-multi-save-dialog`,
+Current live set (14 figures, `python src/devtools/help_live.py --list` is the
+authority): `help-toolbar`, `help-tab-strip`, `help-multi-save-dialog`,
 `help-gallery-stats`, `help-gallery-quicklook`, `help-mc-layouts`,
-`help-ic-magnifier`, `help-diff-modes`, `help-export-dialog`. Still manual:
+`help-ic-magnifier`, `help-diff-modes`, `help-export-dialog`,
+`help-image-properties`, `help-long-press`, `help-paste-overlay`,
+`help-video-editor`, `help-video-export`. `help-paste-overlay` is declared but
+its captures fail today (see the variant-matrix exception above). Still manual:
 `magnifier_combined` (needs a lens state the control surface cannot compose),
 `split_line` (a `ScrollValueButton` popup, not the compact/expanded composite
-the figure teaches), plus video/paste/long-press and Ask AI.
+the figure teaches), plus Ask AI.
 
 Two decisions on that manual pair (2026-10-21), recorded so neither is solved by
 multiplying variants:
@@ -341,7 +355,7 @@ swapchain is not part of `QWidget.grab()`. On a real X display QRhi init
 *hard-exits* the process; under the offscreen platform it renders the canvas
 **blank** (and logs `renderFailed`). The `multi*` surfaces are therefore
 marked `isolated` and run in an offscreen child
-(`src/devtools/capture_surface.py:481`) so a crash can't
+(`_run_isolated` in `src/devtools/capture_surface.py`) so a crash can't
 take the tool down — you get the chrome (toolbar + footer) with a blank
 canvas. For a real canvas shot, capture the **running app manually**
 (screenshot tool / `grim`).

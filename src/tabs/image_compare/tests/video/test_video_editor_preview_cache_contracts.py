@@ -1,7 +1,9 @@
 """Snapshot presentation ``display_cache_key`` is stable for identical inputs,
 so the preview cache hits instead of re-rendering.
 
-Dogma source: docs/dev/QRHI_CANVAS_FEATURES.md §Render/export parity.
+Dogma source: docs/dev/rendering/rendering-model.md (the snapshot
+replay path feeds the same passes as the live path — export/preview/video
+logic with no live counterpart is the wrong fix).
 """
 
 from __future__ import annotations

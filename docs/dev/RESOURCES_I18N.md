@@ -9,14 +9,16 @@ src/resources/
 ├── i18n/                       # App-wide translations
 │   ├── README.md
 │   ├── en/                     # fallback — required
-│   │   └── core/app.json
+│   │   ├── core/app.json
+│   │   ├── shared/{actions,common,messages,misc}.json
+│   │   └── ui/{actions,buttons,general,labels,menus,workspace}.json
 │   ├── ru/
 │   ├── pt_BR/
 │   └── zh/
 ├── themes.json                 # color palettes (see THEMING.md)
 ├── icons/                      # SVG/PNG icon assets
 ├── assets/                     # other static binaries
-└── help/                       # host Help pages (ui/platform bodies; tab topics under tabs/<tab>/resources/help — see HELP_SYSTEM.md)
+└── help/                       # host Help pages (en/ru/zh/pt_BR, each ui/ + platform/; tab topics under tabs/<tab>/resources/help — see HELP_SYSTEM.md)
 ```
 
 Plus per-plugin, per-tab, and per-canvas-feature i18n roots:
@@ -25,6 +27,9 @@ src/plugins/<name>/resources/i18n/{en,ru,...}/<plugin>.json
 src/tabs/<tab>/resources/i18n/{en,ru,...}/*.json
 src/tabs/image_compare/canvas/features/<name>/resources/i18n/{en,ru,...}/*.json
 ```
+
+The per-feature root is rare in practice: only `features/magnifier/` has one
+(the other five canvas features keep their strings in the tab root).
 
 Tab-owned icon assets (see [Icons](#icons) and [tabs/package-structure.md](tabs/package-structure.md)):
 ```
@@ -43,8 +48,8 @@ The translation system lives in the external toolkit (`sli_ui_toolkit.i18n`); Im
 |---|---|
 | `sli_ui_toolkit/i18n.py` | `TranslationManager` singleton, `tr()`, `translatable_text()`, `translation_events` |
 | `src/resources/translations.py` | Facade: configures root, exposes `tr`, `add_i18n_root`, `emit_language_changed` |
-| `src/core/plugin_system/registry.py:48` | Auto-registers each `plugins/<name>/` and `tabs/<name>/` package's `resources/i18n/` as an i18n root during discovery |
-| `src/ui/canvas_infra/scene/widget_registry.py:80` | Same for canvas features (`get_canvas_widget_features`) |
+| `src/core/plugin_system/registry.py` | `PluginRegistry._register_i18n_for_module` — auto-registers each `plugins/<name>/plugin.py` and `tabs/<name>/plugin.py` package's `resources/i18n/` during discovery |
+| `src/ui/canvas_infra/scene/registry.py` | Same for canvas features: `CanvasFeatureRegistry.get_widget_features()` registers each feature's i18n root |
 
 ## Bootstrap
 
@@ -55,8 +60,9 @@ configure_i18n(i18n_root=Path(resource_path("resources/i18n")))
 
 Then per-plugin / per-tab / per-feature directories are merged in via `add_i18n_root(path)` during the discovery walk:
 
-- plugins and tabs: `PluginRegistry` / `discovery_scan.iter_plugin_entry_points()` → `add_i18n_root(<plugin>/resources/i18n)` per entry point
-- canvas features: `widget_registry.get_canvas_widget_features` → `add_i18n_root(<feature>/resources/i18n)`
+- plugins: `PluginRegistry._register_i18n_for_module` (`src/core/plugin_system/registry.py`) → `add_i18n_root(<plugin>/resources/i18n)` per discovered module
+- tabs: `_discover_tab_module` (`src/tabs/use_cases/discovery.py`) → `add_i18n_root(<tab>/resources/i18n)`, plus each tab's `TabContract.extra_i18n_roots()` (`src/tabs/contract.py`)
+- canvas features: `CanvasFeatureRegistry.get_widget_features()` (`src/ui/canvas_infra/scene/registry.py`; per-tab accessor `get_canvas_registry(tab_type)`) → `add_i18n_root(<feature>/resources/i18n)`
 
 ## JSON format & key resolution
 
@@ -70,11 +76,12 @@ src/resources/i18n/en/core/app.json:
 
 src/plugins/export/resources/i18n/en/export.json:
 {
-  "export": { "dialog.title": "Export", "btn.save": "Save" }
+  "export": { "png_compression_level": "PNG Compression Level" },
+  "tooltip": { "use_favorite": "Use Favorite" }
 }
 ```
 
-Lookup uses **dotted keys**: `tr("app.name")`, `tr("export.btn.save")`.
+Lookup uses **dotted keys**: `tr("app.name")`, `tr("export.png_compression_level")`.
 
 Loading order (later wins on conflict, but `warn_on_override=False` for non-app roots so toolkit/plugins extend silently):
 1. App `en/` (fallback)
@@ -86,13 +93,14 @@ Loading order (later wins on conflict, but `warn_on_override=False` for non-app 
 ```python
 from resources.translations import tr
 
-tr("export.btn.save")                       # current language
-tr("export.btn.save", language="ru")        # specific language (no global state change)
-tr("export.btn.save", default="Save")       # custom fallback if key missing
+tr("export.png_compression_level")                       # current language
+tr("export.png_compression_level", language="ru")        # specific language (no global state change)
+tr("export.png_compression_level", default="Save")       # custom fallback if key missing
 tr("error.with_value", name="foo")          # str.format(**kwargs) on the template
 ```
 
-Missing keys return the key itself (or `default` if given). They also log a warning the first time.
+Missing keys return the key itself (or `default` if given) — silently: nothing
+logs them. Use `src/devtools/check_translations.py` to find gaps.
 
 ## Language switching
 
@@ -106,7 +114,7 @@ current = get_current_language(default="en")
 translation_events().language_changed.connect(my_callback)  # callback(lang_code) → None
 ```
 
-The store setting `SettingsState.language` is the source of truth. The settings plugin calls `emit_language_changed` when it changes.
+The store setting `SettingsState.current_language` (`src/core/store_settings.py`) is the source of truth. The settings plugin calls `emit_language_changed` when it changes.
 
 ## `translatable_text` helpers — auto-rebinding widgets
 
@@ -134,9 +142,18 @@ translatable_callback(widget, lambda lang: refresh_my_panel(widget, lang))
 | Used only by one plugin | `src/plugins/<name>/resources/i18n/<lang>/<plugin>.json` |
 | Used only by one tab | `src/tabs/<tab>/resources/i18n/<lang>/*.json` |
 | Used only by one canvas feature | `src/tabs/image_compare/canvas/features/<name>/resources/i18n/<lang>/*.json` |
-| Cross-cutting (errors, common buttons) | `src/resources/i18n/<lang>/core/*.json` |
+| Cross-cutting (errors, common buttons, shared labels) | `src/resources/i18n/<lang>/shared/*.json` (messages, common) and `ui/*.json` (buttons, labels, menus) |
 
-Don't add app-wide keys to a plugin's or tab's i18n root — they won't be found if the plugin/tab is disabled.
+`core/` holds only `app.json` (`app.name`). Don't add app-wide keys to a plugin's or tab's i18n root — they won't be found if the plugin/tab is disabled.
+
+There is **no namespace enforcement** across roots: all 13 roots merge into one
+flat pack (`warn_on_override=False` for extra roots) and the last-registered
+root wins silently. 11 keys already collide — `label.*` (app root vs
+`multi_compare`), `tooltip.reset_zoom` / `tooltip.quick_save_image` /
+`tooltip.save_result` / `tooltip.divider_color` /
+`tooltip.toggle_divider_visibility` (image_compare vs multi_compare),
+`tooltip.use_favorite` (export vs video_editor). Namespace new keys by owner;
+generic top-level names (`tooltip.*`, `label.*`, `title.*`) will be overwritten.
 
 ## Adding a new language
 
@@ -245,7 +262,7 @@ analogous to tabs; add one only when a plugin needs icons no other owner uses.
 
 ## Help content
 
-Host pages: `src/resources/help/` + `en|ru/ui/…` + `en|ru/platform/…`
+Host pages: `src/resources/help/` + `en|ru|zh|pt_BR/ui/…` + `en|ru|zh|pt_BR/platform/…`
 + shared `assets/`. Tab topics: `src/tabs/<tab>/resources/help/<lang>/` via
 `create_service("contribute_help", …)`. Bodies carry literal on-screen labels
 (no `{{tr:…}}` lookup) — authoring rules in
@@ -254,7 +271,7 @@ Host pages: `src/resources/help/` + `en|ru/ui/…` + `en|ru/platform/…`
 
 ## See also
 
-- [THEMING.md](THEMING.md) — palette & QSS pipeline
+- [THEMING.md](THEMING.md) — palettes, `polish_themed_dialog` (QSS is retired)
 - [tabs/index.md](tabs/index.md) — tab-owned resources & isolation rules
 - [HELP_SYSTEM.md](HELP_SYSTEM.md) — Help shell, contribution, and authoring
 - [PLUGINS.md](PLUGINS.md) — plugin i18n auto-discovery in `PluginRegistry`

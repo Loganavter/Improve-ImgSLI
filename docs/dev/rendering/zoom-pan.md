@@ -188,9 +188,12 @@ Correct pattern:
   semantic rect (`_inner_content_rect_px` when fit-content padding is active,
   otherwise `_content_rect_px`).
 
-When reviewing overlay code, names like `stroke_margin`, `aa`, `border_width`,
-`shadow_radius`, or `hover_padding` inside functions that update store state,
-build scene objects, hit-test, or calculate guide endpoints are a red flag.
+When reviewing overlay code, paint-extent terms (stroke/AA widths,
+`border_width`, `shadow_radius`, hover-outline padding) inside functions that
+update store state, build scene objects, hit-test, or calculate guide
+endpoints are a red flag. The regression guard is
+`src/tabs/image_compare/tests/render/test_magnifier_edge_clamp_contracts.py::test_capture_edge_clamp_has_no_stroke_margin_gap`
+(capture geometry may touch the image edge; stroke AA is render clipping).
 
 ## Where pan and zoom live
 
@@ -231,8 +234,10 @@ restore_letterbox_focus(canvas, focus)    # recompute pan for the new (ox,sx)
 ```
 
 `_apply_plan_full` / `_apply_plan_scene_only`
-(`tabs/image_compare/canvas/presentation/plan_applicator.py:458,476,515`)
-and `render_context.py:365` bracket every `update_common_letterbox_geometry`
+(`tabs/image_compare/canvas/presentation/plan_applicator.py` facades over
+`engine/cache/display_tier_service.py::apply_plan_full` /
+`::apply_plan_scene_only`) and `render_context.py::resize_canvas` bracket
+every `update_common_letterbox_geometry`
 and `_apply_plan_letterbox_from_clip` with this capture/restore dance when
 `plan.preserve_zoom` is set; `preserve_zoom=False` intentionally discards it
 via `reset_view()`. Always use the focus helpers — never preserve raw
@@ -249,7 +254,8 @@ top of that rect jumped with it.
 Now `update_common_letterbox_geometry` / `_update_comparison_geometry`
 compute `pw,ph = max(w1,w2), max(h1,h2)` from whatever sizes are already
 present (preview or full-res) and derive one
-`resolve_canvas_content_geometry(cw,ch,pw,ph)` rect for both sides. The
+`resolve_canvas_content_geometry(widget_width=cw, image_width=pw, …)` rect for
+both sides. The
 letterbox converges to the final `max` rect on the first `gap draw_plan`
 that has two previews, before the unify worker even starts — `store.transact`
 publishes it once, and the unified `2797×2797` pixels that arrive later reuse
@@ -258,7 +264,7 @@ capture/restore above then keeps the **image sample under the viewport center**
 fixed if the rect does still move (resize, single-side fallback → two-side
 `max`), so the picture does not appear to jump even if `pan_offset_*`
 numerically changes. `HOLD` + `atomic` stay only for pixel fallback-LOD
-coverage (`rhi_renderer/renderer.py:463`), never for `letterbox` placement.
+coverage (`rhi_renderer/renderer.py::_resolve_fallback_plan`), never for `letterbox` placement.
 
 ## Debugging zoom/pan issues
 
@@ -277,7 +283,7 @@ and where to look:
 | Symptom | Likely cause | Where to look |
 |---|---|---|
 | Overlay drifts during pan at fit zoom | Some path still zeros pan when `zoom <= 1.0` | `git grep 'zoom.*<=.*1' src/ui/canvas_infra src/tabs/image_compare/canvas/` |
-| Overlay flickers / jumps during interaction | Reducer reset a runtime-cache field | Check `_build_new_viewport_state` for missing field carryover; move field to `ViewportRuntimeCache` |
+| Overlay flickers / jumps during interaction | Reducer wrote a runtime-cache field, or a needed field lives in reducible state | Fields written as a render side effect belong in `ViewportRuntimeCache` (`src/core/store_runtime_cache.py`) — reducers have no access to it by construction, so they cannot wipe it; anything derived from actions must stay in reducible state |
 | Mouse hit lands on wrong feature | Hit-test uses widget-px but feature stores widget-px instead of canvas-px | Search for direct `widget.width()` / `widget.height()` in your feature's geometry math |
 | Position correct at `zoom = 1` but wrong otherwise | Feature draws using raw store value instead of going through the viewport display formula | Use `compute_display_split_position` / equivalent contract instead of reading store directly in render |
 | Overlay can never reach the image edge, or guides attach a few px away from the visual target | Paint margin leaked into semantic geometry clamp | Search for `stroke`, `aa`, `border`, `shadow`, or `padding` in scene/build/hit-test/layout helpers; move it to render-only clipping/draw code |

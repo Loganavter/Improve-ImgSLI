@@ -175,10 +175,12 @@ class ImageGalleryWidget(QWidget):
                 return default
 
         root = QVBoxLayout(self)
-        # real_design.md:0 — horizontal padding 24, bottom 40 to clear the
-        # selection HUD (§2.7). Design px resolved at use time via
-        # ``view_prefs.apply_root_design_metrics`` and re-resolved on a live
-        # UiScale change (the old raw literal stayed at design px forever).
+        # real_design.md: horizontal padding 24, 12 between stacked regions and
+        # NO bottom margin — the grid's OpaqueFillHost must paint to the tab's
+        # bottom edge (the 40 px HUD-clearance band outlived the HUD and showed
+        # as a dead strip; owner report 2026-10-22). Design px resolved at use
+        # time via ``view_prefs.apply_root_design_metrics`` and re-resolved on a
+        # live UiScale change (the old raw literal stayed at design px forever).
         self._apply_root_design_metrics()
         self._connect_root_design_metrics()
 
@@ -578,12 +580,17 @@ class ImageGalleryWidget(QWidget):
 
         return view_prefs.paint_event(self, event)
 
-    def apply_view_prefs(self, *, view_list: bool, judgment_domain: str) -> None:
+    def apply_view_prefs(
+        self, *, view_list: bool, judgment_domain: str, sort_index=None
+    ) -> None:
         """Thin delegator to ``ui/widget_parts.view_prefs.apply_view_prefs``."""
         from tabs.image_gallery.ui.widget_parts import view_prefs
 
         return view_prefs.apply_view_prefs(
-            self, view_list=view_list, judgment_domain=judgment_domain
+            self,
+            view_list=view_list,
+            judgment_domain=judgment_domain,
+            sort_index=sort_index,
         )
 
     # -- card interaction -------------------------------------------------

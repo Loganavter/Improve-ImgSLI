@@ -1,7 +1,9 @@
 """The divider only paints when two images are uploaded and a valid content
 rect exists — never on empty or partial state.
 
-Dogma source: docs/dev/QRHI_CANVAS_FEATURES.md §GPU/Canvas Rendering Contract.
+Dogma source: docs/dev/rendering/render-pass-contract.md (``should_paint()``
+gates data availability per pass; export-vs-interactive policy is
+``visibility``, not a pass-local mode branch).
 """
 
 from __future__ import annotations

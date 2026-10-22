@@ -156,7 +156,7 @@ class TestFeatureStateAPIErrorHandling:
         assert "Command failed" in caplog.text
 
 def test_multi_instance_feature_command_writes_canvas_widget_state():
-    """QRHI_CANVAS_FEATURES.md: multi-instance feature state lives under canvas_widget_state."""
+    """Multi-instance feature state lives under canvas_widget_state (rendering/contracts.md)."""
     store = _image_compare_store()
 
     execute_feature_command(store, "magnifier", "add_instance")
@@ -168,7 +168,7 @@ def test_multi_instance_feature_command_writes_canvas_widget_state():
     assert not hasattr(store.viewport.view_state, "visible_left")
 
 def test_missing_feature_command_is_explicit_none_and_does_not_mutate(caplog):
-    """QRHI_CANVAS_FEATURES.md: missing feature commands must not silently write fallback state."""
+    """Missing commands must not silently write fallback state (rendering/contracts.md)."""
     store = _image_compare_store()
     before = dict(store.viewport.view_state.canvas_widget_state)
 

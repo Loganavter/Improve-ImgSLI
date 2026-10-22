@@ -6,7 +6,7 @@ hardcodes an import of ``<feature>.passes`` (see
 that import fails, so this file cannot be moved into ``render/``.
 
 Three sub-passes are exported here for auto-discovery (see
-``docs/dev/QRHI_CANVAS_FEATURES.md``, pass_registry). Their implementations
+``docs/dev/rendering/package-structure.md``, pass_registry). Their implementations
 live in dedicated modules, split by shader/pipeline family rather than kept
 in one file:
 

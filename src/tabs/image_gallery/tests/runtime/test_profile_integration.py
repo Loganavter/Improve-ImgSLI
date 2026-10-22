@@ -87,6 +87,21 @@ def _series(*items) -> list[Series]:
     return [Series(id="series_1", members=list(items))]
 
 
+def _measured_axis_ids(item, axes) -> tuple[str, ...]:
+    """The subset of *axes* the item's local read actually measured.
+
+    Read through ``analysis.read.read_axes`` (never ``item.metrics``) so the
+    expected dot set is the same record set the dots consume.
+    """
+    from tabs.image_gallery.analysis.read import read_axes
+
+    return tuple(
+        record.axis
+        for record in read_axes(item, domain=None, axes=axes)
+        if record.status == "ok"
+    )
+
+
 def _scattered():
     """One series with a decisive spread on the reference axis ``ssim``.
 
@@ -248,7 +263,13 @@ def test_clear_falls_back_identically_in_every_surface() -> None:
     assert fallback == profile_for_mode(ctrl.state.mode)
     assert fallback.axis_ids == measured_axes_for(ctrl.state.mode)
     _colors, infos = metric_dots_for_item(a, mode=ctrl.state.mode, profile=fallback)
-    assert len(infos) == len(fallback.axis_ids)
+    # The dots follow the fallback set but paint only what it MEASURED (gaps are
+    # suppressed once anything is measured — owner 2026-10-22).
+    measured = _measured_axis_ids(a, fallback.axis_ids)
+    assert len(infos) == len(measured) == 2
+    assert [label for label, _score in infos] == [
+        (spec_for(axis).label if spec_for(axis) else axis) for axis in measured
+    ]
     assert [axis for axis, _label in _scorecard_axes(ctrl.state.mode, profile=fallback)] == list(
         fallback.axis_ids
     )
@@ -266,7 +287,7 @@ def test_a_consumer_without_state_is_unchanged() -> None:
         ctrl.state.mode
     )
     _colors, infos = metric_dots_for_item(a, mode=ctrl.state.mode)
-    assert len(infos) == len(measured_axes_for(ctrl.state.mode))
+    assert len(infos) == len(_measured_axis_ids(a, measured_axes_for(ctrl.state.mode))) == 2
     assert [axis for axis, _label in _scorecard_axes(ctrl.state.mode)] == list(
         measured_axes_for(ctrl.state.mode)
     )

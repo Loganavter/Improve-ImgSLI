@@ -170,8 +170,6 @@
       "axis_inside_noise": "не различает эти варианты",
       "axis_measured_locally": "измерено локально",
       "axis_measured_by_judge": "измерено ИИ",
-      "profile_axis_set": "Набор осей",
-      "profile_mode_fallback": "по режиму",
       "rank_of": "#{rank} из {total}",
       "rejected_tail": "отклонённый хвост ≤ {value}",
       "source_fallback": "источник",
@@ -382,7 +380,9 @@
       "tooltip": {
         "defects": "дефекты: {kinds}",
         "vlm_tiebreak": "Разрешение ничьей VLM: {err}"
-      }
+      },
+      "source_ai": "ИИ",
+      "source_local": "АЛГ"
     },
     "badge": {
       "source": "ИСТОЧНИК",

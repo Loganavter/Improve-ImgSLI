@@ -5,7 +5,7 @@ plugin for the Image Gallery workspace. It registers the `image_gallery`
 session type.
 
 Tab layout: [README.md](../README.md). Plugin system:
-[docs/dev/PLUGINS.md(../../../../../docs/dev/PLUGINS.md).
+[docs/dev/PLUGINS.md](../../../../../docs/dev/PLUGINS.md).
 
 ## Wiring
 

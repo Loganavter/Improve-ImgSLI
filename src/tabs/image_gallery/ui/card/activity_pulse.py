@@ -24,6 +24,35 @@ DONE_LINGER_MS = 1000
 DONE_FADE_MS = 250
 ACTIVITY_MAX_FADES = 24
 
+
+def _repaint(card) -> None:
+    """Repaint the PILL, not the whole card.
+
+    A live pill changes every ~83 ms (spinner) and every animation frame of the
+    fade; a full ``card.update()`` re-runs the cover pixmap rescale, the dots
+    and the badge for a 40x18 px change. On the AI gallery every queued card is
+    active at once, so this was a constant full-card repaint storm on the same
+    GUI thread that scrolls the grid (measured 2026-10-22: a wheel notch during
+    analysis cost ~3x the idle time). The painter stashes the pill rect on the
+    card; without it (first paint) a full update is the safe fallback.
+    """
+    try:
+        if not card.isVisible():
+            return
+    except Exception:
+        pass
+    rect = getattr(card, "_gallery_activity_rect", None)
+    try:
+        if rect is not None:
+            card.update(rect.toAlignedRect().adjusted(-2, -2, 2, 2))
+            return
+    except Exception:
+        pass
+    try:
+        card.update()
+    except Exception:
+        pass
+
 _DONE = ActivityPhase.DONE.value
 
 
@@ -50,7 +79,7 @@ class ActivityPulse(QObject):
         fade = self._fades.get(key)
         if fade is not None:
             if fade[1] is item and self._explicit_phase(item) == _DONE:
-                card.update()
+                _repaint(card)
                 return
             self._stop_fade(key, card)
         phase = self._phase(item)
@@ -61,7 +90,7 @@ class ActivityPulse(QObject):
             self._start_fade(key, card, item)
         else:
             self._untrack(key)
-        card.update()
+        _repaint(card)
 
     # -- internals -----------------------------------------------------------
 
@@ -116,7 +145,7 @@ class ActivityPulse(QObject):
     @staticmethod
     def _on_fade_value(card, value) -> None:
         card._gallery_activity_alpha = float(value)
-        card.update()
+        _repaint(card)
 
     def _on_fade_finished(self, key: int, card, item) -> None:
         entry = self._fades.pop(key, None)

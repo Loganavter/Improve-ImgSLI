@@ -1,7 +1,8 @@
 """C1 gate: every discovered render pass declares its own scene visibility.
 
-Dogma: ``docs/dev/QRHI_CANVAS_FEATURES.md`` § pass contract — a pass that does
-not declare ``visibility`` in its **own class body** silently inherits
+Dogma: ``docs/dev/rendering/render-pass-contract.md`` § Scene visibility — a
+pass that does not declare ``visibility`` in its **own class body** silently
+inherits
 ``CanvasRenderPassBase.visibility = SceneVisibility.ALL``, so it paints in
 export / preview frames its author never opted into (and an export-only bug
 stays invisible until a user exports).

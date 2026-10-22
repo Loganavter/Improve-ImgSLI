@@ -170,8 +170,6 @@
       "axis_inside_noise": "does not separate these variants",
       "axis_measured_locally": "measured locally",
       "axis_measured_by_judge": "measured by the judge",
-      "profile_axis_set": "Axis set",
-      "profile_mode_fallback": "mode default",
       "rank_of": "#{rank} of {total}",
       "rejected_tail": "rejected tail ≤ {value}",
       "source_fallback": "source",
@@ -265,7 +263,9 @@
       "tooltip": {
         "defects": "defects: {kinds}",
         "vlm_tiebreak": "VLM tie-break: {err}"
-      }
+      },
+      "source_ai": "AI",
+      "source_local": "ALG"
     },
     "badge": {
       "source": "SOURCE",

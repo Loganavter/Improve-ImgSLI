@@ -64,6 +64,27 @@ def _list_activity_overlay(painter, ctx) -> None:  # type: ignore[no-untyped-def
     paint_item_activity(painter, widget, box, corner="middle_left")
 
 
+def _list_provenance_overlay(painter, ctx) -> None:  # type: ignore[no-untyped-def]
+    """Source marker on the row's thumbnail (bottom-left), same tokens as the grid."""
+    from PySide6.QtCore import QRectF
+
+    from tabs.image_gallery.ui.card.provenance import paint_source_marker
+    from tabs.image_gallery.ui.list.card import LIST_THUMB_W, _list_metrics
+
+    widget = getattr(ctx, "widget", None)
+    rect = getattr(ctx, "rect", None)
+    item = getattr(widget, "_gallery_item", None)
+    if widget is None or rect is None or item is None:
+        return
+    state = getattr(widget, "_gallery_row_state", None)
+    design_w = (
+        float(state.get("w", LIST_THUMB_W)) if isinstance(state, dict) else float(LIST_THUMB_W)
+    )
+    thumb_w, _meta_w = _list_metrics(rect, design_w)
+    box = QRectF(rect.x(), rect.y(), float(thumb_w), float(rect.height()))
+    paint_source_marker(painter, box, item, translate=getattr(widget, "_gallery_translate", None))
+
+
 def _list_metric_dots_overlay(painter, ctx) -> None:  # type: ignore[no-untyped-def]
     """Metric-axis dots right-aligned in the row's meta region.
 
@@ -170,6 +191,11 @@ def _list_row_overlay_painter(painter, ctx, tm) -> None:  # type: ignore[no-unty
         _paint_capsule(painter, ctx, wash)
     except Exception:
         pass
+    try:
+        _list_provenance_overlay(painter, ctx)
+    except Exception:
+        pass
+
 
 
 def _paint_capsule(painter, ctx, color) -> None:  # type: ignore[no-untyped-def]

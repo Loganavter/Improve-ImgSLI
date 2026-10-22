@@ -17,8 +17,10 @@ python3 mcp-server/app/server.py            # serve on stdio
 
 ## Wiring
 
-`~/.config/opencode/opencode.jsonc` → `mcpServers.app`, next to
-`mcpServers.docs`:
+Add an `app` server under `mcpServers` in your opencode config
+(`~/.config/opencode/opencode.jsonc`), alongside any other MCP servers you
+already run (e.g. a docs server) — the snippet is the block to add, not a
+description of a default install:
 
 ```jsonc
 {
@@ -61,7 +63,7 @@ fallback window, e.g. `:97`).
 | `run_action` | write | run one ActionRegistry id; with `params`/`expect` it also runs the six named scene commands (magnifier visible/position/size, divider visible/thickness, MC split weights) and can verify the change against scene paths (live-only) |
 | `set_scene_commands` | write | run an ordered list of value-taking scene commands; stops at the first error, and with `verify=true` each command declares expected scene paths and the scene is re-read (live-only) |
 | `open_folder` | write | hand a folder to a tab (`tab=` targets one; `slot=`/`side=` place it; live: routed) |
-| `open_file` | write | load one image file into a tab that accepts it (`tab=` forces one; a video is refused by name) |
+| `open_file` | write | load one image file into a tab that accepts it (`tab=` forces one; a video is refused by name) — live-only |
 | `open_properties` | write | show the app's image-properties dialog for a file, non-modally (live-only) |
 | `set_theme` | write | set `theme` (light/dark); live-now or persisted |
 | `set_language` | write | set `language` (en/ru/zh/pt_BR) |
@@ -136,9 +138,10 @@ own `SO_PEERCRED` check); this client only has to degrade cleanly.
 `get_state {path}` also answers **tab-scoped assertion slices** under `tabs.*`,
 so "Quick Look shows image N" / "the gallery has this selection" / "compare is
 on the left image" is one in-channel call — no overlay labels, no tracer
-enabled at app start, no screenshot. They are read-only and live-only: each
-value comes from that tab's own state (its Redux session slot) or its live page
-for widget-local facts (Quick Look, gallery sort).
+enabled at app start, no screenshot. The slot-derived keys come from that tab's
+own state (its Redux session slot) and are answered by the fallback snapshot
+too; only widget-local facts (Quick Look, gallery sort) are live-only and
+report `null` when the page was never built.
 
 | Path | Keys |
 |---|---|
@@ -629,6 +632,7 @@ fabricated result:
 | request line over the 1 MiB cap | this server (stdio) | JSON-RPC `-32600` "request line exceeds the … byte cap" |
 | unknown control-channel method | live app | `ok: false` + hint, connection survives |
 | foreign uid | live app (`SO_PEERCRED`, before reading a byte) | connection closed → the call falls back |
+| non-live `open_file` | this server (`_fallback_open_file`) | `isError` "no live instance; open_file routes a file into a running tab" (the path is validated first; there is no headless fallback that opens anything) |
 | non-live `press_keys` / `nav_key` / `ui_elements` / `ui_nav_state` / `ui_click` / `ui_hover` / `ui_focus` | this server | `isError` "needs a running app" (never a throwaway app faking a target) |
 | non-live `jobs_list` / `jobs_cancel` | this server | `isError` "no live instance; job state needs a running app" (never a fake empty list) |
 | non-live `wait_for` | this server | `isError` "no live instance; waiting for app state needs a running app" (never a silent 5 s timeout) |
@@ -646,25 +650,25 @@ fabricated result:
 The `annotations` hints were checked against what each handler actually does,
 because that is what lets a client auto-approve reads:
 
-- **Read-only tools really read.** All eleven (`list_actions`, `list_sessions`,
+- **Read-only tools really read.** All twelve (`list_actions`, `list_sessions`,
   `get_state`, `read_log`, `query_trace`, `dump_ui_layout`, `list_surfaces`,
-  `ui_elements`, `ui_nav_state`, `jobs_list`, `wait_for`) carry
-  `readOnlyHint: true, destructiveHint: false`
+  `ui_elements`, `ui_nav_state`, `jobs_list`, `wait_for`, `get_canvas_scene`)
+  carry `readOnlyHint: true, destructiveHint: false`
   and touch no app state — `ui_elements` only *inventories* the live window,
   `jobs_list` only reads the app's own counters (it never resolves a lazy tab
   service, which would materialize a tab as a side effect of listing), and
   `wait_for` only repeats those two observations until a predicate holds. Reads
   may retry once (above); none mutate.
-- **Mutating tools are honestly marked.** All sixteen carry `readOnlyHint: false`.
+- **Mutating tools are honestly marked.** All eighteen carry `readOnlyHint: false`.
   `run_action` alone advertises `destructiveHint: true` (it can run any
   registered action, including `platform.quit_app`). `press_keys`, `nav_key`,
-  `ui_click`, `ui_press` and
+  `ui_click`, `ui_wheel`, `ui_press` and
   `jobs_cancel` are `destructiveHint: false` but `idempotentHint: false`
   (repeating the same combo/click/press is not a no-op; re-sending a settled
   job id is an error, not a second success). `ui_hover`/`ui_focus` settle to the
   same state, so they keep `idempotentHint: true`.
   `open_tab`/`open_folder`/`open_file`/`open_properties`/`set_theme`/
-  `set_language`/`set_setting`/`capture_surface` are
+  `set_language`/`set_setting`/`capture_surface`/`set_scene_commands` are
   non-destructive and idempotent.
 - `openWorldHint: false` on every tool (the app is local). **Result: no
   annotation was found to over- or under-state what its tool does.** The test

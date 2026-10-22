@@ -10,9 +10,12 @@ Persistence details: [SETTINGS_PERSISTENCE.md](../SETTINGS_PERSISTENCE.md).
 
 ## Wiring
 
-`@plugin(name="settings", startup_tier="bootstrap")`, implements
-`IServicePlugin` (and `IUIPlugin`/`IControllablePlugin`-style command surface
-via `get_controller` / `handle_command`).
+`@plugin(name="settings", startup_tier="bootstrap")`;
+`class SettingsPlugin(Plugin, IServicePlugin)` exposes a command surface through
+`get_controller`, `get_service` and `handle_command` (the `IControllablePlugin`
+method set; the class does not specialise that ABC, and `IUIPlugin` no longer
+exists — `core/plugin_system/interfaces.py` defines only `IControllablePlugin`,
+`IServicePlugin`, `ISessionPlugin`).
 
 - `initialize(context)` builds `SettingsController` from `context.store` +
   `context.settings_manager` + `context.event_bus`, then subscribes
@@ -61,9 +64,14 @@ for the file, load/save paths, apply flow, and the corrupt-backup heuristic.
 
 ## Help ownership
 
-`help.py` `build_help_plugin_contribution()` (`owner_plugin="settings"`,
-attach `platform`): owns page `platform.settings` + alias `settings`
-(anchors `#general` / `#interface` / `#performance` preserved by the
-byte-identical move). Pack: `resources/help/` bodies ×4, no figures
-(budget-0); `settings.*` i18n keys live in
+`help.py` carries exactly one symbol, `HELP_MOUNT = "platform.settings"` — the
+fs-scanned help tree mounts this package's pages there, so the section owns page
+`platform.settings` (moved byte-identical from host; the `#general` /
+`#interface` / `#performance` anchors live in the page body). Pack:
+`resources/help/` bodies ×4 + one figure (`settings.md` references
+`../assets/settings_general.png`); `settings.*` i18n keys live in
 `resources/i18n/<lang>/settings.json` (moved from the host pack).
+
+The former `build_help_plugin_contribution()` (`owner_plugin="settings"`,
+attach `platform`) was removed in `c8231456` with the rest of the contribution
+layer.

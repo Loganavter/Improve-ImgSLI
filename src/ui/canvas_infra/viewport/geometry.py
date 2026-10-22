@@ -21,8 +21,8 @@ class QuickContentRect:
 def resolve_axis_position(offset: float, size: float, fraction: float) -> float:
     """Where a normalized ``fraction`` along one axis of a rect sits in
     absolute units. The one primitive every split-position/divider screen
-    mapping is built from — see
-    docs/dev/QRHI_CANVAS_FEATURES.md."""
+    mapping is built from — see docs/dev/rendering/coordinate-systems.md
+    (the single-resolver rule)."""
     return float(offset) + float(size) * float(fraction)
 
 

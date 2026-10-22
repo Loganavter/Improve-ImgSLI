@@ -32,26 +32,36 @@ Known gaps:
 
 - No diff/analysis overlays yet.
 - No integration with the main app magnifier system yet.
-- No playlist/project persistence yet.
 - Export above QRhi/GPU texture limits is not tiled yet.
 
 ## Module layout
 
 ```text
 multi_compare/
-    tab.py               # TabContract implementation and session snapshots
+    plugin.py            # @plugin("multi_compare") — session blueprint + slot
+    tab.py               # TabContract implementation, SessionState chrome, session snapshots
     controller.py        # image loading, save/export orchestration
     widget.py            # toolbar + QRhi canvas + footer composition
     models.py            # slots, layout tree, MultiCompareState
+    actions.py           # action catalog + keymap defaults
+    bootstrap_reducers.py  # registers the multi_compare slot reducer
     context_menu.py      # tab-owned context menu provider
+    help.py              # tab-owned Help topics
     docs/                # local architecture and backlog docs
-    plugins/export/      # export dialog state and UI
-    resources/i18n/      # tab-owned translations
+    resources/i18n/      # tab-owned translations (multi_compare.json + tooltips.json)
+    canvas/              # canvas widget integration + features/{grid_dividers,focus_dim,
+                         # layer_labels,drag_drop_overlay}
+    pipeline/cache.py    # composition/texture cache (load-bearing)
     scene/               # local Redux store and QRhi render passes
-    services/            # composition builder and export helpers
+    services/            # composition builder, image export, save flow
     shaders/             # QRhi shaders and compiled qsb files
-    ui/                  # canvas widget, toolbar, footer, labels, geometry
+    ui/                  # canvas widget, toolbar, footer, labels, geometry, chrome
+    use_cases/           # loading, crop, placement, export, persistence, preview decode
 ```
+
+Export has no `plugins/` subpackage: the dialog is the host service
+`context.call_service("open_image_export_dialog")` and the flow lives in
+`use_cases/export.py` + `services/image_export.py`.
 
 ## Local Docs
 

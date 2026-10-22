@@ -250,8 +250,22 @@ def test_a_new_session_inherits_the_last_used_domain_even_when_the_slot_exists(
     sid = store.add("S1")
     ctx = SimpleNamespace(store=store)
     state.seed_slot(ctx, sid)
-    # the tab applies the chrome when the session becomes active
+    # the tab applies the chrome when the session becomes active - THIS is the
+    # path the app really takes (the live binding showed the restore path is
+    # the one that ignored the config)
     state.apply_from_slot(ctx, sid)
+    assert applied.get("judgment_domain") == "ai", applied
+    # and the restore path on its own (a defaults-only slot must not shadow it)
+    applied.clear()
+    state2 = SessionState.bind(
+        SimpleNamespace(),
+        namespace="image_gallery",
+        fields={"view_list": (bool, False), "judgment_domain": (str, "algorithms")},
+        apply=lambda values: applied.update(values),
+    )
+    # a FRESH session whose slot is still at the defaults (the restore path)
+    sid2 = store.add("S2")
+    state2.apply_from_slot(ctx, sid2)
     assert applied.get("judgment_domain") == "ai", applied
     # and the slot now carries the inherited value (not the factory defaults)
     slot = store.get_session_state_slot("image_gallery", session_id=sid) or {}

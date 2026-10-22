@@ -72,6 +72,7 @@ class ImageGalleryTab(TabContract):
             fields={
                 "view_list": (bool, False),
                 "judgment_domain": (str, "algorithms"),
+                "sort_index": (int, 0),
             },
             apply=self._apply_chrome,
         )
@@ -83,6 +84,7 @@ class ImageGalleryTab(TabContract):
         widget.apply_view_prefs(
             view_list=bool(values.get("view_list", False)),
             judgment_domain=str(values.get("judgment_domain") or "algorithms"),
+            sort_index=int(values.get("sort_index", 0) or 0),
         )
 
     def apply_appearance(self, host_window) -> None:

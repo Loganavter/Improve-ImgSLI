@@ -40,6 +40,18 @@ def _item(**overrides) -> GalleryItem:
     return GalleryItem(**defaults)
 
 
+def _measured_axes(item) -> tuple[str, ...]:
+    """Camera axes the Algorithms domain actually measured for *item*.
+
+    Read through the one reader (never ``item.metrics``) so the test's expected
+    set is the same record set the dots consume.
+    """
+    from tabs.image_gallery.analysis.read import read_axes
+
+    records = read_axes(item, domain="algorithms", axes=measured_axes_for("camera"))
+    return tuple(record.axis for record in records if record.status == "ok")
+
+
 @pytest.mark.parametrize("mode", ["camera", "fidelity", "batch_synthetic", None])
 def test_dot_count_matches_measured_axes(mode) -> None:
     item = _item()
@@ -171,7 +183,7 @@ def test_hit_test_resolves_by_x_and_y() -> None:
     assert dot_tooltip_text_at(card, 400, 40) is None
 
 
-def test_grid_painter_stashes_geometry_for_every_dot(qapp) -> None:
+def test_grid_painter_stashes_geometry_for_every_measured_dot(qapp) -> None:
     item = _item(metrics={"sharpness": 320.0})
     from tabs.image_gallery.ui.card import build_gallery_card
 
@@ -188,11 +200,12 @@ def test_grid_painter_stashes_geometry_for_every_dot(qapp) -> None:
     finally:
         painter.end()
     geometry = card._gallery_dot_geometry
-    axes = measured_axes_for("camera")
+    measured = _measured_axes(item)
     assert geometry is not None
-    assert len(geometry["centers"]) == len(axes)
-    assert len(geometry["x_centers"]) == len(axes)
-    assert len(geometry["infos"]) == len(axes)
+    assert len(measured) == 1  # one measured axis -> one dot (gaps suppressed)
+    assert len(geometry["centers"]) == len(measured)
+    assert len(geometry["x_centers"]) == len(measured)
+    assert len(geometry["infos"]) == len(measured)
     assert geometry["x_centers"] == tuple(sorted(geometry["x_centers"]))
     card.deleteLater()
 
@@ -200,12 +213,13 @@ def test_grid_painter_stashes_geometry_for_every_dot(qapp) -> None:
 def test_list_row_has_the_same_metric_dots(qapp) -> None:
     item = _item(metrics={"sharpness": 320.0})
     card = build_gallery_list_card(item, mode="camera", domain="algorithms")
-    axes = measured_axes_for("camera")
-    assert len(card._gallery_dot_colors) == len(axes)
-    assert len(card._gallery_dot_infos) == len(axes)
-    assert card._gallery_dot_infos == metric_dots_for_item(
-        item, mode="camera", domain="algorithms"
-    )[1]
+    measured = _measured_axes(item)
+    colors, infos = metric_dots_for_item(item, mode="camera", domain="algorithms")
+    assert len(measured) == 1
+    assert len(card._gallery_dot_colors) == len(measured)
+    assert len(card._gallery_dot_infos) == len(measured)
+    assert card._gallery_dot_colors == colors
+    assert card._gallery_dot_infos == infos
 
     image = QImage(640, 64, QImage.Format.Format_ARGB32_Premultiplied)
     painter = QPainter(image)
@@ -220,8 +234,8 @@ def test_list_row_has_the_same_metric_dots(qapp) -> None:
         painter.end()
     geometry = card._gallery_dot_geometry
     assert geometry is not None
-    assert len(geometry["centers"]) == len(axes)
-    assert len(geometry["x_centers"]) == len(axes)
+    assert len(geometry["centers"]) == len(measured)
+    assert len(geometry["x_centers"]) == len(measured)
     # Right-aligned inside the row's meta region.
     assert all(x < 640 for x in geometry["x_centers"])
     card.deleteLater()

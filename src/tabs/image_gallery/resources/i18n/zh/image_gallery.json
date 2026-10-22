@@ -170,8 +170,6 @@
       "axis_inside_noise": "无法区分这些变体",
       "axis_measured_locally": "本地测量",
       "axis_measured_by_judge": "由 AI 测量",
-      "profile_axis_set": "指标集",
-      "profile_mode_fallback": "模式默认",
       "rank_of": "第 {rank} / {total}",
       "rejected_tail": "被拒绝尾部 ≤ {value}",
       "source_fallback": "源",
@@ -382,7 +380,9 @@
       "tooltip": {
         "defects": "缺陷：{kinds}",
         "vlm_tiebreak": "VLM 决胜：{err}"
-      }
+      },
+      "source_ai": "AI",
+      "source_local": "ALG"
     },
     "badge": {
       "source": "源",

@@ -6,7 +6,7 @@ session type and its state slot.
 
 Tab architecture: [README.md](../README.md),
 [ARCHITECTURE.md](../ARCHITECTURE.md). Plugin system:
-[docs/dev/PLUGINS.md(../../../../../docs/dev/PLUGINS.md).
+[docs/dev/PLUGINS.md](../../../../../docs/dev/PLUGINS.md).
 
 ## Wiring
 

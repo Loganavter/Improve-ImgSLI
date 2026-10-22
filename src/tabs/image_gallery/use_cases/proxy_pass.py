@@ -320,6 +320,19 @@ def _commit_triage_series(owner, series, source, mode):
             refresh()
         except Exception:
             logger.debug("metric profile refresh failed", exc_info=True)
+    # Cache-first, before the local Stage-2 pass: the mode and the heuristic
+    # profile are known HERE, which is the identity a scorecard was written
+    # under — so a known image's AI read paints immediately instead of waiting
+    # for the detector pass (measured 2026-10-22: 6 large images took ~30 s
+    # before the cache appeared; owner: "анализ крутится несколько секунд
+    # перед тем как выдать кэш"). The settle hydrate stays as a backstop for
+    # the modes/profiles that change after triage.
+    hydrate = getattr(owner, "_hydrate_ai_cache", None)
+    if callable(hydrate):
+        try:
+            hydrate(list(owner.state.items))
+        except Exception:
+            logger.debug("triage-commit AI-cache hydrate failed", exc_info=True)
     # Algorithms rank: measured metric fusion over each series (never the
     # old centroid order). Single choke point for both the worker and the
     # inline fast path.

@@ -66,6 +66,15 @@ def _apply_list_rejected_visuals(card: Button, item: GalleryItem) -> None:
     except Exception:
         pass
     try:
+        # A list row never paints the grid pill (it renders the badge inline in
+        # its title row), but the per-widget cache must not survive a rebind:
+        # the pool never mixes modes today, and this keeps a future row<->
+        # grid reuse from resurrecting a stale pill.
+        card._gallery_badge = None  # type: ignore[attr-defined]
+        card._gallery_badge_style = None  # type: ignore[attr-defined]
+    except Exception:
+        pass
+    try:
         card.setBorderColor(None)
     except Exception:
         pass

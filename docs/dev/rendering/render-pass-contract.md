@@ -3,7 +3,7 @@
 **Interface** contract whose methods the host calls in a fixed **lifecycle
 order**. Not an architectural AST dogma — see
 [CONTRACTS.md](../CONTRACTS.md#three-senses-of-contract).
-Actual contract lives at `src/ui/canvas_infra/scene/pass_contract.py:75`
+Actual contract lives at `src/ui/canvas_infra/scene/pass_contract.py`
 (`CanvasRenderPass`, `CanvasRenderPassBase`, `SceneVisibility`, `RenderPhase`)
 with central ordering in `src/ui/canvas_infra/scene/stacking_policy.py`;
 composition used by the applicator lives in
@@ -53,11 +53,11 @@ class MyPass(CanvasRenderPass):
 
 `resolved_layer_and_priority()` resolves `stack_role` through the central
 `src/ui/canvas_infra/scene/stacking_policy.py` — a pass never computes its own ordering. Every render
-pass is a `CanvasRenderPass` (`src/ui/canvas_infra/scene/pass_contract.py:75`); there is no other pass base class.
+pass is a `CanvasRenderPass` (`src/ui/canvas_infra/scene/pass_contract.py`); there is no other pass base class.
 For multi-layer frames the applicator flattens `src/ui/canvas_presentation/composition.py` `CompositionPlan`
 into `ResolvedComposition` so overlay passes read gaps/rects from the immutable plan, not widget state.
 Comparison letterbox geometry is owned once by
-`src/tabs/image_compare/canvas/texture_parts/base_images.py:189`
+`src/tabs/image_compare/canvas/texture_parts/base_images.py`
 (`update_common_letterbox_geometry` — eager `max(w1,w2), max(h1,h2)`), not by passes;
 see [rendering-model.md](rendering-model.md) and `plan-comparison-letterbox` (private, `improve-imgsli-internal-docs` repo, `docs/dev/investigations/`).
 
@@ -88,21 +88,26 @@ Available roles:
 | Role | Render Phase | Use case |
 |---|---|---|
 | `UNDERLAY_SPLIT` | IMAGE_DECORATION | Split/divider line |
+| `IMAGE_OVERLAY_FRAME` | IMAGE_ANNOTATION | Magnifier frame behind its content |
 | `IMAGE_OVERLAY_CONTENT` | IMAGE_ANNOTATION | Magnifier GPU content |
-| `ANNOTATION_RING` | VIEW_ANNOTATION | Capture rings |
+| `ANNOTATION_RING` | IMAGE_ANNOTATION | Capture rings |
 | `ANNOTATION_BORDER` | VIEW_ANNOTATION | Borders, occluded arcs |
-| `ANNOTATION_GUIDE` | VIEW_ANNOTATION | Guide lines |
+| `ANNOTATION_GUIDE` | IMAGE_ANNOTATION | Guide lines |
 | `HUD_LABEL` | HUD | Filename overlay, status text |
 | `TRANSIENT_PREVIEW` | HUD | Preview elements |
+| `HUD_INTERACTION_OVERLAY` | HUD | HUD controls above labels |
 | `INTERACTION_HANDLE` | VIEW_ANNOTATION | Drag handles |
 | `DEBUG_VIS` | DEBUG | Debug visualization |
+
+(Phase mapping is `_RENDER_PASS_ORDER` in `src/ui/canvas_infra/scene/stacking_policy.py`;
+scene-object layering is the parallel `_SCENE_OBJECT_ORDER` table there.)
 
 Pass instances are long-lived (one per session/target). Persistent QRhi
 resources (buffers, pipelines, shader resource bindings) belong on the
 `CanvasRenderPass` instance, created in `initialize()` — never store them on
 the widget.
 
-## Alpha / Blending Contract
+## Alpha and Blending Contract
 
 **FBO/render-target alpha must end every frame at 1.0 wherever something has
 been drawn.** The base clear sets α=1. Any blend state used during the frame

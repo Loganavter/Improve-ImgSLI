@@ -8,9 +8,32 @@ Reference implementation: `src/plugins/export/` (`dialog.py`, `layout_geometry.p
 Related:
 
 - [UI_TOOLKIT_LIBRARY.md](UI_TOOLKIT_LIBRARY.md) — toolkit widgets / painters
-- [THEMING.md](THEMING.md) — palettes, QSS, `polish_themed_dialog`
+- [THEMING.md](THEMING.md) — palettes, `polish_themed_dialog` (QSS is retired)
 - [RESOURCES_I18N.md](RESOURCES_I18N.md) — translation packs and roots
-- Toolkit CSD: `sli_ui_toolkit.ui.windows` (`decorate_dialog`, rounded mask)
+- Toolkit CSD: `sli_ui_toolkit.ui.windows` (`CustomTitleBar`,
+  `CsdRoundedBackground`, `sync_csd_chrome`). The decorator itself comes from
+  the **app wrapper** `shared_toolkit/ui/decorate_dialog.py::decorate_dialog`
+  — never import `decorate_dialog` from `sli_ui_toolkit` directly.
+
+### What exists
+
+| Class | Path | Notes |
+|---|---|---|
+| `ExportDialog` | `src/plugins/export/dialog.py` | content-locked geometry, preview |
+| `SettingsDialog` | `src/plugins/settings/dialog.py` | `SidebarDialogShell` (sidebar + scroll pages) |
+| `HelpDialog` | `src/plugins/help/dialog.py` | `SidebarDialogShell` + document `Text` |
+| `ImagePropertiesDialog` | `src/plugins/image_properties/dialog.py` | document `Text` in `OverlayScrollArea` |
+| `VideoEditorDialog` | `src/tabs/image_compare/plugins/video_editor/dialog/shell.py` | tabbed, modal |
+| `DiagnosticsDialog` | `src/plugins/diagnostics/dialog.py` | report preview (`Text(mode="code")` in `SurfaceScrollArea`) + Copy / Save / Open issue |
+| `ColorPickerDialog` | `src/ui/widgets/color/picker_dialog.py` | picker + recent colours |
+| `FindActionDialog` | `src/ui/actions/palette/dialog.py` | **non-modal** (`NonModal`, `show()`) |
+| `AppMessageDialog` | `src/shared_toolkit/ui/message_dialog.py` | `exec()` alerts; also a non-modal mode |
+| `AppTextInputDialog` | `src/shared_toolkit/ui/text_input_dialog.py` | one-line text prompt |
+
+Modality is per-dialog: `FindActionDialog` is `NonModal` + `show()` (never
+blocks); `AppMessageDialog` uses `exec()` for alerts; child pickers opened from
+a dialog (the Export background-colour picker) are `WindowModal`, so they block
+the dialog and not the app.
 
 ---
 
@@ -39,6 +62,9 @@ class MyDialog(ThemedDialog):
         self.install_dialog_geometry(self._apply_dialog_geometry)
         self.mark_theme_ui_ready()
         decorate_dialog(self, title=self._tr("...", "Fallback"))
+        # ^ from shared_toolkit.ui.decorate_dialog (app wrapper), NOT sli_ui_toolkit:
+        # it resolves AppIcon window-control icons and installs the app-wide
+        # event filter that auto-decorates bare QDialog/QMessageBox on first show.
         # ... populate ...
         QTimer.singleShot(0, self._finalize_layout_and_size)
 
@@ -150,12 +176,23 @@ Fix:
 
 ## CSD / custom decorations
 
-`decorate_dialog` installs:
+`shared_toolkit.ui.decorate_dialog.decorate_dialog` installs:
 
 - frameless window + `WA_TranslucentBackground`
 - `CustomTitleBar` overlay
 - `CsdRoundedBackground` child
 - rounded **mask** on the shell
+
+It also supplies the `AppIcon` window-control icons the toolkit decorator takes
+by name, and installs a `QApplication` event filter that decorates a bare
+`QDialog`/`QMessageBox` just before its first show — that is why ad-hoc
+`AppMessageDialog` popups still get the in-app chrome.
+
+Settings and Help use both: `decorate_dialog` for the CSD title bar, and the
+toolkit `SidebarDialogShell` for the body (sidebar + `_SurfaceWidget` content
+area) — see `src/plugins/settings/dialog_shell.py` and
+`src/plugins/help/dialog.py`. Export / Image properties / Diagnostics are plain
+`ThemedDialog` + `decorate_dialog`.
 
 ### Transparent “zagagulina” (corner arc through the body)
 

@@ -106,7 +106,7 @@ def list_all_canvas_features() -> list[Path]:
 
     ``multi_compare`` participates in the same feature-package discovery
     contract (manifest/passes auto-registration) as ``image_compare`` — see
-    docs/dev/QRHI_CANVAS_FEATURES.md's Current Feature Status table — so
+    docs/dev/rendering/package-structure.md's Current Feature Status table — so
     structural dogma checks (stack_role, no hardcoded layer/priority, etc.)
     should apply to both, not just the tab that happened to be decomposed
     first.

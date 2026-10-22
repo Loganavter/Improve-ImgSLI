@@ -91,7 +91,7 @@ The **master contract** for any canvas feature. It declares:
 
 **Why it exists**: Without this contract, each feature would invent its own way to report its state and commands. The toolbar would have special cases for each feature. Settings would need custom serialization logic per feature.
 
-**How it's used**: `widget_registry.py` auto-discovers all `CanvasWidgetFeature` instances and builds central registries of properties, commands, and toolbar bindings.
+**How it's used**: `ui/canvas_infra/scene/registry.py` (`CanvasFeatureRegistry`, obtained per tab via `get_canvas_registry(tab_type)`) auto-discovers all `CanvasWidgetFeature` instances and builds central registries of properties, commands, and toolbar bindings.
 
 ### CanvasSceneFeature
 
@@ -130,6 +130,36 @@ Maps toolbar UI controls to feature command handlers.
 Declares: *"When button 'btn_magnifier_size' slider changes, call my size command with the value."*
 
 **Why separate**: Toolbar code doesn't know about features. Features declare their toolbar needs. The binding system wires them at runtime.
+
+### CanvasFeatureGestureBinding
+
+A feature claims a mouse gesture instead of shared event code branching on
+feature-specific flags.
+
+Declares: `build_gesture_bindings()` → `CanvasFeatureGestureBinding(gesture_id, button, matches, is_active, begin, update, end, owner, priority)`.
+
+**How**: `ui/canvas_infra/scene/gesture_resolver.py` walks
+`CanvasFeatureRegistry.get_feature_gesture_bindings()`, runs `matches(ctx)` on
+press to pick the winning candidate and `is_active(store)` on move/release to
+find the gesture currently driving. `begin`/`update`/`end` are feature-owned
+closures, invoked as opaque callables.
+
+**Why**: Gesture routing decisions live in the feature. Without this, the
+shared mouse path in `events/image_label/mouse.py` would need a hardcoded
+`if magnifier … elif divider …` chain.
+
+### CanvasFeatureSettingsEventBinding
+
+A feature reacts to settings events without the settings plugin importing it.
+
+Declares: `build_settings_event_bindings()` → `CanvasFeatureSettingsEventBinding(event_type, command_id, extract_args)`.
+
+**How**: `plugins/settings/plugin.py` collects
+`CanvasFeatureRegistry.get_feature_settings_event_bindings()` and routes a
+matching event to the feature's command, with `extract_args(event)` building
+the command payload.
+
+**Why**: The settings plugin stays agnostic of which canvas features exist.
 
 ### CanvasFeatureContextMenuZone
 
@@ -203,11 +233,33 @@ Similar: encapsulate mouse interaction parameters.
 
 **Why**: Keeps geometry calculation pure. The canvas captures a request, passes it to handlers. Handlers return new position/zoom without side effects.
 
-### OverlayMovementHandler
+### CanvasViewportFeature
 
-Protocol that magnifier implements for handling geometry changes.
+The geometry-change seam. A feature (today: the shared zoom/pan implementation
+in `ui/canvas_infra/viewport/zoom.py`) registers a `CanvasViewportFeature`
+(`ui/canvas_infra/viewport/contract.py:103`) carrying callables for
+`compute_display_split_position`, `compute_split_position_for_view_transform`,
+`compute_wheel_zoom_transform` and `compute_pan_drag_transform`.
 
-**Why**: Divider movement needs to recalculate spacing, offset, and combined state. Rather than hardcode magnifier logic in divider code, divider requests the movement handler and calls its methods.
+**How**: `get_canvas_viewport_features()` (`ui/canvas_infra/viewport/registry.py`)
+returns the registered features; `ui/canvas_infra/viewport/pipeline.py` runs them
+in `(order, name)` order and takes the first non-`None` result.
+
+**Why**: Divider and viewport math must not hardcode one overlay's behaviour.
+A feature contributes its own transform and shared code calls it without
+importing it.
+
+The former `OverlayMovementHandler` protocol (magnifier implemented it so
+divider code could request spacing/offset/combine recalculation) lived in
+`core/interaction_protocols.py`, deleted in `f0bea270` (PR #27). Its two
+surviving responsibilities live where they belong: viewport transforms are
+`CanvasViewportFeature` (above), and magnifier combine state is derived inside
+the magnifier feature —
+`tabs/image_compare/canvas/features/magnifier/geometry/bounds.py:89` and
+`.../magnifier/geometry/layout_plan.py:289` compare `model.spacing_relative`
+against `constants.MIN_MAGNIFIER_SPACING_RELATIVE_FOR_COMBINE`
+(`.../magnifier/constants.py:13`). Nothing outside the feature reads or writes
+that state.
 
 ## Layout Contract (The Export Problem)
 
@@ -241,7 +293,7 @@ Duck-typing protocols that let code call a canvas without knowing its concrete t
 
 ## Tabs (The Workspace Problem)
 
-The app supports multiple tabs (image compare, video compare, future tabs).
+The app supports multiple tabs (image compare, multi compare, image gallery, session picker).
 
 ### TabContract
 

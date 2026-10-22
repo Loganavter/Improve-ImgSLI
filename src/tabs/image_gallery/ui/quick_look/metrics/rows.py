@@ -611,23 +611,6 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
         _viewing_source = _sp is not None and _P(getattr(item, "path", "")) == _P(_sp)
     except Exception:
         _viewing_source = False
-    # P5: an offer that is the LAST fallback (the mode mapping, no discriminating
-    # measurement yet) is named as such — the same muted state-row shape as
-    # "not measured"/"does not separate", never a bare number or a silent set.
-    if not _viewing_source and _profile_source in ("", "heuristic"):
-        _add_metric_row(
-            _ql_text(overlay, "image_gallery.quick_look.profile_axis_set", "Axis set"),
-            _ql_text(
-                overlay,
-                "image_gallery.quick_look.profile_mode_fallback",
-                "mode default",
-            ),
-            0.0,
-            _muted_color(),
-            value_color=_muted_color(),
-            value_elide=False,
-            bar=False,
-        )
     # Always-gap axes of each report kind (the historical placeholders): an
     # in-profile axis here stays visible as "— · not measured" even in the
     # compact mode/heuristic report, so a missing measurement never silently

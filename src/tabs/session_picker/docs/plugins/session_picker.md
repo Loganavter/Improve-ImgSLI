@@ -5,7 +5,7 @@ plugin for the Session Picker workspace. It registers the transient
 `session_picker` session type.
 
 Tab layout: [README.md](../README.md). Plugin system:
-[docs/dev/PLUGINS.md(../../../../../docs/dev/PLUGINS.md).
+[docs/dev/PLUGINS.md](../../../../../docs/dev/PLUGINS.md).
 
 ## Wiring
 

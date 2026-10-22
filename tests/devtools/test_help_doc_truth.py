@@ -28,6 +28,29 @@ def test_allow_marker_suppresses(tmp_path: Path) -> None:
     assert scan_file(doc) == []
 
 
+def test_retired_widget_names_are_flagged(tmp_path: Path) -> None:
+    """The retired help/glass-panel widget families are live lies, not history."""
+    doc = tmp_path / "x.md"
+    doc.write_text(
+        "Body in `HelpDocumentView` / `HelpDocumentBodyCanvas`.\n"
+        "Panels: GlassPanelDisplayWidgetCpu and GlassPanelDisplayWidgetRhi.\n",
+        encoding="utf-8",
+    )
+    assert [token for _, token, _ in scan_file(doc)] == [
+        "HelpDocumentView",
+        "HelpDocumentBodyCanvas",
+        "GlassPanelDisplayWidgetCpu",
+        "GlassPanelDisplayWidgetRhi",
+    ]
+
+
+def test_live_glass_panel_widget_is_not_flagged(tmp_path: Path) -> None:
+    """The surviving single widget must stay clean (a token match, not a prefix)."""
+    doc = tmp_path / "x.md"
+    doc.write_text("`GlassPanelDisplayWidget` is the live surface.\n", encoding="utf-8")
+    assert scan_file(doc) == []
+
+
 def test_canon_docs_are_truthful() -> None:
     """The shipped canon + skills pass the guard (green on the merged tree)."""
     assert main([]) == 0

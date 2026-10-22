@@ -4,7 +4,9 @@
 framebuffer-sized ``QImage`` and draw it as one alpha-blended textured quad —
 shared QRhi plumbing (pipeline, texture, SRB, blend); subclasses implement
 ``_raster``. Grid dividers use a dedicated GPU quad pass instead (no FB-sized
-overlay texture). Split out per MULTI_COMPARE_QRHI_REFACTOR.md Phase B3.
+overlay texture). Split out in B3: two features rasterize the same
+framebuffer-sized quad, so the QRhi plumbing belongs in one base class, not
+twice.
 """
 
 from __future__ import annotations

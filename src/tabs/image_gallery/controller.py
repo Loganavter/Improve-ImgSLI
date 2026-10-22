@@ -236,6 +236,14 @@ class GalleryController:
         # live there; ``state``/widget are read-only projections (see
         # plan-gallery-jev-pipeline-2026-10-15 S1).
         self._judgment_domain = "algorithms"
+        #: Monotonic epoch of the judgment domain (plan/owner ask 2026-10-22:
+        #: "switching backends must be ironclad"). A switch has no cancellation
+        #: API for in-flight AI/Jev workers, so the epoch IS the cancellation
+        #: token: a request scheduled under epoch N must not be SENT and must not
+        #: LAND after the epoch advanced. Bumped only when the domain actually
+        #: changes (``_set_judgment_domain``); read by
+        #: ``use_cases/ai_analysis.domain_epoch`` / ``_epoch_is_current``.
+        self._domain_epoch = 0
         #: Folder generation whose AI calls were built under the current
         #: profile (P5). A profile is a REQUEST IDENTITY (the analysis cache
         #: keys a scorecard on it), so a replacement after the first call of
@@ -681,6 +689,36 @@ class GalleryController:
         if len(items) < 2:
             _ai_debug("metric profile skip: %d item(s) (<2) — nothing to select", len(items))
             return
+        # Nothing to re-key: the profile is an ANALYSIS-CACHE IDENTITY, so when
+        # every item already carries a scorecard (a warm folder: hydrated from
+        # disk or analyzed under the current axis set) a selector answer cannot
+        # re-point a single call — it can only burn one probe image per open.
+        # Measured live 2026-10-22: every warm reopen of a fully analyzed folder
+        # emitted exactly one image POST that never applied. The AI tail is
+        # cache-first, so a warm matrix is a normal state, not a corner case.
+        try:
+            if all(getattr(it, "analysis", None) is not None for it in items):
+                _ai_debug(
+                    "metric profile skip: matrix already analyzed (items=%d) — "
+                    "a selector answer could not re-key any call",
+                    len(items),
+                )
+                return
+        except Exception:
+            pass
+        # A profile already CONSUMED for this generation is frozen: P5 stamps it
+        # once an AI payload was built, so a reply arriving now is rejected by
+        # ``_apply_profile_outcome`` anyway — asking for it is pure cost.
+        try:
+            consumed = getattr(self, "_profile_consumed_gen", None)
+            if consumed is not None and int(consumed) == int(self._folder_gen):
+                _ai_debug(
+                    "metric profile skip: frozen for gen %s (a payload was built)",
+                    self._folder_gen,
+                )
+                return
+        except Exception:
+            pass
         try:
             settings = self._ai_settings_store.load()
         except Exception:
@@ -1592,6 +1630,7 @@ class GalleryController:
         snapshot = list(chosen)
         base_url = str(getattr(settings, "base_url", ""))
         api_key = str(getattr(settings, "api_key", ""))
+        epoch = int(getattr(self, "_domain_epoch", 0) or 0)
 
         def _job():
             from tabs.image_gallery.services.series_priority import (
@@ -1606,6 +1645,11 @@ class GalleryController:
 
         def _on_result(outcome, gen=gen):
             if not self._is_current_folder_gen(gen):
+                return
+            if int(getattr(self, "_domain_epoch", 0) or 0) != epoch:
+                # The user left the AI domain: its hint must not repopulate the
+                # headers after ``_clear_series_priority`` already ran.
+                _ai_debug("series priority dropped: judgment domain changed while in flight")
                 return
             priorities = dict(getattr(outcome, "priorities", None) or {})
             try:
@@ -1686,6 +1730,10 @@ class GalleryController:
             len(members), getattr(mode, "value", mode),
         )
         gen = self._folder_gen
+        # The domain epoch this rank pass belongs to: a live switch back to
+        # Algorithms must not let a late Jev verdict re-crown the series (it did,
+        # measured live 2026-10-22 — no domain check on the landing path).
+        epoch = int(getattr(self, "_domain_epoch", 0) or 0)
         snapshot = list(members)
         for m in snapshot:
             try:
@@ -1720,6 +1768,10 @@ class GalleryController:
             if not self._is_current_folder_gen(gen):
                 _done(True)  # stale scope: release the gate, apply nothing
                 return
+            if int(getattr(self, "_domain_epoch", 0) or 0) != epoch:
+                _ai_debug("jev rank dropped: judgment domain changed while in flight")
+                _done(True)
+                return
             self._apply_jev_outcome(snapshot, outcome)
             _done(GalleryController._jev_outcome_ok(outcome))
 
@@ -1752,6 +1804,19 @@ class GalleryController:
 
     def _apply_jev_outcome(self, members, outcome) -> None:
         """Apply one Jev result: ranks + ``rank_source="jev"`` or a visible degrade."""
+        # Defensive (the worker's ``_on_result`` already checks the epoch): the
+        # Algorithms domain never receives a Jev rank/crown — a direct caller or
+        # a late queue turn must not flip the provenance chip to "AI (Jev)".
+        # The shared gate also keeps a legacy double without the domain
+        # authority working (contract G10: one comparison site, no ad-hoc ones).
+        try:
+            from tabs.image_gallery.use_cases.ai_analysis import _epoch_is_current
+
+            if not _epoch_is_current(self, None):
+                _ai_debug("jev outcome dropped: judgment domain is not ai")
+                return
+        except ImportError:
+            pass
         ranks = getattr(outcome, "ranks", None)
         current: list = []
         for m in list(members or ()):
@@ -1763,9 +1828,12 @@ class GalleryController:
                 _rank = ranks.get(path)
                 if _rank is None:
                     # Jev owns the AI-domain ordering: a member Jev did not rank
-                    # is not the winner — never leave a stale BEST from fusion.
+                    # is not the winner — never leave a stale BEST from fusion
+                    # OR from an earlier tie-break crown (owner saw two BEST
+                    # cards, 2026-10-22).
                     try:
                         it.is_best = False
+                        it.crown_rank = None
                     except Exception:
                         pass
                     continue
@@ -1915,20 +1983,20 @@ class GalleryController:
 
         return _ai_analysis._apply_ai_phase(self, item, phase)
 
-    def _on_analysis_ready(self, path: Path, mtime_ns: int, result, gen: int | None = None) -> None:
+    def _on_analysis_ready(self, path: Path, mtime_ns: int, result, gen: int | None = None, epoch: int | None = None) -> None:
         from tabs.image_gallery.use_cases import ai_analysis as _ai_analysis
 
-        return _ai_analysis._on_analysis_ready(self, path, mtime_ns, result, gen)
+        return _ai_analysis._on_analysis_ready(self, path, mtime_ns, result, gen, epoch=epoch)
 
     def _refresh_open_quick_look(self) -> None:
         from tabs.image_gallery.use_cases import ai_analysis as _ai_analysis
 
         return _ai_analysis._refresh_open_quick_look(self)
 
-    def _on_analysis_error(self, path: Path, error_info, gen: int | None = None) -> None:
+    def _on_analysis_error(self, path: Path, error_info, gen: int | None = None, epoch: int | None = None) -> None:
         from tabs.image_gallery.use_cases import ai_analysis as _ai_analysis
 
-        return _ai_analysis._on_analysis_error(self, path, error_info, gen)
+        return _ai_analysis._on_analysis_error(self, path, error_info, gen, epoch=epoch)
 
     # -- Ask AI (A3 entry points + A4 async/cache/generation guard) ------------
 

@@ -190,12 +190,12 @@ def test_a_series_offer_renders_its_unscored_axis_as_not_measured(qtbot):
     assert any("not measured" in t for t in _row_texts(ov)), _row_texts(ov)
 
 
-def test_a_mode_fallback_offer_is_named_as_a_fallback_in_the_rows(qtbot):
-    """A mode-mapping offer says "mode default", an offered set does not.
+def test_a_mode_fallback_offer_adds_no_axis_set_row(qtbot):
+    """The "Axis set — mode default" state row was REMOVED (owner, 2026-10-22).
 
-    P5 precedence: the mode mapping is the LAST fallback. Rendering its axes
-    exactly like a measured offer would present a pool description as if the
-    series had been measured, so the fallback is a visible state row.
+    It named the fallback offer but carried no number and no action; the owner
+    called it useless. The fallback's axes still render exactly as before — only
+    the extra state row is gone, so the report starts with real measurements.
     """
     from tabs.image_gallery.ui.quick_look import metrics as m
 
@@ -208,8 +208,9 @@ def test_a_mode_fallback_offer_is_named_as_a_fallback_in_the_rows(qtbot):
     m.rebuild_metrics(ov, item, True, "FIDELITY")
 
     texts = _row_texts(ov)
-    assert "Axis set" in texts, f"the fallback offer is unnamed: {texts}"
-    assert "mode default" in texts, f"the fallback offer is unnamed: {texts}"
+    assert "Axis set" not in texts, f"the removed state row came back: {texts}"
+    assert "mode default" not in texts
+    assert texts, "the report must still render its measured rows"
 
     # An accepted offer (series or the judge's own) is NOT a fallback.
     offered = MetricProfile(

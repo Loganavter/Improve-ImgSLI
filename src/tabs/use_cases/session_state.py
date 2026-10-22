@@ -194,9 +194,20 @@ class SessionState:
             self._context = context
 
     def apply_from_slot(self, context: Any, session_id: str) -> None:
-        """Bind to ``session_id`` and apply its values (slot first, QSettings fallback)."""
+        """Bind to ``session_id`` and apply its values (slot first, QSettings fallback).
+
+        A slot that still holds ONLY the factory defaults carries nothing the
+        user chose - it must not shadow the QSettings fallback (the config).
+        Measured live 2026-10-22: the gallery restored "judgment_domain=
+        algorithms" although the config said "ai" - the fix in ``seed_slot``
+        alone was not enough, because the RESTORE path is this one.
+        """
         self.attach(context)
-        values = self._slot_values(session_id) or self._last_used_values() or self._defaults()
+        slot_values = self._slot_values(session_id)
+        if slot_values is None or slot_values == self._defaults():
+            values = self._last_used_values() or self._defaults()
+        else:
+            values = slot_values
         self._session_id = session_id
         self._values = dict(values)
         self._call_apply()

@@ -170,8 +170,6 @@
       "axis_inside_noise": "não separa estas variantes",
       "axis_measured_locally": "medido localmente",
       "axis_measured_by_judge": "medido pela IA",
-      "profile_axis_set": "Conjunto de eixos",
-      "profile_mode_fallback": "padrão do modo",
       "rank_of": "#{rank} de {total}",
       "rejected_tail": "cauda rejeitada ≤ {value}",
       "source_fallback": "origem",
@@ -382,7 +380,9 @@
       "tooltip": {
         "defects": "defeitos: {kinds}",
         "vlm_tiebreak": "Desempate da VLM: {err}"
-      }
+      },
+      "source_ai": "IA",
+      "source_local": "ALG"
     },
     "badge": {
       "source": "ORIGEM",

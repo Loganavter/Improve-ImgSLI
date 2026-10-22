@@ -8,38 +8,48 @@ Machine-checkable complement to [CODE_PATTERNS.md](CODE_PATTERNS.md) and [CODE_M
 | Scope | Limit | Marker | Enforcement |
 |---|---|---|---|
 | `tabs/<tab>/canvas/features/<name>/**/*.py` | 400 lines | `File-Size-Exempt:` | `tests/contracts/test_canvas_features_file_size.py` |
-| `src/**/*.py` outside `tests/`, `docs/`, `resources/i18n` | 500 lines | `Audit-Meta:` | `tests/contracts/test_file_size_policy.py` |
+| `src/**/*.py` outside `tests/` and the tool caches (`__pycache__`, `venv`, `.venv`, `.mypy_cache`, `.pytest_cache`, `.ruff_cache`) | 500 lines | `Audit-Meta:` | `tests/contracts/test_file_size_policy.py` |
 | `tests/**/*.py` | no hard limit | — | `CODE_MASS_REDUCTION.md` Sprint 3 deferred — failure isolation > LOC |
 
 Counts use `len(src.splitlines())` (matches `wc -l` minus trailing newline), not `cloc` code-only.
 
 ## Audit-Meta format (inline)
 
-Add a single line anywhere in the file's top docstring or header comments:
+Add a single line as a comment or inside the module docstring — both checkers
+scan the whole file for the marker (line-anchored, optional `#`); putting it at
+the top of the module docstring is only the convention:
 
 ```
-Audit-Meta: pattern=<kind> size=<lines|exempt> reason="<one-line why not split>"
+Audit-Meta: pattern=<kind> reason="<one-line why not split>"
 ```
 
-`pattern` kinds:
+`pattern` is free-form — nothing validates the value. `size=` is *not* part of
+the format: older markers still carry `size=<lines|exempt>`, and it is parsed
+but ignored (never validated, and the registry deliberately drops it — see
+[Central registry](#central-registry)). The live inventory of kinds is
+`docs/dev/file_size_registry.json`; preferred for new code:
+
 - `state-machine` — one async pipeline / one resource lifecycle (`CODE_PATTERNS.md` "When not to split")
 - `thin-owner-target` — the `use_cases/` module itself (`CODE_PATTERNS.md` reference impl)
 - `thin-owner` — thin delegator that already delegates to `use_cases/`
 - `qdialog-wiring` — `QDialog` layout/signal bulk (`plugins/export/dialog.py`)
 - `tiled-pipeline` — stateless tiled/parallel kernels sharing workers
 
+Any other kind already in the registry (`leaf-collector`, `devtool-pipeline`, `nav-section`, `single-owner`, …) is accepted the same way — the value documents the file for the next reader, it is not a checked enum.
+
 Examples from the tree:
 
 ```python
 """Tiled pixel storage — always memmap-backed.
-Audit-Meta: pattern=state-machine size=exempt reason="one memmap lifecycle — splitting threads memmap/shape/tile_size"
+Audit-Meta: pattern=state-machine reason="one memmap lifecycle — splitting threads memmap/shape/tile_size"
 """
 ```
 
 ```python
-"""The magnifier's own QRhi render pass.
-File-Size-Exempt: single QRhi pass, one resource lifecycle
-Audit-Meta: pattern=state-machine size=exempt reason="border-disk + uber mag pipelines share one pass lifecycle"
+"""The magnifier's own QRhi render pass: disk border + GPU-sampled content.
+File-Size-Exempt: single QRhi pass, one resource lifecycle (border-disk
+pipeline + uber mag pipeline); splitting the class would relocate, not
+reduce, complexity — see module docstring above.
 """
 ```
 
