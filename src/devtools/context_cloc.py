@@ -383,8 +383,15 @@ def cloc_summary_for_path(
 
 
 def cloc_target_exclude_re(output: Path) -> str:
+    """Generated artifacts never feed the counts.
+
+    ``llms.txt`` embeds this table, so counting it made the file
+    self-referential: each regeneration added its own lines and the
+    generate-then-``git diff --exit-code`` idempotence gate never converged
+    (caught 2026-10-22).
+    """
     base = re.escape(output.name)
-    return rf"(^|/)({base}|context\.txt|app_context\.txt|cloc\.txt)$"
+    return rf"(^|/)({base}|context\.txt|app_context\.txt|cloc\.txt|llms\.txt)$"
 
 
 def _top_level_dirs(directory: Path) -> list[Path]:
