@@ -236,6 +236,14 @@ class GalleryController:
         # live there; ``state``/widget are read-only projections (see
         # plan-gallery-jev-pipeline-2026-10-15 S1).
         self._judgment_domain = "algorithms"
+        #: Monotonic epoch of the judgment domain (plan/owner ask 2026-10-22:
+        #: "switching backends must be ironclad"). A switch has no cancellation
+        #: API for in-flight AI/Jev workers, so the epoch IS the cancellation
+        #: token: a request scheduled under epoch N must not be SENT and must not
+        #: LAND after the epoch advanced. Bumped only when the domain actually
+        #: changes (``_set_judgment_domain``); read by
+        #: ``use_cases/ai_analysis.domain_epoch`` / ``_epoch_is_current``.
+        self._domain_epoch = 0
         #: Folder generation whose AI calls were built under the current
         #: profile (P5). A profile is a REQUEST IDENTITY (the analysis cache
         #: keys a scorecard on it), so a replacement after the first call of
@@ -1592,6 +1600,7 @@ class GalleryController:
         snapshot = list(chosen)
         base_url = str(getattr(settings, "base_url", ""))
         api_key = str(getattr(settings, "api_key", ""))
+        epoch = int(getattr(self, "_domain_epoch", 0) or 0)
 
         def _job():
             from tabs.image_gallery.services.series_priority import (
@@ -1606,6 +1615,11 @@ class GalleryController:
 
         def _on_result(outcome, gen=gen):
             if not self._is_current_folder_gen(gen):
+                return
+            if int(getattr(self, "_domain_epoch", 0) or 0) != epoch:
+                # The user left the AI domain: its hint must not repopulate the
+                # headers after ``_clear_series_priority`` already ran.
+                _ai_debug("series priority dropped: judgment domain changed while in flight")
                 return
             priorities = dict(getattr(outcome, "priorities", None) or {})
             try:
@@ -1686,6 +1700,10 @@ class GalleryController:
             len(members), getattr(mode, "value", mode),
         )
         gen = self._folder_gen
+        # The domain epoch this rank pass belongs to: a live switch back to
+        # Algorithms must not let a late Jev verdict re-crown the series (it did,
+        # measured live 2026-10-22 — no domain check on the landing path).
+        epoch = int(getattr(self, "_domain_epoch", 0) or 0)
         snapshot = list(members)
         for m in snapshot:
             try:
@@ -1720,6 +1738,10 @@ class GalleryController:
             if not self._is_current_folder_gen(gen):
                 _done(True)  # stale scope: release the gate, apply nothing
                 return
+            if int(getattr(self, "_domain_epoch", 0) or 0) != epoch:
+                _ai_debug("jev rank dropped: judgment domain changed while in flight")
+                _done(True)
+                return
             self._apply_jev_outcome(snapshot, outcome)
             _done(GalleryController._jev_outcome_ok(outcome))
 
@@ -1752,6 +1774,19 @@ class GalleryController:
 
     def _apply_jev_outcome(self, members, outcome) -> None:
         """Apply one Jev result: ranks + ``rank_source="jev"`` or a visible degrade."""
+        # Defensive (the worker's ``_on_result`` already checks the epoch): the
+        # Algorithms domain never receives a Jev rank/crown — a direct caller or
+        # a late queue turn must not flip the provenance chip to "AI (Jev)".
+        # The shared gate also keeps a legacy double without the domain
+        # authority working (contract G10: one comparison site, no ad-hoc ones).
+        try:
+            from tabs.image_gallery.use_cases.ai_analysis import _epoch_is_current
+
+            if not _epoch_is_current(self, None):
+                _ai_debug("jev outcome dropped: judgment domain is not ai")
+                return
+        except ImportError:
+            pass
         ranks = getattr(outcome, "ranks", None)
         current: list = []
         for m in list(members or ()):
@@ -1915,20 +1950,20 @@ class GalleryController:
 
         return _ai_analysis._apply_ai_phase(self, item, phase)
 
-    def _on_analysis_ready(self, path: Path, mtime_ns: int, result, gen: int | None = None) -> None:
+    def _on_analysis_ready(self, path: Path, mtime_ns: int, result, gen: int | None = None, epoch: int | None = None) -> None:
         from tabs.image_gallery.use_cases import ai_analysis as _ai_analysis
 
-        return _ai_analysis._on_analysis_ready(self, path, mtime_ns, result, gen)
+        return _ai_analysis._on_analysis_ready(self, path, mtime_ns, result, gen, epoch=epoch)
 
     def _refresh_open_quick_look(self) -> None:
         from tabs.image_gallery.use_cases import ai_analysis as _ai_analysis
 
         return _ai_analysis._refresh_open_quick_look(self)
 
-    def _on_analysis_error(self, path: Path, error_info, gen: int | None = None) -> None:
+    def _on_analysis_error(self, path: Path, error_info, gen: int | None = None, epoch: int | None = None) -> None:
         from tabs.image_gallery.use_cases import ai_analysis as _ai_analysis
 
-        return _ai_analysis._on_analysis_error(self, path, error_info, gen)
+        return _ai_analysis._on_analysis_error(self, path, error_info, gen, epoch=epoch)
 
     # -- Ask AI (A3 entry points + A4 async/cache/generation guard) ------------
 

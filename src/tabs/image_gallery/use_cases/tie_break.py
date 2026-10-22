@@ -59,6 +59,22 @@ def _is_tie(owner, a: GalleryItem, b: GalleryItem, epsilon: float = TIE_EPSILON)
         return False
 
 
+def _tie_break_still_owned(owner, epoch) -> bool:
+    """True while the AI domain that scheduled this verdict still owns the tab.
+
+    A live domain switch has no cancellation API; the epoch is the token (see
+    ``use_cases/ai_analysis.domain_epoch``). A verdict that arrives after the
+    switch must not crown a card under Algorithms. The decision itself is the
+    ONE shared gate (``ai_analysis._epoch_is_current``).
+    """
+    try:
+        from tabs.image_gallery.use_cases.ai_analysis import _epoch_is_current
+
+        return _epoch_is_current(owner, epoch)
+    except Exception:
+        return True
+
+
 def run_tie_break_if_needed(owner, series) -> None:
     """Stage 3: selective VLM tie-break for top-2 when local metrics within epsilon.
 
@@ -72,6 +88,24 @@ def run_tie_break_if_needed(owner, series) -> None:
     except Exception:
         return
     if len(members) < 2:
+        return
+    # The VLM tie-break is AI-domain work. The Algorithms backend must emit ZERO
+    # VLM requests (owner ask 2026-10-22) — measured live: with Algorithms
+    # selected, merely opening a near-duplicate folder fired one tie_break_sync
+    # POST because the only gate here was "AI settings configured".
+    try:
+        from tabs.image_gallery.use_cases.ai_analysis import domain_epoch
+
+        epoch = domain_epoch(owner)
+    except Exception:
+        epoch = None
+    if not _tie_break_still_owned(owner, epoch):
+        try:
+            from tabs.image_gallery.services.ai_client.prompt import _ai_debug
+
+            _ai_debug("tie-break skipped: not the AI judgment domain (no VLM call)")
+        except Exception:
+            pass
         return
     # Candidates come from the MEASURED FUSION order (not the old centroid
     # distance/rank): the VLM tie-break is additive on top of the
@@ -173,6 +207,8 @@ def run_tie_break_if_needed(owner, series) -> None:
     def _on_result(result, a_path=a.path, b_path=b.path, a_mtime=a.mtime_ns, b_mtime=b.mtime_ns, _src_mtime=source_mtime, gen=owner._folder_gen):
         if not owner._is_current_folder_gen(gen):
             return  # folder switched mid-VLM — late tie-break dropped
+        if not _tie_break_still_owned(owner, epoch):
+            return  # the user left the AI domain — the verdict must not land
         try:
             if save_tie_break is not None:
                 save_tie_break(a_path, a_mtime, b_path, b_mtime, result, _src_mtime)
@@ -212,6 +248,10 @@ def run_tie_break_if_needed(owner, series) -> None:
 
 def _apply_tie_break_result(owner, a: GalleryItem, b: GalleryItem, result) -> None:
     """Apply VLM winner: mark winner is_best/crown_rank, clear pending badges."""
+    if not _tie_break_still_owned(owner, None):
+        # Direct callers (tests, an old queued callback) get the same rule as the
+        # worker path: the Algorithms domain never receives a VLM crown.
+        return
     try:
         winner_str = str(getattr(result, "winner_path", ""))
         loser_str = str(getattr(result, "loser_path", ""))

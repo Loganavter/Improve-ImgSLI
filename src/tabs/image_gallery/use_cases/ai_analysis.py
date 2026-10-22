@@ -31,6 +31,7 @@ outside ``controller.py`` is rejected by the gallery ownership guard
 from __future__ import annotations
 
 import logging
+from functools import partial
 from pathlib import Path
 
 from sli_ui_toolkit.workers import GenericWorker
@@ -175,6 +176,44 @@ def _require_domain(domain: str) -> str:
     return dom
 
 
+def domain_epoch(owner) -> int:
+    """The controller's judgment-domain epoch (the AI work's cancellation token).
+
+    ``owner._domain_epoch`` advances every time the toolbar actually changes the
+    domain. Work scheduled under a different epoch belongs to a backend the user
+    has left: it must neither be sent nor applied (measured live 2026-10-22:
+    four VLM POSTs went out after a switch back to Algorithms, and a late Jev
+    outcome re-crowned the series under Algorithms).
+    """
+    try:
+        return int(getattr(owner, "_domain_epoch", 0) or 0)
+    except Exception:
+        return 0
+
+
+def _epoch_is_current(owner, epoch: int | None, *, domain: str | None = "ai") -> bool:
+    """True when *epoch* still describes the live judgment domain.
+
+    ``epoch=None`` means an unversioned caller (a fake controller in a legacy
+    test): it is treated as current so nothing that never knew about the epoch
+    starts failing. An owner without ``_judgment_domain`` is a legacy double
+    that never owned the authority — also current. This is the ONE place the
+    analysis-domain gate is decided (contract G10: no ad-hoc domain comparisons
+    at call sites).
+    """
+    if epoch is not None and domain_epoch(owner) != int(epoch):
+        return False
+    if domain is None:
+        return True
+    try:
+        live = getattr(owner, "_judgment_domain", None)
+    except Exception:
+        live = None
+    if live is None:
+        return True
+    return str(live).strip().lower() == domain
+
+
 def _set_judgment_domain(owner, domain: str) -> str:
     """The ONLY writer of the judgment domain (Algorithms vs AI).
 
@@ -182,9 +221,15 @@ def _set_judgment_domain(owner, domain: str) -> str:
     ``GalleryState`` rebuilds done by open_folder / append / clear_to_empty;
     ``state.judgment_domain``/``state.rank_domain`` are read-only projections
     kept for rendering. Invalid input raises (no coercion); returns the
-    normalized value.
+    normalized value. Every call bumps ``owner._domain_epoch`` — the toolbar
+    suppresses a same-domain emit, so a call here is an explicit (re)activation
+    and cancelling the previous epoch's queued work is the correct semantics.
     """
     dom = _require_domain(domain)
+    try:
+        owner._domain_epoch = int(getattr(owner, "_domain_epoch", 0) or 0) + 1
+    except Exception:
+        pass
     owner._judgment_domain = dom
     try:
         setattr(owner.state, "judgment_domain", dom)
@@ -330,6 +375,12 @@ def _begin_analysis(owner, ctx: ActionContext, item: GalleryItem) -> None:
         raise ValueError(
             f"_begin_analysis is the AI analyzer; ctx.backend={ctx.backend!r}"
         )
+    # A queued flush can run after the toolbar already left the AI domain (the
+    # switch is asynchronous): never open a batch slot for work the user has
+    # switched away from.
+    if not _epoch_is_current(owner, None):
+        _ai_debug("analyze skipped: judgment domain is not ai")
+        return
     settings = _load_settings(owner)
     if not _is_configured(settings):
         _mark_not_configured(owner, [item])
@@ -372,8 +423,13 @@ def _begin_analysis(owner, ctx: ActionContext, item: GalleryItem) -> None:
     identity = analysis_cache_identity(
         settings, mode=mode, profile=profile, reasoning_effort=ctx.effort
     )
+    # The domain epoch THIS request belongs to: checked again immediately before
+    # the worker runs (the last gate before the network call — ``_run_ai_for_visible``
+    # queues many workers in one turn, so a switch can land between scheduling and
+    # sending, measured live 2026-10-22) and once more when the reply arrives.
+    epoch = domain_epoch(owner)
     worker = GenericWorker(
-        owner._tracked(analyze_image_sync),
+        owner._tracked(partial(_send_if_current, owner, epoch)),
         item.path,
         base_url=settings.base_url,
         api_key=settings.api_key,
@@ -395,12 +451,14 @@ def _begin_analysis(owner, ctx: ActionContext, item: GalleryItem) -> None:
     # delegation but does not carry the request identity, and controller.py is
     # outside this task's scope): the identity must survive the worker hop.
     worker.signals.result.connect(
-        lambda result, path=item.path, mtime_ns=item.mtime_ns, g=gen, bridge=bridge, identity=identity: _on_analysis_ready(
-            owner, path, mtime_ns, result, g, identity=identity
+        lambda result, path=item.path, mtime_ns=item.mtime_ns, g=gen, bridge=bridge, identity=identity, e=epoch: _on_analysis_ready(
+            owner, path, mtime_ns, result, g, identity=identity, epoch=e
         )
     )
     worker.signals.error.connect(
-        lambda err, path=item.path, g=gen, bridge=bridge: owner._on_analysis_error(path, err, g)
+        lambda err, path=item.path, g=gen, bridge=bridge, e=epoch: _on_analysis_error(
+            owner, path, err, g, epoch=e
+        )
     )
     set_activity(item, ActivityPhase.CLAIMED, "ai")
     owner.widget.refresh_card(item)
@@ -415,9 +473,63 @@ def _apply_ai_phase(owner, item: GalleryItem, phase: str) -> None:
     owner.widget.refresh_card(item)
 
 
-def _on_analysis_ready(owner, path: Path, mtime_ns: int, result, gen: int | None = None, identity: dict | None = None) -> None:
+def _send_if_current(owner, epoch: int, path: Path, **kwargs):
+    """The LAST gate before the network call.
+
+    ``_run_ai_for_visible`` queues many workers in one turn; a toolbar switch can
+    land between scheduling and sending (measured live 2026-10-22: four VLM POSTs
+    went out AFTER the switch back to Algorithms). The worker runs this wrapper,
+    so the epoch is re-checked on the worker thread immediately before the
+    request is built.
+    """
+    if not _epoch_is_current(owner, epoch):
+        _ai_debug("analyze cancelled before send: judgment domain changed path=%s", path)
+        return None
+    return analyze_image_sync(path, **kwargs)
+
+
+def _cancel_pending_analysis(owner, path: Path) -> None:
+    """Release a batch slot whose AI work was cancelled by a domain switch.
+
+    The item goes back to NOT_ANALYZED (no error, no scorecard) so a later
+    switch back to AI retries it cache-first. Never dispatches the terminal
+    rank — the domain the user returned to owns the ordering.
+    """
+    item = None
+    try:
+        item = owner._find_item(path)
+    except Exception:
+        item = None
+    if item is not None:
+        try:
+            if getattr(item, "analysis_status", None) == AnalysisStatus.PENDING:
+                item.analysis_status = AnalysisStatus.NOT_ANALYZED
+                item.analysis_error = None
+                set_activity(item, ActivityPhase.IDLE, "ai")
+                owner.widget.refresh_card(item)
+        except Exception:
+            logger.debug("cancelled analysis cleanup failed", exc_info=True)
+    _ai_batch_end(owner)
+    _refresh_ranks_visible(owner)
+
+
+def _on_analysis_ready(owner, path: Path, mtime_ns: int, result, gen: int | None = None, identity: dict | None = None, epoch: int | None = None) -> None:
     if gen is not None and not owner._is_current_folder_gen(gen):
         return  # folder switched — late analysis dropped
+    if result is None:
+        # The pre-send gate refused (the domain changed before the payload was
+        # built): nothing was sent, nothing to apply.
+        _cancel_pending_analysis(owner, path)
+        return
+    if not _epoch_is_current(owner, epoch):
+        # The reply belongs to a backend the user has left: it must not reach the
+        # cache, the card, or the rank (measured live 2026-10-22).
+        _ai_debug(
+            "analysis dropped: judgment domain changed while in flight (epoch=%s)",
+            epoch,
+        )
+        _cancel_pending_analysis(owner, path)
+        return
     item = owner._find_item(path)
     if item is None:
         return
@@ -471,8 +583,13 @@ def _refresh_open_quick_look(owner) -> None:
         logger.debug("quick-look domain refresh failed", exc_info=True)
 
 
-def _on_analysis_error(owner, path: Path, error_info, gen: int | None = None) -> None:
+def _on_analysis_error(owner, path: Path, error_info, gen: int | None = None, epoch: int | None = None) -> None:
     if gen is not None and not owner._is_current_folder_gen(gen):
+        return
+    if not _epoch_is_current(owner, epoch):
+        # A failure of work that belonged to the previous backend is not a fact
+        # about the current one: no error card under Algorithms.
+        _cancel_pending_analysis(owner, path)
         return
     item = owner._find_item(path)
     if item is None:
