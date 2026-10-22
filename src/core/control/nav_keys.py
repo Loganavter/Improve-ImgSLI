@@ -8,7 +8,10 @@ not in the focus chain), so "the key reached the control" and "the key went
 nowhere" look identical to a client.
 
 This module is the write half: it delivers keys the way the running app receives
-a real press and reports what happened, per key.
+a real press and reports what happened, per key. It also owns the direct
+one-widget path (``press_keys_into``), because the rule that decides whether a
+key can reach the app at all — the window must hold OS focus — is the same one
+both paths need.
 
 * the anchor is the widget a user's key would reach — the window's focus widget,
   or the element named by ``anchor`` (focused first, with the app's own
@@ -40,7 +43,7 @@ from PySide6.QtWidgets import QApplication, QWidget
 
 from .discovery import MethodError, parse_key_sequence
 from .elements.inventory import Element
-from .elements.resolve import resolve_element
+from .elements.resolve import focus_target, key_target, resolve_element
 from .nav_state import element_map, focus_widget, nav_manager, owner_of, widget_row
 
 
@@ -82,6 +85,88 @@ def _activate_window(app: Any, window: Any) -> bool:
         return QApplication.focusWidget() is not None
     except Exception:
         return False
+
+
+def activate_window_for_keys(app: Any, window: Any) -> tuple[bool, Any]:
+    """Make *window* OS-active and report ``(activated_now, active_window)``.
+
+    A real key only reaches the OS-active window: Qt accepts an event injected
+    at a background window, the window system drops it, and the caller reads
+    "delivered" for a key nobody saw (complaint mcp-c-015, live 2026-10-22 —
+    ``press_keys {"keys": "ctrl+shift+p"}`` answered ``ok`` on a display without
+    a window manager until the window was focused by hand, which cost a
+    shortcut sweep two false "dead chord" verdicts). Activation is the same
+    seam ``nav_key`` uses (``_activate_window``), not a second mechanism.
+
+    *activated_now* says this call had to bring the window forward (``False``:
+    it already held focus, nothing moved), so a client can see that a sweep
+    changed the desktop; ``None`` for *active_window* is the honest "this key
+    would go nowhere" state.
+    """
+    inst = app if app is not None else QApplication.instance()
+    already = False
+    if isinstance(window, QWidget):
+        try:
+            already = bool(window.isActiveWindow())
+        except Exception:
+            already = False
+    _activate_window(app, window)
+    try:
+        active = inst.activeWindow() if inst is not None else None
+    except Exception:
+        active = None
+    if not isinstance(active, QWidget):
+        active = None
+    return (active is not None and not already), active
+
+
+def press_keys_into(
+    *, registry: Any, app: Any, window: Any, keys: str | None, target_id: Any = None
+) -> dict[str, Any]:
+    """Type *keys* into one widget and say whether the window could take them.
+
+    ``target_id`` (an id from ``ui_elements``) aims them at that widget — a
+    canvas is not in the window's focus chain, so keys aimed at the focus widget
+    never reach it. Without one the window's focus widget receives them.
+
+    The window the widget lives in is made OS-active first, with the same seam
+    ``nav_key`` uses; when the app still reports no active window the call
+    **refuses** instead of answering ``ok``: Qt accepts an injected key at a
+    background window and the window system drops it, so ``ok`` was read as a
+    dead chord in a shortcut sweep (complaint mcp-c-015, live 2026-10-22 —
+    ``press_keys {"keys": "ctrl+shift+p"}`` answered ``ok`` and no Find Action
+    window appeared until ``xdotool windowfocus <main>``). *activated* says
+    this call had to bring the window forward; *focus_is_ours* says the key
+    went to the window that holds OS focus — the two fields ``nav_key`` reports
+    for the same question.
+    """
+    from PySide6.QtTest import QTest
+
+    sequence = parse_key_sequence(keys)
+    target = key_target(registry, target_id, fallback=focus_target(app, window))
+    if target is None:
+        raise MethodError(
+            "no live window to receive keys",
+            "focus a window first (e.g. run_action platform.settings)",
+        )
+    window = target.window() if isinstance(target, QWidget) else window
+    activated, active_window = activate_window_for_keys(app, window)
+    if active_window is None:
+        raise MethodError(
+            "the app window is not the OS-active window, so the key would be dropped",
+            "activate it first (xdotool windowfocus <window-id>, or focus it in your "
+            "window manager), then retry; nav_key reports the same state as "
+            "activated=false",
+        )
+    for key, modifiers, _label in sequence:
+        QTest.keyClick(target, key, modifiers)
+    return {
+        "pressed": [label for _key, _mods, label in sequence],
+        "count": len(sequence),
+        "target": type(target).__name__,
+        "activated": activated,
+        "focus_is_ours": active_window is window,
+    }
 
 
 def _anchor_window(element: Element | None, fallback: Any) -> tuple[Any, str]:
@@ -303,4 +388,9 @@ class NavMethodsMixin:
         )
 
 
-__all__ = ["NavMethodsMixin", "deliver_nav_keys"]
+__all__ = [
+    "NavMethodsMixin",
+    "activate_window_for_keys",
+    "deliver_nav_keys",
+    "press_keys_into",
+]

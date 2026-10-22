@@ -646,6 +646,72 @@ def test_press_keys_refuses_when_there_is_no_target(tmp_path):
     assert "no live window" in exc.value.message
 
 
+def test_press_keys_refuses_when_the_window_is_not_os_active(tmp_path):
+    """Complaint mcp-c-015: a key typed at a background window answered ``ok``.
+
+    Measured 2026-10-22 on a private display without a window manager, right
+    after boot: ``press_keys {"keys": "ctrl+shift+p"}`` answered ``ok`` and no
+    Find Action window appeared; after ``xdotool windowfocus <main>`` the same
+    call opened it. The window exists and Qt hands the key to a real widget, so
+    the old code reported delivery for a key the window system dropped — two
+    false "dead chord" verdicts in a shortcut sweep.
+    """
+    from PySide6.QtWidgets import QListWidget
+
+    app = _qapp()
+    widget = QListWidget()
+    widget.addItems(["a", "b"])
+    widget.resize(120, 80)
+    widget.show()
+    _pump(app, 0.05)
+    widget.setFocus()
+    _pump(app, 0.05)
+
+    # The measured state: the window is there, the display reports no active
+    # window — a real key would reach nobody.
+    inactive = types.SimpleNamespace(activeWindow=lambda: None)
+    handlers = _handlers(widget, _registry(), tmp_path, app=inactive)
+    try:
+        with pytest.raises(MethodError) as exc:
+            handlers.press_keys({"keys": "Down"})
+        assert "not the OS-active window" in exc.value.message
+        assert "windowfocus" in exc.value.hint, exc.value.hint
+        assert "nav_key" in exc.value.hint, exc.value.hint
+    finally:
+        widget.close()
+
+
+def test_press_keys_reports_the_focus_it_typed_into(tmp_path):
+    """The active path still delivers, and now names the keyboard owner.
+
+    ``activated`` / ``focus_is_ours`` are the fields ``nav_key`` reports for the
+    same question, so a client reads the state instead of inferring it from
+    ``ok``. ``activated`` is False here: the window already held focus, so the
+    call had nothing to bring forward.
+    """
+    from PySide6.QtWidgets import QListWidget
+
+    app = _qapp()
+    widget = QListWidget()
+    widget.addItems(["a", "b"])
+    widget.resize(120, 80)
+    widget.show()
+    _pump(app, 0.05)
+    widget.setCurrentRow(0)
+    widget.setFocus()
+    _pump(app, 0.05)
+
+    handlers = _handlers(widget, _registry(), tmp_path, app=app)
+    try:
+        result = handlers.press_keys({"keys": "Down"})
+        _pump(app, 0.05)
+        assert widget.currentRow() == 1, "the key still reaches the focus widget"
+        assert result["activated"] is False, "an active window is not activated again"
+        assert result["focus_is_ours"] is True
+    finally:
+        widget.close()
+
+
 def test_press_keys_reaches_the_focused_widget(tmp_path):
     """The injection reaches the app: keys go through the real Qt key pipeline.
 

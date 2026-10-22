@@ -1106,12 +1106,12 @@ TOOLS: list[dict] = [
         "name": "press_keys",
         "title": "Press keys in the running app",
         "description": (
-            "Inject keyboard input into a running instance: one combo such as "
-            "ctrl+shift+p, or comma-separated combos applied in order such as "
-            "Down,Down,Enter. Pass target=<element id from ui_elements> to aim "
-            "them at a widget the window focus never reaches (e.g. a canvas). "
-            "Live-only; key names are allowlisted (letters, digits, punctuation, "
-            "named keys); modifiers are ctrl/shift/alt/meta."
+            "Inject keyboard input into a running instance: one combo "
+            "(ctrl+shift+p) or comma-separated combos in order (Down,Down,Enter). "
+            "target=<ui_elements id> aims at a widget the focus chain never "
+            "reaches (a canvas). The app window is activated first; with no "
+            "active window the call is refused — focus it (xdotool windowfocus "
+            "<window-id>) and retry. Live-only, allowlisted keys."
         ),
         "inputSchema": _params(
             {
