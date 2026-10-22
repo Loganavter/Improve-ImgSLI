@@ -1,7 +1,7 @@
 """Feature store-commands emit ``emit_viewport_change`` exactly once; state
 queries do not; a storeless command does not require the emit.
 
-Dogma source: docs/dev/QRHI_CANVAS_FEATURES.md §Viewport Change Contract.
+Dogma source: docs/dev/rendering/zoom-pan.md § Viewport Change Contract.
 """
 
 from __future__ import annotations
@@ -42,7 +42,7 @@ def _first_param_name(handler) -> str | None:
     return params[0].name if params else None
 
 def test_no_arg_store_feature_commands_emit_viewport_change_once():
-    """QRHI_CANVAS_FEATURES.md: feature state commands that mutate viewport must notify once."""
+    """Mutating commands notify once (rendering/zoom-pan.md#viewport-change-contract)."""
     commands = get_canvas_feature_state_commands()
     exercised = []
 
@@ -81,7 +81,7 @@ def test_no_arg_store_feature_commands_emit_viewport_change_once():
     assert exercised
 
 def test_feature_state_queries_do_not_emit_viewport_change():
-    """QRHI_CANVAS_FEATURES.md: feature state queries must be read-only."""
+    """Feature state queries are read-only (rendering/zoom-pan.md)."""
     queries = get_canvas_feature_state_queries()
     exercised = []
 
@@ -103,7 +103,7 @@ def test_feature_state_queries_do_not_emit_viewport_change():
     assert exercised
 
 def test_storeless_feature_command_does_not_require_emit_viewport_change():
-    """QRHI_CANVAS_FEATURES.md: commands tolerate bootstrap stores without emit_viewport_change."""
+    """Bootstrap stores without emit_viewport_change are tolerated (rendering/zoom-pan.md)."""
     command = next(
         command
         for command in get_canvas_feature_state_commands()["magnifier"]

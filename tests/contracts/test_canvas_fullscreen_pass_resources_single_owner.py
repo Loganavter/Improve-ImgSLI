@@ -1,9 +1,9 @@
 """Guard against reimplementing FullscreenUniformPassResources.
 
-Dogma source: docs/dev/QRHI_CANVAS_FEATURES.md, "Anti-patterns" ->
-"Creating persistent QRhi resources ... anywhere except inside a
-CanvasRenderPass's own initialize()/release() pair" plus the render-pass
-resource-lifetime contract in general.
+Dogma source: docs/dev/rendering/render-pass-contract.md (a pass owns its own
+persistent QRhi resources — created in ``initialize()``, destroyed in
+``release()``; every pass is a ``CanvasRenderPass``) plus
+docs/dev/rendering/checklist.md.
 
 Concrete incident: ``magnifier/passes.py`` had a ``_BorderDiskResources``
 class that was a near-verbatim structural copy of
@@ -47,7 +47,7 @@ from ._framework import SRC, iter_py, parse, rel
 
 pytestmark = pytest.mark.slow
 
-_DOC = "docs/dev/QRHI_CANVAS_FEATURES.md"
+_DOC = "docs/dev/rendering/render-pass-contract.md"
 
 _ALLOWLIST = {
     # The single owner of this resource shape.

@@ -2,7 +2,8 @@
 
 Dogma source: ``PLAN.md`` §"Analyzers are auto-discovered producer packages"
 (``plan-gallery-analysis-engine-2026-10-20``) — the same shape the canvas
-feature registry already uses (docs/dev/QRHI_CANVAS_FEATURES.md): one package
+feature registry already uses (docs/dev/rendering/package-structure.md §
+Auto-Discovery): one package
 per analyzer, metadata in ``manifest.py``, removal-safe.
 
 Two traps the cases below pin, both live defects elsewhere in the tree:

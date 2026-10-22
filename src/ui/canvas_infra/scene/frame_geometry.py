@@ -18,7 +18,7 @@ class ContentGeometry:
     computation: live rendering, still-image export, and video export must
     all call ``resolve_canvas_content_geometry`` (or its store-driven
     wrapper) instead of recomputing letterbox/padding math locally — see
-    docs/dev/QRHI_CANVAS_FEATURES.md."""
+    docs/dev/rendering/coordinate-systems.md."""
 
     canvas_width: int
     canvas_height: int
@@ -118,7 +118,7 @@ def resolve_canvas_clip_rect_px(
     Feature-agnostic: this function knows nothing about split positions,
     overlays, or any specific feature — it only maps a ``VirtualCanvasLayout``
     to a pixel rect. Single owner of this computation across live/export/
-    video paths — see docs/dev/QRHI_CANVAS_FEATURES.md."""
+    video paths — see docs/dev/rendering/coordinate-systems.md."""
     if virtual_layout is not None:
         pad_left_px, _, pad_top_px, _ = virtual_layout.resolve_padding_pixels(
             base_width=base_width, base_height=base_height

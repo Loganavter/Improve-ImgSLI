@@ -2,7 +2,7 @@
 commands return valid bounds (or None), and an empty feature set yields the
 unit canvas layout.
 
-Dogma source: docs/dev/QRHI_CANVAS_FEATURES.md §Canvas Layout Contract.
+Dogma source: docs/dev/rendering/contracts.md § Canvas Layout Contract.
 """
 
 from __future__ import annotations
@@ -24,7 +24,7 @@ def get_canvas_feature_commands_by_id(command_id):
     return get_canvas_registry("image_compare").get_feature_commands_by_id(command_id)
 
 def test_normalized_bounds_union_expands_outside_unit_box():
-    """QRHI_CANVAS_FEATURES.md: VirtualCanvasLayout uses normalized bounds union."""
+    """VirtualCanvasLayout uses normalized bounds union (rendering/contracts.md)."""
     bounds = NormalizedBounds.unit().union(
         NormalizedBounds(x_min=-0.25, x_max=1.5, y_min=0.1, y_max=1.2)
     )
@@ -32,7 +32,7 @@ def test_normalized_bounds_union_expands_outside_unit_box():
     assert bounds == NormalizedBounds(x_min=-0.25, x_max=1.5, y_min=0.0, y_max=1.2)
 
 def test_layout_requirement_commands_return_valid_bounds_or_none():
-    """QRHI_CANVAS_FEATURES.md: render.layout_requirement returns FeatureLayoutRequirement."""
+    """render.layout_requirement returns FeatureLayoutRequirement (rendering/contracts.md)."""
     commands = get_canvas_feature_commands_by_id("render.layout_requirement")
     assert commands
 
@@ -47,7 +47,7 @@ def test_layout_requirement_commands_return_valid_bounds_or_none():
         assert requirement.bounds.y_min <= requirement.bounds.y_max
 
 def test_virtual_canvas_layout_defaults_to_unit_when_no_requirements():
-    """QRHI_CANVAS_FEATURES.md: no feature requirements means base 0..1 canvas."""
+    """No feature requirements means base 0..1 canvas (rendering/contracts.md)."""
     layout = resolve_virtual_canvas_layout(())
 
     assert isinstance(layout, VirtualCanvasLayout)

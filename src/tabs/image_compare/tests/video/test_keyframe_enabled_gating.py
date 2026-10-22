@@ -1,7 +1,7 @@
 """Per-instance keyframes do not resurrect a disabled feature; they apply only
 when the feature is globally enabled.
 
-Dogma source: docs/dev/QRHI_CANVAS_FEATURES.md §Keyframing Rules.
+Dogma source: docs/dev/rendering/contracts.md § Keyframing Rules.
 """
 
 from __future__ import annotations
@@ -53,7 +53,7 @@ def _snapshot(store: Store) -> FrameSnapshot:
     )
 
 def test_magnifier_per_instance_keyframes_do_not_resurrect_disabled_feature():
-    """QRHI_CANVAS_FEATURES.md: enabled=false gates per-instance keyframe tracks."""
+    """enabled=false gates per-instance tracks (rendering/contracts.md, Keyframing Rules)."""
     store = Store()
     store.create_workspace_session(session_type="image_compare", activate=True)
     execute_feature_command(store, "magnifier", "add_instance")
@@ -73,7 +73,7 @@ def test_magnifier_per_instance_keyframes_do_not_resurrect_disabled_feature():
     assert store.viewport.view_state.canvas_widget_state["magnifier"].enabled is False
 
 def test_magnifier_per_instance_keyframes_apply_when_globally_enabled():
-    """QRHI_CANVAS_FEATURES.md: global enabled track controls per-instance track application."""
+    """Global enabled gates per-instance application (rendering/contracts.md, Keyframing Rules)."""
     store = Store()
     store.create_workspace_session(session_type="image_compare", activate=True)
     execute_feature_command(store, "magnifier", "add_instance")

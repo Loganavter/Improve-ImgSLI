@@ -1,7 +1,8 @@
 """Clearing a slot resets canvas runtime flags and the active display name so
 stale state does not stick after the images are cleared.
 
-Dogma source: docs/dev/QRHI_CANVAS_FEATURES.md §GPU/Canvas Rendering Contract.
+Dogma source: docs/dev/rendering/contracts.md § Source of Truth Rules (runtime
+cache vs reducible state: frame-written state must be cleared with its source).
 """
 
 from __future__ import annotations
