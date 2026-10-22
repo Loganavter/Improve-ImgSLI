@@ -89,14 +89,25 @@ def set_vlm_max_edge(px: int) -> None:
     _vlm_max_edge_px = max(0, value)
 
 
-def _encode_image(path: Path) -> tuple[str, str]:
+def _encode_image(
+    path: Path, *, max_edge: int | None = None, prefer_jpeg: bool = False
+) -> tuple[str, str]:
+    """Encode one image for an upload; ``max_edge=None`` obeys the user setting.
+
+    ``prefer_jpeg`` exists for the PROFILE SELECTOR: its probe asks a coarse
+    question ("which axes separate these variants?"), so a full-resolution PNG
+    is pure cost — the owner's log showed an 11.3 MB probe request and a 6.9 s
+    round trip before any per-card analysis started (2026-10-22). The per-card
+    analysis keeps the user's setting and mime.
+    """
     p = Path(path)
     mime = _EXT_TO_MIME.get(p.suffix.lower(), "png")
     try:
         raw = p.read_bytes()
     except OSError:
         raise
-    max_edge = get_vlm_max_edge()
+    edge_setting = get_vlm_max_edge()
+    max_edge = edge_setting if max_edge is None else int(max_edge)
     try:
         if max_edge > 0:
             from PIL import Image
@@ -110,8 +121,11 @@ def _encode_image(path: Path) -> tuple[str, str]:
                     im = im.convert("RGB")
                     im.thumbnail((max_edge, max_edge), Image.LANCZOS)
                     buf = io.BytesIO()
-                    fmt = "JPEG" if mime == "jpeg" else "PNG"
-                    im.save(buf, format=fmt)
+                    fmt = "JPEG" if (mime == "jpeg" or prefer_jpeg) else "PNG"
+                    if fmt == "JPEG":
+                        im.save(buf, format=fmt, quality=85, optimize=True)
+                    else:
+                        im.save(buf, format=fmt)
                     raw = buf.getvalue()
                     mime = "jpeg" if fmt == "JPEG" else "png"
     except Exception:

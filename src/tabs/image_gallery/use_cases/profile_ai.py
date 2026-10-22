@@ -198,6 +198,15 @@ def _summary_text(salience) -> str:
     return f"members={members} k={k} axes=" + (", ".join(parts) or "-")
 
 
+#: Probe edge for the PROFILE SELECTOR, independent of the per-card setting.
+#: The selector asks a coarse question over a few variants; its probe used to
+#: ride the user's full-resolution preference (measured 2026-10-22: an 11.3 MB
+#: request and a 6.9 s round trip held the AI/Jev tails on the critical path
+#: before ANY card was analyzed). 512 px + JPEG keeps the salience answer and
+#: cuts the payload by an order of magnitude.
+PROFILE_PROBE_MAX_EDGE = 512
+
+
 def build_profile_request(probe_items, *, model, salience, effort: str = "auto", max_tokens: int = 0) -> dict:
     """The one user message: pool listing + salience text, then one image each.
 
@@ -216,7 +225,17 @@ def build_profile_request(probe_items, *, model, salience, effort: str = "auto",
     if _encode_image is not None:
         for item in probes:
             try:
-                mime, data = _encode_image(str(getattr(item, "path", "")))
+                _probe_path = str(getattr(item, "path", ""))
+                try:
+                    mime, data = _encode_image(
+                        _probe_path,
+                        max_edge=PROFILE_PROBE_MAX_EDGE,
+                        prefer_jpeg=True,
+                    )
+                except TypeError:
+                    # A one-arg encoder is a legacy double (tests / a patched
+                    # seam): keep it working, just without the cost cap.
+                    mime, data = _encode_image(_probe_path)
             except Exception:
                 continue
             content.append(
