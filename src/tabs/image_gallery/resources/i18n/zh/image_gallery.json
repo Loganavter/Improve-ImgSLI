@@ -75,8 +75,6 @@
       "sample_count_2": "2 次",
       "sample_count_3": "3 次",
       "sample_count_5": "5 次",
-      "sample_count_hint": "每张卡片的图片调用次数：{count} —— 运行次数越多，评分越稳定，成本也变为 {count} 倍；接近的候选仍可能互换名次。",
-      "api_key_warning": "以明文形式存储在本设备上。",
       "api_key_placeholder": "sk-…",
       "model_placeholder": "openrouter/auto 或 vendor/model",
       "tokens_placeholder": "自动"

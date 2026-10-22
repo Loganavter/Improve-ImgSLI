@@ -3,12 +3,13 @@
 The store half landed with ``AiSettings.sample_count`` (choices 1/2/3/5, default
 3, part of the analyze cache identity) but the page had no control — k could
 only be changed by editing the INI by hand. This file pins the control, its
-persistence path, the cost hint, and the four locale payloads.
+persistence path, and the four locale payloads. The cost/accuracy explanation
+is intentionally NOT a caption on the page: it lives in the settings help pages
+(the user asked for a clean form and one place to read the trade-off).
 
-RED BEFORE: the pre-change page had no ``gallery_ai_samples`` combo, no
-``gallery_ai_samples_hint`` caption and no ``sample_count`` key in the settings
-payload reader, so every test here fails on the parent commit with
-``AttributeError`` / ``KeyError``.
+RED BEFORE: the pre-change page had no ``gallery_ai_samples`` combo and no
+``sample_count`` key in the settings payload reader, so every test here fails on
+the parent commit with ``AttributeError`` / ``KeyError``.
 
 Offscreen only and hermetic: the AI-settings + model-cache QSettings groups are
 redirected to throwaway groups, and the page's network/worker/owner seams come
@@ -40,7 +41,6 @@ _SAMPLE_KEYS = (
     "sample_count_2",
     "sample_count_3",
     "sample_count_5",
-    "sample_count_hint",
 )
 
 #: Phrases that would promise a stable ordering. Measured on near-identical
@@ -155,26 +155,6 @@ def test_a_run_count_change_moves_the_apply_identity(dialog):
     assert before != after
 
 
-def test_the_hint_states_the_cost_per_card_and_follows_the_choice(dialog):
-    hint = dialog.gallery_ai_samples_hint
-    default_text = hint.text().lower()
-    assert "image call" in default_text
-    assert "cost" in default_text
-    assert "3" in default_text
-
-    dialog.gallery_ai_samples.setCurrentIndex(_choice_index(5))
-
-    text = dialog.gallery_ai_samples_hint.text().lower()
-    assert "5" in text
-    assert "image call" in text
-
-
-def test_the_hint_never_promises_a_stable_order(dialog):
-    text = dialog.gallery_ai_samples_hint.text().lower()
-    promised = [phrase for phrase in _ORDER_PROMISES if phrase in text]
-    assert not promised, f"the hint promises an order the judge cannot keep: {promised}"
-
-
 def test_the_label_fits_its_text(dialog):
     from PySide6.QtGui import QFontMetrics
 
@@ -183,14 +163,29 @@ def test_the_label_fits_its_text(dialog):
     assert label.width() >= need, (label.text(), label.width(), need)
 
 
-def test_the_control_and_hint_use_the_page_typography(dialog):
-    from plugins.settings.typography import SETTINGS_BODY_PX, SETTINGS_CAPTION_PX
+def test_the_control_uses_the_page_typography(dialog):
+    from plugins.settings.typography import SETTINGS_BODY_PX
 
     assert dialog.gallery_ai_samples.font().pixelSize() == SETTINGS_BODY_PX
-    assert dialog.gallery_ai_samples_hint.font().pixelSize() == SETTINGS_CAPTION_PX
-    # Both live on the AI page — the hint sits under the picker, in the group.
     assert dialog.page_gallery_ai.isAncestorOf(dialog.gallery_ai_samples)
-    assert dialog.page_gallery_ai.isAncestorOf(dialog.gallery_ai_samples_hint)
+
+
+def test_the_page_carries_no_cost_caption(dialog):
+    """The trade-off belongs in the help page, not under the picker."""
+    assert not hasattr(dialog, "gallery_ai_samples_hint")
+    for locale in _LOCALES:
+        assert "sample_count_hint" not in _settings_block(locale), locale
+
+
+@pytest.mark.parametrize("locale", _LOCALES)
+def test_the_help_page_explains_the_run_count(locale):
+    """Every locale's settings help explains what k costs and what it buys."""
+    help_text = (
+        Path(__file__).resolve().parents[3]
+        / "plugins" / "settings" / "resources" / "help" / locale / "settings.md"
+    ).read_text(encoding="utf-8").casefold()
+    assert "runs per card" in help_text or "прогонов" in help_text or "运行次数" in help_text or "execuções" in help_text, locale
+    assert "median" in help_text or "медиан" in help_text or "中位数" in help_text or "mediana" in help_text, locale
 
 
 def test_every_locale_carries_the_same_settings_keys():
@@ -202,11 +197,6 @@ def test_every_locale_carries_the_same_settings_keys():
         for key in _SAMPLE_KEYS:
             value = str(block.get(key) or "").strip()
             assert value, f"{locale}: image_gallery.settings.{key} is empty"
-
-
-@pytest.mark.parametrize("locale", _LOCALES)
-def test_the_hint_keeps_its_count_placeholder(locale):
-    assert "{count}" in _settings_block(locale)["sample_count_hint"]
 
 
 @pytest.mark.parametrize("locale", ("ru", "zh", "pt_BR"))

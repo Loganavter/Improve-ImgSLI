@@ -52,7 +52,7 @@ Image-compare options, always available:
 
 ### Image Gallery — AI {#image-gallery-ai}
 
-AI features in [Image Gallery](help://workspace.image_gallery.triage) use the settings below. A request needs the switch on, an API key, and a model; the key alone is not enough. The key is stored unencrypted on this device.
+AI features in [Image Gallery](help://workspace.image_gallery.triage) use the settings below. A request needs the switch on, an API key, and a model; the key alone is not enough. The key is not written to the app's settings file: it is kept in the system keyring when one is available, otherwise only for the session. Runs per card: an analysis can ask the model 1, 2, 3 or 5 times and takes the median — more runs give steadier scores at a proportionally higher cost, but near-identical variants can still swap places.
 
 - **Enable AI image analysis** — turns the AI features on or off.
 - **API base URL** — the address of the AI service.

@@ -7,9 +7,9 @@ reads/writes its own ``QSettings`` group directly, saved immediately on change.
 
 Caveat, by design: ``QSettings`` stores its values in plaintext on disk (an INI
 file under ``~/.config/<org>/<app>.conf`` on Linux). The API key is therefore
-stored unencrypted, same as every other value in this file — no keyring/OS
-credential-store integration is added in this pass. The settings UI surfaces
-this explicitly (``image_gallery.settings.api_key_warning``).
+**not** kept here: it goes through ``core.secret_store`` (OS keyring, else an
+encrypted machine-bound file, else memory-only for the session) and a plaintext
+value left by an older build is migrated out on the first load.
 """
 
 from __future__ import annotations
@@ -62,6 +62,31 @@ def _parse_float(value, default: float = 0.0) -> float:
         return float(str(value).strip())
     except Exception:
         return default
+
+
+def _load_api_key(settings: QSettings) -> str:
+    """The provider key, from the secret store; migrates an INI plaintext once.
+
+    Configs written before the key moved out of QSettings still carry
+    ``api_key`` in the group. Move it into ``core.secret_store`` and drop the
+    row, so the plaintext does not survive in the INI (or in its backups).
+    """
+    try:
+        from core import secret_store
+    except Exception:
+        return str(settings.value("api_key", "") or "")
+    try:
+        legacy = str(settings.value("api_key", "") or "")
+    except Exception:
+        legacy = ""
+    if legacy:
+        secret_store.store(legacy)
+        try:
+            settings.remove("api_key")
+        except Exception:
+            pass
+        return legacy
+    return secret_store.load()
 
 
 @dataclass(frozen=True)
@@ -141,7 +166,7 @@ class AiSettingsStore:
             return AiSettings(
                 enabled=str(settings.value("enabled", False)).lower() in ("true", "1"),
                 base_url=str(settings.value("base_url", DEFAULT_BASE_URL) or DEFAULT_BASE_URL),
-                api_key=str(settings.value("api_key", "") or ""),
+                api_key=_load_api_key(settings),
                 model=str(settings.value("model", "") or ""),
                 provider_id=provider_id,
                 provider_models=self._read_provider_models(settings),
@@ -210,6 +235,18 @@ class AiSettingsStore:
             raise ValueError(f"Unknown AI setting field: {name}")
         settings = self._settings()
         try:
+            if name == "api_key":
+                # Never write the key into QSettings: it goes to the secret
+                # store and the INI row is dropped, so an upgraded config does
+                # not leave the previous plaintext behind.
+                from core import secret_store
+
+                secret_store.store(str(value or ""))
+                try:
+                    settings.remove("api_key")
+                except Exception:
+                    pass
+                return
             settings.setValue(name, value)
         finally:
             settings.endGroup()

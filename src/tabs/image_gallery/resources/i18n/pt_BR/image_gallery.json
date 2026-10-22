@@ -75,8 +75,6 @@
       "sample_count_2": "2 execuções",
       "sample_count_3": "3 execuções",
       "sample_count_5": "5 execuções",
-      "sample_count_hint": "Chamadas de imagem por cartão: {count} — mais execuções dão notas mais estáveis com {count}× o custo; quase empates ainda podem trocar de lugar.",
-      "api_key_warning": "Armazenada sem criptografia neste dispositivo.",
       "api_key_placeholder": "sk-…",
       "model_placeholder": "openrouter/auto ou fornecedor/modelo",
       "tokens_placeholder": "auto"

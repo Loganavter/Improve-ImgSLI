@@ -82,15 +82,6 @@ _SAMPLE_COUNT_FALLBACKS = {
     5: "5 runs",
 }
 
-#: Cost/accuracy hint under the draw-count picker. ``{count}`` is the selected
-#: k — the number of image calls ONE card costs. It deliberately stops short of
-#: promising a stable ordering: measured on near-identical variants, the order
-#: still flipped at k=1 (68%), k=2 (61%) and k=3 (54%), so even three draws
-#: cannot order a near-tie series.
-_SAMPLE_COUNT_HINT_FALLBACK = (
-    "Image calls per card: {count} — more runs give steadier scores at "
-    "{count}× the cost; near-ties can still swap places."
-)
 
 #: Named discovery failures → the sentence shown in the discovery combo when
 #: the fetch produced nothing at all. A list that fell back to a cache/curated
@@ -143,8 +134,6 @@ AI_GROUP = group(
     "image_gallery.settings.sample_count_2",
     "image_gallery.settings.sample_count_3",
     "image_gallery.settings.sample_count_5",
-    "image_gallery.settings.sample_count_hint",
-    "image_gallery.settings.api_key_warning",
 )
 SEARCH = SearchIndex.of(AI_GROUP)
 
@@ -252,16 +241,6 @@ def build(dialog, p):  # type: ignore[no-untyped-def]
         return val if isinstance(val, str) and val and val != key else default
 
     group_widget = settings_group(dialog, AI_GROUP)
-    # Title note inside group
-    warning = settings_caption_label(
-        AI_GROUP.text(dialog, "image_gallery.settings.api_key_warning") if hasattr(AI_GROUP, "text") else "Stored unencrypted on this device.",
-        parent=dialog,
-    )
-    try:
-        warning.setWordWrap(True)
-        # muted color via theme token? Keep default; no setStyleSheet
-    except Exception:
-        pass
 
     # Enable AI checkbox
     dialog.gallery_ai_enabled = CheckBox(
@@ -364,6 +343,7 @@ def build(dialog, p):  # type: ignore[no-untyped-def]
         pass
     key_row.addWidget(key_label)
     key_row.addWidget(dialog.gallery_ai_api_key, 1)
+
 
     # Model: the editable value plus the provider's discovered list beside it.
     model_row = QHBoxLayout()
@@ -531,22 +511,6 @@ def build(dialog, p):  # type: ignore[no-untyped-def]
     samples_row.addWidget(samples_label)
     samples_row.addWidget(dialog.gallery_ai_samples, 1)
 
-    def _sample_hint(count: int) -> str:
-        """The cost/accuracy line under the picker, for *count* draws."""
-        template = _tr(
-            "image_gallery.settings.sample_count_hint", _SAMPLE_COUNT_HINT_FALLBACK
-        )
-        try:
-            return template.format(count=int(count))
-        except (KeyError, ValueError, IndexError):
-            return template
-
-    samples_hint = settings_caption_label(_sample_hint(_cur_samples), parent=dialog)
-    try:
-        samples_hint.setWordWrap(True)
-    except Exception:
-        pass
-    dialog.gallery_ai_samples_hint = samples_hint
 
     # One label column for the whole group, sized to the longest translated
     # label — a fixed 150px clipped longer Cyrillic/Portuguese strings.
@@ -584,8 +548,6 @@ def build(dialog, p):  # type: ignore[no-untyped-def]
         group_widget.add_widget(builder.row(effort_row))
         group_widget.add_widget(builder.row(edge_row))
         group_widget.add_widget(builder.row(samples_row))
-        group_widget.add_widget(builder.row(samples_hint))
-        group_widget.add_widget(builder.row(warning))
     else:
         group_widget.add_widget(dialog.gallery_ai_enabled)
         # fallback: add layouts via containers
@@ -604,8 +566,6 @@ def build(dialog, p):  # type: ignore[no-untyped-def]
             w = QWidget()
             w.setLayout(lay)
             group_widget.add_widget(w)
-        group_widget.add_widget(samples_hint)
-        group_widget.add_widget(warning)
 
     layout.addWidget(group_widget)
 
@@ -630,16 +590,12 @@ def build(dialog, p):  # type: ignore[no-untyped-def]
         vlm.set_vlm_max_edge(px)
 
     def _save_samples(index):
-        """Persist the draw count and restate the cost for the new k."""
+        """Persist the draw count (the cost explanation lives in the help page)."""
         try:
             k = SAMPLE_COUNT_CHOICES[int(index)]
         except (IndexError, TypeError, ValueError):
             k = 3
         _save_field("sample_count", k)
-        try:
-            samples_hint.setText(_sample_hint(k))
-        except Exception:
-            pass
 
     # Current provider id (kept so the OLD provider's model is remembered when
     # the combo moves: the text field still holds that model at that moment).

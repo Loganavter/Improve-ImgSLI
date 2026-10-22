@@ -75,8 +75,6 @@
       "sample_count_2": "2 прогона",
       "sample_count_3": "3 прогона",
       "sample_count_5": "5 прогонов",
-      "sample_count_hint": "Вызовов изображения на карточку: {count} — больше прогонов дают устойчивее оценки при {count}× стоимости; близкие варианты всё равно могут поменяться местами.",
-      "api_key_warning": "Хранится на этом устройстве в незашифрованном виде.",
       "api_key_placeholder": "sk-…",
       "model_placeholder": "openrouter/auto или vendor/model",
       "tokens_placeholder": "auto"

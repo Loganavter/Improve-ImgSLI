@@ -75,8 +75,6 @@
       "sample_count_2": "2 runs",
       "sample_count_3": "3 runs",
       "sample_count_5": "5 runs",
-      "sample_count_hint": "Image calls per card: {count} — more runs give steadier scores at {count}× the cost; near-ties can still swap places.",
-      "api_key_warning": "Stored unencrypted on this device.",
       "api_key_placeholder": "sk-…",
       "model_placeholder": "openrouter/auto or vendor/model",
       "tokens_placeholder": "auto"
