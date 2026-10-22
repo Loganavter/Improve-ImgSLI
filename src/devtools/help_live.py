@@ -41,6 +41,13 @@ Rules this tool enforces (each one exists because a real capture lied):
   ``ai_stub`` is the same idea one level up: the local answer server is started
   before boot and closed after the app is gone, and the app profile is seeded
   with its ``base_url`` (never a real endpoint, never a real key).
+* **The display comes from the machine's lease pool when it has one.** The
+  ``/tmp/.X11-unix`` probe is a check, not a reservation: two lanes probing
+  before either socket exists pick the same number. :class:`LiveApp` takes a
+  ``live-lease`` lease, exports its env into the app, binds the app's pid/pgid
+  and releases it on the way out (see :mod:`devtools.live_lease`). A host
+  without the tool keeps the in-process isolation and is told once, on stderr,
+  that its captures are un-leased.
 
 Audit-Meta: pattern=devtool-pipeline size=exempt reason="one live-capture contract: profile seed + app lifecycle + socket client + scenario + stable-capture/crop/install all share the same recipe schema; splitting forks the meaning of a live figure"
 """
@@ -68,6 +75,7 @@ if str(SRC_ROOT) not in sys.path:
 
 from devtools import capture_surface  # noqa: E402  — canonical font/DPI bootstrap
 from devtools import live_fixtures  # noqa: E402  — deterministic inputs, no import side effect
+from devtools import live_lease  # noqa: E402  — the machine's display/control-dir pool
 from devtools.help_figures import (  # noqa: E402
     ManifestError,
     _free_display_number,
@@ -98,9 +106,59 @@ BOOT_TIMEOUT_S = 60.0
 STABLE_ATTEMPTS = 14
 STABLE_INTERVAL_S = 0.7
 
+#: Explicit lease-mode switch for the supervisor's live proofs. Unset = take a
+#: lease when ``live-lease`` is installed, keep the in-process isolation when it
+#: is not; ``1`` forces the lease (and fails loudly without the tool), ``0``
+#: forces the fallback.
+LEASE_MODE_ENV = "IMGSLI_HELP_LIVE_LEASE"
+#: Lane name for the lease pool; the machine's other live lanes use their own.
+LEASE_LANE_ENV = "IMGSLI_HELP_LIVE_LANE"
+DEFAULT_LEASE_LANE = "help-live"
+_LEASE_ON = {"1", "true", "yes", "on"}
+_LEASE_OFF = {"0", "false", "no", "off"}
+#: The fallback notice is a fact about the host, printed once per process so a
+#: nine-figure run does not repeat it nine times (see :func:`_note_legacy_mode`).
+_LEGACY_NOTICE_EMITTED = False
+
 
 class LiveError(RuntimeError):
     """The live app could not be driven or produced no trustworthy frame."""
+
+
+def _lease_mode() -> str:
+    """``lease`` when the host's pool owns this capture's display, else ``legacy``.
+
+    A missing tool is not a silent downgrade: :func:`_note_legacy_mode` names it
+    once, and ``IMGSLI_HELP_LIVE_LEASE=1`` turns the same condition into a hard
+    error so a supervisor's live proof cannot accidentally run un-leased.
+    """
+    raw = os.environ.get(LEASE_MODE_ENV, "").strip().lower()
+    if raw in _LEASE_OFF:
+        return "legacy"
+    if raw in _LEASE_ON:
+        if not live_lease.available():
+            raise LiveError(
+                f"{LEASE_MODE_ENV}=1 but live-lease is not available; install it "
+                "or set the override to 0 to use the in-process fallback"
+            )
+        return "lease"
+    if raw:
+        raise LiveError(f"{LEASE_MODE_ENV}={raw!r} is not a boolean (0 or 1)")
+    return "lease" if live_lease.available() else "legacy"
+
+
+def _note_legacy_mode() -> None:
+    """Say once that this capture is un-leased and can collide with a peer."""
+    global _LEGACY_NOTICE_EMITTED
+    if _LEGACY_NOTICE_EMITTED:
+        return
+    _LEGACY_NOTICE_EMITTED = True
+    print(
+        "WARN help-live: live-lease not available — using in-process isolation "
+        "(display probe + private XDG dirs); two concurrent captures can pick "
+        "the same display number",
+        file=sys.stderr,
+    )
 
 
 @dataclass(frozen=True)
@@ -308,6 +366,7 @@ def write_profile(
     height: int,
     rhi_backend: str = "opengl",
     extra_sections: dict[str, dict[str, str]] | None = None,
+    config_home: Path | None = None,
 ) -> Path:
     """Seed QSettings before boot (theme, language, UI mode, window geometry).
 
@@ -316,12 +375,18 @@ def write_profile(
     without a live theme/language rebuild (measured: ``set_theme`` /
     ``set_language`` answer ``applied`` but the open window does not repaint).
 
+    *config_home* is the ``XDG_CONFIG_HOME`` the app will actually see. Under a
+    lease that is the lease's config dir, so no settings are written outside it;
+    the fallback leaves it ``None`` and uses the harness root's own ``config``.
+
     *extra_sections* appends further INI sections (``{group: {key: value}}``),
     which is how a figure points a QSettings-group setting (the Image Gallery
     Ask AI endpoint) at the local fixture instead of a real host — one write,
     before the app reads it, exactly as a user's own config would arrive.
     """
-    profile = root / "config" / "improve-imgsli" / "improve-imgsli.conf"
+    profile = (config_home if config_home is not None else root / "config") / (
+        "improve-imgsli"
+    ) / "improve-imgsli.conf"
     profile.parent.mkdir(parents=True, exist_ok=True)
     text = (
         "[General]\n"
@@ -420,11 +485,22 @@ class LiveClient:
 
 
 class LiveApp:
-    """One private app instance on a private Xvfb with a seeded profile."""
+    """One private app instance on a leased X display with a seeded profile.
+
+    ``self.lease`` names the pool lease that owns this capture's display, the
+    four XDG dirs and the control dir (:mod:`devtools.live_lease`); a caller may
+    inject one (tests, a supervisor's proof) and otherwise one is taken when the
+    host has the tool. Without the tool the harness keeps its own isolation —
+    private Xvfb, probe-picked display, dirs under :attr:`root` — and says once
+    that the capture is un-leased. Either way teardown releases the lease, so a
+    failed capture never leaves a lease (or an app process) behind.
+    """
 
     def __init__(self, *, backend: str, out_dir: Path, locale: str, theme: str,
                  width: int, height: int, rhi_backend: str = "opengl",
-                 profile_sections: dict[str, dict[str, str]] | None = None) -> None:
+                 profile_sections: dict[str, dict[str, str]] | None = None,
+                 lane: str | None = None, task: str | None = None,
+                 lease: live_lease.Lease | None = None) -> None:
         self.backend = backend
         self.out_dir = Path(out_dir)
         self.locale = locale
@@ -437,16 +513,129 @@ class LiveApp:
         for name in ("data", "cache", "config", "run", "artifacts"):
             (self.root / name).mkdir(parents=True, exist_ok=True)
         os.chmod(self.root / "run", 0o700)
+        self.lane = lane or (os.environ.get(LEASE_LANE_ENV, "").strip()
+                             or DEFAULT_LEASE_LANE)
+        #: The lease pool's task label: which figure cell holds the display.
+        self.task = task or f"help-figures-live:{locale}/{theme}"
+        #: The lease this capture runs under (injected or acquired on enter).
+        self.lease = lease
         self._display_proc: subprocess.Popen | None = None
         self._app_proc: subprocess.Popen | None = None
         self._previous_display: str | None = None
+        self._display_touched = False
         self.client: LiveClient | None = None
 
     def __enter__(self) -> "LiveApp":
+        try:
+            self._start()
+        except BaseException:
+            # A boot that raised still owns what it acquired (app process,
+            # Xvfb, lease, DISPLAY): release it before the error leaves here.
+            self._stop()
+            raise
+        return self
+
+    def _start(self) -> None:
+        mode = "lease" if self.lease is not None else _lease_mode()
+        if mode == "legacy":
+            _note_legacy_mode()
+        env = dict(os.environ)
+        home = self.root / "home"
+        home.mkdir(parents=True, exist_ok=True)
+        env.update(HOME=str(home), QT_QPA_PLATFORM="xcb",
+                   LIBGL_ALWAYS_SOFTWARE="1")
+        if mode == "lease":
+            display, config_home, socket_path = self._lease_isolation(env)
+        else:
+            display, config_home, socket_path = self._process_isolation(env)
+
+        self._previous_display = os.environ.get("DISPLAY")
+        self._display_touched = True
+        os.environ["DISPLAY"] = display
+        env["DISPLAY"] = display
         write_profile(self.root, locale=self.locale, theme=self.theme,
                       width=self.width, height=self.height,
                       rhi_backend=self.rhi_backend,
-                      extra_sections=self.profile_sections)
+                      extra_sections=self.profile_sections,
+                      config_home=config_home)
+        log = (self.root / "app.log").open("w", encoding="utf-8")
+        # A lease owns the app's process group: the app must not share the
+        # harness's group, or releasing the lease would kill the harness.
+        self._app_proc = subprocess.Popen(
+            [sys.executable, "src/__main__.py"],
+            cwd=str(REPO_ROOT), env=env, stdout=log, stderr=subprocess.STDOUT,
+            start_new_session=mode == "lease",
+        )
+        if self.lease is not None:
+            pid = self._app_proc.pid
+            try:
+                self.lease.bind(pid=pid, pgid=os.getpgid(pid))
+            except OSError as exc:
+                raise LiveError(
+                    f"could not bind the app to lease {self.lease.id}: {exc}"
+                ) from exc
+
+        deadline = time.monotonic() + BOOT_TIMEOUT_S
+        while True:
+            if self._app_proc.poll() is not None:
+                raise LiveError(f"app exited during boot (log: {self.root / 'app.log'})")
+            if socket_path.exists():
+                try:
+                    self.client = LiveClient(socket_path)
+                    self.client.call("ping")
+                    break
+                except (OSError, LiveError):
+                    self.client = None
+            if time.monotonic() > deadline:
+                raise LiveError("app did not expose the control socket in time")
+            time.sleep(0.2)
+
+    def _lease_isolation(self, env: dict[str, str]) -> tuple[str, Path | None, Path]:
+        """Take (or use) a lease and fold its env into the child's environment.
+
+        The lease env is the only supported way to learn where the app's dirs
+        live: exporting it into the child is what keeps settings, caches and the
+        control socket inside the lease instead of under this harness root.
+        """
+        backend_display: str | None = None
+        if self.backend == "native":
+            backend_display = (os.environ.get("DISPLAY") or "").strip()
+            if not backend_display:
+                raise LiveError("backend 'native' needs DISPLAY")
+        if self.lease is None:
+            self.lease = live_lease.alloc(
+                self.lane, self.task,
+                display=backend_display,
+                no_xvfb=self.backend == "native",
+            )
+        lease_env = self.lease.env
+        display = (lease_env.get("DISPLAY") or backend_display or "").strip()
+        if not display:
+            raise LiveError(
+                f"lease {self.lease.id} did not export DISPLAY "
+                f"(contract keys: {', '.join(live_lease.EXPORTED_KEYS)})"
+            )
+        env.update(lease_env)
+        # HOME and the artifact dir stay harness-owned: the lease owns the
+        # display + XDG dirs + control dir, not the profile's home or captures.
+        env["IMGSLI_CONTROL"] = "1"
+        env["IMGSLI_MCP_ARTIFACTS"] = str(self.root / "artifacts")
+        config_home = (lease_env.get("XDG_CONFIG_HOME") or "").strip()
+        control_dir = (lease_env.get("IMGSLI_CONTROL_DIR") or "").strip()
+        if not control_dir:
+            # ``discovery.runtime_dir`` falls back to XDG_RUNTIME_DIR, so the
+            # lease env must name one of the two for the socket to be findable.
+            control_dir = (lease_env.get("XDG_RUNTIME_DIR") or "").strip()
+        if not control_dir:
+            raise LiveError(
+                f"lease {self.lease.id} named no control dir (IMGSLI_CONTROL_DIR "
+                "or XDG_RUNTIME_DIR)"
+            )
+        socket_path = Path(control_dir).expanduser() / "control.sock"
+        return display, (Path(config_home).expanduser() if config_home else None), socket_path
+
+    def _process_isolation(self, env: dict[str, str]) -> tuple[str, None, Path]:
+        """The no-lease fallback: a probe-picked private Xvfb, dirs under root."""
         if self.backend == "xvfb":
             if shutil.which("Xvfb") is None:
                 raise LiveError("Xvfb not found on PATH")
@@ -465,15 +654,7 @@ class LiveApp:
             display = (os.environ.get("DISPLAY") or "").strip()
             if not display:
                 raise LiveError("backend 'native' needs DISPLAY")
-        self._previous_display = os.environ.get("DISPLAY")
-        os.environ["DISPLAY"] = display
-        env = dict(os.environ)
-        home = self.root / "home"
-        home.mkdir(parents=True, exist_ok=True)
         env.update(
-            HOME=str(home),
-            QT_QPA_PLATFORM="xcb",
-            LIBGL_ALWAYS_SOFTWARE="1",
             XDG_DATA_HOME=str(self.root / "data"),
             XDG_CACHE_HOME=str(self.root / "cache"),
             XDG_CONFIG_HOME=str(self.root / "config"),
@@ -481,48 +662,62 @@ class LiveApp:
             IMGSLI_CONTROL="1",
             IMGSLI_MCP_ARTIFACTS=str(self.root / "artifacts"),
         )
-        log = (self.root / "app.log").open("w", encoding="utf-8")
-        self._app_proc = subprocess.Popen(
-            [sys.executable, "src/__main__.py"],
-            cwd=str(REPO_ROOT), env=env, stdout=log, stderr=subprocess.STDOUT,
-        )
-        socket_path = self.root / "run" / "control.sock"
-        deadline = time.monotonic() + BOOT_TIMEOUT_S
-        while True:
-            if self._app_proc.poll() is not None:
-                raise LiveError(f"app exited during boot (log: {self.root / 'app.log'})")
-            if socket_path.exists():
-                try:
-                    self.client = LiveClient(socket_path)
-                    self.client.call("ping")
-                    break
-                except (OSError, LiveError):
-                    self.client = None
-            if time.monotonic() > deadline:
-                raise LiveError("app did not expose the control socket in time")
-            time.sleep(0.2)
-        return self
+        return display, None, self.root / "run" / "control.sock"
 
     def __exit__(self, *exc) -> None:
+        self._stop()
+
+    def _stop(self) -> None:
+        """Idempotent teardown: processes, then the lease, then the saved DISPLAY.
+
+        The lease release sits in the ``finally``: a teardown that fails on the
+        app process must not leave the pool believing the display is still held.
+        """
+        try:
+            self._stop_processes()
+        finally:
+            self._release_lease()
+            self._restore_display()
+
+    def _stop_processes(self) -> None:
         if self.client is not None:
             self.client.close()
-        if self._app_proc is not None and self._app_proc.poll() is None:
-            self._app_proc.terminate()
+            self.client = None
+        app_proc, self._app_proc = self._app_proc, None
+        if app_proc is not None and app_proc.poll() is None:
+            app_proc.terminate()
             try:
-                self._app_proc.wait(timeout=10)
+                app_proc.wait(timeout=10)
             except subprocess.TimeoutExpired:
-                self._app_proc.kill()
-                self._app_proc.wait(timeout=5)
-        if self._display_proc is not None:
-            self._display_proc.terminate()
+                app_proc.kill()
+                app_proc.wait(timeout=5)
+        display_proc, self._display_proc = self._display_proc, None
+        if display_proc is not None:
+            display_proc.terminate()
             try:
-                self._display_proc.wait(timeout=5)
+                display_proc.wait(timeout=5)
             except subprocess.TimeoutExpired:
-                self._display_proc.kill()
+                display_proc.kill()
+
+    def _release_lease(self) -> None:
+        if self.lease is None:
+            return
+        try:
+            self.lease.release()
+        except Exception as exc:  # noqa: BLE001 - reported, never masks exc
+            # A teardown failure must not replace the capture's own error; the
+            # lease TTL is the backstop for an unreleased lease.
+            print(f"WARN help-live: lease {self.lease.id} not released: {exc}",
+                  file=sys.stderr)
+
+    def _restore_display(self) -> None:
+        if not self._display_touched:
+            return
         if self._previous_display is None:
             os.environ.pop("DISPLAY", None)
         else:
             os.environ["DISPLAY"] = self._previous_display
+        self._display_touched = False
 
 
 # --- scenario + capture -------------------------------------------------------
