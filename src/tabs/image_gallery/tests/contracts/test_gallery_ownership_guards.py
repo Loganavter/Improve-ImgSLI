@@ -187,8 +187,9 @@ ALLOWLIST: dict[tuple[str, int], str] = {
     ("src/tabs/image_gallery/ui/widget_parts/triage_actions.py", 62): (
         "moved compare-finalists action calls owner._owner_for_triage (self→owner rename, plan Part B Wave 4)"
     ),
-    ("src/tabs/image_gallery/ui/widget_parts/triage_actions.py", 394): (
-        "moved show_clean_review calls owner._owner_for_triage (self→owner rename, plan Part B Wave 4)"
+    ("src/tabs/image_gallery/ui/widget_parts/triage_actions.py", 423): (
+        "moved show_clean_review calls owner._owner_for_triage (self→owner rename, plan Part B Wave 4;"
+        " line shifted by the sort-on-rebuild block, gallery follow-up 2026-10-22)"
     ),
     # --- storeless setattr fallback (R4) ---
     ("src/tabs/image_gallery/ui/quick_look_hooks.py", 97): (

@@ -250,6 +250,35 @@ def set_triage(owner, series, mode, source) -> None:
     except Exception:
         norm_series = []
 
+    # Sorting is a VIEW property: re-apply the toolbar's CURRENT sort on every
+    # (re)build, not only when the combo changes. A fresh folder/list used to
+    # ignore the selected sort until the user toggled it (owner report
+    # 2026-10-22). Idempotent — ``_on_sort_changed`` sorts, then calls here.
+    try:
+        from tabs.image_gallery.ui.widget_parts import view_prefs as _vp
+
+        _keyfunc = _vp.sort_keyfunc(owner, _vp.current_sort_text(owner))
+        if _keyfunc is not None:
+            norm_series = _vp.sort_series(owner, norm_series, _keyfunc)
+            try:
+                _members = {str(it.path) for cl in norm_series for it in cl}
+            except Exception:
+                _members = set()
+            try:
+                _tail = [
+                    it for it in list(owner._items or ())
+                    if str(getattr(it, "path", "")) not in _members
+                ]
+            except Exception:
+                _tail = []
+            try:
+                owner._items = [it for cl in norm_series for it in cl] + _vp.sort_items(
+                    owner, _tail, _keyfunc
+                )
+            except Exception:
+                pass
+    except Exception:
+        pass
     try:
         owner._series = list(norm_series)
     except Exception:

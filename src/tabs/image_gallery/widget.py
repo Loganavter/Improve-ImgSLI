@@ -580,12 +580,17 @@ class ImageGalleryWidget(QWidget):
 
         return view_prefs.paint_event(self, event)
 
-    def apply_view_prefs(self, *, view_list: bool, judgment_domain: str) -> None:
+    def apply_view_prefs(
+        self, *, view_list: bool, judgment_domain: str, sort_index=None
+    ) -> None:
         """Thin delegator to ``ui/widget_parts.view_prefs.apply_view_prefs``."""
         from tabs.image_gallery.ui.widget_parts import view_prefs
 
         return view_prefs.apply_view_prefs(
-            self, view_list=view_list, judgment_domain=judgment_domain
+            self,
+            view_list=view_list,
+            judgment_domain=judgment_domain,
+            sort_index=sort_index,
         )
 
     # -- card interaction -------------------------------------------------

@@ -307,3 +307,31 @@ __all__ = [
     "read_axes",
     "read_axis",
 ]
+
+#: ``analysis_source`` tokens — imported instead of literal comparisons so the
+#: analysis-engine gate (G10) keeps ONE domain-decision site.
+SOURCE_AI = "ai"
+SOURCE_LOCAL = "local"
+
+
+def analysis_source(item) -> str:
+    """Who produced this item's report: ``"ai"``, ``"local"`` or ``""``.
+
+    The per-card provenance marker (owner request 2026-10-22): a card can be
+    analyzed by the VLM (an ``AiAnalysisResult`` is present) or by the local
+    detectors (only ``metrics`` are present). The read path keeps this decision
+    here — the UI never reads ``item.metrics``/``item.analysis`` directly
+    (``tests/contracts/test_analysis_no_raw_metric_reads.py``).
+    """
+    try:
+        if getattr(item, "analysis", None) is not None:
+            return SOURCE_AI
+    except Exception:
+        pass
+    try:
+        metrics = getattr(item, "metrics", None)
+        if metrics:
+            return SOURCE_LOCAL
+    except Exception:
+        pass
+    return ""

@@ -433,6 +433,34 @@ def _gallery_activity_overlay(painter, ctx) -> None:  # type: ignore[no-untyped-
     paint_item_activity(painter, widget, box, corner="top_right")
 
 
+
+def _provenance_overlay(painter, ctx) -> None:  # type: ignore[no-untyped-def]
+    """Per-card source marker ("AI"/"ALG") at the cover's bottom-left.
+
+    Owner request 2026-10-22: the card should say who analyzed it. The decision
+    lives in ``analysis.read.analysis_source`` (ui/ never reads raw metrics);
+    ``ui.card.provenance`` owns the drawing so grid and list cannot drift.
+    """
+    from PySide6.QtCore import QRectF
+
+    from tabs.image_gallery.ui.card import GALLERY_COVER_H
+    from tabs.image_gallery.ui.card.provenance import paint_source_marker
+
+    widget = getattr(ctx, "widget", None)
+    rect = getattr(ctx, "rect", None)
+    item = getattr(widget, "_gallery_item", None)
+    if widget is None or rect is None or item is None:
+        return
+    inset = float(scaled_px(8))
+    box = QRectF(
+        rect.x() + inset,
+        rect.y() + inset,
+        float(rect.width()) - 2.0 * inset,
+        float(scaled_px(GALLERY_COVER_H)),
+    )
+    paint_source_marker(painter, box, item, translate=getattr(widget, "_gallery_translate", None))
+
+
 def _gallery_card_overlay_painter(painter, ctx, tm) -> None:  # type: ignore[no-untyped-def]
     """Combined card overlay: shelf-style hover wash first, then dots/badge."""
     try:
@@ -445,6 +473,10 @@ def _gallery_card_overlay_painter(painter, ctx, tm) -> None:  # type: ignore[no-
         pass
     try:
         _gallery_activity_overlay(painter, ctx)
+    except Exception:
+        pass
+    try:
+        _provenance_overlay(painter, ctx)
     except Exception:
         pass
     try:
