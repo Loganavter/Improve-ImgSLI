@@ -36,7 +36,7 @@ Commands and facilities wired for automated assistants:
 
 | Tool | Command / env | Purpose |
 |---|---|---|
-| cloc | `./launcher.sh context --cloc-only` | Per-directory code stats for Improve-ImgSLI + `sli-ui-toolkit` → `cloc.txt` (gitignored), full tree expansion. `--toolkit-dir DIR` if the sibling checkout is not auto-found. |
+| cloc | `./launcher.sh context --cloc-only` | Per-directory code stats for Improve-ImgSLI + `sli-ui-toolkit` → `cloc.txt` (gitignored), full tree expansion. `--toolkit-dir DIR` (or `SLI_TOOLKIT_DIR`) if the sibling checkout is not auto-found. |
 | Contract tests | `./launcher.sh test tests/contracts -q` | Fast AST/architecture dogmas — run before large refactors. See `tests/contracts/_framework.py`. |
 | Runtime tracer | `IMGSLI_TRACE=1` or `./launcher.sh run --debug` | Causal chain across dispatch / EventBus / render. Output: `~/.local/share/ImproveImgSLI/trace.jsonl`. See [docs/dev/TRACING.md](docs/dev/TRACING.md). |
 | UI inspector | `./launcher.sh run --ui-inspector` | In-app widget, palette, theme-token, QSS diagnostics. See [docs/dev/UI_INSPECTOR.md](docs/dev/UI_INSPECTOR.md). |
