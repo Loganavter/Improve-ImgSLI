@@ -70,7 +70,11 @@
       "effort_none": "Без",
       "vlm_max_edge": "Уменьшение изображений (макс. сторона)",
       "downscale_original": "Оригинал",
-      "api_key_warning": "Хранится на этом устройстве в незашифрованном виде.",
+      "sample_count": "Прогонов на карточку",
+      "sample_count_1": "1 прогон",
+      "sample_count_2": "2 прогона",
+      "sample_count_3": "3 прогона",
+      "sample_count_5": "5 прогонов",
       "api_key_placeholder": "sk-…",
       "model_placeholder": "openrouter/auto или vendor/model",
       "tokens_placeholder": "auto"

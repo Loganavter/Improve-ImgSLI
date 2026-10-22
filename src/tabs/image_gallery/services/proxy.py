@@ -39,17 +39,18 @@ would prefer.
 
 Pure + Qt-free (safe for ``GenericWorker``); no Store/EventBus writes.
 
-INTERFACE: ``PROXY_MAX_EDGE``, ``PROXY_CACHE_LIMIT``, ``Proxy``,
-``proxy_for``, ``clear_proxy_cache``, ``run_proxy_stages_sync``. The
-record→legacy-dict bridge is ``services.analysis_bridge`` (W14); the artifact
-catalog fallback (``_analyze_artifacts_full_res``) is the only legacy stage
-call this module still makes, and only as that documented exception.
+INTERFACE: ``PROXY_MAX_EDGE``, ``PROXY_CACHE_LIMIT``, ``Proxy``, ``proxy_for``,
+``clear_proxy_cache``, ``run_proxy_stages_sync`` (``cancel`` = the preemption
+seam). The record→legacy-dict bridge is ``services.analysis_bridge`` (W14); the
+artifact catalog fallback (``_analyze_artifacts_full_res``) is the only legacy
+stage call this module still makes, and only as that documented exception.
 """
 
 from __future__ import annotations
 
 import logging
 import os
+import time
 from pathlib import Path
 from typing import NamedTuple
 
@@ -67,6 +68,7 @@ PROXY_MAX_EDGE = 1024
 PROXY_CACHE_LIMIT = 96
 
 _PROXY_CACHE_LIMIT = PROXY_CACHE_LIMIT  # backwards-compat alias; single bound owned here.
+
 
 
 class Proxy(NamedTuple):
@@ -267,9 +269,21 @@ def _warn_stage_without_numbers(own, stage, axes, by_axis, *, warned: set) -> No
     )
 
 
+def _should_stop(index: int, cancel) -> bool:
+    """Pool slice every 2 items (a 50-file chunk is ONE job); stop on ``cancel()``."""
+    if not index or index % 2:
+        return False
+    time.sleep(0)
+    try:
+        return bool(cancel()) if cancel is not None else False
+    except Exception:
+        return False
+
+
 def run_proxy_stages_sync(
     items: list,
     source_path: Path | str | None,
+    cancel=None,
     *,
     include_camera: bool = False,
     full_res_artifacts: bool = False,
@@ -288,19 +302,18 @@ def run_proxy_stages_sync(
     and measured (fail-closed per item, path-keyed, never copied between items).
     The controller still owns delivery (wave B).
 
-    ``full_res_artifacts`` (wave A3): when True the artifact catalog runs
-    tiled over a full-resolution ``TiledPixelStore`` per item instead of the
-    bounded proxy, so the 8x8 block grid and thin chroma rims survive. One
-    full-res ``source_store`` is built per call and reused across items;
-    fidelity/camera still consume the bounded proxy (inputs unchanged). Any
-    per-item failure building/using the full-res store fails open to the
-    proxy catalog. Default ``False`` is the proxy path.
+    ``full_res_artifacts`` (wave A3): run the artifact catalog tiled over a
+    full-resolution ``TiledPixelStore`` per item (8x8 block grid, thin chroma
+    rims), with ONE ``source_store`` per call; fidelity/camera keep the bounded
+    proxy. A store that cannot be opened fails open to the proxy catalog.
 
-    That same item store is handed to the engine (W14), so the artifact records
-    and the entry's tiled severities are ONE computation rather than two
-    catalogs that disagree. The tiled call still runs when no store could be
-    opened, or when the artifact records are unusable — the ONE retained
-    fallback (P9b).
+    ``cancel`` (optional callable) is the per-item generation check the caller
+    owns (``not owner._is_current_folder_gen(gen)``); the pass yields every two
+    items and stops at the first boundary where it is true.
+
+    That item store is handed to the engine (W14), so records and tiled
+    severities are ONE computation; the tiled call still runs when no store
+    opened or the records are unusable — the ONE retained fallback (P9b).
     """
     from tabs.image_gallery.services import analysis_bridge as bridge
     from tabs.image_gallery.services.artifacts import analyze_images
@@ -317,7 +330,12 @@ def run_proxy_stages_sync(
     if full_res_artifacts and source_path is not None:
         source_store = _open_full_res_store(source_path)
     try:
-        for it in items or []:
+        for index, it in enumerate(items or []):
+            # Preemption seam: sleep(0) releases the GIL for a scroll's visible
+            # thumbnails; the generation check drops a folder already left.
+            if _should_stop(index, cancel):
+                logger.debug("proxy batch: stopped at item %d (generation moved)", index)
+                break
             try:
                 own = Path(getattr(it, "path"))
             except Exception:
@@ -401,13 +419,11 @@ def run_proxy_stages_sync(
                     entry["artifacts"] = rebuilt["artifacts"]
                 else:
                     # THE ONE RETAINED LEGACY FALLBACK (P9b). Deliberately NOT
-                    # the same rule as camera/fidelity: an absent artifact entry
-                    # renders as ``clean`` in the UI
-                    # (``quality_read.domain_artifact_severity``), so a producer
-                    # failure would look like "nothing wrong" instead of a
-                    # failure. The catalog is therefore recomputed here over the
-                    # same pixels. Every other stage stays a gap, because a
-                    # missing number is visibly missing.
+                    # the camera/fidelity rule: an absent artifact entry renders
+                    # as ``clean`` (``quality_read.domain_artifact_severity``),
+                    # so a producer failure would look like "nothing wrong" —
+                    # the catalog is recomputed over the same pixels. Every other
+                    # stage stays a gap: a missing number is visibly missing.
                     if records is None or artifacts_from_records:
                         _warn_stage_without_numbers(
                             own, "artifacts", bridge.ARTIFACT_AXES, by_axis, warned=warned

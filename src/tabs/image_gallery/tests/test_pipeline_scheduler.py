@@ -271,7 +271,8 @@ def test_kill_switches_skip_proxy_stages(monkeypatch, qtbot) -> None:
 
     calls: list = []
 
-    def _fake(items, source, *, include_camera=False, full_res_artifacts=False):
+    # ``cancel`` rides the real seam (proxy_pass passes the generation check).
+    def _fake(items, source, *, include_camera=False, full_res_artifacts=False, cancel=None):
         calls.append((len(items), source, include_camera))
         return {}
 
@@ -306,7 +307,8 @@ def test_proxy_chunking_and_progress(monkeypatch, qtbot) -> None:
 
     calls: list[tuple[int, object, bool]] = []
 
-    def _fake(items, source, *, include_camera=False, full_res_artifacts=False):
+    # ``cancel`` rides the real seam (proxy_pass passes the generation check).
+    def _fake(items, source, *, include_camera=False, full_res_artifacts=False, cancel=None):
         calls.append((len(items), source, include_camera))
         return {}
 
@@ -339,7 +341,8 @@ def test_proxy_delivery_applies_strictly_by_path(monkeypatch, qtbot) -> None:
     items = _items(3, tag="own")
     ghost = str(Path("/gallery/ghost.png"))
 
-    def _fake(batch, source, *, include_camera=False, full_res_artifacts=False):
+    # ``cancel`` rides the real seam (proxy_pass passes the generation check).
+    def _fake(batch, source, *, include_camera=False, full_res_artifacts=False, cancel=None):
         out = {}
         for it in batch:
             key = str(it.path)

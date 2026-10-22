@@ -70,7 +70,11 @@
       "effort_none": "Nenhum",
       "vlm_max_edge": "Redução da imagem (lado maior)",
       "downscale_original": "Original",
-      "api_key_warning": "Armazenada sem criptografia neste dispositivo.",
+      "sample_count": "Execuções por cartão",
+      "sample_count_1": "1 execução",
+      "sample_count_2": "2 execuções",
+      "sample_count_3": "3 execuções",
+      "sample_count_5": "5 execuções",
       "api_key_placeholder": "sk-…",
       "model_placeholder": "openrouter/auto ou fornecedor/modelo",
       "tokens_placeholder": "auto"

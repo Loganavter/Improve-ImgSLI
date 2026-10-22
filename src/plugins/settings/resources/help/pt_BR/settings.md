@@ -52,7 +52,7 @@ Opções de comparação de imagens, sempre disponíveis:
 
 ### Galeria — IA {#image-gallery-ai}
 
-Os recursos de IA na [Galeria](help://workspace.image_gallery.triage) usam as configurações abaixo. Uma requisição precisa do interruptor ligado, de uma chave de API e de um modelo; a chave sozinha não basta. A chave é armazenada sem criptografia neste dispositivo.
+Os recursos de IA na [Galeria](help://workspace.image_gallery.triage) usam as configurações abaixo. Uma requisição precisa do interruptor ligado, de uma chave de API e de um modelo; a chave sozinha não basta. A chave não é gravada no arquivo de configurações: ela fica no chaveiro do sistema quando disponível e, caso contrário, apenas durante a sessão. Execuções por cartão: a análise pode consultar o modelo 1, 2, 3 ou 5 vezes e usa a mediana — mais execuções dão notas mais estáveis com custo proporcionalmente maior, mas quase empates ainda podem trocar de lugar.
 
 - **Ativar análise de imagem por IA** — liga ou desliga os recursos de IA.
 - **URL base da API** — o endereço do serviço de IA.
@@ -60,6 +60,7 @@ Os recursos de IA na [Galeria](help://workspace.image_gallery.triage) usam as co
 - **Nome do modelo** — o modelo que a IA usa nas requisições.
 - **Orçamento de tokens da resposta** e **Esforço de raciocínio** — limites da resposta: o teto de tokens (vazio = automático) e o quanto o modelo raciocina antes de responder.
 - **Redução da imagem (lado maior)** — o lado maior enviado ao modelo; **Original** mantém os bytes do próprio arquivo.
+- **Execuções por cartão** — quantas avaliações independentes cada cartão recebe (1, 2, 3 ou 5). Cada execução é outra chamada de imagem, então mais execuções dão notas mais estáveis a um custo proporcionalmente maior; quase empates ainda podem trocar de lugar mesmo com 5.
 
 ### Teclado {#keyboard}
 

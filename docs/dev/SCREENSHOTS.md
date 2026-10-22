@@ -287,6 +287,11 @@ per-figure tools.
 
 Rules (each exists because a live capture lied):
 
+- **A capture runs under a `live-lease`, never a bare `:0`.** `help_live` takes
+  a lease from the machine's pool (`src/devtools/live_lease.py`; one per capture
+  since app PR #594), exports its env into the app, binds the app's pid/pgid and
+  releases it on the way out — the display probe is a check, not a reservation,
+  so two lanes that both "see a free number" collide.
 - **Isolate all four XDG dirs, not three.** `XDG_CONFIG_HOME` is where
   `QSettings` keeps theme/language/window geometry — a recon that isolated only
   DATA/CACHE/RUNTIME read the host's settings.

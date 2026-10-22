@@ -25,10 +25,10 @@ from typing import Any, Callable
 
 from . import discovery, elements as element_inventory, jobs
 from .capture import capture_live_png
-from .discovery import MethodError, parse_key_sequence
+from .discovery import MethodError
 from .drop_routing import accepts_paths, drop_hint, open_folder_into, route_paths
 from .live_verbs import LiveVerbMethodsMixin, _HeldPress, _pause, show_properties_dialog
-from .nav_keys import NavMethodsMixin
+from .nav_keys import NavMethodsMixin, press_keys_into
 
 #: Minimum-level filter ladder, mirroring the MCP ``read_log`` semantics.
 _LEVELS = ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
@@ -473,28 +473,17 @@ class ControlHandlers(
 
         ``target`` (an id from ``ui_elements``) aims it at that widget instead:
         canvases are not in the window's focus chain (details in
-        ``elements.resolve.key_target``).
+        ``elements.resolve.key_target``). The window is made OS-active first and
+        the call refuses when it still is not — see ``nav_keys.press_keys_into``
+        (complaint mcp-c-015).
         """
-        from PySide6.QtTest import QTest
-
-        sequence = parse_key_sequence(params.get("keys"))
-        target = element_inventory.key_target(
-            self._registry(),
-            params.get("target"),
-            fallback=element_inventory.focus_target(self._app, self._window),
+        return press_keys_into(
+            registry=self._registry(),
+            app=self._app,
+            window=self._window,
+            keys=params.get("keys"),
+            target_id=params.get("target"),
         )
-        if target is None:
-            raise MethodError(
-                "no live window to receive keys",
-                "focus a window first (e.g. run_action platform.settings)",
-            )
-        for key, modifiers, _label in sequence:
-            QTest.keyClick(target, key, modifiers)
-        return {
-            "pressed": [label for _key, _mods, label in sequence],
-            "count": len(sequence),
-            "target": type(target).__name__,
-        }
 
 #: The frozen method surface: one entry per MCP tool, built after the class body.
 ControlHandlers._DISPATCH = {name: getattr(ControlHandlers, name) for name in METHODS}

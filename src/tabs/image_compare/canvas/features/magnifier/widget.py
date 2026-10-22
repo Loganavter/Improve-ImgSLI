@@ -227,6 +227,10 @@ MAGNIFIER_COMMAND_ALIASES = (
     CanvasFeatureCommandAlias("overlay.all_states", "query.all_states"),
     CanvasFeatureCommandAlias("overlay.behavior_settings", "query.behavior_settings"),
     CanvasFeatureCommandAlias("overlay.active_combined", "query.active_combined"),
+    CanvasFeatureCommandAlias("overlay.scene_graph", "query.scene_graph"),
+    CanvasFeatureCommandAlias(
+        "overlay.refresh_scene_graph", "runtime.refresh_scene_graph"
+    ),
     CanvasFeatureCommandAlias(
         "overlay.active_divider_color", "query.active_divider_color"
     ),

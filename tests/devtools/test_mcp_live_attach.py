@@ -18,7 +18,9 @@ from __future__ import annotations
 
 import json
 import os
+import signal
 import socket
+import subprocess
 import sys
 import threading
 import time
@@ -31,10 +33,12 @@ MCP_DIR = REPO_ROOT / "mcp-server"
 if str(MCP_DIR) not in sys.path:
     sys.path.insert(0, str(MCP_DIR))
 
+from app import catalog  # noqa: E402
 from app.backend import AppBackend  # noqa: E402
 from app.live import (  # noqa: E402
     CONTROL_DIR_ENV,
     CONTROL_SOCKET_NAME,
+    INFLIGHT_NOTE_NAME,
     NOT_SENT,
     READ_RETRY_BUDGET,
     SENT_NO_REPLY,
@@ -43,10 +47,12 @@ from app.live import (  # noqa: E402
     LiveClient,
     LiveError,
     LiveUnavailable,
+    control_dirs,
     discover_socket,
+    summarize_request_params,
 )
 from app.protocol import MCPProtocol  # noqa: E402
-from app.process_policy import PRESERVED_LOG_NAME  # noqa: E402
+from app.process_policy import PRESERVED_LOG_NAME, process_report  # noqa: E402
 
 #: Handler sentinel: close the connection without answering (transport fault).
 CLOSE = object()
@@ -155,7 +161,13 @@ def default_handler(method: str, params: dict):
             "rhi_layers": 1,
         }
     if method == "press_keys":
-        return True, {"pressed": ["ctrl+shift+p"], "count": 1, "target": "QMainWindow"}
+        return True, {
+            "pressed": ["ctrl+shift+p"],
+            "count": 1,
+            "target": "QMainWindow",
+            "activated": True,
+            "focus_is_ours": True,
+        }
     if method == "ui_elements":
         return True, {
             "count": 2,
@@ -266,6 +278,24 @@ class FakeControlServer:
         self._thread.start()
         return self
 
+    def die(self) -> None:
+        """Simulate a crashed app: stop accepting and remove the socket node.
+
+        A segfault does not run the app's teardown, so the socket node is left
+        behind only until the kernel closes the fds — from the client's side the
+        connection hits EOF *and* the node stops answering. Closing the listener
+        from the serving thread also makes ``accept`` fail, which ends the
+        accept loop; the current connection is closed by ``_serve`` when the
+        handler returns ``CLOSE``.
+        """
+        if self._server is not None:
+            try:
+                self._server.close()
+            except OSError:
+                pass
+            self._server = None
+        self.path.unlink(missing_ok=True)
+
     def stop(self, *, unlink: bool = True) -> None:
         self._stop.set()
         if self._thread is not None:
@@ -340,11 +370,19 @@ class FakeControlServer:
         return True
 
 
-def _write_pointer(directory: Path, *, pid: int, socket_path: Path | None = None) -> Path:
+def _write_pointer(
+    directory: Path,
+    *,
+    pid: int,
+    socket_path: Path | None = None,
+    uid: int | None = None,
+) -> Path:
     directory.mkdir(parents=True, exist_ok=True)
     data = {"pid": pid, "started": "2026-10-17T00:00:00Z", "version": "0.1.0"}
     if socket_path is not None:
         data["socket"] = str(socket_path)
+    if uid is not None:
+        data["uid"] = uid
     pointer = directory / "instance.json"
     pointer.write_text(json.dumps(data), encoding="utf-8")
     return pointer
@@ -474,17 +512,84 @@ def test_dead_pid_alone_never_declares_a_working_pointer_stale(isolated_env, mon
         (directory / CONTROL_SOCKET_NAME).unlink(missing_ok=True)
 
 
-def test_discover_socket_uses_the_runtime_dir_when_no_override(monkeypatch, tmp_path):
+def test_discover_socket_uses_a_private_runtime_dir(monkeypatch, tmp_path):
+    """A private ``$XDG_RUNTIME_DIR`` is the app's first choice, so it is ours.
+
+    The mode is set explicitly: a bare ``mkdir()`` yields ``0755`` under the
+    usual umask, which BOTH sides must now refuse (this test used to pin the
+    opposite — discovery succeeding in a world-readable dir).
+    """
     runtime = tmp_path / "runtime"
     runtime.mkdir()
+    os.chmod(runtime, 0o700)
     socket_path = FakeControlServer(runtime / "control.sock").start().path
     try:
         monkeypatch.delenv(SOCKET_OVERRIDE_ENV, raising=False)
         monkeypatch.delenv(CONTROL_DIR_ENV, raising=False)
+        monkeypatch.delenv("XDG_DATA_HOME", raising=False)
         monkeypatch.setenv("XDG_RUNTIME_DIR", str(runtime))
         assert discover_socket() == socket_path
     finally:
         (runtime / "control.sock").unlink(missing_ok=True)
+
+
+def test_discover_socket_refuses_a_shared_runtime_dir(monkeypatch, tmp_path):
+    """Symmetric with ``core.control.discovery._is_private_dir``.
+
+    Falsification: with the old ``isdir + W_OK`` rule this returned the socket
+    in the ``0755`` dir, while the app refused to publish there — the same
+    machine, two different answers for "where is the control socket".
+    """
+    runtime = tmp_path / "shared"
+    runtime.mkdir()
+    os.chmod(runtime, 0o755)
+    listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    listener.bind(str(runtime / "control.sock"))
+    listener.listen(4)
+    try:
+        monkeypatch.delenv(SOCKET_OVERRIDE_ENV, raising=False)
+        monkeypatch.delenv(CONTROL_DIR_ENV, raising=False)
+        data_home = tmp_path / "share"
+        monkeypatch.setenv("XDG_DATA_HOME", str(data_home))
+        monkeypatch.setenv("XDG_RUNTIME_DIR", str(runtime))
+        assert discover_socket() is None
+
+        # And the fallback is the dir the app would publish in, not the shared one.
+        assert control_dirs()[0] == data_home / "ImproveImgSLI" / "run"
+    finally:
+        listener.close()
+
+
+def test_discover_socket_refuses_a_pointer_from_another_uid(isolated_env):
+    """A pointer written by a different user is not a live instance.
+
+    The pointer carries the owning ``uid`` (the app writes it); a client that
+    ignored it would hand a foreign socket to the request layer, which the app
+    then refuses at ``SO_PEERCRED`` — a confusing refusal instead of "absent".
+    """
+    directory = isolated_env / "run"
+    socket_path = FakeControlServer(directory / CONTROL_SOCKET_NAME).start().path
+    try:
+        _write_pointer(
+            directory,
+            pid=os.getpid(),
+            socket_path=socket_path,
+            uid=os.getuid() + 1,
+        )
+        assert discover_socket() is None
+    finally:
+        (directory / CONTROL_SOCKET_NAME).unlink(missing_ok=True)
+
+
+def test_discover_socket_accepts_a_pointer_without_a_uid(isolated_env):
+    """Older pointers (no ``uid`` field) stay usable: absence is not a refusal."""
+    directory = isolated_env / "run"
+    socket_path = FakeControlServer(directory / CONTROL_SOCKET_NAME).start().path
+    try:
+        _write_pointer(directory, pid=os.getpid(), socket_path=socket_path)
+        assert discover_socket() == socket_path
+    finally:
+        (directory / CONTROL_SOCKET_NAME).unlink(missing_ok=True)
 
 
 def test_discover_socket_falls_back_to_the_app_data_run_dir(monkeypatch, tmp_path):
@@ -983,7 +1088,14 @@ _PROXY_CASES = [
         {"keys": "ctrl+shift+p"},
         "press_keys",
         {"keys": "ctrl+shift+p"},
-        {"pressed": ["ctrl+shift+p"], "count": 1, "target": "QMainWindow", "source": "live"},
+        {
+            "pressed": ["ctrl+shift+p"],
+            "count": 1,
+            "target": "QMainWindow",
+            "activated": True,
+            "focus_is_ours": True,
+            "source": "live",
+        },
     ),
     (
         "ui_elements",
@@ -1599,9 +1711,145 @@ def test_press_keys_round_trips_through_the_backend(live_wired):
         "pressed": ["ctrl+shift+p"],
         "count": 1,
         "target": "QMainWindow",
+        "activated": True,
+        "focus_is_ours": True,
         "source": "live",
     }
     assert ("press_keys", {"keys": "ctrl+shift+p"}) in server.calls
+
+
+def test_press_keys_reports_activation_and_focus_ownership_unchanged(tmp_path, monkeypatch):
+    """The two honest fields must survive the MCP path, including ``false``.
+
+    The app makes the window OS-active before typing and answers ``activated``
+    (this call had to bring it forward) and ``focus_is_ours`` (the key went to
+    the window holding OS focus). Normalising them to anything but what the app
+    said hides exactly the case that matters: a sweep reading ``ok`` for keys
+    the window system dropped (complaint mcp-c-015).
+    """
+
+    def handler(method, params):
+        if method == "press_keys":
+            # Already active, and the key went to the window that holds focus.
+            return True, {
+                "pressed": ["ctrl+p"],
+                "count": 1,
+                "target": "QCanvasView",
+                "activated": False,
+                "focus_is_ours": True,
+            }
+        return default_handler(method, params)
+
+    directory = tmp_path / "run"
+    server = FakeControlServer(directory / CONTROL_SOCKET_NAME, handler).start()
+    _write_pointer(directory, pid=os.getpid(), socket_path=server.path)
+    monkeypatch.setenv(CONTROL_DIR_ENV, str(directory))
+    monkeypatch.delenv(SOCKET_OVERRIDE_ENV, raising=False)
+    backend = AppBackend(
+        REPO_ROOT,
+        artifacts_dir=tmp_path / "artifacts",
+        data_dir=tmp_path / "data",
+        live_backend=LiveBackend(retry_cooldown_s=0.0),
+    )
+    protocol = MCPProtocol(backend)
+    try:
+        result = _call(protocol, "press_keys", {"keys": "ctrl+p", "target": "main.canvas"})
+        assert result["isError"] is False
+        structured = result["structuredContent"]
+        assert structured["activated"] is False
+        assert structured["focus_is_ours"] is True
+        assert structured["pressed"] == ["ctrl+p"]
+        assert structured["source"] == "live"
+    finally:
+        server.stop()
+
+
+def _schema_accepts(schema: dict, value: object) -> bool:
+    """Minimal JSON-Schema check for the keywords the catalog uses.
+
+    Deliberately small: this pins *which shapes a strict host may see*, it is
+    not a general validator. ``anyOf`` is the one non-trivial keyword — a live
+    tool's declared output is its normal result OR the transport's early
+    answer. A keyword this helper does not understand fails loudly instead of
+    passing silently, so the checker cannot become a no-op.
+    """
+    if not isinstance(schema, dict) or not schema:
+        return True
+    branches = schema.get("anyOf")
+    if branches is not None and not any(
+        _schema_accepts(branch, value) for branch in branches
+    ):
+        return False
+    if "const" in schema and value != schema["const"]:
+        return False
+    if "enum" in schema and value not in schema["enum"]:
+        return False
+    expected = schema.get("type")
+    if expected is not None:
+        options = list(expected) if isinstance(expected, list) else [expected]
+        checks = {
+            "object": lambda item: isinstance(item, dict),
+            "array": lambda item: isinstance(item, list),
+            "string": lambda item: isinstance(item, str),
+            "integer": lambda item: isinstance(item, int) and not isinstance(item, bool),
+            "number": lambda item: isinstance(item, (int, float)) and not isinstance(item, bool),
+            "boolean": lambda item: isinstance(item, bool),
+            "null": lambda item: item is None,
+        }
+        unknown = set(options) - set(checks)
+        assert not unknown, f"schema type(s) this helper does not understand: {unknown}"
+        if not any(checks[option](value) for option in options):
+            return False
+    if isinstance(value, dict):
+        properties = schema.get("properties") or {}
+        for name in schema.get("required") or ():
+            if name not in value:
+                return False
+        if schema.get("additionalProperties") is False and set(value) - set(properties):
+            return False
+        for name, sub in properties.items():
+            if name in value and not _schema_accepts(sub, value[name]):
+                return False
+    if isinstance(value, list) and "items" in schema:
+        return all(_schema_accepts(schema["items"], item) for item in value)
+    return True
+
+
+def test_press_keys_schema_accepts_the_normal_and_the_early_answer():
+    """A strict host must not flag either frame the transport can put on the wire.
+
+    The control channel answers on its own behalf when a handler overruns its
+    budget (``server._arm_early_answer``): ``ok: true`` with ``accepted /
+    answered_early / still_running / modal_open / method / budget_ms`` and none
+    of the tool's own fields — a chord that opened a modal dialog is the case.
+    A schema that declares only the normal result would report a mismatch for a
+    call that worked.
+    """
+    tool = next(entry for entry in catalog.TOOLS if entry["name"] == "press_keys")
+    schema = tool["outputSchema"]
+
+    normal = {
+        "pressed": ["ctrl+shift+p"],
+        "count": 1,
+        "target": "QMainWindow",
+        "activated": True,
+        "focus_is_ours": True,
+        "source": "live",
+    }
+    early = {
+        "accepted": True,
+        "answered_early": True,
+        "still_running": True,
+        "modal_open": True,
+        "method": "press_keys",
+        "budget_ms": 2000,
+    }
+
+    assert _schema_accepts(schema, normal) is True
+    assert _schema_accepts(schema, early) is True
+    # Falsification: the checker really rejects frames the schema does not declare.
+    assert _schema_accepts(schema, {**normal, "invented": 1}) is False
+    assert _schema_accepts(schema, {"accepted": True}) is False
 
 
 def test_element_tools_round_trip_through_the_backend(live_wired):
@@ -1627,8 +1875,16 @@ def test_element_tools_round_trip_through_the_backend(live_wired):
     assert ("ui_focus", {"id": "main.settings.btn"}) in server.calls
 
 
-def test_ui_click_transport_fault_errors_honestly(tmp_path, monkeypatch):
-    """A live instance that dies mid-call leaves ``ui_click`` an honest error."""
+def test_ui_click_transport_fault_names_the_request_and_the_broken_channel(
+    tmp_path, monkeypatch
+):
+    """A mid-``ui_click`` drop names the request instead of "no live instance".
+
+    This fake server keeps *listening* (only the one connection is dropped), so
+    the honest verdict here is "the channel broke, the process still answers",
+    and the request that was in flight is named. The death wording is pinned by
+    the ``press_keys`` test, where the socket node goes away too.
+    """
 
     def handler(method, params):
         if method == "ui_click":
@@ -1651,8 +1907,12 @@ def test_ui_click_transport_fault_errors_honestly(tmp_path, monkeypatch):
         result = _call(protocol, "ui_click", {"id": "main.settings.btn"})
         assert result["isError"] is True
         text = result["content"][0]["text"]
-        assert "no live instance" in text
-        assert "element targeting needs a running app" in text
+        assert "ui_click" in text
+        assert "id='main.settings.btn'" in text
+        assert "still answers" in text
+        assert "the app's process is still running" in text
+        assert "no live instance" not in text
+        assert "element targeting needs a running app" not in text
     finally:
         server.stop()
 
@@ -1715,17 +1975,32 @@ def test_backend_falls_back_when_the_socket_refuses(tmp_path, monkeypatch):
     assert calls == [None]
 
 
-def test_press_keys_transport_fault_errors_honestly(tmp_path, monkeypatch):
-    """A live instance that dies mid-call leaves ``press_keys`` an honest error."""
+def test_press_keys_mid_call_death_reports_the_signal_and_last_request(tmp_path, monkeypatch):
+    """A live instance that dies mid-call must report *the death*, not "no live instance".
+
+    The app's control socket closing under a request is the only witness a
+    sibling process has of a crash: the request was sent and the process is
+    gone. Pinned before this test: the backend answered "no live instance;
+    keyboard input needs a running app" — true of a missing app, a lie about a
+    dead one, and silent about the request that was on the wire.
+
+    The fake server drops the connection *and* removes its socket node (what a
+    crashed app leaves behind) and the pointer pid is unallocated, so the report
+    has a process to describe.
+    """
+    holder: dict = {}
 
     def handler(method, params):
         if method == "press_keys":
+            holder["server"].die()  # the crash: connection + socket node go
             return True, CLOSE  # hang up without answering
         return default_handler(method, params)
 
     directory = tmp_path / "run"
-    server = FakeControlServer(directory / CONTROL_SOCKET_NAME, handler).start()
-    _write_pointer(directory, pid=os.getpid(), socket_path=server.path)
+    server = holder["server"] = FakeControlServer(
+        directory / CONTROL_SOCKET_NAME, handler
+    ).start()
+    _write_pointer(directory, pid=_UNALLOCATED_PID, socket_path=server.path)
     monkeypatch.setenv(CONTROL_DIR_ENV, str(directory))
     monkeypatch.delenv(SOCKET_OVERRIDE_ENV, raising=False)
     backend = AppBackend(
@@ -1737,10 +2012,159 @@ def test_press_keys_transport_fault_errors_honestly(tmp_path, monkeypatch):
     protocol = MCPProtocol(backend)
     try:
         result = _call(protocol, "press_keys", {"keys": "ctrl+p"})
-        assert result["isError"] is True
-        assert "keyboard input needs a running app" in result["content"][0]["text"]
     finally:
         server.stop()
+    assert result["isError"] is True
+    text = result["content"][0]["text"]
+    # The death itself, with the request that was in flight ...
+    assert "the app died" in text
+    assert "press_keys" in text
+    assert "keys='ctrl+p'" in text
+    # ... and what can honestly be said about the process: it is gone, and a
+    # sibling cannot reap its exit status/signal.
+    assert "is gone" in text
+    assert "not observable" in text
+    # The old, false half of the message must be gone.
+    assert "keyboard input needs a running app" not in text
+
+
+def test_press_keys_without_an_instance_repeats_the_recorded_death(
+    tmp_path, monkeypatch
+):
+    """A dead app is not a missing one: the app's own in-flight note survives it.
+
+    Nothing listens any more (the socket is gone with the process), so the
+    backend cannot see a mid-call EOF. The app recorded the request it was
+    handling in ``inflight.json``; that note is what turns a bare "no live
+    instance" into "it died while handling press_keys".
+    """
+    directory = tmp_path / "run"
+    directory.mkdir(parents=True)
+    _write_pointer(
+        directory, pid=_UNALLOCATED_PID, socket_path=directory / CONTROL_SOCKET_NAME
+    )
+    # Time the app's own control server stamped into the note it left behind.
+    (directory / INFLIGHT_NOTE_NAME).write_text(
+        json.dumps(
+            {
+                "method": "press_keys",
+                "summary": "keys='ctrl+p'",
+                "request_id": 7,
+                "pid": _UNALLOCATED_PID,
+                "at": "2026-10-21T18:22:03+00:00",
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv(CONTROL_DIR_ENV, str(directory))
+    monkeypatch.delenv(SOCKET_OVERRIDE_ENV, raising=False)
+    backend = AppBackend(
+        REPO_ROOT,
+        artifacts_dir=tmp_path / "artifacts",
+        data_dir=tmp_path / "data",
+        live_backend=LiveBackend(retry_cooldown_s=0.0),
+    )
+    protocol = MCPProtocol(backend)
+    result = _call(protocol, "press_keys", {"keys": "ctrl+p"})
+    assert result["isError"] is True
+    text = result["content"][0]["text"]
+    # The old contract still holds — there is no app to type into ...
+    assert "no live instance" in text
+    assert "keyboard input needs a running app" in text
+    # ... but it now says *why*: the app died inside this request.
+    assert "the app died while handling request 'press_keys'" in text
+    assert "keys='ctrl+p'" in text
+    assert "2026-10-21T18:22:03+00:00" in text
+
+
+def test_death_report_names_the_request_without_echoing_secrets(tmp_path):
+    """The request digest must identify the call and never leak a secret value.
+
+    ``set_setting``/``run_action`` carry free-form values, so a token can sit in
+    the params of the very request that killed the app.
+    """
+    holder: dict = {}
+
+    def handler(method, params):
+        if method == "set_setting":
+            holder["server"].die()
+            return True, CLOSE
+        return default_handler(method, params)
+
+    server = holder["server"] = FakeControlServer(
+        tmp_path / CONTROL_SOCKET_NAME, handler
+    ).start()
+    client = LiveClient(server.path, timeout=0.5)
+    try:
+        with pytest.raises(LiveUnavailable) as excinfo:
+            client.call(
+                "set_setting",
+                {"key": "theme", "value": "sk-or-v1-di0dbeefdi0dbeef"},
+            )
+    finally:
+        client.close()
+        server.stop()
+    message = excinfo.value.message
+    assert server.calls == [("set_setting", {"key": "theme", "value": "sk-or-v1-di0dbeefdi0dbeef"})]
+    assert "set_setting" in message
+    assert "the app died" in message
+    assert "<redacted>" in message
+    assert "di0dbeef" not in message
+    assert "sk-or-v1" not in message
+
+
+def test_request_digest_redacts_secret_names_and_token_shaped_values():
+    """The digest identifies the call without ever echoing what it carried."""
+    summary = summarize_request_params(
+        {
+            "action_id": "image_compare.export",
+            "api_key": "abc123",
+            "token": "def456",
+            "value": "sk-or-v1-di0dbeef",
+            "n": 3,
+            "nested": {"a": 1, "b": 2},
+            "keys": "ctrl+p",
+        }
+    )
+    for secret in ("abc123", "def456", "di0dbeef"):
+        assert secret not in summary
+    assert "<redacted>" in summary
+    assert "action_id='image_compare.export'" in summary
+    assert "keys='ctrl+p'" in summary
+    assert "n=3" in summary
+    assert "nested={2 keys}" in summary
+
+
+@pytest.mark.skipif(not Path("/proc/self/stat").exists(), reason="needs procfs")
+def test_process_report_reads_a_zombies_signal_then_admits_it_is_gone():
+    """A signal is reported when ``/proc`` still has it, and never invented after."""
+    child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
+    try:
+        child.kill()  # SIGKILL: unreaped, so /proc still carries the wait status
+        deadline = time.monotonic() + 5.0
+        report = process_report(child.pid)
+        while report["state"] != "zombie" and time.monotonic() < deadline:
+            time.sleep(0.02)
+            report = process_report(child.pid)
+        assert report["state"] == "zombie"
+        assert report["observable"] is True
+        assert report["signal"] == int(signal.SIGKILL)
+        assert "SIGKILL" in report["detail"]
+    finally:
+        child.wait()
+    # Reaped: a sibling can no longer read the status, and must not guess one.
+    gone = process_report(child.pid)
+    assert gone["state"] == "gone"
+    assert gone["observable"] is False
+    assert gone["signal"] is None
+    assert "not observable" in gone["detail"]
+
+
+def test_process_report_without_a_pid_does_not_guess():
+    report = process_report(None)
+    assert report["state"] == "no-pid"
+    assert report["observable"] is False
+    assert "not observable" in report["detail"]
 
 
 def test_press_keys_live_app_error_keeps_the_apps_hint(tmp_path, monkeypatch):

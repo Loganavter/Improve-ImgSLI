@@ -60,7 +60,7 @@ fallback window, e.g. `:97`).
 | `wait_for` | read | block until one expectation holds (element id visible+enabled, role+label exists, or jobs settle); a timeout returns the last observed state (live-only) |
 | `get_canvas_scene` | read | one tab's canvas scene as deterministic JSON: panes, dividers, every magnifier instance (hidden ones flagged), canvas size, camera/projection transform; every geometry field names its coordinate space and its source (live-only) |
 | `open_tab` | write | open/focus a tab kind (live) or launch it (fallback) |
-| `run_action` | write | run one ActionRegistry id; with `params`/`expect` it also runs the six named scene commands (magnifier visible/position/size, divider visible/thickness, MC split weights) and can verify the change against scene paths (live-only) |
+| `run_action` | write | run one ActionRegistry id; with `params`/`expect` it also runs the seven named scene commands (magnifier visible/position/size/combined, divider visible/thickness, MC split weights) and can verify the change against scene paths (live-only) |
 | `set_scene_commands` | write | run an ordered list of value-taking scene commands; stops at the first error, and with `verify=true` each command declares expected scene paths and the scene is re-read (live-only) |
 | `open_folder` | write | hand a folder to a tab (`tab=` targets one; `slot=`/`side=` place it; live: routed) |
 | `open_file` | write | load one image file into a tab that accepts it (`tab=` forces one; a video is refused by name) — live-only |
@@ -69,7 +69,7 @@ fallback window, e.g. `:97`).
 | `set_language` | write | set `language` (en/ru/zh/pt_BR) |
 | `set_setting` | write | write one whitelisted scalar setting (`rhi_backend`); `theme`/`language` keep their own verbs |
 | `capture_surface` | write | screenshot a named surface or the live active window to PNG |
-| `press_keys` | write | inject keyboard combos (`target=` aims them at one element) |
+| `press_keys` | write | inject keyboard combos (`target=` aims them at one element); the window is activated first and the result reports `activated`/`focus_is_ours` |
 | `nav_key` | write | press keys through the app's own navigation sections and report what took them (live-only) |
 | `ui_click` | write | click an element by id, in-process (live-only) |
 | `ui_hover` | write | hover an element by id, in-process (live-only) |
@@ -94,13 +94,18 @@ back to the headless Phase-1 path when none is. Results say which path answered
 ### Live attach (preferred)
 
 The app runs a control server on a unix socket `control.sock` inside a control
-dir, with a pointer file `instance.json` (`{pid, socket, started, version}`)
+dir, with a pointer file `instance.json` (`{pid, socket, version, uid}`)
 beside it. Discovery order, highest priority first:
 
 1. `IMGSLI_MCP_CONTROL_SOCKET` — an explicit socket path;
 2. `IMGSLI_CONTROL_DIR` — an explicit control dir;
-3. `$XDG_RUNTIME_DIR` when set and writable, else `<app data dir>/run`
-   (`~/.local/share/ImproveImgSLI/run`).
+3. `$XDG_RUNTIME_DIR` **only when it is private** (owned by you, no group/other
+   access — a `0755` runtime dir is used by neither side), else
+   `<app data dir>/run` (`~/.local/share/ImproveImgSLI/run`).
+
+A pointer whose `uid` is not yours is treated as "no live instance": the app
+publishes for its own user only, and its socket would refuse the connection
+anyway.
 
 One tool call is one newline-delimited JSON request
 (`{"id", "method", "params"}`) answered by
@@ -108,8 +113,13 @@ One tool call is one newline-delimited JSON request
 `{"id", "ok": false, "error", "hint"}`. On this path the tools act on the window
 the user is driving: `open_tab` switches in place, `run_action` runs live,
 `open_folder` really routes the folder (`routed: true`), `set_theme` /
-`set_language` apply now (`applies_on: "now"`), and `press_keys` injects
-keyboard combos the Find Action catalog does not cover. `ui_elements` inventories
+`set_language` apply now (`applies_on: "now"`), and `press_keys` makes the
+target window OS-active before injecting combos the Find Action catalog does
+not cover — it reports `activated` (this call had to bring the window forward)
+and `focus_is_ours` (the key went to the window holding OS focus), and
+**refuses** rather than answering `ok` when the app still reports no active
+window (the hint names `xdotool windowfocus <window-id>`), because a key handed
+to a background window is dropped by the window system. `ui_elements` inventories
 the live window's interactive widgets (id, role, label, widget `rect` and
 screen-space `screen_rect`, `enabled`, bound action id, and a `properties`
 bag; optional `role`/`label`/`properties`/`limit` filters — see
@@ -200,13 +210,14 @@ unavailable, never approximated**.
 - **The read does not change the scene.** It must not create state on first
   read; a getter that materializes state is a bug in the getter.
 
-Six **scene commands** take absolute values (never toggles, never deltas):
+Seven **scene commands** take absolute values (never toggles, never deltas):
 
 | command | params | canvas |
 |---|---|---|
 | `magnifier.set_visible` | `id` (instance id exactly as listed), `visible: bool` | image_compare |
 | `magnifier.set_position` | `id`, `x`/`y` as fractions `0..1` of the canvas | image_compare |
 | `magnifier.set_size` | `id`, `size` as a fraction of the short side (default 0.2) | image_compare |
+| `magnifier.set_combined` | `id`, `combined: bool` — folds the two sides into one loupe (spacing 0) or splits them again; needs both sides visible, and a hidden instance is refused (`is_combined` is `null` for it) | image_compare |
 | `divider.set_visible` | `visible: bool` | image_compare |
 | `divider.set_thickness` | `thickness: int px` `0..10` (0 also hides) | image_compare |
 | `layout.set_split_weights` | `path: [int]` (child-index chain, root `[]`), `weights: [float]` summing to ~1.0 (clamped per child ≥ 0.15) | multi_compare |
@@ -276,7 +287,9 @@ surfaces (the Quick Look overlay, flyouts) instead handle keys in their own
 model: it aims one event at one widget (right for a canvas, whose shortcuts are
 not in the focus chain) and its events carry no focus attribution, so the
 sections never engage and "the key reached the control" is indistinguishable
-from "the key went nowhere".
+from "the key went nowhere". It does make the window OS-active first and report
+`activated`/`focus_is_ours` (the same two fields `nav_key` reports), so a
+delivered key is at least distinguishable from one the window system dropped.
 
 Two tools close that gap; both are **live-only**:
 
@@ -443,6 +456,54 @@ resilience — but it is what stops an agent from double-applying an edit:
   `list_actions` rows carry `enabled` + `reason` for exactly this: plan around a
   precondition instead of failing into it.
 
+### A call that opens the app's own modal dialog is answered early
+
+`press_keys`, `run_action` and `ui_click` run the action synchronously, and some
+actions open a modal dialog: `ctrl+shift+o` → `platform.open_project` →
+`QFileDialog.getOpenFileName` (`exec()`). A modal loop keeps the handler — and
+therefore its reply — inside until someone closes the dialog, so the client used
+to time out ("sent, no reply") on a chord that had already worked, and a retry
+opened a second dialog.
+
+The channel now answers such a request itself: if a handler is still running
+after **2 s** (`MODAL_ACK_BUDGET_MS` in `src/core/control/server.py`), a
+watchdog timer fires *inside* the dialog's nested loop and writes
+
+```json
+{"id": 7, "ok": true,
+ "result": {"accepted": true, "answered_early": true, "still_running": true,
+            "modal_open": true, "method": "press_keys", "budget_ms": 2000}}
+```
+
+- `ok: true` because the request *is* being carried out. A chord that reaches no
+  window, an unknown key name, or an unknown action id still fails fast with its
+  own named error — those refusals happen before the budget, not after it.
+- `modal_open` is measured (`QApplication.activeModalWidget()`), not assumed: a
+  native portal dialog is not a `QWidget`, so `false` there means "no Qt modal
+  widget", not "nothing is open".
+- **One frame per request.** The late real result is dropped instead of being
+  sent as a second frame; a failure that arrives after the early answer is
+  logged (visible through `read_log`), never re-sent.
+- A fast call is untouched: full result, no `answered_early`.
+- **The early result is transport-level, not the tool's own output shape.** It
+  carries the fields above instead of e.g. `press_keys`' `pressed`/`count`. The
+  catalog declares both shapes (`outputSchema.anyOf`) for the four tools whose
+  handler can open a modal — `run_action`, `press_keys`, `ui_click`, `ui_press` —
+  so a host that validates the declared schema accepts either frame. The MCP
+  proxy still answers in its normalised result shape either way, so when the wire
+  frame was the early one those fields describe an answer that has not arrived:
+  the request is still running, so re-read state (or press `escape`) instead of
+  trusting `pressed`/`count`.
+- **Follow-up calls work while the dialog is up.** The MCP client opens one
+  connection per request, and a new connection's first line is served *inside*
+  the dialog's loop (`ok` as usual), so "read state to confirm / press `escape`"
+  after an early answer behaves normally. A second line on the *same* connection
+  waits until the dialog closes (Qt guards `readyRead` against re-entry).
+- The dialog itself stays on screen and still has to be closed — send another
+  `press_keys` (`escape` / `enter`) or let a human do it. When the goal is only
+  to load content, prefer `open_folder` / `open_file` / `open_properties`, which
+  open their surface without a modal loop.
+
 ### Flatpak-installed app (P0)
 
 A host-side `mcp-server/app/server.py` **cannot attach to the app installed as a
@@ -608,7 +669,10 @@ inventing values. (Fallback `size` is parsed from the devtool's own
   `ui_click` are non-destructive but non-idempotent).
 - **Keyboard input is live-only.** `press_keys` injects into the running app
   through the control socket; with no instance it answers an honest error
-  rather than pretending. Key names are allowlisted app-side: named keys,
+  rather than pretending. It activates the target window first and reports
+  `activated`/`focus_is_ours`; when the app still reports no active window the
+  call is refused with the `xdotool windowfocus <window-id>` hint instead of
+  answering `ok` for keys nobody saw. Key names are allowlisted app-side: named keys,
   single letters/digits, and the punctuation a path or text field needs
   (`/`, `.`, `-`, `_`, `~`, `=`, `:`, …) — one combo per key, e.g.
   `/,t,m,p,/,a,.,p,n,g` types `/tmp/a.png` (`','` and `'+'` are the
@@ -634,6 +698,8 @@ fabricated result:
 | foreign uid | live app (`SO_PEERCRED`, before reading a byte) | connection closed → the call falls back |
 | non-live `open_file` | this server (`_fallback_open_file`) | `isError` "no live instance; open_file routes a file into a running tab" (the path is validated first; there is no headless fallback that opens anything) |
 | non-live `press_keys` / `nav_key` / `ui_elements` / `ui_nav_state` / `ui_click` / `ui_hover` / `ui_focus` | this server | `isError` "needs a running app" (never a throwaway app faking a target) |
+| live `press_keys` with no OS-active window | live app (`press_keys_into`) | `ok: false` "the app window is not the OS-active window, so the key would be dropped" + "activate it first (xdotool windowfocus <window-id>, …)" — never `ok` for a key the window system drops |
+| the app died while a request was in flight | this server (`death_message`) | `isError` "sent, no reply: the app died while request `'press_keys'` (`keys='ctrl+p'`) was in flight — pid … is gone; its exit status and signal are not observable" + a re-read hint; a request that hit the deadline is reported as possibly applied, and a missing instance as a death when the pointer/note say one existed — never a plain "no live instance" |
 | non-live `jobs_list` / `jobs_cancel` | this server | `isError` "no live instance; job state needs a running app" (never a fake empty list) |
 | non-live `wait_for` | this server | `isError` "no live instance; waiting for app state needs a running app" (never a silent 5 s timeout) |
 | `jobs_cancel` on a kind with no cooperative cancel | live app | `ok: false` "cancel is not supported for kind …" + hint; never a fake cancel |
@@ -644,6 +710,12 @@ fabricated result:
 | no `surface` and no live instance | this server (`capture_surface` fallback) | `isError` "surface is required when no live instance is attached" + `list_surfaces` hint |
 | no active window for a live capture (no `surface`) | live app (`capture_live`) | `ok: false` "no live window to capture" + "pass what=<tab> … or focus a window first" |
 | more than 32 key combos in one `press_keys` | live app | `ok: false` "too many key combos" |
+
+The death answer leans on `<runtime>/inflight.json`: the app writes the request
+it is about to handle there — method, a redacted param digest, pid, timestamp —
+before the handler runs and removes it once the reply is sent, so a note left
+behind is the one thing a sibling process can read after a segfault (no
+teardown, no reply) and it names what the app died doing.
 
 ### Annotation audit (2026-10-17)
 
@@ -737,8 +809,11 @@ artifact until proven otherwise.
 - Judge a canvas from a capture of a window that is not fully on screen.
 - Read black as a broken widget before checking geometry.
 - Conclude "the render path paints black" from a window grab alone.
-- Drive the app's own file dialogs from a client — use `open_folder {path, tab}`
-  (a file-only tab receives the folder's images as files).
+- Expect a chord that opens one of the app's own file dialogs to return the
+  dialog's *outcome* — it is answered `answered_early` while the dialog is up
+  (see "A call that opens the app's own modal dialog is answered early"). Use
+  `open_folder {path, tab}` when you only need content loaded (a file-only tab
+  receives the folder's images as files).
 - Restore a saved window rect without fitting it to the current screen.
 - Invent a second read path for a scene value: `get_canvas_scene` is the one
   read verb, `set_scene_commands` the one write verb (see the canvas section).

@@ -681,6 +681,19 @@ def test_catalog_declares_the_four_verbs_with_valid_schemas():
     assert tools["set_setting"]["annotations"]["readOnlyHint"] is False
 
 
+def test_catalog_press_keys_names_the_inactive_window_refusal():
+    """Complaint mcp-c-015: ``ok`` could not tell a dead chord from a lost key.
+
+    The tool description is what a client reads before a sweep, so it must say
+    that a key aimed at a window the window system has not activated is refused
+    — and what activates it.
+    """
+    description = _tools()["press_keys"]["description"]
+
+    assert "active window" in description
+    assert "windowfocus" in description
+
+
 def test_catalog_descriptions_stay_in_the_documented_band():
     tools = _tools()
     for name in VERBS:

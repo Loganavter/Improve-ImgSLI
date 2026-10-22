@@ -70,7 +70,11 @@
       "effort_none": "None",
       "vlm_max_edge": "Image downscale (max edge)",
       "downscale_original": "Original",
-      "api_key_warning": "Stored unencrypted on this device.",
+      "sample_count": "Runs per card",
+      "sample_count_1": "1 run",
+      "sample_count_2": "2 runs",
+      "sample_count_3": "3 runs",
+      "sample_count_5": "5 runs",
       "api_key_placeholder": "sk-…",
       "model_placeholder": "openrouter/auto or vendor/model",
       "tokens_placeholder": "auto"
