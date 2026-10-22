@@ -127,6 +127,17 @@ _APP_FAMILIES = (
 )
 
 
+def _assert_doc_names_family(doc_path: Path, family: str) -> None:
+    """A widget's inspector docs page must name the live class in its body.
+
+    Existence alone is what let ``docs/dev/widgets/glass_panel_display.md``
+    keep describing a retired surface while every check stayed green.
+    """
+    assert doc_path.is_file(), f"docs ref {doc_path} must exist"
+    body = doc_path.read_text(encoding="utf-8")
+    assert family in body, f"{doc_path} must name {family} in its body"
+
+
 @pytest.mark.parametrize(
     "module_path,family,docs_ref",
     _APP_FAMILIES,
@@ -143,7 +154,22 @@ def test_app_families_carry_spec_and_docs(module_path, family, docs_ref):
         f"{family} docs must point at its per-widget page in docs/dev/widgets/"
     )
     repo_root = Path(__file__).resolve().parents[2]
-    assert (repo_root / docs_ref).is_file(), f"docs ref {docs_ref} must exist"
+    _assert_doc_names_family(repo_root / docs_ref, family)
+
+
+def test_stale_widget_doc_body_is_rejected(tmp_path):
+    """Falsifies the body check: a page that only links the family is not enough."""
+    doc = tmp_path / "widget.md"
+    doc.write_text("# Widget\n\nThe retired surface is still described here.\n", encoding="utf-8")
+    with pytest.raises(AssertionError, match="must name GlassPanelDisplayWidget"):
+        _assert_doc_names_family(doc, "GlassPanelDisplayWidget")
+
+    doc.write_text("# GlassPanelDisplayWidget\n\nLive surface.\n", encoding="utf-8")
+    _assert_doc_names_family(doc, "GlassPanelDisplayWidget")
+
+    with pytest.raises(AssertionError, match="must exist"):
+        _assert_doc_names_family(tmp_path / "absent.md", "GlassPanelDisplayWidget")
+
 
 
 def test_new_app_spec_state_resolves(qapp):

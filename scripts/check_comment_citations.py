@@ -40,6 +40,19 @@ Resolvers (v2)
    are not resolvable in this checkout). With ``--ids-file FILE`` (one id per
    line) the resolver turns on: ids absent from the file are reported as
    ``unverifiable-id`` and fail the run.
+4. Cited doc paths — a backticked repo-root markdown path (``docs/…``,
+   ``src/…``, ``tests/…``, ``scripts/…``, ``mcp-server/…``) must exist in this
+   checkout, else ``missing-doc-path``. Before v3 a comment could cite a doc
+   that never existed (two phantom doc names were cited by ten files and
+   defined nowhere) and the checker only noticed ``.py`` citations. Shapes
+   that are not pointers are
+   skipped: bare filenames (ambiguous), ``…``/``{a,b}``/``<placeholder>``/globs,
+   ``path:NNN``, and paths naming a sibling repo (those must be written with
+   the sibling prefix — absent here by design). Findings are a ratchet against
+   the committed ``file<TAB>count`` baseline
+   (``scripts/comment_citations_doc_paths_baseline.txt``, regenerate with
+   ``--update-doc-path-baseline``): a grown count or a new file fails, a
+   shrinking count passes.
 
 Shape filter — v2 false-positive reduction
 ------------------------------------------
@@ -96,6 +109,7 @@ Usage::
     python3 scripts/check_comment_citations.py --extra-root ../sli-ui-toolkit/src
     python3 scripts/check_comment_citations.py --allow names.txt --baseline .cc_baseline
     python3 scripts/check_comment_citations.py --ids-file ids.txt
+    python3 scripts/check_comment_citations.py --root src --root tests --update-doc-path-baseline
 
 Exit code is ``1`` when findings remain after the baseline suppresses accepted
 ones, otherwise ``0``. Stdlib only; importable (``main(argv=None) -> int``,
@@ -132,11 +146,17 @@ KIND_UNRESOLVED_PATH = "unresolved-path"
 KIND_LINE_OUT_OF_RANGE = "line-out-of-range"
 KIND_UNKNOWN_SYMBOL = "unknown-symbol"
 KIND_UNVERIFIABLE_ID = "unverifiable-id"
+KIND_MISSING_DOC_PATH = "missing-doc-path"
 
 #: Kinds that make the run exit non-zero. ``unverifiable-id`` only fails when
 #: the id resolver is enabled (``--ids-file``); on its own it is advisory.
 FAILING_KINDS = frozenset(
-    {KIND_UNRESOLVED_PATH, KIND_LINE_OUT_OF_RANGE, KIND_UNKNOWN_SYMBOL}
+    {
+        KIND_UNRESOLVED_PATH,
+        KIND_LINE_OUT_OF_RANGE,
+        KIND_UNKNOWN_SYMBOL,
+        KIND_MISSING_DOC_PATH,
+    }
 )
 
 
@@ -153,6 +173,9 @@ PATH_REF_RE = re.compile(r"([A-Za-z0-9_][A-Za-z0-9_./\-]*\.py):(\d+)")
 
 #: ``\`symbol.or.attr\```.
 SYMBOL_RE = re.compile(r"`([A-Za-z_][A-Za-z0-9_.]*)`")
+
+#: Any backticked token (doc paths are cited this way).
+BACKTICK_RE = re.compile(r"`([^`\n]+)`")
 
 #: Session ids owned by the sibling docs repo (``plan-…`` / ``inv-…``).
 ID_RE = re.compile(r"\b((?:plan|inv)-[A-Za-z0-9][A-Za-z0-9_.\-]*)")
@@ -320,6 +343,30 @@ _COMMON_SYMBOLS = ("self", "cls", "mcs", "kwargs", "args")
 #: first dotted segment is one of these is resolved (not a stale in-tree name).
 EXTERNAL_MODULE_PREFIXES = frozenset(
     {"PySide6", "Qt", "sli_ui_toolkit", "numpy", "PIL", "pyvips", "shiboken6"}
+)
+
+#: First path segment of a backticked path that means "relative to this repo".
+REPO_ROOT_PREFIXES = ("src", "tests", "docs", "scripts", "mcp-server")
+
+#: Doc extensions that make a backticked repo path a *cited doc*.
+_DOC_EXTENSIONS = (".md",)
+
+#: Characters that mark a token as illustrative rather than a literal path.
+_ILLUSTRATIVE_CHARS = frozenset("…{}<>*|$")
+
+#: A path naming another checkout is not resolvable here by design.
+SIBLING_REPO_DIRS = frozenset({"sli-ui-toolkit", "improve-imgsli-internal-docs"})
+
+#: Committed ratchet for ``missing-doc-path`` (``file<TAB>count``). Loaded by
+#: default so the CI invocation (which passes no baseline) stays honest without
+#: silencing a NEW dead citation.
+DOC_PATH_BASELINE = REPO_ROOT / "scripts" / "comment_citations_doc_paths_baseline.txt"
+_DOC_PATH_BASELINE_HEADER = (
+    "# Cited-doc-path baseline for scripts/check_comment_citations.py.",
+    "# Format: <citing file><TAB><accepted missing-doc-path count>.",
+    "# Regenerate: python scripts/check_comment_citations.py --update-doc-path-baseline",
+    "# A count may only shrink. Never add a file here to silence a NEW dead doc",
+    "# citation — fix the comment (or write the sibling prefix for sibling docs).",
 )
 
 _SNIPPET_LIMIT = 160
@@ -502,6 +549,106 @@ def _is_file_like(token: str) -> bool:
     return "/" in token or lowered.endswith(_FILE_EXTENSIONS)
 
 
+def normalize_cited_doc_path(token: str) -> str | None:
+    """Return the repo-root doc path a backticked token cites, or ``None``.
+
+    ``None`` means "not a checkable doc citation": a bare filename (ambiguous),
+    an illustrative fragment (``…``/``...``, ``{a,b}``, ``<placeholder>``, a
+    glob), a ``path:NNN`` shape, a relative/escaping path, a non-markdown
+    target, or a path naming a sibling checkout.
+    """
+    token = token.strip()
+    if not token or any(ch.isspace() for ch in token):
+        return None
+    if any(ch in _ILLUSTRATIVE_CHARS for ch in token) or "..." in token:
+        return None
+    if ":" in token:  # ``path.py:12`` / URLs
+        return None
+    token = token.split("#", 1)[0]
+    parts = [part for part in token.split("/") if part]
+    if len(parts) < 2 or parts[0] not in REPO_ROOT_PREFIXES:
+        return None
+    if any(part in {"..", "."} for part in parts):
+        return None
+    if any(part in SIBLING_REPO_DIRS for part in parts):
+        return None
+    if not token.lower().endswith(_DOC_EXTENSIONS):
+        return None
+    return "/".join(parts)
+
+
+def find_missing_doc_paths(text: str, repo_root: Path) -> list[str]:
+    """Repo-root doc paths cited in ``text`` that are absent from ``repo_root``."""
+    missing: list[str] = []
+    for match in BACKTICK_RE.finditer(text):
+        cited = normalize_cited_doc_path(match.group(1))
+        if cited is None:
+            continue
+        if not (repo_root / cited).is_file() and cited not in missing:
+            missing.append(cited)
+    return missing
+
+
+def doc_path_counts(findings: list[Finding]) -> dict[str, int]:
+    """``citing file -> accepted count`` for the ``file<TAB>count`` baseline."""
+    counts: dict[str, int] = {}
+    for finding in findings:
+        if finding.kind != KIND_MISSING_DOC_PATH:
+            continue
+        counts[finding.file] = counts.get(finding.file, 0) + 1
+    return counts
+
+
+def render_doc_path_baseline(findings: list[Finding]) -> str:
+    counts = doc_path_counts(findings)
+    lines = list(_DOC_PATH_BASELINE_HEADER)
+    lines.extend(f"{file}\t{counts[file]}" for file in sorted(counts))
+    return "\n".join(lines) + "\n"
+
+
+def load_doc_path_baseline(path: Path) -> dict[str, int]:
+    """Read ``file<TAB>count`` lines; ``#`` comments and blanks are ignored."""
+    counts: dict[str, int] = {}
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return counts
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "\t" not in line:
+            continue
+        file, _, count = line.partition("\t")
+        try:
+            counts[file.strip()] = int(count.strip())
+        except ValueError:
+            continue
+    return counts
+
+
+def split_doc_path_baseline(
+    findings: list[Finding], baseline: dict[str, int]
+) -> tuple[list[Finding], list[Finding]]:
+    """Split doc-path findings into ``(accepted, regressions)`` per file.
+
+    The first ``baseline[file]`` findings (by line) are accepted; anything past
+    that is a regression. A count that shrank accepts everything (the ratchet
+    only turns one way) and a file absent from the baseline accepts nothing.
+    """
+    by_file: dict[str, list[Finding]] = {}
+    for finding in findings:
+        if finding.kind != KIND_MISSING_DOC_PATH:
+            continue
+        by_file.setdefault(finding.file, []).append(finding)
+    accepted: list[Finding] = []
+    regressions: list[Finding] = []
+    for file, items in by_file.items():
+        items.sort(key=lambda f: (f.line, f.token))
+        allowed = baseline.get(file, 0)
+        accepted.extend(items[:allowed])
+        regressions.extend(items[allowed:])
+    return accepted, regressions
+
+
 def is_symbol_shaped(token: str) -> bool:
     """Whether ``token`` looks enough like a code symbol to resolve/flag it.
 
@@ -589,12 +736,14 @@ def citations_in_text(
     known_ids: set[str] | None,
     line_counts: dict[Path, int],
     basename_index: dict[str, list[Path]] | None = None,
+    repo_root: Path | None = None,
 ) -> list[Finding]:
     """Extract every finding from one scanned line of comment/docstring text."""
     found: list[Finding] = []
     display = _display_path(citing)
     snippet = _snippet(text)
     basenames = basename_index or {}
+    root = repo_root if repo_root is not None else REPO_ROOT
 
     for match in PATH_REF_RE.finditer(text):
         raw, number = match.group(1), int(match.group(2))
@@ -638,6 +787,9 @@ def citations_in_text(
                     )
                 )
 
+    for cited in find_missing_doc_paths(text, root):
+        found.append(Finding(display, line, KIND_MISSING_DOC_PATH, snippet, cited))
+
     return found
 
 
@@ -646,6 +798,7 @@ def collect_findings(
     allowlist: set[str] | None = None,
     known_ids: set[str] | None = None,
     extra_roots: list[Path] | None = None,
+    repo_root: Path | None = None,
 ) -> list[Finding]:
     """Scan ``roots`` and return findings sorted by ``(file, line, kind, snippet)``.
 
@@ -705,6 +858,7 @@ def collect_findings(
                     known_ids,
                     line_counts,
                     basename_index,
+                    repo_root,
                 )
             )
 
@@ -761,6 +915,26 @@ def build_parser() -> argparse.ArgumentParser:
         help="accepted findings (file:line:kind), one per line, to suppress",
     )
     parser.add_argument(
+        "--repo-root",
+        dest="repo_root",
+        metavar="DIR",
+        help="root that cited doc paths resolve against (default: the repo)",
+    )
+    parser.add_argument(
+        "--doc-path-baseline",
+        dest="doc_path_baseline",
+        metavar="FILE",
+        help=(
+            "accepted missing-doc-path counts (file<TAB>count); default: "
+            f"{DOC_PATH_BASELINE.relative_to(REPO_ROOT).as_posix()} when present"
+        ),
+    )
+    parser.add_argument(
+        "--update-doc-path-baseline",
+        action="store_true",
+        help="rewrite the missing-doc-path baseline from the current findings and exit",
+    )
+    parser.add_argument(
         "--emit-allowlist",
         dest="emit_allowlist",
         metavar="PATH",
@@ -777,6 +951,7 @@ def main(argv: list[str] | None = None) -> int:
 
     roots = [Path(r) for r in (args.root or [])] or [DEFAULT_ROOT]
     extra_roots = [Path(r) for r in (args.extra_root or [])]
+    repo_root = Path(args.repo_root) if args.repo_root else REPO_ROOT
     allowlist = default_symbol_allowlist()
     if args.allow_path:
         allowlist |= load_name_file(Path(args.allow_path))
@@ -785,8 +960,39 @@ def main(argv: list[str] | None = None) -> int:
         load_baseline(Path(args.baseline_path)) if args.baseline_path else set()
     )
 
-    findings = collect_findings(roots, allowlist, known_ids, extra_roots)
-    remaining = [f for f in findings if f.key() not in baseline]
+    findings = collect_findings(roots, allowlist, known_ids, extra_roots, repo_root)
+
+    if args.update_doc_path_baseline:
+        target = Path(args.doc_path_baseline) if args.doc_path_baseline else DOC_PATH_BASELINE
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(render_doc_path_baseline(findings), encoding="utf-8")
+        counts = doc_path_counts(findings)
+        sys.stdout.write(
+            f"wrote {target}: {len(counts)} file(s), "
+            f"{sum(counts.values())} accepted missing-doc-path finding(s)\n"
+        )
+        return 0
+
+    doc_path_baseline_path = (
+        Path(args.doc_path_baseline)
+        if args.doc_path_baseline
+        else (DOC_PATH_BASELINE if DOC_PATH_BASELINE.is_file() else None)
+    )
+    doc_path_baseline = (
+        load_doc_path_baseline(doc_path_baseline_path)
+        if doc_path_baseline_path is not None
+        else {}
+    )
+    accepted_doc_paths, _ = split_doc_path_baseline(findings, doc_path_baseline)
+    # Membership, not ``key()``: two dead citations on one line share a
+    # ``file:line:kind`` key, and the ratchet counts findings, not lines.
+    accepted_doc_path_set = set(accepted_doc_paths)
+
+    remaining = [
+        f
+        for f in findings
+        if f.key() not in baseline and f not in accepted_doc_path_set
+    ]
 
     if args.emit_allowlist:
         names = sorted(
