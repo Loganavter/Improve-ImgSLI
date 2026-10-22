@@ -38,6 +38,6 @@ A project file (`.imgsli`) keeps a whole workspace in one portable file: the ope
 
 ### Double-click a project on Windows {#windows-file-association}
 
-On Windows the installer associates `.imgsli` with Improve ImgSLI, so double-clicking a project opens it and the file shows the application's document icon. Packaged builds also register the association on startup.
+On Windows the installer associates `.imgsli` with BlinkTable, so double-clicking a project opens it and the file shows the application's document icon. Packaged builds also register the association on startup.
 
-If Properties still shows "Choose application", pick Improve ImgSLI once, or run the app with `--register-file-types` to register the association again.
+If Properties still shows "Choose application", pick BlinkTable once, or run the app with `--register-file-types` to register the association again.

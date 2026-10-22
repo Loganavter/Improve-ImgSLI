@@ -3,11 +3,11 @@
   <id>io.github.Loganavter.Improve-ImgSLI</id>
   <metadata_license>MIT</metadata_license>
   <project_license>GPL-3.0-or-later</project_license>
-  <name>Improve ImgSLI</name>
-  <summary>Image comparison with advanced magnifiers</summary>
+  <name>BlinkTable</name>
+  <summary>A workspace to compare, measure and prove image quality</summary>
   <description>
     <p>
-      Improve ImgSLI is an open-source image comparison tool focused on precise visual inspection, responsive interaction, and advanced canvas rendering workflows. It is designed for artists, photographers, retouchers, AI upscaling workflows, quality control, and anyone who needs to compare images at pixel level without losing context.
+      BlinkTable is an open-source workspace where image and video quality is compared, measured and proven: pixel-level inspection, objective metrics, a ranked verdict and an exported still or recorded comparison. It is built for artists, photographers, retouchers, upscaling and ML pipelines, and anyone who needs to compare images at pixel level without losing context.
     </p>
     <p>Key features include:</p>
     <ul>
@@ -55,10 +55,18 @@
   </developer>
   <content_rating type="oars-1.1"/>
   <releases>
-    <release version="11.0.0" date="2026-08-09">
+    <release version="11.0.0" date="2026-10-22">
       <url>https://github.com/Loganavter/Improve-ImgSLI/releases/tag/v11.0.0</url>
       <description>
-        <p>Move to a mip-pyramid LOD rendering stack, reworked toolkit widgets (glass-effect HUD flyouts, new color picker, improved scrollable toolbar buttons), and packaging fixes for the v10 Flatpak/AUR issues.</p>
+        <p>A major release: a new Image Gallery workspace, a shared render engine, and a reworked toolkit foundation.</p>
+        <ul>
+          <li>Image Gallery: a grid/review workspace with quality metrics, AI-assisted ranking, and triage.</li>
+          <li>Shared render engine: draw plans, residency, upload queue, and overlay shell moved out of the tabs; the comparison tabs are thin clients over one rendering path.</li>
+          <li>Overlays v2 and the video editor's thumbnail pipeline (pyramid, proxy, disk cache, trim margins).</li>
+          <li>Toolkit upgrade to sli-ui-toolkit 4.x: reworked buttons, flyouts, lists, scroll, and text surfaces.</li>
+          <li>Cropping, settings search, and help topics for the new workflows.</li>
+          <li>Packaging: pyvips streaming decode is now a hard dependency for Linux packages.</li>
+        </ul>
       </description>
     </release>
     <release version="10.0.1" date="2026-07-20">

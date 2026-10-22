@@ -18,7 +18,7 @@ def _choose_project_open_path(owner: "MainWindowProjectIo") -> str | None:
         owner.project_start_path(for_save=False),
         owner._tr(
             "menu.project_filter",
-            "Improve ImgSLI Project (*.imgsli)",
+            "BlinkTable Project (*.imgsli)",
         ),
     )
     return path or None
@@ -33,7 +33,7 @@ def _choose_project_save_path(owner: "MainWindowProjectIo") -> str | None:
         owner.project_start_path(for_save=True),
         owner._tr(
             "menu.project_filter",
-            "Improve ImgSLI Project (*.imgsli)",
+            "BlinkTable Project (*.imgsli)",
         ),
     )
     if not path:

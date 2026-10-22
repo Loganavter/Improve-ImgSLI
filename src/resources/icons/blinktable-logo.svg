@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="BlinkTable">
+  <title>BlinkTable</title>
+  <desc>Two photographic plates on a light table, misregistered by one blink; the bright seam and the reticle mark the difference between them.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#182230"/><stop offset="1" stop-color="#0A0F15"/>
+    </linearGradient>
+    <linearGradient id="warm" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFCE6B"/><stop offset="1" stop-color="#F2901F"/>
+    </linearGradient>
+    <linearGradient id="cool" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#8FBCFF"/><stop offset="1" stop-color="#2F6BE0"/>
+    </linearGradient>
+    <linearGradient id="seam" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF"/><stop offset="1" stop-color="#D8E8FF"/>
+    </linearGradient>
+  </defs>
+  <g transform="translate(256 256) scale(1.09) translate(-256 -256)">
+  <rect x="24" y="24" width="464" height="464" rx="110" fill="url(#bg)"/>
+  <rect x="92" y="126" width="152" height="254" rx="32" fill="url(#warm)"/>
+  <rect x="264" y="150" width="152" height="254" rx="32" fill="url(#cool)"/>
+  <rect x="248" y="126" width="12" height="278" rx="6" fill="url(#seam)"/>
+  <rect x="228" y="250" width="52" height="10" rx="5" fill="#FFFFFF" opacity="0.92"/>
+  <rect x="88" y="420" width="336" height="14" rx="7" fill="#EAF1FA" opacity="0.34"/>
+</g>
+</svg>

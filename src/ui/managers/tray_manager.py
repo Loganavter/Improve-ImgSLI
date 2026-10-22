@@ -20,7 +20,7 @@ class TrayManager(QObject):
     def __init__(
         self,
         parent=None,
-        app_name: str = "Improve-ImgSLI",
+        app_name: str = "BlinkTable",
         current_language: str = "en",
         resource_manager=None,
     ):

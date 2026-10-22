@@ -16,7 +16,7 @@ from pathlib import Path
 logger = logging.getLogger("ImproveImgSLI")
 
 PROGID = "ImproveImgSLI.Project"
-FRIENDLY_TYPE_NAME = 'Improve ImgSLI Project'
+FRIENDLY_TYPE_NAME = 'BlinkTable Project'
 CONTENT_TYPE = "application/x-improve-imgsli"
 EXTENSION = ".imgsli"
 

@@ -61,7 +61,7 @@ class HelpPlugin(Plugin, IControllablePlugin):
         if self._dialog is None:
             self._dialog = HelpDialog(
                 current_language=language,
-                app_name="Improve-ImgSLI",
+                app_name="BlinkTable",
                 parent=host,
             )
             self._dialog.destroyed.connect(self._on_dialog_destroyed)

@@ -38,6 +38,6 @@ Um arquivo de projeto (`.imgsli`) guarda um espaço de trabalho inteiro em um ú
 
 ### Duplo clique em um projeto no Windows {#windows-file-association}
 
-No Windows, o instalador associa `.imgsli` ao Improve ImgSLI, então um duplo clique abre o projeto e o arquivo exibe o ícone de documento do aplicativo. As compilações empacotadas também registram a associação ao iniciar.
+No Windows, o instalador associa `.imgsli` ao BlinkTable, então um duplo clique abre o projeto e o arquivo exibe o ícone de documento do aplicativo. As compilações empacotadas também registram a associação ao iniciar.
 
-Se as Propriedades ainda mostrarem "Escolher um aplicativo", selecione o Improve ImgSLI uma vez, ou execute o aplicativo com `--register-file-types` para registrar a associação novamente.
+Se as Propriedades ainda mostrarem "Escolher um aplicativo", selecione o BlinkTable uma vez, ou execute o aplicativo com `--register-file-types` para registrar a associação novamente.

@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/johnpetersa19/Improve-ImgSLI/037ab021aa79aa40a85a25d591e887dca85cd50d/src/icons/logo-github%20.svg" alt="Logo" width="384">
+  <img src="src/resources/icons/blinktable-logo.svg" alt="BlinkTable" width="384">
 </p>
 
 <p align="center">
@@ -9,7 +9,7 @@
   <a href="https://flathub.org/apps/details/io.github.Loganavter.Improve-ImgSLI"><img src="https://img.shields.io/flathub/downloads/io.github.Loganavter.Improve-ImgSLI?style=flat-square" alt="Flathub Downloads"></a>
 </p>
 
-<p align="center"><strong>Рабочее пространство для серьёзного сравнения изображений и видео — с анализом, экспортом и каналом управления для агентов.</strong></p>
+<p align="center"><strong>BlinkTable — рабочее пространство для серьёзного сравнения изображений и видео: сравнивайте, измеряйте, доказывайте качество.</strong></p>
 
 <p align="center">Read this in other languages: <a href="readme.md">English</a></p>
 

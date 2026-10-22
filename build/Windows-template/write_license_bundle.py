@@ -61,7 +61,7 @@ def write_license_bundle(repo_root: Path | None = None) -> Path:
 
     qt_paths = _relative_qt_paths(dist_dir)
     lines = [
-        "Improve ImgSLI — Qt bundle metadata",
+        "BlinkTable — Qt bundle metadata",
         "=================================",
         "",
         f"Generated (UTC): {datetime.now(UTC).isoformat(timespec='seconds')}",

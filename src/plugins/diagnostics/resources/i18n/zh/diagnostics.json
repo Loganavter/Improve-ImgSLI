@@ -1,7 +1,7 @@
 {
   "diagnostics": {
     "title": "报告问题",
-    "summary": "Improve ImgSLI 在本地生成此报告。不会自动上传任何内容——请自行选择「复制」、「保存」或「打开 issue」。",
+    "summary": "BlinkTable 在本地生成此报告。不会自动上传任何内容——请自行选择「复制」、「保存」或「打开 issue」。",
     "no_screenshots": "报告中绝不包含屏幕截图、图像或文件内容。",
     "preview_label": "报告内容（即将复制或附加的确切内容）：",
     "copy": "复制",

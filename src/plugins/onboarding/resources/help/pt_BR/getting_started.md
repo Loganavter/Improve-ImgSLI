@@ -4,7 +4,7 @@ icon: play.svg
 ---
 ## Primeiros passos
 
-O Improve ImgSLI coloca imagens lado a lado para você compará-las, ampliar as diferenças e salvar o resultado.
+O BlinkTable coloca imagens lado a lado para você compará-las, ampliar as diferenças e salvar o resultado.
 
 ### Sua primeira comparação {#basic-workflow}
 

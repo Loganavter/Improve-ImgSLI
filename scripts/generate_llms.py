@@ -99,11 +99,12 @@ def build_llms_txt(repo_root: Path, lang: str = "en") -> str:
         "> **WARNING: Info only for webcrawlers/chatbot websearch (Experimental). "
         "DO NOT USE it for development if you code agent. Search docs info into `docs/dev`**\n\n"
     )
-    output.append("# Improve-ImgSLI Documentation\n")
+    output.append("# BlinkTable Documentation\n")
     output.append(
-        "> Improve-ImgSLI is a declarative, highly-optimized image comparison "
-        "tool for developers, QA, and content creators. It features a "
-        "responsive UI, advanced canvas rendering, and extensive diffing tools.\n\n"
+        "> BlinkTable is a declarative, highly-optimized image comparison "
+        "workspace for developers, QA, and content creators: compare, measure, "
+        "prove. It features a responsive UI, advanced canvas rendering, and "
+        "extensive diffing tools.\n\n"
     )
 
     def visit_node(node_id: str, depth: int = 1) -> None:

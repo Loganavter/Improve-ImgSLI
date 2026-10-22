@@ -1,7 +1,7 @@
 {
   "diagnostics": {
     "title": "Report a problem",
-    "summary": "Improve ImgSLI builds this report locally. Nothing is uploaded automatically — choose Copy, Save, or Open issue yourself.",
+    "summary": "BlinkTable builds this report locally. Nothing is uploaded automatically — choose Copy, Save, or Open issue yourself.",
     "no_screenshots": "The report never includes screenshots, images, or file contents.",
     "preview_label": "Report contents (exactly what will be copied or attached):",
     "copy": "Copy",

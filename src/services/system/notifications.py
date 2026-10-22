@@ -15,7 +15,7 @@ class NotificationService:
 
     def __init__(
         self,
-        app_name: str = "Improve-ImgSLI",
+        app_name: str = "BlinkTable",
         app_icon_path: Optional[str] = None,
         app_id: Optional[str] = None,
     ):
