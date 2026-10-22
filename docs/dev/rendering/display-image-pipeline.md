@@ -56,8 +56,10 @@ Single owner, eager, no HOLD:
   sides have sizes, they compute `pw,ph = max(w1,w2), max(h1,h2)` once from
   `shared/image_processing/image_dims.py::get_image_dims` and derive a single
   fitted rect via `ui/canvas_infra/scene/frame_geometry.py::
-  resolve_canvas_content_geometry(cw,ch,pw,ph)` (`cw,ch` = canvas logical
-  size, `pw,ph` = eager envelope). Both letterbox slots receive the same
+  resolve_canvas_content_geometry(widget_width=cw, widget_height=ch,
+  image_width=pw, image_height=ph, virtual_layout=None)` (`cw,ch` = canvas
+  logical size, `pw,ph` = eager envelope; all arguments are keyword-only). Both
+  letterbox slots receive the same
   `ux/cw, uy/ch, uw/cw, uh/ch`, dispatched via `store.transact`
   (`SetPixmapDimensionsAction` + `SetImageDisplayRectAction`).
 - **No `UNION_LETTERBOX_HOLD_MS` / `more_pending` / `Store.predicted_unified_size`
