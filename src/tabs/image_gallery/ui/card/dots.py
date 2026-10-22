@@ -133,10 +133,12 @@ def _accent_color():
 
 
 def _neutral_color():
-    """Muted dot for an axis with no score (``gallery.status.neutral``).
+    """Muted dot for the PENDING affordance (``gallery.status.neutral``).
 
-    Lower alpha keeps it visually subordinate to measured dots; the tooltip
-    still names the axis (``"<label>: —"``) so the gap reads as a gap.
+    Painted once per ASKED axis while no axis of the set carries a score ("still
+    measuring"); as soon as one does, ``metric_dots_for_item`` drops every gap
+    record, so this colour stops being used for that card. Lower alpha keeps the
+    placeholder visually subordinate to measured dots.
     """
     color = _token_color("gallery.status.neutral", "#8a8a8a")
     try:
@@ -219,6 +221,16 @@ def layout_dots(
     return centers
 
 
+def _is_measured(record) -> bool:  # type: ignore[no-untyped-def]
+    """Does this ``AxisValue`` carry a measurement (not a ``status="gap"``)?"""
+    try:
+        if str(getattr(record, "status", "") or "") == "gap":
+            return False
+        return getattr(record, "value", None) is not None
+    except Exception:
+        return False
+
+
 def metric_dots_for_item(
     item: GalleryItem,
     mode: object = None,
@@ -226,9 +238,9 @@ def metric_dots_for_item(
     translate=None,
     profile=None,
 ) -> tuple[tuple[object, ...], tuple[tuple[str, int | None], ...]]:
-    """Per-metric quality dots: one dot per axis of the ACTIVE axis set.
+    """Per-metric quality dots: the MEASURED axes of the ACTIVE axis set.
 
-    Dot count/order = ``profile_judged.scorecard_axis_ids(mode, profile=profile)``
+    Dot axis set = ``profile_judged.scorecard_axis_ids(mode, profile=profile)``
     — the registry report order followed by the axes the judge NAMED for this
     series (P7-C). ``profile`` is the ACTIVE metric profile; it wins over *mode*
     when given, so the dots show exactly the axes the rows, the rank and the AI
@@ -237,10 +249,24 @@ def metric_dots_for_item(
     (0–100; AI scorecard vs local detectors), so the number carries its own
     producer and provenance. Color = ``metric_scores.score_band`` mapped onto
     the existing severity tokens for a registry axis; a MEASURED judge axis
-    paints the accent token (it is another instrument, not a band); an axis the
-    current domain did not answer is a ``status="gap"`` record and keeps the
-    muted neutral dot it always had (the tooltip reads "—", so the gap still
-    reads as a gap).
+    paints the accent token (it is another instrument, not a band).
+
+    TWO PHASES, this one decision (owner, 2026-10-22) — a gap is not a dot once
+    anything exists to dot about:
+
+    * **pending** — no axis in the asked set carries a value (every record is a
+      ``status="gap"``): paint the WHOLE asked set in the muted neutral
+      (``_neutral_color``), the "still measuring" affordance. Camera therefore
+      shows its 8 grey dots exactly as before.
+    * **measured** — at least one record is measured: paint ONLY the measured
+      axes, in asked-set order. Gaps are suppressed (no grey placeholder, no
+      reserved space), so a partially measured card counts its real metrics and
+      each landing axis adds one dot; the count never returns to the
+      placeholder set.
+
+    Grid card and list row both read this function's ``(colors, infos)``
+    (``ui/card.py`` / ``ui/list/card.py``), so the rule has exactly one
+    implementation — the painters only place what they are handed.
 
     Returns ``(colors, infos)`` where ``infos`` is the parallel tuple of
     ``(localized_label, score | None)`` used by the hover tooltip.
@@ -272,6 +298,11 @@ def metric_dots_for_item(
         records = read_axes(item, domain=domain, axes=axes, profile=profile)
     except Exception:
         return (), ()
+    measured = tuple(record for record in records if _is_measured(record))
+    if measured:
+        # Measured phase: the gaps have no dot at all — a placeholder would
+        # re-claim the count the affordance just handed over (owner 2026-10-22).
+        records = measured
     colors: list[object] = []
     infos: list[tuple[str, int | None]] = []
     for record in records:
@@ -336,8 +367,9 @@ def _dots_for_item(
     """Backward-compatible ``(dot_text, colors)`` over ``metric_dots_for_item``.
 
     ``_DOTS_TEXT`` is kept for old callers/tests but is no longer authoritative:
-    the actual dot count comes from the measured-axis set (the active
-    *profile* when given, else *mode*).
+    the actual dot count comes from the measured-axis set of the active
+    *profile* (else *mode*), or from the whole asked set while nothing in it is
+    measured yet (the pending affordance — see ``metric_dots_for_item``).
     """
     colors, _infos = metric_dots_for_item(
         item, mode=mode, domain=domain, translate=translate, profile=profile
