@@ -32,6 +32,7 @@ import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+from tabs.image_gallery.tests._activity_fixtures import mark_analyzing
 from tabs.image_gallery import controller as controller_mod
 from tabs.image_gallery.controller import GalleryController
 from tabs.image_gallery.models import GalleryItem, Mode, Series
@@ -278,7 +279,8 @@ def test_second_settle_over_the_same_folder_is_a_noop(monkeypatch, fake_workers)
 
 
 def test_vlm_profile_lands_on_state_and_consumers_follow(monkeypatch, fake_workers) -> None:
-    a, b = _item("a.png", ssim=0.9), _item("b.png", ssim=0.4)
+    a = mark_analyzing(_item("a.png", ssim=0.9))
+    b = _item("b.png", ssim=0.4)
     ctrl = _ProfileCtrl([a, b], mode=Mode.CAMERA)
     heuristic_axes = profile_for_mode("camera").axis_ids
     assert "sharpness" in heuristic_axes and len(heuristic_axes) > 1  # a strict subset

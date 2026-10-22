@@ -39,6 +39,16 @@ def _item(**overrides) -> GalleryItem:
     return GalleryItem(**defaults)
 
 
+
+def _analyzing(item: GalleryItem) -> GalleryItem:
+    """Mark the item as ACTIVELY analyzing (the affordance phase, owner 2026-10-22)."""
+    from tabs.image_gallery.models import ActivityPhase
+    from tabs.image_gallery.services.activity import set_activity
+
+    set_activity(item, ActivityPhase.QUEUED, "local")
+    return item
+
+
 def _paint_grid(card, width: int = 250, height: int = 170) -> None:
     image = QImage(width, height, QImage.Format.Format_ARGB32_Premultiplied)
     painter = QPainter(image)
@@ -69,7 +79,7 @@ def _paint_list(card, width: int = 640, height: int = 64) -> None:
 
 def test_pending_item_paints_the_full_requested_axis_set() -> None:
     """No measurement yet → the whole asked set, neutral, exactly as before."""
-    item = _item()
+    item = _analyzing(_item())
     requested = scorecard_axis_ids("camera")
     colors, infos = metric_dots_for_item(item, mode="camera", domain="algorithms")
     assert len(requested) == 8  # camera parity: the affordance never narrowed
@@ -80,7 +90,7 @@ def test_pending_item_paints_the_full_requested_axis_set() -> None:
 
 def test_pending_card_keeps_the_placeholder_geometry(qapp) -> None:
     """The pending phase is visually unchanged: one neutral dot per asked axis."""
-    item = _item()
+    item = _analyzing(_item())
     card = build_gallery_card(item, parent=None, mode="camera", domain="algorithms")
     try:
         assert len(card._gallery_dot_colors) == len(scorecard_axis_ids("camera"))

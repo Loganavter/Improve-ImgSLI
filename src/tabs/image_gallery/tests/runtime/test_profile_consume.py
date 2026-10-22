@@ -37,6 +37,7 @@ from tabs.image_gallery.services.metric_profile import MetricProfile, profile_fo
 from tabs.image_gallery.services.metric_scores import spec_for
 from tabs.image_gallery.services.rank_fusion import measured_axes_for
 from tabs.image_gallery.ui.card import build_gallery_card
+from tabs.image_gallery.tests._activity_fixtures import mark_analyzing
 from tabs.image_gallery.ui.card.dots import metric_dots_for_item
 from tabs.image_gallery.ui.grid_view.rebuild import _resolve_profile
 from tabs.image_gallery.ui.list.card import build_gallery_list_card
@@ -116,13 +117,13 @@ def test_build_request_forwards_profile_into_the_prompt(tmp_path) -> None:
 
 
 def test_metric_dots_restricted_profile_has_one_dot() -> None:
-    colors, infos = metric_dots_for_item(_item(), mode="camera", profile=P_RESTRICTED)
+    colors, infos = metric_dots_for_item(mark_analyzing(_item()), mode="camera", profile=P_RESTRICTED)
     assert len(colors) == len(P_RESTRICTED.axis_ids) == 1
     assert [label for label, _score in infos] == ["Sharpness"]
 
 
 def test_metric_dots_widened_profile_keeps_profile_order_and_labels() -> None:
-    colors, infos = metric_dots_for_item(_item(), mode="camera", profile=P_WIDENED)
+    colors, infos = metric_dots_for_item(mark_analyzing(_item()), mode="camera", profile=P_WIDENED)
     assert len(colors) == len(P_WIDENED.axis_ids) == 3
     assert [label for label, _score in infos] == _labels(P_WIDENED.axis_ids)
     # The mode alone would have offered a DIFFERENT count — proving the profile
@@ -131,7 +132,7 @@ def test_metric_dots_widened_profile_keeps_profile_order_and_labels() -> None:
 
 
 def test_metric_dots_backward_compatible_without_profile() -> None:
-    item = _item()
+    item = mark_analyzing(_item())
     for mode in ("camera", "fidelity", "batch_synthetic", None):
         colors, infos = metric_dots_for_item(item, mode=mode)
         colors_none, infos_none = metric_dots_for_item(item, mode=mode, profile=None)
@@ -147,7 +148,7 @@ def test_metric_dots_backward_compatible_without_profile() -> None:
 
 
 def test_grid_card_honours_the_profile(qapp) -> None:
-    card = build_gallery_card(_item(), parent=None, mode="camera", profile=P_WIDENED)
+    card = build_gallery_card(mark_analyzing(_item()), parent=None, mode="camera", profile=P_WIDENED)
     assert len(card._gallery_dot_colors) == len(P_WIDENED.axis_ids) == 3
     assert [label for label, _score in card._gallery_dot_infos] == _labels(
         P_WIDENED.axis_ids
@@ -155,20 +156,20 @@ def test_grid_card_honours_the_profile(qapp) -> None:
     card.deleteLater()
 
     restricted = build_gallery_card(
-        _item(), parent=None, mode="camera", profile=P_RESTRICTED
+        mark_analyzing(_item()), parent=None, mode="camera", profile=P_RESTRICTED
     )
     assert len(restricted._gallery_dot_colors) == 1
     restricted.deleteLater()
 
     # Without a profile the card keeps the mode-mapping parity.
-    plain = build_gallery_card(_item(), parent=None, mode="camera")
+    plain = build_gallery_card(mark_analyzing(_item()), parent=None, mode="camera")
     assert len(plain._gallery_dot_colors) == len(measured_axes_for("camera"))
     plain.deleteLater()
 
 
 def test_list_row_honours_the_profile(qapp) -> None:
     card = build_gallery_list_card(
-        _item(), mode="camera", domain="algorithms", profile=P_WIDENED
+        mark_analyzing(_item()), mode="camera", domain="algorithms", profile=P_WIDENED
     )
     assert len(card._gallery_dot_colors) == len(P_WIDENED.axis_ids)
     assert len(card._gallery_dot_infos) == len(P_WIDENED.axis_ids)
@@ -237,7 +238,7 @@ def _capturing_worker(seen):
 def test_begin_analysis_passes_the_active_profile(monkeypatch) -> None:
     from tabs.image_gallery.use_cases import ai_analysis
 
-    item = _item()
+    item = mark_analyzing(_item())
     ctl = _bare_controller([item])
     ctl.state = SimpleNamespace(
         items=[item], mode="camera", metric_profile=P_WIDENED
@@ -256,7 +257,7 @@ def test_begin_analysis_passes_the_active_profile(monkeypatch) -> None:
 def test_begin_analysis_falls_back_to_the_mode_profile(monkeypatch) -> None:
     from tabs.image_gallery.use_cases import ai_analysis
 
-    item = _item()
+    item = mark_analyzing(_item())
     ctl = _bare_controller([item])
     ctl.state = SimpleNamespace(items=[item], mode="camera")  # no stored profile
     seen: dict = {}

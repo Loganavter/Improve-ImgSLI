@@ -21,6 +21,7 @@ from PySide6.QtGui import QColor
 
 from tabs.image_gallery.models import Artifact, GalleryItem, Severity, ThumbnailStatus
 from tabs.image_gallery.services.rank_fusion import measured_axes_for
+from tabs.image_gallery.tests._activity_fixtures import mark_analyzing
 from tabs.image_gallery.ui.card import (
     _apply_rejected_visuals,
     _dots_for_item,
@@ -196,7 +197,8 @@ def test_unreadable_card_shows_placeholder_and_danger_error_row(qapp):
 
 
 def test_readable_card_has_no_placeholder(qapp):
-    item = _item()
+    # Placeholder dots are an in-progress affordance: mark the item analyzing.
+    item = mark_analyzing(_item())
     card = build_gallery_card(item, parent=None)
     qapp.processEvents()
     regions = {r.id: r for r in card.regions()}

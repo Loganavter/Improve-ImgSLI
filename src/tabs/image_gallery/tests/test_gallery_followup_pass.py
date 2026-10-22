@@ -172,3 +172,31 @@ def test_the_quick_look_report_has_no_axis_set_row() -> None:
     ).read_text(encoding="utf-8")
     assert "profile_axis_set" not in source
     assert "profile_mode_fallback" not in source
+
+
+# -- dots follow the analysis lifecycle, not a fixed axis count --------------
+
+
+def test_the_placeholder_dots_disappear_when_the_analysis_ends() -> None:
+    """Owner: "Analyzing" disappeared but the 8 dots stayed — they read as eight
+    criteria that never finish. The placeholder set is now an in-progress
+    affordance: it appears when the item is queued/analyzing and is gone the
+    moment the item is done (unless axes were actually measured)."""
+    from tabs.image_gallery.models import ActivityPhase
+    from tabs.image_gallery.services.activity import set_activity
+    from tabs.image_gallery.ui.card.dots import metric_dots_for_item
+
+    item = _item("lifecycle.png", metrics=False)
+    assert metric_dots_for_item(item, mode="camera")[1] == (), "idle card keeps a placeholder"
+
+    set_activity(item, ActivityPhase.QUEUED, "local")
+    _colors, infos = metric_dots_for_item(item, mode="camera")
+    assert len(infos) == 8, f"a queued card must show the waiting affordance, got {infos}"
+
+    set_activity(item, ActivityPhase.ANALYZING, "local")
+    assert len(metric_dots_for_item(item, mode="camera")[1]) == 8
+
+    set_activity(item, ActivityPhase.DONE, "local")
+    assert metric_dots_for_item(item, mode="camera")[1] == (), (
+        "the placeholder outlived the analysis (the reported 8 stuck dots)"
+    )
