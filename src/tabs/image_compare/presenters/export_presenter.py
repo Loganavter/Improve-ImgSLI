@@ -203,7 +203,7 @@ class ExportPresenter(QObject):
             self.ui_manager.messages.show_non_modal_message(
                 kind=MessageKind.CRITICAL,
                 title=self._tr("common.error"),
-                text=f"{self._tr('msg.failed_to_save_image')}: {str(e)}",
+                text=f"{self._tr('image_compare.msg.failed_to_save_image')}: {str(e)}",
             )
 
     def _open_export_dialog(
@@ -258,7 +258,7 @@ class ExportPresenter(QObject):
             self.ui_manager.messages.show_non_modal_message(
                 kind=MessageKind.CRITICAL,
                 title=self._tr("common.error"),
-                text=f"{self._tr('msg.failed_to_quick_save_image')}: {str(e)}",
+                text=f"{self._tr('image_compare.msg.failed_to_quick_save_image')}: {str(e)}",
             )
 
     def cancel_all_exports(self):

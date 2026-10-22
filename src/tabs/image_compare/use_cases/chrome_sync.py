@@ -596,11 +596,11 @@ class ImageCompareChromeSync(QObject):
                 psnr = self.store.viewport.session_data.image_state.psnr_value
                 if psnr is not None:
                     self.widget.psnr_label.setText(
-                        f"{tr('ui.psnr', self.store.settings.current_language)}: {psnr:.2f} dB"
+                        f"{tr('image_compare.ui.psnr', self.store.settings.current_language)}: {psnr:.2f} dB"
                     )
                 else:
                     self.widget.psnr_label.setText(
-                        f"{tr('ui.psnr', self.store.settings.current_language)}: --"
+                        f"{tr('image_compare.ui.psnr', self.store.settings.current_language)}: --"
                     )
 
             ssim_visible = (
@@ -612,11 +612,11 @@ class ImageCompareChromeSync(QObject):
                 ssim = self.store.viewport.session_data.image_state.ssim_value
                 if ssim is not None:
                     self.widget.ssim_label.setText(
-                        f"{tr('ui.ssim', self.store.settings.current_language)}: {ssim:.4f}"
+                        f"{tr('image_compare.ui.ssim', self.store.settings.current_language)}: {ssim:.4f}"
                     )
                 else:
                     self.widget.ssim_label.setText(
-                        f"{tr('ui.ssim', self.store.settings.current_language)}: --"
+                        f"{tr('image_compare.ui.ssim', self.store.settings.current_language)}: --"
                     )
 
             self.widget.footer_info_widget.setVisible(psnr_visible or ssim_visible)

@@ -13,6 +13,17 @@
     "switch": {
       "off": "Off",
       "on": "On"
+    },
+    "calendar": {
+      "weekday": {
+        "mon": "Mon",
+        "tue": "Tue",
+        "wed": "Wed",
+        "thu": "Thu",
+        "fri": "Fri",
+        "sat": "Sat",
+        "sun": "Sun"
+      }
     }
   }
 }

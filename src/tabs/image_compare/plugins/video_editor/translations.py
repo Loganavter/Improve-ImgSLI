@@ -47,7 +47,7 @@ def _apply_buttons(dialog, lang: str) -> None:
     dialog.btn_fit_content.setToolTip(tr("image_compare.magnifier.fit_mode_toggle", lang))
     dialog.btn_fit_fill_color.setToolTip(tr("export.select_background_color", lang))
     dialog.btn_play.setToolTip(
-        f"{tr('button.play', lang)} / {tr('button.pause', lang)}"
+        f"{tr('image_compare.button.play', lang)} / {tr('image_compare.button.pause', lang)}"
     )
     dialog.btn_undo.setToolTip(tr("image_compare.button.undo_ctrlz", lang))
     dialog.btn_redo.setToolTip(tr("image_compare.button.redo", lang))
