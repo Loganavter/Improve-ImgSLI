@@ -340,3 +340,101 @@ def test_a_domain_switch_is_cache_only() -> None:
 
     assert owner.hydrated and owner.hydrated[0] == items
     assert owner.analyzed == 0, "a switch must not start a live analysis"
+
+
+def test_fusion_repoints_the_ranks_and_the_provenance_chip() -> None:
+    """Switching back to Algorithms must say "Ranked by Algorithms" again.
+
+    The live screenshot kept "Ranked by AI (Jev)" after the switch: fusion did
+    re-derive the ranks, but the stats-strip chip was never refreshed.
+    """
+    from tabs.image_gallery.controller import GalleryController
+    from tabs.image_gallery.models import Series
+
+    items = [_item("a.png", rank=2, metrics=False), _item("b.png", rank=1, metrics=False)]
+    for it, score in zip(items, (300.0, 260.0)):
+        it.metrics["sharpness"] = score
+        it.metrics["noise"] = 0.2
+        it.rank_source = "jev"
+    items[1].is_best = True
+
+    seen: list = []
+
+    class _Owner:
+        def __init__(self) -> None:
+            self.state = SimpleNamespace(
+                series=[Series(id="s", members=list(items))],
+                items=list(items),
+                mode="camera",
+                metric_profile=None,
+            )
+            self._judgment_domain = "algorithms"
+            self._metrics_settled_gen = 5
+            self._folder_gen = 5
+            self.widget = SimpleNamespace(
+                set_rank_provenance=lambda src=None, domain=None: seen.append((src, domain)),
+                refresh_cards=lambda its: None,
+                refresh_card=lambda it: None,
+            )
+
+        def _section_members(self, entry):
+            return list(getattr(entry, "members", entry) or [])
+
+    owner = _Owner()
+    GalleryController._apply_fusion_ranks(owner, owner.state.series)
+
+    assert all(it.rank_source == "fusion" for it in items), [it.rank_source for it in items]
+    assert seen and seen[-1] == ("fusion", "algorithms"), seen
+
+
+def test_the_marker_receives_the_active_domain_from_both_painters(qapp, monkeypatch) -> None:
+    from PySide6.QtGui import QImage, QPainter
+
+    from tabs.image_gallery.ui.card import build_gallery_card
+    from tabs.image_gallery.ui.card import provenance as prov
+    from tabs.image_gallery.ui.card.painters import _gallery_card_overlay_painter
+    from tabs.image_gallery.ui.list.card import build_gallery_list_card
+    from tabs.image_gallery.ui.list.painters import _list_row_overlay_painter
+
+    captured: list = []
+
+    def _capture(painter, box, item, **kwargs):
+        captured.append(kwargs.get("domain"))
+
+    monkeypatch.setattr(prov, "paint_source_marker", _capture)
+
+    item = _item("ai.png", analysis=True)
+    card = build_gallery_card(item, parent=None, mode="camera")
+    card._gallery_domain = "algorithms"
+    card.resize(250, 170)
+
+    class _Ctx:
+        widget = card
+        rect = card.rect().toRectF()
+
+    image = QImage(250, 170, QImage.Format.Format_ARGB32_Premultiplied)
+    painter = QPainter(image)
+    try:
+        _gallery_card_overlay_painter(painter, _Ctx(), None)
+    finally:
+        painter.end()
+    assert captured and captured[-1] == "algorithms", captured
+
+    captured.clear()
+    from PySide6.QtCore import QRectF
+
+    row = build_gallery_list_card(item, mode="camera", domain="algorithms", profile=None)
+    row._gallery_domain = "ai"
+    row.resize(640, 64)
+
+    class _RowCtx:
+        widget = row
+        rect = QRectF(0, 0, 640, 64)
+
+    image2 = QImage(640, 64, QImage.Format.Format_ARGB32_Premultiplied)
+    painter2 = QPainter(image2)
+    try:
+        _list_row_overlay_painter(painter2, _RowCtx(), None)
+    finally:
+        painter2.end()
+    assert captured and captured[-1] == "ai", captured

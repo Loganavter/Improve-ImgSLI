@@ -322,11 +322,12 @@ def activate_judgment_domain(owner, domain: str) -> None:
             logger.debug("domain switch rank re-derive failed", exc_info=True)
         owner._clear_series_priority()
         return
-    # Cache-only on purpose: a switch never spends a request for metrics the
-    # other backend already produced (owner 2026-10-22). The duck-typed call
-    # keeps legacy doubles (no ``cache_only``) working.
+    # Cache-first, never re-derive: items that already carry a scorecard (any
+    # backend's cached read) are skipped by ``_run_ai_for_visible``; only a card
+    # the AI has never seen is analyzed. A switch must not re-run the other
+    # backend, but it must still produce the AI read on a first switch.
     try:
-        owner._run_ai_for_visible(cache_only=True)
+        owner._run_ai_for_visible(cache_only=False)
     except TypeError:
         owner._run_ai_for_visible()
     # The terminal ranker, guarded by the batch ledger: a switch that started
