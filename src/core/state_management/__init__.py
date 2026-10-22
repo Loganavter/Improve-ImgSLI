@@ -7,7 +7,6 @@ __all__ = [
     "ActionType",
     "Dispatcher",
     "ViewportReducer",
-    "DocumentReducer",
     "SettingsReducer",
     "RootReducer",
 ]
@@ -17,10 +16,12 @@ _EXPORTS = {
     "ActionType": ("core.state_management.actions", "ActionType"),
     "Dispatcher": ("core.state_management.dispatcher", "Dispatcher"),
     "ViewportReducer": ("core.state_management.reducers", "ViewportReducer"),
-    "DocumentReducer": ("core.state_management.reducers", "DocumentReducer"),
     "SettingsReducer": ("core.state_management.reducers", "SettingsReducer"),
     "RootReducer": ("core.state_management.reducers", "RootReducer"),
 }
+# Do not re-export ``DocumentReducer`` here: it is tab-owned and registered
+# as the ``document`` slot reducer; core must not import tab code to satisfy
+# an export. tests/contracts/test_state_management_exports.py pins the map.
 
 def __getattr__(name: str):
     target = _EXPORTS.get(name)
