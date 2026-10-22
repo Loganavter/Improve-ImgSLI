@@ -39,11 +39,16 @@ at paint time, it is stamped at build/update time).
 (``_start_triage(..., cover_grid=False)``) so the pipeline actually recomputes
 instead of repainting the already-measured view.
 
-Deliberately NOT touched: ``services.jev_cache`` / ``services.vlm_cache``. Their
-keys already include the measured payload / the compared paths+mtimes, so once
-the measurements change the stale entries simply MISS — deleting them is
-unnecessary work (and would discard still-valid briefs for unchanged inputs).
-Do not "fix" this by widening the clear.
+EVERY measurement cache is dropped, INCLUDING the Jev rank pins and the
+tie-break briefs (``services.jev_cache`` / ``services.vlm_cache``). The owner's
+order (2026-10-22) is literal: the action zeroes all measured state without
+caveats. The earlier version deliberately kept them ("their keys change anyway")
+and the result read as a partial reset — a pinned rank or brief survived and
+looked like a stale measurement.
+
+The scope is the WHOLE POOL, not the menu selection: a per-card reset leaves
+every other card's numbers in place, which is indistinguishable from "nothing
+happened" (owner report 2026-10-22). Callers pass ``paths=None``.
 """
 
 from __future__ import annotations
@@ -98,6 +103,10 @@ def _clear_item(item) -> None:
         item.analysis = None
         item.analysis_status = AnalysisStatus.NOT_ANALYZED
         item.analysis_error = None
+        # Engine records + the k-draw scorecards are MEASUREMENTS too: leaving
+        # them meant the read path (``analysis.read``) still answered from the
+        # old pass after the reset (owner: "метрики остались").
+        item.analysis_records = ()
         # Metric-derived rank state — see the DECISION above.
         item.rank = None
         item.rank_source = None
@@ -270,6 +279,27 @@ def clear_metrics_caches(owner, *, paths=None) -> dict:
         summary["profiles"] = int(_profile_cache.clear_default_cache())
     except Exception:
         logger.debug("metrics reset: profile pin clear failed", exc_info=True)
+    # Jev rank pins + VLM tie-break briefs: measured decisions, so a "zero all
+    # measurements" reset drops them (owner order 2026-10-22).
+    for module_name, key in (
+        ("tabs.image_gallery.services.jev_cache", "jev_files"),
+        ("tabs.image_gallery.services.vlm_cache", "vlm_files"),
+    ):
+        try:
+            module = __import__(module_name, fromlist=["clear_default_cache"])
+            clear_all = getattr(module, "clear_default_cache", None)
+            if callable(clear_all):
+                summary[key] = int(clear_all())
+        except Exception:
+            logger.debug("metrics reset: %s clear failed", key, exc_info=True)
+    # The selection profile's generation markers: a reset re-opens the selector
+    # for the SAME folder generation (the frozen/consumed guard would otherwise
+    # suppress it after the first run).
+    try:
+        owner._profile_consumed_gen = None
+        owner._profile_settle_pending_gen = None
+    except Exception:
+        pass
 
     # Stored profile + the Stage-2 skip gate.
     try:
@@ -305,22 +335,21 @@ def clear_metrics_caches(owner, *, paths=None) -> dict:
 def reset_metrics_caches(owner, *, paths=None) -> dict:
     """Clear the caches, then RE-ENTER the triage rebuild. Never raises.
 
-    The clear already resets the visible state (unranked badges + neutral
-    dots); re-entering ``_start_triage(..., cover_grid=False)`` is what makes
-    the proxy pass recompute the numbers (the fingerprint gate is now open).
-    A missing folder / controller degrades to the clear-only path — the
-    summary then carries ``"requeued": False``.
+    ``paths`` is accepted for API compatibility but a RESET is always the whole
+    pool (owner decision 2026-10-22): a scoped reset left the rest of the grid
+    looking untouched, which reads as a broken button.
+
+    OWNER DECISION 2026-10-22: the action ZEROES, it does not re-run. The
+    earlier version re-entered the triage rebuild, so the numbers (and with them
+    the AI/ALG marker) came back seconds later — or on the next repaint (opening
+    and closing quick look) — which reads exactly like "the reset did not
+    work". A reset now leaves an empty, unranked gallery; the ordinary triggers
+    (open the folder, Analyze, the folder's next triage) recompute from scratch
+    because the Stage-2 fingerprint and every disk cache were dropped.
+
+    ``summary["requeued"]`` is kept for callers and is always ``False``.
     """
+    paths = None
     summary = clear_metrics_caches(owner, paths=paths)
     summary["requeued"] = False
-    try:
-        st = getattr(owner, "state", None)
-        items = list(getattr(st, "items", None) or [])
-        folder = getattr(st, "folder", None)
-        start = getattr(owner, "_start_triage", None)
-        if items and folder is not None and callable(start):
-            start(items, cover_grid=False)
-            summary["requeued"] = True
-    except Exception:
-        logger.debug("metrics reset: triage re-entry failed", exc_info=True)
     return summary

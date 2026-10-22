@@ -144,7 +144,10 @@ def reset_metrics(owner, ctx: ActionContext):
     from tabs.image_gallery.use_cases import cache_reset as _cache_reset
 
     try:
-        return _cache_reset.reset_metrics_caches(owner, paths=list(ctx.targets))
+        # Owner decision 2026-10-22: a reset zeroes the WHOLE pool — the scope
+        # of the menu (one card, a selection) made the rest of the grid look
+        # untouched, which read as "the reset does nothing".
+        return _cache_reset.reset_metrics_caches(owner, paths=None)
     except Exception:
         return Refusal(REFUSAL_NO_HANDLER, ctx.targets, "metrics reset failed")
 

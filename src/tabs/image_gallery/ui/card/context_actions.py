@@ -244,7 +244,8 @@ def _ctx_reset_metrics(owner, path: Path) -> None:
     try:
         from tabs.image_gallery.use_cases import cache_reset as _cache_reset
 
-        _cache_reset.reset_metrics_caches(owner, paths=targets or None)
+        # Whole pool on purpose (owner 2026-10-22): a reset is a reset.
+        _cache_reset.reset_metrics_caches(owner, paths=None)
     except Exception:
         pass
 

@@ -267,3 +267,76 @@ def test_both_surfaces_draw_the_marker_in_the_text_region(qapp, monkeypatch) -> 
     text_row = row.region_rect("text")
     assert captured, "the list row drew no marker"
     assert captured[0].top() >= float(text_row.top()) - 1.0, captured[0]
+
+
+# -- the sort is a LIVE order; a switch never spends a request -------------
+
+
+def test_resort_after_a_rank_change_reorders_the_grid(qtbot) -> None:
+    """With "Sort: Rank" the grid must follow the numbers a ranker writes."""
+    w = ImageGalleryWidget()
+    qtbot.addWidget(w)
+    items = [_item("a.png", rank=3), _item("b.png", rank=1), _item("c.png", rank=2)]
+    w._items = list(items)
+    w.set_triage([items], "camera", None)
+    assert [Path(it.path).name for it in w._items] == ["b.png", "c.png", "a.png"]
+
+    # A ranker (Jev) rewrites the numbers: a.png becomes the winner.
+    items[0].rank, items[1].rank, items[2].rank = 1, 2, 3
+    view_prefs.resort_after_rank_change(w)
+
+    assert [Path(it.path).name for it in w._items] == ["a.png", "b.png", "c.png"], (
+        "the grid kept the pre-rank order after the ranks changed"
+    )
+
+
+def test_restoring_the_sort_index_reorders_the_current_items(qtbot) -> None:
+    """A reopened tab must show the saved order, not "Sort: Name" on a triage grid."""
+    w = ImageGalleryWidget()
+    qtbot.addWidget(w)
+    items = [_item("c.png", rank=3), _item("a.png", rank=1), _item("b.png", rank=2)]
+    w._items = list(items)
+    w.rebuild_grid(items)
+
+    w.apply_view_prefs(view_list=False, judgment_domain="algorithms", sort_index=1)
+
+    assert [Path(it.path).name for it in w._items] == ["a.png", "b.png", "c.png"]
+
+
+def test_the_marker_follows_the_active_domain() -> None:
+    """Algorithms mode says ALG even when an AI scorecard still sits on the item."""
+    from tabs.image_gallery.ui.card.provenance import marker_text
+
+    analyzed = _item("ai.png", analysis=True)
+    assert marker_text(analyzed, domain="ai") == "AI"
+    assert marker_text(analyzed, domain="algorithms") == "ALG"
+    assert marker_text(_item("none.png", metrics=False), domain="algorithms") == ""
+
+
+def test_a_domain_switch_is_cache_only() -> None:
+    """Switching backends must not spend a request on already-produced metrics."""
+    from tabs.image_gallery.use_cases import ai_analysis
+
+    class _Owner:
+        def __init__(self) -> None:
+            self.state = SimpleNamespace(items=[], mode="camera")
+            self._AI_VISIBLE_CAP = 12
+            self.hydrated: list = []
+            self.analyzed = 0
+            self.widget = SimpleNamespace(visible_paths=lambda: [])
+
+        def _hydrate_ai_cache(self, items, **kwargs):
+            self.hydrated.append(list(items))
+            return len(self.hydrated[-1])
+
+        def analyze(self, ctx):
+            self.analyzed += 1
+
+    owner = _Owner()
+    items = [_item("a.png"), _item("b.png")]
+    owner.state.items = items
+
+    ai_analysis._run_ai_for_visible(owner, cache_only=True)
+
+    assert owner.hydrated and owner.hydrated[0] == items
+    assert owner.analyzed == 0, "a switch must not start a live analysis"

@@ -159,25 +159,34 @@ def test_ai_cache_is_really_bypassed(tmp_path, caches) -> None:
     assert item.analysis is None
 
 
-def test_reset_reenters_the_rebuild(tmp_path, caches) -> None:
-    """``reset_metrics_caches`` re-enters the triage rebuild (no grid cover)."""
+def test_reset_zeroes_without_rebuilding(tmp_path, caches) -> None:
+    """Owner decision 2026-10-22: the reset ZEROES, it does not re-run.
+
+    The old contract re-entered the triage rebuild, so the numbers (and the
+    AI/ALG marker) came back seconds later — or on the next repaint — which is
+    indistinguishable from "the reset did nothing". The reset now leaves an
+    empty, unranked gallery; the Stage-2 fingerprint and every disk cache are
+    dropped so the folder's next triage (or an explicit analyze) recomputes.
+    """
     from tabs.image_gallery.use_cases import cache_reset
 
     img = tmp_path / "a.jpg"
     img.write_bytes(b"\x00")
     items = [GalleryItem(path=img, mtime_ns=1)]
+    items[0].metrics["sharpness"] = 300.0
     owner = _Owner(items)
     calls: list = []
     owner._start_triage = lambda its, **kw: calls.append((list(its), kw))  # type: ignore[method-assign]
 
     summary = cache_reset.reset_metrics_caches(owner)
 
-    assert summary["requeued"] is True
+    assert summary["requeued"] is False
     assert summary["items"] == 1
-    assert len(calls) == 1
-    assert calls[0][0] == items
-    assert calls[0][1] == {"cover_grid": False}
-    assert owner._last_analysis_fingerprint is None
+    assert calls == [], "a reset must not re-run the analysis by itself"
+    assert items[0].metrics == {}, "the measured numbers must be ZERO after a reset"
+    assert owner._last_analysis_fingerprint is None, (
+        "the next triage must recompute from scratch"
+    )
 
 
 def test_reset_without_folder_is_clear_only(tmp_path, caches) -> None:

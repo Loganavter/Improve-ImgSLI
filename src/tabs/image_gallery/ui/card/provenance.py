@@ -46,17 +46,31 @@ def _label_color() -> QColor:
     return col
 
 
-def marker_text(item, translate=None) -> str:
-    """Localized short token for this item ("" when nothing analyzed it yet)."""
+def marker_text(item, translate=None, *, domain=None) -> str:
+    """Localized short token for this item ("" when nothing analyzed it yet).
+
+    ``domain`` is the tab's ACTIVE judgment domain — the backend whose numbers
+    the card currently shows. The previous version looked only at
+    "does a VLM scorecard exist", so every card said AI once the AI run had
+    touched it, even in Algorithms mode (owner 2026-10-22: "бейдж только ИИ
+    выставляется"). A cache is not a claim about what you are looking at.
+    """
     from tabs.image_gallery.analysis.read import SOURCE_AI, SOURCE_LOCAL, analysis_source
 
+    live = str(domain or "").strip().lower()
+    if live and live != SOURCE_AI:
+        # Algorithms view: the displayed numbers are the detectors', whatever
+        # AI reads may still sit on the item.
+        return _token(translate, SOURCE_LOCAL, "image_gallery.card.source_local", "ALG") if analysis_source(item) else ""
     source = analysis_source(item)
     if source == SOURCE_AI:
-        key, default = "image_gallery.card.source_ai", "AI"
-    elif source == SOURCE_LOCAL:
-        key, default = "image_gallery.card.source_local", "ALG"
-    else:
-        return ""
+        return _token(translate, SOURCE_AI, "image_gallery.card.source_ai", "AI")
+    if source == SOURCE_LOCAL:
+        return _token(translate, SOURCE_LOCAL, "image_gallery.card.source_local", "ALG")
+    return ""
+
+
+def _token(translate, _source: str, key: str, default: str) -> str:
     if callable(translate):
         try:
             return str(translate(key, default))
