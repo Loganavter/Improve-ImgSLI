@@ -2,8 +2,10 @@
 """Doc-truth guard: canon/skill docs must not reference retired help mechanics.
 
 The help plane's mechanics changed (``{{tr:}}`` interpolation, ``tree.json``,
-``figures.json``, ``check_help_figures.py``, ``resolve_alias`` all removed) while
-the canon/skills kept describing them — so agents executed stale instructions
+``figures.json``, ``check_help_figures.py``, ``resolve_alias`` all removed, and
+with them the retired toolkit widgets HelpDocumentView /
+HelpDocumentBodyCanvas and the glass-panel display CPU/RHI split) while the
+canon/skills kept describing them — so agents executed stale instructions
 and redid work. This guard fails when a canon/skill doc references a retired
 mechanism, with a file:line so it is fixable. A line may opt out with the
 ``doc-truth:allow`` marker when the retired name is mentioned on purpose (e.g.
@@ -32,6 +34,15 @@ RETIRED_TOKENS = (
     "figures.json",
     "check_help_figures",
     "resolve_alias",
+    # Retired help-plane widgets: the toolkit HelpDocumentView and its
+    # HelpDocumentBodyCanvas paint surface were deleted toolkit-side
+    # (``db47b2d``); the live renderer is a document ``Text`` hosted by the
+    # app's ``HelpDialog``. The glass-panel display CPU/RHI split collapsed
+    # into the single live ``GlassPanelDisplayWidget``.
+    "HelpDocumentView",
+    "HelpDocumentBodyCanvas",
+    "GlassPanelDisplayWidgetCpu",
+    "GlassPanelDisplayWidgetRhi",
 )
 
 #: Per-line opt-out marker for a deliberate mention of a retired name.

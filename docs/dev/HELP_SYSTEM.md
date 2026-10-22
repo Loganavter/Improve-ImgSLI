@@ -470,7 +470,7 @@ markdown subset → parse_help_blocks() → Text(mode="document")
 
 The body is a toolkit `Text(mode="document")` widget; `HelpDialog(ThemedDialog)`
 hosts it in a `SurfaceScrollArea` inside a `SidebarDialogShell`. The toolkit
-`HelpDocumentView` — and with it the `HelpDocumentBodyCanvas` paint surface and
+`HelpDocumentView` — and with it the `HelpDocumentBodyCanvas` paint surface and <!-- doc-truth:allow: retired names, history only -->
 its private `_LinkLabel` TOC rows — was deleted toolkit-side in `db47b2d`
 (2026-10-21); do not reintroduce it. The host owns the chrome: `_HelpToc`
 builds one ghost `Button` per anchored `###`
@@ -511,7 +511,7 @@ for TOC-friendly anchors.
 
 > The corpus test still rejects `| … |` rows in shipped bodies
 > (`tests/plugins/test_help_tree.py::test_help_page_bodies_are_scenario_cards`,
-> whose in-test comment names the retired `HelpDocumentView`). Tables parse, but
+> whose in-test comment names the retired `HelpDocumentView`). <!-- doc-truth:allow: retired name, history only --> Tables parse, but
 > keep them out of `resources/help/*.md` until that assertion is lifted — use
 > bullet inventories (see `platform/hotkeys.md`).
 
