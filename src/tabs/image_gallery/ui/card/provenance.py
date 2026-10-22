@@ -26,12 +26,6 @@ def _colors() -> tuple[QColor, QColor]:
     return bg, QColor(_accent_color())
 
 
-def accent_for(is_ai: bool) -> QColor:
-    """The accent used for the AI token (kept here so both surfaces agree)."""
-    _bg, accent = _colors()
-    return accent
-
-
 def _muted() -> QColor:
     from tabs.image_gallery.ui.card.dots import _neutral_color
 
@@ -60,13 +54,7 @@ def marker_text(item, translate=None) -> str:
 
 
 def paint_source_marker(painter, box: QRectF, item, *, translate=None) -> None:
-    """Draw the marker as plain text at *box*'s bottom-left (no pill, no image).
-
-    Owner 2026-10-22: the first version was a pill INSIDE the cover — it covered
-    the image while the strip under the filename was empty. The marker is now a
-    small caption in the card's TEXT zone (grid) / text region (list): no
-    background chip, no overlap with the preview.
-    """
+    """Paint the marker at *box*'s bottom-left corner (no-op when unanalyzed)."""
     text = marker_text(item, translate)
     if not text:
         return
@@ -76,19 +64,26 @@ def paint_source_marker(painter, box: QRectF, item, *, translate=None) -> None:
     font = ui_font(pixel_size=_MARK_FONT_PX)
     metrics = QFontMetrics(font)
     pad = float(scaled_px(_MARK_PAD))
-    height = float(max(metrics.height(), scaled_px(11)))
-    width = float(metrics.horizontalAdvance(text) + 1.0)
+    height = float(max(metrics.height() + 2.0, scaled_px(12)))
+    width = float(metrics.horizontalAdvance(text) + 2.0 * pad)
     if width > box.width() or height > box.height():
         return
-    rect = QRectF(box.left() + pad, box.bottom() - height - pad / 2.0, width, height)
+    rect = QRectF(box.left() + pad, box.bottom() - height - pad, width, height)
+    bg, accent = _colors()
+    path = QPainterPath()
+    radius = height / 2.0
+    path.addRoundedRect(rect, radius, radius)
     painter.save()
     try:
         painter.setRenderHint(painter.RenderHint.Antialiasing, True)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(bg)
+        painter.drawPath(path)
         painter.setFont(font)
-        painter.setPen(accent_for(is_ai) if is_ai else _muted())
+        painter.setPen(accent if is_ai else _muted())
         painter.drawText(
             rect,
-            int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter),
+            int(Qt.AlignmentFlag.AlignCenter),
             text,
         )
     finally:
