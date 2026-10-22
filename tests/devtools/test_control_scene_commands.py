@@ -560,6 +560,251 @@ def test_divider_commands_are_idempotent_too(qapp, tmp_path):
 
 
 # ---------------------------------------------------------------------------
+# (d2) the magnifier's combined mode: set and verify in ONE call
+# ---------------------------------------------------------------------------
+
+
+def _combined(handlers) -> bool | None:
+    return _scene(handlers, "image_compare")["magnifiers"][0]["is_combined"]
+
+
+def test_combined_mode_is_set_and_verified_in_one_call(qapp, tmp_path):
+    """The Shift+Space preview guard is a *precondition*; it must be establishable."""
+    fixture = _ic_fixture(qapp)
+    handlers = _handlers(tmp_path, page=fixture.page)
+    assert _combined(handlers) is False, "the fixture starts split, not combined"
+
+    outcome = handlers.handle(
+        "set_scene_commands",
+        {
+            "tab": "image_compare",
+            "commands": [
+                {
+                    "action": "magnifier.set_combined",
+                    "params": {"id": "loupe-a", "combined": True},
+                    "expect": {"magnifiers[0].is_combined": True},
+                }
+            ],
+        },
+    )
+
+    assert outcome["ok"] is True, outcome["error"]
+    assert outcome["applied"][0]["verified"] is True
+    assert "magnifiers[0].is_combined" in outcome["applied"][0]["changed"]
+    scene = outcome["scene"]
+    assert scene["magnifiers"][0]["is_combined"] is True
+    assert scene["magnifiers"][0]["model"]["spacing_relative"] == 0.0
+    assert [circle["role"] for circle in scene["magnifiers"][0]["circles"]] == [
+        "combined"
+    ], "a combined loupe paints one combined circle, not two sides"
+
+
+def test_leaving_combined_mode_splits_the_loupe_again(qapp, tmp_path):
+    """The `false` branch: it used to reuse the current spacing (0.0) — a no-op."""
+    fixture = _ic_fixture(qapp)
+    handlers = _handlers(tmp_path, page=fixture.page)
+
+    entered = handlers.handle(
+        "set_scene_commands",
+        {
+            "tab": "image_compare",
+            "commands": [
+                {
+                    "action": "magnifier.set_combined",
+                    "params": {"id": "loupe-a", "combined": True},
+                    "expect": {"magnifiers[0].is_combined": True},
+                }
+            ],
+        },
+    )
+    assert entered["ok"] is True, entered["error"]
+
+    left = handlers.handle(
+        "set_scene_commands",
+        {
+            "tab": "image_compare",
+            "commands": [
+                {
+                    "action": "magnifier.set_combined",
+                    "params": {"id": "loupe-a", "combined": False},
+                    "expect": {"magnifiers[0].is_combined": False},
+                }
+            ],
+        },
+    )
+
+    assert left["ok"] is True, left["error"]
+    assert left["applied"][0]["verified"] is True
+    assert "magnifiers[0].is_combined" in left["applied"][0]["changed"]
+    scene = left["scene"]
+    assert scene["magnifiers"][0]["is_combined"] is False
+    assert scene["magnifiers"][0]["model"]["spacing_relative"] > 0.0, (
+        "leaving combined mode must give the sides a spacing to split by"
+    )
+    assert [circle["role"] for circle in scene["magnifiers"][0]["circles"]] == [
+        "left",
+        "right",
+    ]
+
+
+def test_combined_mode_refuses_a_non_bool_value_with_the_schema(qapp, tmp_path):
+    fixture = _ic_fixture(qapp)
+    handlers = _handlers(tmp_path, page=fixture.page)
+    before = _scene(handlers, "image_compare")
+
+    outcome = handlers.handle(
+        "set_scene_commands",
+        {
+            "tab": "image_compare",
+            "commands": [
+                {
+                    "action": "magnifier.set_combined",
+                    "params": {"id": "loupe-a", "combined": "on"},
+                    "expect": {"magnifiers[0].is_combined": True},
+                }
+            ],
+        },
+    )
+
+    assert outcome["ok"] is False
+    assert outcome["stopped_at"] == 0
+    assert "must be true or false" in outcome["error"]["message"]
+    hint = outcome["error"]["hint"] or ""
+    assert "combined: true or false" in hint, "the schema is in the hint"
+    assert "magnifier.set_combined(" in hint
+    assert _same_scene(_scene(handlers, "image_compare"), before), "nothing was applied"
+
+
+def test_combined_mode_refuses_a_hidden_instance_with_a_named_reason(qapp, tmp_path):
+    """A hidden instance reports ``is_combined: null`` — never compare bool to None."""
+    fixture = _ic_fixture(qapp)
+    handlers = _handlers(tmp_path, page=fixture.page)
+    before = _scene(handlers, "image_compare")
+    assert before["magnifiers"][1]["is_combined"] is None
+
+    outcome = handlers.handle(
+        "set_scene_commands",
+        {
+            "tab": "image_compare",
+            "commands": [
+                {
+                    "action": "magnifier.set_combined",
+                    "params": {"id": "loupe-b", "combined": True},
+                    "expect": {"magnifiers[1].is_combined": True},
+                }
+            ],
+        },
+    )
+
+    assert outcome["ok"] is False
+    assert outcome["stopped_at"] == 0
+    assert "hidden" in outcome["error"]["message"]
+    assert "magnifier.set_visible" in (outcome["error"]["hint"] or "")
+    assert _same_scene(_scene(handlers, "image_compare"), before), "nothing was applied"
+
+
+def test_combined_mode_refuses_when_a_side_is_not_visible(qapp, tmp_path):
+    """``is_combined`` is derived from both sides + spacing; half a loupe cannot be it."""
+    from tabs.image_compare.canvas.features.magnifier.state.store import (
+        update_magnifier_model,
+    )
+
+    fixture = _ic_fixture(qapp)
+    update_magnifier_model(
+        fixture.view_state,
+        fixture.store.viewport.render_config,
+        "loupe-a",
+        visible_right=False,
+    )
+    handlers = _handlers(tmp_path, page=fixture.page)
+
+    outcome = handlers.handle(
+        "set_scene_commands",
+        {
+            "tab": "image_compare",
+            "commands": [
+                {
+                    "action": "magnifier.set_combined",
+                    "params": {"id": "loupe-a", "combined": True},
+                    "expect": {"magnifiers[0].is_combined": True},
+                }
+            ],
+        },
+    )
+
+    assert outcome["ok"] is False
+    assert "both sides" in outcome["error"]["message"]
+    assert "visible_left" in (outcome["error"]["hint"] or "")
+    assert _combined(handlers) is False, "the refused command did not fold the loupe"
+
+
+def test_combined_mode_satisfies_the_guard_the_shift_space_preview_reads(qapp, tmp_path):
+    """The scene field and the gesture guard must tell the same story.
+
+    ``input/gestures.py`` starts the Shift+Space side preview only when
+    ``overlay.active_combined`` says the loupe is combined (plus both sides
+    visible). The scene command must satisfy that same predicate — otherwise
+    "the preview is dead" and "the precondition was never met" stay
+    indistinguishable through the control surface.
+    """
+    from tabs.image_compare.canvas.features.magnifier.state.store import (
+        set_magnifier_enabled_flag,
+    )
+    from ui.canvas_infra.scene.registry import get_canvas_registry
+
+    fixture = _ic_fixture(qapp)
+    # The guard also requires the overlay itself to be on (gestures.py:102).
+    set_magnifier_enabled_flag(fixture.view_state, True)
+    handlers = _handlers(tmp_path, page=fixture.page)
+    combined_query = get_canvas_registry(
+        "image_compare"
+    ).get_feature_command_by_alias("overlay.active_combined")
+    assert combined_query(fixture.store) is False
+
+    outcome = handlers.handle(
+        "set_scene_commands",
+        {
+            "tab": "image_compare",
+            "commands": [
+                {
+                    "action": "magnifier.set_combined",
+                    "params": {"id": "loupe-a", "combined": True},
+                    "expect": {"magnifiers[0].is_combined": True},
+                }
+            ],
+        },
+    )
+
+    assert outcome["ok"] is True, outcome["error"]
+    assert _combined(handlers) is True
+    assert combined_query(fixture.store) is True, (
+        "the Shift+Space guard reads overlay.active_combined; the scene field it is "
+        "verified by and the gesture predicate must agree"
+    )
+
+
+def test_combined_command_is_declared_like_the_other_scene_commands():
+    """The table entry is what list_actions/set_scene_commands advertise."""
+    from core.control.scene_command_schema import (
+        scene_command_names,
+        scene_command_specs,
+        schema_text,
+    )
+
+    assert "magnifier.set_combined" in scene_command_names()
+    spec = scene_command_specs()["magnifier.set_combined"]
+    assert spec["canvas"] == "ic_scene"
+    assert set(spec["params"]) == {"id", "combined"}
+    assert spec["params"]["combined"]["type"] == "bool"
+    assert spec["params"]["combined"]["required"] is True
+    assert schema_text("magnifier.set_combined", spec) == (
+        "magnifier.set_combined(id: a string, combined: true or false) — "
+        + spec["summary"]
+        + '; example: {"id": "loupe-a", "combined": true}'
+    )
+
+
+# ---------------------------------------------------------------------------
 # (e) verification re-reads through the S1 read verb
 # ---------------------------------------------------------------------------
 
@@ -822,6 +1067,10 @@ def test_mcp_exposes_the_ordered_command_tool(qapp, tmp_path):
     assert set(items["properties"]) == {"action", "params", "expect"}
     assert tool["handler"] == "set_scene_commands"
     assert 200 <= len(tool["description"]) <= 500
+    assert "combined" in tool["description"], (
+        "the tool description enumerates the commands; the combined setter must be "
+        "discoverable without a source read"
+    )
 
     run = tools["run_action"]
     assert "params" in run["inputSchema"]["properties"]

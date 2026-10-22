@@ -460,23 +460,103 @@ def viewport_set_active_combined(
     store,
     combined: bool,
 ):
+    from tabs.image_compare.canvas.features.magnifier.constants import (
+        DEFAULT_MAGNIFIER_SPACING_RELATIVE,
+        MIN_MAGNIFIER_SPACING_RELATIVE_FOR_COMBINE,
+    )
     from tabs.image_compare.canvas.features.magnifier.state.service import MagnifierStoreService
 
     if store is None or getattr(store, "viewport", None) is None:
         return None
-    scene_state = MagnifierStoreService(store)
-    model = scene_state.get_active_or_first_magnifier()
+    model = MagnifierStoreService(store).get_active_or_first_magnifier()
     if model is None:
         return None
 
     if bool(combined):
-
         target_spacing = 0.0
+    elif (
+        float(model.spacing_relative)
+        <= MIN_MAGNIFIER_SPACING_RELATIVE_FOR_COMBINE + 1e-5
+    ):
+        # Leaving combined mode. The model's spacing IS 0.0 while combined, so
+        # reusing it (what this branch used to do) rewrote 0.0 onto 0.0 and the
+        # loupe stayed folded — a silent no-op with a success return. Give the
+        # two sides the app's default spacing to split by instead.
+        target_spacing = float(DEFAULT_MAGNIFIER_SPACING_RELATIVE)
     else:
-
         target_spacing = float(model.spacing_relative)
 
-    result = scene_state.set_active_magnifier_spacing(target_spacing)
-    if hasattr(store, "emit_viewport_change"):
-        store.emit_viewport_change()
-    return result
+    return viewport_set_active_spacing(store, target_spacing)
+
+
+def magnifier_scene_graph(canvas):
+    """The cached scene graph a verified magnifier command can refresh, or ``None``.
+
+    ``get_canvas_scene`` reads magnifier geometry (and ``is_combined``) off
+    ``runtime_state._canvas_scene_graph``, which only a render rebuild refreshes.
+    A command verified inside one call has to refresh it itself, so it first asks
+    whether the canvas carries a usable cached graph (bounds included — an empty
+    graph has nothing to rebuild inside).
+    """
+    runtime_state = getattr(canvas, "runtime_state", None)
+    graph = getattr(runtime_state, "_canvas_scene_graph", None)
+    if graph is None:
+        return None
+    bounds = getattr(graph, "bounds", None)
+    if bounds is None:
+        return None
+    if int(getattr(bounds, "w", 0) or 0) <= 0:
+        return None
+    if int(getattr(bounds, "h", 0) or 0) <= 0:
+        return None
+    return graph
+
+
+def viewport_refresh_magnifier_scene(store, canvas):
+    """Rebuild the cached scene graph's magnifier objects from the current state.
+
+    ``get_canvas_scene`` answers where the loupes are from the cache a render
+    rebuild parks on ``runtime_state._canvas_scene_graph``; a scene command that
+    must be verified in the same call cannot wait for the next frame. This
+    rebuilds the magnifier subtree with the same builder the render path uses
+    (``build_magnifier_objects``), inside the bounds the cached graph already
+    reports, and leaves other features' objects untouched — a combined loupe
+    changes its own circles, not the panes or the divider.
+
+    Returns the refreshed graph, or ``None`` when there is no cached graph to
+    refresh (see :func:`magnifier_scene_graph`). No Store field is written: the
+    spacing itself went through the command that owns it.
+    """
+    from dataclasses import replace
+
+    from tabs.image_compare.canvas.features.magnifier.scene.build import (
+        build_magnifier_objects,
+    )
+    from ui.canvas_infra.scene.context import CanvasSceneBuildContext
+
+    graph = magnifier_scene_graph(canvas)
+    if graph is None or store is None or getattr(store, "viewport", None) is None:
+        return None
+    geometry = store.viewport.geometry_state
+    context = CanvasSceneBuildContext(
+        store=store,
+        image_label=canvas,
+        bounds=graph.bounds,
+        label_width=max(1, int(getattr(canvas, "width", lambda: 0)() or 0)),
+        label_height=max(1, int(getattr(canvas, "height", lambda: 0)() or 0)),
+        pix_w=int(getattr(geometry, "pixmap_width", 0) or 0),
+        pix_h=int(getattr(geometry, "pixmap_height", 0) or 0),
+    )
+    refreshed = replace(
+        graph,
+        objects=(
+            *tuple(
+                obj
+                for obj in (graph.objects or ())
+                if getattr(obj, "kind", None) != "magnifier"
+            ),
+            *tuple(build_magnifier_objects(context)),
+        ),
+    )
+    canvas.runtime_state._canvas_scene_graph = refreshed
+    return refreshed

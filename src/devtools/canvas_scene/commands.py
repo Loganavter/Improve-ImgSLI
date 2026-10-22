@@ -154,6 +154,64 @@ def _ic_set_magnifier_size(canvas: Any, params: dict[str, Any], *, tab: str) -> 
     )
 
 
+def _ic_set_magnifier_combined(canvas: Any, params: dict[str, Any], *, tab: str) -> None:
+    """Set the instance's combined mode and refresh the scene graph it is read from.
+
+    ``is_combined`` is not a stored field: the scene derives it from
+    ``visible_left and visible_right and spacing == 0``. So the write is the
+    spacing command (``overlay.set_active_combined``, which owns the 0.0 ↔
+    default-spacing decision) and the *read* is a scene-graph refresh — without
+    it ``expect: magnifiers[i].is_combined`` would compare against the previous
+    frame's cache and fail for a command that actually worked.
+
+    Preconditions are refused *before* the write, with the reason: a hidden
+    instance reports ``is_combined: null`` (no scene-graph geometry), and a
+    loupe with one side hidden can never be combined — both would turn
+    "unverifiable" into a state change nobody can see.
+    """
+    from tabs.image_compare.canvas.features.magnifier.commands.viewport import (
+        magnifier_scene_graph,
+        viewport_refresh_magnifier_scene,
+    )
+
+    magnifier_id = _require_magnifier(canvas, params["id"])
+    model = _magnifier_models(canvas)[magnifier_id]
+    if not bool(getattr(model, "visible", False)):
+        raise _method_error(
+            f"magnifier {magnifier_id!r} is hidden, so its combined mode has no "
+            "scene geometry to report",
+            "make the instance visible first (magnifier.set_visible with "
+            "visible: true), then set its combined mode — get_canvas_scene "
+            "reports is_combined: null for a hidden instance",
+        )
+    combined = bool(params["combined"])
+    if combined and not (
+        bool(getattr(model, "visible_left", False))
+        and bool(getattr(model, "visible_right", False))
+    ):
+        raise _method_error(
+            f"magnifier {magnifier_id!r} cannot be combined: both sides must be "
+            f"visible (left={bool(getattr(model, 'visible_left', False))}, "
+            f"right={bool(getattr(model, 'visible_right', False))})",
+            "is_combined is derived from visible_left + visible_right + spacing 0; "
+            "enable the hidden side (left/right visibility) in the magnifier "
+            "toolbar, then retry",
+        )
+    if magnifier_scene_graph(canvas) is None:
+        raise _method_error(
+            "this canvas has no scene graph yet, so the combined mode cannot be "
+            "verified in this call",
+            "let the tab paint one frame (open it with open_tab, then re-read "
+            "with get_canvas_scene) and retry",
+        )
+
+    _ic_select(canvas, tab, magnifier_id)
+    _ic_command(tab, "overlay.set_active_combined", alias=True)(
+        _ic_store(canvas), combined
+    )
+    viewport_refresh_magnifier_scene(_ic_store(canvas), canvas)
+
+
 def _ic_set_divider_visible(canvas: Any, params: dict[str, Any], *, tab: str) -> None:
     _ic_command(tab, "divider:viewport.toggle_visibility", alias=False)(
         _ic_store(canvas), bool(params["visible"])
@@ -302,6 +360,29 @@ SCENE_COMMANDS: dict[str, dict[str, Any]] = {
         "example": {"id": "loupe-a", "size": 0.3},
         "scope": ("magnifiers", "render_layout", "sources", "unavailable"),
         "apply": _ic_set_magnifier_size,
+    },
+    "magnifier.set_combined": {
+        "canvas": IC_SCENE,
+        "summary": (
+            "set one magnifier instance's combined mode (both sides folded into "
+            "one loupe at zero spacing); it also becomes the active instance"
+        ),
+        "params": {
+            "id": _INSTANCE_PARAM,
+            "combined": {
+                "type": "bool",
+                "required": True,
+                "description": (
+                    "true folds the two sides into one combined loupe (spacing "
+                    "0.0); false splits them again at the app's default spacing. "
+                    "Both sides must be visible, and a hidden instance reports "
+                    "is_combined: null."
+                ),
+            },
+        },
+        "example": {"id": "loupe-a", "combined": True},
+        "scope": ("magnifiers", "render_layout", "sources", "unavailable"),
+        "apply": _ic_set_magnifier_combined,
     },
     "divider.set_visible": {
         "canvas": IC_SCENE,

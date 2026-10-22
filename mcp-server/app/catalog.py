@@ -696,9 +696,9 @@ TOOLS: list[dict] = [
         "title": "Run an ordered scene command list",
         "description": (
             "Set a canvas scene by running an ordered list of value-taking commands "
-            "(magnifier visible/position/size, divider visible/thickness, Multi "
-            "Compare split weights). Stops at the first error; nothing after it "
-            "runs. With verify=true (default) each command declares expect scene "
+            "(magnifier visible/position/size/combined, divider visible/thickness, "
+            "Multi Compare split weights). Stops at the first error; nothing after "
+            "it runs. With verify=true (default) each command declares expect scene "
             "paths and the scene is re-read: a command that changed nothing, or "
             "changed undeclared state, fails."
         ),

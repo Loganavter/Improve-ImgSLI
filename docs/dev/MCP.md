@@ -60,7 +60,7 @@ fallback window, e.g. `:97`).
 | `wait_for` | read | block until one expectation holds (element id visible+enabled, role+label exists, or jobs settle); a timeout returns the last observed state (live-only) |
 | `get_canvas_scene` | read | one tab's canvas scene as deterministic JSON: panes, dividers, every magnifier instance (hidden ones flagged), canvas size, camera/projection transform; every geometry field names its coordinate space and its source (live-only) |
 | `open_tab` | write | open/focus a tab kind (live) or launch it (fallback) |
-| `run_action` | write | run one ActionRegistry id; with `params`/`expect` it also runs the six named scene commands (magnifier visible/position/size, divider visible/thickness, MC split weights) and can verify the change against scene paths (live-only) |
+| `run_action` | write | run one ActionRegistry id; with `params`/`expect` it also runs the seven named scene commands (magnifier visible/position/size/combined, divider visible/thickness, MC split weights) and can verify the change against scene paths (live-only) |
 | `set_scene_commands` | write | run an ordered list of value-taking scene commands; stops at the first error, and with `verify=true` each command declares expected scene paths and the scene is re-read (live-only) |
 | `open_folder` | write | hand a folder to a tab (`tab=` targets one; `slot=`/`side=` place it; live: routed) |
 | `open_file` | write | load one image file into a tab that accepts it (`tab=` forces one; a video is refused by name) — live-only |
@@ -200,13 +200,14 @@ unavailable, never approximated**.
 - **The read does not change the scene.** It must not create state on first
   read; a getter that materializes state is a bug in the getter.
 
-Six **scene commands** take absolute values (never toggles, never deltas):
+Seven **scene commands** take absolute values (never toggles, never deltas):
 
 | command | params | canvas |
 |---|---|---|
 | `magnifier.set_visible` | `id` (instance id exactly as listed), `visible: bool` | image_compare |
 | `magnifier.set_position` | `id`, `x`/`y` as fractions `0..1` of the canvas | image_compare |
 | `magnifier.set_size` | `id`, `size` as a fraction of the short side (default 0.2) | image_compare |
+| `magnifier.set_combined` | `id`, `combined: bool` — folds the two sides into one loupe (spacing 0) or splits them again; needs both sides visible, and a hidden instance is refused (`is_combined` is `null` for it) | image_compare |
 | `divider.set_visible` | `visible: bool` | image_compare |
 | `divider.set_thickness` | `thickness: int px` `0..10` (0 also hides) | image_compare |
 | `layout.set_split_weights` | `path: [int]` (child-index chain, root `[]`), `weights: [float]` summing to ~1.0 (clamped per child ≥ 0.15) | multi_compare |
