@@ -58,7 +58,11 @@ def _restore_ui_scale():
 
 
 def _item() -> GalleryItem:
-    return GalleryItem(path=Path("/gallery/a.png"), mtime_ns=1)
+    # The placeholder dot set is an in-progress affordance (owner 2026-10-22):
+    # this file measures its geometry, so the item is actively analyzing.
+    from tabs.image_gallery.tests._activity_fixtures import mark_analyzing
+
+    return mark_analyzing(GalleryItem(path=Path("/gallery/a.png"), mtime_ns=1))
 
 
 def _card(factor: float):

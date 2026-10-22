@@ -36,6 +36,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from tabs.image_gallery.tests._activity_fixtures import mark_analyzing
 from tabs.image_gallery.models import GalleryItem
 from tabs.image_gallery.services import ai_cache, profile_cache
 from tabs.image_gallery.services.rank_badge import BEST_TEXT, KIND_BEST, KIND_NONE
@@ -144,9 +145,11 @@ def test_reset_repaints_card_dots_and_badge(tmp_path, caches, qapp) -> None:
             cache_reset.clear_metrics_caches(owner)
 
             dots = tuple(card._gallery_dot_colors)
-            assert dots  # the axis set still renders — as neutral gaps
-            assert all(c.alpha() == 120 for c in dots)
-            assert all(score is None for _label, score in card._gallery_dot_infos)
+            # A cleared, idle card has NOTHING measured and nothing running, so
+            # it paints no dots (placeholder dots are an in-progress affordance
+            # since 2026-10-22 — they must not outlive the analysis).
+            assert not dots
+            assert not card._gallery_dot_infos
             assert not card._gallery_badge
         finally:
             view.deleteLater()

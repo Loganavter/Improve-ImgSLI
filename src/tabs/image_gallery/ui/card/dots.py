@@ -231,6 +231,23 @@ def _is_measured(record) -> bool:  # type: ignore[no-untyped-def]
         return False
 
 
+def _is_analyzing(item) -> bool:
+    """Is this item's analysis actually in flight right now (the pill's truth)?
+
+    The placeholder dot set is an AFFORDANCE for work in progress, so it must
+    appear only while ``ActivityPulse`` shows that work (the same
+    ``activity_of`` source as the "Analyzing" pill). A finished card with no
+    measured axes paints nothing.
+    """
+    try:
+        from tabs.image_gallery.services.activity import ACTIVE_PHASES, activity_of
+
+        got = activity_of(item)
+        return bool(got) and str(got[0]) in ACTIVE_PHASES
+    except Exception:
+        return False
+
+
 def metric_dots_for_item(
     item: GalleryItem,
     mode: object = None,
@@ -303,6 +320,12 @@ def metric_dots_for_item(
         # Measured phase: the gaps have no dot at all — a placeholder would
         # re-claim the count the affordance just handed over (owner 2026-10-22).
         records = measured
+    elif not _is_analyzing(item):
+        # Nothing measured AND nothing running: the analysis set is a LIE here
+        # (owner: the 8 dots stayed after "Analyzing" disappeared, so they read
+        # as eight pending criteria that never finish). An idle card with no
+        # measured axis paints no dots at all.
+        return (), ()
     colors: list[object] = []
     infos: list[tuple[str, int | None]] = []
     for record in records:

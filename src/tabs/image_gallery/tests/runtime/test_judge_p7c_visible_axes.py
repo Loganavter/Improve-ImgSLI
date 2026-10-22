@@ -531,7 +531,9 @@ def test_an_unmeasured_judge_axis_reads_as_a_gap_only_while_nothing_is_measured(
     )
     assert [label for label, _score in infos] == ["Sharpness"], infos
 
-    pending_item = _item("dots_pending.png")
+    from tabs.image_gallery.tests._activity_fixtures import mark_analyzing
+
+    pending_item = mark_analyzing(_item("dots_pending.png"))
     _colors, pending_infos = metric_dots_for_item(
         pending_item, mode=Mode.CAMERA, domain="ai", profile=profile
     )
