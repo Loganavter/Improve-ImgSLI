@@ -76,10 +76,12 @@ headless fallback. Results say which path answered: `"source": "live"` or
 `"source": "fallback"`.
 
 **Live attach.** The app's control server is a unix socket `control.sock` in a
-control dir with a pointer file `instance.json` (`{pid, socket, started,
-version}`) beside it. Discovery order: `IMGSLI_MCP_CONTROL_SOCKET` →
-`IMGSLI_CONTROL_DIR` → `$XDG_RUNTIME_DIR` (when set and writable), else the app
-data dir's `run/`. One newline-delimited JSON request
+control dir with a pointer file `instance.json` (`{pid, socket, version, uid}`)
+beside it. Discovery order: `IMGSLI_MCP_CONTROL_SOCKET` →
+`IMGSLI_CONTROL_DIR` → `$XDG_RUNTIME_DIR` only when it is private (owned by you,
+no group/other access — a `0755` runtime dir is refused by both sides), else the
+app data dir's `run/`; a pointer carrying a foreign `uid` counts as "no live
+instance". One newline-delimited JSON request
 `{"id", "method", "params"}` per call, answered by
 `{"id", "ok": true, "result"}` or `{"id", "ok": false, "error", "hint"}`. On
 this path the tools act on the window the user is driving (`open_folder` really

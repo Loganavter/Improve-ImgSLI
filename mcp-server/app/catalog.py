@@ -189,6 +189,61 @@ def _row_or_null(description: str) -> dict:
     return {"type": ["object", "null"], "description": description, "properties": dict(_ROW_PROPERTIES)}
 
 
+def _bool_or_null(description: str) -> dict:
+    """Nullable boolean: ``null`` = the app did not report the field at all."""
+    return {"type": ["boolean", "null"], "description": description}
+
+
+#: Fields of the control channel's **own** answer to a request still running.
+#: A handler that overruns ``MODAL_ACK_BUDGET_MS`` (2 s — normally a chord or a
+#: click that opened one of the app's modal dialogs, whose nested event loop is
+#: what lets the watchdog timer fire) is answered on the channel's initiative:
+#: ``ok: true``, none of the tool's own result fields
+#: (``core/control/server.py:_arm_early_answer``).
+_EARLY_ANSWER_PROPERTIES: dict = {
+    "accepted": {"const": True},
+    "answered_early": {"const": True},
+    "still_running": {"const": True},
+    "modal_open": _BOOL,
+    "method": _STR,
+    "budget_ms": _INT,
+}
+
+
+def _early_answer() -> dict:
+    """Schema for the transport's early answer to a request it still runs."""
+    return _object(
+        {name: dict(spec) for name, spec in _EARLY_ANSWER_PROPERTIES.items()},
+        list(_EARLY_ANSWER_PROPERTIES),
+    )
+
+
+def _also_early_answer(schema: dict) -> dict:
+    """*schema*, widened to accept the transport's early answer as well.
+
+    ``anyOf`` rather than a few more optional properties: the two frames share
+    no field, so the normal result's own ``required`` would still reject the
+    early one. ``type``/``properties`` stay on the outer object (the union of
+    both) so a host expecting an object schema still sees one, and ``required``
+    lives in the branches because it differs per shape.
+    """
+    normal = {
+        "properties": schema["properties"],
+        "additionalProperties": False,
+    }
+    if schema.get("required"):
+        normal["required"] = list(schema["required"])
+    return {
+        "type": "object",
+        "properties": {
+            **schema["properties"],
+            **{name: dict(spec) for name, spec in _EARLY_ANSWER_PROPERTIES.items()},
+        },
+        "additionalProperties": False,
+        "anyOf": [normal, _early_answer()],
+    }
+
+
 # ---------------------------------------------------------------------------
 # Tools
 # ---------------------------------------------------------------------------
@@ -1107,11 +1162,12 @@ TOOLS: list[dict] = [
         "title": "Press keys in the running app",
         "description": (
             "Inject keyboard input into a running instance: one combo "
-            "(ctrl+shift+p) or comma-separated combos in order (Down,Down,Enter). "
+            "(ctrl+shift+p) or comma-separated combos in order. "
             "target=<ui_elements id> aims at a widget the focus chain never "
-            "reaches (a canvas). The app window is activated first; with no "
-            "active window the call is refused — focus it (xdotool windowfocus "
-            "<window-id>) and retry. Live-only, allowlisted keys."
+            "reaches (a canvas). The window is activated first and the result "
+            "reports activated/focus_is_ours; with no active window the call is "
+            "refused — focus it (xdotool windowfocus <window-id>) and retry. "
+            "Live-only, allowlisted keys."
         ),
         "inputSchema": _params(
             {
@@ -1132,6 +1188,14 @@ TOOLS: list[dict] = [
                 "pressed": _array(_STR),
                 "count": _INT,
                 "target": _STR,
+                "activated": _bool_or_null(
+                    "True when this call had to bring the app window forward; "
+                    "false when it already held focus; null when the app did not report it."
+                ),
+                "focus_is_ours": _bool_or_null(
+                    "True when the key went to the window that holds OS focus — "
+                    "false means it went elsewhere, so read the key as not delivered."
+                ),
                 "source": _source(),
             },
             ["pressed", "count"],
@@ -1744,6 +1808,19 @@ TOOLS: list[dict] = [
         "handler": "wait_for",
     },
 ]
+
+#: Tools whose handler can be answered *early* by the control channel: each one
+#: drives the app in a way that can park inside a modal dialog's nested event
+#: loop (any action, chord or button press can open one). That nested loop is
+#: what lets the channel's ack watchdog fire, so the declared output has to
+#: accept the early frame too. A read that merely blocks has no nested loop —
+#: its timer cannot run and its reply is written normally.
+EARLY_ANSWER_TOOLS = ("run_action", "press_keys", "ui_click", "ui_press")
+
+for _tool in TOOLS:
+    if _tool["name"] in EARLY_ANSWER_TOOLS:
+        _tool["outputSchema"] = _also_early_answer(_tool["outputSchema"])
+del _tool
 
 # ---------------------------------------------------------------------------
 # Resources

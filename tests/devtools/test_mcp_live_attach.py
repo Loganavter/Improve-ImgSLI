@@ -33,6 +33,7 @@ MCP_DIR = REPO_ROOT / "mcp-server"
 if str(MCP_DIR) not in sys.path:
     sys.path.insert(0, str(MCP_DIR))
 
+from app import catalog  # noqa: E402
 from app.backend import AppBackend  # noqa: E402
 from app.live import (  # noqa: E402
     CONTROL_DIR_ENV,
@@ -160,7 +161,13 @@ def default_handler(method: str, params: dict):
             "rhi_layers": 1,
         }
     if method == "press_keys":
-        return True, {"pressed": ["ctrl+shift+p"], "count": 1, "target": "QMainWindow"}
+        return True, {
+            "pressed": ["ctrl+shift+p"],
+            "count": 1,
+            "target": "QMainWindow",
+            "activated": True,
+            "focus_is_ours": True,
+        }
     if method == "ui_elements":
         return True, {
             "count": 2,
@@ -1081,7 +1088,14 @@ _PROXY_CASES = [
         {"keys": "ctrl+shift+p"},
         "press_keys",
         {"keys": "ctrl+shift+p"},
-        {"pressed": ["ctrl+shift+p"], "count": 1, "target": "QMainWindow", "source": "live"},
+        {
+            "pressed": ["ctrl+shift+p"],
+            "count": 1,
+            "target": "QMainWindow",
+            "activated": True,
+            "focus_is_ours": True,
+            "source": "live",
+        },
     ),
     (
         "ui_elements",
@@ -1697,9 +1711,145 @@ def test_press_keys_round_trips_through_the_backend(live_wired):
         "pressed": ["ctrl+shift+p"],
         "count": 1,
         "target": "QMainWindow",
+        "activated": True,
+        "focus_is_ours": True,
         "source": "live",
     }
     assert ("press_keys", {"keys": "ctrl+shift+p"}) in server.calls
+
+
+def test_press_keys_reports_activation_and_focus_ownership_unchanged(tmp_path, monkeypatch):
+    """The two honest fields must survive the MCP path, including ``false``.
+
+    The app makes the window OS-active before typing and answers ``activated``
+    (this call had to bring it forward) and ``focus_is_ours`` (the key went to
+    the window holding OS focus). Normalising them to anything but what the app
+    said hides exactly the case that matters: a sweep reading ``ok`` for keys
+    the window system dropped (complaint mcp-c-015).
+    """
+
+    def handler(method, params):
+        if method == "press_keys":
+            # Already active, and the key went to the window that holds focus.
+            return True, {
+                "pressed": ["ctrl+p"],
+                "count": 1,
+                "target": "QCanvasView",
+                "activated": False,
+                "focus_is_ours": True,
+            }
+        return default_handler(method, params)
+
+    directory = tmp_path / "run"
+    server = FakeControlServer(directory / CONTROL_SOCKET_NAME, handler).start()
+    _write_pointer(directory, pid=os.getpid(), socket_path=server.path)
+    monkeypatch.setenv(CONTROL_DIR_ENV, str(directory))
+    monkeypatch.delenv(SOCKET_OVERRIDE_ENV, raising=False)
+    backend = AppBackend(
+        REPO_ROOT,
+        artifacts_dir=tmp_path / "artifacts",
+        data_dir=tmp_path / "data",
+        live_backend=LiveBackend(retry_cooldown_s=0.0),
+    )
+    protocol = MCPProtocol(backend)
+    try:
+        result = _call(protocol, "press_keys", {"keys": "ctrl+p", "target": "main.canvas"})
+        assert result["isError"] is False
+        structured = result["structuredContent"]
+        assert structured["activated"] is False
+        assert structured["focus_is_ours"] is True
+        assert structured["pressed"] == ["ctrl+p"]
+        assert structured["source"] == "live"
+    finally:
+        server.stop()
+
+
+def _schema_accepts(schema: dict, value: object) -> bool:
+    """Minimal JSON-Schema check for the keywords the catalog uses.
+
+    Deliberately small: this pins *which shapes a strict host may see*, it is
+    not a general validator. ``anyOf`` is the one non-trivial keyword — a live
+    tool's declared output is its normal result OR the transport's early
+    answer. A keyword this helper does not understand fails loudly instead of
+    passing silently, so the checker cannot become a no-op.
+    """
+    if not isinstance(schema, dict) or not schema:
+        return True
+    branches = schema.get("anyOf")
+    if branches is not None and not any(
+        _schema_accepts(branch, value) for branch in branches
+    ):
+        return False
+    if "const" in schema and value != schema["const"]:
+        return False
+    if "enum" in schema and value not in schema["enum"]:
+        return False
+    expected = schema.get("type")
+    if expected is not None:
+        options = list(expected) if isinstance(expected, list) else [expected]
+        checks = {
+            "object": lambda item: isinstance(item, dict),
+            "array": lambda item: isinstance(item, list),
+            "string": lambda item: isinstance(item, str),
+            "integer": lambda item: isinstance(item, int) and not isinstance(item, bool),
+            "number": lambda item: isinstance(item, (int, float)) and not isinstance(item, bool),
+            "boolean": lambda item: isinstance(item, bool),
+            "null": lambda item: item is None,
+        }
+        unknown = set(options) - set(checks)
+        assert not unknown, f"schema type(s) this helper does not understand: {unknown}"
+        if not any(checks[option](value) for option in options):
+            return False
+    if isinstance(value, dict):
+        properties = schema.get("properties") or {}
+        for name in schema.get("required") or ():
+            if name not in value:
+                return False
+        if schema.get("additionalProperties") is False and set(value) - set(properties):
+            return False
+        for name, sub in properties.items():
+            if name in value and not _schema_accepts(sub, value[name]):
+                return False
+    if isinstance(value, list) and "items" in schema:
+        return all(_schema_accepts(schema["items"], item) for item in value)
+    return True
+
+
+def test_press_keys_schema_accepts_the_normal_and_the_early_answer():
+    """A strict host must not flag either frame the transport can put on the wire.
+
+    The control channel answers on its own behalf when a handler overruns its
+    budget (``server._arm_early_answer``): ``ok: true`` with ``accepted /
+    answered_early / still_running / modal_open / method / budget_ms`` and none
+    of the tool's own fields — a chord that opened a modal dialog is the case.
+    A schema that declares only the normal result would report a mismatch for a
+    call that worked.
+    """
+    tool = next(entry for entry in catalog.TOOLS if entry["name"] == "press_keys")
+    schema = tool["outputSchema"]
+
+    normal = {
+        "pressed": ["ctrl+shift+p"],
+        "count": 1,
+        "target": "QMainWindow",
+        "activated": True,
+        "focus_is_ours": True,
+        "source": "live",
+    }
+    early = {
+        "accepted": True,
+        "answered_early": True,
+        "still_running": True,
+        "modal_open": True,
+        "method": "press_keys",
+        "budget_ms": 2000,
+    }
+
+    assert _schema_accepts(schema, normal) is True
+    assert _schema_accepts(schema, early) is True
+    # Falsification: the checker really rejects frames the schema does not declare.
+    assert _schema_accepts(schema, {**normal, "invented": 1}) is False
+    assert _schema_accepts(schema, {"accepted": True}) is False
 
 
 def test_element_tools_round_trip_through_the_backend(live_wired):

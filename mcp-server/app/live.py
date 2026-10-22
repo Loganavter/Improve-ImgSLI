@@ -1242,16 +1242,27 @@ class LiveBackend:
         widget the window focus chain never gives them -- a canvas, whose
         zoom/pan keys are its own. Without it, the running app's focus widget
         receives them (the historical behaviour).
+
+        ``activated`` and ``focus_is_ours`` are the app's own measurements of
+        whether the keys could land (the same two ``nav_key`` reports): the
+        window is made OS-active first, and a key handed to a background window
+        is dropped by the window system. They are passed through as the app sent
+        them -- ``None`` when it did not report them -- because coercing the
+        answer would make a dropped key look delivered.
         """
         params: dict[str, Any] = {"keys": keys}
         if target:
             params["target"] = target
         result = self._request("press_keys", params, client)
         pressed = [str(item) for item in result.get("pressed") or []]
+        activated = result.get("activated")
+        focus_is_ours = result.get("focus_is_ours")
         return {
             "pressed": pressed,
             "count": int(result.get("count", len(pressed))),
             "target": str(result.get("target") or ""),
+            "activated": activated if isinstance(activated, bool) else None,
+            "focus_is_ours": focus_is_ours if isinstance(focus_is_ours, bool) else None,
             "source": "live",
         }
 
