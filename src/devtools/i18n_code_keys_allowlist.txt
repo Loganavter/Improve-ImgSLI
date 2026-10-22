@@ -1,0 +1,9 @@
+# Keys used in code that legitimately have no catalog entry.
+#
+# Format: <key>  # <reason>
+# Only for keys that CANNOT be a literal catalog key:
+#   * built at runtime from a feature/tab prefix (the loader resolves
+#     "<tab>.<key>" and the literal is only the suffix);
+#   - a key provided by a host at install time, not shipped here.
+# Anything else belongs in a catalog: `check_translations.py --code-keys` is a
+# gate, not a wish list. Entries are printed on every run, with their reason.

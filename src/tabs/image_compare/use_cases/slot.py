@@ -288,14 +288,14 @@ def load_images_from_paths(controller, file_paths: list[str], image_number: int)
     for fp in file_paths:
         if not isinstance(fp, str) or not fp:
             ic_preview_debug("load_images_from_paths slot=%s skip invalid %s", image_number, fp)
-            errors.append(f"{fp}: {tr('msg.invalid_item_type_or_empty_path', controller.store.settings.current_language)}")
+            errors.append(f"{fp}: {tr('image_compare.msg.invalid_item_type_or_empty_path', controller.store.settings.current_language)}")
             continue
         try:
             norm = os.path.normpath(fp)
             disp = os.path.basename(norm) or "-----"
         except Exception as e:
             ic_preview_debug("load_images_from_paths slot=%s norm failed %s %s", image_number, fp, e)
-            errors.append(f"{fp}: {tr('msg.error_normalizing_path', controller.store.settings.current_language)}")
+            errors.append(f"{fp}: {tr('image_compare.msg.error_normalizing_path', controller.store.settings.current_language)}")
             continue
         if _seam_key_for_path(fp)[0] in seen:
             ic_preview_debug("load_images_from_paths slot=%s reload existing %s", image_number, norm)
@@ -312,7 +312,7 @@ def load_images_from_paths(controller, file_paths: list[str], image_number: int)
             seen_batch.add(_seam_key_for_path(fp)[0])
         except Exception as e:
             ic_preview_debug("load_images_from_paths slot=%s append failed %s %s", image_number, disp, e)
-            errors.append(f"{disp}: {tr('msg.error_processing_path', controller.store.settings.current_language)}")
+            errors.append(f"{disp}: {tr('image_compare.msg.error_processing_path', controller.store.settings.current_language)}")
     # lightweight transaction: single emit for Append + SetCurrentIndex
     if to_add:
         orig_len = len(lst)

@@ -87,7 +87,8 @@
       "select_images": "Selecionar Imagem(ns)",
       "stop": "Parar",
       "trim_to_selection": "Cortar para Seleção",
-      "undo_ctrlz": "Desfazer (Ctrl+Z)"
+      "undo_ctrlz": "Desfazer (Ctrl+Z)",
+      "hold_clear_entire_list": "Mantenha pressionado para limpar a lista"
     },
     "common": {
       "position": {
@@ -106,7 +107,9 @@
       "choose_magnifier_guides_color": "Escolher Cor das Guias da Lupa",
       "edit_current_image_1_name": "Editar Nome da Imagem Atual 1",
       "edit_current_image_2_name": "Editar Nome da Imagem Atual 2",
-      "include_file_names_in_saved_image": "Incluir nomes de arq. na img salva"
+      "include_file_names_in_saved_image": "Incluir nomes de arq. na img salva",
+      "psnr": "PSNR",
+      "ssim": "SSIM"
     },
     "label": {
       "border": "Borda",
@@ -139,7 +142,12 @@
       "specify_output_directory_and_file_name": "Por favor, especifique o diretório de saída e o nome do arquivo.",
       "ssim_calculation_done": "SSIM concluído",
       "ssim_calculation_in_progress": "Cálculo de SSIM...",
-      "ssim_calculation_failed": "Falha ao calcular SSIM"
+      "ssim_calculation_failed": "Falha ao calcular SSIM",
+      "failed_to_save_image": "Falha ao salvar a imagem",
+      "failed_to_quick_save_image": "Falha ao salvar a imagem rapidamente",
+      "error_normalizing_path": "erro ao normalizar o caminho",
+      "error_processing_path": "erro ao processar o caminho",
+      "invalid_item_type_or_empty_path": "tipo de item não suportado ou caminho vazio"
     },
     "settings": {
       "recording_fps": "FPS de Gravação",

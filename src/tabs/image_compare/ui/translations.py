@@ -114,7 +114,7 @@ def _bind_tooltips(ui) -> None:
     def _clear_tooltip(lang: str) -> str:
         return (
             f"{tr('tooltip.click_remove_current_image', lang)}\n"
-            f"{tr('button.hold_clear_entire_list', lang)}"
+            f"{tr('image_compare.button.hold_clear_entire_list', lang)}"
         )
 
     translatable_callback(

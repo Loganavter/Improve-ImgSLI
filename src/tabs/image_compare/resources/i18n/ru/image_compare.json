@@ -87,7 +87,8 @@
       "select_images": "Выбрать изображение(я)",
       "stop": "Остановить",
       "trim_to_selection": "Обрезать по выделению",
-      "undo_ctrlz": "Отменить (Ctrl+Z)"
+      "undo_ctrlz": "Отменить (Ctrl+Z)",
+      "hold_clear_entire_list": "Удерживайте, чтобы очистить весь список"
     },
     "common": {
       "position": {
@@ -106,7 +107,9 @@
       "choose_magnifier_guides_color": "Выберите цвет направляющих лупы",
       "edit_current_image_1_name": "Редактировать имя Изобр. 1",
       "edit_current_image_2_name": "Редактировать имя Изобр. 2",
-      "include_file_names_in_saved_image": "Вкл. имена в изображ."
+      "include_file_names_in_saved_image": "Вкл. имена в изображ.",
+      "psnr": "PSNR",
+      "ssim": "SSIM"
     },
     "label": {
       "border": "Граница",
@@ -139,7 +142,12 @@
       "specify_output_directory_and_file_name": "Укажите выходную директорию и имя файла.",
       "ssim_calculation_done": "SSIM готово",
       "ssim_calculation_in_progress": "Расчет SSIM...",
-      "ssim_calculation_failed": "Не удалось вычислить SSIM"
+      "ssim_calculation_failed": "Не удалось вычислить SSIM",
+      "failed_to_save_image": "Не удалось сохранить изображение",
+      "failed_to_quick_save_image": "Не удалось быстро сохранить изображение",
+      "error_normalizing_path": "ошибка нормализации пути",
+      "error_processing_path": "ошибка обработки пути",
+      "invalid_item_type_or_empty_path": "неподдерживаемый тип элемента или пустой путь"
     },
     "settings": {
       "recording_fps": "FPS записи",
