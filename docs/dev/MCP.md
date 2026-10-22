@@ -444,6 +444,51 @@ resilience — but it is what stops an agent from double-applying an edit:
   `list_actions` rows carry `enabled` + `reason` for exactly this: plan around a
   precondition instead of failing into it.
 
+### A call that opens the app's own modal dialog is answered early
+
+`press_keys`, `run_action` and `ui_click` run the action synchronously, and some
+actions open a modal dialog: `ctrl+shift+o` → `platform.open_project` →
+`QFileDialog.getOpenFileName` (`exec()`). A modal loop keeps the handler — and
+therefore its reply — inside until someone closes the dialog, so the client used
+to time out ("sent, no reply") on a chord that had already worked, and a retry
+opened a second dialog.
+
+The channel now answers such a request itself: if a handler is still running
+after **2 s** (`MODAL_ACK_BUDGET_MS` in `src/core/control/server.py`), a
+watchdog timer fires *inside* the dialog's nested loop and writes
+
+```json
+{"id": 7, "ok": true,
+ "result": {"accepted": true, "answered_early": true, "still_running": true,
+            "modal_open": true, "method": "press_keys", "budget_ms": 2000}}
+```
+
+- `ok: true` because the request *is* being carried out. A chord that reaches no
+  window, an unknown key name, or an unknown action id still fails fast with its
+  own named error — those refusals happen before the budget, not after it.
+- `modal_open` is measured (`QApplication.activeModalWidget()`), not assumed: a
+  native portal dialog is not a `QWidget`, so `false` there means "no Qt modal
+  widget", not "nothing is open".
+- **One frame per request.** The late real result is dropped instead of being
+  sent as a second frame; a failure that arrives after the early answer is
+  logged (visible through `read_log`), never re-sent.
+- A fast call is untouched: full result, no `answered_early`.
+- **The early result is transport-level, not the tool's own output shape.** It
+  carries the fields above instead of e.g. `press_keys`' `pressed`/`count`, so a
+  client that hard-validates `outputSchema` sees a partial object. Closing that
+  gap means teaching the catalog a per-tool early shape (`catalog.py`), which
+  this fix deliberately did not touch — the alternative (no answer at all) is
+  what timed out.
+- **Follow-up calls work while the dialog is up.** The MCP client opens one
+  connection per request, and a new connection's first line is served *inside*
+  the dialog's loop (`ok` as usual), so "read state to confirm / press `escape`"
+  after an early answer behaves normally. A second line on the *same* connection
+  waits until the dialog closes (Qt guards `readyRead` against re-entry).
+- The dialog itself stays on screen and still has to be closed — send another
+  `press_keys` (`escape` / `enter`) or let a human do it. When the goal is only
+  to load content, prefer `open_folder` / `open_file` / `open_properties`, which
+  open their surface without a modal loop.
+
 ### Flatpak-installed app (P0)
 
 A host-side `mcp-server/app/server.py` **cannot attach to the app installed as a
@@ -738,8 +783,11 @@ artifact until proven otherwise.
 - Judge a canvas from a capture of a window that is not fully on screen.
 - Read black as a broken widget before checking geometry.
 - Conclude "the render path paints black" from a window grab alone.
-- Drive the app's own file dialogs from a client — use `open_folder {path, tab}`
-  (a file-only tab receives the folder's images as files).
+- Expect a chord that opens one of the app's own file dialogs to return the
+  dialog's *outcome* — it is answered `answered_early` while the dialog is up
+  (see "A call that opens the app's own modal dialog is answered early"). Use
+  `open_folder {path, tab}` when you only need content loaded (a file-only tab
+  receives the folder's images as files).
 - Restore a saved window rect without fitting it to the current screen.
 - Invent a second read path for a scene value: `get_canvas_scene` is the one
   read verb, `set_scene_commands` the one write verb (see the canvas section).

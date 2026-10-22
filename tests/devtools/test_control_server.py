@@ -67,6 +67,10 @@ class _Client:
     def __init__(self, app: QApplication, path) -> None:
         self.app = app
         self.buffer = b""
+        #: When the first complete frame reached *this* end of the socket —
+        #: the only way to prove a reply was written while the app was still
+        #: inside a handler (see the modal-dialog test below).
+        self.first_line_at: float | None = None
         self.socket = QLocalSocket()
         self.socket.readyRead.connect(self._read)
         self.socket.connectToServer(str(path))
@@ -75,6 +79,8 @@ class _Client:
     def _read(self) -> None:
         chunk = self.socket.readAll()
         self.buffer += chunk.data() if chunk is not None else b""
+        if self.first_line_at is None and b"\n" in self.buffer:
+            self.first_line_at = time.time()
 
     def send(self, payload: dict) -> None:
         self.send_raw(json.dumps(payload).encode("utf-8") + b"\n")
@@ -148,6 +154,9 @@ def test_round_trip_ping_capabilities_and_stop_cleanup(tmp_path, monkeypatch):
             assert ping["ok"] is True
             assert ping["result"]["pong"] is True
             assert ping["result"]["pid"] == os.getpid()
+            # A fast call keeps its own result: the ack watchdog only speaks for
+            # a handler that is still running (see the modal-dialog test).
+            assert "answered_early" not in ping["result"]
 
             client.send({"id": 2, "method": "get_capabilities", "params": {}})
             caps = client.wait_line()
@@ -306,6 +315,234 @@ def test_inflight_note_survives_a_handler_crash_and_is_cleared_by_a_reply(
         assert not note.exists(), "a reply means the app survived that request"
         assert json.loads(socket_double.written.decode("utf-8"))["ok"] is True
     finally:
+        server.stop()
+
+
+def test_a_chord_that_opens_a_modal_dialog_is_answered_inside_its_loop(
+    tmp_path, monkeypatch
+):
+    """A call that opens the app's modal dialog must still answer its request.
+
+    ``press_keys ctrl+shift+o`` runs ``platform.open_project`` inline, and that
+    action calls ``QFileDialog.getOpenFileName`` — a modal event loop. The reply
+    used to be written only *after* the handler returned, so it stayed inside
+    the dialog for as long as the dialog stayed on screen: the client reported
+    "sent, no reply" (its 5 s timeout) for a chord that had already opened the
+    window, and a retry opened a second one.
+
+    Red before the ack watchdog: no timer existed, so the first frame a client
+    could read arrived only after ``exec()`` returned — the assertion that fails
+    is ``client.first_line_at < handlers.returned_at`` (the frame that arrives
+    is the handler's own result, 700 ms late).
+    """
+    from PySide6.QtCore import QTimer
+    from PySide6.QtWidgets import QFileDialog
+
+    monkeypatch.setenv("IMGSLI_CONTROL_DIR", str(tmp_path / "ctrl"))
+    app = _qapp()
+    server = ControlServer(window=_store_window(), app=app)
+    assert server.start() is True
+    # The production budget is seconds; shorten it so the test does not wait.
+    server._ack_budget_ms = 120
+    client = _Client(app, server.path)
+
+    class _DialogChordHandlers:
+        """Stands in for a chord whose action opens the app's own file dialog."""
+
+        def __init__(self) -> None:
+            self.returned_at: float | None = None
+            self.dialogs: list[QFileDialog] = []
+
+        def handle(self, method, params):
+            dialog = QFileDialog()
+            # Offscreen has no portal, so the native dialog cannot be shown at
+            # all; the loop it runs is the same one getOpenFileName uses.
+            dialog.setOption(QFileDialog.Option.DontUseNativeDialog, True)
+            dialog.setModal(True)
+            self.dialogs.append(dialog)
+            # The "human" closes it 700 ms later: far past the ack budget, and
+            # far past the point where a client would give up on the reply.
+            QTimer.singleShot(700, dialog.reject)
+            dialog.exec()
+            self.returned_at = time.time()
+            return {"ran": True, "action_id": "platform.open_project"}
+
+    handlers = _DialogChordHandlers()
+    server._handlers = handlers
+    try:
+        client.send(
+            {"id": 30, "method": "press_keys", "params": {"keys": "ctrl+shift+o"}}
+        )
+        response = client.wait_line(seconds=3.0)
+        assert response is not None, "a call blocked in a modal loop is still answered"
+        assert response["id"] == 30
+        # The frame was written *inside* the dialog's loop, not after it closed.
+        assert client.first_line_at is not None
+        assert handlers.returned_at is not None
+        assert client.first_line_at < handlers.returned_at, (
+            "the answer arrived only after the dialog closed — the request was "
+            "held by the modal loop"
+        )
+        assert response["ok"] is True
+        result = response["result"]
+        assert result["accepted"] is True
+        assert result["answered_early"] is True
+        assert result["modal_open"] is True, "the file dialog was on screen"
+        assert result["method"] == "press_keys"
+        # The late real result is discarded: exactly one frame per request, or
+        # the client's line reader would hand a second reply to the next call.
+        _pump(app, 0.4)
+        assert b"\n" not in client.buffer, "no second reply for one request"
+        # The channel kept serving: the connection is not wedged behind the modal.
+        client.send({"id": 31, "method": "ping", "params": {}})
+        assert client.wait_line()["ok"] is True
+    finally:
+        for dialog in handlers.dialogs:
+            try:
+                dialog.reject()
+            except Exception:
+                pass
+        client.close()
+        server.stop()
+
+
+def test_a_second_connection_is_served_inside_the_dialog_loop(tmp_path, monkeypatch):
+    """The dialog does not wedge the channel for a *new* peer.
+
+    Qt guards ``readyRead`` against re-entry, so a second line on the *same*
+    socket waits for the dialog (the early answer is why that peer is not left
+    hanging). A new connection is different: its ``readyRead`` fires inside the
+    modal loop and is served, so "is the app still there / read state" after a
+    dialog is open works — and the request that owns the in-flight note changes
+    under the parked one (see the note-ownership test below).
+    """
+    from PySide6.QtCore import QTimer
+    from PySide6.QtWidgets import QFileDialog
+
+    monkeypatch.setenv("IMGSLI_CONTROL_DIR", str(tmp_path / "ctrl"))
+    app = _qapp()
+    server = ControlServer(window=_store_window(), app=app)
+    assert server.start() is True
+    server._ack_budget_ms = 100
+    client = _Client(app, server.path)
+    second_client: _Client | None = None
+
+    class _DialogAndPingHandlers:
+        def handle(self, method, params):
+            if method == "ping":  # a read verb really is served nested
+                return {"pong": True, "pid": os.getpid()}
+            dialog = QFileDialog()
+            dialog.setOption(QFileDialog.Option.DontUseNativeDialog, True)
+            dialog.setModal(True)
+            QTimer.singleShot(900, dialog.reject)
+            self.dialogs.append(dialog)
+            dialog.exec()
+            return {"ran": True}
+
+        def __init__(self) -> None:
+            self.dialogs: list[QFileDialog] = []
+
+    handlers = _DialogAndPingHandlers()
+    server._handlers = handlers
+    try:
+        client.send({"id": 50, "method": "run_action", "params": {"action_id": "x"}})
+
+        def _connect_and_ping() -> None:
+            nonlocal second_client
+            second_client = _Client(app, server.path)
+            second_client.send({"id": 51, "method": "ping", "params": {}})
+
+        # Sent from inside the dialog's loop: only the nested loop can answer it.
+        QTimer.singleShot(300, _connect_and_ping)
+        first = client.wait_line(seconds=3.0)
+        assert first is not None and first["id"] == 50
+        assert first["result"]["answered_early"] is True
+        assert second_client is not None, "a peer connected while the dialog was up"
+        nested = second_client.wait_line(seconds=3.0)
+        assert nested is not None, "a new connection is served during the modal"
+        assert nested["id"] == 51
+        assert nested["ok"] is True and nested["result"]["pong"] is True
+        _pump(app, 0.4)
+        assert b"\n" not in client.buffer, "one frame for the parked request"
+    finally:
+        for dialog in handlers.dialogs:
+            try:
+                dialog.reject()
+            except Exception:
+                pass
+        if second_client is not None:
+            second_client.close()
+        client.close()
+        server.stop()
+
+
+def test_a_late_finisher_does_not_erase_a_newer_requests_inflight_note(
+    tmp_path, monkeypatch
+):
+    """A modal loop re-enters ``_handle_line``; the note is one slot.
+
+    The newer request's record is the only evidence left if the app dies in
+    *that* call, so the request that finishes late must not clear it.
+    """
+    from core.control.server import INFLIGHT_NOTE_NAME
+
+    monkeypatch.setenv("IMGSLI_CONTROL_DIR", str(tmp_path / "ctrl"))
+    server = ControlServer(window=_store_window(), app=_qapp())
+    assert server.start() is True
+    note = tmp_path / "ctrl" / INFLIGHT_NOTE_NAME
+    try:
+        first = server._note_inflight(
+            request_id=1, method="press_keys", params={"keys": "ctrl+shift+o"}
+        )
+        second = server._note_inflight(
+            request_id=2, method="ping", params={}
+        )
+        server._clear_inflight(first)  # the late finisher
+        assert note.is_file(), "the newer request still owns the record"
+        assert json.loads(note.read_text(encoding="utf-8"))["method"] == "ping"
+        server._clear_inflight(second)
+        assert not note.exists()
+    finally:
+        server.stop()
+
+
+def test_a_failed_handler_that_overran_answers_once_with_the_early_frame(
+    tmp_path, monkeypatch
+):
+    """An overrun answers once; a later failure cannot rewrite that answer.
+
+    The alternative — an ``ok: true`` "accepted" *before* the handler runs —
+    would report a refused key delivery as a success. Here the refusal still
+    happens first (fast handler → full real reply), and only a handler that is
+    still running past the budget is answered on the channel's own initiative.
+    """
+    from PySide6.QtCore import QEventLoop, QTimer
+
+    monkeypatch.setenv("IMGSLI_CONTROL_DIR", str(tmp_path / "ctrl"))
+    app = _qapp()
+    server = ControlServer(window=_store_window(), app=app)
+    assert server.start() is True
+    server._ack_budget_ms = 80
+    client = _Client(app, server.path)
+
+    class _SlowFailingHandlers:
+        def handle(self, method, params):
+            loop = QEventLoop()
+            QTimer.singleShot(300, loop.quit)
+            loop.exec()
+            raise RuntimeError("the dialog's result could not be applied")
+
+    server._handlers = _SlowFailingHandlers()
+    try:
+        client.send({"id": 40, "method": "run_action", "params": {"action_id": "x"}})
+        response = client.wait_line(seconds=2.0)
+        assert response is not None
+        assert response["id"] == 40, "the early frame carries this request's id"
+        assert response["ok"] is True and response["result"]["answered_early"] is True
+        _pump(app, 0.4)
+        assert b"\n" not in client.buffer, "an error cannot arrive after the answer"
+    finally:
+        client.close()
         server.stop()
 
 
