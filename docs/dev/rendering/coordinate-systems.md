@@ -127,7 +127,10 @@ letterbox = (ux/cw, uy/ch, uw/cw, uh/ch)  # same for both slots
   (preview `QImage`, full-res `TiledPixelStore`, or unified store). If both
   sides have a size, `pw,ph` is the max — no store `predicted_unified_size`
   needed, no waiting for the unify worker.
-- `resolve_canvas_content_geometry(cw,ch,pw,ph)` returns one fitted rect.
+- `resolve_canvas_content_geometry` is keyword-only —
+  `resolve_canvas_content_geometry(widget_width=cw, widget_height=ch,
+  image_width=pw, image_height=ph, virtual_layout=None)` — and returns one
+  fitted rect.
   Both `state._letterbox_params[0/1]`, `state._content_rect_px` and
   `state._inner_content_rect_px` receive that same rect (`outer == inner`
   with `virtual_layout=None`), dispatched via `store.transact()` — see

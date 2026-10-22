@@ -18,8 +18,9 @@ that gets split into an N×M grid of tiles instead of one whole-image
 texture, and only the tiles currently intersecting the viewport are
 actually resident on the GPU. Letterbox geometry itself is **not** tiled —
 both sides share one eager `max` envelope `pw,ph = max(w1,w2), max(h1,h2)`
-(`base_images.py`, `render_flow.py`) fitted once via
-`resolve_canvas_content_geometry(cw,ch,pw,ph)` → identical `letterbox`
+(`base_images.py`, `render_flow.py`) fitted once via keyword-only
+`resolve_canvas_content_geometry(widget_width=…, image_width=pw, …)` →
+identical `letterbox`
 `0.545` for both sides, no `needs_union`/`grid_mismatch` branching, no
 `HOLD` — so the draw-plan grid and residency agree on geometry from the
 first `gap draw_plan`.
@@ -191,7 +192,7 @@ drawable" and keep serving that key's tiles until the new key catches up.
 only (`rhi_renderer/renderer.py::_resolve_fallback_plan` → `resolve_fallback_lod(atomic=...)`);
 letterbox geometry itself is already stable from the first `gap draw_plan`
 (`0.545`, `pw,ph = max(w1,w2), max(h1,h2)` via `base_images.py` /
-`render_flow.py`, `resolve_canvas_content_geometry(cw,ch,pw,ph)`). Both
+`render_flow.py`, keyword-only `resolve_canvas_content_geometry`). Both
 sides share one fitted rect, so `needs_union` / `grid_mismatch` (old
 `6×5 vs 2×2 → 1138` union) is removed, there is no per-side letterbox
 divergence, and no `UNION_LETTERBOX_HOLD_MS` (`tile_constants.py`) or
