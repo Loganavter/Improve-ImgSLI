@@ -443,21 +443,16 @@ def _provenance_overlay(painter, ctx) -> None:  # type: ignore[no-untyped-def]
     """
     from PySide6.QtCore import QRectF
 
-    from tabs.image_gallery.ui.card import GALLERY_COVER_H
     from tabs.image_gallery.ui.card.provenance import paint_source_marker
 
     widget = getattr(ctx, "widget", None)
-    rect = getattr(ctx, "rect", None)
     item = getattr(widget, "_gallery_item", None)
-    if widget is None or rect is None or item is None:
+    if widget is None or item is None:
         return
-    inset = float(scaled_px(8))
-    box = QRectF(
-        rect.x() + inset,
-        rect.y() + inset,
-        float(rect.width()) - 2.0 * inset,
-        float(scaled_px(GALLERY_COVER_H)),
-    )
+    try:
+        box = QRectF(widget.region_rect("text"))
+    except Exception:
+        return
     paint_source_marker(painter, box, item, translate=getattr(widget, "_gallery_translate", None))
 
 

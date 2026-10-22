@@ -200,3 +200,70 @@ def test_the_placeholder_dots_disappear_when_the_analysis_ends() -> None:
     assert metric_dots_for_item(item, mode="camera")[1] == (), (
         "the placeholder outlived the analysis (the reported 8 stuck dots)"
     )
+
+
+# -- the marker never covers the preview -------------------------------------
+
+
+def test_both_surfaces_draw_the_marker_in_the_text_region(qapp, monkeypatch) -> None:
+    """Grid card and list row must pass their TEXT region, not the cover/thumb.
+
+    Owner 2026-10-22: the first marker was a pill inside the preview — it
+    covered the image while the strip under the filename was empty.
+    """
+    from PySide6.QtGui import QImage, QPainter
+
+    from tabs.image_gallery.ui.card import build_gallery_card
+    from tabs.image_gallery.ui.card import provenance as prov
+    from tabs.image_gallery.ui.card.painters import _gallery_card_overlay_painter
+    from tabs.image_gallery.ui.list.card import build_gallery_list_card
+    from tabs.image_gallery.ui.list.painters import _list_row_overlay_painter
+
+    captured: list = []
+
+    def _capture(painter, box, item, **kwargs):
+        captured.append(box)
+
+    monkeypatch.setattr(prov, "paint_source_marker", _capture)
+
+    item = _item("ai.png", analysis=True)
+    card = build_gallery_card(item, parent=None, mode="camera")
+    card.resize(250, 170)
+
+    class _Ctx:
+        widget = card
+        rect = card.rect().toRectF()
+
+    image = QImage(250, 170, QImage.Format.Format_ARGB32_Premultiplied)
+    painter = QPainter(image)
+    try:
+        _gallery_card_overlay_painter(painter, _Ctx(), None)
+    finally:
+        painter.end()
+
+    text = card.region_rect("text")
+    assert captured, "the grid card drew no marker"
+    box = captured[0]
+    assert box.top() >= float(text.top()) - 1.0, (
+        f"the marker sits above the text zone (over the preview): {box} vs {text}"
+    )
+
+    from PySide6.QtCore import QRectF
+
+    captured.clear()
+    row = build_gallery_list_card(item, mode="camera", domain="algorithms", profile=None)
+    row.resize(640, 64)
+
+    class _RowCtx:
+        widget = row
+        rect = QRectF(0, 0, 640, 64)
+
+    image2 = QImage(640, 64, QImage.Format.Format_ARGB32_Premultiplied)
+    painter2 = QPainter(image2)
+    try:
+        _list_row_overlay_painter(painter2, _RowCtx(), None)
+    finally:
+        painter2.end()
+    text_row = row.region_rect("text")
+    assert captured, "the list row drew no marker"
+    assert captured[0].top() >= float(text_row.top()) - 1.0, captured[0]

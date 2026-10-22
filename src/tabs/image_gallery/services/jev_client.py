@@ -223,6 +223,36 @@ def _floor_for(domain: str, items) -> float:
         return axis_noise_floor(domain)
 
 
+def _axis_is_described(axis, *, profile=None) -> bool:
+    """Does *axis* carry a real MEANING (not just its id) in this question?
+
+    A registry axis always does (``jev_axes.REGISTRY_AXIS_MEANINGS``); a
+    judge-named axis only when a proposal declared it with a definition. The
+    single-axis rank is allowed exactly when the payload can tell the ranker
+    what the number means and which end is good (P6) — the reason the old
+    blanket refusal existed.
+    """
+    name = str(axis or "").strip()
+    if not name:
+        return False
+    try:
+        from tabs.image_gallery.services.jev_axes import REGISTRY_AXIS_MEANINGS
+
+        if name in REGISTRY_AXIS_MEANINGS:
+            return True
+    except Exception:
+        return False
+    try:
+        from tabs.image_gallery.services.profile_judged import judged_axis_entries
+
+        for entry in judged_axis_entries(profile) or ():
+            if str(entry.get("name") or "") == name and str(entry.get("definition") or "").strip():
+                return True
+    except Exception:
+        return False
+    return False
+
+
 def build_measured_vector(items, *, mode: str, domain: str = "algorithms", profile=None) -> dict:
     """The scoring vector: ``{"mode", "items": [{"alias","scores"}], "axes": [...]}``.
 
@@ -886,17 +916,29 @@ def rank_series_jev_detailed(
         )
         return JevRankOutcome(None, reason=JEV_REASON_INCOMPLETE)
     axes = scored_axis_names(vector)
-    if len(axes) < 2:
-        # P7-B / P6: one axis is not a comparison. The live ranker, handed a
-        # single number, GUESSED the axis' direction and said so in its own
-        # words (owner log 2026-10-21) — the refusal is the honest answer, never
-        # a padded second axis.
+    if len(axes) < 2 and not (
+        axes and all(_axis_is_described(axis, profile=profile) for axis in axes)
+    ):
+        # The old refusal was justified while the ranker had to GUESS an axis'
+        # meaning and direction ("Noise higher = better? ... it guessed", owner
+        # log 2026-10-21). P6 puts both in the payload, so a single DISCRIMINATING
+        # axis with a real definition IS a legitimate order — and refusing it
+        # left the series on the Algorithms rank while the judge had measured
+        # exactly the axis that separates the variants (owner log 2026-10-22:
+        # "1 axis carries a number (noise) — not ranked" on six scored cards).
+        # Only an axis nobody can describe is refused: the old blind case.
         _ai_debug(
-            "jev rank skip: %d axis carries a number (%s) — at least two are "
-            "required, not ranked",
+            "jev rank skip: %d axis carries a number (%s) — none of them has a "
+            "meaning, not ranked",
             len(axes), ", ".join(axes) or "none",
         )
         return JevRankOutcome(None, reason=JEV_REASON_ONE_AXIS)
+    if len(axes) == 1:
+        _ai_debug(
+            "jev rank: one discriminating axis (%s) with its definition — a "
+            "single described number can order the variants",
+            axes[0],
+        )
     payload = _request_from_vector(vector)
 
     cache_obj = cache if cache is not None else jev_cache.default_cache()

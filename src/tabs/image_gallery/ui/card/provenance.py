@@ -15,7 +15,7 @@ from PySide6.QtGui import QColor, QFontMetrics, QPainterPath
 from sli_ui_toolkit.managers import scaled_px, ui_font
 
 _MARK_PAD = 4.0
-_MARK_FONT_PX = 9
+_MARK_FONT_PX = 10
 
 
 def _colors() -> tuple[QColor, QColor]:
@@ -26,11 +26,23 @@ def _colors() -> tuple[QColor, QColor]:
     return bg, QColor(_accent_color())
 
 
-def _muted() -> QColor:
-    from tabs.image_gallery.ui.card.dots import _neutral_color
+def accent_for(is_ai: bool) -> QColor:
+    """The accent used for the AI token (kept here so both surfaces agree)."""
+    _bg, accent = _colors()
+    return accent
 
-    col = QColor(_neutral_color())
-    col.setAlpha(235)
+
+def _label_color() -> QColor:
+    """Readable secondary text on the card (NOT the 120-alpha dot neutral).
+
+    Owner 2026-10-22: the first marker used the muted dot colour and read as
+    washed-out; the caption uses the same token as the stats strip text at full
+    alpha, so it carries contrast in both themes.
+    """
+    from tabs.image_gallery.ui.card.dots import _token_color
+
+    col = QColor(_token_color("gallery.stats.text", "#dfdfdf"))
+    col.setAlpha(255)
     return col
 
 
@@ -54,36 +66,35 @@ def marker_text(item, translate=None) -> str:
 
 
 def paint_source_marker(painter, box: QRectF, item, *, translate=None) -> None:
-    """Paint the marker at *box*'s bottom-left corner (no-op when unanalyzed)."""
+    """Draw the marker as plain text at *box*'s bottom-left (no pill, no image).
+
+    Owner 2026-10-22: the first version was a pill INSIDE the cover — it covered
+    the image while the strip under the filename was empty. The marker is now a
+    small caption in the card's TEXT zone (grid) / text region (list): no
+    background chip, no overlap with the preview.
+    """
     text = marker_text(item, translate)
     if not text:
         return
     from tabs.image_gallery.analysis.read import SOURCE_AI, analysis_source
 
     is_ai = analysis_source(item) == SOURCE_AI
-    font = ui_font(pixel_size=_MARK_FONT_PX)
+    font = ui_font(pixel_size=_MARK_FONT_PX, bold=True)
     metrics = QFontMetrics(font)
     pad = float(scaled_px(_MARK_PAD))
-    height = float(max(metrics.height() + 2.0, scaled_px(12)))
-    width = float(metrics.horizontalAdvance(text) + 2.0 * pad)
+    height = float(max(metrics.height(), scaled_px(11)))
+    width = float(metrics.horizontalAdvance(text) + 1.0)
     if width > box.width() or height > box.height():
         return
-    rect = QRectF(box.left() + pad, box.bottom() - height - pad, width, height)
-    bg, accent = _colors()
-    path = QPainterPath()
-    radius = height / 2.0
-    path.addRoundedRect(rect, radius, radius)
+    rect = QRectF(box.left() + pad, box.bottom() - height - pad / 2.0, width, height)
     painter.save()
     try:
         painter.setRenderHint(painter.RenderHint.Antialiasing, True)
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(bg)
-        painter.drawPath(path)
         painter.setFont(font)
-        painter.setPen(accent if is_ai else _muted())
+        painter.setPen(accent_for(is_ai) if is_ai else _label_color())
         painter.drawText(
             rect,
-            int(Qt.AlignmentFlag.AlignCenter),
+            int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter),
             text,
         )
     finally:

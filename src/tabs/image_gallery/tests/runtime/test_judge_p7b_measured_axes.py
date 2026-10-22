@@ -54,6 +54,7 @@ from tabs.image_gallery.services.ai_client import parse_response
 from tabs.image_gallery.services.ai_client.parse import merge_samples
 from tabs.image_gallery.services.axis_choice import parse_axis_choices
 from tabs.image_gallery.services.jev_client import (
+    JEV_REASON_EMPTY,
     JEV_REASON_ONE_AXIS,
     JEV_REJECT_ONE_AXIS,
     build_measured_vector,
@@ -221,7 +222,15 @@ def test_a_proposed_axis_also_carries_its_direction():
 # ---------------------------------------------------------------------------
 
 
-def test_a_one_axis_vector_is_refused_with_a_named_reason_and_no_call():
+def test_a_one_axis_vector_with_its_definition_is_ranked(tmp_path):
+    """Revision 2026-10-22 (owner log): the refusal predated P6.
+
+    While the ranker had to GUESS an axis' direction, one number was not a
+    comparison. P6 ships the definition + direction in the payload, so a single
+    DISCRIMINATING registry axis is a legitimate order — and refusing it left
+    six scored cards on the Algorithms rank (owner: "1 axis carries a number
+    (noise) — not ranked").
+    """
     items = [_item("a.png", {"sharpness": 80}), _item("b.png", {"sharpness": 40})]
     calls: list[dict] = []
 
@@ -229,13 +238,47 @@ def test_a_one_axis_vector_is_refused_with_a_named_reason_and_no_call():
         calls.append(payload)
         return _chat({"choice": "img_1", "score": 0.9})
 
+    from tabs.image_gallery.services.jev_cache import JevRankCache
+
     outcome = rank_series_jev_detailed(
-        items, mode="camera", client=_client, domain="ai"
+        items, mode="camera", client=_client, domain="ai",
+        cache=JevRankCache(tmp_path),
     )
 
-    assert outcome.ranks is None, "a single number cannot order the variants"
-    assert outcome.reason == JEV_REASON_ONE_AXIS
-    assert JEV_REJECT_ONE_AXIS in outcome.reason, "the reason names its code"
+    assert calls, "a described single axis must be ranked, not refused"
+    import json as _json
+
+    wire = _json.dumps(calls[0])
+    assert "sharpness" in wire
+    assert "higher-is-better" in wire, "the single axis must carry its direction"
+    assert outcome.reason != JEV_REASON_ONE_AXIS
+
+
+def test_an_axis_outside_the_asked_set_is_not_a_dimension(tmp_path):
+    """The single-axis guard's real boundary: an axis nobody ASKED for.
+
+    Such an axis never enters the vector (``build_measured_vector`` keeps the
+    asked set only), so the series reads as "nothing to rank" and the ranker is
+    never called. A registry axis always carries its meaning, and a judge axis
+    without a definition is refused at parse — so the old blind single-axis case
+    cannot reach the ranker any more (that is why the refusal was revised).
+    """
+    items = [_item("a.png", {"grain_uniformity": 80}), _item("b.png", {"grain_uniformity": 40})]
+    calls: list[dict] = []
+
+    def _client(payload):
+        calls.append(payload)
+        return _chat({"choice": "img_1", "score": 0.9})
+
+    from tabs.image_gallery.services.jev_cache import JevRankCache
+
+    outcome = rank_series_jev_detailed(
+        items, mode="camera", client=_client, domain="ai",
+        cache=JevRankCache(tmp_path),
+    )
+
+    assert outcome.ranks is None, "an unasked axis is not a dimension"
+    assert outcome.reason == JEV_REASON_EMPTY
     assert calls == [], "the refuser must not ask the ranker to guess"
 
 
