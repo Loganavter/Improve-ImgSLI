@@ -448,6 +448,26 @@ class RecentItemsView(QWidget):
                 context=self._context,
             )
 
+    def reflow_columns_now(self) -> bool:
+        """Re-place grid cards for the CURRENT width in this frame.
+
+        The resize path deferred the whole relayout by one event-loop turn, so
+        the frame right after a window resize painted the OLD column count into
+        the NEW width — the extra column clipped at the right edge ("part of the
+        buttons is missing") and then every card moved on the next frame
+        ("the position changes afterwards"). The column count needs only the
+        width, which is already final inside ``resizeEvent``; the viewport
+        HEIGHT still depends on the page layout, so that stays deferred.
+        """
+        if self._view_mode != VIEW_GRID or not self._records:
+            return False
+        columns = self.resolve_grid_columns()
+        if columns == self._grid_columns:
+            return False
+        self._grid_columns = columns
+        self._refresh_visible_window(force=True)
+        return True
+
     def relayout_grid_if_needed(self, *, updates_owner: QWidget) -> bool:
         if self._view_mode != VIEW_GRID or not self._records:
             return False

@@ -81,16 +81,9 @@ class ApplyFontSettingsStep(WindowStartupStep):
                 FontManager.get_instance().apply_from_state(window.store)
             except Exception:
                 pass
-        # Shell may already have menus; force a sync remasure after the face
+        # Shell may already have menus; force a sync remeasure after the face
         # is pinned so the first painted frame is not mid-jump.
-        menu = getattr(window, "_menu_controller", None)
-        strip = getattr(menu, "_menu_strip", None) if menu is not None else None
-        remasure = getattr(strip, "remasure", None)
-        if callable(remasure):
-            try:
-                remasure()
-            except Exception:
-                pass
+        _remeasure_menu_strip(window)
 
 
 class BootstrapContentStep(WindowStartupStep):
@@ -229,6 +222,30 @@ class MainWindowStartupPipeline:
                 )
                 raise
 
+def _remeasure_menu_strip(window) -> None:
+    """Force the CSD menu strip's final widths before the window is exposed.
+
+    The strip measures its triggers from ``ui_font()``; a strip built or
+    re-labelled before the final face/language lands exposes one wrong frame
+    and then corrects itself — the owner's "CSD menu buttons change text size
+    after the first frames", the same class as the tab-bar first-frame report
+    (`inv-toolkit-tabbar-font-relayout-2026-10-14`). Two startup points call
+    this: after the font step and right before ``show()``.
+
+    The attribute name lives here for a reason: both call sites used to spell
+    it ``remasure`` (2026-10-23), which silently turned both guards into dead
+    code — the strip was never force-remeasured before the first buffer.
+    """
+    menu = getattr(window, "_menu_controller", None)
+    strip = getattr(menu, "_menu_strip", None) if menu is not None else None
+    remeasure = getattr(strip, "remeasure", None)
+    if callable(remeasure):
+        try:
+            remeasure()
+        except Exception:
+            pass
+
+
 @dataclass(slots=True)
 class MainWindowStartupController:
     pipeline: MainWindowStartupPipeline = field(
@@ -246,15 +263,8 @@ class MainWindowStartupController:
         startup_debug("controller: show")
         self.prepare(window)
         # Final CSD menu widths + balance while still hidden, so the first
-        # exposed frame does not remasure and ghost «Справка».
-        menu = getattr(window, "_menu_controller", None)
-        strip = getattr(menu, "_menu_strip", None) if menu is not None else None
-        remasure = getattr(strip, "remasure", None)
-        if callable(remasure):
-            try:
-                remasure()
-            except Exception:
-                pass
+        # exposed frame does not remeasure and ghost «Справка».
+        _remeasure_menu_strip(window)
         title_bar = getattr(window, "_custom_title_bar", None)
         if title_bar is not None:
             sync = getattr(title_bar, "_sync_balance_spacer", None)

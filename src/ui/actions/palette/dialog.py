@@ -13,6 +13,7 @@ from PySide6.QtWidgets import QApplication, QVBoxLayout, QWidget
 from core.actions.types import ActionDescriptor
 from shared_toolkit.ui.themed_dialog import ThemedDialog
 from sli_ui_toolkit.managers import scaled_px
+from sli_ui_toolkit.ui.pending_settle import PendingSettle, settle_on_paint
 from sli_ui_toolkit.widgets import CustomLineEdit, SurfaceScrollArea, Text
 from tabs.registry import get_shared_tab_registry
 from ui.actions.palette.common import (
@@ -151,6 +152,10 @@ class FindActionDialog(ThemedDialog):
         self._reload_timer.setSingleShot(True)
         self._reload_timer.setInterval(_RELOAD_DEBOUNCE_MS)
         self._reload_timer.timeout.connect(self._reload)
+        # First-show row layout: the host settles AFTER the viewport, so a
+        # 0-timer ran one frame late (rows laid out after the first paint).
+        # The paint boundary runs it before those pixels go out.
+        self._row_settle = PendingSettle()
 
         title = tr_action("menu.find_action", "Find Action")
         self.setObjectName("FindActionDialog")
@@ -162,6 +167,7 @@ class FindActionDialog(ThemedDialog):
         self.setWindowModality(Qt.WindowModality.NonModal)
 
         self._build_ui(query)
+        settle_on_paint(self, self._row_settle)
         self.setMinimumSize(scaled_px(480), scaled_px(320))
         # Design size scaled like the minimum, so the two never disagree at
         # scale > 1.0 (an unscaled resize gets clamped to the scaled minimum).
@@ -573,7 +579,7 @@ class FindActionDialog(ThemedDialog):
             QEvent.Type.Show,
         ):
             self._activate_row_layout()
-            QTimer.singleShot(0, self._activate_row_layout)
+            self._row_settle.schedule(self, self._activate_row_layout)
         # Синхронизируем current_index с фактическим фокусом (NavigationManager двигает фокус на Button-ряд)
         if event.type() == QEvent.Type.FocusIn and isinstance(obj, QWidget):
             # Находим ряд по виджету (row Button или его предок)

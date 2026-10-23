@@ -2,10 +2,21 @@
 
 Workspace-specific behavior over the toolkit `AdaptiveTabStrip`:
 browser-like close interactions. Eats mouse presses that land on a tab's
-close-button slot so `QTabBar` does not activate the tab on press while the
+close-button slot so the tab bar does not activate the tab on press while the
 X is being clicked; middle-click closes.
 
 Source: `src/ui/widgets/workspace_tab_strip.py`
+
+## Width regimes
+
+The strip adds no width policy of its own — the toolkit bar decides, in this
+order: natural widths; proportional compression down to a couple of glyphs
+beside the close slot; horizontal scrolling (tabs back at their natural width)
+with a painter-drawn chevron in a gutter on each side. Arrows step one whole
+tab per click, repeat while held, and dim at the row ends; the wheel scrolls
+the strip and never changes the active tab. The host's
+`CloseButtonPolicy.ALL` keeps the `×` on every tab in every regime — a tab
+scrolled under a gutter has its slot hidden instead of floating over the arrow.
 
 ## Construction
 
