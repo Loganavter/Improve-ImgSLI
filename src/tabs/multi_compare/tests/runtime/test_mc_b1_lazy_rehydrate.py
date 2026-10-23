@@ -15,6 +15,7 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
 from PIL import Image
 
 from tabs.multi_compare.controller import MultiCompareController
@@ -22,6 +23,36 @@ from tabs.multi_compare.models import CompareSlot
 from tabs.multi_compare.scene.store import reduce as mc_reduce
 from tabs.multi_compare.tab import MultiCompareTab
 from tabs.multi_compare.use_cases import persistence
+
+
+@pytest.fixture(autouse=True)
+def _memory_qsettings(monkeypatch):
+    """Keep last-used chrome in memory, never the host's real QSettings.
+
+    A defaults-only session slot now materializes the last-used chrome
+    (``persistence.materialize_session_chrome``, #568). The host config carries
+    its owner's divider/label choices, so an unisolated read makes these tests
+    depend on the machine.
+    """
+    mem: dict = {}
+
+    class _FakeQSettings:
+        def __init__(self, *_args):
+            pass
+
+        def value(self, key, default=None):
+            return mem.get(key, default)
+
+        def setValue(self, key, value):
+            mem[key] = value
+
+        def sync(self):
+            pass
+
+    from tabs.use_cases import session_state as _mod
+
+    monkeypatch.setattr(_mod, "QSettings", _FakeQSettings)
+    return mem
 
 
 class _CapturingPool:

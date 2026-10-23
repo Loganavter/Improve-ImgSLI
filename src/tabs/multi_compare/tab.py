@@ -239,7 +239,7 @@ class MultiCompareTab(TabContract):
         # activation, not depend on the load-time conditional rehydrate.
         self._active_session_id = session_id
         self._session_state.apply_from_slot(context, session_id)
-        self._materialize_chrome(session_id, context)
+        persistence.materialize_session_chrome(self, session_id, context)
         if self._widget is not None:
             try:
                 if self._controller is not None:
@@ -248,42 +248,6 @@ class MultiCompareTab(TabContract):
                 logger.exception(
                     "mc: demand fill kick failed on activation for %s", session_id
                 )
-
-    def _materialize_chrome(self, session_id: str, context: TabContext) -> None:
-        """Write a last-used fallback into a defaults-only slot on activation.
-
-        ``SessionState.apply_from_slot`` prefers the last-used chrome over a
-        slot that holds only the factory defaults (#568: a defaults-only slot
-        is not a user choice, so it must not shadow the config). The MC slot is
-        the widget's source of truth, so without this the bound facade showed
-        the fallback while the canvas kept painting the defaults.
-
-        This is a restore seed, not a user edit: written through the slot API
-        with the ``viewport`` scope the bound facade listens to, and never to
-        QSettings (``on_widget_state_changed`` remembers user edits only).
-        """
-        store = getattr(context, "store", None)
-        if store is None:
-            return
-        from tabs.multi_compare.models import MultiCompareState
-
-        try:
-            current = store.get_session_state_slot(
-                _STATE_SLOT, session_id=session_id
-            )
-            if not isinstance(current, MultiCompareState):
-                return
-            merged = persistence.chrome_merge(current, self._session_state.as_dict())
-            if merged == current:
-                return
-            store.set_session_state_slot(
-                _STATE_SLOT, merged, session_id=session_id, emit_scope="viewport"
-            )
-        except Exception:
-            logger.exception("mc: chrome materialization failed for %s", session_id)
-            return
-        if self._widget is not None:
-            self._widget.refresh_from_session()
 
     def on_deactivated(self, context: TabContext) -> None:
         if self._widget is not None:

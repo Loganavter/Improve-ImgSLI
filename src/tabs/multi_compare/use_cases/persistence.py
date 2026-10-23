@@ -211,6 +211,41 @@ def on_session_created(tab, session_id: str, context: TabContext) -> None:
         tab._active_session_id = session_id
 
 
+def materialize_session_chrome(tab, session_id: str, context: TabContext) -> None:
+    """Write a last-used fallback into a defaults-only slot on activation.
+
+    ``SessionState.apply_from_slot`` prefers the last-used chrome over a slot
+    that holds only the factory defaults (#568: a defaults-only slot is not a
+    user choice, so it must not shadow the config). The MC slot is the
+    widget's source of truth, so without this the bound facade reports the
+    fallback while the canvas keeps painting the defaults.
+
+    A restore seed, not a user edit: written through the slot API with the
+    ``viewport`` scope the bound facade listens to, and never to QSettings
+    (``on_widget_state_changed`` remembers user edits only).
+    """
+    store = getattr(context, "store", None)
+    if store is None:
+        return
+    from tabs.multi_compare.models import MultiCompareState
+
+    try:
+        current = store.get_session_state_slot(_STATE_SLOT, session_id=session_id)
+        if not isinstance(current, MultiCompareState):
+            return
+        merged = chrome_merge(current, tab._session_state.as_dict())
+        if merged == current:
+            return
+        store.set_session_state_slot(
+            _STATE_SLOT, merged, session_id=session_id, emit_scope="viewport"
+        )
+    except Exception:
+        logger.exception("mc: chrome materialization failed for %s", session_id)
+        return
+    if tab._widget is not None:
+        tab._widget.refresh_from_session()
+
+
 def serialize_session(tab, session_id: str, context: TabContext) -> dict | None:
     store = getattr(context, "store", None)
     if store is None:
