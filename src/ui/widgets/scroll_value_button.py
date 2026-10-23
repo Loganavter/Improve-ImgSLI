@@ -114,6 +114,16 @@ class _ValueOverUnderlineLayer(Layer):
 
     @staticmethod
     def _draw_capsule(scoped_ctx, tm, text: str) -> None:
+        # Resolve from the REGION context (the capsule must be exactly the
+        # background this region paints around the digit — it is a mask that
+        # keeps the underline from running through the number). That only
+        # works while the "value" region carries the group's HOVERED state:
+        # the split region is created while the pointer is already inside
+        # (the HoverCoordinator filter sees Enter before this widget's
+        # enterEvent builds the split), and before the toolkit restored group
+        # state on rebuild it resolved the idle base — a lighter pill on a
+        # hovered body, i.e. the digit reading as outside the hover family
+        # (owner report 2026-10-23).
         backgrounds, _border = BackgroundLayer._resolve(scoped_ctx, tm)
         if not backgrounds:
             return
@@ -440,7 +450,7 @@ class ScrollValueButton(Button):
         # otherwise be silently lost the first time _sync_regions() reasserts
         # our (still-False) shadow copy on the first hover/scroll.
         self._underline_visible = bool(getattr(self, "_show_underline", False))
-        super().setShowUnderline(self._underline_visible)
+        super().setShowUnderline(self._effective_underline_visible())
         self.setUnderlineThickness(self._underline_thickness_for_value(self._value))
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         # Hover/focus now start the preview on every enter, so the hide timer
@@ -466,7 +476,7 @@ class ScrollValueButton(Button):
 
     def setShowUnderline(self, value: bool) -> None:
         self._underline_visible = bool(value)
-        super().setShowUnderline(value)
+        super().setShowUnderline(self._effective_underline_visible())
 
     def setUnderlineColor(self, color) -> None:
         self._underline_qcolor = color
@@ -477,10 +487,27 @@ class ScrollValueButton(Button):
         super().setUnderlineThickness(thickness)
 
     def _underline_thickness_for_value(self, value: int) -> float:
+        # The zero state is the control's own "hidden" state (``zero_icon``):
+        # the thing the line refers to is not on canvas, so the line is not
+        # drawn either (owner rule 2026-10-23). Before that it fell through
+        # ``max(1, value)`` and painted the 1 px minimum under a hidden item.
+        if self._is_zero_value(value):
+            return 0.0
         span = max(1, self._max_value - 1)
         t = (max(1, value) - 1) / span
         t = max(0.0, min(1.0, t))
         return _UNDERLINE_THICKNESS_MIN + t * (_UNDERLINE_THICKNESS_MAX - _UNDERLINE_THICKNESS_MIN)
+
+    def _is_zero_value(self, value: int) -> bool:
+        return self._zero_icon is not None and value <= self._min_value
+
+    def _effective_underline_visible(self) -> bool:
+        """Host request AND not the zero/"hidden" state.
+
+        At zero the button paints ``zero_icon`` (the divider/guides it refers
+        to are hidden); a colour line under it would claim the opposite.
+        """
+        return self._underline_visible and not self._is_zero_value(self._value)
 
     # ---------- checked state (kept in sync with both regions, even when the
     # caller suppresses the toggled signal) ----------
@@ -799,11 +826,11 @@ class ScrollValueButton(Button):
         # set_regions() rebuilds the button's internal region/paint state from
         # scratch, which drops any previously applied underline visibility/color.
         # Re-assert our last known desired state so hover/scroll/value changes
-        # can't silently erase the divider-color indicator. The underline is
-        # NOT tied to the value any more (owner rule 2026-10-19): the zero
-        # state shows the zero_icon instead of a digit, but the line itself
-        # stays visible whenever the host enabled it.
-        super().setShowUnderline(self._underline_visible)
+        # can't silently erase the divider-color indicator. The line shows the
+        # divider/guide colour, so it follows the control's zero/"hidden" state
+        # (``zero_icon``): hidden there, visible whenever the host enabled it
+        # and the value is non-zero (owner rule 2026-10-23).
+        super().setShowUnderline(self._effective_underline_visible())
         if self._underline_qcolor is not None:
             super().setUnderlineColor(self._underline_qcolor)
         if self._underline_thickness_value is not None:
@@ -816,7 +843,7 @@ class ScrollValueButton(Button):
         self._sync_region_checked_state(self.isChecked())
 
     def _is_at_zero(self) -> bool:
-        return self._zero_icon is not None and self._value <= self._min_value
+        return self._is_zero_value(self._value)
 
     def _icon_region_id(self) -> str:
         # A toggle=True region must be named "_main" — the toolkit's click
