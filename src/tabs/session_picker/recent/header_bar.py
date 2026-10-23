@@ -228,11 +228,26 @@ class RecentHeaderBar(QWidget):
         self.view_button.set_override_bg_color(chip_bg)
         self.view_button.setVisible(has_items)
         self.view_button.update()
+        self._settle_controls_layout()
 
     def set_controls_visible(self, visible: bool) -> None:
         self.sort_button.setVisible(visible)
         self.sort_order_button.setVisible(visible)
         self.view_button.setVisible(visible)
+        self._settle_controls_layout()
+
+    def _settle_controls_layout(self) -> None:
+        """Give the chips their geometry in THIS call, not on a posted pass.
+
+        The chips are placed by this widget's ``QHBoxLayout``; a visibility
+        toggle only POSTS a layout re-run, so the frame committed right after
+        the sync carries the construction-time geometry (zero-width chips) and
+        the toolbar appears a beat later — measured 2026-10-23 on a headless
+        sway: ~0.8 s. Mechanism 1 of ``docs/dev/QT_LAYOUT_PITFALLS.md``.
+        """
+        from sli_ui_toolkit.ui.layout_settle import settle_layout
+
+        settle_layout(self, self.sort_button, self.sort_order_button, self.view_button)
 
     def _sort_mode_icon(self):
         """Leading icon for the sort chip — matches the current sort mode
