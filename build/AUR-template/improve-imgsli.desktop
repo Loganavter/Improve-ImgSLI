@@ -6,6 +6,6 @@ Icon=improve-imgsli
 Terminal=false
 Type=Application
 Categories=Graphics;2DGraphics;
-MimeType=application/x-improve-imgsli;
+MimeType=application/vnd.blinktable.project+zip;application/x-improve-imgsli;
 StartupWMClass=improve-imgsli
 StartupNotify=true

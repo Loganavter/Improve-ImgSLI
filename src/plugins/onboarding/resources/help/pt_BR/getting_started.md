@@ -25,4 +25,4 @@ Para três ou mais imagens, use **Comparação múltipla**: uma grade de célula
 
 ### Descubra os recursos {#discover}
 
-`Ctrl+Shift+P` abre **Localizar ação** e executa qualquer ação pelo nome; **Saiba mais** abre o tópico de ajuda correspondente. Comece por [Comparação](help://workspace.image_compare.comparison) para o divisor, os rótulos e os modos de diferença, e por [Arquivos e Projetos](help://platform.file_project) para manter seu trabalho em um projeto `.imgsli` portátil.
+`Ctrl+Shift+P` abre **Localizar ação** e executa qualquer ação pelo nome; **Saiba mais** abre o tópico de ajuda correspondente. Comece por [Comparação](help://workspace.image_compare.comparison) para o divisor, os rótulos e os modos de diferença, e por [Arquivos e Projetos](help://platform.file_project) para manter seu trabalho em um projeto `.blinktable` portátil.

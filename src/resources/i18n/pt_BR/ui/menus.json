@@ -10,7 +10,7 @@
     "quit": "Sair",
     "show_help": "Mostrar ajuda",
     "find_action": "Localizar ação",
-    "project_filter": "Projeto BlinkTable (*.imgsli)",
+    "project_filter": "Projeto BlinkTable (*.blinktable)",
     "project_untitled": "Sem título",
     "project_opening": "Abrindo projeto…",
     "project_saving": "Salvando projeto…",

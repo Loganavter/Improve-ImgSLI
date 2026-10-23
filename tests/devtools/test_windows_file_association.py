@@ -1,13 +1,17 @@
-"""Windows .imgsli ProgID helpers (unit-tested without real winreg)."""
+"""Windows project-file ProgID helpers (unit-tested without real winreg)."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
 from services.system.windows_file_association import (
+    CONTENT_TYPE,
     EXTENSION,
+    LEGACY_CONTENT_TYPE,
+    LEGACY_EXTENSION,
     PROGID,
     association_is_current,
+    extension_mappings,
     open_command_for_exe,
     resolve_file_type_icon,
 )
@@ -19,12 +23,12 @@ def test_open_command_quotes_exe_and_placeholder(tmp_path: Path):
     assert open_command_for_exe(exe) == f'"{exe}" "%1"'
 
 
-def test_resolve_file_type_icon_prefers_imgsli_ico_beside_exe(tmp_path: Path):
+def test_resolve_file_type_icon_prefers_blinktable_ico_beside_exe(tmp_path: Path):
     exe = tmp_path / "Improve_ImgSLI.exe"
     exe.write_bytes(b"MZ")
     icons = tmp_path / "icons"
     icons.mkdir()
-    target = icons / "imgsli-file.ico"
+    target = icons / "blinktable-file.ico"
     target.write_bytes(b"ico")
     (icons / "icon.ico").write_bytes(b"app")
     found = resolve_file_type_icon(exe)
@@ -54,5 +58,14 @@ def test_association_is_current_false_when_open_key_missing(monkeypatch, tmp_pat
 
 
 def test_progid_constants():
-    assert EXTENSION == ".imgsli"
-    assert PROGID == "ImproveImgSLI.Project"
+    assert EXTENSION == ".blinktable"
+    assert LEGACY_EXTENSION == ".imgsli"
+    assert PROGID == "BlinkTable.Project"
+    assert CONTENT_TYPE == "application/vnd.blinktable.project+zip"
+
+
+def test_extension_mappings_cover_current_and_legacy():
+    assert extension_mappings() == (
+        (EXTENSION, CONTENT_TYPE),
+        (LEGACY_EXTENSION, LEGACY_CONTENT_TYPE),
+    )

@@ -10,7 +10,7 @@
     "quit": "退出",
     "show_help": "显示帮助",
     "find_action": "查找操作",
-    "project_filter": "BlinkTable 项目 (*.imgsli)",
+    "project_filter": "BlinkTable 项目 (*.blinktable)",
     "project_untitled": "未命名",
     "project_opening": "正在打开项目…",
     "project_saving": "正在保存项目…",

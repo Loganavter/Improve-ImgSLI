@@ -9,7 +9,7 @@ A página inicial das novas abas: abra uma sessão aqui ou retome um projeto rec
 ### Seletor de Sessão {#session-picker}
 
 - **Tipos de sessão** — um cartão por aba conectada, por exemplo **Comparação de Imagem**, **Comparação múltipla** ou **Galeria**. Clique em um cartão para abrir essa sessão.
-- **Recentes** — a prateleira de projetos `.imgsli` salvos abaixo dos cartões. Clique em um cartão para abrir o projeto; clique com o botão direito para **Abrir**, **Propriedades**, **Remover da lista** e **Mostrar na pasta**.
+- **Recentes** — a prateleira de projetos `.blinktable` salvos abaixo dos cartões. Clique em um cartão para abrir o projeto; clique com o botão direito para **Abrir**, **Propriedades**, **Remover da lista** e **Mostrar na pasta**.
 - **Soltar arquivo de projeto** — um arquivo de projeto arrastado para a prateleira é fixado na lista sem ser aberto.
 - **Ordenar e ver** — **Ordenar por** (data de modificação, data de criação, nome) e **Visualização** (grade ou lista).
 - **Prévia** — cartões em grade mostram a miniatura da tela salva no projeto, quando o projeto tem uma.

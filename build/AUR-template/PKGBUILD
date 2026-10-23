@@ -65,6 +65,9 @@ package() {
   python -m installer --destdir="$pkgdir" "$srcdir/piq-$_piqver-py3-none-any.whl"
 
   # MIME + thumbnailer + document-style MIME icons
+  install -vDm 644 build/linux/mime/application-vnd.blinktable.project+zip.xml \
+    "$pkgdir/usr/share/mime/packages/application-vnd.blinktable.project+zip.xml"
+  # Legacy *.imgsli packages keep resolving to a project type.
   install -vDm 644 build/linux/mime/application-x-improve-imgsli.xml \
     "$pkgdir/usr/share/mime/packages/application-x-improve-imgsli.xml"
   install -vDm 755 build/linux/bin/improve-imgsli-thumbnailer \
@@ -74,8 +77,8 @@ package() {
   install -vDm 644 src/resources/icons/icon.png \
     "$pkgdir/usr/share/improve-imgsli/mark.png"
   for _sz in 16 22 32 48 64 128 256; do
-    install -vDm 644 "build/linux/icons/mimetypes/application-x-improve-imgsli-${_sz}.png" \
-      "$pkgdir/usr/share/icons/hicolor/${_sz}x${_sz}/mimetypes/application-x-improve-imgsli.png"
+    install -vDm 644 "build/linux/icons/mimetypes/application-vnd.blinktable.project+zip-${_sz}.png" \
+      "$pkgdir/usr/share/icons/hicolor/${_sz}x${_sz}/mimetypes/application-vnd.blinktable.project+zip.png"
   done
 
   # Install application source code and all resources from the src directory

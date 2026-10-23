@@ -1,4 +1,7 @@
-"""MRU list of portable ``.imgsli`` projects for the Session Picker."""
+"""MRU list of portable ``.blinktable`` projects for the Session Picker.
+
+Pre-rename ``.imgsli`` projects are still accepted on read.
+"""
 
 from __future__ import annotations
 

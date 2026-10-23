@@ -112,6 +112,6 @@ derived from the mark is regenerated, never hand-edited:
 rsvg-convert -w 512 -h 512 src/resources/icons/blinktable-logo.svg -o src/resources/icons/icon.png
 cp src/resources/icons/icon.png build/Flatpak-template/icon.png
 # Windows app icon (16-256) from the same PNG (Pillow), then the MIME icons +
-# the .imgsli document icon, which are painted from icon.png:
+# the project document icon, which are painted from icon.png:
 QT_QPA_PLATFORM=offscreen python3 build/linux/icons/render_mime_icons.py
 ```

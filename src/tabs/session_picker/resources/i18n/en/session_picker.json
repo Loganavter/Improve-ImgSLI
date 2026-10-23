@@ -17,8 +17,8 @@
   "recent": {
     "title": "Recent",
     "empty_title": "Load your first project",
-    "empty_hint": "Drop a .imgsli file here to pin it",
-    "empty": "Saved projects appear here after you open or save a .imgsli file. Drop a project file here to pin it to this list.",
+    "empty_hint": "Drop a .blinktable file here to pin it",
+    "empty": "Saved projects appear here after you open or save a .blinktable file. Drop a project file here to pin it to this list.",
     "sort_modified": "Date modified",
     "sort_created": "Date created",
     "sort_name": "Name",

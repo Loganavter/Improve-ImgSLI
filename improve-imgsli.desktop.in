@@ -6,6 +6,6 @@ Exec=@LAUNCHER_PATH@ run %F
 Icon=@ICON_PATH@
 Terminal=false
 Categories=Graphics;Photography;
-MimeType=application/x-improve-imgsli;
+MimeType=application/vnd.blinktable.project+zip;application/x-improve-imgsli;
 StartupWMClass=improve-imgsli
 StartupNotify=true

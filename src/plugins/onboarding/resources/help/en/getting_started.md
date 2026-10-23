@@ -25,4 +25,4 @@ For three or more images, use **Multi Compare**: a grid of slots, each holding i
 
 ### Discover features {#discover}
 
-`Ctrl+Shift+P` opens **Find Action** and runs any action by name; **Learn more** opens the matching help topic. Start with [Comparison](help://workspace.image_compare.comparison) for the split, labels, and difference modes, and [Files and Projects](help://platform.file_project) to keep your work in a portable `.imgsli` project.
+`Ctrl+Shift+P` opens **Find Action** and runs any action by name; **Learn more** opens the matching help topic. Start with [Comparison](help://workspace.image_compare.comparison) for the split, labels, and difference modes, and [Files and Projects](help://platform.file_project) to keep your work in a portable `.blinktable` project.
