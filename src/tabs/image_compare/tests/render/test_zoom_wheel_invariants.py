@@ -3,9 +3,10 @@
 ``compute_zoom_wheel_transform`` is pure: a frozen request in, a tuple out.
 That makes the input domain small enough to **enumerate** — stronger than random
 sampling (no seed, no flake, and a counterexample is always the exact case).
-This file is the pilot for the "invariant before test" rule in
-``docs/dev/EVIDENCE.md``: every claim below is about ALL bounded inputs, not an
-example chosen to pass.
+This file is the pilot for the evidence layer's invariant-before-test rule (the
+private internal-docs knowledge plane; registry entry
+``spec.ui.zoom_wheel_composition``) — every claim below is about ALL bounded
+inputs, not an example chosen to pass.
 
 The function's own history is the reason to state properties rather than
 examples: a "drop this tick" throttle used to sit in front of it and lost
@@ -89,11 +90,13 @@ def _close(a: float, b: float) -> bool:
 def _check_composition() -> tuple[list[str], int]:
     """P1: ``k`` notches in one event == ``k`` single-notch events."""
     broken: list[str] = []
+    evaluated = 0
     for zoom, delta, k in itertools.product((1.0, 2.0, 10.0), (1, 15, 30, 60, 120, -120, -60), (2, 3, 4)):
         # Keep every intermediate step away from the clamp: the property is about
         # the factor, not the bound.
         if not (0.11 <= _clamped_zoom(zoom, delta * k) <= 49.0):
             continue
+        evaluated += 1
         once = compute_zoom_wheel_transform(_request(zoom=zoom, delta=delta * k))
         if once is None:
             broken.append(f"zoom={zoom} delta={delta}x{k}: combined returned None")
@@ -111,34 +114,38 @@ def _check_composition() -> tuple[list[str], int]:
                     f"zoom={zoom} delta={delta}x{k}: combined={once[0]:.12f} "
                     f"stepped={stepped:.12f}"
                 )
-    return broken
+    return broken, evaluated
 
 
 def _check_monotonicity() -> tuple[list[str], int]:
     """P2: a larger delta never zooms out from the same state."""
     broken: list[str] = []
+    evaluated = 0
     for zoom, pan in itertools.product(ZOOMS, PANS):
         previous: tuple[int, float] | None = None
         for delta in sorted(DELTAS):
             result = compute_zoom_wheel_transform(_request(zoom=zoom, delta=delta, pan=pan))
             if result is None:
                 continue
+            evaluated += 1
             if previous is not None and result[0] < previous[1] - 1e-12:
                 broken.append(
                     f"zoom={zoom} pan={pan}: delta={previous[0]} -> {previous[1]:.12f} "
                     f"then delta={delta} -> {result[0]:.12f}"
                 )
             previous = (delta, result[0])
-    return broken
+    return broken, evaluated
 
 
 def _check_clamp() -> tuple[list[str], int]:
     """P3: the result is always inside [0.1, 50] and saturates exactly."""
     broken: list[str] = []
+    evaluated = 0
     for zoom, delta in itertools.product(ZOOMS, DELTAS):
         result = compute_zoom_wheel_transform(_request(zoom=zoom, delta=delta))
         if result is None:
             continue
+        evaluated += 1
         actual = result[0]
         if not (0.1 - 1e-12 <= actual <= 50.0 + 1e-12):
             broken.append(f"zoom={zoom} delta={delta}: out of bounds {actual!r}")
@@ -147,13 +154,15 @@ def _check_clamp() -> tuple[list[str], int]:
             broken.append(
                 f"zoom={zoom} delta={delta}: expected clamped {expected:.12f}, got {actual:.12f}"
             )
-    return broken
+    return broken, evaluated
 
 
 def _check_noop() -> tuple[list[str], int]:
     """P4: no movement means None, and None means no movement."""
     broken: list[str] = []
+    evaluated = 0
     for zoom, delta, pan in itertools.product(ZOOMS, DELTAS, PANS):
+        evaluated += 1
         result = compute_zoom_wheel_transform(_request(zoom=zoom, delta=delta, pan=pan))
         moves = abs(_clamped_zoom(zoom, delta) - zoom) > 1e-6
         if delta == 0 and result is not None:
@@ -162,7 +171,7 @@ def _check_noop() -> tuple[list[str], int]:
             broken.append(f"zoom={zoom} delta={delta}: swallowed a real move")
         if result is not None and not moves:
             broken.append(f"zoom={zoom} delta={delta}: reported a movement that is a no-op")
-    return broken
+    return broken, evaluated
 
 
 def _check_anchor_or_edge() -> tuple[list[str], int]:
@@ -174,10 +183,12 @@ def _check_anchor_or_edge() -> tuple[list[str], int]:
     it — and it is what fails if the ``uv`` clamp is removed.
     """
     broken: list[str] = []
+    evaluated = 0
     for zoom, delta, pan, mouse, size in itertools.product(ZOOMS, DELTAS, PANS, MOUSE_FRACTIONS, SIZES):
         width, height = size
         if width <= 0 or height <= 0:
             continue  # P7 owns the degenerate widget
+        evaluated += 1
         result = compute_zoom_wheel_transform(
             _request(zoom=zoom, delta=delta, pan=pan, mouse_fraction=(mouse, mouse), size=size)
         )
@@ -197,27 +208,31 @@ def _check_anchor_or_edge() -> tuple[list[str], int]:
                     f"axis={axis}: uv {uv_before:.6f} -> {uv_after:.6f}, "
                     f"expected clamp {expected:.6f}"
                 )
-    return broken
+    return broken, evaluated
 
 
 def _check_finiteness() -> tuple[list[str], int]:
     """P6: bounded inputs never produce NaN/inf."""
     broken: list[str] = []
+    evaluated = 0
     for zoom, delta, pan, mouse, size in itertools.product(ZOOMS, DELTAS, PANS, MOUSE_FRACTIONS, SIZES):
         result = compute_zoom_wheel_transform(
             _request(zoom=zoom, delta=delta, pan=pan, mouse_fraction=(mouse, mouse), size=size)
         )
         if result is None:
             continue
+        evaluated += 1
         if not all(math.isfinite(value) for value in result):
             broken.append(f"zoom={zoom} delta={delta} pan={pan} size={size}: {result!r}")
-    return broken
+    return broken, evaluated
 
 
 def _check_degenerate_widget() -> tuple[list[str], int]:
     """P7: a non-positive widget leaves the pan and still applies the zoom."""
     broken: list[str] = []
+    evaluated = 0
     for zoom, delta, size in itertools.product(ZOOMS, DELTAS, ((0, 0), (0, 80), (-10, 40))):
+        evaluated += 1
         request = _request(zoom=zoom, delta=delta, pan=(0.3, -0.4), size=size)
         result = compute_zoom_wheel_transform(request)
         expected = _clamped_zoom(zoom, delta)
@@ -238,7 +253,7 @@ def _check_degenerate_widget() -> tuple[list[str], int]:
                 f"zoom={zoom} delta={delta} size={size}: pan moved to "
                 f"({new_pan_x}, {new_pan_y})"
             )
-    return broken
+    return broken, evaluated
 
 
 def test_zoom_wheel_invariants_hold_for_all_bounded_inputs():
@@ -253,18 +268,14 @@ def test_zoom_wheel_invariants_hold_for_all_bounded_inputs():
         "P6_finiteness": _check_finiteness(),
         "P7_degenerate_widget": _check_degenerate_widget(),
     }
-    cases = (
-        len(ZOOMS) * len(DELTAS) * len(PANS) * len(MOUSE_FRACTIONS) * len(SIZES)
-        + len(ZOOMS) * len(DELTAS)
-        + 3 * 7 * 3
-    )
-    broken = {name: rows for name, rows in checks.items() if rows}
+    broken = {name: rows for name, (rows, _used) in checks.items() if rows}
+    evaluated = sum(used for _rows, used in checks.values())
     record_evidence(
         SPEC_ID,
         kind="spec",
         verdict="ok" if not broken else "violated",
         signal=(
-            f"cases={cases} properties={len(checks)} "
+            f"evaluated={evaluated} properties={len(checks)} "
             f"violations=" + (",".join(f"{k}:{len(v)}" for k, v in sorted(broken.items())) or "none")
         ),
         reason=(
