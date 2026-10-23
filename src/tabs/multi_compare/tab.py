@@ -239,6 +239,7 @@ class MultiCompareTab(TabContract):
         # activation, not depend on the load-time conditional rehydrate.
         self._active_session_id = session_id
         self._session_state.apply_from_slot(context, session_id)
+        persistence.materialize_session_chrome(self, session_id, context)
         if self._widget is not None:
             try:
                 if self._controller is not None:
