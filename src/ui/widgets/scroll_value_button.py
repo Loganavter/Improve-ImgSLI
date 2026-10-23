@@ -114,6 +114,16 @@ class _ValueOverUnderlineLayer(Layer):
 
     @staticmethod
     def _draw_capsule(scoped_ctx, tm, text: str) -> None:
+        # Resolve from the REGION context (the capsule must be exactly the
+        # background this region paints around the digit — it is a mask that
+        # keeps the underline from running through the number). That only
+        # works while the "value" region carries the group's HOVERED state:
+        # the split region is created while the pointer is already inside
+        # (the HoverCoordinator filter sees Enter before this widget's
+        # enterEvent builds the split), and before the toolkit restored group
+        # state on rebuild it resolved the idle base — a lighter pill on a
+        # hovered body, i.e. the digit reading as outside the hover family
+        # (owner report 2026-10-23).
         backgrounds, _border = BackgroundLayer._resolve(scoped_ctx, tm)
         if not backgrounds:
             return
