@@ -1,29 +1,25 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
-  <!-- Portable Improve-ImgSLI project package (ZIP with project.json + media/).
+  <!-- LEGACY: pre-rename Improve-ImgSLI project packages (*.imgsli).
 
-       Linux note: shared-mime-info / GIO often prefer content magic over
-       filename globs. application/zip matches PK\003\004 at priority 60, so a
-       glob-only rule still shows as "Zip archive" in Dolphin. Match the first
-       local-file name (project.json at offset 30) at a higher priority, same
-       pattern as application/epub+zip. Writers must keep project.json first
-       in the ZIP with no extra field on that local header.
+       The container format did not change — only its name. The current type
+       application/vnd.blinktable.project+zip owns the content magic, but a
+       *.imgsli path matches this glob first and keeps resolving to the legacy
+       type (measured with shared-mime-info + `xdg-mime query filetype`). This
+       entry exists so those paths still resolve to a project type and so old
+       per-user "open with" choices keep working — the desktop entry lists both
+       types, so opening is unaffected. Never remove without a deprecation
+       release that stops opening *.imgsli.
   -->
   <mime-type type="application/x-improve-imgsli">
-    <comment>Improve ImgSLI project</comment>
-    <comment xml:lang="ru">Проект Improve ImgSLI</comment>
-    <comment xml:lang="pt_BR">Projeto Improve ImgSLI</comment>
-    <comment xml:lang="zh">Improve ImgSLI 项目</comment>
+    <comment>BlinkTable project (legacy .imgsli)</comment>
+    <comment xml:lang="ru">Проект BlinkTable (устаревший .imgsli)</comment>
+    <comment xml:lang="pt_BR">Projeto BlinkTable (.imgsli legado)</comment>
+    <comment xml:lang="zh">BlinkTable 项目（旧版 .imgsli）</comment>
     <acronym>ImgSLI</acronym>
-    <icon name="application-x-improve-imgsli"/>
+    <icon name="application-vnd.blinktable.project+zip"/>
     <generic-icon name="x-office-document"/>
-    <!-- Above application/zip magic (60) and default glob weight (50). -->
-    <magic priority="80">
-      <match type="string" offset="0" value="PK\003\004">
-        <match type="string" offset="30" value="project.json"/>
-      </match>
-    </magic>
-    <glob weight="80" pattern="*.imgsli"/>
-    <glob weight="80" pattern="*.IMGSLI"/>
+    <glob weight="60" pattern="*.imgsli"/>
+    <glob weight="60" pattern="*.IMGSLI"/>
   </mime-type>
 </mime-info>

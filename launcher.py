@@ -50,6 +50,14 @@ DESKTOP_MIME_DIR = SCRIPT_DIR / "build" / "linux" / "mime"
 DESKTOP_THUMB_BIN = SCRIPT_DIR / "build" / "linux" / "bin" / "improve-imgsli-thumbnailer"
 DESKTOP_THUMB_DESKTOP = SCRIPT_DIR / "build" / "linux" / "thumbnailers"
 DESKTOP_ICONS_DIR = SCRIPT_DIR / "build" / "linux" / "icons" / "mimetypes"
+PROJECT_MIME_TYPE = "application/vnd.blinktable.project+zip"
+LEGACY_PROJECT_MIME_TYPE = "application/x-improve-imgsli"
+# Both packages are installed: the legacy one keeps *.imgsli resolving to a
+# project type (see build/linux/mime/).
+PROJECT_MIME_FILES = (
+    "application-vnd.blinktable.project+zip.xml",
+    "application-x-improve-imgsli.xml",
+)
 
 _RUN_ALIAS_FLAGS = frozenset(
     {
@@ -533,11 +541,10 @@ def desktop_integration(ui: UI, mode: str = "quiet") -> bool:
 
     home = Path.home()
     target = home / ".local" / "share" / "applications" / "improve-imgsli.desktop"
-    mime_dst = home / ".local" / "share" / "mime" / "packages" / "application-x-improve-imgsli.xml"
+    mime_pkg_dir = home / ".local" / "share" / "mime" / "packages"
     thumb_bin_dst = home / ".local" / "bin" / "improve-imgsli-thumbnailer"
     thumb_desktop_dst = home / ".local" / "share" / "thumbnailers" / "improve-imgsli.thumbnailer"
     mark_dst = home / ".local" / "share" / "improve-imgsli" / "mark.png"
-    mime_src = DESKTOP_MIME_DIR / "application-x-improve-imgsli.xml"
     thumb_desktop_src = DESKTOP_THUMB_DESKTOP / "improve-imgsli.thumbnailer"
 
     if not DESKTOP_TEMPLATE.is_file():
@@ -559,7 +566,11 @@ def desktop_integration(ui: UI, mode: str = "quiet") -> bool:
         target.chmod(0o755)
         desktop_changed = 1
 
-    if mime_src.is_file():
+    for mime_name in PROJECT_MIME_FILES:
+        mime_src = DESKTOP_MIME_DIR / mime_name
+        mime_dst = mime_pkg_dir / mime_name
+        if not mime_src.is_file():
+            continue
         mime_dst.parent.mkdir(parents=True, exist_ok=True)
         if _copy_if_changed(mime_src, mime_dst):
             mime_changed = 1
@@ -577,7 +588,7 @@ def desktop_integration(ui: UI, mode: str = "quiet") -> bool:
 
     if DESKTOP_ICONS_DIR.is_dir():
         for size in ("16", "22", "32", "48", "64", "128", "256"):
-            icon_src = DESKTOP_ICONS_DIR / f"application-x-improve-imgsli-{size}.png"
+            icon_src = DESKTOP_ICONS_DIR / f"{PROJECT_MIME_TYPE}-{size}.png"
             if not icon_src.is_file():
                 continue
             icon_dst = (
@@ -588,7 +599,7 @@ def desktop_integration(ui: UI, mode: str = "quiet") -> bool:
                 / "hicolor"
                 / f"{size}x{size}"
                 / "mimetypes"
-                / "application-x-improve-imgsli.png"
+                / f"{PROJECT_MIME_TYPE}.png"
             )
             icon_dst.parent.mkdir(parents=True, exist_ok=True)
             if _copy_if_changed(icon_src, icon_dst):
@@ -602,7 +613,10 @@ def desktop_integration(ui: UI, mode: str = "quiet") -> bool:
 
     if mime_changed or icons_changed:
         _run_tool("update-mime-database", [str(home / ".local" / "share" / "mime")])
-        _run_tool("xdg-mime", ["default", "improve-imgsli.desktop", "application/x-improve-imgsli"])
+        _run_tool("xdg-mime", ["default", "improve-imgsli.desktop", PROJECT_MIME_TYPE])
+        _run_tool(
+            "xdg-mime", ["default", "improve-imgsli.desktop", LEGACY_PROJECT_MIME_TYPE]
+        )
         if icons_changed:
             _run_tool(
                 "gtk-update-icon-cache",
@@ -612,14 +626,17 @@ def desktop_integration(ui: UI, mode: str = "quiet") -> bool:
         _run_tool("kbuildsycoca6", ["--noincremental"])
         _run_tool("kbuildsycoca5", ["--noincremental"])
         if mime_changed:
-            ui.info("MIME type installed/updated (application/x-improve-imgsli).")
+            ui.info(f"MIME type installed/updated ({PROJECT_MIME_TYPE}).")
         if icons_changed:
-            ui.info("MIME icons installed (document + mark + IMGSLI).")
+            ui.info("MIME icons installed (document + mark + BLINKTABLE).")
         if mode == "verbose":
             ui.info("If Dolphin still shows Zip/old icon: killall dolphin; clear ~/.cache/thumbnails.")
     elif mode == "verbose":
-        ui.info("MIME type / icons already up to date (application/x-improve-imgsli).")
-        _run_tool("xdg-mime", ["default", "improve-imgsli.desktop", "application/x-improve-imgsli"])
+        ui.info(f"MIME type / icons already up to date ({PROJECT_MIME_TYPE}).")
+        _run_tool("xdg-mime", ["default", "improve-imgsli.desktop", PROJECT_MIME_TYPE])
+        _run_tool(
+            "xdg-mime", ["default", "improve-imgsli.desktop", LEGACY_PROJECT_MIME_TYPE]
+        )
 
     if thumb_changed:
         ui.info("Thumbnailer installed/updated (document-framed preview.png).")
@@ -638,7 +655,7 @@ def desktop_uninstall(ui: UI) -> bool:
 
     home = Path.home()
     target = home / ".local" / "share" / "applications" / "improve-imgsli.desktop"
-    mime_xml = home / ".local" / "share" / "mime" / "packages" / "application-x-improve-imgsli.xml"
+    mime_xml_dir = home / ".local" / "share" / "mime" / "packages"
     thumb_bin = home / ".local" / "bin" / "improve-imgsli-thumbnailer"
     thumb_desktop = home / ".local" / "share" / "thumbnailers" / "improve-imgsli.thumbnailer"
     mark_dst = home / ".local" / "share" / "improve-imgsli" / "mark.png"
@@ -650,23 +667,29 @@ def desktop_uninstall(ui: UI) -> bool:
     else:
         ui.info("Desktop entry not found, nothing to remove.")
 
-    if mime_xml.is_file():
-        mime_xml.unlink()
+    removed_mime = False
+    for mime_name in PROJECT_MIME_FILES:
+        mime_xml = mime_xml_dir / mime_name
+        if mime_xml.is_file():
+            mime_xml.unlink()
+            removed_mime = True
+    if removed_mime:
         _run_tool("update-mime-database", [str(home / ".local" / "share" / "mime")])
         ui.info("MIME type removed.")
 
     for size in ("16", "22", "32", "48", "64", "128", "256"):
-        icon_dst = (
-            home
-            / ".local"
-            / "share"
-            / "icons"
-            / "hicolor"
-            / f"{size}x{size}"
-            / "mimetypes"
-            / "application-x-improve-imgsli.png"
-        )
-        icon_dst.unlink(missing_ok=True)
+        for icon_name in (PROJECT_MIME_TYPE, LEGACY_PROJECT_MIME_TYPE):
+            icon_dst = (
+                home
+                / ".local"
+                / "share"
+                / "icons"
+                / "hicolor"
+                / f"{size}x{size}"
+                / "mimetypes"
+                / f"{icon_name}.png"
+            )
+            icon_dst.unlink(missing_ok=True)
     _run_tool("gtk-update-icon-cache", ["-f", "-t", str(home / ".local" / "share" / "icons" / "hicolor")])
 
     for path in (thumb_bin, thumb_desktop, mark_dst):

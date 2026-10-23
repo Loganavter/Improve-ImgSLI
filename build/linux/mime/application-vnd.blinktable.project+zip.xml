@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+  <!-- Portable BlinkTable project package (ZIP with project.json + media/).
+
+       Linux note: shared-mime-info / GIO often prefer content magic over
+       filename globs. application/zip matches PK\003\004 at priority 60, so a
+       glob-only rule still shows as "Zip archive" in Dolphin. Match the first
+       local-file name (project.json at offset 30) at a higher priority, same
+       pattern as application/epub+zip. Writers must keep project.json first
+       in the ZIP with no extra field on that local header.
+
+       The pre-rename type application/x-improve-imgsli is kept for *.imgsli
+       files (see application-x-improve-imgsli.xml); a *.imgsli path resolves
+       to that legacy type by glob, and both types are listed in the desktop
+       entry, so a double-click opens the app either way.
+  -->
+  <mime-type type="application/vnd.blinktable.project+zip">
+    <comment>BlinkTable project</comment>
+    <comment xml:lang="ru">Проект BlinkTable</comment>
+    <comment xml:lang="pt_BR">Projeto BlinkTable</comment>
+    <comment xml:lang="zh">BlinkTable 项目</comment>
+    <acronym>BlinkTable</acronym>
+    <icon name="application-vnd.blinktable.project+zip"/>
+    <generic-icon name="x-office-document"/>
+    <!-- Above application/zip magic (60) and default glob weight (50). -->
+    <magic priority="80">
+      <match type="string" offset="0" value="PK\003\004">
+        <match type="string" offset="30" value="project.json"/>
+      </match>
+    </magic>
+    <glob weight="80" pattern="*.blinktable"/>
+    <glob weight="80" pattern="*.BLINKTABLE"/>
+  </mime-type>
+</mime-info>

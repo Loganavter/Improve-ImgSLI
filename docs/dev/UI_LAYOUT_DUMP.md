@@ -48,7 +48,7 @@ caveat below). To dump a specific tab's own chrome, either open an existing
 project:
 
 ```bash
-./launcher.sh run --dump-ui-layout /path/to/layout.json /path/to/project.imgsli
+./launcher.sh run --dump-ui-layout /path/to/layout.json /path/to/project.blinktable
 ```
 
 or create a fresh tab of that kind with `--open-tab` (no project file

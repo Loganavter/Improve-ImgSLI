@@ -23,7 +23,7 @@ Below are the default chords. Most action shortcuts can be remapped in **Setting
 - `Ctrl+Tab` / `Ctrl+Shift+Tab` — next / previous session
 - `Ctrl+Shift+P` — **Find Action**
 - `Ctrl+V` — **Paste image from clipboard**
-- `Ctrl+Shift+O` / `Shift+S` / `Ctrl+Shift+S` — **Open Project** / **Save Project** / **Save Project As…** (`.imgsli`)
+- `Ctrl+Shift+O` / `Shift+S` / `Ctrl+Shift+S` — **Open Project** / **Save Project** / **Save Project As…** (`.blinktable`)
 - `Ctrl+Q` — **Quit**
 
 Menu labels follow the language you select. Custom shortcuts are set in **Settings** → **Keyboard**, in the platform group.

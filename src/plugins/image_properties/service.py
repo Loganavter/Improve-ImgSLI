@@ -56,8 +56,9 @@ def build_image_properties(
     probe_image: bool = True,
 ) -> ImageProperties:
     source_path = Path(path) if path else None
-    # Project packages (``.imgsli``) are not raster images — probing them with
-    # Pillow only produces a misleading "cannot identify image file" row.
+    # Project packages (``.blinktable``, legacy ``.imgsli``) are not raster
+    # images — probing them with Pillow only produces a misleading
+    # "cannot identify image file" row.
     source_info = _read_source_info(source_path) if probe_image else {}
     dimensions = _image_dimensions(image) or source_info.get("dimensions")
     mode = _image_mode(image) or source_info.get("mode")
@@ -107,7 +108,7 @@ def build_image_properties(
     return ImageProperties(title=title or "Image", sections=tuple(sections))
 
 
-_NON_IMAGE_SUFFIXES = frozenset({".imgsli"})
+_NON_IMAGE_SUFFIXES = frozenset({".blinktable", ".imgsli", ".imgsli-project"})
 
 
 def _read_source_info(path: Path | None) -> dict[str, Any]:

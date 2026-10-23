@@ -81,7 +81,7 @@ export that matches what is on screen.
 ### Platform and UI
 
 - **Tabbed workspace** with a Firefox-style tab bar; a session picker on start; project
-  files (`.imgsli`) that keep images, splitters, magnifiers and video sessions together.
+  files (`.blinktable`; old `.imgsli` projects still open) that keep images, splitters, magnifiers and video sessions together.
 - The project's own **custom-drawn UI toolkit** (no QSS): light/dark themes, custom
   fonts, and a live UI scale (0.5–2.5×) that re-derives geometry instead of stretching it.
 - Four UI languages (EN / RU / ZH / pt_BR), tray integration, save notifications,

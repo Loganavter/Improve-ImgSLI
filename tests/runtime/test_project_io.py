@@ -490,3 +490,47 @@ def test_zip_project_embeds_pixel_cache_and_registers_on_load(tmp_path, monkeypa
             reopened.close()
     finally:
         pixel_cache_registry.clear()
+
+
+def test_format_name_and_extensions_cover_legacy():
+    from services.io.project_io import (
+        LEGACY_FILE_EXTENSIONS,
+        PROJECT_FILE_EXTENSION,
+        PROJECT_FILE_EXTENSIONS,
+        has_project_extension,
+    )
+
+    assert PROJECT_FORMAT == "blinktable"
+    assert PROJECT_FILE_EXTENSION == ".blinktable"
+    assert LEGACY_FILE_EXTENSIONS == (".imgsli", ".imgsli-project")
+    assert PROJECT_FILE_EXTENSIONS == (".blinktable", ".imgsli", ".imgsli-project")
+    for name in ("a.blinktable", "A.BLINKTABLE", "old.imgsli", "old.imgsli-project"):
+        assert has_project_extension(name), name
+    assert not has_project_extension("photo.png")
+
+
+def test_pre_rename_format_id_still_loads():
+    """A v3 package written before the rename keeps loading (format ``imgsli``)."""
+    data = {
+        "format": "imgsli",
+        "version": PROJECT_VERSION,
+        "active_session_index": 0,
+        "sessions": [
+            {
+                "session_type": "image_compare",
+                "title": "Old",
+                "data": {"version": 1, "image_list1": []},
+            }
+        ],
+        "media": {},
+        "pixel_cache": {},
+    }
+
+    store = _FakeStore([_FakeSession("p1", INITIAL_WORKSPACE_SESSION_TYPE)], "p1")
+    actions = _FakeWorkspaceActions(store)
+    registry = _FakeTabRegistry()
+
+    created = load_project_data(data, actions, store, registry, replace_workspace=True)
+
+    assert len(created) == 1
+    assert len(registry.deserialized) == 1

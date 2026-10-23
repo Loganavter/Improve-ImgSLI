@@ -25,4 +25,4 @@ BlinkTable 把图像并排放在一起，让你对比它们、放大查看差异
 
 ### 发现更多功能 {#discover}
 
-按 `Ctrl+Shift+P` 打开 **查找操作**，用名称运行任何操作；**了解更多** 会打开对应的帮助主题。可以先读[对比](help://workspace.image_compare.comparison)，了解分割线、标签和差异模式；再读[文件与项目](help://platform.file_project)，学会把工作保存为可移植的 `.imgsli` 项目。
+按 `Ctrl+Shift+P` 打开 **查找操作**，用名称运行任何操作；**了解更多** 会打开对应的帮助主题。可以先读[对比](help://workspace.image_compare.comparison)，了解分割线、标签和差异模式；再读[文件与项目](help://platform.file_project)，学会把工作保存为可移植的 `.blinktable` 项目。

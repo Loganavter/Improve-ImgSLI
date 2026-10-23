@@ -50,7 +50,7 @@ def project_start_path(owner: "MainWindowProjectIo", *, for_save: bool) -> str:
     import os
     from pathlib import Path
 
-    from services.io.project_io import PROJECT_FILE_EXTENSION
+    from services.io.project_io import PROJECT_FILE_EXTENSION, PROJECT_FILE_EXTENSIONS
 
     settings = owner.project_settings()
     last_path = str(settings.value("project_last_path", "") or "")
@@ -73,10 +73,7 @@ def project_start_path(owner: "MainWindowProjectIo", *, for_save: bool) -> str:
         "menu.project_untitled", "Untitled"
     )
     current = (owner.current_project_path or "").strip()
-    if current and Path(current).suffix.lower() in {
-        PROJECT_FILE_EXTENSION,
-        ".imgsli-project",
-    }:
+    if current and Path(current).suffix.lower() in PROJECT_FILE_EXTENSIONS:
         current_path = Path(current)
         # Bound Save As: keep the file path when the tab still matches it;
         # if the user renamed the tab, suggest that name in the same folder.
@@ -161,12 +158,12 @@ def _current_save_path(owner: "MainWindowProjectIo") -> str | None:
     """Path for silent Save, or None when Save should fall through to Save As."""
     from pathlib import Path
 
-    from services.io.project_io import PROJECT_FILE_EXTENSION
+    from services.io.project_io import PROJECT_FILE_EXTENSION, PROJECT_FILE_EXTENSIONS
 
     path = (owner.current_project_path or "").strip()
     if not path:
         return None
     suffix = Path(path).suffix.lower()
-    if suffix not in {PROJECT_FILE_EXTENSION, ".imgsli-project"}:
+    if suffix not in PROJECT_FILE_EXTENSIONS:
         return None
     return path

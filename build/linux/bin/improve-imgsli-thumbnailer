@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""XDG thumbnailer: ``.imgsli`` preview as a document-style project thumb.
+"""XDG thumbnailer: ``.blinktable`` preview as a document-style project thumb.
+
+Legacy ``.imgsli`` packages are thumbnailed identically (same container).
 
 Invoked by file managers as::
 

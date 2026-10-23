@@ -393,7 +393,7 @@ class RecentProjectsPanel(ShelfWidget):
                 show(
                     self._tr(
                         "recent.empty_hint",
-                        "Drop a .imgsli file here to pin it",
+                        "Drop a .blinktable file here to pin it",
                     ),
                     duration=5000,
                 )
@@ -425,7 +425,7 @@ class RecentProjectsPanel(ShelfWidget):
             title=self._tr("recent.empty_title", "Load your first project"),
             hint=self._tr(
                 "recent.empty_hint",
-                "Drop a .imgsli file here to pin it",
+                "Drop a .blinktable file here to pin it",
             ),
         )
 

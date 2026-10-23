@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Render PSD/XCF-style MIME icons for application/x-improve-imgsli.
+"""Render PSD/XCF-style MIME icons for application/vnd.blinktable.project+zip.
 
-Layout: dog-eared document, compact app mark (not the wordmark), ``IMGSLI`` label.
-Requires an offscreen Qt platform::
+Layout: dog-eared document, compact app mark (not the wordmark), ``BLINKTABLE``
+label where it fits. Requires an offscreen Qt platform::
 
     QT_QPA_PLATFORM=offscreen python3 build/linux/icons/render_mime_icons.py
 """
@@ -13,14 +13,22 @@ import sys
 from pathlib import Path
 
 from PySide6.QtCore import QPointF, QRectF, Qt
-from PySide6.QtGui import QColor, QFont, QImage, QPainter, QPainterPath, QPen
+from PySide6.QtGui import (
+    QColor,
+    QFont,
+    QFontMetrics,
+    QImage,
+    QPainter,
+    QPainterPath,
+    QPen,
+)
 from PySide6.QtWidgets import QApplication
 
 REPO = Path(__file__).resolve().parents[3]
 MARK_PATH = REPO / "src" / "resources" / "icons" / "icon.png"
 OUT_DIR = Path(__file__).resolve().parent / "mimetypes"
 SIZES = (16, 22, 32, 48, 64, 128, 256)
-ICON_NAME = "application-x-improve-imgsli"
+ICON_NAME = "application-vnd.blinktable.project+zip"
 
 
 def document_path(w: float, h: float, fold: float, radius: float) -> QPainterPath:
@@ -82,7 +90,8 @@ def render(mark: QImage, size: int) -> QImage:
     p.strokePath(fp, QPen(QColor(190, 195, 205), max(0.8, size * 0.01)))
 
     # Compact mark — leave page chrome visible (GIMP/PSD style, not full-bleed).
-    label_h = page_h * (0.16 if size >= 32 else 0.0)
+    # The wordmark is dropped below 64 px: it would shrink to unreadable pixels.
+    label_h = page_h * (0.16 if size >= 128 else 0.0)
     top_pad = page_h * 0.14
     bottom_pad = page_h * 0.10 + label_h
     avail_h = page_h - top_pad - bottom_pad
@@ -98,7 +107,7 @@ def render(mark: QImage, size: int) -> QImage:
     my = y0 + top_pad + (avail_h - scaled.height()) / 2
     p.drawImage(QPointF(mx, my), scaled)
 
-    if size >= 32:
+    if size >= 128:
         # Regular face + tiny tracking (~1px @256). Larger AbsoluteSpacing
         # looked sparse; zero/negative read crushed on bold caps.
         font = QFont("Roboto")
@@ -113,14 +122,21 @@ def render(mark: QImage, size: int) -> QImage:
         font.setLetterSpacing(
             QFont.SpacingType.AbsoluteSpacing, max(0.15, size * 0.004)
         )
-        font.setPixelSize(max(7, int(page_h * 0.10)))
+        font.setPixelSize(max(5, int(page_h * 0.10)))
+        label = "BLINKTABLE"
+        # Fit the wider wordmark inside the page instead of clipping it.
+        metrics = QFontMetrics(font)
+        max_width = page_w * 0.92
+        while font.pixelSize() > 5 and metrics.horizontalAdvance(label) > max_width:
+            font.setPixelSize(font.pixelSize() - 1)
+            metrics = QFontMetrics(font)
         p.setFont(font)
         p.setPen(QColor(55, 60, 70))
         text_rect = QRectF(x0, y0 + page_h - label_h - page_h * 0.015, page_w, label_h)
         p.drawText(
             text_rect,
             int(Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter),
-            "IMGSLI",
+            label,
         )
     p.end()
     return img
@@ -137,14 +153,14 @@ def write_windows_ico() -> None:
         return
     win_dir = Path(__file__).resolve().parents[2] / "Windows-template" / "icons"
     win_dir.mkdir(parents=True, exist_ok=True)
-    ico = win_dir / "imgsli-file.ico"
+    ico = win_dir / "blinktable-file.ico"
     image = Image.open(src).convert("RGBA")
     image.save(
         ico,
         format="ICO",
         sizes=[(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)],
     )
-    res = REPO / "src" / "resources" / "icons" / "imgsli-file.ico"
+    res = REPO / "src" / "resources" / "icons" / "blinktable-file.ico"
     res.write_bytes(ico.read_bytes())
     print(ico)
     print(res)

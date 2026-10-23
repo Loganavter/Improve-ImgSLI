@@ -17,8 +17,8 @@
   "recent": {
     "title": "Recentes",
     "empty_title": "Carregue o primeiro projeto",
-    "empty_hint": "Solte um arquivo .imgsli aqui para fixá-lo",
-    "empty": "Projetos salvos aparecem aqui depois de abrir ou salvar um arquivo .imgsli. Solte um arquivo de projeto aqui para adicioná-lo à lista.",
+    "empty_hint": "Solte um arquivo .blinktable aqui para fixá-lo",
+    "empty": "Projetos salvos aparecem aqui depois de abrir ou salvar um arquivo .blinktable. Solte um arquivo de projeto aqui para adicioná-lo à lista.",
     "sort_modified": "Data de modificação",
     "sort_created": "Data de criação",
     "sort_name": "Nome",

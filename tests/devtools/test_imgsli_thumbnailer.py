@@ -37,7 +37,8 @@ def test_thumbnailer_writes_png_from_preview_member(tmp_path: Path, monkeypatch)
     Image.new("RGBA", (32, 32), color=(200, 80, 80, 255)).save(mark, format="PNG")
     monkeypatch.setattr(mod, "_mark_candidates", lambda: [mark])
 
-    project = tmp_path / "demo.imgsli"
+    # Current extension; the thumbnailer reads the container, not the suffix.
+    project = tmp_path / "demo.blinktable"
     buf = io.BytesIO()
     Image.new("RGB", (64, 36), color=(20, 40, 60)).save(buf, format="PNG")
     png = buf.getvalue()

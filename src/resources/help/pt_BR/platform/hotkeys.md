@@ -23,7 +23,7 @@ Abaixo estão as combinações padrão. A maioria dos atalhos de ação pode ser
 - `Ctrl+Tab` / `Ctrl+Shift+Tab` — próxima / sessão anterior
 - `Ctrl+Shift+P` — **Localizar ação**
 - `Ctrl+V` — **Colar imagem da área de transferência**
-- `Ctrl+Shift+O` / `Shift+S` / `Ctrl+Shift+S` — **Abrir projeto** / **Salvar projeto** / **Salvar projeto como…** (`.imgsli`)
+- `Ctrl+Shift+O` / `Shift+S` / `Ctrl+Shift+S` — **Abrir projeto** / **Salvar projeto** / **Salvar projeto como…** (`.blinktable`)
 - `Ctrl+Q` — **Sair**
 
 Os rótulos do menu seguem o idioma selecionado. Atalhos personalizados são definidos em **Configurações** → **Teclado**, no grupo da plataforma.
