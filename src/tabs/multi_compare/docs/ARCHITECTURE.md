@@ -37,6 +37,25 @@ the resolved `sources={slot_id: pixels}` alongside the state.
 The `_session_harness.py` test helper fakes the narrow core slice the facade
 depends on.
 
+### Session chrome (divider + label settings)
+
+Divider/label settings are per-session chrome, bound through the shared
+`SessionState` facade (`use_cases/persistence.py` extract/merge into the same
+slot). Two seeding rules, both from #568 (a defaults-only slot is not a user
+choice, so it must not shadow the config):
+
+- a **new** session seeds its slot from the last-used chrome
+  (`seed_slot`, `on_session_created`);
+- a **restored** session whose slot still holds only the factory defaults
+  materializes the last-used chrome into the slot on activation
+  (`materialize_session_chrome`, `on_active_session_changed`) — the slot is
+  what the widget paints, so leaving the fallback only in the `SessionState`
+  mirror would show the defaults on the canvas.
+
+Materializing is a restore, not an edit: it writes the slot with the
+`viewport` scope the bound facade listens to and never touches QSettings
+(`on_widget_state_changed` remembers user edits only).
+
 ## Layout Model
 
 The editable layout tree is tab-specific:
