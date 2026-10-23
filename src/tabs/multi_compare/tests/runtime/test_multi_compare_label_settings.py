@@ -612,3 +612,131 @@ def test_replace_state_does_not_clobber_qsettings_last_prefs(qapp, monkeypatch):
 
     widget.apply_divider_color(QColor(2, 3, 4, 5))
     assert saved == [(2, 3, 4, 5)]
+
+
+def test_text_flyout_master_switch_hides_labels(qapp):
+    """The flyout's ``Show text`` switch drives ``label_settings.visible``.
+
+    Red-before: the flyout had style rows only, so there was no way to turn the
+    per-cell filenames off at all (owner report 2026-10-23).
+    """
+    widget = MultiCompareWidget()
+    flyout = widget.font_settings_flyout
+    assert flyout.show_text_switch.isChecked() is True
+    assert widget.state.label_settings.visible is True
+
+    flyout.show_text_switch.setChecked(False)
+
+    settings = widget.state.label_settings
+    assert settings.visible is False
+    # Styling is preserved: re-enabling restores the same look.
+    assert settings.font_size_percent == 100
+    assert settings.draw_background is True
+
+
+def test_text_flyout_sync_reflects_visibility_without_dispatching(qapp):
+    from dataclasses import replace
+
+    from tabs.multi_compare.scene import actions
+
+    widget = MultiCompareWidget()
+    widget.store.dispatch(
+        actions.set_label_settings(
+            replace(widget.state.label_settings, visible=False)
+        )
+    )
+
+    widget._sync_font_settings_flyout()
+
+    assert widget.font_settings_flyout.show_text_switch.isChecked() is False
+    assert widget.state.label_settings.visible is False
+
+
+def test_style_change_keeps_labels_hidden(qapp):
+    """A style edit must not silently turn the labels back on."""
+    widget = MultiCompareWidget()
+    widget.font_settings_flyout.show_text_switch.setChecked(False)
+
+    widget._on_font_settings_changed(
+        150,
+        25,
+        QColor(10, 20, 30, 255),
+        QColor(1, 2, 3, 180),
+        False,
+        "edges",
+        70,
+    )
+
+    settings = widget.state.label_settings
+    assert settings.visible is False
+    assert settings.font_size_percent == 150
+
+
+def test_visibility_survives_chrome_persistence_roundtrip():
+    from dataclasses import replace
+
+    from tabs.multi_compare.models import MultiCompareState
+    from tabs.multi_compare.use_cases.persistence import chrome_extract, chrome_merge
+
+    hidden = replace(MultiCompareState().label_settings, visible=False)
+    state = replace(MultiCompareState(), label_settings=hidden)
+
+    values = chrome_extract(state)
+    restored = chrome_merge(MultiCompareState(), values)
+
+    assert restored.label_settings.visible is False
+    # Omitted key (older payload) means labels on, the pre-switch behaviour.
+    legacy = chrome_merge(
+        MultiCompareState(), {"label": {"font_size_percent": 130}}
+    )
+    assert legacy.label_settings.visible is True
+
+
+def test_show_text_switch_is_a_find_action(qtbot):
+    """The master visibility switch is tagged, listed and runnable.
+
+    Multi compare's flyout adds ``Show text`` (the style rows cannot hide the
+    labels); it must resolve/pulse like every other row, or the control exists
+    on screen but not in Find Action.
+    """
+    from ui.actions.flyout_contribute import contribute_flyout_search_actions
+    from ui.actions.registry import ActionRegistry
+    from ui.actions.search_index import find_tagged_member
+    from ui.widgets.font_settings_search import font_settings_search
+
+    widget = MultiCompareWidget()
+    qtbot.addWidget(widget)
+    flyout = widget.font_settings_flyout
+
+    switch, _ = find_tagged_member(flyout, "label.show_text")
+    assert switch is flyout.show_text_switch
+
+    emitted: list[bool] = []
+    flyout.labels_visibility_changed.connect(emitted.append)
+
+    reg = ActionRegistry()
+    title = "multi_compare.action.text_settings"
+    contribute_flyout_search_actions(
+        flyout,
+        index=font_settings_search(
+            title, include_placement=False, include_visibility=True
+        ),
+        prefix="multi_compare.font_settings.",
+        owner_tab="multi_compare",
+        topic="labels",
+        breadcrumb=("toolbar", "labels"),
+        show_flyout=flyout.show,
+        registry=reg,
+    )
+    action = reg.get(
+        "multi_compare.font_settings.group.multi_compare.action.text_settings"
+        ".label.show_text"
+    )
+    assert action is not None and action.run is not None
+
+    flyout.show_text_switch.setChecked(True)
+    emitted.clear()
+    action.run()
+
+    assert flyout.show_text_switch.isChecked() is False
+    assert emitted == [False]

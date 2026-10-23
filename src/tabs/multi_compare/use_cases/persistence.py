@@ -62,6 +62,7 @@ def _divider_from_dict(d: dict):
 
 def _label_to_dict(label) -> dict:
     return {
+        "visible": bool(getattr(label, "visible", True)),
         "font_size_percent": label.font_size_percent,
         "font_weight": label.font_weight,
         "text_rgba": list(label.text_rgba),
@@ -81,6 +82,9 @@ def _label_from_dict(l: dict):
     text = ensure_visible_color(l.get("text_rgba"), fallback=text_fallback)
     bg = ensure_visible_color(l.get("bg_rgba"), fallback=bg_fallback)
     return MultiCompareLabelSettings(
+        # Absent key (older session/QSettings payload) means "labels on" —
+        # the pre-switch behaviour.
+        visible=bool(l.get("visible", True)),
         font_size_percent=l.get("font_size_percent", 100),
         font_weight=l.get("font_weight", 0),
         text_rgba=(text.r, text.g, text.b, text.a),

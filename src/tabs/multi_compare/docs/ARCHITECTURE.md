@@ -92,6 +92,15 @@ The composition's own canvas size remains canonical. Export output size is the
 framebuffer size, not a request to rebuild the scene in a second coordinate
 system.
 
+The default output size is `compute_native_canvas_size(plan.root)`, and that
+size **includes each split's divider gap**: a gap shaves `thickness * (n - 1)`
+off a split's inner extent, so a fraction-only canvas leaves every cell a few
+pixels short of the image aspect → the aspect-fit image is letterboxed along
+the canvas edge → a transparent rim that export fills white. Measured
+2026-10-23: a 2×1280×800 split with the default 4 px divider exported 2560×800
+with a 1 px rim on all sides; the gap-aware size is 2564×800, cells exactly
+1280×800.
+
 ## Coordinate Contracts
 
 - Canvas layout uses canvas-px.

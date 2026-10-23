@@ -136,6 +136,7 @@ def raster_signature(ctx: Any) -> tuple:
     default_bg = (0, 0, 0, 170)
     settings = getattr(composition, "label_settings", None)
     settings_sig = (
+        bool(getattr(settings, "visible", True)),
         int(getattr(settings, "font_size_percent", 100) or 100),
         int(getattr(settings, "font_weight", 0) or 0),
         tuple(getattr(settings, "text_rgba", default_text) or default_text),

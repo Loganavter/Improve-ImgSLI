@@ -22,7 +22,8 @@ What works:
 - QRhi rendering through the tab-owned canvas path.
 - Theme-aware clear/background color.
 - Always-on split dividers as GPU quads (`GridDividersPass`).
-- Camera-fixed filename labels with tab-local label settings.
+- Camera-fixed filename labels with tab-local label settings, including a
+  `Show text` master switch in the text flyout (live and export together).
 - Export dialog with preview, output directory/favorites, filename, format,
   resolution, aspect-ratio lock, quality, and background settings.
 - Offscreen GPU export routed through the same canvas-px composition semantics

@@ -23,6 +23,7 @@ with size ``fit * zoom``.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from typing import Literal, Union
 
@@ -243,20 +244,32 @@ def compute_native_canvas_size(
 ) -> tuple[int, int]:
     """Return the smallest canvas where every leaf renders at native resolution.
 
-    The rect of each leaf is a fixed fraction of the canvas size determined by
-    the tree weights. For each leaf we need ``rect_w >= img_w`` and
-    ``rect_h >= img_h`` to avoid downscaling. ``W = max(img_w / fw)``,
-    ``H = max(img_h / fh)`` across leaves. Gaps are ignored as a small constant
-    cost. When ``max_edge`` is set, the longest side is clamped to that value.
+    The rect of each leaf is a fixed fraction of its parent rect (``_walk``),
+    and every split subtracts ``gap_px * (n - 1)`` from its inner extent before
+    the fractions apply. So the requirement is recursive: a leaf needs its own
+    pixel size, an ``h`` split needs ``max(cell_need / weight)`` plus its gaps,
+    a ``v`` split likewise on height, and a group passes the max of its
+    children through.
+
+    Including the gaps is not cosmetic. A canvas derived from the leaf
+    fractions alone leaves every cell ``gap``-pixels short of the image
+    aspect, so the aspect-fit image is letterboxed by a few px along the
+    canvas edge — invisible on the live canvas, but on export it is a
+    transparent (white once the background is filled or alpha is flattened)
+    rim around the picture. Measured 2026-10-23: a 2×1280×800 split with a
+    4 px divider exported 2560×800 with a 1 px rim on all sides.
+
+    ``_walk`` truncates child sizes with ``int()`` (last child absorbs the
+    remainder), so the per-split inner extent steps to the smallest integer
+    whose product with the weight still reaches the requirement.
+
+    When ``max_edge`` is set, the longest side is clamped to that value.
     """
-    fractions: list[tuple[float, float, int, int]] = []
-    _collect_fractions(plan_root, 1.0, 1.0, fractions)
-    if not fractions:
+    required = _required_rect(plan_root)
+    if required is None:
         return 1, 1
-    w_scale = max(iw / fw for fw, _fh, iw, _ih in fractions if fw > 0)
-    h_scale = max(ih / fh for _fw, fh, _iw, ih in fractions if fh > 0)
-    width = max(1, int(round(w_scale)))
-    height = max(1, int(round(h_scale)))
+    width = max(1, int(required[0]))
+    height = max(1, int(required[1]))
     longest = max(width, height)
     if max_edge is not None and longest > int(max_edge):
         scale = int(max_edge) / longest
@@ -265,38 +278,68 @@ def compute_native_canvas_size(
     return width, height
 
 
-def _collect_fractions(
-    node: CompositionNode,
-    fw: float,
-    fh: float,
-    out: list[tuple[float, float, int, int]],
-) -> None:
+def _required_rect(node: CompositionNode) -> tuple[int, int] | None:
+    """Smallest integer rect in which ``node`` renders every leaf at native size."""
     if isinstance(node, LayerNode):
-        image = node.image
-        if image is None:
-            return
-        if hasattr(image, "shape"):
-            h, w = image.shape[:2]
-        elif hasattr(image, "width") and callable(image.width):
-            # QImage (e.g. a progressive-load preview) — width/height are
-            # methods, not attributes, unlike PIL.Image/TiledPixelStore.
-            w, h = image.width(), image.height()  # type: ignore[attr-defined]  # duck-typed pixel source
-        else:
-            w, h = image.width, image.height  # type: ignore[attr-defined]  # duck-typed pixel source
-        if w <= 0 or h <= 0:
-            return
-        out.append((fw, fh, int(w), int(h)))
-        return
+        return _image_pixel_size(node.image)
     if isinstance(node, GroupNode):
-        for child in node.children:
-            _collect_fractions(child, fw, fh, out)
-        return
+        needs = [n for n in (_required_rect(c) for c in node.children) if n]
+        if not needs:
+            return None
+        return (
+            max(w for w, _h in needs),
+            max(h for _w, h in needs),
+        )
     if isinstance(node, SplitNode):
         weights = node.normalized_weights()
+        needs: list[tuple[tuple[int, int], float]] = []
+        for child, weight in zip(node.children, weights):
+            need = _required_rect(child)
+            if need is not None:
+                needs.append((need, float(weight)))
+        if not needs:
+            return None
+        gap = max(0, int(node.gap_px))
+        total_gap = gap * max(0, len(node.children) - 1)
         if node.direction == "h":
-            for child, wt in zip(node.children, weights):
-                _collect_fractions(child, fw * wt, fh, out)
-            return
-        for child, wt in zip(node.children, weights):
-            _collect_fractions(child, fw, fh * wt, out)
-        return
+            inner_w = max(_min_inner_for(need[0], wt) for need, wt in needs)
+            inner_h = max(need[1] for need, _wt in needs)
+            return (inner_w + total_gap, inner_h)
+        inner_w = max(need[0] for need, _wt in needs)
+        inner_h = max(_min_inner_for(need[1], wt) for need, wt in needs)
+        return (inner_w, inner_h + total_gap)
+    raise TypeError(f"Unknown composition node: {type(node).__name__}")
+
+
+def _min_inner_for(required: int, weight: float) -> int:
+    """Smallest integer ``inner`` with ``int(inner * weight) >= required``.
+
+    Mirrors ``_walk``'s truncation exactly: a value that only reaches the
+    requirement through float rounding is one pixel short in practice, and
+    that pixel comes back as the letterbox rim this function exists to avoid.
+    """
+    if weight <= 0.0:
+        return max(1, int(required))
+    value = max(1, int(math.ceil(required / weight)))
+    while int(value * weight) < required:
+        value += 1
+    while value > 1 and int((value - 1) * weight) >= required:
+        value -= 1
+    return value
+
+
+def _image_pixel_size(image: object) -> tuple[int, int] | None:
+    """``(w, h)`` of a duck-typed pixel source, or ``None`` when imageless."""
+    if image is None:
+        return None
+    if hasattr(image, "shape"):
+        h, w = image.shape[:2]
+    elif hasattr(image, "width") and callable(image.width):
+        # QImage (e.g. a progressive-load preview) — width/height are
+        # methods, not attributes, unlike PIL.Image/TiledPixelStore.
+        w, h = image.width(), image.height()  # type: ignore[attr-defined]  # duck-typed pixel source
+    else:
+        w, h = image.width, image.height  # type: ignore[attr-defined]  # duck-typed pixel source
+    if w <= 0 or h <= 0:
+        return None
+    return int(w), int(h)

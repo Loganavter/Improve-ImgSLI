@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QSignalBlocker, Qt, Signal
 from PySide6.QtGui import (
     QColor,
     QDragEnterEvent,
@@ -14,6 +14,8 @@ from PySide6.QtGui import (
     QPainter,
 )
 from PySide6.QtWidgets import QVBoxLayout, QWidget
+
+from sli_ui_toolkit.widgets import Switch
 
 from tabs.multi_compare.context_menu import MultiCompareContextMenuProvider
 from tabs.multi_compare.models import MultiCompareState
@@ -57,7 +59,16 @@ class _FocusDimOverlay(QWidget):
 
 
 class MultiCompareFontSettingsFlyout(FontSettingsFlyout):
-    """Multi-compare subset of the shared filename text flyout."""
+    """Multi-compare subset of the shared filename text flyout.
+
+    Adds the multi-compare-only master switch (``Show text``) and drops the
+    image-compare placement radios. The switch is a *model* toggle: it
+    dispatches ``label_settings.visible``, so live and export hide the labels
+    together (single ``CompositionPlan``), and the styling below stays put for
+    a later re-enable.
+    """
+
+    labels_visibility_changed = Signal(bool)
 
     def __init__(self, parent: QWidget, *, translate) -> None:
         self._translate = translate
@@ -66,8 +77,49 @@ class MultiCompareFontSettingsFlyout(FontSettingsFlyout):
         for radio in self._pos_radios.values():
             radio.hide()
 
+        self.show_text_switch = Switch(parent=self)
+        # Model default is "labels on"; the open path re-syncs the restored
+        # value (``sync_font_settings_flyout`` -> ``set_labels_visible``).
+        self.show_text_switch.setChecked(True)
+        self._show_text_label = self.add_row(
+            "", self.show_text_switch, label_pixel_size=14
+        )
+        # Master toggle belongs at the top: the rest of the rows only style
+        # what it shows.
+        row = self._show_text_label.parentWidget()
+        self.content_layout.removeWidget(row)
+        self.content_layout.insertWidget(0, row)
+        self.show_text_switch.checkedChanged.connect(self.labels_visibility_changed)
+        self._show_text_label.setText(self._tr("label.show_text"))
+        # Base ``__init__`` tagged chrome before this switch existed; re-tag
+        # so Find Action can resolve/pulse every visible row of this flyout.
+        self._tag_find_action_chrome()
+
+    def _tag_find_action_chrome(self) -> None:
+        from ui.widgets.font_settings_search import tag_font_settings_flyout
+
+        tag_font_settings_flyout(
+            self, include_placement=False, include_visibility=True
+        )
+
     def _tr(self, key: str) -> str:
         return self._translate(key, key.rsplit(".", 1)[-1].replace("_", " ").title())
+
+    def _retranslate(self) -> None:
+        super()._retranslate()
+        label = getattr(self, "_show_text_label", None)
+        if label is not None:
+            label.setText(self._tr("label.show_text"))
+
+    def set_labels_visible(self, visible: bool) -> None:
+        blocker = QSignalBlocker(self.show_text_switch)
+        try:
+            self.show_text_switch.setChecked(bool(visible))
+        finally:
+            del blocker
+
+    def labels_visible(self) -> bool:
+        return self.show_text_switch.isChecked()
 
 
 class MultiCompareWidget(QWidget):
@@ -188,6 +240,9 @@ class MultiCompareWidget(QWidget):
         self.font_settings_flyout.settings_changed.connect(
             self._on_font_settings_changed
         )
+        self.font_settings_flyout.labels_visibility_changed.connect(
+            self._on_labels_visibility_changed
+        )
         self.font_settings_flyout.closed.connect(self._on_font_settings_closed)
 
     def _sync_zoom_indicator(self) -> None:
@@ -280,6 +335,9 @@ class MultiCompareWidget(QWidget):
         font_settings_sync.on_font_settings_changed(
             self, size, weight, color, bg_color, draw_bg, _placement, opacity
         )
+
+    def _on_labels_visibility_changed(self, visible: bool) -> None:
+        font_settings_sync.on_labels_visibility_changed(self, visible)
 
     def add_image_auto(
         self, path: Path, label: str = "",

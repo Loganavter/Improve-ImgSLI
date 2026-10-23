@@ -164,3 +164,39 @@ def test_image_bottom_fb_matches_pillarboxed_cell_full_height():
     )
 
     assert bottom == pytest.approx(400.0)
+
+def test_labels_source_respects_master_switch():
+    """``label_settings.visible`` hides labels for live and export alike.
+
+    Both paths consume the same ``CompositionPlan``; the source is the single
+    gate, so the export never re-adds a label the live canvas hid.
+    """
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    from tabs.multi_compare.models import MultiCompareLabelSettings
+    from ui.canvas_presentation.composition import LayerLabel, ResolvedLayer
+
+    layer = ResolvedLayer(
+        layer_id=1,
+        image=None,
+        source_image=None,
+        rect=(0, 0, 100, 100),
+        zoom=1.0,
+        pan_x=0.0,
+        pan_y=0.0,
+        fit_mode="contain",
+        label=LayerLabel(text="example.png"),
+        fill_rgba=None,
+    )
+    composition = SimpleNamespace(
+        layers=(layer,),
+        label_settings=MultiCompareLabelSettings(),
+    )
+    source = LabelsOverlaySource()
+    assert source.should_paint(composition) is True
+
+    composition.label_settings = replace(
+        MultiCompareLabelSettings(), visible=False
+    )
+    assert source.should_paint(composition) is False
