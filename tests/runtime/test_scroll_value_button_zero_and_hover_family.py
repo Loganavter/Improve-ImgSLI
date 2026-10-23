@@ -67,16 +67,6 @@ def _line_rows(button: ScrollValueButton) -> list[int]:
     return rows
 
 
-def _capsule_colour(button: ScrollValueButton) -> str:
-    img = button.grab().toImage()
-    return img.pixelColor(img.width() // 2 - 9, int(img.height() * 0.78)).name()
-
-
-def _body_colour(button: ScrollValueButton) -> str:
-    img = button.grab().toImage()
-    return img.pixelColor(3, img.height() // 2).name()
-
-
 def _enter_through_app(button: ScrollValueButton) -> None:
     """Dispatch a real Enter so the HoverCoordinator filter runs first."""
     pos = QPoint(button.rect().center())
@@ -117,12 +107,34 @@ def test_crossing_zero_toggles_the_line(qtbot, qapp):
     assert _line_rows(button)
 
 
-def test_hovered_digit_capsule_matches_the_hovered_body(qtbot, qapp):
-    _themed(qapp)
+def test_hovered_value_region_resolves_the_hover_wash(qtbot, qapp):
+    """The digit's capsule is resolved from the value region: it must carry
+    the hover wash, not only the idle base (owner: "the digit looks painted
+    outside the hover family")."""
+    from PySide6.QtGui import QImage, QPainter
+
+    from sli_ui_toolkit.ui.widgets.buttons.layers.background import BackgroundLayer
+    from sli_ui_toolkit.ui.widgets.buttons.state import ButtonState
+
+    tm = _themed(qapp)
     button = _button(qtbot, value=5)
 
     _enter_through_app(button)
 
     assert button._hovered_split is True
     assert button.region("value").hovered
-    assert _capsule_colour(button) == _body_colour(button)
+
+    image = QImage(button.size(), QImage.Format.Format_ARGB32)
+    painter = QPainter(image)
+    try:
+        ctx = button._make_context(painter)
+        scoped = next(c for c in button.iter_regions(ctx) if c.region_id == "value")
+        layers, _border = BackgroundLayer._resolve(scoped, tm)
+    finally:
+        painter.end()
+
+    assert ButtonState.HOVERED in scoped.effective_states
+    assert len(layers) >= 2, (
+        "value region resolved base only — the capsule would be the idle "
+        f"colour on a hovered body: {[c.name() for c in layers]}"
+    )
