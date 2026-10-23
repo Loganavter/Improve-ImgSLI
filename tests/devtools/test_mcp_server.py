@@ -143,8 +143,11 @@ def test_tools_list_is_a_valid_deterministic_catalog(wired):
     assert names == [tool["name"] for tool in catalog.TOOLS], "order must be catalog order"
     # Review prompt, not a magic number: 29 -> 30 when `ui_wheel` landed
     # (mcp-c-020 — the surface had no wheel verb, so scroll/zoom streams were
-    # unreachable). Raise it again only with the same kind of justification.
-    assert len(tools) <= 30, "catalog must stay small (review prompt, not a magic number)"
+    # unreachable), 30 -> 31 when `ui_batch` landed (2026-10-23: an agent paid
+    # one turn per click while building a stand; the batch is a loop over
+    # already-published verbs, not a second dispatch surface). Raise it again
+    # only with the same kind of justification.
+    assert len(tools) <= 31, "catalog must stay small (review prompt, not a magic number)"
 
     for tool in tools:
         assert _NAME_RE.match(tool["name"]), tool["name"]

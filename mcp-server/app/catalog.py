@@ -248,6 +248,41 @@ def _also_early_answer(schema: dict) -> dict:
 # Tools
 # ---------------------------------------------------------------------------
 
+#: Batch-able tools and their argument contract: ``tool -> (required, allowed)``.
+#: Explicit, never reflective: a batch may only name a verb whose single-call
+#: contract is already published, and an unknown key is refused with the list.
+#: ``ui_batch`` is absent on purpose — nesting would hide the ordering and the
+#: per-item results the caller reads.
+BATCH_TOOLS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
+    "ui_click": (frozenset({"id"}), frozenset({"id", "button", "count"})),
+    "ui_hover": (frozenset({"id"}), frozenset({"id"})),
+    "ui_focus": (frozenset({"id"}), frozenset({"id"})),
+    "ui_press": (frozenset({"id"}), frozenset({"id", "hold_ms", "release"})),
+    "ui_wheel": (
+        frozenset({"id"}),
+        frozenset({"id", "delta", "phase", "count", "raw", "ctrl", "shift", "alt"}),
+    ),
+    "press_keys": (frozenset({"keys"}), frozenset({"keys", "target"})),
+    "wait_for": (
+        frozenset(),
+        frozenset(
+            {"timeout_ms", "poll_ms", "element", "role", "label", "job_settled", "job_kind"}
+        ),
+    ),
+    "run_action": (
+        frozenset({"action_id"}),
+        frozenset({"action_id", "params", "expect", "tab"}),
+    ),
+    "set_setting": (frozenset({"key", "value"}), frozenset({"key", "value"})),
+}
+
+#: ``ui_batch`` bounds, mirrored by the backend guard. One call must stay
+#: readable and must not occupy the request channel for minutes: 64 items and
+#: at most 30 s of accumulated settle time.
+MAX_BATCH_ACTIONS = 64
+MAX_BATCH_SETTLE_MS = 1000
+MAX_BATCH_SETTLE_TOTAL_MS = 30_000
+
 TOOLS: list[dict] = [
     {
         "name": "list_actions",
@@ -1409,6 +1444,90 @@ TOOLS: list[dict] = [
         ),
         "annotations": READ_ONLY,
         "handler": "ui_elements",
+    },
+    {
+        "name": "ui_batch",
+        "title": "Run an ordered batch of UI actions",
+        "description": (
+            "Run an ordered list of UI actions in ONE call instead of one call "
+            "per action: each item is {tool, arguments}, the same object the "
+            "single tool takes (an unknown tool or key is refused with the "
+            "allowed list). Stops at the first failure unless "
+            "stop_on_error=false. No rollback: earlier items stay applied and "
+            "results say what ran. One call costs one agent turn; N calls cost N."
+        ),
+        "inputSchema": _params(
+            {
+                "actions": {
+                    **_array(
+                        _object(
+                            {
+                                "tool": {
+                                    **_STR,
+                                    "enum": sorted(BATCH_TOOLS),
+                                    "description": "A single-action tool name; ui_batch itself is not batchable.",
+                                },
+                                "arguments": {
+                                    "type": "object",
+                                    "additionalProperties": True,
+                                    "description": "The arguments object that tool takes on its own (e.g. {id} for ui_click).",
+                                },
+                            },
+                            ["tool"],
+                        )
+                    ),
+                    "minItems": 1,
+                    "maxItems": MAX_BATCH_ACTIONS,
+                    "description": "Ordered actions; each runs through the same handler as the single tool.",
+                },
+                "stop_on_error": {
+                    **_BOOL,
+                    "default": True,
+                    "description": "Stop at the first failing item (default) or continue and report every failure.",
+                },
+                "settle_ms": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": MAX_BATCH_SETTLE_MS,
+                    "default": 0,
+                    "description": "Pause between items for animations/settle. Prefer wait_for inside the batch when the expectation is observable.",
+                },
+            },
+            ["actions"],
+        ),
+        "outputSchema": _object(
+            {
+                "ok": _BOOL,
+                "count": _INT,
+                "ok_count": _INT,
+                "results": _array(
+                    _object(
+                        {
+                            "index": _INT,
+                            "tool": _STR,
+                            "ok": _BOOL,
+                            "result": {"type": ["object", "null"], "additionalProperties": True},
+                            "error": {"type": ["object", "null"], "additionalProperties": True},
+                        },
+                        ["index", "tool", "ok"],
+                    )
+                ),
+                "stopped_at": {"type": ["integer", "null"], "description": "Index of the first failing item, null when every item ran."},
+                "error": {
+                    "type": ["object", "null"],
+                    "description": "The first failure: index, tool, kind (invalid_item / tool_error / crashed), message, hint.",
+                },
+                "settle_ms": _INT,
+                "source": {
+                    "type": "string",
+                    "enum": ["live", "fallback", "mixed"],
+                    "description": "live/fallback when every item agreed, mixed when the batch crossed both paths.",
+                },
+            },
+            ["ok", "count", "ok_count", "results", "stopped_at", "error"],
+        ),
+        "annotations": MUTATING_INPUT,
+        "handler": "ui_batch",
     },
     {
         "name": "ui_click",

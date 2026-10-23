@@ -72,6 +72,7 @@ fallback window, e.g. `:97`).
 | `press_keys` | write | inject keyboard combos (`target=` aims them at one element); the window is activated first and the result reports `activated`/`focus_is_ours` |
 | `nav_key` | write | press keys through the app's own navigation sections and report what took them (live-only) |
 | `ui_click` | write | click an element by id, in-process (live-only) |
+| `ui_batch` | write | run an ordered list of the single-action verbs in ONE call (`ui_click`/`ui_hover`/`ui_focus`/`ui_press`/`ui_wheel`/`press_keys`/`wait_for`/`run_action`/`set_setting`); per-item results, stops at the first failure unless `stop_on_error=false`, no rollback (each item is as live-only as its own tool) |
 | `ui_hover` | write | hover an element by id, in-process (live-only) |
 | `ui_focus` | write | focus an element by id, in-process (live-only) |
 | `ui_press` | write | press an element's left button, optionally leaving it held (`release=false`, `hold_ms`) (live-only) |
@@ -239,6 +240,41 @@ key, wrong type, or out-of-range value is refused with the schema in the hint.
 
 Scene commands dispatch through the app's own handlers (the same path a user
 action takes) — they never mutate the Redux Store directly.
+
+### Batched actions (one call, many verbs)
+
+Building a stand or driving a form one call per click is what makes an agent
+turn expensive: the same wall-clock and context cost is paid N times. `ui_batch`
+takes an ordered list and runs it as **one** call:
+
+```json
+{"actions": [
+  {"tool": "run_action", "arguments": {"action_id": "platform.settings"}},
+  {"tool": "set_setting", "arguments": {"key": "rhi_backend", "value": "vulkan"}},
+  {"tool": "ui_click", "arguments": {"id": "settings.apply"}},
+  {"tool": "wait_for", "arguments": {"element": "settings.status", "timeout_ms": 3000}},
+  {"tool": "capture_surface", "arguments": {"surface": "settings"}}
+], "settle_ms": 50}
+```
+
+- **Same verbs, same validation.** Each item calls the single tool's own handler,
+  so live/fallback routing and error shapes are not duplicated. `BATCH_TOOLS`
+  is the explicit whitelist; an unknown tool, an unknown key, a missing required
+  key, or a nested `ui_batch` is refused **before anything runs**, with the
+  allowed list in the hint.
+- **A script, not a transaction.** Items run in order; there is no rollback and
+  no undo. An earlier item stays applied when a later one fails, and `results`
+  says exactly what ran (`{index, tool, ok, result|error}`). Default
+  `stop_on_error=true` stops at the first failure (`stopped_at`); `false` runs
+  the rest and still reports the first error.
+- **Bounded on purpose.** At most 64 items, `settle_ms` 0–1000 per gap, and at
+  most 30 s of accumulated settle; the pre-flight refusal means one call cannot
+  occupy the request channel for minutes. Prefer `wait_for` inside the batch
+  when the expectation is observable; `settle_ms` is for animations only.
+- **No new honesty.** A batch inherits each verb's blindness: `ui_click` is
+  in-process, so a batched click still does not prove a control is reachable
+  (`ui_nav_state` + `nav_key` do), and `press_keys target=` is still aimed
+  rather than typed. One batch result is N tool results, not stronger evidence.
 
 ### Element ids, filters, and stable property targets
 
