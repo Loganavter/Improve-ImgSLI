@@ -4,6 +4,7 @@
 pkgname=improve-imgsli
 pkgver=11.0.0
 pkgrel=1
+_piqver=0.8.0
 pkgdesc="Image comparison tool with magnifying glass feature"
 arch=('x86_64')
 url="https://github.com/Loganavter/Improve-ImgSLI"
@@ -16,10 +17,14 @@ depends=(
   'python-markdown'
   'python-numpy'
   'python-pillow'
+  'python-pytorch'
   'python-pyvips'
   'pyside6'
   'python-scikit-image'
-  'python-sli-ui-toolkit>=3.1.11'
+  'python-sli-ui-toolkit>=4.0.0'
+  # piq (vendored below) imports torchvision; the learned-metrics backend
+  # (LPIPS/DISTS/BRISQUE) is a hard requirement of the gallery ranker.
+  'python-torchvision'
 )
 optdepends=(
   'python-snakeviz: for performance profiling'
@@ -31,9 +36,13 @@ makedepends=(
   'python-wheel'
 )
 options=(!debug)
-source=("$pkgname-$pkgver.tar.gz::https://github.com/Loganavter/Improve-ImgSLI/archive/refs/tags/v$pkgver.tar.gz")
+source=("$pkgname-$pkgver.tar.gz::https://github.com/Loganavter/Improve-ImgSLI/archive/refs/tags/v$pkgver.tar.gz"
+        "piq-$_piqver-py3-none-any.whl::https://files.pythonhosted.org/packages/71/49/e198c355bc01a1bb3aff5d41a8fe7c8a0502ad7a4063865d2c9dd270cb0f/piq-$_piqver-py3-none-any.whl")
 
-sha256sums=('fb0b29f4fd22d6f1d55bc1b28d223a4752d56d53f9c827fdd51070fecafcde59')
+# NOTE (release step): the first sum is the tagged source archive and must be
+# regenerated with `updpkgsums` after `v$pkgver` exists on GitHub.
+sha256sums=('fb0b29f4fd22d6f1d55bc1b28d223a4752d56d53f9c827fdd51070fecafcde59'
+            'bad83f8e68bad6c09df09c2bdf50d1e8ccf5e852d7b64562317c27ed5eb63159')
 
 prepare() {
   #Making launching app more secure
@@ -50,7 +59,15 @@ package() {
   install -vDm 644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
   install -vDm 644 THIRD_PARTY_LICENSES.md "$pkgdir/usr/share/licenses/$pkgname/THIRD_PARTY_LICENSES.md"
 
+  # piq has no Arch/AUR package (checked 2026-10-22: the only `piq` hits are
+  # unrelated), so the upstream universal wheel is installed as a proper Python
+  # package — python-installer, no pip, no network at package() time.
+  python -m installer --destdir="$pkgdir" "$srcdir/piq-$_piqver-py3-none-any.whl"
+
   # MIME + thumbnailer + document-style MIME icons
+  install -vDm 644 build/linux/mime/application-vnd.blinktable.project+zip.xml \
+    "$pkgdir/usr/share/mime/packages/application-vnd.blinktable.project+zip.xml"
+  # Legacy *.imgsli packages keep resolving to a project type.
   install -vDm 644 build/linux/mime/application-x-improve-imgsli.xml \
     "$pkgdir/usr/share/mime/packages/application-x-improve-imgsli.xml"
   install -vDm 755 build/linux/bin/improve-imgsli-thumbnailer \
@@ -60,8 +77,8 @@ package() {
   install -vDm 644 src/resources/icons/icon.png \
     "$pkgdir/usr/share/improve-imgsli/mark.png"
   for _sz in 16 22 32 48 64 128 256; do
-    install -vDm 644 "build/linux/icons/mimetypes/application-x-improve-imgsli-${_sz}.png" \
-      "$pkgdir/usr/share/icons/hicolor/${_sz}x${_sz}/mimetypes/application-x-improve-imgsli.png"
+    install -vDm 644 "build/linux/icons/mimetypes/application-vnd.blinktable.project+zip-${_sz}.png" \
+      "$pkgdir/usr/share/icons/hicolor/${_sz}x${_sz}/mimetypes/application-vnd.blinktable.project+zip.png"
   done
 
   # Install application source code and all resources from the src directory

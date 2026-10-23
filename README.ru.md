@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/johnpetersa19/Improve-ImgSLI/037ab021aa79aa40a85a25d591e887dca85cd50d/src/icons/logo-github%20.svg" alt="Logo" width="384">
+  <img src="src/resources/icons/blinktable-logo.svg" alt="BlinkTable" width="384">
 </p>
 
 <p align="center">
@@ -9,7 +9,7 @@
   <a href="https://flathub.org/apps/details/io.github.Loganavter.Improve-ImgSLI"><img src="https://img.shields.io/flathub/downloads/io.github.Loganavter.Improve-ImgSLI?style=flat-square" alt="Flathub Downloads"></a>
 </p>
 
-<p align="center"><strong>Рабочее пространство для серьёзного сравнения изображений и видео — с анализом, экспортом и каналом управления для агентов.</strong></p>
+<p align="center"><strong>BlinkTable — рабочее пространство для серьёзного сравнения изображений и видео: сравнивайте, измеряйте, доказывайте качество.</strong></p>
 
 <p align="center">Read this in other languages: <a href="readme.md">English</a></p>
 
@@ -84,7 +84,7 @@ Improve-ImgSLI открывается на выборе сессии и даёт
 ### Платформа и интерфейс
 
 - **Вкладки-воркспейсы** с таббаром в стиле Firefox, выбор сессии на старте, файлы
-  проекта (`.imgsli`), которые хранят изображения, сплиттеры, лупы и видео-сессии.
+  проекта (`.blinktable`; старые `.imgsli` открываются), которые хранят изображения, сплиттеры, лупы и видео-сессии.
 - Собственный **отрисованный тулкит** (без QSS): светлая/тёмная тема, свои шрифты,
   живой масштаб интерфейса (0.5–2.5×), который пересчитывает геометрию, а не растягивает её.
 - Четыре языка интерфейса (EN / RU / ZH / pt_BR), интеграция с треем, уведомления

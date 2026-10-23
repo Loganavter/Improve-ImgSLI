@@ -9,7 +9,7 @@ The starting page for new tabs: open a session from here or return to a recent p
 ### Session Picker {#session-picker}
 
 - **Session types** — one card per connected tab, for example **Image Compare**, **Multi Compare**, or **Image Gallery**. Click a card to open that session.
-- **Recent** — the shelf of saved `.imgsli` projects below the cards. Click a card to open the project; right-click for **Open**, **Properties**, **Remove from list**, and **Show in folder**.
+- **Recent** — the shelf of saved `.blinktable` projects below the cards. Click a card to open the project; right-click for **Open**, **Properties**, **Remove from list**, and **Show in folder**.
 - **Project file drop** — a project file dragged onto the shelf is pinned to the list without opening.
 - **Sort and view** — **Sort by** (date modified, date created, name) and **View** (grid or list).
 - **Preview** — grid cards show the canvas thumbnail saved in the project, when the project has one.

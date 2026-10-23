@@ -1,4 +1,4 @@
-"""External .imgsli drop handling for the Recent shelf."""
+"""External project-file drop handling for the Recent shelf."""
 
 from __future__ import annotations
 

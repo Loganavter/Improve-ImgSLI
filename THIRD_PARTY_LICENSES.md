@@ -86,6 +86,9 @@ PyPI and the respective project repositories.
 | imagecodecs | BSD-3-Clause | JXL and codec support |
 | pyvips | MIT | libvips binding; streaming decode backend. The bundled `pyvips-binary` wheel (Flatpak/Windows) ships libvips itself, which is LGPL-2.1-or-later and links codecs including libjxl (BSD-3-Clause) — see the libvips attribution below |
 | Markdown | BSD-3-Clause | In-app help rendering |
+| PyTorch (`torch`) | `Apache-2.0 AND Apache-2.0 WITH LLVM-exception AND BSD-2-Clause AND BSD-3-Clause AND BSL-1.0 AND MIT` (SPDX expression reported by the wheel) | Learned perceptual quality trio for the gallery ranker (`requirements-gui.txt` pins `torch==2.14.1`); the wheel bundles several permissively-licensed parts — see its `licenses/` directory |
+| `piq` (PyTorch Image Quality) | Apache-2.0 | LPIPS / DISTS / BRISQUE metrics used by the gallery ranker (`piq==0.8.0`); imports `torchvision` at module import |
+| `torchvision` | BSD-3-Clause | Required companion of PyTorch for `piq` (`torchvision==0.29.1`); ships its own notice list in the wheel's `licenses/` directory |
 | PyOpenGL | BSD-3-Clause | Legacy OpenGL helpers (where used) |
 | pybind11 | BSD-3-Clause | Build dependency of NumPy/SciPy/scikit-image; installed into the Flatpak sandbox prefix |
 | pythran | BSD-3-Clause | Build dependency of SciPy/scikit-image; installed into the Flatpak sandbox prefix |

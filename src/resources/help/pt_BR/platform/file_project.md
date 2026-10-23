@@ -27,17 +27,18 @@ Cada sessão tem sua própria aba; veja [Abas](help://platform.tabs).
 
 ### Projetos {#projects}
 
-Um arquivo de projeto (`.imgsli`) guarda um espaço de trabalho inteiro em um único arquivo portátil: as sessões abertas, suas configurações de comparação e cópias das imagens de origem.
+Um arquivo de projeto (`.blinktable`) guarda um espaço de trabalho inteiro em um único arquivo portátil: as sessões abertas, suas configurações de comparação e cópias das imagens de origem.
 
 - **Abrir projeto** — no menu **Arquivo**, com `Ctrl+Shift+O`, ou em **Localizar ação**. A aba ativa recebe o nome do arquivo, e o projeto restaura as sessões, as configurações de comparação (divisor, diferenças, lupa e recursos relacionados) e as cópias incorporadas das imagens.
 - **Salvar projeto** — `Shift+S` grava o arquivo atual. Quando ainda não existe arquivo, abre **Salvar projeto como…**. Ao salvar, o nome do arquivo também é atualizado se a aba foi renomeada.
 - **Salvar projeto como…** — `Ctrl+Shift+S` sugere o nome da aba renomeada; caso contrário, **Sem título**.
 - **O que o arquivo contém** — um arquivo ZIP: `project.json` com as sessões e uma pasta `media/` com uma cópia incorporada de cada imagem.
+- **Projetos antigos** — arquivos `.imgsli` salvos antes da renomeação abrem normalmente e mantêm a extensão ao salvar; um projeto novo é salvo como `.blinktable`.
 - **Se um original estiver ausente** — quando um caminho da lista não existe mais, o projeto ainda é salvo; essa imagem é omitida e um aviso informa seu nome.
 - **O que não é salvo** — o tema, o idioma e os atalhos ficam nas configurações do aplicativo; não fazem parte do arquivo de projeto.
 
 ### Duplo clique em um projeto no Windows {#windows-file-association}
 
-No Windows, o instalador associa `.imgsli` ao Improve ImgSLI, então um duplo clique abre o projeto e o arquivo exibe o ícone de documento do aplicativo. As compilações empacotadas também registram a associação ao iniciar.
+No Windows, o instalador associa `.blinktable` (e projetos `.imgsli` antigos) ao BlinkTable, então um duplo clique abre o projeto e o arquivo exibe o ícone de documento do aplicativo. As compilações empacotadas também registram a associação ao iniciar.
 
-Se as Propriedades ainda mostrarem "Escolher um aplicativo", selecione o Improve ImgSLI uma vez, ou execute o aplicativo com `--register-file-types` para registrar a associação novamente.
+Se as Propriedades ainda mostrarem "Escolher um aplicativo", selecione o BlinkTable uma vez, ou execute o aplicativo com `--register-file-types` para registrar a associação novamente.

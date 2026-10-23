@@ -1,5 +1,5 @@
 # Audit-Meta: pattern=state-machine reason="single ZIP package lifecycle — media/cache extraction + purge + atomic write"
-"""ZIP package helpers for portable ``.imgsli`` project files.
+"""ZIP package helpers for portable ``.blinktable`` project files.
 
 Layout::
 

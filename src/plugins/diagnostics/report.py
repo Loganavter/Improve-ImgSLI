@@ -52,7 +52,7 @@ class DiagnosticsReport:
         version = (self.payload.get("app") or {}).get("version") or "?"
         failure = self.payload.get("failure") or {}
         kind = failure.get("type", "Problem")
-        return f"[diagnostics] {kind} - Improve ImgSLI {version}"
+        return f"[diagnostics] {kind} - BlinkTable {version}"
 
 
 # --------------------------------------------------------------------------
@@ -198,7 +198,7 @@ def render_text(payload: dict[str, Any]) -> str:
     failure = payload.get("failure") or {}
     runtime = payload.get("runtime") or {}
 
-    lines.append("Improve ImgSLI - diagnostics report")
+    lines.append("BlinkTable - diagnostics report")
     lines.append("=" * 40)
     lines.append(f"Generated: {payload.get('generated_at', 'unknown')}")
     lines.append(f"Schema:    v{payload.get('schema_version', SCHEMA_VERSION)}")

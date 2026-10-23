@@ -58,7 +58,7 @@ core `Dispatcher`, so undo/redo (and the CSD buttons) cover both.
 
 ## Project I/O
 
-`services/io/project_io.py` writes portable `.imgsli` **ZIP** packages
+`services/io/project_io.py` writes portable `.blinktable` **ZIP** packages
 (`PROJECT_VERSION = 3`): `project.json`, byte-copied originals under
 `media/<asset_id>/`, an optional top-level `preview.png` (cover-scaled grab of
 the active workspace canvas) and an optional `cache/<asset_id>/pixels.raw` pixel
@@ -70,13 +70,17 @@ remain loadable (path references only). The authoritative layout — including t
 
 **Linux desktop integration** (MIME + open-with + FM thumbnails):
 
-- MIME: `application/x-improve-imgsli` (`build/linux/mime/…`) with:
+- MIME: `application/vnd.blinktable.project+zip` (`build/linux/mime/…`) with:
   - magic priority 80: `PK\003\004` + first ZIP local name `project.json`
     (beats `application/zip` magic at 60 — glob alone is not enough for
     GIO/Dolphin, which prefer content sniffing)
-  - high-weight `*.imgsli` globs as a fallback for empty/corrupt packages
+  - high-weight `*.blinktable` globs as a fallback for empty/corrupt packages
+  - `application/x-improve-imgsli` stays registered for legacy `*.imgsli`
+    files (glob weight 60, no magic). Measured with `xdg-mime query filetype`:
+    a `*.imgsli` path resolves to this legacy type, a `*.blinktable` path to
+    the current one; the desktop entry lists both, so opening is identical.
   - document-style MIME icons (`build/linux/icons/mimetypes/…`: page + mark +
-    `IMGSLI`, PSD/XCF layout — not a full-bleed wordmark)
+    `BLINKTABLE`, PSD/XCF layout — not a full-bleed wordmark)
 - Desktop `MimeType=` + `Exec=… %F` opens a project path on startup
 - Thumbnailer composites `preview.png` into a document frame with a small
   app-mark badge (`build/linux/bin/improve-imgsli-thumbnailer`)
@@ -89,9 +93,11 @@ templates under `build/`.
 **Windows file association** (ProgID + icon + Open):
 
 1. **Installer (Inno):** task `fileassoc` writes HKLM
-   `Software\Classes\.imgsli` → `ImproveImgSLI.Project` with
-   `DefaultIcon` (`icons\imgsli-file.ico`) and
-   `shell\open\command` → `Improve_ImgSLI.exe "%1"`.
+   `Software\Classes\.blinktable` → `BlinkTable.Project` with
+   `DefaultIcon` (`icons\blinktable-file.ico`) and
+   `shell\open\command` → `Improve_ImgSLI.exe "%1"`. The legacy
+   `Software\Classes\.imgsli` key is repointed to the same ProgID, so projects
+   saved before the rename keep opening.
 2. **Frozen app startup:** also idempotently registers the same ProgID under
    HKCU (`services/system/windows_file_association.py`) so portable/unzipped
    builds get Open-with without reinstall. Force with

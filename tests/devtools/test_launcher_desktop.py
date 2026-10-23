@@ -60,9 +60,10 @@ def test_desktop_files_match_sources_byte_for_byte(monkeypatch, tmp_path):
     )
     assert target.read_bytes() == expected
 
-    mime_dst = home / ".local" / "share" / "mime" / "packages" / "application-x-improve-imgsli.xml"
-    assert mime_dst.is_file()
-    assert mime_dst.read_bytes() == (launcher.DESKTOP_MIME_DIR / "application-x-improve-imgsli.xml").read_bytes()
+    for mime_name in launcher.PROJECT_MIME_FILES:
+        mime_dst = home / ".local" / "share" / "mime" / "packages" / mime_name
+        assert mime_dst.is_file()
+        assert mime_dst.read_bytes() == (launcher.DESKTOP_MIME_DIR / mime_name).read_bytes()
 
     thumb_bin = home / ".local" / "bin" / "improve-imgsli-thumbnailer"
     assert thumb_bin.is_file()
@@ -98,7 +99,8 @@ def test_desktop_uninstall_removes_files(monkeypatch, tmp_path):
 
     assert launcher.desktop_uninstall(_quiet_ui())
     assert not target.exists()
-    assert not (home / ".local" / "share" / "mime" / "packages" / "application-x-improve-imgsli.xml").exists()
+    for mime_name in launcher.PROJECT_MIME_FILES:
+        assert not (home / ".local" / "share" / "mime" / "packages" / mime_name).exists()
     assert not (home / ".local" / "bin" / "improve-imgsli-thumbnailer").exists()
 
 

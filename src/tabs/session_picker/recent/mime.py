@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from PySide6.QtCore import QUrl
 
-from services.io.project_io import PROJECT_FILE_EXTENSION
+from services.io.project_io import PROJECT_FILE_EXTENSIONS
 
-_PROJECT_SUFFIXES = (PROJECT_FILE_EXTENSION, ".imgsli-project")
+_PROJECT_SUFFIXES = PROJECT_FILE_EXTENSIONS
 
 
 def is_project_path(path: str) -> bool:
@@ -35,7 +35,7 @@ def project_paths_from_mime(mime) -> list[str]:
 
 
 def mime_has_external_project(event) -> bool:
-    """True when the drag is an external drop of one or more .imgsli paths."""
+    """True when the drag is an external drop of one or more project paths."""
     if event.source() is not None:
         return False
     mime = event.mimeData()

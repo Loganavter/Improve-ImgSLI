@@ -35,15 +35,24 @@ from services.io.project_package import (
 
 logger = logging.getLogger("ImproveImgSLI")
 
-PROJECT_FORMAT = "imgsli"
-# Legacy format id from early portable builds / plain-JSON v1.
-_LEGACY_PROJECT_FORMATS = frozenset({PROJECT_FORMAT, "imgsli-project"})
+PROJECT_FORMAT = "blinktable"
+# Read-only ids kept for projects written before the BlinkTable rename:
+# "imgsli" (portable v2/v3) and "imgsli-project" (plain-JSON v1).
+LEGACY_PROJECT_FORMATS = frozenset({"imgsli", "imgsli-project"})
+_READABLE_PROJECT_FORMATS = frozenset({PROJECT_FORMAT}) | LEGACY_PROJECT_FORMATS
 PROJECT_VERSION = 3
 _KNOWN_PROJECT_KEYS = frozenset(
     {"format", "version", "active_session_index", "sessions", "media", "pixel_cache"}
 )
-PROJECT_FILE_EXTENSION = ".imgsli"
-_LEGACY_FILE_EXTENSIONS = (".imgsli", ".imgsli-project")
+PROJECT_FILE_EXTENSION = ".blinktable"
+# Pre-rename extensions: still opened, never written for new files.
+LEGACY_FILE_EXTENSIONS = (".imgsli", ".imgsli-project")
+PROJECT_FILE_EXTENSIONS = (PROJECT_FILE_EXTENSION, *LEGACY_FILE_EXTENSIONS)
+
+
+def has_project_extension(path: str | Path) -> bool:
+    """True when ``path`` ends with the current or a legacy project suffix."""
+    return str(path).lower().endswith(PROJECT_FILE_EXTENSIONS)
 
 ProgressCallback = Callable[[int, int, str], None]
 
@@ -111,8 +120,8 @@ def collect_pixel_cache_sources(store: Any, tab_registry: Any) -> dict[str, tupl
 
 def _validate_project_container(project: dict[str, Any]) -> None:
     fmt = project.get("format")
-    if fmt not in _LEGACY_PROJECT_FORMATS:
-        raise ValueError(f"Not an Improve-ImgSLI project file (format={fmt!r})")
+    if fmt not in _READABLE_PROJECT_FORMATS:
+        raise ValueError(f"Not a BlinkTable project file (format={fmt!r})")
 
     version = project.get("version")
     if not isinstance(version, int):

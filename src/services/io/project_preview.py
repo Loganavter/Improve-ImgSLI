@@ -1,4 +1,4 @@
-"""Project scene thumbnail (``preview.png``) for portable ``.imgsli`` files.
+"""Project scene thumbnail (``preview.png``) for portable ``.blinktable`` files.
 
 Embedded preview is a cover-scaled grab of the active workspace canvas (IC /
 MC). Session Picker cards and the Linux XDG thumbnailer both read this

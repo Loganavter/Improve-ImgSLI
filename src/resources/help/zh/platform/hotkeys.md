@@ -23,7 +23,7 @@ icon: enter.svg
 - `Ctrl+Tab` / `Ctrl+Shift+Tab` — 下一个 / 上一个会话
 - `Ctrl+Shift+P` — **查找操作**
 - `Ctrl+V` — **从剪贴板粘贴图像**
-- `Ctrl+Shift+O` / `Shift+S` / `Ctrl+Shift+S` — **打开项目** / **保存项目** / **项目另存为…**（`.imgsli`）
+- `Ctrl+Shift+O` / `Shift+S` / `Ctrl+Shift+S` — **打开项目** / **保存项目** / **项目另存为…**（`.blinktable`）
 - `Ctrl+Q` — **退出**
 
 菜单标签跟随所选语言。自定义快捷键在 **设置** → **键盘** 的「平台」分组中设置。

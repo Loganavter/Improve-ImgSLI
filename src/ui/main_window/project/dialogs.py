@@ -18,14 +18,14 @@ def _choose_project_open_path(owner: "MainWindowProjectIo") -> str | None:
         owner.project_start_path(for_save=False),
         owner._tr(
             "menu.project_filter",
-            "Improve ImgSLI Project (*.imgsli)",
+            "BlinkTable Project (*.blinktable *.imgsli)",
         ),
     )
     return path or None
 
 
 def _choose_project_save_path(owner: "MainWindowProjectIo") -> str | None:
-    from services.io.project_io import PROJECT_FILE_EXTENSION
+    from services.io.project_io import PROJECT_FILE_EXTENSION, has_project_extension
 
     path, _ = QFileDialog.getSaveFileName(
         owner._window,
@@ -33,12 +33,11 @@ def _choose_project_save_path(owner: "MainWindowProjectIo") -> str | None:
         owner.project_start_path(for_save=True),
         owner._tr(
             "menu.project_filter",
-            "Improve ImgSLI Project (*.imgsli)",
+            "BlinkTable Project (*.blinktable *.imgsli)",
         ),
     )
     if not path:
         return None
-    lower = path.lower()
-    if not lower.endswith(PROJECT_FILE_EXTENSION) and not lower.endswith(".imgsli-project"):
+    if not has_project_extension(path):
         path = f"{path}{PROJECT_FILE_EXTENSION}"
     return path

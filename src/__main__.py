@@ -125,7 +125,7 @@ def _startup_dump_delay_ms(args: argparse.Namespace) -> int:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Improve ImgSLI - Main entry point")
+    parser = argparse.ArgumentParser(description="BlinkTable - Main entry point")
     parser.add_argument(
         "--enable-logging",
         action="store_true",
@@ -202,20 +202,22 @@ def main():
         "project",
         nargs="?",
         default=None,
-        help="Optional portable .imgsli project to open after startup.",
+        help="Optional portable .blinktable project to open after startup.",
     )
     parser.add_argument(
         "--register-file-types",
         action="store_true",
-        help="On Windows, (re)register .imgsli file association in HKCU and exit.",
+        help="On Windows, (re)register project file associations in HKCU and exit.",
     )
 
     args = parser.parse_args()
 
     if args.register_file_types:
-        from services.system.windows_file_association import register_imgsli_file_association
+        from services.system.windows_file_association import (
+            register_project_file_association,
+        )
 
-        ok = register_imgsli_file_association(force=True)
+        ok = register_project_file_association(force=True)
         sys.exit(0 if ok or sys.platform != "win32" else 1)
 
     # Backend resolution order: CLI flag > QSettings > env var > "default".
@@ -304,7 +306,7 @@ def main():
     install_application_dialog_decorations(app)
 
     app.setApplicationName("Improve ImgSLI")
-    app.setApplicationDisplayName("Improve ImgSLI")
+    app.setApplicationDisplayName("BlinkTable")
     from core.constants import AppConstants
 
     app.setApplicationVersion(AppConstants.APP_VERSION)

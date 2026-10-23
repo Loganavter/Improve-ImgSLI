@@ -94,7 +94,7 @@ class MainWindowMenuController:
         self._menu_strip = strip
         shell_parent = window if isinstance(window, QWidget) else None
         bar = TitleBarPresets.app_shell(
-            title=window.windowTitle() or "Improve ImgSLI",
+            title=window.windowTitle() or "BlinkTable",
             parent=shell_parent,
             controls=WindowControlsConfig(
                 minimize_icon=AppIcon.MINIMIZE,

@@ -6,7 +6,7 @@ import os
 import sys
 from pathlib import Path
 
-from PyInstaller.utils.hooks import collect_submodules
+from PyInstaller.utils.hooks import collect_all, collect_submodules
 
 block_cipher = None
 
@@ -98,7 +98,7 @@ APP_DATAS = [
     (str(REPO_ROOT / "LICENSE"), "."),
     (str(REPO_ROOT / "THIRD_PARTY_LICENSES.md"), "."),
     (str(REPO_ROOT / "src" / "resources"), "resources"),
-    (str(SPEC_DIR / "icons" / "imgsli-file.ico"), "icons"),
+    (str(SPEC_DIR / "icons" / "blinktable-file.ico"), "icons"),
     (str(SPEC_DIR / "icons" / "icon.ico"), "icons"),
     (str(REPO_ROOT / "src" / "shared_toolkit" / "resources"), "shared_toolkit/resources"),
     (str(REPO_ROOT / "src" / "shared_toolkit" / "ui" / "resources"), "shared_toolkit/ui/resources"),
@@ -353,10 +353,27 @@ APP_HIDDENIMPORTS.extend(
     )
 )
 
+# Learned perceptual quality backend (LPIPS / DISTS / BRISQUE) is a hard
+# requirement of the gallery ranker (`requirements-gui.txt`: torch +
+# torchvision + piq, `piq` imports torchvision at import time). PyInstaller
+# cannot infer torch's dynamic imports, so the trio is collected explicitly.
+# Guarded per package: a build environment without them still produces an
+# installer, and the app then reports the explicit `backend_status() ==
+# "missing"` state instead of failing at import.
+APP_BINARIES = []
+for _optional_pkg in ("torch", "torchvision", "piq"):
+    if importlib.util.find_spec(_optional_pkg) is None:
+        print(f"[spec] {_optional_pkg} not installed - learned-metrics backend will be reported missing")
+        continue
+    _pkg_datas, _pkg_binaries, _pkg_hiddenimports = collect_all(_optional_pkg)
+    APP_DATAS.extend(_pkg_datas)
+    APP_BINARIES.extend(_pkg_binaries)
+    APP_HIDDENIMPORTS.extend(_pkg_hiddenimports)
+
 a = Analysis(
     [str(REPO_ROOT / "src" / "__main__.py")],
     pathex=[str(REPO_ROOT), str(REPO_ROOT / "src")],
-    binaries=PYSIDE6_BINARIES,
+    binaries=PYSIDE6_BINARIES + APP_BINARIES,
     datas=APP_DATAS + PYSIDE6_DATAS,
     hiddenimports=sorted(set(APP_HIDDENIMPORTS)),
     hookspath=[],
