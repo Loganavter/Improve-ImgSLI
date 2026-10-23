@@ -32,13 +32,6 @@ from ui.icon_manager import AppIcon
 from ui.widgets.form_controls import DialogActionBar, OutputPathSection
 from ui.widgets.slider_hint import ValueSlider
 
-#: Row-label typography for the export dialog. The app registers
-#: ``group-title`` as 14 design px / regular (ui/icon_manager.py) — the same
-#: scale the video editor's export labels use. The toolkit ``body`` default
-#: (12 px) painted these labels visibly smaller than the value text, checkbox
-#: captions and buttons in the same dialog.
-_LABEL_VARIANT = "group-title"
-
 
 class _ExportPreviewLabel(QLabel):
     """Preview surface whose sizeHint ignores the pixmap.
@@ -67,9 +60,7 @@ def build_preview_pane(dialog) -> QFrame:
     left_layout.setSpacing(scaled_px(8))
 
     dialog.export_preview_title = Text(
-        dialog._tr("export.preview", "Preview"),
-        mode="plain",
-        variant=_LABEL_VARIANT,
+        dialog._tr("export.preview", "Preview"), mode="plain"
     )
     dialog.export_preview_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
     dialog.preview_label = _ExportPreviewLabel()
@@ -117,9 +108,7 @@ def build_output_path_section(dialog) -> None:
 
 def build_format_row(dialog) -> None:
     dialog.fmt_label = Text(
-        dialog._tr("label.format", "Format") + ":",
-        mode="plain",
-        variant=_LABEL_VARIANT,
+        dialog._tr("label.format", "Format") + ":", mode="plain"
     )
     dialog.combo_format = ComboBox()
     for fmt in ["PNG", "JPEG", "WEBP", "BMP", "TIFF", "JXL"]:
@@ -139,9 +128,7 @@ def build_resolution_row(dialog) -> None:
     res_layout.setContentsMargins(0, 0, 0, 0)
     res_layout.setSpacing(scaled_px(8))
     dialog.resolution_label = Text(
-        dialog._tr("label.resolution", "Resolution") + ":",
-        mode="plain",
-        variant=_LABEL_VARIANT,
+        dialog._tr("label.resolution", "Resolution") + ":", mode="plain"
     )
     res_layout.addWidget(dialog.resolution_label)
     dialog.edit_width = CustomLineEdit()
@@ -185,9 +172,7 @@ def build_quality_controls(dialog) -> None:
     quality_layout.setContentsMargins(0, 0, 0, 0)
     quality_layout.setSpacing(scaled_px(8))
     dialog.quality_label = Text(
-        dialog._tr("label.quality", "Quality") + ":",
-        mode="plain",
-        variant=_LABEL_VARIANT,
+        dialog._tr("label.quality", "Quality") + ":", mode="plain"
     )
     dialog.slider_quality = ValueSlider(
         Qt.Orientation.Horizontal,
@@ -197,9 +182,7 @@ def build_quality_controls(dialog) -> None:
     )
     dialog.slider_quality.setRange(1, 100)
     dialog.slider_quality.setValue(95)
-    dialog.label_quality_value = Text(
-        "95", mode="plain", variant=_LABEL_VARIANT
-    )
+    dialog.label_quality_value = Text("95", mode="plain")
     dialog.slider_quality.valueChanged.connect(
         lambda v: dialog.label_quality_value.setText(str(v))
     )
@@ -216,7 +199,6 @@ def build_png_options(dialog) -> None:
     dialog.label_png_compress = Text(
         dialog._tr("export.png_compression_level", "PNG Compression Level") + ":",
         mode="plain",
-        variant=_LABEL_VARIANT,
     )
     dialog.slider_png_compress = ValueSlider(
         Qt.Orientation.Horizontal,
@@ -224,9 +206,7 @@ def build_png_options(dialog) -> None:
     )
     dialog.slider_png_compress.setRange(0, 9)
     dialog.slider_png_compress.setValue(9)
-    dialog.label_png_compress_value = Text(
-        "9", mode="plain", variant=_LABEL_VARIANT
-    )
+    dialog.label_png_compress_value = Text("9", mode="plain")
     dialog.slider_png_compress.valueChanged.connect(
         lambda v: dialog.label_png_compress_value.setText(str(v))
     )
@@ -273,9 +253,7 @@ def build_metadata_block(dialog) -> None:
     ACTIONS.tag_member(dialog.checkbox_include_metadata, "export.include_metadata")
 
     dialog.comment_label = Text(
-        dialog._tr("export.comment", "Comment") + ":",
-        mode="plain",
-        variant=_LABEL_VARIANT,
+        dialog._tr("export.comment", "Comment") + ":", mode="plain"
     )
     dialog.edit_comment = CustomLineEdit()
     dialog.edit_comment.setObjectName("export-comment")

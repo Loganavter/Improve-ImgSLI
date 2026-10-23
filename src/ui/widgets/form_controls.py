@@ -129,13 +129,7 @@ class OutputPathSection(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(scaled_px(6))
 
-        # Field labels use the app-registered ``group-title`` (14 design px,
-        # registered in ui/icon_manager.py), not the toolkit ``body`` default
-        # (12 px): body read visibly smaller than the value/checkbox text and
-        # the buttons in the same row (same scale as the video editor labels).
-        self.dir_label = Text(
-            directory_label_text, self, mode="plain", variant="group-title"
-        )
+        self.dir_label = Text(directory_label_text, self, mode="plain")
         self.dir_picker_row = QWidget(self)
         self.dir_picker_row.setSizePolicy(
             QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed
@@ -186,9 +180,7 @@ class OutputPathSection(QWidget):
         dir_layout.addWidget(self.edit_dir, 1)
         dir_layout.addWidget(self.btn_browse_dir)
 
-        self.filename_label = Text(
-            filename_label_text, self, mode="plain", variant="group-title"
-        )
+        self.filename_label = Text(filename_label_text, self, mode="plain")
         self.filename_edit = filename_editor_factory()
         self.filename_edit.setObjectName("output-filename")
 

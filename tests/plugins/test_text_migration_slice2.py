@@ -13,15 +13,9 @@ old                                    new
                                        pixel_size=N, ...)``
 =====================================  =======================================
 
-Effective sizes were unchanged at migration time because ``Text`` shares
-``Label``'s variant registry (``body`` = 12 px, ``dialog.text`` color): an
-explicit ``pixel_size`` overrides the preset exactly as it did for ``Label``.
-
-Typing note (post-migration): the export row labels/readouts were later raised
-from ``body`` (12 px) to the app-registered ``group-title`` (14 px, regular —
-``ui/icon_manager.py``), because 12 px painted them visibly smaller than the
-value text, checkbox captions and buttons beside them. They are still plain
-``Text``; only the variant/size assertion below reflects that.
+Effective sizes are unchanged because ``Text`` shares ``Label``'s variant
+registry (``body`` = 12 px, ``dialog.text`` color): an explicit ``pixel_size``
+overrides the preset exactly as it did for ``Label``.
 
 Call sites (all explicit text displays, no factory funnel in these plugins):
 
@@ -186,17 +180,17 @@ def _export_dialog() -> ExportDialog:
     return ExportDialog(dialog_state=state, suggested_filename="out")
 
 
-def _assert_plain_text(widget, *, pixel_size: int, variant: str = "body") -> Text:
+def _assert_plain_text(widget, *, pixel_size: int) -> Text:
     assert isinstance(widget, Text), type(widget)
     assert not isinstance(widget, Label)
     assert widget.mode() == "plain"
-    assert widget.variant() == variant
+    assert widget.variant() == "body"
     assert widget.font().pixelSize() == scaled_px(pixel_size)
     return widget
 
 
 def test_export_dialog_labels_are_plain_text(qapp: QApplication):
-    """Export row labels / readouts: 14 px plain ``Text`` (app group-title)."""
+    """Export row labels / readouts: 12 px plain ``Text`` (was ``Label``)."""
     dialog = _export_dialog()
     try:
         for widget in (
@@ -209,7 +203,7 @@ def test_export_dialog_labels_are_plain_text(qapp: QApplication):
             dialog.label_png_compress_value,
             dialog.comment_label,
         ):
-            _assert_plain_text(widget, pixel_size=14, variant="group-title")
+            _assert_plain_text(widget, pixel_size=12)
 
         # Preserved non-typography state: centred preview caption, live
         # readouts still track their sliders through ``setText``.
