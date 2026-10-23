@@ -95,6 +95,13 @@ def test_geometry_apply_keeps_live_field_widths(qapp):
     """The full apply path keeps the laid-out field width (no collapse)."""
     host, dialog = _shown_dialog()
     try:
+        # Widen the shell past the computed size: apply() then skips its own
+        # resize, which is exactly the state where the measured-then-resized
+        # field used to stay collapsed (the user-visible "any hiccup" case).
+        dialog.resize(dialog.width() + 300, dialog.height())
+        for _ in range(3):
+            QApplication.processEvents()
+
         field_before = dialog.edit_comment.width()
         assert field_before > 200, field_before
 
