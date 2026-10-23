@@ -1,18 +1,13 @@
-"""The AI provider key: never plaintext on disk, and no warning about it.
+"""The gallery AI provider key: never plaintext on disk.
 
-Two contracts are pinned here:
+``AiSettingsStore`` routes the key through ``core.secret_store`` (OS keyring →
+encrypted machine-bound file → memory for the session) and drops a plaintext
+row left by an older build on first load. Gallery-owned: the store, the
+gallery's locale catalog and the fallback chain all live under this tab, so
+the cases live here (root ``tests/`` must not deep-import tab internals).
 
-1. **The warning is gone** — the settings page used to carry a caption saying
-   the value is "stored unencrypted", because it was: the key lived in the
-   ``QSettings`` INI as plain text. A warning is not a fix; the caption and its
-   locale key were removed together with the storage change.
-2. **The key never lands in the INI** — ``AiSettingsStore`` routes it through
-   ``core.secret_store`` (OS keyring → encrypted machine-bound file → memory for
-   the session) and drops a plaintext row left by an older build on first load.
-
-The store-level cases run against a sandboxed backend (no real keyring, no real
-``cryptography``) so they assert our fallback chain without touching the user's
-keyring or app-data directory.
+The host-side half (the settings page no longer warns about "unencrypted"
+storage) stays a root test: `tests/plugins/test_settings_ai_key_warning_removed.py`.
 """
 
 from __future__ import annotations
@@ -25,24 +20,15 @@ from pathlib import Path
 
 import pytest
 from PySide6.QtCore import QSettings
-from PySide6.QtWidgets import QApplication, QWidget
 
 from core import secret_store
-from plugins.settings.dialog import SettingsDialog
-from sli_ui_toolkit.managers import UiScale
 from tabs.image_gallery.services import ai_settings_store as store_module
 from tabs.image_gallery.services.ai_settings_store import AiSettingsStore
 
-I18N_DIR = Path(__file__).parents[2] / "src" / "tabs" / "image_gallery" / "resources" / "i18n"
+# From `src/tabs/image_gallery/tests/plugins/` -> the tab package.
+I18N_DIR = Path(__file__).parents[2] / "resources" / "i18n"
 LOCALES = ("en", "ru", "zh", "pt_BR")
 KEY = "sk-live-0123456789abcdef"
-
-
-@pytest.fixture(autouse=True)
-def _scale_one():
-    UiScale.get_instance().set_factor(1.0)
-    yield
-    UiScale.get_instance().set_factor(1.0)
 
 
 @pytest.fixture
@@ -79,32 +65,12 @@ def _ini_text() -> str:
     return "\n".join(text)
 
 
-# ---------------------------------------------------------------------------
-# 1. the warning is gone
-# ---------------------------------------------------------------------------
-
-
-def test_the_settings_page_no_longer_warns_about_unencrypted_storage(qapp: QApplication):
-    dialog = SettingsDialog("en", "dark", 60, 10, 200, False, True)
-    dialog.show()
-    qapp.processEvents()
-    try:
-        assert not hasattr(dialog, "gallery_ai_api_key_warning")
-        captions = [
-            child.text()
-            for child in dialog.findChildren(QWidget)
-            if hasattr(child, "text") and callable(getattr(child, "text", None))
-        ]
-        joined = " ".join(str(c) for c in captions).casefold()
-        assert "незашифрован" not in joined
-        assert "unencrypted" not in joined
-    finally:
-        dialog.close()
-
 
 def test_no_locale_carries_the_removed_warning_key():
     for locale in LOCALES:
-        data = json.loads((I18N_DIR / locale / "image_gallery.json").read_text(encoding="utf-8"))
+        data = json.loads(
+            (I18N_DIR / locale / "image_gallery.json").read_text(encoding="utf-8")
+        )
         assert "api_key_warning" not in data["image_gallery"]["settings"], locale
 
 
