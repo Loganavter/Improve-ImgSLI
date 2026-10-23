@@ -392,3 +392,27 @@ read once, 2026-10-17). Two guards, in order:
 
 Keep a private Xvfb at least as large as the window anyway: composing both
 guards is not as good as "it simply fits".
+
+## First presented frame (Wayland only)
+
+An X11 capture cannot see the frame a client painted *before* the server
+mapped its window: `x11grab`/`ffmpeg`/`QWidget.grab` and the live captures all
+read a mapped window, so the "first frame differs from the settled one" class
+is invisible there (measured 2026-10-23: 241 frames byte-identical from the
+first visible one, while the same startup showed ~0.8 s of stale shelf chrome
+on Wayland). Wayland commits every buffer to the compositor, so a
+**compositor-side** capture sees what was actually presented.
+
+```bash
+# headless sway + grim loop + app; frames + logs under --out
+python3 src/devtools/first_frame_capture.py --out /tmp/ff --duration 10
+python3 src/devtools/first_frame_capture.py --out /tmp/ff --repo-root ../some-clone
+```
+
+It prints the first presented frame and every state transition (content vs
+window geometry) and copies those frames to `<out>/transitions/`. **Read the
+frames**: the app resizes its own window during startup (saved geometry /
+maximize applied after the deferred batch), so a pure pixel verdict is a hint
+there, not proof — the transition frames are the evidence. Requires `sway`
+(wlroots) and `grim`. Details and the sibling instrument caveats:
+`../improve-imgsli-internal-docs/docs/dev/DEBUGGING.md` rule 7.

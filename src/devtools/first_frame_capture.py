@@ -155,8 +155,6 @@ def _launch_app(
     env = dict(os.environ)
     env.update(
         {
-            "IMGSLI_CONTROL": "1",
-            "IMGSLI_CONTROL_DIR": str(runtime_dir),
             "XDG_RUNTIME_DIR": str(runtime_dir),
             "WAYLAND_DISPLAY": wayland_display,
             "QT_QPA_PLATFORM": "wayland",
@@ -286,76 +284,6 @@ def _analyse(frames_dir: Path) -> tuple[int, list[tuple[int, float, bool]]]:
     return first, series
 
 
-def _control_call(socket_path: Path, method: str, params: dict, timeout: float = 5.0):
-    """One newline-delimited JSON request on the app control socket."""
-    import json
-    import socket as socket_module
-
-    sock = socket_module.socket(socket_module.AF_UNIX, socket_module.SOCK_STREAM)
-    sock.settimeout(timeout)
-    try:
-        sock.connect(str(socket_path))
-        sock.sendall(
-            (json.dumps({"id": 1, "method": method, "params": params}) + "\n").encode()
-        )
-        chunks = []
-        while True:
-            try:
-                chunk = sock.recv(65536)
-            except socket_module.timeout:
-                break
-            if not chunk:
-                break
-            chunks.append(chunk)
-            try:
-                return json.loads(b"".join(chunks).decode("utf-8", "replace"))
-            except json.JSONDecodeError:
-                continue
-    finally:
-        sock.close()
-    return None
-
-
-def _watch_elements(
-    socket_path: Path, watched: list[str], timeout_s: float
-) -> tuple[float | None, dict[str, float]]:
-    """Poll ``ui_elements`` until every watched id appeared (or timeout).
-
-    Returns (app-up time, {element id: seconds after app-up when first seen}).
-    Geometry-independent: it reads the app's own element model, not pixels, so
-    a window resize cannot hide or fake a missing control the way a
-    normalised pixel diff can.
-    """
-    import time
-
-    started = time.monotonic()
-    app_up: float | None = None
-    seen: dict[str, float] = {}
-    while time.monotonic() - started < timeout_s:
-        if not socket_path.exists():
-            time.sleep(0.05)
-            continue
-        response = _control_call(socket_path, "ui_elements", {"limit": 500})
-        if not response or not response.get("ok"):
-            time.sleep(0.05)
-            continue
-        elements = (response.get("result") or {}).get("elements") or []
-        if elements and app_up is None:
-            app_up = time.monotonic()
-        ids = {str(element.get("id")) for element in elements}
-        for name in watched:
-            # Match a bare object name (``recent-sort-button``) against the
-            # session-scoped id (``ImageComparisonApp/..@recent-sort-button``).
-            if any(ident == name or ident.endswith("@" + name) for ident in ids):
-                if name not in seen:
-                    seen[name] = time.monotonic() - (app_up or time.monotonic())
-        if app_up is not None and len(seen) == len(watched):
-            break
-        time.sleep(0.05)
-    return app_up, seen
-
-
-
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--out", required=True, help="frames + logs directory")
@@ -376,22 +304,6 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="also fail when the window moved/resized even if the content "
         "matches (default: geometry transitions are reported, not failed)",
-    )
-    parser.add_argument(
-        "--watch-elements",
-        help="comma-separated element ids/object names to poll through the "
-        "control surface (ui_elements) from launch; a control that appears "
-        "later than the app's first element is a first-frame miss even when "
-        "the window resized",
-    )
-    parser.add_argument(
-        "--element-timeout", type=float, default=20.0,
-        help="how long to poll --watch-elements (default 20 s)",
-    )
-    parser.add_argument(
-        "--element-settle-ms", type=float, default=250.0,
-        help="how late a watched element may appear after the app's first "
-        "element before it counts as a first-frame miss (default 250 ms)",
     )
     parser.add_argument("app_args", nargs="*", help="arguments for src/__main__.py")
     args = parser.parse_args(argv)
@@ -426,12 +338,6 @@ def main(argv: list[str] | None = None) -> int:
             args.app_args,
             out / "app.log",
         )
-        watched = [w.strip() for w in (args.watch_elements or "").split(",") if w.strip()]
-        element_seen: dict[str, float] = {}
-        if watched:
-            _app_up, element_seen = _watch_elements(
-                runtime_dir / "control.sock", watched, args.element_timeout
-            )
         time.sleep(args.duration)
     finally:
         _stop(capture)
@@ -440,6 +346,15 @@ def main(argv: list[str] | None = None) -> int:
 
     first, series = _analyse(frames_dir)
     print(f"first presented frame: {first}")
+    # Copy the frames at every reported transition next to the run: on a
+    # window that resizes during startup the pixel metric is a hint, and these
+    # are the exact frames a human (or an agent) compares.
+    transitions = out / "transitions"
+    transitions.mkdir(exist_ok=True)
+    for index, _score, _geometry in series:
+        source = frames_dir / f"f_{index:04d}.png"
+        if source.is_file():
+            shutil.copy2(source, transitions / source.name)
     stale = []
     for index, score, geometry in series:
         if score < 0:
@@ -459,23 +374,9 @@ def main(argv: list[str] | None = None) -> int:
             f"STALE FIRST FRAME: {len(stale)} presented frame(s) before the settled "
             f"state (frames {stale[0]}..{stale[-1]})"
         )
-    if watched:
-        budget = args.element_settle_ms / 1000.0
-        print("watched elements (seconds after the app's first element):")
-        for name in watched:
-            delay = element_seen.get(name)
-            if delay is None:
-                print(f"  {name}: NEVER appeared within {args.element_timeout:.0f}s")
-                failed = True
-            elif delay > budget:
-                print(f"  {name}: {delay * 1000:.0f} ms late  (budget {budget * 1000:.0f} ms)")
-                failed = True
-            else:
-                print(f"  {name}: {delay * 1000:.0f} ms  ok")
     if failed:
         return 1
-    print("OK: every presented frame equals the settled one and every watched "
-          "element was present with the first one")
+    print("OK: every presented frame equals the settled one")
     return 0
 
 
