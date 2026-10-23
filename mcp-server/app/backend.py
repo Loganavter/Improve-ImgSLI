@@ -50,6 +50,12 @@ import time
 from pathlib import Path
 from typing import Any, Callable
 
+from .catalog import (
+    BATCH_TOOLS,
+    MAX_BATCH_ACTIONS,
+    MAX_BATCH_SETTLE_MS,
+    MAX_BATCH_SETTLE_TOTAL_MS,
+)
 from .live import (
     LiveBackend,
     LiveError,
@@ -1134,6 +1140,153 @@ class AppBackend:
             "no live instance; job state needs a running app",
             "start the app with the control socket enabled (see docs/dev/MCP.md), then retry",
         )
+
+    # -- batches -----------------------------------------------------------
+
+    def ui_batch(
+        self,
+        *,
+        actions: list[dict],
+        stop_on_error: bool = True,
+        settle_ms: int = 0,
+    ) -> dict:
+        """Run an ordered list of already-exposed tools as ONE call.
+
+        Why a batch exists: an agent building a stand paid one round trip and
+        one context turn per click. The batch is a loop over published verbs,
+        not a second dispatch surface — every item goes through the same bound
+        method the single tool uses, so live/fallback routing, argument
+        validation and error shapes stay in one place (``BATCH_TOOLS`` is the
+        explicit whitelist; ``ui_batch`` is not in it, so nesting is refused).
+
+        Semantics are those of a script, not a transaction: items run in
+        order, earlier items stay applied when a later one fails (there is no
+        rollback and no undo), and the per-item results say exactly what ran.
+        ``stop_on_error`` (default) stops at the first failure; ``false`` runs
+        the rest and reports every failure. ``settle_ms`` pauses between items
+        for animations — the accumulated budget is capped so one call cannot
+        occupy the request channel for minutes.
+        """
+        if not isinstance(actions, list) or not actions:
+            raise ToolError(
+                "ui_batch needs a non-empty actions list",
+                "pass [{tool, arguments}, ...]; see the ui_batch schema",
+            )
+        if len(actions) > MAX_BATCH_ACTIONS:
+            raise ToolError(
+                f"ui_batch accepts at most {MAX_BATCH_ACTIONS} actions per call",
+                f"split into ceil({len(actions)} / {MAX_BATCH_ACTIONS}) calls",
+            )
+        if not isinstance(settle_ms, int) or isinstance(settle_ms, bool):
+            raise ToolError("ui_batch settle_ms must be an integer", "omit it or pass milliseconds")
+        if settle_ms < 0 or settle_ms > MAX_BATCH_SETTLE_MS:
+            raise ToolError(
+                f"ui_batch settle_ms must be 0..{MAX_BATCH_SETTLE_MS}",
+                "prefer wait_for inside the batch when the expectation is observable",
+            )
+        planned_settle = settle_ms * max(0, len(actions) - 1)
+        if planned_settle > MAX_BATCH_SETTLE_TOTAL_MS:
+            raise ToolError(
+                f"ui_batch would sleep {planned_settle} ms in one call "
+                f"(cap {MAX_BATCH_SETTLE_TOTAL_MS} ms)",
+                "lower settle_ms, split the batch, or use wait_for for the one expectation that matters",
+            )
+
+        results: list[dict] = []
+        first_error: dict | None = None
+        for index, item in enumerate(actions):
+            row: dict = {"index": index, "tool": "", "ok": False, "result": None, "error": None}
+            results.append(row)
+            tool = item.get("tool") if isinstance(item, dict) else None
+            row["tool"] = str(tool or "")
+
+            def fail(kind: str, message: str, hint: str | None = None) -> dict:
+                error = {
+                    "index": index,
+                    "tool": row["tool"],
+                    "kind": kind,
+                    "message": message,
+                    "hint": hint,
+                }
+                row["error"] = error
+                return error
+
+            if not isinstance(item, dict):
+                error = fail(
+                    "invalid_item",
+                    f"batch item {index} is not an object",
+                    "each item is {tool, arguments}",
+                )
+            elif tool not in BATCH_TOOLS:
+                error = fail(
+                    "invalid_item",
+                    f"unknown batch tool {tool!r}",
+                    f"allowed: {', '.join(sorted(BATCH_TOOLS))}",
+                )
+            else:
+                args = item.get("arguments")
+                if args is None:
+                    args = {}
+                required, allowed = BATCH_TOOLS[tool]
+                if not isinstance(args, dict):
+                    error = fail(
+                        "invalid_item",
+                        f"{tool} arguments must be an object",
+                        f"pass the same object the tool takes alone; allowed keys: {', '.join(sorted(allowed))}",
+                    )
+                elif missing := sorted(required - set(args)):
+                    error = fail(
+                        "invalid_item",
+                        f"{tool} is missing required argument(s): {', '.join(missing)}",
+                        f"allowed keys: {', '.join(sorted(allowed))}",
+                    )
+                elif unknown := sorted(set(args) - allowed):
+                    error = fail(
+                        "invalid_item",
+                        f"{tool} does not take: {', '.join(unknown)}",
+                        f"allowed keys: {', '.join(sorted(allowed))}",
+                    )
+                else:
+                    try:
+                        result = getattr(self, tool)(**args)
+                    except ToolError as exc:
+                        error = fail("tool_error", exc.message, exc.hint)
+                    except Exception as exc:  # noqa: BLE001 - reported, never re-raised
+                        error = fail(
+                            "crashed",
+                            f"{type(exc).__name__}: {exc}",
+                            "report a server bug",
+                        )
+                    else:
+                        row["ok"] = True
+                        row["result"] = result
+                        if settle_ms and index < len(actions) - 1:
+                            time.sleep(settle_ms / 1000.0)
+                        continue
+
+            if first_error is None:
+                first_error = error
+            if stop_on_error:
+                break
+
+        ok_count = sum(1 for row in results if row["ok"])
+        sources = {
+            row["result"].get("source")
+            for row in results
+            if row["ok"] and isinstance(row["result"], dict)
+        }
+        sources.discard(None)
+        source = next(iter(sources)) if len(sources) == 1 else ("mixed" if sources else None)
+        return {
+            "ok": first_error is None,
+            "count": len(results),
+            "ok_count": ok_count,
+            "results": results,
+            "stopped_at": first_error["index"] if first_error is not None else None,
+            "error": first_error,
+            "settle_ms": settle_ms,
+            "source": source,
+        }
 
     # -- long work (live-only) ----------------------------------------------
 

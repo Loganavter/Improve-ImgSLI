@@ -47,18 +47,20 @@ no manual `PYTHONPATH` is needed. Environment knobs:
 
 ## Surface
 
-**Tools** (27 — 11 read-only, 16 mutating; reads and writes never share a tool):
+**Tools** (31 — 12 read-only, 19 mutating; reads and writes never share a tool):
 `list_actions`, `list_sessions`, `get_state`, `read_log`, `query_trace`,
 `dump_ui_layout`, `list_surfaces`, `ui_elements`, `ui_nav_state`, `jobs_list`,
 `wait_for` ·
-`open_tab`, `run_action`, `open_folder`, `open_file`, `open_properties`,
+`open_tab`, `run_action`, `set_scene_commands`, `open_folder`, `open_file`, `open_properties`,
 `set_theme`, `set_language`, `set_setting`, `capture_surface`, `press_keys`,
-`nav_key`, `ui_click`, `ui_hover`, `ui_focus`, `ui_press`, `jobs_cancel`. The four
+`nav_key`, `ui_click`, `ui_hover`, `ui_focus`, `ui_press`, `ui_wheel`, `ui_batch`,
+`jobs_cancel`. The four
 element-targeting tools (`ui_elements`, `ui_click`, `ui_hover`, `ui_focus`),
-`ui_press`, the keyboard pair (`nav_key` + `ui_nav_state`), the two job tools
+`ui_press`, `ui_wheel`, the keyboard pair (`nav_key` + `ui_nav_state`), the two job tools
 (`jobs_list`, `jobs_cancel`), `wait_for` and `open_properties` are live-only
 (`open_file` refuses without a running tab; `set_setting` still persists the
-value for the next start).
+value for the next start; `ui_batch` answers per item and is as live-only as the
+items it runs).
 
 **Resources**: `app://actions`, `app://state`, `app://sessions`, `app://log`,
 `app://ui-layout`, `app://theme`; templates `app://action/{id}`,
