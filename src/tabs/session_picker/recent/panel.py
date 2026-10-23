@@ -180,6 +180,11 @@ class RecentProjectsPanel(ShelfWidget):
         # run the whole relayout + force-refresh + freeze/repaint a second time
         # in the same switch (the view-toggle "UI twitches" artifact).
         if not self._explicit_rebuild:
+            # Columns depend only on the width, which is already final here:
+            # apply them in THIS frame and leave only the height settle deferred
+            # (the frame that painted the old columns into the new width showed
+            # a clipped extra card, then moved every card).
+            self._items.reflow_columns_now()
             self._schedule_deferred_relayout()
 
     def eventFilter(self, watched, event) -> bool:  # noqa: N802
@@ -200,6 +205,7 @@ class RecentProjectsPanel(ShelfWidget):
                 getattr(self._items.scroll_area, "height", lambda: -1)(),
             )
             self._sync_shelf_panel_height()
+            self._items.reflow_columns_now()
             self._schedule_deferred_relayout()
         return super().eventFilter(watched, event)
 

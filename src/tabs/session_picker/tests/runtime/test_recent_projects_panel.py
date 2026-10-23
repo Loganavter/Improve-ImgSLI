@@ -1651,3 +1651,97 @@ def test_live_ui_scale_change_resizes_shelf_in_place(qapp, tmp_path, monkeypatch
         panel.deleteLater()
     finally:
         UiScale.get_instance().set_factor(1.0)
+
+def test_grid_columns_are_final_in_the_first_frame_after_a_resize(
+    qapp, tmp_path, monkeypatch
+):
+    """A window resize must not paint the OLD column count into the new width.
+
+    Regression (owner report 2026-10-23): after a window resize the shelf
+    painted one frame with the previous columns — the extra column clipped at
+    the right edge ("part of the buttons is missing") — and the next frame
+    moved every card ("the position changes afterwards"), because the whole
+    relayout was deferred by one event-loop turn. Column count depends only on
+    the width, which is already final inside ``resizeEvent``.
+    """
+    from PySide6.QtCore import QEvent, QObject
+    from PySide6.QtWidgets import QVBoxLayout, QWidget
+
+    from services.io.recent_projects import RecentProjectRecord
+    from sli_ui_toolkit.widgets import OverlayScrollArea
+
+    def _record(i: int) -> RecentProjectRecord:
+        path = tmp_path / f"cols{i}.imgsli"
+        path.write_text("{}")
+        return RecentProjectRecord(
+            path=str(path),
+            display_name=f"cols{i}",
+            opened_at="2026-01-01T00:00:00+00:00",
+            session_types=("image_compare",),
+        )
+
+    monkeypatch.setattr(
+        f"{_PANEL}.list_recent_projects",
+        lambda **kwargs: [_record(i) for i in range(9)],
+    )
+    monkeypatch.setattr(
+        f"{_PANEL}.sort_recent_projects", lambda recs, **kwargs: list(recs)
+    )
+    monkeypatch.setattr(f"{_PANEL}.get_recent_view_mode", lambda **kwargs: "grid")
+
+    win = QWidget()
+    win.resize(1100, 1000)
+    win.show()
+    outer = QVBoxLayout(win)
+    outer.setContentsMargins(0, 0, 0, 0)
+    scroll = OverlayScrollArea(win)
+    scroll.set_reserve_scrollbar_space(False)
+    outer.addWidget(scroll)
+    content = QWidget()
+    scroll.setWidget(content)
+    lay = QVBoxLayout(content)
+    lay.setContentsMargins(48, 40, 48, 40)
+    lay.setSpacing(20)
+    cards = QWidget()
+    cards.setFixedHeight(300)
+    lay.addWidget(cards)
+    panel = RecentProjectsPanel(content, translate=_tr)
+    lay.addWidget(panel)
+    lay.addStretch(1)
+    panel.refresh()
+    drain_until_stable(
+        qapp,
+        lambda: (panel._items.grid_columns, panel._items.scroll_area.height()),
+        timeout_ms=1000,
+        stable_frames=2,
+    )
+    wide_columns = panel._items.grid_columns
+
+    paints: list[tuple[int, int]] = []
+
+    class _Watch(QObject):
+        def eventFilter(self, obj, event):  # noqa: N802
+            if obj is panel and event.type() == QEvent.Type.Paint:
+                paints.append(
+                    (panel._items.grid_columns, panel._items.resolve_grid_columns())
+                )
+            return False
+
+    watch = _Watch()
+    panel.installEventFilter(watch)
+    try:
+        win.resize(640, 1000)
+        for _ in range(2):
+            qapp.processEvents()
+    finally:
+        panel.removeEventFilter(watch)
+
+    assert paints, "the resize produced no panel paint to inspect"
+    assert panel._items.grid_columns < wide_columns, "resize did not change the column count"
+    stale = [(used, expected) for used, expected in paints if used != expected]
+    assert not stale, (
+        f"the panel painted {stale} (used columns, expected columns) — the first "
+        "frame after the resize still had the old grid"
+    )
+    panel.deleteLater()
+    win.deleteLater()
