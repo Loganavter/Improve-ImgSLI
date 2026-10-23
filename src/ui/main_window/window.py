@@ -120,7 +120,7 @@ class MainWindow(QWidget):
         self._menu_controller = None  # set in startup.build_shell()
         # Title-bar File/Help widths are measured at strip construction. Apply
         # the UI face first so Cyrillic labels are not sized with a fallback
-        # font (Help then sits where File should be until FontChange remasure).
+        # font (Help then sits where File should be until FontChange remeasure).
         try:
             from shared_toolkit.ui.managers.font_manager import FontManager
 
