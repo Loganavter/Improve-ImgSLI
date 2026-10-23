@@ -16,6 +16,7 @@ _OPACITY = "label.opacity"
 _COLOR = "label.color"
 _BACKGROUND = "label.background"
 _DRAW_BG = "label.draw_text_background"
+_SHOW_TEXT = "label.show_text"
 _POS_EDGES = "label.position_edges"
 _POS_SPLIT = "label.position_split_line"
 
@@ -34,13 +35,17 @@ def font_settings_search(
     title_key: str,
     *,
     include_placement: bool = True,
+    include_visibility: bool = False,
 ) -> SearchIndex:
     """Build a SearchIndex for the text-settings flyout.
 
     ``title_key`` is the group / breadcrumb title (tab-specific text-settings
-    action label). Placement radios are IC-only; multi_compare hides them.
+    action label). Placement radios are IC-only and the master ``Show text``
+    switch is multi_compare-only; each host declares what it actually shows.
     """
     members = _CORE_MEMBERS + (_PLACEMENT_MEMBERS if include_placement else ())
+    if include_visibility:
+        members = members + (_SHOW_TEXT,)
     return SearchIndex.of(group(title_key, *members))
 
 
@@ -49,13 +54,18 @@ def tag_font_settings_flyout(
     *,
     title_key: str = "font_settings",
     include_placement: bool = True,
+    include_visibility: bool = False,
 ) -> SearchGroup:
     """Tag flyout controls for Find Action resolve / pulse.
 
     ``title_key`` is stored as ``PROP_GROUP`` for diagnostics; contribute uses
     the tab-specific SearchIndex title for catalog labels.
     """
-    index = font_settings_search(title_key, include_placement=include_placement)
+    index = font_settings_search(
+        title_key,
+        include_placement=include_placement,
+        include_visibility=include_visibility,
+    )
     group_def = index.groups[0]
     flyout.setProperty(PROP_GROUP, group_def.title_key)
     group_def.tag_member(flyout.size_slider, _SIZE)
@@ -64,6 +74,9 @@ def tag_font_settings_flyout(
     group_def.tag_member(flyout.color_swatch, _COLOR)
     group_def.tag_member(flyout.bg_color_swatch, _BACKGROUND)
     group_def.tag_member(flyout.draw_bg_switch, _DRAW_BG)
+    show_text = getattr(flyout, "show_text_switch", None)
+    if include_visibility and show_text is not None:
+        group_def.tag_member(show_text, _SHOW_TEXT)
     if include_placement:
         radios = getattr(flyout, "_pos_radios", None) or {}
         edges = radios.get("edges")

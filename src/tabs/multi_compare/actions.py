@@ -189,7 +189,9 @@ def _contribute_font_settings_flyout(toolbar, reg: ActionRegistry) -> None:
     title_key = "multi_compare.action.text_settings"
     contribute_flyout_search_actions(
         flyout,
-        index=font_settings_search(title_key, include_placement=False),
+        index=font_settings_search(
+            title_key, include_placement=False, include_visibility=True
+        ),
         prefix="multi_compare.font_settings.",
         owner_tab=OWNER,
         topic="labels",

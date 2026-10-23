@@ -28,9 +28,15 @@ class LabelsOverlaySource:
     LABEL_GLYPH_OVERSCAN_PX = 2.0
 
     def should_paint(self, composition) -> bool:
+        if composition is None:
+            return False
+        # Master switch from the text flyout: labels stay in the plan (so the
+        # styling survives a re-enable) but nothing is rasterized or drawn.
+        settings = getattr(composition, "label_settings", None)
+        if settings is not None and not bool(getattr(settings, "visible", True)):
+            return False
         return bool(
-            composition is not None
-            and any(
+            any(
                 layer.label is not None and layer.label.text
                 for layer in composition.layers
             )

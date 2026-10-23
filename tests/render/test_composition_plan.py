@@ -187,6 +187,87 @@ def test_native_size_accepts_numpy_layer_image():
     assert compute_native_canvas_size(root) == (500, 300)
 
 
+def test_native_size_includes_horizontal_split_gaps():
+    """Gaps eat into a split's inner extent, so the canvas must include them.
+
+    Falsification (pre-fix): the fraction-only formula returned 2560x800 and
+    the cells resolved to 1278x800, so a 1280x800 image was letterboxed by
+    1 px on top/bottom — the transparent rim that exports fill white.
+    """
+    root = SplitNode(
+        direction="h",
+        children=(
+            LayerNode(layer_id=1, image=_img(1280, 800)),
+            LayerNode(layer_id=2, image=_img(1280, 800)),
+        ),
+        weights=(1.0, 1.0),
+        gap_px=4,
+    )
+    assert compute_native_canvas_size(root) == (2564, 800)
+    plan = CompositionPlan(root=root, canvas_w=2564, canvas_h=800)
+    assert [layer.rect for layer in resolve_composition(plan).layers] == [
+        (0, 0, 1280, 800),
+        (1284, 0, 1280, 800),
+    ]
+
+
+def test_native_size_includes_vertical_split_gaps():
+    root = SplitNode(
+        direction="v",
+        children=(
+            LayerNode(layer_id=1, image=_img(1280, 800)),
+            LayerNode(layer_id=2, image=_img(1280, 800)),
+        ),
+        weights=(1.0, 1.0),
+        gap_px=10,
+    )
+    assert compute_native_canvas_size(root) == (1280, 1610)
+    plan = CompositionPlan(root=root, canvas_w=1280, canvas_h=1610)
+    assert [layer.rect for layer in resolve_composition(plan).layers] == [
+        (0, 0, 1280, 800),
+        (0, 810, 1280, 800),
+    ]
+
+
+def test_native_size_nested_gaps_keep_every_cell_native():
+    root = SplitNode(
+        direction="h",
+        children=(
+            SplitNode(
+                direction="v",
+                children=(
+                    LayerNode(layer_id=1, image=_img(640, 480)),
+                    LayerNode(layer_id=2, image=_img(640, 480)),
+                ),
+                weights=(1.0, 1.0),
+                gap_px=6,
+            ),
+            SplitNode(
+                direction="v",
+                children=(
+                    LayerNode(layer_id=3, image=_img(640, 480)),
+                    LayerNode(layer_id=4, image=_img(640, 480)),
+                ),
+                weights=(1.0, 1.0),
+                gap_px=6,
+            ),
+        ),
+        weights=(1.0, 1.0),
+        gap_px=6,
+    )
+    canvas = compute_native_canvas_size(root)
+    assert canvas == (1286, 966)
+    rects = [layer.rect for layer in resolve_composition(
+        CompositionPlan(root=root, canvas_w=canvas[0], canvas_h=canvas[1])
+    ).layers]
+    assert rects == [
+        (0, 0, 640, 480),
+        (0, 486, 640, 480),
+        (646, 0, 640, 480),
+        (646, 486, 640, 480),
+    ]
+
+
 def test_compositionplan_carries_fill_rgba():
     plan = CompositionPlan(
         root=LayerNode(layer_id=1, image=_img(10, 10)),

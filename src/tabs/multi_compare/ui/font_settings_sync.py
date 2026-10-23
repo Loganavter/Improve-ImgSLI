@@ -27,6 +27,7 @@ def sync_font_settings_flyout(widget) -> None:
         "edges",
         st.text_alpha_percent,
     )
+    widget.font_settings_flyout.set_labels_visible(st.visible)
 
 
 def toggle_font_settings_flyout(widget) -> None:
@@ -70,6 +71,8 @@ def on_font_settings_changed(
     opacity: int,
 ) -> None:
     settings = MultiCompareLabelSettings(
+        # Styling never turns the labels back on: the master switch owns that.
+        visible=bool(widget.state.label_settings.visible),
         font_size_percent=max(1, int(size)),
         font_weight=max(0, int(weight)),
         text_rgba=(
@@ -87,4 +90,12 @@ def on_font_settings_changed(
         draw_background=bool(draw_bg),
         text_alpha_percent=max(0, min(100, int(opacity))),
     )
+    widget.store.dispatch(actions.set_label_settings(settings))
+
+
+def on_labels_visibility_changed(widget, visible: bool) -> None:
+    """Master switch: hide/show every per-cell label (live and export)."""
+    from dataclasses import replace
+
+    settings = replace(widget.state.label_settings, visible=bool(visible))
     widget.store.dispatch(actions.set_label_settings(settings))

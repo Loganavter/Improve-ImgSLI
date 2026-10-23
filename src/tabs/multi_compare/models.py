@@ -66,6 +66,9 @@ LayoutNode = Union[LeafNode, SplitNode]
 class MultiCompareLabelSettings:
     """Camera-fixed filename label styling for multi-compare."""
 
+    #: Master switch: ``False`` hides every per-cell filename label (live and
+    #: export). Styling below is kept so re-enabling restores the same look.
+    visible: bool = True
     font_size_percent: int = 100
     font_weight: int = 0
     text_rgba: tuple[int, int, int, int] = (255, 255, 255, 255)

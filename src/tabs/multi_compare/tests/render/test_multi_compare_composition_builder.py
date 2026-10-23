@@ -63,8 +63,12 @@ def test_split_with_two_leaves_maps_to_split_node():
     assert isinstance(plan.root, CompSplitNode)
     assert plan.root.direction == "h"
     assert len(plan.root.children) == 2
-    # canvas should be 400 wide so each 1/2 cell fits 200px image
-    assert plan.canvas_w == 400
+    # canvas must be wide enough that each 1/2 cell fits the 200px image AND
+    # the default divider gap (visible, 4px) sits between them — the gap is
+    # part of the requirement, not a free constant (see
+    # compute_native_canvas_size; a gap-blind canvas letterboxes the cells by
+    # a few px and leaves a transparent/white rim on export).
+    assert plan.canvas_w == 404
     assert plan.canvas_h == 200
 
 

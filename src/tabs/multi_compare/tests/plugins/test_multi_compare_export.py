@@ -8,6 +8,7 @@ from PySide6.QtGui import QColor, QImage
 from tabs.multi_compare.models import (
     CompareSlot,
     LeafNode,
+    MultiCompareDividerSettings,
     MultiCompareState,
     SplitNode,
 )
@@ -245,3 +246,35 @@ def test_multi_compare_export_uses_focused_slot_as_full_frame():
     resolved = resolve_composition(plan)
     assert len(resolved.layers) == 1
     assert resolved.layers[0].rect == (0, 0, plan.canvas_w, plan.canvas_h)
+
+def test_multi_compare_native_canvas_leaves_no_letterbox_rim():
+    """Export canvas must cover the images exactly, gaps included.
+
+    The white rim the owner sees around a saved picture is the divider gap:
+    the old native-size formula ignored it, so every cell was a few px short
+    of the image aspect and the aspect-fit image left a transparent edge band
+    that export fills white (default background / JPEG flatten). Red-before:
+    this state produced canvas 2560x800 with 1278x800 cells and a 1 px rim.
+    """
+    from PIL import Image
+
+    state = MultiCompareState(
+        root=SplitNode(
+            direction="h",
+            children=[LeafNode(slot_id=1), LeafNode(slot_id=2)],
+            weights=[1.0, 1.0],
+        ),
+        slots=[_slot(1, 1280, 800), _slot(2, 1280, 800)],
+        divider_settings=MultiCompareDividerSettings(visible=True, thickness=4),
+    )
+    sources = {
+        1: Image.new("RGBA", (1280, 800), (200, 40, 40, 255)),
+        2: Image.new("RGBA", (1280, 800), (40, 200, 40, 255)),
+    }
+
+    plan = build_composition_plan(state, sources=sources)
+    assert (plan.canvas_w, plan.canvas_h) == (2564, 800)
+    assert [layer.rect for layer in resolve_composition(plan).layers] == [
+        (0, 0, 1280, 800),
+        (1284, 0, 1280, 800),
+    ]
