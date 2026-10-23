@@ -152,6 +152,21 @@ Text buttons:
 
 ---
 
+## Dialog field-label typography
+
+Field labels inside dialogs use the **app-registered `group-title` variant**
+(`ui/icon_manager.py`: 14 design px, regular), not the toolkit `body` default
+(12 px). Measured on the export dialog (2026-10-23): 12 px labels read visibly
+smaller than the input text, checkbox captions and buttons in the same dialog.
+The video editor's labels already used `group-title`; the shared builders
+(`src/ui/widgets/form_controls.py::OutputPathSection` and
+`src/plugins/export/dialog_sections.py`) now match it, so the image-export
+dialog and the video editor's Output tab stay in step. `group-title` also
+carries `elide=True`, which keeps a long translated label from forcing the
+dialog wider than its minimum.
+
+---
+
 ## Preview panes and pixmap sizeHints
 
 `QLabel.setPixmap` makes `sizeHint()` follow the pixmap. After CSD
