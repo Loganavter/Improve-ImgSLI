@@ -19,7 +19,6 @@ from PySide6.QtWidgets import QApplication
 
 from core.theme import DARK_THEME_PALETTE, LIGHT_THEME_PALETTE
 from sli_ui_toolkit.managers import ThemeManager
-from tabs.image_compare.icons import Icon
 from ui.widgets.scroll_value_button import ScrollValueButton
 
 LINE = QColor(229, 57, 53)
@@ -36,11 +35,11 @@ def _themed(qapp):
 
 def _button(qtbot, *, value: int, show_underline: bool = True) -> ScrollValueButton:
     button = ScrollValueButton(
-        icon=Icon.DIVIDER_WIDTH,
+        icon=None,
         show_underline=show_underline,
         min_value=0,
         max_value=10,
-        zero_icon=Icon.DIVIDER_HIDDEN,
+        zero_icon="divider_hidden",
     )
     button.setUnderlineColor(LINE)
     button.set_value(value, emit=False)

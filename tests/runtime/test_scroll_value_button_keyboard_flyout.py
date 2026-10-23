@@ -209,12 +209,13 @@ def test_up_inside_pill_leaves_without_stepping(host_button, qapp):
     assert button.get_value() == before, "Up inside the pill must not step the value"
 
 
-def test_underline_stays_visible_in_the_zero_state(qtbot):
-    """The underline is not tied to the value any more.
+def test_underline_hidden_in_the_zero_state(qtbot):
+    """The zero state hides the line, and a rebuild must not bring it back.
 
-    Owner rule (2026-10-19): the zero/`zero_icon` state changes what the
-    button *shows* (a hidden icon instead of a digit), never whether the
-    host-enabled underline is painted.
+    Owner rule (2026-10-23, superseding 2026-10-19): the underline shows the
+    divider/guide colour, so at the zero/``zero_icon`` state — where that
+    divider is not on canvas — it must not be painted. The host request
+    (``_underline_visible``) stays true so the line returns with the value.
     """
     button = ScrollValueButton(
         icon=None,
@@ -228,11 +229,14 @@ def test_underline_stays_visible_in_the_zero_state(qtbot):
     button.show()
     assert button._is_at_zero() is True
     assert button._underline_visible is True
-    assert button._show_underline is True
+    assert button._show_underline is False
 
     button._sync_regions()
 
-    assert button._show_underline is True, "the underline must survive a rebuild"
+    assert button._show_underline is False, "a rebuild must not resurrect the line"
+
+    button.set_value(4)
+    assert button._show_underline is True
 
 
 def test_enter_emits_right_click_instead_of_entering_edit_mode(host_button, qapp):
