@@ -11,6 +11,7 @@ import pytest
 from PySide6.QtCore import QSettings
 
 from tests.helpers.drain_until_stable import drain_until_stable
+from tests.helpers.frame_identity import assert_no_stale_paint
 
 from services.io.recent_projects import (
     SORT_NAME,
@@ -1717,31 +1718,19 @@ def test_grid_columns_are_final_in_the_first_frame_after_a_resize(
     )
     wide_columns = panel._items.grid_columns
 
-    paints: list[tuple[int, int]] = []
-
-    class _Watch(QObject):
-        def eventFilter(self, obj, event):  # noqa: N802
-            if obj is panel and event.type() == QEvent.Type.Paint:
-                paints.append(
-                    (panel._items.grid_columns, panel._items.resolve_grid_columns())
-                )
-            return False
-
-    watch = _Watch()
-    panel.installEventFilter(watch)
-    try:
-        win.resize(640, 1000)
-        for _ in range(2):
-            qapp.processEvents()
-    finally:
-        panel.removeEventFilter(watch)
+    paints = assert_no_stale_paint(
+        panel,
+        mutate=lambda: win.resize(640, 1000),
+        observe=lambda: (
+            panel._items.grid_columns,
+            panel._items.resolve_grid_columns(),
+        ),
+        qapp=qapp,
+    )
 
     assert paints, "the resize produced no panel paint to inspect"
-    assert panel._items.grid_columns < wide_columns, "resize did not change the column count"
-    stale = [(used, expected) for used, expected in paints if used != expected]
-    assert not stale, (
-        f"the panel painted {stale} (used columns, expected columns) — the first "
-        "frame after the resize still had the old grid"
+    assert panel._items.grid_columns < wide_columns, (
+        "resize did not change the column count"
     )
     panel.deleteLater()
     win.deleteLater()

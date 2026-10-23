@@ -20,6 +20,7 @@ from resources.translations import tr as app_tr
 from shared_toolkit.ui.layout_sizing import handle_application_font_change
 from sli_ui_toolkit.i18n import translatable_text, translatable_tooltip
 from sli_ui_toolkit.managers import SettleGate, scaled_px
+from sli_ui_toolkit.ui.pending_settle import PendingSettle, settle_on_paint
 from sli_ui_toolkit.theme import ThemeManager
 from sli_ui_toolkit.widgets import CustomLineEdit
 from ui.theming import polish_themed_dialog
@@ -51,6 +52,10 @@ class ExportDialog(ThemedDialog):
         self._on_set_favorite_dir = on_set_favorite_dir
         self.favorite_dir = dialog_state.favorite_dir
         self._export_options_cache: dict | None = None
+        # CSD mask after the deferred geometry lands: a 0-timer rebuilt it
+        # one frame late (corner arcs punched through the first frame). The
+        # paint boundary rebuilds it before those pixels go out.
+        self._csd_settle = PendingSettle()
 
         nw, nh = native_size if native_size and native_size[0] > 0 and native_size[1] > 0 else (0, 0)
         self._native_width = int(nw)
@@ -69,6 +74,7 @@ class ExportDialog(ThemedDialog):
             | Qt.WindowType.WindowCloseButtonHint
         )
         self.setSizeGripEnabled(True)
+        settle_on_paint(self, self._csd_settle)
 
         self._preview_source_pixmap: QPixmap | None = None
         # Cheap pixmap scale on pulse; quiet-period re-apply for final pane size.
@@ -515,7 +521,7 @@ class ExportDialog(ThemedDialog):
             pass
         # Deferred geometry may land after first show; rebuild CSD mask once
         # more on the next tick so corner arcs cannot punch through the body.
-        QTimer.singleShot(0, self._sync_csd_chrome_safe)
+        self._csd_settle.schedule(self, self._sync_csd_chrome_safe)
         # Finalize synchronously: showEvent runs before the first frame is
         # drawn, so the __init__ 0-timer would otherwise leave that frame at
         # the CSD-adjustSize size and reflow on the next tick.
