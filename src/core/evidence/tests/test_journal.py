@@ -24,6 +24,10 @@ test names the mutation it catches:
   payload loses the derived ``signal``.
 """
 
+# stale-test-refs: synthetic-ids — this file tests the journal reader, so every
+# spec id below is a placeholder, not a requirement in docs/spec/registry.yaml.
+# The private gate `scripts/check_stale_test_refs.py` honours this marker.
+
 from __future__ import annotations
 
 import json
