@@ -110,6 +110,48 @@ def _edit_divider(store, tab, sid, color):
 
 
 def test_chrome_survives_switch_away_and_back(qapp):
+    """Each session shows its OWN chrome across a switch — not the neighbour's.
+
+    s2 carries non-default chrome on purpose: a slot that still holds only the
+    factory defaults is not a user choice and takes the last-used fallback
+    (#568 — pinned separately by
+    ``test_defaults_only_slot_materializes_last_used``).
+    """
+    store = _Store()
+    s1 = store.add("mc1")
+    s2 = store.add("mc2")
+    store.active = s1
+    ctx = _ctx(store)
+    tab = MultiCompareTab()
+    tab.on_session_created(s1, ctx)
+    tab.on_active_session_changed(s1, ctx)
+    _edit_divider(store, tab, s1, EDITED_COLOR)
+    store.sessions[s2].state_slots[_STATE_SLOT] = replace(
+        MultiCompareState(),
+        divider_settings=MultiCompareDividerSettings(
+            color_rgba=DEFAULT_COLOR, thickness=9
+        ),
+    )
+
+    tab.on_active_session_changed(s2, ctx)
+    bound = tab._session_state.get("divider")
+    assert bound["thickness"] == 9
+    assert bound["color_rgba"] == list(DEFAULT_COLOR)
+
+    tab.on_active_session_changed(s1, ctx)
+    assert _divider_color(store, s1) == EDITED_COLOR
+    assert tab._session_state.get("divider")["color_rgba"] == list(EDITED_COLOR)
+    assert tab._session_state.get("divider")["thickness"] == 4
+
+
+def test_defaults_only_slot_materializes_last_used(qapp):
+    """#568: a defaults-only slot must not shadow the last-used chrome.
+
+    ``apply_from_slot`` takes the fallback, but the MC slot is the widget's
+    source of truth: activation therefore seeds the fallback INTO the slot, or
+    the canvas keeps painting the defaults while the facade reports the config.
+    Red-before: the slot stayed at the defaults and the two disagreed.
+    """
     store = _Store()
     s1 = store.add("mc1")
     s2 = store.add("mc2")
@@ -122,12 +164,14 @@ def test_chrome_survives_switch_away_and_back(qapp):
     store.sessions[s2].state_slots[_STATE_SLOT] = MultiCompareState()
 
     tab.on_active_session_changed(s2, ctx)
-    assert _divider_color(store, s2) == DEFAULT_COLOR
-    assert tab._session_state.get("divider")["color_rgba"] == list(DEFAULT_COLOR)
 
-    tab.on_active_session_changed(s1, ctx)
-    assert _divider_color(store, s1) == EDITED_COLOR
     assert tab._session_state.get("divider")["color_rgba"] == list(EDITED_COLOR)
+    # the widget's source of truth carries the same chrome, not the defaults
+    assert _divider_color(store, s2) == EDITED_COLOR
+    # it is a restore seed, not a user edit: s1's own slot is untouched
+    assert _divider_color(store, s1) == EDITED_COLOR
+    # and the seed does not rewrite the image/slot scene
+    assert store.get_session_state_slot(_STATE_SLOT, session_id=s2).slots == []
 
 
 def test_new_session_seeds_from_last_used(qapp):
