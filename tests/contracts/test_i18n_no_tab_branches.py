@@ -31,6 +31,12 @@ Violations:
   * **orphans** — a shared key referenced by nothing at all: dead
     translation, remove it from the shared tree.
 
+The scan covers the app's ``src/`` **and the installed ``sli_ui_toolkit``
+package**: the toolkit resolves host keys through the same catalogs
+(calendar weekday labels, switch On/Off), so a scan limited to ``src/``
+reported live translations as orphans. Toolkit files count as ``shared``
+zone (they live outside ``src/tabs/``).
+
 Test files are intentionally excluded: the contract is about what
 production code consumes at runtime.
 """
@@ -136,18 +142,48 @@ def _template_strings(node: ast.AST):
         ) + "$"
 
 
+def _toolkit_source() -> Path | None:
+    """The installed ``sli_ui_toolkit`` package source, when it is importable.
+
+    The shared tree is consumed by the toolkit too: its ``tr()`` resolves host
+    keys (``common.calendar.weekday.*`` in the calendar widget,
+    ``common.switch.on`` in the switch). A scan limited to ``src/`` cannot see
+    those references and reports live translations as orphans — that is how
+    "dead keys" get deleted while a toolkit widget still asks for them.
+    """
+    try:
+        import importlib.util
+
+        spec = importlib.util.find_spec("sli_ui_toolkit")
+    except (ImportError, ValueError):
+        return None
+    if spec is None or not spec.origin:
+        return None
+    return Path(spec.origin).parent
+
+
 def _scan_consumers() -> tuple[dict[str, set[Path]], dict[str, set[Path]]]:
-    """(literal key -> files, template regex -> files) over production code."""
+    """(literal key -> files, template regex -> files) over production code.
+
+    Scans the app's ``src/`` and the installed toolkit package: the toolkit is
+    shared code (``_zone_of`` classifies anything outside ``src/tabs/`` as
+    ``shared``), so its references count exactly like host references.
+    """
     literals: dict[str, set[Path]] = {}
     templates: dict[str, set[Path]] = {}
-    for py in _production_py(SRC):
-        tree = parse(py)
-        assert tree is not None, f"unparsable {py}"
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Constant) and isinstance(node.value, str):
-                literals.setdefault(node.value, set()).add(py)
-            for template in _template_strings(node):
-                templates.setdefault(template, set()).add(py)
+    roots = [SRC]
+    toolkit = _toolkit_source()
+    if toolkit is not None:
+        roots.append(toolkit)
+    for root in roots:
+        for py in _production_py(root):
+            tree = parse(py)
+            assert tree is not None, f"unparsable {py}"
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Constant) and isinstance(node.value, str):
+                    literals.setdefault(node.value, set()).add(py)
+                for template in _template_strings(node):
+                    templates.setdefault(template, set()).add(py)
     return literals, templates
 
 
