@@ -223,6 +223,15 @@ def estimate_prelayout_width(
 
 
 def widget_width_hint(widget: QWidget | None, *, default: int = 0) -> int:
+    """Width hint that RESIZES ``widget`` to it (``adjustSize``).
+
+    Only safe on widgets whose live size is irrelevant (not yet laid out in a
+    form). On a live widget it collapses the widget to ``sizeHint()`` as a
+    side effect — ``CustomLineEdit`` reports its text width (a 40 px floor when
+    empty), so measuring the export form this way visibly shrank its comment
+    field on every geometry pass. Measurement-only paths use
+    :func:`widget_size_hint`.
+    """
     if widget is None:
         return default
     widget.ensurePolished()
@@ -231,6 +240,7 @@ def widget_width_hint(widget: QWidget | None, *, default: int = 0) -> int:
 
 
 def widget_height_hint(widget: QWidget | None, *, default: int = 0) -> int:
+    """Height hint that RESIZES ``widget`` to it — see :func:`widget_width_hint`."""
     if widget is None:
         return default
     widget.ensurePolished()
@@ -435,12 +445,22 @@ def max_visible_widget_width_hint(
     widgets: Iterable[QWidget | None],
     *,
     default: int = 0,
+    adjust: bool = True,
 ) -> int:
+    """Widest contributing widget hint.
+
+    ``adjust=False`` measures with :func:`widget_size_hint` and never touches
+    the widgets' live geometry — required on a laid-out form (``adjust=True``
+    collapses every child to its own hint; see :func:`widget_width_hint`).
+    """
     width = default
     for widget in widgets:
         if widget is None or not _widget_contributes_to_size(widget):
             continue
-        width = max(width, widget_width_hint(widget))
+        if adjust:
+            width = max(width, widget_width_hint(widget))
+        else:
+            width = max(width, widget_size_hint(widget)[0])
     return width
 
 
@@ -450,10 +470,15 @@ def sum_visible_widget_height_hint(
     *,
     spacing: int = 0,
     default: int = 0,
+    adjust: bool = True,
 ) -> int:
-    """Stacked height of non-hidden widgets plus ``spacing`` between them."""
+    """Stacked height of non-hidden widgets plus ``spacing`` between them.
+
+    ``adjust=False`` is the measurement-only variant (no live resize); see
+    :func:`max_visible_widget_width_hint`.
+    """
     heights = [
-        widget_height_hint(widget)
+        widget_height_hint(widget) if adjust else widget_size_hint(widget)[1]
         for widget in widgets
         if widget is not None and _widget_contributes_to_size(widget)
     ]

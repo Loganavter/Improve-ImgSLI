@@ -19,8 +19,7 @@ from shared_toolkit.ui.layout_sizing import (
     clamp_to_screen,
     max_visible_widget_width_hint,
     sum_visible_widget_height_hint,
-    widget_height_hint,
-    widget_width_hint,
+    widget_size_hint,
 )
 from sli_ui_toolkit.managers import scaled_px
 
@@ -89,6 +88,23 @@ def export_height_screen_margin() -> int:
     return scaled_px(_HEIGHT_SCREEN_MARGIN_PX)
 
 
+def _width_hint(widget) -> int:
+    """Intrinsic width with no side effect on a laid-out widget.
+
+    ``layout_sizing.widget_width_hint`` calls ``adjustSize()``: it *resizes*
+    the widget to its hint. On this form that collapsed the comment
+    ``CustomLineEdit`` (hint = its text width, 40 px when empty) on every
+    geometry pass — theme/language/format/font changes — until Qt re-ran the
+    parent layout. Measuring must never move the widgets it measures.
+    """
+    return widget_size_hint(widget)[0]
+
+
+def _height_hint(widget) -> int:
+    """Intrinsic height, side-effect free — see :func:`_width_hint`."""
+    return widget_size_hint(widget)[1]
+
+
 def export_geometry_policy(*, force_resize: bool = False) -> GeometryApplyPolicy:
     """The dialog's geometry policy, with floor/bounds resolved at THIS call.
 
@@ -132,8 +148,8 @@ def compute_export_form_width(dialog) -> int:
     form_frame = getattr(dialog, "export_form_frame", None)
     return max(
         export_form_min_width(),
-        widget_width_hint(form_frame),
-        max_visible_widget_width_hint(_export_form_widgets(dialog)),
+        _width_hint(form_frame),
+        max_visible_widget_width_hint(_export_form_widgets(dialog), adjust=False),
     )
 
 
@@ -143,8 +159,9 @@ def compute_export_form_height(dialog) -> int:
     stacked = sum_visible_widget_height_hint(
         _export_form_widgets(dialog),
         spacing=export_form_row_spacing(),
+        adjust=False,
     )
-    frame_hint = widget_height_hint(form_frame)
+    frame_hint = _height_hint(form_frame)
     return max(stacked, frame_hint) + export_frame_padding()
 
 
@@ -156,11 +173,11 @@ def compute_export_dialog_size(dialog) -> tuple[int, int]:
     # locks the dialog minimum around 300–700px.
     preview_width = max(
         export_preview_min_width(),
-        widget_width_hint(getattr(dialog, "export_preview_title", None)),
+        _width_hint(getattr(dialog, "export_preview_title", None)),
     )
     preview_height = max(
         export_preview_min_height()
-        + widget_height_hint(getattr(dialog, "export_preview_title", None))
+        + _height_hint(getattr(dialog, "export_preview_title", None))
         + export_frame_padding(),
         export_preview_min_height() + export_frame_padding(),
     )
@@ -169,7 +186,7 @@ def compute_export_dialog_size(dialog) -> tuple[int, int]:
     form_height = compute_export_form_height(dialog)
 
     title_bar = getattr(dialog, "_csd_title_bar", None)
-    title_bar_height = widget_height_hint(title_bar)
+    title_bar_height = _height_hint(title_bar)
 
     total_width = HorizontalPaneMinimum(
         left_min=preview_width + export_frame_padding(),
@@ -235,7 +252,7 @@ def apply_export_dialog_geometry(dialog, *, force_resize: bool = False) -> None:
         output_section.setMinimumHeight(
             max(
                 output_section.minimumHeight(),
-                widget_height_hint(output_section),
+                _height_hint(output_section),
             )
         )
 
@@ -248,7 +265,7 @@ def apply_export_dialog_geometry(dialog, *, force_resize: bool = False) -> None:
             QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed
         )
         action_bar.setMinimumHeight(
-            max(action_bar.minimumHeight(), widget_height_hint(action_bar))
+            max(action_bar.minimumHeight(), _height_hint(action_bar))
         )
 
     width, height = compute_export_dialog_size(dialog)
