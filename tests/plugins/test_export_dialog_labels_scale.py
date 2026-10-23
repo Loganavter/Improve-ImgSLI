@@ -64,7 +64,7 @@ def test_export_dialog_labels_scale_live(qapp: QApplication):
     # Re-apply lands on the coalesced metrics channel's next tick, not inside
     # set_factor — drain before asserting.
     drain_until_stable(qapp, lambda: _label_size(dialog.fmt_label))
-    assert _label_size(dialog.fmt_label) == scaled_px(12) == 18
+    assert _label_size(dialog.fmt_label) == scaled_px(14) == 21
 
     UiScale.get_instance().set_factor(1.0)
     drain_until_stable(qapp, lambda: _label_size(dialog.fmt_label))
@@ -96,8 +96,8 @@ def test_output_path_section_labels_scale_live(qapp: QApplication):
         qapp,
         lambda: (_label_size(section.dir_label), _label_size(section.filename_label)),
     )
-    assert _label_size(section.dir_label) == scaled_px(12)
-    assert _label_size(section.filename_label) == scaled_px(12)
+    assert _label_size(section.dir_label) == scaled_px(14)
+    assert _label_size(section.filename_label) == scaled_px(14)
 
     host.close()
 
