@@ -28,6 +28,8 @@ logger = logging.getLogger("ImproveImgSLI.import_warmup")
 DEFAULT_MODULES: tuple[str, ...] = (
     "scipy.stats",
     "skimage.metrics",
+    "skimage.feature",
+    "skimage.util",
 )
 
 
