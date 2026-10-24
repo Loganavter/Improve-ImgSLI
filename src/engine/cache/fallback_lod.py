@@ -64,12 +64,21 @@ def resolve_fallback_lod(
     fallback plan comes back empty (the old content was fully evicted or
     never resident), atomicity is moot -- nothing old is left to hold the
     screen -- so the partial ``current_items`` are drawn rather than a blank
-    frame. Callers opt in explicitly: image_compare sets ``atomic=True``
-    for content swaps AND for level transitions with a complete baseline
-    (one tier per frame, no mixed grids — live trace 2026-09-20 showed
-    progressive reveal flashing resolution-step seams at every old/new
-    boundary during sustained zoom); multi_compare keeps the default
-    ``False`` and its progressive reveal."""
+    frame. Callers opt in explicitly, and not uniformly. image_compare passes
+    ``atomic=decision_atomic``
+    (``src/tabs/image_compare/canvas/rhi_renderer/use_cases/fallback.py:360-369``),
+    which is ``True`` for a content swap, for a LOD level transition with a
+    complete baseline (``_atomic_level_hold``, :227-232), and for a hires
+    flip (``_hires_flip_hold``, :233-241; one tier per frame, no mixed grids
+    -- live trace 2026-09-20 showed progressive reveal flashing
+    resolution-step seams at every old/new boundary during sustained zoom).
+    multi_compare passes ``atomic=_is_level_hold(old_key, key)``
+    (``tabs/multi_compare/scene/passes/base_images.py:696-704``): atomic only
+    on a same-slot LOD tier change with a tracked baseline
+    (``_is_level_hold``, :222-233), with no content-swap branch of its own, so
+    its other cases keep the progressive reveal.
+    ``engine/gpu/tiled_image_view.py:952-960`` passes no ``atomic`` at all
+    (default ``False``)."""
     if not more_pending and not cascade_pending and current_items:
         return key, current_items
     if last_good_key is not None and last_good_key != key:
