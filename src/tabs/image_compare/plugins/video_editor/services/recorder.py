@@ -119,6 +119,28 @@ class Recorder(QObject):
         return self.is_paused
 
     def capture_frame(self, force_advance_frame: bool = False):
+        import time as _time
+
+        _t0 = _time.perf_counter()
+        try:
+            self._capture_frame_impl(force_advance_frame)
+        finally:
+            _dt_ms = (_time.perf_counter() - _t0) * 1000.0
+            _n = getattr(self, "_capture_call_count", 0)
+            self._capture_call_count = _n + 1
+            # First call is the cold path (alias registry, caches); anything
+            # over half the 60 Hz budget is a per-frame hiccup.
+            if _n == 0 or _dt_ms > 8.0:
+                from tabs.image_compare.debug import ic_perf_debug as _perf
+
+                _perf(
+                    "capture_frame call=%d took=%.1fms force=%s",
+                    _n,
+                    _dt_ms,
+                    force_advance_frame,
+                )
+
+    def _capture_frame_impl(self, force_advance_frame: bool = False):
         if not self.store or self.is_paused:
             # Throttled skip log — per-frame would flood at 60fps
             if int(time.time() * 2) % 7 == 0:  # ~0.3 Hz
