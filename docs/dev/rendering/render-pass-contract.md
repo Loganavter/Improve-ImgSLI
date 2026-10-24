@@ -56,10 +56,14 @@ class MyPass(CanvasRenderPass):
 pass is a `CanvasRenderPass` (`src/ui/canvas_infra/scene/pass_contract.py`); there is no other pass base class.
 For multi-layer frames the applicator flattens `src/ui/canvas_presentation/composition.py` `CompositionPlan`
 into `ResolvedComposition` so overlay passes read gaps/rects from the immutable plan, not widget state.
-Comparison letterbox geometry is owned once by
-`src/tabs/image_compare/canvas/texture_parts/base_images.py`
-(`update_common_letterbox_geometry` — eager `max(w1,w2), max(h1,h2)`), not by passes;
-see [rendering-model.md](rendering-model.md) and `plan-comparison-letterbox` (private, `improve-imgsli-internal-docs` repo, `docs/dev/investigations/`).
+Comparison letterbox geometry is owned once by `update_common_letterbox_geometry`
+in `src/engine/cache/display_tier_service.py:359` (eager `max(w1,w2), max(h1,h2)`
+envelope, one `resolve_canvas_content_geometry` call for both sides, no HOLD) —
+not by passes. The tab module
+`src/tabs/image_compare/canvas/texture_parts/base_images.py:114` is only a thin
+hook-binding wrapper over it (it forwards to the service with that tab's
+`DisplayTierHooks`), so editing the wrapper is not editing the geometry rule.
+See [rendering-model.md](rendering-model.md) and `plan-comparison-letterbox` (private, `improve-imgsli-internal-docs` repo, `docs/dev/investigations/`).
 
 Rules:
 - mode filtering is handled centrally by the render executor
