@@ -9,9 +9,9 @@ if TYPE_CHECKING:
 
 
 def project_settings(owner: "MainWindowProjectIo"):
-    from PySide6.QtCore import QSettings
+    from core.plugin_system.settings import canonical_settings
 
-    return QSettings("improve-imgsli", "improve-imgsli")
+    return canonical_settings()
 
 
 def _default_documents_dir(owner: "MainWindowProjectIo") -> str:

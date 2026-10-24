@@ -320,9 +320,9 @@ class LiveVerbMethodsMixin:
     def _read_setting(self, key: str) -> str | None:
         """The persisted value of *key*, or ``None`` when unset/unreadable."""
         try:
-            from PySide6.QtCore import QSettings
+            from core.plugin_system.settings import canonical_settings
 
-            raw = QSettings("improve-imgsli", "improve-imgsli").value(key)
+            raw = canonical_settings().value(key)
         except Exception:
             return None
         text = str(raw).strip() if raw is not None else ""
@@ -352,9 +352,9 @@ class LiveVerbMethodsMixin:
     def _persist_setting(self, key: str, value: str) -> None:
         """Persist via the app's own QSettings scope (same keys Phase 1 wrote)."""
         try:
-            from PySide6.QtCore import QSettings
+            from core.plugin_system.settings import canonical_settings
 
-            settings = QSettings("improve-imgsli", "improve-imgsli")
+            settings = canonical_settings()
             settings.setValue(key, value)
             settings.sync()
         except Exception as exc:

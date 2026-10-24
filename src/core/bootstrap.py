@@ -184,7 +184,9 @@ class ApplicationContext:
         self.thread_pool.setMaxThreadCount(4)
 
     def _load_persistent_state(self):
-        self.settings_manager = SettingsManager("improve-imgsli", "improve-imgsli")
+        from core.plugin_system.settings import SETTINGS_APP, SETTINGS_ORG
+
+        self.settings_manager = SettingsManager(SETTINGS_ORG, SETTINGS_APP)
         self.settings_manager.load_all_settings(self.store)
         # Apply the persisted chrome scale before any widget is constructed:
         # scaled_px()/UiScale read sites bake the factor in at build time

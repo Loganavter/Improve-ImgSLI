@@ -6,17 +6,35 @@ from typing import Any
 
 from PySide6.QtCore import QSettings
 
+from core.settings_migration import (
+    LEGACY_SETTINGS_APP,
+    LEGACY_SETTINGS_ORG,
+    migrate_settings_once,
+)
+
 # The ONE org/app pair the whole app persists under (``SettingsManager`` is
 # constructed with exactly these names from ``core.bootstrap`` and
 # ``__main__``). Hand-rolled ``QSettings()`` call sites silently created a
 # SECOND store ("Improve ImgSLI" defaults) that the settings manager never
 # read or backed up — always resolve through ``canonical_settings``.
-SETTINGS_ORG = "improve-imgsli"
-SETTINGS_APP = "improve-imgsli"
+SETTINGS_ORG = "BlinkTable"
+SETTINGS_APP = "BlinkTable"
+
+# The pre-rename identity. Users upgrade in place, so the one-way copy in
+# ``core.settings_migration`` must run before the first read of the pair
+# above — re-exported here (single home for the literals) so a caller never
+# spells them out again.
 
 
 def canonical_settings() -> QSettings:
-    """Return the app's single QSettings store (canonical org/app pair)."""
+    """Return the app's single QSettings store (canonical org/app pair).
+
+    Runs the one-way legacy migration first: every read of the new namespace
+    goes through this factory (or ``SettingsManager``), so no code path can
+    observe an empty new store while the old one still holds the user's
+    settings. The migration is cached per process — this is a dict check.
+    """
+    migrate_settings_once()
     return QSettings(SETTINGS_ORG, SETTINGS_APP)
 
 

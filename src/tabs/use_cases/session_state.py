@@ -39,6 +39,7 @@ from typing import Any, Callable
 
 from PySide6.QtCore import QSettings
 
+from core.plugin_system.settings import SETTINGS_APP, SETTINGS_ORG
 from core.state_management.session_state_slots import (
     SessionStateSet,
     register_session_state_slot,
@@ -47,8 +48,10 @@ from core.state_management.session_state_slots import (
 
 logger = logging.getLogger("ImproveImgSLI")
 
-_QS_ORG = "improve-imgsli"
-_QS_APP = "improve-imgsli"
+# Aliases kept so existing call sites (and any importer of these names) keep
+# working; the canonical pair is the single source of the persisted identity.
+_QS_ORG = SETTINGS_ORG
+_QS_APP = SETTINGS_APP
 
 _SUPPORTED_TYPES = (bool, str, int, float, dict, list)
 

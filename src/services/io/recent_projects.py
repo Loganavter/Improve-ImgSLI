@@ -14,8 +14,6 @@ from typing import Any, Iterable, Sequence
 
 logger = logging.getLogger("ImproveImgSLI")
 
-_SETTINGS_ORG = "improve-imgsli"
-_SETTINGS_APP = "improve-imgsli"
 _SETTINGS_KEY = "recent_projects"
 _VIEW_KEY = "session_picker.recent.view"
 _SORT_KEY = "session_picker.recent.sort"
@@ -101,9 +99,11 @@ def _now_iso() -> str:
 
 
 def _settings():
-    from PySide6.QtCore import QSettings
+    # Resolves through the canonical pair (one store for the whole app); the
+    # import stays local so this module never pulls Qt in at import time.
+    from core.plugin_system.settings import canonical_settings
 
-    return QSettings(_SETTINGS_ORG, _SETTINGS_APP)
+    return canonical_settings()
 
 
 def _normalize_path(path: str | Path) -> str:

@@ -237,8 +237,9 @@ def main():
     selected_rhi_backend = args.rhi_backend
     if selected_rhi_backend is None:
         try:
-            from PySide6.QtCore import QSettings
-            qs = QSettings("improve-imgsli", "improve-imgsli")
+            from core.plugin_system.settings import canonical_settings
+
+            qs = canonical_settings()
             saved = str(qs.value("rhi_backend", "") or "").strip().lower()
             if saved and saved in supported_rhi_backend_names():
                 selected_rhi_backend = saved
@@ -257,7 +258,9 @@ def main():
         app_instance = QApplication.instance()
         if not app_instance:
             app_instance = QApplication(sys.argv)
-        settings_manager = SettingsManager("improve-imgsli", "improve-imgsli")
+        from core.plugin_system.settings import SETTINGS_APP, SETTINGS_ORG
+
+        settings_manager = SettingsManager(SETTINGS_ORG, SETTINGS_APP)
 
         if args.enable_logging:
             settings_manager._save_setting("debug_mode_enabled", True)
