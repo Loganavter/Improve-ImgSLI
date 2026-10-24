@@ -100,12 +100,15 @@ TRIAGE_PRIORITY = 2
 PROXY_BATCH_PRIORITY = 2
 BACKGROUND_THUMB_PRIORITY = 0
 
-# Dedicated pool sizing over os.cpu_count(): floor 4 so a small folder
-# still overlaps thumb decode + triage + proxy batch + one VLM call
-# without serializing single-item latency; cap 8 because PIL decodes are
-# CPU-bound (no gain past cores) and each in-flight proxy holds <= ~3 MB
-# plus thumb decode buffers — more threads only grow peak RSS against
-# the pool budget shared with the rest of the app.
+# Dedicated pool sizing. The UPPER end is the provider's judge concurrency
+# (``AiSettings.judge_concurrency``, default 3, clamp 1..8 — never
+# ``os.cpu_count()``: a shared-pool provider must not be hammered by one thread
+# per CPU). The FLOOR stays 4 so a small folder still overlaps thumb decode +
+# triage + proxy batch + one VLM call without serializing single-item latency;
+# the pool is also the thumbnail lane, and each in-flight proxy holds <= ~3 MB
+# plus thumb decode buffers, so the cap stays 8 (peak RSS against the pool
+# budget shared with the rest of the app). The number that actually reaches the
+# provider is ``scheduler.judge_concurrency()``, enforced per send.
 _GALLERY_SCHED_MIN_THREADS = 4
 _GALLERY_SCHED_MAX_THREADS = 8
 
@@ -1334,13 +1337,47 @@ class GalleryController:
         # no payload, and freezing on entry dropped the paid VLM axis-set answer
         # for the whole generation (plan-gallery-ai-judgement J3). The stamp lives
         # at the one site that builds a request (``ai_analyze``'s MISS branch).
+        #
+        # Run budget (board 2026-10-24): the ESTIMATE is stated here, before the
+        # per-card loop schedules its first worker. Upper bound by design ("up to
+        # N x k calls") — the cards that hit the disk cache spend nothing.
+        from tabs.image_gallery.use_cases.action_context import BACKEND_AI
+        from tabs.image_gallery.use_cases import judge_budget as _judge_budget
+
+        if getattr(ctx, "backend", None) == BACKEND_AI:
+            _judge_budget.begin_judge_run(self, len(getattr(ctx, "targets", ()) or ()))
         return _ai_analysis.analyze(self, ctx)
 
     def reanalyze(self, ctx):
         """Force a fresh analysis of ``ctx.targets`` (cache bypass)."""
         from tabs.image_gallery.use_cases import ai_analysis as _ai_analysis
+        from tabs.image_gallery.use_cases import judge_budget as _judge_budget
+        from tabs.image_gallery.use_cases.action_context import BACKEND_AI
 
+        if getattr(ctx, "backend", None) == BACKEND_AI:
+            # A re-analyze MISSES by definition, so the target count IS the
+            # number of cards that will ask for a call (still an upper bound:
+            # the sampling lane may merge after the first draw).
+            _judge_budget.begin_judge_run(self, len(getattr(ctx, "targets", ()) or ()))
         return _ai_analysis.reanalyze(self, ctx)
+
+    @property
+    def judge_run_continue_available(self) -> bool:
+        """True when a call ceiling stopped the run and cards are left over.
+
+        The continue affordance's state (board 2026-10-24): a stopped run parks
+        the cards it refused, and this is True exactly while that list is
+        non-empty. With ``judge_run_call_ceiling == 0`` it is always False.
+        """
+        from tabs.image_gallery.use_cases import judge_budget as _judge_budget
+
+        return _judge_budget.judge_run_continue_available(self)
+
+    def continue_judge_run(self) -> bool:
+        """Continue the stopped judge run over the cards the ceiling refused."""
+        from tabs.image_gallery.use_cases import judge_budget as _judge_budget
+
+        return _judge_budget.continue_judge_run(self)
 
     def analyze_item_by_path(self, path: Path):
         """Deprecated point adapter — builds ``targets=(path,)`` and analyzes."""

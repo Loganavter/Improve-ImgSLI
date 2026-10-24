@@ -1148,11 +1148,11 @@
       "path": "src/tabs/image_gallery/use_cases/scheduler.py",
       "limit": 500,
       "marker": "Audit-Meta:",
-      "raw": "pattern=thin-owner-target size=exempt reason=\"one bounded scheduler — dedicated pool + priority lanes + pausable background queue sharing owner counters\"",
+      "raw": "pattern=thin-owner-target size=exempt reason=\"one bounded scheduler — dedicated pool + priority lanes + the pausable background thumb queue + the AI provider gate/run-level 429 pause, all sharing the owner counters\"",
       "parsed": {
         "pattern": "thin-owner-target",
         "size": "exempt",
-        "reason": "one bounded scheduler — dedicated pool + priority lanes + pausable background queue sharing owner counters"
+        "reason": "one bounded scheduler — dedicated pool + priority lanes + the pausable background thumb queue + the AI provider gate/run-level 429 pause, all sharing the owner counters"
       }
     },
     {

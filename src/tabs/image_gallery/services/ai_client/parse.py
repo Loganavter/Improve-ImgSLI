@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import re
 from datetime import datetime, timezone
+from statistics import median
 
 from tabs.image_gallery.models import AiAnalysisResult
 
@@ -375,6 +376,29 @@ def merge_samples(results) -> AiAnalysisResult:
         axis_entries=judge_entries,
         axis_samples=tuple(draws),
     )
+
+
+def median_drift(draws, axes=None) -> dict[str, float]:
+    """How far the NEWEST draw row moved the per-axis median (pure, total).
+
+    ``draws`` = the ``{axis: score}`` rows ``merge_samples`` carries, in draw
+    order; per axis scored twice, ``|median(all) - median(all but the newest)|``
+    = the movement just made. ``axes`` filters names; <2 rows or no twice-scored
+    axis ⇒ ``{}``. Never raises (a non-numeric / missing score is skipped).
+    """
+    rows = [row for row in (draws or ()) if isinstance(row, dict)]
+    if len(rows) < 2: return {}  # no earlier row to compare = no movement
+    wanted = None if axes is None else {str(a).strip().lower() for a in axes}
+    drift: dict[str, float] = {}
+    for axis, latest in rows[-1].items():
+        if wanted is not None and str(axis).strip().lower() not in wanted:
+            continue
+        try:
+            seen = [float(row[axis]) for row in rows[:-1] if axis in row]
+            drift[str(axis)] = abs(median(seen + [float(latest)]) - median(seen))
+        except (KeyError, TypeError, ValueError):
+            continue
+    return drift
 
 
 def parse_response(raw: dict, *, model: str, profile=None) -> AiAnalysisResult:

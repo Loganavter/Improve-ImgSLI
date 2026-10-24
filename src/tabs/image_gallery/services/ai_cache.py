@@ -25,6 +25,15 @@ until ``clear_all`` / the gallery's "Reset metrics cache" deletes it.
 The identity never contains secrets: ``api_key`` is excluded from the key and
 from the cached JSON (the scorecard is not a credential store).
 
+Sampling depth (``effective_k``) is part of the identity but NOT of the filename
+discriminator: a REQUEST's identity carries its full budget in ``effective_k``
+(the declared cap), while a STORED payload carries the number of draws that
+actually produced the scorecard (the adaptive stop may settle early). A stored
+entry thinner than the request's budget is a MISS — a 1-draw scorecard is never
+served for a cap-3 request — while the same configuration at the same or a
+larger depth is a HIT. ``k`` stays the declared cap, so the two are never
+conflated.
+
 Stage 3: VLM tie-breaks / compare briefs are cached alongside this file via
 ``tabs.image_gallery.services.vlm_cache`` (key = hash(paths+mtime), one per
 pair). Filtering (``filtering.py``) now searches both analysis tags and brief
@@ -56,7 +65,10 @@ logger = logging.getLogger("ImproveImgSLI")
 #: by the old ``controller._merge_measured_metrics`` — i.e. LOCAL DETECTOR values,
 #: not the VLM's. Serving those as the AI-domain read would be a provenance lie,
 #: so an older-than-current entry is treated as a cache MISS and re-analyzed.
-AI_CACHE_VERSION = 3
+#: v4 = the identity carries ``effective_k`` (how many draws actually produced
+#: the scorecard, vs the request's declared cap): a pre-v4 entry cannot say its
+#: depth, so it must not be served for a budgeted request.
+AI_CACHE_VERSION = 4
 
 #: Prompt/schema revision of the analyze request. Bump this whenever the prompt
 #: text or the expected response schema changes: every cached scorecard becomes a
@@ -80,6 +92,13 @@ PROMPT_SCHEMA_VERSION = 4
 #: gate GA4): one sample of a stochastic judge is not a measurement, so a k=1
 #: scorecard and the median of k=3 must never share an entry — "reproducible
 #: within a stated tolerance" is only checkable if the draw is identified.
+#:
+#: ``effective_k`` is the DEPTH of that sampling: the request declares its full
+#: budget there (the cap), a stored payload records how many draws actually
+#: produced the scorecard. It is compared directionally (a stored depth thinner
+#: than the request's budget is a MISS) and deliberately excluded from the
+#: filename digest, so ONE entry per configuration is re-used at the depth it
+#: actually reached.
 _IDENTITY_FIELDS = (
     "model",
     "base_url",
@@ -87,6 +106,7 @@ _IDENTITY_FIELDS = (
     "profile",
     "reasoning_effort",
     "k",
+    "effective_k",
     "temperature",
     "seed",
     "prompt_schema_version",
@@ -100,14 +120,24 @@ _TEXT_IDENTITY_FIELDS = (
     "profile",
     "reasoning_effort",
     "k",
+    "effective_k",
     "temperature",
     "seed",
 )
 
-#: Default draw count: ONE. The owner has not set a cost ceiling, so a sample
-#: multiplier is never taken silently — k>1 must be a declared setting
-#: (``AiSettings.sample_count``) and the trace states its cost.
+#: Default draw count when the caller DOES read settings but the field is
+#: missing: the user's declared ceiling (``AiSettings.sample_count``). One
+#: sample of a stochastic judge is not a measurement, so the multiplier is
+#: never taken silently — k>1 is a declared setting and the trace states its
+#: cost.
 DEFAULT_SAMPLE_COUNT = 3
+
+#: Declared draw budget when the caller passes NO settings at all. The identity
+#: must not claim a budget nobody read: a fabricated k=3 would key its own entry
+#: shape and would declare a need the request never had. ONE is the only honest
+#: claim, and as a *request* it accepts any scorecard that at least one draw
+#: produced.
+UNKNOWN_SAMPLE_COUNT = 1
 
 #: Defaults for the optional sampling knobs (0 = "not sent", the backend's own
 #: default draw). They are part of the identity even when unset, so the shape of
@@ -213,6 +243,7 @@ def analysis_cache_identity(
     k: int | None = None,
     temperature=None,  # type: ignore[no-untyped-def]
     seed=None,  # type: ignore[no-untyped-def]
+    effective_k: int | None = None,
 ) -> dict[str, object]:
     """The cache identity of one analysis: "what produced this scorecard".
 
@@ -223,9 +254,19 @@ def analysis_cache_identity(
     revision (defaults to :data:`PROMPT_SCHEMA_VERSION`).
 
     ``k`` / ``temperature`` / ``seed`` are the sampling configuration (plan P3-D,
-    gate GA4). They default to the ``AiSettings`` values — ``k=1`` out of the box
-    — and are always PRESENT in the returned mapping, so "how many draws produced
-    this scorecard" can never be unknown.
+    gate GA4). They default to the ``AiSettings`` values and are always PRESENT
+    in the returned mapping, so "how many draws produced this scorecard" can
+    never be unknown. ``k`` is the DECLARED CAP (the user's picker); with no
+    settings passed the cap is unknown and declared as
+    :data:`UNKNOWN_SAMPLE_COUNT` (ONE) rather than fabricated.
+
+    ``effective_k`` is the sampling depth: a REQUEST's identity carries the full
+    budget it needs there (default = the cap), while :func:`save_analysis`
+    rewrites it in the stored payload to the number of draws that actually
+    produced the scorecard (the adaptive stop may settle early). A stored depth
+    thinner than the request's budget is a MISS — see the module docstring.
+    Both tokens are canonicalized the same way (``k`` semantics), so a caller
+    can never smuggle "3 draws" past the comparison as ``3.0``/``" 3"``.
 
     Stable, JSON-serializable and comparable: the same request configuration
     yields an equal dict. **``api_key`` is never part of it** — the identity is
@@ -242,6 +283,10 @@ def analysis_cache_identity(
     except Exception:
         version = PROMPT_SCHEMA_VERSION
     draws = k if k is not None else getattr(settings, "sample_count", DEFAULT_SAMPLE_COUNT)
+    if k is None and settings is None:
+        # No settings were read: declare the minimum depth instead of inventing
+        # the user's cap (see UNKNOWN_SAMPLE_COUNT).
+        draws = UNKNOWN_SAMPLE_COUNT
     heat = (
         temperature
         if temperature is not None
@@ -252,6 +297,10 @@ def analysis_cache_identity(
         draws = max(1, int(draws))
     except (TypeError, ValueError):
         draws = DEFAULT_SAMPLE_COUNT
+    try:
+        needed = max(1, int(draws if effective_k is None else effective_k))
+    except (TypeError, ValueError):
+        needed = draws
     return {
         "model": _clean_text(getattr(settings, "model", "")),
         "base_url": _clean_text(getattr(settings, "base_url", "")),
@@ -259,10 +308,39 @@ def analysis_cache_identity(
         "profile": ",".join(_profile_axis_ids(profile)),
         "reasoning_effort": _identity_token(effort) or "auto",
         "k": _number_token(draws, DEFAULT_SAMPLE_COUNT, cast=int),
+        "effective_k": _number_token(needed, draws, cast=int),
         "temperature": _number_token(heat, DEFAULT_TEMPERATURE),
         "seed": _number_token(drawn_seed, DEFAULT_SEED, cast=int),
         "prompt_schema_version": version,
     }
+
+
+def _effective_k_int(identity) -> int:  # type: ignore[no-untyped-def]
+    """The declared/stored sampling depth of *identity*; ``0`` when unknown.
+
+    ``0`` is deliberately THINNER than any request (every request declares at
+    least 1 draw), so a payload that cannot state its depth is a miss rather
+    than a silent hit. Never raises.
+    """
+    try:
+        token = _clean_text(identity.get("effective_k"))  # type: ignore[union-attr]
+    except Exception:
+        return 0
+    try:
+        return max(1, int(float(token)))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _identity_dimensions(identity: dict[str, object]) -> dict[str, object]:
+    """The identity WITHOUT ``effective_k`` — the request dimensions.
+
+    ``effective_k`` is a depth claim, not a configuration: it is compared
+    directionally in :func:`load_cached_analysis` (stored depth >= request
+    budget) instead of for equality, and it is excluded from the filename
+    digest for the same reason.
+    """
+    return {field: value for field, value in identity.items() if field != "effective_k"}
 
 
 def _canonical_identity(identity) -> dict[str, object] | None:  # type: ignore[no-untyped-def]
@@ -284,10 +362,19 @@ def _canonical_identity(identity) -> dict[str, object] | None:  # type: ignore[n
     return out
 
 
-def _identity_fingerprint(identity: dict[str, object]) -> str:
-    """Short stable digest of a canonical identity (the filename discriminator)."""
-    canonical = json.dumps(identity, sort_keys=True, separators=(",", ":"))
-    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
+def _identity_fingerprint(identity: dict[str, object], *, exclude=()) -> str:
+    """Short stable digest of a canonical identity (the filename discriminator).
+
+    ``exclude`` drops fields from the DIGEST only (they stay validated in the
+    payload). ``effective_k`` is excluded: one configuration has ONE cached
+    scorecard, and whether that entry is deep enough for the current request is
+    decided by :func:`load_cached_analysis`, not by the filename.
+    """
+    canonical = {
+        field: value for field, value in identity.items() if field not in exclude
+    }
+    dumped = json.dumps(canonical, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(dumped.encode("utf-8")).hexdigest()[:16]
 
 
 def _cache_path(path: Path, mtime_ns: int, identity) -> Path:  # type: ignore[no-untyped-def]
@@ -295,14 +382,18 @@ def _cache_path(path: Path, mtime_ns: int, identity) -> Path:  # type: ignore[no
 
     The identity suffix keeps one entry per backend for the same image, so
     switching back to a previously used model hits its own scorecard again
-    instead of overwriting the other one. A non-canonical identity raises
-    ``ValueError`` — callers fail open to a miss / skip the write.
+    instead of overwriting the other one. ``effective_k`` is not in the digest
+    (see :func:`_identity_fingerprint`) so a settled-thin entry and a full-depth
+    request for the same configuration land on the SAME file and the payload
+    check decides. A non-canonical identity raises ``ValueError`` — callers fail
+    open to a miss / skip the write.
     """
     canonical = _canonical_identity(identity)
     if canonical is None:
         raise ValueError("incomplete analysis cache identity")
     return ai_cache_dir() / (
-        f"{cache_key_for(path, mtime_ns)}-{_identity_fingerprint(canonical)}.json"
+        f"{cache_key_for(path, mtime_ns)}-"
+        f"{_identity_fingerprint(canonical, exclude=('effective_k',))}.json"
     )
 
 
@@ -312,8 +403,11 @@ def load_cached_analysis(
     """The cached scorecard for ``(path, mtime_ns)`` under ``identity``.
 
     A different identity is a MISS — never another backend's result. The payload
-    must also carry the same identity (defence in depth) and a current
-    ``version``; a pre-identity entry is a miss with no migration attempt. Never
+    must also carry the same identity (defence in depth), a current ``version``,
+    and at least the sampling depth this request declares: a scorecard produced
+    by fewer draws (the adaptive stop settled early, or an entry written before
+    ``effective_k`` existed) is too thin to answer a deeper request and is a
+    MISS. A pre-identity entry is a miss with no migration attempt. Never
     raises: any problem degrades to ``None`` (re-analyze).
     """
     try:
@@ -324,10 +418,19 @@ def load_cached_analysis(
         return None
     try:
         data = json.loads(cache_path.read_text(encoding="utf-8"))
+        expected_identity = _canonical_identity(identity)
         stored_identity = _canonical_identity(data.get("identity"))
-        if stored_identity is None or stored_identity != _canonical_identity(identity):
+        if expected_identity is None or stored_identity is None:
+            return None
+        if _identity_dimensions(stored_identity) != _identity_dimensions(
+            expected_identity
+        ):
             # A foreign / legacy entry: the file key says it is ours, the payload
             # does not. Treat it exactly like a miss.
+            return None
+        if _effective_k_int(stored_identity) < _effective_k_int(expected_identity):
+            # Adaptive sampling: a thin scorecard (e.g. one draw) must never be
+            # served for a request that declared a larger budget.
             return None
 
         def _score(key: str) -> int:
@@ -590,12 +693,31 @@ def save_analysis(
     An incomplete identity skips the write (no entry is better than one that
     cannot be validated on load). ``api_key`` is not accepted by the identity, so
     it never reaches the JSON.
+
+    ``identity`` is the REQUEST's identity (its ``effective_k`` is the declared
+    budget). The stored payload records the depth actually reached instead: the
+    number of draw scorecards the result was merged from (``axis_samples``, one
+    row per draw; a single-draw result carries none and is depth 1). That stored
+    depth is what :func:`load_cached_analysis` compares against a request.
     """
     try:
         canonical = _canonical_identity(identity)
         if canonical is None:
             logger.debug("Gallery AI cache write skipped: incomplete identity")
             return
+        try:
+            produced = len(getattr(result, "axis_samples", ()) or ())
+        except Exception:
+            produced = 0
+        if produced:
+            # The draws themselves say the depth: a merged k-draw result carries
+            # one row per draw, and the adaptive stop may have spent fewer than
+            # the request's cap.
+            canonical["effective_k"] = _number_token(produced, 1, cast=int)
+        # A result carrying NO draw rows states no depth (``merge_samples`` keeps
+        # ``axis_samples`` empty for a single draw, which only happens when the
+        # cap itself is 1): the request's declared budget — already in
+        # ``effective_k`` — is the only claim available, so it is kept as-is.
         cache_path = _cache_path(path, mtime_ns, canonical)
     except Exception:
         logger.debug("Gallery AI cache write failed for %s", path, exc_info=True)
