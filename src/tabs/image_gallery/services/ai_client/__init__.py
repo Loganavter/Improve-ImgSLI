@@ -11,6 +11,21 @@ submodule — ``errors`` (typed errors), ``prompt`` (prompt build + gated debug)
 (blocking streaming POST + retry). Every moved name is re-exported below so
 ``tabs.image_gallery.services.ai_client`` keeps its full surface for importers
 and tests.
+
+Adaptive sampling (host sample-count is a CAP, not a quota). Draw 1 is always
+taken; more draws are added only while the per-axis MEDIAN still moves by more
+than half the noise floor the instrument measured on this card's own draws
+(``quality_read.axis_noise_floor``; its constant fallback is only reachable
+while fewer than two draws exist). Why the published adaptive-sampling results
+are NOT proof here: Adaptive-Consistency (Aggarwal et al., arXiv:2305.11860)
+and ESC stop on a DISCRETE answer distribution and confirm it by majority
+vote — they have a countable agreement rate and a correctness-preserving
+guarantee over that vote. Our axes are CONTINUOUS 0-100 scores aggregated by a
+median, so "agreement" is a movement in a scale, not a vote share: there is no
+majority to be right about, no per-draw correctness label, and a settled
+median is evidence of STABILITY, never of accuracy. The rule borrowed here is
+therefore only the shape (stop early once the estimate stops moving), and it is
+validated on replay against a fixed-k median, not by citation.
 """
 
 from __future__ import annotations
@@ -19,6 +34,7 @@ import logging
 # Kept package-level so ``tabs.image_gallery.services.ai_client.urllib`` stays
 # the module object ``transport`` patches through — tests monkeypatch
 # ``ai_client.urllib.request.urlopen``.
+import os
 import urllib.error  # noqa: F401
 import urllib.request  # noqa: F401
 from pathlib import Path
@@ -50,6 +66,7 @@ from .parse import (
     _parse_lines,
     _parse_score,
     _strip_reasoning,
+    median_drift,
     merge_samples,
     parse_response,
 )
@@ -95,6 +112,42 @@ from .transport import (
 
 logger = logging.getLogger("ImproveImgSLI")
 
+#: Env knob for the adaptive stop rule: ``0`` restores the old fixed-k loop
+#: (every one of the ``sample_count`` draws is spent); unset or ``1`` = adaptive.
+ADAPTIVE_K_STOP_ENV = "IMGSLI_ADAPTIVE_K_STOP"
+
+#: Fraction of the measured noise floor a per-axis median may move and still
+#: count as settled. HALF, per the board rule: a movement smaller than the
+#: instrument's own noise is not a signal.
+ADAPTIVE_STOP_RATIO = 0.5
+
+
+def _adaptive_k_stop_enabled() -> bool:
+    """True unless ``IMGSLI_ADAPTIVE_K_STOP`` explicitly disables it.
+
+    Default ON (unset = adaptive); ``0``/``false``/``no``/``off`` = the old
+    fixed-k behaviour. Never raises — a broken environment keeps the default.
+    """
+    try:
+        raw = os.environ.get(ADAPTIVE_K_STOP_ENV)
+    except Exception:
+        return True
+    if raw is None or not str(raw).strip():
+        return True
+    return str(raw).strip().lower() not in ("0", "false", "no", "off")
+
+
+def _draw_row(result) -> dict[str, int]:
+    """One ``{axis: score}`` row for *result* — the shape ``merge_samples``
+    carries in ``draws`` and ``median_drift`` reads. Never raises."""
+    row: dict[str, int] = {}
+    for axis, value in (getattr(result, "axes", None) or {}).items():
+        try:
+            row[str(axis)] = int(value)
+        except Exception:
+            continue
+    return row
+
 
 def _emit_phase(on_phase: Callable[[str], None] | None, phase: str) -> None:
     """Best-effort activity hook: a UI-side failure must never fail analysis."""
@@ -121,6 +174,7 @@ def analyze_image_sync(
     samples: int = 1,
     temperature: float = 0.0,
     seed: int = 0,
+    adaptive_k: bool | None = None,
 ) -> AiAnalysisResult:
     """Full request→parse pipeline. Call only from a worker thread.
 
@@ -136,11 +190,19 @@ def analyze_image_sync(
 
     ``samples`` (k, plan-gallery-ai-judgement P3-D) is the number of independent
     draws merged into one scorecard — ONE by default (``AiSettings.sample_count``
-    is the declared gate for a larger number). k>1 costs k image calls per card
-    and the trace states it; the merge is ``parse.merge_samples`` (per-axis
-    median). ``temperature``/``seed`` are sent only when non-default and are part
-    of the analyze cache identity, so a k=3 median never masquerades as a k=1
-    draw.
+    is the declared gate for a larger number). k>1 costs at most k image calls
+    per card and the trace states it; the merge is ``parse.merge_samples``
+    (per-axis median). ``temperature``/``seed`` are sent only when non-default and
+    are part of the analyze cache identity, so a k=3 median never masquerades as
+    a k=1 draw.
+
+    ``adaptive_k`` (keyword-only, default ``None`` = the env knob) makes *k* a
+    CAP rather than a quota: draw 1 is always taken, and another draw is added
+    only while a per-axis median still moves by more than half the noise floor
+    measured on THIS card's own draws (``median_drift`` +
+    ``quality_read.axis_noise_floor``). The result's ``axis_samples`` carries
+    the draws that actually produced the scorecard, so the cache records the
+    effective k. ``IMGSLI_ADAPTIVE_K_STOP=0`` restores the fixed-k loop.
     """
     openrouter = "openrouter" in str(base_url or "").lower()
     draws = max(1, int(samples or 1))
@@ -156,9 +218,11 @@ def analyze_image_sync(
         max_tokens or "est",
     )
     if draws > 1 or heat or seed:
-        # Cost line (never silent): k draws are k image uploads per card.
+        # Cost line (never silent): the declared k is the UPPER BOUND — k image
+        # uploads per card. The adaptive stop may spend fewer (one line per card
+        # below states the effective k); it never spends more.
         _ai_debug(
-            "analyze sampling k=%d (cost=%dx image calls) temperature=%g seed=%d",
+            "analyze sampling k=%d (cost<=%dx image calls) temperature=%g seed=%d",
             draws,
             draws,
             heat,
@@ -183,6 +247,15 @@ def analyze_image_sync(
         # Fail-open: a read/encode problem is the transport's error to report.
         wire = None
     results: list[AiAnalysisResult] = []
+    # Adaptive stop (board: the judge stops sampling when the median settles).
+    # ``samples`` is the user's CAP (``AiSettings.sample_count`` keeps driving
+    # the picker and the declared cost upper bound N x k): the loop stops early
+    # once no per-axis median moves by more than half the measured noise floor.
+    adaptive = _adaptive_k_stop_enabled() if adaptive_k is None else bool(adaptive_k)
+    rows: list[dict[str, int]] = []
+    stop_reason = ""
+    moving_axis = ""
+    floor_text = "n/a"
     for draw in range(draws):
         payload = build_request(
             image_path,
@@ -200,5 +273,45 @@ def analyze_image_sync(
         )
         _emit_phase(on_phase, "waiting")
         raw = call_sync(base_url, api_key, payload)
-        results.append(parse_response(raw, model=model, profile=profile))
+        result = parse_response(raw, model=model, profile=profile)
+        results.append(result)
+        rows.append(_draw_row(result))
+        if not adaptive or len(rows) < 2:
+            continue
+        # The floor is measured on the draws collected BEFORE the newest one:
+        # with fewer than two prior draws scoring an axis there is no within-item
+        # spread to measure, so the resolver's constant fallback applies (the
+        # "fewer than 2 draws exist" clause). Comparing against the spread of
+        # the NEW set would always look settled — adding one row can move a
+        # median by at most half that spread, by construction.
+        from tabs.image_gallery.services.quality_read import axis_noise_floor
+
+        floor = axis_noise_floor("ai", samples=rows[:-1])
+        floor_text = f"{floor:.1f}"
+        drift = median_drift(rows)
+        if not drift:
+            # Nothing comparable was scored (no shared axis): no measured
+            # movement to settle on, so spend the declared budget.
+            continue
+        threshold = ADAPTIVE_STOP_RATIO * floor
+        moving = {axis: value for axis, value in drift.items() if value > threshold}
+        if not moving:
+            stop_reason = "settled"
+            break
+        if len(rows) >= draws:
+            stop_reason = "capped"
+            moving_axis = max(moving, key=lambda axis: moving[axis])
+    if adaptive:
+        # One line per card: the effective k and WHY sampling stopped. A capped
+        # run names the axis that was still moving (the user can raise k).
+        detail = f" axis {moving_axis} still moving" if moving_axis else ""
+        _ai_debug(
+            "adaptive stop: path=%s effective_k=%d cap=%d floor=%s reason=%s%s",
+            image_path,
+            len(results),
+            draws,
+            floor_text,
+            stop_reason or "capped",
+            detail,
+        )
     return merge_samples(results)
