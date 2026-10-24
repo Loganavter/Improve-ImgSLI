@@ -282,6 +282,15 @@ def main():
     except Exception:
         pass
 
+    # Warm heavy third-party imports off the GUI thread (measured: 1350 ms
+    # freeze on the first analysis use, 320 ms on a toolbar paint).
+    try:
+        from core.import_warmup import start as _start_import_warmup
+
+        _start_import_warmup()
+    except Exception:
+        pass
+
     # Probe after QApplication exists. Vulkan instance create needs a GUI app;
     # fall back before any QRhiWidget is constructed.
     effective_rhi, rhi_fallback_reason = resolve_rhi_backend_with_fallback(
