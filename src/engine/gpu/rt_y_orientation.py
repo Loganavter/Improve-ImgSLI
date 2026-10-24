@@ -105,10 +105,20 @@ def sampled_rt_correction(rhi) -> tuple[float, ...]:
     return IDENTITY_MATRIX if is_d3d_backend(rhi) else Y_FLIP_MATRIX
 
 
+def composited_clip_matrix(rhi):
+    """``rhi.clipSpaceCorrMatrix()`` as the QRhi object, for products.
+
+    Some passes multiply it with their own projection before packing (e.g. an
+    ortho * corr product for pixel-space quads); they need the matrix, not a
+    float tuple.
+    """
+    return rhi.clipSpaceCorrMatrix()
+
+
 def composited_clip_correction(rhi) -> tuple[float, ...]:
     """Row-major ``mat4`` for a pass composited on screen by its QRhiWidget.
 
     This is ``rhi.clipSpaceCorrMatrix()`` verbatim -- the widget's own
     compositing absorbs the remaining convention mismatch, so no extra flip.
     """
-    return tuple(float(value) for value in rhi.clipSpaceCorrMatrix().data())
+    return tuple(float(value) for value in composited_clip_matrix(rhi).data())

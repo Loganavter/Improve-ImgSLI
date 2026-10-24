@@ -25,6 +25,7 @@ from ui.canvas_presentation.filename_labels import (
 )
 from ui.canvas_infra.scene.pass_contract import CanvasRenderPass, SceneVisibility
 from ui.canvas_infra.scene.stacking_policy import CanvasStackRole
+from engine.gpu.rt_y_orientation import composited_clip_matrix
 from engine.cache.uniform_layout import assert_uniform_size
 from tabs.image_compare.canvas.features.filename_overlay.render.glyph_atlas import (
     _INTERACTIVE_SUPERSAMPLE,
@@ -59,7 +60,7 @@ def _pixel_space_mvp(rhi, ctx) -> tuple[float, ...]:
     """
     proj = QMatrix4x4()
     proj.ortho(0.0, float(ctx.width), float(ctx.height), 0.0, -1.0, 1.0)
-    matrix = rhi.clipSpaceCorrMatrix() * proj
+    matrix = composited_clip_matrix(rhi) * proj
     return tuple(float(v) for v in matrix.data())
 
 

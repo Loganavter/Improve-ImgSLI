@@ -61,15 +61,36 @@ def _called_names(tree: ast.Module) -> set[str]:
     return names
 
 
+_DIAGONAL_ONES = (0, 10, 15)
+_OFF_DIAGONAL_ZEROS = (1, 2, 3, 4, 6, 7, 8, 9, 11, 12, 13, 14)
+
+
+def _numeric(node: ast.AST) -> float | None:
+    if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.USub):
+        inner = _numeric(node.operand)
+        return None if inner is None else -inner
+    if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)):
+        return float(node.value)
+    return None
+
+
 def _is_y_flip_literal(node: ast.AST) -> bool:
-    """A 16-element numeric literal whose element 5 is ``-1.0`` (a Y flip)."""
+    """A strict 16-element Y-flip diagonal: diag(1, -1, 1, 1), rest zero.
+
+    Strict on purpose: a vertex array or a UI transform that merely has -1.0
+    at index 5 must not trip the gate (the first draft did, on
+    ``canvas/state.py``'s quad vertices).
+    """
     if not isinstance(node, (ast.Tuple, ast.List)) or len(node.elts) != 16:
         return False
-    element = node.elts[5]
-    if not (isinstance(element, ast.UnaryOp) and isinstance(element.op, ast.USub)):
+    values = [_numeric(element) for element in node.elts]
+    if any(value is None for value in values):
         return False
-    operand = element.operand
-    return isinstance(operand, ast.Constant) and operand.value == 1.0
+    if values[5] != -1.0:
+        return False
+    if any(values[index] != 0.0 for index in _OFF_DIAGONAL_ZEROS):
+        return False
+    return all(values[index] == 1.0 for index in _DIAGONAL_ONES)
 
 
 def test_no_module_decides_the_y_convention_locally():
@@ -123,7 +144,7 @@ def test_allowlist_entries_still_exist_and_are_still_guilty():
 
 def test_helper_is_the_only_flip_literal_site():
     """The helper owns the matrices; nothing else may carry the literal."""
-    path = SRC / HELPER
+    path = SRC.parent / HELPER
     tree = parse(path)
     assert tree is not None, f"cannot parse {HELPER}"
     literals = [node for node in ast.walk(tree) if _is_y_flip_literal(node)]
@@ -135,7 +156,7 @@ def test_helper_is_the_only_flip_literal_site():
 
 def test_helper_cases_are_named_and_documented():
     """The three cases are the contract: a new one must be added deliberately."""
-    text = (SRC / HELPER).read_text(encoding="utf-8")
+    text = (SRC.parent / HELPER).read_text(encoding="utf-8")
     for case in ("COMPOSITED", "SAMPLED_RT", "NONE"):
         assert case in text, (
             f"{HELPER} lost its {case} case doc -- the three cases are how a "
