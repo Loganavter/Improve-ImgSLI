@@ -32,20 +32,40 @@ pixels, never what backend you happen to be on:
 ``NONE``
     Nothing to correct (no render target involved).
 
-Measured evidence (``QRhiWidget.setApi(...)`` on the dev host, 2026-10-24):
+The rule is derived from two DOCUMENTED QRhi properties, not from a
+per-family list:
 
-=======================  ===================  ==========================  =================
-backend                  isYUpInFramebuffer   clipSpaceCorrMatrix         SAMPLED_RT flip
-=======================  ===================  ==========================  =================
-OpenGL / GLES2           True                 identity                    yes
-Vulkan                   False                Y flip + 0..1 depth scale   yes
-D3D11                    --                   --                          no (dump-proven)
-=======================  ===================  ==========================  =================
+* "framebuffers use an origin-at-top-left system everywhere except OpenGL"
+  (Qt docs, RHI under QML) -> ``isYUpInFramebuffer()`` is True on OpenGL and
+  False elsewhere;
+* clip-space Y points down only on Vulkan -> ``isYUpInNDC()`` is False for
+  Vulkan, True everywhere else (Qt docs: "in practice this is false for
+  Vulkan only").
 
-D3D12 is in the same family as D3D11 by QRhi's own convention split; Metal is
-y-up like OpenGL. Those two are the untested cells of the table -- treat them
-as the family default (D3D: no flip, Metal: flip) and validate before trusting
-a new backend either way.
+A pass that stores a level for later SAMPLING needs a flip when either the
+framebuffer origin is bottom-left (OpenGL) or clip space is y-down (Vulkan):
+
+    needs_flip = isYUpInFramebuffer() or not isYUpInNDC()
+
+Measured against the dev host (``QRhiWidget.setApi(...)``, 2026-10-24) and the
+D3D11 host's readback dump:
+
+=======================  ================  ===========  =======================  ==========
+backend                  isYUpInFramebuf   isYUpInNDC   predicate                measured
+=======================  ================  ===========  =======================  ==========
+OpenGL / GLES2           True              True         flip                     flip
+Vulkan                   False             False        flip                     flip
+D3D11                    False             True         no flip                  no flip
+Metal (predicted)        False             True         no flip                  untested
+D3D12 (predicted)        False             True         no flip                  untested
+=======================  ================  ===========  =======================  ==========
+
+The two untested cells are why the predicate still fails safe: a backend that
+cannot answer either query keeps the flip (the historical behaviour that
+shipped for a year), and ``IMGSLI_RT_ORIENTATION_TRACE=1`` logs the backend and
+the predicate once per process so a wrong prediction is visible in the field
+instead of silent. The earlier fixed family list guessed Metal wrong; a rule
+that reads the two documented properties does not need to guess.
 
 Contracts pinning this module: ``tests/contracts/test_rt_y_orientation.py``
 (single-source: nothing else in ``src/`` may build a flip literal or call the
@@ -55,14 +75,24 @@ two queries outside the allowlist below) and
 
 from __future__ import annotations
 
+import logging
+import os
+
 from PySide6.QtGui import QRhi
 
-#: Backend family that needs NO Y correction for a sampled render target.
-_D3D_BACKENDS = frozenset(
-    getattr(QRhi.Implementation, name)
-    for name in ("D3D11", "D3D12")
-    if hasattr(QRhi.Implementation, name)
+logger = logging.getLogger("ImproveImgSLI")
+
+#: Log the backend + the derived predicate once per process. A wrong
+#: prediction on an untested backend then shows up in the field log instead of
+#: as a silent flipped canvas.
+_TRACE_ENABLED = os.environ.get("IMGSLI_RT_ORIENTATION_TRACE", "").strip().lower() not in (
+    "",
+    "0",
+    "false",
+    "no",
+    "off",
 )
+_traced: set[int] = set()
 
 IDENTITY_MATRIX: tuple[float, ...] = (
     1.0, 0.0, 0.0, 0.0,
@@ -79,22 +109,43 @@ Y_FLIP_MATRIX: tuple[float, ...] = (
 )
 
 
-def is_d3d_backend(rhi) -> bool:
-    """True only for a D3D-family backend; False for everything unknown."""
-    try:
-        backend = rhi.backend()
-    except (AttributeError, RuntimeError):
-        return False
-    return backend in _D3D_BACKENDS
-
-
 def sampled_rt_needs_y_flip(rhi) -> bool:
     """Whether a pass into a SAMPLED offscreen target must flip Y.
 
-    Flip everywhere except the D3D family -- the one family measured to need
-    none. An unqueryable backend keeps the flip (never guess a flip away).
+    Derived from the two documented conventions (see module docstring):
+
+        needs_flip = isYUpInFramebuffer() or not isYUpInNDC()
+
+    OpenGL -> flip, Vulkan -> flip, D3D11/12 and Metal -> no flip. A backend
+    that cannot answer either query keeps the flip (never guess a flip away,
+    and never silently drop the behaviour that shipped for a year).
     """
-    return not is_d3d_backend(rhi)
+    try:
+        y_up_framebuffer = bool(rhi.isYUpInFramebuffer())
+        y_up_ndc = bool(rhi.isYUpInNDC())
+    except (AttributeError, RuntimeError):
+        return True
+    return y_up_framebuffer or not y_up_ndc
+
+
+def _trace_once(rhi, needs_flip: bool) -> None:
+    if not _TRACE_ENABLED or id(rhi) in _traced:
+        return
+    _traced.add(id(rhi))
+    try:
+        backend = rhi.backend()
+        y_up_fb = bool(rhi.isYUpInFramebuffer())
+        y_up_ndc = bool(rhi.isYUpInNDC())
+    except (AttributeError, RuntimeError):
+        backend, y_up_fb, y_up_ndc = "<unqueryable>", None, None
+    logger.info(
+        "[rt-y] backend=%s isYUpInFramebuffer=%s isYUpInNDC=%s -> "
+        "sampled-RT flip=%s (engine/gpu/rt_y_orientation.py)",
+        backend,
+        y_up_fb,
+        y_up_ndc,
+        needs_flip,
+    )
 
 
 def sampled_rt_correction(rhi) -> tuple[float, ...]:
@@ -102,7 +153,9 @@ def sampled_rt_correction(rhi) -> tuple[float, ...]:
 
     Diagonal, so row-major vs column-major storage does not matter.
     """
-    return IDENTITY_MATRIX if is_d3d_backend(rhi) else Y_FLIP_MATRIX
+    needs_flip = sampled_rt_needs_y_flip(rhi)
+    _trace_once(rhi, needs_flip)
+    return Y_FLIP_MATRIX if needs_flip else IDENTITY_MATRIX
 
 
 def composited_clip_matrix(rhi):

@@ -23,8 +23,6 @@ everywhere else and whenever the backend cannot be queried.
 from __future__ import annotations
 
 import pytest
-from PySide6.QtGui import QRhi
-
 from engine.gpu.mip_cascade import downsample_corr_matrix
 
 _IDENTITY = (
@@ -36,95 +34,94 @@ _IDENTITY = (
 
 
 class _Rhi:
-    def __init__(self, backend) -> None:
-        self._backend = backend
+    """Fake QRhi exposing the two documented orientation properties."""
 
-    def backend(self):
-        return self._backend
+    def __init__(self, y_up_framebuffer: bool, y_up_ndc: bool) -> None:
+        self._y_up_framebuffer = y_up_framebuffer
+        self._y_up_ndc = y_up_ndc
+
+    def isYUpInFramebuffer(self) -> bool:
+        return self._y_up_framebuffer
+
+    def isYUpInNDC(self) -> bool:
+        return self._y_up_ndc
 
 
 class _RhiWithoutQuery:
-    """A backend object that does not expose ``backend()``."""
+    """A backend object that exposes neither orientation query."""
 
 
-def test_d3d_backends_do_not_flip():
-    """D3D11/12: applying the flip re-flips every level (the shipped bug)."""
-    for name in ("D3D11", "D3D12"):
-        backend = getattr(QRhi.Implementation, name, None)
-        if backend is None:
-            continue
-        matrix = downsample_corr_matrix(_Rhi(backend))
-        assert matrix[5] == 1.0, (
-            f"{name} must NOT flip the mip-downsample pass: got y scale "
-            f"{matrix[5]!r}. A flip here inverts every generated level "
-            "relative to its source, so levels alternate by parity and "
-            "trilinear minification blends upright with flipped content "
-            "(plan-tile-policy-reliability-2026-10-24)"
-        )
-        assert matrix == _IDENTITY, f"{name} correction must be identity, got {matrix!r}"
+def test_d3d_like_backends_do_not_flip():
+    """Top-left framebuffer + y-up NDC (D3D11/12, Metal): no flip.
 
-
-def test_vulkan_keeps_the_flip():
-    """Vulkan reports y-down in framebuffer, yet needs the flip (measured).
-
-    Red if the gate goes back to ``isYUpInFramebuffer()``: Vulkan reports
-    False there, which would drop the flip and flip every tile on Linux.
+    Red before the fix: the pass flipped unconditionally, so each generated
+    level was re-flipped and the chain alternated by parity.
     """
-    matrix = downsample_corr_matrix(_Rhi(QRhi.Implementation.Vulkan))
+    matrix = downsample_corr_matrix(_Rhi(False, True))
+    assert matrix[5] == 1.0, (
+        "a top-left framebuffer with y-up NDC must NOT flip the "
+        f"mip-downsample pass, got y scale {matrix[5]!r}"
+    )
+    assert matrix == _IDENTITY, f"correction must be identity here, got {matrix!r}"
+
+
+def test_vulkan_like_backends_flip():
+    """Top-left framebuffer + y-down NDC (Vulkan): the flip is required.
+
+    Red if the gate goes back to ``isYUpInFramebuffer()`` alone: Vulkan
+    reports False there, which dropped the flip and flipped every tile.
+    """
+    matrix = downsample_corr_matrix(_Rhi(False, False))
     assert matrix[5] == -1.0, (
-        "Vulkan must keep the mip-downsample Y flip: got y scale "
-        f"{matrix[5]!r}. isYUpInFramebuffer() is False on Vulkan too, so it "
-        "cannot be the gate (see docs/dev/rendering/qrhi-gotchas.md)"
+        "a y-down NDC backend must keep the mip-downsample Y flip, got y "
+        f"scale {matrix[5]!r} (isYUpInFramebuffer() alone cannot decide this)"
     )
 
 
-def test_opengl_keeps_the_flip():
-    """OpenGL/GLES2: y-up framebuffer, flip required (the original behaviour)."""
-    matrix = downsample_corr_matrix(_Rhi(QRhi.Implementation.OpenGLES2))
+def test_opengl_like_backends_flip():
+    """Bottom-left framebuffer + y-up NDC (OpenGL/GLES2): flip required."""
+    matrix = downsample_corr_matrix(_Rhi(True, True))
     assert matrix[5] == -1.0, (
         f"OpenGL must keep the mip-downsample Y flip, got y scale {matrix[5]!r}"
     )
 
 
-def test_metal_keeps_the_flip():
-    """Metal is y-up like OpenGL and was never in the no-flip family."""
-    matrix = downsample_corr_matrix(_Rhi(QRhi.Implementation.Metal))
-    assert matrix[5] == -1.0
-
-
-def test_missing_backend_query_keeps_the_flip():
+def test_missing_orientation_query_keeps_the_flip():
     """Unknown backend: never guess a flip away."""
     matrix = downsample_corr_matrix(_RhiWithoutQuery())
     assert matrix[5] == -1.0, (
-        "a backend object without backend() must keep the flip, got y scale "
-        f"{matrix[5]!r}"
+        "a backend without the orientation queries must keep the flip, got "
+        f"y scale {matrix[5]!r}"
     )
 
 
-def test_d3d_enum_members_exist():
-    """Pin the enum: if a Qt update renames them, this fails loudly instead of
-    silently re-enabling the flip on D3D (which is what shipped the bug)."""
-    for name in ("D3D11", "D3D12"):
-        assert hasattr(QRhi.Implementation, name), (
-            f"QRhi.Implementation.{name} is gone: the mip-cascade no-flip gate "
-            "would silently default to flipping on D3D (the 2026-10-24 bug)"
+def test_rule_matches_the_measured_backends():
+    """The predicate reproduces all three measured backends in one expression."""
+    from engine.gpu.rt_y_orientation import sampled_rt_needs_y_flip
+
+    measured = {
+        "opengl": (_Rhi(True, True), True),
+        "vulkan": (_Rhi(False, False), True),
+        "d3d11": (_Rhi(False, True), False),
+    }
+    for name, (rhi, expected) in measured.items():
+        assert sampled_rt_needs_y_flip(rhi) is expected, (
+            f"{name}: predicate must return {expected} "
+            "(plan-tile-policy-reliability-2026-10-24 measurements)"
         )
 
 
 @pytest.mark.parametrize(
-    "backend_name",
-    ["D3D11", "D3D12", "Vulkan", "OpenGLES2", "Metal"],
+    "y_up_framebuffer,y_up_ndc",
+    [(True, True), (False, False), (False, True)],
 )
-def test_correction_is_diagonal_for_every_backend(backend_name):
+def test_correction_is_diagonal_for_every_backend(y_up_framebuffer, y_up_ndc):
     """Diagonal for every backend -- the uniform's row/column order cannot matter."""
-    backend = getattr(QRhi.Implementation, backend_name, None)
-    if backend is None:
-        pytest.skip(f"backend {backend_name} not in this Qt build")
-    matrix = downsample_corr_matrix(_Rhi(backend))
+    matrix = downsample_corr_matrix(_Rhi(y_up_framebuffer, y_up_ndc))
     assert len(matrix) == 16
     for index in (1, 2, 3, 4, 6, 7, 8, 9, 11, 12, 13, 14):
         assert matrix[index] == 0.0, (
             f"correction matrix must be diagonal (index {index} = "
-            f"{matrix[index]!r}, backend {backend_name})"
+            f"{matrix[index]!r}, y_up_fb={y_up_framebuffer})"
         )
     assert (matrix[0], matrix[10], matrix[15]) == (1.0, 1.0, 1.0)
