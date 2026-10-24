@@ -1,6 +1,6 @@
 ; -- Improve_ImgSLI Inno Setup Script --
 
-#define MyAppName "Improve ImgSLI"
+#define MyAppName "BlinkTable"
 #define MyAppVersion "11.0.0"
 #define MyAppPublisher "Loganavter"
 #define MyAppURL "https://github.com/Loganavter/Improve-ImgSLI"
