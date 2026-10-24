@@ -2,21 +2,22 @@
 
 Nothing stated which tab owns which tile-residency policy knob, and the two
 canvas tabs derive their knobs independently (image compare = IC, multi
-compare = MC), so they drift silently. This contract reads the REAL constants
-and symbols with AST parsing -- the tab renderer modules import PySide6/QRhi at
-module scope and the contract tier is Qt-free and must stay fast -- and pins
-the current matrix, one test per row:
+compare = MC), so they drift silently. This contract reads the REAL
+``TilePolicy`` instances (``engine.cache.tile_policy``) each surface builds with
+AST parsing -- the tab renderer modules import PySide6/QRhi at module scope and
+the contract tier is Qt-free and must stay fast -- and pins the current matrix,
+one test per row:
 
-==================  ===========================  =========================
-knob                image_compare (IC)           multi_compare (MC)
-==================  ===========================  =========================
-LOD settle window   LOD_FETCH_SETTLE_MS = 100 ms       none (immediate)
-GPU tile budget     2 GiB                        512 MiB
-host texture cache  3 GiB (engine default)       512 MiB
-texture-array cap   2032 layers                  508 layers
-first-paint hold    atomic hold (coverage.py)    none
-coarsest-LOD pin    pin_coarsest_level(...)      none   <- LIVE DRIFT
-==================  ===========================  =========================
+==================  ===============================  =========================
+knob                image_compare (IC)               multi_compare (MC)
+==================  ===============================  =========================
+LOD settle window   settle, LOD_FETCH_SETTLE_MS=100   immediate (no window)
+GPU tile budget     2 GiB                            512 MiB
+host texture cache  3 GiB (engine default)           512 MiB
+texture-array cap   2032 layers                      508 layers
+first-paint hold    atomic hold (coverage.py)        none
+coarsest-LOD pin    pin_coarsest_level(...)          none   <- LIVE DRIFT
+==================  ===============================  =========================
 
 Every row asserts BOTH sides positively (an exact value per tab, never
 ``ic != mc``), so a coincidence -- or a drift in either direction -- fails.
@@ -27,9 +28,12 @@ intended engine-wide invariant (both tabs pin), so it is red today and carries
 (XPASS) the moment MC gains the pin, which is the signal to re-pin the row
 rather than let the matrix rot.
 
-Derived values (row 4) are evaluated from the production expressions over the
-parsed constants, not copied by hand -- see
-``test_texture_array_capacity_matrix``.
+The values are read from the production expression each policy field is built
+from (``LOD_FETCH_SETTLE_MS``, ``_TILE_CACHE_BUDGET_BYTES``,
+``SLOT_TILE_CACHE_BUDGET_BYTES``, ``_ARRAY_CAPACITY`` ...), so row 4 keeps
+evaluating the real capacity derivation instead of a copied integer -- see
+``test_texture_array_capacity_matrix``. A re-typed literal where a named symbol
+already exists fails ``test_policy_instances_reuse_named_symbols``.
 """
 
 from __future__ import annotations
@@ -55,6 +59,26 @@ MC_RESOURCES = "tabs.multi_compare.scene.resources"
 
 MC_ROOT = SRC / "tabs" / "multi_compare"
 
+#: The one engine value type and the three surfaces that instantiate it.
+TILE_POLICY = "engine.cache.tile_policy"
+IC_POLICY_SITE = "tabs.image_compare.canvas.rhi_renderer.use_cases.fallback"
+MC_POLICY_SITE = MC_BASE_IMAGES
+QL_POLICY_SITE = "engine.gpu.tiled_image_view"
+POLICY_NAME = "TILE_POLICY"
+POLICY_TYPE = "TilePolicy"
+POLICY_FIELDS = (
+    "lod_mode",
+    "settle_ms",
+    "atomic_on_content_swap",
+    "atomic_on_hires_flip",
+    "atomic_on_level_change",
+    "first_paint_hold",
+    "pin_coarsest",
+    "tile_budget_bytes",
+    "host_cache_budget_bytes",
+    "array_capacity",
+)
+
 #: Constants modules (single source of truth for tile sizing / budgets).
 TILE_CONSTANTS = "engine.cache.tile_constants"
 TILED_IMAGE_VIEW = "engine.gpu.tiled_image_view"
@@ -68,9 +92,10 @@ HOST_TEXTURE_CACHE = "engine.gpu.host_texture_cache"
 # imports PySide6/QRhi at module scope and this tier is Qt-free. The resolver
 # below follows module-level assignments and ``from ... import`` aliases
 # (including re-export chains such as ``residency._TILE_CACHE_BUDGET_BYTES`` ->
-# ``engine.gpu.tiled_image_view``) and evaluates plain int/float arithmetic.
-# A name it cannot resolve raises -- a silent fallback number would be a pinned
-# value nobody read.
+# ``engine.gpu.tiled_image_view``) and evaluates plain int/float arithmetic,
+# string and ``None`` literals (policy modes / "no settle window"). A name it
+# cannot resolve raises -- a silent fallback number would be a pinned value
+# nobody read.
 # ---------------------------------------------------------------------------
 
 
@@ -142,10 +167,12 @@ _BINOPS = {
 
 
 def _node_value(node, module: str, seen: tuple):
-    if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)):
+    if isinstance(node, ast.Constant):
         if isinstance(node.value, bool):  # bool is an int subclass; not a knob
             raise _Unresolved(f"bool literal in {module}")
-        return node.value
+        if node.value is None or isinstance(node.value, (int, float, str)):
+            return node.value
+        raise _Unresolved(f"unsupported constant in {module}: {node.value!r}")
     if isinstance(node, ast.Name):
         return _name_value(module, node.id, seen)
     if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.USub, ast.UAdd)):
@@ -179,6 +206,81 @@ def _name_value(module: str, name: str, seen: tuple):
 def _const(module: str, name: str):
     """Effective value of ``module.name``, following import/re-export chains."""
     return _name_value(module, name, ())
+
+
+# ---------------------------------------------------------------------------
+# Policy instances (the substrate the rows read).
+# ---------------------------------------------------------------------------
+
+
+def _policy_call(module: str) -> ast.Call:
+    """The module-level ``TILE_POLICY = TilePolicy(...)`` call node."""
+    scope = _module_scope(module)
+    entry = scope.get(POLICY_NAME)
+    if entry is None:
+        raise _Unresolved(f"{module} has no module-level {POLICY_NAME}")
+    if entry[0] != "expr" or not isinstance(entry[1], ast.Call):
+        raise _Unresolved(f"{module}.{POLICY_NAME} is not a {POLICY_TYPE}(...) call")
+    call = entry[1]
+    if not (isinstance(call.func, ast.Name) and call.func.id == POLICY_TYPE):
+        raise _Unresolved(
+            f"{module}.{POLICY_NAME} is not a {POLICY_TYPE} call "
+            f"(got {ast.unparse(call.func)!r})"
+        )
+    return call
+
+
+def _policy_value(node, module: str):
+    """Resolve one policy field: bool flags are legitimate here.
+
+    ``_node_value`` refuses bool literals because every numeric knob it pins
+    must be a number; ``atomic_on_*``/``first_paint_hold``/``pin_coarsest`` are
+    flags, so they are read as-is (still only literals or named expressions --
+    a computed bool expression is not a knob anybody can pin).
+    """
+    if isinstance(node, ast.Constant) and isinstance(node.value, bool):
+        return node.value
+    return _node_value(node, module, ())
+
+
+def policy_fields(module: str) -> dict[str, object]:
+    """Every ``TilePolicy`` field of ``module``'s instance, values resolved.
+
+    Raises ``_Unresolved`` rather than defaulting: a policy field the resolver
+    cannot read is a pin nobody verified.
+    """
+    call = _policy_call(module)
+    given = {kw.arg: kw.value for kw in call.keywords if kw.arg is not None}
+    missing = set(POLICY_FIELDS) - set(given)
+    extra = set(given) - set(POLICY_FIELDS)
+    if missing or extra:
+        raise AssertionError(
+            f"{module}.{POLICY_NAME} fields drifted from TilePolicy: "
+            f"missing={sorted(missing)} extra={sorted(extra)}"
+        )
+    return {
+        name: _policy_value(given[name], module)
+        for name in POLICY_FIELDS
+    }
+
+
+def policy_field_source(module: str, field: str) -> str:
+    """The unparsed production expression a policy field is built from."""
+    call = _policy_call(module)
+    for kw in call.keywords:
+        if kw.arg == field:
+            return ast.unparse(kw.value)
+    raise _Unresolved(f"{module}.{POLICY_NAME} has no field {field!r}")
+
+
+def _imports_policy_type(module: str) -> bool:
+    tree = _tree(module)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and (
+            (node.module or "") == TILE_POLICY
+        ):
+            return any(alias.name == POLICY_TYPE for alias in node.names)
+    return False
 
 
 # ---------------------------------------------------------------------------
@@ -259,19 +361,65 @@ def _tree_for(path):
 # ---------------------------------------------------------------------------
 
 
+def test_policy_instances_reuse_named_symbols():
+    """Each derived budget/capacity field names its production symbol.
+
+    A re-typed literal would silently survive a change to the symbol it was
+    copied from, so the matrix reads the expression, not just the value.
+    """
+    expected = {
+        (IC_POLICY_SITE, "settle_ms"): "LOD_FETCH_SETTLE_MS",
+        (IC_POLICY_SITE, "tile_budget_bytes"): "_TILE_CACHE_BUDGET_BYTES",
+        (IC_POLICY_SITE, "host_cache_budget_bytes"): "_HOST_TEXTURE_CACHE_BUDGET_BYTES",
+        (IC_POLICY_SITE, "array_capacity"): "_ARRAY_CAPACITY",
+        (MC_POLICY_SITE, "tile_budget_bytes"): "SLOT_TILE_CACHE_BUDGET_BYTES",
+        (MC_POLICY_SITE, "host_cache_budget_bytes"): "SLOT_HOST_TEXTURE_CACHE_BUDGET_BYTES",
+        (MC_POLICY_SITE, "array_capacity"): "_ARRAY_CAPACITY",
+        (QL_POLICY_SITE, "tile_budget_bytes"): "_TILE_CACHE_BUDGET_BYTES",
+        (QL_POLICY_SITE, "host_cache_budget_bytes"): (
+            "DEFAULT_HOST_TEXTURE_CACHE_BUDGET_BYTES"
+        ),
+        (QL_POLICY_SITE, "array_capacity"): "_ARRAY_CAPACITY",
+    }
+    drifted = {
+        (module, field): (policy_field_source(module, field), symbol)
+        for (module, field), symbol in expected.items()
+        if policy_field_source(module, field) != symbol
+    }
+    assert not drifted, (
+        f"policy fields must be built from their named production symbols, "
+        f"not re-typed literals: {drifted}"
+    )
+
+    for module in (IC_POLICY_SITE, MC_POLICY_SITE, QL_POLICY_SITE):
+        assert _imports_policy_type(module), (
+            f"{module} must import {POLICY_TYPE} from {TILE_POLICY} -- the "
+            f"policy is one engine value, not a per-module lookalike"
+        )
+
+
 def test_lod_settle_window_is_image_compare_only():
     """IC commits an LOD level only after 100 ms of stability; MC commits now.
 
-    IC: ``LOD_FETCH_SETTLE_MS`` in ``engine.cache.tile_constants`` (100 ms),
-    consumed by the IC commit path (``use_cases/lod_commit.py``).
-    MC: ``scene/passes/residency.py`` has no settle symbol in code at all --
-    it resolves every slot's LOD key once and commits immediately (the module
-    says so in a comment, which is not a symbol).
+    IC: the policy's ``settle_ms`` resolves to ``LOD_FETCH_SETTLE_MS``
+    (``engine.cache.tile_constants``, 100 ms), consumed by the IC commit path
+    (``use_cases/lod_commit.py``).
+    MC: the policy is ``immediate`` with no settle window at all -- it resolves
+    every slot's LOD key once and commits immediately (the module says so in a
+    comment, which is not a symbol).
     """
+    ic_policy = policy_fields(IC_POLICY_SITE)
+    mc_policy = policy_fields(MC_POLICY_SITE)
+
     settle_ms = _const(TILE_CONSTANTS, "LOD_FETCH_SETTLE_MS")
-    assert settle_ms == 100.0, (
-        f"IC LOD settle window drifted: LOD_FETCH_SETTLE_MS == {settle_ms!r} "
-        f"(engine.cache.tile_constants), expected 100.0"
+    assert ic_policy["lod_mode"] == "settle", (
+        f"IC tile policy lod_mode drifted: {ic_policy['lod_mode']!r} "
+        f"(expected 'settle')"
+    )
+    assert settle_ms == 100.0 and ic_policy["settle_ms"] == settle_ms, (
+        f"IC LOD settle window drifted: policy settle_ms == "
+        f"{ic_policy['settle_ms']!r}, LOD_FETCH_SETTLE_MS == {settle_ms!r} "
+        f"(expected 100.0)"
     )
 
     ic_tree = _tree(IC_LOD_COMMIT)
@@ -284,13 +432,18 @@ def test_lod_settle_window_is_image_compare_only():
         "IC's LOD commit path imports LOD_FETCH_SETTLE_MS but never uses it"
     )
 
+    assert mc_policy["lod_mode"] == "immediate", (
+        f"multi_compare tile policy drifted off immediate commit: "
+        f"lod_mode == {mc_policy['lod_mode']!r} (MC is the immediate-commit "
+        f"tab, plan-tile-policy-reliability-2026-10-24)"
+    )
+    assert mc_policy["settle_ms"] is None, (
+        f"multi_compare gained an LOD settle window: settle_ms == "
+        f"{mc_policy['settle_ms']!r} (expected None) -- re-pin this row and "
+        f"the tab-policy matrix before changing the policy"
+    )
     mc_tree = _tree(MC_RESIDENCY)
     assert not _imports_symbol(mc_tree, "LOD_FETCH_SETTLE_MS"), (
-        "multi_compare gained an LOD settle symbol: MC is the immediate-commit "
-        "tab (plan-tile-policy-reliability-2026-10-24) -- re-pin this row and "
-        "the tab-policy matrix before changing the policy"
-    )
-    assert not _references_symbol(mc_tree, "LOD_FETCH_SETTLE_MS"), (
         "multi_compare references LOD_FETCH_SETTLE_MS as code: MC commits LOD "
         "immediately and must not inherit IC's settle window by accident"
     )
@@ -298,14 +451,21 @@ def test_lod_settle_window_is_image_compare_only():
 
 def test_gpu_tile_budget_matrix():
     """IC grants the shared eviction pass 2 GiB; MC grants each slot pool 512 MiB."""
+    ic_policy = policy_fields(IC_POLICY_SITE)
+    mc_policy = policy_fields(MC_POLICY_SITE)
+
     ic_budget = _const(TILED_IMAGE_VIEW, "_TILE_CACHE_BUDGET_BYTES")
     mc_budget = _const(MC_RESOURCES, "SLOT_TILE_CACHE_BUDGET_BYTES")
 
-    assert ic_budget == 2 * 1024**3 and mc_budget == 512 * 1024**2, (
-        f"GPU tile budget matrix drifted: IC (engine.gpu.tiled_image_view."
-        f"_TILE_CACHE_BUDGET_BYTES) == {ic_budget!r} (expected 2 GiB), "
-        f"MC (scene.resources.SLOT_TILE_CACHE_BUDGET_BYTES) == {mc_budget!r} "
-        f"(expected 512 MiB)"
+    assert (
+        ic_policy["tile_budget_bytes"] == ic_budget == 2 * 1024**3
+        and mc_policy["tile_budget_bytes"] == mc_budget == 512 * 1024**2
+    ), (
+        f"GPU tile budget matrix drifted: IC policy "
+        f"{ic_policy['tile_budget_bytes']!r} (expected 2 GiB, engine "
+        f"_TILE_CACHE_BUDGET_BYTES == {ic_budget!r}), MC policy "
+        f"{mc_policy['tile_budget_bytes']!r} (expected 512 MiB, "
+        f"SLOT_TILE_CACHE_BUDGET_BYTES == {mc_budget!r})"
     )
     # IC's renderer-side name is an alias of the engine value, never a fork.
     assert (
@@ -315,15 +475,21 @@ def test_gpu_tile_budget_matrix():
 
 def test_host_texture_cache_budget_matrix():
     """IC keeps 3 GiB of host QImages; MC caps its per-slot host caches at 512 MiB."""
+    ic_policy = policy_fields(IC_POLICY_SITE)
+    mc_policy = policy_fields(MC_POLICY_SITE)
+
     ic_host = _const(HOST_TEXTURE_CACHE, "DEFAULT_HOST_TEXTURE_CACHE_BUDGET_BYTES")
     mc_host = _const(MC_RESOURCES, "SLOT_HOST_TEXTURE_CACHE_BUDGET_BYTES")
 
-    assert ic_host == 3 * 1024**3 and mc_host == 512 * 1024**2, (
-        f"host texture cache budget matrix drifted: IC "
-        f"(engine.gpu.host_texture_cache.DEFAULT_HOST_TEXTURE_CACHE_BUDGET_BYTES)"
-        f" == {ic_host!r} (expected 3 GiB), MC "
-        f"(scene.resources.SLOT_HOST_TEXTURE_CACHE_BUDGET_BYTES) == {mc_host!r} "
-        f"(expected 512 MiB)"
+    assert (
+        ic_policy["host_cache_budget_bytes"] == ic_host == 3 * 1024**3
+        and mc_policy["host_cache_budget_bytes"] == mc_host == 512 * 1024**2
+    ), (
+        f"host texture cache budget matrix drifted: IC policy "
+        f"{ic_policy['host_cache_budget_bytes']!r} (expected 3 GiB, engine "
+        f"DEFAULT_HOST_TEXTURE_CACHE_BUDGET_BYTES == {ic_host!r}), MC policy "
+        f"{mc_policy['host_cache_budget_bytes']!r} (expected 512 MiB, "
+        f"SLOT_HOST_TEXTURE_CACHE_BUDGET_BYTES == {mc_host!r})"
     )
     # IC's alias carries the engine default's EFFECTIVE value (assert the
     # value, not the alias name -- a rename must not pass silently).
@@ -335,7 +501,8 @@ def test_host_texture_cache_budget_matrix():
 def test_texture_array_capacity_matrix():
     """IC pre-sizes 2032 array layers; MC pre-sizes 508.
 
-    Both capacities are DERIVED, not literals::
+    Both policies take ``array_capacity=_ARRAY_CAPACITY`` from their own module,
+    and both capacities are DERIVED there, not literals::
 
         _ARRAY_CAPACITY = min(
             DEFAULT_MAX_ARRAY_SIZE,                      # 2048 backend layer cap
@@ -353,15 +520,23 @@ def test_texture_array_capacity_matrix():
     This test asserts the integer each expression actually evaluates to, so a
     changed budget, tile size, apron or canvas bound fails here.
     """
-    ic_capacity = _const(IC_RESOURCES, "_ARRAY_CAPACITY")
-    mc_capacity = _const(MC_BASE_IMAGES, "_ARRAY_CAPACITY")
+    ic_policy = policy_fields(IC_POLICY_SITE)
+    mc_policy = policy_fields(MC_POLICY_SITE)
+    ic_capacity = ic_policy["array_capacity"]
+    mc_capacity = mc_policy["array_capacity"]
 
     assert ic_capacity == 2032 and mc_capacity == 508, (
-        f"texture-array capacity matrix drifted: IC "
-        f"(rhi_renderer/resources.py._ARRAY_CAPACITY) == {ic_capacity!r} "
-        f"(expected 2032: 2 GiB // 1_056_784), MC "
-        f"(scene/passes/base_images.py._ARRAY_CAPACITY) == {mc_capacity!r} "
+        f"texture-array capacity matrix drifted: IC policy {ic_capacity!r} "
+        f"(expected 2032: 2 GiB // 1_056_784), MC policy {mc_capacity!r} "
         f"(expected 508: 512 MiB // 1_056_784)"
+    )
+    assert ic_capacity == _const(IC_RESOURCES, "_ARRAY_CAPACITY"), (
+        "IC policy must take its capacity from resources._ARRAY_CAPACITY "
+        "(the 3x derivation), not a second number"
+    )
+    assert mc_capacity == _const(MC_BASE_IMAGES, "_ARRAY_CAPACITY"), (
+        "MC policy must take its capacity from base_images._ARRAY_CAPACITY "
+        "(the 1x slot derivation), not a second number"
     )
 
 
@@ -375,6 +550,17 @@ def _mentions_hold(tree: ast.Module, name: str) -> bool:
 
 def test_first_paint_hold_is_image_compare_only():
     """IC holds a blank-white first paint atomically; MC has no such hold."""
+    ic_policy = policy_fields(IC_POLICY_SITE)
+    mc_policy = policy_fields(MC_POLICY_SITE)
+    assert ic_policy["first_paint_hold"] is True, (
+        "IC tile policy lost first_paint_hold (expected True)"
+    )
+    assert mc_policy["first_paint_hold"] is False, (
+        f"multi_compare gained a first-paint hold flag "
+        f"(first_paint_hold={mc_policy['first_paint_hold']!r}): IC-only policy "
+        f"(plan-tile-policy-reliability-2026-10-24) -- re-pin this row"
+    )
+
     ic_coverage = _tree(IC_COVERAGE)
     assert _defines(ic_coverage, "apply_first_paint_hold"), (
         "IC lost its first-paint hold owner "
@@ -429,6 +615,17 @@ def test_coarsest_lod_pin_matrix():
     is carried as ``xfail(strict=True)``. A green/XPASS row means MC gained
     the pin -- re-pin the matrix instead of letting the marker linger.
     """
+    ic_policy = policy_fields(IC_POLICY_SITE)
+    mc_policy = policy_fields(MC_POLICY_SITE)
+    assert ic_policy["pin_coarsest"] is True, (
+        "IC tile policy lost pin_coarsest (expected True)"
+    )
+    assert mc_policy["pin_coarsest"] is False, (
+        f"multi_compare gained a coarsest-LOD pin flag "
+        f"(pin_coarsest={mc_policy['pin_coarsest']!r}) -- pin it for real in "
+        f"the pass, then re-pin this row and drop the xfail marker"
+    )
+
     ic_tree = _tree(IC_PIN_SITE)
     assert "pin_coarsest_level" in _called_names(ic_tree), (
         "IC lost its coarsest-LOD pin: use_cases/tile_residency.py no longer "
