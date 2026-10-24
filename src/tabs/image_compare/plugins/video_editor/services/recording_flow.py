@@ -78,6 +78,10 @@ class RecordingFlow:
 
     def toggle_recording(self, checked: bool | None = None):
         del checked
+        import time as _time
+
+        _t0 = _time.perf_counter()
+        _marks: dict[str, float] = {}
         controller = self.controller
         _video_debug("toggle_recording called has_data=%s is_recording=%s finalize=%s recorder=%s store=%s", controller.recorder.has_recording_data() if controller.recorder else None, getattr(controller.recorder, "is_recording", None), controller._recording_finalize_in_progress, controller.recorder, getattr(controller.recorder, "store", None) if controller.recorder else None)
         if not self._begin_toggle():
@@ -87,7 +91,9 @@ class RecordingFlow:
         try:
             if controller.recorder.is_recording:
                 _video_debug("toggle_recording STOP is_recording True -> stop finalize=False")
+                _marks["stop"] = _time.perf_counter()
                 controller.recorder.stop(finalize=False)
+                _marks["stop_done"] = _time.perf_counter()
                 self._sync_controls(
                     is_recording=False,
                     is_paused=False,
@@ -96,7 +102,9 @@ class RecordingFlow:
                 self._finalize_recording_async()
             else:
                 _video_debug("toggle_recording START is_recording False -> start")
+                _marks["start"] = _time.perf_counter()
                 controller.recorder.start()
+                _marks["start_done"] = _time.perf_counter()
                 self._sync_controls(
                     is_recording=True,
                     is_paused=False,
@@ -110,6 +118,23 @@ class RecordingFlow:
             self._release_toggle()
             return
         finally:
+            _marks["end"] = _time.perf_counter()
+            _total_ms = (_marks["end"] - _t0) * 1000.0
+            _parts = " ".join(
+                f"{name}={(ts - _t0) * 1000.0:.1f}ms"
+                for name, ts in _marks.items()
+                if name != "end"
+            )
+            # Any toggle that costs more than a frame is a visible hitch; log it
+            # through the existing perf gate so a report can name the phase.
+            from tabs.image_compare.debug import ic_perf_debug as _perf
+
+            _perf(
+                "toggle_recording total=%.1fms %s is_recording=%s",
+                _total_ms,
+                _parts,
+                getattr(controller.recorder, "is_recording", None),
+            )
             self._release_toggle_unless_finalizing()
             _video_debug("toggle_recording DONE is_recording=%s has_data=%s", getattr(controller.recorder, "is_recording", None), controller.recorder.has_recording_data() if controller.recorder else None)
 
