@@ -68,6 +68,20 @@ the predicate once per process so a wrong prediction is visible in the field
 instead of silent. The earlier fixed family list guessed Metal wrong; a rule
 that reads the two documented properties does not need to guess.
 
+Self-calibration (``IMGSLI_RT_ORIENTATION_PROBE=1``)
+    The derived rule above is a PREDICTION on Metal/D3D12 and could be
+    invalidated by a future Qt change. When the flag is on, the mip cascade
+    renders one tiny asymmetric source through its REAL downsample pipeline
+    into its REAL scratch target, reads the result back, and reports the
+    flip the target actually needed via ``record_sampled_rt_orientation``.
+    That observation is kept per RHI object (same lifetime pattern as
+    ``_traced`` below) and WINS over the derived rule for the rest of the
+    session; a disagreement is logged at WARNING with backend, predicted and
+    observed flip plus the one-line fix. An unreadable readback records
+    nothing (``observed_flip=None``) and the derived rule stays in force.
+    With the flag off (the default) nothing is probed, read back or logged --
+    the predicate is the whole behaviour again.
+
 Contracts pinning this module: ``tests/contracts/test_rt_y_orientation.py``
 (single-source: nothing else in ``src/`` may build a flip literal or call the
 two queries outside the allowlist below) and
@@ -95,6 +109,24 @@ _TRACE_ENABLED = os.environ.get("IMGSLI_RT_ORIENTATION_TRACE", "").strip().lower
 )
 _traced: set[int] = set()
 
+#: Env-gated self-calibration of the SAMPLED_RT rule: when on, a pass may
+#: render one tiny known-asymmetric source through its real pipeline and
+#: report the flip the target actually needed. Read once at import, exactly
+#: like ``_TRACE_ENABLED``; off (the default) means no probe, no readback, no
+#: extra log line anywhere.
+_PROBE_ENABLED = os.environ.get(
+    "IMGSLI_RT_ORIENTATION_PROBE", ""
+).strip().lower() not in ("", "0", "false", "no", "off")
+
+#: Observed flips, keyed on ``id(rhi)`` -- one RHI object is one session, so
+#: the same lifetime pattern as ``_traced``. A recorded value WINS over the
+#: predicate derived from the two documented QRhi properties; it is never a
+#: process-wide flip (a second RHI keeps its own answer).
+_observed_flips: dict[int, bool] = {}
+
+#: RHIs whose single calibration probe has already been claimed (or attempted).
+_probe_claimed: set[int] = set()
+
 IDENTITY_MATRIX: tuple[float, ...] = (
     1.0, 0.0, 0.0, 0.0,
     0.0, 1.0, 0.0, 0.0,
@@ -110,16 +142,20 @@ Y_FLIP_MATRIX: tuple[float, ...] = (
 )
 
 
-def sampled_rt_needs_y_flip(rhi) -> bool:
-    """Whether a pass into a SAMPLED offscreen target must flip Y.
+def _backend_name(rhi) -> str:
+    """Backend label for probe logs; never raises on a stub RHI."""
+    try:
+        return str(rhi.backendName() or "")
+    except Exception:
+        return type(rhi).__name__
 
-    Derived from the two documented conventions (see module docstring):
 
-        needs_flip = isYUpInFramebuffer() or not isYUpInNDC()
+def _derived_needs_y_flip(rhi) -> bool:
+    """The predicate from the two documented QRhi properties, no overrides.
 
-    OpenGL -> flip, Vulkan -> flip, D3D11/12 and Metal -> no flip. A backend
-    that cannot answer either query keeps the flip (never guess a flip away,
-    and never silently drop the behaviour that shipped for a year).
+    A backend that cannot answer either query keeps the flip (never guess a
+    flip away, and never silently drop the behaviour that shipped for a
+    year).
     """
     try:
         y_up_framebuffer = bool(rhi.isYUpInFramebuffer())
@@ -127,6 +163,97 @@ def sampled_rt_needs_y_flip(rhi) -> bool:
     except (AttributeError, RuntimeError):
         return True
     return y_up_framebuffer or not y_up_ndc
+
+
+def sampled_rt_orientation_probe_enabled() -> bool:
+    """Whether the env-gated self-calibration probe may run.
+
+    Read once at import from ``IMGSLI_RT_ORIENTATION_PROBE``. Callers ask at
+    use time so a test (or a future interactive switch) can flip the module
+    flag without reimporting.
+    """
+    return _PROBE_ENABLED
+
+
+def claim_sampled_rt_orientation_probe(rhi) -> bool:
+    """Claim the ONE calibration probe allowed for this RHI; True on the first.
+
+    A pass must call this before rendering its probe: it keeps a probe to one
+    per ``(rhi, session)`` so a per-frame cascade cannot keep rendering the
+    calibration source. Claiming without recording is deliberate -- an
+    unreadable readback also consumes the attempt (retrying every frame would
+    only add GPU work, never a different answer).
+    """
+    key = id(rhi)
+    if key in _probe_claimed:
+        return False
+    _probe_claimed.add(key)
+    return True
+
+
+def record_sampled_rt_orientation(rhi, *, observed_flip: bool | None) -> None:
+    """Record the SAMPLED_RT flip a real probe observed for ``rhi``.
+
+    ``True``/``False`` = the target really needed/neededn't the flip, as read
+    back from the probe. It overrides the derived predicate for this RHI for
+    the rest of the session, and a disagreement is logged at WARNING (always,
+    not only under ``IMGSLI_RT_ORIENTATION_TRACE``) with the backend, the
+    predicted and the observed flip and the one-line fix.
+
+    ``None`` = the readback was unreadable/empty: record nothing, keep the
+    derived rule, and log at INFO once so the field log shows the probe ran
+    without pretending it measured anything.
+    """
+    derived = _derived_needs_y_flip(rhi)
+    backend = _backend_name(rhi)
+    if observed_flip is None:
+        logger.info(
+            "[rt-y] orientation probe unreadable: backend=%s predicted_flip=%s "
+            "-> keeping the derived rule (engine/gpu/rt_y_orientation.py)",
+            backend,
+            derived,
+        )
+        return
+    observed = bool(observed_flip)
+    _observed_flips[id(rhi)] = observed
+    if observed == derived:
+        logger.info(
+            "[rt-y] orientation probe agrees: backend=%s sampled-RT flip=%s "
+            "(engine/gpu/rt_y_orientation.py)",
+            backend,
+            observed,
+        )
+        return
+    logger.warning(
+        "[rt-y] SAMPLED-RT orientation DISAGREES with the derived rule: "
+        "backend=%s predicted_flip=%s observed_flip=%s -- fix: change the "
+        "predicate/table in engine/gpu/rt_y_orientation.py to flip=%s for this "
+        "backend (a probe override is active for this session; without it every "
+        "generated mip level is stored with the wrong orientation)",
+        backend,
+        derived,
+        observed,
+        observed,
+    )
+
+
+def sampled_rt_needs_y_flip(rhi) -> bool:
+    """Whether a pass into a SAMPLED offscreen target must flip Y.
+
+    A flip observed by the calibration probe (``record_sampled_rt_orientation``)
+    wins for that RHI. Otherwise derived from the two documented conventions
+    (see module docstring):
+
+        needs_flip = isYUpInFramebuffer() or not isYUpInNDC()
+
+    OpenGL -> flip, Vulkan -> flip, D3D11/12 and Metal -> no flip. A backend
+    that cannot answer either query keeps the flip (never guess a flip away,
+    and never silently drop the behaviour that shipped for a year).
+    """
+    recorded = _observed_flips.get(id(rhi))
+    if recorded is not None:
+        return recorded
+    return _derived_needs_y_flip(rhi)
 
 
 def _trace_once(rhi, needs_flip: bool) -> None:
