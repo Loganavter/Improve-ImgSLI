@@ -1207,6 +1207,28 @@ def apply_plan_full(
             canvas.end_update_batch()
 
 
+def geometry_needs_bootstrap(state) -> bool:
+    """True until some owner has written this frame's content rect.
+
+    The per-frame geometry pass is the single writer of the letterbox. This
+    scene-only path used to re-derive it from ``_stored_pil_images`` (the
+    *preview* images), which disagrees with the drawn tier whenever a crop box
+    is active: the owner writes the cropped aspect (e.g. 1440x1056), the
+    scene-only pass then overwrites it with the preview's (1024x768), and the
+    image visibly changes aspect. Measured on the D3D11 host 2026-10-24
+    (plan-comparison-letterbox): letterbox alternated 0.837 <-> 0.819 in one
+    canvas with identical label size and DPR 1.0. Keep the bootstrap (flows
+    where this pass is the only writer) and stop the overwrite.
+    """
+    rect = getattr(state, "_content_rect_px", None)
+    if not rect:
+        return True
+    try:
+        return tuple(int(value) for value in rect) == (0, 0, 0, 0)
+    except (TypeError, ValueError):
+        return True
+
+
 def apply_plan_scene_only(
     canvas,
     plan: CanvasRenderPlan,
@@ -1239,7 +1261,11 @@ def apply_plan_scene_only(
 
         state = canvas.runtime_state
         img0 = state._stored_pil_images[0] if state._stored_pil_images else None
-        if img0 is not None and state._shader_letterbox_mode:
+        if (
+            img0 is not None
+            and state._shader_letterbox_mode
+            and geometry_needs_bootstrap(state)
+        ):
             letterbox_focus = capture_letterbox_focus(canvas) if plan.preserve_zoom else None
             img1 = (
                 state._stored_pil_images[1]
