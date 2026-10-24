@@ -118,11 +118,19 @@ def test_no_hold_without_level_transition():
     assert plan == current_items
 
 
-def test_call_site_passes_atomic():
-    """Guard: the MC call site opts into resolve_fallback_lod(atomic=...)."""
+def test_call_site_passes_level_hold():
+    """Guard: the MC call site opts into the level hold through its TilePolicy.
+
+    ``resolve_fallback_lod``'s ``atomic`` is no longer passed by hand -- the
+    surface's ``TilePolicy`` gates it and ``resolve_frame_fallback`` computes
+    it, so the guard pins the policy-bound call and the ``is_level_hold``
+    detection feeding it.
+    """
     from pathlib import Path
 
     text = Path(__file__).resolve().parents[2] / "scene" / "passes" / "base_images.py"
     src = text.read_text(encoding="utf-8")
     assert "_is_level_hold(old_key, key)" in src
-    assert "atomic=_atomic_level_hold" in src
+    assert "is_level_hold=_atomic_level_hold" in src
+    assert "resolve_frame_fallback(" in src
+    assert "TILE_POLICY," in src

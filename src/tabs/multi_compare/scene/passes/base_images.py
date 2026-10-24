@@ -9,7 +9,8 @@ import struct
 from PySide6.QtGui import QImage, QRhiViewport
 
 from engine.store.tiled_pixel_store import TiledPixelStore
-from engine.cache.fallback_lod import resolve_fallback_lod
+from engine.cache.fallback_lod import resolve_frame_fallback
+from engine.cache.tile_policy import TilePolicy
 from engine.gpu.array_draw import (
     SLOT_INSTANCE_FMT,
     draw_array_instances,
@@ -81,6 +82,26 @@ _ARRAY_CAPACITY = min(
         _MAX_TILES_PER_AXIS * _MAX_TILES_PER_AXIS,
         SLOT_TILE_CACHE_BUDGET_BYTES // _ARRAY_LAYER_BYTES,
     ),
+)
+
+#: Multi compare's tile policy -- the lean end of the matrix. No LOD settle
+#: window (each slot resolves and commits every frame), atomic only on a
+#: same-slot LOD level hold with a tracked baseline (no content-swap or hires
+#: branch of its own), no blank-white first-paint hold and no coarsest-level
+#: pin (the tracked drift pinned by the policy matrix), and a 512 MiB per-slot
+#: slice of GPU tiles/host QImages with a 1x (no cross-image pairing) capacity
+#: derivation. Every value is the symbol this pass already used.
+TILE_POLICY = TilePolicy(
+    lod_mode="immediate",
+    settle_ms=None,
+    atomic_on_content_swap=False,
+    atomic_on_hires_flip=False,
+    atomic_on_level_change=True,
+    first_paint_hold=False,
+    pin_coarsest=False,
+    tile_budget_bytes=SLOT_TILE_CACHE_BUDGET_BYTES,
+    host_cache_budget_bytes=SLOT_HOST_TEXTURE_CACHE_BUDGET_BYTES,
+    array_capacity=_ARRAY_CAPACITY,
 )
 
 # Swap-machine decision/apply/backfill live in the merged engine pass
@@ -693,14 +714,15 @@ class BaseImagesPass(CanvasRenderPass):
             # partial current, never blank).
             _atomic_level_hold = _is_level_hold(old_key, key)
 
-            new_last_good_key, tiles_for_key = resolve_fallback_lod(
+            new_last_good_key, tiles_for_key = resolve_frame_fallback(
+                TILE_POLICY,
                 key=key,
                 current_items=current_items,
                 more_pending=key_more_pending,
                 last_good_key=old_key,
                 build_fallback_items=_build_fallback_items,
                 drop_covered=_drop_covered,
-                atomic=_atomic_level_hold,
+                is_level_hold=_atomic_level_hold,
             )
             self._last_good_key[sid] = new_last_good_key
             # A4 swap hardening: a promoted (fully uploaded) new key covers

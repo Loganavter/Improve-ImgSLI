@@ -13,7 +13,56 @@ from __future__ import annotations
 
 from typing import Callable, TypeVar
 
+from engine.cache.tile_policy import TilePolicy
+
 _T = TypeVar("_T")
+
+
+def resolve_frame_fallback(
+    policy: TilePolicy,
+    *,
+    key: object,
+    current_items: list[_T],
+    more_pending: bool,
+    last_good_key: object | None,
+    build_fallback_items: Callable[[object], list[_T]],
+    drop_covered: Callable[[list[_T], list[_T]], list[_T]],
+    cascade_pending: bool = False,
+    is_content_swap: bool = False,
+    is_hires_flip: bool = False,
+    is_level_hold: bool = False,
+) -> tuple[object | None, list[_T]]:
+    """Per-frame fallback entry: apply ``policy`` to ``resolve_fallback_lod``.
+
+    The surfaces used to reach ``resolve_fallback_lod`` directly and pass their
+    own ``atomic=`` expression, which made the policy invisible outside each
+    renderer. Here the caller still owns the per-frame *detection* (which kind
+    of transition this frame is) and the policy owns which kinds it holds
+    whole, so a surface with a flag off keeps the progressive reveal it always
+    had. ``atomic`` is exactly::
+
+        policy.atomic_on_content_swap and is_content_swap
+        or policy.atomic_on_hires_flip and is_hires_flip
+        or policy.atomic_on_level_change and is_level_hold
+
+    Everything else (promotion gates, fail-open on an empty fallback plan,
+    callback invocation order) is ``resolve_fallback_lod``'s, unchanged --
+    this function holds no state and adds no branch of its own.
+    """
+    return resolve_fallback_lod(
+        key=key,
+        current_items=current_items,
+        more_pending=more_pending,
+        last_good_key=last_good_key,
+        build_fallback_items=build_fallback_items,
+        drop_covered=drop_covered,
+        atomic=policy.atomic_for(
+            is_content_swap=is_content_swap,
+            is_hires_flip=is_hires_flip,
+            is_level_hold=is_level_hold,
+        ),
+        cascade_pending=cascade_pending,
+    )
 
 
 def resolve_fallback_lod(
@@ -64,20 +113,17 @@ def resolve_fallback_lod(
     fallback plan comes back empty (the old content was fully evicted or
     never resident), atomicity is moot -- nothing old is left to hold the
     screen -- so the partial ``current_items`` are drawn rather than a blank
-    frame. Callers opt in explicitly, and not uniformly. image_compare passes
-    ``atomic=decision_atomic``
-    (``src/tabs/image_compare/canvas/rhi_renderer/use_cases/fallback.py:360-369``),
-    which is ``True`` for a content swap, for a LOD level transition with a
-    complete baseline (``_atomic_level_hold``, :227-232), and for a hires
-    flip (``_hires_flip_hold``, :233-241; one tier per frame, no mixed grids
-    -- live trace 2026-09-20 showed progressive reveal flashing
-    resolution-step seams at every old/new boundary during sustained zoom).
-    multi_compare passes ``atomic=_is_level_hold(old_key, key)``
-    (``tabs/multi_compare/scene/passes/base_images.py:696-704``): atomic only
-    on a same-slot LOD tier change with a tracked baseline
-    (``_is_level_hold``, :222-233), with no content-swap branch of its own, so
-    its other cases keep the progressive reveal.
-    ``engine/gpu/tiled_image_view.py:952-960`` passes no ``atomic`` at all
+    frame. Callers opt in explicitly, and not uniformly -- the opt-in now
+    lives in each surface's ``TilePolicy`` (``engine.cache.tile_policy``) and
+    reaches this function through ``resolve_frame_fallback`` above.
+    image_compare opts into all three kinds (content swap, LOD level
+    transition with a complete baseline, and hires flip; one tier per frame,
+    no mixed grids -- live trace 2026-09-20 showed progressive reveal
+    flashing resolution-step seams at every old/new boundary during sustained
+    zoom). multi_compare opts into the level hold only: atomic on a same-slot
+    LOD tier change with a tracked baseline (``base_images._is_level_hold``),
+    with no content-swap branch of its own, so its other cases keep the
+    progressive reveal. ``engine.gpu.tiled_image_view`` opts into none
     (default ``False``)."""
     if not more_pending and not cascade_pending and current_items:
         return key, current_items

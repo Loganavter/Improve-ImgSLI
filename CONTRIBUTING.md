@@ -1,6 +1,6 @@
 # Contributing Guide
 
-Thank you for your interest in contributing to Improve-ImgSLI! This guide helps you set up a development environment, understand the repository layout, and build distributables.
+Thank you for your interest in contributing to BlinkTable! This guide helps you set up a development environment, understand the repository layout, and build distributables.
 
 If you are a user who just wants to install and use the app, please see:
 - docs/INSTALL: docs/INSTALL.md
@@ -248,14 +248,14 @@ When you add or modify features:
 
 ## Acknowledgements
 
-Thanks to everyone who has helped shape Improve-ImgSLI over the years. A few specific shout-outs:
+Thanks to everyone who has helped shape BlinkTable over the years. A few specific shout-outs:
 
 - [@johnpetersa19](https://github.com/johnpetersa19) — for cleaning up the README Markdown in [PR #18](https://github.com/Loganavter/Improve-ImgSLI/pull/18).
 - [@Anduin9527](https://github.com/Anduin9527/Improve-ImgSLI) — the GUI-refresh idea introduced around v3–v4 was borrowed from their fork.
 
 ## License
 
-Improve-ImgSLI is licensed under **GPL-3.0-or-later**. See:
+BlinkTable is licensed under **GPL-3.0-or-later**. See:
 
 - [LICENSE](LICENSE) — application source code
 - [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) — PySide6/Qt (LGPL), bundled libraries, and binary-distribution notes
