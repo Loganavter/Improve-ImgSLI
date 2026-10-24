@@ -72,7 +72,14 @@ def test_gpu_warm_up_reports_success_so_the_caller_can_stop():
         "warm_up_gpu_widgets must return bool: the caller needs success, not a "
         "fire-and-forget call that re-runs the 4 s compile on every activation"
     )
-    assert "return warmed" in text
+    # One canvas is enough to pay the cold pipeline compile: a second offscreen
+    # widget repeats it in full (measured 4044 + 4066 ms back to back). The
+    # thumbnail renderer keeps lazy creation, which is exercised during export.
+    assert "self._thumbnail_gpu_export_service.warm_up()" not in text, (
+        "the thumbnail export service must not be warmed alongside the main "
+        "one: each offscreen canvas pays a full cold pipeline compile "
+        "(~4 s), and the thumbnail path is created lazily during export"
+    )
 
     plugin = Path("src/plugins/export/plugin.py").read_text(encoding="utf-8")
     assert "_gpu_warm_done = bool(warm_up())" in plugin, (

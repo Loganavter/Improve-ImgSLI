@@ -367,16 +367,17 @@ class VideoExporterService:
         retrying: each cold widget costs a full D3D shader/pipeline compile
         (measured 2026-10-24: ~4 s, twice, on the GUI thread).
         """
-        warmed = False
+        # ONE canvas is enough to pay the cold shader/pipeline compile; each
+        # additional offscreen widget repeats it in full (measured 2026-10-24:
+        # ~4 s per widget on the Windows build, 4044 + 4066 ms back to back).
+        # The thumbnail renderer keeps its documented lazy creation: it is only
+        # used during an export, where a one-off compile sits behind the
+        # progress dialog instead of freezing an idle canvas.
         if self.gpu_export_service is not None and hasattr(
             self.gpu_export_service, "warm_up"
         ):
-            warmed = bool(self.gpu_export_service.warm_up()) or warmed
-        if self._thumbnail_gpu_export_service is not None and hasattr(
-            self._thumbnail_gpu_export_service, "warm_up"
-        ):
-            warmed = bool(self._thumbnail_gpu_export_service.warm_up()) or warmed
-        return warmed
+            return bool(self.gpu_export_service.warm_up())
+        return False
 
     def _drain_last_render_debug(self) -> dict:
         return self._frame_renderer.drain_last_debug()
