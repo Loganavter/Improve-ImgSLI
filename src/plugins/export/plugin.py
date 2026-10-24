@@ -117,6 +117,12 @@ class ExportPlugin(Plugin, IControllablePlugin, IServicePlugin):
 
         warm_up = getattr(self.video_exporter, "warm_up_gpu_widgets", None)
         if callable(warm_up):
+            # One warm-up per process: the offscreen widgets' cold cost is a
+            # ~4 s D3D shader/pipeline compile per canvas (measured 2026-10-24:
+            # magnifier_pass.initialize is where the GUI thread blocks, twice —
+            # main + thumbnail export services). Re-running it on every session
+            # activation turned that into a recurring freeze the user reads as
+            # "it lags when I press record" (the toggle itself is 0.5 ms).
             # Off the startup critical path, well before the video editor
             # dialog is likely to be opened, so the GPU offscreen widgets'
             # cold-start cost (window/QRhi surface creation) isn't paid
@@ -128,7 +134,13 @@ class ExportPlugin(Plugin, IControllablePlugin, IServicePlugin):
             # WorkspaceSessionActivatedEvent subscription below catches the
             # case where the active session changes into (or starts as) a
             # canvas-providing tab at some other point.
-            QTimer.singleShot(_GPU_WARM_UP_DELAY_MS, warm_up)
+            def _warm_once_after_startup() -> None:
+                try:
+                    self._gpu_warm_done = bool(warm_up())
+                except Exception:
+                    self._gpu_warm_done = False
+
+            QTimer.singleShot(_GPU_WARM_UP_DELAY_MS, _warm_once_after_startup)
 
         if self.event_bus:
             self.event_bus.subscribe(
@@ -155,15 +167,22 @@ class ExportPlugin(Plugin, IControllablePlugin, IServicePlugin):
     def _on_session_activated(self, event: WorkspaceSessionActivatedEvent) -> None:
         # Deliberately not filtered by session_type — this file is platform
         # code and must stay tab-agnostic (see
-        # tests/contracts/test_platform_isolation.py). warm_up() already
-        # best-effort no-ops when the newly active tab doesn't provide a
-        # canvas widget class, and _ensure_widget() (called under the hood)
-        # is idempotent past its first success, so firing this on every
-        # session activation is harmless and catches whichever one actually
-        # can provide it, whenever that happens.
+        # tests/contracts/test_platform_isolation.py). warm_up() best-effort
+        # no-ops when the newly active tab doesn't provide a canvas widget
+        # class, and _ensure_widget() is idempotent past its first success.
+        #
+        # BUT the cold path is a ~4 s D3D pipeline compile per canvas, and a
+        # canvas-providing tab that is not the one GPU resources were warmed
+        # from still pays it. Retry only until the first success: a repeated
+        # warm-up on every activation re-created the offscreen widget and the
+        # freeze with it (measured 2026-10-24, GUI-thread stall watchdog:
+        # 4253 ms + 4027 ms right around a record toggle whose own cost was
+        # 0.5 ms).
+        if getattr(self, "_gpu_warm_done", False):
+            return
         warm_up = getattr(self.video_exporter, "warm_up_gpu_widgets", None)
         if callable(warm_up):
-            warm_up()
+            self._gpu_warm_done = bool(warm_up())
 
     def _emit(self, event: str, payload: Any) -> None:
         if self.event_bus:

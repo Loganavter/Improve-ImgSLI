@@ -145,6 +145,17 @@ def _widget_alive(widget) -> bool:
 
 
 class GpuExportProxy(QObject):
+
+    @property
+    def has_widget(self) -> bool:
+        """True once an offscreen canvas widget exists and is still alive.
+
+        Warm-up callers use this to stop retrying: the first successful
+        creation is what populates the GPU pipeline state; repeating it
+        recreates the widget (and pays the ~4 s D3D compile again).
+        """
+        return _widget_alive(getattr(self, "_widget", None))
+
     render_requested = Signal(object)
 
     def __init__(self, parent=None, resource_manager=None):
