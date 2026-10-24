@@ -68,6 +68,15 @@ from tabs.image_gallery.use_cases.analysis_batch import end as _ai_batch_end
 from tabs.image_gallery.use_cases.analysis_batch import (
     dispatch_terminal_rank as _dispatch_terminal_rank,
 )
+# Judge-run budget (bodies in ``use_cases/judge_budget.py``): the estimate, the
+# per-run call ceiling and the run-level 429 parking live in their own
+# use_cases module (file-size policy); this module consumes the three helpers
+# its own call sites need and nothing else.
+from tabs.image_gallery.use_cases.judge_budget import (
+    _park_rate_limited_card,
+    _release_judge_call,
+    _reserve_judge_call,
+)
 from tabs.image_gallery.use_cases.ai_analyze import (  # re-exported for callers
     _is_configured,
     _load_settings,
@@ -503,6 +512,18 @@ def _begin_analysis(owner, ctx: ActionContext, item: GalleryItem) -> None:
     except Exception:
         logger.debug("VLM wire edge apply failed", exc_info=True)
 
+    # Run budget (board 2026-10-24): the estimate was stated when the run began;
+    # here the hard ceiling is enforced per card (a card costs ``sample_count``
+    # calls, so the stop lands on a whole card). A refused card is NOT sent and
+    # is NOT an error: it stays analyzable and sits on the run's continue list.
+    if not _reserve_judge_call(owner, item, settings):
+        try:
+            set_activity(item, ActivityPhase.WAITING, "ai")
+            owner.widget.refresh_card(item)
+        except Exception:
+            pass
+        return
+
     item.analysis_status = AnalysisStatus.PENDING
     item.analysis_error = None
     set_activity(item, ActivityPhase.QUEUED, "ai")
@@ -605,11 +626,25 @@ def _send_if_current(owner, epoch: int, path: Path, **kwargs):
     went out AFTER the switch back to Algorithms). The worker runs this wrapper,
     so the epoch is re-checked on the worker thread immediately before the
     request is built.
+
+    It is also the run-level admission seam (board 2026-10-24): the provider
+    gate (:func:`scheduler.await_ai_queue`) blocks this WORKER while a 429 has
+    paused the whole run, and :class:`scheduler.ai_provider_slot` caps how many
+    requests are actually in flight at the configured ``judge_concurrency``
+    (never ``os.cpu_count()``).
     """
     if not _epoch_is_current(owner, epoch):
         _ai_debug("analyze cancelled before send: judgment domain changed path=%s", path)
         return None
-    return analyze_image_sync(path, **kwargs)
+    from tabs.image_gallery.use_cases.scheduler import ai_provider_slot, await_ai_queue
+
+    if await_ai_queue(owner):
+        _ai_debug("send resumed after a rate-limit pause path=%s", path)
+        # A pause can outlive the domain that queued this card.
+        if not _epoch_is_current(owner, epoch):
+            return None
+    with ai_provider_slot():
+        return analyze_image_sync(path, **kwargs)
 
 
 def _cancel_pending_analysis(owner, path: Path) -> None:
@@ -635,6 +670,7 @@ def _cancel_pending_analysis(owner, path: Path) -> None:
             logger.debug("cancelled analysis cleanup failed", exc_info=True)
     _ai_batch_end(owner)
     _refresh_ranks_visible(owner)
+    _release_judge_call(owner)
 
 
 def _on_analysis_ready(owner, path: Path, mtime_ns: int, result, gen: int | None = None, identity: dict | None = None, epoch: int | None = None) -> None:
@@ -684,6 +720,7 @@ def _on_analysis_ready(owner, path: Path, mtime_ns: int, result, gen: int | None
     _ai_batch_end(owner)
     _dispatch_terminal_rank(owner)
     _refresh_ranks_visible(owner)
+    _release_judge_call(owner)
 
 
 def _refresh_open_quick_look(owner) -> None:
@@ -719,6 +756,15 @@ def _on_analysis_error(owner, path: Path, error_info, gen: int | None = None, ep
     if item is None:
         return
     exctype, value, _tb = error_info
+    # Run-level 429 (board 2026-10-24): ONE rate-limited request pauses the
+    # whole queue and the card is re-queued after the pause — it never becomes
+    # an error on the first 429 (the transport already retried in-thread).
+    if isinstance(value, AiRateLimitError) or (
+        isinstance(exctype, type) and issubclass(exctype, AiRateLimitError)
+    ):
+        if _park_rate_limited_card(owner, item, value):
+            _refresh_ranks_visible(owner)
+            return
     message = None
     for error_cls, (key, default) in _ERROR_KEYS.items():
         if isinstance(value, error_cls) or (
@@ -739,6 +785,7 @@ def _on_analysis_error(owner, path: Path, error_info, gen: int | None = None, ep
     _ai_batch_end(owner)
     _dispatch_terminal_rank(owner)
     _refresh_ranks_visible(owner)
+    _release_judge_call(owner)
 
 
 # -- re-analyze offer after an AI-settings change ------------------------------

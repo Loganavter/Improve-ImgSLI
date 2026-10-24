@@ -17,7 +17,9 @@
       "waiting": "Ожидание",
       "done": "Готово",
       "error": "Ошибка",
-      "unreadable": "Не читается"
+      "unreadable": "Не читается",
+      "judge_estimate": "ИИ-судья: до {cards} × {k} = {calls} вызовов (оценка, ≤ {tokens} токенов)",
+      "judge_ceiling_stop": "ИИ-судья остановлен на лимите {ceiling} вызовов — продолжите, чтобы обработать остальные"
     },
     "domain": {
       "algorithms": "Алгоритмы",
@@ -75,6 +77,8 @@
       "sample_count_2": "2 прогона",
       "sample_count_3": "3 прогона",
       "sample_count_5": "5 прогонов",
+      "judge_concurrency": "Параллельных запросов к ИИ",
+      "judge_run_call_ceiling": "Лимит вызовов на запуск ИИ (0 = без ограничения)",
       "api_key_placeholder": "sk-…",
       "model_placeholder": "openrouter/auto или vendor/model",
       "tokens_placeholder": "auto"
@@ -94,6 +98,7 @@
       "clean_rejected_desc": "Переместить отклонённые в _rejected",
       "run_triage": "Запустить триаж",
       "set_as_source": "Сделать источником",
+      "continue_judge": "Продолжить анализ ИИ",
       "breadcrumb": {
         "triage": "Триаж"
       }

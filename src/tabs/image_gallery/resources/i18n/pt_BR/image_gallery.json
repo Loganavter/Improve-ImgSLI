@@ -17,7 +17,9 @@
       "waiting": "Aguardando",
       "done": "Concluído",
       "error": "Erro",
-      "unreadable": "Ilegível"
+      "unreadable": "Ilegível",
+      "judge_estimate": "Juiz de IA: até {cards} × {k} = {calls} chamadas (estimativa, ≤ {tokens} tokens)",
+      "judge_ceiling_stop": "Juiz de IA pausado no limite de {ceiling} chamadas — continue para analisar o restante"
     },
     "domain": {
       "algorithms": "Algoritmos",
@@ -75,6 +77,8 @@
       "sample_count_2": "2 execuções",
       "sample_count_3": "3 execuções",
       "sample_count_5": "5 execuções",
+      "judge_concurrency": "Solicitações de IA em paralelo",
+      "judge_run_call_ceiling": "Limite de chamadas por execução de IA (0 = ilimitado)",
       "api_key_placeholder": "sk-…",
       "model_placeholder": "openrouter/auto ou fornecedor/modelo",
       "tokens_placeholder": "auto"
@@ -94,6 +98,7 @@
       "clean_rejected_desc": "Mover rejeitados para _rejected",
       "run_triage": "Executar triagem",
       "set_as_source": "Definir como origem",
+      "continue_judge": "Continuar análise de IA",
       "breadcrumb": {
         "triage": "Triagem"
       }

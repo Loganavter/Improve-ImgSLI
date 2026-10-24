@@ -17,7 +17,9 @@
       "waiting": "Waiting",
       "done": "Done",
       "error": "Error",
-      "unreadable": "Unreadable"
+      "unreadable": "Unreadable",
+      "judge_estimate": "AI judge: up to {cards} × {k} = {calls} calls (estimate, ≤ {tokens} tokens)",
+      "judge_ceiling_stop": "AI judge paused at the {ceiling}-call limit — continue to analyze the rest"
     },
     "domain": {
       "algorithms": "Algorithms",
@@ -75,6 +77,8 @@
       "sample_count_2": "2 runs",
       "sample_count_3": "3 runs",
       "sample_count_5": "5 runs",
+      "judge_concurrency": "Parallel AI requests",
+      "judge_run_call_ceiling": "Call limit per AI run (0 = unlimited)",
       "api_key_placeholder": "sk-…",
       "model_placeholder": "openrouter/auto or vendor/model",
       "tokens_placeholder": "auto"
@@ -94,6 +98,7 @@
       "clean_rejected_desc": "Move rejected images to _rejected",
       "run_triage": "Run triage",
       "set_as_source": "Set as source",
+      "continue_judge": "Continue AI analysis",
       "breadcrumb": {
         "triage": "Triage"
       }

@@ -42,6 +42,15 @@ REASONING_EFFORTS = ("auto", "low", "medium", "high", "none")
 #: declared setting (never a silent default) and its cost is traced.
 SAMPLE_COUNT_CHOICES: tuple[int, ...] = (1, 2, 3, 5)
 
+#: Provider-aware concurrency bounds for the AI judge lane (board 2026-10-24).
+#: A shared-pool provider must not be hammered by one thread per CPU: the width
+#: is a declared setting, default :data:`JUDGE_CONCURRENCY_DEFAULT`, clamped to
+#: [1, 8] — never ``os.cpu_count()`` (the provider, often a shared pool, is the
+#: scarce resource; eight workers is what the CPU-derived pool would send).
+JUDGE_CONCURRENCY_MIN = 1
+JUDGE_CONCURRENCY_MAX = 8
+JUDGE_CONCURRENCY_DEFAULT = 3
+
 #: Image downscale max-edge choices for AI calls; 0 = send original bytes.
 #: Owned by services/decode_policy.py (single home); aliases keep historic names.
 from tabs.image_gallery.services.decode_policy import (
@@ -62,6 +71,15 @@ def _parse_float(value, default: float = 0.0) -> float:
         return float(str(value).strip())
     except Exception:
         return default
+
+
+def _clamp_int(value, default: int, low: int, high: int) -> int:
+    """Parse *value* as int and clamp it into [low, high] (never raises)."""
+    try:
+        n = int(str(value).strip())
+    except Exception:
+        n = int(default)
+    return max(int(low), min(int(high), n))
 
 
 def _load_api_key(settings: QSettings) -> str:
@@ -124,6 +142,16 @@ class AiSettings:
     sample_count: int = 3
     sampling_temperature: float = 0.0
     sampling_seed: int = 0
+    #: How many AI requests may be in flight for the judge lane (default 3,
+    #: clamped [JUDGE_CONCURRENCY_MIN, JUDGE_CONCURRENCY_MAX]). Replaces the
+    #: ``os.cpu_count()``-derived width: the provider (often a shared pool) is
+    #: the scarce resource, not the local CPU.
+    judge_concurrency: int = JUDGE_CONCURRENCY_DEFAULT
+    #: Hard per-run ceiling on judge CALLS (0 = unlimited). A card costs one
+    #: call per declared draw (``sample_count``), so the pass stops on the last
+    #: whole card that fits and leaves a continue affordance instead of
+    #: silently draining the budget.
+    judge_run_call_ceiling: int = 0
 
     def model_for(self, provider_id: str) -> str:
         """The model remembered for *provider_id* ("" when none yet)."""
@@ -184,6 +212,15 @@ class AiSettingsStore:
                     settings.value("sampling_temperature", 0.0), 0.0
                 ),
                 sampling_seed=max(0, _parse_int(settings.value("sampling_seed", 0), 0)),
+                judge_concurrency=_clamp_int(
+                    settings.value("judge_concurrency", JUDGE_CONCURRENCY_DEFAULT),
+                    JUDGE_CONCURRENCY_DEFAULT,
+                    JUDGE_CONCURRENCY_MIN,
+                    JUDGE_CONCURRENCY_MAX,
+                ),
+                judge_run_call_ceiling=max(
+                    0, _parse_int(settings.value("judge_run_call_ceiling", 0), 0)
+                ),
             )
         finally:
             settings.endGroup()
@@ -231,6 +268,8 @@ class AiSettingsStore:
             "sample_count",
             "sampling_temperature",
             "sampling_seed",
+            "judge_concurrency",
+            "judge_run_call_ceiling",
         ):
             raise ValueError(f"Unknown AI setting field: {name}")
         settings = self._settings()
@@ -247,6 +286,17 @@ class AiSettingsStore:
                 except Exception:
                     pass
                 return
+            if name == "judge_concurrency":
+                # One owner of the clamp: a value the UI could hand in (1..8)
+                # is stored in range, so a config edit cannot widen the lane.
+                value = _clamp_int(
+                    value,
+                    JUDGE_CONCURRENCY_DEFAULT,
+                    JUDGE_CONCURRENCY_MIN,
+                    JUDGE_CONCURRENCY_MAX,
+                )
+            elif name == "judge_run_call_ceiling":
+                value = max(0, _parse_int(value, 0))
             settings.setValue(name, value)
         finally:
             settings.endGroup()
