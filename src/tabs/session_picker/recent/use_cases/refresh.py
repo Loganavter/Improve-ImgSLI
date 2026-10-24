@@ -61,7 +61,15 @@ def _live_state(records) -> list[tuple]:
     return [(r.path, *_disk_fingerprint(r.path)) for r in records]
 
 
-def refresh(panel) -> None:
+def refresh(panel, *, verify_disk: bool = True) -> None:
+    """Rebuild the recent shelf.
+
+    ``verify_disk=False`` renders the stored records **without** touching the
+    filesystem and schedules one verification pass after the first paint. The
+    first pass used to `os.stat` every record (up to ``DEFAULT_CAP`` = 1000):
+    measured 2.8 ms per 1000 locally, but seconds on a network/shared path --
+    the WinBoat cold start (cold-start recon, 2026-10-24).
+    """
     from tabs.session_picker.recent import panel as _panel_mod
 
     panel._view_mode = _panel_mod.get_recent_view_mode()
@@ -75,12 +83,36 @@ def refresh(panel) -> None:
     )
     alive = {r.path for r in panel._records}
     panel._selected_paths &= alive
-    panel._disk_snapshot = _live_state(panel._records)
+    if verify_disk:
+        panel._disk_snapshot = _live_state(panel._records)
+    else:
+        # Unknown until the deferred pass runs; never claim "verified".
+        panel._disk_snapshot = None
+        _schedule_disk_verify(panel)
     panel._rebuild_items()
     panel._sync_header_controls()
     panel._sync_opaque_fills()
     panel._layout_ready = True
     panel._items.apply_selection()
+
+
+def _schedule_disk_verify(panel) -> None:
+    """Queue one verification pass once the first paint is done."""
+    from PySide6.QtCore import QTimer
+
+    QTimer.singleShot(0, lambda: verify_disk_now(panel))
+
+
+def verify_disk_now(panel) -> None:
+    """Deferred disk pass: fingerprint the records and rebuild only if the
+    live state differs from what the shelf already shows."""
+    live_now = _live_state(panel._records)
+    if live_now == getattr(panel, "_disk_snapshot", None):
+        return
+    panel._disk_snapshot = live_now
+    panel._rebuild_items()
+    panel._sync_header_controls()
+    panel._sync_opaque_fills()
 
 
 def soft_refresh(panel) -> None:

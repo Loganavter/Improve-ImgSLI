@@ -126,6 +126,16 @@ def _startup_dump_delay_ms(args: argparse.Namespace) -> int:
 
 
 def main():
+    # First mark of the startup trace: everything before `ctx.begin` used to be
+    # invisible (interpreter start, `__main__` imports, QApplication, the import
+    # warm-up, the RHI probe) -- cold-start recon, 2026-10-24. One call, zero
+    # cost when the flag is off.
+    try:
+        from core.startup_trace import startup_mark as _startup_mark
+
+        _startup_mark("main.entry")
+    except Exception:
+        pass
     parser = argparse.ArgumentParser(description="BlinkTable - Main entry point")
     parser.add_argument(
         "--enable-logging",
@@ -282,14 +292,6 @@ def main():
     except Exception:
         pass
 
-    # Warm heavy third-party imports off the GUI thread (measured: 1350 ms
-    # freeze on the first analysis use, 320 ms on a toolbar paint).
-    try:
-        from core.import_warmup import start as _start_import_warmup
-
-        _start_import_warmup()
-    except Exception:
-        pass
 
     # Probe after QApplication exists. Vulkan instance create needs a GUI app;
     # fall back before any QRhiWidget is constructed.
@@ -354,6 +356,22 @@ def main():
     )
     window = MainWindow(runtime_flags=runtime_flags)
     window.start()
+
+    # Warm heavy third-party imports off the GUI thread -- AFTER the window is
+    # built. Starting the thread before `MainWindow()` made it compete with
+    # window construction for the GIL: measured +150 ms (+33%) on the main
+    # thread in a clone, and on a frozen build the warm thread pulls
+    # scipy.stats + skimage out of the PYZ, so the contention is seconds
+    # (cold-start recon, 2026-10-24). A short delay keeps the first paint clean
+    # and still lands well before the first analysis use.
+    try:
+        from PySide6.QtCore import QTimer as _QTimer
+
+        from core.import_warmup import start as _start_import_warmup
+
+        _QTimer.singleShot(250, _start_import_warmup)
+    except Exception:
+        pass
     from ui.canvas_infra.rhi.rhi_fallback_notice import schedule_rhi_fallback_user_notice
 
     schedule_rhi_fallback_user_notice(window)
