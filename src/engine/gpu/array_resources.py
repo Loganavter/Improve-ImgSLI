@@ -14,6 +14,7 @@ GPU resources those decisions get realized against.
 
 from __future__ import annotations
 
+import logging
 from typing import Callable, Sequence
 
 from PySide6.QtCore import QSize
@@ -37,6 +38,14 @@ from PySide6.QtGui import (
 
 from engine.cache.tile_debug import log_tile_event, tile_dump_enabled
 from engine.cache.tile_texture_service import TileTextureService
+
+logger = logging.getLogger("ImproveImgSLI")
+
+#: How many distinct ``(key, index, layer, reason)`` upload rejections one
+#: resource owner remembers. The bound guard (see ``upload_tile_to_array``)
+#: must be loud about an upstream geometry bug, but a per-frame violation must
+#: never turn into a warning per frame or an unbounded dedup set.
+MAX_TRACKED_UPLOAD_SKIPS = 256
 
 
 class TileArrayResourcesBase:
@@ -76,6 +85,12 @@ class TileArrayResourcesBase:
         self._vertex_stride = vertex_stride
 
         self.tile_arrays: list[QRhiTexture] = []
+        # Upload-guard bookkeeping (see ``upload_tile_to_array``): how many
+        # tile uploads this owner refused before they could corrupt a layer,
+        # and the bounded dedup set that keeps a repeating violation to one
+        # warning instead of one per frame.
+        self.array_upload_skipped_count = 0
+        self._upload_skip_records: set[tuple[object, object, int, str]] = set()
         self.array_pipeline: QRhiGraphicsPipeline | None = None
         self.array_srb: QRhiShaderResourceBindings | None = None
         self._array_srb_cache: dict[str, QRhiShaderResourceBindings] = {}
@@ -143,10 +158,44 @@ class TileArrayResourcesBase:
         uploads are queued and submitted, instead of paying
         O(array capacity) whole-array mip regeneration per tile."""
         tile_key = tile_service.tile_key(source_key, *index)
+        # Hard-bound the destination before anything reaches QRhi: the copy is
+        # a subresource copy, and on some backends (D3D11 CopySubresourceRegion)
+        # an out-of-range layer or an image larger than a layer fails
+        # *silently* -- the layer keeps the previous occupant's pixels, read on
+        # screen as "this band shows another tile". A rejected tile must not be
+        # recorded resident either (residency is what makes the draw plan
+        # sample a layer), so the record is rolled back if it only existed to
+        # learn the slot. Plain attribute checks: no allocation, no QRhi call
+        # on the happy path.
+        rejection = self._image_rejection(image)
+        if rejection is not None:
+            return self._skip_tile_upload(
+                tile_key, source_key, index, rejection, image, None
+            )
+        # A re-upload into an already-assigned slot is knowable up front; a
+        # first-time slot only after mark_resident allocates it (checked below).
+        slot = tile_service.slot_for(source_key, index)
+        if slot is not None:
+            rejection = self._slot_rejection(slot)
+            if rejection is not None:
+                return self._skip_tile_upload(
+                    tile_key, source_key, index, rejection, image, slot
+                )
+
         byte_size = image.width() * image.height() * 4
         content_size = (image.width(), image.height())
         tile_service.mark_resident(source_key, index, byte_size, content_size)
         array_index, layer = tile_service.slot_for(source_key, index)
+        rejection = self._slot_rejection((array_index, layer))
+        if rejection is not None:
+            # Undo the allocation mark_resident just made, so the draw plan can
+            # never sample a layer this call refused to write; the slot goes
+            # back to the allocator for a later, in-range tile.
+            if slot is None:
+                tile_service.invalidate_tiles(source_key, {index})
+            return self._skip_tile_upload(
+                tile_key, source_key, index, rejection, image, (array_index, layer)
+            )
         self._ensure_tile_array(array_index)
         tex = self.tile_arrays[array_index]
         entry = QRhiTextureUploadEntry(
@@ -173,6 +222,100 @@ class TileArrayResourcesBase:
             dirty_layers.setdefault(array_index, set()).add(layer)
         else:
             updates.generateMips(tex)
+        return tile_key
+
+    def _image_rejection(self, image) -> str | None:
+        """Reason ``image`` cannot fill exactly one layer, or ``None``.
+
+        An image larger than ``_layer_px`` cannot fit a 1:1 layer at all, so it
+        means the crop geometry upstream disagrees with the array's layer size.
+        """
+        if image is None:
+            return "null-image"
+        width, height = self._image_dims(image)
+        if width <= 0 or height <= 0:
+            return "empty-image"
+        if width > self._layer_px or height > self._layer_px:
+            return "image-larger-than-layer"
+        return None
+
+    def _slot_rejection(self, slot: tuple[int, int]) -> str | None:
+        """Reason ``(array_index, layer)`` cannot address the bound arrays.
+
+        ``layer`` is compared with ``_array_capacity`` -- the layer count
+        ``_ensure_tile_array`` passes when the array is created -- never a
+        fresh literal, so the guard cannot drift from the created texture.
+        """
+        array_index, layer = slot
+        if array_index < 0:
+            return "negative-array-index"
+        if layer < 0 or layer >= self._array_capacity:
+            return "layer-out-of-range"
+        return None
+
+    @staticmethod
+    def _image_dims(image) -> tuple[int, int]:
+        """``(width, height)``, or ``(0, 0)`` for anything unsized: the guard
+        runs inside the frame and must never raise."""
+        try:
+            return int(image.width()), int(image.height())
+        except (AttributeError, TypeError, ValueError):
+            return 0, 0
+
+    def _skip_tile_upload(
+        self,
+        tile_key: object,
+        source_key: object,
+        index: tuple[int, int],
+        reason: str,
+        image,
+        slot: tuple[int, int] | None,
+    ) -> object:
+        """Reports one rejected upload (counter, warning, tile dump) and keeps
+        the caller's return contract. Nothing was uploaded and nothing stayed
+        resident, so the tile is retried on a later frame."""
+        self.array_upload_skipped_count += 1
+        image_w, image_h = self._image_dims(image)
+        array_index, layer = slot if slot is not None else (-1, -1)
+        row, col = index
+        record = (source_key, index, layer, reason)
+        if (
+            record not in self._upload_skip_records
+            and len(self._upload_skip_records) < MAX_TRACKED_UPLOAD_SKIPS
+        ):
+            self._upload_skip_records.add(record)
+            logger.warning(
+                "[TileArray] upload skipped: reason=%s key=%s index=%s "
+                "array_index=%s layer=%s image=%dx%d layer_px=%d "
+                "array_capacity=%d skipped_count=%d",
+                reason,
+                source_key,
+                index,
+                array_index,
+                layer,
+                image_w,
+                image_h,
+                self._layer_px,
+                self._array_capacity,
+                self.array_upload_skipped_count,
+            )
+        if tile_dump_enabled():
+            log_tile_event(
+                "array.upload_skipped",
+                source_key=str(source_key),
+                row=row,
+                col=col,
+                row_parity=row % 2,
+                col_parity=col % 2,
+                array_index=array_index,
+                layer=layer,
+                reason=reason,
+                image_w=image_w,
+                image_h=image_h,
+                layer_px=self._layer_px,
+                array_capacity=self._array_capacity,
+                skipped_count=self.array_upload_skipped_count,
+            )
         return tile_key
 
     def _ensure_tile_array(self, array_index: int) -> None:
