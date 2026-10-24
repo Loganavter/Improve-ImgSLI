@@ -194,7 +194,7 @@ def claim_sampled_rt_orientation_probe(rhi) -> bool:
 def record_sampled_rt_orientation(rhi, *, observed_flip: bool | None) -> None:
     """Record the SAMPLED_RT flip a real probe observed for ``rhi``.
 
-    ``True``/``False`` = the target really needed/neededn't the flip, as read
+    ``True``/``False`` = the target really needed (or did not need) the flip, as read
     back from the probe. It overrides the derived predicate for this RHI for
     the rest of the session, and a disagreement is logged at WARNING (always,
     not only under ``IMGSLI_RT_ORIENTATION_TRACE``) with the backend, the
