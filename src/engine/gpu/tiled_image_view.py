@@ -94,6 +94,7 @@ from engine.gpu.array_draw import (
 )
 from engine.gpu.array_resources import TileArrayResourcesBase
 from engine.gpu.mip_cascade import MipCascadeGenerator
+from engine.gpu.rt_y_orientation import composited_clip_correction
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -505,7 +506,9 @@ class SingleImageTiledView:
         if rhi is None:
             return None
         try:
-            return tuple(float(v) for v in rhi.clipSpaceCorrMatrix().data())
+            # COMPOSITED case: the widget's own compositing absorbs the rest.
+            # See engine/gpu/rt_y_orientation (single source of truth).
+            return composited_clip_correction(rhi)
         except Exception:
             return None
 

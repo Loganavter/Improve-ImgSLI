@@ -14,6 +14,7 @@ from typing import Any
 from PySide6.QtCore import QPointF
 from PySide6.QtGui import QColor, QRhiCommandBuffer, QRhiViewport
 
+from engine.gpu.rt_y_orientation import composited_clip_correction
 from engine.cache.screen_projection import project_px_to_screen
 from engine.overlay import (
     DiskItem,
@@ -302,7 +303,7 @@ class OccludedArcPass(_ArcItemsPass):
     def prepare(self, widget, ctx, resource_updates) -> None:
         self._items = []
         matrix = tuple(
-            float(value) for value in self.resources.rhi.clipSpaceCorrMatrix().data()
+            float(value) for value in composited_clip_correction(self.resources.rhi)
         )
         items = _occluded_arcs_semantic_resolver(widget)(ctx)
         self._items = list(
@@ -346,7 +347,7 @@ class HiddenSelectionPass(_ArcItemsPass):
     def prepare(self, widget, ctx, resource_updates) -> None:
         self._items = []
         matrix = tuple(
-            float(value) for value in self.resources.rhi.clipSpaceCorrMatrix().data()
+            float(value) for value in composited_clip_correction(self.resources.rhi)
         )
         items = _hidden_selection_semantic_resolver(widget)(ctx)
         self._items = list(

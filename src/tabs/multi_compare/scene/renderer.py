@@ -22,6 +22,7 @@ from PySide6.QtGui import (
     QRhiTexture,
 )
 
+from engine.gpu.rt_y_orientation import composited_clip_correction
 from engine.store.tiled_pixel_store import TiledPixelStore
 from engine.gpu.glass_panel import GlassPanelRenderer
 from engine.cache.tile_constants import MIPS_CASCADE_TIME_BUDGET_MS
@@ -351,7 +352,7 @@ class MultiCompareRhiRenderer:
             ctx = build_render_context(
                 composition=composition,
                 framebuffer_size=(fb_w, fb_h),
-                clip_matrix=tuple(float(v) for v in self.rhi.clipSpaceCorrMatrix().data()),
+                clip_matrix=composited_clip_correction(self.rhi),
                 available_slot_ids=set(self.image_pass.slot_texture_ids()),
                 widget=self.host,
             )

@@ -103,6 +103,7 @@ from tabs.image_compare.canvas.rhi_feature_common import (
     build_fullscreen_quad_pipeline,
     resolve_rhi_scissor,
 )
+from engine.gpu.rt_y_orientation import composited_clip_correction
 from engine.cache.tile_debug import log_tile_event, tile_dump_enabled
 from ui.canvas_infra.scene.pass_contract import (
     CanvasRenderPass,
@@ -347,7 +348,7 @@ class MagnifierPass(CanvasRenderPass):
         self._prepare_call_seq += 1
         prepare_call_seq = self._prepare_call_seq
         assert self.rhi is not None
-        matrix = tuple(float(v) for v in self.rhi.clipSpaceCorrMatrix().data())
+        matrix = composited_clip_correction(self.rhi)
         w, h = float(ctx.width), float(ctx.height)
         zoom = float(ctx.zoom_level or 1.0)
         pan_x = float(ctx.pan_offset_x or 0.0)

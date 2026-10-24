@@ -42,6 +42,8 @@ from PySide6.QtGui import (
     QShader,
 )
 
+from engine.gpu.rt_y_orientation import composited_clip_correction
+
 FULLSCREEN_VERTICES = struct.pack(
     "<16f",
     -1.0,
@@ -172,7 +174,8 @@ class OverlayShell:
     def clip_matrix(self) -> tuple[float, ...]:
         """Current clip-space correction matrix as 16 floats."""
         assert self.rhi is not None
-        return tuple(float(value) for value in self.rhi.clipSpaceCorrMatrix().data())
+        # COMPOSITED case: see engine/gpu/rt_y_orientation.
+        return composited_clip_correction(self.rhi)
 
     def stage_quad(self, resource_updates: Any) -> None:
         """Stage the shared fullscreen-quad vertex buffer."""
