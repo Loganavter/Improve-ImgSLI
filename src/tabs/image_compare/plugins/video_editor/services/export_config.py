@@ -1,6 +1,8 @@
 # Audit-Meta: pattern=state-machine reason="single export config assembly — encoding/bounds/images"
 from __future__ import annotations
 
+from shared.hidden_process import hidden_process_kwargs
+
 import logging
 import os
 import shutil
@@ -408,6 +410,7 @@ def _get_available_ffmpeg_encoders() -> set[str]:
             text=True,
             encoding="utf-8",
             errors="ignore",
+            **hidden_process_kwargs(),
         )
         encoders: set[str] = set()
         for line in result.stdout.splitlines():
