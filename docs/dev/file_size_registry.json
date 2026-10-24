@@ -3,6 +3,16 @@
   "_policy": "docs/dev/FILE_SIZE_POLICY.md",
   "entries": [
     {
+      "path": "src/__main__.py",
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=single-owner reason=\"startup composition: CLI parse, backend fallback, logging/theme bootstrap and the run loop in one readable sequence; the watchdog hook is one line here on purpose\"",
+      "parsed": {
+        "pattern": "single-owner",
+        "reason": "startup composition: CLI parse, backend fallback, logging/theme bootstrap and the run loop in one readable sequence; the watchdog hook is one line here on purpose"
+      }
+    },
+    {
       "path": "src/core/evidence/journal.py",
       "limit": 500,
       "marker": "Audit-Meta:",
