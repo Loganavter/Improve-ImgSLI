@@ -1,5 +1,4 @@
 import os
-from pathlib import Path
 
 from PySide6.QtCore import QObject, QTimer
 from PySide6.QtGui import QColor
@@ -7,6 +6,8 @@ from PySide6.QtWidgets import QFileDialog
 
 from domain.qt_adapters import color_to_hex, hex_to_color, qcolor_to_color
 from shared.video_policy import CrfPolicy, clamp_crf
+
+from ..presenter_parts.common import default_downloads_dir
 
 class VideoEditorDialogPersistence:
     def __init__(self, dialog):
@@ -149,7 +150,7 @@ class VideoEditorDialogPersistence:
             if d.export_controller and hasattr(d.export_controller, "store") and d.export_controller.store:
                 current_dir = d.export_controller.store.settings.export_default_dir or ""
             if not current_dir:
-                current_dir = str(Path.home() / "Downloads")
+                current_dir = default_downloads_dir()
         selected_dir = QFileDialog.getExistingDirectory(
             d,
             d._tr("export.select_output_directory"),
