@@ -380,7 +380,7 @@ def test_mc_prepare_array_plan_adapts_at_surface():
     for pinned in (
         "build_slot_array_tiles",
         "drop_covered_fallback_tiles",
-        "resolve_fallback_lod",
+        "resolve_frame_fallback",
         "content_scale_for",
     ):
         assert pinned in seg, (

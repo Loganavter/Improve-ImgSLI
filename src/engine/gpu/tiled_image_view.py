@@ -70,7 +70,7 @@ from engine.cache.draw_plans import (
     drop_covered_fallback_tiles,
     slot_visible_rect,
 )
-from engine.cache.fallback_lod import resolve_fallback_lod
+from engine.cache.fallback_lod import resolve_frame_fallback
 from engine.cache.lod import select_level
 from engine.cache.residency import ResidencySpec, TileResidencyRealizerBase
 from engine.cache.tile_constants import (
@@ -78,6 +78,7 @@ from engine.cache.tile_constants import (
     MIPS_CASCADE_TIME_BUDGET_MS,
 )
 from engine.cache.tile_geometry import _TILE_APRON_PX
+from engine.cache.tile_policy import TilePolicy
 from engine.cache.tile_texture_service import (
     DEFAULT_MAX_ARRAY_SIZE,
     TileTextureService,
@@ -93,6 +94,7 @@ from engine.gpu.array_draw import (
     record_array_draw,
 )
 from engine.gpu.array_resources import TileArrayResourcesBase
+from engine.gpu.host_texture_cache import DEFAULT_HOST_TEXTURE_CACHE_BUDGET_BYTES
 from engine.gpu.mip_cascade import MipCascadeGenerator
 from engine.gpu.rt_y_orientation import composited_clip_correction
 
@@ -111,6 +113,28 @@ _ARRAY_CAPACITY = DEFAULT_MAX_ARRAY_SIZE
 #: tabs; at 512px tiles even a worst-case multi-ring working set stays well
 #: under it, so eviction only reclaims genuinely unused tiles).
 _TILE_CACHE_BUDGET_BYTES = 2 * 1024 * 1024 * 1024
+
+#: This view's tile policy. ``lod_mode="settle"`` records the demand policy
+#: Quick Look binds (``TiledViewHooks.lods``: ``LodPolicy(mode="settle")`` with
+#: no debounce); that flag is per-source and dynamic, so the fallback entry
+#: never consults it -- the view resolves its own level each frame and passes
+#: no transition booleans here. Atomicity is off for every transition kind: the
+#: engine view has always drawn its current (possibly partial) tiles over the
+#: held level instead of flipping whole tiers. The host-cache number is the
+#: engine default the view would inherit if it ever cached host QImages (it
+#: keeps none itself); the array capacity is the backend layer cap.
+TILE_POLICY = TilePolicy(
+    lod_mode="settle",
+    settle_ms=None,
+    atomic_on_content_swap=False,
+    atomic_on_hires_flip=False,
+    atomic_on_level_change=False,
+    first_paint_hold=False,
+    pin_coarsest=False,
+    tile_budget_bytes=_TILE_CACHE_BUDGET_BYTES,
+    host_cache_budget_bytes=DEFAULT_HOST_TEXTURE_CACHE_BUDGET_BYTES,
+    array_capacity=_ARRAY_CAPACITY,
+)
 
 _SHADER_DIR = Path(__file__).resolve().parent / "shaders"
 
@@ -949,7 +973,8 @@ class SingleImageTiledView:
             )
             return [fallback_items[i] for i in keep]
 
-        new_baseline_key, draw_plan = resolve_fallback_lod(
+        new_baseline_key, draw_plan = resolve_frame_fallback(
+            TILE_POLICY,
             key=render_key,
             current_items=render_tiles,
             more_pending=not render_fully_resident,
