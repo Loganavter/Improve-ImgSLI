@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import time
 
 from PySide6.QtGui import QRhiCommandBuffer, QRhiDepthStencilClearValue, QRhiViewport
@@ -85,6 +86,28 @@ from .use_cases.tile_residency import (
 )
 
 logger = logging.getLogger("ImproveImgSLI")
+
+
+def _skip_mip_cascade_requested(raw: str) -> bool:
+    """Parse ``IMGSLI_SKIP_MIP_CASCADE`` exactly like Multi Compare does.
+
+    Kept byte-identical on purpose (``""``/``0``/``false``/``no``/``off`` are
+    off, anything else is on): one env var must A/B the same cascade toggle in
+    both canvas tabs, and importing the other tab's constant is forbidden.
+    """
+    return raw.strip().lower() not in ("", "0", "false", "no", "off")
+
+
+# Debug-only bisection toggle, shared semantics with Multi Compare's renderer:
+# skips the manual per-layer mip-downsample cascade entirely, leaving every
+# array layer's mip levels 1+ stale/uninitialized while level 0 still uploads
+# normally. If a flip/shrink artifact disappears with this set, the bug is in
+# the cascade; if it persists, the cascade is innocent. Never set outside
+# manual debugging -- coarser LOD levels will look wrong (stale or blank) by
+# design when this is on.
+_SKIP_MIP_CASCADE = _skip_mip_cascade_requested(
+    os.environ.get("IMGSLI_SKIP_MIP_CASCADE", "")
+)
 
 __all__ = [
     "RhiCanvasRenderer",
@@ -306,6 +329,60 @@ class RhiCanvasRenderer:
             frame_context=frame_context,
         )
 
+    def _run_mips_cascade(
+        self,
+        command_buffer,
+        dirty_layers: dict[int, set[int]],
+        dirty_layer_count: int,
+    ) -> tuple[dict[int, set[int]], float]:
+        """Cascade this frame's dirty layers into their mips.
+
+        Returns ``(deferred_groups, cpu_submit_ms)`` -- the pairs the time
+        budget pushed out, so ``render()`` can carry them into the next frame.
+        Honours ``_SKIP_MIP_CASCADE`` (same reset of the carried-over groups
+        and zeroed timing Multi Compare does) so a single env var can A/B the
+        cascade in both tabs without rebuilding either renderer's logic.
+        """
+        if _SKIP_MIP_CASCADE:
+            return {}, 0.0
+        start = time.monotonic()
+        with self.frame_context.span(
+            "ic.mips",
+            detail=lambda: {"dirty_layers": dirty_layer_count},
+        ):
+            pending = self.resources.generate_all_dirty_mips(
+                command_buffer,
+                dirty_layers,
+                time_budget_ms=MIPS_CASCADE_TIME_BUDGET_MS,
+            )
+        return pending, (time.monotonic() - start) * 1000.0
+
+    def _request_cascade_rekick(self, widget) -> bool:
+        """Ask for exactly one follow-up repaint if the cascade deferred work.
+
+        Both canvases are on-demand, so a group deferred by the time budget
+        would otherwise get no further ``render()`` to finish in: that array
+        layer's upper mip levels stay permanently stale (still whatever a
+        previously-evicted, unrelated tile last wrote there), and under the
+        Linear mipmap filter anything below 1:1 trilinear-blends fresh level-0
+        content against the previous occupant. That is why this is one bounded
+        ``update()`` per frame -- never a timer or a loop: if the next frame's
+        cascade defers again, it re-arms exactly one more repaint here.
+        """
+        if not self._pending_dirty_layers:
+            return False
+        self.frame_context.record_invalidation(
+            "cascade_deferred",
+            "mip cascade group deferred by time budget"
+            f" array_index_batches={len(self._pending_dirty_layers)}"
+            " -- re-kicking render for the next cascade slice",
+            ids=make_ids(
+                self.frame_context.frame_id, len(self._pending_dirty_layers)
+            ),
+        )
+        widget.update()
+        return True
+
     def render(self, widget, command_buffer, clear_color) -> bool:
         """Record one frame. Returns True after a completed beginPass/endPass.
 
@@ -479,27 +556,19 @@ class RhiCanvasRenderer:
         for array_index, layers in self._pending_dirty_layers.items():
             dirty_layers.setdefault(array_index, set()).update(layers)
         dirty_layer_count = sum(len(layers) for layers in dirty_layers.values())
-        mips_cascade_start = time.monotonic()
-        with self.frame_context.span(
-            "ic.mips",
-            detail=lambda: {"dirty_layers": dirty_layer_count},
-        ):
-            self._pending_dirty_layers = self.resources.generate_all_dirty_mips(
-                command_buffer, dirty_layers, time_budget_ms=MIPS_CASCADE_TIME_BUDGET_MS
-            )
-        mips_cascade_ms = (time.monotonic() - mips_cascade_start) * 1000.0
+        self._pending_dirty_layers, mips_cascade_ms = self._run_mips_cascade(
+            command_buffer, dirty_layers, dirty_layer_count
+        )
+        deferred_count = sum(
+            len(layers) for layers in self._pending_dirty_layers.values()
+        )
         if dirty_layer_count:
-            deferred_count = sum(
-                len(layers) for layers in self._pending_dirty_layers.values()
-            )
             rhi_render_debug(
                 "render MIPS_CASCADE dirty_layers=%d deferred=%d cpu_submit=%.2fms",
                 dirty_layer_count,
                 deferred_count,
                 mips_cascade_ms,
             )
-        else:
-            deferred_count = 0
         # Phase-2 frame bus: mips cascade fact (record only, never instead).
         _mips_stats = BudgetStats(
             budget=dirty_layer_count,
@@ -520,6 +589,9 @@ class RhiCanvasRenderer:
                 _mips_stats.as_tuple(),
             ),
         )
+        # Bounded re-kick: one update() at most, and only while a cascade
+        # group is still deferred (IC has no other retry for the 8 ms budget).
+        self._request_cascade_rekick(widget)
         updates = self.rhi.nextResourceUpdateBatch()
 
         # Draw submit — thin owner (CODE_PATTERNS). Body lives in use_cases/draw.py
