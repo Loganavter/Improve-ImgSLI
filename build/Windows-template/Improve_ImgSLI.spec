@@ -115,6 +115,13 @@ APP_DATAS.extend(
 APP_DATAS.extend(
     collect_tree(REPO_ROOT / "src" / "ui", "ui", include_suffixes={".qsb"})
 )
+# Engine passes keep their *.qsb in src/engine/gpu/shaders (no __init__.py, so
+# PyInstaller's resource collection skips them): glass panel, mip cascade and
+# slot array load shaders as Path(__file__).parent/"shaders". Without this the
+# Windows bundle fails build/ci/validate_windows_shaders.py.
+APP_DATAS.extend(
+    collect_tree(REPO_ROOT / "src" / "engine", "engine", include_suffixes={".qsb"})
+)
 APP_DATAS.extend(collect_tree(LICENSE_TEMPLATE_DIR, "licenses"))
 
 PYSIDE6_DATAS = []

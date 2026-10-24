@@ -13,6 +13,7 @@ are registry ids, not fixtures restating an implementation detail.
 
 from __future__ import annotations
 
+import ctypes
 import io
 import json
 import os
@@ -20,6 +21,7 @@ import re
 import subprocess
 import sys
 import time
+import types
 from pathlib import Path
 
 import pytest
@@ -30,6 +32,7 @@ if str(MCP_DIR) not in sys.path:
     sys.path.insert(0, str(MCP_DIR))
 
 from app import catalog  # noqa: E402
+from app import process_policy  # noqa: E402
 from app.backend import AppBackend  # noqa: E402
 from app.live import LiveBackend  # noqa: E402
 from app.process_policy import (  # noqa: E402
@@ -753,6 +756,134 @@ def test_process_registry_keeps_only_live_pids():
     assert pid_alive(os.getpid()) is True
     assert pid_alive(2**30) is False
     assert pid_alive(None) is False and pid_alive(0) is False
+
+
+# --- liveness probe: the platform seam -----------------------------------
+#
+# ``process_report`` and ``ProcessRegistry`` both hang off ``pid_alive``. On
+# Windows CPython lowers any ``os.kill`` signal other than CTRL_C_EVENT /
+# CTRL_BREAK_EVENT to ``OpenProcess`` + ``TerminateProcess(handle, sig)``, so a
+# liveness check written as ``os.kill(pid, 0)`` terminates the process it was
+# asked about (exit code 0). The fake kernel32 below lets this POSIX run drive
+# the Windows arm; ``os.kill`` is poisoned because touching it is the defect.
+
+_STILL_ACTIVE = 259
+_ERROR_ACCESS_DENIED = 5
+_ERROR_INVALID_PARAMETER = 87
+_PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+
+
+class _FakeKernel32:
+    """The minimal Win32 surface the Windows arm is allowed to touch."""
+
+    def __init__(self, *, handle=0, last_error=0, exit_code=_STILL_ACTIVE):
+        self._handle = handle
+        self._last_error = last_error
+        self._exit_code = exit_code
+        self.opened: list[tuple[int, bool, int]] = []
+        self.closed: list[int] = []
+
+    def OpenProcess(self, access, inherit, pid):
+        self.opened.append((access, inherit, pid))
+        return self._handle
+
+    def GetLastError(self):
+        return self._last_error
+
+    def GetExitCodeProcess(self, handle, code_ptr):
+        code_ptr._obj.value = self._exit_code
+        return 1
+
+    def CloseHandle(self, handle):
+        self.closed.append(handle)
+        return 1
+
+
+@pytest.fixture
+def fake_windows(monkeypatch):
+    """Install a fake ``ctypes.windll.kernel32`` and select the Windows arm."""
+
+    def _install(**kwargs):
+        kernel32 = _FakeKernel32(**kwargs)
+
+        def _os_kill_is_the_bug(*args, **kwargs):  # pragma: no cover - red path
+            raise AssertionError(
+                f"os.kill{args!r} must never run on Windows: it terminates the pid"
+            )
+
+        monkeypatch.setattr(process_policy, "_IS_WINDOWS", True)
+        monkeypatch.setattr(os, "kill", _os_kill_is_the_bug)
+        monkeypatch.setattr(
+            ctypes, "windll", types.SimpleNamespace(kernel32=kernel32), raising=False
+        )
+        return kernel32
+
+    return _install
+
+
+@pytest.mark.parametrize(
+    "case,pid,kwargs,expected",
+    [
+        ("running", 4242, {"handle": 0x100, "exit_code": _STILL_ACTIVE}, True),
+        ("already-exited", 4242, {"handle": 0x100, "exit_code": 0}, False),
+        ("access-denied", 4242, {"handle": 0, "last_error": _ERROR_ACCESS_DENIED}, True),
+        (
+            "no-such-pid",
+            4242,
+            {"handle": 0, "last_error": _ERROR_INVALID_PARAMETER},
+            False,
+        ),
+        ("pid-zero", 0, {}, False),
+        ("pid-negative", -3, {}, False),
+        ("garbage", "not-a-pid", {}, False),
+        ("none", None, {}, False),
+    ],
+)
+def test_windows_liveness_never_calls_os_kill(case, pid, kwargs, expected, fake_windows):
+    """Access-denied means alive; any other open failure means gone."""
+    kernel32 = fake_windows(**kwargs)
+
+    assert pid_alive(pid) is expected
+
+    if not kwargs:
+        assert kernel32.opened == [], "an invalid pid never reaches OpenProcess"
+        return
+    assert kernel32.opened == [(_PROCESS_QUERY_LIMITED_INFORMATION, False, 4242)]
+    if kwargs.get("handle"):
+        assert kernel32.closed == [kwargs["handle"]], "the handle must be closed"
+    else:
+        assert kernel32.closed == [], "there is no handle to close"
+
+
+def test_posix_liveness_keeps_kill_zero_semantics(monkeypatch):
+    """POSIX is unchanged: 0 signal probes, PermissionError still means alive."""
+    calls: list[tuple[int, int]] = []
+
+    def _fake_kill(pid, sig):
+        calls.append((pid, sig))
+        if pid == 111:
+            raise ProcessLookupError
+        if pid == 222:
+            raise PermissionError
+
+    monkeypatch.setattr(process_policy, "_IS_WINDOWS", False)
+    monkeypatch.setattr(os, "kill", _fake_kill)
+
+    assert pid_alive(4242) is True
+    assert pid_alive(111) is False
+    assert pid_alive(222) is True
+    assert calls == [(4242, 0), (111, 0), (222, 0)]
+
+
+def test_process_registry_liveness_never_calls_os_kill_on_windows(fake_windows):
+    """``ProcessRegistry`` reads liveness through the shared probe, not its own."""
+    kernel32 = fake_windows(handle=0x100, exit_code=_STILL_ACTIVE)
+    registry = ProcessRegistry()
+    registry.adopt("image_compare", 4242)
+
+    assert registry.live_pid("image_compare") == 4242
+    assert kernel32.opened == [(_PROCESS_QUERY_LIMITED_INFORMATION, False, 4242)]
+    assert kernel32.closed == [0x100]
 
 
 def test_preserve_live_log_copies_the_log_before_a_boot_clobbers_it(tmp_path):

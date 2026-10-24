@@ -15,6 +15,7 @@ headless without a word. These tests pin the two derivations to each other.
 
 from __future__ import annotations
 
+import ctypes
 import os
 import socket
 import stat
@@ -165,6 +166,137 @@ def test_stale_pointer_detection(tmp_path, monkeypatch):
         pid=dead.pid, socket=discovery.socket_path(), version="1"
     )
     assert discovery.stale_pointer_alive() is False, "a reaped pid is stale"
+
+
+# --- liveness probe: the platform seam -----------------------------------
+#
+# On Windows CPython lowers any ``os.kill`` signal except CTRL_C_EVENT /
+# CTRL_BREAK_EVENT to ``OpenProcess`` + ``TerminateProcess(handle, sig)``, so the
+# POSIX "signal 0 is a probe" idiom *kills* the target (exit code 0). These
+# tests drive the Windows arm on POSIX with a fake ``kernel32`` and a poisoned
+# ``os.kill``: reaching the POSIX probe is the bug, regardless of the answer.
+
+#: ``STILL_ACTIVE`` — ``GetExitCodeProcess``'s value for a running process.
+_STILL_ACTIVE = 259
+_ERROR_ACCESS_DENIED = 5
+_ERROR_INVALID_PARAMETER = 87
+_PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+
+
+class _FakeKernel32:
+    """The minimal Win32 surface the Windows arm is allowed to touch."""
+
+    def __init__(self, *, handle=0, last_error=0, exit_code=_STILL_ACTIVE):
+        self._handle = handle
+        self._last_error = last_error
+        self._exit_code = exit_code
+        self.opened: list[tuple[int, bool, int]] = []
+        self.closed: list[int] = []
+
+    def OpenProcess(self, access, inherit, pid):
+        self.opened.append((access, inherit, pid))
+        return self._handle
+
+    def GetLastError(self):
+        return self._last_error
+
+    def GetExitCodeProcess(self, handle, code_ptr):
+        code_ptr._obj.value = self._exit_code
+        return 1
+
+    def CloseHandle(self, handle):
+        self.closed.append(handle)
+        return 1
+
+
+@pytest.fixture
+def fake_windows(monkeypatch):
+    """Install a fake ``ctypes.windll.kernel32`` and select the Windows arm."""
+
+    def _install(**kwargs):
+        kernel32 = _FakeKernel32(**kwargs)
+
+        def _os_kill_is_the_bug(*args, **kwargs):  # pragma: no cover - red path
+            raise AssertionError(
+                f"os.kill{args!r} must never run on Windows: it terminates the pid"
+            )
+
+        monkeypatch.setattr(discovery, "_IS_WINDOWS", True)
+        monkeypatch.setattr(os, "kill", _os_kill_is_the_bug)
+        monkeypatch.setattr(
+            ctypes, "windll", types.SimpleNamespace(kernel32=kernel32), raising=False
+        )
+        return kernel32
+
+    return _install
+
+
+@pytest.mark.parametrize(
+    "case,pid,kwargs,expected",
+    [
+        ("running", 4242, {"handle": 0x100, "exit_code": _STILL_ACTIVE}, True),
+        ("already-exited", 4242, {"handle": 0x100, "exit_code": 0}, False),
+        ("access-denied", 4242, {"handle": 0, "last_error": _ERROR_ACCESS_DENIED}, True),
+        (
+            "no-such-pid",
+            4242,
+            {"handle": 0, "last_error": _ERROR_INVALID_PARAMETER},
+            False,
+        ),
+        ("pid-zero", 0, {}, False),
+        ("pid-negative", -3, {}, False),
+        ("garbage", "not-a-pid", {}, False),
+        ("none", None, {}, False),
+    ],
+)
+def test_windows_liveness_never_calls_os_kill(
+    case, pid, kwargs, expected, fake_windows
+):
+    """Access-denied means alive; any other open failure means gone."""
+    kernel32 = fake_windows(**kwargs)
+
+    assert discovery.is_pid_alive(pid) is expected
+
+    if not kwargs:
+        assert kernel32.opened == [], "an invalid pid never reaches OpenProcess"
+        return
+    assert kernel32.opened == [(_PROCESS_QUERY_LIMITED_INFORMATION, False, 4242)]
+    if kwargs.get("handle"):
+        assert kernel32.closed == [kwargs["handle"]], "the handle must be closed"
+    else:
+        assert kernel32.closed == [], "there is no handle to close"
+
+
+def test_posix_liveness_keeps_kill_zero_semantics(monkeypatch):
+    """POSIX is unchanged: 0 signal probes, PermissionError still means alive."""
+    calls: list[tuple[int, int]] = []
+
+    def _fake_kill(pid, sig):
+        calls.append((pid, sig))
+        if pid == 111:
+            raise ProcessLookupError
+        if pid == 222:
+            raise PermissionError
+
+    monkeypatch.setattr(discovery, "_IS_WINDOWS", False)
+    monkeypatch.setattr(os, "kill", _fake_kill)
+
+    assert discovery.is_pid_alive(4242) is True
+    assert discovery.is_pid_alive(111) is False
+    assert discovery.is_pid_alive(222) is True
+    assert calls == [(4242, 0), (111, 0), (222, 0)]
+
+
+def test_stale_pointer_alive_routes_through_the_probe(tmp_path, monkeypatch, fake_windows):
+    """The pointer check has no second copy of the probe (Windows arm)."""
+    monkeypatch.setenv("IMGSLI_CONTROL_DIR", str(tmp_path / "ctrl"))
+    kernel32 = fake_windows(handle=0x100, exit_code=_STILL_ACTIVE)
+    discovery.write_pointer(
+        pid=4242, socket=discovery.socket_path(), version="1"
+    )
+
+    assert discovery.stale_pointer_alive() is True
+    assert kernel32.opened == [(_PROCESS_QUERY_LIMITED_INFORMATION, False, 4242)]
 
 
 @pytest.mark.skipif(

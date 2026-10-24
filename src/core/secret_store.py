@@ -13,8 +13,9 @@ Three backends, chosen at runtime in this order:
    case: the secret is owned by the login keyring and never touches our files.
 2. **Encrypted file** — ``cryptography`` present but no keyring: a Fernet key
    in ``<app data>/secrets/api_key.key`` (0600) encrypts the value, and the
-   *effective* key is bound to this machine (``/etc/machine-id``). Copying the
-   two files to another machine therefore fails closed: the value decrypts to
+   *effective* key is bound to this machine (``/etc/machine-id`` on POSIX, the
+   ``Cryptography\\MachineGuid`` registry value on Windows). Copying the two
+   files to another machine therefore fails closed: the value decrypts to
    nothing and the user is asked for the key again.
 3. **Session only** — neither available (a headless box, a container): the key
    is kept in memory for this process and never written to disk. That is the
@@ -50,6 +51,19 @@ _KEYRING_LABEL = "Improve-ImgSLI — AI provider API key"
 _SECRET_NAME = "ai_api_key"
 _BACKEND_TIMEOUT_S = 5.0
 
+#: Machine-id files, POSIX only. Windows has neither, so it reads the registry.
+_MACHINE_ID_FILES = ("/etc/machine-id", "/var/lib/dbus/machine-id")
+#: Windows analogue of ``/etc/machine-id``: a per-install GUID.
+_WINDOWS_MACHINE_GUID_SUBKEY = r"SOFTWARE\Microsoft\Cryptography"
+_WINDOWS_MACHINE_GUID_VALUE = "MachineGuid"
+
+#: Where ``_machine_id()`` got its value from — logged so a later reader can
+#: tell which machine a stored key was bound to without seeing the id itself.
+MACHINE_ID_SOURCE_REGISTRY = "registry"
+MACHINE_ID_SOURCE_FILE = "machine-id-file"
+MACHINE_ID_SOURCE_NODE = "node-only"
+MACHINE_ID_SOURCE_POSIX_FALLBACK = "posix-fallback"
+
 #: Per-process values for the session backend (and the decrypted cache).
 _session: dict[str, str] = {}
 _resolved_mode: str | None = None
@@ -75,15 +89,66 @@ def secrets_dir() -> Path:
     return _app_data_dir() / "secrets"
 
 
-def _machine_id() -> bytes:
-    for candidate in ("/etc/machine-id", "/var/lib/dbus/machine-id"):
+def _windows_machine_guid() -> str:
+    """``HKLM\\SOFTWARE\\Microsoft\\Cryptography\\MachineGuid``, or ``""``.
+
+    Imported lazily: ``winreg`` only exists on Windows, and this module is
+    imported on every platform. Any failure (module absent, key unreadable,
+    policy-restricted registry) degrades to the caller's node-name fallback —
+    a key that is bound slightly less uniquely is better than one that cannot
+    be stored at all.
+    """
+    try:
+        import winreg as _winreg
+    except ImportError:
+        return ""
+    # Off Windows, typeshed stubs ``winreg`` as an empty module, so every
+    # attribute access is a false positive (TESTING.md, "Static type checking"
+    # → platform quirks). An ``Any`` alias keeps mypy honest without a
+    # module-wide suppression that would also hide real attribute typos here.
+    winreg: Any = _winreg
+    try:
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, _WINDOWS_MACHINE_GUID_SUBKEY) as key:
+            value, _kind = winreg.QueryValueEx(key, _WINDOWS_MACHINE_GUID_VALUE)
+    except Exception:
+        return ""
+    return str(value or "").strip()
+
+
+def _machine_id_with_source() -> tuple[bytes, str]:
+    """The machine identity and the kind of source that produced it.
+
+    Windows has no ``/etc/machine-id`` and no ``os.getuid``: the previous
+    fallback raised ``AttributeError`` there, callers swallowed it and the
+    encrypted-file backend quietly became memory-only (re-enter the AI key on
+    every launch). The registry GUID + node name is the Windows equivalent of
+    the POSIX chain; the POSIX branch is unchanged.
+    """
+    if sys_platform() == "windows":
+        node = platform.node()
+        guid = _windows_machine_guid()
+        if guid:
+            return f"{guid}:{node}".encode("utf-8"), MACHINE_ID_SOURCE_REGISTRY
+        return node.encode("utf-8"), MACHINE_ID_SOURCE_NODE
+    for candidate in _MACHINE_ID_FILES:
         try:
             value = Path(candidate).read_text(encoding="utf-8").strip()
         except OSError:
             continue
         if value:
-            return value.encode("utf-8")
-    return f"{platform.node()}:{os.getuid()}".encode("utf-8")
+            return value.encode("utf-8"), MACHINE_ID_SOURCE_FILE
+    return f"{platform.node()}:{os.getuid()}".encode("utf-8"), MACHINE_ID_SOURCE_POSIX_FALLBACK
+
+
+def _machine_id() -> bytes:
+    """Bind the file backend to this machine.
+
+    The debug line records the *source*, never the id: the id is a machine
+    fingerprint and the log tail travels into the diagnostics report.
+    """
+    value, source = _machine_id_with_source()
+    logger.debug("AI secret store: machine identity from %s", source)
+    return value
 
 
 def _mkdir_private(path: Path) -> Path:
