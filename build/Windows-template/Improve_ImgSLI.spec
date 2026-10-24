@@ -377,6 +377,21 @@ for _optional_pkg in ("torch", "torchvision", "piq"):
     APP_BINARIES.extend(_pkg_binaries)
     APP_HIDDENIMPORTS.extend(_pkg_hiddenimports)
 
+# torch_cpu.dll imports VCRUNTIME140_THREADS.dll (VC++ 2015-2022 14.40+), which
+# PyInstaller's dependency walk does not pick up (verified on a real bundle:
+# the DLL was absent while torch/lib/torch_cpu.dll imports it). Without it a
+# frozen build on a machine that has no recent redistributable cannot load
+# torch, so the learned-metrics backend reports "error" instead of "ready".
+# Guarded: a build host without the DLL still produces a bundle (the backend
+# then degrades exactly as before, with an explicit status).
+_SYSTEM32 = Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32"
+for _msvc_runtime in ("vcruntime140_threads.dll",):
+    _msvc_path = _SYSTEM32 / _msvc_runtime
+    if _msvc_path.is_file():
+        APP_BINARIES.append((str(_msvc_path), "."))
+    else:
+        print(f"[spec] {_msvc_runtime} not found - torch may fail to load on hosts without the VC++ redistributable")
+
 a = Analysis(
     [str(REPO_ROOT / "src" / "__main__.py")],
     pathex=[str(REPO_ROOT), str(REPO_ROOT / "src")],
