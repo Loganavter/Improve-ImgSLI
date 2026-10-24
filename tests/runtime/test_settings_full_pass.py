@@ -28,6 +28,7 @@ import ast
 import pytest
 from PySide6.QtCore import QSettings, QStandardPaths
 
+from core.plugin_system.settings import SETTINGS_APP, SETTINGS_ORG
 from core.store import Store
 from domain.types import Color
 from plugins.settings.manager import SettingsManager
@@ -217,7 +218,7 @@ def test_bootstrap_applies_persisted_settings_before_ui(qapp, tmp_path, monkeypa
     previous_factor = UiScale.get_instance().factor()
     previous_format, previous_path = _redirect_qsettings(tmp_path)
     try:
-        seed = SettingsManager("improve-imgsli", "improve-imgsli")
+        seed = SettingsManager(SETTINGS_ORG, SETTINGS_APP)
         seed._save_setting("ui_scale_factor", 1.5)
 
         from core.bootstrap import ApplicationContext

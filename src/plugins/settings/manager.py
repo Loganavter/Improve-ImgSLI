@@ -128,6 +128,13 @@ def _warn_backup_unavailable(reason: str) -> None:
 
 class SettingsManager:
     def __init__(self, organization_name, application_name):
+        # The persisted identity moved (improve-imgsli -> BlinkTable): run the
+        # one-way copy before this store is opened, so a manager built directly
+        # with the canonical pair can never read an empty new namespace. Cached
+        # per process — a dict check, and a no-op if a factory already ran it.
+        from core.settings_migration import migrate_settings_once
+
+        migrate_settings_once()
         self._organization_name = organization_name
         self._application_name = application_name
         self.settings = QSettings(organization_name, application_name)

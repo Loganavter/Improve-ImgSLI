@@ -420,7 +420,7 @@ def test_bare_qsettings_sites_use_canonical_pair(monkeypatch):
     )
     from ui.widgets.color.recents import RecentColorsStore
 
-    assert (SETTINGS_ORG, SETTINGS_APP) == ("improve-imgsli", "improve-imgsli")
+    assert (SETTINGS_ORG, SETTINGS_APP) == ("BlinkTable", "BlinkTable")
 
     calls: list[tuple] = []
     real_qsettings = QSettings

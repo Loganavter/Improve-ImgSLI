@@ -15,13 +15,14 @@ from ui.host_debug import rhi_primer_debug
 
 logger = logging.getLogger("ImproveImgSLI.rhi")
 
+from core.plugin_system.settings import SETTINGS_APP as RHI_SETTINGS_APP
+from core.plugin_system.settings import SETTINGS_ORG as RHI_SETTINGS_ORG
+
 FALLBACK_MAX_TEXTURE_SIZE = 4096
 
 RHI_BACKEND_ENV = "IMPROVE_IMGSLI_RHI_BACKEND"
 ALLOW_LSFGVK_ENV = "IMPROVE_IMGSLI_ALLOW_LSFGVK"
 DISABLE_LSFGVK_ENV = "DISABLE_LSFGVK"
-RHI_SETTINGS_ORG = "improve-imgsli"
-RHI_SETTINGS_APP = "improve-imgsli"
 RHI_SETTINGS_KEY = "rhi_backend"
 
 _API_BY_NAME = {

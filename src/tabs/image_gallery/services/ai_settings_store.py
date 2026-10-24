@@ -19,14 +19,17 @@ from dataclasses import dataclass, field
 
 from PySide6.QtCore import QSettings
 
+from core.plugin_system.settings import SETTINGS_APP, SETTINGS_ORG
 from tabs.image_gallery.services.ai_providers import (
     PROVIDER_CUSTOM,
     PROVIDER_OPENROUTER,
     provider_by_id,
 )
 
-_QS_ORG = "improve-imgsli"
-_QS_APP = "improve-imgsli"
+# Aliases kept so existing call sites (and any importer of these names) keep
+# working; the canonical pair is the single source of the persisted identity.
+_QS_ORG = SETTINGS_ORG
+_QS_APP = SETTINGS_APP
 _QS_GROUP = "image_gallery_ai"
 
 DEFAULT_BASE_URL = "https://openrouter.ai/api/v1"

@@ -236,11 +236,15 @@ def _rhi_backend() -> str | None:
     env_value = os.environ.get("IMPROVE_IMGSLI_RHI_BACKEND")
     if env_value:
         return env_value.strip().lower()
-    settings_value = _safe(
-        lambda: __import__(
-            "PySide6.QtCore", fromlist=["QSettings"]
-        ).QSettings("improve-imgsli", "improve-imgsli").value("rhi_backend")
-    )
+
+    def _persisted() -> Any:
+        # Canonical pair only — a hand-rolled QSettings() here read a second,
+        # empty store (see core.plugin_system.settings).
+        from core.plugin_system.settings import canonical_settings
+
+        return canonical_settings().value("rhi_backend")
+
+    settings_value = _safe(_persisted)
     if settings_value:
         return str(settings_value).strip().lower()
     return "default"
