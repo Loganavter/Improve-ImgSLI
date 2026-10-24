@@ -359,17 +359,24 @@ class VideoExporterService:
         self._process_manager = FFmpegProcessManager(self._active_processes)
         self._render_loop = VideoRenderLoop(self)
 
-    def warm_up_gpu_widgets(self) -> None:
+    def warm_up_gpu_widgets(self) -> bool:
         """Pre-create the offscreen GPU render widgets used for preview and
-        thumbnails, well ahead of the video editor dialog being opened."""
+        thumbnails, well ahead of the video editor dialog being opened.
+
+        Returns True when at least one widget is ready, so the caller can stop
+        retrying: each cold widget costs a full D3D shader/pipeline compile
+        (measured 2026-10-24: ~4 s, twice, on the GUI thread).
+        """
+        warmed = False
         if self.gpu_export_service is not None and hasattr(
             self.gpu_export_service, "warm_up"
         ):
-            self.gpu_export_service.warm_up()
+            warmed = bool(self.gpu_export_service.warm_up()) or warmed
         if self._thumbnail_gpu_export_service is not None and hasattr(
             self._thumbnail_gpu_export_service, "warm_up"
         ):
-            self._thumbnail_gpu_export_service.warm_up()
+            warmed = bool(self._thumbnail_gpu_export_service.warm_up()) or warmed
+        return warmed
 
     def _drain_last_render_debug(self) -> dict:
         return self._frame_renderer.drain_last_debug()
