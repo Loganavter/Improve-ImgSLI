@@ -36,6 +36,7 @@ from sli_ui_toolkit.ui.managers.ui_metrics import AXIS_FONT, AXIS_SCALE
 from sli_ui_toolkit.ui.widgets.buttons.context import DrawContext
 from sli_ui_toolkit.ui.widgets.buttons.layers.focus import FocusLayer as _FocusLayer
 
+from core.plugin_system.settings import canonical_settings
 from ui.theming import resolve_theme_color
 from ui.widgets.shelf import ShelfWidget
 
@@ -118,7 +119,9 @@ class RecentColorsStore:
     """QSettings-backed recent color list, most-recent-first, capped."""
 
     def __init__(self, settings: QSettings | None = None) -> None:
-        self._settings = settings if settings is not None else QSettings()
+        self._settings = (
+            settings if settings is not None else canonical_settings()
+        )
 
     def load(self) -> list[str]:
         raw = self._settings.value(_SETTINGS_KEY, [])

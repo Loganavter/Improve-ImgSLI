@@ -18,7 +18,8 @@ want to skip building the ``frames`` list itself.
 Steady-state cost: zero when the gate is off (this module is not even
 called on the hot path); at export, one ``resolved_detail``
 materialization per span plus one ``json.dump``. No logging, no timers,
-no Qt/GPU imports — stdlib only (``json``, ``os``, ``time``).
+no Qt/GPU imports — stdlib only (``json``, ``math``, ``os``, ``tempfile``,
+``time``).
 
 Event schema (the Wave B seam — waves C/D consume read-only):
 
@@ -78,6 +79,7 @@ from __future__ import annotations
 import json
 import math
 import os
+import tempfile
 import time
 from typing import Any, Iterable, Mapping
 
@@ -370,13 +372,20 @@ def write_trace(path: Any, frames: Iterable[Any]) -> int:
 def default_trace_path() -> str:
     """Where :func:`maybe_dump_trace` writes (override via env).
 
-    Default is pid-suffixed in ``/tmp`` so concurrent app instances never
-    clobber each other; set ``IMGSLI_PERF_TRACE_PATH`` for a fixed path.
+    Default is pid-suffixed in the system temp dir (``tempfile.gettempdir()``
+    — the POSIX temp dir on Linux/macOS, the user's ``%TEMP%`` on Windows) so
+    concurrent app instances never clobber each other; set
+    ``IMGSLI_PERF_TRACE_PATH`` for a fixed path. A caller-supplied ``path``
+    still propagates write errors (see :func:`write_trace`); this default only
+    has to be *writable* on the host the app runs on, which a POSIX-only
+    hardcoded path was not on Windows.
     """
     override = os.environ.get(TRACE_PATH_ENV)
     if override:
         return override
-    return f"/tmp/imgsli-perf-trace-{os.getpid()}.json"
+    return os.path.join(
+        tempfile.gettempdir(), f"imgsli-perf-trace-{os.getpid()}.json"
+    )
 
 
 def maybe_dump_trace(

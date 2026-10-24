@@ -1,5 +1,3 @@
-from pathlib import Path
-
 VIDEO_EDITOR_AUTO_CROP = False
 
 def first_snapshot_from_source(source):
@@ -31,4 +29,10 @@ def resolve_initial_fps(view, snapshots, main_controller) -> int:
     return 60
 
 def default_downloads_dir() -> str:
-    return str(Path.home() / "Downloads")
+    # Single implementation lives with the export state; imported lazily so
+    # this module stays free of the export-service import graph at load time.
+    from tabs.image_compare.services.image_export.state import (
+        default_downloads_dir as _resolve_default_downloads_dir,
+    )
+
+    return _resolve_default_downloads_dir()
