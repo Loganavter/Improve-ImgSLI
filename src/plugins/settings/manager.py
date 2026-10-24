@@ -1,9 +1,11 @@
 # Audit-Meta: pattern=state-machine reason="single settings manager — load/save + change propagation"
 import logging
 import os
+import re
 import shutil
+import tempfile
 
-from PySide6.QtCore import QSettings, QTimer
+from PySide6.QtCore import QSettings, QStandardPaths, QTimer
 from PySide6.QtGui import QColor
 
 from core.constants import AppConstants
@@ -20,12 +22,116 @@ from ui.canvas_infra.scene.registry import get_canvas_registry
 
 logger = logging.getLogger("ImproveImgSLI")
 
+# Suffix of the last-good copy kept beside a file-backed settings store. Must
+# stay ".backup": copies with this name already exist on users' disks and the
+# restore path is expected to heal from them.
+_FILE_BACKUP_SUFFIX = ".backup"
+# Portable export used when the live store is NOT a file (Windows registry,
+# any native backend without a filesystem path) — a file beside a registry key
+# is impossible, so the last-good copy lives in the app config dir instead.
+_PORTABLE_BACKUP_FILENAME = "settings-backup.ini"
+
+# Registry key roots QSettings reports from ``fileName()`` on Windows
+# ("HKCU\\Software\\org\\app"). Matched on the upper-cased text.
+_REGISTRY_KEY_PREFIXES = (
+    "HKCU\\",
+    "HKLM\\",
+    "HKCR\\",
+    "HKU\\",
+    "HKCC\\",
+    "HKEY_",
+)
+# Windows filesystem roots: "C:\..." / "\\server\share\..." — backslashes
+# there are path separators, not registry nesting.
+_WINDOWS_DRIVE_RE = re.compile(r"^[A-Za-z]:[\\/]")
+
+# One warning per process is enough to make an unavailable backup visible
+# without spamming every save (the old code logged at debug and stayed silent).
+_backup_warning_emitted = False
+
+
+def is_file_backed_settings(path: str) -> bool:
+    """True when ``path`` is a filesystem path a ``.backup`` can live beside.
+
+    Pure (no Qt): ``QSettings.fileName()`` is either a real path or, on the
+    native Windows backend, a registry key such as
+    ``HKCU\\Software\\improve-imgsli\\improve-imgsli``. Copying "beside" a
+    registry key silently does nothing — ``os.path.exists`` is always False —
+    so the backup/self-heal path has to branch on this instead of trying.
+    """
+    if not isinstance(path, str):
+        return False
+    text = path.strip()
+    if not text:
+        return False
+    if text.upper().startswith(_REGISTRY_KEY_PREFIXES):
+        return False
+    if _WINDOWS_DRIVE_RE.match(text) or text.startswith("\\\\"):
+        return True
+    # Registry keys are backslash-separated with no path separator. Real
+    # posix paths (and the relative names QSettings reports) contain "/" or
+    # nothing at all.
+    if "\\" in text and "/" not in text:
+        return False
+    return True
+
+
+def _portable_backup_dir(settings: QSettings) -> str:
+    """Stable per-app config directory for the portable export, or "".
+
+    Derived from the store's own org/app so the export cannot drift into a
+    second app identity (see ``canonical_settings`` — one org/app pair).
+    """
+    base = QStandardPaths.writableLocation(
+        QStandardPaths.StandardLocation.GenericConfigLocation
+    )
+    if not base:
+        return ""
+    parts = [base]
+    for part in (settings.organizationName(), settings.applicationName()):
+        text = str(part or "").strip()
+        if text:
+            parts.append(text)
+    return os.path.join(*parts)
+
+
+def settings_backup_path(settings: QSettings) -> str:
+    """The ONE resolver of where the last-good settings copy lives.
+
+    File-backed store: ``<fileName>.backup`` beside the settings file (same
+    name as before, so existing last-good copies keep working). Non-file store
+    (Windows registry): ``<app-config-dir>/settings-backup.ini``. Returns ""
+    when a non-file store has no writable config directory (callers then warn
+    once — never fail silently).
+    """
+    file_name = str(settings.fileName() or "")
+    if is_file_backed_settings(file_name):
+        return file_name + _FILE_BACKUP_SUFFIX
+    directory = _portable_backup_dir(settings)
+    if not directory:
+        return ""
+    return os.path.join(directory, _PORTABLE_BACKUP_FILENAME)
+
+
+def _warn_backup_unavailable(reason: str) -> None:
+    """Report a genuinely unavailable backup once per process."""
+    global _backup_warning_emitted
+    if _backup_warning_emitted:
+        return
+    _backup_warning_emitted = True
+    logger.warning(
+        "Settings backup/self-heal is unavailable (%s); a corrupt settings "
+        "store cannot be restored on this platform.",
+        reason,
+    )
+
+
 class SettingsManager:
     def __init__(self, organization_name, application_name):
         self._organization_name = organization_name
         self._application_name = application_name
         self.settings = QSettings(organization_name, application_name)
-        self._backup_path = self.settings.fileName() + ".backup"
+        self._backup_path = settings_backup_path(self.settings)
         logger.debug(
             "[settings] SettingsManager init file=%s backup=%s",
             self.settings.fileName(),
@@ -35,7 +141,7 @@ class SettingsManager:
             # The QSettings instance cached the corrupt state; re-read the
             # restored file with a fresh instance.
             self.settings = QSettings(organization_name, application_name)
-            self._backup_path = self.settings.fileName() + ".backup"
+            self._backup_path = settings_backup_path(self.settings)
 
     def _caller_summary(self) -> str:
         """Last 3 non-manager call frames, for load/save origin tracing.
@@ -63,45 +169,106 @@ class SettingsManager:
         except Exception:
             return "unknown"
 
+    def _store_is_present(self) -> bool:
+        """Whether the live store holds anything at all.
+
+        File-backed: the file exists (a fresh profile has none). Non-file
+        (registry): presence is ``allKeys()`` — a registry key exists or it
+        does not, and ``os.path.exists("HKCU\\...")`` is always False, which
+        is exactly what made the health check dead code on Windows.
+        """
+        file_name = str(self.settings.fileName() or "")
+        if is_file_backed_settings(file_name):
+            return os.path.exists(file_name)
+        return bool(self.settings.allKeys())
+
     def _restore_backup_if_corrupt(self) -> bool:
-        """Heal a truncated/corrupt settings file from the last-good backup.
+        """Heal a truncated/corrupt settings store from the last-good backup.
 
         QSettings writes its INI in place (open-truncate-write-close), so a
         kill/crash mid-save leaves a truncated file. The next startup then
         loads defaults and a clean exit re-writes them — permanently wiping
         the user's settings (observed: language and UI prefs reset to
         defaults after dev iterations that kill the app). A startup that
-        finds the file present but missing the critical keys restores the
-        ``.backup`` copy instead.
+        finds the store present but missing the critical keys restores the
+        last-good copy instead: the ``.backup`` file beside an INI, or the
+        portable INI export for a non-file (registry) store.
         """
-        path = self.settings.fileName()
-        if not os.path.exists(path):
+        if not self._store_is_present():
             return False
-        keys = len(self.settings.allKeys())
+        file_name = str(self.settings.fileName() or "")
+        backup_path = settings_backup_path(self.settings)
+        self._backup_path = backup_path
         logger.debug(
-            "[settings] health check: file=%s keys=%d backup=%s",
-            path,
-            keys,
-            os.path.exists(self._backup_path),
+            "[settings] health check: store=%s keys=%d backup=%s",
+            file_name,
+            len(self.settings.allKeys()),
+            backup_path or "<unavailable>",
         )
         if self.settings.contains("language") or self.settings.contains("theme"):
             return False
-        if not os.path.exists(self._backup_path):
+        if not backup_path:
+            _warn_backup_unavailable("no writable app-config directory")
+            return False
+        if not os.path.exists(backup_path):
             logger.warning(
-                "Settings file looks empty/corrupt but no .backup exists to "
+                "Settings store looks empty/corrupt but no backup exists to "
                 "restore from: %s",
-                path,
+                backup_path,
             )
             return False
+        if is_file_backed_settings(file_name):
+            try:
+                shutil.copy2(backup_path, file_name)
+                logger.warning(
+                    "Settings file was corrupt/truncated; restored from backup: %s",
+                    file_name,
+                )
+                return True
+            except Exception:
+                logger.exception(
+                    "Failed to restore settings from backup %s", backup_path
+                )
+                return False
+        return self._restore_from_portable_backup(backup_path)
+
+    def _restore_from_portable_backup(self, backup_path: str) -> bool:
+        """Copy every leaf of a portable INI export back into the live store.
+
+        Fail-open: an unreadable/empty export (a truncated backup, a garbage
+        file) is ignored with one log line. Keys are only ever written, never
+        cleared, so a bad export cannot wipe whatever the live store still
+        holds.
+        """
         try:
-            shutil.copy2(self._backup_path, path)
+            export = QSettings(backup_path, QSettings.Format.IniFormat)
+            keys = export.allKeys()
+            if not keys:
+                logger.warning(
+                    "Portable settings backup is empty/unreadable; ignored: %s",
+                    backup_path,
+                )
+                return False
+            if not (export.contains("language") or export.contains("theme")):
+                logger.warning(
+                    "Portable settings backup has no critical keys; ignored: %s",
+                    backup_path,
+                )
+                return False
+            for key in keys:
+                self.settings.setValue(key, export.value(key))
+            self.settings.sync()
             logger.warning(
-                "Settings file was corrupt/truncated; restored from backup: %s",
-                path,
+                "Settings store was corrupt/truncated; restored %d keys from "
+                "portable backup: %s",
+                len(keys),
+                backup_path,
             )
             return True
         except Exception:
-            logger.exception("Failed to restore settings from backup %s", self._backup_path)
+            logger.exception(
+                "Failed to restore settings from portable backup %s", backup_path
+            )
             return False
 
     def _get_setting(self, key, default, target_type):
@@ -388,19 +555,58 @@ class SettingsManager:
         )
 
     def _refresh_backup(self) -> None:
-        """Keep a last-good copy of the settings file next to it.
+        """Keep a last-good copy of the settings store.
 
         Refreshed after every successful save so the startup self-heal
         (``_restore_backup_if_corrupt``) restores recent settings rather
-        than stale ones.
+        than stale ones. File-backed stores copy the file beside it;
+        non-file stores (Windows registry) export every key into a portable
+        INI, written atomically (mkstemp -> close -> os.replace) so a crash
+        mid-export can never leave a half-written last-good copy.
         """
+        backup_path = settings_backup_path(self.settings)
+        self._backup_path = backup_path
+        if not backup_path:
+            _warn_backup_unavailable("no writable app-config directory")
+            return
         try:
-            path = self.settings.fileName()
-            if os.path.exists(path):
-                shutil.copy2(path, self._backup_path)
-                logger.debug("[settings] backup refreshed: %s", self._backup_path)
-        except Exception:
+            file_name = str(self.settings.fileName() or "")
+            if is_file_backed_settings(file_name):
+                if os.path.exists(file_name):
+                    shutil.copy2(file_name, backup_path)
+                    logger.debug("[settings] backup refreshed: %s", backup_path)
+                return
+            self._write_portable_backup(backup_path)
+        except Exception as exc:
+            _warn_backup_unavailable(f"backup write failed: {exc}")
             logger.debug("Settings backup refresh failed", exc_info=True)
+
+    def _write_portable_backup(self, backup_path: str) -> None:
+        """Atomically export the live settings tree to an INI file."""
+        directory = os.path.dirname(backup_path) or "."
+        os.makedirs(directory, exist_ok=True)
+        fd, tmp_name = tempfile.mkstemp(
+            prefix=".settings-backup.",
+            suffix=".tmp",
+            dir=directory,
+        )
+        os.close(fd)
+        try:
+            export = QSettings(tmp_name, QSettings.Format.IniFormat)
+            for key in self.settings.allKeys():
+                export.setValue(key, self.settings.value(key))
+            export.sync()
+            # QSettings has no close(); drop the handle before replacing so
+            # the writer never sees an open file (matters on Windows).
+            del export
+            os.replace(tmp_name, backup_path)
+            logger.debug("[settings] portable backup refreshed: %s", backup_path)
+        except Exception:
+            try:
+                os.unlink(tmp_name)
+            except OSError:
+                pass
+            raise
 
     def _iter_all_canvas_feature_properties(self):
         from tabs.registry import TabRegistry
