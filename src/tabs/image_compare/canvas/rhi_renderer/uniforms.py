@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import struct
 
+from engine.gpu.rt_y_orientation import composited_clip_correction
 from engine.cache.uniform_layout import assert_uniform_size
 
 # std140 layout of base.frag/base.vert's UBuf: mat4 mvp(64) + vec2 offset(8)
@@ -37,7 +38,7 @@ def pack_base_uniforms(
     of the canvas into a tile-sized render target. ``None`` (the default,
     live/preview rendering) reproduces the prior isotropic behavior exactly:
     zoom.x == zoom.y == base_image.zoom."""
-    matrix = tuple(float(value) for value in rhi.clipSpaceCorrMatrix().data())
+    matrix = composited_clip_correction(rhi)
     zoom_x, zoom_y = viewport_zoom or (float(base_image.zoom), float(base_image.zoom))
     offset_x, offset_y = viewport_offset or (
         float(base_image.pan_offset_x),
@@ -97,7 +98,7 @@ def pack_array_uniforms(rhi, base_image, *, diff_source_ready: bool) -> bytes:
     """Uniform block for the texture-array instanced draw path. Per-instance
     data (tile rects, content-scale, array layers) is supplied separately via
     a per-instance vertex buffer -- see resources.py's array pipeline."""
-    matrix = tuple(float(value) for value in rhi.clipSpaceCorrMatrix().data())
+    matrix = composited_clip_correction(rhi)
     zoom = float(base_image.zoom)
     offset_x = float(base_image.pan_offset_x)
     offset_y = float(base_image.pan_offset_y)

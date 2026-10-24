@@ -48,79 +48,20 @@ from PySide6.QtGui import (
 
 from engine.cache.tile_debug import dump_tile_image, log_tile_event, tile_dump_enabled
 from engine.cache.tile_mip import mip_level_count, mip_level_pixel_size
+from engine.gpu.rt_y_orientation import sampled_rt_correction
 
 _SHADER_DIR = Path(__file__).resolve().parent / "shaders"
 
 
-#: Backend family that needs NO Y correction in the downsample pass. Measured
-#: on D3D11 (2026-10-24, plan-tile-policy-reliability-2026-10-24): the flip
-#: inverted every generated level relative to its source. Every other backend
-#: measured so far (OpenGL/GLES2, Vulkan via QRhiWidget.setApi) DOES need it.
-_D3D_BACKENDS = frozenset(
-    getattr(QRhi.Implementation, name)
-    for name in ("D3D11", "D3D12")
-    if hasattr(QRhi.Implementation, name)
-)
-
-_IDENTITY_MATRIX = (
-    1.0, 0.0, 0.0, 0.0,
-    0.0, 1.0, 0.0, 0.0,
-    0.0, 0.0, 1.0, 0.0,
-    0.0, 0.0, 0.0, 1.0,
-)
-
-_FLIP_MATRIX = (
-    1.0, 0.0, 0.0, 0.0,
-    0.0, -1.0, 0.0, 0.0,
-    0.0, 0.0, 1.0, 0.0,
-    0.0, 0.0, 0.0, 1.0,
-)
-
-
 def downsample_corr_matrix(rhi) -> tuple[float, ...]:
-    """Row-major ``mat4`` for the mip-downsample vertex stage.
+    """The cascade's vertex-stage correction -- a SAMPLED-RT pass.
 
-    The Y-flip is a **per-backend** correction, not an unconditional one, and
-    ``rhi.isYUpInFramebuffer()`` is NOT the right gate for it -- measured
-    2026-10-24 on both sides:
-
-    =======================  ================  ==========================  =============
-    backend                  isYUpInFramebuffer  clipSpaceCorrMatrix        flip needed
-    =======================  ================  ==========================  =============
-    OpenGL / GLES2           True                identity                    yes (shipped)
-    Vulkan                   False               Y-flip + 0..1 depth scale   yes (shipped)
-    D3D11                    (n/a here)          (n/a here)                  no (measured)
-    =======================  ================  ==========================  =============
-
-    The D3D11 "no" is the one that was missing and cost a full diagnosis
-    cycle: the unconditional flip re-flipped every generated level relative to
-    its source, so the chain alternated by level parity, and the trilinear
-    tile sampler blended upright mip0 with flipped mip1 at any zoom below 1:1
-    -- the "bands / flipped tiles / a tile fills a third" artifact
-    (plan-tile-policy-reliability-2026-10-24; measured from ``IMGSLI_TILE_DUMP``
-    mip readbacks: consecutive levels matched a vertical flip at mean|Δ|
-    2.4-13 vs 42-59 for identity). Zoom >= 1:1 samples mip0 only, which is why
-    the artifact needed minification.
-
-    Gating on ``isYUpInFramebuffer()`` alone would move Vulkan (False, like
-    D3D11) into the no-flip bucket and flip every tile there -- so the gate is
-    the backend FAMILY: skip the flip on the D3D family (the only one measured
-    to need none), keep it everywhere else, and keep it when the backend
-    cannot be queried (never guess a flip away).
-
-    Diagonal, so row-major vs column-major storage of the ``mat4`` does not
-    matter.
+    The decision, and the measured per-backend table behind it, live in
+    ``engine.gpu.rt_y_orientation`` (one source of truth for every QRhi pass in
+    this tree). This wrapper exists so the cascade's own contract test keeps
+    pinning the exact matrix it uploads.
     """
-    return _IDENTITY_MATRIX if _is_d3d_backend(rhi) else _FLIP_MATRIX
-
-
-def _is_d3d_backend(rhi) -> bool:
-    """True only for a D3D family backend; False for everything unknown."""
-    try:
-        backend = rhi.backend()
-    except (AttributeError, RuntimeError):
-        return False
-    return backend in _D3D_BACKENDS
+    return sampled_rt_correction(rhi)
 
 
 def _load_mip_downsample_shader(name: str) -> QShader:
