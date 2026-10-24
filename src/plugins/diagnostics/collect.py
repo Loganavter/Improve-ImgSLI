@@ -11,6 +11,8 @@ user's documents, projects, or images.
 
 from __future__ import annotations
 
+from shared.hidden_process import hidden_process_kwargs
+
 import os
 import platform
 import re
@@ -63,6 +65,7 @@ def _run(argv: list[str], timeout: float = 2.0) -> str | None:
             text=True,
             timeout=timeout,
             check=False,
+            **hidden_process_kwargs(),
         )
     except Exception:
         return None

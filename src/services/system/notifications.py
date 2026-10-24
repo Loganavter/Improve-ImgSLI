@@ -1,3 +1,5 @@
+
+from shared.hidden_process import hidden_process_kwargs
 import logging
 import os
 from pathlib import Path
@@ -122,7 +124,12 @@ class NotificationService:
             if icon:
                 cmd.extend(["-i", icon])
             cmd.extend([title or "", message or ""])
-            subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.Popen(
+                cmd,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                **hidden_process_kwargs(),
+            )
             return True
         except Exception as exc:
             logger.error("notify-send failed: %s", exc)

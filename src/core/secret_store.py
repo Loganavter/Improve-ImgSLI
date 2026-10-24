@@ -27,6 +27,8 @@ Three backends, chosen at runtime in this order:
 
 from __future__ import annotations
 
+from shared.hidden_process import hidden_process_kwargs
+
 import base64
 import hashlib
 import logging
@@ -211,6 +213,7 @@ def _keyring_store(value: str) -> bool:
             capture_output=True,
             timeout=_BACKEND_TIMEOUT_S,
             check=False,
+            **hidden_process_kwargs(),
         )
     except (OSError, subprocess.SubprocessError):
         return False
@@ -226,7 +229,11 @@ def _keyring_load() -> str:
         argv += [key, attr]
     try:
         done = subprocess.run(
-            argv, capture_output=True, timeout=_BACKEND_TIMEOUT_S, check=False
+            argv,
+            capture_output=True,
+            timeout=_BACKEND_TIMEOUT_S,
+            check=False,
+            **hidden_process_kwargs(),
         )
     except (OSError, subprocess.SubprocessError):
         return ""
@@ -243,7 +250,13 @@ def _keyring_clear() -> None:
     for key, attr in _KEYRING_SCHEMA:
         argv += [key, attr]
     try:
-        subprocess.run(argv, capture_output=True, timeout=_BACKEND_TIMEOUT_S, check=False)
+        subprocess.run(
+            argv,
+            capture_output=True,
+            timeout=_BACKEND_TIMEOUT_S,
+            check=False,
+            **hidden_process_kwargs(),
+        )
     except (OSError, subprocess.SubprocessError):
         pass
 
