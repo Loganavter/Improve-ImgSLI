@@ -54,6 +54,7 @@ content_swap
 coverage_healthy
 d3d12
 delta_e
+diffSourceReady
 detail_error
 dragEnter
 eff_rel
