@@ -161,7 +161,7 @@ log lines only; `visual` = changes pixels; `dump` = writes capture files;
 | `IMGSLI_GLASS_PANEL_SYNC_PROBE` | removed | historical only — named in comments, no live `os.environ` read (`src/engine/gpu/glass_panel.py`) | — |
 | `IMGSLI_GLASS_PANEL_DISPLAY_BACKEND` | removed | read nowhere (re-checked 2026-10-22); there is no `=rhi` env switch — the panel's RHI path is `GlassPanelDisplayWidget`'s own descriptor | — |
 | `IMGSLI_FAULT_DUMP` (+ `_FILE`, `_INTERVAL`) | dump | `env_flag` + path + int w/ fail-open default 15 | `src/core/windowed_stdio.py` |
-| `IMGSLI_SKIP_MIP_CASCADE` | behavior | `env_flag` | `src/tabs/multi_compare/scene/renderer.py` |
+| `IMGSLI_SKIP_MIP_CASCADE` | behavior | cached at import, permissive (`""/0/false/no/off` = off) — the same parse in both canvas tabs | `src/tabs/multi_compare/scene/renderer.py:55` (`_SKIP_MIP_CASCADE`), `src/tabs/image_compare/canvas/rhi_renderer/renderer.py:108` (`_skip_mip_cascade_requested` → `_SKIP_MIP_CASCADE`) |
 | `IMGSLI_MC_RMB_SURFACE` | behavior | `=in_window\|popup` | `src/tabs/multi_compare/canvas/interaction.py` |
 | `IMGSLI_MC_DND_DIAG_LIGHT_MOVE` | behavior | diag-only A/B, never ship | `src/tabs/multi_compare/debug.py` |
 | `IMGSLI_DND_KEEPWARM_MS`, `IMGSLI_DND_ENTER_DELAY_MS` | tuning | int ms | `src/tabs/image_compare/canvas/widget.py`, `src/events/window_event_handler.py` |

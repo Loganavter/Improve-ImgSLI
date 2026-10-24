@@ -102,6 +102,8 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
 
 ## docs/dev/rendering/
 
+- **[Tiled rendering design of record](rendering/TILED_RENDERING_DESIGN.md)** — `docs/dev/rendering/TILED_RENDERING_DESIGN.md`
+  Referenced by: [docs/dev/rendering/index.md](rendering/index.md)
 - **[Pre-merge checklist](rendering/checklist.md)** — `docs/dev/rendering/checklist.md`
   Referenced by: [docs/dev/rendering/index.md](rendering/index.md)
 - **[Contracts](rendering/contracts.md)** — `docs/dev/rendering/contracts.md`
@@ -109,7 +111,7 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
 - **[Coordinate Systems](rendering/coordinate-systems.md)** — `docs/dev/rendering/coordinate-systems.md`
   Referenced by: [docs/dev/TODO.md](TODO.md), [docs/dev/rendering/contracts.md](rendering/contracts.md), [docs/dev/rendering/index.md](rendering/index.md), [docs/dev/rendering/package-structure.md](rendering/package-structure.md), [docs/dev/rendering/zoom-pan.md](rendering/zoom-pan.md)
 - **[Display image pipeline: preview tier → unify → pyramid → tiled render](rendering/display-image-pipeline.md)** — `docs/dev/rendering/display-image-pipeline.md`
-  Referenced by: [docs/dev/README.md](README.md), [docs/dev/rendering/index.md](rendering/index.md), [docs/dev/rendering/tile-rendering-system.md](rendering/tile-rendering-system.md)
+  Referenced by: [docs/dev/README.md](README.md), [docs/dev/rendering/TILED_RENDERING_DESIGN.md](rendering/TILED_RENDERING_DESIGN.md), [docs/dev/rendering/index.md](rendering/index.md), [docs/dev/rendering/tile-rendering-system.md](rendering/tile-rendering-system.md)
 - **[Feature Decomposition Playbook](rendering/feature-decomposition-playbook.md)** — `docs/dev/rendering/feature-decomposition-playbook.md`
   Referenced by: [docs/dev/rendering/index.md](rendering/index.md)
 - **[Canvas & Rendering Documentation](rendering/index.md)** — `docs/dev/rendering/index.md`
@@ -119,11 +121,11 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
 - **[Package Structure](rendering/package-structure.md)** — `docs/dev/rendering/package-structure.md`
   Referenced by: [docs/dev/rendering/feature-decomposition-playbook.md](rendering/feature-decomposition-playbook.md), [docs/dev/rendering/index.md](rendering/index.md), [docs/dev/rendering/overview.md](rendering/overview.md)
 - **[Render Pass Contract](rendering/render-pass-contract.md)** — `docs/dev/rendering/render-pass-contract.md`
-  Referenced by: [docs/dev/CONTRACTS.md](CONTRACTS.md), [docs/dev/rendering/checklist.md](rendering/checklist.md), [docs/dev/rendering/index.md](rendering/index.md), [docs/dev/rendering/overview.md](rendering/overview.md), [docs/dev/rendering/package-structure.md](rendering/package-structure.md), [docs/dev/rendering/rendering-model.md](rendering/rendering-model.md)
+  Referenced by: [docs/dev/CONTRACTS.md](CONTRACTS.md), [docs/dev/rendering/TILED_RENDERING_DESIGN.md](rendering/TILED_RENDERING_DESIGN.md), [docs/dev/rendering/checklist.md](rendering/checklist.md), [docs/dev/rendering/index.md](rendering/index.md), [docs/dev/rendering/overview.md](rendering/overview.md), [docs/dev/rendering/package-structure.md](rendering/package-structure.md), [docs/dev/rendering/rendering-model.md](rendering/rendering-model.md)
 - **[Rendering Model](rendering/rendering-model.md)** — `docs/dev/rendering/rendering-model.md`
-  Referenced by: [docs/dev/ARCHITECTURE.md](ARCHITECTURE.md), [docs/dev/rendering/checklist.md](rendering/checklist.md), [docs/dev/rendering/contracts.md](rendering/contracts.md), [docs/dev/rendering/index.md](rendering/index.md), [docs/dev/rendering/package-structure.md](rendering/package-structure.md), [docs/dev/rendering/render-pass-contract.md](rendering/render-pass-contract.md), [docs/dev/rendering/tile-rendering-system.md](rendering/tile-rendering-system.md)
+  Referenced by: [docs/dev/ARCHITECTURE.md](ARCHITECTURE.md), [docs/dev/rendering/TILED_RENDERING_DESIGN.md](rendering/TILED_RENDERING_DESIGN.md), [docs/dev/rendering/checklist.md](rendering/checklist.md), [docs/dev/rendering/contracts.md](rendering/contracts.md), [docs/dev/rendering/index.md](rendering/index.md), [docs/dev/rendering/package-structure.md](rendering/package-structure.md), [docs/dev/rendering/render-pass-contract.md](rendering/render-pass-contract.md), [docs/dev/rendering/tile-rendering-system.md](rendering/tile-rendering-system.md)
 - **[Tiled rendering system](rendering/tile-rendering-system.md)** — `docs/dev/rendering/tile-rendering-system.md`
-  Referenced by: [docs/dev/README.md](README.md), [docs/dev/rendering/display-image-pipeline.md](rendering/display-image-pipeline.md), [docs/dev/rendering/index.md](rendering/index.md), [docs/dev/rendering/rendering-model.md](rendering/rendering-model.md)
+  Referenced by: [docs/dev/README.md](README.md), [docs/dev/rendering/TILED_RENDERING_DESIGN.md](rendering/TILED_RENDERING_DESIGN.md), [docs/dev/rendering/display-image-pipeline.md](rendering/display-image-pipeline.md), [docs/dev/rendering/index.md](rendering/index.md), [docs/dev/rendering/rendering-model.md](rendering/rendering-model.md)
 - **[Zoom, Pan & Interaction](rendering/zoom-pan.md)** — `docs/dev/rendering/zoom-pan.md`
   Referenced by: [docs/dev/rendering/checklist.md](rendering/checklist.md), [docs/dev/rendering/coordinate-systems.md](rendering/coordinate-systems.md), [docs/dev/rendering/index.md](rendering/index.md)
 

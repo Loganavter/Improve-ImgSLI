@@ -60,14 +60,36 @@ breakdown):
 owns a dict of `source_id -> grid` for every texture key currently in use.
 
 - `register_source(source_id, image_size)` — the only place that creates or
-  updates a source's grid. Called exclusively from
-  `RhiResources.upload_source`, which itself is only reachable through the
-  `queue_texture_upload` → `apply_pending_uploads` path. If a key never goes
-  through that path, its grid is never (re-)registered and `grid_for(key)`
-  returns `None` or a stale grid — a footgun for lazy sources, since
-  `upload_pil_images`/`upload_source_pil_image` intentionally skip the
-  whole-image upload for a `TiledPixelStore` (tiles are cropped from the
-  store by `realize_tile_plan` instead, never uploaded as one texture).
+  updates a source's grid (and the only place that resets that key's own
+  residency bookkeeping — `src/engine/cache/tile_texture_service.py:182`). It
+  is **not** reached through a single upload path; the current call set (grep
+  `register_source` under `src/`) is:
+  - fixed-pair tab, eager whole-image/diff-role upload and the lazy
+    re-register branch (`src/tabs/image_compare/canvas/rhi_renderer/resources.py:307`,
+    `src/tabs/image_compare/canvas/rhi_renderer/residency.py:588`);
+  - merged slot swap machine and the single-image tiled view
+    (`src/engine/gpu/base_images_pass.py:273`, `src/engine/gpu/tiled_image_view.py:537`);
+  - content stash rekey/restore (`src/engine/cache/stash.py:167`, `:248`);
+  - multi-slot per-frame level registration and the offscreen/export paths
+    (`src/tabs/multi_compare/scene/passes/residency.py:303`, `:352`,
+    `src/tabs/multi_compare/services/gpu_export.py:162`,
+    `src/tabs/image_compare/services/snapshot_render_plan_builder.py:663`).
+
+  The rule that follows: every key a residency pass or a draw plan will address
+  must be registered on the frame it becomes addressable. A key whose pixels
+  are uploaded without a registration path answers `grid_for(key) is None` and
+  contributes nothing — `build_slot_plan_tiles` degrades it to one full-image
+  entry, whose `slot_for` lookup then fails, so the source silently disappears
+  instead of drawing untiled (`build_slot_plan_tiles` in
+  `src/engine/cache/draw_plans.py`). A *reused*
+  key with new content but no re-registration is worse: `grid_for` keeps
+  returning the previous grid, so visible tiles are selected in the old
+  image's pixel space while the crops come from the new store. That footgun is
+  why `upload_pil_images`/`upload_source_pil_image` intentionally skip the
+  whole-image upload for a `TiledPixelStore`
+  (`src/engine/cache/display_tier_service.py:193`, `:592`) — tiles are cropped
+  from the store by the residency realizer instead, never uploaded as one
+  texture, and the grid must come from one of the registration paths above.
 - A grid smaller than `_LIVE_TILE_EXTENT` on both axes registers as a
   trivial 1×1 grid — the common case, treated as "not tiled" everywhere
   downstream (`grid.rows == 1 and grid.columns == 1` is the standard
@@ -79,7 +101,7 @@ owns a dict of `source_id -> grid` for every texture key currently in use.
 - `visible_tiles(source_id, visible_rect)` — given a rect in the grid's own
   pixel space, returns the set of `(row, col)` indices whose region
   intersects it. This is the single computation that both the residency pass
-  (`TileResidencyRealizer.realize_tile_plan` (owned by `RhiResources` as `.residency`)) and the draw-plan pass
+  (the engine loop's `resolve_visible_tiles`) and the draw-plan pass
   (`draw_plan.py::build_array_draw_plan`, via `iter_visible_side_tiles`) rely
   on, so what's uploaded and what's drawn are guaranteed to agree.
 - `grid.iter_regions()` — yields `(row, col, region)` for every cell, where
@@ -121,24 +143,51 @@ apron-padded region, not the raw grid cell — draw code and residency code
 must agree on this or you get texture/geometry mismatch (exactly the kind of
 bug the tiled system is fragile to if one side changes independently).
 
-## Residency: `TileResidencyRealizer.realize_tile_plan`
+## Residency: the engine loop and its per-tab entry points
 
-Owned by `RhiResources` as `self.residency`; callers invoke it as
-`resources.residency.realize_tile_plan(...)`.
+The loop is engine-owned: `TileResidencyRealizerBase.realize_specs`
+(`src/engine/cache/residency.py:100`). It holds no cross-frame LOD/fallback
+state (that stays with each caller) and never decides on its own which indices
+should be resident — it reads those decisions from `TileTextureService` and
+performs them.
 
-Runs once per frame (or whenever geometry/viewport changes trigger it).
-For each `(texture_key, letterbox)` pair that has a real (non-1×1) grid
-(`LIVE_TILE_EXTENT = 512`, `src/engine/cache/tile_constants.py`):
+Each consumer feeds it through its own entry point:
 
-1. Determine which tiles are currently visible (same `visible_tiles` call the
-   draw plan will use).
-2. Crop and upload only those tiles. Underlying full-res pixels live in
-   `TiledPixelStore` (memmap-backed — see "GEGL-style pixel storage" below);
-   tiles are cropped via `.crop()` — the whole image is never materialized
-   in memory just to cut tiles out of it.
-3. Evict tiles that are no longer in the protected (visible) set, so GPU
-   memory for a given source stays bounded to roughly "what's on screen"
-   rather than growing to the full grid over a pan session.
+- **Image Compare** — `TileResidencyRealizer` lives in the tab
+  (`src/tabs/image_compare/canvas/rhi_renderer/residency.py:321`) and is held by
+  that tab's `RhiResources` as `self.residency`
+  (`src/tabs/image_compare/canvas/rhi_renderer/resources.py:168`); callers still
+  invoke `resources.residency.realize_tile_plan(...)`
+  (`src/tabs/image_compare/canvas/rhi_renderer/residency.py:700`), which
+  resolves the fixed-pair specs (plus the magnifier's capture-window call) and
+  feeds `BaseImagesPass.realize` (`src/engine/gpu/base_images_pass.py:424`).
+- **Multi Compare** — the module-level `realize(...)`
+  (`src/tabs/multi_compare/scene/passes/residency.py:694`) builds a per-call
+  `_SlotUploadRealizer` (`:477`) over the same engine pass.
+- **Quick Look** — `_TiledImageResidencyRealizer`
+  (`src/engine/gpu/tiled_image_view.py:426`), one instance inside
+  `SingleImageTiledView`.
+
+Per call, for each spec whose grid is real (non-1×1;
+`LIVE_TILE_EXTENT = 512`, `src/engine/cache/tile_constants.py:32`):
+
+1. Target = every tile intersecting the visible rect plus a
+   `TILE_RESIDENCY_MARGIN` ring — the same `visible_tiles` computation the draw
+   plan uses.
+2. The **full** target is protected from this call's eviction, including tiles
+   that will not upload this call — otherwise a budget-starved key could never
+   make progress (evict-then-reselect thrash).
+3. Batch = `select_upload_batch` order (nearest the viewport centre first),
+   truncated to `TILE_UPLOAD_BUDGET_PER_CALL` **per key**; the upload itself is
+   round-robin across specs under one call-wide `TILE_UPLOAD_TIME_BUDGET_MS`
+   deadline.
+4. Tiles left un-uploaded get an off-thread page warm
+   (`src/engine/gpu/tile_prefetch.py`), then the call evicts whatever
+   `evict_over_budget` selects, so GPU memory per source stays bounded to
+   roughly "what's on screen" plus the margin. Underlying full-res pixels stay
+   in `TiledPixelStore` (memmap-backed — see "GEGL-style pixel storage" below);
+   tiles are cropped from it, whole images are never materialized just to cut
+   tiles out of them.
 
 ## Draw plan: `rhi_renderer/draw_plan.py`
 
@@ -493,9 +542,10 @@ JXL. HEIF/AVIF/WebP/JPEG/PNG/TIFF/GIF stream via pyvips everywhere.
 
 ## Budgeted progressive tile upload (GIMP-style)
 
-Status: **implemented** (2026-07-25). Both `TileResidencyRealizer.realize_tile_plan` (owned by `RhiResources` as `.residency`)
-(image_compare) and `BaseImagesPass._realize_tile_residency` (multi_compare)
-used to upload **every** currently-missing tile in `target` synchronously,
+Status: **implemented** (2026-07-25). Both `resources.residency.realize_tile_plan` (image_compare's tab-side
+realizer; the loop itself is `TileResidencyRealizerBase.realize_specs` in
+`src/engine/cache/residency.py`) and `BaseImagesPass._realize_tile_residency`
+(multi_compare) used to upload **every** currently-missing tile in `target` synchronously,
 in the same call/frame that discovered them. On a zoomed-in
 `LIVE_TILE_EXTENT`-sized grid over an 18000px+ source, a single pan/zoom
 step that shifts the visible window across several tile boundaries at once
@@ -685,8 +735,8 @@ to fix the immediate stalls; the first improves the ceiling.
 
 **Part A — time-boxed budget.** Status: **implemented**. Replaces the flat
 `TILE_UPLOAD_BUDGET_PER_CALL` count as the loop's real stop condition in
-`TileResidencyRealizer.realize_tile_plan` (owned by `RhiResources` as `.residency`) / `BaseImagesPass._realize_tile_residency`
-with a wall-clock cutoff: `select_upload_batch`'s nearest-first ordering is
+`resources.residency.realize_tile_plan` (Image Compare) / `BaseImagesPass._realize_tile_residency`
+(Multi Compare) with a wall-clock cutoff: `select_upload_batch`'s nearest-first ordering is
 still used to pick candidates (perceived fill-in order, and an upper bound
 on how many tiles are even attempted — `TILE_UPLOAD_BUDGET_PER_CALL` stays
 as a backstop), but before each tile's `upload_whole`/`_upload_tile` call
