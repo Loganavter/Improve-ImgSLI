@@ -24,10 +24,11 @@ pixels, never what backend you happen to be on:
 ``SAMPLED_RT``
     The pass writes into an offscreen texture that is later **sampled**
     (mip cascade, scratch/downsample targets, export readback canvases). No
-    compositing step cancels anything, so the correction is decided by the
-    backend FAMILY -- ``sampled_rt_correction(rhi)``, table below. This is the
-    case that bit us; ``isYUpInFramebuffer()`` is NOT a valid gate for it
-    because Vulkan answers like D3D and still needs the flip.
+    compositing step cancels anything, so the correction is derived from the
+    two documented QRhi conventions -- ``sampled_rt_correction(rhi)``, rule and
+    measured table below. This is the case that bit us; a single query is NOT a
+    valid gate for it, because Vulkan answers ``isYUpInFramebuffer()`` like D3D
+    and still needs the flip.
 
 ``NONE``
     Nothing to correct (no render target involved).
