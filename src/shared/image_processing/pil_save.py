@@ -23,6 +23,16 @@ logger = logging.getLogger("ImproveImgSLI")
 SAVE_CANCELED_MESSAGE = "Save canceled by user"
 
 _INVALID_FILENAME_CHARS = re.compile(r'[\\/*?:"<>|]')
+_CONTROL_FILENAME_CHARS = re.compile(r"[\x00-\x1f\x7f]")
+
+#: Windows device names: a file with one of these (case-insensitive) as the
+#: stem before the first dot opens the device, not a file in the directory
+#: (``CON.png``, ``NUL.txt``, ``COM1.jpg`` …). The write paths suffix ``_``.
+RESERVED_DEVICE_STEMS: frozenset[str] = frozenset(
+    {"CON", "PRN", "AUX", "NUL"}
+    | {f"COM{index}" for index in range(1, 10)}
+    | {f"LPT{index}" for index in range(1, 10)}
+)
 _FORMATS_WITH_ALPHA = frozenset({"PNG", "TIFF", "WEBP", "JXL"})
 _MODE_BYTES_PER_PIXEL = {
     "1": 0.125,
@@ -36,10 +46,143 @@ _MODE_BYTES_PER_PIXEL = {
 }
 
 
+def is_reserved_device_stem(stem: str) -> bool:
+    """True when ``stem`` names a Windows device rather than a file.
+
+    Matching is case-insensitive and ignores trailing dots/spaces because
+    Windows resolves ``CON``, ``con``, ``CON.`` and ``CON `` to the same
+    device. Pass the stem up to the first dot (``CON.png`` → ``CON``).
+    """
+    if not stem:
+        return False
+    normalised = stem.strip().rstrip(".").strip().upper()
+    return normalised in RESERVED_DEVICE_STEMS
+
+
+def _suffix_reserved_stem(cleaned: str) -> str:
+    """Append ``_`` when the pre-first-dot component is a device name."""
+    head, separator, rest = cleaned.partition(".")
+    if not is_reserved_device_stem(head):
+        return cleaned
+    return f"{head}_{separator}{rest}"
+
+
+def _strip_trailing_dots_and_spaces(value: str) -> str:
+    # Windows silently strips these, so ``report.`` and ``report `` create
+    # ``report``; keeping them would desync the path we report from the file
+    # that actually appears.
+    return value.rstrip(" .")
+
+
+def sanitize_export_basename(name: str, *, max_len: int = 120) -> str:
+    """Strict boundary sanitiser for a user-supplied export file name.
+
+    Unlike :func:`sanitize_filename_component` this *rejects* a name that
+    cannot be a plain child of the chosen directory — a path separator, a
+    drive prefix, a UNC prefix or a ``.``/``..`` traversal component — so a
+    typed absolute path can never redirect the save. It raises ``ValueError``
+    instead of rewriting, because silently turning ``/etc/passwd`` into
+    ``_etc_passwd`` would hide a hostile/accidental input.
+
+    Everything else is cleaned: control characters are removed, the Windows
+    invalid set is replaced with ``_``, trailing dots/spaces are trimmed,
+    reserved device stems get a ``_`` suffix, and the result is capped to
+    ``max_len`` while staying non-empty.
+    """
+    if not isinstance(name, str):
+        raise ValueError("Export name must be text")
+    if not isinstance(max_len, int) or max_len < 1:
+        raise ValueError("max_len must be a positive integer")
+
+    raw = name.strip()
+    if not raw:
+        raise ValueError("Export name is empty")
+    if "/" in raw or "\\" in raw:
+        raise ValueError("Export name must not contain a path separator")
+    # A bare drive spec ("C:") names a drive, not a file; "C:x" is a
+    # drive-relative *path* only because of the colon, which the forgiving
+    # rewrite below turns into an ordinary character ("C_x") — the separator
+    # check above already covers every form that could still escape.
+    if len(raw) == 2 and raw[1] == ":" and raw[0].isalpha():
+        raise ValueError("Export name must not be a drive prefix")
+    if raw in {".", ".."}:
+        raise ValueError("Export name must not be a traversal component")
+
+    cleaned = _CONTROL_FILENAME_CHARS.sub("", name)
+    cleaned = _INVALID_FILENAME_CHARS.sub("_", cleaned)
+    cleaned = _strip_trailing_dots_and_spaces(cleaned)
+    if not cleaned:
+        raise ValueError("Export name is empty after sanitizing")
+
+    cleaned = _suffix_reserved_stem(cleaned)
+    if len(cleaned) > max_len:
+        cleaned = _strip_trailing_dots_and_spaces(cleaned[:max_len])
+        if not cleaned:
+            raise ValueError("Export name is empty after sanitizing")
+        if is_reserved_device_stem(cleaned.partition(".")[0]):
+            # Truncation produced a device name (``CONx`` → ``CON``); swap the
+            # last character so the length cap still holds.
+            cleaned = f"{cleaned[:-1]}_"
+    return cleaned
+
+
+def safe_child_path(directory: str, filename: str) -> Path:
+    """Join ``filename`` under ``directory``, refusing anything that escapes.
+
+    Write-boundary re-verification after :func:`sanitize_export_basename`:
+    the joined path is accepted only when its resolved parent is the resolved
+    ``directory``. A separator, an absolute path, a drive/UNC prefix or a
+    traversal component therefore raises ``ValueError`` — the caller's save
+    aborts through the normal error path and no file is written outside the
+    directory the user picked.
+    """
+    if not isinstance(filename, str) or not filename:
+        raise ValueError("Export name is empty")
+    if "/" in filename or "\\" in filename:
+        raise ValueError("Export name must not contain a path separator")
+
+    directory_path = Path(directory)
+    candidate = directory_path / filename
+    try:
+        resolved_directory = directory_path.resolve(strict=False)
+        resolved_candidate = candidate.resolve(strict=False)
+    except (OSError, RuntimeError) as exc:  # symlink loop, unreadable parent
+        raise ValueError(f"Cannot resolve export path: {exc}") from exc
+    if resolved_candidate.parent != resolved_directory:
+        raise ValueError("Export path escapes the chosen output directory")
+    return candidate
+
+
 def sanitize_filename_component(name: str, max_len: int = 80) -> str:
-    """Strip filesystem-hostile characters and truncate."""
-    cleaned = _INVALID_FILENAME_CHARS.sub("_", name)
-    return cleaned[:max_len]
+    """Forgiving filename component sanitiser — never raises.
+
+    Used where a name is auto-derived (project auto-naming from a tab title)
+    and failing is not an option. Applies the same rules as
+    :func:`sanitize_export_basename` but rewrites instead of rejecting, and
+    falls back to ``image`` when everything is stripped.
+    """
+    try:
+        cleaned = str(name or "")
+    except Exception:  # exotic __str__; a name we cannot read is not a name
+        cleaned = ""
+    cleaned = _CONTROL_FILENAME_CHARS.sub("", cleaned)
+    cleaned = _INVALID_FILENAME_CHARS.sub("_", cleaned)
+    cleaned = _strip_trailing_dots_and_spaces(cleaned)
+    if not cleaned:
+        return "image"
+    cleaned = _suffix_reserved_stem(cleaned)
+
+    try:
+        limit = max(1, int(max_len))
+    except (TypeError, ValueError):
+        limit = 80
+    if len(cleaned) > limit:
+        cleaned = _strip_trailing_dots_and_spaces(cleaned[:limit])
+        if not cleaned:
+            return "image"
+        if is_reserved_device_stem(cleaned.partition(".")[0]):
+            cleaned = f"{cleaned[:-1]}_"
+    return cleaned
 
 
 def next_available_path(path: Path, *, style: str = "paren") -> Path:

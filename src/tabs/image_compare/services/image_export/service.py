@@ -9,7 +9,12 @@ from PIL import Image
 
 from core.store import Store
 from tabs.image_compare.plugins.video_editor.services.video_export_models import VideoRenderRequest
-from shared.image_processing.pil_save import SAVE_CANCELED_MESSAGE, write_pil_image_cancelable
+from shared.image_processing.pil_save import (
+    SAVE_CANCELED_MESSAGE,
+    safe_child_path,
+    sanitize_export_basename,
+    write_pil_image_cancelable,
+)
 from shared.image_processing.progressive_loader import JXL_SUPPORTED
 from shared.image_processing.resize import resize_images_processor
 from engine.cache import TargetSurfaceSpec, get_effective_export_interpolation_method
@@ -217,14 +222,20 @@ class ExportService:
         target_format = export_options.get("format", "PNG").upper()
         pil_format = "JPEG" if target_format == "JPG" else target_format
         output_dir = export_options["output_dir"]
-        base_name = export_options["file_name"]
+        # Write boundary: the typed name is not trusted to be a bare child of
+        # the chosen directory (an absolute/UNC/traversal name would replace
+        # output_dir at os.path.join). ``sanitize_export_basename`` raises on
+        # those, and ``safe_child_path`` re-verifies the resolved parent — the
+        # existing error path aborts the save, nothing is written outside.
+        base_name = sanitize_export_basename(export_options["file_name"])
         is_quick_save = export_options.get("is_quick_save", False)
         ext = f".{target_format.lower().replace('jpeg', 'jpg')}"
 
         if is_quick_save:
-            full_path = self._generate_unique_filepath(output_dir, base_name, ext)
+            unique_path = self._generate_unique_filepath(output_dir, base_name, ext)
+            full_path = str(safe_child_path(output_dir, os.path.basename(unique_path)))
         else:
-            full_path = os.path.join(output_dir, f"{base_name}{ext}")
+            full_path = str(safe_child_path(output_dir, f"{base_name}{ext}"))
 
         os.makedirs(output_dir, exist_ok=True)
 

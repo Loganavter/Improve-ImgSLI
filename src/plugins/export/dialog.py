@@ -17,6 +17,7 @@ from plugins.export.dialog_sections import assemble_export_ui
 from plugins.export.layout_geometry import apply_export_dialog_geometry
 from plugins.export.models import ExportDialogState
 from resources.translations import tr as app_tr
+from shared.image_processing.pil_save import sanitize_filename_component
 from shared_toolkit.ui.layout_sizing import handle_application_font_change
 from sli_ui_toolkit.i18n import translatable_text, translatable_tooltip
 from sli_ui_toolkit.managers import SettleGate, scaled_px
@@ -670,9 +671,19 @@ class ExportDialog(ThemedDialog):
             if isinstance(self.current_bg_color, QColor)
             else QColor(255, 255, 255, 255)
         )
+        # Dialog boundary: the name that leaves the dialog is already a single
+        # filename component, so no downstream save can receive a separator.
+        # The forgiving sanitiser never raises while the user is typing; an
+        # empty field stays empty so the existing "name not specified" error
+        # still fires instead of silently writing image.png.
+        typed_name = self.edit_name.text().strip()
         opts = {
             "output_dir": self.edit_dir.text().strip(),
-            "file_name": self.edit_name.text().strip(),
+            "file_name": (
+                sanitize_filename_component(typed_name, max_len=120)
+                if typed_name
+                else ""
+            ),
             "format": fmt,
             "quality": int(self.slider_quality.value()),
             "fill_background": (
