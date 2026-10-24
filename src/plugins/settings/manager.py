@@ -176,11 +176,21 @@ class SettingsManager:
         (registry): presence is ``allKeys()`` — a registry key exists or it
         does not, and ``os.path.exists("HKCU\\...")`` is always False, which
         is exactly what made the health check dead code on Windows.
+
+        A *fully* wiped registry store (every value gone — what a crash
+        mid-write leaves behind) has no keys at all, so key presence alone
+        would call it a fresh install and skip the self-heal precisely when it
+        is needed. A store therefore also counts as present when a last-good
+        copy exists to heal from; a genuinely fresh profile (no keys, no
+        backup) stays silent instead of warning about corruption.
         """
         file_name = str(self.settings.fileName() or "")
         if is_file_backed_settings(file_name):
             return os.path.exists(file_name)
-        return bool(self.settings.allKeys())
+        if self.settings.allKeys():
+            return True
+        backup_path = settings_backup_path(self.settings)
+        return bool(backup_path) and os.path.exists(backup_path)
 
     def _restore_backup_if_corrupt(self) -> bool:
         """Heal a truncated/corrupt settings store from the last-good backup.

@@ -288,6 +288,54 @@ def test_registry_store_self_heals_from_portable_backup(
     assert healed.settings.value("language") == "ru"
 
 
+def test_registry_store_fully_wiped_still_heals(
+    qapp, registry_store, tmp_path
+):
+    """Every value gone (worst truncation) must still heal from the export.
+
+    A registry key with zero values is the state a crash mid-write leaves
+    behind; key presence alone reports it as a fresh profile and skips the
+    self-heal exactly when it is needed (supervisor finding on the
+    windows-fs P1 batch).
+    """
+    from core.store import Store
+
+    manager = registry_store.SettingsManager("improve-imgsli", "improve-imgsli")
+    store = Store()
+    store.settings.theme = "dark"
+    store.settings.current_language = "ru"
+    manager.save_all_settings(store)
+    assert _portable_backup(tmp_path).exists()
+
+    _RegistryStore.values.clear()
+
+    healed = registry_store.SettingsManager("improve-imgsli", "improve-imgsli")
+
+    assert healed.settings.value("theme") == "dark"
+    assert healed.settings.value("language") == "ru"
+
+
+def test_fresh_registry_profile_is_silent_not_corrupt(
+    qapp, registry_store, tmp_path, caplog
+):
+    """First run: no keys AND no backup => quiet install, no corruption alarm."""
+    import logging
+
+    caplog.set_level(logging.WARNING)
+    _RegistryStore.values.clear()
+
+    manager = registry_store.SettingsManager("improve-imgsli", "improve-imgsli")
+
+    assert not _portable_backup(tmp_path).exists()
+    assert manager.settings.allKeys() == []
+    warnings = [
+        record.getMessage()
+        for record in caplog.records
+        if record.levelno >= logging.WARNING
+    ]
+    assert not warnings, warnings
+
+
 def test_corrupt_portable_backup_is_fail_open(
     qapp, registry_store, tmp_path
 ):

@@ -9,7 +9,9 @@ Two boundaries, one rule set (``shared/image_processing/pil_save.py``):
   (strict: rejects absolute / UNC / drive / traversal names) and then
   ``safe_child_path`` re-verifies the resolved parent. A rejected name aborts
   the save before ``os.makedirs``/``open``, so nothing is written outside the
-  directory the user picked.
+  directory the user picked. That half is asserted on the service itself, in
+  ``src/tabs/image_compare/tests/plugins/test_export_name_sanitize.py``:
+  root ``tests/`` may not deep-import a tab's internals.
 
 Windows itself is not available in CI, so the string rules (invalid characters,
 reserved device stems, trailing dots, length cap) are asserted here directly,
@@ -30,11 +32,8 @@ import inspect
 import sys
 import types
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
-from PIL import Image
-
 try:  # pragma: no cover - environment shim, not behaviour under test
     import imagecodecs  # noqa: F401
 except ModuleNotFoundError:  # bare clone / system interpreter lacks the wheel
@@ -48,7 +47,6 @@ from shared.image_processing.pil_save import (  # noqa: E402
     sanitize_export_basename,
     sanitize_filename_component,
 )
-from tabs.image_compare.services.image_export.service import ExportService  # noqa: E402
 
 # --- (a) strict sanitiser: path-shaped input is rejected, never rewritten ----
 
@@ -151,78 +149,6 @@ def test_safe_child_path_refuses_anything_that_escapes(
 
 
 # --- (d) service write boundary: no file outside output_dir ----------------
-
-OUTSIDE_NAMES = [
-    pytest.param("/tmp/evil", id="absolute-posix"),
-    pytest.param("C:\\tmp\\evil", id="absolute-drive"),
-    pytest.param("\\\\srv\\share\\evil", id="unc"),
-    pytest.param("..\\evil", id="backslash-traversal"),
-    pytest.param("../evil", id="slash-traversal"),
-    pytest.param("..", id="dots-only"),
-]
-
-
-def _service_rendering_rgb() -> ExportService:
-    return ExportService(
-        "/nonexistent/font.ttf",
-        gpu_export_service=SimpleNamespace(
-            render_plan=lambda plan, **kwargs: (Image.new("RGB", (8, 8)), None)
-        ),
-    )
-
-
-def _render_plan() -> SimpleNamespace:
-    return SimpleNamespace(canvas_w=8, canvas_h=8, fill_rgba=None)
-
-
-def _options(output_dir: Path, file_name: str, *, quick: bool = False) -> dict:
-    return {
-        "output_dir": str(output_dir),
-        "file_name": file_name,
-        "format": "PNG",
-        "is_quick_save": quick,
-        "fill_background": False,
-    }
-
-
-@pytest.mark.parametrize("bad_name", OUTSIDE_NAMES)
-def test_export_refuses_to_write_outside_output_dir(
-    tmp_path: Path, bad_name: str
-) -> None:
-    service = _service_rendering_rgb()
-    before = sorted(entry.name for entry in tmp_path.iterdir())
-
-    with pytest.raises(ValueError):
-        service.export_image(
-            None,
-            Image.new("RGB", (8, 8)),
-            Image.new("RGB", (8, 8)),
-            _options(tmp_path, bad_name),
-            render_plan=_render_plan(),
-            render_store=None,
-        )
-
-    after = sorted(entry.name for entry in tmp_path.iterdir())
-    assert after == before, f"save boundary wrote something for {bad_name!r}: {after}"
-
-
-def test_export_still_writes_a_safe_name_into_output_dir(tmp_path: Path) -> None:
-    """The refusal must not turn a normal save into a failure."""
-    service = _service_rendering_rgb()
-
-    result = service.export_image(
-        None,
-        Image.new("RGB", (8, 8)),
-        Image.new("RGB", (8, 8)),
-        _options(tmp_path, "shot"),
-        render_plan=_render_plan(),
-        render_store=None,
-    )
-
-    assert result == str(tmp_path / "shot.png")
-    assert Path(result).resolve().parent == tmp_path.resolve()
-    assert Path(result).exists()
-
 
 # --- (e) quick-save collision naming is unchanged --------------------------
 

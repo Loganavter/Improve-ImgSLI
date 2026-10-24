@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import os
+import tempfile
 
 import pytest
 
@@ -345,7 +346,9 @@ def test_default_trace_path_override(monkeypatch, tmp_path):
     assert default_trace_path() == str(custom)
     monkeypatch.delenv(TRACE_PATH_ENV, raising=False)
     default = default_trace_path()
-    assert default.startswith("/tmp/imgsli-perf-trace-")
+    assert default.startswith(
+        os.path.join(tempfile.gettempdir(), "imgsli-perf-trace-")
+    )
     assert default.endswith(".json")
 
 

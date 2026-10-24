@@ -52,15 +52,6 @@ def _tab_names() -> tuple[str, ...]:
 # rel path (POSIX, relative to repo root) -> why this file is allowed to
 # deep-import a specific tab's internals from outside that tab's own tests/.
 ALLOWED_DEEP_TAB_IMPORTS: dict[str, str] = {
-    "tests/plugins/test_export_name_sanitize.py": (
-        "host-level EXPORT WRITE-BOUNDARY contract: the host-owned export "
-        "dialog (src/plugins/export) hands output_dir/file_name straight to a "
-        "tab's export service, so 'a typed absolute/UNC/traversal name never "
-        "writes outside the chosen directory' is asserted on the service that "
-        "receives it. The image_compare service is the exercised fixture for "
-        "that host seam, not image_compare UI behaviour (the tab's own naming "
-        "tests stay under src/tabs/image_compare/tests/)"
-    ),
     "tests/runtime/test_preview_release_restore.py": (
         "cross-layer PREVIEW LIFECYCLE contract (host keyboard routing + tab "
         "gesture bindings): the owner-reported defect was split across the two "
