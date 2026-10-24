@@ -13,10 +13,12 @@ from __future__ import annotations
 
 import logging
 
-from engine.cache.fallback_lod import resolve_fallback_lod
+from engine.cache.fallback_lod import resolve_frame_fallback
 from engine.cache.lod import LevelKey
 from engine.cache.tile_coverage import drop_covered_fallback_items
 from engine.cache.tile_debug import log_tile_event, tile_dump_enabled
+from engine.cache.tile_constants import LOD_FETCH_SETTLE_MS
+from engine.cache.tile_policy import TilePolicy
 
 from ..draw_plan import (
     build_array_draw_plan,
@@ -42,10 +44,33 @@ except Exception:  # pragma: no cover
         return False
 
 from .._debug import rhi_render_debug
+from ..residency import _HOST_TEXTURE_CACHE_BUDGET_BYTES, _TILE_CACHE_BUDGET_BYTES
+from ..resources import _ARRAY_CAPACITY
 from engine.frame.context import FrameContext, make_ids
 from tabs.image_compare.canvas.loupe_trace import throttle_emit as _throttle_emit
 
 logger = logging.getLogger("ImproveImgSLI")
+
+#: Image compare's tile policy -- the "rich" end of the matrix. Settle-mode LOD
+#: commits (``LOD_FETCH_SETTLE_MS`` via ``use_cases/lod_commit.py``), atomic on
+#: every transition kind (content swap, hires flip, LOD level hold: one tier
+#: per frame, no mixed sharp/stretched grids), owns the blank-white first-paint
+#: hold and the coarsest-level pin, and spends the engine's shared budgets with
+#: the 3x (image1 + image2 + diff) array-capacity derivation. Every value is
+#: the symbol this module's renderer already used -- the policy names it, it
+#: does not change it.
+TILE_POLICY = TilePolicy(
+    lod_mode="settle",
+    settle_ms=LOD_FETCH_SETTLE_MS,
+    atomic_on_content_swap=True,
+    atomic_on_hires_flip=True,
+    atomic_on_level_change=True,
+    first_paint_hold=True,
+    pin_coarsest=True,
+    tile_budget_bytes=_TILE_CACHE_BUDGET_BYTES,
+    host_cache_budget_bytes=_HOST_TEXTURE_CACHE_BUDGET_BYTES,
+    array_capacity=_ARRAY_CAPACITY,
+)
 
 # Throttle state moved from renderer.py into loupe_trace's centralized
 # store — owned here via streams "fallback.decision" + "fallback.rekeyed"
@@ -357,15 +382,18 @@ def resolve_fallback_plan(
             fallback_diag["kept"] = len(dropped)
             return dropped
 
-        new_last_good_key, array_draw_plan = resolve_fallback_lod(
+        new_last_good_key, array_draw_plan = resolve_frame_fallback(
+            TILE_POLICY,
             key=key,
             current_items=current_array_plan,
             more_pending=main_more_pending,
             last_good_key=last_good_key,
             build_fallback_items=_build_fallback_items,
             drop_covered=_drop_covered,
-            atomic=decision_atomic,
             cascade_pending=_cascade_pending,
+            is_content_swap=decision_is_content_swap,
+            is_hires_flip=_hires_flip_hold,
+            is_level_hold=_atomic_level_hold,
         )
     if new_last_good_key == key:
         if decision_content_swap_flag:
