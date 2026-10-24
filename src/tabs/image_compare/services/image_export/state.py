@@ -16,9 +16,9 @@ class ExportStateCoordinator:
         self.main_window_app = main_window_app
 
     def get_os_default_downloads(self) -> str:
-        if hasattr(self.main_window_app, "_get_os_default_downloads"):
-            return self.main_window_app._get_os_default_downloads()
-        return str(Path.home() / "Downloads")
+        # Single source: this module's default_downloads_dir (Qt-resolved);
+        # the dead ``_get_os_default_downloads`` probe is gone for good.
+        return default_downloads_dir()
 
     def get_unique_filepath(
         self,
@@ -198,3 +198,25 @@ class ExportStateCoordinator:
         if 0 <= index < len(target_list):
             return target_list[index].display_name
         return ""
+
+
+def default_downloads_dir() -> str:
+    """The OS Downloads folder, as Qt resolves it.
+
+    Qt answers from the platform profile, so a redirected (OneDrive) or
+    localised Downloads folder is honoured; ``~/Downloads`` is only the
+    fallback when the platform reports no standard location at all.
+    """
+    from PySide6.QtCore import QStandardPaths
+
+    downloads = QStandardPaths.writableLocation(
+        QStandardPaths.StandardLocation.DownloadLocation
+    )
+    if not downloads:
+        # Single fallback for the whole export stack — keep it the only
+        # literal of its kind (tests/plugins/test_export_default_downloads.py).
+        downloads = str(Path.home() / "Downloads")
+    try:
+        return str(Path(downloads).resolve())
+    except OSError:
+        return str(downloads)
