@@ -52,44 +52,75 @@ from engine.cache.tile_mip import mip_level_count, mip_level_pixel_size
 _SHADER_DIR = Path(__file__).resolve().parent / "shaders"
 
 
+#: Backend family that needs NO Y correction in the downsample pass. Measured
+#: on D3D11 (2026-10-24, plan-tile-policy-reliability-2026-10-24): the flip
+#: inverted every generated level relative to its source. Every other backend
+#: measured so far (OpenGL/GLES2, Vulkan via QRhiWidget.setApi) DOES need it.
+_D3D_BACKENDS = frozenset(
+    getattr(QRhi.Implementation, name)
+    for name in ("D3D11", "D3D12")
+    if hasattr(QRhi.Implementation, name)
+)
+
+_IDENTITY_MATRIX = (
+    1.0, 0.0, 0.0, 0.0,
+    0.0, 1.0, 0.0, 0.0,
+    0.0, 0.0, 1.0, 0.0,
+    0.0, 0.0, 0.0, 1.0,
+)
+
+_FLIP_MATRIX = (
+    1.0, 0.0, 0.0, 0.0,
+    0.0, -1.0, 0.0, 0.0,
+    0.0, 0.0, 1.0, 0.0,
+    0.0, 0.0, 0.0, 1.0,
+)
+
+
 def downsample_corr_matrix(rhi) -> tuple[float, ...]:
     """Row-major ``mat4`` for the mip-downsample vertex stage.
 
-    The Y-flip is **backend-dependent**, not unconditional. The scratch
-    render targets this cascade draws into are never composited to screen, so
-    no on-screen blit cancels a convention mismatch: the vertex stage has to
-    land the source level in the destination level's row order itself.
+    The Y-flip is a **per-backend** correction, not an unconditional one, and
+    ``rhi.isYUpInFramebuffer()`` is NOT the right gate for it -- measured
+    2026-10-24 on both sides:
 
-    Which correction that requires is a property of the backend, so ask it:
+    =======================  ================  ==========================  =============
+    backend                  isYUpInFramebuffer  clipSpaceCorrMatrix        flip needed
+    =======================  ================  ==========================  =============
+    OpenGL / GLES2           True                identity                    yes (shipped)
+    Vulkan                   False               Y-flip + 0..1 depth scale   yes (shipped)
+    D3D11                    (n/a here)          (n/a here)                  no (measured)
+    =======================  ================  ==========================  =============
 
-    - ``rhi.isYUpInFramebuffer()`` is True on OpenGL, where the flip is
-      required (the behaviour validated before 2026-10-24);
-    - it is False on D3D11, where applying the flip inverted *every*
-      generated level relative to its source, so the chain alternated by
-      level parity (odd levels upside-down). The sampler is trilinear
-      (``resources.py`` "linear"), so any zoom below 1:1 blended upright mip0
-      with flipped mip1 -- the "bands of another tile's content / a tile
-      fills a third" artifact on the D3D11 host
-      (plan-tile-policy-reliability-2026-10-24, measured from
-      ``IMGSLI_TILE_DUMP`` mip readbacks: consecutive levels matched a
-      vertical flip at mean|Δ| 2.4-13 vs 42-59 for identity). Zoom >= 1:1
-      samples mip0 only, which is why the artifact needed minification.
+    The D3D11 "no" is the one that was missing and cost a full diagnosis
+    cycle: the unconditional flip re-flipped every generated level relative to
+    its source, so the chain alternated by level parity, and the trilinear
+    tile sampler blended upright mip0 with flipped mip1 at any zoom below 1:1
+    -- the "bands / flipped tiles / a tile fills a third" artifact
+    (plan-tile-policy-reliability-2026-10-24; measured from ``IMGSLI_TILE_DUMP``
+    mip readbacks: consecutive levels matched a vertical flip at mean|Δ|
+    2.4-13 vs 42-59 for identity). Zoom >= 1:1 samples mip0 only, which is why
+    the artifact needed minification.
+
+    Gating on ``isYUpInFramebuffer()`` alone would move Vulkan (False, like
+    D3D11) into the no-flip bucket and flip every tile there -- so the gate is
+    the backend FAMILY: skip the flip on the D3D family (the only one measured
+    to need none), keep it everywhere else, and keep it when the backend
+    cannot be queried (never guess a flip away).
 
     Diagonal, so row-major vs column-major storage of the ``mat4`` does not
-    matter. A backend without the query keeps the OpenGL-proven flip rather
-    than guessing.
+    matter.
     """
+    return _IDENTITY_MATRIX if _is_d3d_backend(rhi) else _FLIP_MATRIX
+
+
+def _is_d3d_backend(rhi) -> bool:
+    """True only for a D3D family backend; False for everything unknown."""
     try:
-        flip = bool(rhi.isYUpInFramebuffer())
+        backend = rhi.backend()
     except (AttributeError, RuntimeError):
-        flip = True
-    y = -1.0 if flip else 1.0
-    return (
-        1.0, 0.0, 0.0, 0.0,
-        0.0, y, 0.0, 0.0,
-        0.0, 0.0, 1.0, 0.0,
-        0.0, 0.0, 0.0, 1.0,
-    )
+        return False
+    return backend in _D3D_BACKENDS
 
 
 def _load_mip_downsample_shader(name: str) -> QShader:
