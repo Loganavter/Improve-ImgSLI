@@ -33,6 +33,45 @@ pixels, never what backend you happen to be on:
 ``NONE``
     Nothing to correct (no render target involved).
 
+Two legacy sites predate this helper and decide a one-bit Y question instead
+of a correction matrix. They are named cases here for the same reason the
+three above are: the bug class is a local predicate reading one query, and
+these two read ``isYUpInFramebuffer()`` for a *different* job than
+``SAMPLED_RT`` does.
+
+``WIDGET_TEXTURE``
+    A **copy** out of a widget's own backing texture (``colorTexture()``) that
+    a later pass in the same frame samples -- the liquid-glass backdrop crop
+    in ``glass_panel``. Use ``widget_texture_needs_y_flip(rhi)``. This is NOT
+    ``SAMPLED_RT``: a target this code renders into needs the stronger
+    predicate, while a copy of an already-populated texture only depends on
+    the row order that backend stores it in. Vulkan answers
+    ``isYUpInFramebuffer()`` like D3D11 and (measured on the dev host,
+    2026-08-17) stores ``colorTexture()`` top-down, so a Vulkan copy must NOT
+    flip. Do not use this for a pass's own render target (that is
+    ``SAMPLED_RT``), and do not use ``sampled_rt_needs_y_flip`` for a copy.
+
+``COMPOSITED_SCISSOR``
+    A **scissor rect** in device px inside a composited widget's own
+    framebuffer (guides, capture overlay, magnifier tiles, divider). Use
+    ``composited_scissor_needs_y_flip(rhi, never_shown=...)``. Qt's
+    compositing step absorbs the convention mismatch for a *shown* widget, so
+    only the framebuffer-origin query applies there; a widget rendered with
+    ``WA_DontShowOnScreen`` (``grabFramebuffer()``-only canvases such as the
+    GPU export/preview canvas) skips that step, so the raw scissor Y flips
+    regardless of what the query reports. This is one integer rect, not a
+    projection -- a pass that needs clip-space correction uses
+    ``composited_clip_correction``.
+
+================  =================  =================  ===================
+backend           isYUpInFramebuf   WIDGET_TEXTURE     COMPOSITED_SCISSOR
+================  =================  =================  ===================
+OpenGL / GLES2    True               flip               flip
+Vulkan            False              no flip            no flip
+D3D11             False              no flip            no flip
+Metal (predicted) False              no flip            no flip
+================  =================  =================  ===================
+
 The rule is derived from two DOCUMENTED QRhi properties, not from a
 per-family list:
 
@@ -303,3 +342,50 @@ def composited_clip_correction(rhi) -> tuple[float, ...]:
     compositing absorbs the remaining convention mismatch, so no extra flip.
     """
     return tuple(float(value) for value in composited_clip_matrix(rhi).data())
+
+
+def widget_texture_needs_y_flip(rhi) -> bool:
+    """Whether a COPY of a widget's own ``colorTexture()`` must flip source Y.
+
+    ``WIDGET_TEXTURE`` case (see module docstring): the copy source is an
+    already-populated texture, so only its row order matters -- flip iff the
+    framebuffer origin is bottom-left (``isYUpInFramebuffer()``). This is NOT
+    ``sampled_rt_needs_y_flip``: that predicate also flips when clip space is
+    y-down (Vulkan), which is right for a target *this* module renders into
+    and wrong for a copy out of a texture the backend already stored. Vulkan
+    answers this query like D3D11 and must not flip. Do not use it for a
+    pass's own render target, and do not use the SAMPLED_RT predicate here.
+
+    Unqueryable (missing attribute, ``AttributeError``/``RuntimeError`` from
+    the query) -> ``False``: a copy of a foreign texture cannot guess a flip,
+    and "no flip" is the behaviour ``glass_panel`` shipped with on every
+    backend it was measured on. Fail-safe means "keep the shipped pixels",
+    not "invent a mirror".
+    """
+    try:
+        return bool(rhi.isYUpInFramebuffer())
+    except (AttributeError, RuntimeError):
+        return False
+
+
+def composited_scissor_needs_y_flip(rhi, *, never_shown: bool) -> bool:
+    """Whether a scissor rect in a composited widget must flip framebuffer Y.
+
+    ``COMPOSITED_SCISSOR`` case (see module docstring): Qt's compositing step
+    absorbs the convention mismatch for a *shown* widget, so only
+    ``isYUpInFramebuffer()`` applies there. A widget rendered with
+    ``WA_DontShowOnScreen`` (``grabFramebuffer()``-only canvases such as the
+    GPU export/preview canvas) skips that step, so the raw scissor Y must be
+    flipped regardless of the query. Not a projection correction -- use
+    ``composited_clip_correction`` for clip space.
+
+    Unqueryable (missing attribute, ``AttributeError``/``RuntimeError``) ->
+    ``never_shown``: a never-shown widget has nothing that could absorb the
+    mismatch, so the historical raw-flip behaviour is the safe answer there;
+    a shown one keeps the composited behaviour it has always had.
+    """
+    try:
+        y_up = bool(rhi.isYUpInFramebuffer())
+    except (AttributeError, RuntimeError):
+        return bool(never_shown)
+    return y_up or bool(never_shown)

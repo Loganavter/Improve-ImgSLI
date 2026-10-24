@@ -18,6 +18,8 @@ from PySide6.QtGui import (
     QShader,
 )
 
+from engine.gpu.rt_y_orientation import composited_scissor_needs_y_flip
+
 from .render_config import get_content_rect_screen_px
 
 FULLSCREEN_VERTICES = struct.pack(
@@ -81,15 +83,18 @@ def scissor_from_widget_rect(
     px_y = int(round(y * dpr))
     px_width = int(round((x + width) * dpr)) - px_x
     px_height = int(round((y + height) * dpr)) - px_y
-    y_up = rhi.isYUpInFramebuffer()
-    # QRhiWidget always renders into an offscreen texture; for widgets that are
-    # actually shown, Qt's QPainter compositing step (backing store blit) silently
-    # absorbs a Y convention mismatch, so isYUpInFramebuffer() alone is correct.
-    # Widgets that are never shown (WA_DontShowOnScreen, used for grabFramebuffer()-only
-    # rendering such as the GPU export/preview canvas) skip that compositing step, so the
-    # raw scissor Y must be flipped regardless of what isYUpInFramebuffer() reports.
-    never_shown = widget.testAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen)
-    if y_up or never_shown:
+    # COMPOSITED_SCISSOR case: QRhiWidget always renders into an offscreen
+    # texture; for widgets that are actually shown, Qt's QPainter compositing
+    # step (backing store blit) silently absorbs a Y convention mismatch, so
+    # isYUpInFramebuffer() alone is correct, while a widget that is never shown
+    # (WA_DontShowOnScreen, used for grabFramebuffer()-only rendering such as
+    # the GPU export/preview canvas) skips that step and the raw scissor Y must
+    # be flipped regardless of what the query reports. The predicate lives in
+    # engine/gpu/rt_y_orientation.py (single source of truth); do not inline it.
+    if composited_scissor_needs_y_flip(
+        rhi,
+        never_shown=widget.testAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen),
+    ):
         framebuffer_height = int(round(float(ctx.height) * dpr))
         px_y = max(0, framebuffer_height - (px_y + px_height))
     return QRhiScissor(px_x, px_y, px_width, px_height)

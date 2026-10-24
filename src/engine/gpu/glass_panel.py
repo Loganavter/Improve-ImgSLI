@@ -146,6 +146,8 @@ from PySide6.QtGui import (
     QShader,
 )
 
+from engine.gpu.rt_y_orientation import widget_texture_needs_y_flip
+
 _logger = logging.getLogger("ImproveImgSLI")
 
 # IMGSLI_GLASS_PANEL_DEBUG-gated tracing (same convention as
@@ -753,22 +755,21 @@ class GlassPanelRenderer:
             # non-mirrored reference first.
             #
             # UPDATE 2026-08-17: that "confirmed live" held only on the
-            # backend it was tested on. On backends where
-            # ``rhi.isYUpInFramebuffer()`` is true (OpenGL), ``colorTexture()``
-            # genuinely stores rows bottom-up, so an unflipped sourceTopLeft
-            # selects the mirror-image region of the canvas: the backdrop
-            # showed content from the wrong half of the screen and moved
-            # oppositely to the real image on pan ("mirror world"), with a
-            # constant offset when zooming. Flip sourceTopLeft only in that
-            # case (top-down backends keep the original behavior), and tell
-            # glass_blur.frag via its flipY uniform so the blur pass mirrors
-            # its sample V back into the panel's own coordinate space.
-            flip_y = False
-            if hasattr(rhi, "isYUpInFramebuffer"):
-                try:
-                    flip_y = bool(rhi.isYUpInFramebuffer())
-                except RuntimeError:
-                    flip_y = False
+            # backend it was tested on. On backends where the framebuffer
+            # origin is bottom-left (OpenGL), ``colorTexture()`` genuinely
+            # stores rows bottom-up, so an unflipped sourceTopLeft selects the
+            # mirror-image region of the canvas: the backdrop showed content
+            # from the wrong half of the screen and moved oppositely to the
+            # real image on pan ("mirror world"), with a constant offset when
+            # zooming. Flip sourceTopLeft only in that case (top-down backends
+            # keep the original behavior), and tell glass_blur.frag via its
+            # flipY uniform so the blur pass mirrors its sample V back into the
+            # panel's own coordinate space.
+            #
+            # The decision itself belongs to the WIDGET_TEXTURE case of
+            # engine/gpu/rt_y_orientation.py (single source of truth); do not
+            # inline the query again here.
+            flip_y = widget_texture_needs_y_flip(rhi)
             copy_updates = rhi.nextResourceUpdateBatch()
             copy_desc = QRhiTextureCopyDescription()
             if flip_y:
