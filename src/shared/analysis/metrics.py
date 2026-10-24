@@ -3,13 +3,24 @@ from typing import Optional, Tuple
 
 import numpy as np
 from PIL import Image
-from skimage.metrics import peak_signal_noise_ratio as psnr
-from skimage.metrics import structural_similarity as ssim
 
 from shared.analysis.differ import _resolve_ssim_win_size, resample_second_to_first
 from shared.analysis.output import to_u8_rgb
 
 logger = logging.getLogger("ImproveImgSLI")
+
+# skimage.metrics drags numpy + scipy.stats + skimage on first import (measured
+# 2026-10-24 on the frozen D3D11 build: 2408 ms + 3462 ms of GUI-thread stalls,
+# inside plugin discovery, because the import sat at module scope). Keep it
+# lazy: the scalar metrics are computed rarely, and core/import_warmup pre-loads
+# the modules on a daemon thread so the first real use is instant.
+def _skimage_metrics():
+    from skimage.metrics import (
+        peak_signal_noise_ratio as _psnr,
+        structural_similarity as _ssim,
+    )
+
+    return _psnr, _ssim
 
 
 def _pair_arrays(image1: Image.Image, image2: Image.Image):
@@ -41,7 +52,7 @@ def calculate_psnr(image1: Image.Image, image2: Image.Image) -> Optional[float]:
 
     try:
         arr1, arr2 = pair
-        return psnr(arr1, arr2, data_range=255)
+        return _skimage_metrics()[0](arr1, arr2, data_range=255)
     except Exception as e:
         logger.error(f"Error calculating PSNR: {e}", exc_info=True)
         return None
@@ -60,7 +71,7 @@ def calculate_ssim(image1: Image.Image, image2: Image.Image) -> Optional[float]:
         # window the tiled SSIM uses instead of skimage's default, so the
         # scalar and the map agree on what they measured.
         win_size = _resolve_ssim_win_size(width, height)
-        return ssim(arr1, arr2, data_range=255, channel_axis=2, win_size=win_size)
+        return _skimage_metrics()[1](arr1, arr2, data_range=255, channel_axis=2, win_size=win_size)
     except Exception as e:
         logger.error(f"Error calculating SSIM: {e}", exc_info=True)
         return None
@@ -78,8 +89,8 @@ def calculate_metrics(
         height, width = arr1.shape[:2]
         win_size = _resolve_ssim_win_size(width, height)
 
-        psnr_val = psnr(arr1, arr2, data_range=255)
-        ssim_val = ssim(arr1, arr2, data_range=255, channel_axis=2, win_size=win_size)
+        psnr_val = _skimage_metrics()[0](arr1, arr2, data_range=255)
+        ssim_val = _skimage_metrics()[1](arr1, arr2, data_range=255, channel_axis=2, win_size=win_size)
 
         return psnr_val, ssim_val
     except Exception as e:

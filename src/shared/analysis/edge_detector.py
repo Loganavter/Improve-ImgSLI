@@ -7,11 +7,17 @@ from typing import Optional
 import numpy as np
 from PIL import Image
 from shared.analysis.output import finalize_diff_output
-from skimage.feature import canny
-from skimage.util import img_as_ubyte
 from engine.store.regions import build_uniform_tile_grid
 
 logger = logging.getLogger("ImproveImgSLI")
+
+# Lazy for the same reason as metrics.py: skimage pulls numpy+scipy+skimage
+# (2.4-3.5 s of GUI-thread stall on the frozen build, measured 2026-10-24).
+def _edge_kernels():
+    from skimage.feature import canny as _canny
+    from skimage.util import img_as_ubyte as _img_as_ubyte
+
+    return _canny, _img_as_ubyte
 
 EDGE_TILE_MAX_EXTENT = 1536
 EDGE_MAX_WORKERS = 8
@@ -55,12 +61,12 @@ def _compute_edge_tile(
     ext_right = min(width, region.right + overlap)
     ext_bottom = min(height, region.bottom + overlap)
     gray_tile = gray[ext_top:ext_bottom, ext_left:ext_right]
-    edge_tile = canny(gray_tile, sigma=sigma)
+    edge_tile = _edge_kernels()[0](gray_tile, sigma=sigma)
     crop_left = region.left - ext_left
     crop_top = region.top - ext_top
     crop_right = crop_left + region.width
     crop_bottom = crop_top + region.height
-    edge_patch = img_as_ubyte(edge_tile[crop_top:crop_bottom, crop_left:crop_right])
+    edge_patch = _edge_kernels()[1](edge_tile[crop_top:crop_bottom, crop_left:crop_right])
     return (
         tile_index,
         total_tiles,
