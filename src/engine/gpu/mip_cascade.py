@@ -36,6 +36,8 @@ from PySide6.QtGui import (
     QRhiShaderStage,
     QRhiTexture,
     QRhiTextureCopyDescription,
+    QRhiTextureSubresourceUploadDescription,
+    QRhiTextureUploadEntry,
     QRhiRenderPassDescriptor,
     QRhiTextureRenderTarget,
     QRhiTextureRenderTargetDescription,
@@ -48,7 +50,7 @@ from PySide6.QtGui import (
 
 from engine.cache.tile_debug import dump_tile_image, log_tile_event, tile_dump_enabled
 from engine.cache.tile_mip import mip_level_count, mip_level_pixel_size
-from engine.gpu.rt_y_orientation import sampled_rt_correction
+from engine.gpu import rt_y_orientation
 
 _SHADER_DIR = Path(__file__).resolve().parent / "shaders"
 
@@ -61,7 +63,48 @@ def downsample_corr_matrix(rhi) -> tuple[float, ...]:
     this tree). This wrapper exists so the cascade's own contract test keeps
     pinning the exact matrix it uploads.
     """
-    return sampled_rt_correction(rhi)
+    return rt_y_orientation.sampled_rt_correction(rhi)
+
+
+#: Edge of the calibration source/scratch target. 2x2 is the smallest size
+#: that still has two rows: row 0 white, row 1 black, so a preserved row order
+#: reads back as a bright row 0 and a flipped one as a dark row 0.
+_ORIENTATION_PROBE_PX = 2
+
+#: Rows must differ by at least this much mean luma (0..255) to count as
+#: readable. A dropped draw (both rows = clear colour) or a driver that
+#: returns a linear-tiled/failed readback lands on ``None`` instead of a
+#: coin-flip answer.
+_ORIENTATION_PROBE_MIN_ROW_DELTA = 96.0
+
+
+def probe_upright_from_rgba8(data, width: int, height: int) -> bool | None:
+    """Whether a 2-row probe readback kept its white row on row 0.
+
+    Pure: no QRhi, so a contract test feeds it fake/empty readbacks. ``None``
+    means unreadable/empty or the two rows cannot be told apart -- callers
+    then keep the derived rule instead of recording a guess.
+    """
+    if not data or width < 1 or height < 2:
+        return None
+    pixels = bytes(data)  # QByteArray supports the buffer protocol
+    row_bytes = width * 4
+    if len(pixels) < row_bytes * height:
+        return None
+
+    def _row_luma(row: int) -> float:
+        total = 0
+        base = row * row_bytes
+        for column in range(width):
+            offset = base + column * 4
+            total += pixels[offset] + pixels[offset + 1] + pixels[offset + 2]
+        return total / float(width * 3)
+
+    top = _row_luma(0)
+    bottom = _row_luma(1)
+    if abs(top - bottom) < _ORIENTATION_PROBE_MIN_ROW_DELTA:
+        return None
+    return top > bottom
 
 
 def _load_mip_downsample_shader(name: str) -> QShader:
@@ -143,6 +186,12 @@ class MipCascadeGenerator:
         # pipeline comes up. Reported through MipCascadeNotReady so a
         # transient "not ready yet" is distinguishable from a hard failure.
         self._probe_create_failures = 0
+        # IMGSLI_RT_ORIENTATION_PROBE-only: the tiny source texture + SRB the
+        # one-off self-calibration probe draws through the real pipeline (see
+        # _maybe_probe_sampled_rt_orientation). Both stay None unless the flag
+        # is on, so the default cascade allocates nothing extra.
+        self._orientation_probe_source = None
+        self._orientation_probe_srb = None
 
     @property
     def _rhi(self) -> QRhi:
@@ -161,6 +210,11 @@ class MipCascadeGenerator:
             *self._downsample_scratch_textures.values(),
         ]
         self._destroy_resources(*resources)
+        self._destroy_resources(
+            self._orientation_probe_source, self._orientation_probe_srb
+        )
+        self._orientation_probe_source = None
+        self._orientation_probe_srb = None
         self._downsample_pipeline = None
         self._downsample_render_pass_descriptor = None
         self._downsample_uniform_buffer = None
@@ -460,6 +514,169 @@ class MipCascadeGenerator:
         self._downsample_scratch_targets[key] = target
         return texture, target
 
+    def _maybe_probe_sampled_rt_orientation(
+        self, rhi, command_buffer, vertex_buffer, slot_index: int
+    ) -> None:
+        """One env-gated self-calibration probe of this RHI's SAMPLED_RT flip.
+
+        ``engine/gpu/rt_y_orientation.py`` derives the flip from two documented
+        QRhi properties; that is measured on OpenGL/Vulkan/D3D11 and only
+        predicted on Metal/D3D12. When ``IMGSLI_RT_ORIENTATION_PROBE`` is on,
+        the FIRST cascade call for this RHI renders a 2x2 source (row 0 white,
+        row 1 black) through the REAL downsample pipeline into a REAL scratch
+        target, reads it back with the same ``readBackTexture`` + ``rhi.finish``
+        mechanism ``glass_panel``/the debug dump use, and reports what the
+        target actually did. The recorded answer then wins over the predicate
+        for this session (``record_sampled_rt_orientation``).
+
+        Flag off (default): returns before touching the RHI -- no passes, no
+        readbacks, no logs, so the caller's mip plan and command stream are
+        byte-identical to the pre-probe cascade.
+
+        The probe pass is its own batch before the real level draws, writes
+        only the probe scratch -- never ``tile_arrays`` -- and every real level
+        is rendered afterwards; a 2x2 real level overwrites the probe's
+        content. On a disagreement the correction buffer is marked dirty so the
+        real levels THIS frame already use the corrected matrix instead of
+        carrying the probe's (wrong) one until the next session.
+        """
+        if not rt_y_orientation.sampled_rt_orientation_probe_enabled():
+            return
+        if not rt_y_orientation.claim_sampled_rt_orientation_probe(rhi):
+            return
+        applied = rt_y_orientation.sampled_rt_needs_y_flip(rhi)
+        try:
+            upright = self._render_orientation_probe(
+                command_buffer, vertex_buffer, slot_index
+            )
+        except Exception:  # pragma: no cover - backend-specific failures
+            # A calibration must never take a canvas down: treat any failure
+            # as an unreadable readback and keep the derived rule.
+            upright = None
+        if upright is None:
+            rt_y_orientation.record_sampled_rt_orientation(rhi, observed_flip=None)
+            return
+        observed = applied if upright else not applied
+        rt_y_orientation.record_sampled_rt_orientation(rhi, observed_flip=observed)
+        if observed != applied:
+            # The probe pass used the pre-correction matrix; make the real
+            # levels below rewrite the buffer with the observed one.
+            self._downsample_corr_written = False
+
+    def _render_orientation_probe(
+        self, command_buffer, vertex_buffer, slot_index: int
+    ) -> bool | None:
+        """Draw the calibration pattern through the real downsample pipeline.
+
+        Returns True when the target kept the source's row order (row 0 still
+        the white row), False when it stored it flipped, and None when the
+        readback is unusable (no sampler, resource creation failed, empty or
+        indistinguishable readback). The caller also guards unexpected
+        backend failures and keeps the derived rule on None.
+        """
+        rhi = self._rhi
+        sampler = self._sampler_getter()
+        if sampler is None or self._downsample_pipeline is None:
+            return None
+        source = rhi.newTextureArray(
+            QRhiTexture.Format.RGBA8,
+            1,
+            QSize(_ORIENTATION_PROBE_PX, _ORIENTATION_PROBE_PX),
+            1,
+            QRhiTexture.Flag(0),
+        )
+        source.setName(f"{self._name_prefix}-orientation-probe-source".encode())
+        if not source.create():
+            self._destroy_resources(source)
+            return None
+        # Cached on the instance from the moment it exists, so release() can
+        # destroy it even if a later probe step fails.
+        self._orientation_probe_source = source
+
+        image = QImage(
+            _ORIENTATION_PROBE_PX,
+            _ORIENTATION_PROBE_PX,
+            QImage.Format.Format_RGBA8888,
+        )
+        image.fill(QColor(0, 0, 0, 255))
+        for column in range(_ORIENTATION_PROBE_PX):
+            image.setPixelColor(column, 0, QColor(255, 255, 255, 255))
+
+        updates = rhi.nextResourceUpdateBatch()
+        updates.uploadTexture(
+            source,
+            QRhiTextureUploadEntry(
+                0, 0, QRhiTextureSubresourceUploadDescription(image)
+            ),
+        )
+        corr_buffer = self._ensure_downsample_corr_buffer()
+        if not self._downsample_corr_written:
+            updates.updateDynamicBuffer(
+                corr_buffer, 0, struct.pack("<16f", *downsample_corr_matrix(rhi))
+            )
+            self._downsample_corr_written = True
+        # One slot past the real draws, so the probe can never land on a slot
+        # a real level reads in the same frame.
+        self._ensure_downsample_uniform_buffer(slot_index + 1)
+        assert self._downsample_uniform_buffer is not None
+        stride = self._downsample_slot_stride
+        updates.updateDynamicBuffer(
+            self._downsample_uniform_buffer,
+            slot_index * stride,
+            struct.pack("<iiii", 0, 0, 0, 0),
+        )
+
+        fragment = QRhiShaderResourceBinding.StageFlag.FragmentStage
+        vertex = QRhiShaderResourceBinding.StageFlag.VertexStage
+        srb = rhi.newShaderResourceBindings()
+        srb.setBindings(
+            [
+                QRhiShaderResourceBinding.uniformBufferWithDynamicOffset(
+                    0, fragment, self._downsample_uniform_buffer, 16
+                ),
+                QRhiShaderResourceBinding.sampledTexture(1, fragment, source, sampler),
+                QRhiShaderResourceBinding.uniformBuffer(2, vertex, corr_buffer),
+            ]
+        )
+        if not srb.create():
+            self._destroy_resources(srb, source)
+            self._orientation_probe_source = None
+            return None
+        self._orientation_probe_srb = srb
+
+        scratch_texture, target = self._ensure_downsample_scratch(
+            QSize(_ORIENTATION_PROBE_PX, _ORIENTATION_PROBE_PX)
+        )
+        command_buffer.resourceUpdate(updates)
+        command_buffer.beginPass(
+            target,
+            QColor(0, 0, 0, 0),
+            QRhiDepthStencilClearValue(1.0, 0),
+            None,
+        )
+        command_buffer.setGraphicsPipeline(self._downsample_pipeline)
+        command_buffer.setViewport(
+            QRhiViewport(
+                0.0, 0.0, float(_ORIENTATION_PROBE_PX), float(_ORIENTATION_PROBE_PX)
+            )
+        )
+        command_buffer.setVertexInput(0, [(vertex_buffer, 0)])
+        command_buffer.setShaderResources(srb, 1, (0, slot_index * stride))
+        command_buffer.draw(4)
+        command_buffer.endPass()
+
+        result = QRhiReadbackResult()
+        readback = rhi.nextResourceUpdateBatch()
+        readback.readBackTexture(QRhiReadbackDescription(scratch_texture), result)
+        command_buffer.resourceUpdate(readback)
+        # Same mechanism as the debug dump / glass-panel readback: one sync,
+        # then the completed result is readable. Acceptable here precisely
+        # because it happens at most once per (rhi, session), and only when
+        # the flag is on.
+        rhi.finish()
+        size = result.pixelSize
+        return probe_upright_from_rgba8(result.data, size.width(), size.height())
+
     def _flush_debug_readbacks(self) -> None:
         """IMGSLI_TILE_DUMP-only: drains readbacks issued by a prior call to
         ``generate_all_dirty_mips``, dumping each completed one as a PNG
@@ -556,6 +773,12 @@ class MipCascadeGenerator:
         ]
 
         rhi = self._rhi
+        # Env-gated self-calibration, BEFORE the real level draws: it claims
+        # one probe per (rhi, session), renders its own small pass and reads
+        # it back. Flag off -> returns immediately; no behaviour change.
+        self._maybe_probe_sampled_rt_orientation(
+            rhi, command_buffer, vertex_buffer, len(draws)
+        )
         self._ensure_downsample_uniform_buffer(len(draws))
         stride = self._downsample_slot_stride
         slot_updates = rhi.nextResourceUpdateBatch()
