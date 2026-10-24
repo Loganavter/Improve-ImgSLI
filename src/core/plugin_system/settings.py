@@ -6,6 +6,20 @@ from typing import Any
 
 from PySide6.QtCore import QSettings
 
+# The ONE org/app pair the whole app persists under (``SettingsManager`` is
+# constructed with exactly these names from ``core.bootstrap`` and
+# ``__main__``). Hand-rolled ``QSettings()`` call sites silently created a
+# SECOND store ("Improve ImgSLI" defaults) that the settings manager never
+# read or backed up — always resolve through ``canonical_settings``.
+SETTINGS_ORG = "improve-imgsli"
+SETTINGS_APP = "improve-imgsli"
+
+
+def canonical_settings() -> QSettings:
+    """Return the app's single QSettings store (canonical org/app pair)."""
+    return QSettings(SETTINGS_ORG, SETTINGS_APP)
+
+
 class SettingsScope(Enum):
     GLOBAL = "global"
     PLUGIN = "plugin"
@@ -14,7 +28,7 @@ class PluginSettings:
     def __init__(self, plugin_name: str, scope: SettingsScope = SettingsScope.PLUGIN):
         self.plugin_name = plugin_name
         self.scope = scope
-        self._settings = QSettings()
+        self._settings = canonical_settings()
 
     def _build_key(self, key: str) -> str:
         return f"{self.scope.value}/{self.plugin_name}/{key}"
