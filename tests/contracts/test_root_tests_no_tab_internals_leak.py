@@ -235,16 +235,6 @@ ALLOWED_DEEP_TAB_IMPORTS: dict[str, str] = {
         "P2 helper axis_salience / measured_axes_for in services/rank_fusion so the "
         "interface cannot be invented differently by the wave that implements it"
     ),
-    "tests/plugins/test_export_default_downloads.py": (
-        "host-level EXPORT-DEFAULT contract (every export path must resolve the "
-        "OS Downloads folder through Qt, so a redirected OneDrive or localised "
-        "profile does not silently land in ~/Downloads): the three call sites all "
-        "live in the image_compare export stack — the still-image export state, "
-        "the video editor output field and its browse-dialog fallback — so the "
-        "gate imports the real resolver from its real home; a host-level stand-in "
-        "would restate the implementation and could not prove the redirected "
-        "location wins"
-    ),
 }
 
 
