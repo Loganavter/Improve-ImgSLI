@@ -80,7 +80,8 @@ owns a dict of `source_id -> grid` for every texture key currently in use.
   are uploaded without a registration path answers `grid_for(key) is None` and
   contributes nothing — `build_slot_plan_tiles` degrades it to one full-image
   entry, whose `slot_for` lookup then fails, so the source silently disappears
-  instead of drawing untiled (`src/engine/cache/draw_plans.py:166`). A *reused*
+  instead of drawing untiled (`build_slot_plan_tiles` in
+  `src/engine/cache/draw_plans.py`). A *reused*
   key with new content but no re-registration is worse: `grid_for` keeps
   returning the previous grid, so visible tiles are selected in the old
   image's pixel space while the crops come from the new store. That footgun is

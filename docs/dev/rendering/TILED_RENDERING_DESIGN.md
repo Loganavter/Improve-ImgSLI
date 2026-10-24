@@ -14,14 +14,13 @@ change *which* geometry/spec a canvas needs (tab) or *how* residency happens
 (engine)? Getting that split wrong is how the three consumers below drifted
 apart.
 
-**Citation shorthand** (used in tables; prose spells paths out):
-`tile_constants.py`, `residency.py`, `fallback_lod.py`, `draw_plans.py`,
-`tile_coverage.py`, `tile_texture_service.py`, `first_frame_gate.py`,
-`display_tier_service.py` = `src/engine/cache/`; `tiled_image_view.py`,
-`array_draw.py`, `array_resources.py`, `base_images_pass.py`,
-`host_texture_cache.py` = `src/engine/gpu/`; `ic/…` =
-`src/tabs/image_compare/canvas/rhi_renderer/`; `mc/…` =
-`src/tabs/multi_compare/scene/passes/`; `mc/scene/…` =
+**Citation shorthand** (tables and `:NNN` continuations; prose spells full
+paths out): `tile_constants.py`, `residency.py`, `fallback_lod.py`,
+`draw_plans.py`, `tile_texture_service.py`, `first_frame_gate.py` =
+`src/engine/cache/`; `tiled_image_view.py`, `array_draw.py`,
+`array_resources.py`, `base_images_pass.py`, `host_texture_cache.py` =
+`src/engine/gpu/`; `ic/…` = `src/tabs/image_compare/canvas/rhi_renderer/`;
+`mc/…` = `src/tabs/multi_compare/scene/passes/`; `mc/scene/…` =
 `src/tabs/multi_compare/scene/`; `rhi_backend.py` = `src/ui/canvas_infra/rhi/`.
 
 ## Why code comments say "Phase N"
@@ -83,11 +82,11 @@ Rules that follow from the split:
    grid bookkeeping".
 4. **Only `slot_for(key, index) is not None` means drawable.** A spec target is
    a *want*; an array slot is a *have*. Every consumer filters its draw plan
-   through the slot lookup (`src/engine/cache/draw_plans.py:329`,
-   `src/tabs/multi_compare/scene/passes/base_images.py:750`,
+   through the slot lookup (`build_compare_pair_plan` for the fixed-pair path,
+   `slot_for` in the slot builders: `src/tabs/multi_compare/scene/passes/base_images.py:750`,
    `src/engine/gpu/tiled_image_view.py:1045`), and coverage accounting must use
-   the same predicate (`src/engine/cache/draw_plans.py:177` — the caller hands in
-   the actually-resident subset).
+   the same predicate (`drop_covered_fallback_tiles` — the caller hands in the
+   actually-resident subset, never a geometry target list).
 
 ## 2. The three consumers and their knobs
 
@@ -181,7 +180,7 @@ exists to surface, not an oversight to paper over.
 | GPU tile budget | 2 GiB | 512 MiB | 2 GiB | `tiled_image_view.py:112` (IC imports it: `ic/residency.py:43`, used `:329`); `mc/scene/resources.py:56`; `tiled_image_view.py:426` |
 | Host texture cache budget | 3 GiB | 512 MiB | **none** (crops from the store) | `host_texture_cache.py:14` via `ic/residency.py:905`; `mc/scene/resources.py:57` → `mc/base_images.py:388` |
 | Array capacity (layers/array) | 2032 (derived) | 508 (derived) | 2048 (flat cap) | `ic/resources.py:81`; `mc/base_images.py:78`; `tiled_image_view.py:107` |
-| Array-index guard | pair-equality only | explicit `array_index != 0` drop | **none** (index discarded) | `draw_plans.py:355`; `mc/base_images.py:754`; `tiled_image_view.py:1048`, `:1212` |
+| Array-index guard | shared engine emission (`build_compare_pair_plan`) + upload bound (`upload_tile_to_array`) | same, plus a defensive `array_index != 0` drop in its instance builder | relies on array capacity; resolves `(array_index, layer)` per tile and discards the index | `mc/base_images.py:754`; `tiled_image_view.py:1048`, `:1212` |
 | Upload count budget | 64 / key / call | 64 / key / call | 64 / key / call | `tile_constants.py:60`, `residency.py:147` |
 | Upload time budget | 12.0 ms / call | 12.0 ms / call | 12.0 ms / call | `tile_constants.py:80`, `src/engine/cache/tile_upload_budget.py:41` |
 | Mip cascade budget | 8.0 ms / frame | 8.0 ms / frame | 8.0 ms / frame | `tile_constants.py:95` |
@@ -216,44 +215,45 @@ A frame issues **one** instanced draw per array pass, not one per tile pair:
 (`src/engine/gpu/array_draw.py:259`). Everything a tile needs to be drawn must
 therefore fit in the per-instance vertex attributes.
 
-Two facts make the array index non-negotiable:
+Two facts shape the invariant:
 
 1. `ArrayInstance` (`src/engine/gpu/array_draw.py:73`) carries `layer1`,
-   `layer2`, `layer_diff` and **no `array_index`**. The GPU resource owner can
-   open additional arrays (`_ensure_tile_array`,
-   `src/engine/gpu/array_resources.py:178`), but
-2. the array SRB binds **only `tile_arrays[0]`** at binding 1
-   (`src/engine/gpu/array_resources.py:260`), and `ensure_array_srb` never
-   re-binds when a second array appears (`:232`).
+   `layer2`, `layer_diff` and **no `array_index`**.
+2. `TileArrayResourcesBase.ensure_array_srb` binds **only `tile_arrays[0]`** at
+   binding 1, and its SRB is cached per sampler name, so a second array opened
+   by `_ensure_tile_array` is never bound.
 
-Consequence — the invariant every consumer must honour: **a plan item whose
-slot lives in array ≥ 1 must not be emitted.** Its layer number addresses a different texture
-object than the one bound, so drawing it samples an unrelated layer of array 0
-(wrong content, no error, no seam to notice).
+The invariant is owned by two engine functions; a tab path that bypasses either
+is wrong regardless of what its own geometry says:
 
-Where the rule is enforced today:
+- **Plan emission** — `build_compare_pair_plan`
+  (`src/engine/cache/draw_plans.py`) never emits an item whose slot lives in
+  array ≥ 1, and never emits a pair whose diff role has no resident slot in the
+  pair's own array. It fails closed (no layer-0 "blank diff" fallback): the
+  dropped item is retried next frame once eviction/upload catches up, rather
+  than drawn from a layer that belongs to another texture object.
+- **Upload bounds** — `TileArrayResourcesBase.upload_tile_to_array`
+  (`src/engine/gpu/array_resources.py`) refuses an upload that cannot fill
+  exactly one layer: null/empty/oversized image, `layer` outside
+  `[0, array_capacity)`, or a negative array index. Each distinct violation is
+  logged once, counted in `array_upload_skipped_count`, and dumped as
+  `array.upload_skipped` under `IMGSLI_TILE_DUMP`. It never silently truncates.
 
-- Multi Compare drops it explicitly: `if array_index != 0: continue`
-  (`src/tabs/multi_compare/scene/passes/base_images.py:754`) — the reference
-  implementation of the guard.
-- Image Compare emits `ComparePairPlan.array_index`
-  (`src/engine/cache/draw_plans.py:77`) but the plan builder only skips pairs
-  whose **two sides** disagree (`array_index2 != array_index1`, `:355`); the
-  adapter then drops the field when it builds
-  `ArrayDrawItem` → `ArrayInstance`
-  (`src/tabs/image_compare/canvas/rhi_renderer/use_cases/draw.py:175`). Two
-  sides that both landed in array 1 pass through and would sample array 0.
-- Quick Look unpacks and discards the index
-  (`src/engine/gpu/tiled_image_view.py:1048`, `:1212`).
+Why the bound is load-bearing: `_TileSlotAllocator.allocate`
+(`src/engine/cache/tile_texture_service.py`) opens array *N+1* as soon as a live
+key would exceed `max_array_size`, so a capacity under-estimate is a normal
+event (a canvas wider than the compare tabs' 4096 px derivation, or a Quick Look
+source past 2048 live layers), not an exotic failure. The two functions above
+turn that event into a dropped, retried item instead of wrong pixels.
 
-So the invariant holds by capacity arithmetic, not by a guard, in two of the
-three consumers. `_TileSlotAllocator.allocate`
-(`src/engine/cache/tile_texture_service.py:66`) opens array *N+1* the moment a
-live key would exceed `max_array_size`, so this is reachable as soon as a
-consumer's capacity assumption is wrong (a canvas wider than 4096 px in the
-compare tabs' derivation, or any QL source that exceeds 2048 live layers).
-Converging on Multi Compare's `!= 0` drop is the cheap hardening; widening the
-SRB to an array-of-arrays is the expensive one.
+Consumers that build instances without `build_compare_pair_plan` — the slot path
+(Multi Compare, Quick Look) — still resolve `(array_index, layer)` per tile
+through `slot_for`: Multi Compare re-drops `array_index != 0` before packing
+(`src/tabs/multi_compare/scene/passes/base_images.py:754`); Quick Look unpacks
+and discards the index (`src/engine/gpu/tiled_image_view.py:1048`, `:1212`), so
+its correctness additionally rests on its array capacity
+(`_ARRAY_CAPACITY = DEFAULT_MAX_ARRAY_SIZE`, not byte-derived) never being
+exceeded.
 
 ## 5. Where to change what
 
