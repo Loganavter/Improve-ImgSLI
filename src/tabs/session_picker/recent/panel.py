@@ -322,8 +322,8 @@ class RecentProjectsPanel(ShelfWidget):
         self._soft_refresh()
         self.recover_opaque_surface()
 
-    def refresh(self) -> None:
-        refresh_use_cases.refresh(self)
+    def refresh(self, *, verify_disk: bool = True) -> None:
+        refresh_use_cases.refresh(self, verify_disk=verify_disk)
 
     def _soft_refresh(self) -> None:
         refresh_use_cases.soft_refresh(self)

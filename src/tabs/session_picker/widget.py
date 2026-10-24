@@ -271,7 +271,8 @@ class SessionPickerWidget(ThemedWidget, QWidget):
         # WA_OpaquePaintEvent, and a skipped update punches CSD holes.
         self.refresh()
         if self._recent_panel is not None:
-            self._recent_panel.refresh()
+            # First paint: no filesystem work (see refresh.verify_disk_now).
+            self._recent_panel.refresh(verify_disk=False)
             self._recent_panel.recover_opaque_surface()
             # Up/Left past the first recent item → header controls.
             # Up/Left past the first header control → create cards (not back
