@@ -4,6 +4,7 @@ import os
 import sys
 from pathlib import Path
 
+# Audit-Meta: pattern=single-owner reason="startup composition: CLI parse, backend fallback, logging/theme bootstrap and the run loop in one readable sequence; the watchdog hook is one line here on purpose"
 try:
     current_dir = Path(__file__).resolve().parent
     project_dir = current_dir.parent
@@ -267,6 +268,17 @@ def main():
         from sli_ui_toolkit.widgets import install_scrollbar_policy
 
         install_scrollbar_policy(app)
+    except Exception:
+        pass
+
+    # GUI-thread stall watchdog (diagnosis only, IMGSLI_STALL_WATCH=1): a
+    # hitch deferred past the action that caused it (queued slot, debounce
+    # flush, GC, lazy cache) has no probe around the action -- this one names
+    # the blocking stack instead.
+    try:
+        from core.stall_watch import arm as _arm_stall_watch
+
+        _arm_stall_watch()
     except Exception:
         pass
 
