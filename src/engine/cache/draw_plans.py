@@ -12,6 +12,12 @@ letterboxes, ``TileTextureService`` -- following the ``tile_coverage``
 precedent. Callers adapt their own item classes to/from the plan structs
 (``PlanTile`` / ``ComparePairPlan``) at the call surface; no caller-side
 item class is ever named here.
+
+The pair builder also enforces the tile-array binding limits: the array SRB
+binds only ``tile_arrays[0]``, so it never emits an instance whose slot lives
+in array >= 1 (it would sample a different tile), and it never emits a pair
+whose diff role has no resident slot in the pair's own array (the layer-0
+"blank" fallback actually samples another tile in ``diffMode == 4``).
 """
 
 from __future__ import annotations
@@ -26,6 +32,7 @@ from engine.cache.tile_coverage import (
     rects_overlap,
     to_common_space,
 )
+from engine.cache.tile_debug import log_tile_event, tile_dump_enabled
 from engine.cache.tile_geometry import _TILE_APRON_PX, _apron_rect
 from engine.cache.tile_texture_service import TileTextureService
 
@@ -302,15 +309,31 @@ def build_compare_pair_plan(
     array textures are skipped (only possible past array capacity; retried
     next frame once eviction/upload catches up).
 
+    Array binding guard: only ``tile_arrays[0]`` is bound by the array SRB
+    (``array_resources.ensure_array_srb``), so a tile whose slot lives in
+    array >= 1 would be drawn out of ``tile_arrays[0]`` at the same layer
+    index -- a different tile's content. Such tiles are never emitted
+    (mirrors Multi Compare's per-item guard in
+    ``multi_compare/scene/passes/base_images.py``) and are retried next frame
+    once eviction/upload catches up.
+
     Diff (e.g. the SSIM map, generated at side1's resolution and aligned
     with it, sharing ``letterbox1``) resolves to its own multi-tile set
     when its grid is multi-tile -- one split instance per covering diff
     tile, with ``rect_diff`` kept in raw image-fraction space (the space the
     shader subtracts from ``sampleUV``) while ``bbox`` stays common-space.
     A single-tile (or not-yet-registered) diff keeps the one-lookup
-    best-overlap behavior; a multi-tile diff with nothing currently visible
-    draws the base images with a blank diff rather than reusing the
-    single-tile lookup against a grid it was never valid for.
+    best-overlap behavior.
+
+    Diff fail-closed: ``diffMode == 4`` samples the diff layer whenever
+    ``diffSourceReady`` is set, so there is no per-instance "no diff" switch
+    -- layer 0 of the bound array is another tile, not blank. A pair whose
+    diff role has no resident slot in the pair's own array is therefore NOT
+    emitted this frame (a one-frame gap is allowed; a neighbour's content is
+    not). ``dropped_array_index`` counts skipped side-1 tiles (a skipped tile
+    suppresses all of its pairs), ``dropped_diff_missing`` counts suppressed
+    pair instances; both are reported once per plan build via
+    ``log_tile_event`` when ``IMGSLI_TILE_DUMP`` is enabled.
     """
     side2_common = [
         (tile, to_common_space(tile.rect, letterbox2)) for tile in side2
@@ -325,25 +348,42 @@ def build_compare_pair_plan(
             (tile, to_common_space(tile.rect, letterbox1)) for tile in diff_tiles
         ]
     items: list[ComparePairPlan] = []
+    dropped_array_index = 0
+    dropped_diff_missing = 0
+    max_array_index = 0
     for tile1 in side1:
         slot1 = tile_service.slot_for(key1, tile1.index)
         if slot1 is None:
             continue
         array_index1, layer1 = slot1
+        max_array_index = max(max_array_index, array_index1)
+        if array_index1 != 0:
+            # See "Array binding guard" above: the SRB never binds this array.
+            dropped_array_index += 1
+            continue
         scale1 = content_scale_for(
             tile_service.content_size_for(key1, tile1.index), layer_px
         )
-        fallback_diff_layer, fallback_diff_scale = 0, (1.0, 1.0)
+        diff_layer, diff_scale = 0, (1.0, 1.0)
+        diff_ready = True
         if diff_key is not None and not diff_is_multi_tile:
             diff_src, diff_idx = _resolve_single_diff_index(
                 tile_service, diff_key, tile1.rect
             )
             diff_slot = tile_service.slot_for(diff_src, diff_idx)
-            if diff_slot is not None and diff_slot[0] == array_index1:
-                fallback_diff_layer = diff_slot[1]
-                fallback_diff_scale = content_scale_for(
-                    tile_service.content_size_for(diff_src, diff_idx), layer_px
-                )
+            if diff_slot is None:
+                diff_ready = False
+            else:
+                max_array_index = max(max_array_index, diff_slot[0])
+                if diff_slot[0] == array_index1:
+                    diff_layer = diff_slot[1]
+                    diff_scale = content_scale_for(
+                        tile_service.content_size_for(diff_src, diff_idx), layer_px
+                    )
+                else:
+                    # Resident, but in another array texture: not sampleable
+                    # by this pair's binding, so it is as good as missing.
+                    diff_ready = False
         common1 = to_common_space(tile1.rect, letterbox1)
         for tile2, common2 in side2_common:
             if not rects_overlap(common1, common2):
@@ -352,6 +392,7 @@ def build_compare_pair_plan(
             if slot2 is None:
                 continue
             array_index2, layer2 = slot2
+            max_array_index = max(max_array_index, array_index2)
             if array_index2 != array_index1:
                 continue
             scale2 = content_scale_for(
@@ -364,6 +405,10 @@ def build_compare_pair_plan(
             pair_bbox = _expand_bbox(pair_bbox, bbox_eps)
             content_scale = (*scale1, *scale2)
             if not diff_is_multi_tile:
+                if not diff_ready:
+                    # See "Diff fail-closed" above.
+                    dropped_diff_missing += 1
+                    continue
                 items.append(
                     ComparePairPlan(
                         rect1=tile1.rect,
@@ -372,10 +417,10 @@ def build_compare_pair_plan(
                         index2=tile2.index,
                         bbox=pair_bbox,
                         content_scale=content_scale,
-                        content_scale_diff=fallback_diff_scale,
+                        content_scale_diff=diff_scale,
                         layer1=layer1,
                         layer2=layer2,
-                        layer_diff=fallback_diff_layer,
+                        layer_diff=diff_layer,
                         array_index=array_index1,
                     )
                 )
@@ -385,7 +430,10 @@ def build_compare_pair_plan(
                 if not rects_overlap(pair_bbox, diff_common_rect):
                     continue
                 diff_slot = tile_service.slot_for(diff_key, diff_tile.index)
-                if diff_slot is None or diff_slot[0] != array_index1:
+                if diff_slot is None:
+                    continue
+                max_array_index = max(max_array_index, diff_slot[0])
+                if diff_slot[0] != array_index1:
                     continue
                 diff_bbox = intersection_rect(pair_bbox, diff_common_rect)
                 if diff_bbox[2] < sliver_min or diff_bbox[3] < sliver_min:
@@ -414,23 +462,18 @@ def build_compare_pair_plan(
                     )
                 )
             if not emitted_for_pair:
-                # No resident diff tile covers this pair's footprint yet
-                # (still uploading) -- draw the base images anyway rather
-                # than lose them for this frame; diff shows blank there
-                # until its tile arrives.
-                items.append(
-                    ComparePairPlan(
-                        rect1=tile1.rect,
-                        rect2=tile2.rect,
-                        index1=tile1.index,
-                        index2=tile2.index,
-                        bbox=pair_bbox,
-                        content_scale=content_scale,
-                        content_scale_diff=(1.0, 1.0),
-                        layer1=layer1,
-                        layer2=layer2,
-                        layer_diff=0,
-                        array_index=array_index1,
-                    )
-                )
+                # No resident diff tile in this pair's own array covers its
+                # footprint yet (still uploading). Emitting the base images
+                # with layer_diff=0 would sample layer 0 as the "blank" diff,
+                # which is another tile's content -- fail closed instead (see
+                # "Diff fail-closed" above).
+                dropped_diff_missing += 1
+    if tile_dump_enabled():
+        log_tile_event(
+            "array_plan.guard",
+            items=len(items),
+            dropped_array_index=dropped_array_index,
+            dropped_diff_missing=dropped_diff_missing,
+            max_array_index=max_array_index,
+        )
     return items
