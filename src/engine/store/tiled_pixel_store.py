@@ -15,6 +15,8 @@ from __future__ import annotations
 import logging
 import os
 import tempfile
+import threading
+import weakref
 from pathlib import Path
 
 import numpy as np
@@ -43,6 +45,140 @@ _crop_box_cache: dict[str, tuple[int, int, int, int] | None] = {}
 # PID-sentinel-plus-/proc scheme.
 _instance_lock = None
 _have_exclusive_lock = False
+
+# Deferred-delete journal, inside the spill dir (not matched by the
+# ``imgsli_tps_*.raw`` purge pattern, so it is never swept as a spill).
+_PENDING_DELETE_NAME = ".pending_spill_deletes"
+# Serialises in-process readers/writers of that file: several stores can
+# close from different threads, and the sweep rewrites the whole list.
+_pending_delete_lock = threading.Lock()
+
+
+def _is_owned_spill_name(name: str) -> bool:
+    """The one ownership rule: only ``imgsli_tps_*.raw`` spill files are ours.
+
+    Shared by the purge, the immediate unlink and the deferred sweep so a
+    path that is not a spill of ours can never be deleted by any of them.
+    """
+    return name.startswith("imgsli_tps_") and name.endswith(".raw")
+
+
+def _is_owned_spill_path(path: str) -> bool:
+    return _is_owned_spill_name(os.path.basename(path))
+
+
+def _pending_delete_file() -> str | None:
+    spill_dir = resolve_pixel_spill_dir()
+    if not spill_dir:
+        return None
+    return os.path.join(spill_dir, _PENDING_DELETE_NAME)
+
+
+def _read_pending_unlocked() -> list[str]:
+    pending = _pending_delete_file()
+    if pending is None:
+        return []
+    try:
+        with open(pending, "r", encoding="utf-8") as fh:
+            return [line.strip() for line in fh if line.strip()]
+    except FileNotFoundError:
+        return []
+    except OSError as exc:
+        logger.debug("[SpillDelete] Cannot read pending list %s: %s", pending, exc)
+        return []
+
+
+def read_pending_spill_deletes() -> list[str]:
+    """Absolute paths currently queued for a deferred spill delete."""
+    with _pending_delete_lock:
+        return _read_pending_unlocked()
+
+
+def _write_pending_unlocked(paths: list[str]) -> None:
+    pending = _pending_delete_file()
+    if pending is None:
+        return
+    try:
+        if not paths:
+            try:
+                os.remove(pending)
+            except FileNotFoundError:
+                pass
+            return
+        with open(pending, "w", encoding="utf-8") as fh:
+            fh.write("\n".join(paths) + "\n")
+    except OSError as exc:
+        logger.debug("[SpillDelete] Cannot write pending list %s: %s", pending, exc)
+
+
+def record_pending_spill_delete(path: str) -> bool:
+    """Queue an owned spill file for the next sweep; never raises.
+
+    Used when the file cannot be unlinked yet — on Windows because a numpy
+    view still holds the mapping (sharing violation), and on POSIX when we
+    can prove the same view survives (unlinking a mapped file there would
+    "work" and hide the leak instead of fixing it).
+    """
+    if not _is_owned_spill_path(path):
+        return False
+    target = os.path.abspath(path)
+    pending = _pending_delete_file()
+    if pending is None:
+        logger.warning(
+            "[SpillDelete] No spill dir to record %s for deletion; leaving it on disk.",
+            path,
+        )
+        return False
+    try:
+        with _pending_delete_lock:
+            if target not in _read_pending_unlocked():
+                with open(pending, "a", encoding="utf-8") as fh:
+                    fh.write(target + "\n")
+        logger.debug("[SpillDelete] Deferred delete of %s (still mapped)", target)
+        return True
+    except OSError as exc:
+        logger.warning("[SpillDelete] Could not defer delete of %s: %s", target, exc)
+        return False
+
+
+def sweep_pending_spill_deletes() -> int:
+    """Retry queued spill deletes; returns how many paths resolved.
+
+    Only runs while this process holds the exclusive spill-dir lock (same
+    gate as :func:`purge_stale_spill_files`): another live instance may
+    still be mapping the queued files. Entries whose delete fails again
+    (still mapped on Windows) stay queued for the next sweep; entries that
+    are gone already count as resolved; lines that are not ``imgsli_tps_*.raw``
+    are dropped rather than honoured.
+
+    Read, delete and rewrite run under one lock hold so an entry queued
+    concurrently by another closing store cannot be lost by the rewrite.
+    """
+    if not _have_exclusive_lock:
+        logger.debug(
+            "[SpillDelete] Another live ImgSLI instance holds the spill dir lock, "
+            "skipping deferred deletes."
+        )
+        return 0
+    resolved = 0
+    with _pending_delete_lock:
+        remaining: list[str] = []
+        for path in _read_pending_unlocked():
+            if not _is_owned_spill_path(path):
+                continue
+            try:
+                os.remove(path)
+                resolved += 1
+                logger.debug("[SpillDelete] Swept deferred spill file %s", path)
+            except FileNotFoundError:
+                resolved += 1
+            except OSError as exc:
+                logger.debug("[SpillDelete] Still locked, keeping %s: %s", path, exc)
+                remaining.append(path)
+        _write_pending_unlocked(remaining)
+    if resolved:
+        logger.info("[SpillDelete] Resolved %d deferred spill delete(s).", resolved)
+    return resolved
 
 
 def resolve_pixel_spill_dir() -> str | None:
@@ -128,7 +264,7 @@ def purge_stale_spill_files() -> int:
     reclaimed = 0
     try:
         for name in os.listdir(spill_dir):
-            if not (name.startswith("imgsli_tps_") and name.endswith(".raw")):
+            if not _is_owned_spill_name(name):
                 continue
             full = os.path.join(spill_dir, name)
             try:
@@ -140,6 +276,15 @@ def purge_stale_spill_files() -> int:
                 logger.debug("[SpillPurge] Could not remove %s: %s", name, exc)
     except OSError:
         pass
+
+    # Files whose close() could not unlink them (still mapped at the time)
+    # are retried here, once the lock proves no sibling instance can own
+    # them. Deliberately after the raw purge: anything it already removed
+    # now resolves as "gone" in the sweep.
+    try:
+        sweep_pending_spill_deletes()
+    except Exception as exc:  # never let the startup purge fail the boot
+        logger.debug("[SpillPurge] Deferred delete sweep failed: %s", exc)
 
     if reclaimed:
         logger.info("[SpillPurge] Reclaimed %.1f MiB from stale pixel spill files.", reclaimed / 1024 / 1024)
@@ -188,6 +333,93 @@ def _allocate_spill_memmap(
 
 def _reopen_readonly(path: str, height: int, width: int) -> np.memmap:
     return np.memmap(path, dtype=np.uint8, mode="r", shape=(height, width, 4))
+
+
+def release_spill_mapping(owner) -> bool:
+    """Flush and explicitly close ``owner``'s spill mapping; drop our refs.
+
+    ``owner`` is any object that holds the mapping in ``_memmap`` (a
+    :class:`TiledPixelStore` and, through it, the shared-pixel registry's
+    views and entries). The attribute is left set to ``None`` so
+    ``is_open`` / ``_ensure_open`` keep working.
+
+    Returns ``True`` when nothing else referenced the mapping: the mmap
+    handle is closed and the backing file can be unlinked right away.
+    Returns ``False`` when another reference survived (a numpy view, a
+    registry entry, a caller-held memmap): the mapping is left intact —
+    closing it there would invalidate the survivor's buffer — and the
+    caller must defer the unlink.
+
+    Why the handle needs explicit closing instead of relying on CPython
+    refcounting: ``np.memmap`` hands the *same* mmap handle to every view,
+    so ``self._memmap = None`` drops only one reference. On Windows an
+    open handle makes ``os.remove`` raise ``PermissionError``, which the
+    old ``close()`` swallowed at debug level, leaking the ``.raw`` spill
+    forever (POSIX unlinks mapped files happily, which is why this went
+    unnoticed). A surviving reference is detected with a weakref instead
+    of a reference count, so the decision does not depend on how many
+    temporaries a caller happens to hold.
+    """
+    model = owner.__dict__.pop("_memmap", None)
+    if model is None:
+        return True
+    try:
+        try:
+            # Never bind ``model.flags`` / ``model.flush`` to a local before
+            # the survivor check below: both are objects that reference the
+            # array (``flagsobj.a`` is the array itself, a bound method keeps
+            # its ``__self__``), so a local would defeat the check and make
+            # every close look like "still mapped".
+            if model.flags.writeable:
+                model.flush()
+        except Exception as exc:  # a read-only/closed mapping needs no flush
+            logger.debug("Spill mapping flush skipped for %s: %s", owner, exc)
+        handle = getattr(model, "_mmap", None)
+        try:
+            last_owner = weakref.ref(model)
+        except TypeError:
+            # Unverifiable (no weakref support): keep the file rather than
+            # risk invalidating a buffer we cannot see; the sweep retries.
+            logger.debug("Cannot weakref spill mapping; deferring its delete")
+            return False
+        del model
+        if last_owner() is not None:
+            return False  # a view still maps it: do not close handle under it
+        if handle is not None:
+            try:
+                handle.close()
+            except (BufferError, OSError, ValueError) as exc:
+                logger.debug("Explicit spill memmap close failed: %s", exc)
+                return False
+        return True
+    finally:
+        owner._memmap = None
+
+
+def _unlink_spill_file(path: str, *, exclusive: bool) -> bool:
+    """Delete an owned spill file now, or queue it for the deferred sweep.
+
+    ``exclusive`` is :func:`release_spill_mapping`'s answer. With a
+    surviving view the unlink is deferred even on POSIX, where it would
+    "succeed" while someone still maps the file: that hides exactly the
+    leak this path exists to make visible, and Windows would refuse it
+    anyway. Any other ``OSError`` (Windows sharing violation) is deferred
+    too instead of being swallowed.
+    """
+    if not _is_owned_spill_path(path):
+        return False
+    if not exclusive:
+        record_pending_spill_delete(path)
+        return False
+    try:
+        os.remove(path)
+        return True
+    except FileNotFoundError:
+        return True
+    except OSError as exc:
+        logger.debug("Spill delete deferred for %s: %s", path, exc)
+        record_pending_spill_delete(path)
+        return False
 
 
 def _strip_height() -> int:
@@ -819,14 +1051,15 @@ class TiledPixelStore:
     def close(self) -> None:
         path = self._path
         owns = getattr(self, "_owns_file", True)
-        self._memmap = None
+        # Order matters: release (flush + explicit mmap close) must happen
+        # before the unlink, and it tells us whether anything still maps the
+        # file. On Windows a surviving view keeps the handle open and the
+        # unlink fails; such a delete is queued instead of swallowed.
+        exclusive = release_spill_mapping(self)
         self._path = None
         self._generation += 1
         if path and owns:
-            try:
-                os.remove(path)
-            except OSError as exc:
-                logger.debug("Failed to remove TiledPixelStore temp file %s: %s", path, exc)
+            _unlink_spill_file(path, exclusive=exclusive)
 
     def __enter__(self) -> "TiledPixelStore":
         return self

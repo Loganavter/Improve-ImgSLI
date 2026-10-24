@@ -70,6 +70,12 @@ _DIR_MODE = 0o700
 #: Owner-only mode for the socket and the pointer.
 _FILE_MODE = 0o600
 
+#: Platform seam for the pid-liveness probe (tests drive either arm).
+_IS_WINDOWS = os.name == "nt"
+_QUERY_LIMITED = 0x1000  # PROCESS_QUERY_LIMITED_INFORMATION
+_STILL_ACTIVE = 259  # GetExitCodeProcess value while the process runs
+_ERROR_ACCESS_DENIED = 5  # OpenProcess: it exists, we may not query it
+
 
 def app_data_dir() -> Path:
     """Per-OS app data dir (``~/.local/share/ImproveImgSLI`` on Linux).
@@ -235,12 +241,53 @@ def peer_uid_ok(socket_descriptor: int) -> bool:
             pass
 
 
+def is_pid_alive(pid: int | None) -> bool:
+    """True iff ``pid`` names a live process — a probe, never a signal.
+
+    POSIX: ``kill(pid, 0)``; ``ProcessLookupError`` is gone, ``PermissionError``
+    is alive. Windows: ``os.kill`` is *not* a probe — CPython lowers any signal
+    other than CTRL_C_EVENT / CTRL_BREAK_EVENT to TerminateProcess, so
+    ``os.kill(pid, 0)`` kills the target (exit code 0). Probe with
+    ``OpenProcess`` + ``GetExitCodeProcess``; a failed open is life only for
+    ``ERROR_ACCESS_DENIED``. ``ctypes`` is imported lazily (no POSIX cost) and
+    ``_IS_WINDOWS`` is module-level, so the seam is testable from POSIX
+    (``tests/devtools/test_control_discovery.py``).
+    """
+    try:
+        candidate = int(pid)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return False
+    if candidate <= 0:
+        return False
+    if _IS_WINDOWS:
+        import ctypes  # noqa: PLC0415 - Windows-only import cost
+
+        kernel32 = ctypes.windll.kernel32
+        handle = kernel32.OpenProcess(_QUERY_LIMITED, False, candidate)
+        if not handle:
+            return kernel32.GetLastError() == _ERROR_ACCESS_DENIED
+        try:
+            code = ctypes.c_ulong(0)
+            ok = kernel32.GetExitCodeProcess(handle, ctypes.byref(code))
+            return bool(ok) and code.value == _STILL_ACTIVE
+        finally:
+            kernel32.CloseHandle(handle)
+    try:
+        os.kill(candidate, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+    return True
+
+
 def stale_pointer_alive() -> bool:
     """True iff the pointer names a live pid (liveness only, no handshake).
 
-    ``False`` when there is no pointer, it is corrupt, or the pid is dead
-    (``os.kill(pid, 0)`` → ``ProcessLookupError``). Callers use this to decide
-    whether a leftover pointer may be cleaned up / a socket reused.
+    ``False`` when there is no pointer, it is corrupt, or the pid is dead (see
+    :func:`is_pid_alive`) — callers then clean it up / reuse the socket.
     """
     data = read_pointer()
     if not data:
@@ -249,17 +296,7 @@ def stale_pointer_alive() -> bool:
         pid = int(data.get("pid"))
     except (TypeError, ValueError):
         return False
-    if pid <= 0:
-        return False
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
-    except OSError:
-        return False
-    return True
+    return is_pid_alive(pid)
 
 
 #: Max key combos a single ``press_keys`` request may inject.

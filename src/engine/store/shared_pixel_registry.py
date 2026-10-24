@@ -174,7 +174,15 @@ def _drop_locked(key: tuple) -> None:
     if entry is None:
         return
     try:
-        entry.base.close()  # owning close: nulls refs + deletes the spill
+        # Drop our own reference to the shared memmap BEFORE the owning base
+        # closes. ``_Entry.memmap`` is an extra reference to the *same*
+        # ``np.memmap``, and ``TiledPixelStore.close()`` (via
+        # ``release_spill_mapping``) treats any surviving reference as "still
+        # mapped" and defers the unlink — on Windows that is a sharing
+        # violation, so the last base entry would leave a locked ``.raw``
+        # behind. Ours is not a foreign holder, so it must not count.
+        entry.memmap = None
+        entry.base.close()  # owning close: same release path + spill delete
     except Exception as exc:
         logger.debug("[SharedPixels] entry base close failed: %s", exc)
 

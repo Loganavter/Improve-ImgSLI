@@ -21,7 +21,9 @@ documented defects this module fixes:
 Also hosts ``ProcessRegistry``: ``open_tab`` for a tab that already has a live
 process must reuse it rather than spawn a second window.
 
-``pid_alive`` answers "may the process still exist"; ``process_report`` answers
+``pid_alive`` answers "may the process still exist"; it uses ``kill(pid, 0)``
+on POSIX but ``OpenProcess`` + ``GetExitCodeProcess`` on Windows, where
+``os.kill`` is TerminateProcess in disguise. ``process_report`` answers
 "what happened to it", which is what a failed control call must say: ``/proc``
 can still expose a zombie's exit status/signal, and when it cannot the report
 says so instead of inventing one.
@@ -45,6 +47,14 @@ PRESERVED_LOG_NAME = "live-log.txt"
 
 #: Keys scrubbed from every launch environment (defect 2).
 _SESSION_DISPLAY_KEYS = ("DISPLAY", "WAYLAND_DISPLAY", "XDG_SESSION_TYPE")
+
+#: Platform seam for the pid-liveness probe (module-level so tests can drive
+#: either arm from either OS; see :func:`pid_alive`).
+_IS_WINDOWS = os.name == "nt"
+
+_QUERY_LIMITED = 0x1000  # PROCESS_QUERY_LIMITED_INFORMATION
+_STILL_ACTIVE = 259  # GetExitCodeProcess value while the process runs
+_ERROR_ACCESS_DENIED = 5  # OpenProcess: it exists, we may not query it
 
 
 def launch_env(visible: bool = False) -> dict[str, str]:
@@ -76,10 +86,25 @@ def launch_env(visible: bool = False) -> dict[str, str]:
 
 
 def pid_alive(pid: int | None) -> bool:
-    """Liveness check via ``kill(pid, 0)`` — never signals the process.
+    """Liveness check that never signals the process — on either platform.
 
-    ``PermissionError`` means the process exists but belongs to someone else
-    (still alive); any other ``OSError`` means it is gone.
+    POSIX: ``kill(pid, 0)`` is the probe. ``PermissionError`` means the process
+    exists but belongs to someone else (still alive); any other ``OSError``
+    means it is gone.
+
+    Windows: ``os.kill`` is *not* a probe — CPython lowers every signal other
+    than CTRL_C_EVENT / CTRL_BREAK_EVENT to OpenProcess + TerminateProcess, so
+    ``os.kill(pid, 0)`` kills the target with exit code 0. This arm uses
+    ``OpenProcess`` + ``GetExitCodeProcess`` instead: ``STILL_ACTIVE`` means
+    alive, and a failed open means alive only for ``ERROR_ACCESS_DENIED`` (the
+    process exists, we may not query it) — anything else (an invalid pid) means
+    gone.
+
+    This is a deliberate duplicate of ``core.control.discovery.is_pid_alive``:
+    ``mcp-server/app`` is stdlib-only and must keep running without the app
+    package (which pulls in PySide6), so it cannot import the app's copy. Keep
+    the two arms in step — ``tests/devtools/test_control_discovery.py`` and
+    ``tests/devtools/test_mcp_server.py`` pin both to the same table.
     """
     try:
         candidate = int(pid)  # type: ignore[arg-type]
@@ -87,6 +112,19 @@ def pid_alive(pid: int | None) -> bool:
         return False
     if candidate <= 0:
         return False
+    if _IS_WINDOWS:
+        import ctypes  # noqa: PLC0415 - Windows-only import cost
+
+        kernel32 = ctypes.windll.kernel32
+        handle = kernel32.OpenProcess(_QUERY_LIMITED, False, candidate)
+        if not handle:
+            return kernel32.GetLastError() == _ERROR_ACCESS_DENIED
+        try:
+            code = ctypes.c_ulong(0)
+            ok = kernel32.GetExitCodeProcess(handle, ctypes.byref(code))
+            return bool(ok) and code.value == _STILL_ACTIVE
+        finally:
+            kernel32.CloseHandle(handle)
     try:
         os.kill(candidate, 0)
     except ProcessLookupError:

@@ -325,7 +325,8 @@ class ExportService:
                     logger.info(f"JXL image saved successfully: {full_path}")
                 except Exception as e:
                     logger.error(f"Failed to save JXL image: {e}", exc_info=True)
-                    # Clean up stale tmp on failure; outer except will also try full_path
+                    # Clean up the staged tmp on failure; the outer handler
+                    # removes it too, and neither may touch full_path.
                     try:
                         tmp_candidate = full_path + ".tmp"
                         if os.path.exists(tmp_candidate):
@@ -345,12 +346,11 @@ class ExportService:
                     progress_end=99,
                 )
         except Exception:
-            try:
-                if os.path.exists(full_path):
-                    os.remove(full_path)
-            except Exception:
-                pass
-            # Also clean tmp if we used it (JXL or pil_save failure leaves .tmp)
+            # Only the staged tmp belongs to this attempt. full_path is
+            # published exclusively by the atomic os.replace in
+            # write_pil_image_cancelable / the JXL branch — before that it is
+            # the user's PRE-EXISTING file (a non-quick save overwrites in
+            # place), so deleting it here is data loss, not cleanup.
             try:
                 tmp_path = full_path + ".tmp"
                 if os.path.exists(tmp_path):
