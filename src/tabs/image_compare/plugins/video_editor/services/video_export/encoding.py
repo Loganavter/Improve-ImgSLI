@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from shared.hidden_process import hidden_process_kwargs
+
 import logging
 import os
 import shlex
@@ -148,13 +150,12 @@ class FFmpegProcessManager:
         self._stderr_lines: list[str] = []
 
     def start(self, cmd, stderr_line_callback=None):
-        creation_flags = 0x08000000 if os.name == "nt" else 0
         process = subprocess.Popen(
             cmd,
             stdin=subprocess.PIPE,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.PIPE,
-            creationflags=creation_flags,
+            **hidden_process_kwargs(),
         )
         self._active_processes.append(process)
         self._stderr_lines = []
