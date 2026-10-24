@@ -52,6 +52,46 @@ from engine.cache.tile_mip import mip_level_count, mip_level_pixel_size
 _SHADER_DIR = Path(__file__).resolve().parent / "shaders"
 
 
+def downsample_corr_matrix(rhi) -> tuple[float, ...]:
+    """Row-major ``mat4`` for the mip-downsample vertex stage.
+
+    The Y-flip is **backend-dependent**, not unconditional. The scratch
+    render targets this cascade draws into are never composited to screen, so
+    no on-screen blit cancels a convention mismatch: the vertex stage has to
+    land the source level in the destination level's row order itself.
+
+    Which correction that requires is a property of the backend, so ask it:
+
+    - ``rhi.isYUpInFramebuffer()`` is True on OpenGL, where the flip is
+      required (the behaviour validated before 2026-10-24);
+    - it is False on D3D11, where applying the flip inverted *every*
+      generated level relative to its source, so the chain alternated by
+      level parity (odd levels upside-down). The sampler is trilinear
+      (``resources.py`` "linear"), so any zoom below 1:1 blended upright mip0
+      with flipped mip1 -- the "bands of another tile's content / a tile
+      fills a third" artifact on the D3D11 host
+      (plan-tile-policy-reliability-2026-10-24, measured from
+      ``IMGSLI_TILE_DUMP`` mip readbacks: consecutive levels matched a
+      vertical flip at mean|Δ| 2.4-13 vs 42-59 for identity). Zoom >= 1:1
+      samples mip0 only, which is why the artifact needed minification.
+
+    Diagonal, so row-major vs column-major storage of the ``mat4`` does not
+    matter. A backend without the query keeps the OpenGL-proven flip rather
+    than guessing.
+    """
+    try:
+        flip = bool(rhi.isYUpInFramebuffer())
+    except (AttributeError, RuntimeError):
+        flip = True
+    y = -1.0 if flip else 1.0
+    return (
+        1.0, 0.0, 0.0, 0.0,
+        0.0, y, 0.0, 0.0,
+        0.0, 0.0, 1.0, 0.0,
+        0.0, 0.0, 0.0, 1.0,
+    )
+
+
 def _load_mip_downsample_shader(name: str) -> QShader:
     shader = QShader.fromSerialized((_SHADER_DIR / name).read_bytes())
     if not shader.isValid():
@@ -337,24 +377,20 @@ class MipCascadeGenerator:
                 pass
 
     def _ensure_downsample_corr_buffer(self):
-        """Vertex-stage-only ``mat4`` applying an unconditional Y-flip -- NOT
-        ``rhi.clipSpaceCorrMatrix()`` (tried first, empirically confirmed a
-        no-op: identity on this project's OpenGL backend). The scratch
-        render targets this cascade draws into are never composited to
-        screen (no visible ``QRhiWidget`` backing-store blit to absorb a
-        convention mismatch), the same situation as the offscreen
-        ``grabFramebuffer()``-only export canvas in
-        docs/dev/rendering/qrhi-gotchas.md's "Offscreen scissor Y-flip" case
-        -- there, the fix was to flip unconditionally rather than gate on
-        ``isYUpInFramebuffer()``, since that gating only holds for a target
-        whose *later* on-screen compositing step cancels one flip out.
-        Without a matching unconditional flip here, each generated mip level
-        samples the previous level (itself already flipped once by this same
-        pass) and re-flips on write, so levels alternate orientation by
-        parity -- exactly the flipped/shrunk-tile symptom, and why it showed
-        up one mip transition apart rather than uniformly. Depends only on
-        this invariant, not on any per-draw state, so it's created once and
-        never rewritten."""
+        """Vertex-stage-only ``mat4`` carrying the per-backend Y correction
+        from ``downsample_corr_matrix``. The scratch render targets this
+        cascade draws into are never composited to screen (no visible
+        ``QRhiWidget`` backing-store blit to absorb a convention mismatch),
+        so the vertex stage must land the source level in the destination's
+        row order itself.
+
+        This used to be an UNCONDITIONAL flip -- correct on OpenGL, wrong on
+        D3D11, where it re-flipped every level and made the chain alternate
+        by parity (odd levels upside-down) and the trilinear sampler blend
+        upright and flipped content below 1:1. On D3D11 the skip is the fix;
+        a missing query keeps the OpenGL-proven flip. Depends only on this
+        backend property, not on any per-draw state, so the matrix is
+        created once and never rewritten."""
         if self._downsample_corr_buffer is not None:
             return self._downsample_corr_buffer
         buffer = self._rhi.newBuffer(
@@ -552,20 +588,15 @@ class MipCascadeGenerator:
         stride = self._downsample_slot_stride
         slot_updates = rhi.nextResourceUpdateBatch()
         if not self._downsample_corr_written:
-            # Unconditional Y-flip (see _ensure_downsample_corr_buffer) --
+            # Per-backend Y correction (see downsample_corr_matrix) --
             # diagonal, so row-major vs. column-major storage of the mat4
             # doesn't matter here.
-            flip_data = (
-                1.0, 0.0, 0.0, 0.0,
-                0.0, -1.0, 0.0, 0.0,
-                0.0, 0.0, 1.0, 0.0,
-                0.0, 0.0, 0.0, 1.0,
-            )
+            corr = downsample_corr_matrix(rhi)
             assert self._downsample_corr_buffer is not None
             slot_updates.updateDynamicBuffer(
                 self._downsample_corr_buffer,
                 0,
-                struct.pack("<16f", *flip_data),
+                struct.pack("<16f", *corr),
             )
             self._downsample_corr_written = True
         for slot_index, (array_index, layer, level) in enumerate(draws):
