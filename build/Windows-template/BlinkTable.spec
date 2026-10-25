@@ -106,6 +106,14 @@ APP_DATAS = [
     (str(SPEC_DIR / "icons" / "icon.ico"), "icons"),
     (str(REPO_ROOT / "src" / "shared_toolkit" / "resources"), "shared_toolkit/resources"),
     (str(REPO_ROOT / "src" / "shared_toolkit" / "ui" / "resources"), "shared_toolkit/ui/resources"),
+    # Frozen discovery: `discovery_scan` resolves the manifest with
+    # `Path(__file__).with_name(...)`, so it must land next to the module inside
+    # the bundle. `build_windows.py` regenerates it from this tree before
+    # PyInstaller collects data.
+    (
+        str(REPO_ROOT / "src" / "core" / "plugin_system" / "discovery_manifest.json"),
+        "core/plugin_system",
+    ),
     (str(QT_CONF_PATH), "."),
 ]
 APP_DATAS.extend(collect_resource_dirs(REPO_ROOT / "src" / "plugins", "plugins"))

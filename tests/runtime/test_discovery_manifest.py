@@ -10,10 +10,13 @@ the import scan with one warning instead of crashing startup.
 
 from __future__ import annotations
 
+import ast
 import builtins
 import importlib
+import importlib.util
 import json
 import logging
+import sys
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator
@@ -26,6 +29,8 @@ from devtools import gen_discovery_manifest as generator
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _SRC = _REPO_ROOT / "src"
 _COMMITTED = _SRC / "core" / "plugin_system" / "discovery_manifest.json"
+_SPEC = _REPO_ROOT / "build" / "Windows-template" / "BlinkTable.spec"
+_BUILD_WINDOWS = _REPO_ROOT / "build" / "Windows-template" / "build_windows.py"
 
 _DISCOVERY_PREFIXES = ("tabs.", "plugins.")
 
@@ -283,3 +288,143 @@ def test_corrupt_manifest_still_discovers_everything(
     # (e.g. ``tabs.use_cases.tab`` is not a module) — pre-existing noise in the
     # frozen path, not a manifest defect; the point here is that nothing raised
     # and every entry point was found.
+
+
+# -- a frozen start consumes it and says so ----------------------------------
+
+
+def test_a_frozen_like_start_consumes_the_manifest_and_names_it(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Ship-then-consume: no module imported to discover, and one evidence line.
+
+    A datas-only bundle has no ``.py`` sources and a manifest next to
+    ``discovery_scan``. The file is copied out here so the path is fresh (the
+    evidence line is once per manifest path per process). Two things must hold
+    together: discovery imports nothing, and the start names the data it used —
+    a silent success cannot be told apart from a start that paid for the scan.
+    """
+    shipped = tmp_path / "discovery_manifest.json"
+    shipped.write_text(_COMMITTED.read_text(encoding="utf-8"), encoding="utf-8")
+    monkeypatch.setattr(discovery_scan, "_MANIFEST_PATH", shipped)
+    # Process-global caches: a warm one would return entries before the
+    # manifest is ever read, hiding both assertions below.
+    discovery_scan.reset_plugin_entry_scan_cache()
+    discovery_scan.reset_tab_entry_scan_cache()
+
+    with caplog.at_level(logging.INFO, logger=discovery_scan.logger.name):
+        with _count_module_imports(monkeypatch) as imported:
+            bootstrap_plugins = discovery_scan.plugin_modules_for_tier("bootstrap")
+            bootstrap_tabs = discovery_scan.tab_packages_for_tier("bootstrap")
+            discovery_scan.plugin_modules_for_tier("deferred")
+            discovery_scan.tab_packages_for_tier("deferred")
+
+    assert imported == []
+    assert bootstrap_plugins and bootstrap_tabs
+    used = [
+        record
+        for record in caplog.records
+        if record.levelno == logging.INFO and "Discovery manifest:" in record.getMessage()
+    ]
+    assert len(used) == 1, "one evidence line per manifest, not one per discovery call"
+    assert str(shipped) in used[0].getMessage()
+    assert "entry points" in used[0].getMessage()
+
+
+# -- Windows packaging (no PyInstaller run) ----------------------------------
+
+
+def _load_build_windows():
+    """Import ``build_windows.py`` (its only import-time work is path config)."""
+    spec = importlib.util.spec_from_file_location("build_windows_under_test", _BUILD_WINDOWS)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _app_datas_from_spec() -> list[tuple[str, str]]:
+    """The literal ``APP_DATAS`` entries of the spec, without running PyInstaller."""
+    tree = ast.parse(_SPEC.read_text(encoding="utf-8"), filename=str(_SPEC))
+    for node in tree.body:
+        if not isinstance(node, ast.Assign) or not isinstance(node.value, ast.List):
+            continue
+        names = [target.id for target in node.targets if isinstance(target, ast.Name)]
+        if "APP_DATAS" not in names:
+            continue
+        entries: list[tuple[str, str]] = []
+        for element in node.value.elts:
+            if not isinstance(element, ast.Tuple) or len(element.elts) != 2:
+                continue
+            source, destination = element.elts
+            if isinstance(destination, ast.Constant) and isinstance(destination.value, str):
+                entries.append((ast.unparse(source), destination.value))
+        return entries
+    raise AssertionError(f"{_SPEC}: no APP_DATAS list literal")
+
+
+def test_windows_spec_ships_the_discovery_manifest_next_to_the_module() -> None:
+    """A bundle without this file pays the import scan the manifest exists for."""
+    destinations = [
+        destination
+        for source, destination in _app_datas_from_spec()
+        if "discovery_manifest.json" in source
+    ]
+    assert destinations == ["core/plugin_system"], (
+        "discovery_scan resolves the manifest with Path(__file__).with_name(...), "
+        "so the bundle destination must be the module's own package directory"
+    )
+
+
+def test_windows_build_generates_the_manifest_before_pyinstaller(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The data entry is only correct if the file is written first.
+
+    Falsifiable: drop the ``generate_discovery_manifest()`` step from ``main``
+    and ``"manifest"`` disappears from the recorded order.
+    """
+    build = _load_build_windows()
+    order: list[str] = []
+
+    def _step(name: str):
+        def _record(*_args, **_kwargs):
+            order.append(name)
+            return 0
+
+        return _record
+
+    monkeypatch.setattr(build.os, "chdir", lambda _path: None)
+    monkeypatch.setattr(build, "ensure_supported_python", _step("python"))
+    monkeypatch.setattr(build, "ensure_python_dependencies", _step("deps"))
+    monkeypatch.setattr(build, "generate_discovery_manifest", _step("manifest"))
+    monkeypatch.setattr(build, "build_pyinstaller", _step("pyinstaller"))
+    monkeypatch.setattr(build, "run_command", _step("script"))
+    monkeypatch.setattr(build, "fetch_ffmpeg", _step("ffmpeg"))
+    monkeypatch.setattr(build, "build_inno_setup", _step("inno"))
+
+    assert build.main() == 0
+    assert order.index("manifest") < order.index("pyinstaller")
+
+
+def test_windows_build_runs_the_manifest_generator(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    build = _load_build_windows()
+    calls: list[list[str]] = []
+    monkeypatch.setattr(
+        build, "run_command", lambda args, **_kwargs: calls.append(list(args)) or 0
+    )
+
+    assert build.generate_discovery_manifest() == 0
+    assert build.DISCOVERY_MANIFEST_SCRIPT.is_file()
+    assert calls == [[sys.executable, str(build.DISCOVERY_MANIFEST_SCRIPT)]]
+
+
+def test_windows_build_fails_when_the_manifest_cannot_be_written(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    build = _load_build_windows()
+    monkeypatch.setattr(build, "run_command", lambda *_args, **_kwargs: 1)
+    assert build.generate_discovery_manifest() == 1
+

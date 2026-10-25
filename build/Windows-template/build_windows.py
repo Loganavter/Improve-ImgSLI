@@ -26,6 +26,8 @@ from product_name import (  # noqa: E402  (needs TEMPLATE_DIR on sys.path)
 
 REQUIREMENTS_PATH = REPO_ROOT / "requirements-gui.txt"
 
+DISCOVERY_MANIFEST_SCRIPT = REPO_ROOT / "src" / "devtools" / "gen_discovery_manifest.py"
+
 FFMPEG_ZIP_URL = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
 FFMPEG_EXE_SUBPATH = "ffmpeg-master-latest-win64-gpl/bin/ffmpeg.exe"
 
@@ -73,6 +75,24 @@ def ensure_python_dependencies() -> int:
 
 def _env_flag(name: str) -> bool:
     return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
+def generate_discovery_manifest() -> int:
+    """Write ``discovery_manifest.json`` before PyInstaller collects data.
+
+    A frozen bundle ships no ``.py`` files on disk, so the filesystem scan finds
+    no tab/plugin entry points and every start imports each module just to
+    discover it. The spec ships this file at ``core/plugin_system/`` (resolved
+    with ``Path(__file__).with_name(...)``, i.e. next to ``discovery_scan.py``).
+    Generating it from *this* tree keeps the bundled data in step with the
+    modules being collected; the generator exits 1 when the tree does not look
+    like a source checkout, so a failed run fails the build.
+    """
+    print("Writing the build-time discovery manifest ...")
+    if run_command([sys.executable, str(DISCOVERY_MANIFEST_SCRIPT)]) != 0:
+        print("Failed to write the discovery manifest.")
+        return 1
+    return 0
 
 
 def build_pyinstaller() -> int:
@@ -149,6 +169,9 @@ def main() -> int:
         return 1
 
     if ensure_python_dependencies() != 0:
+        return 1
+
+    if generate_discovery_manifest() != 0:
         return 1
 
     if build_pyinstaller() != 0:

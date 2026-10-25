@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib
 import importlib.machinery
+import importlib.util
 import logging
 import pkgutil
 import sys
@@ -148,3 +149,108 @@ def test_import_fallback_survives_find_spec_errors(
     # image_gallery resolves normally; multi_compare fell through to its import.
     assert {e.package_name for e in entries} == {"image_gallery", "multi_compare"}
     assert _tab_failures(caplog) == []
+
+
+# -- plugin path: same rule as the tab path ----------------------------------
+
+
+def _plugin_records(
+    caplog: pytest.LogCaptureFixture, level: int
+) -> list[logging.LogRecord]:
+    return [
+        rec
+        for rec in caplog.records
+        if rec.name == discovery_scan.logger.name
+        and rec.levelno == level
+        and "Import-based plugin discovery" in rec.getMessage()
+    ]
+
+
+def test_plugin_import_fallback_skips_a_package_without_a_plugin_module(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """``tabs.use_cases`` ships no ``plugin.py``: one DEBUG line, no traceback.
+
+    This is the exact record a frozen start used to print with
+    ``exc_info=True`` — a full ``ModuleNotFoundError`` traceback at DEBUG for a
+    module that was never supposed to exist. The plugin path now applies the
+    same ``find_spec`` rule the tab path has.
+    """
+    discovery_scan.reset_plugin_entry_scan_cache()
+    with caplog.at_level(logging.DEBUG, logger=discovery_scan.logger.name):
+        entries = iter_plugin_entry_points(src_root=_datas_only_src(tmp_path))
+
+    assert {e.plugin_name for e in entries} >= {"settings", "export"}
+    skipped = [
+        rec
+        for rec in _plugin_records(caplog, logging.DEBUG)
+        if "tabs.use_cases.plugin" in rec.getMessage()
+    ]
+    assert len(skipped) == 1
+    assert skipped[0].exc_info is None
+    assert _plugin_records(caplog, logging.ERROR) == []
+
+
+def test_plugin_import_fallback_does_not_import_a_non_resolving_candidate(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A candidate ``find_spec`` cannot resolve is never handed to the importer."""
+    attempted: list[str] = []
+    real_import_module = importlib.import_module
+
+    def _import_or_record(name: str, package: str | None = None):
+        attempted.append(name)
+        return real_import_module(name, package=package)
+
+    monkeypatch.setattr(discovery_scan.importlib, "import_module", _import_or_record)
+    real_iter_modules = pkgutil.iter_modules
+    monkeypatch.setattr(
+        discovery_scan.pkgutil,
+        "iter_modules",
+        lambda path: [*real_iter_modules(path), (None, "no_such_plugin_pkg", True)],
+    )
+
+    with caplog.at_level(logging.DEBUG, logger=discovery_scan.logger.name):
+        entries = iter_plugin_entry_points(src_root=_datas_only_src(tmp_path))
+
+    assert "plugins.no_such_plugin_pkg.plugin" not in attempted
+    assert {e.plugin_name for e in entries} >= {"settings", "export"}
+    skipped = [
+        rec
+        for rec in _plugin_records(caplog, logging.DEBUG)
+        if "plugins.no_such_plugin_pkg.plugin" in rec.getMessage()
+    ]
+    assert skipped and skipped[0].exc_info is None
+
+
+def test_plugin_import_fallback_keeps_loud_error_for_a_module_that_fails_to_import(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``find_spec`` may only skip what does not exist, never a real failure."""
+    broken = "plugins.broken_plugin.plugin"
+    spec = importlib.machinery.ModuleSpec(broken, loader=None)
+    monkeypatch.setitem(sys.modules, broken, importlib.util.module_from_spec(spec))
+
+    real_iter_modules = pkgutil.iter_modules
+    monkeypatch.setattr(
+        discovery_scan.pkgutil,
+        "iter_modules",
+        lambda path: [*real_iter_modules(path), (None, "broken_plugin", True)],
+    )
+    real_import_module = importlib.import_module
+
+    def _import_or_raise(name: str, package: str | None = None):
+        if name == broken:
+            raise RuntimeError("plugin module exploded on import")
+        return real_import_module(name, package=package)
+
+    monkeypatch.setattr(discovery_scan.importlib, "import_module", _import_or_raise)
+
+    with caplog.at_level(logging.ERROR, logger=discovery_scan.logger.name):
+        entries = iter_plugin_entry_points(src_root=_datas_only_src(tmp_path))
+
+    failures = _plugin_records(caplog, logging.ERROR)
+    assert len(failures) == 1
+    assert broken in failures[0].getMessage()
+    assert failures[0].exc_info is not None
+    assert broken not in {e.module_name for e in entries}
