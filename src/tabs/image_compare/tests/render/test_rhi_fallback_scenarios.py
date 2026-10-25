@@ -558,10 +558,18 @@ def test_level_transition_fail_open_when_baseline_evicted():
 def test_mc_default_stays_progressive():
     """Shared engine default untouched: atomic=False keeps progressive mix.
 
-    multi_compare calls resolve_fallback_lod without atomic (opt-out by
-    default); a LevelKey transition there must still layer partial current
-    over drop-covered fallback. Guards Wave A against changing MC via the
-    shared branch."""
+    This drives the primitive directly, where ``atomic`` still defaults to
+    False (``src/engine/cache/fallback_lod.py:76``); a LevelKey transition
+    reached this way must layer partial current over drop-covered fallback.
+    multi_compare no longer reaches it that way -- it calls
+    ``resolve_frame_fallback(TILE_POLICY, ..., is_level_hold=_is_level_hold(...))``
+    (``src/tabs/multi_compare/scene/passes/base_images.py:716``) and its
+    policy opts into the level hold (``atomic_on_level_change=True``,
+    ``:100``), so a LevelKey transition there is held whole. What still
+    guards the shared branch is the primitive's default: a surface that
+    opts into nothing (Quick Look's policy,
+    ``src/engine/gpu/tiled_image_view.py:130``) keeps the progressive mix,
+    so the entry cannot drift into holding every transition."""
     new_key, plan = resolve_fallback_lod(
         key="new",
         current_items=["cur"],
