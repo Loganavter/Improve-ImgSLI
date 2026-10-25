@@ -15,6 +15,13 @@ The catalog is re-requested on app start and on every entry to this page (owner
 request 2026-10-22: no manual refresh control, no status caption), and the combo
 is rebuilt only when the fetched catalog differs from the one on screen.
 
+The stored API key is re-read on the same entry, with the secret backend
+re-probed first (``_reload_api_key``): ``core.secret_store`` resolves its
+backend and caches the value once per process, so a keyring that only started
+answering after boot stayed invisible — empty field, unauthenticated run —
+until the app was restarted. The read-back is one-way: it fills an empty field
+and never writes, because an empty save clears the stored key.
+
 The model value stays a text field (``CustomLineEdit``) plus a discovery combo
 beside it: the toolkit ``ComboBox`` is a painter-pipeline Button-based control
 with no editable text entry, so there is no "editable combo" equivalent to use
@@ -1040,6 +1047,70 @@ def build(dialog, p):  # type: ignore[no-untyped-def]
             pass
         _refresh_models(refresh=False)
 
+    #: Guard for the page-entry read-back: filling the field from the store must
+    #: never reach the save path. ``AiSettingsStore.save_field("api_key", "")``
+    #: routes to ``secret_store.store("")`` → ``clear()``, which wipes BOTH
+    #: keyring identities and the encrypted file — so a programmatic fill that
+    #: happened to read empty would destroy the user's stored key. Mirrors the
+    #: ``spin_sync`` guard used by the spin rows below.
+    key_sync = {"on": False}
+
+    def _reload_api_key() -> None:
+        """Re-probe the secret backend and show the key it can see *now*.
+
+        Both halves of the lookup are resolved once per process
+        (``secret_store.active_mode`` caches the backend, ``_session`` caches
+        the value) and nothing in the app re-probed them, so a keyring that was
+        not answering when the process booted stayed invisible for its whole
+        lifetime: an empty field here, and an unauthenticated transport, until a
+        restart. The page itself is built once per dialog too, so its own
+        ``current.api_key`` never refreshed either. One visit fixes both — this
+        is deliberately the only refresh point for the key.
+        """
+        try:
+            from core import secret_store
+        except Exception:
+            return
+        before = str(dialog.gallery_ai_api_key.text())
+        mode = ""
+        try:
+            secret_store.reset_backend_probe()
+            mode = secret_store.active_mode()
+            if mode != secret_store.MODE_SESSION:
+                # In the two persisted modes the session dict is only a copy;
+                # in MODE_SESSION it is the ONLY copy (no disk backup exists),
+                # so dropping it there would lose the key.
+                secret_store.forget_session_cache()
+            value = str(secret_store.load() or "")
+        except Exception:
+            logger.debug("AI key re-probe on page entry failed", exc_info=True)
+            return
+        # The discriminator for "key empty until restart": which backend this
+        # process believes in, and whether the store answers at all — lengths
+        # only, the value must never reach the log.
+        logger.info(
+            "AI key on page entry: backend=%s stored_length=%d field_length=%d",
+            mode,
+            len(value),
+            len(before),
+        )
+        if not value or before:
+            # An empty store stays empty, and a field that already holds
+            # something is the user's own (possibly in-progress) edit: never
+            # overwrite it, and never write "" here — that would clear.
+            return
+        key_sync["on"] = True
+        try:
+            dialog.gallery_ai_api_key.setText(value)
+        finally:
+            key_sync["on"] = False
+
+    def _on_api_key_edited(text) -> None:
+        """Persist a key edit the user made; a programmatic fill is guarded out."""
+        if key_sync["on"]:
+            return
+        _save_field("api_key", str(text))
+
     def _on_settings_section_shown(section_id: str) -> None:
         """Entering the gallery-AI page re-asks the provider for its catalog.
 
@@ -1048,14 +1119,19 @@ def build(dialog, p):  # type: ignore[no-untyped-def]
         2026-10-22: no manual refresh button — fetch on app start and on entry,
         and replace the combo only when the catalog differs, see
         ``_fill_model_list``).
+
+        The key is re-read first: ``_refresh_models`` sends the field's current
+        text, so a stale-empty key would make the catalog request itself
+        unauthenticated and report the key as rejected.
         """
         if section_id == "image_gallery.ai":
+            _reload_api_key()
             _refresh_models(refresh=True)
 
     try:
         dialog.gallery_ai_enabled.toggled.connect(lambda v: _save_field("enabled", bool(v)))
         dialog.gallery_ai_base_url.textChanged.connect(lambda t: _save_field("base_url", str(t)))
-        dialog.gallery_ai_api_key.textChanged.connect(lambda t: _save_field("api_key", str(t)))
+        dialog.gallery_ai_api_key.textChanged.connect(_on_api_key_edited)
         dialog.gallery_ai_model.textChanged.connect(_remember_current_model)
         dialog.gallery_ai_ask_tokens.textChanged.connect(_save_ask_tokens)
         dialog.gallery_ai_provider.currentIndexChanged.connect(
