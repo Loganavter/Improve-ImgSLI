@@ -653,6 +653,45 @@ def build(dialog, p):  # type: ignore[no-untyped-def]
     except Exception:
         pass
 
+    # THE MASTER GATE (owner's rule, 2026-10-25): the checkbox above is the
+    # permission on file ("may this profile call the provider at all"), so every
+    # control that spends that permission stays disabled until it is ticked.
+    # Without this the page offered two "AI on/off" switches — this box and the
+    # gallery toolbar sparkle — and the toolbar one silently did nothing.
+    dialog.gallery_ai_gated_controls = [
+        dialog.gallery_ai_provider_label,
+        dialog.gallery_ai_provider,
+        dialog.gallery_ai_base_url_label,
+        dialog.gallery_ai_base_url,
+        dialog.gallery_ai_api_key_label,
+        dialog.gallery_ai_api_key,
+        dialog.gallery_ai_model_label,
+        dialog.gallery_ai_model,
+        dialog.gallery_ai_model_list,
+        dialog.gallery_ai_ask_tokens_label,
+        dialog.gallery_ai_ask_tokens,
+        dialog.gallery_ai_effort_label,
+        dialog.gallery_ai_effort,
+        dialog.gallery_ai_edge_label,
+        dialog.gallery_ai_edge,
+        dialog.gallery_ai_samples_label,
+        dialog.gallery_ai_samples,
+        dialog.gallery_ai_judge_ceiling_label,
+        dialog.gallery_ai_judge_ceiling,
+        dialog.gallery_ai_judge_concurrency_label,
+        dialog.gallery_ai_judge_concurrency,
+    ]
+
+    def _apply_ai_enabled(checked: bool) -> None:
+        for _control in dialog.gallery_ai_gated_controls:
+            try:
+                _control.setEnabled(bool(checked))
+            except Exception:
+                continue
+
+    dialog.gallery_ai_enabled.toggled.connect(_apply_ai_enabled)
+    _apply_ai_enabled(dialog.gallery_ai_enabled.isChecked())
+
     # Assemble group rows
     if builder is not None:
         group_widget.add_widget(builder.row(dialog.gallery_ai_enabled))

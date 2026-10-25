@@ -61,6 +61,14 @@ _COMPARE_OPS = (ast.Eq, ast.NotEq, ast.In, ast.NotIn)
 #: each delete their own entries as they land.
 DOMAIN_READ_ALLOWLIST: dict[str, str] = {
     # --- W5/P9: read-path surfaces stop consulting the domain -----------------
+    'src/tabs/image_gallery/ui/widget_parts/view_prefs.py|sync(str(getattr(owner, "_judgment_domain", "algorithms") or "algorithms"))': (
+        "permission gate 2026-10-25: when the AI switch is REFUSED (AI not enabled) "
+        "the toggle has to be put back on the domain that is still active. The "
+        "toolbar has already flipped its own copy by the time the handler runs, so "
+        "the widget's ``_judgment_domain`` is the only truthful value — one read, "
+        "not a gate. Deleted with the rest once W5's resolver owns the transition."
+    ),
+    # --- W5/P9: read-path surfaces stop consulting the domain -----------------
     "src/tabs/image_gallery/use_cases/ai_analysis.py|live = getattr(owner, \"_judgment_domain\", None)": (
         "gallery-six 2026-10-22: the ONE shared AI-domain gate "
         "(``_epoch_is_current``) that every AI/Jev/tie-break emission AND landing "
@@ -155,6 +163,12 @@ DOMAIN_READ_ALLOWLIST: dict[str, str] = {
 
 #: Current ``== "ai"``-style gate sites (derived the same way).
 AI_COMPARE_ALLOWLIST: dict[str, str] = {
+    'src/tabs/image_gallery/ui/widget_parts/view_prefs.py|if dom == "ai" and not _ai_permission_enabled(owner):': (
+        "permission gate 2026-10-25: ``AiSettings.enabled`` is the permission for "
+        "every provider call, so the refusal applies to the AI domain ONLY — the "
+        "comparison IS the rule, and the algorithms branch is untouched. Removed "
+        "when W5's resolver/policy makes the domain transition one place."
+    ),
     # --- W5/P9: read-path surfaces -------------------------------------------
     "src/tabs/image_gallery/services/rank_badge.py|return RANK_SOURCE_JEV if dom == \"ai\" else RANK_SOURCE_FUSION": (
         "rank badge infers the ranker from the domain — W5/P9 renders the "

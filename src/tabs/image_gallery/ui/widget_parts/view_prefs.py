@@ -229,6 +229,52 @@ def _on_view_toggled(owner, checked: bool) -> None:
         pass
 
 
+def _ai_permission_enabled(owner) -> bool:
+    """May this profile call the provider at all (the settings checkbox)?
+
+    The toolbar sparkle only chooses WHICH judgment domain is shown; permission
+    lives in ``AiSettings.enabled`` (the same flag the metric profile, Ask-AI
+    and the tie-break consult). A widget without an attached controller (storeless
+    tests, an unwired preview) is not gated: there is no permission to deny.
+    """
+    try:
+        ctrl = getattr(owner, "_controller", None) or getattr(
+            owner, "_attached_controller", None
+        )
+        store = getattr(ctrl, "_ai_settings_store", None)
+        if store is None:
+            return True
+        return bool(getattr(store.load(), "enabled", False))
+    except Exception:
+        return True
+
+
+def _open_ai_settings_page() -> bool:
+    """Open Settings on the Image Gallery — AI page (where the permission is)."""
+    try:
+        from ui.actions.registry import get_action_registry
+
+        action = get_action_registry().get("settings.page.image_gallery.ai")
+        runner = getattr(action, "run", None)
+        if callable(runner):
+            runner()
+            return True
+    except Exception:
+        pass
+    return False
+
+
+def _revert_domain_switch(owner) -> None:
+    """Put the sparkle back on the domain that is actually active."""
+    try:
+        toolbar = getattr(owner, "toolbar", None)
+        sync = getattr(toolbar, "set_judgment_domain", None)
+        if callable(sync):
+            sync(str(getattr(owner, "_judgment_domain", "algorithms") or "algorithms"))
+    except Exception:
+        pass
+
+
 def _on_domain_changed(owner, domain: str) -> None:
     """Toolbar domain switch changed — normalize, store, mirror.
 
@@ -246,6 +292,13 @@ def _on_domain_changed(owner, domain: str) -> None:
     dom = str(domain or "").strip().lower()
     if dom not in valid:
         dom = "algorithms"
+    if dom == "ai" and not _ai_permission_enabled(owner):
+        # Permission is off: do not switch the view. Send the user to the page
+        # that owns the permission and leave the switch where it was
+        # (owner's rule 2026-10-25) — the alternative was a silent no-op.
+        _open_ai_settings_page()
+        _revert_domain_switch(owner)
+        return
     owner._judgment_domain = dom
     try:
         ctrl = getattr(owner, "_controller", None) or getattr(
