@@ -19,6 +19,11 @@ logger = logging.getLogger(APP_LOGGER_NAME)
 class MainWindowStartupRuntime:
     def __init__(self, window):
         self.window = window
+        # Deferred startup work is released by ``notify_first_frame_presented``
+        # (end of ``MainWindowStartupController.show()``, after the drain that
+        # paints and flushes frame 1) — see ``after_first_frame``.
+        self._first_frame_presented = False
+        self._pending_after_first_frame: list = []
 
     def build_shell(self) -> None:
         window = self.window
@@ -248,7 +253,33 @@ class MainWindowStartupRuntime:
 
         startup_mark("startup.visual_ready")
         window.startupVisualReady.emit()
-        QTimer.singleShot(0, self._load_deferred_startup_modules)
+        self.after_first_frame(self._load_deferred_startup_modules)
+
+    def after_first_frame(self, callback) -> None:
+        """Run *callback* once, after the window's first frame is presented.
+
+        ``emit_visual_ready`` runs inside the startup pipeline, before
+        ``MainWindowStartupController.show()``; its 0-timer therefore fired in
+        that method's drain (4x ``processEvents``) — i.e. the whole deferred
+        block (plugin/tab discovery, picker icon sync) ran while nothing was on
+        screen yet, unmeasured and blocking the first visible frame.
+        ``notify_first_frame_presented`` releases the queue on the next
+        event-loop turn, after the drain painted and flushed frame 1.
+        """
+        if self._first_frame_presented:
+            QTimer.singleShot(0, callback)
+            return
+        self._pending_after_first_frame.append(callback)
+
+    def notify_first_frame_presented(self) -> None:
+        """Release the ``after_first_frame`` queue (called once, post-drain)."""
+        if self._first_frame_presented:
+            return
+        self._first_frame_presented = True
+        pending = self._pending_after_first_frame
+        self._pending_after_first_frame = []
+        for callback in pending:
+            QTimer.singleShot(0, callback)
 
     def _load_deferred_startup_modules(self) -> None:
         window = self.window

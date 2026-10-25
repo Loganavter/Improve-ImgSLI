@@ -439,3 +439,59 @@ def show_clean_review(owner, _triage_owner=None) -> None:
         overlay.show_for(actual_owner)
     except Exception:
         pass
+
+
+# -- judge-run continue affordance (board 2026-10-24) -------------------------
+# A call ceiling stops ONE AI pass and parks the cards it refused
+# (``use_cases/judge_budget``). The catalogue row lives in
+# ``use_cases/registration.judge_continue_descriptor``; the strip's button reads
+# the SAME two controller attributes through these functions, so the visible and
+# catalogue affordances cannot disagree.
+
+
+def _triage_controller(owner):
+    """The object the judge-run flag is read from (attached controller, or owner).
+
+    ``_owner_for_triage`` is the widget's documented resolver (attached
+    controller first, itself when unattached) — never a parent walk.
+    """
+    resolver = getattr(owner, "_owner_for_triage", None)
+    if callable(resolver):
+        try:
+            resolved = resolver()
+        except Exception:
+            resolved = None
+        if resolved is not None:
+            return resolved
+    return owner
+
+
+def _judge_continue_state(owner) -> tuple[bool, int]:
+    """``(available, parked)`` read from the controller ledger — never a copy.
+
+    Same predicate/count the catalogue row uses, so a click here and Find
+    Action cannot disagree about whether a run is parked.
+    """
+    ctrl = _triage_controller(owner)
+    try:
+        if not bool(getattr(ctrl, "judge_run_continue_available", False)):
+            return False, 0
+        parked = int(getattr(ctrl, "judge_run_parked_count", 0) or 0)
+    except Exception:
+        return False, 0
+    return True, max(0, parked)
+
+
+def _on_continue_judge(owner) -> None:
+    """Click target of the strip's continue button: run the registered action.
+
+    Dispatched by ID through ``use_cases.registration.run_action`` so the
+    visible control and Find Action run the SAME handler — which owns the
+    "nothing parked" refusal and never starts a fresh pass.
+    """
+    try:
+        from tabs.image_gallery.use_cases import registration as _registration
+
+        _registration.run_action(_triage_controller(owner), "gallery.continue-judge")
+    except Exception:
+        pass

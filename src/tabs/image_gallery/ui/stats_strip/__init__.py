@@ -10,6 +10,11 @@ Signals:
     cleanClicked    — Clean rejected (live count).
     compareClicked  — Compare finalists.
 
+The judge-run continue button (``continue_button``) is the one strip action with
+no signal: it dispatches the registered ``gallery.continue-judge`` handler
+itself (through the owner's ``_owner_for_triage``), because its state and click
+target live in the controller/action layer, not in a widget slot.
+
 The old active-metric-profile chip (and the domain flyout it opened) was
 deleted with the manual domain pin (owner decision 2026-10-20, plan
 ``plan-gallery-analysis-engine-2026-10-20`` §Product decision): the measured
@@ -21,7 +26,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QHBoxLayout, QWidget
 
@@ -231,6 +236,53 @@ class StatsStrip(QWidget):
             pass
         layout.addWidget(self._compare_btn)
 
+        # Judge-run continue affordance (board 2026-10-24): a call ceiling stops
+        # ONE AI pass and parks the cards it refused (``use_cases/judge_budget``).
+        # The ActionRegistry row ``gallery.continue-judge`` is the catalog side;
+        # this is the VISIBLE one, in the same action family as the three above.
+        # The strip never keeps its own copy of the state: the provider below
+        # reads the controller's ledger (``judge_run_continue_available`` /
+        # ``judge_run_parked_count``) — the same two reads the registry row makes.
+        self._continue_btn = Button(
+            text=self._continue_label(0),
+            variant="ghost",
+            size=(0, 24),
+            parent=self,
+        )
+        self._continue_btn.setObjectName("gallery_continue_judge")
+        try:
+            self._continue_btn.setForegroundColor(_stats_text_color())
+            self._continue_btn.setBorderColor(_thin_border_color())
+        except Exception:
+            pass
+        try:
+            self._continue_btn.clicked.connect(self._on_continue_btn_clicked)
+            self._continue_btn.setEnabled(False)
+            self._continue_btn.hide()
+        except Exception:
+            pass
+        layout.addWidget(self._continue_btn)
+        # Click target + state provider. Both default to the gallery's own
+        # action bodies (``ui/widget_parts/triage_actions``) resolved through the
+        # widget's documented ``_owner_for_triage``; a host that knows better
+        # can override either via the setters below.
+        self._continue_source = None
+        self._continue_handler = None
+        self._continue_state: tuple[bool, int] = (False, 0)
+        self._continue_applied: tuple[bool, int] | None = None
+        # WHY a timer instead of a signal: the controller has no Qt signal for a
+        # ceiling stop — the pass parks cards inside ``ai_analysis`` and the only
+        # notification today goes to the ActionRegistry row. The strip therefore
+        # PULLS the predicate while it is visible (two attribute reads per tick,
+        # a repaint only when the value actually changed). Started/stopped from
+        # show/hide so a hidden strip costs nothing.
+        self._continue_poll = QTimer(self)
+        try:
+            self._continue_poll.setInterval(400)
+            self._continue_poll.timeout.connect(self.refresh_continue_state)
+        except Exception:
+            pass
+
         self._mode_chip = Text("FIDELITY MODE · source: …", mode="plain", pixel_size=11, parent=self)
         self._mode_chip.setObjectName("gallery_mode_chip")
         try:
@@ -341,6 +393,165 @@ class StatsStrip(QWidget):
             except Exception:
                 pass
 
+    # -- judge-run continue affordance (board 2026-10-24) -----------------
+
+    def _continue_label(self, parked: int) -> str:
+        """The button label, naming the parked count when there is one.
+
+        Reuses the ONE existing translated key (``image_gallery.action.continue_judge``)
+        — no new i18n — with the count appended as the sibling "Clean rejected
+        ({n})" affordance does through its own key's placeholder.
+        """
+        base = self._t("image_gallery.action.continue_judge", "Continue AI analysis")
+        try:
+            n = int(parked)
+        except Exception:
+            n = 0
+        return f"{base} ({n})" if n > 0 else base
+
+    def set_continue_source(self, source) -> None:
+        """Override the pull provider ``() -> (available, parked)`` (or clear it).
+
+        The default provider reads the controller's ledger (the same two
+        attributes the ActionRegistry row reads), so the strip holds no copy of
+        the flag and the visible control cannot disagree with Find Action.
+        """
+        self._continue_source = source if callable(source) else None
+        self.refresh_continue_state()
+
+    def set_continue_handler(self, handler) -> None:
+        """Override the click target (default: dispatch ``gallery.continue-judge``)."""
+        self._continue_handler = handler if callable(handler) else None
+
+    def _continue_owner(self):
+        """The gallery widget this strip belongs to (constructed with it as parent)."""
+        try:
+            return self.parent()
+        except Exception:
+            return None
+
+    def _default_continue_state(self) -> tuple[bool, int]:
+        owner = self._continue_owner()
+        if owner is None:
+            return False, 0
+        try:
+            from tabs.image_gallery.ui.widget_parts import triage_actions
+
+            return triage_actions._judge_continue_state(owner)
+        except Exception:
+            return False, 0
+
+    def _run_default_continue_action(self) -> None:
+        owner = self._continue_owner()
+        if owner is None:
+            return
+        try:
+            from tabs.image_gallery.ui.widget_parts import triage_actions
+
+            triage_actions._on_continue_judge(owner)
+        except Exception:
+            pass
+
+    def _apply_continue_affordance(self, available: bool, parked: int) -> None:
+        """Render the continue button for ``(available, parked)`` — unconditional."""
+        available = bool(available)
+        try:
+            parked_n = max(0, int(parked)) if available else 0
+        except Exception:
+            parked_n = 0
+        try:
+            self._continue_btn.setText(self._continue_label(parked_n))
+        except Exception:
+            pass
+        try:
+            if self._continue_btn.isEnabled() != available:
+                self._continue_btn.setEnabled(available)
+        except Exception:
+            pass
+        try:
+            if self._action_affordance.get("continue") != available:
+                self._apply_action_affordance(self._continue_btn, available)
+                self._action_affordance["continue"] = available
+        except Exception:
+            pass
+        # Gone when there is nothing parked: this is a stop-specific affordance,
+        # not a permanent strip action (the three stable ones above disable, they
+        # never vanish). A folder change drops the run ⇒ the button drops too.
+        try:
+            self._continue_btn.setVisible(available)
+        except Exception:
+            pass
+
+    def set_continue_state(self, available: bool, parked: int = 0) -> None:
+        """Show/enable the continue affordance for a parked judge run (no-op if same)."""
+        try:
+            state = (bool(available), max(0, int(parked)) if available else 0)
+        except Exception:
+            state = (False, 0)
+        self._continue_state = state
+        if state == self._continue_applied:
+            return
+        self._continue_applied = state
+        self._apply_continue_affordance(*state)
+
+    def refresh_continue_state(self) -> None:
+        """Pull ``(available, parked)`` from the owner and apply it."""
+        source = self._continue_source
+        if not callable(source):
+            source = self._default_continue_state
+        try:
+            available, parked = source()
+        except Exception:
+            return
+        try:
+            self.set_continue_state(bool(available), int(parked or 0))
+        except Exception:
+            pass
+
+    def _on_continue_btn_clicked(self) -> None:
+        """Run the click target, then re-read the ledger.
+
+        No Qt signal here on purpose: a signal + a default dispatch would be two
+        ways to run ONE action, and a future ``widget.py`` connection would
+        double-dispatch the judge run. The handler is the single entry point.
+        """
+        handler = self._continue_handler
+        if callable(handler):
+            try:
+                handler()
+            except Exception:
+                pass
+        else:
+            self._run_default_continue_action()
+        # The resumed window re-parks what does not fit: re-read NOW instead of
+        # waiting for the next tick, so a single click cannot leave a lit button
+        # pointing at a run that already ended.
+        self.refresh_continue_state()
+
+    def showEvent(self, event) -> None:  # noqa: N802
+        try:
+            self._continue_poll.start()
+        except Exception:
+            pass
+        try:
+            self.refresh_continue_state()
+        except Exception:
+            pass
+        try:
+            super().showEvent(event)
+        except Exception:
+            pass
+
+    def hideEvent(self, event) -> None:  # noqa: N802
+        try:
+            self._continue_poll.stop()
+        except Exception:
+            pass
+        try:
+            super().hideEvent(event)
+        except Exception:
+            pass
+
     def _apply_action_affordance(self, btn: Button, enabled: bool) -> None:
         """Swap an action button's text/border tokens to match *enabled*.
 
@@ -407,6 +618,12 @@ class StatsStrip(QWidget):
             compare_enabled = self._compare_btn.isEnabled()
             self._apply_action_affordance(self._compare_btn, compare_enabled)
             self._action_affordance["compare"] = compare_enabled
+        except Exception:
+            pass
+        try:
+            continue_enabled = self._continue_btn.isEnabled()
+            self._apply_action_affordance(self._continue_btn, continue_enabled)
+            self._action_affordance["continue"] = continue_enabled
         except Exception:
             pass
         try:
@@ -609,6 +826,12 @@ class StatsStrip(QWidget):
             self._apply_rank_provenance()
         except Exception:
             pass
+        # The continue label carries a translated caption + the count: re-render
+        # it even when the state itself did not change (language switch).
+        try:
+            self._apply_continue_affordance(*self._continue_state)
+        except Exception:
+            pass
 
     def set_mode(self, mode: str, source: str | Path | None = None) -> None:
         mode_up = str(mode or "fidelity").strip().upper()
@@ -653,3 +876,8 @@ class StatsStrip(QWidget):
     @property
     def clean_button(self) -> Button:
         return self._clean_btn
+
+    @property
+    def continue_button(self) -> Button:
+        """The judge-run continue affordance (hidden unless a run is parked)."""
+        return self._continue_btn

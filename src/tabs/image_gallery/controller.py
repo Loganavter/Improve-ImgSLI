@@ -213,6 +213,31 @@ def _clear_profile_reject(owner) -> None:
         logger.debug("metric profile reject state clear failed", exc_info=True)
 
 
+def _refresh_continue_action(owner) -> None:
+    """Re-register the judge-run continue row from the live ceiling state.
+
+    Module-level (not a method) because the ceiling stop is observed at the
+    entry points and in ``_next_folder_gen`` — doubles that borrow
+    ``GalleryController.analyze``/``_next_folder_gen`` bind them unbound and
+    must not grow a new attribute to keep working. Fail-open by contract.
+
+    The ``isinstance`` gate is deliberate, not a swallow: contract tests drive
+    these entry points with a FAKE owner (the _CacheHitOwner double in
+    tests/contracts/test_gallery_judge_profile_stamp.py) that has no registry —
+    refreshing there would register a catalog row whose ``run`` closes over a
+    throwaway object. Only the real controller — the object that owns the budget
+    ledger — may move the row.
+    """
+    if not isinstance(owner, GalleryController):
+        return
+    from tabs.image_gallery.use_cases import registration as _registration
+
+    try:
+        _registration.refresh_judge_continue_action(owner)
+    except Exception:
+        logger.debug("continue-affordance refresh failed", exc_info=True)
+
+
 # Proxy decode-cache bound: owned by services/proxy.py (PROXY_CACHE_LIMIT);
 # batch delivery trims oldest-inserted entries down to that bound (96 x
 # <= ~3 MB ~= <= 288 MB while covering a typical folder's working set;
@@ -392,6 +417,12 @@ class GalleryController:
                 queue.clear()
         except Exception:
             pass
+        # Fresh world: the judge run's budget ledger belongs to the OLD
+        # generation (``judge_budget`` keys it by ``_folder_gen``), so a ceiling
+        # stop from the closed folder must not leave a runnable continue row
+        # behind — the parked cards are not in this pool at all.
+        self._judge_run = None
+        _refresh_continue_action(self)
         return self._folder_gen
 
     def clear_to_empty(self) -> None:
@@ -1347,7 +1378,12 @@ class GalleryController:
 
         if getattr(ctx, "backend", None) == BACKEND_AI:
             _judge_budget.begin_judge_run(self, len(getattr(ctx, "targets", ()) or ()))
-        return _ai_analysis.analyze(self, ctx)
+        result = _ai_analysis.analyze(self, ctx)
+        # The ceiling stops INSIDE the pass, so the catalogue row is refreshed
+        # once the pass returns (business end of the affordance, board
+        # 2026-10-24): a parked card must leave a runnable row behind.
+        _refresh_continue_action(self)
+        return result
 
     def reanalyze(self, ctx):
         """Force a fresh analysis of ``ctx.targets`` (cache bypass)."""
@@ -1360,7 +1396,10 @@ class GalleryController:
             # number of cards that will ask for a call (still an upper bound:
             # the sampling lane may merge after the first draw).
             _judge_budget.begin_judge_run(self, len(getattr(ctx, "targets", ()) or ()))
-        return _ai_analysis.reanalyze(self, ctx)
+        result = _ai_analysis.reanalyze(self, ctx)
+        # Same tail as ``analyze``: a re-analyze pass can hit the ceiling too.
+        _refresh_continue_action(self)
+        return result
 
     @property
     def judge_run_continue_available(self) -> bool:
@@ -1374,11 +1413,32 @@ class GalleryController:
 
         return _judge_budget.judge_run_continue_available(self)
 
+    @property
+    def judge_run_parked_count(self) -> int:
+        """How many cards the ceiling parked (the continue row's count).
+
+        Reads the SAME ledger the availability predicate reads
+        (``judge_budget._JudgeRun.skipped``) — there is no second counter, and
+        the count is 0 whenever the affordance itself is False.
+        """
+        if not self.judge_run_continue_available:
+            return 0
+        run = getattr(self, "_judge_run", None)
+        try:
+            return len(getattr(run, "skipped", ()) or ())
+        except Exception:
+            return 0
+
     def continue_judge_run(self) -> bool:
         """Continue the stopped judge run over the cards the ceiling refused."""
         from tabs.image_gallery.use_cases import judge_budget as _judge_budget
 
-        return _judge_budget.continue_judge_run(self)
+        resumed = _judge_budget.continue_judge_run(self)
+        # The parked list changed (emptied, or re-parked one window later), so
+        # the catalogue row must follow it — a cached row would be a stale
+        # button pointing at a run that is over.
+        _refresh_continue_action(self)
+        return resumed
 
     def analyze_item_by_path(self, path: Path):
         """Deprecated point adapter — builds ``targets=(path,)`` and analyzes."""
