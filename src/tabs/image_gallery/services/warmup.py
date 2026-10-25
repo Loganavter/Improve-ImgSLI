@@ -20,10 +20,10 @@ old lazy behaviour). Never raises; never touches Qt from the thread.
 from __future__ import annotations
 
 import logging
-import os
 import threading
 import time
 from core.log_names import APP_LOGGER_NAME
+from shared.debug_flags import env_value as _env_value
 
 logger = logging.getLogger(APP_LOGGER_NAME)
 
@@ -34,7 +34,7 @@ _lock = threading.Lock()
 
 def _disabled() -> bool:
     try:
-        value = os.environ.get("IMGSLI_GALLERY_NO_WARMUP", "")
+        value = _env_value("IMGSLI_GALLERY_NO_WARMUP", "")
         return str(value).strip().lower() in ("1", "true", "yes", "on")
     except Exception:
         return False

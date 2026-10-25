@@ -54,7 +54,6 @@ Audit-Meta: pattern=state-machine size=exempt reason="one tile-array render life
 from __future__ import annotations
 
 import logging
-import os
 import struct
 import time
 from collections.abc import Mapping
@@ -98,6 +97,7 @@ from engine.gpu.host_texture_cache import DEFAULT_HOST_TEXTURE_CACHE_BUDGET_BYTE
 from engine.gpu.mip_cascade import MipCascadeGenerator
 from engine.gpu.rt_y_orientation import composited_clip_correction
 from core.log_names import APP_LOGGER_NAME
+from shared.debug_flags import env_value as _env_value
 
 logger = logging.getLogger(APP_LOGGER_NAME)
 
@@ -1105,8 +1105,8 @@ class SingleImageTiledView:
             clip_matrix=self._clip_matrix(),
         )
         if (
-            os.environ.get("IMGSLI_TILED_VIEW_DEBUG")
-            or os.environ.get("IMGSLI_QL_COVER_DEBUG")
+            _env_value("IMGSLI_TILED_VIEW_DEBUG")
+            or _env_value("IMGSLI_QL_COVER_DEBUG")
         ) and not getattr(self, "_dbg_logged", False):
             try:
                 self._dbg_logged = True
@@ -1165,7 +1165,7 @@ class SingleImageTiledView:
         Ground truth for "is the array actually populated?" (DEBUGGING.md:
         pixel readback, never JSONL bookkeeping). Fires once per source.
         """
-        if not os.environ.get("IMGSLI_TILED_VIEW_DEBUG"):
+        if not _env_value("IMGSLI_TILED_VIEW_DEBUG"):
             return
         if getattr(self, "_dbg_rb", None) is not None or getattr(
             self, "_dbg_rb_done", False

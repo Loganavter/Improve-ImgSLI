@@ -234,9 +234,9 @@ class DragDropOverlayPass(CanvasRenderPass):
         overlay pass without flooding per-frame logs. Sigs are namespaced
         per call site (dict slot) so prepare/record don't evict each other.
         """
-        import os
+        from shared.debug_flags import env_value as _env_value
 
-        if not os.environ.get("IMGSLI_IC_DEBUG"):
+        if not _env_value("IMGSLI_IC_DEBUG"):
             return
         seen = getattr(self, "_dnd_dbg_sigs", None)
         if seen is None:

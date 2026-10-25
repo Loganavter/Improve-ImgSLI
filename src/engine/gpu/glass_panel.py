@@ -148,6 +148,7 @@ from PySide6.QtGui import (
 
 from engine.gpu.rt_y_orientation import widget_texture_needs_y_flip
 from core.log_names import APP_LOGGER_NAME
+from shared.debug_flags import env_value as _env_value
 
 _logger = logging.getLogger(APP_LOGGER_NAME)
 
@@ -158,7 +159,7 @@ _logger = logging.getLogger(APP_LOGGER_NAME)
 # wrong panel's own texture (see the "reflection" investigation this was
 # added for: a panel's composite output visually matching *another* live
 # panel's size/shape, not its own).
-_GLASS_PANEL_DEBUG = os.environ.get("IMGSLI_GLASS_PANEL_DEBUG", "").strip().lower() not in (
+_GLASS_PANEL_DEBUG = (_env_value("IMGSLI_GLASS_PANEL_DEBUG", "") or "").strip().lower() not in (
     "",
     "0",
     "false",
@@ -186,7 +187,7 @@ _COMPOSITE_UBUF_SIZE = 80
 # order, see GlassPanelRenderer._debug_tint_for) -- a fast screenshot-level
 # test for "which panel's texture is actually showing up where" (see the
 # cross-panel-reflection investigation in git history/chat).
-_DEBUG_TINT_ENABLED = os.environ.get("IMGSLI_GLASS_PANEL_DEBUG_TINT", "").strip().lower() not in (
+_DEBUG_TINT_ENABLED = (_env_value("IMGSLI_GLASS_PANEL_DEBUG_TINT", "") or "").strip().lower() not in (
     "",
     "0",
     "false",
@@ -213,7 +214,7 @@ _DEBUG_TINT_PALETTE = [
 # outlined -- directly answers "does colorTexture() itself already contain
 # the other panel's sprite at this rect" vs. "does our own crop/blur
 # introduce it downstream of a correct source read."
-_DEBUG_DUMP_DIR = os.environ.get("IMGSLI_GLASS_PANEL_DEBUG_DUMP")
+_DEBUG_DUMP_DIR = _env_value("IMGSLI_GLASS_PANEL_DEBUG_DUMP")
 _DEBUG_DUMP_EVERY_N_FRAMES = 5
 
 

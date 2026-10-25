@@ -28,8 +28,9 @@ import time
 from sli_ui_toolkit.core.logging import get_log_directory
 
 from core.log_names import APP_LOGGER_NAME
+from shared.debug_flags import env_value as _env_value
 
-_ENABLED = os.environ.get("IMGSLI_TILE_DUMP", "").strip().lower() not in (
+_ENABLED = (_env_value("IMGSLI_TILE_DUMP", "") or "").strip().lower() not in (
     "",
     "0",
     "false",

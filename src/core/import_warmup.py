@@ -17,10 +17,10 @@ from __future__ import annotations
 
 import importlib
 import logging
-import os
 import sys
 import threading
 from core.log_names import APP_LOGGER_NAME
+from shared.debug_flags import env_value as _env_value
 
 logger = logging.getLogger(f"{APP_LOGGER_NAME}.import_warmup")
 
@@ -35,7 +35,7 @@ DEFAULT_MODULES: tuple[str, ...] = (
 
 
 def enabled() -> bool:
-    return os.environ.get("IMGSLI_IMPORT_WARMUP", "").strip().lower() not in (
+    return (_env_value("IMGSLI_IMPORT_WARMUP", "") or "").strip().lower() not in (
         "0",
         "false",
         "no",

@@ -445,9 +445,9 @@ def handle_wheel_event(widget, event: QWheelEvent) -> None:
 
 def _rmb_surface_override():
     """Optional A/B: ``IMGSLI_MC_RMB_SURFACE=in_window|popup``."""
-    import os
+    from shared.debug_flags import env_value as _env_value
 
-    raw = os.environ.get("IMGSLI_MC_RMB_SURFACE", "").strip().lower()
+    raw = (_env_value("IMGSLI_MC_RMB_SURFACE", "") or "").strip().lower()
     if raw in ("in_window", "popup"):
         return raw
     return None

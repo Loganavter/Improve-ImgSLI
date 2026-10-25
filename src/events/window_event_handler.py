@@ -1,11 +1,11 @@
 import logging
-import os
 import traceback
 
 from PySide6.QtCore import QObject, QPoint, Qt, QTimer
 from PySide6.QtGui import QDragEnterEvent, QDragMoveEvent, QDropEvent
 
 from shared.debug_flags import env_flag as _env_flag
+from shared.debug_flags import env_value as _env_value
 from core.log_names import APP_LOGGER_NAME
 
 logger = logging.getLogger(APP_LOGGER_NAME)
@@ -192,7 +192,7 @@ class WindowEventHandler(QObject):
         # DEBUG-ONLY phase probe, honored under IMGSLI_DND_DEBUG (prod never sleeps).
         try:
             _enter_delay = (
-                float(os.environ.get("IMGSLI_DND_ENTER_DELAY_MS", "0") or 0)
+                float(_env_value("IMGSLI_DND_ENTER_DELAY_MS", "0") or 0)
                 if _env_flag("IMGSLI_DND_DEBUG")
                 else 0.0
             )

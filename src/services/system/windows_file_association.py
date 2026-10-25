@@ -11,10 +11,10 @@ thumbnails (``IThumbnailProvider``) are still a separate native shell extension
 from __future__ import annotations
 
 import logging
-import os
 import sys
 from pathlib import Path
 from core.log_names import APP_LOGGER_NAME
+from shared.debug_flags import env_value as _env_value
 
 logger = logging.getLogger(APP_LOGGER_NAME)
 
@@ -205,7 +205,7 @@ def ensure_windows_file_association() -> None:
     """Idempotent startup hook for frozen Windows builds."""
     if not _is_windows() or not getattr(sys, "frozen", False):
         return
-    if os.environ.get("IMGSLI_SKIP_FILE_ASSOCIATION", "").strip().lower() in {
+    if (_env_value("IMGSLI_SKIP_FILE_ASSOCIATION", "") or "").strip().lower() in {
         "1",
         "true",
         "yes",
