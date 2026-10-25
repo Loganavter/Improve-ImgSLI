@@ -661,7 +661,7 @@ def test_catalog_declares_the_four_verbs_with_valid_schemas():
 
     open_file = tools["open_file"]["inputSchema"]
     assert open_file["required"] == ["path"]
-    assert set(open_file["properties"]) == {"path", "tab"}
+    assert set(open_file["properties"]) == {"path", "tab", "slot", "side"}
     assert open_file["additionalProperties"] is False
     assert tools["open_file"]["outputSchema"]["properties"]["tab"]
 
@@ -772,6 +772,19 @@ def _backend(tmp_path, *, client=None, settings=None) -> AppBackend:
                 "source": "live",
             },
             {"path": "/img/shot.png", "tab": "image_gallery"},
+        ),
+        (
+            "open_file",
+            {"path": "/img/shot.png", "slot": 2},
+            {"opened": True, "path": "/img/shot.png", "tab": "image_compare", "count": 1},
+            {
+                "opened": True,
+                "path": "/img/shot.png",
+                "tab": "image_compare",
+                "count": 1,
+                "source": "live",
+            },
+            {"path": "/img/shot.png", "slot": 2},
         ),
         (
             "open_properties",

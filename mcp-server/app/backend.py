@@ -770,13 +770,22 @@ class AppBackend:
             "source": "fallback",
         }
 
-    def open_file(self, *, path: str, tab: str | None = None) -> dict:
+    def open_file(
+        self,
+        *,
+        path: str,
+        tab: str | None = None,
+        slot: int | None = None,
+        side: str | None = None,
+    ) -> dict:
         return self._live_or_fallback(
             "open_file",
             lambda: self._fallback_open_file(path=path),
             mutating=True,
             path=path,
             tab=tab,
+            slot=slot,
+            side=side,
         )
 
     def _fallback_open_file(self, *, path: str) -> dict:
@@ -785,7 +794,8 @@ class AppBackend:
         A headless boot has no control channel to hand a file to (the same
         reason ``open_folder`` reports ``routed: false``), so answering
         "opened" here would be a lie. The path is validated first, so bad input
-        fails identically on both paths.
+        fails identically on both paths. A ``slot``/``side`` hint is accepted by
+        the live path only and never fabricates a receiver here.
         """
         target = Path(path).expanduser()
         if not target.is_file():

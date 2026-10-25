@@ -182,6 +182,10 @@ def test_finite_values_expose_enums_and_defaults(wired):
     assert open_folder["properties"]["slot"]["enum"] == [1, 2]
     assert open_folder["properties"]["side"]["enum"] == ["left", "right", "top", "bottom"]
     assert open_folder["required"] == ["path"], "slot/side are optional placement hints"
+    open_file = tools["open_file"]["inputSchema"]
+    assert open_file["properties"]["slot"]["enum"] == [1, 2]
+    assert open_file["properties"]["side"]["enum"] == ["left", "right", "top", "bottom"]
+    assert open_file["required"] == ["path"], "one file, optional placement hint"
     read_log = tools["read_log"]["inputSchema"]["properties"]["n"]
     assert read_log["default"] == 200 and read_log["type"] == "integer"
     assert tools["list_actions"]["inputSchema"]["additionalProperties"] is False

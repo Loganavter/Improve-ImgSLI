@@ -1106,12 +1106,27 @@ class LiveBackend:
         return payload
 
     def open_file(
-        self, *, client: LiveClient | None = None, path: str, tab: str | None = None
+        self,
+        *,
+        client: LiveClient | None = None,
+        path: str,
+        tab: str | None = None,
+        slot: int | None = None,
+        side: str | None = None,
     ) -> dict:
-        """Route one file into the running app's accepting tab (see open_file)."""
+        """Route one file into the running app's accepting tab (see open_file).
+
+        ``slot``/``side`` are the same placement hints ``open_folder`` sends:
+        they travel on the wire only when set, so a hintless call stays exactly
+        the payload it always was.
+        """
         params: dict[str, Any] = {"path": path}
         if tab:
             params["tab"] = tab
+        if slot is not None:
+            params["slot"] = int(slot)
+        if side:
+            params["side"] = side
         result = self._request("open_file", params, client)
         return {
             "opened": bool(result.get("opened", True)),
