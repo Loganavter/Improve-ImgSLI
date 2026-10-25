@@ -22,7 +22,11 @@ Plus the integration contract: ``rank_series(pairwise_order=...)`` is the
 opt-in rank source (callers that do not pass it keep today's ordering), and the
 pointwise quality numbers survive the pairwise order untouched.
 
-Runs offscreen; no network, no window (the judge is a scripted callable).
+Runs offscreen; no network, no window (the judge is a scripted callable). The
+wiring section drives the pass through its PRODUCTION entry points — the
+explicit domain switch and the terminal-rank tail of a settled judge run
+(``analysis_batch.dispatch_terminal_rank``) — never only by calling
+``start_pairwise_refinement`` directly.
 """
 
 from __future__ import annotations
@@ -40,6 +44,7 @@ from tabs.image_gallery.services import ai_settings_store as store_module
 from tabs.image_gallery.services.ai_settings_store import AiSettings, AiSettingsStore
 from tabs.image_gallery.services.rank_fusion import item_quality, rank_series
 from tabs.image_gallery.use_cases import ai_analysis
+from tabs.image_gallery.use_cases import analysis_batch
 from tabs.image_gallery.use_cases import judge_budget
 from tabs.image_gallery.use_cases.pairwise_rank import (
     ANSWER_FIRST,
@@ -452,6 +457,15 @@ def _wired_owner(items, **settings_overrides):
     ctl._sched_active = 0
     ctl._sched_peak = 0
     ctl._AI_VISIBLE_CAP = 4
+    # The Algorithms-domain terminal ranker: a NO-OP that only records, exactly
+    # like the real ``_run_jev_ranks`` (it refuses off the AI domain). The
+    # pairwise tail hangs off the same trigger, so this must still be called.
+    ctl.jev_calls = 0
+
+    def _run_jev_ranks() -> None:
+        ctl.jev_calls += 1
+
+    ctl._run_jev_ranks = _run_jev_ranks
     return ctl
 
 
@@ -657,3 +671,271 @@ def test_wiring_keeps_each_series_pairwise_order_across_applies(monkeypatch) -> 
         worker.run()
 
     assert [it.rank for it in items] == [2, 1, 2, 1], "both series keep their order"
+
+
+# -- the TERMINAL-RANK trigger: a settled judge run refines its own order -----
+#
+# Board 2026-10-25: the pass had exactly ONE production caller — the manual
+# domain switch — so a series that had just been judged kept its pointwise
+# order until the user flipped the domain and back (measured live: a completed
+# run, ledger ``{pointwise: 4, pairwise: 0}``, not one ``judge_pairwise.*``
+# line). The tail now hangs off ``analysis_batch.dispatch_terminal_rank`` — the
+# ONE "the matrix has settled" trigger — and runs AFTER the pointwise order is
+# applied and OUTSIDE ``_apply_fusion_ranks`` (that primitive is how this very
+# pass applies its result, so a trigger inside it would re-enter itself).
+#
+# Falsification stories (each assertion fails with the wiring absent):
+# (k) a settled run with the flag ON starts exactly ONE pass and its order is
+#     APPLIED (the ranks flip) — at the base commit the terminal path schedules
+#     nothing, so ``launched`` stays empty and the pointwise order stands;
+# (l) a second trigger while the pass is in flight starts none, and a re-run
+#     over the same verdicts spends ZERO judge calls;
+# (m) the flag OFF keeps the ``skip reason=disabled`` line (ONE per run) and
+#     builds no client — before the wiring that line did not exist on this path;
+# (n) a folder switch during the pass discards the late result and does not
+#     block the new folder's pass;
+# (o) a wide-spread (decided) series traces ``skip reason=decided`` and spends
+#     nothing;
+# (p) an unusable AI row is the ERROR form of the trace, schedules no worker and
+#     keeps the pointwise order (fail open, never a card error);
+# (q) an INCOMPLETE matrix (``analysis_batch.pending()`` non-zero) starts
+#     neither the ranker nor the pass.
+
+
+def _install_client(monkeypatch, judge):
+    """Point the PRODUCTION client build at *judge* (no network, no settings)."""
+    from tabs.image_gallery.use_cases import pairwise_rank
+
+    monkeypatch.setattr(
+        pairwise_rank,
+        "build_client_judge",
+        lambda _row, **_kwargs: judge,
+    )
+    return judge
+
+
+def _b_wins(a, _b) -> str:
+    """``b.png`` wins whichever side it is presented on (a decisive verdict)."""
+    return "A" if Path(a.path).name == "b.png" else "B"
+
+
+def _near_tie_items():
+    return [_item(f"{name}.png", q) for name, q in zip("abcde", (80, 79, 78, 77, 76))]
+
+
+def _new_folder(owner) -> int:
+    """The folder switch as the app performs it (gen bump + unsettled settle)."""
+    owner._folder_gen += 1
+    owner._metrics_settled_gen = -1
+    return owner._folder_gen
+
+
+def test_terminal_rank_starts_the_pass_and_applies_its_order(monkeypatch, caplog) -> None:
+    monkeypatch.setenv("IMGSLI_AI_DEBUG", "1")
+    items = _near_tie_items()
+    owner = _wired_owner(items, pairwise_enabled=True, pairwise_top_n=2)
+    owner._apply_fusion_ranks(owner.state.series)
+    assert (items[0].rank, items[1].rank) == (1, 2), "pointwise decides the top set first"
+
+    judge = _install_client(monkeypatch, _ScriptedJudge(_b_wins))
+    with caplog.at_level(logging.INFO, logger=APP_LOGGER_NAME):
+        assert analysis_batch.dispatch_terminal_rank(owner) is True
+        assert owner.jev_calls == 1, "the terminal path still ran the (no-op) ranker"
+        assert len(owner.launched) == 1, "the settled run starts exactly ONE pass"
+        owner.launched[0].run()  # the pool would run this off the GUI thread
+
+    assert judge.calls == 2, "one unordered pair, asked in both orders"
+    assert (items[1].rank, items[0].rank) == (1, 2), "the pairwise order decided the top set"
+    assert [items[2].rank, items[3].rank, items[4].rank] == [3, 4, 5]
+    assert all(it.rank_source == "fusion" for it in items)
+    # Ranks only: the pointwise NUMBERS survive next to the applied order.
+    assert [item_quality(it) for it in items] == [80, 79, 78, 77, 76]
+    assert any("judge_pairwise.apply" in line for line in _trace_lines(caplog))
+
+
+def test_terminal_rank_is_single_flight_and_a_cached_rerun_spends_nothing(
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("IMGSLI_AI_DEBUG", "1")
+    items = _near_tie_items()
+    owner = _wired_owner(items, pairwise_enabled=True, pairwise_top_n=2)
+    owner._apply_fusion_ranks(owner.state.series)
+    judge = _install_client(monkeypatch, _ScriptedJudge(_b_wins))
+
+    assert analysis_batch.dispatch_terminal_rank(owner) is True
+    assert len(owner.launched) == 1
+    # A second settle/arrival of the SAME generation must not spawn a second
+    # pass while the first one is in flight.
+    assert analysis_batch.dispatch_terminal_rank(owner) is True
+    assert len(owner.launched) == 1, "one pass per (folder generation, series) in flight"
+
+    owner.launched[0].run()
+    assert judge.calls == 2
+    assert (items[1].rank, items[0].rank) == (1, 2)
+
+    # Once it reported, a later trigger may re-derive the SAME order from the
+    # verdict cache: applied again, zero new calls.
+    assert analysis_batch.dispatch_terminal_rank(owner) is True
+    assert len(owner.launched) == 2, "a settled re-run is allowed, and is free"
+    owner.launched[1].run()
+    assert judge.calls == 2, "a cache hit must spend ZERO judge calls"
+    assert (items[1].rank, items[0].rank) == (1, 2), "the cached order is re-applied"
+
+
+def test_terminal_rank_with_the_flag_off_traces_disabled_once(monkeypatch, caplog) -> None:
+    monkeypatch.setenv("IMGSLI_AI_DEBUG", "1")
+    items = _near_tie_items()
+    owner = _wired_owner(items, pairwise_enabled=False)
+    owner._apply_fusion_ranks(owner.state.series)
+    before = _ranks(items)
+
+    def _no_client(_row, **_kwargs):
+        raise AssertionError("the disabled flag must not build a client")
+
+    from tabs.image_gallery.use_cases import pairwise_rank
+
+    monkeypatch.setattr(pairwise_rank, "build_client_judge", _no_client)
+
+    with caplog.at_level(logging.INFO, logger=APP_LOGGER_NAME):
+        # Every arrival lands here, so the line must be per RUN, not per trigger.
+        assert analysis_batch.dispatch_terminal_rank(owner) is True
+        assert analysis_batch.dispatch_terminal_rank(owner) is True
+
+    assert owner.launched == [], "the off flag must not schedule a worker"
+    assert owner.jev_calls == 2, "the ranker still ran; only the pass is off"
+    assert _ranks(items) == before, "the pointwise ranks must be untouched"
+    disabled = [
+        line for line in _trace_lines(caplog) if "judge_pairwise.skip reason=disabled" in line
+    ]
+    assert len(disabled) == 1, disabled
+
+
+def test_terminal_rank_folder_switch_discards_the_late_result(monkeypatch) -> None:
+    monkeypatch.setenv("IMGSLI_AI_DEBUG", "1")
+    items = _near_tie_items()
+    owner = _wired_owner(items, pairwise_enabled=True, pairwise_top_n=2)
+    owner._apply_fusion_ranks(owner.state.series)
+    before = _ranks(items)
+    judge = _install_client(monkeypatch, _ScriptedJudge(_b_wins))
+
+    assert analysis_batch.dispatch_terminal_rank(owner) is True
+    assert len(owner.launched) == 1
+
+    _new_folder(owner)  # the user opens another folder while the pass runs
+    owner.launched[0].run()  # ...and the pass reports into the new world
+    assert _ranks(items) == before, "no cross-folder order may be applied"
+
+    # The stale pass must not block the new folder's own pass.
+    owner._metrics_settled_gen = owner._folder_gen
+    assert analysis_batch.dispatch_terminal_rank(owner) is True
+    assert len(owner.launched) == 2, "a new generation gets its own pass"
+    owner.launched[1].run()
+    assert (items[1].rank, items[0].rank) == (1, 2), "the new folder's order applies"
+
+
+def test_terminal_rank_decided_series_spends_nothing(monkeypatch, caplog) -> None:
+    monkeypatch.setenv("IMGSLI_AI_DEBUG", "1")
+    items = [_item(f"{name}.png", q) for name, q in zip("abcde", (95, 70, 50, 30, 10))]
+    owner = _wired_owner(items, pairwise_enabled=True)
+    owner._apply_fusion_ranks(owner.state.series)
+    before = _ranks(items)
+
+    judge = _install_client(monkeypatch, _ScriptedJudge(_boom))
+    with caplog.at_level(logging.INFO, logger=APP_LOGGER_NAME):
+        assert analysis_batch.dispatch_terminal_rank(owner) is True
+
+    assert owner.launched == [], "a decided series must not occupy a pool slot"
+    assert judge.calls == 0, "a decided series must not spend a call"
+    assert _ranks(items) == before
+    assert any(
+        "judge_pairwise.skip reason=decided" in line for line in _trace_lines(caplog)
+    )
+
+
+def test_terminal_rank_fails_open_when_no_provider_is_configured(monkeypatch, caplog) -> None:
+    """An unusable AI row is the ERROR form of the trace, never a rank change."""
+    monkeypatch.setenv("IMGSLI_AI_DEBUG", "1")
+    items = _near_tie_items()
+    owner = _wired_owner(items, pairwise_enabled=True)
+    owner._apply_fusion_ranks(owner.state.series)
+    before = _ranks(items)
+    _install_client(monkeypatch, None)  # the row names no usable provider
+
+    with caplog.at_level(logging.INFO, logger=APP_LOGGER_NAME):
+        assert analysis_batch.dispatch_terminal_rank(owner) is True
+
+    assert owner.launched == [], "an unavailable provider must not occupy a pool slot"
+    assert _ranks(items) == before, "the pointwise order stands"
+    errors = [line for line in _trace_lines(caplog) if "judge_pairwise.skip reason=error" in line]
+    assert errors and "ProviderUnavailable" in errors[0], errors
+
+
+def test_terminal_rank_keeps_the_settle_gate_before_the_pass(monkeypatch) -> None:
+    """An incomplete matrix starts neither the ranker nor the refinement.
+
+    The "is the batch over" refusal is ``analysis_batch.pending()``'s job (the
+    existing model for this trigger); here it is pinned for the NEW tail too:
+    refining a top set derived from a half-arrived matrix would compare the
+    wrong members and spend calls on an order that will change again.
+    """
+    monkeypatch.setenv("IMGSLI_AI_DEBUG", "1")
+    items = _near_tie_items()
+    owner = _wired_owner(items, pairwise_enabled=True, pairwise_top_n=2)
+    owner._apply_fusion_ranks(owner.state.series)
+    judge = _install_client(monkeypatch, _ScriptedJudge(_boom))
+
+    owner._ai_batch_gen = owner._folder_gen
+    owner._ai_batch_pending = 1  # one analysis of this generation still in flight
+    assert analysis_batch.dispatch_terminal_rank(owner) is False
+    assert owner.jev_calls == 0, "the ranker waits for the complete matrix"
+    assert owner.launched == [], "the pass waits for the complete matrix"
+    assert judge.calls == 0
+
+    analysis_batch.end(owner)  # the last analysis reports -> the matrix settled
+    assert analysis_batch.dispatch_terminal_rank(owner) is True
+    assert len(owner.launched) == 1, "the settled batch starts the one pass"
+
+
+def test_terminal_rank_refuses_in_the_ai_domain_and_runs_after_a_switch(
+    monkeypatch,
+) -> None:
+    """The AI domain owns the displayed order — the pass must not spend there.
+
+    The pass refines the POINTWISE (fusion) order. Under ``ai`` the rank on
+    screen is Jev's (``rank_source="jev"`` items are locked in
+    ``_apply_fusion_ranks``), so refining the fusion order would spend up to
+    N x (N-1) judge calls on an order the user cannot see. This fails if the
+    ``_epoch_is_current(..., domain="algorithms")`` gate is dropped from
+    ``dispatch_pairwise_refinement`` — the absence assertion alone would pass
+    for any reason, the switch pair is what pins the gate.
+    """
+    items = _near_tie_items()
+    owner = _wired_owner(items, pairwise_enabled=True, pairwise_top_n=2)
+    owner._apply_fusion_ranks(owner.state.series)
+    before = _ranks(items)
+    owner._judgment_domain = "ai"
+
+    built: list = []
+    judge = _ScriptedJudge(_b_wins)
+    from tabs.image_gallery.use_cases import pairwise_rank
+
+    monkeypatch.setattr(
+        pairwise_rank,
+        "build_client_judge",
+        lambda row, **_kwargs: (built.append(row), judge)[1],
+    )
+
+    assert analysis_batch.dispatch_terminal_rank(owner) is True
+    assert built == [], "the AI domain must not even build a judge client"
+    assert owner.launched == [], "no pass may start while Jev owns the order"
+    assert judge.calls == 0, "no call spent on an order nobody sees"
+    assert _ranks(items) == before, "the pointwise order is left untouched"
+
+    # Back in the Algorithms domain the SAME settled generation does refine:
+    # the pair of assertions proves the domain gate, not a missing trigger.
+    owner._judgment_domain = "algorithms"
+    assert analysis_batch.dispatch_terminal_rank(owner) is True
+    assert len(owner.launched) == 1, "one pass once the pointwise order owns the view"
+    owner.launched[0].run()
+    assert judge.calls == 2, "one unordered pair, asked in both orders"
+    assert (items[1].rank, items[0].rank) == (1, 2), "the pairwise order applied"
