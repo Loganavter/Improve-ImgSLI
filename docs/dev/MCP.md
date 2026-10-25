@@ -93,6 +93,14 @@ the server.
 | `set_language` | write | set `language` (en/ru/zh/pt_BR) |
 | `set_setting` | write | write one whitelisted scalar setting (`rhi_backend`); `theme`/`language` keep their own verbs |
 | `capture_surface` | write | screenshot a named surface or the live active window to PNG |
+
+**Driving a full gallery AI run from a script:** `src/devtools/live_gallery_ai_run.py` boots the
+app in the lease environment, opens the gallery tab, drops a folder, switches the judgment domain
+to AI and waits on a LOG condition (`judge run done` + a quiet window) instead of a timeout, then
+prints a JSON verdict (cards, misses, calls, profile source, `judge_pairwise.*` lines, tracebacks).
+Use it instead of hand-rolled `sleep`+`grep` sequences: those report a result whether or not the
+folder ever opened (2026-10-26).
+
 | `press_keys` | write | inject keyboard combos (`target=` aims them at one element); the window is activated first and the result reports `activated`/`focus_is_ours` |
 | `nav_key` | write | press keys through the app's own navigation sections and report what took them (live-only) |
 | `ui_click` | write | click an element by id, in-process (live-only) |
