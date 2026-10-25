@@ -225,13 +225,26 @@ class ExportPlugin(Plugin, IControllablePlugin, IServicePlugin):
             extra_adapters=extra_adapters,
         )
 
-    def _create_clipboard_service(self, main_controller: Any | None) -> Any:
+    def _create_clipboard_service(self, main_controller: Any | None) -> Any | None:
         """Bootstrap-default paste service for early shell wiring.
 
         Live Ctrl+V resolves through ``ExportController.paste_image_from_clipboard``
         → active-tab ``create_service("clipboard_paste_service")``. This startup
         instance remains as a fallback when no active tab owns paste (e.g.
-        session_picker).
+        session_picker), and it is genuinely optional: a freshly discovered tab
+        has no controller yet (``build_clipboard_service`` returns ``None`` until
+        the tab's page exists), so the probe answers ``None`` on a normal cold
+        start. Missing fallback therefore warns and leaves paste to the active
+        tab instead of raising.
+
+        Why not raise (2026-10-25): the raise aborted
+        ``MainController.attach_deferred_plugins`` mid-loop — ``help`` and
+        ``image_properties`` were never attached — and, once the deferred block
+        moved past the first frame (app #659), the same exception reached
+        ``sys.excepthook`` as the user-visible "Report a problem" dialog on
+        every cold start. ``ExportController.paste_image_from_clipboard``
+        already returns ``False`` when neither the active tab nor this fallback
+        supplies the service.
         """
         from tabs.registry import TabRegistry
 
@@ -243,11 +256,13 @@ class ExportPlugin(Plugin, IControllablePlugin, IServicePlugin):
             main_controller,
         )
         if service is None:
-            raise RuntimeError(
-                "No tab provides clipboard_paste_service; clipboard paste "
-                "must be supplied by a tab owner."
+            logger.warning(
+                "No tab offered clipboard_paste_service at startup; paste stays "
+                "with the active tab (unavailable until a tab owns paste)"
             )
         return service
+
+
     def shutdown(self) -> None:
         super().shutdown()
 
