@@ -1,7 +1,7 @@
 FFmpeg (bundled ffmpeg.exe)
 ===========================
 
-Some Windows builds of Improve ImgSLI include ffmpeg.exe for video export.
+Some Windows builds of BlinkTable include ffmpeg.exe for video export.
 FFmpeg is licensed under the GNU General Public License v2.0 or later
 (GPL-2.0-or-later) and/or GNU Lesser General Public License v2.1 or later
 (LGPL-2.1-or-later), depending on build configuration.

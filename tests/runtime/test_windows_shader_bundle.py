@@ -46,10 +46,24 @@ _SPEC_SRC_QSB_COLLECTION = re.compile(
 )
 
 
+def _spec_path(repo: Path) -> Path:
+    """PyInstaller spec path, from the packaging helper (never spelled here).
+
+    The spec is named after the product name, so the name is imported from
+    ``build/Windows-template/product_name.py`` (which reads
+    ``src/core/log_names.py:APP_NAME``) instead of being repeated — otherwise a
+    rename leaves this gate reading a file that no longer exists.
+    """
+    module_path = repo / "build" / "Windows-template" / "product_name.py"
+    spec = importlib.util.spec_from_file_location("product_name", module_path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return Path(module.SPEC_PATH)
+
+
 def _spec_qsb_destinations(repo: Path) -> dict[str, str]:
-    spec_text = (repo / "build" / "Windows-template" / "Improve_ImgSLI.spec").read_text(
-        encoding="utf-8"
-    )
+    spec_text = _spec_path(repo).read_text(encoding="utf-8")
     return {src_root: dest for src_root, dest in _SPEC_SRC_QSB_COLLECTION.findall(spec_text)}
 
 
@@ -69,7 +83,7 @@ def test_windows_spec_collects_qsb_from_every_src_root() -> None:
     destinations = _spec_qsb_destinations(repo)
     missing = sorted(roots - set(destinations))
     assert not missing, (
-        f"Improve_ImgSLI.spec collects no *.qsb for src root(s) {missing}; add "
+        f"{_spec_path(repo).name} collects no *.qsb for src root(s) {missing}; add "
         "collect_tree(REPO_ROOT / 'src' / '<root>', '<root>', include_suffixes={'.qsb'})"
     )
     misplaced = {root: destinations[root] for root in sorted(roots) if destinations[root] != root}

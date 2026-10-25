@@ -1,2 +1,2 @@
 #!/bin/sh
-python /usr/lib/improve-imgsli/__main__.py
+python /usr/lib/blinktable/__main__.py

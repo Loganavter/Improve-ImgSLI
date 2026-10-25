@@ -1,5 +1,5 @@
-Improve ImgSLI — Qt / PySide6 notice (Windows bundle)
-=====================================================
+BlinkTable — Qt / PySide6 notice (Windows bundle)
+=================================================
 
 This Windows build uses Qt for Python (PySide6), shiboken6, and Qt 6 runtime
 libraries under the GNU Lesser General Public License v3.0 or later
@@ -13,7 +13,7 @@ See LICENSE in the installation directory.
 LGPL libraries in this bundle
 -----------------------------
 Qt and PySide6 are dynamically linked. The following directories contain
-replaceable library files (not baked into Improve_ImgSLI.exe):
+replaceable library files (not baked into BlinkTable.exe):
 
   PySide6\              Qt and PySide6 .dll / .pyd (flat / legacy layout)
   _internal\PySide6\    same files under PyInstaller 6+ default onedir
@@ -28,14 +28,14 @@ version recorded in licenses\Qt_BUNDLE_INFO.txt.
 
 How to replace Qt / PySide6 libraries
 -------------------------------------
-1. Close Improve ImgSLI.
-2. Open the installation folder (same folder as Improve_ImgSLI.exe).
+1. Close BlinkTable.
+2. Open the installation folder (same folder as BlinkTable.exe).
 3. Locate the PySide6 tree (``PySide6\`` or ``_internal\PySide6\`` — see
    Qt_BUNDLE_INFO.txt). Back up that directory.
 4. Copy your replacement .dll / .pyd files into that PySide6 tree (and its
    plugins\ subfolder for platform plugins), keeping file names identical
    unless you know the loader search order and dependencies.
-5. Restart Improve ImgSLI.
+5. Restart BlinkTable.
 
 If the application fails to start after replacement, restore your backup.
 

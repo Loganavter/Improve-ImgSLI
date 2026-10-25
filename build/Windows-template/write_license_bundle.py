@@ -7,9 +7,16 @@ import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
+_TEMPLATE_DIR = Path(__file__).resolve().parent
+if str(_TEMPLATE_DIR) not in sys.path:
+    sys.path.insert(0, str(_TEMPLATE_DIR))
+
+# One product name: src/core/log_names.py, via the packaging helper.
+from product_name import APP_NAME, DIST_DIRNAME  # noqa: E402
+
 
 def _dist_dir(repo_root: Path) -> Path:
-    return repo_root / "dist" / "Improve_ImgSLI"
+    return repo_root / "dist" / DIST_DIRNAME
 
 
 def _pyside6_root() -> Path:
@@ -38,7 +45,7 @@ def write_license_bundle(repo_root: Path | None = None) -> Path:
         raise FileNotFoundError(f"Windows bundle directory not found: {dist_dir}")
 
     # PyInstaller 6+ onedir puts Analysis datas under ``_internal/``. User-facing
-    # license files must still sit next to Improve_ImgSLI.exe (validator + zip).
+    # license files must still sit next to the bundle executable (validator + zip).
     for name in ("LICENSE", "THIRD_PARTY_LICENSES.md"):
         source = repo_root / name
         if not source.is_file():
@@ -61,8 +68,8 @@ def write_license_bundle(repo_root: Path | None = None) -> Path:
 
     qt_paths = _relative_qt_paths(dist_dir)
     lines = [
-        "BlinkTable — Qt bundle metadata",
-        "=================================",
+        f"{APP_NAME} — Qt bundle metadata",
+        "=" * (len(APP_NAME) + len(" — Qt bundle metadata")),
         "",
         f"Generated (UTC): {datetime.now(UTC).isoformat(timespec='seconds')}",
         f"PySide6 version: {getattr(pyside6, '__version__', 'unknown')}",

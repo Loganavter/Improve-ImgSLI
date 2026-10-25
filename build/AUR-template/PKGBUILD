@@ -1,7 +1,9 @@
 # Maintainer: Boradorka
 # Co-maintainer: Nebulosa
 
-pkgname=improve-imgsli
+# Product name is BlinkTable (src/core/log_names.py APP_NAME); the repo and
+# AUR source stay 'Improve-ImgSLI' because that is the GitHub archive name.
+pkgname=blinktable
 pkgver=11.0.0
 pkgrel=1
 _piqver=0.8.0
@@ -54,7 +56,7 @@ package() {
 
   # Install launcher, desktop file, icon, and license
   install -vDm 755 build/AUR-template/launcher.sh "$pkgdir/usr/bin/$pkgname"
-  install -vDm 644 build/AUR-template/improve-imgsli.desktop "$pkgdir/usr/share/applications/$pkgname.desktop"
+  install -vDm 644 build/AUR-template/blinktable.desktop "$pkgdir/usr/share/applications/$pkgname.desktop"
   install -vDm 644 src/resources/icons/icon.png "$pkgdir/usr/share/icons/hicolor/512x512/apps/$pkgname.png"
   install -vDm 644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
   install -vDm 644 THIRD_PARTY_LICENSES.md "$pkgdir/usr/share/licenses/$pkgname/THIRD_PARTY_LICENSES.md"
@@ -75,7 +77,7 @@ package() {
   install -vDm 644 build/linux/thumbnailers/improve-imgsli.thumbnailer \
     "$pkgdir/usr/share/thumbnailers/improve-imgsli.thumbnailer"
   install -vDm 644 src/resources/icons/icon.png \
-    "$pkgdir/usr/share/improve-imgsli/mark.png"
+    "$pkgdir/usr/share/blinktable/mark.png"
   for _sz in 16 22 32 48 64 128 256; do
     install -vDm 644 "build/linux/icons/mimetypes/application-vnd.blinktable.project+zip-${_sz}.png" \
       "$pkgdir/usr/share/icons/hicolor/${_sz}x${_sz}/mimetypes/application-vnd.blinktable.project+zip.png"

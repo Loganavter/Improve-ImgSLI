@@ -10,10 +10,21 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-SPEC_PATH = REPO_ROOT / "build" / "Windows-template" / "Improve_ImgSLI.spec"
-INNO_PATH = REPO_ROOT / "build" / "Windows-template" / "inno_setup_6.iss"
+TEMPLATE_DIR = Path(__file__).resolve().parent
+if str(TEMPLATE_DIR) not in sys.path:
+    sys.path.insert(0, str(TEMPLATE_DIR))
+
+# Artifact names/paths come from the one product-name source
+# (src/core/log_names.py -> product_name.py); this script must not spell them.
+from product_name import (  # noqa: E402  (needs TEMPLATE_DIR on sys.path)
+    BUNDLE_EXE,
+    DIST_DIR,
+    INNO_PATH,
+    SETUP_EXE,
+    SPEC_PATH,
+)
+
 REQUIREMENTS_PATH = REPO_ROOT / "requirements-gui.txt"
-SETUP_EXE = REPO_ROOT / "build" / "Windows-template" / "Output" / "Improve_ImgSLI_Setup_v11.0.0.exe"
 
 FFMPEG_ZIP_URL = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
 FFMPEG_EXE_SUBPATH = "ffmpeg-master-latest-win64-gpl/bin/ffmpeg.exe"
@@ -76,12 +87,11 @@ def build_pyinstaller() -> int:
 
 
 def dist_exe() -> Path:
-    return REPO_ROOT / "dist" / "Improve_ImgSLI" / "Improve_ImgSLI.exe"
+    return BUNDLE_EXE
 
 
 def fetch_ffmpeg() -> int:
-    dist_dir = REPO_ROOT / "dist" / "Improve_ImgSLI"
-    ffmpeg_dest = dist_dir / "ffmpeg.exe"
+    ffmpeg_dest = DIST_DIR / "ffmpeg.exe"
 
     if ffmpeg_dest.exists():
         print(f"ffmpeg.exe already present at {ffmpeg_dest}, skipping download.")
@@ -151,7 +161,7 @@ def main() -> int:
         return 1
 
     shader_script = REPO_ROOT / "build" / "ci" / "validate_windows_shaders.py"
-    bundle_dir = REPO_ROOT / "dist" / "Improve_ImgSLI"
+    bundle_dir = DIST_DIR
     if (
         run_command(
             [

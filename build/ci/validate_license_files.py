@@ -7,6 +7,11 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+TEMPLATE_DIR = REPO_ROOT / "build" / "Windows-template"
+if str(TEMPLATE_DIR) not in sys.path:
+    sys.path.insert(0, str(TEMPLATE_DIR))
+
+from product_name import DIST_DIR  # noqa: E402
 
 LICENSE_PATH = REPO_ROOT / "LICENSE"
 THIRD_PARTY_PATH = REPO_ROOT / "THIRD_PARTY_LICENSES.md"
@@ -82,7 +87,7 @@ def validate_static_license_files() -> int:
 
 
 def validate_windows_bundle(dist_dir: Path | None = None) -> int:
-    bundle_dir = (dist_dir or (REPO_ROOT / "dist" / "Improve_ImgSLI")).resolve()
+    bundle_dir = (dist_dir or DIST_DIR).resolve()
     if not bundle_dir.is_dir():
         return _fail(f"Windows bundle directory not found: {bundle_dir}")
 
