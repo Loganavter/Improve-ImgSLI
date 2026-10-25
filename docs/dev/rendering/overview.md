@@ -137,10 +137,35 @@ Two failure modes worth knowing:
 - **No fxc on `PATH`** — the script exits with the toolchain requirement spelled
   out; it never falls back to an HLSL-only bake.
 - **qsb's 30 s external-compiler timeout** — qsb kills the fxc child after 30 s
-  and, unhelpfully, still exits **0** with no DXBC variant in the pack. Never
-  trust qsb's exit code: the script re-reads every pack it just wrote and fails
-  the run, naming the file, so the symptom is a bake error rather than a silent
-  runtime regression.
+  (`QProcess::waitForFinished()` with no argument) and, unhelpfully, still exits
+  **0** with no DXBC variant in the pack. Never trust qsb's exit code: the script
+  re-reads every pack it just wrote. When the variant is missing it does **not**
+  give up — it takes the slow path below, and only a pack that fails both ways
+  becomes a bake error.
+
+### Slow path (shaders that outgrow qsb's window)
+
+Some HLSL explodes under fxc's unroller. Measured on the magnifier fragment
+shader (nested EWA sampling loops): `fxc` 8.1 needs **>20 min and rising** on the
+generated HLSL, `/Od` and `/Gfp` do not help, and loop bounds made dynamic do
+not either — while qsb would kill it at 30 s regardless. The script therefore
+falls back, automatically and per pack:
+
+1. qsb has already written the **HLSL** variant; extract it with
+   `qsb -x hlsl,50 -o shader.hlsl pack.qsb`;
+2. insert `[loop]` before every `for`/`while` — an unroll guard. Semantics are
+   unchanged; the same shader then compiles in **5.5 s** instead of >20 min;
+3. run `fxc /nologo /E main /T ps_5_0 /Fo shader.dxbc shader.hlsl` directly
+   (900 s budget, no qsb window);
+4. add the bytecode back with qsb's own
+   `qsb pack.qsb -r dxbc,50,shader.dxbc` — the documented "add a target that was
+   not present before" mode. The pack is never byte-edited;
+5. re-read the pack and require `DxbcShader` v50, exactly like the fast path.
+
+The run prints a `slow-path:` line with the measured fxc time and hint count.
+The stored bytecode comes from the same fxc, so this is a scheduling workaround
+for qsb's fixed 30 s window, not a different compiler.
+
 
 `.qsb` files are build products of this script: always regenerate them, never
 hand-edit them.
@@ -158,26 +183,16 @@ path, a **reason** and a **content pin** (`<bytes>:<sha256[:16]>`). Then
   reason has to be re-read and re-justified instead of being silently inherited;
 - a full bake skips exempted packs and says so per file.
 
-The map is empty by default. An entry means "this one pack still pays a runtime
-`D3DCompile` until someone re-bakes it on a host where the bake works", so the
-reason must name the blocker and the host that can clear it — e.g. a shader that
-fxc cannot compile through qsb's 30 s child timeout can still be baked from a
-native Windows SDK shell with plain
-`python src/devtools/compile_shaders.py` (fxc already on `PATH`).
+The map is empty by default — and it is currently **empty**: the only entry it
+ever held (the magnifier fragment pack) is now baked by the slow path above. An
+entry means "this one pack still pays a runtime `D3DCompile` until someone
+re-bakes it on a host where the bake works", so the reason must name the blocker
+and the host that can clear it, and it must also say why the slow path did not
+apply.
 
-The one entry currently in the map is
-`src/tabs/image_compare/canvas/features/magnifier/shaders/qrhi/mag.frag.qsb`
-(pinned `23874:9fe33318b6a18cc9`): fxc 8.1 under wine needs >5 min on that HLSL
-while qsb kills the compiler at 30 s, so **the magnifier's fragment pass keeps
-paying a runtime `D3DCompile` on D3D11 until it is re-baked** — the other 32
-packs (base canvas, overlay, magnifier's other passes, …) load bytecode. To
-clear it, on a Windows host with Windows SDK 10.x `fxc.exe` on `PATH`:
-
-```bash
-# 1) delete the mag.frag entry from DXBC_EXEMPT in src/devtools/compile_shaders.py
-python src/devtools/compile_shaders.py
-python src/devtools/compile_shaders.py --verify-variants   # rc 0, no EXEMPT line
-```
+Do not reach for an exemption while the slow path can run: the slow path was
+added precisely because the magnifier pack looked un-bakeable on this host
+(qsb's 30 s window) and turned out to need only an unroll guard.
 
 ## Examples
 

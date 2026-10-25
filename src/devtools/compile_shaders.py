@@ -26,6 +26,19 @@ run it under wine behind a ``fxc`` shim on PATH — see
 ``docs/dev/rendering/overview.md`` § Shader compilation). The script refuses to
 bake when fxc is unavailable, rather than silently shipping an HLSL-only .qsb.
 
+Some shaders are too heavy for qsb's own compile window: qsb runs the external
+compiler with a FIXED 30 s timeout (``QProcess::waitForFinished()`` with no
+argument) and still exits 0 when it fires, so a legitimate multi-minute fxc
+build can never be baked through ``qsb -c``. For such a pack the script falls
+back to an out-of-band path instead of exempting it: extract the HLSL qsb already
+wrote (``qsb -x hlsl,50``), mark every loop ``[loop]`` (an unroll guard —
+semantics unchanged; measured on ``magnifier/.../mag.frag``: >20 min unbounded
+versus 5.5 s with the hints), compile it with fxc directly under a generous
+timeout, then add the bytecode back with qsb's documented
+``-r dxbc,50,<file>`` mode (never by editing bytes) and re-check the variant.
+The fallback is automatic, prints a ``slow-path`` line with the measured fxc
+time, and is not a weaker guarantee: same fxc, no 30 s wall.
+
 Inline shader strings (those defined as Python triple-quoted strings inside
 gl_passes.py modules) are not in scope here. As the QRhi migration progresses,
 those inline shaders will be moved to standalone .vert/.frag files so this
@@ -72,18 +85,15 @@ DXBC_VERSION = 50
 # cannot be baked on any available bake host belongs here — an entry is a known
 # runtime D3DCompile cost plus a follow-up, never a convenience switch.
 #
+# The slow path below (loop hints + out-of-band fxc + `qsb -r`) removed the only
+# entry this list ever had; keep the mechanism for a future pack that even that
+# path cannot compile, but do not reach for it while the slow path can run.
+#
 # The pin is "<byte size>:<sha256[:16]>" of the exempted pack (see
 # pack_fingerprint). A content change invalidates the entry so the reason is
 # re-verified rather than silently inherited; refresh it only after re-reading
 # the reason and re-baking on a host where the bake works.
-DXBC_EXEMPT: dict[str, tuple[str, str]] = {
-    "src/tabs/image_compare/canvas/features/magnifier/shaders/qrhi/mag.frag.qsb": (
-        "fxc 8.1 under wine needs >5 min on this HLSL; qsb's external compiler "
-        "timeout is 30 s (qsb still returns rc 0). Bake on a Windows host with "
-        "Windows SDK 10.x fxc.",
-        "23874:9fe33318b6a18cc9",
-    ),
-}
+DXBC_EXEMPT: dict[str, tuple[str, str]] = {}
 
 FXC_REQUIREMENT = """\
 DXBC baking requires fxc.exe (the HLSL compiler from the Windows SDK 8.1+ x64).
@@ -130,6 +140,125 @@ def require_fxc() -> str:
     if not fxc:
         raise SystemExit(FXC_REQUIREMENT)
     return fxc
+
+
+# qsb's external-compiler window is fixed at 30 s (QProcess::waitForFinished()
+# default, no override in qsb.cpp) and qsb exits 0 when it fires. The slow path
+# keeps no window at all: fxc gets this budget instead.
+FXC_SLOW_TIMEOUT_S = 900
+
+# HLSL unroll guard. "[loop]" tells fxc to keep the loop instead of unrolling
+# it; semantics are unchanged. Without it fxc's optimiser explodes on nested
+# sampling loops (measured on the magnifier fragment shader: >20 min unbounded
+# versus 5.5 s with the hints).
+LOOP_HINT = "[loop]"
+
+_FXC_PROFILE_BY_SUFFIX = {".vert": "vs_5_0", ".frag": "ps_5_0"}
+
+
+def loop_hint_hlsl(hlsl: str) -> tuple[str, int]:
+    """Return *hlsl* with ``[loop]`` before every for/while loop, plus the count.
+
+    Used only on the slow path, i.e. for a shader whose unrolled build does not
+    finish inside qsb's window.
+    """
+    out: list[str] = []
+    hinted = 0
+    for line in hlsl.splitlines():
+        stripped = line.lstrip()
+        if stripped.startswith(("for (", "for(", "while (", "while(")):
+            out.append(line[: len(line) - len(stripped)] + LOOP_HINT)
+            hinted += 1
+        out.append(line)
+    return "\n".join(out) + "\n", hinted
+
+
+def fxc_profile_for(src: Path) -> str:
+    try:
+        return _FXC_PROFILE_BY_SUFFIX[src.suffix]
+    except KeyError:
+        raise SystemExit(f"{src}: no fxc profile for suffix {src.suffix!r} (slow path)")
+
+
+def extract_hlsl(qsb: str, pack: Path, dest: Path) -> int:
+    """Write the pack's HLSL source to *dest* with qsb's extract mode."""
+    proc = subprocess.run(
+        [qsb, "-x", f"hlsl,{DXBC_VERSION}", "-o", str(dest), str(pack)],
+        capture_output=True,
+        text=True,
+    )
+    if proc.returncode != 0 or not dest.is_file():
+        sys.stderr.write(proc.stdout)
+        sys.stderr.write(proc.stderr)
+        return proc.returncode or 1
+    return 0
+
+
+def compile_slow(qsb: str, fxc: str, src: Path, pack: Path) -> int:
+    """Bake *pack* when qsb's 30 s compiler window is too short (module docs).
+
+    The bytecode still comes from fxc; it is added back with qsb's documented
+    ``-r`` mode (add a target that was not present before), never by editing
+    the pack's bytes.
+    """
+    import tempfile
+    import time
+
+    rel = pack.relative_to(REPO_ROOT).as_posix()
+    profile = fxc_profile_for(src)
+    elapsed = 0.0
+    count = 0
+    with tempfile.TemporaryDirectory(prefix="qsb-slow-") as tmp:
+        tmp_pack = Path(tmp) / pack.name
+        tmp_pack.write_bytes(pack.read_bytes())
+        hlsl_path = Path(tmp) / "shader.hlsl"
+        if extract_hlsl(qsb, tmp_pack, hlsl_path) != 0:
+            sys.stderr.write(f"  slow-path: could not extract HLSL from {rel}\n")
+            return 1
+        hinted, count = loop_hint_hlsl(hlsl_path.read_text(encoding="utf-8"))
+        hlsl_path.write_text(hinted, encoding="utf-8")
+        dxbc_path = Path(tmp) / "shader.dxbc"
+        started = time.monotonic()
+        try:
+            proc = subprocess.run(
+                [fxc, "/nologo", "/E", "main", "/T", profile, "/Fo", str(dxbc_path), str(hlsl_path)],
+                capture_output=True,
+                text=True,
+                timeout=FXC_SLOW_TIMEOUT_S,
+            )
+        except subprocess.TimeoutExpired:
+            sys.stderr.write(
+                f"  slow-path: fxc exceeded {FXC_SLOW_TIMEOUT_S} s even with {count} "
+                f"{LOOP_HINT} hint(s) on {rel}\n"
+            )
+            return 1
+        elapsed = time.monotonic() - started
+        if proc.returncode != 0 or not dxbc_path.is_file():
+            sys.stderr.write(proc.stdout)
+            sys.stderr.write(proc.stderr)
+            sys.stderr.write(f"  slow-path: fxc failed on {rel}\n")
+            return 1
+        # `qsb -r` edits the pack in place (it ignores -o), so work on a copy and
+        # only replace the committed file after the variant check passes.
+        rep = subprocess.run(
+            [qsb, str(tmp_pack), "-r", f"dxbc,{DXBC_VERSION},{dxbc_path}"],
+            capture_output=True,
+            text=True,
+        )
+        if rep.returncode != 0:
+            sys.stderr.write(rep.stdout)
+            sys.stderr.write(rep.stderr)
+            sys.stderr.write(f"  slow-path: qsb -r failed on {rel}\n")
+            return 1
+        if not has_dxbc(variant_list(tmp_pack)):
+            sys.stderr.write(f"  slow-path: {rel} still lacks {DXBC_SOURCE_NAME} v{DXBC_VERSION}\n")
+            return 1
+        shutil.copyfile(tmp_pack, pack)
+    print(
+        f"  slow-path: {rel} baked out-of-band (fxc {elapsed:.1f} s, {count} {LOOP_HINT} hint(s); "
+        f"qsb's 30 s window bypassed with -r)"
+    )
+    return 0
 
 
 def find_shader_sources() -> list[Path]:
@@ -263,7 +392,7 @@ def verify_variants(*, verbose: bool = True) -> int:
     return 0
 
 
-def compile_one(qsb: str, src: Path) -> int:
+def compile_one(qsb: str, fxc: str, src: Path) -> int:
     dst = out_path_for(src)
     cmd = [qsb, *DEFAULT_TARGETS, DXBC_FLAG, "-o", str(dst), str(src)]
     print(f"  qsb {src.relative_to(REPO_ROOT)} -> {dst.name}")
@@ -272,13 +401,20 @@ def compile_one(qsb: str, src: Path) -> int:
         sys.stderr.write(proc.stdout)
         sys.stderr.write(proc.stderr)
         return proc.returncode
-    # qsb can succeed while silently omitting the DXBC variant (e.g. fxc
-    # vanished between the preflight and the bake). Never leave such a file
-    # behind: it is the exact regression this script exists to prevent.
+    # qsb can succeed while silently omitting the DXBC variant: fxc vanished
+    # between the preflight and the bake, or (the usual cause) the shader needs
+    # longer than qsb's fixed 30 s compiler window. Retry out-of-band before
+    # declaring failure; never leave an HLSL-only .qsb behind.
     if not has_dxbc(variant_list(dst)):
+        print(
+            f"  no {DXBC_SOURCE_NAME} v{DXBC_VERSION} from qsb "
+            f"({dst.relative_to(REPO_ROOT)}); retrying with the slow path"
+        )
+        if compile_slow(qsb, fxc, src, dst) == 0:
+            return 0
         sys.stderr.write(
-            f"  {dst.relative_to(REPO_ROOT)}: qsb produced no {DXBC_SOURCE_NAME} "
-            f"v{DXBC_VERSION} variant; refusing to keep an HLSL-only .qsb.\n"
+            f"  {dst.relative_to(REPO_ROOT)}: neither qsb nor the slow path produced "
+            f"{DXBC_SOURCE_NAME} v{DXBC_VERSION}; refusing to keep an HLSL-only .qsb.\n"
             f"{FXC_REQUIREMENT}\n"
         )
         return 1
@@ -342,7 +478,7 @@ def main() -> int:
             print(f"  skip {rel} (DXBC_EXEMPT: {exemption[0]})")
             skipped += 1
             continue
-        rc = compile_one(qsb, src)
+        rc = compile_one(qsb, fxc, src)
         if rc != 0:
             failed += 1
     if failed:
