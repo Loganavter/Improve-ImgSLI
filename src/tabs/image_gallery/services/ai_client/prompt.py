@@ -74,6 +74,57 @@ _PROMPT_CORE = (
 #: Default prompt for the no-mode / legacy case (all untagged measured axes).
 PROMPT_TEMPLATE = _PROMPT_CORE
 
+# -- pairwise prompt (a SEPARATE variant, never a rewrite of the scorecard) ---
+
+#: Version of the PAIRWISE question — part of the pairwise verdict cache key
+#: (``pairwise_rank.pair_key``), so adding this variant left the pointwise
+#: prompt identity and its cache untouched. Bump only when the pairwise text
+#: below changes meaning.
+PAIRWISE_PROMPT_VERSION = 1
+
+#: Both images are variants of the SAME source; the answer is one of three
+#: words, so the verdict can be parsed without a schema and the same pair can
+#: be asked twice (the swap) at a trivial answer cost. A ``TIE`` is a first-class
+#: answer: forcing a side on two indistinguishable variants is exactly the
+#: position bias the swap exists to catch.
+PAIRWISE_PROMPT_TEMPLATE = (
+    "You compare TWO technical image-quality variants, A and B, of the SAME "
+    "picture (upscalers/restorations). Judge quality and DEFECTS only — never "
+    "describe the scene, objects or content: they are identical across "
+    "variants and add nothing.\n"
+    "Pick the variant a careful reviewer would keep, judged on what you can "
+    "actually SEE at this size: sharpness/detail without invented texture, "
+    "honest edges (no halos or blocking), natural noise, no clipping, and no "
+    "colour shift.\n"
+    "Use TIE when the two look indistinguishable to you — do not invent a "
+    "difference to break a tie.\n"
+    "Reply with EXACTLY one line, no prose and no code fences:\n"
+    "WINNER: A|B|TIE"
+)
+
+
+def build_pairwise_prompt(mode=None, *, profile=None) -> str:
+    """The A/B prompt for one pairwise comparison (new variant, own version).
+
+    The scorecard axes ride along as the dimensions to watch (same resolver as
+    the pointwise prompt, so the two questions cannot disagree about what
+    matters), but the ANSWER stays one of ``A|B|TIE``: a comparison, not a
+    scorecard. ``profile=None``/``mode=None`` is the untagged measured set.
+    """
+    try:
+        axes = ", ".join(
+            f'"{axis_id}" ({label})'
+            for axis_id, label in _scorecard_axes(mode, profile=profile)
+        )
+    except Exception:
+        axes = ""
+    if axes:
+        return (
+            f"{PAIRWISE_PROMPT_TEMPLATE}\n"
+            f"Dimensions that matter for these variants: {axes}."
+        )
+    return PAIRWISE_PROMPT_TEMPLATE
+
 def _scorecard_axes(mode=None, *, profile=None) -> tuple[tuple[str, str], ...]:
     """``(axis_id, label)`` for every axis the AI must score.
 

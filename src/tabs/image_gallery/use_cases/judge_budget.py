@@ -30,6 +30,8 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 
+# Audit-Meta: pattern=run-budget reason="the run ledger, its ONE call counter and every ceiling helper (per-card reservation + the atomic pairwise pass reservation) must stay in one file or the cost accounting drifts into a second counter; grew past 500 lines with reserve_pairwise_calls (board 2026-10-25)"
+
 from tabs.image_gallery.models import ActivityPhase, AnalysisStatus
 from tabs.image_gallery.services.activity import set_activity
 from tabs.image_gallery.services.ai_client import _ai_debug
@@ -335,6 +337,41 @@ def _reserve_judge_call(owner, item, settings=None) -> bool:
                 owner, _CEILING_KEY, _CEILING_DEFAULT, ceiling=run.ceiling
             ),
         )
+    return False
+
+
+def reserve_pairwise_calls(owner, calls, *, settings=None) -> bool:
+    """Reserve a WHOLE pairwise pass against the run's ONE call ceiling.
+
+    The pairwise pass (``use_cases/pairwise_rank``) is atomic: a partial
+    comparison set must never produce an order, so the whole bound is reserved
+    up front and a refusal spends nothing. This wraps the SAME ledger and
+    counter as :func:`_reserve_judge_call` — there is no second counter and the
+    ceiling is never bypassed. ``pending`` is left alone: it counts cards in
+    flight (the terminal Jev trigger), and a synchronous pass is not a card.
+    A refusal is traced with the ``judge_pairwise.*`` prefix and does NOT set
+    ``run.stopped``: there is no per-pair continue affordance, and the pointwise
+    order already stands.
+    """
+    run = _current_judge_run(owner, settings)
+    if run is None:  # a double that cannot hold state: never block the work
+        return True
+    try:
+        cost = max(0, int(calls))
+    except (TypeError, ValueError):
+        cost = 0
+    if cost <= 0:
+        return True
+    if run.ceiling <= 0 or run.calls + cost <= run.ceiling:
+        run.calls += cost
+        return True
+    _ai_debug(
+        "judge_pairwise.skip reason=budget ceiling=%d calls=%d need=%d "
+        "order_kept=pointwise",
+        run.ceiling,
+        run.calls,
+        cost,
+    )
     return False
 
 

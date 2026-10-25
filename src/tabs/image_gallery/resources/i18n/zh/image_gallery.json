@@ -77,8 +77,9 @@
       "sample_count_2": "2 次",
       "sample_count_3": "3 次",
       "sample_count_5": "5 次",
-      "judge_concurrency": "并行 AI 请求数",
-      "judge_run_call_ceiling": "每次 AI 运行的调用上限（0 = 不限）",
+      "judge_concurrency": "AI 裁判并行请求数",
+      "judge_run_call_ceiling": "AI 裁判每次运行的调用上限",
+      "judge_run_call_ceiling_unlimited": "不限",
       "api_key_placeholder": "sk-…",
       "model_placeholder": "openrouter/auto 或 vendor/model",
       "tokens_placeholder": "自动"

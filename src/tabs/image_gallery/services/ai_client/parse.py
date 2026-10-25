@@ -3,6 +3,8 @@
 Also home to :func:`parse_response`, the public parse entry point.
 """
 
+# Audit-Meta: pattern=response-parse reason="one parser per answer shape (scorecard, sampling merge, pairwise verdict) sharing the error/truncation vocabulary and the finish-reason rules — splitting would duplicate the shape contract the client and its tests rely on; grew past 500 lines with the pairwise A/B verdict parser (board 2026-10-25)"
+
 from __future__ import annotations
 
 import json
@@ -136,6 +138,69 @@ def _axis_flags_from_defects(defects) -> tuple:
         except Exception:
             continue
     return tuple(out)
+
+_PARSE_PAIRWISE_BARE = {"A": "A", "B": "B", "TIE": "TIE", "EQUAL": "TIE"}
+
+
+def parse_pairwise_verdict(text) -> str | None:
+    """``"A" | "B" | "TIE" | None`` from one pairwise answer.
+
+    The pairwise prompt (``prompt.build_pairwise_prompt``) asks for exactly
+    ``WINNER: A|B|TIE``; a JSON ``{"winner": ...}`` is accepted too so a model
+    that wraps it stays usable. ``None`` means NO usable verdict — the caller
+    must treat the pair as unresolved, never default to a side (a defaulted
+    winner is how position bias would sneak back in). Bounded and pure.
+    """
+    try:
+        body = str(text or "").strip()
+    except Exception:
+        return None
+    if not body:
+        return None
+    # Code fences are common even when the prompt forbids them.
+    if body.startswith("```"):
+        lines = [ln for ln in body.splitlines() if not ln.strip().startswith("```")]
+        body = "\n".join(lines).strip()
+    if not body:
+        return None
+    if body.startswith("{"):
+        try:
+            payload = json.loads(body)
+        except Exception:
+            payload = None
+        if isinstance(payload, dict) and "winner" in payload:
+            try:
+                token = str(payload.get("winner") or "").strip().upper()
+            except Exception:
+                token = ""
+            return _PARSE_PAIRWISE_BARE.get(token) or (
+                "A" if token.startswith("A") else "B" if token.startswith("B") else None
+            )
+    for line in body.splitlines():
+        stripped = line.strip().strip("*").strip()
+        if not stripped.upper().startswith("WINNER"):
+            continue
+        if ":" not in stripped:
+            continue
+        value = stripped.split(":", 1)[1].strip().strip("*").strip().upper()
+        if value.startswith("A"):
+            return "A"
+        if value.startswith("B"):
+            return "B"
+        if value.startswith("TIE") or value.startswith("EQUAL"):
+            return "TIE"
+        return None
+    return _PARSE_PAIRWISE_BARE.get(body.upper())
+
+
+def parse_pairwise_response(raw) -> str | None:
+    """``"A" | "B" | "TIE" | None`` from one raw chat-completion reply."""
+    try:
+        content = raw["choices"][0]["message"]["content"]
+    except (KeyError, IndexError, TypeError):
+        return None
+    return parse_pairwise_verdict(content)
+
 
 _REASONING_BLOCK_RE = re.compile(
     r"<(think|thinking|reasoning|analysis)>.*?</\1>",

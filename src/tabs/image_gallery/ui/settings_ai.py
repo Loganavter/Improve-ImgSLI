@@ -26,6 +26,13 @@ On Apply, a change to the analysis identity (model / base_url / profile /
 effort / mode / the judge's run count k) offers to re-analyze the existing
 results — see ``use_cases/ai_analysis.offer_reanalysis``.
 
+Two rows bound what a judge run costs, next to the run count: **Parallel judge
+requests** (the provider width, 1..8) and **Judge run call ceiling** (0 shown
+as the word *unlimited*). Neither is part of the identity — they change how a
+run is paced, not what it produces. Each write goes through
+``AiSettingsStore.save_field`` (the one owner of both clamps) and the control
+is then re-rendered from the STORE, never from its own input.
+
 Uses QSettings via ``AiSettingsStore`` — no Redux path (8-file cost for a setting
 nothing else needs to react to). Section is ambient (always visible) like other
 per-tab settings. ``SettingsContribution`` with section ``image_gallery.ai``.
@@ -39,10 +46,10 @@ from __future__ import annotations
 import logging
 
 from PySide6.QtWidgets import QHBoxLayout
-from PySide6.QtCore import QThreadPool
+from PySide6.QtCore import QThreadPool, QTimer
 
 from sli_ui_toolkit.managers import scaled_px
-from sli_ui_toolkit.widgets import CheckBox, ComboBox, CustomLineEdit
+from sli_ui_toolkit.widgets import CheckBox, ComboBox, CustomLineEdit, SpinBox
 
 from plugins.settings.typography import (
     apply_settings_body,
@@ -55,6 +62,9 @@ from plugins.settings.registry import SettingsSection
 from plugins.settings.search import SearchIndex, group
 from tabs.image_gallery.services import ai_models, ai_providers, vlm
 from tabs.image_gallery.services.ai_settings_store import (
+    JUDGE_CONCURRENCY_DEFAULT,
+    JUDGE_CONCURRENCY_MAX,
+    JUDGE_CONCURRENCY_MIN,
     REASONING_EFFORTS,
     SAMPLE_COUNT_CHOICES,
     VLM_MAX_EDGES,
@@ -62,6 +72,14 @@ from tabs.image_gallery.services.ai_settings_store import (
     DEFAULT_BASE_URL,
 )
 from core.log_names import APP_LOGGER_NAME
+
+#: Upper bound of the judge-run call ceiling control. The setting itself is any
+#: value >= 0 (0 = unlimited, the store's own clamp); this is only the range a
+#: spin can reach by hand — 10000 calls is ~3300 cards at k=3, above any
+#: practical single gallery selection. A larger value written to the config
+#: directly still governs the run; the control shows it clamped only once the
+#: user edits the row.
+_JUDGE_CEILING_MAX = 10000
 
 # Effort picker order — maps a ComboBox index to a stored effort value.
 _EFFORT_CHOICES = REASONING_EFFORTS
@@ -135,6 +153,9 @@ AI_GROUP = group(
     "image_gallery.settings.sample_count_2",
     "image_gallery.settings.sample_count_3",
     "image_gallery.settings.sample_count_5",
+    "image_gallery.settings.judge_concurrency",
+    "image_gallery.settings.judge_run_call_ceiling",
+    "image_gallery.settings.judge_run_call_ceiling_unlimited",
 )
 SEARCH = SearchIndex.of(AI_GROUP)
 
@@ -512,6 +533,88 @@ def build(dialog, p):  # type: ignore[no-untyped-def]
     samples_row.addWidget(samples_label)
     samples_row.addWidget(dialog.gallery_ai_samples, 1)
 
+    # Judge run call ceiling (0 = unlimited, shown as the word): the pass stops
+    # on the last whole card that fits and leaves the rest on the continue
+    # affordance (use_cases/judge_budget). Empty text was tried for ask_max_tokens;
+    # a spin cannot show "empty", so zero renders as the unlimited word instead
+    # of a number the user has to decode.
+    ceiling_row = QHBoxLayout()
+    ceiling_row.setContentsMargins(0, scaled_px(4), 0, scaled_px(4))
+    ceiling_row.setSpacing(scaled_px(8))
+    ceiling_label = settings_body_label(
+        AI_GROUP.text(dialog, "image_gallery.settings.judge_run_call_ceiling")
+        if hasattr(AI_GROUP, "text")
+        else "Judge run call ceiling",
+        parent=dialog,
+    )
+    ceiling_label.setFixedWidth(scaled_px(150))
+    dialog.gallery_ai_judge_ceiling_label = ceiling_label
+    dialog.gallery_ai_judge_ceiling = SpinBox(default_value=0)
+    apply_settings_body(dialog.gallery_ai_judge_ceiling)
+    dialog.gallery_ai_judge_ceiling.setRange(0, _JUDGE_CEILING_MAX)
+    try:
+        AI_GROUP.tag_member(
+            dialog.gallery_ai_judge_ceiling,
+            "image_gallery.settings.judge_run_call_ceiling",
+        )
+    except Exception:
+        pass
+
+    # Parallel judge requests: how many AI requests may be in flight at once.
+    # The setting was honoured by scheduler.ai_provider_slot but had no control,
+    # so the width could only be changed by editing QSettings by hand.
+    concurrency_row = QHBoxLayout()
+    concurrency_row.setContentsMargins(0, scaled_px(4), 0, scaled_px(4))
+    concurrency_row.setSpacing(scaled_px(8))
+    concurrency_label = settings_body_label(
+        AI_GROUP.text(dialog, "image_gallery.settings.judge_concurrency")
+        if hasattr(AI_GROUP, "text")
+        else "Parallel judge requests",
+        parent=dialog,
+    )
+    concurrency_label.setFixedWidth(scaled_px(150))
+    dialog.gallery_ai_judge_concurrency_label = concurrency_label
+    dialog.gallery_ai_judge_concurrency = SpinBox(
+        default_value=JUDGE_CONCURRENCY_DEFAULT
+    )
+    apply_settings_body(dialog.gallery_ai_judge_concurrency)
+    dialog.gallery_ai_judge_concurrency.setRange(
+        JUDGE_CONCURRENCY_MIN, JUDGE_CONCURRENCY_MAX
+    )
+    try:
+        AI_GROUP.tag_member(
+            dialog.gallery_ai_judge_concurrency,
+            "image_gallery.settings.judge_concurrency",
+        )
+    except Exception:
+        pass
+
+    # One width for both spinners, sized for the longest text either can show
+    # ("unlimited" / "без ограничения") — a digit-derived SpinBox width clips it.
+    try:
+        from PySide6.QtGui import QFontMetrics
+
+        _unlimited_text = _tr(
+            "image_gallery.settings.judge_run_call_ceiling_unlimited", "unlimited"
+        )
+        _spin_width = max(
+            scaled_px(80),
+            QFontMetrics(dialog.gallery_ai_judge_ceiling.font()).horizontalAdvance(
+                _unlimited_text
+            )
+            + scaled_px(36),
+        )
+        dialog.gallery_ai_judge_ceiling.setFixedWidth(_spin_width)
+        dialog.gallery_ai_judge_concurrency.setFixedWidth(_spin_width)
+    except Exception:
+        _unlimited_text = "unlimited"
+
+    ceiling_row.addWidget(ceiling_label)
+    ceiling_row.addWidget(dialog.gallery_ai_judge_ceiling)
+    ceiling_row.addStretch()
+    concurrency_row.addWidget(concurrency_label)
+    concurrency_row.addWidget(dialog.gallery_ai_judge_concurrency)
+    concurrency_row.addStretch()
 
     # One label column for the whole group, sized to the longest translated
     # label — a fixed 150px clipped longer Cyrillic/Portuguese strings.
@@ -527,6 +630,8 @@ def build(dialog, p):  # type: ignore[no-untyped-def]
             effort_label,
             edge_label,
             samples_label,
+            ceiling_label,
+            concurrency_label,
         ]
         _need = max(
             QFontMetrics(lbl.font()).horizontalAdvance(lbl.text()) for lbl in _labels
@@ -549,6 +654,8 @@ def build(dialog, p):  # type: ignore[no-untyped-def]
         group_widget.add_widget(builder.row(effort_row))
         group_widget.add_widget(builder.row(edge_row))
         group_widget.add_widget(builder.row(samples_row))
+        group_widget.add_widget(builder.row(ceiling_row))
+        group_widget.add_widget(builder.row(concurrency_row))
     else:
         group_widget.add_widget(dialog.gallery_ai_enabled)
         # fallback: add layouts via containers
@@ -561,6 +668,8 @@ def build(dialog, p):  # type: ignore[no-untyped-def]
             effort_row,
             edge_row,
             samples_row,
+            ceiling_row,
+            concurrency_row,
         ):
             from PySide6.QtWidgets import QWidget
 
@@ -597,6 +706,88 @@ def build(dialog, p):  # type: ignore[no-untyped-def]
         except (IndexError, TypeError, ValueError):
             k = 3
         _save_field("sample_count", k)
+
+    #: Guard for the read-back below: showing the store's answer calls
+    #: ``SpinBox.setValue``, which emits ``valueChanged`` and would re-enter the
+    #: save handler (a second write of the same value on every edit).
+    spin_sync = {"on": False}
+
+    def _stored_int(name: str, fallback: int) -> int:
+        """The value the store now holds for *name* (it owns both clamps)."""
+        try:
+            return int(getattr(store.load(), name))
+        except Exception:
+            return int(fallback)
+
+    def _show_spin(spin, value, *, unlimited_for_zero: bool = False) -> None:
+        """Render *value* on *spin*; zero shows the unlimited word when asked."""
+        spin_sync["on"] = True
+        try:
+            spin.setValue(int(value))
+        finally:
+            spin_sync["on"] = False
+        if not unlimited_for_zero:
+            return
+
+        def _apply() -> None:
+            try:
+                if int(spin.value()) == 0:
+                    spin.setText(_unlimited_text)
+            except RuntimeError:
+                # The page was closed between the call and the queued re-apply.
+                pass
+
+        _apply()
+        # ``SpinBox.setValue`` writes ``str(value)`` into the line edit AFTER it
+        # emits ``valueChanged``, so a show driven from our own save handler is
+        # overwritten with "0" on the way out. Re-apply once it has returned.
+        QTimer.singleShot(0, _apply)
+
+    def _save_concurrency(_value=None):
+        """Persist the width, then show what the STORE clamped it to."""
+        if spin_sync["on"]:
+            return
+        _save_field(
+            "judge_concurrency", int(dialog.gallery_ai_judge_concurrency.value())
+        )
+        _show_spin(
+            dialog.gallery_ai_judge_concurrency,
+            _stored_int("judge_concurrency", JUDGE_CONCURRENCY_DEFAULT),
+        )
+        # The provider gate reads the width through a cache (scheduler is
+        # imported lazily: the settings page must not pull the pool in).
+        try:
+            from tabs.image_gallery.use_cases.scheduler import (
+                reset_judge_concurrency_cache,
+            )
+
+            reset_judge_concurrency_cache()
+        except Exception:
+            pass
+
+    def _save_ceiling(_value=None):
+        """Persist the ceiling (0 = unlimited) and show the stored value."""
+        if spin_sync["on"]:
+            return
+        _save_field(
+            "judge_run_call_ceiling", int(dialog.gallery_ai_judge_ceiling.value())
+        )
+        _show_spin(
+            dialog.gallery_ai_judge_ceiling,
+            _stored_int("judge_run_call_ceiling", 0),
+            unlimited_for_zero=True,
+        )
+
+    # A virgin store shows the shipped defaults; a configured one shows its own.
+    _show_spin(
+        dialog.gallery_ai_judge_ceiling,
+        int(getattr(current, "judge_run_call_ceiling", 0) or 0),
+        unlimited_for_zero=True,
+    )
+    _show_spin(
+        dialog.gallery_ai_judge_concurrency,
+        int(getattr(current, "judge_concurrency", JUDGE_CONCURRENCY_DEFAULT)),
+    )
 
     # Current provider id (kept so the OLD provider's model is remembered when
     # the combo moves: the text field still holds that model at that moment).
@@ -833,6 +1024,17 @@ def build(dialog, p):  # type: ignore[no-untyped-def]
         )
         dialog.gallery_ai_edge.currentIndexChanged.connect(_save_vlm_edge)
         dialog.gallery_ai_samples.currentIndexChanged.connect(_save_samples)
+        dialog.gallery_ai_judge_ceiling.valueChanged.connect(_save_ceiling)
+        # A focus visit alone must not turn the unlimited word back into "0":
+        # SpinBox's own editingFinished rewrites the text from the value.
+        dialog.gallery_ai_judge_ceiling.editingFinished.connect(
+            lambda: _show_spin(
+                dialog.gallery_ai_judge_ceiling,
+                _stored_int("judge_run_call_ceiling", 0),
+                unlimited_for_zero=True,
+            )
+        )
+        dialog.gallery_ai_judge_concurrency.valueChanged.connect(_save_concurrency)
     except Exception:
         pass
 
@@ -898,6 +1100,10 @@ def build(dialog, p):  # type: ignore[no-untyped-def]
                 "reasoning_effort": effort,
                 "vlm_max_edge_px": edge,
                 "sample_count": samples,
+                "judge_concurrency": int(_dialog.gallery_ai_judge_concurrency.value()),
+                "judge_run_call_ceiling": int(
+                    _dialog.gallery_ai_judge_ceiling.value()
+                ),
             }
         except Exception:
             return {}
@@ -920,6 +1126,8 @@ def build(dialog, p):  # type: ignore[no-untyped-def]
                     "reasoning_effort": cur.reasoning_effort,
                     "vlm_max_edge_px": cur.vlm_max_edge_px,
                     "sample_count": cur.sample_count,
+                    "judge_concurrency": cur.judge_concurrency,
+                    "judge_run_call_ceiling": cur.judge_run_call_ceiling,
                 }
             except Exception:
                 return {}

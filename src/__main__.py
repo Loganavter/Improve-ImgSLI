@@ -2,6 +2,7 @@ import argparse
 import logging
 import os
 import sys
+import time
 from pathlib import Path
 
 # Audit-Meta: pattern=single-owner reason="startup composition: CLI parse, backend fallback, logging/theme bootstrap and the run loop in one readable sequence; the watchdog hook is one line here on purpose"
@@ -151,6 +152,72 @@ def _startup_dump_delay_ms(args: argparse.Namespace) -> int:
     return 600 if (args.open_tab or args.run_action) else 300
 
 
+#: Diagnostic-only cold-launch A/B knob. The protocol, the probe and the
+#: inert-by-default guarantee live with the cold-start tests
+#: (``tests/runtime/test_csd_menu_width_cold_start.py``).
+_FONT_PREWARM_ENV = "IMGSLI_FONT_PREWARM"
+
+
+def _font_prewarm_requested() -> bool:
+    """True only when ``IMGSLI_FONT_PREWARM`` holds a truthy value.
+
+    Uses the app's permissive flag reader, so ``1``/``yes``/``on``/``true``
+    (or the ``BLINKTABLE_`` spelling) are on and ``0``/``false``/``no``/``off``
+    or an unset/empty value are off — the same vocabulary as every other
+    diagnostic env knob.
+    """
+    return env_flag(_FONT_PREWARM_ENV)
+
+
+def _prewarm_font_metrics() -> tuple[float, str] | None:
+    """Pay the first font advance here; return ``(cost_ms, font family)``.
+
+    The first ``horizontalAdvance`` of a fresh process is where a cold launch
+    pays the one-time font-engine init (26-54 ms on the recon host; the
+    owner's Windows build blocks 2.9-5.7 s on that same first advance, inside
+    the CSD menu trigger width estimator). Returning the family too lets an
+    A/B run compare this face with the one the title bar later measures — a
+    warm-up on a different face would not cover the stall.
+
+    ``None`` when the warm-up cannot run (import or font lookup failure); the
+    caller reports that instead of claiming a zero cost.
+    """
+    started = time.perf_counter()
+    try:
+        from PySide6.QtGui import QFontMetrics
+
+        from sli_ui_toolkit.ui.managers.ui_font import ui_font
+
+        font = ui_font()
+        QFontMetrics(font).horizontalAdvance("Aa")
+        family = str(font.family())
+    except Exception:
+        return None
+    return (time.perf_counter() - started) * 1000.0, family
+
+
+def _maybe_prewarm_font_metrics() -> None:
+    """Run the env-gated pre-warm and record its cost in the startup trace.
+
+    Inert by default: with ``IMGSLI_FONT_PREWARM`` unset this returns before
+    any work — no Qt call, no mark, no behaviour change. When on, the cost
+    lands in the *early* startup file (``startup_early.log``): this runs a
+    couple of lines after ``QApplication``, long before ``core.bootstrap``
+    configures logging, so ``early_mark`` (the existing pre-log sink; the same
+    one that carries ``main.qapp_ready`` right next to it) is the only
+    channel. A run therefore needs ``IMGSLI_STARTUP_TRACE=1`` for the file to
+    be open at all.
+    """
+    if not _font_prewarm_requested():
+        return
+    result = _prewarm_font_metrics()
+    if result is None:
+        early_mark("font.prewarm.failed")
+        return
+    cost_ms, family = result
+    early_mark("font.prewarm", cost_ms=f"{cost_ms:.1f}", family=family)
+
+
 def main():
     parser = argparse.ArgumentParser(description="BlinkTable - Main entry point")
     parser.add_argument(
@@ -289,6 +356,14 @@ def main():
         argv[0] = "improve-imgsli"
     app = QApplication(argv)
     early_mark("main.qapp_ready")
+
+    # Cold-launch A/B (IMGSLI_FONT_PREWARM=1, diagnostic only): pay the
+    # one-time font-engine init here — after QApplication (needs the platform
+    # font database), before the RHI probe and MainWindow — so one run says
+    # whether the 3-4 s title-bar stall is that init or the trigger
+    # measurements that currently trigger it. Inert with the env unset: no
+    # call, no mark, no behaviour change.
+    _maybe_prewarm_font_metrics()
 
     # Project-wide widget substitution (toolkit scrollbar policy): every
     # stock scroll area gets MinimalistScrollBar bars at polish time, so no

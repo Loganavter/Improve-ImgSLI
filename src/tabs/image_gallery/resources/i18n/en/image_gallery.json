@@ -77,8 +77,9 @@
       "sample_count_2": "2 runs",
       "sample_count_3": "3 runs",
       "sample_count_5": "5 runs",
-      "judge_concurrency": "Parallel AI requests",
-      "judge_run_call_ceiling": "Call limit per AI run (0 = unlimited)",
+      "judge_concurrency": "Parallel judge requests",
+      "judge_run_call_ceiling": "Judge run call ceiling",
+      "judge_run_call_ceiling_unlimited": "unlimited",
       "api_key_placeholder": "sk-…",
       "model_placeholder": "openrouter/auto or vendor/model",
       "tokens_placeholder": "auto"
