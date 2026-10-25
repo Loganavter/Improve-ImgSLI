@@ -8,10 +8,17 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+TEMPLATE_DIR = REPO_ROOT / "build" / "Windows-template"
+if str(TEMPLATE_DIR) not in sys.path:
+    sys.path.insert(0, str(TEMPLATE_DIR))
+
+# Product name/version are not re-spelled here: the packaging helper resolves
+# them from src/core/log_names.py and inno_setup_6.iss.
+from product_name import APP_NAME, APP_VERSION  # noqa: E402
+
 METAINFO_PATH = REPO_ROOT / "build" / "Flatpak-template" / "io.github.Loganavter.Improve-ImgSLI.metainfo.xml"
 PKGBUILD_PATH = REPO_ROOT / "build" / "AUR-template" / "PKGBUILD"
 INNO_PATH = REPO_ROOT / "build" / "Windows-template" / "inno_setup_6.iss"
-BUILD_WINDOWS_PATH = REPO_ROOT / "build" / "Windows-template" / "build_windows.py"
 FLATPAK_YAML_PATH = REPO_ROOT / "build" / "Flatpak-template" / "io.github.Loganavter.Improve-ImgSLI.yaml"
 FLATPAK_MODULES_PATH = REPO_ROOT / "build" / "Flatpak-template" / "python3-modules.json"
 
@@ -97,6 +104,12 @@ def main() -> int:
         )
 
     pkgbuild_text = _read_text(PKGBUILD_PATH)
+    aur_pkgname = _extract(r"^pkgname=([^\n]+)$", pkgbuild_text, "AUR pkgname")
+    if aur_pkgname != APP_NAME.lower():
+        return _fail(
+            f"AUR pkgname {aur_pkgname!r} does not follow the product name "
+            f"{APP_NAME!r} (expected {APP_NAME.lower()!r})"
+        )
     aur_version = _extract(r"^pkgver=([^\n]+)$", pkgbuild_text, "AUR pkgver")
 
     inno_text = _read_text(INNO_PATH)
@@ -106,14 +119,14 @@ def main() -> int:
         "Windows installer version",
     )
 
-    build_windows_text = _read_text(BUILD_WINDOWS_PATH)
-    setup_version = _extract(
-        r'Improve_ImgSLI_Setup_v([0-9][^"]*)\.exe',
-        build_windows_text,
-        "build_windows.py setup exe version",
-    )
+    # The setup-exe version is resolved by build/Windows-template/product_name.py
+    # from inno_setup_6.iss; build_windows.py no longer spells it (and no longer
+    # spells the product name), so that is the value to compare across files.
+    setup_version = APP_VERSION
 
     flatpak_yaml_text = _read_text(FLATPAK_YAML_PATH)
+    # GitHub tag archives are named after the repository (Improve-ImgSLI), not
+    # after the product, so this pattern deliberately keeps the old spelling.
     archive_version = _extract(
         r"Improve-ImgSLI-([0-9][^.]*(?:\.[0-9]+)+)\.tar\.gz",
         flatpak_yaml_text,

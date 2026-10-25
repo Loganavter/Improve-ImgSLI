@@ -26,7 +26,7 @@ def _init_unified_flyout(manager) -> None:
     )
     flyout = manager.unified_flyout
     # The toolkit's flyout is a generic list picker; the rating row is
-    # Improve-ImgSLI domain UI, injected here as the panels' row factory
+    # BlinkTable domain UI, injected here as the panels' row factory
     # (rating behavior callbacks come from the flyout's session glue).
     flyout.set_row_factory(
         make_rating_row_factory(

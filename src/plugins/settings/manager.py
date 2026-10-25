@@ -58,7 +58,7 @@ def is_file_backed_settings(path: str) -> bool:
 
     Pure (no Qt): ``QSettings.fileName()`` is either a real path or, on the
     native Windows backend, a registry key such as
-    ``HKCU\\Software\\improve-imgsli\\improve-imgsli``. Copying "beside" a
+    ``HKCU\\Software\\BlinkTable\\BlinkTable``. Copying "beside" a
     registry key silently does nothing — ``os.path.exists`` is always False —
     so the backup/self-heal path has to branch on this instead of trying.
     """
@@ -188,7 +188,7 @@ def _settings_read_pass(method):
 
 class SettingsManager:
     def __init__(self, organization_name, application_name):
-        # The persisted identity moved (improve-imgsli -> BlinkTable): run the
+        # The persisted identity moved (pre-rename pair -> BlinkTable): run the
         # one-way copy before this store is opened, so a manager built directly
         # with the canonical pair can never read an empty new namespace. Cached
         # per process — a dict check, and a no-op if a factory already ran it.

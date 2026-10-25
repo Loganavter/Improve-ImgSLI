@@ -25,7 +25,7 @@ class _Document:
         self.current_index1: int = -1
         self.current_index2: int = -1
 
-    # Host-domain aliases (Improve-ImgSLI document still uses these names).
+    # Host-domain aliases (the BlinkTable document still uses these names).
     @property
     def image_list1(self) -> list[UnifiedFlyoutItem]:
         return self.list1

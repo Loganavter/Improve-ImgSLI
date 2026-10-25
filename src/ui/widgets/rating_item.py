@@ -3,7 +3,7 @@ from sli_ui_toolkit.ui.inspector.spec import InspectSpec, SpecField  # noqa: E40
 """App-owned rating list row (moved out of sli-ui-toolkit).
 
 The toolkit keeps the generic ListPanel row protocol; the rating row with
-its +/- buttons and rating gestures is Improve-ImgSLI domain UI and lives
+its +/- buttons and rating gestures is BlinkTable domain UI and lives
 here. Build rows for a ListPanel/UnifiedFlyout through
 ``make_rating_row_factory``.
 """

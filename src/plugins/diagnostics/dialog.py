@@ -217,7 +217,7 @@ class DiagnosticsDialog(ThemedDialog):
         path, _selected = QFileDialog.getSaveFileName(
             self,
             self._tr("diagnostics.save_dialog_title", "Save diagnostics report"),
-            "imgsli-diagnostics-report.txt",
+            "blinktable-diagnostics-report.txt",
             "Text (*.txt)",
         )
         if not path:

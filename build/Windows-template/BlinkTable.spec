@@ -13,12 +13,16 @@ block_cipher = None
 SPEC_DIR = Path(SPEC).resolve().parent
 REPO_ROOT = SPEC_DIR.parents[1]
 SRC_ROOT = REPO_ROOT / "src"
-if str(SRC_ROOT) not in sys.path:
-    sys.path.insert(0, str(SRC_ROOT))
+for _search_path in (str(SRC_ROOT), str(SPEC_DIR)):
+    if _search_path not in sys.path:
+        sys.path.insert(0, _search_path)
 ICON_PATH = SPEC_DIR / "icons" / "icon.ico"
 QT_RUNTIME_HOOK = SPEC_DIR / "pyi_rth_pyside6_windows.py"
 QT_CONF_PATH = SPEC_DIR / "qt.conf"
-APP_NAME = "Improve_ImgSLI"
+# Product name is read, never spelled here: src/core/log_names.py owns it and
+# build/Windows-template/product_name.py derives the exe/collect names from it
+# (`check_product_name.py` fails the build if this file spells it again).
+from product_name import APP_NAME  # noqa: E402  (needs SPEC_DIR on sys.path)
 
 
 def _env_flag(name: str) -> bool:

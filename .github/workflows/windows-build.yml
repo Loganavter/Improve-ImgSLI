@@ -32,6 +32,7 @@ jobs:
         run: |
           python build/ci/validate_release_metadata.py
           python build/ci/validate_license_files.py
+          python build/Windows-template/check_product_name.py
 
   tests:
     name: Run tests
@@ -116,18 +117,18 @@ jobs:
       - name: Verify Windows License Bundle
         shell: pwsh
         run: |
-          python build/ci/validate_license_files.py --windows-bundle dist/Improve_ImgSLI
+          python build/ci/validate_license_files.py --windows-bundle dist/BlinkTable
 
       - name: Verify Windows QRhi Shaders
         shell: pwsh
         run: |
-          python build/ci/validate_windows_shaders.py --windows-bundle dist/Improve_ImgSLI
+          python build/ci/validate_windows_shaders.py --windows-bundle dist/BlinkTable
 
       - name: Upload Windows Bundle
         uses: actions/upload-artifact@v4
         with:
-          name: Improve_ImgSLI_windows_bundle${{ github.event.inputs.console == 'true' && '_console' || '' }}
-          path: dist/Improve_ImgSLI/**
+          name: BlinkTable_windows_bundle${{ github.event.inputs.console == 'true' && '_console' || '' }}
+          path: dist/BlinkTable/**
           if-no-files-found: error
 
   installer:
@@ -141,8 +142,8 @@ jobs:
       - name: Download Bundle
         uses: actions/download-artifact@v4
         with:
-          name: Improve_ImgSLI_windows_bundle${{ github.event.inputs.console == 'true' && '_console' || '' }}
-          path: dist/Improve_ImgSLI
+          name: BlinkTable_windows_bundle${{ github.event.inputs.console == 'true' && '_console' || '' }}
+          path: dist/BlinkTable
 
       - name: Build Inno Setup Installer
         uses: Minionguyjpro/Inno-Setup-Action@v1.2.5
@@ -157,6 +158,6 @@ jobs:
       - name: Upload Windows Installer
         uses: actions/upload-artifact@v4
         with:
-          name: Improve_ImgSLI_windows_installer
+          name: BlinkTable_windows_installer
           path: build/Windows-template/Output/*.exe
           if-no-files-found: error

@@ -112,7 +112,7 @@ class ApplicationContext:
         once. The purge logic acquires a cross-platform ``QLockFile`` on
         the spill dir first (see tiled_pixel_store.resolve_pixel_spill_dir)
         and only purges leftover files when that succeeds, i.e. no other
-        ImgSLI instance is currently live.
+        BlinkTable instance is currently live.
         """
         self._cache_purge_reclaimed_bytes = 0
         try:

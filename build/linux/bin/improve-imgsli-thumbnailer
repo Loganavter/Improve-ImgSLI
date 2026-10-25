@@ -36,6 +36,14 @@ def _path_from_arg(value: str) -> Path:
 def _mark_candidates() -> list[Path]:
     home = Path.home()
     return [
+        home / ".local/share/blinktable/mark.png",
+        Path("/usr/share/blinktable/mark.png"),
+        home / ".local/share/icons/hicolor/128x128/apps/blinktable.png",
+        Path("/usr/share/icons/hicolor/128x128/apps/blinktable.png"),
+        Path("/usr/share/icons/hicolor/512x512/apps/blinktable.png"),
+        # Pre-rename locations, still legitimate: the dev launcher installs the
+        # mark under ~/.local/share/improve-imgsli/, and packages built before
+        # the rename ship it under /usr/share/improve-imgsli/.
         home / ".local/share/improve-imgsli/mark.png",
         Path("/usr/share/improve-imgsli/mark.png"),
         home / ".local/share/icons/hicolor/128x128/apps/improve-imgsli.png",

@@ -52,7 +52,7 @@ def main(argv: list[str] | None = None) -> int:
         "--windows-bundle",
         type=Path,
         required=True,
-        help="Path to dist/Improve_ImgSLI (onedir bundle root)",
+        help="Path to dist/<APP_NAME> (onedir bundle root), see build/Windows-template/product_name.py",
     )
     args = parser.parse_args(argv)
 

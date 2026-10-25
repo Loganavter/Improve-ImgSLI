@@ -2,7 +2,7 @@
 
 The product is now BlinkTable, but releases up to this one persisted every
 user preference under the legacy identity (``LEGACY_SETTINGS_ORG`` /
-``LEGACY_SETTINGS_APP`` below — the pre-rename ``improve-imgsli`` pair). This
+``LEGACY_SETTINGS_APP`` below — the pre-rename pair). This
 module copies that store into the new namespace **once**, before any code can
 read the new namespace, so an upgrade keeps every preference.
 
