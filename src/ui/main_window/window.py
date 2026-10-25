@@ -1,5 +1,4 @@
 import logging
-import PIL.Image
 from PySide6.QtCore import (
     QEvent,
     Qt,
@@ -39,7 +38,36 @@ from core.log_names import APP_LOGGER_NAME
 from utils.geometry import GeometryManager
 from utils.resource_loader import resource_path
 
-PIL.Image.MAX_IMAGE_PIXELS = None
+# PIL's decompression-bomb ceiling is a process-wide decode setting, not a
+# window property; it must be lifted before the first image decode, but NOT
+# at module import — that dragged ``PIL.Image`` (~35 ms, 10 modules) into
+# every ``from ui.main_window.window import MainWindow`` (tools, tests, and
+# the window-import phase of cold launch) for one constant.
+_pil_pixel_limit_installed = False
+
+
+def _install_pil_pixel_limit() -> None:
+    """Lift PIL's decompression-bomb ceiling (large images are legitimate).
+
+    Anchored at ``MainWindow.start()``: the last point before the deferred
+    startup phase (timer-driven from ``show``) can restore a document and
+    begin decoding, and after the first visible frame is requested — so the
+    import lands off the path to first paint. Idempotent; a missing/broken
+    PIL must not break startup (decode paths import PIL themselves and would
+    fail with a clearer error).
+    """
+    global _pil_pixel_limit_installed
+    if _pil_pixel_limit_installed:
+        return
+    _pil_pixel_limit_installed = True
+    try:
+        from PIL import Image as _PILImage
+    except Exception:
+        logger.warning("PIL unavailable; decompression-bomb guard not lifted")
+        return
+    _PILImage.MAX_IMAGE_PIXELS = None
+
+
 logger = logging.getLogger(APP_LOGGER_NAME)
 
 
@@ -258,6 +286,7 @@ class MainWindow(QWidget):
         return None
 
     def start(self):
+        _install_pil_pixel_limit()
         self._startup_controller.start(self)
 
     def apply_application_theme(self, theme_name: str):
