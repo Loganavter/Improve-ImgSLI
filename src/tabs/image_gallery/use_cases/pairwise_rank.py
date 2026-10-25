@@ -19,6 +19,14 @@ Shape of the pass:
   GUI-thread wiring asks before it schedules a worker: "start a thread or not"
   and the pass itself can never disagree about who may spend (the skip reason
   tokens are disabled, too_small, unmeasured and decided);
+* MEASURED is the active metric profile's own axis set, judge-named axes
+  included (:func:`member_qualities` / :func:`profile_axis_numbers`): the
+  numbers may live on the engine records / local detectors OR on the model's
+  scorecard (``item.analysis.axes``), and a card is measured when ANY of those
+  answers one of the profile's axes. ``rank_fusion.item_quality`` alone is the
+  REGISTRY half (judge names are excluded by design) and reads only
+  records/metrics, so on a judged series it returns ``None`` for every member
+  and the pass answered ``too_small`` forever (measured live 2026-10-25);
 * the whole pass is one atomic ceiling reservation through
   ``judge_budget.reserve_pairwise_calls`` (the SAME run counter and ceiling as
   the pointwise cards) — a partial comparison set never produces an order;
@@ -412,13 +420,119 @@ def _resolve_threshold(row, threshold=None) -> float:
     return max(PAIRWISE_NEAR_TIE_THRESHOLD_MIN, min(PAIRWISE_NEAR_TIE_THRESHOLD_MAX, number))
 
 
+def profile_axis_numbers(item, *, mode=None, profile=None) -> dict[str, float]:
+    """``{axis: 0..100}`` *item* carries for the ACTIVE profile's own axes.
+
+    The asked set is the profile's full half-pair (``profile_judged
+    .scorecard_axis_ids``: the registry ids the local detectors can produce
+    PLUS the axes the judge NAMED for this series), and each number is taken
+    from whichever judgment store the item actually has it in — the Algorithms
+    read (engine records / ``item.metrics``) first, then the model's scorecard
+    (``item.analysis.axes``). An axis nobody scored is ABSENT, never ``0``.
+
+    Why this exists instead of just ``rank_fusion.item_quality``: that
+    aggregate resolves ``measured_axes_for``, which is the REGISTRY half on
+    purpose (a judge name has no local producer), and its per-member vector
+    reads ``analysis_records``/``item.metrics`` only. A judge run writes its
+    numbers to ``item.analysis`` under the FREE names the profile asked for, so
+    on a judged series every member's ``item_quality`` is ``None``,
+    ``measured == 0`` and the pass answered ``too_small`` — before and after the
+    judge run, therefore not a settle race (measured live 2026-10-25, 3-image
+    folder, ``judge_pairwise.skip reason=too_small top_n=3 members=3
+    measured=0``). Calling ``item_quality`` is still the fast path
+    (:func:`member_qualities`): when it can aggregate the whole set, its numbers
+    answer unchanged.
+
+    Never raises; never fabricates a value for a missing axis.
+    """
+    try:
+        from tabs.image_gallery.services.profile_judged import scorecard_axis_ids
+
+        axes = scorecard_axis_ids(mode, profile=profile)
+    except Exception:
+        axes = ()
+    if not axes:
+        return {}
+    out: dict[str, float] = {}
+    for domain in ("algorithms", "ai"):
+        try:
+            from tabs.image_gallery.services.quality_read import domain_axis_scores
+
+            read = domain_axis_scores(item, domain=domain)
+        except Exception:
+            read = {}
+        if not isinstance(read, dict):
+            continue
+        for axis in axes:
+            name = str(axis)
+            if name in out:
+                continue
+            value = read.get(name)
+            if value is None:
+                continue
+            try:
+                number = float(value)
+            except (TypeError, ValueError):
+                continue
+            if number != number:  # NaN: not a measurement
+                continue
+            out[name] = number
+    return out
+
+
+def profile_quality(item, *, mode=None, profile=None) -> float | None:
+    """Mean of the profile axes *item* carries (``None`` when nothing scored).
+
+    The one fallback aggregate for the scores that live outside the fusion's
+    registry read. Not weighted and not worst-axis-capped on purpose: the
+    numbers here already come from ONE instrument per axis (the scorecard's
+    0-100 quality or a detector's quality score), and inventing a second
+    weighting scheme would make two members' numbers incomparable for a reason
+    the user cannot see. Comparable with itself and only used as a set
+    (:func:`member_qualities`).
+    """
+    numbers = profile_axis_numbers(item, mode=mode, profile=profile)
+    if not numbers:
+        return None
+    return sum(numbers.values()) / len(numbers)
+
+
+def member_qualities(items, *, mode=None, profile=None) -> list[float | None]:
+    """One comparable pointwise quality per member of *items* (never a mixture).
+
+    ``rank_fusion.item_quality`` answers whenever it can aggregate the WHOLE
+    set — the Algorithms path over the registry axes, today's exact numbers.
+    As soon as one member has no such number the whole set is re-read over the
+    ACTIVE profile's own axes (:func:`profile_quality`), the same question for
+    every member: mixing one member's registry-axis aggregate with another
+    member's judge-axis mean would put two axis sets in one spread, and the
+    pass would then compare numbers that only look similar. Members with
+    nothing scored anywhere stay ``None``, so the ``unmeasured`` gate still
+    refuses a half-unknown top set.
+    """
+    members = list(items or ())
+    if not members:
+        return []
+    registry: list[float | None] = []
+    for item in members:
+        try:
+            registry.append(item_quality(item, mode=mode, profile=profile))
+        except Exception:
+            registry.append(None)
+    if all(quality is not None for quality in registry):
+        return registry
+    return [profile_quality(item, mode=mode, profile=profile) for item in members]
+
+
 def _select_top(
     items, pointwise_ranks: Mapping[str, int], top_n: int, *, mode=None, profile=None
 ) -> list[PairMember]:
     """The ``top_n`` items with the best pointwise rank (path breaks ties).
 
     Each member carries its own pointwise quality — the NUMBER stays next to
-    the pairwise order, it is never replaced by it.
+    the pairwise order, it is never replaced by it. The quality is read for the
+    WHOLE top set at once (:func:`member_qualities`), so every compared member
+    is scored on one scale.
     """
     ranked: list[tuple[int, str, object]] = []
     fallback = 1 << 30
@@ -433,12 +547,12 @@ def _select_top(
             rank = fallback
         ranked.append((rank, path, item))
     ranked.sort(key=lambda row: (row[0], row[1]))
+    chosen = ranked[: max(0, top_n)]
+    qualities = member_qualities(
+        [item for _rank, _path, item in chosen], mode=mode, profile=profile
+    )
     members: list[PairMember] = []
-    for _rank, path, item in ranked[: max(0, top_n)]:
-        try:
-            quality = item_quality(item, mode=mode, profile=profile)
-        except Exception:
-            quality = None
+    for (_rank, path, item), quality in zip(chosen, qualities):
         members.append(
             PairMember(
                 content=content_key(item), path=path, quality=quality, item=item
@@ -596,9 +710,12 @@ def _plan_pass(
     disagree:
 
     1. ``pairwise_enabled`` off → skip reason disabled (no thread, no call);
-    2. fewer than two MEASURED members in the top set → skip reason too_small;
-    3. a member with no pointwise number → skip reason unmeasured (no defined
-       spread);
+    2. fewer than two MEASURED members in the top set → skip reason too_small —
+       measured means "the active profile's own axes give this member a number",
+       from the engine records / detectors OR the judge's scorecard
+       (:func:`member_qualities`), never one instrument only;
+    3. a member with no number on any profile axis → skip reason unmeasured (no
+       defined spread);
     4. a spread above the declared threshold → skip reason decided (the
        pointwise order already separates them, so a comparison could only spend
        calls).
@@ -896,9 +1013,12 @@ __all__ = [
     "compare_pair",
     "content_key",
     "copeland_order",
+    "member_qualities",
     "normalize_answer",
     "pair_key",
     "pairwise_calls_bound",
     "precheck",
+    "profile_axis_numbers",
+    "profile_quality",
     "run_pairwise_pass",
 ]
