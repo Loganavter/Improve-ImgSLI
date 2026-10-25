@@ -15,6 +15,7 @@ value left by an older build is migrated out on the first load.
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import dataclass, field
 
 from PySide6.QtCore import QSettings
@@ -25,6 +26,8 @@ from tabs.image_gallery.services.ai_providers import (
     PROVIDER_OPENROUTER,
     provider_by_id,
 )
+
+logger = logging.getLogger(__name__)
 
 # Aliases kept so existing call sites (and any importer of these names) keep
 # working; the canonical pair is the single source of the persisted identity.
@@ -115,6 +118,53 @@ def _clamp_float(value, default: float, low: float, high: float) -> float:
     return max(float(low), min(float(high), n))
 
 
+def _load_secret_value() -> str:
+    """The stored provider key, re-probing a cached backend that saw none.
+
+    ``core.secret_store`` resolves its backend once per process and the two
+    non-keyring backends answer "" without re-checking: ``MODE_SESSION`` never
+    reads anything at all. A process that booted before the keyring answered
+    therefore reported "no key" for its WHOLE lifetime — every AI call
+    unauthenticated (401) until a restart, even after the key was stored
+    (measured 2026-10-25). So an empty answer is not trusted: the probe is
+    reset ONCE and the store read again — a load-time re-probe only, no timer,
+    no thread, no polling.
+
+    Cost, by construction: a store that HAS a key returns early (and
+    :func:`secret_store.load` memoizes it), so a healthy store never re-probes;
+    a keyring-backed store with no entry needs none (its ``load()`` re-execs the
+    lookup on every call, so it cannot cache a negative); only the genuinely
+    stuck states — session-only, or encrypted-file while a keyring was expected
+    — pay one ``shutil.which`` per load. The AI settings page
+    (:mod:`...ui.settings_ai`, #669) re-probes for the FIELD it shows; this is
+    the same repair on the seam that feeds the AI clients, so a code path that
+    never opens the page heals too.
+    """
+    try:
+        from core import secret_store
+    except Exception:
+        return ""
+    try:
+        value = str(secret_store.load() or "")
+        if value:
+            return value
+        if secret_store.active_mode() == secret_store.MODE_KEYRING:
+            return ""
+        secret_store.reset_backend_probe()
+        value = str(secret_store.load() or "")
+    except Exception:
+        logger.debug("AI key re-probe on load failed", exc_info=True)
+        return ""
+    if value:
+        # Length only: the key itself must never reach the log.
+        logger.info(
+            "AI API key appeared after a stale secret-backend probe (length=%d); "
+            "using it for this session",
+            len(value),
+        )
+    return value
+
+
 def _load_api_key(settings: QSettings) -> str:
     """The provider key, from the secret store; migrates an INI plaintext once.
 
@@ -137,7 +187,7 @@ def _load_api_key(settings: QSettings) -> str:
         except Exception:
             pass
         return legacy
-    return secret_store.load()
+    return _load_secret_value()
 
 
 @dataclass(frozen=True)
