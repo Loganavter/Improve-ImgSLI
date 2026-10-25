@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+# Audit-Meta: pattern=single-owner reason="one discovery vocabulary: the manifest contract/load/fail-open, the filesystem AST scan and the import fallback share Entry/StartupTier and one resolvability rule, so a fix in one path can never silently miss the other (per-process scan state already lives in discovery_cache.py)"
+
 # re-exported for the tests/tree-rewrite hooks
 from core.plugin_system.discovery_cache import (  # noqa: F401
     cached_scan, reset_plugin_entry_scan_cache, reset_tab_entry_scan_cache)
@@ -9,6 +11,7 @@ import importlib.util
 import json
 import logging
 import pkgutil
+import types
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -31,6 +34,9 @@ _SKIP_TAB_PACKAGES = frozenset({"contract", "registry"})
 _MANIFEST_PATH = Path(__file__).with_name("discovery_manifest.json")
 MANIFEST_VERSION = 1
 MANIFEST_GENERATED_BY = "src/devtools/gen_discovery_manifest.py"
+
+#: Manifest paths already reported at INFO: one evidence line per process.
+_LOGGED_MANIFESTS: set[Path] = set()
 
 logger = logging.getLogger(f"{APP_LOGGER_NAME}.discovery_scan")
 
@@ -130,7 +136,9 @@ def load_discovery_manifest(path: Path | None = None) -> list[Entry] | None:
     if not manifest_path.is_file():
         return None
     try:
-        return _entries_from_manifest_payload(json.loads(manifest_path.read_text(encoding="utf-8")))
+        entries = _entries_from_manifest_payload(
+            json.loads(manifest_path.read_text(encoding="utf-8"))
+        )
     except Exception:
         logger.warning(
             "%s unusable; falling back to the import-based discovery scan",
@@ -138,6 +146,22 @@ def load_discovery_manifest(path: Path | None = None) -> list[Entry] | None:
             exc_info=True,
         )
         return None
+    _log_manifest_used(manifest_path, len(entries))
+    return entries
+
+
+def _log_manifest_used(manifest_path: Path, entry_count: int) -> None:
+    """Name the manifest a discovery consumed, once per process.
+
+    Silent success is not evidence: without this line nobody can tell whether a
+    frozen start used the shipped data or paid for the import scan it exists to
+    avoid. One line per path keeps the repeated discovery call sites (bootstrap
+    tier, deferred tier, session-picker grid) from repeating it.
+    """
+    if manifest_path in _LOGGED_MANIFESTS:
+        return
+    _LOGGED_MANIFESTS.add(manifest_path)
+    logger.info("Discovery manifest: %d entry points from %s", entry_count, manifest_path)
 
 
 def _entries_from_manifest_payload(payload: object) -> list[Entry]:
@@ -235,6 +259,32 @@ def _iter_tab_entry_points_from_filesystem(
     return tuple(entries)
 
 
+def _import_candidate(module_name: str, kind: str) -> types.ModuleType | None:
+    """Import one discovery candidate, or ``None`` when it is not a module.
+
+    A package that ships no entry module — ``tabs/use_cases`` has no ``tab.py``,
+    a nested ``tabs/<tab>/plugins`` may have no ``plugin.py`` — is a candidate,
+    not a broken entry point, and a datas-only bundle cannot tell the two apart
+    from the tree. ``find_spec`` skips a non-resolving candidate cheaply and
+    quietly (DEBUG); only a module that exists and fails to import stays an
+    ERROR with a traceback, and one broken entry hides only itself.
+    """
+    try:
+        resolvable = importlib.util.find_spec(module_name) is not None
+    except (ImportError, ValueError):
+        resolvable = False  # broken parent package / relative name
+    except Exception:
+        resolvable = True  # let the import below report it loudly
+    if not resolvable:
+        logger.debug("Import-based %s discovery skipped %s", kind, module_name)
+        return None
+    try:
+        return importlib.import_module(module_name)
+    except Exception:
+        logger.exception("Import-based %s discovery failed for %s", kind, module_name)
+        return None
+
+
 def _iter_plugin_entry_points_via_import() -> tuple[PluginEntryPoint, ...]:
     entries: list[PluginEntryPoint] = []
 
@@ -292,25 +342,11 @@ def _iter_tab_entry_points_via_import() -> tuple[TabEntryPoint, ...]:
         if not is_pkg or name.startswith("_") or name in _SKIP_TAB_PACKAGES:
             continue
         module_name = f"tabs.{name}.tab"
-        # A package under ``tabs/`` need not ship a ``tab.py`` (``use_cases``),
-        # and a datas-only bundle cannot tell from the tree: skip a candidate
-        # that does not resolve, cheaply and quietly. Only a module that exists
-        # and fails to import stays loud below.
-        try:
-            resolvable = importlib.util.find_spec(module_name) is not None
-        except (ImportError, ValueError):
-            resolvable = False  # broken parent package / relative name
-        except Exception:
-            resolvable = True  # let the import below report it loudly
-        if not resolvable:
-            logger.debug("Import-based tab discovery skipped %s", module_name)
-            continue
-        try:
-            mod = importlib.import_module(module_name)
-        except Exception:
-            # One broken tab (including a contract-level TypeError from a
-            # bad startup_tier) hides only itself, never the whole tier.
-            logger.exception("Import-based tab discovery failed for %s", module_name)
+        # A package under ``tabs/`` need not ship a ``tab.py`` (``use_cases``):
+        # skip a candidate that does not resolve, and let a real failure stay
+        # loud — both rules live in ``_import_candidate``.
+        mod = _import_candidate(module_name, "tab")
+        if mod is None:
             continue
 
         tier: StartupTier = "deferred"
@@ -343,10 +379,8 @@ def _iter_tab_entry_points_via_import() -> tuple[TabEntryPoint, ...]:
 
 
 def _plugin_entry_from_import(module_name: str) -> PluginEntryPoint | None:
-    try:
-        mod = importlib.import_module(module_name)
-    except ImportError:
-        logger.debug("Import-based plugin discovery skipped %s", module_name, exc_info=True)
+    mod = _import_candidate(module_name, "plugin")
+    if mod is None:
         return None
 
     for attr_name in dir(mod):
