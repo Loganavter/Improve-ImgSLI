@@ -275,7 +275,9 @@ def _internal_mime(paths: list[Path], *, with_data: bool = True, with_urls: bool
 
 def test_gallery_paths_mime_literal():
     # Frozen seam with Wave A — identical string, never a second constant.
-    assert dnd.GALLERY_PATHS_MIME == "application/x-imgsli-gallery-paths"
+    from shared.drag_mime import WORKSPACE_TAB_PATHS_MIME
+
+    assert dnd.GALLERY_PATHS_MIME == WORKSPACE_TAB_PATHS_MIME
 
 
 def test_parse_internal_paths_data_and_urls(tmp_path):

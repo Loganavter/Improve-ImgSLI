@@ -36,11 +36,12 @@ class WorkspaceTabStrip(ThemedWidget, AdaptiveTabStrip):
         super().__init__(*args, **kwargs)
         self._read_strip_color()
         self.tab_bar.installEventFilter(self)
-        # Wave C: gallery-card QDrag delivery. The tab bar is the real drop
-        # surface (deepest widget under the cursor); the strip itself accepts
-        # too so padding around the bar still routes. Mime gating lives in
-        # _has_gallery_mime — only the gallery-internal mime is ever claimed,
-        # so file/URL drags keep flowing to the window-level overlay.
+        # QDrag delivery of tab-content paths (gallery cards, Multi Compare
+        # slots). The tab bar is the real drop surface (deepest widget under
+        # the cursor); the strip itself accepts too so padding around the bar
+        # still routes. Mime gating lives in _has_path_drag_mime — only the
+        # tab-content mime is ever claimed, so file/URL drags keep flowing to
+        # the window-level overlay.
         try:
             self.setAcceptDrops(True)
         except Exception:
@@ -51,7 +52,7 @@ class WorkspaceTabStrip(ThemedWidget, AdaptiveTabStrip):
             pass
 
     def set_qdrag_drop_handler(self, handler) -> None:
-        """Duck-typed QDrag drop hook for gallery-card tab delivery (Wave C).
+        """Duck-typed QDrag drop hook for tab-content path delivery.
 
         *handler* is ``callable(event, receiving_widget) -> None`` and
         settles the event itself (accept/ignore); the router lives in
@@ -66,7 +67,7 @@ class WorkspaceTabStrip(ThemedWidget, AdaptiveTabStrip):
             pass
 
     def set_tab_dwell_switch_handler(self, handler) -> None:
-        """Browser-like dwell switch: holding a gallery drag over a tab
+        """Browser-like dwell switch: holding a tab-content drag over a tab
         for ``TAB_DWELL_SWITCH_MS`` activates that tab, so the drop can
         land on the tab's own content surface (grid/canvas) instead of the
         strip router. ``callable(index)``; None disables. The strip never
@@ -77,34 +78,35 @@ class WorkspaceTabStrip(ThemedWidget, AdaptiveTabStrip):
         except Exception:
             pass
 
-    def _has_gallery_mime(self, mime) -> bool:
-        """True when *mime* carries gallery-internal dragged paths.
+    def _has_path_drag_mime(self, mime) -> bool:
+        """True when *mime* carries paths dragged out of tab content.
 
-        The wire format lives in ``ui.main_window.tab_strip_drop``
-        (``GALLERY_CARD_MIME`` — itself a mirror of the single tab-side
-        definition, pinned equal by test). This widget never imports past
-        ``tabs.registry``/``tabs.contract`` (host sandbox contract) — the
-        import below stays inside ``ui.*``. Lazy so construction never pays
-        for the router module.
+        The wire format is ``shared.drag_mime.WORKSPACE_TAB_PATHS_MIME`` —
+        the one definition shared by the producers (gallery cards, Multi
+        Compare slots) and the host router. Claiming it here keeps OS
+        file/URL drags flowing to the window-level overlay. Lazy so
+        construction never pays for the imports.
         """
         try:
-            from ui.main_window.tab_strip_drop import GALLERY_CARD_MIME
+            from shared.drag_mime import WORKSPACE_TAB_PATHS_MIME
         except Exception:
             return False
         try:
-            return bool(mime is not None and mime.hasFormat(GALLERY_CARD_MIME))
+            return bool(
+                mime is not None and mime.hasFormat(WORKSPACE_TAB_PATHS_MIME)
+            )
         except Exception:
             return False
 
     def _handle_strip_drag_move(self, event, receiving_widget=None) -> bool:
-        """Claim enter/move for gallery drags only; True = consumed.
+        """Claim enter/move for tab-content path drags only; True = consumed.
 
         Also mirrors the drag hover onto the tab bar: QDrag suppresses
         mouseMoveEvents, so without this the hovered tab never highlights.
         Position always comes from the event (QCursor is frozen mid-drag).
         """
         try:
-            if self._has_gallery_mime(event.mimeData()):
+            if self._has_path_drag_mime(event.mimeData()):
                 try:
                     self._update_drag_hover(event, receiving_widget)
                 except Exception:
@@ -116,7 +118,7 @@ class WorkspaceTabStrip(ThemedWidget, AdaptiveTabStrip):
         return False
 
     def _update_drag_hover(self, event, receiving_widget=None) -> int:
-        """Highlight the tab under a gallery drag; returns hovered index."""
+        """Highlight the tab under a path drag; returns hovered index."""
         try:
             bar = self.tab_bar
         except Exception:
@@ -151,7 +153,7 @@ class WorkspaceTabStrip(ThemedWidget, AdaptiveTabStrip):
             pass
         return idx
 
-    #: Hold-to-open delay for a gallery drag hovering a tab (browser parity).
+    #: Hold-to-open delay for a tab-content drag hovering a tab (browser parity).
     TAB_DWELL_SWITCH_MS = 700
 
     def _arm_dwell_switch(self, index: int) -> None:
@@ -216,9 +218,9 @@ class WorkspaceTabStrip(ThemedWidget, AdaptiveTabStrip):
             pass
 
     def _handle_strip_drop(self, event, receiving_widget=None) -> bool:
-        """Delegate gallery drops to the router hook; True = consumed."""
+        """Delegate tab-content path drops to the router hook; True = consumed."""
         try:
-            if not self._has_gallery_mime(event.mimeData()):
+            if not self._has_path_drag_mime(event.mimeData()):
                 return False
         except Exception:
             return False
@@ -330,9 +332,9 @@ class WorkspaceTabStrip(ThemedWidget, AdaptiveTabStrip):
                 _t = event.type()
             except Exception:
                 _t = None
-            # Wave C: the tab bar is the real QDrag surface — claim
-            # gallery-internal drags here so they never fall through to the
-            # window file-drop overlay; other mimes propagate untouched.
+            # The tab bar is the real QDrag surface — claim tab-content
+            # path drags here so they never fall through to the window
+            # file-drop overlay; other mimes propagate untouched.
             if _t == QEvent.Type.DragEnter or _t == QEvent.Type.DragMove:
                 if self._handle_strip_drag_move(event, self.tab_bar):
                     return True

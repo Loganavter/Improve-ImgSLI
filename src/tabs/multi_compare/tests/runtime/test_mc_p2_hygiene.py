@@ -3,8 +3,8 @@
 Covers:
 * ``models.py`` carries no tree mutators (pure path is ``scene.tree_ops``);
   frozen-violation guard: ``tree_ops`` ops never mutate their input tree.
-* context-menu failure signals: duplicate-full / duplicate-no-pixels /
-  carry-miss report through the controller error channel, never silent.
+* context-menu failure signals: duplicate-full / duplicate-no-pixels
+  report through the controller error channel, never silent.
 * removal from the menu goes through the controller path (cancel-aware)
   with widget-direct fallback.
 * ``DropQueue`` intake cap with one summary.
@@ -189,20 +189,6 @@ def test_duplicate_no_pixels_signals(qapp):
     provider._duplicate_slot(widget.state.slots[0])
     assert len(reported) == 1
     assert "duplicat" in reported[0].lower()
-
-
-def test_carry_miss_signals(qapp):
-    reported: list = []
-    controller = SimpleNamespace(report_user_error=reported.append)
-    widget = _mc_widget(
-        slots=[CompareSlot(id=1, path=None, label="empty")],
-        root=LeafNode(1),
-        controller=controller,
-    )
-    provider = _provider(widget)
-    provider._begin_carry(widget.state.slots[0])
-    assert len(reported) == 1
-    assert "carry" in reported[0].lower()
 
 
 def test_remove_slot_prefers_controller_path(qapp):

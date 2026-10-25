@@ -594,7 +594,10 @@ class ImageCompareContextMenuProvider:
         image = self._peek_image(slot)
         from events.image_carry import begin_image_carry
 
-        begin_image_carry([path], image=image)
+        # ``tab_hint=False``: Image Compare's Move must not decorate the
+        # workspace tab strip (owner decision 2026-10-25). Delivery on a tab
+        # click is unchanged — only the wiggle overlay is suppressed.
+        begin_image_carry([path], image=image, tab_hint=False)
 
     def _begin_carry_list_item(self, list_num: int, index: int) -> None:
         path = self._list_item_path(list_num, index)
@@ -602,7 +605,7 @@ class ImageCompareContextMenuProvider:
             return
         from events.image_carry import begin_image_carry
 
-        begin_image_carry([path])
+        begin_image_carry([path], tab_hint=False)
 
     def _rating_for(self, slot: int) -> int | None:
         document = self.store.get_session_state_slot("document")

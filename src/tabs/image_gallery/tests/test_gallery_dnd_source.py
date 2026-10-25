@@ -34,7 +34,11 @@ def _owner(selected, order=None, items=()):
 
 
 def test_mime_constant_value() -> None:
-    assert GALLERY_PATHS_MIME == "application/x-imgsli-gallery-paths"
+    from shared.drag_mime import WORKSPACE_TAB_PATHS_MIME
+
+    assert GALLERY_PATHS_MIME == WORKSPACE_TAB_PATHS_MIME == (
+        "application/x-imgsli-workspace-tab-paths"
+    )
 
 
 def test_dragged_set_group_preserves_selected_order() -> None:
