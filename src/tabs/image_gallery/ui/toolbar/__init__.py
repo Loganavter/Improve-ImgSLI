@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Callable
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QSize, Qt, Signal
 from PySide6.QtWidgets import QHBoxLayout, QWidget
 
 from sli_ui_toolkit.managers import scaled_px
@@ -44,6 +44,39 @@ SORT_OPTION_KEYS = (
     "image_gallery.sort_quality",
 )
 SORT_OPTION_DEFAULTS = ("Rank", "Name", "Date", "AI quality")
+
+
+class _ActivityText(Text):
+    """``Text`` that asks for its full sentence but never demands the space.
+
+    The toolbar's ONE activity slot carries two very different strings: the
+    triage counter ("n/N", a few px) and the judge-run budget line ("AI judge:
+    up to 3 × 3 = 9 calls (estimate, ≤ 123456 tokens)" plus the ceiling-stop
+    variant — 311..475 px at ``pixel_size=11`` in ru). Measured 2026-10-25: the
+    long sentence inflated this row's minimum width to 1181 px (1345 px for the
+    ceiling line) against a 1024 px default window, so the row outgrew the
+    window and the tail was paint-clipped instead of elided.
+
+    Two toolkit behaviours make the bound non-obvious:
+
+    * ``elide=True`` alone is not enough — ``Text.minimumSizeHint()`` reports
+      the advance of the CURRENT display text, so a label whose text was set
+      while the window was wide keeps a full-width floor and the row can never
+      shrink back.
+    * ``QSizePolicy.Ignored`` is wrong here as well: measured, the row hands
+      such an item ZERO width (the stretch eats the slack) and the sentence
+      disappears entirely.
+
+    So: keep the default Preferred policy (the text still gets its full
+    advance when there IS room, and the elide repaint asks for exactly that)
+    and report a zero minimum width, which is the only thing the row's floor
+    reads. ``resizeEvent`` re-elides in ``Text``, so the painted string always
+    ends with an ellipsis instead of being cut — the full sentence lives in
+    the tooltip (``use_cases/judge_budget._set_judge_activity``).
+    """
+
+    def minimumSizeHint(self) -> QSize:  # noqa: N802 (Qt name)
+        return QSize(0, super().minimumSizeHint().height())
 
 
 class GalleryToolbar(QWidget):
@@ -305,12 +338,17 @@ class GalleryToolbar(QWidget):
             pass
         layout.addWidget(self._spinner)
 
-        self._scanning_label = Text("", mode="plain", pixel_size=11, parent=self)
+        self._scanning_label = _ActivityText(
+            "", mode="plain", pixel_size=11, elide=True, parent=self
+        )
         self._scanning_label.setObjectName("gallery_toolbar_scanning")
         # Left in the layout (empty text = invisible) rather than hidden: a
         # hidden widget never gets laid out, so its size stays Qt's 100x30
         # default and never reflects the scale (owner: "just did not scale").
         # ``set_triage_done`` blanking the text keeps it visually absent.
+        # ``elide=True`` + ``_ActivityText``'s zero minimum width: the judge
+        # budget sentence is far wider than the slot a 1024 px window leaves
+        # (see the class docstring) — it must elide, not stretch the row.
         layout.addWidget(self._scanning_label)
 
         # Stretch pushes view-switcher to the right edge
@@ -709,6 +747,11 @@ class GalleryToolbar(QWidget):
             pass
         try:
             self._scanning_label.setText(text)
+            # The slot is shared with the judge-run budget line, whose tooltip
+            # holds that line's full sentence; the triage counter is short and
+            # needs none, and a stale tooltip would attribute the budget text
+            # to "n/N".
+            self._scanning_label.setToolTip("")
             self._scanning_label.show()
         except Exception:
             pass
@@ -731,6 +774,7 @@ class GalleryToolbar(QWidget):
         try:
             self._scanning_label.hide()
             self._scanning_label.setText("")
+            self._scanning_label.setToolTip("")
         except Exception:
             pass
 
