@@ -25,6 +25,7 @@ import zlib
 from pathlib import Path
 from typing import Any, Callable, Iterable
 from core.log_names import APP_LOGGER_NAME
+from shared.debug_flags import env_value as _env_value
 
 logger = logging.getLogger(APP_LOGGER_NAME)
 
@@ -132,7 +133,7 @@ def project_cache_dir(project_path: Path) -> Path:
 
 
 def _cache_root() -> Path:
-    override = os.environ.get("IMGSLI_PROJECT_CACHE")
+    override = _env_value("IMGSLI_PROJECT_CACHE")
     if override:
         return Path(override)
     try:

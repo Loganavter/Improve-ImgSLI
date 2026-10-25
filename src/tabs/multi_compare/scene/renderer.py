@@ -10,7 +10,6 @@ canvas widget and feature passes.
 from __future__ import annotations
 
 import logging
-import os
 import time
 
 from PySide6.QtCore import QSize
@@ -27,6 +26,7 @@ from engine.store.tiled_pixel_store import TiledPixelStore
 from engine.gpu.glass_panel import GlassPanelRenderer
 from engine.cache.tile_constants import MIPS_CASCADE_TIME_BUDGET_MS
 from engine.cache.tile_texture_service import TileTextureService
+from shared.debug_flags import env_value as _env_value
 from engine.frame.context import (
     BudgetStats,
     FrameContext,
@@ -54,7 +54,7 @@ logger = logging.getLogger(APP_LOGGER_NAME)
 # in the cascade (mip_cascade.py); if it persists, the cascade is innocent.
 # Never set outside manual debugging -- coarser LOD levels will look wrong
 # (stale or blank) by design when this is on.
-_SKIP_MIP_CASCADE = os.environ.get("IMGSLI_SKIP_MIP_CASCADE", "").strip().lower() not in (
+_SKIP_MIP_CASCADE = (_env_value("IMGSLI_SKIP_MIP_CASCADE", "") or "").strip().lower() not in (
     "",
     "0",
     "false",

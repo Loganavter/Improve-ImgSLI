@@ -52,7 +52,7 @@ from pathlib import Path
 from typing import Any
 
 from PySide6.QtCore import Qt
-
+from shared.debug_flags import env_value as _env_value
 from .surfaces import (  # noqa: F401 — re-exported for handlers/tests
     devtool_surfaces,
     live_surfaces,
@@ -99,7 +99,7 @@ def artifacts_dir() -> Path:
     ``$XDG_CACHE_HOME/ImproveImgSLI/mcp`` — so the MCP server can read back the
     paths this channel returns.
     """
-    override = os.environ.get("IMGSLI_MCP_ARTIFACTS", "").strip()
+    override = (_env_value("IMGSLI_MCP_ARTIFACTS", "") or "").strip()
     if override:
         return Path(override).expanduser()
     base = os.environ.get("XDG_CACHE_HOME") or str(Path.home() / ".cache")
@@ -142,7 +142,7 @@ def runtime_dir() -> Path:
     otherwise ``$XDG_RUNTIME_DIR`` is used when it exists, is writable, and is
     already private; otherwise the app data dir's ``run/`` subdir is created.
     """
-    override = os.environ.get("IMGSLI_CONTROL_DIR", "").strip()
+    override = (_env_value("IMGSLI_CONTROL_DIR", "") or "").strip()
     if override:
         return _ensure_private_dir(Path(override).expanduser())
 

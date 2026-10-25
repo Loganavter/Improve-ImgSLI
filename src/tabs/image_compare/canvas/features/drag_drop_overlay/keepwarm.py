@@ -245,10 +245,10 @@ def _ensure_dnd_keepwarm(widget) -> None:
     tick and the healthy-idle skip path is byte-identical.
     """
     try:
-        import os as _os
+        from shared.debug_flags import env_value as _env_value
 
         try:
-            _interval = int(_os.environ.get("IMGSLI_DND_KEEPWARM_MS", "250"))
+            _interval = int(_env_value("IMGSLI_DND_KEEPWARM_MS", "250") or "250")
         except Exception:
             _interval = 250
         if _interval <= 0:

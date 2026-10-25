@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import inspect
 import logging
-import os
 import sys
 import threading
 import uuid
@@ -12,6 +11,7 @@ from typing import Any, Iterable
 
 from .records import TraceRecord, now
 from core.log_names import APP_LOGGER_NAME
+from shared.debug_flags import env_value as _env_value
 
 logger = logging.getLogger(APP_LOGGER_NAME)
 
@@ -47,8 +47,8 @@ class Tracer:
             return self._span_counter
 
     def _load_filter_from_env(self) -> None:
-        allow = os.environ.get("IMGSLI_TRACE_KINDS", "").strip()
-        skip = os.environ.get("IMGSLI_TRACE_SKIP", "").strip()
+        allow = (_env_value("IMGSLI_TRACE_KINDS", "") or "").strip()
+        skip = (_env_value("IMGSLI_TRACE_SKIP", "") or "").strip()
         if allow:
             self._allow_kinds = tuple(p.strip() for p in allow.split(",") if p.strip())
         if skip:
@@ -306,4 +306,4 @@ def _short_repr(value: Any, limit: int = 120) -> str:
     return text
 
 def is_trace_env_enabled() -> bool:
-    return os.environ.get("IMGSLI_TRACE", "0") not in ("0", "", "false", "False")
+    return _env_value("IMGSLI_TRACE", "0") not in ("0", "", "false", "False")

@@ -24,12 +24,12 @@ already paused.
 from __future__ import annotations
 
 import logging
-import os
 import sys
 import threading
 import time
 import traceback
 from core.log_names import APP_LOGGER_NAME
+from shared.debug_flags import env_value as _env_value
 
 logger = logging.getLogger(f"{APP_LOGGER_NAME}.stall_watch")
 
@@ -51,7 +51,7 @@ _stop = threading.Event()
 
 
 def enabled() -> bool:
-    return os.environ.get("IMGSLI_STALL_WATCH", "").strip().lower() not in (
+    return (_env_value("IMGSLI_STALL_WATCH", "") or "").strip().lower() not in (
         "",
         "0",
         "false",
@@ -61,7 +61,7 @@ def enabled() -> bool:
 
 
 def _threshold_ms() -> float:
-    raw = os.environ.get("IMGSLI_STALL_THRESHOLD_MS", "").strip()
+    raw = (_env_value("IMGSLI_STALL_THRESHOLD_MS", "") or "").strip()
     try:
         return max(50.0, float(raw)) if raw else float(DEFAULT_THRESHOLD_MS)
     except ValueError:

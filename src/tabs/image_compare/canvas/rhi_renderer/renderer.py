@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import logging
-import os
 import time
 
 from PySide6.QtGui import QRhiCommandBuffer, QRhiDepthStencilClearValue, QRhiViewport
@@ -10,6 +9,7 @@ from PySide6.QtGui import QRhiCommandBuffer, QRhiDepthStencilClearValue, QRhiVie
 from ui.canvas_infra.rhi.rhi_backend import query_max_texture_size
 from ui.canvas_infra.rhi.render_executor import iter_active_render_passes
 from engine.cache.tile_constants import MIPS_CASCADE_TIME_BUDGET_MS
+from shared.debug_flags import env_value as _env_value
 from engine.cache.tile_debug import (
     log_tile_event,
     tile_dump_enabled,
@@ -107,7 +107,7 @@ def _skip_mip_cascade_requested(raw: str) -> bool:
 # manual debugging -- coarser LOD levels will look wrong (stale or blank) by
 # design when this is on.
 _SKIP_MIP_CASCADE = _skip_mip_cascade_requested(
-    os.environ.get("IMGSLI_SKIP_MIP_CASCADE", "")
+    _env_value("IMGSLI_SKIP_MIP_CASCADE", "")
 )
 
 __all__ = [

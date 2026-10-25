@@ -130,17 +130,17 @@ two queries outside the allowlist below) and
 from __future__ import annotations
 
 import logging
-import os
 
 from PySide6.QtGui import QRhi
 from core.log_names import APP_LOGGER_NAME
+from shared.debug_flags import env_value as _env_value
 
 logger = logging.getLogger(APP_LOGGER_NAME)
 
 #: Log the backend + the derived predicate once per process. A wrong
 #: prediction on an untested backend then shows up in the field log instead of
 #: as a silent flipped canvas.
-_TRACE_ENABLED = os.environ.get("IMGSLI_RT_ORIENTATION_TRACE", "").strip().lower() not in (
+_TRACE_ENABLED = (_env_value("IMGSLI_RT_ORIENTATION_TRACE", "") or "").strip().lower() not in (
     "",
     "0",
     "false",
@@ -154,9 +154,9 @@ _traced: set[int] = set()
 #: report the flip the target actually needed. Read once at import, exactly
 #: like ``_TRACE_ENABLED``; off (the default) means no probe, no readback, no
 #: extra log line anywhere.
-_PROBE_ENABLED = os.environ.get(
+_PROBE_ENABLED = (_env_value(
     "IMGSLI_RT_ORIENTATION_PROBE", ""
-).strip().lower() not in ("", "0", "false", "no", "off")
+) or "").strip().lower() not in ("", "0", "false", "no", "off")
 
 #: Observed flips, keyed on ``id(rhi)`` -- one RHI object is one session, so
 #: the same lifetime pattern as ``_traced``. A recorded value WINS over the

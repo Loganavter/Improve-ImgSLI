@@ -13,6 +13,7 @@ from tabs.image_compare.canvas.features.magnifier.toolbar.shared import (
     trigger_toolbar_binding,
 )
 from core.log_names import APP_LOGGER_NAME
+from shared.debug_flags import env_value as _env_value
 
 _profile_logger = logging.getLogger(f"{APP_LOGGER_NAME}.magnifier.toggle_profile")
 
@@ -26,7 +27,7 @@ def _maybe_profile_toggle():
     realize_tile_plan (both measured fast) and disappears under RenderDoc
     and py-spy alike -- see docs/dev/KNOWN_BUGS.md if this gets written up.
     Returns a stop() callable, or None if not enabled."""
-    if os.environ.get("IMGSLI_PROFILE_MAGNIFIER_TOGGLE", "").strip().lower() not in (
+    if (_env_value("IMGSLI_PROFILE_MAGNIFIER_TOGGLE", "") or "").strip().lower() not in (
         "1",
         "true",
         "yes",

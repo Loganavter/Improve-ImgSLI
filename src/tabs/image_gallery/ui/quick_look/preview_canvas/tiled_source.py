@@ -9,7 +9,6 @@ thin owner + module functions).
 from __future__ import annotations
 
 import logging
-import os
 
 from engine.gpu.tiled_image_view import (
     SingleImageTiledView,
@@ -17,6 +16,7 @@ from engine.gpu.tiled_image_view import (
     load_tiled_image_shader,
 )
 from core.log_names import APP_LOGGER_NAME
+from shared.debug_flags import env_value as _env_value
 
 logger = logging.getLogger(APP_LOGGER_NAME)
 
@@ -101,7 +101,7 @@ def _sampler_for_tiles(self, name):
 
         _mip = (
             QRhiSampler.Filter.None_
-            if os.environ.get("IMGSLI_QL_NO_MIPS")
+            if _env_value("IMGSLI_QL_NO_MIPS")
             else QRhiSampler.Filter.Linear
         )
         sampler = rhi.newSampler(

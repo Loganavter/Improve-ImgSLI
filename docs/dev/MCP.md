@@ -41,6 +41,30 @@ The app venv is auto-detected (`venv/bin/python` when present). Knobs:
 attach to), `IMGSLI_MCP_DISPLAY` (opt-in private display for a visible
 fallback window, e.g. `:97`).
 
+### Environment variables — `BLINKTABLE_` first, `IMGSLI_` still honoured
+
+The app-side knobs resolve through one helper
+(`src/shared/debug_flags.py:env_value`): `BLINKTABLE_<X>` is honoured first,
+the historic `IMGSLI_<X>` keeps working, both spellings are supported for this
+release, and the legacy prefix is not deprecated silently. An empty or
+whitespace-only value counts as unset.
+
+| Purpose | New spelling | Legacy spelling |
+|---|---|---|
+| in-app control channel | `BLINKTABLE_CONTROL=1` | `IMGSLI_CONTROL=1` |
+| attach control dir | `BLINKTABLE_CONTROL_DIR` | `IMGSLI_CONTROL_DIR` |
+| tracing | `BLINKTABLE_TRACE=1` | `IMGSLI_TRACE=1` |
+| trace kind filter / skip list | `BLINKTABLE_TRACE_KINDS` / `BLINKTABLE_TRACE_SKIP` | `IMGSLI_TRACE_KINDS` / `IMGSLI_TRACE_SKIP` |
+| startup phase timing | `BLINKTABLE_STARTUP_TRACE=1` | `IMGSLI_STARTUP_TRACE=1` |
+| artifacts/scratch dir (app side) | `BLINKTABLE_MCP_ARTIFACTS` | `IMGSLI_MCP_ARTIFACTS` |
+
+The MCP server is a separate stdlib-only process (`mcp-server/app/`) that does
+not import `src/`, so its own bootstrap knobs keep the `IMGSLI_*` spelling in
+this release: `IMGSLI_REPO_ROOT`, `IMGSLI_MCP_TIMEOUT`, `IMGSLI_MCP_DISPLAY`,
+`IMGSLI_MCP_CONTROL_SOCKET`, plus the server-side read of
+`IMGSLI_MCP_ARTIFACTS`. Set both spellings when one run must satisfy the app and
+the server.
+
 ## Surface at a glance
 
 30 tools — 12 read-only, 18 mutating (reads and writes never share a tool):

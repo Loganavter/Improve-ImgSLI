@@ -103,6 +103,44 @@ logging.getLogger(f"{APP_LOGGER_NAME}.rhi").setLevel(logging.WARNING)
 
 Do **not** wire a noisy subsystem's debug stream to the global `debug_mode_enabled` switch — that turns one log file into white noise.
 
+## Environment variable prefix — `BLINKTABLE_` first, `IMGSLI_` still honoured
+
+The app's user-facing identity is **BlinkTable**, and its env knobs gained the
+matching prefix. **Both spellings are supported for this release**, and the
+legacy prefix is **not** deprecated silently:
+
+| Precedence | Spelling | Meaning |
+|---|---|---|
+| 1 | `BLINKTABLE_<X>` | new spelling; wins when set and non-empty |
+| 2 | `IMGSLI_<X>` | historic spelling; still read, same vocabulary |
+| 3 | the flag's built-in default | |
+
+One resolver owns this: `src/shared/debug_flags.py` (`ENV_PREFIX`,
+`LEGACY_ENV_PREFIX`, `alias_name()`, `env_value()`, and the two predicates
+`env_flag` / `env_flag_strict`, which both call `env_value()`). Every
+`env_flag(...)` call site therefore honours the alias with no edit of its own;
+the inline `env_value(...)` sites (path/int knobs, cached-at-import gates) do
+the same. An empty or whitespace-only value counts as *unset*, so an empty
+`BLINKTABLE_<X>` cannot shadow a real `IMGSLI_<X>=1`.
+
+User-facing flags (control / tracing / startup — same rule for every row, and
+for every `IMGSLI_*` flag in the registry below):
+
+| Purpose | New spelling | Legacy spelling |
+|---|---|---|
+| in-app control channel | `BLINKTABLE_CONTROL=1` | `IMGSLI_CONTROL=1` |
+| tracing | `BLINKTABLE_TRACE=1` | `IMGSLI_TRACE=1` |
+| trace kind filter | `BLINKTABLE_TRACE_KINDS` | `IMGSLI_TRACE_KINDS` |
+| trace kind skip list | `BLINKTABLE_TRACE_SKIP` | `IMGSLI_TRACE_SKIP` |
+| startup phase timing | `BLINKTABLE_STARTUP_TRACE=1` | `IMGSLI_STARTUP_TRACE=1` |
+| perf trace export | `BLINKTABLE_PERF_TRACE=1` | `IMGSLI_PERF_TRACE=1` |
+| GUI stall watchdog | `BLINKTABLE_STALL_WATCH=1` | `IMGSLI_STALL_WATCH=1` |
+| fault/hang dumps | `BLINKTABLE_FAULT_DUMP=1` | `IMGSLI_FAULT_DUMP=1` |
+
+Not covered by the alias layer: `IMPROVE_DEBUG` / `IMPROVE_SUPPRESS_DEBUG`
+(toolkit-owned log-level switches, read by `setup_logging`) and the
+`IMPROVE_IMGSLI_*` RHI switches — they keep their existing names.
+
 ## Host subsystem debug streams
 
 Env-gated streams following the canonical unique-prefix recipe:
@@ -134,7 +172,10 @@ Env-gated streams following the canonical unique-prefix recipe:
 
 Most `IMGSLI_*` gates parse via `shared/debug_flags.env_flag` (permissive:
 any non-empty value except `0/false/no/off`); rows whose Parsing cell says
-`direct os.environ.get` parse inline instead. Scope legend: `log` = gated
+`env_value` parse inline with the same predicate. Every read resolves through
+`shared/debug_flags.env_value`, so `BLINKTABLE_<X>` is honoured first and the
+legacy `IMGSLI_<X>` keeps working (see the prefix section above).
+Scope legend: `log` = gated
 log lines only; `visual` = changes pixels; `dump` = writes capture files;
 `behavior` = changes runtime behavior (NOT a debug log — do not mistake for one);
 `tuning` = numeric/path knob; `trace` = tracer/startup facility; `removed` = deleted.
@@ -173,10 +214,10 @@ log lines only; `visual` = changes pixels; `dump` = writes capture files;
 | `IMGSLI_DND_DEBUG` | log | `env_flag` | `src/events/app_event/window_events.py`, `src/events/window_event_handler.py` |
 | `IMGSLI_DOUBLE_GEOM_DEBUG` | log | `env_flag` | `src/ui/widgets/unified_list_picker/debug.py` |
 | `IMGSLI_SHELF_RESIZE_DEBUG` | log | single helper `sizing._shelf_resize_debug` | `src/tabs/session_picker/recent/use_cases/sizing.py`, `panel.py` |
-| `IMGSLI_TILED_VIEW_DEBUG` | log + dump | direct `os.environ.get` (truthy) | `src/engine/gpu/tiled_image_view.py` (`_draw_instances` first-draw line + `_issue_debug_readback` layer readback) |
-| `IMGSLI_QL_COVER_DEBUG` | log | direct `os.environ.get` (truthy) | `src/engine/gpu/tiled_image_view.py` (`_draw_instances`, same first-draw line as above) |
+| `IMGSLI_TILED_VIEW_DEBUG` | log + dump | `env_value` (truthy) | `src/engine/gpu/tiled_image_view.py` (`_draw_instances` first-draw line + `_issue_debug_readback` layer readback) |
+| `IMGSLI_QL_COVER_DEBUG` | log | `env_value` (truthy) | `src/engine/gpu/tiled_image_view.py` (`_draw_instances`, same first-draw line as above) |
 | `IMGSLI_QL_RESIZE_TRACE` | log | `env_flag` | `src/tabs/image_gallery/ui/quick_look/resize/cursors.py` (`_resize_trace_on`) — full quick-look resize firehose |
-| `IMGSLI_JANK_WATCH` | log | direct `os.environ.get`, permissive (`""/0/no/off` off) | `src/tabs/image_gallery/widget.py` — GUI-thread stall watchdog (`[jank] gui-loop gap …ms` on a >0.15 s inter-tick gap) |
+| `IMGSLI_JANK_WATCH` | log | `env_value`, permissive (`""/0/no/off` off) | `src/tabs/image_gallery/widget.py` — GUI-thread stall watchdog (`[jank] gui-loop gap …ms` on a >0.15 s inter-tick gap) |
 | `IMGSLI_STALL_WATCH` (+ `_THRESHOLD_MS`, default 250) | log + stack dump | `env_flag`, permissive | `src/core/stall_watch.py`, armed from `src/__main__.py` — **host-wide** GUI-thread watchdog: on a block past the threshold it logs `[stall] gui-loop blocked …ms` **and the main thread's Python stack**, so a hitch deferred past its cause (queued slot, debounce, GC, lazy cache) is attributable; an empty stack means the block is in Qt/driver/syscall |
 | `SLI_FOCUS_DEBUG` | log | `env_flag` (`focus_debug_enabled`) | `src/ui/focus_debug.py` → `[focus-debug]`; installed from `src/ui/main_window/lifecycle.py` |
 | `IMGSLI_PERF_TRACE_PATH` | tuning | path override | `src/engine/frame/trace_export.py:default_trace_path` — fixed path for the perf-trace dump (default is pid-suffixed in the system temp dir — `tempfile.gettempdir()`, i.e. `%TEMP%` on Windows; this is the override for the "Frame perf spans" export) |

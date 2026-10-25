@@ -111,10 +111,10 @@ class ImageGalleryWidget(QWidget):
         # log gaps cannot prove GUI blocks. Any inter-tick gap over the
         # threshold is a GUI-thread stall, whatever its cause.
         try:
-            import os as _os
+            from shared.debug_flags import env_value as _env_value
             import time as _time
 
-            if _os.environ.get("IMGSLI_JANK_WATCH", "") not in ("", "0", "no", "off"):
+            if (_env_value("IMGSLI_JANK_WATCH", "") or "") not in ("", "0", "no", "off"):
                 from PySide6.QtCore import QTimer as _QTimer
 
                 _last = [_time.monotonic()]

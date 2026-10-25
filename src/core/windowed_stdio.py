@@ -19,6 +19,7 @@ import sys
 import tempfile
 
 from shared.debug_flags import env_flag as _env_flag
+from shared.debug_flags import env_value as _env_value
 from core.log_names import APP_LOGGER_NAME
 
 logger = logging.getLogger(APP_LOGGER_NAME)
@@ -41,7 +42,7 @@ def enable_faulthandler() -> None:
     # Never raises — a path problem disables the dump with one warning instead
     # of aborting startup before Qt (call order in ``__main__``).
     if _env_flag("IMGSLI_FAULT_DUMP"):
-        fault_dump_path = os.environ.get(
+        fault_dump_path = _env_value(
             "IMGSLI_FAULT_DUMP_FILE",
             os.path.join(tempfile.gettempdir(), "imgsli_fault_dump.log"),
         )
@@ -50,7 +51,7 @@ def enable_faulthandler() -> None:
             faulthandler.enable(file=fault_dump_file, all_threads=True)
             try:
                 fault_dump_interval = int(
-                    os.environ.get("IMGSLI_FAULT_DUMP_INTERVAL", "15")
+                    _env_value("IMGSLI_FAULT_DUMP_INTERVAL", "15") or "15"
                 )
             except (TypeError, ValueError):
                 fault_dump_interval = 15
