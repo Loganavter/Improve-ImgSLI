@@ -80,6 +80,7 @@
       "judge_concurrency": "Параллельных запросов к ИИ-судье",
       "judge_run_call_ceiling": "Лимит вызовов на запуск ИИ-судьи",
       "judge_run_call_ceiling_unlimited": "без ограничения",
+      "pairwise_enabled": "Уточнять близкие результаты попарным сравнением",
       "api_key_placeholder": "sk-…",
       "model_placeholder": "openrouter/auto или vendor/model",
       "tokens_placeholder": "auto"

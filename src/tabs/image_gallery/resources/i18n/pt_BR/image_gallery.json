@@ -80,6 +80,7 @@
       "judge_concurrency": "Solicitações paralelas ao juiz de IA",
       "judge_run_call_ceiling": "Limite de chamadas por execução do juiz",
       "judge_run_call_ceiling_unlimited": "ilimitado",
+      "pairwise_enabled": "Refinar quase-empates por comparação em pares",
       "api_key_placeholder": "sk-…",
       "model_placeholder": "openrouter/auto ou fornecedor/modelo",
       "tokens_placeholder": "auto"

@@ -40,6 +40,13 @@ run is paced, not what it produces. Each write goes through
 ``AiSettingsStore.save_field`` (the one owner of both clamps) and the control
 is then re-rendered from the STORE, never from its own input.
 
+Beside them, a **Refine near-ties pairwise** checkbox owns the permission for
+the near-tie top-set pass (``use_cases/pairwise_rank``): OFF means the pass
+never schedules a worker, ON lets it order the pointwise-best few with A/B
+questions. Its cost (up to ``pairwise_top_n x (pairwise_top_n-1)`` calls,
+default 20) is stated in the help page, not in the row; the switch itself is a
+plain persisted bool, so ``save_field`` parses it like every other knob.
+
 Uses QSettings via ``AiSettingsStore`` — no Redux path (8-file cost for a setting
 nothing else needs to react to). Section is ambient (always visible) like other
 per-tab settings. ``SettingsContribution`` with section ``image_gallery.ai``.
@@ -163,6 +170,7 @@ AI_GROUP = group(
     "image_gallery.settings.judge_concurrency",
     "image_gallery.settings.judge_run_call_ceiling",
     "image_gallery.settings.judge_run_call_ceiling_unlimited",
+    "image_gallery.settings.pairwise_enabled",
 )
 SEARCH = SearchIndex.of(AI_GROUP)
 
@@ -634,6 +642,26 @@ def build(dialog, p):  # type: ignore[no-untyped-def]
     concurrency_row.addWidget(dialog.gallery_ai_judge_concurrency)
     concurrency_row.addStretch()
 
+    # Pairwise refinement of a near-tie top set (use_cases/pairwise_rank): the
+    # pass was persisted and clamped with no control, so it shipped default-OFF
+    # and could only be turned on by editing QSettings by hand. It is a CHECKBOX
+    # next to the two cost rows because it is the permission for a spend, not a
+    # count: the cost (up to N x (N-1) calls from pairwise_top_n, default 20)
+    # lives in the help page, and only a near-tie series spends anything.
+    dialog.gallery_ai_pairwise = CheckBox(
+        AI_GROUP.text(dialog, "image_gallery.settings.pairwise_enabled")
+        if hasattr(AI_GROUP, "text")
+        else "Refine near-ties pairwise"
+    )
+    apply_settings_body(dialog.gallery_ai_pairwise)
+    try:
+        AI_GROUP.tag_member(
+            dialog.gallery_ai_pairwise, "image_gallery.settings.pairwise_enabled"
+        )
+    except Exception:
+        pass
+    dialog.gallery_ai_pairwise.setChecked(bool(current.pairwise_enabled))
+
     # One label column for the whole group, sized to the longest translated
     # label — a fixed 150px clipped longer Cyrillic/Portuguese strings.
     try:
@@ -687,6 +715,10 @@ def build(dialog, p):  # type: ignore[no-untyped-def]
         dialog.gallery_ai_judge_ceiling,
         dialog.gallery_ai_judge_concurrency_label,
         dialog.gallery_ai_judge_concurrency,
+        # The pairwise switch spends the same permission (it orders the
+        # near-tie top set with up to N x (N-1) judge calls), so it obeys the
+        # master gate with every other spending control.
+        dialog.gallery_ai_pairwise,
     ]
 
     def _apply_ai_enabled(checked: bool) -> None:
@@ -713,6 +745,7 @@ def build(dialog, p):  # type: ignore[no-untyped-def]
         group_widget.add_widget(builder.row(samples_row))
         group_widget.add_widget(builder.row(ceiling_row))
         group_widget.add_widget(builder.row(concurrency_row))
+        group_widget.add_widget(builder.row(dialog.gallery_ai_pairwise))
     else:
         group_widget.add_widget(dialog.gallery_ai_enabled)
         # fallback: add layouts via containers
@@ -733,6 +766,7 @@ def build(dialog, p):  # type: ignore[no-untyped-def]
             w = QWidget()
             w.setLayout(lay)
             group_widget.add_widget(w)
+        group_widget.add_widget(dialog.gallery_ai_pairwise)
 
     layout.addWidget(group_widget)
 
@@ -1161,6 +1195,9 @@ def build(dialog, p):  # type: ignore[no-untyped-def]
             )
         )
         dialog.gallery_ai_judge_concurrency.valueChanged.connect(_save_concurrency)
+        dialog.gallery_ai_pairwise.toggled.connect(
+            lambda v: _save_field("pairwise_enabled", bool(v))
+        )
     except Exception:
         pass
 
@@ -1230,6 +1267,7 @@ def build(dialog, p):  # type: ignore[no-untyped-def]
                 "judge_run_call_ceiling": int(
                     _dialog.gallery_ai_judge_ceiling.value()
                 ),
+                "pairwise_enabled": bool(_dialog.gallery_ai_pairwise.isChecked()),
             }
         except Exception:
             return {}
@@ -1254,6 +1292,7 @@ def build(dialog, p):  # type: ignore[no-untyped-def]
                     "sample_count": cur.sample_count,
                     "judge_concurrency": cur.judge_concurrency,
                     "judge_run_call_ceiling": cur.judge_run_call_ceiling,
+                    "pairwise_enabled": cur.pairwise_enabled,
                 }
             except Exception:
                 return {}
