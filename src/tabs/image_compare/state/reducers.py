@@ -49,6 +49,7 @@ from tabs.image_compare.state.models import (
     SessionData,
 )
 from tabs.image_compare.canvas.registry import registry
+from shared.fs_paths import fs_path_key
 from core.log_names import APP_LOGGER_NAME
 
 
@@ -260,21 +261,21 @@ class PipelineCacheReducer:
     @staticmethod
     def _put_pixel(state: PipelineCacheState, action) -> PipelineCacheState:
         from collections import OrderedDict
-        import os
         try:
             from tabs.image_compare.pipeline.cache import _pixel_key
         except Exception:
             _PIXEL_CACHE_MAX = 8
             def _pixel_key(path, crop_service=None, auto_crop=None, **_kw):
                 import os as _os
+                key_path = fs_path_key(path)
                 try:
-                    st = _os.stat(path)
+                    st = _os.stat(key_path)
                     mtime = st.st_mtime_ns
                     size = st.st_size
                 except OSError:
                     mtime = 0
                     size = 0
-                return (_os.path.normpath(path), mtime, size, False)
+                return (key_path, mtime, size, False)
         store = action.store
         if store is None:
             return state
@@ -300,7 +301,7 @@ class PipelineCacheReducer:
         try:
             key = _pixel_key(path, crop_service, auto_crop)
         except Exception:
-            key = (os.path.normpath(path), 0, 0, False)
+            key = (fs_path_key(path), 0, 0, False)
         new_pixel = OrderedDict(state.pixel)
         if key in new_pixel:
             try:
@@ -329,21 +330,21 @@ class PipelineCacheReducer:
     @staticmethod
     def _put_preview(state: PipelineCacheState, action) -> PipelineCacheState:
         from collections import OrderedDict
-        import os
         try:
             from tabs.image_compare.pipeline.cache import _preview_key
         except Exception:
             _PREVIEW_CACHE_MAX = 8
             def _preview_key(path, crop_service=None, auto_crop=None, **_kw):
                 import os as _os
+                key_path = fs_path_key(path)
                 try:
-                    st = _os.stat(path)
+                    st = _os.stat(key_path)
                     mtime = st.st_mtime_ns
                     size = st.st_size
                 except OSError:
                     mtime = 0
                     size = 0
-                return (_os.path.normpath(path), mtime, size, False, 1024)
+                return (key_path, mtime, size, False, 1024)
         qimage = action.qimage
         if qimage is None:
             return state
@@ -364,7 +365,7 @@ class PipelineCacheReducer:
         try:
             key = _preview_key(path, crop_service, auto_crop)
         except Exception:
-            key = (os.path.normpath(path), 0, 0, False, 1024)
+            key = (fs_path_key(path), 0, 0, False, 1024)
         new_preview = OrderedDict(state.preview)
         if key in new_preview:
             new_preview.pop(key, None)
@@ -434,7 +435,6 @@ class PipelineCacheReducer:
 
     @staticmethod
     def _evict(state: PipelineCacheState, action) -> PipelineCacheState:
-        import os
         from collections import OrderedDict
         path = action.path
         try:
@@ -442,7 +442,7 @@ class PipelineCacheReducer:
             pop_embedded_cache(path)
         except Exception:
             pass
-        norm = os.path.normpath(path)
+        norm = fs_path_key(path)
         new_pixel = OrderedDict(state.pixel)
         to_drop = [k for k in list(new_pixel.keys()) if k and k[0] == norm]
         evicted_uids: set = set()

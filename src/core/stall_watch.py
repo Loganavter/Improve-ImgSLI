@@ -19,6 +19,11 @@ the beat is a ``QTimer`` on the GUI thread.
 Read-only by construction: it never touches widgets, never raises into the app
 (every hook is guarded), and the stack capture is a read of frames that are
 already paused.
+
+Where it reports: the watchdog is armed before ``setup_logging`` runs, so the
+armed line and any early stall report are written to the early startup file
+(:mod:`core.startup_early_log`, enabled by this same flag) until the ordinary
+log exists; after ``ctx.logging_ready`` they go to ``log.txt`` as before.
 """
 
 from __future__ import annotations
@@ -28,6 +33,7 @@ import sys
 import threading
 import time
 import traceback
+from core import startup_early_log
 from core.log_names import APP_LOGGER_NAME
 from shared.debug_flags import env_value as _env_value
 
@@ -106,14 +112,26 @@ def _should_report(elapsed_ms: float, threshold_ms: float, now: float) -> bool:
     return True
 
 
+def _emit(text: str) -> None:
+    """Log one stall diagnostic where it can actually be read.
+
+    The watchdog is armed before ``setup_logging`` runs, so its first reports
+    (including the armed line) would go to an unconfigured logger and be
+    dropped -- and a windowed build's stderr is ``os.devnull``. Until the
+    ordinary log exists they go to the early startup file instead; afterwards
+    the log owns them exactly as before.
+    """
+    if not startup_early_log.logging_ready() and startup_early_log.write_record(text):
+        return
+    logger.warning("%s", text)
+
+
 def _watch(threshold_ms: float, main_thread_id: int) -> None:
     while not _stop.wait(0.1):
         try:
             elapsed_ms = (time.monotonic() - _beat) * 1000.0
             if _should_report(elapsed_ms, threshold_ms, time.monotonic()):
-                logger.warning(
-                    "%s", format_stall_report(elapsed_ms, _capture_main_stack(main_thread_id))
-                )
+                _emit(format_stall_report(elapsed_ms, _capture_main_stack(main_thread_id)))
         except Exception:
             continue
 
@@ -159,11 +177,9 @@ def arm(*, tick_ms: int = DEFAULT_TICK_MS) -> bool:
     )
     _watchdog.start()
     _armed = True
-    logger.warning(
-        "[stall] watchdog armed (tick=%dms, report>%.0fms); %s",
-        tick_ms,
-        threshold_ms,
-        "stack dump on stall",
+    _emit(
+        "[stall] watchdog armed (tick=%dms, report>%.0fms); %s"
+        % (tick_ms, threshold_ms, "stack dump on stall")
     )
     return True
 

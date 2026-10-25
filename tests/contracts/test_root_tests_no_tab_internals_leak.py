@@ -200,6 +200,15 @@ ALLOWED_DEEP_TAB_IMPORTS: dict[str, str] = {
         "surface table spans host chrome and session_picker too, so the tab "
         "import is fixture data, not the tab's own behavior"
     ),
+    "tests/runtime/test_path_key_normalisation.py": (
+        "cross-tab path-identity contract (P2 normcase): the image_compare "
+        "pixel/preview tiers, the multi_compare pixel cache and the IC "
+        "reducers' key builders must all funnel through "
+        "shared.fs_paths.fs_path_key, so one file can never hold two cache "
+        "entries under two spellings. The tab-internal imports are the "
+        "measured subject (as in test_pyramid_stale_guard.py); a per-tab copy "
+        "would let one tab's key drift back to normpath-only"
+    ),
     "tests/contracts/test_capacity_agreement.py": (
         "cross-tab capacity contract (C1): the image_compare pool's array "
         "capacity must equal the shared TileTextureService default, and every "

@@ -27,6 +27,7 @@ from tabs.image_compare.icons import Icon
 from tabs.host_helpers import ModePicker
 from ui.theming import resolve_theme_color
 from core.log_names import APP_LOGGER_NAME
+from core.startup_trace import startup_mark
 
 logger = logging.getLogger(APP_LOGGER_NAME)
 
@@ -36,6 +37,121 @@ logger = logging.getLogger(APP_LOGGER_NAME)
 # are NOT touched, since that variant is a shared toolkit preset used well
 # beyond the HUD.
 _INFO_HUD_LABEL_PIXEL_SIZE = 16
+
+
+# -- mode variants: built on first use ---------------------------------------
+# Six controls exist only in the ``beginner``/``expert``/``advanced`` toolbar
+# layouts, and no layout mode is applied while the page is being built — the
+# first ``ImageCompareLayoutManager.apply_mode`` comes later (layout-mode
+# change, settings apply, onboarding) or not at all. Building them in
+# ``build()`` therefore spent ~8 ms of the ~30 ms ``tab.page.primitives`` slice
+# (offscreen, warm: six ``Button.__init__``) on widgets that the mode path hid
+# on its first pass. They are built on first attribute access instead.
+#
+# Consumers are unchanged: the getters are properties installed once on the
+# target's class, so ``ui.btn_orientation_simple`` and ``hasattr(ui, ...)``
+# probes on it keep working with no call-site edit. Before the page is built a
+# getter raises ``AttributeError`` — the same answer the never-assigned
+# attribute gave, so a pre-build probe cannot create an orphan widget.
+#
+# One variant still cannot stay lazy past ``assemble()``:
+# ``btn_magnifier_color_settings_beginner`` is materialised by
+# ``MagnifierSettingsHoverController._wire`` (it links that button's
+# color-options flyout while the page is assembled). Deferring it means moving
+# that link to the controller's first ``_show`` — outside this file.
+_MODE_VARIANT_STORE = "_ic_mode_variants"
+_MODE_VARIANT_PARENT = "_ic_mode_variants_parent"
+
+
+def _build_btn_orientation_simple(target: Any, parent: QWidget) -> None:
+    target.btn_orientation_simple = Button(
+        icon=(Icon.VERTICAL_SPLIT, Icon.HORIZONTAL_SPLIT),
+        toggle=True,
+        parent=parent,
+    )
+
+
+def _build_btn_divider_visible(target: Any, parent: QWidget) -> None:
+    target.btn_divider_visible = Button(
+        icon=(Icon.DIVIDER_VISIBLE, Icon.DIVIDER_HIDDEN),
+        toggle=True,
+        parent=parent,
+    )
+
+
+def _build_btn_magnifier_orientation_simple(target: Any, parent: QWidget) -> None:
+    target.btn_magnifier_orientation_simple = Button(
+        icon=(Icon.VERTICAL_SPLIT, Icon.HORIZONTAL_SPLIT),
+        toggle=True,
+        parent=parent,
+    )
+
+
+def _build_btn_magnifier_divider_visible(target: Any, parent: QWidget) -> None:
+    target.btn_magnifier_divider_visible = Button(
+        icon=(Icon.DIVIDER_VISIBLE, Icon.DIVIDER_HIDDEN),
+        toggle=True,
+        parent=parent,
+    )
+
+
+def _build_btn_magnifier_color_settings_beginner(
+    target: Any, parent: QWidget
+) -> None:
+    target.btn_magnifier_color_settings_beginner = ColorSettingsButton(
+        parent=parent, current_language="en"
+    )
+
+
+def _build_btn_magnifier_guides_simple(target: Any, parent: QWidget) -> None:
+    target.btn_magnifier_guides_simple = Button(
+        Icon.MAGNIFIER_GUIDES, toggle=True, parent=parent
+    )
+
+
+_MODE_VARIANT_BUILDERS = {
+    "btn_orientation_simple": _build_btn_orientation_simple,
+    "btn_divider_visible": _build_btn_divider_visible,
+    "btn_magnifier_orientation_simple": _build_btn_magnifier_orientation_simple,
+    "btn_magnifier_divider_visible": _build_btn_magnifier_divider_visible,
+    "btn_magnifier_color_settings_beginner": (
+        _build_btn_magnifier_color_settings_beginner
+    ),
+    "btn_magnifier_guides_simple": _build_btn_magnifier_guides_simple,
+}
+
+
+def _make_mode_variant_property(name: str) -> property:
+    def _getter(self):
+        store = self.__dict__.get(_MODE_VARIANT_STORE) or {}
+        widget = store.get(name)
+        if widget is not None:
+            return widget
+        parent = self.__dict__.get(_MODE_VARIANT_PARENT)
+        if parent is None:
+            raise AttributeError(name)
+        _MODE_VARIANT_BUILDERS[name](self, parent)
+        return self.__dict__[_MODE_VARIANT_STORE][name]
+
+    def _setter(self, widget) -> None:
+        self.__dict__.setdefault(_MODE_VARIANT_STORE, {})[name] = widget
+
+    return property(_getter, _setter)
+
+
+def _install_mode_variant_accessors(cls: type) -> None:
+    """Install the six lazy getters on ``cls`` (once per class, idempotent).
+
+    The factory instance is transient and the target is a plain widget, so the
+    class is the only place an accessor can live that every consumer already
+    goes through. Re-running is a no-op: the properties are identical, and a
+    second session's widget resolves them against its own store.
+    """
+    if "_ic_mode_variant_accessors_installed" in vars(cls):
+        return
+    for name in _MODE_VARIANT_BUILDERS:
+        setattr(cls, name, _make_mode_variant_property(name))
+    setattr(cls, "_ic_mode_variant_accessors_installed", True)
 
 
 class ImageComparePrimitivesFactory:
@@ -52,18 +168,45 @@ class ImageComparePrimitivesFactory:
         self.host = host
 
     def build(self, parent: QWidget) -> object:
+        """Create every primitive widget the image_compare page needs.
+
+        With ``IMGSLI_STARTUP_TRACE=1`` each construction slice closes with a
+        ``tab.page.primitives.<slice>`` mark, so the cost this factory spends
+        can be ranked instead of guessed (see ``ImageCompareWidget.assemble``
+        for the enclosing ``tab.page.primitives`` span). Zero cost when the
+        trace is off — the marks are the same ``startup_mark`` helper the
+        ``tab.page.*`` chain uses.
+        """
         target = self.target
         if target is None:
             raise RuntimeError("ImageComparePrimitivesFactory requires a target widget")
         if getattr(target, "_image_compare_primitives_built", False):
             return target
 
+        # The mode variants are created on first attribute access; the parent
+        # is recorded here because this factory does not outlive the build.
+        # A non-widget target (test doubles) has no class to install getters
+        # on, and a parentless build has nothing to parent them to, so both
+        # fall back to building them now.
+        if isinstance(target, QWidget) and parent is not None:
+            _install_mode_variant_accessors(type(target))
+            target.__dict__[_MODE_VARIANT_PARENT] = parent
+        else:
+            for builder in _MODE_VARIANT_BUILDERS.values():
+                builder(target, parent)
+
         self._create_static_widgets(parent)
+        startup_mark("tab.page.primitives.static_widgets")
         self._create_selection_controls(parent)
+        startup_mark("tab.page.primitives.selection_controls")
         self._create_view_controls(parent)
+        startup_mark("tab.page.primitives.view_controls")
         self._create_video_controls(parent)
+        startup_mark("tab.page.primitives.video_controls")
         self._create_slider_controls(parent)
+        startup_mark("tab.page.primitives.slider_controls")
         self._create_text_and_status_widgets(parent)
+        startup_mark("tab.page.primitives.text_and_status_widgets")
         self._configure_image_label()
         self._init_warning_label()
         target._image_compare_primitives_built = True
@@ -230,16 +373,6 @@ class ImageComparePrimitivesFactory:
             parent=parent,
         )
 
-        target.btn_orientation_simple = Button(
-            icon=(Icon.VERTICAL_SPLIT, Icon.HORIZONTAL_SPLIT),
-            toggle=True,
-            parent=parent,
-        )
-        target.btn_divider_visible = Button(
-            icon=(Icon.DIVIDER_VISIBLE, Icon.DIVIDER_HIDDEN),
-            toggle=True,
-            parent=parent,
-        )
         target.btn_divider_color = Button(
             Icon.DIVIDER_COLOR, show_underline=True, parent=parent
         )
@@ -250,29 +383,19 @@ class ImageComparePrimitivesFactory:
             zero_icon=Icon.DIVIDER_HIDDEN,
             parent=parent,
         )
-        target.btn_magnifier_orientation_simple = Button(
-            icon=(Icon.VERTICAL_SPLIT, Icon.HORIZONTAL_SPLIT),
-            toggle=True,
-            parent=parent,
-        )
-        target.btn_magnifier_divider_visible = Button(
-            icon=(Icon.DIVIDER_VISIBLE, Icon.DIVIDER_HIDDEN),
-            toggle=True,
-            parent=parent,
-        )
 
-        target.btn_magnifier_color_settings_beginner = ColorSettingsButton(
-            parent=parent, current_language="en"
-        )
+        # ``btn_orientation_simple``, ``btn_divider_visible``,
+        # ``btn_magnifier_orientation_simple``,
+        # ``btn_magnifier_divider_visible``,
+        # ``btn_magnifier_color_settings_beginner`` and
+        # ``btn_magnifier_guides_simple`` are mode variants — built on first
+        # access, see ``_MODE_VARIANT_BUILDERS`` above.
         target.btn_magnifier_divider_width = ScrollValueButton(
             icon=Icon.DIVIDER_WIDTH,
             show_underline=True,
             min_value=1,
             max_value=10,
             parent=parent,
-        )
-        target.btn_magnifier_guides_simple = Button(
-            Icon.MAGNIFIER_GUIDES, toggle=True, parent=parent
         )
         target.btn_magnifier_guides_width = ScrollValueButton(
             icon=Icon.DIVIDER_WIDTH,

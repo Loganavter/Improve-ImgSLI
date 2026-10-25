@@ -94,19 +94,27 @@ Rules that follow from the split:
 
 Where its policy lives:
 
+- the policy value itself: `TILE_POLICY` (`ic/use_cases/fallback.py:63`) — a
+  frozen `TilePolicy` (`src/engine/cache/tile_policy.py:26`) with all three
+  `atomic_on_*` flags on (`ic/use_cases/fallback.py:66`–`:68`);
 - per-frame entry + spec resolution: `realize_tile_plan`
   (`src/tabs/image_compare/canvas/rhi_renderer/residency.py:700`), including the
   magnifier's separate `capture_uv_rect` residency call;
 - LOD commit and settle: `commit_lod_keys`
   (`src/tabs/image_compare/canvas/rhi_renderer/use_cases/lod_commit.py:82`);
-- atomicity / first-paint decisions: `ic/use_cases/fallback.py:218` and
-  `apply_first_paint_hold`
+- atomicity / first-paint decisions: the per-frame *detection* stays here —
+  `is_content_swap` (`ic/use_cases/fallback.py:236`), `_atomic_level_hold`
+  (`:253`), `_hires_flip_hold` (`:259`) — and is handed to the single shared
+  entry `resolve_frame_fallback(TILE_POLICY, …, is_content_swap=…,
+  is_hires_flip=…, is_level_hold=…)` (`:386`, kwargs at `:395`–`:397`), which
+  computes `atomic` from the policy; plus `apply_first_paint_hold`
   (`src/tabs/image_compare/canvas/rhi_renderer/use_cases/coverage.py:438`);
 - coarsest-LOD pin: `ic/use_cases/tile_residency.py:320`.
 
 Knobs it sets: 100 ms LOD fetch settle, atomic content swap / LOD level change /
-hires flip, first-paint hold, coarsest-LOD pin, 2 GiB GPU tile budget, 3 GiB
-host texture cache, derived array capacity (2032 layers).
+hires flip (`ic/use_cases/fallback.py:66`), first-paint hold, coarsest-LOD pin,
+2 GiB GPU tile budget, 3 GiB host texture cache, derived array capacity (2032
+layers).
 
 Hardening the others lack: the **first-paint atomic hold** (no partial plan on
 screen until both sides cover and nothing is pending), the **hires-flip hold**
@@ -118,6 +126,9 @@ undestroyable under budget pressure.
 
 Where its policy lives:
 
+- the policy value itself: `TILE_POLICY` (`mc/base_images.py:95`) — only
+  `atomic_on_level_change` is on (`:100`), content swap and hires flips stay
+  off (`:98`–`:99`);
 - per-call entry: `residency.realize`
   (`src/tabs/multi_compare/scene/passes/residency.py:694`) building a per-call
   `_SlotUploadRealizer` (`:477`) over the merged engine pass;
@@ -126,12 +137,14 @@ Where its policy lives:
 - content swap machine: `resolve_swap_spec` / `apply_swap_spec`
   (`src/engine/gpu/base_images_pass.py:138`, `:233`);
 - fallback + tier hold: `_is_level_hold`
-  (`src/tabs/multi_compare/scene/passes/base_images.py:222`) and
-  `_prepare_array_plan` (`:593`).
+  (`src/tabs/multi_compare/scene/passes/base_images.py:244`), whose verdict is
+  passed as `is_level_hold=` to `resolve_frame_fallback(TILE_POLICY, …)`
+  (`:716`, `:726`), inside `_prepare_array_plan` (`:615`).
 
-Knobs it sets: level-change atomicity, per-call LOD commit with **no** settle
-window (`src/tabs/multi_compare/scene/passes/residency.py:381`), 512 MiB GPU
-tile budget, 512 MiB host tile cache, byte-derived array capacity (508 layers).
+Knobs it sets: level-change atomicity (`mc/base_images.py:100`), per-call LOD
+commit with **no** settle window
+(`src/tabs/multi_compare/scene/passes/residency.py:381`), 512 MiB GPU tile
+budget, 512 MiB host tile cache, byte-derived array capacity (508 layers).
 
 Hardening the others lack: the **plain/array split** (a slot that never became
 multi-tile keeps per-tile plain textures), the **idempotent swap intake**
@@ -139,7 +152,7 @@ multi-tile keeps per-tile plain textures), the **idempotent swap intake**
 `src/engine/gpu/base_images_pass.py:152`), and the 1×1-preview → multi-full
 **backfill** (`:297`) that keeps the preview drawable underneath the new grid.
 It deliberately has no first-paint hold
-(`src/tabs/multi_compare/scene/passes/base_images.py:714`) — coverage is always
+(`src/tabs/multi_compare/scene/passes/base_images.py:101`) — coverage is always
 evaluated, and the startup placeholder that covers the canvas until the first
 real frames belongs to the tab widget
 (`src/tabs/multi_compare/ui/canvas_widget.py:506`), not to the pass.
@@ -170,12 +183,19 @@ Every number below was read out of the constant/derivation at the cited line.
 "none" means the consumer has no such knob at all — that is the drift this page
 exists to surface, not an oversight to paper over.
 
+Each canvas now names its knobs in one frozen value,
+`TilePolicy` (`src/engine/cache/tile_policy.py:26`):
+`ic/use_cases/fallback.py:63`, `mc/base_images.py:95`,
+`tiled_image_view.py:127`. The fallback entry reads the atomicity flags off it
+through `policy.atomic_for(...)` (`src/engine/cache/tile_policy.py:80`) rather
+than three renderers passing their own `atomic=` expression.
+
 | Knob | Image Compare | Multi Compare | Quick Look | Code |
 |---|---|---|---|---|
 | Live tile extent | 512 px | 512 px (alias) | 512 px | `tile_constants.py:32`, `mc/scene/resources.py:55` |
 | LOD settle | 100 ms (`LOD_FETCH_SETTLE_MS`) | none — per-slot LOD committed immediately | `LodPolicy(mode="settle")`, `settle_ms = 0` | `tile_constants.py:112`, `ic/use_cases/lod_commit.py:181`; `mc/residency.py:381`; `tiled_image_view.py:285`, `src/tabs/image_gallery/ui/quick_look/preview_canvas/rhi_entry.py:504` |
-| Atomicity | content swap **+** hires flip **+** level change | level change only | none (progressive; settle substitutes) | `ic/use_cases/fallback.py:239`; `mc/base_images.py:222`, `:703`; `fallback_lod.py:27`, `tiled_image_view.py:949` |
-| First-paint hold | yes (placeholder cleared until covered + nothing pending) | none | none (raster/cover plate until `covered`) | `ic/use_cases/coverage.py:438`, `ic/renderer.py:454`; `mc/base_images.py:714`; `tiled_image_view.py:449`, `src/tabs/image_gallery/ui/quick_look/preview_canvas/rhi_entry.py:338` |
+| Atomicity | content swap **+** hires flip **+** level change | level change only | none (progressive; settle substitutes) | `ic/use_cases/fallback.py:66`; `mc/base_images.py:100`; `tiled_image_view.py:130`; engine default `fallback_lod.py:76` |
+| First-paint hold | yes (placeholder cleared until covered + nothing pending) | none | none (raster/cover plate until `covered`) | `ic/use_cases/coverage.py:438`, `ic/renderer.py:454`; `mc/base_images.py:101`; `tiled_image_view.py:449`, `src/tabs/image_gallery/ui/quick_look/preview_canvas/rhi_entry.py:338` |
 | Coarsest-LOD pin | yes | **none** | **none** | `ic/use_cases/tile_residency.py:320` → `tile_texture_service.py:497` |
 | GPU tile budget | 2 GiB | 512 MiB | 2 GiB | `tiled_image_view.py:112` (IC imports it: `ic/residency.py:43`, used `:329`); `mc/scene/resources.py:56`; `tiled_image_view.py:426` |
 | Host texture cache budget | 3 GiB | 512 MiB | **none** (crops from the store) | `host_texture_cache.py:14` via `ic/residency.py:905`; `mc/scene/resources.py:57` → `mc/base_images.py:388` |
@@ -262,7 +282,8 @@ exceeded.
 | New residency/budget knob (count, deadline, margin, eviction policy) | `src/engine/cache/tile_constants.py` + `src/engine/cache/residency.py` | one loop, one deadline, all consumers inherit it |
 | New per-tab geometry or LOD model | the tab's `resolve_specs`/`build_slot_specs` (`ic/residency.py`, `mc/residency.py:231`, or `tiled_image_view.py` for QL) | the engine must stay unable to name tab geometry |
 | New content-swap behaviour | `resolve_swap_spec` / `apply_swap_spec` (`base_images_pass.py:138`, `:233`) + tab hooks | the decision is engine, the effects are tab-bound |
-| New fallback-LOD promotion rule | `src/engine/cache/fallback_lod.py:19` (shared) | all three consumers call it; a per-tab copy is how the coverage bug got duplicated |
+| New fallback-LOD promotion rule | `src/engine/cache/fallback_lod.py:68` (`resolve_fallback_lod`), reached through the single policy-driven entry `resolve_frame_fallback` (`:21`) | all three consumers call `resolve_frame_fallback` with their own `TilePolicy` (`ic/use_cases/fallback.py:386`, `mc/base_images.py:718`, `tiled_image_view.py:977`); a per-tab copy is how the coverage bug got duplicated |
+| New per-tab tile-policy knob (atomicity kind, settle window, budgets, capacity) | `src/engine/cache/tile_policy.py:26` (`TilePolicy`) + the surface's `TILE_POLICY` (`ic/use_cases/fallback.py:63`, `mc/base_images.py:95`, `tiled_image_view.py:127`) | one value per canvas, pinned by `tests/contracts/test_tile_policy_matrix.py`; the fallback entry stays policy-blind |
 | New letterbox/content geometry | `update_common_letterbox_geometry` (`src/engine/cache/display_tier_service.py:359`) | single owner of the eager `max(w1,w2), max(h1,h2)` envelope |
 | New comparison-pair shader (IC diff/base) | `src/tabs/image_compare/canvas/shaders/base_array.vert.qsb` / `.frag.qsb` pair + `array_draw.ARRAY_INSTANCE_*` | the per-instance layout is the engine contract; the pair shaders stay tab-owned |
 | New slot shader (MC / QL) | `src/engine/gpu/shaders/slot_array.vert.qsb` / `.frag.qsb` + `array_draw.SLOT_INSTANCE_*` | one instanced draw carries the whole transform per instance |

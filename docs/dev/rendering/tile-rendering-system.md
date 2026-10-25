@@ -228,17 +228,26 @@ single tile — cosmetic-only, not a correctness bug.
 
 ## Fallback-LOD: preserving previous content across a residency gap
 
-Both tabs draw a *previous* LOD/pyramid level's still-resident tiles
+All three canvases draw a *previous* LOD/pyramid level's still-resident tiles
 underneath a newly-selected level while that new level's own tiles are
 still trickling in via the budgeted upload loop above, so a LOD change
 (zoom crossing a pyramid-level boundary, or a slot's source swapping to a
 different size/resolution) never shows a blank hole mid-transition. This is
 a **cross-frame bookkeeping problem**, not a residency or draw-plan one: it
 needs to remember, per side/slot, "what key was last known to be fully
-drawable" and keep serving that key's tiles until the new key catches up.
+drawable" and keep serving that key's tiles until the new key catches up —
+through the one shared entry, `resolve_frame_fallback`
+(`src/engine/cache/fallback_lod.py:21`), called by image_compare
+(`ic/use_cases/fallback.py:386`), multi_compare (`mc/base_images.py:718`) and
+Quick Look (`src/engine/gpu/tiled_image_view.py:977`).
 
 **Geometry is eager max, not HOLD:** fallback-LOD here covers **pixels**
-only (`rhi_renderer/renderer.py::_resolve_fallback_plan` → `resolve_fallback_lod(atomic=...)`);
+only. The single per-frame entry is
+`resolve_frame_fallback(policy, …)` (`src/engine/cache/fallback_lod.py:21`):
+image_compare reaches it from `_resolve_fallback_plan`, now a thin delegator to
+`use_cases/fallback.py:386`, and never passes `atomic` by hand — the policy
+computes it (`policy.atomic_for(...)`, `src/engine/cache/tile_policy.py:80`)
+from the caller's per-frame transition flags;
 letterbox geometry itself is already stable from the first `gap draw_plan`
 (`0.545`, `pw,ph = max(w1,w2), max(h1,h2)` via `base_images.py` /
 `render_flow.py`, keyword-only `resolve_canvas_content_geometry`). Both
@@ -249,7 +258,9 @@ divergence, and no `UNION_LETTERBOX_HOLD_MS` (`tile_constants.py`) or
 pixel fallback path described below.
 
 **The three pieces of state**, owned by the caller (`RhiCanvasRenderer` in
-image_compare, `BaseImagesPass` in multi_compare — *not* by
+image_compare, `BaseImagesPass` in multi_compare, `SingleImageTiledView` in
+Quick Look — `src/engine/gpu/tiled_image_view.py:977` passes its
+`_fallback_level` as the last-good key; *not* by
 `TileResidencyRealizerBase`/`residency.py`, which holds no cross-frame LOD
 state at all, only fixed config; see
 `renderer-unification-plan.md` Phase 3 (private, `improve-imgsli-internal-docs`, `docs/legacy/rendering/`)):
@@ -336,23 +347,41 @@ equal in the (common, easy-to-test-against-by-accident) steady state where
 nothing is mid-upload — exactly the case that hides this bug until a fresh,
 large, or otherwise slow-to-fill grid is involved.
 
-### Content swaps are atomic; LOD churn is progressive
+### Atomic transitions are per-tab policy; everything else is progressive
 
-A LOD/pyramid-level churn (zoom crossing a level boundary on the *same*
-source, same eager `0.545` letterbox) gets the progressive reveal above — the coarser content stays
-visible and the finer level's tiles replace it region by region, which is
-the intended behavior. A genuine *content replacement* (preview→store flip,
-a same-slot image swap, a source-role switch) must not: the user sees the
-new content appear tile-by-tile over several frames as a patchwork mix of
-old and new regions. Geometry again is
-not part of this decision — letterbox is already identical for both sides
-(`base_images.py`), so `atomic` here gates **pixels only** (no HOLD).
-``resolve_fallback_lod``'s ``atomic=True`` mode draws
-*only* the fallback baseline (the old content) until the new content's
-current-view tiles are all resident, then flips the whole draw plan over in
-one frame. The caller (`RhiCanvasRenderer._resolve_fallback_plan` in
-`rhi_renderer/renderer.py`; the fixed-pair render tab is the only ``atomic`` caller
-today) identifies a content swap by either of two signals:
+Whether a transition is held whole is now a policy flag, not a property of the
+transition kind: `resolve_frame_fallback` builds `atomic` from
+`policy.atomic_for(is_content_swap=…, is_hires_flip=…, is_level_hold=…)`
+(`src/engine/cache/fallback_lod.py:59`, truth table in
+`src/engine/cache/tile_policy.py:80`). Measured on the three consumers:
+
+- **image_compare** — all three kinds on (`ic/use_cases/fallback.py:66`–`:68`):
+  a content swap, a hires flip and an LOD level change all hold the old tier
+  whole. One tier per frame, no mixed sharp/stretched grid.
+- **multi_compare** — level hold only (`mc/base_images.py:100`): a same-slot
+  LOD tier change is held (`_is_level_hold`, `:244`, passed at `:726`), while
+  a slot's content swap keeps the progressive reveal (no content-swap flag of
+  its own).
+- **Quick Look** — none (`src/engine/gpu/tiled_image_view.py:130`–`:132`); the
+  view passes no transition flags at all (`:977`), so it always draws its
+  current (possibly partial) tiles over the held level.
+
+The progressive reveal itself is unchanged where the policy is off — the
+coarser/previous content stays visible and the new level's tiles replace it
+region by region, the intended behavior for LOD churn. A genuine *content
+replacement* (preview→store flip, a same-slot image swap, a source-role
+switch) must not reveal that way: the user sees the new content appear
+tile-by-tile over several frames as a patchwork mix of old and new regions.
+Geometry again is not part of this decision — letterbox is already identical
+for both sides (`base_images.py`), so `atomic` here gates **pixels only** (no
+HOLD).
+
+``atomic=True`` draws *only* the fallback baseline (the old content) until the
+new content's current-view tiles are all resident, then flips the whole draw
+plan over in one frame; an empty fallback plan fails open to the partial
+current tiles (``src/engine/cache/fallback_lod.py:132``–`:135`). The
+fixed-pair tab (the only consumer with the content-swap flag) identifies a
+content swap by either of two signals:
 
 1. A rekeyed old-content marker in the fallback baseline —
    ``("_prev_content", ...)`` (eager whole-image/diff-role path,

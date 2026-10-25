@@ -1,0 +1,134 @@
+{
+  "version": 1,
+  "generated_by": "src/devtools/gen_discovery_manifest.py",
+  "entries": [
+    {
+      "kind": "plugin",
+      "id": "comparison",
+      "module": "tabs.image_compare.plugin",
+      "attr": "ComparisonPlugin",
+      "startup_tier": "bootstrap",
+      "startup_order": 0
+    },
+    {
+      "kind": "plugin",
+      "id": "diagnostics",
+      "module": "plugins.diagnostics.plugin",
+      "attr": "DiagnosticsPlugin",
+      "startup_tier": "bootstrap",
+      "startup_order": 0
+    },
+    {
+      "kind": "plugin",
+      "id": "export",
+      "module": "plugins.export.plugin",
+      "attr": "ExportPlugin",
+      "startup_tier": "deferred",
+      "startup_order": 10
+    },
+    {
+      "kind": "plugin",
+      "id": "help",
+      "module": "plugins.help.plugin",
+      "attr": "HelpPlugin",
+      "startup_tier": "deferred",
+      "startup_order": 0
+    },
+    {
+      "kind": "plugin",
+      "id": "image_gallery",
+      "module": "tabs.image_gallery.plugin",
+      "attr": "ImageGalleryPlugin",
+      "startup_tier": "deferred",
+      "startup_order": 0
+    },
+    {
+      "kind": "plugin",
+      "id": "image_properties",
+      "module": "plugins.image_properties.plugin",
+      "attr": "ImagePropertiesPlugin",
+      "startup_tier": "deferred",
+      "startup_order": 0
+    },
+    {
+      "kind": "plugin",
+      "id": "layout",
+      "module": "plugins.layout.plugin",
+      "attr": "LayoutPlugin",
+      "startup_tier": "bootstrap",
+      "startup_order": 0
+    },
+    {
+      "kind": "plugin",
+      "id": "multi_compare",
+      "module": "tabs.multi_compare.plugin",
+      "attr": "MultiComparePlugin",
+      "startup_tier": "deferred",
+      "startup_order": 0
+    },
+    {
+      "kind": "plugin",
+      "id": "onboarding",
+      "module": "plugins.onboarding.plugin",
+      "attr": "OnboardingPlugin",
+      "startup_tier": "bootstrap",
+      "startup_order": 0
+    },
+    {
+      "kind": "plugin",
+      "id": "session_picker",
+      "module": "tabs.session_picker.plugin",
+      "attr": "SessionPickerPlugin",
+      "startup_tier": "bootstrap",
+      "startup_order": 0
+    },
+    {
+      "kind": "plugin",
+      "id": "settings",
+      "module": "plugins.settings.plugin",
+      "attr": "SettingsPlugin",
+      "startup_tier": "bootstrap",
+      "startup_order": 0
+    },
+    {
+      "kind": "plugin",
+      "id": "video_editor",
+      "module": "tabs.image_compare.plugins.video_editor.plugin",
+      "attr": "VideoEditorPlugin",
+      "startup_tier": "deferred",
+      "startup_order": 0
+    },
+    {
+      "kind": "tab",
+      "id": "image_compare",
+      "module": "tabs.image_compare.tab",
+      "attr": "ImageCompareTab",
+      "startup_tier": "bootstrap",
+      "startup_order": 0
+    },
+    {
+      "kind": "tab",
+      "id": "image_gallery",
+      "module": "tabs.image_gallery.tab",
+      "attr": "ImageGalleryTab",
+      "startup_tier": "deferred",
+      "startup_order": 0
+    },
+    {
+      "kind": "tab",
+      "id": "multi_compare",
+      "module": "tabs.multi_compare.tab",
+      "attr": "MultiCompareTab",
+      "startup_tier": "deferred",
+      "startup_order": 0
+    },
+    {
+      "kind": "tab",
+      "id": "session_picker",
+      "module": "tabs.session_picker.tab",
+      "attr": "SessionPickerTab",
+      "startup_tier": "bootstrap",
+      "startup_order": 0
+    }
+  ]
+}

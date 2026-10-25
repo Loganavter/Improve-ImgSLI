@@ -13,7 +13,9 @@ This document covers wiring and the live inventory. For canvas-tool plugins (sli
 | `src/core/plugin_system/plugin.py` | `Plugin` ABC, `PluginState` enum |
 | `src/core/plugin_system/decorators.py` | `@plugin(name=..., version=...)` |
 | `src/core/plugin_system/registry.py` | `PluginRegistry` — staged discovery (`tier=bootstrap|deferred|all`) |
-| `src/core/plugin_system/discovery_scan.py` | Filesystem + AST scan for `@plugin(startup_tier=...)` and tab `startup_tier` |
+| `src/core/plugin_system/discovery_scan.py` | Filesystem + AST scan for `@plugin(startup_tier=...)` and tab `startup_tier`, plus the build-time manifest loader |
+| `src/core/plugin_system/discovery_manifest.json` | Generated entry-point list for frozen builds (see [Discovery manifest](#discovery-manifest-frozen-builds)) |
+| `src/devtools/gen_discovery_manifest.py` | Writes / `--check`s the manifest from the tree |
 | `src/core/plugin_system/lifecycle.py` | `PluginLifecycleManager` — initialize / activate / deactivate / shutdown loop (log-only error path; emits no events) |
 | `src/core/plugin_system/interfaces.py` | `IControllablePlugin`, `IServicePlugin`, `ISessionPlugin` |
 | `src/core/plugin_system/settings.py` | `PluginSettings` / `SettingsScope` / `auto_persist` — a per-plugin `QSettings` group helper; exported from `core.plugin_system` but **no app plugin uses it** today (settings persistence is centralized, see [SETTINGS_PERSISTENCE.md](SETTINGS_PERSISTENCE.md)) |
@@ -22,7 +24,10 @@ This document covers wiring and the live inventory. For canvas-tool plugins (sli
 
 The old capability/manifest layer (`contributions.py` / `PluginDefinitionRegistry`)
 is gone — the module no longer exists and nothing in `src/` references it.
-Discovery is the registry scan below; there is no manifest file to maintain.
+Discovery is the registry scan below; plugin *declarations* still live in code
+(`@plugin`), never in a hand-maintained list. The one generated file,
+`discovery_manifest.json`, is derived data for frozen builds — see
+[Discovery manifest](#discovery-manifest-frozen-builds).
 
 ## Bootstrap flow (`src/core/bootstrap.py`)
 
@@ -68,6 +73,46 @@ New plugins: add `plugin.py` with `@plugin(name="...", startup_tier="bootstrap"|
 Optional `startup_order: int` on deferred plugins controls init order (e.g. `video_editor=0` before `export=10`).
 
 **Nested tab plugins** (e.g. `tabs/image_compare/plugins/video_editor/plugin.py`) are included in the filesystem scan automatically.
+
+## Discovery manifest (frozen builds)
+
+Discovery reads `src/core/plugin_system/discovery_manifest.json` **first**. It
+is a generated list of entry points — `{"kind": "tab"|"plugin", "id", "module",
+"attr", "startup_tier", "startup_order"}`, sorted by `(kind, id)` — so a frozen
+PyInstaller bundle, which ships no `.py` files on disk, discovers tabs and
+plugins without importing a single module just to find them. Nothing in the
+file is hand-written: it is derived from the tree by AST.
+
+```bash
+PYTHONPATH=src python3 src/devtools/gen_discovery_manifest.py          # write
+PYTHONPATH=src python3 src/devtools/gen_discovery_manifest.py --check  # verify, exit 1 on drift
+```
+
+Regenerate after adding, removing or renaming a tab package, a `plugin.py`, or a
+`@plugin(...)` entry point. `tests/runtime/test_discovery_manifest.py` pins the
+committed file to the tree (freshness), pins discovery-with-manifest to zero
+tab/plugin imports, and pins fail-open; a stale manifest fails the suite instead
+of shipping.
+
+Order of authority in `discovery_scan.iter_tab_entry_points()` /
+`iter_plugin_entry_points()`:
+
+1. the manifest, when it exists and parses — **no** module is imported to discover;
+2. otherwise the filesystem AST scan (dev checkouts);
+3. otherwise `pkgutil` + import (frozen bundle with no manifest).
+
+The manifest is consulted only for the real tree (`src_root=None`); an explicit
+`src_root` (tests, fixture trees) always runs the filesystem/import scan.
+Anything wrong with the file — missing, unreadable, corrupt JSON, unknown
+`version`, a malformed record — fails **open**: one warning from
+`discovery_scan`, `load_discovery_manifest()` returns `None`, and the import
+scan runs unchanged. A bad manifest never crashes startup.
+
+Frozen builds must run the write form before PyInstaller collects data and ship
+`discovery_manifest.json` next to `discovery_scan.py` in the bundle
+(it is resolved with `Path(__file__).with_name(...)`). The build templates are
+**not** wired to this yet: the Windows spec's `APP_DATAS` and the Linux/Flatpak
+equivalents still need both the generator call and the data entry.
 
 ## The `Plugin` contract (`src/core/plugin_system/plugin.py:17`)
 
@@ -216,7 +261,7 @@ Patterns:
    ```
 3. (Optional) Add `controller.py`, `presenter.py`, `services/`, `events.py`, `state.py` as needed — follow `comparison/` or `export/` as templates depending on whether you need UI commands or dialogs.
 4. (Optional) If your plugin defines a workspace session type, implement `ISessionPlugin.get_session_blueprints()`.
-5. **Nothing else** — discovery is automatic; declare `startup_tier` on `@plugin`.
+5. **Nothing else** — discovery is automatic; declare `startup_tier` on `@plugin`. Re-run `src/devtools/gen_discovery_manifest.py` so the committed manifest (and its freshness test) matches.
 
 ## See also
 

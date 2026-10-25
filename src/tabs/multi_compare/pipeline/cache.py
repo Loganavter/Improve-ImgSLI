@@ -1,6 +1,6 @@
 """Session-owned pixel cache for the multi-compare tab (B1 state reshape).
 
-Pixels live here — keyed ``(normpath, mtime_ns, size)`` — never in
+Pixels live here — keyed ``(fs_path_key, mtime_ns, size)`` — never in
 :mod:`tabs.multi_compare.models` (``CompareSlot`` is a path-only
 ``SlotSource`` after B1, mirroring image_compare's
 ``state/document.py`` ``ImageItem``). Two tiers share one lifecycle:
@@ -44,13 +44,15 @@ _PREVIEW_CACHE_MAX = 16
 
 
 def cache_key_for_path(path: Path | str) -> tuple[str, int, int]:
-    """Content key ``(normpath, mtime_ns, size)`` (IC ``key_for`` parity).
+    """Content key ``(fs_path_key, mtime_ns, size)`` (IC ``key_for`` parity).
 
     Thin adapter over the shared seam — the single implementation lives
     in ``tabs._shared.loading_pipeline`` (W2); this name stays so
     tab-local callers keep their import path. ``mtime+size`` keeps an
     overwritten-in-place file from colliding with its own stale decode;
-    ``normpath`` heals textual variants of the same file.
+    :func:`shared.fs_paths.fs_path_key` (``normpath`` + ``normcase``) heals
+    textual variants of the same file and the case-folded spellings the
+    platform treats as one file.
     """
     return _seam_cache_key_for_path(path)
 

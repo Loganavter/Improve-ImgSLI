@@ -6,6 +6,16 @@ Extracted from ``background_parts/render_flow.py`` per
 decision to call this helper, but the geometry math and its
 ``[ic-gap]``/``[ic-preview]`` diagnostics live here as plain functions
 taking the presenter as first argument.
+
+Envelope dims rule (b) — SOURCE dims + crop, never the tier's own dims:
+the envelope is built from the source frame's dims clipped by the slot's
+effective crop box (:func:`envelope_source_size`, one resolver). Reason:
+the preview tier decodes FULL-FRAME and boxless (``pipeline/cache``
+W1+W2) while a display/store tier handed to ``upload_pil_images`` is
+already box-clipped, so tier dims disagree for the first tick (a
+``1024x768`` 4:3 preview against a ``1440x1056`` clipped store) and the
+preview frame letterboxed at the wrong aspect until the store frame
+corrected it. Source+crop is tier-independent, so both frames agree.
 """
 
 from PySide6.QtGui import QImage, QPixmap
@@ -80,6 +90,80 @@ def _is_unified_pair(src1, src2) -> bool:
         return False
 
 
+def envelope_source_size(
+    path,
+    crop_service=None,
+    live_size=None,
+    *,
+    override=None,
+    forced_service=None,
+):
+    """Dims the letterbox envelope is computed from: SOURCE dims + crop.
+
+    One resolver for "the dims the envelope is computed from" (rule (b)).
+    The reference frame is the *source* frame — the header-probed ORIGINAL
+    file dims — clipped by the slot's effective crop box. ``live_size`` is
+    only the fallback reference when the probe fails (no file behind the
+    pixels: embedded/project-cache sources, exotic formats); it is never
+    trusted as the crop reference while the original dims are known.
+
+    Why not the tier's own dims: the tiers disagree by construction for one
+    tick. The preview tier decodes FULL-FRAME and boxless (``pipeline/cache``
+    W1+W2 — boxes are side metadata, never baked into the decode), while a
+    display tier produced by ``upload_pil_images`` is already box-clipped.
+    Feeding those sizes back through the box either double-clips the
+    pre-clipped tier (1440x1056 → 1440x1033) or leaves the boxless preview
+    at the uncropped 4:3 aspect, so the first preview frame letterboxed
+    differently from the store frame. Source+crop is the same number for
+    both, so the flip changes nothing visually.
+
+    Returns ``(w, h)`` in source coords, or ``None`` when nothing is known.
+    Never raises; any failure degrades to today's tier dims.
+    """
+    base = None
+    if path:
+        try:
+            from tabs.image_compare.canvas.texture_parts.crop_clip import (
+                original_size_for_path as _original_size,
+            )
+
+            base = _original_size(path)
+        except Exception:
+            base = None
+    if base is not None:
+        try:
+            if int(base[0]) <= 0 or int(base[1]) <= 0:
+                base = live_size
+        except Exception:
+            base = live_size
+    else:
+        base = live_size
+    if base is None:
+        return None
+    try:
+        base = (int(base[0]), int(base[1]))
+    except Exception:
+        return None
+    if base[0] <= 0 or base[1] <= 0:
+        return None
+    try:
+        from tabs.image_compare.canvas.texture_parts.crop_clip import (
+            box_dims as _box_dims,
+            resolve_box_for_path as _resolve_box,
+            scaled_box_for_source as _scaled_box,
+        )
+
+        box = _resolve_box(path, crop_service, override=override, forced_service=forced_service)
+        if box is None:
+            return base
+        scaled = _scaled_box(box, path=path, live_size=base)
+        if scaled is None:
+            return base
+        return _box_dims(scaled, base)
+    except Exception:
+        return base
+
+
 def update_comparison_geometry(presenter, source1, source2, label_w, label_h) -> None:
     """Letterbox the comparison to the best sizes available right now.
 
@@ -98,21 +182,16 @@ def update_comparison_geometry(presenter, source1, source2, label_w, label_h) ->
     src_resize2 = presenter.store.viewport.session_data.image_state.image2
     size1 = _size_or_none(src_resize1) or _size_or_none(source1)
     size2 = _size_or_none(src_resize2) or _size_or_none(source2)
-    # W3a: envelope fits the box-clipped content. Boxes resolve through the
-    # single-owner interface (session crop service; ``resolve_box_for_path``
-    # never blocks the GUI thread on an unwarmed service) and scale to the
-    # sizes in hand (unify-resampled stores included). None per slot keeps
-    # today's sizes identically. The dispatcher path below still returns
-    # early (Bucket A: base_images.update_common_letterbox_geometry owns the
-    # Store geometry via transact); this only affects the sizes fed to the
-    # envelope helper and the no-dispatcher fallback assignment.
+    # Rule (b): envelope dims = SOURCE dims + crop, never the tier's own dims
+    # (see ``envelope_source_size``). One resolver for both slots — no second
+    # copy of resolve/scale/box_dims in the preview path. Boxes resolve through
+    # the single-owner interface (session crop service; ``resolve_box_for_path``
+    # never blocks the GUI thread on an unwarmed service). None per slot keeps
+    # the source dims identically. The dispatcher path below still returns early
+    # (Bucket A: base_images.update_common_letterbox_geometry owns the Store
+    # geometry via transact); this only affects the sizes fed to the envelope
+    # helper and the no-dispatcher fallback assignment.
     try:
-        from tabs.image_compare.canvas.texture_parts.crop_clip import (
-            box_dims as _box_dims,
-            resolve_box_for_path as _resolve_box,
-            scaled_box_for_source as _scaled_box,
-        )
-
         _doc = None
         try:
             _doc = presenter.store.get_session_state_slot("document")
@@ -142,20 +221,16 @@ def update_comparison_geometry(presenter, source1, source2, label_w, label_h) ->
             _ov2 = crop_override_for_path(_doc, _p2) if _doc is not None else None
         except Exception:
             _ov1, _ov2 = None, None
-        _b1 = _scaled_box(
-            _resolve_box(_p1, _svc, override=_ov1, forced_service=_forced),
-            path=_p1,
-            live_size=size1,
+        _env1 = envelope_source_size(
+            _p1, _svc, size1, override=_ov1, forced_service=_forced
         )
-        _b2 = _scaled_box(
-            _resolve_box(_p2, _svc, override=_ov2, forced_service=_forced),
-            path=_p2,
-            live_size=size2,
+        _env2 = envelope_source_size(
+            _p2, _svc, size2, override=_ov2, forced_service=_forced
         )
-        if _b1 is not None and size1 is not None:
-            size1 = _box_dims(_b1, size1)
-        if _b2 is not None and size2 is not None:
-            size2 = _box_dims(_b2, size2)
+        if _env1 is not None:
+            size1 = _env1
+        if _env2 is not None:
+            size2 = _env2
     except Exception:
         pass
     # Eager max envelope via shared host helper — single

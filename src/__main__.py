@@ -29,6 +29,27 @@ from core.windowed_stdio import enable_faulthandler, ensure_stdio
 ensure_stdio()
 enable_faulthandler()
 
+# Early startup sink (see core/startup_early_log.py): everything below until
+# `core.bootstrap._configure_logging` runs has no log handler yet, so a plain
+# logger line would be dropped (and a windowed build's stderr is os.devnull).
+# The import is stdlib-only and its import time is the sink's +0 ms origin, so
+# `main.entry` here is the first line of startup_early.log -- the marks that
+# used to be invisible, not absent. Both calls are no-ops unless
+# IMGSLI_STARTUP_TRACE / IMGSLI_STALL_WATCH (or BLINKTABLE_* spellings) is on.
+try:
+    from core.startup_trace import early_mark, startup_mark
+except Exception:  # startup diagnostics must never block startup
+
+    def startup_mark(phase: str) -> None:
+        return None
+
+    def early_mark(name: str, **_fields: object) -> None:
+        return None
+
+
+startup_mark("main.entry")
+early_mark("main.entry")
+
 
 from PySide6.QtCore import QLoggingCategory, QThreadPool, QTimer, Qt
 from PySide6.QtWidgets import QApplication
@@ -47,6 +68,10 @@ from ui.canvas_infra.rhi.rhi_backend import (
     supported_rhi_backend_names,
 )
 from core.log_names import APP_LOGGER_NAME
+
+# End of the module-scope import block: `main.entry` to here is the import cost
+# (PySide6 + toolkit + the whole ui/plugins tree) that no other probe wrapped.
+early_mark("main.imports_done")
 
 def _configure_qt_logging() -> None:
     current_rules = os.environ.get("QT_LOGGING_RULES", "").strip()
@@ -127,16 +152,6 @@ def _startup_dump_delay_ms(args: argparse.Namespace) -> int:
 
 
 def main():
-    # First mark of the startup trace: everything before `ctx.begin` used to be
-    # invisible (interpreter start, `__main__` imports, QApplication, the import
-    # warm-up, the RHI probe) -- cold-start recon, 2026-10-24. One call, zero
-    # cost when the flag is off.
-    try:
-        from core.startup_trace import startup_mark as _startup_mark
-
-        _startup_mark("main.entry")
-    except Exception:
-        pass
     parser = argparse.ArgumentParser(description="BlinkTable - Main entry point")
     parser.add_argument(
         "--enable-logging",
@@ -273,6 +288,7 @@ def main():
     if os.name == "posix" and not getattr(sys, "frozen", False):
         argv[0] = "improve-imgsli"
     app = QApplication(argv)
+    early_mark("main.qapp_ready")
 
     # Project-wide widget substitution (toolkit scrollbar policy): every
     # stock scroll area gets MinimalistScrollBar bars at polish time, so no
@@ -295,13 +311,25 @@ def main():
         _arm_stall_watch()
     except Exception:
         pass
+    # Test hook (off unless IMGSLI_STARTUP_EARLY_SELFTEST_SLEEP_MS is set):
+    # holds the GUI thread while the watchdog is armed and no log handler
+    # exists yet, so a deliberate [stall] proves the early sink catches it.
+    try:
+        from core.startup_early_log import selftest_sleep as _early_selftest_sleep
 
+        _early_selftest_sleep()
+    except Exception:
+        pass
 
     # Probe after QApplication exists. Vulkan instance create needs a GUI app;
-    # fall back before any QRhiWidget is constructed.
+    # fall back before any QRhiWidget is constructed. The probe is the slowest
+    # pre-window step (307-374 ms cold on D3D11) and it blocks the GUI thread,
+    # so its cost and any watchdog report belong in the early startup file.
+    early_mark("rhi.probe.start", requested=selected_rhi_backend)
     effective_rhi, rhi_fallback_reason = resolve_rhi_backend_with_fallback(
         selected_rhi_backend
     )
+    early_mark("rhi.probe.end", effective=effective_rhi)
     if rhi_fallback_reason:
         logging.getLogger(f"{APP_LOGGER_NAME}.rhi").warning(
             "%s (requested=%s)", rhi_fallback_reason, selected_rhi_backend
@@ -358,8 +386,10 @@ def main():
         debug=bool(args.debug or args.ui_inspector),
         ui_inspector=bool(args.ui_inspector),
     )
+    early_mark("main.window_start")
     window = MainWindow(runtime_flags=runtime_flags)
     window.start()
+    early_mark("main.window.init_done")
 
     # Warm heavy third-party imports off the GUI thread -- AFTER the window is
     # built. Starting the thread before `MainWindow()` made it compete with

@@ -128,8 +128,17 @@ def test_cascade_quiescent_promotes_immediately():
 
 
 def test_cascade_pending_defaults_to_old_behavior():
-    """Default cascade_pending=False keeps every pre-existing call site
-    (multi_compare progressive reveal) byte-identical in behavior."""
+    """Default cascade_pending=False keeps every caller that does not pass
+    the gate promoting on residency alone, byte-identical to before the
+    gate existed.
+
+    multi_compare is that caller today: it passes no ``cascade_pending``
+    (``src/tabs/multi_compare/scene/passes/base_images.py:718``) and
+    promotes as soon as the key's own tiles are uploaded. Its atomic tier
+    hold is a separate knob -- ``TilePolicy.atomic_on_level_change``
+    (``:100``) applied by ``resolve_frame_fallback`` (``:718``), never by
+    this gate -- and the progressive mix it keeps is the content-swap /
+    hires kinds its policy leaves off (``:98``)."""
     new_key, plan = resolve_fallback_lod(
         key="new",
         current_items=["current_a"],
