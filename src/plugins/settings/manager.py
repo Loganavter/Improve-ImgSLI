@@ -4,6 +4,8 @@ import os
 import re
 import shutil
 import tempfile
+from functools import wraps
+from typing import Any
 
 from PySide6.QtCore import QSettings, QStandardPaths, QTimer
 from PySide6.QtGui import QColor
@@ -127,6 +129,63 @@ def _warn_backup_unavailable(reason: str) -> None:
     )
 
 
+class _SettingsReadSession:
+    """One-pass read view over the store for ``load_all_settings``.
+
+    ``contains(key)`` + ``value(key)`` per setting is two backend reads for
+    every key (102 for the ~51 startup keys — each one a QSettings lookup).
+    One ``allKeys()`` pass answers membership for free; ``value()`` is then
+    paid once per key that exists and memoised for the rest of the pass.
+
+    Semantics are unchanged: a relative key the store does not hold is
+    "absent" exactly as ``QSettings.contains`` reported it, and a present
+    value is returned untouched (defaults still apply only to absent keys).
+    """
+
+    __slots__ = ("_settings", "_keys", "_values")
+
+    def __init__(self, settings: QSettings):
+        self._settings = settings
+        self._keys = frozenset(settings.allKeys())
+        self._values: dict[str, Any] = {}
+
+    def __len__(self) -> int:
+        return len(self._keys)
+
+    def contains(self, key: str) -> bool:
+        return key in self._keys
+
+    def value(self, key: str, default: Any = None) -> Any:
+        if key not in self._keys:
+            return default
+        if key in self._values:
+            return self._values[key]
+        val = self._settings.value(key)
+        self._values[key] = val
+        return val
+
+
+def _settings_read_pass(method):
+    """Install a fresh ``_SettingsReadSession`` for one load-only pass.
+
+    Kept as a decorator so the load body stays one flat sequence of
+    ``_get_setting`` calls (the settings-persistence contract scans THAT
+    function for the typed load pairs). The previous session is restored in
+    ``finally`` — a raising pass must never leave a stale key snapshot behind.
+    """
+
+    @wraps(method)
+    def wrapper(self, *args, **kwargs):
+        previous = self._read_session
+        self._read_session = _SettingsReadSession(self.settings)
+        try:
+            return method(self, *args, **kwargs)
+        finally:
+            self._read_session = previous
+
+    return wrapper
+
+
 class SettingsManager:
     def __init__(self, organization_name, application_name):
         # The persisted identity moved (improve-imgsli -> BlinkTable): run the
@@ -139,6 +198,8 @@ class SettingsManager:
         self._organization_name = organization_name
         self._application_name = application_name
         self.settings = QSettings(organization_name, application_name)
+        # Active only while a load-only pass runs (see ``_settings_read_pass``).
+        self._read_session: _SettingsReadSession | None = None
         self._backup_path = settings_backup_path(self.settings)
         logger.debug(
             "[settings] SettingsManager init file=%s backup=%s",
@@ -289,10 +350,33 @@ class SettingsManager:
             )
             return False
 
-    def _get_setting(self, key, default, target_type):
+    def _settings_contains(self, key: str) -> bool:
+        """Membership read: the active load pass answers it from its snapshot."""
+        session = self._read_session
+        if session is not None:
+            return session.contains(key)
+        return self.settings.contains(key)
+
+    def _settings_value(self, key: str, default: Any = None) -> Any:
+        """Value read with a default: snapshot when a load pass is active."""
+        session = self._read_session
+        if session is not None:
+            return session.value(key, default)
         if not self.settings.contains(key):
             return default
-        val = self.settings.value(key)
+        return self.settings.value(key)
+
+    def _settings_key_count(self) -> int:
+        """Number of keys the store holds, without a second ``allKeys()``."""
+        session = self._read_session
+        if session is not None:
+            return len(session)
+        return len(self.settings.allKeys())
+
+    def _get_setting(self, key, default, target_type):
+        if not self._settings_contains(key):
+            return default
+        val = self._settings_value(key)
         try:
             if target_type == bool:
                 return str(val).lower() == "true"
@@ -309,6 +393,7 @@ class SettingsManager:
             )
             return default
 
+    @_settings_read_pass
     def load_all_settings(self, store: Store):
         v, s = store.viewport, store.settings
         render = v.render_config
@@ -317,7 +402,7 @@ class SettingsManager:
             "[settings] load_all_settings START caller=%s file=%s keys_in_file=%d",
             self._caller_summary(),
             self.settings.fileName(),
-            len(self.settings.allKeys()),
+            self._settings_key_count(),
         )
 
         render.max_name_length = self._get_setting("max_name_length", 50, int)
@@ -443,7 +528,7 @@ class SettingsManager:
             s.ui_scale_factor,
             s.window_width,
             s.window_height,
-            len(self.settings.allKeys()),
+            self._settings_key_count(),
         )
 
     def schedule_persist(self, store: Store) -> None:
@@ -641,9 +726,9 @@ class SettingsManager:
 
     def _load_canvas_feature_settings(self, viewport_state) -> None:
         for prop in self._iter_all_canvas_feature_properties():
-            if not self.settings.contains(prop.setting_key):
+            if not self._settings_contains(prop.setting_key):
                 continue
-            raw_value = self.settings.value(prop.setting_key)
+            raw_value = self._settings_value(prop.setting_key)
             channels = deserialize_canvas_feature_setting(prop, raw_value)
             write_canvas_feature_property(viewport_state, prop, channels)
 
@@ -678,7 +763,7 @@ class SettingsManager:
     def _load_keyboard_overrides(self) -> dict[str, str]:
         import json
 
-        raw = self.settings.value("keyboard_overrides", "")
+        raw = self._settings_value("keyboard_overrides", "")
         if not raw:
             return {}
         try:

@@ -132,6 +132,32 @@ def contribute_all_settings(registry: "TabRegistry") -> None:
         install_settings_contributions(contributions)
 
 
+def _help_tree_reflects(tree: Any, contributions: list[Any]) -> bool:
+    """Whether the cached help tree already shows these fragments' presentation.
+
+    The tree is the single owner of what is installed, so ask it instead of
+    keeping a parallel "last installed" list that could drift when a caller
+    installs fragments directly. Only presentation the fragment actually
+    carries is compared: a fragment with no title/description/icon (the
+    session-picker hub) claims nothing, and the tree may legitimately keep
+    what the page frontmatter says.
+    """
+    for contribution in contributions:
+        node = tree.get(contribution.mount)
+        if node is None:
+            return False
+        if contribution.title and node.title != contribution.title:
+            return False
+        if (
+            contribution.description
+            and node.description != contribution.description
+        ):
+            return False
+        if contribution.icon and node.icon != contribution.icon:
+            return False
+    return True
+
+
 def contribute_all_help(registry: "TabRegistry") -> None:
     """Collect tab help-hub fragments and install them into the host tree.
 
@@ -139,12 +165,22 @@ def contribute_all_help(registry: "TabRegistry") -> None:
     Per-tab exception is logged; one tab failing does not stop others.
     Structure itself is scanned from the filesystem — fragments only carry
     hub presentation and icon resolvers.
+
+    Re-called after every page build; when the cached tree already reflects
+    the collected fragments the call is a no-op, so the filesystem scan
+    (~5.5 ms) runs once per process instead of once per page. A cleared or
+    stale tree still triggers the real install.
     """
-    from plugins.help.tree import install_help_contributions
+    from plugins.help.tree import get_help_tree, install_help_contributions
 
     contributions = collect_help_contributions(registry)
-    if contributions:
-        install_help_contributions(contributions)
+    if not contributions:
+        return
+    if get_help_tree.cache_info().currsize and _help_tree_reflects(
+        get_help_tree(), contributions
+    ):
+        return
+    install_help_contributions(contributions)
 
 
 def contribute_settings_for(registry: "TabRegistry", session_type: str) -> None:

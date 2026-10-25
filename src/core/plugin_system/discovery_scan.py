@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+# re-exported for the tests/tree-rewrite hooks
+from core.plugin_system.discovery_cache import (  # noqa: F401
+    cached_scan, reset_plugin_entry_scan_cache, reset_tab_entry_scan_cache)
+
 import ast
 import importlib
 import json
@@ -81,10 +85,8 @@ def iter_plugin_entry_points(*, src_root: Path | None = None) -> tuple[PluginEnt
             for e in manifest
             if e.kind == "plugin"
         )
-    entries = _iter_plugin_entry_points_from_filesystem(src_root)
-    if entries:
-        return entries
-    return _iter_plugin_entry_points_via_import()
+    return cached_scan("plugin", src_root,
+        _iter_plugin_entry_points_from_filesystem, _iter_plugin_entry_points_via_import)
 
 
 def plugin_modules_for_tier(tier: StartupTier, *, src_root: Path | None = None) -> tuple[str, ...]:
@@ -102,10 +104,8 @@ def iter_tab_entry_points(*, src_root: Path | None = None) -> tuple[TabEntryPoin
             for e in manifest
             if e.kind == "tab"
         )
-    entries = _iter_tab_entry_points_from_filesystem(src_root)
-    if entries:
-        return entries
-    return _iter_tab_entry_points_via_import()
+    return cached_scan("tab", src_root,
+        _iter_tab_entry_points_from_filesystem, _iter_tab_entry_points_via_import)
 
 
 def tab_packages_for_tier(tier: StartupTier, *, src_root: Path | None = None) -> tuple[str, ...]:
