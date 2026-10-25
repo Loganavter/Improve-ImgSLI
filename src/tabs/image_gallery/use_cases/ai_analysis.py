@@ -10,7 +10,8 @@ authority writer + toolbar switch (``_set_judgment_domain`` /
 ``_apply_ai_phase`` / ``_on_analysis_ready`` / ``_refresh_open_quick_look`` /
 ``_on_analysis_error``) and the pairwise refinement of a just-applied pointwise
 order (``start_pairwise_refinement`` / ``_on_pairwise_ready``, off the GUI
-thread on the SAME pool as the judge). The analyze ENTRY points (``analyze`` /
+thread on the SAME pool as the judge) and its terminal-rank trigger
+(``dispatch_pairwise_refinement``). The analyze ENTRY points (``analyze`` /
 ``reanalyze`` and the deprecated point adapters) live in
 ``use_cases/ai_analyze.py`` and are re-exported here for their callers
 (file-size policy, same wave).
@@ -394,8 +395,10 @@ def activate_judgment_domain(owner, domain: str) -> None:
             logger.debug("domain switch rank re-derive failed", exc_info=True)
         owner._clear_series_priority()
         # The pointwise (fusion) order is now applied: refine its near-tie top
-        # set with pairwise comparisons. OFF by default this wave (no settings
-        # row), so this is one trace line — never a worker — in the normal case.
+        # set with pairwise comparisons. This is the EXPLICIT trigger; the
+        # terminal-rank tail (``dispatch_pairwise_refinement``) covers the
+        # settled judge run. OFF by default, so this is one trace line — never a
+        # worker — in the normal case.
         try:
             start_pairwise_refinement(owner)
         except Exception:
@@ -427,11 +430,32 @@ def activate_judgment_domain(owner, domain: str) -> None:
 #
 # Why here and not per scoring arrival: the pass needs the pointwise ORDER
 # (its top-N is the displayed order), which only exists once the ranks are
-# applied. The caller is the Algorithms-domain rank application (the domain
-# switch back re-derives the fusion ranks through the ONE rank primitive,
-# ``_apply_fusion_ranks``); the AI domain's order belongs to Jev
-# (``rank_source="jev"`` items are LOCKED in ``_apply_fusion_ranks`` while that
-# domain owns the rank), so pairwise does not touch it.
+# applied. The AI domain's order belongs to Jev (``rank_source="jev"`` items
+# are LOCKED in ``_apply_fusion_ranks`` while that domain owns the rank), so
+# pairwise never touches it (:func:`dispatch_pairwise_refinement` refuses off
+# the Algorithms domain).
+#
+# TWO trigger sites, both AFTER the pointwise order is in place:
+#   1. the explicit domain switch back to Algorithms
+#      (``activate_judgment_domain`` — it re-derives the fusion ranks itself);
+#   2. the TERMINAL-RANK tail (``analysis_batch.dispatch_terminal_rank`` →
+#      :func:`dispatch_pairwise_refinement`), which is what makes a just-settled
+#      judge run refine its own order instead of waiting for a manual toggle
+#      (measured live 2026-10-25: a completed run left the ledger at
+#      ``{pointwise: 4, pairwise: 0}`` and the series kept its pointwise order
+#      until the domain was flipped and flipped back).
+#
+# NEITHER site is inside ``_apply_fusion_ranks``: that primitive is how THIS
+# pass applies its own result (``pairwise_order=`` forwards into
+# ``rank_series``), so a trigger there would re-enter itself on every apply —
+# one pass per apply, forever. The trigger sits one level above it, on the
+# fact "the pointwise ranking settled for this folder generation".
+#
+# ONE pass per (folder generation, series), single-flight: the slot is claimed
+# before the worker is scheduled and released by its result/error/finish
+# handler, and a folder switch drops the closed generation's slots exactly like
+# the analysis batch (``analysis_batch.begin``/``end``) — so a stale in-flight
+# pass can neither block the new folder nor apply across it.
 #
 # Threading: the blocking A/B requests run on the SAME pool the pointwise judge
 # uses (``owner._tracked`` + ``owner._pool_start`` + ``GenericWorker``) — no
@@ -458,8 +482,9 @@ def _pairwise_error(owner, exc_name: str, *, detail: str = "") -> None:
 def _pairwise_trace_once(owner, line: str, *args) -> None:
     """Emit a per-run trace line at most once (one run = one folder generation).
 
-    The disabled gate is evaluated per series and on every domain switch; the
-    contract is ONE line per run, not one per series/switch.
+    The disabled gate is evaluated per series, on every domain switch and on
+    every terminal-rank tail; the contract is ONE line per run, not one per
+    series/switch/arrival.
     """
     try:
         gen = int(getattr(owner, "_folder_gen", 0) or 0)
@@ -476,6 +501,88 @@ def _pairwise_trace_once(owner, line: str, *args) -> None:
         owner._pairwise_skip_gen = gen
     except Exception:
         pass
+
+
+def _pairwise_series_key(entry, members) -> str:
+    """Identity of ONE series for the single-flight slot.
+
+    ``Series.id`` is the regroup identity (stable across a re-apply of the same
+    group); a double/legacy entry without one falls back to its member paths,
+    which is the same identity the pass would be scheduled over.
+    """
+    try:
+        sid = getattr(entry, "id", None)
+        if sid:
+            return f"id:{sid}"
+    except Exception:
+        pass
+    try:
+        return "members:" + "|".join(
+            sorted(str(getattr(m, "path", "")) for m in members or ())
+        )
+    except Exception:
+        return f"entry:{id(entry)}"
+
+
+def _pairwise_slots(owner) -> dict:
+    """The in-flight registry: ``{folder generation: {series key, ...}}``.
+
+    An owner attribute (the same style as ``_pairwise_skip_gen`` /
+    ``_pairwise_order_paths``): one run's slots die with it, and a folder
+    generation never inherits the previous one's (see :func:`_pairwise_claim`).
+    A double that cannot hold attributes simply never claims, i.e. it keeps the
+    pre-single-flight behaviour.
+    """
+    slots = getattr(owner, "_pairwise_inflight", None)
+    if isinstance(slots, dict):
+        return slots
+    slots = {}
+    try:
+        owner._pairwise_inflight = slots
+    except Exception:
+        pass
+    return slots
+
+
+def _pairwise_claim(owner, gen: int, key: str) -> bool:
+    """Claim the ``(gen, series)`` slot; False when a pass is already in flight.
+
+    The FIRST claim of a new folder generation drops the previous generation's
+    slots — the same rule as ``analysis_batch.begin``/``end``: a pass scheduled
+    for a folder the user has left must not block the new folder's series, and
+    its late result is dropped by ``_on_pairwise_ready`` on its own.
+    """
+    try:
+        g = int(gen)
+    except (TypeError, ValueError):
+        g = 0
+    slots = _pairwise_slots(owner)
+    keys = slots.get(g)
+    if keys is None:
+        slots.clear()
+        keys = set()
+        slots[g] = keys
+    if key in keys:
+        return False
+    keys.add(key)
+    return True
+
+
+def _pairwise_release(owner, gen, key) -> None:
+    """Free the ``(gen, series)`` slot after the pass reported (never raises)."""
+    if key is None:
+        return
+    try:
+        g = int(gen if gen is not None else 0)
+    except (TypeError, ValueError):
+        return
+    slots = _pairwise_slots(owner)
+    keys = slots.get(g)
+    if not keys:
+        return
+    keys.discard(key)
+    if not keys:
+        slots.pop(g, None)
 
 
 def _series_members(owner, entry) -> list:
@@ -520,8 +627,9 @@ def start_pairwise_refinement(owner, *, series=None, judge=None) -> bool:
         _pairwise_error(owner, "SettingsUnavailable", detail="no AiSettings row")
         return False
 
-    # Gate 1, before anything else: the flag ships OFF (there is no settings row
-    # for it this wave), so this is the normal path — no worker, no call.
+    # Gate 1, before anything else: the flag is the user's opt-in (Settings → AI
+    # → "Refine near-ties pairwise"), OFF by default — so this is the normal
+    # path: no worker, no call, ONE trace line per run.
     if not bool(getattr(settings, "pairwise_enabled", False)):
         _pairwise_trace_once(
             owner,
@@ -588,6 +696,14 @@ def start_pairwise_refinement(owner, *, series=None, judge=None) -> bool:
         )
         if skip is not None:
             continue
+        # Single-flight per (folder generation, series): the terminal-rank tail
+        # re-enters this on every settled batch and every metrics settle, so
+        # without the slot a pass already comparing these members would be
+        # scheduled again by the next trigger (the verdict cache would make it
+        # free, not harmless).
+        key = _pairwise_series_key(entry, members)
+        if not _pairwise_claim(owner, gen, key):
+            continue
 
         def _job(_members=members, _pointwise=pointwise, _client=client):
             return run_pairwise_pass(
@@ -602,18 +718,75 @@ def start_pairwise_refinement(owner, *, series=None, judge=None) -> bool:
 
         worker = GenericWorker(tracked(_job) if callable(tracked) else _job)
         worker.signals.result.connect(
-            lambda order, g=gen, e=epoch, m=mode: _on_pairwise_ready(
-                owner, order, gen=g, epoch=e, mode=m
+            lambda order, g=gen, e=epoch, m=mode, k=key: _on_pairwise_ready(
+                owner, order, gen=g, epoch=e, mode=m, series_key=k
             )
         )
         worker.signals.error.connect(
-            lambda err, g=gen, e=epoch: _on_pairwise_error(
-                owner, err, gen=g, epoch=e
+            lambda err, g=gen, e=epoch, k=key: _on_pairwise_error(
+                owner, err, gen=g, epoch=e, series_key=k
             )
         )
-        pool(worker, None)
+        # A job that reports no ``result`` would otherwise hold the slot for the
+        # rest of the run; ``finished`` always fires, and the release is
+        # idempotent (the result/error handlers may already have freed it).
+        worker.signals.finished.connect(lambda g=gen, k=key: _pairwise_release(owner, g, k))
+        try:
+            pool(worker, None)
+        except Exception:
+            _pairwise_release(owner, gen, key)
+            _pairwise_error(owner, "PoolStartFailed", detail="worker not scheduled")
+            continue
         scheduled += 1
     return scheduled > 0
+
+
+def dispatch_pairwise_refinement(owner) -> bool:
+    """Start the pass from the TERMINAL-RANK tail of the Algorithms domain.
+
+    ``analysis_batch.dispatch_terminal_rank`` calls this once the batch has
+    settled (its own ``pending()`` refusal is the "the matrix is complete"
+    gate) and after the ranker ran: for Algorithms that is the pointwise
+    (fusion) order, which is what the pass refines. Before this trigger the
+    pass was reachable only through a manual domain toggle, so a series that
+    had just been judged kept its pointwise order until the user flipped the
+    domain and back (measured live 2026-10-25).
+
+    Three gates, all free (no worker, no HTTP), in this order:
+
+    * the Algorithms domain OWNS the order — under ``ai`` the displayed order
+      is Jev's, so refining the fusion order would spend calls on a ranking
+      that is not on screen (:func:`_epoch_is_current` is the ONE domain gate,
+      contract G10);
+    * the metrics pass SETTLED for the current folder generation — the same
+      finality stamp ``_apply_fusion_ranks`` uses to mark a winner. Before it,
+      the members carry no measured quality and the pass could only answer
+      too_small; the settle itself re-enters here (``_run_jev_on_settle``
+      runs after the fusion re-derive), so nothing is lost by refusing;
+    * whatever :func:`start_pairwise_refinement` decides (flag, client,
+      near-tie, budget) — the pass never raises into the rank path and never
+      blocks: :func:`_pairwise_error` is the fail-open seam.
+
+    Returns True when at least one comparison pass was scheduled.
+    """
+    if not _epoch_is_current(owner, None, domain="algorithms"):
+        return False
+    try:
+        settled = int(getattr(owner, "_metrics_settled_gen", -1)) == int(
+            getattr(owner, "_folder_gen", 0) or 0
+        )
+    except Exception:
+        settled = False
+    if not settled:
+        _ai_debug(
+            "judge_pairwise.skip reason=not-settled order_kept=pointwise"
+        )
+        return False
+    try:
+        return bool(start_pairwise_refinement(owner))
+    except Exception as exc:
+        _pairwise_error(owner, type(exc).__name__, detail="pairwise trigger failed")
+        return False
 
 
 def _remember_pairwise_paths(owner, paths: tuple[str, ...], gen: int) -> tuple[str, ...]:
@@ -636,8 +809,14 @@ def _remember_pairwise_paths(owner, paths: tuple[str, ...], gen: int) -> tuple[s
         return paths
 
 
-def _on_pairwise_ready(owner, order, *, gen=None, epoch=None, mode=None) -> None:
+def _on_pairwise_ready(
+    owner, order, *, gen=None, epoch=None, mode=None, series_key=None
+) -> None:
     """Apply a finished pass through the ONE rank primitive (ranks only)."""
+    # Free the single-flight slot FIRST: every path below (stale gen, moved
+    # domain, unused order, applied order) ends this pass, and a slot left
+    # behind would silently disable refinement for the rest of the run.
+    _pairwise_release(owner, gen, series_key)
     if gen is not None:
         try:
             if not owner._is_current_folder_gen(gen):
@@ -683,8 +862,9 @@ def _on_pairwise_ready(owner, order, *, gen=None, epoch=None, mode=None) -> None
     )
 
 
-def _on_pairwise_error(owner, error_info, *, gen=None, epoch=None) -> None:
+def _on_pairwise_error(owner, error_info, *, gen=None, epoch=None, series_key=None) -> None:
     """Worker exception → fail open; the pointwise ranks are never touched."""
+    _pairwise_release(owner, gen, series_key)
     if gen is not None:
         try:
             if not owner._is_current_folder_gen(gen):
