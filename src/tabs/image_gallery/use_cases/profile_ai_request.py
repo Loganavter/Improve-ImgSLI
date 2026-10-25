@@ -12,6 +12,11 @@ salience summary, and the 3..8 free-form rule. ``_as_list`` and ``_attr`` live
 here because the request builder is their widest consumer; ``profile_ai``
 imports them back.
 
+The BUDGET is answer reserve + reasoning allowance
+(:func:`profile_request_budget`), not the bare estimator that starved this
+request on 2026-10-26, and an OpenRouter endpoint gets the same
+reasoning-exclude/provider hardening the per-card analyze call always had.
+
 Pure at import time — no Qt, no HTTP, no state. ``vlm`` / ``ask_router`` are
 imported inside the functions that need them and fail open.
 """
@@ -53,13 +58,113 @@ def _attr(obj, name, default=""):
     return value
 
 
-def _estimate_budget(count: int, effort: str) -> int:
+#: Completion tokens RESERVED for the visible JSON answer of one profile call,
+#: on TOP of the reasoning allowance below.
+#:
+#: Measured 2026-10-26 (owner log, ``IMGSLI_AI_DEBUG=1``, 10 images,
+#: ``z-ai/glm-5.3-flash``): the bare estimator handed this request 560 tokens
+#: (``count=2`` → ``400 + 2*24``, ×1.25 low-effort headroom), the model spent
+#: all 560 on reasoning and answered ``finish=length content_chars=0
+#: reasoning_chars=2305`` (completion=560, reasoning=560, cost 0.0004) — zero
+#: axes, silently downgraded to the heuristic profile. A multiplier over an
+#: ANSWER estimate cannot survive a mandatory reasoner; the budget has to be
+#: "answer reserve + reasoning allowance", which is what this constant and the
+#: allowance table below do.
+PROFILE_ANSWER_RESERVE = 640
+
+#: Reasoning allowance per RESOLVED effort, in completion tokens. A reasoning
+#: model's chain-of-thought is charged against ``max_tokens`` like any other
+#: completion, so it gets its own line item instead of eating the answer's.
+PROFILE_REASONING_ALLOWANCE: dict[str, int] = {"low": 1024, "medium": 2048, "high": 4096}
+
+#: Ceiling for one profile call (a cap is not a charge: only emitted tokens are
+#: billed, but an unbounded retry must not ask for the estimator's whole range).
+PROFILE_MAX_TOKENS_CAP = 16384
+
+
+def _resolved_effort(effort: str) -> str:
+    try:
+        from tabs.image_gallery.services.ask_router import resolve_reasoning_effort
+
+        return resolve_reasoning_effort(effort)
+    except Exception:
+        return "low"
+
+
+def profile_request_budget(count: int, effort: str = "auto") -> int:
+    """``max_tokens`` for one profile call: answer reserve + reasoning allowance.
+
+    The visible answer (3..8 axes as one JSON object) is sized by the shared
+    Ask-AI estimator over the probe count and floored at
+    :data:`PROFILE_ANSWER_RESERVE`; the resolved effort then adds its own
+    allowance from :data:`PROFILE_REASONING_ALLOWANCE`. Never below the
+    reserve, never above :data:`PROFILE_MAX_TOKENS_CAP`.
+    """
     try:
         from tabs.image_gallery.services.ask_router import estimate_ask_max_tokens
 
-        return int(estimate_ask_max_tokens({"count": int(count)}, effort=effort))
+        answer = int(estimate_ask_max_tokens({"count": int(count)}, effort=effort))
     except Exception:
-        return 0
+        answer = 0
+    answer = max(PROFILE_ANSWER_RESERVE, answer)
+    allowance = PROFILE_REASONING_ALLOWANCE.get(
+        _resolved_effort(effort), PROFILE_REASONING_ALLOWANCE["low"]
+    )
+    return int(min(answer + allowance, PROFILE_MAX_TOKENS_CAP))
+
+
+def retry_profile_budget(budget) -> int:
+    """The ONE retry's budget after ``finish=length``: larger, still capped.
+
+    At least double the starved budget and at least one low-effort reasoning
+    allowance more than it, so a provider that ignores ``reasoning.exclude``
+    (and burns the whole completion on CoT) gets room to reason AND answer.
+    """
+    try:
+        current = int(budget or 0)
+    except (TypeError, ValueError):
+        current = 0
+    if current <= 0:
+        current = PROFILE_ANSWER_RESERVE
+    return int(
+        min(
+            max(current * 2, current + PROFILE_REASONING_ALLOWANCE["low"]),
+            PROFILE_MAX_TOKENS_CAP,
+        )
+    )
+
+
+def _is_openrouter(base_url) -> bool:
+    return "openrouter" in str(base_url or "").lower()
+
+
+def _apply_profile_openrouter_hardening(payload: dict, base_url, model, effort) -> dict:
+    """Bound the chain-of-thought for this JSON-only request on OpenRouter.
+
+    Same knobs as the per-card ``ai_client.build_request`` and the VLM
+    tie-break path (``vlm._apply_vlm_openrouter_hardening``):
+
+    - ``reasoning.effort`` — a mandatory reasoner (``z-ai/glm-5.3-flash``)
+      defaults to ``max`` and can spend the whole completion there;
+    - ``reasoning.exclude`` — the CoT must not be mixed into ``content``: this
+      reply is parsed as JSON, and the measured sibling fix (2026-10-15,
+      tie-break) took 7/8 empty answers to 0/8;
+    - ``provider`` — skip overloaded shared pools and pools that do not support
+      a JSON-object response format.
+
+    No ``models`` fallback chain here: the profile pin names ONE model, and a
+    silent fallback would attribute another model's axes to it. A non-OpenRouter
+    endpoint gets the payload byte-identical (these are OpenRouter extensions).
+    """
+    if not _is_openrouter(base_url):
+        return payload
+    payload["reasoning"] = {"effort": _resolved_effort(effort), "exclude": True}
+    payload["provider"] = {
+        "require_parameters": True,
+        "sort": "throughput",
+        "allow_fallbacks": True,
+    }
+    return payload
 
 
 def _selector_text(salience) -> str:
@@ -135,14 +240,28 @@ def _summary_text(salience) -> str:
 PROFILE_PROBE_MAX_EDGE = 512
 
 
-def build_profile_request(probe_items, *, model, salience, effort: str = "auto", max_tokens: int = 0) -> dict:
+def build_profile_request(
+    probe_items,
+    *,
+    model,
+    salience,
+    effort: str = "auto",
+    max_tokens: int = 0,
+    base_url: str = "",
+) -> dict:
     """The one user message: axis examples + salience text, then one image each.
 
     Returns a chat-completions payload with response_format pinned to
     ``{"type": "json_object"}`` (reasoning models must not answer in prose) and
-    a budget from ``estimate_ask_max_tokens`` unless a positive *max_tokens* is
-    passed. Probe images are downscaled through ``vlm._encode_image``; an
-    unreadable image is skipped, never fatal.
+    a budget that stays answerable: :func:`profile_request_budget` reserves the
+    visible answer ON TOP of the reasoning allowance unless a positive
+    *max_tokens* is passed (the retry path passes an explicit, larger one).
+
+    *base_url* is only inspected for the OpenRouter extensions
+    (:func:`_apply_profile_openrouter_hardening`) — the same reasoning/effort
+    hardening the per-card analyze call always had and this request was missing
+    (the 2026-10-26 starved-budget defect). Probe images are downscaled through
+    ``vlm._encode_image``; an unreadable image is skipped, never fatal.
     """
     probes = _as_list(probe_items)
     content: list[dict] = [{"type": "text", "text": _selector_text(salience)}]
@@ -178,10 +297,27 @@ def build_profile_request(probe_items, *, model, salience, effort: str = "auto",
     except Exception:
         budget = 0
     if budget <= 0:
-        budget = _estimate_budget(len(probes), effort)
-    return {
+        budget = profile_request_budget(len(probes), effort)
+    payload: dict = {
         "model": str(model or ""),
         "messages": [{"role": "user", "content": content}],
         "max_tokens": budget,
         "response_format": {"type": "json_object"},
     }
+    _apply_profile_openrouter_hardening(payload, base_url, model, effort)
+    try:
+        from tabs.image_gallery.services.ai_client.prompt import _ai_debug
+
+        _ai_debug(
+            "profile request model=%s max_tokens=%s probes=%d effort=%s "
+            "reasoning=%s provider=%s",
+            payload.get("model"),
+            payload.get("max_tokens"),
+            len(probes),
+            _resolved_effort(effort),
+            payload.get("reasoning"),
+            "provider" in payload,
+        )
+    except Exception:
+        pass
+    return payload

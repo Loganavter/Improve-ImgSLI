@@ -26,8 +26,12 @@ repeated inside the reply (``services/axis_choice.parse_axis_choices``).
 One call per unchanged folder-generation: the selection is pinned
 (``services/profile_cache``, keyed on member fingerprint + mode + model + pool),
 and a re-run over unchanged inputs is served from disk with no second HTTP
-call. Every failure (AI off, no probe members, transport raise, junk reply)
-degrades to the series-derived offer
+call. A reply cut off at the token cap (``finish_reason=length``) is retried
+ONCE with a doubled budget (``profile_ai_request.retry_profile_budget``) before
+the selector gives up; a selection that still yields no axis is logged at
+WARNING with finish_reason/budget/model, so a quality drop is visible
+without ``IMGSLI_AI_DEBUG``. Every failure (AI off, no probe members, transport
+raise, junk reply) degrades to the series-derived offer
 (``profile_select.derive_profile`` → ``metric_profile.profile_for_series``) —
 the control always yields a usable axis set. The judge's own choice, when it
 answers, WINS over that offer (P5 precedence). Malformed replies are
@@ -60,6 +64,7 @@ from tabs.image_gallery.use_cases.profile_ai_request import (  # noqa: F401
     _as_list,
     _attr,
     build_profile_request,
+    retry_profile_budget,
 )
 from core.log_names import APP_LOGGER_NAME
 
@@ -218,6 +223,28 @@ def _reply_text(raw) -> str:
     return str(content)
 
 
+def _reply_finish(raw) -> str:
+    """finish_reason of the first choice ("" when absent/unreadable)."""
+    try:
+        return str((raw.get("choices") or [{}])[0].get("finish_reason") or "")
+    except Exception:
+        return ""
+
+
+def _reply_reasoning_chars(raw) -> int:
+    """Length of the hidden chain-of-thought in the reply (0 when none).
+
+    The starved-budget signature is ``content_chars=0`` next to a large
+    ``reasoning_chars``: the model reasoned through the whole completion and
+    never started the answer.
+    """
+    try:
+        message = (raw.get("choices") or [{}])[0].get("message") or {}
+        return len(str(message.get("reasoning") or ""))
+    except Exception:
+        return 0
+
+
 def _default_client_call():
     try:
         from tabs.image_gallery.services import ai_client
@@ -312,6 +339,7 @@ def choose_profile_sync(
             model=model,
             salience=summary,
             effort=effort,
+            base_url=base_url,
         )
     except Exception:
         return _offer()
@@ -325,11 +353,49 @@ def choose_profile_sync(
         logger.debug("profile select call failed", exc_info=True)
         return _offer()
 
+    attempts = 1
     profile = parse_profile_reply(_reply_text(raw), mode=mode)
+    if profile is None and _reply_finish(raw) == "length":
+        # finish=length with no axes means the completion was spent before the
+        # answer existed (measured 2026-10-26: 560-token budget, reasoning=560,
+        # content=0). The first request already asked to exclude the reasoning;
+        # a provider that ignores that can only be rescued by a bigger cap, so
+        # retry ONCE with the doubled budget instead of dropping to the offer.
+        retry_budget = retry_profile_budget(payload.get("max_tokens"))
+        try:
+            retry_payload = build_profile_request(
+                probes,
+                model=model,
+                salience=summary,
+                effort=effort,
+                max_tokens=retry_budget,
+                base_url=base_url,
+            )
+        except Exception:
+            retry_payload = None
+        if retry_payload is not None:
+            try:
+                raw = call(base_url, api_key, retry_payload)
+                payload = retry_payload
+                attempts += 1
+            except Exception:
+                logger.debug("profile select retry call failed", exc_info=True)
+            else:
+                profile = parse_profile_reply(_reply_text(raw), mode=mode)
+
     if profile is None:
-        logger.debug(
-            "profile select: reply yielded no usable axis (mode=%s) — "
-            "series offer kept",
+        # A WARN, not a DEBUG: the run silently loses its VLM axes and falls
+        # back to the series offer, which looks like a working profile. Without
+        # IMGSLI_AI_DEBUG the owner had no way to see this.
+        logger.warning(
+            "profile select: no usable axis — finish_reason=%s max_tokens=%s "
+            "attempts=%d reasoning_chars=%d model=%s mode=%s; series offer "
+            "kept (this run has no VLM-named axes)",
+            _reply_finish(raw) or "unknown",
+            payload.get("max_tokens"),
+            attempts,
+            _reply_reasoning_chars(raw),
+            model,
             mode,
         )
         return _offer()
