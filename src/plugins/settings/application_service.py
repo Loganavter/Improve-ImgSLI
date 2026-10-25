@@ -351,9 +351,10 @@ class SettingsApplicationService(QObject):
             exclusive_overrides,
             repair_legacy_cross_tab_unbounds,
         )
-        from plugins.settings.pages.keyboard import _collect_defaults
+        from ui.actions.keymap_uniqueness import verify_unique_or_log
+        from plugins.settings.keymap_defaults import collect_keymap_defaults
 
-        defaults = _collect_defaults()
+        defaults = collect_keymap_defaults()
         defaults_map = {
             entry.action_id: (entry.default_shortcut, entry.owner_tab)
             for entry in defaults.all_entries()
@@ -367,6 +368,12 @@ class SettingsApplicationService(QObject):
                 defaults_map,
                 dict(getattr(data, "keyboard_overrides", None) or {}),
             ),
+        )
+        # Applied state must satisfy the one-chord-one-action-per-tab
+        # invariant; a violation after the exclusive pass is resolver damage
+        # and is reported with the colliding ids before anything is stored.
+        verify_unique_or_log(
+            defaults_map, new_overrides, source="settings apply keyboard overrides"
         )
         current = dict(getattr(self.store.settings, "keyboard_overrides", None) or {})
         if new_overrides == current:

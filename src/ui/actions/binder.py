@@ -25,6 +25,7 @@ from ui.actions.keymap import (
     normalize_sequence,
     resolve_chord_winners,
 )
+from ui.actions.keymap_uniqueness import verify_unique_or_log
 from ui.actions.registry import ActionRegistry, get_action_registry
 from core.log_names import APP_LOGGER_NAME
 
@@ -235,6 +236,15 @@ class ActionShortcutBinder:
             action.action_id: (action.shortcut, action.owner_tab)
             for action in actions
         }
+        # Loud invariant check BEFORE the winner/loser split below: "first
+        # wins + skip" is a degradation that keeps the app usable, never a
+        # licence to ship two actions on one chord in one tab (see
+        # ``ui.actions.keymap`` § one chord, one action per tab). Reaching
+        # this branch with collisions is a catalog/override defect and gets
+        # exactly one ERROR line per colliding chord, naming both actions.
+        verify_unique_or_log(
+            defaults, overrides, source=f"binder resync active_tab={active_tab!r}"
+        )
         winners = resolve_chord_winners(defaults, overrides)
         for _index, action in ranked:
             chord = effective_shortcut(action, overrides)

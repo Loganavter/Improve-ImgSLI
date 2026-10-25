@@ -5,7 +5,8 @@ from __future__ import annotations
 from PySide6.QtWidgets import QApplication, QWidget
 
 from core.actions.types import ActionDescriptor
-from plugins.settings.pages.keyboard import SECTION, _collect_defaults
+from plugins.settings.keymap_defaults import collect_keymap_defaults
+from plugins.settings.pages.keyboard import SECTION
 from plugins.settings.registry import SettingsRegistry
 from ui.actions.binder import ActionShortcutBinder
 from ui.actions.keymap import KeymapDefaultEntry, keymap_entry_rank, normalize_sequence
@@ -21,7 +22,7 @@ def test_keyboard_section_registers():
 
 
 def test_keymap_defaults_include_diff_mode_cycle():
-    defaults = {e.action_id: e for e in _collect_defaults().all_entries()}
+    defaults = {e.action_id: e for e in collect_keymap_defaults().all_entries()}
     assert "image_compare.diff_mode" in defaults
     entry = defaults["image_compare.diff_mode"]
     assert entry.default_shortcut == "H"
@@ -93,3 +94,48 @@ def test_binder_first_wins_and_invokes(qtbot):
     binder._shortcuts[0].activated.emit()
     qtbot.wait(20)
     assert ran == ["first"]
+
+def test_page_initial_map_repairs_a_duplicate_profile():
+    """Opening the page can never show two actions on one chord in a tab.
+
+    Mirrors ``plugins.settings.pages.keyboard.build``: repair the poisoned
+    profile, then apply exclusivity. The stored profile here forces an
+    ``image_compare`` action onto a chord another ``image_compare`` action
+    owns — the page must resolve it to one holder and pass the strict gate.
+    """
+    from ui.actions.keymap import (
+        exclusive_overrides,
+        repair_legacy_cross_tab_unbounds,
+    )
+    from ui.actions.keymap_uniqueness import assert_unique_bindings_all_scopes
+
+    defaults = {
+        entry.action_id: (entry.default_shortcut, entry.owner_tab)
+        for entry in collect_keymap_defaults().all_entries()
+    }
+    tab_actions = [
+        aid for aid, (chord, owner) in defaults.items() if owner and chord
+    ]
+    assert len(tab_actions) >= 2, "catalog needs two same-tab chorded actions"
+    first, second = tab_actions[0], tab_actions[1]
+    duplicate_profile = {second: defaults[first][0]}
+
+    overrides = exclusive_overrides(
+        defaults,
+        repair_legacy_cross_tab_unbounds(defaults, duplicate_profile),
+    )
+
+    assert_unique_bindings_all_scopes(defaults, overrides)
+    assert overrides.get(second) == "", "loser must be unbound, not kept"
+    assert overrides.get(first, defaults[first][0]) == defaults[first][0] or (
+        overrides.get(first) == ""
+    )
+
+
+def test_page_group_titles_are_stable_keys_for_every_owner():
+    """Static contract for the page's owner grouping (no duplicate titles)."""
+    from plugins.settings.pages.keyboard import KEYBOARD_IC, KEYBOARD_MC, KEYBOARD_PLATFORM
+
+    keys = [KEYBOARD_PLATFORM.title_key, KEYBOARD_IC.title_key, KEYBOARD_MC.title_key]
+    assert len(keys) == len(set(keys))
+    assert all(key.startswith("settings.keyboard_group_") for key in keys)

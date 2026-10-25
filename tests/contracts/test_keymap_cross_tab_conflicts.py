@@ -89,15 +89,18 @@ class _Store:
 def _apply(defaults_map, *, store_overrides, incoming, monkeypatch):
     """Run the REAL Settings apply path with a pinned defaults catalog.
 
-    ``_collect_defaults`` discovers the tab registry, which is not available in
-    every test environment — pinning it keeps this test about the conflict
-    scope, not about tab discovery.
+    ``collect_keymap_defaults`` discovers the tab registry, which is not
+    available in every test environment — pinning it (in the collector module
+    the apply path imports from) keeps this test about the conflict scope, not
+    about tab discovery.
     """
-    import plugins.settings.pages.keyboard as keyboard_page
+    import plugins.settings.keymap_defaults as keymap_defaults
     from plugins.settings.application_service import SettingsApplicationService
 
     monkeypatch.setattr(
-        keyboard_page, "_collect_defaults", lambda: _registry_for(defaults_map)
+        keymap_defaults,
+        "collect_keymap_defaults",
+        lambda: _registry_for(defaults_map),
     )
     store = _Store(store_overrides)
     service = SettingsApplicationService(store, None)

@@ -300,3 +300,58 @@ def test_settings_captions_are_caption(qapp: QApplication):
             assert _px(field) < SETTINGS_BODY_PX
     finally:
         dialog.close()
+
+
+def test_settings_keyboard_capture_keeps_one_owner_per_chord(qapp: QApplication):
+    """Settings cannot leave two actions on one chord in one tab.
+
+    End-to-end through the page's own commit path (``_ShortcutCaptureButton``
+    → ``_set_override`` → ``steal_chord_in_overrides``): type a chord that
+    another action of the SAME tab already owns, then assert the invariant on
+    the dialog's live override map — the loser is explicitly unbound and the
+    typed action holds the chord alone.
+    """
+    from plugins.settings.keymap_defaults import collect_keymap_defaults
+    from ui.actions.keymap import effective_shortcut_for_id, normalize_sequence
+    from ui.actions.keymap_uniqueness import (
+        assert_unique_bindings_all_scopes,
+        scope_bindings,
+    )
+
+    defaults = {
+        entry.action_id: (entry.default_shortcut, entry.owner_tab)
+        for entry in collect_keymap_defaults().all_entries()
+    }
+    pair = next(
+        (
+            (victim, taker)
+            for victim, (chord, owner) in defaults.items()
+            if owner and chord
+            for taker, (_taker_chord, taker_owner) in defaults.items()
+            if taker_owner == owner and taker != victim
+        ),
+        None,
+    )
+    assert pair is not None, "catalog needs two actions of one tab"
+    victim, taker = pair
+
+    dialog = _dialog(qapp)
+    try:
+        dialog.pages_stack.setCurrentWidget(dialog.page_keyboard)
+        qapp.processEvents()
+        chord = effective_shortcut_for_id(
+            victim,
+            default=defaults[victim][0],
+            overrides=dialog._keyboard_overrides,
+        )
+        assert chord, "victim must hold a chord to be stolen"
+        dialog._keyboard_capture_rows[taker]._commit(chord)
+
+        assert_unique_bindings_all_scopes(defaults, dialog._keyboard_overrides)
+        holders = scope_bindings(
+            defaults, dialog._keyboard_overrides, tab=defaults[taker][1]
+        )[normalize_sequence(chord)]
+        assert holders == (taker,), holders
+        assert dialog._keyboard_overrides.get(victim) == ""
+    finally:
+        dialog.close()
