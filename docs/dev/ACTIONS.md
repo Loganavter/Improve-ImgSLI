@@ -65,6 +65,28 @@ and effective chords, group title, plus `search_keys` / `search_terms`
 (e.g. typing `ssim` matches the dedicated Difference Mode option row, not
 the cycle action `H` — mode aliases live only on per-option descriptors).
 
+### One chord, one action per tab (binding invariant)
+
+Inside one tab a chord belongs to exactly ONE action. The scope is the binder's:
+platform actions are installed in every tab, so platform-vs-tab on one chord is
+a collision; two different tabs may share a chord because they are never live
+together.
+
+- `src/ui/actions/keymap_uniqueness.py` — strict gates
+  (`assert_unique_bindings`, `assert_unique_bindings_all_scopes`,
+  `BindingCollisionError`) plus the production check
+  `verify_unique_or_log` (one ERROR line per colliding chord, names both
+  actions, never raises).
+- `tests/contracts/test_keymap_unique_bindings.py` — the shipped-catalog gate:
+  an action whose default chord is already taken in its own tab (or by a
+  platform action) fails here, before the duplicate can reach the binder, the
+  Settings page or a profile.
+- Runtime: the binder verifies the active-tab scope before installing ("first
+  chord wins + skip" keeps the app usable, but is now reported as a defect),
+  and Settings → Keyboard verifies on build, on every capture and on every
+  reset — a capture *steals* the chord and explicitly unbinds the loser, so a
+  user edit cannot leave two actions on one chord either.
+
 Hard-coded and **out of keymap**: WASD / Space / overlay movement in
 `GlobalKeyboardHandler` and canvas keyboard. Video-editor dialog-local
 shortcuts (Space / Ctrl+Z / …) stay local on the dialog; their Find Action

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from plugins.settings.pages.keyboard import _collect_defaults
+from plugins.settings.keymap_defaults import collect_keymap_defaults
 from ui.actions.keymap import normalize_sequence
 from ui.actions.platform import register_platform_actions
 from ui.actions.registry import ActionRegistry
@@ -27,7 +27,7 @@ class _Session:
 
 
 def test_keymap_defaults_include_workspace_next_prev():
-    defaults = {e.action_id: e for e in _collect_defaults().all_entries()}
+    defaults = {e.action_id: e for e in collect_keymap_defaults().all_entries()}
     assert defaults["workspace.next_tab"].default_shortcut == "Ctrl+Tab"
     assert defaults["workspace.prev_tab"].default_shortcut == "Ctrl+Shift+Tab"
     assert defaults["workspace.next_tab"].owner_tab is None

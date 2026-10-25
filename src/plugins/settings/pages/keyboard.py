@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from plugins.settings.keymap_defaults import collect_keymap_defaults
 from plugins.settings.nav_rows import page_nav_builder, register_page_navigation
 from plugins.settings.pages.keyboard_metrics import (
     GROUP_BODY_MARGIN_V_PX,
@@ -30,11 +31,11 @@ from sli_ui_toolkit.managers import scaled_px
 from sli_ui_toolkit.ui.managers.ui_font import ui_font
 from sli_ui_toolkit.widgets import Button, CustomLineEdit
 from ui.actions.keymap import (
-    KeymapDefaultsRegistry,
     effective_shortcut_for_id,
     keymap_entry_rank,
     normalize_sequence,
 )
+from ui.actions.keymap_uniqueness import verify_unique_or_log
 from ui.actions.search_index import PROP_GROUP
 from ui.icon_manager import AppIcon
 
@@ -53,33 +54,6 @@ SEARCH = SearchIndex.of(KEYBOARD, KEYBOARD_PLATFORM, KEYBOARD_IC, KEYBOARD_MC)
 def _tr(dialog, key: str, fallback: str) -> str:
     text = dialog._tr(key, dialog.current_language)
     return fallback if text == key else text
-
-
-def _collect_defaults() -> KeymapDefaultsRegistry:
-    registry = KeymapDefaultsRegistry()
-    from ui.actions.platform import contribute_platform_keymap_defaults
-
-    try:
-        from core.store import INITIAL_WORKSPACE_SESSION_TYPE
-        from tabs.registry import TabRegistry
-
-        tabs = TabRegistry()
-        tabs.discover()
-        new_session_types = [
-            tab.session_type
-            for tab in tabs.list_tabs()
-            if tab.session_type != INITIAL_WORKSPACE_SESSION_TYPE
-        ]
-        contribute_platform_keymap_defaults(registry, new_session_types)
-        tabs.notify_all("contribute_keymap_defaults", registry)
-    except Exception:
-        import logging
-
-        logging.getLogger(__name__).exception(
-            "Failed to collect tab keymap defaults for Settings → Keyboard"
-        )
-        contribute_platform_keymap_defaults(registry)
-    return registry
 
 
 class _ShortcutCaptureButton(Button):
@@ -183,7 +157,7 @@ def build(dialog, p):
 
     dialog.page_keyboard, layout = dialog._create_scrollable_page()
     builder = page_nav_builder(dialog, tag="settings-keyboard")
-    defaults = _collect_defaults()
+    defaults = collect_keymap_defaults()
     defaults_map = {
         entry.action_id: (entry.default_shortcut, entry.owner_tab)
         for entry in defaults.all_entries()
@@ -198,6 +172,11 @@ def build(dialog, p):
             dict(getattr(p, "keyboard_overrides", None) or {}),
         ),
     )
+    # The page is the one surface where a user assigns chords, so its own
+    # starting state must already satisfy the invariant (a hand-edited
+    # profile is repaired by ``exclusive_overrides`` above; a duplicate the
+    # resolver could not fix is a defect and is named here).
+    verify_unique_or_log(defaults_map, overrides, source="settings keyboard build")
     dialog._keyboard_overrides = overrides
     dialog._keyboard_capture_rows = {}
     dialog._keyboard_action_labels = []
@@ -276,6 +255,19 @@ def build(dialog, p):
             )
             cap.set_chord(current)
 
+    def _verify(source: str) -> None:
+        """Invariant gate for every path that writes the page's override map.
+
+        A duplicate binding can only appear here through resolver damage
+        (``steal_chord_in_overrides`` / ``exclusive_overrides`` are supposed
+        to make it impossible), so the reaction is a loud ERROR plus the map
+        the resolver produced — the user's edit still applies, and the defect
+        is not hidden behind "the first chord wins".
+        """
+        verify_unique_or_log(
+            defaults_map, dialog._keyboard_overrides, source=f"settings keyboard {source}"
+        )
+
     def _set_override(action_id: str, default: str | None, chord: str) -> None:
         from ui.actions.keymap import steal_chord_in_overrides
 
@@ -285,6 +277,7 @@ def build(dialog, p):
             defaults=defaults_map,
             overrides=dialog._keyboard_overrides,
         )
+        _verify(f"capture {action_id}={chord or '<unbound>'}")
         _refresh_capture_labels()
 
     for owner, entries in by_owner.items():
@@ -351,6 +344,7 @@ def build(dialog, p):
                     defaults=defaults_map,
                     overrides=dialog._keyboard_overrides,
                 )
+                _verify(f"reset {aid}")
                 _refresh_capture_labels()
 
             reset.clicked.connect(_reset)
@@ -396,6 +390,7 @@ def build(dialog, p):
         # Re-apply exclusivity across defaults so two actions cannot keep the
         # same built-in chord after a full reset.
         dialog._keyboard_overrides = exclusive_overrides(defaults_map, {})
+        _verify("reset all")
         _refresh_capture_labels()
 
     reset_all.clicked.connect(_reset_all)
