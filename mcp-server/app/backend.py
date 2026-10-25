@@ -1,4 +1,4 @@
-"""Tool/resource/prompt handlers for the Improve-ImgSLI MCP server.
+"""Tool/resource/prompt handlers for the BlinkTable MCP server.
 
 Stdlib only — no third-party imports — so the server runs in any Python 3.11+
 without installing the (optional) ``mcp`` SDK. Everything the app exposes
@@ -57,13 +57,16 @@ from .catalog import (
     MAX_BATCH_SETTLE_TOTAL_MS,
 )
 from .live import (
+    APP_NAME,
+    LEGACY_APP_DATA_DIR_NAME,
     LiveBackend,
     LiveError,
     LiveUnavailable,
     action_enabled,
     action_reason,
-    app_data_dir as live_app_data_dir,
     evidence_sentence,
+    prefer_existing,
+    resolved_app_data_dir,
 )
 from .process_policy import (
     PRESERVED_LOG_NAME,
@@ -101,10 +104,13 @@ class ToolError(Exception):
 def app_data_dir() -> Path:
     """Per-OS app data dir holding ``log.txt`` / ``trace.jsonl``.
 
-    Delegates to ``live.app_data_dir`` — one copy of the rule in this package
-    (the MCP's discovery has to agree with the app, see ``live.control_dirs``).
+    Delegates to ``live.resolved_app_data_dir`` — one copy of the rule in this
+    package (the MCP's discovery has to agree with the app, see
+    ``live.control_dirs``). The current directory wins; while only the
+    pre-rename one exists (an upgrade that has not booted the app yet) that one
+    is read instead, because that is where the log actually is.
     """
-    return live_app_data_dir()
+    return resolved_app_data_dir()
 
 
 def default_artifacts_dir() -> Path:
@@ -112,8 +118,10 @@ def default_artifacts_dir() -> Path:
     override = os.environ.get("IMGSLI_MCP_ARTIFACTS")
     if override:
         return Path(override).expanduser()
-    base = os.environ.get("XDG_CACHE_HOME") or str(Path.home() / ".cache")
-    return Path(base) / "ImproveImgSLI" / "mcp"
+    base = Path(os.environ.get("XDG_CACHE_HOME") or str(Path.home() / ".cache"))
+    return prefer_existing(
+        base / APP_NAME / "mcp", base / LEGACY_APP_DATA_DIR_NAME / "mcp"
+    )
 
 
 def _count_nodes(node: dict) -> int:
@@ -1580,7 +1588,7 @@ class AppBackend:
         script = (
             "import sys\n"
             "from PySide6.QtCore import QSettings\n"
-            "settings = QSettings('improve-imgsli', 'improve-imgsli')\n"
+            f"settings = QSettings({APP_NAME!r}, {APP_NAME!r})\n"
             "settings.setValue(sys.argv[1], sys.argv[2])\n"
             "settings.sync()\n"
         )
@@ -1786,7 +1794,7 @@ class AppBackend:
         if name == "diagnose_gallery":
             symptom = args.get("symptom") or "(symptom not given)"
             body = (
-                "Investigate an Image Gallery issue in Improve-ImgSLI.\n\n"
+                "Investigate an Image Gallery issue in BlinkTable.\n\n"
                 f"Symptom: {symptom}\n\n"
                 "Follow the diagnosis ladder, cheapest first:\n"
                 "1. read_log (level=WARNING) — recent app errors/lifecycle.\n"
@@ -1805,7 +1813,7 @@ class AppBackend:
         if name == "capture_and_inspect":
             surface = args.get("surface") or "(surface not given)"
             body = (
-                "Capture and inspect an Improve-ImgSLI surface.\n\n"
+                "Capture and inspect a BlinkTable surface.\n\n"
                 f"Surface: {surface}\n\n"
                 "1. list_surfaces — confirm the exact name and whether it is "
                 "isolated (QRhi/GL surfaces render blank).\n"

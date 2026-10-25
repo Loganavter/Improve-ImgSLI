@@ -65,6 +65,16 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
 
+#: Repo root (``<repo>/src/devtools/scenario_cost.py`` → ``<repo>``).
+REPO_ROOT = Path(__file__).resolve().parents[2]
+SRC_ROOT = REPO_ROOT / "src"
+if str(SRC_ROOT) not in sys.path:
+    sys.path.insert(0, str(SRC_ROOT))
+
+# ``core.log_names`` is import-free and Qt-free, so the stdlib-only/Qt-free rule
+# of this probe holds; it just must not spell the app-data names again.
+from core.log_names import APP_NAME, LEGACY_LOG_DIR_NAME  # noqa: E402
+
 #: The plan this probe measures (quoted in ``--help``; lives outside this repo).
 PLAN_ID = "plan-mcp-agent-ergonomics-2026-10-20"
 SCENARIO_NAME = "canonical-image-gallery"
@@ -88,6 +98,10 @@ DEFAULT_POLL_MAX_MS, POLL_GROWTH = 1_000, 1.5
 MAX_SKIPPED_LINES = 100  # noise bound from the proxy's client
 CONTROL_SOCKET_NAME, INSTANCE_POINTER_NAME = "control.sock", "instance.json"
 SOCKET_OVERRIDE_ENV, CONTROL_DIR_ENV = "IMGSLI_MCP_CONTROL_SOCKET", "IMGSLI_CONTROL_DIR"
+#: App-data directory names: the current build's, then the pre-rename one (a
+#: process from that build may still be serving). Both come from
+#: ``core.log_names`` — one spelling for the whole app.
+LEGACY_APP_DATA_DIR_NAME = LEGACY_LOG_DIR_NAME
 
 #: (step name, wire method, plan text) in execution order.
 STEP_PLAN: tuple[tuple[str, str, str], ...] = (
@@ -236,7 +250,9 @@ def discover_socket(env: Mapping[str, str] | None = None) -> Path | None:
 
     Priority (the app's own order): ``IMGSLI_MCP_CONTROL_SOCKET`` -> an explicit
     ``IMGSLI_CONTROL_DIR`` -> ``$XDG_RUNTIME_DIR`` when writable -> the app data
-    ``run`` dir. Nothing usable reads "no live instance", never an error.
+    ``run`` dir, then the pre-rename ``run`` dir (a process from the earlier
+    build may still be serving). Nothing usable reads "no live instance", never
+    an error.
     """
     source = dict(os.environ) if env is None else env
     explicit = (source.get(SOCKET_OVERRIDE_ENV) or "").strip()
@@ -252,7 +268,11 @@ def discover_socket(env: Mapping[str, str] | None = None) -> Path | None:
         if found is not None:
             return found
     base = source.get("XDG_DATA_HOME") or str(Path.home() / ".local" / "share")
-    return _socket_in_dir(Path(base) / "ImproveImgSLI" / "run")
+    for name in (APP_NAME, LEGACY_APP_DATA_DIR_NAME):
+        found = _socket_in_dir(Path(base) / name / "run")
+        if found is not None:
+            return found
+    return None
 
 @dataclass
 class StepResult:

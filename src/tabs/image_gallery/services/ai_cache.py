@@ -160,9 +160,9 @@ def _number_token(value, default, *, cast=float) -> str:
 
 
 def ai_cache_dir() -> Path:
-    from services.io.project_package import _cache_root
+    from services.io.project_package import cache_kind_dir
 
-    root = _cache_root() / "gallery_ai_cache"
+    root = cache_kind_dir("gallery_ai_cache")
     root.mkdir(parents=True, exist_ok=True)
     return root
 

@@ -37,9 +37,9 @@ CACHE_DIR_NAME = "gallery_jev_cache"
 
 
 def jev_cache_dir() -> Path:
-    from services.io.project_package import _cache_root
+    from services.io.project_package import cache_kind_dir
 
-    root = _cache_root() / CACHE_DIR_NAME
+    root = cache_kind_dir(CACHE_DIR_NAME)
     root.mkdir(parents=True, exist_ok=True)
     return root
 

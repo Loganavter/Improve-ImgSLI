@@ -5,6 +5,7 @@ from PySide6.QtGui import QIcon
 
 from events.drag_drop_handler import DragAndDropService
 import resources.translations  # noqa: F401  — triggers i18n_root configuration
+from core.log_names import APP_NAME
 from shared_toolkit.ui.gesture_resolver import RatingGestureTransaction
 from shared_toolkit.ui.overlay_layer import get_overlay_layer
 from sli_ui_toolkit.config import FlyoutTimingConfig, configure_toolkit
@@ -54,7 +55,10 @@ def get_app_icon(icon: AppIcon | str) -> QIcon:
                 return getter(icon)
 
     project_root = Path(__file__).resolve().parents[1]
-    service = get_icon_service("Improve-ImgSLI", project_root=str(project_root))
+    # Service name doubles as the toolkit's icon-service cache key; APP_NAME is
+    # the one spelling of the product, so a renamed app cannot keep resolving
+    # icons under the pre-rename key.
+    service = get_icon_service(APP_NAME, project_root=str(project_root))
     if isinstance(icon, AppIcon):
         return service.get_icon(icon.value)
     if isinstance(icon, str):

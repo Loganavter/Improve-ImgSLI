@@ -18,8 +18,9 @@ want to skip building the ``frames`` list itself.
 Steady-state cost: zero when the gate is off (this module is not even
 called on the hot path); at export, one ``resolved_detail``
 materialization per span plus one ``json.dump``. No logging, no timers,
-no Qt/GPU imports — stdlib only (``json``, ``math``, ``os``, ``tempfile``,
-``time``).
+no Qt/GPU imports — stdlib plus ``core.log_names`` (itself import-free) for
+the trace process-name label, which is APP_NAME rather than a second spelling
+of the product name.
 
 Event schema (the Wave B seam — waves C/D consume read-only):
 
@@ -82,6 +83,8 @@ import os
 import tempfile
 import time
 from typing import Any, Iterable, Mapping
+
+from core.log_names import APP_NAME
 
 __all__ = [
     "PERF_TRACE_ENV",
@@ -328,7 +331,7 @@ def build_trace(frames: Iterable[Any], pid: int | None = None) -> list[dict[str,
             "pid": own_pid,
             "tid": 0,
             "ts": 0,
-            "args": {"name": "Improve-ImgSLI"},
+            "args": {"name": APP_NAME},
         }
     ]
     for tid in tids:

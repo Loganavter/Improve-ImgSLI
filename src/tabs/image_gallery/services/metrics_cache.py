@@ -76,9 +76,9 @@ _invalidated = 0
 
 def metrics_cache_dir() -> Path:
     """``<cache root>/gallery_local_metrics`` (created on demand)."""
-    from services.io.project_package import _cache_root
+    from services.io.project_package import cache_kind_dir
 
-    root = Path(_cache_root()) / "gallery_local_metrics"
+    root = cache_kind_dir("gallery_local_metrics")
     root.mkdir(parents=True, exist_ok=True)
     return root
 

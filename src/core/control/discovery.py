@@ -17,7 +17,16 @@ detected and cleaned by the next starter (:func:`stale_pointer_alive`), and
 
 Directory precedence: ``IMGSLI_CONTROL_DIR`` (tests / explicit override) →
 ``$XDG_RUNTIME_DIR`` when it exists, is writable, and is private → the app data
-dir's ``run/`` subdirectory (``~/.local/share/ImproveImgSLI/run``).
+dir's ``run/`` subdirectory (``~/.local/share/BlinkTable/run``).
+
+The directory name is ``core.log_names.APP_NAME``, never spelled again here: the
+per-user paths (and the fallback rule for the pre-rename tree) live in
+``core.control.app_paths`` and are re-exported below. The pre-rename build
+published in ``<XDG_DATA_HOME>/<LEGACY_APP_DATA_DIR_NAME>/run`` and a process
+from that build may still be serving, so the *client* keeps probing the legacy
+run dir after the current one (``mcp-server/app/live.py`` builds that probe
+list); this side only ever *writes* to the current one, and nothing moves or
+deletes the legacy tree.
 
 The MCP server re-derives the same dir with its own copy of the rule
 (``mcp-server/app/live.py`` — its ``_is_private_dir`` and its control_dirs
@@ -53,6 +62,13 @@ from typing import Any
 
 from PySide6.QtCore import Qt
 from shared.debug_flags import env_value as _env_value
+from .app_paths import (  # noqa: F401 — re-exported for handlers/tests
+    LEGACY_APP_DATA_DIR_NAME,
+    app_data_dir,
+    artifacts_dir,
+    legacy_app_data_dir,
+    prefer_existing,
+)
 from .surfaces import (  # noqa: F401 — re-exported for handlers/tests
     devtool_surfaces,
     live_surfaces,
@@ -75,35 +91,6 @@ _IS_WINDOWS = os.name == "nt"
 _QUERY_LIMITED = 0x1000  # PROCESS_QUERY_LIMITED_INFORMATION
 _STILL_ACTIVE = 259  # GetExitCodeProcess value while the process runs
 _ERROR_ACCESS_DENIED = 5  # OpenProcess: it exists, we may not query it
-
-
-def app_data_dir() -> Path:
-    """Per-OS app data dir (``~/.local/share/ImproveImgSLI`` on Linux).
-
-    Mirrors ``sli_ui_toolkit.core.logging`` / ``mcp-server/app/live.py``
-    (``app_data_dir`` — the one copy the MCP server derives discovery from).
-    """
-    if sys.platform.startswith("linux"):
-        base = os.environ.get("XDG_DATA_HOME") or str(Path.home() / ".local" / "share")
-    elif sys.platform == "darwin":
-        base = str(Path.home() / "Library" / "Application Support")
-    else:  # pragma: no cover - Windows
-        base = os.environ.get("APPDATA") or str(Path.home() / "AppData" / "Roaming")
-    return Path(base) / "ImproveImgSLI"
-
-
-def artifacts_dir() -> Path:
-    """Where live artifacts (layout dumps, captures) are written.
-
-    Reuses the MCP convention — ``IMGSLI_MCP_ARTIFACTS`` when set, else
-    ``$XDG_CACHE_HOME/ImproveImgSLI/mcp`` — so the MCP server can read back the
-    paths this channel returns.
-    """
-    override = (_env_value("IMGSLI_MCP_ARTIFACTS", "") or "").strip()
-    if override:
-        return Path(override).expanduser()
-    base = os.environ.get("XDG_CACHE_HOME") or str(Path.home() / ".cache")
-    return Path(base) / "ImproveImgSLI" / "mcp"
 
 
 def _is_private_dir(path: Path) -> bool:
@@ -141,6 +128,10 @@ def runtime_dir() -> Path:
     ``IMGSLI_CONTROL_DIR`` wins unconditionally (tests / explicit override);
     otherwise ``$XDG_RUNTIME_DIR`` is used when it exists, is writable, and is
     already private; otherwise the app data dir's ``run/`` subdir is created.
+
+    The env override is checked first and stays authoritative across the rename:
+    every live proof (``live-lease``) exports it, so it must keep winning over
+    both the current and the legacy default.
     """
     override = (_env_value("IMGSLI_CONTROL_DIR", "") or "").strip()
     if override:
