@@ -49,7 +49,7 @@ from PySide6.QtWidgets import QHBoxLayout
 from PySide6.QtCore import QThreadPool, QTimer
 
 from sli_ui_toolkit.managers import scaled_px
-from sli_ui_toolkit.widgets import CheckBox, ComboBox, CustomLineEdit, SpinBox
+from sli_ui_toolkit.widgets import CheckBox, ComboBox, CustomLineEdit, SpinBox, Stepper
 
 from plugins.settings.typography import (
     apply_settings_body,
@@ -549,7 +549,11 @@ def build(dialog, p):  # type: ignore[no-untyped-def]
     )
     ceiling_label.setFixedWidth(scaled_px(150))
     dialog.gallery_ai_judge_ceiling_label = ceiling_label
-    dialog.gallery_ai_judge_ceiling = SpinBox(default_value=0)
+    # A Stepper, not a bare SpinBox: a SpinBox is a CustomLineEdit, so the row
+    # read as a plain text field with no way to step the value by mouse
+    # (owner report 2026-10-25). Step 25 because this is a call budget, not a
+    # count of things on screen.
+    dialog.gallery_ai_judge_ceiling = Stepper(default_value=0, step=25)
     apply_settings_body(dialog.gallery_ai_judge_ceiling)
     dialog.gallery_ai_judge_ceiling.setRange(0, _JUDGE_CEILING_MAX)
     try:
@@ -574,8 +578,8 @@ def build(dialog, p):  # type: ignore[no-untyped-def]
     )
     concurrency_label.setFixedWidth(scaled_px(150))
     dialog.gallery_ai_judge_concurrency_label = concurrency_label
-    dialog.gallery_ai_judge_concurrency = SpinBox(
-        default_value=JUDGE_CONCURRENCY_DEFAULT
+    dialog.gallery_ai_judge_concurrency = Stepper(
+        default_value=JUDGE_CONCURRENCY_DEFAULT, step=1
     )
     apply_settings_body(dialog.gallery_ai_judge_concurrency)
     dialog.gallery_ai_judge_concurrency.setRange(
@@ -597,12 +601,19 @@ def build(dialog, p):  # type: ignore[no-untyped-def]
         _unlimited_text = _tr(
             "image_gallery.settings.judge_run_call_ceiling_unlimited", "unlimited"
         )
+        # The stepper's own hint already covers the arrow gutter; the ceiling
+        # can also show the longer "unlimited" word, so take the wider of the two.
+        _gutter = (
+            dialog.gallery_ai_judge_ceiling.STEP_BUTTON_WIDTH * 2
+            + dialog.gallery_ai_judge_ceiling.STEP_BUTTON_GAP
+        )
         _spin_width = max(
-            scaled_px(80),
+            dialog.gallery_ai_judge_ceiling.minimumSizeHint().width(),
             QFontMetrics(dialog.gallery_ai_judge_ceiling.font()).horizontalAdvance(
                 _unlimited_text
             )
-            + scaled_px(36),
+            + scaled_px(36)
+            + _gutter,
         )
         dialog.gallery_ai_judge_ceiling.setFixedWidth(_spin_width)
         dialog.gallery_ai_judge_concurrency.setFixedWidth(_spin_width)
