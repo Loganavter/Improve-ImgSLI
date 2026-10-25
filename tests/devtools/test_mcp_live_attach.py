@@ -147,6 +147,13 @@ def default_handler(method: str, params: dict):
         return True, {"ran": True, "action_id": params.get("action_id"), "tab": params.get("tab")}
     if method == "open_folder":
         return True, {"ran": True, "path": params.get("path"), "routed": True}
+    if method == "open_file":
+        return True, {
+            "opened": True,
+            "path": params.get("path"),
+            "tab": params.get("tab") or "image_compare",
+            "count": 1,
+        }
     if method == "set_theme":
         return True, {"theme": params.get("theme"), "persisted": True, "applies_on": "now"}
     if method == "set_language":
@@ -1024,6 +1031,45 @@ _PROXY_CASES = [
         "open_folder",
         {"path": "/tmp/folder", "side": "right"},
         {"ran": True, "path": "/tmp/folder", "routed": True, "live": True, "source": "live"},
+    ),
+    (
+        "open_file",
+        {"path": "/img/a.png"},
+        "open_file",
+        {"path": "/img/a.png"},
+        {
+            "opened": True,
+            "path": "/img/a.png",
+            "tab": "image_compare",
+            "count": 1,
+            "source": "live",
+        },
+    ),
+    (
+        "open_file",
+        {"path": "/img/a.png", "tab": "image_compare", "slot": 2},
+        "open_file",
+        {"path": "/img/a.png", "tab": "image_compare", "slot": 2},
+        {
+            "opened": True,
+            "path": "/img/a.png",
+            "tab": "image_compare",
+            "count": 1,
+            "source": "live",
+        },
+    ),
+    (
+        "open_file",
+        {"path": "/img/a.png", "tab": "multi_compare", "side": "right"},
+        "open_file",
+        {"path": "/img/a.png", "tab": "multi_compare", "side": "right"},
+        {
+            "opened": True,
+            "path": "/img/a.png",
+            "tab": "multi_compare",
+            "count": 1,
+            "source": "live",
+        },
     ),
     (
         "set_theme",
@@ -2224,6 +2270,30 @@ def test_open_folder_forwards_its_tab_to_the_live_instance(live_wired, tmp_path)
         "open_folder",
         {"path": str(tmp_path), "tab": "image_compare", "slot": 1},
     ), "tab travels with the call, next to slot/side"
+
+
+def test_open_file_forwards_its_slot_hint_to_the_live_instance(live_wired):
+    """A slot hint must reach the app, not stop at the schema (wave-1 finding).
+
+    Falsification: the schema accepted ``slot`` while the live proxy put only
+    ``{path, tab}`` on the wire, so the app routed the file to slot 1; a second
+    ``open_file`` replaced it and ``image_compare.save`` answered "Please load
+    and select images in both slots first". The wire assertion below fails on
+    that implementation, and on one that drops the hint before the request.
+    """
+    protocol, _backend, _calls, server = live_wired
+    result = _call(
+        protocol,
+        "open_file",
+        {"path": "/img/right.png", "tab": "image_compare", "slot": 2},
+    )
+
+    assert result["isError"] is False
+    assert result["structuredContent"]["opened"] is True
+    assert _wire_calls(server)[-1] == (
+        "open_file",
+        {"path": "/img/right.png", "tab": "image_compare", "slot": 2},
+    ), "the slot hint travels with the call"
 
 
 def test_open_folder_reports_an_unknown_tab_as_an_unknown_tab(tmp_path, monkeypatch):

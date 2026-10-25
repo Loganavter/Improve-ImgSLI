@@ -1,27 +1,36 @@
-"""``open_folder`` drop hints — ``slot`` (Image Compare) / ``side`` (Multi Compare).
+"""``open_folder``/``open_file`` drop hints — ``slot`` (Image Compare) / ``side``
+(Multi Compare).
 
 A mouse drop carries its target in the pointer position, so the drop path
 reads a *hint* the host builds from the cursor. A headless control client has
 no pointer, and before this contract it simply got the no-hint path: a pair
 drop filled Image Compare's left slot only (``right_path: null``) and a folder
 handed to Multi Compare stacked the images in the auto column instead of a
-row. These tests pin the control-surface half of that contract:
+row. The one-file verb had the same gap with a sharper edge: a second
+``open_file`` replaced slot 1, so a left+right pair was unreachable through the
+control surface and ``image_compare.save`` answered "Please load and select
+images in both slots first." These tests pin the control-surface half of that
+contract:
 
 * ``slot=1|2`` reaches the tab's own ``handle_drop`` as ``{"slot": n}`` and
-  therefore Image Compare's left/right slot;
+  therefore Image Compare's left/right slot (for a folder *and* for one file);
 * ``side=left|right|top|bottom`` reaches the tab as ``{"side": s}`` (the tab
   half — side → ``load_external_paths`` → ``on_images_dropped`` — lives in
   ``src/tabs/multi_compare/tests/plugins/test_mc_handle_drop_side.py``);
 * an unknown ``slot``/``side`` (or both at once) is the control surface's own
   ``MethodError`` — never a silently ignored drop;
 * a tab whose ``handle_drop`` predates the hint parameter keeps working, and
-  the no-hint call is byte-for-byte today's (one positional argument).
+  the no-hint call is byte-for-byte today's (one positional argument);
+* on ``open_file`` the hint survives the "tab not open yet" path, i.e. the
+  retry after ``workspace.new_<kind>`` carries it too.
 
 Falsification: every assertion below fails against an implementation that
 validates but drops the hint, or that passes the hint as a second positional
-to every tab (TypeError for older tabs). Runs offscreen — no display; the
-tab-side behavior is proven against real ``MultiCompareTab`` objects in the
-tab's own suite.
+to every tab (TypeError for older tabs). The ``open_file`` half would also fail
+against a router that forwards the hint to the pre-create attempt only — the
+second-attempt test grows ``tabs()`` after the action, so the landing call is
+the one that must carry it. Runs offscreen — no display; the tab-side behavior
+is proven against real ``MultiCompareTab`` objects in the tab's own suite.
 """
 
 from __future__ import annotations
@@ -236,3 +245,157 @@ def test_open_folder_auto_route_also_carries_the_hint(tmp_path) -> None:
 
     assert result == {"routed": True, "path": str(folder), "tab": "image_gallery"}
     assert tab.dropped == [([folder], {"slot": 2})]
+
+
+# -- the control handler: open_file ------------------------------------------
+
+
+def _image(tmp_path: Path) -> Path:
+    image = tmp_path / "shot.png"
+    image.write_bytes(b"x")
+    return image
+
+
+@pytest.mark.parametrize(
+    "tab_kind, params, expected",
+    [
+        ("image_compare", {"slot": 2}, {"slot": 2}),
+        ("image_compare", {"slot": "1"}, {"slot": 1}),
+        ("multi_compare", {"side": "right"}, {"side": "right"}),
+    ],
+)
+def test_open_file_hands_the_hint_to_the_tab(tmp_path, tab_kind, params, expected) -> None:
+    """One file, named placement: the tab's own hook receives the hint.
+
+    Falsification: an ``open_file`` that validates the hint but passes ``None``
+    down leaves ``tab.dropped`` at ``[(paths, None)]`` — a second call would
+    land in slot 1 again, which is the whole bug this contract removes.
+    """
+    image = _image(tmp_path)
+    tab = _HintTab()
+    handlers = _handlers((tab_kind, tab))
+
+    result = handlers.open_file({"path": str(image), "tab": tab_kind, **params})
+
+    assert result == {
+        "opened": True,
+        "path": str(image),
+        "tab": tab_kind,
+        "count": 1,
+    }
+    assert tab.dropped == [([image], expected)]
+
+
+def test_open_file_hint_survives_the_tab_not_open_yet_path(tmp_path) -> None:
+    """The retry after ``workspace.new_<kind>`` must carry the hint too.
+
+    A pair is usually completed by the call that *opens* Image Compare (the
+    first ``open_file`` already created it only if it was open). If the hint
+    survived the pre-create attempt alone, that case would silently fall back
+    to slot 1 — so this fake grows ``tabs()`` inside ``run_action`` and the
+    landing call is the one asserted (deliberately not a call count).
+    """
+    image = _image(tmp_path)
+    tab = _HintTab()
+    live: list[tuple[str, object]] = []
+    opened: list[str] = []
+    handlers = _handlers()
+    handlers._tabs = lambda: list(live)
+
+    def _run(action_id: str) -> bool:
+        opened.append(action_id)
+        live.append(("image_compare", tab))
+        return True
+
+    handlers._run_action_id = _run
+
+    result = handlers.open_file({"path": str(image), "tab": "image_compare", "slot": 2})
+
+    assert opened == ["workspace.new_image_compare"]
+    assert result["tab"] == "image_compare" and result["count"] == 1
+    assert tab.dropped == [([image], {"slot": 2})], "the post-create attempt lost the hint"
+
+
+def test_open_file_without_a_hint_calls_handle_drop_with_paths_only(tmp_path) -> None:
+    """No hint ⇒ exactly the pre-hint call (no second argument at all)."""
+    image = _image(tmp_path)
+    tab = _HintTab()
+    handlers = _handlers(("image_compare", tab))
+
+    handlers.open_file({"path": str(image), "tab": "image_compare"})
+
+    assert tab.dropped == [([image], None)]
+
+
+def test_open_file_still_feeds_a_tab_without_a_hint_parameter(tmp_path) -> None:
+    image = _image(tmp_path)
+    tab = _PathsOnlyTab()
+    handlers = _handlers(("image_compare", tab))
+
+    result = handlers.open_file({"path": str(image), "tab": "image_compare", "slot": 2})
+
+    assert result["opened"] is True
+    assert tab.dropped == [[image]]
+    assert tab.calls == 1, "the hinted call must not apply the drop and then retry it"
+
+
+@pytest.mark.parametrize("params", [{"slot": 3}, {"slot": 0}, {"slot": "left"}])
+def test_open_file_rejects_an_unknown_slot(tmp_path, params) -> None:
+    image = _image(tmp_path)
+    tab = _HintTab()
+    handlers = _handlers(("image_compare", tab))
+
+    with pytest.raises(MethodError) as exc:
+        handlers.open_file({"path": str(image), "tab": "image_compare", **params})
+
+    assert "unknown slot" in exc.value.message
+    assert "slot=1" in exc.value.hint
+    assert tab.dropped == [], "a rejected hint must never reach the tab"
+
+
+@pytest.mark.parametrize("side", ["middle", "Left", ""])
+def test_open_file_rejects_an_unknown_side(tmp_path, side) -> None:
+    image = _image(tmp_path)
+    tab = _HintTab()
+    handlers = _handlers(("multi_compare", tab))
+
+    with pytest.raises(MethodError) as exc:
+        handlers.open_file({"path": str(image), "tab": "multi_compare", "side": side})
+
+    assert "unknown side" in exc.value.message
+    assert tab.dropped == []
+
+
+def test_open_file_rejects_slot_and_side_together(tmp_path) -> None:
+    image = _image(tmp_path)
+    tab = _HintTab()
+    handlers = _handlers(("multi_compare", tab))
+
+    with pytest.raises(MethodError) as exc:
+        handlers.open_file(
+            {"path": str(image), "tab": "multi_compare", "slot": 1, "side": "right"}
+        )
+
+    assert "not both" in exc.value.message
+    assert tab.dropped == []
+
+
+def test_open_file_refuses_a_video_before_any_routing(tmp_path) -> None:
+    """A valid hint never turns the by-name video refusal into a load."""
+
+    class _ImageOnlyTab(_HintTab):
+        def accepts_drop(self, paths) -> bool:
+            from shared.image_extensions import ACCEPTED_IMAGE_EXTENSIONS
+
+            return all(path.suffix.lower() in ACCEPTED_IMAGE_EXTENSIONS for path in paths)
+
+    clip = tmp_path / "clip.mp4"
+    clip.write_bytes(b"x")
+    tab = _ImageOnlyTab()
+    handlers = _handlers(("image_compare", tab))
+
+    with pytest.raises(MethodError) as exc:
+        handlers.open_file({"path": str(clip), "tab": "image_compare", "slot": 2})
+
+    assert "video" in exc.value.hint
+    assert tab.dropped == []

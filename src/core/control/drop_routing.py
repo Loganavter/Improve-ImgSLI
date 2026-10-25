@@ -25,7 +25,9 @@ own ``handle_drop``; the router never interprets it. Tabs whose
 retried without it (see :func:`_drop`).
 
 :func:`open_file_into` is the one-file shape of the same routing (``open_file``
-verb): one path, one accepting tab, in a caller-named preference order.
+verb): one path, one accepting tab, in a caller-named preference order. It
+takes the same ``hint``, so a single file can be placed in a named slot/side —
+two ``open_file`` calls, one per slot, compose a pair without a mouse drop.
 """
 
 from __future__ import annotations
@@ -258,6 +260,7 @@ def open_file_into(
     tabs: Callable[[], list[tuple[str, Any]]],
     kinds: Iterable[str],
     run_action: Callable[[str], Any],
+    hint: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Hand ONE file to the first tab that accepts it.
 
@@ -271,6 +274,13 @@ def open_file_into(
     a candidate whose page does not exist yet is created through
     ``workspace.new_<kind>`` and the list re-read, so a registered-but-closed
     tab gets its page and then decides for itself.
+
+    ``hint`` is the host-side drop context (see the module docstring), passed
+    verbatim to BOTH routing attempts: the pre-create one and the retry after
+    ``workspace.new_<kind>``. A hint that survived only the first attempt would
+    land in the default slot exactly when the tab had to be created — the case
+    that matters for a pair, where the second ``open_file`` may well be the call
+    that opens Image Compare.
 
     Returns ``{"opened": True, "path", "tab", "count": 1}``. Raises
     ``ValueError`` for an unknown forced kind or when no candidate accepts —
@@ -286,12 +296,12 @@ def open_file_into(
         kind for kind in candidates if kind in known
     ]
     for kind in ordered:
-        routed = route_paths(tabs(), [path], only=kind)
+        routed = route_paths(tabs(), [path], only=kind, hint=hint)
         if routed is None:
             # Focus it when it is open, create it when it is not: either way
             # the tab's own drop hook is what decides, never this router.
             run_action(f"workspace.new_{kind}")
-            routed = route_paths(tabs(), [path], only=kind)
+            routed = route_paths(tabs(), [path], only=kind, hint=hint)
         if routed is not None:
             return {"opened": True, "path": str(path), "tab": routed, "count": 1}
     tried = ", ".join(ordered) if ordered else "no registered tab kind"

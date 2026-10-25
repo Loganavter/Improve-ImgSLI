@@ -926,9 +926,9 @@ TOOLS: list[dict] = [
             "Load one file into the tab that accepts it, through that tab's own "
             "drag-and-drop hook. With a live instance an image goes to Image "
             "Compare when that tab is open, else to the gallery; pass tab=<kind> "
-            "to force the target. A video or other extension is refused by name "
-            "— no video-file intake exists. Live-only: with no instance nothing "
-            "can be routed, so it errors rather than pretending."
+            "to force the target. slot=<1|2> / side=<axis> place it like a mouse "
+            "drop — two calls, one per slot, compose a pair. A video is refused "
+            "by name. Live-only."
         ),
         "inputSchema": _params(
             {
@@ -942,6 +942,24 @@ TOOLS: list[dict] = [
                         "Tab kind to hand the file to (validated against the "
                         "registered kinds); omit to auto-route. A kind that does "
                         "not accept the file is an error, never a fallback."
+                    ),
+                },
+                "slot": {
+                    "type": "integer",
+                    "enum": [1, 2],
+                    "description": (
+                        "Image Compare target slot: 1 = left, 2 = right. Two "
+                        "calls, one per slot, compose a pair without a mouse "
+                        "drop. Mutually exclusive with side=."
+                    ),
+                },
+                "side": {
+                    **_STR,
+                    "enum": ["left", "right", "top", "bottom"],
+                    "description": (
+                        "Multi Compare placement axis for the file ('right' "
+                        "composes a row, 'bottom' a column). Mutually exclusive "
+                        "with slot=."
                     ),
                 },
             },

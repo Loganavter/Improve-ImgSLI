@@ -87,7 +87,7 @@ the server.
 | `run_action` | write | run one ActionRegistry id; with `params`/`expect` it also runs the seven named scene commands (magnifier visible/position/size/combined, divider visible/thickness, MC split weights) and can verify the change against scene paths (live-only) |
 | `set_scene_commands` | write | run an ordered list of value-taking scene commands; stops at the first error, and with `verify=true` each command declares expected scene paths and the scene is re-read (live-only) |
 | `open_folder` | write | hand a folder to a tab (`tab=` targets one; `slot=`/`side=` place it; live: routed) |
-| `open_file` | write | load one image file into a tab that accepts it (`tab=` forces one; a video is refused by name) — live-only |
+| `open_file` | write | load one image file into a tab that accepts it (`tab=` forces one; `slot=`/`side=` place it — two calls compose a pair; a video is refused by name) — live-only |
 | `open_properties` | write | show the app's image-properties dialog for a file, non-modally (live-only) |
 | `set_theme` | write | set `theme` (light/dark); live-now or persisted |
 | `set_language` | write | set `language` (en/ru/zh/pt_BR) |
@@ -711,17 +711,20 @@ inventing values. (Fallback `size` is parsed from the devtool's own
   (non-recursive, shared extension set) — that is the supported way to load
   images into those tabs, whose own "add images" dialog a client cannot drive.
 - **A drop can be placed without a pointer.** A mouse drop derives the target
-  from the cursor; a headless client has none, so `open_folder` accepts the
-  same two hints the tabs already read, one per call (both together is an
-  error): `slot=1|2` picks the Image Compare slot (left/right — two calls
-  compose a pair) and `side=left|right|top|bottom` picks the Multi Compare
-  split axis used for the folder's images after the first, so a multi-file
-  folder composes a row (`right`) instead of the auto column. The first image
-  still lands by the usual auto placement (it has no target to split yet), and
-  a single-file drop is therefore unaffected by `side`. Anything other than
-  the listed values is rejected with the app's own error (`unknown slot`,
+  from the cursor; a headless client has none, so `open_folder` and `open_file`
+  accept the same two hints the tabs already read, one per call (both together
+  is an error): `slot=1|2` picks the Image Compare slot (left/right — two
+  calls compose a pair, and for `open_file` that is the whole pair: one call
+  per slot) and `side=left|right|top|bottom` picks the Multi Compare split axis
+  used for the folder's images after the first, so a multi-file folder composes
+  a row (`right`) instead of the auto column. The first image of a folder still
+  lands by the usual auto placement (it has no target to split yet), and a
+  single-file drop is therefore unaffected by `side`. Anything other than the
+  listed values is rejected with the app's own error (`unknown slot`,
   `unknown side`) rather than silently dropped. Omitting both keeps the plain
-  auto-placement route.
+  auto-placement route. A hint is a *placement* request, not a promise the
+  receiving tab understands it: a tab that ignores `slot`/`side` still gets the
+  file, exactly as with a mouse drop outside a slot.
 - **No file contents.** Only the app's own log/tracer/catalog/layout artifacts
   are returned — never user images or arbitrary files.
 - **Read-only default**; mutations are distinct named tools with honest
@@ -756,7 +759,7 @@ fabricated result:
 | request line over the 1 MiB cap | this server (stdio) | JSON-RPC `-32600` "request line exceeds the … byte cap" |
 | unknown control-channel method | live app | `ok: false` + hint, connection survives |
 | foreign uid | live app (`SO_PEERCRED`, before reading a byte) | connection closed → the call falls back |
-| non-live `open_file` | this server (`_fallback_open_file`) | `isError` "no live instance; open_file routes a file into a running tab" (the path is validated first; there is no headless fallback that opens anything) |
+| non-live `open_file` | this server (`_fallback_open_file`) | `isError` "no live instance; open_file routes a file into a running tab" (the path is validated first; there is no headless fallback that opens anything — a `slot`/`side` hint never turns this refusal into a success) |
 | non-live `press_keys` / `nav_key` / `ui_elements` / `ui_nav_state` / `ui_click` / `ui_hover` / `ui_focus` | this server | `isError` "needs a running app" (never a throwaway app faking a target) |
 | live `press_keys` with no OS-active window | live app (`press_keys_into`) | `ok: false` "the app window is not the OS-active window, so the key would be dropped" + "activate it first (xdotool windowfocus <window-id>, …)" — never `ok` for a key the window system drops |
 | the app died while a request was in flight | this server (`death_message`) | `isError` "sent, no reply: the app died while request `'press_keys'` (`keys='ctrl+p'`) was in flight — pid … is gone; its exit status and signal are not observable" + a re-read hint; a request that hit the deadline is reported as possibly applied, and a missing instance as a death when the pointer/note say one existed — never a plain "no live instance" |

@@ -20,7 +20,13 @@ from typing import Any, NamedTuple
 
 from . import elements as element_inventory
 from .discovery import MethodError
-from .drop_routing import MEDIA_VIDEO, accepts_paths, media_kind, open_file_into
+from .drop_routing import (
+    MEDIA_VIDEO,
+    accepts_paths,
+    drop_hint,
+    media_kind,
+    open_file_into,
+)
 
 #: The only keys ``set_setting`` writes. A whitelist (not "anything QSettings
 #: holds"): a control client must not be able to rewrite arbitrary app config.
@@ -195,6 +201,11 @@ class LiveVerbMethodsMixin:
         kind whose tab accepts it. A video names no receiver (the app has no
         video-file intake), so it fails by name instead of claiming a load that
         never happened.
+
+        ``slot``/``side`` are the same placement hints ``open_folder`` takes
+        (parsed once by :func:`drop_routing.drop_hint`): a headless client has
+        no pointer, so a single file cannot otherwise name Image Compare's right
+        slot or a Multi Compare axis. Two calls, one per slot, compose a pair.
         """
         raw = params.get("path")
         target = Path(str(raw)).expanduser() if raw else None
@@ -203,6 +214,7 @@ class LiveVerbMethodsMixin:
                 f"{target} is not an existing file",
                 "pass an absolute (or ~-prefixed) path to an image file",
             )
+        hint = drop_hint(params)
         kind = media_kind(target)
         if not kind:
             raise MethodError(
@@ -219,6 +231,7 @@ class LiveVerbMethodsMixin:
                 tabs=self._tabs,
                 kinds=self._tab_kinds(),
                 run_action=self._run_action_id,
+                hint=hint,
             )
         except ValueError as exc:
             raise MethodError(str(exc), _open_file_hint(kind, wanted)) from None

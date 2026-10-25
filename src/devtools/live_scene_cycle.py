@@ -288,11 +288,12 @@ def _close(left: Any, right: Sequence[float], tolerance: float = 1e-3) -> bool:
 def stage_input(path: Path, directory: Path) -> Path:
     """Put one image alone in *directory* (a symlink when possible).
 
-    Image Compare's control verb for a targeted slot is ``open_folder`` + a
-    ``slot`` hint (``open_file`` has no hint: a second ``open_file`` would land
-    in slot 1 again — the tab defaults to slot 1). A folder holding exactly one
-    image is therefore the honest way to name a slot, and the link keeps the
-    source bytes in place.
+    The scene cycle places each staged input with ``open_folder`` + a ``slot``
+    hint, so the hop needs one image per folder: a slot-named single file is
+    exactly what this staging produces, and the link keeps the source bytes in
+    place. (``open_file`` carries the same ``slot``/``side`` hint now, but the
+    cycle's own harness routes through ``open_folder`` — it loads the folder
+    into the slot — so the one-image directory stays the shape this hop reads.)
     """
     directory.mkdir(parents=True, exist_ok=True)
     for existing in directory.iterdir():
