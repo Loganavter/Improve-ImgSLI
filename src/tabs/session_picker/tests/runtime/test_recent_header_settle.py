@@ -6,7 +6,7 @@ frame capture (X11 cannot see it — the window is mapped only after the deferre
 batch), reproduced on the pre-fix tree and on `main`, fixed by settling the
 header's `QHBoxLayout` in the same call that toggles the chips.
 
-Mechanism 1 of `docs/dev/QT_LAYOUT_PITFALLS.md`: a visibility toggle only POSTS
+Mechanism 1 of `../improve-imgsli-internal-docs/docs/dev/QT_LAYOUT_PITFALLS.md`: a visibility toggle only POSTS
 a layout re-run, so the frame committed right after it carries the
 pre-layout arrangement (the chips have no geometry yet).
 """
