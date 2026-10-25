@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+from core.startup_trace import startup_mark
 from sli_ui_toolkit.widgets import ButtonGroup, Slider, Text
 
 from sli_ui_toolkit.i18n import tr
@@ -126,6 +127,15 @@ class ImageCompareLayoutBuilder:
         investigation that found both of these.
 
         Returns the top-level layout installed on ``page``.
+
+        With ``IMGSLI_STARTUP_TRACE=1`` each construction group closes with a
+        ``startup_mark`` slice so the owner-host first-open budget can be
+        ranked instead of guessed: ``tab.page.toolbar`` (selection + checkbox
+        control cards), ``tab.page.panels`` (magnifier settings panel),
+        ``tab.page.canvas`` (canvas container + placeholder + zoom/HUD
+        overlays) and ``tab.page.layout`` (footer/edit row/save buttons plus
+        the single batch ``addWidget`` pass that mounts the containers).
+        Zero cost when the trace is off.
         """
         ui = self.target
         layout = QVBoxLayout(page)
@@ -134,13 +144,18 @@ class ImageCompareLayoutBuilder:
 
         ui.selection_widget = self._selection_widget(page)
         ui.checkbox_widget = self._checkbox_widget(page)
+        startup_mark("tab.page.toolbar")
+
         ui.image_container_layout = self._image_container_layout()
         self._slider_panel_layout()
+        startup_mark("tab.page.panels")
+
         ui.image_container_widget = self._image_container_widget(page)
         ui.image_container_layout.addWidget(ui.image_label)
         self._create_image_startup_placeholder()
         self._create_zoom_indicator()
         self._create_info_huds()
+        startup_mark("tab.page.canvas")
 
         # Phase 2 canvas-only overlay: QWidget DragDropOverlay removed — RHI
         # DragDropOverlayPass now renders tiles directly (see
@@ -158,6 +173,7 @@ class ImageCompareLayoutBuilder:
         layout.addWidget(ui.length_warning_label)
         layout.addWidget(ui.edit_layout_widget)
         layout.addWidget(ui.save_buttons_widget)
+        startup_mark("tab.page.layout")
         return layout
 
     def _selection_widget(self, parent: QWidget) -> QWidget:

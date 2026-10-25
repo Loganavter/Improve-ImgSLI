@@ -133,13 +133,19 @@ class ImageCompareWidget(ThemedWidget, QWidget):
     def assemble(self, ui) -> None:
         if self._assembled:
             return
+        from core.startup_trace import startup_mark
         from tabs.image_compare.ui.layout import ImageCompareLayoutBuilder
 
+        # ``tab.page.primitives`` = the delta from ``tab.page.create``, i.e.
+        # the host-side primitive factory + this call (see
+        # tabs/use_cases/pages.py). Then the layout groups mark themselves.
+        startup_mark("tab.page.primitives")
         ImageCompareLayoutBuilder(self, ui).build_into(self)
         self._assembled = True
         self._wire_transition_mask_release()
         self._install_magnifier_settings_flyout()
         self._install_chrome_sync()
+        startup_mark("tab.page.wiring")
 
     def _install_magnifier_settings_flyout(self) -> None:
         from tabs.image_compare.ui.magnifier_settings_flyout import (
