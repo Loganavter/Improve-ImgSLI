@@ -29,6 +29,7 @@ from pathlib import Path
 
 import pytest
 
+import core.windowed_stdio as windowed_stdio
 from core.windowed_stdio import enable_faulthandler
 from engine.frame.context import FrameContext
 from engine.frame.trace_export import (
@@ -42,6 +43,19 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 
 FAULT_DUMP_ENV = "IMGSLI_FAULT_DUMP"
 FAULT_DUMP_FILE_ENV = "IMGSLI_FAULT_DUMP_FILE"
+
+
+@pytest.fixture(autouse=True)
+def _isolated_early_sink(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Keep the disabled-dump warning out of the developer's real app-data dir.
+
+    ``enable_faulthandler`` reports a disabled dump into ``startup_early.log``
+    (``src/core/windowed_stdio.py`` -> ``core.startup_early_log``), which resolves
+    its directory from ``XDG_DATA_HOME``. Point that at the test's tmp dir, and
+    start from "nothing reported yet" so one case cannot silence the next.
+    """
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
+    monkeypatch.setattr(windowed_stdio, "_disabled_dump_reported", False)
 
 
 @pytest.fixture

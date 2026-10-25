@@ -1,9 +1,112 @@
 import logging
 import os
+import sys
 from typing import Optional
 
 from PySide6.QtCore import QThreadPool
 from PySide6.QtWidgets import QApplication
+
+# --- Frozen-build guard: PySide6's per-import feature source scan ------------
+# Once PySide6 is imported, its shibokensupport feature hook runs after EVERY
+# later import and asks "does this module use Qt for Python?" by scanning the
+# module's SOURCE: the feature module's _mod_uses_pyside helper is literally
+# `"PySide6" in inspect.getsource(module)`. In a PyInstaller bundle that
+# getsource is not a file read -- linecache.updatecache pulls the module out of
+# the PYZ archive (pyimod01_archive), so every import after PySide pays archive
+# I/O. Measured on the owner's frozen build ab4c4e9f6: a 105 ms GUI block whose
+# innermost main-thread frame was exactly that getsource call, during a
+# numpy._typing import right after main.window_start. Local recon: 541
+# getsource calls while importing the magnifier chain, 383 ms in total.
+#
+# Neutralising it is safe FOR THIS APP: the computed value only becomes the
+# per-module default of the __feature__ pseudo-module, and nothing under src/
+# imports __feature__ -- asserted, not assumed, by
+# tests/runtime/test_pyside_feature_guard.py (it scans src/). An explicit
+# `from __feature__ import ...` still sets its own flag inside feature_import;
+# that path is untouched here -- only _mod_uses_pyside is replaced.
+#
+# Escape hatch: IMGSLI_PYSIDE_FEATURE_CHECK=1 (the BLINKTABLE_ spelling is
+# honoured through shared.debug_flags) keeps stock PySide behaviour for an A/B.
+# Inert outside a frozen build, and a silent no-op when none of the three names
+# below exposes _mod_uses_pyside (a wheel that does not load its own hook).
+_PYSIDE_FEATURE_GUARD_MODULES = (
+    "shibokensupport.feature",
+    "PySide6.support.feature",
+    "__feature__",
+)
+
+
+def _pyside_feature_uses_pyside(_module: object) -> bool:
+    """Drop-in for PySide's source-scanning feature check: always False.
+
+    It only feeds the never-read __feature__ default (see the note above), and
+    it must stay I/O-free -- that is the whole point of the override.
+    """
+    return False
+
+
+# Marks the replacement so a second install sees "already patched".
+setattr(_pyside_feature_uses_pyside, "_no_source_scan", True)
+
+_pyside_feature_guard_targets: tuple[str, ...] = ()
+_pyside_feature_guard_reported = False
+
+
+def _install_pyside_feature_guard() -> tuple[str, ...]:
+    """Patch PySide's per-module feature check when frozen. Idempotent.
+
+    Returns the module names patched by THIS call (shibokensupport.feature,
+    PySide6.support.feature and __feature__ are aliases of one module object,
+    but only the ones present in sys.modules can be patched), so a second call
+    is a no-op and the caller can log which aliases were hit.
+    """
+    if not getattr(sys, "frozen", False):
+        return ()
+    from shared.debug_flags import env_flag
+
+    if env_flag("IMGSLI_PYSIDE_FEATURE_CHECK"):
+        return ()
+    present: list[tuple[str, object]] = []
+    for name in _PYSIDE_FEATURE_GUARD_MODULES:
+        module = sys.modules.get(name)
+        if module is None or not hasattr(module, "_mod_uses_pyside"):
+            continue
+        present.append((name, module))
+    pending = [
+        (name, module)
+        for name, module in present
+        if not getattr(getattr(module, "_mod_uses_pyside"), "_no_source_scan", False)
+    ]
+    if not pending:
+        return ()
+    for _, module in pending:
+        setattr(module, "_mod_uses_pyside", _pyside_feature_uses_pyside)
+    # Every alias name that resolved to one of those module objects is named, so
+    # the log says which spellings the bundle actually had in sys.modules.
+    return tuple(name for name, _ in pending)
+
+
+# Runs here on purpose: bootstrap.py is imported by ui.main_window.window while
+# `from ui.main_window import MainWindow` executes in src/__main__.py -- after
+# PySide6 and before every magnifier/tab import, i.e. before the measured cost.
+_pyside_feature_guard_targets = _install_pyside_feature_guard()
+
+
+def _report_pyside_feature_guard() -> None:
+    """Emit the guard's single DEBUG line once a log handler exists.
+
+    Called from _configure_logging: at import time no handler is attached yet,
+    so the line would be dropped (and a frozen windowed build has no stderr).
+    """
+    global _pyside_feature_guard_reported
+    if _pyside_feature_guard_reported or not _pyside_feature_guard_targets:
+        return
+    _pyside_feature_guard_reported = True
+    logger.debug(
+        "PySide6 frozen feature source check neutralised for: %s",
+        ", ".join(_pyside_feature_guard_targets),
+    )
+
 
 from core.plugin_coordinator import PluginCoordinator
 from core.runtime_flags import RuntimeFlags
@@ -227,6 +330,7 @@ class ApplicationContext:
             from core.startup_trace import startup_mark
 
             startup_mark("ctx.logging_ready")
+            _report_pyside_feature_guard()
 
         if os.getenv("IMPROVE_DEBUG", "0") == "1":
             from core.state_management.actions import SetDebugModeEnabledAction

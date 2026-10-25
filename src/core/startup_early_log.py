@@ -13,6 +13,12 @@ flag is on (``IMGSLI_STARTUP_TRACE`` or ``IMGSLI_STALL_WATCH``, or their
 ``BLINKTABLE_`` spellings). With both off no directory is touched, no file is
 created, and every function here is a no-op -- the default run is unchanged.
 
+The one exception is an error, not a diagnostic: :func:`write_error_record` is
+called when the opt-in fault dump (``IMGSLI_FAULT_DUMP``) was *disabled* by an
+unusable path. That warning fires from ``__main__`` before logging exists and a
+windowed build's ``stderr`` is ``os.devnull``, so this file is its only sink; it
+is created for that single record even with both diagnostics flags off.
+
 The file is opened ``w`` once per traced run (wiped), then appended one record
 at a time and closed again: no long-lived handle, no Qt object, no
 ``setup_logging`` dependency. Nothing here raises -- a read-only or unusable
@@ -24,6 +30,16 @@ module (through :mod:`core.startup_trace`) before its heavy imports, so
 ``main.entry`` is the +0 ms line and every later offset is "ms since startup".
 Interpreter start-up before that import is not measurable portably and is
 excluded by construction.
+
+One combination reaches this module early: a run that is **both** traced and has
+a disabled fault dump. :func:`write_error_record` is called from
+``enable_faulthandler()``, before ``src/__main__.py`` imports
+:mod:`core.startup_trace`, so the sink already exists (and ``_T0`` is already
+the import at that earlier point) when the first mark is written. The record is
+therefore **queued** and flushed right after the first record: ``main.entry``
+stays the file's first line and the ``Fault dump disabled`` warning follows it,
+exactly once. Only a run with both diagnostics flags *off* writes the warning
+immediately, and such a run has no marks to precede.
 
 See ``docs/dev/LOGGING.md`` (Early sink section).
 """
@@ -52,6 +68,8 @@ _T0 = time.perf_counter()
 
 _lock = threading.RLock()
 _last_at: float | None = None
+#: Error record waiting for the traced run's first mark (see write_error_record).
+_pending_error: str | None = None
 _logging_ready = False
 
 
@@ -136,9 +154,13 @@ class _EarlySink:
         self._capped = False
 
     @classmethod
-    def create(cls) -> _EarlySink | None:
-        """Build the sink from the environment; ``None`` when it is off/unusable."""
-        if not debug_requested():
+    def create(cls, *, force: bool = False) -> _EarlySink | None:
+        """Build the sink from the environment; ``None`` when it is off/unusable.
+
+        ``force`` is the error path of :func:`write_error_record`: the flags are
+        off, but the caller has one line that no other sink can show.
+        """
+        if not debug_requested() and not force:
             return None
         directory = _log_directory()
         if not directory:
@@ -146,7 +168,9 @@ class _EarlySink:
         path = os.path.join(directory, FILE_NAME)
         try:
             os.makedirs(directory, exist_ok=True)
-            # ``w``: every traced run starts from an empty file.
+            # ``w``: every run that owns the file starts from an empty one -- for
+            # the forced error path that also drops a stale line from a previous
+            # launch, which would otherwise read as this run's.
             with open(path, "w", encoding="utf-8", errors="replace"):
                 pass
         except Exception:
@@ -199,6 +223,7 @@ def write_mark(name: str, **fields: object) -> None:
         sink.write(f"{_stamp(total_ms, delta_ms)}  {name}{suffix}")
     except Exception:
         pass
+    _flush_pending_error()
 
 
 def write_record(text: str) -> bool:
@@ -216,9 +241,54 @@ def write_record(text: str) -> bool:
         record = f"{_stamp(total_ms, delta_ms)}  {lines[0]}"
         for line in lines[1:]:
             record += "\n" + line
-        return sink.write(record)
+        landed = sink.write(record)
     except Exception:
         return False
+    _flush_pending_error()
+    return landed
+
+
+def _flush_pending_error() -> None:
+    """Emit a queued error record right AFTER the current one.
+
+    ``_pending_error`` is only set by :func:`write_error_record` when a traced run
+    is about to write ``main.entry``: that mark must stay the first line (all
+    offsets are relative to ``_T0``), so the warning follows it instead.
+    """
+    global _pending_error
+    if _pending_error is None:
+        return
+    text, _pending_error = _pending_error, None
+    write_record(text)
+
+
+def write_error_record(text: str) -> bool:
+    """Append one record from an error path that has no other visible sink.
+
+    The default run still touches nothing: the caller (:mod:`core.windowed_stdio`)
+    reaches here only after the opt-in fault dump was *disabled*, where its
+    ``logger.warning`` goes to a logger that has no handler yet and, in a
+    windowed build, to ``os.devnull``. Creating the file for that single line is
+    the whole reason it exists in such a run. Capped and never raises, like
+    :func:`write_record`.
+
+    A traced run (``IMGSLI_STARTUP_TRACE`` / ``IMGSLI_STALL_WATCH``) has not
+    created the file yet at this point — the fault dump is armed before the trace
+    module is imported — and its first record is ``main.entry`` at this file's
+    own +0 ms. Writing now would put the warning in front of that anchor, so the
+    record is queued and flushed by the first mark instead.
+    """
+    global _pending_error, _sink
+    if debug_requested() and _last_at is None:
+        # Nothing has been written yet: the traced run's ``main.entry`` is still
+        # to come, and it must stay the first line. Flush after it instead.
+        _pending_error = text
+        return True
+    if _sink is None:
+        with _lock:
+            if _sink is None:
+                _sink = _EarlySink.create(force=True)
+    return write_record(text)
 
 
 def logging_ready() -> bool:
@@ -256,9 +326,10 @@ def selftest_sleep() -> float:
 
 def _reload_for_tests() -> str | None:
     """Rebuild the sink from the CURRENT environment (tests only)."""
-    global _sink, _last_at, _logging_ready
+    global _sink, _last_at, _logging_ready, _pending_error
     with _lock:
         _sink = _EarlySink.create()
         _last_at = None
         _logging_ready = False
+        _pending_error = None
     return path()
