@@ -29,6 +29,7 @@ import pytest
 from PySide6.QtWidgets import QApplication, QWidget
 
 from core.control import discovery
+from core.log_names import APP_NAME, LEGACY_LOG_DIR_NAME
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 MCP_DIR = REPO_ROOT / "mcp-server"
@@ -46,6 +47,20 @@ def _mcp_live():
     from app import live  # noqa: PLC0415 - deliberately late (path set above)
 
     return live
+
+
+def _mcp_backend():
+    """The MCP's tool layer (``mcp-server/app/backend.py``) — dir derivation only.
+
+    ``backend`` is stdlib-only (it shells out for the heavy work), so importing
+    it here costs nothing and lets the artifacts/data-dir rules be compared
+    against the app's instead of assumed equal.
+    """
+    if str(MCP_DIR) not in sys.path:
+        sys.path.insert(0, str(MCP_DIR))
+    from app import backend  # noqa: PLC0415 - deliberately late (path set above)
+
+    return backend
 
 
 def _qapp() -> QApplication:
@@ -79,7 +94,7 @@ def test_runtime_dir_falls_back_to_app_data_run(tmp_path, monkeypatch):
 
     resolved = discovery.runtime_dir()
 
-    assert resolved == tmp_path / "data" / "ImproveImgSLI" / "run"
+    assert resolved == tmp_path / "data" / "BlinkTable" / "run"
     assert stat.S_IMODE(resolved.stat().st_mode) == 0o700
 
 
@@ -105,7 +120,7 @@ def test_runtime_dir_rejects_a_world_readable_xdg_runtime_dir(tmp_path, monkeypa
     resolved = discovery.runtime_dir()
 
     assert resolved != xdg, "a shared XDG_RUNTIME_DIR must not host the channel"
-    assert resolved == tmp_path / "data" / "ImproveImgSLI" / "run"
+    assert resolved == tmp_path / "data" / "BlinkTable" / "run"
     assert stat.S_IMODE(resolved.stat().st_mode) == 0o700
 
 
@@ -407,14 +422,14 @@ def _apply_case(case: str, tmp_path, monkeypatch) -> Path:
     """Lay out one env of the matrix; return the dir BOTH sides must pick.
 
     Every case points ``XDG_DATA_HOME`` at the tmp tree, so a forgotten variable
-    can never touch the real ``~/.local/share/ImproveImgSLI``. The overrides are
+    can never touch the real ``~/.local/share/BlinkTable``. The overrides are
     cleared because a live-proof shell may carry them.
     """
     data_home = tmp_path / "data"
     monkeypatch.setenv("XDG_DATA_HOME", str(data_home))
     monkeypatch.delenv("IMGSLI_CONTROL_DIR", raising=False)
     monkeypatch.delenv("IMGSLI_MCP_CONTROL_SOCKET", raising=False)
-    fallback = data_home / "ImproveImgSLI" / "run"
+    fallback = data_home / "BlinkTable" / "run"
 
     if case == "no-runtime-dir":
         monkeypatch.delenv("XDG_RUNTIME_DIR", raising=False)
@@ -547,3 +562,165 @@ def test_the_mcp_socket_override_wins_without_moving_the_app_dir(
         assert discovery.socket_path().parent == app_dir
     finally:
         listener.close()
+
+
+# --------------------------------------------------------------------------
+# identity: names derive from APP_NAME, and a pre-rename tree stays reachable
+# --------------------------------------------------------------------------
+
+
+def test_the_control_dir_is_named_after_the_app(tmp_path, monkeypatch):
+    """The published dir follows ``core.log_names.APP_NAME``, not the old name.
+
+    Falsification: before this the app-data dir was a second literal
+    (``ImproveImgSLI``) next to ``APP_NAME``, so the rename stopped at the log
+    directory and left the control channel under the old name.
+    """
+    monkeypatch.delenv("IMGSLI_CONTROL_DIR", raising=False)
+    monkeypatch.delenv("XDG_RUNTIME_DIR", raising=False)
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
+
+    assert APP_NAME == "BlinkTable"
+    assert discovery.app_data_dir() == tmp_path / "data" / "BlinkTable"
+    assert discovery.runtime_dir() == tmp_path / "data" / "BlinkTable" / "run"
+    # One legacy spelling, imported from ``core.log_names`` — never re-written.
+    assert discovery.LEGACY_APP_DATA_DIR_NAME == LEGACY_LOG_DIR_NAME
+    assert discovery.legacy_app_data_dir() == tmp_path / "data" / "ImproveImgSLI"
+
+
+def test_the_mcp_reads_the_same_identity_constant():
+    """The stdlib-only MCP reads ``log_names.py`` — it must not drift from it.
+
+    ``mcp-server`` cannot import ``core`` (PySide6), so it parses the constant
+    out of the one file that owns it; this pin is what makes that safe.
+    """
+    live = _mcp_live()
+
+    assert live.APP_NAME == APP_NAME
+    assert live.LEGACY_APP_DATA_DIR_NAME == LEGACY_LOG_DIR_NAME
+
+
+def test_runtime_dir_never_publishes_into_a_legacy_run_dir(tmp_path, monkeypatch):
+    """A leftover pre-rename ``run/`` does not capture the current build.
+
+    The legacy tree is a *client* fallback only: the server writes one dir, and
+    a socket left there belongs to a different build (possibly a live one, which
+    must not be trampled). Nothing in the old tree is moved or removed.
+    """
+    monkeypatch.delenv("IMGSLI_CONTROL_DIR", raising=False)
+    monkeypatch.delenv("XDG_RUNTIME_DIR", raising=False)
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
+    legacy_run = tmp_path / "data" / "ImproveImgSLI" / "run"
+    legacy_run.mkdir(parents=True)
+    leftover = legacy_run / "control.sock"
+    leftover.write_text("", encoding="utf-8")
+
+    assert discovery.runtime_dir() == tmp_path / "data" / "BlinkTable" / "run"
+    assert leftover.is_file(), "the legacy tree must never be cleaned up"
+
+
+def test_mcp_falls_back_to_a_pre_rename_instance(tmp_path, monkeypatch):
+    """A still-running pre-rename build stays attachable after the rename.
+
+    Falsification: with only the current dir probed, an instance started before
+    the upgrade became invisible to the MCP while its socket kept listening.
+    """
+    live = _mcp_live()
+    _apply_case("no-runtime-dir", tmp_path, monkeypatch)
+    legacy_run = tmp_path / "data" / "ImproveImgSLI" / "run"
+    listener = _listen(legacy_run / "control.sock")
+    try:
+        assert discovery.runtime_dir() == tmp_path / "data" / "BlinkTable" / "run"
+        assert live.discover_socket(dict(os.environ)) == legacy_run / "control.sock"
+    finally:
+        listener.close()
+
+
+def test_the_current_dir_wins_over_a_pre_rename_one(tmp_path, monkeypatch):
+    """Preference order, not just reachability: current first, legacy second."""
+    live = _mcp_live()
+    _apply_case("no-runtime-dir", tmp_path, monkeypatch)
+    current_run = tmp_path / "data" / "BlinkTable" / "run"
+    legacy_run = tmp_path / "data" / "ImproveImgSLI" / "run"
+    current = _listen(current_run / "control.sock")
+    legacy = _listen(legacy_run / "control.sock")
+    try:
+        assert live.control_dirs(dict(os.environ)) == [current_run, legacy_run]
+        assert live.discover_socket(dict(os.environ)) == current_run / "control.sock"
+    finally:
+        current.close()
+        legacy.close()
+
+
+def test_the_control_dir_override_still_beats_both_defaults(tmp_path, monkeypatch):
+    """``IMGSLI_CONTROL_DIR`` (what ``live-lease`` exports) wins over both names."""
+    live = _mcp_live()
+    monkeypatch.delenv("IMGSLI_MCP_CONTROL_SOCKET", raising=False)
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
+    (tmp_path / "data" / "ImproveImgSLI" / "run").mkdir(parents=True)
+    override = tmp_path / "ctrl"
+    monkeypatch.setenv("IMGSLI_CONTROL_DIR", str(override))
+
+    assert discovery.runtime_dir() == override
+    listener = _listen(override / "control.sock")
+    try:
+        assert live.discover_socket(dict(os.environ)) == override / "control.sock"
+    finally:
+        listener.close()
+
+
+def test_artifacts_dir_is_named_after_the_app(tmp_path, monkeypatch):
+    """The artifacts cache follows the same one spelling as the control dir."""
+    monkeypatch.delenv("IMGSLI_MCP_ARTIFACTS", raising=False)
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+
+    assert discovery.artifacts_dir() == tmp_path / "cache" / "BlinkTable" / "mcp"
+
+
+def test_artifacts_dir_falls_back_to_the_pre_rename_cache(tmp_path, monkeypatch):
+    """An upgrade keeps reading the captures it already has; nothing is moved."""
+    monkeypatch.delenv("IMGSLI_MCP_ARTIFACTS", raising=False)
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    legacy = tmp_path / "cache" / "ImproveImgSLI" / "mcp"
+    legacy.mkdir(parents=True)
+
+    assert discovery.artifacts_dir() == legacy
+    # ...and the current dir wins the moment it exists.
+    (tmp_path / "cache" / "BlinkTable" / "mcp").mkdir(parents=True)
+    assert discovery.artifacts_dir() == tmp_path / "cache" / "BlinkTable" / "mcp"
+
+
+@pytest.mark.parametrize("layout", ["fresh", "legacy-only", "both"])
+def test_both_sides_agree_on_the_artifacts_and_data_dirs(
+    layout, tmp_path, monkeypatch
+):
+    """One fallback rule, two implementations — pinned for every disk state.
+
+    The app hands the MCP absolute artifact paths but the MCP also derives the
+    dir itself (its own headless captures, the preserved log); two answers for
+    one cache would hide a capture the other side just wrote.
+    """
+    live = _mcp_live()
+    backend = _mcp_backend()
+    cache, data = tmp_path / "cache", tmp_path / "data"
+    monkeypatch.delenv("IMGSLI_MCP_ARTIFACTS", raising=False)
+    monkeypatch.setenv("XDG_CACHE_HOME", str(cache))
+    monkeypatch.setenv("XDG_DATA_HOME", str(data))
+    if layout in {"legacy-only", "both"}:
+        (cache / "ImproveImgSLI" / "mcp").mkdir(parents=True)
+        (data / "ImproveImgSLI").mkdir(parents=True)
+    if layout in {"fresh", "both"}:
+        (cache / "BlinkTable" / "mcp").mkdir(parents=True)
+        (data / "BlinkTable").mkdir(parents=True)
+
+    expected_cache = cache / (
+        "BlinkTable" if layout in {"fresh", "both"} else "ImproveImgSLI"
+    ) / "mcp"
+    expected_data = data / (
+        "BlinkTable" if layout in {"fresh", "both"} else "ImproveImgSLI"
+    )
+
+    assert discovery.artifacts_dir() == expected_cache
+    assert backend.default_artifacts_dir() == expected_cache
+    assert live.resolved_app_data_dir(dict(os.environ)) == expected_data
+    assert backend.app_data_dir() == expected_data

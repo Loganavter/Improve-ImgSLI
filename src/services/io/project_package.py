@@ -24,7 +24,7 @@ import zipfile
 import zlib
 from pathlib import Path
 from typing import Any, Callable, Iterable
-from core.log_names import APP_LOGGER_NAME
+from core.log_names import APP_LOGGER_NAME, APP_NAME, LEGACY_LOG_DIR_NAME
 from shared.debug_flags import env_value as _env_value
 
 logger = logging.getLogger(APP_LOGGER_NAME)
@@ -119,6 +119,62 @@ def embed_pixel_cache_sources(
     return cache_members, catalog
 
 
+def _qt_cache_location() -> str:
+    """Qt's per-app cache location, or ``""`` when there is no Qt application.
+
+    A seam, not a convenience: the tests must be able to exercise the plain XDG
+    branch without a ``QCoreApplication`` (a real app answers with
+    ``~/.cache/<org>/<app>``; a bare pytest has no Qt names at all).
+    """
+    try:
+        from PySide6.QtCore import QStandardPaths
+
+        return QStandardPaths.writableLocation(
+            QStandardPaths.StandardLocation.CacheLocation
+        )
+    except Exception:
+        return ""
+
+
+def _cache_root_for_name(name: str) -> Path:
+    """App cache root for one app-data *name* (current or pre-rename).
+
+    The same derivation for both names: Qt's cache location when there is a
+    ``QCoreApplication`` (which may already end in the app name — then it is the
+    root itself), else ``$XDG_CACHE_HOME/<name>``, else ``~/.cache/<name>``.
+    """
+    loc = _qt_cache_location()
+    if loc:
+        root = Path(loc)
+        # Bare ``~/.cache`` (no org/app name) still needs an app subdirectory.
+        if root.name.lower() not in {name.lower(), "pytest-qt-qapp"}:
+            root = root / name
+        return root
+    xdg = os.environ.get("XDG_CACHE_HOME")
+    if xdg:
+        return Path(xdg) / name
+    return Path.home() / ".cache" / name
+
+
+def _prefer_existing(current: Path, legacy: Path) -> Path:
+    """*current* when it exists, else *legacy* when it does, else *current*."""
+    if current.exists():
+        return current
+    return legacy if legacy.exists() else current
+
+
+def _cache_root_for_app() -> Path:
+    """Cache root for the running app: current name, else the pre-rename tree.
+
+    An upgrade keeps its extracted projects, previews and gallery caches where
+    they already are — re-extracting them under a new name would orphan the
+    existing tree, which is never moved or deleted.
+    """
+    return _prefer_existing(
+        _cache_root_for_name(APP_NAME), _cache_root_for_name(LEGACY_LOG_DIR_NAME)
+    )
+
+
 def project_cache_dir(project_path: Path) -> Path:
     """Stable per-project extract cache under the Qt/app cache location."""
     resolved = project_path.resolve()
@@ -128,7 +184,7 @@ def project_cache_dir(project_path: Path) -> Path:
         mtime_ns = 0
     key_src = f"{resolved}:{mtime_ns}".encode("utf-8")
     key = hashlib.sha256(key_src).hexdigest()[:24]
-    root = _cache_root()
+    root = _cache_root_for_app()
     return root / "projects" / key
 
 
@@ -136,22 +192,7 @@ def _cache_root() -> Path:
     override = _env_value("IMGSLI_PROJECT_CACHE")
     if override:
         return Path(override)
-    try:
-        from PySide6.QtCore import QStandardPaths
-
-        loc = QStandardPaths.writableLocation(QStandardPaths.StandardLocation.CacheLocation)
-        if loc:
-            root = Path(loc)
-            # Bare ``~/.cache`` (no org/app name) still needs an app subdirectory.
-            if root.name.lower() not in {"improveimgsli", "pytest-qt-qapp"}:
-                root = root / "ImproveImgSLI"
-            return root
-    except Exception:
-        pass
-    xdg = os.environ.get("XDG_CACHE_HOME")
-    if xdg:
-        return Path(xdg) / "ImproveImgSLI"
-    return Path.home() / ".cache" / "ImproveImgSLI"
+    return _cache_root_for_app()
 
 
 def iter_session_media_paths(project_data: dict[str, Any]) -> list[str]:

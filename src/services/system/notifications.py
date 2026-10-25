@@ -1,6 +1,6 @@
 
 from shared.hidden_process import hidden_process_kwargs
-from core.log_names import APP_LOGGER_NAME
+from core.log_names import APP_LOGGER_NAME, APP_NAME
 import logging
 import os
 from pathlib import Path
@@ -12,13 +12,19 @@ from utils.resource_loader import resource_path
 
 logger = logging.getLogger(APP_LOGGER_NAME)
 
-DEFAULT_APP_ID = "io.github.Loganavter.Improve-ImgSLI"
+#: Application identity a notification daemon groups and icon-resolves by.
+#: Derived from ``APP_NAME`` (one spelling, no second product name): the
+#: pre-rename literal named a desktop entry the renamed product no longer
+#: installs (its entry carries ``Icon=blinktable``), so a notification under it
+#: could not resolve the app's icon. A sandboxed install overrides this with its
+#: own published ``FLATPAK_ID`` (see ``NotificationService._detect_app_id``).
+DEFAULT_APP_ID = APP_NAME
 
 class NotificationService:
 
     def __init__(
         self,
-        app_name: str = "BlinkTable",
+        app_name: str = APP_NAME,
         app_icon_path: Optional[str] = None,
         app_id: Optional[str] = None,
     ):

@@ -10,8 +10,10 @@ protocol and proxies the MCP tool surface onto it:
 - **Discovery** — ``IMGSLI_MCP_CONTROL_SOCKET`` (explicit socket path) →
   ``IMGSLI_CONTROL_DIR`` (explicit dir) → ``$XDG_RUNTIME_DIR`` when it is
   writable **and private** (owner, no group/other access — the app's own rule,
-  see :func:`control_dirs`) → ``<app data dir>/run``. The socket is
-  ``control.sock`` and a pointer file ``instance.json`` holds
+  see :func:`control_dirs`) → ``<app data dir>/run`` → the pre-rename
+  ``<app data dir>/run`` (a process from the earlier build may still be
+  serving; both names come from ``core.log_names``, read not spelled). The
+  socket is ``control.sock`` and a pointer file ``instance.json`` holds
   ``{pid, socket, started, version, uid}``; a pointer recording another ``uid``
   is not a live instance.
   A pointer is stale only when its socket is unusable: the pid is a hint, not
@@ -74,6 +76,37 @@ INFLIGHT_NOTE_NAME = "inflight.json"
 #: Explicit overrides, highest priority first.
 SOCKET_OVERRIDE_ENV = "IMGSLI_MCP_CONTROL_SOCKET"
 CONTROL_DIR_ENV = "IMGSLI_CONTROL_DIR"
+
+#: Repo root as ``<repo>/mcp-server/app/live.py`` → ``<repo>``.
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+
+#: The app's one spelling of its identity (``src/core/log_names.py``). This
+#: package is stdlib-only and must not import ``core`` (that drags PySide6 in),
+#: so the two names are READ from the file that owns them instead of being
+#: spelled again here — a second spelling would drift exactly like the discovery
+#: rule did in 2026-10-21.
+_IDENTITY_PATH = _REPO_ROOT / "src" / "core" / "log_names.py"
+
+
+def _identity_constant(name: str) -> str:
+    """The string literal assigned to *name* in ``src/core/log_names.py``."""
+    try:
+        text = _IDENTITY_PATH.read_text(encoding="utf-8")
+    except OSError as exc:  # pragma: no cover - broken checkout
+        raise RuntimeError(
+            f"cannot read the app identity constants from {_IDENTITY_PATH}: {exc}"
+        ) from exc
+    match = re.search(rf"^{name}\s*=\s*[\"']([^\"']+)[\"']", text, re.MULTILINE)
+    if match is None:  # pragma: no cover - broken checkout
+        raise RuntimeError(f"{_IDENTITY_PATH} does not define {name!r}")
+    return match.group(1)
+
+
+#: App-data directory of the current build (``~/.local/share/<APP_NAME>``).
+APP_NAME = _identity_constant("APP_NAME")
+
+#: App-data directory of the pre-rename build (read-only fallback).
+LEGACY_APP_DATA_DIR_NAME = _identity_constant("LEGACY_LOG_DIR_NAME")
 
 #: Cap on ignored lines while waiting for our own response id.
 _MAX_SKIPPED_LINES = 100
@@ -322,21 +355,61 @@ def evidence_sentence(evidence: Mapping[str, Any]) -> str:
     return f"the app stopped without a request in flight — {detail}"
 
 
+def _data_base(source: Mapping[str, str]) -> Path:
+    """Per-OS root that holds the app-data directory."""
+    if sys.platform.startswith("linux"):
+        return Path(source.get("XDG_DATA_HOME") or str(Path.home() / ".local" / "share"))
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Application Support"
+    # pragma: no cover - Windows
+    return Path(source.get("APPDATA") or str(Path.home() / "AppData" / "Roaming"))
+
+
 def app_data_dir(env: Mapping[str, str] | None = None) -> Path:
-    """Per-OS app data dir (``~/.local/share/ImproveImgSLI`` on Linux).
+    """Per-OS app data dir (``~/.local/share/BlinkTable`` on Linux).
 
     The ONLY copy of this rule in ``mcp-server`` (``backend.app_data_dir``
     delegates here); ``env`` lets discovery be evaluated for an explicit
-    environment instead of the process one.
+    environment instead of the process one. Derived from
+    ``core.log_names.APP_NAME`` (:data:`APP_NAME`).
     """
     source = dict(os.environ) if env is None else env
-    if sys.platform.startswith("linux"):
-        base = source.get("XDG_DATA_HOME") or str(Path.home() / ".local" / "share")
-    elif sys.platform == "darwin":
-        base = str(Path.home() / "Library" / "Application Support")
-    else:  # pragma: no cover - Windows
-        base = source.get("APPDATA") or str(Path.home() / "AppData" / "Roaming")
-    return Path(base) / "ImproveImgSLI"
+    return _data_base(source) / APP_NAME
+
+
+def legacy_app_data_dir(env: Mapping[str, str] | None = None) -> Path:
+    """App data dir of the pre-rename build (``…/<LEGACY_APP_DATA_DIR_NAME>``)."""
+    source = dict(os.environ) if env is None else env
+    return _data_base(source) / LEGACY_APP_DATA_DIR_NAME
+
+
+def resolved_app_data_dir(env: Mapping[str, str] | None = None) -> Path:
+    """The app-data dir to READ from: current, else the pre-rename one.
+
+    ``log.txt``/``trace.jsonl`` live in whichever tree the running app actually
+    wrote. An upgrade may not have run the app since, so the legacy directory
+    can be the only one on disk; it is read, never written, and never moved.
+    """
+    source = dict(os.environ) if env is None else env
+    current = app_data_dir(source)
+    if current.exists():
+        return current
+    legacy = legacy_app_data_dir(source)
+    return legacy if legacy.exists() else current
+
+
+def prefer_existing(current: Path, legacy: Path) -> Path:
+    """*current* when it exists, else *legacy* when it does, else *current*.
+
+    Same rule as ``core.control.app_paths.prefer_existing`` (this package
+    cannot import it): the current name for a fresh install, the pre-rename tree
+    while only it exists, and the legacy path is never moved or deleted.
+    """
+    if current.exists():
+        return current
+    if legacy.exists():
+        return legacy
+    return current
 
 
 def _is_private_dir(path: Path) -> bool:
@@ -363,11 +436,13 @@ def _is_private_dir(path: Path) -> bool:
 def control_dirs(env: Mapping[str, str] | None = None) -> list[Path]:
     """Control dirs to probe, in the app's own priority order.
 
-    ``[<private, writable $XDG_RUNTIME_DIR>, <app data dir>/run]`` — the FIRST
-    entry is exactly what ``core.control.discovery.runtime_dir()`` returns when
-    no explicit override is set, which is what makes the two sides agree. The
-    second entry stays as a fallback for a socket left in the data dir by an
-    earlier env (the app only ever writes in one of them).
+    ``[<private, writable $XDG_RUNTIME_DIR>, <app data dir>/run,
+    <pre-rename app data dir>/run]`` — the FIRST entry is exactly what
+    ``core.control.discovery.runtime_dir()`` returns when no explicit override
+    is set, which is what makes the two sides agree. The second entry is where
+    the current build publishes; the third is where a process from the
+    pre-rename build may still be serving, so it stays attachable while it runs
+    (the legacy tree is only ever read).
 
     ``XDG_RUNTIME_DIR`` is deliberately NOT ``expanduser``-ed: the app does not
     expand it either, and two derivations of one rule may not differ.
@@ -383,7 +458,11 @@ def control_dirs(env: Mapping[str, str] | None = None) -> list[Path]:
             and _is_private_dir(candidate)
         ):
             candidates.append(candidate)
-    candidates.append(app_data_dir(source) / "run")
+    current_run = app_data_dir(source) / "run"
+    candidates.append(current_run)
+    legacy_run = legacy_app_data_dir(source) / "run"
+    if legacy_run != current_run:
+        candidates.append(legacy_run)
     return candidates
 
 
@@ -483,9 +562,10 @@ def discover_socket(env: Mapping[str, str] | None = None) -> Path | None:
     Priority: ``IMGSLI_MCP_CONTROL_SOCKET`` (an explicit socket path, honoured
     alone), ``IMGSLI_CONTROL_DIR`` (an explicit control dir, honoured alone),
     then :func:`control_dirs` — ``$XDG_RUNTIME_DIR`` **when it is private** (the
-    app's rule, not merely "writable") and the app-data ``run`` dir. An override
-    that points at nothing plausible yields ``None`` — the caller treats that as
-    "no live instance", not an error.
+    app's rule, not merely "writable"), the current app-data ``run`` dir, and
+    the pre-rename one as a last resort. An override that points at nothing
+    plausible yields ``None`` — the caller treats that as "no live instance",
+    not an error.
     """
     source = dict(os.environ) if env is None else env
 

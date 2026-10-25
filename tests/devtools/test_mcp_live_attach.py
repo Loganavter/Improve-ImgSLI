@@ -49,6 +49,7 @@ from app.live import (  # noqa: E402
     LiveUnavailable,
     control_dirs,
     discover_socket,
+    resolved_app_data_dir,
     summarize_request_params,
 )
 from app.protocol import MCPProtocol  # noqa: E402
@@ -562,7 +563,7 @@ def test_discover_socket_refuses_a_shared_runtime_dir(monkeypatch, tmp_path):
         assert discover_socket() is None
 
         # And the fallback is the dir the app would publish in, not the shared one.
-        assert control_dirs()[0] == data_home / "ImproveImgSLI" / "run"
+        assert control_dirs()[0] == data_home / "BlinkTable" / "run"
     finally:
         listener.close()
 
@@ -601,7 +602,7 @@ def test_discover_socket_accepts_a_pointer_without_a_uid(isolated_env):
 
 def test_discover_socket_falls_back_to_the_app_data_run_dir(monkeypatch, tmp_path):
     data_home = tmp_path / "share"
-    run_dir = data_home / "ImproveImgSLI" / "run"
+    run_dir = data_home / "BlinkTable" / "run"
     socket_path = FakeControlServer(run_dir / "control.sock").start().path
     try:
         monkeypatch.delenv(SOCKET_OVERRIDE_ENV, raising=False)
@@ -611,6 +612,49 @@ def test_discover_socket_falls_back_to_the_app_data_run_dir(monkeypatch, tmp_pat
         assert discover_socket() == socket_path
     finally:
         (run_dir / "control.sock").unlink(missing_ok=True)
+
+
+def test_discover_socket_falls_back_to_the_pre_rename_data_dir(
+    monkeypatch, tmp_path
+):
+    """A process from the pre-rename build keeps its channel attachable.
+
+    Falsification: probing only the current app-data name made an instance that
+    was started before the upgrade invisible while its socket was still
+    listening — the agent then booted a second headless app instead of attaching.
+    """
+    data_home = tmp_path / "share"
+    legacy_run = data_home / "ImproveImgSLI" / "run"
+    socket_path = FakeControlServer(legacy_run / "control.sock").start().path
+    try:
+        monkeypatch.delenv(SOCKET_OVERRIDE_ENV, raising=False)
+        monkeypatch.delenv(CONTROL_DIR_ENV, raising=False)
+        monkeypatch.delenv("XDG_RUNTIME_DIR", raising=False)
+        monkeypatch.setenv("XDG_DATA_HOME", str(data_home))
+        assert control_dirs()[:2] == [
+            data_home / "BlinkTable" / "run",
+            legacy_run,
+        ]
+        assert discover_socket() == socket_path
+    finally:
+        (legacy_run / "control.sock").unlink(missing_ok=True)
+
+
+def test_resolved_app_data_dir_reads_the_tree_that_exists(monkeypatch, tmp_path):
+    """Log reading follows the directory the app actually wrote, old or new."""
+    data_home = tmp_path / "share"
+    monkeypatch.setenv("XDG_DATA_HOME", str(data_home))
+
+    # Nothing on disk yet: the current name (a missing dir is a graceful read).
+    assert resolved_app_data_dir() == data_home / "BlinkTable"
+    # An upgrade that has not booted the new build: the log is in the old tree.
+    legacy = data_home / "ImproveImgSLI"
+    legacy.mkdir(parents=True)
+    assert resolved_app_data_dir() == legacy
+    # Once the current tree exists it wins, and the legacy tree is untouched.
+    (data_home / "BlinkTable").mkdir()
+    assert resolved_app_data_dir() == data_home / "BlinkTable"
+    assert legacy.is_dir()
 
 
 def test_discover_socket_returns_none_when_nothing_exists(isolated_env):
