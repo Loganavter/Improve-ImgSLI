@@ -1,0 +1,111 @@
+== beginner
+known btn_channel_mode Button parent=view_group_container hidden=0 geom=302,217,36,36
+known btn_diff_mode Button parent=view_group_container hidden=0 geom=137,217,36,36
+known btn_divider_color Button parent=line_group_container hidden=0 geom=368,217,36,36
+known btn_divider_visible Button parent=line_group_container hidden=0 geom=236,217,36,36
+known btn_divider_width ScrollValueButton parent=line_group_container hidden=0 geom=500,217,36,36
+known btn_file_names Button parent=view_group_container hidden=0 geom=467,217,36,36
+known btn_magnifier_color_settings ColorSettingsButton parent=<none> hidden=1 geom=0,0,36,36
+known btn_magnifier_color_settings_beginner ColorSettingsButton parent=magnifier_group_container hidden=0 geom=368,217,36,36
+known btn_magnifier_divider_visible Button parent=magnifier_group_container hidden=0 geom=302,217,36,36
+known btn_magnifier_divider_width ScrollValueButton parent=magnifier_group_container hidden=0 geom=434,217,36,36
+known btn_magnifier_guides ScrollValueButton parent=<none> hidden=1 geom=0,0,36,36
+known btn_magnifier_guides_simple Button parent=magnifier_group_container hidden=0 geom=500,217,36,36
+known btn_magnifier_guides_width ScrollValueButton parent=magnifier_group_container hidden=0 geom=566,217,36,36
+known btn_magnifier_instances InstancesCounterButton parent=magnifier_group_container hidden=0 geom=104,217,36,36
+known btn_magnifier_orientation ScrollValueButton parent=<none> hidden=1 geom=0,0,36,36
+known btn_magnifier_orientation_simple Button parent=magnifier_group_container hidden=0 geom=236,217,36,36
+known btn_orientation ScrollValueButton parent=<none> hidden=1 geom=0,0,36,36
+known btn_orientation_simple Button parent=line_group_container hidden=0 geom=104,217,36,36
+known btn_pause Button parent=record_group_container hidden=0 geom=302,217,36,36
+known btn_record Button parent=record_group_container hidden=0 geom=137,217,36,36
+known btn_video_editor Button parent=record_group_container hidden=0 geom=467,217,36,36
+group line_group_container order=btn_orientation_simple,btn_divider_visible,btn_divider_color,btn_divider_width hidden=0 geom=0,0,640,480
+group view_group_container order=btn_diff_mode,btn_channel_mode,btn_file_names hidden=0 geom=0,0,640,480
+group magnifier_group_container order=btn_magnifier,btn_magnifier_instances,btn_freeze,btn_magnifier_orientation_simple,btn_magnifier_divider_visible,btn_magnifier_color_settings_beginner,btn_magnifier_divider_width,btn_magnifier_guides_simple,btn_magnifier_guides_width hidden=0 geom=0,0,640,480
+group record_group_container order=btn_record,btn_pause,btn_video_editor hidden=0 geom=0,0,640,480
+counts Button=36 ButtonGroup=4 CanvasWidget=1 ColorSettingsButton=1 CustomLineEdit=2 GlassPanelDisplayWidget=3 InfoHUD=2 InstancesCounterButton=1 MagnifierColorOptionsFlyout=2 MagnifierSettingsFlyout=1 PanelVisibilityFlyout=1 QLabel=5 QWidget=13 ScaledIconLabel=3 ScrollValueButton=3 ScrollableComboBox=3 StartupPlaceholder=1 Text=15 ThemedBackgroundContainer=5 ValueSlider=3 ValueSliderRow=3 ZoomIndicator=1
+
+== expert
+known btn_channel_mode Button parent=view_group_container hidden=0 geom=302,217,36,36
+known btn_diff_mode Button parent=view_group_container hidden=0 geom=137,217,36,36
+known btn_divider_color Button parent=<page> hidden=1 geom=0,0,36,36
+known btn_divider_visible Button parent=<page> hidden=1 geom=0,0,36,36
+known btn_divider_width ScrollValueButton parent=<page> hidden=1 geom=0,0,36,36
+known btn_file_names Button parent=view_group_container hidden=0 geom=467,217,36,36
+known btn_magnifier_color_settings ColorSettingsButton parent=magnifier_group_container hidden=0 geom=442,217,36,36
+known btn_magnifier_color_settings_beginner ColorSettingsButton parent=<page> hidden=1 geom=0,0,36,36
+known btn_magnifier_divider_visible Button parent=<page> hidden=1 geom=0,0,36,36
+known btn_magnifier_divider_width ScrollValueButton parent=<page> hidden=1 geom=0,0,36,36
+known btn_magnifier_guides ScrollValueButton parent=magnifier_group_container hidden=0 geom=536,217,36,36
+known btn_magnifier_guides_simple Button parent=<page> hidden=1 geom=0,0,36,36
+known btn_magnifier_guides_width ScrollValueButton parent=<page> hidden=1 geom=0,0,36,36
+known btn_magnifier_instances InstancesCounterButton parent=magnifier_group_container hidden=0 geom=160,217,36,36
+known btn_magnifier_orientation ScrollValueButton parent=magnifier_group_container hidden=0 geom=348,217,36,36
+known btn_magnifier_orientation_simple Button parent=<page> hidden=1 geom=0,0,36,36
+known btn_orientation ScrollValueButton parent=line_group_container hidden=0 geom=302,217,36,36
+known btn_orientation_simple Button parent=<page> hidden=1 geom=0,0,36,36
+known btn_pause Button parent=record_group_container hidden=0 geom=302,217,36,36
+known btn_record Button parent=record_group_container hidden=0 geom=137,217,36,36
+known btn_video_editor Button parent=record_group_container hidden=0 geom=467,217,36,36
+group line_group_container order=btn_orientation hidden=0 geom=0,0,640,480
+group view_group_container order=btn_diff_mode,btn_channel_mode,btn_file_names hidden=0 geom=0,0,640,480
+group magnifier_group_container order=btn_magnifier,btn_magnifier_instances,btn_freeze,btn_magnifier_orientation,btn_magnifier_color_settings,btn_magnifier_guides hidden=0 geom=0,0,640,480
+group record_group_container order=btn_record,btn_pause,btn_video_editor hidden=0 geom=0,0,640,480
+counts Button=36 ButtonGroup=4 CanvasWidget=1 ColorSettingsButton=2 CustomLineEdit=2 GlassPanelDisplayWidget=3 InfoHUD=2 InstancesCounterButton=1 MagnifierColorOptionsFlyout=2 MagnifierSettingsFlyout=1 PanelVisibilityFlyout=1 QLabel=5 QWidget=13 ScaledIconLabel=3 ScrollValueButton=6 ScrollableComboBox=3 StartupPlaceholder=1 Text=15 ThemedBackgroundContainer=5 ValueSlider=3 ValueSliderRow=3 ZoomIndicator=1
+
+== advanced
+known btn_channel_mode Button parent=view_group_container hidden=0 geom=302,217,36,36
+known btn_diff_mode Button parent=view_group_container hidden=0 geom=137,217,36,36
+known btn_divider_color Button parent=line_group_container hidden=0 geom=412,217,36,36
+known btn_divider_visible Button parent=<page> hidden=1 geom=0,0,36,36
+known btn_divider_width ScrollValueButton parent=<page> hidden=1 geom=0,0,36,36
+known btn_file_names Button parent=view_group_container hidden=0 geom=467,217,36,36
+known btn_magnifier_color_settings ColorSettingsButton parent=magnifier_group_container hidden=0 geom=442,217,36,36
+known btn_magnifier_color_settings_beginner ColorSettingsButton parent=<page> hidden=1 geom=0,0,36,36
+known btn_magnifier_divider_visible Button parent=<page> hidden=1 geom=0,0,36,36
+known btn_magnifier_divider_width ScrollValueButton parent=<page> hidden=1 geom=0,0,36,36
+known btn_magnifier_guides ScrollValueButton parent=magnifier_group_container hidden=0 geom=536,217,36,36
+known btn_magnifier_guides_simple Button parent=<page> hidden=1 geom=0,0,36,36
+known btn_magnifier_guides_width ScrollValueButton parent=<page> hidden=1 geom=0,0,36,36
+known btn_magnifier_instances InstancesCounterButton parent=magnifier_group_container hidden=0 geom=160,217,36,36
+known btn_magnifier_orientation ScrollValueButton parent=magnifier_group_container hidden=0 geom=254,217,36,36
+known btn_magnifier_orientation_simple Button parent=<page> hidden=1 geom=0,0,36,36
+known btn_orientation ScrollValueButton parent=line_group_container hidden=0 geom=192,217,36,36
+known btn_orientation_simple Button parent=<page> hidden=1 geom=0,0,36,36
+known btn_pause Button parent=record_group_container hidden=0 geom=302,217,36,36
+known btn_record Button parent=record_group_container hidden=0 geom=137,217,36,36
+known btn_video_editor Button parent=record_group_container hidden=0 geom=467,217,36,36
+group line_group_container order=btn_orientation,btn_divider_color hidden=0 geom=0,0,640,480
+group view_group_container order=btn_diff_mode,btn_channel_mode,btn_file_names hidden=0 geom=0,0,640,480
+group magnifier_group_container order=btn_magnifier,btn_magnifier_instances,btn_magnifier_orientation,btn_freeze,btn_magnifier_color_settings,btn_magnifier_guides hidden=0 geom=0,0,640,480
+group record_group_container order=btn_record,btn_pause,btn_video_editor hidden=0 geom=0,0,640,480
+counts Button=36 ButtonGroup=4 CanvasWidget=1 ColorSettingsButton=2 CustomLineEdit=2 GlassPanelDisplayWidget=3 InfoHUD=2 InstancesCounterButton=1 MagnifierColorOptionsFlyout=2 MagnifierSettingsFlyout=1 PanelVisibilityFlyout=1 QLabel=5 QWidget=13 ScaledIconLabel=3 ScrollValueButton=6 ScrollableComboBox=3 StartupPlaceholder=1 Text=15 ThemedBackgroundContainer=5 ValueSlider=3 ValueSliderRow=3 ZoomIndicator=1
+
+== minimal
+known btn_channel_mode Button parent=<none> hidden=1 geom=0,0,36,36
+known btn_diff_mode Button parent=<none> hidden=1 geom=0,0,36,36
+known btn_divider_color Button parent=<page> hidden=1 geom=0,0,36,36
+known btn_divider_visible Button parent=<page> hidden=1 geom=0,0,36,36
+known btn_divider_width ScrollValueButton parent=<page> hidden=1 geom=0,0,36,36
+known btn_file_names Button parent=<none> hidden=1 geom=0,0,36,36
+known btn_magnifier_color_settings ColorSettingsButton parent=<none> hidden=1 geom=0,0,36,36
+known btn_magnifier_color_settings_beginner ColorSettingsButton parent=<page> hidden=1 geom=0,0,36,36
+known btn_magnifier_divider_visible Button parent=<page> hidden=1 geom=0,0,36,36
+known btn_magnifier_divider_width ScrollValueButton parent=<page> hidden=1 geom=0,0,36,36
+known btn_magnifier_guides ScrollValueButton parent=<none> hidden=1 geom=0,0,36,36
+known btn_magnifier_guides_simple Button parent=<page> hidden=1 geom=0,0,36,36
+known btn_magnifier_guides_width ScrollValueButton parent=<page> hidden=1 geom=0,0,36,36
+known btn_magnifier_instances InstancesCounterButton parent=magnifier_group_container hidden=0 geom=412,217,36,36
+known btn_magnifier_orientation ScrollValueButton parent=<none> hidden=1 geom=0,0,36,36
+known btn_magnifier_orientation_simple Button parent=<page> hidden=1 geom=0,0,36,36
+known btn_orientation ScrollValueButton parent=<none> hidden=1 geom=0,0,36,36
+known btn_orientation_simple Button parent=line_group_container hidden=0 geom=302,217,36,36
+known btn_pause Button parent=<none> hidden=1 geom=0,0,36,36
+known btn_record Button parent=<none> hidden=1 geom=0,0,36,36
+known btn_video_editor Button parent=<none> hidden=1 geom=0,0,36,36
+group line_group_container order=btn_orientation_simple hidden=0 geom=0,0,640,480
+group view_group_container order= hidden=1 geom=0,0,640,480
+group magnifier_group_container order=btn_magnifier,btn_magnifier_instances hidden=0 geom=0,0,640,480
+group record_group_container order= hidden=1 geom=0,0,640,480
+counts Button=29 ButtonGroup=4 CanvasWidget=1 ColorSettingsButton=1 CustomLineEdit=2 GlassPanelDisplayWidget=3 InfoHUD=2 InstancesCounterButton=1 MagnifierColorOptionsFlyout=2 MagnifierSettingsFlyout=1 PanelVisibilityFlyout=1 QLabel=5 QWidget=13 ScaledIconLabel=3 ScrollValueButton=3 ScrollableComboBox=3 StartupPlaceholder=1 Text=15 ThemedBackgroundContainer=5 ValueSlider=3 ValueSliderRow=3 ZoomIndicator=1
