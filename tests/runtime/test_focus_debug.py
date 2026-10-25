@@ -12,6 +12,7 @@ import pytest
 from PySide6.QtWidgets import QLineEdit
 
 from ui.focus_debug import focus_debug_enabled, install_focus_tracer
+from core.log_names import APP_LOGGER_NAME
 
 
 @pytest.fixture()
@@ -28,12 +29,12 @@ def _flag_off(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def _restore_global_logger_level():
-    """install_focus_tracer() permanently drops the ImproveImgSLI logger to
+    """install_focus_tracer() permanently drops the app logger to
     DEBUG (by design, app-lifetime). Without a restore, every LATER test in
     the pytest process runs with DEBUG on — e.g. thumbnail warm-run asserts
     on caplog.text start seeing worker_start lines (order-dependent flake:
     test_focus_debug.py x test_warm_run_emits_without_workers)."""
-    conventional = logging.getLogger("ImproveImgSLI")
+    conventional = logging.getLogger(APP_LOGGER_NAME)
     level = conventional.level
     yield
     conventional.setLevel(level)
@@ -55,7 +56,7 @@ def test_transition_logged_with_identity_and_window_state(qapp, _flag_on, caplog
     second.show()
     qapp.processEvents()
     assert install_focus_tracer(qapp) is True
-    with caplog.at_level(logging.DEBUG, logger="ImproveImgSLI"):
+    with caplog.at_level(logging.DEBUG, logger=APP_LOGGER_NAME):
         # Qt-driven: at least one real transition must be traced (offscreen
         # may pre-focus on show(), so exactly which transition fires varies —
         # assert the trace presence + window-state fields, not the direction).
@@ -79,7 +80,7 @@ def test_silent_when_flag_off(qapp, _flag_off, caplog):
     first.setObjectName("quiet-field")
     first.show()
     qapp.processEvents()
-    with caplog.at_level(logging.DEBUG, logger="ImproveImgSLI"):
+    with caplog.at_level(logging.DEBUG, logger=APP_LOGGER_NAME):
         first.setFocus()
         qapp.processEvents()
     assert not any(
@@ -88,7 +89,7 @@ def test_silent_when_flag_off(qapp, _flag_off, caplog):
 
 
 def test_install_drops_logger_level_to_debug(qapp, _flag_on):
-    conventional = logging.getLogger("ImproveImgSLI")
+    conventional = logging.getLogger(APP_LOGGER_NAME)
     conventional.setLevel(logging.WARNING)
     try:
         assert install_focus_tracer(qapp) is True
@@ -138,7 +139,7 @@ def test_window_state_change_logged_synchronously(qapp, _flag_on, caplog):
 
             return Qt.WindowState.WindowNoState
 
-    with caplog.at_level(logging.DEBUG, logger="ImproveImgSLI"):
+    with caplog.at_level(logging.DEBUG, logger=APP_LOGGER_NAME):
         assert filt.eventFilter(widget, _FakeStateEvent()) is False
     lines = [
         r.getMessage() for r in caplog.records if "[focus-debug]" in r.getMessage()

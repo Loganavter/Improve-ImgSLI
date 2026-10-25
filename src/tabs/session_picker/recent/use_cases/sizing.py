@@ -22,11 +22,12 @@ from tabs.session_picker.geometry import (
     SESSION_PICKER_RECENT_CONTENT_WIDTH_FLOOR,
 )
 from tabs.session_picker.prelayout import estimate_prelayout_width
+from core.log_names import APP_LOGGER_NAME
 
 if TYPE_CHECKING:
     from tabs.session_picker.recent.panel import RecentProjectsPanel
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 def _shelf_resize_debug(message: str, *args) -> None:

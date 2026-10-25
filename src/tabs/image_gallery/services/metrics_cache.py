@@ -45,8 +45,9 @@ import logging
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 #: Payload format version (STORAGE changes here; :func:`pipeline_version` covers
 #: DETECTOR changes).

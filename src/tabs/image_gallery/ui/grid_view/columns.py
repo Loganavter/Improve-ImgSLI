@@ -29,8 +29,9 @@ from tabs.image_gallery.ui.list.card import (
     update_gallery_list_card,
 )
 from ui.widgets.shelf import OpaqueFillHost, apply_opaque_widget_fill
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 from tabs.image_gallery.ui.grid_view import GRID_COLUMNS, GRID_COLUMNS_MAX, GRID_SPACING, VIEW_GRID, VIEW_LIST, logger
 

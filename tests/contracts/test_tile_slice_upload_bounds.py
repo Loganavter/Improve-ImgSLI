@@ -32,6 +32,7 @@ from PySide6.QtGui import QImage
 from engine.cache.tile_texture_service import TileTextureService
 from engine.gpu import array_resources as array_resources_module
 from engine.gpu.array_resources import TileArrayResourcesBase
+from core.log_names import APP_LOGGER_NAME
 
 LAYER_PX = 16
 CAPACITY = 2
@@ -214,7 +215,7 @@ def test_one_warning_per_distinct_violation_not_per_frame(caplog):
     service = _service_with_full_first_array()
     updates = _RecordingUpdates()
 
-    with caplog.at_level(logging.WARNING, logger="ImproveImgSLI"):
+    with caplog.at_level(logging.WARNING, logger=APP_LOGGER_NAME):
         for _ in range(3):
             resources.upload_tile_to_array(service, "tile", (0, 0), _image(), updates)
 

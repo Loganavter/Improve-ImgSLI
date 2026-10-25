@@ -19,8 +19,9 @@ from __future__ import annotations
 
 import logging
 from typing import Any
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 # Last logged skip key (throttle: one debug line per key, not per store
 # emit — the guarded fanouts run on every emit and a dead wrapper would

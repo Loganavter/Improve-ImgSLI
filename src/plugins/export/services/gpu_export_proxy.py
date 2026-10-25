@@ -22,8 +22,9 @@ from engine.gpu.offscreen_canvas import (
 )
 from engine.cache.image_identity import image_uid
 from engine.cache.tab_canvas_services import create_canvas_widget
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 def _freeze_key_component(value, _depth: int = 0):

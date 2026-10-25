@@ -15,8 +15,9 @@ from core.state_management.dispatcher import Dispatcher
 from core.store import Store
 from plugins.diagnostics import collect
 from plugins.diagnostics.plugin import DiagnosticsPlugin
+from core.log_names import APP_LOGGER_NAME
 
-_LOG = logging.getLogger("ImproveImgSLI")
+_LOG = logging.getLogger(APP_LOGGER_NAME)
 
 
 def _make_store() -> Store:

@@ -23,8 +23,9 @@ from tabs.image_compare.services.snapshot_render_plan_builder import (
     calculate_still_snapshot_bounds,
 )
 from tabs.image_compare.services.video_snapshot_rendering import SnapshotFrameRenderer
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 class ExportService:

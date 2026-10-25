@@ -20,8 +20,9 @@ from sli_ui_toolkit.widgets import ThemedWidget
 from sli_ui_toolkit.i18n import tr
 from tabs.contract import TabContext
 from ui.theming import resolve_theme_color
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 class ImageCompareWidget(ThemedWidget, QWidget):

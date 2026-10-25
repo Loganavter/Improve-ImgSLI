@@ -9,7 +9,7 @@ flag is set (visible without ``--debug``), DEBUG otherwise.
 
 Usage:
     IMGSLI_DOUBLE_GEOM_DEBUG=1 ./launcher.sh run
-    rg '\\[double-geom\\]' ~/.local/share/ImproveImgSLI/log.txt
+    rg '\\[double-geom\\]' ~/.local/share/BlinkTable/log.txt
 
 Temporary collaborative diagnostics — remove after the double-list
 geometry investigation lands (see LOGGING.md "Collaborative debugging").
@@ -20,8 +20,9 @@ from __future__ import annotations
 import logging
 
 from shared.debug_flags import env_flag as _env_flag
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 def double_geom_debug_enabled() -> bool:

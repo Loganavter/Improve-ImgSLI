@@ -4,8 +4,9 @@ import logging
 
 from .composition import CompositionPlan, resolve_composition
 from .plan import CanvasRenderPlan
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 #: Service ids already reported as unprovided this session (log once, not per frame).
 _logged_missing_services: set[str] = set()

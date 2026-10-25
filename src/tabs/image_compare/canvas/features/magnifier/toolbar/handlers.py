@@ -12,8 +12,9 @@ from tabs.image_compare.canvas.features.magnifier.toolbar.shared import (
     show_magnifier_divider_color_picker,
     trigger_toolbar_binding,
 )
+from core.log_names import APP_LOGGER_NAME
 
-_profile_logger = logging.getLogger("ImproveImgSLI.magnifier.toggle_profile")
+_profile_logger = logging.getLogger(f"{APP_LOGGER_NAME}.magnifier.toggle_profile")
 
 
 def _maybe_profile_toggle():
@@ -42,7 +43,9 @@ def _maybe_profile_toggle():
         import io
 
         profiler.disable()
-        out_dir = os.path.expanduser("~/.local/share/ImproveImgSLI/toggle_profile")
+        from sli_ui_toolkit.core.logging import get_log_directory
+
+        out_dir = os.path.join(get_log_directory(APP_LOGGER_NAME), "toggle_profile")
         os.makedirs(out_dir, exist_ok=True)
         base = os.path.join(out_dir, started_at)
         profiler.dump_stats(base + ".pstats")

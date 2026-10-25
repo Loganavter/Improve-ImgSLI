@@ -89,8 +89,9 @@ from tabs.image_gallery.use_cases.ai_analyze import (  # re-exported for callers
     reanalyze_item,  # noqa: F401 — deprecated point adapter
     reanalyze_item_by_path,  # noqa: F401 — deprecated point adapter
 )
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 _ERROR_KEYS = {

@@ -5,8 +5,9 @@ from __future__ import annotations
 import logging
 
 from shared.debug_flags import env_flag as _env_flag
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 #: The ``[ai]`` trace's own level (plan-gallery-ai-judgement P5, P4 leftover).
 #: The channel is already opt-in (``IMGSLI_AI_DEBUG`` gates every line), so when

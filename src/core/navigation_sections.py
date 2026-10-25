@@ -20,8 +20,9 @@ from PySide6.QtWidgets import QWidget
 from sli_ui_toolkit.managers import widget_label
 
 from core.nav_debug import nav_debug
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 def _focus_reason() -> Qt.FocusReason:

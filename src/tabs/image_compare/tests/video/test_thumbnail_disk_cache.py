@@ -17,6 +17,7 @@ import os
 from types import SimpleNamespace
 
 from PIL import Image
+from core.log_names import APP_LOGGER_NAME
 
 _THUMB = (160, 90)
 
@@ -142,7 +143,7 @@ def test_warm_run_emits_without_workers(qapp, monkeypatch, tmp_path, caplog):
     # Same sources + params, same cache dir → every index is a hit.
     h2.cache = h.cache
     h2.service.set_thumbnail_disk_cache(h.cache)
-    with caplog.at_level(logging.DEBUG, logger="ImproveImgSLI.video_thumbnails"):
+    with caplog.at_level(logging.DEBUG, logger=f"{APP_LOGGER_NAME}.video_thumbnails"):
         _generate(h2)
 
     assert h2.calls == [], "warm run must not call the renderer"

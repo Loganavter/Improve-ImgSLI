@@ -5,11 +5,12 @@ from typing import TYPE_CHECKING
 from PIL import Image
 
 from core.constants import AppConstants
+from core.log_names import APP_LOGGER_NAME
 
 if TYPE_CHECKING:
     from PySide6.QtGui import QImage
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 try:
     import imagecodecs

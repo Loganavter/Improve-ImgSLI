@@ -13,6 +13,7 @@ import pytest
 from PySide6.QtWidgets import QWidget
 
 from ui.actions.search_index import PROP_MEMBER
+from core.log_names import APP_LOGGER_NAME
 
 
 @pytest.fixture()
@@ -30,7 +31,7 @@ def _notifier(**kwargs):
 
 
 def test_request_core_update_without_channels_warns(caplog):
-    with caplog.at_level(logging.WARNING, logger="ImproveImgSLI"):
+    with caplog.at_level(logging.WARNING, logger=APP_LOGGER_NAME):
         _notifier().request_core_update()
     assert any("no event_bus" in r.message for r in caplog.records)
 
@@ -49,7 +50,7 @@ def test_request_core_update_prefers_bus_then_signal():
 
 
 def test_emit_ui_mode_changed_without_bus_warns(caplog):
-    with caplog.at_level(logging.WARNING, logger="ImproveImgSLI"):
+    with caplog.at_level(logging.WARNING, logger=APP_LOGGER_NAME):
         _notifier().emit_ui_mode_changed("expert")
     assert any("emit_ui_mode_changed" in r.message for r in caplog.records)
 
@@ -86,7 +87,7 @@ def test_restore_combo_selection_preserves(caplog):
     from plugins.settings.translations import _restore_combo_selection
 
     combo = _Combo(["a", "b"], "b")
-    with caplog.at_level(logging.WARNING, logger="ImproveImgSLI"):
+    with caplog.at_level(logging.WARNING, logger=APP_LOGGER_NAME):
         _restore_combo_selection(combo, "b", "combo_x")
     assert combo.index == 1
     assert not caplog.records
@@ -96,7 +97,7 @@ def test_restore_combo_selection_warns_on_reset(caplog):
     from plugins.settings.translations import _restore_combo_selection
 
     combo = _Combo(["a"], "b")
-    with caplog.at_level(logging.WARNING, logger="ImproveImgSLI"):
+    with caplog.at_level(logging.WARNING, logger=APP_LOGGER_NAME):
         _restore_combo_selection(combo, "b", "combo_x")
     assert any("combo_x" in r.message and "lost selection" in r.message for r in caplog.records)
 
@@ -105,7 +106,7 @@ def test_restore_combo_selection_none_is_quiet(caplog):
     from plugins.settings.translations import _restore_combo_selection
 
     combo = _Combo(["a"], None)
-    with caplog.at_level(logging.WARNING, logger="ImproveImgSLI"):
+    with caplog.at_level(logging.WARNING, logger=APP_LOGGER_NAME):
         _restore_combo_selection(combo, None, "combo_x")
     assert not caplog.records
 
@@ -226,7 +227,7 @@ def test_registry_identical_reinstall_is_silent(caplog):
     first = _make_dup_section()
     second = _make_dup_section()  # fresh instance, same content (startup 3x path)
     registry.add(first)
-    with caplog.at_level(logging.WARNING, logger="ImproveImgSLI"):
+    with caplog.at_level(logging.WARNING, logger=APP_LOGGER_NAME):
         registry.add(second)
     assert not any(
         r.levelno >= logging.WARNING and "duplicate section_id" in r.message
@@ -240,7 +241,7 @@ def test_registry_conflicting_redefinition_warns(caplog):
 
     registry = SettingsRegistry()
     registry.add(_make_dup_section(owner="ic"))
-    with caplog.at_level(logging.WARNING, logger="ImproveImgSLI"):
+    with caplog.at_level(logging.WARNING, logger=APP_LOGGER_NAME):
         registry.add(_make_dup_section(owner="other"))
     assert any("duplicate section_id" in r.message for r in caplog.records)
     assert registry.all_sections()[0].owner_tab == "ic"

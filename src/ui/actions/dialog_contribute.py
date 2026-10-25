@@ -18,8 +18,9 @@ from ui.actions.search_index import (
     find_tagged_group,
     find_tagged_member,
 )
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 def contribute_dialog_search_actions(

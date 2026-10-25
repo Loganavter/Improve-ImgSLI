@@ -35,8 +35,9 @@ import logging
 from typing import Any, Callable
 
 from sli_ui_toolkit.workers import GenericWorker
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 # Progress checkpoint for the "loading full version of image" toast: the
 # pyramid build stage runs from this value to 100. It rides with the

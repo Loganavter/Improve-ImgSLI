@@ -21,8 +21,9 @@ from pathlib import Path
 
 import numpy as np
 from PIL import Image
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 from shared.image_processing.autocrop.debug import autocrop_debug as _autocrop_debug

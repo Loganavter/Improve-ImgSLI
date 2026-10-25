@@ -2,8 +2,9 @@ import logging
 import time
 
 from PySide6.QtCore import QObject, Qt, QTimer, Signal
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 class PlaybackEngine(QObject):
     """Live-playback clock: SINGLE OWNER of fps and frame position.

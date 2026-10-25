@@ -28,8 +28,9 @@ from sli_ui_toolkit.widgets import (
 )
 
 from ui.theming import try_resolve_theme_color
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 def _themed_or_fallback(theme_manager, token: str, fallback: QColor | str) -> QColor:

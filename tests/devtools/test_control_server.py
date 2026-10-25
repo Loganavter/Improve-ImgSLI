@@ -33,6 +33,7 @@ from core.control.handlers import ControlHandlers, MethodError
 from core.control.server import ControlServer, LogRing
 from core.store import Store
 from ui.actions.registry import ActionRegistry
+from core.log_names import APP_LOGGER_NAME
 
 _CONNECTED = QLocalSocket.LocalSocketState.ConnectedState
 
@@ -741,7 +742,7 @@ def test_dump_actions_propagates_enabled_and_reason():
 
 
 def test_read_log_serves_the_live_ring(tmp_path):
-    app_logger = logging.getLogger("ImproveImgSLI")
+    app_logger = logging.getLogger(APP_LOGGER_NAME)
     previous_level = app_logger.level
     app_logger.setLevel(logging.DEBUG)
     ring = LogRing()

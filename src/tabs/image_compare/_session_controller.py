@@ -12,8 +12,9 @@ from tabs.image_compare.events import (
 from tabs.image_compare.services.analysis.cached_diff import CachedDiffService
 from tabs.image_compare.use_cases import list_ops, loading, navigation
 from tabs.image_compare.use_cases import canvas_invalidate, image_decode
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 from tabs.image_compare.use_cases.session_api import SessionApiMixin

@@ -15,8 +15,9 @@ from devtools.ui_inspector.app_window import AppInspectorWindow
 from devtools.ui_inspector.native import native_chain, window_has_qrhiwidget
 from devtools.ui_layout_dump import dump_ui_layout
 from ui.actions.registry import get_action_registry
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 def _ancestor_chain(widget: QWidget) -> list[dict[str, str]]:

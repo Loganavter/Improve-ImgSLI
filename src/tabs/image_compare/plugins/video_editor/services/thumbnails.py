@@ -16,10 +16,11 @@ from tabs.image_compare.plugins.video_editor.services.thumbnail_cache import (
     ThumbnailDiskCache,
     thumbnail_cache_key_for_snap,
 )
+from core.log_names import APP_LOGGER_NAME
 from sli_ui_toolkit.workers import GenericWorker
 
-logger = logging.getLogger("ImproveImgSLI")
-_thlog = logging.getLogger("ImproveImgSLI.video_thumbnails")
+logger = logging.getLogger(APP_LOGGER_NAME)
+_thlog = logging.getLogger(f"{APP_LOGGER_NAME}.video_thumbnails")
 
 DEFAULT_THUMBNAIL_RENDER_SCALE = 1.0
 

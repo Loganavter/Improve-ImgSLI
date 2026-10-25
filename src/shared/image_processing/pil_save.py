@@ -17,8 +17,9 @@ from pathlib import Path
 from typing import Optional
 
 from PIL import Image
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 SAVE_CANCELED_MESSAGE = "Save canceled by user"
 

@@ -4,8 +4,9 @@ from typing import Optional
 import numpy as np
 from PIL import Image
 from PySide6.QtGui import QImage, QPixmap
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 def qimage_to_pil(image: QImage) -> Image.Image:

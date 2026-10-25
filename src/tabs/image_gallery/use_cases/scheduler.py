@@ -32,11 +32,12 @@ from tabs.image_gallery.debug import gallery_debug as _dbg
 from tabs.image_gallery.debug import gallery_thumbs_disabled as _thumbs_disabled
 from tabs.image_gallery.models import ThumbnailStatus
 from tabs.image_gallery.services.ai_client import _ai_debug
+from core.log_names import APP_LOGGER_NAME
 
 if TYPE_CHECKING:
     from tabs.image_gallery.controller import GalleryController
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 #: Memo for the configured judge concurrency. The pool is created once per

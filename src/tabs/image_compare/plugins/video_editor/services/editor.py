@@ -6,8 +6,9 @@ from dataclasses import replace
 from typing import Any
 
 from tabs.image_compare.plugins.video_editor.services.keyframing import FrameSnapshot, KeyframedRecording
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 def frame_count_for_duration(duration: float, fps: int) -> int:

@@ -19,8 +19,9 @@ from tabs.image_compare.plugins.video_editor.services.export import VideoExporte
 from tabs.image_compare.plugins.video_editor.services.export_flow import VideoExportFlow
 from tabs.image_compare.plugins.video_editor.services.recorder import Recorder
 from tabs.image_compare.plugins.video_editor.services.recording_flow import RecordingFlow
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 def _transient_parent_for(main_window_app: Any) -> Any:

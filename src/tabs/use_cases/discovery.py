@@ -11,11 +11,12 @@ from typing import TYPE_CHECKING
 from core.plugin_system.discovery_scan import tab_packages_for_tier
 from resources.translations import add_i18n_root
 from tabs.contract import TabContract
+from core.log_names import APP_LOGGER_NAME
 
 if TYPE_CHECKING:
     from tabs.registry import TabDiscoveryTier, TabRegistry
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 def discover(registry: "TabRegistry", *, tier: "TabDiscoveryTier | None" = None) -> None:

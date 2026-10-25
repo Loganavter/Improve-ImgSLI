@@ -27,8 +27,9 @@ from tabs.image_gallery.debug import gallery_debug as _dbg
 from tabs.image_gallery.debug import gallery_dnd_debug as _dnd_log
 from tabs.image_gallery.models import GalleryItem, GalleryState, TriageState
 from tabs.image_gallery.services.folder_scanner import scan_folder
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 def open_folder(owner, folder: Path) -> None:

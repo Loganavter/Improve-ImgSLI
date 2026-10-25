@@ -6,8 +6,9 @@ import logging
 import time
 
 from shared.debug_flags import env_flag as _env_flag
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI.startup")
+logger = logging.getLogger(f"{APP_LOGGER_NAME}.startup")
 
 _origin: float | None = None
 _last: float | None = None

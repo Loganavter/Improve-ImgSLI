@@ -147,7 +147,7 @@ the persist debounce → restart → the value survives.
 
 ## Debug instrumentation
 
-With `--debug` (or `IMPROVE_DEBUG=1`), `~/.local/share/ImproveImgSLI/log.txt`
+With `--debug` (or `IMPROVE_DEBUG=1`), `~/.local/share/BlinkTable/log.txt`
 contains:
 
 ```
@@ -166,7 +166,7 @@ partially overwritten before startup.
 
 ## Troubleshooting a "random settings reset"
 
-1. Open `~/.local/share/ImproveImgSLI/log.txt` (the run that observed the
+1. Open `~/.local/share/BlinkTable/log.txt` (the run that observed the
    reset — log.txt is overwritten each start, so reproduce first).
 2. **Load side**: `load_all_settings START … keys_in_file=…` — a small
    count or `restored from backup` means the file was already broken at

@@ -30,13 +30,14 @@ from types import ModuleType
 from typing import Iterable
 
 from .contracts import ProducerSpec
+from core.log_names import APP_LOGGER_NAME
 
 #: Module name inside a producer package that discovery imports.
 PRODUCER_ENTRY = "manifest"
 #: Attribute a manifest must export.
 PRODUCER_ATTR = "PRODUCER"
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 class ProducerRegistry:

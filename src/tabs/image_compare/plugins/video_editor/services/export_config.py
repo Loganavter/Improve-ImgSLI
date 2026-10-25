@@ -13,8 +13,9 @@ from pathlib import Path
 from typing import Any
 
 from shared.video_policy import CrfPolicy, clamp_crf
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 @dataclass(frozen=True)
 class CodecQualityOptions:

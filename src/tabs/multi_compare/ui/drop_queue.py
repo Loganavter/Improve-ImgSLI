@@ -22,8 +22,9 @@ import logging
 from tabs.multi_compare.debug import (
     mc_dnd_debug as _dnd_log,
 )
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 def _normpath_str(p) -> str:

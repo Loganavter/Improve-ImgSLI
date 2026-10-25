@@ -6,8 +6,9 @@ from core.constants import AppConstants
 from resources.translations import tr
 from shared.video_policy import FpsPolicy, clamp_fps
 from ui.canvas_infra.scene.registry import get_canvas_registry
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 class DialogManager:
     def __init__(self, host):

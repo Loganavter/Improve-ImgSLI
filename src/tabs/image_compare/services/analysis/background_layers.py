@@ -22,8 +22,9 @@ from engine.store.tiled_pixel_store import TiledPixelStore
 from tabs.image_compare.services.analysis.analysis_pair import (
     prepare_pair_for_global_analysis,
 )
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 INTERACTIVE_SSIM_MAX_DIMENSION = 2048
 INTERACTIVE_SSIM_MAX_PIXELS = 4_000_000

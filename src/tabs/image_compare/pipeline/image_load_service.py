@@ -26,13 +26,14 @@ from typing import Any, Callable
 
 from tabs.image_compare.pipeline.abort import AbortSignal
 from tabs.image_compare.debug import ic_preview_debug
+from core.log_names import APP_LOGGER_NAME
 # W1 adapter: single-flight key + preview-first async staging owned by the
 # shared seam; dispatch (transacts) stays tab-local in the hooks below.
 # NOTE: seam imports are function-level — the seam imports
 # tabs.image_compare.pipeline.abort, which runs this package's __init__
 # first, so a top-level seam import here would be circular.
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 def _key_for_path(path: str, crop_service=None, **_kw) -> tuple:

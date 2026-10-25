@@ -29,8 +29,9 @@ import sys
 import threading
 import time
 import traceback
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI.stall_watch")
+logger = logging.getLogger(f"{APP_LOGGER_NAME}.stall_watch")
 
 #: GUI-thread beat interval.
 DEFAULT_TICK_MS = 33

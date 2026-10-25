@@ -10,8 +10,9 @@ from events.image_label import (
     ImageLabelMouseHandler,
     OverlayPreviewController,
 )
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 class ImageLabelEventHandler(QObject):
     def __init__(self, store, main_controller, parent=None):

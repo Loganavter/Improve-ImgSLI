@@ -7,8 +7,9 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, Optional, Set
 
 from domain.types import Color, Point, Rect
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 @dataclass
 class RenderConfig:

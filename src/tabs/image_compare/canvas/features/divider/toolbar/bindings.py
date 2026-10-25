@@ -13,8 +13,9 @@ from tabs.image_compare.canvas.features.divider.input.events import (
     SettingsToggleDividerVisibilityEvent,
 )
 from tabs.image_compare.canvas.features.divider.state.feature_state import DividerWidgetState, get_divider_widget_state
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 def get_settings_presenter_from_window(presenter):

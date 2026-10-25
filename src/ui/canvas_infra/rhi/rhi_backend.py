@@ -12,8 +12,9 @@ from PySide6.QtGui import QRhi
 from PySide6.QtWidgets import QRhiWidget
 
 from ui.host_debug import rhi_primer_debug
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI.rhi")
+logger = logging.getLogger(f"{APP_LOGGER_NAME}.rhi")
 
 from core.plugin_system.settings import SETTINGS_APP as RHI_SETTINGS_APP
 from core.plugin_system.settings import SETTINGS_ORG as RHI_SETTINGS_ORG

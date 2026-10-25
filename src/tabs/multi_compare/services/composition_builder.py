@@ -38,11 +38,12 @@ from ui.canvas_presentation.composition import (
     SplitNode,
     compute_native_canvas_size,
 )
+from core.log_names import APP_LOGGER_NAME
 
 DEFAULT_SPLIT_GAP_PX = 4
 DEFAULT_LABEL_FONT_PX = 10
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 def _describe_node(node) -> str:

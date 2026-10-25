@@ -6,12 +6,13 @@ import logging
 from typing import TYPE_CHECKING
 
 from tabs.use_cases import pages
+from core.log_names import APP_LOGGER_NAME
 
 if TYPE_CHECKING:
     from tabs.contract import TabContract
     from tabs.registry import TabRegistry
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 def bootstrap_default_tab(registry: "TabRegistry") -> "TabContract | None":

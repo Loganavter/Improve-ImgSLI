@@ -46,8 +46,9 @@ import os
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 #: Directory (under the app cache root) and file name of the log.
 ASK_LOG_DIRNAME = "gallery_ask_log"

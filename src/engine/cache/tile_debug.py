@@ -27,6 +27,8 @@ import time
 
 from sli_ui_toolkit.core.logging import get_log_directory
 
+from core.log_names import APP_LOGGER_NAME
+
 _ENABLED = os.environ.get("IMGSLI_TILE_DUMP", "").strip().lower() not in (
     "",
     "0",
@@ -49,7 +51,7 @@ def _ensure_sink() -> None:
     global _file_handle, _dump_dir
     if _file_handle is not None:
         return
-    base = get_log_directory("ImproveImgSLI")
+    base = get_log_directory(APP_LOGGER_NAME)
     run_dir = os.path.join(base, "tile_debug", time.strftime("%Y%m%d-%H%M%S"))
     os.makedirs(run_dir, exist_ok=True)
     _dump_dir = run_dir

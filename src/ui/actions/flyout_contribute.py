@@ -22,8 +22,9 @@ from ui.actions.search_index import (
     SearchIndex,
     find_tagged_member,
 )
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 @dataclass(frozen=True, slots=True)

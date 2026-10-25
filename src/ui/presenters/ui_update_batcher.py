@@ -1,10 +1,11 @@
 from PySide6.QtCore import QTimer
 
 from ui.widgets.flyout_debug import flyout_debug, flyout_debug_enabled
+from core.log_names import APP_LOGGER_NAME
 
 import logging
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 # Capability ID for the Qt-liveness probe (TabContract.create_service).
 # The tab that owns the shiboken lifetime mechanism answers with a

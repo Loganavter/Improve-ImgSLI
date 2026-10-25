@@ -30,8 +30,9 @@ from core.state_management.gallery_actions import (
 from tabs.image_gallery.bootstrap_reducers import GALLERY_SLOT_NAME
 from tabs.image_gallery.models import GalleryItem, Mode, TriageState
 from tabs.image_gallery.state import selectors as _gallery_selectors
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 def _gallery_store(owner):

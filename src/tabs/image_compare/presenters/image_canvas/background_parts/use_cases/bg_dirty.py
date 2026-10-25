@@ -27,6 +27,7 @@ from tabs.image_compare.debug import (
     ic_preview_source_tier as _source_tier,
 )
 from tabs.image_compare.presenters.image_canvas.background_parts.diff import sync_diff_texture as _orig_sync_diff_texture  # noqa: F401
+from core.log_names import APP_LOGGER_NAME
 
 from .geometry import _size_or_none
 from .preview import (
@@ -35,7 +36,7 @@ from .preview import (
     pick_display_with_preview_backing,
 )
 
-_mlog = logging.getLogger("ImproveImgSLI.magnifier.render_flow")
+_mlog = logging.getLogger(f"{APP_LOGGER_NAME}.magnifier.render_flow")
 
 _last_gap_pick_sig = None  # type: ignore
 _last_gap_apply_sig = None  # type: ignore

@@ -26,11 +26,12 @@ from ui.actions.keymap import (
     resolve_chord_winners,
 )
 from ui.actions.registry import ActionRegistry, get_action_registry
+from core.log_names import APP_LOGGER_NAME
 
 if TYPE_CHECKING:
     from core.actions.types import ActionDescriptor
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 _binder: "ActionShortcutBinder | None" = None
 

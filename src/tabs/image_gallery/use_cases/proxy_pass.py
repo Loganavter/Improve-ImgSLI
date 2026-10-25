@@ -27,8 +27,9 @@ from tabs.image_gallery.debug import gallery_debug as _dbg
 from tabs.image_gallery.debug import gallery_fidelity_disabled as _fidelity_disabled
 from tabs.image_gallery.models import GalleryItem, Mode, TriageState
 from tabs.image_gallery.use_cases import local_metrics as _local_metrics
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 def _run_proxy_chunk_sync(chunk: list, source_path, include_camera: bool, full_res_artifacts: bool = False, cancel=None) -> dict:

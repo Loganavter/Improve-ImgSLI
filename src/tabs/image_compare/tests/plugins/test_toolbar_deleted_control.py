@@ -24,6 +24,7 @@ from PySide6.QtWidgets import QPushButton, QWidget
 
 from tabs.image_compare.canvas import live_handles
 from tabs.image_compare.presenters.toolbar import state as toolbar_state
+from core.log_names import APP_LOGGER_NAME
 
 
 @pytest.fixture(autouse=True)
@@ -54,7 +55,7 @@ def test_availability_skips_deleted_control(qtbot, caplog, presenter):
     stub, live, dead, _parent = presenter
     dead.deleteLater()  # C++ gone, Python wrapper alive (the storm shape)
     qtbot.wait(20)
-    with caplog.at_level("DEBUG", logger="ImproveImgSLI"):
+    with caplog.at_level("DEBUG", logger=APP_LOGGER_NAME):
         toolbar_state._update_canvas_feature_control_availability(stub)  # must not raise
     assert live.isEnabled() is True
     assert "slider_size" in caplog.text
@@ -125,7 +126,7 @@ def test_bindings_fanout_survives_one_bad_feature(qtbot, monkeypatch, caplog):
         settings=SimpleNamespace(current_language="en"),
     )
     stub = SimpleNamespace(widget=widget, store=store)
-    with caplog.at_level("DEBUG", logger="ImproveImgSLI"):
+    with caplog.at_level("DEBUG", logger=APP_LOGGER_NAME):
         toolbar_state.update_toolbar_states(stub)  # must not raise
     assert calls == [1]
     assert "bad.feature" in caplog.text
@@ -158,7 +159,7 @@ def test_live_handle_fail_open_without_shiboken(monkeypatch):
 
 
 def test_skip_debug_throttled_once_per_key(caplog):
-    with caplog.at_level("DEBUG", logger="ImproveImgSLI"):
+    with caplog.at_level("DEBUG", logger=APP_LOGGER_NAME):
         live_handles.note_skipped_once("k1", "skip %s", "k1")
         live_handles.note_skipped_once("k1", "skip %s", "k1")  # silent repeat
         assert caplog.text.count("skip k1") == 1

@@ -15,6 +15,7 @@ from events.app_event import (
 from events.drag_drop_handler import DragAndDropService
 from events.router import route_drag_and_drop_override, route_global_keyboard_event
 from events.runtime import build_event_handler_runtime
+from core.log_names import APP_LOGGER_NAME
 
 import logging
 import os
@@ -24,7 +25,7 @@ import os
 # debug output (e.g. IMGSLI_RESIZE_DEBUG render tracing). Gated on its own
 # opt-in flag, off by default even under --debug -- same convention as
 # shared/rendering/render_debug.py's IMGSLI_RESIZE_DEBUG.
-logger = logging.getLogger("ImproveImgSLI.nav")
+logger = logging.getLogger(f"{APP_LOGGER_NAME}.nav")
 if os.environ.get("UI_NAV_DEBUG", "").strip().lower() in (
     "",
     "0",

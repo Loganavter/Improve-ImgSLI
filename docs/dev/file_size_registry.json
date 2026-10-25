@@ -723,6 +723,16 @@
       }
     },
     {
+      "path": "src/tabs/image_compare/tab.py",
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=thin-owner reason=\"tab-contract wiring only — drag/drop, host callbacks, persistence and registration all live in use_cases/; it sits at the 500-line limit, not over a second concern\"",
+      "parsed": {
+        "pattern": "thin-owner",
+        "reason": "tab-contract wiring only — drag/drop, host callbacks, persistence and registration all live in use_cases/; it sits at the 500-line limit, not over a second concern"
+      }
+    },
+    {
       "path": "src/tabs/image_compare/ui/context_menu.py",
       "limit": 500,
       "marker": "Audit-Meta:",
@@ -837,6 +847,16 @@
       "parsed": {
         "pattern": "wire-cache",
         "reason": "one local-metrics contract: the fail-closed identity (10 fields), its payload validator and the entry/record codec that must carry it cannot be split without letting one side drift — the ai_cache precedent (the sibling this store mirrors) carries the same marker for the same reason"
+      }
+    },
+    {
+      "path": "src/tabs/image_gallery/services/proxy.py",
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=state-machine reason=\"one shared proxy cache plus the stage pipeline that consumes it — the cache/decode lifecycle is single-owner, splitting would relocate it rather than reduce it\"",
+      "parsed": {
+        "pattern": "state-machine",
+        "reason": "one shared proxy cache plus the stage pipeline that consumes it — the cache/decode lifecycle is single-owner, splitting would relocate it rather than reduce it"
       }
     },
     {

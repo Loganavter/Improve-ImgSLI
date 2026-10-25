@@ -42,7 +42,7 @@ Main commands:
 
 Runtime log file:
 
-- `~/.local/share/ImproveImgSLI/log.txt`
+- `~/.local/share/BlinkTable/log.txt`
 
 ## Useful examples
 
@@ -83,4 +83,4 @@ If problems continue, include:
 
 - launcher command you ran
 - terminal output
-- `~/.local/share/ImproveImgSLI/log.txt`
+- `~/.local/share/BlinkTable/log.txt`

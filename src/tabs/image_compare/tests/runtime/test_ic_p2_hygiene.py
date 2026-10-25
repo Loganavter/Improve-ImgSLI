@@ -42,6 +42,7 @@ from tabs.image_compare.state.reducer import DocumentReducer
 from tabs.image_compare.state.reducers import SessionDataReducer
 from tabs.image_compare.ui.context_menu import ImageCompareContextMenuProvider
 from ui.context_menu.models import ContextMenuRequest, ContextMenuTarget
+from core.log_names import APP_LOGGER_NAME
 
 
 @pytest.fixture(scope="module")
@@ -251,7 +252,7 @@ def test_session_data_reducer_reduces_image_without_render_cache(caplog):
 
     reducer = SessionDataReducer()
     data = SessionData(image_state=ImageSessionState(), render_cache=None)
-    with caplog.at_level(logging.WARNING, logger="ImproveImgSLI.session_data"):
+    with caplog.at_level(logging.WARNING, logger=f"{APP_LOGGER_NAME}.session_data"):
         out = reducer.reduce(data, SetImageSessionImageAction(slot=1, image=object()))
     assert out is not data
     assert out.image_state.image1 is not None

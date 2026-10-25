@@ -12,6 +12,7 @@ from types import SimpleNamespace
 import logging
 
 from tabs.multi_compare.ui import chrome
+from core.log_names import APP_LOGGER_NAME
 
 
 def _widget(*, placeholder_visible: bool, presents: int, dismissed: bool = False):
@@ -51,7 +52,7 @@ def test_noop_without_placeholder_or_canvas():
 def test_decision_logged_with_reasons(monkeypatch, caplog):
     monkeypatch.setenv("IMGSLI_MC_DEBUG", "1")
     widget = _widget(placeholder_visible=True, presents=0)
-    with caplog.at_level(logging.WARNING, logger="ImproveImgSLI"):
+    with caplog.at_level(logging.WARNING, logger=APP_LOGGER_NAME):
         assert chrome.dismiss_placeholder_for_dnd(widget) is False
     assert "placeholder check" in caplog.text
     assert "presents=0" in caplog.text

@@ -75,8 +75,9 @@ from ui.canvas_presentation.plan import CanvasRenderPlan
 from ui.canvas_presentation.plan_applicator import apply_canvas_render_plan
 from tabs.image_gallery.ui.quick_look.preview_canvas_host import settle_first_frame
 from tabs.image_gallery.ui.quick_look.preview_zoom import ViewportState
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 # No-present watchdog: a canvas that shows no frame within this window is
 # presumed broken (dead RHI, missing shaders) and must yield to QLabel --

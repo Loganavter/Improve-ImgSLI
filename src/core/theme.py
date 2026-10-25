@@ -5,8 +5,9 @@ from typing import Dict
 from PySide6.QtGui import QColor
 
 from utils.resource_loader import resource_path
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 def load_themes() -> tuple[Dict[str, QColor], Dict[str, QColor]]:
     themes_path = resource_path("resources/themes.json")

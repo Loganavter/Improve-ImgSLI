@@ -11,8 +11,9 @@ from dataclasses import fields, is_dataclass
 from typing import Any, Iterable
 
 from .records import TraceRecord, now
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 _DEFAULT_RING_SIZE = 4096
 _SKIP_MODULE_PREFIXES = (

@@ -74,10 +74,11 @@ from .inflight import (  # noqa: F401 — re-exported for the tests/MCP docs
     note_inflight,
     summarize_request_params,
 )
-from .log_ring import APP_LOGGER_NAME, LogRing  # noqa: F401 — re-exported for the tests
+from .log_ring import LogRing  # noqa: F401 — re-exported for the tests
 from .modal_ack import MODAL_ACK_BUDGET_MS, arm_early_answer, report_late_failure
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 #: Owner-only mode for the socket file (matches the pointer).
 _SOCKET_MODE = 0o600

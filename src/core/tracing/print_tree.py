@@ -21,8 +21,11 @@ from collections import defaultdict
 from typing import Iterable
 
 def _default_path() -> str:
-    xdg = os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share")
-    return os.path.join(xdg, "ImproveImgSLI", "trace.jsonl")
+    from sli_ui_toolkit.core.logging import get_log_directory
+
+    from core.log_names import APP_LOGGER_NAME
+
+    return os.path.join(get_log_directory(APP_LOGGER_NAME), "trace.jsonl")
 
 def load_records(path: str) -> list[dict]:
     out: list[dict] = []

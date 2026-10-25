@@ -4,8 +4,9 @@ import logging
 from abc import ABC, abstractmethod
 from enum import Enum
 from typing import Any
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI.plugin.base")
+logger = logging.getLogger(f"{APP_LOGGER_NAME}.plugin.base")
 
 class PluginState(Enum):
     CREATED = "created"

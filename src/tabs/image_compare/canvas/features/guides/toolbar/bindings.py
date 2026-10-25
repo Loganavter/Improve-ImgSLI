@@ -6,6 +6,7 @@ from tabs.image_compare.canvas.registry import registry
 
 from tabs.image_compare.canvas.features.guides.commands.registry import command_set_guides_thickness
 from tabs.image_compare.canvas.features.guides.state.feature_state import get_guides_widget_state
+from core.log_names import APP_LOGGER_NAME
 
 
 def set_slider_value_quietly(control, value: int) -> None:
@@ -47,7 +48,7 @@ def _toggle_active_magnifier_laser(presenter, enabled: bool) -> None:
 
             from shared.debug_flags import env_flag as _env_flag
 
-            _lg = logging.getLogger("ImproveImgSLI")
+            _lg = logging.getLogger(APP_LOGGER_NAME)
             # LOG gate (IMGSLI_LASER_DEBUG = [laser-debug] traces only).
             # UI visibility must never read this flag — use IMGSLI_LASER_UI_DEBUG.
             if _env_flag("IMGSLI_LASER_DEBUG"):
@@ -114,7 +115,7 @@ def _laser_trace_underline(source: str, raw_col, qcolor) -> None:
 
         from shared.debug_flags import env_flag as _env_flag
 
-        _lg = logging.getLogger("ImproveImgSLI")
+        _lg = logging.getLogger(APP_LOGGER_NAME)
         # LOG gate (IMGSLI_LASER_DEBUG = [laser-debug] traces only).
         # UI visibility must never read this flag — use IMGSLI_LASER_UI_DEBUG.
         if not _env_flag("IMGSLI_LASER_DEBUG"):
@@ -136,7 +137,7 @@ def sync_guides_toolbar_state(presenter) -> None:
 
         from shared.debug_flags import env_flag as _env_flag
 
-        _lg = logging.getLogger("ImproveImgSLI")
+        _lg = logging.getLogger(APP_LOGGER_NAME)
         # LOG gate (IMGSLI_LASER_DEBUG = [laser-debug] traces only).
         # UI visibility must never read this flag — use IMGSLI_LASER_UI_DEBUG.
         if _env_flag("IMGSLI_LASER_DEBUG"):

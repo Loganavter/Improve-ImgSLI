@@ -12,8 +12,9 @@ Kept out of the thin widget owner like the other ``ui/widget_parts/`` modules
 from __future__ import annotations
 
 import logging
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 def _ensure_sidebar(owner):

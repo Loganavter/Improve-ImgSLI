@@ -13,9 +13,10 @@ from tabs.image_compare.plugins.video_editor.services.keyframing.engine.values i
 from sli_ui_toolkit.managers import SettleGate
 from sli_ui_toolkit.workers import GenericWorker
 from ui.canvas_presentation import apply_canvas_render_plan
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
-_vplog = logging.getLogger("ImproveImgSLI.video_preview")
+logger = logging.getLogger(APP_LOGGER_NAME)
+_vplog = logging.getLogger(f"{APP_LOGGER_NAME}.video_preview")
 
 
 class PreviewCoordinator:

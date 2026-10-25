@@ -59,8 +59,9 @@ from pathlib import Path
 from tabs.image_gallery.models import AnalysisStatus
 from tabs.image_gallery.services.activity import clear_activity
 from tabs.image_gallery.services.rank_badge import KIND_NONE, stamp_badges
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 def _items_of(owner) -> list:

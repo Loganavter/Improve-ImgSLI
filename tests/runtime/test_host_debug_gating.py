@@ -18,6 +18,7 @@ import pytest
 
 import ui.host_debug as host_debug
 from core.nav_debug import nav_debug
+from core.log_names import APP_LOGGER_NAME
 
 # (flag, prefix, emit) — one row per gated stream.
 _STREAMS = [
@@ -57,7 +58,7 @@ def _messages(caplog) -> list[str]:
 @pytest.mark.parametrize("flag,prefix,emit", _STREAMS, ids=_IDS)
 def test_stream_silent_without_flag(monkeypatch, caplog, flag, prefix, emit):
     monkeypatch.delenv(flag, raising=False)
-    with caplog.at_level(logging.DEBUG, logger="ImproveImgSLI"):
+    with caplog.at_level(logging.DEBUG, logger=APP_LOGGER_NAME):
         emit()
     assert not any(prefix in msg for msg in _messages(caplog)), (
         f"{prefix} leaked while {flag} was unset — a noisy stream must not be "
@@ -68,7 +69,7 @@ def test_stream_silent_without_flag(monkeypatch, caplog, flag, prefix, emit):
 @pytest.mark.parametrize("flag,prefix,emit", _STREAMS, ids=_IDS)
 def test_stream_emits_with_flag(monkeypatch, caplog, flag, prefix, emit):
     monkeypatch.setenv(flag, "1")
-    with caplog.at_level(logging.DEBUG, logger="ImproveImgSLI"):
+    with caplog.at_level(logging.DEBUG, logger=APP_LOGGER_NAME):
         emit()
     matching = [msg for msg in _messages(caplog) if prefix in msg]
     assert matching, f"{prefix} did not print with {flag}=1"
@@ -91,12 +92,12 @@ def test_enabled_predicates_track_env(monkeypatch):
 
 def test_nav_debug_reuses_ui_nav_flag(monkeypatch, caplog):
     monkeypatch.delenv("UI_NAV_DEBUG", raising=False)
-    with caplog.at_level(logging.DEBUG, logger="ImproveImgSLI"):
+    with caplog.at_level(logging.DEBUG, logger=APP_LOGGER_NAME):
         nav_debug("[nav-card] navigate key=%s", 1)
     assert not any("[nav-card]" in msg for msg in _messages(caplog))
 
     caplog.clear()
     monkeypatch.setenv("UI_NAV_DEBUG", "1")
-    with caplog.at_level(logging.DEBUG, logger="ImproveImgSLI"):
+    with caplog.at_level(logging.DEBUG, logger=APP_LOGGER_NAME):
         nav_debug("[nav-card] navigate key=%s", 1)
     assert any("[nav-card]" in msg for msg in _messages(caplog))

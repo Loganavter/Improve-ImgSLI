@@ -20,8 +20,9 @@ from core.state_management.gallery_actions import (
     GalleryTriageFinished,
 )
 from tabs.image_gallery.state import selectors as _gallery_selectors
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 def _queue_thumb_ready(owner, path: Path, status: str) -> None:

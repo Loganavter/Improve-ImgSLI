@@ -13,8 +13,9 @@ from ui.host_debug import (
     layout_tree_debug_enabled,
     startup_debug,
 )
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 class WindowStartupStep:
     name = "startup"

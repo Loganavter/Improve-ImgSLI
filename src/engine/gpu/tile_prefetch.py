@@ -28,8 +28,9 @@ from PySide6.QtCore import QThreadPool, Qt
 from sli_ui_toolkit.workers import GenericWorker
 
 from engine.cache.tile_geometry import crop_apron_tile
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 #: How long an in-flight warm entry may live before it is treated as lost
 #: (worker died without emitting, pool starved, source closed mid-flight in

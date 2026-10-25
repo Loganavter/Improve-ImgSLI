@@ -18,8 +18,9 @@ from core.state_management.actions import (
     SetPendingUnificationPathsAction,
     SetUnificationInProgressAction,
 )
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 def _session_render_cache(controller):

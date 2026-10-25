@@ -15,6 +15,7 @@ from plugins.export.services.gpu_export_proxy import (
     _widget_alive,
 )
 from engine.gpu.export_tiling import CanvasGoneError, TiledFramebufferExporter
+from core.log_names import APP_LOGGER_NAME
 
 
 @pytest.fixture(scope="module")
@@ -86,7 +87,7 @@ def test_render_on_main_thread_routes_quiet_abort(qapp, monkeypatch, caplog):
     box: dict = {}
     payload = {"mode": "render_plan", "plan": SimpleNamespace(), "result_box": box}
     try:
-        with caplog.at_level(logging.DEBUG, logger="ImproveImgSLI"):
+        with caplog.at_level(logging.DEBUG, logger=APP_LOGGER_NAME):
             p._render_on_main_thread(payload)
     finally:
         p.shutdown()
@@ -132,7 +133,7 @@ def test_proxy_routes_engine_gone_error_quietly(qapp, monkeypatch, caplog):
     box: dict = {}
     payload = {"mode": "render_plan", "plan": SimpleNamespace(), "result_box": box}
     try:
-        with caplog.at_level(logging.DEBUG, logger="ImproveImgSLI"):
+        with caplog.at_level(logging.DEBUG, logger=APP_LOGGER_NAME):
             p._render_on_main_thread(payload)
     finally:
         p.shutdown()

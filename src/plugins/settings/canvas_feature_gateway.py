@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import logging
 from typing import Any
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 def execute_canvas_feature_command(

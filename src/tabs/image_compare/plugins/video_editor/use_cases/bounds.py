@@ -8,8 +8,9 @@ Coordinator methods remain as forwarders.
 import logging
 
 from sli_ui_toolkit.workers import GenericWorker
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 def _next_gen(coordinator) -> int:

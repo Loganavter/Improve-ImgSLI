@@ -13,8 +13,9 @@ if TYPE_CHECKING:
     from tabs.image_compare.tab import ImageCompareTab
 
 from shared.image_extensions import is_loadable_image_path
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 def begin_pending_image_insert(tab: "ImageCompareTab", paths) -> bool:

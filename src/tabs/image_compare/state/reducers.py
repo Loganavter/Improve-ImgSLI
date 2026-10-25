@@ -49,9 +49,10 @@ from tabs.image_compare.state.models import (
     SessionData,
 )
 from tabs.image_compare.canvas.registry import registry
+from core.log_names import APP_LOGGER_NAME
 
 
-_log = logging.getLogger("ImproveImgSLI.session_data")
+_log = logging.getLogger(f"{APP_LOGGER_NAME}.session_data")
 
 
 class ImageSessionReducer:

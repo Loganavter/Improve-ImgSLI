@@ -12,8 +12,9 @@ from shared.analysis.output import (
     to_u8_rgb,
 )
 from engine.store.regions import build_uniform_tile_grid
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 SSIM_DEFAULT_WIN_SIZE = 7
 SSIM_TILE_MAX_EXTENT = 1536

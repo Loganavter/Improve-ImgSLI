@@ -17,8 +17,9 @@ from urllib.parse import urlparse
 from urllib.request import url2pathname
 
 from PySide6.QtWidgets import QApplication
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 _MAX_DOWNLOAD_BYTES = 20 * 1024 * 1024
 _MAX_DOWNLOAD_PER_URL = _MAX_DOWNLOAD_BYTES

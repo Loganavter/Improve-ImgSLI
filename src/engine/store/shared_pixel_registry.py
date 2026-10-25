@@ -47,8 +47,9 @@ import threading
 from dataclasses import dataclass, field
 
 from engine.store.tiled_pixel_store import TiledPixelStore
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 # Must match engine.cache.image_identity._UID_INFO_KEY. Used literally (no
 # private import); tests do the same. Views inherit the base entry's uid tag

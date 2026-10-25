@@ -40,8 +40,9 @@ from tabs.multi_compare.ui.canvas_widget import INTERNAL_SLOT_MIME
 from tabs._shared.overflow_summary import summarize_overflow
 from tabs.multi_compare.ui.drop_queue import DropQueue, get_drop_queue
 from tabs.multi_compare.use_cases import placement as _placement
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 # Re-exported for backward compatibility: tests and callers import

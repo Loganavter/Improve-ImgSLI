@@ -3,7 +3,7 @@
 Analyze IMGSLI_IC_GAP_DEBUG / IMGSLI_IC_PREVIEW_DEBUG logs for empty middle strip.
 
 Usage:
-  python src/devtools/analyze_ic_gap.py --log ~/.local/share/ImproveImgSLI/log.txt --trace ~/.local/share/ImproveImgSLI/trace.jsonl
+  python src/devtools/analyze_ic_gap.py --log ~/.local/share/BlinkTable/log.txt --trace ~/.local/share/BlinkTable/trace.jsonl
   python src/devtools/analyze_ic_gap.py --log /tmp/run.log --json /tmp/gap_timeline.json
   grep -E "ic-gap|gap_detected|fallback decision" log.txt | python src/devtools/analyze_ic_gap.py --stdin
 
@@ -17,6 +17,15 @@ import json
 import re
 import sys
 from pathlib import Path
+
+#: Repo root (``<repo>/src/devtools/analyze_ic_gap.py`` -> ``<repo>``).
+REPO_ROOT = Path(__file__).resolve().parents[2]
+SRC_ROOT = REPO_ROOT / "src"
+if str(SRC_ROOT) not in sys.path:
+    sys.path.insert(0, str(SRC_ROOT))
+
+from core.log_names import APP_LOGGER_NAME  # noqa: E402 — after the sys.path bootstrap
+from sli_ui_toolkit.core.logging import get_log_directory  # noqa: E402
 
 # Regexes for key log lines
 PATTERNS = {
@@ -123,7 +132,12 @@ def classify(events: list[dict]) -> list[dict]:
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description="Analyze IC gap logs")
-    ap.add_argument("--log", type=Path, default=Path.home() / ".local/share/ImproveImgSLI/log.txt", help="path to log.txt")
+    ap.add_argument(
+        "--log",
+        type=Path,
+        default=Path(get_log_directory(APP_LOGGER_NAME)) / "log.txt",
+        help="path to log.txt",
+    )
     ap.add_argument("--trace", type=Path, default=None, help="path to trace.jsonl (optional)")
     ap.add_argument("--tile-dir", type=Path, default=None, help="tile_debug dir (optional)")
     ap.add_argument("--json", type=Path, default=None, help="write timeline JSON")

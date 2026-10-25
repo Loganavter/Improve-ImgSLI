@@ -4,8 +4,9 @@ import logging
 
 from shared.debug_flags import env_flag
 from ui.canvas_infra.scene.registry import get_canvas_registry
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 def _session_type(store) -> str | None:
     session = store.get_active_workspace_session()

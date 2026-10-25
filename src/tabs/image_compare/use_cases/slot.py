@@ -21,8 +21,9 @@ from tabs.image_compare.debug import ic_preview_debug
 from tabs._shared.loading_pipeline import _same_fs_path as _seam_same_fs_path
 from tabs._shared.loading_pipeline import cache_key_for_path as _seam_key_for_path
 from tabs._shared.loading_pipeline import get_or_load_preview
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 # Throttle: ensure/set_current are re-entered 3× for same path at 60Hz via
 # load path + transaction emit + fps timer. Dedup identical (slot, idx, path)

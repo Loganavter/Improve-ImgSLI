@@ -9,8 +9,9 @@ from PySide6.QtWidgets import QWidget
 
 from core.actions.types import ActionTarget
 from ui.actions import widget_pulse
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 # After ``ensure_visible`` opens Settings / a flyout for the first time,
 # activation / deferred geometry still emit Hide/Deactivate events that

@@ -6,8 +6,9 @@ from typing import Callable, List
 # Audit-Meta: pattern=state-machine reason="single dispatch machine — optimistic-concurrency swap + session-targeted write-back + per-session history binding share one lock discipline, must stay one file (reducers.py precedent)"
 from .actions import Action
 from .reducers import RootReducer
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 _ACTION_HISTORY_SLOT = "action_history"
 _UNDO_STACK_SLOT = "undo_stack"

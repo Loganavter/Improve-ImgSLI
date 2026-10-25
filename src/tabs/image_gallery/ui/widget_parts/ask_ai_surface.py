@@ -15,8 +15,9 @@ no backend call.
 from __future__ import annotations
 
 import logging
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 #: Localised chrome defaults for the ask surface (English; the controller
 #: overrides them with the tab translator on the flyout path).

@@ -10,8 +10,9 @@ from core.state_management.actions import SetCachedDiffImageAction
 
 from engine.cache.image_identity import image_uid
 from tabs.image_compare.services.analysis.runtime import AnalysisRuntime
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 class CachedDiffService:
     def __init__(self, store: Any, runtime: AnalysisRuntime, *, get_crop_service=None):

@@ -3,8 +3,9 @@ from __future__ import annotations
 import logging
 
 from PySide6.QtCore import QEvent
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 _DRAG_EVENT_TYPES = frozenset(
     {

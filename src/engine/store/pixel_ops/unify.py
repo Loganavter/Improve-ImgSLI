@@ -15,8 +15,9 @@ from engine.store.tiled_pixel_store import (
     to_real_pil_copy,
 )
 from shared.image_processing.store_lease import StoreLease
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 # Below this size unified output uses PIL resize_images_processor (exact match).
 _ACCURATE_UNIFY_MAX_PIXELS = 4096 * 4096

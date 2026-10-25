@@ -27,8 +27,9 @@ from PySide6.QtGui import (
 )
 
 from ui.canvas_infra.scene.pass_contract import CanvasRenderPass
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 # Shared shader dir — overlay shaders are generic fullscreen textured quad.
 # Prefer local image_compare copy if present, else reuse multi_compare's.

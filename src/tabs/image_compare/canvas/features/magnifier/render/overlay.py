@@ -6,8 +6,9 @@ from tabs.image_compare.canvas.helpers import reset_canvas_overlays
 
 from tabs.image_compare.canvas.features.magnifier.state.mode import MagnifierModeService
 from tabs.image_compare.canvas.features.magnifier.state.store import iter_magnifier_models
+from core.log_names import APP_LOGGER_NAME
 
-_log = logging.getLogger("ImproveImgSLI.magnifier.overlay")
+_log = logging.getLogger(f"{APP_LOGGER_NAME}.magnifier.overlay")
 
 
 class _StorePresenterAdapter:

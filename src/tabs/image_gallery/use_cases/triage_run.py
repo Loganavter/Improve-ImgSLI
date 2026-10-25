@@ -32,8 +32,9 @@ from tabs.image_gallery.models import (
     TriageState,
 )
 from tabs.image_gallery.services.activity import clear_activity, set_activity
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 def _next_series_gen(owner) -> int:

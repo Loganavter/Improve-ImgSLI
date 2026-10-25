@@ -9,6 +9,7 @@ Audit-Meta: pattern=thin-owner-target size=exempt reason="use_cases target for M
 from PySide6.QtCore import QObject, QSignalBlocker, QTimer
 
 from core.state_management.viewport_scopes import LIGHTWEIGHT_VIEWPORT_SUBDOMAINS
+from core.log_names import APP_LOGGER_NAME
 from sli_ui_toolkit.i18n import tr
 
 
@@ -345,7 +346,7 @@ class ImageCompareChromeSync(QObject):
         """
         import logging
 
-        _logger = logging.getLogger("ImproveImgSLI")
+        _logger = logging.getLogger(APP_LOGGER_NAME)
         try:
             wp = window_presenter if window_presenter is not None else self._window_presenter()
             toolbar = self._toolbar_presenter(wp)
@@ -435,7 +436,7 @@ class ImageCompareChromeSync(QObject):
         except Exception:
             import logging
 
-            logging.getLogger("ImproveImgSLI").debug(
+            logging.getLogger(APP_LOGGER_NAME).debug(
                 "handle_store_domain: edit panel toggle missed", exc_info=True
             )
         # Lazy: resolution/psnr/zoom not needed until full_res images are present
@@ -455,7 +456,7 @@ class ImageCompareChromeSync(QObject):
         except Exception:
             import logging
 
-            logging.getLogger("ImproveImgSLI").debug(
+            logging.getLogger(APP_LOGGER_NAME).debug(
                 "handle_store_domain: direct canvas update missed", exc_info=True
             )
 
@@ -549,7 +550,7 @@ class ImageCompareChromeSync(QObject):
         except Exception:
             import logging
 
-            logging.getLogger("ImproveImgSLI").exception(
+            logging.getLogger(APP_LOGGER_NAME).exception(
                 "_refresh_active_session_canvas: set_current_image failed"
             )
 

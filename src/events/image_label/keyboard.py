@@ -5,8 +5,9 @@ import logging
 from PySide6.QtCore import Qt
 
 from events.canvas_input.owner_ids import KEYBOARD_MOVE_OWNER
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 class ImageLabelKeyboardHandler:
     OVERLAY_MOVEMENT_KEYS = {

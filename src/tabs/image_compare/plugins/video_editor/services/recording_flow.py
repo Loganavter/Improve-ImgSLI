@@ -6,8 +6,9 @@ import threading
 from core.events import CoreErrorOccurredEvent
 from sli_ui_toolkit.workers import GenericWorker
 from tabs.image_compare.debug import ic_video_debug_enabled as _video_enabled_pred
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 def _video_debug(msg: str, *args, **kwargs) -> None:

@@ -16,8 +16,9 @@ from pathlib import Path
 from PySide6.QtGui import QPixmap
 
 from tabs.image_gallery.models import GalleryItem, ThumbnailStatus
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 def _load_thumbnail(owner, item: GalleryItem, *, priority: int | None = None) -> None:

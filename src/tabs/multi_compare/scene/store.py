@@ -34,8 +34,9 @@ from tabs.multi_compare.models import (
     slot_ids_in_tree,
 )
 from tabs.multi_compare.scene import layout_constraints, tree_ops
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 @dataclass(frozen=True)

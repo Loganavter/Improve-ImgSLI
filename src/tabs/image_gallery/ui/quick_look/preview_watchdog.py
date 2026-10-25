@@ -18,8 +18,9 @@ from __future__ import annotations
 import logging
 
 from engine.frame.present import PresentDebt, begin_source, should_fire
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 # Tab policy: the Quick Look cover drops on the 2nd settled present (MC
 # parity). Passed explicitly to note_presented — never rely on the engine

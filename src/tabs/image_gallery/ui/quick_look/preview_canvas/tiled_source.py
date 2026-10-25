@@ -16,8 +16,9 @@ from engine.gpu.tiled_image_view import (
     TiledImageSource,
     load_tiled_image_shader,
 )
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 # -- tiled single-source path (additive) --------------------------------------

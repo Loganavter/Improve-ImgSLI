@@ -9,11 +9,12 @@ from core.events import (
     CoreUpdateRequestedEvent,
 )
 from core.main_controller_parts import WorkspaceSessionActions
+from core.log_names import APP_LOGGER_NAME
 
 if TYPE_CHECKING:
     from core.bootstrap import ApplicationContext
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 class MainController(QObject):
 

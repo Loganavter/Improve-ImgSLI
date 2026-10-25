@@ -17,6 +17,7 @@ import logging
 from types import SimpleNamespace
 
 import pytest
+from core.log_names import APP_LOGGER_NAME
 
 
 def _make_canvas(qtbot):
@@ -199,7 +200,7 @@ def test_pump_log_silent_by_default(qtbot, monkeypatch, caplog) -> None:
 
     monkeypatch.delenv("IMGSLI_QL_COVER_DEBUG", raising=False)
     card = _make_canvas(qtbot)
-    with caplog.at_level(logging.DEBUG, logger="ImproveImgSLI"):
+    with caplog.at_level(logging.DEBUG, logger=APP_LOGGER_NAME):
         card._pump_next_frame()
     assert not [r for r in caplog.records if "pump posted" in r.getMessage()]
 
@@ -207,7 +208,7 @@ def test_pump_log_silent_by_default(qtbot, monkeypatch, caplog) -> None:
 def test_pump_log_enabled_with_cover_flag(qtbot, monkeypatch, caplog) -> None:
     monkeypatch.setenv("IMGSLI_QL_COVER_DEBUG", "1")
     card = _make_canvas(qtbot)
-    with caplog.at_level(logging.DEBUG, logger="ImproveImgSLI"):
+    with caplog.at_level(logging.DEBUG, logger=APP_LOGGER_NAME):
         card._pump_next_frame()
     assert [r for r in caplog.records if "pump posted" in r.getMessage()]
 
@@ -250,7 +251,7 @@ def test_failed_tiled_attempt_asks_for_a_backed_off_retry(qtbot, monkeypatch, ca
     monkeypatch.delenv("IMGSLI_QL_COVER_DEBUG", raising=False)
     card = _make_canvas(qtbot)
     full, slow = [], []
-    with caplog.at_level(logging.DEBUG, logger="ImproveImgSLI"):
+    with caplog.at_level(logging.DEBUG, logger=APP_LOGGER_NAME):
         assert _drive_raising(card, monkeypatch, RuntimeError("boom"), full, slow) is False
     assert slow == [1], "the failed attempt must request the retry"
     assert full == [], "and only a backed-off one"
@@ -264,7 +265,7 @@ def test_not_ready_attempt_is_not_logged_as_a_traceback(qtbot, monkeypatch, capl
     card = _make_canvas(qtbot)
     exc = MipCascadeNotReady("Failed to create ql probe mip render target", attempt=1, details="x")
     full, slow = [], []
-    with caplog.at_level(logging.DEBUG, logger="ImproveImgSLI"):
+    with caplog.at_level(logging.DEBUG, logger=APP_LOGGER_NAME):
         assert _drive_raising(card, monkeypatch, exc, full, slow) is False
     assert not [
         r for r in caplog.records if "tiled frame failed open" in r.getMessage()
@@ -276,7 +277,7 @@ def test_unknown_tiled_failure_keeps_its_traceback(qtbot, monkeypatch, caplog) -
     """Anything else is still a real failure and must stay diagnosable."""
     monkeypatch.delenv("IMGSLI_QL_COVER_DEBUG", raising=False)
     card = _make_canvas(qtbot)
-    with caplog.at_level(logging.DEBUG, logger="ImproveImgSLI"):
+    with caplog.at_level(logging.DEBUG, logger=APP_LOGGER_NAME):
         _drive_raising(card, monkeypatch, RuntimeError("boom"), [], [])
     records = [r for r in caplog.records if "tiled frame failed open" in r.getMessage()]
     assert records and records[0].exc_info, "real failures keep the traceback"

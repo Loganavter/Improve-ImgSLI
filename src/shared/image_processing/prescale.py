@@ -12,8 +12,9 @@ import logging
 from engine.store.pixel_ops.resample import write_resampled_to_store
 from shared.image_processing.resample_map import get_resample
 from engine.store.tiled_pixel_store import TiledPixelStore
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 def _as_store(source) -> TiledPixelStore:

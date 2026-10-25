@@ -13,8 +13,9 @@ from tabs.contract import TabContext, TabContract, TabTransitionHint
 from tabs.multi_compare.use_cases import persistence
 from tabs.multi_compare.use_cases.persistence import _LAST_USED_KEY, _STATE_SLOT
 from tabs.use_cases.session_state import SessionState
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 def _filter_image_paths(paths: list[Path]) -> list[Path]:

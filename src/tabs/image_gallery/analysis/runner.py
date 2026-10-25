@@ -39,8 +39,9 @@ from typing import Any
 from engine.analysis.contracts import AxisValue, JournalEntry, ProducerSpec, RunJournal
 from engine.analysis.registry import PRODUCER_ATTR
 from engine.analysis.resolver import Resolution
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 #: Root package whose sub-packages are the auto-discovered analyzers.
 PRODUCERS_PACKAGE = "tabs.image_gallery.analysis.producers"

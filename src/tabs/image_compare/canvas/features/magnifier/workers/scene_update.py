@@ -9,8 +9,9 @@ from tabs.image_compare.canvas.loupe_trace import (
     frame_context_from_widget,
     trace_loupe,
 )
+from core.log_names import APP_LOGGER_NAME
 
-_log = logging.getLogger("ImproveImgSLI.magnifier.scene_update")
+_log = logging.getLogger(f"{APP_LOGGER_NAME}.magnifier.scene_update")
 
 # P1B explicit-state verdict: sig-throttle for the SSIM diff-state log below
 # (rebuild can run repeatedly while a diff is pending — same recipe as

@@ -44,9 +44,10 @@ from tabs.image_compare.plugins.video_editor.services.video_snapshot_rendering i
     SnapshotFrameRenderer,
 )
 from shared.video_policy import CrfPolicy
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
-_vrlog = logging.getLogger("ImproveImgSLI.video_render")
+logger = logging.getLogger(APP_LOGGER_NAME)
+_vrlog = logging.getLogger(f"{APP_LOGGER_NAME}.video_render")
 
 VIDEO_EDITOR_AUTO_CROP = False
 

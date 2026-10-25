@@ -18,6 +18,7 @@ These tests pin the parts that can go wrong quietly:
 from __future__ import annotations
 
 import core.stall_watch as sw
+from core.log_names import APP_LOGGER_NAME
 
 
 def test_disabled_by_default(monkeypatch):
@@ -102,7 +103,7 @@ def test_watchdog_reports_a_real_gui_block(monkeypatch, caplog):
     except Exception:  # pragma: no cover - Qt missing in a stripped env
         pytest.skip("PySide6 not available")
 
-    caplog.set_level(logging.WARNING, logger="ImproveImgSLI.stall_watch")
+    caplog.set_level(logging.WARNING, logger=f"{APP_LOGGER_NAME}.stall_watch")
     app = QApplication.instance() or QApplication([])
 
     monkeypatch.setenv("IMGSLI_STALL_WATCH", "1")

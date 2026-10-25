@@ -24,8 +24,9 @@ from PySide6.QtGui import QIcon
 
 from plugins.settings.search import SearchIndex
 from ui.icon_manager import AppIcon
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 SectionReader = Callable[[object], dict[str, Any]]
@@ -134,7 +135,7 @@ class SettingsRegistry:
                 values = reader(dialog)
             except Exception:
                 import logging
-                logging.getLogger("ImproveImgSLI").exception(
+                logging.getLogger(APP_LOGGER_NAME).exception(
                     "Settings payload reader failed for section %s", section_id
                 )
                 continue
@@ -149,7 +150,7 @@ class SettingsRegistry:
                 values = seeder(source)
             except Exception:
                 import logging
-                logging.getLogger("ImproveImgSLI").exception(
+                logging.getLogger(APP_LOGGER_NAME).exception(
                     "Settings payload seeder failed for section %s", section_id
                 )
                 continue

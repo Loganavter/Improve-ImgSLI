@@ -5,8 +5,9 @@ import logging
 from contextlib import nullcontext
 
 from PySide6.QtCore import QPoint, QPointF, Qt
+from core.log_names import APP_LOGGER_NAME
 
-_log = logging.getLogger("ImproveImgSLI.feature_overlay.interaction")
+_log = logging.getLogger(f"{APP_LOGGER_NAME}.feature_overlay.interaction")
 
 from tabs.image_compare.canvas.registry import registry
 from ui.canvas_infra.viewport.contract import (
@@ -220,7 +221,7 @@ def update_split_for_zoom(widget, new_zoom, new_pan_x, new_pan_y):
                 sync_callback(new_split)
                 synced = True
             except Exception:
-                logging.getLogger("ImproveImgSLI").exception(
+                logging.getLogger(APP_LOGGER_NAME).exception(
                     "Split sync callback failed during view transform"
                 )
         if not synced:

@@ -39,8 +39,9 @@ from tabs.image_gallery.use_cases.action_context import (
     context_for_paths,
 )
 from tabs.image_gallery.use_cases.analysis_batch import end as _ai_batch_end
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 # -- the pure estimator -------------------------------------------------------

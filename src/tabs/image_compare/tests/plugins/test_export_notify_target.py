@@ -43,6 +43,7 @@ from tabs.image_compare.plugins.video_editor.services.export_flow import (
 from tabs.image_compare.services.image_export.save_flow import (
     ExportSaveFlowCoordinator,
 )
+from core.log_names import APP_LOGGER_NAME
 
 BUG_ID = "bug.export_notify_actions"
 
@@ -132,7 +133,7 @@ def test_export_notify_repro_and_fix(tmp_path: Path, caplog) -> None:
     window = _window()
     recorder: _Recorder = window.action_registry
 
-    with caplog.at_level(logging.ERROR, logger="ImproveImgSLI"):
+    with caplog.at_level(logging.ERROR, logger=APP_LOGGER_NAME):
         _ic_coordinator(window)._on_success_notify(str(png))
         _video_flow(window)._notify_export_success(str(video), None)
 

@@ -16,8 +16,9 @@ from ui.icon_manager import themed_icon
 from ui.presenters.main_window.workspace import (
     on_workspace_tab_close_requested,
 )
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 _SESSION_TITLE_KEY_TEMPLATES = (
     "workspace.session_types.{session_type}",

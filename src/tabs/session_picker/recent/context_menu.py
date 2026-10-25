@@ -34,6 +34,7 @@ from tabs.session_picker.icons import Icon as SessionPickerIcon
 from tabs.session_picker.recent.cards import format_session_types
 from ui.widgets.shelf.relative_time import format_absolute_timestamp
 from ui.context_menu.manager import open_context_menu_entries
+from core.log_names import APP_LOGGER_NAME
 
 
 def sort_view_menu_entries(
@@ -237,7 +238,7 @@ def open_recent_empty_menu(
         try:
             import logging as _logging
 
-            _logging.getLogger("ImproveImgSLI").debug(
+            _logging.getLogger(APP_LOGGER_NAME).debug(
                 "[recent-menu] empty menu triggered action=%s data=%r", action_id, data
             )
         except Exception:

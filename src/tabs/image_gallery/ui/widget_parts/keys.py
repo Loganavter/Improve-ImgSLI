@@ -12,8 +12,9 @@ from __future__ import annotations
 import logging
 
 from PySide6.QtCore import Qt
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 def attach_controller(owner, controller) -> None:

@@ -8,8 +8,9 @@ import numpy as np
 from PIL import Image
 from shared.analysis.output import finalize_diff_output
 from engine.store.regions import build_uniform_tile_grid
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 # Lazy for the same reason as metrics.py: skimage pulls numpy+scipy+skimage
 # (2.4-3.5 s of GUI-thread stall on the frozen build, measured 2026-10-24).

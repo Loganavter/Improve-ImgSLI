@@ -17,8 +17,9 @@ Audit-Meta: pattern=state-machine reason="single CSD menu strip — custom chrom
 from __future__ import annotations
 
 import logging
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 def csd_debug(*args) -> None:
@@ -61,7 +62,7 @@ from sli_ui_toolkit.widgets import (
 )
 from ui.theming import resolve_theme_color
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 _DANGER_COLOR = QColor("#e5484d")

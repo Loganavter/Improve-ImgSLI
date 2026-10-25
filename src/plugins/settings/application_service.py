@@ -29,6 +29,7 @@ from core.state_management.actions import (
 from shared_toolkit.ui.managers.font_manager import FontManager
 from shared.video_policy import FpsPolicy, clamp_fps
 from ui.theming import refresh_application_styles
+from core.log_names import APP_LOGGER_NAME
 
 from .models import SettingsDialogData
 from .ui_appearance import apply_appearance
@@ -161,7 +162,7 @@ class SettingsApplicationService(QObject):
             if callable(rebuild):
                 rebuild(lang_code)
         except Exception:
-            logging.getLogger("ImproveImgSLI").exception(
+            logging.getLogger(APP_LOGGER_NAME).exception(
                 "Failed to rebuild the CSD menu after a language change"
             )
 
@@ -220,7 +221,7 @@ class SettingsApplicationService(QObject):
                         font_manager.get_font_path_for_image_text(self.store)
                     )
             except Exception:
-                logging.getLogger("ImproveImgSLI").warning(
+                logging.getLogger(APP_LOGGER_NAME).warning(
                     "font_path_absolute sync failed after font change",
                     exc_info=True,
                 )
@@ -394,7 +395,7 @@ class SettingsApplicationService(QObject):
         except Exception:
             import logging
 
-            logging.getLogger("ImproveImgSLI").exception(
+            logging.getLogger(APP_LOGGER_NAME).exception(
                 "Failed to resync action shortcuts after keyboard override apply"
             )
 

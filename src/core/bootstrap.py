@@ -17,9 +17,11 @@ from services.system.notifications import NotificationService
 from sli_ui_toolkit.core import setup_logging
 from sli_ui_toolkit.widgets import install_application_tooltips
 from shared_toolkit.ui.managers.ui_resource_manager import UIResourceManager
+from core.log_dir_migration import migrate_log_directory_once
+from core.log_names import APP_LOGGER_NAME
 from sli_ui_toolkit.theme import ThemeManager
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 class ApplicationContext:
     def __init__(
@@ -210,7 +212,11 @@ class ApplicationContext:
         effective_debug = self.debug_mode or getattr(
             self.store.settings, "debug_mode_enabled", False
         )
-        setup_logging("ImproveImgSLI", effective_debug, "IMPROVE_DEBUG")
+        # Import the pre-rename log directory before handlers are attached:
+        # setup_logging derives the directory from the logger name, and the
+        # migration only aliases (never moves) an existing POSIX directory.
+        migrate_log_directory_once()
+        setup_logging(APP_LOGGER_NAME, effective_debug, "IMPROVE_DEBUG")
 
         # Logger-ready mark: startup marks emitted before this point went to
         # an unconfigured logger and were silently dropped — this mark is the

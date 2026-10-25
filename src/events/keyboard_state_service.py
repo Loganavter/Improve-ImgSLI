@@ -4,8 +4,9 @@ from dataclasses import dataclass
 import logging
 
 from PySide6.QtCore import Qt
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 @dataclass(slots=True, frozen=True)
 class KeyboardStateResult:

@@ -6,18 +6,19 @@ from PySide6.QtWidgets import QApplication, QWidget
 
 from devtools.ui_inspector.app_controller import AppInspectorController
 from devtools.ui_inspector.app_window import AppInspectorWindow
+from core.log_names import APP_LOGGER_NAME
 
 
 class _ToolkitLogBridge(logging.Handler):
     """Forward ``sli_ui_toolkit.inspector`` records into the
-    ``ImproveImgSLI`` pipeline so the inspector's own diagnostics
+    ``BlinkTable`` pipeline so the inspector's own diagnostics
     (``[inspector-preview]`` lines) reach the app's log file — the app
-    configures handlers only on the ``ImproveImgSLI`` logger, so toolkit
+    configures handlers only on the ``BlinkTable`` logger, so toolkit
     records would otherwise die at the root logger."""
 
     def emit(self, record: logging.LogRecord) -> None:
         try:
-            logging.getLogger("ImproveImgSLI").handle(record)
+            logging.getLogger(APP_LOGGER_NAME).handle(record)
         except Exception:
             pass
 

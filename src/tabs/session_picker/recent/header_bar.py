@@ -37,8 +37,9 @@ from services.io.recent_projects import (
 )
 from tabs.session_picker.icons import Icon as SessionPickerIcon
 from tabs.session_picker.icons import get_icon as get_session_picker_icon
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 #: Design px gap between the sort / view chips; resolved at use time and
 #: re-resolved on a live ``UiScale`` change.

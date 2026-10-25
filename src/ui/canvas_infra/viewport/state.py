@@ -4,6 +4,7 @@ import sys
 from dataclasses import dataclass
 
 from shared.debug_flags import env_flag as _env_flag
+from core.log_names import APP_LOGGER_NAME
 
 _PAN_DEBUG = _env_flag("IMGSLI_RESIZE_DEBUG")
 
@@ -12,7 +13,7 @@ def _pan_debug(host, kind: str, old: tuple[float, float], new: tuple[float, floa
         return
     frame = sys._getframe(2)
     import logging
-    logging.getLogger("ImproveImgSLI").debug(
+    logging.getLogger(APP_LOGGER_NAME).debug(
         "[pan-debug] %s %s (%.4f, %.4f) -> (%.4f, %.4f) from %s:%d",
         kind,
         type(host).__name__,

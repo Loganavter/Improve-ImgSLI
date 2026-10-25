@@ -23,9 +23,10 @@ from ui.actions.palette.common import (
 )
 from ui.actions.palette.row import ActionPaletteRow
 from ui.actions.registry import get_action_registry
+from core.log_names import APP_LOGGER_NAME
 from utils.resource_loader import resource_path
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 _DIALOG_WIDTH = 560
 _DIALOG_HEIGHT = 420# Coalesce fast typing into one rebuild instead of tearing down/recreating

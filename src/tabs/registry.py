@@ -23,8 +23,9 @@ from tabs.use_cases import (
     session_lifecycle,
     session_persistence,
 )
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 TabDiscoveryTier = Literal["bootstrap", "deferred", "all"]
 

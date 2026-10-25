@@ -23,8 +23,9 @@ from sli_ui_toolkit.workers import GenericWorker
 
 from tabs.image_gallery.controller import TIE_EPSILON
 from tabs.image_gallery.models import GalleryItem
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 def _is_tie(owner, a: GalleryItem, b: GalleryItem, epsilon: float = TIE_EPSILON) -> bool:

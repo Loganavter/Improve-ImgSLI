@@ -16,8 +16,9 @@ import logging
 from pathlib import Path
 
 from tabs.image_gallery.models import CompareBrief, TieBreakResult
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 def vlm_cache_dir() -> Path:

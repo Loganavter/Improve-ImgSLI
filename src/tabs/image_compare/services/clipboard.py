@@ -16,8 +16,9 @@ from shared.clipboard_paste import (
     ClipboardPasteCoordinator,
     collect_clipboard_image_items,
 )
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 class ClipboardService:

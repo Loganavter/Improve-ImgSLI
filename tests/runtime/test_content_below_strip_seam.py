@@ -19,6 +19,7 @@ from shared_toolkit.ui.overlay_layer import (
     get_content_overlay_layer,
     get_overlay_layer,
 )
+from core.log_names import APP_LOGGER_NAME
 
 WINDOW_W, WINDOW_H = 800, 600
 STRIP_H = 100  # tab-strip band on top; content lives strictly below it.
@@ -92,7 +93,7 @@ def test_fallback_returns_window_layer_when_content_host_absent(qapp, caplog):
     window.overlay_layer = OverlayLayer(window)
     child = QWidget(window)
     try:
-        with caplog.at_level(logging.WARNING, logger="ImproveImgSLI"):
+        with caplog.at_level(logging.WARNING, logger=APP_LOGGER_NAME):
             layer = get_content_overlay_layer(child)
         assert layer is window.overlay_layer
         assert any(

@@ -28,6 +28,7 @@ from core.state_management.slot_reducers import (
     unregister_state_slot_reducer,
 )
 from core.store import Store
+from core.log_names import APP_LOGGER_NAME
 
 
 @pytest.fixture()
@@ -47,7 +48,7 @@ def _action(action_type: str):
 def test_transact_without_dispatcher_raises_loudly(caplog):
     store = Store()
     assert store.get_dispatcher() is None
-    with caplog.at_level(logging.ERROR, logger="ImproveImgSLI"):
+    with caplog.at_level(logging.ERROR, logger=APP_LOGGER_NAME):
         with pytest.raises(RuntimeError, match="requires a dispatcher"):
             store.transact([_action("SET_SPLIT_POSITION")], scope="document")
     assert any("transact" in r.message for r in caplog.records)
@@ -65,7 +66,7 @@ def test_transact_sequential_fallback_logs_and_reraises(caplog):
             raise ValueError("boom")
 
     store.set_dispatcher(_BoomDispatcher())
-    with caplog.at_level(logging.ERROR, logger="ImproveImgSLI"):
+    with caplog.at_level(logging.ERROR, logger=APP_LOGGER_NAME):
         with pytest.raises(ValueError, match="boom"):
             store.transact(
                 [_action("SET_SPLIT_POSITION"), _action("SET_SPLIT_POSITION")],
@@ -80,7 +81,7 @@ def test_transact_sequential_fallback_logs_and_reraises(caplog):
 def test_publish_emit_error_logged_not_swallowed(caplog):
     store = Store()
     store.on_change(lambda _scope: (_ for _ in ()).throw(ValueError("bad subscriber")))
-    with caplog.at_level(logging.ERROR, logger="ImproveImgSLI"):
+    with caplog.at_level(logging.ERROR, logger=APP_LOGGER_NAME):
         store.publish("lod_available")  # must not raise
     assert any("publish" in r.message for r in caplog.records)
 
@@ -127,7 +128,7 @@ def test_slot_register_duplicate_warns_and_replaces(_saved_slot_reducers, caplog
     first = lambda state, action: state
     second = lambda state, action: state
     register_state_slot_reducer("dup.slot", first)
-    with caplog.at_level(logging.WARNING, logger="ImproveImgSLI"):
+    with caplog.at_level(logging.WARNING, logger=APP_LOGGER_NAME):
         register_state_slot_reducer("dup.slot", second)
     assert any("duplicate" in r.message for r in caplog.records)
     assert _slot_reducers_module._SLOT_REDUCERS["dup.slot"] is second
@@ -136,7 +137,7 @@ def test_slot_register_duplicate_warns_and_replaces(_saved_slot_reducers, caplog
 def test_slot_register_same_reducer_stays_quiet(_saved_slot_reducers, caplog):
     reducer = lambda state, action: state
     register_state_slot_reducer("same.slot", reducer)
-    with caplog.at_level(logging.WARNING, logger="ImproveImgSLI"):
+    with caplog.at_level(logging.WARNING, logger=APP_LOGGER_NAME):
         register_state_slot_reducer("same.slot", reducer)
     assert not [r for r in caplog.records if "duplicate" in r.message]
 
@@ -199,7 +200,7 @@ def test_dispatcher_retry_exhaustion_logged(caplog, _saved_slot_reducers):
             )
 
     dispatcher._reducer = _FreshReducer()
-    with caplog.at_level(logging.ERROR, logger="ImproveImgSLI"):
+    with caplog.at_level(logging.ERROR, logger=APP_LOGGER_NAME):
         dispatcher.dispatch(_action("SET_SPLIT_POSITION"), scope="viewport")
     assert any("exhausted" in r.message for r in caplog.records)
     assert store.events == []

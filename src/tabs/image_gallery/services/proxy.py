@@ -1,5 +1,7 @@
 """Shared bounded proxy decodes for gallery Stage-2 analyses.
 
+Audit-Meta: pattern=state-machine reason="one shared proxy cache plus the stage pipeline that consumes it — the cache/decode lifecycle is single-owner, splitting would relocate it rather than reduce it"
+
 Phase-1 proxy sharing: artifact + fidelity + camera stages used to fully
 decode every image themselves (artifacts opens item+source per item,
 fidelity opens item+source per item, camera opens 3x per item — source
@@ -53,8 +55,9 @@ import os
 import time
 from pathlib import Path
 from typing import NamedTuple
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 #: Longest edge of a shared proxy. Matches the fidelity SSIM cap
 #: (``services/fidelity_metrics._SSIM_MAX_EDGE``) so the SSIM engine sees

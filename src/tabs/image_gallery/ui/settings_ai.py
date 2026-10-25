@@ -61,6 +61,7 @@ from tabs.image_gallery.services.ai_settings_store import (
     AiSettingsStore,
     DEFAULT_BASE_URL,
 )
+from core.log_names import APP_LOGGER_NAME
 
 # Effort picker order — maps a ComboBox index to a stored effort value.
 _EFFORT_CHOICES = REASONING_EFFORTS
@@ -137,7 +138,7 @@ AI_GROUP = group(
 )
 SEARCH = SearchIndex.of(AI_GROUP)
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 def _start_thread_task(task, on_done):

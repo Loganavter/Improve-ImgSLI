@@ -14,8 +14,9 @@ from tabs.image_compare.plugins.video_editor.widgets.timeline import (
     VideoTimelineWidget,
 )
 from ui.theming import polish_themed_dialog
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 # Single source for the presenter→dialog wiring (A-shell S1): every

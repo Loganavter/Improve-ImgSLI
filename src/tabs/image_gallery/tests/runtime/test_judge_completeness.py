@@ -41,6 +41,7 @@ from tabs.image_gallery.services.jev_client import (
     rank_series_jev_detailed,
 )
 from tabs.image_gallery.use_cases import pipeline_stages as ps
+from core.log_names import APP_LOGGER_NAME
 
 
 def _ai_item(name: str, **axes) -> GalleryItem:
@@ -261,7 +262,7 @@ def test_late_score_during_in_flight_rank_triggers_exactly_one_rerank(
     paths = [str(it.path) for it in items]
 
     ctrl.hold_next = True
-    with caplog.at_level(logging.INFO, logger="ImproveImgSLI"):
+    with caplog.at_level(logging.INFO, logger=APP_LOGGER_NAME):
         ctrl._run_jev_ranks()  # batch A: complete vector, in flight
         assert ctrl.launches == [paths]
         assert ps.rank_completeness(items, ctrl.vectors[0]) == (6, 6, "")
@@ -299,7 +300,7 @@ def test_partial_series_is_not_ranked_until_every_member_is_scored(
     ctrl = _RankCtrl([_series(*items)], items, cache_dir=tmp_path)
     paths = [str(it.path) for it in items]
 
-    with caplog.at_level(logging.INFO, logger="ImproveImgSLI"):
+    with caplog.at_level(logging.INFO, logger=APP_LOGGER_NAME):
         ctrl._run_jev_ranks()
 
     assert ctrl.launches == [], "an order over 5 of 6 members must not be dispatched"
@@ -309,7 +310,7 @@ def test_partial_series_is_not_ranked_until_every_member_is_scored(
     items[-1].analysis = AiAnalysisResult(
         description="", tags=(), model="m", analyzed_at_iso="t", axes={"ssim": 40}
     )
-    with caplog.at_level(logging.INFO, logger="ImproveImgSLI"):
+    with caplog.at_level(logging.INFO, logger=APP_LOGGER_NAME):
         ctrl._run_jev_ranks()
 
     assert len(ctrl.launches) == 1
@@ -354,7 +355,7 @@ def test_two_alias_reply_yields_a_score_based_tail_and_traces_it(
     }
 
     ctrl = _RankCtrl([_series(*items)], items, cache_dir=tmp_path)
-    with caplog.at_level(logging.INFO, logger="ImproveImgSLI"):
+    with caplog.at_level(logging.INFO, logger=APP_LOGGER_NAME):
         GalleryController._apply_jev_outcome(ctrl, items, outcome)
     assert "jev rank applied: items=6 source=jev tail=deterministic" in caplog.text
 

@@ -11,8 +11,9 @@ from shared.image_extensions import ACCEPTED_IMAGE_EXTENSIONS
 from tabs.image_gallery.debug import gallery_dnd_debug as _scan_log
 
 from tabs.image_gallery.models import GalleryItem
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 IMAGE_EXTENSIONS = ACCEPTED_IMAGE_EXTENSIONS
 

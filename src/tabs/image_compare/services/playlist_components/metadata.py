@@ -11,8 +11,9 @@ from tabs.image_compare.services.playlist_components.common import (
     get_presenter,
     get_target_list,
 )
+from core.log_names import APP_LOGGER_NAME
 
-_log = logging.getLogger("ImproveImgSLI.playlist.metadata")
+_log = logging.getLogger(f"{APP_LOGGER_NAME}.playlist.metadata")
 
 _UNSET: object = object()
 

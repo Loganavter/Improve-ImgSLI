@@ -8,8 +8,9 @@ from core.plugin_system.interfaces import IControllablePlugin, ISessionPlugin
 from core.plugin_system.lifecycle import PluginLifecycleManager
 from core.plugin_system.plugin import Plugin
 from core.session_blueprints import SessionBlueprint
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI.plugin.coordinator")
+logger = logging.getLogger(f"{APP_LOGGER_NAME}.plugin.coordinator")
 
 class PluginCoordinator:
     def __init__(self, event_bus: EventBus | None = None):

@@ -8,8 +8,9 @@ from engine.store.tiled_pixel_store import TiledPixelStore
 from engine.cache.display_image_picker import pick_display_image
 from engine.cache.image_identity import image_uid
 from tabs.image_compare.canvas.registry import registry
+from core.log_names import APP_LOGGER_NAME
 
-_mlog = logging.getLogger("ImproveImgSLI.magnifier.render_flow")
+_mlog = logging.getLogger(f"{APP_LOGGER_NAME}.magnifier.render_flow")
 from tabs.image_compare.canvas.presentation.surface import apply_store_to_canvas
 from tabs.image_compare.canvas.helpers import get_canvas_widget, reset_canvas_overlays
 from tabs.image_compare.canvas.scene import build_render_scene

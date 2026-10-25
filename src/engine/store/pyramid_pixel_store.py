@@ -20,11 +20,12 @@ from typing import TYPE_CHECKING, Callable
 import numpy as np
 
 from engine.store.tiled_pixel_store import TiledPixelStore
+from core.log_names import APP_LOGGER_NAME
 
 if TYPE_CHECKING:
     from PySide6.QtGui import QImage
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 # Coarsest level stops once both dimensions fit a preview-magnitude surface.
 COARSEST_MIN_DIM = 1024

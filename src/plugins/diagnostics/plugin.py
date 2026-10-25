@@ -25,14 +25,15 @@ from PySide6.QtCore import QObject, Qt, QTimer, Signal, qInstallMessageHandler
 
 from core.plugin_system import Plugin, plugin
 from core.plugin_system.interfaces import IControllablePlugin, IServicePlugin
+from core.log_names import APP_LOGGER_NAME
 
 from . import collect, report
 from .breadcrumbs import BreadcrumbBuffer
 from .logring import DEFAULT_LOGRING_CAPACITY, RingBuffer, RingBufferHandler
 
-logger = logging.getLogger("ImproveImgSLI.diagnostics")
+logger = logging.getLogger(f"{APP_LOGGER_NAME}.diagnostics")
 
-LOGGER_NAME = "ImproveImgSLI"
+LOGGER_NAME = APP_LOGGER_NAME
 QT_MESSAGE_RING_CAPACITY = 100
 
 # Settings included in the report (scalars only; paths are redacted anyway).

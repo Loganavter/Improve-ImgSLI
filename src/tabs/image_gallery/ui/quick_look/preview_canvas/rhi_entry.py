@@ -28,11 +28,12 @@ from engine.gpu.tiled_image_view import (
 )
 from engine.overlay import TexturedOverlayBinding
 from tabs.image_gallery.ui.quick_look.preview_canvas_host import settle_first_frame
+from core.log_names import APP_LOGGER_NAME
 
 from . import batches as _batches
 from .source import _overlay_shader_dir
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 # Identity clip matrix for the fullscreen shell quad (the preview has no
 # viewport transform -- aspect-fit is baked into the uploaded raster).

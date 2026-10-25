@@ -26,13 +26,14 @@ import logging
 import time
 
 from shared.debug_flags import env_flag as _env_flag
+from core.log_names import APP_LOGGER_NAME
 
 try:  # Qt is optional at import time; install degrades gracefully without it.
     from PySide6.QtCore import QEvent, QObject, Qt
 except Exception:  # pragma: no cover - headless import guard
     QEvent = QObject = Qt = None  # type: ignore[assignment]
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 _FLAG = "SLI_FOCUS_DEBUG"
 
@@ -211,7 +212,7 @@ else:  # pragma: no cover - Qt unavailable
 def install_focus_tracer(app=None) -> bool:
     """Connect ``focusChanged`` logging. Idempotent; no-op when flag is off.
 
-    When the flag is on, also drops the ``ImproveImgSLI`` logger level to
+    When the flag is on, also drops the ``BlinkTable`` logger level to
     DEBUG if something else set it higher — otherwise the tracer's own
     ``logger.debug`` lines never reach any handler and the flag looks dead.
     Installs an app-level ``WindowStateChange`` event filter alongside the

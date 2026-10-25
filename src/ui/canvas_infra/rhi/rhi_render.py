@@ -8,6 +8,7 @@ from PySide6.QtGui import QColor, QPalette
 from engine.gpu.mip_cascade import MipCascadeNotReady
 
 from shared.debug_flags import env_flag as _env_flag
+from core.log_names import APP_LOGGER_NAME
 
 
 def resolve_clear_color(widget) -> QColor:
@@ -65,7 +66,7 @@ def _log_clear_color(widget, color: QColor, *, source: str) -> None:
             return
         import logging
 
-        logging.getLogger("ImproveImgSLI").info(
+        logging.getLogger(APP_LOGGER_NAME).info(
             "[ic-first-frame] clear color %s rgba(%d,%d,%d,%d) widget=%s",
             source,
             color.red(),
@@ -100,7 +101,7 @@ def defer_not_ready_render(widget, label: str, error: BaseException) -> None:
     widget._not_ready_retries = retries
     widget._not_ready_delay_ms = min(max(delay, _NOT_READY_INITIAL_MS) * 2, _NOT_READY_MAX_MS)
     if retries == 1:
-        logging.getLogger("ImproveImgSLI").info(
+        logging.getLogger(APP_LOGGER_NAME).info(
             "[render-not-ready] %s: %s; keeping the last frame, retrying in %d ms",
             label,
             error,

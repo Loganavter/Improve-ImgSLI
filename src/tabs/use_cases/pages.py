@@ -8,12 +8,13 @@ from typing import TYPE_CHECKING, Any
 from PySide6.QtWidgets import QStackedWidget, QWidget
 
 from tabs.use_cases import capability_routing
+from core.log_names import APP_LOGGER_NAME
 
 if TYPE_CHECKING:
     from tabs.contract import TabContext, TabContract
     from tabs.registry import TabRegistry
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 def install_pages(

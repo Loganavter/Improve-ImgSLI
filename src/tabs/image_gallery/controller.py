@@ -46,8 +46,9 @@ from tabs.image_gallery.services.filtering import filter_items
 from tabs.image_gallery.services.thumbnail_cache import (  # noqa: F401
     render_and_cache_thumbnail,
 )
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 class _ActivityPhaseBridge(QObject):

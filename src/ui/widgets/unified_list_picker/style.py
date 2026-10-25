@@ -81,12 +81,12 @@ class _UnifiedFlyoutStyleMixin(_UnifiedFlyoutBase):
     def hideEvent(self, event):
         # The picker is a plain QWidget (not a BaseFlyout), so its close does
         # NOT route through BaseFlyout.hide() — trace the caller here instead
-        # (off by default; enabled via the ImproveImgSLI debug log level).
+        # (off by default; enabled via the BlinkTable debug log level).
         # DISABLED — remove the "# " comment prefix to re-enable.
         # import logging as _logging
         # import traceback as _traceback
         #
-        # _logging.getLogger("ImproveImgSLI").debug(
+        # _logging.getLogger("BlinkTable").debug(
         #     "[unified-picker] hideEvent called by:\n%s",
         #     "".join(_traceback.format_stack()[:-1]),
         # )

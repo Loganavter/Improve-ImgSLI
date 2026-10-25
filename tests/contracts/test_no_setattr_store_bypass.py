@@ -57,7 +57,7 @@ from .test_no_direct_store_mutation import (
 ALLOWLIST: frozenset[tuple[str, int, str]] = frozenset(
     {
         # -- settings presenter fallbacks (dispatch-failure path) --
-        ("src/plugins/settings/presenter.py", 26, "self.view_state"),
+        ("src/plugins/settings/presenter.py", 27, "self.view_state"),
         ("src/plugins/settings/presenter_parts/view_state.py", 44, "self.store.viewport.render_config"),
         ("src/plugins/settings/presenter_parts/view_state.py", 48, "self.store.viewport.render_config"),
         # -- canvas feature-state snapshot/projection writes (view_state param) --
@@ -92,9 +92,9 @@ ALLOWLIST: frozenset[tuple[str, int, str]] = frozenset(
         ("src/tabs/image_compare/canvas/features/magnifier/scene/apply.py", 221, "geometry_state"),
         ("src/tabs/image_compare/canvas/features/magnifier/scene/apply.py", 223, "geometry_state"),
         # -- magnifier worker cache writes --
-        ("src/tabs/image_compare/canvas/features/magnifier/workers/diff_cache.py", 142, "presenter.store.viewport.session_data.render_cache"),
-        ("src/tabs/image_compare/canvas/features/magnifier/workers/diff_cache.py", 147, "presenter.store.viewport.session_data.render_cache"),
-        ("src/tabs/image_compare/canvas/features/magnifier/workers/diff_cache.py", 151, "presenter.store.viewport.session_data.render_cache"),
+        ("src/tabs/image_compare/canvas/features/magnifier/workers/diff_cache.py", 143, "presenter.store.viewport.session_data.render_cache"),
+        ("src/tabs/image_compare/canvas/features/magnifier/workers/diff_cache.py", 148, "presenter.store.viewport.session_data.render_cache"),
+        ("src/tabs/image_compare/canvas/features/magnifier/workers/diff_cache.py", 152, "presenter.store.viewport.session_data.render_cache"),
         ("src/tabs/image_compare/canvas/features/magnifier/workers/result_handlers.py", 29, "presenter.store.viewport.interaction_state"),
         ("src/tabs/image_compare/canvas/features/magnifier/workers/result_handlers.py", 33, "presenter.store.viewport.interaction_state"),
         # -- presentation geometry scratch --
@@ -116,20 +116,20 @@ ALLOWLIST: frozenset[tuple[str, int, str]] = frozenset(
         # NOTE: lines shifted by the W3c box-aware analysis wave
         # (get_crop_service injection + box plumbing in cached_diff/metrics;
         # same fallback sites, not new bypasses).
-        ("src/tabs/image_compare/services/analysis/cached_diff.py", 36, "render_cache"),
-        ("src/tabs/image_compare/services/analysis/cached_diff.py", 41, "render_cache"),
-        ("src/tabs/image_compare/services/analysis/cached_diff.py", 54, "self.store.viewport.session_data.render_cache"),
-        ("src/tabs/image_compare/services/analysis/cached_diff.py", 273, "self.store.viewport.session_data.render_cache"),
-        ("src/tabs/image_compare/services/analysis/cached_diff.py", 278, "self.store.viewport.session_data.render_cache"),
-        ("src/tabs/image_compare/services/analysis/metrics.py", 108, "self.store.viewport.session_data.image_state"),
-        ("src/tabs/image_compare/services/analysis/metrics.py", 122, "self.store.viewport.session_data.image_state"),
+        ("src/tabs/image_compare/services/analysis/cached_diff.py", 37, "render_cache"),
+        ("src/tabs/image_compare/services/analysis/cached_diff.py", 42, "render_cache"),
+        ("src/tabs/image_compare/services/analysis/cached_diff.py", 55, "self.store.viewport.session_data.render_cache"),
+        ("src/tabs/image_compare/services/analysis/cached_diff.py", 274, "self.store.viewport.session_data.render_cache"),
+        ("src/tabs/image_compare/services/analysis/cached_diff.py", 279, "self.store.viewport.session_data.render_cache"),
+        ("src/tabs/image_compare/services/analysis/metrics.py", 109, "self.store.viewport.session_data.image_state"),
+        ("src/tabs/image_compare/services/analysis/metrics.py", 123, "self.store.viewport.session_data.image_state"),
         # NOTE: lines shifted 355/357 → 359/361 by the S3 engine-next export
         # seam (logging import + LOD-probe call in build_render_plan; same
         # cached_diff fallback sites, not new bypasses), then back
         # 359/361 → 355/357 by the D2 dead-code sweep (duplicate
         # query_active_magnifier_divider_thickness body removed).
-        ("src/tabs/image_compare/services/snapshot_render_plan_builder.py", 355, "self.store.viewport.session_data.render_cache"),
-        ("src/tabs/image_compare/services/snapshot_render_plan_builder.py", 357, "self.store.viewport.session_data.render_cache"),
+        ("src/tabs/image_compare/services/snapshot_render_plan_builder.py", 356, "self.store.viewport.session_data.render_cache"),
+        ("src/tabs/image_compare/services/snapshot_render_plan_builder.py", 358, "self.store.viewport.session_data.render_cache"),
         # -- UI settings / transient interpolation previews --
         ("src/tabs/image_compare/ui/settings_persistence.py", 68, "image_state"),
         ("src/tabs/image_compare/ui/settings_persistence.py", 69, "image_state"),
@@ -138,8 +138,8 @@ ALLOWLIST: frozenset[tuple[str, int, str]] = frozenset(
         ("src/tabs/image_compare/ui/transient_interpolation.py", 229, "host.store.viewport.render_config"),
         ("src/tabs/image_compare/ui/transient_interpolation.py", 240, "host.store.viewport.render_config"),
         ("src/tabs/image_compare/use_cases/navigation.py", 140, "controller.store.viewport.render_config"),
-        ("src/tabs/image_compare/use_cases/slot.py", 411, "document"),
-        ("src/tabs/image_compare/use_cases/slot.py", 455, "document"),
+        ("src/tabs/image_compare/use_cases/slot.py", 412, "document"),
+        ("src/tabs/image_compare/use_cases/slot.py", 456, "document"),
         # -- unified list picker document list writes --
         ("src/ui/widgets/unified_list_picker/common.py", 246, "document"),
         ("src/ui/widgets/unified_list_picker/common.py", 248, "document"),
@@ -156,7 +156,7 @@ ALLOWLIST: frozenset[tuple[str, int, str]] = frozenset(
 # (same _write_document fallback site, not a migration).
 PENDING_MIGRATION: frozenset[tuple[str, int, str]] = frozenset(
     {
-        ("src/tabs/image_compare/use_cases/persistence.py", 265, "session.document"),
+        ("src/tabs/image_compare/use_cases/persistence.py", 266, "session.document"),
     }
 )
 

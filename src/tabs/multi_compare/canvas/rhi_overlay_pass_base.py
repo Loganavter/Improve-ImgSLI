@@ -35,5 +35,6 @@ from tabs.multi_compare.scene.resources import (
     vertex_input_layout,
 )
 from ui.canvas_infra.scene.pass_contract import CanvasRenderPass
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)

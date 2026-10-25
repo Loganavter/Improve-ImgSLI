@@ -19,8 +19,9 @@ from tabs.image_compare.presenters.toolbar.orientation import (
     on_orientation_right_clicked,
 )
 from tabs.image_compare.presenters.toolbar.state import check_name_lengths
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 _WARNED_UNAVAILABLE_TOOLBAR_CONTROLS: set[str] = set()
 
 # Connection ownership for the disconnect mirror below: every widget-signal

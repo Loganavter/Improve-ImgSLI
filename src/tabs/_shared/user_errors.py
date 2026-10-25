@@ -16,8 +16,9 @@ from __future__ import annotations
 import logging
 import os
 from typing import Any
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 try:
     from sli_ui_toolkit.i18n import tr as _tr

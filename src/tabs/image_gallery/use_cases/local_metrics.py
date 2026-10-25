@@ -36,8 +36,9 @@ from tabs.image_gallery.debug import gallery_camera_disabled as _camera_disabled
 from tabs.image_gallery.debug import gallery_debug as _dbg
 from tabs.image_gallery.debug import gallery_fidelity_disabled as _fidelity_disabled
 from tabs.image_gallery.models import ActivityPhase, Mode
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 def kill_switch_flags() -> dict:

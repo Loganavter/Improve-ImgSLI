@@ -26,11 +26,12 @@ import logging
 from typing import TYPE_CHECKING
 
 from core.nav_debug import nav_debug
+from core.log_names import APP_LOGGER_NAME
 
 if TYPE_CHECKING:
     from PySide6.QtWidgets import QWidget
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 def register_app_shell_navigation(window: "QWidget") -> None:

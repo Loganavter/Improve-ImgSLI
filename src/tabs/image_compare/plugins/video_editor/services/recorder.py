@@ -12,8 +12,9 @@ from tabs.image_compare.plugins.video_editor.services.keyframing import (
     KeyframeToolAdapter,
     KeyframedRecording,
 )
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 def _video_debug(msg: str, *args, **kwargs) -> None:

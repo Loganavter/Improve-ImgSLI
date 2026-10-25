@@ -12,8 +12,9 @@ import logging
 from pathlib import Path
 
 from shared.clipboard_paste import ClipboardPasteCoordinator
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 class ClipboardService:

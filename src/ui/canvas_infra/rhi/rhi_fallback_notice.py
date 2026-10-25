@@ -16,8 +16,9 @@ from ui.canvas_infra.rhi.rhi_backend import (
     platform_rhi_requirement_keys,
     take_rhi_fallback_notice,
 )
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI.rhi")
+logger = logging.getLogger(f"{APP_LOGGER_NAME}.rhi")
 
 
 def _backend_display_name(backend: str, lang: str) -> str:

@@ -9,8 +9,9 @@ from resources.translations import tr
 from ui.icon_manager import AppIcon
 from ui.main_window.layouts import LayoutComposer
 from ui.widgets.workspace_tab_strip import WorkspaceTabStrip
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 def _widget_in_content_subtree(widget, content) -> bool:

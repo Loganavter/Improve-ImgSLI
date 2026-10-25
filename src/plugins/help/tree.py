@@ -15,9 +15,10 @@ from typing import Any, Literal
 
 from plugins.help.contribution import HelpHubContribution
 from plugins.help.meta import split_frontmatter
+from core.log_names import APP_LOGGER_NAME
 from utils.resource_loader import resource_path
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 HelpNodeKind = Literal["hub", "page"]
 IconResolver = Callable[[str], Any]

@@ -42,8 +42,9 @@ from __future__ import annotations
 
 import logging
 import threading
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 #: Learned metrics are somewhat scale-sensitive; a fixed cap keeps the ranking
 #: stable across items and bounds CPU cost in the background worker.

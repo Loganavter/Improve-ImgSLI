@@ -41,6 +41,7 @@ from pathlib import Path
 from typing import Callable
 
 from tabs.image_gallery.models import AiAnalysisResult
+from core.log_names import APP_LOGGER_NAME
 
 from .errors import (
     AiAuthError,
@@ -110,7 +111,7 @@ from .transport import (
     call_sync,
 )
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 #: Env knob for the adaptive stop rule: ``0`` restores the old fixed-k loop
 #: (every one of the ``sample_count`` draws is spent); unset or ``1`` = adaptive.

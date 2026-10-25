@@ -7,6 +7,7 @@ import pkgutil
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
+from core.log_names import APP_LOGGER_NAME
 
 StartupTier = Literal["bootstrap", "deferred"]
 
@@ -16,7 +17,7 @@ _TABS_ROOT = _SRC / "tabs"
 
 _SKIP_TAB_PACKAGES = frozenset({"contract", "registry"})
 
-logger = logging.getLogger("ImproveImgSLI.discovery_scan")
+logger = logging.getLogger(f"{APP_LOGGER_NAME}.discovery_scan")
 
 
 @dataclass(frozen=True, slots=True)

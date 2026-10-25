@@ -29,8 +29,9 @@ from __future__ import annotations
 
 import logging
 from typing import Any, Callable
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 # Progress checkpoints for "loading full version of image" toast:
 # 0 at quick preview, DECODE_DONE_PROGRESS once full-res decode lands,

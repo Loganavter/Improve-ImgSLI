@@ -8,8 +8,9 @@ from __future__ import annotations
 import logging
 
 from core.state_management.actions import SetCurrentIndexAction
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 def ensure_current_slot(controller, image_number: int, force_refresh: bool = False) -> bool:

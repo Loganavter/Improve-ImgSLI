@@ -8,8 +8,9 @@ from events.app_event import GlobalKeyboardHandler
 from events.app_event.null_movement import NullKeyboardMovementController
 from events.keyboard_state_service import KeyboardStateService
 from ui.canvas_infra.scene.registry import get_canvas_registry
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 @dataclass(slots=True)
 class EventHandlerRuntime:

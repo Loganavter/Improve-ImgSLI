@@ -5,8 +5,9 @@ import numpy as np
 from PIL import Image
 
 from shared.analysis.output import rgba_from_array
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 def extract_channel(image: Image.Image, mode: str) -> Optional[Image.Image]:
     if not image:

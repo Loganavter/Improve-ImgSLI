@@ -17,10 +17,11 @@ from tabs.image_gallery.services.decode_policy import (
     QL_FULL_EDGE_CAP as _QL_FULL_EDGE_CAP,
     exceeds_edge,
 )
+from core.log_names import APP_LOGGER_NAME
 
 from .source import _ql_decode_full_store
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 # Dwell pre-warm: an item continuously shown past this window builds the
 # needed levels even at zoom 1.0 (singleShot, generation-guarded -- a walk
