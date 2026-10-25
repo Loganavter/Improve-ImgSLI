@@ -4,7 +4,8 @@ whether the FIRST presented frame already equals the settled one.
 
 Why this tool exists
 --------------------
-"First presented frame is not the settled frame" (see `docs/dev/DEBUGGING.md`
+"First presented frame is not the settled frame" (see
+`../improve-imgsli-internal-docs/docs/dev/DEBUGGING.md`
 rule 7 and `QT_LAYOUT_PITFALLS.md` in the private docs repo) cannot be observed
 on X11: the X server maps a window only after the client painted it, so a
 pre-map frame never reaches the root window — `x11grab`/`ffmpeg`/`QWidget.grab`
