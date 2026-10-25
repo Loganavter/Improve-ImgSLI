@@ -6,6 +6,7 @@ Action ids (for registry, palette):
   - gallery.run-triage           — (Re)run triage pass
   - gallery.set-as-source        — Set selected as source (fidelity mode)
   - gallery.reset-metrics        — Drop the measured-metrics caches + re-run
+  - gallery.continue-judge       — Resume the AI judge run a call ceiling stopped
 
 These are stubs for the host ``ActionRegistry``; wiring is via
 ``create_service("contribute_actions", registry)`` in ``tab.py``.
@@ -24,6 +25,10 @@ GALLERY_CLEAN_REJECTED = "gallery.clean-rejected"
 GALLERY_RUN_TRIAGE = "gallery.run-triage"
 GALLERY_SET_AS_SOURCE = "gallery.set-as-source"
 GALLERY_RESET_METRICS = "gallery.reset-metrics"
+#: The run-level continue affordance (board 2026-10-24): a call ceiling parks
+#: the cards it refused, and this row resumes them. Not a scope action — the
+#: parked list IS the scope (``use_cases/judge_budget.py``).
+GALLERY_CONTINUE_JUDGE = "gallery.continue-judge"
 
 ALL_GALLERY_ACTION_IDS: tuple[str, ...] = (
     GALLERY_KEEP_BEST,
@@ -31,6 +36,7 @@ ALL_GALLERY_ACTION_IDS: tuple[str, ...] = (
     GALLERY_RUN_TRIAGE,
     GALLERY_SET_AS_SOURCE,
     GALLERY_RESET_METRICS,
+    GALLERY_CONTINUE_JUDGE,
 )
 
 
@@ -53,6 +59,7 @@ def register_gallery_action_stubs(registry) -> None:  # type: ignore[no-untyped-
         GALLERY_RUN_TRIAGE: "image_gallery.action.run_triage",
         GALLERY_SET_AS_SOURCE: "image_gallery.action.set_as_source",
         GALLERY_RESET_METRICS: "image_gallery.card.reset_metrics_cache",
+        GALLERY_CONTINUE_JUDGE: "image_gallery.action.continue_judge",
     }
     # Stable help paths: triage actions land on the triage page,
     # the fidelity entry lands on quality.
@@ -62,6 +69,7 @@ def register_gallery_action_stubs(registry) -> None:  # type: ignore[no-untyped-
         GALLERY_RUN_TRIAGE: "workspace.image_gallery.triage",
         GALLERY_SET_AS_SOURCE: "workspace.image_gallery.quality",
         GALLERY_RESET_METRICS: "workspace.image_gallery.triage",
+        GALLERY_CONTINUE_JUDGE: "workspace.image_gallery.triage",
     }
     for action_id in ALL_GALLERY_ACTION_IDS:
         try:

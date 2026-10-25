@@ -14,14 +14,23 @@ a silent "act on something else".
 
 from __future__ import annotations
 
+import weakref
+
 from tabs.image_gallery.use_cases.action_context import (
     REFUSAL_AMBIGUOUS_SCOPE,
     REFUSAL_EMPTY_SCOPE,
     REFUSAL_NO_HANDLER,
+    REFUSAL_NO_ITEMS,
     ActionContext,
     Refusal,
     build_context,
 )
+
+#: Weak handle on the registry the gallery's rows were registered into (set by
+#: :func:`register_actions`). The controller-side refresh needs it because the
+#: app registers at BOOT — before the deferred gallery page builds a
+#: controller — and a weak ref keeps a dead/ofscreen registry from lingering.
+_LIVE_REGISTRY_REF: "weakref.ref | None" = None
 
 
 def _make_gallery_sections(tab):  # type: ignore[no-untyped-def]
@@ -196,6 +205,25 @@ def _action_reset_metrics(tab, ctx: ActionContext):
     return gallery_actions.reset_metrics(owner, ctx)
 
 
+def _action_continue_judge(tab, ctx: ActionContext):
+    """Resume the judge run a call ceiling stopped (a RUN-level action).
+
+    The parked list IS the scope: the context is not consulted and no card is
+    re-derived, so this cannot analyze anything the ceiling did not already
+    refuse. With nothing parked the run refuses by name instead of starting a
+    fresh pass — the affordance and the handler read the same flag.
+    """
+    ctrl = getattr(tab, "_controller", None) or tab
+    fn = getattr(ctrl, "continue_judge_run", None)
+    if not callable(fn):
+        return _no_handler(ctx, "judge-continue")
+    if not bool(getattr(ctrl, "judge_run_continue_available", False)):
+        return Refusal(
+            REFUSAL_NO_ITEMS, ctx.targets, "no card is parked at the call ceiling"
+        )
+    return fn()
+
+
 #: The gallery's action inventory. EVERY id registered below must resolve here
 #: with a ``(tab, ctx)`` signature — enforced by
 #: ``tests/contracts/test_gallery_action_context.py``.
@@ -205,6 +233,7 @@ GALLERY_ACTION_HANDLERS = {
     "gallery.run-triage": _action_run_triage,
     "gallery.set-as-source": _action_set_as_source,
     "gallery.reset-metrics": _action_reset_metrics,
+    "gallery.continue-judge": _action_continue_judge,
 }
 
 
@@ -222,6 +251,12 @@ def run_action(tab, action_id: str):
     """
     handler = handler_for(action_id)
     owner = getattr(tab, "_controller", None) or getattr(tab, "_widget", None)
+    if owner is None and callable(getattr(tab, "continue_judge_run", None)):
+        # The refresh path (below) rebuilds a row from the live CONTROLLER, so
+        # a descriptor's ``run`` may hand the controller in where the tab
+        # normally goes. The controller is a valid context owner (it is what
+        # every handler receives as ``owner``); only a bare tab shell is not.
+        owner = tab
     if handler is None or owner is None:
         return None
     ctx = build_context(owner, origin="action")
@@ -230,6 +265,129 @@ def run_action(tab, action_id: str):
 
 def _run_for(action_id: str, tab):
     return lambda: run_action(tab, action_id)
+
+
+# -- the judge-run continue affordance (board 2026-10-24) --------------------
+# A call ceiling parks the cards it refused (``use_cases/judge_budget.py``); the
+# run-level continue action resumes exactly those cards. The row is registered
+# for the whole session (every handler owns exactly one descriptor — the
+# ``test_gallery_action_context`` dogma) and carries the LIVE flag, so its
+# ``enabled``/``reason`` never describe a run that already ended.
+_JUDGE_CONTINUE_IDLE_REASON = "no card is parked at the call ceiling"
+
+
+def _judge_continue_controller(owner):
+    """The controller the flag is read from (the controller itself or its tab)."""
+    ctrl = getattr(owner, "_controller", None)
+    if ctrl is not None:
+        return ctrl
+    return owner if callable(getattr(owner, "continue_judge_run", None)) else None
+
+
+def judge_continue_state(owner) -> tuple[bool, int]:
+    """``(available, parked_count)`` — ONE read of the controller's state.
+
+    ``judge_run_continue_available`` is the predicate; the count is the SAME
+    ledger list's length (``judge_run_parked_count``), never a second counter.
+    """
+    ctrl = _judge_continue_controller(owner)
+    if ctrl is None:
+        return False, 0
+    try:
+        if not bool(getattr(ctrl, "judge_run_continue_available", False)):
+            return False, 0
+        parked = int(getattr(ctrl, "judge_run_parked_count", 0) or 0)
+    except Exception:
+        return False, 0
+    return True, max(0, parked)
+
+
+def judge_continue_descriptor(owner):
+    """The continue row with its LIVE ``enabled``/``reason``/search fields.
+
+    Built from the owner state on every call: a cached descriptor is exactly
+    the stale button this wave removes.
+    """
+    from core.actions.types import ActionDescriptor, ActionTarget
+    from tabs.image_gallery.actions import GALLERY_CONTINUE_JUDGE
+
+    available, parked = judge_continue_state(owner)
+    ctrl = _judge_continue_controller(owner)
+    wid = getattr(owner, "_widget", None) or getattr(ctrl, "widget", None)
+    reason = (
+        f"{parked} card(s) parked at the call ceiling — continue resumes them"
+        if available
+        else _JUDGE_CONTINUE_IDLE_REASON
+    )
+    return ActionDescriptor(
+        action_id=GALLERY_CONTINUE_JUDGE,
+        label_key="image_gallery.action.continue_judge",
+        description_key=None,
+        breadcrumb=("image_gallery.action.breadcrumb.triage", "Image Gallery"),
+        owner_tab=getattr(owner, "session_type", None) or "image_gallery",
+        topic="triage",
+        shortcut=None,
+        help_page="workspace.image_gallery.triage",
+        search_terms=(f"{parked} parked", "ceiling", "budget", "judge run"),
+        run=_run_for(GALLERY_CONTINUE_JUDGE, owner),
+        target=ActionTarget(widget=wid) if wid is not None else None,
+        enabled=available,
+        reason=reason,
+    )
+
+
+def _is_registry(candidate) -> bool:
+    return candidate is not None and callable(getattr(candidate, "register", None))
+
+
+def _registry_for(owner):
+    """The host registry this owner's rows live in (fail-open, may be None).
+
+    Bound refs first (the tab, its controller, its widget), then the weak
+    handle ``register_actions`` keeps: the app registers at BOOT, while the
+    gallery page — and therefore the controller — is built later and has no tab
+    to ask. No host singleton is created here: a storeless double must not mint
+    a process-wide catalog as a side effect.
+    """
+    for candidate in (
+        owner,
+        getattr(owner, "_controller", None),
+        getattr(owner, "widget", None),
+    ):
+        bound = getattr(candidate, "_gallery_action_registry", None)
+        if _is_registry(bound):
+            return bound
+    ref = _LIVE_REGISTRY_REF
+    live = ref() if ref is not None else None
+    return live if _is_registry(live) else None
+
+
+def _remember_registry(registry) -> None:
+    """Keep a weak handle on the registry the gallery rows were registered in."""
+    global _LIVE_REGISTRY_REF
+    try:
+        _LIVE_REGISTRY_REF = weakref.ref(registry)
+    except TypeError:
+        _LIVE_REGISTRY_REF = None
+
+
+def refresh_judge_continue_action(owner) -> bool:
+    """Re-register the continue row after the run's ceiling state changed.
+
+    Called by the controller right after a pass (the ceiling stops inside it)
+    and after a continuation, so the row follows the flag instead of freezing
+    the state it had at tab creation. *owner* is the tab or the controller.
+    Returns whether the row was re-registered; a missing registry is a
+    fail-open ``False`` (offscreen doubles, boot order).
+    """
+    registry = _registry_for(owner)
+    if registry is None:
+        return False
+    try:
+        registry.register(judge_continue_descriptor(owner))
+        return True
+    except Exception:
+        return False
 
 
 def _action_descriptors(tab):
@@ -289,6 +447,10 @@ def _action_descriptors(tab):
             topic="cache",
             help_page="workspace.image_gallery.triage",
         ),
+        # The run-level continue affordance: catalogue row for the whole
+        # session, LIVE ``enabled``/``reason`` from the controller's ceiling
+        # state (refreshed by ``refresh_judge_continue_action``).
+        judge_continue_descriptor(tab),
     )
 
 
@@ -298,10 +460,16 @@ def register_actions(tab, registry) -> None:
     Find Action ids: gallery.keep-best-of-series etc (design.md:129). The
     widget handles keyPressEvent too. Every descriptor routes through a
     context-taking handler; none of them reads the selection itself.
+
+    The registry is remembered on the tab (and on the live controller when the
+    page is already built) so a run-state change can re-register the continue
+    row from the controller side — the palette then reads the live flag instead
+    of the state it had at tab creation.
     """
     try:
         for descriptor in _action_descriptors(tab):
             registry.register(descriptor)
+        _bind_action_registry(tab, registry)
         return True
     except Exception:
         # Fallback: ensure stubs exist via actions helper.
@@ -312,3 +480,19 @@ def register_actions(tab, registry) -> None:
             return True
         except Exception:
             return None
+
+
+def _bind_action_registry(tab, registry) -> None:
+    """Remember *registry* on the tab + its controller (refresh handle)."""
+    _remember_registry(registry)
+    for owner in (
+        tab,
+        getattr(tab, "_controller", None),
+        getattr(tab, "_widget", None),
+    ):
+        if owner is None:
+            continue
+        try:
+            owner._gallery_action_registry = registry  # type: ignore[attr-defined]
+        except Exception:
+            pass

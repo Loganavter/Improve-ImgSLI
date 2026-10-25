@@ -263,9 +263,13 @@ class MainWindowStartupController:
     def show(self, window) -> None:
         startup_debug("controller: show")
         self.prepare(window)
+        from core.startup_trace import startup_mark
+
         # Final CSD menu widths + balance while still hidden, so the first
         # exposed frame does not remeasure and ghost «Справка».
+        startup_mark("titlebar.remeasure.begin")
         _remeasure_menu_strip(window)
+        startup_mark("titlebar.remeasure")
         title_bar = getattr(window, "_custom_title_bar", None)
         if title_bar is not None:
             sync = getattr(title_bar, "_sync_balance_spacer", None)
@@ -302,11 +306,12 @@ class MainWindowStartupController:
         # Widgets that size against the first real layout defer their reflow
         # to 0-timers (e.g. the Session Picker recent shelf: deferred
         # relayout -> height settle -> chrome refresh). Those timers would
-        # otherwise fire only after the deferred plugin loading that blocks
-        # the loop right after show(), leaving the first visible frames at
-        # the pre-layout arrangement for a full second. Drain the pending
-        # timer turns here, while the event loop is still free, so the first
-        # presented frame is already settled.
+        # otherwise fire only on a later event-loop turn, after this method
+        # returns and the deferred startup block (released below) takes the
+        # loop, leaving the first visible frames at the pre-layout arrangement
+        # for a full second. Drain the pending timer turns here, while the
+        # event loop is still free, so the first presented frame is already
+        # settled.
         if app is not None:
             for _ in range(4):
                 app.processEvents()
@@ -321,6 +326,18 @@ class MainWindowStartupController:
             window.size().toTuple(),
             window.isMaximized(),
         )
+        # The drain above is what paints and flushes the window's first frame.
+        # Only now release work that must not run on the first-paint path:
+        # ``emit_visual_ready`` queues the deferred startup block behind this
+        # boundary instead of arming a 0-timer from inside the pipeline (the
+        # drain used to fire that timer before anything was painted).
+        startup_mark("paint.first_frame")
+        startup_runtime = getattr(window, "startup_runtime", None)
+        notify_first_frame = getattr(
+            startup_runtime, "notify_first_frame_presented", None
+        )
+        if callable(notify_first_frame):
+            notify_first_frame()
         # SLI_FOCUS_DEBUG=1: trace every focus transition from here on,
         # including the initial focus move below.
         try:

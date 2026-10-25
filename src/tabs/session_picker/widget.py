@@ -7,7 +7,7 @@ import logging
 from functools import partial
 from typing import Callable
 
-from PySide6.QtCore import QEvent, QLineF, QRectF, Qt
+from PySide6.QtCore import QEvent, QLineF, QRectF, Qt, QTimer
 from PySide6.QtGui import QColor, QPainter
 from PySide6.QtWidgets import QVBoxLayout, QWidget
 from sli_ui_toolkit.i18n import translatable_callback
@@ -127,6 +127,7 @@ class SessionPickerWidget(ThemedWidget, QWidget):
         self._page_scroll: OverlayScrollArea | None = None
         self._page_content: QWidget | None = None
         self._populated = False
+        self._shelf_verify_armed = False
         self._cards_by_type: dict[str, Button] = {}
         self.setObjectName("SessionPickerPage")
         self.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
@@ -325,6 +326,9 @@ class SessionPickerWidget(ThemedWidget, QWidget):
             self._recent_panel.refresh()
 
     def showEvent(self, event) -> None:  # noqa: N802
+        from core.startup_trace import startup_mark
+
+        startup_mark("shelf.show_event.begin")
         super().showEvent(event)
         # Idempotent: _build already populated; soft-refresh recent on return.
         # Always recover the shelf surface after show — soft-refresh can no-op
@@ -334,7 +338,53 @@ class SessionPickerWidget(ThemedWidget, QWidget):
         if self._recent_panel is not None:
             self._recent_panel.on_page_shown()
             self._recent_panel.recover_opaque_surface()
+        self._arm_deferred_shelf_verify()
         self.update()
+        startup_mark("shelf.show_event")
+
+    def _arm_deferred_shelf_verify(self) -> None:
+        """Release the shelf's one disk pass after the first presented frame.
+
+        ``refresh(verify_disk=False)`` arms the pass at page construction, and
+        ``showEvent`` runs before that frame: a 0-timer from either point was
+        fired by the startup drain in ``MainWindowStartupController.show()``
+        (four ``processEvents`` passes), i.e. the ``os.stat`` walk sat on the
+        first-paint path. Ride the main window's first-frame gate instead —
+        the same boundary the deferred startup block uses.
+        """
+        if self._shelf_verify_armed:
+            return
+        self._shelf_verify_armed = True
+        window = self.window()
+        runtime = getattr(window, "startup_runtime", None)
+        after_first_frame = getattr(runtime, "after_first_frame", None)
+        if callable(after_first_frame):
+            after_first_frame(self._release_deferred_shelf_verify)
+            return
+        # Standalone page (tests, a detached host): no window gate to ride.
+        QTimer.singleShot(0, self._release_deferred_shelf_verify)
+
+    def _release_deferred_shelf_verify(self) -> None:
+        # The first-frame queue lives on the window's runtime, so this callback
+        # can be released AFTER the page is gone (a test case that ends between
+        # arm and frame 1, a tab closed before the first paint). A destroyed C++
+        # object needs no disk pass: forget it instead of raising into the event
+        # loop — the same rule as ``core/control/live_verbs._is_alive``. Without
+        # this guard a stale release crashed an unrelated later test with
+        # "Internal C++ object (SessionPickerWidget) already deleted".
+        from shiboken6 import isValid
+
+        if not isValid(self):
+            return
+        panel = self._recent_panel
+        if panel is None or not isValid(panel):
+            return
+        from tabs.session_picker.recent.use_cases import refresh as refresh_use_cases
+
+        try:
+            refresh_use_cases.verify_disk_if_pending(panel)
+        except RuntimeError:
+            return
 
     def refresh(self) -> None:
         """Build create-cards once from a filesystem scan of tab packages.

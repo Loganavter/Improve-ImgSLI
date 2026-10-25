@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
 )
 
 from domain.qt_adapters import color_to_qcolor
+from plugins.export import layout_geometry as export_geo
 from plugins.export.dialog_sections import assemble_export_ui
 from plugins.export.layout_geometry import apply_export_dialog_geometry
 from plugins.export.models import ExportDialogState

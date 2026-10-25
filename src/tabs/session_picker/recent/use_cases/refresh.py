@@ -65,8 +65,9 @@ def refresh(panel, *, verify_disk: bool = True) -> None:
     """Rebuild the recent shelf.
 
     ``verify_disk=False`` renders the stored records **without** touching the
-    filesystem and schedules one verification pass after the first paint. The
-    first pass used to `os.stat` every record (up to ``DEFAULT_CAP`` = 1000):
+    filesystem and arms one verification pass, released after the first paint
+    (``_schedule_disk_verify`` -> ``verify_disk_if_pending``). The first pass
+    used to `os.stat` every record (up to ``DEFAULT_CAP`` = 1000):
     measured 2.8 ms per 1000 locally, but seconds on a network/shared path --
     the WinBoat cold start (cold-start recon, 2026-10-24).
     """
@@ -85,6 +86,7 @@ def refresh(panel, *, verify_disk: bool = True) -> None:
     panel._selected_paths &= alive
     if verify_disk:
         panel._disk_snapshot = _live_state(panel._records)
+        panel._disk_verify_pending = False
     else:
         # Unknown until the deferred pass runs; never claim "verified".
         panel._disk_snapshot = None
@@ -97,16 +99,35 @@ def refresh(panel, *, verify_disk: bool = True) -> None:
 
 
 def _schedule_disk_verify(panel) -> None:
-    """Queue one verification pass once the first paint is done."""
-    from PySide6.QtCore import QTimer
+    """Arm the one verification pass that runs once the shelf is on screen.
 
-    QTimer.singleShot(0, lambda: verify_disk_now(panel))
+    This used to be ``QTimer.singleShot(0, ...)`` from page construction: the
+    startup drain in ``MainWindowStartupController.show()``
+    (``ui/main_window/lifecycle.py``) runs pending 0-timers with four
+    ``processEvents`` passes *before* the window has painted anything, so the
+    stat pass sat on the first-paint path. ``SessionPickerWidget.showEvent``
+    now rides the window's first-frame gate and releases the pending pass
+    (``verify_disk_if_pending``) once frame 1 is presented.
+    """
+    panel._disk_verify_pending = True
+
+
+def verify_disk_if_pending(panel) -> None:
+    """Run the deferred first-paint pass, if the shelf is still unverified."""
+    if not getattr(panel, "_disk_verify_pending", False):
+        return
+    panel._disk_verify_pending = False
+    verify_disk_now(panel)
 
 
 def verify_disk_now(panel) -> None:
     """Deferred disk pass: fingerprint the records and rebuild only if the
     live state differs from what the shelf already shows."""
+    from core.startup_trace import startup_mark
+
+    startup_mark("shelf.disk_verify.begin")
     live_now = _live_state(panel._records)
+    startup_mark("shelf.disk_verify")
     if live_now == getattr(panel, "_disk_snapshot", None):
         return
     panel._disk_snapshot = live_now
@@ -115,8 +136,15 @@ def verify_disk_now(panel) -> None:
     panel._sync_opaque_fills()
 
 
-def soft_refresh(panel) -> None:
-    """Update shelf contents only when records or view prefs changed."""
+def soft_refresh(panel, *, verify_disk: bool = True) -> None:
+    """Update shelf contents only when records or view prefs changed.
+
+    ``verify_disk=False`` skips the per-record ``os.stat`` fingerprint pass.
+    The panel is also unverified while ``_disk_verify_pending`` is set (the
+    first paint has not released ``_schedule_disk_verify`` yet): ``showEvent``
+    runs before that paint, so the pass must not start there — one disk read
+    per startup, owned by ``verify_disk_now``.
+    """
     from tabs.session_picker.recent import panel as _panel_mod
 
     view_mode = _panel_mod.get_recent_view_mode()
@@ -133,18 +161,25 @@ def soft_refresh(panel) -> None:
         and sort_order == panel._sort_order
     )
     same_records = _record_signature(panel._records) == _record_signature(records)
-    live_now = _live_state(records)
+    verified = bool(verify_disk) and not getattr(panel, "_disk_verify_pending", False)
     prev_live = getattr(panel, "_disk_snapshot", None)
-    disk_changed = prev_live is not None and prev_live != live_now
+    if verified:
+        live_now = _live_state(records)
+        disk_changed = prev_live is not None and prev_live != live_now
+    else:
+        live_now = prev_live
+        disk_changed = False
     if same_prefs and same_records and not disk_changed:
         panel._sync_header_controls()
-        panel._disk_snapshot = live_now
+        if verified:
+            panel._disk_snapshot = live_now
         return
     panel._view_mode = view_mode
     panel._sort_mode = sort_mode
     panel._sort_order = sort_order
     panel._records = records
-    panel._disk_snapshot = live_now
+    if verified:
+        panel._disk_snapshot = live_now
     panel._selected_paths &= {r.path for r in records}
     panel._rebuild_items()
     panel._sync_header_controls()
