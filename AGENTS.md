@@ -1,4 +1,4 @@
-# Improve-ImgSLI Agent Guide
+# BlinkTable Agent Guide
 
 This file is for CLI AI agents and other automated coding assistants. Read it before making changes.
 
@@ -38,7 +38,7 @@ Commands and facilities wired for automated assistants:
 |---|---|---|
 | cloc | `./launcher.sh context --cloc-only` | Per-directory code stats for Improve-ImgSLI + `sli-ui-toolkit` → `cloc.txt` (gitignored), full tree expansion. `--toolkit-dir DIR` (or `SLI_TOOLKIT_DIR`) if the sibling checkout is not auto-found. |
 | Contract tests | `./launcher.sh test tests/contracts -q` | Fast AST/architecture dogmas — run before large refactors. See `tests/contracts/_framework.py`. |
-| Runtime tracer | `IMGSLI_TRACE=1` or `./launcher.sh run --debug` | Causal chain across dispatch / EventBus / render. Output: `~/.local/share/ImproveImgSLI/trace.jsonl`. See [docs/dev/TRACING.md](docs/dev/TRACING.md). |
+| Runtime tracer | `IMGSLI_TRACE=1` or `./launcher.sh run --debug` | Causal chain across dispatch / EventBus / render. Output: `~/.local/share/BlinkTable/trace.jsonl`. See [docs/dev/TRACING.md](docs/dev/TRACING.md). |
 | UI inspector | `./launcher.sh run --ui-inspector` | In-app widget, palette, theme-token, QSS diagnostics. See [docs/dev/UI_INSPECTOR.md](docs/dev/UI_INSPECTOR.md). |
 | UI layout dump | `./launcher.sh run --open-tab image_compare --dump-ui-layout /path/to/layout.json` | Headless JSON snapshot of the live widget tree (class, geometry, visibility, Find Action ids) — no screenshot needed to check spacing/margins. `--run-action <id>` opens other windows (Settings, Help, …) first. See [docs/dev/UI_LAYOUT_DUMP.md](docs/dev/UI_LAYOUT_DUMP.md). |
 | App snapshot dump | `./launcher.sh run --open-tab image_compare --dump-app-snapshot /path/to/snapshot.json` | Headless JSON of the live ActionRegistry catalog + Store slices (settings, workspace sessions, active document summary); same startup-timing rules as `--dump-ui-layout` (`src/__main__.py`). |
@@ -298,9 +298,9 @@ The merge-readiness signal is the **local** run (contracts + affected suites, ~2
 When something goes wrong after a click / zoom / state change and the cause is not obvious from the diff:
 
 1. Reproduce with `./launcher.sh run --debug` (tracer on) or `IMGSLI_TRACE=1 ./launcher.sh run`.
-2. Read `~/.local/share/ImproveImgSLI/trace.jsonl` — filter by `trace_id` from the input event that opened the chain.
+2. Read `~/.local/share/BlinkTable/trace.jsonl` — filter by `trace_id` from the input event that opened the chain.
 3. See [docs/dev/TRACING.md](docs/dev/TRACING.md) for kind/category reference and filtering tips.
-4. For plain text logs (not causal chains): [docs/dev/LOGGING.md](docs/dev/LOGGING.md) (`~/.local/share/ImproveImgSLI/log.txt`, overwritten each start).
+4. For plain text logs (not causal chains): [docs/dev/LOGGING.md](docs/dev/LOGGING.md) (`~/.local/share/BlinkTable/log.txt`, overwritten each start).
 5. For widget/theme/QSS mismatches: `./launcher.sh run --ui-inspector` — [docs/dev/UI_INSPECTOR.md](docs/dev/UI_INSPECTOR.md).
 6. For layout/spacing/geometry questions (gaps, margins, widget sizes): `./launcher.sh run --open-tab image_compare --dump-ui-layout /path/to/layout.json` and read the JSON — faster and more precise than a screenshot. See [docs/dev/UI_LAYOUT_DUMP.md](docs/dev/UI_LAYOUT_DUMP.md).
 

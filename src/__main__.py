@@ -113,6 +113,10 @@ def _configure_linux_desktop_integrations() -> None:
     if os.name != "posix":
         return
 
+    # NOT the product name: this X11/Wayland WM_CLASS must keep matching the
+    # desktop entry that launcher.py installs (its StartupWMClass line pins
+    # the same id), so the taskbar keeps grouping the window with its icon.
+    # Rename both sides together, never this one alone.
     os.environ.setdefault("RESOURCE_NAME", "improve-imgsli")
 
     os.environ.setdefault("UBUNTU_MENUPROXY", "0")
@@ -353,6 +357,9 @@ def main():
 
     argv = sys.argv[:]
     if os.name == "posix" and not getattr(sys, "frozen", False):
+        # Kept on the pre-rename spelling on purpose: argv[0] feeds the same
+        # WM_CLASS as ``RESOURCE_NAME`` above (see that comment — the desktop
+        # entry is the other half of the pair).
         argv[0] = "improve-imgsli"
     app = QApplication(argv)
     early_mark("main.qapp_ready")
@@ -435,13 +442,22 @@ def main():
     from shared_toolkit.ui.decorate_dialog import install_application_dialog_decorations
     install_application_dialog_decorations(app)
 
-    app.setApplicationName("Improve ImgSLI")
+    # The identity Qt shows and derives paths from. Renamed to the product
+    # name: ``QSettings`` is unaffected (it always receives the explicit
+    # canonical pair from ``core.plugin_system.settings``), but
+    # ``QStandardPaths`` cache locations move with these two strings — they
+    # are rebuildable caches, and the old tree is simply left behind.
+    app.setApplicationName("BlinkTable")
     app.setApplicationDisplayName("BlinkTable")
     from core.constants import AppConstants
 
     app.setApplicationVersion(AppConstants.APP_VERSION)
-    app.setOrganizationName("improve-imgsli")
-    app.setOrganizationDomain("improve-imgsli.local")
+    app.setOrganizationName("BlinkTable")
+    app.setOrganizationDomain("blinktable.local")
+    # Desktop-entry id stays on the pre-rename spelling: it must match the
+    # installed desktop file name that launcher.py writes, whose
+    # StartupWMClass line pins the same id as RESOURCE_NAME above.
+    # Renaming it here alone would detach the window from its launcher icon.
     app.setDesktopFileName("improve-imgsli")
 
     from PySide6.QtGui import QIcon

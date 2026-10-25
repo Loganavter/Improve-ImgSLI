@@ -148,7 +148,7 @@ def items_for_list(document, list_num: int):
     """Items for side ``list_num`` (1|2).
 
     Prefers neutral ``list1``/``list2``; falls back to host-domain
-    ``image_list1``/``image_list2`` (Improve-ImgSLI document shape).
+    ``image_list1``/``image_list2`` (BlinkTable document shape).
     """
     if list_num == 1:
         items = getattr(document, "list1", None)

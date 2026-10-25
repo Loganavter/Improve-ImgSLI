@@ -99,7 +99,8 @@ def _app_data_dir(app_name: str) -> str:
 def _log_directory() -> str | None:
     """Resolve the app-data log directory without forcing the log-dir migration.
 
-    ``core.log_dir_migration`` aliases ``…/ImproveImgSLI`` to ``…/BlinkTable`` on
+    ``core.log_dir_migration`` aliases the pre-rename log directory to
+    ``…/BlinkTable`` on
     the first start of a renamed build, and it only does so while the new
     directory is *absent*. Creating the new directory here at import time would
     make that migration report ``kept`` and silently orphan the user's existing

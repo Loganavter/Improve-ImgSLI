@@ -15,8 +15,8 @@ from core.settings_migration import (
 # The ONE org/app pair the whole app persists under (``SettingsManager`` is
 # constructed with exactly these names from ``core.bootstrap`` and
 # ``__main__``). Hand-rolled ``QSettings()`` call sites silently created a
-# SECOND store ("Improve ImgSLI" defaults) that the settings manager never
-# read or backed up — always resolve through ``canonical_settings``.
+# SECOND store (holding the pre-rename defaults) that the settings manager
+# never read or backed up — always resolve through ``canonical_settings``.
 SETTINGS_ORG = "BlinkTable"
 SETTINGS_APP = "BlinkTable"
 

@@ -30,7 +30,7 @@ def install_instrumentation() -> None:
     _patch_hit_test()
     _patch_canvas_input()
 
-    logger.info("ImgSLI tracer instrumentation installed")
+    logger.info("BlinkTable tracer instrumentation installed")
 
 def _patch_dispatcher() -> None:
     from core.state_management import dispatcher as dispatcher_mod

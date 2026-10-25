@@ -1,4 +1,4 @@
-"""Host-owned FlyoutManager show policy for Improve-ImgSLI.
+"""Host-owned FlyoutManager show policy for BlinkTable.
 
 Toolkit widgets only expose identity tags (``flyout_group``). Coexistence rules
 live here so groups can be tuned without patching ``sli-ui-toolkit``.

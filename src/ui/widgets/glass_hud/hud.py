@@ -321,7 +321,7 @@ class GlassHUD(BaseFlyout):
         once thinned out, as a hard-edged sticker that never blended into
         the surrounding blur convincingly; and dynamic per-pixel text
         recoloring was tried and removed for reading as "liquid"/fluid (see
-        improve-imgsli-internal-docs/docs/legacy/rendering/
+        the archived rendering plan in the private internal-docs repo —
         glass-panel-soft-threshold-adaptive-tint-plan.md)."""
         base = resolve_theme_color(self.theme_manager, "surface.background")
         tint = QColor(base)

@@ -1,8 +1,8 @@
 """Encrypted-at-rest storage for the few secrets the app persists.
 
 Why this module exists: the AI provider key used to be written into the AI
-settings group of ``QSettings`` — a plaintext INI under
-``~/.config/ImproveImgSLI/ImproveImgSLI.conf`` — so it was readable by anything
+settings group of ``QSettings`` — a plaintext INI under the user's Qt config
+directory — so it was readable by anything
 that could read the file (backups, synced folders, a screenshot of the config)
 and the settings page had to warn about it. A warning is not a fix, so the key
 moved here and the warning is gone.
@@ -47,8 +47,16 @@ MODE_ENCRYPTED_FILE = "encrypted-file"
 MODE_SESSION = "session"
 
 #: ``secret-tool`` attributes identifying our secret in the login keyring.
-_KEYRING_SCHEMA = (("application", "improve-imgsli"), ("key", "ai-api-key"))
-_KEYRING_LABEL = "Improve-ImgSLI — AI provider API key"
+#: The pre-rename attributes are still *read* (and cleared) so an upgrade finds
+#: the key the user already granted; only writes move to the new identity.
+_KEYRING_SCHEMA = (("application", "blinktable"), ("key", "ai-api-key"))
+_LEGACY_KEYRING_SCHEMA = (("application", "improve-imgsli"), ("key", "ai-api-key"))
+_KEYRING_LABEL = "BlinkTable — AI provider API key"
+
+#: App-data directory names. The pre-rename one is a read-only fallback: an
+#: upgrade must keep the stored key instead of asking for it again.
+_APP_DIR_NAME = "BlinkTable"
+_LEGACY_APP_DIR_NAME = "ImproveImgSLI"
 
 _SECRET_NAME = "ai_api_key"
 _BACKEND_TIMEOUT_S = 5.0
@@ -72,15 +80,15 @@ _resolved_mode: str | None = None
 _session_notice_emitted = False
 
 
-def _app_data_dir() -> Path:
-    """Mirror ``core.control.discovery.app_data_dir`` without importing Qt."""
+def _app_data_dir(app_name: str) -> Path:
+    """Per-OS app-data directory for *app_name* (no Qt import)."""
     if sys_platform().startswith("linux"):
         base = os.environ.get("XDG_DATA_HOME") or str(Path.home() / ".local" / "share")
     elif sys_platform() == "darwin":
         base = str(Path.home() / "Library" / "Application Support")
     else:  # pragma: no cover - Windows
         base = os.environ.get("APPDATA") or str(Path.home() / "AppData" / "Roaming")
-    return Path(base) / "ImproveImgSLI"
+    return Path(base) / app_name
 
 
 def sys_platform() -> str:  # pragma: no cover - trivial seam for tests
@@ -88,7 +96,13 @@ def sys_platform() -> str:  # pragma: no cover - trivial seam for tests
 
 
 def secrets_dir() -> Path:
-    return _app_data_dir() / "secrets"
+    """Where the encrypted pair is written: the current app-data directory."""
+    return _app_data_dir(_APP_DIR_NAME) / "secrets"
+
+
+def legacy_secrets_dir() -> Path:
+    """Pre-rename location of the same pair — read and cleared, never written."""
+    return _app_data_dir(_LEGACY_APP_DIR_NAME) / "secrets"
 
 
 def _windows_machine_guid() -> str:
@@ -220,12 +234,12 @@ def _keyring_store(value: str) -> bool:
     return done.returncode == 0
 
 
-def _keyring_load() -> str:
+def _keyring_lookup(schema: tuple[tuple[str, str], ...]) -> str:
     tool = _secret_tool()
     if tool is None:
         return ""
     argv = [tool, "lookup"]
-    for key, attr in _KEYRING_SCHEMA:
+    for key, attr in schema:
         argv += [key, attr]
     try:
         done = subprocess.run(
@@ -242,23 +256,34 @@ def _keyring_load() -> str:
     return done.stdout.decode("utf-8", errors="replace").strip()
 
 
+def _keyring_load() -> str:
+    """Read the current entry, else the pre-rename one (upgrade migration)."""
+    value = _keyring_lookup(_KEYRING_SCHEMA)
+    if value:
+        return value
+    return _keyring_lookup(_LEGACY_KEYRING_SCHEMA)
+
+
 def _keyring_clear() -> None:
     tool = _secret_tool()
     if tool is None:
         return
-    argv = [tool, "clear"]
-    for key, attr in _KEYRING_SCHEMA:
-        argv += [key, attr]
-    try:
-        subprocess.run(
-            argv,
-            capture_output=True,
-            timeout=_BACKEND_TIMEOUT_S,
-            check=False,
-            **hidden_process_kwargs(),
-        )
-    except (OSError, subprocess.SubprocessError):
-        pass
+    # Both identities: clearing only the current one would let a pre-rename
+    # entry resurrect the secret on the next launch.
+    for schema in (_KEYRING_SCHEMA, _LEGACY_KEYRING_SCHEMA):
+        argv = [tool, "clear"]
+        for key, attr in schema:
+            argv += [key, attr]
+        try:
+            subprocess.run(
+                argv,
+                capture_output=True,
+                timeout=_BACKEND_TIMEOUT_S,
+                check=False,
+                **hidden_process_kwargs(),
+            )
+        except (OSError, subprocess.SubprocessError):
+            pass
 
 
 def _fernet() -> Any:
@@ -274,24 +299,46 @@ def _effective_key(base_key: bytes) -> bytes:
 
 
 def _file_key_path() -> Path:
+    """Write location of the Fernet key (always the current directory)."""
     return secrets_dir() / f"{_SECRET_NAME}.key"
 
 
 def _file_value_path() -> Path:
+    """Write location of the encrypted value (always the current directory)."""
     return secrets_dir() / f"{_SECRET_NAME}.enc"
 
 
-def _load_base_key(create: bool) -> bytes | None:
-    path = _file_key_path()
+def _stored_pair() -> tuple[Path, Path] | None:
+    """The ``(key, value)`` files to READ: current directory, else pre-rename.
+
+    The app-data directory moved with the rename, and orphaning a key the user
+    already stored would mean asking for it again. So when the current
+    directory holds no encrypted value the pre-rename one is read instead.
+    Writes always target the current directory, which re-encrypts an old pair
+    there on the next save.
+    """
+    for directory in (secrets_dir(), legacy_secrets_dir()):
+        value_path = directory / f"{_SECRET_NAME}.enc"
+        if value_path.is_file():
+            return directory / f"{_SECRET_NAME}.key", value_path
+    return None
+
+
+def _read_base_key() -> bytes | None:
     try:
-        return path.read_bytes().strip()
+        return _file_key_path().read_bytes().strip()
     except OSError:
-        if not create:
-            return None
-    Fernet = _fernet()
+        return None
+
+
+def _create_base_key() -> bytes | None:
+    try:
+        Fernet = _fernet()
+    except Exception:
+        return None
     key = Fernet.generate_key()
     _mkdir_private(secrets_dir())
-    _write_private(path, key)
+    _write_private(_file_key_path(), key)
     return key
 
 
@@ -300,7 +347,7 @@ def _file_store(value: str) -> bool:
         Fernet = _fernet()
     except Exception:
         return False
-    base = _load_base_key(create=True)
+    base = _read_base_key() or _create_base_key()
     if not base:
         return False
     try:
@@ -317,11 +364,18 @@ def _file_load() -> str:
         Fernet = _fernet()
     except Exception:
         return ""
-    base = _load_base_key(create=False)
+    pair = _stored_pair()
+    if pair is None:
+        return ""
+    key_path, value_path = pair
+    try:
+        base = key_path.read_bytes().strip()
+    except OSError:
+        return ""
     if not base:
         return ""
     try:
-        token = _file_value_path().read_bytes()
+        token = value_path.read_bytes()
     except OSError:
         return ""
     try:
@@ -335,11 +389,16 @@ def _file_load() -> str:
 
 
 def _file_clear() -> None:
-    for path in (_file_value_path(),):
-        try:
-            path.unlink()
-        except OSError:
-            pass
+    """Remove the encrypted value everywhere; a cleared key must not return."""
+    for directory in (secrets_dir(), legacy_secrets_dir()):
+        for path in (
+            directory / f"{_SECRET_NAME}.enc",
+            directory / f"{_SECRET_NAME}.key",
+        ):
+            try:
+                path.unlink()
+            except OSError:
+                pass
 
 
 # ---------------------------------------------------------------------------
