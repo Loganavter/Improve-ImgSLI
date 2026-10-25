@@ -28,14 +28,18 @@ keeping two widgets around would compare stale snapshots.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from PySide6.QtCore import QEventLoop, QTimer
+from PySide6.QtGui import QFontMetrics
 
 from sli_ui_toolkit.managers import UiScale, scaled_px
 
 from tabs.image_gallery.models import GalleryItem
+from tabs.image_gallery.use_cases import judge_budget
 from tabs.image_gallery.widget import ImageGalleryWidget
 
 #: Design px of the toolbar / stats rows.
@@ -222,6 +226,11 @@ def test_scanning_label_is_laid_out_at_its_scaled_size(qapp) -> None:
     Pre-fix red: the label was hidden, so it was never laid out and kept Qt's
     100x30 default at every factor. Post-fix it stays in the layout (empty text
     is invisible) and reports its scaled size hint.
+
+    Only the HEIGHT is a scale signal here: the label is now an eliding
+    activity slot (``_ActivityText``), so an empty one asks for a constant
+    10 px elide floor instead of ``advance("") == 0`` — the width no longer
+    encodes the factor, the text height does.
     """
     base = _snapshot(1.0, qapp)
     scaled = _snapshot(1.5, qapp)
@@ -231,7 +240,10 @@ def test_scanning_label_is_laid_out_at_its_scaled_size(qapp) -> None:
     )
     assert scaled["scanning_size"] == scaled["scanning_hint"]
     _assert_scaled_once(
-        "scanning_label", base["scanning_hint"], scaled["scanning_hint"], 1.5
+        "scanning_label",
+        (0, base["scanning_hint"][1]),
+        (0, scaled["scanning_hint"][1]),
+        1.5,
     )
 
 
@@ -320,3 +332,190 @@ def test_scanning_label_scales_live_once_text_is_set(qapp) -> None:
     finally:
         w.deleteLater()
 
+
+# ---------------------------------------------------------------------------
+# The judge-run budget line: elide in the slot, full sentence in the tooltip.
+# ---------------------------------------------------------------------------
+
+#: The app's default window width (``src/core/store_settings.py``).
+_DEFAULT_WINDOW_W = 1024
+
+
+def _ru_activity(key: str, **values) -> str:
+    """One real locale sentence (ru is the widest of the four for this line)."""
+    catalog = json.loads(
+        (Path(__file__).parents[1] / "resources/i18n/ru/image_gallery.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    return catalog["image_gallery"]["activity"][key].format(**values)
+
+
+def _write_judge_line(w: ImageGalleryWidget, text: str) -> None:
+    """The REAL writer the judge run uses (``use_cases/judge_budget``)."""
+    judge_budget._set_judge_activity(SimpleNamespace(widget=w), text)
+
+
+def _row_min_at(w: ImageGalleryWidget, qapp, text: str, width: int) -> tuple[int, int]:
+    """Write *text* into the activity slot, size the window, read the row min.
+
+    Returns the toolbar's minimum width and the width the window actually
+    settled at (a window cannot be narrower than its content's minimum).
+    """
+    _write_judge_line(w, text)
+    w.resize(width, 900)
+    _drain(qapp, 8)
+    return w.toolbar.minimumSizeHint().width(), w.width()
+
+
+def test_judge_budget_line_elides_at_the_default_window(qapp) -> None:
+    """Pre-fix red: the sentence stretched the row past the 1024 px window.
+
+    Measured before the fix (ru ceiling-stop line, ``pixel_size=11``): the
+    label asked for 475 px, the row's minimum grew to 1345 px and the gallery
+    window itself was forced to 1393 px — the visible tail was simply cut off.
+    The slot the default window leaves is ~106 px at factor 1.0.
+    """
+    w = _build(1.0, qapp)
+    try:
+        tb = w.toolbar
+        label = tb.scanning_label
+        text = _ru_activity("judge_ceiling_stop", ceiling=9)
+        # Apples-to-apples baseline: the SAME slot with a short string (the
+        # triage "n/N" the same pass writes). The sentence's length must not
+        # move the row's floor.
+        short_min, short_win = _row_min_at(w, qapp, "3/10", _DEFAULT_WINDOW_W)
+        long_min, long_win = _row_min_at(w, qapp, text, _DEFAULT_WINDOW_W)
+
+        # The elide is REAL: the full advance exceeds the slot it was painted in.
+        assert QFontMetrics(label.font()).horizontalAdvance(text) > label.width()
+        assert label.text().endswith("…"), label.text()
+        assert label.text() != text, "the label painted the whole sentence"
+        # Nothing is lost: the original text and the tooltip keep it whole.
+        assert label.get_original_text() == text
+        assert label.toolTip() == text
+        assert "9 вызовов" in label.toolTip()
+        assert "9 вызовов" in label.get_original_text()
+
+        # The sentence no longer inflates the row, so the default window holds.
+        assert long_min == short_min
+        assert long_min <= _DEFAULT_WINDOW_W
+        assert long_win == short_win == _DEFAULT_WINDOW_W
+    finally:
+        w.deleteLater()
+        _drain(qapp, 2)
+
+
+def test_judge_budget_tooltip_keeps_the_token_bound(qapp) -> None:
+    """The ceiling mention (the part that elides away) must stay reachable."""
+    w = _build(1.0, qapp)
+    try:
+        label = w.toolbar.scanning_label
+        text = _ru_activity("judge_estimate", cards=3, k=3, calls=9, tokens=123456)
+
+        _write_judge_line(w, text)
+        w.resize(_DEFAULT_WINDOW_W, 900)
+        _drain(qapp, 8)
+
+        assert label.text().endswith("…")
+        assert "≤ 123456" in label.get_original_text()
+        assert "≤ 123456" in label.toolTip()
+    finally:
+        w.deleteLater()
+        _drain(qapp, 2)
+
+
+def test_triage_counter_does_not_inherit_the_budget_tooltip(qapp) -> None:
+    """The slot is shared: the "n/N" pass must clear the judge tooltip."""
+    w = _build(1.0, qapp)
+    try:
+        tb = w.toolbar
+        _write_judge_line(
+            w,
+            _ru_activity(
+                "judge_estimate", cards=3, k=3, calls=9, tokens=123456
+            ),
+        )
+        _drain(qapp, 2)
+        assert tb.scanning_label.toolTip()
+
+        tb.set_scanning(3, 10)
+        _drain(qapp, 2)
+        assert tb.scanning_label.text() == "3/10"
+        assert tb.scanning_label.toolTip() == ""
+
+        tb.set_triage_done()
+        assert tb.scanning_label.toolTip() == ""
+        assert tb.scanning_label.text() == ""
+    finally:
+        w.deleteLater()
+        _drain(qapp, 2)
+
+
+def test_judge_budget_line_does_not_grow_the_row_at_1_25(qapp) -> None:
+    """At 1.25 the row's own (scaled) need exceeds 1024 px; the line adds 0.
+
+    Pre-fix red: the sentence added its full advance on top (measured 604 px at
+    1.25, forcing the window to 1689 px). Post-fix the row minimum is the same
+    as for the short "n/N" string, and whenever the window does leave room the
+    sentence elides — never a bare cut.
+    """
+    w = _build(1.25, qapp)
+    try:
+        tb = w.toolbar
+        label = tb.scanning_label
+        text = _ru_activity("judge_ceiling_stop", ceiling=9)
+
+        short_min, short_win = _row_min_at(w, qapp, "3/10", _DEFAULT_WINDOW_W)
+        long_min, long_win = _row_min_at(w, qapp, text, _DEFAULT_WINDOW_W)
+
+        # Nothing the sentence does may enlarge the row (or the window): at
+        # this factor the widget cannot BE narrower than its own chrome, so the
+        # signal is that the long string settles at the same width as "3/10".
+        assert long_min == short_min
+        assert long_win == short_win
+
+        # With room, it elides rather than clipping the tail away.
+        w.resize(short_min + 400, 900)
+        _drain(qapp, 8)
+        assert label.width() > 0
+        assert QFontMetrics(label.font()).horizontalAdvance(text) > label.width()
+        assert label.text().endswith("…"), label.text()
+        assert label.get_original_text() == text
+        assert label.toolTip() == text
+    finally:
+        w.deleteLater()
+        _drain(qapp, 2)
+
+
+def test_judge_budget_line_stays_bounded_after_a_live_scale_flip(qapp) -> None:
+    """A live scale flip re-derives the toolkit label; the bound must survive.
+
+    ``Text._apply_style`` re-runs on the metrics and theme buses (it re-sets the
+    size policy from its own variant), so a fix that only patched the policy
+    would let the sentence inflate the row again on the next factor change.
+    The floor here is a ``minimumSizeHint`` override, which nothing re-sets.
+    """
+    w = _build(1.0, qapp)
+    try:
+        tb = w.toolbar
+        label = tb.scanning_label
+        text = _ru_activity("judge_ceiling_stop", ceiling=9)
+        _write_judge_line(w, text)
+        w.resize(_DEFAULT_WINDOW_W, 900)
+        _drain(qapp, 8)
+
+        UiScale.get_instance().set_factor(1.5)
+        _drain(qapp, 8)
+
+        # The row's own scaled need exceeds the default window at 1.5, so read
+        # the floor at a width that leaves the slot some room.
+        short_min, _ = _row_min_at(w, qapp, "3/10", 1600)
+        long_min, _ = _row_min_at(w, qapp, text, 1600)
+        assert long_min == short_min
+        assert label.text().endswith("…"), label.text()
+        assert label.get_original_text() == text
+        assert label.toolTip() == text
+    finally:
+        w.deleteLater()
+        _drain(qapp, 2)

@@ -56,9 +56,13 @@ class _Text:
 
     def __init__(self) -> None:
         self.texts: list[str] = []
+        self.tooltips: list[str] = []
 
     def setText(self, text) -> None:  # noqa: N802 (Qt name)
         self.texts.append(str(text))
+
+    def setToolTip(self, text) -> None:  # noqa: N802 (Qt name)
+        self.tooltips.append(str(text))
 
     def show(self) -> None:
         pass
@@ -151,6 +155,9 @@ def test_counted_pass_states_the_estimate_first_and_stops_at_the_ceiling() -> No
     assert "estimate" in texts[0]
     assert len(texts) == 2 and "ceiling" not in texts[0].lower()
     assert "2-call limit" in texts[1]
+    # The tooltip carries the SAME full sentence (the row elides the paint, so
+    # the ceiling mention is only reachable here).
+    assert owner.widget.toolbar.scanning_label.tooltips == texts
 
 
 def test_ceiling_stop_trace_line_is_exact(monkeypatch, caplog) -> None:

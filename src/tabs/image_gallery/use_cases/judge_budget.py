@@ -209,13 +209,24 @@ def _set_judge_activity(owner, text: str) -> None:
     ("n/N" + spinner); the judge run reports its ESTIMATE and its ceiling stop
     there so the number exists on screen, not only in the trace. Fail-open: a
     storeless controller double has no widget/toolbar.
+
+    The line is far wider than the slot a default 1024 px window leaves
+    (measured 2026-10-25: 311 px for the estimate, 475 px for the ru
+    ceiling-stop sentence), so the label ELIDES it — and the ceiling mention is
+    exactly the part that falls off the right edge. The full sentence therefore
+    goes into the tooltip on every write, and ``GalleryToolbar.set_scanning``
+    clears it again for the triage counter that shares the slot.
     """
     if not text:
         return
     try:
         label = owner.widget.toolbar.scanning_label
+    except Exception:
+        return
+    try:
         label.setText(str(text))
         label.show()
+        label.setToolTip(str(text))
     except Exception:
         pass
 
