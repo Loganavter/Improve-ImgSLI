@@ -119,6 +119,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--quiet", type=float, default=12.0, help="seconds of no new analyze line = settled")
     parser.add_argument("--log", type=Path, default=Path("/tmp/opencode/live_gallery_ai_run.log"))
     parser.add_argument("--keep-app", action="store_true", help="do not stop the app on exit")
+    parser.add_argument("--require-judge", action="store_true",
+                        help="settle only on an explicit 'judge run done' (proofs that must spend calls)")
     args = parser.parse_args(argv)
 
     if not args.folder.is_dir():
@@ -155,6 +157,22 @@ def main(argv: list[str] | None = None) -> int:
 
         wanted = DOMAIN_LABEL_SUFFIX[args.domain]
 
+        def current_domain():
+            """The domain the app restored, from its own log.
+
+            Clicking the AI switch when AI is ALREADY active flips it OFF — the
+            first version of this tool did exactly that on a second run (a
+            restored ``judgment_domain=ai``), so the run produced no analysis at
+            all and the wait timed out. Read the state, then act.
+            """
+            lines = _log_lines(args.log)
+            for line in reversed(lines):
+                if "judgment domain ->" in line:
+                    return line.rsplit("->", 1)[1].split()[0].strip().lower()
+                if "view restored: judgment_domain=" in line:
+                    return line.split("judgment_domain=", 1)[1].split()[0].strip().lower()
+            return ""
+
         def find_switch():
             elements = (control.call("ui_elements").get("elements") or [])
             for element in elements:
@@ -163,20 +181,40 @@ def main(argv: list[str] | None = None) -> int:
             return None
 
         element_id = _wait_for(find_switch, timeout=120, interval=2.0, what=f"a visible {wanted} control")
-        control.call("ui_click", id=element_id)
-        summary["switch"] = element_id
+        seen = current_domain()
+        summary["domain_restored"] = seen or "unknown"
+        if seen == args.domain:
+            summary["switch"] = "already-active"
+        else:
+            control.call("ui_click", id=element_id)
+            summary["switch"] = element_id
+            _wait_for(lambda: current_domain() == args.domain, timeout=60, interval=1.0,
+                      what=f"the judgment domain to become {args.domain}")
 
         # The run is settled when the judge reported a total AND no analyze line
         # has appeared for `--quiet` seconds (a late card would break the proof).
+        routed_at = time.monotonic()
+
         def settled() -> bool:
+            """Quiet, plus at least one analysis OR an explicit judge verdict.
+
+            An all-HIT run never logs ``judge run done`` — the first version of
+            this tool therefore reported "did not settle" for a PERFECT second
+            run, which is the opposite of the truth. A routed folder plus a
+            quiet window plus one observed analysis line (start or cache hit)
+            is the honest condition; ``--require-judge`` keeps the strict form
+            for proofs that need a real run.
+            """
             lines = _log_lines(args.log)
-            if not _count(lines, "judge run done"):
+            analysed = _count(lines, "analyze start") + _count(lines, "analyze cache HIT")
+            judged = _count(lines, "judge run done")
+            if args.require_judge and not judged:
                 return False
-            mtimes = [line for line in lines if "analyze " in line]
-            if not mtimes:
+            if not analysed and not judged:
                 return False
-            stat = args.log.stat()
-            return (time.time() - stat.st_mtime) >= args.quiet
+            if (time.monotonic() - routed_at) < min(args.quiet, 15.0):
+                return False
+            return (time.time() - args.log.stat().st_mtime) >= args.quiet
 
         _wait_for(settled, timeout=args.timeout, interval=2.0, what="the judge run to settle")
 
