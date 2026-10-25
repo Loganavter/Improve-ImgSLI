@@ -24,13 +24,17 @@ import pytest
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QStackedWidget
 
+from core.log_names import APP_LOGGER_NAME
 from core.startup_trace import reset_startup_trace
 from tabs.contract import TabContext
 from tabs.image_compare.tab import ImageCompareTab
 from tabs.registry import TabRegistry
 from tabs.use_cases import pages as pages_use_cases
 
-SPAN_LOGGER = "ImproveImgSLI.startup"
+# ``startup_trace`` logs under the app logger (``<APP_LOGGER_NAME>.startup``). Resolve it
+# through the constant, not the literal: the BlinkTable rename moved the logger name, and a
+# hardcoded "ImproveImgSLI.startup" silently saw zero records (caught on the salvage merge).
+SPAN_LOGGER = f"{APP_LOGGER_NAME}.startup"
 
 # ``startup +   123ms (+   45ms)  <phase>`` / ``startup +     0ms  <phase>``
 _SPAN_LINE = re.compile(
