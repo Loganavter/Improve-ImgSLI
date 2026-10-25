@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QMouseEvent
-from PySide6.QtWidgets import QSizePolicy
+from PySide6.QtWidgets import QWidget, QSizePolicy
 
 from tabs.image_gallery.ui.states import GalleryEmptyState
 
@@ -122,21 +122,28 @@ def test_drop_zone_expands_to_fill(qtbot) -> None:
     assert layout.stretch(idx) >= 1
 
 
-def test_scanning_hides_drop_zone(qtbot) -> None:
-    """S1 shows spinner + count only — no DnD zone while loading/scanning."""
+def test_scanning_shows_nothing_in_the_centre(qtbot) -> None:
+    """S1 is a BLANK canvas — the toolbar (top) owns the progress readout.
+
+    Owner, 2026-10-26: the centre carried a second spinner + "Scanning n/N"
+    right under a toolbar slot that already reports the same thing. Scanned
+    progress must not be duplicated in the middle of the canvas, and the
+    removed widgets must not come back (object names are asserted absent).
+    """
     state = GalleryEmptyState()
     qtbot.addWidget(state)
+    assert state.findChild(QWidget, "gallery_scanning_spinner") is None
+    assert state.findChild(QWidget, "gallery_scanning_label") is None
+
     state.set_state("scanning", 2, 4)
     assert not state._drop_label.isVisible()
     assert getattr(state, "_hint_label", None) is None
     assert getattr(state, "_open_button", None) is None
-    assert state._spinner.isVisible()
-    assert state._scanning_label.isVisible()
-    assert "2/4" in state._scanning_label.text()
+    assert getattr(state, "_spinner", None) is None
+    assert getattr(state, "_scanning_label", None) is None
     # Back to empty is a blank canvas, zone stays hidden until drag.
     state.set_state("empty")
     assert not state._drop_label.isVisible()
-    assert not state._spinner.isVisible()
     # Drag reveals the zone (+ message), leave hides it again.
     state.set_drag_highlight(True)
     assert state._drop_label.isVisible()

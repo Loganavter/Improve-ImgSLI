@@ -16,7 +16,7 @@ from typing import Callable
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QVBoxLayout, QWidget
 
-from sli_ui_toolkit.widgets import DragDropOverlay, DropZoneLabel, LoadingSpinner, Text
+from sli_ui_toolkit.widgets import DragDropOverlay, DropZoneLabel
 
 
 class GalleryEmptyState(QWidget):
@@ -24,7 +24,7 @@ class GalleryEmptyState(QWidget):
 
     Contains a ``DropZoneLabel`` (drag target) and a
     ``DragDropOverlay`` (window overlay painter for S0). Also shows a
-    ``LoadingSpinner`` + count label during scanning.
+    nothing at all during scanning (the toolbar owns the progress readout).
 
     Signals:
         fileDropped(str) — path dropped onto the zone.
@@ -94,22 +94,15 @@ class GalleryEmptyState(QWidget):
         # No hint label, no Open Folder button — drop-only zone.
         # Zone click does NOT open the folder dialog.
 
-        # Scanning row: spinner + "Scanning… n"
-        self._spinner = LoadingSpinner(self)
-        self._spinner.setObjectName("gallery_scanning_spinner")
-        self._spinner.hide()
-        self._scanning_label = Text("", mode="plain", pixel_size=16)
-        self._scanning_label.setObjectName("gallery_scanning_label")
-        self._scanning_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._scanning_label.hide()
-
+        # No centre spinner and no centre "Scanning n/N" label (owner 2026-10-26):
+        # the toolbar's activity slot already reports scanning/progress at the
+        # top, and the second copy in the middle of the canvas was pure noise.
+        # This surface stays a blank canvas while scanning.
         # The drop zone takes the free space (4/6) only while a drag is
         # active; in repose the stretches leave a blank canvas. Spacers
         # keep the zone (and the spinner row in scanning) centered.
         layout.addStretch(1)
         layout.addWidget(self._drop_label, 4)
-        layout.addWidget(self._spinner, 0, Qt.AlignmentFlag.AlignHCenter)
-        layout.addWidget(self._scanning_label)
         layout.addStretch(1)
 
         # Drag overlay for window-level highlight (S0). For offscreen/tests keep
@@ -250,13 +243,6 @@ class GalleryEmptyState(QWidget):
                 self._drop_label.update()
             except Exception:
                 pass
-            self._spinner.hide()
-            try:
-                self._spinner.stop()
-            except Exception:
-                pass
-            self._scanning_label.hide()
-            self._scanning_label.setText("")
             if self._overlay is not None:
                 try:
                     self._overlay.set_overlay_state(False, self.geometry())
@@ -264,42 +250,9 @@ class GalleryEmptyState(QWidget):
                     pass
         elif state == "scanning":
             self.show()
-            # Drop zone stays hidden while scanning — spinner + count only.
+            # Blank canvas while scanning: the toolbar (top) owns the progress
+            # readout; the count arguments stay accepted for callers.
             self._drop_label.hide()
-            self._spinner.show()
-            try:
-                self._spinner.start()
-            except Exception:
-                pass
-            self._scanning_label.show()
-            # Scanning text — S1 spinner n/N (A1 parity). Fallback to n if total missing.
-            if total is not None:
-                try:
-                    t_i = int(total)
-                    n_i = int(n)
-                    default = f"Scanning {n_i}/{t_i}" if t_i > 0 else f"Scanning {n_i}"
-                except Exception:
-                    default = f"Scanning {int(n)}"
-            else:
-                default = f"Scanning {int(n)}"
-            # Keep ellipsis-style fallback for legacy translations: scanning ellipsis → n/N
-            if self._tr is not None:
-                try:
-                    txt = self._tr("image_gallery.scanning", default)
-                    # If translation is missing and returns key, fallback to default with count.
-                    if txt == "image_gallery.scanning":
-                        txt = default
-                    # Support placeholder style in translation json: "{n}/{total}" or "{n}"
-                    if "{n}" in txt or "{total}" in txt:
-                        try:
-                            txt = txt.replace("{n}", str(int(n))).replace("{total}", str(int(total) if total is not None else ""))
-                        except Exception:
-                            pass
-                except Exception:
-                    txt = default
-            else:
-                txt = default
-            self._scanning_label.setText(txt)
         elif state == "ready":
             # Content ready — hide empty state entirely.
             if self._overlay is not None:
@@ -307,10 +260,6 @@ class GalleryEmptyState(QWidget):
                     self._overlay.set_overlay_state(False, self.geometry())
                 except Exception:
                     pass
-            try:
-                self._spinner.stop()
-            except Exception:
-                pass
             self.hide()
         else:
             # Unknown state — treat as empty (blank canvas).
