@@ -233,7 +233,7 @@ log lines only; `visual` = changes pixels; `dump` = writes capture files;
 | `IMGSLI_GLASS_PANEL_DEBUG_DUMP` | dump | `<dir>` path | `src/engine/gpu/glass_panel.py` |
 | `IMGSLI_GLASS_PANEL_SYNC_PROBE` | removed | historical only — named in comments, no live `os.environ` read (`src/engine/gpu/glass_panel.py`) | — |
 | `IMGSLI_GLASS_PANEL_DISPLAY_BACKEND` | removed | read nowhere (re-checked 2026-10-22); there is no `=rhi` env switch — the panel's RHI path is `GlassPanelDisplayWidget`'s own descriptor | — |
-| `IMGSLI_FAULT_DUMP` (+ `_FILE`, `_INTERVAL`) | dump | `env_flag` + path + int w/ fail-open default 15 | `src/core/windowed_stdio.py` |
+| `IMGSLI_FAULT_DUMP` (+ `_FILE`, `_INTERVAL`) | dump | `env_flag` + path + int w/ fail-open default 15 | `src/core/windowed_stdio.py` — armed from `src/__main__.py` before Qt/logging; an unwritable path **disables the dump** and writes its one `Fault dump disabled: …` warning to `startup_early.log` (below) as well as the logger, because at that point no handler is attached and a windowed build's stderr is `os.devnull` |
 | `IMGSLI_SKIP_MIP_CASCADE` | behavior | cached at import, permissive (`""/0/false/no/off` = off) — the same parse in both canvas tabs | `src/tabs/multi_compare/scene/renderer.py:55` (`_SKIP_MIP_CASCADE`), `src/tabs/image_compare/canvas/rhi_renderer/renderer.py:108` (`_skip_mip_cascade_requested` → `_SKIP_MIP_CASCADE`) |
 | `IMGSLI_MC_RMB_SURFACE` | behavior | `=in_window\|popup` | `src/tabs/multi_compare/canvas/interaction.py` |
 | `IMGSLI_MC_DND_DIAG_LIGHT_MOVE` | behavior | diag-only A/B, never ship | `src/tabs/multi_compare/debug.py` |
@@ -277,6 +277,14 @@ that window in `<app data dir>/startup_early.log`, next to `log.txt`:
 - created only when `IMGSLI_STARTUP_TRACE` **or** `IMGSLI_STALL_WATCH` (or the
   `BLINKTABLE_` spelling) is on — with both off no directory is touched, no
   file is created, and every `early_mark` is a no-op;
+- one exception, an error rather than a diagnostic: when the opt-in
+  `IMGSLI_FAULT_DUMP` is **disabled** by an unusable dump path, its single
+  `Fault dump disabled: …` warning is written here **even with both
+  diagnostics flags off** (`core.windowed_stdio` → `write_error_record`). It
+  fires from `__main__` before any log handler exists and a windowed build's
+  stderr is `os.devnull`, so this file is its only sink. Exactly one record per
+  process (repeated arming does not duplicate it); an *armed* dump writes
+  nothing here and creates no file;
 - opened `w` once per traced run (**wiped every time**), then one append +
   close per record: no long-lived handle, no Qt object, no `setup_logging`
   dependency;
@@ -291,7 +299,7 @@ start-up before that is excluded by construction):
 
 | Mark | Emitted from |
 |---|---|
-| `main.entry` | module scope of `src/__main__.py`, before the heavy imports (+0 ms) |
+| `main.entry` | module scope of `src/__main__.py`, before the heavy imports (+0 ms; a queued `Fault dump disabled` record follows it when that error armed the dump first) |
 | `main.imports_done` | end of that import block (the previously invisible import cost) |
 | `main.qapp_ready` | right after `QApplication(argv)` |
 | `rhi.probe.start` / `rhi.probe.end` | around `resolve_rhi_backend_with_fallback` |
@@ -302,6 +310,20 @@ The stall watchdog's reports (`[stall]`, `src/core/stall_watch.py`) and its
 `[stall] watchdog armed` line go to the same file until `ctx.logging_ready`
 fires, then back to `log.txt` exactly as before — the early file is the
 pre-logging fallback, never a second copy of the ordinary log.
+
+A disabled fault dump is the other writer: with `IMGSLI_FAULT_DUMP=1` and an
+unusable `IMGSLI_FAULT_DUMP_FILE` (or temp dir) the dump is dropped and exactly
+one `Fault dump disabled: cannot open/wire …` record appears here, while startup
+continues; that line is the only trace a `--noconsole` build can leave, since
+its stderr is `os.devnull`. The default run (no `IMGSLI_FAULT_DUMP`) still
+creates nothing.
+
+That record is armed at `enable_faulthandler()`, i.e. **before**
+`src/__main__.py` imports `core.startup_trace`. In a run that is both traced and
+has a broken dump path the sink therefore already exists when the first mark is
+written, so the record is **queued** and flushed right after it: `main.entry`
+stays the file's first line and the warning follows as the second record,
+exactly once. Every other traced run is unchanged.
 
 ```bash
 IMGSLI_STARTUP_TRACE=1 IMGSLI_STALL_WATCH=1 python src/__main__.py

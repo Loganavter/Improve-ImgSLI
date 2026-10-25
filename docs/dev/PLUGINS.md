@@ -101,6 +101,14 @@ Order of authority in `discovery_scan.iter_tab_entry_points()` /
 2. otherwise the filesystem AST scan (dev checkouts);
 3. otherwise `pkgutil` + import (frozen bundle with no manifest).
 
+Inside step 3, a package under `src/tabs/` that ships no `tab.py` (e.g.
+`use_cases`) is a candidate, not a broken tab: the scan asks
+`importlib.util.find_spec` before importing and skips a non-resolving module
+quietly (DEBUG; a raising `find_spec` — broken parent, relative name — counts
+as "not resolvable"). Only a module that exists but fails to import is an
+ERROR with a traceback, so a genuinely broken `tab.py` still shows up in the
+frozen startup log.
+
 The manifest is consulted only for the real tree (`src_root=None`); an explicit
 `src_root` (tests, fixture trees) always runs the filesystem/import scan.
 Anything wrong with the file — missing, unreadable, corrupt JSON, unknown

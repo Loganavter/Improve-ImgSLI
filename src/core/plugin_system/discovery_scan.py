@@ -5,7 +5,7 @@ from core.plugin_system.discovery_cache import (  # noqa: F401
     cached_scan, reset_plugin_entry_scan_cache, reset_tab_entry_scan_cache)
 
 import ast
-import importlib
+import importlib.util
 import json
 import logging
 import pkgutil
@@ -71,10 +71,9 @@ class TabEntryPoint:
 def iter_plugin_entry_points(*, src_root: Path | None = None) -> tuple[PluginEntryPoint, ...]:
     """Discover plugin entry points (manifest, filesystem AST scan, import fallback).
 
-    Order: the build-time manifest (only for the real tree, never for an
-    explicit ``src_root``), then the filesystem AST scan, then ``pkgutil`` +
-    import. Dev checkouts have ``plugin.py`` on disk; a frozen PyInstaller
-    bundle has neither the manifest nor the sources, so it falls back to import.
+    The manifest applies only to the real tree: an explicit ``src_root`` is a
+    fixture tree, and a frozen bundle has no sources on disk, so both end at
+    ``pkgutil`` + import.
     """
     manifest = _manifest_for(src_root)
     if manifest is not None:
@@ -131,9 +130,7 @@ def load_discovery_manifest(path: Path | None = None) -> list[Entry] | None:
     if not manifest_path.is_file():
         return None
     try:
-        return _entries_from_manifest_payload(
-            json.loads(manifest_path.read_text(encoding="utf-8"))
-        )
+        return _entries_from_manifest_payload(json.loads(manifest_path.read_text(encoding="utf-8")))
     except Exception:
         logger.warning(
             "%s unusable; falling back to the import-based discovery scan",
@@ -159,9 +156,8 @@ def _entries_from_manifest_payload(payload: object) -> list[Entry]:
         kind, ident, module, attr, tier = fields
         if kind not in ("tab", "plugin") or tier not in ("bootstrap", "deferred"):
             raise ValueError(f"malformed manifest entry: {rec!r:.120}")
-        if not module.startswith(("tabs.", "plugins.")) or isinstance(order, bool):
-            raise ValueError(f"malformed manifest entry: {rec!r:.120}")
-        if not isinstance(order, int):
+        bad_module = not module.startswith(("tabs.", "plugins.")) or isinstance(order, bool)
+        if bad_module or not isinstance(order, int):
             raise ValueError(f"malformed manifest entry: {rec!r:.120}")
         entries.append(Entry(kind, ident, module, attr, tier, order))
     return entries
@@ -276,9 +272,7 @@ def _iter_plugin_entry_points_via_import() -> tuple[PluginEntryPoint, ...]:
         for _, nested_name, nested_is_pkg in pkgutil.iter_modules(list(nested_path)):
             if not nested_is_pkg or nested_name.startswith("_"):
                 continue
-            entry = _plugin_entry_from_import(
-                f"tabs.{tab_name}.plugins.{nested_name}.plugin"
-            )
+            entry = _plugin_entry_from_import(f"tabs.{tab_name}.plugins.{nested_name}.plugin")
             if entry is not None:
                 entries.append(entry)
 
@@ -298,6 +292,19 @@ def _iter_tab_entry_points_via_import() -> tuple[TabEntryPoint, ...]:
         if not is_pkg or name.startswith("_") or name in _SKIP_TAB_PACKAGES:
             continue
         module_name = f"tabs.{name}.tab"
+        # A package under ``tabs/`` need not ship a ``tab.py`` (``use_cases``),
+        # and a datas-only bundle cannot tell from the tree: skip a candidate
+        # that does not resolve, cheaply and quietly. Only a module that exists
+        # and fails to import stays loud below.
+        try:
+            resolvable = importlib.util.find_spec(module_name) is not None
+        except (ImportError, ValueError):
+            resolvable = False  # broken parent package / relative name
+        except Exception:
+            resolvable = True  # let the import below report it loudly
+        if not resolvable:
+            logger.debug("Import-based tab discovery skipped %s", module_name)
+            continue
         try:
             mod = importlib.import_module(module_name)
         except Exception:
@@ -309,11 +316,8 @@ def _iter_tab_entry_points_via_import() -> tuple[TabEntryPoint, ...]:
         tier: StartupTier = "deferred"
         for attr_name in dir(mod):
             obj = getattr(mod, attr_name)
-            if (
-                isinstance(obj, type)
-                and issubclass(obj, TabContract)
-                and obj is not TabContract
-            ):
+            is_tab_class = isinstance(obj, type) and issubclass(obj, TabContract)
+            if is_tab_class and obj is not TabContract:
                 raw = getattr(obj, "startup_tier", "deferred")
                 if raw in ("bootstrap", "deferred"):
                     tier = raw  # type: ignore[assignment]
@@ -431,10 +435,8 @@ def _parse_tab_startup_tier(tab_py: Path) -> StartupTier:
             # scan time; the contract-level __init_subclass__ check raises
             # again at import time so the typo can never slip into a tier.
             logger.warning(
-                "%s: invalid startup_tier %r (expected 'bootstrap' or "
-                "'deferred'); treating as 'deferred'",
-                tab_py,
-                raw,
+                "%s: invalid startup_tier %r (expected 'bootstrap' or 'deferred');"
+                " treating as 'deferred'", tab_py, raw,
             )
             return "deferred"
     return "deferred"
@@ -489,12 +491,9 @@ def _int_kw(kwargs: dict[str, ast.expr], key: str, *, default: int) -> int:
 
 
 def _const_str(node: ast.expr | None) -> str | None:
-    if not isinstance(node, ast.Constant) or not isinstance(node.value, str):
-        return None
-    return node.value
+    value = getattr(node, "value", None)
+    return value if isinstance(node, ast.Constant) and isinstance(value, str) else None
 
 
 def _expr_name(node: ast.expr) -> str | None:
-    if isinstance(node, ast.Name):
-        return node.id
-    return node.attr if isinstance(node, ast.Attribute) else None
+    return node.id if isinstance(node, ast.Name) else getattr(node, "attr", None)
