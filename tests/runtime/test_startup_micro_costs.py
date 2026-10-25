@@ -94,9 +94,16 @@ def _spy(monkeypatch, module, name: str) -> list[int]:
     return calls
 
 
-def test_plugin_entry_scan_runs_once_for_all_tiers(monkeypatch):
+def test_plugin_entry_scan_runs_once_for_all_tiers(monkeypatch, tmp_path):
     from core.plugin_system import discovery_scan
 
+    # Force the NO-manifest path: a committed discovery_manifest.json is
+    # authoritative and returns before ``cached_scan`` is reached, so the
+    # once-per-process contract only governs the scan fallback (see
+    # ``test_manifest_short_circuits_the_entry_scans`` for the other arm).
+    monkeypatch.setattr(
+        discovery_scan, "_MANIFEST_PATH", tmp_path / "absent-manifest.json"
+    )
     discovery_scan.reset_plugin_entry_scan_cache()
     calls = _spy(
         monkeypatch, discovery_scan, "_iter_plugin_entry_points_from_filesystem"
@@ -115,9 +122,14 @@ def test_plugin_entry_scan_runs_once_for_all_tiers(monkeypatch):
         discovery_scan.reset_plugin_entry_scan_cache()
 
 
-def test_tab_entry_scan_runs_once_for_all_call_sites(monkeypatch):
+def test_tab_entry_scan_runs_once_for_all_call_sites(monkeypatch, tmp_path):
     from core.plugin_system import discovery_scan
 
+    # Same split as the plugin test above: the manifest wins when it is
+    # present, so the cache contract is asserted on the scan fallback.
+    monkeypatch.setattr(
+        discovery_scan, "_MANIFEST_PATH", tmp_path / "absent-manifest.json"
+    )
     discovery_scan.reset_tab_entry_scan_cache()
     calls = _spy(monkeypatch, discovery_scan, "_iter_tab_entry_points_from_filesystem")
     try:
@@ -131,6 +143,37 @@ def test_tab_entry_scan_runs_once_for_all_call_sites(monkeypatch):
         discovery_scan.iter_tab_entry_points()
         assert len(calls) == 2, "reset_tab_entry_scan_cache must re-arm the scan"
     finally:
+        discovery_scan.reset_tab_entry_scan_cache()
+
+
+def test_manifest_short_circuits_the_entry_scans(monkeypatch):
+    """The other arm: with a usable manifest, discovery never scans the tree.
+
+    A committed ``discovery_manifest.json`` is authoritative — that is the whole
+    reason it is shipped — so neither AST scanner may run. Falsifiable: drop the
+    manifest branch in ``iter_*_entry_points`` and both spies go to 1.
+    """
+    from core.plugin_system import discovery_scan
+
+    assert discovery_scan.load_discovery_manifest() is not None, (
+        "this checkout must ship src/core/plugin_system/discovery_manifest.json; "
+        "regenerate it with `PYTHONPATH=src python3 src/devtools/gen_discovery_manifest.py`"
+    )
+    discovery_scan.reset_plugin_entry_scan_cache()
+    discovery_scan.reset_tab_entry_scan_cache()
+    plugin_calls = _spy(
+        monkeypatch, discovery_scan, "_iter_plugin_entry_points_from_filesystem"
+    )
+    tab_calls = _spy(
+        monkeypatch, discovery_scan, "_iter_tab_entry_points_from_filesystem"
+    )
+    try:
+        assert discovery_scan.plugin_modules_for_tier("bootstrap")
+        assert discovery_scan.iter_tab_entry_points()
+        assert plugin_calls == [], "a usable manifest must skip the plugin AST scan"
+        assert tab_calls == [], "a usable manifest must skip the tab AST scan"
+    finally:
+        discovery_scan.reset_plugin_entry_scan_cache()
         discovery_scan.reset_tab_entry_scan_cache()
 
 

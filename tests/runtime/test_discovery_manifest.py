@@ -265,6 +265,12 @@ def test_corrupt_manifest_still_discovers_everything(
     monkeypatch.setattr(
         discovery_scan, "_iter_plugin_entry_points_from_filesystem", lambda _root: ()
     )
+    # The caches are process-global: any earlier test that ran discovery warms
+    # them, and a warm cache would return entries without ever reaching the
+    # import fallback, making ``imported`` empty for a reason that has nothing
+    # to do with the corrupt manifest.
+    discovery_scan.reset_tab_entry_scan_cache()
+    discovery_scan.reset_plugin_entry_scan_cache()
 
     with caplog.at_level(logging.WARNING, logger=discovery_scan.logger.name):
         with _count_module_imports(monkeypatch) as imported:
