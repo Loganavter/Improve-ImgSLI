@@ -10,13 +10,18 @@ Host-specific logging setup. Shared conventions (stdlib `logging` only, unique-p
 | `src/core/log_names.py` | The one spelling: `APP_NAME`, `APP_LOGGER_NAME` (`"BlinkTable"`), plus `LEGACY_LOGGER_NAME` / `LEGACY_LOG_DIR_NAME` used **only** by the log-dir migration |
 | `src/core/log_dir_migration.py:migrate_log_directory_once` | Called by `_configure_logging` **before** `setup_logging`: aliases the pre-rename app-data directory once (see below) |
 | `src/core/bootstrap.py:_configure_logging` | `migrate_log_directory_once()` then `setup_logging(APP_LOGGER_NAME, effective_debug, "IMPROVE_DEBUG")` at startup |
-| `src/core/startup_trace.py` | Optional phase timing when `IMGSLI_STARTUP_TRACE=1` (logger name `BlinkTable.startup`) |
-| `src/__main__.py` | CLI flags `--debug` / `--enable-logging` / `--disable-logging` |
+| `src/core/startup_trace.py` | Optional phase timing when `IMGSLI_STARTUP_TRACE=1` (logger name `BlinkTable.startup`); also the `early_mark` facade over the pre-logging file sink |
+| `src/core/startup_early_log.py` | The **early sink**: `startup_early.log`, written before logging exists (see [Early sink](#early-sink-the-window-before-logging-exists)) |
+| `src/__main__.py` | CLI flags `--debug` / `--enable-logging` / `--disable-logging`; emits the pre-window marks |
 
 Log file location (cleared on every start, `mode="w"`):
 - Linux: `${XDG_DATA_HOME:-~/.local/share}/BlinkTable/log.txt`
 - macOS: `~/Library/Application Support/BlinkTable/log.txt`
 - Windows: `%APPDATA%/BlinkTable/log.txt`
+
+`startup_early.log` lives in the same directory and is wiped on every **traced**
+start (`IMGSLI_STARTUP_TRACE` / `IMGSLI_STALL_WATCH`); it is not created at all
+otherwise.
 
 ### One-time import of the pre-rename directory
 
@@ -184,6 +189,7 @@ log lines only; `visual` = changes pixels; `dump` = writes capture files;
 |---|---|---|---|
 | `IMGSLI_TRACE`, `IMGSLI_TRACE_KINDS`, `IMGSLI_TRACE_SKIP` | trace | permissive / filter lists | `src/core/tracing/tracer.py` |
 | `IMGSLI_STARTUP_TRACE` | trace | `env_flag` | `src/core/startup_trace.py` |
+| `IMGSLI_STARTUP_EARLY_SELFTEST_SLEEP_MS` | tuning (test hook) | `env_value`, int ms, off when unset | `src/core/startup_early_log.py` — deliberate GUI block after the stall watchdog arms, before logging exists |
 | `IMGSLI_PERF_TRACE` | trace | permissive (export gate at `write_trace`) | `src/engine/frame/trace_export.py` (spans: `src/engine/frame/context.py`; IC hooks: `src/tabs/image_compare/canvas/`; MC hooks: `src/tabs/multi_compare/scene/renderer.py`, `src/tabs/multi_compare/canvas/interaction.py`, `src/tabs/multi_compare/ui/canvas_widget.py`) |
 | `IMGSLI_RESIZE_DEBUG` | log | `env_flag` | `src/engine/cache/render_debug.py`, `src/ui/main_window/runtime.py` |
 | `IMGSLI_RESIZE_DEBUG_VISUAL` | visual | `env_flag` | `src/ui/main_window/runtime.py` |
@@ -218,7 +224,7 @@ log lines only; `visual` = changes pixels; `dump` = writes capture files;
 | `IMGSLI_QL_COVER_DEBUG` | log | `env_value` (truthy) | `src/engine/gpu/tiled_image_view.py` (`_draw_instances`, same first-draw line as above) |
 | `IMGSLI_QL_RESIZE_TRACE` | log | `env_flag` | `src/tabs/image_gallery/ui/quick_look/resize/cursors.py` (`_resize_trace_on`) — full quick-look resize firehose |
 | `IMGSLI_JANK_WATCH` | log | `env_value`, permissive (`""/0/no/off` off) | `src/tabs/image_gallery/widget.py` — GUI-thread stall watchdog (`[jank] gui-loop gap …ms` on a >0.15 s inter-tick gap) |
-| `IMGSLI_STALL_WATCH` (+ `_THRESHOLD_MS`, default 250) | log + stack dump | `env_flag`, permissive | `src/core/stall_watch.py`, armed from `src/__main__.py` — **host-wide** GUI-thread watchdog: on a block past the threshold it logs `[stall] gui-loop blocked …ms` **and the main thread's Python stack**, so a hitch deferred past its cause (queued slot, debounce, GC, lazy cache) is attributable; an empty stack means the block is in Qt/driver/syscall |
+| `IMGSLI_STALL_WATCH` (+ `_THRESHOLD_MS`, default 250) | log + stack dump | `env_flag`, permissive | `src/core/stall_watch.py`, armed from `src/__main__.py` — **host-wide** GUI-thread watchdog: on a block past the threshold it logs `[stall] gui-loop blocked …ms` **and the main thread's Python stack**, so a hitch deferred past its cause (queued slot, debounce, GC, lazy cache) is attributable; an empty stack means the block is in Qt/driver/syscall; reports and the `armed` line go to `startup_early.log` (below) until `ctx.logging_ready` |
 | `SLI_FOCUS_DEBUG` | log | `env_flag` (`focus_debug_enabled`) | `src/ui/focus_debug.py` → `[focus-debug]`; installed from `src/ui/main_window/lifecycle.py` |
 | `IMGSLI_PERF_TRACE_PATH` | tuning | path override | `src/engine/frame/trace_export.py:default_trace_path` — fixed path for the perf-trace dump (default is pid-suffixed in the system temp dir — `tempfile.gettempdir()`, i.e. `%TEMP%` on Windows; this is the override for the "Frame perf spans" export) |
 | `IMPROVE_ENABLE_TRAY` | behavior | direct `os.environ.get` (unset = enabled; `=1` forces on, any other value off) | `src/ui/main_window/composer.py` (`_should_enable_system_tray`) |
@@ -255,6 +261,58 @@ Cold-startup phase timing (bootstrap vs deferred plugin load):
 IMGSLI_STARTUP_TRACE=1 python src/__main__.py
 grep 'BlinkTable.startup' ~/.local/share/BlinkTable/log.txt
 ```
+
+### Early sink: the window before logging exists
+
+`main.entry`, the module-scope imports, `QApplication` creation, the RHI/D3D11
+probe (307–374 ms cold) and `MainWindow` construction all run **before**
+`bootstrap._configure_logging` attaches a handler. A `startup_mark` line
+emitted there goes to an unconfigured logger and is dropped — and a windowed
+(`--noconsole`) build points `stderr` at `os.devnull`, so the phase is
+**invisible rather than absent**.
+
+`src/core/startup_early_log.py` (behind `core.startup_trace.early_mark`) keeps
+that window in `<app data dir>/startup_early.log`, next to `log.txt`:
+
+- created only when `IMGSLI_STARTUP_TRACE` **or** `IMGSLI_STALL_WATCH` (or the
+  `BLINKTABLE_` spelling) is on — with both off no directory is touched, no
+  file is created, and every `early_mark` is a no-op;
+- opened `w` once per traced run (**wiped every time**), then one append +
+  close per record: no long-lived handle, no Qt object, no `setup_logging`
+  dependency;
+- never raises — an unwritable data directory silently disables it;
+- written into the legacy `…/ImproveImgSLI` directory when that is the only one
+  on disk, so a traced run cannot disable the one-time log-dir migration (see
+  above); after migration both spellings are the same tree.
+
+Marks (offsets are ms since the earliest point a portable process can observe
+itself — the import of the sink at the top of `src/__main__.py`; interpreter
+start-up before that is excluded by construction):
+
+| Mark | Emitted from |
+|---|---|
+| `main.entry` | module scope of `src/__main__.py`, before the heavy imports (+0 ms) |
+| `main.imports_done` | end of that import block (the previously invisible import cost) |
+| `main.qapp_ready` | right after `QApplication(argv)` |
+| `rhi.probe.start` / `rhi.probe.end` | around `resolve_rhi_backend_with_fallback` |
+| `main.window_start` | before `MainWindow(...)` |
+| `main.window.init_done` | after `window.start()` |
+
+The stall watchdog's reports (`[stall]`, `src/core/stall_watch.py`) and its
+`[stall] watchdog armed` line go to the same file until `ctx.logging_ready`
+fires, then back to `log.txt` exactly as before — the early file is the
+pre-logging fallback, never a second copy of the ordinary log.
+
+```bash
+IMGSLI_STARTUP_TRACE=1 IMGSLI_STALL_WATCH=1 python src/__main__.py
+cat ~/.local/share/BlinkTable/startup_early.log
+```
+
+A deliberate reproduction of the "stall before logging" case:
+`IMGSLI_STARTUP_EARLY_SELFTEST_SLEEP_MS=400` holds the GUI thread right after
+the watchdog is armed (test hook; unset does nothing). The
+`[stall] gui-loop blocked …` report then has to appear in `startup_early.log`,
+not in `log.txt` — pinned by `tests/runtime/test_startup_early_log.py`.
 
 ## Frame perf spans (IC + MC zoom-burst repro)
 
