@@ -42,6 +42,8 @@ from tabs.image_gallery.controller import GalleryController
 from tabs.image_gallery.models import Series
 from tabs.image_gallery.services import ai_settings_store as store_module
 from tabs.image_gallery.services.ai_settings_store import AiSettings, AiSettingsStore
+from tabs.image_gallery.services.metric_profile import MetricProfile
+from tabs.image_gallery.services.profile_judged import scorecard_axis_ids
 from tabs.image_gallery.services.rank_fusion import item_quality, rank_series
 from tabs.image_gallery.use_cases import ai_analysis
 from tabs.image_gallery.use_cases import analysis_batch
@@ -50,8 +52,11 @@ from tabs.image_gallery.use_cases.pairwise_rank import (
     ANSWER_FIRST,
     PairwiseVerdictCache,
     content_key,
+    member_qualities,
     pair_key,
     pairwise_calls_bound,
+    precheck,
+    profile_axis_numbers,
     run_pairwise_pass,
 )
 
@@ -939,3 +944,247 @@ def test_terminal_rank_refuses_in_the_ai_domain_and_runs_after_a_switch(
     owner.launched[0].run()
     assert judge.calls == 2, "one unordered pair, asked in both orders"
     assert (items[1].rank, items[0].rank) == (1, 2), "the pairwise order applied"
+
+
+# -- MEASURED = the ACTIVE profile's own axes, in BOTH judgment stores --------
+#
+# Board 2026-10-25 (live, real provider, 3-image folder): the trigger FIRED —
+# the terminal-rank tail re-entered after a 9-call judge run AND after switching
+# back to the Algorithms domain — but the pass could not start:
+# ``judge_pairwise.skip reason=too_small top_n=3 members=3 measured=0``, logged
+# BOTH before and after the judge run, so it was not a settle race.
+#
+# Diagnostic answer (printed by the first test below; recorded in the task's
+# DONE.md): a judge run writes its numbers to ``item.analysis.axes`` under the
+# axes the metric profile ASKED for — which on such a folder is the profile's
+# JUDGE half (free-form names like ``texture_fidelity``). ``PairMember.quality``
+# came from ``rank_fusion.item_quality``, whose axis resolver
+# (``measured_axes_for``) is the REGISTRY half on purpose (a judge name has no
+# local producer) and whose per-member vector reads only
+# ``analysis_records``/``item.metrics``. Nothing on those two paths names a
+# judged axis, so every member's quality was None → measured=0 → too_small → the
+# pass never spent a call.
+#
+# Falsification stories:
+# (r) a judged card reads its numbers through the profile's axes
+#     (``profile_axis_numbers``) and its quality through the set-level read
+#     (``member_qualities``) — fails if the fixture is not the judged shape
+#     (e.g. it also carried a detector record, so the pass could open for the
+#     wrong reason);
+# (s) judge-named axes ALONE open the gate: a near-tie judged set gets past
+#     too_small and the A/B pass really runs (2 calls, both orders) — at the
+#     base commit the same fixture answers too_small with zero calls;
+# (t) a WIDE judged spread is ``decided`` with ``spread=`` in the trace, not
+#     too_small — the gate still spends nothing when the order is already clear;
+# (u) a judged card with nothing scored anywhere still blocks the set with
+#     ``unmeasured`` — the honest read never fabricates a number;
+# (v) the production terminal-rank trigger schedules the pass on a judged
+#     series (scripted owner, no network), so the fix reaches the live path.
+
+JUDGE_AXES = (
+    SimpleNamespace(
+        name="texture_fidelity",
+        definition="how faithfully fine texture and micro-detail are reproduced",
+        scale="0-100",
+        direction="higher-is-better",
+    ),
+    SimpleNamespace(
+        name="halo_freedom",
+        definition="absence of bright or dark halos along high-contrast edges",
+        scale="0-100",
+        direction="higher-is-better",
+    ),
+)
+
+
+def _judge_profile(*, axis_ids=(), entries=JUDGE_AXES) -> MetricProfile:
+    """The profile a VLM-derived series carries: judge half, maybe empty registry."""
+    return MetricProfile(
+        axis_ids=tuple(axis_ids),
+        mode="camera",
+        source="vlm",
+        axis_entries=tuple(entries),
+    )
+
+
+def _judged_item(name: str, **scores):
+    """A card a judge run scored: numbers on ``analysis.axes``, no local record."""
+    return SimpleNamespace(
+        path=Path("/gallery") / name,
+        mtime_ns=1,
+        analysis=SimpleNamespace(axes=dict(scores)),
+        analysis_records=(),
+        metrics={},
+    )
+
+
+def test_a_judged_card_is_measured_through_the_profiles_own_axes() -> None:
+    """(r) the diagnostic: where a judged card's numbers actually live."""
+    profile = _judge_profile()
+    card = _judged_item("a.png", texture_fidelity=91, halo_freedom=90)
+    axes = scorecard_axis_ids("camera", profile=profile)
+    numbers = profile_axis_numbers(card, mode="camera", profile=profile)
+    registry = item_quality(card, mode="camera", profile=profile)
+    print(
+        "\n[diagnostic] profile.axis_entries=%s\n"
+        "             scorecard_axis_ids=%s\n"
+        "             profile_axis_numbers=%s\n"
+        "             rank_fusion.item_quality=%s"
+        % (tuple(entry.name for entry in JUDGE_AXES), axes, numbers, registry)
+    )
+
+    assert axes == ("texture_fidelity", "halo_freedom"), (
+        "the ACTIVE profile's asked set is its judge half when it has no "
+        "registry ids — the same set the scorecard prompt asked for"
+    )
+    assert numbers == {"texture_fidelity": 91.0, "halo_freedom": 90.0}
+    assert member_qualities([card], mode="camera", profile=profile) == [90.5]
+    # A card with nothing scored on any profile axis is NOT measured: the read
+    # never fills a gap (0 or a neighbour axis) to get past the gate.
+    blank = SimpleNamespace(path=Path("/gallery") / "z.png", mtime_ns=1, metrics={})
+    assert profile_axis_numbers(blank, mode="camera", profile=profile) == {}
+    assert member_qualities([blank], mode="camera", profile=profile) == [None]
+
+
+def test_judge_named_axes_alone_get_past_too_small_and_the_pass_runs() -> None:
+    """(s) nothing but judge-named numbers: the pass is scheduled and applies."""
+    profile = _judge_profile()
+    items = [
+        _judged_item("a.png", texture_fidelity=91, halo_freedom=90),
+        _judged_item("b.png", texture_fidelity=89, halo_freedom=88),
+        _judged_item("c.png", texture_fidelity=88, halo_freedom=87),
+    ]
+    row = _settings(pairwise_top_n=2, pairwise_near_tie_threshold=10.0)
+    ranks = {str(item.path): index for index, item in enumerate(items, start=1)}
+
+    assert (
+        precheck(
+            _owner(row),
+            items,
+            pointwise_ranks=ranks,
+            settings=row,
+            mode="camera",
+            profile=profile,
+        )
+        is None
+    ), "a judged near-tie set must be allowed to start a pass"
+
+    judge = _ScriptedJudge(_b_wins)
+    result = run_pairwise_pass(
+        _owner(row),
+        items,
+        pointwise_ranks=ranks,
+        settings=row,
+        mode="camera",
+        profile=profile,
+        judge=judge,
+        cache=PairwiseVerdictCache(),
+    )
+
+    assert result.reason != "too_small"
+    assert result.applied is True
+    assert judge.calls == 2, "one unordered pair, asked in both orders"
+    assert [member.quality for member in result.members] == [90.5, 88.5]
+    assert result.order_paths == (str(items[1].path), str(items[0].path))
+
+
+def test_a_wide_judged_spread_is_decided_not_too_small(monkeypatch, caplog) -> None:
+    """(t) the numbers exist and already separate them: zero calls, decided."""
+    monkeypatch.setenv("IMGSLI_AI_DEBUG", "1")
+    profile = _judge_profile()
+    items = [
+        _judged_item("a.png", texture_fidelity=95, halo_freedom=94),
+        _judged_item("b.png", texture_fidelity=60, halo_freedom=59),
+        _judged_item("c.png", texture_fidelity=58, halo_freedom=57),
+    ]
+    row = _settings(pairwise_top_n=3, pairwise_near_tie_threshold=10.0)
+    ranks = {str(item.path): index for index, item in enumerate(items, start=1)}
+    judge = _ScriptedJudge(_boom)
+
+    with caplog.at_level(logging.INFO, logger=APP_LOGGER_NAME):
+        result = run_pairwise_pass(
+            _owner(row),
+            items,
+            pointwise_ranks=ranks,
+            settings=row,
+            mode="camera",
+            profile=profile,
+            judge=judge,
+            cache=PairwiseVerdictCache(),
+        )
+
+    assert result.reason == "decided"
+    assert result.applied is False
+    assert judge.calls == 0, "a decided series must not spend a call"
+    decided = [
+        line for line in _trace_lines(caplog) if "judge_pairwise.skip reason=decided" in line
+    ]
+    assert decided, _trace_lines(caplog)
+    assert "spread=" in decided[0], "the trace must state the judged spread it used"
+    assert not any(
+        "judge_pairwise.skip reason=too_small" in line for line in _trace_lines(caplog)
+    )
+
+
+def test_a_judged_card_with_nothing_scored_still_blocks_the_set(caplog) -> None:
+    """(u) a half-unknown top set is ``unmeasured`` — never a fabricated number."""
+    profile = _judge_profile()
+    items = [
+        _judged_item("a.png", texture_fidelity=91),
+        _judged_item("b.png", texture_fidelity=89),
+        SimpleNamespace(path=Path("/gallery") / "c.png", mtime_ns=1, metrics={}),
+    ]
+    row = _settings(pairwise_top_n=3)
+    ranks = {str(item.path): index for index, item in enumerate(items, start=1)}
+    judge = _ScriptedJudge(_boom)
+
+    with caplog.at_level(logging.INFO, logger=APP_LOGGER_NAME):
+        result = run_pairwise_pass(
+            _owner(row),
+            items,
+            pointwise_ranks=ranks,
+            settings=row,
+            mode="camera",
+            profile=profile,
+            judge=judge,
+            cache=PairwiseVerdictCache(),
+        )
+
+    assert result.reason == "unmeasured"
+    assert judge.calls == 0
+    assert [member.quality for member in result.members] == [91.0, 89.0, None]
+
+
+def test_terminal_rank_schedules_the_pass_on_a_judged_series(monkeypatch, caplog) -> None:
+    """(v) the production trigger reaches the fix: a judged near-tie refines.
+
+    Scope note: this pins the GATE (a pass is scheduled and really spends its
+    two calls, and the derived order is handed to the ONE rank primitive). How
+    far that order travels is ``rank_series``' half of the seam: it applies a
+    pairwise order only to paths it MEASURED, and it decides "measured" through
+    ``item_quality`` — the very read the sibling ``rank_fusion`` lane is
+    extending to the profile's own axes. Asserting the final ranks here would
+    pin another module's limitation, so the trace line is what is asserted.
+    """
+    monkeypatch.setenv("IMGSLI_AI_DEBUG", "1")
+    profile = _judge_profile()
+    items = [
+        _judged_item("a.png", texture_fidelity=91, halo_freedom=90),
+        _judged_item("b.png", texture_fidelity=89, halo_freedom=88),
+        _judged_item("c.png", texture_fidelity=88, halo_freedom=87),
+    ]
+    owner = _wired_owner(items, pairwise_enabled=True, pairwise_top_n=2)
+    owner.state.metric_profile = profile
+    owner._apply_fusion_ranks(owner.state.series)
+    judge = _install_client(monkeypatch, _ScriptedJudge(_b_wins))
+
+    with caplog.at_level(logging.INFO, logger=APP_LOGGER_NAME):
+        assert analysis_batch.dispatch_terminal_rank(owner) is True
+        assert len(owner.launched) == 1, "a judged near-tie series starts ONE pass"
+        owner.launched[0].run()
+
+    assert judge.calls == 2, "one unordered pair, asked in both orders"
+    lines = _trace_lines(caplog)
+    assert any("judge_pairwise.apply" in line for line in lines), lines
+    assert not any("judge_pairwise.skip reason=too_small" in line for line in lines), lines
+
