@@ -365,24 +365,25 @@ def test_the_icon_service_key_is_the_app_name(monkeypatch) -> None:
     assert seen == [APP_NAME]
 
 
-def test_a_cache_kind_carries_the_pre_rename_tree_forward_once(
-    tmp_path, monkeypatch
-) -> None:
-    """Per KIND, not per root: the owner's 2026-10-26 profile.
+def test_a_cache_kind_merges_the_pre_rename_tree_once(tmp_path, monkeypatch) -> None:
+    """Per KIND and MERGED, not "skip when current is non-empty" (2026-10-26).
 
     ``_cache_root()`` takes the whole current root as soon as it EXISTS, so a
-    profile that ran both builds kept the legacy history (``gallery_jev_cache``
-    40 KB, ``gallery_local_metrics`` 8 KB) invisible next to a current root that
-    held two fresh thumbnails — every card re-analysed, every rank recomputed.
-    ``cache_kind_dir`` chooses per kind and copies the legacy dir in ONCE.
+    profile that ran both builds kept the legacy history invisible next to a
+    current root that held a few fresh entries — the owner's 4-vs-9 jev ranks.
+    ``cache_kind_dir`` copies the missing legacy entries in ONCE, never
+    overwriting a newer current entry, and always answers with the current dir.
     """
-    import shutil as _shutil
-
     current = tmp_path / "cache" / APP_NAME
     legacy = tmp_path / "cache" / "ImproveImgSLI"
+    (current / "gallery_jev_cache").mkdir(parents=True)
+    (current / "gallery_jev_cache" / "fresh.json").write_text("{}", encoding="utf-8")
     (legacy / "gallery_jev_cache").mkdir(parents=True)
-    (legacy / "gallery_jev_cache" / "rank_abc.json").write_text("{}", encoding="utf-8")
-    current.mkdir(parents=True)
+    (legacy / "gallery_jev_cache" / "old_a.json").write_text("{}", encoding="utf-8")
+    (legacy / "gallery_jev_cache" / "old_b.json").write_text("{}", encoding="utf-8")
+    # Same name on both sides: the CURRENT entry must win (it may be newer).
+    (current / "gallery_jev_cache" / "shared.json").write_text("new", encoding="utf-8")
+    (legacy / "gallery_jev_cache" / "shared.json").write_text("old", encoding="utf-8")
 
     monkeypatch.setattr(project_package, "_cache_root", lambda: current)
     monkeypatch.setattr(
@@ -390,18 +391,16 @@ def test_a_cache_kind_carries_the_pre_rename_tree_forward_once(
         "_cache_root_for_name",
         lambda name: legacy if name != APP_NAME else current,
     )
+    project_package._CARRIED_CACHE_KINDS.clear()
 
     picked = project_package.cache_kind_dir("gallery_jev_cache")
 
     assert picked == current / "gallery_jev_cache", "the CURRENT root stays the writer"
-    assert (picked / "rank_abc.json").is_file(), "the legacy entry was carried over"
-    assert (legacy / "gallery_jev_cache" / "rank_abc.json").is_file(), "legacy never moves"
-
-    # A kind the current root already populated must not be touched by the copy.
-    (current / "gallery_thumbnails").mkdir()
-    (current / "gallery_thumbnails" / "fresh.png").write_bytes(b"x")
-    (legacy / "gallery_thumbnails").mkdir()
-    (legacy / "gallery_thumbnails" / "stale.png").write_bytes(b"y")
-
-    assert project_package.cache_kind_dir("gallery_thumbnails") == current / "gallery_thumbnails"
-    assert not (current / "gallery_thumbnails" / "stale.png").exists(), "current entries win"
+    names = {p.name for p in picked.iterdir()}
+    assert {"fresh.json", "old_a.json", "old_b.json", "shared.json"} <= names, names
+    assert (picked / "shared.json").read_text(encoding="utf-8") == "new", "no overwrite"
+    assert (legacy / "gallery_jev_cache" / "old_a.json").is_file(), "legacy never moves"
+    # Once per process: a second call does not re-walk the legacy tree.
+    (legacy / "gallery_jev_cache" / "late.json").write_text("{}", encoding="utf-8")
+    project_package.cache_kind_dir("gallery_jev_cache")
+    assert not (picked / "late.json").exists()

@@ -143,13 +143,20 @@ def _cache_root_for_name(name: str) -> Path:
     ``QCoreApplication`` (which may already end in the app name — then it is the
     root itself), else ``$XDG_CACHE_HOME/<name>``, else ``~/.cache/<name>``.
     """
-    loc = _qt_cache_location()
-    if loc:
-        root = Path(loc)
-        # Bare ``~/.cache`` (no org/app name) still needs an app subdirectory.
-        if root.name.lower() not in {name.lower(), "pytest-qt-qapp"}:
-            root = root / name
-        return root
+    # Qt's cache location belongs to the RUNNING app's org/app names, so it can
+    # only answer for the current name: a pre-rename build answered
+    # ``~/.cache/<legacy name>``, and re-deriving the legacy root from today's
+    # location produced ``~/.cache/<current>/<current>/<legacy>`` — a path that
+    # never existed (measured 2026-10-26: the carry-forward silently found no
+    # legacy tree). The legacy root is therefore the plain per-user location.
+    if name == APP_NAME:
+        loc = _qt_cache_location()
+        if loc:
+            root = Path(loc)
+            # Bare ``~/.cache`` (no org/app name) still needs an app subdirectory.
+            if root.name.lower() not in {name.lower(), "pytest-qt-qapp"}:
+                root = root / name
+            return root
     xdg = os.environ.get("XDG_CACHE_HOME")
     if xdg:
         return Path(xdg) / name
@@ -175,36 +182,44 @@ def _cache_root_for_app() -> Path:
     )
 
 
+_CARRIED_CACHE_KINDS: set[str] = set()
+
+
 def cache_kind_dir(kind: str) -> Path:
-    """One cache SUBDIRECTORY, carrying a pre-rename tree forward once.
+    """One cache SUBDIRECTORY, merging the pre-rename tree in ONCE.
 
     The rename moved the root, and ``_cache_root()`` takes the whole current root
     as soon as it exists — so a profile that ran BOTH builds ends up with a
-    current root holding the few files from the new build and a legacy root
-    holding the real history (measured 2026-10-26 on the owner's profile:
-    current root with two thumbnails vs a PRE-RENAME root whose
-    ``gallery_jev_cache`` holds 40 KB of ranks and ``gallery_local_metrics``
-    8 KB). That reads as "the caches were thrown away": every card re-analysed,
-    every rank recomputed.
+    current root holding the few files from the new build and a pre-rename root
+    holding the real history (measured 2026-10-26 on the owner's profile: the new
+    ``gallery_jev_cache`` had 4 ranks while the old tree had 9). "Current is
+    non-empty" therefore does NOT mean "current is the history", and skipping the
+    carry-forward on that condition left the owner's ranks invisible: every card
+    re-analysed, every rank recomputed.
 
-    So the choice is per KIND, not per root: the current dir when it already has
-    entries; else the legacy kind dir copied into the current root ONCE (one
-    writer afterwards); else the current dir, empty. Fail-open: a copy that
-    cannot happen only means a cold cache, never an error.
+    So: once per process per kind, copy the pre-rename entries that the current
+    dir does NOT already have (never overwrite — a current entry may be newer),
+    then always answer with the current dir so there is ONE writer path. The
+    pre-rename tree is never moved or deleted, and everything here fails open: a
+    copy that cannot happen only means a colder cache, never an error.
     """
     current = _cache_root() / kind
-    try:
-        if current.is_dir() and any(current.iterdir()):
-            return current
-    except OSError:
-        pass
-    legacy = _cache_root_for_name(LEGACY_LOG_DIR_NAME) / kind
-    try:
-        if legacy.is_dir() and any(legacy.iterdir()):
-            current.mkdir(parents=True, exist_ok=True)
-            shutil.copytree(legacy, current, dirs_exist_ok=True)
-    except Exception:
-        pass
+    if kind not in _CARRIED_CACHE_KINDS:
+        _CARRIED_CACHE_KINDS.add(kind)
+        legacy = _cache_root_for_name(LEGACY_LOG_DIR_NAME) / kind
+        try:
+            if legacy.is_dir():
+                current.mkdir(parents=True, exist_ok=True)
+                for src in legacy.rglob("*"):
+                    if not src.is_file():
+                        continue
+                    dst = current / src.relative_to(legacy)
+                    if dst.exists():
+                        continue
+                    dst.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(src, dst)
+        except Exception:
+            pass
     try:
         current.mkdir(parents=True, exist_ok=True)
     except OSError:
