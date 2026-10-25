@@ -21,9 +21,9 @@ THUMBNAIL_SIZE = (192, 192)
 
 
 def thumbnail_cache_dir() -> Path:
-    from services.io.project_package import _cache_root
+    from services.io.project_package import cache_kind_dir
 
-    root = _cache_root() / "gallery_thumbnails"
+    root = cache_kind_dir("gallery_thumbnails")
     root.mkdir(parents=True, exist_ok=True)
     return root
 

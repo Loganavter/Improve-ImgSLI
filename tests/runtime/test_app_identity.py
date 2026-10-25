@@ -363,3 +363,45 @@ def test_the_icon_service_key_is_the_app_name(monkeypatch) -> None:
         "icon:settings.svg"
     )
     assert seen == [APP_NAME]
+
+
+def test_a_cache_kind_carries_the_pre_rename_tree_forward_once(
+    tmp_path, monkeypatch
+) -> None:
+    """Per KIND, not per root: the owner's 2026-10-26 profile.
+
+    ``_cache_root()`` takes the whole current root as soon as it EXISTS, so a
+    profile that ran both builds kept the legacy history (``gallery_jev_cache``
+    40 KB, ``gallery_local_metrics`` 8 KB) invisible next to a current root that
+    held two fresh thumbnails — every card re-analysed, every rank recomputed.
+    ``cache_kind_dir`` chooses per kind and copies the legacy dir in ONCE.
+    """
+    import shutil as _shutil
+
+    current = tmp_path / "cache" / APP_NAME
+    legacy = tmp_path / "cache" / "ImproveImgSLI"
+    (legacy / "gallery_jev_cache").mkdir(parents=True)
+    (legacy / "gallery_jev_cache" / "rank_abc.json").write_text("{}", encoding="utf-8")
+    current.mkdir(parents=True)
+
+    monkeypatch.setattr(project_package, "_cache_root", lambda: current)
+    monkeypatch.setattr(
+        project_package,
+        "_cache_root_for_name",
+        lambda name: legacy if name != APP_NAME else current,
+    )
+
+    picked = project_package.cache_kind_dir("gallery_jev_cache")
+
+    assert picked == current / "gallery_jev_cache", "the CURRENT root stays the writer"
+    assert (picked / "rank_abc.json").is_file(), "the legacy entry was carried over"
+    assert (legacy / "gallery_jev_cache" / "rank_abc.json").is_file(), "legacy never moves"
+
+    # A kind the current root already populated must not be touched by the copy.
+    (current / "gallery_thumbnails").mkdir()
+    (current / "gallery_thumbnails" / "fresh.png").write_bytes(b"x")
+    (legacy / "gallery_thumbnails").mkdir()
+    (legacy / "gallery_thumbnails" / "stale.png").write_bytes(b"y")
+
+    assert project_package.cache_kind_dir("gallery_thumbnails") == current / "gallery_thumbnails"
+    assert not (current / "gallery_thumbnails" / "stale.png").exists(), "current entries win"

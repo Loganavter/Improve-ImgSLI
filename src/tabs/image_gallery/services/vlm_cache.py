@@ -22,9 +22,9 @@ logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 def vlm_cache_dir() -> Path:
-    from services.io.project_package import _cache_root
+    from services.io.project_package import cache_kind_dir
 
-    root = _cache_root() / "gallery_vlm_cache"
+    root = cache_kind_dir("gallery_vlm_cache")
     root.mkdir(parents=True, exist_ok=True)
     return root
 

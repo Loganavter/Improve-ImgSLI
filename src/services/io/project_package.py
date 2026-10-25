@@ -175,6 +175,43 @@ def _cache_root_for_app() -> Path:
     )
 
 
+def cache_kind_dir(kind: str) -> Path:
+    """One cache SUBDIRECTORY, carrying a pre-rename tree forward once.
+
+    The rename moved the root, and ``_cache_root()`` takes the whole current root
+    as soon as it exists — so a profile that ran BOTH builds ends up with a
+    current root holding the few files from the new build and a legacy root
+    holding the real history (measured 2026-10-26 on the owner's profile:
+    current root with two thumbnails vs a PRE-RENAME root whose
+    ``gallery_jev_cache`` holds 40 KB of ranks and ``gallery_local_metrics``
+    8 KB). That reads as "the caches were thrown away": every card re-analysed,
+    every rank recomputed.
+
+    So the choice is per KIND, not per root: the current dir when it already has
+    entries; else the legacy kind dir copied into the current root ONCE (one
+    writer afterwards); else the current dir, empty. Fail-open: a copy that
+    cannot happen only means a cold cache, never an error.
+    """
+    current = _cache_root() / kind
+    try:
+        if current.is_dir() and any(current.iterdir()):
+            return current
+    except OSError:
+        pass
+    legacy = _cache_root_for_name(LEGACY_LOG_DIR_NAME) / kind
+    try:
+        if legacy.is_dir() and any(legacy.iterdir()):
+            current.mkdir(parents=True, exist_ok=True)
+            shutil.copytree(legacy, current, dirs_exist_ok=True)
+    except Exception:
+        pass
+    try:
+        current.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        pass
+    return current
+
+
 def project_cache_dir(project_path: Path) -> Path:
     """Stable per-project extract cache under the Qt/app cache location."""
     resolved = project_path.resolve()
