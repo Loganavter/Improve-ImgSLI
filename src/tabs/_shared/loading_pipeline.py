@@ -32,6 +32,7 @@ from engine.cache.display_image_picker import pick_display_image
 from tabs.image_compare.pipeline.abort import AbortSignal
 
 from tabs._shared.overflow_summary import summarize_overflow
+from shared.fs_paths import fs_path_key
 from core.log_names import APP_LOGGER_NAME
 
 if TYPE_CHECKING:
@@ -63,28 +64,43 @@ __all__ = [
 
 
 def _same_fs_path(a: Path | str, b: Path | str) -> bool:
-    """Normalized path equality for slot-ownership guards (single impl).
+    """Path equality for slot-ownership guards (single impl).
 
     Heals textual variants of the same file (``/x/./f.png`` vs ``/x/f.png``,
-    ``str`` vs ``Path``); never equates distinct files.
+    ``str`` vs ``Path``) and the platform's own case-folding (see
+    :func:`shared.fs_paths.fs_path_key`); never equates distinct files on a
+    case-sensitive filesystem.
     """
     try:
-        return os.path.normpath(os.fspath(a)) == os.path.normpath(os.fspath(b))
+        return fs_path_key(a) == fs_path_key(b)
     except Exception:
         return a == b  # type: ignore[return-value]
 
 
 def cache_key_for_path(path: Path | str) -> tuple[str, int, int]:
-    """Content key ``(normpath, mtime_ns, size)`` (boxless by construction).
+    """Content key ``(fs_path_key, mtime_ns, size)`` (boxless by construction).
 
     ``mtime+size`` keeps an overwritten-in-place file from colliding with its
-    own stale decode; ``normpath`` heals textual variants of the same file.
+    own stale decode; :func:`shared.fs_paths.fs_path_key` (``normpath`` +
+    ``normcase``) heals textual variants of the same file *and* the two
+    spellings the platform folds together (``C:\\A\\x.png`` /
+    ``c:\\a\\x.png``), so one file can never hold two cache entries.
+
+    Key schema: this module is the single construction site, so unmigrated
+    code cannot mint an old-format (``normpath``-only) key; a key left over
+    from before the ``normcase`` step is a *different* string wherever
+    ``normcase`` is not the identity, i.e. exactly where the old key could
+    have aliased a second spelling (see
+    ``tests/runtime/test_path_key_normalisation.py``). Nothing here is
+    persisted — both tab caches and the reducers' tiers are process-local —
+    so there is no on-disk entry set to migrate.
+
     The key intentionally carries no crop/box component (W1+W2
     non-destructive crop: decode is full-frame, CropService is detection
     only) so every reader of the same file converges on one entry.
     """
     try:
-        norm = os.path.normpath(os.fspath(path))
+        norm = fs_path_key(path)
     except Exception:
         return (str(path), 0, 0)
     try:

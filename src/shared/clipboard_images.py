@@ -18,6 +18,7 @@ from urllib.request import url2pathname
 
 from PySide6.QtWidgets import QApplication
 from core.log_names import APP_LOGGER_NAME
+from shared.fs_paths import fs_path_key
 
 logger = logging.getLogger(APP_LOGGER_NAME)
 
@@ -117,7 +118,10 @@ def _dedupe_clipboard_items(items: list[str]) -> list[str]:
         if item.startswith(("http://", "https://")):
             key = item
         else:
-            key = os.path.normcase(os.path.normpath(item))
+            # Same file-identity rules as the path-keyed caches
+            # (``shared.fs_paths.fs_path_key``, normpath + normcase) — one
+            # implementation, so a pasted path and a cached path agree.
+            key = fs_path_key(item)
         if key in seen:
             continue
         seen.add(key)

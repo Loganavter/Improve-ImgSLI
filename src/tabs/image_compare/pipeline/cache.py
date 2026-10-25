@@ -5,7 +5,10 @@ Replaces ProgressiveImageLoader full and preview caches LRU 8 + ad-hoc
 legacy dedup in session controller.
 
 Keys (W1+W2 non-destructive crop — always the boxless shape, identical to
-the former crop-disabled shape):
+the former crop-disabled shape). The path slot is
+``shared.fs_paths.fs_path_key`` (normpath + normcase, via the seam), so two
+spellings of one file — including the case-folded spellings a Windows or
+case-insensitive mount considers equal — are one entry:
   pixel: (path, mtime_ns, size, False) -> TiledPixelStore
   preview: (path, mtime_ns, size, False, 1024) -> QImage
   unify: (uid1, uid2, method, target_w, target_h) -> (TiledPixelStore, TiledPixelStore)
@@ -25,7 +28,6 @@ pinned (currently displayed) entries are never evicted.
 from __future__ import annotations
 
 import logging
-import os
 from collections import OrderedDict
 from typing import TYPE_CHECKING
 from core.log_names import APP_LOGGER_NAME
@@ -57,6 +59,7 @@ if TYPE_CHECKING:
 # logical owner; the dict is physically in shared so both layers see the same
 # storage without a host→tabs import.
 from shared.image_processing.embedded_pixel_cache import _cache as _embedded_cache
+from shared.fs_paths import fs_path_key
 
 # W1 adapter: single-flight/file-identity key owned by the shared seam
 # (tabs._shared.loading_pipeline.cache_key_for_path). Tier suffixes stay
@@ -72,9 +75,9 @@ def register_embedded_cache(media_path: str, cache_path: str, width: int, height
 
     _emb.register(media_path, cache_path, width, height)
     try:
-        norm = os.path.normpath(str(media_path))
-        if norm != str(media_path):
-            _emb.register(norm, cache_path, width, height)
+        key = fs_path_key(media_path)
+        if key != str(media_path):
+            _emb.register(key, cache_path, width, height)
     except Exception:
         pass
 
@@ -86,9 +89,9 @@ def lookup_embedded_cache(media_path: str) -> tuple[str, int, int] | None:
     if v is not None:
         return v
     try:
-        norm = os.path.normpath(str(media_path))
-        if norm != str(media_path):
-            v2 = _emb.lookup(norm)
+        key = fs_path_key(media_path)
+        if key != str(media_path):
+            v2 = _emb.lookup(key)
             if v2 is not None:
                 return v2
     except Exception:
@@ -97,9 +100,9 @@ def lookup_embedded_cache(media_path: str) -> tuple[str, int, int] | None:
     if v is not None:
         return v
     try:
-        norm = os.path.normpath(str(media_path))
-        if norm != str(media_path):
-            return _embedded_cache.get(norm)
+        key = fs_path_key(media_path)
+        if key != str(media_path):
+            return _embedded_cache.get(key)
     except Exception:
         pass
     return None
@@ -108,7 +111,8 @@ def lookup_embedded_cache(media_path: str) -> tuple[str, int, int] | None:
 def pop_embedded_cache(media_path: str) -> None:
     from shared.image_processing import embedded_pixel_cache as _emb
 
-    for key in (str(media_path), os.path.normpath(str(media_path))):
+    keys = (str(media_path), fs_path_key(media_path))
+    for key in keys:
         _emb.pop(key)
         _embedded_cache.pop(key, None)
 
@@ -248,7 +252,7 @@ class PipelineCache:
             for p in list(paths or []):
                 if not p:
                     continue
-                norm = os.path.normpath(str(p))
+                norm = fs_path_key(p)
                 for k in list(self._pixel.keys()):
                     if k and k[0] == norm:
                         self._pinned_pixel_keys.add(k)
@@ -269,7 +273,7 @@ class PipelineCache:
 
     def unpin_paths(self, paths) -> None:
         try:
-            norms = {os.path.normpath(str(p)) for p in list(paths or []) if p}
+            norms = {fs_path_key(p) for p in list(paths or []) if p}
         except Exception:
             return
         self._pinned_pixel_keys = {k for k in self._pinned_pixel_keys if not (k and k[0] in norms)}
@@ -607,7 +611,8 @@ class PipelineCache:
         except Exception:
             pass
         # pixel eviction (uid собираем ДО close — info живёт и после, но так надёжнее)
-        to_drop = [k for k in list(self._pixel.keys()) if k and k[0] == os.path.normpath(path) and k not in self._pinned_pixel_keys]
+        norm = fs_path_key(path)
+        to_drop = [k for k in list(self._pixel.keys()) if k and k[0] == norm and k not in self._pinned_pixel_keys]
         evicted_uids: set = set()
         for k in to_drop:
             old = self._pixel.pop(k, None)
@@ -619,7 +624,6 @@ class PipelineCache:
             self._close_store(old)
         # preview eviction (pinned/shown previews survive — see docstring)
         try:
-            norm = os.path.normpath(path)
             to_drop_prev = [k for k in list(self._preview.keys()) if k and k[0] == norm and k not in self._pinned_preview_keys]
             for k in to_drop_prev:
                 self._preview.pop(k, None)
