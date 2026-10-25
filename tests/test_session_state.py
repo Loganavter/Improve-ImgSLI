@@ -160,15 +160,42 @@ def test_apply_from_slot_is_slot_first_then_qsettings(_memory_qsettings):
     state.set("view_list", True)  # QSettings now True
 
     s2 = store.add("S2")
-    store.slots[s2][NS] = {"view_list": False, "judgment_domain": "algorithms"}
+    # A slot holding a USER choice wins over the config. The value must differ
+    # from the factory defaults (``view_list=False``, ``judgment_domain=
+    # "algorithms"``): a default-only slot carries nothing the user chose and
+    # deliberately defers to QSettings — pinned by the companion test below.
+    store.slots[s2][NS] = {"view_list": False, "judgment_domain": "ai"}
     log: list = []
     f = _facade(log)
     f.apply_from_slot(_Ctx(store), s2)
-    assert log[-1] == {"view_list": False, "judgment_domain": "algorithms"}  # slot wins
+    assert log[-1] == {"view_list": False, "judgment_domain": "ai"}  # slot wins
 
     s3 = store.add("S3")  # empty slot -> QSettings fallback
     f.apply_from_slot(_Ctx(store), s3)
     assert log[-1] == {"view_list": True, "judgment_domain": "algorithms"}
+
+
+def test_apply_from_slot_defers_to_qsettings_for_a_default_only_slot(_memory_qsettings):
+    """The other half of the rule (measured live 2026-10-22).
+
+    A slot that still holds ONLY the factory defaults must not shadow the
+    user's config: the blueprint auto-allocates every slot at the defaults, so
+    treating them as "the user's choice" silently killed the documented
+    inheritance (a config with ``judgment_domain=ai`` restored "algorithms").
+    """
+    store = _Store()
+    s1 = store.add("S1")
+    state = _facade([])
+    state.apply_from_slot(_Ctx(store), s1)
+    state.set("view_list", True)  # QSettings now True
+
+    s2 = store.add("S2")
+    store.slots[s2][NS] = {"view_list": False, "judgment_domain": "algorithms"}
+    log: list = []
+    _facade(log).apply_from_slot(_Ctx(store), s2)
+    assert log[-1] == {"view_list": True, "judgment_domain": "algorithms"}, (
+        "a factory-default slot must defer to QSettings, not shadow it"
+    )
 
 
 def test_serialize_deserialize_roundtrip(_memory_qsettings):
