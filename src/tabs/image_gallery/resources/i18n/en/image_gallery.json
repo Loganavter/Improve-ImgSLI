@@ -80,6 +80,7 @@
       "judge_concurrency": "Parallel judge requests",
       "judge_run_call_ceiling": "Judge run call ceiling",
       "judge_run_call_ceiling_unlimited": "unlimited",
+      "pairwise_enabled": "Refine near-ties pairwise",
       "api_key_placeholder": "sk-…",
       "model_placeholder": "openrouter/auto or vendor/model",
       "tokens_placeholder": "auto"

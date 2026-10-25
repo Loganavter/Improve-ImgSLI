@@ -40,3 +40,4 @@ The same **Image Gallery — AI** section owns the two limits on the AI analysis
 
 - **Parallel judge requests** — how many requests the AI judge may keep in flight at once; each parallel lane is one more request sent to the provider at the same moment.
 - **Judge run call ceiling** — the most calls one judge run may make; **unlimited** means the run is not capped. A judge run makes up to k calls per card, where k is **Runs per card**, so a series of 10 cards at 3 runs costs up to 30 calls.
+- **Refine near-ties pairwise** — orders the pointwise best few with A/B questions instead of more per-card draws; one pass costs up to N × (N−1) calls (N = 5 by default, so 10 pairs and up to 20 calls), and it is skipped entirely when the pointwise gap across that top set already exceeds the near-tie threshold.

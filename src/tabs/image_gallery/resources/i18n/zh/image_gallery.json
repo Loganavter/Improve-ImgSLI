@@ -80,6 +80,7 @@
       "judge_concurrency": "AI 裁判并行请求数",
       "judge_run_call_ceiling": "AI 裁判每次运行的调用上限",
       "judge_run_call_ceiling_unlimited": "不限",
+      "pairwise_enabled": "用两两比较细化接近的结果",
       "api_key_placeholder": "sk-…",
       "model_placeholder": "openrouter/auto 或 vendor/model",
       "tokens_placeholder": "自动"

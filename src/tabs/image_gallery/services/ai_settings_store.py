@@ -185,14 +185,18 @@ class AiSettings:
     #: whole card that fits and leaves a continue affordance instead of
     #: silently draining the budget.
     judge_run_call_ceiling: int = 0
-    #: Pairwise ordering of a near-tie top set (board 2026-10-25). ``False`` by
-    #: default: this wave ships no settings UI row for it, so a default-on pass
-    #: would spend up to ``top_n x (top_n-1)`` judge calls on a near-tie series
-    #: with no way for the user to turn it off, and the run estimate (stated
-    #: before the pointwise pass) does not name that cost — a silent spend.
-    #: Persisted like every other knob (a config written with ``true`` keeps it
-    #: on); the pass is still gated twice before it costs anything: only a
-    #: series whose top-set spread is within ``pairwise_near_tie_threshold`` is
+    #: Pairwise ordering of a near-tie top set (board 2026-10-25). OFF by
+    #: default even though the settings page now owns the switch
+    #: (``ui/settings_ai``, «Refine near-ties pairwise»): the user-facing cost
+    #: contract — the ``judge run start: up to X calls`` line from
+    #: ``use_cases/judge_budget`` — is stated BEFORE this pass and does not count
+    #: its ``top_n x (top_n-1)`` bound, so default-on would spend up to 20 calls
+    #: on a near-tie series OUTSIDE the number the user was shown (root
+    #: cost-contract decision, 2026-10-25; flipping it is a follow-up whose
+    #: acceptance is "the estimate counts the pairwise bound, verified on a live
+    #: run"). Persisted like every other knob (a config written with ``true``
+    #: keeps it on); the pass is still gated twice before it costs anything: only
+    #: a series whose top-set spread is within ``pairwise_near_tie_threshold`` is
     #: compared, and the whole bound is reserved against
     #: ``judge_run_call_ceiling``. The pairwise order is added next to the
     #: pointwise numbers; it never replaces them.
@@ -273,7 +277,9 @@ class AiSettingsStore:
                     0, _parse_int(settings.value("judge_run_call_ceiling", 0), 0)
                 ),
                 # Absent/anything else means OFF (the dataclass default): only
-                # an explicit truthy value re-enables the pass.
+                # an explicit truthy value turns the pass on. Default-on stays
+                # a follow-up until the run estimate counts the pairwise bound
+                # (root cost-contract decision, see the field's comment).
                 pairwise_enabled=str(
                     settings.value("pairwise_enabled", False)
                 ).lower()

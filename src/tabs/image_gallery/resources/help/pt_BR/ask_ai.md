@@ -40,3 +40,4 @@ A mesma seção **Galeria — IA** guarda os dois limites da análise de uma sé
 
 - **Solicitações paralelas ao juiz de IA** — quantas solicitações o juiz de IA pode manter em andamento ao mesmo tempo; cada faixa paralela é mais uma solicitação enviada ao provedor no mesmo momento.
 - **Limite de chamadas por execução do juiz** — o máximo de chamadas que uma execução pode fazer; **ilimitado** significa que a execução não tem teto. Uma execução faz até k chamadas por cartão, em que k é **Execuções por cartão**, portanto uma série de 10 cartões com 3 execuções custa até 30 chamadas.
+- **Refinar quase-empates por comparação em pares** — ordena os melhores pela nota individual com perguntas “A ou B” em vez de mais execuções por cartão; uma passagem custa até N × (N−1) chamadas (N = 5 por padrão, ou seja, 10 pares e até 20 chamadas) e é totalmente ignorada quando a diferença das notas individuais nesse conjunto já passa do limite de quase-empate.
