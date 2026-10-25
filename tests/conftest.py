@@ -25,6 +25,18 @@ from sli_ui_toolkit.config import reset_toolkit_config
 
 from tabs import registry as _tabs_registry_module
 
+# The keyring/app-data sandbox and its guard. Imported for pytest's fixture
+# collection (``secret_store_isolation`` is autouse; ``secret_store_keyring``
+# is the opt-in for a test that drives a keyring on purpose). A test that
+# reaches the host keyring would otherwise read — and on a ``store``/``clear``
+# overwrite or delete — the owner's real provider key, which is exactly what
+# happened on 2026-10-25 (see ``tests/helpers/secret_store_isolation.py``).
+from tests.helpers.secret_store_isolation import (  # noqa: E402,F401
+    secret_store_isolation,
+    secret_store_keyring,
+    secret_store_sandbox,
+)
+
 
 @pytest.fixture(autouse=True)
 def _reset_toolkit_config():

@@ -11,11 +11,39 @@ event loop (order-dependent red, ``self`` is a ``dict``/``QSpacerItem``).
 Mirrors ``tests/conftest.py::_destroy_lingering_toplevels`` and
 ``::_reset_theme_manager`` (kept as local copies — harmless duplication
 beats shared-import coupling across conftest scopes, per that file).
+
+Also activates the secret-store sandbox (``secret_store_sandbox`` /
+``secret_store_isolation`` / ``secret_store_keyring``). They live in
+``tests/helpers/secret_store_isolation.py`` and are imported here rather
+than copied: the guard and the fake ``secret-tool`` are the same mechanism
+for both suites, and two copies would drift. The gallery suite needs them
+most — its AI settings tests are exactly the ones that reached the host
+keyring (see that module's docstring).
 """
 
 from __future__ import annotations
 
+import os
+import sys
+
 import pytest
+
+# ``tests.helpers`` lives under the repo root; a gallery-only run
+# (``pytest src/tabs/image_gallery/tests``) does not otherwise put it on
+# ``sys.path``.
+_REPO_ROOT = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), os.pardir, os.pardir, os.pardir, os.pardir)
+)
+if _REPO_ROOT not in sys.path:
+    sys.path.insert(0, _REPO_ROOT)
+
+# Imported for pytest's fixture collection (they are used by the fixtures
+# below the import, never called directly).
+from tests.helpers.secret_store_isolation import (  # noqa: E402,F401
+    secret_store_isolation,
+    secret_store_keyring,
+    secret_store_sandbox,
+)
 
 
 def _sweep_all_destroyed(widgets) -> bool:
