@@ -33,3 +33,10 @@ The series-header menu asks about every member of the series at once. The questi
 - While the model works the panel shows **Thinking…**; a failed request reports **AI could not answer.**
 - Answers never change the rank, the selection, or any stored state.
 - The same question reuses the cached answer; a new model or new images ask the model again.
+
+### What a judge run costs {#cost}
+
+The same **Image Gallery — AI** section owns the two limits on the AI analysis of a series, in [Settings](help://platform.settings#image-gallery-ai):
+
+- **Parallel judge requests** — how many requests the AI judge may keep in flight at once; each parallel lane is one more request sent to the provider at the same moment.
+- **Judge run call ceiling** — the most calls one judge run may make; **unlimited** means the run is not capped. A judge run makes up to k calls per card, where k is **Runs per card**, so a series of 10 cards at 3 runs costs up to 30 calls.

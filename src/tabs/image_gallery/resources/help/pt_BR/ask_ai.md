@@ -33,3 +33,10 @@ O menu do cabeçalho da série pergunta de uma vez sobre cada membro da série. 
 - Enquanto o modelo trabalha, o painel mostra **Pensando…**; uma requisição malsucedida informa **A IA não conseguiu responder.**
 - As respostas nunca alteram o ranking, a seleção ou qualquer estado armazenado.
 - A mesma pergunta reutiliza a resposta em cache; um novo modelo ou novas imagens perguntam ao modelo novamente.
+
+### Quanto custa uma execução do juiz {#cost}
+
+A mesma seção **Galeria — IA** guarda os dois limites da análise de uma série, em [Configurações](help://platform.settings#image-gallery-ai):
+
+- **Solicitações paralelas ao juiz de IA** — quantas solicitações o juiz de IA pode manter em andamento ao mesmo tempo; cada faixa paralela é mais uma solicitação enviada ao provedor no mesmo momento.
+- **Limite de chamadas por execução do juiz** — o máximo de chamadas que uma execução pode fazer; **ilimitado** significa que a execução não tem teto. Uma execução faz até k chamadas por cartão, em que k é **Execuções por cartão**, portanto uma série de 10 cartões com 3 execuções custa até 30 chamadas.

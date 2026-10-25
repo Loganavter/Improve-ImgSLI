@@ -77,8 +77,9 @@
       "sample_count_2": "2 прогона",
       "sample_count_3": "3 прогона",
       "sample_count_5": "5 прогонов",
-      "judge_concurrency": "Параллельных запросов к ИИ",
-      "judge_run_call_ceiling": "Лимит вызовов на запуск ИИ (0 = без ограничения)",
+      "judge_concurrency": "Параллельных запросов к ИИ-судье",
+      "judge_run_call_ceiling": "Лимит вызовов на запуск ИИ-судьи",
+      "judge_run_call_ceiling_unlimited": "без ограничения",
       "api_key_placeholder": "sk-…",
       "model_placeholder": "openrouter/auto или vendor/model",
       "tokens_placeholder": "auto"

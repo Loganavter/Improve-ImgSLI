@@ -1030,7 +1030,7 @@ class GalleryController:
                 except Exception:
                     pass
 
-    def _apply_fusion_ranks(self, series, *, mode=None) -> None:
+    def _apply_fusion_ranks(self, series, *, mode=None, pairwise_order=None) -> None:
         """(Re)derive every series rank from the measured metric fusion.
 
         Single rank-assignment primitive for the Algorithms domain
@@ -1038,6 +1038,13 @@ class GalleryController:
         ``rank_fusion.rank_series`` over its members — a pure function of the
         measured quality axes, never of the HSV centroid, arrival order or
         mtime. Called on every automatic regroup/reconcile path.
+
+        ``pairwise_order`` (opt-in) forwards an explicit ordering of the series'
+        near-tie top set (``use_cases/pairwise_rank``) to ``rank_series``: those
+        paths take the leading ranks and every other member keeps the pointwise
+        order. Ranks only — the measured numbers, the item fields and the view's
+        own sort are untouched, and ``None`` (every existing caller) reproduces
+        today's exact ordering.
 
         Items whose rank is an explicit user decision — ``rank_source ==
         "manual"`` or a live ``triage_best`` winner from Keep/Make best — keep
@@ -1097,6 +1104,7 @@ class GalleryController:
                     members,
                     mode=mode,
                     profile=getattr(self.state, "metric_profile", None),
+                    pairwise_order=pairwise_order,
                 )
             except Exception:
                 ranks = {}

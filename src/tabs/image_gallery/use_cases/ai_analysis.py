@@ -6,11 +6,14 @@ This module owns the analysis DELIVERY + domain cluster: cache hydration
 (``hydrate_cached_analysis`` / ``_hydrate_ai_cache``), the judgment-domain
 authority writer + toolbar switch (``_set_judgment_domain`` /
 ``activate_judgment_domain``), the bounded visible-item trigger
-(``_run_ai_for_visible``) and the worker delivery tail (``_begin_analysis`` /
+(``_run_ai_for_visible``), the worker delivery tail (``_begin_analysis`` /
 ``_apply_ai_phase`` / ``_on_analysis_ready`` / ``_refresh_open_quick_look`` /
-``_on_analysis_error``). The analyze ENTRY points (``analyze`` / ``reanalyze``
-and the deprecated point adapters) live in ``use_cases/ai_analyze.py`` and are
-re-exported here for their callers (file-size policy, same wave).
+``_on_analysis_error``) and the pairwise refinement of a just-applied pointwise
+order (``start_pairwise_refinement`` / ``_on_pairwise_ready``, off the GUI
+thread on the SAME pool as the judge). The analyze ENTRY points (``analyze`` /
+``reanalyze`` and the deprecated point adapters) live in
+``use_cases/ai_analyze.py`` and are re-exported here for their callers
+(file-size policy, same wave).
 The owner keeps ``_tr``, the Jev ranker cluster, ``_apply_fusion_ranks`` and the
 shared primitives (``_find_item`` / ``_tracked`` / ``_pool_start`` / folder
 generation discipline); thin delegators keep the method names verbatim.
@@ -390,6 +393,13 @@ def activate_judgment_domain(owner, domain: str) -> None:
         except Exception:
             logger.debug("domain switch rank re-derive failed", exc_info=True)
         owner._clear_series_priority()
+        # The pointwise (fusion) order is now applied: refine its near-tie top
+        # set with pairwise comparisons. OFF by default this wave (no settings
+        # row), so this is one trace line — never a worker — in the normal case.
+        try:
+            start_pairwise_refinement(owner)
+        except Exception:
+            logger.debug("pairwise refinement failed", exc_info=True)
         return
     # Cache-first, never re-derive: items that already carry a scorecard (any
     # backend's cached read) are skipped by ``_run_ai_for_visible``; only a card
@@ -405,6 +415,288 @@ def activate_judgment_domain(owner, domain: str) -> None:
     # dispatches here and now.
     _dispatch_terminal_rank(owner)
     owner._run_series_priority()
+
+
+# -- pairwise refinement of a near-tie top set (board 2026-10-25) -------------
+#
+# The pointwise judge cannot order near-identical variants (54-68% order flips
+# across draws), so ``use_cases/pairwise_rank`` asks A/B in both orders and
+# derives an order from complete comparisons. This is the WIRING: when a
+# pointwise order has just been applied to the live series, a series whose
+# top-set spread is inside the near-tie threshold may refine it.
+#
+# Why here and not per scoring arrival: the pass needs the pointwise ORDER
+# (its top-N is the displayed order), which only exists once the ranks are
+# applied. The caller is the Algorithms-domain rank application (the domain
+# switch back re-derives the fusion ranks through the ONE rank primitive,
+# ``_apply_fusion_ranks``); the AI domain's order belongs to Jev
+# (``rank_source="jev"`` items are LOCKED in ``_apply_fusion_ranks`` while that
+# domain owns the rank), so pairwise does not touch it.
+#
+# Threading: the blocking A/B requests run on the SAME pool the pointwise judge
+# uses (``owner._tracked`` + ``owner._pool_start`` + ``GenericWorker``) — no
+# second executor, no QThread, and the GUI thread never waits for the provider.
+# The gates that cost nothing (flag off / < 2 measured / decided) are decided
+# BEFORE a worker exists (``pairwise_rank.precheck``), so a skipped series
+# cannot even occupy a pool slot.
+#
+# Fail open, always to the pointwise order: a refused reservation, an
+# unavailable client, a transport/parse failure or an exception on the worker
+# leaves every rank exactly as it was — a pairwise failure never cancels,
+# retries or mutates the pointwise results and never becomes a card error.
+
+
+def _pairwise_error(owner, exc_name: str, *, detail: str = "") -> None:
+    """Trace the fail-open path (pointwise order kept, nothing marked failed)."""
+    _ai_debug(
+        "judge_pairwise.skip reason=error exc=%s detail=%s order_kept=pointwise",
+        exc_name,
+        detail or "none",
+    )
+
+
+def _pairwise_trace_once(owner, line: str, *args) -> None:
+    """Emit a per-run trace line at most once (one run = one folder generation).
+
+    The disabled gate is evaluated per series and on every domain switch; the
+    contract is ONE line per run, not one per series/switch.
+    """
+    try:
+        gen = int(getattr(owner, "_folder_gen", 0) or 0)
+    except Exception:
+        gen = 0
+    try:
+        seen = getattr(owner, "_pairwise_skip_gen", None)
+        if seen is not None and int(seen) == gen:
+            return
+    except Exception:
+        pass
+    _ai_debug(line, *args)
+    try:
+        owner._pairwise_skip_gen = gen
+    except Exception:
+        pass
+
+
+def _series_members(owner, entry) -> list:
+    """Members of one series entry (the owner's reader, else ``entry.members``)."""
+    try:
+        resolve = getattr(owner, "_section_members", None)
+        if callable(resolve):
+            return list(resolve(entry) or ())
+    except Exception:
+        pass
+    try:
+        return list(getattr(entry, "members", None) or ())
+    except Exception:
+        return []
+
+
+def start_pairwise_refinement(owner, *, series=None, judge=None) -> bool:
+    """Refine a just-applied pointwise order with A/B comparisons (never blocking).
+
+    Returns True when at least one comparison pass was scheduled. *judge* is the
+    test seam (a scripted callable); ``None`` builds the production one from the
+    settings row — credentials only, no request.
+    """
+    try:
+        gen = int(getattr(owner, "_folder_gen", 0) or 0)
+    except Exception:
+        gen = 0
+    epoch = domain_epoch(owner)
+    try:
+        mode = getattr(getattr(owner, "state", None), "mode", None)
+        profile = getattr(getattr(owner, "state", None), "metric_profile", None)
+    except Exception:
+        mode = None
+        profile = None
+
+    try:
+        settings = _load_settings(owner)
+    except Exception as exc:
+        _pairwise_error(owner, type(exc).__name__, detail="settings load failed")
+        return False
+    if settings is None:
+        _pairwise_error(owner, "SettingsUnavailable", detail="no AiSettings row")
+        return False
+
+    # Gate 1, before anything else: the flag ships OFF (there is no settings row
+    # for it this wave), so this is the normal path — no worker, no call.
+    if not bool(getattr(settings, "pairwise_enabled", False)):
+        _pairwise_trace_once(
+            owner,
+            "judge_pairwise.skip reason=disabled enabled=False order_kept=pointwise",
+        )
+        return False
+
+    from tabs.image_gallery.services.rank_fusion import rank_series
+    from tabs.image_gallery.use_cases.pairwise_rank import (
+        build_client_judge,
+        precheck,
+        run_pairwise_pass,
+    )
+
+    client = judge
+    if client is None:
+        # Judge for this row, or None when the row names no usable provider: an
+        # unavailable client is the ERROR path (fail open), never a crash.
+        try:
+            client = build_client_judge(settings, mode=mode, profile=profile)
+        except Exception as exc:
+            _pairwise_error(owner, type(exc).__name__, detail="judge build failed")
+            return False
+    if client is None:
+        _pairwise_error(owner, "ProviderUnavailable", detail="AI row not usable")
+        return False
+
+    pool = getattr(owner, "_pool_start", None)
+    if not callable(pool):
+        return False
+    try:
+        groups = list(
+            series
+            if series is not None
+            else (getattr(owner.state, "series", None) or ())
+        )
+    except Exception:
+        groups = []
+    try:
+        cap = int(getattr(owner, "_AI_VISIBLE_CAP", 0) or 0) or 4
+    except Exception:
+        cap = 4
+    tracked = getattr(owner, "_tracked", None)
+    scheduled = 0
+    for entry in groups:
+        if scheduled >= cap:
+            break
+        members = _series_members(owner, entry)
+        if not members:
+            continue
+        try:
+            pointwise = rank_series(members, mode=mode, profile=profile)
+        except Exception:
+            continue
+        # FREE gates (off / too_small / unmeasured / decided), traced by the
+        # library itself: a skipped series never gets a pool slot.
+        skip = precheck(
+            owner,
+            members,
+            pointwise_ranks=pointwise,
+            settings=settings,
+            mode=mode,
+            profile=profile,
+        )
+        if skip is not None:
+            continue
+
+        def _job(_members=members, _pointwise=pointwise, _client=client):
+            return run_pairwise_pass(
+                owner,
+                _members,
+                pointwise_ranks=_pointwise,
+                mode=mode,
+                profile=profile,
+                settings=settings,
+                judge=_client,
+            )
+
+        worker = GenericWorker(tracked(_job) if callable(tracked) else _job)
+        worker.signals.result.connect(
+            lambda order, g=gen, e=epoch, m=mode: _on_pairwise_ready(
+                owner, order, gen=g, epoch=e, mode=m
+            )
+        )
+        worker.signals.error.connect(
+            lambda err, g=gen, e=epoch: _on_pairwise_error(
+                owner, err, gen=g, epoch=e
+            )
+        )
+        pool(worker, None)
+        scheduled += 1
+    return scheduled > 0
+
+
+def _remember_pairwise_paths(owner, paths: tuple[str, ...], gen: int) -> tuple[str, ...]:
+    """Accumulate the applied pairwise orders of ONE run (several series).
+
+    Each series produces its own order; ``_apply_fusion_ranks`` re-derives every
+    group on every apply, so the union must be kept — otherwise the last
+    finished series would silently drop the refinement of the others.
+    """
+    try:
+        seen = getattr(owner, "_pairwise_order_gen", None)
+        current: list[str] = []
+        if seen is not None and int(seen) == int(gen):
+            current = [str(path) for path in (getattr(owner, "_pairwise_order_paths", ()) or ())]
+        merged = tuple(dict.fromkeys(current + [str(path) for path in paths]))
+        owner._pairwise_order_gen = int(gen)
+        owner._pairwise_order_paths = merged
+        return merged
+    except Exception:
+        return paths
+
+
+def _on_pairwise_ready(owner, order, *, gen=None, epoch=None, mode=None) -> None:
+    """Apply a finished pass through the ONE rank primitive (ranks only)."""
+    if gen is not None:
+        try:
+            if not owner._is_current_folder_gen(gen):
+                _ai_debug("judge_pairwise dropped: folder changed while in flight")
+                return
+        except Exception:
+            pass
+    if not _epoch_is_current(owner, epoch, domain=None):
+        _ai_debug("judge_pairwise dropped: judgment domain changed while in flight")
+        return
+    reason = str(getattr(order, "reason", "") or "")
+    if not bool(getattr(order, "applied", False)):
+        # A transport/parse failure reaches here as an UNRESOLVED comparison set
+        # (the library never defaults a winner from a silent judge). The gates
+        # that legitimately skip (disabled/too_small/unmeasured/decided) and the
+        # ceiling refusal already traced themselves.
+        if reason == "incomplete":
+            _pairwise_error(
+                owner, "IncompleteComparison", detail="unanswered presentation"
+            )
+        elif reason == "not-configured":
+            _pairwise_error(owner, "ProviderUnavailable", detail="judge unavailable")
+        return
+    order_paths = tuple(getattr(order, "order_paths", ()) or ())
+    if len(order_paths) < 2:
+        return
+    try:
+        live = getattr(owner.state, "series", None)
+    except Exception:
+        live = None
+    merged = _remember_pairwise_paths(owner, order_paths, gen if gen is not None else 0)
+    try:
+        owner._apply_fusion_ranks(live, mode=mode, pairwise_order=merged)
+    except Exception as exc:
+        _pairwise_error(owner, type(exc).__name__, detail="rank apply failed")
+        return
+    _ai_debug(
+        "judge_pairwise.apply pairs=%d calls=%d cached=%d order=%s",
+        len(getattr(order, "verdicts", ()) or ()),
+        int(getattr(order, "calls", 0) or 0),
+        int(getattr(order, "cached", 0) or 0),
+        " > ".join(order_paths),
+    )
+
+
+def _on_pairwise_error(owner, error_info, *, gen=None, epoch=None) -> None:
+    """Worker exception → fail open; the pointwise ranks are never touched."""
+    if gen is not None:
+        try:
+            if not owner._is_current_folder_gen(gen):
+                return
+        except Exception:
+            pass
+    try:
+        exc_type = error_info[0] if error_info else None
+    except Exception:
+        exc_type = None
+    name = getattr(exc_type, "__name__", None) or type(exc_type).__name__
+    _pairwise_error(owner, str(name), detail="comparison pass raised")
 
 
 def _run_ai_for_visible(owner, *, cache_only: bool = False) -> None:

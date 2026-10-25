@@ -818,6 +818,16 @@
       }
     },
     {
+      "path": "src/tabs/image_gallery/services/ai_client/parse.py",
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=response-parse reason=\"one parser per answer shape (scorecard, sampling merge, pairwise verdict) sharing the error/truncation vocabulary and the finish-reason rules — splitting would duplicate the shape contract the client and its tests rely on; grew past 500 lines with the pairwise A/B verdict parser (board 2026-10-25)\"",
+      "parsed": {
+        "pattern": "response-parse",
+        "reason": "one parser per answer shape (scorecard, sampling merge, pairwise verdict) sharing the error/truncation vocabulary and the finish-reason rules — splitting would duplicate the shape contract the client and its tests rely on; grew past 500 lines with the pairwise A/B verdict parser (board 2026-10-25)"
+      }
+    },
+    {
       "path": "src/tabs/image_gallery/services/artifacts.py",
       "limit": 500,
       "marker": "Audit-Meta:",
@@ -1162,6 +1172,26 @@
         "pattern": "thin-owner-target",
         "size": "exempt",
         "reason": "one analysis delivery + domain + re-analyze-offer concern over the owner; the offer shares the same action context and the same scorecard state as delivery"
+      }
+    },
+    {
+      "path": "src/tabs/image_gallery/use_cases/judge_budget.py",
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=run-budget reason=\"the run ledger, its ONE call counter and every ceiling helper (per-card reservation + the atomic pairwise pass reservation) must stay in one file or the cost accounting drifts into a second counter; grew past 500 lines with reserve_pairwise_calls (board 2026-10-25)\"",
+      "parsed": {
+        "pattern": "run-budget",
+        "reason": "the run ledger, its ONE call counter and every ceiling helper (per-card reservation + the atomic pairwise pass reservation) must stay in one file or the cost accounting drifts into a second counter; grew past 500 lines with reserve_pairwise_calls (board 2026-10-25)"
+      }
+    },
+    {
+      "path": "src/tabs/image_gallery/use_cases/pairwise_rank.py",
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=pairwise-rank reason=\"one pairwise subsystem: the unordered verdict cache key, the swap verdict and the pass that spends against the shared judge ceiling cannot be split without letting the key and the reservation drift apart — a second module would recreate the same seam this task was scoped to have ONE of (board 2026-10-25)\"",
+      "parsed": {
+        "pattern": "pairwise-rank",
+        "reason": "one pairwise subsystem: the unordered verdict cache key, the swap verdict and the pass that spends against the shared judge ceiling cannot be split without letting the key and the reservation drift apart — a second module would recreate the same seam this task was scoped to have ONE of (board 2026-10-25)"
       }
     },
     {

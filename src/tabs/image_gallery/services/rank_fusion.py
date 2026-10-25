@@ -366,7 +366,7 @@ def item_quality(item, *, mode=None, profile=None, excluded_axes=()) -> float | 
     return min(mean, worst + RANK_WORST_AXIS_SLACK)
 
 
-def rank_series(items, *, mode=None, profile=None) -> dict[str, int]:
+def rank_series(items, *, mode=None, profile=None, pairwise_order=None) -> dict[str, int]:
     """path -> rank 1..N; measured first by ``(-quality, str(path))``, then
     unmeasured by ``str(path)``. Idempotent under input permutation.
 
@@ -375,6 +375,15 @@ def rank_series(items, *, mode=None, profile=None) -> dict[str, int]:
     across THIS series is inside the judge's noise carry no weight
     (``axis_salience`` + ``_inside_noise_axes``): the callers get an order built
     only from what actually separates the variants.
+
+    ``pairwise_order`` (opt-in, ``use_cases/pairwise_rank``) is an explicit
+    ordering of a SUBSET — the series' near-tie top set, derived from complete
+    A/B comparisons. Those paths take ranks 1..k in the given order and every
+    other measured item follows in the pointwise order; ``None`` (the default,
+    and every existing caller) reproduces today's exact ordering. The pairwise
+    order never changes which items are measured, never touches the quality
+    numbers, and is ignored for a path this series did not measure — a rank
+    source, never a second sort.
     """
     members = list(items or ())
     axes = measured_axes_for(mode, profile=profile)
@@ -397,6 +406,18 @@ def rank_series(items, *, mode=None, profile=None) -> dict[str, int]:
 
     measured.sort(key=lambda pair: (-pair[0], pair[1]))
     unmeasured.sort()
+
+    if pairwise_order:
+        quality_by_path = {path: quality for quality, path in measured}
+        reordered: list[tuple[float, str]] = []
+        used: set[str] = set()
+        for path in pairwise_order:
+            key = str(path)
+            if key in quality_by_path and key not in used:
+                reordered.append((quality_by_path[key], key))
+                used.add(key)
+        reordered.extend(pair for pair in measured if pair[1] not in used)
+        measured = reordered
 
     ranks: dict[str, int] = {}
     rank = 1

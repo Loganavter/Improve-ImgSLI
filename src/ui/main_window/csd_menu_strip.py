@@ -35,7 +35,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from PySide6.QtCore import QEvent, QRectF, QSize, QTimer, Qt
-from PySide6.QtGui import QColor, QFontMetrics, QKeySequence
+from PySide6.QtGui import QColor, QFont, QFontMetrics, QKeySequence
 from PySide6.QtWidgets import (
     QGraphicsOpacityEffect,
     QHBoxLayout,
@@ -102,6 +102,7 @@ def _estimate_menu_button_width(
     icon_size: int = 16,
     gap: int = 0,
     content_pad: int = 0,
+    metrics: QFontMetrics | None = None,
 ) -> int:
     # Design px. ui_font() already applies UiScale, so the *measured text*
     # advance is scaled; divide only that back out to 1.0-baseline. The
@@ -110,10 +111,17 @@ def _estimate_menu_button_width(
     # Dividing the constants by the factor as well under-scaled them at
     # factor > 1.0, shrinking the trigger below its real painted content
     # (icon + gap + text + padding) and eliding the label to "…".
+    #
+    # ``metrics`` is the strip's cached, font/scale-invalidated QFontMetrics.
+    # The cold-launch cost lives in the FIRST ``horizontalAdvance`` of the
+    # process (font-engine init; the probe and the A/B protocol live in
+    # tests/runtime/test_csd_menu_width_cold_start.py), so the strip must not
+    # construct one per call site; the ``None`` branch keeps the historical
+    # call shape for direct callers and must return the SAME width as the
+    # cached path for the same font/scale.
     _SLACK = 4
     factor = UiScale.get_instance().factor()
-    font = ui_font()
-    fm = QFontMetrics(font)
+    fm = metrics if metrics is not None else QFontMetrics(ui_font())
     text_w = fm.horizontalAdvance(label)
     text_design = text_w / factor if factor else text_w
     if has_icon:
@@ -157,12 +165,30 @@ class CsdMenuRow(Button):
 
     ROW_HEIGHT = _ROW_HEIGHT
 
-    def __init__(self, action: ContextMenuAction, parent: QWidget | None = None):
+    def __init__(
+        self,
+        action: ContextMenuAction,
+        parent: QWidget | None = None,
+        *,
+        metrics: QFontMetrics | None = None,
+    ):
         self._label = action.text
         self._shortcut = _shortcut_display_text(action.shortcut)
         self._icon_size = scaled_px(_ROW_ICON_SIZE)
         self._icon_left = scaled_px(_ROW_ICON_LEFT)
         self._icon_pixmap = _row_icon_pixmap(getattr(action, "icon", None), self._icon_size)
+        # Measured once per row and reused by ``sizeHint``: a row is rebuilt on
+        # every flyout open (never long-lived), and the split rect below bakes
+        # ``trailing`` at construction time — re-measuring in ``sizeHint``
+        # could only desynchronise the hint from that baked split. ``metrics``
+        # is the owning strip's cached label metrics (one QFontMetrics per
+        # strip instance); the shortcut caption is a second, row-local font
+        # (``pixel_size=_SHORTCUT_PIXEL_SIZE``), so it gets its own instance,
+        # still only one per row instead of one per sizeHint call.
+        self._label_metrics = (
+            metrics if metrics is not None else QFontMetrics(ui_font())
+        )
+        self._shortcut_metrics = QFontMetrics(ui_font(pixel_size=_SHORTCUT_PIXEL_SIZE))
         icon_lead = (
             _ROW_ICON_SIZE + _ROW_ICON_GAP if self._icon_pixmap is not None else 0
         )
@@ -173,7 +199,7 @@ class CsdMenuRow(Button):
         # painted width is clipped on the left (``Ctrl+Shift+O`` -> ``hift+O``).
         content_left = 8 + icon_lead
         content_right = 8
-        shortcut_fm = QFontMetrics(ui_font(pixel_size=_SHORTCUT_PIXEL_SIZE))
+        shortcut_fm = self._shortcut_metrics
         trailing = (
             measure_text_width(shortcut_fm, self._shortcut) + scaled_px(_SHORTCUT_GAP)
             if self._shortcut
@@ -272,10 +298,8 @@ class CsdMenuRow(Button):
             pass
 
     def sizeHint(self) -> QSize:
-        label_fm = QFontMetrics(ui_font())
-        shortcut_fm = QFontMetrics(ui_font(pixel_size=_SHORTCUT_PIXEL_SIZE))
-        label_w = measure_text_width(label_fm, self._label)
-        sc_w = measure_text_width(shortcut_fm, self._shortcut)
+        label_w = measure_text_width(self._label_metrics, self._label)
+        sc_w = measure_text_width(self._shortcut_metrics, self._shortcut)
         trailing = sc_w + scaled_px(_SHORTCUT_GAP) if sc_w else 0
         lead = (
             self._icon_size + scaled_px(_ROW_ICON_GAP)
@@ -333,6 +357,12 @@ class CsdMenuStrip(QWidget):
         self._buttons: list[Button] = []
         self._flyouts: dict[int, SimpleOptionsFlyout] = {}
         self._row_actions: dict[int, list[str | None]] = {}
+        # One QFontMetrics for the whole strip, validated against the effective
+        # UI font on every use (see ``_font_metrics``). Deliberately NOT module
+        # level: a QFontMetrics binds the screen/DPI at construction, so a
+        # static one would keep a stale device across a display change.
+        self._label_metrics: QFontMetrics | None = None
+        self._label_font: QFont | None = None
         self._theme_manager = ThemeManager.get_instance()
         self._theme_manager.theme_changed.connect(self._on_theme_changed)
         # Trigger widths are measured from the scaled UI font AND the scale
@@ -350,6 +380,32 @@ class CsdMenuStrip(QWidget):
             self._buttons.append(button)
             layout.addWidget(button)
 
+    def _font_metrics(self) -> QFontMetrics:
+        """The strip's label metrics, rebuilt only when the font truly moved.
+
+        Caching exists because the FIRST ``horizontalAdvance`` in a fresh
+        process pays the one-time font-engine init (2.9-5.7 s on the owner's
+        cold Windows launch), and the strip measures one label per trigger —
+        the old code constructed ``QFontMetrics(ui_font())`` inside
+        ``_estimate_menu_button_width`` at every call.
+
+        Validity is decided by the *effective font* itself (``QFont`` is a
+        value: family, size, weight, and the UiScale-scaled pixel size all
+        compare), not by "a signal fired": ``remeasure()`` is also called for
+        reasons that do not move metrics (a language switch, the host applying
+        the face after the strip was built), and a signal-only invalidation
+        would both rebuild needlessly and — worse — miss a change that never
+        reached this widget. A moved font rebuilds exactly once; an unchanged
+        font never rebuilds.
+        """
+        font = ui_font()
+        metrics = self._label_metrics
+        if metrics is None or self._label_font != font:
+            metrics = QFontMetrics(font)
+            self._label_metrics = metrics
+            self._label_font = font
+        return metrics
+
     def _build_trigger(self, spec: CsdMenuSpec) -> Button:
         trigger_height = max(20, self._height - 2 * self.V_INSET)
         has_icon = spec.icon is not None
@@ -363,6 +419,7 @@ class CsdMenuStrip(QWidget):
             icon_size=icon_size,
             gap=gap if has_icon else 0,
             content_pad=content_pad,
+            metrics=self._font_metrics(),
         )
         button = Button(
             icon=spec.icon if has_icon else None,
@@ -409,6 +466,10 @@ class CsdMenuStrip(QWidget):
         not clip, or on any live metrics change (the strip is wired through
         ``connect_ui_metrics``, so font and scale changes both re-run this).
         """
+        # Any caller of this means "the metrics may have moved" — the cached
+        # QFontMetrics re-validates against the font on use (``_font_metrics``),
+        # so a real face/scale change costs exactly one rebuild here while a
+        # language switch / redundant call reuses the cache.
         self.setFixedHeight(scaled_px(self._height))
         for spec, button in zip(self._menus, self._buttons):
             trigger_height = max(20, self._height - 2 * self.V_INSET)
@@ -423,6 +484,7 @@ class CsdMenuStrip(QWidget):
                 icon_size=icon_size,
                 gap=gap if has_icon else 0,
                 content_pad=content_pad,
+                metrics=self._font_metrics(),
             )
             button.setFixedSize(scaled_px(width), scaled_px(trigger_height))
             button.update()
@@ -460,7 +522,7 @@ class CsdMenuStrip(QWidget):
         action_ids: list[str | None] = []
         for entry in spec.entries:
             if isinstance(entry, ContextMenuAction) and entry.visible:
-                rows.append(CsdMenuRow(entry))
+                rows.append(CsdMenuRow(entry, metrics=self._font_metrics()))
                 action_ids.append(entry.action_id)
         return rows, action_ids
 

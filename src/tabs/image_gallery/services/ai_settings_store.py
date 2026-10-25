@@ -61,6 +61,25 @@ from tabs.image_gallery.services.decode_policy import (
     VLM_MAX_EDGE_CHOICES as VLM_MAX_EDGES,
 )
 
+#: Pairwise ordering of a near-tie top set (board: pointwise cannot order
+#: near-ties). Only the pointwise top ``pairwise_top_n`` take part, each pair
+#: asked in BOTH orders, so one pass costs at most ``N x (N-1)`` calls; 8 is the
+#: affordable maximum (56 calls), 2 the smallest set where a swap means anything.
+PAIRWISE_TOP_N_MIN = 2
+PAIRWISE_TOP_N_MAX = 8
+PAIRWISE_TOP_N_DEFAULT = 5
+
+#: "No near-tie, no calls": when the pointwise spread across the top set
+#: already exceeds this many 0-100 quality points the pass is skipped entirely.
+#: Default 10.0 — half the LOW end of the same-image sampling swing the judge
+#: showed live (12-23 points, plan-gallery-ai-judgement J5) while the variants
+#: it was asked to separate differed by 2-6: at or above 10 the gap is at least
+#: the instrument's own movement, so the pointwise order is decided; below it
+#: the order is inside the noise and goes to pairwise comparison.
+PAIRWISE_NEAR_TIE_THRESHOLD_MIN = 0.0
+PAIRWISE_NEAR_TIE_THRESHOLD_MAX = 100.0
+PAIRWISE_NEAR_TIE_THRESHOLD_DEFAULT = 10.0
+
 
 def _parse_int(value, default: int = 0) -> int:
     try:
@@ -83,6 +102,17 @@ def _clamp_int(value, default: int, low: int, high: int) -> int:
     except Exception:
         n = int(default)
     return max(int(low), min(int(high), n))
+
+
+def _clamp_float(value, default: float, low: float, high: float) -> float:
+    """Parse *value* as float and clamp it into [low, high] (never raises)."""
+    try:
+        n = float(str(value).strip())
+    except Exception:
+        n = float(default)
+    if n != n:  # NaN
+        n = float(default)
+    return max(float(low), min(float(high), n))
 
 
 def _load_api_key(settings: QSettings) -> str:
@@ -155,6 +185,24 @@ class AiSettings:
     #: whole card that fits and leaves a continue affordance instead of
     #: silently draining the budget.
     judge_run_call_ceiling: int = 0
+    #: Pairwise ordering of a near-tie top set (board 2026-10-25). ``False`` by
+    #: default: this wave ships no settings UI row for it, so a default-on pass
+    #: would spend up to ``top_n x (top_n-1)`` judge calls on a near-tie series
+    #: with no way for the user to turn it off, and the run estimate (stated
+    #: before the pointwise pass) does not name that cost — a silent spend.
+    #: Persisted like every other knob (a config written with ``true`` keeps it
+    #: on); the pass is still gated twice before it costs anything: only a
+    #: series whose top-set spread is within ``pairwise_near_tie_threshold`` is
+    #: compared, and the whole bound is reserved against
+    #: ``judge_run_call_ceiling``. The pairwise order is added next to the
+    #: pointwise numbers; it never replaces them.
+    pairwise_enabled: bool = False
+    #: How many of the pointwise-best items take part (clamped
+    #: [PAIRWISE_TOP_N_MIN, PAIRWISE_TOP_N_MAX], default 5 = at most 20 calls).
+    pairwise_top_n: int = PAIRWISE_TOP_N_DEFAULT
+    #: Skip the whole pass when the pointwise spread across that top set already
+    #: exceeds this many 0-100 points (clamped to the scale, default 10.0).
+    pairwise_near_tie_threshold: float = PAIRWISE_NEAR_TIE_THRESHOLD_DEFAULT
 
     def model_for(self, provider_id: str) -> str:
         """The model remembered for *provider_id* ("" when none yet)."""
@@ -224,6 +272,27 @@ class AiSettingsStore:
                 judge_run_call_ceiling=max(
                     0, _parse_int(settings.value("judge_run_call_ceiling", 0), 0)
                 ),
+                # Absent/anything else means OFF (the dataclass default): only
+                # an explicit truthy value re-enables the pass.
+                pairwise_enabled=str(
+                    settings.value("pairwise_enabled", False)
+                ).lower()
+                in ("true", "1"),
+                pairwise_top_n=_clamp_int(
+                    settings.value("pairwise_top_n", PAIRWISE_TOP_N_DEFAULT),
+                    PAIRWISE_TOP_N_DEFAULT,
+                    PAIRWISE_TOP_N_MIN,
+                    PAIRWISE_TOP_N_MAX,
+                ),
+                pairwise_near_tie_threshold=_clamp_float(
+                    settings.value(
+                        "pairwise_near_tie_threshold",
+                        PAIRWISE_NEAR_TIE_THRESHOLD_DEFAULT,
+                    ),
+                    PAIRWISE_NEAR_TIE_THRESHOLD_DEFAULT,
+                    PAIRWISE_NEAR_TIE_THRESHOLD_MIN,
+                    PAIRWISE_NEAR_TIE_THRESHOLD_MAX,
+                ),
             )
         finally:
             settings.endGroup()
@@ -273,6 +342,9 @@ class AiSettingsStore:
             "sampling_seed",
             "judge_concurrency",
             "judge_run_call_ceiling",
+            "pairwise_enabled",
+            "pairwise_top_n",
+            "pairwise_near_tie_threshold",
         ):
             raise ValueError(f"Unknown AI setting field: {name}")
         settings = self._settings()
@@ -300,6 +372,22 @@ class AiSettingsStore:
                 )
             elif name == "judge_run_call_ceiling":
                 value = max(0, _parse_int(value, 0))
+            elif name == "pairwise_top_n":
+                value = _clamp_int(
+                    value,
+                    PAIRWISE_TOP_N_DEFAULT,
+                    PAIRWISE_TOP_N_MIN,
+                    PAIRWISE_TOP_N_MAX,
+                )
+            elif name == "pairwise_near_tie_threshold":
+                value = _clamp_float(
+                    value,
+                    PAIRWISE_NEAR_TIE_THRESHOLD_DEFAULT,
+                    PAIRWISE_NEAR_TIE_THRESHOLD_MIN,
+                    PAIRWISE_NEAR_TIE_THRESHOLD_MAX,
+                )
+            elif name == "pairwise_enabled":
+                value = str(value).strip().lower() in ("true", "1", "yes", "on")
             settings.setValue(name, value)
         finally:
             settings.endGroup()
