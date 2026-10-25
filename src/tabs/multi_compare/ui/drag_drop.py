@@ -88,10 +88,6 @@ def _emit_dnd_overflow_summary(widget, overflow, *, reason: str = "queue_full") 
         )
 
 
-def has_internal_slot(mime) -> bool:
-    return mime.hasFormat(INTERNAL_SLOT_MIME)
-
-
 def _mime_url_count(mime) -> int:
     try:
         return len(mime.urls())
@@ -158,6 +154,26 @@ def internal_source_slot_id(mime) -> int | None:
         return None
 
 
+def owned_internal_source_slot_id(widget, mime) -> int | None:
+    """Slot id from *mime* when that slot lives in THIS widget's state.
+
+    Slot ids are per-session, so a drag started in another Multi Compare tab
+    (reachable by holding the cursor over that tab's strip button — the strip
+    dwell-switches sessions mid-drag) must never drive this tab's internal
+    reorder: the id would resolve to an unrelated slot here, or to nothing.
+    Foreign payloads fall through to the external path (``setUrls`` is on the
+    same mime since slots carry ``WORKSPACE_TAB_PATHS_MIME``), i.e. the image
+    is added where it was dropped — gallery-drag parity.
+    """
+    sid = internal_source_slot_id(mime)
+    if sid is None:
+        return None
+    try:
+        return sid if any(slot.id == sid for slot in widget.state.slots) else None
+    except Exception:
+        return None
+
+
 def grid_local_pos(widget, pos):
     return widget.canvas.mapFrom(widget, pos)
 
@@ -169,12 +185,11 @@ def resolve_drop_target(widget, pos, *, internal: bool):
     return widget.canvas.compute_drop_target(local)
 
 
-def apply_drag_preview(widget, event, internal: bool) -> None:
+def apply_drag_preview(
+    widget, event, internal: bool, source_id: int | None = None
+) -> None:
     t0 = time.monotonic()
     pos = event.position().toPoint()
-    source_id = (
-        internal_source_slot_id(event.mimeData()) if internal else None
-    )
     _apply_preview_at(
         widget, pos, internal=internal, source_id=source_id, t0=t0
     )
@@ -327,7 +342,9 @@ def _timing_emit(widget, why: str) -> None:
     )
 
 
-def _safe_preview(widget, event, *, internal: bool) -> None:
+def _safe_preview(
+    widget, event, *, internal: bool, source_id: int | None = None
+) -> None:
     """Run ``apply_drag_preview`` without ever swallowing ``accept()``.
 
     Mirrors image_compare's ``_safe_update_drag_overlays``: the accept
@@ -336,7 +353,7 @@ def _safe_preview(widget, event, *, internal: bool) -> None:
     drag source reads as "wait").
     """
     try:
-        apply_drag_preview(widget, event, internal=internal)
+        apply_drag_preview(widget, event, internal=internal, source_id=source_id)
     except Exception:
         logger.exception("[mc-dnd] apply_drag_preview failed")
 
@@ -349,15 +366,14 @@ def drag_enter_event(widget, event: QDragEnterEvent) -> None:
     widget._dnd_light_logged = False
     widget._dnd_gen = getattr(widget, "_dnd_gen", 0) + 1
     mime = event.mimeData()
-    if has_internal_slot(mime):
-        _dnd_log(
-            "dragEnter internal source=%s", internal_source_slot_id(mime)
-        )
+    source_id = owned_internal_source_slot_id(widget, mime)
+    if source_id is not None:
+        _dnd_log("dragEnter internal source=%s", source_id)
         # Echo: internal drags propose MoveAction (interaction.py) and the
         # answered action must stay Move. Accept FIRST, then defer the
         # preview work past it: Status must not wait on resolve/dispatch.
         event.acceptProposedAction()
-        _defer_enter_preview(widget, event, internal=True)
+        _defer_enter_preview(widget, event, internal=True, source_id=source_id)
         _schedule_placeholder_recheck(widget)
         return
     if has_image_urls(mime):
@@ -375,7 +391,9 @@ def drag_enter_event(widget, event: QDragEnterEvent) -> None:
     event.ignore()
 
 
-def _defer_enter_preview(widget, event, *, internal: bool) -> None:
+def _defer_enter_preview(
+    widget, event, *, internal: bool, source_id: int | None = None
+) -> None:
     """Run the enter preview on the next tick, past ``accept()``.
 
     Only the mime verdict stays synchronous (it gates accept vs ignore);
@@ -390,9 +408,6 @@ def _defer_enter_preview(widget, event, *, internal: bool) -> None:
 
         gen = getattr(widget, "_dnd_gen", 0)
         pos = event.position().toPoint()
-        source_id = (
-            internal_source_slot_id(event.mimeData()) if internal else None
-        )
         t0 = time.monotonic()
 
         def _tick() -> None:
@@ -415,7 +430,7 @@ def drag_move_event(widget, event: QDragMoveEvent) -> None:
     if mc_dnd_diag_light_move_enabled():
         # Diagnostic-only: image_compare semantics (accept, no work).
         mime = event.mimeData()
-        if has_internal_slot(mime):
+        if owned_internal_source_slot_id(widget, mime) is not None:
             if not getattr(widget, "_dnd_light_logged", False):
                 widget._dnd_light_logged = True
                 _dnd_log("dragMove DIAG-LIGHT (accept-only, no dispatch/render)")
@@ -429,9 +444,10 @@ def drag_move_event(widget, event: QDragMoveEvent) -> None:
         else:
             event.ignore()
         return
-    if has_internal_slot(event.mimeData()):
+    source_id = owned_internal_source_slot_id(widget, event.mimeData())
+    if source_id is not None:
         event.acceptProposedAction()
-        _safe_preview(widget, event, internal=True)
+        _safe_preview(widget, event, internal=True, source_id=source_id)
         return
     if has_image_urls(event.mimeData()):
         event.setDropAction(Qt.DropAction.CopyAction)
@@ -453,8 +469,8 @@ def drag_leave_event(widget, event: QDragLeaveEvent) -> None:
 
 def drop_event(widget, event: QDropEvent) -> None:
     mime = event.mimeData()
-    if has_internal_slot(mime):
-        source_id = internal_source_slot_id(mime)
+    source_id = owned_internal_source_slot_id(widget, mime)
+    if source_id is not None:
         tgt_path, side, _, swap_id = resolve_drop_target(
             widget, event.position().toPoint(), internal=True
         )
@@ -466,7 +482,7 @@ def drop_event(widget, event: QDropEvent) -> None:
         widget._dnd_preview_sig = None
         widget._dnd_gen = getattr(widget, "_dnd_gen", 0) + 1
         widget.store.dispatch(actions.set_drag_state(active=False))
-        if source_id is not None and side is not None:
+        if side is not None:
             apply_internal_drop(widget, source_id, tgt_path, side, swap_id)
         else:
             _dnd_log("drop internal ignored (source=%s side=%s)", source_id, side)

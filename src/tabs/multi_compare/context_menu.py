@@ -53,13 +53,6 @@ class MultiCompareContextMenuProvider:
                 data=slot.id,
             ),
             ContextMenuAction(
-                "multi_compare.carry_slot",
-                self._tr("context.carry_image", "Move"),
-                icon=Icon.MOVE,
-                enabled=bool(slot.path),
-                data=slot.id,
-            ),
-            ContextMenuAction(
                 "multi_compare.crop_slot",
                 self._tr("context.crop", "Crop"),
                 icon=Icon.SCISSORS,
@@ -93,9 +86,6 @@ class MultiCompareContextMenuProvider:
             return True
         if action_id == "multi_compare.show_slot_properties":
             self._show_properties(slot)
-            return True
-        if action_id == "multi_compare.carry_slot":
-            self._begin_carry(slot)
             return True
         if action_id == "multi_compare.crop_slot":
             self._toggle_crop(slot)
@@ -200,19 +190,6 @@ class MultiCompareContextMenuProvider:
             )
             return
         self.widget.begin_pending_duplicate(slot.id)
-
-    def _begin_carry(self, slot: CompareSlot) -> None:
-        if not slot.path:
-            self._fail(
-                self._tr(
-                    "msg.compare_nothing_to_carry",
-                    "Nothing to carry — this slot is empty.",
-                )
-            )
-            return
-        from events.image_carry import begin_image_carry
-
-        begin_image_carry([slot.path], image=self._pixel_source(slot))
 
     def _global_crop_enabled(self) -> bool:
         """Global ``auto_crop_black_borders`` fallback for Auto (None) slots."""

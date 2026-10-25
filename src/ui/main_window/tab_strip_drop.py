@@ -1,19 +1,24 @@
-"""QDrag delivery of gallery cards onto the workspace tab strip (Wave C).
+"""QDrag delivery of tab-content image paths onto the workspace tab strip.
+
+Origin: Wave C (gallery cards). Multi Compare slots joined the same wire —
+one gesture reorders inside the tab and hands the image to another tab.
 
 The strip (``ui/widgets/workspace_tab_strip.py``) stays a thin owner: it
-only claims the card-drag mime on enter/move and delegates drop events here
+only claims the path-drag mime on enter/move and delegates drop events here
 via ``set_qdrag_drop_handler``. All routing lives in this module and mirrors
 ``events.image_carry.ImageCarryService._try_deliver_to_workspace_tab``
 exactly (same tab_bar.mapFromGlobal → tabAt → tabData → session →
 ``accepts_drop`` → session switch → deferred ``_schedule_pending_insert``),
 because a QDrag carries the same ``(paths, global_pos)`` facts as an image
-carry — only the gesture differs.
+carry — only the gesture differs. Nothing here is gallery-specific: the wire
+is ``shared.drag_mime.WORKSPACE_TAB_PATHS_MIME`` + URLs, and every producer
+(gallery card, Multi Compare slot) speaks both.
 
 Platform-isolation note: this file is host code, so it never names a
 concrete tab and never imports past ``tabs.registry`` (contracts:
-``test_platform_isolation``, ``test_ui_tab_sandbox``). The card mime below
-is a wire-format mirror — the single definition lives tab-side and
-``test_gallery_dnd_delivery`` pins them equal. Session types are only ever
+``test_platform_isolation``, ``test_ui_tab_sandbox``). The mime constant is
+imported from ``shared/drag_mime.py`` — the one definition both sides use,
+so there is no mirror to keep in sync. Session types are only ever
 read off live session objects, never written here.
 
 Differences from carry (all deliberate):
@@ -40,20 +45,23 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+
 from core.log_names import APP_LOGGER_NAME
+from shared.drag_mime import WORKSPACE_TAB_PATHS_MIME
 
 logger = logging.getLogger(APP_LOGGER_NAME)
 
-#: Card-drag mime (wire mirror — the single definition lives tab-side next to
-#: the card drag source; pinned equal by ``test_gallery_dnd_delivery``).
-#: Checked with ``hasFormat`` only; never redefined as a second constant.
-GALLERY_CARD_MIME = "application/x-imgsli-gallery-paths"
+#: Path-drag mime claimed on the strip (single definition in
+#: ``shared/drag_mime.py``; host code may not import the tab-side aliases).
+#: Producers: gallery cards and multi-compare canvas slots — the strip cannot
+#: tell them apart, and does not need to: the payload is paths.
+TAB_PATHS_MIME = WORKSPACE_TAB_PATHS_MIME
 
 
 def has_card_mime(mime) -> bool:
-    """True when *mime* carries gallery-card dragged paths."""
+    """True when *mime* carries paths dragged out of tab content."""
     try:
-        return bool(mime is not None and mime.hasFormat(GALLERY_CARD_MIME))
+        return bool(mime is not None and mime.hasFormat(TAB_PATHS_MIME))
     except Exception:
         return False
 
@@ -82,7 +90,7 @@ def parse_card_paths(mime) -> list[Path]:
             pass
 
     try:
-        raw = bytes(mime.data(GALLERY_CARD_MIME))
+        raw = bytes(mime.data(TAB_PATHS_MIME))
     except Exception:
         raw = b""
     if raw:
@@ -113,7 +121,7 @@ def parse_card_paths(mime) -> list[Path]:
 
 
 def deliver_gallery_drop(main_window, store, tabs, global_pos, paths) -> bool:
-    """Deliver card *paths* dropped at *global_pos* onto the tab strip.
+    """Deliver dragged *paths* at *global_pos* onto the tab strip.
 
     Returns True when a pending insert was scheduled on the target tab.
     Fail-closed everywhere else (no paths, unknown session, declining tab,
@@ -255,7 +263,7 @@ def _switch_session(main_window, store, tabs, session_id: str, tab_index: int) -
 def install_tab_dwell_switch(main_window, store) -> bool:
     """Bind the strip's hold-to-open hook (browser parity).
 
-    Holding a gallery drag over a tab for the strip's dwell interval
+    Holding a tab-content drag over a tab for the strip's dwell interval
     activates that tab, so the drop lands on the tab's own content surface
     (grid/canvas drop squares, same as files from the OS) instead of the
     strip router. Skips the already-active tab (drop-back). Idempotent.

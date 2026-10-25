@@ -139,3 +139,34 @@ def test_router_forwards_carry_before_flyout_dnd(qapp, monkeypatch):
     assert finished == [1]
     carry.cancel()
     window.deleteLater()
+
+
+def test_tab_hint_defaults_on_and_is_suppressed_on_request(
+    carry_service, monkeypatch
+):
+    """Image Compare's Move hides the tab-strip wiggle; gallery keeps it.
+
+    ``tab_hint=False`` (IC slot/list Move) must leave the strip undecorated
+    while delivery stays identical — the hint overlay only advertises targets.
+    """
+    import ui.main_window.workspace_tab_carry_hint as hint_mod
+
+    started: list[object] = []
+
+    def _record_start(self, *_args, **_kwargs):
+        started.append(self)
+
+    monkeypatch.setattr(hint_mod.WorkspaceTabCarryHint, "start", _record_start)
+
+    service, img, _window = carry_service
+    assert service.begin([img]) is True
+    assert len(started) == 1, "default carry must advertise the tab targets"
+    service.cancel()
+
+    assert service.begin([img], tab_hint=False) is True
+    assert len(started) == 1, "IC Move must not decorate the tab strip"
+    assert service._tab_hint is None
+    service.cancel()
+
+    # Cancel restores the default so the next carry is not silently muted.
+    assert service._hint_enabled is True

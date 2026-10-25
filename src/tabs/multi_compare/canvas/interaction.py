@@ -730,10 +730,44 @@ def handle_key_press_event(widget, event) -> None:
         QWidget.keyPressEvent(widget, event)
 
 
+def build_internal_drag_mime(slot_id: int, path=None) -> QMimeData:
+    """Mime for a slot drag — intra-tab reorder *and* cross-tab delivery.
+
+    Two payloads on one gesture:
+
+    * ``INTERNAL_SLOT_MIME`` (slot id) — this tab's own drop path reorders /
+      swaps the slot (``ui/drag_drop.py``); the id only means something inside
+      the session it came from (foreign-session ids are ignored there).
+    * ``WORKSPACE_TAB_PATHS_MIME`` + ``setUrls`` — the same wire a gallery-card
+      drag speaks, so the host tab-strip router delivers the image to the tab
+      under the cursor exactly like gallery DnD. Copy semantics: the file is
+      not touched, the source slot keeps its image.
+
+    A slot without a path (imageless placeholder) carries only the internal
+    half — there is nothing to hand over.
+    """
+    mime = QMimeData()
+    try:
+        mime.setData(INTERNAL_SLOT_MIME, str(slot_id).encode("utf-8"))
+    except Exception:
+        pass
+    if path:
+        try:
+            from PySide6.QtCore import QUrl
+
+            from shared.drag_mime import WORKSPACE_TAB_PATHS_MIME
+
+            url = QUrl.fromLocalFile(str(path))
+            mime.setData(WORKSPACE_TAB_PATHS_MIME, url.toString().encode("utf-8"))
+            mime.setUrls([url])
+        except Exception:
+            pass
+    return mime
+
+
 def start_internal_drag(widget, slot_id: int) -> None:
     slot = next((s for s in widget.state.slots if s.id == slot_id), None)
-    mime = QMimeData()
-    mime.setData(INTERNAL_SLOT_MIME, str(slot_id).encode("utf-8"))
+    mime = build_internal_drag_mime(slot_id, getattr(slot, "path", None))
     drag = QDrag(widget)
     drag.setMimeData(mime)
 

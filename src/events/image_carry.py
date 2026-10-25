@@ -42,6 +42,7 @@ class ImageCarryService(QObject):
         self.main_window = parent
         self._active = False
         self._armed = False
+        self._hint_enabled = True
         self._arm_origin = QPoint()
         self._paths: list[Path] = []
         from ui.widgets.drag_ghost_service import GhostService
@@ -60,8 +61,15 @@ class ImageCarryService(QObject):
         *,
         pixmap: QPixmap | None = None,
         hotspot: QPointF | None = None,
+        tab_hint: bool = True,
     ) -> bool:
-        """Start Move mode. Returns False if paths/preview are unusable."""
+        """Start Move mode. Returns False if paths/preview are unusable.
+
+        *tab_hint* toggles the workspace-tab wiggle that advertises which
+        tabs accept the drop. Image Compare passes ``False``: its Move action
+        must not decorate the tab strip (owner decision 2026-10-25) — the
+        gesture stays identical, delivery still works on a tab click.
+        """
         if self._active:
             self.cancel()
 
@@ -90,6 +98,7 @@ class ImageCarryService(QObject):
         self._paths = resolved
         self._active = True
         self._armed = False
+        self._hint_enabled = bool(tab_hint)
         cursor = QCursor.pos()
         self._arm_origin = QPoint(cursor)
         if not self._ghost.show(
@@ -98,7 +107,8 @@ class ImageCarryService(QObject):
             self._active = False
             self._paths = []
             return False
-        self._start_tab_hint()
+        if self._hint_enabled:
+            self._start_tab_hint()
         return True
 
     def update_position(self, event) -> None:
@@ -274,6 +284,7 @@ class ImageCarryService(QObject):
         self._armed = False
         self._arm_origin = QPoint()
         self._paths = []
+        self._hint_enabled = True
 
 
 def _schedule_pending_insert(session_type: str, paths: list[Path]) -> bool:
@@ -321,8 +332,13 @@ def begin_image_carry(
     *,
     image=None,
     pixmap: QPixmap | None = None,
+    tab_hint: bool = True,
 ) -> bool:
-    """Convenience entry for context menus (resolves the singleton)."""
+    """Convenience entry for context menus (resolves the singleton).
+
+    *tab_hint* reaches :meth:`ImageCarryService.begin`; ``False`` keeps the
+    workspace tab strip undecorated for the caller's Move action.
+    """
     try:
         service = ImageCarryService.get_instance()
     except RuntimeError:
@@ -331,4 +347,4 @@ def begin_image_carry(
     preview = pixmap
     if (preview is None or preview.isNull()) and image is not None:
         preview = preview_pixmap_from_pixel_source(image)
-    return service.begin(paths, pixmap=preview)
+    return service.begin(paths, pixmap=preview, tab_hint=tab_hint)

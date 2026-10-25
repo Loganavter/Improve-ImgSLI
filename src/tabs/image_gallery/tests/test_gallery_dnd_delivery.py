@@ -244,18 +244,24 @@ def test_internal_drop_logs_resolved_delivery(qapp, tmp_path, monkeypatch, caplo
 # -- C2: strip router --------------------------------------------------------
 
 
-def test_card_mime_mirror_matches_single_definition():
-    """Platform router/strip share ONE wire string with the tab-side mime.
+def test_card_mime_matches_single_definition():
+    """Producers, the strip and the host router share ONE wire string.
 
-    The host sandbox forbids ``src/ui`` importing the tab-side constant, so
-    ``ui.main_window.tab_strip_drop.GALLERY_CARD_MIME`` is a mirror — this
-    pins it equal to the single definition (Wave A frozen seam). If this
-    fails, update the mirror, never add a third copy.
+    The single definition is ``shared.drag_mime.WORKSPACE_TAB_PATHS_MIME``
+    (host code may not import a tab module, and tab-to-tab imports are not
+    allowed either — gallery cards and Multi Compare slots both speak it).
+    This pins every alias to that one value; never add a second copy.
     """
+    from shared.drag_mime import WORKSPACE_TAB_PATHS_MIME
     from tabs.image_gallery.ui.card import GALLERY_PATHS_MIME
-    from ui.main_window.tab_strip_drop import GALLERY_CARD_MIME
+    from ui.main_window.tab_strip_drop import TAB_PATHS_MIME
 
-    assert GALLERY_CARD_MIME == GALLERY_PATHS_MIME == "application/x-imgsli-gallery-paths"
+    assert (
+        TAB_PATHS_MIME
+        == GALLERY_PATHS_MIME
+        == WORKSPACE_TAB_PATHS_MIME
+        == "application/x-imgsli-workspace-tab-paths"
+    )
 
 
 class _FakeBar:
@@ -537,8 +543,10 @@ def test_strip_drag_move_mirrors_hover_from_event():
 
     class _MoveEv:
         def mimeData(self):
+            from shared.drag_mime import WORKSPACE_TAB_PATHS_MIME
+
             mime = QMimeData()
-            mime.setData("application/x-imgsli-gallery-paths", b"file:///x/a.png")
+            mime.setData(WORKSPACE_TAB_PATHS_MIME, b"file:///x/a.png")
             return mime
 
         def position(self):
@@ -607,8 +615,10 @@ def _dwell_move_ev(x=225, y=15):
 
     class _MoveEv:
         def mimeData(self):
+            from shared.drag_mime import WORKSPACE_TAB_PATHS_MIME
+
             mime = QMimeData()
-            mime.setData("application/x-imgsli-gallery-paths", b"file:///x/a.png")
+            mime.setData(WORKSPACE_TAB_PATHS_MIME, b"file:///x/a.png")
             return mime
 
         def position(self):

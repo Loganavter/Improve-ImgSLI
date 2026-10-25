@@ -25,15 +25,20 @@ from PySide6.QtGui import QColor
 from sli_ui_toolkit.managers import scaled_px
 from sli_ui_toolkit.widgets import Button, ButtonRegion, CustomSplit
 
+from shared.drag_mime import WORKSPACE_TAB_PATHS_MIME
+
 if TYPE_CHECKING:
     from tabs.image_gallery.models import GalleryItem
 
 GALLERY_CARD_W = 250
 GALLERY_CARD_H = 170
-# Frozen seam with Wave B (gallery DnD): mime type for card drags, defined
-# ONCE here. Payload = newline-separated ``file://`` URLs, plus
-# ``QMimeData.setUrls()`` with the same files (copy semantics on drop).
-GALLERY_PATHS_MIME = "application/x-imgsli-gallery-paths"
+# Frozen seam with Wave B (gallery DnD): mime type for card drags. The single
+# definition lives in ``shared/drag_mime.py`` because Multi Compare slots
+# produce the same wire (drag a slot onto the tab strip) and host code may not
+# import a tab module; this name stays the gallery-side alias. Payload =
+# newline-separated ``file://`` URLs, plus ``QMimeData.setUrls()`` with the
+# same files (copy semantics on drop).
+GALLERY_PATHS_MIME = WORKSPACE_TAB_PATHS_MIME
 # Reference: preview 234×110 r8 at 8,8 inside 250×170 r10 outer, bottom zone 52 (110+52+8+8=170) — balanced vertical
 _GALLERY_CONTENT_PADDING: tuple[float, float, float, float] = (8.0, 8.0, 8.0, 8.0)
 # DESIGN px of the preview box + bottom text zone. The ``CustomSplit`` rect
