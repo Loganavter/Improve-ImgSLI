@@ -23,16 +23,6 @@
       }
     },
     {
-      "path": "src/core/plugin_system/discovery_scan.py",
-      "limit": 500,
-      "marker": "Audit-Meta:",
-      "raw": "pattern=single-owner reason=\"one discovery vocabulary: the manifest contract/load/fail-open, the filesystem AST scan and the import fallback share Entry/StartupTier and one resolvability rule, so a fix in one path can never silently miss the other (per-process scan state already lives in discovery_cache.py)\"",
-      "parsed": {
-        "pattern": "single-owner",
-        "reason": "one discovery vocabulary: the manifest contract/load/fail-open, the filesystem AST scan and the import fallback share Entry/StartupTier and one resolvability rule, so a fix in one path can never silently miss the other (per-process scan state already lives in discovery_cache.py)"
-      }
-    },
-    {
       "path": "src/core/state_management/dispatcher.py",
       "limit": 500,
       "marker": "Audit-Meta:",

@@ -24,6 +24,22 @@ from core.log_names import APP_LOGGER_NAME
 
 logger = logging.getLogger(APP_LOGGER_NAME)
 
+#: Gallery page → main-window floor (design px; see ``window_minimum_size``).
+#: Measured offscreen at UI factor 1.0 on 2026-10-25:
+#: ``GalleryToolbar.minimumSizeHint().width()`` is 870 px idle, 906 px with
+#: the scanning activity slot shown, 850 px once triage is done; the page adds
+#: 24 px horizontal padding per side (``real_design.md``), so the widest real
+#: floor is 906 + 48 = 954 px. 970 = that + a 16 px allowance, so no row ever
+#: sits exactly on its own minimum (every control except the eliding activity
+#: label has a hard minimum, and the tag chips overlap below ~870 px).
+IMAGE_GALLERY_WINDOW_MIN_WIDTH = 970
+#: Page chrome measured at factor 1.0: the page's own ``minimumSizeHint()``
+#: height is 126 px with the stats strip hidden and 172 px with it shown (12 px
+#: top margin + 34 toolbar + 12 spacing + 34 strip). 480 leaves ~300 px of grid
+#: (about two card rows); the base ``MAIN_WINDOW_MIN_HEIGHT_FLOOR`` of 300 px
+#: cut the first card row.
+IMAGE_GALLERY_WINDOW_MIN_HEIGHT = 480
+
 # Lazy import grid/toolbar/states to avoid circular import at module load.
 # They are imported inside __init__ where needed.
 
@@ -435,6 +451,33 @@ class ImageGalleryWidget(QWidget):
                 self._view_frame_timer.start()
         except Exception:
             pass
+
+    # -- Host main-window floor -------------------------------------------
+
+    def window_minimum_size(self) -> tuple[int, int]:
+        """Main-window floor while this page is the active workspace content.
+
+        Same contract as ``SessionPickerWidget.window_minimum_size``:
+        deliberately **not** scaled. This value feeds the main window's
+        ``setMinimumSize`` (``ui/layout_geometry.apply_main_window_minimum``),
+        and a floor scaled by ``UiScale`` (e.g. 1455 px at 1.5x) exceeds the
+        user's saved window and forces it wider; the grid scrolls, so this is
+        a resizability floor, not a content-fit guarantee.
+
+        Why the gallery needs a declaration at all: without it
+        ``minimum_floor_for_main_window`` falls back to
+        ``MAIN_WINDOW_MIN_WIDTH_FLOOR`` (250 px), which is far below the
+        toolbar row's own minimum (870 px at factor 1.0) — the window could be
+        squeezed until the chips overlapped and the series header and cards
+        were cut. App #677 (the activity ``Text`` reporting a zero minimum
+        width so its long judge-budget sentence elides instead of inflating
+        the row) removed the accidental ~1181 px inflation that had been
+        masking this. The elide is correct; the missing floor was the bug.
+        """
+        return (
+            IMAGE_GALLERY_WINDOW_MIN_WIDTH,
+            IMAGE_GALLERY_WINDOW_MIN_HEIGHT,
+        )
 
     # -- Redux: gesture dispatch + subscribed renders (Wave 2c) -------------
 
