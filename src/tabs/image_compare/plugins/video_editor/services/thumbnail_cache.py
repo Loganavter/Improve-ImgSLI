@@ -13,7 +13,7 @@ Value = finished 160x90 PNG bytes (the post-``_finish_thumbnail_image``
 cover output). LRU eviction is capped by entry count and total bytes,
 ordered by file mtime so it survives restarts.
 
-Cache dir = ``get_log_directory("ImproveImgSLI") + "thumbnails"`` (never
+Cache dir = ``get_log_directory(APP_LOGGER_NAME) + "thumbnails"`` (never
 the log dir itself, never raw XDG paths, never ``/tmp``) — same precedent
 as ``src/engine/cache/tile_debug.py``. Corrupt/unreadable entries are a
 miss (undecodable files are removed so they cost one decode attempt, then
@@ -29,8 +29,9 @@ import logging
 import os
 import tempfile
 import threading
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 CACHE_SUBDIR_NAME = "thumbnails"
 CACHE_FILE_SUFFIX = ".png"
@@ -46,12 +47,12 @@ _HEXDIGITS = frozenset("0123456789abcdef")
 
 
 def default_thumbnail_cache_dir() -> str:
-    """``<app-data>/ImproveImgSLI/thumbnails`` — always a subdir, never the
+    """``<app-data>/<APP_LOGGER_NAME>/thumbnails`` — always a subdir, never the
     log dir itself. Raises only if the platform directory is unresolvable
     (callers treat that as cache-unavailable)."""
     from sli_ui_toolkit.core.logging import get_log_directory
 
-    base = get_log_directory("ImproveImgSLI")
+    base = get_log_directory(APP_LOGGER_NAME)
     return os.path.join(base, CACHE_SUBDIR_NAME)
 
 

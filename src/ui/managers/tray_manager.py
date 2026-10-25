@@ -7,8 +7,9 @@ from PySide6.QtWidgets import QMenu, QSystemTrayIcon
 
 from resources.translations import tr
 from utils.resource_loader import resource_path
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 class TrayManager(QObject):
 

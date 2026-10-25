@@ -16,8 +16,9 @@ import os
 from PySide6.QtCore import QTimer
 
 from tabs.contract import TabContext
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 _STATE_SLOT = "image_compare.state"
 

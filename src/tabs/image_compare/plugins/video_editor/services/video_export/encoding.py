@@ -13,8 +13,9 @@ from tabs.image_compare.plugins.video_editor.services.export_config import (
     resolve_ffmpeg_executable,
 )
 from shared.video_policy import CrfPolicy, clamp_crf
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 class FFmpegCommandBuilder:

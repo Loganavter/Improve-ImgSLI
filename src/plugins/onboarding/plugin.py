@@ -10,8 +10,9 @@ from PySide6.QtWidgets import QStackedWidget
 from core.events import WorkspaceSessionActivatedEvent
 from core.plugin_system import Plugin, plugin
 from plugins.onboarding.overlay import OnboardingOverlay, write_onboarding_ui_mode
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 # Tabs opt into first-run onboarding by answering the
 # ``requires_first_run_onboarding`` capability (see

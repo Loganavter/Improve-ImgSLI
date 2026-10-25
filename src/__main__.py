@@ -46,6 +46,7 @@ from ui.canvas_infra.rhi.rhi_backend import (
     resolve_rhi_backend_with_fallback,
     supported_rhi_backend_names,
 )
+from core.log_names import APP_LOGGER_NAME
 
 def _configure_qt_logging() -> None:
     current_rules = os.environ.get("QT_LOGGING_RULES", "").strip()
@@ -302,7 +303,7 @@ def main():
         selected_rhi_backend
     )
     if rhi_fallback_reason:
-        logging.getLogger("ImproveImgSLI.rhi").warning(
+        logging.getLogger(f"{APP_LOGGER_NAME}.rhi").warning(
             "%s (requested=%s)", rhi_fallback_reason, selected_rhi_backend
         )
         configure_rhi_process_environment(effective_rhi)
@@ -321,7 +322,7 @@ def main():
     elif effective_rhi != "default":
         configure_rhi_process_environment(effective_rhi)
         configure_vulkan_layer_environment(effective_rhi)
-    logging.getLogger("ImproveImgSLI.rhi").info(
+    logging.getLogger(f"{APP_LOGGER_NAME}.rhi").info(
         "QRhi backend effective=%s requested=%s",
         effective_rhi,
         selected_rhi_backend,
@@ -349,7 +350,7 @@ def main():
 
         ensure_windows_file_association()
     except Exception:
-        logging.getLogger("ImproveImgSLI").debug(
+        logging.getLogger(APP_LOGGER_NAME).debug(
             "Windows file association skipped", exc_info=True
         )
 
@@ -394,7 +395,7 @@ def main():
             if action is not None and action.run is not None:
                 action.run()
             else:
-                logging.getLogger("ImproveImgSLI").warning(
+                logging.getLogger(APP_LOGGER_NAME).warning(
                     "--open-tab %s: no such action (%s not registered)",
                     tab_kind,
                     action_id,
@@ -412,7 +413,7 @@ def main():
                 if action is not None and action.run is not None:
                     action.run()
                 else:
-                    logging.getLogger("ImproveImgSLI").warning(
+                    logging.getLogger(APP_LOGGER_NAME).warning(
                         "--run-action %s: no such action", action_id
                     )
 
@@ -486,11 +487,11 @@ def main():
             if control_server.start():
                 app.aboutToQuit.connect(control_server.stop)
             else:
-                logging.getLogger("ImproveImgSLI").warning(
+                logging.getLogger(APP_LOGGER_NAME).warning(
                     "IMGSLI_CONTROL=1 but the control channel could not start"
                 )
         except Exception:
-            logging.getLogger("ImproveImgSLI").warning(
+            logging.getLogger(APP_LOGGER_NAME).warning(
                 "control channel startup failed", exc_info=True
             )
 

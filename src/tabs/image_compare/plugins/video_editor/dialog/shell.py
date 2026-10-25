@@ -48,8 +48,9 @@ from engine.cache.tab_canvas_services import create_canvas_widget
 from sli_ui_toolkit.theme import ThemeManager
 from sli_ui_toolkit.widgets import CustomLineEdit
 from ui.widgets.themed_surface import ThemedBackgroundContainer
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 class VideoEditorDialog(ThemedDialog):
     readyToShow = Signal()
@@ -256,7 +257,7 @@ class VideoEditorDialog(ThemedDialog):
             )
 
             if timeline_debug_enabled():
-                logging.getLogger("ImproveImgSLI").warning("[timeline-debug] create_timeline_scroll_area timeline_id=%s scroll_id=%s viewport_id=%s", id(self.timeline) if hasattr(self, 'timeline') else -1, id(self.scroll_area), id(self.scroll_area.viewport()))
+                logging.getLogger(APP_LOGGER_NAME).warning("[timeline-debug] create_timeline_scroll_area timeline_id=%s scroll_id=%s viewport_id=%s", id(self.timeline) if hasattr(self, 'timeline') else -1, id(self.scroll_area), id(self.scroll_area.viewport()))
         except Exception:
             pass
         bottom_layout.addWidget(self.scroll_area, stretch=1)

@@ -19,7 +19,7 @@ application's normal log directory.
 IMGSLI_TRACE=1 python src/__main__.py
 ```
 
-Output file: `~/.local/share/ImproveImgSLI/trace.jsonl` (truncated on each app
+Output file: `~/.local/share/BlinkTable/trace.jsonl` (truncated on each app
 start, contains only the current session). The log line
 `trace file sink active: <path>` is printed at startup.
 

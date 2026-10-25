@@ -36,6 +36,7 @@ from ui.canvas_infra.scene.pass_contract import (
     SceneVisibility,
 )
 from ui.canvas_infra.scene.stacking_policy import CanvasStackRole
+from core.log_names import APP_LOGGER_NAME
 
 
 def _shader_dir() -> Path:
@@ -246,7 +247,7 @@ class DragDropOverlayPass(CanvasRenderPass):
         seen[sig[0]] = sig
         import logging
 
-        logging.getLogger("ImproveImgSLI").warning("[ic-dnd] %s", msg % args if args else msg)
+        logging.getLogger(APP_LOGGER_NAME).warning("[ic-dnd] %s", msg % args if args else msg)
 
     def initialize(self, rhi, target) -> None:
         self._shell.mount(rhi, target, BINDING.shader_dir, BINDING.shader_stem)

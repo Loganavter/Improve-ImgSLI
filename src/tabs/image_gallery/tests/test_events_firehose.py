@@ -8,6 +8,7 @@ from PySide6.QtCore import QEvent, QPoint
 from PySide6.QtWidgets import QWidget
 
 from tabs.image_gallery.ui.events_firehose import _EventsFirehose, install_events_firehose
+from core.log_names import APP_LOGGER_NAME
 
 
 def _fake_event(kind: QEvent.Type):
@@ -26,7 +27,7 @@ def test_firehose_logs_and_never_consumes(qtbot, caplog, monkeypatch) -> None:
     qtbot.addWidget(w)
     w.setObjectName("probe-host")
     filt = _EventsFirehose()
-    with caplog.at_level(logging.WARNING, logger="ImproveImgSLI"):
+    with caplog.at_level(logging.WARNING, logger=APP_LOGGER_NAME):
         assert filt.eventFilter(w, _fake_event(QEvent.Type.MouseButtonPress)) is False
         assert filt.eventFilter(w, _fake_event(QEvent.Type.Enter)) is False
     text = caplog.text
@@ -43,7 +44,7 @@ def test_firehose_off_by_default(qtbot, caplog, monkeypatch) -> None:
     w = QWidget()
     qtbot.addWidget(w)
     filt = _EventsFirehose()
-    with caplog.at_level(logging.WARNING, logger="ImproveImgSLI"):
+    with caplog.at_level(logging.WARNING, logger=APP_LOGGER_NAME):
         filt.eventFilter(w, _fake_event(QEvent.Type.Enter))
     assert "[gallery-events]" not in caplog.text
 

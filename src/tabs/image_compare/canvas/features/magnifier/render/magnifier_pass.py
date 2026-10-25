@@ -124,13 +124,14 @@ from tabs.image_compare.canvas.loupe_trace import (
 )
 from tabs.image_compare.debug import ic_loupe_debug_enabled
 from engine.cache.uniform_layout import assert_uniform_size
+from core.log_names import APP_LOGGER_NAME
 
 _MAG_UNIFORM_FMT = (
     "<16f 4f 2f 2f f f f f 4f 4f f f i i i i i i i i i i i i i i 4f 4f 4f 4f 4f"
 )
 assert_uniform_size(_MAG_UNIFORM_FMT, MAG_UNIFORM_SIZE, label="MagnifierPass uniform")
 
-_log = logging.getLogger("ImproveImgSLI.magnifier.pass")
+_log = logging.getLogger(f"{APP_LOGGER_NAME}.magnifier.pass")
 
 #: H3 loupe-debug: steady-state heartbeat cadence while the lens is active
 #: (``loupe.mag_heartbeat``). One line per second max -- quiet frames read

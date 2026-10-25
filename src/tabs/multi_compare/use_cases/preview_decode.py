@@ -43,8 +43,9 @@ from tabs._shared.loading_pipeline import (
     cache_key_for_path as _seam_cache_key_for_path,
 )
 from tabs._shared.overflow_summary import summarize_overflow
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 # W2 adapter: the full-stage bound + backlog cap are consumed from the
 # shared seam (``tabs._shared.loading_pipeline``), not forked — the names

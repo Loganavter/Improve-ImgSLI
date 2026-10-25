@@ -6,8 +6,9 @@ from PIL import Image
 
 from shared.analysis.differ import _resolve_ssim_win_size, resample_second_to_first
 from shared.analysis.output import to_u8_rgb
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 # skimage.metrics drags numpy + scipy.stats + skimage on first import (measured
 # 2026-10-24 on the frozen D3D11 build: 2408 ms + 3462 ms of GUI-thread stalls,

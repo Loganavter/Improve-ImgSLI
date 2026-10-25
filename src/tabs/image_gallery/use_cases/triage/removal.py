@@ -15,11 +15,12 @@ from core.state_management.gallery_actions import (
     GalleryItemsRemoved,
     GalleryPathsAppended,
 )
+from core.log_names import APP_LOGGER_NAME
 
 from .compare import _refresh_owner_grid
 from .emit import _emit_gallery, _mtime_of, _resolve_state
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 def remove_from_grid(owner, path: Path) -> bool:

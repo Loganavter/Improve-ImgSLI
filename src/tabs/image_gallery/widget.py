@@ -20,8 +20,9 @@ from sli_ui_toolkit.widgets import Text
 from tabs.image_gallery.debug import gallery_debug as _dbg
 from tabs.image_gallery.debug import gallery_dnd_debug as _dnd_log
 from tabs.image_gallery.models import GalleryItem, ThumbnailStatus
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 # Lazy import grid/toolbar/states to avoid circular import at module load.
 # They are imported inside __init__ where needed.

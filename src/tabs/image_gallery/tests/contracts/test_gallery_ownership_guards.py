@@ -102,7 +102,7 @@ ALLOWLIST: dict[tuple[str, int], str] = {
     ("src/tabs/image_gallery/ui/quick_look_hooks.py", 45): (
         "owner_for_triage legacy owner._controller READ (last-resort bind, protocol-first since G5)"
     ),
-    ("src/tabs/image_gallery/ui/drag_drop/__init__.py", 272): (
+    ("src/tabs/image_gallery/ui/drag_drop/__init__.py", 273): (
         "_explicit_controller legacy owner._controller READ (last-resort bind, G2)"
     ),
     ("src/tabs/image_gallery/use_cases/triage_ui.py", 47): (
@@ -167,11 +167,11 @@ ALLOWLIST: dict[tuple[str, int], str] = {
     # ``owner._owner_for_triage`` prefix, but this is the widget's OWN
     # triage-owner accessor (same object as before the move), not a new read
     # of an overlay's ``_owner``.
-    ("src/tabs/image_gallery/ui/widget_parts/ask_ai_surface.py", 278): (
+    ("src/tabs/image_gallery/ui/widget_parts/ask_ai_surface.py", 279): (
         "moved ask-ai submit calls owner._owner_for_triage (self→owner rename, plan Part B Wave 4;"
         " line shifted by the shared-surface/history helpers, ask-log sidebar 2026-10-20)"
     ),
-    ("src/tabs/image_gallery/ui/widget_parts/series_headers.py", 139): (
+    ("src/tabs/image_gallery/ui/widget_parts/series_headers.py", 140): (
         "moved series context menu calls owner._owner_for_triage (self→owner rename, plan Part B Wave 4;"
         " line shifted by the ask-sidebar retranslate hook, 2026-10-20)"
     ),

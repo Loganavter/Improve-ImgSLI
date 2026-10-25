@@ -12,8 +12,9 @@ from shared.image_processing.export_encoding import is_cancel_error
 
 from tabs.multi_compare.services.image_export import save_composite
 from tabs._shared.save_flow import SaveFlowCoordinator as SharedSaveFlowCoordinator
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 class MultiCompareSaveFlowCoordinator:

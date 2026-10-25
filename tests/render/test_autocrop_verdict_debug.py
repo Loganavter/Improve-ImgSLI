@@ -13,6 +13,7 @@ from PIL import Image
 
 from shared.image_processing.autocrop import CropService
 from engine.store.tiled_pixel_store import TiledPixelStore
+from core.log_names import APP_LOGGER_NAME
 
 
 def _save(path, img):
@@ -29,7 +30,7 @@ def _bordered_image():
 
 def _enable_autocrop_debug(monkeypatch, caplog):
     monkeypatch.setenv("IMGSLI_AUTOCROP_DEBUG", "1")
-    caplog.set_level(logging.DEBUG, logger="ImproveImgSLI")
+    caplog.set_level(logging.DEBUG, logger=APP_LOGGER_NAME)
 
 
 def test_disabled_service_logs_skip_verdict(tmp_path, monkeypatch, caplog):

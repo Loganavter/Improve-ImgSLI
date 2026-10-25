@@ -34,8 +34,9 @@ from shared.image_processing.pil_save import (
     next_available_path,
     write_pil_image_cancelable,
 )
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 def save_composite(

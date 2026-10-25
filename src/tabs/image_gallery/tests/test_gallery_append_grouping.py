@@ -23,10 +23,11 @@ from pathlib import Path
 
 from PySide6.QtWidgets import QApplication
 
+from core.log_names import APP_LOGGER_NAME
 from tabs.image_gallery.models import GalleryItem
 from tabs.image_gallery.widget import ImageGalleryWidget
 
-_LOGGER_NAME = "ImproveImgSLI"
+_LOGGER_NAME = APP_LOGGER_NAME
 
 
 def _items(*names: str) -> list[GalleryItem]:

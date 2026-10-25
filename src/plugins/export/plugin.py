@@ -4,8 +4,9 @@ import logging
 from typing import Any
 
 from PySide6.QtCore import QTimer
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 _GPU_WARM_UP_DELAY_MS = 3000
 
@@ -256,6 +257,6 @@ class ExportPlugin(Plugin, IControllablePlugin, IServicePlugin):
             except Exception as e:
                 import logging
 
-                logging.getLogger("ImproveImgSLI").error(
+                logging.getLogger(APP_LOGGER_NAME).error(
                     f"Ошибка при завершении VideoExporterService: {e}"
                 )

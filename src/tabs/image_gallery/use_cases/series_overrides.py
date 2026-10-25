@@ -22,8 +22,9 @@ import logging
 from pathlib import Path
 
 from tabs.image_gallery.models import Series
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 def move_paths_to_series(owner, paths, series_id: str | None) -> int:

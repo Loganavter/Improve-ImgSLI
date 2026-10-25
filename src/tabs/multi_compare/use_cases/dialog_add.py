@@ -16,8 +16,9 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 def _coerce_dialog_path(raw: Path | str) -> Path:

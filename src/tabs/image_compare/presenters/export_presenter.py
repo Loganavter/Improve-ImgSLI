@@ -7,9 +7,10 @@ from tabs.host_helpers import MessageKind
 
 from core.store import Store
 from plugins.export.services.gpu_export import GpuExportService
+from core.log_names import APP_LOGGER_NAME
 from sli_ui_toolkit.i18n import tr
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 class ExportPresenter(QObject):
     """Still-image export glue for image_compare.

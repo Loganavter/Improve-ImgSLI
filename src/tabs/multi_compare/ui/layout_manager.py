@@ -6,8 +6,9 @@ from tabs.multi_compare.ui.layout_definitions import (
     ALL_KNOWN_WIDGETS,
     LAYOUT_DEFINITIONS,
 )
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 class MultiCompareLayoutManager:

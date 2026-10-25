@@ -1,8 +1,9 @@
 import logging
 
 from sli_ui_toolkit.i18n import tr
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 def dismiss_active_diff_toast(presenter):

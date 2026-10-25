@@ -13,8 +13,9 @@ import logging
 from ui.canvas_presentation.composition import LayerNode
 from ui.canvas_presentation.plan import CanvasRenderPlan
 from ui.canvas_presentation.plan_applicator import apply_canvas_render_plan
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 # -- shared-applicator plan -------------------------------------------------

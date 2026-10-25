@@ -11,8 +11,9 @@ from shared_toolkit.ui.decorate_dialog import resolve_csd_band
 from tabs.registry import TabRegistry
 from ui.main_window.ui import Ui_ImageComparisonApp
 from ui.widgets.themed_surface import ThemedSurface
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 class MainWindowStartupRuntime:

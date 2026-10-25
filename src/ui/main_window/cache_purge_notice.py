@@ -9,8 +9,9 @@ import logging
 
 from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QWidget
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 def _format_size(num_bytes: int) -> str:

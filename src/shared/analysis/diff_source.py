@@ -27,8 +27,9 @@ from shared.analysis.output import open_streaming_output, to_u8_rgb
 from shared.image_processing.store_lease import StoreLease
 from engine.store.tiled_pixel_store import TiledPixelStore
 from engine.store.regions import build_uniform_tile_grid
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 class _LeaseAborted(Exception):

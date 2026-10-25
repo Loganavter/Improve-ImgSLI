@@ -19,8 +19,9 @@ from ui.canvas_infra.scene.property_access import (
     write_canvas_feature_property,
 )
 from ui.canvas_infra.scene.registry import get_canvas_registry
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 def serialize_view_state(view: ViewState) -> dict[str, Any]:

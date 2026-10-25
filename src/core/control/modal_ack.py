@@ -26,8 +26,9 @@ from typing import Any
 from PySide6.QtCore import QTimer
 
 from .frames import send_frame
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 #: How long a handler may run before the channel answers on its own behalf
 #: (milliseconds). A handler that opens one of the app's modal dialogs

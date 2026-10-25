@@ -8,8 +8,9 @@ from domain.qt_adapters import color_to_qcolor
 from domain.types import Point
 
 from tabs.image_compare.canvas.features.magnifier.state.feature_state import get_magnifier_widget_state
+from core.log_names import APP_LOGGER_NAME
 
-_log = logging.getLogger("ImproveImgSLI.magnifier")
+_log = logging.getLogger(f"{APP_LOGGER_NAME}.magnifier")
 
 
 def command_build_render_canvas_payload(store) -> dict[str, Any]:

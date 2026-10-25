@@ -15,8 +15,9 @@ from typing import Any
 
 from PySide6.QtCore import QByteArray, QBuffer, QIODevice, Qt
 from PySide6.QtGui import QImage, QPainter, QPixmap
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 PREVIEW_MEMBER = "preview.png"
 PREVIEW_LEGACY_MEMBERS = ("preview.jpg",)

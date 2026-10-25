@@ -3,8 +3,9 @@ from __future__ import annotations
 import logging
 from engine.cache import NormalizedBounds
 from tabs.image_compare.plugins.video_editor.services.video_export.models import GlobalCanvasBounds
+from core.log_names import APP_LOGGER_NAME
 
-_blog = logging.getLogger("ImproveImgSLI.bounds_analyzer")
+_blog = logging.getLogger(f"{APP_LOGGER_NAME}.bounds_analyzer")
 
 class CanvasBoundsAnalyzer:
     def __init__(self, image_loader) -> None:

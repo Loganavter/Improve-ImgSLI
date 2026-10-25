@@ -16,8 +16,9 @@ from tabs.image_compare.canvas.features.guides.input.actions import (
     SetGuidesThicknessAction,
 )
 from tabs.image_compare.canvas.features.guides.state.feature_state import get_guides_widget_state
+from core.log_names import APP_LOGGER_NAME
 
-_laser_logger = logging.getLogger("ImproveImgSLI")
+_laser_logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 # LOG gate predicate (IMGSLI_LASER_DEBUG = [laser-debug] traces only).

@@ -52,8 +52,9 @@ from events.app_event.interactive_movement_input import (
 from events.app_event.interactive_movement_math import damp, damp_vector, is_close
 from engine.cache.tile_debug import log_tile_event, tile_dump_enabled
 from tabs.image_compare.canvas.registry import registry
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 def _get_movement_handler(store):

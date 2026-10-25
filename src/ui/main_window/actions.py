@@ -4,6 +4,7 @@ import os
 
 from PySide6.QtCore import QUrl, Qt
 from PySide6.QtGui import QDesktopServices
+from core.log_names import APP_LOGGER_NAME
 
 class MainWindowActions:
     def __init__(self, window):
@@ -36,7 +37,7 @@ class MainWindowActions:
         except Exception:
             import logging
 
-            logging.getLogger("ImproveImgSLI").exception("notify_system send failed")
+            logging.getLogger(APP_LOGGER_NAME).exception("notify_system send failed")
 
     def set_last_saved_path(self, path: str | None) -> None:
         self._last_saved_path = path

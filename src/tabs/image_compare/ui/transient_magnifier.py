@@ -8,8 +8,9 @@ from PySide6.QtCore import QEvent, Qt, QTimer
 from core.constants import AppConstants
 from sli_ui_toolkit.managers import DelayedActionTimer
 from tabs.image_compare.canvas.registry import registry
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 def _query_overlay(store, capability_id: str, default=None):

@@ -11,11 +11,12 @@ from shared_toolkit.ui.in_window_surface import (
     create_shadow_surface,
     paint_shadowed_surface,
 )
+from core.log_names import APP_LOGGER_NAME
 from sli_ui_toolkit.managers import scaled_px
 from sli_ui_toolkit.theme import ThemeManager
 from sli_ui_toolkit.ui.managers.ui_font import apply_text_color, apply_ui_font
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 class _PopupBubble(QWidget):
     SHADOW_RADIUS = 8

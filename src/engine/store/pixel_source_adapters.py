@@ -16,8 +16,9 @@ import numpy as np
 from PIL import Image
 
 from engine.store.tiled_pixel_store import TiledPixelStore
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 def qimage_from_pixel_source(source, box: tuple[int, int, int, int] | None = None) -> "QImage":

@@ -60,6 +60,7 @@ from tabs.image_gallery.services.metric_profile import (
 )
 from tabs.image_gallery.use_cases import pipeline_stages as ps
 from tabs.image_gallery.use_cases import profile_ai, triage_run
+from core.log_names import APP_LOGGER_NAME
 
 
 def _item(name: str, **metrics) -> GalleryItem:
@@ -337,7 +338,7 @@ def test_late_vlm_reply_is_dropped_once_analysis_started(
 
     ctrl._run_profile_select_on_settle()  # in flight
     ctrl._run_ai_for_visible()  # an analysis of this generation begins now
-    with caplog.at_level(logging.DEBUG, logger="ImproveImgSLI"):
+    with caplog.at_level(logging.DEBUG, logger=APP_LOGGER_NAME):
         ctrl.launched[0].run()  # ...and only then the vlm reply lands
 
     assert ctrl.state.metric_profile == heuristic, "a late reply must not be applied"
@@ -400,7 +401,7 @@ def test_vlm_reply_of_only_unusable_ids_falls_back_to_the_heuristic(
     settings = SimpleNamespace(
         enabled=True, api_key="k", model="m", base_url="http://h", reasoning_effort="auto"
     )
-    with caplog.at_level(logging.DEBUG, logger="ImproveImgSLI"):
+    with caplog.at_level(logging.DEBUG, logger=APP_LOGGER_NAME):
         profile = profile_ai.choose_profile_sync(
             [_item("a.png", ssim=0.9), _item("b.png", ssim=0.4)],
             mode="camera",

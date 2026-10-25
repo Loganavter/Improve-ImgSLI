@@ -18,6 +18,7 @@ from PySide6.QtCore import QPoint
 
 from tabs.multi_compare.models import MultiCompareState
 from tabs.multi_compare.ui import drag_drop
+from core.log_names import APP_LOGGER_NAME
 
 
 def _mime(urls):
@@ -95,7 +96,7 @@ def test_gesture_summary_counts_moves_and_handler_cost(
     monkeypatch.setenv("IMGSLI_MC_DEBUG", "1")
     widget = _widget()
     mime = _mime([_url(img)])
-    with caplog.at_level(logging.WARNING, logger="ImproveImgSLI"):
+    with caplog.at_level(logging.WARNING, logger=APP_LOGGER_NAME):
         drag_drop.drag_enter_event(widget, _event(mime))
         _pump()  # deferred enter preview (accept itself is synchronous)
         for _ in range(3):
@@ -115,7 +116,7 @@ def test_flick_through_never_resurrects_preview(qapp, monkeypatch, tmp_path, cap
     monkeypatch.setenv("IMGSLI_MC_DEBUG", "1")
     widget = _widget()
     mime = _mime([_url(img)])
-    with caplog.at_level(logging.WARNING, logger="ImproveImgSLI"):
+    with caplog.at_level(logging.WARNING, logger=APP_LOGGER_NAME):
         drag_drop.drag_enter_event(widget, _event(mime))
         drag_drop.drag_leave_event(widget, _event(mime))
         _pump()
@@ -130,7 +131,7 @@ def test_zone_change_redispatches(qapp, monkeypatch, tmp_path, caplog):
     monkeypatch.setenv("IMGSLI_MC_DEBUG", "1")
     widget = _widget(zoned=True)
     mime = _mime([_url(img)])
-    with caplog.at_level(logging.WARNING, logger="ImproveImgSLI"):
+    with caplog.at_level(logging.WARNING, logger=APP_LOGGER_NAME):
         drag_drop.drag_enter_event(widget, _event(mime, pos=QPoint(10, 10)))
         _pump()
         drag_drop.drag_move_event(widget, _event(mime, pos=QPoint(80, 10)))

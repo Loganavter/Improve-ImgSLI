@@ -20,10 +20,11 @@ from PySide6.QtGui import QImage
 
 from engine.gpu.host_texture_cache import cache_for_widget, qimage_from_pil
 from engine.cache.image_identity import image_uid
+from core.log_names import APP_LOGGER_NAME
 
 _QIMAGE_BY_UID_CACHE_CAPACITY = 4
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 def _record_crop_failure(widget, texture_key, exc: BaseException) -> None:

@@ -10,8 +10,9 @@ from sli_ui_toolkit.widgets import CustomLineEdit
 
 from events.app_event.common import get_main_controller
 from tabs.registry import get_shared_tab_registry
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 def key_event_chord(event: QKeyEvent) -> str:

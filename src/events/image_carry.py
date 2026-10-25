@@ -14,8 +14,9 @@ from pathlib import Path
 from PySide6.QtCore import QObject, QPoint, QPointF, Qt
 from PySide6.QtGui import QCursor, QPixmap
 from PySide6.QtWidgets import QApplication
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 _PREVIEW_WIDTH = 160
 

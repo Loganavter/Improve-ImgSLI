@@ -19,9 +19,10 @@ from tabs.image_compare.plugins.video_editor.presenter_parts import (
 from tabs.image_compare.plugins.video_editor.services.editor import VideoEditorService
 from tabs.image_compare.plugins.video_editor.services.playback import PlaybackEngine
 from tabs.image_compare.plugins.video_editor.services.thumbnails import ThumbnailService
+from core.log_names import APP_LOGGER_NAME
 
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 def pipeline_cache_thumbnail_resolver_for(main_controller):

@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import logging
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 def build_live_frame_snapshot(store):

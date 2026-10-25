@@ -71,8 +71,9 @@ from tabs.image_gallery.services.rank_fusion import (
     rank_series,
 )
 from tabs.image_gallery.use_cases.pipeline_stages import rank_completeness
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 #: The Jev model id (OpenRouter), single definition for the whole tree. The
 #: rank call is a plain chat/completions request with this model; the transport

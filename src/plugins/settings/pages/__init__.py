@@ -11,8 +11,9 @@ from __future__ import annotations
 import importlib
 import logging
 import pkgutil
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 def discover_and_register(registry) -> None:

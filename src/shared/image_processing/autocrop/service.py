@@ -23,10 +23,11 @@ from shared.image_processing.progressive_loader import (
     pyvips_can_stream,
     read_jxl_header_dimensions,
 )
+from core.log_names import APP_LOGGER_NAME
 
 import logging
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 # Реестр живых сервисов для глобальной инвалидации (не кэш bbox, а множество
 # инстансов). Позволяет application_service инвалидировать все без синглтона.

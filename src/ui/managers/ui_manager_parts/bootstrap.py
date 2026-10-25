@@ -5,8 +5,9 @@ import logging
 from PySide6.QtWidgets import QApplication
 
 from shared_toolkit.ui.managers.font_manager import FontManager
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 def initialize_ui_manager_pre_transient(manager) -> None:
     _init_unified_flyout(manager)

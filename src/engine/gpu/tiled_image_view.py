@@ -97,8 +97,9 @@ from engine.gpu.array_resources import TileArrayResourcesBase
 from engine.gpu.host_texture_cache import DEFAULT_HOST_TEXTURE_CACHE_BUDGET_BYTES
 from engine.gpu.mip_cascade import MipCascadeGenerator
 from engine.gpu.rt_y_orientation import composited_clip_correction
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 Rect = tuple[float, float, float, float]
 TileIndex = tuple[int, int]

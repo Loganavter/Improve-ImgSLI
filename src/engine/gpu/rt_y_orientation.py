@@ -133,8 +133,9 @@ import logging
 import os
 
 from PySide6.QtGui import QRhi
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 #: Log the backend + the derived predicate once per process. A wrong
 #: prediction on an untested backend then shows up in the field log instead of

@@ -20,8 +20,9 @@ from .provenance import (
     _sync_provenance_from_series,
     ensure_provenance_series_ids,
 )
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 def compare_finalists(owner) -> bool:

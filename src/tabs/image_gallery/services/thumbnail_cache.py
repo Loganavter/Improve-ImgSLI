@@ -13,8 +13,9 @@ import logging
 from pathlib import Path
 
 from PIL import Image
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 THUMBNAIL_SIZE = (192, 192)
 

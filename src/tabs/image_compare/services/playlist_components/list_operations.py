@@ -18,8 +18,9 @@ from tabs.image_compare.services.playlist_components.common import (
     get_target_list,
     set_current_index,
 )
+from core.log_names import APP_LOGGER_NAME
 
-_log = logging.getLogger("ImproveImgSLI.playlist.list_ops")
+_log = logging.getLogger(f"{APP_LOGGER_NAME}.playlist.list_ops")
 
 
 def _close_outgoing_store(document, image_number: int, outgoing_store) -> None:

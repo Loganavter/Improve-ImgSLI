@@ -45,6 +45,7 @@ from tabs.image_gallery.use_cases.action_context import (
     ORIGIN_ACTION,
     context_for_paths,
 )
+from core.log_names import APP_LOGGER_NAME
 
 
 # -- doubles ------------------------------------------------------------------
@@ -157,7 +158,7 @@ def test_ceiling_stop_trace_line_is_exact(monkeypatch, caplog) -> None:
     items = [_item(f"{i}.png") for i in range(3)]
     owner = _owner(items, sample_count=1, judge_run_call_ceiling=1)
 
-    with caplog.at_level(logging.INFO, logger="ImproveImgSLI"):
+    with caplog.at_level(logging.INFO, logger=APP_LOGGER_NAME):
         ctx = context_for_paths(owner, [it.path for it in items], origin=ORIGIN_ACTION)
         owner.analyze(ctx)
 

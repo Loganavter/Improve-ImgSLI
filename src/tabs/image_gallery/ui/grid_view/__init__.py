@@ -42,8 +42,9 @@ from tabs.image_gallery.ui.list.card import (
     update_gallery_list_card,
 )
 from ui.widgets.shelf import OpaqueFillHost, apply_opaque_widget_fill
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 # View modes (recent items_view parity): one view, builders + columns swap.
 VIEW_GRID = "grid"

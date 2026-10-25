@@ -48,8 +48,9 @@ from ..residency import _HOST_TEXTURE_CACHE_BUDGET_BYTES, _TILE_CACHE_BUDGET_BYT
 from ..resources import _ARRAY_CAPACITY
 from engine.frame.context import FrameContext, make_ids
 from tabs.image_compare.canvas.loupe_trace import throttle_emit as _throttle_emit
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 #: Image compare's tile policy -- the "rich" end of the matrix. Settle-mode LOD
 #: commits (``LOD_FETCH_SETTLE_MS`` via ``use_cases/lod_commit.py``), atomic on

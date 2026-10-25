@@ -5,6 +5,7 @@ from dataclasses import replace
 from engine.cache import get_effective_export_interpolation_method
 from engine.cache.tab_canvas_services import build_render_scene
 from ui.canvas_infra.scene.frame_geometry import resolve_canvas_clip_rect_px
+from core.log_names import APP_LOGGER_NAME
 
 
 def build_export_render_scene(
@@ -23,7 +24,7 @@ def build_export_render_scene(
     if scene is None:
         import logging
 
-        logging.getLogger("ImproveImgSLI").debug(
+        logging.getLogger(APP_LOGGER_NAME).debug(
             "build_export_render_scene skipped: no canvas scene for active tab"
         )
         return None

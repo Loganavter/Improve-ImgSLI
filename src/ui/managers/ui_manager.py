@@ -11,8 +11,9 @@ from ui.managers.ui_manager_parts import (
     initialize_ui_manager_post_transient,
     initialize_ui_manager_pre_transient,
 )
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 class UIManager(QObject):
     def __init__(

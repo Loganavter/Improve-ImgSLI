@@ -31,6 +31,7 @@ from tabs.image_gallery.ui.quick_look.preview import (
     _stash_cache_store,
     _stash_preview_source,
 )
+from core.log_names import APP_LOGGER_NAME
 
 
 def _png(tmp_path: Path, name: str, color: str, w: int = 800, h: int = 600) -> Path:
@@ -210,7 +211,7 @@ def test_inner_timings_behind_gallery_debug_flag(qtbot, tmp_path, monkeypatch, c
     monkeypatch.setattr(host, "_ensure_preview_canvas", lambda _ov: fake)
 
     monkeypatch.setenv("IMGSLI_GALLERY_DEBUG", "1")
-    with caplog.at_level(logging.WARNING, logger="ImproveImgSLI"):
+    with caplog.at_level(logging.WARNING, logger=APP_LOGGER_NAME):
         caplog.clear()
         assert host._populate_preview_canvas(ov, _item(red)) is True
         QApplication.processEvents()
@@ -225,7 +226,7 @@ def test_inner_timings_behind_gallery_debug_flag(qtbot, tmp_path, monkeypatch, c
     assert "quick look populate preview-stash-hit=" in text
 
     monkeypatch.setenv("IMGSLI_GALLERY_DEBUG", "0")
-    with caplog.at_level(logging.WARNING, logger="ImproveImgSLI"):
+    with caplog.at_level(logging.WARNING, logger=APP_LOGGER_NAME):
         caplog.clear()
         assert host._populate_preview_canvas(ov, _item(blue)) is True
         QApplication.processEvents()

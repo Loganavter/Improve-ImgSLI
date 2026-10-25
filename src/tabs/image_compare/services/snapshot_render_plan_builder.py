@@ -31,8 +31,9 @@ from tabs.image_compare.canvas.presentation.plan_builder import (
 )
 from ui.canvas_infra.scene.layout_requirements import resolve_feature_virtual_layout
 from tabs.image_compare.canvas.registry import registry
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 def build_divider_export_overlay(

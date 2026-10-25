@@ -4,12 +4,13 @@ import logging
 from typing import Any
 
 from core.store_viewport import ViewportState
+from core.log_names import APP_LOGGER_NAME
 from domain.qt_adapters import color_to_hex, hex_to_color
 
 from .registry import get_canvas_registry
 from .widget_contract import CanvasFeatureProperty, PropertySnapshot
 
-_log = logging.getLogger("ImproveImgSLI.canvas.properties")
+_log = logging.getLogger(f"{APP_LOGGER_NAME}.canvas.properties")
 
 def get_canvas_feature_property_by_setting_key(
     session_type: str | None, setting_key: str

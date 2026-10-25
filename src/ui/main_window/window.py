@@ -35,11 +35,12 @@ from ui.main_window.runtime import MainWindowRuntime
 from ui.main_window.startup import MainWindowStartupRuntime
 from ui.theming import install_application_theme, resolve_theme_color
 from tabs.registry import get_shared_tab_registry
+from core.log_names import APP_LOGGER_NAME
 from utils.geometry import GeometryManager
 from utils.resource_loader import resource_path
 
 PIL.Image.MAX_IMAGE_PIXELS = None
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 class MainWindow(QWidget):

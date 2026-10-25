@@ -40,6 +40,7 @@ from tabs.image_gallery.services import metrics_cache, proxy
 from tabs.image_gallery.services.activity import activity_of
 from tabs.image_gallery.services.rank_fusion import rank_series
 from tabs.image_gallery.use_cases import local_metrics, proxy_pass, quality, triage_run
+from core.log_names import APP_LOGGER_NAME
 
 
 # -- fixtures ---------------------------------------------------------------
@@ -416,7 +417,7 @@ def test_a_pipeline_version_bump_invalidates_once_and_says_so(
     warm_items = _items(gallery)
     warm = _Owner(warm_items)
     detectors["detector"] = 0
-    with caplog.at_level("WARNING", logger="ImproveImgSLI"):
+    with caplog.at_level("WARNING", logger=APP_LOGGER_NAME):
         _open(warm)
 
     assert detectors["detector"] == len(gallery), "a version bump must invalidate every entry"

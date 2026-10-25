@@ -6,8 +6,9 @@ import logging
 from PIL import Image
 
 from .model import CropBox
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 def find_box_pil(probe: Image.Image, threshold: int = 15) -> CropBox | None:

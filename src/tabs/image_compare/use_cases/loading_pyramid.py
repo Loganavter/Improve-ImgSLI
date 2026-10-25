@@ -29,8 +29,9 @@ from tabs.image_compare.debug import ic_preview_debug as _preview_log
 # decisions ride along in a closure so no direct engine coordinator call
 # exists on this path (the hook is injected from the tab).
 from tabs._shared.loading_pipeline import start_pyramid_build as _seam_start_pyramid_build
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 def _session_abort_callable(controller):

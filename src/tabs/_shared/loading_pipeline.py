@@ -32,13 +32,14 @@ from engine.cache.display_image_picker import pick_display_image
 from tabs.image_compare.pipeline.abort import AbortSignal
 
 from tabs._shared.overflow_summary import summarize_overflow
+from core.log_names import APP_LOGGER_NAME
 
 if TYPE_CHECKING:
     from PySide6.QtGui import QImage
 
     from engine.store.tiled_pixel_store import TiledPixelStore
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 #: Bound for the full-res second stage: at most this many full decodes in
 #: flight; the rest wait in a FIFO queue. Preview workers stay unbounded

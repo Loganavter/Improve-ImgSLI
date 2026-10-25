@@ -10,8 +10,9 @@ from typing import Any
 import time
 
 from .tracer import Tracer, diff_dataclass
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 _PATCHED = False
 

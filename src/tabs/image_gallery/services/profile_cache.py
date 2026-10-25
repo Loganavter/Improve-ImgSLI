@@ -39,8 +39,9 @@ from pathlib import Path
 
 from tabs.image_gallery.services.ai_providers import _url_key
 from tabs.image_gallery.services.metric_profile import MEASURED_POOL, MetricProfile, mode_id
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 #: Bump when the cached record shape changes (old pins stop matching). v2 adds
 #: the judge's own axes (``axis_entries``, plan-gallery-ai-judgement P7-A): a

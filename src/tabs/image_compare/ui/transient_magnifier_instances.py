@@ -7,8 +7,9 @@ from PySide6.QtCore import QEvent, Qt, QSize
 from core.constants import AppConstants
 from sli_ui_toolkit.managers import DelayedActionTimer, scaled_px
 from ui.managers.transient_ui_parts.anchored_popup import AnchoredPopupBubbleController
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 def _instances_popup_size(count: int) -> QSize:

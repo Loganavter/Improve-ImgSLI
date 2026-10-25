@@ -14,8 +14,9 @@ from tabs.image_compare.canvas.loupe_trace import (
     frame_context_from_widget,
     trace_loupe,
 )
+from core.log_names import APP_LOGGER_NAME
 
-_log = logging.getLogger("ImproveImgSLI.feature_overlay.gpu")
+_log = logging.getLogger(f"{APP_LOGGER_NAME}.feature_overlay.gpu")
 
 # P1B verdict: ``upload_feature_overlay_crop`` below has zero live call
 # chains (repo-wide grep: only its own def + the ``CanvasWidget`` forwarder

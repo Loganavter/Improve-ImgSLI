@@ -35,8 +35,9 @@ from ui.canvas_infra.scene.pass_contract import (
     SceneVisibility,
 )
 from ui.canvas_infra.scene.stacking_policy import CanvasStackRole
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 def _shader_dir() -> Path:

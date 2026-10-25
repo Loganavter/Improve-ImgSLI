@@ -4,8 +4,9 @@ import logging
 
 from core.store import INITIAL_WORKSPACE_SESSION_TYPE
 from ui.host_debug import workspace_transition_debug
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 def initialize_workspace_state(presenter) -> None:

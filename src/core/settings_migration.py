@@ -35,6 +35,7 @@ import logging
 from typing import Any
 
 from PySide6.QtCore import QSettings
+from core.log_names import APP_LOGGER_NAME
 
 #: Persisted identity used by every release before the BlinkTable rename.
 #: The single home of these literals — ``core.plugin_system.settings``
@@ -42,7 +43,7 @@ from PySide6.QtCore import QSettings
 LEGACY_SETTINGS_ORG = "improve-imgsli"
 LEGACY_SETTINGS_APP = "improve-imgsli"
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 #: ``None`` = not attempted yet in this process; a dict is the finished report.
 _report: dict[str, Any] | None = None

@@ -26,8 +26,9 @@ from tabs.image_compare.ui.magnifier_color_controls import ColorSettingsButton
 from tabs.image_compare.icons import Icon
 from tabs.host_helpers import ModePicker
 from ui.theming import resolve_theme_color
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 # InfoHUD's own labels (resolution_label1/2, file_name_label1/2) get a
 # larger size than the "group-title" variant's shared default (13px) --

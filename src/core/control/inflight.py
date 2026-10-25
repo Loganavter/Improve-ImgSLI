@@ -24,8 +24,9 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 #: Owner-only mode for the note (the same mode the socket and the pointer use).
 _NOTE_MODE = 0o600

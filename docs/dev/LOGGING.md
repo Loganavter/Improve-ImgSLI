@@ -6,15 +6,35 @@ Host-specific logging setup. Shared conventions (stdlib `logging` only, unique-p
 
 | Path | Role |
 |---|---|
-| `sli_ui_toolkit/core/logging.py:setup_logging` | Builds the `"ImproveImgSLI"` logger: stream handler (**stderr**) + file handler (per-OS data dir), uniform formatter |
-| `src/core/bootstrap.py:_configure_logging` | Calls `setup_logging("ImproveImgSLI", effective_debug, "IMPROVE_DEBUG")` at startup |
-| `src/core/startup_trace.py` | Optional phase timing when `IMGSLI_STARTUP_TRACE=1` (logger name `ImproveImgSLI.startup`) |
+| `sli_ui_toolkit/core/logging.py:setup_logging` | Builds the `"BlinkTable"` logger: stream handler (**stderr**) + file handler (per-OS data dir), uniform formatter. The logger name is also the log-directory name — one string drives both |
+| `src/core/log_names.py` | The one spelling: `APP_NAME`, `APP_LOGGER_NAME` (`"BlinkTable"`), plus `LEGACY_LOGGER_NAME` / `LEGACY_LOG_DIR_NAME` used **only** by the log-dir migration |
+| `src/core/log_dir_migration.py:migrate_log_directory_once` | Called by `_configure_logging` **before** `setup_logging`: aliases the pre-rename app-data directory once (see below) |
+| `src/core/bootstrap.py:_configure_logging` | `migrate_log_directory_once()` then `setup_logging(APP_LOGGER_NAME, effective_debug, "IMPROVE_DEBUG")` at startup |
+| `src/core/startup_trace.py` | Optional phase timing when `IMGSLI_STARTUP_TRACE=1` (logger name `BlinkTable.startup`) |
 | `src/__main__.py` | CLI flags `--debug` / `--enable-logging` / `--disable-logging` |
 
 Log file location (cleared on every start, `mode="w"`):
-- Linux: `${XDG_DATA_HOME:-~/.local/share}/ImproveImgSLI/log.txt`
-- macOS: `~/Library/Application Support/ImproveImgSLI/log.txt`
-- Windows: `%APPDATA%/ImproveImgSLI/log.txt`
+- Linux: `${XDG_DATA_HOME:-~/.local/share}/BlinkTable/log.txt`
+- macOS: `~/Library/Application Support/BlinkTable/log.txt`
+- Windows: `%APPDATA%/BlinkTable/log.txt`
+
+### One-time import of the pre-rename directory
+
+Builds before the rename wrote to `…/ImproveImgSLI`. On the first start of a
+renamed build `migrate_log_directory_once()` runs before logging is configured:
+
+| State on disk | Action | Return |
+|---|---|---|
+| new absent, old present, POSIX | `new` becomes a **symlink** to `old` (old is never moved — a live process may hold it open) | `linked` |
+| new absent, old present, Windows | `old` is **renamed** to `new` (only when `new` is absent) | `renamed` |
+| new present | left untouched — a real directory always wins | `kept` |
+| new present but dangling (its legacy target was deleted) | the dead link is dropped, then the rows above apply — otherwise `setup_logging` could not create a file behind it | `none` / `linked` |
+| neither, or anything failed | nothing created, nothing deleted | `none` |
+
+It never raises and never deletes or overwrites anything; a failed migration
+simply means the next run starts with a fresh log directory. Old paths keep
+working because they are the same tree (`linked`/`renamed`), so scripts and
+docs that still spell the legacy directory need no update.
 
 Format:
 ```
@@ -40,14 +60,19 @@ per-session switch.
 
 ## Getting a logger
 
-Always use the `"ImproveImgSLI"` namespace (or a sub-logger of it). The root logger isn't configured.
+Always use the `APP_LOGGER_NAME` namespace (or a sub-logger of it). The root logger isn't configured, and no literal spelling is allowed — `tests/runtime/test_log_identity.py` fails the suite if a `getLogger("ImproveImgSLI")` appears anywhere under `src/`.
 
 ```python
 import logging
-logger = logging.getLogger("ImproveImgSLI")              # default; most modules use this
-logger = logging.getLogger("ImproveImgSLI.rhi")          # sub-logger for a subsystem
-logger = logging.getLogger("ImproveImgSLI.plugin.lifecycle")
+from core.log_names import APP_LOGGER_NAME
+
+logger = logging.getLogger(APP_LOGGER_NAME)             # default; most modules use this
+logger = logging.getLogger(f"{APP_LOGGER_NAME}.rhi")    # sub-logger for a subsystem
+logger = logging.getLogger(f"{APP_LOGGER_NAME}.plugin.lifecycle")
 ```
+
+The legacy name stays in `LEGACY_LOGGER_NAME`/`LEGACY_LOG_DIR_NAME` only, and
+only the migration module reads them.
 
 Sub-loggers inherit handlers + level. They show up in the format as `[DEBUG]` etc., but the filename column already tells you which module produced the line.
 
@@ -73,7 +98,7 @@ logger.error(f"Plugin {name} failed during {stage}: {err}", exc_info=True)
 - Silencing theory — see the [canonical doc](https://github.com/Loganavter/sli-ui-toolkit/blob/main/docs/dev/LOGGING.md); for env-gated host streams unset the env var, or raise a sub-logger level locally:
 
 ```python
-logging.getLogger("ImproveImgSLI.rhi").setLevel(logging.WARNING)
+logging.getLogger(f"{APP_LOGGER_NAME}.rhi").setLevel(logging.WARNING)
 ```
 
 Do **not** wire a noisy subsystem's debug stream to the global `debug_mode_enabled` switch — that turns one log file into white noise.
@@ -88,7 +113,7 @@ Env-gated streams following the canonical unique-prefix recipe:
 - `IMGSLI_GALLERY_DEBUG` → `[gallery-dnd]` DnD/open routing, `[gallery-debug]` gallery lifecycle (`src/tabs/image_gallery/debug.py`; IC helpers mirror the pattern in `src/tabs/image_compare/debug.py`).
 - `IMGSLI_IMAGE_COMPARE_DEBUG` / `IMGSLI_IC_DEBUG` → `[ic-dnd]` drag/drop routing (`src/tabs/image_compare/debug.py:ic_dnd_debug / ic_debug`).
 - `IMGSLI_IC_PREVIEW_DEBUG` → `[ic-preview]` preview display gate (`src/tabs/image_compare/debug.py:ic_preview_debug`): applied display tier per `apply_store_to_canvas` plus deferred/skip reasons.
-- `IMGSLI_IC_GAP_DEBUG` → `[ic-gap]` gap diagnostics (`src/tabs/image_compare/debug.py:ic_gap_debug`): geometry, pick, `gap_correlation`, `resolve_lod`, `draw_plan`, bbox coverage. Also emits `core.tracing` `ic.gap.*` when `IMGSLI_TRACE=1`. Analyze with `python src/devtools/analyze_ic_gap.py --log ~/.local/share/ImproveImgSLI/log.txt`.
+- `IMGSLI_IC_GAP_DEBUG` → `[ic-gap]` gap diagnostics (`src/tabs/image_compare/debug.py:ic_gap_debug`): geometry, pick, `gap_correlation`, `resolve_lod`, `draw_plan`, bbox coverage. Also emits `core.tracing` `ic.gap.*` when `IMGSLI_TRACE=1`. Analyze with `python src/devtools/analyze_ic_gap.py` (defaults to `get_log_directory(APP_LOGGER_NAME)/log.txt`).
 - `IMGSLI_IC_LOUPE_DEBUG` → `[ic-loupe]` magnifier residency/LOD trace (`src/tabs/image_compare/debug.py:ic_loupe_debug`): `TileTextureService.request_level` answers, dropped-slice reasons, texture-choice and dedup verdicts; the same points also record into the per-frame `FrameContext` (see `src/tabs/image_compare/canvas/loupe_trace.py` for the sig/time/once throttle recipes).
 - `IMGSLI_IC_INVALIDATE_DEBUG` → `[ic-invalidate]` attributed invalidation bus (`src/tabs/image_compare/debug.py:ic_invalidate_debug`): every scheduler/keep-warm/timer arm and fire/skip records source+reason into `FrameContext` (`src/engine/frame/context.py`); flag off costs one env check per site.
 - `IMGSLI_MULTI_COMPARE_DEBUG` / `IMGSLI_MC_DEBUG` → `[mc-dnd]` drag/drop routing + `[mc-zoom]` wheel-tick diagnostics (`src/tabs/multi_compare/debug.py:mc_dnd_debug`): each wheel tick also records an `invalidate.mc_zoom_tick` marker (tick id only, no timing) into the per-frame `FrameContext`; the existing `[mc-dnd]` tick log is untouched — the bus record is additive.
@@ -187,7 +212,7 @@ Cold-startup phase timing (bootstrap vs deferred plugin load):
 
 ```bash
 IMGSLI_STARTUP_TRACE=1 python src/__main__.py
-grep 'ImproveImgSLI.startup' ~/.local/share/ImproveImgSLI/log.txt
+grep 'BlinkTable.startup' ~/.local/share/BlinkTable/log.txt
 ```
 
 ## Frame perf spans (IC + MC zoom-burst repro)
@@ -223,8 +248,8 @@ cross-link.
 ## Reading existing logs
 
 ```bash
-tail -f ~/.local/share/ImproveImgSLI/log.txt              # follow live
-grep '\[ic-loupe\]' ~/.local/share/ImproveImgSLI/log.txt
+tail -f ~/.local/share/BlinkTable/log.txt              # follow live
+grep '\[ic-loupe\]' ~/.local/share/BlinkTable/log.txt
 ```
 
 The log file is overwritten on every app start (`mode="w"`), so capture sessions you care about.

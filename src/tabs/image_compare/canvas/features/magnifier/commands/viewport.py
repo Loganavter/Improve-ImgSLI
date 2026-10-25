@@ -7,6 +7,7 @@ from __future__ import annotations
 from typing import Any
 
 from domain.types import Point
+from core.log_names import APP_LOGGER_NAME
 
 
 def viewport_toggle_enabled(store, enabled: bool):
@@ -140,7 +141,7 @@ def viewport_set_active_laser_enabled(store, enabled: bool):
 
             from shared.debug_flags import env_flag as _env_flag
 
-            _lg = logging.getLogger("ImproveImgSLI")
+            _lg = logging.getLogger(APP_LOGGER_NAME)
             # LOG gate (IMGSLI_LASER_DEBUG = [laser-debug] traces only).
             # UI visibility must never read this flag — use IMGSLI_LASER_UI_DEBUG.
             if _env_flag("IMGSLI_LASER_DEBUG"):

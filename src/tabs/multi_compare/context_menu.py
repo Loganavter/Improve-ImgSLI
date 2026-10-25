@@ -14,6 +14,7 @@ from tabs.multi_compare.models import CompareSlot, leaves
 from tabs.multi_compare.scene import actions
 from ui.context_menu.models import ContextMenuRequest
 from tabs.multi_compare.icons import Icon
+from core.log_names import APP_LOGGER_NAME
 
 
 class MultiCompareContextMenuProvider:
@@ -177,7 +178,7 @@ class MultiCompareContextMenuProvider:
             pass
         import logging as _logging
 
-        _logging.getLogger("ImproveImgSLI").warning("mc menu: %s", message)
+        _logging.getLogger(APP_LOGGER_NAME).warning("mc menu: %s", message)
 
     def _rename_slot(self, slot: CompareSlot) -> None:
         text, ok = AppTextInputDialog.get_text(

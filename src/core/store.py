@@ -15,8 +15,9 @@ from core.store_viewport import (
     ViewportState,
 )
 from core.store_workspace import WorkspaceStoreMixin
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 INITIAL_WORKSPACE_SESSION_TYPE = "session_picker"
 
 __all__ = [

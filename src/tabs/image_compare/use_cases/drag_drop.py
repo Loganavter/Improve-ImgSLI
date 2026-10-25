@@ -11,8 +11,9 @@ from pathlib import Path
 
 from shared.image_extensions import is_accepted_image_path, is_loadable_image_path
 from tabs.image_compare.debug import ic_dnd_debug as _dnd_log
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 def accepts_drop(paths: list[Path]) -> bool:

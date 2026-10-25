@@ -8,8 +8,9 @@ from sli_ui_toolkit.ui.widgets.composite.timeline_widget import (
 )
 
 from .common import VIDEO_EDITOR_AUTO_CROP
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 class ThumbnailCoordinator:

@@ -11,8 +11,9 @@ from sli_ui_toolkit.widgets import (
 
 from ui.context_menu.models import ContextMenuProvider, ContextMenuRequest
 from ui.host_debug import ctx_menu_debug
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 ContextMenuSurface = Literal["in_window", "popup"]
 

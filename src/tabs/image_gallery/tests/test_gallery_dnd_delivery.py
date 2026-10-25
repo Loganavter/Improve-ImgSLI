@@ -29,6 +29,7 @@ from PySide6.QtWidgets import QApplication, QWidget
 
 from tabs.image_gallery.models import GalleryItem
 from tabs.image_gallery.ui import drag_drop as dnd
+from core.log_names import APP_LOGGER_NAME
 
 
 @pytest.fixture(scope="module")
@@ -230,7 +231,7 @@ def test_internal_drop_logs_resolved_delivery(qapp, tmp_path, monkeypatch, caplo
     )
     ev = _FakeDropEvent(_internal_mime([a]), hdr.mapToGlobal(QPoint(10, 10)),
                           pos=QPoint(10, 10))
-    with caplog.at_level("WARNING", logger="ImproveImgSLI"):
+    with caplog.at_level("WARNING", logger=APP_LOGGER_NAME):
         dnd.drop_event(owner, ev, ctrl)
     assert ev.accepted
     assert len(calls) == 1 and calls[0][1] == "series_7"

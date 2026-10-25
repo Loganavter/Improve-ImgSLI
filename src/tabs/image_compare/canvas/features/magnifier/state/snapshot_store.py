@@ -36,8 +36,9 @@ from domain.types import Point
 from ui.canvas_infra.scene.frame_geometry import resolve_canvas_clip_rect_px
 
 from tabs.image_compare.canvas.features.magnifier.state.feature_state import get_magnifier_widget_state
+from core.log_names import APP_LOGGER_NAME
 
-_mlog = logging.getLogger("ImproveImgSLI.video_magnifier_layout")
+_mlog = logging.getLogger(f"{APP_LOGGER_NAME}.video_magnifier_layout")
 
 
 def _normalize_capture_position(point, capture_size_relative: float) -> Point | None:

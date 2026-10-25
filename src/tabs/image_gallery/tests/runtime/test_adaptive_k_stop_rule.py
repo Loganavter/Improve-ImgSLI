@@ -34,6 +34,7 @@ from tabs.image_gallery.models import AiAnalysisResult
 from tabs.image_gallery.services import ai_cache
 from tabs.image_gallery.services.ai_client.parse import median_drift
 from tabs.image_gallery.services.ai_settings_store import AiSettings
+from core.log_names import APP_LOGGER_NAME
 
 AXES = ("sharpness", "noise", "exposure")
 STAMP = "2026-01-01T00:00:00+00:00"
@@ -384,7 +385,7 @@ def _trace_lines(caplog) -> list[str]:
 @pytest.fixture
 def ai_trace(monkeypatch, caplog):
     monkeypatch.setenv("IMGSLI_AI_DEBUG", "1")
-    caplog.set_level(logging.INFO, logger="ImproveImgSLI")
+    caplog.set_level(logging.INFO, logger=APP_LOGGER_NAME)
     return caplog
 
 

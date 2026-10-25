@@ -14,8 +14,9 @@ from tabs.image_compare.canvas.features.magnifier.geometry.box_remap import (
     valid_box_for_full,
 )
 from tabs.image_compare.canvas.features.magnifier.state.service import MagnifierStoreService
+from core.log_names import APP_LOGGER_NAME
 
-_mlog = logging.getLogger("ImproveImgSLI.video_magnifier_layout")
+_mlog = logging.getLogger(f"{APP_LOGGER_NAME}.video_magnifier_layout")
 
 MIN_CAPTURE_THICKNESS = 2.0
 

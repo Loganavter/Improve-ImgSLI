@@ -16,8 +16,9 @@ import logging
 
 from tabs.image_compare.pipeline.abort import AbortSignal
 from tabs.image_compare.pipeline.cache import PipelineCache
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 if TYPE_CHECKING:
     from engine.store.tiled_pixel_store import TiledPixelStore

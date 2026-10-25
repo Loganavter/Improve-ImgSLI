@@ -24,6 +24,7 @@ from tabs.image_gallery.models import GalleryItem
 from tabs.image_gallery.services import jev_cache
 from tabs.image_gallery.services.ai_client import AI_TRACE_LEVEL
 from tabs.image_gallery.services.jev_client import rank_series_jev_detailed
+from core.log_names import APP_LOGGER_NAME
 
 
 def _item(name: str, **metrics) -> GalleryItem:
@@ -43,7 +44,7 @@ def _client(payload: dict) -> dict:
 def test_jev_trace_silent_without_key(tmp_path, caplog, monkeypatch) -> None:
     monkeypatch.delenv("IMGSLI_AI_DEBUG", raising=False)
     items = [_item("a.png", ssim=0.9), _item("b.png", ssim=0.4)]
-    with caplog.at_level(logging.INFO, logger="ImproveImgSLI"):
+    with caplog.at_level(logging.INFO, logger=APP_LOGGER_NAME):
         outcome = rank_series_jev_detailed(
             items, mode="fidelity", client=_client, cache=jev_cache.JevRankCache(tmp_path)
         )
@@ -55,7 +56,7 @@ def test_jev_trace_dumps_with_key_and_marks_the_pin(tmp_path, caplog, monkeypatc
     monkeypatch.setenv("IMGSLI_AI_DEBUG", "1")
     items = [_item("a.png", ssim=0.9), _item("b.png", ssim=0.4)]
     cache = jev_cache.JevRankCache(tmp_path)
-    with caplog.at_level(logging.INFO, logger="ImproveImgSLI"):
+    with caplog.at_level(logging.INFO, logger=APP_LOGGER_NAME):
         first = rank_series_jev_detailed(items, mode="fidelity", client=_client, cache=cache)
     assert first.decided
     assert "[ai] jev rank mode=fidelity items=2 (call)" in caplog.text
@@ -70,7 +71,7 @@ def test_jev_trace_dumps_with_key_and_marks_the_pin(tmp_path, caplog, monkeypatc
     ), "an [ai] trace line was logged at a level other than the channel's own"
 
     caplog.clear()
-    with caplog.at_level(logging.INFO, logger="ImproveImgSLI"):
+    with caplog.at_level(logging.INFO, logger=APP_LOGGER_NAME):
         second = rank_series_jev_detailed(items, mode="fidelity", client=_client, cache=cache)
     assert "[ai] jev rank cache HIT items=2" in caplog.text
     assert second.cached
@@ -103,12 +104,12 @@ def test_domain_switch_trace_under_key(caplog, monkeypatch) -> None:
 
     monkeypatch.setenv("IMGSLI_AI_DEBUG", "1")
     ctrl = _Ctrl()
-    with caplog.at_level(logging.INFO, logger="ImproveImgSLI"):
+    with caplog.at_level(logging.INFO, logger=APP_LOGGER_NAME):
         GalleryController.activate_judgment_domain(ctrl, "algorithms")
     assert "[ai] judgment domain -> algorithms (Jev off)" in caplog.text
 
     caplog.clear()
-    with caplog.at_level(logging.INFO, logger="ImproveImgSLI"):
+    with caplog.at_level(logging.INFO, logger=APP_LOGGER_NAME):
         GalleryController.activate_judgment_domain(ctrl, "ai")
     assert "[ai] judgment domain -> ai (Jev on)" in caplog.text
     assert "[ai] jev ranks: no series — nothing to rank" in caplog.text

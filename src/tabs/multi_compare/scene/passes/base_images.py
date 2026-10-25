@@ -51,12 +51,13 @@ from tabs.multi_compare.scene.tile_geometry import (
 )
 from ui.canvas_infra.scene.pass_contract import CanvasRenderPass, SceneVisibility
 from ui.canvas_infra.scene.stacking_policy import CanvasStackRole
+from core.log_names import APP_LOGGER_NAME
 
 from . import residency
 from .array_resources import ArrayResources
 from .slot_resources import SlotResources
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 # Texture-array instanced-draw path (docs/dev/rendering/
 # tile-array-atlas-plan.md Phase 4) -- mirrors image_compare's

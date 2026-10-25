@@ -11,8 +11,9 @@ from sli_ui_toolkit.core.logging import get_log_directory
 
 from .records import TraceRecord
 from .tracer import Tracer
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 _INSTALLED = False
 _FILE_LOCK = threading.Lock()
@@ -20,7 +21,9 @@ _FILE_HANDLE: TextIO | None = None
 _WRITE_FAILURE_LOGGED = False
 _FILE_PATH: Optional[str] = None
 
-def install_file_sink(app_name: str = "ImproveImgSLI", filename: str = "trace.jsonl") -> Optional[str]:
+def install_file_sink(
+    app_name: str = APP_LOGGER_NAME, filename: str = "trace.jsonl"
+) -> Optional[str]:
     """
     Subscribe to the Tracer and append every record as a JSON line to
     <log_dir>/<filename>. Truncates the file on each app start so the file

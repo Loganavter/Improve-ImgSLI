@@ -43,8 +43,9 @@ from tabs.image_gallery.services.metric_profile import (
     profile_for_series,
     profile_source_label,
 )
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 def salience_axes(items) -> tuple[tuple[str, float], ...]:

@@ -3,8 +3,9 @@ from __future__ import annotations
 import logging
 
 from core.constants import AppConstants
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 _INTERPOLATION_KEY_MAP = {
     "NEAREST": "magnifier.nearest_neighbor",

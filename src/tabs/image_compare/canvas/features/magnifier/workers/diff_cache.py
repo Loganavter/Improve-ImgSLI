@@ -6,8 +6,9 @@ from core.state_management.actions import SetCachedDiffImageAction
 
 from shared.image_processing.store_lease import StoreLease
 from engine.cache.image_identity import image_uid
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 def _as_crop_box(box):

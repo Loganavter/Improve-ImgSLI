@@ -29,6 +29,7 @@ from tabs.image_compare.actions._common import (
     OWNER,
 )
 from ui.actions.registry import ActionRegistry, get_action_registry
+from core.log_names import APP_LOGGER_NAME
 
 
 def register_image_compare_actions(
@@ -226,7 +227,7 @@ def _ensure_name_edit_chrome(widget) -> None:
     except Exception:
         import logging
 
-        logging.getLogger("ImproveImgSLI").debug(
+        logging.getLogger(APP_LOGGER_NAME).debug(
             "_ensure_name_edit_chrome: store dispatch missed", exc_info=True
         )
     toggle = getattr(widget, "toggle_edit_layout_visibility", None)

@@ -27,9 +27,10 @@ from sli_ui_toolkit.theme import ThemeManager
 from sli_ui_toolkit.widgets import CustomGroupWidget
 from ui.actions.widget_pulse import PULSE_DURATION_MS
 from ui.icon_manager import AppIcon
+from core.log_names import APP_LOGGER_NAME
 from utils.resource_loader import resource_path
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 # The search line stays up while the matched controls pulse after activation;
 # it is cleared shortly after the pulse finishes — the duration comes from

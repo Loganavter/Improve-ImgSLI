@@ -12,12 +12,13 @@ import shutil
 from pathlib import Path
 
 from core.state_management.gallery_actions import GalleryItemsRemoved
+from core.log_names import APP_LOGGER_NAME
 
 from .compare import _refresh_owner_grid, is_rejected
 from .emit import _emit_gallery, _items_of
 from .removal import _detach_pool_items
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 def resolve_move_folder(owner, rejected: list | None = None) -> Path | None:

@@ -5,7 +5,8 @@ from PySide6.QtCore import QPointF
 
 from ui.host_debug import transient_debug
 from ui.managers.transient_ui_parts import PopupClosingController
-logger = logging.getLogger("ImproveImgSLI")
+from core.log_names import APP_LOGGER_NAME
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 # How long a negative lookup stays cached for the same (active, tiers) key.
 # Suppresses focusChanged flood (10ms) while staying on the bootstrap-

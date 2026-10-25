@@ -66,6 +66,7 @@ from tabs.image_gallery.services import (
     metric_scores,
 )
 from tabs.image_gallery.services.proxy import clear_proxy_cache, run_proxy_stages_sync
+from core.log_names import APP_LOGGER_NAME
 
 PRODUCERS = "tabs.image_gallery.analysis.producers"
 
@@ -726,7 +727,7 @@ def test_a_failing_producer_leaves_a_gap_and_never_reruns_the_detector(
     monkeypatch.setitem(runner._RUN_FUNCS, producer, _boom)
     item, source = _write_pair(tmp_path)
     calls = _seam_calls(monkeypatch)
-    caplog.set_level(logging.WARNING, logger="ImproveImgSLI")
+    caplog.set_level(logging.WARNING, logger=APP_LOGGER_NAME)
 
     entry = _run_stages(item, source)
 
@@ -769,7 +770,7 @@ def test_a_sourceless_item_has_no_fidelity_stage_and_no_failure_warning(
     import logging
 
     item, _source = _write_pair(tmp_path)
-    caplog.set_level(logging.WARNING, logger="ImproveImgSLI")
+    caplog.set_level(logging.WARNING, logger=APP_LOGGER_NAME)
 
     entry = _run_stages(item, None)
 
@@ -813,7 +814,7 @@ def test_the_artifact_fallback_is_the_one_kept_fallback(
 
     monkeypatch.setattr(artifacts, "analyze_images", _sentinel)
     item, source = _write_pair(tmp_path)
-    caplog.set_level(logging.WARNING, logger="ImproveImgSLI")
+    caplog.set_level(logging.WARNING, logger=APP_LOGGER_NAME)
 
     entry = _run_stages(item, source)
 

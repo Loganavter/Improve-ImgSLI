@@ -36,8 +36,9 @@ from tabs.session_picker.geometry import (
 from tabs.session_picker.icons import Icon as SessionPickerIcon, get_icon as get_session_picker_icon
 from tabs.session_picker.recent.panel import RecentProjectsPanel
 from ui.theming import resolve_theme_color, try_resolve_theme_color
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 HIDDEN_SESSION_TYPES = frozenset({"session_picker"})
 

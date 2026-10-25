@@ -40,6 +40,7 @@ from tabs.image_gallery.services.metric_profile import (
 )
 from tabs.image_gallery.use_cases import ai_analyze
 from tabs.image_gallery.use_cases.action_context import BACKEND_AI, ActionContext
+from core.log_names import APP_LOGGER_NAME
 
 VLM_PROFILE = MetricProfile(
     axis_ids=("sharpness", "noise"), mode="camera", source="vlm",
@@ -136,7 +137,7 @@ def test_cache_only_analyze_keeps_the_generation_open_and_applies_the_answer(
         "dropped as 'late' although no call was ever built (J3)"
     )
 
-    with caplog.at_level(logging.DEBUG, logger="ImproveImgSLI"):
+    with caplog.at_level(logging.DEBUG, logger=APP_LOGGER_NAME):
         owner._apply_profile_outcome(VLM_PROFILE, owner._folder_gen)
 
     assert owner.state.metric_profile is VLM_PROFILE, (
@@ -166,7 +167,7 @@ def test_reply_after_a_built_request_is_rejected_with_a_visible_reason(
         "building a request IS the fact that freezes the profile (P5/P2)"
     )
 
-    with caplog.at_level(logging.DEBUG, logger="ImproveImgSLI"):
+    with caplog.at_level(logging.DEBUG, logger=APP_LOGGER_NAME):
         owner._apply_profile_outcome(VLM_PROFILE, owner._folder_gen)
 
     assert owner.state.metric_profile is heuristic, (

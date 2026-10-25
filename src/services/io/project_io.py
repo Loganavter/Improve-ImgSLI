@@ -32,8 +32,9 @@ from services.io.project_package import (
     rewrite_session_paths,
     write_project_zip,
 )
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 PROJECT_FORMAT = "blinktable"
 # Read-only ids kept for projects written before the BlinkTable rename:

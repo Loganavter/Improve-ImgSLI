@@ -32,6 +32,7 @@ from types import SimpleNamespace
 
 from tabs.image_gallery.ui.quick_look.preview_canvas import rhi_entry
 from tabs.image_gallery.ui.quick_look.preview_canvas import batches
+from core.log_names import APP_LOGGER_NAME
 
 
 # ---------------------------------------------------------------------------
@@ -432,7 +433,7 @@ def test_counter_log_silent_by_default(monkeypatch, caplog):
     rhi = _FakeRhi()
     cmd = _FakeCmd()
     widget = _FakeWidget(rhi, tiled_source=None)
-    with caplog.at_level(logging.DEBUG, logger="ImproveImgSLI"):
+    with caplog.at_level(logging.DEBUG, logger=APP_LOGGER_NAME):
         _drive(widget, cmd)
     assert not [r for r in caplog.records if "rhi batches outstanding" in r.getMessage()]
 
@@ -444,7 +445,7 @@ def test_counter_log_fires_with_cover_flag(monkeypatch, caplog):
     rhi = _FakeRhi()
     cmd = _FakeCmd()
     widget = _FakeWidget(rhi, tiled_source=None)
-    with caplog.at_level(logging.DEBUG, logger="ImproveImgSLI"):
+    with caplog.at_level(logging.DEBUG, logger=APP_LOGGER_NAME):
         _drive(widget, cmd)
     assert [r for r in caplog.records if "rhi batches outstanding" in r.getMessage()]
 

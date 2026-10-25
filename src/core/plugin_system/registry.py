@@ -11,9 +11,10 @@ if TYPE_CHECKING:
 from core.plugin_system.decorators import get_registered_plugins
 from core.plugin_system.discovery_scan import plugin_modules_for_tier
 from core.plugin_system.plugin import Plugin
+from core.log_names import APP_LOGGER_NAME
 from resources.translations import add_i18n_root
 
-logger = logging.getLogger("ImproveImgSLI.plugin.registry")
+logger = logging.getLogger(f"{APP_LOGGER_NAME}.plugin.registry")
 
 DiscoveryTier = Literal["bootstrap", "deferred", "all"]
 

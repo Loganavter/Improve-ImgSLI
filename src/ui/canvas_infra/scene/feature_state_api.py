@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import logging
 from typing import Any, TYPE_CHECKING
+from core.log_names import APP_LOGGER_NAME
 
 if TYPE_CHECKING:
     pass
 
-_log = logging.getLogger("ImproveImgSLI.canvas.feature_state")
+_log = logging.getLogger(f"{APP_LOGGER_NAME}.canvas.feature_state")
 
 def _session_type(store: Any) -> str | None:
     session = store.get_active_workspace_session()

@@ -27,8 +27,9 @@ import logging
 import shiboken6 as sip
 from PySide6.QtCore import QPoint, QPointF
 from PySide6.QtGui import QPixmap
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 # Carry parity: cursor sits near the ghost's top-right so the preview hangs
 # bottom-left and never covers the drop target under the cursor.

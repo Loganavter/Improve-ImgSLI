@@ -24,8 +24,9 @@ from tabs.multi_compare.use_cases import export as export_use_cases
 from tabs.multi_compare.use_cases import loading as loading_use_cases
 from tabs.multi_compare.use_cases import preview_decode as preview_decode_use_cases
 from tabs.multi_compare.widget import MultiCompareWidget
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 class MultiCompareController:

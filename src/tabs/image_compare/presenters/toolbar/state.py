@@ -9,8 +9,9 @@ from tabs.image_compare.canvas.live_handles import (
 from tabs.image_compare.canvas.registry import registry
 from ui.canvas_infra.viewport.state import get_zoom_level
 from tabs.image_compare.icons import Icon
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 _TOOLBAR_CONTROL_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("btn_orientation", ("divider.orientation",)),

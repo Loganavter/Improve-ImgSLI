@@ -11,8 +11,9 @@ from __future__ import annotations
 import logging
 
 from sli_ui_toolkit.i18n import get_current_language, tr
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 # Single source for checkpoints now lives in tabs._shared.loading_toast
 # (B2 dedup); re-exported here for backward compat of direct importers.

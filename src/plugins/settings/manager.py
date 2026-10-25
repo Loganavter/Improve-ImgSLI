@@ -19,8 +19,9 @@ from ui.canvas_infra.scene.property_access import (
     serialize_canvas_feature_setting,
 )
 from ui.canvas_infra.scene.registry import get_canvas_registry
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 # Suffix of the last-good copy kept beside a file-backed settings store. Must
 # stay ".backup": copies with this name already exist on users' disks and the

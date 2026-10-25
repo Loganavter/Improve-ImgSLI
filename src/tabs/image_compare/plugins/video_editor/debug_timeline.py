@@ -1,7 +1,7 @@
 """Single throttled debug channel for video timeline.
 
 Replaces ~40 ad-hoc video debug / thumbnail debug / DBG calls with
-one throttled logger ``ImproveImgSLI.video_timeline`` + Tracer.
+one throttled logger ``BlinkTable.video_timeline`` + Tracer.
 
 Timeline-zone gate is :func:`timeline_debug_enabled` below
 (``IMGSLI_TIMELINE_DEBUG``-only, permissive ``env_flag`` parsing per
@@ -23,8 +23,9 @@ import logging
 import time
 
 from shared.debug_flags import env_flag
+from core.log_names import APP_LOGGER_NAME
 
-_thlog = logging.getLogger("ImproveImgSLI.video_timeline")
+_thlog = logging.getLogger(f"{APP_LOGGER_NAME}.video_timeline")
 _last_emit_ms: dict[str, float] = {}
 _INTERVAL_MS = 700.0
 

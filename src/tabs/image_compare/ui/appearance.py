@@ -15,8 +15,9 @@ import logging
 
 from tabs.image_compare.canvas.helpers import get_canvas
 from ui.widgets.themed_surface import apply_qrhi_theme_background
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 def apply_image_canvas_appearance(host_window, canvas_owner=None) -> None:

@@ -12,8 +12,9 @@ from pathlib import Path
 from .compare import _refresh_owner_grid, is_rejected
 from .emit import _emit_rank_snapshot, _items_of
 from .provenance import _series_of, ensure_provenance_series_ids
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 def keep_best(owner) -> int:

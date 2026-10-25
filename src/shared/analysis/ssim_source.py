@@ -21,8 +21,9 @@ from shared.analysis.differ import (
     resample_second_to_first,
 )
 from shared.analysis.output import open_streaming_output, to_u8_rgb
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 def _rgb_array_from_source(source, box: tuple[int, int, int, int]) -> np.ndarray:

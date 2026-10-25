@@ -5,10 +5,11 @@ import os
 import tempfile
 
 from core.events import CoreErrorOccurredEvent
+from core.log_names import APP_LOGGER_NAME
 from sli_ui_toolkit.i18n import get_current_language, tr
 from sli_ui_toolkit.workers import GenericWorker
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 def _schedule_temp_delete(path: str | None, delay_ms: int = 60000) -> None:

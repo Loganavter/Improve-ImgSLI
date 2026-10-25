@@ -3,9 +3,10 @@ import logging
 from PySide6.QtCore import QObject
 from core.store import Store
 from plugins.settings.presenter_parts import SettingsViewStateCoordinator
+from core.log_names import APP_LOGGER_NAME
 from resources.translations import tr
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 class SettingsPresenter(QObject):
 

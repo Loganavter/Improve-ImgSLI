@@ -34,6 +34,7 @@ from engine.frame.context import (
 )
 from engine.frame.trace_export import maybe_dump_trace
 from tabs.image_compare.canvas.loupe_trace import throttle_emit as _throttle_emit
+from core.log_names import APP_LOGGER_NAME
 
 # [ic-preview] correlation for "placeholder missing" flash (same env flag as
 # render_flow's gate). Import lazy-tolerant: debug.py only depends on
@@ -85,7 +86,7 @@ from .use_cases.tile_residency import (
     realize_magnifier_tiles as _realize_magnifier_tiles_impl,
 )
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 def _skip_mip_cascade_requested(raw: str) -> bool:

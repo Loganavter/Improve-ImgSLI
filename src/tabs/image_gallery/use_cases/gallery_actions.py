@@ -25,6 +25,7 @@ from tabs.image_gallery.use_cases.action_context import (
     ActionContext,
     Refusal,
 )
+from core.log_names import APP_LOGGER_NAME
 
 
 def _guard(ctx: ActionContext) -> Refusal | None:
@@ -104,7 +105,7 @@ def find_similar(owner, ctx: ActionContext, *, threshold: float = 0.15):
         return refusal
     import logging
 
-    logging.getLogger("ImproveImgSLI").debug(
+    logging.getLogger(APP_LOGGER_NAME).debug(
         "find_similar_selected: stub — %d target(s), threshold=%s (not implemented)",
         len(ctx.targets),
         threshold,
@@ -171,7 +172,7 @@ def menu_action_handlers(
 
     from tabs.image_gallery.use_cases import ai_analyze
 
-    log = logging.getLogger("ImproveImgSLI")
+    log = logging.getLogger(APP_LOGGER_NAME)
     targets = list(ctx.targets) if ctx is not None else ()
 
     def _refused(what: str, refusal) -> None:

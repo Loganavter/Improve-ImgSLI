@@ -4,8 +4,9 @@ import shiboken6 as sip
 from PySide6.QtCore import QObject, QPointF, QTimer
 from PySide6.QtWidgets import QApplication
 from ui.widgets.drag_ghost_widget import make_count_slot_pixmap
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 def _cancel_ripple(widget) -> None:

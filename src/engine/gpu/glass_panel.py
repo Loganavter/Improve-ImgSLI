@@ -147,8 +147,9 @@ from PySide6.QtGui import (
 )
 
 from engine.gpu.rt_y_orientation import widget_texture_needs_y_flip
+from core.log_names import APP_LOGGER_NAME
 
-_logger = logging.getLogger("ImproveImgSLI")
+_logger = logging.getLogger(APP_LOGGER_NAME)
 
 # IMGSLI_GLASS_PANEL_DEBUG-gated tracing (same convention as
 # ui/widgets/flyout_debug.py's IMGSLI_FLYOUT_DEBUG) -- logs, per panel key,

@@ -20,8 +20,9 @@ from tabs._shared.loading_pipeline import (
     start_pyramid_build as _seam_start_pyramid_build,
 )
 from tabs._shared.user_errors import emit_user_error, load_image_error
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 def _format_worker_error(err) -> str:

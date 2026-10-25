@@ -7,8 +7,9 @@ from collections import defaultdict
 from typing import Any, Callable, Type, TypeVar, Union
 
 from core.events import Event
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 T = TypeVar("T", bound=Event)
 

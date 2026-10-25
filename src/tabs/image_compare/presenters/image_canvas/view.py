@@ -23,8 +23,9 @@ from tabs.image_compare.canvas.helpers import (
     reset_canvas_overlays,
 )
 from tabs.image_compare.canvas.scene import build_render_scene
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 def _source_kwargs(presenter):

@@ -20,8 +20,9 @@ from tabs.image_gallery.services.decode_policy import (
     PREVIEW_FULL_DECODE_EDGE as _DECODE_EDGE_CAP,
     exceeds_edge,
 )
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 # -- frame raster -----------------------------------------------------------

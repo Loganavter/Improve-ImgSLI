@@ -12,8 +12,9 @@ from sli_ui_toolkit.managers import SettleGate
 from core.state_management.interaction_actions import SetResizeInProgressAction
 from plugins.onboarding import host as onboarding_host
 from ui.widgets.flyout_debug import flyout_debug
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 _RESIZE_SHIELD_ATTR = "_imgsli_resize_shield"
 _MAIN_WINDOW_RESIZE_SETTLE_MS = 150

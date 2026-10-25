@@ -15,11 +15,12 @@ from plugins.settings.events import (
 )
 from plugins.settings.mutations import SettingsMutationService
 from plugins.settings.notifier import SettingsUpdateNotifier
+from core.log_names import APP_LOGGER_NAME
 
 if TYPE_CHECKING:
     from domain.types import Color
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 class SettingsController(QObject):
 

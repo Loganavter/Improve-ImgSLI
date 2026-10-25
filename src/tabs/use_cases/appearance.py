@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import logging
 from typing import TYPE_CHECKING
+from core.log_names import APP_LOGGER_NAME
 
 if TYPE_CHECKING:
     from tabs.registry import TabRegistry
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 def apply_appearance(registry: "TabRegistry", host_window) -> None:

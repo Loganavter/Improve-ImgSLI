@@ -34,8 +34,9 @@ from tabs.image_gallery.state.models import (
     GallerySlotState,
     fresh_gallery_slot_state,
 )
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 # Legacy folder-only slot (pre-Redux sessions). Read-only fallback for
 # foreign/legacy restores — never written; the ``gallery`` slot above is

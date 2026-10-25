@@ -7,8 +7,9 @@ Moved from presenter_parts/bootstrap.py so presenter stays thin.
 import logging
 
 from shared.image_processing.progressive_loader import get_image_dimensions
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 def initialize_editor_from_snapshots(view, editor_service, playback_engine, model) -> bool:

@@ -21,8 +21,9 @@ from tabs.multi_compare.services.composition_builder import build_composition_pl
 from tabs.multi_compare.services.gpu_export import MultiCompareGpuExporter
 from tabs.multi_compare.services.save_flow import MultiCompareSaveFlowCoordinator
 from ui.canvas_presentation.composition import compute_native_canvas_size
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 def get_save_flow(controller) -> MultiCompareSaveFlowCoordinator:

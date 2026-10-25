@@ -24,6 +24,7 @@ from PySide6.QtWidgets import QApplication
 
 from shared_toolkit.ui.managers.font_manager import FontManager
 from ui.theming import reapply_application_theme
+from core.log_names import APP_LOGGER_NAME
 
 
 def _flush_deferred_scale_resyncs(app) -> None:
@@ -118,7 +119,7 @@ def apply_appearance(
     if scale is None and theme is None and not font:
         return frozenset()
 
-    logger = logging.getLogger("ImproveImgSLI")
+    logger = logging.getLogger(APP_LOGGER_NAME)
     metrics = UiMetrics.get_instance()
     theme_manager = ThemeManager.get_instance()
     ui_scale = UiScale.get_instance()

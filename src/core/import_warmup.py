@@ -20,8 +20,9 @@ import logging
 import os
 import sys
 import threading
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI.import_warmup")
+logger = logging.getLogger(f"{APP_LOGGER_NAME}.import_warmup")
 
 #: Third-party modules whose first import is expensive and whose use is
 #: foreseeable (analysis metrics). Tab-owned modules are warmed by their tab.

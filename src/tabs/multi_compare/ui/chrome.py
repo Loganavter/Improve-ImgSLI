@@ -12,6 +12,7 @@ delegate into this module.
 from __future__ import annotations
 
 from tabs.multi_compare.debug import mc_dnd_debug as _dnd_log
+from core.log_names import APP_LOGGER_NAME
 
 
 def sync_zoom_indicator(widget) -> None:
@@ -157,7 +158,7 @@ def release_transition_mask(widget) -> None:
     except Exception:
         import logging
 
-        logging.getLogger("ImproveImgSLI").exception(
+        logging.getLogger(APP_LOGGER_NAME).exception(
             "[workspace-transition] MC mask.release failed"
         )
 

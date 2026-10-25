@@ -58,8 +58,9 @@ from sli_ui_toolkit.widgets import (
 
 from ui.host_debug import scroll_value_debug
 from ui.icon_manager import themed_icon
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 _FLYOUT_HIDE_MS = 700
 _WIDTH = 36
@@ -573,7 +574,7 @@ class ScrollValueButton(Button):
 
                     from shared.debug_flags import env_flag as _env_flag
 
-                    _lg = logging.getLogger("ImproveImgSLI")
+                    _lg = logging.getLogger(APP_LOGGER_NAME)
                     # LOG gate (IMGSLI_LASER_DEBUG = [laser-debug] traces only).
                     # UI visibility must never read this flag — use IMGSLI_LASER_UI_DEBUG.
                     if _env_flag("IMGSLI_LASER_DEBUG"):

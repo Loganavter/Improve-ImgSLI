@@ -35,8 +35,9 @@ if TYPE_CHECKING:
 from tabs._shared.loading_pipeline import (
     cache_key_for_path as _seam_cache_key_for_path,
 )
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 _PIXEL_CACHE_MAX = 16
 _PREVIEW_CACHE_MAX = 16

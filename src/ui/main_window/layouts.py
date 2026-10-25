@@ -8,8 +8,9 @@ from PySide6.QtWidgets import (
 )
 
 from ui.host_debug import workspace_transition_debug
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 class LayoutComposer:

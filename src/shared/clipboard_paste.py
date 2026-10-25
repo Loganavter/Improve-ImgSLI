@@ -40,8 +40,9 @@ from shared.clipboard_images import (
     collect_clipboard_image_items,
     download_images_from_urls,
 )
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 def split_clipboard_items(items: list[str]) -> tuple[list[str], list[str]]:

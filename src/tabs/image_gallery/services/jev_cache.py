@@ -25,8 +25,9 @@ import json
 import logging
 from pathlib import Path
 from typing import Any
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 #: Bump when the cached record shape changes (old pins stop matching).
 JEV_CACHE_VERSION = 1

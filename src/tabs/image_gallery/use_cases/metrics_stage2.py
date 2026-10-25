@@ -22,8 +22,9 @@ from tabs.image_gallery.debug import gallery_camera_disabled as _camera_disabled
 from tabs.image_gallery.debug import gallery_debug as _dbg
 from tabs.image_gallery.debug import gallery_fidelity_disabled as _fidelity_disabled
 from tabs.image_gallery.models import GalleryItem
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 def _run_artifacts_sync(owner, items: list[GalleryItem], source_path: Path | None) -> dict[str, dict]:

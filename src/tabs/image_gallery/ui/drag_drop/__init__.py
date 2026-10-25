@@ -60,8 +60,9 @@ from .targets import (
     _set_series_highlight,
     series_target_at,
 )
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 # -- helpers ---------------------------------------------------------------

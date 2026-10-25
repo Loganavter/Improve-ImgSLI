@@ -19,8 +19,9 @@ import sys
 import tempfile
 
 from shared.debug_flags import env_flag as _env_flag
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 def ensure_stdio() -> None:

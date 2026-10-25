@@ -39,11 +39,12 @@ from tabs.multi_compare.ui.canvas_helpers import (
     _dividers_locked,
     _layout_is_symmetric,
 )
+from core.log_names import APP_LOGGER_NAME
 
 if TYPE_CHECKING:
     pass
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 # Re-exports for feature modules / tests that import from this module.
 __all__ = [

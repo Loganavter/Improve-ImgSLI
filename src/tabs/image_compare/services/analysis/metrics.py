@@ -6,9 +6,10 @@ from PIL import Image
 from core.state_management.actions import SetPsnrValueAction, SetSsimValueAction
 from tabs.image_compare.presenters.image_canvas.background_parts import diff_toasts
 from tabs.image_compare.services.analysis.runtime import AnalysisRuntime
+from core.log_names import APP_LOGGER_NAME
 from sli_ui_toolkit.workers import GenericWorker
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 class MetricsService:
 

@@ -300,7 +300,18 @@ def test_engine_pass_interface_clean():
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom) and node.module:
             top = node.module.split(".")[0]
-            assert top in ("__future__", "dataclasses", "logging", "typing", "engine", "ui", "PySide6"), (
+            # ``core.log_names`` is the zero-dependency naming constant every
+            # module uses for the app logger (logging identity, not app-layer
+            # behavior — it imports nothing and touches no Store/Qt type).
+            assert top in (
+                "__future__",
+                "dataclasses",
+                "logging",
+                "typing",
+                "engine",
+                "ui",
+                "PySide6",
+            ) or node.module == "core.log_names", (
                 f"engine pass imports '{node.module}' (line {node.lineno}): "
                 f"engine modules, stacking-policy enums, and Qt types only"
             )

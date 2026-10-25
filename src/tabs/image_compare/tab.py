@@ -1,6 +1,7 @@
 """Image-compare tab contract implementation.
 
 Stages 1-10 of MIGRATION_PLAN.md.
+Audit-Meta: pattern=thin-owner reason="tab-contract wiring only — drag/drop, host callbacks, persistence and registration all live in use_cases/; it sits at the 500-line limit, not over a second concern"
 
 The tab owns the page widget (``ImageCompareWidget``) and exposes the
 tab-contract lifecycle. The host (``ui.main_window``) still creates
@@ -21,11 +22,12 @@ from PySide6.QtWidgets import QWidget
 from PySide6.QtCore import QObject
 from tabs.contract import TabContext, TabContract, TabTransitionHint
 from tabs.image_compare.use_cases import drag_drop, host_callbacks, persistence, registration
+from core.log_names import APP_LOGGER_NAME
 
 if TYPE_CHECKING:
     from tabs.image_compare.widget import ImageCompareWidget
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 class _ModalLifetimeHideFilter(QObject):

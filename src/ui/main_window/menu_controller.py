@@ -19,11 +19,12 @@ from ui.icon_manager import themed_icon
 from ui.main_window.csd_menu_strip import CsdMenuSpec, CsdMenuStrip, csd_debug
 from ui.main_window.project_io import MainWindowProjectIo
 from ui.main_window.use_cases import platform_actions, settings_navigation
+from core.log_names import APP_LOGGER_NAME
 
 if TYPE_CHECKING:
     from ui.main_window.window import MainWindow
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 class MainWindowMenuController:

@@ -24,8 +24,9 @@ import zipfile
 import zlib
 from pathlib import Path
 from typing import Any, Callable, Iterable
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 PROJECT_JSON_NAME = "project.json"
 MEDIA_PREFIX = "media/"

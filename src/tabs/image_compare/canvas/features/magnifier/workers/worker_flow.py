@@ -1,6 +1,7 @@
 import logging
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 def render_magnifier_layer(presenter, sig):

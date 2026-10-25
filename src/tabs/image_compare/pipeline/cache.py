@@ -28,8 +28,9 @@ import logging
 import os
 from collections import OrderedDict
 from typing import TYPE_CHECKING
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 try:
     from tabs.image_compare.debug import ic_preview_debug
 except Exception:  # pragma: no cover
@@ -45,7 +46,7 @@ _last_cache_get_unified_hit: bool | None = None
 
 import logging
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 if TYPE_CHECKING:
     from engine.store.tiled_pixel_store import TiledPixelStore

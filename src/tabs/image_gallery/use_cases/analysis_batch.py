@@ -28,8 +28,9 @@ from __future__ import annotations
 import logging
 
 from tabs.image_gallery.services.ai_client import _ai_debug
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 def _gen(owner) -> int:

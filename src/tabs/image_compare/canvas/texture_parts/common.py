@@ -1,7 +1,8 @@
 import itertools
 import logging
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 _TEXTURE_ID_SEQ = itertools.count(start=10_000)
 

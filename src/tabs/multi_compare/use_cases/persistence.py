@@ -22,8 +22,9 @@ from tabs.multi_compare.models import (
     MultiCompareDividerSettings,
     MultiCompareLabelSettings,
 )
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 _STATE_SLOT = "multi_compare.state"
 _LAST_USED_KEY = "multi_compare/last_session_settings"

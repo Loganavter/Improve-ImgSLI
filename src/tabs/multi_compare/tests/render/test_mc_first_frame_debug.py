@@ -5,6 +5,7 @@ multi_compare first-frame timeline (tabs/multi_compare/first_frame_debug.py).
 from __future__ import annotations
 
 from types import SimpleNamespace
+from core.log_names import APP_LOGGER_NAME
 
 
 def test_debug_is_noop_when_disabled(monkeypatch, caplog):
@@ -23,7 +24,7 @@ def test_debug_logs_timeline_when_enabled(monkeypatch, caplog):
     from tabs.multi_compare import first_frame_debug as ff
 
     monkeypatch.setenv("IMGSLI_MC_FIRST_FRAME_DEBUG", "1")
-    caplog.set_level(logging.INFO, logger="ImproveImgSLI")
+    caplog.set_level(logging.INFO, logger=APP_LOGGER_NAME)
     widget = SimpleNamespace()
     ff.mc_first_frame_debug(widget, "created")
     ff.mc_first_frame_debug(widget, "present #1")

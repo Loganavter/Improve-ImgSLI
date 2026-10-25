@@ -1,5 +1,6 @@
 
 from shared.hidden_process import hidden_process_kwargs
+from core.log_names import APP_LOGGER_NAME
 import logging
 import os
 from pathlib import Path
@@ -9,7 +10,7 @@ from PySide6.QtWidgets import QSystemTrayIcon
 
 from utils.resource_loader import resource_path
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 DEFAULT_APP_ID = "io.github.Loganavter.Improve-ImgSLI"
 

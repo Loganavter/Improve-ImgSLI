@@ -30,8 +30,9 @@ from ui.presenters.main_window.workspace import (
     sync_workspace_tabs,
 )
 from ui.presenters.ui_update_batcher import UIUpdateBatcher
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 class MainWindowPresenter(QObject):

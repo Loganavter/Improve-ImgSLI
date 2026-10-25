@@ -11,8 +11,9 @@ from tabs.image_compare.plugins.video_editor.services.video_export.models import
     FrameTimingStats,
     VideoExportJob,
 )
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 def _contain_resize_rgba(

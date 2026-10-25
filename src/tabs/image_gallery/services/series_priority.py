@@ -39,8 +39,9 @@ from tabs.image_gallery.services.jev_client import (
     make_client,
 )
 from tabs.image_gallery.services.rank_fusion import item_quality
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 #: Visible degrade reasons (English defaults; the caller logs / surfaces them).
 PRIORITY_REASON_EMPTY = "AI (Jev) series priority: nothing to route"

@@ -10,6 +10,7 @@ from __future__ import annotations
 import time
 from PySide6.QtCore import QEvent, QObject
 from sli_ui_toolkit.managers import scaled_px
+from core.log_names import APP_LOGGER_NAME
 
 
 def _hover_diag_enabled() -> bool:
@@ -35,7 +36,7 @@ def log_card_gates(card, owner, trigger: str) -> None:  # type: ignore[no-untype
     try:
         import logging as _logging
 
-        _logger = _logging.getLogger("ImproveImgSLI")
+        _logger = _logging.getLogger(APP_LOGGER_NAME)
     except Exception:
         return
     try:
@@ -191,7 +192,7 @@ def _bar_trace(action: str, card) -> None:  # type: ignore[no-untyped-def]
             "%s:%d" % (f.filename.rsplit("/", 1)[-1], f.lineno)
             for f in stack[-7:]
         )
-        _logging.getLogger("ImproveImgSLI").debug(
+        _logging.getLogger(APP_LOGGER_NAME).debug(
             "[gallery-hover-bar] %s path=%s stack=%s",
             action, path, chain,
         )

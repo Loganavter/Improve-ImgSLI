@@ -45,8 +45,9 @@ from core.state_management.session_state_slots import (
     register_session_state_slot,
     register_typed_session_slot,
 )
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 # Aliases kept so existing call sites (and any importer of these names) keep
 # working; the canonical pair is the single source of the persisted identity.

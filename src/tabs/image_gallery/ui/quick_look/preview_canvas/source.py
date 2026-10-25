@@ -19,8 +19,9 @@ from pathlib import Path
 from tabs.image_gallery.services.decode_policy import (
     QL_FULL_EDGE_CAP as _QL_FULL_EDGE_CAP,
 )
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 def _ql_decode_full_store(path, tmp_dir=None):

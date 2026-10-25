@@ -5,8 +5,9 @@ import os
 import sys
 
 from PySide6.QtWidgets import QRhiWidget
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI.rhi")
+logger = logging.getLogger(f"{APP_LOGGER_NAME}.rhi")
 
 RHI_BACKEND_ENV = "IMPROVE_IMGSLI_RHI_BACKEND"
 ALLOW_LSFGVK_ENV = "IMPROVE_IMGSLI_ALLOW_LSFGVK"

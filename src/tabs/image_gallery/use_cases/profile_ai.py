@@ -61,8 +61,9 @@ from tabs.image_gallery.use_cases.profile_ai_request import (  # noqa: F401
     _attr,
     build_profile_request,
 )
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 def ai_selector_available(settings) -> bool:

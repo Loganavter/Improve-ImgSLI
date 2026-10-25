@@ -4,8 +4,9 @@ from PIL import Image
 from PySide6.QtWidgets import QApplication
 
 from .gpu_export_proxy import GpuExportProxy
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 class GpuExportService:
     def __init__(self, parent=None, resource_manager=None):

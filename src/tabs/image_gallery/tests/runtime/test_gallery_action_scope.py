@@ -24,6 +24,7 @@ import pytest
 from PySide6.QtCore import QPoint
 
 from tabs.image_gallery.use_cases import action_scope
+from core.log_names import APP_LOGGER_NAME
 
 
 def _owner(selected, order=None, items=None, **extra):
@@ -149,7 +150,7 @@ def test_find_similar_uses_the_whole_selection(monkeypatch, caplog) -> None:
     popup_gallery_card_context_menu(
         SimpleNamespace(), owner, a, global_pos=QPoint(0, 0), selection_count=3,
     )
-    with caplog.at_level(logging.DEBUG, logger="ImproveImgSLI"):
+    with caplog.at_level(logging.DEBUG, logger=APP_LOGGER_NAME):
         captured["on_triggered"]("gallery.selection.find_similar", None)
     assert any("3 target(s)" in r.getMessage() for r in caplog.records)
 

@@ -21,6 +21,7 @@ from PySide6.QtWidgets import QWidget
 
 from shared_toolkit.ui.overlay_layer import OverlayLayer
 from ui.widgets.drag_ghost_widget import DragGhostWidget
+from core.log_names import APP_LOGGER_NAME
 
 WINDOW_W, WINDOW_H = 800, 600
 STRIP_H = 100  # tab-strip band on top; content lives strictly below it.
@@ -180,7 +181,7 @@ def test_ghost_falls_back_to_window_layer_when_content_host_absent(
     pix.fill(Qt.GlobalColor.red)
     pix.save(str(img), "PNG")
     try:
-        with caplog.at_level(logging.WARNING, logger="ImproveImgSLI"):
+        with caplog.at_level(logging.WARNING, logger=APP_LOGGER_NAME):
             assert service.begin([Path(img)]) is True
         assert service._ghost._widget.parentWidget() is window
         assert any(

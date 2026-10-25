@@ -4,8 +4,9 @@ import logging
 
 from shared_toolkit.ui.layout_sizing import defer_dialog_geometry
 from ui.layout_geometry import apply_main_window_minimum
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 class MainWindowAppearance:

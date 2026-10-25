@@ -11,8 +11,9 @@ from sli_ui_toolkit.workers import GenericWorker
 
 from tabs.image_compare.services import document_store_ops
 from tabs._shared.save_flow import SaveFlowCoordinator as SharedSaveFlowCoordinator
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 class ExportSaveFlowCoordinator:

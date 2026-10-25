@@ -40,8 +40,9 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 #: Card-drag mime (wire mirror — the single definition lives tab-side next to
 #: the card drag source; pinned equal by ``test_gallery_dnd_delivery``).

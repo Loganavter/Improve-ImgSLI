@@ -5,8 +5,9 @@ from typing import Any
 
 from core.plugin_system.event_bus import EventBus
 from core.plugin_system.plugin import Plugin, PluginState
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI.plugin.lifecycle")
+logger = logging.getLogger(f"{APP_LOGGER_NAME}.plugin.lifecycle")
 
 class PluginLifecycleManager:
 

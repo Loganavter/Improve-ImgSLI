@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import logging
 from typing import TYPE_CHECKING, Any
+from core.log_names import APP_LOGGER_NAME
 
 if TYPE_CHECKING:
     from tabs.registry import TabRegistry
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 def notify_session_created(registry: "TabRegistry", session_type: str, session_id: str) -> None:

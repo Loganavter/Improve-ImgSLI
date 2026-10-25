@@ -16,11 +16,12 @@ import logging
 from typing import TYPE_CHECKING, Callable
 
 from ui.main_window.project import busy, dialogs, open as open_, paths, recent, save
+from core.log_names import APP_LOGGER_NAME
 
 if TYPE_CHECKING:
     from ui.main_window.window import MainWindow
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 # Re-exported: external callers (use_cases/platform_actions.py) import this
 # straight from this module's historical location.

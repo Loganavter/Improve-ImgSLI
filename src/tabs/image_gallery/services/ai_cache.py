@@ -55,8 +55,9 @@ from tabs.image_gallery.models import (
     ai_scored_axes,
 )
 from tabs.image_gallery.services.thumbnail_cache import cache_key_for
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 #: Payload format version. v3 = the analysis identity is part of the file key AND
 #: stored/validated inside the payload (plan-gallery-ai-backend-owns-quality).

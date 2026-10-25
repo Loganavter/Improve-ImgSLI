@@ -23,8 +23,9 @@ import logging
 import os
 import threading
 import time
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 #: Set once the warm-up thread has been started in this process.
 _started = False

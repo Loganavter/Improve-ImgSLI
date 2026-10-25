@@ -5,8 +5,9 @@ import weakref
 
 from PySide6.QtCore import QCoreApplication, QEvent, QObject, QTimer
 from PySide6.QtWidgets import QApplication, QMenu, QWidget
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 class UIResourceManager(QObject):
     def __init__(self, host: QWidget):

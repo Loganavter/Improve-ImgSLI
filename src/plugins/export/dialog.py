@@ -25,9 +25,10 @@ from sli_ui_toolkit.ui.pending_settle import PendingSettle, settle_on_paint
 from sli_ui_toolkit.theme import ThemeManager
 from sli_ui_toolkit.widgets import CustomLineEdit
 from ui.theming import polish_themed_dialog
+from core.log_names import APP_LOGGER_NAME
 from utils.resource_loader import resource_path
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 class ExportDialog(ThemedDialog):

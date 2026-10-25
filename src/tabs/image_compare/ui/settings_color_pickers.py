@@ -10,6 +10,7 @@ from domain.qt_adapters import color_to_qcolor, qcolor_to_color
 from tabs.image_compare.canvas.registry import registry
 from ui.canvas_infra.scene.property_access import read_canvas_feature_color_by_setting_key
 from ui.widgets.color import ColorPickerDialog
+from core.log_names import APP_LOGGER_NAME
 
 
 class SettingsColorPickerCoordinator:
@@ -303,7 +304,7 @@ class SettingsColorPickerCoordinator:
 
             from shared.debug_flags import env_flag as _env_flag
 
-            _lg = logging.getLogger("ImproveImgSLI")
+            _lg = logging.getLogger(APP_LOGGER_NAME)
             # LOG gate (IMGSLI_LASER_DEBUG = [laser-debug] traces only).
             # UI visibility must never read this flag — use IMGSLI_LASER_UI_DEBUG.
             if not _env_flag("IMGSLI_LASER_DEBUG"):

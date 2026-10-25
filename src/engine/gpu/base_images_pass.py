@@ -68,13 +68,14 @@ from engine.passes.hooks import BaseImagesPassHookBase
 from engine.store.tiled_pixel_store import pixel_source_size
 from ui.canvas_infra.scene.pass_contract import SceneVisibility
 from ui.canvas_infra.scene.stacking_policy import CanvasStackRole
+from core.log_names import APP_LOGGER_NAME
 
 if TYPE_CHECKING:  # pragma: no cover - annotation only, no runtime import
     from PySide6.QtGui import QImage
 
     from engine.store.tiled_pixel_store import TiledPixelStore
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 __all__ = [
     "BaseImagesPass",

@@ -17,8 +17,9 @@ import numpy as np
 from PIL import Image
 
 from engine.store.tiled_pixel_store import TiledPixelStore
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 DIFF_SPILL_MAX_DIMENSION = 4096
 DIFF_SPILL_MAX_PIXELS = 16_000_000

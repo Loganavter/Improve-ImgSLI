@@ -7,8 +7,9 @@ from plugins.settings.events import SettingsChangeLanguageEvent
 from core.plugin_system import Plugin, plugin
 from core.plugin_system.interfaces import IControllablePlugin
 from plugins.help.dialog import HelpDialog
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 @plugin(name="help", version="1.0", startup_tier="deferred")
 class HelpPlugin(Plugin, IControllablePlugin):

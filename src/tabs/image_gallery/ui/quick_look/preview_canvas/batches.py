@@ -29,8 +29,9 @@ from __future__ import annotations
 import logging
 
 from PySide6.QtGui import QRhiDepthStencilClearValue
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 # Outstanding batches (taken minus consumed) is an int on the widget itself so
 # the count survives the module boundary (diagnostics read it from the widget).

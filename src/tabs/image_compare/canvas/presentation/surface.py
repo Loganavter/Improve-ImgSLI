@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import logging
+from core.log_names import APP_LOGGER_NAME
 
-_log = logging.getLogger("ImproveImgSLI.canvas_presentation.surface")
+_log = logging.getLogger(f"{APP_LOGGER_NAME}.canvas_presentation.surface")
 
 from tabs.image_compare.canvas.presentation.plan_builder import (
     build_canvas_plan,

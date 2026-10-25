@@ -7,13 +7,14 @@ from PySide6.QtCore import QEvent, Qt
 from PySide6.QtGui import QKeyEvent, QMouseEvent
 
 from tabs.registry import get_shared_tab_registry
+from core.log_names import APP_LOGGER_NAME
 
 # dnd-override/kbd-route trace lines fire on every mouse/key event once
 # --debug is on, drowning out other subsystems' debug output (e.g.
 # IMGSLI_RESIZE_DEBUG render tracing). Gated on its own opt-in flag, off by
 # default even under --debug -- same convention as
 # shared/rendering/render_debug.py's IMGSLI_RESIZE_DEBUG.
-logger = logging.getLogger("ImproveImgSLI.nav")
+logger = logging.getLogger(f"{APP_LOGGER_NAME}.nav")
 if os.environ.get("UI_NAV_DEBUG", "").strip().lower() in (
     "",
     "0",

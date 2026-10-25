@@ -38,8 +38,9 @@ from PySide6.QtGui import (
 
 from engine.cache.tile_debug import log_tile_event, tile_dump_enabled
 from engine.cache.tile_texture_service import TileTextureService
+from core.log_names import APP_LOGGER_NAME
 
-logger = logging.getLogger("ImproveImgSLI")
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 #: How many distinct ``(key, index, layer, reason)`` upload rejections one
 #: resource owner remembers. The bound guard (see ``upload_tile_to_array``)

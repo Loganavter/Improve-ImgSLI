@@ -25,6 +25,7 @@ from PySide6.QtWidgets import QApplication, QWidget
 
 from tabs.image_gallery.models import GalleryItem
 from tabs.image_gallery.ui.quick_look import QuickLookOverlay
+from core.log_names import APP_LOGGER_NAME
 
 PREVIEW_CANVAS_NAME = "tabs.image_gallery.ui.quick_look.preview_canvas"
 
@@ -461,7 +462,7 @@ def test_fallback_logs_which_signal_fired(qtbot, tmp_path, monkeypatch, caplog):
         qtbot.addWidget(ov._parity_test_parent)
         item = _item(tmp_path / "nope.png")
         _host._wire_canvas_fallback(ov, canvas, item)
-        with caplog.at_level(logging.WARNING, logger="ImproveImgSLI"):
+        with caplog.at_level(logging.WARNING, logger=APP_LOGGER_NAME):
             caplog.clear()
             getattr(canvas, signal).emit()
             QApplication.processEvents()
