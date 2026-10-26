@@ -280,15 +280,10 @@ class MagnifierSettingsHoverController(QObject):
                 pass
             # A combo dropdown opened from a control in the panel takes focus
             # while the user picks an entry; that is still our unit.
-            popup = QApplication.activePopupWidget()
             popup_focus = False
-            if popup is not None and new_focus is not None:
+            if new_focus is not None:
                 try:
-                    popup_focus = (
-                        new_focus is popup
-                        or popup.isAncestorOf(new_focus)
-                        or self._popup_belongs_to_unit(popup, flyout)
-                    )
+                    popup_focus = self._widget_is_unit_overlay(new_focus, flyout)
                 except Exception:
                     popup_focus = False
             still_inside = new_focus is not None and (
@@ -315,30 +310,12 @@ class MagnifierSettingsHoverController(QObject):
                     pass
                 self._hide_immediately()
 
-    def _popup_belongs_to_unit(self, popup, flyout) -> bool:
-        """True when *popup* was opened from a control inside this mag unit.
-
-        A toolkit combo dropdown (``ComboBox._DropdownOverlay``, a
-        ``BaseFlyout`` popup) is anchored to the combo that opened it — a
-        control inside ``magnifier_group_container`` or the panel body. Those
-        popups are not FlyoutManager ``linked_children`` of the panel, so the
-        unit tests below must recognise them by their anchor.
-        """
-        if popup is None or popup is flyout:
-            return False
-        try:
-            getter = getattr(popup, "anchor_widgets", None)
-            anchors = tuple(getter() or ()) if callable(getter) else ()
-        except Exception:
-            anchors = ()
-        if not anchors:
-            return False
+    def _anchors_in_unit(self, anchors, flyout) -> bool:
+        """True when any of *anchors* lives inside this magnifier unit."""
         widget = self.widget
         group = getattr(widget, "magnifier_group_container", None)
-        owner_roots = tuple(
-            root for root in (widget, group, flyout) if root is not None
-        )
-        for anchor in anchors:
+        owner_roots = tuple(root for root in (widget, group, flyout) if root is not None)
+        for anchor in anchors or ():
             if anchor is None:
                 continue
             for root in owner_roots:
@@ -348,6 +325,64 @@ class MagnifierSettingsHoverController(QObject):
                 except Exception:
                     continue
         return False
+
+    def _widget_is_unit_overlay(self, widget, flyout) -> bool:
+        """True when *widget* sits on a flyout surface anchored inside the unit.
+
+        Covers both shapes the toolkit uses: a real popup window
+        (``QApplication.activePopupWidget()``) and an **in-window overlay** — a
+        combo dropdown is ``_DropdownOverlay(BaseFlyout)``, a child of the main
+        window anchored to its ``ComboBox``. The second shape is why
+        ``activePopupWidget()`` alone was not enough (measured 2026-10-26: the
+        fix never fired, ``inside-popup`` absent from the live journal while
+        ``hide:immediate`` still ran). Walking up from the widget under the
+        cursor reaches that surface; its ``anchor_widgets()`` decide.
+        """
+        seen = 0
+        current = widget
+        while current is not None and seen < 32:
+            seen += 1
+            if current is not flyout:
+                getter = getattr(current, "anchor_widgets", None)
+                if callable(getter):
+                    try:
+                        anchors = tuple(getter() or ())
+                    except Exception:
+                        anchors = ()
+                    if anchors and self._anchors_in_unit(anchors, flyout):
+                        return True
+            try:
+                current = current.parentWidget()
+            except Exception:
+                return False
+        return False
+
+    def _cursor_over_unit_overlay(self, flyout) -> bool:
+        """True when the cursor rests on a flyout surface anchored in the unit."""
+        try:
+            pos = QCursor.pos()
+        except Exception:
+            return False
+        try:
+            under = QApplication.widgetAt(pos)
+        except Exception:
+            under = None
+        if under is not None and self._widget_is_unit_overlay(under, flyout):
+            return True
+        try:
+            popup = QApplication.activePopupWidget()
+        except Exception:
+            popup = None
+        if popup is None or popup is flyout:
+            return False
+        try:
+            if not popup.isVisible() or not popup.contains_global(pos):
+                return False
+        except Exception:
+            return False
+        return self._widget_is_unit_overlay(popup, flyout) or (
+            self._anchors_in_unit(getattr(popup, "anchor_widgets", lambda: ())(), flyout)
+        )
 
     def _cursor_in_group_zone(self) -> bool:
         group = getattr(self.widget, "magnifier_group_container", None)
@@ -401,14 +436,8 @@ class MagnifierSettingsHoverController(QObject):
             # measured live (2026-10-26): `show` -> `hover-move:outside` on the
             # interpolation list -> `hide:immediate`, which collapsed both.
             try:
-                popup = QApplication.activePopupWidget()
-                if (
-                    popup is not None
-                    and popup.isVisible()
-                    and self._popup_belongs_to_unit(popup, flyout)
-                    and popup.contains_global(QCursor.pos())
-                ):
-                    return "popup"
+                if self._cursor_over_unit_overlay(flyout):
+                    return "overlay"
             except Exception:
                 pass
         return None
