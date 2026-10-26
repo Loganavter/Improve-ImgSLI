@@ -1,10 +1,11 @@
 """Disk pin for VLM-selected metric profiles — plan P2/P3.
 
 Key = ``sha256(sorted(path:mtime_ns) + mode + model + base_url + effort + pool
-ids)`` — an edited member (mtime), a changed series membership (path), a
-different mode/model, the SAME model id on another endpoint, a different
-reasoning effort or a re-shaped pool all invalidate; an unchanged
-folder-generation is served from disk with **no second VLM call**.
+ids + prompt revision)`` — an edited member (mtime), a changed series membership
+(path), a different mode/model, the SAME model id on another endpoint, a
+different reasoning effort, a re-shaped pool or a bumped analyze prompt revision
+all invalidate; an unchanged folder-generation is served from disk with **no
+second VLM call**.
 
 WHY the endpoint and the effort are part of the key (the bug this fixes): the
 key used to stop at members+mode+model+pool, so pointing the same model id at a
@@ -13,10 +14,24 @@ reused the PREVIOUS endpoint's selection: a pin earned from provider A's answer
 was served as if provider B had chosen it. Both are inputs the VLM actually
 sees, so both define "the same selection".
 
+EVERY resolved profile is pinned, including the HEURISTIC / SERIES OFFER
+(2026-10-26, ``task-profile-freeze-before-vlm-answer``). Before this, only the
+judge's answer was written and the offer was re-derived on every pass, so the
+same folder could resolve a different axis set from one run to the next — and
+with the axis set in the analysis cache identity, every difference re-analyzed
+the folder (measured 3 HIT / 7 MISS on 10 images with 10 entries on disk). One
+folder now resolves ONE profile: the first pass pins whatever it resolved (with
+its source), every later pass reads it back.
+
+Consequence, stated as the contract: a pinned OFFER is not upgraded to a VLM
+answer by a policy change — that is an EXPLICIT invalidation
+(:meth:`ProfileCache.invalidate` / :func:`clear_default_cache`, wired to the
+gallery's "Reset metrics cache"), never an accidental churn of the whole folder.
+
 Old pins are MISSES, deliberately with no migration: a file written before the
-endpoint/effort reached the key hashes to a different (now unreachable)
-filename, so it is simply never read again. It stays on disk until
-``clear`` / the gallery's "Reset metrics cache" deletes it.
+endpoint/effort reached the key, or before the record carried the profile's
+source, hashes/validates differently, so it is simply never read again. It stays
+on disk until ``clear`` / the gallery's "Reset metrics cache" deletes it.
 
 The AI domain is *explicitly non-deterministic* (the same request may answer
 differently on a second identical run): the pin makes one run reproducible — a
@@ -25,9 +40,9 @@ model+endpoint+effort+pool reuses that pinned selection, so flipping between
 tabs/domains never re-rolls the dice. This mirrors
 :mod:`tabs.image_gallery.services.jev_cache`
 (one JSON file per key, version-gated, **no TTL**, malformed replies
-deliberately **not** pinned) so the gallery keeps ONE cache idiom.
-
-Pure — no Qt, no HTTP. Small JSON IO, safe from worker threads.
+deliberately **not** pinned as a VLM answer — the offer they fall back to IS
+pinned, with its own source). Pure — no Qt, no HTTP. Small JSON IO, safe from
+worker threads.
 """
 
 from __future__ import annotations
@@ -35,6 +50,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import time
 from pathlib import Path
 
 from tabs.image_gallery.services.ai_providers import _url_key
@@ -50,7 +66,11 @@ logger = logging.getLogger(APP_LOGGER_NAME)
 #: endpoint/effort keying (queue ``task-ai-cache-identity-truth-2026-10-20``)
 #: deliberately did NOT bump it: the record shape was unchanged and the key itself
 #: already made old pins unreachable.
-PROFILE_CACHE_VERSION = 2
+#: v3 (2026-10-26) records WHICH kind of answer was pinned — the judge's own axis
+#: set (``vlm``) or the resolved offer (``series`` / ``heuristic``) — plus when
+#: and why, because an offer is now pinned too. A v2 record cannot say whether
+#: it is a paid answer or a fallback, so it is not served as one.
+PROFILE_CACHE_VERSION = 3
 
 #: Cache directory name, stored alongside the Jev cache directory.
 CACHE_DIR_NAME = "gallery_profile_cache"
@@ -94,7 +114,8 @@ def _effort_token(effort) -> str:
 def profile_cache_key(
     items, *, mode, model, pool=None, base_url="", reasoning_effort=""
 ) -> str:
-    """Stable pin identity: ``sha256(members + mode + model + endpoint + effort + pool)``.
+    """Stable pin identity: ``sha256(members + mode + model + endpoint + effort + pool
+    + prompt revision)``.
 
     Members are sorted by path so the key is independent of the caller's member
     order; the mode is normalized to a registry id (``Mode.FIDELITY`` and
@@ -108,6 +129,12 @@ def profile_cache_key(
     normalized to ``auto`` when unset. Both default to "" / "auto" for callers
     that legitimately have no backend in hand (tests, ``profile_fingerprint``
     defaults) — a production caller always passes the live settings.
+
+    The ANALYZE prompt revision is part of the key (2026-10-26): a profile names
+    axes that the scorecard prompt asks about, so a prompt change that alters what
+    an axis means must not be paired with a pin earned under the old question. It
+    is read from ``services.ai_cache`` (the one place that owns the revision), not
+    passed in, so no caller can forget it and split the folder into two pins.
     """
     pool_ids = tuple(pool) if pool is not None else MEASURED_POOL
     try:
@@ -120,8 +147,19 @@ def profile_cache_key(
     parts.append(f"base_url={_url_key(base_url)}")
     parts.append(f"effort={_effort_token(reasoning_effort)}")
     parts.append("pool=" + ",".join(str(p) for p in pool_ids))
+    parts.append(f"prompt={_prompt_revision()}")
     raw = "|".join(parts)
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def _prompt_revision() -> int:
+    """The analyze prompt/schema revision a pinned profile was earned under."""
+    try:
+        from tabs.image_gallery.services.ai_cache import PROMPT_SCHEMA_VERSION
+
+        return int(PROMPT_SCHEMA_VERSION)
+    except Exception:
+        return 0
 
 
 def _entries_to_record(entries) -> list:
@@ -249,11 +287,53 @@ class ProfileCache:
             "source": str(getattr(profile, "source", "vlm") or "vlm"),
             "salient_axes": [str(a) for a in (getattr(profile, "salient_axes", ()) or ())],
             "axis_entries": _entries_to_record(getattr(profile, "axis_entries", ()) or ()),
+            # WHEN it was pinned. Informational only — a pin has no TTL: the key
+            # carries every input the answer depends on, so time cannot stale it.
+            "pinned_at": round(time.time(), 3),
         }
         try:
             p.write_text(json.dumps(record, sort_keys=True), encoding="utf-8")
         except OSError:
             logger.debug("profile cache write failed %s", p, exc_info=True)
+
+    def pinned_record(self, key: str) -> dict | None:
+        """The stored record for *key* (``None`` on a miss) — for the trace.
+
+        A caller that wants to say WHERE a profile came from (a paid judge answer
+        vs. the pinned offer) reads ``pinned_record()["source"]`` instead of
+        guessing from the profile object, which is the same either way. Named
+        ``pinned_record`` on purpose: a method called ``record`` is read by
+        ``tests/contracts/test_pass_reads_only_ctx.py`` as a render-pass draw
+        step. Never raises.
+        """
+        try:
+            p = self._path(key)
+        except Exception:
+            return None
+        try:
+            data = json.loads(p.read_text(encoding="utf-8"))
+        except Exception:
+            return None
+        return data if isinstance(data, dict) else None
+
+    def invalidate(self, key: str) -> bool:
+        """Delete the pin for *key* — the explicit upgrade seam. Never raises.
+
+        Dropping a pin is an EXPLICIT decision (the gallery's "Reset metrics
+        cache", a script, a test): the next pass resolves the profile afresh, which
+        is the only way a pinned heuristic/series OFFER becomes a paid VLM answer
+        (``task-profile-freeze-before-vlm-answer``). It is deliberately not
+        triggered by a policy change, a settings edit or a re-open — that is the
+        churn the pin exists to stop. True when a file was removed.
+        """
+        try:
+            self._path(key).unlink()
+            return True
+        except FileNotFoundError:
+            return False
+        except Exception:
+            logger.debug("profile pin invalidate failed %s", key, exc_info=True)
+            return False
 
     def clear(self) -> int:
         """Delete every pin file in this cache's directory; return the count.

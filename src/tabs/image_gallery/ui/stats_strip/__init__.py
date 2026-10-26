@@ -33,6 +33,14 @@ from PySide6.QtWidgets import QHBoxLayout, QWidget
 from sli_ui_toolkit.managers import scaled_px
 from sli_ui_toolkit.widgets import Button, ButtonRegion, ButtonRow, Text
 
+#: Provenance token for "a tail of this run is still in flight" (2026-10-26,
+#: ``task-analysis-phase-state``). The card chip used to present ``fusion`` as the
+#: final ranker while the AI tail was still running, so the strip read "Алгоритмы"
+#: and moments later "ИИ (Jev)" for the same run. It is NOT a ``rank_source`` (no
+#: item ever carries it): it is a claim about the RUN, so only the controller can
+#: set it, and only from an observed in-flight tail.
+RANK_SOURCE_PENDING = "pending"
+
 # Package split (plan-gallery-split-2026-10-17, Part C6): the colour/token
 # helpers live in theme.py; re-export them so
 # ``tabs.image_gallery.ui.stats_strip`` keeps its full surface for importers.
@@ -71,6 +79,11 @@ class StatsStrip(QWidget):
         # Ranker provenance shown in the strip ("Ranked by Algorithms / AI (Jev)
         # / Manual"). Resolved token or "" (hidden) — never a fabricated ranker.
         self._rank_source = ""
+        #: ``(judge, of_which_with_a_local_detector, registry)`` — the honest axis
+        #: accounting shown on the provenance chip's tooltip (2026-10-26,
+        #: ``task-profile-granularity-and-axis-reporting``). ``(0, 0, 0)`` until a
+        #: profile is resolved; never a guessed count.
+        self._axis_counts: tuple[int, int, int] = (0, 0, 0)
         # Last affordance applied per action button ("keep"/"compare"). Used to
         # swap the dimmed/bright tokens only on the enabled↔disabled boundary
         # (see ``_apply_action_affordance``) — an empty cache forces the first
@@ -701,22 +714,27 @@ class StatsStrip(QWidget):
         """State which ranker produced the series ranks.
 
         *source* is a ``rank_source`` token (``fusion`` = Algorithms,
-        ``jev`` = AI (Jev), ``manual``); when it is missing/unknown, *domain*
-        ("algorithms"|"ai") picks the label for the current backend. Neither
-        known ⇒ the chip hides (never a fabricated ranker).
+        ``jev`` = AI (Jev), ``manual``) or the PENDING marker
+        (:data:`RANK_SOURCE_PENDING`): a tail of the run (profile / scorecards /
+        rank batch) is still in flight, so the numbers on screen are provisional
+        and no ranker may be presented as final. When *source* is missing/unknown,
+        *domain* ("algorithms"|"ai") picks the label for the current backend.
+        Neither known ⇒ the chip hides (never a fabricated ranker).
         """
         src = ""
         try:
             src = str(source or "").strip().lower()
         except Exception:
             src = ""
+        # PENDING must be explicit: it is a claim about the RUN, so it can never be
+        # derived from a domain fallback (that would show "analyzing" forever).
         if not src:
             dom = str(domain or "").strip().lower()
             if dom == "ai":
                 src = "jev"
             elif dom == "algorithms":
                 src = "fusion"
-        _valid = ("fusion", "jev", "manual")
+        _valid = ("fusion", "jev", "manual", RANK_SOURCE_PENDING)
         self._rank_source = src if src in _valid else ""
         self._apply_rank_provenance()
 
@@ -730,6 +748,18 @@ class StatsStrip(QWidget):
             try:
                 label.setText("")
                 label.hide()
+            except Exception:
+                pass
+            return
+        if src == RANK_SOURCE_PENDING:
+            # No new catalogue key on purpose: the pending label is the existing
+            # activity word ("Analyzing" / "Анализ" / …), which is exactly what a
+            # running tail means — and translations already carry it.
+            try:
+                label.setText(
+                    self._t("image_gallery.activity.analyzing", "Analyzing")
+                )
+                label.show()
             except Exception:
                 pass
             return
@@ -752,6 +782,56 @@ class StatsStrip(QWidget):
         try:
             label.setText(text)
             label.show()
+        except Exception:
+            pass
+
+    def set_axis_counts(
+        self, judge: int = 0, judge_with_local: int = 0, registry: int = 0
+    ) -> None:
+        """Show the honest axis accounting on the provenance chip's tooltip.
+
+        Owner design 2026-10-26: "N axes from the judge, M of them also have a
+        local detector" — the count is a fact about the active profile, so the UI
+        states it instead of implying it. The numbers are rendered with the two
+        labels the per-axis rows already carry (``measured by the judge`` /
+        ``measured locally``); no new catalogue key, no fabricated claim: an empty
+        profile clears the tooltip.
+        """
+        try:
+            judge_i = max(0, int(judge))
+            with_local_i = max(0, int(judge_with_local))
+            registry_i = max(0, int(registry))
+        except (TypeError, ValueError):
+            judge_i = with_local_i = registry_i = 0
+        self._axis_counts = (judge_i, with_local_i, registry_i)
+        label = (
+            self._rank_provenance_label
+            if hasattr(self, "_rank_provenance_label")
+            else None
+        )
+        if label is None:
+            return
+        if not (judge_i or registry_i):
+            try:
+                label.setToolTip("")
+            except Exception:
+                pass
+            return
+        try:
+            judge_label = self._t(
+                "image_gallery.quick_look.axis_measured_by_judge",
+                "measured by the judge",
+            )
+            local_label = self._t(
+                "image_gallery.quick_look.axis_measured_locally", "measured locally"
+            )
+        except Exception:
+            judge_label, local_label = "measured by the judge", "measured locally"
+        parts = [f"{judge_label}: {judge_i} ({local_label}: {with_local_i})"]
+        if registry_i:
+            parts.append(f"{local_label}: {registry_i}")
+        try:
+            label.setToolTip(" · ".join(parts))
         except Exception:
             pass
 
@@ -872,6 +952,11 @@ class StatsStrip(QWidget):
     @property
     def rank_source(self) -> str:
         return str(getattr(self, "_rank_source", "") or "")
+
+    @property
+    def axis_counts(self) -> tuple[int, int, int]:
+        """``(judge, judge_with_local, registry)`` for the active profile."""
+        return tuple(getattr(self, "_axis_counts", (0, 0, 0)))  # type: ignore[return-value]
 
     @property
     def clean_button(self) -> Button:

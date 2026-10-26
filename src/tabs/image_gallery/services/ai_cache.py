@@ -3,14 +3,30 @@
 Keyed like ``thumbnail_cache`` (sha256 of ``path:mtime_ns``) **plus the analysis
 identity** — the AI configuration that produced the scorecard — so re-opening a
 folder never re-spends API credits and an edited file is correctly treated as
-not-yet-analyzed, while switching the backend (model / base_url / mode / active
-profile / reasoning effort / prompt schema) is a MISS instead of a stale result.
+not-yet-analyzed, while switching the backend (model / base_url / mode /
+reasoning effort / prompt schema / sampling) is a MISS instead of a stale result.
 
 WHY the identity is part of the key (the bug this fixes): the key used to be
 ``(path, mtime_ns)`` only, so after switching model or base_url
 ``use_cases/ai_analysis.analyze_item`` served the PREVIOUS backend's scorecard
 from disk before it had even read ``AiSettings`` — the gallery showed another
 model's judgment against the new one.
+
+The PROFILE is deliberately NOT part of the key any more (queue rows
+``task-analysis-phase-state`` / ``task-profile-freeze-before-vlm-answer``,
+2026-10-26). It used to be, and that inverted the pipeline: opening a folder paid
+a VLM axis-set call FIRST, the answer became part of the cache identity, and
+because the heuristic offer was never pinned the same image keyed differently on
+the next run — measured 3 HIT / 7 MISS over 10 images whose 10 entries were
+already on disk. The identity now describes the QUESTION ("which backend, which
+mode, which sampling, which prompt revision") and the entry RECORDS the answer it
+was built with (``"profile"``: the axes + their source), so a reader knows which
+instrument produced the numbers without the axis set re-keying the file.
+
+Consequence, stated as the contract: changing the axis set is served from the
+existing entry (the recorded profile says which axes it answered). Turning the
+heuristic offer into a VLM-chosen one is therefore an EXPLICIT invalidation
+(``use_cases/cache_reset`` — "Reset metrics cache"), never an accidental churn.
 
 Defence in depth: the identity is ALSO written into the JSON payload and validated
 on load, so a key collision, a hand-copied file or a truncated write can still
@@ -69,7 +85,12 @@ logger = logging.getLogger(APP_LOGGER_NAME)
 #: v4 = the identity carries ``effective_k`` (how many draws actually produced
 #: the scorecard, vs the request's declared cap): a pre-v4 entry cannot say its
 #: depth, so it must not be served for a budgeted request.
-AI_CACHE_VERSION = 4
+#: v5 = the profile LEFT the identity and is recorded in the payload instead
+#: (``"profile"``: axes + judged names + source). A v4 entry has its axis set
+#: baked into the FILE NAME, so it is unreachable by construction; the version
+#: bump states the shape change (a payload without the recorded profile could
+#: not answer "which axes do these numbers describe").
+AI_CACHE_VERSION = 5
 
 #: Prompt/schema revision of the analyze request. Bump this whenever the prompt
 #: text or the expected response schema changes: every cached scorecard becomes a
@@ -100,11 +121,17 @@ PROMPT_SCHEMA_VERSION = 4
 #: than the request's budget is a MISS) and deliberately excluded from the
 #: filename digest, so ONE entry per configuration is re-used at the depth it
 #: actually reached.
+#:
+#: The PROFILE is NOT here (2026-10-26, ``task-analysis-phase-state``): the axis
+#: set is the ANSWER this cache stores, not part of the question. A profile that
+#: is resolved after the probe (or re-rolled by an unpinned heuristic offer) must
+#: not re-key an entry that already answers "what does this backend see in this
+#: file". The entry carries the producing profile in ``"profile"`` instead (see
+#: :func:`profile_record` / :func:`recorded_profile`).
 _IDENTITY_FIELDS = (
     "model",
     "base_url",
     "mode",
-    "profile",
     "reasoning_effort",
     "k",
     "effective_k",
@@ -118,13 +145,17 @@ _TEXT_IDENTITY_FIELDS = (
     "model",
     "base_url",
     "mode",
-    "profile",
     "reasoning_effort",
     "k",
     "effective_k",
     "temperature",
     "seed",
 )
+
+#: Public name of the KEY fields (what defines "the same analysis"). A reader that
+#: needs to show/compare the identity without the recorded profile uses this
+#: instead of hard-coding the list (the payload stores exactly these keys).
+IDENTITY_FIELDS: tuple[str, ...] = _IDENTITY_FIELDS
 
 #: Default draw count when the caller DOES read settings but the field is
 #: missing: the user's declared ceiling (``AiSettings.sample_count``). One
@@ -180,13 +211,18 @@ def _identity_token(value) -> str:  # type: ignore[no-untyped-def]
 
     ``state.mode`` is a ``Mode(str, Enum)`` (its ``str()`` is ``"Mode.CAMERA"``)
     while restored/legacy state may hold the plain ``"camera"`` — both must map
-    to the same token, or the same configuration would key two entries.
+    to the same token, or the same configuration would key two entries (measured
+    2026-10-26 while wiring the folder probe: one side built ``"mode.camera"``
+    and the other ``"camera"``, so a fully cached folder looked empty to the
+    probe). So a str-SUBCLASS carrying a ``value`` uses that value; a plain
+    ``str`` keeps itself.
     """
     try:
-        if not isinstance(value, str):
-            enum_value = getattr(value, "value", None)
-            if enum_value is not None:
-                value = enum_value
+        enum_value = getattr(value, "value", None)
+        if enum_value is not None and (
+            not isinstance(value, str) or type(value) is not str
+        ):
+            value = enum_value
     except Exception:
         pass
     return _clean_text(value).lower()
@@ -195,18 +231,13 @@ def _identity_token(value) -> str:  # type: ignore[no-untyped-def]
 def _profile_axis_ids(profile) -> tuple[str, ...]:  # type: ignore[no-untyped-def]
     """The profile's axis SET, in profile order — never raises.
 
-    Accepts a ``MetricProfile``, a bare sequence of axis ids, or ``None``. The
-    axis SET is what the prompt asks the VLM to score, so two profiles that
-    differ (e.g. a mode base vs. the salience-derived superset) must not share a
-    cache entry.
+    Accepts a ``MetricProfile``, a bare sequence of axis ids, or ``None``. This is
+    the SET a scorecard answers (registry ids, then the axes the JUDGE NAMED as
+    ``name~<digest>``, the digest covering the definition/scale/direction the
+    prompt TEXT carries).
 
-    The axes the JUDGE NAMED are part of that set (plan-gallery-ai-judgement
-    P7-A): each is carried as ``name~<digest>``, where the digest covers the
-    definition/scale/direction that the prompt TEXT carries. A judge that names a
-    different axis — or redefines one — asked a different question, and its
-    scorecards must not be served from the previous answer. A registry-only
-    profile produces exactly the ids it always did, so existing entries stay
-    readable.
+    It is RECORDED with the entry (:func:`profile_record`), never keyed: see the
+    module docstring for why the profile left the cache identity on 2026-10-26.
     """
     try:
         ids = getattr(profile, "axis_ids", None)
@@ -234,6 +265,85 @@ def _profile_axis_ids(profile) -> tuple[str, ...]:  # type: ignore[no-untyped-de
         return ()
 
 
+def profile_record(profile) -> dict[str, object] | None:  # type: ignore[no-untyped-def]
+    """The profile a scorecard was built with, as READABLE metadata.
+
+    NOT part of the cache key (see :data:`_IDENTITY_FIELDS`): stored BESIDE the
+    identity so a reader can say which axes the numbers describe and which
+    instrument produced the axis set. Two halves, two lists, exactly as
+    ``metric_profile`` splits them:
+
+    - ``axes`` — the registry ids a local detector can also produce;
+    - ``judged`` — the names the judge itself gave to this series;
+    - ``definitions`` — ``{name: definition}`` for those names (the axis'
+      MEANING is what the prompt carried, so a redefinition is visible);
+    - ``source`` — where the axis set came from (``vlm`` | ``series`` |
+      ``heuristic``, the profile vocabulary — not a second one);
+    - ``mode`` — the normalized mode the profile was derived for.
+
+    ``None`` for an absent/unusable profile, so a provenance-free entry says so
+    instead of inventing an axis list. Never raises.
+    """
+    if profile is None:
+        return None
+    try:
+        if isinstance(profile, dict):
+            return dict(profile) or None
+    except Exception:
+        return None
+    try:
+        ids = getattr(profile, "axis_ids", None)
+        if ids is None:
+            # A bare sequence of ids (tests / a legacy caller) is still a profile
+            # worth recording — same tolerance as ``_profile_axis_ids``.
+            ids = profile if isinstance(profile, (tuple, list, set, frozenset)) else ()
+        ids = [
+            str(axis).strip().lower()
+            for axis in (ids or ())
+            if str(axis).strip()
+        ]
+        judged = [
+            str(getattr(entry, "name", "") or "").strip().lower()
+            for entry in (getattr(profile, "axis_entries", ()) or ())
+        ]
+        judged = [name for name in judged if name]
+        if not (ids or judged):
+            return None
+        definitions: dict[str, str] = {}
+        for entry in getattr(profile, "axis_entries", ()) or ():
+            name = str(getattr(entry, "name", "") or "").strip().lower()
+            if not name:
+                continue
+            text = str(getattr(entry, "definition", "") or "").strip()
+            if text:
+                # Truncated: the record answers "which axis", not "quote the
+                # prompt" — the full definition lives in the scorecard payload.
+                definitions[name] = text[:160]
+        return {
+            "axes": ids,
+            "judged": judged,
+            "definitions": definitions,
+            "source": _identity_token(getattr(profile, "source", "")),
+            "mode": _identity_token(getattr(profile, "mode", "")),
+        }
+    except Exception:
+        return None
+
+
+def recorded_profile(identity) -> dict[str, object] | None:  # type: ignore[no-untyped-def]
+    """The profile record carried by *identity* (``None`` when it carries none).
+
+    The mapping returned by :func:`analysis_cache_identity` carries the producing
+    profile under ``"profile"`` for the key-independent reasons in the module
+    docstring; this is the ONE reader (``save_analysis`` stores what it returns).
+    Never raises.
+    """
+    try:
+        return profile_record(identity.get("profile"))  # type: ignore[union-attr]
+    except Exception:
+        return None
+
+
 def analysis_cache_identity(
     settings=None,  # type: ignore[no-untyped-def]
     *,
@@ -249,10 +359,25 @@ def analysis_cache_identity(
     """The cache identity of one analysis: "what produced this scorecard".
 
     ``settings`` is an ``AiSettings`` (or ``None``); ``mode`` the gallery mode the
-    request was built for, ``profile`` the active ``MetricProfile`` (its axis ids
-    reach the prompt), ``reasoning_effort`` the effort sent with the request
-    (defaults to ``settings.reasoning_effort``), ``schema_version`` the prompt
-    revision (defaults to :data:`PROMPT_SCHEMA_VERSION`).
+    request was built for, ``profile`` the active ``MetricProfile``,
+    ``reasoning_effort`` the effort sent with the request (defaults to
+    ``settings.reasoning_effort``), ``schema_version`` the prompt revision
+    (defaults to :data:`PROMPT_SCHEMA_VERSION`).
+
+    The returned mapping has two kinds of keys, and the difference is the
+    contract:
+
+    - the KEY fields (:data:`_IDENTITY_FIELDS`) — model, base_url, mode, effort,
+      sampling (k/temperature/seed), the sampling depth and the prompt revision.
+      They are compared and hashed into the filename, so they define "the same
+      analysis".
+    - ``"profile"`` — the axis set this request asks about, as a RECORD
+      (:func:`profile_record`). It is NOT compared, NOT hashed and NOT part of
+      the payload identity: the axis set is the ANSWER, and re-rolling it must
+      not re-key an entry (see the module docstring). It travels here because the
+      identity is the ONE object every cache touch already carries, so the entry
+      can record what page it answered without a second parameter through
+      ``ai_analysis``.
 
     ``k`` / ``temperature`` / ``seed`` are the sampling configuration (plan P3-D,
     gate GA4). They default to the ``AiSettings`` values and are always PRESENT
@@ -302,11 +427,10 @@ def analysis_cache_identity(
         needed = max(1, int(draws if effective_k is None else effective_k))
     except (TypeError, ValueError):
         needed = draws
-    return {
+    identity: dict[str, object] = {
         "model": _clean_text(getattr(settings, "model", "")),
         "base_url": _clean_text(getattr(settings, "base_url", "")),
         "mode": _identity_token(mode),
-        "profile": ",".join(_profile_axis_ids(profile)),
         "reasoning_effort": _identity_token(effort) or "auto",
         "k": _number_token(draws, DEFAULT_SAMPLE_COUNT, cast=int),
         "effective_k": _number_token(needed, draws, cast=int),
@@ -314,6 +438,11 @@ def analysis_cache_identity(
         "seed": _number_token(drawn_seed, DEFAULT_SEED, cast=int),
         "prompt_schema_version": version,
     }
+    record = profile_record(profile)
+    if record is not None:
+        # Recorded, never keyed (see the docstring above and _IDENTITY_FIELDS).
+        identity["profile"] = record
+    return identity
 
 
 def _effective_k_int(identity) -> int:  # type: ignore[no-untyped-def]
@@ -577,6 +706,84 @@ def _remember_checked(item, signature) -> None:  # type: ignore[no-untyped-def]
         pass
 
 
+def folder_cache_probe(items, identity) -> dict:  # type: ignore[no-untyped-def]
+    """Which cards of ONE folder already answer *identity* — the folder gate.
+
+    The measured defect this closes (2026-10-26, ``task-analysis-phase-state``):
+    opening a folder paid a VLM profile call FIRST and only then asked the
+    per-card cache, so a fully analyzed folder still spent a probe image and a
+    round trip on every open (and, with the profile in the key, re-analyzed the
+    whole folder). The question "is this folder done under this identity" is
+    answerable BEFORE any paid step — the identity names the backend, the mode,
+    the sampling and the prompt revision, never the profile — so the caller can
+    stop at the probe.
+
+    Returns ``{total, cached, complete, missing, results}``:
+
+    - ``results`` maps ``str(path)`` → :class:`AiAnalysisResult` for every card
+      that has an entry (loaded through the ONE acceptance rule, so the probe can
+      never say "done" about an entry :func:`load_cached_analysis` would refuse);
+    - ``missing`` lists the items without one (in input order);
+    - ``complete`` is True only when every item has an entry (an empty folder is
+      NOT complete: there is no analysis to be done).
+
+    Never raises: any failure degrades to a miss (the caller re-analyzes).
+    """
+    try:
+        members = list(items or ())
+    except Exception:
+        members = []
+    results: dict[str, object] = {}
+    missing: list = []
+    for item in members:
+        try:
+            path = getattr(item, "path", None)
+        except Exception:
+            path = None
+        hit = None
+        try:
+            hit = load_cached_analysis(path, int(getattr(item, "mtime_ns", 0) or 0), identity)
+        except Exception:
+            hit = None
+        if hit is None:
+            missing.append(item)
+            continue
+        try:
+            results[str(path)] = hit
+        except Exception:
+            missing.append(item)
+    return {
+        "total": len(members),
+        "cached": len(results),
+        "complete": bool(members) and not missing,
+        "missing": missing,
+        "results": results,
+    }
+
+
+def recorded_profile_for(path: Path, mtime_ns: int, identity) -> dict | None:  # type: ignore[no-untyped-def]
+    """The profile record of the cached entry for ``(path, mtime_ns)``, if any.
+
+    The reader for "which axes do these numbers describe": the payload's
+    ``"profile"`` record (axes + judged names + source + mode), independent of
+    the current profile. ``None`` on a miss / an entry written before v5 or by a
+    caller that passed no profile. Never raises.
+    """
+    try:
+        cache_path = _cache_path(path, mtime_ns, identity)
+    except Exception:
+        return None
+    try:
+        data = json.loads(cache_path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    try:
+        record = data.get("profile")
+    except Exception:
+        return None
+    return profile_record(record) if isinstance(record, dict) else None
+
+
 def hydrate_item(item, identity) -> bool:  # type: ignore[no-untyped-def]
     """Fill ``item.analysis`` from the disk cache only (no worker, no settings).
 
@@ -706,6 +913,7 @@ def save_analysis(
         if canonical is None:
             logger.debug("Gallery AI cache write skipped: incomplete identity")
             return
+        record = recorded_profile(identity)
         try:
             produced = len(getattr(result, "axis_samples", ()) or ())
         except Exception:
@@ -792,6 +1000,14 @@ def save_analysis(
                     ],
                     "version": AI_CACHE_VERSION,
                     "identity": canonical,
+                    #: The profile this scorecard was BUILT WITH (2026-10-26):
+                    #: its registry axes, the judge's own names, the source that
+                    #: chose them and the mode. NOT part of ``identity`` — the
+                    #: axis set is the answer, not the question (module
+                    #: docstring), so an entry stays valid when the profile is
+                    #: re-derived; this record is what tells a reader which axes
+                    #: the numbers describe.
+                    "profile": record,
                 }
             ),
             encoding="utf-8",

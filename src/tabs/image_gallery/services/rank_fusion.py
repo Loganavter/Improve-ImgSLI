@@ -18,6 +18,16 @@ that ``use_cases/profile_select`` stores on the state (plan P1). This module
 delegates (``measured_axes_for``) so ranking, the AI scorecard, the card dots
 and the Jev vector read ONE axis set.
 
+**Two instruments, one axis list** (owner design, 2026-10-26
+``task-profile-granularity-and-axis-reporting``): a profile carries registry ids
+AND the axes the judge named in free form. Both are first-class and both rank —
+a judge-named axis has no local producer, so its number comes from the scorecard
+(``_judge_scores``) and its spread is compared against the STOCHASTIC noise floor
+(``AXIS_NOISE_FLOOR``), while a registry axis keeps its LOCAL number
+(``_record_scores`` / ``metrics``) and the detector floor. There is no
+reconciliation with the registry and no fabricated id: an axis whose value is a
+gap stays out of the weights (never 0) and the gap stays visible.
+
 Design rules (see ``plan-gallery-rank-backends-2026-10-15`` §Seam):
 
 - Only ``MetricKind.MEASURED`` axes contribute; ``RANK_EXCLUDED_AXES`` never
@@ -39,6 +49,8 @@ Design rules (see ``plan-gallery-rank-backends-2026-10-15`` §Seam):
   list — the axis set still comes from ``measured_axes_for``.
 - Deterministic: no timestamps, no dict-iteration order, no arrival order;
   ties break by ``str(item.path)``, idempotent under input permutation.
+
+Audit-Meta: pattern=compound-module size=exempt reason="one rank contract: the profile axis resolver (registry ids + the judge's own names), the two instrument readers (local detector / scorecard), the salience rule and the weighted fusion compute ONE order — splitting them lets the rank read a different axis set than the dots/prompt, which was exactly the 2026-10-26 defect (a profile of sharpness + three judged axes ranked on sharpness alone)"
 """
 
 from __future__ import annotations
@@ -112,38 +124,81 @@ _mode_id = mode_id
 
 
 def measured_axes_for(mode=None, *, profile=None) -> tuple[str, ...]:
-    """MEASURED registry axis ids of *profile* / *mode* (registry order).
+    """Every axis of the ACTIVE PROFILE — registry ids AND the judge's names.
 
-    ``profile`` (any object with ``.axis_ids``, canonically
-    ``metric_profile.MetricProfile``) wins when given — that is how the
-    salience-derived subset (plan P1) reaches the rank, the prompt and the
-    dots. Without it the mode-implied profile applies
+    Owner design (``task-profile-granularity-and-axis-reporting``, 2026-10-26):
+    "the axis set is the ACTIVE PROFILE'S OWN list — free-form names the judge
+    gave (name + definition + scale + direction) plus any registry ids the
+    profile carries. There is NO reconciliation with the internal registry:
+    free-form names are first-class, they carry the per-card numbers and they
+    rank."
+
+    So this resolver returns ``profile.axis_ids`` (registry half, pool-filtered
+    and ordered by ``metric_profile``) followed by the axes the judge NAMED
+    (``profile.axis_entries``), de-duplicated, in profile order. A local detector
+    is OPTIONAL enrichment for a registry axis and never a gate — a judge-named
+    axis has no local producer by construction, and it still ranks
+    (:func:`_axis_vector` reads its number from the scorecard).
+
+    ``profile`` (any object with ``.axis_ids`` / ``.axis_entries``, canonically
+    ``metric_profile.MetricProfile``) wins when given. Without one — or with one
+    that carries no axis at all — the mode-implied profile applies
     (``metric_profile.profile_for_mode``): untagged axes everywhere,
-    ``reference`` axes in ``fidelity`` only, ``photo`` axes in ``camera``
-    only; ``RANK_EXCLUDED_AXES`` and non-MEASURED axes never. An
-    unknown/empty *mode* yields the mode-independent (untagged) set.
+    ``reference`` axes in ``fidelity`` only, ``photo`` axes in ``camera`` only;
+    ``RANK_EXCLUDED_AXES`` and non-MEASURED axes never.
 
-    The axes the JUDGE named (``profile.axis_entries``) are deliberately NOT
-    returned (plan-gallery-ai-judgement P7-A): this resolver is the REGISTRY
-    half — the ids a local detector can produce — and the rows/fusion read it to
-    show and weight measured numbers. The judge's own axes have no local
-    producer; they are read through ``judged_axis_entries`` and labeled
-    ``measured-by-judge`` (``metric_profile.axis_provenance``). A profile with
-    judge entries and no registry id therefore falls back to the mode mapping
-    here (fail-open: the local pipeline always has an axis set), while the
-    scorecard prompt asks exactly the judge's axes.
+    The measured defect this closes (2026-10-26): the resolver used to return
+    ``axis_ids`` only, so a profile of ``axes=sharpness`` +
+    ``judged=contrast,color_saturation,grain`` ranked on sharpness ALONE while
+    three paid axes only labelled cards.
     """
     if profile is not None:
+        out: list[str] = []
         try:
-            axes = tuple(str(a) for a in (profile.axis_ids or ()))
+            for axis in tuple(getattr(profile, "axis_ids", ()) or ()):
+                name = str(axis)
+                if name and name not in out:
+                    out.append(name)
         except Exception:
-            axes = ()
-        if axes:
-            return axes
+            out = []
+        try:
+            for entry in tuple(getattr(profile, "axis_entries", ()) or ()):
+                name = str(getattr(entry, "name", "") or "").strip()
+                if name and name not in out:
+                    out.append(name)
+        except Exception:
+            pass
+        if out:
+            return tuple(out)
     return profile_for_mode(mode).axis_ids
 
 
-def axis_salience(vectors, *, noise_floor) -> dict[str, str]:
+def judge_axes_of(axes) -> tuple[str, ...]:
+    """The subset of *axes* no local detector can produce (the judge's own).
+
+    ``spec_for`` is the ONE registry lookup: an axis with no spec has no local
+    producer, so its number can only come from a scorecard and its spread has to
+    be compared against the STOCHASTIC noise floor (a judge moves 12-23 points
+    between two draws of the same picture, plan-gallery-ai-judgement J5), not the
+    deterministic detectors' 1-point quantization. Never raises.
+    """
+    out: list[str] = []
+    for axis in axes or ():
+        try:
+            name = str(axis)
+        except Exception:
+            continue
+        if not name:
+            continue
+        try:
+            if spec_for(name) is None and name not in out:
+                out.append(name)
+        except Exception:
+            continue
+    return tuple(out)
+
+
+def axis_salience(vectors, *, noise_floor, judge_noise_floor=None, judge_axes=()) -> dict[str, str]:
     """``{axis: "discriminating" | "inside-noise"}`` for one series.
 
     ``vectors`` is one ``{axis: 0..100 score}`` mapping per member of the series —
@@ -154,6 +209,12 @@ def axis_salience(vectors, *, noise_floor) -> dict[str, str]:
     cannot separate these variants: it must carry no rank weight (``rank_series``
     / ``build_measured_vector``) and must be rendered with that reason instead of
     a bare number (plan-gallery-ai-judgement M3).
+
+    A judge-named axis (:func:`judge_axes_of`) is measured by the STOCHASTIC
+    instrument, so its spread is compared against *judge_noise_floor* when one is
+    given (``AXIS_NOISE_FLOOR``): using the detector's 1-point floor there would
+    let sampling noise order the series. ``judge_noise_floor=None`` keeps the
+    single-floor behaviour every existing caller has.
 
     An axis carried by fewer than two members has no measured spread and reports
     ``discriminating``: "cannot be shown to move" is not "does not move", and
@@ -166,6 +227,16 @@ def axis_salience(vectors, *, noise_floor) -> dict[str, str]:
         floor = float(noise_floor)
     except (TypeError, ValueError):
         floor = AXIS_NOISE_FLOOR
+    judge_floor: float | None = None
+    if judge_noise_floor is not None:
+        try:
+            judge_floor = float(judge_noise_floor)
+        except (TypeError, ValueError):
+            judge_floor = None
+    try:
+        stochastic = {str(axis) for axis in (judge_axes or ())}
+    except Exception:
+        stochastic = set()
     values: dict[str, list[float]] = {}
     try:
         members = list(vectors or ())
@@ -189,8 +260,13 @@ def axis_salience(vectors, *, noise_floor) -> dict[str, str]:
         if len(numbers) < 2:
             out[axis] = DISCRIMINATING
             continue
+        axis_floor = (
+            judge_floor if (judge_floor is not None and axis in stochastic) else floor
+        )
         out[axis] = (
-            INSIDE_NOISE if (max(numbers) - min(numbers)) <= floor else DISCRIMINATING
+            INSIDE_NOISE
+            if (max(numbers) - min(numbers)) <= axis_floor
+            else DISCRIMINATING
         )
     return out
 
@@ -224,14 +300,73 @@ def _inside_noise_axes(verdicts) -> frozenset[str]:
     return frozenset(inside)
 
 
+def _judge_scores(item, axes) -> dict[str, float]:
+    """``{axis: 0..100}`` the JUDGE read for the judge-named axes of *axes*.
+
+    The second instrument (owner design 2026-10-26): a judge-named axis has no
+    local producer, so the scorecard IS its measurement — excluding it would rank
+    on the registry half alone while the paid axes only labelled cards. Only axes
+    with NO registry spec are read here: a registry axis keeps its LOCAL number
+    even when a scorecard also answered it (one axis, one instrument — mixing
+    them would make the Algorithms order silently depend on the VLM).
+    Numbers come from the item's scorecard (``models.ai_scored_axes`` over
+    ``analysis.axes``), with the per-image proposals as the fallback for a name
+    the ``axes`` map dropped. Never fabricates: a missing number stays a gap.
+    """
+    wanted = judge_axes_of(axes)
+    if not wanted:
+        return {}
+    try:
+        analysis = getattr(item, "analysis", None)
+    except Exception:
+        analysis = None
+    if analysis is None:
+        return {}
+    values: dict[str, int] = {}
+    try:
+        from tabs.image_gallery.models import ai_scored_axes
+
+        values = dict(ai_scored_axes(analysis))
+    except Exception:
+        values = {}
+    out: dict[str, float] = {}
+    for axis in wanted:
+        try:
+            if axis in values:
+                out[axis] = float(values[axis])
+        except (TypeError, ValueError):
+            continue
+    try:
+        proposals = tuple(getattr(analysis, "axis_proposals", ()) or ())
+    except Exception:
+        proposals = ()
+    for proposal in proposals:
+        try:
+            name = str(getattr(proposal, "name", "") or "")
+        except Exception:
+            continue
+        if not name or name not in wanted or name in out:
+            continue
+        try:
+            score = int(getattr(proposal, "score", -1))
+        except (TypeError, ValueError):
+            continue
+        if 0 <= score <= 100:
+            out[name] = float(score)
+    return out
+
+
 def _axis_vector(item, axes) -> dict[str, float]:
     """``{axis: 0..100}`` the item actually carries for *axes* (never fabricated).
 
     The item's engine record answers for the axes it covers (``status="ok"``,
     ``_record_scores``); when it covers none, the legacy raw ``item.metrics``
-    path answers. This is the ONE per-member vector: :func:`item_quality`
-    aggregates it and :func:`axis_salience` measures its spread, so "what an axis
-    says about this member" has a single definition.
+    path answers. Both are the LOCAL instrument, so only axes with a registry
+    spec take part in them. The axioms the fusion needs (never a fabricated 0,
+    never a blended instrument) are unchanged; the judge-named axes are added
+    from the scorecard when the local pass has nothing for them
+    (:func:`_judge_scores`) — an axis whose value is a gap stays out of the
+    vector, so it stays out of the weights.
     """
     vector: dict[str, float] = {}
     records = _record_scores(item)
@@ -239,20 +374,21 @@ def _axis_vector(item, axes) -> dict[str, float]:
         value = records.get(axis_id)
         if value is not None:
             vector[axis_id] = float(value)
-    if vector:
-        return vector
-    metrics = getattr(item, "metrics", None)
-    if not isinstance(metrics, dict) or not metrics:
-        return {}
-    for axis_id in axes:
-        spec = spec_for(axis_id)
-        if spec is None:
-            continue
-        got = raw_for(spec, metrics)
-        if got is None:
-            continue
-        _key, raw = got
-        vector[axis_id] = float(score_for(spec, raw))
+    if not vector:
+        metrics = getattr(item, "metrics", None)
+        if isinstance(metrics, dict) and metrics:
+            for axis_id in axes:
+                spec = spec_for(axis_id)
+                if spec is None:
+                    continue
+                got = raw_for(spec, metrics)
+                if got is None:
+                    continue
+                _key, raw = got
+                vector[axis_id] = float(score_for(spec, raw))
+    for axis_id, value in _judge_scores(item, axes).items():
+        if axis_id not in vector:
+            vector[axis_id] = float(value)
     return vector
 
 
@@ -390,6 +526,8 @@ def rank_series(items, *, mode=None, profile=None, pairwise_order=None) -> dict[
     verdicts = axis_salience(
         [_axis_vector(member, axes) for member in members],
         noise_floor=DETECTOR_NOISE_FLOOR,
+        judge_noise_floor=AXIS_NOISE_FLOOR,
+        judge_axes=judge_axes_of(axes),
     )
     excluded = _inside_noise_axes(verdicts)
     measured: list[tuple[float, str]] = []
@@ -442,6 +580,7 @@ __all__ = [
     "SALIENCE_VERDICTS",
     "axis_salience",
     "item_quality",
+    "judge_axes_of",
     "measured_axes_for",
     "rank_series",
 ]

@@ -213,6 +213,53 @@ def _clear_profile_reject(owner) -> None:
         logger.debug("metric profile reject state clear failed", exc_info=True)
 
 
+def _phase_recheck(owner) -> None:
+    """Re-evaluate the analysis phase on *owner* (a tail-settle seam).
+
+    Module-level and duck-typed for the same reason as
+    ``_stamp_profile_consumed`` / ``_note_profile_reject``: the thin-owner tests
+    bind real controller methods onto ``SimpleNamespace`` doubles, which carry no
+    sibling methods — a phase re-check must therefore be optional, and its absence
+    must never break the tail it follows. Never raises.
+    """
+    fn = getattr(owner, "_maybe_announce_done", None)
+    if not callable(fn):
+        return
+    try:
+        fn()
+    except Exception:
+        logger.debug("analysis phase re-check failed", exc_info=True)
+
+
+def _announce_phase_done(owner) -> None:
+    """Ask *owner* to announce the metrics phase — through its phase gate.
+
+    The single call site (``proxy_pass._apply_triage_result``) must not stamp
+    "done" itself any more (2026-10-26, ``task-analysis-phase-state``): the owner
+    decides whether the AI tail is still ahead. Lives here, next to
+    ``_phase_recheck``, so the use-case module stays inside its file-size budget
+    and a legacy double (no ``_announce_metrics_done``) keeps the pre-change
+    behaviour. Never raises.
+    """
+    fn = getattr(owner, "_announce_metrics_done", None)
+    if callable(fn):
+        try:
+            fn()
+        except Exception:
+            logger.debug("metrics-done phase announce failed", exc_info=True)
+        return
+    done = getattr(getattr(owner, "widget", None), "set_triage_done", None) or getattr(
+        getattr(getattr(owner, "widget", None), "toolbar", None),
+        "set_triage_done",
+        None,
+    )
+    try:
+        if callable(done):
+            done()
+    except Exception:
+        logger.debug("toolbar.set_triage_done failed", exc_info=True)
+
+
 def _refresh_continue_action(owner) -> None:
     """Re-register the judge-run continue row from the live ceiling state.
 
@@ -283,6 +330,18 @@ class GalleryController:
         #: resolve before it starts the AI/Jev tails (P5). Consumed exactly
         #: once by ``_resume_settle_after_profile``.
         self._profile_settle_pending_gen: int | None = None
+        #: Analysis PHASE state (2026-10-26, ``task-analysis-phase-state``): a
+        #: folder's pipeline is not "done" when the local metrics settle — the AI
+        #: tail (profile / scorecards / rank) still runs after it. These three
+        #: markers are the FACTS the phase is derived from (never an intent flag),
+        #: so no announce site can claim completion for work that is still ahead:
+        #: ``_ai_tail_started_gen`` (the settle dispatched its AI tails),
+        #: ``_jev_inflight_gen`` (a rank batch is running) and
+        #: ``_done_held_gen`` (the metrics-done announcement was held for the AI
+        #: tail and must be re-announced when it settles).
+        self._ai_tail_started_gen: int = -1
+        self._jev_inflight_gen: int = -1
+        self._done_held_gen: int = -1
 
         # Folder generation whose METRICS pass has settled. The winner (★ BEST)
         # is only marked after settle — before that the fusion rank is
@@ -400,6 +459,11 @@ class GalleryController:
         self._folder_gen += 1
         # Fresh world: the winner marker is not settled for the new folder.
         self._metrics_settled_gen = -1
+        # Fresh world: the analysis-PHASE markers belong to the folder that left
+        # (a held "done" announcement from it must never fire for this one).
+        self._ai_tail_started_gen = -1
+        self._jev_inflight_gen = -1
+        self._done_held_gen = -1
         # Fresh world: the declared-stage ledger is invalidated — a completed
         # ``jev_rank`` fingerprint from the previous folder must never block the
         # new folder's pass (S2/J1).
@@ -645,6 +709,9 @@ class GalleryController:
                     )
                 except Exception:
                     pass
+                # The honest count beside the source: how many axes the judge
+                # named and how many of them a local detector can also produce.
+                GalleryController._trace_axis_provenance(self, profile)
             return profile
         except Exception:
             logger.debug("metric profile refresh failed", exc_info=True)
@@ -673,6 +740,78 @@ class GalleryController:
             logger.debug("metric profile clear failed", exc_info=True)
 
     # -- VLM metric-profile selector (P2, plan-adaptive-metric-profiles) -----
+
+    def _folder_analysis_probe(self, items) -> dict:
+        """Ask the disk whether THIS identity already answers the whole folder.
+
+        The folder-level gate (2026-10-26, ``task-analysis-phase-state``): the
+        analysis identity names the backend, the mode, the sampling and the
+        prompt revision — NOT the profile — so "is this folder done" is
+        answerable before the selector, the analyze tail or the ranker spend
+        anything. Every hit is loaded through the ONE acceptance rule
+        (``ai_cache.folder_cache_probe``), so a "complete" verdict can never
+        disagree with the per-card read that follows it. Never raises: a failure
+        degrades to an empty probe (the caller behaves as before).
+        """
+        try:
+            from tabs.image_gallery.services import ai_cache
+            from tabs.image_gallery.use_cases.ai_analyze import analysis_identity_for
+
+            identity = analysis_identity_for(self)
+            return ai_cache.folder_cache_probe(items, identity)
+        except Exception:
+            logger.debug("folder analysis probe failed", exc_info=True)
+            return {"total": 0, "cached": 0, "complete": False, "missing": [], "results": {}}
+
+    def _hydrate_from_probe(self, probe) -> int:
+        """Fill items from a folder probe's hits — a HIT is a read, not a call.
+
+        The probe already loaded the scorecards, so this is the apply half: no
+        second disk read, no request. Returns how many cards were filled. Never
+        raises (a broken card is left for the normal per-item path).
+        """
+        results = {}
+        try:
+            results = dict((probe or {}).get("results") or {})
+        except Exception:
+            results = {}
+        if not results:
+            return 0
+        try:
+            items = list(getattr(self.state, "items", ()) or ())
+        except Exception:
+            items = []
+        filled = 0
+        touched = []
+        for item in items:
+            try:
+                if getattr(item, "analysis", None) is not None:
+                    continue
+                hit = results.get(str(getattr(item, "path", "")))
+            except Exception:
+                continue
+            if hit is None:
+                continue
+            try:
+                from tabs.image_gallery.models import AnalysisStatus
+
+                item.analysis = hit
+                item.analysis_status = AnalysisStatus.DONE
+                item.analysis_error = None
+                filled += 1
+                touched.append(item)
+            except Exception:
+                continue
+        if touched:
+            try:
+                self.widget.refresh_cards(touched)
+            except Exception:
+                for it in touched:
+                    try:
+                        self.widget.refresh_card(it)
+                    except Exception:
+                        pass
+        return filled
 
     def _run_profile_select_on_settle(self) -> None:
         """Kick the VLM metric-profile selector from the metrics-settled boundary.
@@ -724,23 +863,49 @@ class GalleryController:
         if len(items) < 2:
             _ai_debug("metric profile skip: %d item(s) (<2) — nothing to select", len(items))
             return
-        # Nothing to re-key: the profile is an ANALYSIS-CACHE IDENTITY, so when
-        # every item already carries a scorecard (a warm folder: hydrated from
-        # disk or analyzed under the current axis set) a selector answer cannot
-        # re-point a single call — it can only burn one probe image per open.
-        # Measured live 2026-10-22: every warm reopen of a fully analyzed folder
-        # emitted exactly one image POST that never applied. The AI tail is
-        # cache-first, so a warm matrix is a normal state, not a corner case.
-        try:
-            if all(getattr(it, "analysis", None) is not None for it in items):
-                _ai_debug(
-                    "metric profile skip: matrix already analyzed (items=%d) — "
-                    "a selector answer could not re-key any call",
-                    len(items),
-                )
-                return
-        except Exception:
-            pass
+        # Nothing to re-key: the profile is not an analysis-cache identity any
+        # more (2026-10-26), so the question is not "would a selector answer
+        # re-point a call" but "does every card already have an entry for THIS
+        # identity" — the folder-level probe. When it does, the run is DONE: no
+        # profile request, no analyze, no probe image. Measured before this: a
+        # warm reopen of a fully analyzed folder still emitted one image POST per
+        # open, and (with the profile in the key) re-analyzed the folder.
+        #
+        # A legacy double without the probe keeps the pre-change warm-matrix
+        # behaviour (every item already carries its analysis): the skip must not
+        # depend on the probe existing.
+        probe_fn = getattr(self, "_folder_analysis_probe", None)
+        probe = {"complete": False}
+        if callable(probe_fn):
+            try:
+                probe = probe_fn(items)
+            except Exception:
+                probe = {"complete": False}
+        else:
+            try:
+                probe = {
+                    "complete": bool(items)
+                    and all(getattr(it, "analysis", None) is not None for it in items)
+                }
+            except Exception:
+                probe = {"complete": False}
+        if probe.get("complete"):
+            hydrate = getattr(self, "_hydrate_from_probe", None)
+            filled = 0
+            if callable(hydrate):
+                try:
+                    filled = int(hydrate(probe))
+                except Exception:
+                    filled = 0
+            _ai_debug(
+                "analysis cache complete: %d/%d entries for this identity — no "
+                "profile request, no analyze (gen=%s, filled=%d)",
+                int(probe.get("cached", 0) or 0),
+                int(probe.get("total", 0) or 0),
+                self._folder_gen,
+                filled,
+            )
+            return
         # A profile already CONSUMED for this generation is frozen: P5 stamps it
         # once an AI payload was built, so a reply arriving now is rejected by
         # ``_apply_profile_outcome`` anyway — asking for it is pure cost.
@@ -864,6 +1029,10 @@ class GalleryController:
         except Exception:
             pending = None
         if pending is None:
+            # No deferred tail: the settle dispatched its own tails. Still a
+            # tail-settle seam for the phase announcement (a held "done" whose
+            # only pending fact was the selector's gate release).
+            _phase_recheck(self)
             return
         try:
             if int(pending) != int(gen):
@@ -888,6 +1057,9 @@ class GalleryController:
             _triage_run._run_jev_on_settle(self)
         except Exception:
             logger.debug("settle tail resume after profile failed", exc_info=True)
+        # The deferred tails just ran: re-evaluate the phase (the analyze/rank
+        # facts they set are what the held "done" waits for).
+        _phase_recheck(self)
 
     def _mark_profile_consumed(self) -> None:
         """Freeze this folder generation's profile once an AI call was built (P5).
@@ -1015,6 +1187,7 @@ class GalleryController:
             # P5 precedence: the judge's own choice won over the series offer —
             # the trace says which source decided, not merely which axes won.
             _ai_debug("profile source: %s — %s", describe_source(self.state), line)
+            GalleryController._trace_axis_provenance(self, profile)
         except Exception:
             logger.debug("metric profile describe failed", exc_info=True)
         try:
@@ -1090,12 +1263,58 @@ class GalleryController:
 
         members_of = GalleryController._section_members
         ranked_ids: set[int] = set()
+        # Per-SERIES axis sets (2026-10-26, ``task-profile-granularity``): with
+        # more than one series the folder-wide profile is the SEED — each series
+        # reads its own registry half from its own spreads and keeps the judge's
+        # axes, so an axis that does not move inside a series carries no weight
+        # there. One series is the folder; there is nothing to resolve.
+        folder_profile = getattr(self.state, "metric_profile", None)
+        per_series: dict[int, object] = {}
+        if len(groups) > 1:
+            try:
+                from tabs.image_gallery.use_cases.profile_ai import (
+                    per_series_profiles as _per_series,
+                )
+
+                for group, prof in _per_series(
+                    groups,
+                    mode=mode,
+                    seed=folder_profile,
+                    has_reference=bool(getattr(self.state, "source_path", None)),
+                ):
+                    per_series[id(group)] = prof
+            except Exception:
+                logger.debug("per-series profile resolution failed", exc_info=True)
+                per_series = {}
+        logged_series: set[int] = set()
         for entry in groups:
             members = members_of(entry)
             if not members:
                 continue
             for m in members:
                 ranked_ids.add(id(m))
+            series_profile = per_series.get(id(entry), folder_profile)
+            if len(groups) > 1 and id(entry) not in logged_series:
+                # One line per series: WHICH axes this series was ordered on, and
+                # where the set came from (evidence vs the folder's judge answer).
+                logged_series.add(id(entry))
+                try:
+                    # Local import: the later ``fusion ranks`` trace binds the
+                    # same name, which makes it function-local (UnboundLocal
+                    # otherwise) — one import site inside this block is cheapest.
+                    from tabs.image_gallery.services.ai_client import _ai_debug as _trace
+                    from tabs.image_gallery.services.metric_profile import (
+                        format_profile as _format_profile,
+                    )
+
+                    _trace(
+                        "series profile: id=%s members=%d %s",
+                        getattr(entry, "id", "?") if hasattr(entry, "id") else "?",
+                        len(members),
+                        _format_profile(series_profile),
+                    )
+                except Exception:
+                    logger.debug("series profile trace failed", exc_info=True)
             try:
                 # The STORED metric profile (plan P1) selects the axes — the
                 # same set the dots, the prompt and the Jev vector read. Without
@@ -1103,7 +1322,7 @@ class GalleryController:
                 ranks = _rank(
                     members,
                     mode=mode,
-                    profile=getattr(self.state, "metric_profile", None),
+                    profile=series_profile,
                     pairwise_order=pairwise_order,
                 )
             except Exception:
@@ -1227,6 +1446,9 @@ class GalleryController:
             _vp.resort_after_rank_change(self)
         except Exception:
             logger.debug("resort after fusion ranks failed", exc_info=True)
+        # Phase checkpoint (2026-10-26): a re-rank is a tail-settle seam — the held
+        # "done" may land here (or stay held while a scorecard/rank is in flight).
+        _phase_recheck(self)
 
     def _refresh_ranks_visible(self) -> None:
         """Ranks/BEST render only once the ranking is FINAL for this folder.
@@ -1251,6 +1473,15 @@ class GalleryController:
                     break
         except Exception:
             pending = False
+        # An in-flight AI tail is the same fact at the RUN level (2026-10-26): a
+        # fusion rank produced before the profile/scorecards/rank settled is
+        # provisional, so the number must not be presented as final either.
+        try:
+            tail = getattr(self, "_ai_tail_pending", None)
+            if callable(tail) and tail():
+                pending = True
+        except Exception:
+            pass
         setter = getattr(getattr(self, "widget", None), "set_ranks_visible", None)
         if callable(setter):
             try:
@@ -1504,6 +1735,22 @@ class GalleryController:
         # payload (a visible run of pure cache HITs must not freeze the profile).
         # ``cache_only`` is the domain-switch path (no new request for metrics
         # the other backend already produced).
+        #
+        # Phase state (2026-10-26): this IS the settle's AI-tail dispatch, so it
+        # marks the generation's tail as STARTED. From here the phase reads the
+        # in-flight facts (scorecards / rank batch) instead of holding for a tail
+        # that is merely still ahead — an all-cache folder therefore reaches "done"
+        # as soon as the rank pass decides, not never.
+        try:
+            from tabs.image_gallery.use_cases.action_context import (
+                BACKEND_AI,
+                current_backend,
+            )
+
+            if current_backend(self) == BACKEND_AI:
+                self._ai_tail_started_gen = int(self._folder_gen)
+        except Exception:
+            logger.debug("AI tail start stamp failed", exc_info=True)
         return _ai_analysis._run_ai_for_visible(self, cache_only=cache_only)
 
     # -- AI domain ranker: Jev (TypeSafe System One) -----------------------
@@ -1528,12 +1775,27 @@ class GalleryController:
         """
         if str(getattr(self, "_judgment_domain", "algorithms") or "").strip().lower() != "ai":
             return
+
+        def _tail_decided() -> None:
+            """The rank tail has decided (scheduled or refused) for this generation.
+
+            Phase state (2026-10-26): the settle's AI tails are dispatched by the
+            time the ranker decides, so the held "done" may be re-evaluated —
+            scheduled ⇒ the batch keeps it held, refused ⇒ nothing is ahead.
+            """
+            try:
+                self._ai_tail_started_gen = int(self._folder_gen)
+            except Exception:
+                pass
+            _phase_recheck(self)
+
         try:
             groups = list(getattr(self.state, "series", None) or [])
         except Exception:
             groups = []
         if not groups:
             _ai_debug("jev ranks: no series — nothing to rank")
+            _tail_decided()
             return
         mode = getattr(self.state, "mode", None)
         try:
@@ -1588,6 +1850,7 @@ class GalleryController:
                 "jev ranks: series=%d scheduled=0 (too-small=%d not-visible=%d partial=%d)",
                 len(groups), small, hidden, partial,
             )
+            _tail_decided()
             return
         scope = self._folder_gen
         fingerprint = GalleryController._jev_series_fingerprint(ready, mode)
@@ -1604,12 +1867,14 @@ class GalleryController:
                 "trigger is remembered and re-run on finish) series=%d",
                 len(ready),
             )
+            _tail_decided()
             return
         _ai_debug(
             "jev ranks: series=%d scheduled=%d (too-small=%d not-visible=%d partial=%d)",
             len(groups), len(ready), small, hidden, partial,
         )
         GalleryController._launch_jev_batch(self, ready, scope)
+        _tail_decided()
 
     # -- Jev batch plumbing (S2/J1) -----------------------------------------
 
@@ -1690,9 +1955,22 @@ class GalleryController:
                 pending = gate.finished(_JEV_STAGE, scope, ok=not progress["fault"])
                 if pending:
                     GalleryController._rerun_jev_rank_pass(self, pending, scope)
+                else:
+                    # The batch (and any re-run) released the stage: this is the
+                    # rank tail settling, so the held phase announcement may land.
+                    try:
+                        if int(getattr(self, "_jev_inflight_gen", -1)) == int(scope):
+                            self._jev_inflight_gen = -1
+                    except Exception:
+                        pass
+                    _phase_recheck(self)
             except Exception:
                 logger.debug("jev gate finished failed", exc_info=True)
 
+        try:
+            self._jev_inflight_gen = int(scope)
+        except Exception:
+            pass
         for members, _vector in ready:
             try:
                 self._run_jev_rank_for_series(members, on_complete=_complete)
@@ -2108,8 +2386,27 @@ class GalleryController:
         Reads the ACTUAL ``rank_source`` of the ranked members — never the
         intended domain: an AI domain that degraded to the Algorithms rank must
         say "Algorithms", not "AI (Jev)". Falls back to the judgment domain when
-        nothing is ranked yet. Never raises.
+        nothing is ranked yet.
+
+        A PENDING AI tail wins over any of that (2026-10-26,
+        ``task-analysis-phase-state``): while a profile request, a scorecard or a
+        rank batch of this generation is still in flight, the fusion numbers on
+        screen are provisional, so the chip says "Analyzing" instead of presenting
+        ``fusion`` as the final ranker (the owner's card chip read "алг" and later
+        "ИИ" for the same run). Never raises.
         """
+        try:
+            pending_probe = getattr(self, "_ai_tail_pending", None)
+            if callable(pending_probe) and pending_probe():
+                from tabs.image_gallery.ui.stats_strip import RANK_SOURCE_PENDING
+
+                self.widget.set_rank_provenance(
+                    RANK_SOURCE_PENDING,
+                    domain=str(getattr(self, "_judgment_domain", "algorithms")),
+                )
+                return
+        except Exception:
+            logger.debug("pending provenance check failed", exc_info=True)
         src = ""
         try:
             for entry in (getattr(self.state, "series", None) or ()):
@@ -2129,6 +2426,200 @@ class GalleryController:
         except Exception:
             logger.debug("rank provenance refresh failed", exc_info=True)
 
+    def _trace_axis_provenance(self, profile=None) -> None:
+        """State HOW MANY axes came from the judge and how many a detector covers.
+
+        "N axes from the judge, M of them also have a local detector" (owner design
+        2026-10-26): the count is a fact about the profile in hand, and stating it
+        is what stops "the judge named 5 axes" from silently meaning "3 of them will
+        never carry a local number". The log line and the strip's tooltip read the
+        same numbers (:func:`profile_ai.axis_count_report`), never a rounded claim.
+        Never raises.
+        """
+        if profile is None:
+            try:
+                profile = getattr(self.state, "metric_profile", None)
+            except Exception:
+                profile = None
+        try:
+            from tabs.image_gallery.use_cases.profile_ai import (
+                axis_count_report,
+                describe_axis_provenance,
+            )
+
+            counts = axis_count_report(profile)
+            _ai_debug("profile axes: %s", describe_axis_provenance(profile))
+        except Exception:
+            logger.debug("axis provenance trace failed", exc_info=True)
+            return
+        strip = getattr(getattr(self, "widget", None), "stats_strip", None)
+        setter = getattr(strip, "set_axis_counts", None)
+        if not callable(setter):
+            return
+        try:
+            setter(
+                counts.get("judged", 0),
+                counts.get("judged_with_local_detector", 0),
+                counts.get("registry", 0),
+            )
+        except Exception:
+            logger.debug("axis provenance strip update failed", exc_info=True)
+
+    # -- analysis phase state (metrics settled != analysis finished) --------
+
+    def _ai_tail_reasons(self) -> tuple[str, ...]:
+        """Which AI tails of THIS folder generation are still pending (facts).
+
+        Derived, never a toggled intent flag — each entry is an observable fact
+        (``task-analysis-phase-state`` phase 2):
+
+        - ``profile`` — the VLM axis-set selection is in flight;
+        - ``analyze`` — a scorecard payload of this generation is in flight
+          (``analysis_batch``, the same ledger the terminal rank reads);
+        - ``rank`` — a Jev rank batch is running;
+        - ``ahead`` — the settle's AI tails have not been dispatched yet and the
+          folder still has cards without a scorecard (a warm, fully cached folder
+          is already answered, so it is not "ahead" of anything).
+
+        Empty off the AI domain and with AI unconfigured: the local/algorithmic
+        pipeline has no AI tail at all, so it is done when its metrics settle.
+        Never raises.
+        """
+        try:
+            # The DECLARED accessor (G2: one validated domain read), compared with
+            # the vocabulary constant (G10: no ad-hoc ``== "ai"`` gate).
+            from tabs.image_gallery.use_cases.action_context import (
+                BACKEND_AI,
+                current_backend,
+            )
+
+            if current_backend(self) != BACKEND_AI:
+                return ()
+            settings = self._ai_settings_store.load()
+        except Exception:
+            return ()
+        try:
+            from tabs.image_gallery.use_cases.profile_ai import ai_selector_available
+
+            if not ai_selector_available(settings):
+                return ()
+        except Exception:
+            return ()
+        try:
+            gen = int(getattr(self, "_folder_gen", 0) or 0)
+        except Exception:
+            return ()
+        reasons: list[str] = []
+        try:
+            pending_profile = getattr(self, "_profile_settle_pending_gen", None)
+            if pending_profile is not None and int(pending_profile) == gen:
+                reasons.append("profile")
+        except Exception:
+            pass
+        try:
+            from tabs.image_gallery.use_cases import analysis_batch
+
+            if int(analysis_batch.pending(self) or 0) > 0:
+                reasons.append("analyze")
+        except Exception:
+            pass
+        try:
+            if int(getattr(self, "_jev_inflight_gen", -1)) == gen:
+                reasons.append("rank")
+        except Exception:
+            pass
+        try:
+            started = int(getattr(self, "_ai_tail_started_gen", -1))
+        except Exception:
+            started = -1
+        if started != gen:
+            try:
+                items = list(getattr(self.state, "items", ()) or ())
+                if any(getattr(it, "analysis", None) is None for it in items):
+                    reasons.append("ahead")
+            except Exception:
+                pass
+        return tuple(reasons)
+
+    def _ai_tail_pending(self) -> bool:
+        """True while an AI tail of this folder generation still has work ahead."""
+        return bool(self._ai_tail_reasons())
+
+    def _announce_metrics_done(self) -> None:
+        """Announce the metrics pass finished — or hold it for the AI tail.
+
+        The measured defect (2026-10-26, ``task-analysis-phase-state``):
+        ``proxy_pass`` stamped "done" when the METRICS phase ended, so the app
+        announced a finished analysis and cleared its badge, and the AI tail then
+        restarted it — the card chip said "алг" and moments later "ИИ" for the
+        same run. The phase is therefore a STATE, not a moment: with an AI tail
+        pending the announcement is held (and said in the trace + shown as the
+        pending chip), and ``_maybe_announce_done`` announces it when the tail
+        actually settles. Never raises.
+        """
+        reasons = self._ai_tail_reasons()
+        if reasons:
+            try:
+                self._done_held_gen = int(getattr(self, "_folder_gen", 0) or 0)
+            except Exception:
+                self._done_held_gen = -1
+            try:
+                _ai_debug(
+                    "triage done held: metrics done, AI pending (%s) gen=%s",
+                    ",".join(reasons),
+                    getattr(self, "_folder_gen", "?"),
+                )
+            except Exception:
+                pass
+            try:
+                GalleryController._refresh_rank_provenance(self)
+            except Exception:
+                logger.debug("pending provenance refresh failed", exc_info=True)
+            return
+        self._stamp_triage_done()
+
+    def _stamp_triage_done(self) -> None:
+        """The ONE "done" announce: retire the local badge/spinner. Never raises."""
+        try:
+            if hasattr(self.widget, "set_triage_done"):
+                self.widget.set_triage_done()  # type: ignore[attr-defined]
+            elif hasattr(self.widget, "toolbar") and hasattr(
+                self.widget.toolbar, "set_triage_done"
+            ):
+                self.widget.toolbar.set_triage_done()  # type: ignore[attr-defined]
+        except Exception:
+            logger.debug("widget.set_triage_done failed", exc_info=True)
+
+    def _maybe_announce_done(self) -> None:
+        """Announce the held metrics-done once the AI tail is quiet. Never raises.
+
+        Called from every tail-settle seam (a scorecard delivered, the profile
+        resolved, a rank batch released, the settle's tails dispatched). A hold
+        that belongs to another generation is dropped, not announced: the new
+        folder owns its own phase.
+        """
+        try:
+            held = int(getattr(self, "_done_held_gen", -1))
+            gen = int(getattr(self, "_folder_gen", 0) or 0)
+        except Exception:
+            return
+        if held != gen:
+            return
+        if self._ai_tail_pending():
+            return
+        self._done_held_gen = -1
+        try:
+            _ai_debug(
+                "triage done: metrics and AI tail settled (gen=%s)", gen
+            )
+        except Exception:
+            pass
+        self._stamp_triage_done()
+        try:
+            GalleryController._refresh_rank_provenance(self)
+        except Exception:
+            logger.debug("post-tail provenance refresh failed", exc_info=True)
+
     def _begin_analysis(self, ctx, item: GalleryItem) -> None:
         from tabs.image_gallery.use_cases import ai_analysis as _ai_analysis
 
@@ -2142,7 +2633,13 @@ class GalleryController:
     def _on_analysis_ready(self, path: Path, mtime_ns: int, result, gen: int | None = None, epoch: int | None = None) -> None:
         from tabs.image_gallery.use_cases import ai_analysis as _ai_analysis
 
-        return _ai_analysis._on_analysis_ready(self, path, mtime_ns, result, gen, epoch=epoch)
+        outcome = _ai_analysis._on_analysis_ready(
+            self, path, mtime_ns, result, gen, epoch=epoch
+        )
+        # A scorecard of this generation settled: re-evaluate the analysis PHASE
+        # (the held "done" may land, or the terminal rank may still be ahead).
+        _phase_recheck(self)
+        return outcome
 
     def _refresh_open_quick_look(self) -> None:
         from tabs.image_gallery.use_cases import ai_analysis as _ai_analysis
@@ -2152,7 +2649,11 @@ class GalleryController:
     def _on_analysis_error(self, path: Path, error_info, gen: int | None = None, epoch: int | None = None) -> None:
         from tabs.image_gallery.use_cases import ai_analysis as _ai_analysis
 
-        return _ai_analysis._on_analysis_error(self, path, error_info, gen, epoch=epoch)
+        outcome = _ai_analysis._on_analysis_error(self, path, error_info, gen, epoch=epoch)
+        # A failed card ends its in-flight slot too — the phase must see it, or a
+        # held "done" would wait for work that will never arrive.
+        _phase_recheck(self)
+        return outcome
 
     # -- Ask AI (A3 entry points + A4 async/cache/generation guard) ------------
 

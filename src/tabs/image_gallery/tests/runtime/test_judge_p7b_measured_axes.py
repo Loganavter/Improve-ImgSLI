@@ -354,11 +354,19 @@ def test_a_small_measured_floor_keeps_an_axis_the_constant_would_suppress():
 
 
 # ---------------------------------------------------------------------------
-# (e) the cache identity: same axis set HITS, a different one MISSES
+# (e) the cache identity: the axis set is RECORDED, never keyed (2026-10-26)
 # ---------------------------------------------------------------------------
 
 
-def test_the_cache_identity_hits_the_same_axis_set_and_misses_another(tmp_path, monkeypatch):
+def test_the_cache_identity_records_the_axis_set_instead_of_keying_it(tmp_path, monkeypatch):
+    """Inverted on purpose by ``task-analysis-phase-state`` (2026-10-26).
+
+    The profile used to be part of the identity, so a re-rolled axis set was a
+    MISS for every card of the folder (measured 3 HIT / 7 MISS on 10 images whose
+    entries were all on disk). The identity now names the backend/mode/sampling/
+    prompt revision; the axis set is RECORDED with the entry, so a hit still says
+    which axes its numbers describe and the numbers/draws survive the re-roll.
+    """
     from tabs.image_gallery.services import ai_cache
 
     monkeypatch.setattr(ai_cache, "ai_cache_dir", lambda: tmp_path)
@@ -375,7 +383,9 @@ def test_the_cache_identity_hits_the_same_axis_set_and_misses_another(tmp_path, 
     identity = analysis_cache_identity(None, mode="camera", profile=same)
     assert identity == analysis_cache_identity(None, mode="camera", profile=same_again)
     other_identity = analysis_cache_identity(None, mode="camera", profile=other)
-    assert identity != other_identity
+    # The key fields are equal (one folder = one backend configuration) while the
+    # recorded records differ — that is the whole point of the split.
+    assert ai_cache.recorded_profile(identity) != ai_cache.recorded_profile(other_identity)
 
     path = Path("/gallery/frame.png")
     result = AiAnalysisResult(
@@ -393,7 +403,13 @@ def test_the_cache_identity_hits_the_same_axis_set_and_misses_another(tmp_path, 
     assert hit is not None
     assert hit.axes[FREE.name] == 73, "a HIT keeps the free axis' number"
     assert hit.axis_samples, "a HIT keeps the draws the floor reads"
-    assert load_cached_analysis(path, 7, other_identity) is None, (
-        "a different axis set asked a different question"
+    crossed = load_cached_analysis(path, 7, other_identity)
+    assert crossed is not None, (
+        "a different axis set is the SAME question about this file — serving it is "
+        "the fix, not a bug (the recorded profile names the axes it answered)"
     )
-    assert AI_CACHE_VERSION >= 3
+    record = ai_cache.recorded_profile_for(path, 7, other_identity)
+    assert record is not None and FREE.name in record["judged"], (
+        f"the entry records the judge axes it was built with (got {record!r})"
+    )
+    assert AI_CACHE_VERSION >= 5

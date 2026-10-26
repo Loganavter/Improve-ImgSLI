@@ -880,6 +880,17 @@
       }
     },
     {
+      "path": "src/tabs/image_gallery/services/rank_fusion.py",
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=compound-module size=exempt reason=\"one rank contract: the profile axis resolver (registry ids + the judge's own names), the two instrument readers (local detector / scorecard), the salience rule and the weighted fusion compute ONE order — splitting them lets the rank read a different axis set than the dots/prompt, which was exactly the 2026-10-26 defect (a profile of sharpness + three judged axes ranked on sharpness alone)\"",
+      "parsed": {
+        "pattern": "compound-module",
+        "size": "exempt",
+        "reason": "one rank contract: the profile axis resolver (registry ids + the judge's own names), the two instrument readers (local detector / scorecard), the salience rule and the weighted fusion compute ONE order — splitting them lets the rank read a different axis set than the dots/prompt, which was exactly the 2026-10-26 defect (a profile of sharpness + three judged axes ranked on sharpness alone)"
+      }
+    },
+    {
       "path": "src/tabs/image_gallery/tab.py",
       "limit": 500,
       "marker": "Audit-Meta:",
@@ -1202,6 +1213,17 @@
       "parsed": {
         "pattern": "pairwise-rank",
         "reason": "one pairwise subsystem: the unordered verdict cache key, the swap verdict and the pass that spends against the shared judge ceiling cannot be split without letting the key and the reservation drift apart — a second module would recreate the same seam this task was scoped to have ONE of (board 2026-10-25)"
+      }
+    },
+    {
+      "path": "src/tabs/image_gallery/use_cases/profile_ai.py",
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=compound-module size=exempt reason=\"one selector decision chain: parse → the 3..8/`why` acceptance gate → the ONE retry → the pin with its source → the offer fallback. Splitting the gate from the retry (or the pin from the answer) lets one side accept a profile the other refuses — the 2026-10-26 defect was exactly a thin answer accepted silently\"",
+      "parsed": {
+        "pattern": "compound-module",
+        "size": "exempt",
+        "reason": "one selector decision chain: parse → the 3..8/`why` acceptance gate → the ONE retry → the pin with its source → the offer fallback. Splitting the gate from the retry (or the pin from the answer) lets one side accept a profile the other refuses — the 2026-10-26 defect was exactly a thin answer accepted silently"
       }
     },
     {
