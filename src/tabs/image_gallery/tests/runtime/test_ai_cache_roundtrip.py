@@ -63,7 +63,12 @@ def test_round_trip_carries_quality_and_reason(tmp_path, monkeypatch):
     assert stored["axis_notes"] == {"noise": "coarse film grain"}
     assert stored["axes"]["ssim"] == 72
     assert stored["version"] == ai_cache.AI_CACHE_VERSION
-    assert stored["identity"] == IDENTITY
+    # The payload's identity is the KEY form (the profile travels under
+    # "profile" and is recorded, not keyed — 2026-10-26).
+    assert stored["identity"] == {
+        field: IDENTITY[field] for field in ai_cache.IDENTITY_FIELDS
+    }
+    assert stored["profile"]["axes"] == ["sharpness", "noise"]
 
 
 def test_pre_scorecard_cache_is_a_miss_not_an_ai_read(tmp_path, monkeypatch):

@@ -133,7 +133,9 @@ def _order(ranks: dict) -> list:
 def test_pin_prevents_a_second_call_and_returns_the_same_profile(tmp_path):
     items = _scattered()
     cache = ProfileCache(tmp_path)
-    transport = _Transport([_chat({"axes": ["sharpness", "noise"]})])
+    # A COMPLETE answer: the rule is 3..8 axes (a 2-axis reply is retried, then
+    # refused with a WARN — ``task-profile-granularity-and-axis-reporting``).
+    transport = _Transport([_chat({"axes": ["sharpness", "noise", "exposure"]})])
 
     first = choose_profile_sync(
         items, mode="camera", settings=_settings(), cache=cache, client_call=transport
@@ -147,19 +149,19 @@ def test_pin_prevents_a_second_call_and_returns_the_same_profile(tmp_path):
     # A VLM profile is EXACTLY the pool ids the model chose: it may legitimately
     # be NARROWER than the mode base (dropping an irrelevant axis is the point of
     # the feature). Only the heuristic fallback guarantees the mode base.
-    assert set(first.axis_ids) == {"sharpness", "noise"}
+    assert set(first.axis_ids) == {"sharpness", "noise", "exposure"}
     assert set(first.axis_ids) <= set(MEASURED_POOL)
 
     payload = transport.calls[0]["payload"]
     assert payload.get("response_format") == {"type": "json_object"}
     content = payload["messages"][-1]["content"]
     text = content[0]["text"]
-    # P7-A (owner revision 2026-10-22): the text offers axis EXAMPLES with their
-    # meanings and asks for 3..8 free axes — the pool is no longer a menu.
+    # Owner design 2026-10-26: the text carries the measured EVIDENCE of this
+    # series and the 3..8 rule — it names no axis of its own (the examples menu
+    # is gone for good).
     assert "ONLY from this list" not in text
     assert "from 3 to 8" in text.lower()
-    for name, meaning in profile_ai.AXIS_EXAMPLES:
-        assert name in text and meaning in text
+    assert "EVIDENCE" in text and "why" in text
     images = [part for part in content if part.get("type") == "image_url"]
     assert 2 <= len(images) <= len(items), "the probe sends the deviant members as images"
 
@@ -173,7 +175,14 @@ def test_unknown_ids_are_dropped_never_fabricated():
     assert profile.source == "vlm"
 
 
-def test_junk_reply_degrades_to_the_series_offer_and_is_not_pinned(tmp_path):
+def test_junk_reply_degrades_to_the_series_offer_and_pins_it(tmp_path):
+    """One folder resolves ONE profile (2026-10-26), fallback included.
+
+    The junk reply is not retried (a second identical request has no reason to
+    answer better) and is never pinned AS the judge's answer — what is pinned is
+    the series offer the run actually used, with its own source, so the next pass
+    does not re-ask.
+    """
     items = _scattered()
     cache = ProfileCache(tmp_path)
     transport = _Transport([_chat("I cannot help with that."), _chat("still prose")])
@@ -192,7 +201,11 @@ def test_junk_reply_degrades_to_the_series_offer_and_is_not_pinned(tmp_path):
     assert first == derive_profile(items, mode="camera")
     assert set(first.axis_ids) == {"sharpness", "noise"}
     assert "white_balance" not in first.axis_ids
-    assert len(transport.calls) == 2, "a malformed reply must not be pinned (it may retry)"
+    assert second == first
+    assert len(transport.calls) == 1, (
+        "the resolved offer is the folder's profile: the second pass is served "
+        "from the pin instead of paying for another (junk) request"
+    )
 
 
 def test_transport_failure_degrades_to_the_series_offer(tmp_path):
@@ -229,7 +242,7 @@ def test_ai_unavailable_makes_no_call(tmp_path):
 
 def test_the_vlm_profile_reaches_dots_axes_and_the_rank(tmp_path):
     items = _scattered()
-    transport = _Transport([_chat({"axes": ["noise", EXTRA]})])
+    transport = _Transport([_chat({"axes": ["noise", EXTRA, "sharpness"]})])
     profile = choose_profile_sync(
         items, mode="batch_synthetic", settings=_settings(),
         cache=ProfileCache(tmp_path), client_call=transport,

@@ -406,15 +406,15 @@ def _apply_triage_result(owner, series, source, mode) -> None:
         owner.widget.set_triage(series, mode, source)
     except Exception:
         logger.debug("widget.set_triage failed", exc_info=True)
-    # A1: hide toolbar scanning spinner
+    # A1: hide the spinner through the PHASE gate, never directly (2026-10-26,
+    # ``task-analysis-phase-state``): the METRICS phase ending is not the analysis
+    # ending — the AI tail still runs, so the owner announces (or holds) "done".
     try:
-        # Prefer widget helper, fallback to toolbar directly
-        if hasattr(owner.widget, "set_triage_done"):
-            owner.widget.set_triage_done()  # type: ignore[attr-defined]
-        elif hasattr(owner.widget, "toolbar") and hasattr(owner.widget.toolbar, "set_triage_done"):
-            owner.widget.toolbar.set_triage_done()  # type: ignore[attr-defined]
+        from tabs.image_gallery.controller import _announce_phase_done as _phase_done
+
+        _phase_done(owner)
     except Exception:
-        logger.debug("toolbar.set_triage_done failed", exc_info=True)
+        logger.debug("metrics-done announce failed", exc_info=True)
     try:
         fingerprint = _analysis_fingerprint(
             list(owner.state.items), source

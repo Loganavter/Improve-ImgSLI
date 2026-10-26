@@ -272,17 +272,33 @@ def test_identity_rejects_a_different_mode(tmp_path, monkeypatch) -> None:
     assert ai_cache.load_cached_analysis(path, mtime, _identity(mode="fidelity")) is None
 
 
-def test_identity_rejects_a_different_profile(tmp_path, monkeypatch) -> None:
-    _cache_dir(tmp_path, monkeypatch)
+def test_a_different_profile_is_not_a_miss_and_is_recorded(
+    tmp_path, monkeypatch
+) -> None:
+    """The axis set is the ANSWER, not part of the question (2026-10-26).
+
+    Inverted on purpose: the profile used to be in the identity, so a re-rolled
+    heuristic offer re-keyed every card and a fully analyzed folder re-analyzed
+    (measured 3 HIT / 7 MISS on 10 images with 10 entries on disk). The identity
+    now names the backend/mode/sampling/prompt revision; the entry RECORDS which
+    axes it answered (``"profile"``), so a reader still knows the axes.
+    """
+    cache = _cache_dir(tmp_path, monkeypatch)
     path, mtime = Path("/gallery/a.png"), 7
     ai_cache.save_analysis(path, mtime, _result(), _identity())
 
-    assert (
-        ai_cache.load_cached_analysis(
-            path, mtime, _identity(profile=("sharpness", "noise"))
-        )
-        is None
+    other = _identity(profile=("sharpness", "noise"))
+    hit = ai_cache.load_cached_analysis(path, mtime, other)
+    assert hit is not None, (
+        "a different axis set must not re-key the entry: the profile is recorded "
+        "beside it, not hashed into the filename"
     )
+    record = ai_cache.recorded_profile_for(path, mtime, other)
+    assert record is not None and record["axes"] == list(PROFILE), (
+        "the entry must say WHICH axes its numbers describe "
+        f"(got {record!r})"
+    )
+    assert cache.is_dir()
 
 
 def test_identity_rejects_a_different_reasoning_effort(tmp_path, monkeypatch) -> None:
@@ -331,14 +347,20 @@ def test_identity_ignores_the_api_key_and_has_no_secret() -> None:
 def test_payload_stores_the_identity_but_never_the_api_key(tmp_path, monkeypatch) -> None:
     cache = _cache_dir(tmp_path, monkeypatch)
     path, mtime = Path("/gallery/a.png"), 7
-    ai_cache.save_analysis(path, mtime, _result(), _identity())
+    identity = _identity()
+    ai_cache.save_analysis(path, mtime, _result(), identity)
 
     files = list(cache.glob("*.json"))
     assert len(files) == 1
     text = files[0].read_text(encoding="utf-8")
     data = json.loads(text)
 
-    assert data["identity"] == _identity()
+    # The payload carries the KEY fields (the profile travels under "profile"
+    # instead — it is recorded, not keyed; see the module docstring).
+    assert data["identity"] == {
+        field: identity[field] for field in ai_cache.IDENTITY_FIELDS
+    }
+    assert data["profile"]["axes"] == list(PROFILE)
     assert "sk-secret-value" not in text
     assert "api_key" not in data
     assert "api_key" not in data["identity"]

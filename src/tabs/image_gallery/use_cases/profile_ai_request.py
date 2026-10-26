@@ -6,11 +6,23 @@ of ``use_cases/profile_ai`` so that module stays under the file-size limit
 callers use, so the frozen import surface (and ``profile_ai.__all__``) is
 unchanged.
 
-The prompt contract is unchanged by the move (plan-gallery-ai-judgement
-§OWNER REVISION 2026-10-22): EXAMPLES of what an axis can be (never a menu), the
-salience summary, and the 3..8 free-form rule. ``_as_list`` and ``_attr`` live
-here because the request builder is their widest consumer; ``profile_ai``
-imports them back.
+The prompt contract (owner design 2026-10-26,
+``task-profile-granularity-and-axis-reporting``):
+
+- **no example axes at all.** The old EXAMPLES list was deleted: a labelled menu
+  of concrete axis names is what the model anchored on, and it made the paid
+  answer a guess dressed as a measurement. The SHAPE (name + definition + scale
+  + direction + why) is stated in the schema instead;
+- **the EVIDENCE is first and is the bulk**: the per-axis local spreads for THIS
+  series and the per-probe scores, so every named axis can be tied to a
+  difference that was actually observed;
+- the 3..8 free-form rule and the salience summary (registry ids are evidence,
+  never a menu);
+- every axis must carry a ``why`` (which variants differ on it and how); the
+  parser refuses an answer that leaves one empty (one retry, then the offer).
+
+``_as_list`` and ``_attr`` live here because the request builder is their widest
+consumer; ``profile_ai`` imports them back.
 
 The BUDGET is answer reserve + reasoning allowance
 (:func:`profile_request_budget`), not the bare estimator that starved this
@@ -22,25 +34,6 @@ imported inside the functions that need them and fail open.
 """
 
 from __future__ import annotations
-
-
-#: Example axes for the selector prompt: ``(name, one-line meaning)``.
-#:
-#: SHAPE, not a menu (plan-gallery-ai-judgement §OWNER REVISION 2026-10-22). The
-#: owner's own examples ("чистота, галлюцинации, бандинг, баланс белого, JPEG шум")
-#: are here as the English equivalents the app's prompts are written in, and the
-#: prompt says in one clause that none of them has to be taken. Each one names
-#: WHAT it measures, so the model copies the shape (a dimension, not a label)
-#: rather than picking from a list.
-AXIS_EXAMPLES: tuple[tuple[str, str], ...] = (
-    ("clarity", "how clean the picture reads — residual grain, blotches and smudge"),
-    ("hallucination", "detail the processing invented that the source cannot support"),
-    ("banding", "stepped tone transitions in smooth gradients (sky, skin, walls)"),
-    ("white_balance", "a colour cast that pushes every neutral warm or cool"),
-    ("jpeg_noise", "8x8 block edges and mosquito noise around high-contrast edges"),
-    ("halation", "a red or orange glow bleeding past bright edges"),
-    ("posterization", "tones flattened into visible bands, lost micro-contrast"),
-)
 
 
 def _as_list(items) -> list:
@@ -167,68 +160,96 @@ def _apply_profile_openrouter_hardening(payload: dict, base_url, model, effort) 
     return payload
 
 
-def _selector_text(salience) -> str:
-    """The single text part: axis EXAMPLES, the salience summary, the 3..8 rule.
+def _selector_text(salience, corrective: str = "") -> str:
+    """The single text part: the EVIDENCE first, the shape rule, the 3..8 rule.
 
-    The pool listing that used to open this text ("METRIC POOL — choose axis ids
-    ONLY from this list") is gone (plan-gallery-ai-judgement P7-A): the judge
-    names the axes in free form. The salience summary stays — it is the concrete
-    "most differentiating" evidence for THIS series, and a registry id named there
-    is an axis a local detector can measure too, so the judge is told to reuse the
-    id when its own axis is that dimension.
+    Owner design (2026-10-26): the examples list is GONE — the prompt names no
+    axis of its own. What it carries instead is what was actually observed on
+    THIS series: the per-axis local spread (with the scores it sits between) and
+    each probe image's own per-axis score, so the model can tie every axis it
+    names to a difference it can point at. *corrective* appends the retry's
+    demand (used after a reply that was thin or left a ``why`` empty).
     """
     lines = [
-        "The pictures below are variants of ONE picture (upscalers, restorations, "
-        "denoisers). The content is identical across them, so an axis about the "
-        "scene or the subject cannot separate them — axes about TECHNICAL "
-        "quality and artefacts can.",
+        "The attached pictures are variants of ONE picture (upscalers, "
+        "restorations, denoisers). The content is identical across them, so an "
+        "axis about the scene or the subject cannot separate them — an axis "
+        "describes a TECHNICAL difference between these files.",
         "",
-        "EXAMPLES of what an axis can be — the SHAPE of a good axis, NOT A MENU. "
-        "You are not obliged to take any of these: name your own if they fit "
-        "these pictures better. Each example is a NAME and one line saying what "
-        "it measures:",
+        "EVIDENCE (measured locally on THIS series; it is the only ground truth "
+        "you have, and it is where the useful axes come from):",
     ]
-    for name, meaning in AXIS_EXAMPLES:
-        lines.append(f"- {name} — {meaning}")
-    lines.append("")
-    lines.append("SALIENCE SUMMARY (members, adaptive probe size k, axes by spread):")
-    lines.append(_summary_text(salience))
+    lines.extend(_evidence_lines(salience))
     lines.append("")
     lines.append(
-        "INSTRUCTION: look at THESE pictures and name FROM 3 TO 8 axes, in free "
-        "form — the ones that most differentiate these variants, i.e. the axes "
-        "whose value actually MOVES between them (an axis every variant shares "
-        "equally is useless here). The salience summary above already names the "
-        "measurable axes whose spread separates this series; if your axis IS one "
-        "of those, answer with its id so the local detector scores it too."
+        "INSTRUCTION: from the evidence above and the images themselves, name "
+        "FROM 3 TO 8 axes — the ones that most differentiate THESE variants, i.e. "
+        "the axes whose value actually MOVES between them (an axis every variant "
+        "shares equally is useless here). The evidence already names the measured "
+        "axes whose spread separates this series; if your axis IS one of those, "
+        "answer with its id so the local detector scores it too. An axis you "
+        "cannot tie to an observed difference does not belong in the answer."
     )
     lines.append(
-        'Reply with ONLY a JSON object: {"axes": [{"name": "<short id, e.g. '
-        'jpeg_noise>", "definition": "<one line: what it measures, 0 = …, 100 = '
-        '…>", "scale": "0-100", "direction": "higher-is-better|'
-        'lower-is-better"}]}'
+        'Reply with ONLY a JSON object: {"axes": [{"name": "<short id>", '
+        '"definition": "<one line: what it measures, 0 = …, 100 = …>", '
+        '"scale": "0-100", "direction": "higher-is-better|lower-is-better", '
+        '"why": "<which of these variants differ on it, and how — quote the '
+        'evidence or the visible difference>"}]}'
     )
     lines.append(
-        'A bare id (e.g. "noise") is also accepted for an axis the summary lists. '
-        "No prose, no code fences."
+        "A bare id is also accepted for an axis the evidence lists, but a JSON "
+        "object with a definition and a why is the expected answer. No prose, no "
+        "code fences."
     )
+    if corrective:
+        lines.append("")
+        lines.append(corrective)
     return "\n".join(lines)
 
 
-def _summary_text(salience) -> str:
+def _evidence_lines(salience) -> list[str]:
+    """The evidence block: series shape, per-axis spread, per-probe scores."""
     try:
         members = int((salience or {}).get("members", 0) or 0)
         k = int((salience or {}).get("k", 0) or 0)
         rows = list((salience or {}).get("axes", []) or [])
     except Exception:
-        return "members=0 k=0 axes=-"
-    parts = []
+        return ["members=0 k=0 — no measured evidence"]
+    out = [f"series: {members} members, probed {k}"]
+    if not rows:
+        out.append("no measured axis separates this series")
     for row in rows:
         try:
-            parts.append(f"{row.get('id')}:{float(row.get('spread', 0.0)):g}")
+            axis_id = str(row.get("id", "") or "")
+            spread = float(row.get("spread", 0.0) or 0.0)
         except Exception:
             continue
-    return f"members={members} k={k} axes=" + (", ".join(parts) or "-")
+        text = f"- {axis_id}: spread {spread:g}"
+        try:
+            low = row.get("low")
+            high = row.get("high")
+        except Exception:
+            low = high = None
+        if low is not None and high is not None:
+            text += f" (scores {int(low)}…{int(high)})"
+        out.append(text)
+    probes = []
+    try:
+        probes = list((salience or {}).get("probes", []) or [])
+    except Exception:
+        probes = []
+    if probes:
+        out.append("each attached image, by the same measured axes:")
+        for row in probes:
+            try:
+                name = str(row.get("path", "") or "").rsplit("/", 1)[-1]
+                scores = dict(row.get("scores") or {})
+            except Exception:
+                continue
+            body = ", ".join(f"{axis}={int(value)}" for axis, value in scores.items())
+            out.append(f"- {name}: {body or '(no measured value)'}")
+    return out
 
 
 #: Probe edge for the PROFILE SELECTOR, independent of the per-card setting.
@@ -240,6 +261,16 @@ def _summary_text(salience) -> str:
 PROFILE_PROBE_MAX_EDGE = 512
 
 
+#: Demand appended to the ONE retry when the first answer was unusable (a thin
+#: reply, an axis with no ``why``). Stated once, in the words the rule is stated
+#: in: no example axes, no menu — only the count and the evidence tie.
+REPLY_RETRY_NOTE = (
+    "Your previous answer was unusable: it named fewer than 3 or more than 8 "
+    "axes, or an axis carried no `why`. Answer again with 3 to 8 axes, each one "
+    "tied by `why` to a difference the evidence or the images actually show."
+)
+
+
 def build_profile_request(
     probe_items,
     *,
@@ -248,6 +279,7 @@ def build_profile_request(
     effort: str = "auto",
     max_tokens: int = 0,
     base_url: str = "",
+    corrective: str = "",
 ) -> dict:
     """The one user message: axis examples + salience text, then one image each.
 
@@ -262,9 +294,14 @@ def build_profile_request(
     hardening the per-card analyze call always had and this request was missing
     (the 2026-10-26 starved-budget defect). Probe images are downscaled through
     ``vlm._encode_image``; an unreadable image is skipped, never fatal.
+
+    *corrective* is the ONE retry's demand (:data:`REPLY_RETRY_NOTE`), appended
+    after the instruction; the first request passes nothing.
     """
     probes = _as_list(probe_items)
-    content: list[dict] = [{"type": "text", "text": _selector_text(salience)}]
+    content: list[dict] = [
+        {"type": "text", "text": _selector_text(salience, corrective)}
+    ]
     try:
         from tabs.image_gallery.services.vlm import _encode_image
     except Exception:

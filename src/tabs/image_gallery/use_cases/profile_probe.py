@@ -236,12 +236,20 @@ def probe_members(items, *, k=None, reference_path=None, axes=None) -> tuple:
     return tuple(item for _deviation_value, _path, item in scored[:size])
 
 
-def salience_summary(items, *, axes=None, top_n=SALIENCE_TOP_N) -> dict:
-    """Compact ``{members, k, axes}`` block for the probe request.
+def salience_summary(items, *, axes=None, top_n=SALIENCE_TOP_N, probes=None) -> dict:
+    """Compact EVIDENCE block for the probe request.
 
-    ``axes`` is ``[{"id", "spread"}]`` sorted by spread descending, ties in
-    registry (pool) order (``profile_select.salience_axes``), truncated to
-    *top_n*. ``k`` is the adaptive probe size for the same series.
+    ``axes`` is ``[{"id", "spread", "low", "high"}]`` sorted by spread descending,
+    ties in registry (pool) order (``profile_select.salience_axes``), truncated to
+    *top_n*. ``low``/``high`` are the 0–100 scores the spread was measured between,
+    so the prompt can state the observed difference instead of a bare number.
+    ``k`` is the adaptive probe size for the same series.
+
+    *probes* (the member list ``probe_members`` selected) adds ``probes``: one row
+    per attached image with its own per-axis score, which is what lets the model
+    tie an axis to a difference it can SEE in the evidence instead of guessing
+    (owner design 2026-10-26: the examples list is gone, the measured evidence is
+    the bulk of the request). Absent probes keep the pre-change shape.
     """
     members = _as_list(items)
     rows = salience_axes(members)
@@ -254,11 +262,181 @@ def salience_summary(items, *, axes=None, top_n=SALIENCE_TOP_N) -> dict:
         limit = SALIENCE_TOP_N
     if limit >= 0:
         rows = rows[:limit]
-    return {
+    spanned: list[dict] = []
+    for axis_id, spread in rows:
+        scores = [
+            score
+            for score in (_score_of(member, axis_id) for member in members)
+            if score is not None
+        ]
+        spanned.append(
+            {
+                "id": axis_id,
+                "spread": float(spread),
+                "low": int(min(scores)) if scores else None,
+                "high": int(max(scores)) if scores else None,
+            }
+        )
+    summary: dict = {
         "members": len(members),
         "k": adaptive_k(members),
-        "axes": [{"id": axis_id, "spread": float(spread)} for axis_id, spread in rows],
+        "axes": spanned,
     }
+    probe_rows = _as_list(probes)
+    if probe_rows:
+        keep = {row["id"] for row in spanned}
+        summary["probes"] = [
+            {
+                "path": _path_key(probe),
+                "scores": {
+                    axis_id: score
+                    for axis_id, score in (
+                        (axis_id, _score_of(probe, axis_id)) for axis_id in keep
+                    )
+                    if score is not None
+                },
+            }
+            for probe in probe_rows
+        ]
+    return summary
+
+
+def evidence_axis_ids(summary) -> tuple[str, ...]:
+    """Axes the summary carries evidence for (``spread > 0``), in its order.
+
+    "Evidence" means the local pass measured a DIFFERENCE on this axis for this
+    series — the only thing a paid axis-naming call may be anchored on
+    (owner design 2026-10-26). An empty tuple means there is nothing to ask
+    about: the caller must not spend a request. Never raises.
+    """
+    try:
+        rows = list((summary or {}).get("axes", ()) or ())
+    except Exception:
+        return ()
+    out: list[str] = []
+    for row in rows:
+        try:
+            axis_id = str(row.get("id", "") or "")
+            spread = float(row.get("spread", 0.0) or 0.0)
+        except Exception:
+            continue
+        if axis_id and spread > 0.0:
+            out.append(axis_id)
+    return tuple(out)
+
+
+def per_series_profile(
+    members,
+    *,
+    mode=None,
+    seed=None,
+    domain=None,
+    has_reference: bool = False,
+):
+    """The axis set for ONE series of a multi-group folder — the seed is the folder answer.
+
+    Owner design (2026-10-26, ``task-profile-granularity-and-axis-reporting``):
+    the plan is folder → SERIES → domain, but the pipeline resolved ONE profile
+    per folder from ``adaptive_k`` probes and applied it to every series. This
+    resolver gives each series its own axis set with the folder's answer as the
+    SEED:
+
+    - the REGISTRY half is the series' own offer
+      (``metric_profile.profile_for_series`` over this series' spreads), so an
+      axis that does not move inside this series is not weighted here;
+    - the JUDGE half is the seed's (the folder-level answer is a choice about the
+      whole batch — its free-form axes are asked of every card), carried verbatim;
+    - when this series has no discriminating local measurement at all, the seed's
+      registry ids are the answer (fail-open, exactly like the folder path);
+    - the SOURCE stays honest: ``vlm`` when the seed carries the judge's axes
+      (the choice was the judge's), else this series' offer source.
+
+    Pure and deterministic; never raises (any failure degrades to the seed or the
+    mode mapping).
+    """
+    from tabs.image_gallery.services.metric_profile import (
+        PROFILE_SOURCE_SERIES,
+        PROFILE_SOURCE_VLM,
+        MetricProfile,
+        axis_spreads,
+        profile_for_series,
+    )
+
+    try:
+        rows = list(members or ())
+    except Exception:
+        rows = []
+    try:
+        spreads = axis_spreads(rows)
+    except Exception:
+        spreads = {}
+    try:
+        offer = profile_for_series(
+            spreads, mode=mode, has_reference=has_reference, domain=domain
+        )
+    except Exception:
+        offer = None
+    seed_entries = tuple(getattr(seed, "axis_entries", ()) or ())
+    seed_ids = tuple(getattr(seed, "axis_ids", ()) or ())
+    if offer is not None and str(getattr(offer, "source", "")) == PROFILE_SOURCE_SERIES:
+        axis_ids = tuple(offer.axis_ids)
+        salient = tuple(offer.salient_axes)
+        source = PROFILE_SOURCE_VLM if seed_entries else str(offer.source)
+    else:
+        # Nothing separates this series locally: the folder answer is the seed.
+        axis_ids = seed_ids or (tuple(offer.axis_ids) if offer is not None else ())
+        salient = ()
+        source = str(getattr(seed, "source", "") or (offer.source if offer else "heuristic"))
+    try:
+        return MetricProfile(
+            axis_ids=axis_ids,
+            mode=mode if mode is not None else getattr(seed, "mode", ""),
+            source=source,
+            salient_axes=salient,
+            axis_entries=seed_entries,
+        )
+    except Exception:
+        return seed if seed is not None else offer
+
+
+def per_series_profiles(
+    groups,
+    *,
+    mode=None,
+    seed=None,
+    domain=None,
+    has_reference: bool = False,
+) -> list:
+    """``[(group, MetricProfile)]`` for every series of a multi-group folder.
+
+    One row per group, in the caller's order, so the ranker can score each series
+    on its own axis set (see :func:`per_series_profile`) while the trace names the
+    axes per series. A single-group folder is not special-cased here: the caller
+    reads the folder profile directly when it has one group. Never raises.
+    """
+    out: list = []
+    try:
+        rows = list(groups or ())
+    except Exception:
+        rows = []
+    for entry in rows:
+        try:
+            members = list(getattr(entry, "members", entry) or ())
+        except Exception:
+            members = []
+        out.append(
+            (
+                entry,
+                per_series_profile(
+                    members,
+                    mode=mode,
+                    seed=seed,
+                    domain=domain,
+                    has_reference=has_reference,
+                ),
+            )
+        )
+    return out
 
 
 __all__ = [
@@ -267,6 +445,9 @@ __all__ = [
     "PROBE_MAX_K",
     "SALIENCE_TOP_N",
     "adaptive_k",
+    "evidence_axis_ids",
+    "per_series_profile",
+    "per_series_profiles",
     "probe_members",
     "reference_choice",
     "salience_summary",
