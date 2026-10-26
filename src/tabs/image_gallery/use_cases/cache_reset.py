@@ -80,9 +80,20 @@ The earlier version deliberately kept them ("their keys change anyway") and the
 result read as a partial reset — a pinned rank or brief survived and looked
 like a stale measurement.
 
-The scope is the WHOLE POOL, not the menu selection: a per-card reset leaves
-every other card's numbers in place, which is indistinguishable from "nothing
-happened" (owner report 2026-10-22). Callers pass ``paths=None``.
+The scope is the ACTION's, and it comes from the ONE resolver
+(``use_cases.action_context.build_context``): a three-card selection zeroes
+those three cards. Until 2026-10-27 this module forced the whole pool here
+("a per-card reset leaves every other card's numbers in place, which is
+indistinguishable from 'nothing happened'", owner report 2026-10-22) — but the
+owner's newer report is the opposite experience: "Почему я выделил 3
+изображения, а он экшн повесил на все, которые есть в вкладке?" A mass action
+that silently widens to every card is the same defect class as
+``next(iter(selected_paths))``, only in the other direction. The measured
+stores are still swept whole (an adapter owns a namespace keyed by
+series/pair/content identity, not by one card's path), so a scoped reset drops
+the disk caches but clears the VISIBLE state of the targets only; the pool-wide
+form remains available to maintenance callers as ``clear_metrics_caches(owner)``
+with ``paths=None``.
 
 Audit-Meta: pattern=reset-barrier size=535 reason="one reset contract: the two current-work tokens, every in-memory/on-disk clear and the visible re-stamp must happen in ONE order (token first, then clear, then repaint); splitting them lets a delivery land between the steps — the exact defect the barrier removes."
 """
@@ -456,11 +467,16 @@ def clear_metrics_caches(owner, *, paths=None) -> dict:
 
 
 def reset_metrics_caches(owner, *, paths=None) -> dict:
-    """Clear the caches, then RE-ENTER the triage rebuild. Never raises.
+    """Clear the caches, then stop. Never raises.
 
-    ``paths`` is accepted for API compatibility but a RESET is always the whole
-    pool (owner decision 2026-10-22): a scoped reset left the rest of the grid
-    looking untouched, which reads as a broken button.
+    ``paths`` is the ACTION's scope, passed through verbatim: the menu /
+    registry entries hand the resolved ``ActionContext.targets`` here, so a
+    three-card selection zeroes three cards. ``paths=None`` (the whole pool) is
+    now reached only by an explicit maintenance call — no per-card control
+    passes it any more (owner report 2026-10-27: "Почему я выделил 3
+    изображения, а он экшн повесил на все, которые есть в вкладке?"; the
+    previous version forced ``paths=None`` here, so every entry that had
+    correctly resolved a scope threw it away).
 
     OWNER DECISION 2026-10-22: the action ZEROES, it does not re-run. The
     earlier version re-entered the triage rebuild, so the numbers (and with them
@@ -472,7 +488,6 @@ def reset_metrics_caches(owner, *, paths=None) -> dict:
 
     ``summary["requeued"]`` is kept for callers and is always ``False``.
     """
-    paths = None
     summary = clear_metrics_caches(owner, paths=paths)
     summary["requeued"] = False
     return summary

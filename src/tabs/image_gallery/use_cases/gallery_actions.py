@@ -138,6 +138,13 @@ def reset_metrics(owner, ctx: ActionContext):
 
     An empty context is REFUSED — the old call site widened it to ``paths=None``
     (whole pool), i.e. a mass operation the user never asked for.
+
+    Owner report 2026-10-27 ("Почему я выделил 3 изображения, а он экшн повесил
+    на все, которые есть в вкладке?") settled the scope question the other way:
+    a mass action IS the selection. The pool-wide clearing this function used to
+    do (owner decision 2026-10-22) therefore left the action and is now a
+    maintenance-only call (``cache_reset.clear_metrics_caches(owner)``) that no
+    per-card control reaches.
     """
     refusal = _guard(ctx)
     if refusal is not None:
@@ -145,10 +152,7 @@ def reset_metrics(owner, ctx: ActionContext):
     from tabs.image_gallery.use_cases import cache_reset as _cache_reset
 
     try:
-        # Owner decision 2026-10-22: a reset zeroes the WHOLE pool — the scope
-        # of the menu (one card, a selection) made the rest of the grid look
-        # untouched, which read as "the reset does nothing".
-        return _cache_reset.reset_metrics_caches(owner, paths=None)
+        return _cache_reset.reset_metrics_caches(owner, paths=list(ctx.targets))
     except Exception:
         return Refusal(REFUSAL_NO_HANDLER, ctx.targets, "metrics reset failed")
 

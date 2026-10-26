@@ -221,13 +221,12 @@ def test_selected_paths_normalizes_strings_and_hides_mirror_types() -> None:
     assert action_scope.selected_paths(owner) == [Path("/b.png"), Path("/a.png")]
 
 
-def test_reset_metrics_zeroes_the_whole_pool(monkeypatch) -> None:
-    """Owner decision 2026-10-22: the reset is pool-wide, not selection-scoped.
+def test_reset_metrics_adapter_passes_the_resolved_targets(monkeypatch) -> None:
+    """The legacy ``_ctx_reset_metrics`` adapter forwards the ONE resolver's scope.
 
-    A per-card reset left every other card's numbers in place, which reads as a
-    broken button ("сброс всё так же не сбрасывает все метрики везде"). The
-    resolved scope still names the right owner; it is simply not the reset's
-    scope any more.
+    Owner report 2026-10-27 supersedes the 2026-10-22 pool-wide reading: a mass
+    action is the SELECTION, so the adapter may not widen it (it used to pass
+    ``paths=None``, i.e. every card of the tab).
     """
     from tabs.image_gallery.ui.card import context_actions
     from tabs.image_gallery.use_cases import cache_reset
@@ -243,10 +242,11 @@ def test_reset_metrics_zeroes_the_whole_pool(monkeypatch) -> None:
     context_actions._ctx_reset_metrics(owner, b)
     assert len(calls) == 1
     assert calls[0]["owner"] is owner
-    assert calls[0]["paths"] is None
+    assert calls[0]["paths"] == [b, a, c]
 
 
-def test_reset_metrics_empty_scope_keeps_whole_pool_none(monkeypatch) -> None:
+def test_reset_metrics_empty_scope_clears_nothing(monkeypatch) -> None:
+    """An empty answer is final: no card, no selection, no reset."""
     from tabs.image_gallery.ui.card import context_actions
     from tabs.image_gallery.use_cases import cache_reset
 
@@ -260,7 +260,148 @@ def test_reset_metrics_empty_scope_keeps_whole_pool_none(monkeypatch) -> None:
     # probe reads the process-wide QApplication otherwise).
     monkeypatch.setattr(action_scope, "_focused_path", lambda owner: None)
     context_actions._ctx_reset_metrics(SimpleNamespace(), None)
-    assert calls == [None]
+    assert calls == []
+
+
+# --- the reset is a MASS action, not a tab-wide one -------------------------
+#
+# Owner report 2026-10-27: "Почему я выделил 3 изображения, а он экшн повесил на
+# все, которые есть в вкладке?" — three cards selected, every card of the tab
+# lost its numbers. Both entries resolved the scope correctly and then threw it
+# away (``reset_metrics_caches`` forced ``paths=None``), which is the same
+# defect class as ``next(iter(selected_paths))``: the action ignored the ONE
+# resolver's answer. The tests below pin the observable consequence on the
+# CARDS (numbers/rank/badges), not on an internal call signature, so a future
+# rewiring cannot pass them while clearing the pool.
+#
+# A genuinely pool-wide reset still exists as the USE CASE call
+# ``cache_reset.clear_metrics_caches(owner)`` (``paths=None``), used by
+# maintenance/tests; no per-card control reaches it any more.
+
+
+def _reset_pool(paths):
+    """Pool items carrying the state a reset must (and must not) clear."""
+    kept = SimpleNamespace(description="kept-read", tags=("sky",))
+    items = []
+    for i, p in enumerate(paths):
+        items.append(
+            SimpleNamespace(
+                path=p,
+                metrics={"sharpness": 100.0 + i},
+                rank=i + 1,
+                crown_rank=i + 1,
+                is_best=(i == 0),
+                analysis=kept,
+                analysis_status="done",
+                analysis_records=("record",),
+                artifact_maps={"banding": [[1]]},
+                vlm_brief="kept brief",
+            )
+        )
+    return items
+
+
+def _reset_owner(selected, pool):
+    items = _reset_pool(pool)
+    return _owner(set(selected), order=list(selected), items=items), items
+
+
+def _no_backends(monkeypatch) -> None:
+    """Keep the test about SCOPE: no composed backend sweeps the disk caches."""
+    from tabs.image_gallery.use_cases import cache_reset
+
+    monkeypatch.setattr(cache_reset, "_gallery_backends", lambda: ())
+
+
+def test_card_menu_reset_clears_only_the_three_selected_cards(monkeypatch) -> None:
+    """RED BEFORE: the menu resolved 3 targets, the reset zeroed all 4 cards."""
+    a, b, c, d = (Path(p) for p in ("/a.png", "/b.png", "/c.png", "/d.png"))
+    owner, items = _reset_owner({a, b, c}, [a, b, c, d])
+    _no_backends(monkeypatch)
+    captured = _open_menu(monkeypatch, owner, a, selection_count=3)
+    captured["on_triggered"]("gallery.reset_metrics", None)
+
+    assert [it.metrics for it in items] == [{}, {}, {}, {"sharpness": 103.0}]
+    # The untouched card keeps EVERYTHING a reset would drop.
+    assert items[3].rank == 4
+    assert items[3].crown_rank == 4
+    assert items[3].analysis_records == ("record",)
+    assert items[3].artifact_maps == {"banding": [[1]]}
+    assert items[3].vlm_brief == "kept brief"
+    assert items[3].analysis is not None
+
+
+def test_registry_reset_action_clears_only_the_selected_cards(monkeypatch) -> None:
+    """The Find Action / MCP entry takes the same scope (one builder, one fix)."""
+    from tabs.image_gallery.use_cases.registration import run_action
+
+    a, b, c, d = (Path(p) for p in ("/a.png", "/b.png", "/c.png", "/d.png"))
+    owner, items = _reset_owner({a, b, c}, [a, b, c, d])
+    _no_backends(monkeypatch)
+    run_action(SimpleNamespace(_controller=owner, _widget=None), "gallery.reset-metrics")
+
+    assert [it.metrics for it in items] == [{}, {}, {}, {"sharpness": 103.0}]
+    assert items[3].rank == 4
+
+
+def test_reset_on_an_unselected_card_is_the_point_form(monkeypatch) -> None:
+    """Right-clicking outside the selection acts on that card alone."""
+    a, b, c, d = (Path(p) for p in ("/a.png", "/b.png", "/c.png", "/d.png"))
+    owner, items = _reset_owner({a, b, c}, [a, b, c, d])
+    _no_backends(monkeypatch)
+    captured = _open_menu(monkeypatch, owner, d)
+    captured["on_triggered"]("gallery.reset_metrics", None)
+
+    assert [it.metrics for it in items] == [
+        {"sharpness": 100.0},
+        {"sharpness": 101.0},
+        {"sharpness": 102.0},
+        {},
+    ]
+
+
+def test_pool_wide_reset_survives_only_as_the_explicit_use_case(monkeypatch) -> None:
+    """The maintenance path is not lost — it simply has no per-card entry."""
+    from tabs.image_gallery.use_cases import cache_reset
+
+    a, b, c = (Path(p) for p in ("/a.png", "/b.png", "/c.png"))
+    owner, items = _reset_owner(set(), [a, b, c])
+    _no_backends(monkeypatch)
+    cache_reset.clear_metrics_caches(owner)  # paths=None — the whole pool, by request
+
+    assert [it.metrics for it in items] == [{}, {}, {}]
+    assert not any(getattr(it, "rank", None) for it in items)
+
+
+def test_ask_ai_selection_scope_reads_the_three_selected_cards(monkeypatch) -> None:
+    """The last direct ``state.selected_paths`` reader in an action entry.
+
+    Ask AI keeps a scope KIND (the flyout owns its scope line), but WHICH cards
+    that kind means must come from the ONE selection source like every other
+    entry. The resolver is stubbed so the test fails if the entry reads the
+    state mirror itself again (the pre-fix body never consulted ``action_scope``
+    at all, so the recorded call is the discriminator).
+    """
+    from tabs.image_gallery.controller import GalleryController
+
+    a, b, c, d = (Path(p) for p in ("/a.png", "/b.png", "/c.png", "/d.png"))
+    seen: list = []
+    consulted: list = []
+
+    def _selected(owner):
+        consulted.append(owner)
+        return [a, b, c]
+
+    monkeypatch.setattr(action_scope, "selected_paths", _selected)
+    owner = SimpleNamespace(
+        state=SimpleNamespace(selected_paths={a, b, c, d}, selected_order=[a, b, c, d]),
+        _open_ask_ai=lambda anchor, scope, **kw: seen.append(scope),
+    )
+    GalleryController.open_ask_ai(owner, "selection", None, a)
+
+    assert consulted == [owner]
+    assert [seen[0].kind, tuple(seen[0].paths)] == ["selection", (a, b, c)]
+    assert d not in seen[0].paths
 
 
 def test_keyboard_current_path_is_the_first_resolved_target(monkeypatch) -> None:
@@ -440,3 +581,47 @@ def test_card_context_call_site_analyzes_every_selected_target(monkeypatch) -> N
     captured["on_triggered"]("gallery.selection.analyze", None)
     assert analyzed == [a, b, c]
 
+
+
+# --- the widening cannot come back -----------------------------------------
+#
+# The behaviour tests above would still pass if a future edit re-introduced
+# ``paths=None`` at ONE of the two reset call sites while the other kept the
+# scope (each test fires one entry). This structural guard names the exact
+# bypass that produced the 2026-10-27 report: a resolved ``ActionContext`` is
+# passed to ``reset_metrics_caches`` as ``paths=None`` instead of its targets.
+# It is red on the parent tree (both call sites read ``paths=None``).
+
+
+def _called_with_paths_none(fn, call_name: str) -> bool:
+    """True when *fn*'s source calls ``call_name(..., paths=None)``."""
+    import ast
+    import inspect
+    import textwrap
+
+    tree = ast.parse(textwrap.dedent(inspect.getsource(fn)))
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        name = getattr(node.func, "attr", None) or getattr(node.func, "id", None)
+        if name != call_name:
+            continue
+        for kw in node.keywords:
+            if kw.arg == "paths" and isinstance(kw.value, ast.Constant):
+                if kw.value.value is None:
+                    return True
+        if any(isinstance(a, ast.Constant) and a.value is None for a in node.args):
+            return True
+    return False
+
+
+def test_no_reset_entry_widens_a_resolved_scope_to_the_pool() -> None:
+    from tabs.image_gallery.ui.card import context_actions
+    from tabs.image_gallery.use_cases import gallery_actions
+
+    assert not _called_with_paths_none(
+        gallery_actions.reset_metrics, "reset_metrics_caches"
+    ), "gallery_actions.reset_metrics must pass the context's targets, never None"
+    assert not _called_with_paths_none(
+        context_actions._ctx_reset_metrics, "reset_metrics_caches"
+    ), "_ctx_reset_metrics must pass the resolved targets, never None"
