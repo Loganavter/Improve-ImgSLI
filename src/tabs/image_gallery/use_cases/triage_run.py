@@ -450,7 +450,14 @@ def _start_triage(owner, items: list[GalleryItem], *, cover_grid: bool = True) -
     worker = GenericWorker(owner._tracked(owner._run_triage_sync), list(items), dict(owner._series_overrides))
     gen = owner._folder_gen
     sgen = owner._series_gen
-    worker.signals.result.connect(lambda res, g=gen, s=sgen: owner._on_triage_ready(res, g, s))
+    # The reset barrier's token (``cache_reset``): a triage computed before a
+    # metrics reset must not apply its groups afterwards (owner 2026-10-26).
+    from tabs.image_gallery.use_cases.ai_analysis import analysis_epoch as _analysis_epoch
+
+    aepoch = _analysis_epoch(owner)
+    worker.signals.result.connect(
+        lambda res, g=gen, s=sgen, a=aepoch: owner._on_triage_ready(res, g, s, a)
+    )
     # NOTE: the local "done" badge is NOT stamped here. Triage only clusters
     # series; the card's quality dots come from the Stage-2 proxy pass
     # (artifacts/fidelity/camera) started in ``_apply_triage_result`` and
@@ -459,7 +466,7 @@ def _start_triage(owner, items: list[GalleryItem], *, cover_grid: bool = True) -
     # inversion the append path avoids. ``_apply_triage_result`` now stamps
     # done on the proxy settle (or immediately when there is nothing to
     # compute). See ``_mark_local_pass`` callers.
-    worker.signals.error.connect(lambda err, g=gen: owner._on_triage_error(err, g))
+    worker.signals.error.connect(lambda err, g=gen, a=aepoch: owner._on_triage_error(err, g, a))
     worker.signals.error.connect(lambda _err, its=list(items): owner._mark_local_pass(its, None))
     # Triage outranks background thumbnails so the grid labels settle first.
     owner._pool_start(worker, TRIAGE_PRIORITY)

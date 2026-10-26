@@ -129,11 +129,11 @@ def _profile(ctrl):
 def test_the_stored_profile_is_salience_aware_and_deterministic() -> None:
     a, b = _scattered()
     ctrl = _FakeController([a, b], _series(a, b))
-    assert ctrl.state.metric_profile is None  # pre-P1 default
+    assert ctrl.state.algorithms_profile is None  # pre-P1 default
 
     profile = _profile(ctrl)
 
-    assert ctrl.state.metric_profile == profile
+    assert ctrl.state.algorithms_profile == profile
     assert profile.source == "series", "the stored profile is the series offer"
     assert SALIENT in profile.salient_axes, "the spread on ssim must be offered"
     assert SALIENT in profile.axis_ids

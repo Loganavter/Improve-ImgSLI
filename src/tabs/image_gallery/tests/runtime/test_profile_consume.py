@@ -12,7 +12,7 @@ Falsification story (what each test would catch):
 - the profile honoured by the pure helper but dropped by the grid-card /
   list-row widget path;
 - ``grid_view`` caching the profile on the widget (stale after a re-derive):
-  the resolution must read the LIVE ``state.metric_profile`` and return
+  the resolution must read the LIVE ``state.algorithms_profile`` and return
   ``None`` when absent;
 - ``_begin_analysis`` forgetting to pass the active profile to the request;
 - a ``profile=None`` changing the pre-P1 (mode mapping) output.
@@ -46,6 +46,9 @@ from tabs.image_gallery.ui.list.card import build_gallery_list_card
 P_RESTRICTED = MetricProfile(axis_ids=("sharpness",))
 #: A widened profile: adds axes ``camera`` does NOT offer (fidelity-only).
 P_WIDENED = MetricProfile(axis_ids=("sharpness", "ssim", "lpips"))
+#: The AI backend's own answer: the same widened axes, judge-tagged. The AI slot
+#: accepts only ``source="vlm"`` (backend-isolation invariant I1).
+P_AI = MetricProfile(axis_ids=("sharpness", "ssim", "lpips"), source="vlm")
 
 
 def _item(**overrides) -> GalleryItem:
@@ -182,7 +185,7 @@ def test_list_row_honours_the_profile(qapp) -> None:
 
 
 def _fake_view(stored_profile, *, mode="camera"):
-    state = SimpleNamespace(metric_profile=stored_profile, mode=mode)
+    state = SimpleNamespace(algorithms_profile=stored_profile, mode=mode)
     parent = SimpleNamespace(state=state, parent=lambda: None)
     return SimpleNamespace(parent=lambda: parent, window=lambda: None)
 
@@ -241,7 +244,7 @@ def test_begin_analysis_passes_the_active_profile(monkeypatch) -> None:
     item = mark_analyzing(_item())
     ctl = _bare_controller([item])
     ctl.state = SimpleNamespace(
-        items=[item], mode="camera", metric_profile=P_WIDENED
+        items=[item], mode="camera", ai_profile=P_AI
     )
     seen: dict = {}
     monkeypatch.setattr(ai_analysis, "GenericWorker", _capturing_worker(seen))
@@ -249,12 +252,19 @@ def test_begin_analysis_passes_the_active_profile(monkeypatch) -> None:
     from tabs.image_gallery.use_cases.action_context import build_context
 
     ctx = build_context(ctl, origin="action", card_path=item.path)
-    assert ctx.profile is P_WIDENED
+    assert ctx.profile is P_AI
     ctl._begin_analysis(ctx, item)
-    assert seen["kwargs"].get("profile") is P_WIDENED
+    assert seen["kwargs"].get("profile") is P_AI
 
 
-def test_begin_analysis_falls_back_to_the_mode_profile(monkeypatch) -> None:
+def test_begin_analysis_never_borrows_the_local_mode_profile(monkeypatch) -> None:
+    """An empty AI slot is an EMPTY judge profile — not the local mode mapping.
+
+    Owner rule 2026-10-26 (backend isolation): the AI backend never falls back to
+    locally derived axes. Before the split there was one slot, so a state with no
+    stored profile made the AI request carry ``profile_for_mode("camera")`` —
+    exactly the cross-backend borrow.
+    """
     from tabs.image_gallery.use_cases import ai_analysis
 
     item = mark_analyzing(_item())
@@ -267,5 +277,7 @@ def test_begin_analysis_falls_back_to_the_mode_profile(monkeypatch) -> None:
 
     ctx = build_context(ctl, origin="action", card_path=item.path)
     ctl._begin_analysis(ctx, item)
-    # active_profile on a state without a stored profile = the mode mapping.
-    assert seen["kwargs"]["profile"] == profile_for_mode("camera")
+    carried = seen["kwargs"]["profile"]
+    assert carried == MetricProfile(mode="camera", source="vlm")
+    assert carried.axis_ids == () and carried.axis_entries == ()
+    assert carried != profile_for_mode("camera")

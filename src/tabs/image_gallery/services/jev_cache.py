@@ -1,9 +1,16 @@
 """Disk cache + pin for the Jev (TypeSafe System One) series rank.
 
-Key = ``sha256(paths + mtimes + canonical payload)`` — an edited file (mtime),
-a changed series membership (path) or a changed measured vector (payload) all
-invalidate; a byte-identical re-run is served from disk with **no second HTTP
-call**.
+Key = ``sha256(paths + mtimes + endpoint + canonical payload)`` — an edited file
+(mtime), a changed series membership (path), a re-pointed provider (endpoint) or
+a changed measured vector (payload) all invalidate; a byte-identical re-run is
+served from disk with **no second HTTP call**.
+
+WHY the endpoint is part of the key (invariant I1/I2): the payload carries the
+constant ``jev_client.JEV_MODEL``, so with the key stopping at
+paths+mtimes+payload the same model id on ANOTHER endpoint (a provider switch —
+``services/ai_providers``) reused the previous endpoint's pinned order. The
+endpoint is normalized with the ONE gallery normalizer
+(``ai_providers._url_key``): two spellings of one provider share a pin.
 
 The AI domain is *explicitly non-deterministic* (plan
 ``plan-gallery-rank-backends-2026-10-15`` §Risks): the model is free to answer
@@ -28,6 +35,10 @@ from typing import Any
 from core.log_names import APP_LOGGER_NAME
 
 logger = logging.getLogger(APP_LOGGER_NAME)
+
+#: The analysis-backend adapter that OWNS this store (ADR 009 wave A4) — see
+#: ``services.ai_cache.CACHE_NAMESPACE``.
+CACHE_NAMESPACE = "ai"
 
 #: Bump when the cached record shape changes (old pins stop matching).
 JEV_CACHE_VERSION = 1
@@ -58,14 +69,23 @@ def _item_mtime(item) -> int:
         return 0
 
 
-def rank_cache_key(items, payload: dict) -> str:
-    """Stable key for one series rank: ``hash(paths + mtimes + payload)``.
+def rank_cache_key(items, payload: dict, *, base_url: str = "") -> str:
+    """Stable key for one series rank: ``hash(paths + mtimes + endpoint + payload)``.
 
     The payload alone is not enough: its aliases (``img_N``) are opaque, so the
     on-disk path/mtime identity must be folded in explicitly. Members are sorted
     by path so the key is independent of the caller's member order; the payload
     is canonicalised with ``sort_keys`` so a re-built-but-equal payload matches.
+
+    ``base_url`` is the ENDPOINT that answered (the model id in the payload is a
+    constant, ``jev_client.JEV_MODEL``), normalized through the gallery's ONE
+    normalizer ``ai_providers._url_key``: two spellings of one provider share a
+    pin, a provider switch is a MISS instead of serving the old endpoint's
+    order. The ``""`` default is for storeless callers/tests; production passes
+    the live settings.
     """
+    from tabs.image_gallery.services.ai_providers import _url_key
+
     parts: list[str] = []
     try:
         ordered = sorted(list(items or ()), key=_item_path)
@@ -73,6 +93,7 @@ def rank_cache_key(items, payload: dict) -> str:
         ordered = list(items or ())
     for item in ordered:
         parts.append(f"{_item_path(item)}:{_item_mtime(item)}")
+    parts.append(f"base_url={_url_key(base_url)}")
     try:
         canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
     except Exception:
@@ -158,10 +179,43 @@ def default_cache() -> JevRankCache:
     return _default_cache
 
 
+def clear_default_cache() -> int:
+    """Delete every pin in the default cache directory; return the count.
+
+    The gallery's "Reset metrics cache" entry point: a pinned Jev order is a
+    measured decision, so a reset that zeroes every measurement has to drop it
+    — otherwise the next pass over the same paths+mtimes+payload is served the
+    SAME ranks with no second call, i.e. the reset looks like a no-op (owner
+    order 2026-10-22, literal: no measurement survives).
+
+    Only this module's own ``rank_*.json`` files are unlinked: the resolved
+    directory can hold unrelated entries (the cache root is shared), so a
+    whole-directory delete is not an option. A missing directory or an entry
+    that cannot be removed contributes 0; never raises.
+    """
+    try:
+        directory = jev_cache_dir()
+    except Exception:
+        return 0
+    try:
+        entries = sorted(Path(directory).glob("rank_*.json"))
+    except Exception:
+        return 0
+    deleted = 0
+    for path in entries:
+        try:
+            path.unlink()
+            deleted += 1
+        except OSError:
+            logger.debug("jev rank pin delete failed %s", path, exc_info=True)
+    return deleted
+
+
 __all__ = [
     "CACHE_DIR_NAME",
     "JEV_CACHE_VERSION",
     "JevRankCache",
+    "clear_default_cache",
     "default_cache",
     "jev_cache_dir",
     "rank_cache_key",

@@ -26,6 +26,8 @@ from typing import TYPE_CHECKING
 
 from PIL import Image
 
+from tabs.image_gallery.services import decode_cache
+
 if TYPE_CHECKING:
     from tabs.image_gallery.models import GalleryItem, Series
 
@@ -71,10 +73,24 @@ def clear_sharpness_cache() -> int:
     return n
 
 
-# EXIF-presence cache: ``_has_exif`` opens + parses every file (~100ms per
-# PNG, almost always False) on each ``select_mode`` call. Same key
-# discipline as sharpness; edits miss and recompute.
+# EXIF-presence cache: ``_has_exif`` parses every file (~100ms per PNG,
+# almost always False) on each ``select_mode`` call. Same key discipline as
+# sharpness; edits miss and recompute. The probe itself now reads the shared
+# ``services.decode_cache`` frame (one open per file in the triage pass).
 _EXIF_CACHE: dict[tuple[str, int, int], bool] = {}
+
+
+def clear_exif_cache() -> int:
+    """Drop cached EXIF-presence bits. Returns entries cleared (tests)."""
+    try:
+        n = len(_EXIF_CACHE)
+    except Exception:
+        return 0
+    try:
+        _EXIF_CACHE.clear()
+    except Exception:
+        pass
+    return n
 
 
 def _stat_key(path) -> tuple[str, int, int] | None:
@@ -145,71 +161,65 @@ def sharpness_for(path) -> float | None:
 
 
 def _sharpness(path: Path) -> float | None:
-    """Laplacian variance sharpness (grayscale). Returns None on failure."""
-    try:
-        with Image.open(path) as im:
-            gray = im.convert("L")
-            # Resize large images down for speed: max 512 on longest edge.
-            w, h = gray.size
-            max_edge = max(w, h)
-            if max_edge > 512:
-                scale = 512 / max_edge
-                nw, nh = int(w * scale), int(h * scale)
-                try:
-                    resample = Image.Resampling.BILINEAR  # type: ignore[attr-defined]
-                except AttributeError:
-                    resample = Image.BILINEAR  # type: ignore[attr-defined]
-                gray = gray.resize((max(nw, 1), max(nh, 1)), resample)
-            # Simple Laplacian kernel variance: use PIL filter then variance via Python.
-            # Kernel: [[0,1,0],[1,-4,1],[0,1,0]]
-            pixels = list(gray.getdata())
-            pw, ph = gray.size
-            # Build 2D access quickly: flat list row-major.
-            def _at(x: int, y: int) -> int:
-                return pixels[y * pw + x]
+    """Laplacian variance sharpness (grayscale). Returns None on failure.
 
-            # Compute Laplacian response for inner pixels.
-            vals: list[float] = []
-            for y in range(1, ph - 1):
-                for x in range(1, pw - 1):
-                    lap = (
-                        _at(x, y - 1) + _at(x - 1, y) + _at(x + 1, y) + _at(x, y + 1) - 4 * _at(x, y)
-                    )
-                    vals.append(float(lap))
-            if not vals:
-                return 0.0
-            mean = sum(vals) / len(vals)
-            var = sum((v - mean) ** 2 for v in vals) / len(vals)
-            return var
+    Reads the shared ``services.decode_cache`` frame, so the clustering pass
+    that already opened this file pays no second decode (I2). The math is
+    unchanged (mirrored bit-for-bit by ``camera_metrics._sharpness_from_image``).
+    """
+    im = decode_cache.decode_image(path)
+    if im is None:
+        return None
+    try:
+        gray = im.convert("L")
+        # Resize large images down for speed: max 512 on longest edge.
+        w, h = gray.size
+        max_edge = max(w, h)
+        if max_edge > 512:
+            scale = 512 / max_edge
+            nw, nh = int(w * scale), int(h * scale)
+            try:
+                resample = Image.Resampling.BILINEAR  # type: ignore[attr-defined]
+            except AttributeError:
+                resample = Image.BILINEAR  # type: ignore[attr-defined]
+            gray = gray.resize((max(nw, 1), max(nh, 1)), resample)
+        # Simple Laplacian kernel variance: use PIL filter then variance via Python.
+        # Kernel: [[0,1,0],[1,-4,1],[0,1,0]]
+        pixels = list(gray.getdata())
+        pw, ph = gray.size
+        # Build 2D access quickly: flat list row-major.
+        def _at(x: int, y: int) -> int:
+            return pixels[y * pw + x]
+
+        # Compute Laplacian response for inner pixels.
+        vals: list[float] = []
+        for y in range(1, ph - 1):
+            for x in range(1, pw - 1):
+                lap = (
+                    _at(x, y - 1) + _at(x - 1, y) + _at(x + 1, y) + _at(x, y + 1) - 4 * _at(x, y)
+                )
+                vals.append(float(lap))
+        if not vals:
+            return 0.0
+        mean = sum(vals) / len(vals)
+        var = sum((v - mean) ** 2 for v in vals) / len(vals)
+        return var
     except Exception:
         return None
 
 
 def _has_exif(path: Path) -> bool:
+    """EXIF-presence probe over the shared triage frame (one open per file).
+
+    The bit is captured from the RAW frame before the cache's orientation
+    transpose, so this answers exactly what the pre-change ``Image.open``
+    probe answered while the decoded pixels stay orientation-normalised.
+    """
     try:
-        with Image.open(path) as im:
-            exif = None
-            # Pillow: _getexif for JPEG/TIFF, getexif for newer.
-            if hasattr(im, "getexif"):
-                try:
-                    exif = im.getexif()
-                    if exif and len(exif) > 0:
-                        return True
-                except Exception:
-                    pass
-            if hasattr(im, "_getexif"):
-                try:
-                    exif2 = im._getexif()  # type: ignore[attr-defined]
-                    if exif2:
-                        return True
-                except Exception:
-                    pass
-            # Also check info dict for exif bytes.
-            if getattr(im, "info", None) and "exif" in im.info:
-                return True
+        present = decode_cache.exif_present(path)
     except Exception:
         return False
-    return False
+    return bool(present)
 
 
 def _average_sharpness(items: list["GalleryItem"]) -> float | None:

@@ -35,10 +35,14 @@ from __future__ import annotations
 import logging
 
 from tabs.image_gallery.services.metric_profile import (
+    DOMAIN_AI,
+    DOMAIN_ALGORITHMS,
     MEASURED_POOL,
     MetricProfile,
+    PROFILE_SOURCE_VLM,
     axis_spreads,
     format_profile,
+    mode_id,
     profile_for_mode,
     profile_for_series,
     profile_source_label,
@@ -125,23 +129,55 @@ def derive_for_state(state, *, domain=None) -> MetricProfile:
             return profile_for_mode(None)
 
 
-def active_profile(state=None, *, mode=None) -> MetricProfile:
-    """The profile the UI/analysis must use — the stored one, else the mode base.
+def active_profile(
+    state=None, *, mode=None, domain: str = DOMAIN_ALGORITHMS
+) -> MetricProfile:
+    """The profile the UI/analysis must use for *domain* — its own slot, else mode.
 
-    The producer (``controller``) stores the derived offer on the state when the
-    folder's mode/metrics settle; consumers call this single accessor, so the
-    dots, the AI scorecard, the Jev vector and the rank cannot disagree.
-    Without a stored profile this is exactly the mode mapping (fail-open) — the
-    LAST fallback, which ``describe_source`` names as such.
+    The producer (``controller``) stores the derived offer on
+    ``state.algorithms_profile`` and the judge's answer on ``state.ai_profile``;
+    consumers call this accessor with the domain they serve, so the dots, the AI
+    scorecard, the Jev vector and the rank read the axis set of THEIR backend and
+    never the other one's. The read goes through the OWNING ADAPTER (ADR 009 A2:
+    ``backends.algorithms`` / ``backends.ai`` own their slot), not through a core
+    slot lookup; a foreign-tagged slot is a fail-open fallback here (the UI must
+    still paint) and a loud error at the adapter's own seam.
+
+    Without a stored profile for *domain*: the Algorithms accessor returns the
+    mode mapping (the LAST local fallback, named as such by ``describe_source``);
+    the AI accessor returns an EMPTY judge profile — it never borrows the local
+    axis set (owner rule 2026-10-26 / invariant I1).
     """
     try:
-        cached = getattr(state, "metric_profile", None) if state is not None else None
-        if isinstance(cached, MetricProfile) and cached:
-            # Truthiness, not ``axis_ids``: a VLM answer may name ONLY its own
-            # axes (no registry id), and that is a complete profile (P7-A).
-            return cached
+        if state is not None:
+            from tabs.image_gallery.backends.composition import backend
+
+            cached = backend(str(domain or "").strip().lower()).load_profile(state)
+            if isinstance(cached, MetricProfile) and cached:
+                # Truthiness, not ``axis_ids``: a VLM answer may name ONLY its own
+                # axes (no registry id), and that is a complete profile (P7-A).
+                return cached
     except Exception:
-        pass
+        logger.debug(
+            "profile slot read failed domain=%s (falling back to the mode mapping)",
+            domain,
+            exc_info=True,
+        )
+    if str(domain or "").strip().lower() == DOMAIN_AI:
+        # The AI backend has NO mode fallback (invariant I1): the local mode
+        # mapping is a locally derived axis set, and letting the judge run on it
+        # is exactly the cross-backend borrow this split exists to stop. An
+        # empty AI slot is an EMPTY judge profile — the scorecard prompt asks
+        # for nothing and the AI path refuses/asks the model; it never silently
+        # measures the detectors' axes.
+        try:
+            if mode is None and state is not None:
+                mode = getattr(state, "mode", None)
+            return MetricProfile(
+                axis_ids=(), mode=mode_id(mode), source=PROFILE_SOURCE_VLM
+            )
+        except Exception:
+            return MetricProfile(source=PROFILE_SOURCE_VLM)
     try:
         if mode is None and state is not None:
             mode = getattr(state, "mode", None)
@@ -150,15 +186,15 @@ def active_profile(state=None, *, mode=None) -> MetricProfile:
         return profile_for_mode(None)
 
 
-def describe(state=None, *, mode=None) -> str:
+def describe(state=None, *, mode=None, domain: str = DOMAIN_ALGORITHMS) -> str:
     """``format_profile(active_profile(...))`` — one line for the log/trace."""
-    return format_profile(active_profile(state, mode=mode))
+    return format_profile(active_profile(state, mode=mode, domain=domain))
 
 
-def describe_source(state=None, *, mode=None) -> str:
+def describe_source(state=None, *, mode=None, domain: str = DOMAIN_ALGORITHMS) -> str:
     """Where the active profile came from: ``series-derived`` / ``judge-vlm`` /
     ``heuristic-<mode> (fallback)`` (P5 precedence, one vocabulary)."""
-    return profile_source_label(active_profile(state, mode=mode))
+    return profile_source_label(active_profile(state, mode=mode, domain=domain))
 
 
 __all__ = [

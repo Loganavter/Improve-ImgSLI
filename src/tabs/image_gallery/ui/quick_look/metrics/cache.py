@@ -37,12 +37,13 @@ def _overlay_mode(overlay, mode_str: str = ""):
 
 
 def _overlay_metric_profile(overlay, mode_str: str = ""):
-    """The ACTIVE metric profile for this overlay (``profile_select`` seam).
+    """The ACTIVE metric profile of THIS report's domain (``profile_select`` seam).
 
-    The SAME read the card dots use: a stored ``state.metric_profile`` wins,
-    else the mode mapping (``active_profile`` fail-open). No second axis list
-    lives here — the profile decides which axes the rows and the dots show.
-    Never raises.
+    The SAME read the card dots use, through the domain-tagged slot accessor: an
+    AI report reads ``ai_profile`` (the judge's axes), an Algorithms report
+    ``algorithms_profile`` (the local derivation). A stored profile wins, else the
+    mode mapping (``active_profile`` fail-open). No second axis list lives here —
+    the profile decides which axes the rows and the dots show. Never raises.
     """
     try:
         from tabs.image_gallery.use_cases.profile_select import active_profile
@@ -51,7 +52,15 @@ def _overlay_metric_profile(overlay, mode_str: str = ""):
     try:
         owner = getattr(overlay, "_owner", None)
         state = getattr(owner, "state", None) if owner is not None else None
-        return active_profile(state, mode=_overlay_mode(overlay, mode_str))
+        profile = active_profile(
+            state,
+            mode=_overlay_mode(overlay, mode_str),
+            domain=_overlay_judgment_domain(overlay),
+        )
+        # An EMPTY slot is "nothing chosen yet", not an offer: returning the
+        # sentinel empty profile would make the rows treat the mode pool as an
+        # exact requested set. ``None`` keeps the compact fallback rendering.
+        return profile if profile else None
     except Exception:
         return None
 

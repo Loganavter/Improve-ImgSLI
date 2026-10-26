@@ -39,7 +39,7 @@ class _Ctrl:
 
     def __init__(self, items, *, gen: int = 3) -> None:
         self.state = SimpleNamespace(
-            items=list(items), series=[], mode=Mode.CAMERA, metric_profile=None
+            items=list(items), series=[], mode=Mode.CAMERA, algorithms_profile=None, ai_profile=None
         )
         self._judgment_domain = "ai"
         self._folder_gen = gen
@@ -98,7 +98,7 @@ def test_a_warm_matrix_does_not_kick_the_selector(monkeypatch) -> None:
     skipping there meant the model never got to choose for a cached folder.
     """
     ctrl = _Ctrl([_item("a.png", analyzed=True), _item("b.png", analyzed=True)])
-    ctrl.state.metric_profile = _profile()  # source="vlm"
+    ctrl.state.ai_profile = _profile()  # source="vlm"
     _install_selector(monkeypatch, ctrl)
     ctrl._run_profile_select_on_settle()
     assert ctrl.selector_calls == 0, "a fully analyzed matrix has nothing to re-key"
@@ -185,7 +185,7 @@ def test_a_warm_matrix_with_a_heuristic_profile_still_asks_the_selector(monkeypa
     ``analysis cache complete … no profile request`` on the same open).
     """
     ctrl = _Ctrl([_item("a.png", analyzed=True), _item("b.png", analyzed=True)])
-    ctrl.state.metric_profile = _heuristic_profile()
+    ctrl.state.algorithms_profile = _heuristic_profile()
     _install_selector(monkeypatch, ctrl)
     ctrl._run_profile_select_on_settle()
     assert len(ctrl.launched) == 1, "a heuristic profile must still ask the selector"
@@ -195,7 +195,7 @@ def test_a_warm_matrix_with_a_heuristic_profile_still_asks_the_selector(monkeypa
 def test_a_warm_matrix_with_a_vlm_profile_is_still_skipped(monkeypatch) -> None:
     """The original owner decision stands once the model has chosen."""
     ctrl = _Ctrl([_item("a.png", analyzed=True), _item("b.png", analyzed=True)])
-    ctrl.state.metric_profile = _profile()  # source="vlm"
+    ctrl.state.ai_profile = _profile()  # source="vlm"
     _install_selector(monkeypatch, ctrl)
     ctrl._run_profile_select_on_settle()
     assert ctrl.launched == [], "a vlm-pinned profile has nothing to re-key"

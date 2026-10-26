@@ -440,6 +440,9 @@ def merge_samples(results) -> AiAnalysisResult:
         axis_proposal_refusals=tuple(refusals),
         axis_entries=judge_entries,
         axis_samples=tuple(draws),
+        # The routed model can differ per draw; the FIRST answer names the card
+        # (the same convention as reason/defects) — record it, never key on it.
+        answered_model=getattr(head, "answered_model", ""),
     )
 
 
@@ -464,6 +467,21 @@ def median_drift(draws, axes=None) -> dict[str, float]:
         except (KeyError, TypeError, ValueError):
             continue
     return drift
+
+
+def _answered_model(raw) -> str:
+    """The model id the provider actually served (wire ``model``), or ``""``.
+
+    Provenance only: the REQUEST named the primary model, but OpenRouter's
+    fallback chain (``request.DEFAULT_FALLBACK_MODELS``) may answer with
+    another id. Keying on it would multiply one configured backend into one
+    entry per routed id, so the analyze cache identity keeps the REQUESTED
+    model and the entry records this one beside it. Never raises.
+    """
+    try:
+        return str(raw.get("model") or "").strip()
+    except Exception:
+        return ""
 
 
 def parse_response(raw: dict, *, model: str, profile=None) -> AiAnalysisResult:
@@ -562,4 +580,5 @@ def parse_response(raw: dict, *, model: str, profile=None) -> AiAnalysisResult:
         axis_proposals=proposals,
         axis_proposal_refusals=proposal_refusals,
         axis_entries=judge_entries,
+        answered_model=_answered_model(raw),
     )

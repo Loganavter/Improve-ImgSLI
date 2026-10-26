@@ -31,9 +31,10 @@ Shape of the pass:
   ``judge_budget.reserve_pairwise_calls`` (the SAME run counter and ceiling as
   the pointwise cards) — a partial comparison set never produces an order;
 * verdicts are cached under an UNORDERED pair of content keys plus the model,
-  the prompt version and BOTH wire edges (the image is downscaled before
-  sending), so ``(A,B)`` and ``(B,A)`` share one entry and two different pairs
-  can never collide (item 4);
+  the endpoint, the prompt version and BOTH wire edges (the image is downscaled
+  before sending), so ``(A,B)`` and ``(B,A)`` share one entry and two different
+  pairs can never collide (item 4); two spellings of one endpoint share one
+  entry, a provider switch is a miss;
 * the resulting order comes ONLY from complete comparisons (Copeland wins over
   the pairs; a swap disagreement scores half), and it is handed to
   ``rank_fusion.rank_series`` as an opt-in rank source, so the pointwise
@@ -167,8 +168,10 @@ class PairKey:
 
     Content keys are sorted, so ``(A,B)`` and ``(B,A)`` produce the SAME key;
     each edge travels WITH its content key (an image is downscaled to its own
-    wire edge before sending), and the model + prompt version separate
-    judgements that answered different questions.
+    wire edge before sending), and the model + the ENDPOINT + prompt version
+    separate judgements that answered different questions. ``base_url`` is
+    stored already normalized (``ai_providers._url_key``), so it is a comparable
+    token, not the raw user spelling.
     """
 
     first: str
@@ -177,6 +180,7 @@ class PairKey:
     second_edge: int
     model: str
     prompt_version: int
+    base_url: str = ""
 
 
 def pair_key(
@@ -187,8 +191,17 @@ def pair_key(
     *,
     model: str = "",
     prompt_version: int = PAIRWISE_PROMPT_VERSION,
+    base_url: str = "",
 ) -> PairKey:
-    """Canonical :class:`PairKey` — order-independent by construction."""
+    """Canonical :class:`PairKey` — order-independent by construction.
+
+    ``base_url`` is normalized through ``ai_providers._url_key`` (the gallery's
+    ONE endpoint normalizer), so the same provider typed with/without a trailing
+    slash keys the same verdict while switching providers is a MISS. A caller
+    with no backend in hand keeps the ``""`` default.
+    """
+    from tabs.image_gallery.services.ai_providers import _url_key
+
     try:
         edge_a = max(0, int(first_edge or 0))
     except (TypeError, ValueError):
@@ -205,7 +218,9 @@ def pair_key(
         version = int(prompt_version)
     except (TypeError, ValueError):
         version = PAIRWISE_PROMPT_VERSION
-    return PairKey(a[0], a[1], b[0], b[1], str(model or ""), version)
+    return PairKey(
+        a[0], a[1], b[0], b[1], str(model or ""), version, _url_key(base_url)
+    )
 
 
 class PairwiseVerdictCache:
@@ -234,6 +249,31 @@ class PairwiseVerdictCache:
 
 #: Process-wide cache for the live path (tests inject a fresh one).
 DEFAULT_CACHE = PairwiseVerdictCache()
+
+#: The analysis-backend adapter that OWNS this store (ADR 009 wave A4) — see
+#: ``services.ai_cache.CACHE_NAMESPACE``. A/B refinement is the judge's declared
+#: capability, so the verdicts are the AI backend's, and its ``reset`` clears
+#: them through :func:`clear_default_cache`.
+CACHE_NAMESPACE = "ai"
+
+
+def clear_default_cache() -> int:
+    """Drop every process-wide verdict; return how many were held. Never raises.
+
+    The in-memory pairwise store is the ONE measurement cache with no disk
+    half, so a reset that unlinks files still leaves provider A's verdicts
+    serving provider B's pass. ``use_cases/cache_reset`` must call this (it is
+    a separate owner, so the call is a follow-up, not part of this module).
+    """
+    try:
+        held = len(DEFAULT_CACHE)
+    except Exception:
+        held = 0
+    try:
+        DEFAULT_CACHE.clear()
+    except Exception:
+        return 0
+    return held
 
 
 # -- pure helpers -------------------------------------------------------------
@@ -796,6 +836,7 @@ def run_pairwise_pass(
     top_n: int | None = None,
     threshold: float | None = None,
     model: str | None = None,
+    base_url: str | None = None,
     prompt_version: int = PAIRWISE_PROMPT_VERSION,
     on_call=None,
 ) -> PairwiseOrder:
@@ -807,13 +848,28 @@ def run_pairwise_pass(
     ``pairwise_top_n`` / ``pairwise_near_tie_threshold`` / ``pairwise_enabled``,
     and every call is admitted through
     ``judge_budget.reserve_pairwise_calls`` (the run's ONE ceiling).
+    ``model`` / ``base_url`` default to the settings row's own values; the
+    endpoint is part of the verdict key (normalized), so a pass under another
+    provider does not reuse this one's answers.
 
     Returns a :class:`PairwiseOrder`; ``.order_paths`` is only non-empty when
     EVERY pair produced both answers (``.applied``). A decided series, an
     unmeasured top set, a ceiling refusal, a missing answer or an unconfigured
     judge all leave the pointwise order intact and state why in the trace.
     ``judge=None`` builds :class:`PairwiseClientJudge` from the settings row.
+
+    The pass snapshots the AI backend's work generation at entry (this function
+    runs on the worker thread) and compares it immediately before the verdict
+    store write below: the A/B verdicts are the judge's measurement cache, so an
+    answer that arrives after a metrics reset must not be pinned into the store
+    the reset just emptied (ADR 009 wave A4).
     """
+    from tabs.image_gallery.backends.generation import (
+        current_generation,
+        generation_is_current,
+    )
+
+    generation = current_generation(CACHE_NAMESPACE)
     plan = _plan_pass(
         owner,
         items,
@@ -841,6 +897,9 @@ def run_pairwise_pass(
     bound = pairwise_calls_bound(len(members))
     store = cache if cache is not None else DEFAULT_CACHE
     model_id = str(model if model is not None else getattr(row, "model", "") or "")
+    endpoint = str(
+        base_url if base_url is not None else getattr(row, "base_url", "") or ""
+    )
     edge_for = getattr(judge, "edge_of", None)
 
     # Plan the pairs (and their cache keys) BEFORE spending anything: a cache
@@ -863,6 +922,7 @@ def run_pairwise_pass(
                 _edge(edge_for, second),
                 model=model_id,
                 prompt_version=prompt_version,
+                base_url=endpoint,
             )
             cached_verdict = store.get(key)
             if cached_verdict is None:
@@ -914,9 +974,12 @@ def run_pairwise_pass(
         from_cache = verdict is not None
         if verdict is None:
             verdict = compare_pair(judge, first, second, on_call=_count_call)
-            if verdict.resolved:
+            if verdict.resolved and generation_is_current(
+                generation, operation="pin the A/B verdict"
+            ):
                 # An unresolved answer is NOT a verdict: never cache a
-                # transport failure as a permanent tie.
+                # transport failure as a permanent tie. A resolved one is only
+                # pinned while the generation it was measured in is still live.
                 store.put(key, verdict)
         else:
             cached += 1
@@ -1010,6 +1073,7 @@ __all__ = [
     "PairwiseOrder",
     "PairwiseVerdictCache",
     "build_client_judge",
+    "clear_default_cache",
     "compare_pair",
     "content_key",
     "copeland_order",

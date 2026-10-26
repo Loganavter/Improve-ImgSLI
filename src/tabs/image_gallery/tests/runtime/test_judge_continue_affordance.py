@@ -27,7 +27,9 @@ Falsification stories (each assertion fails without the wiring):
     continue a parked run.
 
 Runs offscreen; no network, no window: the controller double never starts a
-real worker (``_pool_start`` is a no-op) and the judge is scripted.
+real worker (``_pool_start`` is a no-op) and the judge is scripted. The double
+carries a real owned AI axis set — the AI backend has no local fallback
+(owner rule 2026-10-26), so an axis-less pass is refused and parks nothing.
 """
 
 from __future__ import annotations
@@ -37,10 +39,19 @@ from types import SimpleNamespace
 
 from tabs.image_gallery.controller import GalleryController
 from tabs.image_gallery.models import AnalysisStatus, GalleryItem
+from tabs.image_gallery.services.metric_profile import MetricProfile
 from tabs.image_gallery.use_cases import registration
 from tabs.image_gallery.use_cases.action_context import ORIGIN_ACTION, context_for_paths
 
 CONTINUE_ACTION_ID = "gallery.continue-judge"
+
+#: The judge's OWN axis set — the same slot read ``context_for_paths`` snapshots
+#: into every AI action. Without it the pass is refused (``REFUSAL_NO_PROFILE``,
+#: owner rule 2026-10-26: no local fallback for the AI backend) and no ceiling
+#: stop can ever happen, so the affordance would have nothing to be about.
+_AI_PROFILE = MetricProfile(
+    axis_ids=("sharpness", "noise"), mode="camera", source="vlm"
+)
 
 
 # -- doubles ------------------------------------------------------------------
@@ -117,7 +128,7 @@ def _settings(**overrides):
 def _owner(items, **settings_overrides) -> GalleryController:
     """A storeless controller double that binds the REAL analyze path."""
     ctl = GalleryController.__new__(GalleryController)
-    ctl.state = SimpleNamespace(items=list(items), mode="camera", metric_profile=None)
+    ctl.state = SimpleNamespace(items=list(items), mode="camera", algorithms_profile=None, ai_profile=_AI_PROFILE)
     ctl.widget = _Widget()
     ctl._folder_gen = 0
     ctl._judgment_domain = "ai"

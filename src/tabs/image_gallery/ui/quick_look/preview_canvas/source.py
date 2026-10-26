@@ -133,19 +133,22 @@ def set_source(self, store, *, preserve_view: bool = False) -> None:
     except Exception:
         pass
     try:
+        # A changed coarse item invalidates any tiled full source (it belonged
+        # to the previous item) — FIRST, because the dwell/I2 path registers
+        # the canvas-private demand store as the tiled source: it must be
+        # dropped before ``_drop_ql_demand`` closes that store (same order as
+        # ``clear_source``). The host re-registers via ``set_tiled_source``
+        # right after. Never raises.
+        if _ql_changed:
+            self.clear_tiled_source()
+    except Exception:
+        pass
+    try:
         # A new coarse item retires the previous demand pyramid (its
         # full store sampled a different source); a re-set of the SAME
         # store keeps it (revisit fast path). Never raises.
         if _ql_changed:
             self._drop_ql_demand()
-    except Exception:
-        pass
-    try:
-        # A changed coarse item also invalidates any tiled full source
-        # (it belonged to the previous item); the host re-registers the
-        # new one via set_tiled_source right after.
-        if _ql_changed:
-            self.clear_tiled_source()
     except Exception:
         pass
     try:

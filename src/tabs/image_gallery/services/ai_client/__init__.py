@@ -235,7 +235,16 @@ def analyze_image_sync(
     # k base64 copies and k JSON copies of the same image on a thread the scroll
     # is waiting for (measured 2026-10-22: 21.4 s vs 6.6 s idle for 40 notches).
     try:
-        wire = encode_wire_path(image_path)
+        # Reuse the Stage-2 proxy pixels when the gallery already decoded this
+        # item (audit R6: the wire used to re-read + re-decode the same file at
+        # the same 1024 edge). ``proxy_for`` is the one shared bounded decode.
+        try:
+            from tabs.image_gallery.services.proxy import proxy_for
+
+            _pixels = proxy_for(image_path).image
+        except Exception:
+            _pixels = None
+        wire = encode_wire_path(image_path, image=_pixels)
         _ai_debug(
             "analyze wire ready path=%s mime=%s edge=%d source_bytes=%d wire_bytes=%d",
             image_path,

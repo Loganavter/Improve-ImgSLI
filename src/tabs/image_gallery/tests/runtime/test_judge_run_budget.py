@@ -18,7 +18,9 @@ Four behaviours under test, each with a falsification story:
     when ``judge_run_call_ceiling == 0``.
 
 Runs offscreen; no network, no window (the controller double never starts a
-real worker).
+real worker). The double's state carries a real, AI-tagged axis set because
+the AI backend has no local fallback since R6: an axis-less context is
+refused by name instead of being judged on borrowed detector axes.
 """
 
 from __future__ import annotations
@@ -38,6 +40,7 @@ from tabs.image_gallery.models import AnalysisStatus, GalleryItem
 from tabs.image_gallery.services import ai_settings_store as store_module
 from tabs.image_gallery.services.ai_client import AiRateLimitError
 from tabs.image_gallery.services.ai_settings_store import AiSettingsStore
+from tabs.image_gallery.services.metric_profile import MetricProfile
 from tabs.image_gallery.use_cases import ai_analysis
 from tabs.image_gallery.use_cases import judge_budget
 from tabs.image_gallery.use_cases import scheduler
@@ -49,6 +52,16 @@ from core.log_names import APP_LOGGER_NAME
 
 
 # -- doubles ------------------------------------------------------------------
+
+
+#: The judge's OWN axis set (owner rule 2026-10-26, invariant I1): the AI
+#: backend never borrows the local mode mapping, so every AI action carries a
+#: real, AI-tagged profile — and a 0-axis call is refused by name
+#: (``REFUSAL_NO_PROFILE``). The budget/ceiling ledger is only reached for
+#: cards that can actually be judged, hence the fixture's slot.
+_AI_PROFILE = MetricProfile(
+    axis_ids=("sharpness", "noise"), mode="camera", source="vlm"
+)
 
 
 class _Text:
@@ -115,7 +128,13 @@ def _settings(**overrides):
 def _owner(items, **settings_overrides):
     """A storeless controller double that binds the REAL analyze path."""
     ctl = GalleryController.__new__(GalleryController)
-    ctl.state = SimpleNamespace(items=list(items))
+    # ``mode`` + a REAL owned AI profile: ``context_for_paths`` snapshots the
+    # active profile of THIS action's backend (``profile_select.active_profile``
+    # → the AI adapter's slot), which is what makes the run judge anything at
+    # all under the 5..8 / no-0-axis rule.
+    ctl.state = SimpleNamespace(
+        items=list(items), mode="camera", ai_profile=_AI_PROFILE
+    )
     ctl.widget = _Widget()
     ctl._folder_gen = 0
     ctl._judgment_domain = "ai"

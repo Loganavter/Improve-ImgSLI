@@ -109,15 +109,13 @@ def build_pairwise_prompt(mode=None, *, profile=None) -> str:
     The scorecard axes ride along as the dimensions to watch (same resolver as
     the pointwise prompt, so the two questions cannot disagree about what
     matters), but the ANSWER stays one of ``A|B|TIE``: a comparison, not a
-    scorecard. ``profile=None``/``mode=None`` is the untagged measured set.
+    scorecard. ``profile`` is the AI backend's own axis set; an EMPTY one is
+    ``NoProfileYet`` from the shared resolver (ADR 009 A3) and propagates — the
+    pass refuses before it can ask a question about local axes.
     """
-    try:
-        axes = ", ".join(
-            f'"{axis_id}" ({label})'
-            for axis_id, label in _scorecard_axes(mode, profile=profile)
-        )
-    except Exception:
-        axes = ""
+    axes = ", ".join(
+        f'"{axis_id}" ({label})' for axis_id, label in _scorecard_axes(mode, profile=profile)
+    )
     if axes:
         return (
             f"{PAIRWISE_PROMPT_TEMPLATE}\n"
@@ -138,15 +136,20 @@ def _scorecard_axes(mode=None, *, profile=None) -> tuple[tuple[str, str], ...]:
       guessing from an id.
 
     ``profile`` (any object with ``.axis_ids`` / ``.axis_entries``, canonically
-    ``MetricProfile``) wins when given; ``profile=None`` is the mode mapping
-    (fail-open). Order = registry, then the judge's entries in profile order.
+    ``MetricProfile``) is the AI backend's own profile; an EMPTY one is
+    ``NoProfileYet`` — the judge has not named an axis set yet, and the local
+    mode mapping is not an AI axis set (ADR 009 A3). ``profile=None`` is the
+    legacy "untagged measured set" of the generic builders. Order = registry,
+    then the judge's entries in profile order.
 
-    A profile that carries ONLY judge axes has no registry set to narrow, and the
-    mode mapping is the fallback for an ABSENT profile — not for a judge that
-    answered with no registry axis. So in that case the registry half is empty and
-    the scorecard asks exactly the judge's axes.
+    A ``BackendContractError`` (an empty profile) is RE-RAISED: a prompt built
+    from a substituted axis set is the leak this resolver exists to prevent, so
+    the caller refuses to build the request instead of asking the wrong
+    question. Other failures (a garbage profile object) still degrade to "no
+    axes", which the caller renders as unready.
     """
     try:
+        from tabs.image_gallery.backends.errors import BackendContractError
         from tabs.image_gallery.services.metric_scores import spec_for
         from tabs.image_gallery.services.profile_judged import (
             judged_axis_entries,
@@ -168,6 +171,8 @@ def _scorecard_axes(mode=None, *, profile=None) -> tuple[tuple[str, str], ...]:
             spec = spec_for(axis_id)
             out.append((axis_id, spec.label if spec is not None else axis_id))
         return tuple(out)
+    except BackendContractError:
+        raise
     except Exception:
         return ()
 
@@ -182,12 +187,18 @@ def attach_measured_context(text: str, measured_block: str, *, mode=None, profil
     judgement — which is the one thing the AI domain must not report.
 
     So the block is filtered by the ONE axis resolver
-    (``measured_axes_for(mode, profile=profile)``): a line whose label resolves
-    to an axis the model is asked to score is dropped (the echo), and an
-    unreadable line is dropped too (fail closed — a number whose axis is
+    (``measured_axes_for(mode, profile=profile)``): a line whose
+    label resolves to an axis the model is asked to score is dropped (the echo),
+    and an unreadable line is dropped too (fail closed — a number whose axis is
     unknown cannot be checked for an echo). When nothing remains there is no
     block at all, which is the normal case: the profile IS the asked set.
     ``text`` is returned unchanged when there is nothing to attach.
+
+    ``NoProfileYet`` (an EMPTY AI profile: no axis set yet) propagates: with no
+    asked set there is no way to tell an echo from context, and sending local
+    numbers anyway is how the AI domain ended up looking at detector values
+    (ADR 009 A3). The caller renders "not ready" instead of building the
+    request.
     """
     block = str(measured_block or "").strip()
     if not block:
@@ -211,9 +222,16 @@ def _label_to_axis() -> dict[str, str]:
 def _unechoed_measurement_lines(block: str, *, mode=None, profile=None) -> str:
     """The block's lines that do NOT state a number for an asked axis."""
     try:
+        from tabs.image_gallery.backends.errors import BackendContractError
         from tabs.image_gallery.services.rank_fusion import measured_axes_for
 
         asked = {str(axis) for axis in measured_axes_for(mode, profile=profile)}
+    except BackendContractError:
+        # No axis set (empty/absent AI profile): the echo filter cannot tell
+        # which local numbers the model would be asked to re-read, so the whole
+        # block is withheld — and the caller refuses the request rather than
+        # sending detector numbers under a substituted axis set (ADR 009 A3).
+        raise
     except Exception:
         asked = set()
     labels = _label_to_axis()
@@ -237,10 +255,12 @@ def build_prompt(mode=None, *, profile=None, measured_block: str = "") -> str:
     an axis the JUDGE NAMED (no registry id, no registry label) is requested by
     its own name with its definition as the label, so the model measures the
     dimension it was asked for rather than guessing what an id means
-    (``plan-gallery-ai-judgement`` P7-A). ``profile`` is the active metric
-    profile (``measured_axes_for`` wins the registry half, ``axis_entries`` adds
-    the judge's half); ``profile=None`` reproduces the mode mapping byte-for-byte.
-    ``measured_block`` (local detector numbers) is attached as *context*,
+    (``plan-gallery-ai-judgement`` P7-A). ``profile`` is the AI backend's active
+    metric profile (``measured_axes_for`` wins the registry half,
+    ``axis_entries`` adds the judge's half); an absent or axis-less profile is
+    ``NoProfileYet`` from ``_scorecard_axes`` — there is no mode mapping on this
+    side (ADR 009 A3), so the builder refuses instead of asking a local axis
+    set. ``measured_block`` (local detector numbers) is attached as *context*,
     explicitly NOT authoritative.
     """
     axes = _scorecard_axes(mode, profile=profile)

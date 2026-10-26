@@ -1,4 +1,5 @@
 """Unified Stage-2 proxy pass for the Image Gallery controller (Wave 3).
+Audit-Meta: pattern=stage2-delivery size=exempt reason="one Stage-2 delivery seam: the chunk launcher, its reset-barrier token (captured in the same closure), the in-worker cancel probe and the path fan-out into the apply tails must stay together or a cancellation token lands in a second module and pre-reset chunks leak again"
 
 Thin-owner helpers: plain functions taking the owner (``GalleryController``).
 One chunked single-pass ``GenericWorker`` per 50 items decodes each file once
@@ -12,6 +13,8 @@ thin delegators keep the method names verbatim.
 The ``state.*`` mirror writes go through ``setattr``: a bare ``.state.X =``
 outside ``controller.py`` is rejected by the gallery ownership guard
 (``src/tabs/image_gallery/tests/contracts/test_gallery_ownership_guards.py``).
+
+Audit-Meta: pattern=batch-contract size=542 reason="one Stage-2 batch contract: chunk scheduling, the proxy decode, the engine records and the reset-token landing guard describe one pass; splitting them lets a pre-reset chunk persist after the barrier."
 """
 
 from __future__ import annotations
@@ -74,6 +77,15 @@ def _schedule_proxy(owner, items: list, priority: int, source, gen: int, wanted=
         wanted_set = frozenset(("artifacts", "fidelity", "camera"))
     owner._proxy_done = 0
     owner._proxy_total = len(chunks)
+    # The reset barrier's token for this pass (``cache_reset``): captured here,
+    # at start, and compared at every landing below. A metrics reset mid-pass
+    # must stop the remaining chunks and drop their results.
+    from tabs.image_gallery.use_cases.ai_analysis import (
+        _analysis_epoch_is_current,
+        analysis_epoch as _analysis_epoch,
+    )
+
+    aepoch = _analysis_epoch(owner)
     # Per-batch settle counter (independent of the global _proxy_* progress):
     # fires ``on_done`` once after every chunk of THIS batch has delivered.
     remaining = [len(chunks)]
@@ -82,6 +94,8 @@ def _schedule_proxy(owner, items: list, priority: int, source, gen: int, wanted=
         remaining[0] -= 1
         if remaining[0] > 0:
             return
+        if not _analysis_epoch_is_current(owner, aepoch):
+            return  # a reset happened mid-pass: no settle for the cleared world
         if on_done is not None:
             try:
                 on_done()
@@ -95,6 +109,11 @@ def _schedule_proxy(owner, items: list, priority: int, source, gen: int, wanted=
     # folder the user already left while a scroll waits for a pool thread.
     def _cancelled() -> bool:
         try:
+            if not _analysis_epoch_is_current(owner, aepoch):
+                return True  # metrics reset mid-pass — stop the remaining chunks
+        except Exception:
+            pass
+        try:
             return not owner._is_current_folder_gen(gen)
         except Exception:
             return False
@@ -105,9 +124,10 @@ def _schedule_proxy(owner, items: list, priority: int, source, gen: int, wanted=
             list(chunk), source, include_camera, full_res_artifacts, _cancelled,
         )
         worker.signals.result.connect(
-            lambda res, g=gen, w=wanted_set: owner._on_proxy_batch_ready(
+            lambda res, g=gen, w=wanted_set, a=aepoch: owner._on_proxy_batch_ready(
                 res, g, w, source=source,
                 include_camera=include_camera, full_res_artifacts=full_res_artifacts,
+                aepoch=a,
             )
         )
         worker.signals.error.connect(
@@ -212,10 +232,21 @@ def _attach_analysis_records(owner, result: dict) -> None:
             )
 
 
-def _on_proxy_batch_ready(owner, result: object, gen: int | None, wanted: object = None, *, source=None, include_camera: bool | None = None, full_res_artifacts: bool = False) -> None:
-    """One chunk delivery: persist it, then fan out by path into the apply tails."""
+def _on_proxy_batch_ready(owner, result: object, gen: int | None, wanted: object = None, *, source=None, include_camera: bool | None = None, full_res_artifacts: bool = False, aepoch: int | None = None) -> None:
+    """One chunk delivery: persist it, then fan out by path into the apply tails.
+
+    ``aepoch`` is the reset barrier's token, snapshotted by the chunk launcher:
+    a chunk produced before ``clear_metrics_caches`` must not persist
+    ``local_metrics``, attach engine records or repaint after it (owner
+    decision 2026-10-26). ``None`` is an unversioned caller (legacy direct
+    calls / doubles) and stays current.
+    """
     if gen is not None and not owner._is_current_folder_gen(gen):
         return  # folder switched — late proxy chunk dropped
+    from tabs.image_gallery.use_cases.ai_analysis import _analysis_epoch_is_current
+
+    if not _analysis_epoch_is_current(owner, aepoch):
+        return  # metrics reset mid-pass — pre-reset chunk dropped before any write
     if not isinstance(result, dict):
         return
     try:
@@ -275,9 +306,17 @@ def _on_proxy_batch_ready(owner, result: object, gen: int | None, wanted: object
             pass
 
 
-def _on_triage_ready(owner, result: object, gen: int | None = None, sgen: int | None = None) -> None:
+def _on_triage_ready(owner, result: object, gen: int | None = None, sgen: int | None = None, aepoch: int | None = None) -> None:
     if gen is not None and not owner._is_current_folder_gen(gen):
         logger.debug("triage result dropped: stale folder generation")
+        return
+    from tabs.image_gallery.use_cases.ai_analysis import _analysis_epoch_is_current
+
+    if not _analysis_epoch_is_current(owner, aepoch):
+        # A metrics reset cleared the pool while this triage was in flight: its
+        # groups describe measurements the user threw away, and applying them
+        # would start a Stage-2 pass over the cleared world (owner 2026-10-26).
+        logger.debug("triage result dropped: metrics reset while in flight")
         return
     if sgen is not None and sgen != owner._series_gen:
         # A sync view rewrite (move / append-attach) landed while this
@@ -488,8 +527,14 @@ def _apply_triage_result(owner, series, source, mode) -> None:
         logger.debug("tie-break auto-run failed", exc_info=True)
 
 
-def _on_triage_error(owner, error_info: object, gen: int | None = None) -> None:
+def _on_triage_error(owner, error_info: object, gen: int | None = None, aepoch: int | None = None) -> None:
     if gen is not None and not owner._is_current_folder_gen(gen):
+        return
+    from tabs.image_gallery.use_cases.ai_analysis import _analysis_epoch_is_current
+
+    if not _analysis_epoch_is_current(owner, aepoch):
+        # A failure of the pass the reset cancelled is not a fact about the
+        # cleared world: no ERROR state on the fresh view (owner 2026-10-26).
         return
     logger.debug("triage worker error: %r", error_info, exc_info=True)
     setattr(owner.state, "triage_state", TriageState.ERROR)

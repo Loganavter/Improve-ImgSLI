@@ -21,10 +21,11 @@ is exact, and a folder switch drops the old count with the generation.
 
 Pure bookkeeping: no Qt, no HTTP. The owner attributes are plain ints, created
 on first use so the many test doubles and legacy surfaces keep working. The
-only thing this module starts is the Algorithms domain's own tail of the same
-settle — the pairwise refinement of the settled pointwise order
-(``ai_analysis.dispatch_pairwise_refinement``, board 2026-10-25), which decides
-its free gates on this thread and does its work on the owner's pool.
+only thing this module starts is the AI domain's own tail of the same settle —
+the pairwise refinement of its judged order
+(``ai_analysis.dispatch_pairwise_refinement``, owner decision 2026-10-26),
+which decides its free gates on this thread, refuses off the AI domain and
+does its work on the owner's pool.
 """
 
 from __future__ import annotations
@@ -106,11 +107,13 @@ def dispatch_terminal_rank(owner) -> bool:
     many doubles that only implement ``_run_jev_ranks`` working (single-flight
     stays the only gate).
 
-    The Algorithms domain has its own TAIL on the same settle: the pointwise
-    (fusion) order is final now, so a near-tie top set may be refined pairwise
-    (``ai_analysis.dispatch_pairwise_refinement`` — board 2026-10-25). It is
-    called AFTER the ranker and is a no-op off the Algorithms domain; the call
-    is fail-open, so a refinement fault can never break the rank dispatch.
+    The AI domain has its own TAIL on the same settle: its order is final now,
+    so a near-tie top set may be refined pairwise
+    (``ai_analysis.dispatch_pairwise_refinement`` — owner decision 2026-10-26).
+    It is called AFTER the ranker and is a no-op off the AI domain (that is
+    where the pass's domain gate lives, so this ledger keeps its promise never
+    to read the domain); the call is fail-open, so a refinement fault can never
+    break the rank dispatch.
     """
     waiting = pending(owner)
     if waiting:
@@ -128,7 +131,7 @@ def dispatch_terminal_rank(owner) -> bool:
             dispatched = True
         except Exception:
             logger.debug("terminal rank dispatch failed", exc_info=True)
-    # The Algorithms-domain tail of the SAME settle. Outside
+    # The AI-domain tail of the SAME settle. Outside
     # ``_apply_fusion_ranks`` on purpose: that primitive is how the pairwise
     # pass applies its own result (``pairwise_order=``), so a trigger inside it
     # would re-enter itself.

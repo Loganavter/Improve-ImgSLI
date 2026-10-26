@@ -11,6 +11,8 @@ Public API expected by the task:
 ``threshold`` is a hamming distance threshold for the 64-bit dHash.
 Embedding is used as a secondary gate (euclidean) and for centroid
 computation.  Explicit dependencies only — no Qt, no getattrs.
+
+Audit-Meta: pattern=perceptual-signature size=521 reason="one signature contract: the dHash, the HSV embedding and the shared decode frame must agree, because the 2026-10-26 backend-isolation W5a wave removed a duplicate open by making all three read ONE decoded image. Splitting the primitives out lets a later edit reintroduce the second decode (measured: 4 opens per image) or make the hash and the embedding describe different pixels; the module stays a single ~60-line math block over one frame."
 """
 
 from __future__ import annotations
@@ -20,11 +22,42 @@ from typing import TYPE_CHECKING
 
 from PIL import Image
 
+from tabs.image_gallery.services import decode_cache
+
 if TYPE_CHECKING:
     from tabs.image_gallery.models import GalleryItem, Series
 
 
 # -- low-level primitives -------------------------------------------------
+
+def _phash_from_image(im) -> int:
+    """dHash over an already-decoded frame (no file I/O)."""
+    try:
+        # Handle palette / RGBA etc. → L.
+        try:
+            gray = im.convert("L")
+        except Exception:
+            gray = im.convert("RGB").convert("L")
+        # Resize to 9x8 for dHash (9 columns give 8 diffs per row).
+        # Pillow ≥10 removed ANTIALIAS; use LANCZOS/BILINEAR fallback.
+        try:
+            resample = Image.Resampling.LANCZOS  # type: ignore[attr-defined]
+        except AttributeError:
+            resample = Image.LANCZOS  # type: ignore[attr-defined,attr-defined]
+        small = gray.resize((9, 8), resample)
+        pixels = list(small.getdata())
+        # pixels row-major 9*8; for each row compare x vs x+1.
+        bits = 0
+        for y in range(8):
+            row_start = y * 9
+            for x in range(8):
+                left = pixels[row_start + x]
+                right = pixels[row_start + x + 1]
+                bits = (bits << 1) | (1 if left > right else 0)
+        return bits
+    except Exception:
+        return 0
+
 
 def compute_phash(path: Path | str) -> int:
     """Return 64-bit dHash (difference hash) for *path*.
@@ -32,36 +65,47 @@ def compute_phash(path: Path | str) -> int:
     Implementation: 9×8 grayscale resize (LANCZOS) → horizontal diff
     → 64-bit integer. Returns 0 on failure so callers can skip corrupt
     files without raising (pure service, never Qt).
+
+    Decodes through ``services.decode_cache`` so the matching
+    ``embedding`` call on the same file reuses this one open (I2).
     """
-    try:
-        p = Path(path)
-        with Image.open(p) as im:
-            # Handle palette / RGBA etc. → L.
-            try:
-                im = im.convert("L")
-            except Exception:
-                im = im.convert("RGB").convert("L")
-            # Resize to 9x8 for dHash (9 columns give 8 diffs per row).
-            # Pillow ≥10 removed ANTIALIAS; use LANCZOS/BILINEAR fallback.
-            try:
-                resample = Image.Resampling.LANCZOS  # type: ignore[attr-defined]
-            except AttributeError:
-                resample = Image.LANCZOS  # type: ignore[attr-defined,attr-defined]
-            small = im.resize((9, 8), resample)
-            pixels = list(small.getdata())
-            # pixels row-major 9*8; for each row compare x vs x+1.
-            bits = 0
-            idx = 0
-            for y in range(8):
-                row_start = y * 9
-                for x in range(8):
-                    left = pixels[row_start + x]
-                    right = pixels[row_start + x + 1]
-                    bits = (bits << 1) | (1 if left > right else 0)
-                    idx += 1
-            return bits
-    except Exception:
+    im = decode_cache.decode_image(path)
+    if im is None:
         return 0
+    return _phash_from_image(im)
+
+
+def _embedding_from_image(im) -> list[float]:
+    """HSV embedding over an already-decoded frame (no file I/O)."""
+    zero = [0.0] * 192
+    try:
+        # Convert to RGB then HSV. PIL HSV: H 0-255, S 0-255, V 0-255.
+        try:
+            rgb = im.convert("RGB")
+        except Exception:
+            return zero
+        try:
+            resample = Image.Resampling.BILINEAR  # type: ignore[attr-defined]
+        except AttributeError:
+            try:
+                resample = Image.BILINEAR  # type: ignore[attr-defined]
+            except Exception:
+                resample = 0  # type: ignore[assignment]
+        small = rgb.resize((8, 8), resample)
+        hsv = small.convert("HSV")
+        data = list(hsv.getdata())  # type: ignore[arg-type]
+        # data is list of (h,s,v) tuples 0-255.
+        vec: list[float] = []
+        for h, s, v in data:
+            vec.append(h / 255.0)
+            vec.append(s / 255.0)
+            vec.append(v / 255.0)
+        if len(vec) != 192:
+            # Pad/truncate defensively.
+            vec = (vec + zero)[:192]
+        return vec
+    except Exception:
+        return zero
 
 
 def embedding(path: Path | str) -> list[float]:
@@ -70,38 +114,14 @@ def embedding(path: Path | str) -> list[float]:
     8×8 HSV flatten: resize to 8×8, convert to HSV, flatten channels
     normalized to 0..1 (length 192 = 8*8*3). Pure Python + PIL, no Qt.
     Returns zero vector on failure.
+
+    Decodes through ``services.decode_cache`` so ``compute_phash`` on the
+    same file reuses that one open (I2).
     """
-    zero = [0.0] * 192
-    try:
-        p = Path(path)
-        with Image.open(p) as im:
-            # Convert to RGB then HSV. PIL HSV: H 0-255, S 0-255, V 0-255.
-            try:
-                im = im.convert("RGB")
-            except Exception:
-                return zero
-            try:
-                resample = Image.Resampling.BILINEAR  # type: ignore[attr-defined]
-            except AttributeError:
-                try:
-                    resample = Image.BILINEAR  # type: ignore[attr-defined]
-                except Exception:
-                    resample = 0  # type: ignore[assignment]
-            small = im.resize((8, 8), resample)
-            hsv = small.convert("HSV")
-            data = list(hsv.getdata())  # type: ignore[arg-type]
-            # data is list of (h,s,v) tuples 0-255.
-            vec: list[float] = []
-            for h, s, v in data:
-                vec.append(h / 255.0)
-                vec.append(s / 255.0)
-                vec.append(v / 255.0)
-            if len(vec) != 192:
-                # Pad/truncate defensively.
-                vec = (vec + zero)[:192]
-            return vec
-    except Exception:
-        return zero
+    im = decode_cache.decode_image(path)
+    if im is None:
+        return [0.0] * 192
+    return _embedding_from_image(im)
 
 
 def _hamming(a: int, b: int) -> int:
@@ -185,7 +205,12 @@ def clear_signature_cache() -> int:
 
 
 def signature_for(path) -> tuple[int, list[float]]:
-    """Cached ``(phash, embedding)`` for *path* (list copy, never shared)."""
+    """Cached ``(phash, embedding)`` for *path* (list copy, never shared).
+
+    ``compute_phash`` + ``embedding`` each decode through the shared
+    ``services.decode_cache`` frame, so the pair costs ONE ``Image.open``
+    per file (I2), not two.
+    """
     key = _stat_key(path)
     try:
         hit = _SIGNATURE_CACHE.get(key)

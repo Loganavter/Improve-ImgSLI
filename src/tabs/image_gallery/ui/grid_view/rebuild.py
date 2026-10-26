@@ -74,36 +74,59 @@ def _resolve_mode(view, explicit: object = None) -> object:
     return None
 
 def _resolve_profile(view, explicit: object = None) -> object:
-    """Resolve the ACTIVE metric profile from the LIVE state (never cached).
+    """Resolve the ACTIVE metric profile of THIS view's judgment domain.
 
-    Mirrors ``_resolve_mode``'s parent/window walk but reads ONLY
-    ``state.metric_profile`` (the same objects ``_resolve_mode`` inspects for
-    ``state.mode``). The profile is refreshed when the folder's metrics
-    settle, while ``_mode`` is only rewritten on triage/source change — so a
-    profile cached on the widget would show stale (base-only) dots. Returns
-    the stored profile, or ``None`` so callers fall back to the mode mapping
-    (fail-open).
+    Mirrors ``_resolve_mode``'s parent/window walk but reads the domain-tagged
+    state slot through the ONE accessor (``metric_profile.profile_for_domain``):
+    an AI view resolves ``ai_profile`` (the judge's axes), an Algorithms view
+    ``algorithms_profile`` (the local derivation) — never the other backend's.
+    The profile is refreshed when the folder's metrics settle, while ``_mode`` is
+    only rewritten on triage/source change — so a profile cached on the widget
+    would show stale (base-only) dots. Returns the stored profile, or ``None`` so
+    callers fall back to the mode mapping (fail-open).
     """
     self = view
     if explicit is not None:
         return explicit
+    try:
+        from tabs.image_gallery.services.metric_profile import (
+            DOMAIN_ALGORITHMS,
+            profile_for_domain,
+        )
+    except Exception:
+        return None
+    domain = DOMAIN_ALGORITHMS
+    try:
+        from .drag_source import _gallery_domain
+
+        domain = _gallery_domain(self) or DOMAIN_ALGORITHMS
+    except Exception:
+        pass
+
+    def _stored(state):
+        if state is None:
+            return None
+        try:
+            return profile_for_domain(state, domain)
+        except Exception:
+            logger.debug(
+                "profile slot read failed domain=%s", domain, exc_info=True
+            )
+            return None
+
     for obj in (self.parent(), self.window()):
         if obj is None:
             continue
-        st = getattr(obj, "state", None)
-        if st is not None:
-            prof = getattr(st, "metric_profile", None)
-            if prof is not None:
-                return prof
+        prof = _stored(getattr(obj, "state", None))
+        if prof is not None:
+            return prof
     # Also walk the parent chain (cards host / nested containers).
     try:
         p = self.parent()
         while p is not None:
-            st = getattr(p, "state", None)
-            if st is not None:
-                prof = getattr(st, "metric_profile", None)
-                if prof is not None:
-                    return prof
+            prof = _stored(getattr(p, "state", None))
+            if prof is not None:
+                return prof
             p = p.parent()  # type: ignore[attr-defined]
     except Exception:
         pass

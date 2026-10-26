@@ -26,9 +26,13 @@ from types import SimpleNamespace
 from tabs.image_gallery.models import AiAnalysisResult
 from tabs.image_gallery.services import ai_cache
 from tabs.image_gallery.services.ai_settings_store import AiSettings
+from tabs.image_gallery.services.metric_profile import MetricProfile
 from tabs.image_gallery.services.thumbnail_cache import cache_key_for
 
 PROFILE = ("sharpness", "noise", "exposure", "composition")
+#: The ctx profile these tests carry: non-empty, so an analyze MISS is a real
+#: request (an empty AI slot is refused by the axes-first guard).
+_AI_PROFILE = MetricProfile(axis_ids=PROFILE, mode="camera", source="vlm")
 
 
 def _settings(**overrides) -> AiSettings:
@@ -78,7 +82,7 @@ def _cache_dir(tmp_path, monkeypatch) -> Path:
 def _owner(settings, started: list) -> SimpleNamespace:
     """A minimal analyze-path owner: settings, mode, card refresh, begin seam."""
     return SimpleNamespace(
-        state=SimpleNamespace(mode="camera", metric_profile=None, items=[]),
+        state=SimpleNamespace(mode="camera", algorithms_profile=None, ai_profile=_AI_PROFILE, items=[]),
         widget=SimpleNamespace(refresh_card=lambda it: None),
         _judgment_domain="ai",
         _ai_settings_store=SimpleNamespace(load=lambda: settings),
@@ -140,7 +144,7 @@ def test_analyze_item_never_serves_a_pre_identity_entry(tmp_path, monkeypatch) -
 
     started: list = []
     owner = SimpleNamespace(
-        state=SimpleNamespace(mode="camera", metric_profile=None, items=[]),
+        state=SimpleNamespace(mode="camera", algorithms_profile=None, ai_profile=_AI_PROFILE, items=[]),
         widget=SimpleNamespace(refresh_card=lambda it: None),
         _judgment_domain="ai",
         _ai_settings_store=SimpleNamespace(load=lambda: _settings(model="model/B")),
@@ -213,7 +217,7 @@ def test_analyze_item_hits_its_own_backend(tmp_path, monkeypatch) -> None:
 
     started: list = []
     owner = SimpleNamespace(
-        state=SimpleNamespace(mode="camera", metric_profile=None, items=[]),
+        state=SimpleNamespace(mode="camera", algorithms_profile=None, ai_profile=_AI_PROFILE, items=[]),
         widget=SimpleNamespace(refresh_card=lambda it: None),
         _judgment_domain="ai",
         _ai_settings_store=SimpleNamespace(load=lambda: _settings()),

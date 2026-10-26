@@ -92,9 +92,9 @@ def _settings(**overrides) -> SimpleNamespace:
     return SimpleNamespace(**base)
 
 
-#: A COMPLETE selector answer: the rule is 3..8 axes, so a 1-2 axis reply is a
+#: A COMPLETE selector answer: the rule is 5..8 axes, so a 1-2 axis reply is a
 #: refusal now (retried once, then WARN + fallback) — the defect this row fixes.
-_THREE_AXES = ["sharpness", "noise", "exposure"]
+_THREE_AXES = ["sharpness", "noise", "exposure", "clipping", "white_balance"]
 
 
 def _answer(axes) -> dict:

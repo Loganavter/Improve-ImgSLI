@@ -472,8 +472,11 @@ def test_transport_exception_degrades_without_raising(tmp_path) -> None:
     ) is None
 
     ctrl._apply_jev_outcome([a, b], outcome)
-    assert _ranks_by_name((a, b)) == before
-    assert all(it.rank_source == "fusion" for it in (a, b))
+    # Owner rule 2026-10-26 (d1684dfd): a FAULT in the selected AI backend is an
+    # ERROR — the local fusion order is withdrawn, never presented as the AI
+    # answer. A benign abstain (the test above) still keeps it.
+    assert all(it.rank is None for it in (a, b))
+    assert all(it.rank_source is None for it in (a, b))
 
 
 # --------------------------------------------------------------------------

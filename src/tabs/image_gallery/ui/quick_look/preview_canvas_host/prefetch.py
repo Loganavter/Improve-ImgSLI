@@ -22,7 +22,11 @@ def _arm_tiled_dwell(overlay, canvas, path, key) -> None:
     tiled memo stays empty and the bounded coarse store keeps driving 1.0
     frames. The canvas fires the staged kick on dwell (``_ql_on_dwell``,
     same ``_ql_gen`` retirement as the pyramid pre-warm — no second timer)
-    or immediately on wheel-zoom past 1.0. A tiled memo hit still installs
+    or immediately on wheel-zoom past 1.0. On dwell the demand/pyramid
+    decode is preferred (I2, audit R4): one full decode of the file, and
+    the staged kick is served from THAT store once it lands; the uncapped
+    kick below still fires when the demand path cannot serve (source over
+    ``_QL_FULL_EDGE_CAP`` → coarse-only). A tiled memo hit still installs
     synchronously (zero decode, same as before). Any miss fails open with
     the staged kick dropped. Never raises.
     """

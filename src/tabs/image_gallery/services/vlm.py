@@ -279,6 +279,19 @@ def build_compare_brief_request(
 TIE_BREAK_MIN_CONFIDENCE = 0.5
 
 
+def _answered_model(raw: dict) -> str:
+    """The model id the provider actually served, from the wire reply.
+
+    Provenance only: the REQUEST named ``model``, but OpenRouter routing /
+    fallback can answer with another id. Empty when the reply does not say (a
+    local OpenAI-compatible server may omit it). Never raises.
+    """
+    try:
+        return str(raw.get("model") or "").strip()
+    except Exception:
+        return ""
+
+
 def is_decisive_tie_break(result: TieBreakResult) -> bool:
     """True when ``result`` is decisive enough to crown a winner."""
     try:
@@ -335,6 +348,7 @@ def parse_tie_break_response(raw: dict, *, model: str, path_a: Path, path_b: Pat
         confidence=max(0.0, min(1.0, float(confidence))),
         model=model,
         decided_at_iso=datetime.now(timezone.utc).isoformat(),
+        answered_model=_answered_model(raw),
     )
 
 
@@ -373,6 +387,7 @@ def parse_compare_brief_response(raw: dict, *, model: str, path_a: Path, path_b:
         tags=tags,
         model=model,
         created_at_iso=datetime.now(timezone.utc).isoformat(),
+        answered_model=_answered_model(raw),
     )
 
 

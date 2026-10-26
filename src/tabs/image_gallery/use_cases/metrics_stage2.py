@@ -22,6 +22,10 @@ from tabs.image_gallery.debug import gallery_camera_disabled as _camera_disabled
 from tabs.image_gallery.debug import gallery_debug as _dbg
 from tabs.image_gallery.debug import gallery_fidelity_disabled as _fidelity_disabled
 from tabs.image_gallery.models import GalleryItem
+from tabs.image_gallery.use_cases.ai_analysis import (
+    _analysis_epoch_is_current,
+    analysis_epoch as _analysis_epoch,
+)
 from core.log_names import APP_LOGGER_NAME
 
 logger = logging.getLogger(APP_LOGGER_NAME)
@@ -52,17 +56,22 @@ def _start_artifact_analysis(owner, items: list[GalleryItem], source_path: Path 
     # Run in background via GenericWorker (never UI-blocking).
     try:
         gen = owner._folder_gen
+        aepoch = _analysis_epoch(owner)  # reset barrier token (``cache_reset``)
         worker = GenericWorker(owner._tracked(owner._run_artifacts_sync), list(items), source_path)
-        worker.signals.result.connect(lambda res, g=gen: owner._on_artifacts_ready(res, g))
+        worker.signals.result.connect(
+            lambda res, g=gen, a=aepoch: owner._on_artifacts_ready(res, g, aepoch=a)
+        )
         worker.signals.error.connect(owner._on_artifacts_error)
         owner._pool_start(worker, 1)
     except Exception:
         logger.debug("artifact worker start failed", exc_info=True)
 
 
-def _on_artifacts_ready(owner, result: object, gen: int | None = None) -> None:
+def _on_artifacts_ready(owner, result: object, gen: int | None = None, *, aepoch: int | None = None) -> None:
     if gen is not None and not owner._is_current_folder_gen(gen):
         return  # folder switched — late artifact catalog dropped
+    if not _analysis_epoch_is_current(owner, aepoch):
+        return  # metrics reset mid-run — pre-reset catalog dropped
     # result: dict[str(path), dict[Artifact, Severity]]
     if not isinstance(result, dict):
         return
@@ -161,8 +170,11 @@ def _start_fidelity_analysis(owner, items: list[GalleryItem], source_path: Path 
         from tabs.image_gallery.services.fidelity_metrics import run_fidelity_sync
 
         gen = owner._folder_gen
+        aepoch = _analysis_epoch(owner)  # reset barrier token (``cache_reset``)
         worker = GenericWorker(owner._tracked(run_fidelity_sync), list(items), source_path)
-        worker.signals.result.connect(lambda res, g=gen: owner._on_fidelity_ready(res, g))
+        worker.signals.result.connect(
+            lambda res, g=gen, a=aepoch: owner._on_fidelity_ready(res, g, aepoch=a)
+        )
         worker.signals.error.connect(
             lambda err: logger.debug("fidelity worker error: %r", err, exc_info=True)
         )
@@ -171,9 +183,11 @@ def _start_fidelity_analysis(owner, items: list[GalleryItem], source_path: Path 
         logger.debug("fidelity worker start failed", exc_info=True)
 
 
-def _on_fidelity_ready(owner, result: object, gen: int | None = None) -> None:
+def _on_fidelity_ready(owner, result: object, gen: int | None = None, *, aepoch: int | None = None) -> None:
     if gen is not None and not owner._is_current_folder_gen(gen):
         return  # folder switched — late fidelity metrics dropped
+    if not _analysis_epoch_is_current(owner, aepoch):
+        return  # metrics reset mid-run — pre-reset metrics dropped
     if not isinstance(result, dict):
         return
     owner._apply_fidelity_map(result)
@@ -234,8 +248,11 @@ def _start_camera_metrics_analysis(owner, items: list[GalleryItem]) -> None:
         from tabs.image_gallery.services.camera_metrics import run_camera_metrics_sync
 
         gen = owner._folder_gen
+        aepoch = _analysis_epoch(owner)  # reset barrier token (``cache_reset``)
         worker = GenericWorker(owner._tracked(run_camera_metrics_sync), list(items))
-        worker.signals.result.connect(lambda res, g=gen: owner._on_camera_metrics_ready(res, g))
+        worker.signals.result.connect(
+            lambda res, g=gen, a=aepoch: owner._on_camera_metrics_ready(res, g, aepoch=a)
+        )
         worker.signals.error.connect(
             lambda err: logger.debug("camera metrics worker error: %r", err, exc_info=True)
         )
@@ -268,9 +285,11 @@ def _refresh_changed_metrics(owner, changed: list, tag: str) -> None:
             pass
 
 
-def _on_camera_metrics_ready(owner, result: object, gen: int | None = None) -> None:
+def _on_camera_metrics_ready(owner, result: object, gen: int | None = None, *, aepoch: int | None = None) -> None:
     if gen is not None and not owner._is_current_folder_gen(gen):
         return  # folder switched — late camera metrics dropped
+    if not _analysis_epoch_is_current(owner, aepoch):
+        return  # metrics reset mid-run — pre-reset scalars dropped
     if not isinstance(result, dict):
         return
     owner._apply_camera_map(result)

@@ -361,9 +361,19 @@ def test_zero_arg_callback_fails_closed(monkeypatch, param) -> None:
 
 
 def test_default_analyze_isolates_per_target_failures(monkeypatch) -> None:
-    """One failing target never aborts the rest of the analyzer's context."""
+    """One failing target never aborts the rest of the analyzer's context.
+
+    The context is the PRODUCTION one (``context_for_paths``), so it carries the
+    AI backend's own axis set: R6 refuses an axis-less AI call by name instead
+    of judging on borrowed detector axes (owner rule 2026-10-26), and this test
+    is about the per-target loop, not about the profile gate.
+    """
+    from tabs.image_gallery.services.metric_profile import MetricProfile
     from tabs.image_gallery.use_cases import ai_analyze
-    from tabs.image_gallery.use_cases.action_context import ActionContext
+    from tabs.image_gallery.use_cases.action_context import (
+        ORIGIN_ACTION,
+        context_for_paths,
+    )
 
     a, b, c = Path("/a.png"), Path("/b.png"), Path("/c.png")
     seen: list[Path] = []
@@ -375,7 +385,14 @@ def test_default_analyze_isolates_per_target_failures(monkeypatch) -> None:
         seen.append(item.path)
 
     owner = SimpleNamespace(
-        state=SimpleNamespace(mode=None, metric_profile=None, items=items),
+        state=SimpleNamespace(
+            mode="camera",
+            algorithms_profile=None,
+            ai_profile=MetricProfile(
+                axis_ids=("sharpness", "noise"), mode="camera", source="vlm"
+            ),
+            items=items,
+        ),
         widget=SimpleNamespace(refresh_card=lambda it: None),
         _judgment_domain="ai",
         _ai_settings_store=SimpleNamespace(
@@ -391,7 +408,8 @@ def test_default_analyze_isolates_per_target_failures(monkeypatch) -> None:
     )
     monkeypatch.setattr(ai_analyze, "load_cached_analysis", lambda *a, **k: None)
 
-    assert ai_analyze.analyze(owner, ActionContext(targets=(a, b, c), backend="ai")) is None
+    ctx = context_for_paths(owner, (a, b, c), origin=ORIGIN_ACTION)
+    assert ai_analyze.analyze(owner, ctx) is None
     assert seen == [a, c]
 
 

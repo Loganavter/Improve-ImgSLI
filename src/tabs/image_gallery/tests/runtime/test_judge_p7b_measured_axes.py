@@ -1,6 +1,6 @@
 """P7-B — the named axes are MEASURED, CARRIED and COMPARED.
 
-P7-A let the judge NAME 3..8 axes in free form (``MetricProfile.axis_entries``),
+P7-A let the judge NAME 5..8 axes in free form (``MetricProfile.axis_entries``),
 but the chain stopped there: the scorecard parser dropped a free axis' number,
 the Jev vector carried only registry numbers, the ranker saw no meaning or
 direction, and the noise floor was the constant 20 even when k draws had measured

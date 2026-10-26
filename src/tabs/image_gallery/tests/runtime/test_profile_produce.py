@@ -3,7 +3,7 @@
 ``plan-adaptive-metric-profiles-2026-10-17`` P1 gave the profile a producer;
 ``plan-gallery-ai-judgement`` P5 made what it produces the SERIES OFFER: the
 axes whose measured spread clears the local floor. It is derived when the
-mode/metrics settle, stored on ``GalleryState.metric_profile``, and read by the
+mode/metrics settle, stored in ``GalleryState.algorithms_profile``, and read by the
 rank fusion and the Jev vector. Without a stored profile every consumer keeps
 behaving exactly as before (the mode mapping — fail-open).
 
@@ -20,7 +20,7 @@ Falsification stories (what each test would catch):
   instead of falling back to the mode mapping);
 - a raise/blank on garbage items/metrics (the derivation must fail open to a
   usable axis set);
-- an unset default (``GalleryState().metric_profile`` must be ``None`` — the
+- an unset default (``GalleryState().algorithms_profile`` must be ``None`` — the
   pre-P1 behaviour, so nothing changes for every existing consumer).
 
 No Qt event loop, no torch/PIL, no network: a lightweight fake controller calls
@@ -83,11 +83,11 @@ def test_refresh_stores_the_series_offer() -> None:
     b = _item("b.png", sharpness=400.0, wb_shift=0.9, ssim=0.90)
     ctrl = _FakeController([a, b], _series(a, b), mode=Mode.BATCH_SYNTHETIC)
     ctrl.state.source_path = Path("/gallery/source.png")
-    assert ctrl.state.metric_profile is None  # pre-P1 default
+    assert ctrl.state.algorithms_profile is None  # pre-P1 default
 
     profile = ctrl.refresh_metric_profile()
 
-    assert ctrl.state.metric_profile is profile
+    assert ctrl.state.algorithms_profile is profile
     assert profile.axis_ids, "a derived profile is always a usable axis set"
     assert profile.source == "series", "the offer comes from the series' spreads"
     assert "ssim" in profile.salient_axes
@@ -117,7 +117,7 @@ def test_apply_fusion_ranks_uses_the_stored_profile() -> None:
 
     # Store a profile restricted to the ONE axis where `b` wins → the fusion
     # order must INVERT; if the stored profile were ignored, nothing moves.
-    ctrl.state.metric_profile = MetricProfile(axis_ids=("noise",))
+    ctrl.state.algorithms_profile = MetricProfile(axis_ids=("noise",))
     ctrl._apply_fusion_ranks(ctrl.state.series, mode=ctrl.state.mode)
     assert (b.rank, a.rank) == (1, 2)
 
@@ -133,12 +133,12 @@ def test_clear_invalidates_and_active_profile_falls_back() -> None:
     ctrl = _FakeController([a, b], _series(a, b), mode=Mode.CAMERA)
 
     ctrl.refresh_metric_profile()
-    stored = ctrl.state.metric_profile
+    stored = ctrl.state.algorithms_profile
     assert stored is not None and stored.axis_ids
     assert active_profile(ctrl.state) is stored
 
     ctrl.clear_metric_profile()
-    assert ctrl.state.metric_profile is None
+    assert ctrl.state.algorithms_profile is None
     assert active_profile(ctrl.state).axis_ids == profile_for_mode(Mode.CAMERA).axis_ids
 
 
@@ -170,4 +170,5 @@ def test_refresh_is_fail_open_on_garbage_input() -> None:
 
 
 def test_gallery_state_default_profile_is_none() -> None:
-    assert GalleryState().metric_profile is None
+    assert GalleryState().algorithms_profile is None
+    assert GalleryState().ai_profile is None

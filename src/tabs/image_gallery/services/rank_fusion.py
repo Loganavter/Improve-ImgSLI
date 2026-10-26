@@ -55,11 +55,13 @@ Audit-Meta: pattern=compound-module size=exempt reason="one rank contract: the p
 
 from __future__ import annotations
 
+from tabs.image_gallery.backends.errors import NoProfileYet
 from tabs.image_gallery.services.metric_profile import (
+    DOMAIN_ALGORITHMS,
     EXCLUDED_AXES,
+    domain_of,
     judged_axis_entries,
     mode_id,
-    profile_for_mode,
 )
 from tabs.image_gallery.services.metric_scores import (
     raw_for,
@@ -124,7 +126,7 @@ _mode_id = mode_id
 
 
 def measured_axes_for(mode=None, *, profile=None) -> tuple[str, ...]:
-    """Every axis of the ACTIVE PROFILE — registry ids AND the judge's names.
+    """Every axis of the ACTIVE PROFILE — its own list, or ``NoProfileYet``.
 
     Owner design (``task-profile-granularity-and-axis-reporting``, 2026-10-26):
     "the axis set is the ACTIVE PROFILE'S OWN list — free-form names the judge
@@ -140,37 +142,62 @@ def measured_axes_for(mode=None, *, profile=None) -> tuple[str, ...]:
     axis has no local producer by construction, and it still ranks
     (:func:`_axis_vector` reads its number from the scorecard).
 
-    ``profile`` (any object with ``.axis_ids`` / ``.axis_entries``, canonically
-    ``metric_profile.MetricProfile``) wins when given. Without one — or with one
-    that carries no axis at all — the mode-implied profile applies
-    (``metric_profile.profile_for_mode``): untagged axes everywhere,
-    ``reference`` axes in ``fidelity`` only, ``photo`` axes in ``camera`` only;
-    ``RANK_EXCLUDED_AXES`` and non-MEASURED axes never.
+    **No mode-mapping fallback for a profile any more** (ADR 009 A3). A profile
+    that carries no axis is a backend with nothing to measure, so it is
+    ``NoProfileYet`` naming its owner: an EMPTY AI profile used to fall through
+    to the LOCAL mode axes, which handed the judge's prompt, Jev vector, card
+    dots and pairwise payload a detector axis set (four live chains,
+    ``tests/isolation/test_ai_profile_fallback_dies.py``).
 
-    The measured defect this closes (2026-10-26): the resolver used to return
-    ``axis_ids`` only, so a profile of ``axes=sharpness`` +
-    ``judged=contrast,color_saturation,grain`` ranked on sharpness ALONE while
-    three paid axes only labelled cards.
+    Without a profile at all the answer is the LOCAL backend's mode mapping, and
+    it is that backend's own artifact — ``profile_for_mode`` reached through
+    ``backends.algorithms`` (``axes_for_mode``), which is exactly what
+    ``profile_for_series`` falls back to when a series has no discriminating
+    measurement yet. This module no longer keeps a copy of the rule, so a caller
+    cannot arrive at local axes by leaving a profile out of an AI-domain call.
     """
     if profile is not None:
-        out: list[str] = []
-        try:
-            for axis in tuple(getattr(profile, "axis_ids", ()) or ()):
-                name = str(axis)
-                if name and name not in out:
-                    out.append(name)
-        except Exception:
-            out = []
-        try:
-            for entry in tuple(getattr(profile, "axis_entries", ()) or ()):
-                name = str(getattr(entry, "name", "") or "").strip()
-                if name and name not in out:
-                    out.append(name)
-        except Exception:
-            pass
-        if out:
-            return tuple(out)
-    return profile_for_mode(mode).axis_ids
+        axes = _profile_axis_names(profile)
+        if axes:
+            return axes
+        raise NoProfileYet(
+            backend_id=domain_of(profile), operation="measured_axes_for"
+        )
+    return _algorithms_mode_axes(mode)
+
+
+def _profile_axis_names(profile) -> tuple[str, ...]:
+    """The profile's own axis order: registry ids then the judge-named axes."""
+    out: list[str] = []
+    try:
+        for axis in tuple(getattr(profile, "axis_ids", ()) or ()):
+            name = str(axis)
+            if name and name not in out:
+                out.append(name)
+    except Exception:
+        out = []
+    try:
+        for entry in tuple(getattr(profile, "axis_entries", ()) or ()):
+            name = str(getattr(entry, "name", "") or "").strip()
+            if name and name not in out:
+                out.append(name)
+    except Exception:
+        pass
+    return tuple(out)
+
+
+def _algorithms_mode_axes(mode=None) -> tuple[str, ...]:
+    """The mode mapping, asked of the backend that OWNS it (never re-derived).
+
+    Deferred import: ``backends.algorithms`` reaches this module through its
+    ``rank`` (``rank_series``), so importing the package at module load would be
+    a cycle. The mode mapping itself is ``profile_for_mode`` — the Algorithms
+    backend's own ``heuristic`` profile (``profile_for_series``'s last local
+    fallback), which is why the core no longer keeps a copy of the rule.
+    """
+    from tabs.image_gallery.backends.composition import backend
+
+    return tuple(backend(DOMAIN_ALGORITHMS).axes_for_mode(mode))
 
 
 def judge_axes_of(axes) -> tuple[str, ...]:
@@ -447,7 +474,9 @@ def _record_scores(item) -> dict[str, float]:
     return out
 
 
-def item_quality(item, *, mode=None, profile=None, excluded_axes=()) -> float | None:
+def item_quality(
+    item, *, mode=None, profile=None, excluded_axes=(), axes=None
+) -> float | None:
     """0..100 aggregate over applicable MEASURED axes; None when nothing measured.
 
     The **weighted** mean over every applicable axis that has a value — an
@@ -476,14 +505,23 @@ def item_quality(item, *, mode=None, profile=None, excluded_axes=()) -> float | 
     mapping — see ``measured_axes_for``). Missing axes are excluded (never
     treated as 0/100) and ``RANK_EXCLUDED_AXES`` is never consulted.
     Deterministic; never fabricates.
+
+    ``axes`` is the caller's OWN axis set, passed by a backend that decided which
+    half of a profile it may measure (``backends.algorithms.rank`` passes the
+    registry half only): the aggregate then never consults the other backend's
+    vocabulary, even when the profile carries it.
     """
-    axes = measured_axes_for(mode, profile=profile)
+    resolved_axes = (
+        tuple(str(axis) for axis in axes)
+        if axes is not None
+        else measured_axes_for(mode, profile=profile)
+    )
     weights = RANK_AXIS_WEIGHTS.get(_mode_id(mode), {})
     try:
         skip = frozenset(str(axis) for axis in (excluded_axes or ()))
     except Exception:
         skip = frozenset()
-    vector = _axis_vector(item, axes)
+    vector = _axis_vector(item, resolved_axes)
     if skip:
         kept = {axis: value for axis, value in vector.items() if axis not in skip}
         if kept:
@@ -502,7 +540,9 @@ def item_quality(item, *, mode=None, profile=None, excluded_axes=()) -> float | 
     return min(mean, worst + RANK_WORST_AXIS_SLACK)
 
 
-def rank_series(items, *, mode=None, profile=None, pairwise_order=None) -> dict[str, int]:
+def rank_series(
+    items, *, mode=None, profile=None, pairwise_order=None, axes=None
+) -> dict[str, int]:
     """path -> rank 1..N; measured first by ``(-quality, str(path))``, then
     unmeasured by ``str(path)``. Idempotent under input permutation.
 
@@ -520,14 +560,24 @@ def rank_series(items, *, mode=None, profile=None, pairwise_order=None) -> dict[
     order never changes which items are measured, never touches the quality
     numbers, and is ignored for a path this series did not measure — a rank
     source, never a second sort.
+
+    ``axes`` (the caller's own axis set) forwards to :func:`item_quality`: a
+    backend that ranks on ONE half of a profile states it here
+    (``backends.algorithms.rank``: the registry half only), so the local order
+    can never be moved by the other backend's vocabulary. With ``axes=None`` the
+    profile's own set applies (``NoProfileYet`` when it carries none).
     """
     members = list(items or ())
-    axes = measured_axes_for(mode, profile=profile)
+    resolved_axes = (
+        tuple(str(axis) for axis in axes)
+        if axes is not None
+        else measured_axes_for(mode, profile=profile)
+    )
     verdicts = axis_salience(
-        [_axis_vector(member, axes) for member in members],
+        [_axis_vector(member, resolved_axes) for member in members],
         noise_floor=DETECTOR_NOISE_FLOOR,
         judge_noise_floor=AXIS_NOISE_FLOOR,
-        judge_axes=judge_axes_of(axes),
+        judge_axes=judge_axes_of(resolved_axes),
     )
     excluded = _inside_noise_axes(verdicts)
     measured: list[tuple[float, str]] = []
@@ -535,7 +585,11 @@ def rank_series(items, *, mode=None, profile=None, pairwise_order=None) -> dict[
     for item in members:
         path = str(getattr(item, "path", ""))
         quality = item_quality(
-            item, mode=mode, profile=profile, excluded_axes=excluded
+            item,
+            mode=mode,
+            profile=profile,
+            excluded_axes=excluded,
+            axes=resolved_axes,
         )
         if quality is None:
             unmeasured.append(path)

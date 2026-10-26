@@ -21,10 +21,12 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from tabs.image_gallery.services import jev_cache, series_priority
+from tabs.image_gallery.services.metric_profile import MetricProfile
 from tabs.image_gallery.services.series_priority import (
     PRIORITY_REASON_EMPTY,
     PRIORITY_REASON_LOW_CONFIDENCE,
     PRIORITY_REASON_NOUL,
+    PRIORITY_REASON_NO_PROFILE,
     build_priority_request,
     route_series_priority,
     route_series_priority_detailed,
@@ -37,6 +39,28 @@ def _item(name: str, **metrics) -> SimpleNamespace:
 
 def _series(sid: str, *items) -> SimpleNamespace:
     return SimpleNamespace(id=sid, members=list(items))
+
+
+def _profile() -> MetricProfile:
+    """The AI backend's own axis set (ADR 009 A3: the payload aggregates over IT).
+
+    ``series_priority`` no longer falls back to ``item_quality(mode=…)`` (the
+    LOCAL fusion aggregate) — the profile is an argument, and without one the
+    pass reports ``PRIORITY_REASON_NO_PROFILE`` instead of sending detector
+    numbers to an AI endpoint.
+    """
+    return MetricProfile(
+        mode="camera",
+        source="vlm",
+        axis_entries=(
+            SimpleNamespace(
+                name="halation",
+                definition="glow at bright edges",
+                scale="0-100",
+                direction="lower-is-better",
+            ),
+        ),
+    )
 
 
 def _chat(decision: dict) -> dict:
@@ -64,7 +88,7 @@ def _text(payload: dict) -> str:
 
 
 def test_request_is_one_user_message_asking_for_json() -> None:
-    payload = build_priority_request(_groups(), mode="camera")
+    payload = build_priority_request(_groups(), mode="camera", profile=_profile())
     assert payload["model"] == series_priority.JEV_MODEL
     assert [m["role"] for m in payload["messages"]] == ["system", "user"]
     assert "ranking" in payload["messages"][0]["content"]  # output contract
@@ -74,7 +98,7 @@ def test_request_is_one_user_message_asking_for_json() -> None:
 
 
 def test_payload_is_aggregate_only_no_paths_no_bytes_no_prose() -> None:
-    payload = build_priority_request(_groups(), mode="camera")
+    payload = build_priority_request(_groups(), mode="camera", profile=_profile())
     # The measured VECTOR (the user message) carries no identity / bytes / prose.
     blob = json.dumps(json.loads(_text(payload)))
     for leak in ("/gallery/", "a1.png", "b2.png"):
@@ -93,14 +117,14 @@ def test_payload_is_aggregate_only_no_paths_no_bytes_no_prose() -> None:
 
 def test_aliases_and_payload_are_order_independent_by_series_id() -> None:
     a, b = _groups()
-    first = build_priority_request([a, b], mode="camera")
-    second = build_priority_request([b, a], mode="camera")
+    first = build_priority_request([a, b], mode="camera", profile=_profile())
+    second = build_priority_request([b, a], mode="camera", profile=_profile())
     assert first == second
 
 
 def test_series_with_fewer_than_two_members_is_not_routed() -> None:
     solo = _series("solo", _camera("s.png", 200, 0.2))
-    got = build_priority_request([solo], mode="camera")
+    got = build_priority_request([solo], mode="camera", profile=_profile())
     assert json.loads(_text(got))["series"] == []
 
 
@@ -117,7 +141,11 @@ def test_decisive_ranking_sets_priorities(tmp_path) -> None:
         return _chat({"ranking": ["series_2", "series_1"]})
 
     outcome = route_series_priority_detailed(
-        [a, b], mode="camera", client=_client, cache=jev_cache.JevRankCache(tmp_path)
+        [a, b],
+        mode="camera",
+        client=_client,
+        cache=jev_cache.JevRankCache(tmp_path),
+        profile=_profile(),
     )
     assert outcome.decided
     assert outcome.priorities == {"b": 1, "a": 2}
@@ -130,7 +158,11 @@ def test_recommended_only_ranks_that_series_first_then_by_id(tmp_path) -> None:
         return _chat({"recommended": "series_2"})
 
     priorities = route_series_priority(
-        [a, b], mode="camera", client=_client, cache=jev_cache.JevRankCache(tmp_path)
+        [a, b],
+        mode="camera",
+        client=_client,
+        cache=jev_cache.JevRankCache(tmp_path),
+        profile=_profile(),
     )
     assert priorities["b"] == 1
     assert sorted(priorities.values()) == [1, 2]
@@ -140,14 +172,14 @@ def test_noul_and_low_confidence_degrade(tmp_path) -> None:
     a, b = _groups()
     noul = route_series_priority_detailed(
         [a, b], mode="camera", client=lambda p: _chat({"noul": True}),
-        cache=jev_cache.JevRankCache(tmp_path / "n"),
+        cache=jev_cache.JevRankCache(tmp_path / "n"), profile=_profile(),
     )
     assert noul.priorities is None and noul.reason == PRIORITY_REASON_NOUL
 
     low = route_series_priority_detailed(
         [a, b], mode="camera",
         client=lambda p: _chat({"ranking": ["series_1", "series_2"], "score": 0.1}),
-        cache=jev_cache.JevRankCache(tmp_path / "l"),
+        cache=jev_cache.JevRankCache(tmp_path / "l"), profile=_profile(),
     )
     assert low.priorities is None and low.reason == PRIORITY_REASON_LOW_CONFIDENCE
 
@@ -159,16 +191,28 @@ def test_transport_error_and_empty_degrade_without_raising(tmp_path) -> None:
         raise RuntimeError("network exploded")
 
     err = route_series_priority_detailed(
-        [a, b], mode="camera", client=_boom, cache=jev_cache.JevRankCache(tmp_path)
+        [a, b],
+        mode="camera",
+        client=_boom,
+        cache=jev_cache.JevRankCache(tmp_path),
+        profile=_profile(),
     )
     assert err.priorities is None and "exploded" in (err.reason or "")
     assert route_series_priority(
-        [a, b], mode="camera", client=_boom, cache=jev_cache.JevRankCache(tmp_path / "x")
+        [a, b],
+        mode="camera",
+        client=_boom,
+        cache=jev_cache.JevRankCache(tmp_path / "x"),
+        profile=_profile(),
     ) is None
 
     solo = _series("solo", _camera("s.png", 200, 0.2))
     empty = route_series_priority_detailed(
-        [solo], mode="camera", client=_boom, cache=jev_cache.JevRankCache(tmp_path / "e")
+        [solo],
+        mode="camera",
+        client=_boom,
+        cache=jev_cache.JevRankCache(tmp_path / "e"),
+        profile=_profile(),
     )
     assert empty.priorities is None and empty.reason == PRIORITY_REASON_EMPTY
 
@@ -187,7 +231,12 @@ def test_second_run_is_served_from_the_pin(tmp_path) -> None:
         return _chat({"ranking": ["series_2", "series_1"]})
 
     cache = jev_cache.JevRankCache(tmp_path)
-    first = route_series_priority([a, b], mode="camera", client=_client, cache=cache)
-    second = route_series_priority([a, b], mode="camera", client=_client, cache=cache)
+    profile = _profile()
+    first = route_series_priority(
+        [a, b], mode="camera", client=_client, cache=cache, profile=profile
+    )
+    second = route_series_priority(
+        [a, b], mode="camera", client=_client, cache=cache, profile=profile
+    )
     assert len(calls) == 1
     assert first == second == {"b": 1, "a": 2}

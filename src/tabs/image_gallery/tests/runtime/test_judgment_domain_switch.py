@@ -288,7 +288,7 @@ def test_the_ai_switch_asks_for_the_axes_before_it_analyzes(monkeypatch):
 
     class _Ctrl:
         def __init__(self, defer: bool) -> None:
-            self.state = SimpleNamespace(items=[], series=[], metric_profile=None)
+            self.state = SimpleNamespace(items=[], series=[], algorithms_profile=None, ai_profile=None)
             self._judgment_domain = "algorithms"
             self._folder_gen = 7
             self._defer = defer

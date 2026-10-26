@@ -23,9 +23,10 @@ opt-in rank source (callers that do not pass it keep today's ordering), and the
 pointwise quality numbers survive the pairwise order untouched.
 
 Runs offscreen; no network, no window (the judge is a scripted callable). The
-wiring section drives the pass through its PRODUCTION entry points — the
-explicit domain switch and the terminal-rank tail of a settled judge run
-(``analysis_batch.dispatch_terminal_rank``) — never only by calling
+wiring section drives the pass through its PRODUCTION entry point — the
+terminal-rank tail of a settled judge run
+(``analysis_batch.dispatch_terminal_rank``), reached in the AI domain that owns
+the pass (owner decision 2026-10-26) — never only by calling
 ``start_pairwise_refinement`` directly.
 """
 
@@ -443,11 +444,14 @@ def _wired_owner(items, **settings_overrides):
         items=list(items),
         series=[Series(id="s0", members=list(items))],
         mode="camera",
-        metric_profile=None,
+        algorithms_profile=None,
+        ai_profile=None,
     )
     ctl.widget = _WiringWidget()
     ctl._folder_gen = 0
-    ctl._judgment_domain = "algorithms"
+    # The pairwise pass is AI-domain work (owner decision 2026-10-26): these
+    # wiring tests exercise the domain that owns it.
+    ctl._judgment_domain = "ai"
     ctl._domain_epoch = 0
     ctl._metrics_settled_gen = 0
     ctl._tr = lambda key, default: default
@@ -462,9 +466,9 @@ def _wired_owner(items, **settings_overrides):
     ctl._sched_active = 0
     ctl._sched_peak = 0
     ctl._AI_VISIBLE_CAP = 4
-    # The Algorithms-domain terminal ranker: a NO-OP that only records, exactly
-    # like the real ``_run_jev_ranks`` (it refuses off the AI domain). The
-    # pairwise tail hangs off the same trigger, so this must still be called.
+    # The terminal ranker: a NO-OP that only records, exactly like the real
+    # ``_run_jev_ranks`` (it runs only in the AI domain). The pairwise tail
+    # hangs off the same trigger, so this must still be called.
     ctl.jev_calls = 0
 
     def _run_jev_ranks() -> None:
@@ -901,24 +905,23 @@ def test_terminal_rank_keeps_the_settle_gate_before_the_pass(monkeypatch) -> Non
     assert len(owner.launched) == 1, "the settled batch starts the one pass"
 
 
-def test_terminal_rank_refuses_in_the_ai_domain_and_runs_after_a_switch(
+def test_terminal_rank_refuses_in_the_algorithms_domain_and_runs_after_a_switch(
     monkeypatch,
 ) -> None:
-    """The AI domain owns the displayed order — the pass must not spend there.
+    """The AI domain owns the pairwise pass — Algorithms must not spend there.
 
-    The pass refines the POINTWISE (fusion) order. Under ``ai`` the rank on
-    screen is Jev's (``rank_source="jev"`` items are locked in
-    ``_apply_fusion_ranks``), so refining the fusion order would spend up to
-    N x (N-1) judge calls on an order the user cannot see. This fails if the
-    ``_epoch_is_current(..., domain="algorithms")`` gate is dropped from
-    ``dispatch_pairwise_refinement`` — the absence assertion alone would pass
-    for any reason, the switch pair is what pins the gate.
+    The A/B refinement is VLM work on a VLM order (owner decision 2026-10-26).
+    Under ``algorithms`` the order on screen is the deterministic fusion rank,
+    so a comparison pass would be a judge call for the other backend's order.
+    This fails if the ``_epoch_is_current(..., domain="ai")`` gate is dropped
+    from ``dispatch_pairwise_refinement`` — the absence assertion alone would
+    pass for any reason, the switch pair is what pins the gate.
     """
     items = _near_tie_items()
     owner = _wired_owner(items, pairwise_enabled=True, pairwise_top_n=2)
     owner._apply_fusion_ranks(owner.state.series)
     before = _ranks(items)
-    owner._judgment_domain = "ai"
+    owner._judgment_domain = "algorithms"
 
     built: list = []
     judge = _ScriptedJudge(_b_wins)
@@ -931,16 +934,16 @@ def test_terminal_rank_refuses_in_the_ai_domain_and_runs_after_a_switch(
     )
 
     assert analysis_batch.dispatch_terminal_rank(owner) is True
-    assert built == [], "the AI domain must not even build a judge client"
-    assert owner.launched == [], "no pass may start while Jev owns the order"
+    assert built == [], "the Algorithms domain must not even build a judge client"
+    assert owner.launched == [], "no pass may start while the local backend owns the order"
     assert judge.calls == 0, "no call spent on an order nobody sees"
     assert _ranks(items) == before, "the pointwise order is left untouched"
 
-    # Back in the Algorithms domain the SAME settled generation does refine:
-    # the pair of assertions proves the domain gate, not a missing trigger.
-    owner._judgment_domain = "algorithms"
+    # In the AI domain the SAME settled generation does refine: the pair of
+    # assertions proves the domain gate, not a missing trigger.
+    owner._judgment_domain = "ai"
     assert analysis_batch.dispatch_terminal_rank(owner) is True
-    assert len(owner.launched) == 1, "one pass once the pointwise order owns the view"
+    assert len(owner.launched) == 1, "one pass once the AI domain owns the view"
     owner.launched[0].run()
     assert judge.calls == 2, "one unordered pair, asked in both orders"
     assert (items[1].rank, items[0].rank) == (1, 2), "the pairwise order applied"
@@ -1174,7 +1177,7 @@ def test_terminal_rank_schedules_the_pass_on_a_judged_series(monkeypatch, caplog
         _judged_item("c.png", texture_fidelity=88, halo_freedom=87),
     ]
     owner = _wired_owner(items, pairwise_enabled=True, pairwise_top_n=2)
-    owner.state.metric_profile = profile
+    owner.state.ai_profile = profile
     owner._apply_fusion_ranks(owner.state.series)
     judge = _install_client(monkeypatch, _ScriptedJudge(_b_wins))
 

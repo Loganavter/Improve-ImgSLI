@@ -313,9 +313,9 @@ class QuickLookCanvasWidget(QRhiWidget):
         """Thin delegator to ``preview_canvas.lazy_levels._ql_on_dwell``."""
         return _lazy_levels._ql_on_dwell(self, gen)
 
-    def _fire_ql_tiled_pending(self) -> None:
+    def _fire_ql_tiled_pending(self, store=None) -> None:
         """Thin delegator to ``preview_canvas.lazy_levels._fire_ql_tiled_pending``."""
-        return _lazy_levels._fire_ql_tiled_pending(self)
+        return _lazy_levels._fire_ql_tiled_pending(self, store)
 
     def _drop_ql_demand(self) -> None:
         """Thin delegator to ``preview_canvas.lazy_levels._drop_ql_demand``."""

@@ -67,7 +67,14 @@ def _row_titles(overlay) -> list[str]:
     return out
 
 
-def _show(qtbot, item, series, *, mode=Mode.FIDELITY, domain="algorithms", profile=None):
+def _show(qtbot, item, series, *, mode=Mode.FIDELITY, domain=None, profile=None):
+    # One slot per backend: a judge-tagged profile is the AI backend's, anything
+    # else the Algorithms derivation's. ``domain=None`` infers from the tag.
+    ai_tagged = str(getattr(profile, "source", "")) == "vlm"
+    if domain is None:
+        domain = "ai" if ai_tagged else "algorithms"
+    algorithms_profile = None if ai_tagged else profile
+    ai_profile = profile if ai_tagged else None
     parent = QWidget()
     qtbot.addWidget(parent)
     ov = QuickLookOverlay(parent)
@@ -80,7 +87,8 @@ def _show(qtbot, item, series, *, mode=Mode.FIDELITY, domain="algorithms", profi
             series=[list(series)],
             items=list(series),
             judgment_domain=domain,
-            metric_profile=profile,
+            algorithms_profile=algorithms_profile,
+            ai_profile=ai_profile,
         ),
     )
     ov.show_for(item, owner)
@@ -216,7 +224,7 @@ def test_a_mode_fallback_offer_adds_no_axis_set_row(qtbot):
     offered = MetricProfile(
         axis_ids=("sharpness", "noise"), mode="fidelity", source="series"
     )
-    ov._owner.state.metric_profile = offered
+    ov._owner.state.algorithms_profile = offered
     m.rebuild_metrics(ov, item, True, "FIDELITY")
     assert "mode default" not in _row_texts(ov), _row_texts(ov)
 
@@ -233,8 +241,14 @@ class _RowsStub:
         self._current_idx = 0
         self._mode = Mode.FIDELITY
         self._source_path = None
+        ai_tagged = str(getattr(profile, "source", "")) == "vlm"
         self._owner = SimpleNamespace(
-            state=SimpleNamespace(mode=Mode.FIDELITY, metric_profile=profile)
+            _judgment_domain=("ai" if ai_tagged else "algorithms"),
+            state=SimpleNamespace(
+                mode=Mode.FIDELITY,
+                algorithms_profile=None if ai_tagged else profile,
+                ai_profile=profile if ai_tagged else None,
+            ),
         )
 
 
@@ -262,7 +276,7 @@ def test_ql_metrics_cache_invalidates_on_profile_change(qtbot):
     assert not any(t.startswith("Exposure") for t in _row_titles(ov))
 
     # Same series/item/metrics — only the active profile changes.
-    ov._owner.state.metric_profile = MetricProfile(
+    ov._owner.state.ai_profile = MetricProfile(
         axis_ids=("sharpness", "exposure", "clipping", "noise"),
         mode="fidelity",
         source="vlm",

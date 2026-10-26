@@ -65,8 +65,8 @@ def _evidence_items():
     return [_item("a.png", sharpness=0.0), _item("b.png", sharpness=400.0)]
 
 
-#: A complete answer: 3 axes (the rule is 3..8), all evidence-backed registry ids.
-_THREE_AXES = {"axes": ["sharpness", "noise", "exposure"]}
+#: A complete answer: 5 axes (the rule is 5..8), all evidence-backed registry ids.
+_COMPLETE_AXES = {"axes": ["sharpness", "noise", "exposure", "clipping", "white_balance"]}
 
 
 def _settings(**overrides) -> SimpleNamespace:
@@ -173,7 +173,7 @@ def test_profile_pin_is_scoped_to_the_provider_endpoint(tmp_path):
 
     def _client(base_url, api_key, payload):
         calls.append(base_url)
-        return _chat(_THREE_AXES)
+        return _chat(_COMPLETE_AXES)
 
     # Same model id on another endpoint: the A pin must not be served.
     profile = choose_profile_sync(
@@ -184,7 +184,13 @@ def test_profile_pin_is_scoped_to_the_provider_endpoint(tmp_path):
         client_call=_client,
     )
     assert calls == ["http://y"], "a foreign endpoint's pin short-circuited the call"
-    assert profile.axis_ids == ("sharpness", "exposure", "noise")
+    assert profile.axis_ids == (
+        "sharpness",
+        "exposure",
+        "clipping",
+        "noise",
+        "white_balance",
+    )
 
     # Endpoint A still hits its own pin.
     calls.clear()
@@ -235,7 +241,7 @@ def test_build_profile_request_leads_with_evidence_and_names_no_axis_of_its_own(
         "the measured spreads of THIS series travel with the images"
     )
     assert "why" in text, "every axis must be tied to an observed difference"
-    assert "from 3 to 8" in text.lower()
+    assert "from 5 to 8" in text.lower()
     assert "ONLY a JSON object" in text
     image_parts = [part for part in content if part["type"] == "image_url"]
     assert len(image_parts) == 3
@@ -347,7 +353,7 @@ def test_choose_profile_sync_calls_once_then_pins(tmp_path):
 
     def _client(*args, **kwargs):
         calls.append(1)
-        return _chat(_THREE_AXES)
+        return _chat(_COMPLETE_AXES)
 
     first = choose_profile_sync(
         items, mode="camera", settings=_settings(), cache=cache, client_call=_client
@@ -454,7 +460,7 @@ def test_choose_profile_sync_default_transport_is_ai_client_call_sync(monkeypatc
 
     def _fake_call_sync(base_url, api_key, payload):
         captured.update(base_url=base_url, api_key=api_key, payload=payload)
-        return _chat(_THREE_AXES)
+        return _chat(_COMPLETE_AXES)
 
     monkeypatch.setattr(ai_client, "call_sync", _fake_call_sync)
     items = _evidence_items()
@@ -545,7 +551,7 @@ def test_a_locally_sourced_pin_is_not_replayed(tmp_path):
 
     def _client(*args, **kwargs):
         calls.append(1)
-        return _chat(_THREE_AXES)
+        return _chat(_COMPLETE_AXES)
 
     profile = choose_profile_sync(
         items, mode="camera", settings=_settings(), cache=cache, client_call=_client

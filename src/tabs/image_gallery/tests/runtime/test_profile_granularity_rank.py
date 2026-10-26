@@ -1,4 +1,4 @@
-"""P3 — the profile's own axes RANK, 3..8 is enforced, one profile per SERIES.
+"""P3 — the profile's own axes RANK, 5..8 is enforced, one profile per SERIES.
 
 ``task-profile-granularity-and-axis-reporting`` (2026-10-26). Measured defects:
 
@@ -6,7 +6,7 @@
   returned only ``profile.axis_ids``, so a profile of ``axes=sharpness`` +
   ``judged=contrast,color_saturation,grain`` ranked on sharpness ALONE while three
   paid axes only labelled cards;
-- **the "3 to 8" rule was advisory**: a 1-axis reply was accepted, so a whole
+- **the "5 to 8" rule was advisory**: a 1-axis reply was accepted, so a whole
   folder was ordered on one axis;
 - **one profile per folder**, chosen from ``adaptive_k`` probes, applied to every
   series although the plan is folder → SERIES → domain;
@@ -190,7 +190,7 @@ def test_an_axis_with_no_number_is_a_gap_not_a_zero() -> None:
 
 
 # ---------------------------------------------------------------------------
-# (c)+(e) the 3..8 and `why` rules: one retry, then WARN + fallback
+# (c)+(e) the 5..8 and `why` rules: one retry, then WARN + fallback
 # ---------------------------------------------------------------------------
 
 
@@ -209,7 +209,7 @@ def _reply(rows) -> dict:
     return {"choices": [{"message": {"content": json.dumps({"axes": rows})}}]}
 
 
-def _three_axes(**overrides) -> list:
+def _five_axes(**overrides) -> list:
     rows = [
         {
             "name": "banding",
@@ -232,6 +232,20 @@ def _three_axes(**overrides) -> list:
             "direction": "higher-is-better",
             "why": "the measured spread separates the probes",
         },
+        {
+            "name": "posterization",
+            "definition": "flattened tonal bands; 0 = smooth, 100 = banded",
+            "scale": "0-100",
+            "direction": "lower-is-better",
+            "why": "the probes differ on tonal banding",
+        },
+        {
+            "name": "chroma_noise",
+            "definition": "coloured speckle in flat areas; 0 = none, 100 = heavy",
+            "scale": "0-100",
+            "direction": "lower-is-better",
+            "why": "the probes differ on coloured speckle",
+        },
     ]
     for row in rows:
         row.update(overrides)
@@ -246,7 +260,7 @@ def test_a_one_axis_reply_is_retried_once_then_warned_and_refused(
 
     def _client(base_url, api_key, payload):
         payloads.append(payload)
-        return _reply([_three_axes()[0]])  # ONE axis, twice
+        return _reply([_five_axes()[0]])  # ONE axis, twice
 
     with caplog.at_level(logging.WARNING, logger=APP_LOGGER_NAME):
         profile = choose_profile_sync(
@@ -264,13 +278,13 @@ def test_a_one_axis_reply_is_retried_once_then_warned_and_refused(
     )
 
 
-def test_a_three_axis_reply_is_accepted_and_pinned(tmp_path) -> None:
+def test_a_five_axis_reply_is_accepted_and_pinned(tmp_path) -> None:
     cache = ProfileCache(tmp_path)
     payloads: list = []
 
     def _client(base_url, api_key, payload):
         payloads.append(payload)
-        return _reply(_three_axes())
+        return _reply(_five_axes())
 
     profile = choose_profile_sync(
         _evidence_items(), mode="camera", settings=SETTINGS, cache=cache,
@@ -278,21 +292,26 @@ def test_a_three_axis_reply_is_accepted_and_pinned(tmp_path) -> None:
     )
     assert len(payloads) == 1, "a complete answer must not be retried"
     assert profile.source == "vlm"
-    assert [entry.name for entry in profile.axis_entries] == ["banding", "ringing"]
+    assert [entry.name for entry in profile.axis_entries] == [
+        "banding",
+        "ringing",
+        "posterization",
+        "chroma_noise",
+    ]
     assert profile.axis_ids == ("sharpness",)
     counts = axis_count_report(profile)
     assert counts == {
-        "judged": 2,
+        "judged": 4,
         "judged_with_local_detector": 0,
         "registry": 1,
-        "total": 3,
-    }, "the count is stated honestly: 2 from the judge, 1 measured locally"
+        "total": 5,
+    }, "the count is stated honestly: 4 from the judge, 1 measured locally"
 
 
 def test_an_axis_with_an_empty_why_is_retried_then_refused(tmp_path, caplog) -> None:
     cache = ProfileCache(tmp_path)
     payloads: list = []
-    rows = _three_axes()
+    rows = _five_axes()
     rows[1]["why"] = "   "  # one axis left unexplained, twice
 
     def _client(base_url, api_key, payload):
@@ -334,7 +353,7 @@ def test_an_empty_salience_summary_still_asks_the_judge(tmp_path, caplog) -> Non
 
     def _client(*args, **kwargs):
         calls.append(1)
-        return _reply(_three_axes())
+        return _reply(_five_axes())
 
     items = [  # no measured metric at all: nothing separates this series locally
         SimpleNamespace(path=Path("/gallery/a.png"), mtime_ns=1, metrics={}),
@@ -430,7 +449,8 @@ def test_a_multi_group_folder_logs_one_profile_line_per_series(monkeypatch, capl
             items=[m for g in groups for m in g.members],
             series=groups,
             mode="camera",
-            metric_profile=seed,
+            algorithms_profile=seed,
+            ai_profile=None,
             source_path=None,
         ),
         _judgment_domain="algorithms",
@@ -473,7 +493,7 @@ def test_the_axis_count_is_stated_in_the_log_and_the_strip(monkeypatch, caplog, 
     strip = StatsStrip()
     qtbot.addWidget(strip)
     owner = SimpleNamespace(
-        state=SimpleNamespace(metric_profile=profile),
+        state=SimpleNamespace(algorithms_profile=None, ai_profile=profile),
         widget=SimpleNamespace(stats_strip=strip),
     )
 

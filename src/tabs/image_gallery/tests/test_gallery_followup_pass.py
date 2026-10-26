@@ -366,7 +366,7 @@ def test_fusion_repoints_the_ranks_and_the_provenance_chip() -> None:
                 series=[Series(id="s", members=list(items))],
                 items=list(items),
                 mode="camera",
-                metric_profile=None,
+                algorithms_profile=None, ai_profile=None,
             )
             self._judgment_domain = "algorithms"
             self._metrics_settled_gen = 5

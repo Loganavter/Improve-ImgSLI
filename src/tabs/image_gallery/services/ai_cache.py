@@ -38,6 +38,16 @@ identity was part of the key carries no ``identity`` field (and an older
 never read, and reading one never raises. It simply stays on disk (invisible)
 until ``clear_all`` / the gallery's "Reset metrics cache" deletes it.
 
+The endpoint is normalized before it enters the identity
+(``ai_providers._url_key`` — the ONE normalizer the gallery uses): two spellings
+of the same ``base_url`` are one backend, while a provider switch is a MISS.
+
+The entry also RECORDS the model the provider actually served
+(``"answered_model"``, OpenRouter routes/falls back to another id) — provenance,
+not identity: keying on the routed id would split one configured backend into
+one entry per route, and a re-run could then never hit. The chain itself is
+unchanged (no cost behaviour moved).
+
 The identity never contains secrets: ``api_key`` is excluded from the key and
 from the cached JSON (the scorecard is not a credential store).
 
@@ -71,6 +81,7 @@ from tabs.image_gallery.models import (
     AiAnalysisResult,
     ai_scored_axes,
 )
+from tabs.image_gallery.services.ai_providers import _url_key
 from tabs.image_gallery.services.thumbnail_cache import cache_key_for
 from core.log_names import APP_LOGGER_NAME
 
@@ -97,6 +108,12 @@ logger = logging.getLogger(APP_LOGGER_NAME)
 #: inconsistently (``''`` / ``'camera'`` within one run), so one folder wrote two
 #: key sets and neither was ever read back. A v5 filename embeds the mode in its
 #: digest, so those entries are unreachable: one honest re-analysis, then hits.
+#: The analysis-backend adapter that OWNS this store (ADR 009 wave A4). A
+#: cache declares whose numbers it holds, so the adapter clearing it can prove it
+#: is clearing its own (``backends.reset.require_namespace``); the registry
+#: refuses two backends sharing one namespace (``CacheNamespaceCollision``).
+CACHE_NAMESPACE = "ai"
+
 AI_CACHE_VERSION = 6
 
 #: Prompt/schema revision of the analyze request. Bump this whenever the prompt
@@ -443,7 +460,11 @@ def analysis_cache_identity(
         needed = draws
     identity: dict[str, object] = {
         "model": _clean_text(getattr(settings, "model", "")),
-        "base_url": _clean_text(getattr(settings, "base_url", "")),
+        # The ENDPOINT, normalized by the gallery's ONE URL normalizer
+        # (``ai_providers._url_key``, shared with ``profile_cache`` / the Stage-3
+        # VLM / Jev / pairwise keys): ``https://h/v1`` and ``https://h/v1/`` are
+        # one backend, a provider switch stays a MISS. Never the api_key.
+        "base_url": _url_key(getattr(settings, "base_url", "")),
         "reasoning_effort": _identity_token(effort) or "auto",
         "k": _number_token(draws, DEFAULT_SAMPLE_COUNT, cast=int),
         "effective_k": _number_token(needed, draws, cast=int),
@@ -695,6 +716,9 @@ def load_cached_analysis(
             tags=tuple(data.get("tags", ())),
             model=data["model"],
             analyzed_at_iso=data["analyzed_at_iso"],
+            # Provenance of the ANSWER, not part of the identity: the provider may
+            # have routed to an id other than the requested one.
+            answered_model=data.get("answered_model", ""),
             sharpness=axes.get("sharpness", -1),
             noise=axes.get("noise", -1),
             exposure=axes.get("exposure", -1),
@@ -977,6 +1001,11 @@ def save_analysis(
                     "tags": list(result.tags),
                     "model": result.model,
                     "analyzed_at_iso": result.analyzed_at_iso,
+                    #: The model the provider ACTUALLY served (OpenRouter's
+                    #: fallback chain), provenance ONLY — the identity above keeps
+                    #: the requested model so one configured backend stays one
+                    #: entry per routed id instead of one per route.
+                    "answered_model": getattr(result, "answered_model", ""),
                     "sharpness": result.sharpness,
                     "noise": result.noise,
                     "exposure": result.exposure,

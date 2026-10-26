@@ -11,8 +11,9 @@ dies:
   fabricated) and junk / a transport failure degrade to the deterministic
   heuristic — and are NOT pinned;
 - the profile that the wiring's apply-tail would store is the axis set the
-  consumers resolve (dots, `measured_axes_for`, rank fusion) and the trace names
-  `source=vlm`;
+  AI-domain consumers resolve (dots, `measured_axes_for`, the Jev vector) and the
+  trace names `source=vlm` — while the Algorithms rank keeps its own slot and
+  never reads the judge's axes (backend-isolation invariant I1);
 - the stage is declared with `requires=("metrics_ready",)` and the settle
   kick/apply pair exists on the controller.
 
@@ -39,7 +40,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from tabs.image_gallery import controller as controller_mod
 from tabs.image_gallery.controller import GalleryController
-from tabs.image_gallery.models import GalleryState, Mode, Series
+from tabs.image_gallery.models import AiAnalysisResult, GalleryState, Mode, Series
 from tabs.image_gallery.services.metric_profile import MEASURED_POOL, profile_for_mode
 from tabs.image_gallery.services.profile_cache import ProfileCache
 from tabs.image_gallery.services.rank_fusion import measured_axes_for, rank_series
@@ -133,9 +134,9 @@ def _order(ranks: dict) -> list:
 def test_pin_prevents_a_second_call_and_returns_the_same_profile(tmp_path):
     items = _scattered()
     cache = ProfileCache(tmp_path)
-    # A COMPLETE answer: the rule is 3..8 axes (a 2-axis reply is retried, then
+    # A COMPLETE answer: the rule is 5..8 axes (a 2-axis reply is retried, then
     # refused with a WARN — ``task-profile-granularity-and-axis-reporting``).
-    transport = _Transport([_chat({"axes": ["sharpness", "noise", "exposure"]})])
+    transport = _Transport([_chat({"axes": ["sharpness", "noise", "exposure", "clipping", "white_balance"]})])
 
     first = choose_profile_sync(
         items, mode="camera", settings=_settings(), cache=cache, client_call=transport
@@ -149,7 +150,13 @@ def test_pin_prevents_a_second_call_and_returns_the_same_profile(tmp_path):
     # A VLM profile is EXACTLY the pool ids the model chose: it may legitimately
     # be NARROWER than the mode base (dropping an irrelevant axis is the point of
     # the feature). Only the heuristic fallback guarantees the mode base.
-    assert set(first.axis_ids) == {"sharpness", "noise", "exposure"}
+    assert set(first.axis_ids) == {
+        "sharpness",
+        "noise",
+        "exposure",
+        "clipping",
+        "white_balance",
+    }
     assert set(first.axis_ids) <= set(MEASURED_POOL)
 
     payload = transport.calls[0]["payload"]
@@ -157,10 +164,10 @@ def test_pin_prevents_a_second_call_and_returns_the_same_profile(tmp_path):
     content = payload["messages"][-1]["content"]
     text = content[0]["text"]
     # Owner design 2026-10-26: the text carries the measured EVIDENCE of this
-    # series and the 3..8 rule — it names no axis of its own (the examples menu
+    # series and the 5..8 rule — it names no axis of its own (the examples menu
     # is gone for good).
     assert "ONLY from this list" not in text
-    assert "from 3 to 8" in text.lower()
+    assert "from 5 to 8" in text.lower()
     assert "EVIDENCE" in text and "why" in text
     images = [part for part in content if part.get("type") == "image_url"]
     assert 2 <= len(images) <= len(items), "the probe sends the deviant members as images"
@@ -234,7 +241,7 @@ def test_ai_unavailable_makes_no_call(tmp_path):
 
 def test_the_vlm_profile_reaches_dots_axes_and_the_rank(tmp_path):
     items = _scattered()
-    transport = _Transport([_chat({"axes": ["noise", EXTRA, "sharpness"]})])
+    transport = _Transport([_chat({"axes": ["noise", EXTRA, "sharpness", "clipping", "white_balance"]})])
     profile = choose_profile_sync(
         items, mode="batch_synthetic", settings=_settings(),
         cache=ProfileCache(tmp_path), client_call=transport,
@@ -254,25 +261,43 @@ def test_the_vlm_profile_reaches_dots_axes_and_the_rank(tmp_path):
         items=list(items),
         series=[Series(id="s1", members=list(items))],
         mode=Mode.BATCH_SYNTHETIC,
-        metric_profile=profile,
+        ai_profile=profile,
     )
-    resolved = active_profile(state)
+    # The VLM answer is the AI backend's own slot; the AI consumers resolve it.
+    resolved = active_profile(state, domain="ai")
     assert resolved == profile
     assert measured_axes_for(state.mode, profile=resolved) == profile.axis_ids
 
-    _colors, infos = metric_dots_for_item(items[0], mode=state.mode, profile=resolved)
+    # The AI domain's dots read the model's scorecards: give every asked axis a
+    # value so the dots are measured (a gap paints nothing once anything exists).
+    for it in items:
+        it.analysis = AiAnalysisResult(
+            description="",
+            tags=(),
+            model="judge-model",
+            analyzed_at_iso="t",
+            axes={str(axis): 70 for axis in profile.axis_ids},
+        )
+    _colors, infos = metric_dots_for_item(
+        items[0], mode=state.mode, domain="ai", profile=resolved
+    )
     assert len(infos) == len(profile.axis_ids)
 
     expected = rank_series(list(items), mode=state.mode, profile=resolved)
     mode_only = rank_series(list(items), mode=state.mode)
     assert expected != mode_only, "the dataset must be discriminating for this to prove anything"
 
+    # ...but the Algorithms fusion reads ITS slot (empty here) and therefore
+    # ranks on the mode mapping, never on the judge's set.
+    assert state.algorithms_profile is None
     ctrl = SimpleNamespace(state=state)
     GalleryController._apply_fusion_ranks(ctrl, state.series, mode=state.mode)
     got = {str(i.path): i.rank for i in items}
-    assert _order(got) == _order(expected), "the rank must follow the SAME profile the dots read"
+    assert _order(got) == _order(mode_only), (
+        "the Algorithms rank must not follow the AI backend's profile"
+    )
 
-    assert "source=vlm" in describe(state)
+    assert "source=vlm" in describe(state, domain="ai")
 
 
 # --------------------------------------------------------------------------

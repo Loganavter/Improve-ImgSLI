@@ -173,7 +173,7 @@ def _show(qtbot, item, series, *, profile):
             series=[list(series)],
             items=list(series),
             judgment_domain="algorithms",
-            metric_profile=profile,
+            algorithms_profile=profile,
         ),
     )
     overlay.show_for(item, owner)
@@ -185,8 +185,10 @@ def _show(qtbot, item, series, *, profile):
 
 def test_an_inside_noise_axis_is_rendered_with_its_reason(qtbot) -> None:
     """Two axes: one separates the series, one is constant → reason row, kept."""
+    # A series offer is the Algorithms backend's own axis set: the rows render
+    # the LOCAL measurements below under the deterministic floor.
     profile = MetricProfile(
-        axis_ids=("sharpness", "exposure"), mode="camera", source="vlm"
+        axis_ids=("sharpness", "exposure"), mode="camera", source="series"
     )
     a = GalleryItem(
         path=Path("/gallery/row_a.png"),
