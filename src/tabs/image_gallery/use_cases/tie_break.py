@@ -145,9 +145,20 @@ def run_tie_break_if_needed(owner, series) -> None:
     from tabs.image_gallery.services.vlm import set_vlm_max_edge
 
     set_vlm_max_edge(settings.vlm_max_edge_px)
-    # Degrade silent-but-visible if AI not configured: keep local ranking, no badge
+    # Owner rule 2026-10-26: the AI backend is selected, so an unusable
+    # configuration is an ERROR on the cards, not a "silent degrade" that leaves
+    # the tie ordered by the local numbers as if the model had answered.
     if not settings.enabled or not settings.api_key or not settings.model:
-        logger.debug("tie-break skipped: AI not configured (silent degrade)")
+        logger.warning("tie-break: AI is not configured — marking the pair ERROR")
+        try:
+            from tabs.image_gallery.services.activity import ActivityPhase, set_activity
+
+            for item in (a, b):
+                set_activity(item, ActivityPhase.ERROR, "ai")
+            owner.widget.refresh_card(a)
+            owner.widget.refresh_card(b)
+        except Exception:
+            logger.debug("tie-break error paint failed", exc_info=True)
         return
 
     # Resolve source path for fidelity mode (if available) — needed early for cache key source_mtime

@@ -288,7 +288,14 @@ def _pin_key(items) -> str:
     )
 
 
-def test_the_heuristic_offer_is_pinned_so_one_folder_keeps_one_profile(tmp_path) -> None:
+def test_a_failed_selection_is_not_pinned_so_the_folder_can_heal(tmp_path) -> None:
+    """Owner rule 2026-10-26: no offer is pinned on failure — nothing at all is.
+
+    Red-before: the series offer was pinned as the folder's profile, which made a
+    paid failure look resolved and ranked the folder on camera axes. A transient
+    failure must stay retryable; the per-generation stage gate — not the pin —
+    is what bounds the attempts.
+    """
     cache = ProfileCache(tmp_path)
     items = _profile_items()
     calls: list = []
@@ -300,19 +307,14 @@ def test_the_heuristic_offer_is_pinned_so_one_folder_keeps_one_profile(tmp_path)
     first = choose_profile_sync(
         items, mode="camera", settings=SETTINGS, cache=cache, client_call=_client
     )
-    assert first.source == "series", "the fixture must take the fallback path"
-    pinned = cache.get(_pin_key(items))
-    assert pinned is not None and pinned == first, (
-        "the resolved fallback is the folder's profile — it is what the entries on "
-        "disk were built with"
-    )
-    assert cache.pinned_record(_pin_key(items))["source"] == "series"
+    assert first is None, "a junk reply yields no profile"
+    assert cache.get(_pin_key(items)) is None, "and it is not pinned as an answer"
 
     second = choose_profile_sync(
         items, mode="camera", settings=SETTINGS, cache=cache, client_call=_client
     )
-    assert second == first
-    assert len(calls) == 1, (
+    assert second is None
+    assert len(calls) == 2, (
         "one folder resolves ONE profile: the second pass reads the pin, it does "
         "not re-ask (a junk reply is not retried twice either)"
     )
@@ -351,17 +353,17 @@ def test_refresh_is_the_explicit_upgrade_seam(tmp_path) -> None:
             ]
         }
 
-    pinned_offer = choose_profile_sync(
+    failed = choose_profile_sync(
         items, mode="camera", settings=SETTINGS, cache=cache, client_call=_junk
     )
-    assert pinned_offer.source == "series"
+    assert failed is None, "a junk reply is an error (owner rule 2026-10-26)"
 
-    # Nothing but an explicit refresh may replace it.
+    # A failure pins nothing, so the next pass asks again — and gets the answer.
     same = choose_profile_sync(
         items, mode="camera", settings=SETTINGS, cache=cache, client_call=_answer
     )
-    assert same == pinned_offer, (
-        "a pin is not re-rolled by a policy change — only by an explicit refresh"
+    assert same.source == "vlm", (
+        "an unpinned failure is retried; the judge's answer is what resolves it"
     )
 
     upgraded = choose_profile_sync(

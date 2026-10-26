@@ -292,7 +292,12 @@ def test_parse_profile_reply_returns_none_on_junk():
 # --------------------------------------------------------------------------
 
 
-def test_choose_profile_sync_ai_unavailable_is_the_series_offer_without_a_call(tmp_path):
+def test_choose_profile_sync_ai_unavailable_is_none_without_a_call(tmp_path):
+    """Owner rule 2026-10-26: a selected AI backend that cannot answer is an ERROR.
+
+    Red-before: the series offer was returned and pinned, so the run continued on
+    camera/registry axes ("снова все метрики из camera режима").
+    """
     calls: list = []
 
     def _client(*args, **kwargs):
@@ -308,12 +313,7 @@ def test_choose_profile_sync_ai_unavailable_is_the_series_offer_without_a_call(t
         client_call=_client,
     )
     assert calls == []
-    assert profile == profile_select.derive_profile(items, mode="camera")
-    assert profile.source == "series", (
-        "with AI off the offer must still come from the series' measured "
-        "spreads, not from the mode mapping"
-    )
-    assert profile.axis_ids == ("sharpness",)
+    assert profile is None, "no local axis set may stand in for the AI answer"
 
 
 def test_choose_profile_sync_pin_hit_skips_the_call(tmp_path):
@@ -361,13 +361,12 @@ def test_choose_profile_sync_calls_once_then_pins(tmp_path):
     assert "sharpness" in first and "noise" in first
 
 
-def test_choose_profile_sync_malformed_reply_pins_the_offer_not_a_vlm_answer(tmp_path):
-    """A junk reply is not pinned AS the judge's answer — the OFFER is pinned.
+def test_choose_profile_sync_malformed_reply_returns_none_and_pins_nothing(tmp_path):
+    """A junk reply is an ERROR (owner 2026-10-26), and it pins NOTHING.
 
-    Inverted on purpose (2026-10-26, ``task-profile-freeze-before-vlm-answer``):
-    one folder resolves one profile, so the fallback the run actually used is
-    pinned WITH its own source. What must never happen — and is asserted here —
-    is a pinned ``vlm`` profile the judge never answered.
+    The old contract pinned the series offer here. That made a paid failure look
+    like a resolved profile and let the folder be ranked on local axes; it is the
+    silent fallback the owner forbade.
     """
     cache = ProfileCache(tmp_path)
     items = [_item("a.png", sharpness=0.0), _item("b.png", sharpness=400.0)]
@@ -380,24 +379,20 @@ def test_choose_profile_sync_malformed_reply_pins_the_offer_not_a_vlm_answer(tmp
     profile = choose_profile_sync(
         items, mode="camera", settings=_settings(), cache=cache, client_call=_client
     )
-    assert profile.source == "series"
-    assert profile == profile_select.derive_profile(items, mode="camera")
+    assert profile is None, "a junk reply produces no profile at all"
     key = profile_cache.profile_cache_key(
         items, mode="camera", model="m", base_url="http://x", reasoning_effort="auto"
     )
-    pinned = cache.get(key)
-    assert pinned is not None, "the resolved profile is pinned, fallback included"
-    assert pinned == profile and pinned.source == "series", (
-        "the pin records the SOURCE that resolved it — never a fabricated vlm answer"
-    )
+    assert cache.get(key) is None, "a failure must not be pinned as an answer"
 
     second = choose_profile_sync(
         items, mode="camera", settings=_settings(), cache=cache, client_call=_client
     )
-    assert second == profile
-    assert len(calls) == 1, (
-        "one folder resolves one profile: the second pass is served from the pin, "
-        "so only the first pass paid for the (unretryable) junk request"
+    assert second is None
+    assert len(calls) == 2, (
+        "a FAILURE is not pinned (that would turn a transient error into a "
+        "permanent one); the stage gate — not the pin — keeps one attempt per "
+        "folder generation, so each explicit re-resolve pays its own call"
     )
 
 
@@ -411,24 +406,22 @@ def test_choose_profile_sync_drops_ids_outside_the_pool(tmp_path):
     profile = choose_profile_sync(
         items, mode="camera", settings=_settings(), cache=cache, client_call=_client
     )
-    assert profile.source == "heuristic"
-    pinned = cache.get(
-        profile_cache.profile_cache_key(
-            items,
-            mode="camera",
-            model="m",
-            base_url="http://x",
-            reasoning_effort="auto",
+    assert profile is None, "an axis the profile cannot score is not a profile"
+    assert (
+        cache.get(
+            profile_cache.profile_cache_key(
+                items,
+                mode="camera",
+                model="m",
+                base_url="http://x",
+                reasoning_effort="auto",
+            )
         )
-    )
-    assert pinned is not None, "the fallback this run used is the pinned answer"
-    assert pinned == profile, (
-        "the unusable pick must not leak into the pin — only the resolved "
-        "fallback is stored"
-    )
+        is None
+    ), "the unusable pick must not leak into the pin — and neither may a fallback"
 
 
-def test_choose_profile_sync_transport_raise_is_heuristic(tmp_path):
+def test_choose_profile_sync_transport_raise_is_an_error_not_a_fallback(tmp_path):
     items = [_item("a.png"), _item("b.png")]
 
     def _boom(*args, **kwargs):
@@ -437,10 +430,10 @@ def test_choose_profile_sync_transport_raise_is_heuristic(tmp_path):
     profile = choose_profile_sync(
         items, mode="camera", settings=_settings(), cache=ProfileCache(tmp_path), client_call=_boom
     )
-    assert profile.source == "heuristic"
+    assert profile is None, "a network failure is an error, not the camera axes"
 
 
-def test_choose_profile_sync_no_items_is_heuristic_without_a_call(tmp_path):
+def test_choose_profile_sync_no_items_is_none_without_a_call(tmp_path):
     calls: list = []
 
     def _client(*args, **kwargs):
@@ -451,7 +444,7 @@ def test_choose_profile_sync_no_items_is_heuristic_without_a_call(tmp_path):
         [], mode="camera", settings=_settings(), cache=ProfileCache(tmp_path), client_call=_client
     )
     assert calls == []
-    assert profile == profile_select.derive_profile([], mode="camera")
+    assert profile is None, "no members ⇒ no evidence ⇒ an error, not an offer"
 
 
 def test_choose_profile_sync_default_transport_is_ai_client_call_sync(monkeypatch, tmp_path):
@@ -527,3 +520,35 @@ def test_module_exports_are_the_frozen_interface():
         "profile_axis_count",
         "profile_fingerprint",
     }
+
+
+def test_a_locally_sourced_pin_is_not_replayed(tmp_path):
+    """A stale pin holding the local axis set must not silence the model.
+
+    Owner report 2026-10-26 ("снова все метрики из camera режима" on a folder
+    opened before): older builds pinned the series offer, and a pin hit returned
+    it without a call, so the judge was never asked again. Only a judge answer
+    may be replayed now.
+    """
+    cache = ProfileCache(tmp_path)
+    items = _evidence_items()
+    offered = profile_select.derive_profile(items, mode="camera")
+    assert offered.source != "vlm", "the fixture must hold a LOCAL pin"
+    cache.put(
+        profile_cache.profile_cache_key(
+            items, mode="camera", model="m", base_url="http://x",
+            reasoning_effort="auto",
+        ),
+        offered,
+    )
+    calls: list = []
+
+    def _client(*args, **kwargs):
+        calls.append(1)
+        return _chat(_THREE_AXES)
+
+    profile = choose_profile_sync(
+        items, mode="camera", settings=_settings(), cache=cache, client_call=_client
+    )
+    assert calls, "a local pin must not skip the paid axis-naming call"
+    assert profile is not None and profile.source == "vlm"

@@ -238,7 +238,7 @@ def _three_axes(**overrides) -> list:
     return rows
 
 
-def test_a_one_axis_reply_is_retried_once_then_warned_and_falls_back(
+def test_a_one_axis_reply_is_retried_once_then_warned_and_refused(
     tmp_path, caplog
 ) -> None:
     cache = ProfileCache(tmp_path)
@@ -255,7 +255,9 @@ def test_a_one_axis_reply_is_retried_once_then_warned_and_falls_back(
         )
 
     assert len(payloads) == 2, "exactly ONE retry for a thin answer"
-    assert profile.source != "vlm", "a 1-axis answer may never become the profile"
+    assert profile is None, (
+        "a 1-axis answer may never become the profile — and no local set replaces it"
+    )
     warnings = [r.getMessage() for r in caplog.records if r.levelno >= logging.WARNING]
     assert any("only 1 axe(s) named" in text for text in warnings), (
         "the refusal must say WHY (the count rule), not disappear into a debug line"
@@ -303,8 +305,8 @@ def test_an_axis_with_an_empty_why_is_retried_then_refused(tmp_path, caplog) -> 
             client_call=_client,
         )
 
-    assert len(payloads) == 2, "one retry, then the fallback"
-    assert profile.source != "vlm"
+    assert len(payloads) == 2, "one retry, then the error"
+    assert profile is None, "an unexplained axis is refused — no local fallback"
     warnings = [r.getMessage() for r in caplog.records if r.levelno >= logging.WARNING]
     assert any("`why` evidence" in text for text in warnings), (
         "an axis with no observed difference is refused with its reason"
@@ -319,7 +321,14 @@ def test_an_axis_with_an_empty_why_is_retried_then_refused(tmp_path, caplog) -> 
 # ---------------------------------------------------------------------------
 
 
-def test_an_empty_salience_summary_spends_no_request(tmp_path, caplog) -> None:
+def test_an_empty_salience_summary_still_asks_the_judge(tmp_path, caplog) -> None:
+    """Owner, 2026-10-26: the camera backend must not gate the AI call.
+
+    Red-before: no measured spread ⇒ no request, and the heuristic-camera registry
+    set was pinned ("снова все метрики из camera режима"). In the AI backend the
+    attached images ARE the evidence; a series the local detectors cannot separate
+    is exactly the series the judge has to look at.
+    """
     cache = ProfileCache(tmp_path)
     calls: list = []
 
@@ -327,22 +336,22 @@ def test_an_empty_salience_summary_spends_no_request(tmp_path, caplog) -> None:
         calls.append(1)
         return _reply(_three_axes())
 
-    items = [  # no measured metric at all: nothing separates this series
+    items = [  # no measured metric at all: nothing separates this series locally
         SimpleNamespace(path=Path("/gallery/a.png"), mtime_ns=1, metrics={}),
         SimpleNamespace(path=Path("/gallery/b.png"), mtime_ns=1, metrics={}),
     ]
-    with caplog.at_level(logging.WARNING, logger=APP_LOGGER_NAME):
+    with caplog.at_level(logging.INFO, logger=APP_LOGGER_NAME):
         profile = choose_profile_sync(
             items, mode="camera", settings=SETTINGS, cache=cache, client_call=_client
         )
 
-    assert calls == [], "no measured difference ⇒ the call is not worth its cost"
-    assert profile.source != "vlm"
+    assert calls, "the judge must be asked even without a local spread"
+    assert profile.source == "vlm", "the judge's axes are the answer, not the offer"
     assert any(
-        "no salience evidence" in r.getMessage()
+        "asking the judge anyway" in r.getMessage()
         for r in caplog.records
-        if r.levelno >= logging.WARNING
-    ), "the skip is a WARN, not a silent no-op"
+        if r.levelno >= logging.INFO
+    ), "the no-spread case is stated in the log, not silent"
     assert cache.get(
         __import__(
             "tabs.image_gallery.services.profile_cache", fromlist=["profile_cache_key"]

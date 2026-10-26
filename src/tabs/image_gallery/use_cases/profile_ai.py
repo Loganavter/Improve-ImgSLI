@@ -36,11 +36,11 @@ A reply cut off at the token cap (``finish_reason=length``) is retried ONCE with
 a doubled budget (``profile_ai_request.retry_profile_budget``) before the
 selector gives up; a selection that still yields no usable axis is logged at
 WARNING with finish_reason/budget/model, so a quality drop is visible without
-``IMGSLI_AI_DEBUG``. Every failure (AI off, no probe members, transport raise,
-junk reply) degrades to the series-derived offer
-(``profile_select.derive_profile`` → ``metric_profile.profile_for_series``) —
-the control always yields a usable axis set. The judge's own choice, when it
-answers, WINS over that offer (P5 precedence).
+``IMGSLI_AI_DEBUG``. Every failure (AI not configured, no probe members,
+transport raise, junk reply) returns ``None`` — owner rule 2026-10-26: a
+selected AI backend that cannot answer is an ERROR, and no local axis set is
+substituted for it (the old "degrade to the series-derived offer" behaviour is
+exactly the "снова все метрики из camera режима" complaint).
 
 Reuse, not rebuild: the transport is the shared ``services.ai_client.call_sync``
 seam, the JSON envelope is forced with ``response_format={"type":
@@ -452,14 +452,14 @@ def choose_profile_sync(
 
     Order (plan P2 §Select):
 
-    1. AI not configured → the series-derived offer
-       (``profile_select.derive_profile`` → ``profile_for_series``) — **no** call;
+    1. AI not configured → ``None`` (an ERROR in the AI backend, never a local
+       axis set — owner rule 2026-10-26);
     2. a pin hit for this folder-generation → the pinned profile (its source
        preserved) — **no** call;
     3. otherwise probe the K most-deviant members, build the free-form
        axis-naming request, call the transport, parse, pin and return.
 
-    EVERY answer is pinned, including the offer (2026-10-26,
+    A judge answer is pinned (2026-10-26,
     ``task-profile-freeze-before-vlm-answer``): one folder resolves ONE profile,
     so a later pass reads the axis set the entries on disk were built with instead
     of re-deriving it and (with the axis set in the analysis identity) paying to
@@ -467,24 +467,16 @@ def choose_profile_sync(
     it drops this folder's pin before resolving, which is the only way a pinned
     offer becomes a paid judge answer. Nothing else invalidates it.
 
-    Any failure — no probe members, no transport, a raising transport, a junk
-    reply, an axis count outside 3..8 after one retry — degrades to the series
-    offer (which is then pinned as such). Never raises. ``client_call`` defaults
+    Any failure — the AI backend not configured, no probe members, no transport,
+    a raising transport, a junk reply, an axis count outside 3..8 after one retry
+    — returns ``None``. It does NOT degrade to the series offer: owner rule
+    (2026-10-26) is that a selected AI backend whose call fails is an ERROR, and
+    the run must not continue on the local axis set. Never raises. ``client_call`` defaults
     to ``ai_client.call_sync`` and is invoked as client_call(base_url, api_key,
     payload). folder_key is accepted for call-site symmetry; the pin identity is
     the member fingerprint.
     """
-    from tabs.image_gallery.use_cases import profile_select
-
     members = _as_list(items)
-
-    def _offer():
-        try:
-            return profile_select.derive_profile(members, mode=mode)
-        except Exception:
-            from tabs.image_gallery.services.metric_profile import profile_for_mode
-
-            return profile_for_mode(mode)
 
     from tabs.image_gallery.services import profile_cache
 
@@ -530,7 +522,14 @@ def choose_profile_sync(
             logger.debug("profile pin invalidate failed", exc_info=True)
 
     if not ai_selector_available(settings):
-        return _pin(_offer(), why="resolved without an AI call (AI unavailable)")
+        # Owner rule 2026-10-26: the AI backend is SELECTED, so an unusable
+        # backend is an ERROR. Pinning the local axis set here is exactly the
+        # "снова все метрики из camera" complaint.
+        logger.warning(
+            "profile select: the AI backend is selected but not configured — no "
+            "profile (an error, not a fallback to the local axis set)"
+        )
+        return None
 
     from tabs.image_gallery.use_cases import profile_probe
 
@@ -545,24 +544,41 @@ def choose_profile_sync(
         except Exception:
             hit = None
         if hit is not None:
-            try:
-                from tabs.image_gallery.services.ai_client import _ai_debug
-                from tabs.image_gallery.services.metric_profile import format_profile
+            # Only a JUDGE answer may be replayed. A pin written by an older
+            # build could hold the local offer (``source="series"``/``"heuristic"``)
+            # — replaying it would pin the camera axis set forever and the model
+            # would never be asked again (owner report 2026-10-26: "снова все
+            # метрики из camera режима" on a folder that had been opened before).
+            source = str(getattr(hit, "source", "") or "")
+            if source == "vlm":
+                try:
+                    from tabs.image_gallery.services.ai_client import _ai_debug
+                    from tabs.image_gallery.services.metric_profile import format_profile
 
-                _ai_debug(
-                    "profile pin hit: %s — no profile request",
-                    format_profile(hit),
-                )
-            except Exception:
-                pass
-            return hit
+                    _ai_debug(
+                        "profile pin hit: %s — no profile request",
+                        format_profile(hit),
+                    )
+                except Exception:
+                    pass
+                return hit
+            logger.info(
+                "profile pin ignored: the pinned source is %r, not a judge answer — "
+                "asking the model (the local axis set may never be the folder's "
+                "profile)",
+                source or "unknown",
+            )
 
     try:
         probes = profile_probe.probe_members(members, reference_path=reference_path)
     except Exception:
         probes = ()
     if not probes:
-        return _pin(_offer(), why="resolved without an AI call (no probe members)")
+        logger.warning(
+            "profile select: no probe image could be prepared — no profile (an "
+            "error: the AI backend cannot name axes without the pictures)"
+        )
+        return None
 
     # The EVIDENCE is the request's ground truth (owner design 2026-10-26): the
     # per-axis spread of THIS series plus each probe's own score, so every named
@@ -581,14 +597,19 @@ def choose_profile_sync(
     except Exception:
         evidence_axes = ()
     if not evidence_axes:
-        logger.warning(
-            "profile select skipped: no salience evidence — no measured axis "
-            "separates this series (members=%d mode=%s); series offer kept and "
-            "pinned",
+        # Owner, 2026-10-26: in the AI backend the axis vocabulary belongs to the
+        # JUDGE; the camera backend must not even boot, let alone decide whether
+        # the paid call is worth making. The old gate read "no local detector
+        # separated this series" as "nothing to ask" and pinned the
+        # heuristic-camera registry set — so a folder of upscalers kept
+        # sharpness/exposure/clipping/... forever ("снова все метрики из camera
+        # режима"). In this backend the images ARE the evidence: NAME the axes.
+        logger.info(
+            "profile select: no local spread separates this series (members=%d "
+            "mode=%s) — asking the judge anyway: the images are the evidence",
             len(members),
             mode,
         )
-        return _pin(_offer(), why="skipped the call: no salience evidence")
 
     try:
         payload = build_profile_request(
@@ -599,17 +620,23 @@ def choose_profile_sync(
             base_url=base_url,
         )
     except Exception:
-        return _pin(_offer(), why="resolved without an AI call (request build failed)")
+        logger.warning("profile select: the request could not be built — no profile")
+        return None
 
     call = client_call or _default_client_call()
     if call is None:
-        return _pin(_offer(), why="resolved without an AI call (no transport)")
+        logger.warning("profile select: no transport is available — no profile")
+        return None
 
     try:
         raw = call(base_url, api_key, payload)
     except Exception:
-        logger.debug("profile select call failed", exc_info=True)
-        return _pin(_offer(), why="resolved after a transport failure")
+        logger.warning(
+            "profile select: the AI call failed — no profile (an error, not a "
+            "fallback to the local axis set)",
+            exc_info=True,
+        )
+        return None
 
     attempts = 1
     text = _reply_text(raw)
@@ -664,7 +691,12 @@ def choose_profile_sync(
             model,
             mode,
         )
-        return _pin(_offer(), why=f"resolved after an unusable answer ({reason})")
+        logger.warning(
+            "profile select: the reply broke the 3..8 rule (%s) — no profile (an "
+            "error, not a fallback to the local axis set)",
+            reason,
+        )
+        return None
 
     # (e) The trace says where the axes came from: the measured evidence vs. the
     # model's own additions — plus the judge/local count, so "the judge named 3 and

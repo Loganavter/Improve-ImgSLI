@@ -35,7 +35,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from tabs.image_gallery.tests._activity_fixtures import mark_analyzing
 from tabs.image_gallery import controller as controller_mod
 from tabs.image_gallery.controller import GalleryController
-from tabs.image_gallery.models import GalleryItem, Mode, Series
+from tabs.image_gallery.models import AnalysisStatus, GalleryItem, Mode, Series
 from tabs.image_gallery.services.metric_profile import MetricProfile, profile_for_mode
 from tabs.image_gallery.services.rank_fusion import measured_axes_for
 from tabs.image_gallery.ui.card.dots import metric_dots_for_item
@@ -167,6 +167,9 @@ class _ProfileCtrl:
     def _run_profile_select_on_settle(self):
         self.profile_kicks += 1
         return GalleryController._run_profile_select_on_settle(self)
+
+    def _mark_ai_profile_error(self, reason):
+        GalleryController._mark_ai_profile_error(self, reason)
 
     def _apply_profile_outcome(self, profile, gen):
         return GalleryController._apply_profile_outcome(self, profile, gen)
@@ -371,7 +374,11 @@ def test_ai_unavailable_launches_no_worker(monkeypatch, fake_workers) -> None:
     ctrl.refresh_metric_profile()
     ctrl._run_profile_select_on_settle()
     assert ctrl.launched == [], "no AI key/base_url must never launch a request"
-    assert ctrl.state.metric_profile.source == "heuristic"
+    # Owner rule 2026-10-26: the AI backend is selected, so an unusable
+    # configuration is an ERROR on the cards — not a quiet continue on the
+    # heuristic-camera axes (red-before: only ``metric_profile`` was asserted).
+    assert all(it.analysis_status == AnalysisStatus.ERROR for it in ctrl.state.items)
+    assert all(it.analysis_error for it in ctrl.state.items)
 
 
 def test_fewer_than_two_items_launches_no_worker(monkeypatch, fake_workers) -> None:
