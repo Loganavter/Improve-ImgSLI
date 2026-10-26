@@ -97,8 +97,17 @@ def _token_color(token: str, fallback_hex: str):
 
 
 def _severity_color(sev: str):
-    key = (sev or "clean").lower()
-    token, dark_fallback = _SEVERITY_TOKEN_FALLBACKS.get(key, _SEVERITY_TOKEN_FALLBACKS["clean"])
+    """Paint a severity token; a non-severity (unmeasured/unknown) paints neutral.
+
+    ``UNMEASURED``/``"unknown"`` are NOT failures and NOT "clean": both take the
+    muted neutral chip so a dot never claims a measured-good state. There is no
+    ``clean`` default here — an unrecognized token is a non-measurement.
+    """
+    key = str(sev or "").strip().lower()
+    pair = _SEVERITY_TOKEN_FALLBACKS.get(key)
+    if pair is None:
+        return _neutral_color()
+    token, dark_fallback = pair
     fallback = dark_fallback if _is_dark() else _SEVERITY_FALLBACKS_LIGHT.get(key, dark_fallback)
     return _token_color(token, fallback)
 
@@ -361,23 +370,34 @@ def metric_dots_for_item(
             band = str(score_band(score)).lower()
         except Exception:
             band = "bad"
-        colors.append(_severity_color(_BAND_SEVERITY.get(band, "clean")))
+        colors.append(_severity_color(_BAND_SEVERITY.get(band, "unmeasured")))
         infos.append((label, score))
     return tuple(colors), tuple(infos)
 
 
+#: Tooltip value for a dot that carries no measurement. Localized rows use
+#: ``image_gallery.quick_look.not_measured``; the dot tooltip is built from the
+#: geometry's ``(label, score)`` pair (no overlay/translator reaches it), so it
+#: says the same fact in the shared English wording.
+_UNMEASURED_TOOLTIP = "not measured"
+
+
 def dot_tooltip_text(info: tuple[str, int | None]) -> str:
-    """Hover text for one dot: ``"<label>: <N>%"`` (``—`` when unscored)."""
+    """Hover text for one dot: ``"<label>: <N>%"`` or ``"<label>: not measured"``.
+
+    An absent score is stated as a non-measurement — never a ``0%`` and never a
+    silent dash that reads as "zero" (read-boundary contract).
+    """
     try:
         label, score = info
     except Exception:
         return ""
     if score is None:
-        return f"{label}: —"
+        return f"{label}: {_UNMEASURED_TOOLTIP}"
     try:
         return f"{label}: {int(score)}%"
     except Exception:
-        return f"{label}: —"
+        return f"{label}: {_UNMEASURED_TOOLTIP}"
 
 
 def _dots_for_item(
