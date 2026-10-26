@@ -47,6 +47,12 @@ class SettingsDialog(ThemedDialog):
     #: build callable runs once per dialog, not once per visit).
     section_shown = Signal(str)
 
+    #: Flyout group for the untagged popups this window owns (the pages' toolkit
+    #: ``ComboBox`` dropdowns carry no ``flyout_group`` of their own). Read by
+    #: ``ui.flyout_policy._adopt_window_scope_group``; keeps those popups out of
+    #: the ``default`` group so they cannot dismiss other windows' flyouts.
+    flyout_scope_group = "settings"
+
     def __init__(
         self,
         current_language,
