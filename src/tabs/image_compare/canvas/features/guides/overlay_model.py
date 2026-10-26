@@ -69,13 +69,18 @@ def resolve_guide_spans(ctx, widget) -> tuple[GuideSpan, ...]:
     Calling twice with an unchanged frame yields an equal tuple;
     nothing is cached, stored, or mutated.
 
-    Painted width is ``thickness * annotation_line_stroke_px`` (canvas px;
-    the pass projects the spans to widget px). The theme stroke is the FLOOR,
-    so the pre-thickness look is thickness 1, and the value the toolbar
-    delivers (1..10) finally reaches the shader's ``lineWidthPx``. The style
-    px is already ``resolve_view_px(tokens.guides_stroke_du)`` and that
-    resolver is linear in its value, so scaling it here is identical to
-    resolving ``guides_stroke_du * thickness`` without re-reading the tokens.
+    Painted width is ``max(annotation_line_stroke_px, thickness)`` px, the
+    unit the shader's ``lineWidthPx`` is packed in: the pass projects the span
+    *coordinates* to screen px and passes the width through unchanged, so both
+    operands live in that same space. The thickness slot IS the width -- the
+    convention the magnifier/table/grid dividers already use, where the
+    toolbar value becomes the bar width with no theme multiplier
+    (``plan_builder.py``: ``divider_thickness_px`` straight into the layout).
+    ``annotation_line_stroke_px`` (``resolve_view_px(tokens.guides_stroke_du)``)
+    is only the hairline FLOOR, so ``thickness=1`` reproduces the pre-thickness
+    look exactly and 1..10 stays a line, not a band: multiplying the theme
+    stroke by the control value painted ``10 x stroke`` (a fat red band on
+    large canvases -- owner report 2026-10-26).
     """
     guide_sets = tuple(getattr(widget.runtime_state, "_guide_sets", ()) or ())
     if not guide_sets:
@@ -100,11 +105,14 @@ def resolve_guide_spans(ctx, widget) -> tuple[GuideSpan, ...]:
             target_radii,
             color,
         ) = tuple(guide_set[:5])
-        # thickness 1 reproduces the theme stroke exactly; higher values scale
-        # it. Clamped at 1 so a stale 0 cannot paint a zero-width line
-        # (thickness 0 disables guides upstream via ``enabled``).
-        line_width = style_px * max(
-            1, _guide_set_thickness(guide_set, widget_thickness)
+        # The slot is a WIDTH in canvas px (same unit family as the divider's
+        # ``divider_thickness_px``), not a multiplier on the theme stroke. The
+        # theme stroke is the hairline floor, so thickness 1 is byte-identical
+        # to the pre-#696 look and 10 is a 10 px line, never 10 x stroke.
+        # Floored at 1 px as before, so a stale 0 cannot paint a zero-width
+        # line (thickness 0 disables guides upstream via ``enabled``).
+        line_width = max(
+            1.0, style_px, float(_guide_set_thickness(guide_set, widget_thickness))
         )
         if capture_center is None:
             continue
