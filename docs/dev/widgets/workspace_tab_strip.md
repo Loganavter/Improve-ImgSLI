@@ -23,6 +23,29 @@ scrolled under a gutter has its slot hidden instead of floating over the arrow.
 `AdaptiveTabStrip` parameters; `close_policy` defaults to
 `CloseButtonPolicy.ALL`.
 
+## Drag reorder (default on)
+
+The main window switches drag-to-reorder on for its strip
+(`enable_workspace_tab_reordering` in `ui/main_window/ui.py`) — no setting, no
+opt-in step. The toolkit keeps `setMovable` off by default, so the app is the
+one opting in; the call is guarded by `hasattr(strip, "setMovable")` because the
+app may run against a released toolkit that predates the API (the strip then
+keeps the click-only behaviour).
+
+Persistence lives in `ui/presenters/main_window/workspace_tab_order.py`:
+`tabMoved(from, to)` reports the tab's final index, and the strip's visible
+order (read through `tabData`, i.e. session ids) is written back into the
+workspace session list. That list is the single source of truth for tab order —
+it is what a project file saves and restores — so there is no second store and
+no persistence by index alone. The active session id is untouched, so the
+current tab stays current at its new position.
+
+`Ui_ImageComparisonApp.sync_workspace_tabs` restores that order when the strip
+is (re)built: tabs are matched by session id (never by index), stale tabs are
+removed, new sessions are inserted at their list position. Programmatic moves
+run with `_restoring_tab_order` set, so the rebuild never reports itself as a
+user drag.
+
 ## Gallery drag & drop
 
 The gallery's tab drag-and-drop is a host-installed handler, not Qt's default:

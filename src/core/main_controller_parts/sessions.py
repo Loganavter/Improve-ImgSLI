@@ -109,6 +109,19 @@ class WorkspaceSessionActions:
                 self.close_workspace_session(closing_session_id)
         return session
 
+    def reorder_workspace_sessions(self, session_ids) -> bool:
+        """Persist a drag-reordered workspace tab strip.
+
+        ``session_ids`` is the strip's visible order after the move. The
+        workspace session list is the single source of truth for tab order
+        (the same list a project file saves and restores), so rewriting it is
+        the persistence step — there is no second store. The active session is
+        untouched. Returns True when the order changed.
+        """
+        if not self.controller.session_manager:
+            return False
+        return bool(self.controller.session_manager.reorder_sessions(session_ids))
+
     def close_workspace_session(self, session_id: str) -> bool:
         if not self.controller.session_manager:
             return False

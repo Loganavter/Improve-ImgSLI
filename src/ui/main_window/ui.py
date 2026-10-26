@@ -39,6 +39,34 @@ def _widget_in_content_subtree(widget, content) -> bool:
     return False
 
 
+def enable_workspace_tab_reordering(strip) -> bool:
+    """Turn on drag-to-reorder for the workspace tab strip. Default ON.
+
+    Tab reordering is a basic tab-strip affordance, so the app switches it on
+    unconditionally (no setting, no "enable" step) — ``AdaptiveTabStrip`` ships
+    it off so that a host which never asks keeps a click-only strip.
+
+    Guarded on purpose: the app may run against a released ``sli-ui-toolkit``
+    that predates ``setMovable``. Then the strip keeps exactly today's
+    click-only behaviour instead of raising at startup. Returns True when the
+    strip accepted the call.
+    """
+    if strip is None or not hasattr(strip, "setMovable"):
+        logger.debug(
+            "workspace tab strip: %s has no setMovable — drag reorder stays off",
+            type(strip).__name__,
+        )
+        return False
+    try:
+        strip.setMovable(True)
+    except Exception:
+        logger.debug(
+            "workspace tab strip: setMovable(True) failed", exc_info=True
+        )
+        return False
+    return True
+
+
 class Ui_ImageComparisonApp:
     """Owns widget construction and exposes the update API used by the presenter.
 
@@ -64,9 +92,14 @@ class Ui_ImageComparisonApp:
             parent=main_window,
         )
         self.btn_new_session = self.workspace_tabs.add_button
+        enable_workspace_tab_reordering(self.workspace_tabs)
         self.workspace_stack = QStackedWidget(main_window)
         self._tab_registry = None
         self.legacy_tab_widgets: dict = {}
+        # True while ``sync_workspace_tabs`` restores the saved order: those
+        # programmatic ``moveTab`` calls must not be reported as a user drag
+        # (see ``ui.presenters.main_window.workspace_tab_order``).
+        self._restoring_tab_order = False
 
     def _current_language(self) -> str:
         try:
@@ -80,33 +113,65 @@ class Ui_ImageComparisonApp:
     def sync_workspace_tabs(self, sessions, active_session_id):
         tabs = self.workspace_tabs
         language = self._current_language()
+        # Restoring the saved order is not a user drag: while this flag is set
+        # the ``tabMoved`` persistence hook leaves the store alone, so a
+        # rebuild can never write an intermediate strip order back.
+        self._restoring_tab_order = True
         tabs.blockSignals(True)
         try:
             sessions = list(sessions)
-            target_count = len(sessions)
-
-            while tabs.count() > target_count:
-                tabs.removeTab(tabs.count() - 1)
+            desired_ids = [getattr(session, "id", None) for session in sessions]
+            self._drop_stale_workspace_tabs(tabs, desired_ids)
 
             active_index = -1
-            for index, session in enumerate(sessions):
+            for position, session in enumerate(sessions):
                 tab_text = self._localized_session_title(session, language)
-                if index < tabs.count():
-                    if tabs.tabText(index) != tab_text:
-                        tabs.setTabText(index, tab_text)
-                    if tabs.tabData(index) != session.id:
-                        tabs.setTabData(index, session.id)
-                else:
-                    tabs.addTab(tab_text)
+                # Identity, not position: the strip and the store may disagree
+                # after a close/create, and a tab must never be renamed into
+                # another session just because it sits at the same index.
+                index = self._workspace_tab_index(tabs, session.id)
+                if index < 0:
+                    tabs.insertTab(position, tab_text)
+                    index = position
+                elif index != position:
+                    # Restore the persisted order (saved in the session list
+                    # order, which is what a project file writes/reads).
+                    tabs.moveTab(index, position)
+                if tabs.tabText(index) != tab_text:
+                    tabs.setTabText(index, tab_text)
+                if tabs.tabData(index) != session.id:
                     tabs.setTabData(index, session.id)
                 if session.id == active_session_id:
-                    active_index = index
+                    active_index = position
 
             if active_index >= 0 and tabs.currentIndex() != active_index:
                 tabs.setCurrentIndex(active_index)
             tabs.refresh_close_buttons()
         finally:
             tabs.blockSignals(False)
+            self._restoring_tab_order = False
+
+    @staticmethod
+    def _workspace_tab_index(tabs, session_id) -> int:
+        """Index of the tab that owns *session_id* (``-1`` when absent)."""
+        if not session_id:
+            return -1
+        for index in range(tabs.count()):
+            if tabs.tabData(index) == session_id:
+                return index
+        return -1
+
+    @staticmethod
+    def _drop_stale_workspace_tabs(tabs, desired_ids) -> None:
+        """Remove tabs whose session is gone.
+
+        A closed session's tab must disappear instead of being reused for
+        whatever session lands on the same index next.
+        """
+        wanted = {session_id for session_id in desired_ids if session_id}
+        for index in range(tabs.count() - 1, -1, -1):
+            if tabs.tabData(index) not in wanted:
+                tabs.removeTab(index)
 
     def _localized_session_title(self, session, language: str) -> str:
         from domain.workspace import WorkspaceState
