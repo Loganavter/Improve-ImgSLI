@@ -117,6 +117,11 @@ PROFILE_REJECT_CALLS_BUILT = "calls-built"
 PROFILE_REJECT_DOMAIN = "domain-algorithms"
 PROFILE_REJECT_STALE = "stale-generation"
 PROFILE_REJECT_HOLLOW = "hollow-answer"
+#: The selector produced NO profile at all: the AI call the selected backend
+#: requires failed (not configured / no transport / transport error / no usable
+#: answer). Owner rule 2026-10-26: in the AI backend this is an ERROR — the run
+#: must not continue on the local axis set.
+PROFILE_REJECT_FAILED = "selector-failed"
 PROFILE_REJECT_CODES: tuple[str, ...] = (
     PROFILE_REJECT_CALLS_BUILT,
     PROFILE_REJECT_DOMAIN,

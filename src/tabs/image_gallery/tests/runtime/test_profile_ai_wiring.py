@@ -35,7 +35,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from tabs.image_gallery.tests._activity_fixtures import mark_analyzing
 from tabs.image_gallery import controller as controller_mod
 from tabs.image_gallery.controller import GalleryController
-from tabs.image_gallery.models import GalleryItem, Mode, Series
+from tabs.image_gallery.models import AnalysisStatus, GalleryItem, Mode, Series
 from tabs.image_gallery.services.metric_profile import MetricProfile, profile_for_mode
 from tabs.image_gallery.services.rank_fusion import measured_axes_for
 from tabs.image_gallery.ui.card.dots import metric_dots_for_item
@@ -167,6 +167,9 @@ class _ProfileCtrl:
     def _run_profile_select_on_settle(self):
         self.profile_kicks += 1
         return GalleryController._run_profile_select_on_settle(self)
+
+    def _mark_ai_profile_error(self, reason):
+        GalleryController._mark_ai_profile_error(self, reason)
 
     def _apply_profile_outcome(self, profile, gen):
         return GalleryController._apply_profile_outcome(self, profile, gen)
@@ -301,9 +304,15 @@ def test_vlm_profile_lands_on_state_and_consumers_follow(monkeypatch, fake_worke
 
 
 def test_a_later_settle_keeps_the_judges_answer(monkeypatch, fake_workers) -> None:
-    """P7-B / task-gallery-profile-lifecycle: a later settle must not replace the
-    judge's ``source=vlm`` profile with the series offer (the paid answer was
-    silently discarded mid-session), while a mode change still re-derives."""
+    """The judge's ``source=vlm`` profile owns the folder (P7-B, extended 2026-10-26).
+
+    A later settle must not replace it with the series offer — and neither must a
+    MODE change: the gallery mode is not a discriminator in the AI backend (the
+    axis set never depended on it), and the live 07:10 run showed the consequence
+    of comparing it: the judge answered with 5 free axes, and eleven seconds
+    later the heuristic-camera offer overwrote them because the answer carried
+    ``mode=""``. Red-before: the mode change re-derived the offer.
+    """
     a, b = _item("a.png", ssim=0.9), _item("b.png", ssim=0.4)
     ctrl = _ProfileCtrl([a, b], mode=Mode.CAMERA)
     ctrl.refresh_metric_profile()  # heuristic stored first
@@ -319,9 +328,11 @@ def test_a_later_settle_keeps_the_judges_answer(monkeypatch, fake_workers) -> No
     assert ctrl.state.metric_profile is stored, (
         "the judge's answer owns the slot for this folder+mode"
     )
-    ctrl.state.mode = Mode.FIDELITY  # a different question: re-derive
+    ctrl.state.mode = Mode.FIDELITY  # NOT a different question in the AI backend
     ctrl.refresh_metric_profile()
-    assert ctrl.state.metric_profile is not stored
+    assert ctrl.state.metric_profile is stored, (
+        "the judge's axes stay: the gallery mode does not change the question"
+    )
 
 
 def test_stale_generation_result_is_dropped(monkeypatch, fake_workers) -> None:
@@ -371,7 +382,11 @@ def test_ai_unavailable_launches_no_worker(monkeypatch, fake_workers) -> None:
     ctrl.refresh_metric_profile()
     ctrl._run_profile_select_on_settle()
     assert ctrl.launched == [], "no AI key/base_url must never launch a request"
-    assert ctrl.state.metric_profile.source == "heuristic"
+    # Owner rule 2026-10-26: the AI backend is selected, so an unusable
+    # configuration is an ERROR on the cards — not a quiet continue on the
+    # heuristic-camera axes (red-before: only ``metric_profile`` was asserted).
+    assert all(it.analysis_status == AnalysisStatus.ERROR for it in ctrl.state.items)
+    assert all(it.analysis_error for it in ctrl.state.items)
 
 
 def test_fewer_than_two_items_launches_no_worker(monkeypatch, fake_workers) -> None:

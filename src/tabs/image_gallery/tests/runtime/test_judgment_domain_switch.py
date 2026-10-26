@@ -270,3 +270,61 @@ def test_a_new_session_inherits_the_last_used_domain_even_when_the_slot_exists(
     # and the slot now carries the inherited value (not the factory defaults)
     slot = store.get_session_state_slot("image_gallery", session_id=sid) or {}
     assert slot.get("judgment_domain") == "ai", slot
+
+
+def test_the_ai_switch_asks_for_the_axes_before_it_analyzes(monkeypatch):
+    """Owner rule 2026-10-26 (measured live, 07:05): the axis set comes FIRST.
+
+    The switch used to call ``_run_ai_for_visible`` immediately; the first MISS
+    stamped the profile as consumed ("frozen for gen N"), so the selector was
+    skipped afterwards and the folder kept the heuristic-camera axes forever.
+    Red-before: ``analyzed == 1`` and no profile kick.
+    """
+    from tabs.image_gallery.controller import GalleryController
+    from tabs.image_gallery.use_cases import ai_analysis
+
+    analyzed: list = []
+    kicked: list = []
+
+    class _Ctrl:
+        def __init__(self, defer: bool) -> None:
+            self.state = SimpleNamespace(items=[], series=[], metric_profile=None)
+            self._judgment_domain = "algorithms"
+            self._folder_gen = 7
+            self._defer = defer
+            self.widget = SimpleNamespace(refresh_cards=lambda its: None, refresh_card=lambda it: None)
+
+        # -- the switch's collaborators ------------------------------------
+        def activate_judgment_domain(self, domain):
+            return GalleryController.activate_judgment_domain(self, domain)
+
+        def _run_profile_select_on_settle(self):
+            kicked.append(1)
+            if self._defer:
+                self._profile_settle_pending_gen = self._folder_gen
+
+        def _run_ai_for_visible(self, cache_only=False):
+            analyzed.append(cache_only)
+
+        def _run_series_priority(self):
+            pass
+
+        def _clear_series_priority(self):
+            pass
+
+        def _apply_fusion_ranks(self, series, **_kw):
+            pass
+
+    monkeypatch.setattr(ai_analysis, "_dispatch_terminal_rank", lambda owner: None)
+
+    deferring = _Ctrl(defer=True)
+    deferring.activate_judgment_domain("ai")
+    assert kicked, "the switch must ask for the axis profile"
+    assert analyzed == [], (
+        "no analysis may start before the profile resolves — that freezes the "
+        "heuristic axis set for the whole generation"
+    )
+
+    ready = _Ctrl(defer=False)  # profile already resolved (vlm pin / consumed)
+    ready.activate_judgment_domain("ai")
+    assert analyzed == [False], "with the profile resolved the analysis runs at once"

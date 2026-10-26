@@ -95,6 +95,9 @@ class _Owner:
     def _is_current_folder_gen(self, gen) -> bool:  # type: ignore[no-untyped-def]
         return GalleryController._is_current_folder_gen(self, gen)
 
+    def _mark_ai_profile_error(self, reason: str) -> None:
+        GalleryController._mark_ai_profile_error(self, reason)
+
     def _tr(self, key: str, default: str) -> str:
         return default
 
@@ -211,3 +214,35 @@ def test_the_freeze_is_generation_scoped_so_the_next_folder_still_accepts(
         "folder would never receive the model's axis set"
     )
     assert owner.state.profile_reject_reason == ""
+
+
+def test_a_failed_selector_marks_the_cards_and_keeps_no_local_axes() -> None:
+    """Owner rule 2026-10-26: a selected AI backend that cannot name axes is an ERROR.
+
+    Red-before: ``_apply_profile_outcome(None, gen)`` was an explicit no-op ("the
+    heuristic profile stored FIRST remains — fail-open"), so the folder was
+    analysed and ranked on the camera/registry axes after a paid failure — the
+    "снова все метрики из camera режима" report.
+    """
+    from tabs.image_gallery.models import AnalysisStatus
+    from tabs.image_gallery.services.metric_profile import PROFILE_REJECT_FAILED
+
+    paths = (Path("/gallery/a.png"), Path("/gallery/b.png"))
+    owner = _Owner(paths)
+    before = owner.state.metric_profile
+    owner._profile_failed_gen = None
+
+    owner._apply_profile_outcome(None, owner._folder_gen)
+
+    assert owner.state.profile_reject_reason == PROFILE_REJECT_FAILED
+    assert owner._profile_failed_gen == owner._folder_gen, (
+        "the settle tails must know this generation has no profile"
+    )
+    for item in owner.state.items:
+        assert item.analysis_status == AnalysisStatus.ERROR, (
+            "a card with no AI axis set must say so, not show camera numbers"
+        )
+        assert item.analysis_error and "AI" in item.analysis_error
+    assert owner.state.metric_profile == before, (
+        "the failed call must not replace the stored profile with anything"
+    )

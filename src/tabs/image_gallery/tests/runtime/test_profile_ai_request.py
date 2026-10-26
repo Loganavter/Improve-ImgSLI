@@ -241,13 +241,11 @@ def test_truncated_reply_is_retried_once_and_the_answer_is_pinned(tmp_path):
     assert cache.get(_key(items)) == profile, "the answered retry is pinned"
 
 
-def test_a_retry_that_still_starves_logs_a_warning_and_pins_the_offer(tmp_path, caplog):
-    """The fallback the run USED is pinned, with its own source — never "no axes".
+def test_a_retry_that_still_starves_logs_a_warning_and_pins_nothing(tmp_path, caplog):
+    """Owner rule 2026-10-26: a reply that never became an answer is an ERROR.
 
-    Inverted on purpose (2026-10-26, ``task-profile-freeze-before-vlm-answer``):
-    the run resolved the series offer, so that is the folder's profile; a pin
-    holding a hollow ``vlm`` answer would serve "no axes" to the generation,
-    which is exactly what must stay impossible.
+    Red-before: the series offer was pinned here, so the folder was ranked on
+    camera/registry axes after a paid failure.
     """
     cache = ProfileCache(tmp_path)
     items = _items()
@@ -263,14 +261,8 @@ def test_a_retry_that_still_starves_logs_a_warning_and_pins_the_offer(tmp_path, 
         )
 
     assert len(payloads) == 2, "exactly ONE retry — not a retry loop"
-    assert profile.source == "series"
-    assert profile == profile_select.derive_profile(items, mode="camera")
-    pinned = cache.get(_key(items))
-    assert pinned is not None, "the resolved offer IS the folder's profile"
-    assert pinned == profile and pinned.source == "series", (
-        "the pin holds the fallback WITH its source — never a hollow vlm answer"
-    )
-    assert pinned.axis_ids, "a pinned profile always carries a usable axis set"
+    assert profile is None, "no profile, and certainly not the local offer"
+    assert cache.get(_key(items)) is None, "a failure is not pinned as an answer"
 
     warnings = [r for r in caplog.records if r.levelno >= logging.WARNING]
     assert warnings, "the quality drop must be visible without IMGSLI_AI_DEBUG"
@@ -327,16 +319,13 @@ def test_a_non_length_failure_is_not_retried_but_still_warns(tmp_path, caplog):
         )
 
     assert len(payloads) == 1, "only a token-cap truncation is worth a retry"
-    assert profile.source != "vlm"
+    assert profile is None, "a junk reply is an error, not the local offer"
     assert any(
         "finish_reason=stop" in r.getMessage() and f"model={MODEL}" in r.getMessage()
         for r in caplog.records
         if r.levelno >= logging.WARNING
     ), "a junk reply is still a visible quality drop"
-    pinned = cache.get(_key(items))
-    assert pinned is not None and pinned.source != "vlm", (
-        "the resolved offer is pinned (2026-10-26), but never as a VLM answer"
-    )
+    assert cache.get(_key(items)) is None, "a failure must not be pinned"
 
 
 def test_the_pin_key_is_unchanged_by_the_budget_fix(tmp_path):

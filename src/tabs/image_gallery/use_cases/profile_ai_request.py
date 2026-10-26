@@ -176,8 +176,8 @@ def _selector_text(salience, corrective: str = "") -> str:
         "axis about the scene or the subject cannot separate them — an axis "
         "describes a TECHNICAL difference between these files.",
         "",
-        "EVIDENCE (measured locally on THIS series; it is the only ground truth "
-        "you have, and it is where the useful axes come from):",
+        "EVIDENCE (local detector context for THIS series — context, not the "
+        "ground truth; the images are the ground truth):",
     ]
     lines.extend(_evidence_lines(salience))
     lines.append("")

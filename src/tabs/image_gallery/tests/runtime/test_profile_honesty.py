@@ -411,7 +411,9 @@ def test_vlm_reply_of_only_unusable_ids_falls_back_to_the_heuristic(
                 "choices": [{"message": {"content": '{"axes": ["made_up"]}'}}]
             },
         )
-    assert profile.source == "heuristic"
+    assert profile is None, "no usable axis ⇒ an error, never the local axis set"
     assert any(
-        "no usable axis" in rec.getMessage().lower() for rec in caplog.records
-    ), "the heuristic fallback must say so in the debug log"
+        "no usable axis" in rec.getMessage().lower()
+        or "no profile" in rec.getMessage().lower()
+        for rec in caplog.records
+    ), "the refusal must say why, not disappear into a debug line"

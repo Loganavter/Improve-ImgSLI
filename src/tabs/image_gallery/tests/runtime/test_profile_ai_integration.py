@@ -175,13 +175,13 @@ def test_unknown_ids_are_dropped_never_fabricated():
     assert profile.source == "vlm"
 
 
-def test_junk_reply_degrades_to_the_series_offer_and_pins_it(tmp_path):
-    """One folder resolves ONE profile (2026-10-26), fallback included.
+def test_junk_reply_is_an_error_and_pins_nothing(tmp_path):
+    """Owner rule 2026-10-26: a junk reply is an ERROR, never the series offer.
 
-    The junk reply is not retried (a second identical request has no reason to
-    answer better) and is never pinned AS the judge's answer — what is pinned is
-    the series offer the run actually used, with its own source, so the next pass
-    does not re-ask.
+    The old contract pinned the offer and ranked the folder on local axes; that
+    silent fallback is what made every folder look "solved" with camera metrics.
+    Nothing is pinned now, so a transient failure is not frozen forever (the
+    stage gate keeps one attempt per folder generation).
     """
     items = _scattered()
     cache = ProfileCache(tmp_path)
@@ -194,32 +194,22 @@ def test_junk_reply_degrades_to_the_series_offer_and_pins_it(tmp_path):
         items, mode="camera", settings=_settings(), cache=cache, client_call=transport
     )
 
-    assert first.source == "series" and second.source == "series"
-    # The fallback is the SERIES OFFER (P5): only the axes this series can
-    # separate — sharpness and noise spread; the reference axis needs a source
-    # hub, and the mode base's constant axes are not offered.
-    assert first == derive_profile(items, mode="camera")
-    assert set(first.axis_ids) == {"sharpness", "noise"}
-    assert "white_balance" not in first.axis_ids
-    assert second == first
-    assert len(transport.calls) == 1, (
-        "the resolved offer is the folder's profile: the second pass is served "
-        "from the pin instead of paying for another (junk) request"
+    assert first is None and second is None, "a junk reply yields no profile"
+    assert len(transport.calls) == 2, (
+        "a failure is not pinned: each explicit re-resolve pays its own call "
+        "(the per-generation stage gate, not the pin, prevents a retry storm)"
     )
 
 
-def test_transport_failure_degrades_to_the_series_offer(tmp_path):
+def test_transport_failure_is_an_error_not_an_offer(tmp_path):
     transport = _Transport([RuntimeError("boom")])
     profile = choose_profile_sync(
         _scattered(), mode="camera", settings=_settings(),
         cache=ProfileCache(tmp_path), client_call=transport,
     )
-    assert profile.source == "series"
-    assert set(profile.axis_ids) == {"sharpness", "noise"}, (
-        "the local spreads still decide the offer when the VLM is out"
-    )
-    assert EXTRA not in profile.axis_ids, (
-        "a reference axis needs a source hub — none here"
+    assert profile is None, (
+        "the VLM being out is an ERROR in the AI backend — the local spreads "
+        "must not decide the axis set behind the user's back"
     )
 
 
@@ -231,7 +221,9 @@ def test_ai_unavailable_makes_no_call(tmp_path):
             _scattered(), mode="camera", settings=_settings(**overrides),
             cache=ProfileCache(tmp_path), client_call=transport,
         )
-        assert profile.source == "series"
+        assert profile is None, (
+            f"an unusable configuration is an error, not an offer: {overrides}"
+        )
         assert transport.calls == [], f"an unusable configuration must not hit the transport: {overrides}"
 
 
