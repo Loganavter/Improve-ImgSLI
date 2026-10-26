@@ -204,8 +204,13 @@ def _refuse_test_write_to_live_config(settings) -> None:
         path = str(settings.fileName() or "")
     except Exception:
         return
+    # Only the REAL user config tree is dangerous: a temp dir (a fixture, a fake
+    # store, a portable export) is fair game.
+    real_root = os.path.abspath(os.path.expanduser("~/.config")) + os.sep
+    if not path or not os.path.abspath(path).startswith(real_root):
+        return
     root = os.environ.get("XDG_CONFIG_HOME", "")
-    if root and path and os.path.abspath(path).startswith(os.path.abspath(root) + os.sep):
+    if root and os.path.abspath(path).startswith(os.path.abspath(root) + os.sep):
         return
     raise RuntimeError(
         "refusing to write the real settings file from a test run: "

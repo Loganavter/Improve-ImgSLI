@@ -438,7 +438,7 @@ def test_the_analyze_identity_records_the_judge_axes_without_keying_them():
             ),
         ),
     )
-    key_fields = ("model", "base_url", "mode", "reasoning_effort", "k",
+    key_fields = ("model", "base_url", "reasoning_effort", "k",
                   "effective_k", "temperature", "seed", "prompt_schema_version")
     assert {k: with_free[k] for k in key_fields} == {
         k: baseline[k] for k in key_fields

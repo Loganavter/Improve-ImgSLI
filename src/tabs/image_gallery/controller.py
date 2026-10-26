@@ -897,15 +897,41 @@ class GalleryController:
                     filled = int(hydrate(probe))
                 except Exception:
                     filled = 0
+            # A complete analysis cache answers "do the cards have numbers", not
+            # "did the model choose the axes". While the resolved profile is the
+            # HEURISTIC fallback, skipping here means the VLM can never pick the
+            # metrics for a warm folder (owner report 2026-10-26: a fully cached
+            # folder kept heuristic axes forever). Ask once instead; a successful
+            # reply pins the profile in ``profile_cache``, so the next open
+            # short-circuits with source=vlm.
+            try:
+                from tabs.image_gallery.use_cases.profile_select import (
+                    describe_source as _describe_source,
+                )
+
+                _source = str(_describe_source(self.state) or "")
+            except Exception:
+                _source = ""
+            if not _source.startswith("heuristic"):
+                _ai_debug(
+                    "analysis cache complete: %d/%d entries for this identity — no "
+                    "profile request, no analyze (gen=%s, filled=%d, source=%s)",
+                    int(probe.get("cached", 0) or 0),
+                    int(probe.get("total", 0) or 0),
+                    self._folder_gen,
+                    filled,
+                    _source or "?",
+                )
+                return
             _ai_debug(
-                "analysis cache complete: %d/%d entries for this identity — no "
-                "profile request, no analyze (gen=%s, filled=%d)",
+                "analysis cache complete but the profile is %s — asking the selector "
+                "(%d/%d, gen=%s, filled=%d)",
+                _source,
                 int(probe.get("cached", 0) or 0),
                 int(probe.get("total", 0) or 0),
                 self._folder_gen,
                 filled,
             )
-            return
         # A profile already CONSUMED for this generation is frozen: P5 stamps it
         # once an AI payload was built, so a reply arriving now is rejected by
         # ``_apply_profile_outcome`` anyway — asking for it is pure cost.
@@ -2866,7 +2892,9 @@ class GalleryController:
             "scope_label": label,
             "paths": paths,
             "question": str(question or "").strip(),
-            "mode": str(identity.get("mode", "") or ""),
+            # The identity no longer carries the gallery mode (2026-10-26): the
+            # mode is the ask's context, not part of "the same analysis".
+            "mode": str((context or {}).get("mode", "") or ""),
             "profile": str(identity.get("profile", "") or ""),
             "effort": str(identity.get("reasoning_effort", "") or ""),
             "model": str(identity.get("model", "") or ""),

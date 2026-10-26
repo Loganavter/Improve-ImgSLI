@@ -8,6 +8,7 @@ the app then asked for an API key that was still in the keyring.
 
 from __future__ import annotations
 
+import os
 from types import SimpleNamespace
 
 import pytest
@@ -24,7 +25,7 @@ def test_it_refuses_a_write_outside_the_sandboxed_config_root(monkeypatch):
     monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
     with pytest.raises(RuntimeError, match="refusing to write the real settings file"):
         _refuse_test_write_to_live_config(
-            _settings("/home/someone/.config/BlinkTable/BlinkTable.conf")
+            _settings(os.path.expanduser("~/.config/BlinkTable/BlinkTable.conf"))
         )
 
 

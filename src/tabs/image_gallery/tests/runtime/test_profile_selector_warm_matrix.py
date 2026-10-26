@@ -92,7 +92,13 @@ def _install_selector(monkeypatch, ctrl: _Ctrl) -> None:
 
 
 def test_a_warm_matrix_does_not_kick_the_selector(monkeypatch) -> None:
+    """Once the MODEL has chosen the axes, a warm matrix has nothing to re-key.
+
+    The heuristic case is the exception (`test_a_warm_matrix_with_a_heuristic_profile_still_asks_the_selector`):
+    skipping there meant the model never got to choose for a cached folder.
+    """
     ctrl = _Ctrl([_item("a.png", analyzed=True), _item("b.png", analyzed=True)])
+    ctrl.state.metric_profile = _profile()  # source="vlm"
     _install_selector(monkeypatch, ctrl)
     ctrl._run_profile_select_on_settle()
     assert ctrl.selector_calls == 0, "a fully analyzed matrix has nothing to re-key"
@@ -161,3 +167,36 @@ def test_the_settle_hydrates_the_cache_before_the_selector() -> None:
     assert order[:2] == ["profile", "hydrate"], order
     assert "select" in order, "the selector kick still runs after the hydrate"
     assert order.index("hydrate") < order.index("select")
+
+
+def _heuristic_profile() -> MetricProfile:
+    return MetricProfile(
+        axis_ids=("sharpness", "noise"), mode="camera", source="heuristic", salient_axes=("sharpness",)
+    )
+
+
+def test_a_warm_matrix_with_a_heuristic_profile_still_asks_the_selector(monkeypatch) -> None:
+    """Owner report 2026-10-26: the VLM never chose the axes for a warm folder.
+
+    The "warm matrix" skip answers "do the cards have numbers", not "did the model
+    pick the metrics". While the profile is still the heuristic fallback the
+    selector must run once, or that folder keeps heuristic axes forever (the log
+    showed ``profile source: heuristic-camera (fallback)`` plus
+    ``analysis cache complete … no profile request`` on the same open).
+    """
+    ctrl = _Ctrl([_item("a.png", analyzed=True), _item("b.png", analyzed=True)])
+    ctrl.state.metric_profile = _heuristic_profile()
+    _install_selector(monkeypatch, ctrl)
+    ctrl._run_profile_select_on_settle()
+    assert len(ctrl.launched) == 1, "a heuristic profile must still ask the selector"
+    assert ctrl.selector_calls == 0, "the selector runs inside the worker"
+
+
+def test_a_warm_matrix_with_a_vlm_profile_is_still_skipped(monkeypatch) -> None:
+    """The original owner decision stands once the model has chosen."""
+    ctrl = _Ctrl([_item("a.png", analyzed=True), _item("b.png", analyzed=True)])
+    ctrl.state.metric_profile = _profile()  # source="vlm"
+    _install_selector(monkeypatch, ctrl)
+    ctrl._run_profile_select_on_settle()
+    assert ctrl.launched == [], "a vlm-pinned profile has nothing to re-key"
+    assert ctrl.selector_calls == 0
