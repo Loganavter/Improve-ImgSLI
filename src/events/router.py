@@ -144,8 +144,10 @@ def route_global_keyboard_event(event_handler, watched_obj, event: QEvent) -> bo
     # A chord the ACTIVE TAB's shortcut binder installed is the tab's, not the
     # global handler's — even when the focused widget is not tab-owned (null
     # focus, a toolbar button, a foreign popup). Without this, Image Compare's
-    # documented ``D`` (Divider Visibility) was swallowed here as an
-    # overlay-movement key before the shortcut map could fire it.
+    # divider-visibility chord was swallowed here as an overlay-movement key
+    # before the shortcut map could fire it — and that action then had to move
+    # off the canvas family, because an action chord outranks a fixed key by
+    # construction (tests/contracts/test_canvas_key_reservation.py).
     from events.app_event.keyboard import active_tab_shortcut_owns_event
 
     if active_tab_shortcut_owns_event(event):

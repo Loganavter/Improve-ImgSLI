@@ -52,6 +52,12 @@ logger = logging.getLogger(APP_LOGGER_NAME)
 # platform actions (``owner_tab is None``) are installed in EVERY tab scope, so
 # platform-vs-tab on one chord IS a collision; two different tabs may share a
 # chord because they are never live at the same time.
+#
+# Boundary of this invariant: it compares the action map with ITSELF. A chord
+# that is unique yet still takes a key the canvas/input layer needs is a
+# different defect, gated separately by
+# ``tests/contracts/test_canvas_key_reservation.py`` (claims discovered from
+# source, no hand-written key list).
 
 
 @dataclass(frozen=True, slots=True)

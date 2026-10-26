@@ -84,10 +84,11 @@ def active_tab_shortcut_owns_event(event: QKeyEvent) -> bool:
     ``ui.actions.binder.resync_action_shortcuts``), so its claimed chords are
     exactly the shortcuts a focused widget of that tab may receive. Whether a
     chord is globally routed and whether the tab binds it are independent
-    questions: ``D`` is both the divider-visibility shortcut and an
+    questions: a letter can be both a tab's action chord and an
     overlay-movement key, so the global route used to swallow it before the
     shortcut map ever saw it (see ``events/router.py`` and the tab shell's
-    ``keyPressEvent``).
+    ``keyPressEvent``). Which canvas keys an action may not take is gated
+    statically by ``tests/contracts/test_canvas_key_reservation.py``.
 
     The chord index and its normalization live in
     ``ActionShortcutBinder.owns_chord`` — this helper only adapts a

@@ -1149,6 +1149,40 @@ def _pixel_theme(qapp):
 
     manager = ThemeManager.get_instance()
     original = manager.get_current_theme()
+    # ``set_theme`` also re-derives the APP FONT (FontManager + QApplication font
+    # + UiFont family). Restoring only the theme left the light-theme face pinned
+    # for every LATER module: ``card_parity`` asserts pixel counts
+    # (``assert 249 <= 220``) on a painter wash, glyph metrics shifted, and three
+    # tests failed in full-suite order only (found by a prefix bisect over
+    # tests/runtime, 2026-10-26). The function-scoped ``_reset_font_state`` cannot
+    # cover this: inside this module its "saved" value is already the themed font.
+    from PySide6.QtGui import QFont
+    from PySide6.QtWidgets import QApplication
+
+    from shared_toolkit.ui.managers.font_manager import FontManager
+
+    fm = FontManager.get_instance()
+    saved_mode, saved_family = fm._current_mode, fm._current_family
+    app = QApplication.instance()
+    saved_qfont = QFont(app.font()) if app is not None else None
+    ui = None
+    saved_ui_family = None
+    try:
+        from sli_ui_toolkit.managers import UiFont
+
+        ui = UiFont.get_instance()
+        if hasattr(ui, "family"):
+            saved_ui_family = ui.family()
+    except Exception:
+        ui = None
+    # ``register_palettes`` deep-copies into the manager's OWN slots, and a bare
+    # process has them EMPTY (``current_palette is None`` at boot). Restoring only
+    # the theme name left the toolkit's painters resolving the real light palette
+    # for every later module — the second half of the card_parity pixel leak.
+    import copy
+
+    saved_light = copy.deepcopy(getattr(manager, "_light_palette", None))
+    saved_dark = copy.deepcopy(getattr(manager, "_dark_palette", None))
     manager.register_palettes(LIGHT_THEME_PALETTE, DARK_THEME_PALETTE)
     manager.set_theme("light", qapp, await_ripples=False)
     qapp.processEvents()
@@ -1156,6 +1190,27 @@ def _pixel_theme(qapp):
     if original:
         manager.set_theme(original, qapp, await_ripples=False)
         qapp.processEvents()
+    # Put the manager's palette slots back exactly as they were (empty at boot).
+    try:
+        manager._light_palette = saved_light
+        manager._dark_palette = saved_dark
+    except Exception:
+        pass
+    # Restore the font state the theme swap re-derived, whatever the theme was.
+    fm._current_mode, fm._current_family = saved_mode, saved_family
+    if app is not None and saved_qfont is not None:
+        try:
+            app.setFont(saved_qfont)
+        except RuntimeError:
+            pass
+    if ui is not None and saved_ui_family is not None:
+        try:
+            ui.set_family(saved_ui_family)
+            if hasattr(ui, "sync_from_application"):
+                ui.sync_from_application()
+        except Exception:
+            pass
+    qapp.processEvents()
 
 
 @pytest.mark.parametrize("name", sorted(PIXEL_SURFACES))

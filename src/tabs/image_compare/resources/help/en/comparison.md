@@ -13,7 +13,7 @@ Comparison shows two images side by side, so you can line up the same detail on 
 - **Split Orientation** — switches the split between horizontal and vertical.
 - **Divider Width** — scroll over it to change how thick the border is.
 - **Divider Color** — sets the border color.
-- **Divider Visibility** (`D`) — shows or hides the border.
+- **Divider Visibility** (`L`) — shows or hides the border.
 - **Divider** — packs orientation, width, and color into one control (scroll / right-click / middle-click); hover it to see the gesture tooltip.
 
 :::figure{side=block width=280}
