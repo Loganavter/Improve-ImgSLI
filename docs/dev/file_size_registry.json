@@ -33,6 +33,16 @@
       }
     },
     {
+      "path": "src/core/secret_store.py",
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=single-resolver reason=\"one secret backend resolver: the mode probe, the keyring/encrypted-file/session implementations, the legacy migration and the test-isolation guard must agree about which backend is active; splitting them would reintroduce the stale-probe class this file exists to centralise.\"",
+      "parsed": {
+        "pattern": "single-resolver",
+        "reason": "one secret backend resolver: the mode probe, the keyring/encrypted-file/session implementations, the legacy migration and the test-isolation guard must agree about which backend is active; splitting them would reintroduce the stale-probe class this file exists to centralise."
+      }
+    },
+    {
       "path": "src/core/state_management/dispatcher.py",
       "limit": 500,
       "marker": "Audit-Meta:",
@@ -830,11 +840,11 @@
       "path": "src/tabs/image_gallery/services/ai_cache.py",
       "limit": 500,
       "marker": "Audit-Meta:",
-      "raw": "pattern=wire-cache size=exempt reason=\"one cache contract: the analysis identity (model/base_url/mode/profile/effort + the P3 sampling config) and the payload that must carry it cannot be split without letting one side drift — the file grew past 500 lines with the sampling fields + proposed-axis persistence of plan-gallery-ai-judgement P3 and stays cohesive\"",
+      "raw": "pattern=wire-cache size=exempt reason=\"one cache contract: the analysis identity (model/base_url/effort + the P3 sampling config; the gallery mode and the axis profile are recorded, never keyed) and the payload that must carry it cannot be split without letting one side drift — the file grew past 500 lines with the sampling fields + proposed-axis persistence of plan-gallery-ai-judgement P3 and stays cohesive\"",
       "parsed": {
         "pattern": "wire-cache",
         "size": "exempt",
-        "reason": "one cache contract: the analysis identity (model/base_url/mode/profile/effort + the P3 sampling config) and the payload that must carry it cannot be split without letting one side drift — the file grew past 500 lines with the sampling fields + proposed-axis persistence of plan-gallery-ai-judgement P3 and stays cohesive"
+        "reason": "one cache contract: the analysis identity (model/base_url/effort + the P3 sampling config; the gallery mode and the axis profile are recorded, never keyed) and the payload that must carry it cannot be split without letting one side drift — the file grew past 500 lines with the sampling fields + proposed-axis persistence of plan-gallery-ai-judgement P3 and stays cohesive"
       }
     },
     {

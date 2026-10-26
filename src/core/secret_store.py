@@ -1,3 +1,4 @@
+# Audit-Meta: pattern=single-resolver reason="one secret backend resolver: the mode probe, the keyring/encrypted-file/session implementations, the legacy migration and the test-isolation guard must agree about which backend is active; splitting them would reintroduce the stale-probe class this file exists to centralise."
 """Encrypted-at-rest storage for the few secrets the app persists.
 
 Why this module exists: the AI provider key used to be written into the AI
