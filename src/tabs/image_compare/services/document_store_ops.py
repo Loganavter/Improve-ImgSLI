@@ -62,6 +62,45 @@ def set_current_image_data(store, image_number: int, image, path, display_name) 
             dispatcher.dispatch(InvalidateGeometryCacheAction(), scope="viewport")
 
 
+def _pixel_dims(image) -> tuple[int, int]:
+    """(w, h) for any image object the canvas accepts; (0, 0) when unknown."""
+    from shared.image_processing.image_dims import get_image_dims
+
+    try:
+        width, height = get_image_dims(image)
+        return int(width), int(height)
+    except Exception:
+        return (0, 0)
+
+
+def geometry_changes_on_swap(image_a, image_b) -> bool:
+    """True when exchanging the two slots can change the canvas geometry.
+
+    ``geometry_state`` mirrors the *displayed* content rect, derived from slot
+    1's pixel dims (both slots share one letterbox), so a swap that exchanges
+    two identically sized images leaves the geometry bit-for-bit identical.
+    Dropping the cache in that case buys nothing and costs the visible
+    "scene resets, then restores": every validator of the geometry cache
+    (``InvalidateGeometryCacheAction`` → zeroed ``pixmap_width``/``height`` +
+    empty display rect) makes the canvas rebuild the whole presentation --
+    both slots re-picked and re-applied through ``apply_store_to_canvas``
+    (``[ic-preview] apply_store_to_canvas - sig changed``) instead of reusing
+    the resident textures.
+
+    Unknown / not-yet-loaded dims (0, 0) keep the old, always-invalidate
+    behaviour: guessing there could leave a stale aspect on screen.
+
+    Precedents: ``docs/dev/KNOWN_BUGS.md`` same-slot-swap SSIM follow-up;
+    sweep of the geometry mirror in
+    ``src/core/state_management/reducers.py`` (``GeometryStateReducer``).
+    """
+    width_a, height_a = _pixel_dims(image_a)
+    width_b, height_b = _pixel_dims(image_b)
+    if width_a <= 0 or height_a <= 0 or width_b <= 0 or height_b <= 0:
+        return True
+    return (width_a, height_a) != (width_b, height_b)
+
+
 def swap_all_image_data(store) -> None:
     dispatcher = store.get_dispatcher()
     assert dispatcher is not None, "swap_all_image_data requires dispatcher"
@@ -90,7 +129,10 @@ def swap_all_image_data(store) -> None:
         live_doc = store.get_session_state_slot("document")
         new_doc = _dc_replace(live_doc, image_list1=list2, image_list2=list1)
         store.set_session_state_slot("document", new_doc, emit_scope="document")
-        dispatcher.dispatch(InvalidateGeometryCacheAction(), scope="viewport")
+        # Identically sized images keep the geometry bit-for-bit; only a real
+        # dims change needs the cache dropped (see geometry_changes_on_swap).
+        if geometry_changes_on_swap(image1, image2):
+            dispatcher.dispatch(InvalidateGeometryCacheAction(), scope="viewport")
 
 
 def copy_for_worker(store):
