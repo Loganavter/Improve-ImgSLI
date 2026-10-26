@@ -85,7 +85,7 @@ def test_load_and_apply_applies_store_geometry(qtbot, tmp_path, monkeypatch):
     store.settings.window_was_maximized = False
     manager = _make_manager(qtbot, _settings(tmp_path), store=store)
     # Roomy screen: this test is about persistence, not the screen fit.
-    monkeypatch.setattr(manager, "_available_rect", lambda: (0, 0, 1920, 1080))
+    monkeypatch.setattr(manager, "_screens_available", lambda: [(0, 0, 1920, 1080)])
 
     manager.load_and_apply()
 
@@ -100,7 +100,7 @@ def test_load_and_apply_restores_qsettings_normal_rect_when_storeless(qtbot, tmp
     settings = _settings(tmp_path)
     settings.setValue("normal_rect", f"{_X},{_Y},{_W},{_H}")
     manager = _make_manager(qtbot, settings, store=None)
-    monkeypatch.setattr(manager, "_available_rect", lambda: (0, 0, 1920, 1080))
+    monkeypatch.setattr(manager, "_screens_available", lambda: [(0, 0, 1920, 1080)])
 
     manager.load_and_apply()
 
@@ -112,7 +112,7 @@ def test_load_and_apply_defaults_to_1024x768_when_nothing_saved(qtbot, tmp_path,
     """First run with nothing persisted falls back to the 1024x768 default
     and records it as the normal geometry."""
     manager = _make_manager(qtbot, _settings(tmp_path), store=None)
-    monkeypatch.setattr(manager, "_available_rect", lambda: (0, 0, 1920, 1080))
+    monkeypatch.setattr(manager, "_screens_available", lambda: [(0, 0, 1920, 1080)])
 
     manager.load_and_apply()
 
@@ -151,7 +151,7 @@ def test_load_and_apply_clamps_a_restored_rect_to_the_screen(qtbot, tmp_path, mo
     store.settings.window_x = 1080
     store.settings.window_y = 238
     manager = _make_manager(qtbot, settings, store=store)
-    monkeypatch.setattr(manager, "_available_rect", lambda: (0, 0, 1600, 1000))
+    monkeypatch.setattr(manager, "_screens_available", lambda: [(0, 0, 1600, 1000)])
 
     manager.load_and_apply()
 
@@ -166,10 +166,50 @@ def test_load_and_apply_clamps_a_restored_qsettings_rect(qtbot, tmp_path, monkey
     settings.setValue("normal_rect", "900,700,2400,1400")
     settings.sync()
     manager = _make_manager(qtbot, settings)
-    monkeypatch.setattr(manager, "_available_rect", lambda: (0, 0, 1600, 1000))
+    monkeypatch.setattr(manager, "_screens_available", lambda: [(0, 0, 1600, 1000)])
 
     manager.load_and_apply()
 
     rect = manager.window.geometry()
     assert (rect.width(), rect.height()) == (1600, 1000)
     assert (rect.x(), rect.y()) == (0, 0)
+
+
+# -- multi-monitor fit (owner, 2026-10-26: a big window was clamped to 1080 wide)
+
+
+def test_available_for_unions_the_screens_the_rect_touches() -> None:
+    """The owner's exact layout: a portrait 1080x1920 panel plus the rest.
+
+    ``_available_rect`` used to answer with ``window.screen()`` — unplaced at
+    startup, so Qt returned ONE panel and a saved 1687x1117 window was forced to
+    1080x1117 on every start. The saved rect must pick the screens instead.
+    """
+    from utils.geometry import available_for, fit_into
+
+    screens = [(0, 0, 1080, 1920), (1080, 0, 1920, 1920), (3000, 0, 2560, 1920)]
+
+    # A rect living on the second monitor is not squeezed into the first.
+    area = available_for((1080, 238, 1687, 1117), screens)
+    assert area == (0, 0, 5560, 1920) or area == (1080, 0, 4480, 1920) or area[2] >= 1687
+    applied = fit_into((1080, 238, 1687, 1117), area)
+    assert applied[2] == 1687, f"width must survive the fit, got {applied}"
+    assert applied[3] == 1117
+
+
+def test_available_for_falls_back_to_the_nearest_screen() -> None:
+    """A monitor unplugged: the rect touches nothing, the title bar stays reachable."""
+    from utils.geometry import available_for, fit_into
+
+    screens = [(0, 0, 1920, 1080)]
+    area = available_for((9000, 9000, 800, 600), screens)
+    assert area == (0, 0, 1920, 1080)
+    applied = fit_into((9000, 9000, 800, 600), area)
+    assert applied[0] >= 0 and applied[1] >= 0, applied
+    assert applied[2] == 800 and applied[3] == 600
+
+
+def test_available_for_returns_none_without_screens() -> None:
+    from utils.geometry import available_for
+
+    assert available_for((0, 0, 100, 100), []) is None
