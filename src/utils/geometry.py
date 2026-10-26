@@ -62,6 +62,48 @@ def _geo_log(message: str, *args) -> None:
         pass
 
 
+def available_for(
+    rect: tuple[int, int, int, int],
+    screens: list[tuple[int, int, int, int]],
+) -> tuple[int, int, int, int] | None:
+    """Available area for *rect* across *screens* — the UNION of what it touches.
+
+    Why the union (owner, 2026-10-26): the restore used ``window.screen()``, and at
+    startup the window is not placed yet, so Qt answered with ONE monitor — on a
+    multi-monitor desktop that was the portrait 1080x1920 panel, and a saved
+    1687x1117 window was clamped to 1080x1117 on **every** start. The saved rect
+    itself says which area it belongs to: union every screen's available rect that
+    it intersects (a window spanning two monitors is then not forced into one), and
+    when it touches none (the layout changed, a monitor unplugged) fall back to the
+    screen nearest its centre so the title bar still lands somewhere reachable.
+    Pure: no Qt, no window, never raises.
+    """
+    if not screens:
+        return None
+    try:
+        x, y, w, h = (int(v) for v in rect)
+    except (TypeError, ValueError):
+        return None
+    def _ix(s):
+        sx, sy, sw, sh = (int(v) for v in s)
+        return sx, sy, sw, sh
+    norm = [_ix(s) for s in screens if int(s[2]) > 0 and int(s[3]) > 0]
+    if not norm:
+        return None
+    touched = [
+        s for s in norm
+        if not (x + w <= s[0] or s[0] + s[2] <= x or y + h <= s[1] or s[1] + s[3] <= y)
+    ]
+    if not touched:
+        cx, cy = x + w // 2, y + h // 2
+        touched = [min(norm, key=lambda s: (s[0] + s[2] // 2 - cx) ** 2 + (s[1] + s[3] // 2 - cy) ** 2)]
+    x0 = min(s[0] for s in touched)
+    y0 = min(s[1] for s in touched)
+    x1 = max(s[0] + s[2] for s in touched)
+    y1 = max(s[1] + s[3] for s in touched)
+    return x0, y0, x1 - x0, y1 - y0
+
+
 class GeometryManager:
     def __init__(self, window: QWidget, settings: QSettings, store=None):
         self.window = window
@@ -72,22 +114,51 @@ class GeometryManager:
         self.normal_rect_str: str | None = None
         self._freeze_normal_updates: bool = False
 
-    def _available_rect(self) -> tuple[int, int, int, int] | None:
-        """The current screen's available geometry, or ``None``. Never raises."""
+    def _screens_available(self) -> list[tuple[int, int, int, int]]:
+        """Every screen's available rect — the input of :func:`available_for`."""
         try:
             from PySide6.QtWidgets import QApplication
 
-            screen = self.window.screen() or QApplication.primaryScreen()
-            if screen is None:
-                return None
-            rect = screen.availableGeometry()
-            return (rect.x(), rect.y(), rect.width(), rect.height())
+            screens = QApplication.screens()
+            out = []
+            for screen in screens:
+                rect = screen.availableGeometry()
+                out.append((rect.x(), rect.y(), rect.width(), rect.height()))
+            return out
         except Exception:
+            return []
+
+    def _available_rect(self, rect=None) -> tuple[int, int, int, int] | None:
+        """Available area for *rect* (the saved geometry), or ``None``.
+
+        Never uses ``window.screen()`` as the answer for a RESTORE: at startup the
+        window is unplaced, and on a multi-monitor desktop that returned a single
+        panel (owner's case: a portrait 1080x1920 → every large window clamped to
+        1080 wide). The saved rect picks the screens, and the result is their union.
+        """
+        screens = self._screens_available()
+        if not screens:
             return None
+        if rect is None:
+            try:
+                g = self.window.geometry()
+                rect = (g.x(), g.y(), g.width(), g.height())
+            except Exception:
+                rect = None
+        if rect is None:
+            try:
+                from PySide6.QtWidgets import QApplication
+
+                screen = QApplication.primaryScreen()
+                r = screen.availableGeometry()
+                return (r.x(), r.y(), r.width(), r.height())
+            except Exception:
+                return None
+        return available_for(tuple(rect), screens)
 
     def _apply_fit(self, x: int, y: int, w: int, h: int) -> tuple[int, int, int, int]:
         """``setGeometry`` through :func:`fit_into`; returns what was applied."""
-        available = self._available_rect()
+        available = self._available_rect((x, y, w, h))
         fit_x, fit_y, fit_w, fit_h = fit_into((x, y, w, h), available)
         _geo_log(
             "geometry apply: asked=%dx%d@%d,%d available=%s applied=%dx%d@%d,%d%s",
