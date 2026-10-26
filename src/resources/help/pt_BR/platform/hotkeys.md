@@ -31,7 +31,7 @@ Os rótulos do menu seguem o idioma selecionado. Atalhos personalizados são def
 ### Comparar imagens {#image-compare}
 
 - `M` / `F` — **Alternar lupa** / **Congelar lupa**
-- `N` / `D` — **Sobreposição de nomes** / **Visibilidade do divisor**
+- `N` / `L` — **Sobreposição de nomes** / **Visibilidade do divisor**
 - `H` / `C` — **Modo de diferença** / **Modo de canal**
 - `X` — **Trocar imagens**
 - `R` / `Ctrl+E` — **Gravar vídeo** / **Editor de vídeo**

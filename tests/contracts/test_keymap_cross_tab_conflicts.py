@@ -32,8 +32,11 @@ from ui.actions.keymap import (
     normalize_sequence,
 )
 
-# The real catalog rows that caused the incident: both tabs ship "D" for the
-# divider toggle and "Ctrl+S" for quick save.
+# The catalog rows that caused the incident: both tabs shipped "D" for the
+# divider toggle and "Ctrl+S" for quick save. Image Compare's divider chord
+# moved off "D" on 2026-10-26 (it is a fixed magnifier key — see
+# test_canvas_key_reservation.py); the shared-chord semantics pinned here are
+# unchanged by which letter a tab chooses.
 TWO_TABS_SHARE_CHORDS = {
     "image_compare.divider.visible": ("D", "image_compare"),
     "multi_compare.divider.visible": ("D", "multi_compare"),

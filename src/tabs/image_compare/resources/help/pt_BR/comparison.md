@@ -13,7 +13,7 @@ A comparação mostra duas imagens lado a lado, para alinhar o mesmo detalhe nas
 - **Orientação da divisão** — alterna a divisão entre horizontal e vertical.
 - **Largura do divisor** — gire a rolagem sobre ele para mudar a espessura da fronteira.
 - **Cor do divisor** — define a cor da fronteira.
-- **Visibilidade do divisor** (`D`) — mostra ou oculta a fronteira.
+- **Visibilidade do divisor** (`L`) — mostra ou oculta a fronteira.
 - **Divisor** — reúne orientação, largura e cor em um único controle (rolagem / botão direito / botão do meio); passe o cursor para ver a dica de gestos.
 
 :::figure{side=block width=280}

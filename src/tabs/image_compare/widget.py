@@ -58,7 +58,7 @@ class ImageCompareWidget(ThemedWidget, QWidget):
         interaction.py``); everything it does not accept is re-dispatched to
         the app's global keyboard handler so loupe movement (W/A/S/D/Q/E) and
         Space preview keep working now that this shell, not the canvas, is the
-        focus owner. A chord the active tab's binder installed (``D`` —
+        focus owner. A chord the active tab's binder installed (``L`` —
         Divider Visibility) is never re-dispatched: it belongs to the shortcut
         map.
         """

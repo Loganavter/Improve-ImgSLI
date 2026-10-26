@@ -292,7 +292,11 @@ _SPECS: tuple[_WidgetAction, ...] = (
         (_BC_TOOLBAR, _BC_DIVIDER),
         "divider",
         "toggle",
-        shortcut="D",
+        # NOT "D": D is a fixed canvas key — the magnifier's "pan right" — and
+        # a bound action chord beats the canvas route by construction, so an
+        # action on D silently breaks a documented, non-remappable key
+        # (tests/contracts/test_canvas_key_reservation.py).
+        shortcut="L",
     ),
     _WidgetAction(
         "image_compare.divider.color",

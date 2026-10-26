@@ -31,7 +31,7 @@ Menu labels follow the language you select. Custom shortcuts are set in **Settin
 ### Image Compare {#image-compare}
 
 - `M` / `F` — **Toggle Magnifier** / **Freeze Magnifier**
-- `N` / `D` — **Filename Overlay** / **Divider Visibility**
+- `N` / `L` — **Filename Overlay** / **Divider Visibility**
 - `H` / `C` — **Difference Mode** / **Channel Mode**
 - `X` — **Swap Images**
 - `R` / `Ctrl+E` — **Record Video** / **Video Editor**
