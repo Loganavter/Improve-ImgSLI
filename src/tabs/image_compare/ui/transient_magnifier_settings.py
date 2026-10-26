@@ -445,10 +445,41 @@ class MagnifierSettingsHoverController(QObject):
     def _is_cursor_in_combined_zone(self) -> bool:
         return self._combined_reason() is not None
 
+    def _cursor_chain(self) -> str:
+        """Diagnostic: what the cursor is over, as a short class chain.
+
+        The unit test for "inside" needs to know which surface the owner is on
+        when the panel collapses; a bare exit position (``cursor=1516,632``)
+        cannot say whether the cursor sat on the interpolation list, on a
+        toolbar combo or on empty canvas (measured 2026-10-26: two rounds of
+        guessing which shape the list has). Only emitted while the journal is
+        debug-enabled.
+        """
+        try:
+            widget = QApplication.widgetAt(QCursor.pos())
+        except Exception:
+            return ""
+        parts: list[str] = []
+        steps = 0
+        while widget is not None and steps < 6:
+            steps += 1
+            name = type(widget).__name__
+            object_name = widget.objectName()
+            if object_name:
+                name = f"{name}#{object_name}"
+            if hasattr(widget, "anchor_widgets"):
+                name = f"{name}[flyout]"
+            parts.append(name)
+            try:
+                widget = widget.parentWidget()
+            except Exception:
+                break
+        return " under=" + " < ".join(parts)
+
     def _hide_immediately(self) -> None:
         flyout = getattr(self.widget, "magnifier_settings_flyout", None)
         if flyout is not None and flyout.isVisible():
-            self._note("hide:immediate", "")
+            self._note("hide:immediate", self._cursor_chain().strip())
             flyout.hide()
 
     def _handle_flyout_event(self, event) -> None:
