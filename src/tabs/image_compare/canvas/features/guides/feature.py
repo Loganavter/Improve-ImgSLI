@@ -134,9 +134,10 @@ def apply_guides_object(scene, context: CanvasSceneApplyContext) -> None:
                 tuple(guides_object.target_centers),
                 tuple(guides_object.target_radii) or float(guides_object.target_radius),
                 color_to_qcolor(guides_object.color),
-                # Painted width multiplier: overlay_model.resolve_guide_spans
-                # turns it into canvas px (theme stroke * thickness). Without
-                # this slot the toolbar value stopped at _guides_thickness.
+                # Width slot: overlay_model.resolve_guide_spans reads it as the
+                # painted width in canvas px (theme stroke only as the floor).
+                # Without this slot the toolbar value stopped at
+                # _guides_thickness.
                 max(1, int(guides_object.thickness or 1)),
             )
             for guides_object in guides_objects

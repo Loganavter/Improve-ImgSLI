@@ -11,8 +11,13 @@ every value 1..10 produced the same hairline.
 Pinned here (both live and export, which share ``resolve_guide_spans``):
 
 1. the guide-set tuple carries a thickness and the resolver paints
-   ``thickness * style_px`` canvas px, with the theme stroke as the FLOOR
-   (thickness 1 reproduces the pre-fix look exactly);
+   ``max(style_px, thickness)`` canvas px -- the value IS the width, in the
+   same unit the magnifier divider takes from its toolbar
+   (``divider_thickness_px`` straight into the layout, no theme multiplier),
+   with the theme stroke as the FLOOR (thickness 1 reproduces the pre-fix
+   look exactly). A multiplier (``thickness * style_px``, PR #696) made
+   thickness 10 a fat band instead of a 10 px line (owner report
+   2026-10-26);
 2. a legacy 5-tuple (no thickness slot) falls back to
    ``runtime_state._guides_thickness`` instead of silently painting 1x;
 3. the live producer (``apply_guides_object``) and the export producer
@@ -21,10 +26,13 @@ Pinned here (both live and export, which share ``resolve_guide_spans``):
    uniform (``DiskItem.extra[3]``, the value ``pack_guides`` packs as
    ``lineWidthPx``).
 
-Red before the fix: every assertion below failed (the guide set had 5 slots
-and the width was the style px alone). The structural half of the same
-contract lives in ``tests/contracts/test_guides_thickness_wire.py`` (root
-tests may not deep-import tab internals).
+Red before the #696 fix: every assertion below failed (the guide set had 5
+slots and the width was the style px alone). Red before the width-unit fix
+(2026-10-26, `thickness * style_px`): the pinned ``10.0`` widths failed --
+thickness 10 painted ``20.0`` with the fixture stroke (a fat band on a real,
+large canvas). The structural half of the same contract lives in
+``tests/contracts/test_guides_thickness_wire.py`` (root tests may not
+deep-import tab internals).
 """
 
 from __future__ import annotations
@@ -38,7 +46,7 @@ from PySide6.QtGui import QColor
 STYLE_PX = 2.0
 
 
-def _ctx():
+def _ctx(style_px: float = STYLE_PX):
     return SimpleNamespace(
         width=100,
         height=100,
@@ -50,8 +58,8 @@ def _ctx():
         pan_offset_x=0.0,
         pan_offset_y=0.0,
         resolved_style=SimpleNamespace(
-            annotation_line_stroke_px=STYLE_PX,
-            annotation_ring_stroke_px=STYLE_PX,
+            annotation_line_stroke_px=style_px,
+            annotation_ring_stroke_px=style_px,
         ),
         scene_frame=SimpleNamespace(feature_payloads={}, single_image_preview=0),
         feature_overlay=SimpleNamespace(capture_circles=()),
@@ -90,13 +98,30 @@ def _resolve(widget, ctx=None):
     return resolve_guide_spans(ctx, widget)
 
 
-def test_thickness_scales_the_painted_width():
+def test_thickness_is_a_width_in_px_not_a_stroke_multiplier():
     (thin,) = _resolve(_widget(1))
     (thick,) = _resolve(_widget(10))
     # thickness 1 == today's look (theme stroke, the floor)
     assert thin.line_width == pytest.approx(STYLE_PX)
-    # thickness 10 is visibly ten times wider
-    assert thick.line_width == pytest.approx(STYLE_PX * 10.0)
+    # thickness 10 is a ten-px line -- the divider/toolbar convention -- and
+    # NOT 10 x the theme stroke (a fat band, the #696 regression).
+    assert thick.line_width == pytest.approx(10.0)
+    assert thick.line_width != pytest.approx(STYLE_PX * 10.0)
+
+
+def test_width_is_bounded_by_the_control_not_by_the_theme_stroke():
+    """Same thickness, different theme stroke: a width, never a multiplier."""
+    # A thick theme stroke (large canvas): it is the floor below the control
+    # value, but the control value never scales with it.
+    (floor,) = _resolve(_widget(1), _ctx(style_px=8.0))
+    assert floor.line_width == pytest.approx(8.0)  # floor, not 8 x 1
+    (ten_thick_theme,) = _resolve(_widget(10), _ctx(style_px=8.0))
+    assert ten_thick_theme.line_width == pytest.approx(10.0)  # not 80
+    # ... and at the same control value a bigger stroke cannot change the
+    # result: this is the discriminator against the old `style_px * t` rule.
+    (a,) = _resolve(_widget(10), _ctx(style_px=2.0))
+    (b,) = _resolve(_widget(10), _ctx(style_px=8.0))
+    assert a.line_width == pytest.approx(b.line_width)
 
 
 def test_thickness_below_one_keeps_the_theme_floor():
@@ -106,7 +131,7 @@ def test_thickness_below_one_keeps_the_theme_floor():
 
 def test_legacy_five_tuple_falls_back_to_runtime_thickness():
     (span,) = _resolve(_widget(None, runtime_thickness=4))
-    assert span.line_width == pytest.approx(STYLE_PX * 4.0)
+    assert span.line_width == pytest.approx(4.0)
 
 
 def test_pass_packs_the_resolved_width_into_the_uniform_input():
@@ -118,7 +143,7 @@ def test_pass_packs_the_resolved_width_into_the_uniform_input():
     (thick_item,) = thick
     # extra[3] is what pack_guides writes as lineWidthPx.
     assert float(thin_item.extra[3]) == pytest.approx(STYLE_PX)
-    assert float(thick_item.extra[3]) == pytest.approx(STYLE_PX * 10.0)
+    assert float(thick_item.extra[3]) == pytest.approx(10.0)
 
 
 # ---------------------------------------------------------------------------
@@ -186,7 +211,7 @@ def test_live_applicator_puts_thickness_into_the_guide_set():
             )
         )
     )
-    assert span.line_width == pytest.approx(STYLE_PX * 7.0)
+    assert span.line_width == pytest.approx(7.0)
 
 
 def test_export_applicator_puts_plan_thickness_into_the_guide_set():
@@ -260,4 +285,4 @@ def test_export_applicator_puts_plan_thickness_into_the_guide_set():
             runtime_state=SimpleNamespace(_guide_sets=list(state._guide_sets))
         )
     )
-    assert span.line_width == pytest.approx(STYLE_PX * 9.0)
+    assert span.line_width == pytest.approx(9.0)
