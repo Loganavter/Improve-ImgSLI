@@ -473,11 +473,14 @@ def test_the_axis_count_is_stated_in_the_log_and_the_strip(monkeypatch, caplog, 
 
     text = "\n".join(r.getMessage() for r in caplog.records)
     assert "1 axes from the judge" in text, (
-        "the count is a fact about the profile and must be stated, not implied"
+        "the judge half must be stated, not implied"
     )
-    assert "measured locally" in text
-    assert strip.axis_counts == (1, 0, 1), "the UI holds the same three numbers"
-    assert "measured by the judge" in strip.rank_provenance_label.toolTip()
+    assert "measured locally" in text, "the registry half is named when it exists"
+    # The judge-vs-detector COUNT is retired (owner, 2026-10-26): in the AI backend
+    # mode the local half is at most SSIM, so the number told nobody anything. The
+    # log names the axes; the chip must not carry the accounting any more.
+    assert not hasattr(strip, "axis_counts"), "the chip counter is gone"
+    assert "measured by the judge" not in strip.rank_provenance_label.toolTip()
 
 
 def test_the_prompt_carries_no_axis_name_literal() -> None:

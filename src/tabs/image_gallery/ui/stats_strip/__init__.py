@@ -83,7 +83,6 @@ class StatsStrip(QWidget):
         #: accounting shown on the provenance chip's tooltip (2026-10-26,
         #: ``task-profile-granularity-and-axis-reporting``). ``(0, 0, 0)`` until a
         #: profile is resolved; never a guessed count.
-        self._axis_counts: tuple[int, int, int] = (0, 0, 0)
         # Last affordance applied per action button ("keep"/"compare"). Used to
         # swap the dimmed/bright tokens only on the enabled↔disabled boundary
         # (see ``_apply_action_affordance``) — an empty cache forces the first
@@ -785,56 +784,6 @@ class StatsStrip(QWidget):
         except Exception:
             pass
 
-    def set_axis_counts(
-        self, judge: int = 0, judge_with_local: int = 0, registry: int = 0
-    ) -> None:
-        """Show the honest axis accounting on the provenance chip's tooltip.
-
-        Owner design 2026-10-26: "N axes from the judge, M of them also have a
-        local detector" — the count is a fact about the active profile, so the UI
-        states it instead of implying it. The numbers are rendered with the two
-        labels the per-axis rows already carry (``measured by the judge`` /
-        ``measured locally``); no new catalogue key, no fabricated claim: an empty
-        profile clears the tooltip.
-        """
-        try:
-            judge_i = max(0, int(judge))
-            with_local_i = max(0, int(judge_with_local))
-            registry_i = max(0, int(registry))
-        except (TypeError, ValueError):
-            judge_i = with_local_i = registry_i = 0
-        self._axis_counts = (judge_i, with_local_i, registry_i)
-        label = (
-            self._rank_provenance_label
-            if hasattr(self, "_rank_provenance_label")
-            else None
-        )
-        if label is None:
-            return
-        if not (judge_i or registry_i):
-            try:
-                label.setToolTip("")
-            except Exception:
-                pass
-            return
-        try:
-            judge_label = self._t(
-                "image_gallery.quick_look.axis_measured_by_judge",
-                "measured by the judge",
-            )
-            local_label = self._t(
-                "image_gallery.quick_look.axis_measured_locally", "measured locally"
-            )
-        except Exception:
-            judge_label, local_label = "measured by the judge", "measured locally"
-        parts = [f"{judge_label}: {judge_i} ({local_label}: {with_local_i})"]
-        if registry_i:
-            parts.append(f"{local_label}: {registry_i}")
-        try:
-            label.setToolTip(" · ".join(parts))
-        except Exception:
-            pass
-
     def set_rejected_count(self, n: int) -> None:
         self._rejected = int(n)
         txt = self._t("image_gallery.stats.clean_rejected", "Clean rejected ({n})").format(n=int(n))
@@ -952,11 +901,6 @@ class StatsStrip(QWidget):
     @property
     def rank_source(self) -> str:
         return str(getattr(self, "_rank_source", "") or "")
-
-    @property
-    def axis_counts(self) -> tuple[int, int, int]:
-        """``(judge, judge_with_local, registry)`` for the active profile."""
-        return tuple(getattr(self, "_axis_counts", (0, 0, 0)))  # type: ignore[return-value]
 
     @property
     def clean_button(self) -> Button:

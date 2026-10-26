@@ -334,15 +334,35 @@ def axis_count_report(profile=None) -> dict:
 
 
 def describe_axis_provenance(profile=None) -> str:
-    """One honest sentence: ``"3 axes from the judge, 1 of them also has a local
-    detector, 4 measured locally"`` (log and UI read the same words)."""
+    """One honest sentence naming the axes that actually drive the order.
+
+    Owner, 2026-10-26: reconciling the judge's free-form names against the local
+    registry is meaningless in the AI backend mode — there the local half is at
+    most SSIM (and only with a reference), so "M of them also have a local
+    detector" almost always reads 0 and says nothing. The sentence therefore
+    NAMES the axes instead of counting a registry that is not in play:
+    ``"4 axes from the judge: contrast, color_saturation, grain, sharpness"`` plus
+    ``"; 2 measured locally"`` only when the profile really carries registry axes.
+    """
     counts = axis_count_report(profile)
-    return (
-        f"{counts['judged']} axes from the judge, "
-        f"{counts['judged_with_local_detector']} of them also "
-        f"{'has' if counts['judged_with_local_detector'] == 1 else 'have'} a local "
-        f"detector, {counts['registry']} measured locally"
+    names: list[str] = []
+    try:
+        for entry in getattr(profile, "axis_entries", ()) or ():
+            name = str(getattr(entry, "name", "") or "").strip()
+            if name:
+                names.append(name)
+    except Exception:
+        names = []
+    if not names:
+        for axis in getattr(profile, "axis_ids", ()) or ():
+            names.append(str(axis))
+    sentence = (
+        f"{counts['judged']} axes from the judge"
+        + (f": {', '.join(names)}" if names else "")
     )
+    if counts["registry"]:
+        sentence += f"; {counts['registry']} measured locally"
+    return sentence
 
 
 def axis_evidence_split(profile, evidence_axes) -> tuple[tuple[str, ...], tuple[str, ...]]:

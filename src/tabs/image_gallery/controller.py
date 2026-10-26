@@ -2427,14 +2427,14 @@ class GalleryController:
             logger.debug("rank provenance refresh failed", exc_info=True)
 
     def _trace_axis_provenance(self, profile=None) -> None:
-        """State HOW MANY axes came from the judge and how many a detector covers.
+        """Name the axes that drive the order (log only, never the chip).
 
-        "N axes from the judge, M of them also have a local detector" (owner design
-        2026-10-26): the count is a fact about the profile in hand, and stating it
-        is what stops "the judge named 5 axes" from silently meaning "3 of them will
-        never carry a local number". The log line and the strip's tooltip read the
-        same numbers (:func:`profile_ai.axis_count_report`), never a rounded claim.
-        Never raises.
+        The judge-vs-detector COUNT was retired the hour it shipped (owner,
+        2026-10-26): in the AI backend mode the local half is at most SSIM and only
+        with a reference, so "M of them also have a local detector" read 0 and told
+        nobody anything. The log now NAMES the axes
+        (:func:`profile_ai.describe_axis_provenance`); the strip keeps only the
+        ranker provenance it can actually observe. Never raises.
         """
         if profile is None:
             try:
@@ -2443,27 +2443,16 @@ class GalleryController:
                 profile = None
         try:
             from tabs.image_gallery.use_cases.profile_ai import (
-                axis_count_report,
                 describe_axis_provenance,
             )
 
-            counts = axis_count_report(profile)
             _ai_debug("profile axes: %s", describe_axis_provenance(profile))
         except Exception:
             logger.debug("axis provenance trace failed", exc_info=True)
             return
-        strip = getattr(getattr(self, "widget", None), "stats_strip", None)
-        setter = getattr(strip, "set_axis_counts", None)
-        if not callable(setter):
-            return
-        try:
-            setter(
-                counts.get("judged", 0),
-                counts.get("judged_with_local_detector", 0),
-                counts.get("registry", 0),
-            )
-        except Exception:
-            logger.debug("axis provenance strip update failed", exc_info=True)
+        # The chip no longer carries the judge-vs-detector accounting (owner,
+        # 2026-10-26): in the AI backend mode the local half is at most SSIM, so
+        # the count is noise in the UI. The log line above names the axes.
 
     # -- analysis phase state (metrics settled != analysis finished) --------
 
