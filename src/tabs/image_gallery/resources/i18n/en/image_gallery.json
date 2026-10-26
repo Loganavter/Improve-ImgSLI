@@ -19,7 +19,8 @@
       "error": "Error",
       "unreadable": "Unreadable",
       "judge_estimate": "AI judge: up to {cards} × {k} = {calls} calls (estimate, ≤ {tokens} tokens)",
-      "judge_ceiling_stop": "AI judge paused at the {ceiling}-call limit — continue to analyze the rest"
+      "judge_ceiling_stop": "AI judge paused at the {ceiling}-call limit — continue to analyze the rest",
+      "judge_estimate_pairwise": "AI judge: up to {cards} × {k} = {pointwise} calls + up to {pairwise} pairwise (estimate, ≤ {tokens} tokens)"
     },
     "domain": {
       "algorithms": "Algorithms",

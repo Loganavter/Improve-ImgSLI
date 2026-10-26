@@ -19,7 +19,8 @@
       "error": "错误",
       "unreadable": "无法读取",
       "judge_estimate": "AI 评判：最多 {cards} × {k} = {calls} 次调用（估算，≤ {tokens} token）",
-      "judge_ceiling_stop": "AI 评判已在 {ceiling} 次调用上限处暂停 — 继续分析其余图片"
+      "judge_ceiling_stop": "AI 评判已在 {ceiling} 次调用上限处暂停 — 继续分析其余图片",
+      "judge_estimate_pairwise": "AI 评判：最多 {cards} × {k} = {pointwise} 次调用 + 最多 {pairwise} 次成对比较（估算，≤ {tokens} token）"
     },
     "domain": {
       "algorithms": "算法",

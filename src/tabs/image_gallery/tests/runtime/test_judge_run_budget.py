@@ -401,3 +401,50 @@ def test_rate_limit_gives_up_after_the_retry_budget(monkeypatch) -> None:
     )
     assert items[0].analysis_status == AnalysisStatus.ERROR
     assert items[0].analysis_error
+
+
+# -- the pairwise bound is part of the estimate (row task-pairwise-default-on)
+
+
+def test_estimate_prices_the_pairwise_bound_when_armed() -> None:
+    """`calls_max` is the WHOLE run bound: pointwise + the refinement.
+
+    Row task-pairwise-default-on states the precondition for defaulting the flag:
+    a hidden refinement is how a near-tie folder gets an understated estimate.
+    """
+    est = judge_budget.estimate_judge_run(10, 3, wire_edge=1024, pairwise_calls_max=20)
+
+    assert est.pointwise_calls_max == 30, "10 cards x 3 draws"
+    assert est.pairwise_calls_max == 20, "10 cards x (top_n 3 - 1)"
+    assert est.calls_max == 50, "the ceiling must carry both halves"
+    plain = judge_budget.estimate_judge_run(10, 3, wire_edge=1024)
+    assert plain.pairwise_calls_max == 0 and plain.calls_max == 30
+    assert est.tokens_max > plain.tokens_max
+
+
+def test_pairwise_estimate_bound_is_cards_times_top_n_minus_one() -> None:
+    on = SimpleNamespace(pairwise_enabled=True, pairwise_top_n=3)
+    off = SimpleNamespace(pairwise_enabled=False, pairwise_top_n=3)
+    single = SimpleNamespace(pairwise_enabled=True, pairwise_top_n=1)
+
+    assert judge_budget._pairwise_estimate_bound(10, on) == 20
+    assert judge_budget._pairwise_estimate_bound(10, off) == 0, "flag off prices nothing"
+    assert judge_budget._pairwise_estimate_bound(10, single) == 0, "one member cannot pair"
+    assert judge_budget._pairwise_estimate_bound(1, on) == 0
+
+
+def test_the_activity_line_names_the_pairwise_half_only_when_armed() -> None:
+    owner = _owner(
+        [_item("a.png")], pairwise_enabled=True, pairwise_top_n=3, sample_count=3
+    )
+    judge_budget.begin_judge_run(owner, 10)
+    text = owner.widget.toolbar.scanning_label.texts[-1]
+    assert "= 30 calls" in text, text
+    assert "up to 20 pairwise" in text, text
+    # The tooltip carries the same sentence (the line elides in the toolbar).
+    assert owner.widget.toolbar.scanning_label.tooltips[-1] == text
+
+    owner_off = _owner([_item("a.png")], sample_count=3)
+    judge_budget.begin_judge_run(owner_off, 10)
+    plain = owner_off.widget.toolbar.scanning_label.texts[-1]
+    assert "pairwise" not in plain.lower(), plain
