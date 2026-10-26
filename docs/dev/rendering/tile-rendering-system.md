@@ -447,7 +447,7 @@ Two explicit tiers — cross-tier work goes through `src/engine/store/pixel_ops/
 
 | Tier | Type | Used for |
 |------|------|----------|
-| Full-res | `TiledPixelStore` | `document.full_res_image*`, unified pair, GPU source role |
+| Full-res | `TiledPixelStore` | `document.full_res_image*`, unified pair (display role), GPU source role = each side's OWN store |
 | Display | `PIL.Image` | preview tier, `downscale_pair_to_limit` outputs (metrics, export sizing), thumbnails |
 
 ### Preview-at-load tier

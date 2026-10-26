@@ -141,8 +141,25 @@ def build_canvas_plan(
         vp = store.viewport
         display_image1 = image1
         display_image2 = image2
-        source_image1 = source_image1 if source_image1 is not None else image1
-        source_image2 = source_image2 if source_image2 is not None else image2
+        # The SOURCE role feeds the magnifier: an omitted source must resolve to
+        # the side's OWN pixels, not to the display image — after unify the
+        # display copy of the smaller side is an upscaled store, and the loupe
+        # then magnifies that (measured 2026-10-26: both source grids registered
+        # at the canvas size). See presentation/source_tier.py.
+        from tabs.image_compare.canvas.presentation.source_tier import (
+            source_role_image as _source_role_image,
+        )
+
+        source_image1 = (
+            source_image1
+            if source_image1 is not None
+            else _source_role_image(store, 1, image1)
+        )
+        source_image2 = (
+            source_image2
+            if source_image2 is not None
+            else _source_role_image(store, 2, image2)
+        )
         source_key = source_key or ()
     else:
         store, display_image1, display_image2, source_image1, source_image2, source_key, display_cache_key = _build_snapshot_store(

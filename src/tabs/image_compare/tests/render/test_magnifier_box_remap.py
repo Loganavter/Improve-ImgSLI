@@ -208,11 +208,14 @@ def test_live_uv_path_remaps_box_to_full_uv(monkeypatch):
     assert layout is not None
     assert len(layout.slots) == 1
     slot = layout.slots[0]
+    # capture 0.2 on a 100 px canvas -> 10 px radius; the box path remaps that
+    # footprint into full-image UV (side 2 has no box and keeps plain UV).
+    assert layout.capture_circles[0].radius == pytest.approx(10.0)
     assert tuple(slot.uv_rect) == pytest.approx((0.36, 0.26, 0.44, 0.34))
     assert tuple(slot.uv_rect2) == pytest.approx((0.4, 0.4, 0.6, 0.6))
 
 
-def test_live_uv_path_none_box_matches_legacy_uv(monkeypatch):
+def test_live_uv_path_none_box_matches_the_capture_ring(monkeypatch):
     from tabs.image_compare.canvas.features.magnifier.geometry.layout_plan import (
         build_magnifier_layout,
     )
@@ -239,5 +242,8 @@ def test_live_uv_path_none_box_matches_legacy_uv(monkeypatch):
     assert layout is not None
     assert len(layout.slots) == 1
     slot = layout.slots[0]
+    # No crop box -> the sampled rect IS the capture ring (capture 0.2 on a
+    # 100 px canvas = 10 px radius).
+    assert layout.capture_circles[0].radius == pytest.approx(10.0)
     assert tuple(slot.uv_rect) == pytest.approx((0.4, 0.4, 0.6, 0.6))
     assert tuple(slot.uv_rect2) == pytest.approx((0.4, 0.4, 0.6, 0.6))

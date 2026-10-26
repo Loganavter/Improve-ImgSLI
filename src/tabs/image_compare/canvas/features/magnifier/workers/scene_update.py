@@ -392,6 +392,14 @@ def rebuild_magnifier_overlay(presenter, frame_context=None):
             canvas_height=max(1, int(plan.canvas_h)),
             content_offset_x=float(content_x),
             content_offset_y=float(content_y),
+            display_scale=float(
+                getattr(
+                    getattr(image_label, "runtime_state", None),
+                    "_content_sr",
+                    1.0,
+                )
+                or 1.0
+            ),
             divider_thickness_px=int(
                 active_or_default_divider_thickness(vp.view_state)
             ),

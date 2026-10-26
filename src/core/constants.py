@@ -10,7 +10,10 @@ class AppConstants:
     MIN_NAME_LENGTH_LIMIT = 10
     MAX_NAME_LENGTH_LIMIT = 150
     DEFAULT_JPEG_QUALITY = 93
-    DEFAULT_INTERPOLATION_METHOD = "LANCZOS"
+    #: Default sampler filter. Nearest on purpose: it is the only filter whose
+    #: result is the real pixels (blocks you can count), and every other choice
+    #: is a taste for smoothing — see docs/dev/rendering/display-image-pipeline.md.
+    DEFAULT_INTERPOLATION_METHOD = "NEAREST"
     BASE_MOVEMENT_SPEED = 0.5
     MIN_CHANGE_THRESHOLD = 0.0001
     SMOOTHING_FACTOR_POS = 0.15

@@ -15,6 +15,10 @@ from ui.canvas_infra.scene.context import CanvasSceneBuildContext
 from ui.canvas_infra.scene.feature_contract import CanvasFeatureZOrder
 from ui.canvas_infra.scene.stacking_policy import CanvasStackLayer, CanvasStackRole
 
+from tabs.image_compare.canvas.features.magnifier.geometry.capture import (
+    capture_size_relative_for_radius,
+    resolve_magnifier_capture_radius,
+)
 from tabs.image_compare.canvas.features.magnifier.geometry.core import clamp_capture_overlay_geometry, clamp_capture_position
 from tabs.image_compare.canvas.features.magnifier.scene.objects import MagnifierCircle, MagnifierSceneObject
 
@@ -23,6 +27,20 @@ MAGNIFIER_Z_ORDER = CanvasFeatureZOrder(
     active_bias=True,
     selectable_when_hidden=True,
 )
+
+
+def _display_scale_px(context: CanvasSceneBuildContext) -> float:
+    """canvas px -> widget px (``runtime_state._content_sr``), 1.0 when absent.
+
+    Same coefficient the renderer multiplies by (``render_context.canvas_to_view``);
+    the scene graph must use it or the loupe's described area drifts from the
+    painted one on a letterboxed canvas.
+    """
+    state = getattr(getattr(context, "image_label", None), "runtime_state", None)
+    try:
+        return float(getattr(state, "_content_sr", 1.0) or 1.0)
+    except (TypeError, ValueError):
+        return 1.0
 
 
 def build_magnifier_object(
@@ -74,15 +92,26 @@ def build_magnifier_object(
         else float(model.internal_split)
     )
 
+    # ONE owner (geometry/capture.py): the capture radius is DERIVED from the
+    # drawn disk, the content scale and the fixed magnification, exactly as
+    # the renderer resolves it. This used to be recomputed here from
+    # ``capture_size_relative`` alone, so the scene graph (hit-testing, guides,
+    # ``get_canvas_scene``) described a different area than the paint.
+    capture_radius, _magnification = resolve_magnifier_capture_radius(
+        size_relative=model.size_relative,
+        capture_size_relative=model.capture_size_relative,
+        pix_w=pix_w,
+        pix_h=pix_h,
+        display_scale=_display_scale_px(context),
+    )
+    capture_rel = capture_size_relative_for_radius(capture_radius, pix_w, pix_h)
     rel_x, rel_y = clamp_capture_position(
         model.position.x,
         model.position.y,
         pix_w,
         pix_h,
-        model.capture_size_relative,
+        capture_rel,
     )
-    capture_size_px = model.capture_size_relative * float(min(pix_w, pix_h))
-    capture_radius = capture_size_px / 2.0
 
     center_x = bounds.x + (rel_x * pix_w)
     center_y = bounds.y + (rel_y * pix_h)
@@ -104,7 +133,7 @@ def build_magnifier_object(
             model.frozen_position.y,
             pix_w,
             pix_h,
-            model.capture_size_relative,
+            capture_rel,
         )
         base_x = bounds.x + (frozen_x * pix_w)
         base_y = bounds.y + (frozen_y * pix_h)

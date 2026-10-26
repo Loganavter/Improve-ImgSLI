@@ -216,3 +216,59 @@ def test_realize_tile_plan_reregisters_stale_grid_when_source_grows(tmp_path):
     assert (grid.total_width, grid.total_height) == (1200, 800)
     assert grid.rows > 1 or grid.columns > 1
     resources._evict_stale_tiles.assert_called()
+
+
+def test_magnifier_source_grids_are_per_side_when_the_pair_differs(tmp_path):
+    """Each side's SOURCE grid must be THAT side's own pixel size.
+
+    Owner report 2026-10-26: the loupe over the smaller of two mismatched images
+    was mush and got worse when the canvas was zoomed. Measured live with
+    IMGSLI_TILE_DUMP=1 on a 2816x2304 + 768x576 pair: BOTH source grids were
+    registered at 2816x2304, so the loupe magnified the unify result instead of
+    the side's own pixels.
+
+    The tier handed in is what decides it (the residency size gate is correct —
+    it re-registers when the size disagrees), so this pins the end of the chain
+    the magnifier reads: `realize_tile_plan` must register each source key on the
+    size of the image stored for that side, while the DISPLAY keys keep the
+    canvas size.
+    """
+    big = _tps(Image.new("RGBA", (320, 240), "gray"), tmp_path)
+    small = _tps(Image.new("RGBA", (96, 72), "green"), tmp_path)
+    display_big = Image.new("RGBA", (320, 240), "gray")
+    widget = _widget(stored0=display_big)
+    widget.runtime_state._source_pil_images = [big, small]
+    widget.runtime_state._source_images_ready = True
+
+    resources = RhiResources()
+    resources.rhi = MagicMock()
+    resources.textures = {}
+    resources.texture_sizes = {}
+    tile_service = __import__(
+        "engine.cache.tile_texture_service", fromlist=["TileTextureService"]
+    ).TileTextureService(max_tile_extent=512)
+    updates = MagicMock()
+    resources.array_resources.upload_tile_to_array = MagicMock(
+        wraps=resources.array_resources.upload_tile_to_array
+    )
+    base_image = SimpleNamespace(
+        letterbox1=(0.0, 0.0, 1.0, 1.0),
+        letterbox2=(0.0, 0.0, 1.0, 1.0),
+        zoom=1.0,
+        pan_offset_x=0.0,
+        pan_offset_y=0.0,
+        use_hires=False,
+    )
+
+    resources.residency.realize_tile_plan(
+        tile_service, widget, ("source_0", "source_1"), base_image, updates,
+        diff_key=None,
+    )
+
+    grid0 = tile_service.grid_for("source_0")
+    grid1 = tile_service.grid_for("source_1")
+    assert (grid0.total_width, grid0.total_height) == (320, 240)
+    assert (grid1.total_width, grid1.total_height) == (96, 72), (
+        "source_1 is the 96x72 side; a canvas-sized grid here means the loupe "
+        "samples an upscaled copy (the 2026-10-26 report)"
+    )

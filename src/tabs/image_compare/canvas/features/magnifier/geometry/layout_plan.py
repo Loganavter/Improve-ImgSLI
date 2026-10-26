@@ -15,7 +15,13 @@ from PySide6.QtGui import QColor
 
 from domain.types import Rect
 from tabs.image_compare.canvas.features.magnifier.constants import (
+    DEFAULT_CAPTURE_SIZE_RELATIVE as _DEFAULT_CAPTURE_SIZE_RELATIVE,
+    DEFAULT_MAGNIFIER_SIZE_RELATIVE as _DEFAULT_MAGNIFIER_SIZE_RELATIVE,
     MIN_MAGNIFIER_SPACING_RELATIVE_FOR_COMBINE as _COMBINE_THRESHOLD,
+)
+from tabs.image_compare.canvas.features.magnifier.geometry.capture import (
+    capture_size_relative_for_radius,
+    resolve_magnifier_capture_radius,
 )
 from tabs.image_compare.canvas.features.magnifier.geometry.box_remap import (
     remap_uv_rect,
@@ -78,6 +84,7 @@ def build_magnifier_layout(
     content_offset_y: float = 0.0,
     divider_thickness_px: int,
     render_scale: float = 1.0,
+    display_scale: float = 1.0,
     border_width: float = 2.0,
     interpolation_method: str | None = None,
     diff_mode_override: int | None = None,
@@ -146,15 +153,30 @@ def build_magnifier_layout(
 
     def _capture_geometry(model):
 
+        # ONE owner (geometry/capture.py): the sampled area follows the capture
+        # slider ONLY — the size slider moves just the drawn disk, so the two
+        # controls stay independent (owner decision 2026-10-26).
+        radius, _magnification = resolve_magnifier_capture_radius(
+            size_relative=float(
+                getattr(model, "size_relative", _DEFAULT_MAGNIFIER_SIZE_RELATIVE)
+                or _DEFAULT_MAGNIFIER_SIZE_RELATIVE
+            ),
+            capture_size_relative=float(
+                getattr(model, "capture_size_relative", _DEFAULT_CAPTURE_SIZE_RELATIVE)
+                or _DEFAULT_CAPTURE_SIZE_RELATIVE
+            ),
+            pix_w=width,
+            pix_h=height,
+            display_scale=display_scale,
+        )
+        capture_rel = capture_size_relative_for_radius(radius, width, height)
         cap_x, cap_y = clamp_capture_position(
             model.position.x,
             model.position.y,
             width,
             height,
-            model.capture_size_relative,
+            capture_rel,
         )
-        capture_ref = float(min(width, height))
-        radius = (model.capture_size_relative * capture_ref) / 2.0
         center_x = float(content_offset_x) + (cap_x * width)
         center_y = float(content_offset_y) + (cap_y * height)
 

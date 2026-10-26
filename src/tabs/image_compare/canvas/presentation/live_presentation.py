@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 from engine.cache.display_image_picker import pick_display_image, pick_first_real
+from tabs.image_compare.canvas.presentation.source_tier import (
+    source_role_pair as _source_role_pair,
+)
 from engine.cache.image_identity import image_uid
 from engine.store.tiled_pixel_store import autocrop_debug
 from ui.canvas_presentation.models import PresentationImageSet, SnapshotStorePresentation
@@ -72,10 +75,9 @@ def build_live_store_presentation(store) -> SnapshotStorePresentation:
         store.viewport.session_data.image_state.image2,
         p2,
     )
-    # PipelineView is single source — preview via cache, not document fields
-    source_image1 = store.viewport.session_data.image_state.image1 or p1
-    source_image2 = store.viewport.session_data.image_state.image2 or p2
-
+    # SOURCE role = each side's OWN pixels (source_tier.py): the display pair is
+    # the unify result, so handing it to the magnifier magnifies the upscale.
+    source_image1, source_image2 = _source_role_pair(store)
     if display_image1 is None and source_image1 is not None:
         display_image1 = pick_first_real(source_image1)
     if display_image2 is None and source_image2 is not None:

@@ -487,7 +487,18 @@ class ImageRenderConfigReducer:
             if reduced is not config:
                 return reduced
         if isinstance(action, SetInterpolationMethodAction):
-            return replace(config, interpolation_method=action.method)
+            # ONE filter: the loupe must not switch to a hidden second method
+            # while it moves. The movement knobs existed to buy interactive
+            # latency, but the filter is only a sampler uniform in
+            # MagnifierPass (magnifier_pass.py:683) — tiles/LODs/uploads are
+            # identical — so the split bought nothing and made "Nearest" look
+            # like bicubic during a drag (owner report 2026-10-26).
+            return replace(
+                config,
+                interpolation_method=action.method,
+                movement_interpolation_method=action.method,
+                interactive_movement_interpolation_method=action.method,
+            )
         if isinstance(action, SetMovementInterpolationMethodAction):
             return replace(config, movement_interpolation_method=action.method)
         if isinstance(action, SetZoomInterpolationMethodAction):
