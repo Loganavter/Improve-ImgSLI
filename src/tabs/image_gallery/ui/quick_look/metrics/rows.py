@@ -4,6 +4,21 @@ Split out of the former ``ui/quick_look/metrics.py`` (plan-gallery-split-2026-10
 Part C2). Bodies moved verbatim; names/signatures unchanged. ``rebuild_metrics``
 and ``warm_metrics_for`` are the only callers of the row-container cache
 (``cache.py``) and share its fingerprint contract.
+
+A row has exactly three honest states (owner 2026-10-27), each with its own
+source of truth and never inferred from the others:
+
+- **scored** — the read record for THIS item carries a 0..100 number
+  (``analysis.read.read_axes``, ``status == "ok"``) → value + bar;
+- **not measured** — no number exists for this item (no scorecard yet, an axis
+  added after the pass, an answer that carried no value, the None/-1 sentinel)
+  → the "not measured" text, no bar;
+- **measured but constant** — numbers DO exist and the series spread sits inside
+  the instrument's noise floor (``rank_fusion.axis_salience``) → the "does not
+  separate these variants" text, no bar.
+
+An absent number is not equality: it must reach the "not measured" state even
+when the other variants agree (``axis_row_state`` is the one decision site).
 Audit-Meta: pattern=thin-owner-target size=exempt reason="one metric-rows concern: rebuild + hidden-parent warm share the row pipeline over the cache fingerprint contract"
 """
 
@@ -29,6 +44,117 @@ from .theme import (
     _ql_text,
     _token_qcolor,
 )
+
+#: Row states (see the module docstring). Strings, not flags: a surface/debug
+#: reader can print the state it rendered.
+ROW_STATE_SCORED = "scored"
+ROW_STATE_NOT_MEASURED = "not_measured"
+ROW_STATE_CONSTANT = "constant"
+
+#: Title width floors for a JUDGE-named row (the label is the model's own
+#: wording, so its length is not the design's — P7-C). The report column floor
+#: is 296px (``overlay_build.build`` W13) and the value keeps a 40px floor.
+#: Scored/not-measured values are short ("86%", "— · not measured"), so the
+#: title may take ~200px and still fit; a constant row puts the localized
+#: reason in the value and keeps the narrower floor for it.
+_JUDGED_TITLE_FLOOR = 200
+_JUDGED_TITLE_FLOOR_REASON_VALUE = 140
+#: Cap: 296px column − 40px value floor − 6px header spacing. A longer name
+#: still elides (the tooltip carries it), but never because the column gave up
+#: room the row had.
+_JUDGED_TITLE_CAP = 250
+
+
+def axis_row_state(
+    axis: str,
+    *,
+    read: dict,
+    salience: dict | None = None,
+    inside_noise: str | None = None,
+) -> str:
+    """Which of the three honest row states *axis* is in — the ONE decision site.
+
+    Order matters and is the whole point: **no number → not measured**, checked
+    BEFORE the series-wide salience verdict. A missing score is not a
+    measurement, so it can never be reported as "measured but constant" (the
+    live defect: an axis scored 70/70 on two variants and absent on the open
+    third said "does not separate these variants" instead of "not measured").
+
+    - ``read`` is the per-item read map (``{axis: 0..100}``, gaps absent);
+    - ``salience``/``inside_noise`` are the series verdict
+      (``rank_fusion.axis_salience`` + ``INSIDE_NOISE``) — a measurement fact
+      about the numbers that DO exist, never a substitute for one.
+
+    Pure; unknown axes are simply ``not measured``.
+    """
+    try:
+        score = read.get(axis)
+    except Exception:
+        score = None
+    if score is None:
+        return ROW_STATE_NOT_MEASURED
+    try:
+        verdict = (salience or {}).get(axis)
+    except Exception:
+        verdict = None
+    if inside_noise is not None and verdict == inside_noise:
+        return ROW_STATE_CONSTANT
+    return ROW_STATE_SCORED
+
+
+def judged_title_min_width(name: str, *, font=None, floor: int | None = None) -> int:
+    """Minimum title width that keeps a judge axis' NAME whole.
+
+    The row title is ``name — definition · provenance`` and the definition is
+    the model's own text, so the old fixed 140px floor cut the judge's meaning
+    to "— S…" (owner 2026-10-27). Widen the label before shortening the name:
+    the name's measured advance (+ a small pad) raises the floor, so the
+    elision falls on the definition, never on which axis this is. Bounded by
+    the report column floor (296px) minus the value's 40px floor.
+
+    Fail-open: an unmeasurable font keeps *floor*.
+    """
+    base = _JUDGED_TITLE_FLOOR if floor is None else int(floor)
+    try:
+        from PySide6.QtGui import QFontMetricsF
+
+        need = int(QFontMetricsF(font).horizontalAdvance(str(name or ""))) + scaled_px(12)
+    except Exception:
+        return base
+    return max(base, min(need, scaled_px(_JUDGED_TITLE_CAP)))
+
+
+def _from_read(records) -> dict[str, int]:
+    """``{axis: 0..100}`` from read records — ONLY real numbers survive.
+
+    * ``status != "ok"`` is a gap: it carries no number by contract
+      (``engine.analysis.contracts.AxisValue``).
+    * ``None``/non-numeric is an answer that carried no value.
+    * a negative number is the scorecard's "unscored" sentinel (``-1``, see
+      ``models.ai_scored_axes``) and is NOT a measurement; ``0`` is one.
+
+    Anything dropped here reaches the rows as "not measured" instead of a
+    fabricated ``-1%`` / ``0%`` bar.
+    """
+    out: dict[str, int] = {}
+    try:
+        items = list(records or ())
+    except Exception:
+        return out
+    for record in items:
+        try:
+            if str(getattr(record, "status", "") or "") != "ok":
+                continue
+            value = float(getattr(record, "value", None))
+        except (TypeError, ValueError):
+            continue
+        if value != value or value < 0:  # NaN / "unscored" sentinel
+            continue
+        try:
+            out[str(record.axis)] = int(value)
+        except Exception:
+            continue
+    return out
 
 
 def warm_metrics_for(overlay, item) -> None:
@@ -305,6 +431,7 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
         title_elide: bool = False,
         title_tooltip: str | None = None,
         title_min_width: int = 40,
+        title_min_text: str | None = None,
     ) -> None:
         row = QWidget(host)
         rl = QVBoxLayout(row)
@@ -328,6 +455,13 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
                 elide=True,
                 minimum_width=title_min_width,
             )
+            if title_min_text:
+                # The NAME must never be the truncated part (owner 2026-10-27):
+                # the floor was raised to the name's measured advance, so the
+                # elision falls on the definition. See judged_title_min_width.
+                t.setMinimumWidth(
+                    judged_title_min_width(title_min_text, font=t.font(), floor=title_min_width)
+                )
         else:
             t = _make_label(title, parent=row, pixel_size=11, pt=11.5)
         if title_tooltip:
@@ -380,7 +514,14 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
     def _muted_color():
         return _token_qcolor("gallery.status.neutral", "#8a8a8a")
 
-    def _add_unmeasured_row(title: str, *, title_elide: bool = False) -> None:
+    def _add_unmeasured_row(
+        title: str,
+        *,
+        title_elide: bool = False,
+        title_tooltip: str | None = None,
+        title_min_width: int = 40,
+        title_min_text: str | None = None,
+    ) -> None:
         """Unmeasured state: an explicit 'not measured' row, never a plausible
         constant. Fabricated values (0.94 SSIM, 120 sharpness, …) made missing
         data look measured; gaps must read as gaps. The value is a fixed
@@ -397,6 +538,9 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
             # (and its 4px floor is not "0%"). The row stays one honest line.
             bar=False,
             title_elide=title_elide,
+            title_tooltip=title_tooltip,
+            title_min_width=title_min_width,
+            title_min_text=title_min_text,
         )
 
     # Canonical scores drive both the text and the bar: every metric reads
@@ -428,7 +572,16 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
         spec = _spec_for(spec_id)
         if spec is None:
             return False
-        if _inside_noise is not None and _salience.get(spec_id) == _inside_noise:
+        # The state decides WHICH row, and a missing number outranks the
+        # series-wide "constant" verdict (an absent score is not equality).
+        state = axis_row_state(
+            spec_id, read=read, salience=_salience, inside_noise=_inside_noise
+        )
+        if state == ROW_STATE_NOT_MEASURED:
+            if gap:
+                _add_unmeasured_row(_metric_label(overlay, spec.id, spec.label))
+            return False
+        if state == ROW_STATE_CONSTANT:
             reason = _ql_text(
                 overlay,
                 "image_gallery.quick_look.axis_inside_noise",
@@ -447,12 +600,7 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
                 bar=False,
             )
             return True
-        score = read.get(spec_id)
-        if score is None:
-            if gap:
-                _add_unmeasured_row(_metric_label(overlay, spec.id, spec.label))
-            return False
-        score = int(score)
+        score = int(read[spec_id])
         col = _band_color(score)
         value = f"{score}%" + (f" · {extra}" if extra else "")
         _add_metric_row(_titled(_metric_label(overlay, spec_id, spec.label), spec_id, score), value, score / 100.0, col, value_color=col)
@@ -463,17 +611,17 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
 
         The registry's ``_spec_for`` gate cannot answer a name the model
         invented, so this is the second (and only other) row shape — the same
-        primitives, the same read map, the same noise-floor verdict. The two
-        honest states are the ones the owner asked for and they are the SAME
-        texts the registry rows use: no measurement -> "not measured", constant
-        across the series -> "does not separate these variants". Returns True
-        when the axis has a row.
+        primitives, the same read map, the same three-state decision
+        (``axis_row_state``): a number for THIS item -> scored; no number ->
+        "not measured"; numbers that agree across the series -> "does not
+        separate these variants". Returns True when the axis has a row.
         """
         tooltip = None
+        name = str(axis_id)
         try:
             from tabs.image_gallery.ui.quick_look.metrics.judged import (
-                judged_axis_label,
                 judged_axis_title,
+                judged_entry,
             )
 
             _judged_tr = lambda key, default: _ql_text(overlay, key, default)
@@ -484,11 +632,28 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
             # "cl…" (owner 2026-10-22).
             title = judged_axis_title(axis_id, profile=_profile, translate=_judged_tr)
             tooltip = title
+            # The NAME alone (the definition may be empty — owner rule
+            # 2026-10-27: a metric the model named is still drawn, never a
+            # bare/dropped row) is what the width floor must keep readable.
+            entry = judged_entry(axis_id, profile=_profile)
+            name = str(getattr(entry, "name", "") or axis_id).strip() or str(axis_id)
         except Exception:
             title = str(axis_id)
         if not title:
             return False
-        if _inside_noise is not None and _salience.get(axis_id) == _inside_noise:
+        state = axis_row_state(
+            axis_id, read=read, salience=_salience, inside_noise=_inside_noise
+        )
+        if state == ROW_STATE_NOT_MEASURED:
+            _add_unmeasured_row(
+                title,
+                title_elide=True,
+                title_tooltip=tooltip,
+                title_min_width=_JUDGED_TITLE_FLOOR,
+                title_min_text=name,
+            )
+            return True
+        if state == ROW_STATE_CONSTANT:
             _add_metric_row(
                 title,
                 _ql_text(
@@ -503,14 +668,14 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
                 bar=False,  # no fill: this axis ranks nothing
                 title_elide=True,
                 title_tooltip=tooltip,
-                title_min_width=140,
+                # The localized reason is the row's message and it is not
+                # elided, so it keeps its room; only a longer NAME widens this
+                # floor past the narrow default.
+                title_min_width=_JUDGED_TITLE_FLOOR_REASON_VALUE,
+                title_min_text=name,
             )
             return True
-        score = read.get(axis_id)
-        if score is None:
-            _add_unmeasured_row(title, title_elide=True)
-            return True
-        score = int(score)
+        score = int(read[axis_id])
         col = _band_color(score)
         # No band note here: a registry note is keyed by a registry id, and the
         # judge's definition already states both ends of the scale in the title.
@@ -522,7 +687,8 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
             value_color=col,
             title_elide=True,
             title_tooltip=tooltip,
-            title_min_width=140,
+            title_min_width=_JUDGED_TITLE_FLOOR,
+            title_min_text=name,
         )
         return True
 
@@ -556,14 +722,14 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
     # P7-C: every axis of that set — registry or judge-named — is read through
     # the ONE read path, and each record carries its own producer/status/reason
     # plus the P7-A provenance token. No second reader, no second axis list.
+    # ``_from_read`` keeps ONLY real numbers: a gap record, a missing value or
+    # the -1 "unscored" sentinel never becomes a row value (``0`` is a value).
     try:
         from tabs.image_gallery.analysis.read import read_axes
 
-        read = {
-            record.axis: int(record.value)
-            for record in read_axes(item, domain=domain, axes=axes, profile=_profile)
-            if record.status == "ok"
-        }
+        read = _from_read(
+            read_axes(item, domain=domain, axes=axes, profile=_profile)
+        )
     except Exception:
         read = {}
     # P2 salience (plan-gallery-ai-judgement M3): an axis whose spread across
