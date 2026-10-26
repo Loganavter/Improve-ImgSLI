@@ -26,6 +26,10 @@ from tabs.image_compare.canvas.features.divider.overlay_model import (
     content_split_visual,
     resolve_divider_spec,
 )
+from tabs.image_compare.canvas.split_trace import (
+    split_trace_enabled,
+    trace_divider_frame,
+)
 
 _SHADER_DIR = Path(__file__).resolve().parent / "shaders"
 
@@ -129,6 +133,10 @@ class DividerPass(CanvasRenderPass):
         items = _semantic_resolver(widget)(ctx)
         blocks = pack_divider(items, matrix, float(ctx.width), float(ctx.height))
         self._shell.stage_packed(resource_updates, blocks)
+        if split_trace_enabled():
+            # Same frame id the base pass opened; same resolved spec the line
+            # above is drawn from (BLINKTABLE_SPLIT_TRACE / IMGSLI_SPLIT_TRACE).
+            trace_divider_frame(widget, resolve_divider_spec(ctx, widget))
 
     def record(self, command_buffer, widget, ctx) -> None:
         target_size = widget.renderTarget().pixelSize()

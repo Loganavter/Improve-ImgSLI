@@ -88,37 +88,6 @@ def resolve_divider_spec(ctx, widget) -> DividerSpec:
     else:
         position_px = cx + cw * split - float(ctx.canvas_offset_x)
 
-    import os as _os
-    import sys as _sys
-
-    if _os.environ.get("IMGSLI_SPLIT_TRACE"):
-        from ui.canvas_infra.viewport.state import (
-            get_pan_offset_x as _gpox,
-            get_pan_offset_y as _gpoy,
-            get_zoom_level as _gzl,
-        )
-
-        print(
-            "SPLITTRACE divider split=%.6f pos=%.2f clip=(%.2f,%.2f,%.2f,%.2f) "
-            "offset=(%.2f,%.2f) zoom=%.4f pan=(%.2f,%.2f) show=%s"
-            % (
-                split,
-                position_px,
-                cx,
-                cy,
-                cw,
-                ch,
-                float(ctx.canvas_offset_x),
-                float(ctx.canvas_offset_y),
-                _gzl(widget),
-                _gpox(widget),
-                _gpoy(widget),
-                show_divider,
-            ),
-            file=_sys.stderr,
-            flush=True,
-        )
-
     return DividerSpec(
         show=show_divider,
         position_px=position_px,
