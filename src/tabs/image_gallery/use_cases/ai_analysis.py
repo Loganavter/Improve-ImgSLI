@@ -701,6 +701,15 @@ def start_pairwise_refinement(owner, *, series=None, judge=None) -> bool:
         profile = adapter.load_profile(getattr(owner, "state", None))
     except Exception:
         profile = None
+    if profile is None:
+        # No profile-free door for the AI domain (free-axes W4 / ADR 009 A3):
+        # this pass ranks the judge's axes, and the local mode mapping is not a
+        # profile of this backend — there is no axis set to compare, so nothing
+        # is scheduled. The typed `NoProfileYet` is the fusion's own answer
+        # (`rank_series(domain="ai")`); this use case translates it into "not
+        # ready" exactly like the Jev/priority paths do, with a trace line.
+        _ai_debug("judge_pairwise.skip reason=no-profile order_kept=pointwise")
+        return False
 
     try:
         settings = _load_settings(owner)
@@ -765,7 +774,7 @@ def start_pairwise_refinement(owner, *, series=None, judge=None) -> bool:
         if not members:
             continue
         try:
-            pointwise = rank_series(members, mode=mode, profile=profile)
+            pointwise = rank_series(members, mode=mode, profile=profile, domain=DOMAIN_AI)
         except Exception:
             continue
         # FREE gates (off / too_small / unmeasured / decided), traced by the
@@ -777,6 +786,7 @@ def start_pairwise_refinement(owner, *, series=None, judge=None) -> bool:
             settings=settings,
             mode=mode,
             profile=profile,
+            domain=DOMAIN_AI,
         )
         if skip is not None:
             continue
@@ -796,6 +806,7 @@ def start_pairwise_refinement(owner, *, series=None, judge=None) -> bool:
                 pointwise_ranks=_pointwise,
                 mode=mode,
                 profile=profile,
+                domain=DOMAIN_AI,
                 settings=settings,
                 judge=_client,
             )

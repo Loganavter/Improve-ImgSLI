@@ -77,12 +77,19 @@ def _fresh_verdict_cache():
 
 
 def _item(name: str, quality: float):
-    """One gallery item whose pointwise quality is exactly *quality*."""
+    """One gallery item whose pointwise quality is exactly *quality*.
+
+    Both instruments carry the number: the engine record the LOCAL fusion reads
+    and the judge's scorecard the AI pass reads. The AI-domain wiring fixture
+    (``_wired_owner``) needs the second one — the pairwise pass is AI work and
+    its MEASURED gate reads the AI store, never the detector's (free-axes W4).
+    """
     record = SimpleNamespace(axis="sharpness", status="ok", value=float(quality))
     return SimpleNamespace(
         path=Path("/gallery") / name,
         mtime_ns=1,
         analysis_records=(record,),
+        analysis=SimpleNamespace(axes={"sharpness": float(quality)}),
         metrics={},
     )
 
@@ -440,12 +447,19 @@ def _wired_owner(items, **settings_overrides):
     as in the app.
     """
     ctl = GalleryController.__new__(GalleryController)
+    # The AI slot's own profile: the pairwise pass is AI-domain work, and an
+    # AI path with no profile is "not ready" — never the local mode mapping
+    # (free-axes W4 / ADR 009 A3). The fixture is therefore an AI-ready folder:
+    # a judge-answered profile (``source="vlm"``) over the axis both instruments
+    # score, so the MEASURED gate reads the AI store.
     ctl.state = SimpleNamespace(
         items=list(items),
         series=[Series(id="s0", members=list(items))],
         mode="camera",
         algorithms_profile=None,
-        ai_profile=None,
+        ai_profile=MetricProfile(
+            axis_ids=("sharpness",), mode="camera", source="vlm"
+        ),
     )
     ctl.widget = _WiringWidget()
     ctl._folder_gen = 0

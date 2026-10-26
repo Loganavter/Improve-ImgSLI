@@ -23,10 +23,14 @@ Shape of the pass:
   included (:func:`member_qualities` / :func:`profile_axis_numbers`): the
   numbers may live on the engine records / local detectors OR on the model's
   scorecard (``item.analysis.axes``), and a card is measured when ANY of those
-  answers one of the profile's axes. ``rank_fusion.item_quality`` alone is the
+  answers one of the profile's axes. The domain the read is ASKED for decides
+  the store (an explicit ``domain``, else the profile's own tag — a ``vlm``
+  profile is the AI domain), so a judged series never has a registry axis'
+  number taken from ``item.metrics``. ``rank_fusion.item_quality`` alone is the
   REGISTRY half (judge names are excluded by design) and reads only
   records/metrics, so on a judged series it returns ``None`` for every member
-  and the pass answered ``too_small`` forever (measured live 2026-10-25);
+  and the pass answered ``too_small`` forever (measured live 2026-10-25); it is
+  the LOCAL fast path only, never the AI one;
 * the whole pass is one atomic ceiling reservation through
   ``judge_budget.reserve_pairwise_calls`` (the SAME run counter and ceiling as
   the pointwise cards) — a partial comparison set never produces an order;
@@ -68,6 +72,7 @@ from tabs.image_gallery.services.ai_settings_store import (
     PAIRWISE_TOP_N_MAX,
     PAIRWISE_TOP_N_MIN,
 )
+from tabs.image_gallery.services.metric_profile import DOMAIN_AI
 from tabs.image_gallery.services.rank_fusion import item_quality
 
 # -- claim vocabulary ---------------------------------------------------------
@@ -460,15 +465,49 @@ def _resolve_threshold(row, threshold=None) -> float:
     return max(PAIRWISE_NEAR_TIE_THRESHOLD_MIN, min(PAIRWISE_NEAR_TIE_THRESHOLD_MAX, number))
 
 
-def profile_axis_numbers(item, *, mode=None, profile=None) -> dict[str, float]:
+def _read_domain(profile, domain=None):
+    """The judgment domain a number read is asked for (``None`` = legacy union).
+
+    An EXPLICIT ``domain`` wins. Otherwise the profile's own provenance decides:
+    a ``vlm`` profile (``metric_profile.domain_of``) is the AI domain, the series
+    offer / mode mapping is the Algorithms domain. With no profile at all there
+    is nothing to infer, so ``None`` keeps the legacy "whichever store has it"
+    read for callers that never declared a domain.
+    """
+    if domain is not None:
+        try:
+            from tabs.image_gallery.services.quality_read import normalize_domain
+
+            return normalize_domain(domain)
+        except Exception:
+            return None
+    if profile is None:
+        return None
+    try:
+        from tabs.image_gallery.services.metric_profile import domain_of
+
+        return domain_of(profile)
+    except Exception:
+        return None
+
+
+def profile_axis_numbers(
+    item, *, mode=None, profile=None, domain=None
+) -> dict[str, float]:
     """``{axis: 0..100}`` *item* carries for the ACTIVE profile's own axes.
 
     The asked set is the profile's full half-pair (``profile_judged
     .scorecard_axis_ids``: the registry ids the local detectors can produce
     PLUS the axes the judge NAMED for this series), and each number is taken
-    from whichever judgment store the item actually has it in — the Algorithms
-    read (engine records / ``item.metrics``) first, then the model's scorecard
-    (``item.analysis.axes``). An axis nobody scored is ABSENT, never ``0``.
+    from the judgment store of the domain this read was ASKED for — an explicit
+    ``domain``, else the profile's own tag (a ``vlm`` profile is the AI domain).
+    The domain's store is read FIRST and, when a domain was resolved, ALONE: an
+    AI-domain payload never carries a detector number for an axis the judge
+    scored, and an Algorithms read never borrows the scorecard (free-axes W4 —
+    this used to read ``"algorithms"`` first, so a judge-scored registry axis'
+    near-tie number came from ``item.metrics``). Without a domain and without a
+    profile the legacy "either store" union is kept for callers that never
+    declared one. An axis nobody scored is ABSENT, never ``0``.
 
     Why this exists instead of just ``rank_fusion.item_quality``: that
     aggregate resolves ``measured_axes_for``, which is the REGISTRY half on
@@ -479,26 +518,28 @@ def profile_axis_numbers(item, *, mode=None, profile=None) -> dict[str, float]:
     ``measured == 0`` and the pass answered ``too_small`` — before and after the
     judge run, therefore not a settle race (measured live 2026-10-25, 3-image
     folder, ``judge_pairwise.skip reason=too_small top_n=3 members=3
-    measured=0``). Calling ``item_quality`` is still the fast path
-    (:func:`member_qualities`): when it can aggregate the whole set, its numbers
-    answer unchanged.
+    measured=0``). Calling ``item_quality`` is still the fast path for the LOCAL
+    domain only (:func:`member_qualities`): when it can aggregate the whole set,
+    its numbers answer unchanged.
 
     Never raises; never fabricates a value for a missing axis.
     """
     try:
         from tabs.image_gallery.services.profile_judged import scorecard_axis_ids
 
-        axes = scorecard_axis_ids(mode, profile=profile)
+        axes = scorecard_axis_ids(mode, profile=profile, domain=domain)
     except Exception:
         axes = ()
     if not axes:
         return {}
+    asked = _read_domain(profile, domain)
+    domains = (asked,) if asked else ("algorithms", "ai")
     out: dict[str, float] = {}
-    for domain in ("algorithms", "ai"):
+    for read_domain in domains:
         try:
             from tabs.image_gallery.services.quality_read import domain_axis_scores
 
-            read = domain_axis_scores(item, domain=domain)
+            read = domain_axis_scores(item, domain=read_domain)
         except Exception:
             read = {}
         if not isinstance(read, dict):
@@ -520,7 +561,7 @@ def profile_axis_numbers(item, *, mode=None, profile=None) -> dict[str, float]:
     return out
 
 
-def profile_quality(item, *, mode=None, profile=None) -> float | None:
+def profile_quality(item, *, mode=None, profile=None, domain=None) -> float | None:
     """Mean of the profile axes *item* carries (``None`` when nothing scored).
 
     The one fallback aggregate for the scores that live outside the fusion's
@@ -531,28 +572,37 @@ def profile_quality(item, *, mode=None, profile=None) -> float | None:
     the user cannot see. Comparable with itself and only used as a set
     (:func:`member_qualities`).
     """
-    numbers = profile_axis_numbers(item, mode=mode, profile=profile)
+    numbers = profile_axis_numbers(item, mode=mode, profile=profile, domain=domain)
     if not numbers:
         return None
     return sum(numbers.values()) / len(numbers)
 
 
-def member_qualities(items, *, mode=None, profile=None) -> list[float | None]:
+def member_qualities(items, *, mode=None, profile=None, domain=None) -> list[float | None]:
     """One comparable pointwise quality per member of *items* (never a mixture).
 
     ``rank_fusion.item_quality`` answers whenever it can aggregate the WHOLE
     set — the Algorithms path over the registry axes, today's exact numbers.
-    As soon as one member has no such number the whole set is re-read over the
-    ACTIVE profile's own axes (:func:`profile_quality`), the same question for
-    every member: mixing one member's registry-axis aggregate with another
-    member's judge-axis mean would put two axis sets in one spread, and the
-    pass would then compare numbers that only look similar. Members with
-    nothing scored anywhere stay ``None``, so the ``unmeasured`` gate still
-    refuses a half-unknown top set.
+    An AI-domain read (an explicit ``domain="ai"``, else a ``vlm`` profile) never
+    takes that fast path: ``item_quality`` prefers ``analysis_records`` /
+    ``item.metrics`` for a registry axis, so it would hand the judge's pairwise
+    spread a DETECTOR number for an axis the model already scored (free-axes
+    W4). The whole set is then re-read over the ACTIVE profile's own axes
+    (:func:`profile_quality`), the same question for every member: mixing one
+    member's registry-axis aggregate with another member's judge-axis mean would
+    put two axis sets in one spread, and the pass would then compare numbers
+    that only look similar. Members with nothing scored anywhere stay ``None``,
+    so the ``unmeasured`` gate still refuses a half-unknown top set.
     """
     members = list(items or ())
     if not members:
         return []
+    asked = _read_domain(profile, domain)
+    if asked == DOMAIN_AI:
+        return [
+            profile_quality(item, mode=mode, profile=profile, domain=asked)
+            for item in members
+        ]
     registry: list[float | None] = []
     for item in members:
         try:
@@ -561,18 +611,27 @@ def member_qualities(items, *, mode=None, profile=None) -> list[float | None]:
             registry.append(None)
     if all(quality is not None for quality in registry):
         return registry
-    return [profile_quality(item, mode=mode, profile=profile) for item in members]
+    return [
+        profile_quality(item, mode=mode, profile=profile, domain=domain)
+        for item in members
+    ]
 
 
 def _select_top(
-    items, pointwise_ranks: Mapping[str, int], top_n: int, *, mode=None, profile=None
+    items,
+    pointwise_ranks: Mapping[str, int],
+    top_n: int,
+    *,
+    mode=None,
+    profile=None,
+    domain=None,
 ) -> list[PairMember]:
     """The ``top_n`` items with the best pointwise rank (path breaks ties).
 
     Each member carries its own pointwise quality — the NUMBER stays next to
     the pairwise order, it is never replaced by it. The quality is read for the
     WHOLE top set at once (:func:`member_qualities`), so every compared member
-    is scored on one scale.
+    is scored on one scale of the asked domain.
     """
     ranked: list[tuple[int, str, object]] = []
     fallback = 1 << 30
@@ -589,7 +648,10 @@ def _select_top(
     ranked.sort(key=lambda row: (row[0], row[1]))
     chosen = ranked[: max(0, top_n)]
     qualities = member_qualities(
-        [item for _rank, _path, item in chosen], mode=mode, profile=profile
+        [item for _rank, _path, item in chosen],
+        mode=mode,
+        profile=profile,
+        domain=domain,
     )
     members: list[PairMember] = []
     for (_rank, path, item), quality in zip(chosen, qualities):
@@ -742,6 +804,7 @@ def _plan_pass(
     threshold: float | None = None,
     mode=None,
     profile=None,
+    domain=None,
 ) -> _PassPlan:
     """Resolve every gate that costs NOTHING: no judge, no reservation, no call.
 
@@ -763,7 +826,16 @@ def _plan_pass(
     row = _settings_row(owner, settings)
     n = _resolve_top_n(row, top_n)
     near_tie = _resolve_threshold(row, threshold)
-    members = tuple(_select_top(items, pointwise_ranks, n, mode=mode, profile=profile))
+    members = tuple(
+        _select_top(
+            items,
+            pointwise_ranks,
+            n,
+            mode=mode,
+            profile=profile,
+            domain=domain,
+        )
+    )
     measured = [member for member in members if member.quality is not None]
 
     if not bool(getattr(row, "pairwise_enabled", False)):
@@ -799,6 +871,7 @@ def precheck(
     settings=None,
     mode=None,
     profile=None,
+    domain=None,
     top_n: int | None = None,
     threshold: float | None = None,
 ) -> PairwiseOrder | None:
@@ -809,7 +882,9 @@ def precheck(
     :func:`run_pairwise_pass` asks the same question through the same
     :func:`_plan_pass`, so a caller can decide "schedule a worker or not"
     without a second copy of the rules — and without touching the network or
-    the run's call ceiling from the GUI thread.
+    the run's call ceiling from the GUI thread. ``domain`` is the judgment
+    domain the call serves (the AI pass states it), so the measured gate reads
+    that domain's numbers only.
     """
     return _plan_pass(
         owner,
@@ -820,6 +895,7 @@ def precheck(
         threshold=threshold,
         mode=mode,
         profile=profile,
+        domain=domain,
     ).skip
 
 
@@ -830,6 +906,7 @@ def run_pairwise_pass(
     pointwise_ranks: Mapping[str, int],
     mode=None,
     profile=None,
+    domain=None,
     settings=None,
     judge=None,
     cache: PairwiseVerdictCache | None = None,
@@ -879,6 +956,7 @@ def run_pairwise_pass(
         threshold=threshold,
         mode=mode,
         profile=profile,
+        domain=domain,
     )
     if plan.skip is not None:
         return plan.skip

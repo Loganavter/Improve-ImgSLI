@@ -12,11 +12,14 @@ model NAMED, which no local detector can produce.
 - :func:`judged_axis_entries` is the only READER of that half: the scorecard
   prompt asks for these by name, a surface labels them (never mixes them with a
   detector number in one bar without :func:`axis_provenance`).
-- :func:`axis_provenance` answers "which instrument measures this axis here":
-  ``measured-locally`` (a registry axis a detector can produce in this context),
-  ``measured-by-judge`` (an axis the judge named, or a registry axis this context
-  has no producer for) or ``""`` (no claim — never a guess). Plan-gallery-ai-
-  judgement P7-A item 6.
+- :func:`axis_provenance` answers "which instrument measured this axis here":
+  with the record's ``producer`` it answers **who DID** (a ``vlm`` number is the
+  judge's even on a registry axis, any other producer is a local detector);
+  without one it answers **who CAN** — ``measured-locally`` (a registry axis a
+  detector can produce in this context), ``measured-by-judge`` (an axis the
+  judge named, or a registry axis this context has no producer for) or ``""``
+  (no claim — never a guess). Plan-gallery-ai-judgement P7-A item 6; owner rule
+  2026-10-27 ("provenance names who measured it").
 
 The registry half (the pool, the mode mapping, the series offer) stays in
 ``services/metric_profile``; this module imports it LAZILY inside the one function
@@ -42,6 +45,12 @@ from tabs.image_gallery.services.axis_proposal import (
 PROVENANCE_LOCAL = "measured-locally"
 PROVENANCE_JUDGE = "measured-by-judge"
 AXIS_PROVENANCE: tuple[str, ...] = (PROVENANCE_LOCAL, PROVENANCE_JUDGE)
+
+#: The engine producer id of the model-authored scorecard — ``analysis.read``'s
+#: ``AI_PRODUCER``. It is the ONE fact "the judge DID measure this": provenance
+#: is read from the record's own producer, never inferred from an axis name
+#: (owner rule 2026-10-27 — a judge-scored POOL axis is still the judge's number).
+JUDGE_PRODUCER = "vlm"
 
 #: Token → ``(i18n key, English default)`` for a SURFACE that must label the two
 #: instruments (plan-gallery-ai-judgement P7-C: the rows/dots never mix them into
@@ -142,7 +151,7 @@ def judged_axis_entries(profile=None) -> tuple:
     return entries
 
 
-def scorecard_axis_ids(mode=None, *, profile=None) -> tuple[str, ...]:
+def scorecard_axis_ids(mode=None, *, profile=None, domain=None) -> tuple[str, ...]:
     """Every axis the scorecard ASKS for — registry half then the judge's.
 
     The ONE asked-set resolver (P7-A/P7-B): the profile's registry axes
@@ -155,7 +164,9 @@ def scorecard_axis_ids(mode=None, *, profile=None) -> tuple[str, ...]:
     function's answer any more (ADR 009 A3): ``measured_axes_for`` raises
     ``NoProfileYet`` and it propagates — asking a model to score nothing is the
     defect the empty-profile guard exists for, and a silent ``()`` here would
-    hide it one layer deeper.
+    hide it one layer deeper. *domain* forwards the caller's judgment domain, so
+    an AI-domain caller with NO profile at all gets the same typed refusal
+    instead of the local mode mapping (free-axes W4).
 
     Callers: the scorecard prompt (to ask), the Jev vector (to carry), the card
     dots (to render) and the pairwise payload, so the question and the payload
@@ -163,7 +174,7 @@ def scorecard_axis_ids(mode=None, *, profile=None) -> tuple[str, ...]:
     """
     from tabs.image_gallery.services.rank_fusion import measured_axes_for
 
-    registry: tuple[str, ...] = measured_axes_for(mode, profile=profile)
+    registry: tuple[str, ...] = measured_axes_for(mode, profile=profile, domain=domain)
     entries = judged_axis_entries(profile)
     out: list[str] = []
     for axis in registry:
@@ -177,8 +188,16 @@ def scorecard_axis_ids(mode=None, *, profile=None) -> tuple[str, ...]:
     return tuple(out)
 
 
-def axis_provenance(axis, *, mode=None, profile=None) -> str:
-    """Which instrument measures *axis* here: ``measured-locally`` / judge / ``""``.
+def axis_provenance(axis, *, mode=None, profile=None, producer=None) -> str:
+    """Which instrument measured *axis* here: ``measured-locally`` / judge / ``""``.
+
+    ``producer`` is the ONE "who DID" answer, and it wins when given: the record
+    states which engine producer emitted the number, so a ``vlm`` value is the
+    judge's even on a registry axis (a pool axis the model scored is the NORMAL
+    case — ``ai_client.parse`` routes a registry pick into ``profile.axis_ids``)
+    and any other producer is a local detector. Without it the answer is "who
+    CAN", i.e. the ability rule below — a static property of the axis here, not
+    a statement about a number that was read.
 
     - an axis the judge NAMED is ``measured-by-judge`` — no local producer exists;
     - a registry id a detector can produce in this mode is ``measured-locally``;
@@ -193,6 +212,12 @@ def axis_provenance(axis, *, mode=None, profile=None) -> str:
         return ""
     if not name:
         return ""
+    try:
+        did = str(producer or "").strip()
+    except Exception:
+        did = ""
+    if did:
+        return PROVENANCE_JUDGE if did == JUDGE_PRODUCER else PROVENANCE_LOCAL
     if any(
         str(getattr(entry, "name", "")) == name
         for entry in judged_axis_entries(profile)
@@ -224,6 +249,7 @@ def axis_provenance(axis, *, mode=None, profile=None) -> str:
 
 __all__ = [
     "AXIS_PROVENANCE",
+    "JUDGE_PRODUCER",
     "PROVENANCE_JUDGE",
     "PROVENANCE_LABELS",
     "PROVENANCE_LOCAL",

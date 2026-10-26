@@ -51,7 +51,7 @@ from tabs.image_gallery.services.profile_judged import (
     PROVENANCE_JUDGE,
     PROVENANCE_LOCAL,
 )
-from tabs.image_gallery.ui.card.dots import metric_dots_for_item
+from tabs.image_gallery.ui.card.dots import _accent_color, metric_dots_for_item
 from tabs.image_gallery.ui.quick_look import QuickLookOverlay
 from sli_ui_toolkit.ui.widgets.atomic.text_labels import Label as _QlLabel  # internal: documented Label exception (queue task-text-unification-retirement-2026-10-21)
 from sli_ui_toolkit.widgets import Text as _QlText
@@ -166,7 +166,7 @@ def test_a_judge_named_axis_is_a_read_record_with_its_provenance():
     """The record carries the judge's NAME, its value and the P7-A token."""
     profile = _profile(FREE)
     item = _item(
-        "read_record.png", axes={"sharpness": 80, FREE.name: 73}
+        "read_record.png", axes={"sharpness": 80, FREE.name: 73}, sharpness=200.0
     )
 
     record = read_axes(
@@ -182,8 +182,18 @@ def test_a_judge_named_axis_is_a_read_record_with_its_provenance():
     )
 
     registry = read_axes(item, domain="ai", axes=("sharpness",), profile=profile)[0]
-    assert registry.provenance == PROVENANCE_LOCAL, (
-        "a registry axis a detector produces here is measured-locally"
+    # A POOL axis the scorecard wrote is still the judge's number: provenance
+    # answers WHO DID, not who *could* have (free-axes W4, owner rule
+    # 2026-10-27). The same axis read from the detectors is the local
+    # instrument's — that half is what must stay measured-locally.
+    assert registry.provenance == PROVENANCE_JUDGE, (
+        "a judge-scored pool axis must name the judge that measured it"
+    )
+    local = read_axes(
+        item, domain="algorithms", axes=("sharpness",), profile=profile
+    )[0]
+    assert local.status == "ok" and local.provenance == PROVENANCE_LOCAL, (
+        "a detector number must stay measured-locally"
     )
     # Without a profile the reader makes no claim (never a guess).
     assert read_axes(item, domain="ai", axes=("sharpness",))[0].provenance == ""
@@ -494,9 +504,9 @@ def test_card_dots_show_the_judge_axes_with_their_provenance():
     )
 
     labels = [label for label, _score in infos]
-    # sharpness (measured locally) + the judge's jpeg_noise; the unmeasured
-    # registry axis (noise) has no dot (owner 2026-10-22: gaps are suppressed
-    # once anything in the set is measured).
+    # sharpness (a POOL axis the judge scored) + the judge's jpeg_noise; the
+    # unmeasured registry axis (noise) has no dot (owner 2026-10-22: gaps are
+    # suppressed once anything in the set is measured).
     assert len(infos) == 2, labels  # sharpness, jpeg_noise
     judged = [(label, score) for label, score in infos if FREE.name in label]
     assert judged and judged[0][1] == 73
@@ -504,14 +514,18 @@ def test_card_dots_show_the_judge_axes_with_their_provenance():
         f"a judge dot is unlabeled — the two instruments are mixed: {labels}"
     )
     registry = [(label, score) for label, score in infos if label.startswith("Sharpness")]
-    assert registry and "measured by the judge" not in registry[0][0]
+    assert registry and not registry[0][0].startswith(FREE.name), (
+        f"a pool axis lost its registry label: {labels}"
+    )
 
-    # The measured judge dot is not a severity band: its colour is the accent,
-    # shared only with other judge dots.
-    index = labels.index(judged[0][0])
-    assert colors[index] != colors[0], (
-        "the judge dot paints the same colour as a registry band — provenance "
-        "is only in the tooltip"
+    # In the AI domain both numbers ARE the judge's: a pool axis the model
+    # scored is the judge's measurement too (free-axes W4 — provenance names who
+    # DID, never who could have), so neither dot paints a detector severity
+    # band and the accent is the instrument marker.
+    accent = _accent_color().name()
+    assert [color.name() for color in colors] == [accent] * len(colors), (
+        "a judge-scored number painted a detector band instead of the "
+        f"instrument accent ({accent}): {[c.name() for c in colors]}"
     )
 
 

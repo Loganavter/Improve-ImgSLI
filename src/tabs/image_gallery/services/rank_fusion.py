@@ -57,6 +57,7 @@ from __future__ import annotations
 
 from tabs.image_gallery.backends.errors import NoProfileYet
 from tabs.image_gallery.services.metric_profile import (
+    DOMAIN_AI,
     DOMAIN_ALGORITHMS,
     EXCLUDED_AXES,
     domain_of,
@@ -125,7 +126,7 @@ SALIENCE_VERDICTS: tuple[str, str] = (DISCRIMINATING, INSIDE_NOISE)
 _mode_id = mode_id
 
 
-def measured_axes_for(mode=None, *, profile=None) -> tuple[str, ...]:
+def measured_axes_for(mode=None, *, profile=None, domain=None) -> tuple[str, ...]:
     """Every axis of the ACTIVE PROFILE — its own list, or ``NoProfileYet``.
 
     Owner design (``task-profile-granularity-and-axis-reporting``, 2026-10-26):
@@ -149,12 +150,16 @@ def measured_axes_for(mode=None, *, profile=None) -> tuple[str, ...]:
     dots and pairwise payload a detector axis set (four live chains,
     ``tests/isolation/test_ai_profile_fallback_dies.py``).
 
-    Without a profile at all the answer is the LOCAL backend's mode mapping, and
-    it is that backend's own artifact — ``profile_for_mode`` reached through
-    ``backends.algorithms`` (``axes_for_mode``), which is exactly what
-    ``profile_for_series`` falls back to when a series has no discriminating
-    measurement yet. This module no longer keeps a copy of the rule, so a caller
-    cannot arrive at local axes by leaving a profile out of an AI-domain call.
+    **No profile-free door either** (free-axes W4, owner rule 2026-10-27). A
+    caller that DECLARES the AI domain (``domain="ai"`` — the pairwise
+    refinement, the scorecard prompt, the dots/rows) and passes no profile gets
+    the same typed refusal: the mode mapping is the LOCAL backend's own artifact
+    and is never substituted for a judge run, not even as a default. Without a
+    declared domain (every Algorithms caller, and the huge part of the tree that
+    asks for the mode mapping) the answer is unchanged:
+    ``profile_for_mode`` reached through ``backends.algorithms``
+    (``axes_for_mode``), which is exactly what ``profile_for_series`` falls back
+    to when a series has no discriminating measurement yet.
     """
     if profile is not None:
         axes = _profile_axis_names(profile)
@@ -163,7 +168,26 @@ def measured_axes_for(mode=None, *, profile=None) -> tuple[str, ...]:
         raise NoProfileYet(
             backend_id=domain_of(profile), operation="measured_axes_for"
         )
+    if _is_ai_domain(domain):
+        raise NoProfileYet(
+            backend_id=DOMAIN_AI,
+            operation="measured_axes_for",
+            detail="called with no profile: the AI domain has no mode mapping",
+        )
     return _algorithms_mode_axes(mode)
+
+
+def _is_ai_domain(domain) -> bool:
+    """True when *domain* names the AI judgment domain (never raises)."""
+    if domain is None:
+        return False
+    try:
+        # Deferred: the ONE domain vocabulary lives in the read primitives.
+        from tabs.image_gallery.services.quality_read import normalize_domain
+
+        return normalize_domain(domain) == DOMAIN_AI
+    except Exception:
+        return False
 
 
 def _profile_axis_names(profile) -> tuple[str, ...]:
@@ -475,7 +499,7 @@ def _record_scores(item) -> dict[str, float]:
 
 
 def item_quality(
-    item, *, mode=None, profile=None, excluded_axes=(), axes=None
+    item, *, mode=None, profile=None, excluded_axes=(), axes=None, domain=None
 ) -> float | None:
     """0..100 aggregate over applicable MEASURED axes; None when nothing measured.
 
@@ -502,9 +526,10 @@ def item_quality(
     dropped out of the order for a reason that is about weights, not scores).
 
     Applicability is the metric profile (``profile`` when given, else the mode
-    mapping — see ``measured_axes_for``). Missing axes are excluded (never
-    treated as 0/100) and ``RANK_EXCLUDED_AXES`` is never consulted.
-    Deterministic; never fabricates.
+    mapping — see ``measured_axes_for``; a declared ``domain="ai"`` refuses the
+    profile-free case instead of ranking on the local axes). Missing axes are
+    excluded (never treated as 0/100) and ``RANK_EXCLUDED_AXES`` is never
+    consulted. Deterministic; never fabricates.
 
     ``axes`` is the caller's OWN axis set, passed by a backend that decided which
     half of a profile it may measure (``backends.algorithms.rank`` passes the
@@ -514,7 +539,7 @@ def item_quality(
     resolved_axes = (
         tuple(str(axis) for axis in axes)
         if axes is not None
-        else measured_axes_for(mode, profile=profile)
+        else measured_axes_for(mode, profile=profile, domain=domain)
     )
     weights = RANK_AXIS_WEIGHTS.get(_mode_id(mode), {})
     try:
@@ -541,7 +566,7 @@ def item_quality(
 
 
 def rank_series(
-    items, *, mode=None, profile=None, pairwise_order=None, axes=None
+    items, *, mode=None, profile=None, pairwise_order=None, axes=None, domain=None
 ) -> dict[str, int]:
     """path -> rank 1..N; measured first by ``(-quality, str(path))``, then
     unmeasured by ``str(path)``. Idempotent under input permutation.
@@ -566,12 +591,16 @@ def rank_series(
     (``backends.algorithms.rank``: the registry half only), so the local order
     can never be moved by the other backend's vocabulary. With ``axes=None`` the
     profile's own set applies (``NoProfileYet`` when it carries none).
+
+    ``domain`` forwards to :func:`measured_axes_for`, so an AI-domain caller with
+    no profile is refused (``NoProfileYet``) instead of ranking on the local mode
+    axes (free-axes W4).
     """
     members = list(items or ())
     resolved_axes = (
         tuple(str(axis) for axis in axes)
         if axes is not None
-        else measured_axes_for(mode, profile=profile)
+        else measured_axes_for(mode, profile=profile, domain=domain)
     )
     verdicts = axis_salience(
         [_axis_vector(member, resolved_axes) for member in members],
