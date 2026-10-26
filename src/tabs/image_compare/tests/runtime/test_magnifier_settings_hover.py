@@ -243,3 +243,72 @@ def test_leave_in_padding_rim_arms_backstop(qapp, monkeypatch):
 
     assert flyout.schedule_calls, "backstop must be armed on rim Leave"
     assert flyout.isVisible()
+
+class _FakeDropOverlay(QWidget):
+    """Stand-in for ``ComboBox._DropdownOverlay``: a BaseFlyout **child overlay**
+    (not a popup window) anchored to a control inside the unit."""
+
+    def __init__(self, anchors, parent=None):
+        super().__init__(parent)
+        self._anchors = tuple(anchors)
+
+    def anchor_widgets(self):
+        return self._anchors
+
+    def contains_global(self, _global_pos) -> bool:
+        return True
+
+
+def test_cursor_over_the_combobox_dropdown_stays_inside_the_unit(qapp, monkeypatch):
+    """Regression (owner, 2026-10-26): opening the interpolation list collapsed
+    the panel and the list itself.
+
+    The list is a toolkit combo dropdown — an in-window ``BaseFlyout`` overlay
+    anchored to a control INSIDE the panel, not a Qt popup window and not a
+    FlyoutManager ``linked_child`` of the panel. ``_combined_reason`` therefore
+    reported ``hover-move:outside`` and the panel hid immediately (measured in
+    the live journal: ``show`` -> ``hover-move:outside`` -> ``hide:immediate``).
+    """
+    fw, controller = _make_controller(qapp, monkeypatch, cursor_global=QPoint(0, 0))
+    flyout = fw.magnifier_settings_flyout
+    flyout.show()
+    monkeypatch.setattr(flyout, "isVisible", lambda: True)
+
+    overlay = _FakeDropOverlay(anchors=(fw.magnifier_group_container,), parent=fw)
+    row = QWidget(overlay)  # the widget actually under the cursor
+    overlay.show()
+    monkeypatch.setattr(transient.QApplication, "widgetAt", staticmethod(lambda _pos: row))
+    monkeypatch.setattr(
+        transient.QApplication, "activePopupWidget", staticmethod(lambda: None)
+    )
+    monkeypatch.setattr(transient.QCursor, "pos", staticmethod(lambda: QPoint(900, 900)))
+
+    assert controller._combined_reason() == "overlay"
+
+    flyout.hide_calls = 0
+    controller._handle_hover_event(QEvent(QEvent.Type.HoverMove))
+    assert flyout.hide_calls == 0, "panel must not hide while the cursor is on the list"
+
+
+def test_focus_inside_the_dropdown_keeps_the_panel(qapp, monkeypatch):
+    """Picking an entry moves focus into the list; that focus is still our unit."""
+    fw, controller = _make_controller(qapp, monkeypatch, cursor_global=QPoint(0, 0))
+    flyout = fw.magnifier_settings_flyout
+    flyout.show()
+    monkeypatch.setattr(flyout, "isVisible", lambda: True)
+
+    overlay = _FakeDropOverlay(anchors=(fw.magnifier_group_container,), parent=fw)
+    row = QWidget(overlay)
+    overlay.show()
+    monkeypatch.setattr(
+        transient.QApplication, "focusWidget", staticmethod(lambda: row)
+    )
+    monkeypatch.setattr(
+        transient.QApplication, "activePopupWidget", staticmethod(lambda: None)
+    )
+
+    flyout.hide_calls = 0
+    controller._handle_button_focus_event(
+        QFocusEvent(QEvent.Type.FocusOut, Qt.FocusReason.MouseFocusReason)
+    )
+    assert flyout.hide_calls == 0, "focus inside the dropdown must keep the panel"
