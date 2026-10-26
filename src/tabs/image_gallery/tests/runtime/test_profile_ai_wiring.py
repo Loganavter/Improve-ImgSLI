@@ -304,9 +304,15 @@ def test_vlm_profile_lands_on_state_and_consumers_follow(monkeypatch, fake_worke
 
 
 def test_a_later_settle_keeps_the_judges_answer(monkeypatch, fake_workers) -> None:
-    """P7-B / task-gallery-profile-lifecycle: a later settle must not replace the
-    judge's ``source=vlm`` profile with the series offer (the paid answer was
-    silently discarded mid-session), while a mode change still re-derives."""
+    """The judge's ``source=vlm`` profile owns the folder (P7-B, extended 2026-10-26).
+
+    A later settle must not replace it with the series offer — and neither must a
+    MODE change: the gallery mode is not a discriminator in the AI backend (the
+    axis set never depended on it), and the live 07:10 run showed the consequence
+    of comparing it: the judge answered with 5 free axes, and eleven seconds
+    later the heuristic-camera offer overwrote them because the answer carried
+    ``mode=""``. Red-before: the mode change re-derived the offer.
+    """
     a, b = _item("a.png", ssim=0.9), _item("b.png", ssim=0.4)
     ctrl = _ProfileCtrl([a, b], mode=Mode.CAMERA)
     ctrl.refresh_metric_profile()  # heuristic stored first
@@ -322,9 +328,11 @@ def test_a_later_settle_keeps_the_judges_answer(monkeypatch, fake_workers) -> No
     assert ctrl.state.metric_profile is stored, (
         "the judge's answer owns the slot for this folder+mode"
     )
-    ctrl.state.mode = Mode.FIDELITY  # a different question: re-derive
+    ctrl.state.mode = Mode.FIDELITY  # NOT a different question in the AI backend
     ctrl.refresh_metric_profile()
-    assert ctrl.state.metric_profile is not stored
+    assert ctrl.state.metric_profile is stored, (
+        "the judge's axes stay: the gallery mode does not change the question"
+    )
 
 
 def test_stale_generation_result_is_dropped(monkeypatch, fake_workers) -> None:

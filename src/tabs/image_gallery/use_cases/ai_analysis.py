@@ -404,6 +404,33 @@ def activate_judgment_domain(owner, domain: str) -> None:
         except Exception:
             logger.debug("pairwise refinement failed", exc_info=True)
         return
+    # Owner rule 2026-10-26 (measured live, 07:05): the AXIS SET must be the
+    # judge's, so the analysis may not start on the heuristic profile and freeze
+    # it — ``_mark_profile_consumed`` then makes the selector skip ("frozen for
+    # gen N"), and the folder keeps sharpness/exposure/clipping/... forever. Ask
+    # for the profile FIRST; its single release resumes the analysis tail
+    # (``_resume_settle_after_profile`` → ``_run_ai_on_settle``). When the profile
+    # is already resolved (vlm pin / consumed / no selector) nothing is pending
+    # and the analysis runs here, exactly as before.
+    kick = getattr(owner, "_run_profile_select_on_settle", None)
+    if callable(kick):
+        try:
+            kick()
+        except Exception:
+            logger.debug("profile kick on the AI switch failed", exc_info=True)
+    try:
+        pending = getattr(owner, "_profile_settle_pending_gen", None)
+        deferred = pending is not None and int(pending) == int(
+            getattr(owner, "_folder_gen", -1)
+        )
+    except Exception:
+        deferred = False
+    if deferred:
+        _ai_debug(
+            "domain switch: the analysis waits for the axis profile (gen=%s)",
+            getattr(owner, "_folder_gen", "?"),
+        )
+        return
     # Cache-first, never re-derive: items that already carry a scorecard (any
     # backend's cached read) are skipped by ``_run_ai_for_visible``; only a card
     # the AI has never seen is analyzed. A switch must not re-run the other

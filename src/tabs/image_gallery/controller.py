@@ -681,10 +681,15 @@ class GalleryController:
             # discarded the paid answer the user was looking at. A folder change
             # clears the slot (``clear_metric_profile``) and a mode change makes
             # ``profile.mode`` differ, so both still derive a fresh offer.
+            # The MODE is not a discriminator (owner rule 2026-10-26): in the AI
+            # backend the axis set never depended on it, and the judge's answer
+            # may carry no mode at all (the live 07:10 run: ``mode=-`` because the
+            # selector ran before ``state.mode`` was set). Comparing it here made
+            # the heuristic offer overwrite the paid answer eleven seconds later,
+            # which is exactly the "снова все метрики из camera режима" report.
             if (
                 previous is not None
                 and str(getattr(previous, "source", "")) == PROFILE_SOURCE_VLM
-                and str(getattr(previous, "mode", "")) == str(getattr(profile, "mode", ""))
             ):
                 try:
                     _ai_debug(
