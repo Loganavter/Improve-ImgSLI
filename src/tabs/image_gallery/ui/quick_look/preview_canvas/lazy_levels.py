@@ -64,7 +64,17 @@ def note_ql_source(self, path) -> None:
 
 
 def _ql_on_dwell(self, gen) -> None:
-    """Dwell-timer fire: pre-warm the pyramid iff the item is still shown."""
+    """Dwell-timer fire: pre-warm the pyramid iff the item is still shown.
+
+    I2 (one full decode per shown item, audit R4): the demand/pyramid
+    decode and the staged tiled kick are TWO consumers of the SAME file,
+    so this callback buys at most ONE store. The demand store is preferred
+    (its ``_QL_FULL_EDGE_CAP`` covers every practical viewport); the tiled
+    consumer reuses it when it lands (``_on_ql_full_ready``) or immediately
+    when one is already open. The uncapped tiled decode still fires when
+    the demand path cannot serve (source over the cap → coarse-only) — the
+    path kept for zoom levels beyond that cap. Never raises.
+    """
     try:
         try:
             live = int(getattr(self, "_ql_gen", 0) or 0) == int(gen)
@@ -72,16 +82,30 @@ def _ql_on_dwell(self, gen) -> None:
             live = False
         if not live:
             return  # walked away — never build on plain walks.
-        self._maybe_demand_build("dwell")
     except Exception:
-        pass
-    try:  # staged tiled kick shares the dwell gate (no second timer).
-        self._fire_ql_tiled_pending()
+        return
+    try:
+        full = getattr(self, "_ql_full_store", None)
+        has_store = full is not None and bool(full.is_open)
+    except Exception:
+        full = None
+        has_store = False
+    try:
+        started = bool(self._maybe_demand_build("dwell"))
+    except Exception:
+        started = False
+    if started and not has_store:
+        # The demand decode IS this dwell's one full decode; the staged
+        # tiled kick stays armed so the landing store can serve it
+        # (_on_ql_full_ready) instead of re-opening the file uncapped.
+        return
+    try:  # reuse an open demand store (zero decode) or fire the uncapped kick.
+        self._fire_ql_tiled_pending(store=full if has_store else None)
     except Exception:
         pass
 
 
-def _fire_ql_tiled_pending(self) -> None:
+def _fire_ql_tiled_pending(self, store=None) -> None:
     """Fire the staged tiled full-store kick (dwell/zoom trigger).
 
     The host stages exactly one pending kick per show
@@ -90,7 +114,12 @@ def _fire_ql_tiled_pending(self) -> None:
     exactly once: walks retire it via ``_drop_ql_demand`` (called from
     ``set_source``/``clear_source``), so a pending that exists is always
     for the live item and needs no extra generation check. A tiled memo
-    hit never stages (installed synchronously at show). Never raises.
+    hit never stages (installed synchronously at show).
+
+    ``store`` (I2, audit R4): an already-open full-resolution store for
+    the live item — the demand/pyramid store — registers as the tiled
+    source for free. Zero decode: the file is never re-opened just to
+    register the tiled source. Never raises.
     """
     try:
         try:
@@ -114,6 +143,19 @@ def _fire_ql_tiled_pending(self) -> None:
             return
         if not path_s:
             return
+        if store is not None:
+            try:
+                reuse = bool(store.is_open)
+            except Exception:
+                reuse = False
+            if reuse:
+                try:
+                    setter = getattr(self, "set_tiled_source", None)
+                    if callable(setter):
+                        setter(key, store)
+                        return
+                except Exception:
+                    pass
         try:
             from tabs.image_gallery.ui.quick_look.preview_canvas_host import (
                 _populate_tiled_source,
@@ -133,8 +175,10 @@ def _drop_ql_demand(self) -> None:
     result/finish slots see a stale gen and close the decoded store)
     and level builds (``should_abort``). The full store + derived
     pyramid are canvas-private (never memoized) so they close here —
-    walk keeps COARSE memos open, overlay-close drops those via the
-    host. Never raises.
+    a tiled source that aliases the full store (dwell/I2 reuse) is
+    retired first, so no closed store stays registered for draw. Walk
+    keeps COARSE memos open; overlay-close drops those via the host.
+    Never raises.
     """
     try:
         try:
@@ -174,6 +218,21 @@ def _drop_ql_demand(self) -> None:
             self._ql_full_store = None
         except Exception:
             full = None
+        try:
+            # I2 ownership rule: the tiled source now aliases this private
+            # store (dwell reuses it), so retire that ref BEFORE closing —
+            # a closed store must never stay registered for draw. Never
+            # raises; an already-cleared source makes this a no-op.
+            tiled = getattr(self, "_tiled_source", None)
+            if (
+                full is not None
+                and isinstance(tiled, tuple)
+                and len(tiled) == 2
+                and tiled[1] is full
+            ):
+                self.clear_tiled_source()
+        except Exception:
+            pass
         try:
             if pyr is not None:
                 pyr.close()  # derived levels only; base closes below.
@@ -601,6 +660,14 @@ def _on_ql_full_ready(self, store, gen) -> None:
             self._ql_full_store = store
             self._ql_pyramid = pyr
             self._ql_decoding = False
+        except Exception:
+            pass
+        # I2 (audit R4): this store IS the file's one full-res decode, so the
+        # staged tiled kick (dwell) is served from it — no uncapped re-open.
+        # The canvas-private store is retired before ``_drop_ql_demand``
+        # closes it (``clear_source`` clears the tiled source first).
+        try:
+            self._fire_ql_tiled_pending(store=store)
         except Exception:
             pass
         # Lazy target from the CURRENT zoom + real full dims (the zoom

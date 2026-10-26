@@ -244,6 +244,14 @@ ALLOWED_DEEP_TAB_IMPORTS: dict[str, str] = {
         "P2 helper axis_salience / measured_axes_for in services/rank_fusion so the "
         "interface cannot be invented differently by the wave that implements it"
     ),
+    "tests/contracts/test_analysis_backend_contract.py": (
+        "ADR 009 wave A1 adapter contract: the protocol, its typed errors and the "
+        "registry ARE the measured subject, so the test must import the REAL "
+        "tabs.image_gallery.backends package (a copy would prove nothing, and the "
+        "non-vacuity floor in the file asserts the imported path). It stays in the "
+        "contracts tier because the interface is consumed by A2-A4 across the tab, "
+        "not by one tab feature's own behavior"
+    ),
 }
 
 

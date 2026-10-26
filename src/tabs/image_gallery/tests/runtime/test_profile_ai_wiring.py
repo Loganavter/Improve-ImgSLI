@@ -131,7 +131,8 @@ class _ProfileCtrl:
             items=list(items),
             series=list(series or []),
             mode=mode,
-            metric_profile=None,
+            algorithms_profile=None,
+            ai_profile=None,
         )
         self._judgment_domain = "ai"
         self._folder_gen = gen
@@ -256,10 +257,10 @@ def test_settle_kicks_profile_once_with_the_heuristic_already_stored(
     assert ctrl.profile_kicks == 1, "the settle is the ONE trigger of the selector"
     assert len(ctrl.launched) == 1
     # The heuristic profile is stored synchronously, BEFORE the async selector.
-    stored = ctrl.state.metric_profile
+    stored = ctrl.state.algorithms_profile
     assert stored is not None and stored.source == "heuristic"
     ctrl.launched[0].run()  # None reply -> finished only -> no-op apply
-    assert ctrl.state.metric_profile.source == "heuristic"
+    assert ctrl.state.algorithms_profile.source == "heuristic"
 
 
 def test_second_settle_over_the_same_folder_is_a_noop(monkeypatch, fake_workers) -> None:
@@ -293,9 +294,9 @@ def test_vlm_profile_lands_on_state_and_consumers_follow(monkeypatch, fake_worke
     ctrl._run_profile_select_on_settle()
     ctrl.launched[0].run()
 
-    stored = ctrl.state.metric_profile
+    stored = ctrl.state.ai_profile
     assert stored is not None and stored.source == "vlm"
-    assert active_profile(ctrl.state) == stored
+    assert active_profile(ctrl.state, domain="ai") == stored
     # The consumers read the SAME stored profile: axis list + the dots.
     assert measured_axes_for(Mode.CAMERA, profile=stored) == vlm.axis_ids
     colors, infos = metric_dots_for_item(a, Mode.CAMERA, profile=stored)
@@ -320,17 +321,20 @@ def test_a_later_settle_keeps_the_judges_answer(monkeypatch, fake_workers) -> No
     monkeypatch.setattr(controller_mod, "_profile_selector", lambda: _selector_returning(vlm))
     ctrl._run_profile_select_on_settle()
     ctrl.launched[0].run()
-    stored = ctrl.state.metric_profile
+    stored = ctrl.state.ai_profile
     assert stored is not None and stored.source == "vlm"
 
     ctrl.refresh_metric_profile()  # a later metrics/slot settle
 
-    assert ctrl.state.metric_profile is stored, (
-        "the judge's answer owns the slot for this folder+mode"
+    assert ctrl.state.ai_profile is stored, (
+        "the judge's answer owns the AI slot for this folder"
+    )
+    assert ctrl.state.algorithms_profile is not None, (
+        "the Algorithms backend still derives its OWN offer — two slots, two lives"
     )
     ctrl.state.mode = Mode.FIDELITY  # NOT a different question in the AI backend
     ctrl.refresh_metric_profile()
-    assert ctrl.state.metric_profile is stored, (
+    assert ctrl.state.ai_profile is stored, (
         "the judge's axes stay: the gallery mode does not change the question"
     )
 
@@ -346,9 +350,9 @@ def test_stale_generation_result_is_dropped(monkeypatch, fake_workers) -> None:
     worker = ctrl.launched[0]
     # A new folder world arrives before the selector answers.
     ctrl._folder_gen = 1
-    ctrl.state.metric_profile = None  # fresh folder: profile cleared
+    ctrl.state.ai_profile = None  # fresh folder: profile cleared
     worker.run()
-    assert ctrl.state.metric_profile is None, "a stale vlm profile must be dropped"
+    assert ctrl.state.ai_profile is None, "a stale vlm profile must be dropped"
 
 
 # --------------------------------------------------------------------------
@@ -367,7 +371,7 @@ def test_selector_fault_keeps_the_heuristic_and_stays_retryable(
     ctrl.refresh_metric_profile()
     ctrl._run_profile_select_on_settle()
     ctrl.launched[0].run()  # error signal
-    assert ctrl.state.metric_profile.source == "heuristic"
+    assert ctrl.state.algorithms_profile.source == "heuristic"
     # A fault passes ok=False, so the same fingerprint stays retryable.
     ctrl._run_profile_select_on_settle()
     assert len(ctrl.launched) == 2
@@ -398,7 +402,7 @@ def test_fewer_than_two_items_launches_no_worker(monkeypatch, fake_workers) -> N
     ctrl.refresh_metric_profile()
     ctrl._run_profile_select_on_settle()
     assert ctrl.launched == []
-    assert ctrl.state.metric_profile.source == "heuristic"
+    assert ctrl.state.algorithms_profile.source == "heuristic"
 
 
 def test_launch_failure_keeps_the_heuristic_and_stays_retryable(
@@ -416,7 +420,7 @@ def test_launch_failure_keeps_the_heuristic_and_stays_retryable(
     monkeypatch.setattr(ctrl, "_pool_start", _boom)
     ctrl.refresh_metric_profile()
     ctrl._run_profile_select_on_settle()  # must not raise
-    assert ctrl.state.metric_profile.source == "heuristic"
+    assert ctrl.state.algorithms_profile.source == "heuristic"
     # The gate is released ok=False, so a later kick retries the same folder.
     relaunched: list = []
     monkeypatch.setattr(ctrl, "_pool_start", lambda w, p: relaunched.append(w))
@@ -438,7 +442,7 @@ def test_missing_or_raising_selector_indirection_is_a_noop(
     ctrl.refresh_metric_profile()
     ctrl._run_profile_select_on_settle()
     assert ctrl.launched == []
-    assert ctrl.state.metric_profile.source == "heuristic"
+    assert ctrl.state.algorithms_profile.source == "heuristic"
 
 
 def test_instance_level_selector_override_is_used(monkeypatch, fake_workers) -> None:
@@ -454,4 +458,4 @@ def test_instance_level_selector_override_is_used(monkeypatch, fake_workers) -> 
     )
     ctrl._run_profile_select_on_settle()
     ctrl.launched[0].run()
-    assert ctrl.state.metric_profile == vlm
+    assert ctrl.state.ai_profile == vlm

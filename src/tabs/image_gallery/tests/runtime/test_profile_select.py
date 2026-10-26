@@ -218,7 +218,7 @@ def test_derive_for_state_never_raises():
 
 def test_active_profile_prefers_the_stored_profile():
     stored = MetricProfile(axis_ids=("sharpness",), mode="camera", salient_axes=("sharpness",))
-    state = SimpleNamespace(items=[], mode=Mode.FIDELITY, metric_profile=stored)
+    state = SimpleNamespace(items=[], mode=Mode.FIDELITY, algorithms_profile=stored)
     assert active_profile(state) is stored
     assert active_profile(state, mode=Mode.CAMERA) is stored
 
@@ -232,7 +232,7 @@ def test_active_profile_falls_back_to_the_mode_mapping():
     assert active_profile(state) == derive_profile([], mode="camera")
     # A garbage/empty cache is not a usable profile → the mode base applies.
     for bad in (None, "profile", MetricProfile(), object()):
-        state = SimpleNamespace(mode=Mode.CAMERA, metric_profile=bad)
+        state = SimpleNamespace(mode=Mode.CAMERA, algorithms_profile=bad)
         assert active_profile(state).axis_ids == measured_axes_for("camera")
     assert active_profile(object()).axis_ids == measured_axes_for(None)
 

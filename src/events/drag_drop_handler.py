@@ -288,6 +288,14 @@ class DragAndDropService(QObject):
             except RuntimeError:
                 continue
         return False
+
+    def finish_drag(self, event):
+        """Commit the gesture on release: the target takes the drop, then unwind.
+
+        The release half of the row-drag (router's MouseButtonRelease branch).
+        Kept as a named method, not inlined into the router: the drop target is
+        resolved here (``_current_target``), never re-resolved at release time.
+        """
         if not self._is_dragging:
             return
 

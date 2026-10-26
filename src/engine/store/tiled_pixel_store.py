@@ -1049,6 +1049,18 @@ class TiledPixelStore:
         memmap = self._ensure_open()
         return Image.fromarray(np.array(memmap), mode="RGBA")
 
+    def as_pil_rgba(self) -> Image.Image:
+        """Zero-copy read-only RGBA view over the spill mapping.
+
+        Exists so a bounded consumer can be derived from the ONE authoritative
+        decode instead of decoding the file again (gallery owner invariant I2:
+        the Stage-2 proxy used to be a second full decode beside this store).
+        The view SHARES the memmap and is therefore only valid while the store
+        is open: copy or downscale it (``convert``/``resize``/``crop``) before
+        :meth:`close`. Never mutate it — the mapping is not a scratch buffer.
+        """
+        return Image.fromarray(self._ensure_open())
+
     def close(self) -> None:
         path = self._path
         owns = getattr(self, "_owns_file", True)

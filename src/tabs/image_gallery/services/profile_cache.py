@@ -70,6 +70,10 @@ logger = logging.getLogger(APP_LOGGER_NAME)
 #: set (``vlm``) or the resolved offer (``series`` / ``heuristic``) — plus when
 #: and why, because an offer is now pinned too. A v2 record cannot say whether
 #: it is a paid answer or a fallback, so it is not served as one.
+#: The analysis-backend adapter that OWNS this store (ADR 009 wave A4) — see
+#: ``services.ai_cache.CACHE_NAMESPACE``.
+CACHE_NAMESPACE = "ai"
+
 PROFILE_CACHE_VERSION = 3
 
 #: Cache directory name, stored alongside the Jev cache directory.

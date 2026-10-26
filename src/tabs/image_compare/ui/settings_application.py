@@ -25,7 +25,6 @@ class ImageCompareSettingsApplication:
     def apply(self) -> bool:
         self._apply_magnifier_movement_optimization()
         self._apply_magnifier_interpolation()
-        self._apply_laser_interpolation()
         self._apply_magnifier_behavior_settings()
         self._apply_metrics_settings()
         return self.render_update_needed
@@ -104,41 +103,6 @@ class ImageCompareSettingsApplication:
 
         self.store.emit_state_change()
         self._save_setting("magnifier_movement_interpolation_method", method)
-        self._emit_update_requested()
-        self.render_update_needed = True
-
-    def _apply_laser_interpolation(self) -> None:
-        vp = self.store.viewport
-        guides_state = self._execute_alias("guides.widget_state", vp.view_state) or type(
-            "_GuidesFallback",
-            (),
-            {
-                "smoothing_enabled": False,
-                "smoothing_interpolation_method": "BILINEAR",
-            },
-        )()
-
-        smoothing_enabled = self.data.optimize_laser_smoothing
-        if smoothing_enabled != guides_state.smoothing_enabled:
-            self._execute_alias(
-                "guides.set_smoothing_enabled",
-                self.store,
-                smoothing_enabled,
-            )
-            self.render_update_needed = True
-            self._save_setting("guides.smoothing.enabled", smoothing_enabled)
-
-        method = self.data.laser_interpolation_method
-        if method == guides_state.smoothing_interpolation_method:
-            return
-
-        self._execute_alias(
-            "guides.set_smoothing_interpolation_method",
-            self.store,
-            method,
-        )
-        self.store.emit_state_change()
-        self._save_setting("guides.smoothing.interpolation_method", method)
         self._emit_update_requested()
         self.render_update_needed = True
 

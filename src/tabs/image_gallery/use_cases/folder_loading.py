@@ -38,10 +38,11 @@ def open_folder(owner, folder: Path) -> None:
     t0 = time.perf_counter()
     folder = Path(folder)
     gen = owner._next_folder_gen()
-    # P1: a folder switch invalidates the metric profile — the previous
+    # P1: a folder switch invalidates BOTH metric profiles — the previous
     # folder's axis set must never leak into the new one. A fresh state carries
-    # ``metric_profile=None`` anyway; this is the explicit invalidation point,
-    # and the next mode/metrics settle derives the new folder's profile.
+    # both slots as ``None`` anyway; this is the explicit invalidation point,
+    # and the next mode/metrics settle derives the new folder's local offer (the
+    # AI slot stays empty until the judge answers for this folder).
     clear = getattr(owner, "clear_metric_profile", None)
     if callable(clear):
         try:
@@ -232,7 +233,8 @@ def open_paths(owner, paths: list[Path], *, replace: bool = False) -> None:
     owner.state = GalleryState(folder=display_folder, items=merged, triage_state=TriageState.RUNNING)
     # P4: the explicit metric-domain pick lives on the controller (it MUST
     # survive this state replacement — that is the authority seam); re-apply
-    # it onto the fresh state before analysis reads ``state.metric_profile``.
+    # it onto the fresh state before analysis reads the profile slots
+    # (``algorithms_profile`` / ``ai_profile``).
     # A replace is a fresh context (folder picker / mixed drop), so the pick is
     # cleared there exactly as a folder switch does.
     try:

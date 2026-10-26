@@ -51,6 +51,11 @@ logger = logging.getLogger(APP_LOGGER_NAME)
 
 #: Payload format version (STORAGE changes here; :func:`pipeline_version` covers
 #: DETECTOR changes).
+#: The analysis-backend adapter that OWNS this store (ADR 009 wave A4) — see
+#: ``services.ai_cache.CACHE_NAMESPACE``. These are the LOCAL detectors' Stage-2
+#: records, so they belong to the algorithms backend, not the judge's.
+CACHE_NAMESPACE = "algorithms"
+
 LOCAL_METRICS_VERSION = 1
 
 #: Entry lanes persisted here (the proxy batch entry's stage keys).

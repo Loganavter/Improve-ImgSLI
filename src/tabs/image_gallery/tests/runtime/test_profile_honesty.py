@@ -145,7 +145,8 @@ class _ProfileCtrl:
             items=list(items),
             series=list(series or []),
             mode=mode,
-            metric_profile=None,
+            algorithms_profile=None,
+            ai_profile=None,
         )
         self._judgment_domain = domain
         self._folder_gen = gen
@@ -163,7 +164,7 @@ class _ProfileCtrl:
             refresh_cards=lambda its: None,
             refresh_card=lambda it: None,
         )
-        #: ``state.metric_profile`` as the AI pass saw it, one entry per start.
+        #: ``state.ai_profile`` as the AI pass saw it, one entry per start.
         self.ai_starts: list = []
         self.jev_starts: list = []
         self.launched: list = []
@@ -194,10 +195,10 @@ class _ProfileCtrl:
 
     def _run_ai_for_visible(self):
         GalleryController._mark_profile_consumed(self)
-        self.ai_starts.append(getattr(self.state, "metric_profile", None))
+        self.ai_starts.append(getattr(self.state, "ai_profile", None))
 
     def _run_jev_ranks(self):
-        self.jev_starts.append(getattr(self.state, "metric_profile", None))
+        self.jev_starts.append(getattr(self.state, "ai_profile", None))
 
     # Thin primitives ``_settle_metrics_pass`` touches (no-ops here).
     def _mark_local_pass(self, items, phase):
@@ -230,13 +231,14 @@ def test_profile_selector_does_not_run_in_the_algorithms_domain(
         lambda: _selector_returning(_vlm_profile(), calls=calls),
     )
     ctrl.refresh_metric_profile()
-    heuristic = ctrl.state.metric_profile
+    heuristic = ctrl.state.algorithms_profile
 
     ctrl._run_profile_select_on_settle()
 
     assert calls == [], "the Algorithms domain must not spend a VLM profile call"
     assert ctrl.launched == [], "no selector worker may start off the AI domain"
-    assert ctrl.state.metric_profile == heuristic
+    assert ctrl.state.algorithms_profile == heuristic
+    assert ctrl.state.ai_profile is None
 
 
 def test_settle_in_the_algorithms_domain_never_touches_the_profile(
@@ -256,7 +258,7 @@ def test_settle_in_the_algorithms_domain_never_touches_the_profile(
 
     assert calls == []
     assert ctrl.launched == []
-    assert ctrl.state.metric_profile.source == "heuristic"
+    assert ctrl.state.algorithms_profile.source == "heuristic"
     assert ctrl.ai_starts == [], "the AI pass stays off in the Algorithms domain"
 
 
@@ -270,15 +272,16 @@ def test_late_vlm_reply_does_not_replace_the_profile_after_a_domain_switch(
         controller_mod, "_profile_selector", lambda: _selector_returning(_vlm_profile())
     )
     ctrl.refresh_metric_profile()
-    heuristic = ctrl.state.metric_profile
+    heuristic = ctrl.state.algorithms_profile
 
     ctrl._run_profile_select_on_settle()  # in flight
     ctrl._judgment_domain = "algorithms"  # the toolbar flips back
     ctrl.launched[0].run()
 
-    assert ctrl.state.metric_profile == heuristic, (
+    assert ctrl.state.ai_profile is None, (
         "the Algorithms domain must not receive a VLM-chosen profile"
     )
+    assert ctrl.state.algorithms_profile == heuristic
 
 
 # --------------------------------------------------------------------------
@@ -311,8 +314,8 @@ def test_settle_does_not_start_ai_under_a_profile_that_is_replaced_after_the_cal
 
     ctrl.launched[0].run()
 
-    assert ctrl.state.metric_profile is not None
-    assert ctrl.state.metric_profile.source == "vlm"
+    assert ctrl.state.ai_profile is not None
+    assert ctrl.state.ai_profile.source == "vlm"
     assert ctrl.ai_starts == [vlm], "the analysis identity is the resolved profile"
     assert ctrl.jev_starts == [vlm]
 
@@ -333,15 +336,17 @@ def test_late_vlm_reply_is_dropped_once_analysis_started(
         controller_mod, "_profile_selector", lambda: _selector_returning(_vlm_profile())
     )
     ctrl.refresh_metric_profile()
-    heuristic = ctrl.state.metric_profile
+    heuristic = ctrl.state.algorithms_profile
     assert heuristic.source == "heuristic"
+    assert ctrl.state.ai_profile is None
 
     ctrl._run_profile_select_on_settle()  # in flight
     ctrl._run_ai_for_visible()  # an analysis of this generation begins now
     with caplog.at_level(logging.DEBUG, logger=APP_LOGGER_NAME):
         ctrl.launched[0].run()  # ...and only then the vlm reply lands
 
-    assert ctrl.state.metric_profile == heuristic, "a late reply must not be applied"
+    assert ctrl.state.ai_profile is None, "a late reply must not be applied"
+    assert ctrl.state.algorithms_profile == heuristic
     assert any(
         "late" in rec.getMessage().lower() and "profile" in rec.getMessage().lower()
         for rec in caplog.records

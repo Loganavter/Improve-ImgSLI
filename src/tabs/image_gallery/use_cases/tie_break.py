@@ -188,7 +188,15 @@ def run_tie_break_if_needed(owner, series) -> None:
 
     if load_cached_tie_break is not None:
         try:
-            cached = load_cached_tie_break(a.path, a.mtime_ns, b.path, b.mtime_ns, source_mtime)
+            cached = load_cached_tie_break(
+                a.path,
+                a.mtime_ns,
+                b.path,
+                b.mtime_ns,
+                source_mtime,
+                model=settings.model,
+                base_url=settings.base_url,
+            )
             if cached is not None:
                 owner._apply_tie_break_result(a, b, cached)
                 return
@@ -216,14 +224,25 @@ def run_tie_break_if_needed(owner, series) -> None:
         source=source,
     )
 
-    def _on_result(result, a_path=a.path, b_path=b.path, a_mtime=a.mtime_ns, b_mtime=b.mtime_ns, _src_mtime=source_mtime, gen=owner._folder_gen):
+    def _on_result(result, a_path=a.path, b_path=b.path, a_mtime=a.mtime_ns, b_mtime=b.mtime_ns, _src_mtime=source_mtime, gen=owner._folder_gen, _model=settings.model, _base_url=settings.base_url):
         if not owner._is_current_folder_gen(gen):
             return  # folder switched mid-VLM — late tie-break dropped
         if not _tie_break_still_owned(owner, epoch):
             return  # the user left the AI domain — the verdict must not land
         try:
             if save_tie_break is not None:
-                save_tie_break(a_path, a_mtime, b_path, b_mtime, result, _src_mtime)
+                # The provider answered the pair, so it belongs to the key: a
+                # verdict earned on provider A must not be served under B.
+                save_tie_break(
+                    a_path,
+                    a_mtime,
+                    b_path,
+                    b_mtime,
+                    result,
+                    _src_mtime,
+                    model=_model,
+                    base_url=_base_url,
+                )
         except Exception:
             logger.debug("tie-break cache save failed", exc_info=True)
         # Find current items (may have been refreshed)

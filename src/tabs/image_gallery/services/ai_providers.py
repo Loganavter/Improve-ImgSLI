@@ -156,6 +156,7 @@ def model_for(provider, remembered: str = "") -> str:
 __all__ = [
     "AiProvider",
     "PROVIDERS",
+    "_url_key",
     "PROVIDER_CUSTOM",
     "PROVIDER_IDS",
     "PROVIDER_LLAMACPP",

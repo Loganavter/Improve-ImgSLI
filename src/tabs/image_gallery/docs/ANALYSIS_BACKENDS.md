@@ -22,8 +22,9 @@ model the calls go to*, and two of the five paths (Jev rank, series priority)
 ignore the user's model entirely and hard-code `typesafe/jev-router`
 (`services/jev_client.py` `JEV_MODEL`). The metric **profile** is a third,
 orthogonal axis: it decides *which axes exist*, not who computes them
-(`services/rank_fusion.py` `measured_axes_for` for the registry half,
-`services/profile_judged.py` for the axes the judge named).
+(`services/rank_fusion.py` `measured_axes_for` returns the profile's own axis
+list — registry half plus the axes the judge named, which
+`services/profile_judged.py` reads).
 
 ---
 
@@ -122,7 +123,7 @@ reachable via the explicit Analyze action.
 | 1 | **AI analysis** (per image) | `services/ai_client/__init__.py:96` | `settings.model` | image bytes + axis list | `item.analysis` (scorecard + defects) |
 | 2 | **Jev rank** (per series) | `jev_client.py:446` | **hard-coded `typesafe/jev-router`** | measured vector, **no images** | `rank_source="jev"` |
 | 3 | **Series priority** | `series_priority.py:130` | **hard-coded `typesafe/jev-router`** | per-series aggregate signals | `state.series_priority` |
-| 4 | **VLM profile selector** (per folder) | `use_cases/profile_ai.py:303` | `settings.model` | probe images + salience | `state.metric_profile` (`source="vlm"`) |
+| 4 | **VLM profile selector** (per folder) | `use_cases/profile_ai.py:303` | `settings.model` | probe images + salience | `state.ai_profile` (`source="vlm"`) |
 | 5 | **Ask AI** (advisory) | `services/ask_router.py:298` | `settings.model` | text or images by question kind | `ask_log` (never mutates rank) |
 
 All five go through **one transport**: `ai_client/transport.py:152`
@@ -169,18 +170,60 @@ the axes and their provenance.
 flowchart LR
     subgraph PROD["Producers (each yields a full profile)"]
         S["series offer<br/>profile_select.derive_profile -> profile_for_series<br/>axes whose spread separates THIS series"]
-        V["judge<br/>profile_ai.choose_profile_sync<br/>3..8 free-form axes named for this series"]
+        V["judge<br/>profile_ai.choose_profile_sync<br/>5..8 free-form axes named for this series"]
         F["mode fallback<br/>metric_profile.profile_for_mode<br/>no discriminating measurement yet"]
     end
-    S --> ST["state.metric_profile"]
-    V --> ST
-    F --> ST
-    ST --> C1["dots / rows<br/>rank_fusion.measured_axes_for"]
-    ST --> C2["scorecard prompt axes<br/>ai_client/prompt.py (registry + judged)"]
-    ST --> C3["fusion rank<br/>rank_fusion.rank_series"]
-    ST --> C4["Jev measured vector<br/>jev_client.py"]
-    ST --> C5["per-axis provenance<br/>profile_judged.axis_provenance"]
+    S --> A["state.algorithms_profile"]
+    F --> A
+    V --> B["state.ai_profile"]
+    A --> C1["dots / rows<br/>rank_fusion.measured_axes_for<br/>(the profile's own list)"]
+    A --> C3["fusion rank<br/>rank_fusion.rank_series"]
+    B --> C2["scorecard prompt axes<br/>ai_client/prompt.py (registry + judged)"]
+    B --> C4["Jev measured vector<br/>jev_client.py"]
+    A --> C5["per-axis provenance<br/>profile_judged.axis_provenance"]
+    B --> C5
 ```
+
+Two backends, two slots (backend-isolation invariant I1): the local derivation
+writes `state.algorithms_profile`, the judge writes `state.ai_profile`, and every
+consumer reads its own slot. Since ADR 009 wave A2 the slot is WRITTEN and READ
+by the owning adapter — `backends.algorithms` / `backends.ai` (`install` /
+`load_profile`) — and `metric_profile.profile_for_domain` is a deprecated
+one-line delegate to that adapter (it survives into wave A4, which rewrites the
+remaining by-domain lookups in the controller/use cases). A foreign-tagged
+profile is a loud `ForeignProfileError`, never a silent cross-read; an
+AXIS-LESS profile is `NoProfileYet` (`make_profile`/`install`/`measure`/`rank`),
+because "no axis set yet" is the absence of a profile, not a profile to repair.
+
+**Wave A3 — each backend reads only its own artifacts.** The two operations that
+read numbers live in their own modules and see one instrument each:
+`backends/algorithms/measure.py` + `rank.py` (local engine records /
+`item.metrics`, the profile's REGISTRY half only, `rank_fusion.rank_series(axes=…)`)
+and `backends/ai/measure.py` + `rank.py` (the scorecard over registry ids AND
+judged names, `jev_client.rank_series_jev`). Three consequences worth naming:
+
+- **the mode-mapping fallback is gone from the core**: `rank_fusion
+  .measured_axes_for(profile=…)` answers the profile's OWN axis list or raises
+  `NoProfileYet`; the mode mapping is reached only without a profile, through the
+  backend that owns it (`backends.algorithms` `axes_for_mode`). An EMPTY AI
+  profile used to fall through to the detector axes, so the scorecard prompt, the
+  request's echo filter, the Jev vector, the card dots and the pairwise payload
+  all silently asked/measured the LOCAL axis set (each chain — action context →
+  prompt, request echo filter, Jev vector, card dots, pairwise payload,
+  series priority — is pinned in
+  `src/tabs/image_gallery/tests/isolation/test_ai_profile_fallback_dies.py`);
+- **pairwise is a declared capability**, not a shared feature: the request goes
+  through `backends.composition.pairwise_backend(id)` →
+  `require_capability(descriptor, PAIRWISE_CAPABILITY)`; the Algorithms adapter
+  never declared it, so asking it (or handing its rank a `pairwise_order`) is
+  `CapabilityNotDeclared`. Its rank is applied by the AI adapter
+  (`backends/ai/rank.py`, the same leading-ranks rule as `rank_series`);
+- **the cross-series priority payload is the judge's own number**:
+  `services/series_priority` takes the AI profile as an argument and aggregates
+  `backends.ai.measure.series_quality` — it used to call
+  `rank_fusion.item_quality(mode=…)` with no profile, i.e. the LOCAL fusion
+  aggregate, and sent detector numbers to the AI endpoint. Without a profile the
+  pass reports `PRIORITY_REASON_NO_PROFILE` and spends nothing.
 
 `source` is one of three values (`PROFILE_SOURCES` in
 `services/metric_profile.py`):
@@ -197,9 +240,11 @@ flowchart LR
 `MetricProfile.axis_ids` vs `axis_entries`):
 
 - **registry half** — `axis_ids`: ids from the closed pool (`MEASURED_POOL`),
-  i.e. axes a local detector can produce. `rank_fusion.measured_axes_for`
-  answers only from this half, so local rows, the fusion mean and the Jev vector
-  keep ONE vocabulary.
+  i.e. axes a local detector can produce. `rank_fusion.measured_axes_for` answers
+  with this half for a local profile, so local rows, the fusion mean and the
+  local rank keep ONE vocabulary (and `backends.algorithms.measure/rank` pass
+  exactly this half, so a judge entry that reached a local profile cannot move
+  the local order).
 - **judge half** — `axis_entries`: `models.AiAxisProposal` records (name +
   definition + 0–100 scale + direction) the model named for this series. No
   local producer exists and none is required: the scorecard prompt asks for them
@@ -226,6 +271,47 @@ domain owns the derivation and records the refusal as
 (`PROFILE_REJECT_DOMAIN`); every other failure has its own code there
 (`calls-built`, `stale-generation`, `hollow-answer`). So a judge-named axis can
 never appear while the shown numbers are detector numbers.
+
+**Wave A4 — the caches belong to the adapters, and so does the reset.** The
+reset is no longer a list of store names in `use_cases/cache_reset.py`; it is one
+registry iteration (`for backend in registry.iter_backends(): backend.reset()`),
+and each adapter names what it drops in its own `reset.py`
+(`backends/algorithms/reset.py`, `backends/ai/reset.py`):
+
+| Backend (`cache_namespace`) | Owned stores it clears |
+|---|---|
+| `algorithms` | `services.metrics_cache` (the local Stage-2 records) |
+| `ai` | `services.ai_cache` (scorecards), `services.profile_cache` (VLM profile pins), `services.jev_cache` (Jev rank pins), `services.vlm_cache` (tie-break / brief files), `use_cases.pairwise_rank.DEFAULT_CACHE` (A/B verdicts), the Ask-AI answer caches issued by `AIBackend.new_ask_cache` |
+
+Every cache module declares `CACHE_NAMESPACE`, and `backends.reset
+.require_namespace` refuses an adapter clearing a store of another namespace
+(`BackendMismatch`) — the pattern a registry cannot see, because the registry only
+catches two backends claiming the same one (`CacheNamespaceCollision`). What the
+use case keeps is the engine-side half: per-item measured state, the proxy decode
+cache, the in-memory `state.tie_breaks` / `state.series_priority` projections and
+their header marker, the profile-selector generation markers, the stored profile
+slots and the Stage-2 fingerprint.
+
+**Generations close the write window the barrier cannot see.** The barrier
+(`use_cases/reset_barrier`) bumps the owner's two epoch tokens and every *landing*
+path compares them — but three writes never land through an item: they go straight
+from a worker thread into a store (`services.jev_client._pin`, the profile pin in
+`use_cases.profile_ai`, `store.put` in `use_cases.pairwise_rank`). Each adapter now
+holds a monotonic **work generation** and the reset advances it *first*; a worker
+snapshots `adapter.lease()` when its pass starts and the pin asks
+`generation_is_current(lease, operation=…)` immediately before the write. The
+refusal is the owning adapter's and it is typed: `BackendMismatch` for the other
+backend's lease, `NoProfileYet` (carrying the dropped generation) for an older one
+— after a reset there is no profile of that generation for the result to belong
+to. A reset that cleared first and bumped afterwards would let the lease compare
+current again, which is why the bump is the first statement of both `reset`
+modules.
+
+The Ask-AI answers are the concrete bug this closes: they lived on the controller
+(`_ask_cache`, keyed by scope + question + backend + model) and no clear knew
+about them, so a paid answer outlived every reset. The AI adapter now issues the
+cache (`new_ask_cache(owner)`, a weak per-owner binding) and empties every bound
+one in its `reset`.
 
 ---
 
@@ -287,7 +373,7 @@ in that plan, not re-litigated here.
    a specific router model id (`JEV_MODEL`). Either the Settings need a separate
    "ranking" model field, or the strip must say *which* model ranked.
 2. **Do judge-named axes need a stability rule?** They are free-form by owner
-   decision (3..8, each with a definition); `services/profile_cache.py` keys a
+   decision (5..8, each with a definition); `services/profile_cache.py` keys a
    selection on the sorted member paths + mtimes + mode + model + base_url +
    effort + pool. Whether a series that gains a member should keep its earlier
    axis set, or accept a fresh one, is not decided.

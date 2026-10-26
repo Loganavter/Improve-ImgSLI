@@ -16,7 +16,7 @@ The prompt contract (owner design 2026-10-26,
 - **the EVIDENCE is first and is the bulk**: the per-axis local spreads for THIS
   series and the per-probe scores, so every named axis can be tied to a
   difference that was actually observed;
-- the 3..8 free-form rule and the salience summary (registry ids are evidence,
+- the 5..8 free-form rule and the salience summary (registry ids are evidence,
   never a menu);
 - every axis must carry a ``why`` (which variants differ on it and how); the
   parser refuses an answer that leaves one empty (one retry, then the offer).
@@ -87,7 +87,7 @@ def _resolved_effort(effort: str) -> str:
 def profile_request_budget(count: int, effort: str = "auto") -> int:
     """``max_tokens`` for one profile call: answer reserve + reasoning allowance.
 
-    The visible answer (3..8 axes as one JSON object) is sized by the shared
+    The visible answer (5..8 axes as one JSON object) is sized by the shared
     Ask-AI estimator over the probe count and floored at
     :data:`PROFILE_ANSWER_RESERVE`; the resolved effort then adds its own
     allowance from :data:`PROFILE_REASONING_ALLOWANCE`. Never below the
@@ -161,7 +161,7 @@ def _apply_profile_openrouter_hardening(payload: dict, base_url, model, effort) 
 
 
 def _selector_text(salience, corrective: str = "") -> str:
-    """The single text part: the EVIDENCE first, the shape rule, the 3..8 rule.
+    """The single text part: the EVIDENCE first, the shape rule, the 5..8 rule.
 
     Owner design (2026-10-26): the examples list is GONE — the prompt names no
     axis of its own. What it carries instead is what was actually observed on
@@ -183,7 +183,7 @@ def _selector_text(salience, corrective: str = "") -> str:
     lines.append("")
     lines.append(
         "INSTRUCTION: from the evidence above and the images themselves, name "
-        "FROM 3 TO 8 axes — the ones that most differentiate THESE variants, i.e. "
+        "FROM 5 TO 8 axes — the ones that most differentiate THESE variants, i.e. "
         "the axes whose value actually MOVES between them (an axis every variant "
         "shares equally is useless here). The evidence already names the measured "
         "axes whose spread separates this series; if your axis IS one of those, "
@@ -265,8 +265,8 @@ PROFILE_PROBE_MAX_EDGE = 512
 #: reply, an axis with no ``why``). Stated once, in the words the rule is stated
 #: in: no example axes, no menu — only the count and the evidence tie.
 REPLY_RETRY_NOTE = (
-    "Your previous answer was unusable: it named fewer than 3 or more than 8 "
-    "axes, or an axis carried no `why`. Answer again with 3 to 8 axes, each one "
+    "Your previous answer was unusable: it named fewer than 5 or more than 8 "
+    "axes, or an axis carried no `why`. Answer again with 5 to 8 axes, each one "
     "tied by `why` to a difference the evidence or the images actually show."
 )
 

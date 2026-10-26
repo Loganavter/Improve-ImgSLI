@@ -43,6 +43,8 @@ Pure: no Qt, no HTTP, no state. A registry id outside the pool is *dropped* from
 ``axis_ids``, never fabricated ("detector-unavailable axes are dropped" — plan
 §Target pipeline step 4); a judge-named name outside the pool is an ENTRY, never
 a fabricated registry id.
+
+Audit-Meta: pattern=profile-contract size=562 reason="one profile contract: the closed pool, the mode mapping, the two domain slots and the axis-set builders must answer from ONE vocabulary; splitting them would let the AI slot and the Algorithms slot drift apart again (2026-10-26)."
 """
 
 from __future__ import annotations
@@ -101,6 +103,77 @@ PROFILE_SOURCES: tuple[str, ...] = (
     PROFILE_SOURCE_VLM,
     PROFILE_SOURCE_FALLBACK,
 )
+
+#: The two judgment domains and the ONE state slot each backend owns
+#: (backend-isolation invariant I1). A profile is DOMAIN-TAGGED by its provenance:
+#: a judge answer (``source="vlm"``) belongs to the AI backend; the series offer
+#: and the mode mapping (``source="series"`` | ``"heuristic"``) belong to the
+#: Algorithms backend. There is no third tag, so a profile is never unowned — and
+#: the heuristic/mode mapping is legal ONLY in ``algorithms_profile``.
+DOMAIN_ALGORITHMS = "algorithms"
+DOMAIN_AI = "ai"
+PROFILE_DOMAINS: tuple[str, ...] = (DOMAIN_ALGORITHMS, DOMAIN_AI)
+
+#: ``GalleryState`` slot names. Read through the OWNING adapter
+#: (``backends.algorithms`` / ``backends.ai``; :func:`profile_for_domain` is the
+#: deprecated one-line delegate), never as a bare attribute: a stale reader of
+#: the deleted single slot fails loudly.
+ALGORITHMS_PROFILE_SLOT = "algorithms_profile"
+AI_PROFILE_SLOT = "ai_profile"
+
+
+class ForeignProfileError(ValueError):
+    """A slot holds a profile the OTHER backend derived (invariant I1 broken)."""
+
+
+def domain_of(profile) -> str:
+    """The domain a profile belongs to, from its provenance. Never raises.
+
+    ``vlm`` → :data:`DOMAIN_AI`; everything else (``series`` | ``heuristic`` |
+    an absent/garbled source) → :data:`DOMAIN_ALGORITHMS`, because the local
+    derivation is the only Algorithms producer and a profile with no judge
+    provenance carries local axes.
+    """
+    try:
+        source = str(getattr(profile, "source", "") or "").strip().lower()
+    except Exception:
+        source = ""
+    return DOMAIN_AI if source == PROFILE_SOURCE_VLM else DOMAIN_ALGORITHMS
+
+
+def profile_slot(domain) -> str:
+    """The state slot name for *domain*; ``ValueError`` for anything else."""
+    dom = str(domain or "").strip().lower()
+    if dom == DOMAIN_ALGORITHMS:
+        return ALGORITHMS_PROFILE_SLOT
+    if dom == DOMAIN_AI:
+        return AI_PROFILE_SLOT
+    raise ValueError(
+        f"unknown profile domain {domain!r}; expected one of {PROFILE_DOMAINS!r}"
+    )
+
+
+def profile_for_domain(state, domain):
+    """DEPRECATED — one delegate to the domain's adapter (ADR 009 A2).
+
+    The profile slots used to be a core read seam (this function decided which
+    slot a domain reads and how a foreign tag is reported). Ownership now lives
+    in the adapters: ``backends.algorithms`` / ``backends.ai`` each read their
+    OWN slot, so this name does nothing but ask the owning adapter — the same
+    three answers as before (the profile, ``None`` for an empty slot, a loud
+    ``ForeignProfileError`` for a slot holding the other backend's profile) and
+    ``ValueError`` for an unknown domain.
+
+    The NAME disappears in ADR 009 wave A3 together with the by-domain lookups
+    in the controller/use cases; it is kept only so this wave moves ownership
+    without rewriting every consumer at once.
+    """
+    dom = str(domain or "").strip().lower()
+    profile_slot(dom)  # ValueError for an unknown domain, before any lookup
+    from tabs.image_gallery.backends.composition import backend
+
+    return backend(dom).load_profile(state)
+
 
 #: Why a VLM axis-set answer was NOT applied to the folder generation
 #: (``GalleryState.profile_reject_reason``, plan-gallery-ai-judgement P2/M5:
@@ -442,11 +515,17 @@ def format_profile(profile) -> str:
 
 
 __all__ = [
+    "AI_PROFILE_SLOT",
+    "ALGORITHMS_PROFILE_SLOT",
     "AXIS_PROVENANCE",
+    "DOMAIN_AI",
+    "DOMAIN_ALGORITHMS",
     "EXCLUDED_AXES",
+    "ForeignProfileError",
     "MEASURED_POOL",
     "MODES",
     "PHOTO_TAG",
+    "PROFILE_DOMAINS",
     "PROFILE_REJECT_CALLS_BUILT",
     "PROFILE_REJECT_CODES",
     "PROFILE_REJECT_DOMAIN",
@@ -462,11 +541,14 @@ __all__ = [
     "MetricProfile",
     "axis_provenance",
     "axis_spreads",
+    "domain_of",
     "format_profile",
     "judged_axis_entries",
     "mode_id",
     "pool_axis_ids",
+    "profile_for_domain",
     "profile_for_mode",
     "profile_for_series",
+    "profile_slot",
     "profile_source_label",
 ]

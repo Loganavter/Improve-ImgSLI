@@ -258,6 +258,40 @@ def build_render_runtime_context(widget) -> RenderRuntimeContext:
     if getattr(scene_frame, "split_override", None) is not None:
         content_split = float(scene_frame.split_override)
     content_split = max(0.0, min(1.0, content_split))
+    import os as _os
+    import sys as _sys
+
+    if _os.environ.get("IMGSLI_SPLIT_TRACE"):
+        from ui.canvas_infra.viewport.state import (
+            get_display_split_position as _gdsp,
+            get_pan_offset_x as _gpox,
+            get_pan_offset_y as _gpoy,
+            get_zoom_level as _gzl,
+        )
+
+        print(
+            "SPLITTRACE base split=%.6f scene_visual=%.6f scene_split=%.6f "
+            "override=%r inner_rect=%r rect=%r view_s=%r view_vs=%r "
+            "display=%.6f zoom=%.4f pan=(%.2f,%.2f) lb1=%r mode=%s"
+            % (
+                content_split,
+                float(scene_frame.split_position_visual),
+                float(getattr(render_scene, "split_position_visual", -1.0)),
+                getattr(scene_frame, "split_override", None),
+                getattr(state, "_inner_content_rect_px", None),
+                getattr(state, "_content_rect_px", None),
+                getattr(view_state, "split_position", None),
+                getattr(view_state, "split_position_visual", None),
+                _gdsp(widget),
+                _gzl(widget),
+                _gpox(widget),
+                _gpoy(widget),
+                letterbox1,
+                mode,
+            ),
+            file=_sys.stderr,
+            flush=True,
+        )
     base_image = BaseImagePrimitive(
         split_position=content_split,
         is_horizontal=bool(scene_frame.is_horizontal),

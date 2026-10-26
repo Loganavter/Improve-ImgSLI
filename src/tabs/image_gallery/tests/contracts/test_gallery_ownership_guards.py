@@ -94,6 +94,20 @@ READ_PATTERNS: list[tuple[str, re.Pattern]] = [
 
 # (relpath, lineno) -> reason. Line numbers are 1-based (rg --line-number).
 ALLOWLIST: dict[tuple[str, int], str] = {
+    # --- ADR 009 wave A2: the analysis-backend adapters own the profile slots ---
+    # ``backends.{algorithms,ai}.AlgorithmsBackend/AIBackend.install`` is the ONE
+    # writer of each backend's slot (the ownership move): the setattr is a
+    # storeless tail because ``state`` is a duck-typed GalleryState/SimpleNamespace
+    # double in the primitives-only tests, and the slot NAME comes from the
+    # descriptor, not from a literal the guard could read.
+    ("src/tabs/image_gallery/backends/algorithms/profile.py", 182): (
+        "AlgorithmsBackend.install writes its OWN state slot (ADR 009 A2 ownership;"
+        " line shifted by the A4 lifecycle/generation block)"
+    ),
+    ("src/tabs/image_gallery/backends/ai/profile.py", 207): (
+        "AIBackend.install writes its OWN state slot (ADR 009 A2 ownership;"
+        " line shifted by the A4 lifecycle/ask-cache/generation block)"
+    ),
     # --- controller/owner attr probe loops (W4) ---
     ("src/tabs/image_gallery/use_cases/selection.py", 85): (
         "_resolve_selection_controller _controller/_owner READ probe (bridge until universal _owner_for_triage)"

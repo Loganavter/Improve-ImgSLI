@@ -13,10 +13,10 @@ logger = logging.getLogger(APP_LOGGER_NAME)
 
 @dataclass
 class RenderConfig:
-    interpolation_method: str = "BILINEAR"
-    zoom_interpolation_method: str = "BILINEAR"
-    movement_interpolation_method: str = "BILINEAR"
-    interactive_movement_interpolation_method: str = "BILINEAR"
+    interpolation_method: str = "NEAREST"
+    zoom_interpolation_method: str = "NEAREST"
+    movement_interpolation_method: str = "NEAREST"
+    interactive_movement_interpolation_method: str = "NEAREST"
     jpeg_quality: int = 95
 
     include_file_names_in_saved: bool = False

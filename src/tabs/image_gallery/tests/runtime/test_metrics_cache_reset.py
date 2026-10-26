@@ -33,8 +33,13 @@ from types import SimpleNamespace
 
 import pytest
 
-from tabs.image_gallery.models import AiAnalysisResult, AnalysisStatus, GalleryItem
-from tabs.image_gallery.services import ai_cache, profile_cache
+from tabs.image_gallery.models import (
+    AiAnalysisResult,
+    AnalysisStatus,
+    GalleryItem,
+    TieBreakResult,
+)
+from tabs.image_gallery.services import ai_cache, jev_cache, profile_cache, vlm_cache
 from tabs.image_gallery.services.metric_profile import MetricProfile
 
 
@@ -43,26 +48,39 @@ class _Owner:
 
     def __init__(self, items, *, folder=Path("/folder")) -> None:
         self.state = SimpleNamespace(
-            items=list(items), folder=folder, metric_profile=None
+            items=list(items), folder=folder, algorithms_profile=None, ai_profile=None
         )
         self._last_analysis_fingerprint: object = ("stale",)
         self.cleared = 0
 
     def clear_metric_profile(self) -> None:
         self.cleared += 1
-        self.state.metric_profile = None
+        self.state.algorithms_profile = None
+        self.state.ai_profile = None
 
 
 @pytest.fixture
 def caches(tmp_path, monkeypatch):
-    """Redirect the AI scorecard dir + the default profile pin cache to tmp."""
+    """Redirect the AI scorecard dir + the profile/Jev/VLM pin caches to tmp.
+
+    The Jev/VLM halves matter for two reasons: the reset really deletes their
+    files, so an unredirected run would wipe the developer's cache root, and
+    the exact ``summary`` assertion below needs a known-empty starting point
+    (a non-empty real cache would report a non-zero jev_files/vlm_files count).
+    """
     ai_dir = tmp_path / "ai"
     ai_dir.mkdir()
     monkeypatch.setattr(ai_cache, "ai_cache_dir", lambda: ai_dir)
     pins = tmp_path / "pins"
     pins.mkdir()
     monkeypatch.setattr(profile_cache, "_default_cache", profile_cache.ProfileCache(pins))
-    return ai_dir, pins
+    jev_dir = tmp_path / "jev"
+    jev_dir.mkdir()
+    monkeypatch.setattr(jev_cache, "jev_cache_dir", lambda: jev_dir)
+    vlm_dir = tmp_path / "vlm"
+    vlm_dir.mkdir()
+    monkeypatch.setattr(vlm_cache, "vlm_cache_dir", lambda: vlm_dir)
+    return ai_dir, pins, jev_dir, vlm_dir
 
 
 def _cached_result() -> AiAnalysisResult:
@@ -86,7 +104,7 @@ def test_clear_defeats_the_skip(tmp_path, caches) -> None:
     """Every skip gate (fingerprint / profile / pin / item state) is cleared."""
     from tabs.image_gallery.use_cases import cache_reset
 
-    ai_dir, pins = caches
+    ai_dir, pins, jev_dir, vlm_dir = caches
     img = tmp_path / "a.jpg"
     img.write_bytes(b"\x00")
     mtime = img.stat().st_mtime_ns
@@ -101,24 +119,45 @@ def test_clear_defeats_the_skip(tmp_path, caches) -> None:
     item._ai_cache_checked = True
 
     owner = _Owner([item])
-    owner.state.metric_profile = MetricProfile(
+    owner.state.ai_profile = MetricProfile(
         axis_ids=("ssim",), mode="fidelity", source="vlm"
     )
     # Seed the disk caches the reset must invalidate.
     ai_cache.save_analysis(img, mtime, item.analysis, IDENTITY)
     key = profile_cache.profile_cache_key([item], mode="fidelity", model="test/model")
-    profile_cache.default_cache().put(key, owner.state.metric_profile)
+    profile_cache.default_cache().put(key, owner.state.ai_profile)
+    jev_cache.default_cache().put("reset-contract-pin", {str(img): 1})
+    vlm_cache.save_tie_break(
+        img,
+        mtime,
+        tmp_path / "b.jpg",
+        2,
+        TieBreakResult(
+            winner_path=str(img),
+            loser_path=str(tmp_path / "b.jpg"),
+            reason="sharper",
+            confidence=0.9,
+            model="judge-model",
+            decided_at_iso="t",
+        ),
+    )
     assert list(ai_dir.glob("*.json"))
     assert list(pins.glob("profile_*.json"))
+    assert list(jev_dir.glob("rank_*.json"))
+    assert list(vlm_dir.glob("tie_*.json"))
 
     summary = cache_reset.clear_metrics_caches(owner)
 
     # The fingerprint gate would otherwise skip the whole re-measure.
     assert owner._last_analysis_fingerprint is None
-    assert owner.state.metric_profile is None
+    assert owner.state.algorithms_profile is None
+    assert owner.state.ai_profile is None
     assert owner.cleared == 1
     assert list(pins.glob("profile_*.json")) == []
     assert list(ai_dir.glob("*.json")) == []
+    # The measured backend pins are gone too, and the summary says how many.
+    assert list(jev_dir.glob("rank_*.json")) == []
+    assert list(vlm_dir.glob("tie_*.json")) == []
     # Items pristine: the proxy pass must repopulate them from scratch.
     assert item.metrics == {}
     assert item.artifacts == {}
@@ -127,7 +166,14 @@ def test_clear_defeats_the_skip(tmp_path, caches) -> None:
     assert item.analysis_status == AnalysisStatus.NOT_ANALYZED
     assert item.analysis_error is None
     assert not item._ai_cache_checked
-    assert summary == {"items": 1, "ai_files": 1, "profiles": 1}
+    assert summary == {
+        "items": 1,
+        "ai_files": 1,
+        "profiles": 1,
+        "jev_files": 1,
+        "vlm_files": 1,
+        "pairwise_verdicts": 0,
+    }
 
 
 def test_ai_cache_is_really_bypassed(tmp_path, caches) -> None:

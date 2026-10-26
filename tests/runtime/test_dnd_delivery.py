@@ -171,6 +171,40 @@ def _fake_target(name: str, record: list):
     )
 
 
+def test_release_commits_the_drop_and_unwinds(qapp):
+    """LeftRelease ends the row-drag: the current target takes the drop.
+
+    Regression (2026-10-27): `finish_drag` did not exist on the service — its
+    body was orphaned after `_is_live_drop_target_registered`'s `return False`
+    by a refactor, so every row-drag release raised AttributeError inside the
+    event filter: nothing dropped, and the ghost/source row kept the gesture.
+    """
+    from events import router
+
+    host = QWidget()
+    service = DragAndDropService(_doc_store(), parent=host)
+    service._is_dragging = True
+    record: list = []
+    target = _fake_target("target", record)
+    target.handle_drop = lambda payload, pos: record.append(("drop", payload["index"]))
+    service._current_target = target
+    service._source_data = {"index": 2, "indices": [2]}
+
+    release = QMouseEvent(
+        QEvent.Type.MouseButtonRelease,
+        QPointF(5, 5),
+        QPointF(30, 30),
+        Qt.MouseButton.LeftButton,
+        Qt.MouseButton.LeftButton,
+        Qt.KeyboardModifier.NoModifier,
+    )
+
+    assert router.route_drag_and_drop_override(None, release, service) is True
+    assert ("drop", 2) in record
+    assert not service.is_dragging()
+    host.deleteLater()
+
+
 def test_drop_target_z_order_beats_registration_order(qapp, monkeypatch):
     """Topmost (widgetAt chain) target wins even when registered first."""
     host = QWidget()

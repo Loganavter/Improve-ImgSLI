@@ -76,51 +76,42 @@ def _build_interactive_optimization_group(dialog, layout, p):
     dialog.interactive_opt_group.add_widget(row_zoom_widget)
     rows.append(row_zoom_widget)
 
-    row_mag = QHBoxLayout()
-    row_mag.setContentsMargins(0, scaled_px(5), 0, scaled_px(5))
+    # «Перемещение лупы» is gone from the panel (owner decision 2026-10-26):
+    # the interactive-shortcut it toggled stopped being a quality trade once the
+    # loupe had one filter (ImageRenderConfigReducer) — it only decided whether
+    # keyboard/drag movement took the interactive refresh path, which is the
+    # behaviour we want anyway. The widget stays built off-layout because the
+    # dialog data/locale plumbing resolves it; the state is pinned True below.
     dialog.optimize_movement_checkbox = CheckBox(
         INTERACTIVE.text(dialog, "settings.optimize_magnifier_movement")
     )
     apply_settings_body(dialog.optimize_movement_checkbox)
-    dialog.optimize_movement_checkbox.setChecked(p.optimize_magnifier_movement)
-    INTERACTIVE.tag_member(
-        dialog.optimize_movement_checkbox, "settings.optimize_magnifier_movement"
-    )
+    dialog.optimize_movement_checkbox.setChecked(True)
+    # The loupe has ONE interpolation (see ImageRenderConfigReducer): no
+    # second, movement-only filter is offered. The widget is still built because
+    # the dialog data/locale plumbing reads it, but it never reaches the row —
+    # a hidden value that only applied while dragging read as a bug ("Nearest"
+    # shown in the panel, bicubic drawn during a drag, owner report 2026-10-26).
     dialog.combo_mag_interp = ComboBox()
     apply_settings_body(dialog.combo_mag_interp)
     dialog.combo_mag_interp.setMinimumWidth(scaled_px(140))
     dialog.combo_mag_interp.setSizePolicy(
         QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
     )
-    dialog.combo_mag_interp.setEnabled(p.optimize_magnifier_movement)
-    row_mag.addWidget(dialog.optimize_movement_checkbox)
-    row_mag.addWidget(dialog.combo_mag_interp, 1)
-    row_mag_widget = as_nav_row(row_mag)
-    dialog.interactive_opt_group.add_widget(row_mag_widget)
-    rows.append(row_mag_widget)
 
-    row_laser = QHBoxLayout()
-    row_laser.setContentsMargins(0, scaled_px(5), 0, scaled_px(5))
+    # «Сглаживание лазеров» is gone from the panel (owner decision 2026-10-26:
+    # the laser guides are drawn as thin lines where a resampling filter is
+    # invisible, so the toggle only added a state that looked broken). The
+    # widgets stay built off-layout because the dialog data/locale plumbing
+    # still resolves them; nothing reads them for behaviour any more.
     dialog.laser_smoothing_checkbox = CheckBox(
         INTERACTIVE.text(dialog, "settings.optimize_laser_smoothing")
     )
     apply_settings_body(dialog.laser_smoothing_checkbox)
     dialog.laser_smoothing_checkbox.setChecked(p.optimize_laser_smoothing)
-    INTERACTIVE.tag_member(
-        dialog.laser_smoothing_checkbox, "settings.optimize_laser_smoothing"
-    )
     dialog.combo_laser_interp = ComboBox()
     apply_settings_body(dialog.combo_laser_interp)
     dialog.combo_laser_interp.setMinimumWidth(scaled_px(140))
-    dialog.combo_laser_interp.setSizePolicy(
-        QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
-    )
-    dialog.combo_laser_interp.setEnabled(p.optimize_laser_smoothing)
-    row_laser.addWidget(dialog.laser_smoothing_checkbox)
-    row_laser.addWidget(dialog.combo_laser_interp, 1)
-    row_laser_widget = as_nav_row(row_laser)
-    dialog.interactive_opt_group.add_widget(row_laser_widget)
-    rows.append(row_laser_widget)
 
     dialog.magnifier_intersection_highlight_checkbox = CheckBox(
         INTERACTIVE.text(dialog, "settings.magnifier_intersection_highlight")
@@ -153,12 +144,6 @@ def _build_interactive_optimization_group(dialog, layout, p):
     rows.append(auto_color_row)
 
     _populate_interpolation_combos(dialog, p)
-    dialog.optimize_movement_checkbox.toggled.connect(
-        dialog.combo_mag_interp.setEnabled
-    )
-    dialog.laser_smoothing_checkbox.toggled.connect(
-        dialog.combo_laser_interp.setEnabled
-    )
     layout.addWidget(dialog.interactive_opt_group)
     return rows
 

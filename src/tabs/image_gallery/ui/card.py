@@ -255,11 +255,19 @@ def build_gallery_card(*args, **kwargs) -> Button:  # type: ignore[no-untyped-de
         except Exception:
             domain = None
     if profile is None and owner is not None:
-        # Fallback for direct callers: the LIVE stored profile (never cached
-        # on the widget — see grid_view._resolve_profile).
+        # Fallback for direct callers: the LIVE profile of THIS card's domain
+        # (never cached on the widget — see grid_view._resolve_profile). The
+        # read goes through the domain-tagged slot accessor, so an AI card uses
+        # the judge's axis set and an Algorithms card the local derivation.
         try:
+            from tabs.image_gallery.use_cases.profile_select import active_profile
+
             st = getattr(owner, "state", None)
-            profile = getattr(st, "metric_profile", None) if st is not None else None
+            profile = (
+                active_profile(st, mode=mode, domain=(domain or "algorithms"))
+                if st is not None
+                else None
+            )
         except Exception:
             profile = None
     cover = _cover_region(actual_item)
@@ -542,11 +550,19 @@ def update_gallery_card(
     # The profile is read LIVE (never the card's own memory): a folder with no
     # stored profile must fall back to the mode mapping, not to the last
     # profile this pooled card happened to render (grid_view._resolve_profile).
+    # Domain-tagged slot: the AI card reads the judge's axes, the Algorithms
+    # card the local derivation (never each other's).
     _profile = profile
     if _profile is None and owner is not None:
         try:
+            from tabs.image_gallery.use_cases.profile_select import active_profile
+
             st = getattr(owner, "state", None)
-            _profile = getattr(st, "metric_profile", None) if st is not None else None
+            _profile = (
+                active_profile(st, mode=_mode, domain=(_domain or "algorithms"))
+                if st is not None
+                else None
+            )
         except Exception:
             _profile = None
     _dot_tr = translate

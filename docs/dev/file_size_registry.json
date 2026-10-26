@@ -858,6 +858,17 @@
       }
     },
     {
+      "path": "src/tabs/image_gallery/services/ai_client/request.py",
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=wire-policy size=525 reason=\"one payload/ceiling/mime contract: build_request_from_bytes, the byte and PIL entry points and the re-encode gate must agree on ONE policy; splitting the PIL entry away would let the gallery's R6 reuse ship a different ceiling or mime than the file path (the exact B2 defect class).\"",
+      "parsed": {
+        "pattern": "wire-policy",
+        "size": "525",
+        "reason": "one payload/ceiling/mime contract: build_request_from_bytes, the byte and PIL entry points and the re-encode gate must agree on ONE policy; splitting the PIL entry away would let the gallery's R6 reuse ship a different ceiling or mime than the file path (the exact B2 defect class)."
+      }
+    },
+    {
       "path": "src/tabs/image_gallery/services/artifacts.py",
       "limit": 500,
       "marker": "Audit-Meta:",
@@ -869,6 +880,17 @@
       }
     },
     {
+      "path": "src/tabs/image_gallery/services/clustering.py",
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=perceptual-signature size=521 reason=\"one signature contract: the dHash, the HSV embedding and the shared decode frame must agree, because the 2026-10-26 backend-isolation W5a wave removed a duplicate open by making all three read ONE decoded image. Splitting the primitives out lets a later edit reintroduce the second decode (measured: 4 opens per image) or make the hash and the embedding describe different pixels; the module stays a single ~60-line math block over one frame.\"",
+      "parsed": {
+        "pattern": "perceptual-signature",
+        "size": "521",
+        "reason": "one signature contract: the dHash, the HSV embedding and the shared decode frame must agree, because the 2026-10-26 backend-isolation W5a wave removed a duplicate open by making all three read ONE decoded image. Splitting the primitives out lets a later edit reintroduce the second decode (measured: 4 opens per image) or make the hash and the embedding describe different pixels; the module stays a single ~60-line math block over one frame."
+      }
+    },
+    {
       "path": "src/tabs/image_gallery/services/jev_client.py",
       "limit": 500,
       "marker": "Audit-Meta:",
@@ -877,6 +899,17 @@
         "pattern": "wire-client",
         "size": "523",
         "reason": "one Jev rank seam: measured-vector request + decision parser + degrade contract + pin belong together — splitting scatters the wire contract"
+      }
+    },
+    {
+      "path": "src/tabs/image_gallery/services/metric_profile.py",
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=profile-contract size=562 reason=\"one profile contract: the closed pool, the mode mapping, the two domain slots and the axis-set builders must answer from ONE vocabulary; splitting them would let the AI slot and the Algorithms slot drift apart again (2026-10-26).\"",
+      "parsed": {
+        "pattern": "profile-contract",
+        "size": "562",
+        "reason": "one profile contract: the closed pool, the mode mapping, the two domain slots and the axis-set builders must answer from ONE vocabulary; splitting them would let the AI slot and the Algorithms slot drift apart again (2026-10-26)."
       }
     },
     {
@@ -1216,6 +1249,17 @@
       }
     },
     {
+      "path": "src/tabs/image_gallery/use_cases/cache_reset.py",
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=reset-barrier size=535 reason=\"one reset contract: the two current-work tokens, every in-memory/on-disk clear and the visible re-stamp must happen in ONE order (token first, then clear, then repaint); splitting them lets a delivery land between the steps — the exact defect the barrier removes.\"",
+      "parsed": {
+        "pattern": "reset-barrier",
+        "size": "535",
+        "reason": "one reset contract: the two current-work tokens, every in-memory/on-disk clear and the visible re-stamp must happen in ONE order (token first, then clear, then repaint); splitting them lets a delivery land between the steps — the exact defect the barrier removes."
+      }
+    },
+    {
       "path": "src/tabs/image_gallery/use_cases/judge_budget.py",
       "limit": 500,
       "marker": "Audit-Meta:",
@@ -1239,11 +1283,22 @@
       "path": "src/tabs/image_gallery/use_cases/profile_ai.py",
       "limit": 500,
       "marker": "Audit-Meta:",
-      "raw": "pattern=compound-module size=exempt reason=\"one selector decision chain: parse → the 3..8/`why` acceptance gate → the ONE retry → the pin with its source → the offer fallback. Splitting the gate from the retry (or the pin from the answer) lets one side accept a profile the other refuses — the 2026-10-26 defect was exactly a thin answer accepted silently\"",
+      "raw": "pattern=compound-module size=exempt reason=\"one selector decision chain: parse → the 5..8/`why` acceptance gate → the ONE retry → the pin with its source → the offer fallback. Splitting the gate from the retry (or the pin from the answer) lets one side accept a profile the other refuses — the 2026-10-26 defect was exactly a thin answer accepted silently\"",
       "parsed": {
         "pattern": "compound-module",
         "size": "exempt",
-        "reason": "one selector decision chain: parse → the 3..8/`why` acceptance gate → the ONE retry → the pin with its source → the offer fallback. Splitting the gate from the retry (or the pin from the answer) lets one side accept a profile the other refuses — the 2026-10-26 defect was exactly a thin answer accepted silently"
+        "reason": "one selector decision chain: parse → the 5..8/`why` acceptance gate → the ONE retry → the pin with its source → the offer fallback. Splitting the gate from the retry (or the pin from the answer) lets one side accept a profile the other refuses — the 2026-10-26 defect was exactly a thin answer accepted silently"
+      }
+    },
+    {
+      "path": "src/tabs/image_gallery/use_cases/proxy_pass.py",
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=stage2-delivery size=exempt reason=\"one Stage-2 delivery seam: the chunk launcher, its reset-barrier token (captured in the same closure), the in-worker cancel probe and the path fan-out into the apply tails must stay together or a cancellation token lands in a second module and pre-reset chunks leak again\"",
+      "parsed": {
+        "pattern": "stage2-delivery",
+        "size": "exempt",
+        "reason": "one Stage-2 delivery seam: the chunk launcher, its reset-barrier token (captured in the same closure), the in-worker cancel probe and the path fan-out into the apply tails must stay together or a cancellation token lands in a second module and pre-reset chunks leak again"
       }
     },
     {

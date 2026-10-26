@@ -47,6 +47,7 @@ from tabs.image_gallery.services.jev_client import (
     build_measured_vector,
     rank_series_jev_detailed,
 )
+from tabs.image_gallery.services.metric_profile import MetricProfile
 from tabs.image_gallery.use_cases import ai_analysis, triage_run
 from tabs.image_gallery.use_cases import pipeline_stages as ps
 
@@ -93,7 +94,7 @@ class _TerminalCtrl:
             series=list(groups),
             items=list(items),
             mode=Mode.FIDELITY,
-            metric_profile=None,
+            algorithms_profile=None, ai_profile=None,
             rank_domain="algorithms",
         )
         self._judgment_domain = "ai"
@@ -474,9 +475,13 @@ def test_the_prompt_does_not_echo_the_numbers_the_model_must_judge() -> None:
     """P3-E: no local number for an axis the model is asked to score."""
     from tabs.image_gallery.services.ai_client.prompt import build_prompt
 
+    # A real profile (ADR 009 A3): an axis-less/non-profile argument is no
+    # longer silently ignored, so the test states the axis set it asks about.
     text = build_prompt(
         "fidelity",
-        profile=("ssim", "sharpness"),
+        profile=MetricProfile(
+            axis_ids=("ssim", "sharpness"), mode="fidelity", source="series"
+        ),
         measured_block="- Source match: 0.91 (quality 91%)\n- Sharpness: 1.2 (quality 55%)",
     )
     assert "LOCAL MEASUREMENTS" not in text, (

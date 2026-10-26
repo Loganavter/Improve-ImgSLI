@@ -494,6 +494,20 @@ class TileResidencyRealizer(TileResidencyRealizerBase):
                     from engine.store.tiled_pixel_store import pixel_source_size
 
                     src_w, src_h = pixel_source_size(pil_source)
+                    from engine.cache.tile_debug import log_tile_event as _lte
+
+                    _lte(
+                        "realize.size",
+                        key=str(key),
+                        pil=type(pil_source).__name__,
+                        src_w=int(src_w),
+                        src_h=int(src_h),
+                        grid=(
+                            None
+                            if grid is None
+                            else [int(grid.total_width), int(grid.total_height)]
+                        ),
+                    )
                     if src_w == 0 or src_h == 0:
                         # Closed or empty store (race with unify closing old store
                         # while tile_service still references old key) — skip this

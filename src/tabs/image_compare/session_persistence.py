@@ -53,8 +53,9 @@ def restore_view_state(view: ViewState, data: dict[str, Any] | None) -> None:
         view.diff_mode = str(data["diff_mode"])
     if "channel_view_mode" in data and data["channel_view_mode"] is not None:
         view.channel_view_mode = str(data["channel_view_mode"])
-    if "optimize_interactive_movement" in data:
-        view.optimize_interactive_movement = bool(data["optimize_interactive_movement"])
+    # Pinned ON (see settings_persistence): the toggle is gone from the panel and
+    # a restored session must not resurrect a hidden False.
+    view.optimize_interactive_movement = True
     if "overlay_enabled" in data:
         view.overlay_enabled = bool(data["overlay_enabled"])
     if "showing_single_image_mode" in data:

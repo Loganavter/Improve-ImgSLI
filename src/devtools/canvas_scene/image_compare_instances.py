@@ -84,7 +84,7 @@ def _ic_magnifiers(
             )
         else:
             row["geometry_source"] = "scene_graph"
-            row["space"] = SPACE_CANVAS_PX
+            row["space"] = SPACE_WIDGET_PX  # scene graph space, see _SCENE_SPACE_NOTE
             row["z_index"] = int(getattr(scene_object, "z_index", 0) or 0)
             row["is_combined"] = bool(getattr(scene_object, "is_combined", False))
             row["capture"] = _capture_block(scene_object)
@@ -108,6 +108,18 @@ def _scene_graph_magnifier_objects(runtime_state: Any) -> dict[str, Any]:
     return found
 
 
+#: The scene graph authors magnifier geometry in WIDGET px (its ``pix_w/pix_h``
+#: context), while ``render_layout`` is in CANVAS px. Reporting the scene values
+#: as ``canvas_px`` made one quantity arrive in two scales: measured 2026-10-27,
+#: the same capture ring read 24.2 (scene) vs 115 (plan) with no way for a caller
+#: to know why. Every field now names its own space; the conversion is
+#: ``divider by transform.projection.scale``.
+_SCENE_SPACE_NOTE = (
+    "scene graph space (widget px); divide by transform.projection.scale for "
+    "canvas_px — render_layout.* is already canvas_px"
+)
+
+
 def _capture_block(scene_object: Any) -> dict[str, Any] | None:
     center = getattr(scene_object, "capture_center", None)
     if center is None:
@@ -115,7 +127,8 @@ def _capture_block(scene_object: Any) -> dict[str, Any] | None:
     return {
         "center": [_num(getattr(center, "x", 0.0)), _num(getattr(center, "y", 0.0))],
         "radius": _num(getattr(scene_object, "capture_radius", 0.0)),
-        "space": SPACE_CANVAS_PX,
+        "space": SPACE_WIDGET_PX,
+        "space_note": _SCENE_SPACE_NOTE,
         "source": "scene_graph",
     }
 
@@ -134,7 +147,8 @@ def _circle_rows(scene_object: Any) -> list[dict[str, Any]]:
                 ],
                 "radius": _num(getattr(circle, "radius", 0.0)),
                 "visible": bool(getattr(circle, "visible", True)),
-                "space": SPACE_CANVAS_PX,
+                "space": SPACE_WIDGET_PX,
+                "space_note": _SCENE_SPACE_NOTE,
                 "source": "scene_graph",
             }
         )

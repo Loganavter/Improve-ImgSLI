@@ -42,7 +42,7 @@ class _Widget:
 
 class _Owner:
     def __init__(self, items) -> None:
-        self.state = SimpleNamespace(items=list(items), mode="camera", metric_profile=None)
+        self.state = SimpleNamespace(items=list(items), mode="camera", algorithms_profile=None, ai_profile=None)
         self.widget = _Widget()
         self._judgment_domain = "algorithms"
         self.ql_refreshes = 0

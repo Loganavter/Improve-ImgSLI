@@ -127,7 +127,7 @@ class _Owner:
             items=list(items),
             mode=mode,
             series=[],
-            metric_profile=None,
+            algorithms_profile=None, ai_profile=None,
             source_path=None,
         )
         self.widget = _Widget()

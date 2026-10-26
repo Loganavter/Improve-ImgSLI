@@ -141,6 +141,10 @@ class AskResult:
     #: True when the guard rejected the first answer and the single rewrite
     #: replaced it (see plan-gallery-ask-ai-answer-quality, P1).
     revised: bool = False
+    #: The model id the provider actually served (wire ``model``). Provenance
+    #: only: the ask cache keys on the REQUESTED model, since OpenRouter's
+    #: fallback chain is a routing detail of that one configured backend.
+    answered_model: str = ""
 
 
 def route_backend(question: str, context: dict) -> str:
@@ -262,6 +266,17 @@ def _is_openrouter(base_url: str) -> bool:
     return "openrouter" in str(base_url or "").lower()
 
 
+def _served_model(raw) -> str:
+    """The model id the provider actually served (wire ``model``), or ``""``.
+
+    Provenance only: the ask cache keys on the requested model. Never raises.
+    """
+    try:
+        return str(raw.get("model") or "").strip()
+    except Exception:
+        return ""
+
+
 def _apply_openrouter_extensions(
     payload: dict, base_url: str, model: str, effort: str = "auto"
 ) -> dict:
@@ -365,7 +380,13 @@ def answer(
     try:
         raw = _one_call("")
         answer_text, confidence = _parse_answer_envelope(_extract_text(raw))
-        result = AskResult(text=answer_text, backend=backend, confidence=confidence)
+        served = _served_model(raw)
+        result = AskResult(
+            text=answer_text,
+            backend=backend,
+            confidence=confidence,
+            answered_model=served,
+        )
 
         # P1 — deterministic guard + at most ONE rewrite (fail-open: any failure
         # or a still-violating rewrite keeps the first answer).
@@ -388,6 +409,7 @@ def answer(
                         backend=backend,
                         confidence=revised_conf if revised_conf is not None else confidence,
                         revised=True,
+                        answered_model=_served_model(raw2) or served,
                     )
             except Exception:
                 pass

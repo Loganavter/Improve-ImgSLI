@@ -85,8 +85,18 @@ Single owner, eager, no HOLD:
   `pick_display_with_preview_backing` freshness guard in `render_flow.py`).
   Single picker — do not hand-roll `or`-chains.
 - **source_*** — the hi-res pair used when `use_hires` is active and by the
-  magnifier (always samples level 0). Same unified coordinate space as
-  stored (both `2797` after eager max).
+  magnifier (always samples level 0). It is each side's OWN decoded pixels
+  (`presentation/source_tier.py::original_pixel_tier` → the pipeline pixel
+  tier), NOT the unify result: `unify_pair` resamples both sides to the common
+  canvas, so for a smaller side the unified store is an upscaled copy and the
+  magnifier would magnify that upscale (measured 2026-10-26 on a 2816x2304 +
+  768x576 pair: both source grids registered at 2816x2304, loupe mush —
+  `src/tabs/image_compare/tests/render/test_magnifier_source_is_side_own_pixels.py`).
+  A canvas content fraction is still the right coordinate for each side: unify
+  stretches uniformly per side (`pixel_ops/unify.py`), so the fraction is
+  affine-equal to the same fraction of that side's own pixels. Consequence: the
+  loupe shows the SAME content region at each side's own pixel density, so the
+  coarser side looks blockier by design.
 - Both roles go through `RhiResources.upload_source`: a 1×1 grid uploads a
   single whole texture; a multi-tile grid uploads nothing eagerly and lets
   `realize_tile_plan` fill residency on demand.
@@ -128,10 +138,12 @@ Invariants:
   at the old `LIVE_TILE_EXTENT=8192` it was ~0.4s/~268 MB per tile. Deep-zoom
   boundary crossing now realizes via budgeted `TILE_UPLOAD_BUDGET_PER_CALL=64`
   + `TILE_UPLOAD_TIME_BUDGET_MS=12.0` (`src/engine/cache/tile_constants.py`).
-- `stored_*` and `source_*` can both point at the same unified store,
-  registering the same image under two tile-grid keys (potential duplicate
-  GPU tiles when hires mode engages). Candidate for unification into one
-  key/role.
+- `stored_*` and `source_*` are two different tiers on purpose (display =
+  unify/letterboxed, source = the side's own pixels), so a pair whose sides
+  differ in resolution registers two grids per side and can hold duplicate GPU
+  tiles for one image when `use_hires` engages. Budget/protection already covers
+  it, but it is real memory; a single key/role would need the letterbox to
+  become per-consumer, which is why it has not been done.
 - `display_cache_key` is now just a texture-identity signature (uid+size
   pair); the name is historical. `apply_canvas_render_plan` is the live
   plan-apply path (video/export included).

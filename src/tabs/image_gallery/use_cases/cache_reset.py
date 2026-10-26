@@ -35,20 +35,56 @@ show_rank=False)``) and refreshes the bound cards through the live view
 the items are already empty (the painted view is not derived from the items
 at paint time, it is stamped at build/update time).
 
-``reset_metrics_caches`` then re-enters the rebuild
-(``_start_triage(..., cover_grid=False)``) so the pipeline actually recomputes
-instead of repainting the already-measured view.
+``reset_metrics_caches`` (the user-facing action) then stops. OWNER DECISION
+2026-10-22: the reset ZEROES, it does not re-run (see that function).
+
+**WHOSE cache it is, is the adapter's answer** (ADR 009 wave A4). This module
+used to clear sixteen named stores it did not own — ``ai_cache.clear_all()``,
+``profile_cache.clear_default_cache()``, ``jev_cache``/``vlm_cache``,
+``pairwise_rank.clear_default_cache()``, ``metrics_cache.clear_all()`` — and the
+list was wrong in both directions: it never cleared the Ask-AI answer cache
+(``controller._ask_cache``, so a paid answer survived every reset), and a cache
+added by a backend was invisible to it until someone remembered to edit here.
+The measured clears are now ONE registry iteration::
+
+    for backend in registry.iter_backends():
+        summary.update(backend.reset())
+
+Each adapter drops what its ``descriptor.cache_namespace`` owns and returns the
+counts under the summary fields it publishes (``backends/algorithms/reset.py``,
+``backends/ai/reset.py``); the reset advances each adapter's work generation
+first, so a pin still in flight is refused by the owning adapter instead of
+landing in a store that was just emptied. What stays HERE is what is not a
+backend's cache: the per-item measured state, the proxy decode cache, the
+in-memory Jev/VLM verdict projections on ``state`` and their header marker, the
+profile-selector generation markers, the stored profile slots and the Stage-2
+fingerprint.
+
+**The reset is a HARD BARRIER** (owner decision 2026-10-26): the clear advances
+two current-work tokens *before* it touches anything — ``_domain_epoch`` (the
+judgment-domain token: AI / Jev / profile / series-priority / pairwise) and
+``_analysis_epoch`` (the measured-metrics token: Stage-2 proxy, triage, the
+per-stage producers). Every such worker snapshots its token at start and drops
+its delivery when the token moved, so a result produced before the reset cannot
+land afterwards in memory, on disk (``save_analysis`` / ``local_metrics.persist``)
+or on a card. The in-flight ledgers (batch, phase markers, stage gate, judge
+run, AI queue) are retired in the same step — see
+``use_cases/reset_barrier.clear_delivery_ledgers``.
 
 EVERY measurement cache is dropped, INCLUDING the Jev rank pins and the
-tie-break briefs (``services.jev_cache`` / ``services.vlm_cache``). The owner's
-order (2026-10-22) is literal: the action zeroes all measured state without
-caveats. The earlier version deliberately kept them ("their keys change anyway")
-and the result read as a partial reset — a pinned rank or brief survived and
-looked like a stale measurement.
+tie-break briefs (``services.jev_cache`` / ``services.vlm_cache``) on disk and
+their in-memory halves (``state.tie_breaks`` / ``state.series_priority`` plus
+each item's ``vlm_tie_*`` / ``vlm_brief_*`` fields). The owner's order
+(2026-10-22) is literal: the action zeroes all measured state without caveats.
+The earlier version deliberately kept them ("their keys change anyway") and the
+result read as a partial reset — a pinned rank or brief survived and looked
+like a stale measurement.
 
 The scope is the WHOLE POOL, not the menu selection: a per-card reset leaves
 every other card's numbers in place, which is indistinguishable from "nothing
 happened" (owner report 2026-10-22). Callers pass ``paths=None``.
+
+Audit-Meta: pattern=reset-barrier size=535 reason="one reset contract: the two current-work tokens, every in-memory/on-disk clear and the visible re-stamp must happen in ONE order (token first, then clear, then repaint); splitting them lets a delivery land between the steps — the exact defect the barrier removes."
 """
 
 from __future__ import annotations
@@ -64,17 +100,32 @@ from core.log_names import APP_LOGGER_NAME
 logger = logging.getLogger(APP_LOGGER_NAME)
 
 
+def _state_of(owner):
+    """The owner's gallery state (``owner.state``, else the widget's ``_state``).
+
+    A controller in production owns ``state``, but the widget itself is a legal
+    owner (storeless/live-menu paths) and carries ``_state`` instead — the same
+    probe ``_items_of`` delegates to, so the in-memory half of a reset reaches
+    the same object the cleared items came from.
+    """
+    try:
+        st = getattr(owner, "state", None)
+        if st is not None:
+            return st
+        widget = getattr(owner, "widget", None) or getattr(owner, "_widget", None)
+        if widget is None:
+            return None
+        return getattr(widget, "_state", None) or getattr(
+            getattr(widget, "_controller", None), "state", None
+        )
+    except Exception:
+        return None
+
+
 def _items_of(owner) -> list:
     """The owner's pool items (``state.items`` first, widget fallback)."""
     try:
-        st = getattr(owner, "state", None)
-        if st is None:
-            widget = getattr(owner, "widget", None) or getattr(owner, "_widget", None)
-            if widget is not None:
-                st = getattr(widget, "_state", None) or getattr(
-                    getattr(widget, "_controller", None), "state", None
-                )
-        return list(getattr(st, "items", None) or [])
+        return list(getattr(_state_of(owner), "items", None) or [])
     except Exception:
         return []
 
@@ -118,6 +169,16 @@ def _clear_item(item) -> None:
         item.badge = ""
         item.badge_kind = KIND_NONE
         item.badge_source = ""
+        # Stage-3 VLM verdicts + briefs: a tie-break/compare answer is a
+        # MEASUREMENT produced by the paid judge, so it goes with the rest.
+        # ``vlm_brief_status`` returns to its dataclass default ("none"), not
+        # to a "pending" state — the reset leaves nothing measuring.
+        item.vlm_tie_result = None
+        item.vlm_tie_pending = False
+        item.vlm_tie_error = None
+        item.vlm_brief = None
+        item.vlm_brief_status = "none"
+        item.vlm_brief_error = None
     except Exception:
         logger.debug("metrics reset: item state clear failed", exc_info=True)
     try:
@@ -220,20 +281,67 @@ def _refresh_cleared_view(owner, targets) -> None:
             logger.debug("metrics reset: per-card refresh failed", exc_info=True)
 
 
+def _gallery_backends() -> tuple:
+    """Every composed analysis backend, or ``()`` when the registry is unwired.
+
+    The reset must not raise because an adapter could not be composed (the many
+    owner doubles in the suite have no gallery plugin); the engine-side half of
+    the reset still runs and the failure is traced.
+    """
+    try:
+        from tabs.image_gallery.backends.composition import register_gallery_backends
+
+        return tuple(register_gallery_backends())
+    except Exception:
+        logger.debug("metrics reset: backend composition failed", exc_info=True)
+        return ()
+
+
 def clear_metrics_caches(owner, *, paths=None) -> dict:
     """Clear the measured-metrics caches (in-memory + disk). Never raises.
 
     *paths* narrows the per-item clear (the card menu passes its file-manager
-    targets); ``None`` means every item of ``owner.state.items`` and a
-    whole-directory AI-scorecard sweep (``ai_cache.clear_all``). Returns an
-    honest summary: ``{"items": n, "ai_files": n, "profiles": n}``.
+    targets); ``None`` means every item of ``owner.state.items``. The MEASURED
+    stores are always swept whole: each adapter owns a namespace keyed by
+    series/pair/content identity, not by one card's path, so a scoped delete
+    cannot express "drop the pins this card was part of" (the adapter's own
+    ``reset`` is the only clear it offers). Returns an honest summary:
+    ``{"items": n, "ai_files": n, "profiles": n, "jev_files": n,
+    "vlm_files": n, "pairwise_verdicts": n}`` — the cache counts come from the
+    adapters that dropped them, the item count from the per-item clear.
 
-    Cleared items lose their metric-derived rank state too (see
-    :func:`_clear_item`), and the bound cards are re-stamped unranked and
-    repainted BEFORE this returns — a reset must look reset immediately, not
+    Cleared items lose their metric-derived rank state AND their VLM verdict /
+    brief fields (see :func:`_clear_item`); the in-memory verdict maps
+    (``state.tie_breaks``, ``state.series_priority``) are emptied as well — the
+    Jev hint through the controller's own seam, so the per-series attention
+    marker is re-stamped too — and the bound cards are re-stamped unranked and
+    repainted BEFORE this returns; a reset must look reset immediately, not
     after the async pass repaints.
+
+    A HARD BARRIER: the first action advances both current-work tokens and
+    retires the in-flight ledgers (``use_cases.reset_barrier`` /
+    :func:`~tabs.image_gallery.use_cases.reset_barrier.clear_delivery_ledgers`),
+    so no pre-reset delivery can land after this returns. The adapters' work
+    generations are advanced in the same window (``backend.reset()`` below), which
+    is what stops a worker-thread PIN — a write that never passes through a
+    landing seam — from re-filling a store this call just emptied.
     """
-    summary = {"items": 0, "ai_files": 0, "profiles": 0}
+    summary = {
+        "items": 0,
+        "ai_files": 0,
+        "profiles": 0,
+        "jev_files": 0,
+        "vlm_files": 0,
+        "pairwise_verdicts": 0,
+    }
+    # HARD BARRIER (owner decision 2026-10-26), BEFORE any clear: advance the
+    # two current-work tokens and retire the in-flight ledgers. A delivery that
+    # races the clear is stale from this line on, and the ledgers it would
+    # consult (settled/phase/stage/judge/queue) no longer describe this world.
+    from tabs.image_gallery.use_cases import reset_barrier as _reset_barrier
+
+    _reset_barrier.bump_delivery_epochs(owner)
+    _reset_barrier.clear_delivery_ledgers(owner)
     items = _items_of(owner)
     if paths is None:
         targets = items
@@ -249,7 +357,8 @@ def clear_metrics_caches(owner, *, paths=None) -> dict:
         _clear_item(it)
         summary["items"] += 1
 
-    # In-memory decode cache: the proxy pass re-decodes from scratch.
+    # In-memory decode cache: the proxy pass re-decodes from scratch. Nobody's
+    # judgment lives here (it is decoded pixels), so no adapter owns it.
     try:
         from tabs.image_gallery.services import proxy as _proxy
 
@@ -257,71 +366,62 @@ def clear_metrics_caches(owner, *, paths=None) -> dict:
     except Exception:
         logger.debug("metrics reset: proxy cache clear failed", exc_info=True)
 
-    # Disk caches: AI scorecards + the VLM metric-profile pins.
-    try:
-        from tabs.image_gallery.services import ai_cache as _ai_cache
-
-        if paths is None:
-            summary["ai_files"] = int(_ai_cache.clear_all())
-        else:
-            removed = 0
-            for it in targets:
-                try:
-                    if _ai_cache.clear_cached_analysis(it.path, it.mtime_ns):
-                        removed += 1
-                except Exception:
-                    continue
-            summary["ai_files"] = removed
-    except Exception:
-        logger.debug("metrics reset: ai cache clear failed", exc_info=True)
-    try:
-        from tabs.image_gallery.services import profile_cache as _profile_cache
-
-        summary["profiles"] = int(_profile_cache.clear_default_cache())
-    except Exception:
-        logger.debug("metrics reset: profile pin clear failed", exc_info=True)
-    # Jev rank pins + VLM tie-break briefs: measured decisions, so a "zero all
-    # measurements" reset drops them (owner order 2026-10-22).
-    for module_name, key in (
-        ("tabs.image_gallery.services.jev_cache", "jev_files"),
-        ("tabs.image_gallery.services.vlm_cache", "vlm_files"),
-    ):
+    # THE MEASURED CACHES: one iteration, no cache name named here (ADR 009
+    # wave A4). Each adapter advances its work generation first and then drops
+    # every store its ``cache_namespace`` owns, reporting the counts under the
+    # summary fields it publishes — so a cache added by a backend is reset by
+    # construction rather than by remembering to edit this function.
+    for backend in _gallery_backends():
         try:
-            module = __import__(module_name, fromlist=["clear_default_cache"])
-            clear_all = getattr(module, "clear_default_cache", None)
-            if callable(clear_all):
-                summary[key] = int(clear_all())
+            report = backend.reset() or {}
         except Exception:
-            logger.debug("metrics reset: %s clear failed", key, exc_info=True)
-    # The LOCAL Stage-2 result is a measurement cache too: left on disk, the
-    # next triage hydrates it straight back and the reset looks like a no-op
-    # (the exact failure the AI-scorecard clear above exists to prevent).
-    # Deliberately no ``summary`` key: ``test_metrics_cache_reset`` asserts the
-    # summary dict EXACTLY, and the count is diagnostic, not an API.
-    try:
-        from tabs.image_gallery.services import metrics_cache as _metrics_cache
-
-        if paths is None:
-            dropped = int(_metrics_cache.clear_all())
-        else:
-            dropped = sum(
-                1
-                for it in targets
-                if _metrics_cache.clear_local_metrics(it.path, it.mtime_ns)
+            logger.debug(
+                "metrics reset: backend %r reset failed",
+                getattr(getattr(backend, "descriptor", None), "backend_id", "?"),
+                exc_info=True,
             )
-        logger.debug("metrics reset: local metrics entries dropped=%d", dropped)
+            continue
+        for field, count in dict(report).items():
+            try:
+                summary[field] = summary.get(field, 0) + int(count or 0)
+            except Exception:
+                continue
+
+    # The IN-MEMORY halves of the Jev/VLM stores. An open session paints the
+    # pinned Jev ordering and the VLM verdicts from ``state`` without reading
+    # disk again, so dropping the files alone left the stale measurements on
+    # screen until the process restarted — the partial-reset complaint this
+    # whole function exists to answer.
+    try:
+        st = _state_of(owner)
+        if st is not None:
+            st.tie_breaks = {}
+            st.series_priority = {}
     except Exception:
-        logger.debug("metrics reset: local metrics clear failed", exc_info=True)
+        logger.debug("metrics reset: in-memory verdict clear failed", exc_info=True)
+    # The Jev routing hint also paints a per-series-header attention marker, so
+    # prefer the controller's own clear seam (it drops the hint AND re-stamps
+    # the headers); ``state.series_priority`` above already covers owners that
+    # have no such seam.
+    try:
+        clear_priority = getattr(owner, "_clear_series_priority", None)
+        if callable(clear_priority):
+            clear_priority()
+    except Exception:
+        logger.debug("metrics reset: series priority marker clear failed", exc_info=True)
     # The selection profile's generation markers: a reset re-opens the selector
     # for the SAME folder generation (the frozen/consumed guard would otherwise
-    # suppress it after the first run).
+    # suppress it after the first run). They are owner-side markers, not a
+    # backend cache (the adapter owns the profile it produced, not the guard).
     try:
         owner._profile_consumed_gen = None
         owner._profile_settle_pending_gen = None
     except Exception:
         pass
 
-    # Stored profile + the Stage-2 skip gate.
+    # Stored profile slots + the Stage-2 skip gate. The slots hold MetricProfiles,
+    # not caches: the adapters' generations were already dropped above, so a
+    # profile left in ``state`` would be a slot the owning adapter refuses.
     try:
         clear = getattr(owner, "clear_metric_profile", None)
         if callable(clear):
@@ -341,11 +441,14 @@ def clear_metrics_caches(owner, *, paths=None) -> dict:
         from tabs.image_gallery.debug import gallery_debug as _dbg
 
         _dbg(
-            "metrics reset: scope=%s items=%d ai_files=%d profiles=%d",
+            "metrics reset: scope=%s items=%d ai_files=%d profiles=%d "
+            "jev_files=%d vlm_files=%d",
             "pool" if paths is None else f"{len(targets)} card(s)",
             summary["items"],
             summary["ai_files"],
             summary["profiles"],
+            summary["jev_files"],
+            summary["vlm_files"],
         )
     except Exception:
         pass

@@ -233,7 +233,7 @@ def _analysis_owner(*, domain="ai", configured=True, **extra):
     owner = SimpleNamespace(
         state=SimpleNamespace(
             mode="camera",
-            metric_profile=None,
+            algorithms_profile=None, ai_profile=None,
             items=[item],
             selected_paths={item.path},
             selected_order=[item.path],

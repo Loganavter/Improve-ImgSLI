@@ -24,7 +24,7 @@ never depends on dict/set iteration or list order.
 
 Axis ids in the summary are registry ids: they are the axes a local detector can
 also measure, so a model that names one of them lets the app cross-check its
-judgement. The summary is *evidence*, never a menu — the selector asks for 3..8
+judgement. The summary is *evidence*, never a menu — the selector asks for 5..8
 axes in free form and may name axes the pool does not have at all (plan
 ``plan-gallery-ai-judgement`` §OWNER REVISION 2026-10-22).
 """

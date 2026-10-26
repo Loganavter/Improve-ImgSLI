@@ -57,6 +57,11 @@ from typing import Any, Callable
 
 from tabs.image_gallery.services import jev_cache
 from tabs.image_gallery.services.ai_client import _ai_debug
+from tabs.image_gallery.backends.errors import NoProfileYet
+from tabs.image_gallery.backends.generation import (
+    current_generation,
+    generation_is_current,
+)
 from tabs.image_gallery.services.axis_proposal import direction_of
 from tabs.image_gallery.services.jev_axes import payload_axes, scored_axis_names
 from tabs.image_gallery.services.profile_judged import scorecard_axis_ids
@@ -102,6 +107,10 @@ JEV_REASON_NOUL = "AI (Jev) abstained (Noul) — kept the Algorithms rank"
 JEV_REASON_LOW_CONFIDENCE = "AI (Jev) was not confident enough — kept the Algorithms rank"
 JEV_REASON_ERROR = "AI (Jev) request failed — kept the Algorithms rank"
 JEV_REASON_MALFORMED = "AI (Jev) returned an unusable response — kept the Algorithms rank"
+#: The AI backend has no axis set yet (an empty/absent profile): the measured
+#: vector would carry no axis, and the LOCAL axis set is not a substitute (ADR
+#: 009 A3). A named "not ready", never a malformed answer.
+JEV_REASON_NO_PROFILE = "AI (Jev): no axis set yet — kept the Algorithms rank"
 #: A vector carrying fewer than two axes (P7-B / P6): one number cannot order
 #: variants, and the live ranker responded by GUESSING the axis' direction
 #: ("Noise higher = better? ... likely quality, higher better", owner log
@@ -869,23 +878,58 @@ def _decide(
     )
 
 
-def _pin(cache_obj, key: str, ranks: dict[str, int] | None, reason: str | None) -> None:
+def _pin(
+    cache_obj,
+    key: str,
+    ranks: dict[str, int] | None,
+    reason: str | None,
+    *,
+    generation=None,
+) -> bool:
+    """Persist one Jev answer — unless the world it describes is gone.
+
+    The pin is a DISK WRITE made from the rank worker, so the reset barrier's
+    landing checks never see it: a reset that runs while the request is in flight
+    cleared ``jev_cache`` and the pin then wrote the pre-reset order straight back
+    (ADR 009 wave A4, measured gap). ``generation`` is the AI adapter's lease,
+    snapshotted when this pass started, and it is compared *immediately before the
+    write* — the adapter owns the answer, so it raises; this seam only refuses to
+    write. Returns ``True`` when the pin landed.
+    """
+    if not generation_is_current(generation, operation="pin the Jev rank"):
+        return False
     try:
         cache_obj.put(key, ranks, reason=reason)
     except Exception:
         logger.debug("jev rank pin failed", exc_info=True)
+        return False
+    return True
 
 
 def rank_series_jev_detailed(
-    items, *, mode: str, client: RankClient, cache=None, domain: str = "algorithms", profile=None
+    items,
+    *,
+    mode: str,
+    client: RankClient,
+    cache=None,
+    domain: str = "algorithms",
+    profile=None,
+    base_url: str = "",
 ) -> JevRankOutcome:
     """Jev-rank one series, returning the full :class:`JevRankOutcome`.
+
+    The pass snapshots the AI backend's work generation at entry (this function
+    runs on the worker thread) and hands it to :func:`_pin`, so an answer that
+    arrives after a metrics reset is not written into the store the reset just
+    emptied.
 
     This is the seam :func:`rank_series_jev` wraps: it carries the degrade
     *reason* the caller surfaces when the Algorithms rank is kept. Cache-first:
     a hit (including a pinned abstain) is returned without calling ``client``.
     A transport exception is caught, is **not** pinned (a later pass may retry),
-    and degrades to ``None``.
+    and degrades to ``None``. ``base_url`` is the endpoint that answers; it is
+    part of the pin identity (normalized) so another provider's pinned order is
+    never served for this one — ``""`` keeps storeless callers working.
 
     Precondition (plan §J1.3): a series is only a valid Jev question when **at
     least two members carry a non-empty applicable MEASURED vector**. A vector
@@ -894,11 +938,19 @@ def rank_series_jev_detailed(
     poison the cache and hide a later, complete run. ``profile`` (plan P1)
     selects the axes of that vector; ``None`` keeps the mode mapping. Never raises.
     """
+    # The AI adapter's work generation, snapshotted at the START of this pass
+    # (the worker thread's body) and compared immediately before the pin write.
+    generation = current_generation(AI_DOMAIN)
     member_list = list(items or ())
     if len(member_list) < 2:
         return JevRankOutcome(None, reason=JEV_REASON_EMPTY)
     try:
         vector = build_measured_vector(member_list, mode=mode, domain=domain, profile=profile)
+    except NoProfileYet:
+        # The AI backend has no axis set: nothing to measure, nothing to send —
+        # and never the local axis set (ADR 009 A3).
+        _ai_debug("jev rank skip: no axis set (NoProfileYet)")
+        return JevRankOutcome(None, reason=JEV_REASON_NO_PROFILE)
     except Exception:
         logger.debug("jev rank vector build failed", exc_info=True)
         return JevRankOutcome(None, reason=JEV_REASON_MALFORMED)
@@ -944,7 +996,7 @@ def rank_series_jev_detailed(
 
     cache_obj = cache if cache is not None else jev_cache.default_cache()
     try:
-        key = jev_cache.rank_cache_key(member_list, payload)
+        key = jev_cache.rank_cache_key(member_list, payload, base_url=base_url)
     except Exception:
         key = ""
     if key:
@@ -989,12 +1041,19 @@ def rank_series_jev_detailed(
     # pin a malformed response — it may be a transient backend glitch.
     _ai_debug("jev rank => decided=%s reason=%s", outcome.decided, outcome.reason)
     if key and outcome.reason != JEV_REASON_MALFORMED:
-        _pin(cache_obj, key, outcome.ranks, outcome.reason)
+        _pin(cache_obj, key, outcome.ranks, outcome.reason, generation=generation)
     return outcome
 
 
 def rank_series_jev(
-    items, *, mode: str, client: RankClient, cache=None, domain: str = "algorithms", profile=None
+    items,
+    *,
+    mode: str,
+    client: RankClient,
+    cache=None,
+    domain: str = "algorithms",
+    profile=None,
+    base_url: str = "",
 ) -> dict[str, int] | None:
     """``path -> rank 1..N`` from Jev, or ``None`` when it must degrade.
 
@@ -1005,7 +1064,8 @@ def rank_series_jev(
     selected axis subset. Never raises.
     """
     return rank_series_jev_detailed(
-        items, mode=mode, client=client, cache=cache, domain=domain, profile=profile
+        items, mode=mode, client=client, cache=cache, domain=domain, profile=profile,
+        base_url=base_url,
     ).ranks
 
 

@@ -1,13 +1,13 @@
 """P7-A — the judge NAMES the axes (plan-gallery-ai-judgement §OWNER REVISION 2026-10-22).
 
 The owner replaced the "choose from the pool" design: the VLM is shown EXAMPLES of
-what an axis can be (not a menu), asked for **3..8 axes in free form** that most
+what an axis can be (not a menu), asked for **5..8 axes in free form** that most
 differentiate THESE pictures, and an axis it names is a first-class entry (name +
 definition + scale + direction), not a registry id it had to guess.
 
 Falsification story (what each test would catch, and why it is red before):
 
-- **(a)** the selector prompt offers examples-with-meanings and the 3..8 free-form
+- **(a)** the selector prompt offers examples-with-meanings and the 5..8 free-form
   instruction. Red before: the text opened with ``METRIC POOL — choose axis ids
   ONLY from this list`` and asked for ``{"axes": ["<id>", ...]}``.
 - **(b)** an axis whose name is NOT in ``MEASURED_POOL`` and NOT in
@@ -112,7 +112,7 @@ def _free_reply(**overrides) -> str:
 
 
 # ---------------------------------------------------------------------------
-# (a) the selector prompt: EXAMPLES + 3..8 free axes, never a closed list
+# (a) the selector prompt: EXAMPLES + 5..8 free axes, never a closed list
 # ---------------------------------------------------------------------------
 
 
@@ -148,7 +148,7 @@ def test_selector_prompt_names_no_axis_of_its_own_and_leads_with_evidence():
         "the per-probe scores are what lets an axis be tied to a visible difference"
     )
     lowered = text.lower()
-    assert "from 3 to 8" in lowered, "the owner's 3..8 free-form rule must be stated"
+    assert "from 5 to 8" in lowered, "the owner's 5..8 free-form rule must be stated"
     assert "most differentiate" in lowered
     assert "why" in lowered, "every axis must be tied to an observed difference"
 
@@ -465,8 +465,8 @@ def test_the_analyze_identity_records_the_judge_axes_without_keying_them():
 
 def test_active_profile_keeps_a_free_only_answer():
     profile = MetricProfile(mode="camera", source="vlm", axis_entries=(FREE,))
-    state = SimpleNamespace(metric_profile=profile, mode="camera")
-    assert active_profile(state) is profile, (
+    state = SimpleNamespace(ai_profile=profile, mode="camera")
+    assert active_profile(state, domain="ai") is profile, (
         "the accessor must not discard a judge answer that names only its own axes"
     )
 
@@ -478,7 +478,8 @@ class _Owner:
         self.state = SimpleNamespace(
             items=[GalleryItem(path=Path("/gallery/one.png"), mtime_ns=0)],
             mode="camera",
-            metric_profile=profile,
+            algorithms_profile=profile,
+            ai_profile=None,
             profile_reject_reason="",
         )
         self._judgment_domain = "ai"
@@ -504,16 +505,19 @@ def test_a_free_only_answer_is_applied_not_rejected_as_hollow():
 
     owner._apply_profile_outcome(free_only, 0)
 
-    assert owner.state.metric_profile is free_only, (
+    assert owner.state.ai_profile is free_only, (
         "a judge answer made only of its own axes is a complete profile — "
         f"rejected as {owner.state.profile_reject_reason!r}"
+    )
+    assert owner.state.algorithms_profile == heuristic, (
+        "the AI answer must not overwrite the Algorithms backend's own slot"
     )
     assert owner.state.profile_reject_reason == ""
     assert owner.refreshed, "the cards are refreshed like the neighbouring apply-tails"
 
     # End to end through the seam the analyze path reads: the stored profile is
     # what the scorecard is built from, and it asks for the judge's axis by name.
-    prompt = build_prompt(owner.state.mode, profile=owner.state.metric_profile)
+    prompt = build_prompt(owner.state.mode, profile=owner.state.ai_profile)
     assert '"jpeg_noise"' in prompt and FREE.definition in prompt
 
 

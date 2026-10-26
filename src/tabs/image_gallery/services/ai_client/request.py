@@ -13,6 +13,8 @@ payload from the FULL-RESOLUTION file (``read_bytes`` → ``b64encode`` →
 scroll's thumbnails. The wire copy is capped at the user's VLM edge (default
 ``decode_policy.VLM_DEFAULT_MAX_EDGE_PX``); at most
 :data:`DEFAULT_WIRE_ENCODE_SLOTS` builders encode at once.
+
+Audit-Meta: pattern=wire-policy size=525 reason="one payload/ceiling/mime contract: build_request_from_bytes, the byte and PIL entry points and the re-encode gate must agree on ONE policy; splitting the PIL entry away would let the gallery's R6 reuse ship a different ceiling or mime than the file path (the exact B2 defect class)."
 """
 
 from __future__ import annotations
@@ -296,8 +298,37 @@ def encode_wire_image(
     )
 
 
-def encode_wire_path(image_path, *, max_edge=None, prefer_jpeg: bool = True) -> WireImage:
-    """Read *image_path* once and encode its wire copy (:func:`encode_wire_image`)."""
+def encode_wire_path(
+    image_path,
+    *,
+    max_edge=None,
+    prefer_jpeg: bool = True,
+    image=None,
+) -> WireImage:
+    """Encode the wire copy of *image_path* — from decoded pixels when given.
+
+    ``image`` (a PIL image) is the Stage-2 proxy the gallery already decoded at
+    ``PROXY_MAX_EDGE`` (1024). Reusing it removes a second full-file read +
+    decode per analyzed card (audit R6); the pixels are re-serialized in memory
+    and then pass through the ONE ceiling/re-encode seam, so the wire policy is
+    unchanged. Without ``image`` the historical path reads the file once.
+    """
+    if image is not None:
+        import io
+
+        try:
+            buf = io.BytesIO()
+            image.convert("RGB").save(buf, format="PNG")
+            return encode_wire_image(
+                buf.getvalue(),
+                "image/png",
+                max_edge=max_edge,
+                prefer_jpeg=prefer_jpeg,
+            )
+        except Exception:
+            # Fail-open to the historical read: a broken pixel view must not
+            # drop the analysis.
+            pass
     path = Path(image_path)
     return encode_wire_image(
         path.read_bytes(),

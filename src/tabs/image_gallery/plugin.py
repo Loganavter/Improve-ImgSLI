@@ -29,6 +29,17 @@ class ImageGalleryPlugin(Plugin, ISessionPlugin):
         super().initialize(context)
         self.store = getattr(context, "store", None)
         self.event_bus = getattr(context, "event_bus", None)
+        # THE composition point of ADR 009's analysis backends: the two adapters
+        # are registered here, once per process — ``initialize`` runs before any
+        # controller exists and is never repeated (unlike ``create_page``, which
+        # rebuilds the controller after a ``dispose``). Registration is
+        # idempotent by ``backend_id``; the registry stays strict about a second
+        # ADAPTER claiming an id or a cache namespace.
+        from tabs.image_gallery.backends.composition import (
+            register_gallery_backends,
+        )
+
+        register_gallery_backends()
         from tabs.image_gallery.bootstrap_reducers import (
             register_gallery_reducers,
         )

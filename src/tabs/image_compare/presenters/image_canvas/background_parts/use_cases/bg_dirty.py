@@ -409,8 +409,14 @@ def handle_background(presenter, source1, source2, peeked, current_label_dims, l
                                 pass
                 except Exception:
                     pass
-            gui_source1 = presenter.store.viewport.session_data.image_state.image1
-            gui_source2 = presenter.store.viewport.session_data.image_state.image2
+            # SOURCE role = each side's OWN pixels (presentation/source_tier.py):
+            # image_state.image1/2 are the UNIFY result, so the smaller side is
+            # an upscaled copy there and the magnifier would magnify the upscale.
+            from tabs.image_compare.canvas.presentation.source_tier import (
+                source_role_pair as _source_role_pair,
+            )
+
+            gui_source1, gui_source2 = _source_role_pair(presenter.store)
             document = presenter.store.get_session_state_slot("document")
             source_key = (
                 document.image1_path,

@@ -22,6 +22,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from tabs.image_gallery.backends.errors import NoProfileYet
 from tabs.image_gallery.models import MetricKind, Mode
 from tabs.image_gallery.services import metric_profile, rank_fusion
 from tabs.image_gallery.services.metric_profile import (
@@ -296,11 +297,14 @@ def test_mode_id_normalizes_like_the_registry_enum():
 # --------------------------------------------------------------------------
 
 
-def test_explicit_profile_wins_and_empty_profile_falls_back_to_mode():
+def test_explicit_profile_wins_and_an_empty_one_is_no_profile_yet():
     only_sharpness = MetricProfile(axis_ids=("sharpness",))
     assert measured_axes_for("camera", profile=only_sharpness) == ("sharpness",)
-    # A profile with no pool axes is not usable → the mode base applies anyway.
-    assert measured_axes_for("camera", profile=MetricProfile()) == measured_axes_for("camera")
+    # ADR 009 A3: a profile with no axis is a backend with nothing to measure,
+    # so it is NoProfileYet — the LOCAL mode mapping is NOT a repair (that
+    # fallback is what fed an empty AI profile the detector axis set).
+    with pytest.raises(NoProfileYet):
+        measured_axes_for("camera", profile=MetricProfile())
     # Duck-typed: any object with .axis_ids is accepted (no isinstance gate).
     assert measured_axes_for("camera", profile=SimpleNamespace(axis_ids=("noise",))) == ("noise",)
 

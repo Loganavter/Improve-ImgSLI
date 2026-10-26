@@ -10,9 +10,9 @@ from core.constants import AppConstants
 from sli_ui_toolkit.managers import DelayedActionTimer
 from tabs.image_compare.canvas.registry import registry
 from core.log_names import APP_LOGGER_NAME
+from tabs.image_compare.ui.focus_log import log_focus_event
 
 logger = logging.getLogger(APP_LOGGER_NAME)
-
 
 def _query_overlay(store, capability_id: str, default=None):
     command = registry().get_feature_command_by_alias(capability_id)
@@ -375,11 +375,7 @@ class MagnifierVisibilityController:
             return False
         if watched is btn:
             if event.type() in (QEvent.Type.FocusIn, QEvent.Type.FocusOut):
-                logger.debug(
-                    "[magnifier-visibility] btn_magnifier event=%s reason=%s",
-                    event.type(),
-                    getattr(event, "reason", lambda: None)(),
-                )
+                log_focus_event(logger, event, "[magnifier-visibility] btn_magnifier")
             return self._handle_button_event(event)
         if watched is self.widget.magnifier_visibility_flyout:
             return self._handle_flyout_event(event)
