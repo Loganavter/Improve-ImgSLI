@@ -95,6 +95,9 @@ def apply_magnifier_plan_overlay(canvas, plan) -> None:
                 ],
                 conv_tr,
                 guide.color,
+                # Same thickness slot as the live producer (feature.py) so
+                # export rendering shares resolve_guide_spans' width rule.
+                max(1, int(getattr(plan, "guides_thickness", 1) or 1)),
             )
         )
 

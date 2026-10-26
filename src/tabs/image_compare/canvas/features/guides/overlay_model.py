@@ -45,6 +45,20 @@ class GuideSpan:
     alpha: float
 
 
+def _guide_set_thickness(guide_set, fallback: int) -> int:
+    """Thickness slot of one guide set (legacy 5-tuples use ``fallback``).
+
+    The set is ``(capture_center, capture_radius, target_centers,
+    target_radii, color, thickness)``; both producers (live
+    ``apply_guides_object`` and export ``apply_magnifier_plan_overlay``)
+    append the slot, and a 5-tuple from an older caller still resolves to the
+    widget-level value instead of silently painting the theme floor.
+    """
+    if len(guide_set) > 5:
+        return int(guide_set[5])
+    return int(fallback)
+
+
 def resolve_guide_spans(ctx, widget) -> tuple[GuideSpan, ...]:
     """Resolve canvas-px guide spans for this frame from the context (pure).
 
@@ -54,11 +68,22 @@ def resolve_guide_spans(ctx, widget) -> tuple[GuideSpan, ...]:
     projector -- the widget handle only sources the guide sets.
     Calling twice with an unchanged frame yields an equal tuple;
     nothing is cached, stored, or mutated.
+
+    Painted width is ``thickness * annotation_line_stroke_px`` (canvas px;
+    the pass projects the spans to widget px). The theme stroke is the FLOOR,
+    so the pre-thickness look is thickness 1, and the value the toolbar
+    delivers (1..10) finally reaches the shader's ``lineWidthPx``. The style
+    px is already ``resolve_view_px(tokens.guides_stroke_du)`` and that
+    resolver is linear in its value, so scaling it here is identical to
+    resolving ``guides_stroke_du * thickness`` without re-reading the tokens.
     """
     guide_sets = tuple(getattr(widget.runtime_state, "_guide_sets", ()) or ())
     if not guide_sets:
         return ()
-    line_width = float(ctx.resolved_style.annotation_line_stroke_px)
+    style_px = float(ctx.resolved_style.annotation_line_stroke_px)
+    widget_thickness = int(
+        getattr(widget.runtime_state, "_guides_thickness", 1) or 1
+    )
     zoom = float(ctx.zoom_level)
     pan_x = float(getattr(ctx, "pan_offset_x", 0.0))
     pan_y = float(getattr(ctx, "pan_offset_y", 0.0))
@@ -67,13 +92,20 @@ def resolve_guide_spans(ctx, widget) -> tuple[GuideSpan, ...]:
     offset_x = float(ctx.canvas_offset_x)
     offset_y = float(ctx.canvas_offset_y)
     spans: list[GuideSpan] = []
-    for (
-        capture_center,
-        capture_radius,
-        target_centers,
-        target_radii,
-        color,
-    ) in guide_sets:
+    for guide_set in guide_sets:
+        (
+            capture_center,
+            capture_radius,
+            target_centers,
+            target_radii,
+            color,
+        ) = tuple(guide_set[:5])
+        # thickness 1 reproduces the theme stroke exactly; higher values scale
+        # it. Clamped at 1 so a stale 0 cannot paint a zero-width line
+        # (thickness 0 disables guides upstream via ``enabled``).
+        line_width = style_px * max(
+            1, _guide_set_thickness(guide_set, widget_thickness)
+        )
         if capture_center is None:
             continue
         end_x, end_y = project_px_to_screen(
