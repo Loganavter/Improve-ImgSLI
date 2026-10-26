@@ -271,6 +271,8 @@ def build_render_runtime_context(widget) -> RenderRuntimeContext:
         view_state=view_state,
         state=state,
         letterbox1=letterbox1,
+        canvas_width=float(canvas_width),
+        canvas_height=float(canvas_height),
     )
     base_image = BaseImagePrimitive(
         split_position=content_split,

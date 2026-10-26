@@ -136,7 +136,12 @@ class DividerPass(CanvasRenderPass):
         if split_trace_enabled():
             # Same frame id the base pass opened; same resolved spec the line
             # above is drawn from (BLINKTABLE_SPLIT_TRACE / IMGSLI_SPLIT_TRACE).
-            trace_divider_frame(widget, resolve_divider_spec(ctx, widget))
+            trace_divider_frame(
+                widget,
+                resolve_divider_spec(ctx, widget),
+                canvas_width=float(ctx.width),
+                canvas_height=float(ctx.height),
+            )
 
     def record(self, command_buffer, widget, ctx) -> None:
         target_size = widget.renderTarget().pixelSize()
