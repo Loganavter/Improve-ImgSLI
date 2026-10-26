@@ -6,6 +6,7 @@ from PySide6.QtCore import QEvent, Qt, QSize
 
 from core.constants import AppConstants
 from sli_ui_toolkit.managers import DelayedActionTimer, scaled_px
+from tabs.image_compare.ui.transient_magnifier import bind_wiring, release_wiring
 from ui.managers.transient_ui_parts.anchored_popup import AnchoredPopupBubbleController
 from core.log_names import APP_LOGGER_NAME
 
@@ -42,6 +43,7 @@ class MagnifierInstancesPopupController:
             on_hidden=self._mark_closed,
             should_keep_open=lambda: self._requested_open,
         )
+        self._wiring = None
         self._wire_button()
 
     def _button(self):
@@ -52,17 +54,42 @@ class MagnifierInstancesPopupController:
         if button is None:
             logger.debug("[magnifier-instances] _wire_button: no btn_magnifier_instances yet on widget=%s", self.widget)
             return
-        button.countChanged.connect(lambda _count: self.on_count_changed())
+        button.countChanged.connect(self._on_count_changed)
         targets = button.popup_targets() if hasattr(button, "popup_targets") else (button,)
+        # Same takeover contract as MagnifierVisibilityController: drop the
+        # previous owner before installing, so a second construction for the
+        # same widget replaces it instead of double-delivering focus/hover
+        # events and firing countChanged twice.
+        release_wiring(self.widget, "instances")
         for target in targets:
             target.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
             target.installEventFilter(self.manager.host)
+        self._wiring = bind_wiring(
+            self.widget,
+            "instances",
+            self.manager.host,
+            targets,
+            [(button.countChanged, self._on_count_changed)],
+        )
         logger.debug(
             "[magnifier-instances] _wire_button: installed on button=%s targets=%s host=%s",
             button,
             targets,
             self.manager.host,
         )
+
+    def _on_count_changed(self, _count: int) -> None:
+        self.on_count_changed()
+
+    def teardown(self) -> None:
+        """Detach from the button: filters, ``countChanged``, hover timer."""
+        try:
+            self._hover_timer.stop()
+        except Exception:
+            pass
+        wiring, self._wiring = self._wiring, None
+        if wiring is not None:
+            wiring.teardown()
 
     def _mark_closed(self) -> None:
         self.manager.host._magn_instances_popup_open = False

@@ -21,6 +21,85 @@ def _query_overlay(store, capability_id: str, default=None):
     return default if result is None else result
 
 
+#: Attribute holding ``{key: _TransientWiring}`` on the owning widget. Stored
+#: on the widget rather than on a module dict so it dies with the widget and a
+#: controller built for a *different* page never inherits it.
+_WIRING_ATTR = "_magnifier_transient_wiring"
+
+
+class _TransientWiring:
+    """One owning installation of an event filter plus its signal hooks.
+
+    The owner is recorded on the widget (see ``_WIRING_ATTR``) so a second
+    controller for the same widget can *take over*: Qt only dedupes the very
+    same filter object, so two distinct hosts (a page rebuilt under a fresh
+    ``UIManager``/``TransientUIManager``, a controller resolved twice) each get
+    their own delivery and one focus event is handled — and logged — twice
+    (``[magnifier-visibility] btn_magnifier event=8`` pairs, 2026-10-26).
+    """
+
+    __slots__ = ("widget", "key", "host", "targets", "connections")
+
+    def __init__(self, widget, key: str, host, targets=(), connections=()):
+        self.widget = widget
+        self.key = key
+        self.host = host
+        self.targets = tuple(target for target in targets if target is not None)
+        self.connections = list(connections)
+
+    def teardown(self, *, force: bool = False) -> None:
+        registry = getattr(self.widget, _WIRING_ATTR, None)
+        if not force and registry is not None and registry.get(self.key) is not self:
+            # Superseded by a newer owner: its filters are not ours to remove
+            # (with a shared host object, removing here would deafen it).
+            return
+        for target in self.targets:
+            try:
+                target.removeEventFilter(self.host)
+            except (AttributeError, RuntimeError):
+                # Widget's C++ side already gone (page teardown race).
+                pass
+        for signal, slot in self.connections:
+            try:
+                signal.disconnect(slot)
+            except (RuntimeError, TypeError):
+                pass
+        if registry is not None and registry.get(self.key) is self:
+            registry.pop(self.key, None)
+
+
+def _wiring_registry(widget) -> dict:
+    registry = getattr(widget, _WIRING_ATTR, None)
+    if registry is None:
+        registry = {}
+        try:
+            setattr(widget, _WIRING_ATTR, registry)
+        except (AttributeError, TypeError):
+            pass
+    return registry
+
+
+def release_wiring(widget, key: str) -> None:
+    """Tear down a previous owner's installation for ``key`` on ``widget``.
+
+    Called from every controller's wiring step *before* it installs its own:
+    one widget, one live installation, regardless of how many controllers were
+    constructed for it. Must run before the new filter is installed — with the
+    same host object (a re-wire through the same manager) tearing down after
+    would remove the filter just installed.
+    """
+    previous = _wiring_registry(widget).pop(key, None)
+    if previous is not None:
+        previous.teardown(force=True)
+
+
+def bind_wiring(widget, key: str, host, targets=(), connections=()) -> _TransientWiring:
+    """Record this installation as the widget's owner for ``key``."""
+    wiring = _TransientWiring(widget, key, host, targets, connections)
+    _wiring_registry(widget)[key] = wiring
+    return wiring
+
+
 class MagnifierVisibilityController:
     def __init__(self, manager, widget):
         self.manager = manager
@@ -29,28 +108,62 @@ class MagnifierVisibilityController:
             lambda: self.show(reason="hover"), parent=manager.host
         )
         self._last_flyout_hide_ts = 0.0
+        self._wiring = None
         self._wire_button()
 
     def _wire_button(self) -> None:
         host = self.manager.host
         btn = getattr(self.widget, "btn_magnifier", None)
-        if btn is None or self.widget.magnifier_visibility_flyout is None:
+        flyout = getattr(self.widget, "magnifier_visibility_flyout", None)
+        if btn is None or flyout is None:
             return
         btn.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
-        btn.installEventFilter(host)
-        self.widget.magnifier_visibility_flyout.installEventFilter(host)
-        self.widget.magnifier_visibility_flyout.btn_left.installEventFilter(host)
-        self.widget.magnifier_visibility_flyout.btn_center.installEventFilter(host)
-        self.widget.magnifier_visibility_flyout.btn_right.installEventFilter(host)
+        # Drop a previous owner's installation before installing ours: a
+        # second construction for the same widget replaces it instead of
+        # stacking a second filter (one focus event, one handler).
+        release_wiring(self.widget, "visibility")
+        targets = (
+            btn,
+            flyout,
+            getattr(flyout, "btn_left", None),
+            getattr(flyout, "btn_center", None),
+            getattr(flyout, "btn_right", None),
+        )
+        for target in targets:
+            if target is not None:
+                target.installEventFilter(host)
         btn.toggled.connect(self.on_toggle_with_hover)
+        self._wiring = bind_wiring(
+            self.widget,
+            "visibility",
+            host,
+            targets,
+            [(btn.toggled, self.on_toggle_with_hover)],
+        )
         # Один вызов вместо трёх проволочек — side декларирован на классе,
         # но оставляем императивный для надёжности (фасад оркестрирует nav+hover).
         try:
             from sli_ui_toolkit.managers import bind_flyout
 
-            bind_flyout(btn, self.widget.magnifier_visibility_flyout, side="above")
+            bind_flyout(btn, flyout, side="above")
         except Exception:
             pass
+
+    def teardown(self) -> None:
+        """Detach from the widget: filters, ``toggled``, pending hover timer.
+
+        Used when a controller is replaced for the same widget and by tests;
+        without it the host filter outlives the controller that dispatched to
+        it (``TransientUIManager.event_filter`` keeps calling the cached
+        service, so a stale filter is a duplicate-delivery source).
+        """
+        try:
+            self._hover_timer.stop()
+        except Exception:
+            pass
+        wiring, self._wiring = self._wiring, None
+        if wiring is not None:
+            wiring.teardown()
 
     def update_states(self):
         host = self.manager.host

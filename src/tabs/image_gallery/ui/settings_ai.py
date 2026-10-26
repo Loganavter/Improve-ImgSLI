@@ -59,6 +59,7 @@ from __future__ import annotations
 
 import logging
 
+import shiboken6 as sip
 from PySide6.QtWidgets import QHBoxLayout
 from PySide6.QtCore import QThreadPool, QTimer
 
@@ -194,6 +195,22 @@ def _start_thread_task(task, on_done):
     return worker
 
 
+def _dialog_alive(dialog) -> bool:
+    """True while *dialog*'s C++ object still exists.
+
+    The model-catalog fetch is asynchronous, so its completion can land after
+    the user closed Settings and Qt deleted the dialog tree. Touching a widget
+    of that tree then raises ``RuntimeError: libshiboken: Internal C++ object
+    (...) already deleted`` — a stale-lifetime defect, not a threading one
+    (``START_TASK`` already delivers on the GUI thread).
+    """
+    try:
+        return bool(sip.isValid(dialog))
+    except Exception:
+        # An unreadable wrapper is not a usable dialog: skip the work.
+        return False
+
+
 def _live_gallery_owner():
     """The live gallery controller, or None (settings can open without one)."""
     try:
@@ -262,8 +279,22 @@ def build(dialog, p):  # type: ignore[no-untyped-def]
     store = AiSettingsStore()
     current = store.load()
     #: Qt workers kept alive until they report (a garbage-collected worker
-    #: never delivers its result).
+    #: never delivers its result). Entries are dropped on completion, and the
+    #: whole list is cleared when the dialog is destroyed: a closed Settings
+    #: must not keep — or resurrect — work aimed at its dead widgets.
     dialog._gallery_ai_model_tasks = []
+
+    def _drop_pending_tasks(*_args) -> None:
+        """Forget every worker handle once the dialog's C++ object is gone."""
+        try:
+            dialog._gallery_ai_model_tasks.clear()
+        except (AttributeError, RuntimeError):
+            pass
+
+    try:
+        dialog.destroyed.connect(_drop_pending_tasks)
+    except Exception:
+        pass
 
     def _tr(key: str, default: str) -> str:
         """Section-key lookup via the dialog translator (fail-open to *default*).
@@ -921,6 +952,11 @@ def build(dialog, p):  # type: ignore[no-untyped-def]
         (owner: "если с текущим не сходится — заменять"). An empty catalog
         becomes a single error row carrying the fetch failure.
         """
+        # Second line of defence: the completion path checks this too, but the
+        # list is also reachable from a re-fetch scheduled while the page was
+        # being torn down — a dead tree must never be touched.
+        if not _dialog_alive(dialog):
+            return
         # Publisher-first, then model name — the flat combo groups a vendor's
         # models by order alone. Sorted at this render seam only:
         # ``models_for``'s provider order stays for other consumers.
@@ -998,6 +1034,21 @@ def build(dialog, p):  # type: ignore[no-untyped-def]
         prov = _selected_provider()
         api_key = str(dialog.gallery_ai_api_key.text())
         report: dict = {}
+        #: The worker handle, plus whether it already reported: a seam that
+        #: delivers inline reports before ``START_TASK`` returns, and that
+        #: handle must never be appended (it is dead on arrival).
+        task_state: dict = {"handle": None, "reported": False}
+
+        def _forget_task() -> None:
+            """Drop this worker from the dialog's keep-alive list."""
+            task_state["reported"] = True
+            handle = task_state.get("handle")
+            if handle is None:
+                return
+            try:
+                dialog._gallery_ai_model_tasks.remove(handle)
+            except (AttributeError, ValueError):
+                pass
 
         def _task():
             try:
@@ -1009,6 +1060,15 @@ def build(dialog, p):  # type: ignore[no-untyped-def]
 
         def _done(result) -> None:
             fetch_state["in_flight"] = False
+            _forget_task()
+            if not _dialog_alive(dialog):
+                # Settings was closed (and its C++ tree deleted) while the fetch
+                # was out: the catalog has nowhere to land. Bailing here is the
+                # fix for the stale-lifetime defect that used to surface as
+                # "AI model list apply failed" with a dead-ComboBox
+                # RuntimeError (owner log, 2026-10-26).
+                logger.debug("AI model list completion dropped: dialog destroyed")
+                return
             try:
                 models, source = result if result else ((), ai_models.SOURCE_CURATED)
             except Exception:
@@ -1024,7 +1084,8 @@ def build(dialog, p):  # type: ignore[no-untyped-def]
 
         try:
             handle = START_TASK(_task, _done)
-            if handle is not None:
+            task_state["handle"] = handle
+            if handle is not None and not task_state["reported"]:
                 dialog._gallery_ai_model_tasks.append(handle)
         except Exception:
             _done(None)

@@ -33,6 +33,35 @@ def fit_into(
     return x, y, w, h
 
 
+def _geometry_debug() -> bool:
+    """``IMGSLI_GEOMETRY_DEBUG=1`` (alias ``BLINKTABLE_GEOMETRY_DEBUG``) — trace geometry.
+
+    Why this exists (owner, 2026-10-26): "the window size is not remembered between
+    runs" could not be reproduced on a private Xvfb (1500x1000 restored as
+    1516x1000, 640x520 was raised to the session-picker floor 720x560), so the
+    answer had to come from the owner's own multi-monitor session. The trace names
+    the REQUESTED rect, the AVAILABLE rect it was fitted into and the APPLIED one,
+    on restore and on save — enough to tell a clamp apart from a lost value.
+    """
+    try:
+        from shared.debug_flags import env_flag
+
+        return env_flag("IMGSLI_GEOMETRY_DEBUG")
+    except Exception:
+        return False
+
+
+def _geo_log(message: str, *args) -> None:
+    if not _geometry_debug():
+        return
+    try:
+        import logging
+
+        logging.getLogger("BlinkTable.geometry").info(message, *args)
+    except Exception:
+        pass
+
+
 class GeometryManager:
     def __init__(self, window: QWidget, settings: QSettings, store=None):
         self.window = window
@@ -58,8 +87,12 @@ class GeometryManager:
 
     def _apply_fit(self, x: int, y: int, w: int, h: int) -> tuple[int, int, int, int]:
         """``setGeometry`` through :func:`fit_into`; returns what was applied."""
-        fit_x, fit_y, fit_w, fit_h = fit_into(
-            (x, y, w, h), self._available_rect()
+        available = self._available_rect()
+        fit_x, fit_y, fit_w, fit_h = fit_into((x, y, w, h), available)
+        _geo_log(
+            "geometry apply: asked=%dx%d@%d,%d available=%s applied=%dx%d@%d,%d%s",
+            w, h, x, y, available, fit_w, fit_h, fit_x, fit_y,
+            "" if (fit_w, fit_h) == (w, h) else "  <-- CLAMPED BY THE AVAILABLE RECT",
         )
         self.window.setGeometry(fit_x, fit_y, fit_w, fit_h)
         return fit_x, fit_y, fit_w, fit_h
@@ -71,6 +104,10 @@ class GeometryManager:
             window_height = max(150, self.store.settings.window_height)
             window_x = self.store.settings.window_x
             window_y = self.store.settings.window_y
+            _geo_log(
+                "geometry restore: stored=%dx%d@%d,%d maximized=%s",
+                window_width, window_height, window_x, window_y, was_maximized,
+            )
 
             x, y, w, h = self._apply_fit(
                 window_x, window_y, window_width, window_height
@@ -122,7 +159,12 @@ class GeometryManager:
 
     def update_normal_geometry_if_needed(self):
         if self._freeze_normal_updates:
+            _geo_log("geometry save: SKIPPED (normal updates frozen)")
             return
+        if self.window.isMaximized() or self.window.isFullScreen():
+            _geo_log(
+                "geometry save: SKIPPED (maximized/fullscreen) — the previous normal rect is kept"
+            )
         if not self.window.isMaximized() and not self.window.isFullScreen():
             try:
                 self.normal_geometry = self.window.saveGeometry()
@@ -151,6 +193,10 @@ class GeometryManager:
                 except Exception:
                     pass
 
+        _geo_log(
+            "geometry save: normal=%s maximized=%s",
+            self.normal_rect_str or "-", is_maximized,
+        )
         self.settings.setValue("window_was_maximized", is_maximized)
 
         if self.normal_geometry and not self.normal_geometry.isNull():
