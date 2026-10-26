@@ -71,6 +71,30 @@ def _install_pil_pixel_limit() -> None:
 logger = logging.getLogger(APP_LOGGER_NAME)
 
 
+def _request_app_quit(app) -> None:
+    """Ask the application to leave its event loop, in this same turn.
+
+    The close path is the only owner of the quit (the app is frameless and
+    keeps a tray icon, so nothing else disposes of it): whatever happens
+    earlier in ``closeEvent`` — a shutdown step raising, a re-entrant close —
+    this is still owed. It therefore runs in the same turn and is not a
+    ``QTimer.singleShot(0, app.exit)``: a deferred request lives or dies with
+    the lines before it, which is exactly where the request was lost when the
+    window closed and the process stayed in ``exec()`` (2026-10-26 magnifier
+    storm). ``quit()`` is ``exit(0)``: it stops every event loop running on
+    this thread, so nothing later can drop the request on the floor.
+    Module-level on purpose — the close path's single quit point, and the
+    seam the tests spy on.
+    """
+    if app is None:
+        return
+    try:
+        app.quit()
+    except RuntimeError:
+        # Application already torn down (a close during interpreter teardown).
+        pass
+
+
 class MainWindow(QWidget):
     startupVisualReady = Signal()
 
@@ -370,7 +394,23 @@ class MainWindow(QWidget):
             pass
     def closeEvent(self, event: QCloseEvent):
         logger.debug("Начало закрытия главного окна...")
-        self._shutdown_pipeline.run(self)
+        if getattr(self, "_shutdown_started", False):
+            # A second close request while the pipeline is still running must
+            # not re-run every shutdown step. It is reachable: the frameless
+            # CSD close button stays clickable, and the magnifier flyout used
+            # to re-open over it (the 2026-10-26 storm) — the first request
+            # already asked for the quit, so only settle this event.
+            event.accept()
+            return
+        self._shutdown_started = True
+        try:
+            self._shutdown_pipeline.run(self)
+        except Exception:
+            # One failing step must not cost the rest of the close: the hide,
+            # the accepted event and — above all — ``_request_app_quit``
+            # below are still owed. Uncaught, a raise here left the window on
+            # screen and the app inside ``exec()`` (the 2026-10-26 lost quit).
+            logger.exception("Ошибка в шаге закрытия главного окна")
 
         logger.debug("Завершение закрытия главного окна")
         try:
@@ -383,9 +423,7 @@ class MainWindow(QWidget):
             self.deleteLater()
         except Exception:
             pass
-        app = QApplication.instance()
-        if app is not None:
-            QTimer.singleShot(0, lambda: app.exit(0))
+        _request_app_quit(QApplication.instance())
 
     def moveEvent(self, event: QMoveEvent):
         super().moveEvent(event)

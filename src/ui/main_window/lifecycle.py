@@ -97,9 +97,39 @@ class MarkShuttingDownStep(WindowShutdownStep):
     name = "mark_shutting_down"
 
     def run(self, window) -> None:
+        # Read as a closing latch by the tab-owned transient (magnifier)
+        # controllers (their ``transient_shutdown_latched`` hook), so a
+        # controller built after this point is born inert. No tab path is named
+        # here on purpose: platform code must stay tab-agnostic.
+        # ALLOWED: the latch contract lives in the tab package, not here.
         window._closing = True
         if getattr(window, "app_context", None) is not None:
             window.app_context._is_shutting_down = True
+        _latch_transient_ui(window)
+
+
+def _latch_transient_ui(window) -> None:
+    """Silence the transient (magnifier) UI before anything else closes.
+
+    This step runs *first* for a reason: every later step hides or closes a
+    window, and each of those still emits a final focus burst. While the
+    transient controllers stayed live, that burst ran the full reaction chain
+    — ``hide()`` on FocusOut, focus back to the magnifier button, a FocusIn
+    that re-armed the hover timer, the flyout re-opening — once per loop turn
+    and for as long as the process lived: the owner's post-close
+    ``[magnifier-visibility] btn_magnifier event=9`` (FocusOut) storm on
+    2026-10-26. Latching here makes every such event a no-op and removes the
+    filters/timers while the widget tree is still healthy.
+    """
+    presenter = getattr(window, "presenter", None)
+    manager = getattr(presenter, "ui_manager", None)
+    shutdown = getattr(manager, "shutdown", None)
+    if not callable(shutdown):
+        return
+    try:
+        shutdown()
+    except Exception:
+        logger.exception("Transient UI shutdown failed")
 
 class ShutdownTabsStep(WindowShutdownStep):
     name = "shutdown_tabs"

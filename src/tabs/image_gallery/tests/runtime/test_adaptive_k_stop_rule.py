@@ -247,10 +247,17 @@ def _cache_dir(tmp_path, monkeypatch) -> Path:
     return tmp_path
 
 
-def test_a_one_draw_scorecard_is_never_served_for_a_cap_three_request(
+def test_a_settled_thin_scorecard_answers_its_own_cap(
     tmp_path, monkeypatch
 ):
-    """Stored depth 1 vs request budget 3 is a MISS (red-before: it was a HIT)."""
+    """Depth 1 at the SAME cap 3 is a HIT — the adaptive stop is not staleness.
+
+    Owner's defect (2026-10-26): the thin-entry rule compared the DEPTH, so every
+    card that settled early (2 draws of a declared 3) was a MISS on every open —
+    re-analysed, stored thin again, MISS again, forever, and the cache could never
+    hit for exactly the cards that behaved well. Only a RAISED CAP deepens (the
+    next test).
+    """
     cache = _cache_dir(tmp_path, monkeypatch)
     path, mtime = Path("/gallery/frame.png"), 42
     request = ai_cache.analysis_cache_identity(_settings(sample_count=3), mode="camera")
@@ -269,7 +276,34 @@ def test_a_one_draw_scorecard_is_never_served_for_a_cap_three_request(
     assert stored["identity"]["k"] == "3", "k is the declared cap"
     assert stored["identity"]["effective_k"] == "1", "the payload records the depth"
 
-    assert ai_cache.load_cached_analysis(path, mtime, request) is None
+    assert ai_cache.load_cached_analysis(path, mtime, request) is not None, (
+        "a settled-thin scorecard answers its own declared cap"
+    )
+
+
+def test_raising_the_declared_cap_deepens_a_stored_scorecard(tmp_path, monkeypatch):
+    """The only real staleness: the user picked MORE draws than the entry holds."""
+    cache = _cache_dir(tmp_path, monkeypatch)
+    path, mtime = Path("/gallery/frame.png"), 42
+    thin_request = ai_cache.analysis_cache_identity(
+        _settings(sample_count=1), mode="camera"
+    )
+    thin = AiAnalysisResult(
+        description="one draw",
+        tags=(),
+        model="m",
+        analyzed_at_iso=STAMP,
+        axes={"sharpness": 80},
+        axis_samples=({"sharpness": 80},),
+    )
+    ai_cache.save_analysis(path, mtime, thin, thin_request)
+    stored = json.loads(next(cache.glob("*.json")).read_text(encoding="utf-8"))
+    assert stored["identity"]["k"] == "1", "the entry declares the cap it answered"
+
+    deeper = ai_cache.analysis_cache_identity(_settings(sample_count=3), mode="camera")
+    assert ai_cache.load_cached_analysis(path, mtime, deeper) is None, (
+        "cap 3 must not be served a scorecard built for cap 1"
+    )
 
 
 def test_an_unbudgeted_identity_declares_the_minimum_depth_not_a_fabricated_cap():

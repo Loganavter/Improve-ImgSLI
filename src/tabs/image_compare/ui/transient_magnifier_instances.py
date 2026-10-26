@@ -6,7 +6,12 @@ from PySide6.QtCore import QEvent, Qt, QSize
 
 from core.constants import AppConstants
 from sli_ui_toolkit.managers import DelayedActionTimer, scaled_px
-from tabs.image_compare.ui.transient_magnifier import bind_wiring, release_wiring
+from tabs.image_compare.ui.transient_magnifier import (
+    bind_wiring,
+    latch_transient_shutdown,
+    release_wiring,
+    transient_shutdown_latched,
+)
 from ui.managers.transient_ui_parts.anchored_popup import AnchoredPopupBubbleController
 from core.log_names import APP_LOGGER_NAME
 
@@ -44,7 +49,13 @@ class MagnifierInstancesPopupController:
             should_keep_open=lambda: self._requested_open,
         )
         self._wiring = None
+        self._shutdown_done = False
         self._wire_button()
+
+    def _is_latched(self) -> bool:
+        return getattr(self, "_shutdown_done", False) or transient_shutdown_latched(
+            self.manager
+        )
 
     def _button(self):
         return getattr(self.widget, "btn_magnifier_instances", None)
@@ -53,6 +64,9 @@ class MagnifierInstancesPopupController:
         button = self._button()
         if button is None:
             logger.debug("[magnifier-instances] _wire_button: no btn_magnifier_instances yet on widget=%s", self.widget)
+            return
+        if self._is_latched():
+            # Shutdown already started: install nothing, arm nothing.
             return
         button.countChanged.connect(self._on_count_changed)
         targets = button.popup_targets() if hasattr(button, "popup_targets") else (button,)
@@ -91,10 +105,35 @@ class MagnifierInstancesPopupController:
         if wiring is not None:
             wiring.teardown()
 
+    def shutdown(self) -> None:
+        """The host window is closing: stop reacting, for good.
+
+        Same latch as ``MagnifierVisibilityController.shutdown`` — one
+        toolbar group, one shutdown contract. Left live, a late FocusOut here
+        restarted the popup's auto-hide and a late ``countChanged`` re-showed
+        it after the window was gone.
+        """
+        if getattr(self, "_shutdown_done", False):
+            return
+        self._shutdown_done = True
+        latch_transient_shutdown(self.manager)
+        self._requested_open = False
+        try:
+            self._hover_timer.stop()
+        except Exception:
+            pass
+        try:
+            self._bubble.hide()
+        except Exception:
+            pass
+        self.teardown()
+
     def _mark_closed(self) -> None:
         self.manager.host._magn_instances_popup_open = False
 
     def event_filter(self, watched, event):
+        if self._is_latched():
+            return False
         button = self._button()
         if button is None or watched not in button.popup_targets():
             return False
@@ -153,6 +192,8 @@ class MagnifierInstancesPopupController:
         return False
 
     def show(self):
+        if self._is_latched():
+            return
         button = self._button()
         if button is None:
             return
@@ -172,11 +213,15 @@ class MagnifierInstancesPopupController:
             self.manager.host._magn_instances_popup_open = True
 
     def hide(self):
+        if self._is_latched():
+            return
         self._requested_open = False
         self._hover_timer.stop()
         self._bubble.hide()
 
     def on_count_changed(self):
+        if self._is_latched():
+            return
         button = self._button()
         if button is None:
             return

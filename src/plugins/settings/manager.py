@@ -186,6 +186,35 @@ def _settings_read_pass(method):
     return wrapper
 
 
+def _refuse_test_write_to_live_config(settings) -> None:
+    """A test run must never rewrite the user's real settings file.
+
+    Measured 2026-10-26: the settings/gallery suites ran with the host XDG
+    (the test sandbox redirected ``XDG_DATA_HOME``/``APPDATA`` but not
+    ``XDG_CONFIG_HOME``), and one of them deleted or replaced
+    ``~/.config/BlinkTable/BlinkTable.conf``. The owner's ``[image_gallery_ai]``
+    group vanished while the API key stayed in the keyring — the app then
+    reported "configure the API key" with the key present. The sandbox now
+    redirects ``XDG_CONFIG_HOME`` too; this guard makes an un-sandboxed run fail
+    loudly instead of eating a real profile.
+    """
+    if not os.environ.get("PYTEST_CURRENT_TEST"):
+        return
+    try:
+        path = str(settings.fileName() or "")
+    except Exception:
+        return
+    root = os.environ.get("XDG_CONFIG_HOME", "")
+    if root and path and os.path.abspath(path).startswith(os.path.abspath(root) + os.sep):
+        return
+    raise RuntimeError(
+        "refusing to write the real settings file from a test run: "
+        f"{path or '<unknown>'} is outside XDG_CONFIG_HOME={root or '<unset>'}; "
+        "the secret-store sandbox fixture sets it — run the suite through the "
+        "root/gallery conftest, or point XDG_CONFIG_HOME at a temp dir"
+    )
+
+
 class SettingsManager:
     def __init__(self, organization_name, application_name):
         # The persisted identity moved (pre-rename pair -> BlinkTable): run the
@@ -557,6 +586,7 @@ class SettingsManager:
         QTimer.singleShot(150, _run)
 
     def save_all_settings(self, store: Store):
+        _refuse_test_write_to_live_config(self.settings)
         v, s = store.viewport, store.settings
         render = v.render_config
         view = v.view_state
