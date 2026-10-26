@@ -169,7 +169,9 @@ def test_hydrate_miss_under_a_stale_profile_identity_does_not_poison_the_next_re
     _cache_dir(tmp_path, monkeypatch)
     path = Path("/gallery/frame.png")
     item = SimpleNamespace(path=path, mtime_ns=42, analysis=None)
-    stale, fresh = _identity(mode="fidelity"), _identity()
+    # A stale identity is a DIFFERENT BACKEND, not a different gallery mode
+    # (the mode left the key on 2026-10-26).
+    stale, fresh = _identity(_settings(model="model/B")), _identity()
 
     assert ai_cache.hydrate_item(item, stale) is False  # nothing cached yet
     expected = _result()
@@ -264,12 +266,24 @@ def test_identity_rejects_a_different_base_url(tmp_path, monkeypatch) -> None:
     )
 
 
-def test_identity_rejects_a_different_mode(tmp_path, monkeypatch) -> None:
+def test_the_gallery_mode_does_not_split_the_cache(tmp_path, monkeypatch) -> None:
+    """Owner, 2026-10-26: "why camera? it is not needed in VLM mode."
+
+    The mode never reached the question (the axis set is the PROFILE's), yet it
+    was the coarsest field in the KEY — and the analyse path filled it
+    inconsistently (``''`` on one card, ``'camera'`` on the next, measured in ONE
+    run), so one folder wrote two key sets and read neither back. Red-before: the
+    same scorecard under ``mode='fidelity'`` was a MISS.
+    """
     _cache_dir(tmp_path, monkeypatch)
     path, mtime = Path("/gallery/a.png"), 7
     ai_cache.save_analysis(path, mtime, _result(), _identity())
 
-    assert ai_cache.load_cached_analysis(path, mtime, _identity(mode="fidelity")) is None
+    hit = ai_cache.load_cached_analysis(path, mtime, _identity(mode="fidelity"))
+    assert hit is not None, "the mode must not re-key an analysed card"
+
+    empty = ai_cache.load_cached_analysis(path, mtime, _identity(mode=""))
+    assert empty is not None, "an empty mode (the field the app actually sent) hits too"
 
 
 def test_a_different_profile_is_not_a_miss_and_is_recorded(

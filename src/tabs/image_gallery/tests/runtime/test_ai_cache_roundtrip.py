@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 from tabs.image_gallery.models import AiAnalysisResult
 from tabs.image_gallery.services import ai_cache
@@ -11,8 +12,19 @@ from tabs.image_gallery.services import ai_cache
 IDENTITY = ai_cache.analysis_cache_identity(
     None, mode="camera", profile=("sharpness", "noise")
 )
+# A different BACKEND, not a different gallery mode: the mode left the cache key
+# on 2026-10-26 (owner: it is not needed in VLM mode), so it cannot split entries.
 OTHER_IDENTITY = ai_cache.analysis_cache_identity(
-    None, mode="fidelity", profile=("sharpness", "noise")
+    SimpleNamespace(
+        model="model/other",
+        base_url="",
+        sample_count=1,
+        sampling_temperature=0.0,
+        sampling_seed=0,
+        reasoning_effort="auto",
+    ),
+    mode="camera",
+    profile=("sharpness", "noise"),
 )
 
 

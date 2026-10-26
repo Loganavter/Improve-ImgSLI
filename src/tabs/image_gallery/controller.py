@@ -2866,7 +2866,9 @@ class GalleryController:
             "scope_label": label,
             "paths": paths,
             "question": str(question or "").strip(),
-            "mode": str(identity.get("mode", "") or ""),
+            # The identity no longer carries the gallery mode (2026-10-26): the
+            # mode is the ask's context, not part of "the same analysis".
+            "mode": str((context or {}).get("mode", "") or ""),
             "profile": str(identity.get("profile", "") or ""),
             "effort": str(identity.get("reasoning_effort", "") or ""),
             "model": str(identity.get("model", "") or ""),

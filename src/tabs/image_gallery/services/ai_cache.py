@@ -56,7 +56,7 @@ Stage 3: VLM tie-breaks / compare briefs are cached alongside this file via
 pair). Filtering (``filtering.py``) now searches both analysis tags and brief
 tags — see ``vlm_cache.find_briefs_for_path``.
 
-Audit-Meta: pattern=wire-cache size=exempt reason="one cache contract: the analysis identity (model/base_url/mode/profile/effort + the P3 sampling config) and the payload that must carry it cannot be split without letting one side drift — the file grew past 500 lines with the sampling fields + proposed-axis persistence of plan-gallery-ai-judgement P3 and stays cohesive"
+Audit-Meta: pattern=wire-cache size=exempt reason="one cache contract: the analysis identity (model/base_url/effort + the P3 sampling config; the gallery mode and the axis profile are recorded, never keyed) and the payload that must carry it cannot be split without letting one side drift — the file grew past 500 lines with the sampling fields + proposed-axis persistence of plan-gallery-ai-judgement P3 and stays cohesive"
 """
 
 from __future__ import annotations
@@ -91,7 +91,13 @@ logger = logging.getLogger(APP_LOGGER_NAME)
 #: baked into the FILE NAME, so it is unreachable by construction; the version
 #: bump states the shape change (a payload without the recorded profile could
 #: not answer "which axes do these numbers describe").
-AI_CACHE_VERSION = 5
+#: v6 = the gallery ``mode`` LEFT the identity (owner, 2026-10-26). It was the
+#: coarsest thing in the key while the axis PROFILE — strictly more informative —
+#: was already recorded rather than keyed, and the analyse path filled it
+#: inconsistently (``''`` / ``'camera'`` within one run), so one folder wrote two
+#: key sets and neither was ever read back. A v5 filename embeds the mode in its
+#: digest, so those entries are unreachable: one honest re-analysis, then hits.
+AI_CACHE_VERSION = 6
 
 #: Prompt/schema revision of the analyze request. Bump this whenever the prompt
 #: text or the expected response schema changes: every cached scorecard becomes a
@@ -118,10 +124,10 @@ PROMPT_SCHEMA_VERSION = 4
 #:
 #: ``effective_k`` is the DEPTH of that sampling: the request declares its full
 #: budget there (the cap), a stored payload records how many draws actually
-#: produced the scorecard. It is compared directionally (a stored depth thinner
-#: than the request's budget is a MISS) and deliberately excluded from the
-#: filename digest, so ONE entry per configuration is re-used at the depth it
-#: actually reached.
+#: produced the scorecard. The DECLARED CAP ``k`` is what staleness compares (a
+#: raised cap deepens an entry; a settled-thin entry answers its own cap), and
+#: ``effective_k`` is deliberately excluded from the filename digest, so ONE entry
+#: per configuration is re-used at the depth it actually reached.
 #:
 #: The PROFILE is NOT here (2026-10-26, ``task-analysis-phase-state``): the axis
 #: set is the ANSWER this cache stores, not part of the question. A profile that
@@ -132,7 +138,6 @@ PROMPT_SCHEMA_VERSION = 4
 _IDENTITY_FIELDS = (
     "model",
     "base_url",
-    "mode",
     "reasoning_effort",
     "k",
     "effective_k",
@@ -145,7 +150,6 @@ _IDENTITY_FIELDS = (
 _TEXT_IDENTITY_FIELDS = (
     "model",
     "base_url",
-    "mode",
     "reasoning_effort",
     "k",
     "effective_k",
@@ -359,8 +363,15 @@ def analysis_cache_identity(
 ) -> dict[str, object]:
     """The cache identity of one analysis: "what produced this scorecard".
 
-    ``settings`` is an ``AiSettings`` (or ``None``); ``mode`` the gallery mode the
-    request was built for, ``profile`` the active ``MetricProfile``,
+    ``settings`` is an ``AiSettings`` (or ``None``); ``mode`` is ACCEPTED FOR
+    CALL-SITE COMPATIBILITY AND IGNORED (owner, 2026-10-26: "why camera? it is
+    not needed in VLM mode, neither in code nor otherwise"). The scorecard's axis
+    set is the ACTIVE PROFILE's own list (``scorecard_axis_ids`` uses
+    ``profile.axis_ids`` whenever a profile is given, and the analyse path always
+    passes one), so the gallery mode does not change the question the model is
+    asked — while the analyse path filled it inconsistently (``''`` on one card,
+    ``'camera'`` on the next, measured in ONE live run), which split the cache
+    into two unreadable halves. ``profile`` the active ``MetricProfile``,
     ``reasoning_effort`` the effort sent with the request (defaults to
     ``settings.reasoning_effort``), ``schema_version`` the prompt revision
     (defaults to :data:`PROMPT_SCHEMA_VERSION`).
@@ -368,8 +379,9 @@ def analysis_cache_identity(
     The returned mapping has two kinds of keys, and the difference is the
     contract:
 
-    - the KEY fields (:data:`_IDENTITY_FIELDS`) — model, base_url, mode, effort,
+    - the KEY fields (:data:`_IDENTITY_FIELDS`) — model, base_url, effort,
       sampling (k/temperature/seed), the sampling depth and the prompt revision.
+      The gallery ``mode`` is deliberately NOT one of them (see above).
       They are compared and hashed into the filename, so they define "the same
       analysis".
     - ``"profile"`` — the axis set this request asks about, as a RECORD
@@ -391,7 +403,8 @@ def analysis_cache_identity(
     budget it needs there (default = the cap), while :func:`save_analysis`
     rewrites it in the stored payload to the number of draws that actually
     produced the scorecard (the adaptive stop may settle early). A stored depth
-    thinner than the request's budget is a MISS — see the module docstring.
+    below its own cap is a HIT; only a RAISED declared cap deepens an entry — see
+    the module docstring.
     Both tokens are canonicalized the same way (``k`` semantics), so a caller
     can never smuggle "3 draws" past the comparison as ``3.0``/``" 3"``.
 
@@ -431,7 +444,6 @@ def analysis_cache_identity(
     identity: dict[str, object] = {
         "model": _clean_text(getattr(settings, "model", "")),
         "base_url": _clean_text(getattr(settings, "base_url", "")),
-        "mode": _identity_token(mode),
         "reasoning_effort": _identity_token(effort) or "auto",
         "k": _number_token(draws, DEFAULT_SAMPLE_COUNT, cast=int),
         "effective_k": _number_token(needed, draws, cast=int),
