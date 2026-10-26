@@ -79,8 +79,14 @@ class JudgeRunEstimate:
 
     cards: int
     k: int
+    #: ``calls_max`` is the WHOLE run bound: pointwise + the pairwise refinement.
     calls_max: int
     tokens_max: int
+    #: The pointwise half alone (``cards x k``) and the pairwise half
+    #: (``cards x (top_n - 1)``, the worst case of sum n_i(n_i-1) with
+    #: n_i <= top_n), so the activity line can name both parts.
+    pointwise_calls_max: int = 0
+    pairwise_calls_max: int = 0
 
 
 def _wire_tokens_bound(edge_px: int) -> int:
@@ -96,7 +102,11 @@ def _wire_tokens_bound(edge_px: int) -> int:
 
 
 def estimate_judge_run(
-    n_cards: int, k: int, *, wire_edge: int | None = None
+    n_cards: int,
+    k: int,
+    *,
+    wire_edge: int | None = None,
+    pairwise_calls_max: int = 0,
 ) -> JudgeRunEstimate:
     """Upper-bound cost of a judge run over *n_cards* at *k* draws per card.
 
@@ -125,14 +135,37 @@ def estimate_judge_run(
             edge = int(wire_edge)
         except (TypeError, ValueError):
             edge = _UNBOUNDED_EDGE_ASSUMED_PX
-    calls_max = cards * draws
+    pointwise_max = cards * draws
+    try:
+        pairwise_max = max(0, int(pairwise_calls_max))
+    except (TypeError, ValueError):
+        pairwise_max = 0
+    # The pairwise pass is priced INTO the ceiling (2026-10-26, row
+    # task-pairwise-default-on): ``calls_max`` is what the run may spend, and a
+    # bound that hides the refinement would understate a near-tie folder by
+    # ``cards x (top_n - 1)`` calls. Kept separate so the activity line can say
+    # which part is which.
+    calls_max = pointwise_max + pairwise_max
     per_call = _wire_tokens_bound(edge) + _PROMPT_TOKENS_MAX + _ANSWER_TOKENS_MAX
     return JudgeRunEstimate(
-        cards=cards, k=draws, calls_max=calls_max, tokens_max=calls_max * per_call
+        cards=cards,
+        k=draws,
+        calls_max=calls_max,
+        tokens_max=calls_max * per_call,
+        pointwise_calls_max=pointwise_max,
+        pairwise_calls_max=pairwise_max,
     )
 
 
 _ESTIMATE_KEY = "image_gallery.activity.judge_estimate"
+#: The same line when the pairwise refinement is armed: the bound must SHOW the
+#: refinement (row task-pairwise-default-on: a hidden bound is how a near-tie
+#: folder gets an understated estimate).
+_ESTIMATE_PAIRWISE_KEY = "image_gallery.activity.judge_estimate_pairwise"
+_ESTIMATE_PAIRWISE_DEFAULT = (
+    "AI judge: up to {cards} × {k} = {pointwise} calls + up to {pairwise} pairwise "
+    "(estimate, ≤ {tokens} tokens)"
+)
 _CEILING_KEY = "image_gallery.activity.judge_ceiling_stop"
 _ESTIMATE_DEFAULT = (
     "AI judge: up to {cards} × {k} = {calls} calls (estimate, ≤ {tokens} tokens)"
@@ -239,6 +272,26 @@ def _clear_judge_activity(owner) -> None:
         pass
 
 
+def _pairwise_estimate_bound(n_cards: int, row) -> int:
+    """Worst-case pairwise calls for the run the estimate is about.
+
+    The pass compares each series' top ``top_n`` members in BOTH orders, so one
+    series costs at most ``n(n-1)`` calls; summing over series with ``n <= top_n``
+    is bounded by ``cards x (top_n - 1)``. Zero when the flag is off — the
+    estimate must not price a refinement the run will not attempt.
+    """
+    try:
+        if not bool(getattr(row, "pairwise_enabled", False)):
+            return 0
+        top_n = max(0, int(getattr(row, "pairwise_top_n", 0) or 0))
+        cards = max(0, int(n_cards))
+    except (TypeError, ValueError):
+        return 0
+    if top_n < 2 or cards < 2:
+        return 0
+    return cards * (top_n - 1)
+
+
 def begin_judge_run(owner, n_cards: int, *, settings=None) -> JudgeRunEstimate:
     """Open a run's budget ledger and STATE THE ESTIMATE before any call.
 
@@ -250,7 +303,9 @@ def begin_judge_run(owner, n_cards: int, *, settings=None) -> JudgeRunEstimate:
     row = _judge_settings(owner, settings)
     k = _judge_k(owner, row)
     ceiling = _judge_ceiling(owner, row)
-    est = estimate_judge_run(n_cards, k)
+    est = estimate_judge_run(
+        n_cards, k, pairwise_calls_max=_pairwise_estimate_bound(n_cards, row)
+    )
     gen = 0
     try:
         gen = int(getattr(owner, "_folder_gen", 0) or 0)
@@ -263,11 +318,12 @@ def begin_judge_run(owner, n_cards: int, *, settings=None) -> JudgeRunEstimate:
     except Exception:
         pass
     _ai_debug(
-        "judge run start: up to %d x %d = %d calls (estimate, <= %d tokens, "
+        "judge run start: up to %d x %d = %d calls%s (estimate, <= %d tokens, "
         "ceiling=%s)",
         est.cards,
         est.k,
         est.calls_max,
+        f" incl. up to {est.pairwise_calls_max} pairwise" if est.pairwise_calls_max else "",
         est.tokens_max,
         ceiling or "unlimited",
     )
@@ -276,11 +332,13 @@ def begin_judge_run(owner, n_cards: int, *, settings=None) -> JudgeRunEstimate:
             owner,
             _format_budget_text(
                 owner,
-                _ESTIMATE_KEY,
-                _ESTIMATE_DEFAULT,
+                _ESTIMATE_PAIRWISE_KEY if est.pairwise_calls_max else _ESTIMATE_KEY,
+                _ESTIMATE_PAIRWISE_DEFAULT if est.pairwise_calls_max else _ESTIMATE_DEFAULT,
                 cards=est.cards,
                 k=est.k,
                 calls=est.calls_max,
+                pointwise=est.pointwise_calls_max or est.cards * est.k,
+                pairwise=est.pairwise_calls_max,
                 tokens=est.tokens_max,
             ),
         )

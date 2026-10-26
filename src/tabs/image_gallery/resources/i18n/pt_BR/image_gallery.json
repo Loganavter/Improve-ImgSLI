@@ -19,7 +19,8 @@
       "error": "Erro",
       "unreadable": "Ilegível",
       "judge_estimate": "Juiz de IA: até {cards} × {k} = {calls} chamadas (estimativa, ≤ {tokens} tokens)",
-      "judge_ceiling_stop": "Juiz de IA pausado no limite de {ceiling} chamadas — continue para analisar o restante"
+      "judge_ceiling_stop": "Juiz de IA pausado no limite de {ceiling} chamadas — continue para analisar o restante",
+      "judge_estimate_pairwise": "Juiz de IA: até {cards} × {k} = {pointwise} chamadas + até {pairwise} em pares (estimativa, ≤ {tokens} tokens)"
     },
     "domain": {
       "algorithms": "Algoritmos",

@@ -19,7 +19,8 @@
       "error": "Ошибка",
       "unreadable": "Не читается",
       "judge_estimate": "ИИ-судья: до {cards} × {k} = {calls} вызовов (оценка, ≤ {tokens} токенов)",
-      "judge_ceiling_stop": "ИИ-судья остановлен на лимите {ceiling} вызовов — продолжите, чтобы обработать остальные"
+      "judge_ceiling_stop": "ИИ-судья остановлен на лимите {ceiling} вызовов — продолжите, чтобы обработать остальные",
+      "judge_estimate_pairwise": "ИИ-судья: до {cards} × {k} = {pointwise} вызовов + до {pairwise} парных (оценка, ≤ {tokens} токенов)"
     },
     "domain": {
       "algorithms": "Алгоритмы",
