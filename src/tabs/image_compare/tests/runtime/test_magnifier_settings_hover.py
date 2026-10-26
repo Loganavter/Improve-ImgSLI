@@ -243,3 +243,78 @@ def test_leave_in_padding_rim_arms_backstop(qapp, monkeypatch):
 
     assert flyout.schedule_calls, "backstop must be armed on rim Leave"
     assert flyout.isVisible()
+
+class _FakePopup(QWidget):
+    """Stand-in for a toolkit combo dropdown (``BaseFlyout`` popup)."""
+
+    def __init__(self, anchors, parent=None):
+        super().__init__(parent)
+        self._anchors = tuple(anchors)
+
+    def anchor_widgets(self):
+        return self._anchors
+
+    def contains_global(self, global_pos) -> bool:
+        # The popup owns the whole screen in this stand: any probe point is
+        # "over the list" once the test says so.
+        return True
+
+
+def test_cursor_over_the_combobox_dropdown_stays_inside_the_unit(qapp, monkeypatch):
+    """Regression (owner, 2026-10-26): opening the interpolation list collapsed
+    the panel and the list itself.
+
+    The list is a combo popup anchored to a control INSIDE the panel, but it is
+    not a FlyoutManager ``linked_child`` of the panel, so ``_combined_reason``
+    reported ``hover-move:outside`` and the panel hid immediately (measured in
+    the live journal). A popup opened from inside the unit must count as inside.
+    """
+    fw, controller = _make_controller(qapp, monkeypatch, cursor_global=QPoint(0, 0))
+    flyout = fw.magnifier_settings_flyout
+    flyout.show()
+
+    popup = _FakePopup(anchors=(fw.magnifier_group_container,), parent=fw)
+    popup.show()
+    monkeypatch.setattr(popup, "isVisible", lambda: True)
+    monkeypatch.setattr(flyout, "isVisible", lambda: True)
+    monkeypatch.setattr(
+        transient.QApplication, "activePopupWidget", staticmethod(lambda: popup)
+    )
+    over_list = popup.mapToGlobal(QPoint(10, 10))
+    monkeypatch.setattr(transient.QCursor, "pos", staticmethod(lambda: over_list))
+
+    assert controller._combined_reason() == "popup"
+
+    # Drive the decision directly: the synthetic popup is not a real Qt popup,
+    # so event delivery through qapp.notify() would exercise the compositor
+    # (and an offscreen stand has none). The handler is the unit under test.
+    flyout.hide_calls = 0
+    controller._handle_hover_event(QEvent(QEvent.Type.HoverMove))
+    assert flyout.hide_calls == 0, "panel must not hide while the cursor is on the list"
+    assert controller._combined_reason() == "popup"
+
+
+def test_focus_inside_the_dropdown_keeps_the_panel(qapp, monkeypatch):
+    """Picking an entry focuses the list; that focus is still our unit."""
+    fw, controller = _make_controller(qapp, monkeypatch, cursor_global=QPoint(0, 0))
+    flyout = fw.magnifier_settings_flyout
+    flyout.show()
+
+    popup = _FakePopup(anchors=(fw.magnifier_group_container,), parent=fw)
+    item = QWidget(popup)
+    popup.show()
+    monkeypatch.setattr(popup, "isVisible", lambda: True)
+    monkeypatch.setattr(flyout, "isVisible", lambda: True)
+    monkeypatch.setattr(
+        transient.QApplication, "activePopupWidget", staticmethod(lambda: popup)
+    )
+    monkeypatch.setattr(
+        transient.QApplication, "focusWidget", staticmethod(lambda: item)
+    )
+
+    flyout.hide_calls = 0
+    controller._handle_button_focus_event(
+        QFocusEvent(QEvent.Type.FocusOut, Qt.FocusReason.MouseFocusReason)
+    )
+    assert flyout.hide_calls == 0, "focus inside the dropdown must keep the panel"
+

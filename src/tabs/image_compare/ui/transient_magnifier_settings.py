@@ -1,3 +1,4 @@
+# Audit-Meta: pattern=single-owner reason="one hover/auto-hide state machine: show, hide, focus, cursor-zone and the decision journal all mutate the same controller fields, and the unit-zone predicates share them; a use_cases split would thread that state through a new boundary. Growing by the popup-inside-unit fix (2026-10-26); extracting the unit-zone helpers into their own module is the planned split."
 from __future__ import annotations
 
 from PySide6.QtCore import QEvent, QObject, Qt
@@ -277,10 +278,24 @@ class MagnifierSettingsHoverController(QObject):
                         break
             except Exception:
                 pass
+            # A combo dropdown opened from a control in the panel takes focus
+            # while the user picks an entry; that is still our unit.
+            popup = QApplication.activePopupWidget()
+            popup_focus = False
+            if popup is not None and new_focus is not None:
+                try:
+                    popup_focus = (
+                        new_focus is popup
+                        or popup.isAncestorOf(new_focus)
+                        or self._popup_belongs_to_unit(popup, flyout)
+                    )
+                except Exception:
+                    popup_focus = False
             still_inside = new_focus is not None and (
                 new_focus in self._group_buttons
                 or (flyout is not None and flyout.isAncestorOf(new_focus))
                 or top_inside
+                or popup_focus
                 or _value_pill_inside(self, new_focus)
             )
             if not still_inside:
@@ -299,6 +314,40 @@ class MagnifierSettingsHoverController(QObject):
                 except Exception:
                     pass
                 self._hide_immediately()
+
+    def _popup_belongs_to_unit(self, popup, flyout) -> bool:
+        """True when *popup* was opened from a control inside this mag unit.
+
+        A toolkit combo dropdown (``ComboBox._DropdownOverlay``, a
+        ``BaseFlyout`` popup) is anchored to the combo that opened it — a
+        control inside ``magnifier_group_container`` or the panel body. Those
+        popups are not FlyoutManager ``linked_children`` of the panel, so the
+        unit tests below must recognise them by their anchor.
+        """
+        if popup is None or popup is flyout:
+            return False
+        try:
+            getter = getattr(popup, "anchor_widgets", None)
+            anchors = tuple(getter() or ()) if callable(getter) else ()
+        except Exception:
+            anchors = ()
+        if not anchors:
+            return False
+        widget = self.widget
+        group = getattr(widget, "magnifier_group_container", None)
+        owner_roots = tuple(
+            root for root in (widget, group, flyout) if root is not None
+        )
+        for anchor in anchors:
+            if anchor is None:
+                continue
+            for root in owner_roots:
+                try:
+                    if anchor is root or root.isAncestorOf(anchor):
+                        return True
+                except Exception:
+                    continue
+        return False
 
     def _cursor_in_group_zone(self) -> bool:
         group = getattr(self.widget, "magnifier_group_container", None)
@@ -344,6 +393,22 @@ class MagnifierSettingsHoverController(QObject):
                             return "linked"
                     except Exception:
                         continue
+            except Exception:
+                pass
+            # A combo dropdown opened from a control inside the unit belongs to
+            # it too — the cursor must travel onto the list to pick an entry, and
+            # hiding the panel hides the list with it. Dropping this branch was
+            # measured live (2026-10-26): `show` -> `hover-move:outside` on the
+            # interpolation list -> `hide:immediate`, which collapsed both.
+            try:
+                popup = QApplication.activePopupWidget()
+                if (
+                    popup is not None
+                    and popup.isVisible()
+                    and self._popup_belongs_to_unit(popup, flyout)
+                    and popup.contains_global(QCursor.pos())
+                ):
+                    return "popup"
             except Exception:
                 pass
         return None

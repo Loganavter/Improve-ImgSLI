@@ -754,6 +754,16 @@
       }
     },
     {
+      "path": "src/tabs/image_compare/ui/transient_magnifier_settings.py",
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=single-owner reason=\"one hover/auto-hide state machine: show, hide, focus, cursor-zone and the decision journal all mutate the same controller fields, and the unit-zone predicates share them; a use_cases split would thread that state through a new boundary. Growing by the popup-inside-unit fix (2026-10-26); extracting the unit-zone helpers into their own module is the planned split.\"",
+      "parsed": {
+        "pattern": "single-owner",
+        "reason": "one hover/auto-hide state machine: show, hide, focus, cursor-zone and the decision journal all mutate the same controller fields, and the unit-zone predicates share them; a use_cases split would thread that state through a new boundary. Growing by the popup-inside-unit fix (2026-10-26); extracting the unit-zone helpers into their own module is the planned split."
+      }
+    },
+    {
       "path": "src/tabs/image_compare/use_cases/chrome_sync.py",
       "limit": 500,
       "marker": "Audit-Meta:",
