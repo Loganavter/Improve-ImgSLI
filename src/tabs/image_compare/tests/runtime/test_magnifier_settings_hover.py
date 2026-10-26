@@ -167,9 +167,10 @@ def test_leave_to_linked_child_arms_backstop(qapp, monkeypatch):
     monkeypatch.setattr(transient.QCursor, "pos", staticmethod(lambda: linked_pos))
 
     qapp.notify(group, _hover_event(QEvent.Type.HoverLeave, linked_pos))
-    assert flyout.schedule_calls, "backstop timer must be armed on linked transition"
+    # The backstop is the controller's own re-validating timer (the flyout's
+    # auto-hide hid a panel that sat under a stationary cursor — 2026-10-26).
+    assert controller._backstop.is_active(), "backstop timer must be armed on linked transition"
     assert flyout.hide_calls == 0, "must not hide while cursor is on a linked sibling"
-    assert flyout.isVisible()
 
 
 class _FakeManager:
@@ -241,8 +242,8 @@ def test_leave_in_padding_rim_arms_backstop(qapp, monkeypatch):
 
     qapp.notify(group, QEvent(QEvent.Type.Leave))
 
-    assert flyout.schedule_calls, "backstop must be armed on rim Leave"
-    assert flyout.isVisible()
+    assert controller._backstop.is_active(), "backstop must be armed on rim Leave"
+    assert flyout.hide_calls == 0, "rim Leave must not hide immediately"
 
 class _FakeDropOverlay(QWidget):
     """Stand-in for ``ComboBox._DropdownOverlay``: a BaseFlyout **child overlay**
@@ -312,3 +313,41 @@ def test_focus_inside_the_dropdown_keeps_the_panel(qapp, monkeypatch):
         QFocusEvent(QEvent.Type.FocusOut, Qt.FocusReason.MouseFocusReason)
     )
     assert flyout.hide_calls == 0, "focus inside the dropdown must keep the panel"
+
+
+def test_backstop_does_not_hide_while_the_cursor_is_still_inside(qapp, monkeypatch):
+    """Regression (owner, 2026-10-26): the panel closed itself ~300 ms after
+    showing, under a stationary cursor, and took the interpolation list with it.
+
+    Journal: ``hide:schedule-backstop cursor=1324,500`` -> 300 ms ->
+    ``timeout:hide MagnifierSettingsFlyout cursor=1343,875`` — the cursor was on
+    the panel body all along, no later event cancelled the timer. The backstop
+    must re-validate before hiding.
+    """
+    fw, controller = _make_controller(qapp, monkeypatch, cursor_global=QPoint(0, 0))
+    flyout = fw.magnifier_settings_flyout
+    flyout.show()
+    monkeypatch.setattr(flyout, "isVisible", lambda: True)
+    # Cursor sits on the panel body when the backstop fires.
+    on_panel = fw.checkbox_widget.mapToGlobal(QPoint(10, 10))
+    monkeypatch.setattr(transient.QCursor, "pos", staticmethod(lambda: on_panel))
+    monkeypatch.setattr(flyout, "contains_global", lambda _pos: True)
+
+    flyout.hide_calls = 0
+    controller._hide_if_outside()
+    assert flyout.hide_calls == 0, "panel must not hide while the cursor is on it"
+
+
+def test_backstop_hides_when_the_cursor_really_left(qapp, monkeypatch):
+    """The orphan-open guard still works: outside the unit at timeout -> hide."""
+    fw, controller = _make_controller(qapp, monkeypatch, cursor_global=QPoint(0, 0))
+    flyout = fw.magnifier_settings_flyout
+    flyout.show()
+    monkeypatch.setattr(flyout, "isVisible", lambda: True)
+    far = fw.checkbox_widget.mapToGlobal(QPoint(4000, 4000))
+    monkeypatch.setattr(transient.QCursor, "pos", staticmethod(lambda: far))
+    monkeypatch.setattr(flyout, "contains_global", lambda _pos: False)
+
+    flyout.hide_calls = 0
+    controller._hide_if_outside()
+    assert flyout.hide_calls >= 1, "an orphan-open guard must still hide outside"

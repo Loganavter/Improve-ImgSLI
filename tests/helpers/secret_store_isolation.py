@@ -228,6 +228,11 @@ class SecretStoreSandbox:
         )
         # The encrypted-file backend writes ``<app data>/BlinkTable/secrets``.
         monkeypatch.setenv("XDG_DATA_HOME", str(self.root / "data"))
+        # QSettings resolves $XDG_CONFIG_HOME/<org>/<app>.conf; without this the
+        # app config store still points at the REAL user profile and a settings
+        # test rewrites it (measured 2026-10-26: the [image_gallery_ai] group was
+        # dropped from the live config while the key stayed in the keyring).
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(self.root / "config"))
         monkeypatch.setenv("APPDATA", str(self.root / "appdata"))
 
         original = secret_store._secret_tool

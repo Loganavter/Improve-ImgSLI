@@ -51,6 +51,18 @@ class UIManager(QObject):
     def set_modal_dialog_active(self, active: bool):
         self._is_modal_active = active
 
+    def shutdown(self) -> None:
+        """Host window is closing: latch the transient UI off for good.
+
+        Reached from the first shutdown step (``MarkShuttingDownStep``), so
+        the latch is engaged before any later step hides/closes a window and
+        emits the final focus burst (see ``TransientUIManager.shutdown``).
+        """
+        try:
+            self.transient.shutdown()
+        except Exception:
+            logger.exception("Transient UI shutdown failed")
+
     def show_flyout(self, image_number: int):
         self.transient.show_flyout(image_number)
 

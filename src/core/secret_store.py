@@ -201,7 +201,31 @@ def _secret_tool() -> str | None:
     return shutil.which("secret-tool")
 
 
+#: Set by ``tests/helpers/secret_store_isolation.py`` when it installs the fake
+#: ``secret-tool``; its absence under pytest means "not sandboxed".
+SANDBOX_MARKER_ENV = "IMGLSI_TEST_SECRET_TOOL_SANDBOX"
+
+
+def _pytest_without_sandbox() -> bool:
+    """True inside a pytest run that did NOT install the secret-store sandbox.
+
+    A test that reaches the host keyring can read, overwrite or clear a real
+    user's provider key — measured 2026-10-25 (the shared ``blinktable`` entry
+    was replaced by a stub) and again 2026-10-26 (an un-sandboxed gallery-tier
+    run). Relying on every test tree importing an autouse fixture is not a
+    guard: a single ``pytest src/tabs/<tab>/tests`` without the sandbox is
+    enough. Without the marker the keyring backend reports unavailable, so the
+    store degrades to the isolated session/encrypted-file path instead of
+    touching the login keyring.
+    """
+    if not os.environ.get("PYTEST_CURRENT_TEST"):
+        return False
+    return not os.environ.get(SANDBOX_MARKER_ENV)
+
+
 def keyring_available() -> bool:
+    if _pytest_without_sandbox():
+        return False
     return _secret_tool() is not None
 
 

@@ -4,6 +4,7 @@ import logging
 import time
 
 from PySide6.QtCore import QEvent, Qt, QTimer
+from PySide6.QtWidgets import QApplication
 
 from core.constants import AppConstants
 from sli_ui_toolkit.managers import DelayedActionTimer
@@ -25,6 +26,65 @@ def _query_overlay(store, capability_id: str, default=None):
 #: on the widget rather than on a module dict so it dies with the widget and a
 #: controller built for a *different* page never inherits it.
 _WIRING_ATTR = "_magnifier_transient_wiring"
+
+#: Closing latch. Set on the manager chain (``TransientUIManager`` /
+#: ``UIManager``) by ``TransientUIManager.shutdown``; read by every controller
+#: before it reacts. The host window's own ``_closing`` flag (set by the first
+#: shutdown step) is the second input, so a controller built *after* the
+#: shutdown started is born inert instead of re-arming its timers.
+_SHUTDOWN_LATCH_ATTR = "_transient_shutdown_latched"
+
+
+def _manager_chain(manager):
+    """``(manager, host, window)`` — the three nodes that may carry the latch."""
+    host = getattr(manager, "host", None)
+    window = getattr(host, "parent_widget", None)
+    if window is not None:
+        window_of = getattr(window, "window", None)
+        if callable(window_of):
+            try:
+                window = window_of()
+            except (RuntimeError, TypeError):
+                pass
+    return (manager, host, window)
+
+
+def transient_shutdown_latched(manager) -> bool:
+    """True once the host window / transient UI is closing.
+
+    Three inputs, cheapest first: Qt's own ``closingDown()`` (already past the
+    loop), the latch the shutdown step puts on the manager chain, and the
+    host window's ``_closing`` flag (``MarkShuttingDownStep``). All of them
+    are plain bool reads — this runs on every focus event, which during the
+    owner's storm is every ~11 ms, so no imports or registry probes here.
+    """
+    try:
+        if QApplication.closingDown():
+            return True
+    except Exception:
+        pass
+    for node in _manager_chain(manager):
+        if node is None:
+            continue
+        try:
+            if getattr(node, _SHUTDOWN_LATCH_ATTR, False):
+                return True
+            if getattr(node, "_closing", False):
+                return True
+        except (AttributeError, RuntimeError):
+            continue
+    return False
+
+
+def latch_transient_shutdown(manager) -> None:
+    """Engage the latch on the manager chain (idempotent)."""
+    for node in _manager_chain(manager)[:2]:
+        if node is None:
+            continue
+        try:
+            setattr(node, _SHUTDOWN_LATCH_ATTR, True)
+        except (AttributeError, TypeError):
+            pass
 
 
 class _TransientWiring:
@@ -109,13 +169,22 @@ class MagnifierVisibilityController:
         )
         self._last_flyout_hide_ts = 0.0
         self._wiring = None
+        self._shutdown_done = False
         self._wire_button()
+
+    def _is_latched(self) -> bool:
+        return getattr(self, "_shutdown_done", False) or transient_shutdown_latched(
+            self.manager
+        )
 
     def _wire_button(self) -> None:
         host = self.manager.host
         btn = getattr(self.widget, "btn_magnifier", None)
         flyout = getattr(self.widget, "magnifier_visibility_flyout", None)
         if btn is None or flyout is None:
+            return
+        if self._is_latched():
+            # Shutdown already started: install nothing, arm nothing.
             return
         btn.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
         # Drop a previous owner's installation before installing ours: a
@@ -165,7 +234,37 @@ class MagnifierVisibilityController:
         if wiring is not None:
             wiring.teardown()
 
+    def shutdown(self) -> None:
+        """The host window is closing: stop reacting, for good.
+
+        Called from the window close path (``MarkShuttingDownStep`` ->
+        ``UIManager.shutdown`` -> ``TransientUIManager.shutdown``) *before*
+        the steps that hide/close windows. Those steps still produce one last
+        burst of focus events; while this controller stayed live, each
+        FocusOut ran ``hide()`` (focus back to the button) and each FocusIn
+        re-armed the hover timer that re-opens the flyout — the owner's
+        post-close ``[magnifier-visibility] btn_magnifier event=9`` loop
+        (2026-10-26). Latched, armed-off and un-wired, the burst is inert.
+        """
+        if getattr(self, "_shutdown_done", False):
+            return
+        self._shutdown_done = True
+        latch_transient_shutdown(self.manager)
+        try:
+            self._hover_timer.stop()
+        except Exception:
+            pass
+        flyout = getattr(self.widget, "magnifier_visibility_flyout", None)
+        if flyout is not None:
+            try:
+                flyout.cancel_auto_hide()
+            except Exception:
+                pass
+        self.teardown()
+
     def update_states(self):
+        if self._is_latched():
+            return
         host = self.manager.host
         try:
             model = _query_overlay(host.store, "overlay.active_state")
@@ -180,6 +279,8 @@ class MagnifierVisibilityController:
             pass
 
     def on_toggle_with_hover(self, checked: bool):
+        if self._is_latched():
+            return
         btn = getattr(self.widget, "btn_magnifier", None)
         if btn is None:
             return
@@ -202,6 +303,8 @@ class MagnifierVisibilityController:
             QTimer.singleShot(0, lambda kd=keyboard_driven: self.show(reason="keyboard" if kd else "hover"))
 
     def show(self, reason: str = "hover"):
+        if self._is_latched():
+            return
         host = self.manager.host
         use_magnifier = bool(_query_overlay(host.store, "overlay.enabled", False))
         logger.debug("[magnifier-visibility] show() reason=%s use_magnifier=%s", reason, use_magnifier)
@@ -253,6 +356,8 @@ class MagnifierVisibilityController:
             self.widget.magnifier_visibility_flyout.cancel_auto_hide()
 
     def hide(self, reason: str = "explicit"):
+        if self._is_latched():
+            return
         host = self.manager.host
         try:
             self._hover_timer.stop()
@@ -262,6 +367,8 @@ class MagnifierVisibilityController:
         host._magn_popup_open = False
 
     def event_filter(self, watched, event):
+        if self._is_latched():
+            return False
         host = self.manager.host
         btn = getattr(self.widget, "btn_magnifier", None)
         if btn is None:

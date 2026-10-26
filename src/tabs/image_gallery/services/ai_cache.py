@@ -42,10 +42,11 @@ The identity never contains secrets: ``api_key`` is excluded from the key and
 from the cached JSON (the scorecard is not a credential store).
 
 Sampling depth (``effective_k``) is part of the identity but NOT of the filename
-discriminator: a REQUEST's identity carries its full budget in ``effective_k``
+discriminator, and it is NOT a staleness test (2026-10-26): the DECLARED cap ``k``
+is compared instead — a request's identity carries its full budget in ``effective_k``
 (the declared cap), while a STORED payload carries the number of draws that
 actually produced the scorecard (the adaptive stop may settle early). A stored
-entry thinner than the request's budget is a MISS — a 1-draw scorecard is never
+entry is re-analysed only when the DECLARED cap grew — a 1-draw scorecard is never
 served for a cap-3 request — while the same configuration at the same or a
 larger depth is a HIT. ``k`` stays the declared cap, so the two are never
 conflated.
@@ -462,6 +463,27 @@ def _effective_k_int(identity) -> int:  # type: ignore[no-untyped-def]
         return 0
 
 
+def _k_cap_int(identity) -> int:  # type: ignore[no-untyped-def]
+    """The DECLARED draw cap of *identity* (``k``), ``0`` when unknown.
+
+    The cap is what the user picked; ``effective_k`` is how many draws the
+    adaptive stop actually spent. Owner's defect (2026-10-26): the thin-entry rule
+    compared the DEPTH, so a card that settled after 2 of a declared 3 draws was a
+    MISS on every open — re-analysed, stored thin again, MISS again, forever. The
+    cache could never hit for exactly the cards that behaved well. Cap growth is
+    the only real staleness: a stored DEPTH thinner than the new cap must be
+    deepened. Never raises.
+    """
+    try:
+        token = _clean_text(identity.get("k"))  # type: ignore[union-attr]
+    except Exception:
+        return 0
+    try:
+        return max(1, int(float(token)))
+    except (TypeError, ValueError):
+        return 0
+
+
 def _identity_dimensions(identity: dict[str, object]) -> dict[str, object]:
     """The identity WITHOUT ``effective_k`` — the request dimensions.
 
@@ -558,9 +580,13 @@ def load_cached_analysis(
             # A foreign / legacy entry: the file key says it is ours, the payload
             # does not. Treat it exactly like a miss.
             return None
-        if _effective_k_int(stored_identity) < _effective_k_int(expected_identity):
-            # Adaptive sampling: a thin scorecard (e.g. one draw) must never be
-            # served for a request that declared a larger budget.
+        if _k_cap_int(stored_identity) and _k_cap_int(expected_identity) and (
+            _k_cap_int(stored_identity) < _k_cap_int(expected_identity)
+        ):
+            # The user RAISED the declared cap: a scorecard built for fewer draws
+            # must be deepened. A stored depth below the cap is NOT stale — that is
+            # the adaptive stop doing its job (owner's 2026-10-26 loop: comparing
+            # the depth made every early-settled card a permanent miss).
             return None
 
         def _score(key: str) -> int:

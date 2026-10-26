@@ -53,6 +53,14 @@ class MagnifierSettingsHoverController(QObject):
         super().__init__(widget)
         self.widget = widget
         self._hover_timer = DelayedActionTimer(self._show, parent=widget)
+        # The hide backstop re-validates instead of hiding blindly: a
+        # ``leave:inside-*`` arms it, and 300 ms later the panel may sit
+        # UNDER a stationary cursor (no further hover event arrives to
+        # cancel the flyout's own auto-hide, so it closed itself and took
+        # the interpolation list with it — measured live 2026-10-26:
+        # ``timeout:hide MagnifierSettingsFlyout cursor=1343,875`` on the
+        # panel body).
+        self._backstop = DelayedActionTimer(self._hide_if_outside, parent=widget)
         self._mode_picker_flyouts_wired: set = set()
         self._group_buttons: set = set()
         # Decision journal (shared toolkit helper): every show/hide/schedule
@@ -445,10 +453,57 @@ class MagnifierSettingsHoverController(QObject):
     def _is_cursor_in_combined_zone(self) -> bool:
         return self._combined_reason() is not None
 
+    def _cursor_chain(self) -> str:
+        """Diagnostic: what the cursor is over, as a short class chain.
+
+        The unit test for "inside" needs to know which surface the owner is on
+        when the panel collapses; a bare exit position (``cursor=1516,632``)
+        cannot say whether the cursor sat on the interpolation list, on a
+        toolbar combo or on empty canvas (measured 2026-10-26: two rounds of
+        guessing which shape the list has). Only emitted while the journal is
+        debug-enabled.
+        """
+        try:
+            widget = QApplication.widgetAt(QCursor.pos())
+        except Exception:
+            return ""
+        parts: list[str] = []
+        steps = 0
+        while widget is not None and steps < 6:
+            steps += 1
+            name = type(widget).__name__
+            object_name = widget.objectName()
+            if object_name:
+                name = f"{name}#{object_name}"
+            if hasattr(widget, "anchor_widgets"):
+                name = f"{name}[flyout]"
+            parts.append(name)
+            try:
+                widget = widget.parentWidget()
+            except Exception:
+                break
+        return " under=" + " < ".join(parts)
+
+    def _hide_if_outside(self) -> None:
+        """Backstop action: hide only if the cursor is no longer in the unit.
+
+        ``leave:inside-*`` arms this because a linked surface carries no event
+        filter of its own (an orphan-open risk). Hiding blindly was the defect:
+        the panel can end up under a stationary cursor, where no later event
+        cancels the timer, and it closed itself 300 ms after showing.
+        """
+        reason = self._combined_reason()
+        chain = self._cursor_chain().strip()
+        if reason is None:
+            self._note("hide:backstop:outside", chain)
+            self._hide_immediately()
+        else:
+            self._note(f"hide:backstop:still-{reason}", chain)
+
     def _hide_immediately(self) -> None:
         flyout = getattr(self.widget, "magnifier_settings_flyout", None)
         if flyout is not None and flyout.isVisible():
-            self._note("hide:immediate", "")
+            self._note("hide:immediate", self._cursor_chain().strip())
             flyout.hide()
 
     def _handle_flyout_event(self, event) -> None:
@@ -566,7 +621,7 @@ class MagnifierSettingsHoverController(QObject):
             except Exception:
                 focus_name = "?"
             self._note("hide:schedule-backstop", f"focus={focus_name}")
-            flyout.schedule_auto_hide(AppConstants.TRANSIENT_AUTO_HIDE_DELAY_MS)
+            self._backstop.start(AppConstants.TRANSIENT_AUTO_HIDE_DELAY_MS)
 
     def _cancel_hide(self) -> None:
         flyout = getattr(self.widget, "magnifier_settings_flyout", None)
@@ -577,4 +632,5 @@ class MagnifierSettingsHoverController(QObject):
         timer = getattr(flyout, "_auto_hide", None)
         if timer is None or bool(timer._timer.isActive()):
             self._note("hide:cancel", "")
+        self._backstop.stop()
         flyout.cancel_auto_hide()

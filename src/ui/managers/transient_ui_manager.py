@@ -35,6 +35,40 @@ class TransientUIManager:
         # while staying on the same session is retried.  # ALLOWED
         self._service_miss_session: dict[str, tuple[tuple[str | None, frozenset[str]], float]] = {}
         self.closing = PopupClosingController(self)
+        self._transient_shutdown_latched = False
+
+    def shutdown(self) -> None:
+        """Latch the transient controllers off and tear their wiring down.
+
+        Called from the host window close path (``MarkShuttingDownStep`` ->
+        ``UIManager.shutdown``) *before* the steps that hide/close windows,
+        because those steps still emit one last burst of focus events. While
+        the controllers stayed live, each burst event ran the full reaction
+        chain — ``hide()`` on FocusOut, focus back to the button, a FocusIn
+        that re-armed the hover timer, the flyout re-opening — one round trip
+        per loop turn, i.e. the owner's post-close
+        ``[magnifier-visibility] btn_magnifier event=9`` spam (2026-10-26).
+
+        Latched first, so a controller built from a late lookup is inert too;
+        then each service gets its own ``shutdown`` (or a bare ``teardown``
+        if it has none).
+        """
+        if getattr(self, "_transient_shutdown_latched", False):
+            return
+        self._transient_shutdown_latched = True
+        for attr, service in list(self._services.items()):
+            shutdown = getattr(service, "shutdown", None)
+            teardown = getattr(service, "teardown", None)
+            try:
+                if callable(shutdown):
+                    shutdown()
+                elif callable(teardown):
+                    teardown()
+            except Exception:
+                logger.debug(
+                    "transient service %s failed to shut down", attr, exc_info=True
+                )
+        self._services.clear()
 
     def _miss_key(self, registry) -> tuple[str | None, frozenset[str]]:
         """Cache key for negative service lookups (public API first).
@@ -57,6 +91,10 @@ class TransientUIManager:
 
     def _get_service(self, attr: str):
         """Lazily resolve a tab-owned service."""
+        if getattr(self, "_transient_shutdown_latched", False):
+            # The window is closing: never resurrect a controller (it would be
+            # born un-wired but its registry probe can re-discover tabs).
+            return None
         cached = self._services.get(attr)
         if cached is not None:
             return cached
