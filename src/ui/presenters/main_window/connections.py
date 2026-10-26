@@ -13,6 +13,9 @@ from ui.presenters.main_window.workspace import (
     on_workspace_tab_changed,
     on_workspace_tab_close_requested,
 )
+from ui.presenters.main_window.workspace_tab_order import (
+    connect_workspace_tab_reordering,
+)
 from ui.presenters.main_window.workspace_tab_menu import (
     on_workspace_tab_context_menu_requested,
 )
@@ -96,6 +99,9 @@ def connect_signals(presenter):
     presenter.ui.workspace_tabs.tabCloseRequested.connect(
         lambda index: on_workspace_tab_close_requested(presenter, index)
     )
+    # Drag-reorder is on by default (see ui.main_window.ui) — this is the
+    # persistence side: the strip's final order becomes the session order.
+    connect_workspace_tab_reordering(presenter)
     presenter.ui.workspace_tabs.addRequested.connect(
         lambda: on_new_workspace_tab_requested(presenter)
     )

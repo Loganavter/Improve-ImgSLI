@@ -15,6 +15,14 @@ class SessionManager:
     def list_sessions(self) -> tuple[WorkspaceSession, ...]:
         return self.store.list_workspace_sessions()
 
+    def reorder_sessions(self, session_ids) -> bool:
+        """Apply a visible tab order to the workspace session list.
+
+        Delegates to the store (the list order is the persisted tab order —
+        see ``Store.reorder_workspace_sessions``).
+        """
+        return self.store.reorder_workspace_sessions(session_ids)
+
     def get_active_session(self) -> WorkspaceSession | None:
         return self.store.get_active_workspace_session()
 

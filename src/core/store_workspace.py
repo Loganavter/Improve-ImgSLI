@@ -30,6 +30,41 @@ class WorkspaceStoreMixin:
             return None
         return self.get_workspace_session(active_id)
 
+    def reorder_workspace_sessions(
+        self, session_ids: "list[str] | tuple[str, ...]"
+    ) -> bool:
+        """Reorder the workspace session list to the given session id order.
+
+        The session list *is* the persisted tab order — it is what a project
+        file writes (``build_project_data``) and restores
+        (``load_project_data``), so a reorder needs no second store.
+
+        Unknown ids are skipped (a session that no longer exists is simply
+        absent) and sessions missing from ``session_ids`` keep their relative
+        order at the end — a stale order must never drop a session. Only the
+        list order changes: ``active_session_id`` is untouched, so the current
+        session stays current at its new position. Returns True when the order
+        actually changed.
+        """
+        sessions = self.workspace.sessions
+        by_id = {session.id: session for session in sessions}
+        ordered: list[WorkspaceSession] = []
+        seen: set[str] = set()
+        for session_id in session_ids or ():
+            session = by_id.get(session_id)
+            if session is None or session.id in seen:
+                continue
+            seen.add(session.id)
+            ordered.append(session)
+        ordered.extend(session for session in sessions if session.id not in seen)
+        if [session.id for session in ordered] == [
+            session.id for session in sessions
+        ]:
+            return False
+        sessions[:] = ordered
+        self.emit_state_change("workspace")
+        return True
+
     def create_workspace_session(
         self,
         title: str | None = None,
