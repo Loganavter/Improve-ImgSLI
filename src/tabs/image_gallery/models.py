@@ -167,9 +167,14 @@ class AiAxisProposal:
     - ``kind = "candidate"`` — it is a candidate dimension, not a registry-
       measured one (``MetricKind.CANDIDATE``; only the model scores it).
 
-    ``definition`` is what makes it usable: one line naming the dimension and
-    both ends of the 0–100 ``scale``. An entry without a definition is refused at
-    parse time (``axis_proposal.py``) and never stored.
+    ``definition`` is what the model SAID the axis means: one line naming the
+    dimension and both ends of the 0–100 ``scale``. It is METADATA, never a gate
+    (owner rule 2026-10-27: the app does not decide what is measurable). A model
+    that gives none — or only a word — leaves ``definition=""`` and the parse
+    records the audit code ``no-definition``
+    (``axis_proposal.AUDIT_NO_DEFINITION``); the entry is KEPT and drawn. ``""``
+    is the whole "the model gave none" state: no second flag, so a cached entry
+    and a fresh one compare equal.
 
     ``score`` is the per-image reading: ``-1`` on a SELECTOR entry (the axis is
     chosen before any card is scored — the scorecard fills the numbers), 0–100 on

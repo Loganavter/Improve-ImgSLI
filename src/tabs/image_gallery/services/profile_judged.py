@@ -5,9 +5,10 @@ a profile carries two halves and this module owns the second one — the axes a
 model NAMED, which no local detector can produce.
 
 - :func:`normalized_entries` is the only way an entry reaches a profile: a name is
-  normalized, a missing name/definition is dropped, a name that IS a registry id
-  of the same profile is not a second axis, the first occurrence of a name wins.
-  Never raises — a junk row is dropped, never stored.
+  normalized, a missing name is dropped, a name that IS a registry id of the same
+  profile is not a second axis, the first occurrence of a name wins. A
+  missing/short DEFINITION is kept as ``""`` (metadata, never a gate — owner rule
+  2026-10-27). Never raises — a junk row is dropped, never stored.
 - :func:`judged_axis_entries` is the only READER of that half: the scorecard
   prompt asks for these by name, a surface labels them (never mixes them with a
   detector number in one bar without :func:`axis_provenance`).
@@ -84,9 +85,13 @@ def normalized_entries(entries, registry_ids=()):
     """Judge-named entries, de-duplicated and free of unusable/duplicate rows.
 
     One rule for every producer of a profile (the selector, a cache read, a test
-    double): a name is normalized, a missing name/definition is dropped, a name
-    that IS a registry id of this profile (``registry_ids``) is not a second axis,
-    and the first occurrence of a name wins. Never raises.
+    double): a name is normalized, an unusable NAME is dropped, a name that IS a
+    registry id of this profile (``registry_ids``) is not a second axis, and the
+    first occurrence of a name wins. Never raises.
+
+    A missing/short DEFINITION is NOT a reason to drop an entry (owner rule
+    2026-10-27): the model named the axis, the app draws it, and ``definition=""``
+    carries "the model gave none" on the entry itself.
     """
     taken = {str(a) for a in (registry_ids or ())}
     out: list = []
@@ -98,7 +103,7 @@ def normalized_entries(entries, registry_ids=()):
         try:
             name = normalize_name(getattr(entry, "name", ""))
             definition = str(getattr(entry, "definition", "") or "").strip()
-            if not name or not definition or name in taken:
+            if not name or name in taken:
                 continue
             if name in {str(getattr(row, "name", "")) for row in out}:
                 continue

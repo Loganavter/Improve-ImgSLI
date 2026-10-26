@@ -354,7 +354,10 @@ _GOOD_PROPOSAL = {
     "scale": "0-100",
     "score": 72,
 }
-_MEANINGLESS_PROPOSAL = {
+#: A proposal without a definition. Since the owner rule of 2026-10-27 this is
+#: METADATA, not a refusal: the axis is stored with ``definition=""`` and the
+#: ``no-definition`` audit code records the gap.
+_UNDEFINED_PROPOSAL = {
     "name": "vibes",
     "definition": "",
     "scale": "0-100",
@@ -366,19 +369,22 @@ def test_a_proposed_axis_survives_the_parser_and_reaches_the_jev_payload() -> No
     raw = _chat(
         {
             "axes": {"ssim": 80},
-            "axis_proposals": [_GOOD_PROPOSAL, _MEANINGLESS_PROPOSAL],
+            "axis_proposals": [_GOOD_PROPOSAL, _UNDEFINED_PROPOSAL],
         }
     )
     result = ai_parse.parse_response(raw, model="m")
 
-    assert [p.name for p in result.axis_proposals] == ["halation"], (
-        "the measurable proposal must be kept as a first-class axis"
+    assert [p.name for p in result.axis_proposals] == ["halation", "vibes"], (
+        "a proposal is kept as a first-class axis; a missing definition is "
+        "metadata, never a reason to drop the axis the app asked for"
     )
     assert result.axis_proposals[0].score == 72
     assert result.axis_proposals[0].definition
-    refused = dict(result.axis_proposal_refusals)
-    assert "vibes" in refused, "a meaningless proposal must be recorded, never stored"
-    assert refused["vibes"], "the refusal must carry a reason"
+    assert result.axis_proposals[1].definition == ""
+    assert result.axis_proposals[1].score == 50
+    assert result.axis_proposal_refusals == (), (
+        "nothing was structurally refused — the gap is an audit, not a loss"
+    )
 
     items = [
         _ai_item("img_1.png", ssim=90),

@@ -359,12 +359,13 @@ def test_late_vlm_reply_is_dropped_once_analysis_started(
 
 
 def test_vlm_profile_is_constrained_to_the_available_pool(caplog) -> None:
-    """A reply is a set of neo axes or pool picks — never an invention.
+    """A reply is a set of free axes or pool picks — never an invention.
 
-    Superseded wording (2026-10-22, plan-gallery-ai-judgement §OWNER REVISION):
-    the model NAMES the axes, so an id outside the pool is no longer dropped — a
-    bare name with no definition still is (it cannot be measured), and a pool id
-    the context cannot measure locally is KEPT (the judge measures it itself).
+    Superseded wording (2026-10-22 §OWNER REVISION and the owner rule of
+    2026-10-27): the model NAMES the axes, so an id outside the pool is KEPT as a
+    first-class entry. A bare name with no definition is kept too (the definition
+    is metadata — ``definition=""`` + the ``no-definition`` audit code); only an
+    unusable NAME is refused.
     """
     base = profile_for_mode("camera")
     assert "sharpness" in base.axis_ids and "ssim" not in base.axis_ids
@@ -376,10 +377,13 @@ def test_vlm_profile_is_constrained_to_the_available_pool(caplog) -> None:
     assert profile is not None and profile.source == "vlm"
     assert profile.axis_ids == ("sharpness", "ssim"), (
         "registry ids are kept even where no local detector runs (the judge "
-        "measures them); only a bare name with no meaning is refused"
+        "measures them)"
     )
     assert "invented" not in profile.axis_ids
-    assert profile.axis_entries == (), "a bare id carries no definition"
+    assert [entry.name for entry in profile.axis_entries] == ["invented"], (
+        "a name outside the pool is the judge's own axis, not an invention to drop"
+    )
+    assert profile.axis_entries[0].definition == ""
 
 
 def test_vlm_reply_of_only_unusable_ids_falls_back_to_the_heuristic(
@@ -390,10 +394,12 @@ def test_vlm_reply_of_only_unusable_ids_falls_back_to_the_heuristic(
     Falsification: a hollow "vlm" profile would claim a model pick over an
     empty axis set; the honest answer is the deterministic fallback.
     """
-    assert profile_ai.parse_profile_reply('{"axes": ["made_up"]}', mode="camera") is None
+    assert profile_ai.parse_profile_reply('{"axes": ["   "]}', mode="camera") is None
     assert profile_ai.parse_profile_reply('{"axes": []}', mode="camera") is None
     # P7-A: a registry id is kept even where no local detector runs — the judge
-    # measures it. Only a bare NAME with no definition is refused.
+    # measures it; a bare NAME outside the pool is kept too (owner rule
+    # 2026-10-27: the app never decides what is measurable).
+    assert profile_ai.parse_profile_reply('{"axes": ["made_up"]}', mode="camera")
     assert profile_ai.parse_profile_reply('{"axes": ["halo_delta"]}', mode="camera")
 
     from tabs.image_gallery.services.profile_cache import ProfileCache
