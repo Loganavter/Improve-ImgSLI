@@ -103,69 +103,6 @@ def _is_ssim_pending(presenter, diff_mode_str, tex_img1=None, tex_img2=None) -> 
     return False
 
 
-#: How long (s) a detected swap reorder may keep serving "transient plan"
-#: skips. Measured transient lasts 3 builds (~90 ms); the window is generous
-#: but bounded so a later legitimate composite change (fresh load) is accepted.
-_LOUPE_SWAP_WINDOW_S = 0.4
-
-
-def _is_loupe_swap_transient(presenter, plan, prev_canvas) -> bool:
-    """True while a same-pair swap is settling and the incoming plan is stale.
-
-    Detection (all measured, `[ic-loupe] layout inputs` 2026-10-27): during a
-    same-pair swap the document keeps the same two paths but reorders them,
-    while the applied plan lags 1-3 frames behind and collapses its composite
-    to one pane's box (`plan.canvas_w/h` differs from the LAST ACCEPTED
-    plan's). Rebuilding the loupe from such a plan rescales the disk radius
-    briefly (measured 109.5445 -> 77.4597 -> back at size 0.2). While the
-    reorder window is open, a composite change vs the accepted plan is the
-    transient, so the previous overlay geometry is kept.
-    """
-    try:
-        doc = presenter.store.get_session_state_slot("document")
-        if doc is None:
-            return False
-        pair_now = (
-            str(getattr(doc, "image1_path", "") or ""),
-            str(getattr(doc, "image2_path", "") or ""),
-        )
-        if not all(pair_now):
-            return False
-        now = time.monotonic()
-        prev = getattr(presenter, "_loupe_pair_cache", None)
-        swapped_now = (
-            prev is not None
-            and tuple(sorted(pair_now)) == tuple(sorted(prev))
-            and pair_now != prev
-        )
-        if swapped_now:
-            presenter._loupe_swap_until = now + _LOUPE_SWAP_WINDOW_S
-        presenter._loupe_pair_cache = pair_now
-    except Exception:
-        return False
-    if now > float(getattr(presenter, "_loupe_swap_until", 0.0) or 0.0):
-        return False
-    # Compare against the LAST ACCEPTED composite, not against the incoming
-    # plan: ``plan`` IS ``image_label._active_render_plan`` here, so the
-    # incoming canvas always "matches itself" and the gate would never fire
-    # (measured live: transient accepted twice with the plan-vs-plan check).
-    accepted = getattr(presenter, "_loupe_accepted_canvas", None)
-    if accepted is None:
-        return False
-    return (int(plan.canvas_w), int(plan.canvas_h)) != accepted
-
-
-def _accept_loupe_canvas(presenter, plan) -> None:
-    """Record the composite the loupe layout was just built from."""
-    try:
-        presenter._loupe_accepted_canvas = (
-            int(plan.canvas_w),
-            int(plan.canvas_h),
-        )
-    except Exception:
-        pass
-
-
 def rebuild_magnifier_overlay(presenter, frame_context=None):
     vp = presenter.store.viewport
     geometry = vp.geometry_state
@@ -447,38 +384,6 @@ def rebuild_magnifier_overlay(presenter, frame_context=None):
 
         # Box resolution hoisted above the diff-cache section (W3d); the
         # warmed boxes below are the same ones the SSIM diff already used.
-        # Swap-twitch gate (owner report 2026-10-27): right after an intra-pair
-        # swap the store is already coherent (both slots hold the swapped
-        # images) but the plan being applied lags 1-3 frames behind and its
-        # composite collapses to ONE pane's box (measured: settled canvas
-        # 1200x1000 -> transient 600x1000 and 1024x512 -> back). Rebuilding the
-        # loupe from that plan rescales the disk radius for a couple of frames
-        # (109.5445 -> 77.4597 -> back at size 0.2). So: while the document
-        # pair is the SAME set of paths flipped in order (a swap), a plan whose
-        # composite differs from the one already on screen is transient -- keep
-        # the previous overlay geometry instead of rebuilding.
-        _plan_prev = getattr(image_label, "_active_render_plan", None)
-        _prev_canvas = (
-            getattr(_plan_prev, "canvas_w", None),
-            getattr(_plan_prev, "canvas_h", None),
-        )
-        if _is_loupe_swap_transient(
-            presenter,
-            plan,
-            _prev_canvas,
-        ):
-            trace_loupe(
-                frame_context,
-                "loupe.swap_transient_scene",
-                "skipped",
-                (
-                    "mid-swap plan composite="
-                    f"{int(plan.canvas_w)}x{int(plan.canvas_h)} differs from the "
-                    f"applied one {_prev_canvas} while the document pair is only "
-                    "reordered -> keep previous overlay geometry"
-                ),
-            )
-            return
         layout = build_magnifier_layout(
             vp,
             width=max(1, int(content_w)),
@@ -561,7 +466,6 @@ def rebuild_magnifier_overlay(presenter, frame_context=None):
             return
 
         updated_plan = _dc_replace(plan, overlay_layout=layout)
-        _accept_loupe_canvas(presenter, plan)
         image_label._active_render_plan = updated_plan
         apply_magnifier_plan_overlay(image_label, updated_plan)
         _mark("apply_plan_overlay")

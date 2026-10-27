@@ -232,6 +232,49 @@ def build_canvas_plan(
     canvas_h = target_size[1] if target_size is not None else h1
     content_w = content_size[0] if content_size is not None else canvas_w
     content_h = content_size[1] if content_size is not None else canvas_h
+    if (
+        is_live_default_plan
+        and target_size is None
+        and display_image1 is not None
+        and display_image2 is not None
+    ):
+        # Tier-independent composite box (owner report 2026-10-27, pair swap):
+        # during a swap the pair is presented at the preview tier first
+        # (`[ic-preview] joint preview hold`), then flips to the unified store.
+        # The box derived from `display_image1`'s CURRENT-tier pixels is then a
+        # *different aspect* per tier (raw preview 600x1000 -> unified store
+        # 1200x1000 measured), so the content rect re-layouts on the tier flip
+        # and every overlay anchored to the box (loupe disk radius, divider
+        # tracks) visibly resizes for a couple of frames. The store tier's box
+        # is the pair's unified size (max of both slots' pixel sources), so
+        # deriving the box from THE PAIR makes preview and store present into
+        # the SAME box: a tier flip changes pixels, never geometry.
+        from engine.store.tiled_pixel_store import pixel_source_size as _pss
+
+        _st1 = getattr(getattr(store, "viewport", None), "session_data", None)
+        _ist = getattr(_st1, "image_state", None)
+        _src1 = getattr(_ist, "image1", display_image1)
+        _src2 = getattr(_ist, "image2", display_image2)
+        _pair_ws, _pair_hs = [], []
+        for _own, _disp in ((_src1, display_image1), (_src2, display_image2)):
+            try:
+                _pw, _ph = _pss(_own)
+            except Exception:
+                _pw, _ph = 0, 0
+            if _pw <= 0 or _ph <= 0:
+                _pw, _ph = _w(_disp), _h(_disp)
+            _pair_ws.append(_pw)
+            _pair_hs.append(_ph)
+        if min(_pair_ws) > 0 and min(_pair_hs) > 0:
+            _pair_w = max(_pair_ws)
+            _pair_h = max(_pair_hs)
+            if (_pair_w, _pair_h) != (canvas_w, canvas_h):
+                canvas_w, canvas_h = _pair_w, _pair_h
+                content_w, content_h = canvas_w, canvas_h
+                # Preview-tier pixels now letterbox into the unified box; the
+                # presentation-level sweep (overlay_clip_rect) must not keep a
+                # stale single-tier box around.
+                store.runtime_cache.overlay_clip_rect = None
     view = vp.view_state
     capture_visible = bool(read_canvas_feature_setting_by_key("image_compare", vp, "capture.visible"))
     capture_color = read_canvas_feature_color_by_setting_key("image_compare", vp, "capture.color")
