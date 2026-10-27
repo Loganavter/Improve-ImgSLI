@@ -259,10 +259,13 @@ def _ctx_reset_metrics(owner, path: Path, targets=None) -> None:
     "Почему я выделил 3 изображения, а он экшн повесил на все, которые есть в
     вкладке?"). An empty scope clears nothing — no widening. Never raises.
 
-    DEFERRED (wave 2, ``use_cases/cache_reset.py``): the per-backend measured
-    stores are still swept whole (``clear_metrics_caches`` — "the MEASURED
-    stores are always swept whole"), so a two-card reset still drops the pool's
-    measured caches; only the per-card item state is scoped. See DONE.md.
+    TWO scopes, both REPORTED since wave 2 (2026-10-27): the per-card item state
+    is cleared for the resolved targets, while the per-backend measured stores
+    are still swept whole (``clear_metrics_caches``) — by design, because a
+    store entry is not addressable per card. The result and one INFO line name
+    both: "N of M card(s) cleared (scope=targets); the measured stores were
+    swept WHOLE — scorecards/metric_profiles/metrics/ranks/pins". So a two-card
+    reset no longer hides why the whole pool re-measures.
     """
     try:
         targets = _scope_targets(owner, "gallery.card.reset_metrics", path, targets)
