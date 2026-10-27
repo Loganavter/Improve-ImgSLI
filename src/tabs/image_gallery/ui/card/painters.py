@@ -443,7 +443,10 @@ def _provenance_overlay(painter, ctx) -> None:  # type: ignore[no-untyped-def]
     """
     from PySide6.QtCore import QRectF
 
-    from tabs.image_gallery.ui.card.provenance import paint_source_marker
+    from tabs.image_gallery.ui.card.provenance import (
+        paint_source_marker,
+        requested_for,
+    )
 
     widget = getattr(ctx, "widget", None)
     item = getattr(widget, "_gallery_item", None)
@@ -462,6 +465,9 @@ def _provenance_overlay(painter, ctx) -> None:  # type: ignore[no-untyped-def]
         # cached AI read must not make an Algorithms card say AI (owner
         # 2026-10-22). ``_gallery_domain`` is re-stamped on every card update.
         domain=getattr(widget, "_gallery_domain", None),
+        # …and "ALG" is a claim about an EXPLICIT run only (owner 2026-10-27):
+        # the passive folder-open pass fills metrics without being asked.
+        requested=requested_for(widget),
     )
 
 

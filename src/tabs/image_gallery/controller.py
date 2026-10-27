@@ -306,6 +306,27 @@ def _refresh_continue_action(owner) -> None:
         logger.debug("continue-affordance refresh failed", exc_info=True)
 
 
+def _stamp_analysis_requested(owner) -> int:
+    """Stamp "the user asked to analyze THIS folder generation" on *owner*.
+
+    The ONE writer of ``_analysis_requested_gen`` (owner 2026-10-27): the
+    per-card provenance marker reads that field, so "who analyzed me" is an
+    explicit fact of the request, never an inference from filled metrics.
+    Module-level (not a method) for the same reason
+    :func:`_refresh_continue_action` is one: the entry points are bound unbound
+    onto doubles by tests, and a double must not grow an attribute to keep
+    working. Never raises.
+    """
+    try:
+        owner._analysis_requested_gen = int(owner._folder_gen)
+    except Exception:
+        try:
+            owner._analysis_requested_gen = -1
+        except Exception:
+            return -1
+    return int(getattr(owner, "_analysis_requested_gen", -1))
+
+
 # Proxy decode-cache bound: owned by services/proxy.py (PROXY_CACHE_LIMIT);
 # batch delivery trims oldest-inserted entries down to that bound (96 x
 # <= ~3 MB ~= <= 288 MB while covering a typical folder's working set;
@@ -419,6 +440,14 @@ class GalleryController:
         # folder's items. Filter keystrokes get their own token so a slow
         # brief-disk worker cannot resurrect an outdated query.
         self._folder_gen = 0
+        #: Folder generation the USER explicitly asked to analyze (owner
+        #: 2026-10-27): ``-1`` = never for this world; set to ``_folder_gen`` by
+        #: the explicit entry points (``analyze``/``reanalyze``, a domain
+        #: switch). The passive folder-open pass fills metrics WITHOUT it, so a
+        #: card can tell "the user asked for this" from "the warm pass happened
+        #: to run" — the per-card provenance marker reads exactly this field and
+        #: nothing else (``ui/card/provenance.requested_for``).
+        self._analysis_requested_gen = -1
         self._filter_gen = 0
         self._pending_filter_text = ""
         self._filter_timer = None
@@ -491,6 +520,10 @@ class GalleryController:
     def _next_folder_gen(self) -> int:
         """Bump the folder generation: all in-flight workers go stale."""
         self._folder_gen += 1
+        # Fresh world: nobody asked to analyze THIS folder generation yet, so the
+        # cards carry no provenance claim until an explicit run says so (owner
+        # 2026-10-27).
+        self._analysis_requested_gen = -1
         # Fresh world: the winner marker is not settled for the new folder.
         self._metrics_settled_gen = -1
         # Fresh world: the analysis-PHASE markers belong to the folder that left
@@ -1938,6 +1971,10 @@ class GalleryController:
 
         if getattr(ctx, "backend", None) == BACKEND_AI:
             _judge_budget.begin_judge_run(self, len(getattr(ctx, "targets", ()) or ()))
+        # EXPLICIT run of this folder generation (owner 2026-10-27): from here the
+        # cards may claim who analyzed them — the passive folder-open pass never
+        # stamps this field.
+        _stamp_analysis_requested(self)
         result = _ai_analysis.analyze(self, ctx)
         # The ceiling stops INSIDE the pass, so the catalogue row is refreshed
         # once the pass returns (business end of the affordance, board
@@ -1956,6 +1993,9 @@ class GalleryController:
             # number of cards that will ask for a call (still an upper bound:
             # the sampling lane may merge after the first draw).
             _judge_budget.begin_judge_run(self, len(getattr(ctx, "targets", ()) or ()))
+        # A re-analyze is the explicit request in its strongest form: the user
+        # asked for fresh numbers on this generation (owner 2026-10-27).
+        _stamp_analysis_requested(self)
         result = _ai_analysis.reanalyze(self, ctx)
         # Same tail as ``analyze``: a re-analyze pass can hit the ceiling too.
         _refresh_continue_action(self)
@@ -2046,7 +2086,25 @@ class GalleryController:
     def activate_judgment_domain(self, domain: str) -> None:
         from tabs.image_gallery.use_cases import ai_analysis as _ai_analysis
 
-        return _ai_analysis.activate_judgment_domain(self, domain)
+        result = _ai_analysis.activate_judgment_domain(self, domain)
+        # A domain switch is an EXPLICIT request for this generation (owner
+        # 2026-10-27): the switch analyzes the visible items, so the cards may
+        # say who analyzed them (and, back on Algorithms, the local numbers are
+        # the ones the user just asked to see).
+        _stamp_analysis_requested(self)
+        # The local stack is warmed by the DURABLE domain (owner 2026-10-27):
+        # switching to Algorithms is the moment the first-use torch/piq import
+        # would otherwise land inside the user's analysis window, and the same
+        # entry point is a no-op while the AI domain owns the cards. One entry
+        # point, one kill-switch — no second warm-up path.
+        try:
+            from tabs.image_gallery.services import warmup as _warmup
+            from tabs.image_gallery.use_cases.action_context import current_backend
+
+            _warmup.schedule_warmup("domain switch", domain=current_backend(self))
+        except Exception:
+            logger.debug("domain-switch warm-up schedule failed", exc_info=True)
+        return result
 
     def _run_ai_for_visible(self, *, cache_only: bool = False) -> None:
         from tabs.image_gallery.use_cases import ai_analysis as _ai_analysis
@@ -3711,8 +3769,28 @@ class GalleryController:
         return _triage_run._start_triage(self, items, cover_grid=cover_grid)
 
     def _mark_local_pass(self, items, phase) -> None:
+        """Local-pass activity — SILENT while the AI domain owns the cards.
+
+        Owner 2026-10-27: opening a folder in the AI domain made the badge blink
+        "alg → ai" — the local metrics pass (usually served from the metrics
+        cache) stamped the USER-VISIBLE analysis phase, its numbers are not even
+        displayed in that domain, and the AI tail then restarted the phase. In
+        the AI domain the local pass therefore only drops ITS OWN stale phase and
+        repaints: the AI tail owns the one visible cycle and the one fade. The
+        numbers still land (the selector/salience read the items, not the
+        badge), and the Algorithms domain keeps the local badge — there it IS the
+        work the card shows.
+        """
         from tabs.image_gallery.use_cases import triage_run as _triage_run
 
+        from tabs.image_gallery.use_cases.action_context import BACKEND_AI, current_backend
+
+        try:
+            silent = current_backend(self) == BACKEND_AI
+        except Exception:
+            silent = False
+        if silent and phase is not None:
+            phase = None
         return _triage_run._mark_local_pass(self, items, phase)
 
     def _settle_metrics_pass(self, items) -> None:
