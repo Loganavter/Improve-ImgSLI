@@ -115,10 +115,10 @@ def _is_loupe_swap_transient(presenter, plan, prev_canvas) -> bool:
     Detection (all measured, `[ic-loupe] layout inputs` 2026-10-27): during a
     same-pair swap the document keeps the same two paths but reorders them,
     while the applied plan lags 1-3 frames behind and collapses its composite
-    to one pane's box (`plan.canvas_w/h` differs from the already-applied
+    to one pane's box (`plan.canvas_w/h` differs from the LAST ACCEPTED
     plan's). Rebuilding the loupe from such a plan rescales the disk radius
     briefly (measured 109.5445 -> 77.4597 -> back at size 0.2). While the
-    reorder window is open, a composite change vs the applied plan is the
+    reorder window is open, a composite change vs the accepted plan is the
     transient, so the previous overlay geometry is kept.
     """
     try:
@@ -145,10 +145,25 @@ def _is_loupe_swap_transient(presenter, plan, prev_canvas) -> bool:
         return False
     if now > float(getattr(presenter, "_loupe_swap_until", 0.0) or 0.0):
         return False
-    return (int(plan.canvas_w), int(plan.canvas_h)) != (
-        int(prev_canvas[0] or 0),
-        int(prev_canvas[1] or 0),
-    )
+    # Compare against the LAST ACCEPTED composite, not against the incoming
+    # plan: ``plan`` IS ``image_label._active_render_plan`` here, so the
+    # incoming canvas always "matches itself" and the gate would never fire
+    # (measured live: transient accepted twice with the plan-vs-plan check).
+    accepted = getattr(presenter, "_loupe_accepted_canvas", None)
+    if accepted is None:
+        return False
+    return (int(plan.canvas_w), int(plan.canvas_h)) != accepted
+
+
+def _accept_loupe_canvas(presenter, plan) -> None:
+    """Record the composite the loupe layout was just built from."""
+    try:
+        presenter._loupe_accepted_canvas = (
+            int(plan.canvas_w),
+            int(plan.canvas_h),
+        )
+    except Exception:
+        pass
 
 
 def rebuild_magnifier_overlay(presenter, frame_context=None):
@@ -546,6 +561,7 @@ def rebuild_magnifier_overlay(presenter, frame_context=None):
             return
 
         updated_plan = _dc_replace(plan, overlay_layout=layout)
+        _accept_loupe_canvas(presenter, plan)
         image_label._active_render_plan = updated_plan
         apply_magnifier_plan_overlay(image_label, updated_plan)
         _mark("apply_plan_overlay")
