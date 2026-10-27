@@ -288,15 +288,20 @@ def build_prompt(mode=None, *, profile=None, measured_block: str = "") -> str:
         'over_smoothing|invented_texture|clipping|other", '
         '"severity": "mild|flagged", "note": "short visual description"}], '
         '"axis_proposals": [{"name": "<snake_case id>", '
+        '"label": "<short human-readable name>", '
         '"definition": "<what it measures, 0 = …, 100 = …>", '
         '"scale": "0-100", "score": <0-100>}], '
         '"composition": <0-100>, "confidence": <0.0-1.0>}\n'
         + axes_rule
         + "axis_proposals: AT MOST 2 technical dimensions the list above is "
         "missing AND you can actually SEE in this image (e.g. halation, sepia "
-        "drift, jpeg blocking). Each needs a snake_case name, a one-sentence "
-        "definition naming what moves between 0 and 100, and this image's score "
-        "on that scale. Never propose an axis for scene content, an opinion "
+        "drift, jpeg blocking). Each needs a snake_case name, a human-readable "
+        "label, a one-sentence definition naming what moves between 0 and 100, "
+        "and this image's score on that scale. The name is a stable key, NOT the "
+        "thing a person reads: the label is a few words in the UI language that "
+        "a person would say out loud (\"Line crispness\", \"Резкость линий\") — "
+        "not the id, not an underscored token, not the definition. Never propose "
+        "an axis for scene content, an opinion "
         "without a measurable dimension, or a renamed axis from the list above. "
         "Omit the field (or send []) when the list already covers the image — "
         "an invented axis is worse than no axis.\n"

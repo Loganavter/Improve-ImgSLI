@@ -98,7 +98,7 @@ def test_build_profile_request_passes_the_cap(monkeypatch, tmp_path) -> None:
 
 
 def test_a_judged_axis_row_shows_a_short_title_and_puts_the_definition_in_the_tooltip(qtbot):
-    """Owner saw "cl…" — the definition-长 title elided in the fixed column."""
+    """Owner saw "cl…" — a definition-long title elided in the fixed column."""
     from pathlib import Path
     from types import SimpleNamespace
 
@@ -138,10 +138,11 @@ def test_a_judged_axis_row_shows_a_short_title_and_puts_the_definition_in_the_to
 
     titles = _row_titles(ov)
     assert titles, "the judged axis did not render"
-    assert "clarity" in titles[0], titles
-    # The old 40px floor collapsed the judge's own title to "cl…": the visible
-    # text must now be recognisably the axis, and the full meaning must be
-    # reachable (row tooltip).
-    assert len(titles[0]) > 12, f"the judged title is unreadable again: {titles[0]!r}"
+    # The header is the axis' HUMAN name (the model's label, else the id read
+    # as words) — never a definition that elides to "cl…". "clarity" is the
+    # whole name, so the old length proxy (`len > 12`, which only held while the
+    # header carried the definition) is replaced by the name itself.
+    assert titles[0] == "clarity", titles
+    # …and the meaning is not lost: the row tooltip is where the prose lives.
     tips = [row.toolTip() for row in ov._metric_rows if row.toolTip()]
     assert any("muddy and hard to read" in t for t in tips), tips

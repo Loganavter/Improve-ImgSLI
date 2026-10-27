@@ -14,7 +14,7 @@ Uma leitura cuja variação em toda a série fica dentro do próprio ruído do i
 
 ### Eixos escolhidos pela IA {#judge-axes}
 
-Quando a IA escolhe os eixos de uma série, a Visualização rápida mostra cada eixo nomeado com as palavras do modelo e a sua definição, marcado **medido pela IA**; as leituras do registro mantêm os nomes de sempre e aparecem como **medido localmente**.
+Quando a IA escolhe os eixos de uma série, a Visualização rápida mostra cada eixo nomeado pelo seu nome curto e legível; passe o cursor sobre a linha para ler a definição desse eixo e o rótulo **medido pela IA**. As leituras do registro mantêm os nomes de sempre.
 
 - Um eixo nomeado pela IA mas não pontuado aparece como **— · não medido**: a linha não desaparece e nenhum zero é inventado.
 - Um eixo que não muda ao longo da série aparece como **não separa estas variantes**.

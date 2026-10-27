@@ -192,6 +192,8 @@ def _selector_text(salience, corrective: str = "") -> str:
     )
     lines.append(
         'Reply with ONLY a JSON object: {"axes": [{"name": "<short id>", '
+        '"label": "<short human-readable name in the UI language, a few words — '
+        'NOT the id>", '
         '"definition": "<one line: what it measures, 0 = …, 100 = …>", '
         '"scale": "0-100", "direction": "higher-is-better|lower-is-better", '
         '"why": "<which of these variants differ on it, and how — quote the '

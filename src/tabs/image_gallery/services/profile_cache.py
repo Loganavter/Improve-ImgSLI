@@ -167,11 +167,14 @@ def _prompt_revision() -> int:
 
 
 def _entries_to_record(entries) -> list:
-    """JSON rows for the judge's axes (name + definition + scale + direction).
+    """JSON rows for the judge's axes (name + label + definition + scale + direction).
 
     The selector chose these axes; their per-image score is ``-1`` by definition
     (nothing has been scored yet), so it is not stored. One shape for ``put`` and
-    ``get``, so a cached selection is trivially equal to the fresh one.
+    ``get``, so a cached selection is trivially equal to the fresh one. ``label``
+    is the model's human name for the axis — display text, kept in its own words
+    (writing ``""`` for a pre-label entry keeps old and new records the same
+    shape).
     """
     out: list = []
     for entry in entries or ():
@@ -184,6 +187,7 @@ def _entries_to_record(entries) -> list:
         out.append(
             {
                 "name": name,
+                "label": str(getattr(entry, "label", "") or "").strip(),
                 "definition": str(getattr(entry, "definition", "") or ""),
                 "scale": str(getattr(entry, "scale", "") or "0-100"),
                 "direction": str(getattr(entry, "direction", "") or ""),
@@ -207,6 +211,9 @@ def _entries_from_record(rows):
             out.append(
                 AiAxisProposal(
                     name=name,
+                    # A record pinned before the label existed reads as ``""``,
+                    # and the row falls back to the name (axis_display_name).
+                    label=str(row.get("label", "") or "").strip(),
                     definition=str(row.get("definition", "") or ""),
                     scale=str(row.get("scale", "") or "0-100"),
                     score=-1,
