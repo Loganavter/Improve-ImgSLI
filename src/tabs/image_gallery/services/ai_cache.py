@@ -127,7 +127,13 @@ AI_CACHE_VERSION = 6
 #: scorecard keeps the axes the JUDGE named (free names) and carries the k draw
 #: scorecards — an entry written by the pre-P7-B parser answered the same
 #: question but lost every free axis' number, so it must not be served.
-PROMPT_SCHEMA_VERSION = 4
+#: v5 (2026-10-27) = BOTH judge prompts state the UI language and split the
+#: model's human ``label`` from its ``definition`` (owner saw English labels and
+#: "Композиция — хорошо скомпоновано" on a Russian UI); a reply cached under v4
+#: answered a prompt that never asked, so it replays the wrong wording. The pin
+#: identity already includes this revision (``profile_cache._prompt_revision``),
+#: so one bump invalidates the scorecards AND the pinned axis names together.
+PROMPT_SCHEMA_VERSION = 5
 
 #: The identity fields that define "the same analysis". Order is the canonical
 #: JSON order. Anything else on a passed mapping (notably ``api_key``) is dropped:
