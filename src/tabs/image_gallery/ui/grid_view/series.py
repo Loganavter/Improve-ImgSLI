@@ -287,8 +287,16 @@ def set_series_attention(view, series_ids) -> None:
     except Exception:
         pass
 
-def _rebuild_series(view) -> None:
-    """Internal: rebuild with series headers + UNGROUPED tail."""
+def _rebuild_series(view, *, refresh_content: bool = True) -> None:
+    """Internal: rebuild with series headers + UNGROUPED tail.
+
+    ``refresh_content=False`` (resize path, via ``_rebuild_series_geometry``)
+    keeps the surgical reconcile — same headers, same cards, same plan math —
+    but skips the per-card content refresh (badge/dots/cover re-stamp). A
+    window-edge drag only changes the PLAN; re-stamping every card there cost
+    one ``update_gallery_card`` per card on each resize tick of a running
+    analysis (owner report 2026-10-27).
+    """
     self = view
     # Preserve scroll + keyboard focus across the teardown: heights land
     # identical, but the intermediate collapse clamps the scrollbar to 0
@@ -423,23 +431,25 @@ def _rebuild_series(view) -> None:
                     # (measured 2026-10-22: a rebuilt series kept ``#2`` after
                     # the badge was cleared). One implementation of the choice:
                     # the two sibling refreshers do the same branch.
-                    if getattr(self, "_view_mode", VIEW_GRID) == VIEW_LIST:
-                        update_gallery_list_card(  # type: ignore[arg-type]
-                            card,
-                            item,
-                            mode=_mode,
-                            translate=self._activity_translate,
-                            domain=_domain,
-                            profile=_profile,
-                        )
-                    else:
-                        update_gallery_card(  # type: ignore[arg-type]
-                            card, item, mode=_mode, domain=_domain, profile=_profile
-                        )
+                    if refresh_content:
+                        if getattr(self, "_view_mode", VIEW_GRID) == VIEW_LIST:
+                            update_gallery_list_card(  # type: ignore[arg-type]
+                                card,
+                                item,
+                                mode=_mode,
+                                translate=self._activity_translate,
+                                domain=_domain,
+                                profile=_profile,
+                            )
+                        else:
+                            update_gallery_card(  # type: ignore[arg-type]
+                                card, item, mode=_mode, domain=_domain, profile=_profile
+                            )
                 except Exception:
                     logger.debug("series card refresh failed", exc_info=True)
                 try:
-                    self._sync_activity(card)
+                    if refresh_content:
+                        self._sync_activity(card)
                 except Exception:
                     pass
             cards.append(card)
@@ -621,6 +631,16 @@ def _rebuild_series(view) -> None:
         self._restore_focus(_focus_snapshot)
     except Exception:
         pass
+
+def _rebuild_series_geometry(view) -> None:
+    """Re-plan the series layout for a new width — geometry only, no re-stamp.
+
+    Used by the resize path (``columns._adapt_columns_and_reflow``): the column
+    count changed, so headers/bands/cells must move, but no card's CONTENT
+    depends on the width. Cheap on purpose — a running analysis resizes with
+    hundreds of live cards.
+    """
+    _rebuild_series(view, refresh_content=False)
 
 def _tail_header_span(view) -> int:
     """Column span for the UNGROUPED tail header (right band when split)."""

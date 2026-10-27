@@ -12,7 +12,7 @@ from engine.cache.image_identity import image_uid
 
 
 def pick_display_with_preview_backing(
-    *candidates, last_applied_uid=None, superseded_preview_uid=None
+    *candidates, last_applied_uid=None, superseded_preview_uid=None, other_slot_applied_uid=None
 ):
     """Display-pair picker for the live canvas (stored role).
 
@@ -46,7 +46,25 @@ def pick_display_with_preview_backing(
     preview = candidates[1] if len(candidates) > 1 else None
     if preview is not None:
         uid = image_uid(preview)
-        if uid != last_applied_uid and uid != superseded_preview_uid:
+        applied_uids = set()
+        if last_applied_uid is not None:
+            applied_uids.add(last_applied_uid)
+        # ``other_slot_applied_uid`` is the OTHER slot's last applied id. A
+        # swap inside the pair moves an image that is already on screen into
+        # this slot, so its STORE is already uploaded and must be drawn
+        # directly:
+        # preferring the preview degraded the canvas (and every canvas-px
+        # overlay: loupe radius, capture ring, divider/border) to a
+        # 1024-long-edge tier whose aspect differs from the pair's, for one or
+        # two frames, then flipped back when the store was picked again -- the
+        # owner's "лупа подскакивает / пропадает на пару мгновений"
+        # (2026-10-27). A preview and its store have different uids by
+        # construction, so the test is on the STORE's uid, never the preview's.
+        store_candidate = candidates[0] if candidates else None
+        store_uid = image_uid(store_candidate) if store_candidate is not None else None
+        if store_uid and other_slot_applied_uid and store_uid == other_slot_applied_uid:
+            return store_candidate
+        if uid and uid not in applied_uids and uid != superseded_preview_uid:
             return preview
     return pick_display_image(*candidates)
 

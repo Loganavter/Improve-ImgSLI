@@ -74,7 +74,7 @@ def build_canvas_scene(store, image_label=None, label_width: int | None = None, 
     pix_w = int(getattr(viewport.geometry_state, "pixmap_width", 0) or 0)
     pix_h = int(getattr(viewport.geometry_state, "pixmap_height", 0) or 0)
     active_object_id = _resolve_active_object_id(view, session_type)
-    if pix_w <= 0 or pix_h <= 0 or not _session_has_content(store):
+    if not _session_has_content(store):
         return CanvasSceneGraph(bounds=Rect(), objects=(), active_object_id=active_object_id)
 
     if label_width is None:
@@ -83,6 +83,17 @@ def build_canvas_scene(store, image_label=None, label_width: int | None = None, 
         label_height = int(getattr(image_label, "height", lambda: 0)() or 0) if image_label is not None else 0
 
     bounds = _resolve_bounds(store, image_label, label_width, label_height)
+    if pix_w <= 0 or pix_h <= 0:
+        # Transient geometry invalidation (image swap, session restore, a
+        # clear-then-reload frame) must not delete a declared-visible overlay:
+        # an empty graph drops the loupe/capture ring from the scene AND from
+        # the hit-test for those frames. Fall back to the frame we last
+        # resolved -- the content rect / display rect already carries it -- and
+        # only a genuinely unknowable frame (empty bounds) stays empty. An
+        # overlay that is declared visible may only be killed by the user.
+        pix_w, pix_h = int(bounds.w), int(bounds.h)
+    if pix_w <= 0 or pix_h <= 0:
+        return CanvasSceneGraph(bounds=Rect(), objects=(), active_object_id=active_object_id)
     context = CanvasSceneBuildContext(
         store=store,
         image_label=image_label,
