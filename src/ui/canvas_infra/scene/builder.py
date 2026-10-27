@@ -66,6 +66,49 @@ def _session_has_content(store) -> bool:
     result = get_shared_tab_registry().create_service("session_has_content", store)
     return bool(result)
 
+def _document_names_pair(store) -> bool:
+    """True when the document still names BOTH sides of a pair.
+
+    A slot replace dispatches ``ClearImageSlotDataAction`` (and an emptied
+    first-file transaction clears both slots) BEFORE the new tier lands, so the
+    frame where ``image_state.imageN`` is momentarily ``None`` still has both
+    document paths. That is the discriminator between "a transiently empty
+    frame" and "the user really has no (pair) content": a one-sided document is
+    the user's content, not a replace in flight, and its overlays may go.
+    """
+    try:
+        document = store.get_session_state_slot("document")
+    except Exception:
+        document = getattr(store, "document", None)
+    if document is None:
+        return False
+    return bool(
+        getattr(document, "image1_path", None) and getattr(document, "image2_path", None)
+    )
+
+def _previous_scene(image_label):
+    state = getattr(image_label, "runtime_state", None) if image_label is not None else None
+    if state is None:
+        return None
+    return getattr(state, "_canvas_scene_graph", None)
+
+def _hold_previous_scene(store, image_label):
+    """The last resolved frame, when this frame is only transiently empty.
+
+    An empty graph drops every declared-visible overlay (loupe, capture ring)
+    from both the scene AND the hit-test. Ownership rule: an overlay that is
+    declared visible may only be killed by the user, so a frame we cannot
+    resolve (slot being replaced, pixmap invalidated mid-swap) repeats the
+    previous one byte-identically — geometry included. Returns ``None`` when
+    there is nothing to hold or the session genuinely has no content.
+    """
+    if not _document_names_pair(store):
+        return None
+    previous = _previous_scene(image_label)
+    if previous is None or not getattr(previous, "objects", ()):
+        return None
+    return previous
+
 def build_canvas_scene(store, image_label=None, label_width: int | None = None, label_height: int | None = None) -> CanvasSceneGraph:
     viewport = store.viewport
     view = viewport.view_state
@@ -75,6 +118,16 @@ def build_canvas_scene(store, image_label=None, label_width: int | None = None, 
     pix_h = int(getattr(viewport.geometry_state, "pixmap_height", 0) or 0)
     active_object_id = _resolve_active_object_id(view, session_type)
     if not _session_has_content(store):
+        # A slot replace zeroes the side's image_state before the new tier
+        # lands (use_cases/slot.py: ClearImageSlotDataAction). Rebuilding the
+        # scene over that frame used to answer with an EMPTY graph, which
+        # removed a declared-visible magnifier from the scene graph and its
+        # hit-test for one frame (measured live 2026-10-27:
+        # magnifiers[0].visible == True with circles == []). Keep the previous
+        # frame while the document still names content.
+        held = _hold_previous_scene(store, image_label)
+        if held is not None:
+            return held
         return CanvasSceneGraph(bounds=Rect(), objects=(), active_object_id=active_object_id)
 
     if label_width is None:
@@ -93,6 +146,12 @@ def build_canvas_scene(store, image_label=None, label_width: int | None = None, 
         # overlay that is declared visible may only be killed by the user.
         pix_w, pix_h = int(bounds.w), int(bounds.h)
     if pix_w <= 0 or pix_h <= 0:
+        # Same ownership rule as the no-content branch above: a frame we
+        # cannot resolve repeats the previous one instead of deleting a
+        # declared-visible overlay.
+        held = _hold_previous_scene(store, image_label)
+        if held is not None:
+            return held
         return CanvasSceneGraph(bounds=Rect(), objects=(), active_object_id=active_object_id)
     context = CanvasSceneBuildContext(
         store=store,

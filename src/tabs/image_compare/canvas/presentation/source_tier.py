@@ -82,6 +82,27 @@ def source_role_image(store, slot: int, display_image):
     return original_pixel_tier(store, slot) or display_image
 
 
+def is_preview_basis(image) -> bool:
+    """True when ``image`` is a preview-tier QImage — a SIZE guess, not pixels.
+
+    A preview is normalised per side to a 1024 long edge, so its dims do not
+    describe the side's source. The live plan uses this to refuse to mix one
+    side's preview dims with the other side's real dims: the resulting envelope
+    ``max(w1,w2) x max(h1,h2)`` would describe neither pair (owner report
+    2026-10-27, canvas ``[1024,1400]`` between ``[1600,1400]`` frames).
+
+    ``False`` for own pixel stores, unified stores and PIL images — their dims
+    are real (an unify upscale is envelope-sized, so it cannot skew the max).
+    Never raises.
+    """
+    try:
+        from engine.store.pixel_ops.unify import is_preview_tier
+
+        return bool(is_preview_tier(image))
+    except Exception:
+        return False
+
+
 def source_role_pair(store):
     """Both sides' SOURCE images for the live render plan.
 

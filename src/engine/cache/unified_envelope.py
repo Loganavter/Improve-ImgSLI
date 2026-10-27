@@ -15,6 +15,27 @@ from __future__ import annotations
 from ui.canvas_infra.scene.frame_geometry import resolve_canvas_content_geometry
 
 
+def normalize_envelope_dims(envelope_dims) -> tuple[int, int, int, int] | None:
+    """Validate a plan's SOURCE-space envelope ``(w1,h1,w2,h2)``.
+
+    Single reader for ``CanvasRenderPlan.envelope_dims`` (see
+    ``plan_builder.build_canvas_plan``): the plan carries the pair envelope in
+    source space so no downstream fitting owner re-derives it from the
+    installed display tier. Returns positive ints, or ``None`` when the value is
+    absent/unusable so the caller keeps today's tier-derived numbers
+    bit-identically. Never raises.
+    """
+    if envelope_dims is None:
+        return None
+    try:
+        values = tuple(int(value) for value in envelope_dims)
+    except (TypeError, ValueError):
+        return None
+    if len(values) != 4 or min(values) <= 0:
+        return None
+    return values
+
+
 def eager_envelope_rect(
     cw: int,
     ch: int,
