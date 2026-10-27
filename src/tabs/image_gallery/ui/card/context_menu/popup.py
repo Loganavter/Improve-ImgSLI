@@ -46,7 +46,6 @@ from tabs.image_gallery.use_cases import gallery_actions
 from .icons import _menu_icon
 from .predicates import (
     _is_source,
-    _selection_count,
     _selection_label,
     _targets_all_rejected,
     _targets_any_grouped,
@@ -118,16 +117,28 @@ def popup_gallery_card_context_menu(  # type: ignore[no-untyped-def]
     # cannot disagree about which cards (or which backend) are in play. Built
     # OUTSIDE the swallowing try: an invalid judgment domain is a named
     # refusal, never a menu that silently loses its scope.
-    from tabs.image_gallery.use_cases import action_context
+    from tabs.image_gallery.use_cases import action_context, action_scope
 
     ctx = (
         action_context.build_context(
-            owner, origin=action_context.ORIGIN_MENU, card_path=path
+            owner,
+            origin=action_context.ORIGIN_MENU,
+            card_path=path,
+            action_id="gallery.card.analyze",
         )
         if owner is not None
         else None
     )
     targets = list(ctx.targets) if ctx is not None else []
+    # "Make source" is its own rule (one card, or a named refusal). Resolving it
+    # here — from the SAME table the registry row uses — is what keeps the menu
+    # and Find Action from answering differently (rule 8): a multi-selection
+    # hides the entry, it never silently picks the clicked card.
+    source_scope = (
+        action_scope.resolve_scope(owner, "gallery.card.set_source", card_path=path)
+        if owner is not None
+        else None
+    )
 
     from tabs.image_gallery.debug import gallery_debug as _dbg
     from tabs.image_gallery.debug import gallery_debug_enabled as _dbg_enabled
@@ -148,8 +159,23 @@ def popup_gallery_card_context_menu(  # type: ignore[no-untyped-def]
             ContextMenuSeparator,
         )
 
-        n = int(selection_count) if selection_count is not None else _selection_count(owner)
-        has_selection = n > 0
+        # The header counts the RESOLVED targets, not the selection mirror: the
+        # slot is the authority (``action_scope.selected_paths``), so a stale
+        # mirror can no longer print "2 selected" over a one-card scope.
+        # The selection SECTION is gated by whether anything is selected (a
+        # right-click on an unselected card resolves to that card but is not a
+        # selection), while its title counts the context's targets.
+        # ``selection_count`` stays as a fallback for a caller that has no owner.
+        try:
+            selection_size = (
+                len(action_scope.selected_paths(owner))
+                if owner is not None
+                else (int(selection_count) if selection_count is not None else 0)
+            )
+        except Exception:
+            selection_size = int(selection_count) if selection_count is not None else 0
+        n = len(targets) if ctx is not None else selection_size
+        has_selection = selection_size > 0
         has_analyze = on_analyze is not None or owner is not None
         # Resolve the translator from the widget tree (page ``install_translator``
         # root) or the owner — call sites no longer need to thread ``translate=``.
@@ -308,9 +334,11 @@ def popup_gallery_card_context_menu(  # type: ignore[no-untyped-def]
         # "Make source" is available in every mode: in camera/batch the click
         # switches to fidelity and re-runs the fidelity pass
         # (on_quick_set_source -> select_mode + _start_fidelity_analysis).
-        # Context-dependent: hidden when the clicked card is ALREADY the
-        # source (setting it again is a no-op).
-        if not _is_source(owner, path):
+        # Context-dependent: hidden when the clicked card is ALREADY the source
+        # (setting it again is a no-op) and when the resolved scope is not
+        # exactly one card (rule 8 — the registry refuses the same input).
+        source_refused = bool(source_scope is not None and source_scope.refused)
+        if not source_refused and not _is_source(owner, path):
             entries.append(
                 ContextMenuAction(
                     "gallery.set_as_source",
@@ -320,6 +348,9 @@ def popup_gallery_card_context_menu(  # type: ignore[no-untyped-def]
                 )
             )
         def _on_triggered(action_id: str, _data: object) -> None:
+            # Every body receives the context the menu already resolved: no
+            # closure here may re-derive a scope (that is how the "two cards
+            # selected, a hundred processed" class of bug came back).
             try:
                 if action_id == "gallery.selection.analyze":
                     handlers["analyze"]()
@@ -330,11 +361,11 @@ def popup_gallery_card_context_menu(  # type: ignore[no-untyped-def]
                 elif action_id == "gallery.ask_ai":
                     _do_ask_ai("card")
                 elif action_id == "gallery.make_best":
-                    _ctx_make_best(owner, path)
+                    _ctx_make_best(owner, path, targets)
                 elif action_id == "gallery.reject":
-                    _ctx_toggle_reject(owner, path)
+                    _ctx_toggle_reject(owner, path, targets)
                 elif action_id == "gallery.remove":
-                    _ctx_remove(owner, path)
+                    _ctx_remove(owner, path, targets)
                 elif action_id == "gallery.reset_metrics":
                     handlers["reset_metrics"]()
                 elif action_id == "gallery.ungroup":
@@ -342,7 +373,11 @@ def popup_gallery_card_context_menu(  # type: ignore[no-untyped-def]
                 elif action_id == "gallery.group":
                     handlers["group"]()
                 elif action_id == "gallery.set_as_source":
-                    _ctx_set_source(owner, path)
+                    _ctx_set_source(
+                        owner,
+                        path,
+                        list(source_scope.targets) if source_scope is not None else None,
+                    )
             except Exception:
                 pass
 

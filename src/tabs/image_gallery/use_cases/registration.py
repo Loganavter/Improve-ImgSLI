@@ -26,6 +26,7 @@ from tabs.image_gallery.use_cases.action_context import (
     build_context,
 )
 
+
 #: Weak handle on the registry the gallery's rows were registered into (set by
 #: :func:`register_actions`). The controller-side refresh needs it because the
 #: app registers at BOOT — before the deferred gallery page builds a
@@ -156,44 +157,44 @@ def _action_clean_rejected(tab, ctx: ActionContext):
 
 
 def _action_run_triage(tab, ctx: ActionContext):
+    """Re-run the folder triage — a POOL-wide action, and it says so.
+
+    Policy row ``gallery.run-triage`` → ``pool``: a non-empty SELECTION would be
+    silently ignored ("two cards selected, everything processed").
+    """
     ctrl = getattr(tab, "_controller", None)
+    owner = ctrl or getattr(tab, "_widget", None)
     folder = getattr(getattr(ctrl, "state", None), "folder", None)
     if ctrl is None or folder is None:
         return _no_handler(ctx, "triage")
+    if owner is not None:
+        from tabs.image_gallery.use_cases import action_scope
+
+        conflict = action_scope.pool_conflict(owner, "gallery.run-triage")
+        if conflict is not None:
+            return Refusal(REFUSAL_AMBIGUOUS_SCOPE, conflict.targets, conflict.reason)
     ctrl.open_folder(folder)
     return None
 
 
 def _action_set_as_source(tab, ctx: ActionContext):
-    """Set the ONE target as source; a multi-selection is refused, not guessed."""
+    """Set the ONE target as source; a multi-selection is refused, not guessed.
+
+    Rule 8: the SAME helper the card menu calls (``_ctx_set_source``, scope
+    ``single``), so the menu and Find Action cannot answer differently.
+    """
     if ctx.is_empty:
         return Refusal(REFUSAL_EMPTY_SCOPE, (), "no targets were resolved")
     if len(ctx.targets) != 1:
-        return Refusal(
-            REFUSAL_AMBIGUOUS_SCOPE,
-            ctx.targets,
-            "set-as-source needs exactly one target (a selection is ambiguous)",
-        )
-    ctrl = getattr(tab, "_controller", None)
-    wid = getattr(tab, "_widget", None)
-    sel = ctx.targets[0]
-    try:
-        # Same hooks path as the overlay setSource signal and the card menu:
-        # stale-keys + fidelity re-run (never a bare state write).
-        from tabs.image_gallery.ui.quick_look_hooks import (
-            on_quick_set_source as _ql_set_source,
-        )
+        return Refusal(REFUSAL_AMBIGUOUS_SCOPE, ctx.targets, "set-as-source needs one target")
+    from tabs.image_gallery.ui.card import context_actions as _context_actions
 
-        _ql_set_source(wid if wid is not None else ctrl, sel)
+    owner = getattr(tab, "_widget", None) or getattr(tab, "_controller", None)
+    if owner is not None and _context_actions._ctx_set_source(
+        owner, ctx.targets[0], list(ctx.targets)
+    ):
         return None
-    except Exception:
-        # Fallback: route through the controller entry point (dispatch +
-        # mirror), never a bare write.
-        try:
-            ctrl.set_source(sel)
-            return None
-        except Exception:
-            return _no_handler(ctx, "source")
+    return _no_handler(ctx, "source")
 
 
 def _action_reset_metrics(tab, ctx: ActionContext):
@@ -242,6 +243,7 @@ def handler_for(action_id: str):
     return GALLERY_ACTION_HANDLERS.get(action_id)
 
 
+
 def run_action(tab, action_id: str):
     """Build the ONE action context for *tab* and run *action_id*.
 
@@ -259,7 +261,7 @@ def run_action(tab, action_id: str):
         owner = tab
     if handler is None or owner is None:
         return None
-    ctx = build_context(owner, origin="action")
+    ctx = build_context(owner, origin="action", action_id=action_id)
     return handler(tab, ctx)
 
 

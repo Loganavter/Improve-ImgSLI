@@ -445,7 +445,13 @@ def _menu_card(view, card) -> bool:
         return False
 
 def select_all_cards(view) -> bool:
-    """Ctrl+A → select every pooled item (``use_cases.selection``)."""
+    """Ctrl+A → select what is VISIBLE (viewport ∩ filter, ``use_cases.selection``).
+
+    The selection scope is resolved by the ONE mechanism
+    (``use_cases.action_scope``: action id ``select_all`` → ``visible``): it is
+    never "every pooled item", and a grid that is not laid out refuses rather
+    than selecting the pool (owner report 2026-10-27).
+    """
     self = view
     try:
         from tabs.image_gallery.use_cases import selection as _selection

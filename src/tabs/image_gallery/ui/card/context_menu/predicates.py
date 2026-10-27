@@ -12,11 +12,16 @@ from .translator import _t
 
 
 def _selection_count(owner) -> int:
+    """Number of selected cards — through the ONE reader (``action_scope``).
+
+    The menu header uses the RESOLVED context instead (``len(ctx.targets)``);
+    this helper stays for callers/tests that need the raw selection size, and
+    never reads the ``state`` mirror itself (the slot is the authority).
+    """
     try:
-        sel = getattr(getattr(owner, "state", None), "selected_paths", None)
-        if sel is None:
-            return 0
-        return len(sel)
+        from tabs.image_gallery.use_cases import action_scope
+
+        return len(action_scope.selected_paths(owner))
     except Exception:
         return 0
 

@@ -170,9 +170,10 @@ ALLOWLIST: dict[tuple[str, int], str] = {
     ("src/tabs/image_gallery/ui/widget_parts/card_actions.py", 117): (
         "moved card handler calls owner._owner_for_triage (self→owner rename, plan Part B Wave 3)"
     ),
-    ("src/tabs/image_gallery/ui/widget_parts/card_actions.py", 169): (
+    ("src/tabs/image_gallery/ui/widget_parts/card_actions.py", 166): (
         "moved empty-drop handler calls owner._owner_for_triage (self→owner rename, plan Part B Wave 3;"
-        " line shifted when the zero-arg menu closures were removed, menu-scope 2026-10-20)"
+        " line shifted when the zero-arg menu closures were removed, menu-scope 2026-10-20; shifted"
+        " again in action-scope-unify 2026-10-27 when the menu stopped reading the selection mirror)"
     ),
     # --- moved widget clusters (plan Part B Wave 4) ---
     # Bodies moved verbatim to ui/widget_parts/{series_headers,ask_ai_surface,

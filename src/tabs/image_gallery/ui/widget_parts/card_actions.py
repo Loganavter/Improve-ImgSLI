@@ -128,11 +128,6 @@ def _on_card_context(owner, path: Path) -> None:
                 pass
 
         try:
-            sel_set = getattr(getattr(tri_owner, "state", None), "selected_paths", None) or set()
-            sel_n = len(sel_set)
-        except Exception:
-            sel_n = 0
-        try:
             # Same fix as the empty-canvas menu: the translator lives on
             # ``_context`` only.
             _ctx = getattr(owner, "_context", None)
@@ -144,7 +139,9 @@ def _on_card_context(owner, path: Path) -> None:
             tri_owner,
             Path(path),
             global_pos=gp,
-            selection_count=sel_n,
+            # The menu counts and scopes from its OWN resolved context
+            # (``action_scope``: the slot is the authority) — never from a
+            # ``state.selected_paths`` mirror this widget read itself.
             # Scope callbacks for Analyze / Find similar (and carry when it
             # returns to the menu) are deliberately NOT passed: the menu
             # resolves the targets through ``use_cases.action_scope`` once and

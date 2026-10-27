@@ -271,17 +271,22 @@ def clear_selection(owner) -> None:  # type: ignore[no-untyped-def]
 
 
 def select_all(owner) -> None:  # type: ignore[no-untyped-def]
-    items = getattr(getattr(owner, "state", None), "items", None) or []
-    paths = set()
-    # Respect current filter visibility if owner exposes visible_paths.
-    visible = None
-    widget = getattr(owner, "widget", None) or getattr(owner, "grid_view", None)
-    if widget is not None and hasattr(widget, "_cards_by_path"):
-        # Fallback: all items are selectable; filtering already hides cards but selection includes hidden? Use all.
-        pass
-    for it in items:
-        try:
-            paths.add(Path(it.path) if not isinstance(it.path, Path) else it.path)
-        except Exception:
-            continue
-    _set_selected(owner, paths)
+    """Ctrl+A — select what is VISIBLE (viewport ∩ filter), never the pool.
+
+    Rule 6 (owner report 2026-10-27: *"выбрал 2 карточки — обработалось 100"*):
+    the old body walked ``state.items`` and selected every card of the tab,
+    including the ones the active filter hides, so the next mass action hit
+    cards the user could not see. The scope now comes from the ONE resolver
+    (``action_scope``, action id ``select_all``); an unlaid-out grid or an
+    empty viewport REFUSES instead of widening to the pool, and "select every
+    card of the folder" stays available only as an explicit, separate intent
+    (there is no such per-card control — deliberately).
+    """
+    from tabs.image_gallery.use_cases import action_scope
+
+    scope = action_scope.resolve_scope(owner, "select_all")
+    if scope.refused or not scope.targets:
+        return
+    # Order matters: the resolver answers in display order, and ``_set_selected``
+    # preserves the order of the iterable it is given.
+    _set_selected(owner, list(scope.targets))

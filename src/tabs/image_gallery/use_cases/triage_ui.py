@@ -174,13 +174,16 @@ def _dismiss_one(overlay) -> None:
 
 
 def current_path(owner) -> Path | None:
-    """The head of the KEYBOARD action context — explicit focus, no fallback.
+    """The HEAD of the resolved keyboard scope (no fallback, never a guess).
 
-    Builds ``build_context(owner, origin="keyboard", focused=True)``: the
-    selection wins when non-empty, otherwise the card that actually holds
-    keyboard focus (an explicit input). With neither, the context is empty and
-    this returns None — the old first-visible-item fallback is gone (an action
-    may never hit a card the user did not point at).
+    ``B``/Enter use the whole scope (:func:`handle_key`), not this head; the
+    name survives for callers that need ONE path (the ``analyze_requested``
+    fallback). It is the first target of
+    ``build_context(owner, origin="keyboard", focused=True)``: the selection
+    wins when non-empty, otherwise the card that actually holds keyboard focus
+    (an explicit input). With neither the context is empty and this returns
+    None — the old first-visible-item fallback is gone (an action may never hit
+    a card the user did not point at).
     """
     try:
         from tabs.image_gallery.use_cases import action_context
@@ -235,14 +238,12 @@ def handle_key(owner, event) -> None:
             pass
         try:
             triage_owner = owner_for_triage(owner)
-            try:
-                sel = triage_owner.state.selected_paths  # type: ignore[attr-defined]
-                if sel:
-                    _set_owner_selection(triage_owner, owner, [])
-                    event.accept()
-                    return
-            except Exception:
-                pass
+            from tabs.image_gallery.use_cases import action_scope
+
+            if action_scope.selected_paths(triage_owner):
+                _set_owner_selection(triage_owner, owner, [])
+                event.accept()
+                return
         except Exception:
             pass
         QWidget.keyPressEvent(owner, event)
@@ -255,10 +256,13 @@ def handle_key(owner, event) -> None:
             triage_owner = owner_for_triage(owner)
             from tabs.image_gallery.use_cases import action_scope
 
-            # The selection read is single-sourced (action_scope); this keyboard
-            # action never falls back to focus/first card — Delete with nothing
-            # selected must not remove a card the user did not pick.
-            targets = action_scope.selected_paths(triage_owner)
+            # The keyboard scope comes from the ONE mechanism (policy row
+            # ``gallery.key.delete`` → selection); this action never falls back
+            # to focus/first card — Delete with nothing selected must not
+            # remove a card the user did not pick.
+            targets = list(
+                action_scope.resolve_scope(triage_owner, "gallery.key.delete").targets
+            )
             if not targets:
                 # Nothing selected → ignore, don't delete the first card.
                 QWidget.keyPressEvent(owner, event)
@@ -273,18 +277,39 @@ def handle_key(owner, event) -> None:
             pass
         QWidget.keyPressEvent(owner, event)
         return
-    # B → make best
+    # B → make best, over the WHOLE resolved keyboard scope.
+    #
+    # Rule 10 (owner report 2026-10-27): ``B`` used to act on
+    # ``current_path()`` — ``selected_order[0]`` — so with three selected cards
+    # exactly one became best. The keyboard scope is the selection
+    # (``gallery.key.make_best``); an empty selection may still use the
+    # explicitly focused card, which is the resolver's documented ``focus``
+    # fallback for keyboard entries. One target per series is what ``make_best``
+    # means, so the loop is the honest mass form.
     if key == Qt.Key.Key_B:
-        cur = current_path(owner)
-        if cur is not None:
-            try:
+        try:
+            from tabs.image_gallery.use_cases import action_scope
+
+            triage_owner = owner_for_triage(owner)
+            scope = action_scope.resolve_scope(
+                triage_owner, "gallery.key.make_best", focused=True
+            )
+            targets = list(scope.targets)
+            if targets:
                 from tabs.image_gallery.use_cases import triage as _triage
 
-                _triage.make_best(owner_for_triage(owner), cur)
-                event.accept()
-                return
-            except Exception:
-                pass
+                applied = 0
+                for target in targets:
+                    try:
+                        _triage.make_best(triage_owner, target)
+                        applied += 1
+                    except Exception:
+                        continue
+                if applied:
+                    event.accept()
+                    return
+        except Exception:
+            pass
     # Enter / Return → compare (dispatch selected)
     if key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
         try:

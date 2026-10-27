@@ -1238,6 +1238,16 @@
       }
     },
     {
+      "path": "src/tabs/image_gallery/use_cases/action_scope.py",
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=single-resolver reason=\"one scope machine: the policy table (one row per action id), the scope kinds and the resolver must agree — the five independent resolvers this module replaced are exactly what a split re-creates; the table is scanned by a contract test and every caller reads Scope from here.\"",
+      "parsed": {
+        "pattern": "single-resolver",
+        "reason": "one scope machine: the policy table (one row per action id), the scope kinds and the resolver must agree — the five independent resolvers this module replaced are exactly what a split re-creates; the table is scanned by a contract test and every caller reads Scope from here."
+      }
+    },
+    {
       "path": "src/tabs/image_gallery/use_cases/ai_analysis.py",
       "limit": 500,
       "marker": "Audit-Meta:",

@@ -60,6 +60,21 @@ def _apply_pending_filter(owner) -> None:
     owner._apply_filter(owner._pending_filter_text, owner._filter_gen)
 
 
+def filter_allowed_paths(items, text: str) -> set[Path] | None:
+    """Paths the FAST filter pass lets through, or None when there is no query.
+
+    The single definition of "visible under the current filter": the same
+    ``match_fast_items`` pass the grid paints with (``_apply_filter_fast``), so
+    a scope cannot disagree with what the user sees. Callers treat ``None`` as
+    "no filter" and an empty set as "nothing matches" — never as "everything".
+    """
+    if not (text or "").strip():
+        return None
+    from tabs.image_gallery.services.filtering import match_fast_items
+
+    return {item.path for item in match_fast_items(list(items or []), text)}
+
+
 def _apply_filter_fast(owner, text: str) -> None:
     """UI-thread fast pass: filename + in-memory tags only, no disk."""
     from tabs.image_gallery.services.filtering import match_fast_items

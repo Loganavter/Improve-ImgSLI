@@ -323,7 +323,14 @@ def test_a_domain_switch_is_cache_only() -> None:
             self._AI_VISIBLE_CAP = 12
             self.hydrated: list = []
             self.analyzed = 0
-            self.widget = SimpleNamespace(visible_paths=lambda: [])
+            # A laid-out viewport (the scope resolver refuses an unlaid-out grid
+            # instead of widening to the pool — action-scope-unify 2026-10-27).
+            self.widget = SimpleNamespace(
+                visible_paths=lambda: [it.path for it in self.state.items],
+                _grid_view=SimpleNamespace(
+                    visible_paths_strict=lambda: [it.path for it in self.state.items]
+                ),
+            )
 
         def _hydrate_ai_cache(self, items, **kwargs):
             self.hydrated.append(list(items))
