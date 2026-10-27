@@ -94,9 +94,12 @@ def _chat(answer) -> dict:
 
 def test_ai_selector_available_requires_enabled_key_and_endpoint():
     assert ai_selector_available(_settings()) is True
-    assert ai_selector_available(_settings(model="", base_url="http://x")) is True
+    # An endpoint is NOT a model id: this config sent ``{"model": ""}`` and the
+    # provider answered HTTP 400 "No models provided" (measured 2026-10-27).
+    assert ai_selector_available(_settings(model="", base_url="http://x")) is False
     assert ai_selector_available(_settings(enabled=False)) is False
     assert ai_selector_available(_settings(api_key="")) is False
+    assert ai_selector_available(_settings(base_url="")) is False
     assert ai_selector_available(_settings(model="", base_url="")) is False
 
 
