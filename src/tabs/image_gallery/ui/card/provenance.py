@@ -46,33 +46,111 @@ def _label_color() -> QColor:
     return col
 
 
-def marker_text(item, translate=None, *, domain=None) -> str:
-    """Localized short token for this item ("" when nothing analyzed it yet).
+def marker_text(item, translate=None, *, domain=None, requested: bool = False) -> str:
+    """Localized short token naming who analyzed this card ("" when nobody did).
 
-    ``domain`` is the tab's ACTIVE judgment domain — the backend whose numbers
-    the card currently shows. The previous version looked only at
-    "does a VLM scorecard exist", so every card said AI once the AI run had
-    touched it, even in Algorithms mode (owner 2026-10-22: "бейдж только ИИ
-    выставляется"). A cache is not a claim about what you are looking at.
+    Owner rule 2026-10-27 (verbatim: "пусто, пока карточка не знает, кто её
+    анализировал или будет анализировать"):
+
+    - ``AI`` — the ACTIVE domain is AI and either an ``AiAnalysisResult`` sits on
+      the item or the card is queued / in flight for AI (``analysis_status ==
+      PENDING``). A cached scorecard alone does NOT claim "AI" while the
+      Algorithms domain is on screen (owner decision 2026-10-27: follow the
+      domain, i.e. name the backend whose numbers are shown);
+    - ``ALG`` — the LOCAL analysis was part of an EXPLICIT run for the active
+      domain (``requested``), i.e. the user asked for it; a number the passive
+      folder-open pass filled is not a claim about who analyzed the card;
+    - otherwise empty. That is the defect this fixes: ``analysis_source`` says
+      ``local`` as soon as ``item.metrics`` is non-empty, so the warm pass made
+      every card say "АЛГ" without anyone asking.
+
+    ``domain`` is the tab's ACTIVE judgment domain. ``requested`` is the
+    controller's one explicit field (``_analysis_requested_gen``), never an
+    inference from the item's state.
     """
-    from tabs.image_gallery.analysis.read import SOURCE_AI, SOURCE_LOCAL, analysis_source
+    from tabs.image_gallery.analysis.read import SOURCE_AI, SOURCE_LOCAL
 
-    live = str(domain or "").strip().lower()
-    if live and live != SOURCE_AI:
-        # Algorithms view: the displayed numbers are the detectors', whatever
-        # AI reads may still sit on the item. The token appears only once the
-        # local pass FINISHED for this item: a card that is still being
-        # analyzed must not claim a backend (owner 2026-10-22: a freshly
-        # loaded image already said ALG).
-        if not analysis_source(item) or _analyzing(item):
-            return ""
-        return _token(translate, SOURCE_LOCAL, "image_gallery.card.source_local", "ALG")
-    source = analysis_source(item)
+    source = _marker_source(item, domain=domain, requested=requested)
     if source == SOURCE_AI:
         return _token(translate, SOURCE_AI, "image_gallery.card.source_ai", "AI")
     if source == SOURCE_LOCAL:
         return _token(translate, SOURCE_LOCAL, "image_gallery.card.source_local", "ALG")
     return ""
+
+
+def _marker_source(item, *, domain=None, requested: bool = False) -> str:
+    """Who owns this card's claim: ``SOURCE_AI`` / ``SOURCE_LOCAL`` / ``""``."""
+    from tabs.image_gallery.analysis.read import SOURCE_AI, SOURCE_LOCAL, analysis_source
+
+    live = str(domain or "").strip().lower()
+    # The marker names the backend whose numbers the card CURRENTLY shows
+    # (owner decision 2026-10-27, asked and answered: "follow the domain").
+    # A cached AI scorecard does not entitle the card to say "AI" while the
+    # Algorithms domain is the one on screen — that is the 2026-10-22 rule and
+    # it stays.
+    ai_view = live != "algorithms"
+    source = analysis_source(item)
+    if ai_view and (source == SOURCE_AI or _ai_pending(item, live)):
+        return SOURCE_AI
+    if (
+        requested
+        and not ai_view
+        and source == SOURCE_LOCAL
+        and not _analyzing(item)
+    ):
+        # Only an EXPLICIT run of the active (Algorithms) domain earns "ALG".
+        return SOURCE_LOCAL
+    return ""
+
+
+def _ai_pending(item, live: str) -> bool:
+    """Is this card queued / in flight for the AI domain (the pill's truth)?"""
+    if live == "algorithms":
+        return False
+    try:
+        from tabs.image_gallery.models import AnalysisStatus
+
+        status = getattr(item, "analysis_status", None)
+        value = str(getattr(status, "value", status) or "").strip().lower()
+        return value == AnalysisStatus.PENDING.value
+    except Exception:
+        return False
+
+
+def requested_for(widget) -> bool:
+    """Did the USER explicitly request analysis for this card's folder gen?
+
+    The authority is the controller's single field ``_analysis_requested_gen``
+    (owner 2026-10-27): it equals ``_folder_gen`` exactly when the user asked
+    (Analyze / a domain switch) for the generation the cards show. The grid pool
+    hands a card no controller, so the owner is reached through the explicit
+    back-refs the grid already keeps (``_gallery_widget`` →
+    ``_owner_for_triage``), never through an attribute scan on the paint path.
+    """
+    node = widget
+    for _ in range(32):
+        if node is None:
+            return False
+        resolver = getattr(node, "_owner_for_triage", None)
+        if callable(resolver):
+            return _explicit_run(resolver())
+        grid = getattr(node, "_gallery_widget", None)
+        if grid is not None:
+            resolver = getattr(grid, "_owner_for_triage", None)
+            if callable(resolver):
+                return _explicit_run(resolver())
+        node = getattr(node, "parent", None)
+        node = node() if callable(node) else node
+    return False
+
+
+def _explicit_run(owner) -> bool:
+    """``owner._analysis_requested_gen == owner._folder_gen`` (never raises)."""
+    try:
+        gen = int(getattr(owner, "_analysis_requested_gen", -1))
+        return gen >= 0 and gen == int(getattr(owner, "_folder_gen", -2))
+    except Exception:
+        return False
 
 
 def _analyzing(item) -> bool:
@@ -94,7 +172,9 @@ def _token(translate, _source: str, key: str, default: str) -> str:
     return default
 
 
-def paint_source_marker(painter, box: QRectF, item, *, translate=None, domain=None) -> None:
+def paint_source_marker(
+    painter, box: QRectF, item, *, translate=None, domain=None, requested: bool = False
+) -> None:
     """Draw the marker as plain text at *box*'s bottom-left (no pill, no image).
 
     Owner 2026-10-22: the first version was a pill INSIDE the cover — it covered
@@ -102,15 +182,19 @@ def paint_source_marker(painter, box: QRectF, item, *, translate=None, domain=No
     small caption in the card's TEXT zone (grid) / text region (list): no
     background chip, no overlap with the preview.
     """
-    text = marker_text(item, translate, domain=domain)
-    if not text:
+    source = _marker_source(item, domain=domain, requested=requested)
+    if not source:
         return
-    from tabs.image_gallery.analysis.read import SOURCE_AI, analysis_source
+    from tabs.image_gallery.analysis.read import SOURCE_AI, SOURCE_LOCAL
 
-    live = str(domain or "").strip().lower()
-    # Colour follows what the card SHOWS: in Algorithms mode the token is the
-    # muted detector label even when a cached AI read still sits on the item.
-    is_ai = analysis_source(item) == SOURCE_AI and live in ("", SOURCE_AI)
+    text = (
+        _token(translate, SOURCE_AI, "image_gallery.card.source_ai", "AI")
+        if source == SOURCE_AI
+        else _token(translate, SOURCE_LOCAL, "image_gallery.card.source_local", "ALG")
+    )
+    # Colour follows the claim the caption makes: the accent belongs to the AI
+    # token, the local one keeps the muted stats-strip text colour.
+    is_ai = source == SOURCE_AI
     font = ui_font(pixel_size=_MARK_FONT_PX, bold=True)
     metrics = QFontMetrics(font)
     pad = float(scaled_px(_MARK_PAD))

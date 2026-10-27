@@ -68,7 +68,10 @@ def _list_provenance_overlay(painter, ctx) -> None:  # type: ignore[no-untyped-d
     """Source caption at the bottom-left of the row's TEXT area (not the thumb)."""
     from PySide6.QtCore import QRectF
 
-    from tabs.image_gallery.ui.card.provenance import paint_source_marker
+    from tabs.image_gallery.ui.card.provenance import (
+        paint_source_marker,
+        requested_for,
+    )
 
     widget = getattr(ctx, "widget", None)
     item = getattr(widget, "_gallery_item", None)
@@ -84,6 +87,8 @@ def _list_provenance_overlay(painter, ctx) -> None:  # type: ignore[no-untyped-d
         item,
         translate=getattr(widget, "_gallery_translate", None),
         domain=getattr(widget, "_gallery_domain", None),
+        # "ALG" only for an explicit run (owner 2026-10-27), same rule as grid.
+        requested=requested_for(widget),
     )
 
 
