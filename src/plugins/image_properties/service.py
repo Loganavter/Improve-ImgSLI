@@ -137,8 +137,65 @@ def _read_source_info(path: Path | None) -> dict[str, Any]:
                     for tag, value in exif.items()
                 }
     except Exception as exc:
-        info["read_error"] = str(exc)
+        _fill_from_shared_probes(path, info, exc)
     return info
+
+
+def _fill_from_shared_probes(path: Path, info: dict[str, Any], exc: Exception) -> None:
+    """Metadata for an accepted image Pillow cannot open.
+
+    Pillow is the primary container parser, but it is not the only decoder the
+    app ships with: a JXL (no Pillow plugin in most builds) still has its
+    dimensions in the codestream header and is decoded by libvips/imagecodecs.
+    Here the panel reports what those probes actually know — ``format``,
+    ``dimensions``, and ``mode`` only from a real decode — and leaves exotic
+    metadata (DPI/ICC/EXIF) ABSENT, which is the truth: they were not read.
+    Absent keys render as no row; a bogus ``read_error`` row claimed the file
+    itself was unreadable (2026-10-28, JXL properties panel).
+
+    ``read_error`` is still reported when nothing could be measured, or when
+    the suffix is not one the app claims to support at all.
+    """
+    try:
+        from shared.image_extensions import is_accepted_image_path
+    except Exception:
+        info["read_error"] = str(exc)
+        return
+    if not is_accepted_image_path(path):
+        info["read_error"] = str(exc)
+        return
+    try:
+        from shared.image_processing.bounded_frame import detect_image_mode
+        from shared.image_processing.progressive_loader import (
+            get_image_dimensions,
+            get_image_format_info,
+        )
+    except Exception:
+        info["read_error"] = str(exc)
+        return
+    dimensions: tuple[int, int] | None = None
+    try:
+        dimensions = get_image_dimensions(str(path))
+    except Exception as probe_exc:
+        info["read_error"] = str(probe_exc)
+        return
+    if dimensions is None:
+        # No header and no decoder: the file really is unreadable.
+        info["read_error"] = str(exc)
+        return
+    info["dimensions"] = dimensions
+    try:
+        format_name, _progressive, _has_alpha = get_image_format_info(str(path))
+        if format_name and format_name != "UNKNOWN":
+            info["format"] = format_name
+    except Exception:
+        pass
+    try:
+        mode = detect_image_mode(str(path))
+    except Exception:
+        mode = None
+    if mode:
+        info["mode"] = mode
 
 def _file_rows(
     path: Path | None,

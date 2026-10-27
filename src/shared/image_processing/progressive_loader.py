@@ -308,25 +308,14 @@ def _load_preview_vips(
             crop_service = None
     try:
         import numpy as np
-        import pyvips
         from PySide6.QtGui import QImage
         from engine.store.tiled_pixel_store import qimage_from_pixel_source
+        from shared.image_processing.bounded_frame import vips_thumbnail_array
 
-        thumb = pyvips.Image.thumbnail(
-            image_path, 1024, height=1024, size=pyvips.enums.Size.DOWN
-        )
-        if not thumb.hasalpha():
-            thumb = thumb.bandjoin(255)
-        if thumb.format != "uchar":
-            thumb = thumb.cast("uchar")
-        arr = np.ndarray(
-            buffer=thumb.write_to_memory(),
-            dtype=np.uint8,
-            shape=(thumb.height, thumb.width, thumb.bands),
-        )
+        arr = vips_thumbnail_array(image_path, 1024)
         if arr.shape[2] != 4:
             rgb = arr[:, :, :3] if arr.shape[2] >= 3 else arr
-            arr = np.empty((thumb.height, thumb.width, 4), dtype=np.uint8)
+            arr = np.empty((arr.shape[0], arr.shape[1], 4), dtype=np.uint8)
             arr[:, :, :3] = rgb
             arr[:, :, 3] = 255
         if crop_service is not None:
@@ -340,7 +329,7 @@ def _load_preview_vips(
 
                     with _PILImage.open(image_path) as _im:
                         orig_w, orig_h = _im.size
-                    scaled = _get_scaled(orig_box, (orig_w, orig_h), (thumb.width, thumb.height))
+                    scaled = _get_scaled(orig_box, (orig_w, orig_h), (arr.shape[1], arr.shape[0]))
                     if scaled is not None:
                         l, t, r, b = scaled.to_tuple()
                         arr = arr[t:b, l:r]
@@ -364,19 +353,24 @@ def get_image_dimensions(image_path: str) -> tuple[int, int] | None:
     except ImageSizeLimitError:
         raise
     except Exception:
-        if JXL_SUPPORTED and image_path.lower().endswith(".jxl"):
-            # Header first: answer from the codestream SizeHeader with no
-            # decode at all. Full-decode stays as a last resort only when
-            # the header is unreadable.
-            try:
-                header_dims = read_jxl_header_dimensions(image_path)
-                if header_dims is not None:
-                    _ensure_supported_dimensions(header_dims[0], header_dims[1], image_path, ignore_limit=pyvips_can_stream(image_path))
-                    return (header_dims[0], header_dims[1])
-            except ImageSizeLimitError:
-                raise
-            except Exception as e:
-                logger.error(f"Failed to read JXL header dimensions {image_path}: {e}")
+        pass
+    if str(image_path).lower().endswith(".jxl"):
+        # The JXL branch is NOT gated on ``JXL_SUPPORTED``: the codestream
+        # SizeHeader is a header parse (``jxl_header``), not a decode, so a
+        # build without imagecodecs still knows the dimensions. ``JXL_SUPPORTED``
+        # only gates the full-decode last resort below — and gating the header
+        # on it made every size-provider report None on exactly the machines
+        # where the answer was free (2026-10-28, gallery cards / properties).
+        try:
+            header_dims = read_jxl_header_dimensions(image_path)
+            if header_dims is not None:
+                _ensure_supported_dimensions(header_dims[0], header_dims[1], image_path, ignore_limit=pyvips_can_stream(image_path))
+                return (header_dims[0], header_dims[1])
+        except ImageSizeLimitError:
+            raise
+        except Exception as e:
+            logger.error(f"Failed to read JXL header dimensions {image_path}: {e}")
+        if JXL_SUPPORTED:
             try:
                 decoded = imagecodecs.imread(image_path)
                 height, width = decoded.shape[:2]
@@ -384,7 +378,7 @@ def get_image_dimensions(image_path: str) -> tuple[int, int] | None:
                 return (width, height)
             except Exception as e:
                 logger.error(f"Failed to read JXL dimensions {image_path}: {e}")
-        return None
+    return None
 
 def get_image_format_info(image_path: str) -> tuple[str, bool, bool]:
     try:
