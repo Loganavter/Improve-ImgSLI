@@ -12,6 +12,30 @@ Does not require ``SceneVisibility.INTERACTIVE``; ``should_paint`` gates
 on ``runtime_state._drag_overlay_visible`` which is set by
 ``canvas/interaction.set_drag_overlay_state``. Must remain visible even
 when ``blank_white`` (no images) so drop hints show on empty canvas.
+
+Two frame-convention rules are stated here and implemented in
+``framing.py``, both learned from the 2026-10-27 "drop zone mirrored +
+shrinks on HiDPI" report (text/preview read top-to-bottom reversed, and
+the zone got *smaller* at a larger interface scale):
+
+* **Orientation.** The shell's quad maps raster row 0 (``v == 0``) to clip
+  ``y = +1``, so the quad needs the backend's clip-space correction from
+  ``engine/gpu/rt_y_orientation`` — ``composited_clip_correction`` (this
+  pass writes into the ``QRhiWidget``'s own composited target). Staging
+  identity happens to look right on a y-up NDC backend (GL/D3D) and
+  mirrors the raster on a y-down one (Vulkan). The sibling IC overlays
+  (``features/guides``, ``features/capture``, ``features/divider``,
+  ``features/filename_overlay``) take the same correction; never decide
+  it locally, and never "fix" a flip by reversing raster rows.
+* **DPR.** image_compare's context carries *logical* ``width/height``
+  (``canvas/render_context.py`` ``ViewportContext``), not device px. The
+  raster is device px (``logical * DPR``, painted in logical coordinates
+  under a painter scale derived from it), so the draw viewport must be
+  the same device-px size; sizing it from the logical numbers drew the
+  texture into ``1/DPR`` of the framebuffer per axis (a quarter of the
+  area at DPR=2). ``framing.framebuffer_size`` is the single place that
+  answers "how many device px is the frame", used by both the raster and
+  the draw.
 """
 
 from __future__ import annotations
@@ -27,6 +51,7 @@ from engine.overlay import (
     TexturedOverlayResolver,
     TexturedOverlayShell,
 )
+from tabs.image_compare.canvas.features.drag_drop_overlay import framing
 from tabs.image_compare.canvas.features.drag_drop_overlay.render.overlay import (
     paint_drag_drop_overlay,
     should_paint_drag_overlay,
@@ -76,22 +101,7 @@ def _raster_image(host, ctx) -> QImage | None:
     if state is None or not bool(getattr(state, "_drag_overlay_visible", False)):
         return None
 
-    # Framebuffer size: prefer ctx.framebuffer_size else ctx.width/height * DPR
-    fb = getattr(ctx, "framebuffer_size", None)
-    if fb is None:
-        width = int(getattr(ctx, "width", 0) or getattr(host, "width", lambda: 0)() or 800)
-        height = int(getattr(ctx, "height", 0) or getattr(host, "height", lambda: 0)() or 600)
-        # Account for DPR later via painter.scale
-        fb_w, fb_h = width, height
-        # Use devicePixelRatio to get framebuffer pixels
-        try:
-            dpr = float(host.devicePixelRatioF())
-        except Exception:
-            dpr = 1.0
-        fb_w = int(max(1, round(fb_w * dpr)))
-        fb_h = int(max(1, round(fb_h * dpr)))
-    else:
-        fb_w, fb_h = fb
+    fb_w, fb_h = framing.framebuffer_size(host, ctx)
 
     horizontal = bool(getattr(state, "_drag_overlay_horizontal", False))
     texts = getattr(state, "_drag_overlay_texts", ("", ""))
@@ -123,13 +133,9 @@ def _raster_image(host, ctx) -> QImage | None:
     painter = QPainter(img)
     painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
     painter.setRenderHint(QPainter.RenderHint.TextAntialiasing, True)
-    try:
-        dpr = float(host.devicePixelRatioF())
-    except Exception:
-        dpr = 1.0
-    dpr = max(1.0, dpr)
+    scale = framing.logical_to_framebuffer_scale(host, fb_w, fb_h)
     painter.save()
-    painter.scale(dpr, dpr)
+    painter.scale(scale, scale)
     paint_drag_drop_overlay(painter, host, horizontal, text1, text2)
     painter.restore()
     painter.end()
@@ -196,6 +202,12 @@ class DragDropOverlayPass(CanvasRenderPass):
 
     def __init__(self) -> None:
         self._shell = TexturedOverlayShell()
+        # Framebuffer size (device px) resolved once per frame in prepare().
+        # record() must not read the widget (tests/contracts/
+        # test_pass_reads_only_ctx.py pins it at zero reads) and must agree
+        # with the raster exactly, so the size is resolved here and consumed
+        # there.
+        self._framebuffer_px: tuple[int, int] = (0, 0)
 
     def should_paint(self, ctx) -> bool:
         widget = getattr(ctx, "widget", None)
@@ -254,12 +266,18 @@ class DragDropOverlayPass(CanvasRenderPass):
 
     def prepare(self, widget, ctx, resource_updates) -> None:
         self._shell.stage_quad(resource_updates)
-        # ctx.clip_matrix may not exist for image_compare; fallback to identity.
-        clip_matrix = getattr(ctx, "clip_matrix", None)
-        if clip_matrix is None:
-            # identity mat4
-            clip_matrix = (1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1)
-        self._shell.stage_clip(resource_updates, clip_matrix)
+        # The quad maps raster row 0 to clip y=+1, so the backend's
+        # clip-space correction decides whether that row is the top of the
+        # screen (image_compare's ctx carries no clip_matrix; see
+        # framing.clip_matrix).
+        self._shell.stage_clip(
+            resource_updates, framing.clip_matrix(ctx, self._shell.rhi)
+        )
+        # Resolve once: the raster below uses the same helper, so texture and
+        # the viewport record() sets cannot disagree (DPR applied once).
+        self._framebuffer_px = framing.framebuffer_size(
+            _resolve_host(widget, ctx), ctx
+        )
         frame = _frame_resolver()(ctx)
         try:
             rt = widget.renderTarget() if widget is not None else None
@@ -281,11 +299,14 @@ class DragDropOverlayPass(CanvasRenderPass):
             "dnd-record quad_fired=%s",
             fired,
         )
-        # ctx.framebuffer_size may not exist; fallback to width/height
-        fb = getattr(ctx, "framebuffer_size", None)
-        if fb is None:
-            fb = (int(getattr(ctx, "width", 0)), int(getattr(ctx, "height", 0)))
-        fb_w, fb_h = fb
+        # Viewport = the raster's own device-px size (resolved in prepare()):
+        # the logical ctx.width/height would draw the texture into 1/DPR of
+        # the framebuffer per axis on a scaled display.
+        fb_w, fb_h = self._framebuffer_px
+        if fb_w <= 0 or fb_h <= 0:
+            # prepare() staged nothing this frame, so there is no raster (and
+            # no per-frame uniform/quad) to draw.
+            return
         self._shell.draw(command_buffer, width=float(fb_w), height=float(fb_h))
 
     def release(self) -> None:
