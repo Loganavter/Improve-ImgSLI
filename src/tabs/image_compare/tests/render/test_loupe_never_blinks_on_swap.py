@@ -105,8 +105,26 @@ def test_a_swap_does_not_invalidate_the_pair_geometry():
     )
     PlaylistListOperations(store, main_controller=None).swap_current_images()
 
-    assert document.image_list1[0] == ("b.png", "b")
-    assert len(dispatcher.actions) == 2, "the pair is published in one batch, two slot writes"
+    # The pair is still published in ONE batch, but through the dispatcher
+    # (copy-on-write document + viewport slots), so the assertion reads the
+    # published actions instead of the mutated fake document object: the swap
+    # must never edit a document other holders already describe (see
+    # ``document_store_ops.swap_current_pair``).
+    from core.state_management.document_actions import SetImageListAction
+
+    published_lists = [
+        action for action in dispatcher.actions if isinstance(action, SetImageListAction)
+    ]
+    assert [items.items[0] for items in published_lists] == [
+        ("b.png", "b"),
+        ("a.png", "a"),
+    ]
+    slot_writes = [
+        a
+        for a in dispatcher.actions
+        if not isinstance(a, (SetImageListAction, InvalidateGeometryCacheAction))
+    ]
+    assert len(slot_writes) == 2, "the pair is published in one batch, two slot writes"
     assert not [
         a for a in dispatcher.actions if isinstance(a, InvalidateGeometryCacheAction)
     ], "a same-pair swap zeroed the geometry: the loupe disappears for a frame"

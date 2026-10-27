@@ -253,45 +253,13 @@ class PlaylistListOperations:
     def swap_current_images(self) -> None:
         dispatcher = self.store.get_dispatcher()
         assert dispatcher is not None, "swap_current_images requires dispatcher"
-        from core.state_management.actions import (
-            SetFullResImageAction,
-            SetImagePathAction,
-            SetImageSessionImageAction,
-            SetPreviewImageAction,
-        )
 
-        document = self.store.get_session_state_slot("document")
-        idx1 = document.current_index1
-        idx2 = document.current_index2
-        list1 = document.image_list1
-        list2 = document.image_list2
-        if not (0 <= idx1 < len(list1) and 0 <= idx2 < len(list2)):
+        # Single dispatch-first implementation (copy-on-write document +
+        # viewport, one batch): the pair's paths and pixels are published
+        # together, so no consumer can hold slot N's path paired with the
+        # other slot's pixels. See ``document_store_ops.swap_current_pair``.
+        if not document_store_ops.swap_current_pair(self.store):
             return
-
-        list1[idx1], list2[idx2] = list2[idx2], list1[idx1]
-
-        # PipelineView is single source — SlotSource list+index already swapped,
-        # path derived. Only viewport image_state needs swap.
-        img1 = self.store.viewport.session_data.image_state.image1
-        img2 = self.store.viewport.session_data.image_state.image2
-
-        with self.store.batch_changes():
-            dispatcher.dispatch(
-                SetImageSessionImageAction(slot=1, image=img2), scope="viewport"
-            )
-            dispatcher.dispatch(
-                SetImageSessionImageAction(slot=2, image=img1), scope="viewport"
-            )
-            # No geometry invalidation: a swap exchanges the two images of ONE
-            # pair, so the comparison envelope max(w1,w2) x max(h1,h2) -- the
-            # reference the letterbox and the overlay conversions are fitted to
-            # -- is unchanged, and its drawn frame is the same pair. Invalidating
-            # zeroed pixmap_width/height (GeometryStateReducer), which made the
-            # scene builder return an empty graph for the frames before the next
-            # apply: the declared-visible loupe vanished from the scene (and the
-            # hit-test) for a couple of frames (owner report 2026-10-27). It also
-            # forced a needless extra apply. swap_entire_lists keeps its
-            # invalidation: there the current images themselves change.
 
         emit_ui_update(self.main_controller, ["combobox", "file_names", "resolution"])
         self._emit_metrics_update()

@@ -62,6 +62,77 @@ def set_current_image_data(store, image_number: int, image, path, display_name) 
             dispatcher.dispatch(InvalidateGeometryCacheAction(), scope="viewport")
 
 
+def swap_current_pair(store) -> bool:
+    """Swap the pair's two *current* images through the dispatcher.
+
+    A swap is ONE user-visible transition, so it must be published as one
+    copy-on-write document+viewport batch — never by mutating
+    ``DocumentModel.image_list1/image_list2`` in place. The in-place write was
+    a Store-contract violation with an identity consequence: the pair's PATHS
+    moved underneath every consumer that already held the document (undo
+    snapshot, feature-worker snapshot, persistence capture, a listener that
+    re-reads on a later ``document`` emit) while the paired
+    ``image_state.image1/2`` pixels did not move with them, and no
+    ``document`` scope was emitted, so nothing re-read the new pairing. A
+    consumer left in that state resolves slot N's path to the OTHER slot's
+    pixels for the frames until something else republishes the pair — the
+    canvas then draws the other slot's content in this slot (owner report
+    2026-10-27: a pair swap/replace flashing an image from the other slot or
+    the previous one).
+
+    Indexes are untouched: each list keeps its length and the current item is
+    exchanged in place, so the pair's paths still derive from
+    ``image_listN[current_indexN]`` and now name the image the viewport slot
+    just received.
+
+    No geometry invalidation: a swap exchanges the two images of ONE pair, so
+    the comparison envelope ``max(w1,w2) x max(h1,h2)`` is unchanged (#737 —
+    zeroing ``pixmap_width/height`` dropped the declared-visible loupe for a
+    couple of frames). ``swap_all_image_data`` keeps its invalidation: there
+    the current images themselves change.
+
+    Returns ``False`` (nothing dispatched) when either slot has no current
+    item, which is the legacy early-return behaviour.
+    """
+    dispatcher = store.get_dispatcher()
+    if dispatcher is None:
+        return False
+    from core.state_management.actions import SetImageSessionImageAction
+    from core.state_management.document_actions import SetImageListAction
+
+    doc = store.get_session_state_slot("document")
+    if doc is None:
+        return False
+    idx1 = doc.current_index1
+    idx2 = doc.current_index2
+    # Copies: the publication is copy-on-write, so no holder of the previous
+    # document can observe this transition (see the docstring).
+    list1 = list(doc.image_list1)
+    list2 = list(doc.image_list2)
+    if not (0 <= idx1 < len(list1) and 0 <= idx2 < len(list2)):
+        return False
+    list1[idx1], list2[idx2] = list2[idx2], list1[idx1]
+
+    image_state = getattr(
+        getattr(store.viewport, "session_data", None), "image_state", None
+    )
+    image1 = getattr(image_state, "image1", None) if image_state is not None else None
+    image2 = getattr(image_state, "image2", None) if image_state is not None else None
+
+    # One batch ⇒ one flush per scope, in first-emitted order: listeners only
+    # ever see the coherent post-swap pair (paths and pixels together).
+    with store.batch_changes():
+        dispatcher.dispatch(SetImageListAction(slot=1, items=list1), scope="document")
+        dispatcher.dispatch(SetImageListAction(slot=2, items=list2), scope="document")
+        dispatcher.dispatch(
+            SetImageSessionImageAction(slot=1, image=image2), scope="viewport"
+        )
+        dispatcher.dispatch(
+            SetImageSessionImageAction(slot=2, image=image1), scope="viewport"
+        )
+    return True
+
+
 def swap_all_image_data(store) -> None:
     dispatcher = store.get_dispatcher()
     assert dispatcher is not None, "swap_all_image_data requires dispatcher"
@@ -86,9 +157,14 @@ def swap_all_image_data(store) -> None:
         # SlotSource swap
         dispatcher.dispatch(SetCurrentIndexAction(slot=1, index=idx2), scope="document")
         dispatcher.dispatch(SetCurrentIndexAction(slot=2, index=idx1), scope="document")
-        # image_list swap via slot write (no SetImageListAction yet)
+        # image_list swap via slot write (no SetImageListAction yet).
+        # Copies: the published document must not alias the lists of a
+        # document another holder still describes (same contract as
+        # ``swap_current_pair``).
         live_doc = store.get_session_state_slot("document")
-        new_doc = _dc_replace(live_doc, image_list1=list2, image_list2=list1)
+        new_doc = _dc_replace(
+            live_doc, image_list1=list(list2), image_list2=list(list1)
+        )
         store.set_session_state_slot("document", new_doc, emit_scope="document")
         dispatcher.dispatch(InvalidateGeometryCacheAction(), scope="viewport")
 
