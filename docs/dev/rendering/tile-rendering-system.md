@@ -441,6 +441,20 @@ Shared cross-tab render helpers (2026-07-15):
 - `src/engine/cache/tile_geometry.py` — `crop_apron_tile`,
   `viewport_zoom_offset_for_tile`
 
+### Export DPR units (one device-px answer)
+
+`export_tiling` is the only place logical px (`QWidget.resize`) and framebuffer
+px (`grabFramebuffer`, `target.pixelSize`) are converted. `export_surface_size`
++ `fit_framebuffer_to_target=True` size the offscreen surface so **one export
+framebuffer px is one output px** at any `devicePixelRatioF()`; multi_compare
+opts in, so its export viewport (`canvas_w/h`, tile origin) and the projection
+(`framebuffer_size = target.pixelSize()`) are in that one space. A grab that
+does not cover its target is cropped only for the sub-logical-px rounding of
+that sizing, otherwise `ExportFramebufferMismatch` is raised — never a silent
+bilinear resample. The default (no flag) is the legacy image_compare shape: a
+logical-space scene whose HiDPI grab is a supersample that is downscaled once.
+
+
 ## PixelSource contract and tier rules
 
 Two explicit tiers — cross-tier work goes through `src/engine/store/pixel_ops/`:

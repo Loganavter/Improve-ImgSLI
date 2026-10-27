@@ -1,15 +1,20 @@
 """Offscreen GPU exporter for the Multi Compare view.
 
 Mirrors the main-compare path (:class:`GpuExportProxy`): a hidden
-``MultiCompareCanvasWidget`` is resized to the chosen output size, the
-composition tree is applied via ``apply_canvas_render_plan`` (which stashes a
-``ResolvedComposition`` on the widget for ``render()`` to consume), and
-``grabFramebuffer`` performs a synchronous render.
+``MultiCompareCanvasWidget`` is resized so its **framebuffer** is the output
+frame in device px (see ``engine.gpu.export_tiling`` UNITS — one export
+framebuffer px is one output px, so the widget is sized in *logical* px as
+``ceil(output / DPR)``), the composition tree is applied via
+``apply_canvas_render_plan`` (which stashes a ``ResolvedComposition`` on the
+widget for ``render()`` to consume), and ``grabFramebuffer`` performs a
+synchronous render.
 
 The composition is the **only** input to the renderer — no ``set_state``
 shortcut, no parallel ``MultiCompareState`` mutation path. This is what makes
 live and export look the same: both paths render the same canvas-px scene with
-``sr = min(fb/canvas)`` applied once at draw time.
+``sr = min(fb/canvas)`` applied once at draw time, in framebuffer px on both
+sides of that division (the export viewport is framebuffer px too, never
+logical/device mixed).
 """
 
 from __future__ import annotations
@@ -23,6 +28,9 @@ from PySide6.QtWidgets import QApplication
 from engine.gpu.export_tiling import (
     DEFAULT_EXPORT_TILE_MAX_EXTENT,
     TiledFramebufferExporter,
+    export_framebuffer_scale,
+    export_surface_size,
+    resolve_export_framebuffer,
 )
 from engine.cache.draw_plans import plan_tiles_for_grid
 from engine.cache.tile_texture_service import TileTextureService
@@ -290,30 +298,39 @@ class MultiCompareGpuExporter:
         )
         if output_w <= tile_extent and output_h <= tile_extent:
             set_export_viewport(None)
-            if self._last_size != target_size:
-                resize_offscreen_widget(widget, target_size)
+            # Framebuffer == output px: size the surface in LOGICAL px as
+            # ceil(output / DPR) so one device px is one output px (see
+            # engine.gpu.export_tiling units header). Sizing it to the output
+            # px instead made grabFramebuffer() return a DPR-supersampled frame
+            # that had to be silently downscaled.
+            logical_size = export_surface_size(widget, target_size)
+            if self._last_size != logical_size:
+                resize_offscreen_widget(widget, logical_size)
                 show_offscreen_widget(widget)
-                self._last_size = target_size
+                self._last_size = logical_size
             prepare_frame()
             render_widget_frame(widget)
             render_widget_frame(widget)
-            image = widget.grabFramebuffer()
-            if (image.width(), image.height()) != target_size:
-                from PySide6.QtCore import Qt
-
-                image = image.scaled(
-                    target_size[0],
-                    target_size[1],
-                    Qt.AspectRatioMode.IgnoreAspectRatio,
-                    Qt.TransformationMode.SmoothTransformation,
-                )
-            return image
+            qimg = widget.grabFramebuffer()
+            mode = resolve_export_framebuffer(
+                (qimg.width(), qimg.height()),
+                target_size,
+                scale=export_framebuffer_scale(widget),
+                fit_framebuffer=True,
+                phase="multi-compare single-frame export",
+            )
+            if mode == "crop":
+                # Sub-logical-px rounding of export_surface_size; the
+                # composition origin is framebuffer (0, 0), so this is lossless.
+                qimg = qimg.copy(0, 0, target_size[0], target_size[1])
+            return qimg
 
         exporter = TiledFramebufferExporter(
             widget,
             set_export_viewport=set_export_viewport,
             prepare_frame=prepare_frame,
             query_max_texture_size=lambda: query_max_texture_size(widget.rhi()),
+            fit_framebuffer_to_target=True,
         )
         pil_image = exporter.render_rgba(
             output_w, output_h, max_extent=DEFAULT_EXPORT_TILE_MAX_EXTENT
