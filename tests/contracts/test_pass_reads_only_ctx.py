@@ -52,7 +52,11 @@ _PINNED_WIDGET_READS = {
     ],
     "src/tabs/image_compare/canvas/features/drag_drop_overlay/passes.py": [],
     "src/tabs/image_compare/canvas/features/filename_overlay/passes.py": [
+        # One DPR resolution: the viewport is the render target's own
+        # pixelSize() like the six siblings. The ratio read stays because it is
+        # the named device-px fallback for a host with no mountable target.
         "widget.devicePixelRatioF",
+        "widget.renderTarget",
     ],
     "src/tabs/image_compare/canvas/features/guides/passes.py": [
         "widget.renderTarget",
