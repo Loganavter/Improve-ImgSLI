@@ -48,10 +48,23 @@ NON_PILLOW_ALLOWLIST: dict[str, str] = {
 
 
 def pillow_suffixes() -> frozenset[str]:
-    """Lowercased suffixes Pillow registers a decoder for (installed build)."""
+    """Suffixes this Pillow build can actually *open* (not merely register).
+
+    ``Image.registered_extensions()`` is not the oracle: it lists the
+    WRITE-ONLY ``.pdf`` (and ``.palm``) plugin, so a gate built on registration
+    alone would bless a suffix that raises ``UnidentifiedImageError`` on open.
+    The measured split (format-audit 2026-10-28): 70 registered extensions, 67
+    with a reader in ``Image.OPEN``.
+    """
     from PIL import Image
 
-    return frozenset(ext.lower() for ext in Image.registered_extensions())
+    Image.init()
+    opening = set(getattr(Image, "OPEN", ()))
+    readable: set[str] = set()
+    for ext, fmt in Image.registered_extensions().items():
+        if fmt in opening:
+            readable.add(ext.lower())
+    return frozenset(readable)
 
 
 def vips_suffixes() -> frozenset[str]:

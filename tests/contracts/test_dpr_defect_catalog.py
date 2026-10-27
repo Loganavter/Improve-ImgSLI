@@ -239,6 +239,9 @@ RATIO_NAME_RE = re.compile(
 #: one of these is the repaired form of the ``clip-matrix-literal`` defect.
 CLIP_MATRIX_SUFFIXES = ("clip_matrix", "clip_correction")
 
+#: Named functions that return the Y-convention correction verbatim.
+CLIP_SOURCE_HELPERS = ("resolve_target_units",)
+
 PAINTER_TARGET_NAMES = frozenset({"QPixmap", "QImage"})
 VIEWPORT_CTORS = frozenset({"QRhiViewport", "QRhiScissor"})
 GRAB_METHODS = frozenset({"grabFramebuffer", "grabWindow"})
@@ -455,6 +458,12 @@ def _is_sanctioned_clip_source(expr: ast.expr) -> bool:
     if isinstance(expr, ast.Call):
         name = _call_name(expr)
         if name.endswith(CLIP_MATRIX_SUFFIXES):
+            return True
+        # ``resolve_target_units(widget)`` is the frame-level resolver introduced
+        # with the IC context fields: it returns ``composited_clip_correction``
+        # verbatim (see its docstring), so a name it assigned is a sanctioned
+        # source -- otherwise every caller of the new API is a false positive.
+        if name in CLIP_SOURCE_HELPERS:
             return True
         # ``getattr(ctx, "clip_matrix", None)`` -- the context-carrying seam.
         if name == "getattr":
