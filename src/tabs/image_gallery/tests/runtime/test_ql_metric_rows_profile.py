@@ -490,11 +490,13 @@ def test_a_judge_axis_without_a_definition_shows_its_name_alone(qtbot):
 
     bare = AiAxisProposal(name="line_crispness", definition="")
     profile = _judged_profile(bare)
-    # The entry normalizer currently refuses an empty definition (the parser
-    # half is W1); the ROW must already honour the owner rule for a profile
-    # that carries one, so the entry is injected past the normalizer here.
-    assert profile.axis_entries == (), "fixture no longer exercises an empty definition"
-    object.__setattr__(profile, "axis_entries", (bare,))
+    # Owner rule 2026-10-27, and now the CODE agrees (wave W1): an entry with no
+    # definition is KEPT by the normalizer, so the fixture no longer has to be
+    # injected past it. The guard stays, inverted: the entry must SURVIVE, or the
+    # row below is testing nothing.
+    assert [e.name for e in profile.axis_entries] == [bare.name], (
+        "fixture: the empty-definition entry must survive the entry normalizer",
+    )
 
     # The wording rule itself: name alone, no dangling em-dash, no crash.
     assert judged_axis_title(bare.name, profile=profile) == (
