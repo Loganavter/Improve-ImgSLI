@@ -18,9 +18,12 @@ The model is an AUTHOR, not a selector from a closed menu:
   ``models.AiAxisProposal`` entry (name + definition + scale + direction).
 
 The pool/mode filter that used to drop every non-registry name and every
-registry id the mode could not measure is GONE: a free name with a definition is
-the normal case. What is still refused (with a recorded reason) is an axis that
-is NOT MEASURABLE — an unusable/empty name, a name with no definition, a name
+registry id the mode could not measure is GONE: a free name is the normal case.
+The app does not judge what is measurable or what shape the answer has (owner
+rule 2026-10-27): a bare name and an object are the same axis, and a missing or
+non-English definition is metadata (``definition=""`` + the ``no-definition``
+audit code), never a refusal. What is still refused — structure only, with a
+recorded reason — is an unusable/empty name, an unsupported scale, a name
 repeated inside the reply (``services/axis_choice.parse_axis_choices``).
 
 One call per unchanged folder-generation: the selection is pinned
@@ -59,7 +62,7 @@ per-SERIES resolution (``per_series_profile`` / ``per_series_profiles``) rides
 with the probe evidence it consumes, in ``use_cases/profile_probe``, and is
 re-exported here too.
 
-Audit-Meta: pattern=compound-module size=exempt reason="one selector decision chain: parse → the 5..8/`why` acceptance gate → the ONE retry → the pin with its source → the offer fallback. Splitting the gate from the retry (or the pin from the answer) lets one side accept a profile the other refuses — the 2026-10-26 defect was exactly a thin answer accepted silently"
+Audit-Meta: pattern=compound-module size=exempt reason="one selector decision chain: parse → the count/`why` acceptance gate → the ONE retry → the pin with its source → the offer fallback. Splitting the gate from the retry (or the pin from the answer) lets one side accept a profile the other refuses — the 2026-10-26 defect was exactly a thin answer accepted silently"
 """
 
 from __future__ import annotations
@@ -83,11 +86,15 @@ from core.log_names import APP_LOGGER_NAME
 
 logger = logging.getLogger(APP_LOGGER_NAME)
 
-#: The owner's count rule ("from 5 to 8 axes"): a profile outside it is a thin,
-#: unusable answer — it is retried ONCE and then refused with a WARN + fallback,
-#: never accepted silently (measured 2026-10-26: a 1-axis reply ranked the whole
-#: folder on one axis while three paid axes only labelled cards).
-MIN_PROFILE_AXES = 5
+#: The owner's count rule ("from 3 to 8 axes", ``axis_choice.AXIS_CHOICE_MIN`` /
+#: ``AXIS_CHOICE_MAX``): the count is over the axes the reply KEPT, so a refusal
+#: for structure can never turn a full answer into a "thin" one — that path ends
+#: in a retry and a fallback, which is how a complete answer used to be thrown
+#: away (measured 2026-10-26: a 1-axis reply ranked the whole folder on one axis
+#: while three paid axes only labelled cards). The floor is the ACCEPTANCE floor,
+#: not the instruction: the prompt still ASKS for more, and a short-but-complete
+#: answer is kept as given rather than re-phrased into existence.
+MIN_PROFILE_AXES = 3
 MAX_PROFILE_AXES = 8
 
 #: Shortest `why` that counts as evidence ("moves" is not a reason). The retry
@@ -191,11 +198,13 @@ def parse_profile_reply(text, *, mode=None):
 
     - a name that IS a registry id is the registry axis (``axis_ids``) — a local
       detector can score it;
-    - any other name WITH a definition is a first-class entry
-      (``axis_entries``: name + definition + scale + direction) — the normal
-      answer of the free-form selector, no filter, no mode availability check;
-    - a name with NO definition, an unusable name or a repeat is refused with a
-      recorded reason (logged, never stored).
+    - any other name becomes a first-class entry (``axis_entries``: name +
+      definition + scale + direction) — the normal answer of the free-form
+      selector, no filter, no mode availability check. A bare string name and an
+      object are the same axis; a missing/short definition is stored as ``""``
+      and recorded as the ``no-definition`` audit code, never refused;
+    - an unusable name or a repeat is refused with a recorded reason (logged,
+      never stored).
 
     Returns ``None`` when nothing usable was found (no JSON, an empty list, every
     pick refused): never a guess, and never a hollow ``vlm`` profile — the caller
@@ -212,9 +221,15 @@ def parse_profile_reply(text, *, mode=None):
         choices = parse_axis_choices(axes)
         if choices.refusals:
             logger.debug(
-                "profile select refused axes: %s (a pick with no measurable "
-                "meaning is recorded, never stored)",
+                "profile select refused axes: %s (structure only — a name, a "
+                "scale or a repeat is recorded, never stored)",
                 ", ".join(f"{name}={reason}" for name, reason in choices.refusals),
+            )
+        if choices.audits:
+            logger.debug(
+                "profile select kept axes with an audit code: %s (the definition "
+                "is metadata, never a refusal)",
+                ", ".join(f"{name}={code}" for name, code in choices.audits),
             )
         if not (choices.registry_ids or choices.entries):
             return None
@@ -233,7 +248,7 @@ def parse_profile_reply(text, *, mode=None):
 def profile_axis_count(profile) -> int:
     """How many axes the profile carries: registry ids + the judge's own names.
 
-    The count the 5..8 rule is about. A free-only answer counts fully (P7-A: a
+    The count the 3..8 rule is about. A free-only answer counts fully (P7-A: a
     judge that names only its own axes is a complete profile), and an unusable
     profile counts 0. Never raises.
     """
@@ -251,12 +266,15 @@ def missing_evidence_rows(text) -> int:
     Owner design (2026-10-26): every named axis must be tied to an observed
     difference ("which variants differ on it and how"). A row without that tie is
     an unanchored label, so it is counted here and the reply is refused with a
-    retry (then the WARN + fallback) — the same path the 5..8 rule uses.
+    retry (then the WARN + fallback) — the same path the count rule uses.
 
     A BARE id row is not counted: naming an axis the evidence lists IS the tie
     (the axis' spread is the observed difference), and the terse answer shape is
-    explicitly accepted by the prompt. Only an explicit row that left ``why``
-    empty/blank is a loss. Never raises.
+    explicitly accepted by the prompt. A row whose DEFINITION was left out is not
+    counted either (owner rule 2026-10-27: a definition is metadata, so "name +
+    nothing else" is the same terse shape whether it arrived as a string or as an
+    object — the form must not decide legality). Only an explicit row that
+    claimed a meaning and left ``why`` empty/blank is a loss. Never raises.
     """
     axes = _reply_axes(text)
     if not axes:
@@ -267,8 +285,11 @@ def missing_evidence_rows(text) -> int:
             continue
         try:
             why = str(row.get("why", "") or "").strip()
+            definition = str(row.get("definition", "") or "").strip()
         except Exception:
-            why = ""
+            why, definition = "", ""
+        if not definition:
+            continue
         if len(why) < MIN_WHY_CHARS:
             missing += 1
     return missing
@@ -278,8 +299,10 @@ def _profile_rejection(text, profile) -> str:
     """Why a selector answer is unusable (``""`` when it is fine).
 
     ONE gate for every reason a paid answer may not become the folder's profile:
-    nothing usable parsed, a count outside 5..8, or an axis with no evidence tie.
-    The caller retries once, then WARNs and falls back to the series offer.
+    nothing usable parsed, a KEPT count outside 3..8, or an axis that claimed a
+    meaning without an evidence tie. The count is over the axes the reply kept
+    (``profile_axis_count``), so a structural refusal never makes a full answer
+    "thin". The caller retries once, then WARNs and returns ``None``.
     """
     if profile is None:
         return "no usable axis"
@@ -468,7 +491,7 @@ def choose_profile_sync(
     offer becomes a paid judge answer. Nothing else invalidates it.
 
     Any failure — the AI backend not configured, no probe members, no transport,
-    a raising transport, a junk reply, an axis count outside 5..8 after one retry
+    a raising transport, a junk reply, an axis count outside 3..8 after one retry
     — returns ``None``. It does NOT degrade to the series offer: owner rule
     (2026-10-26) is that a selected AI backend whose call fails is an ERROR, and
     the run must not continue on the local axis set. Never raises. ``client_call`` defaults
@@ -666,7 +689,7 @@ def choose_profile_sync(
     reason = _profile_rejection(text, profile)
     # ONE retry, and only when the reply argues for one: a completion cut off at
     # the token cap was starved before its answer existed (a bigger cap can rescue
-    # it), and an answer that PARSED but broke the rule (count outside 5..8, an
+    # it), and an answer that PARSED but broke the rule (count outside 3..8, an
     # axis with no `why`) is worth exactly one correction. A junk reply with
     # finish=stop is a different failure and is not re-asked.
     starved = profile is None and _reply_finish(raw) == "length"
@@ -698,13 +721,15 @@ def choose_profile_sync(
                 reason = _profile_rejection(text, profile)
 
     if reason:
-        # A WARN, not a DEBUG: the run loses its VLM axes and falls back to the
-        # series offer, which LOOKS like a working profile. A thin or unexplained
-        # answer must never become the folder's order silently.
+        # A WARN, not a DEBUG: a thin or unexplained answer must never become the
+        # folder's order silently, and the loss of the paid axes must be visible.
+        # Nothing is pinned here and NOTHING is substituted: the AI backend stays
+        # without an axis set (owner rule 2026-10-26 — the local axis set is never
+        # an AI answer, so "series offer kept" would be a lie).
         logger.warning(
             "profile select: %s — finish_reason=%s max_tokens=%s attempts=%d "
-            "reasoning_chars=%d model=%s mode=%s; series offer kept and pinned "
-            "(this run has no VLM-named axes)",
+            "reasoning_chars=%d model=%s mode=%s; no profile this run (the local "
+            "axis set is never substituted)",
             reason,
             _reply_finish(raw) or "unknown",
             payload.get("max_tokens"),
@@ -714,8 +739,8 @@ def choose_profile_sync(
             mode,
         )
         logger.warning(
-            "profile select: the reply broke the 5..8 rule (%s) — no profile (an "
-            "error, not a fallback to the local axis set)",
+            "profile select: the reply is unusable (%s) — no profile (an error, "
+            "not a fallback to the local axis set)",
             reason,
         )
         return None

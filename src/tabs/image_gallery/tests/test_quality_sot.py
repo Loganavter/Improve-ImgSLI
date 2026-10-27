@@ -26,11 +26,12 @@ def test_normalize_key_variants() -> None:
     assert q.normalize_key("over_smoothing") == "over_smoothing"
 
 
-def test_normalize_severity_unknown_is_clean() -> None:
+def test_normalize_severity_never_invents_clean() -> None:
     assert q.normalize_severity(Severity.FLAGGED) == "flagged"
     assert q.normalize_severity("MILD") == "mild"
-    assert q.normalize_severity("bogus") == "clean"
-    assert q.normalize_severity(None) == "clean"
+    assert q.normalize_severity("clean") == "clean"
+    assert q.normalize_severity("bogus") == q.UNKNOWN
+    assert q.normalize_severity(None) == q.UNMEASURED
 
 
 def test_normalize_mode_aliases() -> None:
@@ -60,14 +61,16 @@ def test_severity_metric_fallbacks() -> None:
     assert q.severity(_item(metrics={"banding_score": 0.8}), "banding") == "flagged"
     assert q.severity(_item(metrics={"banding_score": 0.5}), "banding") == "mild"
     assert q.severity(_item(metrics={"banding_score": 0.1}), "banding") == "clean"
-    assert q.severity(_item(), "halo") == "clean"
+    # No data at all is "not measured" — not the optimistic "clean".
+    assert q.severity(_item(), "halo") == q.UNMEASURED
+    assert q.severity(_item(artifacts={"halo": "severe"}), "halo") == q.UNKNOWN
 
 
 def test_aggregate_legacy_rule() -> None:
     assert q.aggregate_severity(_item(metrics={"sharpness": 50})) == "flagged"
     assert q.aggregate_severity(_item(metrics={"ssim": 0.5})) == "flagged"
     assert q.aggregate_severity(_item(metrics={"artifact_level": "mild"})) == "mild"
-    assert q.aggregate_severity(_item()) == "clean"
+    assert q.aggregate_severity(_item()) == q.UNMEASURED
 
 
 def test_mode_triplet_camera_and_fidelity() -> None:
@@ -80,7 +83,8 @@ def test_mode_triplet_camera_and_fidelity() -> None:
         }
     )
     assert q.mode_triplet(item, "camera") == ("mild", "clean", "flagged")
-    assert q.mode_triplet(item, "fidelity") == ("clean", "flagged", "clean")
+    # Blocking was never measured: the third slot is not "clean".
+    assert q.mode_triplet(item, "fidelity") == ("clean", "flagged", q.UNMEASURED)
 
 
 def test_mode_triplet_empty_catalog_uses_aggregate() -> None:

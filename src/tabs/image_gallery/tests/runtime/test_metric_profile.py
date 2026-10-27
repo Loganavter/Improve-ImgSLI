@@ -117,7 +117,10 @@ def test_existing_rank_fusion_public_names_still_resolve():
     # the version constant exists to announce.
     assert rank_fusion.RANK_FUSION_VERSION == 3
     # The profile is an optional kwarg — existing mode-only callers are intact.
-    assert rank_fusion.measured_axes_for.__kwdefaults__ == {"profile": None}
+    assert rank_fusion.measured_axes_for.__kwdefaults__ == {
+        "profile": None,
+        "domain": None,
+    }
 
 
 # --------------------------------------------------------------------------

@@ -104,13 +104,13 @@ def test_unscored_axis_is_muted_and_has_no_number() -> None:
     neutral = _severity_color("clean")
     assert all(color.alpha() == 120 for color in colors)
     assert all(str(color.name()).lower() != neutral.name().lower() for color in colors)
-    assert dot_tooltip_text(infos[0]) == f"{infos[0][0]}: —"
+    assert dot_tooltip_text(infos[0]) == f"{infos[0][0]}: not measured"
 
 
 def test_tooltip_string_is_label_colon_percent() -> None:
     assert dot_tooltip_text(("Резкость", 68)) == "Резкость: 68%"
     assert dot_tooltip_text(("Sharpness", 0)) == "Sharpness: 0%"
-    assert dot_tooltip_text(("Sharpness", None)) == "Sharpness: —"
+    assert dot_tooltip_text(("Sharpness", None)) == "Sharpness: not measured"
 
 
 def test_label_uses_tab_translator_with_registry_fallback() -> None:
@@ -138,7 +138,7 @@ def test_hit_test_maps_cursor_x_to_the_nearest_dot() -> None:
         }
     )
     assert dot_tooltip_text_at(card, 100) == "A: 80%"
-    assert dot_tooltip_text_at(card, 112) == "B: —"  # nearest center wins
+    assert dot_tooltip_text_at(card, 112) == "B: not measured"  # nearest center wins
     assert dot_tooltip_text_at(card, 60) is None  # off the dots
     card._gallery_dot_geometry = None
     assert dot_tooltip_text_at(card, 100) is None
@@ -193,7 +193,7 @@ def test_hit_test_resolves_by_x_and_y() -> None:
     )
     # A point on a second-row dot resolves to that dot, not the x-nearest one.
     assert dot_tooltip_text_at(card, 100, 54) == "C: 55%"
-    assert dot_tooltip_text_at(card, 114, 40) == "B: —"
+    assert dot_tooltip_text_at(card, 114, 40) == "B: not measured"
     # A point BETWEEN the rows keeps the nearest dot's tooltip: the hover cell
     # tiles the block, so the gap must not revert to the card name.
     assert dot_tooltip_text_at(card, 100, 47) in ("A: 80%", "C: 55%")

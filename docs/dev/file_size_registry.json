@@ -1283,11 +1283,11 @@
       "path": "src/tabs/image_gallery/use_cases/profile_ai.py",
       "limit": 500,
       "marker": "Audit-Meta:",
-      "raw": "pattern=compound-module size=exempt reason=\"one selector decision chain: parse → the 5..8/`why` acceptance gate → the ONE retry → the pin with its source → the offer fallback. Splitting the gate from the retry (or the pin from the answer) lets one side accept a profile the other refuses — the 2026-10-26 defect was exactly a thin answer accepted silently\"",
+      "raw": "pattern=compound-module size=exempt reason=\"one selector decision chain: parse → the count/`why` acceptance gate → the ONE retry → the pin with its source → the offer fallback. Splitting the gate from the retry (or the pin from the answer) lets one side accept a profile the other refuses — the 2026-10-26 defect was exactly a thin answer accepted silently\"",
       "parsed": {
         "pattern": "compound-module",
         "size": "exempt",
-        "reason": "one selector decision chain: parse → the 5..8/`why` acceptance gate → the ONE retry → the pin with its source → the offer fallback. Splitting the gate from the retry (or the pin from the answer) lets one side accept a profile the other refuses — the 2026-10-26 defect was exactly a thin answer accepted silently"
+        "reason": "one selector decision chain: parse → the count/`why` acceptance gate → the ONE retry → the pin with its source → the offer fallback. Splitting the gate from the retry (or the pin from the answer) lets one side accept a profile the other refuses — the 2026-10-26 defect was exactly a thin answer accepted silently"
       }
     },
     {

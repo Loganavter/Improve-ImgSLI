@@ -255,15 +255,24 @@ judged names, `jev_client.rank_series_jev`). Three consequences worth naming:
   `services/axis_choice.parse_axis_choices`).
 
 **Provenance of a measurement is one of two tokens**
-(`services/profile_judged.py`: `PROVENANCE_LOCAL` / `PROVENANCE_JUDGE`):
+(`services/profile_judged.py`: `PROVENANCE_LOCAL` / `PROVENANCE_JUDGE`), and it
+answers **who measured the number**, not who *could* have:
 
-- `measured-locally` — a registry axis this context has a detector for;
-- `measured-by-judge` — an axis the judge named, **or** a registry axis this
-  context has no local producer for (a `reference` axis in `camera` mode, say).
+- `measured-locally` — the number came from a local detector;
+- `measured-by-judge` — the number came from the model's scorecard, **even on a
+  registry axis** (a judge that picks `sharpness` from the pool is the normal
+  case, `ai_client/parse` routes that pick into `profile.axis_ids`) — or the
+  axis is one the judge named, or a registry axis this context has no local
+  producer for.
 
-`axis_provenance(axis, mode=…, profile=…)` is the one answer a surface must use
-before it puts two axes in one bar; it returns `""` (no claim) when it cannot
-decide — never a guess.
+`analysis.read.read_axes` stamps the token from the record's own `producer`, so
+the AI domain's dots/rows are the judge's instrument (accent) and the Algorithms
+domain's are a detector band. `axis_provenance(axis, mode=…, profile=…)` without
+a producer answers the static "who can measure it here" question (an axis
+description, not a read); it returns `""` (no claim) when it cannot decide —
+never a guess. With no profile at all the AI domain has no axis set of its own:
+`rank_fusion.measured_axes_for(profile=None, domain="ai")` raises
+`NoProfileYet` instead of falling back to the local mode mapping.
 
 Profile choice is possible **only** in the AI judgment domain: the Algorithms
 domain owns the derivation and records the refusal as
@@ -362,7 +371,7 @@ in that plan, not re-litigated here.
 | Quick-look rows | `rows.py` | same read; row set = the profile's axes |
 | Rank | `rank_fusion.rank_series` | same read; weight per axis |
 | Rank badge | `rank_badge.py` | `fusion` / `jev` / `manual` |
-| Axis provenance | `profile_judged.axis_provenance` | `measured-locally` / `measured-by-judge` per axis |
+| Axis provenance | `profile_judged.axis_provenance` | `measured-locally` / `measured-by-judge` per axis — the instrument that WROTE the number |
 | Ask AI answer | `ask_router.py` | text or image payload, advisory only |
 
 ---

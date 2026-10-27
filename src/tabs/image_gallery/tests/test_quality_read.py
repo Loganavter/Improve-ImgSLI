@@ -10,6 +10,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from tabs.image_gallery.models import AiAnalysisResult, AiDefect, GalleryItem
 from tabs.image_gallery.services import quality_read
 
@@ -49,10 +51,18 @@ def test_algorithms_domain_reads_only_the_detectors():
     assert 33 not in read.values()  # the VLM number must not leak in
 
 
-def test_unknown_domain_degrades_to_algorithms():
+def test_unknown_domain_raises_instead_of_coercing():
+    """A named-but-invalid domain is a caller bug: never a silent backend switch."""
+    with pytest.raises(ValueError):
+        quality_read.normalize_domain("weird")
+    with pytest.raises(ValueError):
+        quality_read.normalize_domain("nonsense")
+
+
+def test_absent_domain_is_algorithms():
     item = _item(metrics={"sharpness": 200.0})
     assert quality_read.normalize_domain(None) == "algorithms"
-    assert quality_read.normalize_domain("weird") == "algorithms"
+    assert quality_read.normalize_domain("") == "algorithms"
     assert quality_read.domain_axis_scores(item, domain=None) == {"sharpness": 50}
 
 
@@ -86,7 +96,54 @@ def test_domain_artifact_severity_switches_read():
 def test_ai_domain_unanalyzed_is_empty_not_detector_fallback():
     item = _item(metrics={"sharpness": 200.0})  # measured, never analyzed
     assert quality_read.domain_axis_scores(item, domain="ai") == {}
-    assert quality_read.domain_artifact_severity(item, "halo", domain="ai") == "clean"
+    # No analysis blob, no artifact data: "not measured", not "clean".
+    assert (
+        quality_read.domain_artifact_severity(item, "halo", domain="ai")
+        == quality_read.UNMEASURED
+    )
+
+
+def test_absent_artifact_is_unmeasured_not_clean():
+    item = _item(metrics={"sharpness": 200.0})
+    assert (
+        quality_read.domain_artifact_severity(item, "banding", domain="algorithms")
+        == quality_read.UNMEASURED
+    )
+    measured = _item()
+    from tabs.image_gallery.models import Artifact, Severity
+    from tabs.image_gallery.use_cases import quality
+
+    quality.set_artifacts(measured, {Artifact.BANDING: Severity.CLEAN})
+    # Data that actually says clean still reads clean.
+    assert (
+        quality_read.domain_artifact_severity(measured, "banding", domain="algorithms")
+        == "clean"
+    )
+
+
+def test_raised_reader_is_unmeasured(monkeypatch):
+    """A reader that raises is absence of data, never an optimistic value."""
+    from tabs.image_gallery.use_cases import quality
+
+    def _boom(*_args, **_kwargs):
+        raise RuntimeError("reader raised")
+
+    monkeypatch.setattr(quality, "severity", _boom)
+    item = _item(artifacts={"halo": "flagged"})
+    assert (
+        quality_read.domain_artifact_severity(item, "halo", domain="algorithms")
+        == quality_read.UNMEASURED
+    )
+
+
+def test_unknown_ai_severity_token_is_unknown_not_clean():
+    item = _item(
+        analysis=_analysis(defects=(AiDefect(kind="halo", severity="severe"),)),
+    )
+    assert quality_read.ai_artifact_severities(item) == {"halo": "unknown"}
+    assert (
+        quality_read.domain_artifact_severity(item, "halo", domain="ai") == "unknown"
+    )
 
 
 def test_ai_read_survives_parse_to_read_with_distinct_values():

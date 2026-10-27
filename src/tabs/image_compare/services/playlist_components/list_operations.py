@@ -10,7 +10,6 @@ from core.state_management.actions import (
 )
 
 from tabs.image_compare.services import document_store_ops
-from tabs.image_compare.services.document_store_ops import geometry_changes_on_swap
 from tabs.image_compare.services.playlist_components.common import (
     emit_ui_update,
     find_index_by_path,
@@ -283,13 +282,7 @@ class PlaylistListOperations:
             dispatcher.dispatch(
                 SetImageSessionImageAction(slot=2, image=img1), scope="viewport"
             )
-            # Swapping two identically sized images leaves the canvas geometry
-            # untouched; dropping the cache then only forces a full
-            # presentation rebuild (both slots re-applied) -- the visible
-            # "scene resets, then restores". Unknown/loaded-differently dims
-            # keep the invalidate (see document_store_ops.geometry_changes_on_swap).
-            if geometry_changes_on_swap(img1, img2):
-                self.store.invalidate_geometry_cache()
+            self.store.invalidate_geometry_cache()
 
         emit_ui_update(self.main_controller, ["combobox", "file_names", "resolution"])
         self._emit_metrics_update()

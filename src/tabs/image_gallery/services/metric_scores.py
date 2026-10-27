@@ -16,6 +16,7 @@ subjective defects) stay with the caller.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Callable
 
@@ -33,11 +34,12 @@ def _clamp01(v: float) -> float:
 
 
 def _clamp_raw(v: float) -> float | None:
+    """A finite raw measurement, or ``None`` when there is none (NaN/±inf/garbage)."""
     try:
         f = float(v)
     except Exception:
         return None
-    return f if f == f else None  # NaN guard
+    return f if math.isfinite(f) else None  # NaN/inf: not a measurement
 
 
 def _as_unit(v: float) -> float:
@@ -167,19 +169,31 @@ def raw_for(spec: MetricSpec, metrics: dict) -> tuple[str, float] | None:
     return None
 
 
-def score_for(spec: MetricSpec, raw: float) -> int:
-    """Raw measurement → integer quality 0–100 (higher always better)."""
+def score_for(spec: MetricSpec, raw: float) -> int | None:
+    """Raw measurement → integer quality 0–100 (higher always better).
+
+    ``None`` when there is no measurement to score — NaN, ±inf or an
+    unparseable raw — because ``0`` is a real worst score, not "no data"
+    (read-boundary contract, ``plan-gallery-free-axes``). Never fabricates.
+    """
+    value = _clamp_raw(raw)
+    if value is None:
+        return None
     try:
-        return int(round(_clamp01(spec.qual(raw)) * 100.0))
+        quality = float(spec.qual(value))
     except Exception:
-        return 0
+        return None
+    if not math.isfinite(quality):
+        return None
+    return int(round(_clamp01(quality) * 100.0))
 
 
 def measured_scores(metrics: dict) -> list[tuple[str, str, float, int]]:
     """All MEASURED metrics as ``(id, label, raw, score)`` in report order.
 
     Candidate/judgment axes are not numbers and are never emitted here (see
-    ``plan-gallery-two-domain-axes``).
+    ``plan-gallery-two-domain-axes``). A raw that cannot be scored is omitted
+    rather than emitted as a fabricated score: absent is honest, ``0`` is not.
     """
     out: list[tuple[str, str, float, int]] = []
     for spec in SPECS:
@@ -189,7 +203,10 @@ def measured_scores(metrics: dict) -> list[tuple[str, str, float, int]]:
         if got is None:
             continue
         _key, raw = got
-        out.append((spec.id, spec.label, raw, score_for(spec, raw)))
+        score = score_for(spec, raw)
+        if score is None:
+            continue
+        out.append((spec.id, spec.label, raw, score))
     return out
 
 

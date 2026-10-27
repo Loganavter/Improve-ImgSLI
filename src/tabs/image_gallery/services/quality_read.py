@@ -17,12 +17,33 @@ that only needs ``{axis: score}`` (the Jev vector, tests) keeps one answer.
 Each side reads ONLY its own store, so the AI domain never silently falls back
 to detector numbers and vice versa. The Algorithms domain reads exactly what it
 did before.
+
+Read-boundary contract (``plan-gallery-free-axes``, owner 2026-10-27): a value
+the app did not measure is a VALUE — ``UNMEASURED`` — not the optimistic legal
+placeholder. ``"clean"`` may only be produced from data that actually says
+clean, a raised reader or a missing blob is ``UNMEASURED``, and an unrecognized
+severity token is ``"unknown"``. ``normalize_domain`` refuses an unknown domain
+instead of coercing it to Algorithms: a typo must not silently switch backends.
+
+.. code-block:: python
+
+    UNMEASURED = "unmeasured"
+
+    normalize_domain(domain) -> str        # ValueError on an unknown domain
+    severity(item, artifact) -> str        # UNMEASURED when absent/unreadable
+    domain_artifact_severity(item, artifact, *, domain) -> str
+    score_for(spec, raw) -> int | None     # None for NaN / inf / unparseable
 """
 
 from __future__ import annotations
 
 AI_DOMAIN = "ai"
 ALGORITHMS_DOMAIN = "algorithms"
+
+#: The value used where no measurement exists. NEVER "clean", NEVER 0, NEVER a
+#: coerced domain: a surface that cannot tell "not measured" from "measured good"
+#: reports the positive one, which is the defect this token removes.
+UNMEASURED = "unmeasured"
 
 #: VLM defect kind → gallery artifact id (the artifact catalog the dots/rows
 #: use). ``clipping``/``other`` have no artifact row and are dropped.
@@ -36,16 +57,33 @@ _DEFECT_TO_ARTIFACT = {
     "noise": "noise_amplification",
 }
 
-_SEVERITY_RANK = {"clean": 0, "mild": 1, "flagged": 2}
+_SEVERITY_RANK = {"clean": 0, "mild": 1, "unknown": 1, "flagged": 2}
 
 
 def normalize_domain(domain) -> str:
-    """``"ai"`` or ``"algorithms"`` — anything unknown degrades to Algorithms."""
+    """``"ai"`` or ``"algorithms"`` — an unknown domain RAISES (no coercion).
+
+    An absent domain (``None`` / empty) names the Algorithms pass, the
+    documented default of every caller; a *named* domain that is neither of the
+    two is a caller bug and raises ``ValueError``. Silently degrading it to
+    Algorithms is exactly the "a typo switches the backend" defect.
+    """
+    if domain is None:
+        return ALGORITHMS_DOMAIN
     try:
-        text = str(domain or "").strip().lower()
-    except Exception:
-        text = ""
-    return AI_DOMAIN if text == AI_DOMAIN else ALGORITHMS_DOMAIN
+        text = str(domain).strip().lower()
+    except Exception as exc:  # pragma: no cover - a __str__ that raises
+        raise ValueError(f"invalid judgment domain {domain!r}") from exc
+    if not text:
+        return ALGORITHMS_DOMAIN
+    if text == AI_DOMAIN:
+        return AI_DOMAIN
+    if text == ALGORITHMS_DOMAIN:
+        return ALGORITHMS_DOMAIN
+    raise ValueError(
+        f"invalid judgment domain {domain!r}; expected one of "
+        f"{AI_DOMAIN!r}, {ALGORITHMS_DOMAIN!r}"
+    )
 
 
 def _spread_of_draws(draws) -> float | None:
@@ -166,8 +204,10 @@ def ai_artifact_severities(item) -> dict[str, str]:
     """Artifact id → severity from the VLM's reported defects (AI domain read).
 
     Only artifacts the model actually reported appear; an absent artifact is
-    ``clean`` by the caller's ``.get``. Worst severity wins per artifact. Reads
-    ONLY ``item.analysis``.
+    ``UNMEASURED`` at ``domain_artifact_severity``, never ``clean``. Worst
+    severity wins per artifact; a defect whose severity token is not a legal
+    severity is ``"unknown"`` (never ``clean``, never an invented ``mild``).
+    Reads ONLY ``item.analysis``.
     """
     out: dict[str, str] = {}
     try:
@@ -177,9 +217,9 @@ def ai_artifact_severities(item) -> dict[str, str]:
             artifact_id = _DEFECT_TO_ARTIFACT.get(kind)
             if not artifact_id:
                 continue
-            severity = str(getattr(defect, "severity", "") or "mild").strip().lower()
+            severity = str(getattr(defect, "severity", "") or "").strip().lower()
             if severity not in _SEVERITY_RANK:
-                severity = "mild"
+                severity = "unknown"
             if _SEVERITY_RANK[severity] > _SEVERITY_RANK.get(out.get(artifact_id, "clean"), 0):
                 out[artifact_id] = severity
     except Exception:
@@ -198,23 +238,33 @@ def detector_artifact_severities(item) -> dict[str, str]:
 
 
 def domain_artifact_severity(item, artifact, *, domain) -> str:
-    """One artifact's severity for *domain* (``clean`` when nothing fired)."""
+    """One artifact's severity for *domain*.
+
+    ``UNMEASURED`` when the artifact is absent from the domain's read, when the
+    analysis blob is missing (AI) or when the reader raised. An unrecognized
+    stored token is ``"unknown"``. ``"clean"`` only from data that says clean.
+    """
     try:
         from tabs.image_gallery.use_cases import quality
 
         name = quality.normalize_key(artifact)
     except Exception:
-        name = str(artifact or "").strip().lower()
+        return UNMEASURED
     if not name:
-        return "clean"
+        return UNMEASURED
     if normalize_domain(domain) == AI_DOMAIN:
-        return ai_artifact_severities(item).get(name, "clean")
+        try:
+            if getattr(item, "analysis", None) is None:
+                return UNMEASURED
+            return ai_artifact_severities(item).get(name, UNMEASURED)
+        except Exception:
+            return UNMEASURED
     try:
         from tabs.image_gallery.use_cases import quality
 
         return quality.severity(item, name)
     except Exception:
-        return "clean"
+        return UNMEASURED
 
 
 def domain_artifact_severities(item, *, domain) -> dict[str, str]:
@@ -227,6 +277,7 @@ def domain_artifact_severities(item, *, domain) -> dict[str, str]:
 __all__ = [
     "AI_DOMAIN",
     "ALGORITHMS_DOMAIN",
+    "UNMEASURED",
     "normalize_domain",
     "axis_noise_floor",
     "ai_axis_scores",

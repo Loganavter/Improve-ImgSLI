@@ -232,20 +232,22 @@ def _ctx_reset_metrics(owner, path: Path) -> None:
 
     Targets come from the ONE scope resolver (``use_cases.action_scope``):
     whole selection when the clicked card is selected, else the clicked card
-    alone. Routes into ``use_cases.cache_reset``, which clears the in-memory +
-    disk caches and re-enters the triage rebuild. An empty scope passes
-    ``paths=None`` — the whole pool — preserving the maintenance contract.
-    Never raises.
+    alone — and that resolved scope IS what gets cleared. Until 2026-10-27 this
+    handler resolved the scope and then passed ``paths=None`` (the whole pool),
+    so a three-card selection zeroed every card of the tab (owner report:
+    "Почему я выделил 3 изображения, а он экшн повесил на все, которые есть в
+    вкладке?"). An empty scope clears nothing — no widening. Never raises.
     """
     try:
         targets = resolve_targets(owner, card_path=path)
     except Exception:
         targets = []
+    if not targets:
+        return
     try:
         from tabs.image_gallery.use_cases import cache_reset as _cache_reset
 
-        # Whole pool on purpose (owner 2026-10-22): a reset is a reset.
-        _cache_reset.reset_metrics_caches(owner, paths=None)
+        _cache_reset.reset_metrics_caches(owner, paths=list(targets))
     except Exception:
         pass
 

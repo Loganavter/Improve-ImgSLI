@@ -29,7 +29,12 @@ Since P7-C the caller may pass the active metric ``profile``: each record then
 carries the instrument token the profile's one vocabulary defines
 (``measured-locally`` / ``measured-by-judge``), so the axes a model NAMED are
 read here like any other axis — same records, same gap reasons — and a surface
-can label their provenance without a second axis list.
+can label their provenance without a second axis list. Since free-axes W4 the
+token answers **who DID**: it is derived from the value's producer, so a number
+the judge scored on a POOL axis is ``measured-by-judge`` (the normal case — a
+registry pick lands in ``profile.axis_ids``), and a detector number stays
+``measured-locally``. Only a gap keeps the "who CAN" answer, because it has no
+producer.
 
 ``backend`` stays ``None`` until the catalog is wired into the producers (W5): a
 ``BackendRef`` invented at read time would attribute a model that never ran.
@@ -150,23 +155,28 @@ def _local_gap_reason(item) -> str:
     )
 
 
-def _provenance_for(axis: str, *, profile) -> str:
+def _provenance_for(axis: str, *, profile, producer=None) -> str:
     """The P7-A instrument token for *axis* in *profile* (``""`` = no claim).
 
     ``services.profile_judged.axis_provenance`` is the ONE definition of the
     two-token vocabulary (``measured-locally`` / ``measured-by-judge``); this
     reader only stamps its answer on the record so a surface never has to
     re-derive it from the axis name (plan-gallery-ai-judgement P7-C: the
-    judge's axes reach the ONE read path, with their provenance). No profile
-    means the reader cannot say which instrument is authoritative — an empty
-    token, never a guess.
+    judge's axes reach the ONE read path, with their provenance).
+
+    *producer* is the record's own producer, and it makes the answer "who DID":
+    a ``vlm`` number is the judge's even on a registry axis, a detector's number
+    is ``measured-locally``. A gap has no producer, so it keeps the "who CAN"
+    answer (the axis is still one this profile asks about) — no surface paints a
+    gap by provenance anyway. No profile means the reader cannot say which
+    instrument is authoritative — an empty token, never a guess.
     """
     if profile is None:
         return ""
     try:
         from tabs.image_gallery.services.profile_judged import axis_provenance
 
-        return str(axis_provenance(axis, profile=profile) or "")
+        return str(axis_provenance(axis, profile=profile, producer=producer) or "")
     except Exception:
         return ""
 
@@ -176,10 +186,14 @@ def _stamped(record: AxisValue, *, axis: str, profile) -> AxisValue:
 
     The engine records are frozen and the reader never rewrites a producer's
     value: only the provenance field is added, and only when a profile lets the
-    reader name the instrument. Without a profile the record is returned
+    reader name the instrument. The token is derived from the record's own
+    producer ("who DID"), so a ``vlm`` record is the judge's number even on a
+    registry axis (free-axes W4). Without a profile the record is returned
     verbatim (the engine's own object, provenance intact).
     """
-    provenance = _provenance_for(axis, profile=profile)
+    provenance = _provenance_for(
+        axis, profile=profile, producer=getattr(record, "producer", None)
+    )
     if not provenance or str(getattr(record, "provenance", "") or "") == provenance:
         return record
     try:
@@ -204,12 +218,15 @@ def read_axes(
     can render its whole axis set without a second lookup.
 
     ``profile`` (the active ``MetricProfile``) lets the reader stamp each record
-    with the P7-A provenance token: ``measured-locally`` for a registry axis a
-    detector produces here, ``measured-by-judge`` for an axis the judge named
-    (or a registry id this context has no local producer for). That is how the
-    judge's own axes arrive on THIS path — as records whose ``axis`` is the
-    judge's name and whose ``provenance`` says who measured it — instead of a
-    parallel axis list a surface would have to reconcile.
+    with the P7-A provenance token: from the record's PRODUCER — ``measured-by-
+    judge`` for a ``vlm`` value (even on a registry axis: a judge-scored pool
+    axis is the judge's number), ``measured-locally`` for a detector value. An
+    axis with no value has no producer, so a gap keeps the "who can measure it
+    here" answer (``measured-by-judge`` for an axis the judge named, or a
+    registry id this context has no local producer for). That is how the judge's
+    own axes arrive on THIS path — as records whose ``axis`` is the judge's name
+    and whose ``provenance`` says who measured it — instead of a parallel axis
+    list a surface would have to reconcile.
 
     When the item carries engine records (``analysis_records``, engine-on only
     — the engine is the only path since P9b),
@@ -262,9 +279,10 @@ def read_axes(
     )
     records: list[AxisValue] = []
     for axis in requested:
-        provenance = _provenance_for(axis, profile=profile)
         value = values.get(axis)
         if value is None:
+            # No measured value means no producer to attribute: keep the
+            # "who CAN" answer for the axis in this profile.
             records.append(
                 AxisValue(
                     axis=axis,
@@ -272,13 +290,18 @@ def read_axes(
                     producer=producer,
                     status="gap",
                     reason=gap_reason,
-                    provenance=provenance,
+                    provenance=_provenance_for(axis, profile=profile),
                 )
             )
             continue
         records.append(
             AxisValue(
-                axis=axis, value=value, producer=producer, provenance=provenance
+                axis=axis,
+                value=value,
+                producer=producer,
+                # WHO DID: the value's producer decides the instrument (a vlm
+                # number is the judge's, even on a registry axis).
+                provenance=_provenance_for(axis, profile=profile, producer=producer),
             )
         )
     return tuple(records)

@@ -283,13 +283,17 @@ def test_parse_profile_reply_accepts_a_bare_array_and_fences():
     assert parse_profile_reply('```json\n{"axes": ["sharpness"]}\n```') is not None
 
 
-def test_parse_profile_reply_drops_unknown_and_duplicated_ids():
+def test_parse_profile_reply_keeps_free_names_and_drops_a_repeat():
+    """``invented`` is now the judge's own entry; the repeat still loses."""
     profile = parse_profile_reply('{"axes": ["invented", "sharpness", "sharpness"]}')
     assert profile is not None and profile.axis_ids == ("sharpness",)
+    assert [entry.name for entry in profile.axis_entries] == ["invented"]
 
 
 def test_parse_profile_reply_returns_none_on_junk():
-    for junk in ("", "hello world", "42", '{"axes": []}', '{"axes": ["invented"]}', None):
+    # NOTE: a bare name outside the pool is NO LONGER junk (owner rule 2026-10-27:
+    # it is kept with ``definition=""``); an unusable name still is.
+    for junk in ("", "hello world", "42", '{"axes": []}', '{"axes": ["   "]}', None):
         assert parse_profile_reply(junk) is None
 
 

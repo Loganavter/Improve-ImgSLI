@@ -12,17 +12,29 @@ The owner revision (plan-gallery-ai-judgement §OWNER REVISION 2026-10-22):
     these) … determine from 3 to 8 axes in arbitrary form, exclusively the most
     differentiating axes for these pictures"
 
+and its successor (owner rule 2026-10-27, verbatim):
+
+    "we must not decide what is measurable and what is not. If the app said it
+    needs such metrics, we draw them, period."
+
 So the pool filter is GONE: an axis the model names is a first-class entry
 (``models.AiAxisProposal``: name + definition + scale + direction), and its name
 does not have to be a ``MEASURED_POOL`` id or an axis the current mode can
-measure locally. What is still refused — with a recorded reason, never silently —
-is a pick that is not MEASURABLE:
+measure locally. The FORM of the answer does not decide legality either — a bare
+string name and an object ``{name, definition, scale, direction}`` are the SAME
+axis.
+
+What is still refused — STRUCTURE ONLY, with a recorded reason, never silently:
 
 - an unusable / empty NAME (a phrase is not an axis);
-- a bare name with no DEFINITION (nothing to score, and the app will not invent
-  a meaning for it);
 - a name repeated inside one reply (the first occurrence wins);
+- an unsupported SCALE on an object;
 - a pick beyond :data:`AXIS_CHOICE_MAX` (the owner's upper bound).
+
+A DEFINITION is metadata: missing or too short ⇒ the entry is stored with
+``definition=""`` and the audit code ``no-definition``
+(``axis_proposal.AUDIT_NO_DEFINITION``) is recorded on the choice set. It is
+never a refusal and never a reason to drop the axis.
 
 A name that IS a registry id is not a duplicate — it is that registry axis, and
 routing it to ``registry_ids`` is what lets a local detector score it too
@@ -40,15 +52,17 @@ from tabs.image_gallery.models import (
     AiAxisProposal,
 )
 from tabs.image_gallery.services.axis_proposal import (
+    AUDIT_NO_DEFINITION,
     AXIS_PROPOSAL_SCALE,
-    REJECT_DEFINITION,
     REJECT_LIMIT,
     REJECT_NAME,
     REJECT_REPEAT,
     REJECT_SCALE,
+    definition_audit,
     direction_of,
     normalize_name,
     scale_of,
+    storable_definition,
 )
 
 #: How many axes the SELECTOR may keep (owner rule: "from 3 to 8"). The floor is
@@ -56,20 +70,6 @@ from tabs.image_gallery.services.axis_proposal import (
 #: parser never fabricates a third) and the trace says so.
 AXIS_CHOICE_MIN = 3
 AXIS_CHOICE_MAX = 8
-
-
-def _definition_missing(definition: str) -> bool:
-    """True when *definition* says nothing at all (the SELECTOR-level rule).
-
-    The selector's rule is the owner's: a free name WITH a definition is the
-    normal case, and the model's own vocabulary is the point — so this checks only
-    that a definition EXISTS (a sentence, not a word or a placeholder). Judging
-    whether the vocabulary is "technical enough" is the SCORECARD proposal rule
-    (``axis_proposal._definition_problem``), where an invented per-image axis
-    would otherwise become a weight in the order.
-    """
-    text = str(definition or "").strip()
-    return len(text) < 10 or len(text.split()) < 2
 
 
 @dataclass(frozen=True)
@@ -82,6 +82,8 @@ class AxisChoiceSet:
     first-class :class:`~tabs.image_gallery.models.AiAxisProposal` with a
     definition, a scale and a direction. ``refusals`` is ``(name, reason)`` for
     every pick that was NOT stored, so the loss is traceable and never silent.
+    ``audits`` is ``(name, code)`` for every pick that WAS stored with a gap —
+    today only ``no-definition`` (a definition is metadata, not a gate).
 
     A registry id and an entry are different PROVENANCE, not different quality:
     the first reads "measured locally", the second "measured by the judge".
@@ -90,6 +92,7 @@ class AxisChoiceSet:
     registry_ids: tuple[str, ...] = ()
     entries: tuple[AiAxisProposal, ...] = ()
     refusals: tuple[tuple[str, str], ...] = ()
+    audits: tuple[tuple[str, str], ...] = ()
 
 
 def parse_axis_choices(value, *, limit: int = AXIS_CHOICE_MAX) -> AxisChoiceSet:
@@ -97,17 +100,18 @@ def parse_axis_choices(value, *, limit: int = AXIS_CHOICE_MAX) -> AxisChoiceSet:
 
     Every element may be:
 
-    - a string: a registry axis id (the reply of a terse/older answer) — kept when
-      it IS a pool id, refused as ``no-definition`` otherwise (a bare name with no
-      meaning cannot be measured, and the app will not invent one);
+    - a string: a registry axis id, or a free axis NAME. A pool id stays a
+      registry id; any other name becomes a first-class entry with
+      ``definition=""`` and the ``no-definition`` audit code (a bare name is the
+      terse answer shape, and the form must not decide legality);
     - an object: ``{name, definition, scale, direction}``. A name equal to a
       registry id is that registry axis (the model asked for a measurable
       dimension that already exists — the local detector should score it too);
       any other name becomes a first-class entry, which is the normal answer of
-      the free-form selector.
+      the free-form selector. A missing/short definition is audited, not refused.
 
     The pool filter that used to drop every non-registry name is GONE (owner
-    revision 2026-10-22): a free name WITH a definition is kept.
+    revisions 2026-10-22 and 2026-10-27): a free name is kept.
     """
     try:
         items = list(value or ())
@@ -123,6 +127,7 @@ def parse_axis_choices(value, *, limit: int = AXIS_CHOICE_MAX) -> AxisChoiceSet:
     registry: list[str] = []
     entries: list[AiAxisProposal] = []
     refusals: list[tuple[str, str]] = []
+    audits: list[tuple[str, str]] = []
     seen: set[str] = set()
 
     def _refuse(row_name: str, reason: str) -> None:
@@ -134,10 +139,6 @@ def parse_axis_choices(value, *, limit: int = AXIS_CHOICE_MAX) -> AxisChoiceSet:
             if not name:
                 _refuse(item.strip() or f"#{index + 1}", REJECT_NAME)
                 continue
-            if name not in pool:
-                # A bare name carries no meaning: it cannot be scored.
-                _refuse(name, REJECT_DEFINITION)
-                continue
             definition = ""
             direction = AXIS_DIRECTION_DEFAULT
         elif isinstance(item, dict):
@@ -146,15 +147,14 @@ def parse_axis_choices(value, *, limit: int = AXIS_CHOICE_MAX) -> AxisChoiceSet:
             if not name:
                 _refuse(str(raw_name or f"#{index + 1}")[:40], REJECT_NAME)
                 continue
-            definition = str(item.get("definition", "") or "").strip()[:240]
-            direction = direction_of(item, definition)
-            if name not in pool:
-                if _definition_missing(definition):
-                    _refuse(name, REJECT_DEFINITION)
-                    continue
-                if not scale_of(item.get("scale")):
-                    _refuse(name, REJECT_SCALE)
-                    continue
+            raw_definition = str(item.get("definition", "") or "")
+            definition = storable_definition(raw_definition)
+            # The direction follows the model's own words even when the text is
+            # too thin to store ("0 = none" is a lower-is-better cue).
+            direction = direction_of(item, raw_definition)
+            if name not in pool and not scale_of(item.get("scale")):
+                _refuse(name, REJECT_SCALE)
+                continue
         else:
             _refuse(f"#{index + 1}", REJECT_NAME)
             continue
@@ -171,6 +171,8 @@ def parse_axis_choices(value, *, limit: int = AXIS_CHOICE_MAX) -> AxisChoiceSet:
             _refuse(name, REJECT_LIMIT)
             continue
         seen.add(name)
+        if definition_audit(definition):
+            audits.append((name, AUDIT_NO_DEFINITION))
         entries.append(
             AiAxisProposal(
                 name=name,
@@ -184,6 +186,7 @@ def parse_axis_choices(value, *, limit: int = AXIS_CHOICE_MAX) -> AxisChoiceSet:
         registry_ids=tuple(registry),
         entries=tuple(entries),
         refusals=tuple(refusals),
+        audits=tuple(audits),
     )
 
 

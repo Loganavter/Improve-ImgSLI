@@ -17,8 +17,10 @@ Falsification story (what each test would catch, and why it is red before):
   reply degraded to the heuristic (``MetricProfile`` could not carry an entry at
   all). The same test covers the registry id the mode cannot measure (``ssim`` in
   a camera folder): the filter is gone, the id stays.
-- **(c)** a proposal with no definition is still refused WITH its reason — the
-  guard against over-widening: "free" is not "anything".
+- **(c)** a proposal that carries no definition is KEPT with ``definition=""``
+  and the ``no-definition`` audit code — the definition is metadata since the
+  owner rule of 2026-10-27; what is still refused is structure (an unusable name,
+  a pool duplicate, a repeat, an unsupported scale, a missing score).
 - **(d)** the scorecard prompt asks for the chosen free axis BY NAME with its
   definition, and for the registry axes exactly as before.
 - **(e)** a profile carrying a free axis still resolves ``measured_axes_for()`` for
@@ -26,6 +28,13 @@ Falsification story (what each test would catch, and why it is red before):
 
 Red-before evidence for every one of these was produced on a pre-change scratch
 copy of ``HEAD`` (``git archive HEAD``) — see ``DONE.md``.
+
+Owner rule 2026-10-27 (verbatim): *"we must not decide what is measurable and
+what is not. If the app said it needs such metrics, we draw them, period."* The
+model's answer is therefore kept unless its STRUCTURE is unusable — a bare string
+name and an object are the same axis, a missing/short definition is metadata
+(``definition=""`` + the ``no-definition`` audit code), and a non-English
+definition is not "empty". Tests (f) below pin exactly that inversion.
 
 Extra seams the same wave has to keep honest: the pin round-trips entries (a
 re-open must not re-roll the judge's axes), the analyze cache identity covers the
@@ -35,6 +44,7 @@ answer is a USABLE profile (not "hollow"), and the two provenances stay labelled
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -49,8 +59,10 @@ from tabs.image_gallery.services.axis_choice import (
     parse_axis_choices,
 )
 from tabs.image_gallery.services.axis_proposal import (
-    REJECT_DEFINITION,
+    AUDIT_NO_DEFINITION,
+    REJECT_NAME,
     REJECT_REPEAT,
+    definition_audit,
     parse_proposals,
     refusal_reason,
 )
@@ -106,9 +118,51 @@ def _free_reply(**overrides) -> str:
         "direction": "higher-is-better",
     }
     row.update(overrides)
-    import json
-
     return json.dumps({"axes": [row]})
+
+
+def _settings(**overrides) -> SimpleNamespace:
+    """An AI settings row that passes ``ai_selector_available``."""
+    base = {
+        "enabled": True,
+        "api_key": "k",
+        "base_url": "http://x",
+        "model": "m",
+        "reasoning_effort": "auto",
+    }
+    base.update(overrides)
+    return SimpleNamespace(**base)
+
+
+def _chat(axes) -> dict:
+    """A chat envelope carrying ``{"axes": <axes>}``."""
+    return {"choices": [{"message": {"content": json.dumps({"axes": axes})}}]}
+
+
+@pytest.fixture
+def _stub_image_encoding(monkeypatch):
+    from tabs.image_gallery.services import vlm
+
+    monkeypatch.setattr(vlm, "_encode_image", lambda path: ("png", "QUJD"))
+
+
+def _choose(items, reply, *, calls, cache):
+    """Run the REAL selector with an injected transport that always answers *reply*."""
+
+    def _client(base_url, api_key, payload):
+        calls.append(payload)
+        return reply
+
+    from tabs.image_gallery.use_cases.profile_ai import choose_profile_sync
+
+    return choose_profile_sync(
+        items,
+        mode="camera",
+        settings=_settings(),
+        cache=cache,
+        client_call=_client,
+    )
+
 
 
 # ---------------------------------------------------------------------------
@@ -202,15 +256,73 @@ def test_the_mode_filter_no_longer_drops_a_pool_id_this_context_cannot_measure()
     assert profile.axis_ids == ("ssim",)
 
 
-def test_a_bare_name_without_a_definition_is_still_refused():
-    profile = parse_profile_reply('{"axes": ["made_up"]}', mode="camera")
-    assert profile is None, (
-        "a bare name carries no meaning and cannot be measured — it is refused, "
-        "not stored as a free axis"
+def test_a_bare_name_without_a_definition_is_kept_with_an_audit_code():
+    """Owner rule 2026-10-27: the FORM of the answer decides nothing.
+
+    A bare string name is the terse shape of the same free axis, so it is stored
+    with ``definition=""`` and the ``no-definition`` audit code, and the scorecard
+    asks for it by name. Red before: ``parse_axis_choices`` refused every bare
+    name outside the pool with ``REJECT_DEFINITION`` and the reply fell back.
+    """
+    profile = parse_profile_reply('{"axes": ["glow_bloom"]}', mode="camera")
+
+    assert profile is not None, (
+        "a name the model gave is an axis — the app never decides whether it is "
+        "measurable"
     )
-    choices = parse_axis_choices(["made_up"])
-    assert choices.registry_ids == () and choices.entries == ()
-    assert dict(choices.refusals)["made_up"] == REJECT_DEFINITION
+    assert profile.source == "vlm"
+    assert [entry.name for entry in profile.axis_entries] == ["glow_bloom"]
+    assert profile.axis_entries[0].definition == "", "no definition was given"
+    assert bool(profile) is True, "a free-only profile is a usable profile"
+
+    choices = parse_axis_choices(["glow_bloom"])
+    assert choices.registry_ids == ()
+    assert [entry.name for entry in choices.entries] == ["glow_bloom"]
+    assert choices.refusals == (), "a bare name is not a structural refusal"
+    assert dict(choices.audits)["glow_bloom"] == AUDIT_NO_DEFINITION
+
+    axes = _scorecard_axes("camera", profile=profile)
+    assert ("glow_bloom", "glow_bloom") in axes, (
+        f"the scorecard must ask for the axis the judge named; got {axes}"
+    )
+    assert '"glow_bloom"' in build_prompt("camera", profile=profile)
+
+
+def test_a_string_and_an_object_are_the_same_axis():
+    """The form must not decide legality: same name ⇒ same profile, byte for byte."""
+    as_string = parse_profile_reply('{"axes": ["glow_bloom"]}', mode="camera")
+    as_object = parse_profile_reply(
+        '{"axes": [{"name": "glow_bloom", "definition": "", "scale": "0-100"}]}',
+        mode="camera",
+    )
+
+    assert as_string is not None and as_object is not None
+    assert as_string == as_object, (
+        "a bare name and an object naming the same axis must produce the same "
+        f"profile; got {as_string} vs {as_object}"
+    )
+    assert as_string.axis_entries[0].definition == ""
+
+
+def test_a_russian_definition_is_kept():
+    """The deleted English whitelist dropped every non-English definition."""
+    russian = "мягкое свечение вокруг ярких краёв; 0 = нет, 100 = сильное"
+    entry = {"name": "glow_bloom", "definition": russian, "scale": "0-100", "score": 44}
+
+    assert refusal_reason(entry) == "", (
+        "a definition the model wrote in its own language is a definition"
+    )
+    accepted, refusals = parse_proposals([entry])
+    assert [p.name for p in accepted] == ["glow_bloom"]
+    assert accepted[0].definition == russian, "the meaning travels untouched"
+    assert refusals == ()
+
+    profile = parse_profile_reply(
+        json.dumps({"axes": [{"name": "glow_bloom", "definition": russian, "scale": "0-100"}]}),
+        mode="camera",
+    )
+    assert profile is not None
+    assert profile.axis_entries[0].definition == russian
 
 
 def test_a_named_registry_axis_is_that_registry_axis_not_a_duplicate():
@@ -259,9 +371,11 @@ def test_a_definition_saying_zero_is_better_flips_the_direction():
 # ---------------------------------------------------------------------------
 
 
-def test_a_proposal_with_no_definition_is_refused_with_its_reason():
+def test_a_proposal_with_no_definition_is_kept_with_an_audit_code():
+    """The definition is metadata: the axis survives, the gap is recorded."""
     entry = {"name": "vibes", "definition": "", "scale": "0-100", "score": 50}
-    assert refusal_reason(entry) == REJECT_DEFINITION
+    assert refusal_reason(entry) == "", "a missing definition is not a refusal"
+    assert definition_audit("") == AUDIT_NO_DEFINITION
 
     accepted, refusals = parse_proposals(
         [
@@ -274,11 +388,24 @@ def test_a_proposal_with_no_definition_is_refused_with_its_reason():
             },
         ]
     )
-    assert [p.name for p in accepted] == ["halation"]
-    assert dict(refusals)["vibes"] == REJECT_DEFINITION
-    assert accepted[0].direction == "higher-is-better", (
+    assert [p.name for p in accepted] == ["vibes", "halation"], (
+        "the store keeps a definition-less axis instead of dropping it"
+    )
+    assert accepted[0].definition == ""
+    assert accepted[0].score == 50, "its reading is what makes it usable"
+    assert refusals == (), "nothing was refused — only audited"
+    assert accepted[1].direction == "higher-is-better", (
         "the owner rule: higher is better unless the definition says otherwise"
     )
+
+
+def test_a_proposal_with_an_unusable_name_is_still_refused():
+    """Structure keeps its refusals: a phrase is not an axis."""
+    accepted, refusals = parse_proposals(
+        [{"name": "!!!", "definition": "", "scale": "0-100", "score": 50}]
+    )
+    assert accepted == ()
+    assert dict(refusals)["#1"] == REJECT_NAME
 
 
 def test_a_proposal_whose_definition_names_zero_as_the_good_end_is_lower_is_better():
@@ -589,3 +716,133 @@ def test_a_plain_registry_profile_is_unchanged(mode):
         "sharpness",
         "noise",
     ]
+
+
+# ---------------------------------------------------------------------------
+# (f) the owner rule 2026-10-27: the KEPT count decides, never the refusals
+# ---------------------------------------------------------------------------
+
+
+def test_a_full_answer_with_five_free_names_is_not_retried(tmp_path, _stub_image_encoding):
+    """8 axes named, 5 of them free names with no definition — a COMPLETE answer.
+
+    Red before: every bare name outside the pool was refused, so the profile kept
+    3 registry ids, the 5..8 gate called the answer "thin", ONE retry was paid and
+    the run fell back — a full paid answer turned into a failure by the parser.
+    """
+    items = [_item("a.png", sharpness=0.0), _item("b.png", sharpness=400.0)]
+    calls: list = []
+    reply = _chat(
+        [
+            "sharpness",
+            "noise",
+            "exposure",
+            "glow_bloom",
+            "halation_bleed",
+            "tone_flattening",
+            "chroma_drift",
+            "veil_haze",
+        ]
+    )
+
+    profile = _choose(items, reply, calls=calls, cache=ProfileCache(tmp_path))
+
+    assert len(calls) == 1, (
+        f"a full answer must not be retried (calls={len(calls)}): refusals cannot "
+        "turn kept axes into a thin answer"
+    )
+    assert profile is not None and profile.source == "vlm", (
+        "the answer is applied, not replaced by the local offer"
+    )
+    assert len(profile.axis_ids) + len(profile.axis_entries) == 8
+    assert {entry.name for entry in profile.axis_entries} == {
+        "glow_bloom",
+        "halation_bleed",
+        "tone_flattening",
+        "chroma_drift",
+        "veil_haze",
+    }
+    assert all(entry.definition == "" for entry in profile.axis_entries), (
+        "none of the free names carried a definition — that is metadata, not a loss"
+    )
+    assert _scorecard_axes("camera", profile=profile)[-1][0] == "veil_haze", (
+        "the scorecard asks for the judge's own axes in the model's order"
+    )
+
+
+def test_three_kept_axes_are_not_a_thin_answer(tmp_path, _stub_image_encoding):
+    """The owner's rule is 3..8, counted over KEPT axes — 3 is complete enough."""
+    items = [_item("a.png", sharpness=0.0), _item("b.png", sharpness=400.0)]
+    calls: list = []
+
+    profile = _choose(
+        items, _chat(["glow_bloom", "halation_bleed", "veil_haze"]),
+        calls=calls, cache=ProfileCache(tmp_path),
+    )
+
+    assert len(calls) == 1, "three kept axes are not retried"
+    assert profile is not None
+    assert [entry.name for entry in profile.axis_entries] == [
+        "glow_bloom",
+        "halation_bleed",
+        "veil_haze",
+    ]
+
+
+def test_a_repeat_inside_one_reply_still_costs_exactly_that_axis(
+    tmp_path, _stub_image_encoding, caplog
+):
+    """Structure keeps its refusals — and a refusal does not un-keep the rest."""
+    import logging
+
+    from core.log_names import APP_LOGGER_NAME
+
+    items = [_item("a.png", sharpness=0.0), _item("b.png", sharpness=400.0)]
+    calls: list = []
+    reply = _chat(["glow_bloom", "glow_bloom", "halation_bleed", "veil_haze"])
+
+    with caplog.at_level(logging.DEBUG, logger=APP_LOGGER_NAME):
+        profile = _choose(items, reply, calls=calls, cache=ProfileCache(tmp_path))
+
+    assert len(calls) == 1
+    assert [entry.name for entry in profile.axis_entries] == [
+        "glow_bloom",
+        "halation_bleed",
+        "veil_haze",
+    ]
+    assert any(
+        "glow_bloom=repeated-axis" in record.getMessage() for record in caplog.records
+    ), "the refused repeat is recorded, never silent"
+
+
+def test_a_bare_name_carries_its_audit_code_into_the_profile(
+    tmp_path, _stub_image_encoding
+):
+    """The audit code is not lost on the way into ``MetricProfile``."""
+    from tabs.image_gallery.services.metric_profile import MetricProfile
+
+    profile = MetricProfile(
+        mode="camera",
+        source="vlm",
+        axis_entries=(AiAxisProposal(name="glow_bloom"),),
+    )
+    assert [entry.name for entry in profile.axis_entries] == ["glow_bloom"], (
+        "an entry whose definition is empty must survive profile normalization"
+    )
+    assert profile.axis_entries[0].definition == ""
+
+    items = [_item("a.png", sharpness=0.0), _item("b.png", sharpness=400.0)]
+    calls: list = []
+    chosen = _choose(
+        items, _chat(["glow_bloom", "halation_bleed", "veil_haze"]),
+        calls=calls, cache=ProfileCache(tmp_path),
+    )
+    assert chosen == MetricProfile(
+        mode="camera",
+        source="vlm",
+        axis_entries=(
+            AiAxisProposal(name="glow_bloom"),
+            AiAxisProposal(name="halation_bleed"),
+            AiAxisProposal(name="veil_haze"),
+        ),
+    )

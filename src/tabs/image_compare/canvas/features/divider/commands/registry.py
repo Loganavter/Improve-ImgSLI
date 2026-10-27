@@ -21,7 +21,6 @@ from tabs.image_compare.canvas.features.divider.input.events import (
     SettingsToggleDividerVisibilityEvent,
 )
 from tabs.image_compare.canvas.features.divider.state.feature_state import get_divider_widget_state
-from tabs.image_compare.canvas.split_trace import trace_split_dispatch
 
 
 def dispatch_viewport_action(actions, action) -> bool:
@@ -177,12 +176,8 @@ def command_update_split_drag(actions, position: float) -> None:
             if viewport is not None
             else None
         )
-        dragging = bool(getattr(interaction, "is_dragging_split_line", False))
-        if dragging:
+        if bool(getattr(interaction, "is_dragging_split_line", False)):
             dispatch_viewport_action(actions, SetSplitPositionVisualAction(clamped))
-        trace_split_dispatch(
-            "update_drag", split=clamped, dragging=dragging, visual_sent=dragging
-        )
         emit_interaction_update(actions)
         return
     store = getattr(actions, "store", None)
@@ -191,25 +186,15 @@ def command_update_split_drag(actions, position: float) -> None:
         dispatcher.dispatch(SetSplitPositionAction(clamped), scope="viewport")
         viewport = getattr(store, "viewport", None)
         interaction = getattr(viewport, "interaction_state", None) if viewport is not None else None
-        dragging = bool(getattr(interaction, "is_dragging_split_line", False))
-        if dragging:
+        if bool(getattr(interaction, "is_dragging_split_line", False)):
             dispatcher.dispatch(SetSplitPositionVisualAction(clamped), scope="viewport")
-        trace_split_dispatch(
-            "update_drag", split=clamped, dragging=dragging, visual_sent=dragging
-        )
         emit_interaction_update(actions)
         return
-    trace_split_dispatch(
-        "update_drag", split=clamped, dragging=False, visual_sent=False
-    )
     emit_interaction_update(actions)
 
 
 def command_sync_split_position(actions, position: float) -> None:
     clamped = max(0.0, min(1.0, float(position)))
-    trace_split_dispatch(
-        "sync_split_position", split=clamped, dragging=False, visual_sent=True
-    )
     dispatched = dispatch_viewport_action(actions, SetSplitPositionAction(clamped))
     dispatched = (
         dispatch_viewport_action(actions, SetSplitPositionVisualAction(clamped))

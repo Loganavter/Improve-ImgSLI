@@ -5,7 +5,7 @@ plus the scorecard's own:
 
 - the **scorecard** (``services/ai_client/parse``) lets a per-image reply add at
   most :data:`AXIS_PROPOSAL_LIMIT` dimensions the asked set is missing, each with
-  this image's score. That rule lives here: name, measurable definition, 0–100
+  this image's score. That rule lives here: name, definition (metadata), 0–100
   scale, score.
 - the **selector** (``use_cases/profile_ai``) asks the model for 3..8 axes for a
   whole series (plan-gallery-ai-judgement §OWNER REVISION 2026-10-22). Its
@@ -13,15 +13,23 @@ plus the scorecard's own:
   reply shape, importing the vocabulary from here (``normalize_name``,
   ``direction_of``, ``scale_of``, the refusal codes).
 
-Shared vocabulary: a NAME (an axis id, not a phrase), a DEFINITION that names a
-technical dimension (content is identical across variants of one picture and
-cannot separate them), a 0–100 SCALE, and a DIRECTION ("higher is better" unless
-the definition says otherwise). A proposal that fails the per-image rule is
-**refused with a reason** and never stored: an axis with no measurable meaning
-cannot be ranked on, and a stored one would silently become a weight in the order
-(the "nine bars that meant nothing" failure). Accepted proposals become
-``models.AiAxisProposal`` entries (``producer="vlm"``, ``kind="candidate"``,
-plus the direction) and travel with the scorecard into the Jev vector by name.
+Shared vocabulary: a NAME (an axis id, not a phrase), a DEFINITION, a 0–100
+SCALE and a DIRECTION ("higher is better" unless the definition says otherwise).
+
+Owner rule (2026-10-27, verbatim): *"we must not decide what is measurable and
+what is not. If the app said it needs such metrics, we draw them, period."* So
+the DEFINITION is METADATA, never a gate: the old English whitelist
+(``_MEASURABLE_WORDS`` / ``_CONTENT_WORDS``) judged the model's vocabulary and
+dropped every axis it did not recognise — including every non-English one — and
+it is DELETED. A missing or too-short definition is stored as ``""`` and recorded
+as the audit code :data:`AUDIT_NO_DEFINITION`; the axis is KEPT.
+
+What is still refused — structure only, with a recorded reason, never silently:
+an unusable/empty NAME, a duplicate of a pool axis, a name repeated inside one
+reply, an unsupported SCALE and a missing SCORE (plus the per-image limit).
+Accepted proposals become ``models.AiAxisProposal`` entries (``producer="vlm"``,
+``kind="candidate"``, plus the direction) and travel with the scorecard into the
+Jev vector by name.
 
 Pure: no Qt, no HTTP, no registry mutation. The pool itself is never written —
 the proposal lives on the result of the image that proposed it.
@@ -29,14 +37,18 @@ the proposal lives on the result of the image that proposed it.
 
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass
 
+from core.log_names import APP_LOGGER_NAME
 from tabs.image_gallery.models import (
     AXIS_DIRECTION_DEFAULT,
     AXIS_DIRECTIONS,
     AiAxisProposal,
 )
+
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 #: The only scale a scorecard answer may use (the pool's own 0-100 quality
 #: scale). A proposal on another scale cannot be compared with a measured axis.
@@ -59,10 +71,9 @@ _SCALE_SPELLINGS = frozenset(
 AXIS_PROPOSAL_LIMIT = 2
 
 #: Refusal codes (the recorded reason). Codes, never prose: a surface localizes
-#: them and the trace stays stable across a language switch.
+#: them and the trace stays stable across a language switch. Every one of them is
+#: a STRUCTURE rule — nothing here judges what the model chose to measure.
 REJECT_NAME = "unusable-name"
-REJECT_DEFINITION = "no-definition"
-REJECT_CONTENT = "describes-content"
 REJECT_SCALE = "unsupported-scale"
 REJECT_SCORE = "no-score"
 REJECT_DUPLICATE = "duplicate-pool-axis"
@@ -71,8 +82,6 @@ REJECT_LIMIT = "over-limit"
 REJECT_REPEAT = "repeated-axis"
 PROPOSAL_REJECT_CODES: tuple[str, ...] = (
     REJECT_NAME,
-    REJECT_DEFINITION,
-    REJECT_CONTENT,
     REJECT_SCALE,
     REJECT_SCORE,
     REJECT_DUPLICATE,
@@ -80,98 +89,54 @@ PROPOSAL_REJECT_CODES: tuple[str, ...] = (
     REJECT_REPEAT,
 )
 
+#: Audit code (NOT a refusal): the model named the axis but gave no usable
+#: definition. The entry is stored with ``definition=""`` and this code records
+#: why it says nothing (owner rule 2026-10-27: a definition is metadata, never a
+#: reason to drop an axis the app asked for).
+AUDIT_NO_DEFINITION = "no-definition"
+AUDIT_CODES: tuple[str, ...] = (AUDIT_NO_DEFINITION,)
+
+#: What a definition must say to be STORED instead of audited as absent: a
+#: sentence, not a word or a placeholder. Whitespace-split words on purpose — the
+#: judge answers in the UI language, and the old ``[a-z_]`` regex made every
+#: non-English definition "empty".
+MIN_DEFINITION_CHARS = 10
+MIN_DEFINITION_WORDS = 2
+
 #: A name is an axis id, not a phrase: 2–40 characters, starts with a letter,
 #: then letters/digits/underscore/space/hyphen (Unicode letters allowed — the
 #: judge answers in the UI language, "чистота" is a valid axis name).
 _NAME_RE = re.compile(r"^[^\W\d_][\w \-]{1,39}$", re.UNICODE)
 
 
-#: Vocabulary that makes a definition MEASURABLE: it names a technical
-#: dimension of the image (what a detector or a careful eye could score). A
-#: definition built only out of scene nouns has no such dimension.
-_MEASURABLE_WORDS = frozenset(
-    {
-        "alias",
-        "artifact",
-        "banding",
-        "bleed",
-        "blotch",
-        "blur",
-        "brightness",
-        "blockiness",
-        "chroma",
-        "chromatic",
-        "clarity",
-        "clipping",
-        "colour",
-        "color",
-        "compression",
-        "contrast",
-        "crispness",
-        "detail",
-        "distortion",
-        "dust",
-        "edge",
-        "exposure",
-        "fidelity",
-        "fringing",
-        "glow",
-        "grain",
-        "halation",
-        "halo",
-        "highlight",
-        "hue",
-        "jpeg",
-        "moire",
-        "noise",
-        "overshoot",
-        "posterization",
-        "resolution",
-        "ringing",
-        "saturation",
-        "scratch",
-        "sepia",
-        "shadow",
-        "sharpen",
-        "sharpness",
-        "smear",
-        "smoothing",
-        "softness",
-        "speckle",
-        "structure",
-        "texture",
-        "tone",
-        "vignette",
-        "white_balance",
-    }
-)
+def definition_audit(definition) -> str:
+    """``""`` when *definition* is storable, else :data:`AUDIT_NO_DEFINITION`.
 
-#: Scene/content vocabulary: a definition that is only about WHAT is depicted
-#: cannot separate two variants of the same picture (the prompt's rule).
-_CONTENT_WORDS = frozenset(
-    {
-        "animal",
-        "background",
-        "beauty",
-        "beautiful",
-        "building",
-        "car",
-        "character",
-        "composition_subject",
-        "dog",
-        "face",
-        "flower",
-        "landscape",
-        "person",
-        "portrait",
-        "scene",
-        "sky",
-        "subject",
-        "tree",
-    }
-)
+    An audit code, not a refusal: the owner rule (2026-10-27) is that the app
+    never decides what a model may measure, so a missing/short definition costs
+    the definition, never the axis. Whitespace words, so any language passes.
+    """
+    try:
+        text = str(definition or "").strip()
+    except Exception:
+        return AUDIT_NO_DEFINITION
+    if len(text) < MIN_DEFINITION_CHARS or len(text.split()) < MIN_DEFINITION_WORDS:
+        return AUDIT_NO_DEFINITION
+    return ""
 
-_WORD_RE = re.compile(r"[a-z_]+")
+
+def storable_definition(definition) -> str:
+    """The definition to STORE for *definition*: its text, or ``""`` if too thin.
+
+    ``""`` is how "the model gave none" is expressed on an entry (see
+    ``models.AiAxisProposal``): one field, no second flag, so a cached entry and a
+    fresh one stay equal.
+    """
+    try:
+        text = str(definition or "").strip()[:240]
+    except Exception:
+        return ""
+    return "" if definition_audit(text) else text
 
 
 def normalize_name(raw) -> str:
@@ -189,22 +154,6 @@ def normalize_name(raw) -> str:
     if not text or not _NAME_RE.match(text.replace("_", " ")):
         return ""
     return text
-
-
-def _words(text: str) -> set[str]:
-    return set(_WORD_RE.findall(str(text or "").lower()))
-
-
-def _definition_problem(definition: str) -> str:
-    """``""`` when *definition* names a measurable dimension, else a code."""
-    words = _words(definition)
-    if len(definition.strip()) < 10 or len(words) < 2:
-        return REJECT_DEFINITION
-    if not (words & _MEASURABLE_WORDS):
-        # A definition about the scene ("how pretty the sky looks") has no
-        # dimension to score: identical across variants of one picture.
-        return REJECT_CONTENT if (words & _CONTENT_WORDS) else REJECT_DEFINITION
-    return ""
 
 
 def _pool_axis_for(name: str) -> str:
@@ -315,7 +264,12 @@ def scale_of(value) -> str:
 
 
 def refusal_reason(entry) -> str:
-    """Why *entry* is not a usable axis proposal (``""`` when it is)."""
+    """Why *entry* is not a usable axis proposal (``""`` when it is).
+
+    Structure only, per the owner rule: a name, a duplicate of a pool axis, the
+    0–100 scale and a score. The DEFINITION is metadata and never a reason
+    (:func:`definition_audit` records its absence instead).
+    """
     if not isinstance(entry, dict):
         return REJECT_NAME
     name = normalize_name(entry.get("name"))
@@ -324,9 +278,6 @@ def refusal_reason(entry) -> str:
     duplicate = _pool_axis_for(name)
     if duplicate:
         return f"{REJECT_DUPLICATE}:{duplicate}"
-    problem = _definition_problem(str(entry.get("definition", "") or ""))
-    if problem:
-        return problem
     if not scale_of(entry.get("scale")):
         return REJECT_SCALE
     if _score_of(entry.get("score")) < 0:
@@ -342,6 +293,10 @@ def parse_proposals(value, *, limit: int = AXIS_PROPOSAL_LIMIT):
     every entry that was NOT stored — an unusable entry still has a name (or
     ``"#"`` + position when it has none) so the loss is traceable. Unknown
     duplicates inside one reply keep the first occurrence. Never raises.
+
+    A missing/short definition does not refuse anything: the entry is stored with
+    ``definition=""`` and the audit code :data:`AUDIT_NO_DEFINITION` is logged
+    (owner rule 2026-10-27).
     """
     accepted: list[AiAxisProposal] = []
     refusals: list[tuple[str, str]] = []
@@ -362,35 +317,50 @@ def parse_proposals(value, *, limit: int = AXIS_PROPOSAL_LIMIT):
             refusals.append((row_name, reason))
             continue
         seen.add(name)
-        definition = str(entry.get("definition", "") or "").strip()[:240]
+        raw_definition = str(entry.get("definition", "") or "")
+        audit = definition_audit(raw_definition)
+        if audit:
+            logger.debug(
+                "axis proposal kept with an audit code: %s=%s (the definition is "
+                "metadata, never a refusal)",
+                name,
+                audit,
+            )
+        definition = storable_definition(raw_definition)
         accepted.append(
             AiAxisProposal(
                 name=name,
                 definition=definition,
                 scale=AXIS_PROPOSAL_SCALE,
                 score=_score_of(entry.get("score")),
-                direction=direction_of(entry, definition),
+                # The DIRECTION follows what the model wrote, even when that text
+                # is too thin to keep as the stored definition ("0 = none").
+                direction=direction_of(entry, raw_definition),
             )
         )
     return tuple(accepted), tuple(refusals)
 
 
 __all__ = [
+    "AUDIT_CODES",
+    "AUDIT_NO_DEFINITION",
     "AXIS_PROPOSAL_LIMIT",
     "AXIS_PROPOSAL_SCALE",
+    "MIN_DEFINITION_CHARS",
+    "MIN_DEFINITION_WORDS",
     "PROPOSAL_REJECT_CODES",
-    "REJECT_CONTENT",
-    "REJECT_DEFINITION",
     "REJECT_DUPLICATE",
     "REJECT_LIMIT",
     "REJECT_NAME",
     "REJECT_REPEAT",
     "REJECT_SCALE",
     "REJECT_SCORE",
+    "definition_audit",
     "direction_of",
     "normalize_direction",
     "normalize_name",
     "parse_proposals",
     "refusal_reason",
     "scale_of",
+    "storable_definition",
 ]

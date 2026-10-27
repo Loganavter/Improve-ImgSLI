@@ -3016,15 +3016,24 @@ class GalleryController:
     # -- Ask AI (A3 entry points + A4 async/cache/generation guard) ------------
 
     def open_ask_ai(self, scope_kind: str, card, path) -> None:
-        """Entry from the card / selection context menu (scope = selection/card)."""
+        """Entry from the card / selection context menu (scope = selection/card).
+
+        ``card`` is the point form of the same action (``paths=(path,)``); a
+        selection ask reads the ONE selection source (``action_scope``) — the
+        store slot when the tab has one, the state mirror otherwise. Reading
+        ``state.selected_paths`` here directly let a stale mirror disagree with
+        every other action after a store dispatch (the class of defect the
+        action-scope wave removed; this entry was its last direct reader).
+        """
         from tabs.image_gallery.services.ask_context import AskScope
+        from tabs.image_gallery.use_cases import action_scope
 
         path = Path(path)
         if scope_kind == "card":
             scope = AskScope(kind="selection", paths=(path,), label=path.name)
         else:
             try:
-                paths = tuple(getattr(self.state, "selected_paths", None) or ())
+                paths = tuple(action_scope.selected_paths(self))
             except Exception:
                 paths = ()
             if not paths:

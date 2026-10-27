@@ -29,7 +29,6 @@ from tabs.image_compare.canvas.render_arch import (
 )
 
 from .render_config import update_display_split_position
-from .split_trace import trace_base_frame
 from ui.canvas_infra.rhi.render_metrics import RenderMetrics
 from ui.canvas_infra.rhi.render_mode import EXPORT_CANVAS_OBJECT_NAME
 from engine.cache.render_debug import rhi_render_debug
@@ -259,21 +258,6 @@ def build_render_runtime_context(widget) -> RenderRuntimeContext:
     if getattr(scene_frame, "split_override", None) is not None:
         content_split = float(scene_frame.split_override)
     content_split = max(0.0, min(1.0, content_split))
-    # Split-line correlation trace (BLINKTABLE_SPLIT_TRACE / IMGSLI_SPLIT_TRACE):
-    # opens this frame's id that DividerPass reuses, so "line vs seam" can be
-    # read off log.txt frame-paired instead of guessed.
-    trace_base_frame(
-        widget,
-        mode=mode,
-        split=content_split,
-        scene_frame=scene_frame,
-        render_scene=render_scene,
-        view_state=view_state,
-        state=state,
-        letterbox1=letterbox1,
-        canvas_width=float(canvas_width),
-        canvas_height=float(canvas_height),
-    )
     base_image = BaseImagePrimitive(
         split_position=content_split,
         is_horizontal=bool(scene_frame.is_horizontal),

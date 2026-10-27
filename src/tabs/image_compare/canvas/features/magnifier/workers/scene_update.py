@@ -411,55 +411,6 @@ def rebuild_magnifier_overlay(presenter, frame_context=None):
             full_size2=_full2,
         )
         _mark("build_layout")
-        # Loupe geometry probe (IMGSLI_IC_LOUPE_DEBUG): the drawn disk radius is
-        # `size_relative * sqrt(width*height)/2`, the packer then scales it by
-        # `_content_sr`. Swapping sources of different pixel dims changes BOTH
-        # inputs, so a proportional change must cancel exactly -- a visible
-        # size jump on swap means one of these numbers did not cancel, and this
-        # line names which (owner report 2026-10-27: loupes jump slightly in
-        # size on swap, video sources 2816x2304 vs 768x576).
-        try:
-            from tabs.image_compare.debug import ic_loupe_debug
-            from shared.image_processing.image_dims import get_image_dims as _gid
-
-            _slot_r = layout.slots[0].radius if getattr(layout, "slots", None) else -1.0
-            _cap_r = (
-                layout.capture_circles[0].radius
-                if getattr(layout, "capture_circles", None)
-                else -1.0
-            )
-            _st = getattr(image_label, "runtime_state", None)
-            _store = getattr(_st, "_store", None)
-            _ist = getattr(getattr(getattr(_store, "viewport", None), "session_data", None), "image_state", None)
-            _d1 = _gid(getattr(_ist, "image1", None))
-            _d2 = _gid(getattr(_ist, "image2", None))
-            ic_loupe_debug(
-                "layout inputs: image_rect=%dx%d plan_canvas=%dx%d content_sr=%.6f "
-                "content_rect=%r store_dims=%r/%r single=%d -> slot_radius=%.4f capture_radius=%.4f",
-                int(content_w),
-                int(content_h),
-                int(plan.canvas_w),
-                int(plan.canvas_h),
-                float(
-                    getattr(
-                        getattr(image_label, "runtime_state", None),
-                        "_content_sr",
-                        1.0,
-                    )
-                    or 1.0
-                ),
-                getattr(_st, "_content_rect_px", None),
-                _d1,
-                _d2,
-                int(
-                    getattr(getattr(plan, "render_scene", None), "single_image_preview", 0)
-                    or 0
-                ),
-                float(_slot_r),
-                float(_cap_r),
-            )
-        except Exception:
-            pass
         if layout is None:
             image_label._active_render_plan = _dc_replace(plan, overlay_layout=None)
             reset_canvas_overlays(image_label)
