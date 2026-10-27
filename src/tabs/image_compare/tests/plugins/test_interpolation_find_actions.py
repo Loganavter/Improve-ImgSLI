@@ -137,3 +137,109 @@ def test_interpolation_options_listed_and_choose_data(qtbot):
     assert callable(action.run)
     action.run()
     assert applied == [list(AppConstants.INTERPOLATION_METHODS_MAP.keys()).index("LANCZOS")]
+
+def test_interpolation_journal_brackets_open_and_close(qtbot):
+    """The dropdown journals its own lifetime: ``show`` -> ``closed after=<ms>ms``.
+
+    Red-before (2026-10-27): neither line existed. This flyout is a bare
+    ``SimpleOptionsFlyout`` with no ``AnchoredFlyoutAutoHide``, so ``log.txt``
+    held no record of it at all; a "how long was it open" question could not be
+    answered, and "it never opened" was wrongly concluded from that silence.
+    """
+    host_widget = QWidget()
+    qtbot.addWidget(host_widget)
+    host_widget.resize(500, 400)
+    host_widget.show()
+    qtbot.waitExposed(host_widget)
+
+    panel = QWidget(host_widget)
+    panel.show()
+    combo = ScrollableComboBox(host_widget)
+    for key in AppConstants.INTERPOLATION_METHODS_MAP:
+        combo.addItem(key)
+    combo.show()
+    qtbot.waitExposed(combo)
+
+    widget = SimpleNamespace(
+        magnifier_settings_panel=panel,
+        combo_interpolation=combo,
+        magnifier_settings_flyout=None,
+    )
+    host = _FakeHost(host_widget)
+    controller = InterpolationFlyoutController(_FakeManager(host), widget)
+
+    controller.show()
+    qtbot.waitUntil(
+        lambda: host._interp_flyout is not None and host._interp_flyout.isVisible(),
+        timeout=2000,
+    )
+
+    events = [entry[1] for entry in controller._journal.snapshot()]
+    assert events == ["show"], events
+    assert "anchor=ScrollableComboBox" in controller._journal.snapshot()[-1][2]
+
+    host._interp_flyout.hide()
+    qtbot.waitUntil(
+        lambda: any(entry[1] == "closed" for entry in controller._journal.snapshot()),
+        timeout=2000,
+    )
+
+    last = controller._journal.snapshot()[-1]
+    assert last[1] == "closed", last
+    assert last[2].startswith("after="), last
+
+
+def test_interpolation_close_names_its_origin(qtbot, monkeypatch):
+    """A self-closing dropdown must name the frame that hid it.
+
+    Measured 2026-10-27: opened and closed 177 ms later with the cursor on the
+    same pixel and no dispatch (so not a row pick); the cause could not be
+    recovered from the log afterwards. ``origin=`` is the stack that hid it.
+    """
+    monkeypatch.setenv("SLI_FLYOUT_DEBUG", "1")
+
+    host_widget = QWidget()
+    qtbot.addWidget(host_widget)
+    host_widget.resize(500, 400)
+    host_widget.show()
+    qtbot.waitExposed(host_widget)
+
+    panel = QWidget(host_widget)
+    panel.show()
+    combo = ScrollableComboBox(host_widget)
+    for key in AppConstants.INTERPOLATION_METHODS_MAP:
+        combo.addItem(key)
+    combo.show()
+    qtbot.waitExposed(combo)
+
+    widget = SimpleNamespace(
+        magnifier_settings_panel=panel,
+        combo_interpolation=combo,
+        magnifier_settings_flyout=None,
+    )
+    host = _FakeHost(host_widget)
+    controller = InterpolationFlyoutController(_FakeManager(host), widget)
+
+    controller.show()
+    qtbot.waitUntil(
+        lambda: host._interp_flyout is not None and host._interp_flyout.isVisible(),
+        timeout=2000,
+    )
+    host._interp_flyout.hide()
+    qtbot.waitUntil(
+        lambda: any(entry[1] == "closed" for entry in controller._journal.snapshot()),
+        timeout=2000,
+    )
+
+    detail = controller._journal.snapshot()[-1][2]
+    assert "focus=" in detail, detail
+    assert "under=" in detail, detail
+    assert "origin=" in detail, detail
+
+    events = [entry[1] for entry in controller._journal.snapshot()]
+    # ``hide:requested`` carries the cause; ``closed`` alone only ever shows the
+    # fade completion (both are pinned: losing the first makes the second useless).
+    assert events == ["show", "hide:requested", "closed"], events
+    requested = controller._journal.snapshot()[1][2]
+    assert "origin=" in requested, requested
+    assert "hide" in requested, requested
