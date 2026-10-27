@@ -1,7 +1,14 @@
 """Disk-cached thumbnail generation for gallery items.
 
-Cache key/dir scheme mirrors ``services.io.project_preview`` (sha256 of
-``path:mtime_ns``, so an edited file naturally misses the old cache entry).
+Cache key mirrors ``services.io.project_preview`` — except it names the
+CONTENT, not the file slot: ``content_digest``'s blake2b digest when the bytes
+can be read, ``path:size:mtime_ns`` only as the fallback for an unreadable or
+absent file. Why (owner, 2026-10-27 ``content-identity``): the old
+``sha256(path:mtime_ns)`` key served the previous bytes' thumbnail after a
+rewrite that restored its mtime (archive extraction, ``cp -p``) and re-rendered a
+byte-identical copy under a new name — the picture, not the path, is what a
+thumbnail is.
+
 Rendering runs off the UI thread — call ``render_and_cache_thumbnail`` from a
 ``GenericWorker``, never directly on the main thread.
 """
@@ -10,10 +17,12 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import os
 from pathlib import Path
 
 from PIL import Image
 from core.log_names import APP_LOGGER_NAME
+from tabs.image_gallery.services import content_digest
 
 logger = logging.getLogger(APP_LOGGER_NAME)
 
@@ -28,9 +37,53 @@ def thumbnail_cache_dir() -> Path:
     return root
 
 
-def cache_key_for(path: Path, mtime_ns: int) -> str:
-    digest = hashlib.sha256(f"{Path(path).resolve()}:{mtime_ns}".encode("utf-8")).hexdigest()
-    return digest[:24]
+def cache_key_for(
+    path: Path,
+    mtime_ns: int,
+    *,
+    size: int | None = None,
+    digest: str | None = None,
+) -> str:
+    """Stable key for *path*'s thumbnail: content first, path only as fallback.
+
+    ``digest`` (a :mod:`content_digest` value) makes the key describe the BYTES,
+    so the two ways the old ``path:mtime`` key lied both resolve: a rewrite that
+    restored the mtime lands on a new key instead of the old thumbnail, and the
+    same picture under another name hits the same entry instead of re-rendering.
+
+    ``size`` / ``digest`` are optional keywords, so every existing
+    ``cache_key_for(path, mtime)`` call keeps working; when omitted the digest is
+    read from the index (an unchanged file is not re-read — see
+    ``content_digest``) and the size comes from one stat. ``size`` is the cheap
+    filter that catches most edits before the digest even matters, and it is the
+    whole key when the bytes are unreadable.
+    """
+    try:
+        size_token = int(size) if size is not None else None
+    except (TypeError, ValueError):
+        size_token = None
+    if digest is None:
+        try:
+            digest = content_digest.file_digest(path, size=size_token, mtime_ns=mtime_ns)
+        except Exception:
+            digest = ""
+    if size_token is None:
+        try:
+            size_token = int(os.stat(path).st_size)
+        except (OSError, ValueError):
+            size_token = 0
+    if digest:
+        material = f"content:{digest}"
+    else:
+        # Fail-open to the pre-content key (plus size): an unreadable file must
+        # still get a STABLE key, and it must never share one with a readable
+        # file whose digest exists.
+        try:
+            resolved = str(Path(path).resolve())
+        except Exception:
+            resolved = str(path)
+        material = f"{resolved}:{size_token}:{int(mtime_ns)}"
+    return hashlib.sha256(material.encode("utf-8")).hexdigest()[:24]
 
 
 def cached_thumbnail_path(path: Path, mtime_ns: int) -> Path:

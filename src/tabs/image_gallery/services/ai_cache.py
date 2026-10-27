@@ -1,16 +1,26 @@
 """Disk cache for AI analysis results.
 
-Keyed like ``thumbnail_cache`` (sha256 of ``path:mtime_ns``) **plus the analysis
+Keyed like ``thumbnail_cache`` — by the file's CONTENT digest (``content_digest``;
+``path:size:mtime_ns`` only when the bytes cannot be read) — **plus the analysis
 identity** — the AI configuration that produced the scorecard — so re-opening a
-folder never re-spends API credits and an edited file is correctly treated as
-not-yet-analyzed, while switching the backend (model / base_url / mode /
-reasoning effort / prompt schema / sampling) is a MISS instead of a stale result.
+folder never re-spends API credits, an edited file is correctly treated as
+not-yet-analyzed, and a byte-identical copy under another name is a HIT instead
+of a second paid analysis, while switching the backend (model / base_url /
+reasoning effort / prompt schema / sampling) is a MISS instead of a stale
+result.
 
 WHY the identity is part of the key (the bug this fixes): the key used to be
 ``(path, mtime_ns)`` only, so after switching model or base_url
 ``use_cases/ai_analysis.analyze_item`` served the PREVIOUS backend's scorecard
 from disk before it had even read ``AiSettings`` — the gallery showed another
 model's judgment against the new one.
+
+WHY the content digest replaced ``path:mtime`` (owner, 2026-10-27
+``content-identity``): a rewrite that restored the mtime (archive extraction,
+``cp -p``) served the old bytes' scorecard, and a copy of the same picture under
+another name re-analyzed identical pixels for full price. The question to the
+backend is about the BYTES, so the bytes may own the answer. An unreadable file
+keeps the old path-keyed form (a stable MISS/HIT, never a shared entry).
 
 The PROFILE is deliberately NOT part of the key any more (queue rows
 ``task-analysis-phase-state`` / ``task-profile-freeze-before-vlm-answer``,
@@ -569,15 +579,19 @@ def _identity_fingerprint(identity: dict[str, object], *, exclude=()) -> str:
 
 
 def _cache_path(path: Path, mtime_ns: int, identity) -> Path:  # type: ignore[no-untyped-def]
-    """``<path:mtime hash>-<identity digest>.json``.
+    """``<content key>-<identity digest>.json``.
 
-    The identity suffix keeps one entry per backend for the same image, so
-    switching back to a previously used model hits its own scorecard again
-    instead of overwriting the other one. ``effective_k`` is not in the digest
-    (see :func:`_identity_fingerprint`) so a settled-thin entry and a full-depth
-    request for the same configuration land on the SAME file and the payload
-    check decides. A non-canonical identity raises ``ValueError`` — callers fail
-    open to a miss / skip the write.
+    The first half is ``thumbnail_cache.cache_key_for`` — the content digest of
+    the bytes (``path:size:mtime_ns`` for an unreadable file), so the entry
+    follows the PICTURE: an mtime-preserving rewrite is a new key, a copy under
+    another name shares this one. The identity suffix keeps one entry per
+    backend for the same image, so switching back to a previously used model
+    hits its own scorecard again instead of overwriting the other one.
+    ``effective_k`` is not in the digest (see :func:`_identity_fingerprint`) so
+    a settled-thin entry and a full-depth request for the same configuration
+    land on the SAME file and the payload check decides. A non-canonical
+    identity raises ``ValueError`` — callers fail open to a miss / skip the
+    write.
     """
     canonical = _canonical_identity(identity)
     if canonical is None:

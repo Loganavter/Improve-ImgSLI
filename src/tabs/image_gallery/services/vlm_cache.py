@@ -1,8 +1,10 @@
 """Disk cache for Stage 3 VLM results — tie-breaks and compare briefs.
 
-Key = hash(paths+mtime **+ the backend that answered**) like ``ai_cache`` /
-``thumbnail_cache`` (sha256 of ``path:mtime_ns``) so edited files invalidate.
-One file per pair/tie-break, stored alongside ``gallery_ai_cache`` as
+Key = hash(paths + mtimes + each file's CONTENT digest + the backend that
+answered) like ``ai_cache`` / ``thumbnail_cache`` — the content digest
+(``content_digest``) is what makes a rewritten-in-place file (mtime restored by
+an unzip / ``cp -p``) invalidate instead of replaying the previous bytes'
+verdict. One file per pair/tie-break, stored alongside ``gallery_ai_cache`` as
 ``gallery_vlm_cache``.
 
 WHY the backend is part of the key (invariant I1/I2): the content half alone
@@ -33,6 +35,7 @@ import logging
 from pathlib import Path
 
 from tabs.image_gallery.models import CompareBrief, TieBreakResult
+from tabs.image_gallery.services import content_digest
 from tabs.image_gallery.services.ai_providers import _url_key
 from core.log_names import APP_LOGGER_NAME
 
@@ -78,6 +81,51 @@ def _backend_parts(model: str, base_url: str) -> list[str]:
     ]
 
 
+def _file_identity(path, mtime_ns: int) -> str:  # type: ignore[no-untyped-def]
+    """``<resolved path>:<mtime>:<content digest>`` — one half of a pair key.
+
+    The digest makes the pair key name the PICTURES, not their file slots: an
+    mtime-preserving rewrite changes it (a stale verdict must not survive), while
+    an untouched file answers from the digest index without re-reading it. ``""``
+    when the bytes are unreadable — the key then keeps the old path:mtime form,
+    stable and never shared with a readable file.
+    """
+    try:
+        resolved = str(Path(path).resolve())
+    except Exception:
+        resolved = str(path)
+    try:
+        digest = content_digest.file_digest(path, mtime_ns=mtime_ns)
+    except Exception:
+        digest = ""
+    return f"{resolved}:{mtime_ns}:{digest}"
+
+
+def _pair_parts(path_a, mtime_a: int, path_b, mtime_b: int) -> list[str]:  # type: ignore[no-untyped-def]
+    """The two file halves, sorted so ``(a,b) == (b,a)`` (key order-independence).
+
+    Sorting happens on the RESOLVED path first and the mtimes are carried with
+    their own path, so the digest computed afterwards belongs to the path it is
+    paired with — a swap that exchanges paths but not mtimes would key two
+    different pairs to the same entry.
+    """
+    try:
+        a_s = str(Path(path_a).resolve())
+    except Exception:
+        a_s = str(path_a)
+    try:
+        b_s = str(Path(path_b).resolve())
+    except Exception:
+        b_s = str(path_b)
+    if a_s > b_s:
+        path_a, path_b = path_b, path_a
+        mtime_a, mtime_b = mtime_b, mtime_a
+    return [
+        _file_identity(path_a, mtime_a),
+        _file_identity(path_b, mtime_b),
+    ]
+
+
 def _tie_break_key(
     path_a: Path,
     mtime_a: int,
@@ -88,13 +136,7 @@ def _tie_break_key(
     model: str = "",
     base_url: str = "",
 ) -> str:
-    # Stable ordering: sort by resolved path string so (a,b) == (b,a)
-    a_s = str(Path(path_a).resolve())
-    b_s = str(Path(path_b).resolve())
-    if a_s > b_s:
-        a_s, b_s = b_s, a_s
-        mtime_a, mtime_b = mtime_b, mtime_a
-    parts = [f"{a_s}:{mtime_a}", f"{b_s}:{mtime_b}"]
+    parts = _pair_parts(path_a, mtime_a, path_b, mtime_b)
     if source_mtime is not None:
         parts.append(f"source:{source_mtime}")
     parts.extend(_backend_parts(model, base_url))
@@ -110,13 +152,8 @@ def _brief_key(
     model: str = "",
     base_url: str = "",
 ) -> str:
-    a_s = str(Path(path_a).resolve())
-    b_s = str(Path(path_b).resolve())
-    if a_s > b_s:
-        a_s, b_s = b_s, a_s
-        mtime_a, mtime_b = mtime_b, mtime_a
     return _hash_key(
-        [f"{a_s}:{mtime_a}", f"{b_s}:{mtime_b}", *_backend_parts(model, base_url)]
+        [*_pair_parts(path_a, mtime_a, path_b, mtime_b), *_backend_parts(model, base_url)]
     )
 
 
