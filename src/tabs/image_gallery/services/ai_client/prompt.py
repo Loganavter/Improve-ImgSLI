@@ -6,6 +6,7 @@ import logging
 
 from shared.debug_flags import env_flag as _env_flag
 from core.log_names import APP_LOGGER_NAME
+from tabs.image_gallery.services.ask_prompt import language_directive
 
 logger = logging.getLogger(APP_LOGGER_NAME)
 
@@ -73,6 +74,44 @@ _PROMPT_CORE = (
 
 #: Default prompt for the no-mode / legacy case (all untagged measured axes).
 PROMPT_TEMPLATE = _PROMPT_CORE
+
+
+def answer_language_block(language: str | None = None) -> str:
+    """Target language of the reply's PROSE + the ``label`` / ``definition`` split.
+
+    Two defects share this one block (owner, 2026-10-27, live screenshot: the
+    axis rows read ``Edge sharpness`` … ``Color saturation`` in a Russian UI,
+    and the last one read ``Композиция — хорошо скомпоновано``):
+
+    - **no language was stated**, so each axis name came back in whatever
+      language the model happened to pick per item — one reply, two languages.
+      The sentence is :func:`ask_prompt.language_directive` verbatim (one
+      language table in the tab, never a second one), resolved to the CURRENT
+      UI language when *language* is omitted;
+    - **``label`` absorbed the definition**, because the schema asks for a
+      ``definition`` right next to it. The definition belongs to the tooltip;
+      the row header is a name.
+
+    Only PROSE moves: ``name``/``id`` stay the snake_case key they are, and
+    scores/scale/direction are never localized. ``language=None`` with no
+    readable UI language still answers (``language_name`` fails open to
+    English) — a broken language lookup must not cost the user the answer.
+
+    The per-card analyze call (``ai_client.request``) *also* appends the bare
+    ``language_directive`` after the finished prompt, so that path carries the
+    sentence twice. Kept on both sides on purpose: each builder has to stand
+    alone (the profile request never passes through ``request.py``), and a
+    repeated one-line steer is not a defect worth a second code path.
+    """
+    return (
+        f"{language_directive(language)}\n"
+        "A `label` is a SHORT name in that same language — a few words a person "
+        "would say out loud, never the id, never the definition itself and never "
+        "a number: what the axis measures and its 0..100 ends belong in "
+        "`definition` alone. Keys (`name`/`id`) stay snake_case and are never "
+        "translated; scores, `scale` and `direction` are never localized."
+    )
+
 
 # -- pairwise prompt (a SEPARATE variant, never a rewrite of the scorecard) ---
 
@@ -248,7 +287,9 @@ def _unechoed_measurement_lines(block: str, *, mode=None, profile=None) -> str:
     return "\n".join(keep)
 
 
-def build_prompt(mode=None, *, profile=None, measured_block: str = "") -> str:
+def build_prompt(
+    mode=None, *, profile=None, measured_block: str = "", language: str | None = None
+) -> str:
     """The analysis prompt: a per-axis scorecard for *mode* / *profile*.
 
     Every applicable axis is requested by canonical id with its positive label;
@@ -261,7 +302,10 @@ def build_prompt(mode=None, *, profile=None, measured_block: str = "") -> str:
     ``NoProfileYet`` from ``_scorecard_axes`` — there is no mode mapping on this
     side (ADR 009 A3), so the builder refuses instead of asking a local axis
     set. ``measured_block`` (local detector numbers) is attached as *context*,
-    explicitly NOT authoritative.
+    explicitly NOT authoritative. ``language`` is the language of the reply's
+    PROSE (:func:`answer_language_block`): the current UI language unless a
+    caller pins one — ``label``/``definition``/``reason`` are the localized part,
+    ids and numbers are not.
     """
     axes = _scorecard_axes(mode, profile=profile)
     axis_parts = ", ".join(f'"{axis_id}": <0-100 {label}>' for axis_id, label in axes)
@@ -314,4 +358,9 @@ def build_prompt(mode=None, *, profile=None, measured_block: str = "") -> str:
         "Output the JSON object ONLY: no reasoning, no analysis steps, no "
         "preamble, no prose before or after the JSON."
     )
-    return attach_measured_context(text, measured_block, mode=mode, profile=profile)
+    return attach_measured_context(
+        f"{text}\n{answer_language_block(language)}",
+        measured_block,
+        mode=mode,
+        profile=profile,
+    )

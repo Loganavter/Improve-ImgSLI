@@ -160,7 +160,24 @@ def _apply_profile_openrouter_hardening(payload: dict, base_url, model, effort) 
     return payload
 
 
-def _selector_text(salience, corrective: str = "") -> str:
+def _answer_language_block(language: str | None = None) -> str:
+    """The reply-language + label/definition block shared with the scorecard.
+
+    Imported inside the call on purpose: ``ai_client.prompt`` pulls the app
+    logger and the toolkit's language table, while this module is imported (via
+    ``profile_ai``) from paths that must stay Qt/transport-free at import time
+    (``test_profile_ai_is_qt_free_at_import``). One implementation for both
+    prompts — a second language table is exactly how the two halves drift apart.
+    """
+    try:
+        from tabs.image_gallery.services.ai_client.prompt import answer_language_block
+
+        return answer_language_block(language)
+    except Exception:
+        return ""
+
+
+def _selector_text(salience, corrective: str = "", language: str | None = None) -> str:
     """The single text part: the EVIDENCE first, the shape rule, the 5..8 rule.
 
     Owner design (2026-10-26): the examples list is GONE — the prompt names no
@@ -169,6 +186,13 @@ def _selector_text(salience, corrective: str = "") -> str:
     each probe image's own per-axis score, so the model can tie every axis it
     names to a difference it can point at. *corrective* appends the retry's
     demand (used after a reply that was thin or left a ``why`` empty).
+
+    *language* is the reply language of the PROSE (:func:`~tabs.image_gallery.
+    services.ai_client.prompt.answer_language_block`) — the current UI language
+    when omitted. Before it existed the request said only "in the UI language"
+    without ever naming that language, and one reply came back half English,
+    half Russian (owner, 2026-10-27), with the definition glued into the last
+    ``label`` (``"Композиция — хорошо скомпоновано"``).
     """
     lines = [
         "The attached pictures are variants of ONE picture (upscalers, "
@@ -192,8 +216,8 @@ def _selector_text(salience, corrective: str = "") -> str:
     )
     lines.append(
         'Reply with ONLY a JSON object: {"axes": [{"name": "<short id>", '
-        '"label": "<short human-readable name in the UI language, a few words — '
-        'NOT the id>", '
+        '"label": "<short human-readable name in the reply language, a few '
+        'words — NOT the id and NOT the definition>", '
         '"definition": "<one line: what it measures, 0 = …, 100 = …>", '
         '"scale": "0-100", "direction": "higher-is-better|lower-is-better", '
         '"why": "<which of these variants differ on it, and how — quote the '
@@ -204,6 +228,8 @@ def _selector_text(salience, corrective: str = "") -> str:
         "object with a definition and a why is the expected answer. No prose, no "
         "code fences."
     )
+    lines.append("")
+    lines.append(_answer_language_block(language))
     if corrective:
         lines.append("")
         lines.append(corrective)
@@ -282,6 +308,7 @@ def build_profile_request(
     max_tokens: int = 0,
     base_url: str = "",
     corrective: str = "",
+    language: str | None = None,
 ) -> dict:
     """The one user message: axis examples + salience text, then one image each.
 
@@ -298,11 +325,14 @@ def build_profile_request(
     ``vlm._encode_image``; an unreadable image is skipped, never fatal.
 
     *corrective* is the ONE retry's demand (:data:`REPLY_RETRY_NOTE`), appended
-    after the instruction; the first request passes nothing.
+    after the instruction; the first request passes nothing. *language* pins the
+    reply language of the prose (``label``/``definition``/``why``); omitted it
+    follows the current UI language, and an unreadable one fails open to English
+    rather than refusing the call.
     """
     probes = _as_list(probe_items)
     content: list[dict] = [
-        {"type": "text", "text": _selector_text(salience, corrective)}
+        {"type": "text", "text": _selector_text(salience, corrective, language)}
     ]
     try:
         from tabs.image_gallery.services.vlm import _encode_image
