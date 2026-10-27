@@ -16,6 +16,16 @@ The live grab is two layers plus one correction:
    panel) — which reads as "the canvas is blank/broken". The canvas does
    know its own last frame (``QRhiWidget.grabFramebuffer``), so that frame
    is painted in at the canvas's geometry (``compose_rhi_frames``).
+
+Units (the 2026-10-27 defect, both halves): everything Qt hands back — a
+``QScreen.grabWindow`` pixmap, a ``QWidget.grab()`` pixmap,
+``QRhiWidget.grabFramebuffer()`` — is DEVICE pixels, while widget geometry and
+the coordinate system of a ``QPainter`` on a pixmap carrying a
+``devicePixelRatio`` are LOGICAL. So the DPR is applied exactly once, by the
+object that owns it: a painter target rect stays logical
+(``compose_rhi_frames``), a logical crop of a grab is scaled by the grab's own
+DPR (``_clip_to_visible``), and sizes that mean one of the two say so in their
+name (``_device_independent_size``, ``_device_pixel_ratio``).
 """
 
 from __future__ import annotations
@@ -25,6 +35,36 @@ from pathlib import Path
 from typing import Any
 
 from .discovery import MethodError, resolve_capture_target
+
+
+def _device_pixel_ratio(pixmap: Any) -> float:
+    """The grab's own device px per logical px; ``1.0`` when it cannot answer."""
+    try:
+        return float(pixmap.devicePixelRatio() or 1.0)
+    except Exception:
+        return 1.0
+
+
+def _device_independent_size(pixmap: Any) -> tuple[float, float]:
+    """(*pixmap*'s size in LOGICAL px) — the space a ``QPainter`` on it uses.
+
+    ``QPixmap.width()/height()`` are DEVICE pixels, while a ``QPainter`` on a
+    pixmap that carries a ``devicePixelRatio`` paints in device-INDEPENDENT
+    coordinates. Comparing the two ("is this canvas on the grab?") or scaling a
+    logical rect by the DPR before drawing mixes the two spaces — the
+    2026-10-27 defect: a canvas meant for device ``(200,100)-(600,300)`` at
+    DPR=2 landed in ``(400,200)-(1198,598)``.
+    """
+    try:
+        size = pixmap.deviceIndependentSize()
+        return float(size.width()), float(size.height())
+    except Exception:
+        pass
+    try:
+        dpr = _device_pixel_ratio(pixmap)
+        return float(pixmap.width()) / dpr, float(pixmap.height()) / dpr
+    except Exception:
+        return 0.0, 0.0
 
 
 def compose_rhi_frames(target: Any, pixmap: Any) -> int:
@@ -47,6 +87,13 @@ def compose_rhi_frames(target: Any, pixmap: Any) -> int:
     cannot hand its frame over, or returns a null image is skipped rather
     than failing the capture — the grab stays useful either way and never
     raises.
+
+    Units: the widget geometry below (``anchor``/``width``/``height``) and the
+    painter's coordinate system on *pixmap* are both LOGICAL, so the target
+    rect is built from logical numbers only; the pixmap's own
+    ``devicePixelRatio`` (and the frame's, which ``drawImage`` absorbs) applies
+    the DPR exactly once. The grab rect comes from
+    ``deviceIndependentSize()`` for the same reason — ``width()`` is device px.
     """
     try:
         from PySide6.QtCore import QPoint, QRectF
@@ -68,14 +115,10 @@ def compose_rhi_frames(target: Any, pixmap: Any) -> int:
         widgets = root.findChildren(QRhiWidget)
     except Exception:
         return 0
-    try:
-        dpr = float(pixmap.devicePixelRatio() or 1.0)
-    except Exception:
-        dpr = 1.0
-    try:
-        on_grab = QRectF(0.0, 0.0, float(pixmap.width()), float(pixmap.height()))
-    except Exception:
+    grab_width_logical, grab_height_logical = _device_independent_size(pixmap)
+    if grab_width_logical <= 0.0 or grab_height_logical <= 0.0:
         return 0
+    on_grab = QRectF(0.0, 0.0, grab_width_logical, grab_height_logical)
     painter = None
     painted = 0
     try:
@@ -93,17 +136,20 @@ def compose_rhi_frames(target: Any, pixmap: Any) -> int:
                 # mapTo(target, ...) only promises ancestors; go through the
                 # screen so a canvas under a sibling/overlay still lands right.
                 anchor = target.mapFromGlobal(widget.mapToGlobal(QPoint(0, 0)))
-                rect = QRectF(
-                    float(anchor.x()) * dpr,
-                    float(anchor.y()) * dpr,
-                    float(width) * dpr,
-                    float(height) * dpr,
+                # LOGICAL rect: the painter already applies the pixmap's DPR.
+                rect_logical = QRectF(
+                    float(anchor.x()),
+                    float(anchor.y()),
+                    float(width),
+                    float(height),
                 )
-                if not rect.intersects(on_grab):
+                if not rect_logical.intersects(on_grab):
                     continue
                 if painter is None:
                     painter = QPainter(pixmap)
-                painter.drawImage(rect, frame)
+                # ``drawImage(QRectF, QImage)`` scales the DEVICE-pixel frame
+                # into this logical rect, so the frame is handed over as is.
+                painter.drawImage(rect_logical, frame)
                 painted += 1
             except Exception:
                 continue
@@ -116,32 +162,72 @@ def compose_rhi_frames(target: Any, pixmap: Any) -> int:
     return painted
 
 
+def _target_screen(app: Any, target: Any) -> Any:
+    """The screen *target* is on — not the application's primary screen.
+
+    Both grab paths ask for the **target's** display. On a two-monitor desktop
+    with different scale factors the primary screen answers a different
+    ``availableGeometry`` (a false "fully visible" verdict) and grabs the wrong
+    screen's pixels, so the visible-rect clip and the grab disagree with the
+    window. The platform window Qt actually put on that display is the honest
+    answer (``windowHandle().screen()``); a widget still answers ``screen()``;
+    a duck-typed target that answers neither keeps the primary-screen fallback
+    (the pre-2026-10-27 behaviour), so a stub or an unmapped widget still works.
+    """
+    try:
+        handle = target.windowHandle()
+    except Exception:
+        handle = None
+    if handle is not None:
+        try:
+            screen = handle.screen()
+        except Exception:
+            screen = None
+        if screen is not None:
+            return screen
+    try:
+        screen = target.screen()
+    except Exception:
+        screen = None
+    if screen is not None:
+        return screen
+    try:
+        return app.primaryScreen() if app is not None else None
+    except Exception:
+        return None
+
+
 def _target_visible_geometry(app: Any, target: Any) -> tuple[Any, bool]:
-    """(*target*-local on-screen rect, fully_visible) — fail-open to (None, True).
+    """(*target*-local LOGICAL on-screen rect, fully_visible) — fail-open.
 
     A window that is not fully inside the display has **no pixels** outside
     it: an X grab returns black there, which a reader mistakes for a broken
     widget (live 2026-10-17: the private Xvfb was smaller than the app
     window, and the black landed on the toolbar/footer exactly where a real
     defect would look). Never raises.
+
+    Both rects are LOGICAL (widget coordinates): the caller that crops a
+    device-pixel grab scales them by the grab's own DPR (``_clip_to_visible``).
     """
     try:
         from PySide6.QtCore import QPoint, QRect
 
-        screen = app.primaryScreen() if app is not None else None
+        screen = _target_screen(app, target)
         if screen is None:
             return None, True
         available = screen.availableGeometry()
         origin = target.mapToGlobal(QPoint(0, 0))
-        local = QRect(0, 0, int(target.width()), int(target.height()))
-        on_screen = QRect(
+        local_logical = QRect(0, 0, int(target.width()), int(target.height()))
+        on_screen_logical = QRect(
             int(available.x()) - int(origin.x()),
             int(available.y()) - int(origin.y()),
             int(available.width()),
             int(available.height()),
         )
-        visible = local.intersected(on_screen)
-        return visible, bool(local.isValid() and visible == local)
+        visible_logical = local_logical.intersected(on_screen_logical)
+        return visible_logical, bool(
+            local_logical.isValid() and visible_logical == local_logical
+        )
     except Exception:
         return None, True
 
@@ -171,13 +257,17 @@ def grab_window(app: Any, target: Any) -> tuple[Any, str, int]:
     When only the X grab is possible and it is partly off screen, the
     pixmap is clipped to its visible part so black is never presented as
     content.
+
+    Units: *visible* from ``_target_visible_geometry`` is LOGICAL; the X grab
+    is DEVICE pixels. The grab asks the target's own screen (see
+    ``_target_screen``) and ``_clip_to_visible`` does the DPR conversion.
     """
     visible, fully_visible = _target_visible_geometry(app, target)
     if not fully_visible:
         raster = _raster_grab(target)
         if raster is not None:
             return raster, "widget_grab", compose_rhi_frames(target, raster)
-    screen = app.primaryScreen() if app is not None else None
+    screen = _target_screen(app, target)
     if screen is not None:
         try:
             pixmap = screen.grabWindow(int(target.winId()))
@@ -193,13 +283,34 @@ def grab_window(app: Any, target: Any) -> tuple[Any, str, int]:
     return None, "", 0
 
 
-def _clip_to_visible(pixmap: Any, visible: Any) -> Any:
-    """Clip a grab to its on-screen rect (no black presented as content)."""
-    if visible is None:
+def _clip_to_visible(pixmap: Any, visible_logical: Any) -> Any:
+    """Clip a grab to its on-screen rect (no black presented as content).
+
+    *visible_logical* comes from ``_target_visible_geometry`` and is LOGICAL;
+    a ``QScreen.grabWindow`` pixmap is DEVICE pixels. The crop rect is therefore
+    scaled by the pixmap's own ``devicePixelRatio``: slicing the logical rect
+    straight out of a DPR=2 grab returned the top-left 1/DPR² of the window
+    (measured 2026-10-27: a 2560x1600 grab with a 1280x700 visible rect came
+    back 1280x700 instead of 2560x1400).
+    """
+    if visible_logical is None:
         return pixmap
     try:
-        if visible.isValid() and not visible.isEmpty():
-            return pixmap.copy(visible)
+        from PySide6.QtCore import QRect
+
+        if not visible_logical.isValid() or visible_logical.isEmpty():
+            return pixmap
+        dpr = _device_pixel_ratio(pixmap)
+        visible_device = QRect(
+            int(round(visible_logical.x() * dpr)),
+            int(round(visible_logical.y() * dpr)),
+            int(round(visible_logical.width() * dpr)),
+            int(round(visible_logical.height() * dpr)),
+        )
+        clipped = pixmap.copy(visible_device)
+        if clipped is None or clipped.isNull():
+            return pixmap
+        return clipped
     except Exception:
         pass
     return pixmap
@@ -228,6 +339,9 @@ def capture_live_png(app: Any, window: Any, what: Any, out_dir: Any) -> dict[str
         "path": str(path),
         "what": label,
         "method": method,
+        # The PNG's own pixels, i.e. DEVICE px (a DPR=2 grab is twice its
+        # logical size); a caller comparing it to widget geometry must divide
+        # by the pixmap's devicePixelRatio.
         "size": [pixmap.width(), pixmap.height()],
         # How many live canvas frames were composited on top of the raster
         # grab; 0 means the captured widget had no presenting canvas.
