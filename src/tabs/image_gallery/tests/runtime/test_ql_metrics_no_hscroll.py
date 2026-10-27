@@ -5,7 +5,7 @@ in the metrics block for the first frames, then it vanished after the first
 real layout. The column is width-fitted by construction (W5/W13 fit budget,
 ``metrics/rows.py``), so nothing legitimately overflows sideways.
 
-Diagnosis (``docs/dev/DEBUGGING.md`` ladder):
+Diagnosis (``../improve-imgsli-internal-docs/docs/dev/DEBUGGING.md`` ladder):
 
 - **blast radius**: only the report column (``quicklook_right_scroll``); the
   gallery grid and the strip ride the same toolkit ``OverlayScrollArea``

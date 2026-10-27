@@ -211,10 +211,15 @@ class CaptureSession:
         #: the wrong selected value in the UI itself.
         self.locale = locale
         self.theme = theme
-        #: Frame requested by the last grab (CLI override or surface default).
+        #: Frame requested by the last grab (CLI override or surface default),
+        #: in LOGICAL px (device-independent, what a ``resize`` takes).
         self.last_pin: tuple[int, int] | None = None
-        #: Frame actually grabbed (== ``last_pin`` unless the surface refused).
+        #: Frame actually grabbed, also LOGICAL (== ``last_pin`` unless the
+        #: surface refused). ``grab()`` hands back a DEVICE-pixel pixmap at
+        #: DPR>1, so the raw pixmap size lives in ``last_device_size``.
         self.last_size: tuple[int, int] | None = None
+        #: The same grab in DEVICE px — the PNG's own pixel size.
+        self.last_device_size: tuple[int, int] | None = None
         self.samples_dir = out_dir / "_samples"
         self.samples_dir.mkdir(parents=True, exist_ok=True)
 
@@ -307,12 +312,25 @@ class CaptureSession:
         pixmap = widget.grab()
         dest = self.out_dir / filename
         pixmap.save(str(dest))
-        self.last_size = (pixmap.width(), pixmap.height())
-        print(f"saved {dest} {pixmap.width()}x{pixmap.height()}")
+        # ``grab()`` returns DEVICE pixels (a DPR=2 widget at 400x300 yields an
+        # 800x600 pixmap) while the pin is a LOGICAL frame request, so the two
+        # are compared in logical units — comparing the raw numbers reported
+        # "pin not honoured" for every correct HiDPI capture (measured
+        # 2026-10-27). Both numbers are printed so the PNG stays explicable.
+        frame_device = (pixmap.width(), pixmap.height())
+        logical = pixmap.deviceIndependentSize().toSize()
+        self.last_size = (logical.width(), logical.height())
+        self.last_device_size = frame_device
+        print(
+            f"saved {dest} {self.last_size[0]}x{self.last_size[1]} "
+            f"(device {frame_device[0]}x{frame_device[1]})"
+        )
         if self.last_size != self.last_pin and (self.width or self.height):
             print(
-                f"pin not honoured: requested {w}x{h}, window settled at "
-                f"{windowed[0]}x{windowed[1]}, grabbed {pixmap.width()}x{pixmap.height()}",
+                f"pin not honoured: requested {w}x{h} (logical), window settled "
+                f"at {windowed[0]}x{windowed[1]}, grabbed {self.last_size[0]}x"
+                f"{self.last_size[1]} logical ({frame_device[0]}x"
+                f"{frame_device[1]} device px)",
                 file=sys.stderr,
             )
         return dest

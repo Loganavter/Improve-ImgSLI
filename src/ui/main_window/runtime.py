@@ -67,6 +67,32 @@ def _rhi_debug_state(rhi) -> str:
     )
 
 
+def _rhi_device_pixel_size(rhi, logical_size) -> QSize:
+    """The color-buffer size in DEVICE pixels for a widget of *logical_size*.
+
+    ``setFixedColorBufferSize`` takes a ``pixelSize`` (device px) while
+    ``QRhiWidget.size()`` is logical: pinning the logical size asks Qt for a
+    half-resolution buffer at DPR=2, which it then upscales — the blur the
+    shield exists to avoid. The render target's own ``pixelSize()`` is the
+    truth when it exists; otherwise the logical size scaled by the DPR.
+    """
+    try:
+        target = rhi.renderTarget()
+        pixel = target.pixelSize() if target is not None else None
+        if pixel is not None and pixel.width() > 0 and pixel.height() > 0:
+            return QSize(int(pixel.width()), int(pixel.height()))
+    except Exception:
+        pass
+    try:
+        dpr = max(1.0, float(rhi.devicePixelRatioF()))
+    except Exception:
+        dpr = 1.0
+    return QSize(
+        max(1, int(round(logical_size.width() * dpr))),
+        max(1, int(round(logical_size.height() * dpr))),
+    )
+
+
 def _freeze_rhi_surfaces(window) -> None:
     """Pin every QRhiWidget's GPU color buffer to its current size.
 
@@ -76,6 +102,10 @@ def _freeze_rhi_surfaces(window) -> None:
     render(). Pinning the color buffer makes Qt scale the existing surface
     instead of reallocating it; the render at the old size stretches into
     the new geometry until the burst settles.
+
+    The pinned size is DEVICE pixels (``setFixedColorBufferSize(pixelSize)``),
+    so it comes from ``_rhi_device_pixel_size``, never from the logical
+    ``rhi.size()``.
     """
     for rhi in window.findChildren(QRhiWidget):
         try:
@@ -94,18 +124,21 @@ def _freeze_rhi_surfaces(window) -> None:
                     _rhi_debug_state(rhi),
                 )
                 continue
-            size = rhi.size()
-            if size.width() <= 0 or size.height() <= 0:
+            size_logical = rhi.size()
+            if size_logical.width() <= 0 or size_logical.height() <= 0:
                 _resize_debug(
                     "freeze skip empty %s %s", _rhi_debug_id(rhi), _rhi_debug_state(rhi)
                 )
                 continue
-            rhi.setFixedColorBufferSize(size)
+            size_device = _rhi_device_pixel_size(rhi, size_logical)
+            rhi.setFixedColorBufferSize(size_device)
             _resize_debug(
-                "freeze set %s fixed=%dx%d",
+                "freeze set %s logical=%dx%d fixed=%dx%d",
                 _rhi_debug_id(rhi),
-                size.width(),
-                size.height(),
+                size_logical.width(),
+                size_logical.height(),
+                size_device.width(),
+                size_device.height(),
             )
         except Exception:
             _resize_debug("freeze failed %s", _rhi_debug_id(rhi), exc_info=True)
