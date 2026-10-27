@@ -79,6 +79,16 @@ def rank_completeness(members, vector) -> tuple[int, int, str]:
     payload the rank is built from, so an alias with an empty ``scores``
     mapping was never scored. A vector with fewer entries than *members* is
     partial as well (a member with no entry at all). Never raises.
+
+    A reading can arrive on more than one dimension list of the payload: the
+    per-member ``scores`` map AND the model's own axes (the proposed-axes list,
+    each entry carrying its per-alias scores). ``jev_axes.scored_axis_names``
+    — the same payload's notion of "a dimension the ranker sees" — counts both,
+    so this decision must count both as well: an axis the judge NAMED is a
+    dimension, and a matrix scored only on those names is COMPLETE (free-axes
+    owner rule 2026-10-27). Counting ``scores`` alone refused such a matrix as
+    ``0 of N members carry a measured score`` although every one of them
+    carried both numbers, which is "free axes do not rank" one layer down.
     """
     try:
         total = len(list(members or ()))
@@ -91,10 +101,19 @@ def rank_completeness(members, vector) -> tuple[int, int, str]:
         entries = list((vector or {}).get("items", ()) or ())
     except Exception:
         entries = []
+    # Aliases the payload scores on a PROPOSED axis (the model's own dimension).
+    proposed_readings: set = set()
+    try:
+        for proposal in list((vector or {}).get("proposed_axes", ()) or ()):
+            for alias, value in dict((proposal or {}).get("scores") or {}).items():
+                if value is not None:
+                    proposed_readings.add(str(alias))
+    except Exception:
+        proposed_readings = set()
     scored = 0
     for entry in entries:
         try:
-            if entry.get("scores"):
+            if entry.get("scores") or str(entry.get("alias", "")) in proposed_readings:
                 scored += 1
         except Exception:
             continue
