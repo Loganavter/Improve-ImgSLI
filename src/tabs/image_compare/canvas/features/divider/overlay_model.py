@@ -32,7 +32,13 @@ __all__ = ["DividerSpec", "content_split_visual", "resolve_divider_spec"]
 
 @dataclass(frozen=True, slots=True)
 class DividerSpec:
-    """Divider line for this frame, fully resolved (plain data)."""
+    """Divider line for this frame, fully resolved (plain data).
+
+    ``position_px`` and ``clip_*`` are in render-target px — tile-local during
+    tiled export (both shifted by ``ctx.canvas_offset_*``), so the packed
+    uniform's clip rect and the fragment px the divider shader tests share one
+    space. See ``resolve_divider_spec``.
+    """
 
     show: bool
     position_px: float
@@ -83,10 +89,22 @@ def resolve_divider_spec(ctx, widget) -> DividerSpec:
     if clip is None:
         clip = (0.0, 0.0, float(ctx.canvas_width), float(ctx.canvas_height))
     cx, cy, cw, ch = (float(v) for v in clip)
+    # One space for both: the pass packs a tile-local bar and the divider
+    # shader compares fragment px against its clip-rect uniform, so the clip
+    # must be shifted by the tile origin exactly like the position. Leaving the
+    # clip in canvas px dropped lines whose tile-local x fell left of a
+    # canvas-space clip origin (the shader discards them as "outside the
+    # content") and put the bar's cross-axis extent in the wrong space during
+    # tiled export (owner report 2026-10-28). Offsets are 0 off the tiled path,
+    # where this resolves to the pre-fix expression unchanged.
+    offset_x = float(getattr(ctx, "canvas_offset_x", 0.0) or 0.0)
+    offset_y = float(getattr(ctx, "canvas_offset_y", 0.0) or 0.0)
+    cx -= offset_x
+    cy -= offset_y
     if is_horizontal:
-        position_px = cy + ch * split - float(ctx.canvas_offset_y)
+        position_px = cy + ch * split
     else:
-        position_px = cx + cw * split - float(ctx.canvas_offset_x)
+        position_px = cx + cw * split
 
     return DividerSpec(
         show=show_divider,

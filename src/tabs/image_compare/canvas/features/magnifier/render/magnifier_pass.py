@@ -143,6 +143,29 @@ _log = logging.getLogger(f"{APP_LOGGER_NAME}.magnifier.pass")
 _LOUPE_HEARTBEAT_INTERVAL_S = 1.0
 
 
+def _project_canvas_px(ctx, widget, px_x, px_y) -> tuple[float, float]:
+    """Canvas-px point → render-target px for this frame (ctx-first).
+
+    Same zoom-around-center + pan formula the base image and the neighbouring
+    overlay resolvers (guides, capture) use, with the logical canvas size and
+    the tile origin coming from ``ctx``: during tiled export the render target
+    is one tile's worth of pixels, so a lens authored in canvas px must be
+    shifted by ``canvas_offset_x/y`` or it lands at the same tile-local point
+    in every tile (one lens per tile, owner report 2026-10-28). Off the tiled
+    path ``canvas_width/height`` equal the widget size and the offsets are 0,
+    which reduces this to the previous plain ``widget_px_to_screen_px`` call.
+    """
+    return widget_px_to_screen_px(
+        widget,
+        float(px_x),
+        float(px_y),
+        canvas_width=getattr(ctx, "canvas_width", None),
+        canvas_height=getattr(ctx, "canvas_height", None),
+        canvas_offset_x=float(getattr(ctx, "canvas_offset_x", 0.0) or 0.0),
+        canvas_offset_y=float(getattr(ctx, "canvas_offset_y", 0.0) or 0.0),
+    )
+
+
 def _comb_divider_thickness_uv(
     params, content_radius: float, fallback: float = 0.005
 ) -> float:
@@ -534,7 +557,7 @@ class MagnifierPass(CanvasRenderPass):
             # ring around it did -- the two drifted apart from each other on
             # any zoom or pan, worse the more either changed. Project once,
             # use for both.
-            bcx, bcy = widget_px_to_screen_px(widget, float(cx_px), float(cy_px))
+            bcx, bcy = _project_canvas_px(ctx, widget, float(cx_px), float(cy_px))
             gpu_slot = (
                 overlay.gpu_slots[i]
                 if overlay.gpu_active and i < len(overlay.gpu_slots)
