@@ -663,6 +663,9 @@ def load_cached_analysis(
                 judged.append(
                     AiAxisProposal(
                         name=str(entry.get("name", "") or ""),
+                        # A payload written before the label existed reads as
+                        # ``""`` and the row falls back to the name.
+                        label=str(entry.get("label", "") or ""),
                         definition=str(entry.get("definition", "") or ""),
                         scale=str(entry.get("scale", "") or ""),
                         score=-1,
@@ -692,6 +695,9 @@ def load_cached_analysis(
                 proposals.append(
                     AiAxisProposal(
                         name=str(entry.get("name", "") or ""),
+                        # Display name the model gave (may be absent in an older
+                        # payload — the axis is still the same axis).
+                        label=str(entry.get("label", "") or ""),
                         definition=str(entry.get("definition", "") or ""),
                         scale=str(entry.get("scale", "") or ""),
                         score=int(entry.get("score", -1)),
@@ -1030,6 +1036,10 @@ def save_analysis(
                     "axis_proposals": [
                         {
                             "name": p.name,
+                            # The model's short human name: a HIT must draw the
+                            # same header a MISS would (display text only — it is
+                            # not part of the identity/profile digest below).
+                            "label": getattr(p, "label", ""),
                             "definition": p.definition,
                             "scale": p.scale,
                             "score": p.score,
@@ -1052,6 +1062,7 @@ def save_analysis(
                     "axis_entries": [
                         {
                             "name": p.name,
+                            "label": getattr(p, "label", ""),
                             "definition": p.definition,
                             "scale": p.scale,
                             "direction": getattr(p, "direction", ""),

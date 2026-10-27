@@ -139,6 +139,30 @@ def storable_definition(definition) -> str:
     return "" if definition_audit(text) else text
 
 
+#: Storage ceiling for a display LABEL. Not a display cut: the header is elided
+#: by the width it actually has (``ui/quick_look/metrics/rows.py``). This only
+#: keeps a paragraph out of a field whose contract is "a short human name"; the
+#: ceiling is generous so a real label is never the thing that gets shortened.
+MAX_LABEL_CHARS = 80
+
+
+def storable_label(label) -> str:
+    """The human-readable NAME to STORE for *label* (``""`` when unreadable).
+
+    Display text, not an id: trimmed and capped, and deliberately NOT passed
+    through :func:`normalize_name` — the model answers in the UI language
+    ("Резкость линий", "Line crispness"), and lowercasing/underscoring that would
+    turn the human name back into the machine key this field exists to replace.
+    ``""`` means "the model gave none" and the surfaces fall back to the name
+    (``profile_judged.axis_display_name``).
+    """
+    try:
+        text = str(label or "").strip()
+    except Exception:
+        return ""
+    return text[:MAX_LABEL_CHARS]
+
+
 def normalize_name(raw) -> str:
     """Canonical axis id for a proposed name (``""`` when unusable).
 
@@ -336,6 +360,10 @@ def parse_proposals(value, *, limit: int = AXIS_PROPOSAL_LIMIT):
                 # The DIRECTION follows what the model wrote, even when that text
                 # is too thin to keep as the stored definition ("0 = none").
                 direction=direction_of(entry, raw_definition),
+                # The model's own short human name for the axis: display text,
+                # never the key (the header used to be the raw id — owner
+                # screenshot 2026-10-27).
+                label=storable_label(entry.get("label")),
             )
         )
     return tuple(accepted), tuple(refusals)
@@ -346,6 +374,7 @@ __all__ = [
     "AUDIT_NO_DEFINITION",
     "AXIS_PROPOSAL_LIMIT",
     "AXIS_PROPOSAL_SCALE",
+    "MAX_LABEL_CHARS",
     "MIN_DEFINITION_CHARS",
     "MIN_DEFINITION_WORDS",
     "PROPOSAL_REJECT_CODES",
@@ -363,4 +392,5 @@ __all__ = [
     "refusal_reason",
     "scale_of",
     "storable_definition",
+    "storable_label",
 ]

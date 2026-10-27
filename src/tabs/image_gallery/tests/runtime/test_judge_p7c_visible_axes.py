@@ -105,6 +105,33 @@ def _row_titles(overlay) -> list[str]:
     return out
 
 
+def _judged_rows(overlay, axis: str) -> list:
+    """Rows that CARRIES *axis*, matched on the row tooltip.
+
+    The header is the axis' human name (``profile_judged.axis_display_name``:
+    the model's label, else the id read as words), so a test addressing the
+    judge's axis by its id reads the tooltip — the one place the id survives on
+    a drawn row.
+    """
+    return [row for row in overlay._metric_rows if axis in (row.toolTip() or "")]
+
+
+def _row_title(row) -> str:
+    """The left-hand (title) label text of one row."""
+    from PySide6.QtCore import Qt
+
+    for lbl in _qlabels(row):
+        try:
+            if bool(lbl.alignment() & Qt.AlignmentFlag.AlignRight):
+                continue
+        except Exception:
+            pass
+        text = _label_text(lbl)
+        if text:
+            return text
+    return ""
+
+
 def _item(name: str, *, axes: dict | None = None, **metrics) -> GalleryItem:
     item = GalleryItem(path=Path(f"/gallery/{name}"), mtime_ns=1)
     item.metrics = dict(metrics)
@@ -227,11 +254,14 @@ def test_a_judge_named_axis_reaches_the_rows_through_the_one_read_path(
         assert profile_seen is profile, "the reader needs the profile to label provenance"
 
         titles = _row_titles(ov)
-        judged = [t for t in titles if FREE.name in t]
-        assert judged, f"the judge's axis has no row: {titles}"
-        assert FREE.definition in judged[0], (
-            "the row must show the judge's MEANING, not just its name: "
-            f"{judged[0]!r}"
+        assert "jpeg noise" in titles, (
+            f"the judge's axis has no row: {titles}"
+        )
+        judged = _judged_rows(ov, FREE.name)
+        assert judged, f"no row carries the judge's axis id: {titles}"
+        assert FREE.definition in judged[0].toolTip(), (
+            "the row must carry the judge's MEANING in its tooltip, not lose it: "
+            f"{judged[0].toolTip()!r}"
         )
         assert any("%" in t for t in _row_texts(ov)), (
             "the measured value is missing from the rows"
@@ -250,7 +280,7 @@ def test_the_trace_line_and_the_row_name_the_same_judged_axes(qtbot):
     try:
         line = format_profile(profile)
         assert f"judged={FREE.name}~{FREE.direction}" in line
-        assert any(FREE.name in t for t in _row_titles(ov)), (
+        assert _judged_rows(ov, FREE.name), (
             "the trace names a judged axis the rows do not show"
         )
     finally:
@@ -269,9 +299,9 @@ def test_an_unmeasured_judge_axis_says_not_measured(qtbot):
     ov = _build_rows(qtbot, item, profile)
     try:
         titles = _row_titles(ov)
-        judged = [t for t in titles if FREE.name in t]
+        judged = _judged_rows(ov, FREE.name)
         assert judged, f"a judge axis with no reading vanished: {titles}"
-        assert FREE.definition in judged[0]
+        assert FREE.definition in judged[0].toolTip()
         texts = _row_texts(ov)
         assert any("not measured" in t for t in texts), (
             f"an axis with no measurement must say so, not show a zero: {texts}"
@@ -324,8 +354,8 @@ def test_a_judge_axis_inside_the_noise_floor_says_it_does_not_separate(qtbot):
         )
         assert "0%" not in reasons[0], reasons[0]
         titles = _row_titles(ov)
-        assert any(FREE.name in t for t in titles), (
-            f"the reason row lost the judge's name: {titles}"
+        assert _judged_rows(ov, FREE.name), (
+            f"the reason row lost the judge's axis: {titles}"
         )
         # The discriminating axis keeps its number.
         assert any(
@@ -363,9 +393,7 @@ def test_a_measured_noise_floor_is_the_one_the_rows_use(qtbot):
         # jpeg_noise moves 70 -> 86: above the measured 12 -> it DOES separate,
         # while the constant 20 would have suppressed it.
         assert not any("does not separate" in t for t in _row_texts(ov)), _row_texts(ov)
-        assert any(
-            FREE.name in t for t in _row_titles(ov)
-        ), "the judge's axis must keep a measured row"
+        assert _judged_rows(ov, FREE.name), "the judge's axis must keep a measured row"
     finally:
         ov._report_host.deleteLater()
 
@@ -397,11 +425,13 @@ def test_a_judge_axis_renders_once_when_its_name_is_the_ai_only_composition_axis
     ov = _build_rows(qtbot, item, profile)
     try:
         titles = _row_titles(ov)
-        composition_rows = [t for t in titles if "omposition" in t]
+        composition_rows = [
+            row for row in ov._metric_rows if "omposition" in _row_title(row)
+        ]
         assert len(composition_rows) == 1, (
             f"the same axis is rendered twice under two labels: {titles}"
         )
-        assert judged_composition.definition in composition_rows[0], (
+        assert judged_composition.definition in composition_rows[0].toolTip(), (
             "the judge's own wording must win over the registry label"
         )
     finally:
@@ -456,14 +486,23 @@ def test_the_registry_half_is_byte_identical_when_a_judge_entry_is_added(qtbot):
             "adding a judge axis edited the registry rows:\n"
             f"before={base_texts}\nafter={mixed_texts[: len(base_texts)]}"
         )
-        # The two halves are labelled differently.
-        registry_titles = [t for t in _row_titles(with_judge) if FREE.name not in t]
-        judged_titles = [t for t in _row_titles(with_judge) if FREE.name in t]
-        assert judged_titles, _row_titles(with_judge)
-        assert "measured by the judge" in judged_titles[0]
-        assert all("measured by the judge" not in t for t in registry_titles), (
-            f"a registry row was labelled as the judge's: {registry_titles}"
+        # The two halves are labelled differently: the judge's row names its
+        # instrument in the tooltip and its human name in the header, a registry
+        # row carries neither.
+        judged_rows = _judged_rows(with_judge, FREE.name)
+        assert judged_rows, _row_titles(with_judge)
+        assert "measured by the judge" in judged_rows[0].toolTip()
+        assert _row_title(judged_rows[0]) == "jpeg noise", (
+            f"the judge row lost its human header: {_row_titles(with_judge)}"
         )
+        registry_rows = [
+            row for row in with_judge._metric_rows if row not in judged_rows
+        ]
+        assert registry_rows, "the registry half vanished"
+        assert all(
+            "measured by the judge" not in (row.toolTip() or "")
+            for row in registry_rows
+        ), "a registry row was labelled as the judge's"
     finally:
         with_judge._report_host.deleteLater()
 
@@ -588,6 +627,9 @@ def _show_overlay(qtbot, item, series, *, profile, width=520):
 def test_a_long_judge_title_elides_and_does_not_overflow_the_panel(qtbot):
     long_free = AiAxisProposal(
         name="chromatic_aberration_at_the_edges",
+        label=(
+            "Chromatic aberration at the edges of the whole frame, purple and green"
+        ),
         definition=(
             "lateral colour fringing on high-contrast edges across the whole "
             "frame; 0 = invisible at 100% view, 100 = obvious purple/green rims"
@@ -608,13 +650,16 @@ def test_a_long_judge_title_elides_and_does_not_overflow_the_panel(qtbot):
             lbl
             for row in overlay._metric_rows
             for lbl in _qlabels(row)
-            if long_free.name in _label_text(lbl)
+            if _label_text(lbl) == long_free.label
         ]
         assert judged, "the long judge title did not render"
         title = judged[0]
-        assert long_free.definition in _label_text(title), (
-            "the full meaning must stay in the widget's text (paint elides, the "
-            "data is not truncated)"
+        assert _label_text(title) == long_free.label, (
+            "the header must be the model's human name, whole — the painter "
+            "elides by the width it has, the data is not truncated"
+        )
+        assert long_free.definition in _judged_rows(overlay, long_free.name)[0].toolTip(), (
+            "the full meaning must stay reachable (the tooltip is where prose goes)"
         )
         assert title.sizePolicy().horizontalPolicy() == QSizePolicy.Policy.Ignored, (
             "a long judge title must not contribute its full sizeHint to the "

@@ -14,7 +14,7 @@ A reading whose spread across the whole series is inside the measuring instrumen
 
 ### Axes chosen by AI {#judge-axes}
 
-When the AI picks the axes for a series, Quick Look shows each named axis with the model's own wording and its definition, marked **measured by the judge**; the registry readings keep their usual names and are marked **measured locally**.
+When the AI picks the axes for a series, Quick Look shows each named axis under the model's short, human-readable name; hover the row to read that axis' definition and the **measured by the judge** mark. The registry readings keep their usual names.
 
 - An axis the AI named but never scored reads **— · not measured** — the row is not dropped and no zero is invented.
 - An axis that stays the same across the series reads **does not separate these variants**.

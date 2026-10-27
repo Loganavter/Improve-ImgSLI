@@ -51,17 +51,17 @@ ROW_STATE_SCORED = "scored"
 ROW_STATE_NOT_MEASURED = "not_measured"
 ROW_STATE_CONSTANT = "constant"
 
-#: Title width floors for a JUDGE-named row (the label is the model's own
-#: wording, so its length is not the design's — P7-C). The report column floor
-#: is 296px (``overlay_build.build`` W13) and the value keeps a 40px floor.
-#: Scored/not-measured values are short ("86%", "— · not measured"), so the
-#: title may take ~200px and still fit; a constant row puts the localized
-#: reason in the value and keeps the narrower floor for it.
+#: Title width floors for a JUDGE-named row (the name is the model's own label,
+#: so its length is not the design's — P7-C). The report column floor is 296px
+#: (``overlay_build.build`` W13) and the value keeps a 40px floor. Scored/
+#: not-measured values are short ("86%", "— · not measured"), so the title may
+#: take ~200px and still fit; a constant row puts the localized reason in the
+#: value and keeps the narrower floor for it.
 _JUDGED_TITLE_FLOOR = 200
 _JUDGED_TITLE_FLOOR_REASON_VALUE = 140
-#: Cap: 296px column − 40px value floor − 6px header spacing. A longer name
-#: still elides (the tooltip carries it), but never because the column gave up
-#: room the row had.
+#: Cap: 296px column − 40px value floor − 6px header spacing. A longer label
+#: still elides (the tooltip carries the id + the definition), but never because
+#: the column gave up room the row had.
 _JUDGED_TITLE_CAP = 250
 
 
@@ -103,14 +103,15 @@ def axis_row_state(
 
 
 def judged_title_min_width(name: str, *, font=None, floor: int | None = None) -> int:
-    """Minimum title width that keeps a judge axis' NAME whole.
+    """Minimum title width that keeps a judge axis' DISPLAY NAME whole.
 
-    The row title is ``name — definition · provenance`` and the definition is
-    the model's own text, so the old fixed 140px floor cut the judge's meaning
-    to "— S…" (owner 2026-10-27). Widen the label before shortening the name:
-    the name's measured advance (+ a small pad) raises the floor, so the
-    elision falls on the definition, never on which axis this is. Bounded by
-    the report column floor (296px) minus the value's 40px floor.
+    The row header is the human name (``profile_judged.axis_display_name``:
+    the model's label, else the id read as words), and its length is the model's,
+    not the design's. Raise the floor to the name's measured advance (+ a small
+    pad) so an elision falls only when the column genuinely has no room — never
+    because a fixed floor was too small (the old 140px floor cut the meaning to
+    "— S…", owner 2026-10-27). Bounded by the report column floor (296px) minus
+    the value's 40px floor.
 
     Fail-open: an unmeasurable font keeps *floor*.
     """
@@ -441,12 +442,12 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
         header.setContentsMargins(0, 0, 0, 0)
         header.setSpacing(scaled_px(6))
         if title_elide:
-            # A judge-named axis' title is the model's own wording + definition,
-            # so its length is not the design's (P7-C). Elide paints the
-            # truncated text but keeps the full string in ``.text()``; the
-            # Ignored size policy (helpers._make_label) stops the full-text
-            # sizeHint from forcing the fixed report column into h-scroll — the
-            # W5 fit budget holds, the row never clips.
+            # A judge-named axis' header is the model's own human name, so its
+            # length is not the design's (P7-C). Elide paints the truncated text
+            # but keeps the full string in ``.text()``; the Ignored size policy
+            # (helpers._make_label) stops the full-text sizeHint from forcing the
+            # fixed report column into h-scroll — the W5 fit budget holds, the
+            # row never clips.
             t = _make_label(
                 title,
                 parent=row,
@@ -457,8 +458,9 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
             )
             if title_min_text:
                 # The NAME must never be the truncated part (owner 2026-10-27):
-                # the floor was raised to the name's measured advance, so the
-                # elision falls on the definition. See judged_title_min_width.
+                # the floor is raised to its measured advance, so elision happens
+                # only when the column genuinely has no room. See
+                # judged_title_min_width.
                 t.setMinimumWidth(
                     judged_title_min_width(title_min_text, font=t.font(), floor=title_min_width)
                 )
@@ -607,7 +609,8 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
         return True
 
     def _add_judged_row(axis_id: str) -> bool:
-        """One axis the JUDGE named: its NAME + MEANING + provenance (P7-C).
+        """One axis the JUDGE named: human NAME in the header, MEANING + provenance
+        in the tooltip (P7-C, re-worded 2026-10-27).
 
         The registry's ``_spec_for`` gate cannot answer a name the model
         invented, so this is the second (and only other) row shape — the same
@@ -621,22 +624,25 @@ def rebuild_metrics(overlay, item, is_fidelity: bool, mode_str: str) -> None:
         try:
             from tabs.image_gallery.ui.quick_look.metrics.judged import (
                 judged_axis_title,
+                judged_axis_tooltip,
                 judged_entry,
             )
 
             _judged_tr = lambda key, default: _ql_text(overlay, key, default)
-            # The full "name — meaning · provenance" stays the label's TEXT
-            # (P7-C: paint elides, the data is not truncated), the row tooltip
-            # repeats it, and the label keeps a readable minimum width — with
-            # the old 40px floor the judge's own long definition elided to
-            # "cl…" (owner 2026-10-22).
+            # The HEADER is the human name the model gave (label), or its id read
+            # as words — never the raw snake_case id and never the definition
+            # (owner screenshot 2026-10-27: "line_crispness — sharpness …" lost
+            # the meaning to elision and showed a machine key as the title).
             title = judged_axis_title(axis_id, profile=_profile, translate=_judged_tr)
-            tooltip = title
-            # The NAME alone (the definition may be empty — owner rule
-            # 2026-10-27: a metric the model named is still drawn, never a
-            # bare/dropped row) is what the width floor must keep readable.
+            # The meaning is prose, so it belongs in the tooltip where it costs
+            # no width; the id stays there too (next to the label) for a reader
+            # tying the drawn row back to the stored axis.
+            tooltip = judged_axis_tooltip(axis_id, profile=_profile, translate=_judged_tr)
+            # The DISPLAY NAME is what the width floor must keep whole: the label
+            # may be the model's words, and cutting it to "Lin…" would be the
+            # same defect one layer down.
             entry = judged_entry(axis_id, profile=_profile)
-            name = str(getattr(entry, "name", "") or axis_id).strip() or str(axis_id)
+            name = title or str(getattr(entry, "name", "") or axis_id).strip() or str(axis_id)
         except Exception:
             title = str(axis_id)
         if not title:

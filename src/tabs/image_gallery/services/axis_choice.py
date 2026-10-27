@@ -18,11 +18,11 @@ and its successor (owner rule 2026-10-27, verbatim):
     needs such metrics, we draw them, period."
 
 So the pool filter is GONE: an axis the model names is a first-class entry
-(``models.AiAxisProposal``: name + definition + scale + direction), and its name
-does not have to be a ``MEASURED_POOL`` id or an axis the current mode can
-measure locally. The FORM of the answer does not decide legality either — a bare
-string name and an object ``{name, definition, scale, direction}`` are the SAME
-axis.
+(``models.AiAxisProposal``: name + label + definition + scale + direction), and
+its name does not have to be a ``MEASURED_POOL`` id or an axis the current mode
+can measure locally. The FORM of the answer does not decide legality either — a
+bare string name and an object ``{name, label, definition, scale, direction}``
+are the SAME axis.
 
 What is still refused — STRUCTURE ONLY, with a recorded reason, never silently:
 
@@ -63,6 +63,7 @@ from tabs.image_gallery.services.axis_proposal import (
     normalize_name,
     scale_of,
     storable_definition,
+    storable_label,
 )
 
 #: How many axes the SELECTOR may keep (owner rule: "from 3 to 8"). The floor is
@@ -104,11 +105,14 @@ def parse_axis_choices(value, *, limit: int = AXIS_CHOICE_MAX) -> AxisChoiceSet:
       registry id; any other name becomes a first-class entry with
       ``definition=""`` and the ``no-definition`` audit code (a bare name is the
       terse answer shape, and the form must not decide legality);
-    - an object: ``{name, definition, scale, direction}``. A name equal to a
+    - an object: ``{name, label, definition, scale, direction}``. A name equal to a
       registry id is that registry axis (the model asked for a measurable
       dimension that already exists — the local detector should score it too);
       any other name becomes a first-class entry, which is the normal answer of
       the free-form selector. A missing/short definition is audited, not refused.
+      ``label`` (the model's short human name) is stored as display text when the
+      answer carries one; a reply without it keeps ``label=""`` and the surfaces
+      read the name as words.
 
     The pool filter that used to drop every non-registry name is GONE (owner
     revisions 2026-10-22 and 2026-10-27): a free name is kept.
@@ -140,6 +144,7 @@ def parse_axis_choices(value, *, limit: int = AXIS_CHOICE_MAX) -> AxisChoiceSet:
                 _refuse(item.strip() or f"#{index + 1}", REJECT_NAME)
                 continue
             definition = ""
+            label = ""
             direction = AXIS_DIRECTION_DEFAULT
         elif isinstance(item, dict):
             raw_name = item.get("name")
@@ -149,6 +154,9 @@ def parse_axis_choices(value, *, limit: int = AXIS_CHOICE_MAX) -> AxisChoiceSet:
                 continue
             raw_definition = str(item.get("definition", "") or "")
             definition = storable_definition(raw_definition)
+            # The model's own short human name for the axis (display text, not
+            # the key): the row header reads it, the parsers/ranker never do.
+            label = storable_label(item.get("label"))
             # The direction follows the model's own words even when the text is
             # too thin to store ("0 = none" is a lower-is-better cue).
             direction = direction_of(item, raw_definition)
@@ -180,6 +188,7 @@ def parse_axis_choices(value, *, limit: int = AXIS_CHOICE_MAX) -> AxisChoiceSet:
                 scale=AXIS_PROPOSAL_SCALE,
                 score=-1,  # chosen, not yet read: the scorecard fills the numbers
                 direction=direction,
+                label=label,
             )
         )
     return AxisChoiceSet(

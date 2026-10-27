@@ -179,6 +179,15 @@ class AiAxisProposal:
     ``score`` is the per-image reading: ``-1`` on a SELECTOR entry (the axis is
     chosen before any card is scored — the scorecard fills the numbers), 0–100 on
     a per-image proposal.
+
+    ``name`` is the STABLE key (a canonical id the readers, the ranker and the
+    cache agree on); ``label`` is what a human reads. The two are not
+    interchangeable: the owner's live screenshot (2026-10-27) showed Quick Look
+    headers as ``line_crispness — sharpness …`` because the app asked for an id
+    and then drew that id. ``label`` is the model's short name in the UI
+    language, trimmed but never normalized into an id; ``""`` keeps the
+    pre-label behaviour (``profile_judged.axis_display_name`` then reads the name
+    as words).
     """
 
     name: str
@@ -190,6 +199,10 @@ class AiAxisProposal:
     #: ``higher-is-better`` | ``lower-is-better`` (``AXIS_DIRECTIONS``) — carried
     #: with the entry so a payload/ranker never has to infer it from the name.
     direction: str = AXIS_DIRECTION_DEFAULT
+    #: Short human-readable name in the UI language (``""`` = the model gave
+    #: none, or the record predates the field). Display-only: nothing keys or
+    #: ranks on it.
+    label: str = ""
 
 
 @dataclass(frozen=True)

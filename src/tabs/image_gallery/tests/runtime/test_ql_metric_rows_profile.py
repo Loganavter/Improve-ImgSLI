@@ -366,6 +366,22 @@ def _value_for(overlay, needle: str) -> str:
     return matches[0]
 
 
+def _value_for_axis(overlay, axis: str) -> str:
+    """Value of the row that CARRIES *axis* (matched on the row tooltip).
+
+    The header is the human name (``profile_judged.axis_display_name``), so a
+    test addressing a judge axis by its id has to read the tooltip — that is the
+    one place the id survives on a drawn row.
+    """
+    matches = [
+        value
+        for row, (_title, value) in zip(overlay._metric_rows, _row_pairs(overlay))
+        if axis in (row.toolTip() or "")
+    ]
+    assert len(matches) == 1, (axis, _row_pairs(overlay))
+    return matches[0]
+
+
 def test_the_three_row_states_are_distinct_and_a_missing_number_is_not_constant(qtbot):
     """Red before: the absent axis read "does not separate these variants".
 
@@ -391,7 +407,7 @@ def test_the_three_row_states_are_distinct_and_a_missing_number_is_not_constant(
     # (c) measured, equal across the compared variants -> constant state.
     ov_const = _build(qtbot, a, profile, [a, b, absent])
     try:
-        assert _value_for(ov_const, _JUDGED.name) == "does not separate these variants"
+        assert _value_for_axis(ov_const, _JUDGED.name) == "does not separate these variants"
         # (a) scored -> a number + bar.
         assert _value_for(ov_const, "Sharpness").endswith("%"), _row_pairs(ov_const)
     finally:
@@ -400,7 +416,7 @@ def test_the_three_row_states_are_distinct_and_a_missing_number_is_not_constant(
     # (b) no number for this variant -> not measured, never the constant text.
     ov_gap = _build(qtbot, absent, profile, [a, b, absent])
     try:
-        gap_value = _value_for(ov_gap, _JUDGED.name)
+        gap_value = _value_for_axis(ov_gap, _JUDGED.name)
         assert gap_value == "— · not measured", (
             "an absent score was rendered as the measured-constant state: "
             f"{_row_pairs(ov_gap)}"
@@ -452,7 +468,7 @@ def test_none_and_the_minus_one_sentinel_never_read_as_a_measurement(qtbot):
 
     ov = _build(qtbot, sentinel, profile, [reference, twin, sentinel])
     try:
-        assert _value_for(ov, _JUDGED.name) == "— · not measured", _row_pairs(ov)
+        assert _value_for_axis(ov, _JUDGED.name) == "— · not measured", _row_pairs(ov)
     finally:
         ov._report_host.deleteLater()
 
@@ -467,7 +483,7 @@ def test_none_and_the_minus_one_sentinel_never_read_as_a_measurement(qtbot):
         item.analysis_records = (record,)
         ov_rec = _build(qtbot, item, profile, [reference, twin, item])
         try:
-            assert _value_for(ov_rec, _JUDGED.name) == "— · not measured", (
+            assert _value_for_axis(ov_rec, _JUDGED.name) == "— · not measured", (
                 record,
                 _row_pairs(ov_rec),
             )
@@ -479,14 +495,17 @@ def test_none_and_the_minus_one_sentinel_never_read_as_a_measurement(qtbot):
     zero = _judged_item("sentinel_zero.png", sharpness=60, **{_JUDGED.name: 0})
     ov_zero = _build(qtbot, zero, profile, [zero])
     try:
-        assert _value_for(ov_zero, _JUDGED.name) == "0%", _row_pairs(ov_zero)
+        assert _value_for_axis(ov_zero, _JUDGED.name) == "0%", _row_pairs(ov_zero)
     finally:
         ov_zero._report_host.deleteLater()
 
 
 def test_a_judge_axis_without_a_definition_shows_its_name_alone(qtbot):
     """Owner rule 2026-10-27: a metric the model NAMED is drawn, definition or not."""
-    from tabs.image_gallery.ui.quick_look.metrics.judged import judged_axis_title
+    from tabs.image_gallery.ui.quick_look.metrics.judged import (
+        judged_axis_title,
+        judged_axis_tooltip,
+    )
 
     bare = AiAxisProposal(name="line_crispness", definition="")
     profile = _judged_profile(bare)
@@ -498,22 +517,30 @@ def test_a_judge_axis_without_a_definition_shows_its_name_alone(qtbot):
         "fixture: the empty-definition entry must survive the entry normalizer",
     )
 
-    # The wording rule itself: name alone, no dangling em-dash, no crash.
-    assert judged_axis_title(bare.name, profile=profile) == (
-        f"{bare.name} · measured by the judge"
+    # The wording rule itself (owner 2026-10-27, human labels): the header is the
+    # name read as words, never the machine id, and a missing definition leaves
+    # no dangling em-dash. The id + provenance are the tooltip's job.
+    assert judged_axis_title(bare.name, profile=profile) == "line crispness"
+    tooltip = judged_axis_tooltip(bare.name, profile=profile)
+    assert bare.name in tooltip and "measured by the judge" in tooltip, tooltip
+    assert " — " not in tooltip, (
+        f"an empty definition left a dangling em-dash in the tooltip: {tooltip!r}"
     )
 
     item = _judged_item("no_definition.png", sharpness=80)  # the judge scored no axis
     ov = _build(qtbot, item, profile, [item])
     try:
         pairs = _row_pairs(ov)
-        judged = [(t, v) for t, v in pairs if bare.name in t]
+        judged = [
+            (t, v)
+            for row, (t, v) in zip(ov._metric_rows, pairs)
+            if bare.name in (row.toolTip() or "")
+        ]
         assert judged, f"the judge's axis vanished without a definition: {pairs}"
         title = judged[0][0]
-        assert title.startswith(bare.name), title
-        assert f"{bare.name} — " not in title, (
-            "an empty definition left a dangling em-dash instead of the name "
-            f"alone: {title!r}"
+        assert title == "line crispness", title
+        assert bare.name not in title, (
+            f"the machine id is still the header: {title!r}"
         )
         assert judged[0][1] == "— · not measured", pairs
     finally:
@@ -521,10 +548,12 @@ def test_a_judge_axis_without_a_definition_shows_its_name_alone(qtbot):
 
 
 def test_a_judged_title_is_widened_so_the_axis_name_stays_whole(qtbot):
-    """The elision falls on the definition, never on which axis this is.
+    """The elision falls on the width, never on the axis' human name.
 
     Red before: every judged title kept a fixed 140px floor, so the model's
-    definition was cut to "— S…" on the owner's screen (2026-10-27).
+    definition was cut to "— S…" on the owner's screen (2026-10-27). Now the
+    header is the display name alone, so the floor keeps THAT whole until the
+    column genuinely runs out of room.
     """
     from PySide6.QtGui import QFontMetricsF
 
@@ -537,19 +566,21 @@ def test_a_judged_title_is_widened_so_the_axis_name_stays_whole(qtbot):
             (row, lbl)
             for row in ov._metric_rows
             for lbl in _qlabels(row)
-            if _JUDGED.name in lbl.text() and lbl.text().strip() != "86%"
+            if lbl.text() == "line crispness"
         ]
         assert rows, _row_pairs(ov)
         row, title = rows[0]
         full = title.get_original_text() if hasattr(title, "get_original_text") else title.text()
-        assert full.endswith("· measured by the judge"), full
-        need = int(QFontMetricsF(title.font()).horizontalAdvance(_JUDGED.name))
+        assert full == "line crispness", full
+        # The id + provenance live in the tooltip now (a header is a name).
+        assert _JUDGED.name in row.toolTip() and "measured by the judge" in row.toolTip()
+        need = int(QFontMetricsF(title.font()).horizontalAdvance(full))
         assert title.minimumWidth() >= need, (
             "the title floor cannot hold the axis name — the elision would hide "
             f"which axis this is ({title.minimumWidth()} < {need})"
         )
-        assert title.minimumWidth() > 140, (
-            "the judged title kept the old fixed 140px floor (no widening)"
+        assert title.minimumWidth() >= 140, (
+            f"the judged title floor shrank below the old one ({title.minimumWidth()})"
         )
         # Widening stays inside the 296px report column (scored value is short).
         assert row.minimumSizeHint().width() <= 296, (

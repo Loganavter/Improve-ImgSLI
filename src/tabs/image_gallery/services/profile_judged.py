@@ -12,6 +12,10 @@ model NAMED, which no local detector can produce.
 - :func:`judged_axis_entries` is the only READER of that half: the scorecard
   prompt asks for these by name, a surface labels them (never mixes them with a
   detector number in one bar without :func:`axis_provenance`).
+- :func:`axis_display_name` is the only reader of how an axis is WORDED to a
+  human: the model's own ``label`` when it gave one, else the id with its
+  underscores read as spaces (the header used to be the raw snake_case id plus
+  a definition cut to "…" — owner screenshot 2026-10-27).
 - :func:`axis_provenance` answers "which instrument measured this axis here":
   with the record's ``producer`` it answers **who DID** (a ``vlm`` number is the
   judge's even on a registry axis, any other producer is a local detector);
@@ -36,6 +40,7 @@ from tabs.image_gallery.models import AXIS_DIRECTION_DEFAULT, AiAxisProposal
 from tabs.image_gallery.services.axis_proposal import (
     normalize_direction,
     normalize_name,
+    storable_label,
 )
 
 #: Which instrument measures an axis in a given context. Two tokens, never one
@@ -101,6 +106,9 @@ def normalized_entries(entries, registry_ids=()):
     A missing/short DEFINITION is NOT a reason to drop an entry (owner rule
     2026-10-27): the model named the axis, the app draws it, and ``definition=""``
     carries "the model gave none" on the entry itself.
+
+    The ``label`` is trimmed here and NOT normalized: it is display text in the
+    model's own language, while ``name`` stays the key.
     """
     taken = {str(a) for a in (registry_ids or ())}
     out: list = []
@@ -112,6 +120,7 @@ def normalized_entries(entries, registry_ids=()):
         try:
             name = normalize_name(getattr(entry, "name", ""))
             definition = str(getattr(entry, "definition", "") or "").strip()
+            label = storable_label(getattr(entry, "label", ""))
             if not name or name in taken:
                 continue
             if name in {str(getattr(row, "name", "")) for row in out}:
@@ -121,13 +130,17 @@ def normalized_entries(entries, registry_ids=()):
             )
             try:
                 clean = dataclasses.replace(
-                    entry, name=name, definition=definition, direction=direction
+                    entry,
+                    name=name,
+                    definition=definition,
+                    direction=direction,
+                    label=label,
                 )
             except Exception:
                 # A duck-typed entry (a test double, a hand-built row) still
                 # normalizes — a profile never carries an unusable axis.
                 clean = AiAxisProposal(
-                    name=name, definition=definition, direction=direction
+                    name=name, definition=definition, direction=direction, label=label
                 )
             out.append(clean)
             taken.add(name)
@@ -149,6 +162,42 @@ def judged_axis_entries(profile=None) -> tuple:
     except Exception:
         return ()
     return entries
+
+
+def axis_display_name(axis, *, profile=None) -> str:
+    """The human name to draw for *axis*: the model's ``label``, else the id.
+
+    The ONE reader of "what does a human call this axis" (owner screenshot
+    2026-10-27: the header was the machine id 'line_crispness' while the model
+    had a perfectly good name to give). Order:
+
+    - the ``label`` of the profile's own entry for *axis*, when it carries one
+      (trimmed, never normalized — it is the model's words in the UI language);
+    - else the axis itself with its underscores read as spaces (detail_gain →
+      detail gain), which is also the honest fallback for a pre-label entry or a
+      registry id;
+    - ``""`` for an empty/unreadable axis.
+
+    Never raises: a surface draws rows from whatever the store holds, and a
+    broken profile must not take the panel down.
+    """
+    try:
+        name = str(axis or "").strip()
+    except Exception:
+        return ""
+    if not name:
+        return ""
+    try:
+        for entry in judged_axis_entries(profile):
+            if str(getattr(entry, "name", "") or "") != name:
+                continue
+            label = str(getattr(entry, "label", "") or "").strip()
+            if label:
+                return label
+            break
+    except Exception:
+        pass
+    return name.replace("_", " ")
 
 
 def scorecard_axis_ids(mode=None, *, profile=None, domain=None) -> tuple[str, ...]:
@@ -253,6 +302,7 @@ __all__ = [
     "PROVENANCE_JUDGE",
     "PROVENANCE_LABELS",
     "PROVENANCE_LOCAL",
+    "axis_display_name",
     "axis_provenance",
     "judged_axis_entries",
     "normalized_entries",

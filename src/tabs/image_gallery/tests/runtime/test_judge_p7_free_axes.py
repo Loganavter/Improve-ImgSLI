@@ -215,6 +215,35 @@ def test_selector_prompt_keeps_the_json_contract():
     assert payload["response_format"] == {"type": "json_object"}
     assert "definition" in text and "direction" in text and "0-100" in text
     assert "ONLY a JSON object" in text
+    # Owner 2026-10-27: the axis is DRAWN under the model's own human name, so
+    # the selector (the path that named the owner's six axes) must ASK for it.
+    assert '"label"' in text, "the selector contract must request a human label"
+
+
+def test_a_selector_label_reaches_the_profile_entry():
+    """The selector's human label survives into the entry (row header source).
+
+    Owner 2026-10-27: the rows showed ``line_crispness`` because the contract
+    had no name field. The parser already keeps ``label`` when a reply carries
+    one; this pins the pair (contract asks, parser stores) for the SELECTOR path.
+    """
+    from tabs.image_gallery.services.axis_choice import parse_axis_choices
+
+    got = parse_axis_choices(
+        [
+            {
+                "name": "line_crispness",
+                "label": "Line crispness",
+                "definition": "How cleanly fine lines separate; 0 = mush, 100 = crisp",
+                "scale": "0-100",
+                "direction": "higher-is-better",
+            }
+        ]
+    )
+
+    assert got.entries, got.refusals
+    assert got.entries[0].name == "line_crispness"
+    assert got.entries[0].label == "Line crispness"
 
 
 # ---------------------------------------------------------------------------
