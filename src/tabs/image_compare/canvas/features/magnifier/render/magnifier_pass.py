@@ -97,6 +97,10 @@ from tabs.image_compare.canvas.features.magnifier.render.tile_residency_gate imp
     _low_res_fallback_slice,
     _source_slices,
 )
+from tabs.image_compare.canvas.features.magnifier.render.lens_hold import (
+    cache_quad_records,
+    replay_held_records,
+)
 from tabs.image_compare.canvas.rhi_feature_common import (
     FULLSCREEN_VERTICES,
     FullscreenUniformPassResources,
@@ -189,6 +193,19 @@ class MagnifierPass(CanvasRenderPass):
         self._loupe_hold_start_seq: int | None = None
         self._loupe_hold_start_t: float | None = None
         self._loupe_hb_last_t = 0.0
+        # Last good lens sample, per quad (owner report 2026-10-27: the lens
+        # disappeared for 1-2 frames while the pair was swapped). The records
+        # this pass last DREW live, kept so a frame that can sample no
+        # resident tile -- a pair replacement resets every key the lens may
+        # look at -- replays the lens's own previous frame instead of
+        # vanishing (see render/lens_hold.py). Never overwritten by a frame
+        # that merely replayed, so the anchor stays a live draw.
+        self._lens_last_good: dict[int, list] = {}
+        # Live source key -> the content-addressed key its PREVIOUS content
+        # was rekeyed onto (the realizer's ``last_rekeyed_keys``, per-frame).
+        # Accumulated for the duration of a hold because the hold outlives
+        # that one frame; cleared once a frame draws live records again.
+        self._lens_stash_keys: dict = {}
 
     def initialize(self, rhi, target) -> None:
         self.release()
@@ -467,6 +484,30 @@ class MagnifierPass(CanvasRenderPass):
         tex_key_1 = ctx.source_texture_ids[0] if use_source else ctx.texture_ids[0]
         tex_key_2 = ctx.source_texture_ids[1] if use_source else ctx.texture_ids[1]
         diff_key = _diff_key_for_hold
+        # Loupe last-good sample (owner report 2026-10-27): remember where the
+        # realizer moved each replaced slot key's PREVIOUS content, so the
+        # quad loop below can keep drawing the lens from it instead of
+        # disappearing while every live key is blank (render/lens_hold.py).
+        # ``last_rekeyed_keys`` is per-frame; the hold outlives it, hence the
+        # accumulated map. Pruned in the same place: a lens that is no longer
+        # declared must not replay an old frame.
+        _rekeyed_now = getattr(
+            getattr(getattr(rhi_renderer, "resources", None), "residency", None),
+            "last_rekeyed_keys",
+            None,
+        )
+        if isinstance(_rekeyed_now, dict) and _rekeyed_now:
+            self._lens_stash_keys.update(_rekeyed_now)
+        _quad_count = len(overlay.quads or ())
+        if not bool(getattr(overlay, "gpu_active", False)) or _quad_count == 0:
+            self._lens_last_good.clear()
+            self._lens_stash_keys.clear()
+        else:
+            for _stale_quad in [
+                index for index in self._lens_last_good if index >= _quad_count
+            ]:
+                self._lens_last_good.pop(_stale_quad, None)
+        _lens_drew_live = True
         # P3: the texture choice (base vs source images, diff source) was a
         # silent branch -- record which keys this frame samples (sig-throttled,
         # so steady frames stay quiet while any flip gets its reason).
@@ -594,15 +635,38 @@ class MagnifierPass(CanvasRenderPass):
                 bcx, bcy, content_radius, w, h
             )
 
+            _quad_refs: dict = {}
             if gpu_slot:
-                records = build_tile_records(
-                    source_slices_fn=lambda key, rect: _source_slices(
+
+                def _quad_slices(source_key, rect, _refs=_quad_refs):
+                    """``_source_slices`` + where each resolved tile came from.
+
+                    The (source key, tile index) pair is the service's own
+                    answer for this slice (a fallback slice belongs to the
+                    fallback grid, not to the requested source) and is what a
+                    held-frame replay re-points later. Recording it here, at
+                    the one place slices are resolved, keeps the identity
+                    reference exact instead of parse-guessing it out of a
+                    tile key downstream (see render/lens_hold.py).
+                    """
+                    fallback_key = _fallback_by_source.get(source_key)
+                    resolved = _source_slices(
                         rhi_renderer,
-                        key,
+                        source_key,
                         rect,
                         frame_context,
-                        fallback_key=_fallback_by_source.get(key),
-                    ),
+                        fallback_key=fallback_key,
+                    )
+                    for sl in resolved:
+                        if "fallback_for" in sl:
+                            owner_key, tile_index = fallback_key, sl["fallback_for"]
+                        else:
+                            owner_key, tile_index = source_key, sl["tile_index"]
+                        _refs[sl["tile_key"]] = (owner_key, tuple(tile_index))
+                    return resolved
+
+                records = build_tile_records(
+                    source_slices_fn=_quad_slices,
                     combined=combined,
                     source_mode=source_mode,
                     diff_mode=diff_mode,
@@ -635,7 +699,42 @@ class MagnifierPass(CanvasRenderPass):
                         "texd": _no_tex,
                     }
                 ]
+            if records:
+                if gpu_slot:
+                    # Live draw: this becomes the lens's own last good sample
+                    # for the frames a replacement leaves sourceless. The
+                    # raster/legacy branch above samples no tile (every role
+                    # key is None), so it can neither anchor nor replace a
+                    # sample.
+                    self._lens_last_good[i] = cache_quad_records(records, _quad_refs)
+            else:
+                # Nothing resident to sample (a pair replacement re-registers
+                # every key the lens may look at: sources AND stored). Keep
+                # the lens on its own previous frame -- its previous picture's
+                # tiles are still resident under the realizer's content-addressed
+                # stash keys -- instead of letting it disappear for 1-2 frames.
+                _held = replay_held_records(
+                    getattr(rhi_renderer, "tile_service", None),
+                    self._lens_last_good.get(i),
+                    self._lens_stash_keys,
+                )
+                trace_loupe(
+                    frame_context,
+                    "loupe.mag_hold_replay",
+                    "ran" if _held else "skipped",
+                    (
+                        f"hold_replay records={len(_held)} quad={i}"
+                        " sampling the lens's own stashed previous content"
+                        if _held
+                        else f"hold_replay none quad={i} no provable last good sample"
+                        " keeping the pre-fix (undrawn) frame"
+                    ),
+                    ids=(i,),
+                    sig=(bool(_held), i, len(self._lens_last_good.get(i) or ())),
+                )
+                records = _held
             if not records:
+                _lens_drew_live = False
                 continue
 
             for record in records:
@@ -797,6 +896,13 @@ class MagnifierPass(CanvasRenderPass):
                     throttle="once",
                     key=("loupe.mag_no_slot", _quad_index),
                 )
+
+        # Loupe last-good sample: once a frame draws every declared quad from
+        # LIVE residents again, the replacement transition is over -- drop the
+        # remembered stash map so a later, unrelated gap cannot replay a frame
+        # from an old picture. (Per-frame rekeys are re-read at the top.)
+        if _lens_drew_live:
+            self._lens_stash_keys.clear()
 
         # H3 loupe-debug (trace-only): swap summary + heartbeat. The swap
         # frame (hold -> release, armed above) is always logged UNTHROTTLED
@@ -984,3 +1090,7 @@ class MagnifierPass(CanvasRenderPass):
         self._target = None
         self._border_items = []
         self._mag_items = []
+        # A released pass has no drawn sample and no live stash references --
+        # a later initialize must start with the "no sample, no lens" state.
+        self._lens_last_good = {}
+        self._lens_stash_keys = {}
