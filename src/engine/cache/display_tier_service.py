@@ -747,9 +747,11 @@ def refresh_live_content_rect(canvas, state, plan) -> None:
     leaves it stale after a resize until the next image upload. Re-derive it
     every call for the live, store-backed canvas.
 
-    Live (default): fit raw image size. Export/video with
-    ``geometry_letterbox`` / padded composite: fit the full ``canvas_w/h``
-    frame so ``overlay_clip_rect`` can recover the content box.
+    Live (default): fit the raw pair *envelope* — ``max(w1,w2) x max(h1,h2)``,
+    the rect ``update_common_letterbox_geometry`` already fits both letterbox
+    slots to. Export/video with ``geometry_letterbox`` / padded composite: fit
+    the full ``canvas_w/h`` frame so ``overlay_clip_rect`` can recover the
+    content box.
 
     Padded plans must refresh even when ``state._store`` is unset: video
     preview binds the store on ``canvas._store``, and ``set_pil_layers``
@@ -759,18 +761,43 @@ def refresh_live_content_rect(canvas, state, plan) -> None:
     from the images and stretches into the uncrop pad.
     """
     owns_padded = plan_owns_padded_framebuffer(plan)
+    widget_width, widget_height = canvas.width(), canvas.height()
+    if widget_width <= 0 or widget_height <= 0:
+        return
     if not owns_padded:
         store = getattr(state, "_store", None) or getattr(canvas, "_store", None)
         if store is None:
             return
-        base_image = plan.image1
-        fit_width, fit_height = get_image_dims(base_image)
-    else:
-        fit_width, fit_height = plan.canvas_w, plan.canvas_h
-    if fit_width <= 0 or fit_height <= 0:
+        # Pair envelope, not slot 1 alone: the same rule
+        # ``update_common_letterbox_geometry`` fits both letterbox slots with,
+        # through the same helper. A slot-1-only fit is not pair-invariant —
+        # after a swap inside the pair the installed tiers differ per side
+        # (preview/preview while the order-sensitive unify cache misses, then
+        # the unified pair), so the content rect followed slot 1's aspect and
+        # every canvas-px → widget-px conversion (loupe radius/spacing/border,
+        # divider/guide thickness) jumped with the swap and again when unify
+        # landed (owner report 2026-10-27).
+        _envelope_letterbox, content_rect = eager_envelope_rect(
+            int(widget_width),
+            int(widget_height),
+            [
+                get_image_dims(getattr(plan, "image1", None)),
+                get_image_dims(getattr(plan, "image2", None)),
+            ],
+        )
+        if content_rect[2] <= 0 or content_rect[3] <= 0:
+            return
+        state._content_rect_px = content_rect
+        rhi_render_debug(
+            "content_rect widget=%dx%d envelope -> %r",
+            widget_width,
+            widget_height,
+            content_rect,
+        )
         return
-    widget_width, widget_height = canvas.width(), canvas.height()
-    if widget_width <= 0 or widget_height <= 0:
+
+    fit_width, fit_height = plan.canvas_w, plan.canvas_h
+    if fit_width <= 0 or fit_height <= 0:
         return
     geometry = resolve_canvas_content_geometry(
         widget_width=widget_width,
