@@ -805,7 +805,13 @@ def refresh_live_content_rect(canvas, state, plan) -> None:
     from the images and stretches into the uncrop pad.
     """
     owns_padded = plan_owns_padded_framebuffer(plan)
-    widget_width, widget_height = canvas.width(), canvas.height()
+    # Full logical canvas, not the render target: during tiled export the
+    # widget is resized to one tile's footprint, so fitting against
+    # ``canvas.width()`` letterboxed the canvas *into each tile* (content
+    # rect at half scale, ``_content_sr`` = 0.5, shader letterbox
+    # letterboxing the base image into the middle of every tile). See
+    # ``canvas_dims``.
+    widget_width, widget_height = canvas_dims(canvas)
     if widget_width <= 0 or widget_height <= 0:
         return
     if not owns_padded:
@@ -947,9 +953,17 @@ def apply_plan_letterbox_from_clip(canvas, plan) -> None:
 
     ``overlay_clip_rect`` is in canvas-px. The preview/export widget may be a
     different size than ``canvas_w/h``, so first fit the padded canvas frame
-    into the widget, then nest the clip inside that frame. Applying clip/canvas
+    into the canvas, then nest the clip inside that frame. Applying clip/canvas
     fractions directly as widget UV stretches the image to the pane (wrong for
     video preview).
+
+    Tiled export: the render target is one tile of the full canvas, so the fit
+    runs against the *canvas* (``canvas_dims``) while the emitted UVs stay
+    render-target-normalized against the real widget size — the tile origin
+    (``_export_canvas_viewport[2:4]``) is subtracted from the frame origin
+    first. Fitting against the tile instead letterboxed the whole canvas into
+    every tile (base image squeezed into the middle of the tile on a padded
+    export, owner report 2026-10-28).
 
     Pad fill is painted by the base shader inside the canvas frame only
     (``_canvas_frame_letterbox`` + ``_letterbox_fill_rgba``); widget chrome
@@ -974,10 +988,11 @@ def apply_plan_letterbox_from_clip(canvas, plan) -> None:
     widget_h = int(canvas.height()) if callable(getattr(canvas, "height", None)) else 0
     if widget_w <= 0 or widget_h <= 0:
         return
+    canvas_width, canvas_height = canvas_dims(canvas)
 
     frame = resolve_canvas_content_geometry(
-        widget_width=widget_w,
-        widget_height=widget_h,
+        widget_width=canvas_width,
+        widget_height=canvas_height,
         image_width=cw,
         image_height=ch,
         virtual_layout=None,
@@ -988,6 +1003,17 @@ def apply_plan_letterbox_from_clip(canvas, plan) -> None:
     ox, oy, fw, fh = inner
     if fw <= 0 or fh <= 0:
         return
+
+    viewport = getattr(state, "_export_canvas_viewport", None)
+    if viewport is not None:
+        # Render-target origin in canvas px (tile top-left); 0 outside export.
+        offset_x = float(viewport[2])
+        offset_y = float(viewport[3])
+    else:
+        offset_x = 0.0
+        offset_y = 0.0
+    ox -= offset_x
+    oy -= offset_y
 
     cx, cy, cww, chh = clip
     sx = float(fw) / float(cw)
