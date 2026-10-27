@@ -36,6 +36,38 @@ def letterbox_uv(
     )
 
 
+def composition_frame_geometry(
+    *,
+    canvas_size: tuple[float, float],
+    frame_size: tuple[float, float],
+    tile_origin: tuple[float, float] = (0.0, 0.0),
+) -> tuple[float, float, float]:
+    """``(scale, ox, oy)`` of the composition inside one render frame.
+
+    UNITS: every argument and the result are **framebuffer pixels** — the
+    space ``MultiCompareRhiRenderer`` feeds as ``framebuffer_size``
+    (``target.pixelSize()``), which is ``widget logical size × DPR``. That is
+    deliberately the only space this projection knows about:
+
+    * live render — the frame is the widget's framebuffer, canvas-px geometry
+      is scaled into it by ``min(fb/canvas)``;
+    * export — ``TiledFramebufferExporter(fit_framebuffer_to_target=True)``
+      makes one framebuffer px one *output* px, so ``frame_size`` is the whole
+      output canvas in framebuffer px and ``tile_origin`` is the tile's
+      framebuffer-px offset inside it.
+
+    Mixing a logical (``QWidget.resize``) number into this for one and a
+    device number for another is precisely the units defect this helper exists
+    to prevent: the composition then covers only ``1/DPR²`` of the frame.
+    """
+    canvas_w, canvas_h = (max(1.0, float(v)) for v in canvas_size)
+    frame_w, frame_h = float(frame_size[0]), float(frame_size[1])
+    scale = min(frame_w / canvas_w, frame_h / canvas_h)
+    ox = (frame_w - canvas_w * scale) * 0.5 - float(tile_origin[0])
+    oy = (frame_h - canvas_h * scale) * 0.5 - float(tile_origin[1])
+    return scale, ox, oy
+
+
 def layer_fit_scale(image, rect_w: float, rect_h: float) -> tuple[float, float]:
     """Aspect-fit scale of a layer image inside a canvas-px rect."""
 
@@ -78,16 +110,19 @@ def build_render_context(
         canvas_w = max(1, int(composition.canvas_w))
         canvas_h = max(1, int(composition.canvas_h))
         if export_viewport is not None:
+            # (full frame, tile origin) — framebuffer px, i.e. the same grid as
+            # ``framebuffer_size`` (see engine.gpu.export_tiling units header).
             full_fb_w, full_fb_h, tile_left, tile_top = export_viewport
-            scale = min(full_fb_w / canvas_w, full_fb_h / canvas_h)
-            ox_full = (full_fb_w - canvas_w * scale) * 0.5
-            oy_full = (full_fb_h - canvas_h * scale) * 0.5
-            ox = ox_full - float(tile_left)
-            oy = oy_full - float(tile_top)
+            scale, ox, oy = composition_frame_geometry(
+                canvas_size=(float(canvas_w), float(canvas_h)),
+                frame_size=(float(full_fb_w), float(full_fb_h)),
+                tile_origin=(float(tile_left), float(tile_top)),
+            )
         else:
-            scale = min(fb_w / canvas_w, fb_h / canvas_h)
-            ox = (fb_w - canvas_w * scale) * 0.5
-            oy = (fb_h - canvas_h * scale) * 0.5
+            scale, ox, oy = composition_frame_geometry(
+                canvas_size=(float(canvas_w), float(canvas_h)),
+                frame_size=(fb_w, fb_h),
+            )
         layers = list(composition.layers)
 
     projected: list[ProjectedLayer] = []
