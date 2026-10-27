@@ -7,7 +7,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QEvent, QMimeData, QObject, QPoint, Qt, QTimer, QUrl, Signal
 from PySide6.QtGui import QDrag
-from PySide6.QtWidgets import QGridLayout, QSizePolicy, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QGridLayout, QSizePolicy, QStackedWidget, QVBoxLayout, QWidget
 
 from sli_ui_toolkit.managers import scaled_px
 from sli_ui_toolkit.widgets import Button, ButtonRegion, ButtonRow, Layer, OverlayScrollArea
@@ -232,7 +232,12 @@ def _compute_columns(view) -> int:
     return max(GRID_COLUMNS, min(GRID_COLUMNS_MAX, fit))
 
 def _adapt_columns_and_reflow(view) -> None:
-    """Recompute columns after a resize settles; reflow when changed."""
+    """Recompute columns after a resize settles; reflow when changed.
+
+    The reflow is GEOMETRY-ONLY: a window-edge drag (also while a folder is
+    analysing) must move the cards, never re-create them or re-stamp their
+    content — see ``_rebuild_series_geometry`` and ``_reflow_flat(only_built)``.
+    """
     self = view
     try:
         if self._view_mode == VIEW_LIST:
@@ -249,25 +254,37 @@ def _adapt_columns_and_reflow(view) -> None:
         return
     try:
         if self._series is not None:
-            self._rebuild_series()
+            # Surgical reconcile WITHOUT the per-card content refresh: the
+            # plan (headers/bands/cells) is recomputed, every live widget is
+            # re-used. Refreshing content here cost one ``update_gallery_card``
+            # per card on every resize tick of a running analysis.
+            geometry_only = getattr(self, "_rebuild_series_geometry", None)
+            if callable(geometry_only):
+                geometry_only()
+            else:
+                self._rebuild_series()
         elif getattr(self, "_rebuild_pending", None) is not None:
-            try:
-                self._rebuild_pending = None
-                self._rebuild_index = 0
-            except Exception:
-                pass
-            self._reflow_flat()
+            # A chunked build is still landing (large folder). Place the cards
+            # that already exist and leave ``_rebuild_pending``/``_rebuild_index``
+            # ALONE so the chunk timer finishes the pool at the new count —
+            # cancelling the build here used to truncate the grid, and a plain
+            # ``_reflow_flat`` pulled the whole pool in synchronously (an O(N)
+            # card build on the GUI thread, mid-analysis).
+            _reflow_flat(self, only_built=True)
         else:
-            self._reflow_flat()
+            _reflow_flat(self)
     except Exception:
         logger.debug("_adapt_columns_and_reflow failed", exc_info=True)
 
-def _reflow_flat(view) -> None:
+def _reflow_flat(view, *, only_built: bool = False) -> None:
     """Re-place flat-grid cards for a new column count (no pool churn).
 
     Unlike ``rebuild_grid`` this never recycles cards: live widgets are
     only re-added at new positions, so a window-edge drag reflows
-    without content refreshes.
+    without content refreshes. ``only_built=True`` additionally skips
+    *acquiring* cards that a chunked rebuild has not created yet, so a
+    resize during that build stays O(built) instead of pulling the whole
+    pool in.
     """
     self = view
     try:
@@ -298,6 +315,8 @@ def _reflow_flat(view) -> None:
             continue
         card = self._cards_by_path.get(key)
         if card is None:
+            if only_built:
+                continue
             try:
                 card = self._acquire_card(item)
             except Exception:
@@ -334,3 +353,118 @@ def resize_event(view, event) -> None:  # noqa: N802
         self._adapt_timer.start()
     except Exception:
         pass
+
+# -- the grid follows its container, even when a stacked layout skips it -----
+#
+# OWNER BUG (2026-10-27, live): "while the analysis runs the window can be
+# resized but the cards stay glued to their old places; once it finishes the
+# resize moves them freely again".
+#
+# The grid does not own its resize source: it is a page of the gallery
+# ``QStackedWidget``. ``widget_parts.status.set_scanning`` (the S1
+# scanning/triage window, i.e. exactly the frames where the card badges spin)
+# switches the CURRENT page to the empty/scanning surface and only calls
+# ``show()`` on the grid ("keep in stack but not current"). QStackedLayout
+# lays out the CURRENT page only — in StackOne mode ``setGeometry`` skips
+# every other child — and the empty surface is a transparent blank canvas, so
+# the cards stay on screen at the size they had when the page was switched
+# away. The grid then never gets a ``resizeEvent``: no ``_adapt_timer``, no
+# ``_compute_columns``, no reflow — the whole resize path is dead until
+# ``set_triage`` makes the grid current again and its geometry snaps. That
+# snap is the "after the analysis it works again".
+#
+# Hence the grid watches the container itself: a shown-but-not-current page
+# adopts the rect the stack WOULD give it, and the ordinary resize path below
+# takes over. Same rect as the stack's own activation => no jump on restore.
+
+
+def _container_of(view):
+    """The widget whose layout is supposed to give this view its geometry."""
+    self = view
+    try:
+        return self.parentWidget()
+    except Exception:
+        return None
+
+
+def watch_container(view) -> None:
+    """(Re)install the container filter on the CURRENT parent widget.
+
+    The thin owner calls this from ``__init__``, ``showEvent`` and on
+    ``QEvent.ParentChange`` — the widget is reparented into the content stack
+    after construction, so the filter target moves.
+    """
+    self = view
+    prev = getattr(self, "_watched_container", None)
+    cur = _container_of(self)
+    if prev is cur:
+        return
+    if prev is not None:
+        try:
+            prev.removeEventFilter(self)
+        except Exception:
+            pass
+    try:
+        self._watched_container = cur
+    except Exception:
+        return
+    if cur is not None:
+        try:
+            cur.installEventFilter(self)
+        except Exception:
+            pass
+
+
+def sync_container_geometry(view) -> bool:
+    """Adopt the container's content rect when its layout skipped this page.
+
+    Only a shown page of a ``QStackedWidget`` that is NOT the current one can
+    be in that state (see the block comment above); everywhere else the
+    container's layout owns the geometry and this is a no-op. Returns True
+    when the geometry was adopted.
+    """
+    self = view
+    parent = _container_of(self)
+    if parent is None:
+        return False
+    try:
+        if not self.isVisible():
+            return False
+        if not isinstance(parent, QStackedWidget):
+            return False
+        if parent.currentWidget() is self:
+            return False
+        rect = parent.contentsRect()
+        if rect.width() <= 0 or rect.height() <= 0:
+            return False
+        if self.geometry() == rect:
+            return False
+        self.setGeometry(rect)
+        return True
+    except Exception:
+        return False
+
+
+def container_event_filter(view, watched, event) -> bool:
+    """Follow a container resize/show while this page is not the current one.
+
+    Always returns False: the container's own handling is untouched.
+    """
+    self = view
+    try:
+        if watched is not getattr(self, "_watched_container", None):
+            return False
+        if event.type() not in (QEvent.Type.Resize, QEvent.Type.Show):
+            return False
+        sync_container_geometry(self)
+    except Exception:
+        pass
+    return False
+
+
+def container_show_event(view, event) -> None:  # noqa: N802
+    """Re-target the container filter and adopt its rect (see the block above)."""
+    self = view
+    watch_container(self)
+    sync_container_geometry(self)
+

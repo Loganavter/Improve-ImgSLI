@@ -117,7 +117,10 @@ from .columns import (
     _grid_stride_px,
     _reflow_flat,
     _sync_series_column_widths,
+    container_event_filter,
+    container_show_event,
     set_view_mode,
+    watch_container,
 )
 from .bands import (
     _bands_active,
@@ -163,6 +166,7 @@ from .series import (
     _clear_series_headers,
     _make_series_header,
     _rebuild_series,
+    _rebuild_series_geometry,
     _refresh_ungrouped_header_count,
     _retitle_header,
     _row_of,
@@ -342,6 +346,11 @@ class GalleryGridView(QWidget):
         # NavigationManager section (registered by the tab on activate): the
         # grid owns arrow keys on live cards + cross-section trial-dispatch.
         self._nav_section = GalleryGridNavSection(self)
+        # The grid is a page of the gallery content stack and is kept SHOWN
+        # while another page is current (the S1 scanning surface) — a stacked
+        # layout then never sizes it. Watch the container so a window resize
+        # still reaches this widget (see columns.py's container block).
+        watch_container(self)
 
     @property
     def nav_section(self) -> "GalleryGridNavSection":
@@ -450,6 +459,26 @@ class GalleryGridView(QWidget):
         except Exception:
             pass
         columns.resize_event(self, event)
+
+    def showEvent(self, event) -> None:  # noqa: N802
+        # A page shown while another page is current (the S1 scanning surface)
+        # keeps the rect it had — adopt the container's instead, so the cards
+        # reflow from the first frame of the run rather than on restore.
+        try:
+            super().showEvent(event)
+        except Exception:
+            pass
+        columns.container_show_event(self, event)
+
+    def event(self, event) -> bool:  # noqa: N802
+        # The grid is reparented into the content stack after construction, so
+        # the container whose resize we follow moves with the parent.
+        try:
+            if event.type() == QEvent.Type.ParentChange:
+                columns.watch_container(self)
+        except Exception:
+            pass
+        return super().event(event)
 
     def _adapt_columns_and_reflow(self) -> None:
         return columns._adapt_columns_and_reflow(self)
@@ -727,6 +756,10 @@ class GalleryGridView(QWidget):
     def _rebuild_series(self) -> None:
         return series_mod._rebuild_series(self)
 
+    def _rebuild_series_geometry(self) -> None:
+        """Re-plan the series layout for the new width (resize path, no re-stamp)."""
+        return series_mod._rebuild_series_geometry(self)
+
     def append_new_cards(self, items: list[GalleryItem]) -> None:
         return rebuild.append_new_cards(self, items)
 
@@ -857,6 +890,10 @@ class GalleryGridView(QWidget):
     # -- eventFilter for marquee empty-area drag ---------------------------
 
     def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
+        # Container resize/show: the grid must follow its page even when the
+        # stack's layout skipped it (a shown non-current page keeps its rect).
+        if columns.container_event_filter(self, watched, event):
+            return True
         # Delegate to marquee module if available.
         if marquee.event_filter(self, watched, event):
             return True
