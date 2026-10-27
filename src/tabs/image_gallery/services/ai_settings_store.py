@@ -21,6 +21,7 @@ from dataclasses import dataclass, field
 from PySide6.QtCore import QSettings
 
 from core.plugin_system.settings import SETTINGS_APP, SETTINGS_ORG
+from tabs.image_gallery.services.ai_config_gate import AiCallGate
 from tabs.image_gallery.services.ai_providers import (
     PROVIDER_CUSTOM,
     PROVIDER_OPENROUTER,
@@ -191,7 +192,7 @@ def _load_api_key(settings: QSettings) -> str:
 
 
 @dataclass(frozen=True)
-class AiSettings:
+class AiSettings(AiCallGate):
     enabled: bool = False
     base_url: str = DEFAULT_BASE_URL
     api_key: str = ""

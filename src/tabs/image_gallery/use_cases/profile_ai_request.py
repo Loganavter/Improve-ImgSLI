@@ -329,7 +329,21 @@ def build_profile_request(
     reply language of the prose (``label``/``definition``/``why``); omitted it
     follows the current UI language, and an unreadable one fails open to English
     rather than refusing the call.
+
+    Raises :class:`ValueError` for an empty *model*: a payload with
+    ``{"model": ""}`` is not a request the provider can answer (OpenRouter:
+    ``HTTP 400 "No models provided"``, measured 2026-10-27), and substituting a
+    default model id would hide the misconfiguration behind a different model's
+    answer. The caller's gate is ``AiSettings.is_configured()``; this is the
+    payload-level refusal that keeps a second path from reaching the wire.
     """
+    model_id = str(model or "").strip()
+    if not model_id:
+        raise ValueError(
+            "profile request needs a model id: an empty model would be sent as "
+            '{"model": ""} and the provider answers HTTP 400 "No models provided" '
+            "— pick a model in Settings → AI (no default is substituted)"
+        )
     probes = _as_list(probe_items)
     content: list[dict] = [
         {"type": "text", "text": _selector_text(salience, corrective, language)}
@@ -368,12 +382,12 @@ def build_profile_request(
     if budget <= 0:
         budget = profile_request_budget(len(probes), effort)
     payload: dict = {
-        "model": str(model or ""),
+        "model": model_id,
         "messages": [{"role": "user", "content": content}],
         "max_tokens": budget,
         "response_format": {"type": "json_object"},
     }
-    _apply_profile_openrouter_hardening(payload, base_url, model, effort)
+    _apply_profile_openrouter_hardening(payload, base_url, model_id, effort)
     try:
         from tabs.image_gallery.services.ai_client.prompt import _ai_debug
 

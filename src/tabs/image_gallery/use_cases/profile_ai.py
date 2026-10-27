@@ -70,6 +70,10 @@ from __future__ import annotations
 import json
 import logging
 
+from tabs.image_gallery.services.ai_config_gate import (
+    incomplete_config_message,
+    missing_config_fields,
+)
 from tabs.image_gallery.use_cases.profile_probe import (  # noqa: F401
     per_series_profile,
     per_series_profiles,
@@ -102,20 +106,31 @@ MAX_PROFILE_AXES = 8
 MIN_WHY_CHARS = 8
 
 
+def _missing_ai_config(settings) -> tuple[str, ...]:
+    """What the settings lack before a paid call; a broken row reads as all.
+
+    The definition lives in ``services/ai_config_gate`` (one gate for the
+    selector, the tie-break and Analyze). This wrapper exists so a settings row
+    whose attributes raise still answers "not configured" rather than breaking
+    the caller.
+    """
+    try:
+        return missing_config_fields(settings)
+    except Exception:
+        return ("enabled", "base_url", "api_key", "model")
+
+
 def ai_selector_available(settings) -> bool:
     """True when a profile call can even be attempted. Never raises.
 
-    The same gate the rest of the gallery uses: AI enabled, an API key, and an
-    endpoint to reach (a model id or a custom base URL).
+    The same gate the rest of the gallery uses (``services/ai_config_gate``): AI
+    enabled and non-empty ``base_url``, ``api_key`` AND ``model``. An empty
+    ``model`` used to pass here by riding the ``base_url``, so the selector spent
+    a call on ``{"model": ""}`` and OpenRouter answered HTTP 400 "No models
+    provided" (measured 2026-10-27) while the tie-break refused the same config —
+    the divergence this delegation removes.
     """
-    try:
-        enabled = bool(_attr(settings, "enabled", False))
-        api_key = str(_attr(settings, "api_key", "") or "")
-        model = str(_attr(settings, "model", "") or "")
-        base_url = str(_attr(settings, "base_url", "") or "")
-        return bool(enabled and api_key and (model or base_url))
-    except Exception:
-        return False
+    return not _missing_ai_config(settings)
 
 
 def profile_fingerprint(
@@ -570,9 +585,16 @@ def choose_profile_sync(
         # Owner rule 2026-10-26: the AI backend is SELECTED, so an unusable
         # backend is an ERROR. Pinning the local axis set here is exactly the
         # "снова все метрики из camera" complaint.
+        #
+        # The line NAMES what is missing (owner report 2026-10-27: an empty
+        # ``model`` used to slip through this gate, the call went out with
+        # ``{"model": ""}``, the provider answered HTTP 400 "No models
+        # provided", and the log showed a network failure instead of "pick a
+        # model"). No value, no key — only the empty field, and no request ran.
         logger.warning(
-            "profile select: the AI backend is selected but not configured — no "
-            "profile (an error, not a fallback to the local axis set)"
+            "profile select: %s — no profile request was sent (an error, not a "
+            "fallback to the local axis set); fill it in Settings → AI",
+            incomplete_config_message(_missing_ai_config(settings)),
         )
         return None
 
@@ -664,8 +686,12 @@ def choose_profile_sync(
             effort=effort,
             base_url=base_url,
         )
-    except Exception:
-        logger.warning("profile select: the request could not be built — no profile")
+    except Exception as exc:
+        # The message is the diagnosis (a missing model id says so); a bare
+        # "could not be built" sent the 2026-10-27 reader hunting the transport.
+        logger.warning(
+            "profile select: the request could not be built — no profile (%s)", exc
+        )
         return None
 
     call = client_call or _default_client_call()

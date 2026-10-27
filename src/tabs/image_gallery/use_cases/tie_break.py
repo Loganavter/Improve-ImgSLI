@@ -148,8 +148,23 @@ def run_tie_break_if_needed(owner, series) -> None:
     # Owner rule 2026-10-26: the AI backend is selected, so an unusable
     # configuration is an ERROR on the cards, not a "silent degrade" that leaves
     # the tie ordered by the local numbers as if the model had answered.
-    if not settings.enabled or not settings.api_key or not settings.model:
-        logger.warning("tie-break: AI is not configured — marking the pair ERROR")
+    #
+    # The gate itself comes from ``services/ai_config_gate`` (one definition
+    # shared with the profile selector and Analyze): an empty ``model`` is not
+    # configured even when a ``base_url`` is set — the selector used to treat them
+    # as interchangeable and paid for it with HTTP 400 "No models provided"
+    # (2026-10-27).
+    from tabs.image_gallery.services.ai_config_gate import (
+        incomplete_config_message,
+        missing_config_fields,
+    )
+
+    missing = missing_config_fields(settings)
+    if missing:
+        logger.warning(
+            "tie-break: %s — marking the pair ERROR (no AI request)",
+            incomplete_config_message(missing),
+        )
         try:
             from tabs.image_gallery.services.activity import ActivityPhase, set_activity
 

@@ -22,6 +22,7 @@ from tabs.image_gallery.services.ai_cache import (
     load_cached_analysis,
 )
 from tabs.image_gallery.services.ai_client import _ai_debug
+from tabs.image_gallery.services.ai_config_gate import missing_config_fields
 from tabs.image_gallery.use_cases.action_context import (
     BACKEND_AI,
     REFUSAL_EMPTY_SCOPE,
@@ -94,11 +95,14 @@ def _load_settings(owner):
 
 
 def _is_configured(settings) -> bool:
-    return bool(
-        getattr(settings, "enabled", False)
-        and getattr(settings, "api_key", "")
-        and getattr(settings, "model", "")
-    )
+    """Can a paid AI call be attempted? One gate, owned by ``ai_config_gate``.
+
+    ``enabled`` + non-empty ``base_url`` / ``api_key`` / ``model`` — see
+    ``services.ai_config_gate.missing_config_fields`` for why an empty ``model``
+    may not be papered over by the endpoint (the 2026-10-27 ``{"model": ""}`` →
+    HTTP 400 "No models provided" defect).
+    """
+    return not missing_config_fields(settings)
 
 
 def _mark_not_configured(owner, items) -> None:
