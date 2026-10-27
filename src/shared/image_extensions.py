@@ -2,13 +2,27 @@
 
 Historically IC accepted ``.jxl`` while MC rejected it (cross-module review
 2026-08-25 C9). All tabs/services must import from here so they stay in sync.
+
+This list is a *claim about the installed decoders*, so it is gated by
+``tests/contracts/test_accepted_formats_match_decoders.py``: every suffix must
+be registered by Pillow (the primary decode backend) or, when Pillow has no
+plugin at all, carry a justified shrink-only allowlist entry naming the
+backend that does read it. Never add a suffix here without making that gate
+pass — ``.avif`` decoded fine for months while this static set still bounced
+it from DnD, dialogs and the gallery scan, which is precisely the drift the
+gate prevents.
 """
 
 from __future__ import annotations
 
-# Lower-case dotted extensions, including JPEG XL.
+# Lower-case dotted extensions. ``.avif`` (still image) added 2026-10-28:
+# Pillow and libvips both decode it, so every entry point must accept it.
+# ``.avifs`` (AVIF image *sequence* — animation) is deliberately NOT listed:
+# the viewer has no animation support, so accepting it would promise a card
+# that shows only the first frame (or fails mid-load). Adding it is a product
+# decision about animation, not a gap to "complete" the list.
 ACCEPTED_IMAGE_EXTENSIONS: frozenset[str] = frozenset(
-    {".png", ".jpg", ".jpeg", ".bmp", ".tiff", ".tif", ".webp", ".jxl"}
+    {".png", ".jpg", ".jpeg", ".bmp", ".tiff", ".tif", ".webp", ".jxl", ".avif"}
 )
 
 # Backwards-compatible alias — prefer ACCEPTED_IMAGE_EXTENSIONS in new code.
