@@ -1,7 +1,10 @@
 Markdown==3.8
 pillow==12.1.1
 numpy>=1.24,<2.4
-PySide6==6.11.1
+# Essentials, not the full PySide6: the app imports only QtCore/QtGui/QtWidgets/
+# QtNetwork/QtDBus/QtTest (grep-verified) - the Addons wheel (WebEngine, Multimedia,
+# Charts, 3D, ...) is ~200-400 MB of nothing this app uses.
+PySide6-Essentials==6.11.1
 shiboken6==6.11.1
 -e ../sli-ui-toolkit
 scikit-image==0.26.0
@@ -13,6 +16,12 @@ pyvips[binary]>=3.1
 # reproducible; `piq` imports torchvision at module import, so all three are
 # mandatory (a missing one is reported as an explicit `backend_status() ==
 # "missing"`, not silently ignored).
-torch==2.14.1
-torchvision==0.29.1
+#
+# CPU wheels on purpose: this app only INFERS on CPU, while the default PyPI
+# wheels drag in `nvidia/*` (CUDA runtime, ~3.2 GB) and `triton` (~0.9 GB).
+# The `+cpu` local version only exists on the PyTorch CPU index, so the pin is
+# unambiguous and PyPI stays the source for `piq`.
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.14.1+cpu
+torchvision==0.29.1+cpu
 piq==0.8.0
