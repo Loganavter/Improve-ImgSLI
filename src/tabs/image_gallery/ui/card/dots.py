@@ -123,6 +123,9 @@ def _accent_color():
     """Badge/underline accent with the frozen chain + light/dark fallback.
 
     ``gallery.accent.bar`` → ``accent`` → ``#0078D4`` (light) / ``#0096FF`` (dark).
+    Used for hover underline, the provenance pill and selection chrome — NOT for
+    metric dots since 2026-10-27 (a dot's colour codes its score band; the
+    instrument is a tooltip fact only).
     """
     from PySide6.QtGui import QColor
 
@@ -274,8 +277,15 @@ def metric_dots_for_item(
     Per-dot value = the per-axis ``AxisValue`` from ``analysis.read.read_axes``
     (0–100; AI scorecard vs local detectors), so the number carries its own
     producer and provenance. Color = ``metric_scores.score_band`` mapped onto
-    the existing severity tokens for a registry axis; a MEASURED judge axis
-    paints the accent token (it is another instrument, not a band).
+    the existing severity tokens for EVERY measured dot, whatever measured it:
+    the colour codes the SCORE, so one number is one colour across instruments.
+
+    (Superseded 2026-10-27: the P7-C "accent = the judge's instrument" marker is
+    cancelled — every MEASURED judge dot painted ``_accent_color()``, so a
+    90/60/20 scorecard read as three identical blue dots and the card could only
+    be understood by hovering. The instrument still reaches the user through the
+    TEXT: ``judged_axis_label`` keeps ``name · measured by the judge`` in the
+    tooltip. ``_accent_color`` stays for hover/selection chrome.)
 
     TWO PHASES, this one decision (owner, 2026-10-22) — a gap is not a dot once
     anything exists to dot about:
@@ -302,19 +312,14 @@ def metric_dots_for_item(
     judge dot carries the same measured/gap record as a registry dot. A judge
     dot is never blended into the registry indicator unlabeled: an invented name
     has no registry label, so its tooltip carries ``name · measured by the
-    judge``, and a MEASURED judge axis paints the accent token instead of a
-    severity band, so the two instruments are distinguishable at a glance as
-    well as on hover. A registry axis keeps its registry label (the P5/P7-A
-    parity) even when this context has no local producer for it.
+    judge``. A registry axis keeps its registry label (the P5/P7-A parity) even
+    when this context has no local producer for it. Both halves are COLOURED by
+    their band (see above) — the instrument is a text fact, not a colour.
     """
     try:
         from tabs.image_gallery.analysis.read import read_axes
         from tabs.image_gallery.services.metric_scores import score_band
-        from tabs.image_gallery.services.profile_judged import (
-            PROVENANCE_JUDGE,
-            axis_provenance,
-            scorecard_axis_ids,
-        )
+        from tabs.image_gallery.services.profile_judged import scorecard_axis_ids
         from tabs.image_gallery.ui.quick_look.metrics.judged import (
             is_judged_axis,
             judged_axis_label,
@@ -339,18 +344,11 @@ def metric_dots_for_item(
     infos: list[tuple[str, int | None]] = []
     for record in records:
         axis_id = record.axis
-        provenance = str(getattr(record, "provenance", "") or "")
-        if not provenance:
-            try:
-                provenance = str(
-                    axis_provenance(axis_id, mode=mode, profile=profile) or ""
-                )
-            except Exception:
-                provenance = ""
         # A judge-INVENTED name has no registry label, so its label carries the
         # name and the provenance; a registry axis keeps its registry label
         # (P5/P7-A parity), even when the judge is the only instrument able to
-        # measure it in this context.
+        # measure it in this context. Provenance lives in the TEXT only — the
+        # colour below is the score's, never the instrument's (owner 2026-10-27).
         if is_judged_axis(axis_id, profile=profile):
             label = judged_axis_label(str(axis_id), profile=profile, translate=translate)
         else:
@@ -359,12 +357,6 @@ def metric_dots_for_item(
         if score is None:
             colors.append(_neutral_color())
             infos.append((label, None))
-            continue
-        if provenance == PROVENANCE_JUDGE:
-            # The judge's instrument, not a detector band: one token for every
-            # measured judge dot, so the accent dot itself says "the model".
-            colors.append(_accent_color())
-            infos.append((label, score))
             continue
         try:
             band = str(score_band(score)).lower()

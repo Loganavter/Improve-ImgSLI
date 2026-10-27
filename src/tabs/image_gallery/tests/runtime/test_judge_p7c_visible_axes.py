@@ -24,9 +24,10 @@ Falsification story (what each test catches, and why it is red before):
   provenance, and a registry-only series renders EXACTLY as before (byte-identical
   row text when a judge entry is added — the P7-A
   ``test_without_a_profile_the_scorecard_is_byte_identical`` spirit).
-- **(e)** the card dots show the judge's axes with their provenance and a dot
-  colour that cannot be mistaken for a registry band, so the two instruments are
-  never mixed into one unlabeled indicator.
+- **(e)** the card dots show the judge's axes with their provenance as TEXT, and
+  paint each dot by its score band like a registry dot (owner 2026-10-27: the
+  colour codes the SCORE, not the instrument — the P7-C accent marker is
+  cancelled; ``test_judge_dot_band_colors.py`` pins the three-colour scale).
 
 Red-before evidence for every one of these was produced on a pre-change scratch
 copy of ``HEAD`` (``git archive HEAD``) — see ``DONE.md``.
@@ -51,7 +52,12 @@ from tabs.image_gallery.services.profile_judged import (
     PROVENANCE_JUDGE,
     PROVENANCE_LOCAL,
 )
-from tabs.image_gallery.ui.card.dots import _accent_color, metric_dots_for_item
+from tabs.image_gallery.services.metric_scores import score_band
+from tabs.image_gallery.ui.card.dots import (
+    _BAND_SEVERITY,
+    _severity_color,
+    metric_dots_for_item,
+)
 from tabs.image_gallery.ui.quick_look import QuickLookOverlay
 from sli_ui_toolkit.ui.widgets.atomic.text_labels import Label as _QlLabel  # internal: documented Label exception (queue task-text-unification-retirement-2026-10-21)
 from sli_ui_toolkit.widgets import Text as _QlText
@@ -557,14 +563,18 @@ def test_card_dots_show_the_judge_axes_with_their_provenance():
         f"a pool axis lost its registry label: {labels}"
     )
 
-    # In the AI domain both numbers ARE the judge's: a pool axis the model
-    # scored is the judge's measurement too (free-axes W4 — provenance names who
-    # DID, never who could have), so neither dot paints a detector severity
-    # band and the accent is the instrument marker.
-    accent = _accent_color().name()
-    assert [color.name() for color in colors] == [accent] * len(colors), (
-        "a judge-scored number painted a detector band instead of the "
-        f"instrument accent ({accent}): {[c.name() for c in colors]}"
+    # In the AI domain both numbers ARE the judge's (free-axes W4 — provenance
+    # names who DID, never who could have). The provenance therefore shows up in
+    # the LABELS above and NOT in the colour: since 2026-10-27 a dot's colour is
+    # its score band, for a judge number and a detector number alike, so the
+    # scale is readable without hovering (owner report).
+    expected = [
+        _severity_color(_BAND_SEVERITY[score_band(score)]).name()
+        for _label, score in infos
+    ]
+    assert [color.name() for color in colors] == expected, (
+        "a judge-scored number did not paint its score band "
+        f"({expected} expected): {[c.name() for c in colors]}"
     )
 
 

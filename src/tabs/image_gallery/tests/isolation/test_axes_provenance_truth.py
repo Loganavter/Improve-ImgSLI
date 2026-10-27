@@ -20,11 +20,12 @@ Three defects, one seam each (``task free-axes-w4``):
 (b) ``analysis.read`` stamped a judge-produced number on a POOL axis
     ``measured-locally``, because ``profile_judged.axis_provenance`` answered
     "who CAN measure this axis here" (a detector can produce ``sharpness``
-    everywhere) instead of "who DID". Dots then painted the detector severity
-    band (#2e7d32) instead of the instrument accent (#0078d4) and rows printed
-    the plain registry label. The record now carries the producer's own answer:
-    a ``vlm`` number is ``measured-by-judge`` even on a registry axis; a detector
-    number stays ``measured-locally``.
+    everywhere) instead of "who DID". Rows then printed the plain registry label
+    as if the detector had spoken. The record now carries the producer's own
+    answer: a ``vlm`` number is ``measured-by-judge`` even on a registry axis; a
+    detector number stays ``measured-locally``. (The dot COLOUR stopped carrying
+    provenance on 2026-10-27 — it codes the score band; the instrument lives in
+    the label/record, see ``tests/runtime/test_judge_dot_band_colors.py``.)
 
 (c) ``pairwise_rank.profile_axis_numbers`` read ``"algorithms"`` first, then
     ``"ai"``, so on a judged series a registry axis' near-tie number came from
@@ -214,9 +215,19 @@ def test_a_judge_scored_pool_axis_is_measured_by_the_judge_not_the_detector():
     assert provenance_label(local.provenance) == "measured locally"
 
 
-def test_the_judge_dot_on_a_pool_axis_paints_the_instrument_accent():
-    """The dot colour follows the record's provenance (never a severity band)."""
-    from tabs.image_gallery.ui.card.dots import _accent_color, metric_dots_for_item
+def test_the_judge_dot_on_a_pool_axis_paints_its_score_band():
+    """A judge number paints its BAND (the colour codes the score, 2026-10-27).
+
+    The provenance this file is about is a RECORD fact: it shows in the row and
+    in the dot tooltip, never in the dot colour — so the 91 the judge scored on
+    ``sharpness`` paints the same ``clean`` green a detector's 91 would.
+    """
+    from tabs.image_gallery.ui.card.dots import (
+        _BAND_SEVERITY,
+        _severity_color,
+        metric_dots_for_item,
+    )
+    from tabs.image_gallery.services.metric_scores import score_band
 
     item = _judged_pool_item()
     profile = _judge_profile()
@@ -226,10 +237,10 @@ def test_the_judge_dot_on_a_pool_axis_paints_the_instrument_accent():
     )
 
     assert [score for _label, score in infos] == [91], infos
-    accent = _accent_color().name()
-    assert [color.name() for color in colors] == [accent], (
-        "a judge-scored pool axis painted a detector severity band instead of "
-        f"the instrument accent ({accent}): {[c.name() for c in colors]}"
+    expected = _severity_color(_BAND_SEVERITY[score_band(91)]).name()
+    assert [color.name() for color in colors] == [expected], (
+        "a judge-scored pool axis did not paint the colour of its score band "
+        f"({expected}): {[c.name() for c in colors]}"
     )
 
 

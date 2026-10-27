@@ -44,7 +44,12 @@ from tabs.image_gallery.models import (
     Mode,
 )
 from tabs.image_gallery.services.metric_profile import MetricProfile
-from tabs.image_gallery.ui.card.dots import _accent_color, dot_tooltip_text
+from tabs.image_gallery.services.metric_scores import score_band
+from tabs.image_gallery.ui.card.dots import (
+    _BAND_SEVERITY,
+    _severity_color,
+    dot_tooltip_text,
+)
 from tabs.image_gallery.ui.grid_view import GalleryGridView
 
 #: The six axes the judge named in the owner's live report (profile_ai.py:753):
@@ -59,6 +64,18 @@ FREE_AXES = (
 )
 #: The judge's per-card numbers for those axes (row values the owner saw).
 FREE_SCORES = {name: 55 + 5 * i for i, name in enumerate(FREE_AXES)}
+
+
+def _band_colors(names, scores) -> list[str]:
+    """Expected dot colours: each score's severity band (owner 2026-10-27).
+
+    The dot colour codes the SCORE, for a judge number and a detector number
+    alike; the instrument is a label/tooltip fact only.
+    """
+    return [
+        _severity_color(_BAND_SEVERITY[score_band(scores[name])]).name()
+        for name in names
+    ]
 
 
 def _entries() -> tuple[AiAxisProposal, ...]:
@@ -136,7 +153,7 @@ def qapp_ready(qapp):
 
 
 def test_grid_card_dots_are_the_judge_axes_on_the_live_path(qapp_ready):
-    """A grid card paints one accent dot per MEASURED judge axis."""
+    """A grid card paints one BAND-coloured dot per MEASURED judge axis."""
     item = _item(axes=FREE_SCORES)
     gv = _live_grid(_ai_profile(), item=item)
     card = _card(gv, item)
@@ -151,10 +168,10 @@ def test_grid_card_dots_are_the_judge_axes_on_the_live_path(qapp_ready):
     assert getattr(card, "_gallery_domain", None) == "ai", (
         "the card read the wrong judgment domain"
     )
-    accent = _accent_color().name()
-    assert [c.name() for c in colors] == [accent] * len(FREE_AXES), (
-        "a judge number painted a detector band instead of the instrument "
-        f"accent ({accent}): {[c.name() for c in colors]}"
+    expected = _band_colors(FREE_AXES, FREE_SCORES)
+    assert [c.name() for c in colors] == expected, (
+        "a judge number no longer paints the colour of its score band "
+        f"({expected} expected): {[c.name() for c in colors]}"
     )
     assert [info[1] for info in infos] == [FREE_SCORES[n] for n in FREE_AXES], (
         f"the dots do not carry the judge's numbers: {infos}"
@@ -180,8 +197,7 @@ def test_list_row_dots_are_the_judge_axes_on_the_live_path(qapp_ready):
     assert len(colors) == len(FREE_AXES), (
         f"the live list row carried {len(colors)} dots, expected {len(FREE_AXES)}"
     )
-    accent = _accent_color().name()
-    assert [c.name() for c in colors] == [accent] * len(FREE_AXES)
+    assert [c.name() for c in colors] == _band_colors(FREE_AXES, FREE_SCORES)
     assert [info[1] for info in infos] == [FREE_SCORES[n] for n in FREE_AXES]
     gv.deleteLater()
 
