@@ -20,6 +20,7 @@ from PySide6.QtGui import QColor
 
 from engine.frame.present import begin_source, note_presented
 from engine.gpu.mip_cascade import MipCascadeNotReady
+from engine.gpu.rt_y_orientation import composited_clip_correction
 from engine.gpu.tiled_image_view import (
     LodPolicy,
     TiledImageView,
@@ -34,15 +35,6 @@ from . import batches as _batches
 from .source import _overlay_shader_dir
 
 logger = logging.getLogger(APP_LOGGER_NAME)
-
-# Identity clip matrix for the fullscreen shell quad (the preview has no
-# viewport transform -- aspect-fit is baked into the uploaded raster).
-_IDENTITY_CLIP = (
-    1.0, 0.0, 0.0, 0.0,
-    0.0, 1.0, 0.0, 0.0,
-    0.0, 0.0, 1.0, 0.0,
-    0.0, 0.0, 0.0, 1.0,
-)
 
 _CLEAR_OPAQUE = QColor(0, 0, 0, 255)
 
@@ -269,7 +261,13 @@ def render(self, command_buffer) -> None:  # noqa: N802
             return self._skip_frame("no-batch")
         try:
             self._shell.stage_quad(updates)
-            self._shell.stage_clip(updates, _IDENTITY_CLIP)
+            # Where raster row 0 lands is a backend convention, never a local
+            # answer: the shell quad carries row 0 (`v == 0`) at clip y=+1, so
+            # identity is only right on a y-up NDC backend and mirrors the
+            # preview on Vulkan/Metal. Same COMPOSITED case the tiled path
+            # (engine.gpu.tiled_image_view) and engine/overlay/shell.py's
+            # `clip_matrix()` use -- one source of truth, no local literal.
+            self._shell.stage_clip(updates, composited_clip_correction(rhi))
         except Exception:
             _batches.drain(self, command_buffer, updates)
             return self._skip_frame("stage-failed")

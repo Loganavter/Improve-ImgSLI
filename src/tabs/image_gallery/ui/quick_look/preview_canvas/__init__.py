@@ -104,7 +104,6 @@ from . import tiled_source as _tiled_source
 # Re-export the module-level names the old single file exposed.
 _ql_decode_full_store = _source._ql_decode_full_store
 _overlay_shader_dir = _source._overlay_shader_dir
-_IDENTITY_CLIP = _rhi_entry._IDENTITY_CLIP
 _CLEAR_OPAQUE = _rhi_entry._CLEAR_OPAQUE
 _QL_DWELL_MS = _lazy_levels._QL_DWELL_MS
 

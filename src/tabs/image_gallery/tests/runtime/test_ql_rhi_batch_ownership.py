@@ -52,6 +52,18 @@ class _Batch:
         return f"<_Batch {self.n}>"
 
 
+class _Correction:
+    """``QMatrix4x4``-shaped stub: only ``.data()`` is read (identity here)."""
+
+    def data(self):
+        return [
+            1.0, 0.0, 0.0, 0.0,
+            0.0, 1.0, 0.0, 0.0,
+            0.0, 0.0, 1.0, 0.0,
+            0.0, 0.0, 0.0, 1.0,
+        ]
+
+
 class _FakeRhi:
     def __init__(self, *, fail_calls: tuple = ()) -> None:
         self.handed: list = []
@@ -65,6 +77,13 @@ class _FakeRhi:
         batch = _Batch(self.calls)
         self.handed.append(batch)
         return batch
+
+    def clipSpaceCorrMatrix(self):
+        # The raster path stages ``composited_clip_correction(rhi)``; the
+        # correction's own position is pinned by
+        # ``test_ql_raster_clip_orientation.py``, this suite only cares that
+        # the stage succeeds so each path under test is the intended one.
+        return _Correction()
 
 
 class _FakeCmd:
@@ -101,6 +120,7 @@ class _FakeShell:
         self.stage_calls = 0
         self.upload_calls = 0
         self.draw_calls = 0
+        self.clip_calls = 0
         self._fail_stage = fail_stage
         self._fail_upload = fail_upload
 
@@ -110,7 +130,9 @@ class _FakeShell:
             raise RuntimeError("stage failed")
 
     def stage_clip(self, updates, clip) -> None:
-        pass
+        self.clip_calls += 1
+        if self._fail_stage:
+            raise RuntimeError("stage failed")
 
     def upload_frame(self, updates, target, frame) -> None:
         self.upload_calls += 1

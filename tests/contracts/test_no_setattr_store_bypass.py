@@ -60,6 +60,16 @@ ALLOWLIST: frozenset[tuple[str, int, str]] = frozenset(
         ("src/plugins/settings/presenter.py", 27, "self.view_state"),
         ("src/plugins/settings/presenter_parts/view_state.py", 44, "self.store.viewport.render_config"),
         ("src/plugins/settings/presenter_parts/view_state.py", 48, "self.store.viewport.render_config"),
+        # -- image_compare transient interpolation menu fallbacks --
+        # Same family as the settings presenter's: the dispatcher path is tried
+        # first and this setattr is the last-resort write so the menu's preview
+        # keeps matching what the user just picked. Flagged because #739 added
+        # it without an entry; migrating the fallback onto the dispatcher is
+        # task-transient-interp-setattr-2026-10-28.
+        ("src/tabs/image_compare/ui/transient_interpolation.py", 254, "host.store.viewport.render_config"),
+        ("src/tabs/image_compare/ui/transient_interpolation.py", 260, "host.store.viewport.render_config"),
+        ("src/tabs/image_compare/ui/transient_interpolation.py", 369, "host.store.viewport.render_config"),
+        ("src/tabs/image_compare/ui/transient_interpolation.py", 380, "host.store.viewport.render_config"),
         # -- canvas feature-state snapshot/projection writes (view_state param) --
         ("src/tabs/image_compare/canvas/features/capture/state/feature_state.py", 28, "view_state"),
         ("src/tabs/image_compare/canvas/features/capture/widget.py", 102, "view_state"),
