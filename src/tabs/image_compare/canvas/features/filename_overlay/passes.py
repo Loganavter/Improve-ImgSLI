@@ -413,9 +413,32 @@ class FilenameOverlayPass(CanvasRenderPass):
     def record(self, command_buffer: QRhiCommandBuffer, widget, ctx) -> None:
         if self._gpu.pipeline is None:
             return
-        dpr = max(1.0, float(widget.devicePixelRatioF()))
-        fb_width = float(int(ctx.width) * dpr)
-        fb_height = float(int(ctx.height) * dpr)
+        # Framebuffer size is the render target's OWN pixel size, exactly like
+        # the guides/capture/divider/magnifier/arcs siblings: one resolution
+        # of DPR per frame. It used to be recomputed here as
+        # ``ctx.width * dpr``, a second DPR answer that agrees with the target
+        # only while the target happens to be ``logical x DPR`` -- wrong on a
+        # fractional DPR or a target resized independently of the widget.
+        target_size = None
+        try:
+            target = widget.renderTarget()
+            target_size = target.pixelSize() if target is not None else None
+        except (AttributeError, RuntimeError):
+            target_size = None
+        fb_width = fb_height = 0.0
+        if target_size is not None:
+            try:
+                fb_width = float(target_size.width())
+                fb_height = float(target_size.height())
+            except (AttributeError, RuntimeError, TypeError, ValueError):
+                fb_width = fb_height = 0.0
+        if fb_width <= 0.0 or fb_height <= 0.0:
+            # No mountable target (stub/headless host): the previous
+            # computation survives as an explicitly named device-px fallback.
+            dpr = max(1.0, float(widget.devicePixelRatioF()))
+            fb_width_device = float(int(ctx.width) * dpr)
+            fb_height_device = float(int(ctx.height) * dpr)
+            fb_width, fb_height = fb_width_device, fb_height_device
         command_buffer.setGraphicsPipeline(self._gpu.pipeline)
         command_buffer.setViewport(QRhiViewport(0.0, 0.0, fb_width, fb_height))
         # BOUNDARY (F5): per-slot N-quad draw -- own vertex buffer per slot plus

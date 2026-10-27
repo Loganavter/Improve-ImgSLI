@@ -32,6 +32,7 @@ from .render_config import update_display_split_position
 from ui.canvas_infra.rhi.render_metrics import RenderMetrics
 from ui.canvas_infra.rhi.render_mode import EXPORT_CANVAS_OBJECT_NAME
 from engine.cache.render_debug import rhi_render_debug
+from engine.gpu.rt_y_orientation import composited_clip_correction
 from .texture_parts.base_images import (
     update_common_letterbox_geometry,
     upload_pil_images,
@@ -59,6 +60,24 @@ class ViewportContext:
     canvas_height: int
     canvas_offset_x: float
     canvas_offset_y: float
+    # The frame's target units, resolved once per frame by
+    # ``resolve_target_units`` below (the same two fields multi_compare's
+    # scene context carries -- ``multi_compare/scene/context.py``). They are
+    # what a *composite* pass cannot guess from ``width/height``:
+    #
+    # * ``clip_matrix`` -- the composited clip-space correction for the RHI.
+    #   ``None`` is a legal state, not a missing value: it means "the widget
+    #   has no RHI yet" (before mount), and an identity matrix is only correct
+    #   on a y-up NDC backend -- which cannot be known without the RHI. A pass
+    #   that needs the correction keeps owning its own identity fallback for
+    #   that one case (`drag_drop_overlay/framing.py`), never staging identity
+    #   while a backend is live (that was #751: a mirrored drop zone on Vulkan).
+    # * ``framebuffer_size`` -- the render target's size in DEVICE pixels.
+    #   ``width/height`` are logical; a viewport sized from them draws a
+    #   device-px raster into 1/DPR of the framebuffer per axis (a quarter of
+    #   it at DPR=2). ``None`` only when even the DPR fallback is unavailable.
+    clip_matrix: tuple[float, ...] | None = None
+    framebuffer_size: tuple[float, float] | None = None
 
 
 @dataclass(slots=True)
@@ -121,6 +140,95 @@ class RenderRuntimeContext:
             if hasattr(section, name):
                 return getattr(section, name)
         raise AttributeError(name)
+
+
+def resolve_target_units(
+    widget,
+) -> tuple[tuple[float, ...] | None, tuple[float, float] | None]:
+    """``(clip_matrix, framebuffer_size)`` for this frame's render target.
+
+    The frame's device units, resolved ONCE per frame so no composite pass has
+    to invent a local fallback -- the class behind two 2026-10-27/28 defects:
+    a pass staging identity instead of the backend's clip correction (#751, a
+    mirrored drop zone on a y-down NDC backend) and a viewport computed from
+    logical ``width/height`` while the raster was device px (a quarter of the
+    frame at DPR=2).
+
+    ``clip_matrix``
+        ``composited_clip_correction(rhi)`` -- the pass writes into the
+        widget's own render target, which the ``QRhiWidget`` composites on
+        screen, so this is ``rhi.clipSpaceCorrMatrix()`` verbatim (same source
+        as ``engine/overlay/shell.py`` and the guides/capture/divider/
+        filename passes; see ``engine/gpu/rt_y_orientation.py``). ``None``
+        when the widget has no RHI yet (before mount) -- a legal state, never
+        an identity matrix: identity is correct only on a y-up NDC backend,
+        which cannot be decided without the RHI, so a pass that needs a matrix
+        keeps its own identity fallback for the pre-mount case.
+
+    ``framebuffer_size``
+        The render target's own ``pixelSize()`` in DEVICE px -- the truth for
+        a ``QRhiWidget``, and what a viewport/raster must both use. Falls back
+        to logical size x ``devicePixelRatioF()`` when the host exposes no
+        target (headless/stub hosts, and the pre-mount frame).
+
+    Never raises: an absent or failing ``rhi()`` / ``renderTarget()`` degrades
+    to the fallbacks above and is logged at DEBUG. This runs per frame, so a
+    real failure is one debug line, not a crashed canvas.
+    """
+    clip_matrix: tuple[float, ...] | None = None
+    framebuffer_size: tuple[float, float] | None = None
+
+    try:
+        rhi = widget.rhi()
+    except (AttributeError, RuntimeError) as exc:
+        rhi = None
+        logger.debug("[ic-ctx] widget has no queryable rhi(): %s", exc)
+    if rhi is not None:
+        try:
+            clip_matrix = composited_clip_correction(rhi)
+        except (AttributeError, RuntimeError, TypeError, ValueError) as exc:
+            clip_matrix = None
+            logger.debug("[ic-ctx] rhi cannot answer clipSpaceCorrMatrix(): %s", exc)
+
+    target = None
+    try:
+        target = widget.renderTarget()
+    except (AttributeError, RuntimeError) as exc:
+        logger.debug("[ic-ctx] widget has no renderTarget(): %s", exc)
+    if target is not None:
+        try:
+            size = target.pixelSize()
+            width_px, height_px = int(size.width()), int(size.height())
+        except (AttributeError, RuntimeError, TypeError, ValueError) as exc:
+            width_px = height_px = 0
+            logger.debug(
+                "[ic-ctx] renderTarget().pixelSize() is unusable (%s): %r",
+                exc,
+                target,
+            )
+        if width_px > 0 and height_px > 0:
+            framebuffer_size = (float(width_px), float(height_px))
+
+    if framebuffer_size is None:
+        try:
+            dpr = max(1.0, float(widget.devicePixelRatioF()))
+        except (AttributeError, RuntimeError, TypeError, ValueError):
+            dpr = 1.0
+        try:
+            width, height = int(widget.width()), int(widget.height())
+        except (AttributeError, RuntimeError, TypeError, ValueError):
+            width = height = 0
+        framebuffer_size = (
+            float(max(1, round(width * dpr))),
+            float(max(1, round(height * dpr))),
+        )
+        logger.debug(
+            "[ic-ctx] no render target for the frame; framebuffer_size falls "
+            "back to logical x dpr = %r",
+            framebuffer_size,
+        )
+
+    return clip_matrix, framebuffer_size
 
 
 def build_render_runtime_context(widget) -> RenderRuntimeContext:
@@ -277,6 +385,10 @@ def build_render_runtime_context(widget) -> RenderRuntimeContext:
         scene_frame,
         base_image=base_image,
     )
+    # The frame's device units, resolved once here so passes read them from the
+    # context instead of each re-deriving a fallback (see
+    # ``resolve_target_units``).
+    clip_matrix, framebuffer_size = resolve_target_units(widget)
     return RenderRuntimeContext(
         viewport=ViewportContext(
             width=widget.width(),
@@ -299,6 +411,8 @@ def build_render_runtime_context(widget) -> RenderRuntimeContext:
             canvas_height=int(canvas_height),
             canvas_offset_x=float(canvas_offset_x),
             canvas_offset_y=float(canvas_offset_y),
+            clip_matrix=clip_matrix,
+            framebuffer_size=framebuffer_size,
         ),
         textures=TextureContext(
             stored_pil_images=list(state._stored_pil_images),
