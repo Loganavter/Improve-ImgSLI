@@ -1148,19 +1148,24 @@ class GalleryController:
         worker.signals.result.connect(_on_result)
         worker.signals.error.connect(_on_error)
         worker.signals.finished.connect(_on_finished)
+        # P5: from here the settle's AI/Jev tails wait for this reply (and its
+        # ``_release`` resumption) — the request identities must be built under
+        # the FINAL profile of the generation, never the pre-replacement one.
+        # ARMED BEFORE THE LAUNCH: a reply delivered during ``_pool_start`` (a
+        # synchronous pool, the documented double) released and resumed while
+        # this marker was still ``None``, and the marker written afterwards was
+        # never cleared — every later settle of that generation then deferred
+        # forever and the rank was lost.
+        try:
+            self._profile_settle_pending_gen = gen
+        except Exception:
+            pass
         try:
             self._pool_start(worker, None)
         except Exception:
             logger.debug("metric profile worker launch failed", exc_info=True)
             _release(False)  # never strand the gate in flight
             return
-        # P5: from here the settle's AI/Jev tails wait for this reply (and its
-        # ``_release`` resumption) — the request identities must be built under
-        # the FINAL profile of the generation, never the pre-replacement one.
-        try:
-            self._profile_settle_pending_gen = gen
-        except Exception:
-            pass
         _ai_debug("metric profile: select scheduled (items=%d gen=%s)", len(items), gen)
 
     def _resume_settle_after_profile(self, gen: int) -> None:
@@ -1170,6 +1175,13 @@ class GalleryController:
         fault, or stale drop). Idempotent per generation and fail-open: a
         folder switch drops the deferred work (the new settle owns it), and a
         fault resumes under the heuristic profile already stored. Never raises.
+
+        Each tail runs on its OWN: the marker is cleared here, so nothing will
+        ever re-trigger this generation again — a single shared ``try`` meant
+        one fault in the fusion re-mark or in the analysis tail silently took
+        the rank with it (the rank is the LAST thing the settle owes, and the
+        one the user sees missing). A failing tail is now named and the rest
+        still run.
         """
         try:
             pending = self._profile_settle_pending_gen
@@ -1205,20 +1217,46 @@ class GalleryController:
                 return
         except Exception:
             pass
-        try:
-            from tabs.image_gallery.use_cases import triage_run as _triage_run
+        from tabs.image_gallery.use_cases import triage_run as _triage_run
 
-            # Same order as ``triage_run._settle_metrics_pass`` — only now the
-            # profile is final: the fusion re-mark reads the resolved axis set,
-            # then the VLM scorecards, then the Jev rank.
-            self._apply_fusion_ranks(getattr(self.state, "series", None))
-            _triage_run._run_ai_on_settle(self)
-            _triage_run._run_jev_on_settle(self)
-        except Exception:
-            logger.debug("settle tail resume after profile failed", exc_info=True)
+        # Same order as ``triage_run._settle_metrics_pass`` — only now the
+        # profile is final: the fusion re-mark reads the resolved axis set,
+        # then the VLM scorecards, then the Jev rank.
+        GalleryController._run_settle_tail(
+            self,
+            "fusion",
+            gen,
+            lambda: self._apply_fusion_ranks(getattr(self.state, "series", None)),
+        )
+        GalleryController._run_settle_tail(
+            self, "analysis", gen, lambda: _triage_run._run_ai_on_settle(self)
+        )
+        GalleryController._run_settle_tail(
+            self, "rank", gen, lambda: _triage_run._run_jev_on_settle(self)
+        )
         # The deferred tails just ran: re-evaluate the phase (the analyze/rank
         # facts they set are what the held "done" waits for).
         _phase_recheck(self)
+
+    @staticmethod
+    def _run_settle_tail(owner, name: str, gen: int, run) -> bool:
+        """One deferred settle tail, isolated from its siblings (never raises).
+
+        The tails are one prompt to the user ("the AI read and the order"), but
+        they are independent facts: the scorecards can fail and the rank of the
+        scorecards that DID land is still owed. Returns True when it ran clean.
+        """
+        try:
+            run()
+            return True
+        except Exception:
+            _ai_debug(
+                "settle tail failed: %s (gen=%s) — the remaining tails still run",
+                name,
+                gen,
+            )
+            logger.debug("settle tail %s failed", name, exc_info=True)
+            return False
 
     def _mark_profile_consumed(self) -> None:
         """Freeze this folder generation's profile once an AI call was built (P5).
@@ -2095,6 +2133,24 @@ class GalleryController:
         except Exception:
             logger.debug("AI profile read failed for the Jev vector", exc_info=True)
             ai_profile = None
+        if not ai_profile:
+            # No judge answer for this generation. The vector builder then falls
+            # back to the MODE MAPPING — the local backend's axis names — and
+            # reads them in the AI domain, so the rank is decided on a set the
+            # judge never named (free-axes W4 closed this door for the prompt,
+            # the dots and the pairwise payload; this pass is the remaining one
+            # and the fallback is kept only for the many legacy doubles that
+            # carry no ``ai_profile`` slot at all). NAME it in the plain log, not
+            # only in the ``[ai]`` trace: live 2026-10-27 the folder's rank
+            # simply did not appear and log.txt had nothing to say about it.
+            _ai_debug(
+                "jev ranks: no AI profile for this generation (axes=-) — the "
+                "vector falls back to the mode mapping, not the judge's axis set"
+            )
+            logger.debug(
+                "[gallery] jev ranks: no AI profile for this generation (axes=-) "
+                "— ranking on the mode mapping, not the judge's axis set"
+            )
         try:
             vis = getattr(self.widget, "visible_paths", None)
             visible = vis() if callable(vis) else None
@@ -2134,18 +2190,47 @@ class GalleryController:
                     "jev rank partial: %d/%d scored (%s) — series not ranked",
                     scored, total, why,
                 )
+                # Plain-level twin: a refused rank is a LOSS the user sees (no
+                # order on the cards), so it must be readable in log.txt without
+                # the ``IMGSLI_AI_DEBUG`` gate — the live 2026-10-27 run left no
+                # trace of the missing rank at the default level at all.
+                logger.debug(
+                    "[gallery] jev rank partial: %d/%d scored (%s) — series not "
+                    "ranked (axes=%s)",
+                    scored,
+                    total,
+                    why,
+                    GalleryController._jev_profile_axes(ai_profile),
+                )
                 continue
             if len(ready) >= self._AI_VISIBLE_CAP:
                 break
             # The target trace line of the plan: a rank is dispatched on a
             # COMPLETE matrix (every member carries a reading), one per series.
-            _ai_debug("jev rank complete=%d/%d (profile=%s)", scored, total,
-                      getattr(ai_profile, "source", "") or "heuristic")
+            # The axis set is NAMED: a profile the judge filled with its own
+            # free axes has ``axis_ids=-``, so "profile=vlm" alone could not
+            # tell the six judged names from an empty set (live 2026-10-27).
+            _ai_debug(
+                "jev rank complete=%d/%d (profile=%s axes=%s)",
+                scored,
+                total,
+                getattr(ai_profile, "source", "") or "heuristic",
+                GalleryController._jev_profile_axes(ai_profile),
+            )
             ready.append((members, vector))
         if not ready:
             _ai_debug(
                 "jev ranks: series=%d scheduled=0 (too-small=%d not-visible=%d partial=%d)",
                 len(groups), small, hidden, partial,
+            )
+            logger.debug(
+                "[gallery] jev ranks: series=%d scheduled=0 (too-small=%d "
+                "not-visible=%d partial=%d axes=%s)",
+                len(groups),
+                small,
+                hidden,
+                partial,
+                GalleryController._jev_profile_axes(ai_profile),
             )
             _tail_decided()
             return
@@ -2174,6 +2259,29 @@ class GalleryController:
         _tail_decided()
 
     # -- Jev batch plumbing (S2/J1) -----------------------------------------
+
+    @staticmethod
+    def _jev_profile_axes(profile) -> str:
+        """The axis set the Jev vector will carry, as one log token (never raises).
+
+        Registry ids then the judge's own names, ``-`` for an empty/absent
+        profile. A judge-filled profile has ``axis_ids=()``, so the old
+        ``axes=-`` rendering described a SIX-axis run as empty — the one fact
+        that made the live 2026-10-27 loss unreadable. Log only.
+        """
+        names: list[str] = []
+        try:
+            names = [str(a) for a in (getattr(profile, "axis_ids", ()) or ())]
+        except Exception:
+            names = []
+        try:
+            names += [
+                str(getattr(entry, "name", "") or "")
+                for entry in (getattr(profile, "axis_entries", ()) or ())
+            ]
+        except Exception:
+            pass
+        return ",".join(a for a in names if a) or "-"
 
     @staticmethod
     def _jev_measured_vector(members, mode, domain: str = "algorithms", *, profile=None) -> dict:

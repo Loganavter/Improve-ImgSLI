@@ -151,7 +151,14 @@ def test_clear_defeats_the_skip(tmp_path, caches) -> None:
     # The fingerprint gate would otherwise skip the whole re-measure.
     assert owner._last_analysis_fingerprint is None
     assert owner.state.algorithms_profile is None
-    assert owner.state.ai_profile is None
+    # The JUDGE's axis set is NOT a measurement (owner rule 2026-10-27: «ручная
+    # очистка кеша — это сброс РЕЗУЛЬТАТОВ, а не оси»): it survives the clear, or
+    # the next Analyze refuses "no_profile" on a folder whose judge named its
+    # axes a minute earlier (live 04:00:30, twice). The on-disk pin is still
+    # dropped below, so nothing stale can be re-served.
+    assert owner.state.ai_profile is not None
+    assert owner.state.ai_profile.source == "vlm"
+    assert owner.state.ai_profile.axis_ids == ("ssim",)
     assert owner.cleared == 1
     assert list(pins.glob("profile_*.json")) == []
     assert list(ai_dir.glob("*.json")) == []

@@ -19,7 +19,10 @@ place:
 * the on-disk AI scorecards (``services.ai_cache``) and the VLM metric-profile
   pins (``services.profile_cache``);
 * the stored metric profile (``owner.clear_metric_profile``) and the Stage-2
-  fingerprint.
+  fingerprint. The AI slot's JUDGE answer (the axis set) is the one exception:
+  it is re-installed straight after the clear (``_keep_ai_axis_set``), because
+  a reset drops results, not the axes — otherwise the next Analyze refuses
+  "no_profile" on a folder whose judge named its axes a minute earlier.
 
 The cleared item state includes the **metric-derived rank state** (``rank`` /
 ``rank_source`` / ``crown_rank`` / ``is_best`` / badge triple), not just the
@@ -308,6 +311,67 @@ def _gallery_backends() -> tuple:
         return ()
 
 
+def _ai_axis_set_snapshot(owner):
+    """The AI slot's judge answer, or ``None`` (never raises).
+
+    Read BEFORE the clear: the judge's axis set is a JUDGMENT about which
+    dimensions matter, not one of the measurements a reset drops.
+    """
+    try:
+        from tabs.image_gallery.services.metric_profile import (
+            DOMAIN_AI,
+            profile_for_domain,
+        )
+
+        profile = profile_for_domain(_state_of(owner), DOMAIN_AI)
+    except Exception:
+        logger.debug("metrics reset: AI axis set snapshot failed", exc_info=True)
+        return None
+    return profile if profile else None
+
+
+def _keep_ai_axis_set(owner, profile) -> None:
+    """Re-install *profile* into the AI slot after a reset cleared the slot.
+
+    Owner rule 2026-10-27: «ручная очистка кеша — это сброс РЕЗУЛЬТАТОВ, а не
+    оси». The live consequence of dropping it: 04:00:29 reset → 04:00:30 and
+    04:00:37 ``analyze refused: no_profile``, twice, on a folder whose judge had
+    named six axes seconds earlier. ``analyze`` needs the axis names to build a
+    scorecard at all, so the reset made the AI backend unusable until something
+    re-selected a profile — while nothing in the reset path asks the judge again
+    (by design: the reset zeroes, it does not re-run).
+
+    The MEASUREMENTS still go (scorecards, metrics, ranks, pins — including the
+    on-disk profile pins, so nothing stale is re-served); only the in-memory
+    answer of "which axes does this folder's judge read" survives, and the
+    selector guards are re-opened, so a later settle may still replace it.
+    Never raises.
+    """
+    if profile is None:
+        return
+    try:
+        from tabs.image_gallery.backends.composition import backend
+        from tabs.image_gallery.services.metric_profile import DOMAIN_AI
+
+        backend(DOMAIN_AI).install(_state_of(owner), profile)
+    except Exception:
+        logger.debug("metrics reset: AI axis set restore failed", exc_info=True)
+        return
+    try:
+        axes = list(getattr(profile, "axis_ids", ()) or ()) + [
+            str(getattr(entry, "name", "") or "")
+            for entry in (getattr(profile, "axis_entries", ()) or ())
+        ]
+        logger.debug(
+            "[gallery] metrics reset: the judge's axis set kept (source=%s axes=%s) "
+            "— a reset clears results, not the axes",
+            getattr(profile, "source", "") or "?",
+            ",".join(a for a in axes if a) or "-",
+        )
+    except Exception:
+        pass
+
+
 def clear_metrics_caches(owner, *, paths=None) -> dict:
     """Clear the measured-metrics caches (in-memory + disk). Never raises.
 
@@ -351,6 +415,10 @@ def clear_metrics_caches(owner, *, paths=None) -> dict:
     # consult (settled/phase/stage/judge/queue) no longer describe this world.
     from tabs.image_gallery.use_cases import reset_barrier as _reset_barrier
 
+    # Read BEFORE the clear: the judge's axis set survives this reset (see
+    # ``_keep_ai_axis_set``) — it is the one thing here that is a JUDGMENT
+    # rather than a measurement.
+    kept_ai_profile = _ai_axis_set_snapshot(owner)
     _reset_barrier.bump_delivery_epochs(owner)
     _reset_barrier.clear_delivery_ledgers(owner)
     items = _items_of(owner)
@@ -431,22 +499,32 @@ def clear_metrics_caches(owner, *, paths=None) -> dict:
         pass
 
     # Stored profile slots + the Stage-2 skip gate. The slots hold MetricProfiles,
-    # not caches: the adapters' generations were already dropped above, so a
-    # profile left in ``state`` would be a slot the owning adapter refuses.
+    # not caches, and a profile DERIVED from the dropped measurements (the
+    # Algorithms heuristic) must not survive them — it is re-derived a line later
+    # by the owning pipeline. The AI slot is re-installed from the snapshot taken
+    # above: its axis set is the judge's answer, not a measurement.
     try:
         clear = getattr(owner, "clear_metric_profile", None)
         if callable(clear):
             clear()
     except Exception:
         logger.debug("metrics reset: clear_metric_profile failed", exc_info=True)
+    # ...and the judge's AXES come straight back: the measurements are what the
+    # user asked to drop, not the answer to "which axes does this folder's
+    # judge read". Without it the next Analyze refused "no_profile" (live
+    # 04:00:30, right after a manual reset) although nothing was wrong with the
+    # AI; with it, the re-entered pass builds scorecards for those same axes.
+    _keep_ai_axis_set(owner, kept_ai_profile)
     try:
         owner._last_analysis_fingerprint = None
     except Exception:
         logger.debug("metrics reset: fingerprint clear failed", exc_info=True)
 
-    # Visible reset LAST: the profile is already dropped, so the refreshed
-    # dots use the fresh (mode-derived) axis set, and the cards show the
-    # unranked/neutral state the re-entered pass starts from.
+    # Visible reset LAST: the Algorithms slot holds the freshly (mode-derived)
+    # offer while the AI slot keeps the judge's own axis set, so the refreshed
+    # dots and Quick Look rows read the axis set each backend actually measures,
+    # and the cards show the unranked/neutral state the re-entered pass starts
+    # from.
     _refresh_cleared_view(owner, targets)
     try:
         from tabs.image_gallery.debug import gallery_debug as _dbg
