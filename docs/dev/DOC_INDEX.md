@@ -112,6 +112,8 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
   Referenced by: [docs/dev/TODO.md](TODO.md), [docs/dev/rendering/contracts.md](rendering/contracts.md), [docs/dev/rendering/index.md](rendering/index.md), [docs/dev/rendering/package-structure.md](rendering/package-structure.md), [docs/dev/rendering/zoom-pan.md](rendering/zoom-pan.md)
 - **[Display image pipeline: preview tier → unify → pyramid → tiled render](rendering/display-image-pipeline.md)** — `docs/dev/rendering/display-image-pipeline.md`
   Referenced by: [docs/dev/README.md](README.md), [docs/dev/rendering/TILED_RENDERING_DESIGN.md](rendering/TILED_RENDERING_DESIGN.md), [docs/dev/rendering/index.md](rendering/index.md), [docs/dev/rendering/tile-rendering-system.md](rendering/tile-rendering-system.md)
+- **[DPR / orientation failure modes](rendering/dpr-failure-modes.md)** — `docs/dev/rendering/dpr-failure-modes.md`
+  Referenced by: [docs/dev/rendering/index.md](rendering/index.md)
 - **[Feature Decomposition Playbook](rendering/feature-decomposition-playbook.md)** — `docs/dev/rendering/feature-decomposition-playbook.md`
   Referenced by: [docs/dev/rendering/index.md](rendering/index.md)
 - **[Canvas & Rendering Documentation](rendering/index.md)** — `docs/dev/rendering/index.md`
