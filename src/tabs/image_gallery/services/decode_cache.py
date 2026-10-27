@@ -30,6 +30,15 @@ EXIF orientation is applied ONCE here (``ImageOps.exif_transpose``), so a
 rotated photo is measured in display orientation. ``exif_present`` is
 recorded from the RAW frame BEFORE the transpose moves/strips the
 orientation tag, keeping ``mode.exif_for``'s pre-change answer.
+
+Backend: ``PIL.Image.open`` is the primary decoder, but it is not the only one
+the app installs. A format with no Pillow plugin (JXL in most builds) falls
+back to ``progressive_loader.load_bounded_frame`` — the preview tier's own
+libvips/imagecodecs decoder — so triage measures real pixels instead of
+scoring an accepted file as corrupt (2026-10-28: every JXL got a zero hash, a
+zero embedding, no sharpness and "no EXIF"). A file no backend can decode
+still yields ``None``, and ``exif_present`` yields ``None`` for the fallback
+path too: EXIF was never parsed there, so ``False`` would be a made-up answer.
 """
 
 from __future__ import annotations
@@ -45,7 +54,7 @@ from PIL import Image, ImageOps
 _CACHE_LIMIT = 4
 
 _LOCK = threading.RLock()
-_CACHE: "OrderedDict[tuple[str, int, int], tuple[Any, bool]]" = OrderedDict()
+_CACHE: "OrderedDict[tuple[str, int, int], tuple[Any, bool | None]]" = OrderedDict()
 
 
 def _key(path) -> tuple[str, int, int] | None:
@@ -81,8 +90,29 @@ def _raw_has_exif(im) -> bool:
     return False
 
 
-def _load(path) -> tuple[Any, bool] | None:
-    """Decode *path* once: orientation-applied frame + raw EXIF bit."""
+def _fallback_frame(path):
+    """Bounded PIL frame for a format Pillow has no plugin for (e.g. JXL).
+
+    Reuses the preview tier's decoder (libvips ``thumbnail``, then imagecodecs
+    for JXL) rather than adding a third one: the numbers the triage reports
+    then describe the pixels the canvas shows. ``None`` when no backend can
+    decode the file.
+    """
+    try:
+        from shared.image_processing.bounded_frame import load_bounded_frame
+
+        return load_bounded_frame(str(path))
+    except Exception:
+        return None
+
+
+def _load(path) -> tuple[Any, bool | None] | None:
+    """Decode *path* once: orientation-applied frame + raw EXIF bit.
+
+    The EXIF bit is ``None`` (unknown) rather than ``False`` on the fallback
+    path: the frame came from a decoder that never parsed the container, so
+    "no EXIF found" would be a claim nobody verified.
+    """
     try:
         with Image.open(path) as raw:
             exif = _raw_has_exif(raw)
@@ -95,7 +125,11 @@ def _load(path) -> tuple[Any, bool] | None:
             image.load()
             return (image, exif)
     except Exception:
+        pass
+    frame = _fallback_frame(path)
+    if frame is None:
         return None
+    return (frame, None)
 
 
 def _store(key: tuple[str, int, int], image, exif: bool) -> None:
@@ -109,8 +143,11 @@ def _store(key: tuple[str, int, int], image, exif: bool) -> None:
 def decode_image(path):
     """Shared decoded frame for *path* (read-only — callers never mutate it).
 
-    Returns None when the file is unreadable; callers keep their existing
-    fail-closed values (0 hash / zero vector / None sharpness / False EXIF).
+    ``None`` means NO backend could decode the file (Pillow, then the preview
+    tier's libvips/imagecodecs path) — the "not measured" signal. Callers keep
+    their existing fail-closed values for it (0 hash / zero vector / None
+    sharpness / None EXIF), and must not present those as measurements: a
+    sentinel is not a reading.
     """
     key = _key(path)
     if key is not None:
@@ -129,7 +166,12 @@ def decode_image(path):
 
 
 def exif_present(path) -> bool | None:
-    """Cached EXIF-presence bit for *path* from the SAME decode (None = unreadable)."""
+    """EXIF-presence bit from the SAME decode (None = not measured).
+
+    None covers both "the file could not be decoded" and "it decoded through a
+    backend that never parsed the container" (JXL fallback): either way the
+    app knows nothing about this file's EXIF and must say so, not ``False``.
+    """
     key = _key(path)
     if key is not None:
         with _LOCK:
