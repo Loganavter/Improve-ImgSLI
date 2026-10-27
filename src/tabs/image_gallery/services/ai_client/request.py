@@ -121,6 +121,22 @@ def reset_wire_encode_gate() -> None:
     _WIRE_GATE.reset()
 
 
+#: Suffix -> MIME **subtype** for the one table every upload path reads.
+#: Values are bare subtypes because :func:`build_request_from_bytes` composes
+#: ``data:image/<subtype>;base64,`` — a value carrying ``image/`` itself would
+#: produce an unparseable ``data:image/image/...`` URL, and a value that names
+#: the wrong format makes the endpoint reject or misread the bytes (the reason
+#: ``.jxl`` must not be labelled ``png``).
+#:
+#: Coverage is the ``shared/image_extensions`` canon: every accepted suffix has
+#: an entry here, and ``tests/contracts/test_accepted_formats_match_decoders.py``
+#: fails on a missing or malformed one, so :func:`mime_for_path`'s ``png``
+#: fallback is unreachable from accepted input. Unregistered types use the
+#: ``x-`` convention that VLM endpoints treat as opaque image bytes; only
+#: ``.ico``/``.cur`` deliberately pick ``x-icon`` over the IANA-registered
+#: ``vnd.microsoft.icon`` -- both are equally unrecognised as *content* by a
+#: model, and ``x-icon`` is the form providers, browsers and ``file(1)`` agree
+#: on, so one spelling is better than two.
 _EXT_TO_MIME = {
     ".png": "png",
     ".jpg": "jpeg",
@@ -129,6 +145,55 @@ _EXT_TO_MIME = {
     ".tiff": "tiff",
     ".tif": "tiff",
     ".webp": "webp",
+    ".jxl": "jxl",
+    ".avif": "avif",
+    # AVIF image sequence: same codec, the container only adds frames.
+    ".avifs": "avif",
+    ".qoi": "qoi",
+    ".tga": "x-tga",
+    ".dds": "x-dds",
+    ".pcx": "x-pcx",
+    ".sgi": "x-sgi",
+    # ImageMagick MIFF ("IM" in Pillow's registry).
+    ".im": "x-miff",
+    # A DIB is a BMP without the 14-byte file header.
+    ".dib": "bmp",
+    ".ico": "x-icon",
+    ".cur": "x-icon",
+    ".icns": "x-icns",
+    # Netpbm family: one registered type covers ppm/pgm/pbm/pnm.
+    ".ppm": "x-portable-pixmap",
+    ".pgm": "x-portable-pixmap",
+    ".pbm": "x-portable-pixmap",
+    ".pnm": "x-portable-pixmap",
+    # JPEG 2000 family (jp2 container and the raw codestream suffixes).
+    ".jp2": "jp2",
+    ".j2k": "jp2",
+    ".jpx": "jp2",
+    ".j2c": "jp2",
+    ".jpc": "jp2",
+    ".jpf": "jp2",
+    ".ras": "x-ras",
+    ".msp": "x-msp",
+    ".xpm": "x-xpixmap",
+    ".xbm": "x-xbitmap",
+    ".blp": "x-blp",
+    ".pxr": "x-pxr",
+    ".gbr": "x-gbr",
+    # SGI raster variants (bw/rgb/rgba differ only in channel depth).
+    ".bw": "x-rgb",
+    ".rgb": "x-rgb",
+    ".rgba": "x-rgb",
+    # OpenGL FTEX textures (streamed .ftc / mipmapped .ftu).
+    ".ftc": "x-ftex",
+    ".ftu": "x-ftex",
+    ".gif": "gif",
+    ".apng": "apng",
+    ".mpo": "mpo",
+    ".fli": "x-flic",
+    ".flc": "x-flic",
+    ".dcx": "x-dcx",
+    ".psd": "vnd.adobe.photoshop",
 }
 
 # OpenRouter-only fallback chain (tried in order when the primary model's
@@ -171,11 +236,16 @@ def _analyze_budget(effort: str, configured: int) -> int:
 
 
 def mime_for_path(image_path) -> str:
-    """Content type of *image_path* by suffix (``png`` when unknown).
+    """Content type of *image_path* by suffix.
 
-    Suffix parsing only — no filesystem access. Exposed so a producer that
-    already holds the bytes (``AnalysisContext.image_bytes``) names the same
-    mime as the file-path path instead of growing a second suffix table.
+    Returns a MIME **subtype** (the payload composes ``data:image/<subtype>``),
+    parsed from the suffix only — no filesystem access. Exposed so a producer
+    that already holds the bytes (``AnalysisContext.image_bytes``) names the
+    same mime as the file-path path instead of growing a second suffix table.
+
+    Every suffix in the ``shared/image_extensions`` canon has an entry (the
+    contract gate enforces it), so the ``png`` fallback only covers paths
+    outside the canon — it is not a silent mislabel of an accepted format.
     """
     return _EXT_TO_MIME.get(Path(image_path).suffix.lower(), "png")
 

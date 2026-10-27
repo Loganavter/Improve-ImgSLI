@@ -252,6 +252,16 @@ ALLOWED_DEEP_TAB_IMPORTS: dict[str, str] = {
         "contracts tier because the interface is consumed by A2-A4 across the tab, "
         "not by one tab feature's own behavior"
     ),
+    "tests/contracts/test_accepted_formats_match_decoders.py": (
+        "host-level format canon ↔ its content-type consumer: shared/"
+        "image_extensions is the host-wide admission set (DnD, dialogs, folder "
+        "scan, every load path), and the gallery's _EXT_TO_MIME is the one table "
+        "that can silently mislabel an accepted file on the wire (.jxl shipped as "
+        "image/png). The measured claim is the CANON's coverage, not gallery "
+        "behavior: a suffix added to the canon without a table entry is the "
+        "defect, and a gallery-local test could not attribute that to the canon "
+        "that let the format in"
+    ),
 }
 
 

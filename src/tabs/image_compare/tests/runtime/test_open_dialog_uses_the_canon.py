@@ -1,12 +1,17 @@
 """IC open-image dialog must speak the DnD canon instead of its own suffix list.
 
 The dialog entry (``presenters/toolbar/actions.py``) used to assemble its own
-glob list — which offered ``.gif`` — and handed whatever the dialog returned to
-``load_images_from_paths`` with no suffix check at all. ``.gif`` is absent from
-``shared.image_extensions.ACCEPTED_IMAGE_EXTENSIONS`` (the viewer has no
-animation support), so one and the same file was accepted by the dialog and
-bounced by DnD/chrome/carry — the exact drift class closed for ``.jxl`` in the
-2026-08-25 C9 cross-module review, reappearing in the second entry point.
+glob list — which offered ``.gif``, then outside the canon — and handed whatever
+the dialog returned to ``load_images_from_paths`` with no suffix check at all.
+One and the same file was accepted by the dialog and bounced by
+DnD/chrome/carry — the exact drift class closed for ``.jxl`` in the 2026-08-25
+C9 cross-module review, reappearing in the second entry point.
+
+The refused example is :data:`REFUSED_SUFFIX`, a group-C suffix: ``.gif`` and
+its relatives became ACCEPTED first-frame formats in the 2026-10-28 format
+expansion, so they no longer illustrate a refusal. The rule under test is
+unchanged — a suffix the canon refuses must be refused by the dialog too, and
+the refusal must be an error event rather than a load attempt.
 
 Two halves are pinned here, both against the canon rather than against the
 source text:
@@ -40,10 +45,17 @@ from shared.image_extensions import (
     is_loadable_image_path,
 )
 
+#: What a refusal looks like now: a group-C format (``REJECTED_SUFFIXES`` in
+#: ``shared/image_extensions``) the "All files" section can still hand back.
+#: It is a PDF rather than the original ``.gif`` because sequence formats are
+#: admitted as first-frame images since the 2026-10-28 format expansion.
+REFUSED_SUFFIX = ".pdf"
+REFUSED_NAME = f"probe{REFUSED_SUFFIX}"
+
 # Every accepted suffix plus the two shapes the old hand-built list got wrong:
-# ``.gif`` was offered although no other entry accepts it, ``.txt`` is what the
-# "All files" section can still hand back.
-SUFFIX_CASES = sorted(ACCEPTED_IMAGE_EXTENSIONS) + [".gif", ".txt"]
+# a refused format offered anyway, and ``.txt``, which the "All files" section
+# can still hand back.
+SUFFIX_CASES = sorted(ACCEPTED_IMAGE_EXTENSIONS) + [REFUSED_SUFFIX, ".txt"]
 
 LANGUAGES = ("en", "ru", "zh", "pt_BR")
 
@@ -145,7 +157,7 @@ def test_dialog_filter_is_the_canon_filter(monkeypatch):
 
     assert seen["filters"] == build_image_dialog_filter()
     # The defect itself: the dialog offered a suffix no other entry takes.
-    assert ".gif" not in seen["filters"]
+    assert REFUSED_SUFFIX not in seen["filters"]
 
 
 @pytest.mark.parametrize("language", LANGUAGES)
@@ -159,7 +171,7 @@ def test_dialog_filter_image_section_is_canon_in_every_language(
     _open_dialog(monkeypatch, _presenter(language=language))
 
     assert seen["filters"].split(";;")[0] == canon_images
-    assert ".gif" not in seen["filters"]
+    assert REFUSED_SUFFIX not in seen["filters"]
 
 
 # ---------------------------------------------------------------------------
@@ -185,18 +197,19 @@ def test_dialog_verdict_matches_the_loadable_predicate(suffix, tmp_path, monkeyp
 # ---------------------------------------------------------------------------
 
 
-def test_gif_through_the_dialog_never_reaches_the_loader(tmp_path, monkeypatch):
-    gif = _probe(tmp_path, ".gif")
+def test_a_group_c_pick_never_reaches_the_loader(tmp_path, monkeypatch):
+    """Property, not example: a suffix the canon refuses is refused here too."""
+    refused = _probe(tmp_path, REFUSED_SUFFIX)
     sessions = _Sessions()
     bus = _Signal()
-    _patch_dialog(monkeypatch, [str(gif)])
+    _patch_dialog(monkeypatch, [str(refused)])
 
     deferred = _open_dialog(monkeypatch, _presenter(sessions=sessions, bus=bus))
 
     assert sessions.loads == []  # never handed to load_images_from_paths
     assert deferred == []  # not even scheduled for the deferred load
     assert len(bus.events) == 1
-    assert "probe.gif" in bus.events[0].error
+    assert REFUSED_NAME in bus.events[0].error
 
 
 def test_txt_through_the_dialog_never_reaches_the_loader(tmp_path, monkeypatch):
@@ -230,14 +243,14 @@ def test_mixed_selection_loads_the_valid_files_and_reports_the_dropped(
     """Multiple selection survives: valid files load, rejects are named."""
     png = _probe(tmp_path, ".png")
     jpg = _probe(tmp_path, ".jpg")
-    gif = _probe(tmp_path, ".gif")
+    refused = _probe(tmp_path, REFUSED_SUFFIX)
     sessions = _Sessions()
     bus = _Signal()
-    _patch_dialog(monkeypatch, [str(png), str(gif), str(jpg)])
+    _patch_dialog(monkeypatch, [str(png), str(refused), str(jpg)])
 
     _open_dialog(monkeypatch, _presenter(sessions=sessions, bus=bus))
 
     assert sessions.loads == [([str(png), str(jpg)], 1)]
     assert len(bus.events) == 1
-    assert "probe.gif" in bus.events[0].error
+    assert REFUSED_NAME in bus.events[0].error
     assert "probe.png" not in bus.events[0].error
