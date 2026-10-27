@@ -1,9 +1,12 @@
-"""Shared export encoding tail — single source for B4.
+"""Shared export encoding tail — format/ext normalization and save kwargs.
 
 Unifies format/ext normalization, alpha-flattening, ``save_kwargs`` defaults,
-and the ``SAVE_CANCELED_MESSAGE`` magic string across both tabs' export
-services (``src/tabs/image_compare/services/image_export/service.py:212-343`` and
-``multi_compare/services/image_export.py:34-85``).
+and the ``SAVE_CANCELED_MESSAGE`` magic string across both comparison tabs'
+export services.
+
+Which formats are writable at all, which suffixes name them, and the alpha set
+live one level down in ``shared.image_processing.format_capability`` (that
+module also owns the actual writer); re-exported here for the existing imports.
 
 Import via ``from shared.image_processing.export_encoding import ...``.
 """
@@ -13,6 +16,10 @@ from __future__ import annotations
 from PIL import Image
 
 from shared.image_processing import pil_save as _pil_save_module
+from shared.image_processing.format_capability import (
+    formats_with_alpha,
+    suffix_for_format,
+)
 from shared.image_processing.pil_save import SAVE_CANCELED_MESSAGE
 
 # Re-export for single-import parity checks
@@ -25,8 +32,6 @@ __all__ = [
     "is_cancel_error",
 ]
 
-_FORMATS_WITH_ALPHA = frozenset({"PNG", "TIFF", "WEBP", "JXL"})
-
 
 def normalize_format(fmt: str | None) -> str:
     """Upper-case ``fmt`` with ``JPG`` → ``JPEG`` normalization."""
@@ -37,9 +42,8 @@ def normalize_format(fmt: str | None) -> str:
 
 
 def resolve_extension(pil_format: str) -> str:
-    """``.jpg`` for JPEG, ``.ext`` lower-cased otherwise."""
-    lower = pil_format.lower().replace("jpeg", "jpg")
-    return f".{lower}"
+    """``.jpg`` for JPEG, the canonical suffix otherwise (shared definition)."""
+    return suffix_for_format(pil_format)
 
 
 def flatten_alpha_if_needed(
@@ -50,8 +54,9 @@ def flatten_alpha_if_needed(
     """Flatten RGBA → RGB when *image_format* lacks alpha support."""
     if pil_image.mode != "RGBA":
         return pil_image
-    # BMP/JPEG never support alpha; others delegate to _FORMATS_WITH_ALPHA
-    if image_format in _FORMATS_WITH_ALPHA:
+    # BMP/JPEG never support alpha; the rest is decided by the single
+    # formats_with_alpha() definition in shared.image_processing.format_capability.
+    if image_format in formats_with_alpha():
         return pil_image
     # Treat BMP as non-alpha as well (caller may pass "BMP")
     if image_format in {"JPEG", "BMP"}:
@@ -73,21 +78,19 @@ def build_save_kwargs(
     png_compress_level: int = 9,
     png_optimize: bool = True,
 ) -> dict:
-    """Return PIL ``save_kwargs`` for *image_format*."""
+    """Return PIL ``save_kwargs`` for *image_format*.
+
+    ``quality`` is carried for JXL too: the shared writer translates it into
+    libjxl's lossless/distance pair, so both tabs pass the same knob.
+    """
     fmt = normalize_format(image_format)
     kwargs: dict = {}
-    if fmt in {"JPEG", "WEBP"}:
-        kwargs["quality"] = int(quality)
-    elif fmt == "JPEG":  # unreachable due to above, kept for clarity
+    if fmt in {"JPEG", "WEBP", "JXL"}:
         kwargs["quality"] = int(quality)
     if fmt == "PNG":
         kwargs["compress_level"] = int(png_compress_level)
         kwargs["optimize"] = bool(png_optimize)
-    # BMP/TIFF/JXL need no extra kwargs here; JXL handled via imagecodecs separately.
-    # Ensure JPEG also covers WEBP duplicate above: WEBP already handled.
-    # For JPEG we already set quality; for WEBP quality already set.
-    # PNG needs both; others empty.
-    # BMP explicit handling: alpha already flattened, no kwargs.
+    # BMP/TIFF need no extra kwargs; alpha is already handled by the caller.
     return kwargs
 
 

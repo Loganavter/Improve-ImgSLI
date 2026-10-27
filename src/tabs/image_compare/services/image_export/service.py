@@ -3,19 +3,16 @@ import os
 import threading
 from typing import Any, Optional
 
-import imagecodecs
-import numpy as np
 from PIL import Image
 
 from core.store import Store
 from tabs.image_compare.plugins.video_editor.services.video_export_models import VideoRenderRequest
+from shared.image_processing.format_capability import encode, formats_with_alpha
 from shared.image_processing.pil_save import (
     SAVE_CANCELED_MESSAGE,
     safe_child_path,
     sanitize_export_basename,
-    write_pil_image_cancelable,
 )
-from shared.image_processing.progressive_loader import JXL_SUPPORTED
 from shared.image_processing.resize import resize_images_processor
 from engine.cache import TargetSurfaceSpec, get_effective_export_interpolation_method
 from tabs.image_compare.services.live_snapshot import build_live_frame_snapshot
@@ -241,8 +238,7 @@ class ExportService:
         os.makedirs(output_dir, exist_ok=True)
 
         save_kwargs = {}
-        formats_with_alpha = {"PNG", "TIFF", "WEBP", "JXL"}
-        if pil_format not in formats_with_alpha and img_to_save.mode == "RGBA":
+        if pil_format not in formats_with_alpha() and img_to_save.mode == "RGBA":
             bg_color_tuple = export_options.get("background_color") or (
                 255,
                 255,
@@ -294,75 +290,28 @@ class ExportService:
             raise RuntimeError(SAVE_CANCELED_MESSAGE)
 
         try:
-            if pil_format == "JXL" and JXL_SUPPORTED:
-                logger.info(f"Attempting to save JXL image: {full_path}")
-                try:
-                    if progress_callback:
-                        progress_callback(40)
-                    img_array = np.array(img_to_save)
-                    logger.debug(f"JXL array shape: {img_array.shape}")
-
-                    quality = int(export_options.get("quality", 95))
-                    logger.debug(f"JXL quality setting: {quality}")
-
-                    # Atomic: write to tmp then replace, so os._exit mid-encode
-                    # doesn't leave a truncated file at the final path.
-                    tmp_path = full_path + ".tmp"
-                    try:
-                        if os.path.exists(tmp_path):
-                            os.remove(tmp_path)
-                    except Exception:
-                        pass
-                    if quality >= 100:
-                        logger.debug("Saving JXL in lossless mode")
-                        imagecodecs.imwrite(
-                            tmp_path,
-                            img_array,
-                            codec="jxl",
-                            lossless=True,
-                        )
-                    else:
-                        distance = max(0.1, (100 - quality) / 10.0)
-                        logger.debug(
-                            f"Saving JXL in lossy mode with distance: {distance}"
-                        )
-                        imagecodecs.imwrite(
-                            tmp_path,
-                            img_array,
-                            codec="jxl",
-                            distance=distance,
-                        )
-                    os.replace(tmp_path, full_path)
-
-                    logger.info(f"JXL image saved successfully: {full_path}")
-                except Exception as e:
-                    logger.error(f"Failed to save JXL image: {e}", exc_info=True)
-                    # Clean up the staged tmp on failure; the outer handler
-                    # removes it too, and neither may touch full_path.
-                    try:
-                        tmp_candidate = full_path + ".tmp"
-                        if os.path.exists(tmp_candidate):
-                            os.remove(tmp_candidate)
-                    except Exception:
-                        pass
-                    raise
-            else:
-                write_pil_image_cancelable(
-                    img_to_save,
-                    full_path,
-                    pil_format,
-                    save_kwargs,
-                    cancel_event=cancel_event,
-                    progress_callback=progress_callback,
-                    progress_start=25,
-                    progress_end=99,
-                )
+            # One writer for every format (shared.image_processing.
+            # format_capability.encode): Pillow for the formats it registers,
+            # imagecodecs for JXL. This tab used to carry its own JXL branch
+            # here; keeping it would be a second implementation that the other
+            # tab's save path could not reach (and did not: it crashed with
+            # KeyError 'JXL' because Pillow has no JXL plugin).
+            encode(
+                img_to_save,
+                path_or_sink=full_path,
+                image_format=pil_format,
+                save_kwargs=save_kwargs,
+                cancel_event=cancel_event,
+                progress=progress_callback,
+                progress_start=25,
+                progress_end=99,
+            )
         except Exception:
             # Only the staged tmp belongs to this attempt. full_path is
-            # published exclusively by the atomic os.replace in
-            # write_pil_image_cancelable / the JXL branch — before that it is
-            # the user's PRE-EXISTING file (a non-quick save overwrites in
-            # place), so deleting it here is data loss, not cleanup.
+            # published exclusively by the atomic os.replace inside the shared
+            # writer — before that it is the user's PRE-EXISTING file (a
+            # non-quick save overwrites in place), so deleting it here is data
+            # loss, not cleanup.
             try:
                 tmp_path = full_path + ".tmp"
                 if os.path.exists(tmp_path):

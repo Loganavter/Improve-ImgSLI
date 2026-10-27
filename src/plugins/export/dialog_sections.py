@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
 
 from plugins.export import layout_geometry as export_geo
 from plugins.export.search import ACTIONS, BACKGROUND, OUTPUT, RESOLUTION
+from shared.image_processing.format_capability import writable_formats
 from sli_ui_toolkit.managers import scaled_px
 from sli_ui_toolkit.widgets import (
     Button,
@@ -122,7 +123,12 @@ def build_format_row(dialog) -> None:
         variant=_LABEL_VARIANT,
     )
     dialog.combo_format = ComboBox()
-    for fmt in ["PNG", "JPEG", "WEBP", "BMP", "TIFF", "JXL"]:
+    # Offer only formats this stack can really write (shared.
+    # image_processing.format_capability): a format whose encoder is missing
+    # is dropped from the combo rather than failing after the user clicks OK
+    # (that is how JXL crashed the multi-compare save: offered to both tabs,
+    # Pillow-only path for both, KeyError 'JXL').
+    for fmt in writable_formats():
         dialog.combo_format.addItem(fmt)
     dialog.combo_format.currentIndexChanged.connect(
         dialog._update_controls_visity_by_format

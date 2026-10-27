@@ -30,10 +30,8 @@ from shared.image_processing.export_encoding import (
     normalize_format,
     resolve_extension,
 )
-from shared.image_processing.pil_save import (
-    next_available_path,
-    write_pil_image_cancelable,
-)
+from shared.image_processing.format_capability import encode
+from shared.image_processing.pil_save import next_available_path
 from core.log_names import APP_LOGGER_NAME
 
 logger = logging.getLogger(APP_LOGGER_NAME)
@@ -77,13 +75,17 @@ def save_composite(
     if cancel_event is not None and cancel_event.is_set():
         raise RuntimeError(SAVE_CANCELED_MESSAGE)
 
-    write_pil_image_cancelable(
+    # One writer for every format: Pillow for the formats it registers,
+    # imagecodecs for JXL. Previously this path handed "JXL" straight to
+    # Pillow, which has no JXL plugin — KeyError on save (multi compare only;
+    # the single-view tab had a private JXL branch).
+    encode(
         pil_image,
-        str(output_path),
-        image_format,
-        save_kwargs,
+        path_or_sink=str(output_path),
+        image_format=image_format,
+        save_kwargs=save_kwargs,
         cancel_event=cancel_event,
-        progress_callback=progress_callback,
+        progress=progress_callback,
         progress_start=10,
         progress_end=99,
     )
