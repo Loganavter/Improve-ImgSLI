@@ -182,6 +182,30 @@ def show_properties_dialog(path: Path, parent: Any = None) -> str:
     return type(dialog).__name__
 
 
+def _unsupported_file_hint(target) -> str:
+    """Why ``open_file`` refused *target*, in terms of the canon (not a list).
+
+    The hint used to spell eight suffixes inline. That is a fourth copy of the
+    admission list (canon, dialog filters, mime table, this string) and it went
+    stale the moment the canon grew to 49 suffixes — found live 2026-10-28, when
+    a refused .pdf was answered with "images: png, jpg, jpeg, bmp, tiff, tif,
+    webp, jxl". Derive both halves instead: the accepted count/names from
+    ``shared.image_extensions``, and — for a group-C suffix — the recorded
+    reason, so a refusal explains itself.
+    """
+    from shared.image_extensions import (
+        ACCEPTED_IMAGE_EXTENSIONS,
+        rejection_reason,
+    )
+
+    reason = rejection_reason(str(target))
+    if reason:
+        suffix = Path(str(target)).suffix or "this file"
+        return f"{suffix}: {reason} Pass an image file instead."
+    names = ", ".join(sorted(suffix.lstrip(".") for suffix in ACCEPTED_IMAGE_EXTENSIONS))
+    return f"pass an image or a video file (accepted images: {names})"
+
+
 class LiveVerbMethodsMixin:
     """``open_file`` / ``ui_press`` / ``open_properties`` / ``set_setting``.
 
@@ -219,8 +243,7 @@ class LiveVerbMethodsMixin:
         if not kind:
             raise MethodError(
                 f"unsupported file type {target.suffix or target.name!r}",
-                "pass an image or a video file "
-                "(images: png, jpg, jpeg, bmp, tiff, tif, webp, jxl)",
+                _unsupported_file_hint(target),
             )
         wanted = str(params.get("tab") or "").strip() or None
         try:
