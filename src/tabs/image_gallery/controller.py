@@ -3081,6 +3081,17 @@ class GalleryController:
         except Exception:
             pass
         self._stamp_triage_done()
+        # The rank badges were BLANKED while the tail ran: ``_refresh_ranks_visible``
+        # is called from the rank apply, and at that moment this very batch is
+        # still in flight, so it stamps ``show_rank=False``. Now that the tail is
+        # quiet the same decision flips — without this call the numbers/BEST stay
+        # invisible until some unrelated repaint (owner report 2026-10-27: the
+        # log said ``jev rank applied: items=3 source=jev`` and every card had no
+        # badge). One seam, the state is already the truth here.
+        try:
+            GalleryController._refresh_ranks_visible(self)
+        except Exception:
+            logger.debug("post-tail rank-visibility refresh failed", exc_info=True)
         try:
             GalleryController._refresh_rank_provenance(self)
         except Exception:
