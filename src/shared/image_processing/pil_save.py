@@ -34,7 +34,6 @@ RESERVED_DEVICE_STEMS: frozenset[str] = frozenset(
     | {f"COM{index}" for index in range(1, 10)}
     | {f"LPT{index}" for index in range(1, 10)}
 )
-_FORMATS_WITH_ALPHA = frozenset({"PNG", "TIFF", "WEBP", "JXL"})
 _MODE_BYTES_PER_PIXEL = {
     "1": 0.125,
     "L": 1,
@@ -345,6 +344,43 @@ class _CancelableStream:
         return self._b.fileno()
 
 
+def write_pil_image_to_sink(
+    pil_img: Image.Image,
+    sink,
+    pil_format: str,
+    save_kwargs: dict,
+    *,
+    cancel_event: Optional[threading.Event] = None,
+    progress_callback: Optional[Callable[[int], None]] = None,
+    progress_start: int = 50,
+    progress_end: int = 99,
+) -> None:
+    """Encode ``pil_img`` into an already-open binary *sink*.
+
+    The stream-level half of :func:`write_pil_image_cancelable`, factored out
+    for callers that own the target (e.g. the shared export writer writing to
+    a caller-provided file object). No atomic publication happens here — the
+    sink's owner decides what to do with a partially written stream on failure.
+    """
+    if progress_callback is not None:
+        progress_callback(progress_start)
+
+    expected_bytes = (
+        estimate_encoded_size(pil_img, pil_format, save_kwargs)
+        if progress_callback is not None
+        else 0
+    )
+    stream = _CancelableStream(
+        sink,
+        cancel_event,
+        progress_callback=progress_callback,
+        progress_start=progress_start,
+        progress_end=progress_end,
+        expected_bytes=expected_bytes,
+    )
+    pil_img.save(stream, format=pil_format, **save_kwargs)
+
+
 def write_pil_image_cancelable(
     pil_img: Image.Image,
     full_path: str,
@@ -372,12 +408,6 @@ def write_pil_image_cancelable(
     if progress_callback is not None:
         progress_callback(progress_start)
 
-    expected_bytes = (
-        estimate_encoded_size(pil_img, pil_format, save_kwargs)
-        if progress_callback is not None
-        else 0
-    )
-
     tmp_path = full_path + ".tmp"
     # If a stale tmp from a crashed previous run exists, remove it first so
     # open() below doesn't append to it.
@@ -389,15 +419,16 @@ def write_pil_image_cancelable(
 
     try:
         with open(tmp_path, "wb") as f:
-            stream = _CancelableStream(
+            write_pil_image_to_sink(
+                pil_img,
                 f,
-                cancel_event,
+                pil_format,
+                save_kwargs,
+                cancel_event=cancel_event,
                 progress_callback=progress_callback,
                 progress_start=progress_start,
                 progress_end=progress_end,
-                expected_bytes=expected_bytes,
             )
-            pil_img.save(stream, format=pil_format, **save_kwargs)
         os.replace(tmp_path, full_path)
     except Exception:
         try:

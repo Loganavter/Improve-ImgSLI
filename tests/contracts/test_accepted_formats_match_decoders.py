@@ -28,6 +28,8 @@ be caught instead of passing by accident.
 
 from __future__ import annotations
 
+from typing import Callable
+
 import pytest
 
 from shared.image_extensions import ACCEPTED_IMAGE_EXTENSIONS
@@ -38,11 +40,46 @@ from shared.image_extensions import ACCEPTED_IMAGE_EXTENSIONS
 #: this gate exists to stop; an entry is only valid for a format another
 #: decoder really reads on this machine, and the alternative backend is
 #: re-probed below.
-NON_PILLOW_ALLOWLIST: dict[str, str] = {
+def _jxl_decodes_here() -> bool:
+    """JXL has two possible backends and a build may have either one.
+
+    libvips lists ``.jxl`` only when built with libjxl; ``imagecodecs`` carries
+    its own JXL codec regardless. Measured 2026-10-28: the dev venv has
+    imagecodecs but a libvips WITHOUT the JXL loader, the system interpreter the
+    reverse - so a gate that hardcoded either backend would be red on one of the
+    two machines the app runs on.
+    """
+    if ".jxl" in vips_suffixes():
+        return True
+    # imagecodecs exposes no ``jxl`` symbol (measured: no attribute, no
+    # ``jxl_version()``) even when its codec dispatch has one, so capability has
+    # to be probed BEHAVIOURALLY. A 2x2 encode into a memory buffer costs ~10 ms
+    # once per run and proves the codec is actually loaded, which no attribute
+    # check can.
+    try:
+        import io
+
+        import imagecodecs
+        import numpy as np
+
+        buffer = io.BytesIO()
+        imagecodecs.imwrite(buffer, np.zeros((2, 2, 3), np.uint8), codec="jxl")
+        return len(buffer.getvalue()) > 0
+    except Exception:
+        return False
+
+
+#: suffix -> (why Pillow cannot read it, probe for the backend that can).
+#: SHRINK-ONLY: delete an entry the moment Pillow registers the suffix. Never
+#: add a suffix here to turn a red gate green -- that is exactly the drift this
+#: gate exists to stop; an entry is only valid for a format another decoder
+#: really reads on THIS machine, which the probe re-checks on every run.
+NON_PILLOW_ALLOWLIST: dict[str, tuple[str, Callable[[], bool]]] = {
     ".jxl": (
         "No Pillow JXL plugin in any supported build; libvips (libjxl) or "
         "imagecodecs decodes it -- see JXL_SUPPORTED in "
-        "shared/image_processing/progressive_loader.py."
+        "shared/image_processing/progressive_loader.py.",
+        _jxl_decodes_here,
     ),
 }
 
@@ -51,20 +88,19 @@ def pillow_suffixes() -> frozenset[str]:
     """Suffixes this Pillow build can actually *open* (not merely register).
 
     ``Image.registered_extensions()`` is not the oracle: it lists the
-    WRITE-ONLY ``.pdf`` (and ``.palm``) plugin, so a gate built on registration
-    alone would bless a suffix that raises ``UnidentifiedImageError`` on open.
-    The measured split (format-audit 2026-10-28): 70 registered extensions, 67
-    with a reader in ``Image.OPEN``.
+    WRITE-ONLY ``.pdf`` plugin, so a gate built on registration alone would
+    bless a suffix that raises ``UnidentifiedImageError`` on open (70
+    registered vs 67 readable on this stack, measured 2026-10-28).
     """
     from PIL import Image
 
     Image.init()
     opening = set(getattr(Image, "OPEN", ()))
-    readable: set[str] = set()
-    for ext, fmt in Image.registered_extensions().items():
-        if fmt in opening:
-            readable.add(ext.lower())
-    return frozenset(readable)
+    return frozenset(
+        ext.lower()
+        for ext, fmt in Image.registered_extensions().items()
+        if fmt in opening
+    )
 
 
 def vips_suffixes() -> frozenset[str]:
@@ -90,16 +126,17 @@ def unsupported_suffixes(suffixes) -> dict[str, str]:
     for suffix in sorted(suffixes):
         if suffix in pillow:
             continue
-        reason = NON_PILLOW_ALLOWLIST.get(suffix)
-        if reason is None:
+        entry = NON_PILLOW_ALLOWLIST.get(suffix)
+        if entry is None:
             failures[suffix] = (
-                "not registered by Pillow and not in NON_PILLOW_ALLOWLIST"
+                "not readable by Pillow and not in NON_PILLOW_ALLOWLIST"
             )
             continue
-        if suffix not in vips:
+        reason, probe = entry
+        if not probe():
             failures[suffix] = (
-                "allowlisted, but the alternative backend (libvips) does not "
-                "list this suffix either"
+                "allowlisted, but the named alternative backend does not decode "
+                f"it on this machine ({reason})"
             )
     return failures
 
@@ -124,9 +161,14 @@ def test_allowlist_entries_name_accepted_suffixes():
     )
 
 
-@pytest.mark.parametrize("suffix, reason", sorted(NON_PILLOW_ALLOWLIST.items()))
-def test_allowlist_entries_are_justified_and_shrink_only(suffix: str, reason: str):
-    """Each entry needs a real reason and must disappear once Pillow covers it."""
+@pytest.mark.parametrize("suffix, entry", sorted(NON_PILLOW_ALLOWLIST.items()))
+def test_allowlist_entries_are_justified_and_shrink_only(suffix: str, entry):
+    """Each entry needs a real reason, a live backend and a shrink-only life."""
+    reason, probe = entry
+    assert callable(probe), (
+        f"NON_PILLOW_ALLOWLIST[{suffix!r}] must carry a backend probe callable "
+        "so the claim is re-checked on every machine, not asserted once."
+    )
     assert suffix not in pillow_suffixes(), (
         f"stale NON_PILLOW_ALLOWLIST entry {suffix!r}: Pillow registers this "
         "suffix now, so the entry is no longer needed -- delete it (the list "
