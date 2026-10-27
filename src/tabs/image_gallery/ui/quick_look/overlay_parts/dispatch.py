@@ -16,34 +16,72 @@ from pathlib import Path
 from tabs.image_gallery.ui.quick_look.helpers import _set_colored_text
 
 
+def _carry_point(owner, targets, pixmap=None) -> bool:
+    """Carry an explicit point/target set — the ONE action surface, no scope read.
+
+    Used by Quick Look Compare, whose scope is the card on screen: the carry
+    must carry THAT card and must not narrow the gallery selection to it
+    (owner requirement: "a Quick Look compare does not rewrite the selection").
+    """
+    try:
+        from tabs.image_gallery.use_cases import gallery_actions
+        from tabs.image_gallery.use_cases.action_context import (
+            ORIGIN_ACTION,
+            context_for_paths,
+        )
+
+        gallery_actions.carry(
+            owner, context_for_paths(owner, targets, origin=ORIGIN_ACTION), pixmap=pixmap
+        )
+        return True
+    except Exception:
+        pass
+    try:
+        from tabs.image_gallery.use_cases import carry as _carry
+
+        return bool(_carry._dispatch_via_image_carry(list(targets), pixmap=pixmap))
+    except Exception:
+        return False
+
+
 def _on_compare(self) -> None:
     if self._current_item is None:
         return
-    # No compareRequested.emit here: the direct path below already sets
-    # selection {p} and runs carry_selected, and the only subscriber
-    # (on_quick_compare) would run carry_selected a SECOND time
-    # (double ImageCarryService.begin). on_quick_compare stays for the
+    # No compareRequested.emit here: the direct path below already carries,
+    # and the only subscriber (on_quick_compare) would run the carry a SECOND
+    # time (double ImageCarryService.begin). on_quick_compare stays for the
     # _on_multi path, which relies on it for the carry step.
+    #
+    # Scope (owner report 2026-10-27): the card on screen is the scope, and the
+    # gallery selection is NOT rewritten to it. The old body narrowed the
+    # selection to ``{p}`` first, so comparing one previewed card silently
+    # destroyed a three-card selection.
     try:
+        p = Path(getattr(self._current_item, "path", ""))
         owner = self._owner
         if owner is not None and hasattr(owner, "state"):
-            try:
-                # G3 dispatch-only: narrow to {p} via controller dispatch
-                # when available; storeless fallback mirrors via setattr.
-                p = Path(getattr(self._current_item, "path", ""))
-                setter = getattr(owner, "set_selection", None)
-                if callable(setter):
-                    setter([p])
-                else:
-                    st = owner.state
-                    if hasattr(st, "selected_paths"):
-                        setattr(st, "selected_paths", {p})
-                        if hasattr(st, "selected_order"):
-                            setattr(st, "selected_order", [p])
-            except Exception:
-                pass
-            from tabs.image_gallery.use_cases import carry as _carry
-            _carry.carry_selected(owner)
+            from tabs.image_gallery.use_cases import action_scope
+
+            scope = action_scope.resolve_scope(
+                owner, "gallery.quick_look.compare", card_path=p
+            )
+            targets = list(scope.targets) or [p]
+            selection = action_scope.selected_paths(owner)
+            pixmap = getattr(self._current_item, "thumbnail", None)
+            if not selection:
+                # Nothing to preserve: the viewed card becomes the compare
+                # scope through the ONE writer (dispatch + mirror + grid).
+                from tabs.image_gallery.use_cases import carry as _carry
+                from tabs.image_gallery.use_cases import selection as _selection
+
+                _selection.commit(owner, targets)
+                _carry.carry_selected(owner)
+            elif set(selection) == set(targets):
+                from tabs.image_gallery.use_cases import carry as _carry
+
+                _carry.carry_selected(owner)
+            else:
+                _carry_point(owner, targets, pixmap=pixmap)
     except Exception:
         pass
     # W12-A: Compare navigates away (carry flow) — dismiss the overlay.
@@ -61,44 +99,14 @@ def _on_multi(self) -> None:
         owner = self._owner
         p = Path(getattr(self._current_item, "path", ""))
         if owner is not None and hasattr(owner, "state"):
-            # G3 dispatch-only: merge-add via controller dispatch when
-            # available; storeless fallback keeps the verbatim merge.
-            setter = getattr(owner, "set_selection", None)
-            if callable(setter):
-                try:
-                    cur = list(getattr(owner.state, "selected_paths", None) or [])
-                    merged: list = []
-                    seen: set = set()
-                    for cand in list(cur) + [p]:
-                        try:
-                            key = str(cand)
-                        except Exception:
-                            continue
-                        if key not in seen:
-                            seen.add(key)
-                            merged.append(cand)
-                    setter(merged)
-                except Exception:
-                    pass
-            else:
-                st = owner.state
-                if hasattr(st, "selected_paths"):
-                    try:
-                        st.selected_paths.add(p)
-                    except Exception:
-                        try:
-                            setattr(st, "selected_paths", {p})
-                        except Exception:
-                            pass
-                    try:
-                        if hasattr(st, "selected_order") and p not in st.selected_order:
-                            st.selected_order.append(p)
-                    except Exception:
-                        pass
+            # Add-to-multi-compare is an ADDITIVE selection commit: it reads the
+            # selection through the ONE reader and writes through the ONE writer
+            # (``selection.commit`` → ``gallery_slot.set_selection``), never a
+            # bare ``state.selected_paths`` merge (rule 1/2).
             try:
-                w = getattr(owner, "widget", None) or owner
-                if hasattr(w, "_grid_view"):
-                    w._grid_view.apply_selection(getattr(owner.state, "selected_paths", {p}))
+                from tabs.image_gallery.use_cases import selection as _selection
+
+                _selection.commit(owner, [p], additive=True)
             except Exception:
                 pass
         self.compareRequested.emit(p)
@@ -121,9 +129,18 @@ def _on_reject(self) -> None:
         p = Path(getattr(self._current_item, "path", ""))
         owner = self._owner
         if owner is not None:
+            # Quick Look's scope is the card on screen (policy row
+            # ``gallery.quick_look.reject`` → card) and the application is the
+            # SAME helper the card menu calls, so the two surfaces can never
+            # disagree about the direction or the emitted rank snapshot.
+            from tabs.image_gallery.ui.card import context_actions as _ctx_actions
+            from tabs.image_gallery.use_cases import action_scope
+
+            scope = action_scope.resolve_scope(
+                owner, "gallery.quick_look.reject", card_path=p
+            )
             try:
-                from tabs.image_gallery.use_cases import triage as _triage
-                _triage.toggle_reject(owner, p)
+                _ctx_actions.apply_reject(owner, p, list(scope.targets))
             except Exception:
                 try:
                     cur = bool(getattr(self._current_item, "rejected", False))
@@ -194,9 +211,11 @@ def _refresh_triage_state(self) -> None:
 def _on_delete(self) -> None:
     """Remove the current item from the grid (file on disk stays).
 
-    Same semantics as the card menu "Remove from view"
-    (``triage.remove_from_grid``). After removal the overlay advances
-    to the next series item; the last item dismisses the overlay.
+    Same scope and the same application as the card menu "Remove from view"
+    (``gallery.quick_look.delete`` → card; ``context_actions.apply_remove``), so
+    deleting from Quick Look cannot behave differently from the menu for the
+    same card. After removal the overlay advances to the next series item; the
+    last item dismisses the overlay.
     """
     if self._current_item is None:
         return
@@ -205,9 +224,13 @@ def _on_delete(self) -> None:
         owner = self._owner
         if owner is not None:
             try:
-                from tabs.image_gallery.use_cases import triage as _triage
+                from tabs.image_gallery.ui.card import context_actions as _ctx_actions
+                from tabs.image_gallery.use_cases import action_scope
 
-                _triage.remove_from_grid(owner, p)
+                scope = action_scope.resolve_scope(
+                    owner, "gallery.quick_look.delete", card_path=p
+                )
+                _ctx_actions.apply_remove(owner, p, list(scope.targets))
             except Exception:
                 pass
         try:
@@ -240,6 +263,21 @@ def _on_set_source(self) -> None:
     try:
         p = Path(getattr(self._current_item, "path", ""))
         owner = self._owner
+        # Policy row ``gallery.quick_look.set_source`` → card: the card on
+        # screen, resolved by the ONE mechanism (no selection fallback, no
+        # first-item guess). A refused scope means there is nothing to set.
+        try:
+            from tabs.image_gallery.use_cases import action_scope
+
+            if owner is not None:
+                scope = action_scope.resolve_scope(
+                    owner, "gallery.quick_look.set_source", card_path=p
+                )
+                if scope.refused or not scope.targets:
+                    return
+                p = scope.targets[0]
+        except Exception:
+            pass
         # Already the source → the button reads "Unset": clear it and
         # return the pool to its no-source mode.
         is_src = self._source_path is not None and p == Path(self._source_path)

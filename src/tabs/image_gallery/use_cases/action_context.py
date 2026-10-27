@@ -51,11 +51,13 @@ ORIGIN_ACTION = "action"
 ORIGINS: tuple[str, ...] = (ORIGIN_MENU, ORIGIN_KEYBOARD, ORIGIN_ACTION)
 
 #: Named refusals. Actions return these instead of fabricating a scope or
-#: switching a backend (the two silent fallbacks this task removes).
-REFUSAL_EMPTY_SCOPE = "empty_scope"
+#: switching a backend (the two silent fallbacks this task removes). The scope
+#: vocabulary is owned by ``use_cases.action_scope`` (its ``Scope.refused``
+#: token IS the refusal reason) — these aliases keep one spelling.
+REFUSAL_EMPTY_SCOPE = action_scope.REFUSAL_EMPTY_SCOPE
+REFUSAL_AMBIGUOUS_SCOPE = action_scope.REFUSAL_AMBIGUOUS_SCOPE
+REFUSAL_NO_ITEMS = action_scope.REFUSAL_NO_ITEMS
 REFUSAL_NOT_CONFIGURED = "not_configured"
-REFUSAL_NO_ITEMS = "no_items"
-REFUSAL_AMBIGUOUS_SCOPE = "ambiguous_scope"
 REFUSAL_NO_HANDLER = "no_handler"
 #: The AI backend has no axis set yet (0 axes would measure nothing).
 REFUSAL_NO_PROFILE = "no_profile"
@@ -186,16 +188,27 @@ def build_context(
     origin: str,
     card_path=None,
     focused: bool = False,
+    action_id: str | None = None,
 ) -> ActionContext:
     """The ONE context builder for every gallery action.
 
-    ``card_path`` (context menu) resolves through
-    ``action_scope.resolve_targets``, which applies the file-manager rule and
-    NEVER substitutes a card for an empty scope. ``focused=True`` (keyboard) is
-    the explicit focus input; it only applies when nothing is selected. The
-    analysis parameters and backend are snapshotted from the owner once.
+    ``action_id`` selects the scope rule from ``action_scope.ACTION_SCOPE_POLICY``
+    (the ONE policy table); without it the pre-policy selection_or_card
+    precedence applies. ``card_path`` (context menu / Quick Look) and
+    ``focused=True`` (keyboard) are the only inputs, and neither ever
+    substitutes a card for an empty scope: an empty scope is a valid answer the
+    handler refuses by name.
+
+    The analysis parameters and backend are snapshotted from the owner once.
     """
-    targets = action_scope.resolve_targets(owner, card_path=card_path, focused=focused)
+    if action_id is not None:
+        targets = action_scope.resolve_scope(
+            owner, action_id, card_path=card_path, focused=focused
+        ).targets
+    else:
+        targets = action_scope.resolve_targets(
+            owner, card_path=card_path, focused=focused
+        )
     return ActionContext(
         targets=tuple(targets), origin=origin, **_analysis_parameters(owner)
     )

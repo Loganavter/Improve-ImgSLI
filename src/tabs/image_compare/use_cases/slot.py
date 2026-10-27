@@ -203,13 +203,36 @@ def load_images_from_paths(controller, file_paths: list[str], image_number: int)
             actions.append(SetUnificationInProgressAction(enabled=False))
             actions.append(SetPendingUnificationPathsAction(paths=None))
             if len(other_lst) == 0:
-                # первый файл в пустой сессии — чистим оба слота одним махом
+                # первый файл в пустой сессии — чистим оба слота одним махом.
+                # Changed-guard (sibling: display_tier_service.sync_geometry_state
+                # dispatches only when the geometry actually changed): только тот
+                # слот, который реально что-то держит. Раньше pristine-слот
+                # «чистился» всё равно, а этот no-op всё равно поднимал
+                # viewport-emit → кадр «нет источников» → image_label.clear(),
+                # который обнуляет content rect / letterbox канваса, после чего
+                # capture_letterbox_focus возвращает None и камера не
+                # переякоривается (docs/dev/rendering/zoom-pan.md).
+                # Оба списка здесь пусты, поэтому «держит» = image_state.imageN
+                # или сохранённое display name слота.
                 from core.state_management.actions import ClearImageSlotDataAction
 
-                actions.append(ClearImageSlotDataAction(1))
-                actions.append(ClearImageSlotDataAction(2))
-                actions.append(SetImageSessionImageAction(slot=1, image=None))
-                actions.append(SetImageSessionImageAction(slot=2, image=None))
+                try:
+                    _img_state = controller.store.viewport.session_data.image_state
+                except Exception:
+                    _img_state = None
+                if _img_state is None:
+                    # fake stores without a viewport keep the old shape
+                    for _slot in (1, 2):
+                        actions.append(ClearImageSlotDataAction(_slot))
+                        actions.append(SetImageSessionImageAction(slot=_slot, image=None))
+                else:
+                    for _slot in (1, 2):
+                        _slot_image = getattr(_img_state, f"image{_slot}", None)
+                        _slot_name = getattr(document, f"_last_display_name{_slot}", "") or ""
+                        if _slot_image is None and not _slot_name:
+                            continue
+                        actions.append(ClearImageSlotDataAction(_slot))
+                        actions.append(SetImageSessionImageAction(slot=_slot, image=None))
                 # дифф — либо через сервис, либо экшеном, не оба
                 if getattr(controller, "diff_service", None) is None:
                     actions.append(SetCachedDiffImageAction(image=None))

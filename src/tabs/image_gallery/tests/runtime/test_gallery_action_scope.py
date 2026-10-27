@@ -21,7 +21,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from PySide6.QtCore import QPoint
+from PySide6.QtCore import QPoint, Qt
 
 from tabs.image_gallery.use_cases import action_scope
 from core.log_names import APP_LOGGER_NAME
@@ -625,3 +625,346 @@ def test_no_reset_entry_widens_a_resolved_scope_to_the_pool() -> None:
     assert not _called_with_paths_none(
         context_actions._ctx_reset_metrics, "reset_metrics_caches"
     ), "_ctx_reset_metrics must pass the resolved targets, never None"
+
+
+# --- ONE scope for every gallery action (2026-10-27 unification) ------------
+#
+# Owner report: "выбрал 2 карточки — обработалось 100, и наоборот". Each test
+# below is RED on the pre-unification tree and pins one of the five independent
+# resolvers that used to coexist (Ctrl+A over the pool, visible∩12 for the domain
+# switch, selected[0] for B, a single card for Quick Look, pool for Run triage).
+
+
+def _gallery_item(name: str):
+    from tabs.image_gallery.models import GalleryItem
+
+    return GalleryItem(path=Path(f"/g/{name}"), mtime_ns=0)
+
+
+def _grid(owner, visible, *, laid_out: bool = True):
+    from types import SimpleNamespace
+
+    grid = SimpleNamespace(
+        visible_paths_strict=lambda: (list(visible) if laid_out else None),
+        visible_paths=lambda: list(visible),
+    )
+    owner.widget = SimpleNamespace(_grid_view=grid)
+    return owner
+
+
+def test_select_all_selects_what_the_filter_shows(monkeypatch) -> None:
+    """RED BEFORE (1): Ctrl+A put all 100 items in the selection, filter or not.
+
+    Rule 6: the selection is what is VISIBLE — the filter hides two of a
+    hundred cards, so two are selected. Pre-fix ``selection.select_all`` walked
+    ``state.items`` and selected every card of the tab.
+    """
+    from tabs.image_gallery.use_cases import selection
+
+    items = [_gallery_item("keep_alpha.png"), _gallery_item("keep_beta.png")] + [
+        _gallery_item(f"other_{i}.png") for i in range(98)
+    ]
+    owner = _grid(_owner(set(), items=items), [it.path for it in items])
+    owner.state.filter_text = "keep_"
+
+    selection.select_all(owner)
+
+    assert {p.name for p in owner.state.selected_paths} == {
+        "keep_alpha.png",
+        "keep_beta.png",
+    }
+
+
+def test_select_all_in_a_small_viewport_selects_the_viewport_only() -> None:
+    """RED BEFORE (2): Ctrl+A ignored the viewport and selected the pool."""
+    from tabs.image_gallery.use_cases import selection
+
+    items = [_gallery_item(f"img_{i}.png") for i in range(100)]
+    owner = _grid(_owner(set(), items=items), [items[0].path, items[1].path])
+
+    selection.select_all(owner)
+
+    assert {p.name for p in owner.state.selected_paths} == {"img_0.png", "img_1.png"}
+
+
+def test_domain_switch_analyzes_the_selection_not_the_viewport() -> None:
+    """RED BEFORE (3): a two-card selection, twenty visible → twelve analyzed."""
+    from tabs.image_gallery.use_cases import ai_analysis
+
+    items = [_gallery_item(f"img_{i}.png") for i in range(20)]
+    a, b = items[0].path, items[1].path
+    analyzed: list = []
+    owner = _grid(
+        _owner({a, b}, order=[a, b], items=items), [it.path for it in items]
+    )
+    owner.analyze = lambda ctx: analyzed.extend(ctx.targets)
+
+    ai_analysis._run_ai_for_visible(owner)
+
+    assert analyzed == [a, b]
+
+
+def test_domain_switch_refuses_an_unlaid_out_grid_instead_of_the_pool() -> None:
+    """RED BEFORE: no viewport + no selection analyzed the first 12 of the pool."""
+    from tabs.image_gallery.use_cases import ai_analysis
+
+    items = [_gallery_item(f"img_{i}.png") for i in range(20)]
+    analyzed: list = []
+    owner = _grid(
+        _owner(set(), items=items), [it.path for it in items], laid_out=False
+    )
+    owner.analyze = lambda ctx: analyzed.extend(ctx.targets)
+
+    ai_analysis._run_ai_for_visible(owner)
+
+    assert analyzed == [], "an unlaid-out grid must not analyze the pool"
+
+
+def test_run_triage_with_a_selection_names_the_pool_and_refuses() -> None:
+    """RED BEFORE (5): Run triage silently re-ran the folder over a selection."""
+    from tabs.image_gallery.use_cases import action_context, registration
+    from tabs.image_gallery.use_cases.action_context import (
+        REFUSAL_AMBIGUOUS_SCOPE,
+        Refusal,
+    )
+
+    items = [_gallery_item(f"img_{i}.png") for i in range(3)]
+    a, b = items[0].path, items[1].path
+    ctrl = _owner({a, b}, order=[a, b], items=items)
+    ctrl.state.folder = Path("/g")
+    opened: list = []
+    ctrl.open_folder = opened.append
+    tab = SimpleNamespace(_controller=ctrl, _widget=None)
+
+    ctx = action_context.build_context(ctrl, origin="action", action_id="gallery.run-triage")
+    refusal = registration._action_run_triage(tab, ctx)
+
+    assert opened == [], "the folder was re-opened despite an ignored selection"
+    assert isinstance(refusal, Refusal)
+    assert refusal.reason == REFUSAL_AMBIGUOUS_SCOPE
+    assert "pool=3" in refusal.detail and "selection=2" in refusal.detail
+
+
+def test_menu_header_counts_the_resolved_scope_not_the_selection_mirror(
+    monkeypatch,
+) -> None:
+    """RED BEFORE (7): the header counted the ``state.selected_paths`` mirror.
+
+    The gallery slot is the selection authority; here the slot holds ONE card
+    while the local mirror still holds three. The menu must title the section
+    with the scope it will act on (``len(ctx.targets)``), not with the stale
+    mirror count.
+    """
+    from tabs.image_gallery.state.models import GallerySlotState
+    from tabs.image_gallery.ui.card.context_menu import (
+        popup_gallery_card_context_menu,
+    )
+
+    a, b, c = (Path(p) for p in ("/a.png", "/b.png", "/c.png"))
+    owner = _owner({a, b, c}, order=[a, b, c], items=[])
+    owner.store = SimpleNamespace(
+        get_session_state_slot=lambda name, session_id=None: GallerySlotState(
+            selection=[str(a)]
+        )
+    )
+    captured = _capture_menu(monkeypatch)
+
+    popup_gallery_card_context_menu(
+        SimpleNamespace(), owner, a, global_pos=QPoint(0, 0), selection_count=3
+    )
+
+    assert _section_title(captured["entries"]) == "1 selected"
+
+
+def test_menu_actions_use_the_context_the_menu_built(monkeypatch) -> None:
+    """RED BEFORE (8): four entries re-resolved their own scope on click.
+
+    The menu resolves ONCE. A card joining the selection between opening the
+    menu and clicking must not join the action: the body receives the context
+    the menu already built.
+    """
+    from tabs.image_gallery.use_cases import triage as _triage
+
+    a, b, c = (Path(p) for p in ("/a.png", "/b.png", "/c.png"))
+    owner = _owner({a, b}, order=[a, b])
+    best: list[Path] = []
+    monkeypatch.setattr(_triage, "make_best", lambda o, p: best.append(Path(p)) or True)
+
+    captured = _open_menu(monkeypatch, owner, a, selection_count=2)
+    # The user Ctrl-clicks a third card while the menu is open.
+    owner.state.selected_paths = {a, b, c}
+    owner.state.selected_order = [a, b, c]
+    captured["on_triggered"]("gallery.make_best", None)
+
+    assert best == [a, b], "the menu entry re-resolved its scope on click"
+
+
+def test_keyboard_make_best_applies_to_the_whole_selection(monkeypatch) -> None:
+    """RED BEFORE (10): ``B`` called ``make_best`` on ``selected_order[0]`` only."""
+    from tabs.image_gallery.use_cases import triage as _triage
+    from tabs.image_gallery.use_cases import triage_ui
+
+    a, b, c = (Path(p) for p in ("/a.png", "/b.png", "/c.png"))
+    ctrl = _owner({a, b, c}, order=[c, a, b])
+    widget = SimpleNamespace(_owner_for_triage=lambda: ctrl)
+    best: list[Path] = []
+    monkeypatch.setattr(_triage, "make_best", lambda o, p: best.append(Path(p)) or True)
+
+    event = _KeyEvent(Qt.Key.Key_B)
+    triage_ui.handle_key(widget, event)
+
+    assert best == [c, a, b]
+    assert event.accepted
+
+
+def test_quick_look_reject_uses_the_menu_application(monkeypatch) -> None:
+    """RED BEFORE (11): QL reject had its own toggle path (``toggle_reject``).
+
+    Both surfaces now apply the ONE helper, so the direction rule (uniform from
+    the invoked card) cannot differ between the menu and Quick Look.
+    """
+    from tabs.image_gallery.ui.quick_look.overlay_parts import dispatch
+    from tabs.image_gallery.use_cases import triage as _triage
+
+    a = Path("/a.png")
+    owner = _owner({a}, order=[a], items=[SimpleNamespace(path=a, rejected=False)])
+    applied: list = []
+    toggled: list = []
+    monkeypatch.setattr(
+        _triage, "set_rejected_paths", lambda o, ps, rej: applied.append((list(ps), rej)) or 1
+    )
+    monkeypatch.setattr(_triage, "toggle_reject", lambda o, p: toggled.append(p) or True)
+    overlay = SimpleNamespace(
+        _current_item=SimpleNamespace(path=a, rejected=False),
+        _owner=owner,
+        _refresh_triage_state=lambda: None,
+    )
+
+    dispatch._on_reject(overlay)
+
+    assert applied == [([a], True)]
+    assert toggled == [], "Quick Look by-passed the menu's reject application"
+
+
+def test_quick_look_reject_matches_the_menu_for_the_same_card() -> None:
+    """Parity guard for (11): one selected card, both surfaces, same flags."""
+    from tabs.image_gallery.ui.card import context_actions
+    from tabs.image_gallery.ui.quick_look.overlay_parts import dispatch
+
+    a = Path("/a.png")
+
+    def _fresh():
+        item = SimpleNamespace(path=a, rejected=False, triage_rejected=False)
+        return _owner({a}, order=[a], items=[item]), item
+
+    menu_owner, menu_item = _fresh()
+    ql_owner, ql_item = _fresh()
+    overlay = SimpleNamespace(
+        _current_item=ql_item,
+        _owner=ql_owner,
+        _refresh_triage_state=lambda: None,
+    )
+
+    context_actions._ctx_toggle_reject(menu_owner, a)
+    dispatch._on_reject(overlay)
+
+    assert bool(menu_item.rejected) == bool(ql_item.rejected) is True
+
+
+def test_quick_look_compare_does_not_rewrite_the_selection(monkeypatch) -> None:
+    """RED BEFORE (12): Compare narrowed a three-card selection to one card."""
+    from tabs.image_gallery.use_cases import gallery_actions
+    from tabs.image_gallery.ui.quick_look.overlay_parts import dispatch
+
+    a, b, c = (Path(p) for p in ("/a.png", "/b.png", "/c.png"))
+    owner = _owner({a, b, c}, order=[a, b, c])
+    written: list = []
+
+    def _set_selection(paths):
+        written.append(list(paths))
+        owner.state.selected_paths = set(paths)
+        owner.state.selected_order = list(paths)
+
+    owner.set_selection = _set_selection
+    carried: list = []
+    monkeypatch.setattr(
+        gallery_actions, "carry", lambda o, ctx, **kw: carried.append(list(ctx.targets))
+    )
+    overlay = SimpleNamespace(
+        _current_item=SimpleNamespace(path=a, thumbnail=None),
+        _owner=owner,
+        hide=lambda: None,
+    )
+
+    dispatch._on_compare(overlay)
+
+    assert carried == [[a]]
+    assert {p.name for p in owner.state.selected_paths} == {"a.png", "b.png", "c.png"}
+    assert written == [], "Quick Look Compare rewrote the gallery selection"
+
+
+def test_make_source_answers_the_same_in_the_menu_and_the_registry(monkeypatch) -> None:
+    """RED BEFORE (9): the menu picked the clicked card, the registry refused.
+
+    Rule 8: one answer for a multi-selection — the entry is not offered, and
+    the Find Action row refuses by name.
+    """
+    from tabs.image_gallery.use_cases import registration
+    from tabs.image_gallery.use_cases.action_context import (
+        REFUSAL_AMBIGUOUS_SCOPE,
+        Refusal,
+    )
+
+    a, b = Path("/a.png"), Path("/b.png")
+    owner = _owner({a, b}, order=[a, b], items=[])
+    captured = _open_menu(monkeypatch, owner, a, selection_count=2)
+
+    assert "gallery.set_as_source" not in _ids(captured["entries"])
+    refusal = registration.run_action(
+        SimpleNamespace(_controller=owner, _widget=None), "gallery.set-as-source"
+    )
+    assert isinstance(refusal, Refusal)
+    assert refusal.reason == REFUSAL_AMBIGUOUS_SCOPE
+
+
+def test_make_source_still_shows_for_a_single_card(monkeypatch) -> None:
+    """The refusal is about the SCOPE, not about hiding a working action."""
+    a = Path("/a.png")
+    owner = _owner({a}, order=[a], items=[])
+    captured = _open_menu(monkeypatch, owner, a, selection_count=1)
+    assert "gallery.set_as_source" in _ids(captured["entries"])
+
+
+def _ids(entries) -> list[str]:
+    from sli_ui_toolkit.widgets import ContextMenuAction, ContextMenuSection
+
+    out: list[str] = []
+    for entry in entries:
+        if isinstance(entry, ContextMenuSection):
+            out.extend(a.action_id for a in entry.entries)
+        elif isinstance(entry, ContextMenuAction):
+            out.append(entry.action_id)
+    return out
+
+
+def _section_title(entries) -> str:
+    from sli_ui_toolkit.widgets import ContextMenuSection
+
+    for entry in entries:
+        if isinstance(entry, ContextMenuSection):
+            return str(getattr(entry, "title", "") or "")
+    return ""
+
+
+class _KeyEvent:
+    """Minimal QKeyEvent double (``triage_ui.handle_key`` reads key/accept)."""
+
+    def __init__(self, key) -> None:
+        self._key = key
+        self.accepted = False
+
+    def key(self):
+        return self._key
+
+    def accept(self) -> None:
+        self.accepted = True

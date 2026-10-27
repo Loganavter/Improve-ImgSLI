@@ -597,14 +597,19 @@ class GalleryGridView(QWidget):
     # only — never from pixmap data or arrival order. Pure additive API:
     # no existing rebuild/refresh/selection/scroll path changes behavior.
 
-    def visible_paths(self) -> list[Path]:
-        """Paths of cards intersecting the viewport (+ vertical overscan).
+    def visible_paths_strict(self) -> list[Path] | None:
+        """Viewport paths, or ``None`` when the grid is not laid out (scope read).
 
-        Returns the ``item.path`` objects (the same identity
-        ``controller._find_item`` compares with ``==``), in top-to-bottom
-        display order (card ``y``, then ``x``). A partially visible card
-        at the viewport edge counts as visible. Empty grid -> ``[]``.
+        ``visible_paths()`` keeps its historical fail-open (the thumbnail
+        scheduler needs "everything" before the first layout), but an ACTION
+        SCOPE may not read that as "all cards": ``action_scope._visible_paths``
+        uses this strict probe so an unlaid-out grid is a named refusal instead
+        of a silent pool-wide run (owner report 2026-10-27).
         """
+        return self._visible_paths_or_none()
+
+    def _visible_paths_or_none(self) -> list[Path] | None:
+        """Paths of cards intersecting the viewport (+ overscan); None = no layout."""
         try:
             items = list(getattr(self, "_items", None) or [])
         except Exception:
@@ -616,11 +621,11 @@ class GalleryGridView(QWidget):
             vh = viewport.height()
             vw = viewport.width()
         except Exception:
-            return [it.path for it in items]
+            return None
         if vh <= 0 or vw <= 0:
-            # Not laid out yet (never shown): fail open with everything
-            # in display order so callers never starve thumbnails.
-            return [it.path for it in items]
+            # Not laid out yet (never shown): the caller decides what "unknown"
+            # means — visible_paths() fails open, a scope refuses.
+            return None
         try:
             vbar = self.scroll_area.verticalScrollBar()
             hbar = self.scroll_area.horizontalScrollBar()
@@ -655,6 +660,27 @@ class GalleryGridView(QWidget):
                 scored.append((int(g.y()), int(g.x()), item.path))
         scored.sort(key=lambda t: (t[0], t[1]))
         return [p for _, _, p in scored]
+
+    def visible_paths(self) -> list[Path]:
+        """Paths of cards intersecting the viewport (+ vertical overscan).
+
+        Returns the ``item.path`` objects (the same identity
+        ``controller._find_item`` compares with ``==``), in top-to-bottom
+        display order (card ``y``, then ``x``). A partially visible card
+        at the viewport edge counts as visible. Empty grid -> ``[]``.
+
+        A grid that is not laid out yet (never shown) fails OPEN with
+        everything in display order so thumbnail prioritization never starves;
+        an action scope must use :meth:`visible_paths_strict` instead.
+        """
+        try:
+            items = list(getattr(self, "_items", None) or [])
+        except Exception:
+            return []
+        paths = self._visible_paths_or_none()
+        if paths is None:
+            return [it.path for it in items]
+        return paths
 
     def _schedule_visible_range_emit(self, *_args) -> None:
         """Restart the single-shot debounce timer (scroll storms coalesce)."""

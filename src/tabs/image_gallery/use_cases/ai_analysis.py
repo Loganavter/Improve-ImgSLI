@@ -975,7 +975,16 @@ def _on_pairwise_error(owner, error_info, *, gen=None, epoch=None, series_key=No
 
 
 def _run_ai_for_visible(owner, *, cache_only: bool = False) -> None:
-    """Analyze the currently-visible, not-yet-analyzed items (bounded).
+    """Analyze the AI tail's scope: THE SELECTION, else the capped viewport.
+
+    Rule 7 (owner report 2026-10-27: *"и наоборот"* — a hundred cards selected,
+    twelve analyzed): the switch/settle used to analyze ``visible ∩ 12``
+    regardless of the selection. The scope now comes from the ONE resolver
+    (``action_scope``, kind selection_else_visible): the selection wins when
+    it is non-empty, otherwise the viewport is analyzed up to the owner's cap.
+    The cap is never silent — ``Scope.reason`` carries ``cap=``/``available=``
+    and lands in the trace, and an unlaid-out grid with no selection is a
+    refusal instead of a fail-open to the pool.
 
     ``cache_only`` is the DOMAIN-SWITCH path: switching backends must not spend
     a new request on metrics the other backend already produced (owner order
@@ -983,15 +992,13 @@ def _run_ai_for_visible(owner, *, cache_only: bool = False) -> None:
     live analysis belongs to the folder's settle / an explicit analyze, not to
     flipping a switch.
     """
-    try:
-        vis = getattr(owner.widget, "visible_paths", None)
-        paths = vis() if callable(vis) else None
-    except Exception:
-        paths = None
-    try:
-        keys = {str(p) for p in (paths or [])}
-    except Exception:
-        keys = set()
+    from tabs.image_gallery.use_cases import action_scope
+
+    scope = action_scope.resolve_scope(owner, "gallery.domain.switch")
+    if scope.refused or not scope.targets:
+        logger.debug("AI visible pass: %s", scope.reason)
+        return
+    keys = {str(p) for p in scope.targets}
     picked: list = []
     try:
         items = list(getattr(owner.state, "items", None) or [])
@@ -999,7 +1006,7 @@ def _run_ai_for_visible(owner, *, cache_only: bool = False) -> None:
         items = []
     for it in items:
         try:
-            if keys and str(it.path) not in keys:
+            if str(it.path) not in keys:
                 continue
             status = getattr(it, "analysis_status", None)
             if status in (AnalysisStatus.DONE, AnalysisStatus.PENDING):
@@ -1007,12 +1014,10 @@ def _run_ai_for_visible(owner, *, cache_only: bool = False) -> None:
         except Exception:
             continue
         picked.append(it)
-    if not keys:
-        # Viewport not laid out yet — bound instead of flooding.
-        picked = picked[: owner._AI_VISIBLE_CAP]
-    picked = picked[: owner._AI_VISIBLE_CAP]
     if not picked:
+        logger.debug("AI visible pass: %s — nothing to analyze", scope.reason)
         return
+    logger.debug("AI visible pass: %s picked=%d", scope.reason, len(picked))
     if cache_only:
         hydrate = getattr(owner, "_hydrate_ai_cache", None)
         try:
@@ -1441,9 +1446,14 @@ def reanalyze_targets(owner, scope: str) -> tuple[Path, ...]:
         return ordered
     keys: set[str] = set()
     if scope == REANALYZE_SCOPE_VISIBLE:
+        # The viewport read is the ONE scope mechanism (kind ``visible``): it
+        # intersects the filter and REFUSES an unlaid-out grid instead of
+        # failing open to the pool (rule 5).
         try:
-            visible = getattr(getattr(owner, "widget", None), "visible_paths", None)
-            keys = {str(p) for p in (visible() if callable(visible) else visible or ())}
+            from tabs.image_gallery.use_cases import action_scope
+
+            visible_scope = action_scope.resolve_scope(owner, "gallery.reanalyze.visible")
+            keys = {str(p) for p in visible_scope.targets}
         except Exception:
             keys = set()
     elif scope == REANALYZE_SCOPE_SELECTION:

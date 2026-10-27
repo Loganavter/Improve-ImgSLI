@@ -15,6 +15,53 @@ from tabs.image_compare.debug import ic_preview_debug as _preview_log
 from .preview import _update_preview_tracking
 
 _last_one_side_log_sig = None  # type: ignore  # throttle — owns the one-side log decision
+_last_pair_wait_log_sig = None  # type: ignore  # throttle — owns the pair-wait log decision
+
+
+def _side_load_in_flight(presenter, document) -> str | None:
+    """Path of a document side whose load is actually in flight, else ``None``.
+
+    Evidence only, never a guess: ``ImageLoadService.is_loading`` for the
+    document's own current paths. The _pending_image_loads map the one-side
+    branch reads is dormant (nothing in ``src`` writes it), so the load service
+    is the live source; no controller/service ⇒ ``None`` (today's behaviour).
+    """
+    paths = [
+        path
+        for path in (
+            getattr(document, "image1_path", None),
+            getattr(document, "image2_path", None),
+        )
+        if path
+    ]
+    if not paths:
+        return None
+    try:
+        from tabs.image_compare.pipeline.session import resolve_session_controller
+
+        ctrl = resolve_session_controller(presenter)
+    except Exception:
+        ctrl = None
+    if ctrl is None:
+        return None
+    service = getattr(ctrl, "_image_load_service", None)
+    if service is None:
+        try:
+            session = ctrl._get_image_session()
+        except Exception:
+            session = None
+        service = getattr(session, "load_service", None)
+    if service is None:
+        service = getattr(getattr(ctrl, "pipeline", None), "load_service", None)
+    if service is None or not hasattr(service, "is_loading"):
+        return None
+    for path in paths:
+        try:
+            if service.is_loading(path):
+                return path
+        except Exception:
+            continue
+    return None
 
 
 def _peek_sources(presenter, document):
@@ -114,6 +161,31 @@ def _have_gate(presenter, source1, source2, document):
     have1 = bool(presenter.store.viewport.session_data.image_state.image1 or source1)
     have2 = bool(presenter.store.viewport.session_data.image_state.image2 or source2)
     if not have1 and not have2:
+        # A pair replacement clears the outgoing side's image_state before its
+        # worker publishes, so for a frame BOTH sides are absent while the
+        # document already points at the incoming pair. Tearing the canvas down
+        # here nulls _content_rect_px / _letterbox_params (layers.clear), which
+        # makes the next apply's capture_letterbox_focus return None and
+        # silently skips re-anchoring the camera (zoom-pan.md § Preserving the
+        # image sample point). Wait like the sibling one-side branch below:
+        # keep the frame + letterbox until the pair lands, then let
+        # preserve_zoom's capture → update_common_letterbox_geometry → restore
+        # converge in place. A genuinely empty session (no document path, no
+        # load in flight) still clears.
+        loading_path = _side_load_in_flight(presenter, document)
+        if loading_path is not None:
+            global _last_pair_wait_log_sig
+            _pair_sig = (
+                getattr(document, "image1_path", None),
+                getattr(document, "image2_path", None),
+            )
+            if _pair_sig != _last_pair_wait_log_sig:
+                _last_pair_wait_log_sig = _pair_sig
+                _preview_log(
+                    "update: both sides momentarily absent - replacement in flight (%s), keep frame/geometry",
+                    loading_path,
+                )
+            return have1, have2, True, "wait_pair_load"
         _preview_log("update: no sources on either side - label cleared")
         presenter.widget.image_label.clear()
         presenter.current_displayed_pixmap = None
@@ -170,6 +242,9 @@ def handle_have_gate(presenter, source1, source2, document, peeked) -> bool:
     if reason == "no_sources":
         return True
     if reason == "wait_other_side":
+        return True
+    if reason == "wait_pair_load":
+        # pair replacement in flight — the preserved frame is the answer
         return True
     if reason == "live_half":
         # live-half paint — owned here; the pre-split gate inlined this same block

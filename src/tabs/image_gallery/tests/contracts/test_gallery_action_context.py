@@ -381,3 +381,182 @@ def test_backend_travels_from_the_owner_authority() -> None:
     owner._judgment_domain = "algorithms"
     ctx = build_context(owner, origin="menu", card_path=item.path)
     assert ctx.backend == BACKEND_ALGORITHMS
+
+
+# ---------------------------------------------------------------------------
+# ONE policy table: every action id in the tree names its scope kind
+# ---------------------------------------------------------------------------
+
+#: Where an action id literally appears. Anything in these positions is an
+#: action the app can dispatch, so it MUST have a policy row — a new entry
+#: cannot be added without declaring its scope (owner rule, 2026-10-27).
+_ID_POSITIONS = ("resolve_scope", "run_action", "build_context")
+
+
+#: Menu CHOOISERS, not scoped card actions: the toolbar's "Sort by" / "View"
+#: popups pick a setting for the grid, they never act on a set of cards.
+_NON_ACTION_IDS = frozenset({"gallery.sort_by", "gallery.view"})
+
+
+def _action_id_literals(root: Path) -> dict[str, str]:
+    """``{action_id: file:line}`` for every action id the gallery package names."""
+    found: dict[str, str] = {}
+
+    def _record(value: str, where: str) -> None:
+        if value in _NON_ACTION_IDS:
+            return
+        if not value.startswith("gallery.") and value != "select_all":
+            return
+        found.setdefault(value, where)
+
+    for path in _iter_py(root):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        rel = str(path.relative_to(root))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call):
+                name = _dotted(node.func).rsplit(".", 1)[-1]
+                where = f"{rel}:{node.lineno}"
+                if name == "ContextMenuAction" and node.args:
+                    first = node.args[0]
+                    if isinstance(first, ast.Constant) and isinstance(first.value, str):
+                        _record(first.value, where)
+                elif name in _ID_POSITIONS:
+                    for index, arg in enumerate(node.args):
+                        # build_context(owner, action_id=...) uses a keyword;
+                        # resolve_scope/run_action take the id positionally.
+                        if (
+                            name != "build_context"
+                            and index == 1
+                            and isinstance(arg, ast.Constant)
+                            and isinstance(arg.value, str)
+                        ):
+                            _record(arg.value, where)
+                    for kw in node.keywords:
+                        if kw.arg == "action_id" and isinstance(kw.value, ast.Constant):
+                            _record(str(kw.value.value), where)
+            elif isinstance(node, ast.Compare) and isinstance(node.left, ast.Name):
+                if node.left.id != "action_id":
+                    continue
+                for comparator in node.comparators:
+                    if isinstance(comparator, ast.Constant) and isinstance(
+                        comparator.value, str
+                    ):
+                        _record(comparator.value, f"{rel}:{node.lineno}")
+            elif isinstance(node, ast.Constant) and isinstance(node.value, str):
+                # The registry's handler inventory is the remaining literal map.
+                if rel.endswith("use_cases/registration.py") and node.value.startswith(
+                    "gallery."
+                ):
+                    _record(node.value, f"{rel}:{node.lineno}")
+    return found
+
+
+def test_every_action_id_has_a_scope_policy_row() -> None:
+    """RED BEFORE (13): there was no policy table at all — five resolvers."""
+    from tabs.image_gallery.use_cases import action_scope
+
+    named = _action_id_literals(SRC)
+    assert named, "the action-id scan found nothing — the scanner lost the tree"
+    missing = {k: v for k, v in named.items() if k not in action_scope.ACTION_SCOPE_POLICY}
+    assert not missing, (
+        "these action ids have no row in action_scope.ACTION_SCOPE_POLICY, so their "
+        "scope would be re-derived at the call site:\n"
+        + "\n".join(f"{k} ({v})" for k, v in sorted(missing.items()))
+    )
+
+
+def test_policy_kinds_are_declared() -> None:
+    from tabs.image_gallery.use_cases import action_scope
+
+    bad = {
+        action_id: kind
+        for action_id, kind in action_scope.ACTION_SCOPE_POLICY.items()
+        if kind not in action_scope.SCOPES
+    }
+    assert not bad, f"policy rows name undeclared scope kinds: {bad}"
+
+
+# ---------------------------------------------------------------------------
+# ONE reader: ``state.selected_paths`` outside the three modules is a defect
+# ---------------------------------------------------------------------------
+
+#: The modules that MAY touch the selection mirror (rule 1/2): the resolver, the
+#: writer bridge, and the selection use case. Everything else reads through
+#: ``action_scope.selected_paths``.
+SELECTION_MIRROR_OWNERS = frozenset(
+    {
+        "use_cases/action_scope.py",
+        "use_cases/gallery_slot.py",
+        "use_cases/selection.py",
+    }
+)
+
+#: Ratchet: readers in files this wave does not own (a wave-2 list). The set is
+#: asserted EXACTLY — a new reader anywhere fails, and shrinking it is progress.
+LEGACY_MIRROR_READERS = frozenset(
+    {
+        # Ask-context prompt builder: the flyout's "Selection (N)" line.
+        "services/ask_context.py",
+        # Marquee preview unions the current set while dragging.
+        "ui/marquee_select.py",
+        # Quick Look multi-compare merge (the additive commit path).
+        "ui/quick_look_hooks.py",
+        # Drag payload = the selection at press time.
+        "ui/grid_view/drag_source.py",
+    }
+)
+
+
+def _mirror_reads(root: Path) -> set[str]:
+    """Files reading ``state.selected_paths`` / ``selected_order`` (attribute or getattr)."""
+    names = {"selected_paths", "selected_order"}
+    hits: set[str] = set()
+
+    def _state_chain(node) -> bool:
+        if isinstance(node, ast.Name):
+            return node.id == "state"
+        if isinstance(node, ast.Attribute):
+            return node.attr == "state" or _state_chain(node.value)
+        if isinstance(node, ast.Call):
+            # getattr(owner, "state", None) — the indirection the mirror reads use.
+            return (
+                _dotted(node.func).rsplit(".", 1)[-1] == "getattr"
+                and len(node.args) >= 2
+                and isinstance(node.args[1], ast.Constant)
+                and node.args[1].value == "state"
+            )
+        return False
+
+    for path in _iter_py(root):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        rel = str(path.relative_to(root))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Attribute):
+                if node.attr in names and isinstance(node.ctx, ast.Load) and _state_chain(node.value):
+                    hits.add(rel)
+            elif isinstance(node, ast.Call):
+                if _dotted(node.func).rsplit(".", 1)[-1] != "getattr":
+                    continue
+                if len(node.args) < 2:
+                    continue
+                key = node.args[1]
+                if not isinstance(key, ast.Constant) or key.value not in names:
+                    continue
+                if _state_chain(node.args[0]):
+                    hits.add(rel)
+    return hits
+
+
+def test_state_selection_mirror_has_one_reader() -> None:
+    """RED BEFORE (14): five modules read ``state.selected_paths`` directly."""
+    found = _mirror_reads(SRC)
+    unexpected = found - SELECTION_MIRROR_OWNERS - LEGACY_MIRROR_READERS
+    assert not unexpected, (
+        "these modules read the selection mirror directly — resolve the scope through "
+        "use_cases.action_scope instead:\n" + "\n".join(sorted(unexpected))
+    )
+    stale = LEGACY_MIRROR_READERS - found
+    assert not stale, (
+        "LEGACY_MIRROR_READERS names files that no longer read the mirror — shrink "
+        "the allowlist in the same commit:\n" + "\n".join(sorted(stale))
+    )
