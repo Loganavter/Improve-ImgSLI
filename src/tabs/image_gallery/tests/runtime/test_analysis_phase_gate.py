@@ -57,6 +57,10 @@ class _Widget:
     def __init__(self) -> None:
         self.done_calls: list = []
         self.chips: list = []
+        self.ranks_visible_calls: list = []
+
+    def set_ranks_visible(self, want) -> None:
+        self.ranks_visible_calls.append(bool(want))
 
     def set_triage(self, *args, **kwargs) -> None:
         return None
@@ -115,6 +119,9 @@ class _Owner:
 
     def _refresh_rank_provenance(self):
         return GalleryController._refresh_rank_provenance(self)
+
+    def _refresh_ranks_visible(self):
+        return GalleryController._refresh_ranks_visible(self)
 
     # -- seams the triage tail touches ------------------------------------
     def _start_proxy_analysis(self, items, source, mode, *, on_done=None):
@@ -207,6 +214,15 @@ def test_the_hold_lands_once_when_the_tail_settles(monkeypatch, caplog) -> None:
 
     assert owner.widget.done_calls == [1], "the held done lands exactly once"
     assert owner._done_held_gen == -1, "the hold is consumed, not remembered"
+    # The rank badges were blanked while the tail ran (the apply re-evaluates
+    # visibility with this very batch in flight). The tail-settle seam must
+    # re-evaluate them, or a ranked card keeps no #N/BEST (owner 2026-10-27).
+    assert owner.widget.ranks_visible_calls, (
+        "the tail-settle seam must re-evaluate rank visibility"
+    )
+    assert owner.widget.ranks_visible_calls[-1] is True, (
+        "with the metrics settled and no tail pending the ranks are FINAL"
+    )
     assert owner.widget.chips[-1] == "jev", (
         "once the tail settled, the chip states the ranker that actually ranked "
         "(the AI domain's Jev), not the provisional fusion order"
