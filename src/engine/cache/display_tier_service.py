@@ -37,7 +37,10 @@ from PIL import Image as PilImage
 from engine.cache.image_identity import image_uid
 from engine.cache.render_debug import rhi_render_debug
 from engine.cache.tile_debug import log_tile_event, tile_dump_enabled
-from engine.cache.unified_envelope import eager_envelope_rect
+from engine.cache.unified_envelope import (
+    eager_envelope_rect,
+    normalize_envelope_dims,
+)
 from engine.store.pixel_ops.downscale import downscale_source_to_pil
 from engine.store.tiled_pixel_store import TiledPixelStore
 from shared.image_processing.image_dims import get_image_dims
@@ -362,6 +365,7 @@ def update_common_letterbox_geometry(
     image2: PilImage.Image | None,
     *,
     crop_boxes: tuple | None = None,
+    envelope_dims: tuple[int, int, int, int] | None = None,
     hooks: DisplayTierHooks,
 ) -> None:
     """Keep both comparison sides in one canvas coordinate system.
@@ -373,6 +377,16 @@ def update_common_letterbox_geometry(
     slots receive the same ux/cw,uy/ch,uw/cw,uh/ch, dispatched via
     store.transact. No hold, no more_pending, no Store predicted field.
     Fallback to per-image letterbox only when one side has no size.
+
+    ``envelope_dims`` — the plan's SOURCE-space envelope ``(w1,h1,w2,h2)``
+    (``CanvasRenderPlan.envelope_dims``): the dims to fit INSTEAD of this
+    tier's own ``get_image_dims(image1/2)``. Fitting the display dims makes the
+    drawn letterbox disagree with the canvas basis of a live plan on preview
+    frames (each preview is normalised to a 1024 long edge, so a preview pair's
+    envelope has a different aspect than the source pair's; owner report
+    2026-10-27). ``None`` keeps today's display-dim fit bit-identically, and the
+    kwarg is ignored whenever a crop box is active — there the box-clipped
+    display dims are the truth.
 
     W3a: ``crop_boxes`` are per-display-image boxes in each image's own
     coords (as computed by ``upload_pil_images`` via ``clip_box_for_image``,
@@ -405,6 +419,11 @@ def update_common_letterbox_geometry(
         _cb1 = _cb2 = None
     _box1 = hooks.sanitize_box(_cb1, (w1, h1)) if _cb1 is not None else None
     _box2 = hooks.sanitize_box(_cb2, (w2, h2)) if _cb2 is not None else None
+    _plan_envelope = (
+        normalize_envelope_dims(envelope_dims) if _box1 is None and _box2 is None else None
+    )
+    if _plan_envelope is not None:
+        w1, h1, w2, h2 = _plan_envelope
     if _box1 is not None:
         w1, h1 = hooks.box_dims(_box1, (w1, h1))
     if _box2 is not None:
@@ -503,6 +522,26 @@ def upload_pil_images(
     _box2 = hooks.clip_box_for_image(_raw2, full_size=_f2, img_size=_d2)
     _sbox1 = hooks.clip_box_for_image(_raw1, full_size=_f1, img_size=_s1)
     _sbox2 = hooks.clip_box_for_image(_raw2, full_size=_f2, img_size=_s2)
+    # The SOURCE-space envelope the plan sized its canvas basis from
+    # (``CanvasRenderPlan.envelope_dims``) — the plan builder derives it from
+    # these same ``source_image1/2`` objects, so this is the same number, not a
+    # second guess. Passed to the letterbox owner so the drawn rect cannot
+    # follow whichever display tier is installed (a preview pair's envelope has
+    # a different aspect than the source pair's). ``None`` whenever a crop box
+    # is in play: the box-clipped display dims are the truth there, and that
+    # path stays bit-identical.
+    _envelope_dims = None
+    if (
+        _raw1 is None
+        and _raw2 is None
+        and source_image1 is not None
+        and source_image2 is not None
+        and _s1[0] > 0
+        and _s1[1] > 0
+        and _s2[0] > 0
+        and _s2[1] > 0
+    ):
+        _envelope_dims = (int(_s1[0]), int(_s1[1]), int(_s2[0]), int(_s2[1]))
     # Box tuples join the change signatures so a late box arrival (cold
     # cache -> warmed) re-drives geometry + uploads like any content swap.
     _sig_boxes = (
@@ -579,7 +618,12 @@ def upload_pil_images(
     # Single geometry update — previously called twice (once per slot) with identical args
     if stored_changed and state._shader_letterbox_mode and (pil_image1 or pil_image2):
         update_common_letterbox_geometry(
-            widget, pil_image1, pil_image2, crop_boxes=(_box1, _box2), hooks=hooks
+            widget,
+            pil_image1,
+            pil_image2,
+            crop_boxes=(_box1, _box2),
+            envelope_dims=_envelope_dims,
+            hooks=hooks,
         )
     if pil_image1 and stored_changed:
         if state._shader_letterbox_mode:
@@ -777,13 +821,27 @@ def refresh_live_content_rect(canvas, state, plan) -> None:
         # every canvas-px → widget-px conversion (loupe radius/spacing/border,
         # divider/guide thickness) jumped with the swap and again when unify
         # landed (owner report 2026-10-27).
+        #
+        # ``plan.envelope_dims`` is that envelope in SOURCE space, carried by
+        # the plan builder. Preferring it over the installed display tier is
+        # what keeps the drawn rect (and therefore the loupe glass) identical
+        # on a preview frame and on the unified frame; ``None`` keeps today's
+        # display-dim fit bit-identically.
+        _plan_envelope = normalize_envelope_dims(getattr(plan, "envelope_dims", None))
+        if _plan_envelope is not None:
+            sizes = [
+                (_plan_envelope[0], _plan_envelope[1]),
+                (_plan_envelope[2], _plan_envelope[3]),
+            ]
+        else:
+            sizes = [
+                get_image_dims(getattr(plan, "image1", None)),
+                get_image_dims(getattr(plan, "image2", None)),
+            ]
         _envelope_letterbox, content_rect = eager_envelope_rect(
             int(widget_width),
             int(widget_height),
-            [
-                get_image_dims(getattr(plan, "image1", None)),
-                get_image_dims(getattr(plan, "image2", None)),
-            ],
+            sizes,
         )
         if content_rect[2] <= 0 or content_rect[3] <= 0:
             return
@@ -1299,7 +1357,13 @@ def apply_plan_scene_only(
                 if len(state._stored_pil_images) > 1
                 else None
             )
-            update_common_letterbox_geometry(canvas, img0, img1, hooks=hooks.tier)
+            update_common_letterbox_geometry(
+                canvas,
+                img0,
+                img1,
+                envelope_dims=getattr(plan, "envelope_dims", None),
+                hooks=hooks.tier,
+            )
             restore_letterbox_focus(canvas, letterbox_focus)
         rebind_plan_store(canvas, store)
         apply_plan_letterbox_from_clip(canvas, plan)

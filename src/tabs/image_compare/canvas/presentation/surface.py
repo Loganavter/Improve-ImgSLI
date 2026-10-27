@@ -49,9 +49,40 @@ def apply_store_to_canvas(
         preserve_zoom=True,
     )
 
+    if getattr(plan, "envelope_hold", False):
+        # One side's own source tier is still decoding and only its PREVIEW
+        # (a 1024-long-edge size guess) is installed, so the pair envelope
+        # cannot be stated without mixing that guess with the other side's real
+        # dims — a frame describing neither pair (owner report 2026-10-27:
+        # [1024,1400] between [1600,1400] frames). Hold the previously
+        # presented frame and its overlays untouched; the settled plan follows
+        # as soon as that side's own pixels land (the source key changes, so
+        # the next frame is not skipped).
+        from engine.cache.render_debug import rhi_render_debug
+
+        rhi_render_debug(
+            "hold frame: pair envelope is a preview guess on one side"
+            " (display1=%s display2=%s); keeping the presented plan",
+            _dims(display_image1),
+            _dims(display_image2),
+        )
+        return
+
     apply_canvas_render_plan(
         canvas,
         plan,
         store=store,
         clip_overlays_to_image_bounds=clip_overlays_to_image_bounds,
     )
+
+
+def _dims(image):
+    """``(w,h)`` or ``None`` — cheap debug formatting, never raises."""
+    try:
+        if image is None:
+            return None
+        from shared.image_processing.image_dims import get_image_dims
+
+        return tuple(get_image_dims(image))
+    except Exception:
+        return None

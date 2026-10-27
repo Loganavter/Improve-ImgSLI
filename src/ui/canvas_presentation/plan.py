@@ -92,6 +92,48 @@ class CanvasRenderPlan:
     live main-window canvas — live may set ``overlay_clip_rect`` for
     uncrop/magnifier without making the canvas the letterbox owner.
     """
+    envelope_dims: tuple[int, int, int, int] | None = None
+    """
+    The comparison envelope the canvas basis was sized from, in SOURCE space:
+    ``(w1, h1, w2, h2)`` of each side's own decoded pixels (not the installed
+    display tier). Set by ``plan_builder.build_canvas_plan`` on the live
+    default plan only; every downstream owner that fits the pair
+    (``display_tier_service.update_common_letterbox_geometry`` /
+    ``refresh_live_content_rect``) consumes it instead of re-deriving the
+    envelope from ``image1``/``image2``.
+
+    Why source space: each preview is normalised per side to a 1024 long edge,
+    so the envelope of a PREVIEW pair has a different aspect than the envelope
+    of the source pair (2000x1400 = 1.43 vs 1024x1024 = 1.0). Fitting the
+    canvas/split/loupe to the preview aspect and then re-fitting when the
+    unified store lands is exactly the "comparison jumps for a frame or two on
+    a pair replace" report (2026-10-27).
+
+    ``None`` (default) keeps today's behaviour bit-for-bit: export/snapshot
+    plans and an active crop box (the box-clipped display dims are the truth
+    there). A frame whose basis cannot be stated consistently sets
+    ``envelope_hold`` instead (see below) — it never carries a mix.
+    """
+    envelope_hold: bool = False
+    """
+    This frame's pair envelope is a PREVIEW guess on one side, so no consistent
+    envelope can be stated: hold the last presented frame instead of applying.
+
+    A preview is normalised per side to a 1024 long edge, so
+    ``max(w1,w2) x max(h1,h2)`` over ``(preview1, source2)`` describes neither
+    pair (measured live 2026-10-27: canvas ``[1024,1400]`` between two settled
+    ``[1600,1400]`` frames while a replaced slot's source tier was still
+    decoding). The live apply (``presentation/surface.apply_store_to_canvas``)
+    keeps the previously presented frame and its overlays untouched; a held
+    frame repeats byte-identically (no re-fit, no geometry change). A blank
+    frame is preferable to one that describes neither pair, and the state is
+    inherently transient (a preview is installed only until the side's own
+    pixels land).
+
+    Set only by ``plan_builder.build_canvas_plan`` on the live default plan;
+    ``False`` for export/snapshot plans, crop-box plans, and any frame where
+    both sides have a real basis (own pixels or an already-real display).
+    """
     composition_root: CompositionNode | None = None
     """
     Optional composition tree describing N-layer frames (multi-compare grid,
