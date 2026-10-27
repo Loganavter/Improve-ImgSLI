@@ -76,14 +76,24 @@ def _resolve_mode(view, explicit: object = None) -> object:
 def _resolve_profile(view, explicit: object = None) -> object:
     """Resolve the ACTIVE metric profile of THIS view's judgment domain.
 
-    Mirrors ``_resolve_mode``'s parent/window walk but reads the domain-tagged
-    state slot through the ONE accessor (``metric_profile.profile_for_domain``):
-    an AI view resolves ``ai_profile`` (the judge's axes), an Algorithms view
-    ``algorithms_profile`` (the local derivation) — never the other backend's.
-    The profile is refreshed when the folder's metrics settle, while ``_mode`` is
-    only rewritten on triage/source change — so a profile cached on the widget
-    would show stale (base-only) dots. Returns the stored profile, or ``None`` so
-    callers fall back to the mode mapping (fail-open).
+    Reads the domain-tagged state slot through the ONE accessor
+    (``metric_profile.profile_for_domain``): an AI view resolves ``ai_profile``
+    (the judge's axes), an Algorithms view ``algorithms_profile`` (the local
+    derivation) — never the other backend's. The profile is refreshed when the
+    folder's metrics settle, while ``_mode`` is only rewritten on triage/source
+    change — so a profile cached on the widget would show stale (base-only)
+    dots. Returns the stored profile, or ``None`` so callers fall back to the
+    mode mapping (fail-open).
+
+    The TRIAGE OWNER is asked FIRST, and it is the only source that answers in
+    the live tree: the domain resolution below already goes through it
+    (``_gallery_domain`` → ``_drag_owner`` → ``_owner_for_triage``), while the
+    parent/window walk finds no ``state`` at all — the widget keeps
+    ``_session_state`` and the grid is reparented into the content stack
+    (owner report 2026-10-27: the rows showed the judge's six free axes and the
+    cards showed no dots, because the card got ``profile=None`` → the registry
+    mode mapping → every asked AI axis read as a gap). The walk stays as the
+    fallback for a grid hosted by a widget that does expose ``state``.
     """
     self = view
     if explicit is not None:
@@ -114,6 +124,14 @@ def _resolve_profile(view, explicit: object = None) -> object:
             )
             return None
 
+    try:
+        from .drag_source import _drag_owner
+
+        prof = _stored(getattr(_drag_owner(self), "state", None))
+        if prof is not None:
+            return prof
+    except Exception:
+        logger.debug("profile owner read failed domain=%s", domain, exc_info=True)
     for obj in (self.parent(), self.window()):
         if obj is None:
             continue

@@ -154,9 +154,6 @@
       "pick_title": "Pick folder or image",
       "pick_folder": "Pick folder"
     },
-    "grid": {
-      "resize_tooltip": "Drag to resize series panes"
-    },
     "stats": {
       "show_all": "Show all",
       "clean_rejected": "Clean rejected ({n})",

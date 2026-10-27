@@ -154,9 +154,6 @@
       "pick_title": "选择文件夹或图像",
       "pick_folder": "选择文件夹"
     },
-    "grid": {
-      "resize_tooltip": "拖动以调整系列窗格大小"
-    },
     "stats": {
       "show_all": "显示全部",
       "clean_rejected": "清理已拒绝（{n}）",

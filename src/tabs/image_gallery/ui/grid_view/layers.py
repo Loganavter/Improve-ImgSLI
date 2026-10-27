@@ -212,7 +212,13 @@ class _BandSeparatorHandle(QWidget):
     rows. Horizontal drag adjusts the left-band width; the grid replans live
     as column boundaries are crossed (no-op while inside one column — the
     surgical reconcile in ``_rebuild_series`` converges without teardown).
-    Paints nothing (transparent); the SplitHCursor + tooltip afford dragging.
+    Paints nothing (transparent).
+
+    Deliberately carries NO drag affordance: no ``SplitHCursor`` and no
+    tooltip. The owner asked (2026-10-27) that the splitter not advertise
+    itself — dragging must keep working, but hovering over it looks inert.
+    Do not reintroduce either: the affordance (not the drag) was the bug, and
+    ``tests/runtime/test_band_separator_affordance.py`` pins both halves.
     """
 
     def __init__(self, view, parent=None) -> None:
@@ -221,29 +227,10 @@ class _BandSeparatorHandle(QWidget):
         self._press_x: int | None = None
         try:
             self.setObjectName("GalleryBandSeparator")
-            self.setCursor(Qt.CursorShape.SplitHCursor)
-            tip = self._resize_tooltip()
-            if tip:
-                self.setToolTip(tip)
             self.setMouseTracking(True)
             self.setFixedWidth(scaled_px(GRID_SEPARATOR_COL_W))
         except Exception:
             pass
-
-    def _resize_tooltip(self) -> str | None:
-        """Localized handle tooltip via the owning grid's translator chain.
-
-        No local fallback literal: the grid's ``_activity_translate`` is
-        fail-open (returns the EN default itself), so an unavailable
-        translator just leaves the tooltip unset rather than duplicating text.
-        """
-        try:
-            tr = getattr(self._view, "_activity_translate", None)
-            if callable(tr):
-                return str(tr("image_gallery.grid.resize_tooltip", "Drag to resize series panes"))
-        except Exception:
-            pass
-        return None
 
     def mousePressEvent(self, event) -> None:  # noqa: N802
         try:

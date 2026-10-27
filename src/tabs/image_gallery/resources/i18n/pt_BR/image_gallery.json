@@ -154,9 +154,6 @@
       "pick_title": "Escolha uma pasta ou imagem",
       "pick_folder": "Escolher pasta"
     },
-    "grid": {
-      "resize_tooltip": "Arraste para redimensionar os painéis de séries"
-    },
     "stats": {
       "show_all": "Mostrar tudo",
       "clean_rejected": "Limpar rejeitados ({n})",
