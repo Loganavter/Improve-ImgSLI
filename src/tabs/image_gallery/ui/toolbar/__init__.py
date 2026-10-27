@@ -373,6 +373,13 @@ class GalleryToolbar(QWidget):
             pass
         self._sync_ask_sidebar_tooltip()
         layout.addWidget(self._ask_sidebar_button)
+        # HIDDEN 2026-10-27 (owner): the Ask sidebar is an unfinished feature —
+        # its button must not be offered. The widget and all wiring stay (the
+        # toolbar setters, the toggle signal and the tab-level panel are intact,
+        # so re-exposing it is one line), but the affordance is not shown and no
+        # path below re-shows it. Pinned by
+        # tests/runtime/test_toolbar_hidden_ask_sidebar.py.
+        self._ask_sidebar_button.setVisible(False)
 
         # View switch — segmented 106×32 bg.band (real_design.md:49) — rounded r8 via paintEvent, no QSS
         self._view_switch_container = GalleryToolbarViewSwitchContainer(self)

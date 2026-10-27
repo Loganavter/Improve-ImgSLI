@@ -180,6 +180,13 @@ def test_clear_defeats_the_skip(tmp_path, caches) -> None:
         "jev_files": 1,
         "vlm_files": 1,
         "pairwise_verdicts": 0,
+        # The TWO scopes, both named: one card's visible state cleared, the
+        # measured stores swept for the whole pool (wave 2).
+        "targets": 1,
+        "pool": 1,
+        "target_scope": "pool",
+        "stores_scope": "global",
+        "stores": ["scorecards", "metric_profiles", "metrics", "ranks", "pins"],
     }
 
 

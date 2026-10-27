@@ -974,6 +974,36 @@ def _on_pairwise_error(owner, error_info, *, gen=None, epoch=None, series_key=No
     _pairwise_error(owner, str(name), detail="comparison pass raised")
 
 
+def _scope_log_line(scope, picked: int) -> str:
+    """The switch/settle's ONE plain-log line, cap and drop count included.
+
+    ``Scope.reason`` already names ``action=``/``kind=``/``n=``/``source=`` and,
+    on the capped visible branch, ``cap=``/``available=``. It used to reach
+    ``logger.debug`` only, so log.txt at the default INFO level said nothing
+    about a 12-of-20 pass — the "выбрал 100 — те же 12, молча" half of the
+    2026-10-27 report. The DROPPED count is stated here rather than left as
+    subtraction for the reader; the resolver owns the numbers, this function
+    only spells them out.
+    """
+    reason = str(getattr(scope, "reason", "") or "")
+    cap = available = None
+    for token in reason.split():
+        if token.startswith("cap="):
+            try:
+                cap = int(token[len("cap=") :])
+            except ValueError:
+                cap = None
+        elif token.startswith("available="):
+            try:
+                available = int(token[len("available=") :])
+            except ValueError:
+                available = None
+    line = f"picked={picked} {reason}".strip()
+    if cap and available is not None and available > cap:
+        line = f"{line} dropped={available - cap} (cap={cap} of available={available})"
+    return line
+
+
 def _run_ai_for_visible(owner, *, cache_only: bool = False) -> None:
     """Analyze the AI tail's scope: THE SELECTION, else the capped viewport.
 
@@ -982,9 +1012,10 @@ def _run_ai_for_visible(owner, *, cache_only: bool = False) -> None:
     regardless of the selection. The scope now comes from the ONE resolver
     (``action_scope``, kind selection_else_visible): the selection wins when
     it is non-empty, otherwise the viewport is analyzed up to the owner's cap.
-    The cap is never silent — ``Scope.reason`` carries ``cap=``/``available=``
-    and lands in the trace, and an unlaid-out grid with no selection is a
-    refusal instead of a fail-open to the pool.
+    The cap is never silent — ``Scope.reason`` carries ``cap=``/``available=``,
+    :func:`_scope_log_line` adds the drop count, and that line is logged at
+    INFO so log.txt states it without ``--debug``. An unlaid-out grid with no
+    selection is a refusal instead of a fail-open to the pool.
 
     ``cache_only`` is the DOMAIN-SWITCH path: switching backends must not spend
     a new request on metrics the other backend already produced (owner order
@@ -996,7 +1027,7 @@ def _run_ai_for_visible(owner, *, cache_only: bool = False) -> None:
 
     scope = action_scope.resolve_scope(owner, "gallery.domain.switch")
     if scope.refused or not scope.targets:
-        logger.debug("AI visible pass: %s", scope.reason)
+        logger.info("[gallery] AI pass: nothing to do — %s", _scope_log_line(scope, 0))
         return
     keys = {str(p) for p in scope.targets}
     picked: list = []
@@ -1015,9 +1046,12 @@ def _run_ai_for_visible(owner, *, cache_only: bool = False) -> None:
             continue
         picked.append(it)
     if not picked:
-        logger.debug("AI visible pass: %s — nothing to analyze", scope.reason)
+        logger.info(
+            "[gallery] AI pass: nothing left to analyze — %s",
+            _scope_log_line(scope, 0),
+        )
         return
-    logger.debug("AI visible pass: %s picked=%d", scope.reason, len(picked))
+    logger.info("[gallery] AI pass: %s", _scope_log_line(scope, len(picked)))
     if cache_only:
         hydrate = getattr(owner, "_hydrate_ai_cache", None)
         try:

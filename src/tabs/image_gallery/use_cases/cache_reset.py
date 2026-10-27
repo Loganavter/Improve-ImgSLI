@@ -93,10 +93,13 @@ owner's newer report is the opposite experience: "Почему я выделил
 that silently widens to every card is the same defect class as
 ``next(iter(selected_paths))``, only in the other direction. The measured
 stores are still swept whole (an adapter owns a namespace keyed by
-series/pair/content identity, not by one card's path), so a scoped reset drops
-the disk caches but clears the VISIBLE state of the targets only; the pool-wide
-form remains available to maintenance callers as ``clear_metrics_caches(owner)``
-with ``paths=None``.
+series/pair/content identity, not by one card's path). The reset therefore
+reports TWO scopes: the cards it cleared (``targets``/``pool`` in the result)
+and the stores it swept for the WHOLE pool (``stores_scope="global"`` +
+``stores``), stated once in log.txt at INFO — "выбрал 2 — обработалось 100"
+must be readable from the log, not from this file. The pool-wide form remains
+available to maintenance callers as ``clear_metrics_caches(owner)`` with
+``paths=None``.
 
 Audit-Meta: pattern=reset-barrier size=535 reason="one reset contract: the two current-work tokens, every in-memory/on-disk clear and the visible re-stamp must happen in ONE order (token first, then clear, then repaint); splitting them lets a delivery land between the steps — the exact defect the barrier removes."
 """
@@ -112,6 +115,20 @@ from tabs.image_gallery.services.rank_badge import KIND_NONE, stamp_badges
 from core.log_names import APP_LOGGER_NAME
 
 logger = logging.getLogger(APP_LOGGER_NAME)
+
+#: What a reset sweeps for the WHOLE pool regardless of the action's card scope
+#: (each adapter owns a namespace keyed by series/pair/content identity, so it
+#: cannot delete "just this card's" rows). Named here once: the summary field
+#: and the one INFO log line read the same list, so the two can never drift,
+#: and a reader of the result never has to open this module to learn that
+#: "2 of 100 cards" does not mean "2 cards' caches".
+STORE_SCOPE_NAMES: tuple[str, ...] = (
+    "scorecards",
+    "metric_profiles",
+    "metrics",
+    "ranks",
+    "pins",
+)
 
 
 def _state_of(owner):
@@ -385,6 +402,15 @@ def clear_metrics_caches(owner, *, paths=None) -> dict:
     "vlm_files": n, "pairwise_verdicts": n}`` — the cache counts come from the
     adapters that dropped them, the item count from the per-item clear.
 
+    TWO SCOPES, BOTH NAMED (owner report 2026-10-27: "выбрал 2 — обработалось
+    100"): ``items`` counts the cards whose visible state was cleared
+    (``paths``), while the measured stores are pool-wide by construction. The
+    summary therefore also carries ``targets``/``pool`` (the two sizes), the
+    target_scope ("targets" or "pool"), stores_scope ("global") and
+    ``stores`` (:data:`STORE_SCOPE_NAMES`), and ONE INFO
+    line states the same thing in log.txt — otherwise the widening was
+    readable only from this docstring.
+
     Cleared items lose their metric-derived rank state AND their VLM verdict /
     brief fields (see :func:`_clear_item`); the in-memory verdict maps
     (``state.tie_breaks``, ``state.series_priority``) are emptied as well — the
@@ -432,6 +458,14 @@ def clear_metrics_caches(owner, *, paths=None) -> dict:
             except Exception:
                 continue
         targets = [it for it in items if _path_key(it) in wanted]
+    # THE TWO SCOPES, recorded before the clear so a caller reads them from the
+    # result instead of inferring them: ``targets`` are the cards whose visible
+    # state goes, the measured stores below are swept for the whole pool.
+    summary["targets"] = len(targets)
+    summary["pool"] = len(items)
+    summary["target_scope"] = "pool" if paths is None else "targets"
+    summary["stores_scope"] = "global"
+    summary["stores"] = list(STORE_SCOPE_NAMES)
     for it in targets:
         _clear_item(it)
         summary["items"] += 1
@@ -526,6 +560,29 @@ def clear_metrics_caches(owner, *, paths=None) -> dict:
     # and the cards show the unranked/neutral state the re-entered pass starts
     # from.
     _refresh_cleared_view(owner, targets)
+    # THE ONE PLAIN-LOG LINE (INFO — log.txt's default level). The owner's
+    # "выбрал 2 — обработалось 100" was only explainable by reading the code:
+    # the card count and the pool-wide store sweep were never in the same
+    # sentence. Both sizes and the store list are stated here; the gated
+    # ``gallery_debug`` line below keeps the per-cache counters for tracing.
+    try:
+        logger.info(
+            "[gallery] metrics reset: %d of %d card(s) cleared (scope=%s); the "
+            "measured stores were swept WHOLE — %s (%d scorecard, %d profile, "
+            "%d jev, %d vlm, %d pairwise file(s)) — every non-target card keeps "
+            "its items but loses those caches",
+            len(targets),
+            len(items),
+            summary["target_scope"],
+            "/".join(STORE_SCOPE_NAMES),
+            summary["ai_files"],
+            summary["profiles"],
+            summary["jev_files"],
+            summary["vlm_files"],
+            summary["pairwise_verdicts"],
+        )
+    except Exception:
+        pass
     try:
         from tabs.image_gallery.debug import gallery_debug as _dbg
 
