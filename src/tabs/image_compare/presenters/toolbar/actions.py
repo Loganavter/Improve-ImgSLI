@@ -2,19 +2,89 @@ import os
 
 from PySide6.QtWidgets import QFileDialog
 
-from core.events import CoreUpdateRequestedEvent
+from core.events import CoreErrorOccurredEvent, CoreUpdateRequestedEvent
+from shared.image_extensions import build_image_dialog_filter, is_loadable_image_path
 from sli_ui_toolkit.i18n import tr
 from tabs.image_compare.canvas.registry import registry
 from tabs.image_compare.presenters.toolbar.state import _get_settings_presenter_from_window
 
+def _canon_dialog_filter(lang: str) -> str:
+    """QFileDialog filter built by the canon only (``shared.image_extensions``).
+
+    Do NOT compose a glob list here. A local copy of the list made this dialog
+    offer ``.gif`` while every other entry (DnD/chrome/carry, which gate on the
+    same module) bounced it — one file accepted in one place and rejected in
+    another, the drift class closed for ``.jxl`` in the 2026-08-25 C9 review.
+    Only the "All files" label is localised; the suffix set is the canon's.
+    """
+    return build_image_dialog_filter(
+        all_files_label=f"{tr('common.file_type.all_files', lang)} (*)"
+    )
+
+
+def _split_loadable_selection(paths) -> tuple[list[str], list[str]]:
+    """Split a dialog selection into (loadable, refused) with the DnD predicate.
+
+    ``is_loadable_image_path`` is the same admission rule the drop path applies
+    (accepted suffix ∧ ``is_file``), so the dialog cannot hand the loader a file
+    DnD would have dropped.
+    """
+    loadable: list[str] = []
+    refused: list[str] = []
+    for path in paths:
+        (loadable if is_loadable_image_path(path) else refused).append(path)
+    return loadable, refused
+
+
+def _report_refused_selection(presenter, refused, lang: str) -> None:
+    """Surface a refused dialog pick through the IC error path (no new UI).
+
+    Same message shape as ``use_cases/slot._finalize_loaded_paths``: one header
+    plus the offending names, so a dialog-confirmed file never disappears
+    silently. Degrades to a no-op if no error channel is reachable — the
+    refusal itself has already happened.
+    """
+    details = "\n - ".join(
+        f"{os.path.basename(str(p)) or p}: "
+        f"{tr('image_compare.msg.invalid_item_type_or_empty_path', lang)}"
+        for p in refused
+    )
+    message = (
+        tr("image_compare.msg.some_images_could_not_be_loaded", lang)
+        + ":\n\n - "
+        + details
+    )
+    try:
+        bus = getattr(presenter, "event_bus", None)
+    except Exception:  # dead QObject
+        bus = None
+    if bus is not None:
+        try:
+            bus.emit(CoreErrorOccurredEvent(message))
+            return
+        except Exception:
+            pass
+    try:
+        main_controller = getattr(presenter, "main_controller", None)
+        signal = (
+            getattr(main_controller, "error_occurred", None)
+            if main_controller is not None
+            else None
+        )
+    except Exception:
+        signal = None
+    emit = getattr(signal, "emit", None)
+    if callable(emit):
+        try:
+            emit(message)
+        except Exception:
+            pass
+
+
 def open_image_dialog(presenter, image_number: int):
     start_dir = presenter.store.settings.export_default_dir or os.path.expanduser("~")
     lang = presenter.store.settings.current_language
-    filters = (
-        f"{tr('common.file_type.image_files', lang)} "
-        "(*.png *.bmp *.gif *.webp *.tif *.tiff *.jxl *.jpg *.jpeg);;"
-        f"{tr('common.file_type.all_files', lang)} (*)"
-    )
+    filters = _canon_dialog_filter(lang)
     paths, _ = QFileDialog.getOpenFileNames(
         presenter.main_window_app,
         tr("image_compare.button.select_images", lang),
@@ -23,6 +93,17 @@ def open_image_dialog(presenter, image_number: int):
     )
 
     if paths:
+        # Validate the selection with the DnD predicate before any load is
+        # scheduled: the "All files" filter section (and a typed filename)
+        # still lets a non-image through, and this entry used to forward it
+        # verbatim. Refused picks are reported, never loaded silently; the
+        # rest of a multi-selection survives.
+        pinned_paths, refused = _split_loadable_selection(paths)
+        if refused:
+            _report_refused_selection(presenter, refused, lang)
+        if not pinned_paths:
+            return
+
         delay = 100 if getattr(presenter, "_first_dialog_load_pending", True) else 0
         from PySide6.QtCore import QTimer
 
@@ -39,7 +120,6 @@ def open_image_dialog(presenter, image_number: int):
             if main_controller is not None
             else None
         )
-        pinned_paths = list(paths)
 
         QTimer.singleShot(
             delay,
