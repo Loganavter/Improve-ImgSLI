@@ -91,6 +91,22 @@ def _is_rekeyed_content_baseline(last_good_key) -> bool:
     return any(_is_rekeyed_content_key(k) for k in texture_keys) or _is_rekeyed_content_key(diff_key)
 
 
+def _content_replaced_keys(renderer) -> tuple:
+    """Live slot keys whose content became a DIFFERENT picture this frame.
+
+    Written by ``TileResidencyRealizer.resolve_specs`` through
+    ``is_foreign_content_replacement`` (a store->store swap, a
+    preview->preview swap, ... -- a preview->store tier handover of the same
+    document side is excluded) and reset once per frame in ``frame_setup``.
+    None-safe: a renderer without a realizer (fakes, tests) has no verdict
+    and keeps the pre-existing behaviour.
+    """
+    try:
+        return tuple(renderer.resources.residency.last_content_replaced_keys or ())
+    except Exception:
+        return ()
+
+
 def _is_hires_flip_baseline(last_good_key, key) -> bool:
     """stored_* <-> source_* tier switch = hires flip (use_hires path).
 
@@ -180,14 +196,52 @@ def resolve_fallback_plan(
                 last_good_key,
             )
     _prev_is_same = renderer._prev_sources_is_same
+    # -- Pair-content identity: identity > smoothness (owner report
+    # 2026-10-27 14:34:41). The fallback baseline may only ever draw the
+    # CURRENT pair's content. When a live slot's content identity is replaced
+    # by a different picture (replacement of either side of the pair, a
+    # swapped pair published as one batch -- see
+    # ``swap_current_pair``/#747) the baseline built from the previous pair is
+    # FOREIGN: drawing it, atomically or not, is a frame (or a few) of the
+    # wrong image, which is exactly what the owner sees as a ~40-60 ms flash
+    # after everything already settled. See the ``_baseline_foreign`` branch
+    # below for what is drawn instead.
+    #
+    # The verdict is sticky for the whole transition (``_content_swap_active``
+    # style) because the replacement is detected on the frame the new source
+    # lands, while the baseline keeps being held over the following frames
+    # until the new pair promotes; it is cleared on promotion and when there
+    # is no baseline left to hold.
+    replaced_now = _content_replaced_keys(renderer)
+    if replaced_now:
+        _replaced_bases = {getattr(k, "base", k) for k in replaced_now}
+        if any(getattr(k, "base", k) in _replaced_bases for k in texture_keys):
+            renderer._fallback_baseline_foreign = True
+            _ic_preview_log(
+                "fallback baseline_foreign: SET (replaced_keys=%s key=%s)",
+                [str(k) for k in replaced_now],
+                key,
+            )
+    if last_good_key is None:
+        # First paint / evicted baseline: nothing left for the verdict to
+        # suppress, and keeping it would block the next legitimate hold.
+        renderer._fallback_baseline_foreign = False
     if current_sources_is_same is False and _prev_is_same is True:
-        if _is_rekeyed_content_baseline(last_good_key):
+        if _is_rekeyed_content_baseline(last_good_key) and not renderer._fallback_baseline_foreign:
             # Own stashed preview hold (flip frame): the rekey lookup above
             # mapped the pair's previous content to _content_stash keys, so
             # this baseline is the intentional atomic placeholder — NOT a
             # stale duplicate. Dropping it blanks one frame (flip flicker:
             # preview -> GAP entries=0 -> store). Spare it; the plain-key
             # duplicate case below still drops.
+            #
+            # Only a SAME-CONTENT baseline may be spared here: a preview QImage
+            # handing over to the store of the same document side is one
+            # picture at two resolutions. A baseline whose content is a
+            # DIFFERENT picture is already excluded upstream by
+            # ``_fallback_baseline_foreign`` (a stash marker is created for
+            # both kinds of handover, so the marker alone never proves the
+            # baseline belongs to this pair).
             _ic_preview_log(
                 "fallback SKIP_DUPLICATE_BASELINE spared: last_good=%s is own stashed preview hold, keeping atomic baseline",
                 last_good_key,
@@ -241,6 +295,15 @@ def resolve_fallback_plan(
     decision_is_content_swap = is_content_swap
     decision_content_swap_flag = renderer._content_swap_active
     decision_last_good_has_marker = _is_rekeyed_content_baseline(last_good_key)
+    # A baseline made of a DIFFERENT picture than the current pair (see the
+    # pair-content identity block above) is never drawn: not as the atomic
+    # content-swap placeholder, not as a level hold, not as a hires flip.
+    # Identity beats smoothness -- every one of those holds exists to keep the
+    # SAME picture from flickering between tiers, and none of them may trade a
+    # subtle seam of the right picture for a whole frame of the wrong one.
+    _baseline_foreign = bool(
+        getattr(renderer, "_fallback_baseline_foreign", False)
+    ) and last_good_key is not None and last_good_key != key
     # Atomic-tier invariant (plan-atomic-lod-transitions): one tier per
     # frame also for LOD level changes AND hires flips, not just content
     # swaps. A level transition key carries LevelKey entries, a hires flip
@@ -252,24 +315,27 @@ def resolve_fallback_plan(
     # engine (empty fallback -> partial current, never blank).
     _atomic_level_hold = (
         not is_content_swap
+        and not _baseline_foreign
         and last_good_key is not None
         and last_good_key != key
         and any(isinstance(k, LevelKey) for k in texture_keys)
     )
     _hires_flip_hold = (
         not is_content_swap
+        and not _baseline_foreign
         and last_good_key is not None
         and last_good_key != key
         and _is_hires_flip_baseline(last_good_key, key)
     )
     decision_atomic = (
-        decision_is_content_swap or _atomic_level_hold or _hires_flip_hold
+        not _baseline_foreign
+        and (decision_is_content_swap or _atomic_level_hold or _hires_flip_hold)
     )
-    _fallback_sig = (str(key), str(last_good_key), decision_is_content_swap, decision_atomic, main_more_pending, len(current_array_plan), str(dict(rekeyed) if rekeyed else None))
+    _fallback_sig = (str(key), str(last_good_key), decision_is_content_swap, decision_atomic, _baseline_foreign, main_more_pending, len(current_array_plan), str(dict(rekeyed) if rekeyed else None))
     _should_emit_fallback = _throttle_emit("fallback.decision", _fallback_sig)
     if _should_emit_fallback:
         _ic_preview_log(
-            "fallback decision: source_changed=%s last_good=%s key=%s rekeyed=%s is_content_swap=%s atomic=%s more_pending=%s current_entries=%d last_good_has_marker=%s content_swap_flag=%s decision_atomic=%s level_hold=%s hires_hold=%s",
+            "fallback decision: source_changed=%s last_good=%s key=%s rekeyed=%s is_content_swap=%s atomic=%s more_pending=%s current_entries=%d last_good_has_marker=%s content_swap_flag=%s decision_atomic=%s level_hold=%s hires_hold=%s baseline_foreign=%s",
             source_changed,
             last_good_key,
             key,
@@ -283,6 +349,7 @@ def resolve_fallback_plan(
             decision_atomic,
             _atomic_level_hold,
             _hires_flip_hold,
+            _baseline_foreign,
         )
         if _gap_enabled():
             try:
@@ -343,7 +410,30 @@ def resolve_fallback_plan(
     except Exception:
         _cascade_uploaded = 0
     _cascade_pending = _cascade_leftover or _cascade_uploaded > 0
-    if (
+    if _baseline_foreign:
+        # Never draw the previous pair's content (see the pair-content
+        # identity block above). Two states, both identity-correct:
+        #
+        # * The current pair is content-complete: present it NOW, cascade
+        #   gate or not. The gate protects the edges of the SAME picture from
+        #   a 1-frame stale-mip seam; keeping a foreign baseline one more
+        #   frame instead is a whole frame of the WRONG picture (live log
+        #   2026-10-27 14:34:41: present #171 at 41.442 drew the old pair
+        #   although the new one matched the GPU already at 41.412).
+        # * The current pair is still streaming in: its own partial tiles (or
+        #   nothing, when none landed yet) are drawn for the changed side.
+        #   Partial new content is allowed -- a frame of the previous or
+        #   neighbouring picture is not.
+        #
+        # ``new_last_good_key`` stays the (undrawn) old key until promotion,
+        # so the frame keeps its fallback bookkeeping without ever building
+        # the old pair's plan (``fallback_diag`` stays empty -- no
+        # ``fallback_kept`` number is reported for it either).
+        if not main_more_pending and current_array_plan:
+            new_last_good_key, array_draw_plan = key, current_array_plan
+        else:
+            new_last_good_key, array_draw_plan = last_good_key, current_array_plan
+    elif (
         not main_more_pending
         and not _cascade_pending
         and current_array_plan
@@ -404,6 +494,14 @@ def resolve_fallback_plan(
                 decision_is_content_swap,
             )
         renderer._content_swap_active = False
+        # Promotion is the end of the replacement transition: the baseline is
+        # now the new pair's own content, so a later same-content level hold /
+        # hires flip must be allowed to hold it again.
+        if getattr(renderer, "_fallback_baseline_foreign", False):
+            _ic_preview_log(
+                "fallback baseline_foreign: CLEARED on promotion (key=%s)", key
+            )
+        renderer._fallback_baseline_foreign = False
         if _should_emit_fallback:
             _ic_preview_log(
                 "fallback promotion: promoted=True key=%s more_pending_at_decision=%s coverage_will_be_checked_in_render",
@@ -479,12 +577,13 @@ def resolve_fallback_plan(
         _promoted = new_last_good_key == key
         frame_context.record(
             "fallback",
-            "ran" if fallback_diag else "skipped",
+            "ran" if (fallback_diag or _baseline_foreign) else "skipped",
             f"fallback atomic={decision_atomic}"
             f" more_pending={main_more_pending} promoted={_promoted}"
             f" cascade_pending={_cascade_pending}"
             f" uploaded={_cascade_uploaded}"
             f" hires_hold={_hires_flip_hold}"
+            f" baseline_foreign={_baseline_foreign}"
             f" current={len(current_array_plan)}"
             f" kept={fallback_diag.get('kept')} raw={fallback_diag.get('raw')}",
             ids=make_ids(

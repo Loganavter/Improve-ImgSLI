@@ -29,6 +29,14 @@ way render() does), asserting on the produced draw plan's bound layers:
 old-content layers only (no new-tile mix, full coverage) until every
 current-view tile of the new content is resident, then a single-frame
 commit.
+
+Scope of that hold, since the 2026-10-27 identity rule: it applies to the
+SAME picture at another tier -- the preview QImage handing over to the tiled
+store of the same document side (scenario 1), a LOD level change, or a hires
+flip. A swap to a DIFFERENT picture never draws its replaced content, not
+even for the atomic placeholder frame: a partial new picture is allowed, a
+frame of the old one is not (``test_fallback_never_keeps_a_previous_pair.py``,
+``use_cases/fallback.py``'s ``_baseline_foreign`` branch).
 """
 
 from types import SimpleNamespace
@@ -229,12 +237,21 @@ def test_preview_to_store_flip_is_atomic_and_commits_in_one_frame():
     )
 
 
-def test_same_slot_lazy_swap_stash_marker_is_atomic():
+def test_same_slot_lazy_swap_never_draws_the_replaced_content():
     """A same-slot store swap (both contents lazy TiledPixelStores): the
     residency realizer rekeys the old content to a ``("_content_stash", ...)``
-    marker key. The marker must be recognized as a content swap (the
-    ``_prev_content``-only check used to miss it), so mid-transition frames
-    draw the old content only -- never a mix of new and old tiles."""
+    marker key and reports the replacement through
+    ``last_content_replaced_keys``.
+
+    The mid-transition frame must draw the INCOMING pair's own tiles only.
+    This used to assert the opposite -- hold the stash marker whole until
+    promotion -- which is a frame of the previous picture: owner report
+    2026-10-27 (``fallback_kept=9`` for a pair whose content keys had already
+    changed), see ``test_fallback_never_keeps_a_previous_pair.py``. Identity
+    beats smoothness: a partial new picture is allowed, the old one is not.
+    The same-content preview -> store handover keeps its hold
+    (``test_preview_to_store_flip_is_atomic_and_commits_in_one_frame``).
+    """
     renderer = RhiCanvasRenderer()
     tile_service = TileTextureService(max_tile_extent=512)
     base_image = _base_image()
@@ -253,6 +270,7 @@ def test_same_slot_lazy_swap_stash_marker_is_atomic():
     tile_service.register_source("stored_0", (2000, 1000))
     _mark_budgeted(tile_service, "stored_0", [(0, 0), (0, 1)])
     rekeyed = {"stored_0": stash_key}
+    renderer.resources.residency.last_content_replaced_keys = {"stored_0"}
 
     current_plan = build_array_draw_plan(
         tile_service,
@@ -277,15 +295,21 @@ def test_same_slot_lazy_swap_stash_marker_is_atomic():
         rekeyed=rekeyed,
     )
 
-    assert _plan_binds_only(
+    assert not _plan_binds_only(
         tile_service, plan, (stash_key, "stored_1"), ("stored_0",)
     ), (
-        "mid-swap frame mixed new content tiles with the old-content "
-        "fallback -- the _content_stash marker was not treated as atomic"
+        "mid-swap frame drew the replaced content as an atomic placeholder "
+        "while the pair's content keys had already changed"
     )
-    assert _covered_visible_fraction(plan, base_image) >= 0.999
+    assert set(plan) == set(current_plan), (
+        "mid-swap frame must draw exactly the incoming pair's own tiles"
+    )
     assert new_last_good == ((stash_key, "stored_1"), None)
+    # The swap is still in progress (the new content only partially landed),
+    # so promotion has not happened: the verdict survives to the next frame
+    # and the (undrawn) baseline keeps its fallback bookkeeping.
     assert renderer._content_swap_active
+    assert renderer._fallback_baseline_foreign
 
 
 def test_same_slot_swap_commits_in_one_frame_once_resident():
@@ -309,6 +333,7 @@ def test_same_slot_swap_commits_in_one_frame_once_resident():
     renderer._last_good_texture_keys = (stash_key, "stored_1")
     renderer._last_good_diff_key = None
     renderer._content_swap_active = True
+    renderer._fallback_baseline_foreign = True
 
     current_plan = build_array_draw_plan(
         tile_service,
