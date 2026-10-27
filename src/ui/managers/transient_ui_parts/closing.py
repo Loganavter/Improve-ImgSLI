@@ -1,10 +1,92 @@
 from __future__ import annotations
 
+import logging
+
 import shiboken6 as sip
 from PySide6.QtWidgets import QApplication, QDialog
 
 from ui.context_menu.manager import get_context_menu_manager
 from ui.host_debug import transient_close_debug
+from core.log_names import APP_LOGGER_NAME
+
+logger = logging.getLogger(APP_LOGGER_NAME)
+
+
+# --- process-global focus/close sweep guard --------------------------------
+#
+# ``QApplication.focusChanged`` is synchronous, and so is every ``hide()``
+# that moves focus: a focus/close sweep can re-enter *itself* through routes a
+# per-instance flag structurally cannot see:
+#
+# * a second ``UIManager`` instance — its own ``_in_focus_changed`` is free;
+# * a manager resolved lazily *during* the sweep (one guard per tab);
+# * a nested event pump — ``processEvents()`` / ``activateWindow()`` inside a
+#   hide path delivers the deferred close timer (``QTimer.singleShot(0,
+#   _run)``) while the first sweep is still on the stack, and every level then
+#   emits the next ``focusChanged``.
+#
+# Live crash 2026-10-27 (RecursionError, ~1000 frames; the ``os.environ.get``
+# in ``transient_close_debug`` is only where the stack ran out, not the
+# cause): ``UIManager._on_app_focus_changed -> TransientUIManager.
+# on_app_focus_changed -> PopupClosingController.on_app_focus_changed``
+# repeated. The guard therefore has to be process-wide, with a hard depth of
+# ONE sweep: "a focus/close sweep is already running in this process — bail
+# out". It lives here (a leaf module both the slot and the controller can
+# import) because ``ui_manager`` -> ``transient_ui_manager`` ->
+# ``transient_ui_parts`` is the import direction; putting it in
+# ``ui_manager`` would close that cycle.
+#
+# UI thread only: Qt delivers focus events and this timer on the GUI thread.
+_MAX_SWEEP_DEPTH = 1
+_sweep_depth = 0
+_sweep_suppressed_logged = False
+
+
+def begin_transient_sweep(origin: str) -> bool:
+    """Claim the process-wide focus/close sweep slot.
+
+    Returns False when a sweep is already running somewhere in this process —
+    the caller must then return without touching transient UI (the running
+    sweep is already doing it, and re-entering is what overflowed the stack).
+
+    A True return MUST be paired with :func:`end_transient_sweep` in a
+    ``finally``.
+
+    The first suppression of a burst is logged once (``warning``, visible
+    without ``--debug``); the remaining ~1000 re-entries of that same burst
+    stay silent, so a recurrence leaves one line in ``log.txt`` instead of
+    flooding it. The flag resets when the next outermost sweep starts.
+    """
+    global _sweep_depth, _sweep_suppressed_logged
+    if _sweep_depth >= _MAX_SWEEP_DEPTH:
+        if not _sweep_suppressed_logged:
+            _sweep_suppressed_logged = True
+            try:
+                logger.warning(
+                    "[transient-close] suppressed re-entrant focus/close sweep "
+                    "(origin=%s, depth=%d)",
+                    origin,
+                    _sweep_depth,
+                )
+            except Exception:
+                # Logging must never take the focus path down with it.
+                pass
+        return False
+    _sweep_depth += 1
+    _sweep_suppressed_logged = False
+    return True
+
+
+def end_transient_sweep() -> None:
+    """Release the slot claimed by :func:`begin_transient_sweep`."""
+    global _sweep_depth
+    if _sweep_depth > 0:
+        _sweep_depth -= 1
+
+
+def transient_sweep_depth() -> int:
+    """Current sweep nesting depth (diagnostics/tests; 0 when idle)."""
+    return _sweep_depth
 
 
 def _widget_under(widget, ancestor) -> bool:
@@ -117,13 +199,35 @@ class PopupClosingController:
         def _run() -> None:
             self._hide_transient_scheduled = False
             transient_close_debug("hide_run reason=%s", reason)
-            self._hide_transient_same_window_ui_now()
+            if self._hide_transient_same_window_ui_now():
+                return
+            # A focus/close sweep is already on the stack (a nested event pump
+            # delivering this timer, or the focus slot that scheduled us). Queue
+            # the hide *behind* it instead of nesting it — the close must not be
+            # lost, and it must not re-enter the sweep synchronously.
+            self.hide_transient_same_window_ui(reason=f"{reason}:deferred")
 
         from PySide6.QtCore import QTimer
 
         QTimer.singleShot(0, _run)
 
-    def _hide_transient_same_window_ui_now(self):
+    def _hide_transient_same_window_ui_now(self) -> bool:
+        # The real sweep runs under the process-global guard: a nested event
+        # pump (``processEvents`` / ``activateWindow`` reached from a hide
+        # path) can deliver ``_run`` again while this sweep is still on the
+        # stack, and every nesting level hides → emits ``focusChanged`` →
+        # schedules the next one. That nesting is the 2026-10-27
+        # RecursionError, so the second sweep is dropped, not nested; ``_run``
+        # re-queues it instead of losing it. Returns True when the sweep ran.
+        if not begin_transient_sweep("PopupClosingController.hide_now"):
+            return False
+        try:
+            self._hide_transient_same_window_ui_now_unchecked()
+            return True
+        finally:
+            end_transient_sweep()
+
+    def _hide_transient_same_window_ui_now_unchecked(self):
         host = self.manager.host
         # Deferred hide can run inside AppTextInputDialog.exec()'s nested loop —
         # do not tear down the list flyout while that modal is up.

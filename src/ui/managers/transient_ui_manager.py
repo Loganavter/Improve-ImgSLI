@@ -246,4 +246,15 @@ class TransientUIManager:
         self.closing.hide_transient_same_window_ui(reason=reason)
 
     def on_app_focus_changed(self, old_widget, new_widget):
-        self.closing.on_app_focus_changed(old_widget, new_widget)
+        # Per-instance latch, same shape as UIManager._in_focus_changed: the
+        # process-global guard (``begin_transient_sweep``, claimed by the
+        # QApplication.focusChanged slot) already drops a sweep started
+        # anywhere else in the process; this one drops a direct re-entry into
+        # the same manager before any logging happens.
+        if getattr(self, "_in_focus_changed", False):
+            return
+        self._in_focus_changed = True
+        try:
+            self.closing.on_app_focus_changed(old_widget, new_widget)
+        finally:
+            self._in_focus_changed = False

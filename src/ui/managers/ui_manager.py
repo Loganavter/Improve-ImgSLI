@@ -7,6 +7,10 @@ from PySide6.QtWidgets import QApplication
 from ui.managers.dialog_manager import DialogManager
 from ui.managers.message_manager import MessageManager
 from ui.managers.transient_ui_manager import TransientUIManager
+from ui.managers.transient_ui_parts.closing import (
+    begin_transient_sweep,
+    end_transient_sweep,
+)
 from ui.managers.ui_manager_parts import (
     initialize_ui_manager_post_transient,
     initialize_ui_manager_pre_transient,
@@ -190,12 +194,39 @@ class UIManager(QObject):
         # focusChanged again before this slot returns. Without a guard that
         # ping-pongs A->B->A->... until RecursionError (seen dying inside
         # logging.format, which is just where the deep stack overflowed).
+        #
+        # This per-instance flag alone is NOT enough (live crash 2026-10-27):
+        # a second UIManager, a manager resolved lazily during the sweep, or a
+        # nested event pump (processEvents/activateWindow inside a hide path)
+        # re-enters through an instance whose flag is still free. The
+        # process-global slot below is the one that actually bounds the stack
+        # at one sweep; this flag stays as the cheap same-instance check.
         if getattr(self, "_in_focus_changed", False):
+            return
+        if not begin_transient_sweep("UIManager._on_app_focus_changed"):
             return
         self._in_focus_changed = True
         try:
             self.transient.on_app_focus_changed(old_widget, new_widget)
+        except RecursionError:
+            # Never route a RecursionError through logger.exception: the
+            # traceback formatter runs on the already-deep stack and is what
+            # turned the original crash into a second, unhandled one.
+            try:
+                logger.error(
+                    "[transient-close] focus change sweep hit RecursionError; "
+                    "sweep aborted"
+                )
+            except Exception:
+                pass
         except Exception:
-            logger.exception("[transient-close] on_app_focus_changed failed")
+            # Logged while the sweep slot is still claimed: if the log handler
+            # moves focus, the re-entrant focusChanged is suppressed instead of
+            # looping back into this handler.
+            try:
+                logger.exception("[transient-close] on_app_focus_changed failed")
+            except Exception:
+                pass
         finally:
             self._in_focus_changed = False
+            end_transient_sweep()
