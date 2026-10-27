@@ -25,7 +25,6 @@ NON_EN_LOCALES = ("ru", "zh", "pt_BR")
 _KEYS = (
     "image_gallery.toolbar.open_folder",
     "image_gallery.toolbar.filter_placeholder",
-    "image_gallery.grid.resize_tooltip",
     "image_gallery.stats.show_all",
     "image_gallery.stats.clean_rejected",
     "image_gallery.stats.compare_finalists",
