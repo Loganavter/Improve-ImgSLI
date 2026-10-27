@@ -282,16 +282,7 @@ class PlaylistListOperations:
             dispatcher.dispatch(
                 SetImageSessionImageAction(slot=2, image=img1), scope="viewport"
             )
-            # No geometry invalidation: a swap exchanges the two images of ONE
-            # pair, so the comparison envelope max(w1,w2) x max(h1,h2) -- the
-            # reference the letterbox and the overlay conversions are fitted to
-            # -- is unchanged, and its drawn frame is the same pair. Invalidating
-            # zeroed pixmap_width/height (GeometryStateReducer), which made the
-            # scene builder return an empty graph for the frames before the next
-            # apply: the declared-visible loupe vanished from the scene (and the
-            # hit-test) for a couple of frames (owner report 2026-10-27). It also
-            # forced a needless extra apply. swap_entire_lists keeps its
-            # invalidation: there the current images themselves change.
+            self.store.invalidate_geometry_cache()
 
         emit_ui_update(self.main_controller, ["combobox", "file_names", "resolution"])
         self._emit_metrics_update()

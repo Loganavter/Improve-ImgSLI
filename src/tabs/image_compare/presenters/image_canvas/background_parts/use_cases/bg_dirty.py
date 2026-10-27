@@ -176,7 +176,6 @@ def handle_background(presenter, source1, source2, peeked, current_label_dims, l
                 None,
                 last_applied_uid=_last_display_uids.get(1),
                 superseded_preview_uid=_superseded_uids.get(1),
-                other_slot_applied_uid=_last_display_uids.get(2),
             )
             img2 = pick_display_with_preview_backing(
                 presenter.store.viewport.session_data.image_state.image2,
@@ -185,7 +184,6 @@ def handle_background(presenter, source1, source2, peeked, current_label_dims, l
                 None,
                 last_applied_uid=_last_display_uids.get(2),
                 superseded_preview_uid=_superseded_uids.get(2),
-                other_slot_applied_uid=_last_display_uids.get(1),
             )
             # Joint preview hold: preview never deleted until BOTH halves have
             # complete tile replacement. While both previews exist and at least

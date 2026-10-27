@@ -1,9 +1,11 @@
 """Disk cache + pin for the Jev (TypeSafe System One) series rank.
 
-Key = ``sha256(paths + mtimes + endpoint + canonical payload)`` — an edited file
-(mtime), a changed series membership (path), a re-pointed provider (endpoint) or
-a changed measured vector (payload) all invalidate; a byte-identical re-run is
-served from disk with **no second HTTP call**.
+Key = ``sha256(paths + mtimes + content digests + endpoint + canonical payload)``
+— an edited file (mtime), a rewritten-in-place file whose mtime was restored
+(content digest, ``content_digest``), a changed series membership (path), a
+re-pointed provider (endpoint) or a changed measured vector (payload) all
+invalidate; a byte-identical re-run is served from disk with **no second HTTP
+call**.
 
 WHY the endpoint is part of the key (invariant I1/I2): the payload carries the
 constant ``jev_client.JEV_MODEL``, so with the key stopping at
@@ -70,12 +72,18 @@ def _item_mtime(item) -> int:
 
 
 def rank_cache_key(items, payload: dict, *, base_url: str = "") -> str:
-    """Stable key for one series rank: ``hash(paths + mtimes + endpoint + payload)``.
+    """Stable key for one series rank: ``hash(paths + mtimes + digests + endpoint + payload)``.
 
     The payload alone is not enough: its aliases (``img_N``) are opaque, so the
     on-disk path/mtime identity must be folded in explicitly. Members are sorted
     by path so the key is independent of the caller's member order; the payload
     is canonicalised with ``sort_keys`` so a re-built-but-equal payload matches.
+
+    Each member also carries its CONTENT digest (``content_digest``, ``""`` for
+    an unreadable file): a rank is a measurement of pictures, so a rewrite that
+    restored the mtime (unzip / ``cp -p``) must not reuse the previous bytes'
+    order. Untouched files answer from the digest index, so a series is not
+    re-read on every pass.
 
     ``base_url`` is the ENDPOINT that answered (the model id in the payload is a
     constant, ``jev_client.JEV_MODEL``), normalized through the gallery's ONE
@@ -84,6 +92,7 @@ def rank_cache_key(items, payload: dict, *, base_url: str = "") -> str:
     order. The ``""`` default is for storeless callers/tests; production passes
     the live settings.
     """
+    from tabs.image_gallery.services import content_digest
     from tabs.image_gallery.services.ai_providers import _url_key
 
     parts: list[str] = []
@@ -92,7 +101,13 @@ def rank_cache_key(items, payload: dict, *, base_url: str = "") -> str:
     except Exception:
         ordered = list(items or ())
     for item in ordered:
-        parts.append(f"{_item_path(item)}:{_item_mtime(item)}")
+        path = _item_path(item)
+        mtime = _item_mtime(item)
+        try:
+            digest = content_digest.file_digest(path, mtime_ns=mtime) if path else ""
+        except Exception:
+            digest = ""
+        parts.append(f"{path}:{mtime}:{digest}")
     parts.append(f"base_url={_url_key(base_url)}")
     try:
         canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)

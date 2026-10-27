@@ -14,17 +14,27 @@ The contract asserted here:
 * a different identity is a MISS (and the same identity still HITs);
 * the identity is stored in the payload and validated on load (defence in depth);
 * a pre-identity entry is a miss, without a migration attempt or a crash;
-* ``api_key`` never reaches the key or the JSON payload.
+* ``api_key`` never reaches the key or the JSON payload;
+* the FILE half of the key names the content, not the file slot
+  (``content-identity``, 2026-10-27): a rewrite that restored the mtime is a
+  MISS instead of the previous bytes' scorecard, and a byte-identical copy under
+  another name is a HIT instead of a second paid analysis. An unreadable file
+  keeps the old path-keyed form, so "no digest" is never a shared entry.
 """
 
 from __future__ import annotations
 
 import json
+import os
+import shutil
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from tabs.image_gallery.models import AiAnalysisResult
 from tabs.image_gallery.services import ai_cache
+from tabs.image_gallery.services import content_digest
 from tabs.image_gallery.services.ai_settings_store import AiSettings
 from tabs.image_gallery.services.metric_profile import MetricProfile
 from tabs.image_gallery.services.thumbnail_cache import cache_key_for
@@ -441,3 +451,90 @@ def test_clear_removes_every_identity_for_the_image(tmp_path, monkeypatch) -> No
         ai_cache.load_cached_analysis(path, mtime, _identity(_settings(model="model/B")))
         is None
     )
+
+
+# ---------------------------------------------------------------------------
+# content identity (owner, 2026-10-27 ``content-identity``)
+# ---------------------------------------------------------------------------
+
+#: The two writes below differ in ONE byte and have the same length, then get
+#: the same ``mtime_ns`` restored — the archive-extraction / ``cp -p`` shape the
+#: old ``path:mtime`` key could not tell apart.
+_FRAME = b"frame-bytes-one"
+_OTHER_FRAME = b"frame-bytes-two"
+_MTIME_NS = 1_700_000_000_000_000_000
+
+
+@pytest.fixture
+def _content_index(tmp_path, monkeypatch):
+    """Keep the digest index inside the test (never the owner's real cache)."""
+    import services.io.project_package as project_package
+
+    monkeypatch.setattr(
+        project_package, "cache_kind_dir", lambda kind: tmp_path / "cache-root" / kind
+    )
+    content_digest._reset_state(drop_disk=True)
+    yield content_digest
+    content_digest._reset_state(drop_disk=True)
+
+
+def _write_frame(path: Path, data: bytes = _FRAME) -> Path:
+    path.write_bytes(data)
+    os.utime(path, ns=(_MTIME_NS, _MTIME_NS))
+    return path
+
+
+def test_a_rewrite_that_restores_the_mtime_is_a_miss(tmp_path, monkeypatch, _content_index) -> None:
+    """The owner's symptom: the old scorecard must not survive a content change."""
+    _cache_dir(tmp_path, monkeypatch)
+    path = _write_frame(tmp_path / "frame.png")
+    ai_cache.save_analysis(path, _MTIME_NS, _result("from the FIRST bytes"), _identity())
+    assert ai_cache.load_cached_analysis(path, _MTIME_NS, _identity()) is not None
+
+    _write_frame(path, _OTHER_FRAME)  # same path, same mtime, other bytes
+
+    assert ai_cache.load_cached_analysis(path, _MTIME_NS, _identity()) is None, (
+        "a content change behind an unchanged (path, mtime) served the previous "
+        "bytes' scorecard"
+    )
+
+
+def test_a_byte_identical_copy_under_another_name_is_a_hit(
+    tmp_path, monkeypatch, _content_index
+) -> None:
+    """Same picture, new name -> one entry, so the analysis is never paid twice."""
+    _cache_dir(tmp_path, monkeypatch)
+    original = _write_frame(tmp_path / "a.png")
+    ai_cache.save_analysis(original, _MTIME_NS, _result("paid once"), _identity())
+
+    copy = tmp_path / "b.png"
+    shutil.copy2(original, copy)  # keeps the mtime, new name
+    assert copy.stat().st_mtime_ns == original.stat().st_mtime_ns
+
+    hit = ai_cache.load_cached_analysis(copy, _MTIME_NS, _identity())
+
+    assert hit is not None, "a byte-identical copy paid for the analysis again"
+    assert hit.description == "paid once"
+    # The folder gate agrees: both cards are already answered.
+    probe = ai_cache.folder_cache_probe(
+        [
+            SimpleNamespace(path=original, mtime_ns=_MTIME_NS),
+            SimpleNamespace(path=copy, mtime_ns=_MTIME_NS),
+        ],
+        _identity(),
+    )
+    assert probe["complete"] is True
+    assert sorted(probe["results"]) == sorted([str(original), str(copy)])
+
+
+def test_an_unreadable_file_keeps_the_path_keyed_form(tmp_path, monkeypatch, _content_index) -> None:
+    """A failed digest must degrade to the old key, never to a shared entry."""
+    _cache_dir(tmp_path, monkeypatch)
+    path, mtime = Path("/gallery/missing.png"), 7
+    assert content_digest.file_digest(path) == ""
+
+    ai_cache.save_analysis(path, mtime, _result(), _identity())
+
+    assert ai_cache.load_cached_analysis(path, mtime, _identity()) is not None
+    # ...and the shared-entry half: a DIFFERENT unreadable path is not served it.
+    assert ai_cache.load_cached_analysis(Path("/gallery/other.png"), mtime, _identity()) is None

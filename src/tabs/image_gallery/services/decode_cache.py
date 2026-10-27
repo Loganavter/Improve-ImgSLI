@@ -9,7 +9,13 @@ image loads). Two ``convert`` calls on that frame are cheaper than a second
 codec run.
 
 Key: ``(resolved path, st_mtime_ns, st_size)`` — an edit (new mtime or
-size) never serves the old pixels. Bounded LRU (4 frames): one decoded frame
+size) never serves the old pixels. No content digest here, deliberately: this
+cache holds a DECODED FRAME in memory for one triage pass, so producing the
+digest would have to read the same bytes a second time before the decoder does
+— the opposite of what this cache exists for (``(path, mtime_ns, size)`` is the
+cheap stat identity, and a frame never outlives the process, so a rewrite cannot
+hide behind it across runs; the result caches are the ones that need
+``content_digest``). Bounded LRU (4 frames): one decoded frame
 is the working set of the sequential triage worker. The catch that comes with
 a frame bound: ``cluster_items`` and ``select_mode`` are two FULL passes over
 the pool, so a pool larger than the bound keeps the frames of its last 4
