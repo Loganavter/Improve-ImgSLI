@@ -823,7 +823,22 @@ def test_first_frame_emitted_on_settled_second_present(qtbot):
 
     canvas._shell_ready = True
     canvas._shell = _FakeShell()
-    canvas.rhi = lambda: SimpleNamespace(nextResourceUpdateBatch=lambda: object())  # type: ignore[method-assign]
+    # The raster path stages ``composited_clip_correction(rhi)`` (the backend's
+    # clip-space correction, never a local identity -- see
+    # ``test_ql_raster_clip_orientation.py``), so the stub rhi must answer
+    # ``clipSpaceCorrMatrix()`` like a real one; identity is the y-up answer.
+    _correction = SimpleNamespace(
+        data=lambda: (
+            1.0, 0.0, 0.0, 0.0,
+            0.0, 1.0, 0.0, 0.0,
+            0.0, 0.0, 1.0, 0.0,
+            0.0, 0.0, 0.0, 1.0,
+        )
+    )
+    canvas.rhi = lambda: SimpleNamespace(  # type: ignore[method-assign]
+        nextResourceUpdateBatch=lambda: object(),
+        clipSpaceCorrMatrix=lambda: _correction,
+    )
     canvas.renderTarget = lambda: _FakeTarget()  # type: ignore[method-assign]
     canvas._raster_frame = lambda target: (8, 6, bytes(8 * 6 * 4))  # type: ignore[method-assign]
 
