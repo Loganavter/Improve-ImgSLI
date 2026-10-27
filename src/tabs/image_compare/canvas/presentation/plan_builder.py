@@ -203,15 +203,28 @@ def build_canvas_plan(
             display_image1, display_image2, w1, h1 = _boxed
 
     if is_live_default_plan and display_image1 is not None:
+        # Sizing base = the comparison ENVELOPE (max(w1,w2) x max(h1,h2)), the
+        # same reference the letterbox owner
+        # (``update_common_letterbox_geometry``) fits both sides to. Slot 1
+        # alone is not pair-invariant: after a swap inside the pair each side's
+        # installed tier can differ (preview/preview while the order-sensitive
+        # unify cache misses, then the unified pair), so a slot-1-only canvas
+        # made every canvas-px overlay (loupe radius/spacing/offsets, capture
+        # ring, clip rect) change with the swap and again when unify landed
+        # (owner report 2026-10-27). Equal-size pairs, no-pad pair images and
+        # one-sided frames resolve to today's numbers unchanged.
+        w2, h2 = _w(display_image2), _h(display_image2)
+        base_w = max(1, int(w1), int(w2))
+        base_h = max(1, int(h1), int(h2))
         live_virtual_layout = resolve_feature_virtual_layout(
             store,
-            drawing_width=w1,
-            drawing_height=h1,
+            drawing_width=base_w,
+            drawing_height=base_h,
         )
         live_pad_left, live_pad_right, live_pad_top, live_pad_bottom = (
             live_virtual_layout.resolve_padding_pixels(
-                base_width=w1,
-                base_height=h1,
+                base_width=base_w,
+                base_height=base_h,
             )
             if live_virtual_layout is not None
             else (0, 0, 0, 0)
@@ -219,13 +232,13 @@ def build_canvas_plan(
         pad_left = live_pad_left
         pad_top = live_pad_top
         target_size = (
-            w1 + live_pad_left + live_pad_right,
-            h1 + live_pad_top + live_pad_bottom,
+            base_w + live_pad_left + live_pad_right,
+            base_h + live_pad_top + live_pad_bottom,
         )
         store.runtime_cache.overlay_clip_rect = resolve_canvas_clip_rect_px(
             live_virtual_layout,
-            base_width=w1,
-            base_height=h1,
+            base_width=base_w,
+            base_height=base_h,
         )
 
     canvas_w = target_size[0] if target_size is not None else w1
