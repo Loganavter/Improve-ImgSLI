@@ -201,6 +201,14 @@ class RhiCanvasRenderer:
         # on promotion. The rekeyed-marker signal (``_is_rekeyed_content_key``)
         # persists on its own via ``self._last_good_*`` and needs no flag.
         self._content_swap_active = False
+        # Pair-content identity (owner report 2026-10-27): sticky while the
+        # current baseline is known to be a DIFFERENT picture than the pair
+        # being rendered (the realizer reports the replacement through
+        # ``last_content_replaced_keys``). A foreign baseline is never drawn --
+        # atomic content-swap placeholder, level hold and hires flip all lose
+        # their hold for its duration, because holding the *wrong* picture for
+        # a frame is a flash, not a smoothness win. Cleared on promotion.
+        self._fallback_baseline_foreign = False
         # Duplicate-left-on-both fallback guard: single-image mode (display_single_image_on_label)
         # uploads the same pil_image to both stored slots, so fallback's old baseline
         # is left-on-both duplicate. Holding it atomically after second image arrives

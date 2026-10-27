@@ -114,6 +114,12 @@ def prepare_frame(
     # TiledPixelStore path) -- both write into this same dict so the
     # fallback-LOD substitution below sees whichever one fired this frame.
     renderer.resources.residency.last_rekeyed_keys = {}
+    # Same per-frame life as the rekeyed map above: the content-identity
+    # verdict ("this slot now shows a different picture") is a fact about
+    # THIS frame's uploads, and the fallback decision below is the only
+    # reader. Stale entries from an earlier frame would keep dropping a
+    # baseline that has since become legitimate again.
+    renderer.resources.residency.last_content_replaced_keys = set()
     renderer.resources.apply_pending_uploads(widget, renderer.tile_service, updates)
     ctx = build_render_runtime_context(widget)
     base_image = getattr(ctx.render_list, "base_image", None)

@@ -77,6 +77,51 @@ except Exception:  # pragma: no cover - import-time fallback
     def _gap_enabled() -> bool:  # type: ignore
         return False
 
+
+def _picture_uid(content_uid: object) -> object:
+    """The *picture* behind a content uid, ignoring its crop box.
+
+    Residency content identity is ``image_uid`` for a whole source and
+    ``(image_uid, scaled_box)`` once a crop box joins it (W3a). The box is a
+    sub-identity of the same picture: re-cropping re-registers the grid like a
+    swap, but the frame is still looking at THAT picture, so it must not be
+    mistaken for a replacement by a different one.
+    """
+    if isinstance(content_uid, tuple) and content_uid:
+        return content_uid[0]
+    return content_uid
+
+
+def is_foreign_content_replacement(
+    *,
+    prev_uid: object | None,
+    content_uid: object,
+    prev_is_preview: bool,
+    is_tiled_store: bool,
+) -> bool:
+    """True iff this call replaced ``key``'s content with a DIFFERENT picture.
+
+    Drives the fallback-LOD identity rule (owner report 2026-10-27, a pair
+    swap flashing the previous pair for 1-2 frames): a key whose live content
+    became a different picture must never be held as the fallback baseline --
+    ``RhiCanvasRenderer`` drops that baseline for the whole transition instead
+    of drawing it atomically (see ``use_cases/fallback.py``).
+
+    Same picture, different tier is NOT a replacement: a preview QImage
+    handover to the tiled store of the same document side
+    (``prev_is_preview and is_tiled_store``) is one picture at two
+    resolutions, exactly the case the preview baseline exists for ("qimage
+    should stay until all tiles drawn") and the hires-flip hold covers.
+    Crop-box re-registration is handled by ``_picture_uid`` -- the picture is
+    unchanged, only the rect it is shown through.
+    """
+    if prev_uid is None:
+        return False
+    if _picture_uid(prev_uid) == _picture_uid(content_uid):
+        return False
+    return not (bool(prev_is_preview) and bool(is_tiled_store))
+
+
 # docs/dev/TILED_RENDERING_DESIGN.md Phase 2 "Open questions: Cache budget"
 # -- byte budget over resident-tile pixel bytes (RGBA8, post-apron), not a
 # tile count: matches how production tile caches (image editors, tiled map
@@ -351,6 +396,17 @@ class TileResidencyRealizer(TileResidencyRealizerBase):
         # instead of `register_source` silently dropping it from residency
         # (docs/dev/rendering/qrhi-gotchas.md same-slot-swap finding).
         self.last_rekeyed_keys: dict[object, object] = {}
+        # Populated by the most recent `realize_tile_plan` call: live slot
+        # keys whose content identity was replaced by a DIFFERENT picture
+        # this call (see `is_foreign_content_replacement`). Read by
+        # `RhiCanvasRenderer.render` the same frame: a baseline made of the
+        # previous pair's content must not be drawn as the atomic fallback
+        # placeholder (owner report 2026-10-27 -- a pair swap presented the
+        # OLD pair for 1-2 frames although the new one was already applied).
+        # Reset once per frame by `use_cases/frame_setup.py` next to
+        # `last_rekeyed_keys`, for the same reason (both upload paths may
+        # write into it before the fallback decision reads it).
+        self.last_content_replaced_keys: set[object] = set()
         # Stash/hold tile storage lives in the engine contract
         # (``engine.cache.stash.ContentStash``) -- this realizer only feeds
         # it per-call specs and records its rekeyed-old-content map above
@@ -589,6 +645,13 @@ class TileResidencyRealizer(TileResidencyRealizerBase):
                     )
                     if grid is not None:
                         self._evict_stale_tiles(key, set())
+                        if is_foreign_content_replacement(
+                            prev_uid=prev_uid,
+                            content_uid=src_uid,
+                            prev_is_preview=prev_is_preview,
+                            is_tiled_store=is_tiled_store,
+                        ):
+                            self.last_content_replaced_keys.add(key)
                         grid = self._stash.rekey_or_restore(
                             tile_service,
                             key,
