@@ -313,15 +313,24 @@ def test_execute_unresolvable_list_ref_is_not_handled(qapp):
 # --------------------------------------------------------------------------
 
 
-def test_open_image_dialog_pins_sessions(qapp, monkeypatch):
+def test_open_image_dialog_pins_sessions(qapp, monkeypatch, tmp_path):
     from PySide6.QtCore import QTimer
     from PySide6.QtWidgets import QFileDialog
 
     from tabs.image_compare.presenters.toolbar import actions as toolbar_actions
 
+    # A real file on disk: the dialog entry validates the selection with the
+    # DnD predicate (``shared.image_extensions.is_loadable_image_path``), so a
+    # synthetic path is not a dialog pick any more. The subject here is the
+    # session pin across the defer, unchanged.
+    picked = tmp_path / "a.png"
+    from PIL import Image
+
+    Image.new("RGB", (1, 1), (0, 0, 0)).save(picked)
+
     captured: dict = {}
     monkeypatch.setattr(
-        QFileDialog, "getOpenFileNames", lambda *a, **k: (["/x/a.png"], "")
+        QFileDialog, "getOpenFileNames", lambda *a, **k: ([str(picked)], "")
     )
     monkeypatch.setattr(
         QTimer, "singleShot", lambda delay, fn: captured.setdefault("fn", fn)
@@ -350,7 +359,7 @@ def test_open_image_dialog_pins_sessions(qapp, monkeypatch):
     main_controller.sessions = replaced
     captured["fn"]()
 
-    assert pinned.loads == [(["/x/a.png"], 1)]
+    assert pinned.loads == [([str(picked)], 1)]
     assert replaced.loads == []
 
 
