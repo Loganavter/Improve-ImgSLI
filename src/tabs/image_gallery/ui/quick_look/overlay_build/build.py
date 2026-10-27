@@ -426,15 +426,29 @@ def build_overlay_ui(overlay) -> None:
     # fixed thumbs) — a full-text sizeHint must never summon a scrollbar.
     # Native bars stay AlwaysOff (overlay widget invariant — the floating
     # custom bar appears on overflow by itself); re-enforced by the
-    # toolkit scrollbar policy at polish time.
+    # toolkit scrollbar policy at polish time. AlwaysOff alone is NOT enough
+    # for the horizontal axis: the floating bar is the toolkit's own
+    # ``custom_h_scrollbar``, armed from the NATIVE horizontal range, and the
+    # host's Ignored policy below is what keeps that range at 0 (ql-hscroll).
     right_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
     right_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
     right_host = QWidget(right_scroll)
     right_host.setObjectName("quicklook_right_host")
     # W13: the host expands with the scroll viewport (the scroll area is
     # widget-resizable, so the host tracks the stretched column width).
+    # Horizontal policy is Ignored, not Expanding (ql-hscroll, owner
+    # 2026-10-27): with a grow-policy the widget's qSmartMinSize is its
+    # sizeHint/minimumSizeHint (296 — the brief label's floor), and a
+    # QScrollArea is resized AFTER its viewport, so the first pass sized the
+    # host at 296 inside the viewport's 100px default → the native h range
+    # went 0..196 → the toolkit overlay h bar was armed (and painted) for the
+    # opening frames until the real layout collapsed the range. Ignored makes
+    # the horizontal minimum 0, so the host can never be wider than the
+    # viewport it is resized into: no range, no bar, in any frame. The 296px
+    # column floor is the SCROLL AREA's (see setMinimumWidth above), not the
+    # host's, so the design width is unchanged.
     try:
-        right_host.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        right_host.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Expanding)
     except Exception:
         pass
     right_lay = QVBoxLayout(right_host)
