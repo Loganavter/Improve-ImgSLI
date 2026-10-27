@@ -178,3 +178,71 @@ def _destroy_lingering_toplevels():
             QApplication.sendPostedEvents(w, QEvent.Type.DeferredDelete)
         except RuntimeError:
             pass
+
+
+@pytest.fixture(autouse=True)
+def _restore_tab_registry_singletons():
+    """Restore the process-wide TabRegistry singletons around every tab test.
+
+    A tab test that drives a real tab end-to-end (``create_page`` with the real
+    page widget) registers that page on the registry; the teardown sweep above
+    then destroys the widget, but the registry keeps the dead wrapper. Any
+    later tab test that reaches the page through the registry — e.g.
+    ``SessionPickerTab.on_host_revealed``'s ``TabRegistry().get_page(...)``
+    fallback — then talks to a deleted C++ object and dies with
+    ``RuntimeError: libshiboken: Internal C++ object (...) already deleted``
+    (measured 2026-10-27, ``test_session_picker_refresh_focus.py``: green in
+    isolation, red in a full run).
+
+    Mirrors ``tests/conftest.py::_restore_tab_registry_singletons`` (kept as a
+    local copy — tab suites run under THIS conftest, not that one). Snapshots
+    the two singletons and their mutable discovery state, restores both.
+    """
+    from tabs import registry as _tabs_registry_module
+
+    saved_instance = _tabs_registry_module.TabRegistry._instance
+    saved_shared = _tabs_registry_module._shared_registry
+    saved_state = _snapshot_registry(saved_instance)
+    saved_shared_state = _snapshot_registry(saved_shared)
+    try:
+        yield
+    finally:
+        _tabs_registry_module.TabRegistry._instance = saved_instance
+        _tabs_registry_module._shared_registry = saved_shared
+        _restore_registry(saved_instance, saved_state)
+        _restore_registry(_tabs_registry_module._shared_registry, saved_shared_state)
+
+
+def _snapshot_registry(registry):
+    """Shallow snapshot of a registry's mutable discovery state (or None)."""
+    if registry is None:
+        return None
+    return {
+        "tabs": dict(registry._tabs),
+        "pages": dict(registry._pages),
+        "pending": dict(registry._pending_pages),
+        "tiers": set(registry._discovered_tiers),
+        "stale": set(registry._appearance_stale),
+        "active_type": registry._active_session_type,
+        "active_id": registry._active_session_id,
+        "context": registry._context,
+    }
+
+
+def _restore_registry(registry, saved) -> None:
+    """Restore a snapshot taken by ``_snapshot_registry``."""
+    if registry is None or saved is None:
+        return
+    registry._tabs.clear()
+    registry._tabs.update(saved["tabs"])
+    registry._pages.clear()
+    registry._pages.update(saved["pages"])
+    registry._pending_pages.clear()
+    registry._pending_pages.update(saved["pending"])
+    registry._discovered_tiers.clear()
+    registry._discovered_tiers.update(saved["tiers"])
+    registry._appearance_stale.clear()
+    registry._appearance_stale.update(saved["stale"])
+    registry._active_session_type = saved["active_type"]
+    registry._active_session_id = saved["active_id"]
+    registry._context = saved["context"]

@@ -161,7 +161,10 @@ def test_forced_pil_fallback_still_enforces_bound(monkeypatch, tmp_path):
     """Force the no-pyvips path even when pyvips is installed, so the PIL
     fallback branch is exercised in every environment."""
     monkeypatch.setattr(pl, "PYVIPS_SUPPORTED", False)
-    pl._vips_suffixes_cache = frozenset()
+    # monkeypatch (not a bare assignment): the memo is process-wide and a
+    # leftover empty frozenset tells every later test that NOTHING streams,
+    # sending each decode down the bounded PIL path (measured 2026-10-27).
+    monkeypatch.setattr(pl, "_vips_suffixes_cache", frozenset())
     assert pl.pyvips_can_stream("anything.png") is False
 
     big = tmp_path / "big.png"
@@ -350,7 +353,10 @@ def _install_fake_imagecodecs(monkeypatch, calls: dict):
     monkeypatch.setitem(sys.modules, "imagecodecs", fake)
     monkeypatch.setattr(pl, "JXL_SUPPORTED", True)
     monkeypatch.setattr(pl, "PYVIPS_SUPPORTED", False)
-    pl._vips_suffixes_cache = frozenset()
+    # monkeypatch (not a bare assignment): the memo is process-wide and a
+    # leftover empty frozenset tells every later test that NOTHING streams,
+    # sending each decode down the bounded PIL path (measured 2026-10-27).
+    monkeypatch.setattr(pl, "_vips_suffixes_cache", frozenset())
     return fake
 
 
@@ -428,7 +434,10 @@ def test_autocrop_probe_honors_bound_without_decode(monkeypatch, tmp_path):
     fake.imread = _imread
     monkeypatch.setitem(sys.modules, "imagecodecs", fake)
     monkeypatch.setattr(pl, "PYVIPS_SUPPORTED", False)
-    pl._vips_suffixes_cache = frozenset()
+    # monkeypatch (not a bare assignment): the memo is process-wide and a
+    # leftover empty frozenset tells every later test that NOTHING streams,
+    # sending each decode down the bounded PIL path (measured 2026-10-27).
+    monkeypatch.setattr(pl, "_vips_suffixes_cache", frozenset())
 
     huge = _oversized_jxl(tmp_path, name="huge_crop.jxl")
     assert CropService().get(huge) is None
@@ -477,7 +486,10 @@ def test_auto_crop_end_to_end_streaming_matches_pil(monkeypatch, tmp_path):
         store_stream.close()
 
     monkeypatch.setattr(pl, "PYVIPS_SUPPORTED", False)
-    pl._vips_suffixes_cache = frozenset()
+    # monkeypatch (not a bare assignment): the memo is process-wide and a
+    # leftover empty frozenset tells every later test that NOTHING streams,
+    # sending each decode down the bounded PIL path (measured 2026-10-27).
+    monkeypatch.setattr(pl, "_vips_suffixes_cache", frozenset())
     store_pil = TiledPixelStore.from_path(str(path), auto_crop=True)
     try:
         size_pil = store_pil.size

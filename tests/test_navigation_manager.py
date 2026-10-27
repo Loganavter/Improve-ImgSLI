@@ -46,6 +46,47 @@ def _make_section(*, owns_fn=None, navigate_fn=None, focus_first_fn=None, focus_
     return section
 
 
+def _release_manager(manager) -> None:
+    """Uninstall a test-created manager's app-wide event filter.
+
+    These classes construct a BARE ``NavigationManager()`` (not the singleton)
+    so each test can drive registration in isolation. ``register()`` installs
+    the manager as a ``QApplication`` event filter, and Qt keeps that filter
+    alive for as long as it is installed — while ``tests/conftest.py``'s
+    ``_reset_navigation_manager`` can only uninstall the filter of
+    ``NavigationManager._instance``. Every un-released instance therefore stays
+    an immortal app-wide arrow-key interceptor whose registered sections keep
+    answering ``owns()``/``navigate()`` for widgets they have never seen.
+
+    Measured 2026-10-27: in the full run
+    ``src/tabs/image_gallery/tests/test_gallery_keyboard.py`` lost Up/Down
+    focus moves (4 red; Left/Right, Home/End and Enter stayed green) because a
+    leaked section swallowed the vertical keys before the grid view saw them —
+    green in isolation, red after this module. Same class of leak as the
+    ``NavigationManager._instance`` one the conftest reset already covers.
+    """
+    try:
+        manager._uninstall_event_filter()
+    except Exception:
+        pass
+
+
+def teardown_module(module) -> None:
+    """Net: reap any manager this module left installed (belt + braces).
+
+    The per-class ``teardown_method`` above releases what it knows about; this
+    sweep catches an instance a future test forgets (one ``gc`` pass per
+    module, so it costs nothing on the suite's hot path).
+    """
+    import gc
+
+    from sli_ui_toolkit.managers import NavigationManager
+
+    for obj in gc.get_objects():
+        if isinstance(obj, NavigationManager):
+            _release_manager(obj)
+
+
 # ---------------------------------------------------------------------------
 # NavigationManager basics
 # ---------------------------------------------------------------------------
@@ -55,6 +96,9 @@ class TestNavigationManager:
         from sli_ui_toolkit.managers import NavigationManager
         NavigationManager._instance = None
         self.manager = NavigationManager()
+
+    def teardown_method(self):
+        _release_manager(self.manager)
 
     def test_singleton(self):
         from sli_ui_toolkit.managers import NavigationManager
@@ -188,6 +232,9 @@ class TestCrossSectionRouting:
         NavigationManager._instance = None
         self.manager = NavigationManager()
 
+    def teardown_method(self):
+        _release_manager(self.manager)
+
     @patch("sli_ui_toolkit.ui.managers.navigation_manager.QApplication")
     def test_down_at_last_item_yields_to_next_section(self, mock_qapp):
         widget = _fake_widget("target")
@@ -273,6 +320,9 @@ class TestClickToArrowRealign:
         from sli_ui_toolkit.managers import NavigationManager
         NavigationManager._instance = None
         self.manager = NavigationManager()
+
+    def teardown_method(self):
+        _release_manager(self.manager)
 
     @patch("sli_ui_toolkit.ui.managers.navigation_manager.QApplication")
     @patch("sli_ui_toolkit.ui.managers.realign.QApplication")

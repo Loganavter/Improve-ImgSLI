@@ -25,9 +25,10 @@ ONE function to ``tmp_path``: a test can seed and clear real cache entries
 without reading, writing or DELETING the developer's cache root (the reset
 under test calls ``clear_all()`` on several of those stores).
 
-No autouse/global patching: pytest's ``monkeypatch`` + started ``mock.patch``
-objects are undone at teardown, and the counters are a plain ``Counter``
-readable after the call.
+No autouse/global patching: every seam is patched through the test's own
+``monkeypatch`` (so the undo order is LIFO and a test that patches one of the
+same seams itself still leaves the real function installed), and the counters
+are a plain ``Counter`` readable after the call.
 
 Decode entry points (``services.proxy._build_proxy``,
 ``engine.store.tiled_pixel_store.TiledPixelStore.from_path``) are deliberately
@@ -38,9 +39,7 @@ claim the suite does not make.
 
 from __future__ import annotations
 
-import contextlib
 from collections import Counter
-from unittest import mock
 
 import pytest
 
@@ -64,9 +63,20 @@ def _stub_call_sync(*_args, **_kwargs):
 
 @pytest.fixture
 def counters(tmp_path, monkeypatch):
-    """``Counter`` of backend-isolation spend/write seams reached by the test."""
+    """``Counter`` of backend-isolation spend/write seams reached by the test.
+
+    Every seam is patched through THIS test's ``monkeypatch`` on purpose — not
+    through a local ``mock.patch`` ExitStack. ``monkeypatch`` unwinds its
+    patches LIFO, so when a test additionally patches the same attribute (e.g.
+    ``monkeypatch.setattr(ai_client, "call_sync", transport_stub)``), the
+    test's stub is removed first and the counter's wrapper second, leaving the
+    REAL function installed. With a separate ExitStack the counter patch was
+    removed at fixture teardown *before* ``monkeypatch.undo()`` re-installed the
+    stub the test had saved — sealing a no-op ``call_sync`` into the module for
+    the rest of the process (measured 2026-10-27: 12 AI-client tests red in a
+    full run, green in isolation).
+    """
     calls: Counter = Counter()
-    stack = contextlib.ExitStack()
     # Capture the REAL writers before patching: the controller re-export wraps
     # the same implementation, and a call through it must count once, not once
     # per binding.
@@ -95,65 +105,40 @@ def counters(tmp_path, monkeypatch):
 
     monkeypatch.setattr(project_package, "cache_kind_dir", _cache_dir)
 
-    stack.enter_context(
-        mock.patch.object(
-            transport, "call_sync", counted("call_sync", _stub_call_sync)
-        )
+    monkeypatch.setattr(
+        transport, "call_sync", counted("call_sync", _stub_call_sync)
     )
-    stack.enter_context(
-        mock.patch.object(
-            ai_client_package, "call_sync", counted("call_sync", _stub_call_sync)
-        )
+    monkeypatch.setattr(
+        ai_client_package, "call_sync", counted("call_sync", _stub_call_sync)
     )
-    stack.enter_context(
-        mock.patch.object(
-            ai_cache,
-            "save_analysis",
-            counted("save_analysis", real_save_analysis),
-        )
+    monkeypatch.setattr(
+        ai_cache, "save_analysis", counted("save_analysis", real_save_analysis)
     )
-    stack.enter_context(
-        mock.patch.object(
-            controller,
-            "save_analysis",
-            counted("save_analysis", real_save_analysis),
-        )
+    monkeypatch.setattr(
+        controller, "save_analysis", counted("save_analysis", real_save_analysis)
     )
-    stack.enter_context(
-        mock.patch.object(
-            metrics_cache,
-            "save_local_metrics",
-            counted("save_local_metrics", metrics_cache.save_local_metrics),
-        )
+    monkeypatch.setattr(
+        metrics_cache,
+        "save_local_metrics",
+        counted("save_local_metrics", metrics_cache.save_local_metrics),
     )
-    stack.enter_context(
-        mock.patch.object(
-            profile_cache.ProfileCache,
-            "put",
-            counted("profile_put", profile_cache.ProfileCache.put, method=True),
-        )
+    monkeypatch.setattr(
+        profile_cache.ProfileCache,
+        "put",
+        counted("profile_put", profile_cache.ProfileCache.put, method=True),
     )
-    stack.enter_context(
-        mock.patch.object(
-            jev_cache.JevRankCache,
-            "put",
-            counted("jev_put", jev_cache.JevRankCache.put, method=True),
-        )
+    monkeypatch.setattr(
+        jev_cache.JevRankCache,
+        "put",
+        counted("jev_put", jev_cache.JevRankCache.put, method=True),
     )
-    stack.enter_context(
-        mock.patch.object(
-            vlm_cache, "save_tie_break", counted("vlm_save", vlm_cache.save_tie_break)
-        )
+    monkeypatch.setattr(
+        vlm_cache, "save_tie_break", counted("vlm_save", vlm_cache.save_tie_break)
     )
-    stack.enter_context(
-        mock.patch.object(
-            vlm_cache, "save_brief", counted("vlm_save", vlm_cache.save_brief)
-        )
+    monkeypatch.setattr(
+        vlm_cache, "save_brief", counted("vlm_save", vlm_cache.save_brief)
     )
-    try:
-        yield calls
-    finally:
-        stack.close()
+    return calls
 
 
 __all__ = ["counters"]
