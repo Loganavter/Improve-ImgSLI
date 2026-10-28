@@ -23,7 +23,7 @@ depends=(
   'python-pyvips'
   'pyside6'
   'python-scikit-image'
-  'python-sli-ui-toolkit>=4.0.0'
+  'python-sli-ui-toolkit>=4.0.1'
   # piq (vendored below) imports torchvision; the learned-metrics backend
   # (LPIPS/DISTS/BRISQUE) is a hard requirement of the gallery ranker.
   'python-torchvision'
